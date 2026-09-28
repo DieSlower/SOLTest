@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
 
+#include "Universe/SOLBodyFrameCache.h"
 #include "Universe/SOLBodyRegistry.h"
 
 #include "SOLBodyRegistrySubsystem.generated.h"
@@ -25,11 +26,14 @@ public:
     // Populates the solar system and evaluates it at the clock's start time
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
-    // Re-evaluates every body's position and velocity at the clock's current sim time; warns once outside 1800-2050
+    // Re-evaluates every body at the clock's sim time and refreshes the Unreal-handed cache; warns outside 1800-2050
     void UpdateFromClock();
 
     // Returns the wrapped registry (read-only)
     const FSOLBodyRegistry& GetRegistry() const { return mRegistry; }
+
+    // Returns the bodies in the ship's Unreal-handed universe frame, refreshed with every UpdateFromClock
+    const FSOLBodyFrameCache& GetUnrealFrameCache() const { return mUnrealFrameCache; }
 
     // Creates the subsystem only in game and PIE worlds that run ASOLGameMode
     virtual bool ShouldCreateSubsystem(UObject* outer) const override;
@@ -45,5 +49,6 @@ private:
     TObjectPtr<USOLSimClockSubsystem> SimClock;
 
     FSOLBodyRegistry mRegistry;                  // Sun-frame body data (structure of arrays)
+    FSOLBodyFrameCache mUnrealFrameCache;        // The same bodies in the Unreal-handed frame, for the ship step
     bool mHasWarnedOutsideWindow = false;        // Set once the out-of-validity-window warning has been logged
 };

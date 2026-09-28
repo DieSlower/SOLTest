@@ -20,12 +20,13 @@ void USOLBodyRegistrySubsystem::Initialize(FSubsystemCollectionBase& collection)
     Super::Initialize(collection);
 
     mRegistry.PopulateSolarSystem();
+    mUnrealFrameCache.Init(mRegistry);
     UpdateFromClock();
     UE_LOG(LogSOL, Log, TEXT("BodyRegistry %s: %d bodies"), *GetName(), mRegistry.Num());
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Re-evaluates every body's position and velocity at the clock's current sim time; warns once outside 1800-2050
+// Re-evaluates every body at the clock's sim time and refreshes the Unreal-handed cache; warns outside 1800-2050
 void USOLBodyRegistrySubsystem::UpdateFromClock()
 {
     if (SimClock == nullptr)
@@ -34,6 +35,7 @@ void USOLBodyRegistrySubsystem::UpdateFromClock()
     }
     const FSOLSimClock& clock = SimClock->GetClock();
     mRegistry.Update(clock.GetSecondsSinceJ2000());
+    mUnrealFrameCache.Refresh(mRegistry);
 
     // The Standish elements are fitted to 1800-2050; outside that window orbits degrade, so say so once
     const double centuries = clock.GetCenturiesSinceJ2000();

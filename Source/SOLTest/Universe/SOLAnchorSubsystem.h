@@ -18,11 +18,13 @@ class USOLBodyRegistrySubsystem;
 class USOLSimClockSubsystem;
 
 DECLARE_MULTICAST_DELEGATE(FSOLOnUniverseUpdated);
+DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnBodiesUpdated, float /*realDeltaSeconds*/);
 DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnRenderOriginShifted, const FVector& /*shiftCm*/);
 
 /**
  * Owns the observer's double-precision universe position, the anchor (nearest body) and the render origin, and drives
- * the per-frame universe update: clock, then registry, then anchor, then listeners (body visuals).
+ * the per-frame universe update: clock, then registry, then OnBodiesUpdated (ship step, observer sync), then anchor
+ * and rebase, then OnUniverseUpdated (body visuals).
  *
  * Rendering is observer-relative: the render origin is a universe point (meters, double) that maps to Unreal (0,0,0).
  * It snaps to the observer whenever the anchor changes or the observer drifts RENDER_REBASE_DISTANCE_M from it, so
@@ -43,7 +45,7 @@ public:
     // Drops the observer actor reference
     virtual void Deinitialize() override;
 
-    // Advances the universe one frame: clock, registry, anchor, rebase, then notifies listeners
+    // Advances the universe one frame: clock, registry, ship step, anchor, rebase, then notifies listeners
     virtual void Tick(float deltaTime) override;
 
     // Returns the stat id used by the tickable-object profiler
@@ -54,6 +56,9 @@ public:
 
     // Moves the observer by a universe-space delta (meters, ecliptic)
     void MoveObserverM(const FVector3d& deltaM);
+
+    // Sets the observer's position for continuous motion (meters, ecliptic): anchor hysteresis and rebasing still apply
+    void SyncObserverPositionM(const FVector3d& positionM) { mObserverPositionM = positionM; }
 
     // Returns the observer's universe position (meters, ecliptic)
     const FVector3d& GetObserverPositionM() const { return mObserverPositionM; }
@@ -81,6 +86,11 @@ public:
 
     // Returns the index of the body whose surface is nearest the observer, and its altitude in meters
     int32 FindNearestBody(double& outAltitudeM) const;
+
+    // Fired every frame after the clock and bodies advance and before the anchor update; carries the REAL delta time,
+    // clamped to SOL::MAX_FRAME_DELTA_S exactly as the clock's was. The ship step runs here so the observer it moves is
+    // re-anchored and rebased in the same frame.
+    FSOLOnBodiesUpdated& OnBodiesUpdated() { return mOnBodiesUpdated; }
 
     // Fired after every universe update, once body positions and the render origin are final for the frame
     FSOLOnUniverseUpdated& OnUniverseUpdated() { return mOnUniverseUpdated; }
@@ -111,6 +121,7 @@ private:
     FSOLAnchorSelector mAnchor;                                // Nearest-body selection with hysteresis
     FVector3d mObserverPositionM = FVector3d::ZeroVector;      // Authoritative observer position (universe, meters)
     FSOLRenderOrigin mRenderOrigin;                            // Universe point at Unreal (0,0,0) and its math
+    FSOLOnBodiesUpdated mOnBodiesUpdated;                      // Listeners between the body update and the anchor
     FSOLOnUniverseUpdated mOnUniverseUpdated;                  // Listeners for the per-frame update
     FSOLOnRenderOriginShifted mOnRenderOriginShifted;          // Listeners for render-origin shifts
 };

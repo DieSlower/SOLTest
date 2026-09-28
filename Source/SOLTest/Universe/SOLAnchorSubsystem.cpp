@@ -33,13 +33,14 @@ void USOLAnchorSubsystem::Initialize(FSubsystemCollectionBase& collection)
 void USOLAnchorSubsystem::Deinitialize()
 {
     mObserverActor.Reset();
+    mOnBodiesUpdated.Clear();
     mOnUniverseUpdated.Clear();
     mOnRenderOriginShifted.Clear();
     Super::Deinitialize();
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Advances the universe one frame: clock, registry, anchor, rebase, then notifies listeners
+// Advances the universe one frame: clock, registry, ship step, anchor, rebase, then notifies listeners
 void USOLAnchorSubsystem::Tick(const float deltaTime)
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(USOLAnchorSubsystem::Tick);
@@ -49,8 +50,14 @@ void USOLAnchorSubsystem::Tick(const float deltaTime)
     {
         return;
     }
-    SimClock->AdvanceFrame(deltaTime);
+    // One hitch budget for the clock and the ship alike, so a long frame slows the universe uniformly
+    const float frameDeltaS = FMath::Min(deltaTime, static_cast<float>(SOL::MAX_FRAME_DELTA_S));
+    SimClock->AdvanceFrame(frameDeltaS);
     BodyRegistry->UpdateFromClock();
+
+    // Ship step (Mass) and observer sync, on the same clamped real time, against this frame's bodies and before the
+    // anchor update
+    mOnBodiesUpdated.Broadcast(frameDeltaS);
 
     // Re-anchor with hysteresis; a new anchor, or drifting too far from the render origin, rebases onto the observer
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();

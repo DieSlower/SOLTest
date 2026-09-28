@@ -19,10 +19,12 @@ class USOLSimClockSubsystem;
 struct FInputActionValue;
 
 /**
- * Debug free-fly camera for verifying the universe (not the ship). Its authoritative position is the anchor subsystem's
+ * Debug free-fly camera for verifying the universe (not the ship), selected with -SOLSpectator. Its authoritative position is the anchor subsystem's
  * double-precision observer; the actor only mirrors it in render space. WASD/Space/Ctrl move, the mouse looks, the wheel
  * steps speed on a log scale (1 m/s to 0.5c), and [ ] Backspace step the time-warp. Start body and altitude can be set
  * on the command line with -SOLStart=<Body> and -SOLAltitudeKm=<km>; -SOLLookAt=<Body> aims the initial view.
+ * When the player ship exists (1b), the ship is the observer: the spectator rides it as a free-look camera and no
+ * longer moves the observer itself.
  */
 UCLASS()
 class SOLTEST_API ASOLSpectatorPawn : public APawn
@@ -62,7 +64,7 @@ public:
 
 protected:
 
-    // Places the observer above the start body and registers this actor as the observer
+    // Places the observer above the start body (or rides the ship) and registers this actor as the observer
     virtual void BeginPlay() override;
 
     // Removes the mapping context and unregisters this actor as the observer
@@ -75,6 +77,9 @@ private:
 
     // Removes the mapping context from the local player it was added to, if any
     void RemoveMappingContext();
+
+    // Moves the actor onto the observer's render location after the universe update (ship-riding mode)
+    void FollowObserver();
 
     // Stores the move input (x forward, y right, z up)
     void HandleMove(const FInputActionValue& value);
@@ -132,4 +137,6 @@ private:
     FVector mMoveInput = FVector::ZeroVector; // Current move input (x forward, y right, z up)
     int32 mSpeedStep = 0;                     // Current step on the log speed scale
     double mCurrentSpeedMps = 0.0;            // Observer speed over the last frame
+    FDelegateHandle mUniverseUpdatedHandle;   // Binding to OnUniverseUpdated while riding the ship
+    bool mIsRidingShip = false;               // True when the player ship is the observer and this is only a camera
 };

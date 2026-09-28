@@ -36,12 +36,15 @@
 
 ### 1b — Ship flight
 
-- [ ] Mass ship entity fragments and processors (flight, gravity), quaternion rotation, no gimbal lock.
-- [ ] Flight-assist and Newtonian modes, boost, speed cap on a log scale up to 0.5c.
-- [ ] `ASOLShipPawn` proxy: Enhanced Input (virtual-joystick mouse, keys per SDD), spring-arm chase camera with lag, speed FOV, Alt free-look, placeholder ship mesh.
-- [ ] Spawn in Earth orbit matched to Earth; analytic sphere collision.
-- [ ] Targetable interface; target selection (T, R/F, X); M reference-frame matching.
-- [ ] Automation tests, PIE smoke check, adversarial review, commit.
+- [x] Mass ship entity fragments and processors (flight, gravity), quaternion rotation, no gimbal lock. (`Ship/`; processor run from the anchor tick, see SDD section 3.)
+- [x] Flight-assist and Newtonian modes, boost, speed cap on a log scale up to 0.5c. (Integrated in the Mass step and verified by `-SOLSmokeFlight`; player input for them comes with the Pawn.)
+- [x] `ASOLShipPawn` proxy: Enhanced Input (virtual-joystick mouse, keys per SDD), spring-arm chase camera with lag, speed FOV, Alt free-look, placeholder ship mesh. (`Ship/SOLShipPawn`; default pawn, `-SOLSpectator` for the debug camera.)
+- [x] Spawn in Earth orbit matched to Earth; analytic sphere collision.
+- [x] Targetable interface; target selection (T, R/F, X); M reference-frame matching. (`Targeting/`; the ship takes its reference velocity from the targeting subsystem.)
+- [x] Automation tests (114 pass).
+- [x] Smoke checks: `-SOLSmokeFlight` 7/7, `-SOLSmokeInput` 29/29 through the real input pipeline, screenshot behind the ship over Earth.
+- [x] Adversarial review; fixes applied (Amendment 2: warp carry, hitch budget, substep bodies, swept collision and broadphase, const shared params, parallel chunk loop, focus loss, manual camera lag, fill light, style). Tests 131 pass; `-SOLSmokeFlight` 9/9 incl. the 1 d/s warp phases; `-SOLSmokeInput` 29/29; non-unity build clean.
+- [ ] Commit.
 
 ### 1c — HUD
 

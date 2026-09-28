@@ -29,6 +29,62 @@ namespace SOL
     // Default spawn: altitude above the start body's surface, on its Sun-facing side (SDD 2)
     inline constexpr double DEFAULT_SPAWN_ALTITUDE_M = 1.0e7;
 
+    // Hitch budget: the real delta of one frame is clamped to this before it reaches BOTH the sim clock and the ship
+    // step, so a long hitch slows the whole universe uniformly instead of desynchronising the ship from the bodies
+    inline constexpr double MAX_FRAME_DELTA_S = 0.5;
+
+    // Ship flight step (Mass): a frame's real delta is split into substeps of at most this length...
+    inline constexpr double SHIP_MAX_SUBSTEP_S = 1.0 / 30.0;
+
+    // ...and at most this many substeps: 16 * 1/30 s = 0.533 s covers the whole MAX_FRAME_DELTA_S budget (15 would be
+    // exactly 0.5 s, one spare absorbs rounding), so a clamped hitch never loses ship time
+    inline constexpr int32 SHIP_MAX_SUBSTEPS = 16;
+    static_assert(SHIP_MAX_SUBSTEP_S * SHIP_MAX_SUBSTEPS >= MAX_FRAME_DELTA_S,
+        "The ship substep cap must cover the frame hitch budget");
+
+    // Ship: speed cap at spawn, relative to the reference frame (the wheel steps it by 10^0.1)
+    inline constexpr double SHIP_START_SPEED_CAP_MPS = 1000.0;
+
+    // Ship pawn, virtual joystick: the stick's travel radius as a fraction of the smaller viewport dimension...
+    inline constexpr double JOYSTICK_RADIUS_FRACTION = 0.35;
+
+    // ...its dead zone and response exponent (fractions of the radius, SOLFlight::JoystickToRotation)
+    inline constexpr double JOYSTICK_DEAD_ZONE = 0.05;
+    inline constexpr double JOYSTICK_EXPONENT = 1.5;
+
+    // Ship pawn, chase camera: spring-arm length behind the ship and camera height above it (cm, 60 m and 15 m)
+    inline constexpr float SHIP_CAMERA_ARM_LENGTH_CM = 6000.0f;
+    inline constexpr float SHIP_CAMERA_HEIGHT_CM = 1500.0f;
+
+    // Ship pawn, chase camera: rotation lag speed (1/s) of the camera, applied by the pawn after the ship orientation
+    // update as an exponential slerp (the spring arm's own lag is off; no position lag)
+    inline constexpr double SHIP_CAMERA_ROTATION_LAG_SPEED = 8.0;
+
+    // Lighting: sunlight illuminance (lux) for the Sun light and the body shading, tuned with the fixed exposure
+    inline constexpr float SUN_ILLUMINANCE_LUX = 3.0f;
+
+    // Ship pawn: shadowless directional "headlight" on the camera that lights the ship's shadowed side, as a fraction
+    // of SUN_ILLUMINANCE_LUX (bodies use an unlit material and ignore it)
+    inline constexpr float SHIP_FILL_LIGHT_FRACTION = 0.1f;
+
+    // ...tilted down from the view direction (degrees) so it lands on the ship's upper surfaces instead of grazing them
+    inline constexpr float SHIP_FILL_LIGHT_PITCH_DEG = -45.0f;
+
+    // Ship pawn, chase camera: FOV widens on a log scale of speed relative to the frame, from BASE at or below
+    // FOV_MIN_SPEED to MAX at or above FOV_MAX_SPEED, easing toward the target at FOV_INTERP_SPEED
+    inline constexpr double SHIP_CAMERA_BASE_FOV_DEG = 90.0;
+    inline constexpr double SHIP_CAMERA_MAX_FOV_DEG = 110.0;
+    inline constexpr double SHIP_CAMERA_FOV_MIN_SPEED_MPS = 100.0;
+    inline constexpr double SHIP_CAMERA_FOV_MAX_SPEED_MPS = 0.5 * SPEED_OF_LIGHT_MPS;
+    inline constexpr float SHIP_CAMERA_FOV_INTERP_SPEED = 4.0f;
+
+    // Ship pawn, Alt free-look: camera orbit per mouse pixel and the pitch limit of the orbit
+    inline constexpr double SHIP_FREE_LOOK_DEG_PER_PIXEL = 0.2;
+    inline constexpr double SHIP_FREE_LOOK_MAX_PITCH_DEG = 80.0;
+
+    // Targeting: candidate slots reserved for registered (non-body) targetables so the per-frame rebuild never grows
+    inline constexpr int32 TARGETING_RESERVED_TARGETABLES = 64;
+
     // Rendering: bodies farther than this are pulled in with angular size preserved (1e11 cm = 1,000,000 km)
     inline constexpr double DEFAULT_MAX_RENDER_DISTANCE_CM = 1.0e11;
 
@@ -53,13 +109,36 @@ namespace SOL
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
     }
 
+    // Command-line switches and values used by verification runs (FParse::Value keys end in '=')
+    namespace CommandLine
+    {
+        inline constexpr const TCHAR* START_BODY = TEXT("SOLStart=");           // Body the ship spawns above
+        inline constexpr const TCHAR* ALTITUDE_KM = TEXT("SOLAltitudeKm=");     // Spawn altitude above its surface
+        inline constexpr const TCHAR* LOOK_AT_BODY = TEXT("SOLLookAt=");        // Body the debug camera faces
+        inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
+        inline constexpr const TCHAR* SMOKE_FLIGHT = TEXT("SOLSmokeFlight");    // Scripted ship flight, then quit
+        inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
+        inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
+    }
+
     // Asset and content paths
     namespace Paths
     {
         inline constexpr const TCHAR* BODY_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
         inline constexpr const TCHAR* BODY_MATERIAL = TEXT("/Game/SOL/Materials/M_SOLBody.M_SOLBody");
         inline constexpr const TCHAR* TEST_MAP = TEXT("/Game/Maps/SOL_Test");
+
+        // Placeholder ship: engine primitives (100 cm across, centered) and the engine's lit basic material
+        inline constexpr const TCHAR* SHIP_PART_CUBE = TEXT("/Engine/BasicShapes/Cube.Cube");
+        inline constexpr const TCHAR* SHIP_PART_CONE = TEXT("/Engine/BasicShapes/Cone.Cone");
+        inline constexpr const TCHAR* SHIP_PART_CYLINDER = TEXT("/Engine/BasicShapes/Cylinder.Cylinder");
+        inline constexpr const TCHAR* SHIP_PART_SPHERE = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+        inline constexpr const TCHAR* SHIP_HULL_MATERIAL =
+            TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
     }
+
+    // Vector parameter of SHIP_HULL_MATERIAL that sets its base color
+    inline constexpr const TCHAR* SHIP_HULL_COLOR_PARAM = TEXT("Color");
 
     // Radius of the BODY_MESH sphere in its own units (the engine sphere is 100 cm across)
     inline constexpr double BODY_MESH_RADIUS_CM = 50.0;

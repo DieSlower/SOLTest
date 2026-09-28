@@ -5,7 +5,9 @@
 
 #include "Game/SOLSpectatorPawn.h"
 
+#include "Game/SOLInputHelpers.h"
 #include "SOLConstants.h"
+#include "Ship/SOLShipSubsystem.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -13,48 +15,17 @@
 
 #include "Camera/CameraComponent.h"
 #include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputAction.h"
 #include "InputMappingContext.h"
-#include "InputModifiers.h"
-#include "InputTriggers.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 
 namespace
 {
     const TCHAR* const SPECTATOR_DEFAULT_START_BODY = SOL::BodyNames::EARTH;
-
-    //////////////////////////////////////////////////////////////////////////
-    // Maps a key to an action, optionally swizzling and negating the axis, and returns the mapping for triggers
-    FEnhancedActionKeyMapping& MapAxisKey(UInputMappingContext* context, UInputAction* action, const FKey& key,
-        UObject* outer, const bool bSwizzle, const EInputAxisSwizzle order, const bool bNegate)
-    {
-        FEnhancedActionKeyMapping& mapping = context->MapKey(action, key);
-        if (bSwizzle)
-        {
-            UInputModifierSwizzleAxis* swizzle = NewObject<UInputModifierSwizzleAxis>(outer);
-            swizzle->Order = order;
-            mapping.Modifiers.Add(swizzle);
-        }
-        if (bNegate)
-        {
-            mapping.Modifiers.Add(NewObject<UInputModifierNegate>(outer));
-        }
-        return mapping;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Creates an input action of the given value type
-    UInputAction* CreateAction(UObject* outer, const TCHAR* name, const EInputActionValueType valueType)
-    {
-        UInputAction* action = NewObject<UInputAction>(outer, name);
-        action->ValueType = valueType;
-        return action;
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -74,7 +45,7 @@ ASOLSpectatorPawn::ASOLSpectatorPawn()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Places the observer above the start body and registers this actor as the observer
+// Places the observer above the start body (or rides the ship) and registers this actor as the observer
 void ASOLSpectatorPawn::BeginPlay()
 {
     Super::BeginPlay();
@@ -92,11 +63,11 @@ void ASOLSpectatorPawn::BeginPlay()
 
     // Start body, altitude and view target, overridable from the command line for verification runs
     FString startBody = SPECTATOR_DEFAULT_START_BODY;
-    FParse::Value(FCommandLine::Get(), TEXT("SOLStart="), startBody);
+    FParse::Value(FCommandLine::Get(), SOL::CommandLine::START_BODY, startBody);
     FString lookAtBody = startBody;
-    FParse::Value(FCommandLine::Get(), TEXT("SOLLookAt="), lookAtBody);
+    FParse::Value(FCommandLine::Get(), SOL::CommandLine::LOOK_AT_BODY, lookAtBody);
     double altitudeKm = SOL::DEFAULT_SPAWN_ALTITUDE_M / SOL::METERS_PER_KM;
-    FParse::Value(FCommandLine::Get(), TEXT("SOLAltitudeKm="), altitudeKm);
+    FParse::Value(FCommandLine::Get(), SOL::CommandLine::ALTITUDE_KM, altitudeKm);
 
     const FSOLBodyRegistry& registry = registrySubsystem->GetRegistry();
     int32 bodyIndex = registry.FindByName(FName(*startBody));
@@ -105,6 +76,29 @@ void ASOLSpectatorPawn::BeginPlay()
         UE_LOG(LogSOL, Warning, TEXT("SpectatorPawn %s: unknown start body '%s', using %s"), *GetName(), *startBody,
             SPECTATOR_DEFAULT_START_BODY);
         bodyIndex = registry.FindByName(FName(SPECTATOR_DEFAULT_START_BODY));
+    }
+
+    // With a player ship the ship is the observer: ride it as a camera, looking at the view-target body
+    const USOLShipSubsystem* ships = world->GetSubsystem<USOLShipSubsystem>();
+    if (ships != nullptr && ships->HasPlayerShip())
+    {
+        mIsRidingShip = true;
+        const int32 lookAtIndex = registry.FindByName(FName(*lookAtBody));
+        const int32 viewBody = lookAtIndex == INDEX_NONE ? bodyIndex : lookAtIndex;
+        const FVector3d lookDirection = (registry.GetPositionM(viewBody) - AnchorSubsystem->GetObserverPositionM())
+            .GetSafeNormal();
+        const FRotator lookRotation = FVector(SOLRender::EclipticToUnreal(lookDirection)).Rotation();
+        SetActorRotation(lookRotation);
+        if (AController* controller = GetController())
+        {
+            controller->SetControlRotation(lookRotation);
+        }
+        AnchorSubsystem->SetObserverActor(this);
+        mUniverseUpdatedHandle = AnchorSubsystem->OnUniverseUpdated().AddUObject(this,
+            &ASOLSpectatorPawn::FollowObserver);
+        UE_LOG(LogSOL, Log, TEXT("SpectatorPawn %s: riding the player ship, looking at %s"), *GetName(),
+            *registry.GetName(viewBody).ToString());
+        return;
     }
 
     // Spawn on the body's Sun-facing side; by default look back at the body so its day side fills the view
@@ -139,9 +133,18 @@ void ASOLSpectatorPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     RemoveMappingContext();
     if (AnchorSubsystem != nullptr)
     {
+        AnchorSubsystem->OnUniverseUpdated().Remove(mUniverseUpdatedHandle);
         AnchorSubsystem->SetObserverActor(nullptr);
     }
+    mUniverseUpdatedHandle.Reset();
     Super::EndPlay(endPlayReason);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the actor onto the observer's render location after the universe update (ship-riding mode)
+void ASOLSpectatorPawn::FollowObserver()
+{
+    SetActorLocation(AnchorSubsystem->UniverseToRenderCm(AnchorSubsystem->GetObserverPositionM()));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -149,7 +152,7 @@ void ASOLSpectatorPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
 void ASOLSpectatorPawn::Tick(const float deltaSeconds)
 {
     Super::Tick(deltaSeconds);
-    if (AnchorSubsystem == nullptr)
+    if (AnchorSubsystem == nullptr || mIsRidingShip)
     {
         return;
     }
@@ -210,10 +213,8 @@ void ASOLSpectatorPawn::NotifyControllerChanged()
     {
         return;
     }
-    if (UEnhancedInputLocalPlayerSubsystem* inputSubsystem =
-        ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(playerController->GetLocalPlayer()))
+    if (SOLInput::AddMappingContext(playerController->GetLocalPlayer(), MappingContext, 0))
     {
-        inputSubsystem->AddMappingContext(MappingContext, 0);
         mMappedLocalPlayer = playerController->GetLocalPlayer();
     }
 }
@@ -230,17 +231,8 @@ void ASOLSpectatorPawn::UnPossessed()
 // Removes the mapping context from the local player it was added to, if any
 void ASOLSpectatorPawn::RemoveMappingContext()
 {
-    ULocalPlayer* localPlayer = mMappedLocalPlayer.Get();
+    SOLInput::RemoveMappingContext(mMappedLocalPlayer.Get(), MappingContext);
     mMappedLocalPlayer.Reset();
-    if (localPlayer == nullptr || MappingContext == nullptr)
-    {
-        return;
-    }
-    if (UEnhancedInputLocalPlayerSubsystem* inputSubsystem =
-        ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(localPlayer))
-    {
-        inputSubsystem->RemoveMappingContext(MappingContext);
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -251,21 +243,21 @@ void ASOLSpectatorPawn::CreateInputObjects()
     {
         return;
     }
-    MoveAction = CreateAction(this, TEXT("IA_SpectatorMove"), EInputActionValueType::Axis3D);
-    LookAction = CreateAction(this, TEXT("IA_SpectatorLook"), EInputActionValueType::Axis2D);
-    SpeedAction = CreateAction(this, TEXT("IA_SpectatorSpeed"), EInputActionValueType::Axis1D);
-    WarpUpAction = CreateAction(this, TEXT("IA_WarpUp"), EInputActionValueType::Boolean);
-    WarpDownAction = CreateAction(this, TEXT("IA_WarpDown"), EInputActionValueType::Boolean);
-    WarpResetAction = CreateAction(this, TEXT("IA_WarpReset"), EInputActionValueType::Boolean);
+    MoveAction = SOLInput::CreateAction(this, TEXT("IA_SpectatorMove"), EInputActionValueType::Axis3D);
+    LookAction = SOLInput::CreateAction(this, TEXT("IA_SpectatorLook"), EInputActionValueType::Axis2D);
+    SpeedAction = SOLInput::CreateAction(this, TEXT("IA_SpectatorSpeed"), EInputActionValueType::Axis1D);
+    WarpUpAction = SOLInput::CreateAction(this, TEXT("IA_WarpUp"), EInputActionValueType::Boolean);
+    WarpDownAction = SOLInput::CreateAction(this, TEXT("IA_WarpDown"), EInputActionValueType::Boolean);
+    WarpResetAction = SOLInput::CreateAction(this, TEXT("IA_WarpReset"), EInputActionValueType::Boolean);
     MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Spectator"));
 
     // Move: W/S forward/back (x), D/A right/left (y), Space/Ctrl up/down (z)
-    MapAxisKey(MappingContext, MoveAction, EKeys::W, this, false, EInputAxisSwizzle::YXZ, false);
-    MapAxisKey(MappingContext, MoveAction, EKeys::S, this, false, EInputAxisSwizzle::YXZ, true);
-    MapAxisKey(MappingContext, MoveAction, EKeys::D, this, true, EInputAxisSwizzle::YXZ, false);
-    MapAxisKey(MappingContext, MoveAction, EKeys::A, this, true, EInputAxisSwizzle::YXZ, true);
-    MapAxisKey(MappingContext, MoveAction, EKeys::SpaceBar, this, true, EInputAxisSwizzle::ZYX, false);
-    MapAxisKey(MappingContext, MoveAction, EKeys::LeftControl, this, true, EInputAxisSwizzle::ZYX, true);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::W, this, false, EInputAxisSwizzle::YXZ, false);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::S, this, false, EInputAxisSwizzle::YXZ, true);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::D, this, true, EInputAxisSwizzle::YXZ, false);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::A, this, true, EInputAxisSwizzle::YXZ, true);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::SpaceBar, this, true, EInputAxisSwizzle::ZYX, false);
+    SOLInput::MapAxisKey(MappingContext, MoveAction, EKeys::LeftControl, this, true, EInputAxisSwizzle::ZYX, true);
 
     // Look: mouse with Y negated (mouse up looks up), as in the engine templates
     FEnhancedActionKeyMapping& lookMapping = MappingContext->MapKey(LookAction, EKeys::Mouse2D);
@@ -276,9 +268,9 @@ void ASOLSpectatorPawn::CreateInputObjects()
 
     // Speed: mouse wheel; time-warp: [ ] Backspace, once per press
     MappingContext->MapKey(SpeedAction, EKeys::MouseWheelAxis);
-    MappingContext->MapKey(WarpDownAction, EKeys::LeftBracket).Triggers.Add(NewObject<UInputTriggerPressed>(this));
-    MappingContext->MapKey(WarpUpAction, EKeys::RightBracket).Triggers.Add(NewObject<UInputTriggerPressed>(this));
-    MappingContext->MapKey(WarpResetAction, EKeys::BackSpace).Triggers.Add(NewObject<UInputTriggerPressed>(this));
+    SOLInput::MapPressedKey(MappingContext, WarpDownAction, EKeys::LeftBracket, this);
+    SOLInput::MapPressedKey(MappingContext, WarpUpAction, EKeys::RightBracket, this);
+    SOLInput::MapPressedKey(MappingContext, WarpResetAction, EKeys::BackSpace, this);
 }
 
 //////////////////////////////////////////////////////////////////////////
