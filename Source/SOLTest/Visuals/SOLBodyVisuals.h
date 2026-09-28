@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "SOLConstants.h"
+
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 
@@ -62,7 +64,7 @@ private:
 
     /** Sunlight illuminance in lux for the light and the body shading (tuned together with the fixed exposure). */
     UPROPERTY(EditAnywhere, Category = "SOL|Visuals", meta = (ClampMin = "0.0"))
-    float SunIlluminanceLux = 3.0f;
+    float SunIlluminanceLux = SOL::SUN_ILLUMINANCE_LUX;
 
     /** One sphere per body, indexed like the body registry. */
     UPROPERTY(Transient)

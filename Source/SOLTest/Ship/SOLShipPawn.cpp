@@ -1,0 +1,858 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+#include "Ship/SOLShipPawn.h"
+
+#include "Game/SOLInputHelpers.h"
+#include "Ship/SOLShipSubsystem.h"
+#include "SOLConstants.h"
+#include "SOLTest.h"
+#include "Targeting/SOLTargetingSubsystem.h"
+#include "Universe/SOLAnchorSubsystem.h"
+#include "Universe/SOLSimClockSubsystem.h"
+
+#include "Camera/CameraComponent.h"
+#include "Components/DirectionalLightComponent.h"
+#include "Components/StaticMeshComponent.h"
+#include "EnhancedInputComponent.h"
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+#include "GameFramework/PlayerInput.h"
+#include "GameFramework/SpringArmComponent.h"
+#include "InputAction.h"
+#include "InputMappingContext.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
+#include "Misc/App.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
+
+namespace
+{
+    // Placeholder ship look: light grey-blue hull, darker trim, orange engine glow (linear colors)
+    const FLinearColor SHIP_HULL_COLOR(0.55f, 0.6f, 0.68f);
+    const FLinearColor SHIP_TRIM_COLOR(0.12f, 0.15f, 0.2f);
+    const FLinearColor SHIP_ENGINE_GLOW(8.0f, 3.2f, 0.8f);
+
+    // Primitive orientation that turns the engine shapes' +Z axis (cylinder and cone) to the ship's +X (forward)
+    const FRotator SHIP_ALONG_X(-90.0f, 0.0f, 0.0f);
+
+    // Engine primitive a placeholder ship part uses (indexes the loaded meshes)
+    enum class ESOLShipPartShape : uint8
+    {
+        Cube,
+        Cone,
+        Cylinder,
+        Sphere,
+        Count,
+    };
+
+    // Material a placeholder ship part uses (indexes the created materials)
+    enum class ESOLShipPartLook : uint8
+    {
+        Hull,
+        Trim,
+        Glow,
+        Count,
+    };
+
+    // One placeholder ship part: shape, look, location relative to the root (cm), rotation, scale (primitive units)
+    struct FSOLShipPartSpec
+    {
+        ESOLShipPartShape Shape;
+        ESOLShipPartLook Look;
+        FVector LocationCm;
+        FRotator Rotation;
+        FVector Scale;
+    };
+
+    // The placeholder ship, about 21 m nose to exhaust with a 16 m wingspan (primitives are 100 cm across)
+    const FSOLShipPartSpec SHIP_PARTS[] =
+    {
+        { ESOLShipPartShape::Cylinder, ESOLShipPartLook::Hull, FVector(0.0, 0.0, 0.0), SHIP_ALONG_X,
+            FVector(3.0, 3.0, 14.0) },                                                             // Fuselage
+        { ESOLShipPartShape::Cone, ESOLShipPartLook::Hull, FVector(950.0, 0.0, 0.0), SHIP_ALONG_X,
+            FVector(3.0, 3.0, 5.0) },                                                              // Nose
+        { ESOLShipPartShape::Sphere, ESOLShipPartLook::Trim, FVector(350.0, 0.0, 130.0), FRotator::ZeroRotator,
+            FVector(3.5, 1.8, 1.4) },                                                              // Canopy
+        { ESOLShipPartShape::Cube, ESOLShipPartLook::Hull, FVector(-250.0, 0.0, -30.0), FRotator::ZeroRotator,
+            FVector(5.0, 16.0, 0.35) },                                                            // Wings
+        { ESOLShipPartShape::Cube, ESOLShipPartLook::Trim, FVector(-550.0, 0.0, 260.0), FRotator::ZeroRotator,
+            FVector(3.5, 0.3, 3.2) },                                                              // Tail fin
+        { ESOLShipPartShape::Cylinder, ESOLShipPartLook::Trim, FVector(-600.0, 220.0, -20.0), SHIP_ALONG_X,
+            FVector(1.6, 1.6, 4.0) },                                                              // Engine R
+        { ESOLShipPartShape::Cylinder, ESOLShipPartLook::Trim, FVector(-600.0, -220.0, -20.0), SHIP_ALONG_X,
+            FVector(1.6, 1.6, 4.0) },                                                              // Engine L
+        { ESOLShipPartShape::Sphere, ESOLShipPartLook::Glow, FVector(-805.0, 220.0, -20.0), FRotator::ZeroRotator,
+            FVector(0.5, 1.3, 1.3) },                                                              // Glow R
+        { ESOLShipPartShape::Sphere, ESOLShipPartLook::Glow, FVector(-805.0, -220.0, -20.0), FRotator::ZeroRotator,
+            FVector(0.5, 1.3, 1.3) },                                                              // Glow L
+    };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Creates a dynamic material instance of the ship hull material with one base color
+    UMaterialInstanceDynamic* SOLShipPawnCreateHullMaterial(UMaterialInterface* base, UObject* outer,
+        const FLinearColor& color)
+    {
+        UMaterialInstanceDynamic* material = UMaterialInstanceDynamic::Create(base, outer);
+        material->SetVectorParameterValue(FName(SOL::SHIP_HULL_COLOR_PARAM), color);
+        return material;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates the root, spring arm and camera, and enables ticking before physics
+ASOLShipPawn::ASOLShipPawn()
+{
+    PrimaryActorTick.bCanEverTick = true;
+    PrimaryActorTick.TickGroup = TG_PrePhysics;
+
+    ShipRoot = CreateDefaultSubobject<USceneComponent>(TEXT("ShipRoot"));
+    ShipRoot->SetMobility(EComponentMobility::Movable);
+    RootComponent = ShipRoot;
+
+    // Chase camera: behind and above the ship, no position lag so the camera never trails the ship at speed. The
+    // rotation lag is applied by the pawn (UpdateCameraRotation) after the ship orientation update, not by the arm,
+    // whose tick runs before that update and would step rigidly with the ship and then lag (a double step)
+    SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
+    SpringArm->SetupAttachment(ShipRoot);
+    SpringArm->TargetArmLength = SOL::SHIP_CAMERA_ARM_LENGTH_CM;
+    SpringArm->SocketOffset = FVector(0.0, 0.0, SOL::SHIP_CAMERA_HEIGHT_CM);
+    SpringArm->bDoCollisionTest = false;
+    SpringArm->bUsePawnControlRotation = false;
+    SpringArm->bEnableCameraLag = false;
+    SpringArm->bEnableCameraRotationLag = false;
+
+    Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
+    Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
+    Camera->bUsePawnControlRotation = false;
+    Camera->SetFieldOfView(static_cast<float>(SOL::SHIP_CAMERA_BASE_FOV_DEG));
+
+    // Shadowless fill "headlight" along the view so the ship's side facing away from the Sun is not black
+    FillLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("FillLight"));
+    FillLight->SetupAttachment(Camera);
+    FillLight->SetRelativeRotation(FRotator(SOL::SHIP_FILL_LIGHT_PITCH_DEG, 0.0f, 0.0f));
+    FillLight->SetMobility(EComponentMobility::Movable);
+    FillLight->SetIntensity(SOL::SUN_ILLUMINANCE_LUX * SOL::SHIP_FILL_LIGHT_FRACTION);
+    FillLight->SetCastShadows(false);
+
+    bUseControllerRotationPitch = false;
+    bUseControllerRotationYaw = false;
+    bUseControllerRotationRoll = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Caches the subsystems, becomes the observer actor, builds the ship mesh and starts the input smoke script
+void ASOLShipPawn::BeginPlay()
+{
+    Super::BeginPlay();
+
+    UWorld* world = GetWorld();
+    Ships = world->GetSubsystem<USOLShipSubsystem>();
+    Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
+    AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
+    SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
+    if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
+        || !Ships->HasPlayerShip())
+    {
+        UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: ship or universe subsystems missing; the pawn is inert"), *GetName());
+        return;
+    }
+
+    // Start state per SDD 2: assist on, cap at the start value, stick centered
+    mControl = Ships->GetControl();
+    mControl.Thrust = FVector3d::ZeroVector;
+    mControl.Rotation = FVector3d::ZeroVector;
+    mControl.bBoost = false;
+    mControl.bFlightAssist = true;
+    mControl.SpeedCapMps = SOL::SHIP_START_SPEED_CAP_MPS;
+    BuildShipMesh();
+
+    // The pawn represents the observer: rebases move it, and it follows the ship after every universe update
+    AnchorSubsystem->SetObserverActor(this);
+    mUniverseUpdatedHandle = AnchorSubsystem->OnUniverseUpdated().AddUObject(this, &ASOLShipPawn::FollowShip);
+    FollowShip();
+
+    // Verification hook: drive the real input pipeline through a fixed script, log checkpoints, then quit
+    if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_INPUT))
+    {
+        mSmokeInput = MakeUnique<FSOLShipSmokeInput>();
+        mSmokeInput->Start(*this);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the mapping context, releases the mouse and unhooks from the universe update
+void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
+{
+    RemoveMappingContext();
+    ReleaseMouse();
+    if (AnchorSubsystem != nullptr)
+    {
+        AnchorSubsystem->OnUniverseUpdated().Remove(mUniverseUpdatedHandle);
+        AnchorSubsystem->SetObserverActor(nullptr);
+    }
+    mUniverseUpdatedHandle.Reset();
+    mSmokeInput.Reset();
+    Super::EndPlay(endPlayReason);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Composes and sends the ship control, updates the camera FOV and free-look, and runs the input smoke script
+void ASOLShipPawn::Tick(const float deltaSeconds)
+{
+    Super::Tick(deltaSeconds);
+    if (Ships == nullptr || !Ships->HasPlayerShip())
+    {
+        return;
+    }
+
+    // The script injects key events now; the controller processes them at the start of the next frame
+    if (mSmokeInput.IsValid() && mSmokeInput->Update(*this, deltaSeconds))
+    {
+        mSmokeInput.Reset();
+    }
+    UpdateViewportFocus();
+
+    // Virtual joystick: radius from the current viewport, offset mapped through the dead zone and response curve
+    if (const APlayerController* playerController = Cast<APlayerController>(GetController()))
+    {
+        int32 viewportWidth = 0;
+        int32 viewportHeight = 0;
+        playerController->GetViewportSize(viewportWidth, viewportHeight);
+        if (viewportWidth > 0 && viewportHeight > 0)
+        {
+            mStickRadiusPx = SOL::JOYSTICK_RADIUS_FRACTION * FMath::Min(viewportWidth, viewportHeight);
+        }
+    }
+    mStickOffsetPx = mStickOffsetPx.GetClampedToMaxSize(mStickRadiusPx);
+    const FVector2d stick = SOLFlight::JoystickToRotation(mStickOffsetPx / mStickRadiusPx, SOL::JOYSTICK_DEAD_ZONE,
+        SOL::JOYSTICK_EXPONENT);
+    mControl.Rotation = FVector3d(mRollInput, stick.Y, stick.X);
+    if (!Ships->IsControlScripted())
+    {
+        Ships->SetControl(mControl);
+    }
+
+    // FOV widens on a log scale of the speed relative to the active reference frame
+    const double relativeSpeedMps = (Ships->GetState().VelocityMps - Ships->GetReferenceVelocityMps()).Size();
+    const double speedFraction = FMath::Clamp(
+        FMath::LogX(10.0, FMath::Max(relativeSpeedMps, SOL::SHIP_CAMERA_FOV_MIN_SPEED_MPS)
+            / SOL::SHIP_CAMERA_FOV_MIN_SPEED_MPS)
+        / FMath::LogX(10.0, SOL::SHIP_CAMERA_FOV_MAX_SPEED_MPS / SOL::SHIP_CAMERA_FOV_MIN_SPEED_MPS), 0.0, 1.0);
+    const float targetFov = static_cast<float>(FMath::Lerp(SOL::SHIP_CAMERA_BASE_FOV_DEG, SOL::SHIP_CAMERA_MAX_FOV_DEG,
+        speedFraction));
+    Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView, targetFov, deltaSeconds,
+        SOL::SHIP_CAMERA_FOV_INTERP_SPEED));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the input objects and binds the actions
+void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputComponent)
+{
+    Super::SetupPlayerInputComponent(playerInputComponent);
+    CreateInputObjects();
+
+    UEnhancedInputComponent* input = Cast<UEnhancedInputComponent>(playerInputComponent);
+    if (input == nullptr)
+    {
+        UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: Enhanced Input component missing"), *GetName());
+        return;
+    }
+
+    // Held inputs report every frame while actuated and once more on release
+    input->BindAction(ThrustAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnThrustAction);
+    input->BindAction(ThrustAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnThrustCompleted);
+    input->BindAction(RollAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRollAction);
+    input->BindAction(RollAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnRollCompleted);
+    input->BindAction(BoostAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnBoostStarted);
+    input->BindAction(BoostAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnBoostCompleted);
+    input->BindAction(FreeLookAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFreeLookStarted);
+    input->BindAction(FreeLookAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnFreeLookCompleted);
+    input->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnLookAction);
+    input->BindAction(SpeedCapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSpeedCapAction);
+
+    // One-shot keys trigger once per press
+    input->BindAction(ToggleAssistAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleAssistAction);
+    input->BindAction(RecenterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRecenterAction);
+    input->BindAction(MatchLockAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMatchLockAction);
+    input->BindAction(SelectTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSelectTargetAction);
+    input->BindAction(NextTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnNextTargetAction);
+    input->BindAction(PreviousTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPreviousTargetAction);
+    input->BindAction(ClearTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnClearTargetAction);
+    input->BindAction(WarpUpAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpUpAction);
+    input->BindAction(WarpDownAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpDownAction);
+    input->BindAction(WarpResetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpResetAction);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the mapping context to the new local controller and captures the mouse for the virtual joystick
+void ASOLShipPawn::NotifyControllerChanged()
+{
+    Super::NotifyControllerChanged();
+    CreateInputObjects();
+    RemoveMappingContext();
+
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (playerController == nullptr)
+    {
+        return;
+    }
+    if (SOLInput::AddMappingContext(playerController->GetLocalPlayer(), MappingContext, 0))
+    {
+        mMappedLocalPlayer = playerController->GetLocalPlayer();
+    }
+
+    // The OS cursor is hidden and locked to the viewport; the mouse only moves the virtual stick (undone by ReleaseMouse)
+    playerController->bShowMouseCursor = false;
+    playerController->SetInputMode(FInputModeGameOnly());
+    mHasCapturedMouse = true;
+
+    // Mouse2D arrives scaled by the project's axis sensitivity (DefaultInput.ini); undo it to get pixels
+    FInputAxisProperties mouseAxis;
+    mMouseUnitsToPixels = 1.0;
+    if (playerController->PlayerInput != nullptr
+        && playerController->PlayerInput->GetAxisProperties(EKeys::Mouse2D, mouseAxis) && mouseAxis.Sensitivity > 0.0f)
+    {
+        mMouseUnitsToPixels = 1.0 / mouseAxis.Sensitivity;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the mapping context and releases the mouse before the controller lets go of this pawn
+void ASOLShipPawn::UnPossessed()
+{
+    RemoveMappingContext();
+    ReleaseMouse();
+    Super::UnPossessed();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Undoes the mouse capture: shows the cursor and restores game-and-UI input on the controller that had it
+void ASOLShipPawn::ReleaseMouse()
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (!mHasCapturedMouse || playerController == nullptr)
+    {
+        return;
+    }
+    playerController->bShowMouseCursor = true;
+    playerController->SetInputMode(FInputModeGameAndUI());
+    mHasCapturedMouse = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Detects the viewport losing focus (alt-tab, another window) and drops the held flight input once when it does
+void ASOLShipPawn::UpdateViewportFocus()
+{
+    // The input script injects synthetic events whatever the OS focus is, so focus is ignored while it runs
+    if (mSmokeInput.IsValid())
+    {
+        return;
+    }
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    const ULocalPlayer* localPlayer = playerController != nullptr ? playerController->GetLocalPlayer() : nullptr;
+    const UGameViewportClient* viewportClient = localPlayer != nullptr ? localPlayer->ViewportClient.Get() : nullptr;
+    const FViewport* viewport = viewportClient != nullptr ? viewportClient->Viewport : nullptr;
+    const bool bHasFocus = viewport != nullptr && viewport->HasFocus() && FApp::HasFocus();
+    if (mHadViewportFocus && !bHasFocus)
+    {
+        HandleFocusLost();
+    }
+    mHadViewportFocus = bHasFocus;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Recenters the virtual stick and zeroes thrust, roll and boost, so nothing stays held while the game is unfocused
+void ASOLShipPawn::HandleFocusLost()
+{
+    mStickOffsetPx = FVector2d::ZeroVector;
+    mRollInput = 0.0;
+    mControl.Thrust = FVector3d::ZeroVector;
+    mControl.Rotation = FVector3d::ZeroVector;
+    mControl.bBoost = false;
+    if (Ships != nullptr && !Ships->IsControlScripted())
+    {
+        Ships->SetControl(mControl);
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: viewport lost focus; stick recentered, thrust/roll/boost released"),
+        *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the mapping context from the local player it was added to, if any
+void ASOLShipPawn::RemoveMappingContext()
+{
+    SOLInput::RemoveMappingContext(mMappedLocalPlayer.Get(), MappingContext);
+    mMappedLocalPlayer.Reset();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates the input actions and the mapping context once
+void ASOLShipPawn::CreateInputObjects()
+{
+    if (MappingContext != nullptr)
+    {
+        return;
+    }
+    using namespace SOLInput;
+    ThrustAction = CreateAction(this, TEXT("IA_ShipThrust"), EInputActionValueType::Axis3D);
+    RollAction = CreateAction(this, TEXT("IA_ShipRoll"), EInputActionValueType::Axis1D);
+    BoostAction = CreateAction(this, TEXT("IA_ShipBoost"), EInputActionValueType::Boolean);
+    ToggleAssistAction = CreateAction(this, TEXT("IA_ShipToggleAssist"), EInputActionValueType::Boolean);
+    FreeLookAction = CreateAction(this, TEXT("IA_ShipFreeLook"), EInputActionValueType::Boolean);
+    LookAction = CreateAction(this, TEXT("IA_ShipLook"), EInputActionValueType::Axis2D);
+    RecenterAction = CreateAction(this, TEXT("IA_ShipRecenterStick"), EInputActionValueType::Boolean);
+    SpeedCapAction = CreateAction(this, TEXT("IA_ShipSpeedCap"), EInputActionValueType::Axis1D);
+    MatchLockAction = CreateAction(this, TEXT("IA_ShipMatchLock"), EInputActionValueType::Boolean);
+    SelectTargetAction = CreateAction(this, TEXT("IA_ShipSelectTarget"), EInputActionValueType::Boolean);
+    NextTargetAction = CreateAction(this, TEXT("IA_ShipNextTarget"), EInputActionValueType::Boolean);
+    PreviousTargetAction = CreateAction(this, TEXT("IA_ShipPreviousTarget"), EInputActionValueType::Boolean);
+    ClearTargetAction = CreateAction(this, TEXT("IA_ShipClearTarget"), EInputActionValueType::Boolean);
+    WarpUpAction = CreateAction(this, TEXT("IA_ShipWarpUp"), EInputActionValueType::Boolean);
+    WarpDownAction = CreateAction(this, TEXT("IA_ShipWarpDown"), EInputActionValueType::Boolean);
+    WarpResetAction = CreateAction(this, TEXT("IA_ShipWarpReset"), EInputActionValueType::Boolean);
+    MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Ship"));
+
+    // Thrust: W/S forward/back (x), D/A right/left (y), Space/Ctrl up/down (z); roll: E right, Q left
+    MapAxisKey(MappingContext, ThrustAction, EKeys::W, this, false, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, ThrustAction, EKeys::S, this, false, EInputAxisSwizzle::YXZ, true);
+    MapAxisKey(MappingContext, ThrustAction, EKeys::D, this, true, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, ThrustAction, EKeys::A, this, true, EInputAxisSwizzle::YXZ, true);
+    MapAxisKey(MappingContext, ThrustAction, EKeys::SpaceBar, this, true, EInputAxisSwizzle::ZYX, false);
+    MapAxisKey(MappingContext, ThrustAction, EKeys::LeftControl, this, true, EInputAxisSwizzle::ZYX, true);
+    MapAxisKey(MappingContext, RollAction, EKeys::E, this, false, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, RollAction, EKeys::Q, this, false, EInputAxisSwizzle::YXZ, true);
+
+    // Held keys and axes: boost, free-look, the mouse (virtual joystick) and the wheel (speed cap)
+    MappingContext->MapKey(BoostAction, EKeys::LeftShift);
+    MappingContext->MapKey(FreeLookAction, EKeys::LeftAlt);
+    MappingContext->MapKey(LookAction, EKeys::Mouse2D);
+    MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
+
+    // One-shot keys (F3 speed panel and O/P overlays are reserved for sub-part 1c)
+    MapPressedKey(MappingContext, ToggleAssistAction, EKeys::Tab, this);
+    MapPressedKey(MappingContext, RecenterAction, EKeys::MiddleMouseButton, this);
+    MapPressedKey(MappingContext, MatchLockAction, EKeys::M, this);
+    MapPressedKey(MappingContext, SelectTargetAction, EKeys::T, this);
+    MapPressedKey(MappingContext, NextTargetAction, EKeys::R, this);
+    MapPressedKey(MappingContext, PreviousTargetAction, EKeys::F, this);
+    MapPressedKey(MappingContext, ClearTargetAction, EKeys::X, this);
+    MapPressedKey(MappingContext, WarpDownAction, EKeys::LeftBracket, this);
+    MapPressedKey(MappingContext, WarpUpAction, EKeys::RightBracket, this);
+    MapPressedKey(MappingContext, WarpResetAction, EKeys::BackSpace, this);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the placeholder ship from engine primitives with a light hull and a glowing engine
+void ASOLShipPawn::BuildShipMesh()
+{
+    UStaticMesh* cube = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_CUBE);
+    UStaticMesh* cone = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_CONE);
+    UStaticMesh* cylinder = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_CYLINDER);
+    UStaticMesh* sphere = LoadObject<UStaticMesh>(nullptr, SOL::Paths::SHIP_PART_SPHERE);
+    UMaterialInterface* hullBase = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::SHIP_HULL_MATERIAL);
+    UMaterialInterface* glowBase = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::BODY_MATERIAL);
+    if (cube == nullptr || cone == nullptr || cylinder == nullptr || sphere == nullptr || hullBase == nullptr
+        || glowBase == nullptr)
+    {
+        UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to load the placeholder ship meshes or materials"), *GetName());
+        return;
+    }
+
+    // Lit hull and trim; the engine glow reuses the unlit body material with only its emissive term
+    UMaterialInstanceDynamic* hull = SOLShipPawnCreateHullMaterial(hullBase, this, SHIP_HULL_COLOR);
+    UMaterialInstanceDynamic* trim = SOLShipPawnCreateHullMaterial(hullBase, this, SHIP_TRIM_COLOR);
+    UMaterialInstanceDynamic* glow = UMaterialInstanceDynamic::Create(glowBase, this);
+    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_A), FLinearColor::Black);
+    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_B), FLinearColor::Black);
+    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::POLAR_COLOR), FLinearColor::Black);
+    glow->SetVectorParameterValue(FName(SOL::BodyMaterialParams::EMISSIVE_COLOR), SHIP_ENGINE_GLOW);
+
+    // One component per entry of the parts table, indexed by shape and look
+    UStaticMesh* const meshes[] = { cube, cone, cylinder, sphere };
+    UMaterialInterface* const materials[] = { hull, trim, glow };
+    static_assert(UE_ARRAY_COUNT(meshes) == static_cast<int32>(ESOLShipPartShape::Count), "One mesh per part shape");
+    static_assert(UE_ARRAY_COUNT(materials) == static_cast<int32>(ESOLShipPartLook::Count), "One material per look");
+    ShipParts.Reserve(UE_ARRAY_COUNT(SHIP_PARTS));
+    for (const FSOLShipPartSpec& spec : SHIP_PARTS)
+    {
+        AddShipPart(meshes[static_cast<int32>(spec.Shape)], materials[static_cast<int32>(spec.Look)], spec.LocationCm,
+            spec.Rotation, spec.Scale);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Adds one primitive part to the ship, relative to the root (location in cm, scale in primitive units)
+void ASOLShipPawn::AddShipPart(UStaticMesh* mesh, UMaterialInterface* material, const FVector& locationCm,
+    const FRotator& rotation, const FVector& scale)
+{
+    UStaticMeshComponent* part = NewObject<UStaticMeshComponent>(this);
+    part->SetMobility(EComponentMobility::Movable);
+    part->SetStaticMesh(mesh);
+    part->SetMaterial(0, material);
+    part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    part->SetCastShadow(false);
+    part->SetupAttachment(ShipRoot);
+    part->SetRelativeTransform(FTransform(rotation, locationCm, scale));
+    part->RegisterComponent();
+    ShipParts.Add(part);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Places the actor at the observer's render location with the ship's orientation after the universe update
+void ASOLShipPawn::FollowShip()
+{
+    if (Ships == nullptr || !Ships->HasPlayerShip())
+    {
+        return;
+    }
+    const FQuat orientation(Ships->GetState().Orientation);
+    SetActorLocationAndRotation(AnchorSubsystem->UniverseToRenderCm(AnchorSubsystem->GetObserverPositionM()),
+        orientation);
+    UpdateCameraRotation(GetWorld()->GetDeltaSeconds());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Eases the camera arm toward the ship orientation (plus free-look) by an exponential slerp, after the ship moved
+void ASOLShipPawn::UpdateCameraRotation(const float deltaSeconds)
+{
+    // Target: the orientation this frame is rendered with, orbited by the Alt free-look (identity when released)
+    const FQuat freeLook = mIsFreeLooking ? mFreeLookRotation.Quaternion() : FQuat::Identity;
+    const FQuat target = GetActorQuat() * freeLook;
+    if (!mHasCameraRotation)
+    {
+        mCameraRotation = target;
+        mHasCameraRotation = true;
+    }
+    else
+    {
+        const double alpha = 1.0 - FMath::Exp(-SOL::SHIP_CAMERA_ROTATION_LAG_SPEED * deltaSeconds);
+        mCameraRotation = FQuat::Slerp(mCameraRotation, target, alpha).GetNormalized();
+    }
+    SpringArm->SetWorldRotation(mCameraRotation);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ship's position and forward direction (Unreal-handed universe frame); false without a ship
+bool ASOLShipPawn::GetShipPose(FVector3d& outPositionM, FVector3d& outForwardDir) const
+{
+    if (Ships == nullptr || !Ships->HasPlayerShip())
+    {
+        return false;
+    }
+    const FSOLShipState state = Ships->GetState();
+    outPositionM = state.PositionM;
+    outForwardDir = state.Orientation.GetForwardVector();
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the translation input (local X forward, Y right, Z up, each in [-1, 1])
+void ASOLShipPawn::HandleThrust(const FVector3d& thrust)
+{
+    mControl.Thrust = thrust;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the roll input in [-1, 1] (positive = right wing down)
+void ASOLShipPawn::HandleRoll(const double roll)
+{
+    mRollInput = FMath::Clamp(roll, -1.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether boost is held
+void ASOLShipPawn::HandleBoost(const bool bBoost)
+{
+    mControl.bBoost = bBoost;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles flight-assist
+void ASOLShipPawn::HandleToggleAssist()
+{
+    mControl.bFlightAssist = !mControl.bFlightAssist;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: flight-assist %s"), *GetName(), mControl.bFlightAssist ? TEXT("ON")
+        : TEXT("OFF"));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether the Alt free-look is held; releasing it returns the camera behind the ship
+void ASOLShipPawn::HandleFreeLook(const bool bFreeLook)
+{
+    mIsFreeLooking = bFreeLook;
+    if (!bFreeLook)
+    {
+        mFreeLookRotation = FRotator::ZeroRotator;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the virtual joystick (or, during free-look, orbits the camera) by a mouse delta in pixels (X right, Y up)
+void ASOLShipPawn::HandleMouseDelta(const FVector2d& deltaPixels)
+{
+    if (mIsFreeLooking)
+    {
+        const FVector2d orbitDeg = deltaPixels * SOL::SHIP_FREE_LOOK_DEG_PER_PIXEL;
+        mFreeLookRotation.Yaw = FRotator::NormalizeAxis(mFreeLookRotation.Yaw + orbitDeg.X);
+        mFreeLookRotation.Pitch = FMath::Clamp(mFreeLookRotation.Pitch + orbitDeg.Y, -SOL::SHIP_FREE_LOOK_MAX_PITCH_DEG,
+            SOL::SHIP_FREE_LOOK_MAX_PITCH_DEG);
+        return;
+    }
+    mStickOffsetPx = (mStickOffsetPx + deltaPixels).GetClampedToMaxSize(mStickRadiusPx);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Recenters the virtual joystick
+void ASOLShipPawn::HandleRecenterStick()
+{
+    mStickOffsetPx = FVector2d::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps the speed cap by whole wheel steps on the log scale
+void ASOLShipPawn::HandleSpeedCapSteps(const int32 steps)
+{
+    if (Ships != nullptr)
+    {
+        mControl.SpeedCapMps = SOLFlight::StepSpeedCap(mControl.SpeedCapMps, steps, Ships->GetFlightParams());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles the reference-frame lock (M)
+void ASOLShipPawn::HandleMatchLock()
+{
+    if (Targeting != nullptr)
+    {
+        Targeting->ToggleFrameLock();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Selects the target under the forward reticle (T)
+void ASOLShipPawn::HandleSelectTarget()
+{
+    FVector3d positionM;
+    FVector3d forwardDir;
+    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    {
+        Targeting->SelectUnderReticle(positionM, forwardDir);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Selects the next farther target (R)
+void ASOLShipPawn::HandleNextTarget()
+{
+    FVector3d positionM;
+    FVector3d forwardDir;
+    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    {
+        Targeting->CycleTarget(positionM, 1);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Selects the next nearer target (F)
+void ASOLShipPawn::HandlePreviousTarget()
+{
+    FVector3d positionM;
+    FVector3d forwardDir;
+    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    {
+        Targeting->CycleTarget(positionM, -1);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clears the selected target (X)
+void ASOLShipPawn::HandleClearTarget()
+{
+    if (Targeting != nullptr)
+    {
+        Targeting->ClearTarget();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps the time-warp up (])
+void ASOLShipPawn::HandleWarpUp()
+{
+    if (SimClock != nullptr)
+    {
+        SimClock->StepWarpUp();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps the time-warp down ([)
+void ASOLShipPawn::HandleWarpDown()
+{
+    if (SimClock != nullptr)
+    {
+        SimClock->StepWarpDown();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Resets the time-warp to 1x (Backspace)
+void ASOLShipPawn::HandleWarpReset()
+{
+    if (SimClock != nullptr)
+    {
+        SimClock->ResetWarp();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: thrust axes
+void ASOLShipPawn::OnThrustAction(const FInputActionValue& value)
+{
+    HandleThrust(FVector3d(value.Get<FVector>()));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: thrust released
+void ASOLShipPawn::OnThrustCompleted(const FInputActionValue& /*value*/)
+{
+    HandleThrust(FVector3d::ZeroVector);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: roll axis
+void ASOLShipPawn::OnRollAction(const FInputActionValue& value)
+{
+    HandleRoll(value.Get<float>());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: roll released
+void ASOLShipPawn::OnRollCompleted(const FInputActionValue& /*value*/)
+{
+    HandleRoll(0.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: boost pressed
+void ASOLShipPawn::OnBoostStarted(const FInputActionValue& /*value*/)
+{
+    HandleBoost(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: boost released
+void ASOLShipPawn::OnBoostCompleted(const FInputActionValue& /*value*/)
+{
+    HandleBoost(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: flight-assist toggle
+void ASOLShipPawn::OnToggleAssistAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleAssist();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: free-look pressed
+void ASOLShipPawn::OnFreeLookStarted(const FInputActionValue& /*value*/)
+{
+    HandleFreeLook(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: free-look released
+void ASOLShipPawn::OnFreeLookCompleted(const FInputActionValue& /*value*/)
+{
+    HandleFreeLook(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: mouse delta, converted back to pixels
+void ASOLShipPawn::OnLookAction(const FInputActionValue& value)
+{
+    HandleMouseDelta(FVector2d(value.Get<FVector2D>()) * mMouseUnitsToPixels);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: joystick recenter
+void ASOLShipPawn::OnRecenterAction(const FInputActionValue& /*value*/)
+{
+    HandleRecenterStick();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: mouse wheel (one step per notch; several notches in one frame step several times)
+void ASOLShipPawn::OnSpeedCapAction(const FInputActionValue& value)
+{
+    const float wheel = value.Get<float>();
+    int32 steps = FMath::RoundToInt32(wheel);
+    if (steps == 0 && wheel != 0.0f)
+    {
+        steps = wheel > 0.0f ? 1 : -1;
+    }
+    HandleSpeedCapSteps(steps);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: reference-frame lock
+void ASOLShipPawn::OnMatchLockAction(const FInputActionValue& /*value*/)
+{
+    HandleMatchLock();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: select under reticle
+void ASOLShipPawn::OnSelectTargetAction(const FInputActionValue& /*value*/)
+{
+    HandleSelectTarget();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: next target
+void ASOLShipPawn::OnNextTargetAction(const FInputActionValue& /*value*/)
+{
+    HandleNextTarget();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: previous target
+void ASOLShipPawn::OnPreviousTargetAction(const FInputActionValue& /*value*/)
+{
+    HandlePreviousTarget();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: clear target
+void ASOLShipPawn::OnClearTargetAction(const FInputActionValue& /*value*/)
+{
+    HandleClearTarget();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: warp up
+void ASOLShipPawn::OnWarpUpAction(const FInputActionValue& /*value*/)
+{
+    HandleWarpUp();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: warp down
+void ASOLShipPawn::OnWarpDownAction(const FInputActionValue& /*value*/)
+{
+    HandleWarpDown();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: warp reset
+void ASOLShipPawn::OnWarpResetAction(const FInputActionValue& /*value*/)
+{
+    HandleWarpReset();
+}

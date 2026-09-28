@@ -19,6 +19,8 @@ public class SOLTest : ModuleRules
             "Core",
             "CoreUObject",
             "Engine",
+            "MassCore",
+            "MassEntity",
         });
 
         PrivateDependencyModuleNames.AddRange(new string[]

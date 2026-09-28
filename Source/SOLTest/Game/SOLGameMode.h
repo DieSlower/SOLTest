@@ -10,7 +10,7 @@
 
 #include "SOLGameMode.generated.h"
 
-/** Game mode for the solar-system test map: spawns the body visuals and uses the debug spectator and debug HUD. */
+/** Game mode for the solar-system test map: spawns the body visuals and uses the ship pawn and the debug HUD. */
 UCLASS()
 class SOLTEST_API ASOLGameMode : public AGameModeBase
 {
@@ -27,6 +27,12 @@ public:
     // Returns true for a Game or PIE world whose game mode (world override, else project default) is an ASOLGameMode
     static bool IsSOLGameWorld(const UWorld* world);
 
+    // Takes the smoke-test screenshot and schedules the quit (verification runs only)
+    void TakeSmokeScreenshot();
+
+    // Returns the ship pawn, or the debug spectator when -SOLSpectator is on the command line
+    virtual UClass* GetDefaultPawnClassForController_Implementation(AController* controller) override;
+
 protected:
 
     // Clears the smoke-test timers
@@ -37,8 +43,6 @@ protected:
 
 private:
 
-    // Takes the smoke-test screenshot and schedules the quit
-    void TakeSmokeScreenshot();
 
     // Quits the game after the smoke-test screenshot
     void QuitAfterSmokeTest();

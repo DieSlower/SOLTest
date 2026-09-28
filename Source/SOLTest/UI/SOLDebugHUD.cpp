@@ -6,7 +6,9 @@
 #include "UI/SOLDebugHUD.h"
 
 #include "Game/SOLSpectatorPawn.h"
+#include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
+#include "Targeting/SOLTargetingSubsystem.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -70,43 +72,70 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Caches the universe, ship and targeting subsystems
+void ASOLDebugHUD::BeginPlay()
+{
+    Super::BeginPlay();
+    const UWorld* world = GetWorld();
+    SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
+    BodyRegistry = world->GetSubsystem<USOLBodyRegistrySubsystem>();
+    AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
+    Ships = world->GetSubsystem<USOLShipSubsystem>();
+    Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Draws the debug readout lines
 void ASOLDebugHUD::DrawHUD()
 {
     Super::DrawHUD();
-
-    const UWorld* world = GetWorld();
-    const USOLSimClockSubsystem* clock = world->GetSubsystem<USOLSimClockSubsystem>();
-    const USOLBodyRegistrySubsystem* registrySubsystem = world->GetSubsystem<USOLBodyRegistrySubsystem>();
-    const USOLAnchorSubsystem* anchor = world->GetSubsystem<USOLAnchorSubsystem>();
-    if (clock == nullptr || registrySubsystem == nullptr || anchor == nullptr || GEngine == nullptr)
+    if (SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr || GEngine == nullptr)
     {
         return;
     }
-    const FSOLBodyRegistry& registry = registrySubsystem->GetRegistry();
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
 
     // Temporary debug text: string building per frame is acceptable here only because this HUD is replaced in 1c
-    TArray<FString, TInlineAllocator<10>> lines;
-    lines.Add(FString::Printf(TEXT("Sim UTC  %s"), *clock->GetUtcDateTime().ToString(TEXT("%Y-%m-%d %H:%M:%S"))));
-    lines.Add(FString::Printf(TEXT("Warp  %s   ([ ] step, Backspace reset)"),
-        *FormatWarp(clock->GetClock().GetWarpFactor())));
-    const int32 anchorIndex = anchor->GetAnchorIndex();
-    lines.Add(FString::Printf(TEXT("Anchor  %s"),
-        anchorIndex == INDEX_NONE ? TEXT("none") : *registry.GetName(anchorIndex).ToString()));
+    TArray<FString, TInlineAllocator<12>> lines;
+    lines.Add(FString::Printf(TEXT("Sim UTC  %s   warp %s   ([ ] step, Backspace reset)"),
+        *SimClock->GetUtcDateTime().ToString(TEXT("%Y-%m-%d %H:%M:%S")),
+        *FormatWarp(SimClock->GetClock().GetWarpFactor())));
+    const int32 anchorIndex = AnchorSubsystem->GetAnchorIndex();
     double altitudeM = 0.0;
-    const int32 nearest = anchor->FindNearestBody(altitudeM);
-    if (nearest != INDEX_NONE)
+    const int32 nearest = AnchorSubsystem->FindNearestBody(altitudeM);
+    lines.Add(FString::Printf(TEXT("Nearest  %s   altitude %s   anchor %s"),
+        nearest == INDEX_NONE ? TEXT("none") : *registry.GetName(nearest).ToString(), *FormatDistance(altitudeM),
+        anchorIndex == INDEX_NONE ? TEXT("none") : *registry.GetName(anchorIndex).ToString()));
+
+    // Ship: speed relative to the active frame (large) and absolute Sun-frame speed, cap, assist, boost
+    if (Ships != nullptr && Ships->HasPlayerShip() && Targeting != nullptr)
     {
-        const double distanceM = FVector3d::Dist(registry.GetPositionM(nearest), anchor->GetObserverPositionM());
-        lines.Add(FString::Printf(TEXT("Nearest  %s   distance %s   altitude %s"), *registry.GetName(nearest).ToString(),
-            *FormatDistance(distanceM), *FormatDistance(altitudeM)));
+        const FSOLShipState state = Ships->GetState();
+        const FSOLShipControl control = Ships->GetControl();
+        lines.Add(FString::Printf(TEXT("Speed  %s  rel %s%s   (abs %s)"),
+            *FormatSpeed((state.VelocityMps - Ships->GetReferenceVelocityMps()).Size()),
+            *Targeting->GetFrameName().ToString(), Targeting->IsFrameLocked() ? TEXT(" [M LOCK]") : TEXT(""),
+            *FormatSpeed(state.VelocityMps.Size())));
+        lines.Add(FString::Printf(TEXT("Cap  %s (wheel)   assist %s (Tab)   boost %s (Shift)"),
+            *FormatSpeed(control.SpeedCapMps), control.bFlightAssist ? TEXT("ON") : TEXT("OFF"),
+            control.bBoost ? TEXT("ON") : TEXT("off")));
+        if (const FSOLTargetInfo* target = Targeting->GetSelectedTarget())
+        {
+            lines.Add(FString::Printf(TEXT("Target  %s   distance %s   rel speed %s   (T R F X)"),
+                *target->Name.ToString(), *FormatDistance(FVector3d::Dist(target->PositionM, state.PositionM)),
+                *FormatSpeed((state.VelocityMps - target->VelocityMps).Size())));
+        }
+        else
+        {
+            lines.Add(TEXT("Target  none   (T select, R/F cycle, X clear, M lock frame)"));
+        }
     }
-    if (const ASOLSpectatorPawn* spectator = Cast<ASOLSpectatorPawn>(GetOwningPawn()))
+    else if (const ASOLSpectatorPawn* spectator = Cast<ASOLSpectatorPawn>(GetOwningPawn()))
     {
         lines.Add(FString::Printf(TEXT("Speed  %s   cap %s   (wheel)"), *FormatSpeed(spectator->GetCurrentSpeedMps()),
             *FormatSpeed(spectator->GetSpeedCapMps())));
     }
-    const FVector3d positionAU = anchor->GetObserverPositionM() / SOL::AU_M;
+    const FVector3d positionAU = AnchorSubsystem->GetObserverPositionM() / SOL::AU_M;
     lines.Add(FString::Printf(TEXT("Universe (AU, ecliptic)  %.6f  %.6f  %.6f"), positionAU.X, positionAU.Y,
         positionAU.Z));
 

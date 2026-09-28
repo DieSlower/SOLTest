@@ -6,6 +6,8 @@
 #include "Game/SOLGameMode.h"
 
 #include "Game/SOLSpectatorPawn.h"
+#include "Ship/SOLShipPawn.h"
+#include "SOLConstants.h"
 #include "UI/SOLDebugHUD.h"
 #include "Visuals/SOLBodyVisuals.h"
 
@@ -29,8 +31,19 @@ namespace
 // Sets the default pawn and HUD classes
 ASOLGameMode::ASOLGameMode()
 {
-    DefaultPawnClass = ASOLSpectatorPawn::StaticClass();
+    DefaultPawnClass = ASOLShipPawn::StaticClass();
     HUDClass = ASOLDebugHUD::StaticClass();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ship pawn, or the debug spectator when -SOLSpectator is on the command line
+UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AController* controller)
+{
+    if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SPECTATOR))
+    {
+        return ASOLSpectatorPawn::StaticClass();
+    }
+    return Super::GetDefaultPawnClassForController_Implementation(controller);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -43,7 +56,7 @@ void ASOLGameMode::StartPlay()
 
     // Verification hook for headless smoke runs: screenshot after the given delay, then quit
     float smokeDelaySeconds = 0.0f;
-    if (FParse::Value(FCommandLine::Get(), TEXT("SOLSmokeShot="), smokeDelaySeconds) && smokeDelaySeconds > 0.0f)
+    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_SHOT, smokeDelaySeconds) && smokeDelaySeconds > 0.0f)
     {
         GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::TakeSmokeScreenshot, smokeDelaySeconds);
     }
@@ -79,7 +92,7 @@ void ASOLGameMode::EndPlay(const EEndPlayReason::Type endPlayReason)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Takes the smoke-test screenshot and schedules the quit
+// Takes the smoke-test screenshot and schedules the quit (verification runs only)
 void ASOLGameMode::TakeSmokeScreenshot()
 {
     // HighResShot is handled by the game viewport, so route it through the local player's console
