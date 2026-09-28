@@ -17,20 +17,20 @@
 
 ## Roadmap
 
-- [ ] **Part 1 — Foundations and flight scaffold.** Modules/plugins, universe coordinates, origin rebasing, sim clock, Kepler body registry, Sun and 8 planets (textured spheres), Mass ship entity with Pawn proxy, flight-assist/Newtonian, gravity, third-person camera, basic HUD, speed control.
+- [ ] **Part 1 (#2) — Foundations and flight scaffold.** Modules/plugins, universe coordinates, origin rebasing, sim clock, Kepler body registry, Sun and 8 planets (textured spheres), Mass ship entity with Pawn proxy, flight-assist/Newtonian, gravity, third-person camera, basic HUD, speed control.
   - [ ] 1a — Universe types, Kepler solver, sim clock, body registry, anchor manager, body visuals, test map, automation tests. *Status: paused; only `Source/SOLTest/Universe/SOLTypes.h` and `SOLKepler.h` exist (uncommitted, untested).*
   - [ ] 1b — Mass ship entity, Pawn proxy, flight model, gravity, camera, HUD.
-- [ ] **Part 2 — Jump map (J)** with zoom, warp, and velocity-matched arrival.
-- [ ] **Part 3 — Level / surface-lock (L).**
-- [ ] **Part 4 — Star field** (AT-HYG pipeline, hybrid renderer, Milky Way).
-- [ ] **Part 5 — Moons, dwarf planets, asteroid belt (Mass), planet rings.**
-- [ ] **Part 6 — Weapons, target drops, destruction VFX and audio.**
-- [ ] **Part 7 — HUD/menus, controls and info/about screens, settings.**
-- [ ] **Part 8 — Art and audio pass** (real ship model, textures, sounds).
-- [ ] **Part 9 — Procedural terrain and atmospheres** (PCG/Nanite).
-- [ ] **Part 10 — Scale and performance demo** (NPC ships in Mass, stress test toward 1M).
+- [ ] **Part 2 (#3) — Jump map (J)** with zoom, warp, and velocity-matched arrival.
+- [ ] **Part 3 (#4) — Level / surface-lock (L).**
+- [ ] **Part 4 (#5) — Star field** (AT-HYG pipeline, hybrid renderer, Milky Way).
+- [ ] **Part 5 (#6) — Moons, dwarf planets, asteroid belt (Mass), planet rings.**
+- [ ] **Part 6 (#7) — Weapons, target drops, destruction VFX and audio.**
+- [ ] **Part 7 (#8) — HUD/menus, controls and info/about screens, settings.**
+- [ ] **Part 8 (#9) — Art and audio pass** (real ship model, textures, sounds).
+- [ ] **Part 9 (#10) — Procedural terrain and atmospheres** (PCG/Nanite).
+- [ ] **Part 10 (#11) — Scale and performance demo** (NPC ships in Mass, stress test toward 1M).
 
 ## Cross-cutting tooling
 
 - [x] `Tools/RunTests.ps1` + `Tools/RunTests.bat` command-line test runner (see `CLAUDE.md` Testing). Verified 2026-09-28 against the engine's `System.Core.Math` tests; SOLTest has no tests of its own yet.
-- [ ] GitHub tickets for Parts 1-10 (needs GitHub access, see `CLAUDE.md` Workflow rules).
+- [x] GitHub tickets created 2026-09-28: #1 architecture and roadmap, Parts 1-10 as #2-#11 (Part N is issue #N+1). SDD/Plan files for a part use its issue number.
