@@ -1,0 +1,112 @@
+{
+  "D:\\Development\\UnrealProjects\\SOLTest\\.claude\\settings.local.json": {
+    "mtime": 1790549459.4180112,
+    "ast_hash": "424530b396371e36c886cced0c3b1627",
+    "semantic_hash": "424530b396371e36c886cced0c3b1627"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\.mcp.json": {
+    "mtime": 1790548764.9247127,
+    "ast_hash": "8d0c1859d85a3bd6e1004e79b1876aa0",
+    "semantic_hash": "8d0c1859d85a3bd6e1004e79b1876aa0"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest.Target.cs": {
+    "mtime": 1790548746.6843133,
+    "ast_hash": "ab594faf8e01bc320ecd333382cba160",
+    "semantic_hash": "ab594faf8e01bc320ecd333382cba160"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTestEditor.Target.cs": {
+    "mtime": 1790548747.47621,
+    "ast_hash": "2e01d00a4cda8a448001da46507388d9",
+    "semantic_hash": "2e01d00a4cda8a448001da46507388d9"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest\\SOLTest.Build.cs": {
+    "mtime": 1790548744.2933707,
+    "ast_hash": "da1a0c104874441f3fd5f69da9fe57cb",
+    "semantic_hash": "da1a0c104874441f3fd5f69da9fe57cb"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest\\SOLTest.cpp": {
+    "mtime": 1790548745.1474109,
+    "ast_hash": "740041996b2801362000d32d6b14f217",
+    "semantic_hash": "740041996b2801362000d32d6b14f217"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest\\SOLTest.h": {
+    "mtime": 1790548745.9243321,
+    "ast_hash": "29fd77ff45b6f0aea1adbc0f51bb321c",
+    "semantic_hash": "29fd77ff45b6f0aea1adbc0f51bb321c"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest\\Universe\\SOLKepler.h": {
+    "mtime": 1790567248.0532982,
+    "ast_hash": "44cf51a5a58b41636a62de1489c4d74a",
+    "semantic_hash": "44cf51a5a58b41636a62de1489c4d74a"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Source\\SOLTest\\Universe\\SOLTypes.h": {
+    "mtime": 1790567247.180462,
+    "ast_hash": "d65de826e617c273f012ef13d3eb91df",
+    "semantic_hash": "d65de826e617c273f012ef13d3eb91df"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Tools\\RunTests.ps1": {
+    "mtime": 1790574777.6846354,
+    "ast_hash": "5581479d0170f71eaa99870366ffe06d",
+    "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\CLAUDE.md": {
+    "mtime": 1790574893.7054324,
+    "ast_hash": "9c7ced86da9137a785c3a5119c54be6b",
+    "semantic_hash": "9c7ced86da9137a785c3a5119c54be6b"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\GAME_MECHANICS.md": {
+    "mtime": 1790574659.4052973,
+    "ast_hash": "e6e9dc2244d8d418a5e7c5ebbfacf545",
+    "semantic_hash": "e6e9dc2244d8d418a5e7c5ebbfacf545"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\Plans\\1-solar-system-architecture-plan.md": {
+    "mtime": 1790574900.293355,
+    "ast_hash": "c44a4485488cf44f504dfdf889157d10",
+    "semantic_hash": "c44a4485488cf44f504dfdf889157d10"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\Research\\STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
+    "mtime": 1790574660.3051395,
+    "ast_hash": "f65f039dc8e45e6310a8e5c38f40b81f",
+    "semantic_hash": "f65f039dc8e45e6310a8e5c38f40b81f"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\Research\\UE_PERFORMANCE_GUIDELINES.md": {
+    "mtime": 1790571946.0970392,
+    "ast_hash": "d6d6ec8a84fb07810cd1f16e5481625f",
+    "semantic_hash": "d6d6ec8a84fb07810cd1f16e5481625f"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\SDDs\\1-solar-system-architecture.md": {
+    "mtime": 1790574632.43347,
+    "ast_hash": "ff9c19a37a6f537e0845df2f4b7ce413",
+    "semantic_hash": "ff9c19a37a6f537e0845df2f4b7ce413"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\SDDs\\README.md": {
+    "mtime": 1790574634.2703886,
+    "ast_hash": "56c63035ada1b872a793fa581af0e4d2",
+    "semantic_hash": "56c63035ada1b872a793fa581af0e4d2"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\STYLE_GUIDE.md": {
+    "mtime": 1790574846.843036,
+    "ast_hash": "43503920351ce974c9b10c7bffa37fc8",
+    "semantic_hash": "43503920351ce974c9b10c7bffa37fc8"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\ToDo\\README.md": {
+    "mtime": 1790574635.2893686,
+    "ast_hash": "4d40724aea3c7a8f8097befcd0e2420d",
+    "semantic_hash": "4d40724aea3c7a8f8097befcd0e2420d"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\ToDo\\planetary-perturbations.md": {
+    "mtime": 1790574636.9434423,
+    "ast_hash": "eed28208e6f95f5be4316df9ce2dcbe0",
+    "semantic_hash": "eed28208e6f95f5be4316df9ce2dcbe0"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\Docs\\ToDo\\supercruise-travel.md": {
+    "mtime": 1790574636.1294713,
+    "ast_hash": "fdefdd2c392b42cd40b1f022d5525fcb",
+    "semantic_hash": "fdefdd2c392b42cd40b1f022d5525fcb"
+  },
+  "D:\\Development\\UnrealProjects\\SOLTest\\README.md": {
+    "mtime": 1790549023.7763839,
+    "ast_hash": "d4e2121aafc0ca9ae3ff74cbe717f3aa",
+    "semantic_hash": "d4e2121aafc0ca9ae3ff74cbe717f3aa"
+  }
+}
