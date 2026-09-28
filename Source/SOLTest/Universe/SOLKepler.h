@@ -1,56 +1,61 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
 
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Universe/SOLTypes.h"
 
-/** Classical elliptical orbit in SI/radians, evaluated at one instant. Angles are relative to the ecliptic J2000. */
-struct FSOLKeplerElements
+// Orbit at one instant; angles in radians, distances in meters
+struct SOLTEST_API FSOLKeplerElements
 {
-	double SemiMajorAxisM = 0.0;
-	double Eccentricity = 0.0;
-	double InclinationRad = 0.0;
-	double ArgumentOfPeriapsisRad = 0.0;
-	double LongitudeOfAscendingNodeRad = 0.0;
-	/** Mean anomaly at the evaluation instant. */
-	double MeanAnomalyRad = 0.0;
-	/** dM/dt, rad/s. Sets the velocity magnitude; see SetMeanMotionFromGM for the two-body-consistent value. */
-	double MeanMotionRadPerSec = 0.0;
-
-	void SetMeanMotionFromGM(double ParentGM)
-	{
-		MeanMotionRadPerSec = FMath::Sqrt(ParentGM / (SemiMajorAxisM * SemiMajorAxisM * SemiMajorAxisM));
-	}
-
-	double GetPeriodSeconds() const { return UE_DOUBLE_TWO_PI / MeanMotionRadPerSec; }
+    double SemiMajorAxisM = 0.0;
+    double Eccentricity = 0.0;                 // 0 <= e < 1
+    double InclinationRad = 0.0;
+    double LongitudeOfAscendingNodeRad = 0.0;
+    double ArgumentOfPeriapsisRad = 0.0;
+    double MeanAnomalyRad = 0.0;               // at the instant the elements describe
 };
 
-/**
- * JPL "Keplerian elements for approximate positions of the major planets" (E.M. Standish), table 1, valid 1800-2050 AD:
- * element values at J2000 plus linear rates per Julian century. Units as published: AU, degrees.
- */
-struct FSOLSecularElements
+// Position and velocity relative to the central body, J2000 ecliptic axes
+struct SOLTEST_API FSOLOrbitState
 {
-	double A0 = 0.0, ADot = 0.0;
-	double E0 = 0.0, EDot = 0.0;
-	double I0 = 0.0, IDot = 0.0;
-	double L0 = 0.0, LDot = 0.0;
-	double VarPi0 = 0.0, VarPiDot = 0.0;
-	double Omega0 = 0.0, OmegaDot = 0.0;
+    FVector3d PositionM = FVector3d::ZeroVector;
+    FVector3d VelocityMps = FVector3d::ZeroVector;
+};
 
-	/** T is Julian centuries (36525 d) since J2000. Mean motion is the rate of M = L - varpi, matching the position. */
-	FSOLKeplerElements Evaluate(double CenturiesSinceJ2000) const;
+// JPL Standish "approximate positions of the major planets", 1800-2050
+struct SOLTEST_API FSOLSecularElements
+{
+    double A0AU = 0.0;
+    double ADotAUPerCy = 0.0;                  // semi-major axis
+    double E0 = 0.0;
+    double EDotPerCy = 0.0;                    // eccentricity
+    double I0Deg = 0.0;
+    double IDotDegPerCy = 0.0;                 // inclination
+    double L0Deg = 0.0;
+    double LDotDegPerCy = 0.0;                 // mean longitude
+    double LongPeri0Deg = 0.0;
+    double LongPeriDotDegPerCy = 0.0;          // longitude of perihelion
+    double LongNode0Deg = 0.0;
+    double LongNodeDotDegPerCy = 0.0;          // longitude of ascending node
+
+    // Evaluates the elements at T Julian centuries since J2000 (ArgPeri = LongPeri - LongNode; M = L - LongPeri; e clamped)
+    FSOLKeplerElements AtCenturies(double t) const;
 };
 
 namespace SOLKepler
 {
-	/** Wraps to (-PI, PI]. */
-	double WrapAngle(double Radians);
+    // Wraps an angle to [-PI, PI)
+    SOLTEST_API double WrapAngleRad(double angleRad);
 
-	/** Solves Kepler's equation M = E - e sin E for the eccentric anomaly of an elliptic orbit (0 <= e < 1). */
-	double SolveEccentricAnomaly(double MeanAnomalyRad, double Eccentricity, double Tolerance = 1e-13, int32 MaxIterations = 60);
+    // Solves Kepler's equation for any M so that |M - (E - e*sin E)| < 1e-10
+    SOLTEST_API double SolveEccentricAnomaly(double meanAnomalyRad, double eccentricity);
 
-	/** Position (m) and velocity (m/s) relative to the parent body, in the ecliptic J2000 universe frame. */
-	FSOLState ElementsToState(const FSOLKeplerElements& Elements);
+    // Returns the orbital period 2*PI*sqrt(a^3/GM)
+    SOLTEST_API double PeriodSeconds(double semiMajorAxisM, double gm);
+
+    // Returns the state elapsedSeconds after the instant of the elements (M advances by sqrt(GM/a^3)*elapsed)
+    SOLTEST_API FSOLOrbitState ElementsToState(const FSOLKeplerElements& elements, double gm, double elapsedSeconds);
 }

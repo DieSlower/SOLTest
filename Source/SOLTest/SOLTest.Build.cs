@@ -1,23 +1,31 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
 
 using UnrealBuildTool;
 
 public class SOLTest : ModuleRules
 {
-	public SOLTest(ReadOnlyTargetRules Target) : base(Target)
-	{
-		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
+    public SOLTest(ReadOnlyTargetRules Target) : base(Target)
+    {
+        PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
-		PublicDependencyModuleNames.AddRange(new string[] { "Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput" });
+        // Module-root-relative includes ("Universe/SOLKepler.h"), per Docs/STYLE_GUIDE.md section 14.2
+        PublicIncludePaths.Add(ModuleDirectory);
 
-		PrivateDependencyModuleNames.AddRange(new string[] {  });
+        PublicDependencyModuleNames.AddRange(new string[]
+        {
+            "Core",
+            "CoreUObject",
+            "Engine",
+        });
 
-		// Uncomment if you are using Slate UI
-		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });
-
-		// Uncomment if you are using online features
-		// PrivateDependencyModuleNames.Add("OnlineSubsystem");
-
-		// To include OnlineSubsystemSteam, add it to the plugins section in your uproject file with the Enabled attribute set to true
-	}
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+            "EngineSettings",
+            "EnhancedInput",
+            "InputCore",
+        });
+    }
 }

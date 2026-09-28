@@ -1,6 +1,12 @@
-// Copyright Epic Games, Inc. All Rights Reserved.
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
 
 #include "SOLTest.h"
+
 #include "Modules/ModuleManager.h"
 
-IMPLEMENT_PRIMARY_GAME_MODULE( FDefaultGameModuleImpl, SOLTest, "SOLTest" );
+DEFINE_LOG_CATEGORY(LogSOL);
+
+IMPLEMENT_PRIMARY_GAME_MODULE(FDefaultGameModuleImpl, SOLTest, "SOLTest");

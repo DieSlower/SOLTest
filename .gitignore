@@ -34,3 +34,7 @@ Saved/
 # OS files
 .DS_Store
 Thumbs.db
+
+# graphify caches and dated snapshots (the graph, report and wiki stay tracked)
+graphify-out/cache/
+graphify-out/2026-*/
