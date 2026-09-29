@@ -42,12 +42,16 @@ Deliver the first playable slice: a ship you can fly in third person through a 1
 - **1b pawn, input and targeting (as implemented):** `ASOLShipPawn` (`Ship/`) is the game mode's default pawn (`-SOLSpectator` selects the debug spectator). It never carries universe coordinates: it registers as the anchor subsystem's observer actor and, on every `OnUniverseUpdated`, sits at the observer's render location (within 10 km of Unreal's origin) with the ship's orientation. Enhanced Input actions and one mapping context are created in C++ (shared helpers in `Game/SOLInputHelpers`), added in `NotifyControllerChanged` and removed in `UnPossessed`/`EndPlay`; every callback forwards to a plain `Handle*` function. The pawn ticks in `TG_PrePhysics` (after its controller processed input) and composes `FSOLShipControl` from the held state without allocating: thrust, roll, boost, assist, the speed cap (wheel via `SOLFlight::StepSpeedCap`, start 1000 m/s) and the virtual joystick. The joystick accumulates mouse deltas in pixels (Mouse2D divided by the input config's axis sensitivity) inside a circle of 0.35 x the smaller viewport dimension, mapped with `JoystickToRotation` (dead zone 0.05, exponent 1.5); middle mouse recenters; Alt freezes the stick and orbits the spring arm instead. Camera: spring arm 60 m behind, socket 15 m up, rotation lag 8, no position lag, no collision test; FOV eases from 90 to 110 degrees on a log scale of the speed relative to the frame (100 m/s to 0.5c). The placeholder ship is nine engine primitives (~21 m, 16 m span) with `BasicShapeMaterial` instances and an emissive engine glow from the body material. `USOLTargetingSubsystem` (`Targeting/`) owns the candidates (every registry body at its body index, then every registered `ISOLTargetable`, rebuilt in place each frame from the Unreal-handed cache), the selection and the M lock (a candidate index that persists across anchor and selection changes until M is pressed again; with no selection M locks the anchor). **Reference-frame refactor:** the ship subsystem no longer owns a reference body; each step it calls `Targeting->RefreshCandidates()` and then takes `GetReferenceVelocityMps()` (`SOLTargeting::ResolveReferenceVelocity`: the locked target, else the anchor body), so candidates are always refreshed before the ship step. Spawn and `SetState` teleports refresh it too, because they can change the anchor. `-SOLSmokeInput` (`Ship/SOLShipSmokeInput`) injects key, mouse and wheel events with `APlayerController::InputKey(FInputKeyEventArgs::CreateSimulated(...))` (the non-deprecated form of `FInputKeyParams`) so the mapping context, triggers and callbacks run end to end, logs a PASS/FAIL per check, takes a screenshot behind the ship facing Earth and quits.
 - **1b review fixes (Amendment 2, as implemented; supersede the matching details in the two items above):** *Warp carry:* each step `USOLShipSubsystem` takes the active frame (`USOLTargetingSubsystem::GetReferenceIndex`: M lock, else anchor) and passes the processor `FrameCarryDisplacement(prev, now, refVelocity, realDt)` for position, plus the same function applied to the frame's velocity with its average sim-time acceleration (`dV / (warp * dt)`, i.e. `dV * (1 - 1/warp)`). The velocity carry was added beyond Amendment 2 because without it assist lags the frame's warp-rotated velocity (~8.5 m/s per frame for Earth at 1 d/s, ~770 m/s steady lag). Ships get the velocity carry at the frame start and the position carry spread evenly over the substeps, so relative to the frame they move exactly on real time. Every body's previous position and velocity is kept each frame, so an anchor or lock switch between bodies carries with the new body at once (a skipped frame would drop ~43,000 km at 1 d/s); only the first frame and a switch to or between non-body targetables carry nothing that frame and re-seed; a paused world does not tick. *Hitch budget:* `USOLAnchorSubsystem` clamps the real delta to `SOL::MAX_FRAME_DELTA_S` (0.5 s) once and feeds that value to both the sim clock and the ship; `SOL::SHIP_MAX_SUBSTEPS` is 16 (16 x 1/30 s >= 0.5 s, `static_assert`), so no ship time is dropped. *Substep bodies:* the processor fills a scratch array (sized once, `(SHIP_MAX_SUBSTEPS + 1) x bodies`) with `BodyPositionAtSubstep` at every substep boundary, using each body's average frame velocity (`(now - prev) / (warp * dt)`) so the substeps interpolate exactly between last frame's and this frame's positions. The instantaneous velocity is not used there because it misses last frame's position by ~6 km for Earth at 1 d/s on the curved orbit. Gravity uses the substep-start positions. *Swept collision and broadphase:* `ResolveSweptSphereCollision` per body per substep, in the body's frame, with the body's instantaneous velocity; a body is skipped when the ship's start distance exceeds `R + r` plus the relative travel of that substep. This is a cheap O(bodies) reject per substep; a spatial structure waits until body counts grow. *Shared params:* `FSOLShipParamsFragment` is a `FMassConstSharedFragment` (one value per ship class, read once per chunk). Mass de-duplicates shared values by the CRC of their reflected properties, so it carries a reflected `ParamsCrc` (CRC of the plain `FSOLFlightParams` bytes, set by `Make`). `SetFlightParams` swaps the value (`SwapConstSharedFragmentForEntity`, a chunk move). *Parallel:* the chunk loop is `ParallelForEachEntityChunk`, because each job writes only its own entities' state and fragment, and everything shared (body cache, scratch positions, frame inputs, the shared params) is read-only during the run. Per-job command buffers are disabled because the query issues no commands. The engine still allocates one small job array per call; our code allocates nothing per run. *Pawn:* on viewport focus loss (edge of `FViewport::HasFocus() && FApp::HasFocus()`, ignored while `-SOLSmokeInput` injects input) the stick recenters and thrust, roll and boost zero. `UnPossessed`/`EndPlay` show the cursor and set game-and-UI input. The spring arm's own rotation lag is off; `UpdateCameraRotation` slerps the arm's world rotation toward the rendered ship orientation (times free-look) by `1 - exp(-8 dt)` right after `FollowShip`. A shadowless directional fill light on the camera (`SOL::SUN_ILLUMINANCE_LUX x 0.1`, tilted 45 degrees down) lights the ship's shadowed side. The ship parts are a named table. `-SOLSmokeFlight` adds f-Warp (1 d/s, assist, hands off 5 s: altitude drift < 50 m, relative speed < 5 m/s, anchor stays Earth), g-Collide under that warp, and h-Surface (resting 5 s under warp), then resets warp to 1x.
 - **1c:** HUD is C++-only with no hand-authored editor assets: dynamic markers, radar and orbit lines are drawn in the HUD canvas; the F3 speed panel is a UMG widget tree built in C++. Every HUD number reads from subsystems, not from Actors.
+- **1c HUD (as implemented):** `ASOLFlightHud` (`UI/`, the game mode's HUD class; the temporary `SOLDebugHUD` is deleted) does everything in `DrawHUD` and does not tick. It projects with its own pinhole model built from the player camera's cached POV (horizontal FOV across the canvas width), so points behind the camera are rejected explicitly instead of being mirrored. The target bracket uses the body's own render placement (`ComputeBodyRenderPlacement`), sized by its apparent radius, and falls back to an edge arrow along the camera-local direction when off-screen or behind. Prograde/retrograde markers project the relative-velocity direction (the Unreal-handed universe frame shares Unreal's axes). The radar rebuilds `FSOLRadarContact`s in place from the targeting candidates (ship-local through the ship orientation), then calls `ProjectContact` for every contact, drawn on a tilted disc. Radar range per Appendix C Amendments 1 and 3 (implemented): the HUD holds a mode flag (AUTO at start, MANUAL) and a manual range; AUTO's range is `EffectiveFloorM(bHasSelectedTarget)` every frame (10,000 km, or 1 km with a target; `ComputeRange` is removed); `-` / `=` (pawn actions `IA_ShipRadarZoomIn`/`Out`) call `ASOLFlightHud::StepRadarZoom`, which applies `StepManualRange` once to the range on screen and switches to MANUAL; Home (`IA_ShipRadarAuto`) returns to AUTO; in MANUAL the range is reclamped every frame to `[EffectiveFloorM(bHasSelectedTarget), MaxRangeM]`; the label reads e.g. `RADAR 10000.0 km (AUTO)`. The interim nearest-4 rule (`HUD_RADAR_RANGE_CONTACTS`) is removed and every contact is plotted. Orbit ellipses: each planet's `SOLOrbitLines::SampleEllipse` of `AtCenturies(now)` (new accessor `FSOLBodyRegistry::GetElements`) is cached per body (reserved once) and re-sampled on toggle-on and every 5 real seconds; each frame every point goes parent position + point through the new `USOLAnchorSubsystem::ComputePointRenderLocationCm` (the body placement with radius 0), then to camera-local, clipped at a near plane and to the canvas (Liang-Barsky). Text goes through one reused `FString` buffer (`Reset` + `Appendf`/`AppendString`); distances are appended in place with `FormatDistanceM`'s bands and format, and each HUD line keeps a cached `FText` rebuilt only when its text changes, so the only per-frame allocations left are the `FText` of lines whose text changed (speed, altitude, distances, the clock) and whatever Canvas allocates internally to lay out text. Canvas lines ignore alpha, so dim line colors are dimmed in RGB.
+- **1c F3 panel (as implemented):** `USOLSpeedPanelWidget` builds its tree in `NativeOnInitialized` (full-screen dimmer border, centered panel, odometer digit text blocks and a unit text block side by side, a size-boxed `UScrollBox` with one text row per body) and re-renders its texts only on input. F3 in game is an Enhanced Input action; the pawn opens the panel at its next tick (outside the input callback): it flushes pressed keys, removes the ship mapping context, zeroes thrust, roll, boost and the stick, adds the widget to the viewport and sets `FInputModeUIOnly` with the widget focused and the cursor shown. The Mass simulation and time keep running; only the ship's own control input stops. The widget consumes every key (key-up too) so nothing bubbles to the game viewport. Digit steps (`SOLSpeedStepper::StepDigit`) and list picks (`FromSpeedMps` of the body's speed relative to its parent) both call `ASOLShipPawn::ApplySpeedCapMps` at once; Enter on the steppers, F3 or Esc close through `ASOLShipPawn::CloseSpeedPanel`, which re-adds the mapping context and restores game-only input with the hidden cursor. The O key toggles the HUD's orbit ellipses; P is bound and does nothing. `-SOLSmokeHud` (`UI/SOLHudSmoke`) verifies it end to end: game keys via `APlayerController::InputKey`, panel keys via `FSlateApplication::ProcessKeyDownEvent` to the focused widget.
+- **1c post-review fixes (Appendix C Amendment 4, implemented):** `ProjectContact` scales the whole ship-local vector onto the range sphere before the collapse law; `CanCycleUnit` refuses a unit switch whose value would reach 1e9 and `CycleUnit` then returns the state unchanged. HUD: the radar reserves the longest downward stalk (plus half a selected blip) between the disc and the range label, and the selected blip's name flips left of the blip near the screen edge; the orbit-line near-plane clip now clips at the near plane itself (after rejecting segments with no endpoint strictly in front, the ratio is in (0, 1) by construction; `ProjectLocal` accepts points exactly on the plane); a `-` / `=` press that leaves the range unchanged keeps the current mode (so `-` at the AUTO floor stays AUTO); the HUD's private distance formatter is replaced with `SOLHudFormat::AppendDistanceM` (tested against `FormatDistanceM`); the reticle and joystick draw before the velocity markers and target bracket; the label reads e.g. `RADAR 10000.0 km (AUTO)`; long lines reflowed.
 - **Targetables:** an interface (`ISOLTargetable`-style) with position, velocity, name, radius; the body registry exposes bodies through it.
 - **Testing:** logic is unit-tested with UE automation tests (Kepler accuracy, clock warp math, anchor hysteresis, flight ramp, gravity, quaternion rotation stays gimbal-free, target selection, collision clamp); visual behavior gets a PIE smoke check when the editor is open. Tests are authored by a separate subagent from the contract only.
 
 ## 4. Open questions
 
-- Deferred from the 1a review (finding 10): the temporary debug HUD builds strings every frame; it is replaced by the 1c HUD, which must not allocate per frame.
+- Deferred from the 1a review (finding 10): the temporary debug HUD built strings every frame. Resolved in 1c: the debug HUD is deleted and the flight HUD reuses its text buffer (section 3 lists the few allocations Canvas text and `FormatDistanceM` still make).
+- 1c: with every planet tracked, the radar's auto range (section 6) was always the 50 AU clamp (Neptune at ~30 AU rounds up to 1e13 m), so near contacts collapsed toward the center. Resolved by Appendix C Amendment 1 (implemented, section 3): 1 AU ceiling, target-dependent floor, AUTO/MANUAL modes with `-` / `=` zoom and Home back to AUTO; the interim nearest-4 rule is gone. Appendix C Amendment 2 (implemented) removes the anchor's root star (the Sun) from the AUTO range pass; it is still plotted. Resolved by Appendix C Amendment 3 (implemented): the farthest-fits-all rule and `ComputeRange` are removed, and AUTO is simply the floor (`EffectiveFloorM`: 10,000 km, 1 km with a target), so near contacts are no longer crushed toward the center; Amendment 2's root-star exclusion is gone with it. Manual zoom (`-` / `=` up to 1 AU, Home back to AUTO) is unchanged. The Sun "too hot" HUD warning (section 2, Collision) is not built yet.
 - Deferred from the 1a review (finding 12): profiling evidence (`stat` / Unreal Insights) for the universe update and body visuals is gathered in 1c and Part 10.
 
 Ship stat numbers not fixed above (exact thrust/accel values for Newtonian mode, boost multiplier, camera arm length) are chosen during 1b and recorded in `Docs/GAME_MECHANICS.md`.
@@ -59,7 +63,11 @@ Ship stat numbers not fixed above (exact thrust/accel values for Newtonian mode,
 - 2026-09-28: 1a adversarial review: Amendment 1 implemented; per-body sun shading in the body material replaces the shared light for bodies; subsystems gated on `ASOLGameMode` (section 3); two findings deferred (section 4).
 - 2026-09-28: 1b Mass ship: fragments, flight processor run from the anchor tick via `OnBodiesUpdated`, Unreal-handed body cache, ship subsystem as observer, `-SOLSmokeFlight` (section 3).
 - 2026-09-28: 1b pawn: `ASOLShipPawn` (C++ Enhanced Input, virtual joystick, chase camera, placeholder mesh), `USOLTargetingSubsystem` and `ISOLTargetable`, reference velocity moved from the ship subsystem to targeting, `-SOLSmokeInput` (section 3).
+- 2026-09-28: 1c engine integration: `ASOLFlightHud` (canvas HUD, radar, orbit ellipses), `USOLSpeedPanelWidget` (F3), O/P/F3 bindings, `-SOLSmokeHud`; debug HUD deleted (section 3).
 - 2026-09-28: 1b adversarial review: Amendment 2 implemented (warp carry incl. a velocity carry, shared hitch budget, interpolated substep bodies, swept collision with broadphase, const shared params, parallel chunk loop, focus loss, manual camera lag, fill light), smoke flight extended with warp phases (section 3).
+- 2026-09-28: 1c radar Appendix C Amendment 1 implemented: 1 AU ceiling, target-dependent floor, AUTO/MANUAL range with `-` / `=` / Home; nearest-4 interim rule removed (sections 3, 4).
+- 2026-09-28: 1c radar Appendix C Amendment 2 implemented: AUTO range excludes the anchor's root star; AUTO still pinned at 1 AU by the outer planets (section 4).
+- 2026-09-29: 1c adversarial review: Appendix C Amendment 4 implemented (whole-vector radar scaling, stepper unit overflow refusal, HUD integration fixes) (section 3).
 
 ---
 
@@ -388,3 +396,179 @@ Behavioral decisions that need no new API (implementation and smoke-verified, no
 - Contact for an exact tangent graze or a ship resting exactly at `R + r` may be reported either way (not pinned).
 - A segment that starts inside the sphere is handled like `ResolveSphereCollision` on the end point (no sweep). A segment that starts outside and ends outside after crossing (tunnelling) uses the entry point; only the FIRST entry matters.
 - `FSOLBodyRegistry`-level targeting-subsystem tests (index fix-up, weak-pointer pruning, lock persistence) need a live world and are deferred; they are covered by the `-SOLSmokeInput` script for now.
+
+## 6. Part 1c: HUD decisions (2026-09-28 grill)
+
+| Area | Decision |
+|---|---|
+| Radar range | The outer ring auto-picks the smallest power-of-10 range in meters that contains every currently tracked targetable, clamped to [1 km, 50 AU]; a text label shows the current range; objects inside 1% of the range collapse toward the center radially rather than overlapping at the origin. |
+| Orbit/prediction lines | Body orbit ellipses only (toggle O); the ship predicted-path toggle (P) is a no-op in 1c, deferred. Lines are drawn as 3D polylines in the ship's render frame projected to screen space through the HUD Canvas, with segments that cross behind the camera clipped; no new rendering system. |
+| F3 speed panel | Modal UMG panel (built in C++, no editor assets) that pauses ship control input while open. Two steppers side by side: a numeric VALUE as odometer-style digits and a UNIT field (m/s / km/s / c). Up/Down (or wheel) steps the highlighted digit or unit with carry between digits; Left/Right move which digit/field is highlighted. Below the steppers, a scrollable list of every registry body with its current orbital speed; arrow-select + Enter sets the cap to that body's speed and its natural unit. Enter/F3 applies and closes; Esc closes without applying a pending edit beyond what Enter already committed. Returns input to the ship on close. |
+
+## 7. Appendix C — Part 1c HUD API contract
+
+Plain C++ (no UObjects) where the logic is non-trivial enough to unit test, in `Source/SOLTest/UI/`. Drawing itself (Canvas calls) is not unit-tested; the pure math that decides WHAT to draw is.
+
+### `UI/SOLHudFormat.h`
+
+```cpp
+enum class ESOLSpeedUnit : uint8 { MetersPerSecond, KilometersPerSecond, LightSpeed };
+
+namespace SOLHudFormat
+{
+    // Picks the most readable unit for a magnitude (m/s): < 1000 -> m/s; < 0.01c -> km/s; else -> c. Zero -> m/s.
+    ESOLSpeedUnit PickSpeedUnit(double SpeedMps);
+
+    // Converts to the unit's display value (m/s: unchanged; km/s: /1000; c: /299792458.0).
+    double ToUnitValue(double SpeedMps, ESOLSpeedUnit Unit);
+
+    // Inverse of ToUnitValue.
+    double FromUnitValue(double Value, ESOLSpeedUnit Unit);
+
+    // Formats a distance in meters into a compact string with an appropriate unit (m, km, or AU), e.g. "23402.9 km". Values under
+    // 1000 m print as meters with one decimal; under 0.01 AU print as km with one decimal; else AU with 4 decimals.
+    FString FormatDistanceM(double DistanceM);
+}
+```
+
+### `UI/SOLRadarLayout.h`
+
+```cpp
+struct FSOLRadarContact { FVector3d RelativePositionM; FName Name; bool bSelected = false; };
+struct FSOLRadarPoint { FVector2D ScreenOffsetUnit; double HeightStalkUnit = 0.0; bool bBehind = false; FName Name; bool bSelected = false; };
+
+namespace SOLRadar
+{
+    constexpr double MinRangeM = 1000.0;
+    constexpr double MaxRangeM = 50.0 * 149597870700.0;   // 50 AU
+    constexpr double CollapseFraction = 0.01;
+
+    // Smallest power of 10 (in meters) that is >= every |Contact.RelativePositionM|, clamped to [MinRangeM, MaxRangeM].
+    // No contacts -> MinRangeM.
+    double ComputeRange(TConstArrayView<FSOLRadarContact> Contacts);
+
+    // Projects one contact into the radar's local ship-relative frame (ship-forward = local +Y "up" on the scope, ship-right = local
+    // +X, ship-up = the height stalk) at the given Range: radial distance from center = min(1, |lateral| / Range), scaled up as
+    // (dist/Range)^CollapseFraction-power-law so anything inside Range*CollapseFraction is pulled outward from the exact center by
+    // that same law (never fully overlapping at the origin); ScreenOffsetUnit is in [-1, 1] on each axis; HeightStalkUnit is the
+    // ship-up component similarly scaled; bBehind is true when the contact's ship-forward component is negative (still plotted, so the
+    // scope shows all-around contacts, matching the Elite-style brief).
+    FSOLRadarPoint ProjectContact(const FSOLRadarContact& Contact, double RangeM);
+}
+```
+
+### `UI/SOLOrbitLines.h`
+
+```cpp
+namespace SOLOrbitLines
+{
+    constexpr int32 EllipseSegments = 90;
+
+    // Samples an ellipse from Keplerian elements into EllipseSegments+1 points (closed: first == last) in the body's PARENT-relative
+    // ecliptic frame (meters), by evaluating true anomaly uniformly over [0, 2*PI] via SOLKepler's position formula at that anomaly
+    // (not time-stepped). Appends to OutPoints (caller-reserved, no internal allocation if capacity is already sufficient).
+    void SampleEllipse(const FSOLKeplerElements& Elements, TArray<FVector3d>& OutPoints);
+}
+```
+
+### `UI/SOLSpeedStepper.h`
+
+```cpp
+struct FSOLSpeedStepperState
+{
+    double ValueInUnit = 1.0;         // the displayed numeric value, always > 0
+    ESOLSpeedUnit Unit = ESOLSpeedUnit::KilometersPerSecond;
+    int32 HighlightedDigit = 0;       // 0 = ones place of the integer part, 1 = tens, ... negative = fractional digits (-1 = tenths)
+};
+
+namespace SOLSpeedStepper
+{
+    constexpr int32 MinDigit = -2;    // hundredths
+    constexpr int32 MaxDigit = 6;     // up to 10^6 in the current unit
+
+    // Returns the resulting mps after adding +1 (bDown=false) or -1 (bDown=true) at State.HighlightedDigit's place value in
+    // State.Unit, with carry (e.g. 9 -> 0 carries into the next digit up; a carry past MaxDigit or below 0 clamps instead of
+    // wrapping), then reports the corresponding SpeedCapMps clamped to [SOL::MIN_SPEED_CAP_MPS, SOL::MAX_SPEED_CAP_MPS].
+    double StepDigit(const FSOLSpeedStepperState& State, bool bDown);
+
+    // Cycles Unit forward (bDown=false: m/s -> km/s -> c -> m/s) or backward, converting ValueInUnit's underlying mps unchanged, and
+    // reclamping HighlightedDigit into [MinDigit, MaxDigit] for the new unit's typical range.
+    FSOLSpeedStepperState CycleUnit(const FSOLSpeedStepperState& State, bool bDown);
+
+    // Builds a state from an absolute speed (used when opening the panel, or when a body is selected from the list): picks the unit
+    // via SOLHudFormat::PickSpeedUnit and HighlightedDigit = 0.
+    FSOLSpeedStepperState FromSpeedMps(double SpeedMps);
+}
+```
+
+### Non-unit-tested 1c pieces
+
+The UMG F3 widget tree and its input capture/pause behavior, the Canvas HUD drawing (reticle, joystick indicator, target bracket, prograde/retrograde markers, the radar scope rendering from `FSOLRadarPoint`, the orbit-ellipse polyline projection and clipping, the sim date/warp readout), the O toggle wiring, and replacing the temporary debug HUD. These get a PIE smoke check and the existing `-SOLSmokeShot` screenshot mechanism (extended with an `-SOLSmokeHUD` flag if useful to exercise the new HUD state without full input scripting).
+
+### Appendix C clarifications (settled after the test author's ambiguity report)
+
+- **Radar input frame (fixes an inconsistency with Appendix B):** `FSOLRadarContact::RelativePositionM` is in the ship-local frame with the SAME axes as `FSOLShipControl::Thrust` (X forward, Y right, Z up) — the earlier wording "ship-forward = local +Y" was wrong and is superseded. On screen: forward (X) maps to `ScreenOffsetUnit.Y` (up on the scope), right (Y) maps to `ScreenOffsetUnit.X`, up (Z) maps to `HeightStalkUnit`.
+- **Collapse law (replaces the vague "power-law" wording):** let `t = clamp(|lateral| / RangeM, 0, 1)` where `|lateral|` is the ship-forward/right magnitude (excluding the height component). The projected radial magnitude is `r(t) = t < CollapseFraction ? sqrt(t * CollapseFraction) : t`. This is continuous and monotonically non-decreasing, equals 0 only at `t == 0`, equals `CollapseFraction` at `t == CollapseFraction`, and equals 1 at `t == 1`. `ScreenOffsetUnit` is `r(t)` times the unit direction of the lateral component (zero lateral component with nonzero height is a degenerate direction — treat it as `(0, 0)`). `HeightStalkUnit` uses the same `r` applied to `|ship-up component| / RangeM`, signed by the component's sign, clamped to `[-1, 1]`.
+- **`StepDigit` borrow/carry:** ordinary decimal arithmetic on `ValueInUnit` at the given place value (e.g. tens digit 20 -> 19 stepping down by one at digit 0, or 20 -> 10 stepping down by one at digit 1), with the result clamped so the corresponding `SpeedCapMps` never goes below `SOL::MIN_SPEED_CAP_MPS` or above `SOL::MAX_SPEED_CAP_MPS`; clamping (not wrapping) applies at both ends, so a step that would cross a bound instead lands exactly on it.
+- **`CycleUnit` digit target:** `HighlightedDigit` is unchanged by a unit cycle (it is already guaranteed to be within `[MinDigit, MaxDigit]`, which does not depend on the unit).
+- **`PickSpeedUnit` sign:** uses `abs(SpeedMps)`.
+- **`FormatDistanceM` boundaries:** `DistanceM < 1000.0` -> meters; else `DistanceM < 0.01 * 149597870700.0` -> kilometers; else astronomical units. Strict `<` at both boundaries (the boundary value itself takes the next band up).
+
+### Appendix C — Amendment 1: radar range and manual zoom (2026-09-28, post-bug-fix)
+
+Supersedes the radar range parts of Appendix C and its clarifications. Root cause of the original bug: the HUD fed every registry body into `SOLRadar::ComputeRange`, so a body at ~30 AU (Neptune) always forced the 50 AU clamp, crushing nearby contacts to the center. The interim fix (nearest-4-contacts) is replaced by this amendment, which the user resolved directly (not left to a subagent).
+
+Changes to `UI/SOLRadarLayout.h`:
+
+```cpp
+namespace SOLRadar
+{
+    constexpr double MaxRangeM = 149597870700.0;         // 1 AU (was 50 AU)
+    constexpr double DefaultFloorM = 10000000.0;          // 10,000 km: floor with no target selected
+    constexpr double TargetedFloorM = 1000.0;             // 1 km: floor when a target is selected (close-combat detail)
+    constexpr double ZoomStepFactor = 10.0;                // '-' / '=' step the manual range by this factor (one decade)
+
+    // Effective floor for both auto and manual range: TargetedFloorM if bHasSelectedTarget, else DefaultFloorM.
+    double EffectiveFloorM(bool bHasSelectedTarget);
+
+    // Unchanged signature and behavior, EXCEPT the clamp is now [EffectiveFloorM(bHasSelectedTarget), MaxRangeM] instead of the old
+    // [MinRangeM, MaxRangeM] (MinRangeM is removed from the public contract).
+    double ComputeRange(TConstArrayView<FSOLRadarContact> Contacts, bool bHasSelectedTarget);
+
+    // Steps a manual range by one decade (ZoomStepFactor), bZoomIn true = divide (zoom in), false = multiply (zoom out), clamped to
+    // [EffectiveFloorM(bHasSelectedTarget), MaxRangeM].
+    double StepManualRange(double CurrentRangeM, bool bZoomIn, bool bHasSelectedTarget);
+}
+```
+
+(`ProjectContact` is unchanged.)
+
+Behavioral decisions (HUD-side, not unit-tested — this is UI state, not pure math per the "Non-unit-tested 1c pieces" note):
+
+- **Mode:** the radar starts in AUTO mode (uses `ComputeRange` every frame with the current contacts and whether a target is selected). Pressing `-` or `=` switches to MANUAL mode and applies `StepManualRange` once per press to the last-known range. **Home** returns to AUTO mode (Backspace is already the time-warp reset per section 2, so it is not reused here).
+- **Display:** the range label shows "AUTO" or "MANUAL" next to the distance, e.g. "RADAR 3.2 AU (AUTO)" or "RADAR 12,000 km (MANUAL)".
+- **Target-floor tracking:** the effective floor (and therefore the manual range's lower clamp) is re-evaluated every frame from whether a target is currently selected, so selecting a target while already zoomed in manually immediately unlocks the tighter 1 km floor without leaving manual mode; clearing the target re-clamps up to the 10,000 km floor if the current manual range was below it.
+
+### Appendix C — Amendment 2: AUTO excludes the anchor's root star (2026-09-28)
+
+HUD-integration-only change (no `SOLRadar` API change: `ComputeRange` stays a pure function of whatever contact list it's given). In AUTO mode, the contact array passed to `SOLRadar::ComputeRange` excludes the star at the root of the current anchor body's parent chain (walk `ParentIndex` from the anchor up to the body whose `ParentIndex == INDEX_NONE`; today that is always the Sun). That excluded star is still included in the array passed to `ProjectContact` for drawing, so it still appears on the scope (clipped to the rim if beyond the computed range). MANUAL mode is unaffected — it already ignores auto-computed range entirely. This lets AUTO tighten around whatever planets/moons/targets are actually nearby instead of being pinned at 1 AU by the ever-present Sun.
+
+### Appendix C — Amendment 3: AUTO is the fixed floor, not farthest-fits-all (2026-09-29)
+
+Retires the "smallest power of 10 that fits every contact" idea entirely — with real interplanetary distances, some tracked body is almost always farther than 1 AU, so that rule pins AUTO at the ceiling almost everywhere and two attempts to patch around it (nearest-N, excluding the anchor's root star) didn't fix it for normal play.
+
+- **`SOLRadar::ComputeRange` is REMOVED** from `UI/SOLRadarLayout.h`/`.cpp`, along with its dedicated tests (`RangeConstantsAndEmpty`, `RangeSmallestPowerOfTen`, `RangeFarthestContactGoverns`, `RangeClamps`, `RangeFloorNoTarget`, `RangeFloorTargeted`) — deleted, not left disabled, since the behavior they pinned no longer exists in the product. `EffectiveFloorM`, `StepManualRange`, `MaxRangeM`, `DefaultFloorM`, `TargetedFloorM`, `ZoomStepFactor`, `ProjectContact` and their tests are unchanged and still load-bearing.
+- **AUTO mode's range is simply `EffectiveFloorM(bHasSelectedTarget)`**, recomputed every frame from whether a target is currently selected: 10,000 km with no target, 1 km the instant a target is selected (and back to 10,000 km the instant it's cleared) — no contact list is consulted at all. This reuses the existing tested floor logic instead of introducing a new constant, and it naturally tightens to combat range exactly when a target is locked, per the original intent behind `TargetedFloorM`.
+- **MANUAL mode is unchanged**: `-`/`=` still call `StepManualRange` from the current range, clamped to `[EffectiveFloorM(bHasSelectedTarget), MaxRangeM]`; **Home** returns to AUTO (which is now just "the floor," not a stored value).
+- Drawing (`ProjectContact` for every contact, including the anchor's root star) is unaffected; only the number fed to it as `RangeM` changes.
+
+### Appendix C — Amendment 4: post-review fixes (2026-09-29)
+
+1. **`ProjectContact` whole-vector scaling (replaces separate lateral/height clamping).** Let `v` be the contact's position in the ship-local frame (X forward, Y right, Z up) and `d = |v|`. If `d > RangeM`, scale the WHOLE vector together: `v' = v * (RangeM / d)`, then derive `ScreenOffsetUnit` and `HeightStalkUnit` from `v'` exactly as before (lateral = `v'.X`/`v'.Y` through the existing `r(t)` collapse law with `t = |lateral(v')| / RangeM`, height = `v'.Z / RangeM` scaled by the same `r`). If `d <= RangeM`, behavior is unchanged (the existing collapse law still applies for near contacts). This keeps a contact's on-screen direction geometrically correct instead of pinning height and lateral offset to independent maximums. `SOLTest.RadarLayout.ProjectHeightStalk` and `ProjectRangeEdgeAndSaturation` are updated test-first for this.
+2. **Speed-stepper unit overflow (fixes a real bug, not a design change).** `CycleUnit` must refuse to switch to a unit whose converted value would exceed the stepper's maximum representable value (currently bounded by `MaxDigit`); on refusal it leaves `State` unchanged. Additionally, `MaxDigit` is raised from 6 to 8 (representable up to ~999,999,999 in the current unit) so that 0.5c (~1.498e8 m/s) is representable in the m/s unit without overflow. `SOLTest.SpeedStepper.CycleUnitForward`/`CycleUnitBackward` gain a case at high speed (near 0.5c) confirming no digit corruption, done test-first.
+3. Engine-integration-only fixes (no contract change, fixed directly, test-after where trivial): radar scope layout margin now accounts for the maximum stalk length so nothing runs off-screen; the near-plane orbit-line clip divides by the clipped segment instead of the raw endpoints (removes a possible NaN); a zoom key (`-`/`=`) that would leave the range exactly at the current AUTO floor no longer switches to MANUAL; `GAME_MECHANICS.md`'s radar row is corrected to match the actual "10000.0 km" label format; the HUD's inline distance formatter is replaced with a shared, tested `SOLHudFormat` append helper instead of a second hand-written copy; draw order changed so the reticle/joystick indicator no longer paints over the target bracket and prograde markers; long lines reflowed to the style guide's soft 120-column limit.
+
+### Appendix C — Amendment 4 clarifications (settled after the test author's ambiguity report)
+
+- **Whole-vector scaling, precise formula:** let `v` be the ship-local contact vector and `d = |v|`. Define `v' = d <= RangeM ? v : v * (RangeM / d)` (so `|v'| <= RangeM` always, with equality when the original was beyond range). Then, using `v'` in place of `v` throughout: lateral magnitude `t_lat = |lateral(v')| / RangeM`, `ScreenOffsetUnit = r(t_lat) * unitDirection(lateral(v'))` (zero if the lateral component is zero); height `t_h = |v'.Z| / RangeM`, `HeightStalkUnit = sign(v'.Z) * r(t_h)`, both using the same `r(t) = t < CollapseFraction ? sqrt(t * CollapseFraction) : t` from Amendment 3's predecessor (Appendix C's original collapse law). This applies uniformly whether the original contact was within or beyond range — a within-range contact has `v' == v` and behaves exactly as before; the pure-axis regression cases are unaffected by construction, matching what the test author already found.
+- **`CanCycleUnit` / `CycleUnit` overflow threshold:** refuse (return `false` / leave `State` unchanged) exactly when converting `State`'s current mps into the target unit would give an absolute value `>= 1e9` (`10^(MaxDigit+1)`, i.e. an integer part of 9 or more digits). `999,999,999.x` in the target unit is allowed. `CycleUnit` does not separately clamp to `SOL::MAX_SPEED_CAP_MPS`; that clamp already happens in `StepDigit` and `FromSpeedMps`, and normal gameplay values stay well under the 1e9 overflow threshold regardless of unit.

@@ -10,6 +10,8 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLFlightHud.h"
+#include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
@@ -38,6 +40,9 @@ namespace
     const FLinearColor SHIP_HULL_COLOR(0.55f, 0.6f, 0.68f);
     const FLinearColor SHIP_TRIM_COLOR(0.12f, 0.15f, 0.2f);
     const FLinearColor SHIP_ENGINE_GLOW(8.0f, 3.2f, 0.8f);
+
+    // Viewport layer of the F3 speed panel (above the HUD canvas)
+    constexpr int32 SPEED_PANEL_Z_ORDER = 10;
 
     // Primitive orientation that turns the engine shapes' +Z axis (cylinder and cone) to the ship's +X (forward)
     const FRotator SHIP_ALONG_X(-90.0f, 0.0f, 0.0f);
@@ -184,12 +189,18 @@ void ASOLShipPawn::BeginPlay()
         mSmokeInput = MakeUnique<FSOLShipSmokeInput>();
         mSmokeInput->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_HUD))
+    {
+        mSmokeHud = MakeUnique<FSOLHudSmoke>();
+        mSmokeHud->Start(*this);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Removes the mapping context, releases the mouse and unhooks from the universe update
 void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
+    DismissSpeedPanel();
     RemoveMappingContext();
     ReleaseMouse();
     if (AnchorSubsystem != nullptr)
@@ -199,6 +210,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     }
     mUniverseUpdatedHandle.Reset();
     mSmokeInput.Reset();
+    mSmokeHud.Reset();
     Super::EndPlay(endPlayReason);
 }
 
@@ -216,6 +228,17 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeInput.IsValid() && mSmokeInput->Update(*this, deltaSeconds))
     {
         mSmokeInput.Reset();
+    }
+    if (mSmokeHud.IsValid() && mSmokeHud->Update(*this, deltaSeconds))
+    {
+        mSmokeHud.Reset();
+    }
+
+    // F3 was pressed during input processing; the panel opens here, outside the Enhanced Input callback
+    if (mIsSpeedPanelRequested)
+    {
+        mIsSpeedPanelRequested = false;
+        OpenSpeedPanel();
     }
     UpdateViewportFocus();
 
@@ -288,6 +311,14 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(WarpUpAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpUpAction);
     input->BindAction(WarpDownAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpDownAction);
     input->BindAction(WarpResetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpResetAction);
+    input->BindAction(ToggleOrbitLinesAction, ETriggerEvent::Triggered, this,
+        &ASOLShipPawn::OnToggleOrbitLinesAction);
+    input->BindAction(TogglePredictedPathAction, ETriggerEvent::Triggered, this,
+        &ASOLShipPawn::OnTogglePredictedPathAction);
+    input->BindAction(SpeedPanelAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSpeedPanelAction);
+    input->BindAction(RadarZoomInAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomInAction);
+    input->BindAction(RadarZoomOutAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomOutAction);
+    input->BindAction(RadarAutoAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarAutoAction);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -327,6 +358,7 @@ void ASOLShipPawn::NotifyControllerChanged()
 // Removes the mapping context and releases the mouse before the controller lets go of this pawn
 void ASOLShipPawn::UnPossessed()
 {
+    DismissSpeedPanel();
     RemoveMappingContext();
     ReleaseMouse();
     Super::UnPossessed();
@@ -350,8 +382,9 @@ void ASOLShipPawn::ReleaseMouse()
 // Detects the viewport losing focus (alt-tab, another window) and drops the held flight input once when it does
 void ASOLShipPawn::UpdateViewportFocus()
 {
-    // The input script injects synthetic events whatever the OS focus is, so focus is ignored while it runs
-    if (mSmokeInput.IsValid())
+    // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
+    // open speed panel holds the keyboard focus on purpose and has already released the flight input
+    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mIsSpeedPanelOpen)
     {
         return;
     }
@@ -417,6 +450,13 @@ void ASOLShipPawn::CreateInputObjects()
     WarpUpAction = CreateAction(this, TEXT("IA_ShipWarpUp"), EInputActionValueType::Boolean);
     WarpDownAction = CreateAction(this, TEXT("IA_ShipWarpDown"), EInputActionValueType::Boolean);
     WarpResetAction = CreateAction(this, TEXT("IA_ShipWarpReset"), EInputActionValueType::Boolean);
+    ToggleOrbitLinesAction = CreateAction(this, TEXT("IA_ShipToggleOrbitLines"), EInputActionValueType::Boolean);
+    TogglePredictedPathAction = CreateAction(this, TEXT("IA_ShipTogglePredictedPath"),
+        EInputActionValueType::Boolean);
+    SpeedPanelAction = CreateAction(this, TEXT("IA_ShipSpeedPanel"), EInputActionValueType::Boolean);
+    RadarZoomInAction = CreateAction(this, TEXT("IA_ShipRadarZoomIn"), EInputActionValueType::Boolean);
+    RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
+    RadarAutoAction = CreateAction(this, TEXT("IA_ShipRadarAuto"), EInputActionValueType::Boolean);
     MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Ship"));
 
     // Thrust: W/S forward/back (x), D/A right/left (y), Space/Ctrl up/down (z); roll: E right, Q left
@@ -435,7 +475,8 @@ void ASOLShipPawn::CreateInputObjects()
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
     MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
 
-    // One-shot keys (F3 speed panel and O/P overlays are reserved for sub-part 1c)
+    // One-shot keys, including the HUD keys: O orbit lines, P predicted path (reserved), F3 speed panel, '-' / '='
+    // radar zoom in/out, Home radar back to AUTO
     MapPressedKey(MappingContext, ToggleAssistAction, EKeys::Tab, this);
     MapPressedKey(MappingContext, RecenterAction, EKeys::MiddleMouseButton, this);
     MapPressedKey(MappingContext, MatchLockAction, EKeys::M, this);
@@ -446,6 +487,12 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, WarpDownAction, EKeys::LeftBracket, this);
     MapPressedKey(MappingContext, WarpUpAction, EKeys::RightBracket, this);
     MapPressedKey(MappingContext, WarpResetAction, EKeys::BackSpace, this);
+    MapPressedKey(MappingContext, ToggleOrbitLinesAction, EKeys::O, this);
+    MapPressedKey(MappingContext, TogglePredictedPathAction, EKeys::P, this);
+    MapPressedKey(MappingContext, SpeedPanelAction, EKeys::F3, this);
+    MapPressedKey(MappingContext, RadarZoomInAction, EKeys::Hyphen, this);
+    MapPressedKey(MappingContext, RadarZoomOutAction, EKeys::Equals, this);
+    MapPressedKey(MappingContext, RadarAutoAction, EKeys::Home, this);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -712,6 +759,148 @@ void ASOLShipPawn::HandleWarpReset()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Toggles the flight HUD's body orbit ellipses (O)
+void ASOLShipPawn::HandleToggleOrbitLines()
+{
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
+    {
+        hud->ToggleOrbitLines();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Reserved for the ship's predicted path (P); does nothing yet (SDD 2 section 6)
+void ASOLShipPawn::HandleTogglePredictedPath()
+{
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: predicted path (P) is reserved and not built yet"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
+void ASOLShipPawn::HandleRadarZoom(const bool bZoomIn)
+{
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
+    {
+        hud->StepRadarZoom(bZoomIn);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the flight HUD's radar to AUTO range (Home)
+void ASOLShipPawn::HandleRadarAuto()
+{
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
+    {
+        hud->ResetRadarAuto();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests the F3 speed panel to open (done at the next tick, outside the input callback)
+void ASOLShipPawn::HandleToggleSpeedPanel()
+{
+    mIsSpeedPanelRequested = !mIsSpeedPanelOpen;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Opens the speed panel: suspends the ship's control input and gives the panel UI-only keyboard focus
+void ASOLShipPawn::OpenSpeedPanel()
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (mIsSpeedPanelOpen || playerController == nullptr || Ships == nullptr)
+    {
+        return;
+    }
+    if (SpeedPanel == nullptr)
+    {
+        SpeedPanel = CreateWidget<USOLSpeedPanelWidget>(playerController, USOLSpeedPanelWidget::StaticClass());
+        if (SpeedPanel == nullptr)
+        {
+            UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to create the speed panel"), *GetName());
+            return;
+        }
+    }
+
+    // Suspend only the ship's own control input: release held keys, drop the mapping, zero the flight input
+    playerController->FlushPressedKeys();
+    RemoveMappingContext();
+    mStickOffsetPx = FVector2d::ZeroVector;
+    mRollInput = 0.0;
+    mControl.Thrust = FVector3d::ZeroVector;
+    mControl.Rotation = FVector3d::ZeroVector;
+    mControl.bBoost = false;
+    mIsFreeLooking = false;
+    mFreeLookRotation = FRotator::ZeroRotator;
+
+    // Show the panel with keyboard focus; the viewport stays visible and the Mass simulation keeps running
+    SpeedPanel->Open(this, mControl.SpeedCapMps);
+    SpeedPanel->AddToViewport(SPEED_PANEL_Z_ORDER);
+    FInputModeUIOnly inputMode;
+    inputMode.SetWidgetToFocus(SpeedPanel->TakeWidget());
+    inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    playerController->SetInputMode(inputMode);
+    playerController->bShowMouseCursor = true;
+    mIsSpeedPanelOpen = true;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: speed panel open; ship control input suspended (cap %.3f m/s)"),
+        *GetName(), mControl.SpeedCapMps);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Closes the speed panel and gives input back to the ship
+void ASOLShipPawn::CloseSpeedPanel()
+{
+    if (!mIsSpeedPanelOpen)
+    {
+        return;
+    }
+    DismissSpeedPanel();
+
+    // Restore the ship's mapping and the hidden, captured cursor of the virtual joystick
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (playerController != nullptr)
+    {
+        if (SOLInput::AddMappingContext(playerController->GetLocalPlayer(), MappingContext, 0))
+        {
+            mMappedLocalPlayer = playerController->GetLocalPlayer();
+        }
+        playerController->bShowMouseCursor = false;
+        playerController->SetInputMode(FInputModeGameOnly());
+        mHasCapturedMouse = true;
+    }
+    mHadViewportFocus = false;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: speed panel closed; ship control input restored (cap %.3f m/s)"),
+        *GetName(), mControl.SpeedCapMps);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the panel without restoring input (teardown)
+void ASOLShipPawn::DismissSpeedPanel()
+{
+    if (SpeedPanel != nullptr)
+    {
+        SpeedPanel->RemoveFromParent();
+    }
+    mIsSpeedPanelOpen = false;
+    mIsSpeedPanelRequested = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the speed cap (clamped to the flight parameters' range) and returns the value set; the panel's apply path
+double ASOLShipPawn::ApplySpeedCapMps(const double capMps)
+{
+    if (Ships == nullptr)
+    {
+        return mControl.SpeedCapMps;
+    }
+    const FSOLFlightParams params = Ships->GetFlightParams();
+    mControl.SpeedCapMps = FMath::Clamp(capMps, params.MinSpeedCapMps, params.MaxSpeedMps);
+    return mControl.SpeedCapMps;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Enhanced Input: thrust axes
 void ASOLShipPawn::OnThrustAction(const FInputActionValue& value)
 {
@@ -855,4 +1044,46 @@ void ASOLShipPawn::OnWarpDownAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnWarpResetAction(const FInputActionValue& /*value*/)
 {
     HandleWarpReset();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: orbit lines toggle
+void ASOLShipPawn::OnToggleOrbitLinesAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleOrbitLines();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: predicted path toggle (reserved)
+void ASOLShipPawn::OnTogglePredictedPathAction(const FInputActionValue& /*value*/)
+{
+    HandleTogglePredictedPath();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: speed panel
+void ASOLShipPawn::OnSpeedPanelAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleSpeedPanel();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: radar zoom in
+void ASOLShipPawn::OnRadarZoomInAction(const FInputActionValue& /*value*/)
+{
+    HandleRadarZoom(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: radar zoom out
+void ASOLShipPawn::OnRadarZoomOutAction(const FInputActionValue& /*value*/)
+{
+    HandleRadarZoom(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: radar back to AUTO range
+void ASOLShipPawn::OnRadarAutoAction(const FInputActionValue& /*value*/)
+{
+    HandleRadarAuto();
 }

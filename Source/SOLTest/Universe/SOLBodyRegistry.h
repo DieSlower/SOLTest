@@ -57,6 +57,9 @@ public:
     // Returns the body's Sun-frame velocity in m/s
     const FVector3d& GetVelocityMps(int32 index) const;
 
+    // Returns the body's secular orbital elements relative to its parent (unused for the Sun)
+    const FSOLSecularElements& GetElements(int32 index) const;
+
     // Returns all Sun-frame positions, indexed like the bodies
     TConstArrayView<FVector3d> GetPositionsM() const;
 

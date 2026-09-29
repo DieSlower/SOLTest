@@ -8,7 +8,7 @@
 #include "Game/SOLSpectatorPawn.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
-#include "UI/SOLDebugHUD.h"
+#include "UI/SOLFlightHud.h"
 #include "Visuals/SOLBodyVisuals.h"
 
 #include "Engine/World.h"
@@ -32,7 +32,7 @@ namespace
 ASOLGameMode::ASOLGameMode()
 {
     DefaultPawnClass = ASOLShipPawn::StaticClass();
-    HUDClass = ASOLDebugHUD::StaticClass();
+    HUDClass = ASOLFlightHud::StaticClass();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -95,12 +95,19 @@ void ASOLGameMode::EndPlay(const EEndPlayReason::Type endPlayReason)
 // Takes the smoke-test screenshot and schedules the quit (verification runs only)
 void ASOLGameMode::TakeSmokeScreenshot()
 {
+    CaptureScreenshot();
+    GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::QuitAfterSmokeTest, SMOKE_QUIT_DELAY_SECONDS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Takes a verification screenshot (Saved/Screenshots) without quitting
+void ASOLGameMode::CaptureScreenshot()
+{
     // HighResShot is handled by the game viewport, so route it through the local player's console
     if (APlayerController* playerController = GetWorld()->GetFirstPlayerController())
     {
         playerController->ConsoleCommand(SMOKE_SCREENSHOT_COMMAND);
     }
-    GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::QuitAfterSmokeTest, SMOKE_QUIT_DELAY_SECONDS);
 }
 
 //////////////////////////////////////////////////////////////////////////

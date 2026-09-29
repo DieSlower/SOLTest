@@ -48,9 +48,13 @@
 
 ### 1c — HUD
 
-- [ ] Core flight HUD: reticle and joystick indicator, speed and cap, assist state, reference frame, nearest body and altitude, sim date and warp, anchor body.
-- [ ] Target bracket, prograde/retrograde markers.
-- [ ] 3D spherical radar with auto log range.
-- [ ] Body orbit ellipses (O) and predicted ship path (P).
-- [ ] F3 speed panel (numeric field and body speed list).
-- [ ] Automation tests for HUD data, PIE smoke check, adversarial review, commit.
+- [x] Core flight HUD: reticle and joystick indicator, speed and cap, assist state, reference frame, nearest body and altitude, sim date and warp, anchor body. (`UI/SOLFlightHud`; the temporary `UI/SOLDebugHUD` is deleted.)
+- [x] Target bracket, prograde/retrograde markers.
+- [x] 3D spherical radar with auto log range.
+- [x] Radar range amendment (SDD Appendix C Amendment 1): 1 AU ceiling, 10,000 km / 1 km (targeted) floor, AUTO/MANUAL modes (`-` / `=` zoom, Home to AUTO); replaces the interim nearest-4 rule. Tests 171 pass; `-SOLSmokeHud` 17/17 (adds h-radar-zoom: 8 x '-' with Earth targeted, 1 AU -> 1.5 km MANUAL; h-radar-auto: Home); non-unity build clean.
+- [x] Radar AUTO simplification (SDD Appendix C Amendment 3): `SOLRadar::ComputeRange` and its 6 tests removed; AUTO range = `EffectiveFloorM` (10,000 km, 1 km with a target); Amendment 2's root-star exclusion removed. Tests 165 pass; `-SOLSmokeHud` 17/17 (h-radar-auto now also checks range == floor; a screenshot right after T shows `RADAR 1.0 km (AUTO)`); `-SOLSmokeShot` at 10,000 km above Earth shows `RADAR 10000.0 km (AUTO)`; non-unity build clean.
+- [x] Body orbit ellipses (O); predicted ship path (P) bound as a no-op per SDD section 6.
+- [x] F3 speed panel (numeric field and body speed list). (`UI/SOLSpeedPanelWidget`, UMG built in C++.)
+- [x] Automation tests for HUD data (164 pass); `-SOLSmokeHud` 15/15 (O/P toggles, panel blocks W, digit steps, unit cycle, list select, F3/Esc close) with screenshots of the HUD over Earth and the orbit ellipses from 3 AU above the Sun; non-unity build clean.
+- [x] Adversarial review; fixes applied (SDD Appendix C Amendment 4: whole-vector radar scaling, stepper unit overflow refusal at 1e9, radar stalk layout margin, near-plane clip at the plane itself, zoom no-op keeps the mode, shared `SOLHudFormat::AppendDistanceM`, reticle/joystick drawn under the markers, GAME_MECHANICS radar label, long lines). Tests 169 pass (adds `HudFormat.AppendDistanceMatchesFormat`); `-SOLSmokeHud` 17/17 (h-radar-zoom now expects `-` at the 1 km floor to stay AUTO); screenshots checked (radar stalks within the reserved margin, bracket drawn over the joystick ring); non-unity build clean.
+- [ ] Commit.
