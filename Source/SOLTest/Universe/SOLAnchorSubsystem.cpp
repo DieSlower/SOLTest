@@ -153,6 +153,14 @@ FSOLRenderPlacement USOLAnchorSubsystem::ComputeBodyRenderPlacement(const int32 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0)
+FVector USOLAnchorSubsystem::ComputePointRenderLocationCm(const FVector3d& universeM) const
+{
+    return mRenderOrigin.BodyPlacement(universeM, mObserverPositionM, 0.0, SOL::DEFAULT_MAX_RENDER_DISTANCE_CM)
+        .LocationCm;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the index of the body whose surface is nearest the observer, and its altitude in meters
 int32 USOLAnchorSubsystem::FindNearestBody(double& outAltitudeM) const
 {

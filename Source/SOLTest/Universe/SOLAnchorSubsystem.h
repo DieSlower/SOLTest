@@ -84,6 +84,9 @@ public:
     // Returns a body's render location and radius (cm, Unreal axes); 1:1 near the observer, angular size kept far away
     FSOLRenderPlacement ComputeBodyRenderPlacement(int32 bodyIndex) const;
 
+    // Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0)
+    FVector ComputePointRenderLocationCm(const FVector3d& universeM) const;
+
     // Returns the index of the body whose surface is nearest the observer, and its altitude in meters
     int32 FindNearestBody(double& outAltitudeM) const;
 

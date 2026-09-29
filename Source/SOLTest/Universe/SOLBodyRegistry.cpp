@@ -174,6 +174,13 @@ const FVector3d& FSOLBodyRegistry::GetVelocityMps(const int32 index) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the body's secular orbital elements relative to its parent (unused for the Sun)
+const FSOLSecularElements& FSOLBodyRegistry::GetElements(const int32 index) const
+{
+    return mElements[index];
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns all Sun-frame positions, indexed like the bodies
 TConstArrayView<FVector3d> FSOLBodyRegistry::GetPositionsM() const
 {

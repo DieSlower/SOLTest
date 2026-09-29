@@ -7,6 +7,7 @@
 
 #include "Flight/SOLFlight.h"
 #include "Ship/SOLShipSmokeInput.h"
+#include "UI/SOLHudSmoke.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
@@ -21,6 +22,7 @@ class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
 class USOLShipSubsystem;
+class USOLSpeedPanelWidget;
 class USOLSimClockSubsystem;
 class USOLTargetingSubsystem;
 class USpringArmComponent;
@@ -38,6 +40,11 @@ struct FInputActionValue;
  * smaller viewport dimension; SOLFlight::JoystickToRotation turns it into yaw (X) and pitch (Y, mouse up = nose up).
  * Middle mouse recenters it. Holding Alt freezes the stick and orbits the camera instead. Every Enhanced Input
  * callback forwards to a plain Handle* function so scripts (-SOLSmokeInput) and future UI can drive the same paths.
+ *
+ * HUD keys (1c): O toggles the flight HUD's orbit ellipses, P is reserved for the predicted path (no-op), and F3 opens
+ * the speed panel (USOLSpeedPanelWidget). While the panel is open the ship's own control input is suspended: the
+ * mapping context is removed, held keys are flushed, thrust/roll/boost and the stick are zeroed and the panel has
+ * UI-only keyboard focus. The ship's Mass simulation keeps running. Closing restores the mapping and game-only input.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -109,6 +116,33 @@ public:
     // Resets the time-warp to 1x (Backspace)
     void HandleWarpReset();
 
+    // Toggles the flight HUD's body orbit ellipses (O)
+    void HandleToggleOrbitLines();
+
+    // Reserved for the ship's predicted path (P); does nothing yet (SDD 2 section 6)
+    void HandleTogglePredictedPath();
+
+    // Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
+    void HandleRadarZoom(bool bZoomIn);
+
+    // Returns the flight HUD's radar to AUTO range (Home)
+    void HandleRadarAuto();
+
+    // Requests the F3 speed panel to open (done at the next tick, outside the input callback)
+    void HandleToggleSpeedPanel();
+
+    // Closes the speed panel and gives input back to the ship
+    void CloseSpeedPanel();
+
+    // Returns true while the speed panel is open (and the ship's own control input is suspended)
+    bool IsSpeedPanelOpen() const { return mIsSpeedPanelOpen; }
+
+    // Returns the speed panel widget, or nullptr before it was first opened
+    USOLSpeedPanelWidget* GetSpeedPanel() const { return SpeedPanel; }
+
+    // Sets the speed cap (clamped to the flight parameters' range) and returns the value set; the panel's apply path
+    double ApplySpeedCapMps(double capMps);
+
     // Returns the control the pawn composed this frame
     const FSOLShipControl& GetComposedControl() const { return mControl; }
 
@@ -148,6 +182,12 @@ private:
 
     // Eases the camera arm toward the ship orientation (plus free-look) by an exponential slerp, after the ship moved
     void UpdateCameraRotation(float deltaSeconds);
+
+    // Opens the speed panel: suspends the ship's control input and gives the panel UI-only keyboard focus
+    void OpenSpeedPanel();
+
+    // Removes the panel without restoring input (teardown)
+    void DismissSpeedPanel();
 
     // Builds the placeholder ship from engine primitives with a light hull and a glowing engine
     void BuildShipMesh();
@@ -222,6 +262,24 @@ private:
     // Enhanced Input: warp reset
     void OnWarpResetAction(const FInputActionValue& value);
 
+    // Enhanced Input: orbit lines toggle
+    void OnToggleOrbitLinesAction(const FInputActionValue& value);
+
+    // Enhanced Input: predicted path toggle (reserved)
+    void OnTogglePredictedPathAction(const FInputActionValue& value);
+
+    // Enhanced Input: speed panel
+    void OnSpeedPanelAction(const FInputActionValue& value);
+
+    // Enhanced Input: radar zoom in
+    void OnRadarZoomInAction(const FInputActionValue& value);
+
+    // Enhanced Input: radar zoom out
+    void OnRadarZoomOutAction(const FInputActionValue& value);
+
+    // Enhanced Input: radar back to AUTO range
+    void OnRadarAutoAction(const FInputActionValue& value);
+
     /** Root the ship parts and the camera arm hang from; carries the ship's orientation. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<USceneComponent> ShipRoot;
@@ -293,6 +351,27 @@ private:
     TObjectPtr<UInputAction> WarpResetAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ToggleOrbitLinesAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> TogglePredictedPathAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> SpeedPanelAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> RadarZoomInAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> RadarZoomOutAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> RadarAutoAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSpeedPanelWidget> SpeedPanel;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
 
     UPROPERTY(Transient)
@@ -306,6 +385,7 @@ private:
 
     TWeakObjectPtr<ULocalPlayer> mMappedLocalPlayer;        // Local player that currently has MappingContext added
     TUniquePtr<FSOLShipSmokeInput> mSmokeInput;             // Verification-only scripted input (-SOLSmokeInput)
+    TUniquePtr<FSOLHudSmoke> mSmokeHud;                     // Verification-only HUD/panel script (-SOLSmokeHud)
     FSOLShipControl mControl;                               // Control composed from the input state
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
     FRotator mFreeLookRotation = FRotator::ZeroRotator;     // Camera orbit around the ship while Alt is held
@@ -318,4 +398,6 @@ private:
     bool mHasCameraRotation = false;                        // False until the camera rotation is first set
     bool mHadViewportFocus = false;                         // Viewport focus last frame (focus loss is an edge)
     bool mHasCapturedMouse = false;                         // True while this pawn hides the cursor (game-only input)
+    bool mIsSpeedPanelOpen = false;                         // True while the F3 panel has focus
+    bool mIsSpeedPanelRequested = false;                    // F3 pressed; the panel opens at the next tick
 };

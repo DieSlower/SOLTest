@@ -1,16 +1,16 @@
-# Graph Report - SOLTest  (2026-09-28)
+# Graph Report - SOLTest  (2026-09-29)
 
 ## Corpus Check
-- 83 files · ~74,565 words
+- 99 files · ~97,389 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 839 nodes · 1235 edges · 82 communities (57 shown, 25 thin omitted)
-- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 51 edges (avg confidence: 0.83)
+- 1043 nodes · 1608 edges · 104 communities (74 shown, 30 thin omitted)
+- Extraction: 96% EXTRACTED · 4% INFERRED · 0% AMBIGUOUS · INFERRED: 57 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `bce54157`
+- Built from commit: `cb30ce2b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -88,18 +88,39 @@
 - [[_COMMUNITY_Community 79|Community 79]]
 - [[_COMMUNITY_Community 80|Community 80]]
 - [[_COMMUNITY_Community 81|Community 81]]
+- [[_COMMUNITY_Community 82|Community 82]]
+- [[_COMMUNITY_Community 83|Community 83]]
+- [[_COMMUNITY_Community 84|Community 84]]
+- [[_COMMUNITY_Community 85|Community 85]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `FInputActionValue` - 20 edges
-2. `GetName()` - 20 edges
+1. `FInputActionValue` - 26 edges
+2. `GetName()` - 26 edges
 3. `SOLTest — C++ Code Style Guide (DRAFT)` - 18 edges
 4. `FSOLBodyAppearance` - 17 edges
 5. `RunTest()` - 15 edges
 6. `Update()` - 12 edges
 7. `HasPlayerShip()` - 12 edges
-8. `BeginPhase()` - 11 edges
-9. `1. Review checklist` - 11 edges
-10. `FVector3d` - 10 edges
+8. `7. Appendix C — Part 1c HUD API contract` - 12 edges
+9. `BeginPhase()` - 11 edges
+10. `EnterPhase()` - 11 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Module and file layout (feature folders, Build.cs rules)` --references--> `SOLTest`  [EXTRACTED]
@@ -121,14 +142,14 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (82 total, 25 thin omitted)
+## Communities (104 total, 30 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
-Cohesion: 0.19
-Nodes (12): Adversarial opus performance and style review, File banner, function comment and separator rules, Asset paths live in one place (SOLConstants.h / data assets), Data-oriented Mass guidance (fragments, processors, no hot-loop allocation), Naming conventions (SOL infix, m prefix, UPPER_SNAKE constants), TrueReality house style origin, UE reflection macro and UPROPERTY rules, Mass ECS performance rules (+4 more)
+Cohesion: 0.17
+Nodes (13): Adversarial opus performance and style review, File banner, function comment and separator rules, Asset paths live in one place (SOLConstants.h / data assets), Data-oriented Mass guidance (fragments, processors, no hot-loop allocation), Naming conventions (SOL infix, m prefix, UPPER_SNAKE constants), TrueReality house style origin, UE reflection macro and UPROPERTY rules, Double precision and camera-relative rendering (LWC) rules (+5 more)
 
 ### Community 1 - "Kepler Orbits & Sim Clock"
-Cohesion: 0.17
+Cohesion: 0.15
 Nodes (13): Tech debt: untested SOLTypes.h and SOLKepler.h, Sim clock and time-warp, Part 1a: universe types, Kepler solver, clock, registry (paused), Analytic Keplerian orbits, no perturbations, Time decision: real date start, time-warp on bodies only, namespace, Planetary perturbations / N-body integration, FSOLKeplerElements() (+5 more)
 
 ### Community 2 - "Project Rules & Architecture SDD"
@@ -136,8 +157,8 @@ Cohesion: 0.43
 Nodes (7): FSOLRenderPlacement, FVector3d, BodyPlacement(), RenderCmToUniverseM(), Reset(), UniverseToRenderCm(), Update()
 
 ### Community 3 - "UE Module & Build Config"
-Cohesion: 0.17
-Nodes (10): TDD with tests authored by separate subagent, UE Automation Framework testing (SOLTest.<Topic>.<Case>), Module and file layout (feature folders, Build.cs rules), ModuleRules, SOLTest, SOLTest primary game module (FDefaultGameModuleImpl), SOLTestTarget, SOLTestEditorTarget (+2 more)
+Cohesion: 0.22
+Nodes (7): Module and file layout (feature folders, Build.cs rules), ModuleRules, SOLTest, SOLTest primary game module (FDefaultGameModuleImpl), SOLTestTarget, SOLTestEditorTarget, TargetRules
 
 ### Community 4 - "Scale, Rebasing & Jump Map"
 Cohesion: 0.48
@@ -153,19 +174,19 @@ Nodes (8): AT-HYG star catalog (2.55M stars), CelestialVault engine plugin (beta
 
 ### Community 8 - "SOLTypes Namespace"
 Cohesion: 0.11
-Nodes (25): AActor, FVector, BeginPlay(), FSOLRenderPlacement, FSubsystemCollectionBase, FVector, FVector3d, int32 (+17 more)
+Nodes (26): AActor, FVector, BeginPlay(), FSOLRenderPlacement, FSubsystemCollectionBase, FVector, FVector3d, int32 (+18 more)
 
 ### Community 18 - "Community 18"
 Cohesion: 0.10
 Nodes (24): FLinearColor, FLinearColor, FName, TCHAR, Type, UMaterialInstanceDynamic, UMaterialInstanceDynamic, ApplyAppearance() (+16 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.08
-Nodes (36): EInputActionValueType, FInputActionValue, AddMappingContext(), CreateAction(), MapPressedKey(), RemoveMappingContext(), CreateAction(), CreateInputObjects() (+28 more)
+Cohesion: 0.07
+Nodes (40): EInputActionValueType, FInputActionValue, AddMappingContext(), CreateAction(), MapPressedKey(), RemoveMappingContext(), CreateAction(), CreateInputObjects() (+32 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.09
-Nodes (32): FSOLBodyDef, Initialize(), FSubsystemCollectionBase, FName, FSOLSecularElements, FVector3d, int32, TCHAR (+24 more)
+Cohesion: 0.05
+Nodes (42): FDateTime, FSOLBodyDef, Initialize(), FSubsystemCollectionBase, FName, FSOLSecularElements, FVector3d, int32 (+34 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.09
@@ -184,8 +205,8 @@ Cohesion: 0.13
 Nodes (15): 1. Review checklist, 2. Profiling workflow, 3. Caveats and gaps, 4. Sources (pages actually read), A. Tick and update cost, B. Memory, allocation and GC, C. Containers and data layout, D. Mass / ECS (+7 more)
 
 ### Community 25 - "Community 25"
-Cohesion: 0.09
-Nodes (22): 1. Problem, 2. Decisions (user-resolved), 3. Design detail (Claude's choices within the decisions above), 4. Open questions, 5. Revision history, Amendment 1 — post-review changes (2026-09-28, 1a adversarial review), Amendment 2 clarifications (settled after the test author's ambiguity report), Appendix A — Part 1a API contract (+14 more)
+Cohesion: 0.06
+Nodes (35): 1. Problem, 2. Decisions (user-resolved), 3. Design detail (Claude's choices within the decisions above), 4. Open questions, 5. Revision history, 6. Part 1c: HUD decisions (2026-09-28 grill), 7. Appendix C — Part 1c HUD API contract, Amendment 1 — post-review changes (2026-09-28, 1a adversarial review) (+27 more)
 
 ### Community 26 - "Community 26"
 Cohesion: 0.14
@@ -196,12 +217,12 @@ Cohesion: 0.17
 Nodes (11): FString, int32, FSOLClockDateCase, Day, ExpectedJd, Hour, Minute, Month (+3 more)
 
 ### Community 28 - "Community 28"
-Cohesion: 0.15
-Nodes (8): FDateTime, FSubsystemCollectionBase, Type, UObject, DoesSupportWorldType(), GetUtcDateTime(), Initialize(), ShouldCreateSubsystem()
+Cohesion: 0.12
+Nodes (32): FGeometry, FKeyEvent, FPointerEvent, FReply, ASOLShipPawn, ESOLSpeedUnit, FKey, FLinearColor (+24 more)
 
 ### Community 29 - "Community 29"
 Cohesion: 0.13
-Nodes (11): AController, FRotator, EndPlay(), FinishRestartPlayer(), GetDefaultPawnClassForController_Implementation(), IsSOLGameWorld(), FRotator, Type (+3 more)
+Nodes (13): AController, FRotator, CaptureScreenshot(), EndPlay(), FinishRestartPlayer(), GetDefaultPawnClassForController_Implementation(), IsSOLGameWorld(), TakeSmokeScreenshot() (+5 more)
 
 ### Community 30 - "Community 30"
 Cohesion: 0.53
@@ -212,8 +233,8 @@ Cohesion: 0.20
 Nodes (10): 1.1 Debug and verification switches, 1.1 Debug spectator (sub-part 1a, temporary until the ship lands in 1b), 1. Controls, 2. Flight, 3. Time, 4. Jump map (J), 5. Surface-lock (L), 6. Origin anchoring (+2 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.36
-Nodes (8): FSOLAnchorSelector, FAutomationTestBase, FString, FVector3d, TArray, MakeAnchoredToFirst(), MakeAnchorPair(), RunTest()
+Cohesion: 0.33
+Nodes (9): FSOLAnchorSelector, FAutomationTestBase, FString, FVector3d, TArray, TArray, MakeAnchoredToFirst(), MakeAnchorPair() (+1 more)
 
 ### Community 33 - "Community 33"
 Cohesion: 0.21
@@ -228,8 +249,8 @@ Cohesion: 0.29
 Nodes (6): 1a — Foundations, 1b — Ship flight, 1c — HUD, Foundations and Flight Scaffold — Implementation Plan, Global constraints, Steps
 
 ### Community 36 - "Community 36"
-Cohesion: 0.52
-Nodes (5): FString, DrawHUD(), FormatDistance(), FormatSpeed(), FormatWarp()
+Cohesion: 0.14
+Nodes (32): ESOLHudLine, FSOLHudView, ASOLShipPawn, FLinearColor, FSOLShipControl, FSOLShipState, FVector, FVector2D (+24 more)
 
 ### Community 37 - "Community 37"
 Cohesion: 0.40
@@ -251,25 +272,29 @@ Nodes (3): class, class, FSOLBodyRegistry()
 Cohesion: 0.67
 Nodes (3): FString, ExpectedFarDepthCm(), RunTest()
 
+### Community 47 - "Community 47"
+Cohesion: 0.26
+Nodes (18): ESOLHudPhase, ASOLShipPawn, FKey, FString, FVector3d, TCHAR, Check(), EnterPhase() (+10 more)
+
 ### Community 54 - "Community 54"
-Cohesion: 0.22
-Nodes (10): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Surface-lock (L) mechanic, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo), Niagara and rendering best practices, Data-driven projectile combat decision, Level / surface-lock decision, Ship pulled by body gravity; bodies on rails (+2 more)
+Cohesion: 0.13
+Nodes (19): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Flight-assist vs Newtonian flight model, Jump map (J) mechanic, Origin anchor 25% hysteresis, Surface-lock (L) mechanic, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo) (+11 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.42
 Nodes (8): FSOLTargetInfo, FString, FVector3d, TCHAR, RunTest(), TargetingDeg(), TargetingMakeAtDistance(), TargetingMakeOffAxis()
 
 ### Community 56 - "Community 56"
-Cohesion: 0.17
-Nodes (9): CLAUDE.md project guidance, unreal-mcp server (HTTP 127.0.0.1:33445), SOLTest, Naming, Software Design Documents (SDDs), Items, Lifecycle, Naming (+1 more)
+Cohesion: 0.16
+Nodes (16): HandleBoost(), HandleFreeLook(), HandleRadarZoom(), HandleRoll(), HandleSpeedCapSteps(), OnBoostCompleted(), OnBoostStarted(), OnFreeLookCompleted() (+8 more)
 
 ### Community 57 - "Community 57"
 Cohesion: 0.25
-Nodes (7): Flight-assist vs Newtonian flight model, Cross-cutting tooling, Global constraints, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap, Solar-System Architecture — Roadmap Plan, Flight model decision (assist default, Newtonian toggle)
+Nodes (7): TDD with tests authored by separate subagent, UE Automation Framework testing (SOLTest.<Topic>.<Case>), Cross-cutting tooling, Global constraints, Roadmap, Solar-System Architecture — Roadmap Plan, RunTests.ps1 headless automation test runner
 
 ### Community 58 - "Community 58"
-Cohesion: 0.05
-Nodes (76): ESOLShipPartLook, ESOLShipPartShape, AddShipPart(), BeginPlay(), BuildShipMesh(), CreateHullMaterial(), CreateInputObjects(), EndPlay() (+68 more)
+Cohesion: 0.11
+Nodes (25): BeginPlay(), FollowShip(), HandleClearTarget(), HandleMatchLock(), HandleRadarAuto(), HandleRecenterStick(), HandleToggleAssist(), HandleToggleOrbitLines() (+17 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.44
@@ -301,7 +326,7 @@ Nodes (3): FSOLBodyRegistry, Init(), Refresh()
 
 ### Community 73 - "Community 73"
 Cohesion: 0.22
-Nodes (23): ASOLShipPawn, ESOLInputPhase, Check(), EnterPhase(), ExitPhase(), FindBody(), GetCandidateName(), GetPhaseDuration() (+15 more)
+Nodes (24): ASOLShipPawn, ESOLInputPhase, Check(), EnterPhase(), ExitPhase(), FindBody(), GetCandidateName(), GetPhaseDuration() (+16 more)
 
 ### Community 79 - "Community 79"
 Cohesion: 0.24
@@ -312,28 +337,88 @@ Cohesion: 0.42
 Nodes (11): FAutomationTestBase, FSOLShipState, FString, FVector3d, FlightSweptCheckEntry(), FlightSweptCheckMatchesNonSwept(), FlightSweptEntryPoint(), FlightSweptExpectedVelocity() (+3 more)
 
 ### Community 81 - "Community 81"
+Cohesion: 0.50
+Nodes (4): Items, Lifecycle, Naming, ToDo — Future Planned Items
+
+### Community 82 - "Community 82"
+Cohesion: 0.27
+Nodes (12): AddShipPart(), BuildShipMesh(), CreateHullMaterial(), SOLShipPawnCreateHullMaterial(), FLinearColor, FRotator, FVector, ASOLShipPawn() (+4 more)
+
+### Community 83 - "Community 83"
+Cohesion: 0.27
+Nodes (11): ESOLSpeedUnit, FAutomationTestBase, FSOLSpeedStepperState, FString, int32, TCHAR, RunTest(), StepperExpectStep() (+3 more)
+
+### Community 84 - "Community 84"
 Cohesion: 0.32
-Nodes (7): Jump map (J) mechanic, Origin anchor 25% hysteresis, Double precision and camera-relative rendering (LWC) rules, Jump map decision (2-4 s warp, velocity-matched arrival), Origin rebasing with anchor hysteresis, True 1:1 scale with double-precision universe coordinates, Supercruise-style long travel
+Nodes (8): CloseSpeedPanel(), DismissSpeedPanel(), EndPlay(), OpenSpeedPanel(), ReleaseMouse(), RemoveMappingContext(), UnPossessed(), Type
+
+### Community 85 - "Community 85"
+Cohesion: 0.36
+Nodes (9): FSOLKeplerElements, FString, FVector3d, TArray, OrbitLinesExpectedNormal(), OrbitLinesExpectedPeriapsisDir(), OrbitLinesMakeElements(), OrbitLinesSample() (+1 more)
+
+### Community 86 - "Community 86"
+Cohesion: 0.40
+Nodes (9): initializer_list, FSOLRadarContact, FString, FVector3d, RadarAheadRadius(), RadarMakeContact(), RadarRangeFor(), RadarTol() (+1 more)
+
+### Community 87 - "Community 87"
+Cohesion: 0.44
+Nodes (8): ESOLSpeedUnit, FAutomationTestBase, FString, TCHAR, HudFormatExpectDistance(), HudFormatExpectUnit(), HudFormatUnitName(), RunTest()
+
+### Community 88 - "Community 88"
+Cohesion: 0.25
+Nodes (5): CLAUDE.md project guidance, unreal-mcp server (HTTP 127.0.0.1:33445), SOLTest, Naming, Software Design Documents (SDDs)
+
+### Community 89 - "Community 89"
+Cohesion: 0.33
+Nodes (7): HandleFocusLost(), HandleThrust(), OnThrustAction(), OnThrustCompleted(), Tick(), UpdateViewportFocus(), FVector3d
+
+### Community 90 - "Community 90"
+Cohesion: 0.42
+Nodes (8): ESOLSpeedUnit, FString, AppendDistanceM(), FormatDistanceM(), FromUnitValue(), HudUnitScaleMps(), PickSpeedUnit(), ToUnitValue()
+
+### Community 91 - "Community 91"
+Cohesion: 0.33
+Nodes (8): FSOLRadarPoint, FSOLRadarContact, TConstArrayView, ComputeRange(), EffectiveFloorM(), ProjectContact(), RadarCollapse(), StepManualRange()
+
+### Community 92 - "Community 92"
+Cohesion: 0.29
+Nodes (7): GetShipPose(), HandleNextTarget(), HandlePreviousTarget(), HandleSelectTarget(), OnNextTargetAction(), OnPreviousTargetAction(), OnSelectTargetAction()
+
+### Community 93 - "Community 93"
+Cohesion: 0.42
+Nodes (8): ESOLSpeedUnit, FSOLSpeedStepperState, CanCycleUnit(), CycleUnit(), FromSpeedMps(), StepDigit(), StepperMaxDisplayValue(), StepperNextUnit()
+
+### Community 94 - "Community 94"
+Cohesion: 0.40
+Nodes (4): FSOLKeplerElements, FVector3d, TArray, SampleEllipse()
+
+### Community 95 - "Community 95"
+Cohesion: 1.00
+Nodes (3): HandleMouseDelta(), OnLookAction(), FVector2d
+
+### Community 96 - "Community 96"
+Cohesion: 0.25
+Nodes (8): ESOLShipPartLook, ESOLShipPartShape, FSOLShipPartSpec, LocationCm, Look, Rotation, Scale, Shape
 
 ## Knowledge Gaps
-- **263 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+258 more)
+- **310 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+305 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **25 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **30 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GetName()` connect `Community 20` to `Community 65`, `SOLTypes Namespace`, `Community 18`, `Community 19`, `Community 58`, `Community 28`, `Community 63`?**
-  _High betweenness centrality (0.084) - this node is a cross-community bridge._
-- **Why does `BeginPlay()` connect `Community 18` to `Community 20`?**
-  _High betweenness centrality (0.016) - this node is a cross-community bridge._
+- **Why does `GetName()` connect `Community 20` to `Community 65`, `Community 36`, `SOLTypes Namespace`, `Community 82`, `Community 19`, `Community 84`, `Community 18`, `Community 89`, `Community 58`, `Community 63`?**
+  _High betweenness centrality (0.082) - this node is a cross-community bridge._
 - **Why does `SpawnPlayerShip()` connect `Community 63` to `Community 20`?**
   _High betweenness centrality (0.013) - this node is a cross-community bridge._
-- **Are the 17 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
-  _`GetName()` has 17 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `BeginPlay()` connect `Community 18` to `Community 20`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Are the 23 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
+  _`GetName()` has 23 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl` to the rest of the system?**
-  _269 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _316 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `SOLTypes Namespace` be split into smaller, more focused modules?**
-  _Cohesion score 0.10541310541310542 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.10582010582010581 - nodes in this community are weakly interconnected._
 - **Should `Community 18` be split into smaller, more focused modules?**
   _Cohesion score 0.10461538461538461 - nodes in this community are weakly interconnected._
