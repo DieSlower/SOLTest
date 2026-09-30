@@ -35,3 +35,5 @@ archive.
   flight regime (Elite-style supercruise) layered on top of the jump map.
 - [`planetary-perturbations.md`](planetary-perturbations.md) — optional gravitational
   perturbations or N-body integration for bodies, beyond pure Keplerian orbits.
+- [`surface-landing.md`](surface-landing.md) — manual and auto (from-orbit) ship
+  landing, building on Part 3's surface-lock.
