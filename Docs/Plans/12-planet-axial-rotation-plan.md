@@ -32,7 +32,7 @@ Keep it in sync if the design shifts.
   implementation, corrected a wrong claim in SDD 12 §3.2 (both the implemented
   `(-x,y,-z,w)` quaternion form and the originally-doubted `(x,-y,z,-w)` form are
   correct — they're the same rotation, negated), and logged one low-priority
-  performance note as tech debt. Commit pending.)
+  performance note as tech debt. Commit 894f895.)
 - [ ] **12b — Visuals integration.** `ASOLBodyVisuals` applies
   `SOLRender::EclipticToUnreal(registry.GetOrientation(index))` to each body mesh
   alongside its existing position placement; `VISUALS_APPEARANCES` gets a small nonzero
