@@ -59,7 +59,6 @@ namespace
     constexpr double PICK_SMOKE_PROJECT_TOLERANCE_PX = 1.5;     // Locked XY point re-projected onto the cursor
     constexpr double PICK_SMOKE_HEIGHT_RELATIVE_TOLERANCE = 1.0e-9;
     constexpr double PICK_SMOKE_COMPOSE_TOLERANCE_M = 1.0e-2;   // Double rounding at ~1e12 m coordinates
-    constexpr double PICK_SMOKE_LIVE_TOLERANCE_M = 1.0e6;       // Reference motion over a few frames (< 50 km/s)
     constexpr double PICK_SMOKE_SHIP_REFERENCE_TOLERANCE_M = 1.0;
 }
 
@@ -155,10 +154,6 @@ void FSOLMapPickSmoke::EnterPhase(const ESOLMapPickPhase phase, ASOLShipPawn& pa
         break;
     case ESOLMapPickPhase::ShiftClick:
         TapKey(EKeys::LeftMouseButton);
-        break;
-    case ESOLMapPickPhase::EnterBody:
-    case ESOLMapPickPhase::EnterShip:
-        TapKey(EKeys::Enter);
         break;
     case ESOLMapPickPhase::ClearX:
         TapKey(EKeys::X);
@@ -373,25 +368,6 @@ void FSOLMapPickSmoke::ExitPhase(const ESOLMapPickPhase phase, ASOLShipPawn& paw
             "it unchanged within %.3g m"), bMarker ? TEXT("yes") : TEXT("NO"),
             FVector3d::Dist(referenceM, mReferenceAtLockM), offsetErrorM));
         Screenshot(pawn, TEXT("pick destination marker"));
-        break;
-    }
-    case ESOLMapPickPhase::EnterBody:
-    case ESOLMapPickPhase::EnterShip:
-    {
-        // The request carries the live destination at that instant (the map stays open until 2e)
-        const bool bBody = phase == ESOLMapPickPhase::EnterBody;
-        FVector3d destinationM = FVector3d::ZeroVector;
-        const bool bHasDestination = mMapMode->GetLiveDestinationM(destinationM);
-        const FVector3d& requestM = mMapMode->GetLastJumpRequestM();
-        const double driftM = FVector3d::Dist(requestM, destinationM);
-        const int32 expectedCount = bBody ? 1 : 2;
-        Check(bBody ? TEXT("g-enter-body") : TEXT("k-enter-ship"), bHasDestination && mMapMode->GetJumpRequestCount()
-            == expectedCount && driftM <= PICK_SMOKE_LIVE_TOLERANCE_M && pawn.IsMapOpen() && (bBody
-            || !pick.bHeightLocked), FString::Printf(TEXT("Enter: %d jump request(s) (want %d), requested universe "
-            "position (%.9g, %.9g, %.9g) m, live destination now (%.9g, %.9g, %.9g) m (%.4g m apart: reference "
-            "motion), map still open %s"), mMapMode->GetJumpRequestCount(), expectedCount, requestM.X, requestM.Y,
-            requestM.Z, destinationM.X, destinationM.Y, destinationM.Z, driftM, pawn.IsMapOpen() ? TEXT("yes")
-            : TEXT("NO")));
         break;
     }
     case ESOLMapPickPhase::ClearX:

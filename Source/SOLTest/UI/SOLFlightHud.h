@@ -19,6 +19,7 @@ class ASOLShipPawn;
 class UFont;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLShipSubsystem;
 class USOLSimClockSubsystem;
@@ -37,6 +38,10 @@ class USOLTargetingSubsystem;
  * subsystems. The draw path reuses member buffers (text, radar contacts, orbit points) and keeps one cached FText per
  * text line, rebuilt only when that line's text changes; what still allocates is the FText of a changed line and
  * whatever Canvas does internally to draw text.
+ *
+ * During a jump's warp sequence (SDD 3 Appendix I) the whole flight HUD is hidden and only the warp's radial streaks
+ * are drawn: a fixed table of canvas lines from the screen center, built once, that stream outward and brighten and
+ * lengthen with the sequence's streak intensity.
  */
 UCLASS()
 class SOLTEST_API ASOLFlightHud : public AHUD
@@ -83,6 +88,12 @@ public:
 
     // Returns the jump map's destination-pick overlay (disc, guide line, marker draw state)
     const FSOLMapPickOverlay& GetMapPickOverlay() const { return mMapPickOverlay; }
+
+    // Returns true if the last frame drew the flight HUD (false while a jump warp hides it; verification)
+    bool WasFlightHudDrawn() const { return mWasFlightHudDrawn; }
+
+    // Returns the number of warp streaks drawn in the last frame (verification)
+    int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
 
 protected:
 
@@ -182,6 +193,17 @@ private:
     // Appends a speed with its auto-picked unit to the text buffer
     void AppendSpeed(double speedMps);
 
+    // Draws the jump warp's radial streaks for a streak intensity and sequence time; returns the number drawn
+    int32 DrawWarpStreaks(double intensity, double elapsedS);
+
+    // One warp streak: its direction from the screen center, and where (0..1) and how fast it travels outward
+    struct FSOLWarpStreak
+    {
+        FVector2D Direction = FVector2D::UnitX();
+        double PhaseOffset = 0.0;
+        double CyclesPerSecond = 1.0;
+    };
+
     UPROPERTY(Transient)
     TObjectPtr<USOLSimClockSubsystem> SimClock;
 
@@ -200,17 +222,23 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
+    UPROPERTY(Transient)
+    TObjectPtr<USOLJumpSubsystem> Jump;
+
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame
     TArray<TArray<FVector3d>> mOrbitPoints;         // Per-body parent-relative ellipse points (ecliptic, m)
+    TArray<FSOLWarpStreak> mWarpStreaks;            // Jump warp streak table, built once
     double mOrbitSampledAtS = 0.0;                  // Real time the orbit points were last sampled
     double mLastRadarRangeM = 0.0;                  // Radar range of the last frame
     double mManualRadarRangeM = 0.0;                // Radar range while in MANUAL mode, reclamped every frame
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
     int32 mLastOrbitSegmentsDrawn = 0;              // Orbit segments drawn last frame
+    int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
+    bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
     bool mShowOrbitLines = false;                   // O toggle; off by default (SDD 2)
     bool mHasOrbitSamples = false;                  // True once the orbit points were sampled for this toggle-on
     bool mIsRadarManual = false;                    // Radar range mode: false = AUTO (starts here), true = MANUAL

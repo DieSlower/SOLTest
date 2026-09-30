@@ -5,6 +5,7 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
@@ -24,6 +25,7 @@
 #include "Engine/Font.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "Math/RandomStream.h"
 
 namespace
 {
@@ -87,6 +89,19 @@ namespace
     const FLinearColor HUD_ORBIT_COLOR(0.25f, 0.42f, 0.75f, 1.0f);
     const FLinearColor HUD_ORBIT_TARGET_COLOR(0.85f, 0.72f, 0.25f, 1.0f);
 
+    // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
+    // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
+    // thickening up to 1 + WARP_STREAK_EXTRA_THICKNESS_PX; cycle rates vary per streak; fixed seed for a stable pattern
+    constexpr double WARP_STREAK_START_FRACTION = 0.06;
+    constexpr double WARP_STREAK_TRAVEL_FRACTION = 1.1;
+    constexpr double WARP_STREAK_MIN_LENGTH_FRACTION = 0.04;
+    constexpr double WARP_STREAK_MAX_LENGTH_FRACTION = 0.45;
+    constexpr double WARP_STREAK_MIN_CYCLES_PER_S = 0.9;
+    constexpr double WARP_STREAK_MAX_CYCLES_PER_S = 1.8;
+    constexpr float WARP_STREAK_EXTRA_THICKNESS_PX = 2.0f;
+    constexpr int32 WARP_STREAK_SEED = 2026;
+    const FLinearColor WARP_STREAK_COLOR(0.8f, 0.9f, 1.0f, 1.0f);
+
     //////////////////////////////////////////////////////////////////////////
     // Clips a 2D segment to a rectangle (Liang-Barsky); false when nothing of it is inside
     bool FlightHudClipSegment(FVector2D& a, FVector2D& b, const FVector2D& minCorner, const FVector2D& maxCorner)
@@ -148,9 +163,21 @@ void ASOLFlightHud::BeginPlay()
     Ships = world->GetSubsystem<USOLShipSubsystem>();
     Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
+    Jump = world->GetSubsystem<USOLJumpSubsystem>();
 
     // Buffers sized once so the draw path only resets and refills them
     mText.Reserve(256);
+
+    // Warp streak table: random directions, phases and speeds from a fixed seed
+    FRandomStream random(WARP_STREAK_SEED);
+    mWarpStreaks.SetNum(SOL::WARP_STREAK_COUNT);
+    for (FSOLWarpStreak& streak : mWarpStreaks)
+    {
+        const double angleRad = random.FRandRange(0.0, UE_DOUBLE_TWO_PI);
+        streak.Direction = FVector2D(FMath::Cos(angleRad), FMath::Sin(angleRad));
+        streak.PhaseOffset = random.FRand();
+        streak.CyclesPerSecond = random.FRandRange(WARP_STREAK_MIN_CYCLES_PER_S, WARP_STREAK_MAX_CYCLES_PER_S);
+    }
     if (BodyRegistry != nullptr)
     {
         const int32 bodyCount = BodyRegistry->GetRegistry().Num();
@@ -216,12 +243,22 @@ void ASOLFlightHud::DrawHUD()
 {
     Super::DrawHUD();
     mLastOrbitSegmentsDrawn = 0;
+    mLastWarpStreaksDrawn = 0;
+    mWasFlightHudDrawn = false;
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
         return;
     }
     mUiScale = FMath::Clamp(Canvas->ClipY / HUD_REFERENCE_HEIGHT_PX, 1.0f, HUD_MAX_UI_SCALE);
+
+    // Jump warp: the flight HUD is hidden for the whole sequence; only the radial streaks are drawn
+    if (Jump != nullptr && Jump->IsWarping())
+    {
+        mLastWarpStreaksDrawn = DrawWarpStreaks(Jump->ComputeStreakIntensity(), Jump->GetElapsedS());
+        return;
+    }
+    mWasFlightHudDrawn = true;
 
     FSOLHudView view;
     const bool bHasView = BuildView(view);
@@ -281,6 +318,39 @@ void ASOLFlightHud::DrawHUD()
         DrawVelocityMarkers(view, state);
         DrawTarget(view, state);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the jump warp's radial streaks for a streak intensity and sequence time; returns the number drawn
+int32 ASOLFlightHud::DrawWarpStreaks(const double intensity, const double elapsedS)
+{
+    if (intensity <= 0.0)
+    {
+        return 0;
+    }
+
+    // Each streak streams outward from near the center and wraps around; canvas lines ignore alpha, so brightness
+    // (intensity, and the streak's progress outward) scales the RGB instead
+    const FVector2D center(Canvas->ClipX * 0.5, Canvas->ClipY * 0.5);
+    const double halfDiagonalPx = center.Size();
+    int32 drawn = 0;
+    for (const FSOLWarpStreak& streak : mWarpStreaks)
+    {
+        const double phase = FMath::Frac(streak.PhaseOffset + elapsedS * streak.CyclesPerSecond);
+        const double innerPx = halfDiagonalPx * (WARP_STREAK_START_FRACTION
+            + WARP_STREAK_TRAVEL_FRACTION * phase * phase);
+        const double lengthPx = halfDiagonalPx * intensity * FMath::Lerp(WARP_STREAK_MIN_LENGTH_FRACTION,
+            WARP_STREAK_MAX_LENGTH_FRACTION, phase);
+        const FVector2D start = center + streak.Direction * innerPx;
+        const FVector2D end = center + streak.Direction * (innerPx + lengthPx);
+        const float brightness = static_cast<float>(intensity * (0.25 + 0.75 * phase));
+        FLinearColor color = WARP_STREAK_COLOR * brightness;
+        color.A = 1.0f;
+        DrawLine(start.X, start.Y, end.X, end.Y, color, (1.0f + WARP_STREAK_EXTRA_THICKNESS_PX
+            * static_cast<float>(phase)) * mUiScale);
+        ++drawn;
+    }
+    return drawn;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -459,10 +529,10 @@ void ASOLFlightHud::DrawInfoBlock()
         DrawBuffer(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
         y += HUD_LINE_SMALL_PX * mUiScale;
 
-        // Destination picking (2d): Enter only reports the destination until the jump itself exists (2e)
+        // Destination picking (2d) and the jump (2e)
         mText.Reset();
         mText.Append(TEXT("PICK   left click body/space + drag: XY   hold Shift + move: height   Shift+click: lock"));
-        mText.Append(TEXT("   X clear   Enter jump (not built yet)"));
+        mText.Append(TEXT("   X clear   Enter jump"));
         DrawBuffer(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }

@@ -23,6 +23,9 @@ struct FMassCommandBuffer;
 struct FMassEntityManager;
 struct FSOLShipFrameInputs;
 
+// Fired at the end of every ship step (after the observer sync, before the anchor update) with the step's real delta
+DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnShipsStepped, float /*realDeltaSeconds*/);
+
 /**
  * Owns the player ship's Mass entity and steps it every frame. The step runs from USOLAnchorSubsystem's
  * OnBodiesUpdated (after the clock and bodies, before the anchor) on REAL time, and the ship's position then becomes
@@ -89,6 +92,10 @@ public:
     // Returns the index of the body whose surface is nearest the ship, and the ship's altitude above it (meters)
     int32 FindNearestBody(double& outAltitudeM) const;
 
+    // Fired at the end of every ship step, once the ship and the observer hold this frame's state and before the anchor
+    // update; a listener may teleport the ship here (SetState) and the anchor update that follows sees the result
+    FSOLOnShipsStepped& OnShipsStepped() { return mOnShipsStepped; }
+
     // Returns true while a verification script (-SOLSmokeFlight) drives the control, so the pawn must not write it
     bool IsControlScripted() const { return mSmokeFlight.IsValid(); }
 
@@ -131,6 +138,7 @@ private:
     TUniquePtr<FSOLShipSmokeFlight> mSmokeFlight;          // Verification-only scripted flight (-SOLSmokeFlight)
     FMassEntityHandle mPlayerShip;                         // The player's ship entity
     FDelegateHandle mBodiesUpdatedHandle;                  // Binding to the anchor subsystem's OnBodiesUpdated
+    FSOLOnShipsStepped mOnShipsStepped;                    // Listeners after each ship step
     TArray<FVector3d> mPrevBodyPositionsM;                 // Last frame's body positions (Unreal-handed), sized once
     TArray<FVector3d> mPrevBodyVelocitiesMps;              // Last frame's body velocities (Unreal-handed), sized once
     FVector3d mPrevReferencePositionM = FVector3d::ZeroVector;  // Last frame's reference-frame position

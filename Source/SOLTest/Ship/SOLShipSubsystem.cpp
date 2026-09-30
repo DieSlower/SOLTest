@@ -317,6 +317,7 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
 
     // The ship is the observer: hand its position (ecliptic) to the anchor update that follows
     Anchor->SyncObserverPositionM(GetUniversePositionM());
+    mOnShipsStepped.Broadcast(realDeltaSeconds);
 
     if (mSmokeFlight.IsValid()
         && mSmokeFlight->Update(*this, *Anchor, BodyRegistry->GetRegistry(), realDeltaSeconds))

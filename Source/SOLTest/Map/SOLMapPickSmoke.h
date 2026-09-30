@@ -21,15 +21,15 @@ class USOLMapModeSubsystem;
  * map with J, picks the most isolated body icon on screen, clicks it (reference = that body), drags the planar offset
  * (screenshot of the disc mid-drag), releases (the locked XY point must project back onto the cursor), holds Shift and
  * moves the cursor up then partly back (height preview, reversible; screenshot of the guide line), Shift+clicks (height
- * locked, destination = reference + offsets, tracked live; screenshot of the marker), presses Enter (jump request
- * logged with that position, map stays open), presses X (pick cleared), then clicks empty space (reference = ship),
- * drags, releases and presses Enter again. It then repeats one drag on the OS-cursor path (the scripted cursor off):
- * the real OS cursor is placed with SetMouseLocation, the left button pressed, mouse deltas injected while the OS
- * cursor stays put (as the viewport's capture pins it), and on release the OS cursor is put back at the drag start (as
- * the viewport does when the capture ends) with Shift held; the OS cursor must end on the map cursor, the height
- * preview must be anchored there, and a following OS move must move the map cursor by exactly that move (no jump).
- * Finally it closes the map with J (pick cleared) and reopens it (still cleared). Each check logs a LogSOL PASS/FAIL
- * line; the run then quits.
+ * locked, destination = reference + offsets, tracked live; screenshot of the marker), presses X (pick cleared), then
+ * clicks empty space (reference = ship), drags and releases. Enter is not pressed here: since 2e it closes the map and
+ * jumps, which -SOLSmokeJump (FSOLJumpSmoke) covers. It then repeats one drag on the OS-cursor path (the scripted
+ * cursor off): the real OS cursor is placed with SetMouseLocation, the left button pressed, mouse deltas injected
+ * while the OS cursor stays put (as the viewport's capture pins it), and on release the OS cursor is put back at the
+ * drag start (as the viewport does when the capture ends) with Shift held; the OS cursor must end on the map cursor,
+ * the height preview must be anchored there, and a following OS move must move the map cursor by exactly that move (no
+ * jump). Finally it closes the map with J (pick cleared) and reopens it (still cleared). Each check logs a LogSOL
+ * PASS/FAIL line; the run then quits.
  */
 class SOLTEST_API FSOLMapPickSmoke
 {
@@ -58,12 +58,10 @@ private:
         ShiftBack,
         ShiftClick,
         ShotMarker,
-        EnterBody,
         ClearX,
         ClickEmpty,
         DragEmpty,
         ReleaseEmpty,
-        EnterShip,
         OsCursorPlace,
         OsCursorPress,
         OsCursorDrag,

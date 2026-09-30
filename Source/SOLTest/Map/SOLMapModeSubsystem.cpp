@@ -173,6 +173,19 @@ void USOLMapModeSubsystem::AddZoomNotches(const int32 notches)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Verification: replaces the orbit-camera state (pitch and distance clamped to the limits) while the map is open
+void USOLMapModeSubsystem::SetCameraState(const FSOLOrbitCameraState& state)
+{
+    if (!mIsOpen)
+    {
+        return;
+    }
+    mState = state;
+    mState.PitchRad = FMath::Clamp(state.PitchRad, mParams.MinPitchRad, mParams.MaxPitchRad);
+    mState.DistanceM = FMath::Clamp(state.DistanceM, mParams.MinDistanceM, mParams.MaxDistanceM);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the map camera's vertical field of view (radians) for a viewport aspect ratio (width / height)
 double USOLMapModeSubsystem::GetVerticalFovRad(const double aspectRatio) const
 {
@@ -369,7 +382,7 @@ void USOLMapModeSubsystem::ClearPick()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enter: logs the live destination a jump would go to (the jump itself is 2e); false when none is locked yet
+// Enter: validates and records the live destination of a jump; false when none is locked yet
 bool USOLMapModeSubsystem::RequestJump()
 {
     FVector3d destinationM;
@@ -379,13 +392,14 @@ bool USOLMapModeSubsystem::RequestJump()
         return false;
     }
 
-    // Placeholder until 2e: the jump would execute to this universe position; the map stays open
+    // The jump itself (USOLJumpSubsystem) re-reads the reference's position when the warp ends; this is the position
+    // at the moment Enter was pressed
     ++mJumpRequestCount;
     mLastJumpRequestM = destinationM;
-    UE_LOG(LogSOL, Log, TEXT("MapPick: JUMP would execute to universe position (%.9g, %.9g, %.9g) m (reference %s, "
-        "offset (%.6g, %.6g, %.6g) m); jump execution is not built yet (2e), map stays open"), destinationM.X,
-        destinationM.Y, destinationM.Z, mPick.bReferenceIsBody ? TEXT("body") : TEXT("ship"), mPick.PlanarOffsetXM,
-        mPick.PlanarOffsetYM, mPick.bHeightLocked ? mPick.HeightOffsetZM : 0.0);
+    UE_LOG(LogSOL, Log, TEXT("MapPick: jump requested to universe position (%.9g, %.9g, %.9g) m (reference %s, "
+        "offset (%.6g, %.6g, %.6g) m)"), destinationM.X, destinationM.Y, destinationM.Z, mPick.bReferenceIsBody
+        ? TEXT("body") : TEXT("ship"), mPick.PlanarOffsetXM, mPick.PlanarOffsetYM,
+        mPick.bHeightLocked ? mPick.HeightOffsetZM : 0.0);
     return true;
 }
 

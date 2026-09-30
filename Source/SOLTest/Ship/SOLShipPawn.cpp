@@ -6,6 +6,7 @@
 #include "Ship/SOLShipPawn.h"
 
 #include "Game/SOLInputHelpers.h"
+#include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -139,6 +140,17 @@ ASOLShipPawn::ASOLShipPawn()
     Camera->bUsePawnControlRotation = false;
     Camera->SetFieldOfView(static_cast<float>(SOL::SHIP_CAMERA_BASE_FOV_DEG));
 
+    // Jump warp post-process (engine features, no material asset): the overrides are set once and blended in by the
+    // warp's streak intensity through the blend weight, which stays 0 outside a jump
+    FPostProcessSettings& warpPostProcess = Camera->PostProcessSettings;
+    warpPostProcess.bOverride_SceneFringeIntensity = true;
+    warpPostProcess.SceneFringeIntensity = SOL::WARP_FRINGE_INTENSITY;
+    warpPostProcess.bOverride_VignetteIntensity = true;
+    warpPostProcess.VignetteIntensity = SOL::WARP_VIGNETTE_INTENSITY;
+    warpPostProcess.bOverride_SceneColorTint = true;
+    warpPostProcess.SceneColorTint = SOL::WARP_SCENE_TINT;
+    Camera->PostProcessBlendWeight = 0.0f;
+
     // Shadowless fill "headlight" along the view so the ship's side facing away from the Sun is not black
     FillLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("FillLight"));
     FillLight->SetupAttachment(Camera);
@@ -164,6 +176,7 @@ void ASOLShipPawn::BeginPlay()
     AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
     SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
+    Jump = world->GetSubsystem<USOLJumpSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -206,6 +219,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeMapPick = MakeUnique<FSOLMapPickSmoke>();
         mSmokeMapPick->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
+    {
+        mSmokeJump = MakeUnique<FSOLJumpSmoke>();
+        mSmokeJump->Start(*this);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -226,6 +244,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeHud.Reset();
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
+    mSmokeJump.Reset();
     Super::EndPlay(endPlayReason);
 }
 
@@ -256,6 +275,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeMapPick.Reset();
     }
+    if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
+    {
+        mSmokeJump.Reset();
+    }
 
     // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
     // Input callback
@@ -271,10 +294,21 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         {
             CloseMap();
         }
+        else if (IsJumpWarping())
+        {
+            UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map not opened during the jump warp"), *GetName());
+        }
         else
         {
             OpenMap();
         }
+    }
+
+    // Enter was pressed on the map; the jump starts (and the map closes) here, outside the Enhanced Input callback
+    if (mIsJumpRequested)
+    {
+        mIsJumpRequested = false;
+        StartMapJump();
     }
     UpdateViewportFocus();
     UpdateMapCursor();
@@ -299,6 +333,33 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         Ships->SetControl(mControl);
     }
 
+    UpdateCameraFov(deltaSeconds);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the chase camera's FOV: the warp pulse and post-process during a jump, else the speed-based widening
+void ASOLShipPawn::UpdateCameraFov(const float deltaSeconds)
+{
+    // Jump warp: the FOV pulses from the value it had when the warp began and the post-process fades in and out on
+    // the streak curve; both follow the sequence's clock rather than easing
+    if (IsJumpWarping())
+    {
+        if (!mIsWarpEffectActive)
+        {
+            mWarpBaseFovDeg = Camera->FieldOfView;
+            mIsWarpEffectActive = true;
+        }
+        mWarpEffectElapsedS = Jump->GetElapsedS();
+        Camera->SetFieldOfView(static_cast<float>(Jump->ComputeFovDeg(mWarpBaseFovDeg)));
+        Camera->PostProcessBlendWeight = static_cast<float>(Jump->ComputeStreakIntensity());
+        return;
+    }
+    if (mIsWarpEffectActive)
+    {
+        EndWarpEffect();
+        return;
+    }
+
     // FOV widens on a log scale of the speed relative to the active reference frame
     const double relativeSpeedMps = (Ships->GetState().VelocityMps - Ships->GetReferenceVelocityMps()).Size();
     const double speedFraction = FMath::Clamp(
@@ -309,6 +370,55 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         speedFraction));
     Camera->SetFieldOfView(FMath::FInterpTo(Camera->FieldOfView, targetFov, deltaSeconds,
         SOL::SHIP_CAMERA_FOV_INTERP_SPEED));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends the warp effect: back to the FOV it started from, post-process off; the speed-based easing resumes from here
+void ASOLShipPawn::EndWarpEffect()
+{
+    mIsWarpEffectActive = false;
+    Camera->SetFieldOfView(static_cast<float>(mWarpBaseFovDeg));
+    Camera->PostProcessBlendWeight = 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the jump warp sequence runs
+bool ASOLShipPawn::IsJumpWarping() const
+{
+    return Jump != nullptr && Jump->IsWarping();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the chase camera's current horizontal field of view (degrees)
+float ASOLShipPawn::GetCameraFovDeg() const
+{
+    return Camera->FieldOfView;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the blend weight of the camera's warp post-process (0 outside a jump warp)
+float ASOLShipPawn::GetWarpPostProcessWeight() const
+{
+    return Camera->PostProcessBlendWeight;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Hands the map's locked destination to the jump sequence and closes the map as J / Esc would
+void ASOLShipPawn::StartMapJump()
+{
+    // RequestJump validates (at least the planar lock) and logs; without one the map stays open and unchanged
+    if (!mIsMapOpen || MapMode == nullptr || Jump == nullptr || !MapMode->RequestJump())
+    {
+        return;
+    }
+    if (!Jump->StartJump(MapMode->GetPickState()))
+    {
+        UE_LOG(LogSOL, Warning, TEXT("ShipPawn %s: jump not started; the map stays open"), *GetName());
+        return;
+    }
+
+    // The jump copied the pick, so the normal close (which clears the pick) is safe
+    CloseMap();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -440,7 +550,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mIsSpeedPanelOpen || mIsMapOpen)
+        || mSmokeJump.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
     {
         return;
     }
@@ -639,6 +749,12 @@ void ASOLShipPawn::AddShipPart(UStaticMesh* mesh, UMaterialInterface* material, 
 // Places the actor at the observer's render location with the ship's orientation after the universe update
 void ASOLShipPawn::FollowShip()
 {
+    // A jump that completed (or aborted) in this frame's universe update: the resting FOV and post-process now, before
+    // the camera update reads them, rather than one frame late from the next pre-physics tick
+    if (mIsWarpEffectActive && !IsJumpWarping())
+    {
+        EndWarpEffect();
+    }
     if (Ships == nullptr || !Ships->HasPlayerShip())
     {
         return;
@@ -762,7 +878,7 @@ void ASOLShipPawn::HandleSpeedCapSteps(const int32 steps)
 // Toggles the reference-frame lock (M)
 void ASOLShipPawn::HandleMatchLock()
 {
-    if (Targeting != nullptr)
+    if (Targeting != nullptr && !IsJumpWarping())
     {
         Targeting->ToggleFrameLock();
     }
@@ -774,7 +890,7 @@ void ASOLShipPawn::HandleSelectTarget()
 {
     FVector3d positionM;
     FVector3d forwardDir;
-    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    if (Targeting != nullptr && !IsJumpWarping() && GetShipPose(positionM, forwardDir))
     {
         Targeting->SelectUnderReticle(positionM, forwardDir);
     }
@@ -786,7 +902,7 @@ void ASOLShipPawn::HandleNextTarget()
 {
     FVector3d positionM;
     FVector3d forwardDir;
-    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    if (Targeting != nullptr && !IsJumpWarping() && GetShipPose(positionM, forwardDir))
     {
         Targeting->CycleTarget(positionM, 1);
     }
@@ -798,7 +914,7 @@ void ASOLShipPawn::HandlePreviousTarget()
 {
     FVector3d positionM;
     FVector3d forwardDir;
-    if (Targeting != nullptr && GetShipPose(positionM, forwardDir))
+    if (Targeting != nullptr && !IsJumpWarping() && GetShipPose(positionM, forwardDir))
     {
         Targeting->CycleTarget(positionM, -1);
     }
@@ -808,7 +924,7 @@ void ASOLShipPawn::HandlePreviousTarget()
 // Clears the selected target (X)
 void ASOLShipPawn::HandleClearTarget()
 {
-    if (Targeting != nullptr)
+    if (Targeting != nullptr && !IsJumpWarping())
     {
         Targeting->ClearTarget();
     }
@@ -896,7 +1012,7 @@ void ASOLShipPawn::HandleToggleSpeedPanel()
 void ASOLShipPawn::OpenSpeedPanel()
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (mIsSpeedPanelOpen || mIsMapOpen || playerController == nullptr || Ships == nullptr)
+    if (mIsSpeedPanelOpen || mIsMapOpen || IsJumpWarping() || playerController == nullptr || Ships == nullptr)
     {
         return;
     }
@@ -1043,6 +1159,7 @@ void ASOLShipPawn::DismissMap()
     }
     mIsMapOpen = false;
     mIsMapToggleRequested = false;
+    mIsJumpRequested = false;
     mIsMapRightHeld = false;
     mIsMapPanHeld = false;
     mIsMapPanModifierHeld = false;
@@ -1164,13 +1281,10 @@ void ASOLShipPawn::HandleMapClearPick()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Asks the map to jump to its locked destination (Enter; for now the map only logs it)
+// Requests a jump to the map's locked destination (Enter; started at the next tick, outside the input callback)
 void ASOLShipPawn::HandleMapJump()
 {
-    if (mIsMapOpen && MapMode != nullptr)
-    {
-        MapMode->RequestJump();
-    }
+    mIsJumpRequested = mIsMapOpen;
 }
 
 //////////////////////////////////////////////////////////////////////////

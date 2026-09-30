@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
@@ -24,6 +25,7 @@ class UInputMappingContext;
 class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
+class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
@@ -61,6 +63,11 @@ struct FInputActionValue;
  * cursor during a drag) and forwards it, the left button, Shift, X (clear) and Enter (jump) to USOLMapModeSubsystem,
  * which owns the pick state. When the last held map button is released, the viewport ends its capture and puts the OS
  * cursor back where the capture began; the pawn then warps the OS cursor onto the map cursor so the two never disagree.
+ *
+ * Jump (2e): Enter with a locked destination hands the pick to USOLJumpSubsystem (which owns the warp sequence and the
+ * arrival teleport) and closes the map through the same path as J / Esc. While the warp runs the pawn drives the chase
+ * camera's FOV from the sequence (the same Camera field the speed-based widening uses, which resumes from the restored
+ * value afterwards) and blends in the camera's warp post-process by the streak intensity; J cannot open the map then.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -183,7 +190,7 @@ public:
     // Clears the map's destination pick (X)
     void HandleMapClearPick();
 
-    // Asks the map to jump to its locked destination (Enter; for now the map only logs it)
+    // Requests a jump to the map's locked destination (Enter; started at the next tick, outside the input callback)
     void HandleMapJump();
 
     // Moves the map cursor to a pixel position (top-left origin) and forwards it to the map
@@ -222,6 +229,21 @@ public:
     // Returns true while Alt free-look is held
     bool IsFreeLooking() const { return mIsFreeLooking; }
 
+    // Returns the chase camera's current horizontal field of view (degrees)
+    float GetCameraFovDeg() const;
+
+    // Returns the blend weight of the camera's warp post-process (0 outside a jump warp)
+    float GetWarpPostProcessWeight() const;
+
+    // Returns true while the pawn shows the warp effect (FOV pulse and post-process)
+    bool IsWarpEffectActive() const { return mIsWarpEffectActive; }
+
+    // Returns the FOV the warp pulse started from and returns to (degrees)
+    double GetWarpBaseFovDeg() const { return mWarpBaseFovDeg; }
+
+    // Returns the sequence time the warp FOV and post-process were last computed for (verification)
+    double GetWarpEffectElapsedS() const { return mWarpEffectElapsedS; }
+
 protected:
 
     // Caches the subsystems, becomes the observer actor, builds the ship mesh and starts the input smoke script
@@ -246,6 +268,18 @@ private:
 
     // Recenters the virtual stick and zeroes thrust, roll and boost, so nothing stays held while the game is unfocused
     void HandleFocusLost();
+
+    // Sets the chase camera's FOV: the warp pulse and post-process during a jump, else the speed-based widening
+    void UpdateCameraFov(float deltaSeconds);
+
+    // Ends the warp effect: back to the FOV it started from, post-process off; the speed-based easing resumes from here
+    void EndWarpEffect();
+
+    // Returns true while the jump warp sequence runs
+    bool IsJumpWarping() const;
+
+    // Hands the map's locked destination to the jump sequence and closes the map as J / Esc would
+    void StartMapJump();
 
     // Eases the camera arm toward the ship orientation (plus free-look) by an exponential slerp, after the ship moved
     void UpdateCameraRotation(float deltaSeconds);
@@ -545,6 +579,9 @@ private:
     TObjectPtr<USOLShipSubsystem> Ships;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLJumpSubsystem> Jump;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLTargetingSubsystem> Targeting;
 
     UPROPERTY(Transient)
@@ -559,6 +596,7 @@ private:
     TUniquePtr<FSOLHudSmoke> mSmokeHud;                     // Verification-only HUD/panel script (-SOLSmokeHud)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
+    TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     FSOLShipControl mControl;                               // Control composed from the input state
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
@@ -569,6 +607,8 @@ private:
     double mRollInput = 0.0;                                // Q/E roll input
     double mStickRadiusPx = 1.0;                            // Virtual joystick radius for the current viewport
     double mMouseUnitsToPixels = 1.0;                       // Undoes the Mouse2D axis sensitivity of the input config
+    double mWarpBaseFovDeg = 0.0;                           // Camera FOV when the warp effect started
+    double mWarpEffectElapsedS = 0.0;                       // Sequence time the warp effect was last computed for
     bool mIsFreeLooking = false;                            // True while Alt is held
     bool mHasCameraRotation = false;                        // False until the camera rotation is first set
     bool mHadViewportFocus = false;                         // Viewport focus last frame (focus loss is an edge)
@@ -577,6 +617,8 @@ private:
     bool mIsSpeedPanelRequested = false;                    // F3 pressed; the panel opens at the next tick
     bool mIsMapOpen = false;                                // True while the jump map is open
     bool mIsMapToggleRequested = false;                     // J/Esc pressed; the map opens or closes at the next tick
+    bool mIsJumpRequested = false;                          // Enter pressed on the map; the jump starts next tick
+    bool mIsWarpEffectActive = false;                       // The warp FOV pulse and post-process are applied
     bool mIsMapRightHeld = false;                           // Right mouse held on the map (orbit, or pan with Shift)
     bool mIsMapPanHeld = false;                             // Middle mouse held on the map (pan drag)
     bool mIsMapPanModifierHeld = false;                     // Shift held on the map (right drag pans instead)
