@@ -49,7 +49,9 @@ in sync if the design shifts.
   release-stops-alignment, a pinned time-constant check, the M-lock-replaced case, and a
   scripted jump-arrival clear), `-SOLSmokeInput` 29/29, `-SOLSmokeHud` 17/17,
   `-SOLSmokeMap` 16/16, `-SOLSmokeMapPick` 21/21, `-SOLSmokeJump` 14/14, 308/308
-  automation tests, all independently re-verified in the main session. Commit pending.)
+  automation tests, all independently re-verified in the main session. Commit `cbf6e7a`.)
+
+**Part 3 (issue #4) is complete: 3a and 3b are both built, tested, adversarially reviewed and committed.**
 
 ## Cross-cutting
 
