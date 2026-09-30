@@ -39,3 +39,5 @@ archive.
   landing, building on Part 3's surface-lock.
 - [`accurate-pole-directions.md`](accurate-pole-directions.md) — real per-body axial
   pole directions and precession, deferred from Part 3.5's simplified fixed-plane tilt.
+- [`star-diffraction-spikes.md`](star-diffraction-spikes.md) — the camera-lens
+  cross/starburst flare on bright stars, deferred from Part 4's star field.
