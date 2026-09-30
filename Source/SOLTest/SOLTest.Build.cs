@@ -28,6 +28,7 @@ public class SOLTest : ModuleRules
             "EngineSettings",
             "EnhancedInput",
             "InputCore",
+            "RenderCore",
             "Slate",
             "SlateCore",
             "UMG",

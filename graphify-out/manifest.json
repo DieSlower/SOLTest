@@ -20,8 +20,8 @@
     "semantic_hash": "2e01d00a4cda8a448001da46507388d9"
   },
   "Source/SOLTest/SOLTest.Build.cs": {
-    "mtime": 1790633477.3236628,
-    "ast_hash": "d11876afbb3b7ae0412bdcf9a3c81702",
+    "mtime": 1790744109.6381009,
+    "ast_hash": "bd6a5404d4c2ecdf69233b09a0bb88d1",
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLTest.cpp": {
@@ -45,13 +45,13 @@
     "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
   },
   "CLAUDE.md": {
-    "mtime": 1790727840.8557022,
-    "ast_hash": "e80e72239754e4e6f94a9e3e980a1256",
+    "mtime": 1790743514.2889462,
+    "ast_hash": "b428ab0c4710a62d5b5f441b60c311e5",
     "semantic_hash": ""
   },
   "Docs/GAME_MECHANICS.md": {
-    "mtime": 1790741321.3270462,
-    "ast_hash": "5073221990ca1558f098fbd9f983038d",
+    "mtime": 1790744659.295125,
+    "ast_hash": "e8351d570786484a62c7963b86c954fe",
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1790742314.8676932,
-    "ast_hash": "284d0a41adf9d630478c1f2e0cd43f5a",
+    "mtime": 1790743973.796603,
+    "ast_hash": "322ce353da01d46e24c609ad45b89f40",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -235,13 +235,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Visuals/SOLBodyVisuals.cpp": {
-    "mtime": 1790583506.5412688,
-    "ast_hash": "eab5666f7459e39fcb12ca82185f3c71",
+    "mtime": 1790743992.3490622,
+    "ast_hash": "f3791ec39466847d2c52bdcc5af3c6f4",
     "semantic_hash": ""
   },
   "Source/SOLTest/Visuals/SOLBodyVisuals.h": {
-    "mtime": 1790613409.1393251,
-    "ast_hash": "c4848fbce30916213923adbb4ff7f3b6",
+    "mtime": 1790743991.5147102,
+    "ast_hash": "c2da3981e59d127561b5d623a391d08a",
     "semantic_hash": ""
   },
   "Tools/CreateSOLContent.py": {
@@ -425,13 +425,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.cpp": {
-    "mtime": 1790742214.873213,
-    "ast_hash": "65e5839a64dd1af4baade161eb49ecbb",
+    "mtime": 1790744104.843733,
+    "ast_hash": "45b3f283a9117126f152588eff05890e",
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.h": {
-    "mtime": 1790742315.688774,
-    "ast_hash": "26ff3b444cfbfc582f8f0c2fd88d285d",
+    "mtime": 1790745227.5891438,
+    "ast_hash": "c04278e6eb261278586376261923a214",
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLHudFormat.cpp": {
@@ -505,13 +505,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Map/SOLMapModeSubsystem.cpp": {
-    "mtime": 1790741182.9715536,
-    "ast_hash": "9d5cbfc8fc769bc96e08ff280dd4e93f",
+    "mtime": 1790744002.555066,
+    "ast_hash": "58a768ed6f70d4085e6a6a19aaff5d5f",
     "semantic_hash": ""
   },
   "Source/SOLTest/Map/SOLMapModeSubsystem.h": {
-    "mtime": 1790741175.442571,
-    "ast_hash": "57f5827b7134056b2ab79c7ae6590331",
+    "mtime": 1790744001.664021,
+    "ast_hash": "108c06f548014c9a70389bdea9477c33",
     "semantic_hash": ""
   },
   "Source/SOLTest/Map/SOLMapPicking.cpp": {
@@ -525,13 +525,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Map/SOLMapSmoke.cpp": {
-    "mtime": 1790741223.4226465,
-    "ast_hash": "2614fa5f7de750d023c3f6e298f8dc81",
+    "mtime": 1790745526.3380892,
+    "ast_hash": "bf0dfb19f70f7355ebaa288f2dd2efe6",
     "semantic_hash": ""
   },
   "Source/SOLTest/Map/SOLMapSmoke.h": {
-    "mtime": 1790741185.3295314,
-    "ast_hash": "bd8b9131508d733296f667e17bd4cb64",
+    "mtime": 1790745357.9008186,
+    "ast_hash": "bad204650c92e46680c93ad32586c9d9",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/MapCameraTest.cpp": {
@@ -545,18 +545,18 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790731579.690088,
-    "ast_hash": "3debca521f9626c422f9e3272628afd0",
+    "mtime": 1790744708.3946383,
+    "ast_hash": "ba86d989d4e67caf1294362358329c6c",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
-    "mtime": 1790741535.4459963,
-    "ast_hash": "561c6577338b26f3a85b836abc17a119",
+    "mtime": 1790745024.9974165,
+    "ast_hash": "d67a0d43a1c731cccaaf8ae2df318d08",
     "semantic_hash": ""
   },
   "Docs/SDDs/3-jump-map.md": {
-    "mtime": 1790742316.4732697,
-    "ast_hash": "3e8650079036ee90628cf6463971acaf",
+    "mtime": 1790745781.3654392,
+    "ast_hash": "501b3f3a550f0409c9e801de05021a1f",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/ViewpointResolveTest.cpp": {
@@ -572,6 +572,51 @@
   "Source/SOLTest/Universe/SOLViewpointResolve.h": {
     "mtime": 1790742034.354232,
     "ast_hash": "7d372ae733288f4952630aeb28908a0c",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapBodyLod.cpp": {
+    "mtime": 1790743305.5466475,
+    "ast_hash": "86a0464eaf04e8e536aeafeb3448ee87",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapBodyLod.h": {
+    "mtime": 1790742938.3861454,
+    "ast_hash": "6dd97a576190a1824b54ca316bdede02",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapBodyOverlay.cpp": {
+    "mtime": 1790745209.6522677,
+    "ast_hash": "e117aec2938cb2949083d125facecb22",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapBodyOverlay.h": {
+    "mtime": 1790745157.4812212,
+    "ast_hash": "1f1540226e543882c5dc3c49ee4c8490",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapPickRadius.cpp": {
+    "mtime": 1790743983.9961078,
+    "ast_hash": "dd951f150859d0d9bee56736d4abaf15",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapPickRadius.h": {
+    "mtime": 1790743974.687504,
+    "ast_hash": "39f4c7a740d4348d82bdffa3ffa90459",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/MapBodyLodTest.cpp": {
+    "mtime": 1790743591.3161352,
+    "ast_hash": "602f961cd9fd3976540d569b15292d1d",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/BodyAppearanceTest.cpp": {
+    "mtime": 1790745320.298349,
+    "ast_hash": "9703c5c0513a9f14d51944e5cc05d4ad",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/MapPickRadiusTest.cpp": {
+    "mtime": 1790745288.2935362,
+    "ast_hash": "c3255e078f9ab2bfccb05d7723248dda",
     "semantic_hash": ""
   }
 }

@@ -160,6 +160,7 @@ void ASOLFlightHud::BeginPlay()
             points.Reserve(SOLOrbitLines::EllipseSegments + 1);
         }
         mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
+        mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
 }
 
@@ -228,6 +229,17 @@ void ASOLFlightHud::DrawHUD()
     if (bHasView && mShowOrbitLines)
     {
         DrawOrbitLines(view);
+    }
+    if (bHasView && IsMapOpen())
+    {
+        // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
+        FSOLMapOverlayView overlayView;
+        overlayView.LocationCm = view.Location;
+        overlayView.Rotation = view.Rotation;
+        overlayView.Center = view.Center;
+        overlayView.FocalPx = view.FocalPx;
+        mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
+            GEngine->GetSmallFont(), HUD_TEXT_COLOR, mUiScale);
     }
     DrawInfoBlock();
 

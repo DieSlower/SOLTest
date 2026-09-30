@@ -96,6 +96,19 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Writes a body's base color (the material's linear ColorA) and returns true, or returns false if it has none
+bool SOLBodyAppearance::FindBaseColor(const FName bodyName, FLinearColor& outColor)
+{
+    const FSOLBodyAppearance* appearance = FindAppearance(bodyName);
+    if (appearance == nullptr)
+    {
+        return false;
+    }
+    outColor = appearance->ColorA;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Creates the root, the sun light and the post-process component
 ASOLBodyVisuals::ASOLBodyVisuals()
 {

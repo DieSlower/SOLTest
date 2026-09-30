@@ -122,6 +122,14 @@ namespace SOL
     // 360 px)
     inline constexpr double MAP_PAN_DISTANCE_FRACTION_PER_PIXEL = 0.0015;
 
+    // Jump map body icons (SDD 3 Appendix G): diameter of a body's icon disc at a 720 px canvas (scaled with the HUD's
+    // UI scale); while a body cross-fades the disc grows to cover its mesh, so it never shrinks below the mesh size
+    inline constexpr double MAP_ICON_DIAMETER_PX = 10.0;
+
+    // Jump map picking: minimum on-screen pick radius of a body (pixels at a 720 px canvas), so a body stays
+    // comfortably clickable when it is icon-sized (SOLMapPickRadius::ComputeMapPickRadiusM)
+    inline constexpr double MAP_MIN_PICK_RADIUS_PX = 12.0;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {

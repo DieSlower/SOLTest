@@ -168,12 +168,15 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `FSOLHudSmoke` (engine test script, `SOLHudSmoke.h`): the `-SOLSmokeHud` run.
 
 **Visuals** (`Source/SOLTest/Visuals/`)
-- `ASOLBodyVisuals` (engine, `SOLBodyVisuals.h`): one sphere mesh and material instance per body, re-placed on `OnUniverseUpdated`, with `SunDirection` set per body.
+- `ASOLBodyVisuals` (engine, `SOLBodyVisuals.h`): one sphere mesh and material instance per body, re-placed on `OnUniverseUpdated`, with `SunDirection` set per body. `SOLBodyAppearance::FindBaseColor` exposes each body's base color so the map icons match the meshes.
 
 **Map** (`Source/SOLTest/Map/`, Part 2)
 - `FSOLMapPickState` / `SOLMapPicking` (pure, `SOLMapPicking.h`): ray-plane intersection, planar decomposition, destination composition, body picking under a ray.
 - `FSOLOrbitCameraState` / `SOLMapCamera` (pure, `SOLMapCamera.h`): orbit-camera position, look-at orientation, orbit, ground-plane pan and log zoom.
 - `USOLMapModeSubsystem` (engine, `SOLMapModeSubsystem.h`): the open map's orbit state, its `ACameraActor` view target, and the anchor's render-viewpoint override (set on `OnBodiesUpdated` before the rebase; the camera is placed on `OnUniverseUpdated`). The ship pawn owns J/Esc, the `IMC_Map` mapping and the cursor, and forwards drags and wheel notches. Destination picking and jump execution are not built yet.
+- `FSOLBodyLodParams` / `SOLMapBodyLod` (pure, `SOLMapBodyLod.h`): apparent diameter in pixels and the mesh/icon cross-fade alpha.
+- `SOLMapPickRadius` (pure, `SOLMapPickRadius.h`): `ComputeMapPickRadiusM`, a body's pick radius that never drops below a minimum on-screen size.
+- `FSOLMapBodyOverlay` (engine, `SOLMapBodyOverlay.h`): owned and drawn by `ASOLFlightHud` while the map is open. It evaluates each body's LOD from the map camera and draws its icon disc (one translucent Canvas triangle batch, in the body's material base color from `SOLBodyAppearance::FindBaseColor` in `Visuals/`) and a decluttered name label, and keeps each body's pick radius for the frame.
 - `FSOLMapSmoke` (engine test script, `SOLMapSmoke.h`): the `-SOLSmokeMap` run.
 
 **Game** (`Source/SOLTest/Game/`)
@@ -228,7 +231,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeFlight` | `FSOLShipSmokeFlight` | Pawn-less scripted flight: hover, assisted cruise, Newtonian thrust and coast, pitch, braking, Earth impact, then 1 d/s warp co-motion, collision and surface rest under warp |
 | `-SOLSmokeInput` | `FSOLShipSmokeInput` | Simulated key, mouse and wheel events through the real mapping context and callbacks (thrust, stick, targeting, M lock, warp), with a screenshot |
 | `-SOLSmokeHud` | `FSOLHudSmoke` | HUD toggles and radar zoom via game keys, and the F3 panel via Slate key events to the focused widget |
-| `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots |
+| `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots; body icon/label state checked at 1e13 m, ~9e10 m, ~8e8 m (Earth cross-fade) and ~5e7 m (mesh only) |
 | `-SOLSpectator` | `ASOLGameMode` / `ASOLSpectatorPawn` | Debug free-fly camera riding the ship instead of the pawn |
 | `-SOLStart=<Body>`, `-SOLAltitudeKm=<km>`, `-SOLLookAt=<Body>` | Ship subsystem / spectator | Spawn body and altitude, and the debug camera's look target, for any of the runs above |
 

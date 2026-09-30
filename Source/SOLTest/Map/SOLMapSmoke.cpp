@@ -31,7 +31,9 @@ namespace
     constexpr int32 MAP_SMOKE_DRAG_FRAMES = 10;             // Frames of mouse motion per drag
     constexpr int32 MAP_SMOKE_WHEEL_FRAMES = 3;             // One wheel notch per frame
     constexpr int32 MAP_SMOKE_SETTLE_FRAMES = 5;            // Frames for the last injected event to be processed
-    constexpr int32 MAP_SMOKE_CLOSE_ZOOM_NOTCHES = 67;      // 1e13 m / 1.2^67 = ~5e7 m: Earth ~100 px across
+    constexpr int32 MAP_SMOKE_SYSTEM_ZOOM_NOTCHES = 26;     // 1e13 m / 1.2^26 = ~8.7e10 m: inner system, Sun fading
+    constexpr int32 MAP_SMOKE_MID_ZOOM_NOTCHES = 26;        // then / 1.2^26 = ~7.6e8 m: Earth ~18 px, mid cross-fade
+    constexpr int32 MAP_SMOKE_CLOSE_ZOOM_NOTCHES = 15;      // then / 1.2^15 = ~5e7 m (67 in all): Earth mesh only
 
     // Drag and wheel amounts (pixels per frame, X right / Y up; wheel notches, + = forward = zoom in)
     constexpr float MAP_SMOKE_ORBIT_X_PX = 20.0f;           // 200 px right: yaw -1.0 rad at 0.005 rad/px
@@ -157,6 +159,29 @@ void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Queues the orbit drag that puts the map camera on the far side of the focus from the Sun (Sun right behind Earth)
+void FSOLMapSmoke::QueueOrbitAwayFromSun() const
+{
+    const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
+    const int32 sunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
+    if (sunIndex == INDEX_NONE)
+    {
+        return;
+    }
+
+    // Camera offset from the focus = distance * (-cos(pitch) cos(yaw), -cos(pitch) sin(yaw), sin(pitch))
+    const FSOLOrbitCameraState& state = mMapMode->GetCameraState();
+    const FVector3d awayFromSun = (state.FocusPositionM - registry.GetPositionM(sunIndex)).GetSafeNormal();
+    const double targetPitch = FMath::Asin(FMath::Clamp(awayFromSun.Z, -1.0, 1.0));
+    const double targetYaw = FMath::Atan2(-awayFromSun.Y, -awayFromSun.X);
+
+    // Grab-the-scene orbit: yaw -= X * rate, pitch -= Y * rate
+    const double yawDelta = FMath::UnwindRadians(targetYaw - state.YawRad);
+    const double pitchDelta = targetPitch - state.PitchRad;
+    mMapMode->AddOrbitPixels(FVector2d(-yawDelta, -pitchDelta) / SOL::MAP_ORBIT_RAD_PER_PIXEL);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Runs a phase's per-frame actions (mouse deltas, wheel notches)
 void FSOLMapSmoke::TickPhase(const ESOLMapPhase phase)
 {
@@ -184,10 +209,19 @@ void FSOLMapSmoke::TickPhase(const ESOLMapPhase phase)
             InjectAxis(EKeys::MouseWheelAxis, MAP_SMOKE_WHEEL_NOTCH);
         }
         break;
+    case ESOLMapPhase::ZoomSystem:
+    case ESOLMapPhase::ZoomMid:
     case ESOLMapPhase::ZoomClose:
-        if (mPhaseFrames <= MAP_SMOKE_CLOSE_ZOOM_NOTCHES)
+        if (mPhaseFrames <= GetZoomNotches(phase))
         {
             InjectAxis(EKeys::MouseWheelAxis, MAP_SMOKE_WHEEL_NOTCH);
+        }
+        break;
+    case ESOLMapPhase::OrbitOcclude:
+        // Delayed so the previous phase's screenshot is captured before the camera moves
+        if (mPhaseFrames == MAP_SMOKE_SETTLE_FRAMES)
+        {
+            QueueOrbitAwayFromSun();
         }
         break;
     default:
@@ -224,14 +258,38 @@ void FSOLMapSmoke::ExitPhase(const ESOLMapPhase phase, ASOLShipPawn& pawn)
     }
     case ESOLMapPhase::ShotWide:
     case ESOLMapPhase::ShotOrbits:
+    case ESOLMapPhase::ShotSystem:
+    case ESOLMapPhase::ShotMid:
+    case ESOLMapPhase::ShotOcclude:
     case ESOLMapPhase::ShotClose:
     {
         LogBodyPixelSizes();
+        CheckBodyOverlay(phase);
         const ASOLFlightHud* hud = mController->GetHUD<ASOLFlightHud>();
+        const TCHAR* shotName = TEXT("map, zoomed in near Earth");
+        switch (phase)
+        {
+        case ESOLMapPhase::ShotWide:
+            shotName = TEXT("map, plain");
+            break;
+        case ESOLMapPhase::ShotOrbits:
+            shotName = TEXT("map, orbit ellipses");
+            break;
+        case ESOLMapPhase::ShotSystem:
+            shotName = TEXT("map, inner system");
+            break;
+        case ESOLMapPhase::ShotMid:
+            shotName = TEXT("map, Earth cross-fade");
+            break;
+        case ESOLMapPhase::ShotOcclude:
+            shotName = TEXT("map, Sun behind Earth");
+            break;
+        default:
+            break;
+        }
         UE_LOG(LogSOL, Log, TEXT("SmokeMap: screenshot (%s), distance %.4g m, yaw %.3f, pitch %.3f, orbit segments "
-            "drawn %d"), phase == ESOLMapPhase::ShotWide ? TEXT("map, plain")
-            : phase == ESOLMapPhase::ShotOrbits ? TEXT("map, orbit ellipses") : TEXT("map, zoomed in near Earth"),
-            state.DistanceM, state.YawRad, state.PitchRad, hud != nullptr ? hud->GetLastOrbitSegmentsDrawn() : -1);
+            "drawn %d"), shotName, state.DistanceM, state.YawRad, state.PitchRad,
+            hud != nullptr ? hud->GetLastOrbitSegmentsDrawn() : -1);
         if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
         {
             gameMode->CaptureScreenshot();
@@ -372,6 +430,9 @@ double FSOLMapSmoke::GetPhaseDuration(const ESOLMapPhase phase)
         return MAP_SMOKE_HOLD_W_S;
     case ESOLMapPhase::ShotWide:
     case ESOLMapPhase::ShotOrbits:
+    case ESOLMapPhase::ShotSystem:
+    case ESOLMapPhase::ShotMid:
+    case ESOLMapPhase::ShotOcclude:
     case ESOLMapPhase::ShotClose:
         return MAP_SMOKE_SHOT_SETTLE_S;
     case ESOLMapPhase::LeftNoop:
@@ -379,6 +440,8 @@ double FSOLMapSmoke::GetPhaseDuration(const ESOLMapPhase phase)
     case ESOLMapPhase::Zoom:
     case ESOLMapPhase::Pan:
     case ESOLMapPhase::PanShift:
+    case ESOLMapPhase::ZoomSystem:
+    case ESOLMapPhase::ZoomMid:
     case ESOLMapPhase::ZoomClose:
         return 0.0;
     case ESOLMapPhase::Finish:
@@ -401,10 +464,31 @@ int32 FSOLMapSmoke::GetPhaseMinFrames(const ESOLMapPhase phase)
         return MAP_SMOKE_DRAG_FRAMES + MAP_SMOKE_SETTLE_FRAMES;
     case ESOLMapPhase::Zoom:
         return MAP_SMOKE_WHEEL_FRAMES + MAP_SMOKE_SETTLE_FRAMES;
+    case ESOLMapPhase::OrbitOcclude:
+        return 2 * MAP_SMOKE_SETTLE_FRAMES;
+    case ESOLMapPhase::ZoomSystem:
+    case ESOLMapPhase::ZoomMid:
     case ESOLMapPhase::ZoomClose:
-        return MAP_SMOKE_CLOSE_ZOOM_NOTCHES + MAP_SMOKE_SETTLE_FRAMES;
+        return GetZoomNotches(phase) + MAP_SMOKE_SETTLE_FRAMES;
     default:
         return MAP_SMOKE_SETTLE_FRAMES;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of wheel notches a zoom phase injects (0 for other phases)
+int32 FSOLMapSmoke::GetZoomNotches(const ESOLMapPhase phase)
+{
+    switch (phase)
+    {
+    case ESOLMapPhase::ZoomSystem:
+        return MAP_SMOKE_SYSTEM_ZOOM_NOTCHES;
+    case ESOLMapPhase::ZoomMid:
+        return MAP_SMOKE_MID_ZOOM_NOTCHES;
+    case ESOLMapPhase::ZoomClose:
+        return MAP_SMOKE_CLOSE_ZOOM_NOTCHES;
+    default:
+        return 0;
     }
 }
 
@@ -468,6 +552,69 @@ void FSOLMapSmoke::LogBodyPixelSizes() const
     }
     UE_LOG(LogSOL, Log, TEXT("SmokeMap: apparent body radii from the map camera (%dx%d, focal %.0f px): %s"),
         viewportWidth, viewportHeight, focalPx, *line);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Logs the map overlay's per-body icon alphas and pick radii and checks the icon state expected at a screenshot
+void FSOLMapSmoke::CheckBodyOverlay(const ESOLMapPhase phase)
+{
+    const ASOLFlightHud* hud = mController->GetHUD<ASOLFlightHud>();
+    if (hud == nullptr)
+    {
+        Check(TEXT("i-overlay"), false, TEXT("no flight HUD"));
+        return;
+    }
+    const FSOLMapBodyOverlay& overlay = hud->GetMapBodyOverlay();
+    const TConstArrayView<double> alphas = overlay.GetIconAlphas();
+    const TConstArrayView<double> pickRadii = overlay.GetPickRadiiM();
+    const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
+
+    // Per-body evidence: icon alpha and pick radius against the real radius
+    FString line;
+    bool bAllIcons = alphas.Num() == registry.Num();
+    for (int32 index = 0; index < registry.Num() && index < alphas.Num(); ++index)
+    {
+        line.Appendf(TEXT("%s a=%.2f pick=%.3g m (r %.3g m)  "), *registry.GetName(index).ToString(), alphas[index],
+            pickRadii[index], registry.GetRadiusM(index));
+        bAllIcons &= alphas[index] == 1.0;
+    }
+    UE_LOG(LogSOL, Log, TEXT("SmokeMap: body overlay, %d icons and %d labels drawn: %s"), overlay.GetLastIconsDrawn(),
+        overlay.GetLastLabelsDrawn(), *line);
+
+    // Wide view: every body icon-only with icons and labels on screen; mid: Earth cross-fading; close: Earth mesh only
+    const int32 earthIndex = registry.FindByName(FName(SOL::BodyNames::EARTH));
+    const double earthAlpha = alphas.IsValidIndex(earthIndex) ? alphas[earthIndex] : -1.0;
+    switch (phase)
+    {
+    case ESOLMapPhase::ShotWide:
+        Check(TEXT("i-icons-wide"), bAllIcons && overlay.GetLastIconsDrawn() > 0 && overlay.GetLastLabelsDrawn() > 0,
+            FString::Printf(TEXT("every body icon-only %s, %d icons, %d labels"), bAllIcons ? TEXT("yes") : TEXT("NO"),
+            overlay.GetLastIconsDrawn(), overlay.GetLastLabelsDrawn()));
+        break;
+    case ESOLMapPhase::ShotMid:
+        Check(TEXT("j-earth-crossfade"), earthAlpha > 0.0 && earthAlpha < 1.0, FString::Printf(TEXT("Earth icon alpha "
+            "%.3f (want strictly between 0 and 1)"), earthAlpha));
+        break;
+    case ESOLMapPhase::ShotOcclude:
+    {
+        // The Sun has an icon alpha but sits right behind the nearer Earth, so its icon must be hidden
+        const TConstArrayView<double> iconRadii = overlay.GetIconRadiiPx();
+        const int32 sunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
+        const double sunAlpha = alphas.IsValidIndex(sunIndex) ? alphas[sunIndex] : -1.0;
+        const double sunIconPx = iconRadii.IsValidIndex(sunIndex) ? iconRadii[sunIndex] : -1.0;
+        const double earthIconPx = iconRadii.IsValidIndex(earthIndex) ? iconRadii[earthIndex] : -1.0;
+        Check(TEXT("l-sun-occluded"), sunAlpha > 0.0 && sunIconPx == 0.0 && earthIconPx > 0.0,
+            FString::Printf(TEXT("Sun icon alpha %.3f, Sun icon radius %.2f px (want 0: behind Earth), Earth icon "
+            "radius %.2f px"), sunAlpha, sunIconPx, earthIconPx));
+        break;
+    }
+    case ESOLMapPhase::ShotClose:
+        Check(TEXT("k-earth-mesh-only"), earthAlpha == 0.0, FString::Printf(TEXT("Earth icon alpha %.3f (want 0)"),
+            earthAlpha));
+        break;
+    default:
+        break;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
