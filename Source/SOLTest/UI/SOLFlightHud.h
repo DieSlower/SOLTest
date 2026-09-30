@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Map/SOLMapBodyOverlay.h"
 #include "UI/SOLRadarLayout.h"
 
 #include "CoreMinimal.h"
@@ -28,10 +29,11 @@ class USOLTargetingSubsystem;
  * and boost state, frame and anchor names, nearest body and altitude, sim UTC date and warp, the selected target's
  * bracket (or an edge arrow when off-screen), prograde/retrograde markers, a 3D spherical radar (AUTO range = the
  * target-dependent floor, or MANUAL decade zoom with '-' / '=' and Home back to AUTO) and, toggled by O, every body's
- * orbit ellipse. While the jump map is open the pilot aids are hidden and the hint line shows the map's keys; the
- * orbit ellipses and target bracket project through whichever camera is active. Every number is read from the
- * universe, ship and targeting subsystems. The draw path reuses member buffers (text, radar contacts, orbit points)
- * and keeps one cached FText per text line, rebuilt only when that line's text changes; what still allocates is the FText of a changed line and
+ * orbit ellipse. While the jump map is open the pilot aids are hidden, the hint line shows the map's keys and every
+ * body too small on screen gets a colored icon and name label (FSOLMapBodyOverlay); the orbit ellipses and target
+ * bracket project through whichever camera is active. Every number is read from the universe, ship and targeting
+ * subsystems. The draw path reuses member buffers (text, radar contacts, orbit points) and keeps one cached FText per
+ * text line, rebuilt only when that line's text changes; what still allocates is the FText of a changed line and
  * whatever Canvas does internally to draw text.
  */
 UCLASS()
@@ -73,6 +75,9 @@ public:
 
     // Returns true while the jump map is open (the view is the map camera, not the ship's)
     bool IsMapOpen() const;
+
+    // Returns the jump map's body icon and label overlay (icon alphas, pick radii, draw counts)
+    const FSOLMapBodyOverlay& GetMapBodyOverlay() const { return mMapBodyOverlay; }
 
 protected:
 
@@ -189,6 +194,7 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
+    FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame

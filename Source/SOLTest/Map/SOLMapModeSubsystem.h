@@ -73,6 +73,10 @@ public:
     // Returns the map camera actor, or nullptr before the map was first opened
     ACameraActor* GetCameraActor() const { return CameraActor; }
 
+    // Returns the map camera's vertical field of view (radians) for a viewport aspect ratio (width / height); the
+    // camera's own FOV is horizontal (MAP_CAMERA_FOV_DEG before the camera exists)
+    double GetVerticalFovRad(double aspectRatio) const;
+
 protected:
 
     // Limits the subsystem to game and PIE worlds so editor and automation worlds are unaffected

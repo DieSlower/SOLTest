@@ -154,6 +154,16 @@ void USOLMapModeSubsystem::AddZoomNotches(const int32 notches)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the map camera's vertical field of view (radians) for a viewport aspect ratio (width / height)
+double USOLMapModeSubsystem::GetVerticalFovRad(const double aspectRatio) const
+{
+    const UCameraComponent* camera = CameraActor != nullptr ? CameraActor->GetCameraComponent() : nullptr;
+    const double horizontalFovDeg = camera != nullptr ? camera->FieldOfView : SOL::MAP_CAMERA_FOV_DEG;
+    const double halfHorizontalRad = FMath::DegreesToRadians(horizontalFovDeg) * 0.5;
+    return 2.0 * FMath::Atan(FMath::Tan(halfHorizontalRad) / FMath::Max(aspectRatio, UE_DOUBLE_KINDA_SMALL_NUMBER));
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Applies the queued input and makes the resulting camera position the render viewpoint (before the rebase)
 void USOLMapModeSubsystem::HandleBodiesUpdated(const float /*realDeltaSeconds*/)
 {

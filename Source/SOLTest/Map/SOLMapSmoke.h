@@ -24,9 +24,11 @@ class USOLSimClockSubsystem;
  * viewpoint on the map camera, sim time still advancing), checks that W does nothing while it is open, checks that a
  * left drag does nothing (reserved for destination picking), right-drags to orbit, wheels to zoom, middle-drags and
  * then Shift+right-drags to pan across the ecliptic plane, takes two screenshots (plain, then with the orbit
- * ellipses), closes with J, checks the ship's input and view are back, reopens, wheels in close to Earth for a third
- * screenshot (real meshes from the map camera), closes with Esc, then screenshots the ship view and quits. Each check
- * logs a LogSOL PASS/FAIL line.
+ * ellipses), closes with J, checks the ship's input and view are back, reopens, then wheels in over three steps with a
+ * screenshot after each (inner system ~9e10 m, Earth mid mesh/icon cross-fade ~8e8 m, close to Earth ~5e7 m with the
+ * real mesh only; between the last two it orbits to look at Earth from the side away from the Sun, so the Sun sits
+ * right behind Earth and its icon must be hidden), closes with Esc, then screenshots the ship view and quits. At each
+ * map screenshot it checks the body overlay's icon state (2c). Each check logs a LogSOL PASS/FAIL line.
  */
 class SOLTEST_API FSOLMapSmoke
 {
@@ -56,6 +58,12 @@ private:
         CloseJ,
         RestoreW,
         ReopenJ,
+        ZoomSystem,
+        ShotSystem,
+        ZoomMid,
+        ShotMid,
+        OrbitOcclude,
+        ShotOcclude,
         ZoomClose,
         ShotClose,
         CloseEsc,
@@ -65,6 +73,9 @@ private:
 
     // Runs a phase's entry actions (key presses, records)
     void EnterPhase(ESOLMapPhase phase, ASOLShipPawn& pawn);
+
+    // Queues the orbit drag that puts the map camera on the far side of the focus from the Sun (Sun right behind Earth)
+    void QueueOrbitAwayFromSun() const;
 
     // Runs a phase's per-frame actions (mouse deltas, wheel notches)
     void TickPhase(ESOLMapPhase phase);
@@ -86,6 +97,12 @@ private:
 
     // Logs each body's apparent radius in pixels as seen from the map camera (honest visibility evidence)
     void LogBodyPixelSizes() const;
+
+    // Logs the map overlay's per-body icon alphas and pick radii and checks the icon state expected at a screenshot
+    void CheckBodyOverlay(ESOLMapPhase phase);
+
+    // Returns the number of wheel notches a zoom phase injects (0 for other phases)
+    static int32 GetZoomNotches(ESOLMapPhase phase);
 
     // Sends a key press to the player controller
     void PressKey(const FKey& key) const;

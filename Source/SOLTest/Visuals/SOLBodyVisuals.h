@@ -84,3 +84,10 @@ private:
     FDelegateHandle mUniverseUpdatedHandle;  // Subscription to the anchor subsystem's per-frame update
     int32 mSunIndex = INDEX_NONE;            // Registry index of the Sun (light source)
 };
+
+// Read access to the placeholder body appearances, for presentation that must match the meshes (map icons)
+namespace SOLBodyAppearance
+{
+    // Writes a body's base color (the material's linear ColorA) and returns true, or returns false if it has none
+    SOLTEST_API bool FindBaseColor(FName bodyName, FLinearColor& outColor);
+}
