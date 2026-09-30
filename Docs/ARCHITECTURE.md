@@ -2,9 +2,9 @@
 
 # SOLTest architecture
 
-A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
+A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2, [`SDDs/4-surface-lock.md`](SDDs/4-surface-lock.md) for Part 3). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
 
-**Status:** Part 1 (foundations, ship flight, HUD) is complete. Part 2 (jump map) is functionally complete pending final review: the pure picking, orbit-camera and warp-curve math (`Map/SOLMapPicking`, `Map/SOLMapCamera`, `Map/SOLWarpCurve`), the map mode (J, map camera, drag/wheel navigation, body icons, destination picking: `Map/SOLMapModeSubsystem`) and the jump (`Map/SOLJumpSubsystem`) exist.
+**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) has its pure logic built (`Level/SOLSurfaceLock`: the engage/release state machine and the up-alignment math); engine integration (the `L` key, HUD status line, and applying it to the ship each step) has not landed yet.
 
 ---
 
@@ -31,7 +31,8 @@ flowchart TD
     UI["UI<br/>flight HUD, radar, F3 panel"]
     Targeting["Targeting<br/>candidates, selection, M lock"]
     Visuals["Visuals<br/>body meshes and sun light"]
-    Map["Map (Part 2, in progress)<br/>jump-map picking math"]
+    Map["Map (Part 2)<br/>jump-map picking math"]
+    Level["Level (Part 3, pure logic only)<br/>surface-lock state machine and alignment math"]
     Flight["Flight<br/>pure flight and targeting math"]
     Universe["Universe<br/>clock, orbits, registry, anchor, render origin"]
     Const["SOLConstants.h<br/>constants, tunables, asset paths, CLI flags"]
@@ -53,6 +54,7 @@ flowchart TD
     Flight --> Const
     Universe --> Const
     Map --> Const
+    Level --> Const
 ```
 
 `Ship` and `UI` depend on each other: the pawn opens the F3 panel and forwards radar zoom keys to the HUD, and the HUD reads the pawn's joystick and camera state. The Universe subsystems ask `ASOLGameMode::IsSOLGameWorld` whether to exist at all. Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
@@ -66,6 +68,7 @@ flowchart TD
 | `UI/` | Canvas flight HUD, radar, orbit lines, F3 speed panel, and their pure layout and format math | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLOrbitLines`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
+| `Level/` | Surface-lock (Part 3, pure logic only so far): the engage/warn/release state machine and the up-alignment math | `SOLSurfaceLock` |
 | `Game/` | Game mode (default pawn and HUD, spawns visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
@@ -180,6 +183,9 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `FSOLMapBodyOverlay` (engine, `SOLMapBodyOverlay.h`): owned and drawn by `ASOLFlightHud` while the map is open. It evaluates each body's LOD from the map camera and draws its icon disc (one translucent Canvas triangle batch, in the body's material base color from `SOLBodyAppearance::FindBaseColor` in `Visuals/`) and a decluttered name label, and keeps each body's pick radius for the frame.
 - `FSOLMapSmoke` (engine test script, `SOLMapSmoke.h`): the `-SOLSmokeMap` run.
 - `FSOLMapPickSmoke` and `FSOLJumpSmoke` (engine test scripts): the `-SOLSmokeMapPick` and `-SOLSmokeJump` runs.
+
+**Level** (`Source/SOLTest/Level/`, Part 3, pure logic only so far)
+- `FSOLSurfaceLockParams` / `FSOLSurfaceLockState` / `SOLSurfaceLock` (pure, `SOLSurfaceLock.h`): `UpdateSurfaceLockState` (the auto/manual engage-warn-release state machine, with a suppression latch so a manual release can't be immediately overridden by auto-engage), `TargetUpDir` and `ApplyAlignmentCorrection` (a minimal shortest-arc rotation of the ship's whole orientation toward "up = away from the locked body," not a roll-only correction, so there is no attitude-dependent singularity). Not yet called from anywhere engine-side; Part 3's engine integration (the `L` key, `USOLShipSubsystem` stepping it, the HUD line) is still to come.
 
 **Game** (`Source/SOLTest/Game/`)
 - `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.

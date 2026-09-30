@@ -160,6 +160,18 @@ namespace SOL
     // Jump warp radial streaks (HUD canvas lines from the screen center), a fixed table built once
     inline constexpr int32 WARP_STREAK_COUNT = 160;
 
+    // Surface lock (SDD 4): auto-engage range above the nearest body's surface, and the Auto release factor (warn above
+    // the range, release above range * factor)
+    inline constexpr double SURFACE_LOCK_AUTO_RANGE_M = 1.0e4;
+    inline constexpr double SURFACE_LOCK_AUTO_RELEASE_FACTOR = 1.25;
+
+    // Surface lock (SDD 4): manual (key-press) range is max(this floor, body radius); release above range * factor
+    inline constexpr double SURFACE_LOCK_MANUAL_RANGE_MIN_M = 1.0e6;
+    inline constexpr double SURFACE_LOCK_MANUAL_RELEASE_FACTOR = 1.25;
+
+    // Surface lock (SDD 4): time constant of the exponential alignment rotation that aligns the ship's up with the local vertical
+    inline constexpr double SURFACE_LOCK_ALIGN_TIME_CONSTANT_S = 1.0;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
