@@ -4,7 +4,7 @@
 
 A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
 
-**Status:** Part 1 (foundations, ship flight, HUD) is complete. Part 2 (jump map) is in progress: only the pure picking math (`Map/SOLMapPicking`) exists so far.
+**Status:** Part 1 (foundations, ship flight, HUD) is complete. Part 2 (jump map) is in progress: the pure picking and orbit-camera math (`Map/SOLMapPicking`, `Map/SOLMapCamera`) and the map mode (J, map camera, drag/wheel navigation: `Map/SOLMapModeSubsystem`) exist; body icons, destination picking and the jump do not yet.
 
 ---
 
@@ -65,7 +65,7 @@ flowchart TD
 | `Targeting/` | Target candidates, selection, the M frame lock, reference velocity | `SOLTargetingSubsystem`, `SOLTargetable` |
 | `UI/` | Canvas flight HUD, radar, orbit lines, F3 speed panel, and their pure layout and format math | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLOrbitLines`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
-| `Map/` | Jump-map destination picking (Part 2) | `SOLMapPicking` |
+| `Map/` | Jump map (Part 2): picking and orbit-camera math, the map mode and its camera, the map smoke script | `SOLMapPicking`, `SOLMapCamera`, `SOLMapModeSubsystem`, `SOLMapSmoke` |
 | `Game/` | Game mode (default pawn and HUD, spawns visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
@@ -128,7 +128,7 @@ flowchart LR
     U -->|"EclipticToUnreal"| H["Unreal-handed universe (m)<br/>ship and flight math"]
 ```
 
-The render origin snaps to the observer when the anchor body changes or when the observer drifts `SOL::RENDER_REBASE_DISTANCE_M` (10 km) from it. Unreal's own `SetNewWorldOrigin` is deliberately not used: its int32 cm origin is too small for AU-scale distances. Beyond `SOL::DEFAULT_MAX_RENDER_DISTANCE_CM`, depth is compressed as `d' = Max * (1 + 0.1 * ln(d / Max))` and the radius is scaled by `d'/d`, which keeps depth order and angular size (SDD 2 Amendment 1). Positions stay `FVector3d` until the final conversion to `FVector`.
+"Observer" in the pipeline above is really the **render viewpoint**: the observer (ship) normally, or the jump-map camera while the map is open (`USOLAnchorSubsystem::SetViewpointOverrideM`). Anchor selection always uses the observer. The render origin snaps to the viewpoint when the anchor body changes, when the override is cleared, or when the viewpoint drifts `SOL::RENDER_REBASE_DISTANCE_M` (10 km) from it. Unreal's own `SetNewWorldOrigin` is deliberately not used: its int32 cm origin is too small for AU-scale distances. Beyond `SOL::DEFAULT_MAX_RENDER_DISTANCE_CM`, depth is compressed as `d' = Max * (1 + 0.1 * ln(d / Max))` and the radius is scaled by `d'/d`, which keeps depth order and angular size (SDD 2 Amendment 1). Positions stay `FVector3d` until the final conversion to `FVector`.
 
 ---
 
@@ -171,7 +171,10 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `ASOLBodyVisuals` (engine, `SOLBodyVisuals.h`): one sphere mesh and material instance per body, re-placed on `OnUniverseUpdated`, with `SunDirection` set per body.
 
 **Map** (`Source/SOLTest/Map/`, Part 2)
-- `FSOLMapPickState` / `SOLMapPicking` (pure, `SOLMapPicking.h`): ray-plane intersection, planar decomposition, destination composition, body picking under a ray. The map camera, map mode and jump execution are not built yet.
+- `FSOLMapPickState` / `SOLMapPicking` (pure, `SOLMapPicking.h`): ray-plane intersection, planar decomposition, destination composition, body picking under a ray.
+- `FSOLOrbitCameraState` / `SOLMapCamera` (pure, `SOLMapCamera.h`): orbit-camera position, look-at orientation, orbit, ground-plane pan and log zoom.
+- `USOLMapModeSubsystem` (engine, `SOLMapModeSubsystem.h`): the open map's orbit state, its `ACameraActor` view target, and the anchor's render-viewpoint override (set on `OnBodiesUpdated` before the rebase; the camera is placed on `OnUniverseUpdated`). The ship pawn owns J/Esc, the `IMC_Map` mapping and the cursor, and forwards drags and wheel notches. Destination picking and jump execution are not built yet.
+- `FSOLMapSmoke` (engine test script, `SOLMapSmoke.h`): the `-SOLSmokeMap` run.
 
 **Game** (`Source/SOLTest/Game/`)
 - `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
@@ -225,6 +228,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeFlight` | `FSOLShipSmokeFlight` | Pawn-less scripted flight: hover, assisted cruise, Newtonian thrust and coast, pitch, braking, Earth impact, then 1 d/s warp co-motion, collision and surface rest under warp |
 | `-SOLSmokeInput` | `FSOLShipSmokeInput` | Simulated key, mouse and wheel events through the real mapping context and callbacks (thrust, stick, targeting, M lock, warp), with a screenshot |
 | `-SOLSmokeHud` | `FSOLHudSmoke` | HUD toggles and radar zoom via game keys, and the F3 panel via Slate key events to the focused widget |
+| `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots |
 | `-SOLSpectator` | `ASOLGameMode` / `ASOLSpectatorPawn` | Debug free-fly camera riding the ship instead of the pawn |
 | `-SOLStart=<Body>`, `-SOLAltitudeKm=<km>`, `-SOLLookAt=<Body>` | Ship subsystem / spectator | Spawn body and altitude, and the debug camera's look target, for any of the runs above |
 

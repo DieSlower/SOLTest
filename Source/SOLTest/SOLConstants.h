@@ -105,6 +105,23 @@ namespace SOL
     // Jump map picking: a ray whose |dot(dir, unit plane normal)| is below this is treated as parallel (SDD 3 App. D)
     inline constexpr double MAP_PICK_PARALLEL_EPSILON = 1.0e-9;
 
+    // Jump map camera: distance from the focus (the ship) when J opens the map. 1e13 m (~67 AU) frames Neptune's orbit
+    // (~30 AU radius) with ~20% margin inside MAP_CAMERA_FOV_DEG even though the focus sits 1 AU off-center at Earth;
+    // the orbit camera's own 1e10 m default would only show the inner neighborhood of the ship
+    inline constexpr double MAP_DEFAULT_DISTANCE_M = 1.0e13;
+
+    // Jump map camera: horizontal field of view (degrees); narrower than the ship's 90 deg to limit edge distortion
+    inline constexpr float MAP_CAMERA_FOV_DEG = 60.0f;
+
+    // Jump map camera: right-drag orbit per mouse pixel (rad). 0.005 turns 180 deg over ~630 px (half a 1280 px
+    // screen) and sweeps the whole pitch range in ~600 px: quick but still fine-grained for a single-pixel nudge
+    inline constexpr double MAP_ORBIT_RAD_PER_PIXEL = 0.005;
+
+    // Jump map camera: middle/Shift+right-drag pan per mouse pixel as a fraction of camera distance. 0.0015 roughly
+    // keeps the ground plane under the cursor in a top-down view at 720 p (visible half-height D * tan(~17.6 deg) /
+    // 360 px)
+    inline constexpr double MAP_PAN_DISTANCE_FRACTION_PER_PIXEL = 0.0015;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
@@ -122,6 +139,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_FLIGHT = TEXT("SOLSmokeFlight");    // Scripted ship flight, then quit
         inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit
+        inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 

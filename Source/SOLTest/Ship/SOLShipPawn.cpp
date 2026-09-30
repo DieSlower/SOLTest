@@ -6,6 +6,7 @@
 #include "Ship/SOLShipPawn.h"
 
 #include "Game/SOLInputHelpers.h"
+#include "Map/SOLMapModeSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -162,6 +163,7 @@ void ASOLShipPawn::BeginPlay()
     Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
     AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
     SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
+    MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -194,6 +196,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeHud = MakeUnique<FSOLHudSmoke>();
         mSmokeHud->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_MAP))
+    {
+        mSmokeMap = MakeUnique<FSOLMapSmoke>();
+        mSmokeMap->Start(*this);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -201,6 +208,7 @@ void ASOLShipPawn::BeginPlay()
 void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
     DismissSpeedPanel();
+    DismissMap();
     RemoveMappingContext();
     ReleaseMouse();
     if (AnchorSubsystem != nullptr)
@@ -211,6 +219,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mUniverseUpdatedHandle.Reset();
     mSmokeInput.Reset();
     mSmokeHud.Reset();
+    mSmokeMap.Reset();
     Super::EndPlay(endPlayReason);
 }
 
@@ -233,12 +242,29 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeHud.Reset();
     }
+    if (mSmokeMap.IsValid() && mSmokeMap->Update(*this, deltaSeconds))
+    {
+        mSmokeMap.Reset();
+    }
 
-    // F3 was pressed during input processing; the panel opens here, outside the Enhanced Input callback
+    // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
+    // Input callback
     if (mIsSpeedPanelRequested)
     {
         mIsSpeedPanelRequested = false;
         OpenSpeedPanel();
+    }
+    if (mIsMapToggleRequested)
+    {
+        mIsMapToggleRequested = false;
+        if (mIsMapOpen)
+        {
+            CloseMap();
+        }
+        else
+        {
+            OpenMap();
+        }
     }
     UpdateViewportFocus();
 
@@ -319,6 +345,19 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(RadarZoomInAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomInAction);
     input->BindAction(RadarZoomOutAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomOutAction);
     input->BindAction(RadarAutoAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarAutoAction);
+
+    // Jump map: J toggles (mapped in both contexts); the rest only exist in the map's context while it is open
+    input->BindAction(ToggleMapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleMapAction);
+    input->BindAction(MapCloseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapCloseAction);
+    input->BindAction(MapRightDragAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapRightStarted);
+    input->BindAction(MapRightDragAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnMapRightCompleted);
+    input->BindAction(MapPanAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapPanStarted);
+    input->BindAction(MapPanAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnMapPanCompleted);
+    input->BindAction(MapPanModifierAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapPanModifierStarted);
+    input->BindAction(MapPanModifierAction, ETriggerEvent::Completed, this,
+        &ASOLShipPawn::OnMapPanModifierCompleted);
+    input->BindAction(MapLookAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapLookAction);
+    input->BindAction(MapZoomAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapZoomAction);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -359,6 +398,7 @@ void ASOLShipPawn::NotifyControllerChanged()
 void ASOLShipPawn::UnPossessed()
 {
     DismissSpeedPanel();
+    DismissMap();
     RemoveMappingContext();
     ReleaseMouse();
     Super::UnPossessed();
@@ -383,8 +423,8 @@ void ASOLShipPawn::ReleaseMouse()
 void ASOLShipPawn::UpdateViewportFocus()
 {
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
-    // open speed panel holds the keyboard focus on purpose and has already released the flight input
-    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mIsSpeedPanelOpen)
+    // open speed panel and the open map have already released the flight input
+    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
     {
         return;
     }
@@ -457,7 +497,15 @@ void ASOLShipPawn::CreateInputObjects()
     RadarZoomInAction = CreateAction(this, TEXT("IA_ShipRadarZoomIn"), EInputActionValueType::Boolean);
     RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
     RadarAutoAction = CreateAction(this, TEXT("IA_ShipRadarAuto"), EInputActionValueType::Boolean);
+    ToggleMapAction = CreateAction(this, TEXT("IA_MapToggle"), EInputActionValueType::Boolean);
+    MapCloseAction = CreateAction(this, TEXT("IA_MapClose"), EInputActionValueType::Boolean);
+    MapRightDragAction = CreateAction(this, TEXT("IA_MapRightDrag"), EInputActionValueType::Boolean);
+    MapPanAction = CreateAction(this, TEXT("IA_MapPan"), EInputActionValueType::Boolean);
+    MapPanModifierAction = CreateAction(this, TEXT("IA_MapPanModifier"), EInputActionValueType::Boolean);
+    MapLookAction = CreateAction(this, TEXT("IA_MapLook"), EInputActionValueType::Axis2D);
+    MapZoomAction = CreateAction(this, TEXT("IA_MapZoom"), EInputActionValueType::Axis1D);
     MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Ship"));
+    MapMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Map"));
 
     // Thrust: W/S forward/back (x), D/A right/left (y), Space/Ctrl up/down (z); roll: E right, Q left
     MapAxisKey(MappingContext, ThrustAction, EKeys::W, this, false, EInputAxisSwizzle::YXZ, false);
@@ -493,6 +541,18 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, RadarZoomInAction, EKeys::Hyphen, this);
     MapPressedKey(MappingContext, RadarZoomOutAction, EKeys::Equals, this);
     MapPressedKey(MappingContext, RadarAutoAction, EKeys::Home, this);
+    MapPressedKey(MappingContext, ToggleMapAction, EKeys::J, this);
+
+    // Jump map: J or Esc close; right drag orbits, middle or Shift+right drag pans (held buttons gate the mouse
+    // delta), the wheel zooms. The left mouse button is deliberately unmapped: it is reserved for destination picking
+    MapPressedKey(MapMappingContext, ToggleMapAction, EKeys::J, this);
+    MapPressedKey(MapMappingContext, MapCloseAction, EKeys::Escape, this);
+    MapMappingContext->MapKey(MapRightDragAction, EKeys::RightMouseButton);
+    MapMappingContext->MapKey(MapPanAction, EKeys::MiddleMouseButton);
+    MapMappingContext->MapKey(MapPanModifierAction, EKeys::LeftShift);
+    MapMappingContext->MapKey(MapPanModifierAction, EKeys::RightShift);
+    MapMappingContext->MapKey(MapLookAction, EKeys::Mouse2D);
+    MapMappingContext->MapKey(MapZoomAction, EKeys::MouseWheelAxis);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -559,8 +619,10 @@ void ASOLShipPawn::FollowShip()
     {
         return;
     }
+    // Through the body placement: the render origin itself normally, and still a bounded location when the jump map
+    // draws from its own far viewpoint
     const FQuat orientation(Ships->GetState().Orientation);
-    SetActorLocationAndRotation(AnchorSubsystem->UniverseToRenderCm(AnchorSubsystem->GetObserverPositionM()),
+    SetActorLocationAndRotation(AnchorSubsystem->ComputePointRenderLocationCm(AnchorSubsystem->GetObserverPositionM()),
         orientation);
     UpdateCameraRotation(GetWorld()->GetDeltaSeconds());
 }
@@ -810,7 +872,7 @@ void ASOLShipPawn::HandleToggleSpeedPanel()
 void ASOLShipPawn::OpenSpeedPanel()
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (mIsSpeedPanelOpen || playerController == nullptr || Ships == nullptr)
+    if (mIsSpeedPanelOpen || mIsMapOpen || playerController == nullptr || Ships == nullptr)
     {
         return;
     }
@@ -824,16 +886,7 @@ void ASOLShipPawn::OpenSpeedPanel()
         }
     }
 
-    // Suspend only the ship's own control input: release held keys, drop the mapping, zero the flight input
-    playerController->FlushPressedKeys();
-    RemoveMappingContext();
-    mStickOffsetPx = FVector2d::ZeroVector;
-    mRollInput = 0.0;
-    mControl.Thrust = FVector3d::ZeroVector;
-    mControl.Rotation = FVector3d::ZeroVector;
-    mControl.bBoost = false;
-    mIsFreeLooking = false;
-    mFreeLookRotation = FRotator::ZeroRotator;
+    SuspendShipControl(*playerController);
 
     // Show the panel with keyboard focus; the viewport stays visible and the Mass simulation keeps running
     SpeedPanel->Open(this, mControl.SpeedCapMps);
@@ -857,8 +910,31 @@ void ASOLShipPawn::CloseSpeedPanel()
         return;
     }
     DismissSpeedPanel();
+    RestoreShipControl();
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: speed panel closed; ship control input restored (cap %.3f m/s)"),
+        *GetName(), mControl.SpeedCapMps);
+}
 
-    // Restore the ship's mapping and the hidden, captured cursor of the virtual joystick
+//////////////////////////////////////////////////////////////////////////
+// Suspends the ship's own control input: flushes held keys, drops the ship mapping and zeroes the flight input
+void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
+{
+    // The Mass simulation keeps running; the assist holds the last speed cap and assist mode
+    playerController.FlushPressedKeys();
+    RemoveMappingContext();
+    mStickOffsetPx = FVector2d::ZeroVector;
+    mRollInput = 0.0;
+    mControl.Thrust = FVector3d::ZeroVector;
+    mControl.Rotation = FVector3d::ZeroVector;
+    mControl.bBoost = false;
+    mIsFreeLooking = false;
+    mFreeLookRotation = FRotator::ZeroRotator;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Restores the ship's mapping and the hidden, captured cursor of the virtual joystick
+void ASOLShipPawn::RestoreShipControl()
+{
     APlayerController* playerController = Cast<APlayerController>(GetController());
     if (playerController != nullptr)
     {
@@ -871,8 +947,142 @@ void ASOLShipPawn::CloseSpeedPanel()
         mHasCapturedMouse = true;
     }
     mHadViewportFocus = false;
-    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: speed panel closed; ship control input restored (cap %.3f m/s)"),
-        *GetName(), mControl.SpeedCapMps);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Opens the jump map: adds the map mapping (rolling back on failure), suspends ship control and frees the OS cursor
+void ASOLShipPawn::OpenMap()
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (mIsMapOpen || mIsSpeedPanelOpen || playerController == nullptr || MapMode == nullptr)
+    {
+        return;
+    }
+    if (!MapMode->OpenMap(playerController))
+    {
+        return;
+    }
+    // The map mapping goes in before the ship's is removed; if it cannot be added the map is rolled back, so the
+    // player is never left without a mapping that can close it
+    if (!SOLInput::AddMappingContext(playerController->GetLocalPlayer(), MapMappingContext, 0))
+    {
+        MapMode->CloseMap(playerController);
+        UE_LOG(LogSOL, Warning, TEXT("ShipPawn %s: jump map not opened; the map input mapping could not be added"),
+            *GetName());
+        return;
+    }
+    mMapMappedLocalPlayer = playerController->GetLocalPlayer();
+    SuspendShipControl(*playerController);
+
+    // A visible, unlocked cursor for dragging; the viewport captures (and hides) it only while a button is held
+    FInputModeGameAndUI inputMode;
+    inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    inputMode.SetHideCursorDuringCapture(true);
+    playerController->SetInputMode(inputMode);
+    playerController->bShowMouseCursor = true;
+    mHasCapturedMouse = false;
+    mIsMapRightHeld = false;
+    mIsMapPanHeld = false;
+    mIsMapPanModifierHeld = false;
+    mIsMapOpen = true;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map open; ship control input suspended, cursor released"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Closes the jump map and gives input and the view back to the ship
+void ASOLShipPawn::CloseMap()
+{
+    if (!mIsMapOpen)
+    {
+        return;
+    }
+    if (APlayerController* playerController = Cast<APlayerController>(GetController()))
+    {
+        playerController->FlushPressedKeys();
+    }
+    DismissMap();
+    RestoreShipControl();
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map closed; ship control input restored"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Closes the map without restoring the ship's input (teardown)
+void ASOLShipPawn::DismissMap()
+{
+    SOLInput::RemoveMappingContext(mMapMappedLocalPlayer.Get(), MapMappingContext);
+    mMapMappedLocalPlayer.Reset();
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->CloseMap(Cast<APlayerController>(GetController()));
+    }
+    mIsMapOpen = false;
+    mIsMapToggleRequested = false;
+    mIsMapRightHeld = false;
+    mIsMapPanHeld = false;
+    mIsMapPanModifierHeld = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests the jump map to open or close (J; done at the next tick, outside the input callback)
+void ASOLShipPawn::HandleToggleMap()
+{
+    mIsMapToggleRequested = true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests the jump map to close (Esc; done at the next tick)
+void ASOLShipPawn::HandleCloseMap()
+{
+    mIsMapToggleRequested = mIsMapOpen;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether the map's right mouse button is held (orbit drag, or pan drag with Shift)
+void ASOLShipPawn::HandleMapRightHeld(const bool bHeld)
+{
+    mIsMapRightHeld = bHeld;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether the map's middle mouse button is held (pan drag)
+void ASOLShipPawn::HandleMapPanHeld(const bool bHeld)
+{
+    mIsMapPanHeld = bHeld;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether Shift is held on the map (turns a right drag into a pan drag)
+void ASOLShipPawn::HandleMapPanModifierHeld(const bool bHeld)
+{
+    mIsMapPanModifierHeld = bHeld;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Forwards a mouse delta in pixels (X right, Y up) to the map: middle or Shift+right drag pans, right drag orbits
+void ASOLShipPawn::HandleMapMouseDelta(const FVector2d& deltaPixels)
+{
+    if (!mIsMapOpen || MapMode == nullptr)
+    {
+        return;
+    }
+    if (mIsMapPanHeld || (mIsMapRightHeld && mIsMapPanModifierHeld))
+    {
+        MapMode->AddPanPixels(deltaPixels);
+    }
+    else if (mIsMapRightHeld)
+    {
+        MapMode->AddOrbitPixels(deltaPixels);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Forwards wheel notches to the map zoom (positive = wheel forward = zoom in)
+void ASOLShipPawn::HandleMapZoom(const int32 notches)
+{
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->AddZoomNotches(notches);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1086,4 +1296,80 @@ void ASOLShipPawn::OnRadarZoomOutAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnRadarAutoAction(const FInputActionValue& /*value*/)
 {
     HandleRadarAuto();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: jump map toggle (J, in both the ship and the map mapping)
+void ASOLShipPawn::OnToggleMapAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleMap();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: jump map close (Esc)
+void ASOLShipPawn::OnMapCloseAction(const FInputActionValue& /*value*/)
+{
+    HandleCloseMap();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map right mouse button pressed
+void ASOLShipPawn::OnMapRightStarted(const FInputActionValue& /*value*/)
+{
+    HandleMapRightHeld(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map right mouse button released
+void ASOLShipPawn::OnMapRightCompleted(const FInputActionValue& /*value*/)
+{
+    HandleMapRightHeld(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map middle mouse button (pan) pressed
+void ASOLShipPawn::OnMapPanStarted(const FInputActionValue& /*value*/)
+{
+    HandleMapPanHeld(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map middle mouse button (pan) released
+void ASOLShipPawn::OnMapPanCompleted(const FInputActionValue& /*value*/)
+{
+    HandleMapPanHeld(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map Shift (pan modifier) pressed
+void ASOLShipPawn::OnMapPanModifierStarted(const FInputActionValue& /*value*/)
+{
+    HandleMapPanModifierHeld(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map Shift (pan modifier) released
+void ASOLShipPawn::OnMapPanModifierCompleted(const FInputActionValue& /*value*/)
+{
+    HandleMapPanModifierHeld(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: mouse delta on the map, converted back to pixels
+void ASOLShipPawn::OnMapLookAction(const FInputActionValue& value)
+{
+    HandleMapMouseDelta(FVector2d(value.Get<FVector2D>()) * mMouseUnitsToPixels);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: mouse wheel on the map (one step per notch; several notches in one frame step several times)
+void ASOLShipPawn::OnMapZoomAction(const FInputActionValue& value)
+{
+    const float wheel = value.Get<float>();
+    int32 notches = FMath::RoundToInt32(wheel);
+    if (notches == 0 && wheel != 0.0f)
+    {
+        notches = wheel > 0.0f ? 1 : -1;
+    }
+    HandleMapZoom(notches);
 }

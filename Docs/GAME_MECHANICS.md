@@ -29,14 +29,18 @@ Status column: **Designed** = decided in an SDD, not built; **Built** = implemen
 | O | Toggle body orbit ellipses on the HUD (off by default): every planet's orbit sampled at 90 segments from its current secular elements (re-sampled every 5 s while shown), the selected target's orbit in yellow | Built (1c) | `UI/SOLFlightHud.cpp`, `UI/SOLOrbitLines.cpp` |
 | P | Ship predicted path under gravity: key bound but a no-op (deferred, SDD 2 section 6) | Reserved (1c) | `Ship/SOLShipPawn.cpp` |
 | - / = / Home | Radar zoom in / out by a factor of 10 (switches the radar to MANUAL range; a press that cannot change the range is a no-op) / back to AUTO range; see Radar below | Built (1c) | `Ship/SOLShipPawn.cpp`, `UI/SOLFlightHud.cpp` |
-| J | Open the zoomable jump map | Designed (SDD 1) | — |
+| J | Open the jump map (see section 4): the ship's own control input is suspended exactly as for F3 (keys flushed, mapping removed, thrust/roll/boost/stick zeroed; the ship coasts and the sim clock and warp keep running), the OS cursor is shown and free, and a dedicated map camera takes over the view. J again or Esc closes it and restores the ship's input, hidden cursor and chase camera. Destination picking and the jump itself are not built yet | Built (2b-2, camera only) | `Ship/SOLShipPawn.cpp`, `Map/SOLMapModeSubsystem.cpp` |
+| Map: right drag | Orbit the map camera around its focus, "grab the scene" (the system follows the cursor): drag right turns the system right (camera yaw -0.005 rad/px), drag up tilts it toward edge-on (camera pitch -0.005 rad/px), pitch clamped to ±1.5 rad | Built (2b-2) | `Ship/SOLShipPawn.cpp`, `Map/SOLMapModeSubsystem.cpp`, `SOLConstants.h` |
+| Map: middle drag, or Shift + right drag | Pan the focus across the ecliptic plane (never up/down), grab the scene: 0.0015 x camera distance per pixel. The focus starts on the ship when the map opens and then stays where the player leaves it (it does not follow the coasting ship) | Built (2b-2) | `Ship/SOLShipPawn.cpp`, `Map/SOLMapModeSubsystem.cpp`, `SOLConstants.h` |
+| Map: left click / drag | Unbound for now (does nothing); reserved for the destination-picking gesture | Reserved (2d) | `Ship/SOLShipPawn.cpp` |
+| Map: mouse wheel | Zoom: wheel forward = in, one notch = distance x/÷ 1.2, clamped 1,000 km to 6e13 m | Built (2b-2) | `Map/SOLMapModeSubsystem.cpp`, `Map/SOLMapCamera.h` |
 | L | Toggle surface-lock (level to nearest body) | Designed (SDD 1) | — |
 
 Weapons and target-drop bindings are decided per part and will be added here.
 
 ### 1.1 Debug and verification switches
 
-The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOLSpectator` swaps in the old free-fly verification camera (`Source/SOLTest/Game/SOLSpectatorPawn.cpp`), which rides the ship as a free-look camera (mouse look, wheel and warp keys; it does not move the ship). `-SOLStart=<Body>` and `-SOLAltitudeKm=<km>` choose where the ship spawns and `-SOLLookAt=<Body>` aims the spectator. `-SOLSmokeFlight` flies a scripted physics sequence (`Ship/SOLShipSmokeFlight.cpp`); `-SOLSmokeInput` drives the real input pipeline with injected key, mouse and wheel events (`Ship/SOLShipSmokeInput.cpp`); both log a PASS/FAIL per check and quit (`-SOLSmokeInput` after a screenshot). `-SOLSmokeHud` drives the HUD keys (T, O, P) and the F3 panel (panel keys through Slate), checks that W does nothing while the panel is open, and ends with two screenshots (HUD over Earth, orbit ellipses from 3 AU above the Sun) (`UI/SOLHudSmoke.cpp`). `-SOLSmokeShot=<s>` takes a screenshot after s seconds and quits.
+The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOLSpectator` swaps in the old free-fly verification camera (`Source/SOLTest/Game/SOLSpectatorPawn.cpp`), which rides the ship as a free-look camera (mouse look, wheel and warp keys; it does not move the ship). `-SOLStart=<Body>` and `-SOLAltitudeKm=<km>` choose where the ship spawns and `-SOLLookAt=<Body>` aims the spectator. `-SOLSmokeFlight` flies a scripted physics sequence (`Ship/SOLShipSmokeFlight.cpp`); `-SOLSmokeInput` drives the real input pipeline with injected key, mouse and wheel events (`Ship/SOLShipSmokeInput.cpp`); both log a PASS/FAIL per check and quit (`-SOLSmokeInput` after a screenshot). `-SOLSmokeHud` drives the HUD keys (T, O, P) and the F3 panel (panel keys through Slate), checks that W does nothing while the panel is open, and ends with two screenshots (HUD over Earth, orbit ellipses from 3 AU above the Sun) (`UI/SOLHudSmoke.cpp`). `-SOLSmokeMap` drives the jump map with injected J, W, mouse-button, mouse-delta, wheel and Esc events (open, ship input suspended, left drag does nothing, right-drag orbit, zoom, middle-drag and Shift+right-drag pan, close with J, ship input back, reopen, zoom in near Earth, close with Esc), logs a PASS/FAIL per check with each body's apparent pixel radius from the map camera, and ends with screenshots (plain map, map with orbit ellipses, close-up of Earth, ship view) (`Map/SOLMapSmoke.cpp`). `-SOLSmokeShot=<s>` takes a screenshot after s seconds and quits.
 
 | Input (spectator only) | Action | Value |
 |---|---|---|
@@ -74,7 +78,8 @@ The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOL
 
 | Mechanic | Value / rule | Status |
 |---|---|---|
-| Map | Zoomable, pick a destination | Designed |
+| Map camera | J opens a navigable 3D view of the live solar system from a separate camera (60° horizontal FOV). It opens centered on the ship's position at that moment, yaw 0, pitch 0.5 rad (looking down onto the ecliptic), 1e13 m (~67 AU) out, which frames Neptune's orbit. The universe is rendered from the map camera (render origin and far-body placement follow it), so bodies keep their true angular sizes; at the default distance every body is below one pixel (Sun ~0.08 px radius), so nothing is visible until the 2c icons land, except the orbit ellipses if O was on. The flight HUD hides its reticle, joystick and velocity markers and shows the map's key hints | Built (2b-2), `Map/SOLMapModeSubsystem.cpp`, `Universe/SOLAnchorSubsystem.cpp`, `SOLConstants.h` |
+| Destination picking | Two-stage drag gesture (SDD 3 section 3) | Designed |
 | Warp animation | ~2-4 s with FX and sound | Designed |
 | Arrival | Velocity matched to the nearest body; origin re-anchored | Designed |
 
@@ -92,7 +97,7 @@ The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOL
 | Mechanic | Value / rule | Status |
 |---|---|---|
 | Anchor switch | Only when distance to a new body is under 25% of its distance to the current anchor (or second-closest body); a teleport re-picks the plain nearest body | Built (1a), `Universe/SOLAnchor.cpp`, `Universe/SOLAnchorSubsystem.cpp` |
-| Render origin | Snaps to the observer on an anchor change or after 10 km of drift; bodies beyond 1,000,000 km are drawn closer with their angular size preserved | Built (1a), `SOLConstants.h` |
+| Render origin | Snaps to the render viewpoint (the observer, or the map camera while the jump map is open) on an anchor change, after 10 km of drift, or when the map closes; bodies beyond 1,000,000 km of the viewpoint are drawn closer with their angular size preserved | Built (1a; viewpoint 2b-2), `Universe/SOLAnchorSubsystem.cpp`, `SOLConstants.h` |
 
 ## 7. Combat
 

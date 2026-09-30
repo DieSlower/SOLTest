@@ -15,7 +15,7 @@ Let the player open a zoomable map of the solar system (J), pick a destination a
 | Area | Decision |
 |---|---|
 | Map style | A genuinely navigable 3D tactical view in the same world (Homeworld-style sensors-manager feel), not a separate 2D schematic. |
-| Camera | J releases the mouse cursor. Left-drag on empty space orbits the camera around the current focus point; middle/right-drag (or Shift+drag) pans the focus; mouse wheel zooms on a log scale from system-wide down to a single body's neighborhood. |
+| Camera | J releases the mouse cursor. **Right-drag** orbits the camera around the current focus point; **middle-drag** (or Shift+right-drag) pans the focus; mouse wheel zooms on a log scale from system-wide down to a single body's neighborhood. **Left** is reserved for the destination-picking gesture (section 3), matching Homeworld's own left-orders/right-orbits split. (Resolved 2026-09-30: an earlier draft of this row said "left-drag orbits," which directly contradicted section 3's left-mouse-down destination gesture; right/middle for camera control is the fix.) |
 | Body representation | Each body renders its real mesh when large enough on screen; below a pixel-size threshold it cross-fades to a billboarded icon (color/size-coded per body) with a name label, so every body stays visible and clickable at any zoom. |
 | Time while mapped | The sim clock keeps advancing at whatever warp was active before J was pressed; bodies (and the ship, coasting under its last control state) keep moving live while the map is open. |
 | Destination picking | Homeworld-style two-stage gesture, described precisely in section 3. |
@@ -88,6 +88,7 @@ None deferred; the pick radius per body, disc/guide-line visuals, and warp FX sp
 ## 6. Revision history
 
 - 2026-09-29: initial SDD from the Part 2 grill.
+- 2026-09-30: sub-part 2b-2 map mode as built (Appendix E, "Map mode design"): render-viewpoint override in `USOLAnchorSubsystem`, wheel forward = zoom in.
 
 ### Appendix D clarifications (settled after the test author's ambiguity report)
 
@@ -176,8 +177,48 @@ Replaces `ApplyPan`'s vertical-drag behavior. In Homeworld's tactical camera, pa
 
 `FocusPositionM += right * panDeltaRightM + forwardHorizontal * panDeltaUpM`. The parameter named `panDeltaUpM` (a vertical screen-drag amount) now drives a horizontal forward/backward move, not a height change — there is deliberately no way to move the focus along `Up` at all; only `ApplyOrbitDelta`'s Pitch changes how the SAME horizontal point is viewed. `Yaw`/`Pitch`/`DistanceM` are unchanged by `ApplyPan`, as before.
 
+### Map mode design (sub-part 2b-2, as built)
+
+- **Mode owner, split by responsibility.** `USOLMapModeSubsystem` (`Map/SOLMapModeSubsystem`, a `UWorldSubsystem` gated by `ASOLGameMode::IsSOLGameWorld` like every SOL subsystem) owns the map state: the `FSOLOrbitCameraState` / `FSOLOrbitCameraParams`, the camera actor, the view-target swap and the render-viewpoint override. `ASOLShipPawn` owns the input side, exactly as it already owns the F3 panel: J is in the ship's mapping context; opening (deferred to the pawn's next tick, outside the Enhanced Input callback) runs the same `SuspendShipControl` as F3 (keys flushed, ship mapping removed, thrust/roll/boost/stick zeroed; the Mass step, sim clock and warp keep running), adds a separate `IMC_Map` (J / Esc close, right mouse = orbit button, middle mouse or Shift + right mouse = pan button, `Mouse2D` delta, wheel; the left mouse button is deliberately unmapped, reserved for 2d's destination-picking gesture) and switches to game-and-UI input with a visible, unlocked cursor (the viewport captures and hides it only while a button is held, so drags produce deltas). Closing removes `IMC_Map` and runs `RestoreShipControl` (the F3 close path: ship mapping, hidden captured cursor, game-only input). The pawn forwards drags and wheel notches to the subsystem; 2c/2d read the camera state from the subsystem without going through the pawn.
+- **Camera swap.** A plain engine `ACameraActor` (spawned once, transient, no tick, 60° FOV, no aspect constraint) becomes the controller's view target on open; the previous view target (the ship pawn) is restored on close. The ship's spring-arm chase camera is untouched.
+- **Input scaling ("grab the scene").** Orbit: yaw -= dx x 0.005 rad/px, pitch -= dy x 0.005 rad/px (dy positive = mouse up). Pan: `ApplyPan(-dx x m, -dy x m)` with m = `DistanceM` x 0.0015 per pixel. Zoom: wheel forward (positive notches) zooms **in**, i.e. `ApplyZoom(-notches)`, one notch = one 1.2x step. The map opens with the focus on the ship's live position at that instant (not tracked afterwards), Yaw 0, Pitch 0.5, `DistanceM` = `SOL::MAP_DEFAULT_DISTANCE_M` (1e13 m).
+- **Focus does not follow the ship (intentional, not a bug).** Once the map is open the focus is a fixed point the player orbits, pans and zooms around; it is set once (`FocusPositionM` = ship position when J is pressed) and only pan moves it afterwards. The ship keeps coasting on its last control state while the map is open (section 2, time keeps advancing), but the camera is never silently re-centered on it, exactly like Homeworld's tactical camera. Do not "fix" this by tracking the ship.
+- **Render-origin integration (render viewpoint).** Placing the camera at `UniverseToRenderCm(cameraM)` with the render origin still on the ship would put it ~1e15 cm out (beyond Unreal's large-world bounds), and the bodies' far-field depth compression is radial from the observer, so they would be warped as seen from anywhere else. Instead `USOLAnchorSubsystem` gained a **render viewpoint**: `SetViewpointOverrideM` / `ClearViewpointOverride` / `GetViewpointM` (the observer unless overridden). The render origin rebases onto the viewpoint, and `ComputeBodyRenderPlacement` / `ComputePointRenderLocationCm` compress from it. The map subsystem applies queued input on `OnBodiesUpdated` and sets the viewpoint to the camera's universe position **before** the anchor's rebase, so in the same frame the origin sits at the camera, every body (and the HUD orbit ellipses and target bracket, which use the same placement) is placed with correct angles from the camera, and on `OnUniverseUpdated` the camera actor is placed at `UniverseToRenderCm(cameraM)` (within the 10 km rebase distance of Unreal's origin) with `ComputeCameraOrientation`. The observer (ship), anchor selection and hysteresis are unaffected. Closing clears the override and forces a snap back onto the ship at the next update. The ship pawn and the observer actor are placed through `ComputePointRenderLocationCm(observer)`, which is identical to the old `UniverseToRenderCm(observer)` in normal play and stays bounded while the map views from far away.
+- **Body visuals.** `ASOLBodyVisuals` needed no change: it already placed bodies through `ComputeBodyRenderPlacement` on `OnUniverseUpdated` and never referenced the ship camera or pawn. The flight HUD hides the reticle, joystick and velocity markers while the map is open and shows the map's key hints.
+- **Known limitation for 2c.** At the default 1e13 m every body is sub-pixel (smoke run: Sun 0.08 px radius, Jupiter 0.008 px, Earth 0.0007 px), so the default map view shows no bodies at all, only the HUD (and the orbit ellipses if O was on). Real meshes do render from the map camera when zoomed in (Earth ~110 px radius at 5e7 m). The icon/billboard fallback of 2c is required for the map to be usable at system scale.
+- **Mouse buttons (settled 2026-09-30).** Right drag orbits, middle drag or Shift + right drag pans, and the left button is left unbound in `IMC_Map` so a left click/drag currently does nothing; 2d binds it to the destination-picking gesture (section 3 step 1). The `-SOLSmokeMap` run checks all three (left drag leaves the camera unchanged, right drag orbits, middle and Shift + right drags pan).
+
 ### Appendix E, additional post-review fixes
 
 1. **Yaw direction is untested (review finding #1).** Add a definitive test: at exactly `Yaw = +PI/2` starting from the Yaw=0 offset `(-1,0,0)*Distance`, the result must be `(0,-Distance,0)` (not `(0,+Distance,0)`) per the right-hand-rule clarification — pin the actual sign, not just its magnitude. Add the matching definitive pan-right test: at `Yaw = +PI/2`, `ApplyPan` with `panDeltaRightM = D` moves the focus by `(+D, 0, 0)`.
 2. **Pole guard (review finding #3).** `FSOLOrbitCameraParams::MaxPitchRad`/`MinPitchRad` must stay strictly inside `(-PI/2, PI/2)` with enough margin that `ComputeCameraOrientation`'s up-vector re-orthogonalization never degenerates (the review found degeneracy starting around 1e-4 rad from the exact pole). Add a `static_assert` (or a runtime `check`) in `SOLMapCamera.cpp` enforcing `MaxPitchRad < PI/2 - 1e-3` and `MinPitchRad > -(PI/2 - 1e-3)` against the DEFAULT `FSOLOrbitCameraParams`, and document that a caller must not raise the limits past that margin.
 3. **Style (review finding #4).** Reflow lines over the 120-column soft limit in `SOLMapCamera.h` and `MapCameraTest.cpp`.
+
+## 8. Appendix F — viewpoint-resolution contract (post-review, 2b-2)
+
+Extracted per the 2b-2 adversarial review: `USOLAnchorSubsystem`'s "which position does rendering use this frame, and does the origin need a forced snap" decision (introduced for the map's `SetViewpointOverrideM`/`ClearViewpointOverride`) becomes a small pure function, mirroring how `FSOLRenderOrigin` was already extracted from this same subsystem in Part 1a.
+
+### `Universe/SOLViewpointResolve.h`
+
+```cpp
+struct FSOLViewpointResolveResult { FVector3d EffectivePositionM; bool bForceSnap = false; };
+
+namespace SOLViewpoint
+{
+    // EffectivePositionM = OverridePositionM if bIsOverrideActiveThisFrame, else ObserverPositionM. bForceSnap is true
+    // exactly when the override's on/off state changed since last frame (bWasOverrideActiveLastFrame !=
+    // bIsOverrideActiveThisFrame) — a still-active override moving frame to frame does NOT force a snap; that case
+    // is left to FSOLRenderOrigin's own drift-distance snap rule, unchanged.
+    FSOLViewpointResolveResult Resolve(bool bWasOverrideActiveLastFrame, bool bIsOverrideActiveThisFrame,
+                                       const FVector3d& OverridePositionM, const FVector3d& ObserverPositionM);
+}
+```
+
+`USOLAnchorSubsystem` calls this once per frame instead of branching inline, and feeds `EffectivePositionM`/`bForceSnap` into `FSOLRenderOrigin::Update` exactly as it does today for the observer-only path.
+
+### Other post-review fixes (2b-2), no new contract needed
+
+- **Target bracket under a viewpoint override (review finding 2):** `ASOLFlightHud`'s target-bracket placement must use the same viewpoint-aware placement helper the ship and bodies already use (`ComputePointRenderLocationCm` against the CURRENT effective viewpoint), not a ship-relative 1:1 offset composed with the ship's own compressed placement. Latent today (no non-body `ISOLTargetable` is registered yet), but fix it now so it's correct before Part 6 adds one.
+- **`IMC_Map` add-order (review finding 3):** add the map's input mapping context BEFORE suspending the ship's own control/mapping context, and if adding it fails (no local player/input subsystem), roll back (close the map) rather than leaving the player in a state with no mapping context bound at all, which would make the map unclosable.
+- **Stale `OnRenderOriginShifted` broadcast (review finding 4):** a viewpoint-source transition (map open/close) produces a large, not-physically-meaningful "shift" on `OnRenderOriginShifted`. Document on the delegate that a shift caused by a viewpoint-source change (as opposed to normal anchor-driven rebasing) is not meaningful for anything that reacts to real spatial rebasing (e.g. a future pooled-effect position fixup), or suppress the broadcast specifically for a viewpoint-transition-caused snap. Pick whichever is simpler given the current delegate's callers (there are none yet).
+- **Style (review finding 5):** reflow the two over-120-column lines in `SOLConstants.h` and `SOLFlightHud.h`; correct the 2b-2 revision-history date in this SDD to 2026-09-30 (the button rebind happened that day, not the 29th).

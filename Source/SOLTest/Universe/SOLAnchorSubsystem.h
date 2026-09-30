@@ -19,6 +19,7 @@ class USOLSimClockSubsystem;
 
 DECLARE_MULTICAST_DELEGATE(FSOLOnUniverseUpdated);
 DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnBodiesUpdated, float /*realDeltaSeconds*/);
+// Render-origin shift (cm); also fired, not meaningfully, on a viewpoint-source change (see OnRenderOriginShifted)
 DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnRenderOriginShifted, const FVector& /*shiftCm*/);
 
 /**
@@ -31,6 +32,11 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnRenderOriginShifted, const FVector& /*
  * Unreal-space coordinates stay small. UWorld::SetNewWorldOrigin is not used: its FIntVector origin is int32 cm
  * (about +-21,000 km), far too small for AU-scale positions, and bodies are re-placed from the universe every frame.
  * The render-origin arithmetic itself lives in FSOLRenderOrigin (unit-tested).
+ *
+ * The render VIEWPOINT is the universe point the frame is drawn from: normally the observer, but a mode with its own
+ * camera far from the ship (the jump map, SDD 3) overrides it. The render origin rebases onto the viewpoint, and body
+ * placement (1:1 near, depth-compressed far, angular size kept) is computed from it, so the image is correct from that
+ * camera. The observer itself (anchor selection, the ship) is unaffected by the override.
  */
 UCLASS()
 class SOLTEST_API USOLAnchorSubsystem : public UTickableWorldSubsystem
@@ -66,6 +72,18 @@ public:
     // Registers the actor that represents the observer; it is moved when the render origin shifts
     void SetObserverActor(AActor* observerActor);
 
+    // Draws the universe from this point instead of the observer (meters, ecliptic); the render origin follows it
+    void SetViewpointOverrideM(const FVector3d& viewpointM);
+
+    // Returns the render viewpoint to the observer; the next update snaps the render origin back onto it
+    void ClearViewpointOverride();
+
+    // Returns true while a viewpoint override is active
+    bool HasViewpointOverride() const { return mHasViewpointOverride; }
+
+    // Returns the universe point the frame is rendered from: the override if set, else the observer (meters)
+    const FVector3d& GetViewpointM() const { return mHasViewpointOverride ? mViewpointOverrideM : mObserverPositionM; }
+
     // Returns the current anchor body index, or INDEX_NONE before the first update
     int32 GetAnchorIndex() const { return mAnchor.GetAnchorIndex(); }
 
@@ -81,10 +99,11 @@ public:
     // Converts an Unreal render location (cm, Unreal axes) to a universe position (meters, ecliptic)
     FVector3d RenderToUniverseM(const FVector& renderCm) const;
 
-    // Returns a body's render location and radius (cm, Unreal axes); 1:1 near the observer, angular size kept far away
+    // Returns a body's render location and radius (cm, Unreal axes); 1:1 near the viewpoint, angular size kept far away
     FSOLRenderPlacement ComputeBodyRenderPlacement(int32 bodyIndex) const;
 
-    // Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0)
+    // Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0);
+    // equals UniverseToRenderCm within 1,000,000 km of the viewpoint
     FVector ComputePointRenderLocationCm(const FVector3d& universeM) const;
 
     // Returns the index of the body whose surface is nearest the observer, and its altitude in meters
@@ -98,7 +117,10 @@ public:
     // Fired after every universe update, once body positions and the render origin are final for the frame
     FSOLOnUniverseUpdated& OnUniverseUpdated() { return mOnUniverseUpdated; }
 
-    // Fired when the render origin moves; the argument is the shift applied to Unreal locations (cm)
+    // Fired when the render origin moves; the argument is the shift applied to Unreal locations (cm). Caveat: the snap
+    // on a viewpoint-source change (the map opening or closing, SOLViewpoint::Resolve's bForceSnap) also fires this
+    // with a huge shift between two unrelated viewpoints; it is not a real spatial rebase, so a consumer that fixes up
+    // positions (e.g. a future pooled-effect fixup) must not treat it as one (check HasViewpointOverride or re-place)
     FSOLOnRenderOriginShifted& OnRenderOriginShifted() { return mOnRenderOriginShifted; }
 
     // Creates the subsystem only in game and PIE worlds that run ASOLGameMode
@@ -111,8 +133,8 @@ protected:
 
 private:
 
-    // Snaps the render origin onto the observer when forced or due, then shifts the observer actor and notifies
-    void RebaseRenderOrigin(bool bForceSnap);
+    // Snaps the render origin onto the viewpoint when forced or due, then places the observer actor and notifies
+    void RebaseRenderOrigin(const FVector3d& viewpointM, bool bForceSnap);
 
     UPROPERTY(Transient)
     TObjectPtr<USOLSimClockSubsystem> SimClock;
@@ -123,6 +145,9 @@ private:
     TWeakObjectPtr<AActor> mObserverActor;                     // Actor moved when the render origin shifts
     FSOLAnchorSelector mAnchor;                                // Nearest-body selection with hysteresis
     FVector3d mObserverPositionM = FVector3d::ZeroVector;      // Authoritative observer position (universe, meters)
+    FVector3d mViewpointOverrideM = FVector3d::ZeroVector;     // Render viewpoint while overridden (universe, meters)
+    bool mHasViewpointOverride = false;                        // True while the viewpoint is not the observer
+    bool mWasViewpointOverrideActive = false;                  // Override state at the last update (forces a snap)
     FSOLRenderOrigin mRenderOrigin;                            // Universe point at Unreal (0,0,0) and its math
     FSOLOnBodiesUpdated mOnBodiesUpdated;                      // Listeners between the body update and the anchor
     FSOLOnUniverseUpdated mOnUniverseUpdated;                  // Listeners for the per-frame update
