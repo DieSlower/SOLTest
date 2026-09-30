@@ -146,7 +146,7 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 **Universe** (`Source/SOLTest/Universe/`)
 - `FSOLSimClock` (pure, `SOLSimClock.h`): Julian date and the warp ladder. `USOLSimClockSubsystem` (engine) wraps it.
 - `FSOLKeplerElements` / `FSOLSecularElements` / `SOLKepler` (pure, `SOLKepler.h`): JPL secular elements and the Kepler solver that turns them into a state.
-- `FSOLBodyRegistry` (pure, `SOLBodyRegistry.h`): structure-of-arrays bodies (name, radius, GM, **parent index**, elements, Sun-frame position and velocity). `USOLBodyRegistrySubsystem` (engine) owns it plus the Unreal-handed `FSOLBodyFrameCache`.
+- `FSOLBodyRegistry` (pure, `SOLBodyRegistry.h`): structure-of-arrays bodies (name, radius, GM, **parent index**, elements, Sun-frame position and velocity, and — issue #12 — sidereal rotation period/axial tilt/W0 with a computed orientation via `GetOrientation`). `SOLBodyRotation` (pure, `SOLBodyRotation.h`): the tilt-plus-spin quaternion math `Update()` calls per body. `USOLBodyRegistrySubsystem` (engine) owns the registry plus the Unreal-handed `FSOLBodyFrameCache` (positions only as of #12; visuals convert orientation separately via `SOLRender::EclipticToUnreal(FQuat4d)`).
 - `FSOLAnchorSelector` (pure, `SOLAnchor.h`): picks the nearest body with 25% hysteresis.
 - `FSOLRenderOrigin` / `SOLRender::ComputePlacement` (pure, `SOLRenderOrigin.h`, `SOLRenderPlacement.h`): rebasing and far-placement math.
 - `USOLAnchorSubsystem` (engine, `SOLAnchorSubsystem.h`): the frame driver. It holds the observer position and the render origin, and exposes `OnBodiesUpdated`, `OnUniverseUpdated` and `OnRenderOriginShifted`.

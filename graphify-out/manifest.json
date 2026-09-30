@@ -45,8 +45,8 @@
     "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
   },
   "CLAUDE.md": {
-    "mtime": 1790743514.2889462,
-    "ast_hash": "b428ab0c4710a62d5b5f441b60c311e5",
+    "mtime": 1790801661.4512286,
+    "ast_hash": "858817468622d6b7f94950eef5dee10c",
     "semantic_hash": ""
   },
   "Docs/GAME_MECHANICS.md": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
-    "mtime": 1790785903.9942853,
-    "ast_hash": "0d7e9a88fde189abd396c6c87d1e725a",
+    "mtime": 1790792284.348739,
+    "ast_hash": "5394647ed2335a69646955d30246665a",
     "semantic_hash": ""
   },
   "Docs/Research/STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
@@ -85,8 +85,8 @@
     "semantic_hash": "43503920351ce974c9b10c7bffa37fc8"
   },
   "Docs/ToDo/README.md": {
-    "mtime": 1790785903.0739765,
-    "ast_hash": "c4920ed9bc59d6cce625ebb69e0131fe",
+    "mtime": 1790800519.1583498,
+    "ast_hash": "d802ad55a227461e3bf0c992fc74ead8",
     "semantic_hash": ""
   },
   "Docs/ToDo/planetary-perturbations.md": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/BodyRegistryTest.cpp": {
-    "mtime": 1790582861.2493246,
-    "ast_hash": "760c00eb903279bb531d0d2aa18898f6",
+    "mtime": 1790801686.3953657,
+    "ast_hash": "af8bd1f77fcc9d13efba88631122afcf",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/KeplerTest.cpp": {
@@ -145,8 +145,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/RenderPlacementTest.cpp": {
-    "mtime": 1790582926.1111302,
-    "ast_hash": "b90888506ecd9fe7a6cc6c0465795d0c",
+    "mtime": 1790800888.976572,
+    "ast_hash": "0b4652050139b15fb9358a40c7dbcd8e",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/SOLTestHelpers.h": {
@@ -180,13 +180,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.cpp": {
-    "mtime": 1790633461.9734845,
-    "ast_hash": "0d4a2c37b0df7f740dd1641613c3fa8f",
+    "mtime": 1790801118.1346054,
+    "ast_hash": "701230915c30c26ebab94230d59ac0cd",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.h": {
-    "mtime": 1790633461.9734845,
-    "ast_hash": "d0f28086853fbe28d717936e2ec5b1c1",
+    "mtime": 1790801063.1107051,
+    "ast_hash": "a49ab4d96351ef8fcaeae9248ae78ac5",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp": {
@@ -205,13 +205,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLRenderPlacement.cpp": {
-    "mtime": 1790583315.0164363,
-    "ast_hash": "748c8b58c6ac14b7950132c807b9addf",
+    "mtime": 1790801053.3939204,
+    "ast_hash": "f02ceeba975be335b9f515be8b31774b",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLRenderPlacement.h": {
-    "mtime": 1790582871.2450747,
-    "ast_hash": "32451f1b9edab4ee793ce1cd50e0d5bb",
+    "mtime": 1790801052.5474918,
+    "ast_hash": "a20877956baaacd6a047771ac7b681c6",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLSimClock.cpp": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790791313.6339254,
-    "ast_hash": "46fbb90da0a104b1d7fa6fc8b9bd0a53",
+    "mtime": 1790801693.8661828,
+    "ast_hash": "efd2347b4ff108d3a8dfd3d067e3398b",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -705,8 +705,8 @@
     "semantic_hash": ""
   },
   "Docs/Plans/4-surface-lock-plan.md": {
-    "mtime": 1790791945.7640307,
-    "ast_hash": "633087642984968e665b29f4f5da7be0",
+    "mtime": 1790792273.0500798,
+    "ast_hash": "477e80f15ed6a95de0c110ece1674bb8",
     "semantic_hash": ""
   },
   "Docs/SDDs/4-surface-lock.md": {
@@ -727,6 +727,36 @@
   "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h": {
     "mtime": 1790791219.570636,
     "ast_hash": "743f51c975f6c648cdfd13e9b770aca6",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/BodyRotationTest.cpp": {
+    "mtime": 1790801371.9302742,
+    "ast_hash": "da9acc437ba5f053d8a15a64c1f07209",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Universe/SOLBodyRotation.cpp": {
+    "mtime": 1790801044.7496736,
+    "ast_hash": "0f58d410ff505936d77687f609d51ece",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Universe/SOLBodyRotation.h": {
+    "mtime": 1790801043.9456115,
+    "ast_hash": "8bd0714b075779610f5ecbd562db1788",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/12-planet-axial-rotation-plan.md": {
+    "mtime": 1790800533.5817213,
+    "ast_hash": "9b47bfdf5ef0941359ad2a4db71603b0",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/12-planet-axial-rotation.md": {
+    "mtime": 1790801642.8212645,
+    "ast_hash": "ec1868337648cfcfa56d88d762d08a08",
+    "semantic_hash": ""
+  },
+  "Docs/ToDo/accurate-pole-directions.md": {
+    "mtime": 1790801668.373284,
+    "ast_hash": "9e77678f3805232c9b0e6e6bb4171597",
     "semantic_hash": ""
   }
 }
