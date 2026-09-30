@@ -162,6 +162,7 @@ void ASOLFlightHud::BeginPlay()
         mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
+    mMapPickOverlay.Initialize();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -240,6 +241,9 @@ void ASOLFlightHud::DrawHUD()
         overlayView.FocalPx = view.FocalPx;
         mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
             GEngine->GetSmallFont(), HUD_TEXT_COLOR, mUiScale);
+
+        // Destination pick (2d): reference ring, disc, height guide line and destination marker over the icons
+        mMapPickOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, mUiScale);
     }
     DrawInfoBlock();
 
@@ -453,6 +457,13 @@ void ASOLFlightHud::DrawInfoBlock()
     {
         mText.Append(TEXT("JUMP MAP   right drag orbit   middle or Shift+right drag pan   wheel zoom   J / Esc close"));
         DrawBuffer(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
+        y += HUD_LINE_SMALL_PX * mUiScale;
+
+        // Destination picking (2d): Enter only reports the destination until the jump itself exists (2e)
+        mText.Reset();
+        mText.Append(TEXT("PICK   left click body/space + drag: XY   hold Shift + move: height   Shift+click: lock"));
+        mText.Append(TEXT("   X clear   Enter jump (not built yet)"));
+        DrawBuffer(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }
     mText.Append(mShowOrbitLines ? TEXT("ORBITS ON (O)") : TEXT("ORBITS OFF (O)"));

@@ -298,7 +298,8 @@ void FSOLMapSmoke::ExitPhase(const ESOLMapPhase phase, ASOLShipPawn& pawn)
     }
     case ESOLMapPhase::LeftNoop:
     {
-        // The left button is reserved for destination picking: a left drag must leave the camera exactly as it was
+        // The left button is destination picking (2d, checked by -SOLSmokeMapPick): a left drag must leave the camera
+        // exactly as it was
         const bool bUnchanged = state.YawRad == mReferenceState.YawRad && state.PitchRad == mReferenceState.PitchRad
             && state.DistanceM == mReferenceState.DistanceM && state.FocusPositionM == mReferenceState.FocusPositionM;
         Check(TEXT("c0-left-drag-noop"), bUnchanged && pawn.IsMapOpen(), FString::Printf(TEXT("left drag (%.0f, %.0f) "

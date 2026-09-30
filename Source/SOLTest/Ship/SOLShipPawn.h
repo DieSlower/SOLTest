@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "UI/SOLHudSmoke.h"
@@ -51,10 +52,15 @@ struct FInputActionValue;
  *
  * Jump map (2b-2): J opens the map through USOLMapModeSubsystem (which owns the orbit camera and the view). The ship's
  * control input is suspended exactly as for F3, the map's own mapping context is added, and the OS cursor is shown
- * and free (game-and-UI input, not locked): right-drag orbits, middle- or Shift+right-drag pans, the wheel zooms, and
- * the left button is unbound (reserved for 2d's destination picking). J or Esc
- * closes it and restores the ship's mapping and captured cursor. Opening and closing happen at the next tick, outside
- * the Enhanced Input callback, like F3.
+ * and free (game-and-UI input, not locked): right-drag orbits, middle- or Shift+right-drag pans, the wheel zooms. J or
+ * Esc closes it and restores the ship's mapping and captured cursor. Opening and closing happen at the next tick,
+ * outside the Enhanced Input callback, like F3.
+ *
+ * Destination picking (2d): the pawn keeps a map cursor (the OS mouse position while no map button is held; while the
+ * left button drags, the position at mouse-down plus the mouse deltas, since the viewport captures and hides the
+ * cursor during a drag) and forwards it, the left button, Shift, X (clear) and Enter (jump) to USOLMapModeSubsystem,
+ * which owns the pick state. When the last held map button is released, the viewport ends its capture and puts the OS
+ * cursor back where the capture began; the pawn then warps the OS cursor onto the map cursor so the two never disagree.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -165,8 +171,29 @@ public:
     // Sets whether the map's middle mouse button is held (pan drag)
     void HandleMapPanHeld(bool bHeld);
 
-    // Sets whether Shift is held on the map (turns a right drag into a pan drag)
+    // Sets whether Shift is held on the map (turns a right drag into a pan drag; previews and locks the pick height)
     void HandleMapPanModifierHeld(bool bHeld);
+
+    // Left mouse pressed on the map: starts a destination pick, or with Shift during a height preview locks the height
+    void HandleMapPickPressed();
+
+    // Left mouse released on the map: locks the pick's planar offset
+    void HandleMapPickReleased();
+
+    // Clears the map's destination pick (X)
+    void HandleMapClearPick();
+
+    // Asks the map to jump to its locked destination (Enter; for now the map only logs it)
+    void HandleMapJump();
+
+    // Moves the map cursor to a pixel position (top-left origin) and forwards it to the map
+    void HandleMapCursorMoved(const FVector2D& cursorPx);
+
+    // Verification: while set, the map cursor ignores the OS mouse and only follows HandleMapCursorMoved and drags
+    void SetMapCursorScripted(bool bScripted) { mIsMapCursorScripted = bScripted; }
+
+    // Returns the map cursor (pixels, top-left origin)
+    const FVector2D& GetMapCursorPx() const { return mMapCursorPx; }
 
     // Forwards a mouse delta in pixels (X right, Y up) to the map: middle or Shift+right drag pans, right drag orbits
     void HandleMapMouseDelta(const FVector2d& deltaPixels);
@@ -243,6 +270,16 @@ private:
 
     // Closes the map without restoring the ship's input (teardown)
     void DismissMap();
+
+    // Follows the OS mouse position with the map cursor while no map button is held (and no script drives it)
+    void UpdateMapCursor();
+
+    // Once no map button is held (the viewport's mouse capture ended and it put the OS cursor back where the capture
+    // began), warps the OS cursor onto the map cursor and records that as the last OS reading, so neither jumps later
+    void SyncOsCursorToMapCursor();
+
+    // Tells the map whether a camera drag (right or middle button) is active, and re-syncs the OS cursor once it ends
+    void HandleMapCameraDragChanged();
 
     // Builds the placeholder ship from engine primitives with a light hull and a glowing engine
     void BuildShipMesh();
@@ -365,6 +402,18 @@ private:
     // Enhanced Input: mouse wheel on the map
     void OnMapZoomAction(const FInputActionValue& value);
 
+    // Enhanced Input: map left mouse button (destination pick) pressed
+    void OnMapPickStarted(const FInputActionValue& value);
+
+    // Enhanced Input: map left mouse button (destination pick) released
+    void OnMapPickCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: map X (clear the destination pick)
+    void OnMapClearPickAction(const FInputActionValue& value);
+
+    // Enhanced Input: map Enter (jump to the destination)
+    void OnMapJumpAction(const FInputActionValue& value);
+
     /** Root the ship parts and the camera arm hang from; carries the ship's orientation. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<USceneComponent> ShipRoot;
@@ -478,6 +527,15 @@ private:
     TObjectPtr<UInputAction> MapZoomAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapPickAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapClearPickAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapJumpAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLSpeedPanelWidget> SpeedPanel;
 
     UPROPERTY(Transient)
@@ -500,7 +558,10 @@ private:
     TUniquePtr<FSOLShipSmokeInput> mSmokeInput;             // Verification-only scripted input (-SOLSmokeInput)
     TUniquePtr<FSOLHudSmoke> mSmokeHud;                     // Verification-only HUD/panel script (-SOLSmokeHud)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
+    TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     FSOLShipControl mControl;                               // Control composed from the input state
+    FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
+    FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
     FRotator mFreeLookRotation = FRotator::ZeroRotator;     // Camera orbit around the ship while Alt is held
     FQuat mCameraRotation = FQuat::Identity;                // Lagged world rotation of the camera arm
@@ -519,4 +580,7 @@ private:
     bool mIsMapRightHeld = false;                           // Right mouse held on the map (orbit, or pan with Shift)
     bool mIsMapPanHeld = false;                             // Middle mouse held on the map (pan drag)
     bool mIsMapPanModifierHeld = false;                     // Shift held on the map (right drag pans instead)
+    bool mIsMapPickHeld = false;                            // Left mouse held on the map (destination pick drag)
+    bool mIsMapCursorScripted = false;                      // Verification: the OS mouse does not move the cursor
+    bool mHasOsMousePx = false;                             // mLastOsMousePx holds a reading since the map opened
 };

@@ -201,6 +201,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeMap = MakeUnique<FSOLMapSmoke>();
         mSmokeMap->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_MAP_PICK))
+    {
+        mSmokeMapPick = MakeUnique<FSOLMapPickSmoke>();
+        mSmokeMapPick->Start(*this);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -220,6 +225,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeInput.Reset();
     mSmokeHud.Reset();
     mSmokeMap.Reset();
+    mSmokeMapPick.Reset();
     Super::EndPlay(endPlayReason);
 }
 
@@ -246,6 +252,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeMap.Reset();
     }
+    if (mSmokeMapPick.IsValid() && mSmokeMapPick->Update(*this, deltaSeconds))
+    {
+        mSmokeMapPick.Reset();
+    }
 
     // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
     // Input callback
@@ -267,6 +277,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         }
     }
     UpdateViewportFocus();
+    UpdateMapCursor();
 
     // Virtual joystick: radius from the current viewport, offset mapped through the dead zone and response curve
     if (const APlayerController* playerController = Cast<APlayerController>(GetController()))
@@ -358,6 +369,10 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
         &ASOLShipPawn::OnMapPanModifierCompleted);
     input->BindAction(MapLookAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapLookAction);
     input->BindAction(MapZoomAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapZoomAction);
+    input->BindAction(MapPickAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapPickStarted);
+    input->BindAction(MapPickAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnMapPickCompleted);
+    input->BindAction(MapClearPickAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapClearPickAction);
+    input->BindAction(MapJumpAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapJumpAction);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -424,7 +439,8 @@ void ASOLShipPawn::UpdateViewportFocus()
 {
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
-    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
+    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
+        || mIsSpeedPanelOpen || mIsMapOpen)
     {
         return;
     }
@@ -504,6 +520,9 @@ void ASOLShipPawn::CreateInputObjects()
     MapPanModifierAction = CreateAction(this, TEXT("IA_MapPanModifier"), EInputActionValueType::Boolean);
     MapLookAction = CreateAction(this, TEXT("IA_MapLook"), EInputActionValueType::Axis2D);
     MapZoomAction = CreateAction(this, TEXT("IA_MapZoom"), EInputActionValueType::Axis1D);
+    MapPickAction = CreateAction(this, TEXT("IA_MapPick"), EInputActionValueType::Boolean);
+    MapClearPickAction = CreateAction(this, TEXT("IA_MapClearPick"), EInputActionValueType::Boolean);
+    MapJumpAction = CreateAction(this, TEXT("IA_MapJump"), EInputActionValueType::Boolean);
     MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Ship"));
     MapMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Map"));
 
@@ -544,9 +563,14 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, ToggleMapAction, EKeys::J, this);
 
     // Jump map: J or Esc close; right drag orbits, middle or Shift+right drag pans (held buttons gate the mouse
-    // delta), the wheel zooms. The left mouse button is deliberately unmapped: it is reserved for destination picking
+    // delta), the wheel zooms. Destination picking: left button (press and release), Shift (the same action as the
+    // pan modifier) previews and locks the height, X clears the pick, Enter jumps. The ship's X (clear target) lives
+    // in the ship's context, which is removed while the map is open, so the two never conflict
     MapPressedKey(MapMappingContext, ToggleMapAction, EKeys::J, this);
     MapPressedKey(MapMappingContext, MapCloseAction, EKeys::Escape, this);
+    MapPressedKey(MapMappingContext, MapClearPickAction, EKeys::X, this);
+    MapPressedKey(MapMappingContext, MapJumpAction, EKeys::Enter, this);
+    MapMappingContext->MapKey(MapPickAction, EKeys::LeftMouseButton);
     MapMappingContext->MapKey(MapRightDragAction, EKeys::RightMouseButton);
     MapMappingContext->MapKey(MapPanAction, EKeys::MiddleMouseButton);
     MapMappingContext->MapKey(MapPanModifierAction, EKeys::LeftShift);
@@ -984,6 +1008,8 @@ void ASOLShipPawn::OpenMap()
     mIsMapRightHeld = false;
     mIsMapPanHeld = false;
     mIsMapPanModifierHeld = false;
+    mIsMapPickHeld = false;
+    mHasOsMousePx = false;
     mIsMapOpen = true;
     UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map open; ship control input suspended, cursor released"), *GetName());
 }
@@ -1020,6 +1046,131 @@ void ASOLShipPawn::DismissMap()
     mIsMapRightHeld = false;
     mIsMapPanHeld = false;
     mIsMapPanModifierHeld = false;
+    mIsMapPickHeld = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Follows the OS mouse position with the map cursor while no map button is held (and no script drives it)
+void ASOLShipPawn::UpdateMapCursor()
+{
+    // During a drag the viewport captures and hides the cursor, so the drag moves the map cursor by the mouse deltas
+    // instead (HandleMapMouseDelta); a reading is forwarded only when the OS position actually changed
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (!mIsMapOpen || mIsMapCursorScripted || mIsMapPickHeld || mIsMapRightHeld || mIsMapPanHeld
+        || playerController == nullptr)
+    {
+        return;
+    }
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    if (!playerController->GetMousePosition(mouseX, mouseY))
+    {
+        return;
+    }
+    const FVector2D osMousePx(mouseX, mouseY);
+    if (!mHasOsMousePx || osMousePx != mLastOsMousePx)
+    {
+        mLastOsMousePx = osMousePx;
+        mHasOsMousePx = true;
+        HandleMapCursorMoved(osMousePx);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the map cursor to a pixel position (top-left origin) and forwards it to the map
+void ASOLShipPawn::HandleMapCursorMoved(const FVector2D& cursorPx)
+{
+    mMapCursorPx = cursorPx;
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (MapMode == nullptr || playerController == nullptr)
+    {
+        return;
+    }
+    int32 viewportWidth = 0;
+    int32 viewportHeight = 0;
+    playerController->GetViewportSize(viewportWidth, viewportHeight);
+    MapMode->SetPickCursorPx(mMapCursorPx, FVector2D(viewportWidth, viewportHeight));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Left mouse pressed on the map: starts a destination pick, or with Shift during a height preview locks the height
+void ASOLShipPawn::HandleMapPickPressed()
+{
+    if (!mIsMapOpen || MapMode == nullptr)
+    {
+        return;
+    }
+
+    // Take the latest OS cursor position before the button capture freezes it, then pick against the body icons the
+    // HUD drew last frame
+    UpdateMapCursor();
+    mIsMapPickHeld = true;
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    const ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr;
+    MapMode->PressPick(hud != nullptr ? &hud->GetMapBodyOverlay() : nullptr, mIsMapPanModifierHeld);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Left mouse released on the map: locks the pick's planar offset
+void ASOLShipPawn::HandleMapPickReleased()
+{
+    // The OS cursor is put back on the map cursor first, so the lock (and a height preview it starts with Shift held)
+    // uses the position the player now sees
+    mIsMapPickHeld = false;
+    SyncOsCursorToMapCursor();
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->ReleasePick();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Once no map button is held (the viewport's mouse capture ended and it put the OS cursor back where the capture
+// began), warps the OS cursor onto the map cursor and records that as the last OS reading, so neither jumps later
+void ASOLShipPawn::SyncOsCursorToMapCursor()
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (!mIsMapOpen || mIsMapCursorScripted || mIsMapPickHeld || mIsMapRightHeld || mIsMapPanHeld
+        || playerController == nullptr)
+    {
+        return;
+    }
+    int32 viewportWidth = 0;
+    int32 viewportHeight = 0;
+    playerController->GetViewportSize(viewportWidth, viewportHeight);
+    if (viewportWidth <= 0 || viewportHeight <= 0)
+    {
+        return;
+    }
+
+    // The OS cursor only takes whole pixels inside the viewport; the map cursor snaps to the same pixel so the two
+    // agree exactly (a drag may have carried it past the edge)
+    const int32 cursorX = FMath::Clamp(FMath::RoundToInt32(mMapCursorPx.X), 0, viewportWidth - 1);
+    const int32 cursorY = FMath::Clamp(FMath::RoundToInt32(mMapCursorPx.Y), 0, viewportHeight - 1);
+    playerController->SetMouseLocation(cursorX, cursorY);
+    mLastOsMousePx = FVector2D(cursorX, cursorY);
+    mHasOsMousePx = true;
+    HandleMapCursorMoved(mLastOsMousePx);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clears the map's destination pick (X)
+void ASOLShipPawn::HandleMapClearPick()
+{
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->ClearPick();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Asks the map to jump to its locked destination (Enter; for now the map only logs it)
+void ASOLShipPawn::HandleMapJump()
+{
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->RequestJump();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1040,21 +1191,48 @@ void ASOLShipPawn::HandleCloseMap()
 // Sets whether the map's right mouse button is held (orbit drag, or pan drag with Shift)
 void ASOLShipPawn::HandleMapRightHeld(const bool bHeld)
 {
+    // A press first takes the OS position the viewport's capture pins the cursor at (and restores at the end)
+    if (bHeld)
+    {
+        UpdateMapCursor();
+    }
     mIsMapRightHeld = bHeld;
+    HandleMapCameraDragChanged();
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Sets whether the map's middle mouse button is held (pan drag)
 void ASOLShipPawn::HandleMapPanHeld(const bool bHeld)
 {
+    // A press first takes the OS position the viewport's capture pins the cursor at (and restores at the end)
+    if (bHeld)
+    {
+        UpdateMapCursor();
+    }
     mIsMapPanHeld = bHeld;
+    HandleMapCameraDragChanged();
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets whether Shift is held on the map (turns a right drag into a pan drag)
+// Tells the map whether a camera drag (right or middle button) is active, and re-syncs the OS cursor once it ends
+void ASOLShipPawn::HandleMapCameraDragChanged()
+{
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->SetCameraDragActive(mIsMapRightHeld || mIsMapPanHeld);
+    }
+    SyncOsCursorToMapCursor();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether Shift is held on the map (turns a right drag into a pan drag; previews and locks the pick height)
 void ASOLShipPawn::HandleMapPanModifierHeld(const bool bHeld)
 {
     mIsMapPanModifierHeld = bHeld;
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->SetHeightModifierHeld(bHeld);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1064,6 +1242,12 @@ void ASOLShipPawn::HandleMapMouseDelta(const FVector2d& deltaPixels)
     if (!mIsMapOpen || MapMode == nullptr)
     {
         return;
+    }
+
+    // A left drag moves the map cursor by the delta (screen Y grows downward, the delta's Y is up)
+    if (mIsMapPickHeld)
+    {
+        HandleMapCursorMoved(mMapCursorPx + FVector2D(deltaPixels.X, -deltaPixels.Y));
     }
     if (mIsMapPanHeld || (mIsMapRightHeld && mIsMapPanModifierHeld))
     {
@@ -1372,4 +1556,32 @@ void ASOLShipPawn::OnMapZoomAction(const FInputActionValue& value)
         notches = wheel > 0.0f ? 1 : -1;
     }
     HandleMapZoom(notches);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map left mouse button (destination pick) pressed
+void ASOLShipPawn::OnMapPickStarted(const FInputActionValue& /*value*/)
+{
+    HandleMapPickPressed();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map left mouse button (destination pick) released
+void ASOLShipPawn::OnMapPickCompleted(const FInputActionValue& /*value*/)
+{
+    HandleMapPickReleased();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map X (clear the destination pick)
+void ASOLShipPawn::OnMapClearPickAction(const FInputActionValue& /*value*/)
+{
+    HandleMapClearPick();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: map Enter (jump to the destination)
+void ASOLShipPawn::OnMapJumpAction(const FInputActionValue& /*value*/)
+{
+    HandleMapJump();
 }
