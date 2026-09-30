@@ -25,4 +25,4 @@
 
 ## Cross-cutting
 
-- [ ] Update `Docs/GAME_MECHANICS.md` with the final key bindings, pick radii, warp duration, and any tuned constants.
+- [x] Update `Docs/GAME_MECHANICS.md` with the final key bindings, pick radii, warp duration, and any tuned constants. (Kept in sync incrementally by each sub-part from 2b-2 through 2e.)
