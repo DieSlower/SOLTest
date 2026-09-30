@@ -32,7 +32,7 @@
 - [x] Test map `/Game/Maps/SOL_Test`, free-fly spectator pawn for verification, set as default map.
 - [x] Automation tests (64 pass).
 - [x] Adversarial review; fixes applied (log-depth far placement, per-body sun shading, `FSOLRenderOrigin`, subsystem gating, eccentricity clamp, input-context cleanup, constants).
-- [ ] Commit.
+- [x] Commit (`f0211ec`).
 
 ### 1b — Ship flight
 
@@ -44,7 +44,7 @@
 - [x] Automation tests (114 pass).
 - [x] Smoke checks: `-SOLSmokeFlight` 7/7, `-SOLSmokeInput` 29/29 through the real input pipeline, screenshot behind the ship over Earth.
 - [x] Adversarial review; fixes applied (Amendment 2: warp carry, hitch budget, substep bodies, swept collision and broadphase, const shared params, parallel chunk loop, focus loss, manual camera lag, fill light, style). Tests 131 pass; `-SOLSmokeFlight` 9/9 incl. the 1 d/s warp phases; `-SOLSmokeInput` 29/29; non-unity build clean.
-- [ ] Commit.
+- [x] Commit (`cb30ce2`).
 
 ### 1c — HUD
 
@@ -57,4 +57,4 @@
 - [x] F3 speed panel (numeric field and body speed list). (`UI/SOLSpeedPanelWidget`, UMG built in C++.)
 - [x] Automation tests for HUD data (164 pass); `-SOLSmokeHud` 15/15 (O/P toggles, panel blocks W, digit steps, unit cycle, list select, F3/Esc close) with screenshots of the HUD over Earth and the orbit ellipses from 3 AU above the Sun; non-unity build clean.
 - [x] Adversarial review; fixes applied (SDD Appendix C Amendment 4: whole-vector radar scaling, stepper unit overflow refusal at 1e9, radar stalk layout margin, near-plane clip at the plane itself, zoom no-op keeps the mode, shared `SOLHudFormat::AppendDistanceM`, reticle/joystick drawn under the markers, GAME_MECHANICS radar label, long lines). Tests 169 pass (adds `HudFormat.AppendDistanceMatchesFormat`); `-SOLSmokeHud` 17/17 (h-radar-zoom now expects `-` at the 1 km floor to stay AUTO); screenshots checked (radar stalks within the reserved margin, bracket drawn over the joystick ring); non-unity build clean.
-- [ ] Commit.
+- [x] Commit (`75905ac`). **Part 1 (issue #2) complete.**

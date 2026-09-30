@@ -102,6 +102,9 @@ namespace SOL
     // Kepler solver: at or above this eccentricity the Newton start switches from e*sin(M) to the far bracket end
     inline constexpr double KEPLER_HIGH_ECCENTRICITY = 0.8;
 
+    // Jump map picking: a ray whose |dot(dir, unit plane normal)| is below this is treated as parallel (SDD 3 App. D)
+    inline constexpr double MAP_PICK_PARALLEL_EPSILON = 1.0e-9;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
