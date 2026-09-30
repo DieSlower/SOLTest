@@ -39,7 +39,9 @@ The cross-cutting design decisions are in [`Docs/SDDs/1-solar-system-architectur
 
 ## Architecture
 
-The architecture is defined in [`Docs/SDDs/1-solar-system-architecture.md`](Docs/SDDs/1-solar-system-architecture.md) (scale and origin rebasing, Keplerian orbits, flight model, Mass for everything, star field, combat). Module and file layout rules are in [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) §14.2: the game module is `Source/SOLTest/`, organized by feature folder with each type's `.h` and `.cpp` side by side. Add a concise layout summary here once the first parts have landed.
+**[`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) is the living high-level map** of modules, the per-frame update order, coordinate systems, key types and data flows — read it before working across more than one feature folder. The *why* behind each decision lives in the SDDs: [`Docs/SDDs/1-solar-system-architecture.md`](Docs/SDDs/1-solar-system-architecture.md) (scale and origin rebasing, Keplerian orbits, flight model, Mass for everything, star field, combat) and each part's own SDD for what it actually built. Module and file layout rules are in [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) §14.2: the game module is `Source/SOLTest/`, organized by feature folder with each type's `.h` and `.cpp` side by side.
+
+**Keep `Docs/ARCHITECTURE.md` in sync**, per its own "Keeping this document in sync" section: whenever a module/subsystem/Actor/widget is added or removed, a class's responsibility or a module dependency changes, the frame update order changes, a coordinate frame/conversion changes, or a `-SOL*` command-line flag changes.
 
 **Read [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) before writing or refactoring any C++.** The guide is still a draft with `Review needed` notes; where it is unsettled, follow the surrounding code and ask the user.
 
@@ -138,7 +140,8 @@ The review must check at least the following (the research file has the complete
 
 Items the team is aware of but hasn't scheduled yet. Don't treat as blockers, but keep in mind when working in the area:
 
-- `Source/SOLTest/Universe/SOLTypes.h` and `SOLKepler.h` were started by Part 1a before it was paused; they are untested and their naming predates the style guide's decisions (see the `Review needed` notes in `Docs/STYLE_GUIDE.md`). Re-validate them when Part 1a resumes.
+- `Ship/` and `UI/` include each other's headers (`ASOLShipPawn` and `ASOLFlightHud`), found while writing `Docs/ARCHITECTURE.md`. It builds fine today, but is worth breaking (e.g. a small shared interface or event) before either file grows further.
+- `USOLAnchorSubsystem::OnUniverseUpdated` has multiple listeners (`ASOLBodyVisuals`, the pawn) with no enforced order; found while writing `Docs/ARCHITECTURE.md`. Neither adversarial review flagged an actual ordering bug, but if a future listener depends on another having already run this frame, that dependency needs to be made explicit rather than relying on bind order.
 
 Add new items here as they're discovered rather than letting them live only in commit messages or memory.
 
