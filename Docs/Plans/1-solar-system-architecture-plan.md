@@ -19,7 +19,7 @@
 
 - [x] **Part 1 (#2) — Foundations and flight scaffold.** Modules/plugins, universe coordinates, origin rebasing, sim clock, Kepler body registry, Sun and 8 planets (textured spheres), Mass ship entity with Pawn proxy, flight-assist/Newtonian, gravity, third-person camera, full sim-style HUD, speed control. Complete: see [`2-foundations-flight-scaffold-plan.md`](2-foundations-flight-scaffold-plan.md) (1a `f0211ec`, 1b `cb30ce2`, 1c `75905ac`; 169 automation tests).
 - [x] **Part 2 (#3) — Jump map (J)** with zoom, warp, and velocity-matched arrival. Complete: see [`3-jump-map-plan.md`](3-jump-map-plan.md) (2a `ed7ecc9`, 2b `e60f952`, 2b-2 `031888d`, 2c `a69870f`+`b4d1bb2`, 2d `8775a8c`, 2e `0679833`; 277 automation tests).
-- [ ] **Part 3 (#4) — Level / surface-lock (L).**
+- [x] **Part 3 (#4) — Level / surface-lock (L).** Complete: see [`4-surface-lock-plan.md`](4-surface-lock-plan.md) (3a `05e82fa`+`6733591`, 3b `cbf6e7a`; 31 new automation tests, 308 total).
 - [ ] **Part 3.5 (#12) — Planet axial rotation** (spin + real axial tilts), filed as a follow-up during Part 3's grill; not a prerequisite for Part 3.
 - [ ] **Part 4 (#5) — Star field** (AT-HYG pipeline, hybrid renderer, Milky Way).
 - [ ] **Part 5 (#6) — Moons, dwarf planets, asteroid belt (Mass), planet rings.**
