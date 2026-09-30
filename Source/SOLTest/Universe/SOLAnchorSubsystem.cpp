@@ -10,6 +10,7 @@
 #include "SOLTest.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
+#include "Universe/SOLViewpointResolve.h"
 
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
@@ -70,7 +71,12 @@ void USOLAnchorSubsystem::Tick(const float deltaTime)
             previousAnchor == INDEX_NONE ? TEXT("none") : *registry.GetName(previousAnchor).ToString(),
             anchor == INDEX_NONE ? TEXT("none") : *registry.GetName(anchor).ToString());
     }
-    RebaseRenderOrigin(bAnchorChanged);
+
+    // The viewpoint (map camera override or the observer) decides where the origin rebases; toggling it forces a snap
+    const FSOLViewpointResolveResult viewpoint = SOLViewpoint::Resolve(mWasViewpointOverrideActive,
+        mHasViewpointOverride, mViewpointOverrideM, mObserverPositionM);
+    mWasViewpointOverrideActive = mHasViewpointOverride;
+    RebaseRenderOrigin(viewpoint.EffectivePositionM, bAnchorChanged || viewpoint.bForceSnap);
 
     mOnUniverseUpdated.Broadcast();
 }
@@ -96,7 +102,7 @@ void USOLAnchorSubsystem::SetObserverPositionM(const FVector3d& positionM)
         UE_LOG(LogSOL, Log, TEXT("Anchor %s: observer placed, anchor %s"), *GetName(),
             anchor == INDEX_NONE ? TEXT("none") : *registry.GetName(anchor).ToString());
     }
-    RebaseRenderOrigin(true);
+    RebaseRenderOrigin(GetViewpointM(), true);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -113,8 +119,23 @@ void USOLAnchorSubsystem::SetObserverActor(AActor* observerActor)
     mObserverActor = observerActor;
     if (observerActor != nullptr)
     {
-        observerActor->SetActorLocation(UniverseToRenderCm(mObserverPositionM));
+        observerActor->SetActorLocation(ComputePointRenderLocationCm(mObserverPositionM));
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the universe from this point instead of the observer (meters, ecliptic); the render origin follows it
+void USOLAnchorSubsystem::SetViewpointOverrideM(const FVector3d& viewpointM)
+{
+    mViewpointOverrideM = viewpointM;
+    mHasViewpointOverride = true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the render viewpoint to the observer; the next update snaps the render origin back onto it
+void USOLAnchorSubsystem::ClearViewpointOverride()
+{
+    mHasViewpointOverride = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -144,11 +165,11 @@ FVector3d USOLAnchorSubsystem::RenderToUniverseM(const FVector& renderCm) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a body's render location and radius (cm, Unreal axes); 1:1 near the observer, angular size kept far away
+// Returns a body's render location and radius (cm, Unreal axes); 1:1 near the viewpoint, angular size kept far away
 FSOLRenderPlacement USOLAnchorSubsystem::ComputeBodyRenderPlacement(const int32 bodyIndex) const
 {
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    return mRenderOrigin.BodyPlacement(registry.GetPositionM(bodyIndex), mObserverPositionM,
+    return mRenderOrigin.BodyPlacement(registry.GetPositionM(bodyIndex), GetViewpointM(),
         registry.GetRadiusM(bodyIndex), SOL::DEFAULT_MAX_RENDER_DISTANCE_CM);
 }
 
@@ -156,7 +177,7 @@ FSOLRenderPlacement USOLAnchorSubsystem::ComputeBodyRenderPlacement(const int32 
 // Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0)
 FVector USOLAnchorSubsystem::ComputePointRenderLocationCm(const FVector3d& universeM) const
 {
-    return mRenderOrigin.BodyPlacement(universeM, mObserverPositionM, 0.0, SOL::DEFAULT_MAX_RENDER_DISTANCE_CM)
+    return mRenderOrigin.BodyPlacement(universeM, GetViewpointM(), 0.0, SOL::DEFAULT_MAX_RENDER_DISTANCE_CM)
         .LocationCm;
 }
 
@@ -201,20 +222,21 @@ bool USOLAnchorSubsystem::DoesSupportWorldType(const EWorldType::Type worldType)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Snaps the render origin onto the observer when forced or due, then shifts the observer actor and notifies
-void USOLAnchorSubsystem::RebaseRenderOrigin(const bool bForceSnap)
+// Snaps the render origin onto the viewpoint when forced or due, then places the observer actor and notifies
+void USOLAnchorSubsystem::RebaseRenderOrigin(const FVector3d& viewpointM, const bool bForceSnap)
 {
     const FVector3d previousOriginM = mRenderOrigin.OriginM;
-    if (!mRenderOrigin.Update(mObserverPositionM, bForceSnap))
+    if (!mRenderOrigin.Update(viewpointM, bForceSnap))
     {
         return;
     }
 
-    // The shift is where the old origin now renders: fixed universe points move by this much in Unreal space
+    // The shift is where the old origin now renders: fixed universe points move by this much in Unreal space. The
+    // observer actor lands on (0,0,0) when the viewpoint is the observer, else at its placement seen from the viewpoint
     const FVector shiftCm(mRenderOrigin.UniverseToRenderCm(previousOriginM));
     if (AActor* observerActor = mObserverActor.Get())
     {
-        observerActor->SetActorLocation(FVector::ZeroVector);
+        observerActor->SetActorLocation(ComputePointRenderLocationCm(mObserverPositionM));
     }
     mOnRenderOriginShifted.Broadcast(shiftCm);
 }

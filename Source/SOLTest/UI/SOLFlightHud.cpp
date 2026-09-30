@@ -5,6 +5,7 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Map/SOLMapModeSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -146,6 +147,7 @@ void ASOLFlightHud::BeginPlay()
     AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
     Ships = world->GetSubsystem<USOLShipSubsystem>();
     Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
+    MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
 
     // Buffers sized once so the draw path only resets and refills them
     mText.Reserve(256);
@@ -159,6 +161,13 @@ void ASOLFlightHud::BeginPlay()
         }
         mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the jump map is open (the view is the map camera, not the ship's)
+bool ASOLFlightHud::IsMapOpen() const
+{
+    return MapMode != nullptr && MapMode->IsMapOpen();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -231,6 +240,17 @@ void ASOLFlightHud::DrawHUD()
     const FSOLShipControl control = Ships->GetControl();
     DrawSpeedBlock(state, control);
     DrawRadar(state);
+
+    // The jump map views from its own camera: the ship-view pilot aids (reticle, joystick, velocity markers) are
+    // hidden; the target bracket still projects through the active camera
+    if (IsMapOpen())
+    {
+        if (bHasView)
+        {
+            DrawTarget(view, state);
+        }
+        return;
+    }
 
     // Pilot aids at the screen center (joystick only when flying the ship, not the debug spectator), drawn before
     // the target bracket and velocity markers so they never paint over them
@@ -415,10 +435,16 @@ void ASOLFlightHud::DrawInfoBlock()
     DrawBuffer(ESOLHudLine::Nearest, HUD_TEXT_COLOR, x, y, medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
-    // Overlay state and key hints
+    // Overlay state and key hints (the jump map's own keys while it is open)
     mText.Reset();
+    if (IsMapOpen())
+    {
+        mText.Append(TEXT("JUMP MAP   right drag orbit   middle or Shift+right drag pan   wheel zoom   J / Esc close"));
+        DrawBuffer(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
+        return;
+    }
     mText.Append(mShowOrbitLines ? TEXT("ORBITS ON (O)") : TEXT("ORBITS OFF (O)"));
-    mText.Append(TEXT("   F3 speed panel   T/R/F/X target   M match frame   [ ] warp"));
+    mText.Append(TEXT("   F3 speed panel   J jump map   T/R/F/X target   M match frame   [ ] warp"));
     mText.Append(TEXT("   - = radar zoom   Home radar auto"));
     DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }
@@ -520,7 +546,8 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     AppendSpeed(relativeSpeedMps);
     DrawBuffer(ESOLHudLine::TargetRelative, HUD_TARGET_COLOR, panelX, panelY, small);
 
-    // Where the target is drawn: a body through the same placement as its visual, anything else ship-relative
+    // Where the target is drawn: a body through the same placement as its visual, anything else through the point
+    // placement from the current render viewpoint (correct while the map overrides the viewpoint)
     FVector renderCm;
     double radiusCm = 0.0;
     if (selectedIndex >= 0 && selectedIndex < BodyRegistry->GetRegistry().Num())
@@ -531,8 +558,7 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     }
     else
     {
-        renderCm = AnchorSubsystem->UniverseToRenderCm(AnchorSubsystem->GetObserverPositionM())
-            + (target->PositionM - state.PositionM) * SOL::METERS_TO_CM;
+        renderCm = AnchorSubsystem->ComputePointRenderLocationCm(target->PositionM);
         radiusCm = target->RadiusM * SOL::METERS_TO_CM;
     }
     const FVector local = view.Rotation.UnrotateVector(renderCm - view.Location);

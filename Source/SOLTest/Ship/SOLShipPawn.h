@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Map/SOLMapSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "UI/SOLHudSmoke.h"
 
@@ -14,6 +15,7 @@
 
 #include "SOLShipPawn.generated.h"
 
+class APlayerController;
 class UCameraComponent;
 class UDirectionalLightComponent;
 class UInputAction;
@@ -21,6 +23,7 @@ class UInputMappingContext;
 class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
+class USOLMapModeSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
 class USOLSimClockSubsystem;
@@ -45,6 +48,13 @@ struct FInputActionValue;
  * the speed panel (USOLSpeedPanelWidget). While the panel is open the ship's own control input is suspended: the
  * mapping context is removed, held keys are flushed, thrust/roll/boost and the stick are zeroed and the panel has
  * UI-only keyboard focus. The ship's Mass simulation keeps running. Closing restores the mapping and game-only input.
+ *
+ * Jump map (2b-2): J opens the map through USOLMapModeSubsystem (which owns the orbit camera and the view). The ship's
+ * control input is suspended exactly as for F3, the map's own mapping context is added, and the OS cursor is shown
+ * and free (game-and-UI input, not locked): right-drag orbits, middle- or Shift+right-drag pans, the wheel zooms, and
+ * the left button is unbound (reserved for 2d's destination picking). J or Esc
+ * closes it and restores the ship's mapping and captured cursor. Opening and closing happen at the next tick, outside
+ * the Enhanced Input callback, like F3.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -143,6 +153,36 @@ public:
     // Sets the speed cap (clamped to the flight parameters' range) and returns the value set; the panel's apply path
     double ApplySpeedCapMps(double capMps);
 
+    // Requests the jump map to open or close (J; done at the next tick, outside the input callback)
+    void HandleToggleMap();
+
+    // Requests the jump map to close (Esc; done at the next tick)
+    void HandleCloseMap();
+
+    // Sets whether the map's right mouse button is held (orbit drag, or pan drag with Shift)
+    void HandleMapRightHeld(bool bHeld);
+
+    // Sets whether the map's middle mouse button is held (pan drag)
+    void HandleMapPanHeld(bool bHeld);
+
+    // Sets whether Shift is held on the map (turns a right drag into a pan drag)
+    void HandleMapPanModifierHeld(bool bHeld);
+
+    // Forwards a mouse delta in pixels (X right, Y up) to the map: middle or Shift+right drag pans, right drag orbits
+    void HandleMapMouseDelta(const FVector2d& deltaPixels);
+
+    // Forwards wheel notches to the map zoom (positive = wheel forward = zoom in)
+    void HandleMapZoom(int32 notches);
+
+    // Returns true while the jump map is open (and the ship's own control input is suspended)
+    bool IsMapOpen() const { return mIsMapOpen; }
+
+    // Returns true while the ship's own mapping context is active on the local player
+    bool IsShipInputMapped() const { return mMappedLocalPlayer.IsValid(); }
+
+    // Returns true while the map's mapping context is active on the local player
+    bool IsMapInputMapped() const { return mMapMappedLocalPlayer.IsValid(); }
+
     // Returns the control the pawn composed this frame
     const FSOLShipControl& GetComposedControl() const { return mControl; }
 
@@ -188,6 +228,21 @@ private:
 
     // Removes the panel without restoring input (teardown)
     void DismissSpeedPanel();
+
+    // Suspends the ship's own control input: flushes held keys, drops the ship mapping and zeroes the flight input
+    void SuspendShipControl(APlayerController& playerController);
+
+    // Restores the ship's mapping and the hidden, captured cursor of the virtual joystick
+    void RestoreShipControl();
+
+    // Opens the jump map: adds the map mapping (rolling back on failure), suspends ship control and frees the OS cursor
+    void OpenMap();
+
+    // Closes the jump map and gives input and the view back to the ship
+    void CloseMap();
+
+    // Closes the map without restoring the ship's input (teardown)
+    void DismissMap();
 
     // Builds the placeholder ship from engine primitives with a light hull and a glowing engine
     void BuildShipMesh();
@@ -280,6 +335,36 @@ private:
     // Enhanced Input: radar back to AUTO range
     void OnRadarAutoAction(const FInputActionValue& value);
 
+    // Enhanced Input: jump map toggle (J, in both the ship and the map mapping)
+    void OnToggleMapAction(const FInputActionValue& value);
+
+    // Enhanced Input: jump map close (Esc)
+    void OnMapCloseAction(const FInputActionValue& value);
+
+    // Enhanced Input: map right mouse button pressed
+    void OnMapRightStarted(const FInputActionValue& value);
+
+    // Enhanced Input: map right mouse button released
+    void OnMapRightCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: map middle mouse button (pan) pressed
+    void OnMapPanStarted(const FInputActionValue& value);
+
+    // Enhanced Input: map middle mouse button (pan) released
+    void OnMapPanCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: map Shift (pan modifier) pressed
+    void OnMapPanModifierStarted(const FInputActionValue& value);
+
+    // Enhanced Input: map Shift (pan modifier) released
+    void OnMapPanModifierCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: mouse delta on the map, converted back to pixels
+    void OnMapLookAction(const FInputActionValue& value);
+
+    // Enhanced Input: mouse wheel on the map
+    void OnMapZoomAction(const FInputActionValue& value);
+
     /** Root the ship parts and the camera arm hang from; carries the ship's orientation. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<USceneComponent> ShipRoot;
@@ -369,7 +454,34 @@ private:
     TObjectPtr<UInputAction> RadarAutoAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ToggleMapAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputMappingContext> MapMappingContext;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapCloseAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapRightDragAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapPanAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapPanModifierAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapLookAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapZoomAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLSpeedPanelWidget> SpeedPanel;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLMapModeSubsystem> MapMode;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
@@ -384,8 +496,10 @@ private:
     TObjectPtr<USOLSimClockSubsystem> SimClock;
 
     TWeakObjectPtr<ULocalPlayer> mMappedLocalPlayer;        // Local player that currently has MappingContext added
+    TWeakObjectPtr<ULocalPlayer> mMapMappedLocalPlayer;     // Local player that currently has MapMappingContext added
     TUniquePtr<FSOLShipSmokeInput> mSmokeInput;             // Verification-only scripted input (-SOLSmokeInput)
     TUniquePtr<FSOLHudSmoke> mSmokeHud;                     // Verification-only HUD/panel script (-SOLSmokeHud)
+    TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     FSOLShipControl mControl;                               // Control composed from the input state
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
     FRotator mFreeLookRotation = FRotator::ZeroRotator;     // Camera orbit around the ship while Alt is held
@@ -400,4 +514,9 @@ private:
     bool mHasCapturedMouse = false;                         // True while this pawn hides the cursor (game-only input)
     bool mIsSpeedPanelOpen = false;                         // True while the F3 panel has focus
     bool mIsSpeedPanelRequested = false;                    // F3 pressed; the panel opens at the next tick
+    bool mIsMapOpen = false;                                // True while the jump map is open
+    bool mIsMapToggleRequested = false;                     // J/Esc pressed; the map opens or closes at the next tick
+    bool mIsMapRightHeld = false;                           // Right mouse held on the map (orbit, or pan with Shift)
+    bool mIsMapPanHeld = false;                             // Middle mouse held on the map (pan drag)
+    bool mIsMapPanModifierHeld = false;                     // Shift held on the map (right drag pans instead)
 };

@@ -45,18 +45,18 @@
     "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
   },
   "CLAUDE.md": {
-    "mtime": 1790574893.7054324,
-    "ast_hash": "9c7ced86da9137a785c3a5119c54be6b",
-    "semantic_hash": "9c7ced86da9137a785c3a5119c54be6b"
+    "mtime": 1790727840.8557022,
+    "ast_hash": "e80e72239754e4e6f94a9e3e980a1256",
+    "semantic_hash": ""
   },
   "Docs/GAME_MECHANICS.md": {
-    "mtime": 1790724994.2524405,
-    "ast_hash": "c5f471651903ea4b8bf99ec543a92ccd",
+    "mtime": 1790741321.3270462,
+    "ast_hash": "5073221990ca1558f098fbd9f983038d",
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
-    "mtime": 1790577146.3562975,
-    "ast_hash": "bd48ae0ab839873788dc5ecf14816fba",
+    "mtime": 1790726801.0129437,
+    "ast_hash": "36b971a135168073916017ff7a4b7371",
     "semantic_hash": ""
   },
   "Docs/Research/STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
@@ -70,9 +70,9 @@
     "semantic_hash": "d6d6ec8a84fb07810cd1f16e5481625f"
   },
   "Docs/SDDs/1-solar-system-architecture.md": {
-    "mtime": 1790574632.43347,
-    "ast_hash": "ff9c19a37a6f537e0845df2f4b7ce413",
-    "semantic_hash": "ff9c19a37a6f537e0845df2f4b7ce413"
+    "mtime": 1790727792.6597178,
+    "ast_hash": "ae9351525f04882f0f16e4e853b0adc8",
+    "semantic_hash": ""
   },
   "Docs/SDDs/README.md": {
     "mtime": 1790574634.2703886,
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1790633476.376205,
-    "ast_hash": "a5d42d4740baae102e7c365b4585edff",
+    "mtime": 1790742314.8676932,
+    "ast_hash": "284d0a41adf9d630478c1f2e0cd43f5a",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -170,13 +170,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLAnchorSubsystem.cpp": {
-    "mtime": 1790633469.8826609,
-    "ast_hash": "4663f27aea26238069cd766bb0f2e997",
+    "mtime": 1790742262.1659687,
+    "ast_hash": "f1e48d5b33c5cdd199217e02be85b9a6",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLAnchorSubsystem.h": {
-    "mtime": 1790633469.8826609,
-    "ast_hash": "2fa20a67c84c769618c562d124751557",
+    "mtime": 1790742286.9375648,
+    "ast_hash": "1ee2bf54fd2ac7f8700a9a63f4860ee3",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.cpp": {
@@ -250,13 +250,13 @@
     "semantic_hash": ""
   },
   "Docs/Plans/2-foundations-flight-scaffold-plan.md": {
-    "mtime": 1790725034.214195,
-    "ast_hash": "cd884b7f5d9e4a2abc83ed7dd94b795a",
+    "mtime": 1790726776.4006577,
+    "ast_hash": "95625b1496ad6eeceba2727f146bf542",
     "semantic_hash": ""
   },
   "Docs/SDDs/2-foundations-flight-scaffold.md": {
-    "mtime": 1790725038.8573687,
-    "ast_hash": "38ca00f0b531c948ab4bd307c7402bc0",
+    "mtime": 1790727798.9568262,
+    "ast_hash": "eba3f2cb1cd43c7f71e689caa28acf11",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/RenderOriginTest.cpp": {
@@ -365,13 +365,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipPawn.cpp": {
-    "mtime": 1790640794.7678301,
-    "ast_hash": "0241aee7c5cad9cf589f1763d05faa30",
+    "mtime": 1790742235.3551252,
+    "ast_hash": "e81ebad9d7ca3dc73034833f0b238c7d",
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipPawn.h": {
-    "mtime": 1790640789.4544675,
-    "ast_hash": "5850ed876b1f1b2ae8f72e3d306708de",
+    "mtime": 1790742240.0403528,
+    "ast_hash": "a2cb400b9bd339513edcc61dc05f51bf",
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipSmokeInput.cpp": {
@@ -425,13 +425,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.cpp": {
-    "mtime": 1790724934.013803,
-    "ast_hash": "2e080cde1869d927f116a0a91ef753bc",
+    "mtime": 1790742214.873213,
+    "ast_hash": "65e5839a64dd1af4baade161eb49ecbb",
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.h": {
-    "mtime": 1790724849.0428412,
-    "ast_hash": "cc23d14c7830ebd2328a0c4f81fddb0b",
+    "mtime": 1790742315.688774,
+    "ast_hash": "26ff3b444cfbfc582f8f0c2fd88d285d",
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLHudFormat.cpp": {
@@ -492,6 +492,86 @@
   "Source/SOLTest/UI/SOLSpeedStepper.h": {
     "mtime": 1790724457.2871342,
     "ast_hash": "1df2360edaadbaa6338cbc2561042081",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapCamera.cpp": {
+    "mtime": 1790730311.0251105,
+    "ast_hash": "903a0805381e9f1ad4ff19ab58db8a9c",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapCamera.h": {
+    "mtime": 1790730323.8509088,
+    "ast_hash": "4f31ef16b7084842b6dcb2b09480c0c6",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapModeSubsystem.cpp": {
+    "mtime": 1790741182.9715536,
+    "ast_hash": "9d5cbfc8fc769bc96e08ff280dd4e93f",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapModeSubsystem.h": {
+    "mtime": 1790741175.442571,
+    "ast_hash": "57f5827b7134056b2ab79c7ae6590331",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapPicking.cpp": {
+    "mtime": 1790727390.8455372,
+    "ast_hash": "5e05e6e884357977fc881a17c9663d5e",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapPicking.h": {
+    "mtime": 1790727532.8149579,
+    "ast_hash": "bf51cdb32c74eedd988b13ebaa59000b",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapSmoke.cpp": {
+    "mtime": 1790741223.4226465,
+    "ast_hash": "2614fa5f7de750d023c3f6e298f8dc81",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Map/SOLMapSmoke.h": {
+    "mtime": 1790741185.3295314,
+    "ast_hash": "bd8b9131508d733296f667e17bd4cb64",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/MapCameraTest.cpp": {
+    "mtime": 1790730163.8384902,
+    "ast_hash": "d466802133276f8fcb86c95ae20af71b",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/MapPickingTest.cpp": {
+    "mtime": 1790727543.913039,
+    "ast_hash": "47e727413bd1a46e8db750f1c6813fb9",
+    "semantic_hash": ""
+  },
+  "Docs/ARCHITECTURE.md": {
+    "mtime": 1790731579.690088,
+    "ast_hash": "3debca521f9626c422f9e3272628afd0",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/3-jump-map-plan.md": {
+    "mtime": 1790741535.4459963,
+    "ast_hash": "561c6577338b26f3a85b836abc17a119",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/3-jump-map.md": {
+    "mtime": 1790742316.4732697,
+    "ast_hash": "3e8650079036ee90628cf6463971acaf",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/ViewpointResolveTest.cpp": {
+    "mtime": 1790742062.5288305,
+    "ast_hash": "6845b7a226c01031dbed5c8ce33ad439",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Universe/SOLViewpointResolve.cpp": {
+    "mtime": 1790742246.190531,
+    "ast_hash": "08d5e6aa384c7978dc4b481194a23072",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Universe/SOLViewpointResolve.h": {
+    "mtime": 1790742034.354232,
+    "ast_hash": "7d372ae733288f4952630aeb28908a0c",
     "semantic_hash": ""
   }
 }
