@@ -40,7 +40,9 @@ namespace
     const FLinearColor VISUALS_NO_EMISSIVE(0.0f, 0.0f, 0.0f);
     constexpr float VISUALS_NO_POLAR_CAP = 2.0f;
 
-    // Real-planet placeholder colors (linear); bands follow latitude, noise gives surface patches
+    // Real-planet placeholder colors (linear); bands follow latitude, noise gives surface patches. The Sun keeps
+    // NoiseStrength at 0: its ColorA/ColorB lerp is swamped by its fixed {60,48,30} emissive (see M_SOLBody), so no
+    // noise value makes its surface pattern visible; its spin is exercised by the 12a unit tests instead.
     const FSOLBodyAppearance VISUALS_APPEARANCES[] =
     {
         { SOL::BodyNames::SUN, { 1.0f, 0.9f, 0.7f }, { 1.0f, 0.8f, 0.5f }, VISUALS_WHITE, { 60.0f, 48.0f, 30.0f },
@@ -56,11 +58,11 @@ namespace
         { TEXT("Jupiter"), { 0.6f, 0.38f, 0.2f }, { 0.86f, 0.8f, 0.7f }, VISUALS_WHITE, VISUALS_NO_EMISSIVE,
             0.11f, 1.0f, 0.06f, 0.15f, 0.0f, VISUALS_NO_POLAR_CAP },
         { TEXT("Saturn"), { 0.82f, 0.7f, 0.45f }, { 0.95f, 0.88f, 0.64f }, VISUALS_WHITE, VISUALS_NO_EMISSIVE,
-            0.09f, 0.7f, 0.0f, 0.0f, 0.0f, VISUALS_NO_POLAR_CAP },
+            0.09f, 0.7f, 0.04f, 0.5f, 0.0f, VISUALS_NO_POLAR_CAP },
         { TEXT("Uranus"), { 0.55f, 0.82f, 0.88f }, { 0.62f, 0.88f, 0.9f }, VISUALS_WHITE, VISUALS_NO_EMISSIVE,
-            0.04f, 0.2f, 0.0f, 0.0f, 0.0f, VISUALS_NO_POLAR_CAP },
+            0.2f, 0.6f, 0.04f, 0.6f, 0.0f, VISUALS_NO_POLAR_CAP },
         { TEXT("Neptune"), { 0.08f, 0.18f, 0.7f }, { 0.14f, 0.3f, 0.85f }, VISUALS_WHITE, VISUALS_NO_EMISSIVE,
-            0.05f, 0.4f, 0.0f, 0.0f, 0.0f, VISUALS_NO_POLAR_CAP },
+            0.05f, 0.4f, 0.04f, 0.4f, 0.0f, VISUALS_NO_POLAR_CAP },
     };
 
     //////////////////////////////////////////////////////////////////////////
@@ -222,7 +224,7 @@ void ASOLBodyVisuals::EndPlay(const EEndPlayReason::Type endPlayReason)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Places every body mesh, updates each body's Sun direction and re-aims the sun light for the current frame
+// Places and orients every body mesh, updates each body's Sun direction and re-aims the sun light this frame
 void ASOLBodyVisuals::HandleUniverseUpdated()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLBodyVisuals::HandleUniverseUpdated);
@@ -230,12 +232,13 @@ void ASOLBodyVisuals::HandleUniverseUpdated()
     const FSOLBodyRegistry& registry = BodyRegistrySubsystem->GetRegistry();
     const FVector3d sunPositionM = mSunIndex != INDEX_NONE ? registry.GetPositionM(mSunIndex) : FVector3d::ZeroVector;
 
-    // Observer-relative placement (exact nearby, depth-compressed far away) and per-body sunlight direction
+    // Observer-relative placement (exact nearby, depth-compressed far away), axial orientation and sunlight direction
     const int32 bodyCount = BodyMeshes.Num();
     for (int32 index = 0; index < bodyCount; ++index)
     {
         const FSOLRenderPlacement placement = AnchorSubsystem->ComputeBodyRenderPlacement(index);
-        BodyMeshes[index]->SetWorldTransform(FTransform(FQuat::Identity, FVector(placement.LocationCm),
+        const FQuat bodyRotation(SOLRender::EclipticToUnreal(registry.GetOrientation(index)));
+        BodyMeshes[index]->SetWorldTransform(FTransform(bodyRotation, FVector(placement.LocationCm),
             FVector(placement.RadiusCm / SOL::BODY_MESH_RADIUS_CM)));
 
         // Unit vector from the body toward the Sun in Unreal axes; zero for the Sun itself (it is emissive)

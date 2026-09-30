@@ -179,3 +179,29 @@ deliberately out of scope, tracked in `Docs/ToDo/accurate-pole-directions.md`.
   `TiltRotation`/`RotateVector` recompute per body per `Update()` (the tilt is fixed
   after `PopulateSolarSystem`, only the spin changes) logged as tech debt in
   `CLAUDE.md`, not fixed now — negligible at 9 bodies.
+- 2026-09-30: 12b implemented and reviewed. `ASOLBodyVisuals::HandleUniverseUpdated`
+  applies `FQuat(SOLRender::EclipticToUnreal(registry.GetOrientation(index)))` to each
+  body mesh's `SetWorldTransform`, alongside its existing location — the `FQuat(FQuat4d)`
+  construction is a plain copy under LWC (no precision loss), matching the existing
+  `FVector(FVector3d)` pattern already used for location in the same loop. Appearance
+  tuning landed at Saturn `NoiseScale=0.04`/`NoiseStrength=0.5`, Uranus
+  `BandFrequency=0.2`/`BandStrength=0.6`/`NoiseScale=0.04`/`NoiseStrength=0.6`, Neptune
+  `NoiseScale=0.04`/`NoiseStrength=0.4` — all `NoiseBias=0.0`, tuned up from an initial
+  0.25 strength guess after that guess proved barely visible on screenshot. The Sun was
+  reverted to `NoiseStrength=0` after adversarial review showed its fixed `{60,48,30}`
+  emissive in `M_SOLBody` swamps any `ColorA`/`ColorB` noise lerp — no noise value makes
+  its surface pattern visible with the current placeholder shading, so its spin is
+  exercised by the 12a unit tests only, not by screenshot. Uranus's very close
+  `ColorA`/`ColorB` (about 0.07 apart) also makes its noise patches faint regardless of
+  strength; `BandFrequency` was raised from an initial 0.04 to 0.2 (more, tighter
+  latitude bands) to make the tilt read clearly, since a couple of broad, low-contrast
+  bands were nearly invisible but many narrow ones are not — this is a placeholder-art
+  workaround, not a claim that Uranus's contrast is fixed. One adversarial review round
+  (fresh `opus` subagent): no must-fix items; the Sun no-op above was the one should-fix,
+  applied; nits noted (comment wording, Uranus contrast) were addressed or accepted as
+  placeholder-art limitations. Verified with screenshots: Saturn's noise pattern visibly
+  shifted between two shots ~40 sim-minutes apart at 1x time-warp (10.656 h rotation
+  period, so ~23° of spin); Uranus viewed from its sunlit side at 60,000 km altitude
+  shows bands running roughly top-to-bottom (near-vertical/diagonal) rather than
+  horizontal, consistent with its ~98° tilt. 328/328 automation tests green throughout
+  (12a's tests, unaffected by this visuals-only change).

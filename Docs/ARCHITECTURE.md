@@ -175,7 +175,7 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `FSOLHudSmoke` (engine test script, `SOLHudSmoke.h`): the `-SOLSmokeHud` run.
 
 **Visuals** (`Source/SOLTest/Visuals/`)
-- `ASOLBodyVisuals` (engine, `SOLBodyVisuals.h`): one sphere mesh and material instance per body, re-placed on `OnUniverseUpdated`, with `SunDirection` set per body. `SOLBodyAppearance::FindBaseColor` exposes each body's base color so the map icons match the meshes.
+- `ASOLBodyVisuals` (engine, `SOLBodyVisuals.h`): one sphere mesh and material instance per body, re-placed on `OnUniverseUpdated`, with `SunDirection` set per body and — issue #12 — its world rotation set each update from `SOLRender::EclipticToUnreal(registry.GetOrientation(index))`, so every body spins visibly on its real axial tilt. `SOLBodyAppearance::FindBaseColor` exposes each body's base color so the map icons match the meshes.
 
 **Map** (`Source/SOLTest/Map/`, Part 2)
 - `FSOLMapPickState` / `SOLMapPicking` (pure, `SOLMapPicking.h`): ray-plane intersection, planar decomposition, destination composition, body picking under a ray.
