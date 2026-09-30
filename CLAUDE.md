@@ -142,6 +142,7 @@ Items the team is aware of but hasn't scheduled yet. Don't treat as blockers, bu
 
 - `Ship/` and `UI/` include each other's headers (`ASOLShipPawn` and `ASOLFlightHud`), found while writing `Docs/ARCHITECTURE.md`. It builds fine today, but is worth breaking (e.g. a small shared interface or event) before either file grows further.
 - `USOLAnchorSubsystem::OnUniverseUpdated` has multiple listeners (`ASOLBodyVisuals`, the pawn) with no enforced order; found while writing `Docs/ARCHITECTURE.md`. Neither adversarial review flagged an actual ordering bug, but if a future listener depends on another having already run this frame, that dependency needs to be made explicit rather than relying on bind order.
+- `SOLMapBodyLod::ComputeApparentDiameterPx` recomputes the camera's focal length (a `tan` and a divide) on every call; found in the Part 2c adversarial review. Negligible today (a handful of map bodies, once per frame), but if a Mass-scale user of this function shows up (e.g. Part 10's scale demo), precompute the focal length once per frame and pass it in instead.
 
 Add new items here as they're discovered rather than letting them live only in commit messages or memory.
 
