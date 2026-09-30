@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipSmokeFlight.h"
 
 #include "CoreMinimal.h"
@@ -37,6 +38,14 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnShipsStepped, float /*realDeltaSeconds
  * to every ship. A body reference always has a previous state (all bodies are remembered each frame), so an anchor or
  * lock switch between bodies carries with the new frame at once; only the first frame, and a switch to or between
  * non-body targetables, carries nothing that frame and re-seeds. A paused world does not tick, so nothing is carried.
+ *
+ * Surface-lock (SDD 4): the subsystem owns the player's FSOLSurfaceLockState and advances it once per step, right after
+ * the flight run (ship and bodies then both hold this frame's positions, so the altitudes are exact) and before
+ * OnShipsStepped, whatever the map or a jump warp is doing (so the auto-engage suppression latch always sees this
+ * frame's altitude). Engaging (false -> true) locks the reference frame to the body
+ * (USOLTargetingSubsystem::LockToBodyIndex), which the next step's assist uses. L presses arrive through
+ * RequestSurfaceLockToggle and are consumed by exactly one step as its edge-triggered press. While engaged, the step
+ * names the locked body in the ship's control fragment and the next flight run applies the alignment per substep.
  *
  * All ship-facing values are in the Unreal-handed universe frame (SOLRender::EclipticToUnreal applied, meters).
  */
@@ -99,6 +108,21 @@ public:
     // Returns true while a verification script (-SOLSmokeFlight) drives the control, so the pawn must not write it
     bool IsControlScripted() const { return mSmokeFlight.IsValid(); }
 
+    // Requests a surface-lock toggle (L); the next ship step consumes it as that step's one edge-triggered press
+    void RequestSurfaceLockToggle() { mIsSurfaceLockToggleRequested = true; }
+
+    // Returns the player ship's surface-lock state as of the last step
+    const FSOLSurfaceLockState& GetSurfaceLockState() const { return mSurfaceLockState; }
+
+    // Returns the surface-lock ranges and alignment time constant in use
+    const FSOLSurfaceLockParams& GetSurfaceLockParams() const { return mSurfaceLockParams; }
+
+    // Returns the ship's altitude above the locked body's surface at the last step (meters; 0 when not engaged)
+    double GetSurfaceLockAltitudeM() const { return mSurfaceLockAltitudeM; }
+
+    // Releases any surface-lock and clears its auto-engage suppression and a pending L press (used by a jump arrival)
+    void ClearSurfaceLock();
+
 protected:
 
     // Limits the subsystem to game and PIE worlds so editor and automation worlds are unaffected
@@ -117,6 +141,9 @@ private:
 
     // Remembers this frame's bodies and reference frame as the previous state for the next frame's carry
     void SaveFrameHistory();
+
+    // Advances the surface-lock state one step (consuming a pending L press) and names the body to align to, if any
+    void UpdateSurfaceLock();
 
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> Anchor;
@@ -144,5 +171,9 @@ private:
     FVector3d mPrevReferencePositionM = FVector3d::ZeroVector;  // Last frame's reference-frame position
     FVector3d mPrevReferenceVelocityMps = FVector3d::ZeroVector; // Last frame's reference-frame velocity
     int32 mPrevReferenceIndex = INDEX_NONE;                // Last frame's reference candidate index
+    FSOLSurfaceLockState mSurfaceLockState;                // Player ship's surface-lock (default: released)
+    FSOLSurfaceLockParams mSurfaceLockParams;              // Surface-lock ranges and time constant (SOLConstants)
+    double mSurfaceLockAltitudeM = 0.0;                    // Altitude above the locked body at the last step
     bool mHasFrameHistory = false;                         // False until the first step has saved the bodies
+    bool mIsSurfaceLockToggleRequested = false;            // L pressed since the last step
 };

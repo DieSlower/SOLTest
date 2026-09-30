@@ -32,22 +32,31 @@ in sync if the design shifts.
   gaps and a stale name; the second round, after the rework, found no correctness
   bugs, only additional test-hardening, all applied. `Docs/ARCHITECTURE.md` updated
   for the new `Level/` module. Commit `05e82fa`.)
-- [ ] **3b — Engine integration.** `IA_ShipLevel` bound to `L`
-  (`OnToggleLevelAction`/`HandleToggleLevel` in `ASOLShipPawn`, suppressed while the
-  map/speed-panel/jump-warp has input), `FSOLSurfaceLockState` owned and stepped by
-  `USOLShipSubsystem` each frame (using `USOLAnchorSubsystem::FindNearestBody` and the
-  locked body's live registry position), `USOLTargetingSubsystem::LockToBodyIndex` for
-  the reference-frame auto-match, `ApplyAlignmentCorrection` applied after
-  `SOLFlight::Step` each ship step, and the HUD status/hint/warning line in
-  `SOLFlightHud` (reusing `SOLHudFormat`). `-SOLSmokeLevel` scripted smoke test
-  (approach-and-auto-lock, climb-and-release with warning, manual engage from beyond
-  10 km, instant manual release), screenshots, adversarial review, commit.
+- [x] **3b — Engine integration.** (Built: `IA_ShipLevel` bound to `L`
+  (`OnToggleLevelAction`/`HandleToggleLevel` in `ASOLShipPawn`, dropped — not queued —
+  while the map/speed-panel/jump-warp has input), `FSOLSurfaceLockState` owned and
+  stepped by `USOLShipSubsystem::UpdateSurfaceLock` after the flight run each step (see
+  SDD 4 "Implementation clarifications (3b)" for why altitude must be read post-step),
+  `USOLTargetingSubsystem::LockToBodyIndex` for the reference-frame auto-match (replaces
+  an existing `M` lock on anything else), `ApplyAlignmentCorrection` applied per substep
+  in `USOLShipFlightProcessor` via `FSOLShipControlFragment::AlignBodyIndex` and
+  `FSOLFlightParams::AlignTimeConstantS`, the HUD status/hint/warning line in
+  `SOLFlightHud` (hidden while the jump map is open), and `ClearSurfaceLock` on jump
+  arrival (`USOLJumpSubsystem::CompleteJump`). One adversarial review round found a real
+  regression (surface-lock's alignment interfered with `-SOLSmokeFlight`'s pre-existing
+  nose-down Collide test, 7/9) plus test-coverage gaps and nits — all fixed and
+  re-verified: `-SOLSmokeFlight` 9/9 (restored), `-SOLSmokeLevel` 21/21 (hardened with
+  release-stops-alignment, a pinned time-constant check, the M-lock-replaced case, and a
+  scripted jump-arrival clear), `-SOLSmokeInput` 29/29, `-SOLSmokeHud` 17/17,
+  `-SOLSmokeMap` 16/16, `-SOLSmokeMapPick` 21/21, `-SOLSmokeJump` 14/14, 308/308
+  automation tests, all independently re-verified in the main session. Commit pending.)
 
 ## Cross-cutting
 
-- [ ] Update `Docs/GAME_MECHANICS.md` with the `L` binding, the 10 km / 12.5 km and
+- [x] Update `Docs/GAME_MECHANICS.md` with the `L` binding, the 10 km / 12.5 km and
   manual-range numbers, and the roll time constant.
-- [ ] Update the in-game Controls/Info screen text for `L` to match.
-- [ ] Update `Docs/ARCHITECTURE.md` if a new subsystem-level data flow or `-SOL*` flag
+- [x] Update the in-game Controls/Info screen text for `L` to match (the HUD key-hint
+  line is the in-game controls text; it now lists `L surface-lock`).
+- [x] Update `Docs/ARCHITECTURE.md` if a new subsystem-level data flow or `-SOL*` flag
   needs it (the module map already includes `Ship/`, `Targeting/`, `UI/`; this adds a
   `Level/` pure-logic module in the same style as `Flight/`).

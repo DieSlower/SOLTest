@@ -348,7 +348,7 @@
       "label": "SOLFlight()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Flight/SOLFlight.h",
-      "source_location": "L48",
+      "source_location": "L49",
       "id": "flight_solflight_solflight",
       "community": 61,
       "norm_label": "solflight()"
@@ -357,7 +357,7 @@
       "label": "namespace",
       "file_type": "code",
       "source_file": "Source/SOLTest/Flight/SOLFlight.h",
-      "source_location": "L48",
+      "source_location": "L49",
       "id": "source_soltest_flight_solflight_h_namespace",
       "community": 61,
       "norm_label": "namespace"
@@ -3444,7 +3444,7 @@
       "label": "USOLShipFlightProcessor()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L17",
+      "source_location": "L18",
       "id": "source_soltest_ship_solshipflightprocessor_cpp_ship_solshipflightprocessor_usolshipflightprocessor",
       "community": 66,
       "norm_label": "usolshipflightprocessor()"
@@ -3453,7 +3453,7 @@
       "label": "SetBodyCache()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L35",
+      "source_location": "L36",
       "id": "ship_solshipflightprocessor_setbodycache",
       "community": 66,
       "norm_label": "setbodycache()"
@@ -3462,7 +3462,7 @@
       "label": "FSOLBodyFrameCache",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L35",
+      "source_location": "L36",
       "id": "fsolbodyframecache",
       "community": 66,
       "norm_label": "fsolbodyframecache"
@@ -3471,7 +3471,7 @@
       "label": "ConfigureQueries()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L44",
+      "source_location": "L45",
       "id": "ship_solshipflightprocessor_configurequeries",
       "community": 66,
       "norm_label": "configurequeries()"
@@ -3480,7 +3480,7 @@
       "label": "TSharedRef",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L44",
+      "source_location": "L45",
       "id": "tsharedref",
       "community": 66,
       "norm_label": "tsharedref"
@@ -3489,7 +3489,7 @@
       "label": "FMassEntityManager",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L44",
+      "source_location": "L45",
       "id": "fmassentitymanager",
       "community": 66,
       "norm_label": "fmassentitymanager"
@@ -3498,7 +3498,7 @@
       "label": "Execute()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L53",
+      "source_location": "L54",
       "id": "ship_solshipflightprocessor_execute",
       "community": 66,
       "norm_label": "execute()"
@@ -3507,7 +3507,7 @@
       "label": "FMassExecutionContext",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L53",
+      "source_location": "L54",
       "id": "fmassexecutioncontext",
       "community": 66,
       "norm_label": "fmassexecutioncontext"
@@ -3516,7 +3516,7 @@
       "label": "PrepareSubstepBodyPositions()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L75",
+      "source_location": "L76",
       "id": "ship_solshipflightprocessor_preparesubstepbodypositions",
       "community": 66,
       "norm_label": "preparesubstepbodypositions()"
@@ -3525,7 +3525,7 @@
       "label": "ProcessChunk()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.cpp",
-      "source_location": "L99",
+      "source_location": "L100",
       "id": "ship_solshipflightprocessor_processchunk",
       "community": 66,
       "norm_label": "processchunk()"
@@ -3543,7 +3543,7 @@
       "label": "USOLShipFlightProcessor()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.h",
-      "source_location": "L50",
+      "source_location": "L54",
       "id": "source_soltest_ship_solshipflightprocessor_h_ship_solshipflightprocessor_usolshipflightprocessor",
       "community": 70,
       "norm_label": "usolshipflightprocessor()"
@@ -3552,7 +3552,7 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipFlightProcessor.h",
-      "source_location": "L50",
+      "source_location": "L54",
       "id": "source_soltest_ship_solshipflightprocessor_h_soltest_api",
       "community": 70,
       "norm_label": "soltest_api"
@@ -3732,7 +3732,7 @@
       "label": "EndPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L231",
+      "source_location": "L236",
       "id": "ship_solshippawn_endplay",
       "community": 84,
       "norm_label": "endplay()"
@@ -3741,7 +3741,7 @@
       "label": "Type",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L231",
+      "source_location": "L236",
       "id": "source_soltest_ship_solshippawn_cpp_type",
       "community": 84,
       "norm_label": "type"
@@ -3750,7 +3750,7 @@
       "label": "Tick()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L253",
+      "source_location": "L259",
       "id": "ship_solshippawn_tick",
       "community": 140,
       "norm_label": "tick()"
@@ -3759,7 +3759,7 @@
       "label": "UpdateCameraFov()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L341",
+      "source_location": "L351",
       "id": "ship_solshippawn_updatecamerafov",
       "community": 140,
       "norm_label": "updatecamerafov()"
@@ -3768,7 +3768,7 @@
       "label": "EndWarpEffect()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L377",
+      "source_location": "L387",
       "id": "ship_solshippawn_endwarpeffect",
       "community": 140,
       "norm_label": "endwarpeffect()"
@@ -3777,7 +3777,7 @@
       "label": "IsJumpWarping()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L386",
+      "source_location": "L396",
       "id": "ship_solshippawn_isjumpwarping",
       "community": 140,
       "norm_label": "isjumpwarping()"
@@ -3786,7 +3786,7 @@
       "label": "GetCameraFovDeg()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L393",
+      "source_location": "L403",
       "id": "ship_solshippawn_getcamerafovdeg",
       "community": 58,
       "norm_label": "getcamerafovdeg()"
@@ -3795,7 +3795,7 @@
       "label": "GetWarpPostProcessWeight()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L400",
+      "source_location": "L410",
       "id": "ship_solshippawn_getwarppostprocessweight",
       "community": 58,
       "norm_label": "getwarppostprocessweight()"
@@ -3804,7 +3804,7 @@
       "label": "StartMapJump()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L407",
+      "source_location": "L417",
       "id": "ship_solshippawn_startmapjump",
       "community": 140,
       "norm_label": "startmapjump()"
@@ -3813,7 +3813,7 @@
       "label": "SetupPlayerInputComponent()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L426",
+      "source_location": "L436",
       "id": "ship_solshippawn_setupplayerinputcomponent",
       "community": 84,
       "norm_label": "setupplayerinputcomponent()"
@@ -3822,7 +3822,7 @@
       "label": "UInputComponent",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L426",
+      "source_location": "L436",
       "id": "source_soltest_ship_solshippawn_cpp_uinputcomponent",
       "community": 84,
       "norm_label": "uinputcomponent"
@@ -3831,7 +3831,7 @@
       "label": "NotifyControllerChanged()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L490",
+      "source_location": "L501",
       "id": "ship_solshippawn_notifycontrollerchanged",
       "community": 84,
       "norm_label": "notifycontrollerchanged()"
@@ -3840,7 +3840,7 @@
       "label": "UnPossessed()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L523",
+      "source_location": "L534",
       "id": "ship_solshippawn_unpossessed",
       "community": 84,
       "norm_label": "unpossessed()"
@@ -3849,7 +3849,7 @@
       "label": "ReleaseMouse()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L534",
+      "source_location": "L545",
       "id": "ship_solshippawn_releasemouse",
       "community": 84,
       "norm_label": "releasemouse()"
@@ -3858,7 +3858,7 @@
       "label": "UpdateViewportFocus()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L548",
+      "source_location": "L559",
       "id": "ship_solshippawn_updateviewportfocus",
       "community": 140,
       "norm_label": "updateviewportfocus()"
@@ -3867,7 +3867,7 @@
       "label": "HandleFocusLost()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L571",
+      "source_location": "L582",
       "id": "ship_solshippawn_handlefocuslost",
       "community": 140,
       "norm_label": "handlefocuslost()"
@@ -3876,7 +3876,7 @@
       "label": "RemoveMappingContext()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L588",
+      "source_location": "L599",
       "id": "ship_solshippawn_removemappingcontext",
       "community": 84,
       "norm_label": "removemappingcontext()"
@@ -3885,7 +3885,7 @@
       "label": "CreateInputObjects()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L596",
+      "source_location": "L607",
       "id": "ship_solshippawn_createinputobjects",
       "community": 84,
       "norm_label": "createinputobjects()"
@@ -3894,7 +3894,7 @@
       "label": "BuildShipMesh()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L694",
+      "source_location": "L707",
       "id": "ship_solshippawn_buildshipmesh",
       "community": 82,
       "norm_label": "buildshipmesh()"
@@ -3903,7 +3903,7 @@
       "label": "AddShipPart()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L733",
+      "source_location": "L746",
       "id": "ship_solshippawn_addshippart",
       "community": 82,
       "norm_label": "addshippart()"
@@ -3912,7 +3912,7 @@
       "label": "UStaticMesh",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L733",
+      "source_location": "L746",
       "id": "ustaticmesh",
       "community": 82,
       "norm_label": "ustaticmesh"
@@ -3921,7 +3921,7 @@
       "label": "FollowShip()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L750",
+      "source_location": "L763",
       "id": "ship_solshippawn_followship",
       "community": 140,
       "norm_label": "followship()"
@@ -3930,7 +3930,7 @@
       "label": "UpdateCameraRotation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L772",
+      "source_location": "L785",
       "id": "ship_solshippawn_updatecamerarotation",
       "community": 140,
       "norm_label": "updatecamerarotation()"
@@ -3939,7 +3939,7 @@
       "label": "GetShipPose()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L792",
+      "source_location": "L805",
       "id": "ship_solshippawn_getshippose",
       "community": 92,
       "norm_label": "getshippose()"
@@ -3948,7 +3948,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L792",
+      "source_location": "L805",
       "id": "source_soltest_ship_solshippawn_cpp_fvector3d",
       "community": 92,
       "norm_label": "fvector3d"
@@ -3957,7 +3957,7 @@
       "label": "HandleThrust()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L806",
+      "source_location": "L819",
       "id": "ship_solshippawn_handlethrust",
       "community": 92,
       "norm_label": "handlethrust()"
@@ -3966,7 +3966,7 @@
       "label": "HandleRoll()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L813",
+      "source_location": "L826",
       "id": "ship_solshippawn_handleroll",
       "community": 58,
       "norm_label": "handleroll()"
@@ -3975,7 +3975,7 @@
       "label": "HandleBoost()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L820",
+      "source_location": "L833",
       "id": "ship_solshippawn_handleboost",
       "community": 58,
       "norm_label": "handleboost()"
@@ -3984,7 +3984,7 @@
       "label": "HandleToggleAssist()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L827",
+      "source_location": "L840",
       "id": "ship_solshippawn_handletoggleassist",
       "community": 58,
       "norm_label": "handletoggleassist()"
@@ -3993,7 +3993,7 @@
       "label": "HandleFreeLook()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L836",
+      "source_location": "L849",
       "id": "ship_solshippawn_handlefreelook",
       "community": 58,
       "norm_label": "handlefreelook()"
@@ -4002,7 +4002,7 @@
       "label": "HandleMouseDelta()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L847",
+      "source_location": "L860",
       "id": "ship_solshippawn_handlemousedelta",
       "community": 95,
       "norm_label": "handlemousedelta()"
@@ -4011,7 +4011,7 @@
       "label": "FVector2d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L847",
+      "source_location": "L860",
       "id": "source_soltest_ship_solshippawn_cpp_fvector2d",
       "community": 95,
       "norm_label": "fvector2d"
@@ -4020,7 +4020,7 @@
       "label": "HandleRecenterStick()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L862",
+      "source_location": "L875",
       "id": "ship_solshippawn_handlerecenterstick",
       "community": 58,
       "norm_label": "handlerecenterstick()"
@@ -4029,7 +4029,7 @@
       "label": "HandleSpeedCapSteps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L869",
+      "source_location": "L882",
       "id": "ship_solshippawn_handlespeedcapsteps",
       "community": 56,
       "norm_label": "handlespeedcapsteps()"
@@ -4038,7 +4038,7 @@
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L869",
+      "source_location": "L882",
       "id": "source_soltest_ship_solshippawn_cpp_int32",
       "community": 56,
       "norm_label": "int32"
@@ -4047,16 +4047,25 @@
       "label": "HandleMatchLock()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L879",
+      "source_location": "L892",
       "id": "ship_solshippawn_handlematchlock",
-      "community": 140,
+      "community": 58,
       "norm_label": "handlematchlock()"
+    },
+    {
+      "label": "HandleToggleLevel()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L902",
+      "id": "ship_solshippawn_handletogglelevel",
+      "community": 58,
+      "norm_label": "handletogglelevel()"
     },
     {
       "label": "HandleSelectTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L889",
+      "source_location": "L913",
       "id": "ship_solshippawn_handleselecttarget",
       "community": 92,
       "norm_label": "handleselecttarget()"
@@ -4065,7 +4074,7 @@
       "label": "HandleNextTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L901",
+      "source_location": "L925",
       "id": "ship_solshippawn_handlenexttarget",
       "community": 92,
       "norm_label": "handlenexttarget()"
@@ -4074,7 +4083,7 @@
       "label": "HandlePreviousTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L913",
+      "source_location": "L937",
       "id": "ship_solshippawn_handleprevioustarget",
       "community": 92,
       "norm_label": "handleprevioustarget()"
@@ -4083,7 +4092,7 @@
       "label": "HandleClearTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L925",
+      "source_location": "L949",
       "id": "ship_solshippawn_handlecleartarget",
       "community": 58,
       "norm_label": "handlecleartarget()"
@@ -4092,7 +4101,7 @@
       "label": "HandleWarpUp()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L935",
+      "source_location": "L959",
       "id": "ship_solshippawn_handlewarpup",
       "community": 58,
       "norm_label": "handlewarpup()"
@@ -4101,7 +4110,7 @@
       "label": "HandleWarpDown()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L945",
+      "source_location": "L969",
       "id": "ship_solshippawn_handlewarpdown",
       "community": 58,
       "norm_label": "handlewarpdown()"
@@ -4110,7 +4119,7 @@
       "label": "HandleWarpReset()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L955",
+      "source_location": "L979",
       "id": "ship_solshippawn_handlewarpreset",
       "community": 58,
       "norm_label": "handlewarpreset()"
@@ -4119,7 +4128,7 @@
       "label": "HandleToggleOrbitLines()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L965",
+      "source_location": "L989",
       "id": "ship_solshippawn_handletoggleorbitlines",
       "community": 58,
       "norm_label": "handletoggleorbitlines()"
@@ -4128,16 +4137,16 @@
       "label": "HandleTogglePredictedPath()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L976",
+      "source_location": "L1000",
       "id": "ship_solshippawn_handletogglepredictedpath",
-      "community": 58,
+      "community": 140,
       "norm_label": "handletogglepredictedpath()"
     },
     {
       "label": "HandleRadarZoom()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L983",
+      "source_location": "L1007",
       "id": "ship_solshippawn_handleradarzoom",
       "community": 58,
       "norm_label": "handleradarzoom()"
@@ -4146,7 +4155,7 @@
       "label": "HandleRadarAuto()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L994",
+      "source_location": "L1018",
       "id": "ship_solshippawn_handleradarauto",
       "community": 58,
       "norm_label": "handleradarauto()"
@@ -4155,7 +4164,7 @@
       "label": "HandleToggleSpeedPanel()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1005",
+      "source_location": "L1029",
       "id": "ship_solshippawn_handletogglespeedpanel",
       "community": 58,
       "norm_label": "handletogglespeedpanel()"
@@ -4164,7 +4173,7 @@
       "label": "OpenSpeedPanel()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1012",
+      "source_location": "L1036",
       "id": "ship_solshippawn_openspeedpanel",
       "community": 140,
       "norm_label": "openspeedpanel()"
@@ -4173,16 +4182,16 @@
       "label": "CloseSpeedPanel()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1046",
+      "source_location": "L1070",
       "id": "ship_solshippawn_closespeedpanel",
-      "community": 84,
+      "community": 140,
       "norm_label": "closespeedpanel()"
     },
     {
       "label": "SuspendShipControl()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1060",
+      "source_location": "L1084",
       "id": "ship_solshippawn_suspendshipcontrol",
       "community": 140,
       "norm_label": "suspendshipcontrol()"
@@ -4191,7 +4200,7 @@
       "label": "APlayerController",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1060",
+      "source_location": "L1084",
       "id": "source_soltest_ship_solshippawn_cpp_aplayercontroller",
       "community": 140,
       "norm_label": "aplayercontroller"
@@ -4200,16 +4209,16 @@
       "label": "RestoreShipControl()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1076",
+      "source_location": "L1100",
       "id": "ship_solshippawn_restoreshipcontrol",
-      "community": 84,
+      "community": 140,
       "norm_label": "restoreshipcontrol()"
     },
     {
       "label": "OpenMap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1094",
+      "source_location": "L1118",
       "id": "ship_solshippawn_openmap",
       "community": 140,
       "norm_label": "openmap()"
@@ -4218,7 +4227,7 @@
       "label": "CloseMap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1135",
+      "source_location": "L1159",
       "id": "ship_solshippawn_closemap",
       "community": 140,
       "norm_label": "closemap()"
@@ -4227,7 +4236,7 @@
       "label": "DismissMap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1152",
+      "source_location": "L1176",
       "id": "ship_solshippawn_dismissmap",
       "community": 84,
       "norm_label": "dismissmap()"
@@ -4236,16 +4245,16 @@
       "label": "UpdateMapCursor()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1171",
+      "source_location": "L1195",
       "id": "ship_solshippawn_updatemapcursor",
-      "community": 58,
+      "community": 95,
       "norm_label": "updatemapcursor()"
     },
     {
       "label": "HandleMapCursorMoved()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1198",
+      "source_location": "L1222",
       "id": "ship_solshippawn_handlemapcursormoved",
       "community": 95,
       "norm_label": "handlemapcursormoved()"
@@ -4254,16 +4263,16 @@
       "label": "HandleMapPickPressed()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1214",
+      "source_location": "L1238",
       "id": "ship_solshippawn_handlemappickpressed",
-      "community": 58,
+      "community": 95,
       "norm_label": "handlemappickpressed()"
     },
     {
       "label": "HandleMapPickReleased()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1232",
+      "source_location": "L1256",
       "id": "ship_solshippawn_handlemappickreleased",
       "community": 95,
       "norm_label": "handlemappickreleased()"
@@ -4272,7 +4281,7 @@
       "label": "SyncOsCursorToMapCursor()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1247",
+      "source_location": "L1271",
       "id": "ship_solshippawn_syncoscursortomapcursor",
       "community": 95,
       "norm_label": "syncoscursortomapcursor()"
@@ -4281,7 +4290,7 @@
       "label": "HandleMapClearPick()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1275",
+      "source_location": "L1299",
       "id": "ship_solshippawn_handlemapclearpick",
       "community": 58,
       "norm_label": "handlemapclearpick()"
@@ -4290,7 +4299,7 @@
       "label": "HandleMapJump()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1285",
+      "source_location": "L1309",
       "id": "ship_solshippawn_handlemapjump",
       "community": 58,
       "norm_label": "handlemapjump()"
@@ -4299,7 +4308,7 @@
       "label": "HandleToggleMap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1292",
+      "source_location": "L1316",
       "id": "ship_solshippawn_handletogglemap",
       "community": 58,
       "norm_label": "handletogglemap()"
@@ -4308,7 +4317,7 @@
       "label": "HandleCloseMap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1299",
+      "source_location": "L1323",
       "id": "ship_solshippawn_handleclosemap",
       "community": 58,
       "norm_label": "handleclosemap()"
@@ -4317,25 +4326,25 @@
       "label": "HandleMapRightHeld()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1306",
+      "source_location": "L1330",
       "id": "ship_solshippawn_handlemaprightheld",
-      "community": 58,
+      "community": 95,
       "norm_label": "handlemaprightheld()"
     },
     {
       "label": "HandleMapPanHeld()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1319",
+      "source_location": "L1343",
       "id": "ship_solshippawn_handlemappanheld",
-      "community": 58,
+      "community": 95,
       "norm_label": "handlemappanheld()"
     },
     {
       "label": "HandleMapCameraDragChanged()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1332",
+      "source_location": "L1356",
       "id": "ship_solshippawn_handlemapcameradragchanged",
       "community": 95,
       "norm_label": "handlemapcameradragchanged()"
@@ -4344,7 +4353,7 @@
       "label": "HandleMapPanModifierHeld()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1343",
+      "source_location": "L1367",
       "id": "ship_solshippawn_handlemappanmodifierheld",
       "community": 58,
       "norm_label": "handlemappanmodifierheld()"
@@ -4353,7 +4362,7 @@
       "label": "HandleMapMouseDelta()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1354",
+      "source_location": "L1378",
       "id": "ship_solshippawn_handlemapmousedelta",
       "community": 95,
       "norm_label": "handlemapmousedelta()"
@@ -4362,7 +4371,7 @@
       "label": "HandleMapZoom()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1378",
+      "source_location": "L1402",
       "id": "ship_solshippawn_handlemapzoom",
       "community": 56,
       "norm_label": "handlemapzoom()"
@@ -4371,7 +4380,7 @@
       "label": "DismissSpeedPanel()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1388",
+      "source_location": "L1412",
       "id": "ship_solshippawn_dismissspeedpanel",
       "community": 84,
       "norm_label": "dismissspeedpanel()"
@@ -4380,7 +4389,7 @@
       "label": "ApplySpeedCapMps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1400",
+      "source_location": "L1424",
       "id": "ship_solshippawn_applyspeedcapmps",
       "community": 58,
       "norm_label": "applyspeedcapmps()"
@@ -4389,7 +4398,7 @@
       "label": "OnThrustAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1413",
+      "source_location": "L1437",
       "id": "ship_solshippawn_onthrustaction",
       "community": 92,
       "norm_label": "onthrustaction()"
@@ -4398,7 +4407,7 @@
       "label": "FInputActionValue",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1413",
+      "source_location": "L1437",
       "id": "source_soltest_ship_solshippawn_cpp_finputactionvalue",
       "community": 58,
       "norm_label": "finputactionvalue"
@@ -4407,7 +4416,7 @@
       "label": "OnThrustCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1420",
+      "source_location": "L1444",
       "id": "ship_solshippawn_onthrustcompleted",
       "community": 92,
       "norm_label": "onthrustcompleted()"
@@ -4416,7 +4425,7 @@
       "label": "OnRollAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1427",
+      "source_location": "L1451",
       "id": "ship_solshippawn_onrollaction",
       "community": 58,
       "norm_label": "onrollaction()"
@@ -4425,7 +4434,7 @@
       "label": "OnRollCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1434",
+      "source_location": "L1458",
       "id": "ship_solshippawn_onrollcompleted",
       "community": 58,
       "norm_label": "onrollcompleted()"
@@ -4434,7 +4443,7 @@
       "label": "OnBoostStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1441",
+      "source_location": "L1465",
       "id": "ship_solshippawn_onbooststarted",
       "community": 58,
       "norm_label": "onbooststarted()"
@@ -4443,7 +4452,7 @@
       "label": "OnBoostCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1448",
+      "source_location": "L1472",
       "id": "ship_solshippawn_onboostcompleted",
       "community": 58,
       "norm_label": "onboostcompleted()"
@@ -4452,7 +4461,7 @@
       "label": "OnToggleAssistAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1455",
+      "source_location": "L1479",
       "id": "ship_solshippawn_ontoggleassistaction",
       "community": 58,
       "norm_label": "ontoggleassistaction()"
@@ -4461,7 +4470,7 @@
       "label": "OnFreeLookStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1462",
+      "source_location": "L1486",
       "id": "ship_solshippawn_onfreelookstarted",
       "community": 58,
       "norm_label": "onfreelookstarted()"
@@ -4470,7 +4479,7 @@
       "label": "OnFreeLookCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1469",
+      "source_location": "L1493",
       "id": "ship_solshippawn_onfreelookcompleted",
       "community": 58,
       "norm_label": "onfreelookcompleted()"
@@ -4479,7 +4488,7 @@
       "label": "OnLookAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1476",
+      "source_location": "L1500",
       "id": "ship_solshippawn_onlookaction",
       "community": 95,
       "norm_label": "onlookaction()"
@@ -4488,7 +4497,7 @@
       "label": "OnRecenterAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1483",
+      "source_location": "L1507",
       "id": "ship_solshippawn_onrecenteraction",
       "community": 58,
       "norm_label": "onrecenteraction()"
@@ -4497,7 +4506,7 @@
       "label": "OnSpeedCapAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1490",
+      "source_location": "L1514",
       "id": "ship_solshippawn_onspeedcapaction",
       "community": 56,
       "norm_label": "onspeedcapaction()"
@@ -4506,16 +4515,25 @@
       "label": "OnMatchLockAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1503",
+      "source_location": "L1527",
       "id": "ship_solshippawn_onmatchlockaction",
-      "community": 140,
+      "community": 58,
       "norm_label": "onmatchlockaction()"
+    },
+    {
+      "label": "OnToggleLevelAction()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L1534",
+      "id": "ship_solshippawn_ontogglelevelaction",
+      "community": 58,
+      "norm_label": "ontogglelevelaction()"
     },
     {
       "label": "OnSelectTargetAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1510",
+      "source_location": "L1541",
       "id": "ship_solshippawn_onselecttargetaction",
       "community": 92,
       "norm_label": "onselecttargetaction()"
@@ -4524,7 +4542,7 @@
       "label": "OnNextTargetAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1517",
+      "source_location": "L1548",
       "id": "ship_solshippawn_onnexttargetaction",
       "community": 92,
       "norm_label": "onnexttargetaction()"
@@ -4533,7 +4551,7 @@
       "label": "OnPreviousTargetAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1524",
+      "source_location": "L1555",
       "id": "ship_solshippawn_onprevioustargetaction",
       "community": 92,
       "norm_label": "onprevioustargetaction()"
@@ -4542,7 +4560,7 @@
       "label": "OnClearTargetAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1531",
+      "source_location": "L1562",
       "id": "ship_solshippawn_oncleartargetaction",
       "community": 58,
       "norm_label": "oncleartargetaction()"
@@ -4551,7 +4569,7 @@
       "label": "OnWarpUpAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1538",
+      "source_location": "L1569",
       "id": "ship_solshippawn_onwarpupaction",
       "community": 58,
       "norm_label": "onwarpupaction()"
@@ -4560,7 +4578,7 @@
       "label": "OnWarpDownAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1545",
+      "source_location": "L1576",
       "id": "ship_solshippawn_onwarpdownaction",
       "community": 58,
       "norm_label": "onwarpdownaction()"
@@ -4569,7 +4587,7 @@
       "label": "OnWarpResetAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1552",
+      "source_location": "L1583",
       "id": "ship_solshippawn_onwarpresetaction",
       "community": 58,
       "norm_label": "onwarpresetaction()"
@@ -4578,7 +4596,7 @@
       "label": "OnToggleOrbitLinesAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1559",
+      "source_location": "L1590",
       "id": "ship_solshippawn_ontoggleorbitlinesaction",
       "community": 58,
       "norm_label": "ontoggleorbitlinesaction()"
@@ -4587,16 +4605,16 @@
       "label": "OnTogglePredictedPathAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1566",
+      "source_location": "L1597",
       "id": "ship_solshippawn_ontogglepredictedpathaction",
-      "community": 58,
+      "community": 140,
       "norm_label": "ontogglepredictedpathaction()"
     },
     {
       "label": "OnSpeedPanelAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1573",
+      "source_location": "L1604",
       "id": "ship_solshippawn_onspeedpanelaction",
       "community": 58,
       "norm_label": "onspeedpanelaction()"
@@ -4605,7 +4623,7 @@
       "label": "OnRadarZoomInAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1580",
+      "source_location": "L1611",
       "id": "ship_solshippawn_onradarzoominaction",
       "community": 58,
       "norm_label": "onradarzoominaction()"
@@ -4614,7 +4632,7 @@
       "label": "OnRadarZoomOutAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1587",
+      "source_location": "L1618",
       "id": "ship_solshippawn_onradarzoomoutaction",
       "community": 58,
       "norm_label": "onradarzoomoutaction()"
@@ -4623,7 +4641,7 @@
       "label": "OnRadarAutoAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1594",
+      "source_location": "L1625",
       "id": "ship_solshippawn_onradarautoaction",
       "community": 58,
       "norm_label": "onradarautoaction()"
@@ -4632,7 +4650,7 @@
       "label": "OnToggleMapAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1601",
+      "source_location": "L1632",
       "id": "ship_solshippawn_ontogglemapaction",
       "community": 58,
       "norm_label": "ontogglemapaction()"
@@ -4641,7 +4659,7 @@
       "label": "OnMapCloseAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1608",
+      "source_location": "L1639",
       "id": "ship_solshippawn_onmapcloseaction",
       "community": 58,
       "norm_label": "onmapcloseaction()"
@@ -4650,43 +4668,43 @@
       "label": "OnMapRightStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1615",
+      "source_location": "L1646",
       "id": "ship_solshippawn_onmaprightstarted",
-      "community": 58,
+      "community": 95,
       "norm_label": "onmaprightstarted()"
     },
     {
       "label": "OnMapRightCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1622",
+      "source_location": "L1653",
       "id": "ship_solshippawn_onmaprightcompleted",
-      "community": 58,
+      "community": 95,
       "norm_label": "onmaprightcompleted()"
     },
     {
       "label": "OnMapPanStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1629",
+      "source_location": "L1660",
       "id": "ship_solshippawn_onmappanstarted",
-      "community": 58,
+      "community": 95,
       "norm_label": "onmappanstarted()"
     },
     {
       "label": "OnMapPanCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1636",
+      "source_location": "L1667",
       "id": "ship_solshippawn_onmappancompleted",
-      "community": 58,
+      "community": 95,
       "norm_label": "onmappancompleted()"
     },
     {
       "label": "OnMapPanModifierStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1643",
+      "source_location": "L1674",
       "id": "ship_solshippawn_onmappanmodifierstarted",
       "community": 58,
       "norm_label": "onmappanmodifierstarted()"
@@ -4695,7 +4713,7 @@
       "label": "OnMapPanModifierCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1650",
+      "source_location": "L1681",
       "id": "ship_solshippawn_onmappanmodifiercompleted",
       "community": 58,
       "norm_label": "onmappanmodifiercompleted()"
@@ -4704,7 +4722,7 @@
       "label": "OnMapLookAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1657",
+      "source_location": "L1688",
       "id": "ship_solshippawn_onmaplookaction",
       "community": 95,
       "norm_label": "onmaplookaction()"
@@ -4713,7 +4731,7 @@
       "label": "OnMapZoomAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1664",
+      "source_location": "L1695",
       "id": "ship_solshippawn_onmapzoomaction",
       "community": 56,
       "norm_label": "onmapzoomaction()"
@@ -4722,16 +4740,16 @@
       "label": "OnMapPickStarted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1677",
+      "source_location": "L1708",
       "id": "ship_solshippawn_onmappickstarted",
-      "community": 58,
+      "community": 95,
       "norm_label": "onmappickstarted()"
     },
     {
       "label": "OnMapPickCompleted()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1684",
+      "source_location": "L1715",
       "id": "ship_solshippawn_onmappickcompleted",
       "community": 95,
       "norm_label": "onmappickcompleted()"
@@ -4740,7 +4758,7 @@
       "label": "OnMapClearPickAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1691",
+      "source_location": "L1722",
       "id": "ship_solshippawn_onmapclearpickaction",
       "community": 58,
       "norm_label": "onmapclearpickaction()"
@@ -4749,7 +4767,7 @@
       "label": "OnMapJumpAction()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
-      "source_location": "L1698",
+      "source_location": "L1729",
       "id": "ship_solshippawn_onmapjumpaction",
       "community": 58,
       "norm_label": "onmapjumpaction()"
@@ -4767,7 +4785,7 @@
       "label": "ASOLShipPawn()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.h",
-      "source_location": "L73",
+      "source_location": "L79",
       "id": "source_soltest_ship_solshippawn_h_ship_solshippawn_asolshippawn",
       "community": 76,
       "norm_label": "asolshippawn()"
@@ -4776,7 +4794,7 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.h",
-      "source_location": "L73",
+      "source_location": "L79",
       "id": "source_soltest_ship_solshippawn_h_soltest_api",
       "community": 76,
       "norm_label": "soltest_api"
@@ -4839,7 +4857,7 @@
       "label": "Sample()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L112",
+      "source_location": "L119",
       "id": "ship_solshipsmokeflight_sample",
       "community": 64,
       "norm_label": "sample()"
@@ -4848,7 +4866,7 @@
       "label": "FSOLSmokeSample",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L112",
+      "source_location": "L119",
       "id": "fsolsmokesample",
       "community": 64,
       "norm_label": "fsolsmokesample"
@@ -4857,7 +4875,7 @@
       "label": "LogSample()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L132",
+      "source_location": "L139",
       "id": "ship_solshipsmokeflight_logsample",
       "community": 64,
       "norm_label": "logsample()"
@@ -4866,7 +4884,7 @@
       "label": "TCHAR",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L132",
+      "source_location": "L139",
       "id": "source_soltest_ship_solshipsmokeflight_cpp_tchar",
       "community": 64,
       "norm_label": "tchar"
@@ -4875,7 +4893,7 @@
       "label": "BeginPhase()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L149",
+      "source_location": "L156",
       "id": "ship_solshipsmokeflight_beginphase",
       "community": 64,
       "norm_label": "beginphase()"
@@ -4884,7 +4902,7 @@
       "label": "ESOLSmokePhase",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L149",
+      "source_location": "L156",
       "id": "esolsmokephase",
       "community": 64,
       "norm_label": "esolsmokephase"
@@ -4893,7 +4911,7 @@
       "label": "SetWarpIndex()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L232",
+      "source_location": "L240",
       "id": "ship_solshipsmokeflight_setwarpindex",
       "community": 64,
       "norm_label": "setwarpindex()"
@@ -4902,7 +4920,7 @@
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L232",
+      "source_location": "L240",
       "id": "source_soltest_ship_solshipsmokeflight_cpp_int32",
       "community": 64,
       "norm_label": "int32"
@@ -4911,7 +4929,7 @@
       "label": "TrackWarpPhase()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L250",
+      "source_location": "L258",
       "id": "ship_solshipsmokeflight_trackwarpphase",
       "community": 64,
       "norm_label": "trackwarpphase()"
@@ -4920,7 +4938,7 @@
       "label": "EndPhase()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L262",
+      "source_location": "L270",
       "id": "ship_solshipsmokeflight_endphase",
       "community": 64,
       "norm_label": "endphase()"
@@ -4929,7 +4947,7 @@
       "label": "GetPhaseDuration()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L363",
+      "source_location": "L371",
       "id": "ship_solshipsmokeflight_getphaseduration",
       "community": 64,
       "norm_label": "getphaseduration()"
@@ -4938,7 +4956,7 @@
       "label": "GetPhaseName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSmokeFlight.cpp",
-      "source_location": "L392",
+      "source_location": "L400",
       "id": "ship_solshipsmokeflight_getphasename",
       "community": 64,
       "norm_label": "getphasename()"
@@ -5466,10 +5484,28 @@
       "norm_label": "stepships()"
     },
     {
+      "label": "ClearSurfaceLock()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L337",
+      "id": "ship_solshipsubsystem_clearsurfacelock",
+      "community": 63,
+      "norm_label": "clearsurfacelock()"
+    },
+    {
+      "label": "UpdateSurfaceLock()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L355",
+      "id": "ship_solshipsubsystem_updatesurfacelock",
+      "community": 63,
+      "norm_label": "updatesurfacelock()"
+    },
+    {
       "label": "ComputeFrameInputs()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
-      "source_location": "L332",
+      "source_location": "L427",
       "id": "ship_solshipsubsystem_computeframeinputs",
       "community": 63,
       "norm_label": "computeframeinputs()"
@@ -5478,7 +5514,7 @@
       "label": "FSOLShipFrameInputs",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
-      "source_location": "L332",
+      "source_location": "L427",
       "id": "fsolshipframeinputs",
       "community": 63,
       "norm_label": "fsolshipframeinputs"
@@ -5487,7 +5523,7 @@
       "label": "SaveFrameHistory()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
-      "source_location": "L378",
+      "source_location": "L473",
       "id": "ship_solshipsubsystem_saveframehistory",
       "community": 63,
       "norm_label": "saveframehistory()"
@@ -5505,7 +5541,7 @@
       "label": "USOLShipSubsystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.h",
-      "source_location": "L44",
+      "source_location": "L53",
       "id": "ship_solshipsubsystem_usolshipsubsystem",
       "community": 69,
       "norm_label": "usolshipsubsystem()"
@@ -5514,10 +5550,235 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.h",
-      "source_location": "L44",
+      "source_location": "L53",
       "id": "source_soltest_ship_solshipsubsystem_h_soltest_api",
       "community": 69,
       "norm_label": "soltest_api"
+    },
+    {
+      "label": "SOLSurfaceLockSmoke.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "community": 146,
+      "norm_label": "solsurfacelocksmoke.cpp"
+    },
+    {
+      "label": "LevelSmokeHudLineName()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L57",
+      "id": "ship_solsurfacelocksmoke_levelsmokehudlinename",
+      "community": 146,
+      "norm_label": "levelsmokehudlinename()"
+    },
+    {
+      "label": "TCHAR",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L57",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_tchar",
+      "community": 146,
+      "norm_label": "tchar"
+    },
+    {
+      "label": "ESOLHudLockLine",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L57",
+      "id": "esolhudlockline",
+      "community": 146,
+      "norm_label": "esolhudlockline"
+    },
+    {
+      "label": "Start()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L75",
+      "id": "ship_solsurfacelocksmoke_start",
+      "community": 146,
+      "norm_label": "start()"
+    },
+    {
+      "label": "ASOLShipPawn",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L75",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn",
+      "community": 146,
+      "norm_label": "asolshippawn"
+    },
+    {
+      "label": "Update()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L92",
+      "id": "ship_solsurfacelocksmoke_update",
+      "community": 146,
+      "norm_label": "update()"
+    },
+    {
+      "label": "EnterPhase()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L138",
+      "id": "ship_solsurfacelocksmoke_enterphase",
+      "community": 146,
+      "norm_label": "enterphase()"
+    },
+    {
+      "label": "ESOLLevelPhase",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L138",
+      "id": "esollevelphase",
+      "community": 146,
+      "norm_label": "esollevelphase"
+    },
+    {
+      "label": "TickPhase()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L211",
+      "id": "ship_solsurfacelocksmoke_tickphase",
+      "community": 146,
+      "norm_label": "tickphase()"
+    },
+    {
+      "label": "IsPhaseDone()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L253",
+      "id": "ship_solsurfacelocksmoke_isphasedone",
+      "community": 146,
+      "norm_label": "isphasedone()"
+    },
+    {
+      "label": "ExitPhase()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L284",
+      "id": "ship_solsurfacelocksmoke_exitphase",
+      "community": 146,
+      "norm_label": "exitphase()"
+    },
+    {
+      "label": "PlaceAboveEarth()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L433",
+      "id": "ship_solsurfacelocksmoke_placeaboveearth",
+      "community": 146,
+      "norm_label": "placeaboveearth()"
+    },
+    {
+      "label": "ESOLLevelPlaceUp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L433",
+      "id": "esollevelplaceup",
+      "community": 146,
+      "norm_label": "esollevelplaceup"
+    },
+    {
+      "label": "LockFrameToOtherCandidate()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L473",
+      "id": "ship_solsurfacelocksmoke_lockframetoothercandidate",
+      "community": 146,
+      "norm_label": "lockframetoothercandidate()"
+    },
+    {
+      "label": "int32",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L473",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_int32",
+      "community": 146,
+      "norm_label": "int32"
+    },
+    {
+      "label": "TrackAlignment()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L509",
+      "id": "ship_solsurfacelocksmoke_trackalignment",
+      "community": 146,
+      "norm_label": "trackalignment()"
+    },
+    {
+      "label": "ComputeUpErrorDeg()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L530",
+      "id": "ship_solsurfacelocksmoke_computeuperrordeg",
+      "community": 146,
+      "norm_label": "computeuperrordeg()"
+    },
+    {
+      "label": "DescribeLock()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L545",
+      "id": "ship_solsurfacelocksmoke_describelock",
+      "community": 146,
+      "norm_label": "describelock()"
+    },
+    {
+      "label": "FString",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L545",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_fstring",
+      "community": 146,
+      "norm_label": "fstring"
+    },
+    {
+      "label": "Screenshot()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L559",
+      "id": "ship_solsurfacelocksmoke_screenshot",
+      "community": 146,
+      "norm_label": "screenshot()"
+    },
+    {
+      "label": "TapKey()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L570",
+      "id": "ship_solsurfacelocksmoke_tapkey",
+      "community": 146,
+      "norm_label": "tapkey()"
+    },
+    {
+      "label": "FKey",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L570",
+      "id": "source_soltest_ship_solsurfacelocksmoke_cpp_fkey",
+      "community": 146,
+      "norm_label": "fkey"
+    },
+    {
+      "label": "Check()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L578",
+      "id": "ship_solsurfacelocksmoke_check",
+      "community": 146,
+      "norm_label": "check()"
+    },
+    {
+      "label": "SOLSurfaceLockSmoke.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
+      "source_location": "L1",
+      "id": "source_soltest_ship_solsurfacelocksmoke_h_ship_solsurfacelocksmoke",
+      "community": 147,
+      "norm_label": "solsurfacelocksmoke.h"
     },
     {
       "label": "SOLTargetable.h",
@@ -5727,10 +5988,19 @@
       "norm_label": "toggleframelock()"
     },
     {
-      "label": "GetSelectedTarget()",
+      "label": "LockToBodyIndex()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
       "source_location": "L209",
+      "id": "targeting_soltargetingsubsystem_locktobodyindex",
+      "community": 65,
+      "norm_label": "locktobodyindex()"
+    },
+    {
+      "label": "GetSelectedTarget()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L223",
       "id": "targeting_soltargetingsubsystem_getselectedtarget",
       "community": 65,
       "norm_label": "getselectedtarget()"
@@ -5739,7 +6009,7 @@
       "label": "FSOLTargetInfo",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L209",
+      "source_location": "L223",
       "id": "source_soltest_targeting_soltargetingsubsystem_cpp_fsoltargetinfo",
       "community": 65,
       "norm_label": "fsoltargetinfo"
@@ -5748,7 +6018,7 @@
       "label": "GetFrameName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L216",
+      "source_location": "L230",
       "id": "targeting_soltargetingsubsystem_getframename",
       "community": 65,
       "norm_label": "getframename()"
@@ -5757,7 +6027,7 @@
       "label": "FName",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L216",
+      "source_location": "L230",
       "id": "source_soltest_targeting_soltargetingsubsystem_cpp_fname",
       "community": 65,
       "norm_label": "fname"
@@ -5766,7 +6036,7 @@
       "label": "GetReferenceIndex()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L224",
+      "source_location": "L238",
       "id": "targeting_soltargetingsubsystem_getreferenceindex",
       "community": 65,
       "norm_label": "getreferenceindex()"
@@ -5775,7 +6045,7 @@
       "label": "GetValidAnchorIndex()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L231",
+      "source_location": "L245",
       "id": "targeting_soltargetingsubsystem_getvalidanchorindex",
       "community": 65,
       "norm_label": "getvalidanchorindex()"
@@ -5784,7 +6054,7 @@
       "label": "ResolveReferenceVelocity()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
-      "source_location": "L239",
+      "source_location": "L253",
       "id": "targeting_soltargetingsubsystem_resolvereferencevelocity",
       "community": 65,
       "norm_label": "resolvereferencevelocity()"
@@ -5802,7 +6072,7 @@
       "label": "USOLTargetingSubsystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.h",
-      "source_location": "L31",
+      "source_location": "L32",
       "id": "targeting_soltargetingsubsystem_usoltargetingsubsystem",
       "community": 78,
       "norm_label": "usoltargetingsubsystem()"
@@ -5811,7 +6081,7 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.h",
-      "source_location": "L31",
+      "source_location": "L32",
       "id": "source_soltest_targeting_soltargetingsubsystem_h_soltest_api",
       "community": 78,
       "norm_label": "soltest_api"
@@ -8034,7 +8304,7 @@
       "label": "FlightHudClipSegment()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L107",
+      "source_location": "L108",
       "id": "ui_solflighthud_flighthudclipsegment",
       "community": 36,
       "norm_label": "flighthudclipsegment()"
@@ -8043,7 +8313,7 @@
       "label": "FVector2D",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L107",
+      "source_location": "L108",
       "id": "source_soltest_ui_solflighthud_cpp_fvector2d",
       "community": 36,
       "norm_label": "fvector2d"
@@ -8052,8 +8322,8 @@
       "label": "ASOLFlightHud()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L149",
-      "id": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_asolflighthud",
+      "source_location": "L150",
+      "id": "ui_solflighthud_asolflighthud",
       "community": 36,
       "norm_label": "asolflighthud()"
     },
@@ -8061,7 +8331,7 @@
       "label": "BeginPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L156",
+      "source_location": "L157",
       "id": "ui_solflighthud_beginplay",
       "community": 36,
       "norm_label": "beginplay()"
@@ -8070,8 +8340,8 @@
       "label": "IsMapOpen()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L197",
-      "id": "ui_solflighthud_ismapopen",
+      "source_location": "L198",
+      "id": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_ismapopen",
       "community": 36,
       "norm_label": "ismapopen()"
     },
@@ -8079,7 +8349,7 @@
       "label": "ToggleOrbitLines()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L204",
+      "source_location": "L205",
       "id": "ui_solflighthud_toggleorbitlines",
       "community": 36,
       "norm_label": "toggleorbitlines()"
@@ -8088,7 +8358,7 @@
       "label": "StepRadarZoom()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L213",
+      "source_location": "L214",
       "id": "ui_solflighthud_stepradarzoom",
       "community": 36,
       "norm_label": "stepradarzoom()"
@@ -8097,7 +8367,7 @@
       "label": "ResetRadarAuto()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L234",
+      "source_location": "L235",
       "id": "ui_solflighthud_resetradarauto",
       "community": 36,
       "norm_label": "resetradarauto()"
@@ -8106,8 +8376,8 @@
       "label": "DrawHUD()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L242",
-      "id": "ui_solflighthud_drawhud",
+      "source_location": "L243",
+      "id": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "community": 36,
       "norm_label": "drawhud()"
     },
@@ -8115,7 +8385,7 @@
       "label": "DrawWarpStreaks()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L325",
+      "source_location": "L327",
       "id": "ui_solflighthud_drawwarpstreaks",
       "community": 36,
       "norm_label": "drawwarpstreaks()"
@@ -8124,7 +8394,7 @@
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L325",
+      "source_location": "L327",
       "id": "source_soltest_ui_solflighthud_cpp_int32",
       "community": 36,
       "norm_label": "int32"
@@ -8133,7 +8403,7 @@
       "label": "BuildView()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L358",
+      "source_location": "L360",
       "id": "ui_solflighthud_buildview",
       "community": 36,
       "norm_label": "buildview()"
@@ -8142,7 +8412,7 @@
       "label": "FSOLHudView",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L358",
+      "source_location": "L360",
       "id": "fsolhudview",
       "community": 36,
       "norm_label": "fsolhudview"
@@ -8151,7 +8421,7 @@
       "label": "ProjectLocal()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L377",
+      "source_location": "L379",
       "id": "ui_solflighthud_projectlocal",
       "community": 36,
       "norm_label": "projectlocal()"
@@ -8160,7 +8430,7 @@
       "label": "FVector",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L377",
+      "source_location": "L379",
       "id": "source_soltest_ui_solflighthud_cpp_fvector",
       "community": 36,
       "norm_label": "fvector"
@@ -8169,7 +8439,7 @@
       "label": "IsOnScreen()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L391",
+      "source_location": "L393",
       "id": "ui_solflighthud_isonscreen",
       "community": 36,
       "norm_label": "isonscreen()"
@@ -8178,7 +8448,7 @@
       "label": "DrawCircle()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L399",
+      "source_location": "L401",
       "id": "ui_solflighthud_drawcircle",
       "community": 36,
       "norm_label": "drawcircle()"
@@ -8187,7 +8457,7 @@
       "label": "FLinearColor",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L399",
+      "source_location": "L401",
       "id": "source_soltest_ui_solflighthud_cpp_flinearcolor",
       "community": 36,
       "norm_label": "flinearcolor"
@@ -8196,7 +8466,7 @@
       "label": "DrawBuffer()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L415",
+      "source_location": "L417",
       "id": "ui_solflighthud_drawbuffer",
       "community": 36,
       "norm_label": "drawbuffer()"
@@ -8205,7 +8475,7 @@
       "label": "ESOLHudLine",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L415",
+      "source_location": "L417",
       "id": "esolhudline",
       "community": 36,
       "norm_label": "esolhudline"
@@ -8214,7 +8484,7 @@
       "label": "UFont",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L415",
+      "source_location": "L417",
       "id": "source_soltest_ui_solflighthud_cpp_ufont",
       "community": 36,
       "norm_label": "ufont"
@@ -8223,7 +8493,7 @@
       "label": "DrawReticle()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L436",
+      "source_location": "L438",
       "id": "ui_solflighthud_drawreticle",
       "community": 36,
       "norm_label": "drawreticle()"
@@ -8232,7 +8502,7 @@
       "label": "DrawJoystick()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L449",
+      "source_location": "L451",
       "id": "ui_solflighthud_drawjoystick",
       "community": 36,
       "norm_label": "drawjoystick()"
@@ -8241,7 +8511,7 @@
       "label": "ASOLShipPawn",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L449",
+      "source_location": "L451",
       "id": "source_soltest_ui_solflighthud_cpp_asolshippawn",
       "community": 36,
       "norm_label": "asolshippawn"
@@ -8250,7 +8520,7 @@
       "label": "DrawInfoBlock()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L470",
+      "source_location": "L472",
       "id": "ui_solflighthud_drawinfoblock",
       "community": 36,
       "norm_label": "drawinfoblock()"
@@ -8259,7 +8529,7 @@
       "label": "DrawSpeedBlock()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L547",
+      "source_location": "L579",
       "id": "ui_solflighthud_drawspeedblock",
       "community": 36,
       "norm_label": "drawspeedblock()"
@@ -8268,7 +8538,7 @@
       "label": "FSOLShipState",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L547",
+      "source_location": "L579",
       "id": "source_soltest_ui_solflighthud_cpp_fsolshipstate",
       "community": 36,
       "norm_label": "fsolshipstate"
@@ -8277,7 +8547,7 @@
       "label": "FSOLShipControl",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L547",
+      "source_location": "L579",
       "id": "source_soltest_ui_solflighthud_cpp_fsolshipcontrol",
       "community": 36,
       "norm_label": "fsolshipcontrol"
@@ -8286,7 +8556,7 @@
       "label": "DrawTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L609",
+      "source_location": "L641",
       "id": "ui_solflighthud_drawtarget",
       "community": 36,
       "norm_label": "drawtarget()"
@@ -8295,7 +8565,7 @@
       "label": "DrawVelocityMarkers()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L712",
+      "source_location": "L744",
       "id": "ui_solflighthud_drawvelocitymarkers",
       "community": 36,
       "norm_label": "drawvelocitymarkers()"
@@ -8304,7 +8574,7 @@
       "label": "DrawRadar()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L746",
+      "source_location": "L778",
       "id": "ui_solflighthud_drawradar",
       "community": 36,
       "norm_label": "drawradar()"
@@ -8313,7 +8583,7 @@
       "label": "HasSelectedTarget()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L825",
+      "source_location": "L857",
       "id": "ui_solflighthud_hasselectedtarget",
       "community": 36,
       "norm_label": "hasselectedtarget()"
@@ -8322,7 +8592,7 @@
       "label": "RefreshOrbitCache()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L832",
+      "source_location": "L864",
       "id": "ui_solflighthud_refreshorbitcache",
       "community": 36,
       "norm_label": "refreshorbitcache()"
@@ -8331,7 +8601,7 @@
       "label": "DrawOrbitLines()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L851",
+      "source_location": "L883",
       "id": "ui_solflighthud_draworbitlines",
       "community": 36,
       "norm_label": "draworbitlines()"
@@ -8340,7 +8610,7 @@
       "label": "DrawLocalSegment()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L885",
+      "source_location": "L917",
       "id": "ui_solflighthud_drawlocalsegment",
       "community": 36,
       "norm_label": "drawlocalsegment()"
@@ -8349,7 +8619,7 @@
       "label": "AppendSpeed()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L923",
+      "source_location": "L955",
       "id": "ui_solflighthud_appendspeed",
       "community": 36,
       "norm_label": "appendspeed()"
@@ -8364,22 +8634,31 @@
       "norm_label": "solflighthud.h"
     },
     {
-      "label": "ASOLFlightHud()",
+      "label": "DrawHUD()",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
-      "source_location": "L47",
-      "id": "source_soltest_ui_solflighthud_h_ui_solflighthud_asolflighthud",
+      "source_location": "L58",
+      "id": "source_soltest_ui_solflighthud_h_ui_solflighthud_drawhud",
       "community": 97,
-      "norm_label": "asolflighthud()"
+      "norm_label": "drawhud()"
     },
     {
-      "label": "SOLTEST_API",
+      "label": "virtual",
       "file_type": "code",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
-      "source_location": "L47",
-      "id": "source_soltest_ui_solflighthud_h_soltest_api",
+      "source_location": "L58",
+      "id": "virtual",
       "community": 97,
-      "norm_label": "soltest_api"
+      "norm_label": "virtual"
+    },
+    {
+      "label": "IsMapOpen()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L85",
+      "id": "source_soltest_ui_solflighthud_h_ui_solflighthud_ismapopen",
+      "community": 97,
+      "norm_label": "ismapopen()"
     },
     {
       "label": "SOLHudFormat.cpp",
@@ -11265,7 +11544,7 @@
       "label": "3. Frame update order",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L77",
+      "source_location": "L79",
       "id": "docs_architecture_3_frame_update_order",
       "community": 107,
       "norm_label": "3. frame update order"
@@ -11274,7 +11553,7 @@
       "label": "4. Coordinate systems and conversions",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L118",
+      "source_location": "L122",
       "id": "docs_architecture_4_coordinate_systems_and_conversions",
       "community": 107,
       "norm_label": "4. coordinate systems and conversions"
@@ -11283,7 +11562,7 @@
       "label": "5. Key types per module",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L138",
+      "source_location": "L142",
       "id": "docs_architecture_5_key_types_per_module",
       "community": 107,
       "norm_label": "5. key types per module"
@@ -11292,7 +11571,7 @@
       "label": "6. Data flow narratives",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L197",
+      "source_location": "L201",
       "id": "docs_architecture_6_data_flow_narratives",
       "community": 107,
       "norm_label": "6. data flow narratives"
@@ -11301,7 +11580,7 @@
       "label": "6.1 Player presses W",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L199",
+      "source_location": "L203",
       "id": "docs_architecture_6_1_player_presses_w",
       "community": 107,
       "norm_label": "6.1 player presses w"
@@ -11310,7 +11589,7 @@
       "label": "6.2 M pressed with Mars selected",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L217",
+      "source_location": "L221",
       "id": "docs_architecture_6_2_m_pressed_with_mars_selected",
       "community": 107,
       "norm_label": "6.2 m pressed with mars selected"
@@ -11319,7 +11598,7 @@
       "label": "6.3 Radar draw",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L224",
+      "source_location": "L228",
       "id": "docs_architecture_6_3_radar_draw",
       "community": 107,
       "norm_label": "6.3 radar draw"
@@ -11328,7 +11607,7 @@
       "label": "7. Testing architecture",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L232",
+      "source_location": "L236",
       "id": "docs_architecture_7_testing_architecture",
       "community": 107,
       "norm_label": "7. testing architecture"
@@ -11337,7 +11616,7 @@
       "label": "8. Extension points for future parts",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L252",
+      "source_location": "L257",
       "id": "docs_architecture_8_extension_points_for_future_parts",
       "community": 107,
       "norm_label": "8. extension points for future parts"
@@ -11346,7 +11625,7 @@
       "label": "Keeping this document in sync",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L264",
+      "source_location": "L269",
       "id": "docs_architecture_keeping_this_document_in_sync",
       "community": 107,
       "norm_label": "keeping this document in sync"
@@ -11427,7 +11706,7 @@
       "label": "6. Origin anchoring",
       "file_type": "document",
       "source_file": "Docs/GAME_MECHANICS.md",
-      "source_location": "L101",
+      "source_location": "L104",
       "id": "docs_game_mechanics_6_origin_anchoring",
       "community": 31,
       "norm_label": "6. origin anchoring"
@@ -11436,7 +11715,7 @@
       "label": "7. Combat",
       "file_type": "document",
       "source_file": "Docs/GAME_MECHANICS.md",
-      "source_location": "L108",
+      "source_location": "L111",
       "id": "docs_game_mechanics_7_combat",
       "community": 31,
       "norm_label": "7. combat"
@@ -11634,7 +11913,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
-      "source_location": "L42",
+      "source_location": "L61",
       "id": "plans_4_surface_lock_plan_cross_cutting",
       "community": 143,
       "norm_label": "cross-cutting"
@@ -11699,7 +11978,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L3",
       "id": "research_ue_performance_guidelines_unreal_engine_5_c_game_code_performance_guidelines_epic_tom_looman",
-      "community": 113,
+      "community": 21,
       "norm_label": "unreal engine 5 c++ / game-code performance guidelines (epic + tom looman)"
     },
     {
@@ -11708,7 +11987,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L13",
       "id": "research_ue_performance_guidelines_1_review_checklist",
-      "community": 113,
+      "community": 21,
       "norm_label": "1. review checklist"
     },
     {
@@ -11717,7 +11996,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L15",
       "id": "research_ue_performance_guidelines_a_tick_and_update_cost",
-      "community": 113,
+      "community": 21,
       "norm_label": "a. tick and update cost"
     },
     {
@@ -11726,7 +12005,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L30",
       "id": "research_ue_performance_guidelines_b_memory_allocation_and_gc",
-      "community": 113,
+      "community": 21,
       "norm_label": "b. memory, allocation and gc"
     },
     {
@@ -11735,7 +12014,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L51",
       "id": "research_ue_performance_guidelines_c_containers_and_data_layout",
-      "community": 113,
+      "community": 21,
       "norm_label": "c. containers and data layout"
     },
     {
@@ -11744,7 +12023,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L62",
       "id": "research_ue_performance_guidelines_d_mass_ecs",
-      "community": 113,
+      "community": 21,
       "norm_label": "d. mass / ecs"
     },
     {
@@ -11753,7 +12032,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L80",
       "id": "research_ue_performance_guidelines_e_threading_and_async",
-      "community": 113,
+      "community": 21,
       "norm_label": "e. threading and async"
     },
     {
@@ -11762,7 +12041,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L90",
       "id": "research_ue_performance_guidelines_f_rendering_nanite_niagara_draw_calls_lod_materials",
-      "community": 113,
+      "community": 21,
       "norm_label": "f. rendering (nanite, niagara, draw calls, lod, materials)"
     },
     {
@@ -11771,7 +12050,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L110",
       "id": "research_ue_performance_guidelines_g_physics_and_collision",
-      "community": 113,
+      "community": 21,
       "norm_label": "g. physics and collision"
     },
     {
@@ -11780,7 +12059,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L116",
       "id": "research_ue_performance_guidelines_h_animation",
-      "community": 113,
+      "community": 21,
       "norm_label": "h. animation"
     },
     {
@@ -11789,7 +12068,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L123",
       "id": "research_ue_performance_guidelines_i_streaming_and_loading",
-      "community": 113,
+      "community": 21,
       "norm_label": "i. streaming and loading"
     },
     {
@@ -11798,7 +12077,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L130",
       "id": "research_ue_performance_guidelines_j_profiling_workflow_rules",
-      "community": 113,
+      "community": 21,
       "norm_label": "j. profiling workflow rules"
     },
     {
@@ -11807,7 +12086,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L139",
       "id": "research_ue_performance_guidelines_2_profiling_workflow",
-      "community": 113,
+      "community": 21,
       "norm_label": "2. profiling workflow"
     },
     {
@@ -11816,7 +12095,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L178",
       "id": "research_ue_performance_guidelines_3_caveats_and_gaps",
-      "community": 113,
+      "community": 21,
       "norm_label": "3. caveats and gaps"
     },
     {
@@ -11825,7 +12104,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L188",
       "id": "research_ue_performance_guidelines_4_sources_pages_actually_read",
-      "community": 113,
+      "community": 21,
       "norm_label": "4. sources (pages actually read)"
     },
     {
@@ -12603,10 +12882,19 @@
       "norm_label": "amendments (post-3a-review, 2026-09-30)"
     },
     {
-      "label": "4. Open questions",
+      "label": "Implementation clarifications (3b, 2026-09-30)",
       "file_type": "document",
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L212",
+      "id": "sdds_4_surface_lock_implementation_clarifications_3b_2026_09_30",
+      "community": 142,
+      "norm_label": "implementation clarifications (3b, 2026-09-30)"
+    },
+    {
+      "label": "4. Open questions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/4-surface-lock.md",
+      "source_location": "L254",
       "id": "sdds_4_surface_lock_4_open_questions",
       "community": 142,
       "norm_label": "4. open questions"
@@ -12615,7 +12903,7 @@
       "label": "5. Revision history",
       "file_type": "document",
       "source_file": "Docs/SDDs/4-surface-lock.md",
-      "source_location": "L217",
+      "source_location": "L259",
       "id": "sdds_4_surface_lock_5_revision_history",
       "community": 142,
       "norm_label": "5. revision history"
@@ -12970,6 +13258,69 @@
       "id": "readme_soltest",
       "community": 0,
       "norm_label": "soltest"
+    },
+    {
+      "label": "FSOLSurfaceLockSmoke()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
+      "source_location": "L31",
+      "community": 147,
+      "norm_label": "fsolsurfacelocksmoke()",
+      "id": "ship_solsurfacelocksmoke_fsolsurfacelocksmoke"
+    },
+    {
+      "label": "class",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
+      "source_location": "L31",
+      "community": 147,
+      "norm_label": "class",
+      "id": "source_soltest_ship_solsurfacelocksmoke_h_class"
+    },
+    {
+      "label": "ASOLFlightHud()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L149",
+      "community": 36,
+      "norm_label": "asolflighthud()",
+      "id": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_asolflighthud"
+    },
+    {
+      "label": "IsMapOpen()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L197",
+      "community": 36,
+      "norm_label": "ismapopen()",
+      "id": "ui_solflighthud_ismapopen"
+    },
+    {
+      "label": "DrawHUD()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L242",
+      "community": 36,
+      "norm_label": "drawhud()",
+      "id": "ui_solflighthud_drawhud"
+    },
+    {
+      "label": "ASOLFlightHud()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L47",
+      "community": 97,
+      "norm_label": "asolflighthud()",
+      "id": "source_soltest_ui_solflighthud_h_ui_solflighthud_asolflighthud"
+    },
+    {
+      "label": "SOLTEST_API",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L47",
+      "community": 97,
+      "norm_label": "soltest_api",
+      "id": "source_soltest_ui_solflighthud_h_soltest_api"
     },
     {
       "label": "UCanvas",
@@ -15730,9 +16081,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_applyalignmentcorrection",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_applyalignmentcorrection"
     },
     {
       "relation": "contains",
@@ -15740,9 +16091,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_computemanualrangem",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_computemanualrangem"
     },
     {
       "relation": "contains",
@@ -15750,9 +16101,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L25",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_surfacelockengagedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelockengagedstate"
     },
     {
       "relation": "contains",
@@ -15760,9 +16111,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_surfacelockreleasedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelockreleasedstate"
     },
     {
       "relation": "contains",
@@ -15770,9 +16121,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L36",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_surfacelocksuppressedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelocksuppressedstate"
     },
     {
       "relation": "contains",
@@ -15780,9 +16131,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L105",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_targetupdir",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_targetupdir"
     },
     {
       "relation": "contains",
@@ -15790,9 +16141,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L54",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_cpp_level_solsurfacelock",
-      "target": "level_solsurfacelock_updatesurfacelockstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_updatesurfacelockstate"
     },
     {
       "relation": "references",
@@ -15801,9 +16152,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L18",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_surfacelockreleasedstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "calls",
@@ -15812,9 +16163,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L82",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "level_solsurfacelock_surfacelockreleasedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelockreleasedstate"
     },
     {
       "relation": "references",
@@ -15823,9 +16174,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_surfacelockengagedstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -15834,9 +16185,9 @@
       "source_location": "L36",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_surfacelocksuppressedstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -15845,9 +16196,9 @@
       "source_location": "L54",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -15856,9 +16207,9 @@
       "source_location": "L25",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_surfacelockengagedstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_int32"
     },
     {
       "relation": "calls",
@@ -15867,9 +16218,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L70",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "level_solsurfacelock_surfacelockengagedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelockengagedstate"
     },
     {
       "relation": "references",
@@ -15878,9 +16229,9 @@
       "source_location": "L36",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_surfacelocksuppressedstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_int32"
     },
     {
       "relation": "references",
@@ -15889,9 +16240,9 @@
       "source_location": "L54",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_int32"
     },
     {
       "relation": "calls",
@@ -15900,9 +16251,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L64",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "level_solsurfacelock_surfacelocksuppressedstate",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_surfacelocksuppressedstate"
     },
     {
       "relation": "references",
@@ -15911,9 +16262,9 @@
       "source_location": "L47",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_computemanualrangem",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockparams",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockparams"
     },
     {
       "relation": "calls",
@@ -15922,9 +16273,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "level_solsurfacelock_computemanualrangem",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_computemanualrangem"
     },
     {
       "relation": "references",
@@ -15933,9 +16284,9 @@
       "source_location": "L54",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_updatesurfacelockstate",
-      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockparams",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fsolsurfacelockparams"
     },
     {
       "relation": "references",
@@ -15944,9 +16295,9 @@
       "source_location": "L105",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_targetupdir",
-      "target": "source_soltest_level_solsurfacelock_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -15955,9 +16306,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.cpp",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_applyalignmentcorrection",
-      "target": "source_soltest_level_solsurfacelock_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -15966,9 +16317,9 @@
       "source_location": "L112",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_applyalignmentcorrection",
-      "target": "source_soltest_level_solsurfacelock_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_cpp_fquat4d"
     },
     {
       "relation": "contains",
@@ -15976,9 +16327,9 @@
       "source_file": "Source/SOLTest/Level/SOLSurfaceLock.h",
       "source_location": "L33",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_level_solsurfacelock_h_level_solsurfacelock",
-      "target": "level_solsurfacelock_solsurfacelock",
-      "confidence_score": 1.0
+      "target": "level_solsurfacelock_solsurfacelock"
     },
     {
       "relation": "references",
@@ -15987,9 +16338,9 @@
       "source_location": "L33",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "level_solsurfacelock_solsurfacelock",
-      "target": "source_soltest_level_solsurfacelock_h_namespace",
-      "confidence_score": 1.0
+      "target": "source_soltest_level_solsurfacelock_h_namespace"
     },
     {
       "relation": "contains",
@@ -16603,9 +16954,9 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L138",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_map_soljumpsubsystem_cpp_map_soljumpsubsystem",
-      "target": "map_soljumpsubsystem_handleuniverseupdated",
-      "confidence_score": 1.0
+      "target": "map_soljumpsubsystem_handleuniverseupdated"
     },
     {
       "relation": "contains",
@@ -21145,9 +21496,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L377",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ship_solshippawn_cpp_ship_solshippawn",
-      "target": "ship_solshippawn_endwarpeffect",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_endwarpeffect"
     },
     {
       "relation": "contains",
@@ -21493,6 +21844,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L902",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solshippawn_cpp_ship_solshippawn",
+      "target": "ship_solshippawn_handletogglelevel"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1014",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -21565,9 +21926,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L386",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ship_solshippawn_cpp_ship_solshippawn",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "contains",
@@ -21938,6 +22299,16 @@
       "confidence_score": 1.0,
       "source": "source_soltest_ship_solshippawn_cpp_ship_solshippawn",
       "target": "ship_solshippawn_ontoggleassistaction"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L1534",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solshippawn_cpp_ship_solshippawn",
+      "target": "ship_solshippawn_ontogglelevelaction"
     },
     {
       "relation": "contains",
@@ -22539,9 +22910,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L297",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_tick",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22638,9 +23009,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L359",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_updatecamerafov",
-      "target": "ship_solshippawn_endwarpeffect",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_endwarpeffect"
     },
     {
       "relation": "calls",
@@ -22649,9 +23020,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L345",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_updatecamerafov",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22660,9 +23031,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L756",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_followship",
-      "target": "ship_solshippawn_endwarpeffect",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_endwarpeffect"
     },
     {
       "relation": "calls",
@@ -22671,9 +23042,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L754",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_followship",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22682,9 +23053,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L927",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_handlecleartarget",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22693,9 +23064,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L881",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_handlematchlock",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22704,9 +23075,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L905",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_handlenexttarget",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22715,9 +23086,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L917",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_handleprevioustarget",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22726,9 +23097,20 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L893",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_handleselecttarget",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L905",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshippawn_handletogglelevel",
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -22737,9 +23119,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1015",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_openspeedpanel",
-      "target": "ship_solshippawn_isjumpwarping",
-      "confidence_score": 1.0
+      "target": "ship_solshippawn_isjumpwarping"
     },
     {
       "relation": "calls",
@@ -23268,6 +23650,17 @@
       "confidence_score": 1.0,
       "source": "ship_solshippawn_onmatchlockaction",
       "target": "ship_solshippawn_handlematchlock"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L1536",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshippawn_ontogglelevelaction",
+      "target": "ship_solshippawn_handletogglelevel"
     },
     {
       "relation": "calls",
@@ -24213,6 +24606,17 @@
       "context": "parameter_type",
       "confidence_score": 1.0,
       "source": "ship_solshippawn_ontoggleassistaction",
+      "target": "source_soltest_ship_solshippawn_cpp_finputactionvalue"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
+      "source_location": "L1534",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solshippawn_ontogglelevelaction",
       "target": "source_soltest_ship_solshippawn_cpp_finputactionvalue"
     },
     {
@@ -25686,6 +26090,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L337",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solshipsubsystem_cpp_ship_solshipsubsystem",
+      "target": "ship_solshipsubsystem_clearsurfacelock"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
       "source_location": "L331",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -25893,6 +26307,16 @@
       "target": "ship_solshipsubsystem_stepships"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L355",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solshipsubsystem_cpp_ship_solshipsubsystem",
+      "target": "ship_solshipsubsystem_updatesurfacelock"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
@@ -25968,6 +26392,17 @@
       "confidence_score": 1.0,
       "source": "ship_solshipsubsystem_doessupportworldtype",
       "target": "source_soltest_ship_solshipsubsystem_cpp_type"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L347",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshipsubsystem_clearsurfacelock",
+      "target": "ship_solshipsubsystem_hasplayership"
     },
     {
       "relation": "calls",
@@ -26135,6 +26570,17 @@
       "target": "ship_solshipsubsystem_getstate"
     },
     {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L363",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshipsubsystem_updatesurfacelock",
+      "target": "ship_solshipsubsystem_getstate"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
@@ -26269,6 +26715,17 @@
     {
       "relation": "calls",
       "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L365",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshipsubsystem_updatesurfacelock",
+      "target": "ship_solshipsubsystem_findnearestbody"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
       "confidence": "INFERRED",
       "confidence_score": 0.8,
       "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
@@ -26298,6 +26755,39 @@
       "confidence_score": 1.0,
       "source": "ship_solshipsubsystem_stepships",
       "target": "ship_solshipsubsystem_saveframehistory"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L321",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solshipsubsystem_stepships",
+      "target": "ship_solshipsubsystem_updatesurfacelock"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L341",
+      "weight": 1.0,
+      "source": "ship_solshipsubsystem_clearsurfacelock",
+      "target": "universe_solbodyregistry_getname"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/Ship/SOLShipSubsystem.cpp",
+      "source_location": "L382",
+      "weight": 1.0,
+      "source": "ship_solshipsubsystem_updatesurfacelock",
+      "target": "universe_solbodyregistry_getname"
     },
     {
       "relation": "references",
@@ -26330,6 +26820,540 @@
       "confidence_score": 1.0,
       "source": "ship_solshipsubsystem_usolshipsubsystem",
       "target": "source_soltest_ship_solshipsubsystem_h_soltest_api"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L420",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_check"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L372",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_computeuperrordeg"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L387",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_describelock"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_enterphase"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_exitphase"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L213",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_isphasedone"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L50",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_levelsmokehudlinename"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L473",
+      "weight": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L339",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_placeaboveearth"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L401",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_screenshot"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L68",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_start"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L412",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_tapkey"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L175",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_tickphase"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L509",
+      "weight": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_trackalignment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L84",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_update"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L249",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "ship_solsurfacelocksmoke_levelsmokehudlinename"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L50",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_levelsmokehudlinename",
+      "target": "esolhudlockline"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L50",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_levelsmokehudlinename",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_tchar"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L420",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_check",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_tchar"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L401",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_screenshot",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_tchar"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L79",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_start",
+      "target": "ship_solsurfacelocksmoke_enterphase"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L68",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_start",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L401",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_screenshot",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L175",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_tickphase",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L84",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_update",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_asolshippawn"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L124",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_update",
+      "target": "ship_solsurfacelocksmoke_enterphase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L115",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_update",
+      "target": "ship_solsurfacelocksmoke_exitphase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L109",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_update",
+      "target": "ship_solsurfacelocksmoke_isphasedone"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L108",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_update",
+      "target": "ship_solsurfacelocksmoke_tickphase"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L130",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_enterphase",
+      "target": "esollevelphase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L144",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_enterphase",
+      "target": "ship_solsurfacelocksmoke_computeuperrordeg"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "ship_solsurfacelocksmoke_enterphase",
+      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L143",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_enterphase",
+      "target": "ship_solsurfacelocksmoke_placeaboveearth"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L140",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_enterphase",
+      "target": "ship_solsurfacelocksmoke_tapkey"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "esollevelphase"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L213",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_isphasedone",
+      "target": "esollevelphase"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L175",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_tickphase",
+      "target": "esollevelphase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L207",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_tickphase",
+      "target": "ship_solsurfacelocksmoke_screenshot"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L220",
+      "weight": 1.0,
+      "source": "ship_solsurfacelocksmoke_tickphase",
+      "target": "ship_solsurfacelocksmoke_trackalignment",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L247",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "ship_solsurfacelocksmoke_check"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L262",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "ship_solsurfacelocksmoke_computeuperrordeg"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L249",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_exitphase",
+      "target": "ship_solsurfacelocksmoke_describelock"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L433",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "ship_solsurfacelocksmoke_placeaboveearth",
+      "target": "esollevelplaceup",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L473",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "ship_solsurfacelocksmoke_lockframetoothercandidate",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L517",
+      "weight": 1.0,
+      "source": "ship_solsurfacelocksmoke_trackalignment",
+      "target": "ship_solsurfacelocksmoke_computeuperrordeg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L387",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_describelock",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_fstring"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L420",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_check",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_fstring"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
+      "source_location": "L412",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_tapkey",
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_fkey"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
+      "source_location": "L31",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ship_solsurfacelocksmoke_h_ship_solsurfacelocksmoke",
+      "target": "ship_solsurfacelocksmoke_fsolsurfacelocksmoke"
     },
     {
       "relation": "contains",
@@ -26441,6 +27465,16 @@
       "confidence_score": 1.0,
       "source": "source_soltest_targeting_soltargetingsubsystem_cpp_targeting_soltargetingsubsystem",
       "target": "targeting_soltargetingsubsystem_initialize"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L209",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_targeting_soltargetingsubsystem_cpp_targeting_soltargetingsubsystem",
+      "target": "targeting_soltargetingsubsystem_locktobodyindex"
     },
     {
       "relation": "contains",
@@ -26702,6 +27736,17 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L209",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "targeting_soltargetingsubsystem_locktobodyindex",
+      "target": "source_soltest_targeting_soltargetingsubsystem_cpp_int32"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
       "source_location": "L164",
       "weight": 1.0,
       "context": "parameter_type",
@@ -26762,6 +27807,39 @@
       "source_location": "L203",
       "weight": 1.0,
       "source": "targeting_soltargetingsubsystem_toggleframelock",
+      "target": "universe_solbodyregistry_getname"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L218",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "targeting_soltargetingsubsystem_locktobodyindex",
+      "target": "targeting_soltargetingsubsystem_getframename"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L216",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "targeting_soltargetingsubsystem_locktobodyindex",
+      "target": "targeting_soltargetingsubsystem_resolvereferencevelocity"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/Targeting/SOLTargetingSubsystem.cpp",
+      "source_location": "L217",
+      "weight": 1.0,
+      "source": "targeting_soltargetingsubsystem_locktobodyindex",
       "target": "universe_solbodyregistry_getname"
     },
     {
@@ -30569,9 +31647,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L1154",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_runtest",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_runtest"
     },
     {
       "relation": "contains",
@@ -30579,9 +31657,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L159",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockexpectedstep",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectedstep"
     },
     {
       "relation": "contains",
@@ -30589,9 +31667,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L168",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectorthonormal"
     },
     {
       "relation": "contains",
@@ -30599,9 +31677,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L71",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockexpectstate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectstate"
     },
     {
       "relation": "contains",
@@ -30609,9 +31687,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L116",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockgeneralorientation",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockgeneralorientation"
     },
     {
       "relation": "contains",
@@ -30619,9 +31697,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L42",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockmakestate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmakestate"
     },
     {
       "relation": "contains",
@@ -30629,9 +31707,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L151",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockmixedaxis",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmixedaxis"
     },
     {
       "relation": "contains",
@@ -30639,9 +31717,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L137",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockquatfinite",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockquatfinite"
     },
     {
       "relation": "contains",
@@ -30649,9 +31727,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L130",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockquatsidentical",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockquatsidentical"
     },
     {
       "relation": "contains",
@@ -30659,9 +31737,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L57",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockreleased",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockreleased"
     },
     {
       "relation": "contains",
@@ -30669,9 +31747,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L99",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockstepengaged",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockstepengaged"
     },
     {
       "relation": "contains",
@@ -30679,9 +31757,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L89",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockstepunengaged",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockstepunengaged"
     },
     {
       "relation": "contains",
@@ -30689,9 +31767,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L64",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelocksuppressed",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelocksuppressed"
     },
     {
       "relation": "contains",
@@ -30699,9 +31777,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L144",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelocktiltedup",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelocktiltedup"
     },
     {
       "relation": "contains",
@@ -30709,9 +31787,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L109",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockunsignedangle",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockunsignedangle"
     },
     {
       "relation": "contains",
@@ -30719,9 +31797,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L123",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest",
-      "target": "tests_surfacelocktest_surfacelockup",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockup"
     },
     {
       "relation": "calls",
@@ -30730,9 +31808,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L243",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockmakestate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmakestate"
     },
     {
       "relation": "references",
@@ -30741,9 +31819,9 @@
       "source_location": "L42",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockmakestate",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30752,9 +31830,9 @@
       "source_location": "L42",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockmakestate",
-      "target": "source_soltest_tests_surfacelocktest_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_int32"
     },
     {
       "relation": "calls",
@@ -30763,9 +31841,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L59",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockreleased",
-      "target": "tests_surfacelocktest_surfacelockmakestate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmakestate"
     },
     {
       "relation": "calls",
@@ -30774,9 +31852,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L66",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocksuppressed",
-      "target": "tests_surfacelocktest_surfacelockmakestate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmakestate"
     },
     {
       "relation": "references",
@@ -30785,9 +31863,9 @@
       "source_location": "L71",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectstate",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30796,9 +31874,9 @@
       "source_location": "L57",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockreleased",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30807,9 +31885,9 @@
       "source_location": "L99",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockstepengaged",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30818,9 +31896,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockstepunengaged",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30829,9 +31907,9 @@
       "source_location": "L64",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocksuppressed",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockstate"
     },
     {
       "relation": "references",
@@ -30840,9 +31918,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockstepunengaged",
-      "target": "source_soltest_tests_surfacelocktest_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_int32"
     },
     {
       "relation": "references",
@@ -30851,9 +31929,9 @@
       "source_location": "L64",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocksuppressed",
-      "target": "source_soltest_tests_surfacelocktest_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_int32"
     },
     {
       "relation": "calls",
@@ -30862,9 +31940,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L200",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockreleased",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockreleased"
     },
     {
       "relation": "calls",
@@ -30873,9 +31951,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L398",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelocksuppressed",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelocksuppressed"
     },
     {
       "relation": "calls",
@@ -30884,9 +31962,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L200",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockexpectstate",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectstate"
     },
     {
       "relation": "references",
@@ -30895,9 +31973,9 @@
       "source_location": "L71",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectstate",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fautomationtestbase",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fautomationtestbase"
     },
     {
       "relation": "references",
@@ -30906,9 +31984,9 @@
       "source_location": "L71",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectstate",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fstring"
     },
     {
       "relation": "references",
@@ -30917,9 +31995,9 @@
       "source_location": "L168",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fautomationtestbase",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fautomationtestbase"
     },
     {
       "relation": "references",
@@ -30928,9 +32006,9 @@
       "source_location": "L1154",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fstring"
     },
     {
       "relation": "references",
@@ -30939,9 +32017,9 @@
       "source_location": "L168",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fstring"
     },
     {
       "relation": "calls",
@@ -30950,9 +32028,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L247",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockstepunengaged",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockstepunengaged"
     },
     {
       "relation": "references",
@@ -30961,9 +32039,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockstepunengaged",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockparams",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockparams"
     },
     {
       "relation": "references",
@@ -30972,9 +32050,9 @@
       "source_location": "L99",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockstepengaged",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockparams",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fsolsurfacelockparams"
     },
     {
       "relation": "calls",
@@ -30983,9 +32061,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L394",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockstepengaged",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockstepengaged"
     },
     {
       "relation": "calls",
@@ -30994,9 +32072,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L928",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockunsignedangle",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockunsignedangle"
     },
     {
       "relation": "calls",
@@ -31005,9 +32083,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L162",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectedstep",
-      "target": "tests_surfacelocktest_surfacelockunsignedangle",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockunsignedangle"
     },
     {
       "relation": "references",
@@ -31016,9 +32094,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockunsignedangle",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "calls",
@@ -31027,9 +32105,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L853",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -31038,9 +32116,9 @@
       "source_location": "L159",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectedstep",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "calls",
@@ -31049,9 +32127,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L170",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "calls",
@@ -31060,9 +32138,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L118",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockgeneralorientation",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -31071,9 +32149,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L151",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockmixedaxis",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -31082,9 +32160,9 @@
       "source_location": "L144",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocktiltedup",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "references",
@@ -31093,9 +32171,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L123",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockup",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fvector3d"
     },
     {
       "relation": "calls",
@@ -31104,9 +32182,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L902",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockgeneralorientation",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockgeneralorientation"
     },
     {
       "relation": "references",
@@ -31115,9 +32193,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L116",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockgeneralorientation",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "calls",
@@ -31126,9 +32204,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L902",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31137,9 +32215,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L159",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectedstep",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31148,9 +32226,9 @@
       "source_location": "L168",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31159,9 +32237,9 @@
       "source_location": "L151",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockmixedaxis",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31170,9 +32248,9 @@
       "source_location": "L137",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockquatfinite",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31181,9 +32259,9 @@
       "source_location": "L130",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockquatsidentical",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31192,9 +32270,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L144",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocktiltedup",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -31203,9 +32281,9 @@
       "source_location": "L123",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelockup",
-      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_surfacelocktest_cpp_fquat4d"
     },
     {
       "relation": "calls",
@@ -31214,9 +32292,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L906",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockup",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockup"
     },
     {
       "relation": "calls",
@@ -31225,9 +32303,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L146",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_surfacelocktiltedup",
-      "target": "tests_surfacelocktest_surfacelockup",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockup"
     },
     {
       "relation": "calls",
@@ -31236,9 +32314,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L899",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockquatsidentical",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockquatsidentical"
     },
     {
       "relation": "calls",
@@ -31247,9 +32325,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L1034",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockquatfinite",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockquatfinite"
     },
     {
       "relation": "calls",
@@ -31258,9 +32336,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L944",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelocktiltedup",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelocktiltedup"
     },
     {
       "relation": "calls",
@@ -31269,9 +32347,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L944",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockmixedaxis",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockmixedaxis"
     },
     {
       "relation": "calls",
@@ -31280,9 +32358,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L982",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockexpectedstep",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectedstep"
     },
     {
       "relation": "calls",
@@ -31291,9 +32369,9 @@
       "source_file": "Source/SOLTest/Tests/SurfaceLockTest.cpp",
       "source_location": "L933",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_surfacelocktest_runtest",
-      "target": "tests_surfacelocktest_surfacelockexpectorthonormal",
-      "confidence_score": 1.0
+      "target": "tests_surfacelocktest_surfacelockexpectorthonormal"
     },
     {
       "relation": "contains",
@@ -31630,6 +32708,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L243",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud",
+      "target": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L198",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud",
+      "target": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_ismapopen"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L818",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -31645,6 +32743,16 @@
       "confidence_score": 1.0,
       "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud",
       "target": "ui_solflighthud_appendspeed"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L150",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud",
+      "target": "ui_solflighthud_asolflighthud"
     },
     {
       "relation": "contains",
@@ -32033,22 +33141,22 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L246",
+      "source_location": "L273",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
-      "target": "ui_solflighthud_ismapopen"
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
+      "target": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_ismapopen"
     },
     {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L440",
+      "source_location": "L558",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "ui_solflighthud_drawinfoblock",
-      "target": "ui_solflighthud_ismapopen"
+      "target": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_ismapopen"
     },
     {
       "relation": "calls",
@@ -32099,10 +33207,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L187",
+      "source_location": "L266",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_buildview"
     },
     {
@@ -32110,10 +33218,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L194",
+      "source_location": "L287",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawinfoblock"
     },
     {
@@ -32121,10 +33229,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L216",
+      "source_location": "L316",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawjoystick"
     },
     {
@@ -32132,10 +33240,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L192",
+      "source_location": "L271",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_draworbitlines"
     },
     {
@@ -32143,10 +33251,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L204",
+      "source_location": "L297",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawradar"
     },
     {
@@ -32154,10 +33262,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L213",
+      "source_location": "L313",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawreticle"
     },
     {
@@ -32165,10 +33273,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L203",
+      "source_location": "L296",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawspeedblock"
     },
     {
@@ -32176,10 +33284,10 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L208",
+      "source_location": "L305",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawtarget"
     },
     {
@@ -32187,11 +33295,22 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
-      "source_location": "L207",
+      "source_location": "L320",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "ui_solflighthud_drawhud",
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
       "target": "ui_solflighthud_drawvelocitymarkers"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L260",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_cpp_ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawwarpstreaks"
     },
     {
       "relation": "calls",
@@ -32236,6 +33355,17 @@
       "confidence_score": 1.0,
       "source": "ui_solflighthud_buildview",
       "target": "fsolhudview"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L187",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_buildview"
     },
     {
       "relation": "references",
@@ -32513,6 +33643,28 @@
       "target": "ui_solflighthud_drawbuffer"
     },
     {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L213",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawreticle"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L216",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawjoystick"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
@@ -32528,11 +33680,44 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L194",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawinfoblock"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L389",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "ui_solflighthud_drawinfoblock",
       "target": "ui_solflighthud_appenddistance"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L440",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawinfoblock",
+      "target": "ui_solflighthud_ismapopen"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L203",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawspeedblock"
     },
     {
       "relation": "references",
@@ -32605,6 +33790,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L208",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawtarget"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L490",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -32621,6 +33817,28 @@
       "confidence_score": 1.0,
       "source": "ui_solflighthud_drawtarget",
       "target": "ui_solflighthud_appendspeed"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L207",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawvelocitymarkers"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L204",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_drawradar"
     },
     {
       "relation": "calls",
@@ -32671,6 +33889,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L192",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_draworbitlines"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L687",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -32688,15 +33917,35 @@
       "target": "source_soltest_ui_solflighthud_h_ui_solflighthud_asolflighthud"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L58",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_h_ui_solflighthud",
+      "target": "source_soltest_ui_solflighthud_h_ui_solflighthud_drawhud"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L85",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_h_ui_solflighthud",
+      "target": "source_soltest_ui_solflighthud_h_ui_solflighthud_ismapopen"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
-      "source_location": "L34",
+      "source_location": "L58",
       "weight": 1.0,
       "context": "return_type",
       "confidence_score": 1.0,
-      "source": "source_soltest_ui_solflighthud_h_ui_solflighthud_asolflighthud",
-      "target": "source_soltest_ui_solflighthud_h_soltest_api"
+      "source": "source_soltest_ui_solflighthud_h_ui_solflighthud_drawhud",
+      "target": "virtual"
     },
     {
       "relation": "contains",
@@ -37863,9 +39112,9 @@
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "plans_4_surface_lock_plan",
-      "target": "plans_4_surface_lock_plan_level_surface_lock_implementation_plan",
-      "confidence_score": 1.0
+      "target": "plans_4_surface_lock_plan_level_surface_lock_implementation_plan"
     },
     {
       "relation": "contains",
@@ -37873,9 +39122,9 @@
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
       "source_location": "L42",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "plans_4_surface_lock_plan_level_surface_lock_implementation_plan",
-      "target": "plans_4_surface_lock_plan_cross_cutting",
-      "confidence_score": 1.0
+      "target": "plans_4_surface_lock_plan_cross_cutting"
     },
     {
       "relation": "contains",
@@ -37883,9 +39132,9 @@
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
       "source_location": "L13",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "plans_4_surface_lock_plan_level_surface_lock_implementation_plan",
-      "target": "plans_4_surface_lock_plan_global_constraints",
-      "confidence_score": 1.0
+      "target": "plans_4_surface_lock_plan_global_constraints"
     },
     {
       "relation": "contains",
@@ -37893,9 +39142,9 @@
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
       "source_location": "L21",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "plans_4_surface_lock_plan_level_surface_lock_implementation_plan",
-      "target": "plans_4_surface_lock_plan_steps",
-      "confidence_score": 1.0
+      "target": "plans_4_surface_lock_plan_steps"
     },
     {
       "relation": "references",
@@ -39123,9 +40372,9 @@
       "source_file": "Docs/SDDs/3-jump-map.md",
       "source_location": "L368",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_3_jump_map_11_appendix_i_part_2e_jump_execution",
-      "target": "sdds_3_jump_map_part_2e_post_review_fixes_2026_09_30",
-      "confidence_score": 1.0
+      "target": "sdds_3_jump_map_part_2e_post_review_fixes_2026_09_30"
     },
     {
       "relation": "contains",
@@ -39133,9 +40382,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock",
-      "target": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_sdd_4_level_surface_lock_l"
     },
     {
       "relation": "contains",
@@ -39143,9 +40392,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L16",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_1_problem",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_1_problem"
     },
     {
       "relation": "contains",
@@ -39153,9 +40402,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L24",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_2_decisions",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_2_decisions"
     },
     {
       "relation": "contains",
@@ -39163,9 +40412,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L37",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_3_design",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_3_design"
     },
     {
       "relation": "contains",
@@ -39173,9 +40422,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L212",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_4_open_questions",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_4_open_questions"
     },
     {
       "relation": "contains",
@@ -39183,9 +40432,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L217",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_5_revision_history",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_5_revision_history"
     },
     {
       "relation": "contains",
@@ -39193,9 +40442,19 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L169",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
-      "target": "sdds_4_surface_lock_amendments_post_3a_review_2026_09_30",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_amendments_post_3a_review_2026_09_30"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/4-surface-lock.md",
+      "source_location": "L212",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_4_surface_lock_sdd_4_level_surface_lock_l",
+      "target": "sdds_4_surface_lock_implementation_clarifications_3b_2026_09_30"
     },
     {
       "relation": "contains",
@@ -39203,9 +40462,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L39",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_3_design",
-      "target": "sdds_4_surface_lock_3_1_module_layout",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_3_1_module_layout"
     },
     {
       "relation": "contains",
@@ -39213,9 +40472,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L48",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_3_design",
-      "target": "sdds_4_surface_lock_3_2_pure_logic_contract_appendix_a_3a",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_3_2_pure_logic_contract_appendix_a_3a"
     },
     {
       "relation": "contains",
@@ -39223,9 +40482,9 @@
       "source_file": "Docs/SDDs/4-surface-lock.md",
       "source_location": "L115",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_4_surface_lock_3_design",
-      "target": "sdds_4_surface_lock_3_3_engine_integration_appendix_b_3b",
-      "confidence_score": 1.0
+      "target": "sdds_4_surface_lock_3_3_engine_integration_appendix_b_3b"
     },
     {
       "relation": "references",
@@ -39723,9 +40982,9 @@
       "source_file": "Docs/ToDo/surface-landing.md",
       "source_location": "L3",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "todo_surface_landing",
-      "target": "todo_surface_landing_ship_landing_manual_and_auto",
-      "confidence_score": 1.0
+      "target": "todo_surface_landing_ship_landing_manual_and_auto"
     },
     {
       "relation": "contains",
@@ -39746,6 +41005,39 @@
       "weight": 1.0,
       "source": "readme_soltest",
       "target": "claude_project_guidance"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
+      "source_location": "L31",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "ship_solsurfacelocksmoke_fsolsurfacelocksmoke",
+      "target": "source_soltest_ship_solsurfacelocksmoke_h_class"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
+      "source_location": "L246",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "ui_solflighthud_drawhud",
+      "target": "ui_solflighthud_ismapopen"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/UI/SOLFlightHud.h",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "source_soltest_ui_solflighthud_h_ui_solflighthud_asolflighthud",
+      "target": "source_soltest_ui_solflighthud_h_soltest_api"
     },
     {
       "relation": "calls",
@@ -40231,5 +41523,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "f14f4bced9a459e674597cd9a97494db43b7a035"
+  "built_at_commit": "6733591d51d533ffc0efcb6c04626393382a80fa"
 }

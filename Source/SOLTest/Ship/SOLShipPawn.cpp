@@ -224,6 +224,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
         mSmokeJump->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LEVEL))
+    {
+        mSmokeLevel = MakeUnique<FSOLSurfaceLockSmoke>();
+        mSmokeLevel->Start(*this);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -245,6 +250,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
     mSmokeJump.Reset();
+    mSmokeLevel.Reset();
     Super::EndPlay(endPlayReason);
 }
 
@@ -278,6 +284,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
         mSmokeJump.Reset();
+    }
+    if (mSmokeLevel.IsValid() && mSmokeLevel->Update(*this, deltaSeconds))
+    {
+        mSmokeLevel.Reset();
     }
 
     // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
@@ -451,6 +461,7 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(ToggleAssistAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleAssistAction);
     input->BindAction(RecenterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRecenterAction);
     input->BindAction(MatchLockAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMatchLockAction);
+    input->BindAction(ToggleLevelAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleLevelAction);
     input->BindAction(SelectTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSelectTargetAction);
     input->BindAction(NextTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnNextTargetAction);
     input->BindAction(PreviousTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPreviousTargetAction);
@@ -550,7 +561,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeJump.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
     {
         return;
     }
@@ -609,6 +620,7 @@ void ASOLShipPawn::CreateInputObjects()
     RecenterAction = CreateAction(this, TEXT("IA_ShipRecenterStick"), EInputActionValueType::Boolean);
     SpeedCapAction = CreateAction(this, TEXT("IA_ShipSpeedCap"), EInputActionValueType::Axis1D);
     MatchLockAction = CreateAction(this, TEXT("IA_ShipMatchLock"), EInputActionValueType::Boolean);
+    ToggleLevelAction = CreateAction(this, TEXT("IA_ShipLevel"), EInputActionValueType::Boolean);
     SelectTargetAction = CreateAction(this, TEXT("IA_ShipSelectTarget"), EInputActionValueType::Boolean);
     NextTargetAction = CreateAction(this, TEXT("IA_ShipNextTarget"), EInputActionValueType::Boolean);
     PreviousTargetAction = CreateAction(this, TEXT("IA_ShipPreviousTarget"), EInputActionValueType::Boolean);
@@ -657,6 +669,7 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, ToggleAssistAction, EKeys::Tab, this);
     MapPressedKey(MappingContext, RecenterAction, EKeys::MiddleMouseButton, this);
     MapPressedKey(MappingContext, MatchLockAction, EKeys::M, this);
+    MapPressedKey(MappingContext, ToggleLevelAction, EKeys::L, this);
     MapPressedKey(MappingContext, SelectTargetAction, EKeys::T, this);
     MapPressedKey(MappingContext, NextTargetAction, EKeys::R, this);
     MapPressedKey(MappingContext, PreviousTargetAction, EKeys::F, this);
@@ -881,6 +894,17 @@ void ASOLShipPawn::HandleMatchLock()
     if (Targeting != nullptr && !IsJumpWarping())
     {
         Targeting->ToggleFrameLock();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles surface-lock (L): hands the press to the ship subsystem, which consumes it in exactly its next step
+void ASOLShipPawn::HandleToggleLevel()
+{
+    // The open map and speed panel remove the ship mapping, so L cannot arrive then; a jump warp is gated here
+    if (Ships != nullptr && !IsJumpWarping() && !mIsMapOpen && !mIsSpeedPanelOpen)
+    {
+        Ships->RequestSurfaceLockToggle();
     }
 }
 
@@ -1503,6 +1527,13 @@ void ASOLShipPawn::OnSpeedCapAction(const FInputActionValue& value)
 void ASOLShipPawn::OnMatchLockAction(const FInputActionValue& /*value*/)
 {
     HandleMatchLock();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: surface-lock toggle
+void ASOLShipPawn::OnToggleLevelAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleLevel();
 }
 
 //////////////////////////////////////////////////////////////////////////

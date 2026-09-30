@@ -28,7 +28,8 @@ class USOLTargetingSubsystem;
 /**
  * Sim-style flight HUD (SDD 2, sub-part 1c), drawn every frame on the HUD Canvas with no editor assets: reticle and
  * virtual-joystick indicator, speed relative to the active frame (absolute beneath), speed cap and fill bar, assist
- * and boost state, frame and anchor names, nearest body and altitude, sim UTC date and warp, the selected target's
+ * and boost state, frame and anchor names, nearest body and altitude, the surface-lock status (or the L hint while a
+ * body is within manual range; SDD 4 decision 6), sim UTC date and warp, the selected target's
  * bracket (or an edge arrow when off-screen), prograde/retrograde markers, a 3D spherical radar (AUTO range = the
  * target-dependent floor, or MANUAL decade zoom with '-' / '=' and Home back to AUTO) and, toggled by O, every body's
  * orbit ellipse. While the jump map is open the pilot aids are hidden, the hint line shows the map's keys and every
@@ -95,6 +96,18 @@ public:
     // Returns the number of warp streaks drawn in the last frame (verification)
     int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
 
+    // Which surface-lock line the HUD drew: none, the L hint, the engaged status, or the status in the warning color
+    enum class ESOLSurfaceLockHudLine : uint8
+    {
+        None,
+        Hint,
+        Engaged,
+        Warning,
+    };
+
+    // Returns the surface-lock line drawn in the last frame (verification)
+    ESOLSurfaceLockHudLine GetLastSurfaceLockLine() const { return mLastSurfaceLockLine; }
+
 protected:
 
     // Caches the subsystems and sizes the per-body orbit point buffers once
@@ -130,6 +143,7 @@ private:
         DateWarp,
         Anchor,
         Nearest,
+        SurfaceLock,
         Hints,
         MapPickHints,
         Speed,
@@ -238,6 +252,7 @@ private:
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
     int32 mLastOrbitSegmentsDrawn = 0;              // Orbit segments drawn last frame
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
+    ESOLSurfaceLockHudLine mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;  // Surface-lock line drawn last frame
     bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
     bool mShowOrbitLines = false;                   // O toggle; off by default (SDD 2)
     bool mHasOrbitSamples = false;                  // True once the orbit points were sampled for this toggle-on

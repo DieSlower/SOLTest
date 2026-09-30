@@ -38,6 +38,10 @@ struct FSOLShipFrameInputs
  * position by ~r * (w * warp * dt)^2 / 2 (about 6 km for Earth at 1 d/s and 60 fps). Collision uses each body's
  * instantaneous velocity.
  *
+ * Surface-lock (SDD 4): a ship whose control fragment names an AlignBodyIndex gets, after each substep's collision,
+ * SOLSurfaceLock::ApplyAlignmentCorrection toward that body's local vertical at the substep's end, with the substep's
+ * REAL length as dt (never the warp-scaled sim time), so the alignment time constant is the same at any warp.
+ *
  * Chunks run with ParallelForEachEntityChunk: each job writes only its own entities' state; everything shared (body
  * cache, scratch positions, frame inputs, the const shared params) is read-only during the run. The query issues no
  * commands, so per-job command buffers are disabled.
@@ -75,7 +79,7 @@ private:
     // Fills the scratch array with every body's position at each substep boundary of the frame
     void PrepareSubstepBodyPositions(double frameS);
 
-    // Steps the ships of one chunk: carry, gravity, flight step and swept collision per substep
+    // Steps the ships of one chunk: carry, gravity, flight step, swept collision and surface-lock alignment per substep
     void ProcessChunk(FMassExecutionContext& context) const;
 
     FMassEntityQuery mQuery;                            // Ships: state (rw), control (ro), params (const shared)

@@ -205,6 +205,20 @@ void USOLTargetingSubsystem::ToggleFrameLock()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Locks the reference frame to a body (candidate index == body index), replacing any lock; never toggles it off
+void USOLTargetingSubsystem::LockToBodyIndex(const int32 bodyIndex)
+{
+    if (bodyIndex < 0 || bodyIndex >= mBodyCount || !mCandidates.IsValidIndex(bodyIndex))
+    {
+        return;
+    }
+    mLockedIndex = bodyIndex;
+    ResolveReferenceVelocity();
+    UE_LOG(LogSOL, Log, TEXT("Targeting %s: reference frame locked to %s (surface-lock)"), *GetName(),
+        *GetFrameName().ToString());
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the selected target's snapshot for this frame, or nullptr
 const FSOLTargetInfo* USOLTargetingSubsystem::GetSelectedTarget() const
 {

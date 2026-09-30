@@ -209,6 +209,48 @@ body's radius pre-engage, locked body's radius post-engage) was split into two
 separate, unambiguous parameters in Appendix A rather than left as a riskier single
 overloaded one.
 
+## Implementation clarifications (3b, 2026-09-30)
+
+Engine integration landed as designed in §3.3, with these clarifications (none changes a
+decision above):
+
+- **Where the state machine runs.** `UpdateSurfaceLockState` runs once per ship step
+  *after* the flight processor, not before it. Before the run, the ship still sits where
+  last frame's bodies left it while the body cache already holds this frame's positions,
+  which misreads the altitude by up to the body's speed times the frame time (~500 m for
+  Earth at 60 fps, several km on a hitch) — enough to trip the 10 km / 12.5 km thresholds
+  spuriously. The first smoke run showed exactly this (a steady 5 km hover read as
+  4.81 km). After the run, ship and bodies are both at this frame's positions, so the
+  altitude is exact. The consequence is one step of latency: the engage/release decision,
+  the body to align to and the reference-frame match (`LockToBodyIndex`) take effect from
+  the next step. The update runs every step regardless of map, speed panel or jump warp,
+  which also resolves §3.3 flag (2).
+- **How the alignment reaches the processor.** `FSOLShipControlFragment` gained
+  `AlignBodyIndex` (INDEX_NONE = off), which the subsystem writes after each update; the
+  time constant is a ship-class tunable, `FSOLFlightParams::AlignTimeConstantS` (default
+  `SOL::SURFACE_LOCK_ALIGN_TIME_CONSTANT_S`), read from the const shared params fragment.
+  `USOLShipFlightProcessor` applies `ApplyAlignmentCorrection`
+  after each substep's collision, with `TargetUpDir` from the ship's position and the
+  body's position at the substep's end, and `dt` = the substep's real length. The
+  per-entity body index keeps the processor ship-agnostic for future NPC ships.
+- **How `L` reaches the step.** `ASOLShipPawn::HandleToggleLevel` calls
+  `USOLShipSubsystem::RequestSurfaceLockToggle`, which latches a flag the next step
+  consumes and clears — the edge-triggered press is seen by exactly one step, never lost
+  and never double-counted, however the pawn tick and the step interleave.
+- **Jump arrival.** `USOLJumpSubsystem::CompleteJump` calls
+  `USOLShipSubsystem::ClearSurfaceLock` (full release, suppression latch cleared, pending
+  press dropped) alongside the existing target / M-lock clear, before the teleport.
+- **§3.3 flag (1), `M` moving the frame off the locked body under high warp:** accepted,
+  not suspended. The ship is only carried with its reference frame, so once the frame is
+  not the locked body, warp moves that body away from the ship at (warp - 1) times the
+  two frames' relative speed, and the lock hard-releases quickly (at high warp within a
+  frame or two) once the altitude passes the release threshold; there is no prolonged
+  period of mis-tracking to suspend. At low warp the direction changes slowly
+  and the corrector tracks it normally. Not scripted in `-SOLSmokeLevel`.
+- **HUD.** The line sits directly under `NEAREST`; the hint uses the dim HUD color, the
+  engaged status the normal text color, and the warning `HUD_WARN_COLOR`. The key-hint
+  line lists `L surface-lock` (the HUD hint line is the in-game controls text).
+
 ## 4. Open questions
 
 None deferred. Planet spin (decision 8) and future landing are tracked separately
@@ -223,3 +265,4 @@ None deferred. Planet spin (decision 8) and future landing are tracked separatel
   suppression latch added for manual release, the engine-integration altitude
   definition corrected, and the radius parameter split in two. All resolved before
   3a's first commit, so no roll-only or dual-purpose-parameter code ever shipped.
+- 2026-09-30: 3b engine integration built; see "Implementation clarifications (3b)".

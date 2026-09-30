@@ -6,6 +6,7 @@
 #include "Ship/SOLShipFlightProcessor.h"
 
 #include "Flight/SOLFlight.h"
+#include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
 #include "Universe/SOLBodyFrameCache.h"
@@ -95,7 +96,7 @@ void USOLShipFlightProcessor::PrepareSubstepBodyPositions(const double frameS)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Steps the ships of one chunk: carry, gravity, flight step and swept collision per substep
+// Steps the ships of one chunk: carry, gravity, flight step, swept collision and surface-lock alignment per substep
 void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
 {
     const TArrayView<FSOLShipStateFragment> states = context.GetMutableFragmentView<FSOLShipStateFragment>();
@@ -112,6 +113,7 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
     for (int32 entity = 0; entity < entityCount; ++entity)
     {
         const FSOLShipControl& control = controls[entity].Control;
+        const int32 alignBody = controls[entity].AlignBodyIndex;
         FSOLShipState state = states[entity].State;
         int32 contactBody = INDEX_NONE;
 
@@ -146,6 +148,15 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
                 {
                     contactBody = body;
                 }
+            }
+
+            // Surface-lock (SDD 4): nudge the ship's up toward the locked body's local vertical on top of the player's
+            // rotation, with this substep's real dt so the time constant holds under warp and multi-substep frames
+            if (alignBody >= 0 && alignBody < bodyCount)
+            {
+                state.Orientation = SOLSurfaceLock::ApplyAlignmentCorrection(state.Orientation,
+                    SOLSurfaceLock::TargetUpDir(state.PositionM, bodiesAfterM[alignBody]), flightParams.AlignTimeConstantS,
+                    mSubstepS);
             }
         }
 
