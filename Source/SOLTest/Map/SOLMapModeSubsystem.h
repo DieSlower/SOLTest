@@ -76,6 +76,10 @@ public:
     // Returns the orbit-camera state (universe frame)
     const FSOLOrbitCameraState& GetCameraState() const { return mState; }
 
+    // Verification: replaces the orbit-camera state (pitch and distance clamped to the limits) while the map is open;
+    // unlike a pan, the focus may leave the ecliptic plane. The render viewpoint follows at the next update
+    void SetCameraState(const FSOLOrbitCameraState& state);
+
     // Returns the orbit-camera limits and zoom step
     const FSOLOrbitCameraParams& GetCameraParams() const { return mParams; }
 
@@ -111,7 +115,8 @@ public:
     // Clears the whole pick (X): no reference, nothing locked, no preview
     void ClearPick();
 
-    // Enter: logs the live destination a jump would go to (the jump itself is 2e); false when none is locked yet
+    // Enter: validates and records the live destination of a jump (the pawn then hands the pick to USOLJumpSubsystem
+    // and closes the map); false when none is locked yet
     bool RequestJump();
 
     // Returns the destination-pick progress (reference, locks, locked offsets)

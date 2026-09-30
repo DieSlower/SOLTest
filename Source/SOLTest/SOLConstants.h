@@ -144,11 +144,28 @@ namespace SOL
     inline const FVector3d MAP_PICK_ECLIPTIC_Y(0.0, 1.0, 0.0);
     inline const FVector3d MAP_PICK_UP(0.0, 0.0, 1.0);
 
+    // Jump execution (SDD 3 Appendix I): the warp sequence lasts WARP_DURATION_S real seconds (SDD 1's ~2-4 s); the
+    // chase camera's FOV pulses from its current value to WARP_PEAK_FOV_DEG and back, and the streak intensity (the
+    // HUD's radial streaks and the warp post-process blend weight) peaks at WARP_PEAK_STREAK_INTENSITY mid-sequence
+    inline constexpr double WARP_DURATION_S = 3.0;
+    inline constexpr double WARP_PEAK_FOV_DEG = 135.0;
+    inline constexpr double WARP_PEAK_STREAK_INTENSITY = 1.0;
+
+    // Jump warp post-process, blended in by the streak intensity (engine features only, no material asset): strong
+    // radial chromatic aberration (engine maximum 5), a full vignette and a cool blue-white tint
+    inline constexpr float WARP_FRINGE_INTENSITY = 5.0f;
+    inline constexpr float WARP_VIGNETTE_INTENSITY = 1.0f;
+    inline const FLinearColor WARP_SCENE_TINT(0.7f, 0.85f, 1.0f);
+
+    // Jump warp radial streaks (HUD canvas lines from the screen center), a fixed table built once
+    inline constexpr int32 WARP_STREAK_COUNT = 160;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
         inline constexpr const TCHAR* SUN = TEXT("Sun");
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
+        inline constexpr const TCHAR* MARS = TEXT("Mars");
     }
 
     // Command-line switches and values used by verification runs (FParse::Value keys end in '=')
@@ -163,6 +180,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit
         inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
+        inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 

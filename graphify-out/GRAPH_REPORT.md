@@ -1,16 +1,16 @@
 # Graph Report - SOLTest  (2026-09-30)
 
 ## Corpus Check
-- 131 files · ~146,978 words
+- 138 files · ~155,834 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1400 nodes · 2243 edges · 134 communities (93 shown, 41 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 69 edges (avg confidence: 0.82)
+- 1463 nodes · 2348 edges · 139 communities (95 shown, 44 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 75 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b4d1bb24`
+- Built from commit: `8775a8c0`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -138,14 +138,19 @@
 - [[_COMMUNITY_Community 131|Community 131]]
 - [[_COMMUNITY_Community 132|Community 132]]
 - [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `FInputActionValue` - 42 edges
-2. `GetName()` - 30 edges
+2. `GetName()` - 34 edges
 3. `SOLTest — C++ Code Style Guide (DRAFT)` - 18 edges
 4. `Draw()` - 17 edges
-5. `FSOLBodyAppearance` - 17 edges
-6. `DrawLine()` - 16 edges
+5. `DrawLine()` - 17 edges
+6. `FSOLBodyAppearance` - 17 edges
 7. `RunTest()` - 15 edges
 8. `ExitPhase()` - 13 edges
 9. `Update()` - 13 edges
@@ -171,15 +176,15 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (134 total, 41 thin omitted)
+## Communities (139 total, 44 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
-Cohesion: 0.17
-Nodes (13): Adversarial opus performance and style review, File banner, function comment and separator rules, Asset paths live in one place (SOLConstants.h / data assets), Data-oriented Mass guidance (fragments, processors, no hot-loop allocation), Naming conventions (SOL infix, m prefix, UPPER_SNAKE constants), TrueReality house style origin, UE reflection macro and UPROPERTY rules, Double precision and camera-relative rendering (LWC) rules (+5 more)
+Cohesion: 0.19
+Nodes (12): Adversarial opus performance and style review, File banner, function comment and separator rules, Asset paths live in one place (SOLConstants.h / data assets), Data-oriented Mass guidance (fragments, processors, no hot-loop allocation), Naming conventions (SOL infix, m prefix, UPPER_SNAKE constants), TrueReality house style origin, UE reflection macro and UPROPERTY rules, Mass ECS performance rules (+4 more)
 
 ### Community 1 - "Kepler Orbits & Sim Clock"
-Cohesion: 0.15
-Nodes (13): Tech debt: untested SOLTypes.h and SOLKepler.h, Sim clock and time-warp, Part 1a: universe types, Kepler solver, clock, registry (paused), Analytic Keplerian orbits, no perturbations, Time decision: real date start, time-warp on bodies only, namespace, Planetary perturbations / N-body integration, FSOLKeplerElements() (+5 more)
+Cohesion: 0.12
+Nodes (17): Tech debt: untested SOLTypes.h and SOLKepler.h, Sim clock and time-warp, Part 1a: universe types, Kepler solver, clock, registry (paused), Analytic Keplerian orbits, no perturbations, Time decision: real date start, time-warp on bodies only, namespace, Planetary perturbations / N-body integration, Items (+9 more)
 
 ### Community 2 - "Project Rules & Architecture SDD"
 Cohesion: 0.43
@@ -211,7 +216,7 @@ Nodes (25): FLinearColor, FLinearColor, FName, TCHAR, Type, UMaterialInstanceDyn
 
 ### Community 19 - "Community 19"
 Cohesion: 0.08
-Nodes (37): EInputActionValueType, FInputActionValue, AddMappingContext(), CreateAction(), MapPressedKey(), RemoveMappingContext(), BeginPlay(), CreateAction() (+29 more)
+Nodes (36): EInputActionValueType, FInputActionValue, AddMappingContext(), CreateAction(), MapPressedKey(), RemoveMappingContext(), CreateAction(), CreateInputObjects() (+28 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.13
@@ -279,7 +284,7 @@ Nodes (6): 1a — Foundations, 1b — Ship flight, 1c — HUD, Foundations and F
 
 ### Community 36 - "Community 36"
 Cohesion: 0.10
-Nodes (48): ESOLHudLine, FSOLHudView, Draw(), DrawDisc(), DrawLine(), DrawMarker(), DrawScreenCircle(), Initialize() (+40 more)
+Nodes (50): ESOLHudLine, FSOLHudView, Draw(), DrawDisc(), DrawLine(), DrawMarker(), DrawScreenCircle(), Initialize() (+42 more)
 
 ### Community 37 - "Community 37"
 Cohesion: 0.40
@@ -310,8 +315,8 @@ Cohesion: 0.40
 Nodes (4): namespace, SOLTEST_API, ASOLBodyVisuals(), SOLBodyAppearance()
 
 ### Community 54 - "Community 54"
-Cohesion: 0.13
-Nodes (19): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Flight-assist vs Newtonian flight model, Jump map (J) mechanic, Origin anchor 25% hysteresis, Surface-lock (L) mechanic, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo) (+11 more)
+Cohesion: 0.15
+Nodes (17): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Jump map (J) mechanic, Origin anchor 25% hysteresis, Surface-lock (L) mechanic, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo), Double precision and camera-relative rendering (LWC) rules, Niagara and rendering best practices (+9 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.42
@@ -322,8 +327,8 @@ Cohesion: 0.40
 Nodes (5): HandleMapZoom(), HandleSpeedCapSteps(), OnMapZoomAction(), OnSpeedCapAction(), int32
 
 ### Community 57 - "Community 57"
-Cohesion: 0.25
-Nodes (7): TDD with tests authored by separate subagent, UE Automation Framework testing (SOLTest.<Topic>.<Case>), Cross-cutting tooling, Global constraints, Roadmap, Solar-System Architecture — Roadmap Plan, RunTests.ps1 headless automation test runner
+Cohesion: 0.18
+Nodes (10): TDD with tests authored by separate subagent, UE Automation Framework testing (SOLTest.<Topic>.<Case>), Flight-assist vs Newtonian flight model, Cross-cutting tooling, Global constraints, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap, Solar-System Architecture — Roadmap Plan (+2 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.08
@@ -382,8 +387,8 @@ Cohesion: 0.27
 Nodes (11): ESOLSpeedUnit, FAutomationTestBase, FSOLSpeedStepperState, FString, int32, TCHAR, RunTest(), StepperExpectStep() (+3 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.11
-Nodes (28): CloseMap(), CloseSpeedPanel(), CreateInputObjects(), DismissMap(), DismissSpeedPanel(), EndPlay(), HandleFocusLost(), HandleToggleAssist() (+20 more)
+Cohesion: 0.10
+Nodes (31): BeginPlay(), CloseMap(), CloseSpeedPanel(), CreateInputObjects(), DismissMap(), DismissSpeedPanel(), EndPlay(), HandleFocusLost() (+23 more)
 
 ### Community 85 - "Community 85"
 Cohesion: 0.36
@@ -398,8 +403,8 @@ Cohesion: 0.44
 Nodes (8): ESOLSpeedUnit, FAutomationTestBase, FString, TCHAR, HudFormatExpectDistance(), HudFormatExpectUnit(), HudFormatUnitName(), RunTest()
 
 ### Community 88 - "Community 88"
-Cohesion: 0.50
-Nodes (4): Items, Lifecycle, Naming, ToDo — Future Planned Items
+Cohesion: 0.26
+Nodes (19): ESOLJumpPhase, Check(), CheckArrival(), CheckLockAndAimShip(), EnterPhase(), ExitPhase(), InjectAxis(), IsPhaseDone() (+11 more)
 
 ### Community 89 - "Community 89"
 Cohesion: 0.21
@@ -430,12 +435,12 @@ Cohesion: 0.13
 Nodes (19): HandleMapCameraDragChanged(), HandleMapCursorMoved(), HandleMapMouseDelta(), HandleMapPanHeld(), HandleMapPickPressed(), HandleMapPickReleased(), HandleMapRightHeld(), HandleMouseDelta() (+11 more)
 
 ### Community 96 - "Community 96"
-Cohesion: 0.09
-Nodes (34): FSOLMapBodyOverlay, AddOrbitPixels(), AddPanPixels(), AddZoomNotches(), ClearPick(), CloseMap(), ComputeCursorRay(), Deinitialize() (+26 more)
+Cohesion: 0.06
+Nodes (46): FSOLMapBodyOverlay, FSOLMapPickState, CompleteJump(), DoesSupportWorldType(), HandleShipsStepped(), Initialize(), ShouldCreateSubsystem(), StartJump() (+38 more)
 
 ### Community 104 - "Community 104"
 Cohesion: 0.06
-Nodes (30): 10. Appendix H — Part 2d screen-space body pick, 1. Problem, 2. Decisions (user-resolved), 3. Destination-picking mechanic (precise, user-specified), 4. Appendix D — Part 2 pure-logic API contract, 5. Open questions, 6. Revision history, 7. Appendix E — Part 2b map camera API contract (+22 more)
+Nodes (33): 10. Appendix H — Part 2d screen-space body pick, 11. Appendix I — Part 2e jump execution, 1. Problem, 2. Decisions (user-resolved), 3. Destination-picking mechanic (precise, user-specified), 4. Appendix D — Part 2 pure-logic API contract, 5. Open questions, 6. Revision history (+25 more)
 
 ### Community 105 - "Community 105"
 Cohesion: 0.29
@@ -501,25 +506,33 @@ Nodes (5): CLAUDE.md project guidance, unreal-mcp server (HTTP 127.0.0.1:33445),
 Cohesion: 0.33
 Nodes (5): PickNearestOnScreen(), FSOLScreenPickCandidate, FVector2D, int32, TConstArrayView
 
+### Community 134 - "Community 134"
+Cohesion: 0.70
+Nodes (4): ComputeFovDeg(), ComputeProgress(), ComputePulse(), ComputeStreakIntensity()
+
+### Community 135 - "Community 135"
+Cohesion: 0.60
+Nodes (4): FString, RunTest(), WarpFovDefault(), WarpStreakDefault()
+
 ## Knowledge Gaps
-- **402 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+397 more)
+- **411 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+406 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **41 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **44 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GetName()` connect `Community 84` to `Community 96`, `Community 65`, `Community 36`, `SOLTypes Namespace`, `Community 105`, `Community 109`, `Community 82`, `Community 19`, `Community 20`, `Community 18`, `Community 58`, `Community 63`?**
   _High betweenness centrality (0.080) - this node is a cross-community bridge._
-- **Why does `ToggleFrameLock()` connect `Community 65` to `Community 84`?**
-  _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Are the 27 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
-  _`GetName()` has 27 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `BeginPlay()` connect `Community 18` to `Community 84`?**
+  _High betweenness centrality (0.013) - this node is a cross-community bridge._
+- **Why does `OpenMap()` connect `Community 96` to `Community 84`?**
+  _High betweenness centrality (0.010) - this node is a cross-community bridge._
+- **Are the 31 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
+  _`GetName()` has 31 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 9 inferred relationships involving `DrawLine()` (e.g. with `DrawCircle()` and `DrawJoystick()`) actually correct?**
+  _`DrawLine()` has 9 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl` to the rest of the system?**
-  _408 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Community 6` be split into smaller, more focused modules?**
-  _Cohesion score 0.10317460317460317 - nodes in this community are weakly interconnected._
-- **Should `SOLTypes Namespace` be split into smaller, more focused modules?**
-  _Cohesion score 0.11083743842364532 - nodes in this community are weakly interconnected._
-- **Should `Community 18` be split into smaller, more focused modules?**
-  _Cohesion score 0.10826210826210826 - nodes in this community are weakly interconnected._
+  _417 weakly-connected nodes found - possible documentation gaps or missing edges._
+- **Should `Kepler Orbits & Sim Clock` be split into smaller, more focused modules?**
+  _Cohesion score 0.11904761904761904 - nodes in this community are weakly interconnected._
