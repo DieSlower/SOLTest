@@ -31,7 +31,7 @@ in sync if the design shifts.
   user decision, resolved and documented as SDD 4 Amendments 1-2) plus test-coverage
   gaps and a stale name; the second round, after the rework, found no correctness
   bugs, only additional test-hardening, all applied. `Docs/ARCHITECTURE.md` updated
-  for the new `Level/` module. Commit pending in the main session.)
+  for the new `Level/` module. Commit `05e82fa`.)
 - [ ] **3b — Engine integration.** `IA_ShipLevel` bound to `L`
   (`OnToggleLevelAction`/`HandleToggleLevel` in `ASOLShipPawn`, suppressed while the
   map/speed-panel/jump-warp has input), `FSOLSurfaceLockState` owned and stepped by
