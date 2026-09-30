@@ -54,11 +54,14 @@ Keep it in sync if the design shifts.
   a long wait at 1x since there's no console/command-line lever to accelerate the sim
   clock without a player controller); a wide Uranus shot shows its bands reading
   roughly top-to-bottom rather than horizontal, consistent with its ~98° tilt.
-  328/328 automation suite green, unaffected (visuals-only change).)
+  328/328 automation suite green, unaffected (visuals-only change). Commit `1620059`.)
+
+**Issue #12 (planet axial rotation) is complete: 12a and 12b are both built, tested,
+adversarially reviewed and committed.**
 
 ## Cross-cutting
 
 - [x] `Docs/ARCHITECTURE.md`: note `FSOLBodyRegistry`'s new `GetOrientation` in its Key
   Types section (Universe module) once built. (Done in 12a; 12b additionally noted in
   the Visuals module's `ASOLBodyVisuals` entry that it now applies body orientation.)
-- [ ] No `GAME_MECHANICS.md` entry needed (not a player-facing mechanic/control).
+- [x] No `GAME_MECHANICS.md` entry needed (not a player-facing mechanic/control).
