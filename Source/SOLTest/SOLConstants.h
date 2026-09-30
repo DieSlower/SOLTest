@@ -130,6 +130,20 @@ namespace SOL
     // comfortably clickable when it is icon-sized (SOLMapPickRadius::ComputeMapPickRadiusM)
     inline constexpr double MAP_MIN_PICK_RADIUS_PX = 12.0;
 
+    // Jump map destination picking (SDD 3 section 3 step 4): Shift + mouse movement previews the height offset along
+    // Up at this fraction of the map camera's distance to the locked XY point per pixel of vertical mouse travel
+    // (mouse up = +Up). The scale is frozen when the preview starts, so the height is a pure function of the cursor's
+    // vertical travel since then: moving back retraces it exactly, it cannot produce NaN, and it scales with the zoom.
+    // 0.001 is close to one screen pixel's world size at that depth (60 deg FOV at 720 p is ~0.0009 of the distance
+    // per pixel), so the guide line's tip roughly follows the cursor in an edge-on view: 100 px = 10% of the distance
+    inline constexpr double MAP_HEIGHT_DISTANCE_FRACTION_PER_PIXEL = 0.001;
+
+    // Jump map destination picking works in ecliptic axes: the planar offset along X/Y, the height along Up (SDD 3
+    // section 3). Shared by the map mode's pick math, the pick overlay and the pick smoke script
+    inline const FVector3d MAP_PICK_ECLIPTIC_X(1.0, 0.0, 0.0);
+    inline const FVector3d MAP_PICK_ECLIPTIC_Y(0.0, 1.0, 0.0);
+    inline const FVector3d MAP_PICK_UP(0.0, 0.0, 1.0);
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
@@ -148,6 +162,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit
         inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
+        inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 

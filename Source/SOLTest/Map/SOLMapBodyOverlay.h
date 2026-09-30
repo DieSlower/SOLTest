@@ -35,7 +35,8 @@ struct FSOLMapOverlayView
  * drawn back to front. Every visible body gets its name, placed beside the disc (right, left, above or below, the
  * first spot free of other discs and labels, bigger bodies first) or skipped when none is free; icons that are nearly
  * transparent neither get a label nor block label space. It also keeps each body's map pick radius for the frame
- * (SOLMapPickRadius) for destination picking. All buffers are sized once; a frame only resets and refills them
+ * (SOLMapPickRadius) and its screen position and on-screen pick radius for the screen-space destination pick
+ * (SOLMapScreenPick, 2d). All buffers are sized once; a frame only resets and refills them
  * (Canvas's own text layout is the only allocation left).
  */
 class SOLTEST_API FSOLMapBodyOverlay
@@ -62,6 +63,13 @@ public:
 
     // Returns each body's drawn disc radius (pixels) of the last frame, 0 when not drawn (verification)
     TConstArrayView<double> GetIconRadiiPx() const { return mIconRadiusPx; }
+
+    // Returns each body's screen position (pixels) of the last frame; meaningful only where GetPickRadiiPx() > 0
+    TConstArrayView<FVector2D> GetScreenPositionsPx() const { return mScreenPx; }
+
+    // Returns each body's on-screen pick radius (pixels) of the last frame: the larger of its apparent radius and the
+    // minimum pick radius, 0 when it is behind the camera or its center is hidden behind a nearer body
+    TConstArrayView<double> GetPickRadiiPx() const { return mPickRadiusPx; }
 
     // Returns the number of icons drawn in the last frame (verification)
     int32 GetLastIconsDrawn() const { return mLastIconsDrawn; }
@@ -96,6 +104,7 @@ private:
     TArray<FVector2D> mScreenPx;                    // Per body: screen position of the frame
     TArray<double> mApparentRadiusPx;               // Per body: apparent (mesh) radius on screen, 0 when not projected
     TArray<double> mIconRadiusPx;                   // Per body: drawn disc radius, 0 when not drawn
+    TArray<double> mPickRadiusPx;                   // Per body: on-screen pick radius, 0 when not pickable
     TArray<int32> mDrawOrder;                       // Bodies with an icon this frame, sorted back to front
     TArray<FBox2D> mOccupied;                       // Discs and labels placed this frame
     FSOLBodyLodParams mLodParams;                   // Thresholds (defaults) and the frame's projection inputs

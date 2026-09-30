@@ -101,6 +101,7 @@ void FSOLMapBodyOverlay::Initialize(const FSOLBodyRegistry& registry)
     mScreenPx.Init(FVector2D::ZeroVector, bodyCount);
     mApparentRadiusPx.Init(0.0, bodyCount);
     mIconRadiusPx.Init(0.0, bodyCount);
+    mPickRadiusPx.Init(0.0, bodyCount);
     mDrawOrder.Reset(bodyCount);
     mOccupied.Reset(2 * bodyCount);
     mIconBatch = MakeUnique<FCanvasTriangleItem>(FVector2D::ZeroVector, FVector2D::ZeroVector, FVector2D::ZeroVector,
@@ -162,6 +163,7 @@ void FSOLMapBodyOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, c
         mDistancesM[index] = distanceM;
         mApparentRadiusPx[index] = 0.0;
         mIconRadiusPx[index] = 0.0;
+        mPickRadiusPx[index] = 0.0;
 
         // Project the body where its mesh is placed (same render placement as ASOLBodyVisuals)
         const FVector local = view.Rotation.UnrotateVector(FVector(anchor.ComputeBodyRenderPlacement(index).LocationCm)
@@ -174,6 +176,9 @@ void FSOLMapBodyOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, c
             view.Center.Y - view.FocalPx * (local.Z / local.X));
         mScreenPx[index] = screen;
         mApparentRadiusPx[index] = 0.5 * lod.ApparentDiameterPx;
+
+        // On screen, the pick radius in meters (max of the real radius and minPickPx's span) is exactly this
+        mPickRadiusPx[index] = FMath::Max(mApparentRadiusPx[index], minPickPx);
         if (lod.IconAlpha <= 0.0)
         {
             continue;
@@ -189,12 +194,14 @@ void FSOLMapBodyOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, c
         mIconRadiusPx[index] = radiusPx;
     }
 
-    // Occlusion: an icon whose center lies inside a nearer body's apparent disc is hidden behind that body
+    // Occlusion: a body whose center lies inside a nearer body's apparent disc is hidden behind that body, so it
+    // draws no icon and cannot be picked (the nearer body wins the click)
     for (int32 index = 0; index < bodyCount; ++index)
     {
-        if (mIconRadiusPx[index] > 0.0 && IsOccluded(index, bodyCount))
+        if (mPickRadiusPx[index] > 0.0 && IsOccluded(index, bodyCount))
         {
             mIconRadiusPx[index] = 0.0;
+            mPickRadiusPx[index] = 0.0;
         }
         if (mIconRadiusPx[index] > 0.0)
         {
