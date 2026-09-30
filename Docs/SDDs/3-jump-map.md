@@ -222,3 +222,50 @@ namespace SOLViewpoint
 - **`IMC_Map` add-order (review finding 3):** add the map's input mapping context BEFORE suspending the ship's own control/mapping context, and if adding it fails (no local player/input subsystem), roll back (close the map) rather than leaving the player in a state with no mapping context bound at all, which would make the map unclosable.
 - **Stale `OnRenderOriginShifted` broadcast (review finding 4):** a viewpoint-source transition (map open/close) produces a large, not-physically-meaningful "shift" on `OnRenderOriginShifted`. Document on the delegate that a shift caused by a viewpoint-source change (as opposed to normal anchor-driven rebasing) is not meaningful for anything that reacts to real spatial rebasing (e.g. a future pooled-effect position fixup), or suppress the broadcast specifically for a viewpoint-transition-caused snap. Pick whichever is simpler given the current delegate's callers (there are none yet).
 - **Style (review finding 5):** reflow the two over-120-column lines in `SOLConstants.h` and `SOLFlightHud.h`; correct the 2b-2 revision-history date in this SDD to 2026-09-30 (the button rebind happened that day, not the 29th).
+
+## 9. Appendix G — Part 2c body-representation API contract
+
+Plain C++, in `Source/SOLTest/Map/SOLMapBodyLod.h`. Decides, per body per frame, whether the map draws its real mesh, a billboarded icon, or a cross-fade blend of both, based on apparent screen size — a body's mesh becomes visually useless (sub-pixel or a few pixels) at map zoom-out distances, per the 2b-2 smoke test's own finding (Earth's mesh was 0.0007 px at the 1e13 m default view).
+
+```cpp
+struct FSOLBodyLodParams
+{
+    double IconFullBelowPx = 4.0;     // apparent diameter at/under this: icon only, alpha = 1
+    double MeshFullAbovePx = 32.0;    // apparent diameter at/over this: mesh only, alpha = 0
+    double ViewportHeightPx = 720.0;  // caller's current viewport height, for the projection
+    double VerticalFovRad = 1.0471975511965976;   // 60 deg, matches the map camera's FOV
+};
+
+struct FSOLBodyLodResult
+{
+    double ApparentDiameterPx = 0.0;
+    double IconAlpha = 0.0;    // 0 = mesh only, 1 = icon only, linearly interpolated between the two thresholds
+};
+
+namespace SOLMapBodyLod
+{
+    // Apparent diameter in pixels of a sphere of radiusM at distanceM from the camera, given the params' viewport
+    // height and vertical FOV:
+    // ApparentDiameterPx = (2*radiusM/distanceM) * (ViewportHeightPx / (2*tan(VerticalFovRad/2))).
+    // distanceM <= 0 or radiusM <= 0 returns 0 (no valid apparent size).
+    SOLTEST_API double ComputeApparentDiameterPx(double radiusM, double distanceM, const FSOLBodyLodParams& params);
+
+    // IconAlpha = 0 at/above MeshFullAbovePx, 1 at/below IconFullBelowPx, linearly interpolated in between
+    // (clamped to [0,1] outside that range, e.g. for a degenerate ApparentDiameterPx of 0 -> alpha = 1).
+    SOLTEST_API FSOLBodyLodResult Evaluate(double radiusM, double distanceM, const FSOLBodyLodParams& params);
+}
+```
+
+### Non-unit-tested Part 2c pieces
+
+The icon material/billboard rendering (a camera-facing quad or `DrawBillboard`-equivalent per body, cross-faded by `IconAlpha` against the real mesh's opacity/visibility), the name-label text rendering above each icon, per-body pick radius reuse (`SOLMapPicking::PickBodyUnderRay` already takes a pick radius per body — the map should pass a radius that stays comfortably clickable even when the body is icon-sized, not its tiny real radius) and the LOD evaluation wired into the per-frame map draw/update loop. These get screenshots at several zoom levels.
+
+### Appendix G clarifications (settled after the test author's ambiguity report)
+
+- **Inverted or equal thresholds** (`MeshFullAbovePx <= IconFullBelowPx`, including the degenerate equal case that would divide by zero): treat `IconFullBelowPx` as a single hard cutoff instead of interpolating — `IconAlpha = ApparentDiameterPx < IconFullBelowPx ? 1.0 : 0.0`. This avoids the division by zero and keeps the result always finite and in `[0,1]`; it is not expected to occur with sane params (the defaults satisfy `MeshFullAbovePx > IconFullBelowPx`).
+- **Value exactly at a threshold:** `IconAlpha == 1.0` at `ApparentDiameterPx == IconFullBelowPx` (matches "at/below"), `IconAlpha == 0.0` at `ApparentDiameterPx == MeshFullAbovePx` (matches "at/over").
+- **NaN/Inf inputs:** not required to be handled specially; this is a non-safety-critical visual LOD helper (unlike the map-picking/collision math), so undefined output for garbage input is acceptable as long as it doesn't crash.
+
+### Appendix G clarifications, addendum (resolves review finding #2)
+
+The equal-threshold hard-cutoff rule (`MeshFullAbovePx <= IconFullBelowPx`) OVERRIDES the general at-threshold rule from the first clarification for that degenerate case specifically: at `ApparentDiameterPx == IconFullBelowPx == MeshFullAbovePx`, `IconAlpha == 0.0` (matches the cutoff's `< IconFullBelowPx ? 1 : 0`), not `1.0`. The general "1.0 at/below IconFullBelowPx, 0.0 at/above MeshFullAbovePx" wording only applies when `MeshFullAbovePx > IconFullBelowPx`.
