@@ -105,3 +105,79 @@ None deferred; the pick radius per body, disc/guide-line visuals, and warp FX sp
 ### Appendix D clarifications, addendum 2 (implementation note)
 
 `PickBodyUnderRay` skips an individual non-finite or negative-radius body rather than failing the whole query when it encounters one; only non-finite ray inputs (`RayOrigin`/`RayDir`) cause an immediate `INDEX_NONE`. This is a robustness choice made during implementation, not a change to the contract's happy-path behavior.
+
+## 7. Appendix E — Part 2b map camera API contract
+
+Plain C++ (no UObjects), in `Source/SOLTest/Map/SOLMapCamera.h`. Universe frame throughout (ecliptic, meters); `Up = (0,0,1)`.
+
+```cpp
+struct FSOLOrbitCameraState
+{
+    FVector3d FocusPositionM = FVector3d::ZeroVector;   // the point the camera orbits
+    double YawRad = 0.0;      // rotation around Up; wrapped to (-PI, PI]
+    double PitchRad = 0.5;    // tilt above/below the horizontal plane; clamped (positive = above the ecliptic, looking down)
+    double DistanceM = 1.0e10;
+};
+
+struct FSOLOrbitCameraParams
+{
+    double MinPitchRad = -1.5;      // ~-85.9 deg, stops short of the pole to avoid a flip
+    double MaxPitchRad = 1.5;
+    double MinDistanceM = 1.0e6;    // 1,000 km
+    double MaxDistanceM = 6.0e13;   // well beyond Neptune's orbit
+    double ZoomStepFactor = 1.2;    // per wheel notch, gentler than the HUD radar's 10x since this is continuous
+};
+
+namespace SOLMapCamera
+{
+    // Spherical position around the focus: at Yaw=0, Pitch=0 the camera sits at FocusPositionM + DistanceM * (-1,0,0) (looking
+    // toward +EclipticX). Yaw rotates that offset around Up; Pitch tilts it up/down from the horizontal (Yaw=0,Pitch=0) plane.
+    FVector3d ComputeCameraPositionM(const FSOLOrbitCameraState& State);
+
+    // Look-at orientation: forward = normalize(FocusPositionM - ComputeCameraPositionM(State)), up = Up re-orthogonalized against
+    // forward (standard look-at), both converted with SOLRender::EclipticToUnreal before building the FQuat4d (Unreal-handed).
+    FQuat4d ComputeCameraOrientation(const FSOLOrbitCameraState& State);
+
+    // Adds YawDeltaRad/PitchDeltaRad (already converted from screen pixels by the caller) to the state; Yaw wraps to (-PI, PI],
+    // Pitch clamps to [MinPitchRad, MaxPitchRad]. FocusPositionM and DistanceM are unchanged.
+    FSOLOrbitCameraState ApplyOrbitDelta(const FSOLOrbitCameraState& State, double YawDeltaRad, double PitchDeltaRad,
+                                        const FSOLOrbitCameraParams& Params);
+
+    // Moves FocusPositionM by PanDeltaRightM/PanDeltaUpM (meters, already zoom-scaled by the caller) along the CURRENT camera's
+    // screen-relative right/up directions (right = derived from Yaw only, i.e. as if Pitch were 0; up = Up rotated the same way as
+    // right so the pair stays orthogonal). Yaw/Pitch/DistanceM are unchanged.
+    FSOLOrbitCameraState ApplyPan(const FSOLOrbitCameraState& State, double PanDeltaRightM, double PanDeltaUpM);
+
+    // Multiplies DistanceM by ZoomStepFactor^WheelSteps (negative WheelSteps zooms in), clamped to [MinDistanceM, MaxDistanceM].
+    FSOLOrbitCameraState ApplyZoom(const FSOLOrbitCameraState& State, int32 WheelSteps, const FSOLOrbitCameraParams& Params);
+}
+```
+
+### Non-unit-tested Part 2b pieces
+
+The map mode/subsystem (J toggles it, releases the mouse cursor, suppresses ship control input the same way the F3 panel does, does NOT pause the sim clock), the map's dedicated camera actor/component driven by `FSOLOrbitCameraState`, mouse-drag-to-orbit/pan input wiring and pixel-to-radian/meter scaling, and Esc/J to close. These get a PIE smoke check and screenshots.
+
+### Appendix E clarifications (settled after the test author's ambiguity report)
+
+- **Default pitch bug fix:** `FSOLOrbitCameraState::PitchRad`'s default is `+0.5`, not `-0.5` as first written — "positive pitch = above the ecliptic" means the default must be positive so the map opens looking down at the system from above, not up at it from below.
+- **Yaw rotation direction:** positive `YawRad` rotates the camera's offset from the focus by the standard right-hand rule around `Up = (0,0,1)` (i.e. the same sense as a standard `(x,y) -> (x*cos-y*sin, x*sin+y*cos)` rotation of the offset's ecliptic X/Y components).
+- **Pitch convention, precisely:** at `Yaw=0`, the offset from focus to camera is `Distance * (-cos(Pitch), 0, sin(Pitch))` in ecliptic axes (so `Pitch=0` gives `(-1,0,0)` as already specified, and increasing `Pitch` swings the camera up toward `+Up`). At nonzero Yaw, this offset is then rotated around `Up` by `Yaw` per the rule above.
+- **Pan axes at `Yaw=0, Pitch=0`:** "right" = `(0,-1,0)` in ecliptic axes (`cross(Forward=(1,0,0), Up=(0,0,1))`, which is Unreal's `+Y` after `EclipticToUnreal`); "up" = `Up = (0,0,1)`, unaffected by Pitch. At nonzero Yaw, both "right" and this pan-up are rotated around `Up` by `Yaw` the same way the camera offset is (pan-up therefore equals `Up` at every Yaw, since `Up` is the rotation axis).
+- **Pitch pole (`|PitchRad|` near `PI/2`):** `ComputeCameraOrientation`'s look-at is degenerate there (forward parallel to `Up`). No specific behavior is required beyond not producing NaN; this is intentionally untested at the exact pole, matching how the flight camera's own pole cases are handled elsewhere in the project.
+- **Out-of-range input state:** if a caller constructs `FSOLOrbitCameraState` with `PitchRad`/`DistanceM` already outside `FSOLOrbitCameraParams`'s bounds and then calls a delta function with a zero delta, the function is not required to re-clamp; clamping only happens when a nonzero delta is actually applied. Not tested.
+
+### Appendix E — Amendment 1: Homeworld-style ground-plane panning (2026-09-29, post-review)
+
+Replaces `ApplyPan`'s vertical-drag behavior. In Homeworld's tactical camera, panning always slides the focus across the map's horizontal plane, regardless of the camera's current tilt — a vertical screen drag moves you forward/back across the plane, not up/down into space, so panning stays intuitive at any pitch including a top-down view.
+
+`ApplyPan(state, panDeltaRightM, panDeltaUpM)`: both pan directions are derived from **Yaw only** (as already specified) and lie **in the ecliptic plane** (Z-component zero) — neither is affected by Pitch, and neither moves the focus along `Up`:
+- "right" (unchanged): the Yaw=0 vector `(0,-1,0)`, rotated around `Up` by the current Yaw.
+- "forward-horizontal" (replaces the old "up" = `Up`): the Yaw=0 vector `(1,0,0)` (the ecliptic-plane projection of the Yaw=0/Pitch=0 forward direction), rotated around `Up` by the current Yaw the same way.
+
+`FocusPositionM += right * panDeltaRightM + forwardHorizontal * panDeltaUpM`. The parameter named `panDeltaUpM` (a vertical screen-drag amount) now drives a horizontal forward/backward move, not a height change — there is deliberately no way to move the focus along `Up` at all; only `ApplyOrbitDelta`'s Pitch changes how the SAME horizontal point is viewed. `Yaw`/`Pitch`/`DistanceM` are unchanged by `ApplyPan`, as before.
+
+### Appendix E, additional post-review fixes
+
+1. **Yaw direction is untested (review finding #1).** Add a definitive test: at exactly `Yaw = +PI/2` starting from the Yaw=0 offset `(-1,0,0)*Distance`, the result must be `(0,-Distance,0)` (not `(0,+Distance,0)`) per the right-hand-rule clarification — pin the actual sign, not just its magnitude. Add the matching definitive pan-right test: at `Yaw = +PI/2`, `ApplyPan` with `panDeltaRightM = D` moves the focus by `(+D, 0, 0)`.
+2. **Pole guard (review finding #3).** `FSOLOrbitCameraParams::MaxPitchRad`/`MinPitchRad` must stay strictly inside `(-PI/2, PI/2)` with enough margin that `ComputeCameraOrientation`'s up-vector re-orthogonalization never degenerates (the review found degeneracy starting around 1e-4 rad from the exact pole). Add a `static_assert` (or a runtime `check`) in `SOLMapCamera.cpp` enforcing `MaxPitchRad < PI/2 - 1e-3` and `MinPitchRad > -(PI/2 - 1e-3)` against the DEFAULT `FSOLOrbitCameraParams`, and document that a caller must not raise the limits past that margin.
+3. **Style (review finding #4).** Reflow lines over the 120-column soft limit in `SOLMapCamera.h` and `MapCameraTest.cpp`.

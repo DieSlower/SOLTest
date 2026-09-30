@@ -15,7 +15,7 @@
 ## Steps
 
 - [x] **2a — Pure picking/math logic.** `Map/SOLMapPicking.h/.cpp` (ray-plane intersection, planar decomposition, destination composition, body-under-ray picking) per Appendix D. Automation tests, adversarial review, commit.
-- [ ] **2b — Map camera and mode.** A map subsystem/mode: J opens it (releases the mouse, suppresses ship control input the way F3 does, keeps sim time advancing), orbit/pan/zoom camera, Esc/J closes it. PIE smoke check, adversarial review, commit.
+- [x] **2b — Map camera math (pure logic; the mode/mouse/input wiring is separate).** A map subsystem/mode: J opens it (releases the mouse, suppresses ship control input the way F3 does, keeps sim time advancing), orbit/pan/zoom camera, Esc/J closes it. PIE smoke check, adversarial review, commit.
 - [ ] **2c — Body representation at zoom.** Mesh-to-icon cross-fade, billboarded name labels, pick radius per body reusing `PickBodyUnderRay`. Screenshots at several zoom levels, adversarial review, commit.
 - [ ] **2d — Destination picking UI.** The disc visualization, drag-to-lock XY, Shift-drag-to-lock height, destination marker, X to clear, wired to `SOLMapPicking`. Scripted input smoke test (same `FInputKeyEventArgs::CreateSimulated` approach as Part 1), screenshots, adversarial review, commit.
 - [ ] **2e — Jump execution.** Enter triggers the warp animation (FX/sound), arrival matched to the destination's reference body's velocity (reuse the anchor/rebase logic from Part 1), origin re-anchored, map closes. Scripted smoke test, adversarial review, commit.
