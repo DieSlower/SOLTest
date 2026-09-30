@@ -74,6 +74,13 @@ bool FSOLShipSmokeFlight::Update(USOLShipSubsystem& ships, const USOLAnchorSubsy
     mPhaseTimeS += realDeltaSeconds;
     mTotalTimeS += realDeltaSeconds;
 
+    // These phases predate surface-lock and test raw Newtonian collision, which its alignment would otherwise bend
+    // (it runs after UpdateSurfaceLock, so the next flight run never sees an align body)
+    if (mPhase == ESOLSmokePhase::Collide || mPhase == ESOLSmokePhase::Surface)
+    {
+        ships.ClearSurfaceLock();
+    }
+
     // The warp phases watch every frame, not just the checkpoints
     if (mPhase == ESOLSmokePhase::Warp || mPhase == ESOLSmokePhase::Surface)
     {
@@ -204,6 +211,7 @@ void FSOLShipSmokeFlight::BeginPhase(const ESOLSmokePhase phase, USOLShipSubsyst
         state.VelocityMps = SOLRender::EclipticToUnreal(registry.GetVelocityMps(earth));
         state.Orientation = UE::Math::TRotationMatrix<double>::MakeFromX(-radial).ToQuat();
         ships.SetState(state);
+        ships.ClearSurfaceLock();
         control.bFlightAssist = false;
         control.bBoost = true;
         control.Thrust = FVector3d(1.0, 0.0, 0.0);

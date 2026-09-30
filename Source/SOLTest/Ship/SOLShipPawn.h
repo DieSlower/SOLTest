@@ -10,6 +10,7 @@
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
+#include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHudSmoke.h"
 
 #include "CoreMinimal.h"
@@ -68,6 +69,11 @@ struct FInputActionValue;
  * arrival teleport) and closes the map through the same path as J / Esc. While the warp runs the pawn drives the chase
  * camera's FOV from the sequence (the same Camera field the speed-based widening uses, which resumes from the restored
  * value afterwards) and blends in the camera's warp post-process by the streak intensity; J cannot open the map then.
+ *
+ * Surface-lock (3b, SDD 4): L hands a toggle request to USOLShipSubsystem (RequestSurfaceLockToggle), which owns the
+ * lock state and consumes the press as the edge-triggered input of exactly its next ship step, so a press is never
+ * lost or counted twice however the pawn tick and the ship step interleave. L is ignored during a jump warp; while the
+ * map or the speed panel is open the ship mapping (and with it L) is removed anyway.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -117,6 +123,9 @@ public:
 
     // Toggles the reference-frame lock (M)
     void HandleMatchLock();
+
+    // Toggles surface-lock (L): hands the press to the ship subsystem, which consumes it in exactly its next step
+    void HandleToggleLevel();
 
     // Selects the target under the forward reticle (T)
     void HandleSelectTarget();
@@ -367,6 +376,9 @@ private:
     // Enhanced Input: reference-frame lock
     void OnMatchLockAction(const FInputActionValue& value);
 
+    // Enhanced Input: surface-lock toggle
+    void OnToggleLevelAction(const FInputActionValue& value);
+
     // Enhanced Input: select under reticle
     void OnSelectTargetAction(const FInputActionValue& value);
 
@@ -498,6 +510,9 @@ private:
     TObjectPtr<UInputAction> MatchLockAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ToggleLevelAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputAction> SelectTargetAction;
 
     UPROPERTY(Transient)
@@ -597,6 +612,7 @@ private:
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
+    TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     FSOLShipControl mControl;                               // Control composed from the input state
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor

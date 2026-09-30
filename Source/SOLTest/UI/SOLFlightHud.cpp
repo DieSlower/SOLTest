@@ -5,6 +5,7 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Ship/SOLShipPawn.h"
@@ -245,6 +246,7 @@ void ASOLFlightHud::DrawHUD()
     mLastOrbitSegmentsDrawn = 0;
     mLastWarpStreaksDrawn = 0;
     mWasFlightHudDrawn = false;
+    mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
@@ -521,6 +523,36 @@ void ASOLFlightHud::DrawInfoBlock()
     DrawBuffer(ESOLHudLine::Nearest, HUD_TEXT_COLOR, x, y, medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
+    // Surface-lock (SDD 4 decision 6): the status while engaged (warning color past the mode's warn threshold), else a
+    // hint while the nearest body is within its manual range (not while the jump map is open, where L does nothing); no
+    // line at all when nothing is in reach. DrawHUD has already reset mLastSurfaceLockLine for this frame
+    if (Ships != nullptr && Ships->HasPlayerShip())
+    {
+        const FSOLSurfaceLockState& lock = Ships->GetSurfaceLockState();
+        mText.Reset();
+        if (lock.bEngaged && lock.BodyIndex >= 0 && lock.BodyIndex < registry.Num())
+        {
+            mText.Append(TEXT("SURFACE LOCK  "));
+            registry.GetName(lock.BodyIndex).AppendString(mText);
+            mText.Append(TEXT("   ALT "));
+            SOLHudFormat::AppendDistanceM(mText, Ships->GetSurfaceLockAltitudeM());
+            mLastSurfaceLockLine = lock.bWarning ? ESOLSurfaceLockHudLine::Warning : ESOLSurfaceLockHudLine::Engaged;
+            DrawBuffer(ESOLHudLine::SurfaceLock, lock.bWarning ? HUD_WARN_COLOR : HUD_TEXT_COLOR, x, y, medium);
+            y += HUD_LINE_MEDIUM_PX * mUiScale;
+        }
+        else if (!IsMapOpen() && nearest != INDEX_NONE && altitudeM <= SOLSurfaceLock::ComputeManualRangeM(
+            registry.GetRadiusM(nearest), Ships->GetSurfaceLockParams()))
+        {
+            mText.Append(TEXT("L to surface-lock  "));
+            registry.GetName(nearest).AppendString(mText);
+            mText.Append(TEXT("   ALT "));
+            SOLHudFormat::AppendDistanceM(mText, altitudeM);
+            mLastSurfaceLockLine = ESOLSurfaceLockHudLine::Hint;
+            DrawBuffer(ESOLHudLine::SurfaceLock, HUD_DIM_COLOR, x, y, medium);
+            y += HUD_LINE_MEDIUM_PX * mUiScale;
+        }
+    }
+
     // Overlay state and key hints (the jump map's own keys while it is open)
     mText.Reset();
     if (IsMapOpen())
@@ -537,7 +569,7 @@ void ASOLFlightHud::DrawInfoBlock()
         return;
     }
     mText.Append(mShowOrbitLines ? TEXT("ORBITS ON (O)") : TEXT("ORBITS OFF (O)"));
-    mText.Append(TEXT("   F3 speed panel   J jump map   T/R/F/X target   M match frame   [ ] warp"));
+    mText.Append(TEXT("   F3 speed panel   J jump map   T/R/F/X target   M match frame   L surface-lock   [ ] warp"));
     mText.Append(TEXT("   - = radar zoom   Home radar auto"));
     DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }

@@ -4,7 +4,7 @@
 
 A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2, [`SDDs/4-surface-lock.md`](SDDs/4-surface-lock.md) for Part 3). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
 
-**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) has its pure logic built (`Level/SOLSurfaceLock`: the engage/release state machine and the up-alignment math); engine integration (the `L` key, HUD status line, and applying it to the ship each step) has not landed yet.
+**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) is built: the pure logic (`Level/SOLSurfaceLock`, 3a) and its engine integration (3b: the `L` key, `USOLShipSubsystem` stepping the lock state, the flight processor applying the alignment per substep, the HUD status/hint line, and the jump clearing the lock).
 
 ---
 
@@ -32,7 +32,7 @@ flowchart TD
     Targeting["Targeting<br/>candidates, selection, M lock"]
     Visuals["Visuals<br/>body meshes and sun light"]
     Map["Map (Part 2)<br/>jump-map picking math"]
-    Level["Level (Part 3, pure logic only)<br/>surface-lock state machine and alignment math"]
+    Level["Level (Part 3)<br/>pure surface-lock state machine and alignment math"]
     Flight["Flight<br/>pure flight and targeting math"]
     Universe["Universe<br/>clock, orbits, registry, anchor, render origin"]
     Const["SOLConstants.h<br/>constants, tunables, asset paths, CLI flags"]
@@ -42,6 +42,8 @@ flowchart TD
     Game --> Visuals
     Ship --> Targeting
     Ship --> Flight
+    Ship --> Level
+    UI --> Level
     Ship --> Universe
     Ship <--> UI
     UI --> Targeting
@@ -63,12 +65,12 @@ flowchart TD
 |---|---|---|
 | `Universe/` | Sim clock, Kepler orbits, body registry, anchor selection, render origin and far placement, and the subsystem that drives the frame | `SOLAnchorSubsystem`, `SOLBodyRegistry(Subsystem)`, `SOLSimClock(Subsystem)`, `SOLKepler`, `SOLRenderOrigin`, `SOLRenderPlacement`, `SOLBodyFrameCache` |
 | `Flight/` | Pure flight model, gravity, collision, warp carry, and target-picking math | `SOLFlight`, `SOLTargeting` |
-| `Ship/` | Player ship as a Mass entity, its processor and subsystem, the Pawn proxy, scripted smoke tests | `SOLShipSubsystem`, `SOLShipFlightProcessor`, `SOLShipFragments`, `SOLShipPawn`, `SOLShipSmokeFlight`, `SOLShipSmokeInput` |
+| `Ship/` | Player ship as a Mass entity, its processor and subsystem (including the surface-lock state and its per-substep alignment), the Pawn proxy, scripted smoke tests | `SOLShipSubsystem`, `SOLShipFlightProcessor`, `SOLShipFragments`, `SOLShipPawn`, `SOLShipSmokeFlight`, `SOLShipSmokeInput`, `SOLSurfaceLockSmoke` |
 | `Targeting/` | Target candidates, selection, the M frame lock, reference velocity | `SOLTargetingSubsystem`, `SOLTargetable` |
 | `UI/` | Canvas flight HUD, radar, orbit lines, F3 speed panel, and their pure layout and format math | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLOrbitLines`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
-| `Level/` | Surface-lock (Part 3, pure logic only so far): the engage/warn/release state machine and the up-alignment math | `SOLSurfaceLock` |
+| `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
 | `Game/` | Game mode (default pawn and HUD, spawns visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
@@ -98,7 +100,8 @@ sequenceDiagram
     Anchor->>Ship: OnBodiesUpdated(dt)
     Ship->>Tgt: RefreshCandidates(), GetReferenceVelocityMps()
     Ship->>Ship: ComputeFrameInputs (warp carry, previous body positions)
-    Ship->>Proc: Executor::Run (substeps: gravity, SOLFlight::Step, swept collision)
+    Ship->>Proc: Executor::Run (substeps: gravity, SOLFlight::Step, swept collision, surface-lock alignment)
+    Ship->>Ship: UpdateSurfaceLock (state machine on this frame's ship and bodies; engaging calls Tgt LockToBodyIndex)
     Ship->>Anchor: SyncObserverPositionM(ship position)
     Anchor->>Anchor: anchor selector update (25% hysteresis), RebaseRenderOrigin
     Anchor->>Vis: OnUniverseUpdated (place bodies, pawn follows ship)
@@ -109,6 +112,7 @@ sequenceDiagram
 **Why the order matters.** Each stage consumes the output of the previous one *from the same frame*. The ship needs this frame's bodies for gravity and collision, and this frame's reference velocity (so targeting is refreshed first). The anchor and rebase need this frame's ship position. The visuals and HUD need the final render origin. If the processor were phase-registered, the ship would step against last frame's bodies and the anchor would lag it by one frame.
 
 - **Time-warp frame carry:** ship flight always runs in real time, so each frame the ship also inherits the part of its reference frame's motion that warp adds beyond real time (`SOLFlight::FrameCarryDisplacement`, for both position and velocity). This keeps the ship co-moving with Earth at 1 d/s.
+- **Surface-lock timing:** the lock state is advanced after the flight run, when the ship and the bodies are both at this frame's positions (before the run the ship is one body-step behind, which misreads altitude by up to the body's speed times the frame time). Its decision (the body to align to, the frame lock) takes effect from the next step; the alignment itself runs inside the processor per substep with the substep's real dt.
 - **Hitch budget:** the real delta is clamped once to `SOL::MAX_FRAME_DELTA_S` (0.5 s) and fed to both the clock and the ship. It is split into at most `SHIP_MAX_SUBSTEPS` (16) substeps of 1/30 s, which cover that budget exactly (a `static_assert` enforces this), so a hitch slows the universe uniformly and no ship time is dropped.
 
 To change this order, update this section, SDD 2 section 3, and the tick comments in `SOLAnchorSubsystem.cpp` together.
@@ -154,14 +158,14 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 
 **Ship** (`Source/SOLTest/Ship/`)
 - `FSOLShipStateFragment`, `FSOLShipControlFragment`, `FSOLShipParamsFragment` (const shared), `FSOLPlayerShipTag` (engine, `SOLShipFragments.h`): the Mass data for the ship.
-- `USOLShipFlightProcessor` (engine, `SOLShipFlightProcessor.h`): the substepped gravity, flight and collision loop, with a parallel chunk loop that allocates nothing per run.
-- `USOLShipSubsystem` (engine, `SOLShipSubsystem.h`): spawns the entity, runs the processor on `OnBodiesUpdated`, computes the warp carry, syncs the observer, fires `OnShipsStepped` after each step, and is the Pawn's API (`SetControl`, `GetState`, `SetState` and so on).
+- `USOLShipFlightProcessor` (engine, `SOLShipFlightProcessor.h`): the substepped gravity, flight, collision and surface-lock alignment loop (`FSOLShipControlFragment::AlignBodyIndex` names the body per ship), with a parallel chunk loop that allocates nothing per run.
+- `USOLShipSubsystem` (engine, `SOLShipSubsystem.h`): spawns the entity, runs the processor on `OnBodiesUpdated`, computes the warp carry, owns and steps the player's `FSOLSurfaceLockState` (L presses arrive via `RequestSurfaceLockToggle`; `ClearSurfaceLock` for a jump), syncs the observer, fires `OnShipsStepped` after each step, and is the Pawn's API (`SetControl`, `GetState`, `SetState` and so on).
 - `ASOLShipPawn` (engine, `SOLShipPawn.h`): Enhanced Input (created in C++), virtual joystick, chase camera, placeholder mesh. It carries no universe coordinates.
-- `FSOLShipSmokeFlight` / `FSOLShipSmokeInput` (engine test scripts): the `-SOLSmokeFlight` and `-SOLSmokeInput` runs.
+- `FSOLShipSmokeFlight` / `FSOLShipSmokeInput` / `FSOLSurfaceLockSmoke` (engine test scripts): the `-SOLSmokeFlight`, `-SOLSmokeInput` and `-SOLSmokeLevel` runs.
 
 **Targeting** (`Source/SOLTest/Targeting/`)
 - `ISOLTargetable` (engine interface, `SOLTargetable.h`): for non-body targets. It returns an `FSOLTargetInfo` each frame.
-- `USOLTargetingSubsystem` (engine, `SOLTargetingSubsystem.h`): the candidate list (registry bodies at their body index, then registered targetables), the selection, the M lock and the reference velocity.
+- `USOLTargetingSubsystem` (engine, `SOLTargetingSubsystem.h`): the candidate list (registry bodies at their body index, then registered targetables), the selection, the M lock (also set by surface-lock through `LockToBodyIndex`) and the reference velocity.
 
 **UI** (`Source/SOLTest/UI/`)
 - `ASOLFlightHud` (engine, `SOLFlightHud.h`): everything drawn in `DrawHUD` with its own pinhole projection. It does not tick.
@@ -184,8 +188,8 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `FSOLMapSmoke` (engine test script, `SOLMapSmoke.h`): the `-SOLSmokeMap` run.
 - `FSOLMapPickSmoke` and `FSOLJumpSmoke` (engine test scripts): the `-SOLSmokeMapPick` and `-SOLSmokeJump` runs.
 
-**Level** (`Source/SOLTest/Level/`, Part 3, pure logic only so far)
-- `FSOLSurfaceLockParams` / `FSOLSurfaceLockState` / `SOLSurfaceLock` (pure, `SOLSurfaceLock.h`): `UpdateSurfaceLockState` (the auto/manual engage-warn-release state machine, with a suppression latch so a manual release can't be immediately overridden by auto-engage), `TargetUpDir` and `ApplyAlignmentCorrection` (a minimal shortest-arc rotation of the ship's whole orientation toward "up = away from the locked body," not a roll-only correction, so there is no attitude-dependent singularity). Not yet called from anywhere engine-side; Part 3's engine integration (the `L` key, `USOLShipSubsystem` stepping it, the HUD line) is still to come.
+**Level** (`Source/SOLTest/Level/`, Part 3)
+- `FSOLSurfaceLockParams` / `FSOLSurfaceLockState` / `SOLSurfaceLock` (pure, `SOLSurfaceLock.h`): `UpdateSurfaceLockState` (the auto/manual engage-warn-release state machine, with a suppression latch so a manual release can't be immediately overridden by auto-engage), `TargetUpDir` and `ApplyAlignmentCorrection` (a minimal shortest-arc rotation of the ship's whole orientation toward "up = away from the locked body," not a roll-only correction, so there is no attitude-dependent singularity). Called by `USOLShipSubsystem` (state machine, once per step), `USOLShipFlightProcessor` (alignment, per substep) and `ASOLFlightHud` (`ComputeManualRangeM` for the hint line).
 
 **Game** (`Source/SOLTest/Game/`)
 - `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
@@ -242,6 +246,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots; body icon/label state checked at 1e13 m, ~9e10 m, ~8e8 m (Earth cross-fade) and ~5e7 m (mesh only) |
 | `-SOLSmokeMapPick` | `FSOLMapPickSmoke` | Destination pick via injected events: body and empty-space references, planar drag/lock, Shift height preview/lock, X clear, OS-cursor sync after a drag, close/reopen clears; screenshots of the disc, guide line and marker |
 | `-SOLSmokeJump` | `FSOLJumpSmoke` | Pick on Mars and jump: Enter with no pick ignored, warp start, midpoint FOV/post-process on the warp curve with the HUD hidden, arrival position/velocity/orientation/anchor/origin, restore; mid-warp and arrival screenshots |
+| `-SOLSmokeLevel` | `FSOLSurfaceLockSmoke` | Surface-lock via injected L presses and scripted teleports above Earth: L out of range ignored, auto-engage with frame match (replacing an M lock on another candidate) and alignment (time constant checked one tau in), L release that stays released (suppression latch) and stops aligning, latch cleared by a climb, auto warn/release (alignment stops), hint, manual engage/warn/release, a scripted jump that drops an L pressed during the warp and releases the lock on arrival; screenshots of each HUD line |
 | `-SOLSpectator` | `ASOLGameMode` / `ASOLSpectatorPawn` | Debug free-fly camera riding the ship instead of the pawn |
 | `-SOLStart=<Body>`, `-SOLAltitudeKm=<km>`, `-SOLLookAt=<Body>` | Ship subsystem / spectator | Spawn body and altitude, and the debug camera's look target, for any of the runs above |
 
@@ -253,7 +258,7 @@ All flag strings live in `SOL::CommandLine` in `SOLConstants.h`.
 
 These are grounded in SDD 1, SDD 2 and the roadmap ([`Plans/1-solar-system-architecture-plan.md`](Plans/1-solar-system-architecture-plan.md)). Each part's own SDD settles the details.
 
-- **Part 2 (jump map):** `SOLMapPicking` produces a universe-frame destination; `USOLJumpSubsystem` executes the jump through `USOLShipSubsystem::SetState` (a teleport that refreshes targeting and force-snaps the render origin). Listeners that must run after the ship step bind to `OnShipsStepped`, not beside it on `OnBodiesUpdated`. Native `TMulticastDelegate` broadcasts iterate in reverse of the *current* bind order, but any unbind compacts the list with `RemoveAtSwap`, so that order is not a durable guarantee and nothing should rely on relative bind or fire order for correctness. `OnShipsStepped` fires after the flight processor's step because of *where* it is broadcast (after `UE::Mass::Executor::Run` returns in `StepShips`), not because of delegate ordering. On arrival the jump clears the selected target and the M frame lock before the teleport, and it aborts the warp if a frame's universe update runs without a ship step.
+- **Part 2 (jump map):** `SOLMapPicking` produces a universe-frame destination; `USOLJumpSubsystem` executes the jump through `USOLShipSubsystem::SetState` (a teleport that refreshes targeting and force-snaps the render origin). Listeners that must run after the ship step bind to `OnShipsStepped`, not beside it on `OnBodiesUpdated`. Native `TMulticastDelegate` broadcasts iterate in reverse of the *current* bind order, but any unbind compacts the list with `RemoveAtSwap`, so that order is not a durable guarantee and nothing should rely on relative bind or fire order for correctness. `OnShipsStepped` fires after the flight processor's step because of *where* it is broadcast (after `UE::Mass::Executor::Run` returns in `StepShips`), not because of delegate ordering. On arrival the jump clears the selected target, the M frame lock and any surface-lock (with its suppression latch) before the teleport, and it aborts the warp if a frame's universe update runs without a ship step.
 - **Part 5 (moons, asteroids, rings):** `FSOLBodyDef::ParentIndex` already chains a child's orbit to its parent (parent GM, positions summed), so moons are more registry entries. Asteroids and ring particles are Keplerian too but are planned as Mass entities, not registry bodies. The collision broadphase is an O(bodies) reject per substep, and a spatial structure is deferred until body counts grow.
 - **Part 6 (weapons, targets):** dropped targets and enemies implement `ISOLTargetable` and register with `USOLTargetingSubsystem`, which makes them selectable, M-lockable and visible on the radar with no HUD changes. Bolts are planned as data-driven arrays with swept traces, rendered through Niagara, not Actors.
 - **Part 10 (scale demo):** NPC ships reuse the ship archetype (state and control fragments, a const shared params fragment per ship class) and the parallel `USOLShipFlightProcessor`. `FSOLPlayerShipTag` is what separates the player's entity from other ships.

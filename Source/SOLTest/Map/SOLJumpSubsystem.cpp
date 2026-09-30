@@ -197,7 +197,9 @@ void USOLJumpSubsystem::CompleteJump()
     }
 
     // The selection and the M lock refer to the old location: a lock kept on a far body would have the assist thrust
-    // toward that body's velocity (scaled by the time-warp carry). Cleared before the teleport
+    // toward that body's velocity (scaled by the time-warp carry). A surface-lock (SDD 4) and its auto-engage
+    // suppression latch refer to the old location's body too and are released with them; if the arrival is within
+    // auto range of a body, the next ship step auto-engages on that one. Cleared before the teleport
     if (Targeting != nullptr)
     {
         Targeting->ClearTarget();
@@ -206,6 +208,7 @@ void USOLJumpSubsystem::CompleteJump()
             Targeting->ToggleFrameLock();
         }
     }
+    Ships->ClearSurfaceLock();
     Ships->SetState(state);
 
     mLastArrivalReferenceM = referenceM;

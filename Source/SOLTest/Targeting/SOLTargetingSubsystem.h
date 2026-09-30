@@ -24,7 +24,8 @@ class USOLBodyRegistrySubsystem;
  * step: first every registry body (candidate index == body index), then every registered ISOLTargetable. The selection
  * and the lock are candidate indices, fixed up when a targetable unregisters. By default the reference frame is the
  * anchor body; ToggleFrameLock locks it to the selected target (or to the anchor when nothing is selected) until it is
- * toggled again, whatever happens to the anchor or the selection meanwhile. All values are in the Unreal-handed
+ * toggled again, whatever happens to the anchor or the selection meanwhile; engaging surface-lock (SDD 4) sets the same
+ * lock directly on its body with LockToBodyIndex. All values are in the Unreal-handed
  * universe frame (SOLRender::EclipticToUnreal applied, meters, m/s).
  */
 UCLASS()
@@ -66,6 +67,10 @@ public:
 
     // Locks the reference frame to the selected target (else the anchor body), or releases an active lock
     void ToggleFrameLock();
+
+    // Locks the reference frame to a body (candidate index == body index), replacing any lock; never toggles it off
+    // (surface-lock's reference-frame auto-match, SDD 4 decision 2). An invalid body index is ignored
+    void LockToBodyIndex(int32 bodyIndex);
 
     // Returns the selected candidate index, or INDEX_NONE
     int32 GetSelectedIndex() const { return mSelectedIndex; }

@@ -32,6 +32,7 @@ struct FSOLFlightParams
     double MaxSpeedMps = SOL::MAX_SPEED_CAP_MPS;            // 0.5c
     double MinSpeedCapMps = SOL::MIN_SPEED_CAP_MPS;         // 1 m/s
     double ShipRadiusM = 10.0;
+    double AlignTimeConstantS = SOL::SURFACE_LOCK_ALIGN_TIME_CONSTANT_S;    // Surface-lock up alignment (real seconds)
 };
 
 // Player (or AI) control input for one flight step

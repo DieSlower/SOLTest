@@ -193,6 +193,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
+        inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 

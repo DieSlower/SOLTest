@@ -315,6 +315,11 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
     }
     SaveFrameHistory();
 
+    // Surface-lock after the flight run, when the ship and the bodies are both at this frame's positions (before the
+    // run the ship is still where last frame's bodies left it, which misreads the altitude by up to the body's speed
+    // times the frame time: ~500 m for Earth at 60 fps). Its decision applies from the next step on
+    UpdateSurfaceLock();
+
     // The ship is the observer: hand its position (ecliptic) to the anchor update that follows
     Anchor->SyncObserverPositionM(GetUniversePositionM());
     mOnShipsStepped.Broadcast(realDeltaSeconds);
@@ -325,6 +330,96 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
         mSmokeFlight.Reset();
         UKismetSystemLibrary::QuitGame(GetWorld(), nullptr, EQuitPreference::Quit, false);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Releases any surface-lock and clears its auto-engage suppression and a pending L press (used by a jump arrival)
+void USOLShipSubsystem::ClearSurfaceLock()
+{
+    if (mSurfaceLockState.bEngaged || mSurfaceLockState.bAutoSuppressed)
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: surface-lock cleared (was %s)"), *GetName(),
+            mSurfaceLockState.bEngaged ? TEXT("engaged") : TEXT("suppressed"));
+    }
+    mSurfaceLockState = FSOLSurfaceLockState();
+    mSurfaceLockAltitudeM = 0.0;
+    mIsSurfaceLockToggleRequested = false;
+    if (HasPlayerShip())
+    {
+        mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).AlignBodyIndex = INDEX_NONE;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Advances the surface-lock state one step (consuming a pending L press) and names the body to align to, if any
+void USOLShipSubsystem::UpdateSurfaceLock()
+{
+    const bool bTogglePressed = mIsSurfaceLockToggleRequested;
+    mIsSurfaceLockToggleRequested = false;
+
+    // Nearest body (altitude above its surface) and, while engaged, the locked body's own altitude, all from this
+    // frame's Unreal-handed bodies (the frame the ship's position is in)
+    const FSOLBodyFrameCache& cache = BodyRegistry->GetUnrealFrameCache();
+    const FVector3d shipM = GetState().PositionM;
+    double nearestAltitudeM = 0.0;
+    const int32 nearest = FindNearestBody(nearestAltitudeM);
+    const double nearestRadiusM = cache.RadiiM.IsValidIndex(nearest) ? cache.RadiiM[nearest] : 0.0;
+    FSOLSurfaceLockState prevState = mSurfaceLockState;
+    double lockedAltitudeM = 0.0;
+    double lockedRadiusM = 0.0;
+    if (prevState.bEngaged)
+    {
+        // Registry indices are stable for the session; a stale one releases rather than reading another body
+        if (cache.PositionsM.IsValidIndex(prevState.BodyIndex))
+        {
+            lockedRadiusM = cache.RadiiM[prevState.BodyIndex];
+            lockedAltitudeM = FVector3d::Dist(shipM, cache.PositionsM[prevState.BodyIndex]) - lockedRadiusM;
+        }
+        else
+        {
+            UE_LOG(LogSOL, Warning, TEXT("ShipSubsystem %s: surface-locked body index %d is invalid; released"),
+                *GetName(), prevState.BodyIndex);
+            prevState = FSOLSurfaceLockState();
+        }
+    }
+    mSurfaceLockState = SOLSurfaceLock::UpdateSurfaceLockState(prevState, nearest, nearestAltitudeM, nearestRadiusM,
+        lockedAltitudeM, lockedRadiusM, bTogglePressed, mSurfaceLockParams);
+
+    // Altitude above the body now locked (on the engaging step that is the nearest body)
+    mSurfaceLockAltitudeM = 0.0;
+    if (mSurfaceLockState.bEngaged)
+    {
+        mSurfaceLockAltitudeM = mSurfaceLockState.BodyIndex == prevState.BodyIndex && prevState.bEngaged
+            ? lockedAltitudeM : nearestAltitudeM;
+    }
+
+    // Engaging matches the reference frame to the body (SDD 4 decision 2); releasing leaves the frame as it is
+    if (mSurfaceLockState.bEngaged && !prevState.bEngaged)
+    {
+        Targeting->LockToBodyIndex(mSurfaceLockState.BodyIndex);
+    }
+    if (mSurfaceLockState.bEngaged != prevState.bEngaged || mSurfaceLockState.bWarning != prevState.bWarning
+        || mSurfaceLockState.bAutoSuppressed != prevState.bAutoSuppressed)
+    {
+        // Only on a transition, so this logs a handful of lines per approach, not every frame
+        const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+        const int32 bodyIndex = mSurfaceLockState.bEngaged ? mSurfaceLockState.BodyIndex
+            : (prevState.bEngaged ? prevState.BodyIndex : prevState.SuppressedBodyIndex);
+        const TCHAR* status = mSurfaceLockState.bEngaged
+            ? (mSurfaceLockState.bWarning ? TEXT("WARNING") : (mSurfaceLockState.bManual ? TEXT("ENGAGED manual")
+            : TEXT("ENGAGED auto")))
+            : (mSurfaceLockState.bAutoSuppressed ? TEXT("RELEASED, auto-engage suppressed")
+            : (prevState.bEngaged ? TEXT("RELEASED") : TEXT("auto-engage suppression cleared")));
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: surface-lock %s, body %s, altitude %.0f m, L %s"), *GetName(),
+            status, bodyIndex >= 0 && bodyIndex < registry.Num() ? *registry.GetName(bodyIndex).ToString()
+            : TEXT("none"), mSurfaceLockState.bEngaged ? mSurfaceLockAltitudeM : nearestAltitudeM, bTogglePressed
+            ? TEXT("pressed") : TEXT("not pressed"));
+    }
+
+    // The flight processor aligns the ship's up to the locked body each substep, at its class's time constant
+    // (FSOLFlightParams::AlignTimeConstantS)
+    mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).AlignBodyIndex =
+        mSurfaceLockState.bEngaged ? mSurfaceLockState.BodyIndex : INDEX_NONE;
 }
 
 //////////////////////////////////////////////////////////////////////////

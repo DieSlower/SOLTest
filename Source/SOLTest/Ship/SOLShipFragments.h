@@ -29,6 +29,7 @@ struct FSOLShipControlFragment : public FMassFragment
     GENERATED_BODY()
 
     FSOLShipControl Control;                  // Thrust, rotation, boost, assist, speed cap, reference velocity
+    int32 AlignBodyIndex = INDEX_NONE;        // Surface-lock (SDD 4): body whose local vertical up aligns to, or none
 };
 
 /**
