@@ -4,6 +4,7 @@
 */
 
 #include "Universe/SOLBodyRegistry.h"
+#include "Universe/SOLBodyRotation.h"
 
 #include "Tests/SOLTestHelpers.h"
 
@@ -18,7 +19,10 @@ namespace
     constexpr int32 REGISTRY_BODY_COUNT = 9;
     constexpr int32 REGISTRY_EARTH = 3;
 
-    // Contract reference data for one body: name, GM (m^3/s^2), mean radius (m), Standish a (AU) and e at J2000
+    constexpr int32 REGISTRY_VENUS = 2;
+
+    // Contract reference data for one body: name, GM (m^3/s^2), mean radius (m), Standish a (AU) and e at J2000,
+    // then sidereal rotation period (h), axial tilt (deg, 0-180) and prime-meridian angle at J2000 (deg) per SDD 12
     struct FSOLRegistryExpectedBody
     {
         const TCHAR* Name;
@@ -26,20 +30,49 @@ namespace
         double RadiusM;
         double SemiMajorAxisAU;
         double Eccentricity;
+        double RotationPeriodH;
+        double AxialTiltDeg;
+        double W0Deg;
     };
 
     const FSOLRegistryExpectedBody REGISTRY_EXPECTED[REGISTRY_BODY_COUNT] =
     {
-        { TEXT("Sun"), 1.32712440018e20, 6.957e8, 0.0, 0.0 },
-        { TEXT("Mercury"), 2.2032e13, 2.4397e6, 0.38709927, 0.20563593 },
-        { TEXT("Venus"), 3.24859e14, 6.0518e6, 0.72333566, 0.00677672 },
-        { TEXT("Earth"), 3.986004418e14, 6.371e6, 1.00000261, 0.01671123 },
-        { TEXT("Mars"), 4.282837e13, 3.3895e6, 1.52371034, 0.09339410 },
-        { TEXT("Jupiter"), 1.26686534e17, 6.9911e7, 5.20288700, 0.04838624 },
-        { TEXT("Saturn"), 3.7931187e16, 5.8232e7, 9.53667594, 0.05386179 },
-        { TEXT("Uranus"), 5.793939e15, 2.5362e7, 19.18916464, 0.04725744 },
-        { TEXT("Neptune"), 6.836529e15, 2.4622e7, 30.06992276, 0.00859048 },
+        { TEXT("Sun"), 1.32712440018e20, 6.957e8, 0.0, 0.0, 601.2, 7.25, 0.0 },
+        { TEXT("Mercury"), 2.2032e13, 2.4397e6, 0.38709927, 0.20563593, 1407.6, 0.034, 0.0 },
+        { TEXT("Venus"), 3.24859e14, 6.0518e6, 0.72333566, 0.00677672, 5832.6, 177.36, 0.0 },
+        { TEXT("Earth"), 3.986004418e14, 6.371e6, 1.00000261, 0.01671123, 23.9345, 23.44, 0.0 },
+        { TEXT("Mars"), 4.282837e13, 3.3895e6, 1.52371034, 0.09339410, 24.6229, 25.19, 0.0 },
+        { TEXT("Jupiter"), 1.26686534e17, 6.9911e7, 5.20288700, 0.04838624, 9.9250, 3.13, 0.0 },
+        { TEXT("Saturn"), 3.7931187e16, 5.8232e7, 9.53667594, 0.05386179, 10.656, 26.73, 0.0 },
+        { TEXT("Uranus"), 5.793939e15, 2.5362e7, 19.18916464, 0.04725744, 17.24, 97.77, 0.0 },
+        { TEXT("Neptune"), 6.836529e15, 2.4622e7, 30.06992276, 0.00859048, 16.11, 28.32, 0.0 },
     };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the orientation the pure rotation function gives for one reference-table body at a time
+    FQuat4d RegistryExpectedOrientation(const FSOLRegistryExpectedBody& expected, const double secondsSinceJ2000)
+    {
+        return SOLBodyRotation::ComputeOrientation(FMath::DegreesToRadians(expected.AxialTiltDeg),
+            FMath::DegreesToRadians(expected.W0Deg), expected.RotationPeriodH, secondsSinceJ2000);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true when two quaternions rotate a set of probe vectors identically within a relative tolerance
+    bool RegistrySameRotation(const FQuat4d& actual, const FQuat4d& expected, const double tolerance)
+    {
+        const FVector3d probes[] =
+        {
+            FVector3d(1.0, 0.0, 0.0), FVector3d(0.0, 1.0, 0.0), FVector3d(0.0, 0.0, 1.0), FVector3d(0.3, -0.7, 0.2),
+        };
+        for (const FVector3d& probe : probes)
+        {
+            if (!SOLTestHelpers::VectorsNear(actual.RotateVector(probe), expected.RotateVector(probe), tolerance))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
 
     //////////////////////////////////////////////////////////////////////////
     // Returns true when the registry holds the nine solar-system bodies (logs a failure otherwise)
@@ -489,6 +522,229 @@ bool FSOLBodyRegistryChildBodyTest::RunTest(const FString& /*parameters*/)
             relativeVel.Size()), SOLTestHelpers::RelativeError(relativeVel.Size(), FMath::Sqrt(SOLTestHelpers::EARTH_GM / moonA)) < 1e-6);
         TestTrue(*FString::Printf(TEXT("t=%.0f moon relative velocity perpendicular to radius"), time),
             FMath::Abs(relativePos.GetSafeNormal() | relativeVel.GetSafeNormal()) < 1e-6);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryPoleDataTest, "SOLTest.BodyRegistry.RotationPoleFromTiltData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every populated body's orientation sends body-north to (sin tilt, 0, cos tilt) from the reference tilt, at any time
+bool FSOLBodyRegistryPoleDataTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    registry.PopulateSolarSystem();
+    if (!RegistryHasSolarSystem(*this, registry))
+    {
+        return false;
+    }
+    const double times[] = { 0.0, 1.234e7, -4.0e8 };
+    for (const double time : times)
+    {
+        registry.Update(time);
+        for (int32 index = 0; index < REGISTRY_BODY_COUNT; ++index)
+        {
+            const FSOLRegistryExpectedBody& expected = REGISTRY_EXPECTED[index];
+            const double tiltRad = FMath::DegreesToRadians(expected.AxialTiltDeg);
+            const FVector3d expectedPole(FMath::Sin(tiltRad), 0.0, FMath::Cos(tiltRad));
+            const FVector3d pole = registry.GetOrientation(index).RotateVector(FVector3d(0.0, 0.0, 1.0));
+            TestTrue(*FString::Printf(TEXT("%s t=%.0f: pole (%.9f, %.9f, %.9f) from tilt %.3f deg"), expected.Name, time,
+                pole.X, pole.Y, pole.Z, expected.AxialTiltDeg), SOLTestHelpers::VectorsNear(pole, expectedPole, 1e-9));
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryOrientationDataTest, "SOLTest.BodyRegistry.OrientationMatchesRotationData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every populated body's orientation equals ComputeOrientation built from the reference period, tilt and W0 columns
+bool FSOLBodyRegistryOrientationDataTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    registry.PopulateSolarSystem();
+    if (!RegistryHasSolarSystem(*this, registry))
+    {
+        return false;
+    }
+
+    // Non-epoch times make the period column matter, not just tilt and W0
+    const double times[] = { 0.0, 3600.0, 1.0e6, 1.234e7, -4.0e8 };
+    for (const double time : times)
+    {
+        registry.Update(time);
+        for (int32 index = 0; index < REGISTRY_BODY_COUNT; ++index)
+        {
+            const FSOLRegistryExpectedBody& expected = REGISTRY_EXPECTED[index];
+            TestTrue(*FString::Printf(TEXT("%s t=%.0f: orientation matches P=%.4f h, tilt=%.3f deg, W0=%.1f deg"),
+                expected.Name, time, expected.RotationPeriodH, expected.AxialTiltDeg, expected.W0Deg),
+                RegistrySameRotation(registry.GetOrientation(index), RegistryExpectedOrientation(expected, time), 1e-9));
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryEpochOrientationTest, "SOLTest.BodyRegistry.OrientationAtJ2000",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// At J2000 Earth and Venus orientations equal ComputeOrientation(tilt, W0, period, 0) from the reference data
+bool FSOLBodyRegistryEpochOrientationTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    registry.PopulateSolarSystem();
+    if (!RegistryHasSolarSystem(*this, registry))
+    {
+        return false;
+    }
+    registry.Update(0.0);
+    const int32 bodies[] = { REGISTRY_EARTH, REGISTRY_VENUS };
+    for (const int32 index : bodies)
+    {
+        const FSOLRegistryExpectedBody& expected = REGISTRY_EXPECTED[index];
+        const FQuat4d orientation = registry.GetOrientation(index);
+        TestTrue(*FString::Printf(TEXT("%s at J2000 matches ComputeOrientation"), expected.Name),
+            RegistrySameRotation(orientation, RegistryExpectedOrientation(expected, 0.0), 1e-12));
+        TestTrue(*FString::Printf(TEXT("%s at J2000 is a unit quaternion"), expected.Name),
+            FMath::Abs(orientation.Size() - 1.0) < 1e-12);
+    }
+
+    // Venus's near-180 deg tilt points its pole mostly south
+    const FVector3d venusPole = registry.GetOrientation(REGISTRY_VENUS).RotateVector(FVector3d(0.0, 0.0, 1.0));
+    TestTrue(*FString::Printf(TEXT("Venus pole z = %.6f is mostly south"), venusPole.Z), venusPole.Z < -0.99);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryEarthSiderealDayTest, "SOLTest.BodyRegistry.EarthSiderealDayFullTurn",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// One Earth sidereal day after J2000 Earth's orientation is back to its epoch orientation; half a day it is not
+bool FSOLBodyRegistryEarthSiderealDayTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    registry.PopulateSolarSystem();
+    if (!RegistryHasSolarSystem(*this, registry))
+    {
+        return false;
+    }
+    const double siderealDayS = REGISTRY_EXPECTED[REGISTRY_EARTH].RotationPeriodH * 3600.0;
+    registry.Update(0.0);
+    const FQuat4d epoch = registry.GetOrientation(REGISTRY_EARTH);
+
+    registry.Update(0.5 * siderealDayS);
+    TestFalse(TEXT("Half a sidereal day later Earth has turned"),
+        RegistrySameRotation(registry.GetOrientation(REGISTRY_EARTH), epoch, 1e-3));
+
+    registry.Update(siderealDayS);
+    TestTrue(TEXT("One sidereal day later Earth is back to its epoch orientation"),
+        RegistrySameRotation(registry.GetOrientation(REGISTRY_EARTH), epoch, 1e-9));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryNoRotationDataTest, "SOLTest.BodyRegistry.BodyWithoutRotationDataIsIdentity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// FSOLBodyDef rotation fields default to 0, and a body added without them has an identity orientation after Update
+bool FSOLBodyRegistryNoRotationDataTest::RunTest(const FString& /*parameters*/)
+{
+    const FSOLBodyDef defaults;
+    TestEqual(TEXT("RotationPeriodH defaults to 0"), defaults.RotationPeriodH, 0.0, 0.0);
+    TestEqual(TEXT("AxialTiltDeg defaults to 0"), defaults.AxialTiltDeg, 0.0, 0.0);
+    TestEqual(TEXT("W0Deg defaults to 0"), defaults.W0Deg, 0.0, 0.0);
+
+    FSOLBodyRegistry registry;
+    FSOLBodyDef star;
+    star.Name = FName(TEXT("TestStar"));
+    star.RadiusM = 5.0e8;
+    star.GM = 1.0e20;
+    registry.AddBody(star);
+
+    FSOLBodyDef planet;
+    planet.Name = FName(TEXT("TestPlanet"));
+    planet.RadiusM = 4.0e6;
+    planet.GM = 2.0e13;
+    planet.ParentIndex = 0;
+    planet.Elements.A0AU = 1.0;
+    registry.AddBody(planet);
+
+    const double times[] = { 0.0, 1.0e6, -3.0e8 };
+    for (const double time : times)
+    {
+        registry.Update(time);
+        for (int32 index = 0; index < registry.Num(); ++index)
+        {
+            const FQuat4d orientation = registry.GetOrientation(index);
+            TestTrue(*FString::Printf(TEXT("Body %d t=%.0f: finite"), index, time), FMath::IsFinite(orientation.X)
+                && FMath::IsFinite(orientation.Y) && FMath::IsFinite(orientation.Z) && FMath::IsFinite(orientation.W));
+            TestTrue(*FString::Printf(TEXT("Body %d t=%.0f: identity orientation"), index, time),
+                RegistrySameRotation(orientation, FQuat4d::Identity, 1e-15));
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryAddBodyRotationTest, "SOLTest.BodyRegistry.AddBodyStoresRotationData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A body added with rotation data gets ComputeOrientation(tilt, W0, period, t) with degrees converted to radians
+bool FSOLBodyRegistryAddBodyRotationTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    FSOLBodyDef star;
+    star.Name = FName(TEXT("TestStar"));
+    star.RadiusM = 5.0e8;
+    star.GM = 1.0e20;
+    star.RotationPeriodH = 100.0;
+    star.AxialTiltDeg = 12.0;
+    star.W0Deg = 45.0;
+    TestEqual(TEXT("AddBody returns 0"), registry.AddBody(star), 0);
+
+    const double times[] = { 0.0, 7200.0, 5.0e6 };
+    for (const double time : times)
+    {
+        registry.Update(time);
+        const FQuat4d expected = SOLBodyRotation::ComputeOrientation(FMath::DegreesToRadians(12.0),
+            FMath::DegreesToRadians(45.0), 100.0, time);
+        TestTrue(*FString::Printf(TEXT("t=%.0f: orientation matches ComputeOrientation from the def"), time),
+            RegistrySameRotation(registry.GetOrientation(0), expected, 1e-12));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBodyRegistryOrientationBeforeUpdateTest,
+    "SOLTest.BodyRegistry.OrientationIsIdentityBeforeUpdate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A freshly added body reads as the identity orientation before the first Update, whatever its rotation data
+bool FSOLBodyRegistryOrientationBeforeUpdateTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    FSOLBodyDef plain;
+    plain.Name = FName(TEXT("TestPlain"));
+    plain.RadiusM = 1.0;
+    plain.GM = 1.0;
+    FSOLBodyDef rotating;
+    rotating.Name = FName(TEXT("TestRotating"));
+    rotating.RadiusM = 1.0;
+    rotating.GM = 1.0;
+    rotating.RotationPeriodH = 10.0;
+    rotating.AxialTiltDeg = 30.0;
+    rotating.W0Deg = 60.0;
+    const int32 indices[] = { registry.AddBody(plain), registry.AddBody(rotating) };
+
+    for (const int32 index : indices)
+    {
+        const FQuat4d orientation = registry.GetOrientation(index);
+        TestTrue(*FString::Printf(TEXT("Body %d before Update: components are identity"), index),
+            orientation.Equals(FQuat4d::Identity, 0.0));
+        TestTrue(*FString::Printf(TEXT("Body %d before Update: rotates like identity"), index),
+            RegistrySameRotation(orientation, FQuat4d::Identity, 0.0));
     }
     return true;
 }

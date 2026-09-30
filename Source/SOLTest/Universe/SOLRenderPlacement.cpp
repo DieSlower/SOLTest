@@ -36,4 +36,14 @@ namespace SOLRender
     {
         return FVector3d(ecliptic.X, -ecliptic.Y, ecliptic.Z);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Converts a right-handed ecliptic rotation to Unreal's left-handed axes: axis mirrored as above, angle negated
+    FQuat4d EclipticToUnreal(const FQuat4d& ecliptic)
+    {
+        // q = (sin(a/2) * axis, cos(a/2)); mirroring the axis to (ax, -ay, az) and negating the angle gives
+        // (-sin(a/2) * ax, sin(a/2) * ay, -sin(a/2) * az, cos(a/2)): written directly, this avoids the acos precision
+        // loss of an axis/angle round trip for small angles
+        return FQuat4d(-ecliptic.X, ecliptic.Y, -ecliptic.Z, ecliptic.W);
+    }
 }

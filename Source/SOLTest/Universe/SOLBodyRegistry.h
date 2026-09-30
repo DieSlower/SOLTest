@@ -17,6 +17,9 @@ struct SOLTEST_API FSOLBodyDef
     double GM = 0.0;                          // m^3/s^2
     int32 ParentIndex = INDEX_NONE;           // parent must be added before its children; INDEX_NONE for the Sun
     FSOLSecularElements Elements;             // relative to the parent; unused for the Sun
+    double RotationPeriodH = 0.0;             // sidereal rotation period, hours, always positive; 0 = no rotation
+    double AxialTiltDeg = 0.0;                // 0-180 deg from ecliptic-north; > 90 = retrograde
+    double W0Deg = 0.0;                       // rotation angle at J2000, degrees
 };
 
 // Data-oriented (structure-of-arrays) registry of celestial bodies and their Sun-frame states
@@ -66,6 +69,9 @@ public:
     // Returns all Sun-frame velocities, indexed like the bodies
     TConstArrayView<FVector3d> GetVelocitiesMps() const;
 
+    // Returns the body's orientation (ecliptic frame): fixed axial tilt composed with the current spin
+    const FQuat4d& GetOrientation(int32 index) const;
+
 private:
 
     TArray<FName> mNames;                     // Body names
@@ -75,4 +81,8 @@ private:
     TArray<FSOLSecularElements> mElements;    // Orbital elements relative to the parent
     TArray<FVector3d> mPositionsM;            // Sun-frame positions
     TArray<FVector3d> mVelocitiesMps;         // Sun-frame velocities
+    TArray<double> mRotationPeriodsH;         // Sidereal rotation periods (hours); <= 0 = no spin
+    TArray<double> mAxialTiltsRad;            // Axial tilts from ecliptic-north
+    TArray<double> mW0sRad;                   // Rotation angles at J2000
+    TArray<FQuat4d> mOrientations;            // Ecliptic-frame orientations, computed each Update()
 };

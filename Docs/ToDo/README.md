@@ -37,3 +37,5 @@ archive.
   perturbations or N-body integration for bodies, beyond pure Keplerian orbits.
 - [`surface-landing.md`](surface-landing.md) — manual and auto (from-orbit) ship
   landing, building on Part 3's surface-lock.
+- [`accurate-pole-directions.md`](accurate-pole-directions.md) — real per-body axial
+  pole directions and precession, deferred from Part 3.5's simplified fixed-plane tilt.

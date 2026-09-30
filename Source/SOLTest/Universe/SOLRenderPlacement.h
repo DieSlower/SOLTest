@@ -29,4 +29,7 @@ namespace SOLRender
 
     // Converts right-handed ecliptic axes to Unreal's left-handed axes: (X, -Y, Z)
     SOLTEST_API FVector3d EclipticToUnreal(const FVector3d& ecliptic);
+
+    // Converts a right-handed ecliptic rotation to Unreal's left-handed axes: axis mirrored as above, angle negated
+    SOLTEST_API FQuat4d EclipticToUnreal(const FQuat4d& ecliptic);
 }

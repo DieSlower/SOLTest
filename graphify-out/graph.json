@@ -4139,7 +4139,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1000",
       "id": "ship_solshippawn_handletogglepredictedpath",
-      "community": 140,
+      "community": 58,
       "norm_label": "handletogglepredictedpath()"
     },
     {
@@ -4607,7 +4607,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1597",
       "id": "ship_solshippawn_ontogglepredictedpathaction",
-      "community": 140,
+      "community": 58,
       "norm_label": "ontogglepredictedpathaction()"
     },
     {
@@ -6207,7 +6207,7 @@
       "label": "FSOLRegistryExpectedBody",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L22",
+      "source_location": "L26",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody",
       "community": 23,
       "norm_label": "fsolregistryexpectedbody"
@@ -6216,7 +6216,7 @@
       "label": "TCHAR",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L24",
+      "source_location": "L28",
       "id": "source_soltest_tests_bodyregistrytest_cpp_tchar",
       "community": 23,
       "norm_label": "tchar"
@@ -6225,7 +6225,7 @@
       "label": "Name",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L24",
+      "source_location": "L28",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_name",
       "community": 23,
       "norm_label": "name"
@@ -6234,7 +6234,7 @@
       "label": "GM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L25",
+      "source_location": "L29",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_gm",
       "community": 23,
       "norm_label": "gm"
@@ -6243,7 +6243,7 @@
       "label": "RadiusM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L26",
+      "source_location": "L30",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_radiusm",
       "community": 23,
       "norm_label": "radiusm"
@@ -6252,7 +6252,7 @@
       "label": "SemiMajorAxisAU",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L27",
+      "source_location": "L31",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_semimajoraxisau",
       "community": 23,
       "norm_label": "semimajoraxisau"
@@ -6261,16 +6261,70 @@
       "label": "Eccentricity",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L28",
+      "source_location": "L32",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_eccentricity",
       "community": 23,
       "norm_label": "eccentricity"
     },
     {
+      "label": "RotationPeriodH",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L33",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedbody_rotationperiodh",
+      "community": 23,
+      "norm_label": "rotationperiodh"
+    },
+    {
+      "label": "AxialTiltDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L34",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedbody_axialtiltdeg",
+      "community": 23,
+      "norm_label": "axialtiltdeg"
+    },
+    {
+      "label": "W0Deg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L35",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedbody_w0deg",
+      "community": 23,
+      "norm_label": "w0deg"
+    },
+    {
+      "label": "RegistryExpectedOrientation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "id": "tests_bodyregistrytest_registryexpectedorientation",
+      "community": 23,
+      "norm_label": "registryexpectedorientation()"
+    },
+    {
+      "label": "FQuat4d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "id": "source_soltest_tests_bodyregistrytest_cpp_fquat4d",
+      "community": 23,
+      "norm_label": "fquat4d"
+    },
+    {
+      "label": "RegistrySameRotation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L61",
+      "id": "tests_bodyregistrytest_registrysamerotation",
+      "community": 23,
+      "norm_label": "registrysamerotation()"
+    },
+    {
       "label": "RegistryHasSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L46",
+      "source_location": "L79",
       "id": "tests_bodyregistrytest_registryhassolarsystem",
       "community": 23,
       "norm_label": "registryhassolarsystem()"
@@ -6279,7 +6333,7 @@
       "label": "FAutomationTestBase",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L46",
+      "source_location": "L79",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fautomationtestbase",
       "community": 23,
       "norm_label": "fautomationtestbase"
@@ -6288,7 +6342,7 @@
       "label": "FSOLBodyRegistry",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L46",
+      "source_location": "L79",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fsolbodyregistry",
       "community": 23,
       "norm_label": "fsolbodyregistry"
@@ -6297,7 +6351,7 @@
       "label": "RegistryLongitudeDeg()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L53",
+      "source_location": "L86",
       "id": "tests_bodyregistrytest_registrylongitudedeg",
       "community": 23,
       "norm_label": "registrylongitudedeg()"
@@ -6306,7 +6360,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L53",
+      "source_location": "L86",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fvector3d",
       "community": 23,
       "norm_label": "fvector3d"
@@ -6315,7 +6369,7 @@
       "label": "RegistrySweptAngleRad()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L65",
+      "source_location": "L98",
       "id": "tests_bodyregistrytest_registrysweptanglerad",
       "community": 23,
       "norm_label": "registrysweptanglerad()"
@@ -6324,7 +6378,7 @@
       "label": "RunTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L78",
+      "source_location": "L111",
       "id": "tests_bodyregistrytest_runtest",
       "community": 23,
       "norm_label": "runtest()"
@@ -6333,9 +6387,90 @@
       "label": "FString",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L78",
+      "source_location": "L111",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fstring",
       "community": 23,
+      "norm_label": "fstring"
+    },
+    {
+      "label": "BodyRotationTest.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L1",
+      "id": "tests_bodyrotationtest",
+      "community": 149,
+      "norm_label": "bodyrotationtest.cpp"
+    },
+    {
+      "label": "BodyRotationExpectedPole()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L22",
+      "id": "tests_bodyrotationtest_bodyrotationexpectedpole",
+      "community": 149,
+      "norm_label": "bodyrotationexpectedpole()"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L22",
+      "id": "source_soltest_tests_bodyrotationtest_cpp_fvector3d",
+      "community": 149,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "BodyRotationQuatsNear()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L29",
+      "id": "tests_bodyrotationtest_bodyrotationquatsnear",
+      "community": 149,
+      "norm_label": "bodyrotationquatsnear()"
+    },
+    {
+      "label": "FQuat4d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L29",
+      "id": "source_soltest_tests_bodyrotationtest_cpp_fquat4d",
+      "community": 149,
+      "norm_label": "fquat4d"
+    },
+    {
+      "label": "BodyRotationSameRotation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L40",
+      "id": "tests_bodyrotationtest_bodyrotationsamerotation",
+      "community": 149,
+      "norm_label": "bodyrotationsamerotation()"
+    },
+    {
+      "label": "BodyRotationExpectedOrientation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L59",
+      "id": "tests_bodyrotationtest_bodyrotationexpectedorientation",
+      "community": 149,
+      "norm_label": "bodyrotationexpectedorientation()"
+    },
+    {
+      "label": "RunTest()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L74",
+      "id": "tests_bodyrotationtest_runtest",
+      "community": 149,
+      "norm_label": "runtest()"
+    },
+    {
+      "label": "FString",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L74",
+      "id": "source_soltest_tests_bodyrotationtest_cpp_fstring",
+      "community": 149,
       "norm_label": "fstring"
     },
     {
@@ -7635,6 +7770,51 @@
       "norm_label": "fstring"
     },
     {
+      "label": "RenderPlacementQuatProbes()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "id": "tests_renderplacementtest_renderplacementquatprobes",
+      "community": 45,
+      "norm_label": "renderplacementquatprobes()"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "id": "source_soltest_tests_renderplacementtest_cpp_tarray",
+      "community": 45,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "id": "source_soltest_tests_renderplacementtest_cpp_fvector3d",
+      "community": 45,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "RenderPlacementQuatSameRotation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L243",
+      "id": "tests_renderplacementtest_renderplacementquatsamerotation",
+      "community": 45,
+      "norm_label": "renderplacementquatsamerotation()"
+    },
+    {
+      "label": "FQuat4d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L243",
+      "id": "source_soltest_tests_renderplacementtest_cpp_fquat4d",
+      "community": 45,
+      "norm_label": "fquat4d"
+    },
+    {
       "label": "SOLTestHelpers.h",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/SOLTestHelpers.h",
@@ -8351,7 +8531,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L205",
       "id": "ui_solflighthud_toggleorbitlines",
-      "community": 36,
+      "community": 140,
       "norm_label": "toggleorbitlines()"
     },
     {
@@ -8369,7 +8549,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L235",
       "id": "ui_solflighthud_resetradarauto",
-      "community": 36,
+      "community": 140,
       "norm_label": "resetradarauto()"
     },
     {
@@ -9969,7 +10149,7 @@
       "label": "FSOLSolarSystemRow",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L13",
+      "source_location": "L15",
       "id": "universe_solbodyregistry_fsolsolarsystemrow",
       "community": 20,
       "norm_label": "fsolsolarsystemrow"
@@ -9978,7 +10158,7 @@
       "label": "TCHAR",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L15",
+      "source_location": "L17",
       "id": "source_soltest_universe_solbodyregistry_cpp_tchar",
       "community": 20,
       "norm_label": "tchar"
@@ -9987,7 +10167,7 @@
       "label": "Name",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L15",
+      "source_location": "L17",
       "id": "universe_solbodyregistry_fsolsolarsystemrow_name",
       "community": 20,
       "norm_label": "name"
@@ -9996,7 +10176,7 @@
       "label": "RadiusM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L16",
+      "source_location": "L18",
       "id": "universe_solbodyregistry_fsolsolarsystemrow_radiusm",
       "community": 20,
       "norm_label": "radiusm"
@@ -10005,7 +10185,7 @@
       "label": "GM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L17",
+      "source_location": "L19",
       "id": "universe_solbodyregistry_fsolsolarsystemrow_gm",
       "community": 20,
       "norm_label": "gm"
@@ -10014,7 +10194,7 @@
       "label": "FSOLSecularElements",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L18",
+      "source_location": "L20",
       "id": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements",
       "community": 20,
       "norm_label": "fsolsecularelements"
@@ -10023,16 +10203,43 @@
       "label": "Elements",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L18",
+      "source_location": "L20",
       "id": "universe_solbodyregistry_fsolsolarsystemrow_elements",
       "community": 20,
       "norm_label": "elements"
     },
     {
+      "label": "RotationPeriodH",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L21",
+      "id": "universe_solbodyregistry_fsolsolarsystemrow_rotationperiodh",
+      "community": 20,
+      "norm_label": "rotationperiodh"
+    },
+    {
+      "label": "AxialTiltDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L22",
+      "id": "universe_solbodyregistry_fsolsolarsystemrow_axialtiltdeg",
+      "community": 20,
+      "norm_label": "axialtiltdeg"
+    },
+    {
+      "label": "W0Deg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L23",
+      "id": "universe_solbodyregistry_fsolsolarsystemrow_w0deg",
+      "community": 20,
+      "norm_label": "w0deg"
+    },
+    {
       "label": "AddBody()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L54",
+      "source_location": "L68",
       "id": "universe_solbodyregistry_addbody",
       "community": 20,
       "norm_label": "addbody()"
@@ -10041,7 +10248,7 @@
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L54",
+      "source_location": "L68",
       "id": "source_soltest_universe_solbodyregistry_cpp_int32",
       "community": 20,
       "norm_label": "int32"
@@ -10050,7 +10257,7 @@
       "label": "FSOLBodyDef",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L54",
+      "source_location": "L68",
       "id": "fsolbodydef",
       "community": 20,
       "norm_label": "fsolbodydef"
@@ -10059,7 +10266,7 @@
       "label": "PopulateSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L71",
+      "source_location": "L89",
       "id": "universe_solbodyregistry_populatesolarsystem",
       "community": 20,
       "norm_label": "populatesolarsystem()"
@@ -10068,7 +10275,7 @@
       "label": "Update()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L98",
+      "source_location": "L123",
       "id": "universe_solbodyregistry_update",
       "community": 20,
       "norm_label": "update()"
@@ -10077,7 +10284,7 @@
       "label": "Num()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L122",
+      "source_location": "L151",
       "id": "universe_solbodyregistry_num",
       "community": 20,
       "norm_label": "num()"
@@ -10086,7 +10293,7 @@
       "label": "FindByName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L129",
+      "source_location": "L158",
       "id": "universe_solbodyregistry_findbyname",
       "community": 20,
       "norm_label": "findbyname()"
@@ -10095,7 +10302,7 @@
       "label": "FName",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L129",
+      "source_location": "L158",
       "id": "source_soltest_universe_solbodyregistry_cpp_fname",
       "community": 20,
       "norm_label": "fname"
@@ -10104,7 +10311,7 @@
       "label": "GetName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L136",
+      "source_location": "L165",
       "id": "universe_solbodyregistry_getname",
       "community": 140,
       "norm_label": "getname()"
@@ -10113,7 +10320,7 @@
       "label": "GetParent()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L143",
+      "source_location": "L172",
       "id": "universe_solbodyregistry_getparent",
       "community": 20,
       "norm_label": "getparent()"
@@ -10122,7 +10329,7 @@
       "label": "GetRadiusM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L150",
+      "source_location": "L179",
       "id": "universe_solbodyregistry_getradiusm",
       "community": 20,
       "norm_label": "getradiusm()"
@@ -10131,7 +10338,7 @@
       "label": "GetGM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L157",
+      "source_location": "L186",
       "id": "universe_solbodyregistry_getgm",
       "community": 20,
       "norm_label": "getgm()"
@@ -10140,7 +10347,7 @@
       "label": "GetPositionsM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L185",
+      "source_location": "L214",
       "id": "universe_solbodyregistry_getpositionsm",
       "community": 20,
       "norm_label": "getpositionsm()"
@@ -10149,7 +10356,7 @@
       "label": "TConstArrayView",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L185",
+      "source_location": "L214",
       "id": "source_soltest_universe_solbodyregistry_cpp_tconstarrayview",
       "community": 20,
       "norm_label": "tconstarrayview"
@@ -10158,7 +10365,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L185",
+      "source_location": "L214",
       "id": "source_soltest_universe_solbodyregistry_cpp_fvector3d",
       "community": 20,
       "norm_label": "fvector3d"
@@ -10167,7 +10374,7 @@
       "label": "GetVelocitiesMps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L192",
+      "source_location": "L221",
       "id": "universe_solbodyregistry_getvelocitiesmps",
       "community": 20,
       "norm_label": "getvelocitiesmps()"
@@ -10194,7 +10401,7 @@
       "label": "FSOLBodyRegistry()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.h",
-      "source_location": "L23",
+      "source_location": "L26",
       "id": "universe_solbodyregistry_fsolbodyregistry",
       "community": 40,
       "norm_label": "fsolbodyregistry()"
@@ -10203,7 +10410,7 @@
       "label": "class",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.h",
-      "source_location": "L23",
+      "source_location": "L26",
       "id": "source_soltest_universe_solbodyregistry_h_class",
       "community": 40,
       "norm_label": "class"
@@ -10306,6 +10513,69 @@
       "id": "source_soltest_universe_solbodyregistrysubsystem_h_soltest_api",
       "community": 49,
       "norm_label": "soltest_api"
+    },
+    {
+      "label": "SOLBodyRotation.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_universe_solbodyrotation_cpp_universe_solbodyrotation",
+      "community": 151,
+      "norm_label": "solbodyrotation.cpp"
+    },
+    {
+      "label": "TiltRotation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L14",
+      "id": "universe_solbodyrotation_tiltrotation",
+      "community": 151,
+      "norm_label": "tiltrotation()"
+    },
+    {
+      "label": "FQuat4d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L14",
+      "id": "source_soltest_universe_solbodyrotation_cpp_fquat4d",
+      "community": 151,
+      "norm_label": "fquat4d"
+    },
+    {
+      "label": "ComputeOrientation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L21",
+      "id": "universe_solbodyrotation_computeorientation",
+      "community": 151,
+      "norm_label": "computeorientation()"
+    },
+    {
+      "label": "SOLBodyRotation.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.h",
+      "source_location": "L1",
+      "id": "source_soltest_universe_solbodyrotation_h_universe_solbodyrotation",
+      "community": 152,
+      "norm_label": "solbodyrotation.h"
+    },
+    {
+      "label": "SOLBodyRotation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.h",
+      "source_location": "L11",
+      "id": "universe_solbodyrotation_solbodyrotation",
+      "community": 152,
+      "norm_label": "solbodyrotation()"
+    },
+    {
+      "label": "namespace",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.h",
+      "source_location": "L11",
+      "id": "source_soltest_universe_solbodyrotation_h_namespace",
+      "community": 152,
+      "norm_label": "namespace"
     },
     {
       "label": "SOLKepler.cpp",
@@ -10567,6 +10837,15 @@
       "id": "universe_solrenderplacement_ecliptictounreal",
       "community": 39,
       "norm_label": "ecliptictounreal()"
+    },
+    {
+      "label": "FQuat4d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLRenderPlacement.cpp",
+      "source_location": "L42",
+      "id": "source_soltest_universe_solrenderplacement_cpp_fquat4d",
+      "community": 39,
+      "norm_label": "fquat4d"
     },
     {
       "label": "SOLRenderPlacement.h",
@@ -11499,7 +11778,7 @@
       "label": "graphify",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L149",
+      "source_location": "L150",
       "id": "claude_graphify",
       "community": 22,
       "norm_label": "graphify"
@@ -11636,7 +11915,7 @@
       "source_file": "Docs/GAME_MECHANICS.md",
       "source_location": "L1",
       "id": "docs_game_mechanics",
-      "community": 31,
+      "community": 129,
       "norm_label": "game_mechanics.md"
     },
     {
@@ -11726,7 +12005,7 @@
       "source_file": "Docs/Plans/1-solar-system-architecture-plan.md",
       "source_location": "L1",
       "id": "plans_1_solar_system_architecture_plan",
-      "community": 0,
+      "community": 57,
       "norm_label": "1-solar-system-architecture-plan.md"
     },
     {
@@ -11764,6 +12043,51 @@
       "id": "plans_1_solar_system_architecture_plan_cross_cutting_tooling",
       "community": 57,
       "norm_label": "cross-cutting tooling"
+    },
+    {
+      "label": "12-planet-axial-rotation-plan.md",
+      "file_type": "document",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L1",
+      "id": "plans_12_planet_axial_rotation_plan",
+      "community": 150,
+      "norm_label": "12-planet-axial-rotation-plan.md"
+    },
+    {
+      "label": "Planet Axial Rotation \u2014 Implementation Plan",
+      "file_type": "document",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L3",
+      "id": "plans_12_planet_axial_rotation_plan_planet_axial_rotation_implementation_plan",
+      "community": 150,
+      "norm_label": "planet axial rotation \u2014 implementation plan"
+    },
+    {
+      "label": "Global constraints",
+      "file_type": "document",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L12",
+      "id": "plans_12_planet_axial_rotation_plan_global_constraints",
+      "community": 150,
+      "norm_label": "global constraints"
+    },
+    {
+      "label": "Steps",
+      "file_type": "document",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L20",
+      "id": "plans_12_planet_axial_rotation_plan_steps",
+      "community": 150,
+      "norm_label": "steps"
+    },
+    {
+      "label": "Cross-cutting",
+      "file_type": "document",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L44",
+      "id": "plans_12_planet_axial_rotation_plan_cross_cutting",
+      "community": 150,
+      "norm_label": "cross-cutting"
     },
     {
       "label": "2-foundations-flight-scaffold-plan.md",
@@ -11913,7 +12237,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/4-surface-lock-plan.md",
-      "source_location": "L61",
+      "source_location": "L56",
       "id": "plans_4_surface_lock_plan_cross_cutting",
       "community": 143,
       "norm_label": "cross-cutting"
@@ -11978,7 +12302,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L3",
       "id": "research_ue_performance_guidelines_unreal_engine_5_c_game_code_performance_guidelines_epic_tom_looman",
-      "community": 21,
+      "community": 113,
       "norm_label": "unreal engine 5 c++ / game-code performance guidelines (epic + tom looman)"
     },
     {
@@ -11987,7 +12311,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L13",
       "id": "research_ue_performance_guidelines_1_review_checklist",
-      "community": 21,
+      "community": 113,
       "norm_label": "1. review checklist"
     },
     {
@@ -11996,7 +12320,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L15",
       "id": "research_ue_performance_guidelines_a_tick_and_update_cost",
-      "community": 21,
+      "community": 113,
       "norm_label": "a. tick and update cost"
     },
     {
@@ -12005,7 +12329,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L30",
       "id": "research_ue_performance_guidelines_b_memory_allocation_and_gc",
-      "community": 21,
+      "community": 113,
       "norm_label": "b. memory, allocation and gc"
     },
     {
@@ -12014,7 +12338,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L51",
       "id": "research_ue_performance_guidelines_c_containers_and_data_layout",
-      "community": 21,
+      "community": 113,
       "norm_label": "c. containers and data layout"
     },
     {
@@ -12023,7 +12347,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L62",
       "id": "research_ue_performance_guidelines_d_mass_ecs",
-      "community": 21,
+      "community": 113,
       "norm_label": "d. mass / ecs"
     },
     {
@@ -12032,7 +12356,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L80",
       "id": "research_ue_performance_guidelines_e_threading_and_async",
-      "community": 21,
+      "community": 113,
       "norm_label": "e. threading and async"
     },
     {
@@ -12041,7 +12365,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L90",
       "id": "research_ue_performance_guidelines_f_rendering_nanite_niagara_draw_calls_lod_materials",
-      "community": 21,
+      "community": 113,
       "norm_label": "f. rendering (nanite, niagara, draw calls, lod, materials)"
     },
     {
@@ -12050,7 +12374,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L110",
       "id": "research_ue_performance_guidelines_g_physics_and_collision",
-      "community": 21,
+      "community": 113,
       "norm_label": "g. physics and collision"
     },
     {
@@ -12059,7 +12383,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L116",
       "id": "research_ue_performance_guidelines_h_animation",
-      "community": 21,
+      "community": 113,
       "norm_label": "h. animation"
     },
     {
@@ -12068,7 +12392,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L123",
       "id": "research_ue_performance_guidelines_i_streaming_and_loading",
-      "community": 21,
+      "community": 113,
       "norm_label": "i. streaming and loading"
     },
     {
@@ -12077,7 +12401,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L130",
       "id": "research_ue_performance_guidelines_j_profiling_workflow_rules",
-      "community": 21,
+      "community": 113,
       "norm_label": "j. profiling workflow rules"
     },
     {
@@ -12086,7 +12410,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L139",
       "id": "research_ue_performance_guidelines_2_profiling_workflow",
-      "community": 21,
+      "community": 113,
       "norm_label": "2. profiling workflow"
     },
     {
@@ -12095,7 +12419,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L178",
       "id": "research_ue_performance_guidelines_3_caveats_and_gaps",
-      "community": 21,
+      "community": 113,
       "norm_label": "3. caveats and gaps"
     },
     {
@@ -12104,7 +12428,7 @@
       "source_file": "Docs/Research/UE_PERFORMANCE_GUIDELINES.md",
       "source_location": "L188",
       "id": "research_ue_performance_guidelines_4_sources_pages_actually_read",
-      "community": 21,
+      "community": 113,
       "norm_label": "4. sources (pages actually read)"
     },
     {
@@ -12160,6 +12484,105 @@
       "id": "sdds_1_solar_system_architecture_4_revision_history",
       "community": 60,
       "norm_label": "4. revision history"
+    },
+    {
+      "label": "12-planet-axial-rotation.md",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L1",
+      "id": "sdds_12_planet_axial_rotation",
+      "community": 148,
+      "norm_label": "12-planet-axial-rotation.md"
+    },
+    {
+      "label": "SDD 12 \u2014 Planet axial rotation (spin + axial tilt)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L3",
+      "id": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "community": 148,
+      "norm_label": "sdd 12 \u2014 planet axial rotation (spin + axial tilt)"
+    },
+    {
+      "label": "1. Problem",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L16",
+      "id": "sdds_12_planet_axial_rotation_1_problem",
+      "community": 148,
+      "norm_label": "1. problem"
+    },
+    {
+      "label": "2. Decisions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L25",
+      "id": "sdds_12_planet_axial_rotation_2_decisions",
+      "community": 148,
+      "norm_label": "2. decisions"
+    },
+    {
+      "label": "3. Design",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L36",
+      "id": "sdds_12_planet_axial_rotation_3_design",
+      "community": 148,
+      "norm_label": "3. design"
+    },
+    {
+      "label": "3.1 Pure-logic contract (Appendix A)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L38",
+      "id": "sdds_12_planet_axial_rotation_3_1_pure_logic_contract_appendix_a",
+      "community": 148,
+      "norm_label": "3.1 pure-logic contract (appendix a)"
+    },
+    {
+      "label": "3.1.1 Reference data",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L92",
+      "id": "sdds_12_planet_axial_rotation_3_1_1_reference_data",
+      "community": 148,
+      "norm_label": "3.1.1 reference data"
+    },
+    {
+      "label": "3.2 Ecliptic-to-Unreal orientation conversion",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L114",
+      "id": "sdds_12_planet_axial_rotation_3_2_ecliptic_to_unreal_orientation_conversion",
+      "community": 148,
+      "norm_label": "3.2 ecliptic-to-unreal orientation conversion"
+    },
+    {
+      "label": "3.3 Engine integration (Appendix B)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L152",
+      "id": "sdds_12_planet_axial_rotation_3_3_engine_integration_appendix_b",
+      "community": 148,
+      "norm_label": "3.3 engine integration (appendix b)"
+    },
+    {
+      "label": "4. Open questions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L166",
+      "id": "sdds_12_planet_axial_rotation_4_open_questions",
+      "community": 148,
+      "norm_label": "4. open questions"
+    },
+    {
+      "label": "5. Revision history",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L171",
+      "id": "sdds_12_planet_axial_rotation_5_revision_history",
+      "community": 148,
+      "norm_label": "5. revision history"
     },
     {
       "label": "2-foundations-flight-scaffold.md",
@@ -13148,7 +13571,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L1",
       "id": "todo_readme",
-      "community": 129,
+      "community": 1,
       "norm_label": "readme.md"
     },
     {
@@ -13157,7 +13580,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L3",
       "id": "todo_readme_todo_future_planned_items",
-      "community": 129,
+      "community": 1,
       "norm_label": "todo \u2014 future planned items"
     },
     {
@@ -13166,7 +13589,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L15",
       "id": "todo_readme_naming",
-      "community": 129,
+      "community": 1,
       "norm_label": "naming"
     },
     {
@@ -13175,7 +13598,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L20",
       "id": "todo_readme_lifecycle",
-      "community": 129,
+      "community": 1,
       "norm_label": "lifecycle"
     },
     {
@@ -13184,8 +13607,26 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L32",
       "id": "todo_readme_items",
-      "community": 129,
+      "community": 1,
       "norm_label": "items"
+    },
+    {
+      "label": "accurate-pole-directions.md",
+      "file_type": "document",
+      "source_file": "Docs/ToDo/accurate-pole-directions.md",
+      "source_location": "L1",
+      "id": "todo_accurate_pole_directions",
+      "community": 153,
+      "norm_label": "accurate-pole-directions.md"
+    },
+    {
+      "label": "Accurate per-body pole directions and precession",
+      "file_type": "document",
+      "source_file": "Docs/ToDo/accurate-pole-directions.md",
+      "source_location": "L3",
+      "id": "todo_accurate_pole_directions_accurate_per_body_pole_directions_and_precession",
+      "community": 153,
+      "norm_label": "accurate per-body pole directions and precession"
     },
     {
       "label": "planetary-perturbations.md",
@@ -13193,7 +13634,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L1",
       "id": "todo_planetary_perturbations",
-      "community": 129,
+      "community": 1,
       "norm_label": "planetary-perturbations.md"
     },
     {
@@ -13202,7 +13643,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L3",
       "id": "todo_planetary_perturbations_planetary_perturbations_n_body_integration",
-      "community": 129,
+      "community": 1,
       "norm_label": "planetary perturbations / n-body integration"
     },
     {
@@ -13247,7 +13688,7 @@
       "source_file": "README.md",
       "source_location": "L1",
       "id": "readme",
-      "community": 0,
+      "community": 129,
       "norm_label": "readme.md"
     },
     {
@@ -13256,7 +13697,7 @@
       "source_file": "README.md",
       "source_location": "L1",
       "id": "readme_soltest",
-      "community": 0,
+      "community": 129,
       "norm_label": "soltest"
     },
     {
@@ -13664,7 +14105,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 0,
+      "community": 129,
       "norm_label": "unreal-mcp server (http 127.0.0.1:33445)",
       "id": "mcp_unreal_mcp"
     },
@@ -13729,7 +14170,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 3,
+      "community": 57,
       "norm_label": "runtests.ps1 headless automation test runner",
       "id": "tools_runtests_runtests_script"
     },
@@ -13742,7 +14183,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 0,
+      "community": 129,
       "norm_label": "claude.md project guidance",
       "id": "claude_project_guidance"
     },
@@ -13770,7 +14211,7 @@
       "author": null,
       "contributor": null,
       "rationale": "Tests are written against the spec (subagent not shown implementation) so they are not retrofitted to whatever the code does.",
-      "community": 3,
+      "community": 57,
       "norm_label": "tdd with tests authored by separate subagent",
       "id": "claude_tdd_subagent_rule"
     },
@@ -13851,7 +14292,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 3,
+      "community": 57,
       "norm_label": "ue automation framework testing (soltest.<topic>.<case>)",
       "id": "claude_ue_automation_testing"
     },
@@ -13890,7 +14331,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 54,
+      "community": 57,
       "norm_label": "flight-assist vs newtonian flight model",
       "id": "docs_game_mechanics_flight_assist"
     },
@@ -13903,7 +14344,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 129,
+      "community": 1,
       "norm_label": "sim clock and time-warp",
       "id": "docs_game_mechanics_time_warp"
     },
@@ -13955,7 +14396,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 54,
+      "community": 57,
       "norm_label": "part 1b: mass ship entity, pawn proxy, flight model",
       "id": "plans_1_solar_system_architecture_plan_part_1b"
     },
@@ -14036,7 +14477,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 54,
+      "community": 57,
       "norm_label": "flight model decision (assist default, newtonian toggle)",
       "id": "sdds_1_solar_system_architecture_flight_model"
     },
@@ -14049,7 +14490,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 129,
+      "community": 1,
       "norm_label": "time decision: real date start, time-warp on bodies only",
       "id": "sdds_1_solar_system_architecture_time"
     },
@@ -26897,9 +27338,9 @@
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
       "source_location": "L473",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
-      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate",
-      "confidence_score": 1.0
+      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate"
     },
     {
       "relation": "contains",
@@ -26957,9 +27398,9 @@
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
       "source_location": "L509",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ship_solsurfacelocksmoke_cpp_ship_solsurfacelocksmoke",
-      "target": "ship_solsurfacelocksmoke_trackalignment",
-      "confidence_score": 1.0
+      "target": "ship_solsurfacelocksmoke_trackalignment"
     },
     {
       "relation": "contains",
@@ -27165,9 +27606,9 @@
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
       "source_location": "L152",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solsurfacelocksmoke_enterphase",
-      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate",
-      "confidence_score": 1.0
+      "target": "ship_solsurfacelocksmoke_lockframetoothercandidate"
     },
     {
       "relation": "calls",
@@ -27242,9 +27683,9 @@
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
       "source_location": "L220",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solsurfacelocksmoke_tickphase",
-      "target": "ship_solsurfacelocksmoke_trackalignment",
-      "confidence_score": 1.0
+      "target": "ship_solsurfacelocksmoke_trackalignment"
     },
     {
       "relation": "calls",
@@ -27286,9 +27727,9 @@
       "source_location": "L433",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ship_solsurfacelocksmoke_placeaboveearth",
-      "target": "esollevelplaceup",
-      "confidence_score": 1.0
+      "target": "esollevelplaceup"
     },
     {
       "relation": "references",
@@ -27297,9 +27738,9 @@
       "source_location": "L473",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "ship_solsurfacelocksmoke_lockframetoothercandidate",
-      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_ship_solsurfacelocksmoke_cpp_int32"
     },
     {
       "relation": "calls",
@@ -27308,9 +27749,9 @@
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.cpp",
       "source_location": "L517",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solsurfacelocksmoke_trackalignment",
-      "target": "ship_solsurfacelocksmoke_computeuperrordeg",
-      "confidence_score": 1.0
+      "target": "ship_solsurfacelocksmoke_computeuperrordeg"
     },
     {
       "relation": "references",
@@ -28126,6 +28567,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registryexpectedorientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L47",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -28141,6 +28592,16 @@
       "confidence_score": 1.0,
       "source": "tests_bodyregistrytest",
       "target": "tests_bodyregistrytest_registrylongitudedeg"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registrysamerotation",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -28172,6 +28633,17 @@
       "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_fsolregistryexpectedbody",
       "target": "source_soltest_tests_bodyregistrytest_cpp_tchar"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_bodyregistrytest_fsolregistryexpectedbody",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedbody_axialtiltdeg",
+      "confidence_score": 1.0
     },
     {
       "relation": "defines",
@@ -28221,12 +28693,100 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L33",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_bodyregistrytest_fsolregistryexpectedbody",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedbody_rotationperiodh",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L28",
       "weight": 1.0,
       "context": "field",
       "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_fsolregistryexpectedbody",
       "target": "tests_bodyregistrytest_fsolregistryexpectedbody_semimajoraxisau"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L35",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_bodyregistrytest_fsolregistryexpectedbody",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedbody_w0deg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyregistrytest_registryexpectedorientation",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedbody",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "tests_bodyregistrytest_registryexpectedorientation",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L583",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest_runtest",
+      "target": "tests_bodyregistrytest_registryexpectedorientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L61",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyregistrytest_registrysamerotation",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest_registrysamerotation",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L583",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest_runtest",
+      "target": "tests_bodyregistrytest_registrysamerotation",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -28310,6 +28870,17 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L551",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest_runtest",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L295",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -28326,6 +28897,199 @@
       "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_runtest",
       "target": "source_soltest_tests_bodyregistrytest_cpp_fstring"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest",
+      "target": "tests_bodyrotationtest_bodyrotationexpectedorientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest",
+      "target": "tests_bodyrotationtest_bodyrotationexpectedpole",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L29",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest",
+      "target": "tests_bodyrotationtest_bodyrotationquatsnear",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L40",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest",
+      "target": "tests_bodyrotationtest_bodyrotationsamerotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L329",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest",
+      "target": "tests_bodyrotationtest_runtest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_bodyrotationexpectedpole",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "tests_bodyrotationtest_bodyrotationexpectedpole",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L62",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_bodyrotationexpectedorientation",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_bodyrotationsamerotation",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L90",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L29",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyrotationtest_bodyrotationquatsnear",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L103",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "tests_bodyrotationtest_bodyrotationquatsnear",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L59",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "tests_bodyrotationtest_bodyrotationexpectedorientation",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L40",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyrotationtest_bodyrotationsamerotation",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L121",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L104",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "tests_bodyrotationtest_bodyrotationsamerotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L313",
+      "weight": 1.0,
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "tests_bodyrotationtest_bodyrotationexpectedorientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRotationTest.cpp",
+      "source_location": "L329",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyrotationtest_runtest",
+      "target": "source_soltest_tests_bodyrotationtest_cpp_fstring",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -31280,6 +32044,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest",
+      "target": "tests_renderplacementtest_renderplacementquatprobes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L243",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest",
+      "target": "tests_renderplacementtest_renderplacementquatsamerotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
       "source_location": "L118",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -31298,6 +32082,17 @@
       "target": "tests_renderplacementtest_expectedfardepthcm"
     },
     {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L313",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_runtest",
+      "target": "source_soltest_tests_renderplacementtest_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
@@ -31307,6 +32102,83 @@
       "confidence_score": 1.0,
       "source": "tests_renderplacementtest_runtest",
       "target": "source_soltest_tests_renderplacementtest_cpp_fstring"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_runtest",
+      "target": "source_soltest_tests_renderplacementtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L286",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_runtest",
+      "target": "tests_renderplacementtest_renderplacementquatprobes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L313",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_runtest",
+      "target": "tests_renderplacementtest_renderplacementquatsamerotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "generic_arg",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_renderplacementquatprobes",
+      "target": "source_soltest_tests_renderplacementtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L235",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "tests_renderplacementtest_renderplacementquatprobes",
+      "target": "source_soltest_tests_renderplacementtest_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L245",
+      "weight": 1.0,
+      "source": "tests_renderplacementtest_renderplacementquatsamerotation",
+      "target": "tests_renderplacementtest_renderplacementquatprobes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/RenderPlacementTest.cpp",
+      "source_location": "L243",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_renderplacementtest_renderplacementquatsamerotation",
+      "target": "source_soltest_tests_renderplacementtest_cpp_fquat4d",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -36499,6 +37371,17 @@
       "relation": "defines",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L22",
+      "weight": 1.0,
+      "context": "field",
+      "source": "universe_solbodyregistry_fsolsolarsystemrow",
+      "target": "universe_solbodyregistry_fsolsolarsystemrow_axialtiltdeg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L18",
       "weight": 1.0,
       "context": "field",
@@ -36538,6 +37421,28 @@
       "confidence_score": 1.0,
       "source": "universe_solbodyregistry_fsolsolarsystemrow",
       "target": "universe_solbodyregistry_fsolsolarsystemrow_radiusm"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L21",
+      "weight": 1.0,
+      "context": "field",
+      "source": "universe_solbodyregistry_fsolsolarsystemrow",
+      "target": "universe_solbodyregistry_fsolsolarsystemrow_rotationperiodh",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L23",
+      "weight": 1.0,
+      "context": "field",
+      "source": "universe_solbodyregistry_fsolsolarsystemrow",
+      "target": "universe_solbodyregistry_fsolsolarsystemrow_w0deg",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -36927,6 +37832,80 @@
       "confidence_score": 1.0,
       "source": "universe_solbodyregistrysubsystem_usolbodyregistrysubsystem",
       "target": "source_soltest_universe_solbodyregistrysubsystem_h_soltest_api"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solbodyrotation_cpp_universe_solbodyrotation",
+      "target": "universe_solbodyrotation_computeorientation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solbodyrotation_cpp_universe_solbodyrotation",
+      "target": "universe_solbodyrotation_tiltrotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L24",
+      "weight": 1.0,
+      "source": "universe_solbodyrotation_computeorientation",
+      "target": "universe_solbodyrotation_tiltrotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "universe_solbodyrotation_tiltrotation",
+      "target": "source_soltest_universe_solbodyrotation_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.cpp",
+      "source_location": "L21",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "universe_solbodyrotation_computeorientation",
+      "target": "source_soltest_universe_solbodyrotation_cpp_fquat4d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.h",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solbodyrotation_h_universe_solbodyrotation",
+      "target": "universe_solbodyrotation_solbodyrotation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRotation.h",
+      "source_location": "L11",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "universe_solbodyrotation_solbodyrotation",
+      "target": "source_soltest_universe_solbodyrotation_h_namespace",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -37355,6 +38334,17 @@
       "confidence_score": 1.0,
       "source": "universe_solrenderplacement_ecliptictounreal",
       "target": "source_soltest_universe_solrenderplacement_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLRenderPlacement.cpp",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "universe_solrenderplacement_ecliptictounreal",
+      "target": "source_soltest_universe_solrenderplacement_cpp_fquat4d",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -39009,6 +39999,46 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "plans_12_planet_axial_rotation_plan",
+      "target": "plans_12_planet_axial_rotation_plan_planet_axial_rotation_implementation_plan",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L44",
+      "weight": 1.0,
+      "source": "plans_12_planet_axial_rotation_plan_planet_axial_rotation_implementation_plan",
+      "target": "plans_12_planet_axial_rotation_plan_cross_cutting",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L12",
+      "weight": 1.0,
+      "source": "plans_12_planet_axial_rotation_plan_planet_axial_rotation_implementation_plan",
+      "target": "plans_12_planet_axial_rotation_plan_global_constraints",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/12-planet-axial-rotation-plan.md",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "plans_12_planet_axial_rotation_plan_planet_axial_rotation_implementation_plan",
+      "target": "plans_12_planet_axial_rotation_plan_steps",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Docs/Plans/2-foundations-flight-scaffold-plan.md",
       "source_location": "L3",
       "weight": 1.0,
@@ -39685,6 +40715,106 @@
       "confidence_score": 1.0,
       "source": "sdds_1_solar_system_architecture_sdd_1_solar_system_space_sim_architecture_and_cross_cutting_decisions",
       "target": "sdds_1_solar_system_architecture_4_revision_history"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation",
+      "target": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "target": "sdds_12_planet_axial_rotation_1_problem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "target": "sdds_12_planet_axial_rotation_2_decisions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L36",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "target": "sdds_12_planet_axial_rotation_3_design",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L166",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "target": "sdds_12_planet_axial_rotation_4_open_questions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L171",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_sdd_12_planet_axial_rotation_spin_axial_tilt",
+      "target": "sdds_12_planet_axial_rotation_5_revision_history",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L92",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_3_design",
+      "target": "sdds_12_planet_axial_rotation_3_1_1_reference_data",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L38",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_3_design",
+      "target": "sdds_12_planet_axial_rotation_3_1_pure_logic_contract_appendix_a",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_3_design",
+      "target": "sdds_12_planet_axial_rotation_3_2_ecliptic_to_unreal_orientation_conversion",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/12-planet-axial-rotation.md",
+      "source_location": "L152",
+      "weight": 1.0,
+      "source": "sdds_12_planet_axial_rotation_3_design",
+      "target": "sdds_12_planet_axial_rotation_3_3_engine_integration_appendix_b",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -40907,6 +42037,16 @@
       "target": "todo_readme_naming"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/ToDo/accurate-pole-directions.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "todo_accurate_pole_directions",
+      "target": "todo_accurate_pole_directions_accurate_per_body_pole_directions_and_precession",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -41523,5 +42663,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "6733591d51d533ffc0efcb6c04626393382a80fa"
+  "built_at_commit": "55ee1a186fac180b8f9ccd82bb84a238da5d8334"
 }

@@ -228,4 +228,130 @@ bool FSOLRenderPlacementAxesTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the probe vectors used to compare rotations (axes plus off-axis vectors)
+    TArray<FVector3d> RenderPlacementQuatProbes()
+    {
+        return { FVector3d(1.0, 0.0, 0.0), FVector3d(0.0, 1.0, 0.0), FVector3d(0.0, 0.0, 1.0),
+            FVector3d(0.3, -0.7, 0.2), FVector3d(-2.0, 1.5, 4.0), FVector3d(5.0, 3.0, -1.0) };
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true when two quaternions rotate every probe vector identically within a relative tolerance
+    bool RenderPlacementQuatSameRotation(const FQuat4d& actual, const FQuat4d& expected, const double tolerance)
+    {
+        for (const FVector3d& probe : RenderPlacementQuatProbes())
+        {
+            if (!SOLTestHelpers::VectorsNear(actual.RotateVector(probe), expected.RotateVector(probe), tolerance))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRenderPlacementQuatRoundTripTest, "SOLTest.RenderPlacement.EclipticToUnrealQuatCommutes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// For ecliptic rotation M and vector v: EclipticToUnreal(M) rotating EclipticToUnreal(v) == EclipticToUnreal(M v)
+bool FSOLRenderPlacementQuatRoundTripTest::RunTest(const FString& /*parameters*/)
+{
+    // Axis (not necessarily unit) and angle (deg) of each ecliptic rotation
+    struct FSOLRenderQuatCase
+    {
+        FVector3d Axis;
+        double AngleDeg;
+    };
+    const FSOLRenderQuatCase cases[] =
+    {
+        { FVector3d(0.0, 0.0, 1.0), 90.0 },
+        { FVector3d(1.0, 0.0, 0.0), 37.0 },
+        { FVector3d(0.0, 1.0, 0.0), -123.0 },
+        { FVector3d(1.0, 2.0, 3.0), 71.5 },
+        { FVector3d(-2.0, 1.0, 0.5), 200.0 },
+        { FVector3d(0.4, -0.9, -0.3), -15.0 },
+        { FVector3d(0.0, 1.0, 1.0), 179.0 },
+    };
+    for (const FSOLRenderQuatCase& testCase : cases)
+    {
+        const FQuat4d ecliptic(testCase.Axis.GetSafeNormal(), FMath::DegreesToRadians(testCase.AngleDeg));
+        const FQuat4d unreal = SOLRender::EclipticToUnreal(ecliptic);
+        const FString label = FString::Printf(TEXT("axis (%.2f, %.2f, %.2f) angle %.1f"), testCase.Axis.X,
+            testCase.Axis.Y, testCase.Axis.Z, testCase.AngleDeg);
+        TestTrue(*FString::Printf(TEXT("%s: unit quaternion"), *label), FMath::Abs(unreal.Size() - 1.0) < 1e-12);
+        for (const FVector3d& probe : RenderPlacementQuatProbes())
+        {
+            const FVector3d convertedThenRotated = unreal.RotateVector(SOLRender::EclipticToUnreal(probe));
+            const FVector3d rotatedThenConverted = SOLRender::EclipticToUnreal(ecliptic.RotateVector(probe));
+            TestTrue(*FString::Printf(TEXT("%s, probe (%.2f, %.2f, %.2f): conversion commutes with rotation"), *label,
+                probe.X, probe.Y, probe.Z),
+                SOLTestHelpers::VectorsNear(convertedThenRotated, rotatedThenConverted, 1e-12));
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRenderPlacementQuatWorkedExampleTest,
+    "SOLTest.RenderPlacement.EclipticToUnrealQuatZ90BecomesMinus90",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 12 worked example: +90 deg about ecliptic +Z (+X -> +Y) converts to -90 deg about +Z in the Unreal frame
+bool FSOLRenderPlacementQuatWorkedExampleTest::RunTest(const FString& /*parameters*/)
+{
+    const FVector3d zAxis(0.0, 0.0, 1.0);
+    const FQuat4d ecliptic(zAxis, FMath::DegreesToRadians(90.0));
+    TestTrue(TEXT("Ecliptic rotation sends +X to +Y"),
+        SOLTestHelpers::VectorsNear(ecliptic.RotateVector(FVector3d(1.0, 0.0, 0.0)), FVector3d(0.0, 1.0, 0.0), 1e-12));
+
+    const FQuat4d unreal = SOLRender::EclipticToUnreal(ecliptic);
+    TestTrue(TEXT("Unreal rotation is -90 deg about +Z"),
+        RenderPlacementQuatSameRotation(unreal, FQuat4d(zAxis, FMath::DegreesToRadians(-90.0)), 1e-12));
+    TestTrue(TEXT("Unreal rotation sends +X to -Y (the mirrored +Y)"),
+        SOLTestHelpers::VectorsNear(unreal.RotateVector(FVector3d(1.0, 0.0, 0.0)), FVector3d(0.0, -1.0, 0.0), 1e-12));
+    TestTrue(TEXT("Unreal rotation leaves +Z unchanged"),
+        SOLTestHelpers::VectorsNear(unreal.RotateVector(zAxis), zAxis, 1e-12));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRenderPlacementQuatTwiceTest, "SOLTest.RenderPlacement.EclipticToUnrealQuatTwiceIsIdentity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Converting a rotation twice gives back a quaternion that rotates vectors exactly like the original
+bool FSOLRenderPlacementQuatTwiceTest::RunTest(const FString& /*parameters*/)
+{
+    const FQuat4d rotations[] =
+    {
+        FQuat4d(FVector3d(1.0, 2.0, 3.0).GetSafeNormal(), 1.1),
+        FQuat4d(FVector3d(0.0, 1.0, 0.0), -0.6),
+        FQuat4d(FVector3d(-2.0, 1.0, 0.5).GetSafeNormal(), 3.0),
+    };
+    for (const FQuat4d& rotation : rotations)
+    {
+        const FQuat4d twice = SOLRender::EclipticToUnreal(SOLRender::EclipticToUnreal(rotation));
+        TestTrue(*FString::Printf(TEXT("(%.3f, %.3f, %.3f, %.3f) converted twice rotates like the original"),
+            rotation.X, rotation.Y, rotation.Z, rotation.W), RenderPlacementQuatSameRotation(twice, rotation, 1e-12));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRenderPlacementQuatIdentityTest, "SOLTest.RenderPlacement.EclipticToUnrealQuatIdentity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The identity rotation converts to the identity rotation
+bool FSOLRenderPlacementQuatIdentityTest::RunTest(const FString& /*parameters*/)
+{
+    const FQuat4d converted = SOLRender::EclipticToUnreal(FQuat4d::Identity);
+    TestTrue(TEXT("Identity rotates like identity"), RenderPlacementQuatSameRotation(converted, FQuat4d::Identity, 1e-15));
+    // FQuat4d::Equals accepts either sign of the quaternion
+    TestTrue(TEXT("Identity components (up to sign)"), converted.Equals(FQuat4d::Identity, 1e-15));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
