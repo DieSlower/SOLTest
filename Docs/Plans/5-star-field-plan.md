@@ -38,7 +38,7 @@ sync if the design shifts.
   added a validated placement self-check (catches deliberately-injected splatting bugs)
   that found and fixed a small real edge/corner splatting inaccuracy, added atomic
   writes and a versioned parse cache. Previews independently inspected in the main
-  session: correct Milky Way band and dust-lane structure. Commit pending.)
+  session: correct Milky Way band and dust-lane structure. Commit 5591976.)
 - [ ] **4b — Content import and CelestialVault asset copy.**
   `Tools/StarField/import_star_field.py` (Unreal Python, mirrors
   `Tools/CreateSOLContent.py`'s idempotent/`-SOLRebuild` pattern): imports the cubemap
