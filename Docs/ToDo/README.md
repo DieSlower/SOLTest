@@ -41,3 +41,5 @@ archive.
   pole directions and precession, deferred from Part 3.5's simplified fixed-plane tilt.
 - [`star-diffraction-spikes.md`](star-diffraction-spikes.md) — the camera-lens
   cross/starburst flare on bright stars, deferred from Part 4's star field.
+- [`asteroid-ring-collision.md`](asteroid-ring-collision.md) — real collision against
+  asteroid-belt and ring-particle bodies, deferred from Part 5.
