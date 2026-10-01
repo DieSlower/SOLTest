@@ -60,7 +60,7 @@ Keep it in sync if the design shifts.
   better match the real belt (was uniform). 15 new automation tests, 355 total (was
   340). `SOLBodyRegistry.cpp`'s Sun-GM literal duplication noted as tech debt in
   `CLAUDE.md` rather than fixed here (cross-file cleanup, not blocking).
-- [ ] **5c — Asteroid belt Mass architecture and rendering.**
+- [x] **5c — Asteroid belt Mass architecture and rendering.**
   `FSOLMinorBodyOrbitFragment`/`FSOLMinorBodyAppearanceFragment`,
   `USOLMinorBodyOrbitProcessor` (SDD 6 §3.2 — mirrors `USOLShipFlightProcessor`'s
   chunk-parallel structure, far simpler: no gravity/collision/control), and
@@ -69,6 +69,20 @@ Keep it in sync if the design shifts.
   population). Screenshot verification. Adversarial review with explicit focus on
   per-frame bulk-transform-update cost at ~51,000 instances (the performance
   checklist's new concern this part introduces), fix, commit.
+  **Built:** actual belt is ~9,268 instances (500 real + ~8,768 fill), not ~51,000 —
+  see SDD 6 Amendment 3. Two adversarial-review rounds found and fixed: a real
+  performance bug (`bMarkRenderStateDirty=true` rebuilding both ISM scene proxies
+  from scratch every frame — fixed to `false`), a pre-existing latent teardown-crash
+  hazard found in the already-shipped `USOLShipSubsystem::Deinitialize` (fixed there
+  too, same pattern as the new subsystem's `PreDeinitialize`), a data-layout split
+  (`FSOLMinorBodyOrbitFragment` vs. the new `FSOLMinorBodyRenderFragment`), and a
+  style-guide UObject-access-in-loop fix. 360 automation tests passing (was 355).
+  Headless `-SOLSmokeFlight` re-verified clean (9/9, no crash) after every fix round.
+  **Not yet done: real PIE screenshot verification and `stat`/Insights profiling
+  evidence for the per-frame ISM cost** — both need an interactive/real-RHI editor
+  session this pass didn't have. Tracked as the one open item before 5c is fully
+  verified (SDD 6 Amendment 3); do this next time the editor is open, before or
+  alongside 5d/5e's own screenshot checks.
 - [ ] **5d — Ring pure logic.** `Source/SOLTest/MinorBodies/SOLPlanetRing.h/.cpp` per
   SDD 6 §3.3: per-ring parameters for all four gas giants, gap-carving against every
   moon orbit that falls within a ring's radius range, reusing 5b's gap-exclusion

@@ -60,6 +60,20 @@ void USOLShipSubsystem::Initialize(FSubsystemCollectionBase& collection)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Destroys the player ship entity while the entity manager is still alive (before any subsystem deinitializes)
+void USOLShipSubsystem::PreDeinitialize()
+{
+    // Deinitialize is too late: UMassEntitySubsystem may already have torn the entity manager's storage down by then
+    // (subsystem deinitialization order is not dependency-ordered), and touching it there asserts
+    if (mEntityManager.IsValid() && mEntityManager->IsEntityValid(mPlayerShip))
+    {
+        mEntityManager->DestroyEntity(mPlayerShip);
+    }
+    mPlayerShip = FMassEntityHandle();
+    Super::PreDeinitialize();
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Unhooks from the universe update and releases the Mass objects
 void USOLShipSubsystem::Deinitialize()
 {
@@ -68,10 +82,6 @@ void USOLShipSubsystem::Deinitialize()
         Anchor->OnBodiesUpdated().Remove(mBodiesUpdatedHandle);
     }
     mBodiesUpdatedHandle.Reset();
-    if (mEntityManager.IsValid() && mEntityManager->IsEntityValid(mPlayerShip))
-    {
-        mEntityManager->DestroyEntity(mPlayerShip);
-    }
     mPlayerShip = FMassEntityHandle();
     mSmokeFlight.Reset();
     mCommandBuffer.Reset();

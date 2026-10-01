@@ -72,9 +72,10 @@ flowchart TD
 | `UI/` | Canvas flight HUD, radar, orbit lines, F3 speed panel, and their pure layout and format math | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLOrbitLines`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
 | `StarField/` | Star field (Part 4, issue #5): the baked star data asset (4b) and the runtime sky actor (4c) that draws the bright-star sprites and the faint-star cubemap sphere. Content is produced offline by `Tools/StarField/` (bake, then `import_star_field.py`, then `create_star_field_materials.py`) | `SOLStarFieldData`, `SOLStarField` |
+| `MinorBodies/` | Minor bodies (Part 5, issue #6): the asteroid belt's pure-logic generator (5b), the shared minor-body orbit math, Mass fragments and orbit processor, the subsystem that spawns and steps the belt entities, and the belt's instanced-mesh visuals (5c) | `SOLAsteroidBelt`, `SOLMinorBodyOrbit`, `SOLMinorBodyFragments`, `SOLMinorBodyOrbitProcessor`, `SOLMinorBodySubsystem`, `SOLAsteroidBeltVisuals` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
 | `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
-| `Game/` | Game mode (default pawn and HUD, spawns the body visuals and the star field, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
+| `Game/` | Game mode (default pawn and HUD, spawns the body visuals, the star field and the asteroid-belt visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
 ---
@@ -106,8 +107,9 @@ sequenceDiagram
     Ship->>Proc: Executor::Run (substeps: gravity, SOLFlight::Step, swept collision, surface-lock alignment)
     Ship->>Ship: UpdateSurfaceLock (state machine on this frame's ship and bodies; engaging calls Tgt LockToBodyIndex)
     Ship->>Anchor: SyncObserverPositionM(ship position)
+    Note over Anchor: OnBodiesUpdated also runs USOLMinorBodySubsystem (Executor::Run of USOLMinorBodyOrbitProcessor, raw ecliptic positions)
     Anchor->>Anchor: anchor selector update (25% hysteresis), RebaseRenderOrigin
-    Anchor->>Vis: OnUniverseUpdated (place bodies, pawn follows ship)
+    Anchor->>Vis: OnUniverseUpdated (place bodies, pawn follows ship, ASOLAsteroidBeltVisuals bulk-updates its ISMs)
     Note over HUD: after the world tick, at draw time
     HUD->>HUD: read subsystems, draw reticle, markers, bracket, radar, text
 ```
@@ -198,8 +200,16 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 **Level** (`Source/SOLTest/Level/`, Part 3)
 - `FSOLSurfaceLockParams` / `FSOLSurfaceLockState` / `SOLSurfaceLock` (pure, `SOLSurfaceLock.h`): `UpdateSurfaceLockState` (the auto/manual engage-warn-release state machine, with a suppression latch so a manual release can't be immediately overridden by auto-engage), `TargetUpDir` and `ApplyAlignmentCorrection` (a minimal shortest-arc rotation of the ship's whole orientation toward "up = away from the locked body," not a roll-only correction, so there is no attitude-dependent singularity). Called by `USOLShipSubsystem` (state machine, once per step), `USOLShipFlightProcessor` (alignment, per substep) and `ASOLFlightHud` (`ComputeManualRangeM` for the hint line).
 
+**MinorBodies** (`Source/SOLTest/MinorBodies/`, Part 5)
+- `SOLAsteroidBelt` (pure, `SOLAsteroidBelt.h`, 5b): the 500 real asteroids plus the deterministic family-cluster fill (`GenerateBelt(seed)`).
+- `SOLMinorBodyOrbit::ComputePositionM` (pure, `SOLMinorBodyOrbit.h`, 5c): parent position + `SOLKepler::ElementsToState(elements.AtCenturies(t))`, in raw ecliptic meters.
+- `FSOLMinorBodyOrbitFragment` / `FSOLMinorBodyRenderFragment` / `FSOLMinorBodyStateFragment` / `FSOLMinorBodyAppearanceFragment` (Mass, `SOLMinorBodyFragments.h`): immutable elements + parent index (processor-only); immutable radius + per-variant `InstanceIndex` (visuals-only, split out from the orbit fragment in 5c's review so neither consumer's hot loop drags the other's unused bytes through cache); the per-frame position (raw ecliptic universe meters, NOT the Unreal-handed `FSOLBodyFrameCache` frame); the const-shared rendering variant (`SOLMinorBodyVariant`: 0 real, 1 family fill).
+- `USOLMinorBodyOrbitProcessor` (Mass, not phase-registered): one Kepler solve per entity per run, parallel chunks, parent positions from `FSOLBodyRegistry::GetPositionsM`.
+- `USOLMinorBodySubsystem` (world subsystem): at `OnWorldBeginPlay` generates the belt with `SOL::ASTEROID_BELT_SEED` and batch-creates one entity batch per variant; runs the processor from `OnBodiesUpdated`; destroys its entities in `PreDeinitialize` (in `Deinitialize` the Mass entity manager may already be gone).
+- `ASOLAsteroidBeltVisuals` (engine actor, spawned by `ASOLGameMode`): one `UInstancedStaticMeshComponent` per variant (generic body sphere and material, placeholder grays), pinned at the Unreal origin. On `OnUniverseUpdated` it runs its own read-only parallel query, converts each position with `USOLAnchorSubsystem::ComputeRenderPlacement`, and pushes each variant with one `BatchUpdateInstancesTransforms`.
+
 **Game** (`Source/SOLTest/Game/`)
-- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals` and `ASOLStarField`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
+- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, `ASOLStarField` and `ASOLAsteroidBeltVisuals`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
 - `SOLInputHelpers` (engine, `SOLInputHelpers.h`): shared helpers that create Enhanced Input actions and mappings in C++.
 - `ASOLSpectatorPawn` (engine, `SOLSpectatorPawn.h`): a debug free-fly camera that rides the ship with `-SOLSpectator`.
 

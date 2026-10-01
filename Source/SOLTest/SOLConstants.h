@@ -92,6 +92,10 @@ namespace SOL
     // ASOLStarField pins its sprites and sky to the Unreal origin and relies on this bound staying small; see SDD 5 3.2
     inline constexpr double RENDER_REBASE_DISTANCE_M = 1.0e4;
 
+    // Minor bodies (SDD 6): the asteroid belt's generation seed, fixed so the belt is identical every session; a future
+    // save-game system could vary it
+    inline constexpr int32 ASTEROID_BELT_SEED = 20260601;
+
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000
     inline constexpr double SECULAR_ELEMENTS_MIN_CENTURIES = -2.0;
     inline constexpr double SECULAR_ELEMENTS_MAX_CENTURIES = 0.5;
