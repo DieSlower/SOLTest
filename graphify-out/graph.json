@@ -4179,6 +4179,222 @@
       "norm_label": "soltest_api"
     },
     {
+      "label": "SOLPlanetRing.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "community": 129,
+      "norm_label": "solplanetring.cpp"
+    },
+    {
+      "label": "FSOLPlanetRingRow",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L14",
+      "id": "minorbodies_solplanetring_fsolplanetringrow",
+      "community": 129,
+      "norm_label": "fsolplanetringrow"
+    },
+    {
+      "label": "TCHAR",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L16",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_tchar",
+      "community": 129,
+      "norm_label": "tchar"
+    },
+    {
+      "label": "PlanetName",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L16",
+      "id": "minorbodies_solplanetring_fsolplanetringrow_planetname",
+      "community": 129,
+      "norm_label": "planetname"
+    },
+    {
+      "label": "InnerRadiusKm",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L17",
+      "id": "minorbodies_solplanetring_fsolplanetringrow_innerradiuskm",
+      "community": 129,
+      "norm_label": "innerradiuskm"
+    },
+    {
+      "label": "OuterRadiusKm",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L18",
+      "id": "minorbodies_solplanetring_fsolplanetringrow_outerradiuskm",
+      "community": 129,
+      "norm_label": "outerradiuskm"
+    },
+    {
+      "label": "FLinearColor",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L19",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_flinearcolor",
+      "community": 129,
+      "norm_label": "flinearcolor"
+    },
+    {
+      "label": "Color",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L19",
+      "id": "minorbodies_solplanetring_fsolplanetringrow_color",
+      "community": 129,
+      "norm_label": "color"
+    },
+    {
+      "label": "Density",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L20",
+      "id": "minorbodies_solplanetring_fsolplanetringrow_density",
+      "community": 129,
+      "norm_label": "density"
+    },
+    {
+      "label": "RealRings()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L73",
+      "id": "minorbodies_solplanetring_realrings",
+      "community": 129,
+      "norm_label": "realrings()"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L73",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_tarray",
+      "community": 129,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "FSOLPlanetRingDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L73",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_fsolplanetringdef",
+      "community": 129,
+      "norm_label": "fsolplanetringdef"
+    },
+    {
+      "label": "KnownResonanceGapBandsM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L91",
+      "id": "minorbodies_solplanetring_knownresonancegapbandsm",
+      "community": 129,
+      "norm_label": "knownresonancegapbandsm()"
+    },
+    {
+      "label": "FSOLRadiusBandM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L91",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_fsolradiusbandm",
+      "community": 129,
+      "norm_label": "fsolradiusbandm"
+    },
+    {
+      "label": "FName",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L91",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_fname",
+      "community": 129,
+      "norm_label": "fname"
+    },
+    {
+      "label": "MoonShepherdGapBandsM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L107",
+      "id": "minorbodies_solplanetring_moonshepherdgapbandsm",
+      "community": 129,
+      "norm_label": "moonshepherdgapbandsm()"
+    },
+    {
+      "label": "TConstArrayView",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L107",
+      "id": "source_soltest_minorbodies_solplanetring_cpp_tconstarrayview",
+      "community": 129,
+      "norm_label": "tconstarrayview"
+    },
+    {
+      "label": "IsInAnyBand()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L129",
+      "id": "minorbodies_solplanetring_isinanyband",
+      "community": 129,
+      "norm_label": "isinanyband()"
+    },
+    {
+      "label": "AllGapBandsM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L143",
+      "id": "minorbodies_solplanetring_allgapbandsm",
+      "community": 129,
+      "norm_label": "allgapbandsm()"
+    },
+    {
+      "label": "SOLPlanetRing.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solplanetring_h_minorbodies_solplanetring",
+      "community": 182,
+      "norm_label": "solplanetring.h"
+    },
+    {
+      "label": "FSOLPlanetRingDef()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L11",
+      "id": "minorbodies_solplanetring_fsolplanetringdef",
+      "community": 182,
+      "norm_label": "fsolplanetringdef()"
+    },
+    {
+      "label": "FSOLRadiusBandM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L21",
+      "id": "minorbodies_solplanetring_fsolradiusbandm",
+      "community": 182,
+      "norm_label": "fsolradiusbandm()"
+    },
+    {
+      "label": "SOLPlanetRing()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L34",
+      "id": "minorbodies_solplanetring_solplanetring",
+      "community": 182,
+      "norm_label": "solplanetring()"
+    },
+    {
+      "label": "namespace",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L34",
+      "id": "source_soltest_minorbodies_solplanetring_h_namespace",
+      "community": 182,
+      "norm_label": "namespace"
+    },
+    {
       "label": "SOLConstants.h",
       "file_type": "code",
       "source_file": "Source/SOLTest/SOLConstants.h",
@@ -7431,7 +7647,7 @@
       "label": "RegistryChildElements()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L169",
+      "source_location": "L177",
       "id": "tests_bodyregistrytest_registrychildelements",
       "community": 23,
       "norm_label": "registrychildelements()"
@@ -7440,7 +7656,7 @@
       "label": "FSOLSecularElements",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L169",
+      "source_location": "L177",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fsolsecularelements",
       "community": 23,
       "norm_label": "fsolsecularelements"
@@ -7449,7 +7665,7 @@
       "label": "RegistryChildFrame()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L184",
+      "source_location": "L192",
       "id": "tests_bodyregistrytest_registrychildframe",
       "community": 23,
       "norm_label": "registrychildframe()"
@@ -7458,7 +7674,7 @@
       "label": "FQuat4d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L184",
+      "source_location": "L192",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fquat4d",
       "community": 23,
       "norm_label": "fquat4d"
@@ -7467,7 +7683,7 @@
       "label": "RegistryChildOrbitGM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L199",
+      "source_location": "L207",
       "id": "tests_bodyregistrytest_registrychildorbitgm",
       "community": 23,
       "norm_label": "registrychildorbitgm()"
@@ -7476,7 +7692,7 @@
       "label": "RegistryExpectedChildState()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L210",
+      "source_location": "L218",
       "id": "tests_bodyregistrytest_registryexpectedchildstate",
       "community": 23,
       "norm_label": "registryexpectedchildstate()"
@@ -7485,7 +7701,7 @@
       "label": "FSOLOrbitState",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L210",
+      "source_location": "L218",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fsolorbitstate",
       "community": 23,
       "norm_label": "fsolorbitstate"
@@ -7494,7 +7710,7 @@
       "label": "RegistryExpectedOrientation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L224",
+      "source_location": "L232",
       "id": "tests_bodyregistrytest_registryexpectedorientation",
       "community": 23,
       "norm_label": "registryexpectedorientation()"
@@ -7503,7 +7719,7 @@
       "label": "RegistrySameRotation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L232",
+      "source_location": "L240",
       "id": "tests_bodyregistrytest_registrysamerotation",
       "community": 23,
       "norm_label": "registrysamerotation()"
@@ -7512,7 +7728,7 @@
       "label": "RegistryHasSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L250",
+      "source_location": "L258",
       "id": "tests_bodyregistrytest_registryhassolarsystem",
       "community": 23,
       "norm_label": "registryhassolarsystem()"
@@ -7521,7 +7737,7 @@
       "label": "FAutomationTestBase",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L250",
+      "source_location": "L258",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fautomationtestbase",
       "community": 23,
       "norm_label": "fautomationtestbase"
@@ -7530,7 +7746,7 @@
       "label": "FSOLBodyRegistry",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L250",
+      "source_location": "L258",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fsolbodyregistry",
       "community": 23,
       "norm_label": "fsolbodyregistry"
@@ -7539,7 +7755,7 @@
       "label": "RegistryLongitudeDeg()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L257",
+      "source_location": "L265",
       "id": "tests_bodyregistrytest_registrylongitudedeg",
       "community": 23,
       "norm_label": "registrylongitudedeg()"
@@ -7548,7 +7764,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L257",
+      "source_location": "L265",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fvector3d",
       "community": 23,
       "norm_label": "fvector3d"
@@ -7557,7 +7773,7 @@
       "label": "RegistrySweptAngleRad()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L269",
+      "source_location": "L277",
       "id": "tests_bodyregistrytest_registrysweptanglerad",
       "community": 23,
       "norm_label": "registrysweptanglerad()"
@@ -7566,7 +7782,7 @@
       "label": "RunTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L282",
+      "source_location": "L290",
       "id": "tests_bodyregistrytest_runtest",
       "community": 23,
       "norm_label": "runtest()"
@@ -7575,7 +7791,7 @@
       "label": "FString",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L282",
+      "source_location": "L290",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fstring",
       "community": 23,
       "norm_label": "fstring"
@@ -9207,6 +9423,123 @@
       "source_location": "L55",
       "id": "source_soltest_tests_solminorbodyorbittest_cpp_fstring",
       "community": 174,
+      "norm_label": "fstring"
+    },
+    {
+      "label": "SOLPlanetRingTest.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L1",
+      "id": "tests_solplanetringtest",
+      "community": 181,
+      "norm_label": "solplanetringtest.cpp"
+    },
+    {
+      "label": "FSOLRealRingSanity",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "id": "tests_solplanetringtest_fsolrealringsanity",
+      "community": 181,
+      "norm_label": "fsolrealringsanity"
+    },
+    {
+      "label": "TCHAR",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L34",
+      "id": "source_soltest_tests_solplanetringtest_cpp_tchar",
+      "community": 181,
+      "norm_label": "tchar"
+    },
+    {
+      "label": "PlanetName",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L34",
+      "id": "tests_solplanetringtest_fsolrealringsanity_planetname",
+      "community": 181,
+      "norm_label": "planetname"
+    },
+    {
+      "label": "InnerRadiusM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L35",
+      "id": "tests_solplanetringtest_fsolrealringsanity_innerradiusm",
+      "community": 181,
+      "norm_label": "innerradiusm"
+    },
+    {
+      "label": "OuterRadiusM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L36",
+      "id": "tests_solplanetringtest_fsolrealringsanity_outerradiusm",
+      "community": 181,
+      "norm_label": "outerradiusm"
+    },
+    {
+      "label": "RingFind()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L49",
+      "id": "tests_solplanetringtest_ringfind",
+      "community": 181,
+      "norm_label": "ringfind()"
+    },
+    {
+      "label": "FSOLPlanetRingDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L49",
+      "id": "source_soltest_tests_solplanetringtest_cpp_fsolplanetringdef",
+      "community": 181,
+      "norm_label": "fsolplanetringdef"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L49",
+      "id": "source_soltest_tests_solplanetringtest_cpp_tarray",
+      "community": 181,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "RingHasBand()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L59",
+      "id": "tests_solplanetringtest_ringhasband",
+      "community": 181,
+      "norm_label": "ringhasband()"
+    },
+    {
+      "label": "FSOLRadiusBandM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L59",
+      "id": "source_soltest_tests_solplanetringtest_cpp_fsolradiusbandm",
+      "community": 181,
+      "norm_label": "fsolradiusbandm"
+    },
+    {
+      "label": "RunTest()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L73",
+      "id": "tests_solplanetringtest_runtest",
+      "community": 181,
+      "norm_label": "runtest()"
+    },
+    {
+      "label": "FString",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L73",
+      "id": "source_soltest_tests_solplanetringtest_cpp_fstring",
+      "community": 181,
       "norm_label": "fstring"
     },
     {
@@ -11769,7 +12102,7 @@
       "label": "HostEquatorToEcliptic()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L244",
+      "source_location": "L272",
       "id": "universe_solbodyregistry_hostequatortoecliptic",
       "community": 20,
       "norm_label": "hostequatortoecliptic()"
@@ -11778,7 +12111,7 @@
       "label": "MakeBodyDef()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L277",
+      "source_location": "L305",
       "id": "universe_solbodyregistry_makebodydef",
       "community": 20,
       "norm_label": "makebodydef()"
@@ -11787,7 +12120,7 @@
       "label": "FSOLBodyDef",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L277",
+      "source_location": "L305",
       "id": "fsolbodydef",
       "community": 20,
       "norm_label": "fsolbodydef"
@@ -11796,7 +12129,7 @@
       "label": "ChildOrbitGM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L295",
+      "source_location": "L323",
       "id": "universe_solbodyregistry_childorbitgm",
       "community": 20,
       "norm_label": "childorbitgm()"
@@ -11805,7 +12138,7 @@
       "label": "AddBody()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L305",
+      "source_location": "L333",
       "id": "universe_solbodyregistry_addbody",
       "community": 20,
       "norm_label": "addbody()"
@@ -11814,7 +12147,7 @@
       "label": "PopulateSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L331",
+      "source_location": "L359",
       "id": "universe_solbodyregistry_populatesolarsystem",
       "community": 20,
       "norm_label": "populatesolarsystem()"
@@ -11823,7 +12156,7 @@
       "label": "Update()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L373",
+      "source_location": "L401",
       "id": "universe_solbodyregistry_update",
       "community": 20,
       "norm_label": "update()"
@@ -11832,7 +12165,7 @@
       "label": "Num()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L401",
+      "source_location": "L429",
       "id": "universe_solbodyregistry_num",
       "community": 20,
       "norm_label": "num()"
@@ -11841,7 +12174,7 @@
       "label": "FindByName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L408",
+      "source_location": "L436",
       "id": "universe_solbodyregistry_findbyname",
       "community": 20,
       "norm_label": "findbyname()"
@@ -11850,7 +12183,7 @@
       "label": "FName",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L408",
+      "source_location": "L436",
       "id": "source_soltest_universe_solbodyregistry_cpp_fname",
       "community": 20,
       "norm_label": "fname"
@@ -11859,7 +12192,7 @@
       "label": "GetName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L415",
+      "source_location": "L443",
       "id": "universe_solbodyregistry_getname",
       "community": 140,
       "norm_label": "getname()"
@@ -11868,7 +12201,7 @@
       "label": "GetParent()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L422",
+      "source_location": "L450",
       "id": "universe_solbodyregistry_getparent",
       "community": 20,
       "norm_label": "getparent()"
@@ -11877,7 +12210,7 @@
       "label": "GetRadiusM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L429",
+      "source_location": "L457",
       "id": "universe_solbodyregistry_getradiusm",
       "community": 20,
       "norm_label": "getradiusm()"
@@ -11886,7 +12219,7 @@
       "label": "GetGM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L436",
+      "source_location": "L464",
       "id": "universe_solbodyregistry_getgm",
       "community": 20,
       "norm_label": "getgm()"
@@ -11895,7 +12228,7 @@
       "label": "GetPositionsM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L464",
+      "source_location": "L492",
       "id": "universe_solbodyregistry_getpositionsm",
       "community": 20,
       "norm_label": "getpositionsm()"
@@ -11904,7 +12237,7 @@
       "label": "TConstArrayView",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L464",
+      "source_location": "L492",
       "id": "source_soltest_universe_solbodyregistry_cpp_tconstarrayview",
       "community": 20,
       "norm_label": "tconstarrayview"
@@ -11913,7 +12246,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L464",
+      "source_location": "L492",
       "id": "source_soltest_universe_solbodyregistry_cpp_fvector3d",
       "community": 20,
       "norm_label": "fvector3d"
@@ -11922,7 +12255,7 @@
       "label": "GetVelocitiesMps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L471",
+      "source_location": "L499",
       "id": "universe_solbodyregistry_getvelocitiesmps",
       "community": 20,
       "norm_label": "getvelocitiesmps()"
@@ -14055,7 +14388,7 @@
       "label": "6. Data flow narratives",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L218",
+      "source_location": "L219",
       "id": "docs_architecture_6_data_flow_narratives",
       "community": 107,
       "norm_label": "6. data flow narratives"
@@ -14064,7 +14397,7 @@
       "label": "6.1 Player presses W",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L220",
+      "source_location": "L221",
       "id": "docs_architecture_6_1_player_presses_w",
       "community": 107,
       "norm_label": "6.1 player presses w"
@@ -14073,7 +14406,7 @@
       "label": "6.2 M pressed with Mars selected",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L238",
+      "source_location": "L239",
       "id": "docs_architecture_6_2_m_pressed_with_mars_selected",
       "community": 107,
       "norm_label": "6.2 m pressed with mars selected"
@@ -14082,7 +14415,7 @@
       "label": "6.3 Radar draw",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L245",
+      "source_location": "L246",
       "id": "docs_architecture_6_3_radar_draw",
       "community": 107,
       "norm_label": "6.3 radar draw"
@@ -14091,7 +14424,7 @@
       "label": "7. Testing architecture",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L253",
+      "source_location": "L254",
       "id": "docs_architecture_7_testing_architecture",
       "community": 107,
       "norm_label": "7. testing architecture"
@@ -14100,7 +14433,7 @@
       "label": "8. Extension points for future parts",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L274",
+      "source_location": "L275",
       "id": "docs_architecture_8_extension_points_for_future_parts",
       "community": 107,
       "norm_label": "8. extension points for future parts"
@@ -14109,7 +14442,7 @@
       "label": "Keeping this document in sync",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L286",
+      "source_location": "L287",
       "id": "docs_architecture_keeping_this_document_in_sync",
       "community": 107,
       "norm_label": "keeping this document in sync"
@@ -14532,7 +14865,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
-      "source_location": "L97",
+      "source_location": "L105",
       "id": "plans_6_moons_asteroids_rings_plan_cross_cutting",
       "community": 166,
       "norm_label": "cross-cutting"
@@ -15792,7 +16125,7 @@
       "label": "3.4 Testing",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L145",
+      "source_location": "L151",
       "id": "sdds_6_moons_asteroids_rings_3_4_testing",
       "community": 165,
       "norm_label": "3.4 testing"
@@ -15801,7 +16134,7 @@
       "label": "4. Open questions",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L163",
+      "source_location": "L169",
       "id": "sdds_6_moons_asteroids_rings_4_open_questions",
       "community": 165,
       "norm_label": "4. open questions"
@@ -15810,7 +16143,7 @@
       "label": "5. Revision history",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L168",
+      "source_location": "L174",
       "id": "sdds_6_moons_asteroids_rings_5_revision_history",
       "community": 165,
       "norm_label": "5. revision history"
@@ -15819,7 +16152,7 @@
       "label": "Amendment 2 \u2014 5b real-asteroid count and sourcing",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L175",
+      "source_location": "L182",
       "id": "sdds_6_moons_asteroids_rings_amendment_2_5b_real_asteroid_count_and_sourcing",
       "community": 165,
       "norm_label": "amendment 2 \u2014 5b real-asteroid count and sourcing"
@@ -15828,7 +16161,7 @@
       "label": "Amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-GM fix",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L197",
+      "source_location": "L204",
       "id": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
       "community": 165,
       "norm_label": "amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-gm fix"
@@ -15837,10 +16170,19 @@
       "label": "Amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L245",
+      "source_location": "L252",
       "id": "sdds_6_moons_asteroids_rings_amendment_3_5c_implementation_frame_correctness_actual_scale_and_a_pending_profiling_gap",
       "community": 165,
       "norm_label": "amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap"
+    },
+    {
+      "label": "Amendment 4 \u2014 5d scope extension and implementation notes",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L312",
+      "id": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes",
+      "community": 165,
+      "norm_label": "amendment 4 \u2014 5d scope extension and implementation notes"
     },
     {
       "label": "README.md",
@@ -15848,7 +16190,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L1",
       "id": "sdds_readme",
-      "community": 129,
+      "community": 183,
       "norm_label": "readme.md"
     },
     {
@@ -15857,7 +16199,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L3",
       "id": "sdds_readme_software_design_documents_sdds",
-      "community": 129,
+      "community": 183,
       "norm_label": "software design documents (sdds)"
     },
     {
@@ -15866,7 +16208,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L9",
       "id": "sdds_readme_naming",
-      "community": 129,
+      "community": 183,
       "norm_label": "naming"
     },
     {
@@ -16082,7 +16424,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L1",
       "id": "todo_readme",
-      "community": 129,
+      "community": 183,
       "norm_label": "readme.md"
     },
     {
@@ -16091,7 +16433,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L3",
       "id": "todo_readme_todo_future_planned_items",
-      "community": 129,
+      "community": 183,
       "norm_label": "todo \u2014 future planned items"
     },
     {
@@ -16100,7 +16442,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L15",
       "id": "todo_readme_naming",
-      "community": 129,
+      "community": 183,
       "norm_label": "naming"
     },
     {
@@ -16109,7 +16451,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L20",
       "id": "todo_readme_lifecycle",
-      "community": 129,
+      "community": 183,
       "norm_label": "lifecycle"
     },
     {
@@ -16118,7 +16460,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L32",
       "id": "todo_readme_items",
-      "community": 129,
+      "community": 183,
       "norm_label": "items"
     },
     {
@@ -16163,7 +16505,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L1",
       "id": "todo_planetary_perturbations",
-      "community": 129,
+      "community": 183,
       "norm_label": "planetary-perturbations.md"
     },
     {
@@ -16172,7 +16514,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L3",
       "id": "todo_planetary_perturbations_planetary_perturbations_n_body_integration",
-      "community": 129,
+      "community": 183,
       "norm_label": "planetary perturbations / n-body integration"
     },
     {
@@ -16963,7 +17305,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 129,
+      "community": 183,
       "norm_label": "sim clock and time-warp",
       "id": "docs_game_mechanics_time_warp"
     },
@@ -17109,7 +17451,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 129,
+      "community": 183,
       "norm_label": "time decision: real date start, time-warp on bodies only",
       "id": "sdds_1_solar_system_architecture_time"
     },
@@ -25476,6 +25818,371 @@
       "confidence_score": 1.0,
       "source": "minorbodies_solminorbodysubsystem_usolminorbodysubsystem",
       "target": "source_soltest_minorbodies_solminorbodysubsystem_h_soltest_api"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L119",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_allgapbandsm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L14",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_fsolplanetringrow"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L105",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_isinanyband"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L74",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_knownresonancegapbandsm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_moonshepherdgapbandsm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L56",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_cpp_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_realrings"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L19",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "minorbodies_solplanetring_fsolplanetringrow_color"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L20",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "minorbodies_solplanetring_fsolplanetringrow_density"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L17",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "minorbodies_solplanetring_fsolplanetringrow_innerradiuskm"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L18",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "minorbodies_solplanetring_fsolplanetringrow_outerradiuskm"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L16",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "minorbodies_solplanetring_fsolplanetringrow_planetname"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L19",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_flinearcolor"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L16",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_fsolplanetringrow",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tchar"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L63",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_realrings",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fname"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L56",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_realrings",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L56",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_realrings",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L119",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L74",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_knownresonancegapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_moonshepherdgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L119",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L122",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "minorbodies_solplanetring_knownresonancegapbandsm"
+    },
+    {
+      "relation": "references",
+      "context": "parameter_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L74",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_knownresonancegapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fname"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L74",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_knownresonancegapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L119",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L105",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_isinanyband",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_moonshepherdgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L123",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "minorbodies_solplanetring_moonshepherdgapbandsm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_moonshepherdgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tconstarrayview"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L119",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_allgapbandsm",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tconstarrayview"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp",
+      "source_location": "L105",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_isinanyband",
+      "target": "source_soltest_minorbodies_solplanetring_cpp_tconstarrayview"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L11",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_h_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_fsolplanetringdef"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L21",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_h_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_fsolradiusbandm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L32",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solplanetring_h_minorbodies_solplanetring",
+      "target": "minorbodies_solplanetring_solplanetring"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLPlanetRing.h",
+      "source_location": "L32",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solplanetring_solplanetring",
+      "target": "source_soltest_minorbodies_solplanetring_h_namespace"
     },
     {
       "relation": "contains",
@@ -37214,6 +37921,178 @@
       "confidence_score": 1.0,
       "source": "tests_solminorbodyorbittest_runtest",
       "target": "source_soltest_tests_solminorbodyorbittest_cpp_fstring"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "source": "tests_solplanetringtest",
+      "target": "tests_solplanetringtest_fsolrealringsanity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest",
+      "target": "tests_solplanetringtest_ringfind"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L42",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest",
+      "target": "tests_solplanetringtest_ringhasband"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L205",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest",
+      "target": "tests_solplanetringtest_runtest"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_solplanetringtest_fsolrealringsanity",
+      "target": "source_soltest_tests_solplanetringtest_cpp_tchar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L35",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_solplanetringtest_fsolrealringsanity",
+      "target": "tests_solplanetringtest_fsolrealringsanity_innerradiusm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L36",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_solplanetringtest_fsolrealringsanity",
+      "target": "tests_solplanetringtest_fsolrealringsanity_outerradiusm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "field",
+      "source": "tests_solplanetringtest_fsolrealringsanity",
+      "target": "tests_solplanetringtest_fsolrealringsanity_planetname",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_ringfind",
+      "target": "source_soltest_tests_solplanetringtest_cpp_tchar"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_ringfind",
+      "target": "source_soltest_tests_solplanetringtest_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_ringfind",
+      "target": "source_soltest_tests_solplanetringtest_cpp_tarray"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L66",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_runtest",
+      "target": "tests_solplanetringtest_ringfind"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L42",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_ringhasband",
+      "target": "source_soltest_tests_solplanetringtest_cpp_tarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L42",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_ringhasband",
+      "target": "source_soltest_tests_solplanetringtest_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L157",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_runtest",
+      "target": "tests_solplanetringtest_ringhasband"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
+      "source_location": "L205",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solplanetringtest_runtest",
+      "target": "source_soltest_tests_solplanetringtest_cpp_fstring"
     },
     {
       "relation": "contains",
@@ -49041,8 +49920,18 @@
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
       "source_location": "L245",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
-      "target": "sdds_6_moons_asteroids_rings_amendment_3_5c_implementation_frame_correctness_actual_scale_and_a_pending_profiling_gap",
+      "target": "sdds_6_moons_asteroids_rings_amendment_3_5c_implementation_frame_correctness_actual_scale_and_a_pending_profiling_gap"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L312",
+      "weight": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes",
       "confidence_score": 1.0
     },
     {
@@ -50163,5 +51052,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "22e4aad80828d6230288e3dc0d315729108cd5e8"
+  "built_at_commit": "ed999dd256429486e9492ec2895096ae999faa3a"
 }

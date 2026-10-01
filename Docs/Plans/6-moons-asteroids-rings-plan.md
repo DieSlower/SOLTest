@@ -83,10 +83,18 @@ Keep it in sync if the design shifts.
   session this pass didn't have. Tracked as the one open item before 5c is fully
   verified (SDD 6 Amendment 3); do this next time the editor is open, before or
   alongside 5d/5e's own screenshot checks.
-- [ ] **5d — Ring pure logic.** `Source/SOLTest/MinorBodies/SOLPlanetRing.h/.cpp` per
+- [x] **5d — Ring pure logic.** `Source/SOLTest/MinorBodies/SOLPlanetRing.h/.cpp` per
   SDD 6 §3.3: per-ring parameters for all four gas giants, gap-carving against every
   moon orbit that falls within a ring's radius range, reusing 5b's gap-exclusion
   math. Unit-tested (TDD), adversarial review, fix, commit.
+  **Built:** scope extension (user-directed, SDD 6 Amendment 4) — added Saturn's real
+  shepherd moons Pan and Daphnis to the registry (36 bodies total, was 34) since no
+  previously-registered moon actually orbits within any ring system; built a hybrid
+  gap mechanism (fixed cited data for Saturn's resonance-based Cassini Division, a
+  generic per-moon-semi-major-axis band exclusion for Pan/Daphnis's real Encke/Keeler
+  gaps, with real per-moon gap widths after review caught a uniform-width bug making
+  Daphnis's gap ~7x too wide). 5 new `SOLTest.PlanetRing` tests + extended
+  `BodyRegistry` tests, 365 automation tests passing (was 360).
 - [ ] **5e — Ring rendering (near/far LOD).** `ASOLRingVisuals` per ringed planet:
   near-field ISM (shares 5c's Mass population/rendering approach, `ParentBodyIndex`
   set to the host planet), far-field Niagara (aggregate visual only, no per-particle

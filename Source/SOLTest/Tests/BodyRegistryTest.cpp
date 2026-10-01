@@ -16,10 +16,10 @@
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
 {
-    // Sun + 8 planets (indices 0-8, REGISTRY_EXPECTED), then 5 dwarf planets and 20 moons (REGISTRY_EXPECTED_CHILDREN)
+    // Sun + 8 planets (indices 0-8, REGISTRY_EXPECTED), then 5 dwarf planets and 22 moons (REGISTRY_EXPECTED_CHILDREN)
     constexpr int32 REGISTRY_PLANET_COUNT = 9;
-    constexpr int32 REGISTRY_CHILD_COUNT = 25;
-    constexpr int32 REGISTRY_BODY_COUNT = REGISTRY_PLANET_COUNT + REGISTRY_CHILD_COUNT;    // 34 since issue #6
+    constexpr int32 REGISTRY_CHILD_COUNT = 27;
+    constexpr int32 REGISTRY_BODY_COUNT = REGISTRY_PLANET_COUNT + REGISTRY_CHILD_COUNT;    // 36 since issue #6 Part 5d
     constexpr int32 REGISTRY_EARTH = 3;
 
     constexpr int32 REGISTRY_VENUS = 2;
@@ -143,6 +143,14 @@ namespace
         { TEXT("Iapetus"), REGISTRY_SATURN_HOST, true, 1.2051511e11, 7.343e5,
             0.023808494, 0.0276812, 15.4701, 89.8956, 165768.4234, 241.8776, 253.5208, 79.3215,
             1903.716, 26.73, 0.0, false },
+        // Ring shepherds (issue #6 Part 5d): a 133,584 / 136,505 km, P 0.575050718 / 0.5940798 d (Jacobson et al. 2008),
+        // mean e taken as 0, GM = G * mass
+        { TEXT("Pan"), REGISTRY_SATURN_HOST, true, 3.30378e5, 1.41e4,
+            0.0008929539, 0.0, 0.0009, 146.5849, 22865809.2033, 146.6508, 247.4223, 0.575050718,
+            13.8, 26.73, 0.0, false },
+        { TEXT("Daphnis"), REGISTRY_SATURN_HOST, true, 5.139211e3, 3.8e3,
+            0.0009124796, 0.0, 0.0017, 153.5761, 22133390.1607, 153.4587, 121.2292, 0.5940798,
+            14.256, 26.73, 0.0, false },
         { TEXT("Miranda"), REGISTRY_URANUS_HOST, true, 4.3e9, 2.358e5,
             0.0008679669, 0.0013, 4.4278, 147.5636, 9302578.9559, 85.5017, 280.8287, 1.413479,
             33.923496, 97.77, 0.0, false },
@@ -246,7 +254,7 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns true when the registry holds all 34 bodies: Sun, planets, dwarf planets, moons (logs a failure otherwise)
+    // Returns true when the registry holds all 36 bodies: Sun, planets, dwarf planets, moons (logs a failure otherwise)
     bool RegistryHasSolarSystem(FAutomationTestBase& test, const FSOLBodyRegistry& registry)
     {
         return test.TestEqual(TEXT("PopulateSolarSystem body count"), registry.Num(), REGISTRY_BODY_COUNT);
@@ -368,7 +376,7 @@ bool FSOLBodyRegistryPopulateClearsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("Sun is index 0 after populate"), registry.FindByName(FName(TEXT("Sun"))), 0);
 
     registry.PopulateSolarSystem();
-    TestEqual(TEXT("Populating twice still gives all 34 bodies (was nine before issue #6)"), registry.Num(),
+    TestEqual(TEXT("Populating twice still gives all 36 bodies (was nine before issue #6)"), registry.Num(),
         REGISTRY_BODY_COUNT);
     return true;
 }
@@ -452,7 +460,7 @@ bool FSOLBodyRegistrySunFixedTest::RunTest(const FString& /*parameters*/)
         }
         else
         {
-            AddError(TEXT("Position/velocity views do not hold all 34 bodies"));
+            AddError(TEXT("Position/velocity views do not hold all 36 bodies"));
         }
     }
     return true;

@@ -137,6 +137,25 @@ namespace
     //    Neptune will swing roughly +-35 deg over Triton's ~5.9-day orbit instead of staying fixed.
     //  - Eris, Makemake and Haumea pole directions are unknown: AxialTiltDeg = 0 with their measured periods.
     //  - W0Deg = 0 everywhere, matching the planets (SDD 12); a locked moon's face toward its host is not phased.
+    //
+    // Saturn's ring shepherd moons Pan and Daphnis (issue #6 Part 5d, added so SOLPlanetRing's moon-shepherd gap
+    // mechanism has real data; they sit inside the Encke and Keeler gaps of Saturn's A ring):
+    //  - a (Pan 133,584 km, Daphnis 136,505 km) is the JPL SSD satellite mean-element value. P (Pan 0.575050718 d,
+    //    Daphnis 0.5940798 d) is Jacobson, R.A., et al. (2008), "Revised orbits of Saturn's small inner satellites",
+    //    Astronomical Journal 135(1), 261-263 -- the source JPL SSD's own mean-element page cites for both periods --
+    //    matching the other moons' 6-7 significant figure precision (replacing this part's earlier 3-sig-fig estimate,
+    //    which was imprecise enough to drift LDotDegPerCy's derived mean longitude by tens of degrees per sim-year).
+    //  - i, node, longitude of periapsis and mean longitude are fetched from JPL Horizons (horizons.api, ELEMENTS,
+    //    CENTER 500@699, REF_PLANE BODY, TLIST 2451545.0) the same way as the other Saturn moons: Pan OM 247.4223,
+    //    w 259.2285, MA 359.9341, i 0.00086; Daphnis OM 121.2292, w 32.2294, MA 0.1175, i 0.00171. i is rounded to
+    //    4 decimals like the other rows (both are essentially in Saturn's equator/ring plane).
+    //  - e = 0 for both (derived/approximated): Horizons' osculating e (~0.005 for each) is dominated by Saturn's J2,
+    //    not a real free eccentricity; their mean eccentricities are tabulated as ~0 (Daphnis's real ~3e-5 eccentricity
+    //    and ~0.004 deg inclination drive the Keeler Gap's wavy edges, which this simplification does not reproduce).
+    //    With e = 0 the longitude of periapsis is kept from Horizons only for traceability; it has no effect.
+    //  - Mean radii are representative values for irregular shapes (Pan ~14.1 km, Daphnis ~3.8 km; Cassini).
+    //  - GM from G * mass with poorly constrained Cassini-era masses (Pan ~4.95e15 kg, Daphnis ~7.7e13 kg; Porco et
+    //    al. 2007, Weiss et al. 2009): Pan 3.30378e5, Daphnis 5.139211e3 m^3/s^2.
     const FSOLChildBodyRow REGISTRY_CHILD_BODIES[] =
     {
         // Dwarf planets (ecliptic, Sun-relative)
@@ -213,6 +232,15 @@ namespace
         { REGISTRY_INDEX_SATURN, ESOLElementFrame::HostEquator, { TEXT("Iapetus"), 7.343e5, 1.2051511e11,
             { 0.0238084940, 0.0, 0.0276812, 0.0, 15.4701, 0.0, 89.8956, 165768.4234, 241.8776, 0.0, 253.5208, 0.0 },
             1903.716000, 26.73, 0.0 } },
+
+        // Saturn's ring shepherds: Pan a 133,584 km, P 0.575050718 d (Encke Gap); Daphnis a 136,505 km, P 0.5940798 d
+        // (Keeler Gap); LDotDegPerCy = 13,149,000 / period_days
+        { REGISTRY_INDEX_SATURN, ESOLElementFrame::HostEquator, { TEXT("Pan"), 1.41e4, 3.30378e5,
+            { 0.0008929539, 0.0, 0.0, 0.0, 0.0009, 0.0, 146.5849, 22865809.2033, 146.6508, 0.0, 247.4223, 0.0 },
+            13.800000, 26.73, 0.0 } },
+        { REGISTRY_INDEX_SATURN, ESOLElementFrame::HostEquator, { TEXT("Daphnis"), 3.8e3, 5.139211e3,
+            { 0.0009124796, 0.0, 0.0, 0.0, 0.0017, 0.0, 153.5761, 22133390.1607, 153.4587, 0.0, 121.2292, 0.0 },
+            14.256000, 26.73, 0.0 } },
 
         // Uranus: a 129,846 / 190,929 / 265,986 / 436,298 / 583,511 km;
         // P 1.413479 / 2.520379 / 4.144177 / 8.705869 / 13.463234 d

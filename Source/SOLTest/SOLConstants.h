@@ -183,6 +183,10 @@ namespace SOL
         inline constexpr const TCHAR* SUN = TEXT("Sun");
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
         inline constexpr const TCHAR* MARS = TEXT("Mars");
+        inline constexpr const TCHAR* JUPITER = TEXT("Jupiter");
+        inline constexpr const TCHAR* SATURN = TEXT("Saturn");
+        inline constexpr const TCHAR* URANUS = TEXT("Uranus");
+        inline constexpr const TCHAR* NEPTUNE = TEXT("Neptune");
     }
 
     // Command-line switches and values used by verification runs (FParse::Value keys end in '=')
