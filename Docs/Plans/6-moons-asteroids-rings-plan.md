@@ -78,11 +78,13 @@ Keep it in sync if the design shifts.
   (`FSOLMinorBodyOrbitFragment` vs. the new `FSOLMinorBodyRenderFragment`), and a
   style-guide UObject-access-in-loop fix. 360 automation tests passing (was 355).
   Headless `-SOLSmokeFlight` re-verified clean (9/9, no crash) after every fix round.
-  **Not yet done: real PIE screenshot verification and `stat`/Insights profiling
-  evidence for the per-frame ISM cost** — both need an interactive/real-RHI editor
-  session this pass didn't have. Tracked as the one open item before 5c is fully
-  verified (SDD 6 Amendment 3); do this next time the editor is open, before or
-  alongside 5d/5e's own screenshot checks.
+  **PIE/profiling verification done (SDD 6 Amendment 5)**: 87.75 FPS average over
+  2,239 frames / 25.51s with the belt's Mass processor and ISM bulk update running the
+  whole time, 0% missed syncs at 30/60 FPS, 0 hitches/min. Also found and fixed a real
+  bug while there: `M_SOLBody` (the material the belt's ISM components render with) was
+  missing its "Used with Instanced Static Meshes" flag, so the belt had been silently
+  rendering with the engine's default material since 5c shipped — fixed and resaved.
+  5c is now fully verified.
 - [x] **5d — Ring pure logic.** `Source/SOLTest/MinorBodies/SOLPlanetRing.h/.cpp` per
   SDD 6 §3.3: per-ring parameters for all four gas giants, gap-carving against every
   moon orbit that falls within a ring's radius range, reusing 5b's gap-exclusion
