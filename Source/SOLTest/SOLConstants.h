@@ -88,7 +88,8 @@ namespace SOL
     // Rendering: bodies farther than this are pulled in with angular size preserved (1e11 cm = 1,000,000 km)
     inline constexpr double DEFAULT_MAX_RENDER_DISTANCE_CM = 1.0e11;
 
-    // Rendering: the render origin snaps back to the observer once the observer drifts this far from it (10 km)
+    // Rendering: the render origin snaps back to the observer once the observer drifts this far from it (10 km).
+    // ASOLStarField pins its sprites and sky to the Unreal origin and relies on this bound staying small; see SDD 5 3.2
     inline constexpr double RENDER_REBASE_DISTANCE_M = 1.0e4;
 
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000
@@ -232,6 +233,49 @@ namespace SOL
         // data layout, not this project's flux relative to magnitude 8 (SDD 5 section 3.1, "As built (4b)")
         inline constexpr const TCHAR* STAR_REFERENCE_MATERIAL =
             TEXT("/Game/SOL/StarField/CelestialVault/M_Stars_EnergyConservative.M_Stars_EnergyConservative");
+
+        // Star field runtime (SDD 5, 4c), created by Tools/StarField/create_star_field_materials.py (keep both in
+        // sync): the bright-star sprite material, the faint-star sky material, and the sphere the sky is drawn on
+        inline constexpr const TCHAR* STAR_SPRITE_MATERIAL =
+            TEXT("/Game/SOL/StarField/M_SOLStarSprite.M_SOLStarSprite");
+        inline constexpr const TCHAR* STAR_SKY_MATERIAL = TEXT("/Game/SOL/StarField/M_SOLStarSky.M_SOLStarSky");
+        inline constexpr const TCHAR* STAR_SKY_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+    }
+
+    // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's
+    // HALF_WORLD_MAX (~4.4e12 cm, EngineDefines.h) so its bounds stay within the large-world envelope. Depth-compressed
+    // bodies never render beyond ~2.5e11 cm (DEFAULT_MAX_RENDER_DISTANCE_CM * (1 + 0.1 * ln(d / max)) stays below that
+    // even for the map camera's farthest zoom), so the sky is 16x behind the farthest body. The engine's reverse-Z far
+    // plane is infinite, so there is no far clip to stay inside, and a float vertex at 4e12 cm is off by ~1e-7 of its
+    // distance, far below a pixel
+    inline constexpr double STAR_FIELD_SKY_RADIUS_CM = 4.0e12;
+
+    // Star field: distance of the bright-star sprites from the Unreal origin, inside the sky sphere so they draw over
+    // it and still 8x behind the farthest body
+    inline constexpr double STAR_FIELD_SPRITE_RADIUS_CM = 2.0e12;
+
+    // Star field: translucency sort priority of the additive sprites, far below the default 0, so any later world-space
+    // translucency (bolts, effects) draws over the stars instead of the camera-centered sprite bounds sorting nearest
+    inline constexpr int32 STAR_SPRITE_TRANSLUCENCY_SORT_PRIORITY = -1000;
+
+    // Star field: angular diameter of every bright-star sprite (decision 10: fixed, camera-independent). 0.006 rad
+    // (~0.34 deg, ~6 cube texels) is ~4 px at 1280x720 and ~6 px at 1920x1080 with the 90 deg chase camera, enough for
+    // the round falloff to read as a soft disc; brightness is energy-conserving, so the size never changes total light
+    inline constexpr double STAR_SPRITE_ANGULAR_DIAMETER_RAD = 0.006;
+
+    // Star field: one multiplier on both the sprites and the sky cube, so their relative brightness stays exact. 1.0
+    // shows the baked flux units as-is under the fixed exposure of ASOLBodyVisuals
+    inline constexpr float STAR_FIELD_BRIGHTNESS_SCALE = 1.0f;
+
+    // Parameter names of STAR_SPRITE_MATERIAL and STAR_SKY_MATERIAL (Tools/StarField/create_star_field_materials.py)
+    namespace StarFieldMaterialParams
+    {
+        inline constexpr const TCHAR* CUBE_TEXEL_SOLID_ANGLE = TEXT("CubeTexelSolidAngleSr"); // Sprite: from data asset
+        inline constexpr const TCHAR* SPRITE_SOLID_ANGLE = TEXT("SpriteSolidAngleSr");        // Sprite: its quad's sr
+        inline constexpr const TCHAR* BRIGHTNESS_SCALE = TEXT("BrightnessScale");             // Both materials
+
+        // Per-instance custom data of the sprite: Flux * linear Color (R, G, B)
+        inline constexpr int32 SPRITE_CUSTOM_DATA_FLOATS = 3;
     }
 
     // Vector parameter of SHIP_HULL_MATERIAL that sets its base color

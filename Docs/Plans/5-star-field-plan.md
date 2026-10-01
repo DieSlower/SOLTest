@@ -59,7 +59,7 @@ sync if the design shifts.
   confirming the test fails, then reverting the probe); the `.uproject` procedure
   gained a sidecar backup and timeout. 332/332 full suite green, independently
   re-verified. Commit 60eb498.)
-- [ ] **4c — Runtime actor.** `Source/SOLTest/StarField/ASOLStarField` per SDD 5
+- [x] **4c — Runtime actor.** `Source/SOLTest/StarField/ASOLStarField` per SDD 5
   Appendix B: `UInstancedStaticMeshComponent` populated once from `USOLStarFieldData`,
   a large inverted-sphere (or equivalent) unlit cubemap-sampling background, spawned
   by `ASOLGameMode` alongside `ASOLBodyVisuals`, translated (never rotated) to the
@@ -68,9 +68,21 @@ sync if the design shifts.
   directly, not just logged. Adversarial review (performance — confirm the ISM
   population is one-time, no per-frame allocation; style; correctness of the
   ecliptic-frame orientation against the bake), fix, re-verify, commit.
+  (Built: `Source/SOLTest/StarField/SOLStarField.h/.cpp`, spawned by `ASOLGameMode`; materials
+  `M_SOLStarSprite` and `M_SOLStarSky` in `/Game/SOL/StarField/`, made by
+  `Tools/StarField/create_star_field_materials.py`; constants and parameter names in `SOLConstants.h`.
+  - Quads face the center from creation, with no per-vertex billboard.
+  - The sprites and the sky are pinned at the Unreal origin, and the actor is fully static (moving the ISM cost
+    ~3.9 ms of game thread per frame).
+  - Radii are 2e12/4e12 cm, inside `HALF_WORLD_MAX`. Sprite translucency sort priority is −1000.
+  - `T_MilkyWay` is unused (double-counting).
+  - The `--include-bright-in-cube` cross-check aligned within ~0.3-0.4 cube texel.
+  - The adversarial review found nothing blocking, and its cheap fixes are applied.
+  - Screenshots were inspected directly. 332/332 tests pass.
+  - Commit is still pending.)
 
 ## Cross-cutting
 
-- [ ] `Docs/ARCHITECTURE.md`: new `StarField/` module entry (module map diagram, key
+- [x] `Docs/ARCHITECTURE.md`: new `StarField/` module entry (module map diagram, key
   types, frame-order note if `OnUniverseUpdated` gains a new listener).
 - [ ] No `GAME_MECHANICS.md` entry needed (not a player-facing mechanic/control).

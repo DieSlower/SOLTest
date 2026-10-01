@@ -10,7 +10,10 @@
 
 #include "SOLGameMode.generated.h"
 
-/** Game mode for the solar-system test map: spawns the body visuals and uses the ship pawn and the flight HUD. */
+/**
+ * Game mode for the solar-system test map: spawns the body visuals and the star field and uses the ship pawn and the
+ * flight HUD.
+ */
 UCLASS()
 class SOLTEST_API ASOLGameMode : public AGameModeBase
 {
@@ -21,7 +24,7 @@ public:
     // Sets the default pawn and HUD classes
     ASOLGameMode();
 
-    // Spawns the body visuals, arms the optional smoke-test screenshot, then starts play
+    // Spawns the body visuals and the star field, arms the optional smoke-test screenshot, then starts play
     virtual void StartPlay() override;
 
     // Returns true for a Game or PIE world whose game mode (world override, else project default) is an ASOLGameMode
