@@ -23,7 +23,7 @@ Keep it in sync if the design shifts.
 
 ## Steps
 
-- [ ] **5a — Moons and dwarf planets.** Pure data addition to `FSOLBodyRegistry`'s
+- [x] **5a — Moons and dwarf planets.** Pure data addition to `FSOLBodyRegistry`'s
   solar-system table (SDD 6 §3.1): real orbital elements, radii, and rotation data
   (reusing issue #12) for the Moon, Phobos/Deimos, the Galilean moons, Saturn's major
   moons (at least Titan/Enceladus/Mimas, needed by 5d's ring gaps), Uranus's and
@@ -31,6 +31,15 @@ Keep it in sync if the design shifts.
   `BodyRegistryTest.cpp`'s existing table-driven tests. Adversarial review (data
   fidelity, registry/visuals behave correctly with a larger, deeper parent-child
   hierarchy), commit.
+  **Built:** 5 dwarf planets (Ceres, Pluto, Eris, Makemake, Haumea) + 20 moons added,
+  registry total 9 → 34. Adversarial review found two real issues, fixed before commit
+  and documented in SDD 6 Amendment 1: (1) moon elements needed a host-equator→ecliptic
+  tilt conversion (new file-local `ESOLElementFrame`/`HostEquatorToEcliptic()` in
+  `SOLBodyRegistry.cpp`, not a public API change); (2) child-body orbital velocity needed
+  its own Kepler-consistent GM, decoupled from the parent's physical GM
+  (`FSOLBodyDef::OrbitGM`, `ChildOrbitGM()` — fixes a ~72 m/s/0.5% speed error at Mimas
+  that fed ship spawn/jump-arrival/collision code). 340 automation tests passing (was
+  332). `Docs/ARCHITECTURE.md` and `Docs/ToDo/accurate-pole-directions.md` updated.
 - [ ] **5b — Asteroid belt pure logic.** `Source/SOLTest/MinorBodies/SOLAsteroidBelt.h/.cpp`
   per SDD 6 §3.2: the real ~1,000-asteroid table, and the deterministic family-cluster
   generator (cluster placement across real belt element ranges minus Kirkwood gap

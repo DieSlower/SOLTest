@@ -20,6 +20,14 @@ struct SOLTEST_API FSOLBodyDef
     double RotationPeriodH = 0.0;             // sidereal rotation period, hours, always positive; 0 = no rotation
     double AxialTiltDeg = 0.0;                // 0-180 deg from ecliptic-north; > 90 = retrograde
     double W0Deg = 0.0;                       // rotation angle at J2000, degrees
+    double OrbitGM = 0.0;                     // GM used to integrate THIS body's own orbit around its parent
+                                               // (vis-viva); 0 = use the parent's own GM (the existing default, used
+                                               // for the Sun+8-planet table); set explicitly when a body's real mean
+                                               // motion doesn't match its parent's measured GM via Kepler's third law
+                                               // (e.g. a close moon shaped by the parent's oblateness) - keeps that
+                                               // mismatch from producing a wrong orbital velocity while leaving the
+                                               // body's own physical GM (used elsewhere, e.g. its own gravity on
+                                               // other things) untouched.
 };
 
 // Data-oriented (structure-of-arrays) registry of celestial bodies and their Sun-frame states
@@ -30,7 +38,7 @@ public:
     // Adds a body and returns its new index
     int32 AddBody(const FSOLBodyDef& def);
 
-    // Clears, then adds the Sun and the eight planets (Sun=0 ... Neptune=8)
+    // Clears, then adds the Sun and the eight planets (Sun=0 ... Neptune=8), then the dwarf planets and major moons
     void PopulateSolarSystem();
 
     // Computes absolute (Sun-frame) positions and velocities; the Sun stays fixed at the origin
@@ -76,7 +84,8 @@ private:
 
     TArray<FName> mNames;                     // Body names
     TArray<double> mRadiiM;                   // Mean radii
-    TArray<double> mGMs;                      // Gravitational parameters
+    TArray<double> mGMs;                      // Gravitational parameters (the body's own, used for ITS gravity)
+    TArray<double> mOrbitGMs;                 // GM used to integrate each body's own orbit around its parent
     TArray<int32> mParents;                   // Parent indices
     TArray<FSOLSecularElements> mElements;    // Orbital elements relative to the parent
     TArray<FVector3d> mPositionsM;            // Sun-frame positions

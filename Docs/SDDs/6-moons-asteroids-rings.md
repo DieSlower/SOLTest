@@ -51,6 +51,12 @@ Scope: the Moon, Phobos & Deimos, the four Galilean moons plus Saturn's major mo
 Uranus's and Neptune's major moons, and the dwarf planets (Ceres, Pluto, Eris, Makemake,
 Haumea). Exact list finalized during implementation against real data availability.
 
+**Built (5a, see Amendment 1 below):** 5 dwarf planets + 20 moons (Moon; Phobos, Deimos;
+Io, Europa, Ganymede, Callisto; Mimas, Enceladus, Tethys, Dione, Rhea, Titan, Iapetus;
+Miranda, Ariel, Umbriel, Titania, Oberon; Triton), for a registry total of 34 bodies
+(was 9). Two real design decisions surfaced during implementation that this section did
+not anticipate — see Amendment 1.
+
 ### 3.2 Asteroid belt (Appendix B)
 
 **New Mass archetype**, `Source/SOLTest/MinorBodies/` (new feature folder, shared
@@ -144,3 +150,52 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 ## 5. Revision history
 
 - 2026-09-30: initial decisions from the `grill-me` session.
+- 2026-10-01: Amendment 1, after implementing and reviewing 5a.
+
+## Amendment 1 — 5a implementation: host-equator tilt conversion and orbit-GM fix
+
+Two things surfaced during 5a's implementation and adversarial review that §3.1 as
+originally written did not anticipate, since it was scoped as "no new C++ types... pure
+data addition":
+
+1. **Moon elements need a frame conversion, not just new rows.** Real moon catalog data
+   (JPL SSD/Horizons) gives orbital elements relative to the host planet's equator, but
+   `SOLKepler::ElementsToState` and the rest of this project work in the J2000 ecliptic.
+   Using the catalog inclination/node values directly as ecliptic values would put every
+   tilted planet's moons in the wrong plane (e.g. Uranus's moons would appear to orbit
+   flat in the ecliptic while Uranus itself is drawn on its side, and Saturn's moons
+   would miss their own rings' plane). The fix, added as file-local machinery in
+   `SOLBodyRegistry.cpp` (not exposed outside the file, so it does not contradict "no new
+   C++ types" in the public sense): an `ESOLElementFrame` tag per child row
+   (`Ecliptic` or `HostEquator`) and a `HostEquatorToEcliptic()` helper that re-expresses
+   a host-equator orbit in ecliptic axes by composing it with the host's existing
+   `SOLBodyRotation::TiltRotation` (SDD 12's fixed pole-azimuth convention), preserving
+   the real orbital phase and shape exactly. This also means every moon's orbit inherits
+   SDD 12's known simplification: node angles are referenced to the host's fake fixed
+   pole azimuth, not the real sky. Concretely — a host's moons keep correct phase
+   *relative to each other*, but the whole set shares one not-astronomically-real phase
+   offset from reality, and Triton's forced spin pole sits ~35° from its real orbit
+   normal (so it will visibly nod/wobble once textured instead of holding steady like a
+   real tidally-locked body). Tracked as a concrete consequence in
+   [`Docs/ToDo/accurate-pole-directions.md`](../ToDo/accurate-pole-directions.md); not
+   worth fixing ahead of that ToDo being picked up.
+2. **Orbit-integration GM needed decoupling from physical GM.** `FSOLBodyRegistry::Update()`
+   computes a child body's state via `SOLKepler::ElementsToState` using its *parent's*
+   GM for the vis-viva velocity term — correct for the original Sun+8-planet table (a
+   small, already-accepted mismatch of a few m/s versus the Standish mean-motion rates),
+   but wrong enough for several close-in moons (whose real period reflects the parent's
+   oblateness, not just its point-mass GM) to produce a materially wrong orbital speed —
+   up to ~72 m/s / ~0.5% for Mimas, smaller but still real errors for Enceladus, Tethys,
+   Dione and the Moon. This fed real player-facing systems (circular-orbit ship spawn,
+   jump-arrival velocity matching, swept collision response). Fixed by adding
+   `FSOLBodyDef::OrbitGM` (0 = use the parent's GM, the unchanged default for the
+   Sun+8-planet table) and a registry-internal `mOrbitGMs` array; every child row now
+   gets an explicit `OrbitGM` derived from its own tabulated semi-major axis and mean
+   motion via Kepler's third law inverted (`mu = n^2 * a^3`, computed by the file-local
+   `ChildOrbitGM()` helper), so its velocity is exactly consistent with its own real
+   period regardless of what the parent's measured GM alone would predict. The Sun+8
+   planet table is untouched.
+
+Both were real findings from the required adversarial review (not pre-planned), fixed in
+the same sub-part before commit, per this project's "fix before calling the part done"
+rule. 5a is otherwise exactly as designed in §3.1.

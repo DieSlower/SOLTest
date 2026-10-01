@@ -6342,7 +6342,7 @@
       "label": "FSOLRegistryExpectedBody",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L26",
+      "source_location": "L34",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody",
       "community": 23,
       "norm_label": "fsolregistryexpectedbody"
@@ -6351,7 +6351,7 @@
       "label": "TCHAR",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L28",
+      "source_location": "L36",
       "id": "source_soltest_tests_bodyregistrytest_cpp_tchar",
       "community": 23,
       "norm_label": "tchar"
@@ -6360,7 +6360,7 @@
       "label": "Name",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L28",
+      "source_location": "L36",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_name",
       "community": 23,
       "norm_label": "name"
@@ -6369,7 +6369,7 @@
       "label": "GM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L29",
+      "source_location": "L37",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_gm",
       "community": 23,
       "norm_label": "gm"
@@ -6378,7 +6378,7 @@
       "label": "RadiusM",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L30",
+      "source_location": "L38",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_radiusm",
       "community": 23,
       "norm_label": "radiusm"
@@ -6387,7 +6387,7 @@
       "label": "SemiMajorAxisAU",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L31",
+      "source_location": "L39",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_semimajoraxisau",
       "community": 23,
       "norm_label": "semimajoraxisau"
@@ -6396,7 +6396,7 @@
       "label": "Eccentricity",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L32",
+      "source_location": "L40",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_eccentricity",
       "community": 23,
       "norm_label": "eccentricity"
@@ -6405,7 +6405,7 @@
       "label": "RotationPeriodH",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L33",
+      "source_location": "L41",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_rotationperiodh",
       "community": 23,
       "norm_label": "rotationperiodh"
@@ -6414,7 +6414,7 @@
       "label": "AxialTiltDeg",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L34",
+      "source_location": "L42",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_axialtiltdeg",
       "community": 23,
       "norm_label": "axialtiltdeg"
@@ -6423,34 +6423,259 @@
       "label": "W0Deg",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L35",
+      "source_location": "L43",
       "id": "tests_bodyregistrytest_fsolregistryexpectedbody_w0deg",
       "community": 23,
       "norm_label": "w0deg"
     },
     {
-      "label": "RegistryExpectedOrientation()",
+      "label": "FSOLRegistryExpectedChild",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L53",
-      "id": "tests_bodyregistrytest_registryexpectedorientation",
+      "source_location": "L64",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild",
       "community": 23,
-      "norm_label": "registryexpectedorientation()"
+      "norm_label": "fsolregistryexpectedchild"
+    },
+    {
+      "label": "Name",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L66",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_name",
+      "community": 23,
+      "norm_label": "name"
+    },
+    {
+      "label": "int32",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L67",
+      "id": "source_soltest_tests_bodyregistrytest_cpp_int32",
+      "community": 23,
+      "norm_label": "int32"
+    },
+    {
+      "label": "ParentIndex",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L67",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_parentindex",
+      "community": 23,
+      "norm_label": "parentindex"
+    },
+    {
+      "label": "bHostEquator",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L68",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_bhostequator",
+      "community": 23,
+      "norm_label": "bhostequator"
+    },
+    {
+      "label": "GM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L69",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_gm",
+      "community": 23,
+      "norm_label": "gm"
+    },
+    {
+      "label": "RadiusM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L70",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_radiusm",
+      "community": 23,
+      "norm_label": "radiusm"
+    },
+    {
+      "label": "SemiMajorAxisAU",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L71",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_semimajoraxisau",
+      "community": 23,
+      "norm_label": "semimajoraxisau"
+    },
+    {
+      "label": "Eccentricity",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L72",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_eccentricity",
+      "community": 23,
+      "norm_label": "eccentricity"
+    },
+    {
+      "label": "InclinationDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L73",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_inclinationdeg",
+      "community": 23,
+      "norm_label": "inclinationdeg"
+    },
+    {
+      "label": "MeanLongitudeDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L74",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_meanlongitudedeg",
+      "community": 23,
+      "norm_label": "meanlongitudedeg"
+    },
+    {
+      "label": "MeanLongitudeRateDegPerCy",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L75",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_meanlongituderatedegpercy",
+      "community": 23,
+      "norm_label": "meanlongituderatedegpercy"
+    },
+    {
+      "label": "LongPeriDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L76",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_longperideg",
+      "community": 23,
+      "norm_label": "longperideg"
+    },
+    {
+      "label": "LongNodeDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L77",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_longnodedeg",
+      "community": 23,
+      "norm_label": "longnodedeg"
+    },
+    {
+      "label": "OrbitalPeriodDays",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L78",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_orbitalperioddays",
+      "community": 23,
+      "norm_label": "orbitalperioddays"
+    },
+    {
+      "label": "RotationPeriodH",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L79",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_rotationperiodh",
+      "community": 23,
+      "norm_label": "rotationperiodh"
+    },
+    {
+      "label": "AxialTiltDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L80",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_axialtiltdeg",
+      "community": 23,
+      "norm_label": "axialtiltdeg"
+    },
+    {
+      "label": "W0Deg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L81",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_w0deg",
+      "community": 23,
+      "norm_label": "w0deg"
+    },
+    {
+      "label": "bRetrograde",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L82",
+      "id": "tests_bodyregistrytest_fsolregistryexpectedchild_bretrograde",
+      "community": 23,
+      "norm_label": "bretrograde"
+    },
+    {
+      "label": "RegistryChildElements()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L169",
+      "id": "tests_bodyregistrytest_registrychildelements",
+      "community": 23,
+      "norm_label": "registrychildelements()"
+    },
+    {
+      "label": "FSOLSecularElements",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L169",
+      "id": "source_soltest_tests_bodyregistrytest_cpp_fsolsecularelements",
+      "community": 23,
+      "norm_label": "fsolsecularelements"
+    },
+    {
+      "label": "RegistryChildFrame()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L184",
+      "id": "tests_bodyregistrytest_registrychildframe",
+      "community": 23,
+      "norm_label": "registrychildframe()"
     },
     {
       "label": "FQuat4d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L53",
+      "source_location": "L184",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fquat4d",
       "community": 23,
       "norm_label": "fquat4d"
     },
     {
+      "label": "RegistryChildOrbitGM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L199",
+      "id": "tests_bodyregistrytest_registrychildorbitgm",
+      "community": 23,
+      "norm_label": "registrychildorbitgm()"
+    },
+    {
+      "label": "RegistryExpectedChildState()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L210",
+      "id": "tests_bodyregistrytest_registryexpectedchildstate",
+      "community": 23,
+      "norm_label": "registryexpectedchildstate()"
+    },
+    {
+      "label": "FSOLOrbitState",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L210",
+      "id": "source_soltest_tests_bodyregistrytest_cpp_fsolorbitstate",
+      "community": 23,
+      "norm_label": "fsolorbitstate"
+    },
+    {
+      "label": "RegistryExpectedOrientation()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L224",
+      "id": "tests_bodyregistrytest_registryexpectedorientation",
+      "community": 23,
+      "norm_label": "registryexpectedorientation()"
+    },
+    {
       "label": "RegistrySameRotation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L61",
+      "source_location": "L232",
       "id": "tests_bodyregistrytest_registrysamerotation",
       "community": 23,
       "norm_label": "registrysamerotation()"
@@ -6459,7 +6684,7 @@
       "label": "RegistryHasSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L79",
+      "source_location": "L250",
       "id": "tests_bodyregistrytest_registryhassolarsystem",
       "community": 23,
       "norm_label": "registryhassolarsystem()"
@@ -6468,7 +6693,7 @@
       "label": "FAutomationTestBase",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L79",
+      "source_location": "L250",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fautomationtestbase",
       "community": 23,
       "norm_label": "fautomationtestbase"
@@ -6477,7 +6702,7 @@
       "label": "FSOLBodyRegistry",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L79",
+      "source_location": "L250",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fsolbodyregistry",
       "community": 23,
       "norm_label": "fsolbodyregistry"
@@ -6486,7 +6711,7 @@
       "label": "RegistryLongitudeDeg()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L86",
+      "source_location": "L257",
       "id": "tests_bodyregistrytest_registrylongitudedeg",
       "community": 23,
       "norm_label": "registrylongitudedeg()"
@@ -6495,7 +6720,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L86",
+      "source_location": "L257",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fvector3d",
       "community": 23,
       "norm_label": "fvector3d"
@@ -6504,7 +6729,7 @@
       "label": "RegistrySweptAngleRad()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L98",
+      "source_location": "L269",
       "id": "tests_bodyregistrytest_registrysweptanglerad",
       "community": 23,
       "norm_label": "registrysweptanglerad()"
@@ -6513,7 +6738,7 @@
       "label": "RunTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L111",
+      "source_location": "L282",
       "id": "tests_bodyregistrytest_runtest",
       "community": 23,
       "norm_label": "runtest()"
@@ -6522,7 +6747,7 @@
       "label": "FString",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L111",
+      "source_location": "L282",
       "id": "source_soltest_tests_bodyregistrytest_cpp_fstring",
       "community": 23,
       "norm_label": "fstring"
@@ -10443,37 +10668,109 @@
       "norm_label": "w0deg"
     },
     {
-      "label": "AddBody()",
+      "label": "FSOLChildBodyRow",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L68",
-      "id": "universe_solbodyregistry_addbody",
+      "source_location": "L83",
+      "id": "universe_solbodyregistry_fsolchildbodyrow",
       "community": 20,
-      "norm_label": "addbody()"
+      "norm_label": "fsolchildbodyrow"
     },
     {
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L68",
+      "source_location": "L85",
       "id": "source_soltest_universe_solbodyregistry_cpp_int32",
       "community": 20,
       "norm_label": "int32"
     },
     {
+      "label": "ParentIndex",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L85",
+      "id": "universe_solbodyregistry_fsolchildbodyrow_parentindex",
+      "community": 20,
+      "norm_label": "parentindex"
+    },
+    {
+      "label": "ESOLElementFrame",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L86",
+      "id": "esolelementframe",
+      "community": 20,
+      "norm_label": "esolelementframe"
+    },
+    {
+      "label": "Frame",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L86",
+      "id": "universe_solbodyregistry_fsolchildbodyrow_frame",
+      "community": 20,
+      "norm_label": "frame"
+    },
+    {
+      "label": "Body",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L87",
+      "id": "universe_solbodyregistry_fsolchildbodyrow_body",
+      "community": 20,
+      "norm_label": "body"
+    },
+    {
+      "label": "HostEquatorToEcliptic()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L244",
+      "id": "universe_solbodyregistry_hostequatortoecliptic",
+      "community": 20,
+      "norm_label": "hostequatortoecliptic()"
+    },
+    {
+      "label": "MakeBodyDef()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L277",
+      "id": "universe_solbodyregistry_makebodydef",
+      "community": 20,
+      "norm_label": "makebodydef()"
+    },
+    {
       "label": "FSOLBodyDef",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L68",
+      "source_location": "L277",
       "id": "fsolbodydef",
       "community": 20,
       "norm_label": "fsolbodydef"
     },
     {
+      "label": "ChildOrbitGM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L295",
+      "id": "universe_solbodyregistry_childorbitgm",
+      "community": 20,
+      "norm_label": "childorbitgm()"
+    },
+    {
+      "label": "AddBody()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L305",
+      "id": "universe_solbodyregistry_addbody",
+      "community": 20,
+      "norm_label": "addbody()"
+    },
+    {
       "label": "PopulateSolarSystem()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L89",
+      "source_location": "L331",
       "id": "universe_solbodyregistry_populatesolarsystem",
       "community": 20,
       "norm_label": "populatesolarsystem()"
@@ -10482,7 +10779,7 @@
       "label": "Update()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L123",
+      "source_location": "L373",
       "id": "universe_solbodyregistry_update",
       "community": 20,
       "norm_label": "update()"
@@ -10491,7 +10788,7 @@
       "label": "Num()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L151",
+      "source_location": "L401",
       "id": "universe_solbodyregistry_num",
       "community": 20,
       "norm_label": "num()"
@@ -10500,7 +10797,7 @@
       "label": "FindByName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L158",
+      "source_location": "L408",
       "id": "universe_solbodyregistry_findbyname",
       "community": 20,
       "norm_label": "findbyname()"
@@ -10509,7 +10806,7 @@
       "label": "FName",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L158",
+      "source_location": "L408",
       "id": "source_soltest_universe_solbodyregistry_cpp_fname",
       "community": 20,
       "norm_label": "fname"
@@ -10518,7 +10815,7 @@
       "label": "GetName()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L165",
+      "source_location": "L415",
       "id": "universe_solbodyregistry_getname",
       "community": 140,
       "norm_label": "getname()"
@@ -10527,7 +10824,7 @@
       "label": "GetParent()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L172",
+      "source_location": "L422",
       "id": "universe_solbodyregistry_getparent",
       "community": 20,
       "norm_label": "getparent()"
@@ -10536,7 +10833,7 @@
       "label": "GetRadiusM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L179",
+      "source_location": "L429",
       "id": "universe_solbodyregistry_getradiusm",
       "community": 20,
       "norm_label": "getradiusm()"
@@ -10545,7 +10842,7 @@
       "label": "GetGM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L186",
+      "source_location": "L436",
       "id": "universe_solbodyregistry_getgm",
       "community": 20,
       "norm_label": "getgm()"
@@ -10554,7 +10851,7 @@
       "label": "GetPositionsM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L214",
+      "source_location": "L464",
       "id": "universe_solbodyregistry_getpositionsm",
       "community": 20,
       "norm_label": "getpositionsm()"
@@ -10563,7 +10860,7 @@
       "label": "TConstArrayView",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L214",
+      "source_location": "L464",
       "id": "source_soltest_universe_solbodyregistry_cpp_tconstarrayview",
       "community": 20,
       "norm_label": "tconstarrayview"
@@ -10572,7 +10869,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L214",
+      "source_location": "L464",
       "id": "source_soltest_universe_solbodyregistry_cpp_fvector3d",
       "community": 20,
       "norm_label": "fvector3d"
@@ -10581,7 +10878,7 @@
       "label": "GetVelocitiesMps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L221",
+      "source_location": "L471",
       "id": "universe_solbodyregistry_getvelocitiesmps",
       "community": 20,
       "norm_label": "getvelocitiesmps()"
@@ -10608,7 +10905,7 @@
       "label": "FSOLBodyRegistry()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.h",
-      "source_location": "L26",
+      "source_location": "L34",
       "id": "universe_solbodyregistry_fsolbodyregistry",
       "community": 40,
       "norm_label": "fsolbodyregistry()"
@@ -10617,7 +10914,7 @@
       "label": "class",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.h",
-      "source_location": "L26",
+      "source_location": "L34",
       "id": "source_soltest_universe_solbodyregistry_h_class",
       "community": 40,
       "norm_label": "class"
@@ -10852,7 +11149,7 @@
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
       "source_location": "L129",
-      "id": "fsolorbitstate",
+      "id": "source_soltest_universe_solkepler_cpp_fsolorbitstate",
       "community": 34,
       "norm_label": "fsolorbitstate"
     },
@@ -13146,9 +13443,54 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/5-star-field-plan.md",
-      "source_location": "L84",
+      "source_location": "L86",
       "id": "plans_5_star_field_plan_cross_cutting",
       "community": 158,
+      "norm_label": "cross-cutting"
+    },
+    {
+      "label": "6-moons-asteroids-rings-plan.md",
+      "file_type": "document",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L1",
+      "id": "plans_6_moons_asteroids_rings_plan",
+      "community": 166,
+      "norm_label": "6-moons-asteroids-rings-plan.md"
+    },
+    {
+      "label": "Moons, Dwarf Planets, Asteroid Belt, Rings \u2014 Implementation Plan",
+      "file_type": "document",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L3",
+      "id": "plans_6_moons_asteroids_rings_plan_moons_dwarf_planets_asteroid_belt_rings_implementation_plan",
+      "community": 166,
+      "norm_label": "moons, dwarf planets, asteroid belt, rings \u2014 implementation plan"
+    },
+    {
+      "label": "Global constraints",
+      "file_type": "document",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L13",
+      "id": "plans_6_moons_asteroids_rings_plan_global_constraints",
+      "community": 166,
+      "norm_label": "global constraints"
+    },
+    {
+      "label": "Steps",
+      "file_type": "document",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L24",
+      "id": "plans_6_moons_asteroids_rings_plan_steps",
+      "community": 166,
+      "norm_label": "steps"
+    },
+    {
+      "label": "Cross-cutting",
+      "file_type": "document",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L69",
+      "id": "plans_6_moons_asteroids_rings_plan_cross_cutting",
+      "community": 166,
       "norm_label": "cross-cutting"
     },
     {
@@ -14331,6 +14673,114 @@
       "norm_label": "5. revision history"
     },
     {
+      "label": "6-moons-asteroids-rings.md",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L1",
+      "id": "sdds_6_moons_asteroids_rings",
+      "community": 165,
+      "norm_label": "6-moons-asteroids-rings.md"
+    },
+    {
+      "label": "SDD 6 \u2014 Moons, dwarf planets, asteroid belt, planet rings",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L3",
+      "id": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "community": 165,
+      "norm_label": "sdd 6 \u2014 moons, dwarf planets, asteroid belt, planet rings"
+    },
+    {
+      "label": "1. Problem",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L15",
+      "id": "sdds_6_moons_asteroids_rings_1_problem",
+      "community": 165,
+      "norm_label": "1. problem"
+    },
+    {
+      "label": "2. Decisions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L23",
+      "id": "sdds_6_moons_asteroids_rings_2_decisions",
+      "community": 165,
+      "norm_label": "2. decisions"
+    },
+    {
+      "label": "3. Design",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L37",
+      "id": "sdds_6_moons_asteroids_rings_3_design",
+      "community": 165,
+      "norm_label": "3. design"
+    },
+    {
+      "label": "3.1 Moons and dwarf planets (Appendix A)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L39",
+      "id": "sdds_6_moons_asteroids_rings_3_1_moons_and_dwarf_planets_appendix_a",
+      "community": 165,
+      "norm_label": "3.1 moons and dwarf planets (appendix a)"
+    },
+    {
+      "label": "3.2 Asteroid belt (Appendix B)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L60",
+      "id": "sdds_6_moons_asteroids_rings_3_2_asteroid_belt_appendix_b",
+      "community": 165,
+      "norm_label": "3.2 asteroid belt (appendix b)"
+    },
+    {
+      "label": "3.3 Planet rings (Appendix C)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L113",
+      "id": "sdds_6_moons_asteroids_rings_3_3_planet_rings_appendix_c",
+      "community": 165,
+      "norm_label": "3.3 planet rings (appendix c)"
+    },
+    {
+      "label": "3.4 Testing",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L132",
+      "id": "sdds_6_moons_asteroids_rings_3_4_testing",
+      "community": 165,
+      "norm_label": "3.4 testing"
+    },
+    {
+      "label": "4. Open questions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L145",
+      "id": "sdds_6_moons_asteroids_rings_4_open_questions",
+      "community": 165,
+      "norm_label": "4. open questions"
+    },
+    {
+      "label": "5. Revision history",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L150",
+      "id": "sdds_6_moons_asteroids_rings_5_revision_history",
+      "community": 165,
+      "norm_label": "5. revision history"
+    },
+    {
+      "label": "Amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-GM fix",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L155",
+      "id": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
+      "community": 165,
+      "norm_label": "amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-gm fix"
+    },
+    {
       "label": "README.md",
       "file_type": "document",
       "source_file": "Docs/SDDs/README.md",
@@ -14628,6 +15078,24 @@
       "norm_label": "accurate per-body pole directions and precession"
     },
     {
+      "label": "asteroid-ring-collision.md",
+      "file_type": "document",
+      "source_file": "Docs/ToDo/asteroid-ring-collision.md",
+      "source_location": "L1",
+      "id": "todo_asteroid_ring_collision",
+      "community": 167,
+      "norm_label": "asteroid-ring-collision.md"
+    },
+    {
+      "label": "Asteroid and ring-particle collision",
+      "file_type": "document",
+      "source_file": "Docs/ToDo/asteroid-ring-collision.md",
+      "source_location": "L3",
+      "id": "todo_asteroid_ring_collision_asteroid_and_ring_particle_collision",
+      "community": 167,
+      "norm_label": "asteroid and ring-particle collision"
+    },
+    {
       "label": "planetary-perturbations.md",
       "file_type": "document",
       "source_file": "Docs/ToDo/planetary-perturbations.md",
@@ -14716,6 +15184,15 @@
       "id": "readme_soltest",
       "community": 0,
       "norm_label": "soltest"
+    },
+    {
+      "label": "FSOLOrbitState",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L129",
+      "community": 34,
+      "norm_label": "fsolorbitstate",
+      "id": "fsolorbitstate"
     },
     {
       "label": "EndPlay()",
@@ -29842,6 +30319,56 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L64",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L169",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registrychildelements"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L184",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registrychildframe"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L199",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registrychildorbitgm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L196",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest",
+      "target": "tests_bodyregistrytest_registryexpectedchildstate"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L53",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -30012,11 +30539,286 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L53",
+      "source_location": "L66",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_tchar"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L67",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_int32"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L80",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_axialtiltdeg"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L68",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_bhostequator"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L82",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_bretrograde"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L72",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_eccentricity"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L69",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_gm"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L73",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_inclinationdeg"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L77",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_longnodedeg"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L76",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_longperideg"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L74",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_meanlongitudedeg"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L75",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_meanlongituderatedegpercy"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L66",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_name"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L78",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_orbitalperioddays"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L67",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_parentindex"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L70",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_radiusm"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L79",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_rotationperiodh"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L71",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_semimajoraxisau"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L81",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild_w0deg"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L169",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registrychildelements",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L184",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registrychildframe",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L199",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_bodyregistrytest_registrychildorbitgm",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L196",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedchildstate",
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L169",
       "weight": 1.0,
       "context": "return_type",
       "confidence_score": 1.0,
-      "source": "tests_bodyregistrytest_registryexpectedorientation",
+      "source": "tests_bodyregistrytest_registrychildelements",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fsolsecularelements"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L199",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedchildstate",
+      "target": "tests_bodyregistrytest_registrychildelements"
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L184",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registrychildframe",
       "target": "source_soltest_tests_bodyregistrytest_cpp_fquat4d"
     },
     {
@@ -30024,11 +30826,33 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
-      "source_location": "L583",
+      "source_location": "L191",
       "weight": 1.0,
       "confidence_score": 1.0,
-      "source": "tests_bodyregistrytest_runtest",
-      "target": "tests_bodyregistrytest_registryexpectedorientation"
+      "source": "tests_bodyregistrytest_registrychildframe",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fvector3d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L202",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedchildstate",
+      "target": "tests_bodyregistrytest_registrychildframe"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedorientation",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fquat4d"
     },
     {
       "relation": "references",
@@ -30040,6 +30864,50 @@
       "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_registrysamerotation",
       "target": "source_soltest_tests_bodyregistrytest_cpp_fquat4d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L214",
+      "weight": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedchildstate",
+      "target": "tests_bodyregistrytest_registrychildorbitgm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L196",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_registryexpectedchildstate",
+      "target": "source_soltest_tests_bodyregistrytest_cpp_fsolorbitstate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L1028",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_runtest",
+      "target": "tests_bodyregistrytest_registryexpectedchildstate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
+      "source_location": "L583",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_bodyregistrytest_runtest",
+      "target": "tests_bodyregistrytest_registryexpectedorientation"
     },
     {
       "relation": "calls",
@@ -38621,11 +39489,31 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L295",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
+      "target": "universe_solbodyregistry_childorbitgm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L129",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
       "target": "universe_solbodyregistry_findbyname"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L83",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
+      "target": "universe_solbodyregistry_fsolchildbodyrow"
     },
     {
       "relation": "contains",
@@ -38701,6 +39589,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L231",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
+      "target": "universe_solbodyregistry_hostequatortoecliptic"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L264",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
+      "target": "universe_solbodyregistry_makebodydef"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L122",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -38726,6 +39634,17 @@
       "confidence_score": 1.0,
       "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
       "target": "universe_solbodyregistry_update"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L87",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "universe_solbodyregistry_fsolsolarsystemrow"
     },
     {
       "relation": "references",
@@ -38830,12 +39749,100 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L54",
+      "source_location": "L264",
       "weight": 1.0,
       "context": "parameter_type",
       "confidence_score": 1.0,
-      "source": "universe_solbodyregistry_addbody",
-      "target": "fsolbodydef"
+      "source": "universe_solbodyregistry_makebodydef",
+      "target": "universe_solbodyregistry_fsolsolarsystemrow"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L295",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "universe_solbodyregistry_childorbitgm",
+      "target": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L231",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_hostequatortoecliptic",
+      "target": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L264",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_makebodydef",
+      "target": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L86",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "esolelementframe"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L85",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "source_soltest_universe_solbodyregistry_cpp_int32"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L87",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "universe_solbodyregistry_fsolchildbodyrow_body"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L86",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "universe_solbodyregistry_fsolchildbodyrow_frame"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L85",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_fsolchildbodyrow",
+      "target": "universe_solbodyregistry_fsolchildbodyrow_parentindex"
     },
     {
       "relation": "references",
@@ -38847,28 +39854,6 @@
       "confidence_score": 1.0,
       "source": "universe_solbodyregistry_addbody",
       "target": "source_soltest_universe_solbodyregistry_cpp_int32"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L56",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "universe_solbodyregistry_addbody",
-      "target": "universe_solbodyregistry_num"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
-      "source_location": "L92",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "universe_solbodyregistry_populatesolarsystem",
-      "target": "universe_solbodyregistry_addbody"
     },
     {
       "relation": "references",
@@ -38929,12 +39914,111 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L264",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_makebodydef",
+      "target": "source_soltest_universe_solbodyregistry_cpp_int32"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L122",
       "weight": 1.0,
       "context": "return_type",
       "confidence_score": 1.0,
       "source": "universe_solbodyregistry_num",
       "target": "source_soltest_universe_solbodyregistry_cpp_int32"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L329",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_populatesolarsystem",
+      "target": "universe_solbodyregistry_hostequatortoecliptic"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L264",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_makebodydef",
+      "target": "fsolbodydef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L267",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_makebodydef",
+      "target": "source_soltest_universe_solbodyregistry_cpp_fname"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L322",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_populatesolarsystem",
+      "target": "universe_solbodyregistry_makebodydef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L54",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_addbody",
+      "target": "fsolbodydef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L366",
+      "weight": 1.0,
+      "source": "universe_solbodyregistry_populatesolarsystem",
+      "target": "universe_solbodyregistry_childorbitgm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L56",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_addbody",
+      "target": "universe_solbodyregistry_num"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
+      "source_location": "L92",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "universe_solbodyregistry_populatesolarsystem",
+      "target": "universe_solbodyregistry_addbody"
     },
     {
       "relation": "calls",
@@ -39415,6 +40499,17 @@
       "confidence_score": 1.0,
       "source": "universe_solkepler_elementstostate",
       "target": "fsolorbitstate"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L129",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "universe_solkepler_elementstostate",
+      "target": "source_soltest_universe_solkepler_cpp_fsolorbitstate"
     },
     {
       "relation": "contains",
@@ -43367,6 +44462,46 @@
       "target": "plans_5_star_field_plan_steps"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "plans_6_moons_asteroids_rings_plan",
+      "target": "plans_6_moons_asteroids_rings_plan_moons_dwarf_planets_asteroid_belt_rings_implementation_plan"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L60",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "plans_6_moons_asteroids_rings_plan_moons_dwarf_planets_asteroid_belt_rings_implementation_plan",
+      "target": "plans_6_moons_asteroids_rings_plan_cross_cutting"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L13",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "plans_6_moons_asteroids_rings_plan_moons_dwarf_planets_asteroid_belt_rings_implementation_plan",
+      "target": "plans_6_moons_asteroids_rings_plan_global_constraints"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
+      "source_location": "L24",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "plans_6_moons_asteroids_rings_plan_moons_dwarf_planets_asteroid_belt_rings_implementation_plan",
+      "target": "plans_6_moons_asteroids_rings_plan_steps"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -44897,6 +46032,116 @@
       "target": "sdds_5_star_field_3_3_verification"
     },
     {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings",
+      "target": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L15",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_1_problem"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L23",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_2_decisions"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L37",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_3_design"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L139",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_4_open_questions"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L144",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_5_revision_history"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L155",
+      "weight": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L39",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_3_design",
+      "target": "sdds_6_moons_asteroids_rings_3_1_moons_and_dwarf_planets_appendix_a"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L54",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_3_design",
+      "target": "sdds_6_moons_asteroids_rings_3_2_asteroid_belt_appendix_b"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L107",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_3_design",
+      "target": "sdds_6_moons_asteroids_rings_3_3_planet_rings_appendix_c"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L126",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_3_design",
+      "target": "sdds_6_moons_asteroids_rings_3_4_testing"
+    },
+    {
       "relation": "references",
       "confidence": "EXTRACTED",
       "confidence_score": 1.0,
@@ -45325,6 +46570,16 @@
       "confidence_score": 1.0,
       "source": "todo_accurate_pole_directions",
       "target": "todo_accurate_pole_directions_accurate_per_body_pole_directions_and_precession"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/ToDo/asteroid-ring-collision.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "todo_asteroid_ring_collision",
+      "target": "todo_asteroid_ring_collision_asteroid_and_ring_particle_collision"
     },
     {
       "relation": "references",
@@ -45964,5 +47219,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "0acdb11c6d093359b3d42a2f44b04623a0448afa"
+  "built_at_commit": "fbf103516bae87c738989a364d00fbd83185952c"
 }

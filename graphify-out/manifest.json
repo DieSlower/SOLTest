@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
-    "mtime": 1790805358.5584047,
-    "ast_hash": "64375aa51e9afef1eaacddd398de6b06",
+    "mtime": 1790822940.0297587,
+    "ast_hash": "b142b8dab56e76e4b24ee7623ba25761",
     "semantic_hash": ""
   },
   "Docs/Research/STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
@@ -85,8 +85,8 @@
     "semantic_hash": "43503920351ce974c9b10c7bffa37fc8"
   },
   "Docs/ToDo/README.md": {
-    "mtime": 1790806619.237279,
-    "ast_hash": "09097781ee0b03baea2f9f22186e2adb",
+    "mtime": 1790824403.1668367,
+    "ast_hash": "44feb422cde28839586a46b7509cad88",
     "semantic_hash": ""
   },
   "Docs/ToDo/planetary-perturbations.md": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/BodyRegistryTest.cpp": {
-    "mtime": 1790801686.3953657,
-    "ast_hash": "af8bd1f77fcc9d13efba88631122afcf",
+    "mtime": 1790837122.918563,
+    "ast_hash": "3ab1408c3086b8aab8965a9eb2ac8ac3",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/KeplerTest.cpp": {
@@ -180,13 +180,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.cpp": {
-    "mtime": 1790801118.1346054,
-    "ast_hash": "701230915c30c26ebab94230d59ac0cd",
+    "mtime": 1790837099.5265212,
+    "ast_hash": "5744096ba96d383fecb8125f7e70f00e",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.h": {
-    "mtime": 1790801063.1107051,
-    "ast_hash": "a49ab4d96351ef8fcaeae9248ae78ac5",
+    "mtime": 1790837312.0143802,
+    "ast_hash": "be523cb828d3878b107d30778549c2d0",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790822728.1514082,
-    "ast_hash": "c7ea12666c8435d55a5f71f89392b9f0",
+    "mtime": 1790837496.7669032,
+    "ast_hash": "ec0b46e898c99a51b6e3f4cc52069001",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -755,8 +755,8 @@
     "semantic_hash": ""
   },
   "Docs/ToDo/accurate-pole-directions.md": {
-    "mtime": 1790801668.373284,
-    "ast_hash": "9e77678f3805232c9b0e6e6bb4171597",
+    "mtime": 1790837497.7722614,
+    "ast_hash": "04d5bdcf042c4e2cc9bd70b554dc59f7",
     "semantic_hash": ""
   },
   "Source/SOLTest/StarField/SOLStarFieldData.h": {
@@ -780,8 +780,8 @@
     "semantic_hash": ""
   },
   "Docs/Plans/5-star-field-plan.md": {
-    "mtime": 1790822728.1533983,
-    "ast_hash": "4b04e09a91e7facc7ce6377b859d040d",
+    "mtime": 1790822925.5028727,
+    "ast_hash": "a6e6ee593311869e5ae8a8dd3a4d9030",
     "semantic_hash": ""
   },
   "Docs/SDDs/5-star-field.md": {
@@ -812,6 +812,21 @@
   "Tools/StarField/create_star_field_materials.py": {
     "mtime": 1790822399.58532,
     "ast_hash": "ab2b813fec6cd819adb71b579cbc5254",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/6-moons-asteroids-rings-plan.md": {
+    "mtime": 1790837540.3755813,
+    "ast_hash": "730d4aa77aa1cfc74621944da3595df4",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/6-moons-asteroids-rings.md": {
+    "mtime": 1790837524.9251518,
+    "ast_hash": "7a04eaac2ae251632136ae818d011786",
+    "semantic_hash": ""
+  },
+  "Docs/ToDo/asteroid-ring-collision.md": {
+    "mtime": 1790824396.6412103,
+    "ast_hash": "4b332c83ea818c8ff947344174a1276d",
     "semantic_hash": ""
   }
 }

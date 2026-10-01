@@ -1,16 +1,16 @@
-# Graph Report - SOLTest  (2026-09-30)
+# Graph Report - SOLTest  (2026-10-01)
 
 ## Corpus Check
-- 163 files · ~198,659 words
+- 166 files · ~206,346 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1729 nodes · 2840 edges · 165 communities (114 shown, 51 thin omitted)
+- 1782 nodes · 2913 edges · 168 communities (116 shown, 52 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 82 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0acdb11c`
+- Built from commit: `fbf10351`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -169,18 +169,21 @@
 - [[_COMMUNITY_Community 162|Community 162]]
 - [[_COMMUNITY_Community 163|Community 163]]
 - [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 165|Community 165]]
+- [[_COMMUNITY_Community 166|Community 166]]
+- [[_COMMUNITY_Community 167|Community 167]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `FInputActionValue` - 43 edges
 2. `GetName()` - 41 edges
-3. `main()` - 20 edges
-4. `RunTest()` - 19 edges
-5. `SOLTest — C++ Code Style Guide (DRAFT)` - 18 edges
-6. `Draw()` - 17 edges
-7. `DrawLine()` - 17 edges
-8. `FSOLBodyAppearance` - 17 edges
-9. `RunTest()` - 15 edges
-10. `ExitPhase()` - 13 edges
+3. `FSOLRegistryExpectedChild` - 24 edges
+4. `main()` - 20 edges
+5. `RunTest()` - 19 edges
+6. `SOLTest — C++ Code Style Guide (DRAFT)` - 18 edges
+7. `Draw()` - 17 edges
+8. `DrawLine()` - 17 edges
+9. `FSOLBodyAppearance` - 17 edges
+10. `RunTest()` - 15 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `Module and file layout (feature folders, Build.cs rules)` --references--> `SOLTest`  [EXTRACTED]
@@ -202,7 +205,7 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (165 total, 51 thin omitted)
+## Communities (168 total, 52 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
 Cohesion: 0.14
@@ -245,8 +248,8 @@ Cohesion: 0.08
 Nodes (37): EInputActionValueType, FInputActionValue, AddMappingContext(), CreateAction(), MapPressedKey(), RemoveMappingContext(), BeginPlay(), CreateAction() (+29 more)
 
 ### Community 20 - "Community 20"
-Cohesion: 0.11
-Nodes (25): FSOLBodyDef, FName, FSOLSecularElements, FVector3d, int32, TCHAR, TConstArrayView, AddBody() (+17 more)
+Cohesion: 0.10
+Nodes (33): ESOLElementFrame, FSOLBodyDef, FName, FSOLSecularElements, FVector3d, int32, TCHAR, TConstArrayView (+25 more)
 
 ### Community 21 - "Community 21"
 Cohesion: 0.09
@@ -257,8 +260,8 @@ Cohesion: 0.11
 Nodes (17): Architecture, Build & Run, Conventions, Game mechanics catalog & in-game info, Git, graphify, Known tech debt to revisit, Performance review — required after code changes (+9 more)
 
 ### Community 23 - "Community 23"
-Cohesion: 0.13
-Nodes (22): FSOLBodyRegistry, FAutomationTestBase, FQuat4d, FSOLBodyRegistry, FString, FVector3d, TCHAR, FSOLRegistryExpectedBody (+14 more)
+Cohesion: 0.06
+Nodes (47): FSOLBodyRegistry, FAutomationTestBase, FQuat4d, FSOLBodyRegistry, FSOLOrbitState, FSOLSecularElements, FString, FVector3d (+39 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.19
@@ -301,8 +304,8 @@ Cohesion: 0.21
 Nodes (14): FSOLKeplerElements, FSOLSecularElements, FString, TCHAR, AnalyticPeriod(), FSOLKeplerPlanetEccentricity, E0, EDotPerCy (+6 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.43
-Nodes (6): FSOLOrbitState, FSOLKeplerElements, AtCenturies(), ElementsToState(), SolveEccentricAnomaly(), WrapAngleRad()
+Cohesion: 0.36
+Nodes (7): FSOLOrbitState, FSOLKeplerElements, FSOLOrbitState, AtCenturies(), ElementsToState(), SolveEccentricAnomaly(), WrapAngleRad()
 
 ### Community 35 - "Community 35"
 Cohesion: 0.29
@@ -616,25 +619,33 @@ Nodes (10): ASOLStarField(), Type, BeginPlay(), EndPlay(), HandleUniverseUpdated
 Cohesion: 0.56
 Nodes (10): binary(), build_sky(), build_sprite(), check_quad_mesh(), connect(), interpolate(), mask(), node() (+2 more)
 
+### Community 165 - "Community 165"
+Cohesion: 0.17
+Nodes (11): 1. Problem, 2. Decisions, 3.1 Moons and dwarf planets (Appendix A), 3.2 Asteroid belt (Appendix B), 3.3 Planet rings (Appendix C), 3.4 Testing, 3. Design, 4. Open questions (+3 more)
+
+### Community 166 - "Community 166"
+Cohesion: 0.40
+Nodes (4): Cross-cutting, Global constraints, Moons, Dwarf Planets, Asteroid Belt, Rings — Implementation Plan, Steps
+
 ## Knowledge Gaps
-- **473 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+468 more)
+- **508 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+503 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **51 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **52 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GetName()` connect `Community 140` to `Community 96`, `Community 65`, `Community 162`, `Community 36`, `SOLTypes Namespace`, `Community 105`, `Community 109`, `Community 82`, `Community 19`, `Community 84`, `Community 20`, `Community 18`, `Community 58`, `Community 63`?**
-  _High betweenness centrality (0.055) - this node is a cross-community bridge._
+  _High betweenness centrality (0.058) - this node is a cross-community bridge._
 - **Why does `BeginPlay()` connect `Community 18` to `Community 140`?**
-  _High betweenness centrality (0.006) - this node is a cross-community bridge._
-- **Why does `UpdateSurfaceLock()` connect `Community 63` to `Community 140`?**
-  _High betweenness centrality (0.005) - this node is a cross-community bridge._
+  _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **Are the 38 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
   _`GetName()` has 38 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl` to the rest of the system?**
-  _479 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _514 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Style Guide & Perf Review` be split into smaller, more focused modules?**
   _Cohesion score 0.14035087719298245 - nodes in this community are weakly interconnected._
 - **Should `Community 6` be split into smaller, more focused modules?**
   _Cohesion score 0.10317460317460317 - nodes in this community are weakly interconnected._
+- **Should `SOLTypes Namespace` be split into smaller, more focused modules?**
+  _Cohesion score 0.11083743842364532 - nodes in this community are weakly interconnected._

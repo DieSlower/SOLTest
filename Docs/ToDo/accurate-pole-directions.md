@@ -18,6 +18,15 @@ slightly different from the stored value. Within SDD 12 decision 3's stated
 simplification, worth folding into the same future accuracy pass rather than treated
 as a separate issue.
 
+Concrete consequences found while adding moons in Part 5 (#6, SDD 6 §3.1): every moon's
+orbit is tilted into its host's rendered equator using the host's fake fixed-plane pole
+azimuth, so (a) a host's moons share one common, not-astronomically-real phase offset
+from the real sky (their phases relative to *each other* stay correct), and (b)
+Triton's forced spin pole sits ~35° from its real orbit normal, so a synchronously-locked
+Triton will visibly nod/wobble once textured rather than holding steady. Both are
+one-line, spot-identifiable symptoms of this same simplification — useful test cases for
+whichever fix is chosen here.
+
 If/when this is picked up:
 - Store each body's real published pole RA/Dec (or the equivalent ecliptic-frame unit
   vector) instead of a single tilt-magnitude-in-a-fixed-plane.
