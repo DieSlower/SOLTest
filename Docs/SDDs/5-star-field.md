@@ -66,6 +66,82 @@ a documented URL, the same spirit as not committing engine binaries):
    (one-time; re-run only if CelestialVault's source assets change, which they
    won't unless the engine version changes).
 
+   **As built (4b).** Run it as `python Tools/StarField/import_star_field.py
+   [-SOLRebuild]` with the editor closed. It creates `/Game/SOL/StarField/T_SOLStarFieldCube`
+   (the DDS imported as a `TextureCube`: sRGB off, HDR Compressed / BC6H, mips generated
+   by simple average because the bake ships mip 0 only, Skybox texture group) and
+   `/Game/SOL/StarField/DA_SOLStarField` (a `USOLStarFieldData`, defined in
+   `Source/SOLTest/StarField/SOLStarFieldData.h`: 45,653 `FSOLBrightStar` entries holding the
+   ecliptic direction, V, flux and luminance-1 linear color, plus `CubeTexelSolidAngleSr` =
+   (2/2048)² ≈ 9.54e-7 sr, the cutoff and reference magnitudes, and the CC BY-SA
+   attribution). It also copies these CelestialVault assets to
+   `/Game/SOL/StarField/CelestialVault/`: `T_MilkyWay`, `T_StarMask_Round` (the round sprite
+   mask, decision 4), `MF_BillboardSizeByPixelUnits`, `MF_ScalePlaneToMinScreenPixels`,
+   `MF_DirectionToLatLong`, `SM_Plane_FacingX` (the 100 cm star quad, facing +X; its material
+   slot is cleared because the plugin's `MI_SolarSystemPlanets` isn't copied) and
+   `M_Stars_EnergyConservative` (the plugin's star material, kept only as a reference for 4c;
+   its mask texture is re-pointed at the copy). **Do not use it at runtime as it is.** It
+   expects CelestialVault's absolute brightness units and per-instance data layout, but our
+   data is flux relative to magnitude 8. A sprite of flux F drawn over an on-screen solid
+   angle Ω emits F × `CubeTexelSolidAngleSr` / Ω, which is the contract in
+   `SOLStarFieldData.h`. None of the three material functions depends
+   on any other plugin asset. Paths are in `SOL::Paths` (`SOLConstants.h`).
+
+   **Copying CelestialVault content: the temporary-enable procedure.** Unreal can only
+   duplicate an asset whose content root is mounted, and `/CelestialVault/` is mounted only
+   while the plugin is enabled. So the copy needs the plugin enabled for exactly one editor
+   run. When run with a normal Python, the script does this itself:
+   1. It writes the original `SOLTest.uproject` to `Saved/SOLTest.uproject.solbak`, then adds
+      `CelestialVault` to its `Plugins`.
+   2. It runs itself inside `UnrealEditor-Cmd -run=pythonscript`. That run is killed after
+      `--timeout` seconds (default 3600).
+   3. It restores the original bytes in a `finally` block and checks the file is
+      byte-identical.
+
+   If the driver itself is killed, the next run finds the `.solbak` backup and restores from
+   it. The manual fallback is `git checkout -- SOLTest.uproject`, which the script prints
+   before the risky step.
+
+   Inside the editor run, each asset is copied with `EditorAssetLibrary.duplicate_asset`, and
+   references between copies are re-pointed at the copies. Each saved copy must be known to
+   the asset registry, must have a non-empty dependency list, and must not depend on anything
+   under `/CelestialVault/`, `/Script/CelestialVault` or `/Script/DaySequence`. Otherwise the
+   run fails. When all copies already exist, the script leaves the `.uproject` alone.
+
+   A future re-copy (for example after an engine upgrade changes the plugin's assets) must go
+   through the same script with `-SOLRebuild`, never by enabling the plugin by hand and
+   leaving it enabled.
+
+   **The lasting guard is `Source/SOLTest/Tests/StarFieldTest.cpp`** (`SOLTest.StarField.*`).
+   It runs with every test run, with the plugin disabled. For every package under
+   `/Game/SOL/StarField`, it requires the asset registry to know the package, a non-empty
+   dependency list, none of the three prefixes above, and a successful load. It also checks
+   the data asset (unit directions, brightest-first order, the solid-angle and attribution
+   metadata) and the cube's compression and sRGB settings.
+
+   Two limits apply. The registry does not record dependencies on always-loaded engine
+   modules (`/Script/Engine`, `/Script/CoreUObject`). It does record any other module a
+   package needs (`/Script/SOLTest`, `/Script/InterchangeEngine` show up), so a plugin class
+   would show up as `/Script/CelestialVault`. A probe that treated `/Script/InterchangeEngine`
+   as a leak made the test fail as expected. Text the registry never sees, such as a Custom
+   node's shader-include path, is outside this check. Three copies do have Custom nodes
+   (`MF_BillboardSizeByPixelUnits`, `MF_ScalePlaneToMinScreenPixels`,
+   `M_Stars_EnergyConservative`). A byte scan in 4b found no include paths (no `.ush`, no
+   `IncludeFilePaths`) and no `CelestialVault` text in them, so their HLSL is self-contained.
+
+   **Remaining `CelestialVault` strings.** The copies still contain `CelestialVault` strings in
+   their Interchange/`AssetImportData` metadata, which is not a package reference:
+   - Epic's original source-file paths (`.../CelestialVaultDev/SourceAssets/...`).
+   - In `T_MilkyWay`, `T_StarMask_Round` and `SM_Plane_FacingX`, the original import
+     settings: a `contentImportPath` of `/CelestialVault/Textures` or `/CelestialVault/Meshes`,
+     and a `ReferenceObject` string naming the original asset.
+
+   Loading and cooking ignore them. They would only matter if someone reimported one of these
+   assets, and these copies are never reimported (re-copy instead).
+   The in-engine orientation of the cube was verified in 4b. Each of the six faces and
+   an ecliptic equirectangular view were rendered through a material that samples the
+   imported cube, and compared against the bake: see the revision history.
+
 ### 3.2 Runtime (Appendix B)
 
 New feature folder `Source/SOLTest/StarField/`:
@@ -76,6 +152,10 @@ New feature folder `Source/SOLTest/StarField/`:
   - A `UInstancedStaticMeshComponent` populated once at `BeginPlay` from
     `USOLStarFieldData` (one `AddInstance` per bright star; the quad mesh and its
     unlit material are the copied-and-adapted CelestialVault assets, decision 5).
+    The copied `SM_Plane_FacingX` has a `BodySetup` with one convex hull and the `BlockAll`
+    collision profile (checked in 4b). The ISM component **must** set `NoCollision` and
+    `SetCanEverAffectNavigation(false)`, or ~45,000 instances create that many physics
+    bodies.
   - A large inverted sphere mesh (or an unlit full-screen technique — implementer's
     call, whichever is simpler to get right; a big sphere is the more
     conventional/lower-risk choice) with an unlit material sampling the baked
@@ -142,3 +222,27 @@ None deferred as blocking. Diffraction spikes (decision 4) tracked as a follow-u
   intact; a cosmetic pole-stretch artifact remains only in the equirectangular preview
   image (an unavoidable property of that projection, not a bug, and doesn't affect the
   actual cubemap data used at runtime).
+- 2026-09-30: 4b built. `USOLStarFieldData` and `import_star_field.py` added. The script
+  handles the CelestialVault copy with the temporary-enable procedure in §3.1.
+  `SOLTest.uproject` is byte-identical to its pre-4b state afterwards. **The DDS
+  orientation risk from 4a is closed.** The imported `TextureCube` was rendered in-engine
+  with `DrawMaterialToRenderTarget` and a material that samples it along the D3D face-table
+  direction of each face texel. Each render was compared with the bake's own cube data
+  (8×8 box-averaged). Log-luminance correlation was 0.997–0.998 as-is on all six faces. Every
+  mirrored, rotated, transposed or swapped-face alternative scored ≤ 0.50. The mean-brightness
+  ratio was 0.992–0.996 (BC6H plus generated mips conserve energy). Against the tone-mapped
+  preview PNGs, correlation was 0.81–0.88 as-is and ≤ 0.56 for the alternatives. An ecliptic
+  equirectangular render (ecliptic → Unreal (x, −y, z), the bake preview's own mapping)
+  correlated 0.93 with the bake. The side-by-side images were inspected directly: same
+  Milky Way band and dust lanes, no mirroring.
+- 2026-09-30: 4b adversarial-review fixes.
+  - The import script's independence check now fails if the asset registry doesn't know a
+    copy or has no dependencies for it. It also treats `/Script/CelestialVault` and
+    `/Script/DaySequence` as leaks.
+  - The `.uproject` procedure gained an on-disk backup with automatic recovery, a child-process
+    timeout, and printed recovery steps.
+  - Added `StarFieldTest.cpp` as the permanent guard. It passes with the plugin disabled, and
+    a deliberate probe showed that it does fail when a leak is present.
+  - Corrected the import-metadata description and the `CubeTexelSolidAngleSr` contract.
+  - Marked the reference material as not for runtime use, and noted the quad mesh's collision
+    for 4c.

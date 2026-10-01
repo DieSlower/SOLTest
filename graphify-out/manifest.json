@@ -20,8 +20,8 @@
     "semantic_hash": "2e01d00a4cda8a448001da46507388d9"
   },
   "Source/SOLTest/SOLTest.Build.cs": {
-    "mtime": 1790744109.6381009,
-    "ast_hash": "bd6a5404d4c2ecdf69233b09a0bb88d1",
+    "mtime": 1790819476.836265,
+    "ast_hash": "27115b919257b52757aa3fc99144e3b4",
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLTest.cpp": {
@@ -55,8 +55,8 @@
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
-    "mtime": 1790792284.348739,
-    "ast_hash": "5394647ed2335a69646955d30246665a",
+    "mtime": 1790805358.5584047,
+    "ast_hash": "64375aa51e9afef1eaacddd398de6b06",
     "semantic_hash": ""
   },
   "Docs/Research/STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
@@ -85,8 +85,8 @@
     "semantic_hash": "43503920351ce974c9b10c7bffa37fc8"
   },
   "Docs/ToDo/README.md": {
-    "mtime": 1790800519.1583498,
-    "ast_hash": "d802ad55a227461e3bf0c992fc74ead8",
+    "mtime": 1790806619.237279,
+    "ast_hash": "09097781ee0b03baea2f9f22186e2adb",
     "semantic_hash": ""
   },
   "Docs/ToDo/planetary-perturbations.md": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1790788851.094505,
-    "ast_hash": "131a639b0c4da51a392581274a1adacf",
+    "mtime": 1790819403.898116,
+    "ast_hash": "f6a901e33e508232898adbe54307adfa",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -235,8 +235,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Visuals/SOLBodyVisuals.cpp": {
-    "mtime": 1790743992.3490622,
-    "ast_hash": "f3791ec39466847d2c52bdcc5af3c6f4",
+    "mtime": 1790803429.828332,
+    "ast_hash": "caebf7bcc2f8d47c77c2ce50ecedaaba",
     "semantic_hash": ""
   },
   "Source/SOLTest/Visuals/SOLBodyVisuals.h": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790801693.8661828,
-    "ast_hash": "efd2347b4ff108d3a8dfd3d067e3398b",
+    "mtime": 1790810236.4698987,
+    "ast_hash": "b9f83df94f02ba7cf88081a38b406a70",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -745,18 +745,58 @@
     "semantic_hash": ""
   },
   "Docs/Plans/12-planet-axial-rotation-plan.md": {
-    "mtime": 1790800533.5817213,
-    "ast_hash": "9b47bfdf5ef0941359ad2a4db71603b0",
+    "mtime": 1790805346.823855,
+    "ast_hash": "7414323bc2dbeb6ee71dfbfcfc79fe3f",
     "semantic_hash": ""
   },
   "Docs/SDDs/12-planet-axial-rotation.md": {
-    "mtime": 1790801642.8212645,
-    "ast_hash": "ec1868337648cfcfa56d88d762d08a08",
+    "mtime": 1790805107.9704957,
+    "ast_hash": "8624d594dcec80784720e8471d3d93a5",
     "semantic_hash": ""
   },
   "Docs/ToDo/accurate-pole-directions.md": {
     "mtime": 1790801668.373284,
     "ast_hash": "9e77678f3805232c9b0e6e6bb4171597",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/StarField/SOLStarFieldData.h": {
+    "mtime": 1790819410.2508526,
+    "ast_hash": "1e5f341ffd9ef512411780e46578659b",
+    "semantic_hash": ""
+  },
+  "Tools/StarField/bake_star_field.py": {
+    "mtime": 1790809186.607112,
+    "ast_hash": "70a52fbad95106cf1e6e03196e887404",
+    "semantic_hash": ""
+  },
+  "Tools/StarField/fetch_athyg.py": {
+    "mtime": 1790807975.9458466,
+    "ast_hash": "5273cdb18fb348b6ede0ddf1d1eb8279",
+    "semantic_hash": ""
+  },
+  "Tools/StarField/import_star_field.py": {
+    "mtime": 1790819394.136863,
+    "ast_hash": "03e7f4ed3547e6ba6068607a2b4bbf15",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/5-star-field-plan.md": {
+    "mtime": 1790810303.2692375,
+    "ast_hash": "44970583ee18e5bd9c5b26e44d80c55d",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/5-star-field.md": {
+    "mtime": 1790819736.649928,
+    "ast_hash": "c01425597f0dcb740fb86c5c841aaed4",
+    "semantic_hash": ""
+  },
+  "Docs/ToDo/star-diffraction-spikes.md": {
+    "mtime": 1790806613.0079148,
+    "ast_hash": "f5cd2c21d590d7f5ab6ae341f8fd47f9",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/StarFieldTest.cpp": {
+    "mtime": 1790819683.228525,
+    "ast_hash": "d19031508265abb2973e7485e8be113e",
     "semantic_hash": ""
   }
 }
