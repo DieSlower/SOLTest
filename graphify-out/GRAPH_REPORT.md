@@ -1,16 +1,16 @@
 # Graph Report - SOLTest  (2026-10-01)
 
 ## Corpus Check
-- 166 files · ~206,346 words
+- 169 files · ~218,206 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1782 nodes · 2913 edges · 168 communities (116 shown, 52 thin omitted)
+- 1837 nodes · 3010 edges · 171 communities (118 shown, 53 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 82 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `fbf10351`
+- Built from commit: `2aa45e26`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -172,6 +172,9 @@
 - [[_COMMUNITY_Community 165|Community 165]]
 - [[_COMMUNITY_Community 166|Community 166]]
 - [[_COMMUNITY_Community 167|Community 167]]
+- [[_COMMUNITY_Community 168|Community 168]]
+- [[_COMMUNITY_Community 169|Community 169]]
+- [[_COMMUNITY_Community 170|Community 170]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `FInputActionValue` - 43 edges
@@ -205,7 +208,7 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (168 total, 52 thin omitted)
+## Communities (171 total, 53 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
 Cohesion: 0.14
@@ -360,8 +363,8 @@ Cohesion: 0.50
 Nodes (4): Cross-cutting tooling, Global constraints, Roadmap, Solar-System Architecture — Roadmap Plan
 
 ### Community 58 - "Community 58"
-Cohesion: 0.08
-Nodes (49): HandleBoost(), HandleClearTarget(), HandleCloseMap(), HandleFreeLook(), HandleMapClearPick(), HandleMapJump(), HandleMapOrbitHeld(), HandleMapPanModifierHeld() (+41 more)
+Cohesion: 0.07
+Nodes (51): HandleBoost(), HandleClearTarget(), HandleCloseMap(), HandleFreeLook(), HandleMapClearPick(), HandleMapJump(), HandleMapOrbitHeld(), HandleMapPanModifierHeld() (+43 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.44
@@ -552,8 +555,8 @@ Cohesion: 0.25
 Nodes (23): FAutomationTestBase, FQuat4d, FSOLSurfaceLockParams, FSOLSurfaceLockState, FString, FVector3d, int32, RunTest() (+15 more)
 
 ### Community 140 - "Community 140"
-Cohesion: 0.17
-Nodes (20): BeginPlay(), CloseMap(), CloseSpeedPanel(), EndWarpEffect(), FollowShip(), HandleFocusLost(), HandleTogglePredictedPath(), IsJumpWarping() (+12 more)
+Cohesion: 0.20
+Nodes (18): BeginPlay(), CloseMap(), CloseSpeedPanel(), EndWarpEffect(), FollowShip(), HandleFocusLost(), IsJumpWarping(), OpenMap() (+10 more)
 
 ### Community 141 - "Community 141"
 Cohesion: 0.29
@@ -620,32 +623,40 @@ Cohesion: 0.56
 Nodes (10): binary(), build_sky(), build_sprite(), check_quad_mesh(), connect(), interpolate(), mask(), node() (+2 more)
 
 ### Community 165 - "Community 165"
-Cohesion: 0.17
-Nodes (11): 1. Problem, 2. Decisions, 3.1 Moons and dwarf planets (Appendix A), 3.2 Asteroid belt (Appendix B), 3.3 Planet rings (Appendix C), 3.4 Testing, 3. Design, 4. Open questions (+3 more)
+Cohesion: 0.15
+Nodes (12): 1. Problem, 2. Decisions, 3.1 Moons and dwarf planets (Appendix A), 3.2 Asteroid belt (Appendix B), 3.3 Planet rings (Appendix C), 3.4 Testing, 3. Design, 4. Open questions (+4 more)
 
 ### Community 166 - "Community 166"
 Cohesion: 0.40
 Nodes (4): Cross-cutting, Global constraints, Moons, Dwarf Planets, Asteroid Belt, Rings — Implementation Plan, Steps
 
+### Community 168 - "Community 168"
+Cohesion: 0.11
+Nodes (32): FRandomStream, FSOLAxisBandAU, BeltMaxSeparationM(), BeltMeanMotionDegPerCy(), BeltMemberElements(), BeltStateToElements(), BeltUniform(), BeltWrapDegrees() (+24 more)
+
+### Community 169 - "Community 169"
+Cohesion: 0.27
+Nodes (15): FAutomationTestBase, FSOLAsteroidDef, FSOLSecularElements, FString, FVector3d, TArray, TCHAR, BeltCheckCohesion() (+7 more)
+
 ## Knowledge Gaps
-- **508 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+503 more)
+- **527 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+522 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **52 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **53 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `GetName()` connect `Community 140` to `Community 96`, `Community 65`, `Community 162`, `Community 36`, `SOLTypes Namespace`, `Community 105`, `Community 109`, `Community 82`, `Community 19`, `Community 84`, `Community 20`, `Community 18`, `Community 58`, `Community 63`?**
-  _High betweenness centrality (0.058) - this node is a cross-community bridge._
+  _High betweenness centrality (0.062) - this node is a cross-community bridge._
 - **Why does `BeginPlay()` connect `Community 18` to `Community 140`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
+- **Why does `BuildShipMesh()` connect `Community 82` to `Community 58`, `Community 140`?**
+  _High betweenness centrality (0.006) - this node is a cross-community bridge._
 - **Are the 38 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
   _`GetName()` has 38 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl` to the rest of the system?**
-  _514 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _533 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Style Guide & Perf Review` be split into smaller, more focused modules?**
   _Cohesion score 0.14035087719298245 - nodes in this community are weakly interconnected._
 - **Should `Community 6` be split into smaller, more focused modules?**
   _Cohesion score 0.10317460317460317 - nodes in this community are weakly interconnected._
-- **Should `SOLTypes Namespace` be split into smaller, more focused modules?**
-  _Cohesion score 0.11083743842364532 - nodes in this community are weakly interconnected._

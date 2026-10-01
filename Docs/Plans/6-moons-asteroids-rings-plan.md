@@ -40,12 +40,26 @@ Keep it in sync if the design shifts.
   (`FSOLBodyDef::OrbitGM`, `ChildOrbitGM()` — fixes a ~72 m/s/0.5% speed error at Mimas
   that fed ship spawn/jump-arrival/collision code). 340 automation tests passing (was
   332). `Docs/ARCHITECTURE.md` and `Docs/ToDo/accurate-pole-directions.md` updated.
-- [ ] **5b — Asteroid belt pure logic.** `Source/SOLTest/MinorBodies/SOLAsteroidBelt.h/.cpp`
-  per SDD 6 §3.2: the real ~1,000-asteroid table, and the deterministic family-cluster
-  generator (cluster placement across real belt element ranges minus Kirkwood gap
-  bands, per-cluster procedural member scatter). Fully unit-tested: TDD as usual,
-  tests from the contract alone. Adversarial review (generation correctness,
-  determinism, gap exclusions actually exclude), fix, commit.
+- [x] **5b — Asteroid belt pure logic.** `Source/SOLTest/MinorBodies/SOLAsteroidBelt.h/.cpp`
+  per SDD 6 §3.2 (Amendment 2): the real ~500-asteroid table (fetched from a real public
+  catalog by a dispatched subagent, baked into a compiled C++ array literal — not
+  hand-typed, not a UDataTable), and the deterministic family-cluster generator (cluster
+  placement across real belt element ranges minus Kirkwood gap bands, per-cluster
+  procedural member scatter). Fully unit-tested: TDD as usual, tests from the contract
+  alone. Adversarial review (generation correctness, determinism, gap exclusions
+  actually exclude, real-data fidelity of the fetched table), fix, commit.
+  **Built:** real data fetched live from JPL SBDB (500 of the largest main-belt
+  asteroids, Ceres excluded since it's already a registry dwarf planet), real names
+  folded with their catalog number (e.g. "52 Europa") to avoid colliding with existing
+  moon names. Family members get an exact (not approximate) cohesion guarantee: each
+  shares its cluster center's semi-major axis and mean motion exactly, via a
+  state-vector-to-orbital-elements conversion, so separation is an exact bounded
+  periodic function of time. Adversarial review found no correctness bugs; fixed
+  documentation overclaims, the real-asteroid name collisions, a duplicated J2000
+  constant, and skewed the cluster eccentricity/inclination draw toward low values to
+  better match the real belt (was uniform). 15 new automation tests, 355 total (was
+  340). `SOLBodyRegistry.cpp`'s Sun-GM literal duplication noted as tech debt in
+  `CLAUDE.md` rather than fixed here (cross-file cleanup, not blocking).
 - [ ] **5c — Asteroid belt Mass architecture and rendering.**
   `FSOLMinorBodyOrbitFragment`/`FSOLMinorBodyAppearanceFragment`,
   `USOLMinorBodyOrbitProcessor` (SDD 6 §3.2 — mirrors `USOLShipFlightProcessor`'s
