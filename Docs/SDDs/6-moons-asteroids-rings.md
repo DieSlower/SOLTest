@@ -26,7 +26,7 @@ one-actor-per-body `ASOLBodyVisuals` approach cannot handle.
 |---|---|---|
 | 1 | Moons & dwarf planets | **No new architecture.** `FSOLBodyRegistry` already supports arbitrary parent-child hierarchies (`ParentIndex` isn't limited to "orbits the Sun") and `ASOLBodyVisuals` already renders any registry body generically. This is purely a data-addition task: real orbital elements, radii, and (reusing issue #12's work) rotation data for each moon/dwarf planet, sourced the same way the existing Standish planetary elements already are. |
 | 2 | Asteroids/rings architecture | **A separate, Mass-native population, not registry entries.** SDD 1 explicitly calls for "Full MassEntity for everything" and says asteroids/ring particles "are Keplerian too" — a new Mass archetype with compact orbital-element fragments and a dedicated parallel Mass processor (mirroring `USOLShipFlightProcessor`'s chunk-parallel pattern), rendered via GPU instancing, never as individual `AActor`s. |
-| 3 | Asteroid belt composition | **~1,000 real named asteroids** (the largest, by real catalog data — JPL Small-Body Database or equivalent — with true orbital elements/radii, individually meaningful/targetable) **plus a procedural fill in ~200-400 "family" clusters** (10-50 asteroids each, within ~20-100 km of the cluster center), the clusters themselves scattered at realistic sparse spacing across the belt's real semi-major-axis/eccentricity/inclination ranges. This reconciles "somewhat accurate, far apart" (most of the belt is genuinely empty, matching the real belt's actual sparsity — a uniform density high enough for constant local visibility would require an astronomically (literally) larger population than is remotely practical) with "Hollywood-like near one you can see others" (real asteroid families genuinely do cluster this way, from ancient collision events, giving the clustering a real astronomical basis rather than being an arbitrary gamey compromise). |
+| 3 | Asteroid belt composition | **~500 real named asteroids** (the largest, by real catalog data — JPL Small-Body Database or equivalent — with true orbital elements/radii, individually meaningful/targetable) **plus a procedural fill in ~200-400 "family" clusters** (10-50 asteroids each, within ~20-100 km of the cluster center), the clusters themselves scattered at realistic sparse spacing across the belt's real semi-major-axis/eccentricity/inclination ranges. This reconciles "somewhat accurate, far apart" (most of the belt is genuinely empty, matching the real belt's actual sparsity — a uniform density high enough for constant local visibility would require an astronomically (literally) larger population than is remotely practical) with "Hollywood-like near one you can see others" (real asteroid families genuinely do cluster this way, from ancient collision events, giving the clustering a real astronomical basis rather than being an arbitrary gamey compromise). Revised down from an initial ~1,000 during the 5b grill (see Amendment 2) — even the 500th-largest real asteroid is still a substantial, Phobos-scale (~60-70 km diameter, confirmed as ~61 km by the actual fetched data in 5b) body, and the "Hollywood" local density near a cluster comes entirely from the procedural family fill, not the real-named count, so halving the real count doesn't affect that goal. |
 | 4 | Kirkwood gaps | The procedural belt generation excludes semi-major-axis bands at the real Kirkwood gap resonances (3:1, 5:2, 2:1 with Jupiter), the same "exclude a band" technique as decision 6's ring gaps — consistent realism, cheap to add alongside that logic. |
 | 5 | Asteroid/ring gravity | **None.** Asteroids and ring particles never enter `SOLFlight::GravityAcceleration`'s sum — their real mass is far too small to produce a perceptible pull (even Ceres, the largest asteroid, is negligible next to any planet), and feeding a large Mass population into the ship's per-frame gravity computation for a physically undetectable effect would be pure waste. |
 | 6 | Ring structure | Rings get real gaps: a clearing carved out wherever a moon's orbit falls within the ring's radius range (matching real shepherd-moon gaps, e.g. Saturn's Cassini/Encke/Keeler divisions), using the same "exclude a band" generation technique as decision 4. |
@@ -91,8 +91,13 @@ input — purely kinematic, far simpler than the ship processor.
 offline-callable from a C++ tool or at world startup — implementer's choice, likely
 startup generation from a fixed seed is simplest, avoiding an offline-bake step
 analogous to Part 4's since this is procedural math, not external-data processing):
-- Real ~1,000-asteroid table (same `REGISTRY_SOLAR_SYSTEM`-table style, sourced from
-  a real catalog, cited in the source comment).
+- Real ~500-asteroid table (same `REGISTRY_SOLAR_SYSTEM`-table style — a compiled C++
+  array literal, not a `UDataTable` asset — so the existing pure-function TDD pattern
+  needs no new asset-loading machinery). Per Amendment 2, sourced by a dispatched
+  subagent fetching real top-~500-by-size asteroid data from a public catalog (JPL
+  Small-Body Database or equivalent) via live web fetch rather than typed from memory,
+  given the row count is far beyond what 5a's hand-typed approach could reliably source
+  accurately; cited in the source comment same as the existing tables.
 - A deterministic family-cluster generator: places ~200-400 cluster centers across
   the belt's real element ranges (2.1-3.3 AU semi-major axis, realistic
   eccentricity/inclination distributions), excluding the Kirkwood gap bands
@@ -151,6 +156,29 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 
 - 2026-09-30: initial decisions from the `grill-me` session.
 - 2026-10-01: Amendment 1, after implementing and reviewing 5a.
+- 2026-10-01: Amendment 2, real-asteroid count and sourcing revised before starting 5b.
+
+## Amendment 2 — 5b real-asteroid count and sourcing
+
+Before starting 5b, a follow-up question surfaced: decision 3's "~1,000 real named
+asteroids" was feasible for 5a's 25 moons to hand-type from memory into a C++ array, but
+1,000 rows is a different scale with real risk of memorized-data errors and no verifiable
+per-row source. Asked the user; resolved as:
+- **Count revised to ~500** (from ~1,000). The real-world size-frequency distribution
+  puts even the 500th-largest asteroid at a substantial ~60-70 km diameter (and the
+  1,000th at ~45-50 km, Phobos-scale) — both are "real, substantial bodies," so this is a
+  sourcing-feasibility reduction, not a meaningful loss of realism. The "Hollywood" local
+  density near a cluster (decision 3's other half) comes entirely from the procedural
+  family fill, unaffected by this count.
+- **Sourcing: live fetch, not memorized.** A dispatched subagent fetches the real
+  top-~500-by-size asteroid data from a public catalog (JPL Small-Body Database or
+  equivalent) via web search/fetch, rather than typing it from general astronomical
+  knowledge — the scale that made 5a's memorized-and-typed approach reasonable doesn't
+  hold at 500+ rows.
+- **Storage: still a compiled C++ array literal** (same style as every other table in
+  this codebase), not a `UDataTable`/CSV content asset — keeps the existing pure-function
+  TDD pattern with no new asset-loading machinery, at the cost of a large literal-data
+  source file (accepted, matching precedent).
 
 ## Amendment 1 — 5a implementation: host-equator tilt conversion and orbit-GM fix
 

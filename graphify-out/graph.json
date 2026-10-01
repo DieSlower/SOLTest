@@ -3360,6 +3360,348 @@
       "norm_label": "namespace"
     },
     {
+      "label": "SOLAsteroidBelt.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "community": 168,
+      "norm_label": "solasteroidbelt.cpp"
+    },
+    {
+      "label": "FSOLRealAsteroidRow",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L19",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "community": 168,
+      "norm_label": "fsolrealasteroidrow"
+    },
+    {
+      "label": "TCHAR",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L21",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_tchar",
+      "community": 168,
+      "norm_label": "tchar"
+    },
+    {
+      "label": "Name",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L21",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_name",
+      "community": 168,
+      "norm_label": "name"
+    },
+    {
+      "label": "int32",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L22",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_int32",
+      "community": 168,
+      "norm_label": "int32"
+    },
+    {
+      "label": "Number",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L22",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_number",
+      "community": 168,
+      "norm_label": "number"
+    },
+    {
+      "label": "DiameterKm",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L23",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_diameterkm",
+      "community": 168,
+      "norm_label": "diameterkm"
+    },
+    {
+      "label": "AAU",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L24",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_aau",
+      "community": 168,
+      "norm_label": "aau"
+    },
+    {
+      "label": "E",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L25",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_e",
+      "community": 168,
+      "norm_label": "e"
+    },
+    {
+      "label": "IDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L26",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_ideg",
+      "community": 168,
+      "norm_label": "ideg"
+    },
+    {
+      "label": "LongNodeDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L27",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_longnodedeg",
+      "community": 168,
+      "norm_label": "longnodedeg"
+    },
+    {
+      "label": "ArgPeriDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L28",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_argperideg",
+      "community": 168,
+      "norm_label": "argperideg"
+    },
+    {
+      "label": "MeanAnomalyDeg",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L29",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_meananomalydeg",
+      "community": 168,
+      "norm_label": "meananomalydeg"
+    },
+    {
+      "label": "MeanMotionDegPerDay",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L30",
+      "id": "minorbodies_solasteroidbelt_fsolrealasteroidrow_meanmotiondegperday",
+      "community": 168,
+      "norm_label": "meanmotiondegperday"
+    },
+    {
+      "label": "BeltWrapDegrees()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1095",
+      "id": "minorbodies_solasteroidbelt_beltwrapdegrees",
+      "community": 168,
+      "norm_label": "beltwrapdegrees()"
+    },
+    {
+      "label": "BeltMeanMotionDegPerCy()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1107",
+      "id": "minorbodies_solasteroidbelt_beltmeanmotiondegpercy",
+      "community": 168,
+      "norm_label": "beltmeanmotiondegpercy()"
+    },
+    {
+      "label": "BeltUniform()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1116",
+      "id": "minorbodies_solasteroidbelt_beltuniform",
+      "community": 168,
+      "norm_label": "beltuniform()"
+    },
+    {
+      "label": "FRandomStream",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1116",
+      "id": "frandomstream",
+      "community": 168,
+      "norm_label": "frandomstream"
+    },
+    {
+      "label": "BeltStateToElements()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "id": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "community": 168,
+      "norm_label": "beltstatetoelements()"
+    },
+    {
+      "label": "FSOLSecularElements",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
+      "community": 168,
+      "norm_label": "fsolsecularelements"
+    },
+    {
+      "label": "FSOLOrbitState",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolorbitstate",
+      "community": 168,
+      "norm_label": "fsolorbitstate"
+    },
+    {
+      "label": "BeltMaxSeparationM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "id": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "community": 168,
+      "norm_label": "beltmaxseparationm()"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "community": 168,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fvector3d",
+      "community": 168,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "BeltMemberElements()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1196",
+      "id": "minorbodies_solasteroidbelt_beltmemberelements",
+      "community": 168,
+      "norm_label": "beltmemberelements()"
+    },
+    {
+      "label": "RealAsteroids()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1234",
+      "id": "minorbodies_solasteroidbelt_realasteroids",
+      "community": 168,
+      "norm_label": "realasteroids()"
+    },
+    {
+      "label": "FSOLAsteroidDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1234",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolasteroiddef",
+      "community": 168,
+      "norm_label": "fsolasteroiddef"
+    },
+    {
+      "label": "KirkwoodGapBandsAU()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1265",
+      "id": "minorbodies_solasteroidbelt_kirkwoodgapbandsau",
+      "community": 168,
+      "norm_label": "kirkwoodgapbandsau()"
+    },
+    {
+      "label": "FSOLAxisBandAU",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1265",
+      "id": "fsolaxisbandau",
+      "community": 168,
+      "norm_label": "fsolaxisbandau"
+    },
+    {
+      "label": "IsInKirkwoodGap()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1272",
+      "id": "minorbodies_solasteroidbelt_isinkirkwoodgap",
+      "community": 168,
+      "norm_label": "isinkirkwoodgap()"
+    },
+    {
+      "label": "ClusterCenters()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1286",
+      "id": "minorbodies_solasteroidbelt_clustercenters",
+      "community": 168,
+      "norm_label": "clustercenters()"
+    },
+    {
+      "label": "GenerateFamilyFill()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1321",
+      "id": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "community": 168,
+      "norm_label": "generatefamilyfill()"
+    },
+    {
+      "label": "GenerateBelt()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1394",
+      "id": "minorbodies_solasteroidbelt_generatebelt",
+      "community": 168,
+      "norm_label": "generatebelt()"
+    },
+    {
+      "label": "SOLAsteroidBelt.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solasteroidbelt_h_minorbodies_solasteroidbelt",
+      "community": 170,
+      "norm_label": "solasteroidbelt.h"
+    },
+    {
+      "label": "FSOLAsteroidDef()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L14",
+      "id": "minorbodies_solasteroidbelt_fsolasteroiddef",
+      "community": 170,
+      "norm_label": "fsolasteroiddef()"
+    },
+    {
+      "label": "FSOLAxisBandAU()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L25",
+      "id": "minorbodies_solasteroidbelt_fsolaxisbandau",
+      "community": 170,
+      "norm_label": "fsolaxisbandau()"
+    },
+    {
+      "label": "SOLAsteroidBelt()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L39",
+      "id": "minorbodies_solasteroidbelt_solasteroidbelt",
+      "community": 170,
+      "norm_label": "solasteroidbelt()"
+    },
+    {
+      "label": "namespace",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L39",
+      "id": "source_soltest_minorbodies_solasteroidbelt_h_namespace",
+      "community": 170,
+      "norm_label": "namespace"
+    },
+    {
       "label": "SOLConstants.h",
       "file_type": "code",
       "source_file": "Source/SOLTest/SOLConstants.h",
@@ -4139,7 +4481,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1000",
       "id": "ship_solshippawn_handletogglepredictedpath",
-      "community": 140,
+      "community": 58,
       "norm_label": "handletogglepredictedpath()"
     },
     {
@@ -4607,7 +4949,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1597",
       "id": "ship_solshippawn_ontogglepredictedpathaction",
-      "community": 140,
+      "community": 58,
       "norm_label": "ontogglepredictedpathaction()"
     },
     {
@@ -8173,6 +8515,150 @@
       "id": "source_soltest_tests_renderplacementtest_cpp_fquat4d",
       "community": 45,
       "norm_label": "fquat4d"
+    },
+    {
+      "label": "SOLAsteroidBeltTest.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L1",
+      "id": "tests_solasteroidbelttest",
+      "community": 169,
+      "norm_label": "solasteroidbelttest.cpp"
+    },
+    {
+      "label": "BeltElementsIdentical()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L46",
+      "id": "tests_solasteroidbelttest_beltelementsidentical",
+      "community": 169,
+      "norm_label": "beltelementsidentical()"
+    },
+    {
+      "label": "FSOLSecularElements",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L46",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "community": 169,
+      "norm_label": "fsolsecularelements"
+    },
+    {
+      "label": "BeltDefsIdentical()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L57",
+      "id": "tests_solasteroidbelttest_beltdefsidentical",
+      "community": 169,
+      "norm_label": "beltdefsidentical()"
+    },
+    {
+      "label": "FSOLAsteroidDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L57",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_fsolasteroiddef",
+      "community": 169,
+      "norm_label": "fsolasteroiddef"
+    },
+    {
+      "label": "BeltDefListsIdentical()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L65",
+      "id": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "community": 169,
+      "norm_label": "beltdeflistsidentical()"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L65",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_tarray",
+      "community": 169,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "BeltElementListsIdentical()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L83",
+      "id": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "community": 169,
+      "norm_label": "beltelementlistsidentical()"
+    },
+    {
+      "label": "BeltRatesAllZero()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L101",
+      "id": "tests_solasteroidbelttest_beltratesallzero",
+      "community": 169,
+      "norm_label": "beltratesallzero()"
+    },
+    {
+      "label": "BeltPositionM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L109",
+      "id": "tests_solasteroidbelttest_beltpositionm",
+      "community": 169,
+      "norm_label": "beltpositionm()"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L109",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_fvector3d",
+      "community": 169,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "BeltCheckCohesion()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "id": "tests_solasteroidbelttest_beltcheckcohesion",
+      "community": 169,
+      "norm_label": "beltcheckcohesion()"
+    },
+    {
+      "label": "FAutomationTestBase",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_fautomationtestbase",
+      "community": 169,
+      "norm_label": "fautomationtestbase"
+    },
+    {
+      "label": "TCHAR",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_tchar",
+      "community": 169,
+      "norm_label": "tchar"
+    },
+    {
+      "label": "RunTest()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L152",
+      "id": "tests_solasteroidbelttest_runtest",
+      "community": 169,
+      "norm_label": "runtest()"
+    },
+    {
+      "label": "FString",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L152",
+      "id": "source_soltest_tests_solasteroidbelttest_cpp_fstring",
+      "community": 169,
+      "norm_label": "fstring"
     },
     {
       "label": "SOLTestHelpers.h",
@@ -12939,7 +13425,7 @@
       "label": "graphify",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L150",
+      "source_location": "L151",
       "id": "claude_graphify",
       "community": 22,
       "norm_label": "graphify"
@@ -13488,7 +13974,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
-      "source_location": "L69",
+      "source_location": "L83",
       "id": "plans_6_moons_asteroids_rings_plan_cross_cutting",
       "community": 166,
       "norm_label": "cross-cutting"
@@ -14739,7 +15225,7 @@
       "label": "3.3 Planet rings (Appendix C)",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L113",
+      "source_location": "L118",
       "id": "sdds_6_moons_asteroids_rings_3_3_planet_rings_appendix_c",
       "community": 165,
       "norm_label": "3.3 planet rings (appendix c)"
@@ -14748,7 +15234,7 @@
       "label": "3.4 Testing",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L132",
+      "source_location": "L137",
       "id": "sdds_6_moons_asteroids_rings_3_4_testing",
       "community": 165,
       "norm_label": "3.4 testing"
@@ -14757,7 +15243,7 @@
       "label": "4. Open questions",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L145",
+      "source_location": "L150",
       "id": "sdds_6_moons_asteroids_rings_4_open_questions",
       "community": 165,
       "norm_label": "4. open questions"
@@ -14766,16 +15252,25 @@
       "label": "5. Revision history",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L150",
+      "source_location": "L155",
       "id": "sdds_6_moons_asteroids_rings_5_revision_history",
       "community": 165,
       "norm_label": "5. revision history"
     },
     {
+      "label": "Amendment 2 \u2014 5b real-asteroid count and sourcing",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L161",
+      "id": "sdds_6_moons_asteroids_rings_amendment_2_5b_real_asteroid_count_and_sourcing",
+      "community": 165,
+      "norm_label": "amendment 2 \u2014 5b real-asteroid count and sourcing"
+    },
+    {
       "label": "Amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-GM fix",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L155",
+      "source_location": "L183",
       "id": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
       "community": 165,
       "norm_label": "amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-gm fix"
@@ -23104,6 +23599,694 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1107",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltmeanmotiondegpercy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1196",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltmemberelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1116",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltuniform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1095",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_beltwrapdegrees",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1286",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_clustercenters",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1394",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_generatebelt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1321",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1272",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_isinkirkwoodgap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1265",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_kirkwoodgapbandsau",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1234",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_cpp_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_realasteroids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L24",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_aau",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L28",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_argperideg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L23",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_diameterkm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L25",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_e",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L26",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_ideg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L27",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_longnodedeg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L29",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_meananomalydeg",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L30",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_meanmotiondegperday",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L21",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_name",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L22",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "minorbodies_solasteroidbelt_fsolrealasteroidrow_number",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L22",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L21",
+      "weight": 1.0,
+      "context": "field",
+      "source": "minorbodies_solasteroidbelt_fsolrealasteroidrow",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tchar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1286",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1394",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_generatebelt",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1321",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1170",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "target": "minorbodies_solasteroidbelt_beltwrapdegrees",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1255",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_realasteroids",
+      "target": "minorbodies_solasteroidbelt_beltwrapdegrees",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1314",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "minorbodies_solasteroidbelt_beltmeanmotiondegpercy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1116",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltuniform",
+      "target": "frandomstream",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1303",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "minorbodies_solasteroidbelt_beltuniform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1340",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "minorbodies_solasteroidbelt_beltuniform",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1208",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_beltmemberelements",
+      "target": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolorbitstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1124",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1139",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1196",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltmemberelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1286",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1196",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltmemberelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolorbitstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1179",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1368",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "minorbodies_solasteroidbelt_beltmaxseparationm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1286",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1394",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_generatebelt",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1321",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1265",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_kirkwoodgapbandsau",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1234",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_realasteroids",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1196",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solasteroidbelt_beltmemberelements",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1364",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "minorbodies_solasteroidbelt_beltmemberelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1396",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatebelt",
+      "target": "minorbodies_solasteroidbelt_realasteroids",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1234",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_realasteroids",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1394",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_generatebelt",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1321",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1265",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "minorbodies_solasteroidbelt_kirkwoodgapbandsau",
+      "target": "fsolaxisbandau",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1305",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_clustercenters",
+      "target": "minorbodies_solasteroidbelt_isinkirkwoodgap",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1326",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "target": "minorbodies_solasteroidbelt_clustercenters",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1397",
+      "weight": 1.0,
+      "source": "minorbodies_solasteroidbelt_generatebelt",
+      "target": "minorbodies_solasteroidbelt_generatefamilyfill",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_h_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_h_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_fsolaxisbandau",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solasteroidbelt_h_minorbodies_solasteroidbelt",
+      "target": "minorbodies_solasteroidbelt_solasteroidbelt",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h",
+      "source_location": "L39",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solasteroidbelt_solasteroidbelt",
+      "target": "source_soltest_minorbodies_solasteroidbelt_h_namespace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/SOLConstants.h",
       "source_location": "L11",
       "weight": 1.0,
@@ -30351,9 +31534,9 @@
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L199",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_bodyregistrytest",
-      "target": "tests_bodyregistrytest_registrychildorbitgm",
-      "confidence_score": 1.0
+      "target": "tests_bodyregistrytest_registrychildorbitgm"
     },
     {
       "relation": "contains",
@@ -30773,9 +31956,9 @@
       "source_location": "L199",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_registrychildorbitgm",
-      "target": "tests_bodyregistrytest_fsolregistryexpectedchild",
-      "confidence_score": 1.0
+      "target": "tests_bodyregistrytest_fsolregistryexpectedchild"
     },
     {
       "relation": "references",
@@ -30872,9 +32055,9 @@
       "source_file": "Source/SOLTest/Tests/BodyRegistryTest.cpp",
       "source_location": "L214",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_bodyregistrytest_registryexpectedchildstate",
-      "target": "tests_bodyregistrytest_registrychildorbitgm",
-      "confidence_score": 1.0
+      "target": "tests_bodyregistrytest_registrychildorbitgm"
     },
     {
       "relation": "references",
@@ -34322,6 +35505,350 @@
       "confidence_score": 1.0,
       "source": "tests_renderplacementtest_renderplacementquatsamerotation",
       "target": "source_soltest_tests_renderplacementtest_cpp_fquat4d"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltcheckcohesion",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltdefsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L83",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L46",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltelementsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L109",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltpositionm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L101",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_beltratesallzero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L512",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest",
+      "target": "tests_solasteroidbelttest_runtest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L60",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_beltdefsidentical",
+      "target": "tests_solasteroidbelttest_beltelementsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L91",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "target": "tests_solasteroidbelttest_beltelementsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L46",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltelementsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L83",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L109",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltpositionm",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L101",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltratesallzero",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolsecularelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L73",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "target": "tests_solasteroidbelttest_beltdefsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L57",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltdefsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L532",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "tests_solasteroidbelttest_beltdefsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fsolasteroiddef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L210",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "tests_solasteroidbelttest_beltdeflistsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L83",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_tarray",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L335",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "tests_solasteroidbelttest_beltelementlistsidentical",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L187",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "tests_solasteroidbelttest_beltratesallzero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L133",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "tests_solasteroidbelttest_beltpositionm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L109",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "tests_solasteroidbelttest_beltpositionm",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fautomationtestbase",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L116",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_beltcheckcohesion",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_tchar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L425",
+      "weight": 1.0,
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "tests_solasteroidbelttest_beltcheckcohesion",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLAsteroidBeltTest.cpp",
+      "source_location": "L512",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solasteroidbelttest_runtest",
+      "target": "source_soltest_tests_solasteroidbelttest_cpp_fstring",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -39491,9 +41018,9 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L295",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_universe_solbodyregistry_cpp_universe_solbodyregistry",
-      "target": "universe_solbodyregistry_childorbitgm",
-      "confidence_score": 1.0
+      "target": "universe_solbodyregistry_childorbitgm"
     },
     {
       "relation": "contains",
@@ -39763,9 +41290,9 @@
       "source_location": "L295",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "universe_solbodyregistry_childorbitgm",
-      "target": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements",
-      "confidence_score": 1.0
+      "target": "source_soltest_universe_solbodyregistry_cpp_fsolsecularelements"
     },
     {
       "relation": "references",
@@ -39994,9 +41521,9 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L366",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "universe_solbodyregistry_populatesolarsystem",
-      "target": "universe_solbodyregistry_childorbitgm",
-      "confidence_score": 1.0
+      "target": "universe_solbodyregistry_childorbitgm"
     },
     {
       "relation": "calls",
@@ -46097,8 +47624,18 @@
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
       "source_location": "L155",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
-      "target": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
+      "target": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L161",
+      "weight": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_2_5b_real_asteroid_count_and_sourcing",
       "confidence_score": 1.0
     },
     {
@@ -47219,5 +48756,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "fbf103516bae87c738989a364d00fbd83185952c"
+  "built_at_commit": "2aa45e26ccc0b578d86980e4a6d92efad4abe55a"
 }
