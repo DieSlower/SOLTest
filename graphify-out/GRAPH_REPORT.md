@@ -1,16 +1,16 @@
 # Graph Report - SOLTest  (2026-10-01)
 
 ## Corpus Check
-- 182 files · ~228,426 words
+- 182 files · ~229,146 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1942 nodes · 3137 edges · 184 communities (125 shown, 59 thin omitted)
+- 1943 nodes · 3138 edges · 183 communities (124 shown, 59 thin omitted)
 - Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 85 edges (avg confidence: 0.82)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ed999dd2`
+- Built from commit: `7cdebb5d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -187,7 +187,6 @@
 - [[_COMMUNITY_Community 180|Community 180]]
 - [[_COMMUNITY_Community 181|Community 181]]
 - [[_COMMUNITY_Community 182|Community 182]]
-- [[_COMMUNITY_Community 183|Community 183]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `GetName()` - 44 edges
@@ -221,15 +220,15 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (184 total, 59 thin omitted)
+## Communities (183 total, 59 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
 Cohesion: 0.14
 Nodes (15): Adversarial opus performance and style review, CLAUDE.md project guidance, File banner, function comment and separator rules, Asset paths live in one place (SOLConstants.h / data assets), Data-oriented Mass guidance (fragments, processors, no hot-loop allocation), Naming conventions (SOL infix, m prefix, UPPER_SNAKE constants), TrueReality house style origin, UE reflection macro and UPROPERTY rules (+7 more)
 
 ### Community 1 - "Kepler Orbits & Sim Clock"
-Cohesion: 0.21
-Nodes (10): Tech debt: untested SOLTypes.h and SOLKepler.h, Part 1a: universe types, Kepler solver, clock, registry (paused), Analytic Keplerian orbits, no perturbations, namespace, FSOLKeplerElements(), FSOLSecularElements(), SOLKepler(), SOLKepler::ElementsToState (+2 more)
+Cohesion: 0.12
+Nodes (17): Tech debt: untested SOLTypes.h and SOLKepler.h, Sim clock and time-warp, Part 1a: universe types, Kepler solver, clock, registry (paused), Analytic Keplerian orbits, no perturbations, Time decision: real date start, time-warp on bodies only, namespace, Planetary perturbations / N-body integration, Items (+9 more)
 
 ### Community 2 - "Project Rules & Architecture SDD"
 Cohesion: 0.43
@@ -248,8 +247,8 @@ Cohesion: 0.10
 Nodes (34): BodyPositionAtSubstep(), FlightClampLength(), FlightClampUnitComponents(), FlightQuatFromRotationVector(), FlightRemainingFraction(), FrameCarryDisplacement(), GravityAcceleration(), JoystickToRotation() (+26 more)
 
 ### Community 7 - "Star Field Research"
-Cohesion: 0.28
-Nodes (8): AT-HYG star catalog (2.55M stars), CelestialVault engine plugin (beta, Earth-centric), Decision (SDD 1), Hybrid star renderer: bright sprites plus faint HDR cubemap, Reusable CelestialVault Milky Way texture and material functions, Star Field: CelestialVault plugin vs. AT-HYG — Research Notes, What CelestialVault is, Why not use it directly with AT-HYG
+Cohesion: 0.24
+Nodes (9): AT-HYG star catalog (2.55M stars), CelestialVault engine plugin (beta, Earth-centric), Decision (SDD 1), Hybrid star renderer: bright sprites plus faint HDR cubemap, Reusable CelestialVault Milky Way texture and material functions, Star Field: CelestialVault plugin vs. AT-HYG — Research Notes, What CelestialVault is, Why not use it directly with AT-HYG (+1 more)
 
 ### Community 8 - "SOLTypes Namespace"
 Cohesion: 0.11
@@ -361,7 +360,7 @@ Nodes (4): namespace, SOLTEST_API, ASOLBodyVisuals(), SOLBodyAppearance()
 
 ### Community 54 - "Community 54"
 Cohesion: 0.13
-Nodes (20): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Flight-assist vs Newtonian flight model, Jump map (J) mechanic, Origin anchor 25% hysteresis, Surface-lock (L) mechanic, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo) (+12 more)
+Nodes (19): grill-me before new features workflow rule, Combat mechanics (bolts, targets), Flight-assist vs Newtonian flight model, Jump map (J) mechanic, Origin anchor 25% hysteresis, Surface-lock (L) mechanic, Part 1b: Mass ship entity, Pawn proxy, flight model, Roadmap Parts 2-10 (jump map, level, star field, moons, weapons, HUD, art, terrain, scale demo) (+11 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.42
@@ -384,8 +383,8 @@ Cohesion: 0.44
 Nodes (8): Cycle(), PickUnderReticle(), ResolveReferenceVelocity(), TargetingCycleLess(), FSOLTargetInfo, FVector3d, int32, TConstArrayView
 
 ### Community 60 - "Community 60"
-Cohesion: 0.40
-Nodes (5): 1. Problem, 2. Decisions, 3. Open questions, 4. Revision history, SDD 1 — Solar-system space sim: architecture and cross-cutting decisions
+Cohesion: 0.21
+Nodes (7): 1. Problem, 2. Decisions, 3. Open questions, 4. Revision history, SDD 1 — Solar-system space sim: architecture and cross-cutting decisions, Naming, Software Design Documents (SDDs)
 
 ### Community 63 - "Community 63"
 Cohesion: 0.11
@@ -636,8 +635,8 @@ Cohesion: 0.56
 Nodes (10): binary(), build_sky(), build_sprite(), check_quad_mesh(), connect(), interpolate(), mask(), node() (+2 more)
 
 ### Community 165 - "Community 165"
-Cohesion: 0.13
-Nodes (14): 1. Problem, 2. Decisions, 3.1 Moons and dwarf planets (Appendix A), 3.2 Asteroid belt (Appendix B), 3.3 Planet rings (Appendix C), 3.4 Testing, 3. Design, 4. Open questions (+6 more)
+Cohesion: 0.12
+Nodes (15): 1. Problem, 2. Decisions, 3.1 Moons and dwarf planets (Appendix A), 3.2 Asteroid belt (Appendix B), 3.3 Planet rings (Appendix C), 3.4 Testing, 3. Design, 4. Open questions (+7 more)
 
 ### Community 166 - "Community 166"
 Cohesion: 0.40
@@ -675,12 +674,8 @@ Nodes (3): ComputePositionM(), FSOLSecularElements, FVector3d
 Cohesion: 0.21
 Nodes (12): FSOLPlanetRingDef, FSOLRadiusBandM, FString, TArray, TCHAR, FSOLRealRingSanity, InnerRadiusM, OuterRadiusM (+4 more)
 
-### Community 183 - "Community 183"
-Cohesion: 0.17
-Nodes (9): Sim clock and time-warp, Time decision: real date start, time-warp on bodies only, Naming, Software Design Documents (SDDs), Planetary perturbations / N-body integration, Items, Lifecycle, Naming (+1 more)
-
 ## Knowledge Gaps
-- **562 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+557 more)
+- **563 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl`, `TConstArrayView`, `int32` (+558 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **59 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
@@ -696,8 +691,8 @@ _Questions this graph is uniquely positioned to answer:_
 - **Are the 41 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `SetupPlayerInputComponent()`) actually correct?**
   _`GetName()` has 41 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `FSOLShipControl` to the rest of the system?**
-  _568 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _569 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Style Guide & Perf Review` be split into smaller, more focused modules?**
   _Cohesion score 0.14035087719298245 - nodes in this community are weakly interconnected._
-- **Should `Community 6` be split into smaller, more focused modules?**
-  _Cohesion score 0.10317460317460317 - nodes in this community are weakly interconnected._
+- **Should `Kepler Orbits & Sim Clock` be split into smaller, more focused modules?**
+  _Cohesion score 0.11904761904761904 - nodes in this community are weakly interconnected._

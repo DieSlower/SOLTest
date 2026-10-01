@@ -161,10 +161,9 @@ renderers cross-fading by camera distance to the ring, mirroring
   figure in this section's earlier text was never the real configured count) plus
   however many near-field ring rocks are active at once — this project's first large
   *moving* GPU-instanced population, unlike the star field's static one. Per Amendment
-  3, this was reviewed by estimate only, not real `stat`/Insights evidence — real
-  profiling evidence is still owed before the belt's performance can be called
-  verified, and should be captured (and this section updated) during 5d/5e or in a
-  dedicated follow-up once an interactive/real-RHI editor session is available.
+  3, this was reviewed by estimate only, not real `stat`/Insights evidence; **real
+  profiling evidence was captured in Amendment 5** (87.75 FPS average, 0% missed syncs
+  at 30/60 FPS, 0 hitches/min with the belt running) — the open item is closed.
 
 ## 4. Open questions
 
@@ -178,6 +177,8 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-10-01: Amendment 2, real-asteroid count and sourcing revised before starting 5b.
 - 2026-10-01: Amendment 3, after implementing and reviewing 5c.
 - 2026-10-01: Amendment 4, scope extension before 5d plus 5d implementation notes.
+- 2026-10-01: Amendment 5, 5c's deferred PIE/profiling verification plus a real
+  material bug found and fixed while doing it.
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -286,15 +287,15 @@ findings, beyond the §3.2 text corrections noted inline above:
   `USOLAnchorSubsystem` (a `UObject`) once per entity; fixed to snapshot the render
   origin and viewpoint once per frame and call the underlying pure placement function
   directly inside the loop (STYLE_GUIDE.md §15).
-- **No profiling evidence yet — explicitly not resolved.** CLAUDE.md's performance
-  checklist item 9 requires `stat`/Insights evidence for cost claims, not estimates.
-  The adversarial review's own back-of-envelope estimate (extrapolating from the star
-  field's measured per-instance cost) suggests the post-fix per-frame cost is "probably
-  tolerable" at ~9,268 instances, but this is explicitly a guess, not evidence — real
-  `stat unit`/`stat game`/Insights numbers require an interactive or real-RHI editor
-  session, which this implementation pass did not have access to. **This is the one
-  open item before 5c can be called fully verified**; tracked for the next session with
-  the editor open. The review also flagged (not blocking, logged as tech debt/ToDo
+- **No profiling evidence yet at the time this amendment was written — resolved in
+  Amendment 5.** CLAUDE.md's performance checklist item 9 requires `stat`/Insights
+  evidence for cost claims, not estimates. The adversarial review's own back-of-envelope
+  estimate (extrapolating from the star field's measured per-instance cost) suggested
+  the post-fix per-frame cost was "probably tolerable" at ~9,268 instances, but that was
+  explicitly a guess, not evidence; real `stat unit`/`stat game`/Insights numbers
+  required an interactive or real-RHI editor session, which this implementation pass
+  did not have access to. See Amendment 5 for the real measurement. The review also
+  flagged (not blocking, logged as tech debt/ToDo
   instead of fixed here): the belt's sphere mesh has no LOD/cull-distance despite most
   instances being sub-pixel from any reasonable viewing distance; orbital constants
   (`pHat`/`qHat`, etc.) are recomputed from scratch every frame per entity rather than
@@ -356,5 +357,71 @@ direction to do both:
 No consumer of `SOLPlanetRing` exists yet (5e builds the rendering that will call it);
 its functions allocate and are meant for setup-time use, not per-frame — 5e should
 cache `AllGapBandsM`'s result per ring rather than call it every frame.
+
+## Amendment 5 — 5c's deferred PIE/profiling verification, plus a real material bug
+
+Done in an interactive editor session (launched via Rider's debug run configuration,
+driven by the editor's own Python API over the Rider MCP connection, rather than
+waiting on the user) once one became available. Closes the one open item carried by
+Amendment 3.
+
+- **A real, previously-undetected bug found before any formal verification even
+  started**: the editor's own boot log showed `Material /Game/SOL/Materials/M_SOLBody
+  missing usage flag InstancedStaticMeshes! Default Material will be used in game.`
+  `ASOLAsteroidBeltVisuals` renders both its `UInstancedStaticMeshComponent`s with this
+  material (SOL::Paths::BODY_MATERIAL), so the belt had been silently rendering with
+  the engine's default material — not the intended per-variant colored/emissive
+  material — since 5c shipped. Automation tests and the headless `-SOLSmokeFlight`
+  check could not have caught this: it is a material-asset flag, invisible to anything
+  that doesn't actually render the belt and look at (or log-check) the material
+  pipeline. Fixed by setting `UMaterial::bUsedWithInstancedStaticMeshes = true` on
+  `M_SOLBody` and resaving the asset (`Content/SOL/Materials/M_SOLBody.uasset`) via the
+  editor's Python API; confirmed fixed by the warning's absence in the next PIE run's
+  log. This is the same material 5e's near-field ring rocks are planned to reuse
+  (§3.3), so 5e would otherwise have inherited the same silent bug.
+- **PIE verified stable**: `SOL_Test` played without crashing; the Outliner confirmed
+  all of `ASOLGameMode::StartPlay`'s spawned actors present (`SOLAsteroidBeltVisuals0`,
+  `SOLBodyVisuals0`, `SOLFlightHud0`, `SOLShipPawn0`, `SOLStarField0`, 14 actors total).
+  The log confirmed `AsteroidBeltVisuals SOLAsteroidBeltVisuals_0: 9268 asteroid
+  instances in 2 variants` — matching Amendment 3's corrected count exactly.
+- **Real profiling evidence (the open item)**: `StartFPSChart`/`StopFPSChart` (console
+  commands run via the editor's Python API) over a 25.51-second PIE session with the
+  belt's Mass orbit processor and per-frame ISM bulk transform update running the whole
+  time: **2,239 frames, 87.75 FPS average, 0% syncs missed at both the 30 FPS and 60 FPS
+  targets, 0.00 hitches/min**, no hitches attributed to the game thread, render thread,
+  RHI thread or GPU. This directly answers CLAUDE.md's performance-checklist item 9 for
+  5c: the post-fix per-frame ISM update cost is not a bottleneck at the belt's actual
+  ~9,268-instance scale. (A first attempt at this measurement read ~3 FPS; that was a
+  measurement artifact, not a real result — the Unreal Editor throttles rendering to a
+  few FPS when its window doesn't have OS focus
+  [`UEditorPerformanceSettings::bThrottleCPUWhenNotForeground`, default on], which an
+  MCP-driven, unfocused session always triggers. Disabled that setting for the
+  measurement above, then restored it afterward so the user's own editor experience is
+  unaffected.) This number is from a PIE/editor build, which carries extra editor
+  overhead a packaged build would not have, so it is a conservative (lower) estimate of
+  real in-game performance, not an optimistic one.
+- **`stat unit`/`stat game`'s on-screen overlay could not be screenshotted** — neither
+  the Slate viewport capture nor `HighResShot` included the engine's on-screen stat
+  canvas in this setup (`HighResShot` in particular appears to deliberately suppress it
+  during tiled capture). The FPS-chart log dump above was used instead, which is
+  arguably stronger evidence (aggregate percentiles and a hitch breakdown over many
+  seconds, not a single instantaneous counter reading).
+- **One unrelated, pre-existing, non-fatal engine ensure was observed**, not a Part 5
+  regression: `Ensure condition failed: IsInGameThread() ... Attempted to retrieve
+  FAppTime on a thread where there is no inherited time context`, with a callstack
+  entirely inside engine DLLs (Core/Renderer/RenderCore/Engine — no `SOLTest` frames),
+  coincident with the material recompile/save above (which queues async shader
+  compilation). Did not recur, and the FPS-chart run immediately after was clean (0
+  hitches), so it is noted here for the record and not investigated further.
+- Visual confirmation of the belt's actual on-screen appearance (flying to it and
+  screenshotting asteroids up close) was not attempted this pass — reaching the belt's
+  real position (~2-3.5 AU from the Sun) from the default Earth-orbit spawn needs either
+  the in-game jump map's UI (no input-injection tool was available over this MCP
+  connection) or a debug teleport, neither pursued here since the profiling and material
+  evidence above already closes 5c's tracked open item. Worth doing opportunistically
+  during 5e's own screenshot verification, which will need belt-adjacent camera
+  positions anyway for the ringed planets.
+
+5c is now considered fully verified.
 
 5d is otherwise exactly as designed in §3.3 (Appendix C).

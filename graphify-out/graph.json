@@ -14865,7 +14865,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
-      "source_location": "L105",
+      "source_location": "L107",
       "id": "plans_6_moons_asteroids_rings_plan_cross_cutting",
       "community": 166,
       "norm_label": "cross-cutting"
@@ -16134,7 +16134,7 @@
       "label": "4. Open questions",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L169",
+      "source_location": "L168",
       "id": "sdds_6_moons_asteroids_rings_4_open_questions",
       "community": 165,
       "norm_label": "4. open questions"
@@ -16143,7 +16143,7 @@
       "label": "5. Revision history",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L174",
+      "source_location": "L173",
       "id": "sdds_6_moons_asteroids_rings_5_revision_history",
       "community": 165,
       "norm_label": "5. revision history"
@@ -16152,7 +16152,7 @@
       "label": "Amendment 2 \u2014 5b real-asteroid count and sourcing",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L182",
+      "source_location": "L183",
       "id": "sdds_6_moons_asteroids_rings_amendment_2_5b_real_asteroid_count_and_sourcing",
       "community": 165,
       "norm_label": "amendment 2 \u2014 5b real-asteroid count and sourcing"
@@ -16161,7 +16161,7 @@
       "label": "Amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-GM fix",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L204",
+      "source_location": "L205",
       "id": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
       "community": 165,
       "norm_label": "amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-gm fix"
@@ -16170,7 +16170,7 @@
       "label": "Amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L252",
+      "source_location": "L253",
       "id": "sdds_6_moons_asteroids_rings_amendment_3_5c_implementation_frame_correctness_actual_scale_and_a_pending_profiling_gap",
       "community": 165,
       "norm_label": "amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap"
@@ -16179,10 +16179,19 @@
       "label": "Amendment 4 \u2014 5d scope extension and implementation notes",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L312",
+      "source_location": "L313",
       "id": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes",
       "community": 165,
       "norm_label": "amendment 4 \u2014 5d scope extension and implementation notes"
+    },
+    {
+      "label": "Amendment 5 \u2014 5c's deferred PIE/profiling verification, plus a real material bug",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L361",
+      "id": "sdds_6_moons_asteroids_rings_amendment_5_5c_s_deferred_pie_profiling_verification_plus_a_real_material_bug",
+      "community": 165,
+      "norm_label": "amendment 5 \u2014 5c's deferred pie/profiling verification, plus a real material bug"
     },
     {
       "label": "README.md",
@@ -16190,7 +16199,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L1",
       "id": "sdds_readme",
-      "community": 183,
+      "community": 60,
       "norm_label": "readme.md"
     },
     {
@@ -16199,7 +16208,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L3",
       "id": "sdds_readme_software_design_documents_sdds",
-      "community": 183,
+      "community": 60,
       "norm_label": "software design documents (sdds)"
     },
     {
@@ -16208,7 +16217,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L9",
       "id": "sdds_readme_naming",
-      "community": 183,
+      "community": 60,
       "norm_label": "naming"
     },
     {
@@ -16424,7 +16433,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L1",
       "id": "todo_readme",
-      "community": 183,
+      "community": 1,
       "norm_label": "readme.md"
     },
     {
@@ -16433,7 +16442,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L3",
       "id": "todo_readme_todo_future_planned_items",
-      "community": 183,
+      "community": 1,
       "norm_label": "todo \u2014 future planned items"
     },
     {
@@ -16442,7 +16451,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L15",
       "id": "todo_readme_naming",
-      "community": 183,
+      "community": 1,
       "norm_label": "naming"
     },
     {
@@ -16451,7 +16460,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L20",
       "id": "todo_readme_lifecycle",
-      "community": 183,
+      "community": 1,
       "norm_label": "lifecycle"
     },
     {
@@ -16460,7 +16469,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L32",
       "id": "todo_readme_items",
-      "community": 183,
+      "community": 1,
       "norm_label": "items"
     },
     {
@@ -16505,7 +16514,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L1",
       "id": "todo_planetary_perturbations",
-      "community": 183,
+      "community": 1,
       "norm_label": "planetary-perturbations.md"
     },
     {
@@ -16514,7 +16523,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L3",
       "id": "todo_planetary_perturbations_planetary_perturbations_n_body_integration",
-      "community": 183,
+      "community": 1,
       "norm_label": "planetary perturbations / n-body integration"
     },
     {
@@ -17305,7 +17314,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 183,
+      "community": 1,
       "norm_label": "sim clock and time-warp",
       "id": "docs_game_mechanics_time_warp"
     },
@@ -17451,7 +17460,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 183,
+      "community": 1,
       "norm_label": "time decision: real date start, time-warp on bodies only",
       "id": "sdds_1_solar_system_architecture_time"
     },
@@ -17490,7 +17499,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 54,
+      "community": 7,
       "norm_label": "custom ship-centric star field renderer (at-hyg)",
       "id": "sdds_1_solar_system_architecture_star_field"
     },
@@ -37928,9 +37937,9 @@
       "source_file": "Source/SOLTest/Tests/SOLPlanetRingTest.cpp",
       "source_location": "L32",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_solplanetringtest",
-      "target": "tests_solplanetringtest_fsolrealringsanity",
-      "confidence_score": 1.0
+      "target": "tests_solplanetringtest_fsolrealringsanity"
     },
     {
       "relation": "contains",
@@ -37969,9 +37978,9 @@
       "source_location": "L34",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "tests_solplanetringtest_fsolrealringsanity",
-      "target": "source_soltest_tests_solplanetringtest_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_solplanetringtest_cpp_tchar"
     },
     {
       "relation": "defines",
@@ -37980,9 +37989,9 @@
       "source_location": "L35",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "tests_solplanetringtest_fsolrealringsanity",
-      "target": "tests_solplanetringtest_fsolrealringsanity_innerradiusm",
-      "confidence_score": 1.0
+      "target": "tests_solplanetringtest_fsolrealringsanity_innerradiusm"
     },
     {
       "relation": "defines",
@@ -37991,9 +38000,9 @@
       "source_location": "L36",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "tests_solplanetringtest_fsolrealringsanity",
-      "target": "tests_solplanetringtest_fsolrealringsanity_outerradiusm",
-      "confidence_score": 1.0
+      "target": "tests_solplanetringtest_fsolrealringsanity_outerradiusm"
     },
     {
       "relation": "defines",
@@ -38002,9 +38011,9 @@
       "source_location": "L34",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "tests_solplanetringtest_fsolrealringsanity",
-      "target": "tests_solplanetringtest_fsolrealringsanity_planetname",
-      "confidence_score": 1.0
+      "target": "tests_solplanetringtest_fsolrealringsanity_planetname"
     },
     {
       "relation": "references",
@@ -49930,8 +49939,18 @@
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
       "source_location": "L312",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
-      "target": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes",
+      "target": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L361",
+      "weight": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_5_5c_s_deferred_pie_profiling_verification_plus_a_real_material_bug",
       "confidence_score": 1.0
     },
     {
@@ -51052,5 +51071,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "ed999dd256429486e9492ec2895096ae999faa3a"
+  "built_at_commit": "7cdebb5db4f6a8bc6dd0dcafed0e840af2783357"
 }
