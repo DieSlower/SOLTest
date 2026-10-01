@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1790861638.7687466,
-    "ast_hash": "31c6b47a2cd651c2b47af4949cd42b1e",
+    "mtime": 1790865612.2437599,
+    "ast_hash": "78d27ca0ecb587ec0218648f1bab1c50",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -135,8 +135,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/BodyRegistryTest.cpp": {
-    "mtime": 1790837122.918563,
-    "ast_hash": "3ab1408c3086b8aab8965a9eb2ac8ac3",
+    "mtime": 1790865765.9328458,
+    "ast_hash": "c53019d0b0beaaedba07943e4bafb042",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/KeplerTest.cpp": {
@@ -180,8 +180,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.cpp": {
-    "mtime": 1790837099.5265212,
-    "ast_hash": "5744096ba96d383fecb8125f7e70f00e",
+    "mtime": 1790865745.8293226,
+    "ast_hash": "7bf50ef97623bb4e963b1f7dd0e64939",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLBodyRegistry.h": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790864063.946336,
-    "ast_hash": "4dd51996152b540d54dfa5e3916ae8da",
+    "mtime": 1790866190.0512502,
+    "ast_hash": "3e665e91736f9f203f7e55be643ddcb5",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -815,13 +815,13 @@
     "semantic_hash": ""
   },
   "Docs/Plans/6-moons-asteroids-rings-plan.md": {
-    "mtime": 1790864076.143133,
-    "ast_hash": "30c8bfc54147839e6be49dabd2ce6695",
+    "mtime": 1790866233.8899407,
+    "ast_hash": "b8b5847b51f5fa0c0d240287f5bcc363",
     "semantic_hash": ""
   },
   "Docs/SDDs/6-moons-asteroids-rings.md": {
-    "mtime": 1790864033.1002767,
-    "ast_hash": "e095bffee2d2861f1de3a146867d5edc",
+    "mtime": 1790866224.86754,
+    "ast_hash": "aab2a35689e6ec211b51b33cbdae3d2a",
     "semantic_hash": ""
   },
   "Docs/ToDo/asteroid-ring-collision.md": {
@@ -892,6 +892,21 @@
   "Source/SOLTest/Tests/SOLMinorBodyOrbitTest.cpp": {
     "mtime": 1790861920.9675975,
     "ast_hash": "5f48bad280fafeff89bf1926af5b1f3f",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLPlanetRing.cpp": {
+    "mtime": 1790865717.275781,
+    "ast_hash": "5bcb09659d9c072f15b066f0b3532b39",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLPlanetRing.h": {
+    "mtime": 1790865665.0492496,
+    "ast_hash": "f57361abb0d9f9bab0bca0293f618b51",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLPlanetRingTest.cpp": {
+    "mtime": 1790865905.3242872,
+    "ast_hash": "7828ed4d8a45c9f235a4568e35e46589",
     "semantic_hash": ""
   }
 }

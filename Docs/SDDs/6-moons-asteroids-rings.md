@@ -125,6 +125,12 @@ already revised the real count down to ~500, and 5b's committed `DEFAULT_CLUSTER
 
 ### 3.3 Planet rings (Appendix C)
 
+**Built in 5d (see Amendment 4 below) with one scope extension**: Pan and Daphnis
+(Saturn's real shepherd moons) were added to the registry so decision 6's
+moon-orbit-lookup gap mechanism has real data, and the mechanism was built as a hybrid
+(moon-orbit lookup plus fixed cited data for resonance gaps) rather than purely
+moon-orbit-driven — see Amendment 4 for why.
+
 Shares `FSOLMinorBodyOrbitFragment`/`USOLMinorBodyOrbitProcessor` with the belt
 (`ParentBodyIndex` set to the host gas giant instead of the Sun). New pure-logic
 generation (`Source/SOLTest/MinorBodies/SOLPlanetRing.h/.cpp`): per-ring parameters
@@ -171,6 +177,7 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-10-01: Amendment 1, after implementing and reviewing 5a.
 - 2026-10-01: Amendment 2, real-asteroid count and sourcing revised before starting 5b.
 - 2026-10-01: Amendment 3, after implementing and reviewing 5c.
+- 2026-10-01: Amendment 4, scope extension before 5d plus 5d implementation notes.
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -301,3 +308,53 @@ findings, beyond the §3.2 text corrections noted inline above:
   a regression, just not yet visually polished.
 
 5c is otherwise exactly as designed in §3.2 (Appendix B).
+
+## Amendment 4 — 5d scope extension and implementation notes
+
+**Scope extension, decided with the user before 5d started**: decision 6 ("ring gaps
+wherever a moon's orbit falls within the ring radius range") can't work as originally
+envisioned using only 5a's registered moons — none of them actually orbit within any
+gas giant's ring system (5a scoped to "major" moons only; the real gap-carving moons,
+like Saturn's Pan and Daphnis, are much smaller "shepherd moons"). Also, Saturn's most
+famous gap, the Cassini Division, isn't a shepherd-moon gap at all — it's a 2:1
+orbital resonance with Mimas (whose own orbit, ~186,000 km, is far outside the rings'
+~136,780 km outer edge), the same resonance-gap mechanism as the asteroid belt's
+Kirkwood gaps, not a moon-orbit lookup. Resolved as a hybrid, with the user's explicit
+direction to do both:
+1. **Pan and Daphnis added to the registry** (extending 5a's scope, same conventions:
+   `ESOLElementFrame::HostEquator`, `ChildOrbitGM`), fetched live from JPL Horizons
+   (cross-confirmed against Jacobson et al. 2008, *Astronomical Journal* 135(1),
+   261-263, for precise orbital periods). Registry total is now 36 bodies (was 34).
+   Both moons' real osculating eccentricity (~0.005) is Saturn's J2 oblateness acting
+   on an otherwise-circular orbit, not free eccentricity — verified during adversarial
+   review against the expected J2-forcing magnitude (1.5 · J2 · (R/a)² ≈ 0.005, matching
+   observation) — so `E0 = 0` (the tabulated mean value) is the physically correct
+   simplification, not a convenience.
+2. **`SOLPlanetRing.h/.cpp`** (new, `Source/SOLTest/MinorBodies/`): `RealRings()` (the
+   four gas giants' real ring radius ranges, cited to NSSDCA ring fact sheets);
+   `KnownResonanceGapBandsM(planetName)` (fixed, cited real gap data for resonance gaps
+   with no corresponding registered moon — currently just Saturn's Cassini Division);
+   `MoonShepherdGapBandsM`/`AllGapBandsM` (the generic "exclude a band around a moon's
+   semi-major axis" mechanism, decoupled from the registry — callers pass each moon's
+   semi-major axis, computed once, not a live per-frame position). Real per-moon gap
+   half-widths are used for Pan (Encke Gap, ~162 km) and Daphnis (Keeler Gap, ~21 km)
+   rather than one uniform width — their real gap widths differ by ~8x, and an
+   adversarial-review finding caught an initial uniform-width implementation making
+   Daphnis's modeled gap ~7x too wide. `FSOLRadiusBandM`/`IsInAnyBand` are a
+   meters-based analog of the asteroid belt's AU-based `FSOLAxisBandAU`/
+   `IsInKirkwoodGap` — a separate type rather than literal code-sharing, since rings
+   (planet-relative, meters) and the belt (Sun-relative, AU) have no natural shared
+   unit; this project's "reusing the same gap-exclusion math" intent (§3.3 above) means
+   the same *technique* (exclude-a-band), not a literal shared type.
+3. Test-first discipline for 5d: the registry addition (pure data) used test-after,
+   mirroring 5a's own precedent; `SOLPlanetRing`'s logic (simple interval/band
+   arithmetic, materially lower algorithmic risk than 5b's orbital-mechanics
+   conversions) used self-administered test-first by the same implementer rather than
+   a separate contract-only test-writer round, mirroring the proportionate judgment
+   already applied to 5c's small `SOLMinorBodyOrbit::ComputePositionM` helper.
+
+No consumer of `SOLPlanetRing` exists yet (5e builds the rendering that will call it);
+its functions allocate and are meant for setup-time use, not per-frame — 5e should
+cache `AllGapBandsM`'s result per ring rather than call it every frame.
+
+5d is otherwise exactly as designed in §3.3 (Appendix C).
