@@ -483,7 +483,7 @@
       "label": "ASOLGameMode()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L32",
+      "source_location": "L33",
       "id": "game_solgamemode_asolgamemode",
       "community": 29,
       "norm_label": "asolgamemode()"
@@ -492,7 +492,7 @@
       "label": "GetDefaultPawnClassForController_Implementation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L40",
+      "source_location": "L41",
       "id": "game_solgamemode_getdefaultpawnclassforcontroller_implementation",
       "community": 29,
       "norm_label": "getdefaultpawnclassforcontroller_implementation()"
@@ -501,7 +501,7 @@
       "label": "UClass",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L40",
+      "source_location": "L41",
       "id": "uclass",
       "community": 29,
       "norm_label": "uclass"
@@ -510,7 +510,7 @@
       "label": "AController",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L40",
+      "source_location": "L41",
       "id": "acontroller",
       "community": 29,
       "norm_label": "acontroller"
@@ -519,7 +519,7 @@
       "label": "StartPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L51",
+      "source_location": "L52",
       "id": "game_solgamemode_startplay",
       "community": 29,
       "norm_label": "startplay()"
@@ -528,7 +528,7 @@
       "label": "IsSOLGameWorld()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L69",
+      "source_location": "L71",
       "id": "game_solgamemode_issolgameworld",
       "community": 29,
       "norm_label": "issolgameworld()"
@@ -537,7 +537,7 @@
       "label": "UWorld",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L69",
+      "source_location": "L71",
       "id": "source_soltest_game_solgamemode_cpp_uworld",
       "community": 29,
       "norm_label": "uworld"
@@ -546,7 +546,7 @@
       "label": "EndPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L88",
+      "source_location": "L90",
       "id": "game_solgamemode_endplay",
       "community": 29,
       "norm_label": "endplay()"
@@ -555,7 +555,7 @@
       "label": "Type",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L88",
+      "source_location": "L90",
       "id": "source_soltest_game_solgamemode_cpp_type",
       "community": 29,
       "norm_label": "type"
@@ -564,7 +564,7 @@
       "label": "TakeSmokeScreenshot()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L96",
+      "source_location": "L98",
       "id": "game_solgamemode_takesmokescreenshot",
       "community": 29,
       "norm_label": "takesmokescreenshot()"
@@ -573,7 +573,7 @@
       "label": "CaptureScreenshot()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L104",
+      "source_location": "L106",
       "id": "game_solgamemode_capturescreenshot",
       "community": 29,
       "norm_label": "capturescreenshot()"
@@ -582,7 +582,7 @@
       "label": "QuitAfterSmokeTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L115",
+      "source_location": "L117",
       "id": "game_solgamemode_quitaftersmoketest",
       "community": 29,
       "norm_label": "quitaftersmoketest()"
@@ -591,7 +591,7 @@
       "label": "FinishRestartPlayer()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L122",
+      "source_location": "L124",
       "id": "game_solgamemode_finishrestartplayer",
       "community": 29,
       "norm_label": "finishrestartplayer()"
@@ -600,7 +600,7 @@
       "label": "FRotator",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L122",
+      "source_location": "L124",
       "id": "source_soltest_game_solgamemode_cpp_frotator",
       "community": 29,
       "norm_label": "frotator"
@@ -618,7 +618,7 @@
       "label": "AGameModeBase()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.h",
-      "source_location": "L15",
+      "source_location": "L18",
       "id": "game_solgamemode_agamemodebase",
       "community": 42,
       "norm_label": "agamemodebase()"
@@ -627,7 +627,7 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.h",
-      "source_location": "L15",
+      "source_location": "L18",
       "id": "source_soltest_game_solgamemode_h_soltest_api",
       "community": 42,
       "norm_label": "soltest_api"
@@ -4139,7 +4139,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1000",
       "id": "ship_solshippawn_handletogglepredictedpath",
-      "community": 58,
+      "community": 140,
       "norm_label": "handletogglepredictedpath()"
     },
     {
@@ -4607,7 +4607,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1597",
       "id": "ship_solshippawn_ontogglepredictedpathaction",
-      "community": 58,
+      "community": 140,
       "norm_label": "ontogglepredictedpathaction()"
     },
     {
@@ -5779,6 +5779,105 @@
       "id": "source_soltest_ship_solsurfacelocksmoke_h_ship_solsurfacelocksmoke",
       "community": 147,
       "norm_label": "solsurfacelocksmoke.h"
+    },
+    {
+      "label": "SOLStarField.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "community": 162,
+      "norm_label": "solstarfield.cpp"
+    },
+    {
+      "label": "MakeBackgroundPrimitive()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L28",
+      "id": "starfield_solstarfield_makebackgroundprimitive",
+      "community": 162,
+      "norm_label": "makebackgroundprimitive()"
+    },
+    {
+      "label": "UPrimitiveComponent",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L28",
+      "id": "uprimitivecomponent",
+      "community": 162,
+      "norm_label": "uprimitivecomponent"
+    },
+    {
+      "label": "SquareSolidAngleSr()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L44",
+      "id": "starfield_solstarfield_squaresolidanglesr",
+      "community": 162,
+      "norm_label": "squaresolidanglesr()"
+    },
+    {
+      "label": "ASOLStarField()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L53",
+      "id": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield_asolstarfield",
+      "community": 162,
+      "norm_label": "asolstarfield()"
+    },
+    {
+      "label": "BeginPlay()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L85",
+      "id": "starfield_solstarfield_beginplay",
+      "community": 162,
+      "norm_label": "beginplay()"
+    },
+    {
+      "label": "SetUpSky()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L96",
+      "id": "starfield_solstarfield_setupsky",
+      "community": 162,
+      "norm_label": "setupsky()"
+    },
+    {
+      "label": "SetUpBrightStars()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L118",
+      "id": "starfield_solstarfield_setupbrightstars",
+      "community": 162,
+      "norm_label": "setupbrightstars()"
+    },
+    {
+      "label": "SOLStarField.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.h",
+      "source_location": "L1",
+      "id": "source_soltest_starfield_solstarfield_h_starfield_solstarfield",
+      "community": 164,
+      "norm_label": "solstarfield.h"
+    },
+    {
+      "label": "ASOLStarField()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.h",
+      "source_location": "L25",
+      "id": "source_soltest_starfield_solstarfield_h_starfield_solstarfield_asolstarfield",
+      "community": 164,
+      "norm_label": "asolstarfield()"
+    },
+    {
+      "label": "SOLTEST_API",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.h",
+      "source_location": "L25",
+      "id": "source_soltest_starfield_solstarfield_h_soltest_api",
+      "community": 164,
+      "norm_label": "soltest_api"
     },
     {
       "label": "SOLStarFieldData.h",
@@ -8639,7 +8738,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L205",
       "id": "ui_solflighthud_toggleorbitlines",
-      "community": 140,
+      "community": 36,
       "norm_label": "toggleorbitlines()"
     },
     {
@@ -8657,7 +8756,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L235",
       "id": "ui_solflighthud_resetradarauto",
-      "community": 140,
+      "community": 36,
       "norm_label": "resetradarauto()"
     },
     {
@@ -12054,6 +12153,105 @@
       "norm_label": "main()"
     },
     {
+      "label": "create_star_field_materials.py",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L1",
+      "id": "starfield_create_star_field_materials",
+      "community": 163,
+      "norm_label": "create_star_field_materials.py"
+    },
+    {
+      "label": "connect()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L45",
+      "id": "starfield_create_star_field_materials_connect",
+      "community": 163,
+      "norm_label": "connect()"
+    },
+    {
+      "label": "node()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L52",
+      "id": "starfield_create_star_field_materials_node",
+      "community": 163,
+      "norm_label": "node()"
+    },
+    {
+      "label": "scalar()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L57",
+      "id": "starfield_create_star_field_materials_scalar",
+      "community": 163,
+      "norm_label": "scalar()"
+    },
+    {
+      "label": "binary()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L65",
+      "id": "starfield_create_star_field_materials_binary",
+      "community": 163,
+      "norm_label": "binary()"
+    },
+    {
+      "label": "mask()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L76",
+      "id": "starfield_create_star_field_materials_mask",
+      "community": 163,
+      "norm_label": "mask()"
+    },
+    {
+      "label": "interpolate()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L85",
+      "id": "starfield_create_star_field_materials_interpolate",
+      "community": 163,
+      "norm_label": "interpolate()"
+    },
+    {
+      "label": "prepare()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L92",
+      "id": "starfield_create_star_field_materials_prepare",
+      "community": 163,
+      "norm_label": "prepare()"
+    },
+    {
+      "label": "check_quad_mesh()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L102",
+      "id": "starfield_create_star_field_materials_check_quad_mesh",
+      "community": 163,
+      "norm_label": "check_quad_mesh()"
+    },
+    {
+      "label": "build_sprite()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L117",
+      "id": "starfield_create_star_field_materials_build_sprite",
+      "community": 163,
+      "norm_label": "build_sprite()"
+    },
+    {
+      "label": "build_sky()",
+      "file_type": "code",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L168",
+      "id": "starfield_create_star_field_materials_build_sky",
+      "community": 163,
+      "norm_label": "build_sky()"
+    },
+    {
       "label": "fetch_athyg.py",
       "file_type": "code",
       "source_file": "Tools/StarField/fetch_athyg.py",
@@ -12489,7 +12687,7 @@
       "label": "3. Frame update order",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L80",
+      "source_location": "L82",
       "id": "docs_architecture_3_frame_update_order",
       "community": 107,
       "norm_label": "3. frame update order"
@@ -12498,7 +12696,7 @@
       "label": "4. Coordinate systems and conversions",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L123",
+      "source_location": "L125",
       "id": "docs_architecture_4_coordinate_systems_and_conversions",
       "community": 107,
       "norm_label": "4. coordinate systems and conversions"
@@ -12507,7 +12705,7 @@
       "label": "5. Key types per module",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L143",
+      "source_location": "L145",
       "id": "docs_architecture_5_key_types_per_module",
       "community": 107,
       "norm_label": "5. key types per module"
@@ -12516,7 +12714,7 @@
       "label": "6. Data flow narratives",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L205",
+      "source_location": "L208",
       "id": "docs_architecture_6_data_flow_narratives",
       "community": 107,
       "norm_label": "6. data flow narratives"
@@ -12525,7 +12723,7 @@
       "label": "6.1 Player presses W",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L207",
+      "source_location": "L210",
       "id": "docs_architecture_6_1_player_presses_w",
       "community": 107,
       "norm_label": "6.1 player presses w"
@@ -12534,7 +12732,7 @@
       "label": "6.2 M pressed with Mars selected",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L225",
+      "source_location": "L228",
       "id": "docs_architecture_6_2_m_pressed_with_mars_selected",
       "community": 107,
       "norm_label": "6.2 m pressed with mars selected"
@@ -12543,7 +12741,7 @@
       "label": "6.3 Radar draw",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L232",
+      "source_location": "L235",
       "id": "docs_architecture_6_3_radar_draw",
       "community": 107,
       "norm_label": "6.3 radar draw"
@@ -12552,7 +12750,7 @@
       "label": "7. Testing architecture",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L240",
+      "source_location": "L243",
       "id": "docs_architecture_7_testing_architecture",
       "community": 107,
       "norm_label": "7. testing architecture"
@@ -12561,7 +12759,7 @@
       "label": "8. Extension points for future parts",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L261",
+      "source_location": "L264",
       "id": "docs_architecture_8_extension_points_for_future_parts",
       "community": 107,
       "norm_label": "8. extension points for future parts"
@@ -12570,7 +12768,7 @@
       "label": "Keeping this document in sync",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L273",
+      "source_location": "L276",
       "id": "docs_architecture_keeping_this_document_in_sync",
       "community": 107,
       "norm_label": "keeping this document in sync"
@@ -12948,7 +13146,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/5-star-field-plan.md",
-      "source_location": "L68",
+      "source_location": "L84",
       "id": "plans_5_star_field_plan_cross_cutting",
       "community": 158,
       "norm_label": "cross-cutting"
@@ -14109,7 +14307,7 @@
       "label": "3.3 Verification",
       "file_type": "document",
       "source_file": "Docs/SDDs/5-star-field.md",
-      "source_location": "L177",
+      "source_location": "L264",
       "id": "sdds_5_star_field_3_3_verification",
       "community": 156,
       "norm_label": "3.3 verification"
@@ -14118,7 +14316,7 @@
       "label": "4. Open questions",
       "file_type": "document",
       "source_file": "Docs/SDDs/5-star-field.md",
-      "source_location": "L187",
+      "source_location": "L274",
       "id": "sdds_5_star_field_4_open_questions",
       "community": 156,
       "norm_label": "4. open questions"
@@ -14127,7 +14325,7 @@
       "label": "5. Revision history",
       "file_type": "document",
       "source_file": "Docs/SDDs/5-star-field.md",
-      "source_location": "L191",
+      "source_location": "L278",
       "id": "sdds_5_star_field_5_revision_history",
       "community": 156,
       "norm_label": "5. revision history"
@@ -14518,6 +14716,33 @@
       "id": "readme_soltest",
       "community": 0,
       "norm_label": "soltest"
+    },
+    {
+      "label": "EndPlay()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L106",
+      "community": 162,
+      "norm_label": "endplay()",
+      "id": "starfield_solstarfield_endplay"
+    },
+    {
+      "label": "Type",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L106",
+      "community": 162,
+      "norm_label": "type",
+      "id": "source_soltest_starfield_solstarfield_cpp_type"
+    },
+    {
+      "label": "HandleUniverseUpdated()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L118",
+      "community": 162,
+      "norm_label": "handleuniverseupdated()",
+      "id": "starfield_solstarfield_handleuniverseupdated"
     },
     {
       "label": "FSOLSurfaceLockSmoke()",
@@ -28618,6 +28843,206 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L54",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield_asolstarfield"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L83",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_beginplay"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L106",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_endplay"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L118",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_handleuniverseupdated"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L29",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_makebackgroundprimitive"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L148",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_setupbrightstars"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L126",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_setupsky"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L45",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield",
+      "target": "starfield_solstarfield_squaresolidanglesr"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_cpp_starfield_solstarfield_asolstarfield",
+      "target": "starfield_solstarfield_makebackgroundprimitive"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L29",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_makebackgroundprimitive",
+      "target": "uprimitivecomponent"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L164",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_setupbrightstars",
+      "target": "starfield_solstarfield_squaresolidanglesr"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L101",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_beginplay",
+      "target": "starfield_solstarfield_handleuniverseupdated"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L97",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_beginplay",
+      "target": "starfield_solstarfield_setupbrightstars"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L96",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_beginplay",
+      "target": "starfield_solstarfield_setupsky"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L91",
+      "weight": 1.0,
+      "source": "starfield_solstarfield_beginplay",
+      "target": "universe_solbodyregistry_getname"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "source": "starfield_solstarfield_setupsky",
+      "target": "universe_solbodyregistry_getname"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L157",
+      "weight": 1.0,
+      "source": "starfield_solstarfield_setupbrightstars",
+      "target": "universe_solbodyregistry_getname"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.h",
+      "source_location": "L27",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_h_starfield_solstarfield",
+      "target": "source_soltest_starfield_solstarfield_h_starfield_solstarfield_asolstarfield"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.h",
+      "source_location": "L27",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "source_soltest_starfield_solstarfield_h_starfield_solstarfield_asolstarfield",
+      "target": "source_soltest_starfield_solstarfield_h_soltest_api"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/StarField/SOLStarFieldData.h",
       "source_location": "L14",
       "weight": 1.0,
@@ -33369,9 +33794,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L58",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest",
-      "target": "tests_starfieldtest_loadstarfielddata",
-      "confidence_score": 1.0
+      "target": "tests_starfieldtest_loadstarfielddata"
     },
     {
       "relation": "contains",
@@ -33379,9 +33804,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L174",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest",
-      "target": "tests_starfieldtest_runtest",
-      "confidence_score": 1.0
+      "target": "tests_starfieldtest_runtest"
     },
     {
       "relation": "contains",
@@ -33389,9 +33814,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L47",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest",
-      "target": "tests_starfieldtest_scanstarfieldassets",
-      "confidence_score": 1.0
+      "target": "tests_starfieldtest_scanstarfieldassets"
     },
     {
       "relation": "calls",
@@ -33400,9 +33825,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L72",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_runtest",
-      "target": "tests_starfieldtest_scanstarfieldassets",
-      "confidence_score": 1.0
+      "target": "tests_starfieldtest_scanstarfieldassets"
     },
     {
       "relation": "references",
@@ -33411,9 +33836,9 @@
       "source_location": "L47",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_scanstarfieldassets",
-      "target": "fassetdata",
-      "confidence_score": 1.0
+      "target": "fassetdata"
     },
     {
       "relation": "calls",
@@ -33422,9 +33847,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L50",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_scanstarfieldassets",
-      "target": "source_soltest_tests_starfieldtest_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_starfieldtest_cpp_fstring"
     },
     {
       "relation": "references",
@@ -33433,9 +33858,9 @@
       "source_location": "L47",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_scanstarfieldassets",
-      "target": "source_soltest_tests_starfieldtest_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_starfieldtest_cpp_tarray"
     },
     {
       "relation": "references",
@@ -33444,9 +33869,9 @@
       "source_location": "L58",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_loadstarfielddata",
-      "target": "usolstarfielddata",
-      "confidence_score": 1.0
+      "target": "usolstarfielddata"
     },
     {
       "relation": "calls",
@@ -33455,9 +33880,9 @@
       "source_file": "Source/SOLTest/Tests/StarFieldTest.cpp",
       "source_location": "L122",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_runtest",
-      "target": "tests_starfieldtest_loadstarfielddata",
-      "confidence_score": 1.0
+      "target": "tests_starfieldtest_loadstarfielddata"
     },
     {
       "relation": "references",
@@ -33466,9 +33891,9 @@
       "source_location": "L174",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "tests_starfieldtest_runtest",
-      "target": "source_soltest_tests_starfieldtest_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_tests_starfieldtest_cpp_fstring"
     },
     {
       "relation": "contains",
@@ -41315,6 +41740,337 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L67",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_binary"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L167",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_build_sky"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L116",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_build_sprite"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L104",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_check_quad_mesh"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L47",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L87",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_interpolate"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L78",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_mask"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L54",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L94",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_prepare"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L59",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials",
+      "target": "starfield_create_star_field_materials_scalar"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L69",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_binary",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L184",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L148",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L89",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_interpolate",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L82",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_mask",
+      "target": "starfield_create_star_field_materials_connect"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L68",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_binary",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L178",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L134",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L88",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_interpolate",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L79",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_mask",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L60",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_scalar",
+      "target": "starfield_create_star_field_materials_node"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L187",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_scalar"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L126",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_scalar"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L179",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_binary"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L129",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_binary"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L185",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_mask"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L141",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_mask"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L137",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_interpolate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L169",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sky",
+      "target": "starfield_create_star_field_materials_prepare"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L118",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_prepare"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Tools/StarField/create_star_field_materials.py",
+      "source_location": "L120",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "starfield_create_star_field_materials_build_sprite",
+      "target": "starfield_create_star_field_materials_check_quad_mesh"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Tools/StarField/fetch_athyg.py",
       "source_location": "L102",
       "weight": 1.0,
@@ -41577,9 +42333,9 @@
       "source_file": "Tools/StarField/import_star_field.py",
       "source_location": "L360",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "starfield_import_star_field",
-      "target": "starfield_import_star_field_recover_from_backup",
-      "confidence_score": 1.0
+      "target": "starfield_import_star_field_recover_from_backup"
     },
     {
       "relation": "contains",
@@ -41597,9 +42353,9 @@
       "source_file": "Tools/StarField/import_star_field.py",
       "source_location": "L370",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "starfield_import_star_field",
-      "target": "starfield_import_star_field_restore_uproject",
-      "confidence_score": 1.0
+      "target": "starfield_import_star_field_restore_uproject"
     },
     {
       "relation": "contains",
@@ -41835,9 +42591,9 @@
       "source_file": "Tools/StarField/import_star_field.py",
       "source_location": "L398",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "starfield_import_star_field_run_driver",
-      "target": "starfield_import_star_field_recover_from_backup",
-      "confidence_score": 1.0
+      "target": "starfield_import_star_field_recover_from_backup"
     },
     {
       "relation": "calls",
@@ -41846,9 +42602,9 @@
       "source_file": "Tools/StarField/import_star_field.py",
       "source_location": "L418",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "starfield_import_star_field_run_driver",
-      "target": "starfield_import_star_field_restore_uproject",
-      "confidence_score": 1.0
+      "target": "starfield_import_star_field_restore_uproject"
     },
     {
       "relation": "contains",
@@ -44683,6 +45439,17 @@
     {
       "relation": "references",
       "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/StarField/SOLStarField.cpp",
+      "source_location": "L106",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "starfield_solstarfield_endplay",
+      "target": "source_soltest_starfield_solstarfield_cpp_type"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Ship/SOLSurfaceLockSmoke.h",
       "source_location": "L31",
       "weight": 1.0,
@@ -45197,5 +45964,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "7c1785e4aa16bca7ad7c62e833134801a4d20568"
+  "built_at_commit": "0acdb11c6d093359b3d42a2f44b04623a0448afa"
 }

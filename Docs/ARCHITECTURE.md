@@ -4,7 +4,7 @@
 
 A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2, [`SDDs/4-surface-lock.md`](SDDs/4-surface-lock.md) for Part 3). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
 
-**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) is built: the pure logic (`Level/SOLSurfaceLock`, 3a) and its engine integration (3b: the `L` key, `USOLShipSubsystem` stepping the lock state, the flight processor applying the alignment per substep, the HUD status/hint line, and the jump clearing the lock).
+**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) is built: the pure logic (`Level/SOLSurfaceLock`, 3a) and its engine integration (3b: the `L` key, `USOLShipSubsystem` stepping the lock state, the flight processor applying the alignment per substep, the HUD status/hint line, and the jump clearing the lock). Part 4 (star field) is built: the offline bake and import (`Tools/StarField/`, 4a/4b) and the runtime sky actor `ASOLStarField` (4c).
 
 ---
 
@@ -31,6 +31,7 @@ flowchart TD
     UI["UI<br/>flight HUD, radar, F3 panel"]
     Targeting["Targeting<br/>candidates, selection, M lock"]
     Visuals["Visuals<br/>body meshes and sun light"]
+    StarField["StarField (Part 4)<br/>star data asset, sky actor"]
     Map["Map (Part 2)<br/>jump-map picking math"]
     Level["Level (Part 3)<br/>pure surface-lock state machine and alignment math"]
     Flight["Flight<br/>pure flight and targeting math"]
@@ -40,6 +41,7 @@ flowchart TD
     Game --> Ship
     Game --> UI
     Game --> Visuals
+    Game --> StarField
     Ship --> Targeting
     Ship --> Flight
     Ship --> Level
@@ -69,10 +71,10 @@ flowchart TD
 | `Targeting/` | Target candidates, selection, the M frame lock, reference velocity | `SOLTargetingSubsystem`, `SOLTargetable` |
 | `UI/` | Canvas flight HUD, radar, orbit lines, F3 speed panel, and their pure layout and format math | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLOrbitLines`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
-| `StarField/` | Star field (Part 4, issue #5): the baked star data asset (4b); the runtime sky actor arrives in 4c. Content is produced offline by `Tools/StarField/` (bake, then `import_star_field.py`) | `SOLStarFieldData` |
+| `StarField/` | Star field (Part 4, issue #5): the baked star data asset (4b) and the runtime sky actor (4c) that draws the bright-star sprites and the faint-star cubemap sphere. Content is produced offline by `Tools/StarField/` (bake, then `import_star_field.py`, then `create_star_field_materials.py`) | `SOLStarFieldData`, `SOLStarField` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
 | `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
-| `Game/` | Game mode (default pawn and HUD, spawns visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
+| `Game/` | Game mode (default pawn and HUD, spawns the body visuals and the star field, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
 ---
@@ -180,6 +182,7 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 
 **StarField** (`Source/SOLTest/StarField/`, Part 4)
 - `FSOLBrightStar` / `USOLStarFieldData` (engine data asset, `SOLStarFieldData.h`): the bright-star (V < 8) list, brightest first (ecliptic unit direction, V, flux relative to mag 8, luminance-1 linear color), plus the cube texel solid angle that converts sprite flux to the faint-star cubemap's radiance units and the CC BY-SA attribution. No logic; written only by `Tools/StarField/import_star_field.py` into `/Game/SOL/StarField/DA_SOLStarField` next to the `T_SOLStarFieldCube` TextureCube (paths in `SOL::Paths`).
+- `ASOLStarField` (engine actor, `SOLStarField.h`, 4c): spawned by `ASOLGameMode` next to `ASOLBodyVisuals`. It doesn't tick, binds no events, and never moves after `BeginPlay`. `BeginPlay` fills one `UInstancedStaticMeshComponent` once: 45,653 quads at `STAR_FIELD_SPRITE_RADIUS_CM` (2e12 cm), each turned to face the center, with custom data = flux × color and material `M_SOLStarSprite`. It also sets up a two-sided sphere of radius `STAR_FIELD_SKY_RADIUS_CM` (4e12 cm, inside `HALF_WORLD_MAX`) that samples the cube along the view direction (`M_SOLStarSky`). Both components use absolute transforms pinned at the Unreal origin. Moving the 45k-instance ISM cost ~4 ms of game thread per frame, and the sky gains nothing from moving. The render-origin rebase keeps the camera within ~10 km of the origin, which is a ≤5e-7 rad error. Keep `RENDER_REBASE_DISTANCE_M` small (SDD 5 §3.2). Nothing rotates: the directions are already ecliptic, converted once with `SOLRender::EclipticToUnreal`. The sprites use a very low translucency sort priority, so later world-space translucency draws over them.
 
 **Map** (`Source/SOLTest/Map/`, Part 2)
 - `FSOLMapPickState` / `SOLMapPicking` (pure, `SOLMapPicking.h`): ray-plane intersection, planar decomposition, destination composition, body picking under a ray.
@@ -196,7 +199,7 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `FSOLSurfaceLockParams` / `FSOLSurfaceLockState` / `SOLSurfaceLock` (pure, `SOLSurfaceLock.h`): `UpdateSurfaceLockState` (the auto/manual engage-warn-release state machine, with a suppression latch so a manual release can't be immediately overridden by auto-engage), `TargetUpDir` and `ApplyAlignmentCorrection` (a minimal shortest-arc rotation of the ship's whole orientation toward "up = away from the locked body," not a roll-only correction, so there is no attitude-dependent singularity). Called by `USOLShipSubsystem` (state machine, once per step), `USOLShipFlightProcessor` (alignment, per substep) and `ASOLFlightHud` (`ComputeManualRangeM` for the hint line).
 
 **Game** (`Source/SOLTest/Game/`)
-- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
+- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals` and `ASOLStarField`, runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
 - `SOLInputHelpers` (engine, `SOLInputHelpers.h`): shared helpers that create Enhanced Input actions and mappings in C++.
 - `ASOLSpectatorPawn` (engine, `SOLSpectatorPawn.h`): a debug free-fly camera that rides the ship with `-SOLSpectator`.
 

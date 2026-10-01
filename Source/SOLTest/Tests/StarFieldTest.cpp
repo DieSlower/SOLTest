@@ -65,7 +65,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLStarFieldNoPluginDependencyTest, "SOLTest.S
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every star-field package is known to the registry, records dependencies, none on the plugin, and loads
+// Every star-field package is known to the registry, has no plugin dependency, and loads
 bool FSOLStarFieldNoPluginDependencyTest::RunTest(const FString& /*parameters*/)
 {
     IAssetRegistry& registry = IAssetRegistry::GetChecked();
@@ -82,14 +82,14 @@ bool FSOLStarFieldNoPluginDependencyTest::RunTest(const FString& /*parameters*/)
         TestTrue(FString::Printf(TEXT("Asset registry knows %s"), expected), packages.Contains(FName(expected)));
     }
 
-    // Each package found: non-empty dependency list, no plugin dependency, and it loads
+    // Each package found: a dependency entry, no plugin dependency, and it loads (an asset may legitimately reference
+    // nothing, e.g. a self-contained material; the edge check below proves the dependency data is real)
     for (const FAssetData& asset : assets)
     {
         const FString packageName = asset.PackageName.ToString();
         TArray<FName> dependencies;
         const bool bKnown = registry.GetDependencies(asset.PackageName, dependencies);
         TestTrue(FString::Printf(TEXT("%s has a dependency entry"), *packageName), bKnown);
-        TestTrue(FString::Printf(TEXT("%s has a non-empty dependency list"), *packageName), dependencies.Num() > 0);
         for (const FName dependency : dependencies)
         {
             const FString dependencyName = dependency.ToString();

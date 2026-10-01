@@ -105,17 +105,17 @@
     "semantic_hash": "d4e2121aafc0ca9ae3ff74cbe717f3aa"
   },
   "Source/SOLTest/Game/SOLGameMode.cpp": {
-    "mtime": 1790633487.9271753,
-    "ast_hash": "d7f47e7b12e7d1e331fb21b8190eb0b2",
+    "mtime": 1790821443.3459795,
+    "ast_hash": "4be6fce8d6eac578ddaf9cefc2afd2df",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLGameMode.h": {
-    "mtime": 1790633487.9261744,
-    "ast_hash": "67e1f29b09fd1ccf734730ace7706d91",
+    "mtime": 1790821458.5711906,
+    "ast_hash": "5ba6c381455d8486efdd5e151b223ffe",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLSpectatorPawn.cpp": {
-    "mtime": 1790610919.033416,
+    "mtime": 1790821443.3049107,
     "ast_hash": "2a4f0c5cdf32eedf39473097f9c109b5",
     "semantic_hash": ""
   },
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1790819403.898116,
-    "ast_hash": "f6a901e33e508232898adbe54307adfa",
+    "mtime": 1790822492.6214516,
+    "ast_hash": "d19a0d87bfaed6427bb1f59e4557db65",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1790810236.4698987,
-    "ast_hash": "b9f83df94f02ba7cf88081a38b406a70",
+    "mtime": 1790822728.1514082,
+    "ast_hash": "c7ea12666c8435d55a5f71f89392b9f0",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -780,13 +780,13 @@
     "semantic_hash": ""
   },
   "Docs/Plans/5-star-field-plan.md": {
-    "mtime": 1790810303.2692375,
-    "ast_hash": "44970583ee18e5bd9c5b26e44d80c55d",
+    "mtime": 1790822728.1533983,
+    "ast_hash": "4b04e09a91e7facc7ce6377b859d040d",
     "semantic_hash": ""
   },
   "Docs/SDDs/5-star-field.md": {
-    "mtime": 1790819736.649928,
-    "ast_hash": "c01425597f0dcb740fb86c5c841aaed4",
+    "mtime": 1790822728.152397,
+    "ast_hash": "cdbfffe2b304e4bc9158734d2e0166f8",
     "semantic_hash": ""
   },
   "Docs/ToDo/star-diffraction-spikes.md": {
@@ -795,8 +795,23 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/StarFieldTest.cpp": {
-    "mtime": 1790819683.228525,
-    "ast_hash": "d19031508265abb2973e7485e8be113e",
+    "mtime": 1790822399.5863202,
+    "ast_hash": "346186d94ca8efd20dcfd2dbea78b7a8",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/StarField/SOLStarField.cpp": {
+    "mtime": 1790822492.6214516,
+    "ast_hash": "0fe4f54d8b5c6443f4ccb105456d7343",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/StarField/SOLStarField.h": {
+    "mtime": 1790822492.6214516,
+    "ast_hash": "80bdbd245e706cb5eecf03ec2e7901f6",
+    "semantic_hash": ""
+  },
+  "Tools/StarField/create_star_field_materials.py": {
+    "mtime": 1790822399.58532,
+    "ast_hash": "ab2b813fec6cd819adb71b579cbc5254",
     "semantic_hash": ""
   }
 }

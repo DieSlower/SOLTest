@@ -174,6 +174,93 @@ New feature folder `Source/SOLTest/StarField/`:
   tuning rather than bake-time baking), it gets the normal TDD treatment; this is
   not expected to be the common case here.
 
+**As built (4c).**
+
+- **Materials.** `Tools/StarField/create_star_field_materials.py` (Unreal Python, idempotent, `-SOLRebuild`;
+  run it after `import_star_field.py`) creates two unlit materials in `/Game/SOL/StarField/`, so the whole
+  feature's content sits under the plugin-leak guard in `StarFieldTest.cpp`. Parameter names are in
+  `SOL::StarFieldMaterialParams`.
+  - `M_SOLStarSprite`: additive, two-sided, used with instanced static meshes. Three per-instance custom floats
+    hold flux × linear color (premultiplied, so brightness and color travel together). The vertex shader multiplies
+    them by `CubeTexelSolidAngleSr × BrightnessScale / (SpriteSolidAngleSr × π/12)` and passes the result to the
+    pixel shader through a vertex interpolator. The pixel shader applies a round falloff `saturate(1 − r²)²`, with
+    `r` taken from the quad's local YZ position. The script checks that the mesh is the 100 cm YZ quad with its
+    pivot at its center. The falloff's mean over the quad is exactly π/12, so dividing by it makes each sprite emit
+    exactly flux × texel sr / sprite sr, the contract in `SOLStarFieldData.h`. This analytic falloff replaces
+    `T_StarMask_Round`, whose integral is unknown, so the mask (and the copied billboard material functions) stay
+    unused.
+  - `M_SOLStarSky`: opaque, two-sided. It samples `T_SOLStarFieldCube` along `−CameraVector` (Unreal world axes,
+    the bake's cube convention) and multiplies by `BrightnessScale`. Sampling by the true view direction makes the
+    sky exact wherever the camera sits inside the sphere.
+- **Billboarding.** There is no per-vertex billboard. Decision 10 puts the camera at the center of the star
+  sphere, so `ASOLStarField` turns each quad toward the center once, when it is created (`MakeFromX(−dir)`). That
+  is face-on to the camera wherever the camera looks, and only the roll is free, which doesn't matter for a round
+  sprite. This costs nothing per frame or per vertex, and the instance bounds stay the quads' real bounds, so GPU
+  instance culling is exact. A world-position-offset billboard would have stretched quads beyond the bounds the
+  culling uses. A future diffraction-spike sprite (decision 4) needs a screen-aligned roll, which would bring back
+  a material-side rotation.
+- **Size and brightness.** Every sprite is `STAR_SPRITE_ANGULAR_DIAMETER_RAD` = 0.006 rad (~0.34°, ~6 cube
+  texels, ~4 px at 1280×720 and ~6 px at 1080p with the 90° chase camera). Its solid angle is the exact square
+  formula `4·asin(sin²(θ/2))` ≈ 3.6e-5 sr. `STAR_FIELD_BRIGHTNESS_SCALE` (1.0) multiplies both materials, so the
+  sprites and the cube keep their relative brightness exactly.
+- **Radii.** `STAR_FIELD_SKY_RADIUS_CM` = 4e12 cm and `STAR_FIELD_SPRITE_RADIUS_CM` = 2e12 cm.
+  - Both are inside UE 5.8's `HALF_WORLD_MAX` (~4.4e12 cm, `EngineDefines.h`), so bounds stay within the
+    large-world envelope. The first build used 1e13 and 5e12 cm, which exceeded it; the review caught this.
+  - Depth-compressed bodies never render beyond ~2.5e11 cm (`1e11 × (1 + 0.1 ln(d/1e11))`, even for the map
+    camera's farthest zoom). So the sprites sit 8× and the sky 16× behind any body, and bodies occlude stars by
+    ordinary depth testing.
+  - The reverse-Z far plane is infinite, and float error at these distances is ~1e-7 of the distance, far below a
+    pixel.
+- **Translucency sorting.** The sprite ISM's bounds are centered on the camera, so by default it would sort as
+  the nearest translucency. Its `TranslucencySortPriority` is `STAR_SPRITE_TRANSLUCENCY_SORT_PRIORITY` (−1000),
+  so later world-space translucency (Part 6's bolts and effects) draws over the stars.
+- **Pinned at the origin; nothing follows the viewpoint (deviation from §3.2).** Both the sprite ISM and the sky
+  sphere use absolute transforms pinned at the Unreal origin. The actor binds no events and never moves after
+  `BeginPlay`.
+  - Why: moving the ISM cost ~3.9 ms of game thread per frame (`stat dumpave`: 2.97 ms in its transform update plus
+    0.94 ms in its render-transform send; game thread 7.0 ms against 3.6 ms pinned), because a primitive move makes
+    the instance-data manager re-derive all 45,653 instances.
+  - The sky gains nothing from following, since it samples by view direction. Following was also a latent fragility:
+    a rebase outside the anchor subsystem's tick would leave it stale for a frame, and a large jump could put the
+    camera outside the sphere.
+  - Assumption 1, the distance bound: the render origin rebases to the viewpoint within `RENDER_REBASE_DISTANCE_M`
+    (10 km), and the chase camera sits ~62 m behind the ship. So the camera is never more than ~1e6 cm from the
+    origin, an angular error of ~1e6 / 2e12 = 5e-7 rad, about 1/2000 of a pixel. The constant's definition carries
+    a cross-reference to this section. If the rebase distance ever grows by orders of magnitude, revisit this.
+  - Assumption 2, tick order: `USOLAnchorSubsystem`'s tick (after `TG_PostPhysics`), which moves the observer and
+    rebases, runs before the player camera manager updates (`UpdateCameraManager`, later in `UWorld::Tick`, as in UE
+    5.8's `LevelTick.cpp`). So the camera that renders a frame is always placed relative to that frame's render
+    origin and never lags a rebase.
+- **Collision and GI.** The ISM and the sphere both use `NoCollision`, `SetCanEverAffectNavigation(false)`, no
+  shadows, no distance-field or dynamic-indirect contribution, and are hidden from ray tracing. The quad's
+  `BlockAll` body creates no physics bodies.
+- **`T_MilkyWay` is not used.** The cube already shows the Milky Way, built from 2.5M resolved stars, with its
+  dust lanes. The galactic band is plainly visible in the screenshots toward Sagittarius, Crux and Monoceros.
+  `T_MilkyWay` is in CelestialVault's own brightness units, which can't be calibrated against ours, and adding it
+  would double-count the resolved light. What it could add is the *unresolved* glow (stars fainter than the
+  catalog). That would need a calibrated subtraction of the resolved part, and is left as a possible follow-up.
+- **Verification.**
+  - The look directions were set with a temporary, reverted command-line hack in `ASOLSpectatorPawn`.
+  - Screenshots toward the galactic center, Orion and Crux: the Milky Way band runs where it should (upper-left to
+    lower-right through Sagittarius, east of Orion through Monoceros/Gemini, through Crux with the Coalsack). Real
+    bright stars land on their known positions relative to the cube's band: Pleiades, Hyades/Aldebaran, Betelgeuse,
+    Rigel, Procyon and Antares each fall within a few pixels of where their ecliptic coordinates put them.
+  - Jump-map screenshots (`-SOLSmokeMap`, 16 PASS): the sky renders behind the orbit lines, and Earth's night side
+    occludes the stars.
+  - **The `--include-bright-in-cube` cross-check (closing the open item from 4a).** The bake was re-run with
+    `--include-bright-in-cube`; `star_field_bright.bin` came out byte-identical. The `_withbright` DDS was imported
+    into a temporary asset with the 4b settings, and `M_SOLStarSky` was temporarily pointed at it. Screenshots were
+    then taken with and without the sprites (`show InstancedStaticMeshes`) at FOV 12° on Orion's belt and FOV 30°
+    on the (1,1,1) cube corner. The sprite discs sit centered on the cube's own bright-star blobs. Measured
+    centroids of sprite against cube blob: median offset 0.72 px at FOV 30° (25 stars, ~0.3 cube texel) and 2.4 px
+    at FOV 12° (12 stars, ~0.4 texel), with no consistent direction. The larger outliers are neighbors blending
+    into the cube centroid. There is no mirroring, rotation or face swap. The material was then rebuilt against
+    the real cube, and the temporary asset was deleted.
+  - Discs stay round across the frame at every FOV tried, so the quads are face-on.
+  - After the review fixes (radii, pinned sky, material move), the default and jump-map views were re-shot. The
+    star positions match the earlier shots, and `-SOLSmokeMap` gives 16 PASS, 0 FAIL.
+  - The full suite (332/332) still passes.
+
 ### 3.3 Verification
 
 No new `-SOL*` smoke-test flag or scripted checkpoints (no new player input or
@@ -246,3 +333,21 @@ None deferred as blocking. Diffraction spikes (decision 4) tracked as a follow-u
   - Corrected the import-metadata description and the `CubeTexelSolidAngleSr` contract.
   - Marked the reference material as not for runtime use, and noted the quad mesh's collision
     for 4c.
+- 2026-09-30: 4c built: `ASOLStarField`, `M_SOLStarSprite`, `M_SOLStarSky` and `create_star_field_materials.py`
+  (see "As built (4c)" in §3.2).
+  - **Deviation:** the sprite ISM is pinned at the Unreal origin instead of translating with the actor. Following
+    the viewpoint cost ~3.9 ms of game thread per frame; pinned, the error is 2e-7 rad, because the rebase keeps the
+    camera within 10 km.
+  - The quads face the center from creation instead of billboarding per vertex.
+  - `T_MilkyWay` and `T_StarMask_Round` are unused.
+  - The `--include-bright-in-cube` alignment check passed: sprites sit on the cube's blobs within ~0.3-0.4 cube
+    texel, with no mirroring.
+- 2026-09-30: 4c review fixes.
+  - The radii moved inside `HALF_WORLD_MAX`: sprites at 2e12 cm, sky at 4e12 cm.
+  - The sprites got a −1000 translucency sort priority.
+  - The sky sphere is pinned too, so `ASOLStarField` no longer binds `OnUniverseUpdated` and is fully static after
+    `BeginPlay`. Both assumptions (the rebase distance bound, and the anchor tick running before the camera update)
+    are now documented.
+  - `StarFieldTest`'s "non-empty dependency list" assertion was removed. It duplicated the registry-known and
+    edge checks, and imposed an accidental rule. With it gone, the two materials moved to `/Game/SOL/StarField/`.
+  - The material script now asserts that the quad's pivot is at its center.

@@ -8,6 +8,7 @@
 #include "Game/SOLSpectatorPawn.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
+#include "StarField/SOLStarField.h"
 #include "UI/SOLFlightHud.h"
 #include "Visuals/SOLBodyVisuals.h"
 
@@ -47,12 +48,13 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body visuals, arms the optional smoke-test screenshot, then starts play
+// Spawns the body visuals and the star field, arms the optional smoke-test screenshot, then starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
     params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     GetWorld()->SpawnActor<ASOLBodyVisuals>(ASOLBodyVisuals::StaticClass(), FTransform::Identity, params);
+    GetWorld()->SpawnActor<ASOLStarField>(ASOLStarField::StaticClass(), FTransform::Identity, params);
 
     // Verification hook for headless smoke runs: screenshot after the given delay, then quit
     float smokeDelaySeconds = 0.0f;
