@@ -93,6 +93,10 @@ public:
     // Returns the universe point that maps to Unreal (0,0,0)
     const FVector3d& GetRenderOriginM() const { return mRenderOrigin.OriginM; }
 
+    // Returns the render origin itself, so a per-entity hot loop (e.g. ASOLAsteroidBeltVisuals) can snapshot it once
+    // per frame and call FSOLRenderOrigin::BodyPlacement directly instead of going through this UObject per entity
+    const FSOLRenderOrigin& GetRenderOrigin() const { return mRenderOrigin; }
+
     // Converts a universe position (meters, ecliptic) to an Unreal render location (cm, Unreal axes)
     FVector UniverseToRenderCm(const FVector3d& universeM) const;
 
@@ -105,6 +109,9 @@ public:
     // Returns a universe point's render location (cm, Unreal axes) through the same placement as the bodies (radius 0);
     // equals UniverseToRenderCm within 1,000,000 km of the viewpoint
     FVector ComputePointRenderLocationCm(const FVector3d& universeM) const;
+
+    // Returns an arbitrary universe point's render placement (cm, Unreal axes), same conversion as a registry body
+    FSOLRenderPlacement ComputeRenderPlacement(const FVector3d& universeM, double radiusM) const;
 
     // Returns the index of the body whose surface is nearest the observer, and its altitude in meters
     int32 FindNearestBody(double& outAltitudeM) const;

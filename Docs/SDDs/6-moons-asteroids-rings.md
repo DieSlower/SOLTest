@@ -83,9 +83,12 @@ struct FSOLMinorBodyAppearanceFragment : public FMassConstSharedFragment { ... }
 A new `USOLMinorBodyOrbitProcessor` (mirrors `USOLShipFlightProcessor`'s structure):
 each frame, in parallel chunks, computes each entity's position via
 `SOLKepler::ElementsToState` from the sim clock's current time, adding the parent
-body's current position (read from `FSOLBodyFrameCache`, same dependency the ship
-processor already has) for non-Sun parents. No gravity, no collision, no control
-input — purely kinematic, far simpler than the ship processor.
+body's current position for non-Sun parents. No gravity, no collision, no control
+input — purely kinematic, far simpler than the ship processor. **Corrected in 5c
+(Amendment 3): the parent position is read from `FSOLBodyRegistry::GetPositionsM()`
+(raw ecliptic/universe meters), NOT `FSOLBodyFrameCache`** — that cache is
+axis-mirrored for ship physics and is the wrong frame for a pure-rendering consumer;
+see Amendment 3 for why.
 
 **Pure-logic generation** (new `Source/SOLTest/MinorBodies/SOLAsteroidBelt.h/.cpp`,
 offline-callable from a C++ tool or at world startup — implementer's choice, likely
@@ -113,7 +116,12 @@ analogous to Part 4's since this is procedural math, not external-data processin
 transforms bulk-updated each frame from the Mass processor's output (the first
 genuinely-moving large ISM population in this project — the star field's ISM was
 static after creation; this one needs a per-frame bulk transform update, which the
-performance review must specifically check scales acceptably at ~51,000 instances).
+performance review must specifically check scales acceptably). **Corrected in 5c
+(Amendment 3): the actual default-configured belt is ~9,268 instances (500 real +
+~8,768 procedural fill), not ~51,000** — that figure assumed decision 3's original
+~1,000-real-asteroid count and the high end of the 200-400 cluster range; Amendment 2
+already revised the real count down to ~500, and 5b's committed `DEFAULT_CLUSTER_COUNT`
+(300) sits in the middle of its range, not the high end.
 
 ### 3.3 Planet rings (Appendix C)
 
@@ -143,9 +151,14 @@ renderers cross-fading by camera distance to the ring, mirroring
   rendering, the LOD cross-fade): screenshot verification, no new `-SOL*` smoke flag
   expected (no new player input/mechanic) unless implementation reveals a need for one.
 - Performance review must specifically address: per-frame ISM bulk-transform-update
-  cost at ~51,000 moving instances (belt) plus however many near-field ring rocks are
-  active at once — this project's first large *moving* GPU-instanced population,
-  unlike the star field's static one.
+  cost at the belt's actual ~9,268 moving instances (see Amendment 3; the ~51,000
+  figure in this section's earlier text was never the real configured count) plus
+  however many near-field ring rocks are active at once — this project's first large
+  *moving* GPU-instanced population, unlike the star field's static one. Per Amendment
+  3, this was reviewed by estimate only, not real `stat`/Insights evidence — real
+  profiling evidence is still owed before the belt's performance can be called
+  verified, and should be captured (and this section updated) during 5d/5e or in a
+  dedicated follow-up once an interactive/real-RHI editor session is available.
 
 ## 4. Open questions
 
@@ -157,6 +170,7 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-09-30: initial decisions from the `grill-me` session.
 - 2026-10-01: Amendment 1, after implementing and reviewing 5a.
 - 2026-10-01: Amendment 2, real-asteroid count and sourcing revised before starting 5b.
+- 2026-10-01: Amendment 3, after implementing and reviewing 5c.
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -227,3 +241,63 @@ data addition":
 Both were real findings from the required adversarial review (not pre-planned), fixed in
 the same sub-part before commit, per this project's "fix before calling the part done"
 rule. 5a is otherwise exactly as designed in §3.1.
+
+## Amendment 3 — 5c implementation: frame correctness, actual scale, and a pending profiling gap
+
+5c (`USOLMinorBodyOrbitProcessor`, `USOLMinorBodySubsystem`, `ASOLAsteroidBeltVisuals`)
+is built, automation-tested (360 tests passing) and headless-smoke-tested
+(`-SOLSmokeFlight`, 9/9), with two required adversarial review rounds applied. Real
+findings, beyond the §3.2 text corrections noted inline above:
+
+- **Entity count is ~9,268** (500 real + ~8,768 procedural fill from 5b's committed
+  `DEFAULT_*` constants), not the ~51,000 this section originally estimated — see the
+  corrections inline above. The architecture (Mass fragments, batch spawn, ISM bulk
+  update) is unchanged by this; only the actual instance count differs from the
+  original estimate.
+- **A real performance bug, found and fixed**: `ASOLAsteroidBeltVisuals` initially
+  called `BatchUpdateInstancesTransforms` with `bMarkRenderStateDirty=true`, which
+  destroys and rebuilds both ISM components' entire scene proxies (all ~9,268
+  instances, re-uploaded to the GPU scene) every single frame, not just updates the
+  changed transforms. Fixed to `false` — the instance-data manager already pushes
+  per-instance transform changes incrementally without it.
+- **A real, pre-existing latent bug found in already-shipped code**: the new
+  subsystem's entity-destruction-on-teardown crashed because `UMassEntitySubsystem`
+  may already have deinitialized the shared `FMassEntityManager` by the time a
+  `UWorldSubsystem::Deinitialize` runs (subsystem deinit order isn't guaranteed).
+  Fixed by moving entity destruction to `PreDeinitialize`. The adversarial review found
+  `USOLShipSubsystem::Deinitialize` (issue #2/#3 era) has the exact same unsafe
+  pattern, which has not crashed only by luck of subsystem registration order — fixed
+  the same way, as part of this sub-part's review-fix pass, even though the code
+  predates issue #6.
+- **Data layout correction**: `FSOLMinorBodyOrbitFragment` originally bundled
+  rendering-only fields (`RadiusM`, `InstanceIndex`) alongside orbital-dynamics fields
+  (`Elements`, `ParentBodyIndex`), so both the orbit processor's and the visuals
+  actor's hot loops dragged the other's unused data through cache every entity, every
+  frame. Split into `FSOLMinorBodyOrbitFragment` (processor-only) and the new
+  `FSOLMinorBodyRenderFragment` (visuals-only).
+- **Style-guide fix**: the visuals actor's per-entity loop called into
+  `USOLAnchorSubsystem` (a `UObject`) once per entity; fixed to snapshot the render
+  origin and viewpoint once per frame and call the underlying pure placement function
+  directly inside the loop (STYLE_GUIDE.md §15).
+- **No profiling evidence yet — explicitly not resolved.** CLAUDE.md's performance
+  checklist item 9 requires `stat`/Insights evidence for cost claims, not estimates.
+  The adversarial review's own back-of-envelope estimate (extrapolating from the star
+  field's measured per-instance cost) suggests the post-fix per-frame cost is "probably
+  tolerable" at ~9,268 instances, but this is explicitly a guess, not evidence — real
+  `stat unit`/`stat game`/Insights numbers require an interactive or real-RHI editor
+  session, which this implementation pass did not have access to. **This is the one
+  open item before 5c can be called fully verified**; tracked for the next session with
+  the editor open. The review also flagged (not blocking, logged as tech debt/ToDo
+  instead of fixed here): the belt's sphere mesh has no LOD/cull-distance despite most
+  instances being sub-pixel from any reasonable viewing distance; orbital constants
+  (`pHat`/`qHat`, etc.) are recomputed from scratch every frame per entity rather than
+  cached at spawn (cheap to add later, not blocking at this scale); the two ISM
+  variants exist only for a color distinction and could become one ISM with per-instance
+  custom data once real art arrives; a GPU-side/Niagara-driven approach would be needed
+  to reach Part 10's 1M-entity scale demo, since a per-frame CPU-computed,
+  CPU-to-GPU-uploaded transform array fundamentally does not scale that far.
+- Asteroids render with the default placeholder material/Sun-direction, same
+  as 5a's bodies and consistent with this project's deferred-art-pass precedent — not
+  a regression, just not yet visually polished.
+
+5c is otherwise exactly as designed in §3.2 (Appendix B).

@@ -4,6 +4,10 @@
 */
 
 #include "Universe/SOLAnchor.h"
+#include "Universe/SOLAnchorSubsystem.h"
+#include "Universe/SOLBodyRegistry.h"
+#include "Universe/SOLRenderPlacement.h"
+#include "SOLConstants.h"
 
 #include "Tests/SOLTestHelpers.h"
 
@@ -200,6 +204,48 @@ bool FSOLAnchorSolarScaleTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("0.21 AU from the Sun: still Earth"), selector.Update(bodies, FVector3d(0.21 * SOLTestHelpers::AU_M, 0.0, 0.0)), 1);
     TestEqual(TEXT("0.19 AU from the Sun: switches to the Sun"),
         selector.Update(bodies, FVector3d(0.19 * SOLTestHelpers::AU_M, 0.0, 0.0)), 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLAnchorSubsystemRenderPlacementTest,
+    "SOLTest.Anchor.ComputeRenderPlacementMatchesBodyPlacement",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// ComputeRenderPlacement(universeM, radiusM), called with a real registry body's position and radius, matches exactly
+// what ComputeBodyRenderPlacement(bodyIndex) computes for that same body. USOLAnchorSubsystem's ShouldCreateSubsystem
+// requires a running ASOLGameMode world (never created in an automation test), so there is no USOLBodyRegistrySubsystem
+// to source the body from here; instead a real FSOLBodyRegistry (plain C++, no world needed) stands in for it, and the
+// comparison is against ComputeBodyRenderPlacement's own formula (FSOLRenderOrigin::BodyPlacement, via the additive
+// GetRenderOrigin/GetViewpointM accessors) evaluated with that body's position and radius - exactly what
+// ComputeBodyRenderPlacement does internally once it has read them off the registry
+bool FSOLAnchorSubsystemRenderPlacementTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLBodyRegistry registry;
+    registry.PopulateSolarSystem();
+    registry.Update(1.0e8);
+    const int32 earthIndex = registry.FindByName(FName(SOL::BodyNames::EARTH));
+    if (!TestTrue(TEXT("Earth is in the registry"), earthIndex != INDEX_NONE))
+    {
+        return false;
+    }
+    const FVector3d bodyPositionM = registry.GetPositionM(earthIndex);
+    const double bodyRadiusM = registry.GetRadiusM(earthIndex);
+
+    // A bare subsystem (never Initialize()'d, so BodyRegistry stays null): SetObserverPositionM's BodyRegistry use is
+    // null-guarded, so this is still safe and gives the render origin and viewpoint a real, non-zero state to compare
+    // ComputeRenderPlacement under
+    USOLAnchorSubsystem* const anchor = NewObject<USOLAnchorSubsystem>();
+    anchor->SetObserverPositionM(bodyPositionM + FVector3d(2.0e9, -1.0e9, 5.0e8));
+
+    const FSOLRenderPlacement actual = anchor->ComputeRenderPlacement(bodyPositionM, bodyRadiusM);
+    const FSOLRenderPlacement expected = anchor->GetRenderOrigin().BodyPlacement(bodyPositionM, anchor->GetViewpointM(),
+        bodyRadiusM, SOL::DEFAULT_MAX_RENDER_DISTANCE_CM);
+
+    TestTrue(TEXT("Location matches ComputeBodyRenderPlacement's formula exactly"),
+        actual.LocationCm == expected.LocationCm);
+    TestEqual(TEXT("Radius matches ComputeBodyRenderPlacement's formula exactly"), actual.RadiusCm, expected.RadiusCm,
+        0.0);
     return true;
 }
 

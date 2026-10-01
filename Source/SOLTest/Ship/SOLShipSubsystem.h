@@ -59,6 +59,9 @@ public:
     // Declares its dependencies and prepares the flight processor
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
+    // Destroys the player ship entity while the entity manager is still alive (before any subsystem deinitializes)
+    virtual void PreDeinitialize() override;
+
     // Unhooks from the universe update and releases the Mass objects
     virtual void Deinitialize() override;
 
