@@ -211,6 +211,27 @@ namespace SOL
         inline constexpr const TCHAR* SHIP_PART_SPHERE = TEXT("/Engine/BasicShapes/Sphere.Sphere");
         inline constexpr const TCHAR* SHIP_HULL_MATERIAL =
             TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+
+        // Star field (SDD 5), created by Tools/StarField/import_star_field.py (keep both in sync): the faint-star
+        // TextureCube and the bright-star USOLStarFieldData
+        inline constexpr const TCHAR* STAR_FIELD_CUBE =
+            TEXT("/Game/SOL/StarField/T_SOLStarFieldCube.T_SOLStarFieldCube");
+        inline constexpr const TCHAR* STAR_FIELD_DATA = TEXT("/Game/SOL/StarField/DA_SOLStarField.DA_SOLStarField");
+
+        // Star field: assets copied from the CelestialVault plugin (SDD 5 decision 5; the plugin is never enabled).
+        // The camera-facing quad (100 cm, facing +X), the round star mask, the Milky Way texture and the plugin's star
+        // material, kept as a reference for the sprite material. The copied billboard material functions are only
+        // referenced from material graphs, so they have no C++ path
+        inline constexpr const TCHAR* STAR_QUAD_MESH =
+            TEXT("/Game/SOL/StarField/CelestialVault/SM_Plane_FacingX.SM_Plane_FacingX");
+        inline constexpr const TCHAR* STAR_MASK_TEXTURE =
+            TEXT("/Game/SOL/StarField/CelestialVault/T_StarMask_Round.T_StarMask_Round");
+        inline constexpr const TCHAR* MILKY_WAY_TEXTURE =
+            TEXT("/Game/SOL/StarField/CelestialVault/T_MilkyWay.T_MilkyWay");
+        // REFERENCE ONLY, do not use at runtime: it expects CelestialVault's absolute brightness units and per-instance
+        // data layout, not this project's flux relative to magnitude 8 (SDD 5 section 3.1, "As built (4b)")
+        inline constexpr const TCHAR* STAR_REFERENCE_MATERIAL =
+            TEXT("/Game/SOL/StarField/CelestialVault/M_Stars_EnergyConservative.M_Stars_EnergyConservative");
     }
 
     // Vector parameter of SHIP_HULL_MATERIAL that sets its base color

@@ -25,6 +25,7 @@ public class SOLTest : ModuleRules
 
         PrivateDependencyModuleNames.AddRange(new string[]
         {
+            "AssetRegistry",
             "EngineSettings",
             "EnhancedInput",
             "InputCore",

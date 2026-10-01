@@ -39,14 +39,26 @@ sync if the design shifts.
   that found and fixed a small real edge/corner splatting inaccuracy, added atomic
   writes and a versioned parse cache. Previews independently inspected in the main
   session: correct Milky Way band and dust-lane structure. Commit 5591976.)
-- [ ] **4b — Content import and CelestialVault asset copy.**
-  `Tools/StarField/import_star_field.py` (Unreal Python, mirrors
-  `Tools/CreateSOLContent.py`'s idempotent/`-SOLRebuild` pattern): imports the cubemap
-  and bright-star data as `Content/SOL/` assets (`USOLStarFieldData` `UDataAsset`
-  defined in C++ first, per SDD 5 Appendix A), and copies the needed CelestialVault
-  assets (SDD 5 decision 5) into `Content/SOL/` — `SOLTest.uproject` never lists
-  CelestialVault. Commit (data assets committed as usual UE content; the raw
-  catalog/intermediate bake files stay gitignored under `Tools/StarField/data/`).
+- [x] **4b — Content import and CelestialVault asset copy.** (Built:
+  `Source/SOLTest/StarField/SOLStarFieldData.h` (`FSOLBrightStar`, `USOLStarFieldData`),
+  `Tools/StarField/import_star_field.py` (a normal-Python driver that temporarily
+  enables CelestialVault in `.uproject` only for the one-time copy run — with a sidecar
+  backup, a child-process timeout, and byte-for-byte restore in `finally` — then the
+  in-editor import of the cubemap and bright-star data). Assets under
+  `/Game/SOL/StarField/` (`T_SOLStarFieldCube`: BC6H, sRGB off, generated mips;
+  `DA_SOLStarField`: 45,653 stars) and `/Game/SOL/StarField/CelestialVault/` (7 copies).
+  Paths in `SOL::Paths`. Cube orientation verified in-engine (rendered all six faces
+  and an ecliptic equirectangular view through the imported cube, compared against the
+  bake — identical, no mirroring). One adversarial review round found the
+  CelestialVault-independence check had real gaps (could silently pass without
+  actually checking anything) and ran only once rather than as a lasting guard, plus a
+  `.uproject` restore-safety gap and a wrong brightness-matching comment — all fixed:
+  a new permanent `SOLTest.StarField.*` automation test (4 tests) now verifies
+  independence on every run with the plugin disabled (the normal repo state), proven
+  to actually catch a leak (temporarily treating an unrelated module as a leak and
+  confirming the test fails, then reverting the probe); the `.uproject` procedure
+  gained a sidecar backup and timeout. 332/332 full suite green, independently
+  re-verified. Commit pending.)
 - [ ] **4c — Runtime actor.** `Source/SOLTest/StarField/ASOLStarField` per SDD 5
   Appendix B: `UInstancedStaticMeshComponent` populated once from `USOLStarFieldData`,
   a large inverted-sphere (or equivalent) unlit cubemap-sampling background, spawned
