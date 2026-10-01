@@ -58,7 +58,7 @@ sync if the design shifts.
   to actually catch a leak (temporarily treating an unrelated module as a leak and
   confirming the test fails, then reverting the probe); the `.uproject` procedure
   gained a sidecar backup and timeout. 332/332 full suite green, independently
-  re-verified. Commit pending.)
+  re-verified. Commit 60eb498.)
 - [ ] **4c — Runtime actor.** `Source/SOLTest/StarField/ASOLStarField` per SDD 5
   Appendix B: `UInstancedStaticMeshComponent` populated once from `USOLStarFieldData`,
   a large inverted-sphere (or equivalent) unlit cubemap-sampling background, spawned
