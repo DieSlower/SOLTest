@@ -10,7 +10,7 @@ A high-level map of how the game's systems fit together: modules, the per-frame 
 
 ## 1. Overview
 
-SOLTest is a 1:1-scale solar-system space sim: the player flies a small ship in third person among the Sun and eight planets on real Keplerian orbits, with a sim clock and time-warp, gravity, a reference-frame/target system and a sim-style HUD. The core architectural bet has three parts:
+SOLTest is a 1:1-scale solar-system space sim: the player flies a small ship in third person among the Sun, eight planets, five dwarf planets and their major moons on real Keplerian orbits, with a sim clock and time-warp, gravity, a reference-frame/target system and a sim-style HUD. The core architectural bet has three parts:
 
 1. **Double-precision universe coordinates.** Every authoritative position is an `FVector3d` in meters in a right-handed ecliptic frame, far beyond what Unreal's world can hold.
 2. **Observer-relative rendering.** Unreal's world is only a render view. A render origin near the observer maps to Unreal (0,0,0), and every body is re-placed from universe coordinates each frame. Far bodies are depth-compressed with their angular size preserved.
