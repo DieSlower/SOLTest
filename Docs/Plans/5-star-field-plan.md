@@ -79,10 +79,13 @@ sync if the design shifts.
   - The `--include-bright-in-cube` cross-check aligned within ~0.3-0.4 cube texel.
   - The adversarial review found nothing blocking, and its cheap fixes are applied.
   - Screenshots were inspected directly. 332/332 tests pass.
-  - Commit is still pending.)
+  - Commit 1848673.)
+
+**Part 4 (issue #5) is complete: 4a, 4b and 4c are all built, tested, adversarially reviewed and committed.**
 
 ## Cross-cutting
 
 - [x] `Docs/ARCHITECTURE.md`: new `StarField/` module entry (module map diagram, key
-  types, frame-order note if `OnUniverseUpdated` gains a new listener).
-- [ ] No `GAME_MECHANICS.md` entry needed (not a player-facing mechanic/control).
+  types, frame-order note if `OnUniverseUpdated` gains a new listener). (`ASOLStarField`
+  ended up needing no `OnUniverseUpdated` binding at all — see 4c's pinning deviation.)
+- [x] No `GAME_MECHANICS.md` entry needed (not a player-facing mechanic/control).
