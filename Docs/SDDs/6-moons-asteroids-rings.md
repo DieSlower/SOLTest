@@ -179,6 +179,9 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-10-01: Amendment 4, scope extension before 5d plus 5d implementation notes.
 - 2026-10-01: Amendment 5, 5c's deferred PIE/profiling verification plus a real
   material bug found and fixed while doing it.
+- 2026-10-01: Amendment 6, 5e grill-me and design — expanded near-field scope
+  (player-streamed patch, not a whole-ring population) and the resulting technical
+  design (Appendix D).
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -425,3 +428,138 @@ Amendment 3.
 5c is now considered fully verified.
 
 5d is otherwise exactly as designed in §3.3 (Appendix C).
+
+## Amendment 6 — 5e grill-me and design (Appendix D)
+
+Grilled before any 5e code. Decision 7's two-sentence near/far summary undersold what
+"near the ring: individually Mass-simulated rocks, flyable-through" actually requires
+once pushed on: Saturn's ring alone spans ~66,900-136,780 km radially (`RING_REAL_RINGS`
+in `SOLPlanetRing.cpp`) — a whole-ring population at any flyable density is
+not feasible (even the sparse belt's ~9,268 instances cover a 2.1-3.3 AU band with
+enormous gaps; a ring flown through at human/ship scale needs rocks roughly every
+50-150 m, which over tens of thousands of km of radius and circumference is many
+orders of magnitude more instances than any Mass population this project can afford).
+Resolved as a genuinely bigger feature than the plan's original sketch:
+
+1. **Near field is a player-streamed local patch, not a static whole-ring population**
+   (user's explicit choice over the whole-ring alternative, which was offered and
+   recommended against at this scale). A local 3D neighborhood of rocks around the
+   player's current position within the ring, re-centered as they move, not the belt's
+   "everything spawned once at world start" model.
+2. **Collision stays deferred** (decision 9 unchanged) even though the near field now
+   reads as a real flyable rock field rather than a sparse belt — explicitly
+   re-confirmed with the user given the stakes of staying collision-less just went up;
+   `Docs/ToDo/asteroid-ring-collision.md` gets a note to that effect.
+3. **Target density: ~50-150 m average rock spacing** within the active patch —
+   scattered and individually navigable, not a wall of debris (the denser
+   "wall-to-wall" alternative was offered and declined, partly for believability: real
+   ring material at ship scale is mostly empty space between visible chunks, and partly
+   for the entity-churn cost of a much higher streaming density).
+4. **Far field is a Niagara system that samples particles across the ring's annulus**
+   (inner/outer radius minus `SOLPlanetRing::AllGapBandsM`'s real gap bands), not a
+   single textured disc mesh — the more "Niagara-native" option, reads as granular from
+   any distance, and the real gaps show up for free as genuinely particle-free bands
+   rather than needing a baked gap texture.
+
+### Technical design
+
+**Shared math promoted, not duplicated.** `SOLAsteroidBelt.cpp` already has a
+file-local `BeltStateToElements`/`FSOLOrbitState`-based conversion (Cartesian
+position+velocity → classical elements, the inverse of `SOLKepler::ElementsToState`,
+used by 5b's family-member generator) and a `BeltMemberElements` helper that places a
+member at a displaced position with the center's orbital energy so it shares the
+center's semi-major axis and period exactly. Ring-patch rock generation needs exactly
+this operation (place a rock at a locally-displaced position near the player, in
+near-circular motion, so it holds its place in the patch's local frame rather than
+drifting) but relative to a planet's GM instead of the Sun's, and with no "cluster
+center entity" to displace from — just a geometric point. **Promote
+`BeltStateToElements` to `SOLKepler::StateToElements(state, gm)`** in
+`Source/SOLTest/Universe/SOLKepler.h/.cpp`, right alongside `ElementsToState` as its
+documented inverse; `SOLAsteroidBelt.cpp` calls the shared version instead of its own
+copy (5b's existing tests must keep passing unchanged, plus new direct tests for the
+promoted function). The "displace from a local point with matching energy" shape of
+`BeltMemberElements` becomes the new `SOLRingPatch` module's own rock-placement helper,
+parameterized by the host planet's GM instead of the Sun's.
+
+**New pure-logic module, `Source/SOLTest/MinorBodies/SOLRingPatch.h/.cpp`** (genuinely
+new geometry/orbital-mechanics logic — full contract-only TDD, a dispatched subagent
+writes the tests from the header alone, same as 5b):
+- A fixed-size **cell grid local to each ring**: cells are `CELL_SIZE_M` (1,000 m) on a
+  side in a local tangent-plane approximation (radial × tangential; ring curvature over
+  1 km is negligible next to a ring's tens-of-thousands-of-km radius). A cell is
+  addressed by `(radialCellIndex, angularCellIndex)` relative to the ring's center.
+- `ComputeActiveCell(playerPositionM, planetPositionM, ringDef)`: given the player's
+  current position, returns which cell they're in (or "not in this ring" if outside the
+  ring's radial band + a margin, or too far from the ring plane vertically).
+- `GenerateCellRocks(ringDef, cellIndex, planetGM, gapBands, seed)`: deterministically
+  generates that cell's rocks (position, near-circular orbital elements via the
+  promoted `StateToElements`-based placement, each rock's own `RadiusM`) — same seeded
+  procedural-generation discipline as the belt (same cell index + seed always produces
+  the same rocks, no persistence needed). Honors `gapBands`: a cell (or the part of a
+  cell) that falls inside a gap band gets fewer/no rocks there, same exclusion
+  technique as the belt's Kirkwood gaps and the ring's own gap bands.
+- `ComputeNearFieldAlpha(distanceOutsideRingVolumeM, transitionBandM)`: a
+  `SOLMapBodyLod::Evaluate`-style smooth 0..1 cross-fade (0 = fully far/Niagara-only, 1
+  = fully near/patch-only), for blending the ISM patch's visibility against the
+  Niagara emitter's as the player crosses the ring's activation boundary.
+- Rock count per cell derived from the ~50-150 m density target and `CELL_SIZE_M`:
+  ~100 rocks/cell at the approved density's midpoint (documented as a tunable constant,
+  not re-derived by every caller).
+
+**Entity pooling, not runtime Mass create/destroy.** CLAUDE.md's own performance
+guidance calls for "pooled ... instead of spawn-destroy" — exactly the right fit here.
+Each ring's `USOLRingVisuals`-owned Mass population is a **fixed-size pool**, reserved
+once at world begin-play (size = active-cell-grid-size × rocks-per-cell, e.g. a 3×3
+grid × ~100 = ~900 entities per ring, ~3,600 across all 4 rings if every ring somehow
+had an active patch at once — well inside the headroom Amendment 5 just measured at
+~9,268 belt entities). Crossing a cell boundary **reassigns pool slots to the
+newly-active cells** (rewrites each reassigned slot's `FSOLMinorBodyOrbitFragment`
+in place via `GenerateCellRocks`, and its ISM instance transform) rather than
+creating/destroying Mass entities or ISM instances at runtime — no per-transition
+heap allocation, no ISM `RemoveInstances` index-reshuffling hazard, matching the
+project's existing "reserve up front" discipline. A cell-boundary crossing uses a
+half-cell hysteresis margin (same spirit as the anchor subsystem's rebase hysteresis,
+SDD 1) so flying back and forth near a boundary doesn't thrash reassignment every
+frame. `USOLMinorBodyOrbitProcessor` needs no changes: it matches entities by fragment
+composition, not by which subsystem created them, so ring-patch entities (
+`ParentBodyIndex` = the host planet) run through the exact same processor as the
+belt's Sun-relative ones.
+
+**New types**:
+- `Source/SOLTest/MinorBodies/SOLRingPatch.h/.cpp` — the pure logic above.
+- A new `USOLRingSubsystem` (`UWorldSubsystem`, mirrors `USOLMinorBodySubsystem`'s
+  shape) owning all 4 rings' pools: tracks the ship's position each frame, computes
+  each ring's active cell (or "not present"), reassigns pool slots on a cell-boundary
+  crossing, and runs the shared `USOLMinorBodyOrbitProcessor` over all ring entities
+  from the same `OnBodiesUpdated` delegate the belt uses.
+- A new `ASOLRingVisuals` actor, one per ringed planet, owning: the pool's ISM
+  component (same bulk-transform-update pattern as `ASOLAsteroidBeltVisuals`, fixed
+  instance count, transforms rewritten not instances added/removed) and a
+  `UNiagaraComponent` for the far-field annulus emitter. Cross-fades the two using
+  `ComputeNearFieldAlpha` each frame from `USOLAnchorSubsystem::OnUniverseUpdated`,
+  same event the belt renders from.
+- A new Niagara system asset per ring (or one shared system with per-instance
+  parameters for inner/outer radius, gap bands, color and density — **one shared
+  system, parameterized**, is the plan: four assets with near-identical graphs would be
+  needless duplication given the system is entirely data-driven already via
+  `FSOLPlanetRingDef`). Authored directly by the main session through the editor's
+  Python/Niagara-scripting API during implementation (this needs the live editor
+  connection established this session, which a dispatched subagent does not have), not
+  hand-built in the Niagara editor UI and not delegated to a subagent.
+
+**Trigger geometry**: a ring's patch is "active" (fading toward 1) when the player's
+distance from the planet is within `[InnerRadiusM - marginM, OuterRadiusM + marginM]`
+radially and within a generous vertical half-thickness of the ring plane (looser than
+the ring's real near-zero physical thickness, for gameplay feel — flying close to the
+ring shouldn't require pixel-perfect plane alignment). Exact margin/thickness/
+transition-band constants are implementer judgment within this shape, tuned against
+the required screenshot verification rather than pre-specified here.
+
+**Testing**: `SOLRingPatch`'s cell/placement/alpha logic gets full contract-only TDD
+(dispatched test-writer, same as 5b); the promoted `SOLKepler::StateToElements` gets
+direct tests alongside `ElementsToState`'s existing ones; the pool/subsystem/actor
+integration and the Niagara system are screenshot-verified (multiple distances per
+ring, confirming the cross-fade reads cleanly and the gaps are visible in both tiers),
+no unit tests for the Niagara asset itself.
+
+5e is scoped as described here, superseding §3.3's shorter near/far-LOD paragraph.

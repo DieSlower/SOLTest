@@ -97,12 +97,49 @@ Keep it in sync if the design shifts.
   gaps, with real per-moon gap widths after review caught a uniform-width bug making
   Daphnis's gap ~7x too wide). 5 new `SOLTest.PlanetRing` tests + extended
   `BodyRegistry` tests, 365 automation tests passing (was 360).
-- [ ] **5e — Ring rendering (near/far LOD).** `ASOLRingVisuals` per ringed planet:
-  near-field ISM (shares 5c's Mass population/rendering approach, `ParentBodyIndex`
-  set to the host planet), far-field Niagara (aggregate visual only, no per-particle
-  Mass simulation), cross-fading by distance (adapt `Map/SOLMapBodyLod.h`'s pattern).
-  Screenshot verification at multiple distances per ring (confirm gaps are visible,
-  the near/far cross-fade isn't jarring). Adversarial review, fix, commit.
+- [ ] **5e — Ring rendering (near/far LOD).** Grilled before implementation (SDD 6
+  Amendment 6) — scope grew from the original two-sentence sketch into a genuinely
+  bigger feature: Saturn's ring alone spans ~70,000 km radially, so a whole-ring
+  flyable-density Mass population is infeasible; the near field is a **player-streamed
+  local patch** (re-centers as the player moves) rather than a static whole-ring spawn
+  like the belt. Collision stays deferred (decision 9 re-confirmed; `Docs/ToDo/
+  asteroid-ring-collision.md` updated). Sub-steps, each independently verifiable per
+  the project's usual rhythm:
+  - [ ] **5e-i — Shared math + pure logic.** Promote `SOLAsteroidBelt.cpp`'s file-local
+    `BeltStateToElements` to `SOLKepler::StateToElements(state, gm)` (the documented
+    inverse of `ElementsToState`); re-point 5b's belt code at the shared version (its
+    existing tests must keep passing unchanged) and add direct tests for the promoted
+    function. New `Source/SOLTest/MinorBodies/SOLRingPatch.h/.cpp`: cell-grid indexing
+    (`ComputeActiveCell`), deterministic per-cell rock generation respecting
+    `SOLPlanetRing::AllGapBandsM` (`GenerateCellRocks`), and the near/far cross-fade
+    alpha (`ComputeNearFieldAlpha`, `SOLMapBodyLod`-style). Full contract-only TDD, a
+    dispatched subagent writes the tests from the header alone (genuinely new
+    geometry/orbital-mechanics logic, same bar as 5b).
+  - [ ] **5e-ii — Pooled Mass architecture.** New `USOLRingSubsystem` (mirrors
+    `USOLMinorBodySubsystem`'s shape) owning a **fixed-size entity pool per ring**
+    (reserved once at world begin-play, sized to the active-cell-grid × rocks-per-cell —
+    no runtime Mass create/destroy, per CLAUDE.md's "pooled, not spawn-destroy"
+    guidance). A cell-boundary crossing reassigns pool slots in place (rewrites
+    `FSOLMinorBodyOrbitFragment` and the ISM transform for reassigned slots only, with
+    hysteresis against boundary thrashing) rather than creating/destroying entities.
+    Reuses `USOLMinorBodyOrbitProcessor`/the existing fragments unchanged — it matches
+    by fragment composition, not by creator. Screenshot/log-verified (entity counts,
+    no crash on rapid cell crossings e.g. at warp speed).
+  - [ ] **5e-iii — `ASOLRingVisuals` + Niagara far field.** New actor per ringed planet:
+    owns the pool's ISM component (bulk-transform update, same pattern as
+    `ASOLAsteroidBeltVisuals`) and a `UNiagaraComponent` for the far-field annulus
+    emitter (one shared, parameterized Niagara system across all 4 rings, not four
+    near-duplicate assets). The Niagara asset is authored by the main session directly
+    through the editor's Python/Niagara-scripting API (needs the live editor
+    connection established this session; not delegated to a subagent). Cross-fades
+    ISM/Niagara visibility via `ComputeNearFieldAlpha` from
+    `OnUniverseUpdated`, same event the belt renders from.
+  - [ ] **5e-iv — Integration and verification.** All four gas giants get rings
+    (decision 8). Adversarial review (entity-pool reuse correctness, cell-boundary
+    hysteresis, Niagara system cost, style-guide conformance), fix, re-verify. Real PIE
+    screenshot verification at multiple distances per ring (confirm real gaps are
+    visible in both tiers, the cross-fade isn't jarring, rapid cell-crossing at warp
+    speed doesn't pop/crash). Commit.
 
 ## Cross-cutting
 
