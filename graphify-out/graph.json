@@ -3486,19 +3486,10 @@
       "norm_label": "meanmotiondegperday"
     },
     {
-      "label": "BeltWrapDegrees()",
-      "file_type": "code",
-      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1095",
-      "id": "minorbodies_solasteroidbelt_beltwrapdegrees",
-      "community": 168,
-      "norm_label": "beltwrapdegrees()"
-    },
-    {
       "label": "BeltMeanMotionDegPerCy()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1107",
+      "source_location": "L1092",
       "id": "minorbodies_solasteroidbelt_beltmeanmotiondegpercy",
       "community": 168,
       "norm_label": "beltmeanmotiondegpercy()"
@@ -3507,7 +3498,7 @@
       "label": "BeltUniform()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1116",
+      "source_location": "L1099",
       "id": "minorbodies_solasteroidbelt_beltuniform",
       "community": 168,
       "norm_label": "beltuniform()"
@@ -3516,8 +3507,8 @@
       "label": "FRandomStream",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1116",
-      "id": "frandomstream",
+      "source_location": "L1099",
+      "id": "source_soltest_minorbodies_solasteroidbelt_cpp_frandomstream",
       "community": 168,
       "norm_label": "frandomstream"
     },
@@ -3525,7 +3516,7 @@
       "label": "BeltStateToElements()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1124",
+      "source_location": "L1107",
       "id": "minorbodies_solasteroidbelt_beltstatetoelements",
       "community": 168,
       "norm_label": "beltstatetoelements()"
@@ -3534,7 +3525,7 @@
       "label": "FSOLSecularElements",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1124",
+      "source_location": "L1107",
       "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolsecularelements",
       "community": 168,
       "norm_label": "fsolsecularelements"
@@ -3543,7 +3534,7 @@
       "label": "FSOLOrbitState",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1124",
+      "source_location": "L1107",
       "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolorbitstate",
       "community": 168,
       "norm_label": "fsolorbitstate"
@@ -3552,7 +3543,7 @@
       "label": "BeltMaxSeparationM()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1179",
+      "source_location": "L1115",
       "id": "minorbodies_solasteroidbelt_beltmaxseparationm",
       "community": 168,
       "norm_label": "beltmaxseparationm()"
@@ -3561,7 +3552,7 @@
       "label": "TArray",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1179",
+      "source_location": "L1115",
       "id": "source_soltest_minorbodies_solasteroidbelt_cpp_tarray",
       "community": 168,
       "norm_label": "tarray"
@@ -3570,7 +3561,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1179",
+      "source_location": "L1115",
       "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fvector3d",
       "community": 168,
       "norm_label": "fvector3d"
@@ -3579,7 +3570,7 @@
       "label": "BeltMemberElements()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1196",
+      "source_location": "L1132",
       "id": "minorbodies_solasteroidbelt_beltmemberelements",
       "community": 168,
       "norm_label": "beltmemberelements()"
@@ -3588,7 +3579,7 @@
       "label": "RealAsteroids()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1234",
+      "source_location": "L1170",
       "id": "minorbodies_solasteroidbelt_realasteroids",
       "community": 168,
       "norm_label": "realasteroids()"
@@ -3597,7 +3588,7 @@
       "label": "FSOLAsteroidDef",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1234",
+      "source_location": "L1170",
       "id": "source_soltest_minorbodies_solasteroidbelt_cpp_fsolasteroiddef",
       "community": 168,
       "norm_label": "fsolasteroiddef"
@@ -3606,7 +3597,7 @@
       "label": "KirkwoodGapBandsAU()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1265",
+      "source_location": "L1201",
       "id": "minorbodies_solasteroidbelt_kirkwoodgapbandsau",
       "community": 168,
       "norm_label": "kirkwoodgapbandsau()"
@@ -3615,7 +3606,7 @@
       "label": "FSOLAxisBandAU",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1265",
+      "source_location": "L1201",
       "id": "fsolaxisbandau",
       "community": 168,
       "norm_label": "fsolaxisbandau"
@@ -3624,7 +3615,7 @@
       "label": "IsInKirkwoodGap()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1272",
+      "source_location": "L1208",
       "id": "minorbodies_solasteroidbelt_isinkirkwoodgap",
       "community": 168,
       "norm_label": "isinkirkwoodgap()"
@@ -3633,7 +3624,7 @@
       "label": "ClusterCenters()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1286",
+      "source_location": "L1222",
       "id": "minorbodies_solasteroidbelt_clustercenters",
       "community": 168,
       "norm_label": "clustercenters()"
@@ -3642,7 +3633,7 @@
       "label": "GenerateFamilyFill()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1321",
+      "source_location": "L1257",
       "id": "minorbodies_solasteroidbelt_generatefamilyfill",
       "community": 168,
       "norm_label": "generatefamilyfill()"
@@ -3651,7 +3642,7 @@
       "label": "GenerateBelt()",
       "file_type": "code",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1394",
+      "source_location": "L1330",
       "id": "minorbodies_solasteroidbelt_generatebelt",
       "community": 168,
       "norm_label": "generatebelt()"
@@ -4392,6 +4383,357 @@
       "source_location": "L34",
       "id": "source_soltest_minorbodies_solplanetring_h_namespace",
       "community": 182,
+      "norm_label": "namespace"
+    },
+    {
+      "label": "SOLRingPatch.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "community": 183,
+      "norm_label": "solringpatch.cpp"
+    },
+    {
+      "label": "FRingPatchBasis",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L33",
+      "id": "minorbodies_solringpatch_fringpatchbasis",
+      "community": 183,
+      "norm_label": "fringpatchbasis"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L35",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fvector3d",
+      "community": 183,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "Axis1",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L35",
+      "id": "minorbodies_solringpatch_fringpatchbasis_axis1",
+      "community": 183,
+      "norm_label": "axis1"
+    },
+    {
+      "label": "Axis2",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L36",
+      "id": "minorbodies_solringpatch_fringpatchbasis_axis2",
+      "community": 183,
+      "norm_label": "axis2"
+    },
+    {
+      "label": "Normal",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L37",
+      "id": "minorbodies_solringpatch_fringpatchbasis_normal",
+      "community": 183,
+      "norm_label": "normal"
+    },
+    {
+      "label": "RingPatchMakeBasis()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L42",
+      "id": "minorbodies_solringpatch_ringpatchmakebasis",
+      "community": 183,
+      "norm_label": "ringpatchmakebasis()"
+    },
+    {
+      "label": "RingPatchRadialLowM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L54",
+      "id": "minorbodies_solringpatch_ringpatchradiallowm",
+      "community": 183,
+      "norm_label": "ringpatchradiallowm()"
+    },
+    {
+      "label": "FSOLPlanetRingDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L54",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef",
+      "community": 183,
+      "norm_label": "fsolplanetringdef"
+    },
+    {
+      "label": "int32",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L54",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_int32",
+      "community": 183,
+      "norm_label": "int32"
+    },
+    {
+      "label": "RingPatchReferenceRadiusM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L61",
+      "id": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "community": 183,
+      "norm_label": "ringpatchreferenceradiusm()"
+    },
+    {
+      "label": "RingPatchAngularCellCount()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L68",
+      "id": "minorbodies_solringpatch_ringpatchangularcellcount",
+      "community": 183,
+      "norm_label": "ringpatchangularcellcount()"
+    },
+    {
+      "label": "RingPatchWrapTwoPi()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L77",
+      "id": "minorbodies_solringpatch_ringpatchwraptwopi",
+      "community": 183,
+      "norm_label": "ringpatchwraptwopi()"
+    },
+    {
+      "label": "RingPatchFramePhaseRad()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L91",
+      "id": "minorbodies_solringpatch_ringpatchframephaserad",
+      "community": 183,
+      "norm_label": "ringpatchframephaserad()"
+    },
+    {
+      "label": "RingPatchUniform()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L106",
+      "id": "minorbodies_solringpatch_ringpatchuniform",
+      "community": 183,
+      "norm_label": "ringpatchuniform()"
+    },
+    {
+      "label": "FRandomStream",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L106",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_frandomstream",
+      "community": 183,
+      "norm_label": "frandomstream"
+    },
+    {
+      "label": "RingPatchStateToElements()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L114",
+      "id": "minorbodies_solringpatch_ringpatchstatetoelements",
+      "community": 183,
+      "norm_label": "ringpatchstatetoelements()"
+    },
+    {
+      "label": "FSOLSecularElements",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L114",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolsecularelements",
+      "community": 183,
+      "norm_label": "fsolsecularelements"
+    },
+    {
+      "label": "FSOLOrbitState",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L114",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolorbitstate",
+      "community": 183,
+      "norm_label": "fsolorbitstate"
+    },
+    {
+      "label": "RingPatchMergedGaps()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L129",
+      "id": "minorbodies_solringpatch_ringpatchmergedgaps",
+      "community": 183,
+      "norm_label": "ringpatchmergedgaps()"
+    },
+    {
+      "label": "FRingPatchIntervalArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L129",
+      "id": "fringpatchintervalarray",
+      "community": 183,
+      "norm_label": "fringpatchintervalarray"
+    },
+    {
+      "label": "TConstArrayView",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L129",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_tconstarrayview",
+      "community": 183,
+      "norm_label": "tconstarrayview"
+    },
+    {
+      "label": "FSOLRadiusBandM",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L129",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolradiusbandm",
+      "community": 183,
+      "norm_label": "fsolradiusbandm"
+    },
+    {
+      "label": "RingPatchFreeIntervals()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L163",
+      "id": "minorbodies_solringpatch_ringpatchfreeintervals",
+      "community": 183,
+      "norm_label": "ringpatchfreeintervals()"
+    },
+    {
+      "label": "RingPatchPickFreeRadiusM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L186",
+      "id": "minorbodies_solringpatch_ringpatchpickfreeradiusm",
+      "community": 183,
+      "norm_label": "ringpatchpickfreeradiusm()"
+    },
+    {
+      "label": "ComputeActiveCell()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L211",
+      "id": "minorbodies_solringpatch_computeactivecell",
+      "community": 183,
+      "norm_label": "computeactivecell()"
+    },
+    {
+      "label": "TOptional",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L211",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_toptional",
+      "community": 183,
+      "norm_label": "toptional"
+    },
+    {
+      "label": "FSOLRingCell",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L211",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolringcell",
+      "community": 183,
+      "norm_label": "fsolringcell"
+    },
+    {
+      "label": "GenerateCellRocks()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L246",
+      "id": "minorbodies_solringpatch_generatecellrocks",
+      "community": 183,
+      "norm_label": "generatecellrocks()"
+    },
+    {
+      "label": "TArray",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L246",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_tarray",
+      "community": 183,
+      "norm_label": "tarray"
+    },
+    {
+      "label": "FSOLRingRockDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L246",
+      "id": "source_soltest_minorbodies_solringpatch_cpp_fsolringrockdef",
+      "community": 183,
+      "norm_label": "fsolringrockdef"
+    },
+    {
+      "label": "ComputeNearFieldAlpha()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L324",
+      "id": "minorbodies_solringpatch_computenearfieldalpha",
+      "community": 183,
+      "norm_label": "computenearfieldalpha()"
+    },
+    {
+      "label": "SOLRingPatch.h",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L1",
+      "id": "source_soltest_minorbodies_solringpatch_h_minorbodies_solringpatch",
+      "community": 185,
+      "norm_label": "solringpatch.h"
+    },
+    {
+      "label": "FSOLRingCell()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L24",
+      "id": "minorbodies_solringpatch_fsolringcell",
+      "community": 185,
+      "norm_label": "fsolringcell()"
+    },
+    {
+      "label": "GetTypeHash()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "id": "minorbodies_solringpatch_gettypehash",
+      "community": 185,
+      "norm_label": "gettypehash()"
+    },
+    {
+      "label": "SOLTEST_API",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "id": "source_soltest_minorbodies_solringpatch_h_soltest_api",
+      "community": 185,
+      "norm_label": "soltest_api"
+    },
+    {
+      "label": "FSOLRingRockDef()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L44",
+      "id": "minorbodies_solringpatch_fsolringrockdef",
+      "community": 185,
+      "norm_label": "fsolringrockdef()"
+    },
+    {
+      "label": "SOLRingPatch()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L54",
+      "id": "minorbodies_solringpatch_solringpatch",
+      "community": 185,
+      "norm_label": "solringpatch()"
+    },
+    {
+      "label": "namespace",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L54",
+      "id": "source_soltest_minorbodies_solringpatch_h_namespace",
+      "community": 185,
       "norm_label": "namespace"
     },
     {
@@ -8490,10 +8832,28 @@
       "norm_label": "makesecularwitheccentricity()"
     },
     {
+      "label": "KeplerCheckStateToElementsRoundTrip()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "id": "tests_keplertest_keplercheckstatetoelementsroundtrip",
+      "community": 33,
+      "norm_label": "keplercheckstatetoelementsroundtrip()"
+    },
+    {
+      "label": "FAutomationTestBase",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "id": "source_soltest_tests_keplertest_cpp_fautomationtestbase",
+      "community": 33,
+      "norm_label": "fautomationtestbase"
+    },
+    {
       "label": "RunTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
-      "source_location": "L119",
+      "source_location": "L176",
       "id": "tests_keplertest_runtest",
       "community": 33,
       "norm_label": "runtest()"
@@ -8502,7 +8862,7 @@
       "label": "FString",
       "file_type": "code",
       "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
-      "source_location": "L119",
+      "source_location": "L176",
       "id": "source_soltest_tests_keplertest_cpp_fstring",
       "community": 33,
       "norm_label": "fstring"
@@ -9540,6 +9900,177 @@
       "source_location": "L73",
       "id": "source_soltest_tests_solplanetringtest_cpp_fstring",
       "community": 181,
+      "norm_label": "fstring"
+    },
+    {
+      "label": "SOLRingPatchTest.cpp",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L1",
+      "id": "tests_solringpatchtest",
+      "community": 184,
+      "norm_label": "solringpatchtest.cpp"
+    },
+    {
+      "label": "RingPatchMakeRing()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L50",
+      "id": "tests_solringpatchtest_ringpatchmakering",
+      "community": 184,
+      "norm_label": "ringpatchmakering()"
+    },
+    {
+      "label": "FSOLPlanetRingDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L50",
+      "id": "source_soltest_tests_solringpatchtest_cpp_fsolplanetringdef",
+      "community": 184,
+      "norm_label": "fsolplanetringdef"
+    },
+    {
+      "label": "RingPatchTiltedNormal()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L61",
+      "id": "tests_solringpatchtest_ringpatchtiltednormal",
+      "community": 184,
+      "norm_label": "ringpatchtiltednormal()"
+    },
+    {
+      "label": "FVector3d",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L61",
+      "id": "source_soltest_tests_solringpatchtest_cpp_fvector3d",
+      "community": 184,
+      "norm_label": "fvector3d"
+    },
+    {
+      "label": "RingPatchTiltedInPlaneWithZ()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L68",
+      "id": "tests_solringpatchtest_ringpatchtiltedinplanewithz",
+      "community": 184,
+      "norm_label": "ringpatchtiltedinplanewithz()"
+    },
+    {
+      "label": "RingPatchRadialCellCenterM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L75",
+      "id": "tests_solringpatchtest_ringpatchradialcellcenterm",
+      "community": 184,
+      "norm_label": "ringpatchradialcellcenterm()"
+    },
+    {
+      "label": "int32",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L75",
+      "id": "source_soltest_tests_solringpatchtest_cpp_int32",
+      "community": 184,
+      "norm_label": "int32"
+    },
+    {
+      "label": "RingPatchFramePhaseRad()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L82",
+      "id": "tests_solringpatchtest_ringpatchframephaserad",
+      "community": 184,
+      "norm_label": "ringpatchframephaserad()"
+    },
+    {
+      "label": "RingPatchRockPositionM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L92",
+      "id": "tests_solringpatchtest_ringpatchrockpositionm",
+      "community": 184,
+      "norm_label": "ringpatchrockpositionm()"
+    },
+    {
+      "label": "FSOLRingRockDef",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L92",
+      "id": "source_soltest_tests_solringpatchtest_cpp_fsolringrockdef",
+      "community": 184,
+      "norm_label": "fsolringrockdef"
+    },
+    {
+      "label": "RingPatchInPlaneRadiusM()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L100",
+      "id": "tests_solringpatchtest_ringpatchinplaneradiusm",
+      "community": 184,
+      "norm_label": "ringpatchinplaneradiusm()"
+    },
+    {
+      "label": "RingPatchRocksIdentical()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L107",
+      "id": "tests_solringpatchtest_ringpatchrocksidentical",
+      "community": 184,
+      "norm_label": "ringpatchrocksidentical()"
+    },
+    {
+      "label": "RingPatchGenerationCell()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L121",
+      "id": "tests_solringpatchtest_ringpatchgenerationcell",
+      "community": 184,
+      "norm_label": "ringpatchgenerationcell()"
+    },
+    {
+      "label": "TOptional",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L121",
+      "id": "source_soltest_tests_solringpatchtest_cpp_toptional",
+      "community": 184,
+      "norm_label": "toptional"
+    },
+    {
+      "label": "FSOLRingCell",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L121",
+      "id": "source_soltest_tests_solringpatchtest_cpp_fsolringcell",
+      "community": 184,
+      "norm_label": "fsolringcell"
+    },
+    {
+      "label": "RingPatchActiveCellNow()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "id": "tests_solringpatchtest_ringpatchactivecellnow",
+      "community": 184,
+      "norm_label": "ringpatchactivecellnow()"
+    },
+    {
+      "label": "RunTest()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L145",
+      "id": "tests_solringpatchtest_runtest",
+      "community": 184,
+      "norm_label": "runtest()"
+    },
+    {
+      "label": "FString",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L145",
+      "id": "source_soltest_tests_solringpatchtest_cpp_fstring",
+      "community": 184,
       "norm_label": "fstring"
     },
     {
@@ -12471,7 +13002,7 @@
       "label": "AtCenturies()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L18",
+      "source_location": "L19",
       "id": "universe_solkepler_atcenturies",
       "community": 34,
       "norm_label": "atcenturies()"
@@ -12480,7 +13011,7 @@
       "label": "FSOLKeplerElements",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L18",
+      "source_location": "L19",
       "id": "source_soltest_universe_solkepler_cpp_fsolkeplerelements",
       "community": 34,
       "norm_label": "fsolkeplerelements"
@@ -12489,7 +13020,7 @@
       "label": "WrapAngleRad()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L39",
+      "source_location": "L40",
       "id": "universe_solkepler_wrapanglerad",
       "community": 34,
       "norm_label": "wrapanglerad()"
@@ -12498,7 +13029,7 @@
       "label": "SolveEccentricAnomaly()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L57",
+      "source_location": "L58",
       "id": "universe_solkepler_solveeccentricanomaly",
       "community": 34,
       "norm_label": "solveeccentricanomaly()"
@@ -12507,7 +13038,7 @@
       "label": "PeriodSeconds()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L122",
+      "source_location": "L123",
       "id": "universe_solkepler_periodseconds",
       "community": 34,
       "norm_label": "periodseconds()"
@@ -12516,7 +13047,7 @@
       "label": "ElementsToState()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L129",
+      "source_location": "L130",
       "id": "universe_solkepler_elementstostate",
       "community": 34,
       "norm_label": "elementstostate()"
@@ -12525,10 +13056,55 @@
       "label": "FSOLOrbitState",
       "file_type": "code",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
-      "source_location": "L129",
+      "source_location": "L130",
       "id": "source_soltest_universe_solkepler_cpp_fsolorbitstate",
       "community": 34,
       "norm_label": "fsolorbitstate"
+    },
+    {
+      "label": "StateToElements()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L172",
+      "id": "universe_solkepler_statetoelements",
+      "community": 34,
+      "norm_label": "statetoelements()"
+    },
+    {
+      "label": "WrapDegrees()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L226",
+      "id": "universe_solkepler_wrapdegrees",
+      "community": 34,
+      "norm_label": "wrapdegrees()"
+    },
+    {
+      "label": "KeplerElementsToSecular()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L238",
+      "id": "universe_solkepler_keplerelementstosecular",
+      "community": 34,
+      "norm_label": "keplerelementstosecular()"
+    },
+    {
+      "label": "FSOLSecularElements",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L238",
+      "id": "source_soltest_universe_solkepler_cpp_fsolsecularelements",
+      "community": 34,
+      "norm_label": "fsolsecularelements"
+    },
+    {
+      "label": "MeanMotionDegPerCy()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L255",
+      "id": "universe_solkepler_meanmotiondegpercy",
+      "community": 34,
+      "norm_label": "meanmotiondegpercy()"
     },
     {
       "label": "SOLKepler.h",
@@ -14865,7 +15441,7 @@
       "label": "Cross-cutting",
       "file_type": "document",
       "source_file": "Docs/Plans/6-moons-asteroids-rings-plan.md",
-      "source_location": "L107",
+      "source_location": "L144",
       "id": "plans_6_moons_asteroids_rings_plan_cross_cutting",
       "community": 166,
       "norm_label": "cross-cutting"
@@ -16152,7 +16728,7 @@
       "label": "Amendment 2 \u2014 5b real-asteroid count and sourcing",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L183",
+      "source_location": "L189",
       "id": "sdds_6_moons_asteroids_rings_amendment_2_5b_real_asteroid_count_and_sourcing",
       "community": 165,
       "norm_label": "amendment 2 \u2014 5b real-asteroid count and sourcing"
@@ -16161,7 +16737,7 @@
       "label": "Amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-GM fix",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L205",
+      "source_location": "L211",
       "id": "sdds_6_moons_asteroids_rings_amendment_1_5a_implementation_host_equator_tilt_conversion_and_orbit_gm_fix",
       "community": 165,
       "norm_label": "amendment 1 \u2014 5a implementation: host-equator tilt conversion and orbit-gm fix"
@@ -16170,7 +16746,7 @@
       "label": "Amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L253",
+      "source_location": "L259",
       "id": "sdds_6_moons_asteroids_rings_amendment_3_5c_implementation_frame_correctness_actual_scale_and_a_pending_profiling_gap",
       "community": 165,
       "norm_label": "amendment 3 \u2014 5c implementation: frame correctness, actual scale, and a pending profiling gap"
@@ -16179,7 +16755,7 @@
       "label": "Amendment 4 \u2014 5d scope extension and implementation notes",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L313",
+      "source_location": "L319",
       "id": "sdds_6_moons_asteroids_rings_amendment_4_5d_scope_extension_and_implementation_notes",
       "community": 165,
       "norm_label": "amendment 4 \u2014 5d scope extension and implementation notes"
@@ -16188,10 +16764,37 @@
       "label": "Amendment 5 \u2014 5c's deferred PIE/profiling verification, plus a real material bug",
       "file_type": "document",
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
-      "source_location": "L361",
+      "source_location": "L367",
       "id": "sdds_6_moons_asteroids_rings_amendment_5_5c_s_deferred_pie_profiling_verification_plus_a_real_material_bug",
       "community": 165,
       "norm_label": "amendment 5 \u2014 5c's deferred pie/profiling verification, plus a real material bug"
+    },
+    {
+      "label": "Amendment 6 \u2014 5e grill-me and design (Appendix D)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L435",
+      "id": "sdds_6_moons_asteroids_rings_amendment_6_5e_grill_me_and_design_appendix_d",
+      "community": 165,
+      "norm_label": "amendment 6 \u2014 5e grill-me and design (appendix d)"
+    },
+    {
+      "label": "Technical design",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L467",
+      "id": "sdds_6_moons_asteroids_rings_technical_design",
+      "community": 165,
+      "norm_label": "technical design"
+    },
+    {
+      "label": "Amendment 7 \u2014 5e-i adversarial review: the co-rotating-frame fix",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L573",
+      "id": "sdds_6_moons_asteroids_rings_amendment_7_5e_i_adversarial_review_the_co_rotating_frame_fix",
+      "community": 165,
+      "norm_label": "amendment 7 \u2014 5e-i adversarial review: the co-rotating-frame fix"
     },
     {
       "label": "README.md",
@@ -16199,7 +16802,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L1",
       "id": "sdds_readme",
-      "community": 60,
+      "community": 186,
       "norm_label": "readme.md"
     },
     {
@@ -16208,7 +16811,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L3",
       "id": "sdds_readme_software_design_documents_sdds",
-      "community": 60,
+      "community": 186,
       "norm_label": "software design documents (sdds)"
     },
     {
@@ -16217,7 +16820,7 @@
       "source_file": "Docs/SDDs/README.md",
       "source_location": "L9",
       "id": "sdds_readme_naming",
-      "community": 60,
+      "community": 186,
       "norm_label": "naming"
     },
     {
@@ -16433,7 +17036,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L1",
       "id": "todo_readme",
-      "community": 1,
+      "community": 186,
       "norm_label": "readme.md"
     },
     {
@@ -16442,7 +17045,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L3",
       "id": "todo_readme_todo_future_planned_items",
-      "community": 1,
+      "community": 186,
       "norm_label": "todo \u2014 future planned items"
     },
     {
@@ -16451,7 +17054,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L15",
       "id": "todo_readme_naming",
-      "community": 1,
+      "community": 186,
       "norm_label": "naming"
     },
     {
@@ -16460,7 +17063,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L20",
       "id": "todo_readme_lifecycle",
-      "community": 1,
+      "community": 186,
       "norm_label": "lifecycle"
     },
     {
@@ -16469,7 +17072,7 @@
       "source_file": "Docs/ToDo/README.md",
       "source_location": "L32",
       "id": "todo_readme_items",
-      "community": 1,
+      "community": 186,
       "norm_label": "items"
     },
     {
@@ -16514,7 +17117,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L1",
       "id": "todo_planetary_perturbations",
-      "community": 1,
+      "community": 186,
       "norm_label": "planetary-perturbations.md"
     },
     {
@@ -16523,7 +17126,7 @@
       "source_file": "Docs/ToDo/planetary-perturbations.md",
       "source_location": "L3",
       "id": "todo_planetary_perturbations_planetary_perturbations_n_body_integration",
-      "community": 1,
+      "community": 186,
       "norm_label": "planetary perturbations / n-body integration"
     },
     {
@@ -16597,6 +17200,33 @@
       "id": "readme_soltest",
       "community": 0,
       "norm_label": "soltest"
+    },
+    {
+      "label": "BeltWrapDegrees()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1092",
+      "community": 168,
+      "norm_label": "beltwrapdegrees()",
+      "id": "minorbodies_solasteroidbelt_beltwrapdegrees"
+    },
+    {
+      "label": "RingPatchWrapDegrees()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L69",
+      "community": 183,
+      "norm_label": "ringpatchwrapdegrees()",
+      "id": "minorbodies_solringpatch_ringpatchwrapdegrees"
+    },
+    {
+      "label": "FRandomStream",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1116",
+      "community": 168,
+      "norm_label": "frandomstream",
+      "id": "frandomstream"
     },
     {
       "label": "TSharedRef",
@@ -17314,7 +17944,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 1,
+      "community": 186,
       "norm_label": "sim clock and time-warp",
       "id": "docs_game_mechanics_time_warp"
     },
@@ -17460,7 +18090,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 1,
+      "community": 186,
       "norm_label": "time decision: real date start, time-warp on bodies only",
       "id": "sdds_1_solar_system_architecture_time"
     },
@@ -17499,7 +18129,7 @@
       "captured_at": null,
       "author": null,
       "contributor": null,
-      "community": 7,
+      "community": 54,
       "norm_label": "custom ship-centric star field renderer (at-hyg)",
       "id": "sdds_1_solar_system_architecture_star_field"
     },
@@ -24850,28 +25480,6 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1170",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
-      "target": "minorbodies_solasteroidbelt_beltwrapdegrees"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
-      "source_location": "L1255",
-      "weight": 1.0,
-      "confidence_score": 1.0,
-      "source": "minorbodies_solasteroidbelt_realasteroids",
-      "target": "minorbodies_solasteroidbelt_beltwrapdegrees"
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
       "source_location": "L1314",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -24888,6 +25496,17 @@
       "confidence_score": 1.0,
       "source": "minorbodies_solasteroidbelt_beltuniform",
       "target": "frandomstream"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1111",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solasteroidbelt_beltuniform",
+      "target": "source_soltest_minorbodies_solasteroidbelt_cpp_frandomstream"
     },
     {
       "relation": "calls",
@@ -24921,6 +25540,17 @@
       "confidence_score": 1.0,
       "source": "minorbodies_solasteroidbelt_beltmemberelements",
       "target": "minorbodies_solasteroidbelt_beltstatetoelements"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1170",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solasteroidbelt_beltstatetoelements",
+      "target": "minorbodies_solasteroidbelt_beltwrapdegrees"
     },
     {
       "relation": "references",
@@ -25119,6 +25749,17 @@
       "confidence_score": 1.0,
       "source": "minorbodies_solasteroidbelt_generatebelt",
       "target": "minorbodies_solasteroidbelt_realasteroids"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp",
+      "source_location": "L1255",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solasteroidbelt_realasteroids",
+      "target": "minorbodies_solasteroidbelt_beltwrapdegrees"
     },
     {
       "relation": "references",
@@ -26192,6 +26833,844 @@
       "confidence_score": 1.0,
       "source": "minorbodies_solplanetring_solplanetring",
       "target": "source_soltest_minorbodies_solplanetring_h_namespace"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L188",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_computeactivecell"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L295",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_computenearfieldalpha"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L32",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_fringpatchbasis"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_generatecellrocks"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L60",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchangularcellcount"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L91",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchframephaserad",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L141",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchfreeintervals"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L41",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchmakebasis"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L107",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchmergedgaps"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L164",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchpickfreeradiusm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchradiallowm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchstatetoelements"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L81",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchuniform"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L69",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchwrapdegrees"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_cpp_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_ringpatchwraptwopi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L34",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_fringpatchbasis",
+      "target": "minorbodies_solringpatch_fringpatchbasis_axis1"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L35",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_fringpatchbasis",
+      "target": "minorbodies_solringpatch_fringpatchbasis_axis2"
+    },
+    {
+      "relation": "defines",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L36",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_fringpatchbasis",
+      "target": "minorbodies_solringpatch_fringpatchbasis_normal"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L36",
+      "weight": 1.0,
+      "context": "field",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_fringpatchbasis",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L41",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchmakebasis",
+      "target": "minorbodies_solringpatch_fringpatchbasis"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L188",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L41",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchmakebasis",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fvector3d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L193",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "minorbodies_solringpatch_ringpatchmakebasis"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L266",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchmakebasis"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L229",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchradiallowm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L62",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchangularcellcount",
+      "target": "minorbodies_solringpatch_ringpatchradiallowm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchradiallowm",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L53",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchradiallowm",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_int32"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L63",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "target": "minorbodies_solringpatch_ringpatchradiallowm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L188",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L60",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchangularcellcount",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L91",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solringpatch_ringpatchframephaserad",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L61",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolplanetringdef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_int32"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L60",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchangularcellcount",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_int32"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L91",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solringpatch_ringpatchframephaserad",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L61",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchangularcellcount",
+      "target": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L94",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchframephaserad",
+      "target": "minorbodies_solringpatch_ringpatchreferenceradiusm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L209",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "minorbodies_solringpatch_ringpatchangularcellcount"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L255",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchangularcellcount"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L236",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "minorbodies_solringpatch_ringpatchwraptwopi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L101",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchframephaserad",
+      "target": "minorbodies_solringpatch_ringpatchwraptwopi",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L237",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "minorbodies_solringpatch_ringpatchframephaserad",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L286",
+      "weight": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchframephaserad",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L273",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchuniform"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L167",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchpickfreeradiusm",
+      "target": "minorbodies_solringpatch_ringpatchuniform"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L81",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchuniform",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_frandomstream"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L164",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchpickfreeradiusm",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_frandomstream"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L287",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchstatetoelements"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L98",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchstatetoelements",
+      "target": "minorbodies_solringpatch_ringpatchwrapdegrees"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchstatetoelements",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolorbitstate"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L88",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchstatetoelements",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolsecularelements"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L231",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchmergedgaps"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L107",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchmergedgaps",
+      "target": "fringpatchintervalarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L107",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchmergedgaps",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L107",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchmergedgaps",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_tconstarrayview"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L141",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchfreeintervals",
+      "target": "fringpatchintervalarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L164",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_ringpatchpickfreeradiusm",
+      "target": "fringpatchintervalarray"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_tconstarrayview"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolradiusbandm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L241",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchfreeintervals"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L272",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "minorbodies_solringpatch_ringpatchpickfreeradiusm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L188",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolringcell"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L188",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_computeactivecell",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_toptional"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolringcell"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_fsolringrockdef"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_generatecellrocks",
+      "target": "source_soltest_minorbodies_solringpatch_cpp_tarray"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L24",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_h_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_fsolringcell"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_h_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_fsolringrockdef"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "weight": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_h_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_gettypehash",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L47",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_minorbodies_solringpatch_h_minorbodies_solringpatch",
+      "target": "minorbodies_solringpatch_solringpatch"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "minorbodies_solringpatch_gettypehash",
+      "target": "minorbodies_solringpatch_fsolringcell",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L37",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "minorbodies_solringpatch_gettypehash",
+      "target": "source_soltest_minorbodies_solringpatch_h_soltest_api",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/MinorBodies/SOLRingPatch.h",
+      "source_location": "L47",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "minorbodies_solringpatch_solringpatch",
+      "target": "source_soltest_minorbodies_solringpatch_h_namespace"
     },
     {
       "relation": "contains",
@@ -35728,6 +37207,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_keplertest",
+      "target": "tests_keplertest_keplercheckstatetoelementsroundtrip"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
       "source_location": "L45",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -35806,6 +37295,17 @@
       "confidence_score": 1.0,
       "source": "tests_keplertest_runtest",
       "target": "tests_keplertest_makeelements"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_keplertest_keplercheckstatetoelementsroundtrip",
+      "target": "source_soltest_tests_keplertest_cpp_fsolkeplerelements"
     },
     {
       "relation": "references",
@@ -35918,6 +37418,17 @@
       "target": "tests_keplertest_fsolkeplerplaneteccentricity_name"
     },
     {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_keplertest_keplercheckstatetoelementsroundtrip",
+      "target": "source_soltest_tests_keplertest_cpp_tchar"
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -35927,6 +37438,28 @@
       "confidence_score": 1.0,
       "source": "tests_keplertest_runtest",
       "target": "tests_keplertest_makesecularwitheccentricity"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L125",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_keplertest_keplercheckstatetoelementsroundtrip",
+      "target": "source_soltest_tests_keplertest_cpp_fautomationtestbase"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/KeplerTest.cpp",
+      "source_location": "L651",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_keplertest_runtest",
+      "target": "tests_keplertest_keplercheckstatetoelementsroundtrip"
     },
     {
       "relation": "references",
@@ -38102,6 +39635,457 @@
       "confidence_score": 1.0,
       "source": "tests_solplanetringtest_runtest",
       "target": "source_soltest_tests_solplanetringtest_cpp_fstring"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchactivecellnow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchframephaserad",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L99",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchgenerationcell"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L79",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchinplaneradiusm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L40",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchmakering"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchradialcellcenterm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L72",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchrockpositionm"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L86",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchrocksidentical"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L58",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchtiltedinplanewithz"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L51",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_ringpatchtiltednormal"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L543",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest",
+      "target": "tests_solringpatchtest_runtest"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L40",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchmakering",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L127",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchmakering"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solringpatchtest_ringpatchactivecellnow",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolplanetringdef",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L99",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchgenerationcell",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolplanetringdef"
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L51",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchtiltednormal",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L301",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchtiltednormal"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solringpatchtest_ringpatchactivecellnow",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L99",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchgenerationcell",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L79",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchinplaneradiusm",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L72",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchrockpositionm",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "references",
+      "context": "return_type",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L58",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchtiltedinplanewithz",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L351",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fvector3d"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L304",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchtiltedinplanewithz"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "tests_solringpatchtest_ringpatchframephaserad",
+      "target": "tests_solringpatchtest_ringpatchradialcellcenterm",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L102",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchgenerationcell",
+      "target": "tests_solringpatchtest_ringpatchradialcellcenterm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L65",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchradialcellcenterm",
+      "target": "source_soltest_tests_solringpatchtest_cpp_int32"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L222",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchradialcellcenterm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L82",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "tests_solringpatchtest_ringpatchframephaserad",
+      "target": "source_soltest_tests_solringpatchtest_cpp_int32",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L423",
+      "weight": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchframephaserad",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L72",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchrockpositionm",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolringrockdef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L381",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchrockpositionm"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L86",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchrocksidentical",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolringrockdef"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L450",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchinplaneradiusm"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L370",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchrocksidentical"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L99",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchgenerationcell",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolringcell"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L99",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_ringpatchgenerationcell",
+      "target": "source_soltest_tests_solringpatchtest_cpp_toptional"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L351",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchgenerationcell"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "tests_solringpatchtest_ringpatchactivecellnow",
+      "target": "source_soltest_tests_solringpatchtest_cpp_toptional",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L132",
+      "weight": 1.0,
+      "context": "generic_arg",
+      "source": "tests_solringpatchtest_ringpatchactivecellnow",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fsolringcell",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L166",
+      "weight": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "tests_solringpatchtest_ringpatchactivecellnow",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Tests/SOLRingPatchTest.cpp",
+      "source_location": "L543",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "tests_solringpatchtest_runtest",
+      "target": "source_soltest_tests_solringpatchtest_cpp_fstring"
     },
     {
       "relation": "contains",
@@ -44209,6 +46193,26 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solkepler_cpp_universe_solkepler",
+      "target": "universe_solkepler_keplerelementstosecular",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L226",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_universe_solkepler_cpp_universe_solkepler",
+      "target": "universe_solkepler_meanmotiondegpercy"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
       "source_location": "L120",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -44229,11 +46233,31 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L172",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "source_soltest_universe_solkepler_cpp_universe_solkepler",
+      "target": "universe_solkepler_statetoelements"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
       "source_location": "L38",
       "weight": 1.0,
       "confidence_score": 1.0,
       "source": "source_soltest_universe_solkepler_cpp_universe_solkepler",
       "target": "universe_solkepler_wrapanglerad"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L226",
+      "weight": 1.0,
+      "source": "source_soltest_universe_solkepler_cpp_universe_solkepler",
+      "target": "universe_solkepler_wrapdegrees",
+      "confidence_score": 1.0
     },
     {
       "relation": "references",
@@ -44266,6 +46290,28 @@
       "context": "parameter_type",
       "confidence_score": 1.0,
       "source": "universe_solkepler_elementstostate",
+      "target": "source_soltest_universe_solkepler_cpp_fsolkeplerelements"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "source": "universe_solkepler_keplerelementstosecular",
+      "target": "source_soltest_universe_solkepler_cpp_fsolkeplerelements",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L172",
+      "weight": 1.0,
+      "context": "return_type",
+      "confidence_score": 1.0,
+      "source": "universe_solkepler_statetoelements",
       "target": "source_soltest_universe_solkepler_cpp_fsolkeplerelements"
     },
     {
@@ -44322,6 +46368,39 @@
       "confidence_score": 1.0,
       "source": "universe_solkepler_elementstostate",
       "target": "source_soltest_universe_solkepler_cpp_fsolorbitstate"
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L172",
+      "weight": 1.0,
+      "context": "parameter_type",
+      "confidence_score": 1.0,
+      "source": "universe_solkepler_statetoelements",
+      "target": "source_soltest_universe_solkepler_cpp_fsolorbitstate"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L247",
+      "weight": 1.0,
+      "source": "universe_solkepler_keplerelementstosecular",
+      "target": "universe_solkepler_wrapdegrees",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "references",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Universe/SOLKepler.cpp",
+      "source_location": "L238",
+      "weight": 1.0,
+      "context": "return_type",
+      "source": "universe_solkepler_keplerelementstosecular",
+      "target": "source_soltest_universe_solkepler_cpp_fsolsecularelements",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -49949,8 +52028,28 @@
       "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
       "source_location": "L361",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
-      "target": "sdds_6_moons_asteroids_rings_amendment_5_5c_s_deferred_pie_profiling_verification_plus_a_real_material_bug",
+      "target": "sdds_6_moons_asteroids_rings_amendment_5_5c_s_deferred_pie_profiling_verification_plus_a_real_material_bug"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L432",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_6_5e_grill_me_and_design_appendix_d"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L573",
+      "weight": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_sdd_6_moons_dwarf_planets_asteroid_belt_planet_rings",
+      "target": "sdds_6_moons_asteroids_rings_amendment_7_5e_i_adversarial_review_the_co_rotating_frame_fix",
       "confidence_score": 1.0
     },
     {
@@ -49992,6 +52091,16 @@
       "confidence_score": 1.0,
       "source": "sdds_6_moons_asteroids_rings_3_design",
       "target": "sdds_6_moons_asteroids_rings_3_4_testing"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/6-moons-asteroids-rings.md",
+      "source_location": "L464",
+      "weight": 1.0,
+      "confidence_score": 1.0,
+      "source": "sdds_6_moons_asteroids_rings_amendment_6_5e_grill_me_and_design_appendix_d",
+      "target": "sdds_6_moons_asteroids_rings_technical_design"
     },
     {
       "relation": "references",
@@ -51071,5 +53180,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "7cdebb5db4f6a8bc6dd0dcafed0e840af2783357"
+  "built_at_commit": "a5c13b5cf300c3df6891b3f5fc67304c69cb3d40"
 }

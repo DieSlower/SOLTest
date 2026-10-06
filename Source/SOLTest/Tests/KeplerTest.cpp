@@ -109,6 +109,63 @@ namespace
         elements.EDotPerCy = eDotPerCy;
         return elements;
     }
+
+    // Seconds in one Julian century (36525 days), kept independent of SOLConstants.h like the other test constants
+    constexpr double KEPLER_SECONDS_PER_JULIAN_CENTURY = 36525.0 * SOLTestHelpers::SECONDS_PER_DAY;
+
+    // Relative tolerance a StateToElements round trip must reproduce position and velocity to
+    constexpr double KEPLER_ROUND_TRIP_TOLERANCE = 1e-11;
+
+    // Looser tolerance for (near-)degenerate orbits, where i or e near 0 is numerically ill-conditioned
+    constexpr double KEPLER_DEGENERATE_ROUND_TRIP_TOLERANCE = 1e-10;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Round-trips the state reached elapsedSeconds after the given elements through StateToElements and back,
+    // asserting position, velocity, a, e and i survive; bCheckAngles also asserts node, argPeri and M (non-degenerate only)
+    void KeplerCheckStateToElementsRoundTrip(FAutomationTestBase& test, const TCHAR* label,
+        const FSOLKeplerElements& elements, const double gm, const double elapsedSeconds, const bool bCheckAngles)
+    {
+        const FSOLOrbitState state = SOLKepler::ElementsToState(elements, gm, elapsedSeconds);
+        const FSOLKeplerElements roundTripElements = SOLKepler::StateToElements(state, gm);
+        const FSOLOrbitState roundTripState = SOLKepler::ElementsToState(roundTripElements, gm, 0.0);
+        const double tolerance = bCheckAngles ? KEPLER_ROUND_TRIP_TOLERANCE : KEPLER_DEGENERATE_ROUND_TRIP_TOLERANCE;
+
+        // The reconstructed elements must reproduce the exact state (relative errors reported for diagnosis)
+        const double positionError = (roundTripState.PositionM - state.PositionM).Size() / state.PositionM.Size();
+        const double velocityError = (roundTripState.VelocityMps - state.VelocityMps).Size()
+            / state.VelocityMps.Size();
+        test.TestTrue(FString::Printf(TEXT("%s: round-trip position matches (rel err %.3e)"), label, positionError),
+            SOLTestHelpers::VectorsNear(roundTripState.PositionM, state.PositionM, tolerance));
+        test.TestTrue(FString::Printf(TEXT("%s: round-trip velocity matches (rel err %.3e)"), label, velocityError),
+            SOLTestHelpers::VectorsNear(roundTripState.VelocityMps, state.VelocityMps, tolerance));
+
+        // Shape and tilt of the orbit are well defined even for degenerate orbits
+        test.TestTrue(FString::Printf(TEXT("%s: a %.6f == %.6f"), label, roundTripElements.SemiMajorAxisM,
+            elements.SemiMajorAxisM), SOLTestHelpers::RelativeError(roundTripElements.SemiMajorAxisM,
+            elements.SemiMajorAxisM) < 1e-9);
+        test.TestTrue(FString::Printf(TEXT("%s: e %.12f == %.12f"), label, roundTripElements.Eccentricity,
+            elements.Eccentricity), FMath::Abs(roundTripElements.Eccentricity - elements.Eccentricity) < 1e-9);
+        test.TestTrue(FString::Printf(TEXT("%s: e in [0, 1)"), label),
+            roundTripElements.Eccentricity >= 0.0 && roundTripElements.Eccentricity < 1.0);
+        test.TestTrue(FString::Printf(TEXT("%s: i %.12f == %.12f"), label, roundTripElements.InclinationRad,
+            elements.InclinationRad), FMath::Abs(roundTripElements.InclinationRad - elements.InclinationRad) < tolerance);
+        test.TestTrue(FString::Printf(TEXT("%s: i in [0, PI]"), label),
+            roundTripElements.InclinationRad >= 0.0 && roundTripElements.InclinationRad <= UE_DOUBLE_PI);
+
+        // Node, argument of periapsis and the advanced mean anomaly are only defined for non-degenerate orbits
+        if (bCheckAngles)
+        {
+            const double meanMotion = FMath::Sqrt(gm / (elements.SemiMajorAxisM * elements.SemiMajorAxisM
+                * elements.SemiMajorAxisM));
+            const double expectedMeanAnomaly = elements.MeanAnomalyRad + meanMotion * elapsedSeconds;
+            test.TestTrue(FString::Printf(TEXT("%s: node matches (mod 2PI)"), label), FMath::Abs(SOLTestHelpers::AngleDiffRad(
+                roundTripElements.LongitudeOfAscendingNodeRad - elements.LongitudeOfAscendingNodeRad)) < 1e-9);
+            test.TestTrue(FString::Printf(TEXT("%s: argPeri matches (mod 2PI)"), label), FMath::Abs(SOLTestHelpers::AngleDiffRad(
+                roundTripElements.ArgumentOfPeriapsisRad - elements.ArgumentOfPeriapsisRad)) < 1e-9);
+            test.TestTrue(FString::Printf(TEXT("%s: M == M0 + n*elapsed (mod 2PI)"), label), FMath::Abs(SOLTestHelpers::AngleDiffRad(
+                roundTripElements.MeanAnomalyRad - expectedMeanAnomaly)) < 1e-8);
+        }
+    }
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerWrapAngleKnownValuesTest, "SOLTest.Kepler.WrapAngleKnownValues",
@@ -579,6 +636,229 @@ bool FSOLKeplerEccentricityWindowTest::RunTest(const FString& /*parameters*/)
                 secular.AtCenturies(t).Eccentricity, linear, 1e-12);
         }
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerStateToElementsRoundTripTest, "SOLTest.Kepler.StateToElementsRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// StateToElements inverts ElementsToState for circular, eccentric, inclined, retrograde and high-e orbits
+bool FSOLKeplerStateToElementsRoundTripTest::RunTest(const FString& /*parameters*/)
+{
+    const double sunGm = SOLTestHelpers::SUN_GM;
+    const double au = SOLTestHelpers::AU_M;
+
+    // Circular equatorial (node/argPeri degenerate, so only the state, a, e and i are checked)
+    const FSOLKeplerElements circularEquatorial = MakeElements(au, 0.0, 0.0, 0.0, 0.0, 0.4);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Circular equatorial"), circularEquatorial, sunGm,
+        0.13 * AnalyticPeriod(au, sunGm), false);
+
+    // Eccentric equatorial (node degenerate)
+    const FSOLKeplerElements eccentricEquatorial = MakeElements(1.5 * au, 0.3, 0.0, 0.0, 1.0, -0.6);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Eccentric equatorial"), eccentricEquatorial, sunGm,
+        0.37 * AnalyticPeriod(1.5 * au, sunGm), false);
+
+    // Circular inclined (argPeri degenerate)
+    const FSOLKeplerElements circularInclined = MakeElements(2.0 * au, 0.0, FMath::DegreesToRadians(45.0), 0.8, 0.0, 1.2);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Circular inclined"), circularInclined, sunGm,
+        0.21 * AnalyticPeriod(2.0 * au, sunGm), false);
+
+    // Eccentric inclined with non-zero node and argument of periapsis (fully determined)
+    const FSOLKeplerElements eccentricInclined = MakeElements(2.7 * au, 0.5, FMath::DegreesToRadians(60.0),
+        FMath::DegreesToRadians(40.0), FMath::DegreesToRadians(70.0), 0.25);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Eccentric inclined"), eccentricInclined, sunGm,
+        0.29 * AnalyticPeriod(2.7 * au, sunGm), true);
+
+    // Retrograde orbit (i > 90 deg)
+    const FSOLKeplerElements retrograde = MakeElements(5.2 * au, 0.2, FMath::DegreesToRadians(150.0), 2.0, -1.0, 2.5);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Retrograde"), retrograde, sunGm,
+        0.41 * AnalyticPeriod(5.2 * au, sunGm), true);
+
+    // High-eccentricity orbit, sampled away from and near periapsis
+    const FSOLKeplerElements highEccentricity = MakeElements(3.0 * au, 0.9, 0.3, -2.5, 2.8, 0.1);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("High-e (e=0.9) mid-orbit"), highEccentricity, sunGm,
+        0.33 * AnalyticPeriod(3.0 * au, sunGm), true);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("High-e (e=0.9) near periapsis"), highEccentricity, sunGm,
+        0.97 * AnalyticPeriod(3.0 * au, sunGm), true);
+
+    // A planet-scale orbit around Earth's GM (low Earth orbit)
+    const FSOLKeplerElements leo = MakeElements(6.778e6, 0.01, 0.9, 1.3, 0.6, -2.0);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Low Earth orbit"), leo, SOLTestHelpers::EARTH_GM,
+        0.6 * AnalyticPeriod(6.778e6, SOLTestHelpers::EARTH_GM), true);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerStateToElementsNearCircularTest, "SOLTest.Kepler.StateToElementsNearCircular",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An orbit close to circular (e = 1e-9, ill-conditioned argPeri) still round-trips position and velocity. e = 1e-9 is
+// far above StateToElements's 1e-12 fallback threshold, so this exercises the normal (non-fallback) path near the
+// degenerate case; the exact-degenerate fallback itself is covered by StateToElementsExactDegenerate
+bool FSOLKeplerStateToElementsNearCircularTest::RunTest(const FString& /*parameters*/)
+{
+    const double a = 1.2 * SOLTestHelpers::AU_M;
+    const double period = AnalyticPeriod(a, SOLTestHelpers::SUN_GM);
+    const FSOLKeplerElements inclined = MakeElements(a, 1e-9, 0.4, 1.1, 2.3, 0.5);
+    const FSOLKeplerElements equatorial = MakeElements(a, 1e-9, 0.0, 0.0, 0.7, -1.4);
+
+    // Sample several instants around the orbit
+    const double fractions[] = { 0.0, 0.17, 0.5, 0.83 };
+    for (const double fraction : fractions)
+    {
+        KeplerCheckStateToElementsRoundTrip(*this, *FString::Printf(TEXT("Near-circular inclined t=%.2fP"), fraction),
+            inclined, SOLTestHelpers::SUN_GM, fraction * period, false);
+        KeplerCheckStateToElementsRoundTrip(*this, *FString::Printf(TEXT("Near-circular equatorial t=%.2fP"), fraction),
+            equatorial, SOLTestHelpers::SUN_GM, fraction * period, false);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerStateToElementsNearEquatorialTest, "SOLTest.Kepler.StateToElementsNearEquatorial",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An orbit close to equatorial (i = 1e-9 or PI - 1e-9, ill-conditioned node) still round-trips position and velocity.
+// Its node vector is ~1e-9 of |h|, far above the 1e-12 fallback threshold, so this exercises the normal
+// (non-fallback) path near the degenerate case; the fallback itself is covered by StateToElementsExactDegenerate
+bool FSOLKeplerStateToElementsNearEquatorialTest::RunTest(const FString& /*parameters*/)
+{
+    const double a = 0.8 * SOLTestHelpers::AU_M;
+    const double period = AnalyticPeriod(a, SOLTestHelpers::SUN_GM);
+    const FSOLKeplerElements prograde = MakeElements(a, 0.25, 1e-9, 0.9, 1.6, 0.3);
+    const FSOLKeplerElements retrograde = MakeElements(a, 0.25, UE_DOUBLE_PI - 1e-9, 0.9, 1.6, 0.3);
+
+    // Sample several instants around the orbit
+    const double fractions[] = { 0.0, 0.23, 0.5, 0.71 };
+    for (const double fraction : fractions)
+    {
+        KeplerCheckStateToElementsRoundTrip(*this, *FString::Printf(TEXT("Near-equatorial prograde t=%.2fP"), fraction),
+            prograde, SOLTestHelpers::SUN_GM, fraction * period, false);
+        KeplerCheckStateToElementsRoundTrip(*this, *FString::Printf(TEXT("Near-equatorial retrograde t=%.2fP"), fraction),
+            retrograde, SOLTestHelpers::SUN_GM, fraction * period, false);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerStateToElementsExactDegenerateTest,
+    "SOLTest.Kepler.StateToElementsExactDegenerate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Exactly degenerate orbits take StateToElements's documented fallbacks: e = 0 places periapsis at the node
+// (argPeri = 0), and i = 0 or i = PI (prograde/retrograde equatorial) takes the node along +X (node = 0); the state
+// still round-trips
+bool FSOLKeplerStateToElementsExactDegenerateTest::RunTest(const FString& /*parameters*/)
+{
+    const double gm = SOLTestHelpers::SUN_GM;
+    const double a = 1.3 * SOLTestHelpers::AU_M;
+    const double period = AnalyticPeriod(a, gm);
+
+    // Exactly circular, inclined: argPeri falls back to 0, so M is the argument of latitude
+    const FSOLKeplerElements circular = MakeElements(a, 0.0, 0.5, 1.2, 0.0, 0.9);
+    const FSOLKeplerElements circularResult = SOLKepler::StateToElements(
+        SOLKepler::ElementsToState(circular, gm, 0.31 * period), gm);
+    TestTrue(FString::Printf(TEXT("e = 0: e %.3e below the fallback threshold"), circularResult.Eccentricity),
+        circularResult.Eccentricity < 1e-12);
+    TestEqual(TEXT("e = 0: argPeri falls back to exactly 0"), circularResult.ArgumentOfPeriapsisRad, 0.0, 0.0);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Exactly circular"), circular, gm, 0.31 * period, false);
+
+    // Exactly equatorial, prograde (i = 0): the state has exactly zero Z, so h has no X/Y component
+    const FSOLKeplerElements equatorial = MakeElements(a, 0.2, 0.0, 0.0, 0.8, -0.4);
+    const FSOLOrbitState equatorialState = SOLKepler::ElementsToState(equatorial, gm, 0.47 * period);
+    const FSOLKeplerElements equatorialResult = SOLKepler::StateToElements(equatorialState, gm);
+    TestTrue(TEXT("i = 0: fixture state lies exactly in the XY plane"),
+        equatorialState.PositionM.Z == 0.0 && equatorialState.VelocityMps.Z == 0.0);
+    TestEqual(TEXT("i = 0: inclination is exactly 0"), equatorialResult.InclinationRad, 0.0, 0.0);
+    TestEqual(TEXT("i = 0: node falls back to exactly 0"), equatorialResult.LongitudeOfAscendingNodeRad, 0.0, 0.0);
+    KeplerCheckStateToElementsRoundTrip(*this, TEXT("Exactly equatorial prograde"), equatorial, gm, 0.47 * period,
+        false);
+
+    // Exactly equatorial, retrograde (i = PI): the same in-plane state with its velocity reversed
+    FSOLOrbitState retrogradeState = equatorialState;
+    retrogradeState.VelocityMps = -retrogradeState.VelocityMps;
+    const FSOLKeplerElements retrogradeResult = SOLKepler::StateToElements(retrogradeState, gm);
+    TestEqual(TEXT("i = PI: inclination is PI"), retrogradeResult.InclinationRad, UE_DOUBLE_PI, 1e-15);
+    TestEqual(TEXT("i = PI: node falls back to exactly 0"), retrogradeResult.LongitudeOfAscendingNodeRad, 0.0, 0.0);
+    const FSOLOrbitState retrogradeRoundTrip = SOLKepler::ElementsToState(retrogradeResult, gm, 0.0);
+    TestTrue(TEXT("i = PI: round-trip position matches"), SOLTestHelpers::VectorsNear(retrogradeRoundTrip.PositionM,
+        retrogradeState.PositionM, KEPLER_DEGENERATE_ROUND_TRIP_TOLERANCE));
+    TestTrue(TEXT("i = PI: round-trip velocity matches"), SOLTestHelpers::VectorsNear(retrogradeRoundTrip.VelocityMps,
+        retrogradeState.VelocityMps, KEPLER_DEGENERATE_ROUND_TRIP_TOLERANCE));
+    TestTrue(FString::Printf(TEXT("i = PI: e %.12f matches 0.2"), retrogradeResult.Eccentricity),
+        FMath::Abs(retrogradeResult.Eccentricity - 0.2) < 1e-9);
+
+    // Exactly circular and equatorial: both fallbacks at once, so M is the true longitude atan2(y, x)
+    const FSOLKeplerElements both = MakeElements(a, 0.0, 0.0, 0.0, 0.0, 2.1);
+    const FSOLOrbitState bothState = SOLKepler::ElementsToState(both, gm, 0.66 * period);
+    const FSOLKeplerElements bothResult = SOLKepler::StateToElements(bothState, gm);
+    TestEqual(TEXT("e = 0, i = 0: node is exactly 0"), bothResult.LongitudeOfAscendingNodeRad, 0.0, 0.0);
+    TestEqual(TEXT("e = 0, i = 0: argPeri is exactly 0"), bothResult.ArgumentOfPeriapsisRad, 0.0, 0.0);
+    TestTrue(TEXT("e = 0, i = 0: M is the true longitude"), FMath::Abs(SOLTestHelpers::AngleDiffRad(
+        bothResult.MeanAnomalyRad - FMath::Atan2(bothState.PositionM.Y, bothState.PositionM.X))) < 1e-12);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerStateToElementsDeterministicTest, "SOLTest.Kepler.StateToElementsDeterministic",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// StateToElements returns bit-identical elements when called twice with the same state
+bool FSOLKeplerStateToElementsDeterministicTest::RunTest(const FString& /*parameters*/)
+{
+    const double a = 2.7 * SOLTestHelpers::AU_M;
+    const FSOLKeplerElements elements = MakeElements(a, 0.5, FMath::DegreesToRadians(60.0),
+        FMath::DegreesToRadians(40.0), FMath::DegreesToRadians(70.0), 0.25);
+    const FSOLOrbitState state = SOLKepler::ElementsToState(elements, SOLTestHelpers::SUN_GM,
+        0.29 * AnalyticPeriod(a, SOLTestHelpers::SUN_GM));
+    const FSOLKeplerElements first = SOLKepler::StateToElements(state, SOLTestHelpers::SUN_GM);
+    const FSOLKeplerElements second = SOLKepler::StateToElements(state, SOLTestHelpers::SUN_GM);
+
+    TestTrue(TEXT("Guard: the result is non-trivial (a > 0)"), first.SemiMajorAxisM > 0.0);
+    TestTrue(TEXT("a bit-identical"), first.SemiMajorAxisM == second.SemiMajorAxisM);
+    TestTrue(TEXT("e bit-identical"), first.Eccentricity == second.Eccentricity);
+    TestTrue(TEXT("i bit-identical"), first.InclinationRad == second.InclinationRad);
+    TestTrue(TEXT("node bit-identical"), first.LongitudeOfAscendingNodeRad == second.LongitudeOfAscendingNodeRad);
+    TestTrue(TEXT("argPeri bit-identical"), first.ArgumentOfPeriapsisRad == second.ArgumentOfPeriapsisRad);
+    TestTrue(TEXT("M bit-identical"), first.MeanAnomalyRad == second.MeanAnomalyRad);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeplerMeanMotionDegPerCyTest, "SOLTest.Kepler.MeanMotionDegPerCy",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// MeanMotionDegPerCy equals sqrt(GM/a^3) converted from rad/s to degrees per Julian century
+bool FSOLKeplerMeanMotionDegPerCyTest::RunTest(const FString& /*parameters*/)
+{
+    // (semi-major axis, GM) pairs: Earth around the Sun, an outer asteroid, low Earth orbit, a small close-in case
+    const double cases[][2] =
+    {
+        { SOLTestHelpers::AU_M, SOLTestHelpers::SUN_GM },
+        { 3.2 * SOLTestHelpers::AU_M, SOLTestHelpers::SUN_GM },
+        { 6.778e6, SOLTestHelpers::EARTH_GM },
+        { 1.0e7, 4.0e14 },
+    };
+    for (const auto& pair : cases)
+    {
+        const double a = pair[0];
+        const double gm = pair[1];
+        const double expected = FMath::RadiansToDegrees(FMath::Sqrt(gm / (a * a * a))) * KEPLER_SECONDS_PER_JULIAN_CENTURY;
+        const double actual = SOLKepler::MeanMotionDegPerCy(a, gm);
+        TestTrue(FString::Printf(TEXT("a=%.6e GM=%.6e: %.9f == %.9f deg/cy"), a, gm, actual, expected),
+            SOLTestHelpers::RelativeError(actual, expected) < 1e-12);
+    }
+
+    // Sanity: Earth's mean motion is close to the Standish L-dot (~35999.37 deg/cy)
+    const double earthMeanMotion = SOLKepler::MeanMotionDegPerCy(SOLTestHelpers::AU_M, SOLTestHelpers::SUN_GM);
+    TestTrue(FString::Printf(TEXT("Earth mean motion %.4f deg/cy ~ 35999.37 within 0.01%%"), earthMeanMotion),
+        SOLTestHelpers::RelativeError(earthMeanMotion, 35999.37244981) < 1e-4);
+
+    // A tighter orbit around the same body moves faster (n scales as a^-1.5)
+    const double inner = SOLKepler::MeanMotionDegPerCy(SOLTestHelpers::AU_M, SOLTestHelpers::SUN_GM);
+    const double outer = SOLKepler::MeanMotionDegPerCy(4.0 * SOLTestHelpers::AU_M, SOLTestHelpers::SUN_GM);
+    TestTrue(TEXT("Quadrupling a divides n by 8"), SOLTestHelpers::RelativeError(inner / FMath::Max(outer, 1e-300), 8.0) < 1e-12);
     return true;
 }
 

@@ -182,6 +182,9 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-10-01: Amendment 6, 5e grill-me and design — expanded near-field scope
   (player-streamed patch, not a whole-ring population) and the resulting technical
   design (Appendix D).
+- 2026-10-01: Amendment 7, 5e-i adversarial review — the co-rotating-frame fix (the
+  cell grid must rotate with the ring's local orbital motion) and the wrong-epoch fix
+  for generated rocks, both found before any caller existed.
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -490,7 +493,10 @@ writes the tests from the header alone, same as 5b):
   addressed by `(radialCellIndex, angularCellIndex)` relative to the ring's center.
 - `ComputeActiveCell(playerPositionM, planetPositionM, ringDef)`: given the player's
   current position, returns which cell they're in (or "not in this ring" if outside the
-  ring's radial band + a margin, or too far from the ring plane vertically).
+  ring's radial band + a margin, or too far from the ring plane vertically). **Corrected
+  in Amendment 7: both this and `GenerateCellRocks` also take the host planet's GM and
+  the current `secondsSinceJ2000`, because the cell grid must co-rotate with the ring's
+  local orbital motion — see Amendment 7 for why a non-rotating grid doesn't work.**
 - `GenerateCellRocks(ringDef, cellIndex, planetGM, gapBands, seed)`: deterministically
   generates that cell's rocks (position, near-circular orbital elements via the
   promoted `StateToElements`-based placement, each rock's own `RadiusM`) — same seeded
@@ -563,3 +569,75 @@ ring, confirming the cross-fade reads cleanly and the gaps are visible in both t
 no unit tests for the Niagara asset itself.
 
 5e is scoped as described here, superseding §3.3's shorter near/far-LOD paragraph.
+
+## Amendment 7 — 5e-i adversarial review: the co-rotating-frame fix
+
+5e-i (`SOLKepler::StateToElements`/`MeanMotionDegPerCy`, the `SOLAsteroidBelt.cpp`
+refactor, and the new `SOLRingPatch` module) was implemented, tested (379/379 passing,
+including one genuine test-arithmetic bug found and fixed during the main session's own
+RED/GREEN verification — an exact-cell-boundary coincidence in a "1.5 cells away"
+displacement test, fixed to a "1 cell away" displacement that lands unambiguously at the
+neighboring cell's center) and adversarially reviewed. The review's core math tracing
+(by hand, not just "tests are green") confirmed the RV2COE inversion and the belt
+refactor are both correct, and found two real design bugs below, both fixed before
+5e-ii starts (no callers existed yet, so fixing the contract now was free):
+
+- **Rocks were generated at the wrong epoch.** `GenerateCellRocks` built each rock's
+  position "right now" (at whatever instant it's called) but then stored that
+  instant's mean longitude directly into `FSOLSecularElements::L0Deg`, which is always
+  defined at the **J2000 epoch** (T=0) — `SOLMinorBodyOrbit::ComputePositionM` always
+  evaluates `Elements.AtCenturies(secondsSinceJ2000 / centuryLength)`. Since the
+  current sim time is ~0.27 centuries past J2000 and a close-in ring rock's mean motion
+  is enormous (~6×10⁷ deg/century for a Saturn-ring-scale orbit), assigning the
+  "right now" longitude as if it were the J2000 longitude would place the rock at an
+  essentially arbitrary point on its orbit the moment it's actually evaluated — nowhere
+  near its cell. The belt never hit this because it generates everything at J2000.
+  **Fixed**: `GenerateCellRocks` now takes `secondsSinceJ2000`, builds the rock's state
+  at that instant as before, then rolls `L0Deg` back to its true J2000-epoch value
+  (`wrap(currentMeanLongitudeDeg - LDotDegPerCy * secondsSinceJ2000/centuryLength)`)
+  before returning it.
+- **The cell grid didn't rotate with the ring.** A ring rock orbits at real orbital
+  speed — tens of km/s for a close-in gas-giant ring, crossing a 1 km cell in a
+  fraction of a second. A cell grid fixed in the planet's non-rotating equatorial frame
+  would see every rock leave its own cell almost immediately after being generated,
+  and would force the eventual streaming subsystem to reassign its active-cell window
+  dozens of times per second even with a stationary player — directly contradicting
+  this very document's "holds its place in the patch's local frame" design intent.
+  **Fixed**: `ComputeActiveCell`'s (and `GenerateCellRocks`'s) angular coordinate is now
+  defined in a frame **co-rotating with the local circular mean motion at the cell's
+  own radial band** (`worldAngle(t) - sqrt(planetGM/referenceRadiusM³) * t`, wrapped).
+  A rock generated near the band's reference radius then advances at very nearly that
+  same rate, so it stays at very nearly the same co-rotating angle indefinitely — real
+  orbital shear across one `CELL_SIZE_M`-wide radial band is only a few m/s (per the
+  reviewer's estimate, the patch stays coherent for minutes, not milliseconds). Both
+  functions now also take `planetGM` and `secondsSinceJ2000` to compute this frame;
+  `RadialIndex` itself is unaffected (radius doesn't change under in-plane rotation).
+
+Also fixed in the same pass (adversarial review's medium/low findings): stale test
+comments describing the pre-Amendment-6-fix "anchored at InnerRadiusM - marginM"
+indexing convention; `StateToElementsNearCircular`/`NearEquatorial` test comments
+overclaiming they exercised `StateToElements`'s degenerate-orbit fallback branches
+(they didn't — `1e-9` is far above the `1e-12` fallback threshold; added true
+exact-degenerate cases, including exact retrograde-equatorial, i = π); weak per-cell
+seed mixing in `GenerateCellRocks` (adjacent cells' seeds differed only in low bits
+under an LCG — finalized through a proper hash mix); an inverted-logic NaN hazard in
+`ComputeActiveCell`'s admission test; a `FSOLRingCell`/`BeltStateToElements`-style
+duplicated element-packing helper (promoted the shared "classical elements at an
+instant → `FSOLSecularElements` with `LDotDegPerCy` left to the caller" packing into
+`SOLKepler`, alongside `StateToElements`, used by both the belt and the ring patch);
+and a missing `GetTypeHash(FSOLRingCell)` (added now since 5e-ii's pool bookkeeping
+will need to key a map by cell).
+
+**Deferred to 5e-ii, not fixed here** (the review's M1 finding): `GenerateCellRocks`
+returns a fresh `TArray` per call (~10 KB for a full cell), which conflicts with this
+document's own "no per-transition heap allocation" pooling design if called as
+written on every cell-boundary crossing. Left alone in 5e-i because 5e-ii's actual
+pool-slot-reassignment code will determine the right shape for this (very possibly an
+out-parameter or direct per-slot write instead of a batch `TArray` return) — deciding
+it now, with no real caller to validate against, risked guessing wrong. Tracked
+explicitly so 5e-ii's design addresses it rather than copying the batch-return shape
+as-is. The review's note on `RingPatchMakeBasis`'s `FindBestAxisVectors`-based basis
+being sensitive to floating-point ties if a caller recomputes `ringNormal` with noise
+is similarly left for 5e-ii's design (the `ASOLRingVisuals`/`USOLRingSubsystem` code
+should cache each ring's basis once rather than recomputing it with a possibly-jittery
+normal every call).

@@ -35,8 +35,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLKepler.h": {
-    "mtime": 1790583323.962935,
-    "ast_hash": "68873d167858de9b264e8c7c9598ef9c",
+    "mtime": 1790893634.7601788,
+    "ast_hash": "88c1d30d710bc8052a5b80413156b3e8",
     "semantic_hash": ""
   },
   "Tools/RunTests.ps1": {
@@ -140,8 +140,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/KeplerTest.cpp": {
-    "mtime": 1790583065.4212859,
-    "ast_hash": "1353649684fed74b726dac9e197243c7",
+    "mtime": 1790893973.4375021,
+    "ast_hash": "870afe8f5082045ddb9494325f8f75a8",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/RenderPlacementTest.cpp": {
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLKepler.cpp": {
-    "mtime": 1790583324.7390144,
-    "ast_hash": "c2bd6f2ea1e3bb99a80040905889e63d",
+    "mtime": 1790893635.7778485,
+    "ast_hash": "85398f7243b87ed1c3c6290e31869d11",
     "semantic_hash": ""
   },
   "Source/SOLTest/Universe/SOLRenderPlacement.cpp": {
@@ -815,23 +815,23 @@
     "semantic_hash": ""
   },
   "Docs/Plans/6-moons-asteroids-rings-plan.md": {
-    "mtime": 1790877574.0338044,
-    "ast_hash": "f62287b0fcc3690cbea348972e1431ce",
+    "mtime": 1790889221.3867023,
+    "ast_hash": "3ff5e532ca0f93021fed79e2d56ac8ea",
     "semantic_hash": ""
   },
   "Docs/SDDs/6-moons-asteroids-rings.md": {
-    "mtime": 1790877566.584572,
-    "ast_hash": "4880056e7a6c3c0e7bbccb35b5984152",
+    "mtime": 1790893526.6054811,
+    "ast_hash": "1f794a88af44547df0a6188fe0fc70cd",
     "semantic_hash": ""
   },
   "Docs/ToDo/asteroid-ring-collision.md": {
-    "mtime": 1790824396.6412103,
-    "ast_hash": "4b332c83ea818c8ff947344174a1276d",
+    "mtime": 1790889202.0968697,
+    "ast_hash": "f4e1c1f8057011c712ed7a0a76890182",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLAsteroidBelt.cpp": {
-    "mtime": 1790860886.5459642,
-    "ast_hash": "3a1b65f287b5771bbc76355934e6b12f",
+    "mtime": 1790893649.4480217,
+    "ast_hash": "b846c272743f95145b268bd751285ef9",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLAsteroidBelt.h": {
@@ -907,6 +907,21 @@
   "Source/SOLTest/Tests/SOLPlanetRingTest.cpp": {
     "mtime": 1790865905.3242872,
     "ast_hash": "7828ed4d8a45c9f235a4568e35e46589",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingPatch.cpp": {
+    "mtime": 1790893706.074306,
+    "ast_hash": "3fcc1a0f1081de772cb8be8f29d4a3a4",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingPatch.h": {
+    "mtime": 1790893467.0107977,
+    "ast_hash": "0dc5148ff711c2bde1d14d142f86bdb2",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLRingPatchTest.cpp": {
+    "mtime": 1790893915.9045422,
+    "ast_hash": "9d70ecc6f561e2d17ee6941affb70414",
     "semantic_hash": ""
   }
 }
