@@ -333,4 +333,108 @@ namespace SOLRingPatch
         }
         return FMath::Clamp(1.0 - distanceOutsideRingVolumeM / transitionBandM, 0.0, 1.0);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how many angular cells radialIndex's radial band has (exposes the file-local helper of the same shape)
+    int32 GetAngularCellCount(const FSOLPlanetRingDef& ringDef, const int32 radialIndex)
+    {
+        return RingPatchAngularCellCount(ringDef, radialIndex);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the cells within radialRadius/angularRadius steps of centerCell, re-aligning each band via world angle
+    TArray<FSOLRingCell> ActiveCellWindow(const FSOLPlanetRingDef& ringDef, const FSOLRingCell& centerCell,
+        const int32 radialRadius, const int32 angularRadius, const double planetGM, const double secondsSinceJ2000)
+    {
+        const int32 safeRadialRadius = FMath::Max(radialRadius, 0);
+        const int32 safeAngularRadius = FMath::Max(angularRadius, 0);
+        TArray<FSOLRingCell> result;
+        result.Reserve((safeRadialRadius * 2 + 1) * (safeAngularRadius * 2 + 1));
+
+        // Center cell's co-rotating angle (cell center, hence +0.5) converted to the world angle every band agrees on
+        const int32 centerCount = RingPatchAngularCellCount(ringDef, centerCell.RadialIndex);
+        const double centerCoRotatingRad = (static_cast<double>(centerCell.AngularIndex) + 0.5)
+            * (UE_DOUBLE_TWO_PI / static_cast<double>(centerCount));
+        const double worldAngleRad = RingPatchWrapTwoPi(centerCoRotatingRad
+            + RingPatchFramePhaseRad(ringDef, centerCell.RadialIndex, planetGM, secondsSinceJ2000));
+
+        for (int32 radialOffset = -safeRadialRadius; radialOffset <= safeRadialRadius; ++radialOffset)
+        {
+            // World angle mapped into this band's own co-rotating frame, then to its angular index
+            const int32 radialIndex = centerCell.RadialIndex + radialOffset;
+            const int32 bandCount = RingPatchAngularCellCount(ringDef, radialIndex);
+            const double bandCoRotatingRad = RingPatchWrapTwoPi(worldAngleRad
+                - RingPatchFramePhaseRad(ringDef, radialIndex, planetGM, secondsSinceJ2000));
+            const int32 aligned = FMath::Clamp(
+                FMath::FloorToInt32(bandCoRotatingRad / (UE_DOUBLE_TWO_PI / static_cast<double>(bandCount))), 0,
+                bandCount - 1);
+
+            // Narrow bands (fewer cells than the angular span) would revisit cells, so dedup only in that case
+            const bool bMayRepeat = bandCount <= safeAngularRadius * 2 + 1;
+            for (int32 angularOffset = -safeAngularRadius; angularOffset <= safeAngularRadius; ++angularOffset)
+            {
+                FSOLRingCell cell;
+                cell.RadialIndex = radialIndex;
+                // Double modulo keeps the result in [0, bandCount) even when aligned + angularOffset is negative
+                cell.AngularIndex = ((aligned + angularOffset) % bandCount + bandCount) % bandCount;
+                if (bMayRepeat)
+                {
+                    result.AddUnique(cell);
+                }
+                else
+                {
+                    result.Add(cell);
+                }
+            }
+        }
+        return result;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns each pool slot's next cell: slots still on a desired cell keep it, the rest fill uncovered cells in order
+    TArray<TOptional<FSOLRingCell>> ReassignPoolSlots(TConstArrayView<TOptional<FSOLRingCell>> currentSlotCells,
+        TConstArrayView<FSOLRingCell> desiredWindow)
+    {
+        TArray<TOptional<FSOLRingCell>> result;
+        result.Init(TOptional<FSOLRingCell>(), currentSlotCells.Num());
+        TArray<bool> claimed;
+        claimed.Init(false, desiredWindow.Num());
+
+        // Pass 1: a slot already on a desired cell no earlier slot has claimed stays put and claims it
+        for (int32 slot = 0; slot < currentSlotCells.Num(); ++slot)
+        {
+            if (!currentSlotCells[slot].IsSet())
+            {
+                continue;
+            }
+            const int32 desiredIndex = desiredWindow.IndexOfByKey(currentSlotCells[slot].GetValue());
+            if (desiredIndex != INDEX_NONE && !claimed[desiredIndex])
+            {
+                claimed[desiredIndex] = true;
+                result[slot] = currentSlotCells[slot];
+            }
+        }
+
+        // Pass 2: every other slot is a candidate, matched in order to the unclaimed desired cells (extras stay unset)
+        int32 nextUnclaimed = 0;
+        for (int32 slot = 0; slot < currentSlotCells.Num(); ++slot)
+        {
+            if (result[slot].IsSet())
+            {
+                continue;
+            }
+            while (nextUnclaimed < desiredWindow.Num() && claimed[nextUnclaimed])
+            {
+                ++nextUnclaimed;
+            }
+            if (nextUnclaimed >= desiredWindow.Num())
+            {
+                break;
+            }
+            claimed[nextUnclaimed] = true;
+            result[slot] = desiredWindow[nextUnclaimed];
+            ++nextUnclaimed;
+        }
+        return result;
+    }
 }

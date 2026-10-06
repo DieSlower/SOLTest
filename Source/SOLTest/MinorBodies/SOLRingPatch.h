@@ -18,9 +18,11 @@
 // RadialIndex is negative for a cell entirely within the margin band below InnerRadiusM. AngularIndex counts
 // CELL_SIZE_M-arc-length steps around the circle AT THAT RADIAL BAND's own reference radius (so angular cells stay
 // roughly square at any ring radius, rather than a fixed angular width that would make cells enormous far out and
-// tiny close in) — see SOLRingPatch.cpp for the exact radius-to-index and index-to-radius math. Neighboring cells in
-// either index are adjacent in space; a caller building an active grid around ComputeActiveCell's result (e.g. a 3x3
-// window) offsets RadialIndex/AngularIndex directly, wrapping AngularIndex at that radial band's own cell count.
+// tiny close in) — see SOLRingPatch.cpp for the exact radius-to-index and index-to-radius math. Neighboring RADIAL
+// bands have DIFFERENT angular cell counts (a wider band fits more CELL_SIZE_M-arc-length steps around its own
+// circumference), so a caller building an active window around a cell must NOT simply offset AngularIndex by ±1 and
+// wrap it at the SAME band's count when moving to a different RadialIndex — that silently misaligns with the
+// neighboring band's own cells. Use SOLRingPatch::ActiveCellWindow, which handles this correctly.
 struct SOLTEST_API FSOLRingCell
 {
     int32 RadialIndex = 0;
@@ -111,4 +113,57 @@ namespace SOLRingPatch
     // active volume (distanceOutsideRingVolumeM <= 0), 0 at/beyond transitionBandM past it (far-field Niagara only),
     // linearly interpolated in between. transitionBandM <= 0 is a hard cut (no blending).
     SOLTEST_API double ComputeNearFieldAlpha(double distanceOutsideRingVolumeM, double transitionBandM);
+
+    // Returns how many angular cells radialIndex's radial band has (CELL_SIZE_M-arc-length steps around its own
+    // center-radius circle, at least 1). Exposed so a caller (ActiveCellWindow, or a streaming pool sizing itself)
+    // can reason about a specific band's own cell count without duplicating the radius-to-count math.
+    SOLTEST_API int32 GetAngularCellCount(const FSOLPlanetRingDef& ringDef, int32 radialIndex);
+
+    // Returns the cells within radialRadius radial steps and angularRadius angular steps of centerCell - e.g.
+    // radialRadius=1, angularRadius=1 gives a "3x3" window - correctly re-deriving each neighboring radial band's own
+    // angular index from centerCell's angular POSITION, not by naively offsetting AngularIndex, since neighboring
+    // bands have different angular cell counts (see FSOLRingCell's comment) AND different co-rotating frame phases
+    // (see "THE CO-ROTATING FRAME" above): two bands' AngularIndex 0 do NOT point at the same real-world angle at a
+    // given instant, so a fraction-of-the-circle re-derivation alone (comparing a position only within each band's
+    // OWN co-rotating frame, with no reference to real-world angle) is wrong - it was the actual shape of a bug this
+    // function shipped with before a review caught it, since the position round-trips within either frame alone but
+    // the two frames silently disagree with each other once planetGM/secondsSinceJ2000 enter the picture. The
+    // correct derivation: convert centerCell's co-rotating angular position to a WORLD angle at secondsSinceJ2000
+    // (add back centerCell's own band's RingPatchFramePhaseRad-equivalent phase), then convert that world angle into
+    // each neighboring band's own co-rotating frame (subtract THAT band's phase) before deriving its AngularIndex -
+    // world angle is the one frame every band agrees on. AngularIndex wraps within each band's own count.
+    // Deduplicated: a radial band narrow enough to have fewer angular cells than angularRadius*2+1 does not produce
+    // repeated entries for the same cell. The caller is responsible for discarding any returned cell whose radial
+    // band is invalid for its ring (e.g. GenerateCellRocks already returns no rocks for a cell whose span starts at
+    // or below 0). Because neighboring bands' co-rotating frames drift against each other over time (their mean
+    // motions differ), a caller should not assume a window computed once stays valid indefinitely even if the player
+    // doesn't move - ReassignPoolSlots is cheap enough to re-run this and re-derive the window periodically.
+    // Precondition: centerCell.AngularIndex must already be in [0, GetAngularCellCount(ringDef, centerCell.RadialIndex))
+    // - i.e. a valid cell, such as ComputeActiveCell's own output, the function's only intended caller today.
+    SOLTEST_API TArray<FSOLRingCell> ActiveCellWindow(const FSOLPlanetRingDef& ringDef, const FSOLRingCell& centerCell,
+        int32 radialRadius, int32 angularRadius, double planetGM, double secondsSinceJ2000);
+
+    // Returns, for each pool slot (parallel to currentSlotCells — index i of the result corresponds to index i of
+    // currentSlotCells), the cell that slot should represent next, for a streaming pool of fixed-size slots mapped to
+    // a variable "currently desired" set of cells (desiredWindow, e.g. ActiveCellWindow's result). Pure index
+    // bookkeeping only - it decides WHICH cell each slot ends up representing, not how to regenerate a slot's actual
+    // rock data for a newly-assigned cell (that remains the caller's job, e.g. via GenerateCellRocks).
+    // - A slot whose current cell (currentSlotCells[i]) is unset, or no longer appears in desiredWindow, is a
+    //   candidate for reassignment.
+    // - A slot whose current cell IS still in desiredWindow is left unchanged (stability: a cell that stays active
+    //   across a player's small movement keeps its already-generated rocks rather than being regenerated for no
+    //   reason, avoiding needless flicker/popping).
+    // - Reassignment candidates are matched, in order, to desiredWindow's cells that no slot is already covering (so
+    //   every cell in desiredWindow ends up covered by exactly one slot, as long as enough slots exist).
+    // - If desiredWindow has MORE cells than there are reassignment candidates (not enough spare slots - should not
+    //   happen if the pool is sized correctly, but is not this function's job to validate), the excess desiredWindow
+    //   cells are left uncovered (no slot represents them); the caller may want to grow its pool if this occurs.
+    // - If desiredWindow has FEWER cells than there are reassignment candidates (including the case where
+    //   desiredWindow is empty, e.g. the player has left the ring entirely), the extra candidate slots become unset
+    //   (parked/idle) rather than being left pointing at a now-irrelevant cell.
+    // Precondition: desiredWindow must contain no duplicate cells (ActiveCellWindow's own output already guarantees
+    // this). A duplicate would be covered by more than one slot, breaking the "exactly one slot per cell" guarantee
+    // above; not defended against at runtime since the function's only intended caller already satisfies it.
+    SOLTEST_API TArray<TOptional<FSOLRingCell>> ReassignPoolSlots(
+        TConstArrayView<TOptional<FSOLRingCell>> currentSlotCells, TConstArrayView<FSOLRingCell> desiredWindow);
 }

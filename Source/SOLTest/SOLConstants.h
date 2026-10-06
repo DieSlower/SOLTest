@@ -96,6 +96,21 @@ namespace SOL
     // save-game system could vary it
     inline constexpr int32 ASTEROID_BELT_SEED = 20260601;
 
+    // Ring patch (SDD 6 Amendments 6-8): the near-field rock generation seed, distinct from the belt's
+    inline constexpr int32 RING_PATCH_SEED = 20261006;
+
+    // Ring patch: the active cell window radius kept populated around the player (a (2*R+1)x(2*A+1) grid of
+    // SOLRingPatch cells), and the activation margin/half-thickness ComputeActiveCell admits a position within,
+    // expressed as a multiple of SOLRingPatch::CELL_SIZE_M for a sense of scale independent of the exact cell size
+    // A radius-R window only GUARANTEES real coverage of positions within (R - 0.5) cells of the player (SDD 6
+    // Amendment 9): the player can sit anywhere within their own cell, up to half a cell off the center the window is
+    // built around. R=2 gives ~1.5 cells (1.5 km) of real guaranteed margin, a buffer against warp-speed movement
+    // between per-frame reassignment checks, not just the bare minimum R=1 (~0.5 cell) would give.
+    inline constexpr int32 RING_PATCH_WINDOW_RADIAL_RADIUS = 2;
+    inline constexpr int32 RING_PATCH_WINDOW_ANGULAR_RADIUS = 2;
+    inline constexpr double RING_PATCH_ACTIVATION_MARGIN_CELLS = 5.0;
+    inline constexpr double RING_PATCH_HALF_THICKNESS_CELLS = 2.0;
+
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000
     inline constexpr double SECULAR_ELEMENTS_MIN_CENTURIES = -2.0;
     inline constexpr double SECULAR_ELEMENTS_MAX_CENTURIES = 0.5;
@@ -187,6 +202,8 @@ namespace SOL
         inline constexpr const TCHAR* SATURN = TEXT("Saturn");
         inline constexpr const TCHAR* URANUS = TEXT("Uranus");
         inline constexpr const TCHAR* NEPTUNE = TEXT("Neptune");
+        inline constexpr const TCHAR* PAN = TEXT("Pan");
+        inline constexpr const TCHAR* DAPHNIS = TEXT("Daphnis");
     }
 
     // Command-line switches and values used by verification runs (FParse::Value keys end in '=')

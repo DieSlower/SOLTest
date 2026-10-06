@@ -185,6 +185,18 @@ follow-up in `Docs/ToDo/asteroid-ring-collision.md`.
 - 2026-10-01: Amendment 7, 5e-i adversarial review — the co-rotating-frame fix (the
   cell grid must rotate with the ring's local orbital motion) and the wrong-epoch fix
   for generated rocks, both found before any caller existed.
+- 2026-10-06: Amendment 8, 5e-ii design — the pool is grouped by cell (one group of
+  ROCKS_PER_CELL entities per active cell, not one entity per cell), a safe default
+  orbit at spawn, simplified (no explicit position-) hysteresis, and
+  USOLRingSubsystem's no-redundant-processor-run design.
+- 2026-10-06: Amendment 9, adversarial review of the cell-windowing functions — a second
+  co-rotating-frame bug in `ActiveCellWindow` (same class of mistake as Amendment 7),
+  found and fixed before any caller existed.
+- 2026-10-06: Amendment 10, adversarial review of `USOLRingSubsystem` — a real
+  outside-ring-edge rocks bug fixed, the ring update moved to a more current-data event,
+  pole-direction caching and an allocation early-out added, and two performance
+  questions (idle-ring processor cost, per-reassignment allocation rate) explicitly
+  deferred to profiling rather than fixed or ignored.
 
 ## Amendment 2 — 5b real-asteroid count and sourcing
 
@@ -641,3 +653,229 @@ being sensitive to floating-point ties if a caller recomputes `ringNormal` with 
 is similarly left for 5e-ii's design (the `ASOLRingVisuals`/`USOLRingSubsystem` code
 should cache each ring's basis once rather than recomputing it with a possibly-jittery
 normal every call).
+
+## Amendment 8 — 5e-ii design: the pool is grouped by cell, not one slot per rock
+
+Working out `USOLRingSubsystem`'s actual implementation surfaced a real shape mismatch
+in Amendment 6's "fixed-size pool, reassign slots" description: `GenerateCellRocks`
+returns up to `ROCKS_PER_CELL` (~100) individual rocks for ONE cell, not one. A "pool
+slot" in `SOLRingPatch::ReassignPoolSlots`'s sense is therefore a **group of
+`ROCKS_PER_CELL` Mass entities**, not a single entity — a ring's pool has
+`(cell window size) * ROCKS_PER_CELL` entities total (e.g. a 3×3 window × 100 = 900),
+organized as contiguous groups of 100, each group's `TOptional<FSOLRingCell>` tracked
+one level up from the individual entities.
+
+**Reassigning a group** (its desired cell changed, per `ReassignPoolSlots`): call
+`GenerateCellRocks` for its new cell and write each returned rock's `Elements`/`RadiusM`
+into one of the group's `ROCKS_PER_CELL` entities. Two sub-cases `ReassignPoolSlots`
+alone doesn't cover, both resolved here rather than in that pure function (which rightly
+knows nothing about Mass entities or rock counts):
+- **Fewer rocks than entities in the group** (a gap-affected cell returns under
+  `ROCKS_PER_CELL` rocks): the group has more entities than real rocks to show. Rather
+  than inventing a "this entity is inactive" representation, the excess entities are
+  given `rocks[i % rocks.Num()]` — they end up exact duplicates of an already-placed
+  rock (same position, same orbit), invisible in practice since they coincide exactly,
+  and avoids a second fragment/rendering concept purely for an edge case. If
+  `rocks.IsEmpty()` (the whole cell is gap), the group is left with its PREVIOUS data
+  (see below) rather than this cycling trick, since there's nothing to cycle.
+- **A group with no cell at all** (`ReassignPoolSlots` returned unset: the ring's
+  desired window shrank, e.g. the player left the ring entirely): its entities are left
+  with their stale, previously-assigned `Elements` untouched. They keep orbiting
+  (the shared processor still places them every frame; nothing here stops that) at a
+  now-irrelevant position, which is harmless — 5e-ii has no renderer yet, and 5e-iii's
+  renderer is expected to hide an inactive ring's ISM via `ComputeNearFieldAlpha`
+  reaching 0, not by this subsystem clearing data nothing is reading.
+
+**Safe default orbit at spawn.** A freshly `BatchCreateEntities`'d entity's fragments
+are zero-initialized, giving `FSOLSecularElements::A0AU = 0` — fed through
+`SOLKepler::ElementsToState`'s `sqrt(gm/a^3)`, this divides by zero. Both this and the
+"group with no cell" case above mean an entity can go a while without ever receiving
+real `GenerateCellRocks` data (any ring the player never visits in a session). Every
+pool entity is therefore given a safe, valid, boring placeholder orbit AT SPAWN, before
+any real cell is ever assigned: circular at the ring's own `OuterRadiusM`, mean motion
+from `SOLKepler::MeanMotionDegPerCy(OuterRadiusM, planetGM)`, zero eccentricity/
+inclination/node/periapsis. Never observably wrong (nothing renders it while unassigned)
+and never NaN/Inf.
+
+**Hysteresis, simplified from Amendment 6's original wording.** Amendment 6 called for
+"a half-cell hysteresis margin... so flying back and forth near a boundary doesn't
+thrash reassignment every frame," implying genuine position-based hysteresis (sticking
+to the old cell until the player is unambiguously past it). On working through the
+actual cost, this turned out to be unnecessary complexity for 5e-ii: `ReassignPoolSlots`
+already leaves a group untouched when its cell is still inside the new desired window,
+and a 3×3 window flipping between two adjacent active cells overlaps in most of its 9
+cells — so boundary flicker reassigns only the few groups at the window's edge, not the
+whole pool, every time. **5e-ii ships without explicit position hysteresis**; real
+position-based hysteresis is deferred as a follow-up if screenshot/flight-feel
+verification (5e-iv) actually shows objectionable flicker, rather than built pre-emptively
+against a cost that may not materialize.
+
+**`USOLRingSubsystem` does not run its own orbit-processor instance.** Ring-rock
+entities share `FSOLMinorBodyOrbitFragment`/`FSOLMinorBodyStateFragment` with the
+asteroid belt; Mass matches a processor's query by fragment composition, not by which
+subsystem created an entity, so `USOLMinorBodySubsystem`'s existing per-frame
+`USOLMinorBodyOrbitProcessor` run (already bound to `OnBodiesUpdated`) places every
+matching entity in the world, belt and ring both, in one pass. A second processor
+instance run by `USOLRingSubsystem` would reprocess the SAME global entity set a second
+time every frame — pure waste, not a correctness bug (the computation is idempotent),
+but real wasted cost at scale. `USOLRingSubsystem` therefore only manages entity DATA
+(which cell each group represents); it declares an explicit `UWorldSubsystem`
+dependency on `USOLMinorBodySubsystem` purely to document this relationship for a future
+reader, not because it calls into it.
+
+## Amendment 9 — adversarial review of `ActiveCellWindow`/`ReassignPoolSlots`: a second co-rotating-frame bug
+
+Reviewing the three cell-windowing functions added for Amendment 8's pool design (before
+`USOLRingSubsystem` had any real body) found a second instance of the SAME class of
+mistake Amendment 7 fixed once already: **`ActiveCellWindow` re-derived a neighboring
+radial band's angular index as "the same FRACTION of that band's own circle,"
+implicitly assuming every band shares a common angular origin — but Amendment 7's
+co-rotating frame gives every band its OWN phase offset** (`worldAngle - meanMotion(r)
+* t`), and different radial bands have different mean motions, so they do NOT share an
+origin at any instant except by coincidence. The adversarial review hand-traced this at
+the test fixture's own scale (Saturn GM, t ≈ 26.76 years since J2000) and found
+neighboring-band cells landing **hundreds of thousands of km away from the actual
+center cell** — nowhere near a real "3×3 window around the player." The existing test
+suite could not catch this because its own "expected value" helper
+(`RingPatchAlignedAngularIndex`) reimplemented the exact same flawed fraction formula,
+so the tests checked the implementation against a copy of its own mistake, not against
+real geometry (`ComputeActiveCell`, the one function in this module that already gets
+the co-rotating frame right).
+
+**Fixed** by routing the re-derivation through world angle, the one frame every radial
+band agrees on, instead of through each band's own circle-fraction: convert the center
+cell's co-rotating angular position to a world angle at `secondsSinceJ2000` (add back
+its own band's phase), then convert that world angle into each neighboring band's own
+co-rotating frame (subtract THAT band's phase) before deriving its `AngularIndex`.
+`ActiveCellWindow` gained `planetGM`/`secondsSinceJ2000` parameters to do this (the
+same inputs `ComputeActiveCell`/`GenerateCellRocks` already take). The test suite's
+`ActiveCellWindow*` cases were rewritten to verify against `ComputeActiveCell` itself
+(real position round-trips) rather than a parallel reimplementation of the formula
+under test — the right fix per the review, since a test that re-derives its own
+expectation from the same (possibly wrong) formula the implementation uses can never
+catch a mistake in that formula, only a mistake in how faithfully the implementation
+matches its own description.
+
+**Practical consequence for 5e-ii's caller**: because neighboring bands' co-rotating
+frames drift against each other continuously (not just at cell-crossing moments), a
+cell window computed once does not stay geometrically valid forever even if the player
+holds still — `USOLRingSubsystem` should treat `ActiveCellWindow`'s result as needing
+periodic refresh, not just refresh-on-cell-change. `ReassignPoolSlots` already makes a
+refresh cheap (unchanged groups are left alone), so this is not a performance concern,
+just a correctness-timing one worth stating explicitly.
+
+Also fixed from the same review pass: `ReassignPoolSlots` is now documented as requiring
+`desiredWindow` to contain no duplicate cells (true of `ActiveCellWindow`'s own output,
+its only real caller) rather than silently covering a duplicated cell with two slots; a
+genuine-duplicate test case was added. `ActiveCellWindow`'s precondition that
+`centerCell` already be a valid cell for its own radial band is likewise now documented
+rather than silently clamped into a wrong-but-safe answer. Per the review's own
+assessment, the per-call heap allocations and absurd-input (near-`INT32_MAX`) integer
+overflow robustness in both functions are not practical concerns at this project's real
+ring scales and call frequency, and are not fixed here — consistent with Amendment 7's
+same judgment on `GenerateCellRocks`'s allocation shape.
+
+**A further real finding surfaced while proving the fix**: a radius-R window only
+guarantees real-world coverage within (R - 0.5) cells of the player, not R cells — the
+player can sit anywhere within their own cell, up to half a cell off the center the
+window is built around. `SOL::RING_PATCH_WINDOW_RADIAL_RADIUS`/`_ANGULAR_RADIUS` were
+raised from 1 to 2 as a result (5x5 = 25 cells/ring, ~2,500 pool entities/ring, ~10,000
+across all 4 rings if every ring somehow had an active patch simultaneously — still well
+inside the headroom Amendment 5 measured), giving ~1.5 cells (1.5 km) of real margin
+instead of ~0.5, a buffer against the player (or a fast warp-speed pass) outrunning the
+per-frame reassignment check before a needed cell has real rock data.
+
+**A Mass-architecture gotcha caught while implementing `USOLRingSubsystem` itself** (not
+by a dispatched review this time — the main session caught it while writing the spawn
+code, before any build): `ASOLAsteroidBeltVisuals`'s existing Mass query matches *any*
+entity with `FSOLMinorBodyRenderFragment`/`FSOLMinorBodyStateFragment` and a const-shared
+`FSOLMinorBodyAppearanceFragment` present - it has no way to tell "a belt entity" from
+"any other entity with the same fragment composition," because nothing distinguished
+them until now. Giving ring-pool entities an appearance fragment at all (regardless of
+which `SOLMinorBodyVariant` value) would make the belt's already-shipped visuals actor
+pick them up too, writing their transforms into the belt's own ISM component using the
+ring pool's unrelated `InstanceIndex` values - silently corrupting both populations'
+rendering. **Fixed by giving ring-pool entities NO appearance fragment at all**:
+`USOLMinorBodyOrbitProcessor`'s query only requires `Orbit`+`State` (confirmed by
+reading its `ConfigureQueries`), so the shared orbit-placement processor still places
+ring entities correctly without one. This is sufficient for 5e-ii (no ring renderer
+exists yet to need an appearance value), but **5e-iii must solve this properly before
+`ASOLRingVisuals` can exist**: the natural fix is a Mass tag fragment (e.g.
+`FSOLBeltRockTag`, an empty marker type) added to the belt's archetype and required by
+`ASOLAsteroidBeltVisuals`'s query, so ring entities (which won't carry that tag) are
+excluded by construction rather than by the current accident of "nobody gave them an
+appearance fragment yet." Tracked here explicitly so 5e-iii's design doesn't rediscover
+this from scratch or skip it.
+
+## Amendment 10 — adversarial review of `USOLRingSubsystem`
+
+The review verified, by tracing actual engine/Mass code rather than trusting comments,
+the two claims the subsystem's correctness most depends on: `USOLMinorBodyOrbitProcessor`
+really does place ring entities without an appearance fragment (its query only requires
+`Orbit`/`State`), and `ASOLAsteroidBeltVisuals`'s `AddConstSharedRequirement` really does
+hard-exclude an entity missing that fragment at the archetype level (not a soft/heuristic
+match) — confirming Amendment 8's late finding is a real, structural fix, not a fragile
+accident. It also confirmed the Mass-entity bookkeeping (pool layout, group reassignment,
+gap-cycling, teardown ordering) and the pole-direction/spin-phase-independence claim are
+all correct as implemented. Headless verification (a clean 66-second `-SOLSmokeFlight`
+run, all 4 rings' pools spawned, zero errors) was judged sufficient for 5e-ii given the
+subsystem's own Mass-entity-management code has no dedicated unit test — same standard
+already accepted for `USOLMinorBodySubsystem` in 5c — though the review correctly noted
+this only exercises the "player not in any ring" path; `AssignGroup`'s live
+cell-reassignment path is still unexercised outside the (already-passing) pure
+`SOLRingPatch` unit tests until 5e-iv's planned screenshot verification gives a renderer
+to actually look at.
+
+One real bug and several real but non-blocking findings:
+
+- **Fixed**: cells beyond a ring's inner/outer edge (within the activation margin,
+  `ComputeActiveCell`/`ActiveCellWindow`'s admitted band extends a few cells past
+  `[InnerRadiusM, OuterRadiusM]`) were getting full-density rocks, since nothing told
+  `GenerateCellRocks` those radii are outside the ring at all. `BuildRingState` now adds
+  two synthetic gap bands, `[0, InnerRadiusM)` and `[OuterRadiusM, DOUBLE_MAX)`, to every
+  ring's `GapBands`, so the existing gap-fraction math naturally thins (and fully empties)
+  any cell straddling or beyond an edge — no new mechanism needed, just correct data.
+- **Fixed**: `USOLRingSubsystem::UpdateRings` moved from `USOLAnchorSubsystem::
+  OnBodiesUpdated` to `USOLShipSubsystem::OnShipsStepped` (broadcast at the end of the
+  ship's own step, strictly after its position is current), so the ring update always
+  reads this frame's real ship position rather than whatever stale position happened to
+  be set before `OnBodiesUpdated`'s listeners ran in whatever order they're bound. This
+  does not fully resolve the update's ordering relative to
+  `USOLMinorBodySubsystem`'s orbit-processor run (both still exist as separately-bound
+  listeners with no enforced relative order) - tracked as known tech debt in `CLAUDE.md`,
+  the same class of issue as `OnUniverseUpdated`'s already-acknowledged ordering gap.
+- **Fixed**: the ring plane normal (`RingPlaneNormal`) is now cached per ring on first
+  computation rather than recomputed (a `SinCos`+`RotateVector`) every `UpdateRing` call,
+  matching the caching Amendment 7 asked for; deferred past `BuildRingState` (called
+  before the registry's first `Update()`, when orientations may still read as identity)
+  to the first real `UpdateRing` call instead.
+- **Fixed**: `UpdateRing` now early-outs without allocating when a ring has no active
+  cell and no group is currently assigned (the common case for 3 of the 4 rings during
+  ordinary flight far from any of them), avoiding `ActiveCellWindow`'s/
+  `ReassignPoolSlots`'s per-call allocations for genuinely no-op frames.
+- **Fixed (style)**: `"Pan"`/`"Daphnis"` were bare string literals in
+  `USOLRingSubsystem.cpp` despite the registry defining the same names; added
+  `SOL::BodyNames::PAN`/`DAPHNIS` and used them. The nested `FRingState` struct was
+  renamed `FSOLRingState` (every other type in the project carries the `SOL` infix).
+- **Documented as tech debt, not fixed here** (both explicitly offered as an acceptable
+  alternative to fixing by the review itself, since neither has real profiling evidence
+  yet): the ~10,000 ring-rock pool entities are processed by the shared orbit processor
+  every frame regardless of whether any ring is active (roughly doubling the minor-body
+  processor's workload against the belt's own ~9,268), and `GenerateCellRocks`'s
+  per-reassignment heap allocation (re-examining, now that a real caller exists, the
+  exact question Amendment 7 deferred to this point) at an estimated reassignment rate
+  of up to ~90 calls/second per active ring from co-rotating-frame sweep alone. Both are
+  recorded in `CLAUDE.md`'s "Known tech debt" with the review's own rate estimates and
+  concrete fixes, to be acted on if 5e-iv's real profiling (once a renderer exists to
+  profile against) shows either is an actual problem rather than guessed at now.
+- **Noted for 5e-iii, not acted on now** (no renderer exists yet to need it): a group
+  left unassigned (player outside any ring) or assigned a cell with fewer real rocks
+  than `ROCKS_PER_CELL` (a gap-affected cell, cycling existing rocks to fill the rest)
+  keeps stale or duplicated entities with no "inactive" marker; 5e-iii's renderer will
+  need to either skip/zero-scale these or `USOLRingSubsystem` will need to grow one
+  (e.g. reusing the idle-tag mechanism above). Also noted: `FSOLMinorBodyRenderFragment::
+  InstanceIndex` restarts at 0 per ring, so 5e-iii's renderer needs one ISM set per ring
+  (already the plan - `ASOLRingVisuals` is one actor per ringed planet) rather than a
+  single shared ISM indexed across all four.
+
+5e-ii is now considered fully verified within the limits described above.
