@@ -70,9 +70,6 @@ namespace
     // next sampled max-separation doesn't leave the result just outside the cluster radius
     constexpr double BELT_COHESION_SHRINK_MARGIN = 0.99;
 
-    // Below this, an eccentricity or node-vector length is treated as zero (periapsis or node undefined)
-    constexpr double BELT_DEGENERATE_EPSILON = 1.0e-12;
-
     // The ~500 largest main-belt asteroids by diameter (issue #6 / SDD 6 Section 3.2, Amendment 2).
     //
     // Source: NASA/JPL Small-Body Database Query API (https://ssd-api.jpl.nasa.gov/sbdb_query.api), fetched
@@ -1091,24 +1088,10 @@ namespace
     };
 
     //////////////////////////////////////////////////////////////////////////
-    // Wraps an angle in degrees to [0, 360)
-    double BeltWrapDegrees(const double angleDeg)
-    {
-        double wrapped = FMath::Fmod(angleDeg, 360.0);
-        if (wrapped < 0.0)
-        {
-            wrapped += 360.0;
-        }
-        return wrapped >= 360.0 ? 0.0 : wrapped;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Returns the Sun-relative mean motion (deg per Julian century) of an orbit with the given semi-major axis (AU)
     double BeltMeanMotionDegPerCy(const double semiMajorAxisAU)
     {
-        const double semiMajorAxisM = semiMajorAxisAU * SOL::AU_M;
-        const double meanMotionRadPerS = FMath::Sqrt(BELT_SUN_GM / (semiMajorAxisM * semiMajorAxisM * semiMajorAxisM));
-        return FMath::RadiansToDegrees(meanMotionRadPerS) * SOL::SECONDS_PER_JULIAN_CENTURY;
+        return SOLKepler::MeanMotionDegPerCy(semiMajorAxisAU * SOL::AU_M, BELT_SUN_GM);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1123,54 +1106,7 @@ namespace
     // (LDotDegPerCy is left 0 too; the caller sets the mean motion it wants)
     FSOLSecularElements BeltStateToElements(const FSOLOrbitState& state, const double gm)
     {
-        const FVector3d& r = state.PositionM;
-        const FVector3d& v = state.VelocityMps;
-        const double radius = r.Size();
-        const double speedSquared = v.SizeSquared();
-        const double radialSpeedTimesRadius = FVector3d::DotProduct(r, v);
-
-        // Angular momentum and the in-plane basis (node direction, and 90 degrees ahead of it)
-        const FVector3d h = FVector3d::CrossProduct(r, v);
-        const double hSize = h.Size();
-        const FVector3d hHat = h / hSize;
-        const FVector3d node(-h.Y, h.X, 0.0);
-        const double nodeSize = node.Size();
-        const FVector3d nodeHat = nodeSize > BELT_DEGENERATE_EPSILON * hSize ? node / nodeSize
-            : FVector3d(1.0, 0.0, 0.0);
-        const FVector3d aheadHat = FVector3d::CrossProduct(hHat, nodeHat);
-
-        // Eccentricity vector and the vis-viva semi-major axis
-        const FVector3d eccentricityVector = ((speedSquared - gm / radius) * r - radialSpeedTimesRadius * v) / gm;
-        const double eccentricity = eccentricityVector.Size();
-        const double semiMajorAxisM = -gm / (2.0 * (0.5 * speedSquared - gm / radius));
-
-        // Angles measured in the orbit plane from the node (atan2 forms need no quadrant fix-ups)
-        const double inclinationRad = FMath::Atan2(FMath::Sqrt(h.X * h.X + h.Y * h.Y), h.Z);
-        const double longNodeRad = FMath::Atan2(nodeHat.Y, nodeHat.X);
-        const double argLatitudeRad = FMath::Atan2(FVector3d::DotProduct(r, aheadHat),
-            FVector3d::DotProduct(r, nodeHat));
-        double argPeriRad = 0.0;
-        if (eccentricity > BELT_DEGENERATE_EPSILON)
-        {
-            argPeriRad = FMath::Atan2(FVector3d::DotProduct(eccentricityVector, aheadHat),
-                FVector3d::DotProduct(eccentricityVector, nodeHat));
-        }
-        const double trueAnomalyRad = argLatitudeRad - argPeriRad;
-
-        // True anomaly -> eccentric anomaly -> mean anomaly
-        const double halfTrueAnomalyRad = 0.5 * trueAnomalyRad;
-        const double eccAnomalyRad = 2.0 * FMath::Atan2(FMath::Sqrt(1.0 - eccentricity) * FMath::Sin(halfTrueAnomalyRad),
-            FMath::Sqrt(1.0 + eccentricity) * FMath::Cos(halfTrueAnomalyRad));
-        const double meanAnomalyRad = eccAnomalyRad - eccentricity * FMath::Sin(eccAnomalyRad);
-
-        FSOLSecularElements elements;
-        elements.A0AU = semiMajorAxisM / SOL::AU_M;
-        elements.E0 = eccentricity;
-        elements.I0Deg = FMath::RadiansToDegrees(inclinationRad);
-        elements.LongNode0Deg = BeltWrapDegrees(FMath::RadiansToDegrees(longNodeRad));
-        elements.LongPeri0Deg = BeltWrapDegrees(FMath::RadiansToDegrees(longNodeRad + argPeriRad));
-        elements.L0Deg = BeltWrapDegrees(FMath::RadiansToDegrees(longNodeRad + argPeriRad + meanAnomalyRad));
-        return elements;
+        return SOLKepler::KeplerElementsToSecular(SOLKepler::StateToElements(state, gm));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1252,8 +1188,8 @@ namespace SOLAsteroidBelt
             elements.E0 = row.E;
             elements.I0Deg = row.IDeg;
             elements.LongNode0Deg = row.LongNodeDeg;
-            elements.LongPeri0Deg = BeltWrapDegrees(row.LongNodeDeg + row.ArgPeriDeg);
-            elements.L0Deg = BeltWrapDegrees(row.LongNodeDeg + row.ArgPeriDeg + row.MeanAnomalyDeg
+            elements.LongPeri0Deg = SOLKepler::WrapDegrees(row.LongNodeDeg + row.ArgPeriDeg);
+            elements.L0Deg = SOLKepler::WrapDegrees(row.LongNodeDeg + row.ArgPeriDeg + row.MeanAnomalyDeg
                 - row.MeanMotionDegPerDay * epochOffsetDays);
             elements.LDotDegPerCy = row.MeanMotionDegPerDay * SOL::DAYS_PER_JULIAN_CENTURY;
         }

@@ -11,6 +11,7 @@ namespace
 {
     constexpr int32 KEPLER_SOLVER_MAX_ITERATIONS = 64;             // Iteration cap for the eccentric-anomaly solver
     constexpr double KEPLER_SOLVER_TOLERANCE_RAD = 1.0e-15;        // Convergence threshold on the Newton step
+    constexpr double KEPLER_DEGENERATE_EPSILON = 1.0e-12;          // Below this (relative) node size or e, StateToElements falls back
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -161,5 +162,99 @@ namespace SOLKepler
         state.PositionM = pHat * xP + qHat * yP;
         state.VelocityMps = pHat * vxP + qHat * vyP;
         return state;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Converts a state to instantaneous classical elements (RV2COE). Degenerate fallbacks: when the orbit is
+    // equatorial to within KEPLER_DEGENERATE_EPSILON the ascending node is taken along +X (node = 0), and when it is
+    // circular to within the same epsilon periapsis is placed at the ascending node (argPeri = 0). Angles are left as
+    // atan2 produces them (not normalized), so M may lie outside [-PI, PI); ElementsToState wraps it on use.
+    FSOLKeplerElements StateToElements(const FSOLOrbitState& state, const double gm)
+    {
+        const FVector3d& r = state.PositionM;
+        const FVector3d& v = state.VelocityMps;
+        const double radius = r.Size();
+        const double speedSquared = v.SizeSquared();
+        const double radialSpeedTimesRadius = FVector3d::DotProduct(r, v);
+
+        // Angular momentum and the in-plane basis (node direction, and 90 degrees ahead of it)
+        const FVector3d h = FVector3d::CrossProduct(r, v);
+        const double hSize = h.Size();
+        const FVector3d hHat = h / hSize;
+        const FVector3d node(-h.Y, h.X, 0.0);
+        const double nodeSize = node.Size();
+        const FVector3d nodeHat = nodeSize > KEPLER_DEGENERATE_EPSILON * hSize ? node / nodeSize
+            : FVector3d(1.0, 0.0, 0.0);
+        const FVector3d aheadHat = FVector3d::CrossProduct(hHat, nodeHat);
+
+        // Eccentricity vector and the vis-viva semi-major axis
+        const FVector3d eccentricityVector = ((speedSquared - gm / radius) * r - radialSpeedTimesRadius * v) / gm;
+        const double eccentricity = eccentricityVector.Size();
+        const double semiMajorAxisM = -gm / (2.0 * (0.5 * speedSquared - gm / radius));
+
+        // Angles measured in the orbit plane from the node (atan2 forms need no quadrant fix-ups)
+        const double inclinationRad = FMath::Atan2(FMath::Sqrt(h.X * h.X + h.Y * h.Y), h.Z);
+        const double longNodeRad = FMath::Atan2(nodeHat.Y, nodeHat.X);
+        const double argLatitudeRad = FMath::Atan2(FVector3d::DotProduct(r, aheadHat),
+            FVector3d::DotProduct(r, nodeHat));
+        double argPeriRad = 0.0;
+        if (eccentricity > KEPLER_DEGENERATE_EPSILON)
+        {
+            argPeriRad = FMath::Atan2(FVector3d::DotProduct(eccentricityVector, aheadHat),
+                FVector3d::DotProduct(eccentricityVector, nodeHat));
+        }
+        const double trueAnomalyRad = argLatitudeRad - argPeriRad;
+
+        // True anomaly -> eccentric anomaly -> mean anomaly
+        const double halfTrueAnomalyRad = 0.5 * trueAnomalyRad;
+        const double eccAnomalyRad = 2.0 * FMath::Atan2(FMath::Sqrt(1.0 - eccentricity) * FMath::Sin(halfTrueAnomalyRad),
+            FMath::Sqrt(1.0 + eccentricity) * FMath::Cos(halfTrueAnomalyRad));
+        const double meanAnomalyRad = eccAnomalyRad - eccentricity * FMath::Sin(eccAnomalyRad);
+
+        FSOLKeplerElements elements;
+        elements.SemiMajorAxisM = semiMajorAxisM;
+        elements.Eccentricity = eccentricity;
+        elements.InclinationRad = inclinationRad;
+        elements.LongitudeOfAscendingNodeRad = longNodeRad;
+        elements.ArgumentOfPeriapsisRad = argPeriRad;
+        elements.MeanAnomalyRad = meanAnomalyRad;
+        return elements;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Wraps an angle in degrees to [0, 360)
+    double WrapDegrees(const double angleDeg)
+    {
+        double wrapped = FMath::Fmod(angleDeg, 360.0);
+        if (wrapped < 0.0)
+        {
+            wrapped += 360.0;
+        }
+        return wrapped >= 360.0 ? 0.0 : wrapped;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Packs instantaneous classical elements into epoch secular elements with every rate term (LDot included) 0
+    FSOLSecularElements KeplerElementsToSecular(const FSOLKeplerElements& kepler)
+    {
+        const double longNodeRad = kepler.LongitudeOfAscendingNodeRad;
+        const double longPeriRad = longNodeRad + kepler.ArgumentOfPeriapsisRad;
+
+        FSOLSecularElements elements;
+        elements.A0AU = kepler.SemiMajorAxisM / SOL::AU_M;
+        elements.E0 = kepler.Eccentricity;
+        elements.I0Deg = FMath::RadiansToDegrees(kepler.InclinationRad);
+        elements.LongNode0Deg = WrapDegrees(FMath::RadiansToDegrees(longNodeRad));
+        elements.LongPeri0Deg = WrapDegrees(FMath::RadiansToDegrees(longPeriRad));
+        elements.L0Deg = WrapDegrees(FMath::RadiansToDegrees(longPeriRad + kepler.MeanAnomalyRad));
+        return elements;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the mean motion sqrt(gm/a^3) converted from rad/s to degrees per Julian century
+    double MeanMotionDegPerCy(const double semiMajorAxisM, const double gm)
+    {
+        const double meanMotionRadPerS = FMath::Sqrt(gm / (semiMajorAxisM * semiMajorAxisM * semiMajorAxisM));
+        return FMath::RadiansToDegrees(meanMotionRadPerS) * SOL::SECONDS_PER_JULIAN_CENTURY;
     }
 }

@@ -105,16 +105,39 @@ Keep it in sync if the design shifts.
   like the belt. Collision stays deferred (decision 9 re-confirmed; `Docs/ToDo/
   asteroid-ring-collision.md` updated). Sub-steps, each independently verifiable per
   the project's usual rhythm:
-  - [ ] **5e-i — Shared math + pure logic.** Promote `SOLAsteroidBelt.cpp`'s file-local
+  - [x] **5e-i — Shared math + pure logic.** Promoted `SOLAsteroidBelt.cpp`'s file-local
     `BeltStateToElements` to `SOLKepler::StateToElements(state, gm)` (the documented
-    inverse of `ElementsToState`); re-point 5b's belt code at the shared version (its
-    existing tests must keep passing unchanged) and add direct tests for the promoted
-    function. New `Source/SOLTest/MinorBodies/SOLRingPatch.h/.cpp`: cell-grid indexing
+    inverse of `ElementsToState`) and `BeltMeanMotionDegPerCy` to
+    `SOLKepler::MeanMotionDegPerCy`; re-pointed 5b's belt code at the shared versions
+    (its existing tests pass unchanged) and added direct tests for both. New
+    `Source/SOLTest/MinorBodies/SOLRingPatch.h/.cpp`: cell-grid indexing
     (`ComputeActiveCell`), deterministic per-cell rock generation respecting
     `SOLPlanetRing::AllGapBandsM` (`GenerateCellRocks`), and the near/far cross-fade
     alpha (`ComputeNearFieldAlpha`, `SOLMapBodyLod`-style). Full contract-only TDD, a
-    dispatched subagent writes the tests from the header alone (genuinely new
-    geometry/orbital-mechanics logic, same bar as 5b).
+    dispatched subagent wrote the tests from the header alone.
+    **Built:** adversarial review (hand-traced the RV2COE math and the gap/interval
+    logic, not just "tests are green") found two real design bugs before any caller
+    existed — see SDD 6 Amendment 7: (1) generated rocks stored their "right now" mean
+    longitude directly as the J2000-epoch value, which would place them at an
+    essentially arbitrary point on their orbit once the sim clock advances past J2000;
+    (2) the cell grid was fixed in a non-rotating frame, but ring rocks orbit at tens of
+    km/s, so cells would need reassigning dozens of times per second even with a
+    stationary player, directly contradicting the "holds its place" design intent.
+    Fixed with a co-rotating reference frame (`ComputeActiveCell`/`GenerateCellRocks`
+    both gained `planetGM`/`secondsSinceJ2000` parameters) and an epoch-rollback
+    correction on each rock's `L0Deg`; a new `GenerateEpochRollback` test explicitly
+    proves the un-rolled-back value would land outside the cell. Also fixed: a
+    duplicated element-packing helper (promoted `SOLKepler::KeplerElementsToSecular`,
+    shared by the belt and the ring patch), weak per-cell seed mixing (finalized through
+    `MurmurFinalize32`), a NaN-admission hazard in `ComputeActiveCell`, stale test
+    comments from a now-superseded indexing convention, overclaimed degenerate-fallback
+    test coverage (added true exact-degenerate cases), and tightened round-trip
+    tolerances (1e-8/1e-7 → 1e-11/1e-10, verified empirically). One genuine test
+    arithmetic bug was also found and fixed during the main session's own RED/GREEN
+    verification (an exact-cell-boundary coincidence in a "1.5 cells away" displacement
+    test). `GenerateCellRocks`'s per-call heap allocation and the ring-normal basis's
+    tie-sensitivity were deliberately deferred to 5e-ii's design rather than guessed at
+    now. 382 automation tests passing (was 365 before 5e).
   - [ ] **5e-ii — Pooled Mass architecture.** New `USOLRingSubsystem` (mirrors
     `USOLMinorBodySubsystem`'s shape) owning a **fixed-size entity pool per ring**
     (reserved once at world begin-play, sized to the active-cell-grid × rocks-per-cell —
