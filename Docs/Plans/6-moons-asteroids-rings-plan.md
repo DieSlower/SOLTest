@@ -138,16 +138,46 @@ Keep it in sync if the design shifts.
     test). `GenerateCellRocks`'s per-call heap allocation and the ring-normal basis's
     tie-sensitivity were deliberately deferred to 5e-ii's design rather than guessed at
     now. 382 automation tests passing (was 365 before 5e).
-  - [ ] **5e-ii — Pooled Mass architecture.** New `USOLRingSubsystem` (mirrors
+  - [x] **5e-ii — Pooled Mass architecture.** New `USOLRingSubsystem` (mirrors
     `USOLMinorBodySubsystem`'s shape) owning a **fixed-size entity pool per ring**
-    (reserved once at world begin-play, sized to the active-cell-grid × rocks-per-cell —
-    no runtime Mass create/destroy, per CLAUDE.md's "pooled, not spawn-destroy"
-    guidance). A cell-boundary crossing reassigns pool slots in place (rewrites
-    `FSOLMinorBodyOrbitFragment` and the ISM transform for reassigned slots only, with
-    hysteresis against boundary thrashing) rather than creating/destroying entities.
-    Reuses `USOLMinorBodyOrbitProcessor`/the existing fragments unchanged — it matches
-    by fragment composition, not by creator. Screenshot/log-verified (entity counts,
-    no crash on rapid cell crossings e.g. at warp speed).
+    (reserved once at world begin-play, grouped into `ROCKS_PER_CELL`-sized chunks, one
+    per cell the pool can represent at once — no runtime Mass create/destroy, per
+    CLAUDE.md's "pooled, not spawn-destroy" guidance). Every `OnShipsStepped` it
+    recomputes the desired cell window and reassigns whichever groups the window no
+    longer covers (not gated behind an "active cell changed" check — the co-rotating
+    window can drift even when it doesn't, see SDD 6 Amendment 9), rewriting
+    `FSOLMinorBodyOrbitFragment`/`RenderFragment` data in place rather than
+    creating/destroying entities. Reuses `USOLMinorBodyOrbitProcessor`/the existing
+    fragments unchanged (matches by composition, not creator) — deliberately runs no
+    orbit-processor instance of its own, to avoid double-processing the belt's entities
+    too.
+    **Built:** two adversarial review rounds (the cell-windowing pure logic, then the
+    subsystem itself) found and fixed two more real design bugs beyond 5e-i's two
+    (tracked as SDD 6 Amendments 9 and 10): `ActiveCellWindow` had a second
+    co-rotating-frame bug (re-deriving a neighboring band's angular index as a
+    same-band-circle-fraction, which implicitly assumed a shared origin across bands
+    that doesn't exist — the existing tests couldn't catch it because they checked the
+    implementation against a copy of the same flawed formula); and cells beyond a
+    ring's real inner/outer edge were getting full-density rocks (fixed with two
+    synthetic gap bands). Also fixed: the ring update moved from `OnBodiesUpdated` to
+    `USOLShipSubsystem::OnShipsStepped` for a more current ship position, the ring
+    plane normal is now cached instead of recomputed every call, an early-out avoids
+    allocating on no-op frames, and a real Mass-architecture hazard was caught before
+    it shipped (ring entities get no `FSOLMinorBodyAppearanceFragment` at all, since
+    giving them one would make the belt's already-shipped visuals actor pick them up
+    and render them into its own ISM arrays). Two performance questions (idle-ring
+    processor cost, per-reassignment allocation rate) were explicitly deferred to
+    profiling rather than fixed or ignored, recorded in `CLAUDE.md`'s tech debt with
+    the review's own rate estimates. `SOL::RING_PATCH_WINDOW_RADIAL_RADIUS`/
+    `_ANGULAR_RADIUS` raised from 1 to 2 after discovering a radius-R window only
+    guarantees real coverage within (R - 0.5) cells, not R. Verified via a clean
+    66-second headless `-SOLSmokeFlight` run (all 4 rings' pools spawned, zero errors)
+    rather than a dedicated unit test, consistent with `USOLMinorBodySubsystem`'s own
+    precedent — this subsystem's correctness rests on the already-tested `SOLRingPatch`
+    pure functions it calls. 400 automation tests passing (was 382 after 5e-i; the 18
+    new ones — `GetAngularCellCount`/`ActiveCellWindow`/`ReassignPoolSlots` coverage —
+    extend `SOLRingPatchTest.cpp`, written as prerequisite pure-logic work for this
+    sub-part even though that file itself belongs to 5e-i).
   - [ ] **5e-iii — `ASOLRingVisuals` + Niagara far field.** New actor per ringed planet:
     owns the pool's ISM component (bulk-transform update, same pattern as
     `ASOLAsteroidBeltVisuals`) and a `UNiagaraComponent` for the far-field annulus
