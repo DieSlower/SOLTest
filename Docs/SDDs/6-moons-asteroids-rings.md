@@ -1185,3 +1185,23 @@ Instancing — not particles — "and maybe the same technique if it's efficient
 **Open / unresolved.** PCG's behavior under floating-origin rebasing and ring co-rotation is
 unproven (verified in the spike below). The sprite look of tier A (soft non-additive material,
 count) is retuned as part of this work.
+
+### Amendment 14 — PCG spike findings (2026-10-08, in progress)
+
+What was learned while trying to prove the PCG GPU Spawn Static Mesh path in 5.8.3:
+
+- PCG is enabled by default in 5.8.3; `PCGStaticMeshSpawnerKernel` ships. The `PCGToolset` MCP toolset can create
+  graphs (`CreateGraph`, `AddNode`, `ConnectNodePins`, `SpawnGraphInstance`, `ExecuteGraphInstance`).
+- **`Create Points Grid` cannot run on the GPU** (`PCG GPU compiler: ... did not emit any kernels`), so a GPU ring
+  needs a `Custom HLSL` `PointGenerator` kernel as the point source.
+- **A Custom HLSL node's shader source is not reachable from Python or the MCP toolset** (`ShaderSource` is a plain
+  `UPROPERTY()`; `UpdateNode` reports "could not be set"). New editor-only helper `USOLEditorAuthoring`
+  (`Source/SOLTest/Tools/`) sets it through reflection and fires `PostEditChangeProperty`; verified working from
+  editor Python (`unreal.SOLEditorAuthoring.set_object_string_property`).
+- The default generator kernel template fails to compile (`In_GetBoundsMax` undeclared) until a source is supplied.
+- With a hash-based annulus kernel (1M points) feeding a GPU Static Mesh Spawner, `ExecuteGraphInstance` ran with no
+  errors and the component reported `generated`, but no ISM components were listed on the level, `GetNodeDataView`
+  has no data for GPU nodes, and the editor viewport screenshots were black (viewport not rendering, so this is
+  **not yet verified**). GPU Scene-written instances may legitimately not appear as ISM components.
+- **Still to prove:** instances actually visible (PIE screenshot with a lit scene), survive a graphics-settings
+  change (the 5.6 vanishing-mesh bug), and sit correctly under floating origin.
