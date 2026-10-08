@@ -19,6 +19,11 @@ The cross-cutting design decisions are in [`Docs/SDDs/1-solar-system-architectur
 - **Never answer a question on the user's behalf, and never carry on as if it were answered.** When a question to the user is open, stop and wait for their reply; do not time out, guess, or keep working past it. This rule is only about questions. Resuming already-approved work after a usage-limit pause (via a one-shot `CronCreate`, per the global CLAUDE.md) is still allowed, but never past a pending question.
 - **Build each roadmap part with its own subagent, and keep that subagent's context under ~25%.** If it runs over, continue with a fresh subagent that reads the SDD, plan and progress notes cold. Parts must be small enough for Claude to verify without the user; the user tests only the finished product.
 - **On a usage-limit error:** save resume state (task list, files mid-edit, exact next step), read the reset time from the error message (fallback: +5h10m for the 5-hour window, +7d10m for the weekly one), and schedule a one-shot `CronCreate` resume. There is no reliable way to poll usage, so do not run a "usage checker" agent.
+- **Pause points while building (context and usage limits):**
+  - **Context above 35%:** when the main session's context passes 35%, stop at the next good breakpoint (a finished task or part, never mid-edit or mid-subagent-dispatch). Save resume state (task list, files mid-edit, exact next step) in the plan/progress notes so a fresh context can continue cold.
+  - **5-hour session limit:** pause when it is hit, then continue automatically once it resets (one-shot `CronCreate` resume, per the rule above).
+  - **70% of the 7-day limit:** pause proactively at a good breakpoint and do not resume until the 7-day window resets. Read the figure from `~/.claude/rate-limits-cache.json` (`seven_day_used_pct`, `seven_day_resets_at`; check `written_at` for freshness) before starting and after finishing each task. Schedule the resume with a one-shot `CronCreate` at `seven_day_resets_at`.
+  - As above, none of this authorizes proceeding past an open question to the user.
 
 ## Subagents — model selection
 
@@ -34,6 +39,7 @@ The cross-cutting design decisions are in [`Docs/SDDs/1-solar-system-architectur
 - **Build the editor target:** `"C:\Program Files\Epic Games\UE_5.8\Engine\Build\BatchFiles\Build.bat" SOLTestEditor Win64 Development -Project="D:\Development\UnrealProjects\SOLTest\SOLTest.uproject" -WaitMutex`. Close the Unreal Editor first (a running editor locks the module DLL, and Live Coding is not relied on).
 - **Run the editor:** launch `C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe "D:\Development\UnrealProjects\SOLTest\SOLTest.uproject"`.
 - **Run the tests from a terminal:** `Tools\RunTests.bat` (or `.\Tools\RunTests.ps1`); see [Testing](#testing).
+- **To use unreal-mcp, first start the Unreal Editor with the Rider run command (the editor run configuration in Rider), not by launching `UnrealEditor.exe` directly.** unreal-mcp starts automatically with the editor; no `/mcp` from the user is needed, so don't ask for it — just load the tools via ToolSearch and use them.
 - **unreal-mcp only works while the Editor is open.** The MCP server (`.mcp.json`, `http://127.0.0.1:33445/mcp`) is hosted inside `UnrealEditor.exe`. Claude Code resolves MCP connections once at session start, so if the editor was not running then, the connection stays failed until the user runs `/mcp` to reconnect. Workflow: build, launch the editor, wait for it to load (the port opens within ~30 s), then ask the user to run `/mcp`. Do not rely on unreal-mcp in a headless or subagent flow; prefer command-line builds and automation tests there.
 - `Docs/` and `Tools/` sit outside `Content/`, so they are never cooked into a packaged build.
 

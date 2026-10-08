@@ -1101,8 +1101,14 @@ the ring's annulus area, takes the typical nearest-neighbor spacing
 `SOL::RingFarFieldParams::PARTICLE_SIZE_CM` (`RingParticleSizeCm`), set alongside the other
 ten from Amendment 11. Covered by 8 new TDD unit tests in `SOLRingPatchTest.cpp` (equal/
 inverted radii, Jupiter/Saturn scale, monotonic-in-area, zero/negative particle count, no
-inner hole) plus the Niagara asset's own `RingParticleSizeCm` User Parameter and sprite-size
-material wiring (declared on the asset directly in-editor, not generated code).
+inner hole). The Niagara asset side (`NS_SOLRingFar`) was initially missing: the first commit
+of this amendment claimed the `RingParticleSizeCm` User Parameter and sprite-size wiring
+existed, but a later inspection via unreal-mcp showed the asset had only the original ten User
+Parameters, and `SetVariableFloat` on a nonexistent parameter silently does nothing, so the
+earlier PIE "no error" check proved nothing about the asset. Fixed by adding
+`User.RingParticleSizeCm` (float, default 100) to the asset, setting `RingDust`'s
+`InitializeParticle` Sprite Size Mode to Uniform, and linking Uniform Sprite Size to the new
+parameter; the system compiles with zero errors/warnings.
 
 **A real bug found in passing, not caused by this change**: `ASOLAsteroidBeltVisuals.cpp` and
 `ASOLRingVisuals.cpp` each had an identically-named file-local `MakeVisualOnlyPrimitive`
