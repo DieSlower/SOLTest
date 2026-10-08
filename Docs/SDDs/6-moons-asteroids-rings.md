@@ -1243,3 +1243,196 @@ What was learned while trying to prove the PCG GPU Spawn Static Mesh path in 5.8
   the rings. GPU-only instance data is not persistent (it is lost on scalability changes and spontaneously in our running game),
   and it is static world-space data that cannot follow a moving actor. **Recommendation:** use the Niagara mesh-particle
   fallback for the ring tiers (the simulation is GPU-resident and re-creatable, and it follows a moving component in local space).
+
+## Amendment 15 — Niagara mesh-particle ring tiers: asset results and host contract
+
+Asset work for Amendment 14's Niagara fallback (2026-10-08). The assets were authored live in the editor through
+the `NiagaraToolset_System` MCP tools, editor Python and GeometryScript. **No C++ was changed.** The host changes
+required are listed below. Everything is saved under `/Game/SOL/Rings/`.
+
+### Assets
+
+| Asset | What it is |
+|---|---|
+| `SM_SOLRingRock_0..5` | Procedural rocks: a subdivided icosahedron with random lumps and dents, 1-4 plane-cut facets and a per-variant aspect ratio. Flat-shaded, with mean radius 100 cm (so particle scale = rock radius in metres). Variants 0-3 have 80 triangles, 4-5 have 320. No Nanite, no collision, box-projected UV0. |
+| `M_SOLRingRock` | Default-lit, opaque. Base colour = Particle Colour × lerp(0.55, 1.1, Particle Random). Roughness 0.88, specular 0.3, emissive at 5% of base colour so the unlit sides are not pure black under the single shadowless Sun. Usage flags: Niagara mesh particles and ISM. |
+| `SM_SOLRingDisc` | Flat annulus from radius 44 to 102 cm: 512 segments × 5 radial rings (5,120 triangles), +Z normal, planar UV0. |
+| `M_SOLRingFar` | Unlit, translucent, two-sided ring-profile material (one Custom HLSL node; details below). Scalar parameter `Gain` = 0.8. |
+| `NS_SOLRingFar` (Tier A, rebuilt) | One CPU emitter `RingDust`: a burst of 1 particle that never dies. Its mesh renderer draws `SM_SOLRingDisc` with scale = `RingOuterRadiusCm` × 0.01. Dynamic Material Parameters 0-2 carry the inner, outer and gap radii (normalised by the outer radius), the profile index, the Sun direction and the planet radius. Bounds are Dynamic. The empty `Minimal` emitter, ShapeLocation and the sprite renderer were removed. |
+| `NS_SOLRingDense` (Tier B, new) | One GPU-sim emitter. A burst of `User.RingDenseParticleCount` spawns once and lives forever. **Spawn** assigns a random anchor in a (2W)² tile with Gaussian thickness, a radius from a power law (q = 3, `r = rmin / sqrt(1 - u(1 - (rmin/rmax)^2))`), a random aspect ratio (0.75-1.25, 0.75-1.25, 0.6-1.1), a random orientation quaternion and a seed. **Update** wraps the anchor toroidally around the camera and sets scale to 0 when the rock falls outside the annulus, inside a gap, above the fill fraction, or below the angular-size cull. Scale also fades to 0 over the outer 20% of the window, and invisible rocks get VisibilityTag 1. The mesh renderer uses `SM_SOLRingRock_1` with frustum culling on, motion vectors disabled and no shadows. Bounds are fixed at ±6e5 cm. |
+
+`M_SOLRingFar` computes the radius per pixel from the interpolated local position, so gap edges are exact at any
+scale. The radial profiles come from a 52-band optical-depth (tau) table:
+
+- **Saturn:** D ring; C ring with the Colombo and Maxwell gaps; B ring; the Cassini Division with the Huygens ringlet; A ring with the Encke and Keeler gaps.
+- **Uranus:** the zeta ring, nine narrow rings and the epsilon ring.
+- **Neptune:** the Galle, Le Verrier, Lassell, Arago and Adams rings, including Adams's arcs.
+- **Jupiter:** the main ring.
+
+How the material shades the profile:
+
+- **Anti-aliasing:** each band is box-filtered over the pixel's radial footprint, and flagged narrow ringlets are kept at least 1.25 px wide.
+- **Fine structure:** up to 9 octaves of radial noise modulate tau and albedo. Each octave fades out before it would alias.
+- **Lighting:** Lommel-Seeliger layer reflectance on the lit side, and diffuse transmission on the unlit side.
+- **Opacity:** `1 - exp(-tau / mu)`, so the planet and stars show through the thin parts.
+- **Shadow:** an analytic planet-shadow cylinder.
+
+The generator script for the table and HLSL (`ringprof.py`) lives in the scratchpad. The HLSL is stored in the material itself.
+`PCG_SOLRingSpike` is still present (Amendment 14 history); nothing references it.
+
+### Tier A user-parameter contract (`NS_SOLRingFar`)
+
+- **Unchanged and still read:** `RingOuterRadiusCm`, `RingInnerRadiusCm`, `RingColor`, `RingGap{0,1,2}{Inner,Outer}RadiusCm`.
+- **Still declared but no longer read:** `RingParticleCount`, `RingParticleSizeCm`. Setting them is harmless. `SOLRingPatch::FarFieldSpriteSizeCm`, `RING_FAR_FIELD_PARTICLE_COUNT` and `RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR` are now dead code. They can be removed together with their 8 tests, or kept until a cleanup pass.
+- **New, all optional with safe defaults:**
+  - `RingProfileIndex` (int, default -1): 0 Jupiter, 1 Saturn, 2 Uranus, 3 Neptune. When it is -1, the asset infers the profile from `RingOuterRadiusCm`, so the current C++ already gets the right profile.
+  - `RingSunDirection` (vec3, default zero): unit vector toward the Sun in ring-local axes. When it is zero, the ring is lit on whichever side the viewer is.
+  - `RingPlanetRadiusCm` (float, default 0): radius used for the planet's shadow on the ring. When it is 0, a per-profile radius is used.
+
+### Why the far field is one disc, not sprites
+
+Every sprite variant has the same two failures, whether additive or soft-blended. Overlapping sprites saturate,
+and random clumping blurs gap edges that are only 0.03-0.3% of the ring radius wide (Amendment 13's screenshots
+show both). A single mesh particle whose pixel shader evaluates the radial profile analytically avoids both. It
+gives exact gaps at any distance, fine banding, and real translucency: stars and the planet show through the
+C ring and the Cassini Division. It costs one draw call and a fraction of a millisecond of translucent pixels.
+
+### Tier B: the camera-local wrapped window
+
+N rocks are assigned fixed anchors in a tile of side 2W. Each frame the GPU places rock i at
+`wrap(anchor_i - phase)`, inside [-W, W]² around the camera. Because `phase` is the camera's ring-frame position
+modulo 2W, every rock keeps a fixed ring-frame position: the field is an infinite periodic carpet. A rock leaving
+one edge reappears at the opposite edge, where the 20% edge fade has already hidden it. Nothing is ever
+respawned, so nothing flickers.
+
+Particle positions stay small (|x| ≤ W), so float precision holds even though the ring is 1e10 cm from the
+planet centre. Only the annulus and gap test uses `RingWindowCenterCm + local`. That value carries about 10 m of
+float error at 1e10 cm, which is negligible against gaps of 42 km or wider.
+
+### Measurements
+
+All rows are one `ProfileGPU` capture each: PIE in the editor viewport at 3056×1319 (TSR internal 1825×760). The
+camera sat 5 m above a B-ring patch, with W = 1.5 km, a 20 m half-thickness and rock radii of 0.25-6 m. Times are
+GPU milliseconds.
+
+Absolute frame times varied up to about 2× between captures with GPU clocks and power state. Compare passes
+within a row rather than frame totals across rows.
+
+| Config | Niagara sim | Mesh-instance update + cull | BasePass | Velocity | Frame |
+|---|---|---|---|---|---|
+| No ring (baseline) | - | - | 0.66 | 0.08 | 27.4 |
+| 500k, 6-mesh array (MeshIndex) | 2.45 | 6 × ~1.3 + 5.5 | 4.1 | 2.7 | 56.4 |
+| 500k, 1 mesh, 320 tris | 2.33 | 1.51 + 0.95 | 11.1 | 9.1 | 51.3 |
+| 500k, 1 mesh, 80 tris | 0.90 | 0.22 + 0.20 | 1.6 | 1.3 | 13.9 |
+| 2M, 80 tris, cull 4e-4 rad | 1.19 | 0.80 + 0.71 | 5.5 | 5.0 | 26.0 |
+| **1M, 80 tris, cull 1e-3 rad, plus the Tier A disc** | **0.56** | **0.28 + 0.21** | **0.57** | **0.45** | **7.4** |
+
+The Tier A disc adds 0.09 ms of translucency in that last capture.
+
+**Conclusions**
+
+1. **The mesh renderer's multi-mesh array is a performance trap.** Every mesh entry runs the instance update and
+   culling over all N particles, so six meshes cost about 6× in those passes. Tier B therefore uses a single
+   80-triangle mesh. Variety comes from the per-particle aspect ratio and orientation, and at a few pixels per
+   rock it cannot be told apart from six meshes. If more variety is wanted, add a second emitter rather than
+   using the array: for example the 320-triangle rocks 4 and 5 for the rare rocks above 3 m.
+2. **Triangle count dominates.** Dropping from 320 to 80 triangles cut BasePass plus Velocity from about 20 ms
+   to about 3 ms at 500k rocks.
+3. **The angular-size cull (`RingRockCullAngularRadius`) is the main lever.** At 1e-3 rad (about 1.2 px at
+   1080p and a 90° FOV), 1M rocks cost about 2 ms of ring-related GPU time.
+4. **5M instances is not the right target for this design.** A 1M window at W = 1.5 km (about 0.11 rocks/m²)
+   already fills the frame, and the "Cassini" density at range comes from the Tier A disc, not from instance
+   count. Extra rocks would be sub-pixel and get culled anyway. The 2M measurement shows rising cost with no
+   visible gain. **Default: `RingDenseParticleCount` = 1,000,000.**
+5. **The Velocity pass stays significant** even with the renderer's motion vectors set to Disable (opaque rocks
+   still draw velocity under TSR). See open item 3.
+
+### Host contract for the C++ work
+
+**New constants in `SOLConstants.h`:**
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `RING_DENSE_PARTICLE_COUNT` | 1000000 | Rocks spawned once into the window |
+| `RING_DENSE_WINDOW_RADIUS_CM` | 150000.0 | W, half the wrapped tile size |
+| `RING_DENSE_HALF_THICKNESS_CM` | 2000.0 | 1-sigma half thickness of the rock layer |
+| `RING_DENSE_ROCK_MIN_RADIUS_CM` / `RING_DENSE_ROCK_MAX_RADIUS_CM` | 25.0 / 600.0 | Rock radius range |
+| `RING_DENSE_CULL_ANGULAR_RADIUS` | 0.001 | Rocks below this angular radius (rad) are hidden |
+| `RING_DENSE_FADE_IN_DISTANCE_M` / `RING_DENSE_FADE_OUT_DISTANCE_M` | e.g. 20e3 / 50e3 | Tier B is fully on inside the first and fully off beyond the second, measured by `DistanceOutsideRingVolumeM` |
+| `Paths::RING_DENSE_NIAGARA_SYSTEM` | `"/Game/SOL/Rings/NS_SOLRingDense.NS_SOLRingDense"` | Asset path |
+
+Also add a `RingDenseParams` namespace holding the user-parameter names below.
+
+**`NS_SOLRingDense` user parameters**
+
+| Name | Type | When to set | Value |
+|---|---|---|---|
+| `RingOuterRadiusCm`, `RingInnerRadiusCm`, `RingGap{0,1,2}{Inner,Outer}RadiusCm`, `RingColor` | float / LinearColor | BeginPlay | Same values as the far field |
+| `RingDenseParticleCount` | int | BeginPlay, before `Activate` | `RING_DENSE_PARTICLE_COUNT` |
+| `RingWindowRadiusCm` | float | BeginPlay | W |
+| `RingDenseHalfThicknessCm`, `RingRockMinRadiusCm`, `RingRockMaxRadiusCm`, `RingRockCullAngularRadius` | float | BeginPlay | The constants above |
+| `RingDenseFill` | float, 0..1 | BeginPlay, or every frame if used as a fade | Fraction of rocks shown: 1 for Saturn, about the ring's `Density` for the others |
+| `RingWindowPhaseCm` | vec3 | Every frame | xy = `fmod(P.xy, 2W)`, computed in double and kept in [0, 2W); z = P.z (height above the ring plane, cm) |
+| `RingWindowCenterCm` | vec3 | Every frame | P cast to float (used only for masking) |
+
+**Per frame, in `ASOLRingVisuals::HandleUniverseUpdated`, only while Tier B is visible:**
+
+1. **Compute the camera's ring-frame position P** (double, cm) in a frame that co-rotates with the ring.
+   - Take `rel = observer - planet` (ecliptic, metres), the ring axes e1 and e2 (the planet orientation's X and Y) and n = `mRingNormal`.
+   - Integrate the spin angle: `theta += sqrt(GM_planet / r^3) * dt`, where r is the in-plane length of `rel`. Integrating, rather than computing `omega * t` directly, means a radial move never makes the field jump.
+   - P.xy = (rel·e1, rel·e2) rotated by -theta, in cm. P.z = rel·n, in cm.
+   - At high time warp, hide Tier B instead: a co-rotating carpet means nothing at 1000× warp.
+2. **Place the dense component** at the camera's world location, with absolute transform like the far field.
+   Its rotation is `mFarFieldRotation * FQuat(FVector::UpVector, theta)` and its scale is 1. It must not be
+   log-compressed: Tier B is only shown within tens of km of the ring, where placement is 1:1.
+3. **Set** `RingWindowPhaseCm` and `RingWindowCenterCm`.
+4. **Control visibility without deactivating.** Activate once in BeginPlay, then gate drawing with
+   `SetVisibility` / `SetPaused` (or by fading `RingDenseFill` from 1 to 0) between the fade thresholds.
+   Do not call `Deactivate`: reactivating re-runs the 1M burst, which costs about 1 ms on one frame.
+5. **Optional, recommended:** pass `RingSunDirection` (ring-local unit vector toward the Sun) and
+   `RingPlanetRadiusCm` to the far field, every frame or about once per second. This makes the lit side and
+   the planet's shadow follow the real Sun. Also set `RingProfileIndex` explicitly.
+
+**Tier A needs no change.** It renders correctly with the current `PlaceFarFieldNiagara`.
+**Tier C is unchanged.** Overlap between the Tier B carpet and the Mass rocks is visually harmless at this
+density. Add an inner-hole parameter later if it is ever needed.
+
+### Verification screenshots
+
+**Host path** (real `ASOLRingVisuals`, `-game` smoke flags), in `Saved/Screenshots/WindowsEditor/`:
+
+| File | Planet, altitude |
+|---|---|
+| `ring_sat_a1.png` | Saturn, 250,000 km |
+| `ring_sat_near.png` | Saturn, 60,000 km |
+| `ring_sat_far.png` | Saturn, 1,470,000 km (log-compressed range) |
+| `ring_jup_a1.png` | Jupiter, 300,000 km |
+| `ring_jup_near.png` | Jupiter, 100,000 km |
+| `ring_ura_a2.png` | Uranus, 120,000 km |
+| `ring_nep_a2.png` | Neptune, 150,000 km |
+
+**Tier B** (spawned in PIE from Python, since the host does not drive it yet), in `.../RiderMCP/`:
+
+| File | Content |
+|---|---|
+| `20261008-202922_viewport.png` | 500k rocks, 80 triangles |
+| `20261008-203020_viewport.png` | 2M rocks |
+| `20261008-231246_viewport.png` | 1M rocks plus the true-scale Tier A disc, camera 5 m above the B ring |
+
+### Open items
+
+1. **The tiers do not hand over at the ring plane.** At grazing angles the far disc turns into a bright, opaque
+   sheet across the horizon. That is physically right for the B ring, but inside the Tier B window it should
+   give way to the rocks. Fix options: fade its opacity by the distance from the camera inside the material (pass
+   the camera's local position as a fourth dynamic parameter), or have the host fade it near the plane.
+2. **Lighting ignores the real Sun** until the host passes `RingSunDirection`. Until then the viewer's side is
+   always the lit side, and there is no planet shadow keyed to the real Sun.
+3. **Velocity-pass cost** of opaque Niagara mesh particles under TSR, even with the renderer's motion vectors
+   disabled. Not yet investigated.
+4. **Jupiter's ring is too bright** next to reality (its real optical depth is about 1e-6). It currently reads
+   as a thin grey line. Lower its tau, or its `RingColor`, if strict realism is wanted.
+5. **Tooling hazards found during this work:**
+   - An Interchange OBJ import run from RiderLink's Python executor **crashes the editor** with a TaskGraph assertion (`RecursionGuard == 1`). Build meshes with GeometryScript instead.
+   - `AddUserVariables` takes the variable's `name` and `type` as flat fields. Wrapping them in `{variable: {...}}` silently creates `User.None`, and the editor later **crashes** at PIE with a NiagaraVariant assertion (`InCount > 0`). The asset was restored from git and rebuilt.
+   - GeometryScript meshes have **no UV channel** unless `set_num_uv_sets` is called, and a Niagara mesh renderer then draws nothing, with no warning.
+   - After `SetRendererData` or `SetEmitterData`, toggle any module off and on to force a real recompile before saving. Otherwise a stale compiled renderer can be saved.
