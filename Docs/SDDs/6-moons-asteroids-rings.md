@@ -1186,7 +1186,7 @@ Instancing — not particles — "and maybe the same technique if it's efficient
 unproven (verified in the spike below). The sprite look of tier A (soft non-additive material,
 count) is retuned as part of this work.
 
-### Amendment 14 — PCG spike findings (2026-10-08, in progress)
+### Amendment 14 — PCG spike findings (2026-10-08, concluded: PCG GPU spawning rejected for rings)
 
 What was learned while trying to prove the PCG GPU Spawn Static Mesh path in 5.8.3:
 
@@ -1203,5 +1203,43 @@ What was learned while trying to prove the PCG GPU Spawn Static Mesh path in 5.8
   errors and the component reported `generated`, but no ISM components were listed on the level, `GetNodeDataView`
   has no data for GPU nodes, and the editor viewport screenshots were black (viewport not rendering, so this is
   **not yet verified**). GPU Scene-written instances may legitimately not appear as ISM components.
-- **Still to prove:** instances actually visible (PIE screenshot with a lit scene), survive a graphics-settings
-  change (the 5.6 vanishing-mesh bug), and sit correctly under floating origin.
+- **Root cause of "nothing generated":** the `Gen` node's `KernelType` had been set to `PointGenerator` by plain
+  property assignment, which left the default **Required** `In` input pin in place with no edge. PCG culls a node
+  whose required input is unconnected, so the whole graph silently produced nothing (no errors, `generated` still
+  true). The engine's own tests call `UPCGCustomHLSLSettings::SetKernelType`, which empties `InputPins` for
+  generators (see the comment in `Tests/Compute/PCGCustomHLSLTest.cpp`). Fix from Python: `settings.set_editor_property('input_pins', [])`.
+  A generator sizes its output from `NumElements` directly, so the output pin's `ElementCountMode` is irrelevant.
+- **Working graph** (`/Game/SOL/Rings/PCG_SOLRingSpike`, saved at GPU/1M): `Gen` (Custom HLSL, `PointGenerator`,
+  `NumElements` 1000000, `bExecuteOnGPU`, **no input pins**) -> `Spawner` (Static Mesh Spawner, weighted selector,
+  `/Engine/BasicShapes/Sphere`, `bExecuteOnGPU`) -> Output. The kernel PCG-hashes `ElementIndex` twice to (U,V),
+  sets `R = sqrt(lerp(RMin², RMax², U))` with RMin/RMax 20000/100000 cm and angle `V·2π`, centres on
+  `0.5·(GetComponentBoundsMin()+GetComponentBoundsMax())`, then `Out_SetPosition`, `Out_SetScale(20)` and `Out_SetDensity(1)`.
+  Both kernels compile (`Gen_PCGCustomHLSLKernel`, `PCGStaticMeshSpawnerCS`: SM6 success). The GPU spawner
+  outputs one `UPCGProceduralISMComponent` (`NumInstances` 1,000,000, world bounds = the volume's bounds).
+- **Proof 1, visible at 1M: PASS.** In PIE, 1M GPU instances render as a solid annulus with the inner hole
+  showing the star field (`Saved/Screenshots/WindowsEditor/RiderMCP/20261008-192628_viewport.png`,
+  `...-193032_viewport.png`). The CPU spawner at 20k gives the same placement (`...-192423_viewport.png`).
+  Cost: the generation frame shows `ComputeFramework::ExecuteBatches` at about 50 ms, a one-off spike. Steady-state
+  per-frame cost was not cleanly isolated (`stat gpu` averages over that window: BasePass about 9 ms, PrePass about 8.5 ms with
+  1M default spheres; numbers are rough).
+- **Proof 2, survives a graphics-settings change: FAIL.** With PIE paused (so nothing else ticks),
+  `r.ScreenPercentage 50` left the ring intact, but **`scalability 1` erased it instantly** (`...-192928_viewport.png`).
+  It did not come back after restoring `scalability 3` and resuming. Engine source explains why:
+  `UPCGProceduralISMComponent::OnRenderStateDirty` says "there is no explicit persistence of instance data in the
+  GPU scene. When this component is dirtied, the instance data is cleared". Its auto-refresh of the owning PCG
+  component is `WITH_EDITOR`-only (and did not recover it in PIE either). This is the 5.6 bug class, still present in 5.8.3.
+- **The instances also vanish spontaneously while the game runs.** About 20 s after generation with no input, the ring
+  disappears (`...-192653_viewport.png`), while the component still reports 1,000,000 instances. With PIE paused
+  it survives indefinitely (`...-192834_viewport.png`, 45 s+). So some game-side activity (likely a GPU-scene
+  rebuild or reallocation from our per-frame ISM/Niagara/body updates) discards the GPU-only instance data. The exact trigger
+  was not bisected.
+- **Proof 3, correct under actor movement: FAIL.** The procedural ISM is created with **Static** mobility. When the
+  volume's root is Movable it cannot attach (`AttachTo: ... is not static, cannot attach ... PISM_Sphere_N which
+  is static to it. Aborting.`), so it sits unattached at the world origin with instance transforms baked in world
+  space at generation time. Moving the volume by 500 m did not move the ring (bounds stayed at the old position,
+  `...-193046_viewport.png`). Following a ring actor that moves every frame (floating origin plus co-rotation) would
+  need a full regeneration (about 50 ms of compute) every frame.
+- **Conclusion:** PCG GPU Spawn Static Mesh does produce visible instances at 1M in 5.8.3, but it is not usable for
+  the rings. GPU-only instance data is not persistent (it is lost on scalability changes and spontaneously in our running game),
+  and it is static world-space data that cannot follow a moving actor. **Recommendation:** use the Niagara mesh-particle
+  fallback for the ring tiers (the simulation is GPU-resident and re-creatable, and it follows a moving component in local space).
