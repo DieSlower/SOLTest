@@ -115,6 +115,12 @@ namespace SOL
     // spawn, per ring instance (implementer judgment, tuned against the required screenshot verification)
     inline constexpr int32 RING_FAR_FIELD_PARTICLE_COUNT = 4000;
 
+    // Far-field Niagara ring system (SDD 6 Amendment 13): sprite overlap factor used by
+    // SOLRingPatch::FarFieldSpriteSizeCm - multiplies the particles' typical nearest-neighbor spacing so sprites
+    // overlap into a continuous band rather than leaving visible gaps (implementer judgment, tuned against the
+    // required screenshot verification)
+    inline constexpr double RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR = 2.0;
+
     // Far-field Niagara ring system only has 3 gap-band User Parameter slots (SDD 6 Amendment 11); AllGapBandsM's
     // real data never exceeds this (Saturn's Cassini Division plus Pan's and Daphnis's shepherd gaps)
     inline constexpr int32 RING_FAR_FIELD_GAP_SLOT_COUNT = 3;
@@ -136,6 +142,10 @@ namespace SOL
         inline constexpr const TCHAR* GAP1_OUTER_RADIUS_CM = TEXT("RingGap1OuterRadiusCm");
         inline constexpr const TCHAR* GAP2_INNER_RADIUS_CM = TEXT("RingGap2InnerRadiusCm");
         inline constexpr const TCHAR* GAP2_OUTER_RADIUS_CM = TEXT("RingGap2OuterRadiusCm");
+
+        // 11th User Parameter (SDD 6 Amendment 13): per-ring sprite diameter, set from
+        // SOLRingPatch::FarFieldSpriteSizeCm (the 10 parameters above predate this one - see Amendment 11)
+        inline constexpr const TCHAR* PARTICLE_SIZE_CM = TEXT("RingParticleSizeCm");
     }
 
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000

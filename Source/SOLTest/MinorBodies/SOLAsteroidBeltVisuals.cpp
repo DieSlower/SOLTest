@@ -6,6 +6,7 @@
 #include "MinorBodies/SOLAsteroidBeltVisuals.h"
 
 #include "MinorBodies/SOLMinorBodySubsystem.h"
+#include "MinorBodies/SOLMinorBodyVisualsUtil.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
@@ -36,21 +37,6 @@ namespace
         TEXT("FamilyFill"),
     };
 
-    //////////////////////////////////////////////////////////////////////////
-    // Makes a moving primitive that has no collision, navigation, shadows or ray-tracing cost
-    void MakeVisualOnlyPrimitive(UPrimitiveComponent* component)
-    {
-        component->SetMobility(EComponentMobility::Movable);
-        component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        component->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-        component->SetCanEverAffectNavigation(false);
-        component->SetGenerateOverlapEvents(false);
-        component->SetCastShadow(false);
-        component->bAffectDistanceFieldLighting = false;
-        component->bAffectDynamicIndirectLighting = false;
-        component->bVisibleInRayTracing = false;
-        component->bReceivesDecals = false;
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -69,7 +55,7 @@ ASOLAsteroidBeltVisuals::ASOLAsteroidBeltVisuals()
         UInstancedStaticMeshComponent* mesh =
             CreateDefaultSubobject<UInstancedStaticMeshComponent>(BELT_VARIANT_NAMES[variant]);
         mesh->SetupAttachment(SceneRoot);
-        MakeVisualOnlyPrimitive(mesh);
+        SOLMinorBodyVisualsUtil::MakeVisualOnlyPrimitive(mesh);
         mesh->SetUsingAbsoluteLocation(true);
         mesh->SetUsingAbsoluteRotation(true);
         mesh->SetUsingAbsoluteScale(true);

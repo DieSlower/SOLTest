@@ -6,6 +6,7 @@
 #include "MinorBodies/SOLRingVisuals.h"
 
 #include "MinorBodies/SOLMinorBodyFragments.h"
+#include "MinorBodies/SOLMinorBodyVisualsUtil.h"
 #include "MinorBodies/SOLRingPatch.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -27,24 +28,6 @@
 
 namespace
 {
-    //////////////////////////////////////////////////////////////////////////
-    // Makes a moving primitive that has no collision, navigation, shadows or ray-tracing cost (same convention as
-    // ASOLAsteroidBeltVisuals's identically-named file-local helper; small enough that sharing it is not worth a
-    // new shared header)
-    void MakeVisualOnlyPrimitive(UPrimitiveComponent* component)
-    {
-        component->SetMobility(EComponentMobility::Movable);
-        component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        component->SetCollisionProfileName(UCollisionProfile::NoCollision_ProfileName);
-        component->SetCanEverAffectNavigation(false);
-        component->SetGenerateOverlapEvents(false);
-        component->SetCastShadow(false);
-        component->bAffectDistanceFieldLighting = false;
-        component->bAffectDynamicIndirectLighting = false;
-        component->bVisibleInRayTracing = false;
-        component->bReceivesDecals = false;
-    }
-
     //////////////////////////////////////////////////////////////////////////
     // Returns a ring's real interior gap bands (resonance + shepherd-moon), mirroring USOLRingSubsystem::
     // BuildRingState's Saturn special case (Pan/Daphnis are the only registered moons orbiting within any ring -
@@ -88,7 +71,7 @@ ASOLRingVisuals::ASOLRingVisuals()
     // same reasoning as ASOLAsteroidBeltVisuals
     NearFieldMesh = CreateDefaultSubobject<UInstancedStaticMeshComponent>(TEXT("NearField"));
     NearFieldMesh->SetupAttachment(SceneRoot);
-    MakeVisualOnlyPrimitive(NearFieldMesh);
+    SOLMinorBodyVisualsUtil::MakeVisualOnlyPrimitive(NearFieldMesh);
     NearFieldMesh->SetUsingAbsoluteLocation(true);
     NearFieldMesh->SetUsingAbsoluteRotation(true);
     NearFieldMesh->SetUsingAbsoluteScale(true);
@@ -166,6 +149,11 @@ void ASOLRingVisuals::BeginPlay()
         static_cast<float>(mRingDef.InnerRadiusM * SOL::METERS_TO_CM));
     FarFieldNiagara->SetVariableInt(SOL::RingFarFieldParams::PARTICLE_COUNT, SOL::RING_FAR_FIELD_PARTICLE_COUNT);
     FarFieldNiagara->SetVariableLinearColor(SOL::RingFarFieldParams::COLOR, mRingDef.Color);
+    // Sprite size (SDD 6 Amendment 13): sized from this ring's own width, not a fixed constant, so every ring reads
+    // as a continuous band despite sharing the same fixed RING_FAR_FIELD_PARTICLE_COUNT across very different
+    // widths/circumferences (Saturn's ring is ~10x wider than Jupiter's)
+    FarFieldNiagara->SetVariableFloat(SOL::RingFarFieldParams::PARTICLE_SIZE_CM, static_cast<float>(
+        SOLRingPatch::FarFieldSpriteSizeCm(mRingDef.OuterRadiusM, mRingDef.InnerRadiusM, SOL::RING_FAR_FIELD_PARTICLE_COUNT)));
 
     const TArray<FSOLRadiusBandM> gapBands = BuildRingGapBandsM(registry, mRingDef);
     if (gapBands.Num() > SOL::RING_FAR_FIELD_GAP_SLOT_COUNT)
