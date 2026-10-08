@@ -123,7 +123,11 @@ The review must check at least the following (the research file has the complete
 
 ## Git
 
-**Never run `git add` or `git commit`.** Do not stage or commit changes under any circumstances — leave that to the user. Read-only git operations (e.g. `git status`, `git diff`, `git log`, `git show`, `git branch`) may be run freely by dispatched subagents; the main session runs them only when the user explicitly allows it, so ask first.
+**Commit and push once a part is done.** Once a roadmap part is implemented, its tests pass, and the required adversarial performance/style review's findings are fixed (or explicitly accepted as tech debt), stage the part's changes, commit on `master` (this project's established pattern — no per-part feature branches), and push to `origin`. Commit message convention (match the existing log): `Issue #<N>: Part <slug> - <short description>` (`<N>` is the GitHub issue number — Part N's own ticket — not the part letter), e.g. `Issue #6: Part 5e-iii - ring visuals and far-field Niagara`. End the message with the attribution line the session's own system reminder specifies.
+
+*(Superseded 2026-10-07: the previous rule here was "never run `git add`/`git commit`, leave it to the user" — the user explicitly asked for this to change after noticing parts were going uncommitted. If this instruction and a stricter verbal one conflict in a future session, the verbal one wins; update this file to match rather than silently reverting.)*
+
+Read-only git operations (`git status`, `git diff`, `git log`, `git show`, `git branch`) may be run freely, by the main session or a dispatched subagent. Destructive/history-rewriting operations (force-push, reset --hard past a shared commit, rebase of pushed history) still require asking first.
 
 ## Conventions
 
