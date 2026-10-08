@@ -1110,6 +1110,24 @@ earlier PIE "no error" check proved nothing about the asset. Fixed by adding
 `InitializeParticle` Sprite Size Mode to Uniform, and linking Uniform Sprite Size to the new
 parameter; the system compiles with zero errors/warnings.
 
+**The far field was also invisible at runtime, for four independent reasons, all fixed in the
+asset (verified by a real Saturn screenshot, `-SOLStart=Saturn -SOLAltitudeKm=250000
+-SOLLookAt=Saturn -SOLSmokeShot`, plus PIE test rings):** (1) `ShapeLocation` used Ring/Disc with
+Disc Coverage 0, which spawns particles on the outer circle only, and Hexagon mode rendered in the
+wrong plane; it is now a Cylinder (radius = `RingOuterRadiusCm`, height 1 cm, so a flat circular
+disc in the XY plane that matches the C++ orientation). (2) `UseOwnerScale` was on, so positions
+were scaled twice (the emitter is local-space and the component scale already applies at render
+time); it is now off. (3) The inner-hole and gap `KillParticlesInVolume` modules misbehave
+whenever the component scale is not 1 (a hole of radius r removed everything at scale 2 once r*2
+reached the outer radius), and the far field is always scaled by `placement.RadiusCm /
+OuterRadiusCm`; all seven kill modules were removed and replaced by one SetParameters module that
+sets `Particles.SpriteSize` to zero for any particle whose local-space radius falls in the hole
+or a gap (scale-independent; a zero-size sprite is not drawn). (4) `SpawnBurst_Instantaneous`
+looped every second with particles that never die, so the count grew by `RingParticleCount` per
+second without bound; it is now limited to one loop. Remaining visual polish (still deferred with
+the placeholder-appearance work): the default additive sprite material saturates to white where
+sprites overlap, and 4000 random sprites clump, so the band is lumpy rather than smooth.
+
 **A real bug found in passing, not caused by this change**: `ASOLAsteroidBeltVisuals.cpp` and
 `ASOLRingVisuals.cpp` each had an identically-named file-local `MakeVisualOnlyPrimitive`
 helper in its own anonymous namespace, deliberately kept separate per Amendment 12's comment
