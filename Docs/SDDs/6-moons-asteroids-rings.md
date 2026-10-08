@@ -1161,3 +1161,27 @@ ringed planets spawn, zero `LogSOL` errors, `RingParticleSizeCm` set without err
 confirmed the runtime wiring. This is new, not-yet-triaged tech debt: the headless runner
 should be restored to a known-working state (or the actual root cause found) before relying on
 it for an unattended/CI-style run again.
+
+## Amendment 14 — realistic rings: three-tier GPU redesign (grill-me, 2026-10-08)
+
+**Why.** Real PIE screenshots at Saturn (120,000 km and 30,000 km altitude) showed the 5e-iii
+far field reading as giant overlapping white blobs: 4,000 additive sprites sized to overlap on a
+ring area that large, so the ring gaps are unreadable and the planet limb is hidden. The user
+asked for rings that look like Epic's **Cassini Sample Project** (UE 5.5, PCG), whose Saturn
+rings are millions of real static meshes spawned with PCG GPU compute and GPU Scene
+Instancing — not particles — "and maybe the same technique if it's efficient enough".
+
+**Decisions (grill-me, all answered by the user):**
+
+| # | Decision | Resolution |
+|---|---|---|
+| 1 | Technique | Hybrid: Niagara mesh particles at range, PCG GPU instancing for the dense layer, "visually like Cassini". |
+| 2 | Existing near-field pool | Keep the ~2,500 Mass rocks per ring for the closest rocks (collision-ready, exact positions; preserves `Docs/ToDo/asteroid-ring-collision.md`). Add a non-collidable GPU-instanced dense layer. The user also asked to combine Mass and PCG where possible: the Mass pool stays authoritative for the nearest rocks and the PCG layer fills the density around and beyond them. |
+| 3 | Dense layer feature | PCG runtime GPU "Spawn Static Mesh" (5.8). The 5.6-era forum report of GPU-spawned meshes vanishing after a graphics-settings change is unconfirmed fixed in 5.8; the 5.8 plugin does ship `PCGStaticMeshSpawnerKernel`. The first implementation step verifies it empirically (visible at scale, survives a settings change, sits correctly under floating origin on the ring actor); failure is recorded here and the dense tier falls back to Niagara mesh particles. |
+| 5 | Rock meshes | Generated procedurally in-project (about 6 Nanite variants under `/Game/SOL/Rings/`), shaped with Cassini / Fab / Quixel rocks as visual reference. |
+| 6 | Budget | Match Cassini: about 5M instances for Saturn, scaled by ring area for the other three; tuned against `stat gpu` / Insights, counts as `SOLConstants.h` constants. |
+| 7 | Tier handover | Best performance that keeps realism (user's call), so: A = Niagara far field for the whole-ring view from outside, B = PCG GPU dense layer when the camera is near or inside the ring, C = Mass rocks closest; cross-faded through the existing `ComputeNearFieldAlpha` mechanism with thresholds as constants. |
+
+**Open / unresolved.** PCG's behavior under floating-origin rebasing and ring co-rotation is
+unproven (verified in the spike below). The sprite look of tier A (soft non-additive material,
+count) is retuned as part of this work.
