@@ -1086,3 +1086,54 @@ stack frames, not something this part's C++ causes or can fix.
 asset's `bLocalSpace` correction are all in place and re-verified (PIE smoke test,
 400/400 automated tests). 5e-iv's screenshot verification remains the first real visual
 check of the near/far cross-fade and the gap bands now that the placement math is correct.
+
+## Amendment 13 — far-field sprite size, a real unity-build bug, and a headless-runner infra issue
+
+Added a per-ring far-field sprite size instead of a fixed one: `RING_FAR_FIELD_PARTICLE_COUNT`
+is the same 4000 for every ringed planet, but the rings' widths/circumferences differ by
+roughly 10x (Saturn vs. Jupiter), so a single fixed sprite diameter either left visible gaps
+on the widest ring or over-fattened the narrowest one. `SOLRingPatch::FarFieldSpriteSizeCm`
+(`SOLRingPatch.h`/`.cpp`) models the burst's particles as scattered uniformly at random over
+the ring's annulus area, takes the typical nearest-neighbor spacing
+(`sqrt(area / particleCount)`), and scales it by the new `SOL::RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR`
+(2.0, implementer judgment) so sprites overlap into a continuous band. Wired into
+`ASOLRingVisuals::BeginPlay` via a new 11th far-field User Parameter,
+`SOL::RingFarFieldParams::PARTICLE_SIZE_CM` (`RingParticleSizeCm`), set alongside the other
+ten from Amendment 11. Covered by 8 new TDD unit tests in `SOLRingPatchTest.cpp` (equal/
+inverted radii, Jupiter/Saturn scale, monotonic-in-area, zero/negative particle count, no
+inner hole) plus the Niagara asset's own `RingParticleSizeCm` User Parameter and sprite-size
+material wiring (declared on the asset directly in-editor, not generated code).
+
+**A real bug found in passing, not caused by this change**: `ASOLAsteroidBeltVisuals.cpp` and
+`ASOLRingVisuals.cpp` each had an identically-named file-local `MakeVisualOnlyPrimitive`
+helper in its own anonymous namespace, deliberately kept separate per Amendment 12's comment
+("small enough that sharing it is not worth a new shared header"). That assumption was wrong:
+Unreal's adaptive unity build can place both `.cpp` files in the same translation unit, and an
+anonymous namespace only prevents a symbol collision *within* one TU boundary, not across the
+two files once merged into one — so the two identical definitions failed to compile the first
+time both files landed in the same unity blob. Fixed by extracting the one real implementation
+into a new shared header, `SOLMinorBodyVisualsUtil.h`, with both call sites updated.
+
+**A headless test-runner infrastructure issue, worth recording since it cost significant time
+to isolate**: `Tools\RunTests.ps1`'s `UnrealEditor-Cmd -ExecCmds="Automation RunTests ..."`
+path reproducibly stalled on this machine, every time, at the identical point in startup
+(immediately after `CleanupOrphanedCacheFiles`/DDC maintenance, before any automation-related
+log line ever appeared) — with no error, and CPU usage that kept climbing, meaning it was not
+a simple deadlock. Neither pausing the system VPN nor closing Rider (both plausible interferers
+with RiderLink/the embedded `ModelContextProtocol` server) changed the stall point, ruling both
+out. Running with a real RHI instead of `-nullrhi` got one line further (a `LogPSOHitching`
+line, impossible under `-nullrhi`) before stalling again, suggesting the headless path never
+reaches the automation-controller/worker handshake at all. The root cause was not found.
+**Workaround, used for this part's verification and recommended for future parts until the
+headless runner is fixed:** drive the already-open interactive Editor instead, via
+`mcp__rider__ue_execute_python` to invoke the `Automation RunTests <filter>` console command
+and `mcp__rider__ue_get_logs`/`ue_status` to poll `LogAutomationController` for `Test Started`/
+`Test Completed` lines. In the interactive editor the test queued and ran via Unreal's own
+`FWaitForInteractiveFrameRate` latent gate (which simply waits for editor FPS ≥ 10, logging its
+wait every 30s, timing out at 10 minutes) — confirming the interactive path's automation
+pipeline itself works correctly; only the headless command-line path is broken. All 8 new
+`SOLTest.RingPatch.FarFieldSpriteSize*` tests passed this way, and a PIE smoke test (all 4
+ringed planets spawn, zero `LogSOL` errors, `RingParticleSizeCm` set without error on each)
+confirmed the runtime wiring. This is new, not-yet-triaged tech debt: the headless runner
+should be restored to a known-working state (or the actual root cause found) before relying on
+it for an unattended/CI-style run again.
