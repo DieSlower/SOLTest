@@ -174,19 +174,30 @@ bool FSOLRingPatchActiveCellPresenceTest::RunTest(const FString& /*parameters*/)
         planetM + inPlane * (0.5 * RINGPATCH_INNER_M), planetM, normal, ring, RINGPATCH_MARGIN_M,
         RINGPATCH_HALF_THICKNESS_M).IsSet());
 
-    // Offset along the normal beyond / within halfThicknessM (both sides of the plane)
-    TestFalse(TEXT("Above the plane beyond halfThickness is UNSET"), RingPatchActiveCellNow(
-        planetM + inPlane * midRadiusM + normal * (2.0 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
-        RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
-    TestFalse(TEXT("Below the plane beyond halfThickness is UNSET"), RingPatchActiveCellNow(
-        planetM + inPlane * midRadiusM - normal * (2.0 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
-        RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    // Offset along the normal within halfThicknessM, within the vertical margin beyond it, and beyond both (both
+    // sides of the plane) - marginM pads the vertical thickness test exactly as it pads the radial band (review
+    // follow-up: this used to have no vertical margin at all, so ComputeNearFieldAlpha's fade - which uses this
+    // same margin as its transition band - never actually got to run for a vertical approach)
     TestTrue(TEXT("Above the plane within halfThickness is SET"), RingPatchActiveCellNow(
         planetM + inPlane * midRadiusM + normal * (0.5 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
         RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
     TestTrue(TEXT("Below the plane within halfThickness is SET"), RingPatchActiveCellNow(
         planetM + inPlane * midRadiusM - normal * (0.5 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
         RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    TestTrue(TEXT("Above the plane beyond halfThickness but within the vertical margin is SET"),
+        RingPatchActiveCellNow(planetM + inPlane * midRadiusM
+            + normal * (RINGPATCH_HALF_THICKNESS_M + 0.5 * RINGPATCH_MARGIN_M), planetM, normal, ring,
+            RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    TestTrue(TEXT("Below the plane beyond halfThickness but within the vertical margin is SET"),
+        RingPatchActiveCellNow(planetM + inPlane * midRadiusM
+            - normal * (RINGPATCH_HALF_THICKNESS_M + 0.5 * RINGPATCH_MARGIN_M), planetM, normal, ring,
+            RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    TestFalse(TEXT("Above the plane beyond halfThickness and the vertical margin is UNSET"), RingPatchActiveCellNow(
+        planetM + inPlane * midRadiusM + normal * (RINGPATCH_HALF_THICKNESS_M + RINGPATCH_MARGIN_M + 1.0), planetM,
+        normal, ring, RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    TestFalse(TEXT("Below the plane beyond halfThickness and the vertical margin is UNSET"), RingPatchActiveCellNow(
+        planetM + inPlane * midRadiusM - normal * (RINGPATCH_HALF_THICKNESS_M + RINGPATCH_MARGIN_M + 1.0), planetM,
+        normal, ring, RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
 
     // NaN anywhere in the inputs is rejected, never admitted
     const double nan = std::numeric_limits<double>::quiet_NaN();
@@ -356,10 +367,11 @@ bool FSOLRingPatchActiveCellTiltedTest::RunTest(const FString& /*parameters*/)
         planetM + inPlaneWithZ * midRadiusM, planetM, normal, ring, RINGPATCH_MARGIN_M,
         RINGPATCH_HALF_THICKNESS_M).IsSet());
 
-    // Displaced purely along the tilted normal beyond halfThicknessM: UNSET
-    TestFalse(TEXT("Tilted: 2x halfThickness along the tilted normal is UNSET"), RingPatchActiveCellNow(
-        planetM + inPlaneX * midRadiusM + normal * (2.0 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
-        RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
+    // Displaced purely along the tilted normal beyond halfThicknessM AND its vertical margin: UNSET (marginM pads
+    // the vertical test too - see FSOLRingPatchActiveCellPresenceTest - so this offset must clear both)
+    TestFalse(TEXT("Tilted: beyond halfThickness + margin along the tilted normal is UNSET"), RingPatchActiveCellNow(
+        planetM + inPlaneX * midRadiusM + normal * (RINGPATCH_HALF_THICKNESS_M + RINGPATCH_MARGIN_M + 1.0), planetM,
+        normal, ring, RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());
     TestTrue(TEXT("Tilted: 0.5x halfThickness along the tilted normal is SET"), RingPatchActiveCellNow(
         planetM + inPlaneX * midRadiusM + normal * (0.5 * RINGPATCH_HALF_THICKNESS_M), planetM, normal, ring,
         RINGPATCH_MARGIN_M, RINGPATCH_HALF_THICKNESS_M).IsSet());

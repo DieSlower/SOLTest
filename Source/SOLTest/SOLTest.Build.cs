@@ -29,6 +29,7 @@ public class SOLTest : ModuleRules
             "EngineSettings",
             "EnhancedInput",
             "InputCore",
+            "Niagara",
             "RenderCore",
             "Slate",
             "SlateCore",

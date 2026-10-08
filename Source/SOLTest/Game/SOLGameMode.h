@@ -24,7 +24,8 @@ public:
     // Sets the default pawn and HUD classes
     ASOLGameMode();
 
-    // Spawns the body, star-field and asteroid-belt visuals, arms the optional smoke-test screenshot, then starts play
+    // Spawns the body, star-field, asteroid-belt and per-ring visuals, arms the optional smoke-test screenshot,
+    // then starts play
     virtual void StartPlay() override;
 
     // Returns true for a Game or PIE world whose game mode (world override, else project default) is an ASOLGameMode

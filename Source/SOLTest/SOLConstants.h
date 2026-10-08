@@ -111,6 +111,33 @@ namespace SOL
     inline constexpr double RING_PATCH_ACTIVATION_MARGIN_CELLS = 5.0;
     inline constexpr double RING_PATCH_HALF_THICKNESS_CELLS = 2.0;
 
+    // Far-field Niagara ring system (SDD 6 Amendment 11): total particle count of the shared system's one-time burst
+    // spawn, per ring instance (implementer judgment, tuned against the required screenshot verification)
+    inline constexpr int32 RING_FAR_FIELD_PARTICLE_COUNT = 4000;
+
+    // Far-field Niagara ring system only has 3 gap-band User Parameter slots (SDD 6 Amendment 11); AllGapBandsM's
+    // real data never exceeds this (Saturn's Cassini Division plus Pan's and Daphnis's shepherd gaps)
+    inline constexpr int32 RING_FAR_FIELD_GAP_SLOT_COUNT = 3;
+
+    // Niagara User Parameter names of Paths::RING_FAR_NIAGARA_SYSTEM (SDD 6 Amendment 11; authored live via the
+    // editor's NiagaraToolsets API, so these names live only here and in that asset, not in any content-pipeline
+    // script). Every gap slot's full name is spelled out rather than built from a prefix, so
+    // RING_FAR_FIELD_GAP_SLOT_COUNT changing is a compile error at the array in SOLRingVisuals.cpp
+    // (static_assert), not a silently-wrong constructed name.
+    namespace RingFarFieldParams
+    {
+        inline constexpr const TCHAR* OUTER_RADIUS_CM = TEXT("RingOuterRadiusCm");
+        inline constexpr const TCHAR* INNER_RADIUS_CM = TEXT("RingInnerRadiusCm");
+        inline constexpr const TCHAR* PARTICLE_COUNT = TEXT("RingParticleCount");
+        inline constexpr const TCHAR* COLOR = TEXT("RingColor");
+        inline constexpr const TCHAR* GAP0_INNER_RADIUS_CM = TEXT("RingGap0InnerRadiusCm");
+        inline constexpr const TCHAR* GAP0_OUTER_RADIUS_CM = TEXT("RingGap0OuterRadiusCm");
+        inline constexpr const TCHAR* GAP1_INNER_RADIUS_CM = TEXT("RingGap1InnerRadiusCm");
+        inline constexpr const TCHAR* GAP1_OUTER_RADIUS_CM = TEXT("RingGap1OuterRadiusCm");
+        inline constexpr const TCHAR* GAP2_INNER_RADIUS_CM = TEXT("RingGap2InnerRadiusCm");
+        inline constexpr const TCHAR* GAP2_OUTER_RADIUS_CM = TEXT("RingGap2OuterRadiusCm");
+    }
+
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000
     inline constexpr double SECULAR_ELEMENTS_MIN_CENTURIES = -2.0;
     inline constexpr double SECULAR_ELEMENTS_MAX_CENTURIES = 0.5;
@@ -229,6 +256,10 @@ namespace SOL
         inline constexpr const TCHAR* BODY_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
         inline constexpr const TCHAR* BODY_MATERIAL = TEXT("/Game/SOL/Materials/M_SOLBody.M_SOLBody");
         inline constexpr const TCHAR* TEST_MAP = TEXT("/Game/Maps/SOL_Test");
+
+        // Ring far field (SDD 6 Amendment 11): one shared, parameterized Niagara system authored live via the
+        // editor's NiagaraToolsets API, not a content-pipeline asset
+        inline constexpr const TCHAR* RING_FAR_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingFar.NS_SOLRingFar");
 
         // Placeholder ship: engine primitives (100 cm across, centered) and the engine's lit basic material
         inline constexpr const TCHAR* SHIP_PART_CUBE = TEXT("/Engine/BasicShapes/Cube.Cube");

@@ -115,6 +115,7 @@ void ASOLAsteroidBeltVisuals::BeginPlay()
     mQuery.AddRequirement<FSOLMinorBodyRenderFragment>(EMassFragmentAccess::ReadOnly);
     mQuery.AddRequirement<FSOLMinorBodyStateFragment>(EMassFragmentAccess::ReadOnly);
     mQuery.AddConstSharedRequirement<FSOLMinorBodyAppearanceFragment>();
+    mQuery.AddTagRequirement<FSOLBeltRockTag>(EMassFragmentPresence::All);
     mQuery.SetParallelCommandBufferEnabled(false);
 
     // Scratch transforms sized once to the spawned counts; every frame overwrites them in place

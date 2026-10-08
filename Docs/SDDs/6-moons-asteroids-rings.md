@@ -879,3 +879,210 @@ One real bug and several real but non-blocking findings:
   single shared ISM indexed across all four.
 
 5e-ii is now considered fully verified within the limits described above.
+
+## Amendment 11 — 5e-iii far-field Niagara system: implementation notes and a correctness fix
+
+Per Amendment 6's directive, the far-field Niagara system was authored live by the main
+session through the editor's Niagara-scripting API (`unreal-mcp`'s `NiagaraToolsets`
+plugin), not hand-built in the Niagara editor UI and not delegated to a subagent. This
+amendment records the concrete technique, since none of it is visible from reading the
+C++ (the asset itself has no unit test, per this SDD's own testing section).
+
+**Stateless-emitter blocker: resolved as moot.** The standard (stateful)
+`/Niagara/Modules/Spawn/Location/V2/ShapeLocation` module supports a Ring/Disc shape
+primitive directly in a normal `UNiagaraEmitter` (confirmed via its script digest's
+keywords: `"Sphere Cylinder Ring Torus Knot Disc Disk Cone Plane Box"`). No Stateless
+emitter or template was needed.
+
+**The system: `/Game/SOL/Rings/NS_SOLRingFar`**, one shared system (built from
+`/Niagara/DefaultAssets/Templates/Systems/MinimalLightweight`) with one emitter
+`RingDust` (built from `/Niagara/DefaultAssets/Templates/Emitters/Minimal`), parameterized
+per planet by 10 auto-created Niagara User Parameters: `RingOuterRadiusCm`,
+`RingInnerRadiusCm`, `RingParticleCount`, `RingColor`, and three gap-band pairs
+`RingGap{0,1,2}{Inner,Outer}RadiusCm` (3 slots is enough headroom — `AllGapBandsM`'s real
+data tops out at 3 interior gaps, all on Saturn: the Cassini Division plus Pan's and
+Daphnis's shepherd gaps; Jupiter/Uranus/Neptune currently have none). `ASOLRingVisuals`
+will set these per instance from `FSOLPlanetRingDef`/`SOLPlanetRing::AllGapBandsM`,
+converting meters to centimeters (Niagara's native unit).
+
+**Module stack** (`ParticleSpawnScript`, in order): `InitializeParticle` (Color Mode =
+Direct Set, Color linked to `User.RingColor`) → `ShapeLocation` (Shape Primitive =
+Ring/Disc, Distribution = Random, Ring Radius linked to `User.RingOuterRadiusCm` — fills
+the full disc out to the outer radius) → `KillParticlesInVolume` (Sphere Radius linked to
+`User.RingInnerRadiusCm`, not inverted — carves out the inner hole) → three more
+`KillParticlesInVolume` instances, one per gap slot (the annulus technique below) → three
+*disabled* `KillParticlesInVolume` instances, one per gap slot, that exist solely to
+declare a User Parameter (the declare-only trick below). `EmitterSpawnScript` has
+`SpawnBurst_Instantaneous` (Spawn Count linked to `User.RingParticleCount`) instead of a
+continuous `SpawnRate`, and `ParticleUpdateScript`'s `ParticleState` has "Kill Particles
+When Lifetime Has Elapsed" forced off — particles are placed once by the burst and live
+forever after, matching Decision 7's "doesn't track individual rock positions" framing at
+near-zero ongoing cost. `simTarget` remains `CPUSim` (not yet investigated whether the
+toolset exposes a GPU sim target switch; flagged for 5e-iv's performance pass given the
+project's "GPU-driven effects over CPU sprites" guideline).
+
+**The annulus technique** (inner cutout and each gap band): `KillParticlesInVolume`'s
+`Kill Shape` stock options (Box/Plane/Slab/Sphere/Cone) have no shape for "an annular band
+between two radii" directly — Sphere alone only tests a single inside/outside threshold.
+The fix exploits that `Kill Volume Enabled` (unlike `Kill Shape`, `Sphere Radius`, etc.)
+is a per-particle dynamic `NiagaraBool` input, not a static switch, and that
+`SetStackInputData` accepts an arbitrary HLSL expression for any input slot (confirmed by
+probing the schema with a deliberately-invalid struct ref, a now-repeated technique for
+this API). For a gap band `[inner, outer]`: `Kill Shape` = Sphere, `Sphere Radius` =
+linked to the gap's outer-radius User Parameter, `Invert Volume` = false (shape test =
+"inside outer radius"), and `Kill Volume Enabled` = the HLSL expression
+`length(Particles.Position) >= User.RingGapNInnerRadiusCm` (the inner-radius test). Niagara
+ANDs a module's own shape test with `Kill Volume Enabled` (consistent with the field's
+name and with every other stock module's "XEnabled" gating convention), so the particle is
+only killed when both hold — exactly the band. The plain inner-radius cutout needs only
+the shape test (`Kill Volume Enabled` = literal true), since one threshold is sufficient
+there.
+
+**The declare-only trick.** A name referenced only inside an `HlslExpression` string
+(e.g. `User.RingGap0InnerRadiusCm` above) does **not** auto-create a Niagara User
+Parameter the way a `Linked` input binding does — this was caught empirically (a quick
+in-level `NiagaraComponent` placed via `SceneTools.add_to_scene_from_asset` and queried
+with `NiagaraToolset_Component.GetUserVariables` showed the outer-radius parameters
+present but the inner-radius ones completely absent, meaning every gap band was silently
+testing against an unresolved/default-zero inner bound). The fix: one extra
+`KillParticlesInVolume` instance per gap slot, permanently disabled (`Kill Volume
+Enabled` = literal false, so it can never affect simulation), whose `Sphere Radius` is
+linked to the same `User.RingGapNInnerRadiusCm` name purely to force Niagara to create it
+as a real, exposed User Parameter. This is the only known way to pre-declare a parameter
+that's otherwise referenced solely inside expression text through this API; no dedicated
+"add User Parameter" or "Set Parameters" stack-item function was found despite searching
+(`AddUserParameter`/`SetUserParameterValue`/`SetUserParameterDefaultValue` are all
+"Unknown tool", and routing through `SetStackInputData` with an empty module reference
+errors with "Module name not specified in stack reference" — System-level parameter
+declaration has no exposed entry point other than piggybacking a real module field).
+
+**A real correctness bug caught during this verification, not yet confirmed fixed by a
+screenshot.** The system's default `SystemState` module (`SystemUpdateScript`, present on
+every system by default, not something `AddModule` needed to add) had its template
+default `Loop Behavior`, which is **not** infinite — a finite `Loop Duration` after which
+the system goes `Inactive`. Combined with `ParticleState`'s lifetime-kill already being
+off, this meant the *particles* would have lived forever but the *system* would have
+deactivated itself shortly after the one-time burst anyway, which in an editor smoke test
+left an already-placed `NiagaraComponent` stuck permanently `IsActive() == false` after
+its first (short) loop completed — reactivating it from Python during the same session did
+not reliably flip it back on mid-session, strongly suggesting the real game would have
+hit the same thing after a few seconds. **Fixed**: `SystemState`'s `Loop Behavior` is now
+set to `Infinite` (confirmed index 0 of `ENiagara_EmitterStateOptions` maps to exactly
+that display name), so the system never goes inactive and the one-time burst's particles
+keep rendering indefinitely, as originally intended.
+
+**Still open / deferred to 5e-iv:**
+- The `Kill Volume Enabled`-ANDs-with-shape-test assumption above is inferred from the
+  field's semantics and naming convention, not confirmed by a screenshot — an editor-only
+  smoke test (placing the system in the current level, overriding its User Parameters,
+  and screenshotting) was attempted but blocked by the `SystemState` bug above eating the
+  session's time; by the time that was fixed, the test actor had already been cleaned up
+  rather than re-attempted, since 5e-iv's own PIE screenshot pass (with `ASOLRingVisuals`
+  setting real per-planet values) is a strictly better environment to verify this in. If
+  gaps don't show up correctly there, re-check this assumption first.
+- No sprite material assigned yet (still the `Minimal` template's default renderer
+  material); no per-planet material/texture decision made.
+- `InitializeParticle`'s `Lifetime`, `Position Mode`, `Sprite Size Mode`/size and other
+  fields are all still at template defaults, unreviewed for suitability at ring scale.
+- No mechanism found for setting the asset's own System-level default/preview values for
+  the ten User Parameters (low priority — `ASOLRingVisuals` sets real values at runtime
+  regardless).
+
+## Amendment 12 — 5e-iii `ASOLRingVisuals` and its adversarial review
+
+Built `ASOLRingVisuals` (near-field ISM over `USOLRingSubsystem`'s pool, far-field
+`UNiagaraComponent` on the shared `NS_SOLRingFar` system), the `FSOLBeltRockTag`/
+`FSOLRingRockTag` Mass tags, and wired `ASOLGameMode` to spawn one instance per
+`SOLPlanetRing::RealRings()` entry. PIE-smoke-tested (all 4 rings spawn, zero `LogSOL`
+errors) and the full test suite re-run clean (400/400) before the required fresh
+adversarial review. The review found three high-severity bugs in the far-field placement
+that neither the smoke test nor the unit tests could have caught (none of them touch
+Mass data or produce a log error - they are purely about what ends up on screen), plus a
+real `bActive` default-value bug and several smaller issues. All are fixed; the fixes are
+summarized here since none of them were visible from reading Amendment 11 alone.
+
+**The most consequential finding: `RingDust`'s `bLocalSpace` was `false`.** Checked
+directly against the live asset (`GetEmitterData`, not inferred) and confirmed to matter:
+with a world-space emitter, the one-time burst's particles are baked at absolute
+positions relative to wherever the component happened to be at the moment it first
+activates, and never move again — `ASOLRingVisuals` moving the component every frame to
+track its planet would have left the entire ring visually stranded at its spawn position
+(effectively near the Unreal origin) instead of following the planet at all, and the
+gap-band kill expressions (`length(Particles.Position) >= User.RingGapN...`) would have
+measured distance from world/LWC origin rather than from the ring's own center. Fixed by
+`SetEmitterData({"bLocalSpace": true})` against the live asset (confirmed by reading it
+back, and that no other field changed) and saved to disk. This should have been verified
+during Amendment 11's own authoring session and was not; the asset's own name table
+listing `bLocalSpace` as a field was noticed but not confirmed to be `true`.
+
+**Two more high-severity bugs, both in `PlaceFarFieldNiagara` (`FillTransforms` at the
+time):**
+- The far-field component's position was log-compressed with distance (via
+  `BodyPlacement`, correctly matching every other rendered body), but nothing compensated
+  the component's *scale* — the annulus kept its true centimeter size from the Niagara
+  system's own User Parameters regardless of distance, so a ring viewed from realistic
+  range (e.g. Saturn as seen from Earth's distance) would have rendered roughly 770x too
+  large relative to its own planet. Fixed by calling `BodyPlacement` with the ring's real
+  `OuterRadiusM` (not `0.0`) and using `placement.RadiusCm / (OuterRadiusM * METERS_TO_CM)`
+  as the component's uniform `SetWorldScale3D` — the same compression ratio a body mesh's
+  radius gets, applied to the ring.
+- The far-field rotation fed the ring-plane normal (ecliptic axes, correct for
+  `DistanceOutsideRingVolumeM`'s own math) directly into `FindBetweenNormals` against
+  Unreal's `UpVector`, mixing coordinate frames the way `SOLBodyVisuals.cpp` explicitly
+  converts before avoiding. Fixed by caching `SOLRender::EclipticToUnreal(planet's
+  orientation)` once in `BeginPlay` as `mFarFieldRotation` and using that directly (also
+  resolving a separate minor finding: recomputing an unchanging rotation, through a lossy
+  quat→rotator round trip, every single frame).
+
+**One correctness bug in the Mass side, caught by the same review:**
+`FSOLMinorBodyRenderFragment::bActive` defaulted `true` and `SpawnRingPools` never set it
+false at spawn, so a ring-pool group that was never assigned a cell (or any cell with
+fewer rocks than the group has entities, which reused `rocks[slot % rocks.Num()]` to fill
+the rest) rendered `RingSafeDefaultElements`'s placeholder orbit or a duplicate instance
+instead of nothing. Fixed in both places: `SpawnRingPools` now explicitly sets
+`render.bActive = false` per entity at creation, and `AssignGroup`'s gap-reduced-cell path
+marks excess slots inactive instead of duplicating. The fragment's own default stays
+`true` (correct for belt asteroids, which never touch this field) - only the ring
+subsystem's spawn path needed the explicit set.
+
+**One design inconsistency, fixed**: `SOLRingPatch::ComputeActiveCell` admitted a margin
+only on the radial band, not vertically, so a player approaching a ring from above/below
+would see the near-field pool populate (and therefore render at near-full near-field
+alpha) only once already inside the ring's real physical half-thickness, with no room for
+`ComputeNearFieldAlpha`'s fade to actually run - contradicting `ASOLRingVisuals`'s own
+"the margin is a single source of truth shared by both" framing. Fixed by applying
+`marginM` to the vertical thickness test too (`ComputeActiveCell`'s `bWithinThickness`),
+matching the radial treatment exactly; `SOLRingPatchTest.cpp`'s boundary cases were
+updated for the new (wider) admission band.
+
+**One performance fix**: the near-field query/upload (up to ~10,000-entity iteration,
+2,500-instance `BatchUpdateInstancesTransforms`, per actor, every frame) ran
+unconditionally even when a ring's near field had been fully faded for a long time (the
+common case - realistically only one ring is ever near the player at once).
+`ASOLRingVisuals` now tracks the previous frame's alpha and skips the near-field work
+entirely once both the previous and current alpha are 0, always still re-placing the
+(cheap) far field.
+
+**Smaller fixes**: the far-field gap-slot User Parameter names are now six explicit
+`SOLConstants.h` constants (with a `static_assert` tying the array to
+`RING_FAR_FIELD_GAP_SLOT_COUNT`) instead of a prefix string concatenated with
+`FString::Printf` every `BeginPlay`; `FarFieldNiagara` now sets `bAutoActivate = false` in
+the constructor and calls `Activate(true)` explicitly after every User Parameter is set,
+rather than relying on auto-activation's timing relative to `SetVariable*`; uninitialized
+scratch transforms default to zero scale instead of `FTransform::Identity` (a never-
+written slot would otherwise show a unit-scale sphere at the Unreal origin); the
+`Paths::RING_FAR_NIAGARA_SYSTEM` constant gained its `.NS_SOLRingFar` object-path suffix,
+matching every other `Paths` constant's convention; several stale/incomplete comments
+were corrected (one of which had already drifted from true to false again within this
+same session, caught only by review).
+
+**Not caused by this part**: a recurring PIE log line ("Handled ensure:
+`IsInGameThread()` failed... `FAppTime`") was traced to Niagara system compilation inside
+the editor generally (reproduced by an unrelated scratch Niagara system, before any
+`ASOLRingVisuals` existed) - an engine-side, render-thread issue with zero `SOLTest` call
+stack frames, not something this part's C++ causes or can fix.
+
+5e-iii is complete: Mass tags, `bActive`, `ASOLRingVisuals`, and the far-field Niagara
+asset's `bLocalSpace` correction are all in place and re-verified (PIE smoke test,
+400/400 automated tests). 5e-iv's screenshot verification remains the first real visual
+check of the near/far cross-fade and the gap bands now that the placement math is correct.

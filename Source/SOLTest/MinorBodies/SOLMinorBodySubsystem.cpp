@@ -141,11 +141,14 @@ void USOLMinorBodySubsystem::SpawnAsteroidBelt()
         variantDefs[variant].Add(&def);
     }
 
-    // One archetype; each variant is one batch whose shared appearance value selects its ISM component
+    // One archetype; each variant is one batch whose shared appearance value selects its ISM component.
+    // FSOLBeltRockTag lets ASOLAsteroidBeltVisuals's query match only belt entities at the archetype level (SDD 6
+    // Amendment 11's follow-up, 5e-iii)
     const UScriptStruct* const elements[] = {
         FSOLMinorBodyOrbitFragment::StaticStruct(),
         FSOLMinorBodyRenderFragment::StaticStruct(),
         FSOLMinorBodyStateFragment::StaticStruct(),
+        FSOLBeltRockTag::StaticStruct(),
     };
     const FMassArchetypeHandle archetype = mEntityManager->CreateArchetype(MakeArrayView(elements));
     mEntities.Reserve(belt.Num());
