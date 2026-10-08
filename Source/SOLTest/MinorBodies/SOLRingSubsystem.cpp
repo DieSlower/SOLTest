@@ -21,18 +21,6 @@
 
 namespace
 {
-    // Activation margin and gameplay half-thickness, in SOLRingPatch cells (see SOLConstants.h for the exact values)
-    double RingActivationMarginM()
-    {
-        return SOL::RING_PATCH_ACTIVATION_MARGIN_CELLS * SOLRingPatch::CELL_SIZE_M;
-    }
-
-    // Generous half-thickness a position is still considered "in" the ring plane within (gameplay feel, not real)
-    double RingHalfThicknessM()
-    {
-        return SOL::RING_PATCH_HALF_THICKNESS_CELLS * SOLRingPatch::CELL_SIZE_M;
-    }
-
     // Returns the host planet's ring-plane unit normal: its pole direction, unaffected by spin phase (a rotation about
     // the pole leaves the pole itself fixed) and constant after spawn, so UpdateRing computes it once per ring
     FVector3d RingPlaneNormal(const FSOLBodyRegistry& registry, const int32 planetIndex)
@@ -146,13 +134,18 @@ void USOLRingSubsystem::SpawnRingPools()
 
     const int32 groupsPerRing = (2 * SOL::RING_PATCH_WINDOW_RADIAL_RADIUS + 1)
         * (2 * SOL::RING_PATCH_WINDOW_ANGULAR_RADIUS + 1);
-    const int32 entitiesPerRing = groupsPerRing * SOLRingPatch::ROCKS_PER_CELL;
+    const int32 entitiesPerRing = SOLRingPatch::PoolEntityCountPerRing();
+    check(entitiesPerRing == groupsPerRing * SOLRingPatch::ROCKS_PER_CELL);
 
-    // One archetype, the same fragment composition the belt uses, so the shared orbit processor matches both
+    // Same base fragment composition the belt uses (so the shared orbit processor matches both), plus
+    // FSOLRingRockTag so ASOLRingVisuals's per-ring query can match only ring-pool entities at the archetype level
+    // rather than iterating every minor body (belt included) and filtering per-entity (SDD 6 Amendment 11's
+    // follow-up, 5e-iii)
     const UScriptStruct* const elements[] = {
         FSOLMinorBodyOrbitFragment::StaticStruct(),
         FSOLMinorBodyRenderFragment::StaticStruct(),
         FSOLMinorBodyStateFragment::StaticStruct(),
+        FSOLRingRockTag::StaticStruct(),
     };
     const FMassArchetypeHandle archetype = mEntityManager->CreateArchetype(MakeArrayView(elements));
 
@@ -192,6 +185,8 @@ void USOLRingSubsystem::SpawnRingPools()
             FSOLMinorBodyRenderFragment& render = mEntityManager->GetFragmentDataChecked<FSOLMinorBodyRenderFragment>(entity);
             render.RadiusM = 1.0;
             render.InstanceIndex = instance;
+            render.bActive = false; // Never assigned a real cell yet; the fragment's own default is true (correct
+                                     // for belt asteroids), so a ring entity needs this set explicitly at spawn
         }
         ring.GroupCells.Init(TOptional<FSOLRingCell>(), groupsPerRing);
         UE_LOG(LogSOL, Log, TEXT("RingSubsystem %s: %s ring pool spawned, %d entities in %d groups"), *GetName(),
@@ -274,7 +269,7 @@ void USOLRingSubsystem::UpdateRing(FSOLRingState& ring, const FVector3d& shipPos
     const FVector3d& ringNormal = ring.RingNormal;
 
     ring.ActiveCell = SOLRingPatch::ComputeActiveCell(shipPositionM, planetPositionM, ringNormal, ring.RingDef,
-        RingActivationMarginM(), RingHalfThicknessM(), planetGM, secondsSinceJ2000);
+        SOLRingPatch::ActivationMarginM(), SOLRingPatch::HalfThicknessM(), planetGM, secondsSinceJ2000);
 
     // Ship outside this ring and no group holding a cell: nothing to reassign, so skip the allocating window work
     if (!ring.ActiveCell.IsSet() && ring.AssignedGroupCount == 0)
@@ -303,33 +298,48 @@ void USOLRingSubsystem::UpdateRing(FSOLRingState& ring, const FVector3d& shipPos
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Regenerates one group's entities for newCell (or leaves them on their stale orbit if newCell is unset, or if
-// newCell is entirely a gap with no rocks to show)
+// Regenerates one group's entities for newCell, or marks them inactive (stale orbit left untouched, but no longer
+// rendered - SDD 6 Amendment 10's "no inactive marker" gap, closed by ASOLRingVisuals's render fragment) if newCell
+// is unset or is entirely a gap with no rocks to show
 void USOLRingSubsystem::AssignGroup(FSOLRingState& ring, const int32 groupIndex, const TOptional<FSOLRingCell>& newCell,
     const FVector3d& ringNormal, const double secondsSinceJ2000)
 {
-    if (!newCell.IsSet())
+    const int32 firstEntity = groupIndex * SOLRingPatch::ROCKS_PER_CELL;
+    TArray<FSOLRingRockDef> rocks;
+    if (newCell.IsSet())
     {
-        return;
+        const double planetGM = BodyRegistry->GetRegistry().GetGM(ring.PlanetIndex);
+        rocks = SOLRingPatch::GenerateCellRocks(ring.RingDef, newCell.GetValue(), ringNormal, planetGM,
+            SOLRingPatch::HalfThicknessM(), ring.GapBands, SOL::RING_PATCH_SEED, secondsSinceJ2000);
     }
-    const double planetGM = BodyRegistry->GetRegistry().GetGM(ring.PlanetIndex);
-    const TArray<FSOLRingRockDef> rocks = SOLRingPatch::GenerateCellRocks(ring.RingDef, newCell.GetValue(), ringNormal,
-        planetGM, RingHalfThicknessM(), ring.GapBands, SOL::RING_PATCH_SEED, secondsSinceJ2000);
     if (rocks.IsEmpty())
     {
+        // Idle slot (no cell) or an all-gap cell: mark every entity in the group inactive so ASOLRingVisuals skips
+        // it rather than rendering a stale duplicate of wherever it was last assigned
+        for (int32 slot = 0; slot < SOLRingPatch::ROCKS_PER_CELL; ++slot)
+        {
+            const FMassEntityHandle entity = ring.Entities[firstEntity + slot];
+            mEntityManager->GetFragmentDataChecked<FSOLMinorBodyRenderFragment>(entity).bActive = false;
+        }
         return;
     }
 
-    const int32 firstEntity = groupIndex * SOLRingPatch::ROCKS_PER_CELL;
     for (int32 slot = 0; slot < SOLRingPatch::ROCKS_PER_CELL; ++slot)
     {
-        // A gap-reduced cell has fewer rocks than the group has entities; the excess entities duplicate an already-
-        // placed rock exactly (same position, same orbit) rather than needing a separate "inactive" representation
-        const FSOLRingRockDef& rock = rocks[slot % rocks.Num()];
         const FMassEntityHandle entity = ring.Entities[firstEntity + slot];
+        FSOLMinorBodyRenderFragment& render = mEntityManager->GetFragmentDataChecked<FSOLMinorBodyRenderFragment>(entity);
+        if (slot >= rocks.Num())
+        {
+            // A gap-reduced cell has fewer rocks than the group has entities; park the excess inactive instead of
+            // duplicating an already-placed rock on top of itself (bActive gives this a real representation now,
+            // so the duplicate-rendering workaround this comment used to describe is no longer needed)
+            render.bActive = false;
+            continue;
+        }
+        const FSOLRingRockDef& rock = rocks[slot];
         FSOLMinorBodyOrbitFragment& orbit = mEntityManager->GetFragmentDataChecked<FSOLMinorBodyOrbitFragment>(entity);
         orbit.Elements = rock.Elements;
-        FSOLMinorBodyRenderFragment& render = mEntityManager->GetFragmentDataChecked<FSOLMinorBodyRenderFragment>(entity);
         render.RadiusM = rock.RadiusM;
+        render.bActive = true;
     }
 }

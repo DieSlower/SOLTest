@@ -114,6 +114,23 @@ namespace SOLRingPatch
     // linearly interpolated in between. transitionBandM <= 0 is a hard cut (no blending).
     SOLTEST_API double ComputeNearFieldAlpha(double distanceOutsideRingVolumeM, double transitionBandM);
 
+    // Activation margin (meters) beyond a ring's physical [InnerRadiusM, OuterRadiusM) band within which
+    // ComputeActiveCell still considers the player "in" the ring. Shared by USOLRingSubsystem (which pool-populates
+    // this margin so there is no pop when entering) and ASOLRingVisuals (which uses it as ComputeNearFieldAlpha's
+    // transitionBandM, so the near-field visual fade finishes exactly when the Mass pool itself would stop
+    // considering the player inside the ring - a single source of truth so the two can never drift apart).
+    SOLTEST_API double ActivationMarginM();
+
+    // Generous gameplay half-thickness (meters) a position is still considered "in" the ring plane within - see
+    // ComputeActiveCell/GenerateCellRocks. Shared for the same reason as ActivationMarginM.
+    SOLTEST_API double HalfThicknessM();
+
+    // Returns one ring's fixed pool size (the active-cell window's cell count times ROCKS_PER_CELL): a hard
+    // invariant USOLRingSubsystem::SpawnRingPools (which allocates the pool) and ASOLRingVisuals (which sizes its
+    // ISM instance count/scratch arrays to match it exactly) must agree on, so it is computed once here rather than
+    // duplicated at each call site where a mismatch would silently under- or over-size one of the two.
+    SOLTEST_API int32 PoolEntityCountPerRing();
+
     // Returns how many angular cells radialIndex's radial band has (CELL_SIZE_M-arc-length steps around its own
     // center-radius circle, at least 1). Exposed so a caller (ActiveCellWindow, or a streaming pool sizing itself)
     // can reason about a specific band's own cell count without duplicating the radius-to-count math.

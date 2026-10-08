@@ -7,6 +7,8 @@
 
 #include "Game/SOLSpectatorPawn.h"
 #include "MinorBodies/SOLAsteroidBeltVisuals.h"
+#include "MinorBodies/SOLPlanetRing.h"
+#include "MinorBodies/SOLRingVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
 #include "StarField/SOLStarField.h"
@@ -49,7 +51,8 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field and asteroid-belt visuals, arms the optional smoke-test screenshot, then starts play
+// Spawns the body, star-field, asteroid-belt and per-ring visuals, arms the optional smoke-test screenshot, then
+// starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
@@ -58,6 +61,19 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLStarField>(ASOLStarField::StaticClass(), FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
+
+    // One ASOLRingVisuals per ringed planet (SDD 6 Amendment 11, 5e-iii); deferred so PlanetName is set before
+    // BeginPlay resolves the ring definition and planet index
+    for (const FSOLPlanetRingDef& ringDef : SOLPlanetRing::RealRings())
+    {
+        ASOLRingVisuals* ringVisuals = GetWorld()->SpawnActorDeferred<ASOLRingVisuals>(ASOLRingVisuals::StaticClass(),
+            FTransform::Identity, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (ringVisuals != nullptr)
+        {
+            ringVisuals->PlanetName = ringDef.PlanetName;
+            ringVisuals->FinishSpawning(FTransform::Identity);
+        }
+    }
 
     // Verification hook for headless smoke runs: screenshot after the given delay, then quit
     float smokeDelaySeconds = 0.0f;

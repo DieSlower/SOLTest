@@ -44,10 +44,14 @@ struct FMassEntityManager;
  * subsystem therefore only manages entity DATA; it declares an explicit dependency on USOLMinorBodySubsystem
  * purely to document this relationship, not because it calls into it.
  *
- * No rendering yet (5e-iii adds ASOLRingVisuals); a group with no assigned cell (the player isn't in that ring, or
- * the entity has never been assigned since spawn) keeps whatever orbit it last had - harmless today with nothing
- * reading it, and the eventual renderer is expected to hide an inactive ring via SOLRingPatch::ComputeNearFieldAlpha
- * rather than this subsystem clearing data nothing observes.
+ * Every ring-pool entity starts with FSOLMinorBodyRenderFragment::bActive false (SpawnRingPools) - the entity has
+ * a safe placeholder orbit but has never been assigned a real cell yet. A group with no assigned cell, one
+ * assigned to an all-gap cell, or (for a gap-reduced cell) an entity beyond the cell's real rock count keeps its
+ * stale orbit untouched but has AssignGroup mark it (or leave it, or re-mark it) bActive false, so ASOLRingVisuals
+ * (5e-iii) skips/zero-scales it rather than rendering a stale or duplicate instance. The ring's own near/far
+ * cross-fade (SOLRingPatch::ComputeNearFieldAlpha) is a separate, coarser mechanism layered on top: it hides the
+ * whole near-field ISM layer when the player isn't near this ring at all, regardless of any individual group's
+ * bActive state.
  */
 UCLASS()
 class SOLTEST_API USOLRingSubsystem : public UWorldSubsystem

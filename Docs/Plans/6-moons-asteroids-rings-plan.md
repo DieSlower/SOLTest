@@ -178,7 +178,7 @@ Keep it in sync if the design shifts.
     new ones — `GetAngularCellCount`/`ActiveCellWindow`/`ReassignPoolSlots` coverage —
     extend `SOLRingPatchTest.cpp`, written as prerequisite pure-logic work for this
     sub-part even though that file itself belongs to 5e-i).
-  - [ ] **5e-iii — `ASOLRingVisuals` + Niagara far field.** New actor per ringed planet:
+  - [x] **5e-iii — `ASOLRingVisuals` + Niagara far field.** New actor per ringed planet:
     owns the pool's ISM component (bulk-transform update, same pattern as
     `ASOLAsteroidBeltVisuals`) and a `UNiagaraComponent` for the far-field annulus
     emitter (one shared, parameterized Niagara system across all 4 rings, not four
@@ -187,6 +187,28 @@ Keep it in sync if the design shifts.
     connection established this session; not delegated to a subagent). Cross-fades
     ISM/Niagara visibility via `ComputeNearFieldAlpha` from
     `OnUniverseUpdated`, same event the belt renders from.
+    - [x] Far-field Niagara asset `/Game/SOL/Rings/NS_SOLRingFar` built live via the
+      editor's `NiagaraToolsets` API: shared system, 10 User Parameters (outer/inner
+      radius, particle count, color, 3 gap-band inner/outer pairs), one-time burst
+      spawn + disabled lifetime-kill (persists forever at near-zero cost), annulus and
+      gap bands carved via `KillParticlesInVolume` (incl. a real `SystemState.Loop
+      Behavior` bug and a real `bLocalSpace` bug, both caught and fixed — see SDD
+      Amendments 11 and 12). No sprite material, field tuning, or GPU sim target yet;
+      gap-band AND-semantics still not screenshot-confirmed (deferred to 5e-iv's PIE
+      pass). Details in SDD Amendments 11-12.
+    - [x] `FSOLBeltRockTag`/`FSOLRingRockTag` Mass tags (`SOLMinorBodyFragments.h`),
+      wired into the belt/ring spawn archetypes and visuals-actor queries. Also added
+      `FSOLMinorBodyRenderFragment::bActive` (ring-only; fixes SDD Amendment 10's
+      "no inactive marker" gap, including a default-value bug the adversarial review
+      caught - see Amendment 12).
+    - [x] `ASOLRingVisuals.h/.cpp` itself: ISM + Niagara component ownership, per-instance
+      User Parameter wiring (meters→cm), near/far cross-fade. Adversarially reviewed
+      (fresh opus subagent); 3 high-severity placement bugs (far-field scale, far-field
+      rotation axes, emitter world-vs-local space) plus several smaller issues found
+      and fixed - see SDD Amendment 12 for the full list. PIE-smoke-tested (all 4 rings
+      spawn, zero `LogSOL` errors) and `Tools/RunTests.bat` re-run clean (400/400)
+      after the fixes.
+    - [x] `ASOLGameMode::StartPlay` spawns 4 `ASOLRingVisuals` via `RealRings()`.
   - [ ] **5e-iv — Integration and verification.** All four gas giants get rings
     (decision 8). Adversarial review (entity-pool reuse correctness, cell-boundary
     hysteresis, Niagara system cost, style-guide conformance), fix, re-verify. Real PIE

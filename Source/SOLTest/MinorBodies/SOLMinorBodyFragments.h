@@ -27,8 +27,9 @@ struct FSOLMinorBodyOrbitFragment : public FMassFragment
 };
 
 /**
- * Immutable rendering data of one minor body, set once at spawn (SDD 6 Appendix B). Read only by
- * ASOLAsteroidBeltVisuals's hot loop; orbital-dynamics fields live in FSOLMinorBodyOrbitFragment instead.
+ * Rendering data of one minor body, set once at spawn (SDD 6 Appendix B) except bActive. Read by
+ * ASOLAsteroidBeltVisuals's/ASOLRingVisuals's hot loops; orbital-dynamics fields live in FSOLMinorBodyOrbitFragment
+ * instead.
  */
 USTRUCT()
 struct FSOLMinorBodyRenderFragment : public FMassFragment
@@ -37,6 +38,19 @@ struct FSOLMinorBodyRenderFragment : public FMassFragment
 
     double RadiusM = 0.0;                     // Mean radius, for the render scale
     int32 InstanceIndex = INDEX_NONE;         // This entity's slot in its appearance variant's ISM component
+
+    // Whether this entity should currently be rendered. Defaults true (correct for belt asteroids, which never
+    // write this field after spawn). USOLRingSubsystem::SpawnRingPools explicitly sets this false for every
+    // ring-pool entity at spawn instead (never assigned a cell yet), and AssignGroup sets it false again whenever
+    // a group has no assigned cell, an all-gap cell, or (for a gap-reduced cell) more entities than the cell has
+    // real rocks for, setting it back true only once real rock data is actually written - so ASOLRingVisuals
+    // skips/zero-scales a stale or duplicate instance rather than rendering it (SDD 6 Amendment 10's "no inactive
+    // marker" gap, plus the review follow-up that caught the gap-reduced-cell duplicate and the spawn-time default
+    // both still rendering). A plain fragment bool rather than a Mass tag deliberately: a ring group can be
+    // reassigned up to ~90 times/second per active ring (see CLAUDE.md's ring-rock tech debt notes), and an
+    // archetype move at that rate would cost far more than flipping one field the renderer already reads every
+    // frame regardless.
+    bool bActive = true;
 };
 
 /**
@@ -82,3 +96,27 @@ namespace SOLMinorBodyVariant
     inline constexpr int32 FAMILY_FILL = 1;       // A procedural family-cluster member (Name == NAME_None)
     inline constexpr int32 COUNT = 2;
 }
+
+/**
+ * Marks an asteroid-belt entity (USOLMinorBodySubsystem::SpawnAsteroidBelt), so ASOLAsteroidBeltVisuals's query can
+ * match only belt entities at the archetype level (SDD 6 Amendment 11's follow-up, 5e-iii) instead of relying solely
+ * on the implicit "has a const-shared FSOLMinorBodyAppearanceFragment" distinction, which works but doesn't name the
+ * actual intent.
+ */
+USTRUCT()
+struct FSOLBeltRockTag : public FMassTag
+{
+    GENERATED_BODY()
+};
+
+/**
+ * Marks a ring-pool entity (USOLRingSubsystem::SpawnRingPools), one tag shared by all four rings: ASOLRingVisuals's
+ * query matches this tag at the archetype level to exclude belt entities entirely, then still filters per-entity by
+ * FSOLMinorBodyOrbitFragment::ParentBodyIndex to separate its own ring's entities from the other three rings' (SDD
+ * 6 Amendment 11's follow-up, 5e-iii).
+ */
+USTRUCT()
+struct FSOLRingRockTag : public FMassTag
+{
+    GENERATED_BODY()
+};

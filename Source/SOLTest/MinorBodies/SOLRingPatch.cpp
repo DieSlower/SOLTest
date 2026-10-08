@@ -220,8 +220,12 @@ namespace SOLRingPatch
         const double y = FVector3d::DotProduct(relativeM, basis.Axis2);
         const double radiusM = FMath::Sqrt(x * x + y * y);
 
-        // Admit only when every check positively passes, so a NaN anywhere is rejected rather than admitted
-        const bool bWithinThickness = FMath::Abs(planeDistanceM) <= halfThicknessM;
+        // Admit only when every check positively passes, so a NaN anywhere is rejected rather than admitted.
+        // marginM pads BOTH the radial band and the vertical thickness, so the pool stays populated (and
+        // ComputeNearFieldAlpha's fade has room to run) the same distance past the ring's real physical extent in
+        // every direction - review-caught asymmetry: thickness used to admit no margin at all, so a player
+        // approaching vertically would see rocks pop in already near full near-field alpha instead of fading in.
+        const bool bWithinThickness = FMath::Abs(planeDistanceM) <= halfThicknessM + marginM;
         const bool bWithinBand = radiusM >= ringDef.InnerRadiusM - marginM && radiusM <= ringDef.OuterRadiusM + marginM;
         if (!(bWithinThickness && bWithinBand))
         {
@@ -332,6 +336,30 @@ namespace SOLRingPatch
             return 0.0;
         }
         return FMath::Clamp(1.0 - distanceOutsideRingVolumeM / transitionBandM, 0.0, 1.0);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Shared activation margin (SOL::RING_PATCH_ACTIVATION_MARGIN_CELLS cells) - see the header comment
+    double ActivationMarginM()
+    {
+        return SOL::RING_PATCH_ACTIVATION_MARGIN_CELLS * CELL_SIZE_M;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Shared gameplay half-thickness (SOL::RING_PATCH_HALF_THICKNESS_CELLS cells) - see the header comment
+    double HalfThicknessM()
+    {
+        return SOL::RING_PATCH_HALF_THICKNESS_CELLS * CELL_SIZE_M;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Shared pool size per ring: the fixed active-cell window's cell count times ROCKS_PER_CELL - see the header
+    // comment
+    int32 PoolEntityCountPerRing()
+    {
+        const int32 groupsPerRing = (2 * SOL::RING_PATCH_WINDOW_RADIAL_RADIUS + 1)
+            * (2 * SOL::RING_PATCH_WINDOW_ANGULAR_RADIUS + 1);
+        return groupsPerRing * ROCKS_PER_CELL;
     }
 
     //////////////////////////////////////////////////////////////////////////
