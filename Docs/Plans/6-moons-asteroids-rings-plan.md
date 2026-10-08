@@ -215,6 +215,18 @@ Keep it in sync if the design shifts.
     screenshot verification at multiple distances per ring (confirm real gaps are
     visible in both tiers, the cross-fade isn't jarring, rapid cell-crossing at warp
     speed doesn't pop/crash). Commit.
+  - [ ] **5e-v — Realistic rings (SDD 6 Amendment 14).** Replace the blob sprites with a
+    Cassini-style three-tier look:
+    - [ ] Spike: enable PCG, prove GPU Spawn Static Mesh in 5.8 (millions visible, survives a
+      graphics-settings change, correct under floating origin on `ASOLRingVisuals`); fallback
+      Niagara mesh particles if it fails.
+    - [ ] Procedural Nanite rock mesh variants (about 6) under `/Game/SOL/Rings/`.
+    - [ ] Tier A retune: Niagara far field with soft non-additive material / mesh particles.
+    - [ ] Tier B: PCG dense layer (about 5M Saturn, scaled for the others), counts and
+      handover thresholds in `SOLConstants.h`; pure-logic tests first (TDD, subagent-authored).
+    - [ ] Keep tier C (Mass pool); cross-fade A/B/C via `ComputeNearFieldAlpha`.
+    - [ ] Profile (`stat gpu`/Insights), multi-distance screenshots at all four rings,
+      adversarial review, `ARCHITECTURE.md`, full suite, commit.
 
 ## Cross-cutting
 
