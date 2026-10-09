@@ -1421,7 +1421,7 @@ density. Add an inner-hole parameter later if it is ever needed.
 
 ### Open items
 
-1. **The tiers do not hand over at the ring plane.** At grazing angles the far disc turns into a bright, opaque
+1. **(Resolved: see the Amendment 15 addendum below.) The tiers do not hand over at the ring plane.** At grazing angles the far disc turns into a bright, opaque
    sheet across the horizon. That is physically right for the B ring, but inside the Tier B window it should
    give way to the rocks. Fix options: fade its opacity by the distance from the camera inside the material (pass
    the camera's local position as a fourth dynamic parameter), or have the host fade it near the plane.
@@ -1436,3 +1436,40 @@ density. Add an inner-hole parameter later if it is ever needed.
    - `AddUserVariables` takes the variable's `name` and `type` as flat fields. Wrapping them in `{variable: {...}}` silently creates `User.None`, and the editor later **crashes** at PIE with a NiagaraVariant assertion (`InCount > 0`). The asset was restored from git and rebuilt.
    - GeometryScript meshes have **no UV channel** unless `set_num_uv_sets` is called, and a Niagara mesh renderer then draws nothing, with no warning.
    - After `SetRendererData` or `SetEmitterData`, toggle any module off and on to force a real recompile before saving. Otherwise a stale compiled renderer can be saved.
+
+### Amendment 15 addendum — far-disc camera fade (resolves open item 1)
+
+1. `M_SOLRingFar` multiplies its opacity by `smoothstep(FadeNearCm, FadeFarCm, D)`, with the scalar parameters `FadeNearCm` = 100000 (1 km, fully clear) and `FadeFarCm` = 400000 (4 km, unchanged look). Opacity scaling alone is enough: the material is plain Translucent, so its colour is not premultiplied.
+2. `D` is the distance along the pixel's view ray to the **true** ring plane, `H / Vz` (custom node `RingPlaneRayDistance`). `H` is `dot(TranslatedWorld(CameraPositionWS) - TranslatedWorld(ObjectPositionWS), ObjectOrientation)` and `Vz` is `dot(CameraVectorWS, ObjectOrientation)`. A ray that never reaches the plane gets 0, so it is fully faded.
+3. Why it is not `length(pixel - camera)`: within a few hundred metres of the plane, the 1.3e10 cm disc's per-pixel position, depth and interpolants are wrong by kilometres (huge-triangle precision). The disc even rasterizes on the wrong side of the camera, so only per-draw uniforms plus the view direction can be trusted. Debug-colour runs confirmed that `H` matches the host's own plane height (+179 m).
+4. Verified with `-SOLRingStartKm=100000`: at 0.05, 2 and 6 km heights the sheet is gone in the plane, and the disc fades in smoothly from about 2 km up. The far views (Saturn 60,000 km, Uranus 120,000 km) are unchanged. Screenshots are `HighresScreenshot00061`–`00066`.
+5. Still open: in the plane, the thin far-ring sliver within a few degrees of the horizon (D > 4 km) is not drawn, because the mis-rasterized disc does not cover it. A real fix needs a host-side or mesh-side change (for example a camera-centred local disc patch). Also, smoke runs drift off-plane at about 300 m/s, because flight assist brakes toward Mimas' frame.
+
+## Amendment 16 — host implementation of the dense layer and its adversarial review (2026-10-09)
+
+Implements Amendment 15's host contract in `ASOLRingVisuals` and `SOLRingDense` (issue #6 Part 5e-v). Corrections to
+Amendment 15's contract, found by the adversarial review and now in the code:
+
+- **Handedness.** The dense component's rotation is `EclipticToUnreal(orientation * Rz(spin))`, i.e. the ring frame
+  conjugated by a Y mirror (`M = diag(1,-1,1)`), so a Niagara-local offset `L` corresponds to the right-handed
+  co-rotating offset `M·L`. The window phase and window centre therefore have to be sent in the **mirrored** frame
+  (`SOLRingDense::RingFrameToNiagaraLocalCm(P)`); without it rocks slide with the camera at 2x its speed along Y and the
+  annulus/gap mask is off by kilometres. The same mirror applies to the Sun direction sent to the far disc. The rotation
+  is **not** `mFarFieldRotation * FQuat(UpVector, theta)` as Amendment 15 step 2 says (that spins the opposite way).
+- **Camera.** Visibility, spin integration and placement all use the render **viewpoint** (the map camera in map mode),
+  not the observer, so the layer cannot keep simulating around a map camera far from the ring.
+- **Fade band.** `RING_DENSE_FADE_IN/OUT_DISTANCE_M` are 1.5 km / 6 km (window radius and `ROCK_MAX_RADIUS /
+  CULL_ANGULAR_RADIUS`), not 20 / 50 km: beyond 6 km the largest rock is culled, so the GPU work would draw nothing. The
+  far disc's own fade is 1-4 km (material parameters `FadeNearCm`/`FadeFarCm`).
+- **Dependencies.** The dense layer is optional (a missing asset or sim clock logs a warning and disables only it); an
+  engine-deactivated dense system is reactivated on the next show, with a warning.
+- **Dead code removed.** `SOLRingPatch::FarFieldSpriteSizeCm`, `RING_FAR_FIELD_PARTICLE_COUNT`,
+  `RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR` and the `RingParticleCount`/`RingParticleSizeCm` parameter names, with their 8 tests.
+
+**Verification.** 21 `SOLTest.RingDense.*` tests, including a composition test that chains window phase, wrap,
+component rotation and back to the ring frame and asserts a carpet rock keeps its co-rotating position for several
+cameras and spin angles (this test fails without the Y mirror), and a prograde-orbit test pinning the spin sign.
+`-SOLRingStartKm=100000 -SOLRingHeightKm=0.05 -SOLSmokeShot=1.2` screenshots (`HighresScreenshot00048`/`00049`,
+`00061`/`00062`) show the host-driven rocks around the camera inside Saturn's B ring. That spawn co-rotates with the ring,
+so by itself it cannot show relative motion: the composition test covers it. Not measured: GPU time and VRAM of the
+host-driven layer (see CLAUDE.md tech debt).

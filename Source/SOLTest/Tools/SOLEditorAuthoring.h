@@ -22,6 +22,8 @@ class USOLEditorAuthoring : public UBlueprintFunctionLibrary
 public:
     // Sets a string property on an object through reflection regardless of its edit flags, then fires
     // PostEditChangeProperty so the owner reacts as it would to a details-panel edit; returns false if not found
+#if WITH_EDITOR
     UFUNCTION(BlueprintCallable, Category = "SOL|EditorAuthoring")
     static bool SetObjectStringProperty(UObject* object, FName propertyName, const FString& value);
+#endif
 };
