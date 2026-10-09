@@ -66,3 +66,21 @@ Flagged to the user because decision 3 chose Mass entities for bolts:
 - **Update order:** runs on `USOLAnchorSubsystem::OnUniverseUpdated`, after every `OnBodiesUpdated` listener, so order is guaranteed.
 - **Frames:** bolts and targets are stored relative to the player's reference body at fire/drop time; collision sweeps in a ship-centred frame. Bolts pass through the GPU-only dense ring layer (no CPU positions); belt asteroids and the ring pool's active rocks absorb them.
 - Values picked: shield regen 25/s, drop cooldown 0.25 s, target radius 10 m, bolt hit radius 0.5 m.
+
+### Amendment 2 — 7c visuals findings (2026-10-09)
+
+- **`ASOLCombatVisuals`** (one actor, no tick, redraws on `OnCombatUpdated`): `NS_SOLBolts` fed from the packed bolt arrays,
+  one `UInstancedStaticMeshComponent` for all target slots (custom data: shield, health, hit flash), and fixed pools of
+  pre-registered effect components (impact 32, shield break 8, spark 32, explosion 8). Verification hook `-SOLCombatDemo`.
+- **Bolts run as a CPU sim, not GPU.** The GPU variant never drew anything in game; the CPU one does. Indexing the arrays by
+  `ExecIndex()` inside the array-select dynamic input made the whole system fail to activate (no log line), so the bolt
+  slot index is `Particles.UniqueID` (0..N-1 because all particles spawn in one burst). Cost of 20,000 always-simulated CPU
+  particles is unmeasured; profile it in 7f, and revisit GPU (with persistent IDs) if it shows up.
+- **Niagara user parameters:** a `User.*` read only from an HLSL expression, or linked straight into a `Particles.*`
+  attribute in a Set Parameters module, reads as zero at runtime. Fix used: link the user parameters once into `Emitter.*`
+  attributes in the emitter update script, and read those (bolts, impact sparks, spark). Linking `User.Tint` into an
+  `Emitter.*` attribute in the impact's Flash emitter made the whole system fail to activate, so Flash reads `User.Tint`
+  directly (valid because the Sparks emitter of the same system links it).
+- **Bolt size:** a 70 cm streak is sub-pixel past ~100 m and nearly end-on from the chase camera, so sprite width and
+  length are `max(base, camera distance * 0.004 / 0.05)` (`DistanceToCamera` dynamic input), about 3 px wide at any range.
+

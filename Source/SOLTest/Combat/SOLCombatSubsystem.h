@@ -218,9 +218,12 @@ private:
     // Removes a target from its slot (no event)
     void DeactivateTarget(int32 slot);
 
+    // Returns a target slot's current universe velocity (its frame body's velocity plus its own relative velocity)
+    FVector3d GetTargetVelocityMps(int32 slot) const;
+
     // Queues one event unless the cap was reached
-    void AddEvent(ESOLCombatEventType type, const FVector3d& positionM, const FVector3d& velocityMps, int32 targetSlot,
-        int32 owner);
+    void AddEvent(ESOLCombatEventType type, const FVector3d& positionM, const FVector3d& velocityMps,
+        const FVector3d& frameVelocityMps, int32 targetSlot, int32 owner);
 
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> Anchor;

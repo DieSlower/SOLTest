@@ -323,6 +323,40 @@ namespace SOL
     // Combat: bolts handed to one parallel sweep task (below this the sweep runs on the game thread alone)
     inline constexpr int32 COMBAT_SWEEP_MIN_BOLTS_PER_TASK = 256;
 
+    // Combat visuals (SDD 7, 7c): pooled one-shot effect components per kind (a new effect reuses the oldest), and how
+    // long each kind's component is kept riding with what it hit (matches each system's loop duration)
+    inline constexpr int32 COMBAT_FX_IMPACT_POOL_SIZE = 32;
+    inline constexpr int32 COMBAT_FX_SHIELD_BREAK_POOL_SIZE = 8;
+    inline constexpr int32 COMBAT_FX_SPARK_POOL_SIZE = 32;
+    inline constexpr int32 COMBAT_FX_EXPLOSION_POOL_SIZE = 8;
+    inline constexpr double COMBAT_FX_IMPACT_DURATION_S = 1.0;
+    inline constexpr double COMBAT_FX_SHIELD_BREAK_DURATION_S = 1.5;
+    inline constexpr double COMBAT_FX_SPARK_DURATION_S = 0.8;
+    inline constexpr double COMBAT_FX_EXPLOSION_DURATION_S = 6.0;
+
+    // Combat visuals: impact flash tint while the hit target still has shield (blue) and once it is down to hull (orange)
+    inline const FLinearColor COMBAT_FX_SHIELD_HIT_TINT(0.35f, 0.8f, 2.0f);
+    inline const FLinearColor COMBAT_FX_HULL_HIT_TINT(1.0f, 0.55f, 0.22f);
+
+    // Niagara User Parameter names of Paths::COMBAT_BOLT_NIAGARA_SYSTEM (one CPU-sim particle per bolt slot, fed from arrays)
+    namespace CombatBoltParams
+    {
+        inline constexpr const TCHAR* POSITIONS_CM = TEXT("BoltPositionsCm");   // Float3 array: component-local cm
+        inline constexpr const TCHAR* VELOCITIES = TEXT("BoltVelocities");      // Float3 array: streak direction (cm/s)
+        inline constexpr const TCHAR* COUNT = TEXT("BoltCount");                // Live entries of both arrays
+        inline constexpr const TCHAR* MAX_COUNT = TEXT("BoltMaxCount");         // Particles spawned once (>= the cap)
+    }
+
+    // Niagara User Parameter names of the one-shot combat effect systems (impact and spark use both, the others none)
+    namespace CombatEffectParams
+    {
+        inline constexpr const TCHAR* DIRECTION = TEXT("Direction");            // Unit bolt direction, Unreal axes
+        inline constexpr const TCHAR* TINT = TEXT("Tint");                      // Flash and spark colour
+    }
+
+    // Per-instance custom data of Paths::COMBAT_TARGET_MATERIAL: shield fraction, health fraction, hit flash
+    inline constexpr int32 COMBAT_TARGET_CUSTOM_DATA_FLOATS = 3;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
@@ -356,6 +390,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
+        inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 
@@ -372,6 +407,19 @@ namespace SOL
 
         // Ring dense rock layer (SDD 6 Amendment 15): GPU mesh-particle carpet around the camera near a ring
         inline constexpr const TCHAR* RING_DENSE_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingDense.NS_SOLRingDense");
+
+        // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the GPU
+        // bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is
+        // optional: a missing asset disables only its own effect, with a warning
+        inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
+        inline constexpr const TCHAR* COMBAT_IMPACT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLImpact.NS_SOLImpact");
+        inline constexpr const TCHAR* COMBAT_SHIELD_BREAK_NIAGARA_SYSTEM =
+            TEXT("/Game/SOL/Combat/NS_SOLShieldBreak.NS_SOLShieldBreak");
+        inline constexpr const TCHAR* COMBAT_SPARK_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLSpark.NS_SOLSpark");
+        inline constexpr const TCHAR* COMBAT_EXPLOSION_NIAGARA_SYSTEM =
+            TEXT("/Game/SOL/Combat/NS_SOLExplosion.NS_SOLExplosion");
+        inline constexpr const TCHAR* COMBAT_TARGET_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+        inline constexpr const TCHAR* COMBAT_TARGET_MATERIAL = TEXT("/Game/SOL/Combat/M_SOLTarget.M_SOLTarget");
 
         // Placeholder ship: engine primitives (100 cm across, centered) and the engine's lit basic material
         inline constexpr const TCHAR* SHIP_PART_CUBE = TEXT("/Engine/BasicShapes/Cube.Cube");
