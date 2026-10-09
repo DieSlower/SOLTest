@@ -29,6 +29,7 @@ class USOLAnchorSubsystem;
 class USOLCombatSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
+class USOLMenuSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
 class USOLSimClockSubsystem;
@@ -37,6 +38,11 @@ class USpringArmComponent;
 class UStaticMesh;
 class UStaticMeshComponent;
 struct FInputActionValue;
+
+namespace SOLMenuState
+{
+    struct FMenuState;
+}
 
 /**
  * Thin player proxy for the ship's Mass entity (SDD 2): owns the Enhanced Input bindings (created in C++), the
@@ -81,6 +87,11 @@ struct FInputActionValue;
  * tick the pawn also hands it the chase camera's offset from the ship and its forward direction (ecliptic), the camera
  * ray the bolts converge on. The trigger reads as released while the map or the speed panel is open, during a jump
  * warp, and once the viewport loses focus.
+ *
+ * Menus (8b, SDD 8): Esc (IA_ShipPause, in the ship mapping only, so the open map's own Esc closes the map instead)
+ * asks USOLMenuSubsystem to pause, at the next tick. While its state suspends flight input (the pause menu) the pawn
+ * suspends its control exactly as for the map (SuspendShipControl; the simulation keeps running) and restores it on
+ * resume. Opening and closing the map are reported to the menu subsystem.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -193,6 +204,12 @@ public:
 
     // Requests the jump map to close (Esc; done at the next tick)
     void HandleCloseMap();
+
+    // Requests the pause menu (Esc in flight; handed to the menu subsystem at the next tick)
+    void HandlePause();
+
+    // Returns true while a menu has the ship's control input suspended
+    bool IsMenuSuspended() const { return mIsMenuSuspended; }
 
     // Sets whether the map's right mouse button is held (orbit drag, or pan drag with Shift)
     void HandleMapRightHeld(bool bHeld);
@@ -449,6 +466,12 @@ private:
     // Enhanced Input: jump map close (Esc)
     void OnMapCloseAction(const FInputActionValue& value);
 
+    // Enhanced Input: pause menu (Esc in the ship mapping)
+    void OnPauseAction(const FInputActionValue& value);
+
+    // Menu state changed: suspends the ship's control while a menu shows and restores it on resume
+    void HandleMenuStateChanged(const SOLMenuState::FMenuState& previous, const SOLMenuState::FMenuState& next);
+
     // Enhanced Input: map right mouse button pressed
     void OnMapRightStarted(const FInputActionValue& value);
 
@@ -586,6 +609,9 @@ private:
     TObjectPtr<UInputAction> ToggleMapAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> PauseAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputMappingContext> MapMappingContext;
 
     UPROPERTY(Transient)
@@ -622,6 +648,9 @@ private:
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLMenuSubsystem> Menu;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
 
     UPROPERTY(Transient)
@@ -654,6 +683,7 @@ private:
     FRotator mFreeLookRotation = FRotator::ZeroRotator;     // Camera orbit around the ship while Alt is held
     FQuat mCameraRotation = FQuat::Identity;                // Lagged world rotation of the camera arm
     FDelegateHandle mUniverseUpdatedHandle;                 // Binding to the anchor subsystem's OnUniverseUpdated
+    FDelegateHandle mMenuStateHandle;                       // Binding to the menu subsystem's OnStateChanged
     double mRollInput = 0.0;                                // Q/E roll input
     double mStickRadiusPx = 1.0;                            // Virtual joystick radius for the current viewport
     double mMouseUnitsToPixels = 1.0;                       // Undoes the Mouse2D axis sensitivity of the input config
@@ -676,4 +706,6 @@ private:
     bool mIsMapPickHeld = false;                            // Left mouse held on the map (destination pick drag)
     bool mIsMapCursorScripted = false;                      // Verification: the OS mouse does not move the cursor
     bool mHasOsMousePx = false;                             // mLastOsMousePx holds a reading since the map opened
+    bool mIsPauseRequested = false;                         // Esc pressed in flight; handed to the menu next tick
+    bool mIsMenuSuspended = false;                          // A menu has the ship's control input suspended
 };

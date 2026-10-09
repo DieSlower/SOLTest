@@ -401,6 +401,60 @@ namespace SOL
     inline constexpr float COMBAT_AUDIO_LONG_INNER_RADIUS_CM = 120000.0f;        // 1.2 km
     inline constexpr float COMBAT_AUDIO_LONG_FALLOFF_CM = 800000.0f;             // 8 km
 
+    // Main-menu camera (SDD 8, 8b): it sits MENU_CAMERA_DISTANCE_RADII body radii from the shown body's centre, on the
+    // lit side (MENU_CAMERA_BASE_AZIMUTH_DEG from the sunward direction around the ecliptic pole, swaying by
+    // MENU_CAMERA_SWAY_AZIMUTH_DEG over MENU_CAMERA_SWAY_PERIOD_S real seconds) and MENU_CAMERA_ELEVATION_DEG above the
+    // ecliptic, and turns MENU_CAMERA_LOOK_YAW_OFFSET_DEG away so the body sits right of the menu column
+    inline constexpr double MENU_CAMERA_DISTANCE_RADII = 4.5;
+    inline constexpr double MENU_CAMERA_BASE_AZIMUTH_DEG = 25.0;
+    inline constexpr double MENU_CAMERA_SWAY_AZIMUTH_DEG = 20.0;
+    inline constexpr double MENU_CAMERA_SWAY_PERIOD_S = 120.0;
+    inline constexpr double MENU_CAMERA_ELEVATION_DEG = 12.0;
+    inline constexpr float MENU_CAMERA_FOV_DEG = 60.0f;
+    inline constexpr float MENU_CAMERA_LOOK_YAW_OFFSET_DEG = -16.0f;
+
+    // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
+    namespace MenuStyle
+    {
+        inline constexpr int32 Z_ORDER = 20;                     // Above the HUD canvas and the F3 panel
+        inline constexpr const TCHAR* FONT_REGULAR = TEXT("Regular");
+        inline constexpr const TCHAR* FONT_BOLD = TEXT("Bold");
+        inline constexpr int32 TITLE_FONT_SIZE = 56;
+        inline constexpr int32 SUBTITLE_FONT_SIZE = 18;
+        inline constexpr int32 HEADING_FONT_SIZE = 24;
+        inline constexpr int32 SECTION_FONT_SIZE = 18;
+        inline constexpr int32 BUTTON_FONT_SIZE = 20;
+        inline constexpr int32 TAB_FONT_SIZE = 18;
+        inline constexpr int32 BODY_FONT_SIZE = 16;
+        inline constexpr int32 SMALL_FONT_SIZE = 14;
+        inline constexpr float SCREEN_MARGIN = 80.0f;            // Main menu column inset from the screen's left edge
+        inline constexpr float COLUMN_WIDTH = 340.0f;            // Main menu button column
+        inline constexpr float BUTTON_HEIGHT = 52.0f;
+        inline constexpr float BUTTON_GAP = 10.0f;
+        inline constexpr float BUTTON_CORNER_RADIUS = 6.0f;
+        inline constexpr float PANEL_PADDING = 28.0f;
+        inline constexpr float PANEL_GAP = 24.0f;                // Between the main menu column and its page panel
+        inline constexpr float PAGE_WIDTH = 760.0f;              // Main menu page panel
+        inline constexpr float PAGE_HEIGHT = 760.0f;
+        inline constexpr float PAUSE_WIDTH = 1080.0f;            // Pause menu panel
+        inline constexpr float PAUSE_HEIGHT = 780.0f;
+        inline constexpr float TAB_HEIGHT = 46.0f;
+        inline constexpr float TAB_GAP = 8.0f;
+        inline constexpr float ROW_GAP = 4.0f;
+        inline constexpr float KEY_COLUMN_WIDTH = 230.0f;        // Controls page key column
+        inline constexpr float LABEL_COLUMN_WIDTH = 400.0f;      // Info page label column
+        inline constexpr float LIST_BUTTON_HEIGHT = 38.0f;       // Start-location rows
+        inline const FLinearColor SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.45f);        // Behind the pause menu
+        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);
+        inline const FLinearColor BUTTON_NORMAL(0.06f, 0.09f, 0.14f, 0.85f);
+        inline const FLinearColor BUTTON_PRESSED_TINT(1.4f, 1.4f, 1.4f, 1.0f);   // Brightens the tint while pressed
+        inline const FLinearColor BUTTON_FOCUSED(0.16f, 0.3f, 0.5f, 1.0f);    // Keyboard focus (and mouse hover)
+        inline const FLinearColor BUTTON_SELECTED(0.08f, 0.22f, 0.36f, 0.95f); // Active tab, page or start body
+        inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);
+        inline const FLinearColor DIM_TEXT_COLOR(0.55f, 0.62f, 0.72f, 1.0f);
+        inline const FLinearColor ACCENT_COLOR(0.45f, 0.78f, 1.0f, 1.0f);
+    }
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {
@@ -438,6 +492,14 @@ namespace SOL
         inline constexpr const TCHAR* COMBAT_STRESS = TEXT("SOLCombatStress="); // With -SOLCombatDemo: keeps this many
                                                                                   // extra bolts alive (load test)
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
+
+        // Menu flow (SDD 8, 8b): any other -SOL* switch starts straight in flight (verification runs); -SOLMenu forces
+        // the main menu anyway, -SOLNoMenu skips it, and -SOLMenuSmoke=<all|screens|flow> runs the menu script
+        inline constexpr const TCHAR* SWITCH_PREFIX = TEXT("SOL");              // Prefix of every project switch
+        inline constexpr const TCHAR* MENU = TEXT("SOLMenu");                   // Start in the main menu regardless
+        inline constexpr const TCHAR* NO_MENU = TEXT("SOLNoMenu");              // Skip the main menu
+        inline constexpr const TCHAR* MENU_SMOKE = TEXT("SOLMenuSmoke=");       // Scripted menu walk, then quit
+        inline constexpr const TCHAR* MENU_SMOKE_NAME = TEXT("SOLMenuSmoke");   // ...its switch name without the value
     }
 
     // Asset and content paths

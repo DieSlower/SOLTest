@@ -39,7 +39,7 @@ public:
     // Takes a verification screenshot (Saved/Screenshots) without quitting
     void CaptureScreenshot();
 
-    // Returns the ship pawn, or the debug spectator when -SOLSpectator is on the command line
+    // Returns the menu camera while the main menu shows, else the ship pawn (the debug spectator with -SOLSpectator)
     virtual UClass* GetDefaultPawnClassForController_Implementation(AController* controller) override;
 
 protected:

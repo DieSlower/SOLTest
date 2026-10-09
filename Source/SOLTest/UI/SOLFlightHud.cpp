@@ -8,6 +8,7 @@
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Menu/SOLMenuSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -253,6 +254,13 @@ void ASOLFlightHud::DrawHUD()
         return;
     }
     mUiScale = FMath::Clamp(Canvas->ClipY / HUD_REFERENCE_HEIGHT_PX, 1.0f, HUD_MAX_UI_SCALE);
+
+    // The main and pause menus (SDD 8) draw over a clean view: no flight HUD while one shows
+    const USOLMenuSubsystem* menu = GetWorld()->GetSubsystem<USOLMenuSubsystem>();
+    if (menu != nullptr && menu->IsMenuShowing())
+    {
+        return;
+    }
 
     // Jump warp: the flight HUD is hidden for the whole sequence; only the radial streaks are drawn
     if (Jump != nullptr && Jump->IsWarping())
