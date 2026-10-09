@@ -27,6 +27,7 @@ All code is in the single game module `Source/SOLTest/`, organized by feature fo
 ```mermaid
 flowchart TD
     Game["Game<br/>game mode, input helpers, debug spectator"]
+    Menu["Menu (Part 7, issue #8)<br/>menu state, main and pause menus, menu camera"]
     Ship["Ship<br/>Mass ship, pawn, smoke scripts"]
     UI["UI<br/>flight HUD, radar, F3 panel"]
     Targeting["Targeting<br/>candidates, selection, M lock"]
@@ -41,6 +42,11 @@ flowchart TD
     Const["SOLConstants.h<br/>constants, tunables, asset paths, CLI flags"]
 
     Game --> Ship
+    Game --> Menu
+    Menu --> Ship
+    Menu --> Universe
+    Ship -. "Esc, map open/close, menu state" .-> Menu
+    UI -. "hidden while a menu shows" .-> Menu
     Game --> UI
     Game --> Visuals
     Game --> StarField
@@ -83,6 +89,7 @@ flowchart TD
 | `Combat/` | Weapons, targets and destruction (Part 6, issue #7): pure bolt, damage, grid, drop and fire-cadence math (7a), and the combat subsystem that owns the pooled bolts and targets, sweeps bolts against targets and minor bodies, and queues one-shot events for the visuals and audio (7b, 7e); the combat visuals actor that draws them (7c) and the combat audio actor that plays their placeholder sounds (7d) | `SOLBoltMath`, `SOLDamageMath`, `SOLCombatGrid`, `SOLTargetDrop`, `SOLFireCadence`, `SOLCombatTypes`, `SOLCombatSubsystem`, `SOLCombatVisuals`, `SOLCombatAudioRules`, `SOLCombatAudio` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
 | `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
+| `Menu/` | Menus (issue #8, Parts 8a-8c): the pure menu state machine, info-text, settings and key-label logic (8a); the menu subsystem that owns the flow (main menu, Play, Esc pause, Quit to menu), the main-menu camera pawn, the C++-built UMG main and pause menus with their Controls/Info/About/Settings pages, all menu strings in one file, and the `-SOLMenuSmoke` script | `SOLMenuState`, `SOLInfoText`, `SOLSettingsModel`, `SOLBindingLabel`, `SOLMenuSubsystem`, `SOLMenuCameraPawn`, `SOLMainMenuWidget`, `SOLPauseMenuWidget`, `SOLMenuButton`, `SOLMenuContent`, `SOLMenuText`, `SOLMenuSmoke` |
 | `Game/` | Game mode (default pawn and HUD, spawns the body visuals, the star field and the asteroid-belt visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` |
 
@@ -236,8 +243,15 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `SOLCombatAudioRules` (pure, 7d): which `ESOLCombatSound` an event plays (shot, shield hit, hull hit, shield break, explosion, spark, target drop; an eviction is silent) and the per-kind minimum-interval throttle `MayPlay`.
 - `ASOLCombatAudio` (engine actor, `SOLCombatAudio.h`, 7d): spawned by `ASOLGameMode` next to the visuals, never ticks, plays on `USOLCombatSubsystem::OnCombatUpdated`. One fixed pool of pre-registered `UAudioComponent`s per sound kind (sizes, volumes, minimum intervals and asset paths in the `SOL::COMBAT_SOUNDS` table; 21 voices), each set once to its placeholder `USoundWave` under `/Game/SOL/Combat/Audio/` and one of two transient `USoundAttenuation`s (normal: 300 m inner, 2 km falloff; long range for explosions: 1.2 km / 8 km). A new sound reuses the oldest voice of its kind (stop-oldest concurrency) unless the kind's minimum interval drops it. Voices are 3D at the event's position (render-origin snapshot) and are re-placed every update from the event's frame body (the player's own shots keep their offset from the ship) until the sound ends. Logs one played/dropped summary per kind at end of play.
 
+**Menu** (`Source/SOLTest/Menu/`, issue #8)
+- `SOLMenuState` / `SOLInfoText` / `SOLSettingsModel` / `SOLBindingLabel` (pure, 8a): menu state machine (MainMenu, Playing, Paused, map-open flag, input-suspension, cursor and spawn rules), Info-page formatting, settings clamping and dirty tracking, key display names.
+- `USOLMenuSubsystem` (engine world subsystem, 8b): owns the `FMenuState`. The game starts in the main menu unless a `-SOL*` verification switch is present (`ShouldStartInMenu`). Requests (Play, Esc, Resume, Quit to menu) are queued and applied next frame: Play calls `USOLShipSubsystem::SpawnPlayerShip` for the picked start body and swaps the controller's pawn to the ship pawn; Quit to menu swaps back to `ASOLMenuCameraPawn`, then `DespawnPlayerShip` and clears target and frame lock. While a menu shows it sets UI-only input with a visible cursor and focuses the widget; in flight the pawn owns input and cursor. `OnStateChanged` tells the ship pawn to suspend or restore its control (as the map does); the simulation is never paused. The pawn reports map open/close (`NotifyMapOpen`), so Esc then belongs to the map.
+- `ASOLMenuCameraPawn` (engine, 8b): the main-menu pawn and observer. On `OnBodiesUpdated` it places the observer 4.5 radii from the start body on its lit side (slow real-time sway; a new start body teleports it), on `OnUniverseUpdated` it moves to the render location and looks at the body. No tick, no input.
+- `USOLMainMenuWidget` / `USOLPauseMenuWidget` / `USOLMenuButton` (engine UMG, built in C++, 8c): main menu column (Play, Start location picker over every registry body, Controls, Settings placeholder, About, Quit) with a page panel; pause menu with Resume/Controls/Info/Settings/About/Quit tabs. `SOLMenuContent` builds the shared pages once (Info values generated from `SOLConstants.h` and `FSOLFlightParams` through `SOLInfoText`); `SOLMenuText` holds every fixed string and the Controls table. Layout and colours are `SOL::MenuStyle` in `SOLConstants.h`.
+- `FSOLMenuSmoke` (engine test script): the `-SOLMenuSmoke` run.
+
 **Game** (`Source/SOLTest/Game/`)
-- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, `ASOLStarField`, `ASOLAsteroidBeltVisuals` and one `ASOLRingVisuals` per `SOLPlanetRing::RealRings()` entry (deferred spawn, `PlanetName` set before `FinishSpawning`), spawns `ASOLCombatVisuals` and `ASOLCombatAudio`, runs `-SOLSmokeShot` and `-SOLCombatDemo`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
+- `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (the menu camera while the main menu shows, else the ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, `ASOLStarField`, `ASOLAsteroidBeltVisuals` and one `ASOLRingVisuals` per `SOLPlanetRing::RealRings()` entry (deferred spawn, `PlanetName` set before `FinishSpawning`), spawns `ASOLCombatVisuals` and `ASOLCombatAudio`, runs `-SOLSmokeShot` and `-SOLCombatDemo`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
 - `SOLInputHelpers` (engine, `SOLInputHelpers.h`): shared helpers that create Enhanced Input actions and mappings in C++.
 - `ASOLSpectatorPawn` (engine, `SOLSpectatorPawn.h`): a debug free-fly camera that rides the ship with `-SOLSpectator`.
 
@@ -294,6 +308,8 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeMapPick` | `FSOLMapPickSmoke` | Destination pick via injected events: body and empty-space references, planar drag/lock, Shift height preview/lock, X clear, OS-cursor sync after a drag, close/reopen clears; screenshots of the disc, guide line and marker |
 | `-SOLSmokeJump` | `FSOLJumpSmoke` | Pick on Mars and jump: Enter with no pick ignored, warp start, midpoint FOV/post-process on the warp curve with the HUD hidden, arrival position/velocity/orientation/anchor/origin, restore; mid-warp and arrival screenshots |
 | `-SOLSmokeLevel` | `FSOLSurfaceLockSmoke` | Surface-lock via injected L presses and scripted teleports above Earth: L out of range ignored, auto-engage with frame match (replacing an M lock on another candidate) and alignment (time constant checked one tau in), L release that stays released (suppression latch) and stops aligning, latch cleared by a climb, auto warn/release (alignment stops), hint, manual engage/warn/release, a scripted jump that drops an L pressed during the warp and releases the lock on arrival; screenshots of each HUD line |
+| `-SOLMenuSmoke=<all\|screens\|flow>` | `FSOLMenuSmoke` | Main menu, start-location picker (Mars), Controls and About pages, Play, thrust, Esc pause (real ship mapping), every pause tab, Esc resume through Slate, J then Esc (closes the map, no pause), Quit to menu and Play twice more; screenshots with the UI as `Saved/Screenshots/WindowsEditor/MenuSmoke_*.png` (none for `flow`) |
+| `-SOLMenu`, `-SOLNoMenu` | `USOLMenuSubsystem` | The game starts in the main menu unless another `-SOL*` switch is present; `-SOLMenu` forces the menu anyway, `-SOLNoMenu` skips it |
 | `-SOLSpectator` | `ASOLGameMode` / `ASOLSpectatorPawn` | Debug free-fly camera riding the ship instead of the pawn |
 | `-SOLStart=<Body>`, `-SOLAltitudeKm=<km>`, `-SOLLookAt=<Body>` | Ship subsystem / spectator | Spawn body and altitude, and the debug camera's look target, for any of the runs above |
 | `-SOLSmokeConsole="<cmd>[\|<cmd>...]"` | `ASOLGameMode` | With `-SOLSmokeShot`: runs these console commands (e.g. `ProfileGPU`, `memreport -full`, `stat unit`) just before the screenshot (which then waits 2 s so on-screen stats settle) |

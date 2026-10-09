@@ -6,6 +6,7 @@
 #include "Ship/SOLShipSubsystem.h"
 
 #include "Game/SOLGameMode.h"
+#include "Menu/SOLMenuSubsystem.h"
 #include "Ship/SOLShipFlightProcessor.h"
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
@@ -98,7 +99,12 @@ void USOLShipSubsystem::Deinitialize()
 void USOLShipSubsystem::OnWorldBeginPlay(UWorld& world)
 {
     Super::OnWorldBeginPlay(world);
-    SpawnPlayerShip();
+
+    // With the main menu up the ship waits for Play (USOLMenuSubsystem); verification runs start in flight at once
+    if (!USOLMenuSubsystem::ShouldStartInMenu())
+    {
+        SpawnPlayerShip(GetCommandLineStartBody());
+    }
 
     // Verification hook: fly a fixed script without a pawn, log checkpoints, then quit
     if (HasPlayerShip() && FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_FLIGHT))
@@ -242,18 +248,41 @@ int32 USOLShipSubsystem::FindNearestBody(double& outAltitudeM) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Creates the player ship entity on a circular orbit above the start body and makes it the observer
-void USOLShipSubsystem::SpawnPlayerShip()
+// Returns the -SOLStart=<Body> value, or Earth
+FString USOLShipSubsystem::GetCommandLineStartBody()
+{
+    FString startBody = SOL::BodyNames::EARTH;
+    FParse::Value(FCommandLine::Get(), SOL::CommandLine::START_BODY, startBody);
+    return startBody;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Destroys the player ship entity (Quit to menu) and forgets its surface-lock and frame history
+void USOLShipSubsystem::DespawnPlayerShip()
+{
+    if (!HasPlayerShip())
+    {
+        return;
+    }
+    ClearSurfaceLock();
+    mEntityManager->DestroyEntity(mPlayerShip);
+    mPlayerShip = FMassEntityHandle();
+    mHasFrameHistory = false;
+    mPrevReferenceIndex = INDEX_NONE;
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: player ship despawned"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates the player ship entity on a circular orbit above a body and makes it the observer
+void USOLShipSubsystem::SpawnPlayerShip(const FString& startBody)
 {
     if (!mEntityManager.IsValid() || HasPlayerShip())
     {
         return;
     }
 
-    // Start body and altitude, overridable from the command line for verification runs
+    // Altitude overridable from the command line for verification runs
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    FString startBody = SOL::BodyNames::EARTH;
-    FParse::Value(FCommandLine::Get(), SOL::CommandLine::START_BODY, startBody);
     double altitudeKm = SOL::DEFAULT_SPAWN_ALTITUDE_M / SOL::METERS_PER_KM;
     FParse::Value(FCommandLine::Get(), SOL::CommandLine::ALTITUDE_KM, altitudeKm);
     int32 bodyIndex = registry.FindByName(FName(*startBody));

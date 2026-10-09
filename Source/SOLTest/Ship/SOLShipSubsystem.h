@@ -74,6 +74,17 @@ public:
     // Returns true once the player ship entity exists
     bool HasPlayerShip() const;
 
+    // Creates the player ship entity on a circular orbit above a body (by registry name; Earth if unknown) and makes it
+    // the observer; does nothing while a ship exists. Called at begin play when the menu is skipped, else by Play
+    void SpawnPlayerShip(const FString& startBody);
+
+    // Destroys the player ship entity (Quit to menu): releases its surface-lock and forgets the frame history, so a
+    // later SpawnPlayerShip starts clean
+    void DespawnPlayerShip();
+
+    // Returns the -SOLStart=<Body> value, or Earth
+    static FString GetCommandLineStartBody();
+
     // Sets the player ship's control input; ReferenceVelocityMps is replaced each step by the targeting frame's velocity
     void SetControl(const FSOLShipControl& control);
 
@@ -132,9 +143,6 @@ protected:
     virtual bool DoesSupportWorldType(const EWorldType::Type worldType) const override;
 
 private:
-
-    // Creates the player ship entity on a circular orbit above the start body and makes it the observer
-    void SpawnPlayerShip();
 
     // Runs the ship step for one frame and syncs the observer; bound to the anchor subsystem's OnBodiesUpdated
     void StepShips(float realDeltaSeconds);

@@ -9,6 +9,8 @@
 #include "Combat/SOLCombatSubsystem.h"
 #include "Combat/SOLCombatVisuals.h"
 #include "Game/SOLSpectatorPawn.h"
+#include "Menu/SOLMenuCameraPawn.h"
+#include "Menu/SOLMenuSubsystem.h"
 #include "MinorBodies/SOLAsteroidBeltVisuals.h"
 #include "MinorBodies/SOLPlanetRing.h"
 #include "MinorBodies/SOLRingVisuals.h"
@@ -58,9 +60,15 @@ ASOLGameMode::ASOLGameMode()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the ship pawn, or the debug spectator when -SOLSpectator is on the command line
+// Returns the menu camera while the main menu shows, else the ship pawn (the debug spectator with -SOLSpectator)
 UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AController* controller)
 {
+    // The main menu (SDD 8) has the menu camera; the ship pawn waits for Play
+    const USOLMenuSubsystem* menu = GetWorld() != nullptr ? GetWorld()->GetSubsystem<USOLMenuSubsystem>() : nullptr;
+    if (menu != nullptr && menu->GetState().Mode == SOLMenuState::EMenuMode::MainMenu)
+    {
+        return ASOLMenuCameraPawn::StaticClass();
+    }
     if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SPECTATOR))
     {
         return ASOLSpectatorPawn::StaticClass();

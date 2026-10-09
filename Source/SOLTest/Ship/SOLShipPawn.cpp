@@ -9,6 +9,8 @@
 #include "Game/SOLInputHelpers.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Menu/SOLMenuState.h"
+#include "Menu/SOLMenuSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -180,6 +182,7 @@ void ASOLShipPawn::BeginPlay()
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
+    Menu = world->GetSubsystem<USOLMenuSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -200,6 +203,12 @@ void ASOLShipPawn::BeginPlay()
     AnchorSubsystem->SetObserverActor(this);
     mUniverseUpdatedHandle = AnchorSubsystem->OnUniverseUpdated().AddUObject(this, &ASOLShipPawn::FollowShip);
     FollowShip();
+
+    // Menus suspend and restore the ship's control as the map does
+    if (Menu != nullptr)
+    {
+        mMenuStateHandle = Menu->OnStateChanged().AddUObject(this, &ASOLShipPawn::HandleMenuStateChanged);
+    }
 
     // Verification hook: drive the real input pipeline through a fixed script, log checkpoints, then quit
     if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_INPUT))
@@ -251,6 +260,11 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     {
         Combat->SetPlayerTriggerHeld(false);
     }
+    if (Menu != nullptr)
+    {
+        Menu->OnStateChanged().Remove(mMenuStateHandle);
+    }
+    mMenuStateHandle.Reset();
     mIsFireHeld = false;
     mUniverseUpdatedHandle.Reset();
     mSmokeInput.Reset();
@@ -322,6 +336,16 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         }
     }
 
+    // Esc was pressed in flight; the menu subsystem opens the pause menu at its next frame
+    if (mIsPauseRequested)
+    {
+        mIsPauseRequested = false;
+        if (Menu != nullptr && !mIsMapOpen)
+        {
+            Menu->RequestEscape();
+        }
+    }
+
     // Enter was pressed on the map; the jump starts (and the map closes) here, outside the Enhanced Input callback
     if (mIsJumpRequested)
     {
@@ -363,7 +387,8 @@ void ASOLShipPawn::UpdateCombatInput()
     {
         return;
     }
-    Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !mIsSpeedPanelOpen && !IsJumpWarping());
+    Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !mIsSpeedPanelOpen && !mIsMenuSuspended
+        && !IsJumpWarping());
 
     // Render space has Unreal-handed axes around the render origin, so the camera's offset from the actor (the ship)
     // and its forward are Unreal-handed universe vectors; EclipticToUnreal (a Y flip) turns them into ecliptic ones
@@ -510,6 +535,7 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     // Jump map: J toggles (mapped in both contexts); the rest only exist in the map's context while it is open
     input->BindAction(ToggleMapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleMapAction);
     input->BindAction(MapCloseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapCloseAction);
+    input->BindAction(PauseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPauseAction);
     input->BindAction(MapRightDragAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapRightStarted);
     input->BindAction(MapRightDragAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnMapRightCompleted);
     input->BindAction(MapPanAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapPanStarted);
@@ -590,7 +616,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mIsSpeedPanelOpen || mIsMapOpen)
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mIsSpeedPanelOpen || mIsMapOpen || mIsMenuSuspended)
     {
         return;
     }
@@ -668,6 +694,7 @@ void ASOLShipPawn::CreateInputObjects()
     RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
     RadarAutoAction = CreateAction(this, TEXT("IA_ShipRadarAuto"), EInputActionValueType::Boolean);
     ToggleMapAction = CreateAction(this, TEXT("IA_MapToggle"), EInputActionValueType::Boolean);
+    PauseAction = CreateAction(this, TEXT("IA_ShipPause"), EInputActionValueType::Boolean);
     MapCloseAction = CreateAction(this, TEXT("IA_MapClose"), EInputActionValueType::Boolean);
     MapRightDragAction = CreateAction(this, TEXT("IA_MapRightDrag"), EInputActionValueType::Boolean);
     MapPanAction = CreateAction(this, TEXT("IA_MapPan"), EInputActionValueType::Boolean);
@@ -719,6 +746,9 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, RadarZoomOutAction, EKeys::Equals, this);
     MapPressedKey(MappingContext, RadarAutoAction, EKeys::Home, this);
     MapPressedKey(MappingContext, ToggleMapAction, EKeys::J, this);
+
+    // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
+    MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
 
     // Jump map: J or Esc close; right drag orbits, middle or Shift+right drag pans (held buttons gate the mouse
     // delta), the wheel zooms. Destination picking: left button (press and release), Shift (the same action as the
@@ -1204,6 +1234,10 @@ void ASOLShipPawn::OpenMap()
     mIsMapPickHeld = false;
     mHasOsMousePx = false;
     mIsMapOpen = true;
+    if (Menu != nullptr)
+    {
+        Menu->NotifyMapOpen(true);
+    }
     UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map open; ship control input suspended, cursor released"), *GetName());
 }
 
@@ -1233,6 +1267,10 @@ void ASOLShipPawn::DismissMap()
     if (mIsMapOpen && MapMode != nullptr)
     {
         MapMode->CloseMap(Cast<APlayerController>(GetController()));
+    }
+    if (mIsMapOpen && Menu != nullptr)
+    {
+        Menu->NotifyMapOpen(false);
     }
     mIsMapOpen = false;
     mIsMapToggleRequested = false;
@@ -1376,6 +1414,40 @@ void ASOLShipPawn::HandleToggleMap()
 void ASOLShipPawn::HandleCloseMap()
 {
     mIsMapToggleRequested = mIsMapOpen;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests the pause menu (Esc in flight; handed to the menu subsystem at the next tick)
+void ASOLShipPawn::HandlePause()
+{
+    mIsPauseRequested = !mIsMapOpen && !mIsMenuSuspended;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Menu state changed: suspends the ship's control while a menu shows and restores it on resume
+void ASOLShipPawn::HandleMenuStateChanged(const SOLMenuState::FMenuState& previous,
+    const SOLMenuState::FMenuState& next)
+{
+    const bool bSuspend = SOLMenuState::SuspendsFlightInput(next);
+    if (bSuspend == mIsMenuSuspended)
+    {
+        return;
+    }
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (bSuspend)
+    {
+        // The pause menu (UI-only input, set by the menu subsystem) replaces the ship's input; the sim keeps running
+        if (playerController != nullptr)
+        {
+            SuspendShipControl(*playerController);
+        }
+        mIsMenuSuspended = true;
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: menu open; ship control input suspended"), *GetName());
+        return;
+    }
+    mIsMenuSuspended = false;
+    RestoreShipControl();
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: menu closed; ship control input restored"), *GetName());
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1713,6 +1785,13 @@ void ASOLShipPawn::OnToggleMapAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnMapCloseAction(const FInputActionValue& /*value*/)
 {
     HandleCloseMap();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: pause menu (Esc in the ship mapping)
+void ASOLShipPawn::OnPauseAction(const FInputActionValue& /*value*/)
+{
+    HandlePause();
 }
 
 //////////////////////////////////////////////////////////////////////////
