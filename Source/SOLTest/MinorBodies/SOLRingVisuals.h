@@ -18,6 +18,7 @@ class UInstancedStaticMeshComponent;
 class UNiagaraComponent;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLSimClockSubsystem;
 
 /**
  * Presentation proxy for one ringed planet's near/far ring rendering (SDD 6 Appendix D, Amendment 11): one
@@ -25,6 +26,11 @@ class USOLBodyRegistrySubsystem;
  * same bulk-transform-update pattern as ASOLAsteroidBeltVisuals) and one UNiagaraComponent for the always-on
  * far-field annulus (the shared, parameterized /Game/SOL/Rings/NS_SOLRingFar system). One actor per ringed planet
  * (SOLPlanetRing::RealRings()), spawned deferred by ASOLGameMode with PlanetName set before BeginPlay.
+ *
+ * A third layer, the dense rock layer (SDD 6 Amendments 14-15), is the shared /Game/SOL/Rings/NS_SOLRingDense GPU
+ * Niagara system: a carpet of ~1M lit rocks in a wrapped window around the camera, drawn only within a few tens of
+ * kilometres of the ring (SOLRingDense::ComputeDenseAlpha) and only at low time warp. It is activated once and then
+ * only shown/hidden and paused/resumed, never deactivated (reactivating respawns every rock).
  *
  * Near/far cross-fade: SOLRingPatch::ComputeNearFieldAlpha scales every near-field instance's transform (shrinking
  * rocks toward zero size, not toggling visibility, for a genuinely smooth fade) as the player leaves the ring's
@@ -75,6 +81,15 @@ private:
     // cross-fade weight for the current frame
     void HandleUniverseUpdated();
 
+    // Updates the dense rock layer: decides whether it is visible this frame (render viewpoint near the ring at a low
+    // time warp), and while it is, places it at the viewpoint, integrates its co-rotation angle and feeds the
+    // wrapped-window parameters to the Niagara system, all in the Niagara component's mirrored-Y local axes
+    void UpdateDenseLayer();
+
+    // Pushes the far field's optional Sun-direction parameter (ring-local, Unreal-handed axes) from the Sun's and
+    // the planet's current positions
+    void UpdateFarFieldLighting();
+
     // Re-places and rescales the far-field Niagara component from this frame's render-origin snapshot: location
     // tracks the planet (log-compressed with distance, same as any other body), rotation is mFarFieldRotation
     // (cached once, Unreal axes), and scale compensates for that same log-compression so the annulus's real radius
@@ -98,8 +113,15 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UNiagaraComponent> FarFieldNiagara;
 
+    /** Dense rock layer: the shared NS_SOLRingDense system, a camera-local wrapped window of GPU mesh particles. */
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
+    TObjectPtr<UNiagaraComponent> DenseNiagara;
+
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> AnchorSubsystem;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSimClockSubsystem> SimClock;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLBodyRegistrySubsystem> BodyRegistry;
@@ -110,6 +132,17 @@ private:
                                                                      // once in BeginPlay - for DistanceOutsideRing-
                                                                      // VolumeM only; do NOT feed this into an
                                                                      // Unreal-space rotation (use mFarFieldRotation)
+    FQuat4d mRingOrientation = FQuat4d::Identity;    // Host orientation (ring-local -> ecliptic), cached in BeginPlay
+    int32 mSunIndex = INDEX_NONE;                    // Registry index of the Sun, for the far field's lighting
+    double mPlanetGM = 0.0;                          // Host planet's GM, for the dense layer's co-rotation rate
+    double mDenseSpinAngleRad = 0.0;                 // Integrated co-rotation angle of the dense carpet
+    double mLastSecondsSinceJ2000 = 0.0;             // Sim time at the previous dense update, for the angle's step
+    bool mIsDenseEnabled = false;                    // Whether the dense layer's asset and clock resolved (it is optional)
+    bool mIsDenseActivated = false;                  // Whether the dense system has been activated yet (first show)
+    bool mIsDenseVisible = false;                    // Whether the dense layer is currently shown and running
+    FVector3d mRingAxisE1 = FVector3d::XAxisVector;  // Ring-frame X axis in ECLIPTIC axes, cached in BeginPlay
+    FVector3d mRingAxisE2 = FVector3d::YAxisVector;  // Ring-frame Y axis in ECLIPTIC axes, cached in BeginPlay
+    FVector3d mLastSunDirection = FVector3d::ZeroVector; // Last Sun direction pushed to the far field, to skip no-ops
     FQuat mFarFieldRotation = FQuat::Identity;   // mRingNormal converted to Unreal axes, cached once in BeginPlay
 
     TSharedPtr<FMassEntityManager> mEntityManager;

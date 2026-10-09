@@ -215,18 +215,22 @@ Keep it in sync if the design shifts.
     screenshot verification at multiple distances per ring (confirm real gaps are
     visible in both tiers, the cross-fade isn't jarring, rapid cell-crossing at warp
     speed doesn't pop/crash). Commit.
-  - [ ] **5e-v — Realistic rings (SDD 6 Amendment 14).** Replace the blob sprites with a
-    Cassini-style three-tier look:
-    - [ ] Spike: enable PCG, prove GPU Spawn Static Mesh in 5.8 (millions visible, survives a
-      graphics-settings change, correct under floating origin on `ASOLRingVisuals`); fallback
-      Niagara mesh particles if it fails.
-    - [ ] Procedural Nanite rock mesh variants (about 6) under `/Game/SOL/Rings/`.
-    - [ ] Tier A retune: Niagara far field with soft non-additive material / mesh particles.
-    - [ ] Tier B: PCG dense layer (about 5M Saturn, scaled for the others), counts and
-      handover thresholds in `SOLConstants.h`; pure-logic tests first (TDD, subagent-authored).
-    - [ ] Keep tier C (Mass pool); cross-fade A/B/C via `ComputeNearFieldAlpha`.
-    - [ ] Profile (`stat gpu`/Insights), multi-distance screenshots at all four rings,
-      adversarial review, `ARCHITECTURE.md`, full suite, commit.
+  - [x] **5e-v — Realistic rings (SDD 6 Amendments 14-16).** Cassini-style three-tier look, built as:
+    - [x] PCG GPU spike: instances draw (1M) but are wiped by scalability changes and cannot follow a moving
+      actor, so PCG was rejected for the rings (Amendment 14 findings); `USOLEditorAuthoring` kept as an editor helper.
+    - [x] Assets (Amendment 15): `SM_SOLRingRock_0..5`, `M_SOLRingRock`, `SM_SOLRingDisc`, `M_SOLRingFar`
+      (analytic ring-profile disc with a camera-distance fade), `NS_SOLRingFar` (rebuilt as one disc particle),
+      `NS_SOLRingDense` (GPU sim, 1M rocks in a wrapped camera-local window).
+    - [x] `SOLRingDense` pure logic (window phase, Keplerian spin integration, fade alpha, ring-frame position,
+      Niagara-local mirror, show gate, fill) with 21 automation tests, written test-first by a separate agent
+      and extended after the adversarial review (composition tests pinning carpet fixity and spin sign).
+    - [x] `ASOLRingVisuals` wiring: dense component activated once, shown/paused by the gate, placed at the viewpoint,
+      parameters in the Niagara component's mirrored-Y axes; far field Sun direction and profile index; dead
+      sprite code and its 8 tests removed. Verification-only `-SOLRingStartKm/-SOLRingHeightKm` flags.
+    - [x] Adversarial review (fresh opus agent) found one high (missing Y mirror on the window parameters) and several
+      medium issues (observer vs viewpoint gating, fade band wider than what the layer can draw, no reactivation,
+      dense layer a single point of failure for the ring); all fixed except the items recorded as tech debt in
+      CLAUDE.md (one 1M system per ring; dense fill ignores the far disc's finer radial profile).
 
 ## Cross-cutting
 

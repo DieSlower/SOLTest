@@ -268,9 +268,41 @@ void USOLShipSubsystem::SpawnPlayerShip()
     const FSOLBodyFrameCache& cache = BodyRegistry->GetUnrealFrameCache();
     const int32 sunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
     const FVector3d sunM = sunIndex == INDEX_NONE ? FVector3d::ZeroVector : cache.PositionsM[sunIndex];
-    const FSOLShipState state = SOLFlight::MakeCircularOrbitState(cache.PositionsM[bodyIndex],
+    FVector3d spawnDirection = sunM - cache.PositionsM[bodyIndex];
+    FVector3d spawnOffsetM = FVector3d::ZeroVector;
+    FVector3d spawnTangent = FVector3d::ZeroVector;
+
+    // Verification-only: -SOLRingStartKm=<r> starts inside the start body's ring plane, r km from its centre along the
+    // ring's X axis and -SOLRingHeightKm=<h> above the plane, so the ring's dense rock layer can be screenshotted
+    double ringStartKm = 0.0;
+    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::RING_START_KM, ringStartKm) && ringStartKm > 0.0)
+    {
+        double ringHeightKm = SOL::RING_START_DEFAULT_HEIGHT_KM;
+        FParse::Value(FCommandLine::Get(), SOL::CommandLine::RING_HEIGHT_KM, ringHeightKm);
+        const FQuat4d orientation = registry.GetOrientation(bodyIndex);
+        spawnDirection = SOLRender::EclipticToUnreal(orientation.RotateVector(FVector3d(1.0, 0.0, 0.0)));
+        spawnOffsetM = SOLRender::EclipticToUnreal(orientation.RotateVector(FVector3d(0.0, 0.0, 1.0)))
+            * (ringHeightKm * SOL::METERS_PER_KM);
+        spawnTangent = SOLRender::EclipticToUnreal(orientation.RotateVector(FVector3d(0.0, 1.0, 0.0)));
+        altitudeKm = ringStartKm - cache.RadiiM[bodyIndex] / SOL::METERS_PER_KM;
+        if (altitudeKm <= 0.0)
+        {
+            UE_LOG(LogSOL, Warning, TEXT("ShipSubsystem %s: -SOLRingStartKm=%.0f is inside %s (radius %.0f km)"),
+                *GetName(), ringStartKm, *registry.GetName(bodyIndex).ToString(),
+                cache.RadiiM[bodyIndex] / SOL::METERS_PER_KM);
+        }
+    }
+    FSOLShipState state = SOLFlight::MakeCircularOrbitState(cache.PositionsM[bodyIndex],
         cache.VelocitiesMps[bodyIndex], cache.GMs[bodyIndex], cache.RadiiM[bodyIndex],
-        altitudeKm * SOL::METERS_PER_KM, sunM - cache.PositionsM[bodyIndex]);
+        altitudeKm * SOL::METERS_PER_KM, spawnDirection);
+    state.PositionM += spawnOffsetM;
+    if (!spawnTangent.IsZero())
+    {
+        // In the ring plane the ship co-rotates with the ring (circular speed along the ring's Y axis), so it stays in
+        // the ring instead of drifting out of the plane at the circular-orbit state's own inclination
+        const double ringRadiusM = ringStartKm * SOL::METERS_PER_KM;
+        state.VelocityMps = cache.VelocitiesMps[bodyIndex] + spawnTangent * FMath::Sqrt(cache.GMs[bodyIndex] / ringRadiusM);
+    }
 
     // One archetype for ships; the player's carries the player tag, and its class's params are a const shared value
     const UScriptStruct* const elements[] = {

@@ -363,25 +363,6 @@ namespace SOLRingPatch
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Far-field Niagara sprite diameter (cm) for a ring of the given outer/inner radius and burst particle count:
-    // treats particleCount as scattered uniformly at random over the annulus area, takes the typical
-    // nearest-neighbor spacing, and scales it by SOL::RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR so sprites overlap into a
-    // continuous band instead of leaving gaps - see the header comment for why this can't be a fixed size shared
-    // across rings (same particleCount, very different ring widths/circumferences). Degenerate inputs (no annulus
-    // area, no particles) return 0.0 rather than NaN/negative.
-    double FarFieldSpriteSizeCm(const double outerRadiusM, const double innerRadiusM, const int32 particleCount)
-    {
-        if (outerRadiusM <= innerRadiusM || particleCount <= 0)
-        {
-            return 0.0;
-        }
-        const double areaM2 = UE_DOUBLE_PI * (outerRadiusM * outerRadiusM - innerRadiusM * innerRadiusM);
-        const double spacingM = FMath::Sqrt(areaM2 / static_cast<double>(particleCount));
-        const double sizeM = spacingM * SOL::RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR;
-        return sizeM * SOL::METERS_TO_CM;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Returns how many angular cells radialIndex's radial band has (exposes the file-local helper of the same shape)
     int32 GetAngularCellCount(const FSOLPlanetRingDef& ringDef, const int32 radialIndex)
     {

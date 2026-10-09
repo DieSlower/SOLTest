@@ -111,16 +111,6 @@ namespace SOL
     inline constexpr double RING_PATCH_ACTIVATION_MARGIN_CELLS = 5.0;
     inline constexpr double RING_PATCH_HALF_THICKNESS_CELLS = 2.0;
 
-    // Far-field Niagara ring system (SDD 6 Amendment 11): total particle count of the shared system's one-time burst
-    // spawn, per ring instance (implementer judgment, tuned against the required screenshot verification)
-    inline constexpr int32 RING_FAR_FIELD_PARTICLE_COUNT = 4000;
-
-    // Far-field Niagara ring system (SDD 6 Amendment 13): sprite overlap factor used by
-    // SOLRingPatch::FarFieldSpriteSizeCm - multiplies the particles' typical nearest-neighbor spacing so sprites
-    // overlap into a continuous band rather than leaving visible gaps (implementer judgment, tuned against the
-    // required screenshot verification)
-    inline constexpr double RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR = 2.0;
-
     // Far-field Niagara ring system only has 3 gap-band User Parameter slots (SDD 6 Amendment 11); AllGapBandsM's
     // real data never exceeds this (Saturn's Cassini Division plus Pan's and Daphnis's shepherd gaps)
     inline constexpr int32 RING_FAR_FIELD_GAP_SLOT_COUNT = 3;
@@ -134,7 +124,6 @@ namespace SOL
     {
         inline constexpr const TCHAR* OUTER_RADIUS_CM = TEXT("RingOuterRadiusCm");
         inline constexpr const TCHAR* INNER_RADIUS_CM = TEXT("RingInnerRadiusCm");
-        inline constexpr const TCHAR* PARTICLE_COUNT = TEXT("RingParticleCount");
         inline constexpr const TCHAR* COLOR = TEXT("RingColor");
         inline constexpr const TCHAR* GAP0_INNER_RADIUS_CM = TEXT("RingGap0InnerRadiusCm");
         inline constexpr const TCHAR* GAP0_OUTER_RADIUS_CM = TEXT("RingGap0OuterRadiusCm");
@@ -142,10 +131,57 @@ namespace SOL
         inline constexpr const TCHAR* GAP1_OUTER_RADIUS_CM = TEXT("RingGap1OuterRadiusCm");
         inline constexpr const TCHAR* GAP2_INNER_RADIUS_CM = TEXT("RingGap2InnerRadiusCm");
         inline constexpr const TCHAR* GAP2_OUTER_RADIUS_CM = TEXT("RingGap2OuterRadiusCm");
+    }
 
-        // 11th User Parameter (SDD 6 Amendment 13): per-ring sprite diameter, set from
-        // SOLRingPatch::FarFieldSpriteSizeCm (the 10 parameters above predate this one - see Amendment 11)
-        inline constexpr const TCHAR* PARTICLE_SIZE_CM = TEXT("RingParticleSizeCm");
+    // Verification-only ring-plane spawn (-SOLRingStartKm): default height above the plane, in km
+    inline constexpr double RING_START_DEFAULT_HEIGHT_KM = 0.1;
+
+    // Ring dense layer (SDD 6 Amendments 14-15): a 1M-rock GPU Niagara carpet in a wrapped window around the camera,
+    // shown only near the ring. Counts and sizes are measured values from Amendment 15's profiling table
+    inline constexpr int32 RING_DENSE_PARTICLE_COUNT = 1000000;
+    inline constexpr double RING_DENSE_WINDOW_RADIUS_CM = 150000.0;      // W: half the wrapped tile size
+    inline constexpr double RING_DENSE_HALF_THICKNESS_CM = 2000.0;       // 1-sigma half thickness of the rock layer
+    inline constexpr double RING_DENSE_ROCK_MIN_RADIUS_CM = 25.0;
+    inline constexpr double RING_DENSE_ROCK_MAX_RADIUS_CM = 600.0;
+    inline constexpr double RING_DENSE_CULL_ANGULAR_RADIUS = 0.001;      // rad; rocks smaller on screen are hidden
+    // Fade band: the carpet only ever reaches its window radius horizontally, and its biggest rock stops being drawn
+    // beyond RING_DENSE_ROCK_MAX_RADIUS_CM / RING_DENSE_CULL_ANGULAR_RADIUS = 6 km, so past 6 km the GPU system would
+    // simulate and cull a million rocks to draw none (SDD 6 Amendment 15 review). The far disc's material fades
+    // itself out over 1-4 km of camera distance, which this band overlaps.
+    inline constexpr double RING_DENSE_FADE_IN_DISTANCE_M = 1500.0;      // fully on within this distance of the ring
+    inline constexpr double RING_DENSE_FADE_OUT_DISTANCE_M = 6000.0;     // fully off beyond this distance
+    static_assert(RING_DENSE_FADE_OUT_DISTANCE_M <= RING_DENSE_ROCK_MAX_RADIUS_CM / RING_DENSE_CULL_ANGULAR_RADIUS / METERS_TO_CM * 1.0e0 + 1.0,
+        "Fade out beyond the distance the largest rock is still drawn would simulate a million rocks for nothing");
+    inline constexpr double RING_DENSE_MAX_TIME_WARP = 10.0;             // a co-rotating carpet is meaningless above this
+
+    // Niagara User Parameter names of Paths::RING_DENSE_NIAGARA_SYSTEM (SDD 6 Amendment 15). The ring radii, gaps and
+    // colour reuse RingFarFieldParams' names (both systems declare them)
+    namespace RingDenseParams
+    {
+        inline constexpr const TCHAR* PARTICLE_COUNT = TEXT("RingDenseParticleCount");
+        inline constexpr const TCHAR* WINDOW_RADIUS_CM = TEXT("RingWindowRadiusCm");
+        inline constexpr const TCHAR* HALF_THICKNESS_CM = TEXT("RingDenseHalfThicknessCm");
+        inline constexpr const TCHAR* ROCK_MIN_RADIUS_CM = TEXT("RingRockMinRadiusCm");
+        inline constexpr const TCHAR* ROCK_MAX_RADIUS_CM = TEXT("RingRockMaxRadiusCm");
+        inline constexpr const TCHAR* CULL_ANGULAR_RADIUS = TEXT("RingRockCullAngularRadius");
+        inline constexpr const TCHAR* FILL = TEXT("RingDenseFill");
+        inline constexpr const TCHAR* WINDOW_PHASE_CM = TEXT("RingWindowPhaseCm");
+        inline constexpr const TCHAR* WINDOW_CENTER_CM = TEXT("RingWindowCenterCm");
+    }
+
+    // Profile indices of the far-field material's radial ring-profile table (order fixed by the asset)
+    inline constexpr int32 RING_PROFILE_INDEX_JUPITER = 0;
+    inline constexpr int32 RING_PROFILE_INDEX_SATURN = 1;
+    inline constexpr int32 RING_PROFILE_INDEX_URANUS = 2;
+    inline constexpr int32 RING_PROFILE_INDEX_NEPTUNE = 3;
+    inline constexpr int32 RING_PROFILE_INDEX_INFER = -1;    // let the asset infer it from the outer radius
+
+    // Ring far field disc (SDD 6 Amendment 15): optional parameters of NS_SOLRingFar's analytic ring-profile material
+    namespace RingFarDiscParams
+    {
+        inline constexpr const TCHAR* PROFILE_INDEX = TEXT("RingProfileIndex");
+        inline constexpr const TCHAR* SUN_DIRECTION = TEXT("RingSunDirection");
+        inline constexpr const TCHAR* PLANET_RADIUS_CM = TEXT("RingPlanetRadiusCm");
     }
 
     // Orbits: validity window of the JPL Standish secular elements (1800-2050), in Julian centuries since J2000
@@ -249,6 +285,9 @@ namespace SOL
         inline constexpr const TCHAR* START_BODY = TEXT("SOLStart=");           // Body the ship spawns above
         inline constexpr const TCHAR* ALTITUDE_KM = TEXT("SOLAltitudeKm=");     // Spawn altitude above its surface
         inline constexpr const TCHAR* LOOK_AT_BODY = TEXT("SOLLookAt=");        // Body the debug camera faces
+        inline constexpr const TCHAR* RING_START_KM = TEXT("SOLRingStartKm=");  // Ship spawns IN the start body's ring
+                                                                                  // plane at this radius from its centre
+        inline constexpr const TCHAR* RING_HEIGHT_KM = TEXT("SOLRingHeightKm="); // ...and this far above that plane
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
         inline constexpr const TCHAR* SMOKE_FLIGHT = TEXT("SOLSmokeFlight");    // Scripted ship flight, then quit
         inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
@@ -270,6 +309,9 @@ namespace SOL
         // Ring far field (SDD 6 Amendment 11): one shared, parameterized Niagara system authored live via the
         // editor's NiagaraToolsets API, not a content-pipeline asset
         inline constexpr const TCHAR* RING_FAR_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingFar.NS_SOLRingFar");
+
+        // Ring dense rock layer (SDD 6 Amendment 15): GPU mesh-particle carpet around the camera near a ring
+        inline constexpr const TCHAR* RING_DENSE_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingDense.NS_SOLRingDense");
 
         // Placeholder ship: engine primitives (100 cm across, centered) and the engine's lit basic material
         inline constexpr const TCHAR* SHIP_PART_CUBE = TEXT("/Engine/BasicShapes/Cube.Cube");

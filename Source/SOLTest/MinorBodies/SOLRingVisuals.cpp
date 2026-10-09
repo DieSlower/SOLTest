@@ -7,12 +7,14 @@
 
 #include "MinorBodies/SOLMinorBodyFragments.h"
 #include "MinorBodies/SOLMinorBodyVisualsUtil.h"
+#include "MinorBodies/SOLRingDense.h"
 #include "MinorBodies/SOLRingPatch.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
+#include "Universe/SOLSimClockSubsystem.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/CollisionProfile.h"
@@ -56,10 +58,22 @@ namespace
         }
         return SOLPlanetRing::AllGapBandsM(ringDef, moonOrbitRadiiM, moonGapHalfWidthsM);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the far-field material's ring-profile index for a host planet (0 Jupiter, 1 Saturn, 2 Uranus,
+    // 3 Neptune; SDD 6 Amendment 15), or -1 to let the asset infer it from the outer radius
+    int32 ProfileIndexForPlanet(FName planetName)
+    {
+        if (planetName == FName(SOL::BodyNames::JUPITER)) { return SOL::RING_PROFILE_INDEX_JUPITER; }
+        if (planetName == FName(SOL::BodyNames::SATURN)) { return SOL::RING_PROFILE_INDEX_SATURN; }
+        if (planetName == FName(SOL::BodyNames::URANUS)) { return SOL::RING_PROFILE_INDEX_URANUS; }
+        if (planetName == FName(SOL::BodyNames::NEPTUNE)) { return SOL::RING_PROFILE_INDEX_NEPTUNE; }
+        return SOL::RING_PROFILE_INDEX_INFER;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Creates the root, the near-field ISM and the far-field Niagara component
+// Creates the root, the near-field ISM, the far-field Niagara component and the dense-layer Niagara component
 ASOLRingVisuals::ASOLRingVisuals()
 {
     PrimaryActorTick.bCanEverTick = false;
@@ -88,6 +102,15 @@ ASOLRingVisuals::ASOLRingVisuals()
     FarFieldNiagara->SetUsingAbsoluteScale(true);
     FarFieldNiagara->bAutoActivate = false;
 
+    // Dense rock layer: same absolute-transform pinning and explicit one-time activation as the far field; its world
+    // transform is set every frame while visible (UpdateDenseLayer)
+    DenseNiagara = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Dense"));
+    DenseNiagara->SetupAttachment(SceneRoot);
+    DenseNiagara->SetUsingAbsoluteLocation(true);
+    DenseNiagara->SetUsingAbsoluteRotation(true);
+    DenseNiagara->SetUsingAbsoluteScale(true);
+    DenseNiagara->bAutoActivate = false;
+
     // Forwards each chunk to ProcessChunk
     mChunkFunction = [this](FMassExecutionContext& context)
     {
@@ -105,6 +128,7 @@ void ASOLRingVisuals::BeginPlay()
     UWorld* world = GetWorld();
     AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
     BodyRegistry = world->GetSubsystem<USOLBodyRegistrySubsystem>();
+    SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
     UMassEntitySubsystem* massEntities = world->GetSubsystem<UMassEntitySubsystem>();
     if (AnchorSubsystem == nullptr || BodyRegistry == nullptr || massEntities == nullptr)
     {
@@ -130,15 +154,29 @@ void ASOLRingVisuals::BeginPlay()
     // positions); the far field's own rotation needs Unreal axes, so convert and cache the quaternion once here
     // rather than reconstructing it every frame via FindBetweenNormals (which also loses any roll about the normal)
     mFarFieldRotation = FQuat(SOLRender::EclipticToUnreal(registry.GetOrientation(mPlanetIndex)));
+    mRingOrientation = registry.GetOrientation(mPlanetIndex);
+    mSunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
+    mPlanetGM = registry.GetGM(mPlanetIndex);
+    mLastSecondsSinceJ2000 = SimClock != nullptr ? SimClock->GetClock().GetSecondsSinceJ2000() : 0.0;
+    mRingAxisE1 = mRingOrientation.RotateVector(FVector3d(1.0, 0.0, 0.0));
+    mRingAxisE2 = mRingOrientation.RotateVector(FVector3d(0.0, 1.0, 0.0));
 
     UStaticMesh* mesh = LoadObject<UStaticMesh>(nullptr, SOL::Paths::BODY_MESH);
     UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::BODY_MATERIAL);
     UNiagaraSystem* farFieldSystem = LoadObject<UNiagaraSystem>(nullptr, SOL::Paths::RING_FAR_NIAGARA_SYSTEM);
+    UNiagaraSystem* denseSystem = LoadObject<UNiagaraSystem>(nullptr, SOL::Paths::RING_DENSE_NIAGARA_SYSTEM);
     if (mesh == nullptr || material == nullptr || farFieldSystem == nullptr)
     {
         UE_LOG(LogSOL, Error, TEXT("RingVisuals %s: failed to load %s, %s or %s"), *GetName(), SOL::Paths::BODY_MESH,
             SOL::Paths::BODY_MATERIAL, SOL::Paths::RING_FAR_NIAGARA_SYSTEM);
         return;
+    }
+    // The dense rock layer is an optional extra: without its asset or the sim clock the ring still draws, minus it
+    mIsDenseEnabled = denseSystem != nullptr && SimClock != nullptr;
+    if (!mIsDenseEnabled)
+    {
+        UE_LOG(LogSOL, Warning, TEXT("RingVisuals %s: dense rock layer disabled (%s or the sim clock is missing)"),
+            *GetName(), SOL::Paths::RING_DENSE_NIAGARA_SYSTEM);
     }
 
     // Far-field: one shared system, parameterized per instance (SDD 6 Amendment 11)
@@ -147,13 +185,12 @@ void ASOLRingVisuals::BeginPlay()
         static_cast<float>(mRingDef.OuterRadiusM * SOL::METERS_TO_CM));
     FarFieldNiagara->SetVariableFloat(SOL::RingFarFieldParams::INNER_RADIUS_CM,
         static_cast<float>(mRingDef.InnerRadiusM * SOL::METERS_TO_CM));
-    FarFieldNiagara->SetVariableInt(SOL::RingFarFieldParams::PARTICLE_COUNT, SOL::RING_FAR_FIELD_PARTICLE_COUNT);
     FarFieldNiagara->SetVariableLinearColor(SOL::RingFarFieldParams::COLOR, mRingDef.Color);
-    // Sprite size (SDD 6 Amendment 13): sized from this ring's own width, not a fixed constant, so every ring reads
-    // as a continuous band despite sharing the same fixed RING_FAR_FIELD_PARTICLE_COUNT across very different
-    // widths/circumferences (Saturn's ring is ~10x wider than Jupiter's)
-    FarFieldNiagara->SetVariableFloat(SOL::RingFarFieldParams::PARTICLE_SIZE_CM, static_cast<float>(
-        SOLRingPatch::FarFieldSpriteSizeCm(mRingDef.OuterRadiusM, mRingDef.InnerRadiusM, SOL::RING_FAR_FIELD_PARTICLE_COUNT)));
+    // The far field is one analytic-profile disc since SDD 6 Amendment 15 (no sprite count/size parameters); these
+    // optional parameters pick the ring's real radial profile and feed the planet's shadow
+    FarFieldNiagara->SetVariableInt(SOL::RingFarDiscParams::PROFILE_INDEX, ProfileIndexForPlanet(PlanetName));
+    FarFieldNiagara->SetVariableFloat(SOL::RingFarDiscParams::PLANET_RADIUS_CM,
+        static_cast<float>(registry.GetRadiusM(mPlanetIndex) * SOL::METERS_TO_CM));
 
     const TArray<FSOLRadiusBandM> gapBands = BuildRingGapBandsM(registry, mRingDef);
     if (gapBands.Num() > SOL::RING_FAR_FIELD_GAP_SLOT_COUNT)
@@ -179,6 +216,38 @@ void ASOLRingVisuals::BeginPlay()
         FarFieldNiagara->SetVariableFloat(gapOuterNames[slot], static_cast<float>(outerM * SOL::METERS_TO_CM));
     }
     FarFieldNiagara->Activate(true);
+
+    // Dense rock layer: the same ring geometry plus its window parameters; activated once, on its first show, then only
+    // shown/hidden and resumed/paused (UpdateDenseLayer); Deactivate is never used, as reactivating respawns all 1M
+    if (mIsDenseEnabled)
+    {
+        DenseNiagara->SetAsset(denseSystem);
+        DenseNiagara->SetVariableFloat(SOL::RingFarFieldParams::OUTER_RADIUS_CM,
+            static_cast<float>(mRingDef.OuterRadiusM * SOL::METERS_TO_CM));
+        DenseNiagara->SetVariableFloat(SOL::RingFarFieldParams::INNER_RADIUS_CM,
+            static_cast<float>(mRingDef.InnerRadiusM * SOL::METERS_TO_CM));
+        DenseNiagara->SetVariableLinearColor(SOL::RingFarFieldParams::COLOR, mRingDef.Color);
+        for (int32 slot = 0; slot < SOL::RING_FAR_FIELD_GAP_SLOT_COUNT; ++slot)
+        {
+            const bool bHasGap = slot < gapBands.Num();
+            DenseNiagara->SetVariableFloat(gapInnerNames[slot],
+                static_cast<float>((bHasGap ? gapBands[slot].LowM : 0.0) * SOL::METERS_TO_CM));
+            DenseNiagara->SetVariableFloat(gapOuterNames[slot],
+                static_cast<float>((bHasGap ? gapBands[slot].HighM : 0.0) * SOL::METERS_TO_CM));
+        }
+        DenseNiagara->SetVariableInt(SOL::RingDenseParams::PARTICLE_COUNT, SOL::RING_DENSE_PARTICLE_COUNT);
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::WINDOW_RADIUS_CM, static_cast<float>(SOL::RING_DENSE_WINDOW_RADIUS_CM));
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::HALF_THICKNESS_CM, static_cast<float>(SOL::RING_DENSE_HALF_THICKNESS_CM));
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::ROCK_MIN_RADIUS_CM, static_cast<float>(SOL::RING_DENSE_ROCK_MIN_RADIUS_CM));
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::ROCK_MAX_RADIUS_CM, static_cast<float>(SOL::RING_DENSE_ROCK_MAX_RADIUS_CM));
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::CULL_ANGULAR_RADIUS, static_cast<float>(SOL::RING_DENSE_CULL_ANGULAR_RADIUS));
+        DenseNiagara->SetVariableFloat(SOL::RingDenseParams::FILL, 0.0f);
+        // Not activated yet: the first show activates it (UpdateDenseLayer), so a ring the player never nears never
+        // spawns or keeps resident its million-particle buffers
+        DenseNiagara->SetVisibility(false);
+        DenseNiagara->SetWorldScale3D(FVector::OneVector);   // Absolute scale, never changes: set once, not every frame
+        mIsDenseVisible = false;
+    }
 
     // Read-only query over this ring's pool entities, at the archetype level via the shared tag (so belt entities
     // and the three other rings' entities never enter this actor's chunk iteration by composition alone - the
@@ -253,7 +322,114 @@ bool ASOLRingVisuals::FillTransforms()
     mLastNearFieldAlpha = mFrameNearFieldAlpha;
 
     PlaceFarFieldNiagara();
+    UpdateFarFieldLighting();
+    UpdateDenseLayer();
     return bNeedsNearFieldUpdate;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Pushes the far field's Sun direction (unit vector toward the Sun, in the disc's own local axes) when it changes
+void ASOLRingVisuals::UpdateFarFieldLighting()
+{
+    if (mSunIndex == INDEX_NONE)
+    {
+        return;
+    }
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const FVector3d towardSunEcliptic = registry.GetPositionM(mSunIndex) - registry.GetPositionM(mPlanetIndex);
+    if (towardSunEcliptic.IsNearlyZero())
+    {
+        return;
+    }
+    // Ecliptic -> ring-local (inverse of the host orientation) -> the Niagara disc's left-handed local axes (Y mirrored)
+    const FVector3d ringLocal = mRingOrientation.UnrotateVector(towardSunEcliptic.GetSafeNormal());
+    const FVector3d niagaraLocal = SOLRingDense::RingFrameToNiagaraLocalCm(ringLocal);
+    // The direction changes over hours, not frames: skip the Niagara write unless it moved by about 0.01 degrees
+    if ((niagaraLocal - mLastSunDirection).SizeSquared() < 1.0e-8)
+    {
+        return;
+    }
+    mLastSunDirection = niagaraLocal;
+    FarFieldNiagara->SetVariableVec3(SOL::RingFarDiscParams::SUN_DIRECTION, FVector(niagaraLocal));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Shows, places and drives the dense rock layer while the render viewpoint is near the ring at a low time warp, and
+// hides and pauses it otherwise
+void ASOLRingVisuals::UpdateDenseLayer()
+{
+    TRACE_CPUPROFILER_EVENT_SCOPE(ASOLRingVisuals::UpdateDenseLayer);
+    if (!mIsDenseEnabled)
+    {
+        return;
+    }
+
+    // The layer is drawn around the render viewpoint (the map camera in map mode, not the ship), so that is also what
+    // decides whether it is near enough to the ring to be worth simulating
+    const double denseAlpha = SOLRingDense::ComputeDenseAlpha(DistanceOutsideRingVolumeM(mFrameViewpointM),
+        SOL::RING_DENSE_FADE_IN_DISTANCE_M, SOL::RING_DENSE_FADE_OUT_DISTANCE_M);
+    const double secondsSinceJ2000 = SimClock->GetClock().GetSecondsSinceJ2000();
+    const bool bShow = SOLRingDense::ShouldShowDenseTier(denseAlpha, SimClock->GetClock().GetWarpFactor(),
+        SOL::RING_DENSE_MAX_TIME_WARP);
+
+    if (bShow != mIsDenseVisible)
+    {
+        mIsDenseVisible = bShow;
+        if (bShow && (!mIsDenseActivated || !DenseNiagara->IsActive()))
+        {
+            if (mIsDenseActivated)
+            {
+                // The engine deactivated the system behind our back (scalability or culling policy); bring it back,
+                // at the price of respawning its rocks, rather than staying silently empty for the rest of the session
+                UE_LOG(LogSOL, Warning, TEXT("RingVisuals %s: dense rock layer was deactivated by the engine; reactivating"),
+                    *GetName());
+            }
+            DenseNiagara->Activate(true);
+            mIsDenseActivated = true;
+        }
+        DenseNiagara->SetVisibility(bShow);
+        DenseNiagara->SetPaused(!bShow);
+        UE_LOG(LogSOL, Log, TEXT("RingVisuals %s: dense rock layer %s (alpha %.3f)"), *GetName(),
+            bShow ? TEXT("shown") : TEXT("hidden"), denseAlpha);
+    }
+    if (!bShow)
+    {
+        // Stay in step with the sim clock so the first visible frame's angle step is one frame, not the whole absence
+        mLastSecondsSinceJ2000 = secondsSinceJ2000;
+        return;
+    }
+
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const FVector3d relativeM = mFrameViewpointM - registry.GetPositionM(mPlanetIndex);
+    const double planeDistanceM = FVector3d::DotProduct(relativeM, mRingNormal);
+    const double planeRadiusM = FMath::Sqrt(FMath::Max(relativeM.SizeSquared() - planeDistanceM * planeDistanceM, 0.0));
+
+    // Integrating (not omega * t) means a radial move, which changes omega, never makes the carpet jump
+    mDenseSpinAngleRad = SOLRingDense::AdvanceSpinAngle(mDenseSpinAngleRad, mPlanetGM, planeRadiusM,
+        secondsSinceJ2000 - mLastSecondsSinceJ2000);
+    mLastSecondsSinceJ2000 = secondsSinceJ2000;
+
+    // Camera position in the ring's co-rotating frame (right-handed), then in the Niagara component's local axes, which
+    // are that frame mirrored in Y because the component's rotation is converted to Unreal's left-handed axes; the
+    // window phase and centre must be in the component's own axes for the carpet to stay fixed in the ring frame
+    const FVector3d ringFrameCm = SOLRingDense::RingFramePositionCm(relativeM, mRingAxisE1, mRingAxisE2, mRingNormal,
+        mDenseSpinAngleRad);
+    const FVector3d localCm = SOLRingDense::RingFrameToNiagaraLocalCm(ringFrameCm);
+
+    // The carpet's local frame is the ring frame spun by the same angle, converted to Unreal's axes like the far field
+    const FQuat4d spunOrientation = mRingOrientation * FQuat4d(FVector3d(0.0, 0.0, 1.0), mDenseSpinAngleRad);
+    DenseNiagara->SetWorldLocationAndRotation(FVector(mFrameRenderOrigin.UniverseToRenderCm(mFrameViewpointM)),
+        FQuat(SOLRender::EclipticToUnreal(spunOrientation)));
+
+    const double windowRadiusCm = SOL::RING_DENSE_WINDOW_RADIUS_CM;
+    DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_PHASE_CM, FVector(
+        SOLRingDense::WindowPhaseCm(localCm.X, windowRadiusCm), SOLRingDense::WindowPhaseCm(localCm.Y, windowRadiusCm),
+        localCm.Z));
+    // Rounded to float first: the system only masks with this value (about 10 m of error at 1e10 cm is irrelevant against
+    // km-wide gaps), and sending a double that a float cannot hold makes Niagara log a precision warning every frame
+    DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_CENTER_CM, FVector(FVector3f(localCm)));
+    DenseNiagara->SetVariableFloat(SOL::RingDenseParams::FILL,
+        static_cast<float>(SOLRingDense::DenseFillFraction(mRingDef.Density) * denseAlpha));
 }
 
 //////////////////////////////////////////////////////////////////////////

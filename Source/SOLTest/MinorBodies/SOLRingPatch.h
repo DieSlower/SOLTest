@@ -131,15 +131,6 @@ namespace SOLRingPatch
     // duplicated at each call site where a mismatch would silently under- or over-size one of the two.
     SOLTEST_API int32 PoolEntityCountPerRing();
 
-    // Returns the diameter (cm) each far-field Niagara sprite should be drawn at for a ring of this outer/inner
-    // radius and burst particle count, so sprites overlap enough to read as a continuous band rather than sparse
-    // discrete dots, consistently across rings of very different width/circumference despite sharing the same fixed
-    // particleCount (SOL::RING_FAR_FIELD_PARTICLE_COUNT is identical for every ringed planet, but Saturn's ring is
-    // ~10x wider than Jupiter's). Models particleCount as scattered uniformly at random over the ring's annulus area
-    // and scales the resulting typical nearest-neighbor spacing by SOL::RING_FAR_FIELD_SPRITE_OVERLAP_FACTOR.
-    // Returns 0.0 for a degenerate ring (outerRadiusM <= innerRadiusM) or particleCount <= 0.
-    SOLTEST_API double FarFieldSpriteSizeCm(double outerRadiusM, double innerRadiusM, int32 particleCount);
-
     // Returns how many angular cells radialIndex's radial band has (CELL_SIZE_M-arc-length steps around its own
     // center-radius circle, at least 1). Exposed so a caller (ActiveCellWindow, or a streaming pool sizing itself)
     // can reason about a specific band's own cell count without duplicating the radius-to-count math.
