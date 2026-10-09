@@ -24,7 +24,7 @@ public:
     // Sets the default pawn and HUD classes
     ASOLGameMode();
 
-    // Spawns the body, star-field, asteroid-belt and per-ring visuals, arms the optional smoke-test screenshot,
+    // Spawns the body, star-field, asteroid-belt, per-ring and combat visuals, arms the optional smoke-test hooks,
     // then starts play
     virtual void StartPlay() override;
 
@@ -51,9 +51,25 @@ protected:
 private:
 
 
+    // Phases of the -SOLCombatDemo script
+    enum class ECombatDemoPhase : uint8
+    {
+        Drop,
+        Fire,
+        Rest,
+    };
+
     // Quits the game after the smoke-test screenshot
     void QuitAfterSmokeTest();
 
+    // Advances the -SOLCombatDemo script: drop a target, hold the trigger until it is destroyed, rest, repeat
+    void StepCombatDemo();
+
     bool mSmokeConsoleRun = false; // Verification-only: the -SOLSmokeConsole commands have been run
     FTimerHandle mSmokeTimer; // Verification-only: -SOLSmokeShot=<seconds> screenshots, then quits
+    FTimerHandle mCombatDemoTimer; // Verification-only: -SOLCombatDemo script steps
+    ECombatDemoPhase mCombatDemoPhase = ECombatDemoPhase::Drop;
+    double mCombatDemoPhaseStartSeconds = 0.0;
+    int32 mCombatDemoCycle = 0;    // Completed drop-and-kill cycles
+    int32 mCombatDemoShots = 0;    // Screenshots taken in the first cycle
 };

@@ -247,7 +247,8 @@ bool USOLCombatSubsystem::FireBolt(const FVector3d& muzzlePositionM, const FVect
     mBoltOwners.Add(owner);
     mBoltPositionsM.Add(muzzlePositionM);
     mBoltVelocitiesMps.Add(velocityMps);
-    AddEvent(ESOLCombatEventType::BoltFired, muzzlePositionM, velocityMps, INDEX_NONE, owner);
+    AddEvent(ESOLCombatEventType::BoltFired, muzzlePositionM, velocityMps, GetFrameBodyVelocityMps(frameBody),
+        INDEX_NONE, owner);
     return true;
 }
 
@@ -270,8 +271,8 @@ int32 USOLCombatSubsystem::DropTarget(const FVector3d& shipPositionM, const FVec
         {
             return INDEX_NONE;
         }
-        AddEvent(ESOLCombatEventType::TargetEvicted, mTargetPositionsM[slot], FVector3d::ZeroVector, slot,
-            SOLCombat::NO_OWNER);
+        AddEvent(ESOLCombatEventType::TargetEvicted, mTargetPositionsM[slot], FVector3d::ZeroVector,
+            GetTargetVelocityMps(slot), slot, SOLCombat::NO_OWNER);
         DeactivateTarget(slot);
     }
 
@@ -299,7 +300,8 @@ int32 USOLCombatSubsystem::DropTarget(const FVector3d& shipPositionM, const FVec
     mTargetHealthFractions[slot] = 1.0f;
     ++mActiveTargetCount;
     mLastDropTimeS = mCombatTimeS;
-    AddEvent(ESOLCombatEventType::TargetDropped, positionM, FVector3d::ZeroVector, slot, SOLCombat::NO_OWNER);
+    AddEvent(ESOLCombatEventType::TargetDropped, positionM, FVector3d::ZeroVector, GetTargetVelocityMps(slot), slot,
+        SOLCombat::NO_OWNER);
     UE_LOG(LogSOL, Verbose, TEXT("CombatSubsystem %s: target dropped in slot %d (%d active)"), *GetName(), slot,
         mActiveTargetCount);
     return slot;
@@ -318,9 +320,18 @@ void USOLCombatSubsystem::DeactivateTarget(const int32 slot)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a target slot's current universe velocity (its frame body's velocity plus its own relative velocity)
+FVector3d USOLCombatSubsystem::GetTargetVelocityMps(const int32 slot) const
+{
+    return mTargetFrameBodies.IsValidIndex(slot)
+        ? GetFrameBodyVelocityMps(mTargetFrameBodies[slot]) + mTargetRelVelocitiesMps[slot]
+        : FVector3d::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Queues one event unless the cap was reached
 void USOLCombatSubsystem::AddEvent(const ESOLCombatEventType type, const FVector3d& positionM,
-    const FVector3d& velocityMps, const int32 targetSlot, const int32 owner)
+    const FVector3d& velocityMps, const FVector3d& frameVelocityMps, const int32 targetSlot, const int32 owner)
 {
     if (mEvents.Num() >= SOL::COMBAT_MAX_EVENTS_PER_UPDATE)
     {
@@ -331,6 +342,7 @@ void USOLCombatSubsystem::AddEvent(const ESOLCombatEventType type, const FVector
     event.Type = type;
     event.PositionM = positionM;
     event.VelocityMps = velocityMps;
+    event.FrameVelocityMps = frameVelocityMps;
     event.TargetSlot = targetSlot;
     event.Owner = owner;
 }
@@ -693,17 +705,18 @@ void USOLCombatSubsystem::ApplyBoltHits()
             const SOLDamageMath::FDamageState after = SOLDamageMath::ApplyDamage(before, SOL::COMBAT_BOLT_DAMAGE);
             mTargetDamage[hitIndex] = after;
             mTargetHitFlash[hitIndex] = 1.0f;
-            AddEvent(ESOLCombatEventType::TargetHit, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt], hitIndex,
-                mBoltOwners[bolt]);
+            const FVector3d targetVelocityMps = GetTargetVelocityMps(hitIndex);
+            AddEvent(ESOLCombatEventType::TargetHit, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt],
+                targetVelocityMps, hitIndex, mBoltOwners[bolt]);
             if (before.Shield > 0.0 && after.Shield <= 0.0)
             {
                 AddEvent(ESOLCombatEventType::ShieldBroken, mTargetPositionsM[hitIndex], FVector3d::ZeroVector,
-                    hitIndex, mBoltOwners[bolt]);
+                    targetVelocityMps, hitIndex, mBoltOwners[bolt]);
             }
             if (after.bDead)
             {
                 AddEvent(ESOLCombatEventType::TargetDestroyed, mTargetPositionsM[hitIndex], FVector3d::ZeroVector,
-                    hitIndex, mBoltOwners[bolt]);
+                    targetVelocityMps, hitIndex, mBoltOwners[bolt]);
                 DeactivateTarget(hitIndex);
             }
             bRemove = true;
@@ -712,7 +725,7 @@ void USOLCombatSubsystem::ApplyBoltHits()
         {
             // Absorbed with a spark puff; the rock is on rails and unharmed
             AddEvent(ESOLCombatEventType::BoltAbsorbed, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt],
-                INDEX_NONE, mBoltOwners[bolt]);
+                GetFrameBodyVelocityMps(mBoltFrameBodies[bolt]), INDEX_NONE, mBoltOwners[bolt]);
             bRemove = true;
         }
 

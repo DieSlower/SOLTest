@@ -5,12 +5,15 @@
 
 #include "Game/SOLGameMode.h"
 
+#include "Combat/SOLCombatSubsystem.h"
+#include "Combat/SOLCombatVisuals.h"
 #include "Game/SOLSpectatorPawn.h"
 #include "MinorBodies/SOLAsteroidBeltVisuals.h"
 #include "MinorBodies/SOLPlanetRing.h"
 #include "MinorBodies/SOLRingVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
+#include "SOLTest.h"
 #include "StarField/SOLStarField.h"
 #include "UI/SOLFlightHud.h"
 #include "Visuals/SOLBodyVisuals.h"
@@ -30,6 +33,15 @@ namespace
     constexpr float SMOKE_CONSOLE_SETTLE_SECONDS = 2.0f;                        // Time for console stats (stat unit/gpu) to fill
     constexpr float SMOKE_QUIT_DELAY_SECONDS = 3.0f;                            // Time for the screenshot to be written
     const TCHAR* const SMOKE_SCREENSHOT_COMMAND = TEXT("HighResShot 1280x720"); // Written to Saved/Screenshots
+    constexpr float COMBAT_DEMO_START_DELAY_SECONDS = 8.0f;                     // -SOLCombatDemo: first drop once flight
+                                                                                // assist has brought the spawned ship
+                                                                                // (in orbit) nearly to rest
+    constexpr float COMBAT_DEMO_STEP_SECONDS = 0.1f;                            // -SOLCombatDemo: script poll interval
+    constexpr double COMBAT_DEMO_DROP_SETTLE_SECONDS = 0.3;                     // Time for a requested drop to land
+    constexpr double COMBAT_DEMO_REST_SECONDS = 2.0;                            // Pause after a kill before the next drop
+    constexpr double COMBAT_DEMO_FIRE_SHOT_SECONDS = 1.2;                       // First cycle: screenshot this far into fire
+    constexpr double COMBAT_DEMO_KILL_SHOT_SECONDS = 0.2;                       // ...and these far after the kill
+    constexpr double COMBAT_DEMO_DEBRIS_SHOT_SECONDS = 1.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -52,7 +64,7 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field, asteroid-belt and per-ring visuals, arms the optional smoke-test screenshot, then
+// Spawns the body, star-field, asteroid-belt, per-ring and combat visuals, arms the optional smoke-test hooks, then
 // starts play
 void ASOLGameMode::StartPlay()
 {
@@ -62,6 +74,7 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLStarField>(ASOLStarField::StaticClass(), FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
+    GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
 
     // One ASOLRingVisuals per ringed planet (SDD 6 Amendment 11, 5e-iii); deferred so PlanetName is set before
     // BeginPlay resolves the ring definition and planet index
@@ -81,6 +94,13 @@ void ASOLGameMode::StartPlay()
     if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_SHOT, smokeDelaySeconds) && smokeDelaySeconds > 0.0f)
     {
         GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::TakeSmokeScreenshot, smokeDelaySeconds);
+    }
+
+    // Verification hook for the combat visuals: drop a target ahead of the ship and shoot it until it dies, repeatedly
+    if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::COMBAT_DEMO))
+    {
+        GetWorldTimerManager().SetTimer(mCombatDemoTimer, this, &ASOLGameMode::StepCombatDemo, COMBAT_DEMO_STEP_SECONDS,
+            true, COMBAT_DEMO_START_DELAY_SECONDS);
     }
 
     Super::StartPlay();
@@ -110,6 +130,7 @@ bool ASOLGameMode::IsSOLGameWorld(const UWorld* world)
 void ASOLGameMode::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
     GetWorldTimerManager().ClearTimer(mSmokeTimer);
+    GetWorldTimerManager().ClearTimer(mCombatDemoTimer);
     Super::EndPlay(endPlayReason);
 }
 
@@ -156,6 +177,65 @@ void ASOLGameMode::CaptureScreenshot()
 void ASOLGameMode::QuitAfterSmokeTest()
 {
     UKismetSystemLibrary::QuitGame(this, nullptr, EQuitPreference::Quit, false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Advances the -SOLCombatDemo script: drop a target, hold the trigger until it is destroyed, rest, repeat; the first
+// cycle takes screenshots while firing, just after the kill and of the debris
+void ASOLGameMode::StepCombatDemo()
+{
+    ASOLShipPawn* pawn = Cast<ASOLShipPawn>(GetWorld()->GetFirstPlayerController() != nullptr
+        ? GetWorld()->GetFirstPlayerController()->GetPawn() : nullptr);
+    const USOLCombatSubsystem* combat = GetWorld()->GetSubsystem<USOLCombatSubsystem>();
+    if (pawn == nullptr || combat == nullptr)
+    {
+        return;
+    }
+
+    const double nowSeconds = GetWorld()->GetTimeSeconds();
+    const double phaseSeconds = nowSeconds - mCombatDemoPhaseStartSeconds;
+    switch (mCombatDemoPhase)
+    {
+    case ECombatDemoPhase::Drop:
+        pawn->HandleDropTarget();
+        mCombatDemoPhase = ECombatDemoPhase::Fire;
+        mCombatDemoPhaseStartSeconds = nowSeconds;
+        UE_LOG(LogSOL, Log, TEXT("CombatDemo: target dropped"));
+        break;
+    case ECombatDemoPhase::Fire:
+        // Hold the trigger once the drop has landed; release it when no target is left (destroyed)
+        if (phaseSeconds >= COMBAT_DEMO_DROP_SETTLE_SECONDS)
+        {
+            const bool bTargetLeft = combat->GetActiveTargetCount() > 0;
+            pawn->HandleFire(bTargetLeft);
+            if (mCombatDemoCycle == 0 && mCombatDemoShots == 0 && phaseSeconds >= COMBAT_DEMO_FIRE_SHOT_SECONDS)
+            {
+                CaptureScreenshot();
+                ++mCombatDemoShots;
+            }
+            if (!bTargetLeft)
+            {
+                mCombatDemoPhase = ECombatDemoPhase::Rest;
+                mCombatDemoPhaseStartSeconds = nowSeconds;
+                UE_LOG(LogSOL, Log, TEXT("CombatDemo: target destroyed after %.2f s of fire"), phaseSeconds);
+            }
+        }
+        break;
+    case ECombatDemoPhase::Rest:
+        // First cycle: screenshots of the explosion and of the debris cloud
+        if (mCombatDemoCycle == 0 && ((mCombatDemoShots == 1 && phaseSeconds >= COMBAT_DEMO_KILL_SHOT_SECONDS)
+            || (mCombatDemoShots == 2 && phaseSeconds >= COMBAT_DEMO_DEBRIS_SHOT_SECONDS)))
+        {
+            CaptureScreenshot();
+            ++mCombatDemoShots;
+        }
+        if (phaseSeconds >= COMBAT_DEMO_REST_SECONDS)
+        {
+            mCombatDemoPhase = ECombatDemoPhase::Drop;
+            ++mCombatDemoCycle;
+        }
+        break;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

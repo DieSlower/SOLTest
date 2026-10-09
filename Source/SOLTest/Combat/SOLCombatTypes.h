@@ -35,6 +35,9 @@ struct FSOLCombatEvent
     ESOLCombatEventType Type = ESOLCombatEventType::BoltFired;
     FVector3d PositionM = FVector3d::ZeroVector;      // Where it happened
     FVector3d VelocityMps = FVector3d::ZeroVector;    // The bolt's velocity for bolt events, else zero
+    FVector3d FrameVelocityMps = FVector3d::ZeroVector; // Universe velocity of what the event happened on (the target,
+                                                         // else the bolt's frame body), so an effect drawn there can
+                                                         // ride along with it
     int32 TargetSlot = INDEX_NONE;                    // Target pool slot for target events, else INDEX_NONE
     int32 Owner = SOLCombat::NO_OWNER;                // Shooter for bolt events, else NO_OWNER
 };
