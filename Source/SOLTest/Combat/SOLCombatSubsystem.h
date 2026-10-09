@@ -30,7 +30,7 @@ struct FMassExecutionContext;
 DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
 
 /**
- * Pulse-gun bolts, dropped targets and their damage (SDD 7, Part 6b; 6e's asteroid and ring-rock hits).
+ * Pulse-gun bolts, dropped targets and their damage (SDD 7, Part 7b; 7e's asteroid and ring-rock hits).
  *
  * DATA LAYOUT (deviation from SDD 7 decision 3, which named Mass entities): bolts and targets are pooled
  * structure-of-arrays inside this subsystem, not Mass entities. A bolt's whole job is a cross-population interaction
@@ -46,7 +46,11 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
  * minor bodies; NOT the Unreal-handed ship frame). Internally each bolt and target is stored RELATIVE TO A BODY: the
  * player's reference-frame body when it was fired or dropped (the M lock if it is a body, else the anchor). So a target
  * stays at rest in that frame and a bolt keeps its frame's motion, including the time-warp motion the ship itself is
- * carried by, exactly as the ship is. Bolts integrate in real time, like the ship.
+ * carried by, exactly as the ship is. Bolts integrate in real time, like the ship. LIMITATION: when the reference is
+ * M-locked to a non-body targetable, bolts and targets are stored relative to the anchor body instead, so under time
+ * warp they get the anchor's carry while the ship gets the targetable's (no ISOLTargetable implementer exists yet, so
+ * this cannot happen today; CLAUDE.md tech debt). Events carry their frame body and offset (FSOLCombatEvent), so effects
+ * and sounds follow the same carry. A bolt farther than COMBAT_BOLT_MAX_RANGE_M from the ship is removed.
  *
  * SWEEPS. Hit tests run in a ship-centred sweep frame (each position minus the player ship's position at the same
  * instant), so co-moving things (bolts, targets, co-orbiting ring rocks) have short per-frame segments whatever their
@@ -54,9 +58,11 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
  * linearly over the frame (SOLBoltMath::SweptSphereHitMoving), not against their end positions: a belt asteroid can move
  * hundreds of metres a frame relative to the ship while a ring rock is a few metres across. Minor-body previous
  * positions come from this subsystem's own snapshot of the last update; anything that moved more than
- * COMBAT_MAX_SWEEP_STEP_M in one frame is treated as having teleported (tested at its new position only), and a bolt
- * whose own segment is that long skips hit tests for the frame. Only minor bodies inside the bounding box of this
- * frame's bolt segments enter the grid, and the whole minor-body pass is skipped while no bolt is live. The dense
+ * COMBAT_MAX_SWEEP_STEP_M in one frame, or a ring rock whose render-fragment Generation changed (reassigned to another
+ * cell), is treated as having teleported (tested at its new position only), and a bolt whose own segment is that long
+ * skips hit tests for the frame. A new bolt's first segment runs from its muzzle. Only minor bodies inside the
+ * bounding box of this frame's bolt segments enter the grid, and the whole minor-body pass is skipped while no bolt is
+ * live (while one is, every minor body is still scanned once a frame for the snapshot: CLAUDE.md tech debt). The dense
  * GPU-only ring rock layer (Niagara) has no CPU positions, so bolts pass through it; only belt asteroids and the ring
  * pool's active rocks absorb bolts.
  *
@@ -67,9 +73,10 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
  * this subsystem bind to OnCombatUpdated, not beside it on OnUniverseUpdated, for the same reason. The frame's real
  * (hitch-clamped) delta is captured from OnBodiesUpdated, which only stores it.
  *
- * Within one update: advance targets, apply a pending player drop, advance bolts, build the grids, sweep (parallel),
- * apply hits in bolt order (damage, flash, events, removals), fire the player's guns (new bolts are swept from the next
- * frame on), regenerate shields, then broadcast OnCombatUpdated. Queued events stay readable until the next update.
+ * Within one update: advance targets (and regenerate shields), apply a pending player drop, advance bolts, fire the
+ * player's guns (each new bolt swept from its muzzle this frame), build the grids, sweep (parallel), apply hits in bolt
+ * order (damage, flash, events, removals; a bolt whose target an earlier bolt destroyed is re-swept on the game thread
+ * and may hit what lies beyond), then broadcast OnCombatUpdated. Queued events stay readable until the next update.
  */
 UCLASS()
 class SOLTEST_API USOLCombatSubsystem : public UWorldSubsystem
@@ -81,7 +88,7 @@ public:
     // Declares its dependencies, reserves the pools and hooks the per-frame update
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
-    // Unhooks from the universe update and releases the pools
+    // Unhooks from the universe update and empties the bolt, target, snapshot and event arrays
     virtual void Deinitialize() override;
 
     // Creates the subsystem only in game and PIE worlds that run ASOLGameMode
@@ -145,6 +152,22 @@ public:
     // Returns how many events the last update could not queue because the event cap was reached
     int32 GetDroppedEventCount() const { return mDroppedEventCount; }
 
+    // Returns a body's current position (ecliptic), or the origin for INDEX_NONE; with an event's FrameBody, this is
+    // what effects and sounds recompute the event's position from each frame (see FSOLCombatEvent)
+    FVector3d GetFrameBodyPositionM(int32 bodyIndex) const;
+
+    // Returns the real, hitch-clamped seconds the last update advanced by (what effects and sounds age with)
+    double GetLastUpdateDeltaS() const { return mLastUpdateDeltaS; }
+
+    // Returns how many targets have been dropped since the world began (verification)
+    int32 GetTargetDropCount() const { return mTargetDropCount; }
+
+    // Returns the slot of the most recent drop, or INDEX_NONE before the first (verification)
+    int32 GetLastDroppedTargetSlot() const { return mLastDroppedTargetSlot; }
+
+    // Returns how many targets bolts have destroyed since the world began (verification)
+    int32 GetTargetsDestroyedCount() const { return mTargetsDestroyedCount; }
+
     // Fired at the end of every update; bind visuals and audio here
     FSOLOnCombatUpdated& OnCombatUpdated() { return mOnCombatUpdated; }
 
@@ -178,9 +201,6 @@ private:
     // Returns the body bolts and targets are stored relative to: the player's reference body, else the anchor, else none
     int32 ResolveFrameBody() const;
 
-    // Returns a body's current position (ecliptic), or the origin for INDEX_NONE
-    FVector3d GetFrameBodyPositionM(int32 bodyIndex) const;
-
     // Returns a body's current velocity (ecliptic), or zero for INDEX_NONE
     FVector3d GetFrameBodyVelocityMps(int32 bodyIndex) const;
 
@@ -188,8 +208,12 @@ private:
     // segment for this frame
     void AdvanceTargets(double dt);
 
-    // Moves every bolt with its frame, ages it, computes its sweep segment and grows the frame's bolt bounding box
+    // Moves every bolt with its frame, ages it (expiring it past COMBAT_BOLT_MAX_RANGE_M from the ship), computes its
+    // sweep segment and grows the frame's bolt bounding box
     void AdvanceBolts(double dt);
+
+    // Appends this frame's sweep scratch for the bolt just added at the end of the arrays (segment in the sweep frame)
+    void AppendBoltSweep(const FVector3d& sweepStartM, const FVector3d& sweepEndM);
 
     // Fills the target grid with every active target's swept bounding sphere
     void BuildTargetGrid();
@@ -200,16 +224,20 @@ private:
     // Reads one chunk of minor bodies into the snapshot and the grid
     void ProcessMinorBodyChunk(FMassExecutionContext& context);
 
-    // Sweeps one bolt against the grids and records its earliest hit (runs on worker threads; writes only bolt index)
+    // Sweeps one bolt against the grids and records its earliest hit on an active target or a minor body (runs on
+    // worker threads; writes only bolt index)
     void SweepBolt(FSOLSweepScratch& scratch, int32 boltIndex);
 
-    // Applies each bolt's recorded hit in bolt order, then removes the hit and expired bolts
+    // Applies each bolt's recorded hit in bolt order (re-sweeping a bolt whose target an earlier bolt destroyed), then
+    // removes the hit and expired bolts
     void ApplyBoltHits();
 
-    // Returns where a bolt's recorded hit happened (universe meters), from its sweep segment and the sweep frame
+    // Returns where a bolt's recorded hit is at the end of this frame (universe meters): the contact point on what it
+    // hit, carried along with it, so an effect started there sits on the object (not where its frame was mid-frame)
     FVector3d ComputeHitPositionM(int32 boltIndex) const;
 
-    // Fires the player's guns for this frame at the cadence rate, alternating muzzles (needs the ship's state)
+    // Fires the player's guns for this frame at the cadence rate, alternating muzzles (needs the ship's state); each new
+    // bolt's first segment, from its muzzle to where it has flown since it was fired, joins this frame's sweep
     void FirePlayerGuns(double dt, bool bHasShip, const FSOLShipState& shipState);
 
     // Refreshes the per-slot shield and health fractions the visuals read
@@ -218,12 +246,9 @@ private:
     // Removes a target from its slot (no event)
     void DeactivateTarget(int32 slot);
 
-    // Returns a target slot's current universe velocity (its frame body's velocity plus its own relative velocity)
-    FVector3d GetTargetVelocityMps(int32 slot) const;
-
-    // Queues one event unless the cap was reached
-    void AddEvent(ESOLCombatEventType type, const FVector3d& positionM, const FVector3d& velocityMps,
-        const FVector3d& frameVelocityMps, int32 targetSlot, int32 owner);
+    // Queues one event unless the cap was reached; it is held relative to frameBody, moving at relativeVelocityMps in it
+    void AddEvent(ESOLCombatEventType type, const FVector3d& positionM, const FVector3d& velocityMps, int32 frameBody,
+        const FVector3d& relativeVelocityMps, int32 targetSlot, int32 owner);
 
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> Anchor;
@@ -276,6 +301,7 @@ private:
     FMassExecuteFunction mMinorBodyChunkFunction;      // Built once so a frame does not allocate one
     TArray<FMassEntityHandle> mMinorHandles;           // Entity seen at each index at the last snapshot
     TArray<FVector3d> mMinorPositionsM;                // Universe position at the last snapshot
+    TArray<uint16> mMinorGenerations;                  // Render-fragment Generation at the last snapshot
     TArray<FVector3d> mMinorSweepStartsM;              // Sweep-frame segment of each body entered in the grid this frame
     TArray<FVector3d> mMinorSweepEndsM;
     TArray<double> mMinorHitRadiiM;
@@ -306,6 +332,10 @@ private:
     double mCombatTimeS = 0.0;                         // Real seconds of combat updates since the world began
     double mLastDropTimeS = -1.0e30;
     float mFrameDeltaS = 0.0f;
+    double mLastUpdateDeltaS = 0.0;                    // dt of the last update
+    int32 mTargetDropCount = 0;                        // Verification counters
+    int32 mLastDroppedTargetSlot = INDEX_NONE;
+    int32 mTargetsDestroyedCount = 0;
     TArray<FSOLCombatEvent> mEvents;
     int32 mPublishedEventCount = 0;                    // Events already broadcast (removed at the next update)
     int32 mDroppedEventCount = 0;

@@ -287,6 +287,17 @@ namespace SOL
     inline constexpr int32 COMBAT_MAX_BOLTS = 20000;
     inline constexpr int32 COMBAT_MAX_SHOTS_PER_FRAME = 8;
 
+    // Combat visuals: particles the bolt Niagara system spawns once (its CPU sim walks every one of them each frame it
+    // runs), i.e. the most bolts drawn at once. Deliberately far below COMBAT_MAX_BOLTS: the player's guns keep about
+    // 8 shots/s x 3.5 s = 28 bolts alive, so this leaves ~70x headroom for future shooters. Bolts past it (oldest
+    // first are drawn) still fly and hit; they are just not drawn, and the visuals log that once
+    inline constexpr int32 COMBAT_BOLT_RENDER_CAP = 2048;
+
+    // Combat: a bolt farther than this from the player ship is removed (it can no longer matter to the player, and it
+    // would stretch the sweep's broad-phase box, e.g. bolts left behind by a jump). A bolt fired from a ship at rest
+    // reaches 1.5 km/s x 3.5 s = 5.25 km, so only bolts the ship has run away from at high speed are cut short
+    inline constexpr double COMBAT_BOLT_MAX_RANGE_M = 20000.0;
+
     // Combat, targets: shield and health at spawn, shield regeneration delay after the last hit and rate, hit radius,
     // and how long the hit flash takes to fade
     inline constexpr double COMBAT_TARGET_SHIELD = 100.0;
@@ -312,9 +323,10 @@ namespace SOL
     inline constexpr double COMBAT_MINOR_BODY_HIT_RADIUS_SCALE = 1.0;
     inline constexpr double COMBAT_MINOR_BODY_MIN_HIT_RADIUS_M = 1.0;
 
-    // Combat: anything that moved farther than this in one frame in the ship-centred sweep frame (a jump teleport, a
-    // ring rock reassigned to another cell, extreme time warp) is not swept that frame: it is tested at its new position
-    // only (a target or rock) or skips hit tests for the frame (a bolt)
+    // Combat: anything that moved farther than this in one frame in the ship-centred sweep frame (a jump teleport,
+    // extreme time warp) is not swept that frame: it is tested at its new position only (a target or rock) or skips hit
+    // tests for the frame (a bolt). A ring rock reassigned to another cell is detected exactly instead (its render
+    // fragment's Generation changes) and also tested at its new position only, however short the move
     inline constexpr double COMBAT_MAX_SWEEP_STEP_M = 5.0e4;
 
     // Combat: queued one-shot events kept per update for the visuals and audio (extra events that frame are dropped)
@@ -344,7 +356,8 @@ namespace SOL
         inline constexpr const TCHAR* POSITIONS_CM = TEXT("BoltPositionsCm");   // Float3 array: component-local cm
         inline constexpr const TCHAR* VELOCITIES = TEXT("BoltVelocities");      // Float3 array: streak direction (cm/s)
         inline constexpr const TCHAR* COUNT = TEXT("BoltCount");                // Live entries of both arrays
-        inline constexpr const TCHAR* MAX_COUNT = TEXT("BoltMaxCount");         // Particles spawned once (>= the cap)
+        inline constexpr const TCHAR* MAX_COUNT = TEXT("BoltMaxCount");         // Particles spawned once
+                                                                                  // (COMBAT_BOLT_RENDER_CAP)
     }
 
     // Niagara User Parameter names of the one-shot combat effect systems (impact and spark use both, the others none)
@@ -356,6 +369,37 @@ namespace SOL
 
     // Per-instance custom data of Paths::COMBAT_TARGET_MATERIAL: shield fraction, health fraction, hit flash
     inline constexpr int32 COMBAT_TARGET_CUSTOM_DATA_FLOATS = 3;
+
+    // Combat audio (SDD 7, 7d): tuning of one placeholder sound kind
+    struct FSOLCombatSoundTuning
+    {
+        const TCHAR* Path;      // USoundWave asset (optional: a missing one silences only this kind, with a warning)
+        int32 Voices;           // Pooled audio components; a new sound reuses the oldest (= at most this many at once)
+        double MinIntervalS;    // A sound of this kind starts at most once per this many seconds (more are dropped)
+        float Volume;           // Volume multiplier
+        bool bIsLongRange;      // Uses the long-range attenuation (explosions) instead of the normal one
+    };
+
+    // Combat audio: one entry per ESOLCombatSound, in its order (Shot, ShieldHit, HullHit, ShieldBreak, Explosion,
+    // Spark, TargetDrop). Synthesized placeholder WAVs, mono 44.1 kHz; real audio arrives in the Part 8 pass. The gun
+    // fires 8/s, so the shot interval lets every shot play once per frame at most while holding a few voices
+    inline constexpr FSOLCombatSoundTuning COMBAT_SOUNDS[] =
+    {
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLShot.S_SOLShot"),               3, 0.06, 0.55f, false },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLShieldHit.S_SOLShieldHit"),     4, 0.05, 0.7f,  false },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLHullHit.S_SOLHullHit"),         4, 0.05, 0.8f,  false },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLShieldBreak.S_SOLShieldBreak"), 2, 0.1,  1.0f,  false },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLExplosion.S_SOLExplosion"),     3, 0.1,  1.0f,  true  },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLSpark.S_SOLSpark"),             3, 0.05, 0.5f,  false },
+        { TEXT("/Game/SOL/Combat/Audio/S_SOLTargetDrop.S_SOLTargetDrop"),   2, 0.1,  0.6f,  false },
+    };
+
+    // Combat audio attenuation (render cm): full volume inside the inner radius, fading to silence over the falloff
+    // distance beyond it. Targets drop 200 m ahead, so a hit there is still near full volume; explosions carry ~4x further
+    inline constexpr float COMBAT_AUDIO_INNER_RADIUS_CM = 30000.0f;              // 300 m
+    inline constexpr float COMBAT_AUDIO_FALLOFF_CM = 200000.0f;                  // 2 km
+    inline constexpr float COMBAT_AUDIO_LONG_INNER_RADIUS_CM = 120000.0f;        // 1.2 km
+    inline constexpr float COMBAT_AUDIO_LONG_FALLOFF_CM = 800000.0f;             // 8 km
 
     // Registry names of bodies that code refers to directly
     namespace BodyNames
@@ -391,6 +435,8 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
+        inline constexpr const TCHAR* COMBAT_STRESS = TEXT("SOLCombatStress="); // With -SOLCombatDemo: keeps this many
+                                                                                  // extra bolts alive (load test)
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
     }
 
@@ -408,8 +454,8 @@ namespace SOL
         // Ring dense rock layer (SDD 6 Amendment 15): GPU mesh-particle carpet around the camera near a ring
         inline constexpr const TCHAR* RING_DENSE_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingDense.NS_SOLRingDense");
 
-        // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the GPU
-        // bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is
+        // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the
+        // (CPU-sim) bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is
         // optional: a missing asset disables only its own effect, with a warning
         inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
         inline constexpr const TCHAR* COMBAT_IMPACT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLImpact.NS_SOLImpact");

@@ -5,6 +5,7 @@
 
 #include "Game/SOLGameMode.h"
 
+#include "Combat/SOLCombatAudio.h"
 #include "Combat/SOLCombatSubsystem.h"
 #include "Combat/SOLCombatVisuals.h"
 #include "Game/SOLSpectatorPawn.h"
@@ -12,10 +13,12 @@
 #include "MinorBodies/SOLPlanetRing.h"
 #include "MinorBodies/SOLRingVisuals.h"
 #include "Ship/SOLShipPawn.h"
+#include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "StarField/SOLStarField.h"
 #include "UI/SOLFlightHud.h"
+#include "Universe/SOLRenderPlacement.h"
 #include "Visuals/SOLBodyVisuals.h"
 
 #include "Engine/World.h"
@@ -42,6 +45,8 @@ namespace
     constexpr double COMBAT_DEMO_FIRE_SHOT_SECONDS = 1.2;                       // First cycle: screenshot this far into fire
     constexpr double COMBAT_DEMO_KILL_SHOT_SECONDS = 0.2;                       // ...and these far after the kill
     constexpr double COMBAT_DEMO_DEBRIS_SHOT_SECONDS = 1.0;
+    constexpr double COMBAT_DEMO_FIRE_TIMEOUT_SECONDS = 20.0;                   // Gives up on a target not killed by then
+    constexpr double COMBAT_STRESS_CONE_HALF_ANGLE_DEG = 25.0;                  // -SOLCombatStress: spread of the bolts
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -64,8 +69,8 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field, asteroid-belt, per-ring and combat visuals, arms the optional smoke-test hooks, then
-// starts play
+// Spawns the body, star-field, asteroid-belt, per-ring and combat visuals and the combat audio, arms the optional
+// smoke-test hooks, then starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
@@ -75,6 +80,7 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
     GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
+    GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);
 
     // One ASOLRingVisuals per ringed planet (SDD 6 Amendment 11, 5e-iii); deferred so PlanetName is set before
     // BeginPlay resolves the ring definition and planet index
@@ -99,6 +105,8 @@ void ASOLGameMode::StartPlay()
     // Verification hook for the combat visuals: drop a target ahead of the ship and shoot it until it dies, repeatedly
     if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::COMBAT_DEMO))
     {
+        FParse::Value(FCommandLine::Get(), SOL::CommandLine::COMBAT_STRESS, mCombatStressBolts);
+        mCombatStressBolts = FMath::Clamp(mCombatStressBolts, 0, SOL::COMBAT_MAX_BOLTS);
         GetWorldTimerManager().SetTimer(mCombatDemoTimer, this, &ASOLGameMode::StepCombatDemo, COMBAT_DEMO_STEP_SECONDS,
             true, COMBAT_DEMO_START_DELAY_SECONDS);
     }
@@ -191,36 +199,59 @@ void ASOLGameMode::StepCombatDemo()
     {
         return;
     }
+    StepCombatStress();
 
     const double nowSeconds = GetWorld()->GetTimeSeconds();
     const double phaseSeconds = nowSeconds - mCombatDemoPhaseStartSeconds;
     switch (mCombatDemoPhase)
     {
     case ECombatDemoPhase::Drop:
+        // Remember the counters, so the fire phase can find this drop's slot and tell a kill from an eviction
+        mCombatDemoDropsBefore = combat->GetTargetDropCount();
+        mCombatDemoKillsBefore = combat->GetTargetsDestroyedCount();
+        mCombatDemoSlot = INDEX_NONE;
         pawn->HandleDropTarget();
         mCombatDemoPhase = ECombatDemoPhase::Fire;
         mCombatDemoPhaseStartSeconds = nowSeconds;
-        UE_LOG(LogSOL, Log, TEXT("CombatDemo: target dropped"));
+        UE_LOG(LogSOL, Log, TEXT("CombatDemo: target drop requested"));
         break;
     case ECombatDemoPhase::Fire:
-        // Hold the trigger once the drop has landed; release it when no target is left (destroyed)
-        if (phaseSeconds >= COMBAT_DEMO_DROP_SETTLE_SECONDS)
+    {
+        if (phaseSeconds < COMBAT_DEMO_DROP_SETTLE_SECONDS)
         {
-            const bool bTargetLeft = combat->GetActiveTargetCount() > 0;
-            pawn->HandleFire(bTargetLeft);
-            if (mCombatDemoCycle == 0 && mCombatDemoShots == 0 && phaseSeconds >= COMBAT_DEMO_FIRE_SHOT_SECONDS)
-            {
-                CaptureScreenshot();
-                ++mCombatDemoShots;
-            }
-            if (!bTargetLeft)
-            {
-                mCombatDemoPhase = ECombatDemoPhase::Rest;
-                mCombatDemoPhaseStartSeconds = nowSeconds;
-                UE_LOG(LogSOL, Log, TEXT("CombatDemo: target destroyed after %.2f s of fire"), phaseSeconds);
-            }
+            break;
+        }
+
+        // This cycle's own target, once its drop has landed
+        if (mCombatDemoSlot == INDEX_NONE && combat->GetTargetDropCount() > mCombatDemoDropsBefore)
+        {
+            mCombatDemoSlot = combat->GetLastDroppedTargetSlot();
+            UE_LOG(LogSOL, Log, TEXT("CombatDemo: target dropped in slot %d"), mCombatDemoSlot);
+        }
+        const TConstArrayView<bool> active = combat->GetTargetActive();
+        const bool bTargetLeft = active.IsValidIndex(mCombatDemoSlot) && active[mCombatDemoSlot];
+
+        // Hold the trigger while it lives; release it when it is gone or the demo gives up on it
+        if (mCombatDemoSlot != INDEX_NONE && !bTargetLeft)
+        {
+            const bool bKilled = combat->GetTargetsDestroyedCount() > mCombatDemoKillsBefore;
+            EndCombatDemoFire(pawn, nowSeconds, phaseSeconds, bKilled ? TEXT("destroyed") : TEXT("lost (not a kill)"));
+            break;
+        }
+        if (phaseSeconds >= COMBAT_DEMO_FIRE_TIMEOUT_SECONDS)
+        {
+            EndCombatDemoFire(pawn, nowSeconds, phaseSeconds,
+                mCombatDemoSlot == INDEX_NONE ? TEXT("never dropped (timed out)") : TEXT("still alive (timed out)"));
+            break;
+        }
+        pawn->HandleFire(bTargetLeft);
+        if (mCombatDemoCycle == 0 && mCombatDemoShots == 0 && phaseSeconds >= COMBAT_DEMO_FIRE_SHOT_SECONDS)
+        {
+            CaptureScreenshot();
+            ++mCombatDemoShots;
         }
         break;
+    }
     case ECombatDemoPhase::Rest:
         // First cycle: screenshots of the explosion and of the debris cloud
         if (mCombatDemoCycle == 0 && ((mCombatDemoShots == 1 && phaseSeconds >= COMBAT_DEMO_KILL_SHOT_SECONDS)
@@ -235,6 +266,46 @@ void ASOLGameMode::StepCombatDemo()
             ++mCombatDemoCycle;
         }
         break;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends the demo's fire phase: releases the trigger, logs the outcome and starts the rest
+void ASOLGameMode::EndCombatDemoFire(ASOLShipPawn* pawn, const double nowSeconds, const double phaseSeconds,
+    const TCHAR* outcome)
+{
+    pawn->HandleFire(false);
+    mCombatDemoPhase = ECombatDemoPhase::Rest;
+    mCombatDemoPhaseStartSeconds = nowSeconds;
+    UE_LOG(LogSOL, Log, TEXT("CombatDemo: target %s after %.2f s of fire"), outcome, phaseSeconds);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// -SOLCombatStress: tops the live bolts up toward the requested count, spread over one bolt lifetime
+void ASOLGameMode::StepCombatStress()
+{
+    USOLCombatSubsystem* combat = GetWorld()->GetSubsystem<USOLCombatSubsystem>();
+    const USOLShipSubsystem* ships = GetWorld()->GetSubsystem<USOLShipSubsystem>();
+    if (mCombatStressBolts <= 0 || combat == nullptr || ships == nullptr || !ships->HasPlayerShip())
+    {
+        return;
+    }
+
+    // At most one lifetime's share per step, so the population ramps up once and then holds steady
+    const int32 perStep = FMath::CeilToInt32(mCombatStressBolts * COMBAT_DEMO_STEP_SECONDS / SOL::COMBAT_BOLT_LIFETIME_S);
+    const int32 toFire = FMath::Min(perStep, mCombatStressBolts - combat->GetBoltCount());
+
+    // Ship pose in the ecliptic frame (its state is Unreal-handed; the conversion is its own inverse)
+    const FSOLShipState& state = ships->GetState();
+    const FVector3d shipPositionM = ships->GetUniversePositionM();
+    const FVector3d shipVelocityMps = SOLRender::EclipticToUnreal(state.VelocityMps);
+    const FVector3d forward = SOLRender::EclipticToUnreal(state.Orientation.GetForwardVector());
+    const float halfAngleRad = FMath::DegreesToRadians(static_cast<float>(COMBAT_STRESS_CONE_HALF_ANGLE_DEG));
+    for (int32 bolt = 0; bolt < toFire; ++bolt)
+    {
+        const FVector3d direction(mCombatStressRandom.VRandCone(FVector(forward), halfAngleRad));
+        combat->FireBolt(shipPositionM + direction * SOL::COMBAT_GUN_MUZZLE_OFFSET_M.X,
+            shipVelocityMps + direction * SOL::COMBAT_MUZZLE_SPEED_MPS, SOLCombat::PLAYER_OWNER);
     }
 }
 

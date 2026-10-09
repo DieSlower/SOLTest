@@ -347,4 +347,34 @@ bool FSOLCombatGridDeterminismTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatGridFallbackKeepsBufferTest, "SOLTest.CombatGrid.FallbackKeepsBuffer",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The over-cap fallback fills a caller's reserved output in place: same buffer, same capacity, stale contents gone
+bool FSOLCombatGridFallbackKeepsBufferTest::RunTest(const FString& /*parameters*/)
+{
+    SOLCombatGrid::FGrid grid(10.0);
+    grid.Insert(1, FVector3d(100.0, 0.0, 0.0), 1.0);
+    grid.Insert(2, FVector3d(200.0, 0.0, 0.0), 1.0);
+    grid.Insert(3, FVector3d(300.0, 0.0, 0.0), 1.0);
+
+    // A worker's scratch: reserved well past the grid's size and holding a previous query's ids
+    TArray<int32> ids;
+    ids.Reserve(256);
+    ids.Add(99);
+    ids.Add(98);
+    const int32* bufferBefore = ids.GetData();
+    const int32 capacityBefore = ids.Max();
+
+    // 10 m cells along 100 km: far over the cell cap, so the query falls back to every id
+    grid.QueryCandidates(FVector3d::ZeroVector, FVector3d(100000.0, 0.0, 0.0), 0.0, ids);
+    TestEqual(TEXT("Every id returned"), ids.Num(), 3);
+    TestEqual(TEXT("Stale id 99 gone"), CombatGridCount(ids, 99), 0);
+    TestTrue(TEXT("Same buffer (no reallocation)"), ids.GetData() == bufferBefore);
+    TestEqual(TEXT("Capacity unchanged (no shrink-to-fit)"), ids.Max(), capacityBefore);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

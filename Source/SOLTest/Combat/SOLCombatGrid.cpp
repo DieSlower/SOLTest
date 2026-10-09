@@ -103,7 +103,9 @@ void SOLCombatGrid::FGrid::QueryCandidates(const FVector3d& segmentStart, const 
     const double cellCount = static_cast<double>(x1 - x0 + 1) * static_cast<double>(y1 - y0 + 1) * static_cast<double>(z1 - z0 + 1);
     if (cellCount > static_cast<double>(MAX_CELLS_PER_OPERATION))
     {
-        outIds = mAllIds;
+        // Append, not assign: copy-assignment resizes the buffer to fit exactly, which would reallocate a caller's
+        // reserved scratch on a worker thread; Append into the reset array reuses it while it is large enough
+        outIds.Append(mAllIds);
         return;
     }
 

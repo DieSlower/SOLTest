@@ -5,6 +5,7 @@
 
 #include "Combat/SOLCombatVisuals.h"
 
+#include "Combat/SOLCombatRules.h"
 #include "Combat/SOLCombatSubsystem.h"
 #include "MinorBodies/SOLMinorBodyVisualsUtil.h"
 #include "Ship/SOLShipSubsystem.h"
@@ -24,6 +25,9 @@
 
 namespace
 {
+    // Fewest target instances added at once when the highest used slot grows past the instance count
+    constexpr int32 COMBAT_TARGET_INSTANCE_MIN_GROWTH = 16;
+
     //////////////////////////////////////////////////////////////////////////
     // Loads an optional combat Niagara system, warning (not failing) when it is missing
     UNiagaraSystem* LoadOptionalCombatSystem(const TCHAR* path, const AActor* owner)
@@ -87,20 +91,22 @@ void ASOLCombatVisuals::BeginPlay()
         return;
     }
 
-    // Bolts: the particle pool is spawned once at activation, so it must cover the bolt cap
+    // Bolts: the particle pool is spawned once at activation, so it is sized to the render cap; the first combat update
+    // with no bolt pauses and hides it until one is fired
     if (UNiagaraSystem* boltSystem = LoadOptionalCombatSystem(SOL::Paths::COMBAT_BOLT_NIAGARA_SYSTEM, this))
     {
-        mBoltPositionsCm.Reserve(SOL::COMBAT_MAX_BOLTS);
-        mBoltVelocitiesCmps.Reserve(SOL::COMBAT_MAX_BOLTS);
+        mBoltPositionsCm.Reserve(SOL::COMBAT_BOLT_RENDER_CAP);
+        mBoltVelocitiesCmps.Reserve(SOL::COMBAT_BOLT_RENDER_CAP);
         BoltNiagara->SetAsset(boltSystem);
         BoltNiagara->SetWorldTransform(FTransform::Identity);
-        BoltNiagara->SetVariableInt(SOL::CombatBoltParams::MAX_COUNT, SOL::COMBAT_MAX_BOLTS);
+        BoltNiagara->SetVariableInt(SOL::CombatBoltParams::MAX_COUNT, SOL::COMBAT_BOLT_RENDER_CAP);
         BoltNiagara->SetVariableInt(SOL::CombatBoltParams::COUNT, 0);
         BoltNiagara->Activate(true);
         mIsBoltRendererEnabled = true;
+        mIsBoltRendererRunning = true;
     }
 
-    // Targets: one hidden (zero-scale) instance per slot, added in one batch; the frame update only moves them
+    // Targets: no instances yet (they are added as the highest used slot grows) and hidden until a target is active
     UStaticMesh* targetMesh = LoadObject<UStaticMesh>(nullptr, SOL::Paths::COMBAT_TARGET_MESH);
     UMaterialInterface* targetMaterial = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::COMBAT_TARGET_MATERIAL);
     const int32 slotCount = Combat->GetTargetSlotCount();
@@ -110,10 +116,9 @@ void ASOLCombatVisuals::BeginPlay()
         TargetMesh->SetMaterial(0, targetMaterial);
         TargetMesh->SetWorldTransform(FTransform::Identity);
         TargetMesh->SetNumCustomDataFloats(SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS);
-        mTargetTransforms.Init(FTransform(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector), slotCount);
-        TargetMesh->AddInstances(mTargetTransforms, false, false, false);
+        TargetMesh->SetVisibility(false);
+        mTargetTransforms.Reserve(slotCount);
         mTargetCustomData.Init(-1.0f, slotCount * SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS);
-        mTargetTransforms.Reset();
         mIsTargetRendererEnabled = true;
     }
     else
@@ -186,7 +191,7 @@ void ASOLCombatVisuals::HandleCombatUpdated()
     UpdateBolts(origin);
     UpdateTargets(origin);
     StartEventEffects();
-    UpdateEffects(origin, GetWorld()->GetDeltaSeconds());
+    UpdateEffects(origin, Combat->GetLastUpdateDeltaS());
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -207,11 +212,26 @@ void ASOLCombatVisuals::UpdateBolts(const FSOLRenderOrigin& origin)
     {
         return;
     }
-    const int32 boltCount = FMath::Min(Combat->GetBoltCount(), SOL::COMBAT_MAX_BOLTS);
-    if (boltCount == 0 && mLastBoltCount == 0)
+
+    // No bolt: pause and hide the system so its CPU sim does not walk the idle particle pool every frame
+    const int32 liveCount = Combat->GetBoltCount();
+    const int32 boltCount = SOLCombatRules::DrawnBoltCount(liveCount, SOL::COMBAT_BOLT_RENDER_CAP);
+    if (boltCount == 0)
     {
+        SetBoltRendererRunning(false);
         return;
     }
+    if (liveCount > boltCount && !mHasLoggedBoltRenderCap)
+    {
+        mHasLoggedBoltRenderCap = true;
+        UE_LOG(LogSOL, Warning, TEXT("CombatVisuals %s: %d live bolts exceed the render cap of %d; the newest are not "
+            "drawn (they still fly and hit). Logged once"), *GetName(), liveCount, SOL::COMBAT_BOLT_RENDER_CAP);
+    }
+
+    // Parameter names built once, not per frame
+    static const FName positionsName(SOL::CombatBoltParams::POSITIONS_CM);
+    static const FName velocitiesName(SOL::CombatBoltParams::VELOCITIES);
+    static const FName countName(SOL::CombatBoltParams::COUNT);
 
     // Positions in render cm (small: within a few km of the render origin, so float-exact enough); directions are the
     // velocity relative to the ship the camera rides on, which is how a bolt appears to move on screen
@@ -226,12 +246,25 @@ void ASOLCombatVisuals::UpdateBolts(const FSOLRenderOrigin& origin)
         mBoltVelocitiesCmps[bolt] = FVector3f(
             SOLRender::EclipticToUnreal(velocitiesMps[bolt] - observerVelocityMps) * SOL::METERS_TO_CM);
     }
-    UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoltNiagara, SOL::CombatBoltParams::POSITIONS_CM,
-        mBoltPositionsCm);
-    UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoltNiagara, SOL::CombatBoltParams::VELOCITIES,
-        mBoltVelocitiesCmps);
-    BoltNiagara->SetVariableInt(SOL::CombatBoltParams::COUNT, boltCount);
-    mLastBoltCount = boltCount;
+    UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoltNiagara, positionsName, mBoltPositionsCm);
+    UNiagaraDataInterfaceArrayFunctionLibrary::SetNiagaraArrayVector(BoltNiagara, velocitiesName, mBoltVelocitiesCmps);
+    BoltNiagara->SetVariableInt(countName, boltCount);
+    SetBoltRendererRunning(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Unpauses and shows the bolt system (some bolt is live), or pauses and hides it (none is)
+void ASOLCombatVisuals::SetBoltRendererRunning(const bool bRunning)
+{
+    // Paused rather than deactivated: reactivating would respawn the particle burst, and the bolt slot index relies on
+    // the burst's particle ids (SDD 7 Amendment 2)
+    if (bRunning == mIsBoltRendererRunning)
+    {
+        return;
+    }
+    mIsBoltRendererRunning = bRunning;
+    BoltNiagara->SetPaused(!bRunning);
+    BoltNiagara->SetVisibility(bRunning);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -247,22 +280,34 @@ void ASOLCombatVisuals::UpdateTargets(const FSOLRenderOrigin& origin)
     // Slots fill lowest-first, so the in-use range ends just past the highest active slot; slots beyond both this
     // frame's and last frame's range are already hidden and are not touched
     const TConstArrayView<bool> active = Combat->GetTargetActive();
-    const int32 slotCount = FMath::Min(active.Num(), TargetMesh->GetInstanceCount());
+    const int32 slotCount = FMath::Min(active.Num(), mTargetCustomData.Num() / SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS);
     int32 activeEnd = 0;
-    for (int32 slot = slotCount - 1; slot >= 0; --slot)
+    if (Combat->GetActiveTargetCount() > 0)
     {
-        if (active[slot])
+        for (int32 slot = slotCount - 1; slot >= 0; --slot)
         {
-            activeEnd = slot + 1;
-            break;
+            if (active[slot])
+            {
+                activeEnd = slot + 1;
+                break;
+            }
         }
     }
     const int32 rangeEnd = FMath::Max(activeEnd, mTargetRangeEnd);
     mTargetRangeEnd = activeEnd;
+
+    // Hidden while no target is active (its stale instances were zero-scaled by the pass that saw the last one go)
+    const bool bVisible = activeEnd > 0;
+    if (bVisible != mIsTargetMeshVisible)
+    {
+        mIsTargetMeshVisible = bVisible;
+        TargetMesh->SetVisibility(bVisible);
+    }
     if (rangeEnd == 0)
     {
         return;
     }
+    EnsureTargetInstances(rangeEnd);
 
     const TConstArrayView<FVector3d> positionsM = Combat->GetTargetPositionsM();
     const TConstArrayView<float> shields = Combat->GetTargetShieldFractions();
@@ -297,6 +342,25 @@ void ASOLCombatVisuals::UpdateTargets(const FSOLRenderOrigin& origin)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Adds hidden target instances so at least instanceCount exist (grows geometrically, up to the slot count)
+void ASOLCombatVisuals::EnsureTargetInstances(const int32 instanceCount)
+{
+    const int32 current = TargetMesh->GetInstanceCount();
+    if (instanceCount <= current)
+    {
+        return;
+    }
+
+    // Only when the high-water mark rises (rare); doubling keeps a session to a handful of these, never per frame
+    const int32 slotCount = mTargetCustomData.Num() / SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS;
+    const int32 target = FMath::Min(FMath::Max3(instanceCount, current * 2, COMBAT_TARGET_INSTANCE_MIN_GROWTH),
+        slotCount);
+    mTargetTransforms.Init(FTransform(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector), target - current);
+    TargetMesh->AddInstances(mTargetTransforms, false, false, false);
+    mTargetTransforms.Reset();
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Starts the one-shot effects of this frame's events
 void ASOLCombatVisuals::StartEventEffects()
 {
@@ -314,8 +378,7 @@ void ASOLCombatVisuals::StartEventEffects()
         {
             // Blue while the shield still holds, orange once the hit reached the hull
             const bool bShielded = shields.IsValidIndex(event.TargetSlot) && shields[event.TargetSlot] > 0.0f;
-            const FLinearColor& tint = bShielded ? SOL::COMBAT_FX_SHIELD_HIT_TINT : SOL::COMBAT_FX_HULL_HIT_TINT;
-            StartEffect(mImpactPool, event, event.VelocityMps - event.FrameVelocityMps, &tint);
+            const FLinearColor& tint = bShielded ? SOL::COMBAT_FX_SHIELD_HIT_TINT : SOL::COMBAT_FX_HULL_HIT_TINT;            StartEffect(mImpactPool, event, event.VelocityMps - event.FrameVelocityMps, &tint);
             break;
         }
         case ESOLCombatEventType::ShieldBroken:
@@ -347,22 +410,24 @@ void ASOLCombatVisuals::StartEffect(FSOLEffectPool& pool, const FSOLCombatEvent&
 
     FSOLEffectSlot& slot = pool.Slots[pool.NextSlot];
     pool.NextSlot = (pool.NextSlot + 1) % pool.Slots.Num();
-    slot.StartPositionM = event.PositionM;
-    slot.FrameVelocityMps = event.FrameVelocityMps;
+    slot.FrameBody = event.FrameBody;
+    slot.FrameOffsetM = event.FrameOffsetM;
+    slot.RelativeVelocityMps = event.RelativeVelocityMps;
     slot.AgeS = 0.0;
     slot.bIsLive = true;
 
     // Placed before activation so the burst spawns at the event; the next UpdateEffects keeps it riding along
+    static const FName directionName(SOL::CombatEffectParams::DIRECTION);
+    static const FName tintName(SOL::CombatEffectParams::TINT);
     UNiagaraComponent* component = slot.Component;
     component->SetWorldLocation(FVector(Anchor->GetRenderOrigin().UniverseToRenderCm(event.PositionM)));
     if (!directionEcliptic.IsNearlyZero())
     {
-        component->SetVariableVec3(SOL::CombatEffectParams::DIRECTION,
-            FVector(SOLRender::EclipticToUnreal(directionEcliptic.GetSafeNormal())));
+        component->SetVariableVec3(directionName, FVector(SOLRender::EclipticToUnreal(directionEcliptic.GetSafeNormal())));
     }
     if (tint != nullptr)
     {
-        component->SetVariableLinearColor(SOL::CombatEffectParams::TINT, *tint);
+        component->SetVariableLinearColor(tintName, *tint);
     }
     component->Activate(true);
 }
@@ -388,9 +453,10 @@ void ASOLCombatVisuals::UpdateEffects(const FSOLRenderOrigin& origin, const doub
                 slot.bIsLive = false;
                 continue;
             }
-            // Effects are local-space, so moving the component carries its particles with what was hit
-            const FVector3d positionM = slot.StartPositionM + slot.FrameVelocityMps * slot.AgeS;
-            slot.Component->SetWorldLocation(FVector(origin.UniverseToRenderCm(positionM)));
-        }
+            // Effects are local-space, so moving the component carries its particles with what was hit; recomputed from
+            // the frame body's current position, so time warp's carry is followed exactly (FSOLCombatEvent)
+            const FVector3d positionM = SOLCombatRules::EventPositionNowM(Combat->GetFrameBodyPositionM(slot.FrameBody),
+                slot.FrameOffsetM, slot.RelativeVelocityMps, slot.AgeS);
+            slot.Component->SetWorldLocation(FVector(origin.UniverseToRenderCm(positionM)));        }
     }
 }

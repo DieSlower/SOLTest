@@ -6,6 +6,7 @@
 #include "Combat/SOLCombatSubsystem.h"
 
 #include "Combat/SOLBoltMath.h"
+#include "Combat/SOLCombatRules.h"
 #include "Combat/SOLFireCadence.h"
 #include "Combat/SOLTargetDrop.h"
 #include "Game/SOLGameMode.h"
@@ -27,12 +28,13 @@
 
 namespace
 {
-    // Grid candidates each sweep task reserves room for up front
-    constexpr int32 COMBAT_SCRATCH_CANDIDATES = 256;
-
     // Occupied cells and cell entries each grid reserves up front (a busy ring patch grows them once, then they are reused)
     constexpr int32 COMBAT_GRID_RESERVED_CELLS = 4096;
     constexpr int32 COMBAT_GRID_RESERVED_ENTRIES = 16384;
+
+    // Grid candidates each sweep task reserves room for up front: as many ids as a grid reserves, so even a query that
+    // falls back to every id in the grid (SOLCombatGrid's oversized-box path) fits without growing on a worker thread
+    constexpr int32 COMBAT_SCRATCH_CANDIDATES = COMBAT_GRID_RESERVED_ENTRIES;
 
     //////////////////////////////////////////////////////////////////////////
     // Returns a body's entry of a per-body array (position or velocity), or zero for INDEX_NONE (the Sun frame)
@@ -46,13 +48,6 @@ namespace
     bool CombatSphereOverlapsBox(const FBox3d& box, const FVector3d& center, const double radius)
     {
         return box.IsValid && box.ComputeSquaredDistanceToPoint(center) <= radius * radius;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns whether a per-frame displacement is short enough to sweep (false for NaN as well)
-    bool CombatIsSweepable(const FVector3d& start, const FVector3d& end)
-    {
-        return (end - start).SizeSquared() <= SOL::COMBAT_MAX_SWEEP_STEP_M * SOL::COMBAT_MAX_SWEEP_STEP_M;
     }
 }
 
@@ -134,7 +129,7 @@ void USOLCombatSubsystem::Initialize(FSubsystemCollectionBase& collection)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Unhooks from the universe update and releases the pools
+// Unhooks from the universe update and empties the bolt, target, snapshot and event arrays
 void USOLCombatSubsystem::Deinitialize()
 {
     if (Anchor != nullptr)
@@ -148,8 +143,42 @@ void USOLCombatSubsystem::Deinitialize()
     mMinorBodyChunkFunction = nullptr;
     mEntityManager.Reset();
     mEvents.Empty();
+
+    // Bolt pool and its per-frame scratch
+    mBoltFrameBodies.Empty();
+    mBoltRelPositionsM.Empty();
+    mBoltRelVelocitiesMps.Empty();
+    mBoltLifetimesS.Empty();
+    mBoltOwners.Empty();
+    mBoltPositionsM.Empty();
+    mBoltVelocitiesMps.Empty();
+    mBoltSweepStartsM.Empty();
+    mBoltSweepEndsM.Empty();
+    mBoltSweepValid.Empty();
+    mBoltHitKinds.Empty();
+    mBoltHitIndices.Empty();
+    mBoltHitTimes.Empty();
+
+    // Target pool (the visuals read GetTargetSlotCount, which is now 0)
+    mTargetActive.Empty();
+    mTargetFrameBodies.Empty();
+    mTargetRelPositionsM.Empty();
+    mTargetRelVelocitiesMps.Empty();
+    mTargetPositionsM.Empty();
+    mTargetSweepStartsM.Empty();
+    mTargetSweepEndsM.Empty();
+    mTargetDamage.Empty();
+    mTargetSpawnTimesS.Empty();
+    mTargetHitFlash.Empty();
+    mTargetShieldFractions.Empty();
+    mTargetHealthFractions.Empty();
+    mActiveTargetCount = 0;
+    mSweepScratch.Empty();
+
+    // Minor-body snapshot
     mMinorHandles.Empty();
     mMinorPositionsM.Empty();
+    mMinorGenerations.Empty();
     mMinorSweepStartsM.Empty();
     mMinorSweepEndsM.Empty();
     mMinorHitRadiiM.Empty();
@@ -247,7 +276,7 @@ bool USOLCombatSubsystem::FireBolt(const FVector3d& muzzlePositionM, const FVect
     mBoltOwners.Add(owner);
     mBoltPositionsM.Add(muzzlePositionM);
     mBoltVelocitiesMps.Add(velocityMps);
-    AddEvent(ESOLCombatEventType::BoltFired, muzzlePositionM, velocityMps, GetFrameBodyVelocityMps(frameBody),
+    AddEvent(ESOLCombatEventType::BoltFired, muzzlePositionM, velocityMps, frameBody, FVector3d::ZeroVector,
         INDEX_NONE, owner);
     return true;
 }
@@ -272,7 +301,7 @@ int32 USOLCombatSubsystem::DropTarget(const FVector3d& shipPositionM, const FVec
             return INDEX_NONE;
         }
         AddEvent(ESOLCombatEventType::TargetEvicted, mTargetPositionsM[slot], FVector3d::ZeroVector,
-            GetTargetVelocityMps(slot), slot, SOLCombat::NO_OWNER);
+            mTargetFrameBodies[slot], mTargetRelVelocitiesMps[slot], slot, SOLCombat::NO_OWNER);
         DeactivateTarget(slot);
     }
 
@@ -299,8 +328,10 @@ int32 USOLCombatSubsystem::DropTarget(const FVector3d& shipPositionM, const FVec
     mTargetShieldFractions[slot] = 1.0f;
     mTargetHealthFractions[slot] = 1.0f;
     ++mActiveTargetCount;
+    ++mTargetDropCount;
+    mLastDroppedTargetSlot = slot;
     mLastDropTimeS = mCombatTimeS;
-    AddEvent(ESOLCombatEventType::TargetDropped, positionM, FVector3d::ZeroVector, GetTargetVelocityMps(slot), slot,
+    AddEvent(ESOLCombatEventType::TargetDropped, positionM, FVector3d::ZeroVector, frameBody, relVelocityMps, slot,
         SOLCombat::NO_OWNER);
     UE_LOG(LogSOL, Verbose, TEXT("CombatSubsystem %s: target dropped in slot %d (%d active)"), *GetName(), slot,
         mActiveTargetCount);
@@ -320,20 +351,12 @@ void USOLCombatSubsystem::DeactivateTarget(const int32 slot)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a target slot's current universe velocity (its frame body's velocity plus its own relative velocity)
-FVector3d USOLCombatSubsystem::GetTargetVelocityMps(const int32 slot) const
-{
-    return mTargetFrameBodies.IsValidIndex(slot)
-        ? GetFrameBodyVelocityMps(mTargetFrameBodies[slot]) + mTargetRelVelocitiesMps[slot]
-        : FVector3d::ZeroVector;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Queues one event unless the cap was reached
+// Queues one event unless the cap was reached; it is held relative to frameBody, moving at relativeVelocityMps in it
 void USOLCombatSubsystem::AddEvent(const ESOLCombatEventType type, const FVector3d& positionM,
-    const FVector3d& velocityMps, const FVector3d& frameVelocityMps, const int32 targetSlot, const int32 owner)
+    const FVector3d& velocityMps, const int32 frameBody, const FVector3d& relativeVelocityMps, const int32 targetSlot,
+    const int32 owner)
 {
-    if (mEvents.Num() >= SOL::COMBAT_MAX_EVENTS_PER_UPDATE)
+    if (!SOLCombatRules::MayQueueEvent(mEvents.Num(), SOL::COMBAT_MAX_EVENTS_PER_UPDATE))
     {
         ++mDroppedEventCount;
         return;
@@ -342,7 +365,10 @@ void USOLCombatSubsystem::AddEvent(const ESOLCombatEventType type, const FVector
     event.Type = type;
     event.PositionM = positionM;
     event.VelocityMps = velocityMps;
-    event.FrameVelocityMps = frameVelocityMps;
+    event.FrameVelocityMps = GetFrameBodyVelocityMps(frameBody) + relativeVelocityMps;
+    event.FrameBody = frameBody;
+    event.FrameOffsetM = positionM - GetFrameBodyPositionM(frameBody);
+    event.RelativeVelocityMps = relativeVelocityMps;
     event.TargetSlot = targetSlot;
     event.Owner = owner;
 }
@@ -359,16 +385,18 @@ void USOLCombatSubsystem::Update()
     }
 
     // Events broadcast by the previous update are dropped; any queued since (calls between updates) are kept
-    if (mPublishedEventCount > 0)
+    const int32 trimCount = SOLCombatRules::EventsToTrim(mPublishedEventCount, mEvents.Num());
+    if (trimCount > 0)
     {
-        mEvents.RemoveAt(0, FMath::Min(mPublishedEventCount, mEvents.Num()), EAllowShrinking::No);
-        mPublishedEventCount = 0;
+        mEvents.RemoveAt(0, trimCount, EAllowShrinking::No);
     }
+    mPublishedEventCount = 0;
     mDroppedEventCount = 0;
 
     // The real, hitch-clamped delta of this frame's body update (zero if none ran)
     const double dt = FMath::Max(static_cast<double>(mFrameDeltaS), 0.0);
     mFrameDeltaS = 0.0f;
+    mLastUpdateDeltaS = dt;
     mCombatTimeS += dt;
 
     // Sweep frame: centred on the player ship (ecliptic) now and at the previous update
@@ -392,6 +420,9 @@ void USOLCombatSubsystem::Update()
     }
     AdvanceBolts(dt);
 
+    // New shots join this frame's sweep from their muzzles
+    FirePlayerGuns(dt, bHasShip, shipState);
+
     // Broad phase and the parallel sweep, only when some bolt has a segment to sweep this frame
     if (mBoltSweepBounds.IsValid)
     {
@@ -411,8 +442,7 @@ void USOLCombatSubsystem::Update()
     }
     ApplyBoltHits();
 
-    // New bolts start sweeping next frame; then the fractions the visuals read
-    FirePlayerGuns(dt, bHasShip, shipState);
+    // The fractions the visuals read
     RefreshTargetFractions();
     mPrevSweepOriginM = mSweepOriginM;
     mHasPrevSweepOrigin = bHasShip;
@@ -449,7 +479,8 @@ void USOLCombatSubsystem::AdvanceTargets(const double dt)
             + mTargetRelPositionsM[slot];
         const FVector3d sweepEndM = positionM - mSweepOriginM;
         const FVector3d sweepStartM = mTargetPositionsM[slot] - mPrevSweepOriginM;
-        mTargetSweepStartsM[slot] = CombatIsSweepable(sweepStartM, sweepEndM) ? sweepStartM : sweepEndM;
+        mTargetSweepStartsM[slot] = SOLCombatRules::ResolveSweepStart(sweepStartM, sweepEndM, true,
+            SOL::COMBAT_MAX_SWEEP_STEP_M);
         mTargetSweepEndsM[slot] = sweepEndM;
         mTargetPositionsM[slot] = positionM;
 
@@ -493,10 +524,17 @@ void USOLCombatSubsystem::AdvanceBolts(const double dt)
         mBoltLifetimesS[bolt] = SOLBoltMath::AdvanceLifetime(mBoltLifetimesS[bolt], dt);
         const FVector3d positionM = CombatFrameValue(bodyPositionsM, frameBody) + mBoltRelPositionsM[bolt];
 
-        // This frame's segment in the ship-centred sweep frame; an overlong one (a teleport) is not swept
+        // This frame's segment in the ship-centred sweep frame; an overlong one (a teleport) is not swept, and a bolt
+        // out of range of the ship (left behind by a jump or a fast getaway) expires now instead of stretching the box
         const FVector3d sweepStartM = mBoltPositionsM[bolt] - mPrevSweepOriginM;
         const FVector3d sweepEndM = positionM - mSweepOriginM;
-        const bool bSweepable = CombatIsSweepable(sweepStartM, sweepEndM);
+        const bool bInRange = SOLCombatRules::IsBoltInRange(sweepEndM, SOL::COMBAT_BOLT_MAX_RANGE_M);
+        if (!bInRange)
+        {
+            mBoltLifetimesS[bolt] = 0.0;
+        }
+        const bool bSweepable = bInRange
+            && SOLCombatRules::IsSweepable(sweepStartM, sweepEndM, SOL::COMBAT_MAX_SWEEP_STEP_M);
         mBoltSweepStartsM[bolt] = sweepStartM;
         mBoltSweepEndsM[bolt] = sweepEndM;
         mBoltSweepValid[bolt] = bSweepable;
@@ -510,6 +548,25 @@ void USOLCombatSubsystem::AdvanceBolts(const double dt)
             mBoltSweepBounds += sweepStartM;
             mBoltSweepBounds += sweepEndM;
         }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Appends this frame's sweep scratch for the bolt just added at the end of the arrays (segment in the sweep frame)
+void USOLCombatSubsystem::AppendBoltSweep(const FVector3d& sweepStartM, const FVector3d& sweepEndM)
+{
+    // Inside the capacity reserved at initialization (FireBolt refuses bolts past the cap)
+    const bool bSweepable = SOLCombatRules::IsSweepable(sweepStartM, sweepEndM, SOL::COMBAT_MAX_SWEEP_STEP_M);
+    mBoltSweepStartsM.Add(sweepStartM);
+    mBoltSweepEndsM.Add(sweepEndM);
+    mBoltSweepValid.Add(bSweepable);
+    mBoltHitKinds.Add(ESOLBoltHit::None);
+    mBoltHitIndices.Add(INDEX_NONE);
+    mBoltHitTimes.Add(0.0);
+    if (bSweepable)
+    {
+        mBoltSweepBounds += sweepStartM;
+        mBoltSweepBounds += sweepEndM;
     }
 }
 
@@ -558,6 +615,7 @@ void USOLCombatSubsystem::BuildMinorBodyGrid()
     {
         mMinorHandles.SetNum(mMinorScanIndex, EAllowShrinking::No);
         mMinorPositionsM.SetNum(mMinorScanIndex, EAllowShrinking::No);
+        mMinorGenerations.SetNum(mMinorScanIndex, EAllowShrinking::No);
         mMinorSweepStartsM.SetNum(mMinorScanIndex, EAllowShrinking::No);
         mMinorSweepEndsM.SetNum(mMinorScanIndex, EAllowShrinking::No);
         mMinorHitRadiiM.SetNum(mMinorScanIndex, EAllowShrinking::No);
@@ -581,6 +639,7 @@ void USOLCombatSubsystem::ProcessMinorBodyChunk(FMassExecutionContext& context)
     {
         mMinorHandles.SetNum(mMinorScanIndex);
         mMinorPositionsM.SetNum(mMinorScanIndex);
+        mMinorGenerations.SetNum(mMinorScanIndex);
         mMinorSweepStartsM.SetNum(mMinorScanIndex);
         mMinorSweepEndsM.SetNum(mMinorScanIndex);
         mMinorHitRadiiM.SetNum(mMinorScanIndex);
@@ -589,23 +648,26 @@ void USOLCombatSubsystem::ProcessMinorBodyChunk(FMassExecutionContext& context)
     const FBox3d reachBounds = mBoltSweepBounds.ExpandBy(SOL::COMBAT_BOLT_HIT_RADIUS_M);
     for (int32 entity = 0; entity < entityCount; ++entity)
     {
-        // Previous position only if this index held the same entity at the previous update
+        // Previous position only if this index held the same entity, with the same rock, at the previous update
         const int32 index = first + entity;
         const FMassEntityHandle handle = context.GetEntity(entity);
         const FVector3d positionM = states[entity].PositionM;
-        const bool bHasPrevious = mIsMinorSnapshotFresh && mMinorHandles[index] == handle;
+        const uint16 generation = renders[entity].Generation;
+        const bool bHasPrevious = SOLCombatRules::HasPreviousPosition(mIsMinorSnapshotFresh,
+            mMinorHandles[index] == handle, mMinorGenerations[index], generation);
         const FVector3d previousM = bHasPrevious ? mMinorPositionsM[index] : positionM;
         mMinorHandles[index] = handle;
         mMinorPositionsM[index] = positionM;
+        mMinorGenerations[index] = generation;
         if (!renders[entity].bActive)
         {
             continue;
         }
 
-        // Swept segment in the sweep frame (a jump such as a ring-group reassignment is tested at its end only)
+        // Swept segment in the sweep frame (a teleport, such as a ring-group reassignment, is tested at its end only)
         const FVector3d sweepEndM = positionM - mSweepOriginM;
-        const FVector3d rawStartM = previousM - mPrevSweepOriginM;
-        const FVector3d sweepStartM = bHasPrevious && CombatIsSweepable(rawStartM, sweepEndM) ? rawStartM : sweepEndM;
+        const FVector3d sweepStartM = SOLCombatRules::ResolveSweepStart(previousM - mPrevSweepOriginM, sweepEndM,
+            bHasPrevious, SOL::COMBAT_MAX_SWEEP_STEP_M);
         const double hitRadiusM = FMath::Max(renders[entity].RadiusM * SOL::COMBAT_MINOR_BODY_HIT_RADIUS_SCALE,
             SOL::COMBAT_MINOR_BODY_MIN_HIT_RADIUS_M);
         const FVector3d centerM = 0.5 * (sweepStartM + sweepEndM);
@@ -635,12 +697,17 @@ void USOLCombatSubsystem::SweepBolt(FSOLSweepScratch& scratch, const int32 boltI
     int32 hitIndex = INDEX_NONE;
     double hitTime = TNumericLimits<double>::Max();
 
-    // Targets, each moving linearly over the frame
+    // Targets, each moving linearly over the frame (one destroyed earlier this frame is skipped: only a game-thread
+    // re-sweep from ApplyBoltHits can see one, as the parallel sweep runs before any target is removed)
     if (mTargetGrid.Num() > 0)
     {
         mTargetGrid.QueryCandidates(startM, endM, SOL::COMBAT_BOLT_HIT_RADIUS_M, scratch.CandidateIds);
         for (const int32 slot : scratch.CandidateIds)
         {
+            if (!mTargetActive[slot])
+            {
+                continue;
+            }
             const SOLBoltMath::FSweepHit hit = SOLBoltMath::SweptSphereHitMoving(startM, endM,
                 mTargetSweepStartsM[slot], mTargetSweepEndsM[slot],
                 SOL::COMBAT_TARGET_RADIUS_M + SOL::COMBAT_BOLT_HIT_RADIUS_M);
@@ -676,16 +743,21 @@ void USOLCombatSubsystem::SweepBolt(FSOLSweepScratch& scratch, const int32 boltI
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns where a bolt's recorded hit happened: its sweep-frame point at the hit time plus the sweep origin then
+// Returns where a bolt's recorded hit is at the end of this frame: the contact point on what it hit, carried with it
 FVector3d USOLCombatSubsystem::ComputeHitPositionM(const int32 boltIndex) const
 {
-    const double t = mBoltHitTimes[boltIndex];
-    return FMath::Lerp(mBoltSweepStartsM[boltIndex], mBoltSweepEndsM[boltIndex], t)
-        + FMath::Lerp(mPrevSweepOriginM, mSweepOriginM, t);
+    // The struck object's sweep segment (a target slot or a minor-body snapshot index)
+    const int32 hitIndex = mBoltHitIndices[boltIndex];
+    const bool bIsTarget = mBoltHitKinds[boltIndex] == ESOLBoltHit::Target;
+    const FVector3d& objectStartM = bIsTarget ? mTargetSweepStartsM[hitIndex] : mMinorSweepStartsM[hitIndex];
+    const FVector3d& objectEndM = bIsTarget ? mTargetSweepEndsM[hitIndex] : mMinorSweepEndsM[hitIndex];
+    return SOLCombatRules::HitPointAtFrameEndM(mBoltSweepStartsM[boltIndex], mBoltSweepEndsM[boltIndex], objectStartM,
+        objectEndM, mBoltHitTimes[boltIndex], mSweepOriginM);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Applies each bolt's recorded hit in bolt order, then removes the hit and expired bolts
+// Applies each bolt's recorded hit in bolt order (re-sweeping a bolt whose target an earlier bolt destroyed), then
+// removes the hit and expired bolts
 void USOLCombatSubsystem::ApplyBoltHits()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(USOLCombatSubsystem::ApplyBoltHits);
@@ -694,30 +766,42 @@ void USOLCombatSubsystem::ApplyBoltHits()
     for (int32 bolt = 0; bolt < boltCount; ++bolt)
     {
         bool bRemove = SOLBoltMath::IsExpired(mBoltLifetimesS[bolt]);
+
+        // A target an earlier bolt destroyed this frame lets this one fly on: sweep it again (on the game thread, with
+        // the first task's scratch, free once the parallel sweep is done) for whatever lies beyond. The re-sweep skips
+        // deactivated targets, so it never returns the same one and runs at most once per bolt
+        if (mBoltHitKinds[bolt] == ESOLBoltHit::Target && mTargetActive.IsValidIndex(mBoltHitIndices[bolt])
+            && !mTargetActive[mBoltHitIndices[bolt]] && !mSweepScratch.IsEmpty())
+        {
+            SweepBolt(mSweepScratch[0], bolt);
+        }
         const ESOLBoltHit hitKind = mBoltHitKinds[bolt];
         const int32 hitIndex = mBoltHitIndices[bolt];
 
-        // A target hit: shield first, then health; a target an earlier bolt destroyed this frame lets this one fly on
-        if (hitKind == ESOLBoltHit::Target && mTargetActive.IsValidIndex(hitIndex) && mTargetActive[hitIndex]
-            && !mTargetDamage[hitIndex].bDead)
+        // A target hit: shield first, then health
+        const SOLCombatRules::FTargetHitOutcome outcome = hitKind == ESOLBoltHit::Target
+            && mTargetActive.IsValidIndex(hitIndex)
+            ? SOLCombatRules::ResolveTargetHit(mTargetActive[hitIndex], mTargetDamage[hitIndex], SOL::COMBAT_BOLT_DAMAGE)
+            : SOLCombatRules::FTargetHitOutcome();
+        if (outcome.bApplied)
         {
-            const SOLDamageMath::FDamageState before = mTargetDamage[hitIndex];
-            const SOLDamageMath::FDamageState after = SOLDamageMath::ApplyDamage(before, SOL::COMBAT_BOLT_DAMAGE);
-            mTargetDamage[hitIndex] = after;
+            mTargetDamage[hitIndex] = outcome.After;
             mTargetHitFlash[hitIndex] = 1.0f;
-            const FVector3d targetVelocityMps = GetTargetVelocityMps(hitIndex);
-            AddEvent(ESOLCombatEventType::TargetHit, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt],
-                targetVelocityMps, hitIndex, mBoltOwners[bolt]);
-            if (before.Shield > 0.0 && after.Shield <= 0.0)
+            const int32 frameBody = mTargetFrameBodies[hitIndex];
+            const FVector3d& relVelocityMps = mTargetRelVelocitiesMps[hitIndex];
+            AddEvent(ESOLCombatEventType::TargetHit, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt], frameBody,
+                relVelocityMps, hitIndex, mBoltOwners[bolt]);
+            if (outcome.bShieldBroken)
             {
                 AddEvent(ESOLCombatEventType::ShieldBroken, mTargetPositionsM[hitIndex], FVector3d::ZeroVector,
-                    targetVelocityMps, hitIndex, mBoltOwners[bolt]);
+                    frameBody, relVelocityMps, hitIndex, mBoltOwners[bolt]);
             }
-            if (after.bDead)
+            if (outcome.bDestroyed)
             {
                 AddEvent(ESOLCombatEventType::TargetDestroyed, mTargetPositionsM[hitIndex], FVector3d::ZeroVector,
-                    targetVelocityMps, hitIndex, mBoltOwners[bolt]);
+                    frameBody, relVelocityMps, hitIndex, mBoltOwners[bolt]);
                 DeactivateTarget(hitIndex);
+                ++mTargetsDestroyedCount;
             }
             bRemove = true;
         }
@@ -725,7 +809,7 @@ void USOLCombatSubsystem::ApplyBoltHits()
         {
             // Absorbed with a spark puff; the rock is on rails and unharmed
             AddEvent(ESOLCombatEventType::BoltAbsorbed, ComputeHitPositionM(bolt), mBoltVelocitiesMps[bolt],
-                GetFrameBodyVelocityMps(mBoltFrameBodies[bolt]), INDEX_NONE, mBoltOwners[bolt]);
+                mBoltFrameBodies[bolt], FVector3d::ZeroVector, INDEX_NONE, mBoltOwners[bolt]);
             bRemove = true;
         }
 
@@ -786,9 +870,12 @@ void USOLCombatSubsystem::FirePlayerGuns(const double dt, const bool bHasShip, c
         const FVector3d velocityMps = SOLBoltMath::MuzzleVelocity(shipVelocityMps, aimDirection,
             SOL::COMBAT_MUZZLE_SPEED_MPS);
         const double ageS = SOLFireCadence::ShotAgeS(step, shot, SOL::COMBAT_FIRE_RATE_PER_S);
-        if (FireBolt(muzzleM + (velocityMps - shipVelocityMps) * ageS, velocityMps, SOLCombat::PLAYER_OWNER))
+        const FVector3d placedM = muzzleM + (velocityMps - shipVelocityMps) * ageS;
+        if (FireBolt(placedM, velocityMps, SOLCombat::PLAYER_OWNER))
         {
+            // Swept this frame from the muzzle (where the ship-centred bolt was ageS ago) to where it has flown since
             mBoltLifetimesS.Last() = SOLBoltMath::AdvanceLifetime(mBoltLifetimesS.Last(), ageS);
+            AppendBoltSweep(muzzleM - mSweepOriginM, placedM - mSweepOriginM);
         }
     }
 }

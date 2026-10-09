@@ -76,7 +76,7 @@ struct FInputActionValue;
  * lost or counted twice however the pawn tick and the ship step interleave. L is ignored during a jump warp; while the
  * map or the speed panel is open the ship mapping (and with it L) is removed anyway.
  *
- * Combat (6b, SDD 7): holding the left mouse button holds the gun trigger and G drops a target; both only hand state to
+ * Combat (7b, SDD 7): holding the left mouse button holds the gun trigger and G drops a target; both only hand state to
  * USOLCombatSubsystem, which owns the fire cadence, the muzzles and the drop rules and acts in its own update. Every
  * tick the pawn also hands it the chase camera's offset from the ship and its forward direction (ecliptic), the camera
  * ray the bolts converge on. The trigger reads as released while the map or the speed panel is open, during a jump
