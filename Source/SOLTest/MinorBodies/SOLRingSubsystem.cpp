@@ -341,5 +341,6 @@ void USOLRingSubsystem::AssignGroup(FSOLRingState& ring, const int32 groupIndex,
         orbit.Elements = rock.Elements;
         render.RadiusM = rock.RadiusM;
         render.bActive = true;
+        ++render.Generation; // A new rock: readers must not treat the jump from the old one as motion
     }
 }

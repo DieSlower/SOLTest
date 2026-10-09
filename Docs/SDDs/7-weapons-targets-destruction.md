@@ -84,3 +84,69 @@ Flagged to the user because decision 3 chose Mass entities for bolts:
 - **Bolt size:** a 70 cm streak is sub-pixel past ~100 m and nearly end-on from the chase camera, so sprite width and
   length are `max(base, camera distance * 0.004 / 0.05)` (`DistanceToCamera` dynamic input), about 3 px wide at any range.
 
+### Amendment 3 — 7d audio (2026-10-09)
+
+- **`ASOLCombatAudio`** (separate actor in `Combat/`, spawned next to the visuals, no tick, plays on `OnCombatUpdated`).
+  Seven generated mono 44.1 kHz WAVs (Python-synthesized sweeps and noise bursts, 0.18-2 s) imported as `USoundWave`s under
+  `/Game/SOL/Combat/Audio/` (`S_SOLShot`, `S_SOLShieldHit`, `S_SOLHullHit`, `S_SOLShieldBreak`, `S_SOLExplosion`, `S_SOLSpark`,
+  `S_SOLTargetDrop`). No MetaSound, no attenuation or concurrency assets: both attenuations are transient objects built
+  from `SOLConstants.h`, and concurrency is a fixed voice pool per kind (oldest reused, 21 voices total) plus a per-kind
+  minimum interval (`SOLCombatAudioRules::MayPlay`, tested in `SOLTest.CombatAudio.*`). All tuning is the
+  `SOL::COMBAT_SOUNDS` table. `TargetEvicted` is silent. A hit picks the shield ping or hull thud by the same
+  shield-after-hit test as the impact tint.
+- **3D placement:** each voice starts at the event's universe position (render-origin snapshot) and rides with the event's
+  frame velocity, or the ship's own velocity for player shots, until its sound ends, so ship motion and origin rebases do
+  not leave it behind.
+- **Verified** with `-SOLCombatDemo -SOLSmokeShot=22` (4 cycles): shot 72 (2 dropped by the interval), shield hit 35,
+  hull hit 33, shield break 3, explosion 3, target drop 4; spark 0 because the demo has no rock in the line of fire
+  (covered by the event mapping test). No LogSOL or LogAudio warnings or errors. Audibility and mix not checked by ear.
+
+### Amendment 4 — 7f adversarial-review fixes and load measurements (2026-10-09)
+
+Labels: sub-parts are 7a-7f everywhere (the plan's labels); the pushed commits say "Part 6x" (same letters).
+
+- **Effects and sounds follow their frame under warp.** `FSOLCombatEvent` now carries `FrameBody`, `FrameOffsetM` and
+  `RelativeVelocityMps`; effects and voices recompute their position every update as the body's current position plus
+  the offset (plus relative motion for their age, `SOLCombatRules::EventPositionNowM`) instead of extrapolating with a
+  velocity in real seconds (which drifted by the warp factor). The player's own shot sounds keep their offset from the
+  ship. Both age with the subsystem's clamped delta (`GetLastUpdateDeltaS`), not the world delta.
+- **Hit point at frame end (found during verification).** A hit was placed at the bolt's universe point at the hit time
+  t, but the reference frame keeps moving for the rest of the frame (Earth: 30 km/s), so impacts landed 15-20 m in front
+  of the target. `SOLCombatRules::HitPointAtFrameEndM` now takes the contact offset at t and applies it to the struck
+  object's end-of-frame position; measured distance from the target centre is now exactly 10.5 m (radius + bolt radius).
+- **Bolt renderer cost.** Burst sized by `COMBAT_BOLT_RENDER_CAP` = 2,048 (player keeps ~28 alive; `COMBAT_MAX_BOLTS`
+  stays 20,000 for the simulation). The component is paused and hidden while no bolt is live (not deactivated: the
+  slot index relies on the burst's particle ids). Bolts past the cap fly and hit undrawn, logged once.
+- **Targets ISM** gets instances only up to the high-water mark of used slots (geometric growth, never per frame) and
+  is hidden while no target is active.
+- **Ring reassignment** is detected exactly: `FSOLMinorBodyRenderFragment::Generation` (uint16, fragment stays 16 bytes)
+  is bumped by `USOLRingSubsystem::AssignGroup`; the combat snapshot stores it and treats a change as a teleport.
+- **Range and first segment.** Bolts more than `COMBAT_BOLT_MAX_RANGE_M` (20 km) from the ship expire (keeps the
+  broad-phase box small after a jump). New shots are fired before the sweep and swept from the muzzle in their first
+  frame. A bolt whose target an earlier bolt destroyed is re-swept on the game thread (sweeps skip inactive targets).
+- **Pure rules extracted** to `SOLCombatRules` (sweep start/teleport, previous-position validity, bolt range, target-hit
+  resolution with the double-kill guard, event trim/cap, hit point, event position, drawn bolt count), tested in
+  `SOLTest.CombatRules.*`; `SOLTest.CombatGrid.FallbackKeepsBuffer` covers the grid's all-ids fallback, which now appends
+  into the caller's reserved scratch instead of copy-assigning (that could reallocate on a worker thread); sweep
+  scratch is reserved to the grid's reserved entry count.
+- **Not fixed (CLAUDE.md tech debt):** the minor-body snapshot still scans every minor body each frame a bolt is live
+  (measured below); a non-body M-lock reference gives bolts/targets the anchor's warp carry (no `ISOLTargetable`
+  implementer exists, so it cannot happen today; documented in `GAME_MECHANICS.md`).
+- **Demo hook:** `-SOLCombatDemo` tracks its own drop's slot (`GetLastDroppedTargetSlot`/`GetTargetDropCount`), tells a
+  kill from a loss (`GetTargetsDestroyedCount`) and gives up after 20 s. New `-SOLCombatStress=<bolts>` keeps that many
+  extra bolts alive in a 25° forward cone.
+
+**Measurements** (standalone `-game`, 1280x720, D3D12, ~230 fps; temporary `FPlatformTime` instrumentation averaged over
+240 frames, since removed; GPU from `ProfileGPU`):
+
+| Scenario | Combat update (sim) | Visuals + audio | GPU frame |
+|---|---|---|---|
+| Idle, no bolts | 0.003 ms | 0.006 ms | — |
+| Demo, 1-3 live bolts | ~0.42 ms | ~0.06 ms | 2.77 ms |
+| `-SOLCombatStress=10000`, ~9,700 live bolts (2,048 drawn) | ~1.0 ms | ~0.10 ms | 2.84 ms |
+
+The ~0.4 ms floor whenever any bolt is live is the minor-body snapshot scan of 19,268 entities (belt 9,268 + ring pool
+10,000), about 20 ns each; it is linear in the minor-body count (≈20 ms at 1M), hence the tech-debt entry. The bolts
+themselves cost ~0.6 ms for ~9,700 (advance, parallel sweep, compaction). Drawing 2,048 bolts adds ~0.07 ms GPU.
+Screenshot diff (stress vs baseline at the same moment) confirmed the bolt cloud renders after the pause/unpause.
+

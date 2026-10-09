@@ -24,16 +24,22 @@ struct FSOLRenderOrigin;
  * Presentation of USOLCombatSubsystem (SDD 7, Part 7c). Spawned once by ASOLGameMode; redraws on the subsystem's
  * OnCombatUpdated, i.e. after the frame's combat update, so it always shows final positions and events.
  *
- * - Bolts: ONE GPU Niagara component (NS_SOLBolts) holding a fixed pool of COMBAT_MAX_BOLTS particles spawned once.
- *   Each frame the packed bolt positions (render cm) and directions are copied into two reused float3 scratch arrays
- *   and handed to the system's array data interfaces; particle i reads entry i, and particles past the live count are
- *   hidden by a visibility tag. The component sits at the Unreal origin with an identity transform, so its local space
- *   is render space. Streaks are aligned with each bolt's velocity relative to the player ship (the apparent motion).
- * - Targets: one instanced static mesh with one instance per target slot (COMBAT_MAX_TARGETS), per-instance custom
- *   data (shield fraction, health fraction, hit flash) for M_SOLTarget. Only the slot range that is, or was last frame,
- *   in use is re-placed; inactive slots are scaled to zero, and custom data is written only where it changed.
+ * - Bolts: ONE CPU-simulated Niagara component (NS_SOLBolts; SDD 7 Amendment 2 says why not GPU) holding a fixed pool
+ *   of COMBAT_BOLT_RENDER_CAP particles spawned once. Each frame the packed bolt positions (render cm) and directions
+ *   are copied into two reused float3 scratch arrays and handed to the system's array data interfaces; particle i
+ *   reads entry i, and particles past the live count are hidden by a visibility tag. While no bolt is live the
+ *   component is paused and hidden, so its CPU sim costs nothing. The component sits at the Unreal origin with an
+ *   identity transform, so its local space is render space. Streaks are aligned with each bolt's velocity relative to
+ *   the player ship (the apparent motion). Bolts past the render cap still fly and hit, undrawn (logged once).
+ * - Targets: one instanced static mesh with per-instance custom data (shield fraction, health fraction, hit flash) for
+ *   M_SOLTarget; instance i is target slot i. Instances are added only as the highest used slot grows (a high-water
+ *   mark, so a session that never drops a target never has any), and the component is hidden while no target is
+ *   active. Only the slot range that is, or was last frame, in use is re-placed; inactive slots are scaled to zero, and
+ *   custom data is written only where it changed.
  * - One-shot effects: fixed pools of Niagara components per kind (impact, shield break, spark, explosion), the oldest
- *   reused for each new event; an effect rides with what it hit (the event's frame velocity) until its duration ends.
+ *   reused for each new event; an effect rides with what it hit until its duration ends: its position is recomputed
+ *   every update from the event's frame body (FSOLCombatEvent), so it stays on its target at any time warp. Effects
+ *   age with the combat update's own (hitch-clamped) delta.
  *
  * Every universe position is converted with the frame's render-origin snapshot, never stored in render space between
  * frames, so origin rebases cannot strand anything. Every asset is optional: a missing one disables only its part.
@@ -62,8 +68,9 @@ private:
     struct FSOLEffectSlot
     {
         TObjectPtr<UNiagaraComponent> Component;
-        FVector3d StartPositionM = FVector3d::ZeroVector;  // Universe position at the event
-        FVector3d FrameVelocityMps = FVector3d::ZeroVector; // Universe velocity it rides with
+        int32 FrameBody = INDEX_NONE;                        // The event's frame body
+        FVector3d FrameOffsetM = FVector3d::ZeroVector;      // The event's offset from that body
+        FVector3d RelativeVelocityMps = FVector3d::ZeroVector; // Its velocity relative to that body
         double AgeS = 0.0;
         bool bIsLive = false;
     };
@@ -83,8 +90,14 @@ private:
     // Copies the bolt arrays into the bolt Niagara system
     void UpdateBolts(const FSOLRenderOrigin& origin);
 
+    // Unpauses and shows the bolt system (some bolt is live), or pauses and hides it (none is)
+    void SetBoltRendererRunning(bool bRunning);
+
     // Re-places the in-use target slots and writes changed per-instance custom data
     void UpdateTargets(const FSOLRenderOrigin& origin);
+
+    // Adds hidden target instances so at least instanceCount exist (grows geometrically, up to the slot count)
+    void EnsureTargetInstances(int32 instanceCount);
 
     // Starts the one-shot effects of this frame's events
     void StartEventEffects();
@@ -106,11 +119,11 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<USceneComponent> SceneRoot;
 
-    /** GPU bolt renderer: the NS_SOLBolts system fed from the packed bolt arrays. */
+    /** Bolt renderer (CPU sim): the NS_SOLBolts system fed from the packed bolt arrays. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UNiagaraComponent> BoltNiagara;
 
-    /** Targets: one instance per target slot. */
+    /** Targets: instance i is target slot i, up to the highest slot ever used. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UInstancedStaticMeshComponent> TargetMesh;
 
@@ -128,16 +141,18 @@ private:
     TObjectPtr<USOLShipSubsystem> Ships;
 
     // Bolts
-    TArray<FVector3f> mBoltPositionsCm;        // Scratch, reserved to COMBAT_MAX_BOLTS once
-    TArray<FVector3f> mBoltVelocitiesCmps;     // Scratch, reserved to COMBAT_MAX_BOLTS once
-    int32 mLastBoltCount = 0;
-    bool mIsBoltRendererEnabled = false;
+    TArray<FVector3f> mBoltPositionsCm;        // Scratch, reserved to COMBAT_BOLT_RENDER_CAP once
+    TArray<FVector3f> mBoltVelocitiesCmps;     // Scratch, reserved to COMBAT_BOLT_RENDER_CAP once
+    bool mIsBoltRendererEnabled = false;       // The bolt system loaded and was activated
+    bool mIsBoltRendererRunning = false;       // Unpaused and visible (some bolt is live)
+    bool mHasLoggedBoltRenderCap = false;      // The "bolts past the render cap" warning was logged
 
     // Targets
     TArray<FTransform> mTargetTransforms;      // Scratch, reserved to the slot count once
     TArray<float> mTargetCustomData;           // Last written custom data, COMBAT_TARGET_CUSTOM_DATA_FLOATS per slot
     int32 mTargetRangeEnd = 0;                 // Slots [0, end) were placed last frame (the rest are already hidden)
     bool mIsTargetRendererEnabled = false;
+    bool mIsTargetMeshVisible = false;
 
     // One-shot effects
     FSOLEffectPool mImpactPool;

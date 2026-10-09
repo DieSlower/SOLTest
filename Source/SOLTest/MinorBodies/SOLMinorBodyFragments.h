@@ -51,6 +51,11 @@ struct FSOLMinorBodyRenderFragment : public FMassFragment
     // archetype move at that rate would cost far more than flipping one field the renderer already reads every
     // frame regardless.
     bool bActive = true;
+
+    // Bumped (wrapping) by USOLRingSubsystem::AssignGroup every time it gives this entity a new rock (another ring
+    // cell), so a reader comparing it with its last-seen value can tell a reassignment teleport from real motion
+    // (USOLCombatSubsystem's sweep does). Belt asteroids keep 0. Sits after bActive, so the fragment stays 16 bytes
+    uint16 Generation = 0;
 };
 
 /**
