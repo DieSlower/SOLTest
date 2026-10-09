@@ -273,6 +273,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeLevel` | `FSOLSurfaceLockSmoke` | Surface-lock via injected L presses and scripted teleports above Earth: L out of range ignored, auto-engage with frame match (replacing an M lock on another candidate) and alignment (time constant checked one tau in), L release that stays released (suppression latch) and stops aligning, latch cleared by a climb, auto warn/release (alignment stops), hint, manual engage/warn/release, a scripted jump that drops an L pressed during the warp and releases the lock on arrival; screenshots of each HUD line |
 | `-SOLSpectator` | `ASOLGameMode` / `ASOLSpectatorPawn` | Debug free-fly camera riding the ship instead of the pawn |
 | `-SOLStart=<Body>`, `-SOLAltitudeKm=<km>`, `-SOLLookAt=<Body>` | Ship subsystem / spectator | Spawn body and altitude, and the debug camera's look target, for any of the runs above |
+| `-SOLSmokeConsole="<cmd>[\|<cmd>...]"` | `ASOLGameMode` | With `-SOLSmokeShot`: runs these console commands (e.g. `ProfileGPU`, `memreport -full`, `stat unit`) just before the screenshot (which then waits 2 s so on-screen stats settle) |
 | `-SOLRingStartKm=<km>`, `-SOLRingHeightKm=<km>` | Ship subsystem | With `-SOLStart=<ringed planet>`: spawn inside its ring plane at that radius from its centre (and that height above the plane), for ring close-ups |
 
 All flag strings live in `SOL::CommandLine` in `SOLConstants.h`.

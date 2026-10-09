@@ -54,5 +54,6 @@ private:
     // Quits the game after the smoke-test screenshot
     void QuitAfterSmokeTest();
 
+    bool mSmokeConsoleRun = false; // Verification-only: the -SOLSmokeConsole commands have been run
     FTimerHandle mSmokeTimer; // Verification-only: -SOLSmokeShot=<seconds> screenshots, then quits
 };

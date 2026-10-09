@@ -425,9 +425,10 @@ void ASOLRingVisuals::UpdateDenseLayer()
     DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_PHASE_CM, FVector(
         SOLRingDense::WindowPhaseCm(localCm.X, windowRadiusCm), SOLRingDense::WindowPhaseCm(localCm.Y, windowRadiusCm),
         localCm.Z));
-    // Rounded to float first: the system only masks with this value (about 10 m of error at 1e10 cm is irrelevant against
-    // km-wide gaps), and sending a double that a float cannot hold makes Niagara log a precision warning every frame
-    DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_CENTER_CM, FVector(FVector3f(localCm)));
+    // Kilometres, converted in double before the cast: the system only masks with this value, and a vec3 beyond about
+    // 10 km makes Niagara log a precision warning every call (the centre is ~1e10 cm from the planet)
+    constexpr double centimetersPerKilometer = SOL::METERS_TO_CM * SOL::METERS_PER_KM;
+    DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_CENTER_KM, FVector(FVector3f(localCm / centimetersPerKilometer)));
     DenseNiagara->SetVariableFloat(SOL::RingDenseParams::FILL,
         static_cast<float>(SOLRingDense::DenseFillFraction(mRingDef.Density) * denseAlpha));
 }

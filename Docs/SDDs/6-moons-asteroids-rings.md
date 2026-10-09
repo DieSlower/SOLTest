@@ -1373,7 +1373,7 @@ Also add a `RingDenseParams` namespace holding the user-parameter names below.
 | `RingDenseHalfThicknessCm`, `RingRockMinRadiusCm`, `RingRockMaxRadiusCm`, `RingRockCullAngularRadius` | float | BeginPlay | The constants above |
 | `RingDenseFill` | float, 0..1 | BeginPlay, or every frame if used as a fade | Fraction of rocks shown: 1 for Saturn, about the ring's `Density` for the others |
 | `RingWindowPhaseCm` | vec3 | Every frame | xy = `fmod(P.xy, 2W)`, computed in double and kept in [0, 2W); z = P.z (height above the ring plane, cm) |
-| `RingWindowCenterCm` | vec3 | Every frame | P cast to float (used only for masking) |
+| `RingWindowCenterKm` | vec3 | Every frame | P in km (cm * 1e-5, computed in double): masking only; km because Niagara warns on vec3 values beyond ~10 km |
 
 **Per frame, in `ASOLRingVisuals::HandleUniverseUpdated`, only while Tier B is visible:**
 
@@ -1473,3 +1473,42 @@ cameras and spin angles (this test fails without the Y mirror), and a prograde-o
 `00061`/`00062`) show the host-driven rocks around the camera inside Saturn's B ring. That spawn co-rotates with the ring,
 so by itself it cannot show relative motion: the composition test covers it. Not measured: GPU time and VRAM of the
 host-driven layer (see CLAUDE.md tech debt).
+
+### Amendment 16 addendum — measured GPU time and VRAM of the host-driven dense layer (2026-10-09)
+
+Measured through the real host path (`ASOLRingVisuals` driving `NS_SOLRingDense`), standalone game (`-game`), 1920x1080
+(TSR internal 1400x788), Saturn's B ring, 1,000,000 rocks, Development build, one `ProfileGPU` frame each and one
+`memreport -full` each, 8 s after start with the ship co-rotating ballistically (`-SOLRingStartKm=100000
+-SOLRingHeightKm=0.05`, flight assist off for this mode so it stays in the plane). Baseline is the identical run 50 km
+above the plane (`-SOLRingHeightKm=50`): the layer hidden and, being activated lazily on first show, never activated.
+Run with `-SOLSmokeShot=8 "-SOLSmokeConsole=ProfileGPU"` / `"-SOLSmokeConsole=memreport -full"`.
+
+| GPU pass (ms) | In ring (layer on, rocks around the camera) | 50 km above (layer off) |
+|---|---|---|
+| **Frame total** | **7.02** | **3.72** |
+| NiagaraGpuSim (`NS_SOLRingDense:RingDust`, 1M particles) | 0.54 | - |
+| GPUScene dynamic upload (`Niagara.UpdateMeshParticleInstances`, 1M instances) | 0.37 (0.28) | - |
+| Instance culling (`CullInstances`) | 0.21 | - |
+| Velocity pass (opaque, `ParallelDraw`) | 1.80 | ~0 |
+| BasePass | 0.51 | 0.13 |
+| Translucency / post / AO / lighting | unchanged (about 4 ms, TSR 1.5-1.8) | same |
+
+The dense layer costs about **3.3 ms of GPU time per frame while rocks are around the camera**, of which **1.8 ms is the
+velocity pass**: the opaque rocks are still drawn into the velocity buffer under TSR even though the mesh renderer's
+motion vectors are disabled (open item 3 of Amendment 15, now quantified; the best optimization target, potentially
+more than half the cost). Hidden (beyond the 6 km fade-out, or above 10x warp) it costs nothing: it is paused and not
+drawn, and a never-visited ring never activates it.
+
+**VRAM** (`memreport -full`, RHI resource memory total): 10,651.6 MB without vs 10,866.2 MB with the layer, i.e.
+**+214.7 MB** for the first ring whose layer is shown, almost all vertex-buffer memory (+213.7 MB): the Niagara
+particle double buffer (2 x `GPUBufferFloat` at 99.2 MB, 2 x `GPUBufferInt` at 7.6 MB, about 213.6 MB) plus the shared
+GPUScene instance buffers growing (`InstanceSceneData` 16 -> 64 MB, new `InstancePayloadData` 64 MB, one-time and shared by
+every system). **Each further ring visited adds about another 214 MB of particle buffers** (the system stays resident once
+activated), so a session that visits all four rings holds about 640 MB of dense-layer particle memory on top of the
+shared GPUScene growth. Mitigations, not yet taken: one shared dense component re-parameterised for the active ring;
+or deactivating a layer after it has been hidden for a while (re-showing respawns the 1M rocks, about 1 ms on one frame);
+or fewer attributes per particle (about 104 bytes each today).
+
+**Window centre unit.** `User.RingWindowCenterCm` was replaced by `User.RingWindowCenterKm` (the same ring-frame position, cm x 1e-5):
+`UNiagaraComponent::SetVariableVec3` logs a warning on every call whose value exceeds `UE_OLD_HALF_WORLD_MAX` (~10 km), and the
+centre is ~1e10 cm from the planet. The mirrored-Y rule above applies unchanged.
