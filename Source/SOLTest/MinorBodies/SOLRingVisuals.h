@@ -139,6 +139,8 @@ private:
     double mLastSecondsSinceJ2000 = 0.0;             // Sim time at the previous dense update, for the angle's step
     bool mIsDenseEnabled = false;                    // Whether the dense layer's asset and clock resolved (it is optional)
     bool mIsDenseActivated = false;                  // Whether the dense system has been activated yet (first show)
+    bool mIsDenseReleased = false;                   // Whether the dense system was deactivated to free its buffers after a long hide
+    double mDenseHiddenSinceSeconds = -1.0;          // World time the layer was hidden at (-1 while shown or already released)
     bool mIsDenseVisible = false;                    // Whether the dense layer is currently shown and running
     FVector3d mRingAxisE1 = FVector3d::XAxisVector;  // Ring-frame X axis in ECLIPTIC axes, cached in BeginPlay
     FVector3d mRingAxisE2 = FVector3d::YAxisVector;  // Ring-frame Y axis in ECLIPTIC axes, cached in BeginPlay

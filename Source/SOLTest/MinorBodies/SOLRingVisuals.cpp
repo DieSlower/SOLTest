@@ -375,9 +375,10 @@ void ASOLRingVisuals::UpdateDenseLayer()
     if (bShow != mIsDenseVisible)
     {
         mIsDenseVisible = bShow;
+        mDenseHiddenSinceSeconds = -1.0;
         if (bShow && (!mIsDenseActivated || !DenseNiagara->IsActive()))
         {
-            if (mIsDenseActivated)
+            if (mIsDenseActivated && !mIsDenseReleased)
             {
                 // The engine deactivated the system behind our back (scalability or culling policy); bring it back,
                 // at the price of respawning its rocks, rather than staying silently empty for the rest of the session
@@ -386,6 +387,7 @@ void ASOLRingVisuals::UpdateDenseLayer()
             }
             DenseNiagara->Activate(true);
             mIsDenseActivated = true;
+            mIsDenseReleased = false;
         }
         DenseNiagara->SetVisibility(bShow);
         DenseNiagara->SetPaused(!bShow);
@@ -396,8 +398,25 @@ void ASOLRingVisuals::UpdateDenseLayer()
     {
         // Stay in step with the sim clock so the first visible frame's angle step is one frame, not the whole absence
         mLastSecondsSinceJ2000 = secondsSinceJ2000;
+
+        // Once hidden for a while, free the rock buffers (about 214 MB of VRAM); only the ring the player is at is
+        // ever shown, so this caps the layer at about one ring's buffers. Re-showing respawns the rocks.
+        const double nowSeconds = GetWorld()->GetTimeSeconds();
+        if (mIsDenseActivated && !mIsDenseReleased)
+        {
+            if (mDenseHiddenSinceSeconds < 0.0)
+            {
+                mDenseHiddenSinceSeconds = nowSeconds;
+            }
+            else if (nowSeconds - mDenseHiddenSinceSeconds >= SOL::RING_DENSE_RELEASE_DELAY_SECONDS)
+            {
+                DenseNiagara->DeactivateImmediate();
+                mIsDenseReleased = true;
+            }
+        }
         return;
     }
+    mDenseHiddenSinceSeconds = -1.0;
 
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
     const FVector3d relativeM = mFrameViewpointM - registry.GetPositionM(mPlanetIndex);
