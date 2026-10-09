@@ -267,6 +267,62 @@ namespace SOL
     // Surface lock (SDD 4): time constant of the exponential alignment rotation that aligns the ship's up with the local vertical
     inline constexpr double SURFACE_LOCK_ALIGN_TIME_CONSTANT_S = 1.0;
 
+    // Combat (SDD 7), pulse guns: shots per second while the trigger is held, muzzle speed added to the ship's velocity,
+    // damage per bolt, bolt lifetime, and the bolt's hit radius (added to every target and rock it is swept against)
+    inline constexpr double COMBAT_FIRE_RATE_PER_S = 8.0;
+    inline constexpr double COMBAT_MUZZLE_SPEED_MPS = 1500.0;
+    inline constexpr double COMBAT_BOLT_DAMAGE = 10.0;
+    inline constexpr double COMBAT_BOLT_LIFETIME_S = 3.5;
+    inline constexpr double COMBAT_BOLT_HIT_RADIUS_M = 0.5;
+
+    // Combat: the bolts from both guns converge on the camera ray this far ahead of the camera (the crosshair point)
+    inline constexpr double COMBAT_CONVERGENCE_DISTANCE_M = 1000.0;
+
+    // Combat: right gun muzzle in ship-local metres (X forward, Y right, Z up; the left gun mirrors Y), on the wing roots
+    // of the placeholder ship; the guns fire alternately
+    inline const FVector3d COMBAT_GUN_MUZZLE_OFFSET_M(0.5, 3.0, -0.3);
+
+    // Combat: hard cap on live bolts (a shot beyond it is dropped) and on shots one gun step may fire (a long hitch must
+    // not dump a burst; capped shots are not banked)
+    inline constexpr int32 COMBAT_MAX_BOLTS = 20000;
+    inline constexpr int32 COMBAT_MAX_SHOTS_PER_FRAME = 8;
+
+    // Combat, targets: shield and health at spawn, shield regeneration delay after the last hit and rate, hit radius,
+    // and how long the hit flash takes to fade
+    inline constexpr double COMBAT_TARGET_SHIELD = 100.0;
+    inline constexpr double COMBAT_TARGET_HEALTH = 100.0;
+    inline constexpr double COMBAT_TARGET_SHIELD_REGEN_DELAY_S = 3.0;
+    inline constexpr double COMBAT_TARGET_SHIELD_REGEN_PER_S = 25.0;
+    inline constexpr double COMBAT_TARGET_RADIUS_M = 10.0;
+    inline constexpr double COMBAT_HIT_FLASH_DURATION_S = 0.15;
+
+    // Combat, target drops: distance ahead of the ship, minimum time between drops, and the pool size (the oldest
+    // target is evicted when a drop finds the pool full)
+    inline constexpr double COMBAT_TARGET_DROP_DISTANCE_M = 200.0;
+    inline constexpr double COMBAT_TARGET_DROP_COOLDOWN_S = 0.25;
+    inline constexpr int32 COMBAT_MAX_TARGETS = 1000;
+
+    // Combat, broad phase: cell size of the target grid and of the minor-body (belt asteroid and ring rock) grid. Both
+    // are built in the ship-centred sweep frame, where a bolt moves ~25 m per 60 fps frame, so a bolt segment touches
+    // one to eight cells; ring rocks (~100 per 1 km ring cell) land a few per cell
+    inline constexpr double COMBAT_TARGET_GRID_CELL_M = 250.0;
+    inline constexpr double COMBAT_MINOR_BODY_GRID_CELL_M = 250.0;
+
+    // Combat, minor bodies: a bolt is swept against a rock's mean radius times this scale, never below the minimum
+    inline constexpr double COMBAT_MINOR_BODY_HIT_RADIUS_SCALE = 1.0;
+    inline constexpr double COMBAT_MINOR_BODY_MIN_HIT_RADIUS_M = 1.0;
+
+    // Combat: anything that moved farther than this in one frame in the ship-centred sweep frame (a jump teleport, a
+    // ring rock reassigned to another cell, extreme time warp) is not swept that frame: it is tested at its new position
+    // only (a target or rock) or skips hit tests for the frame (a bolt)
+    inline constexpr double COMBAT_MAX_SWEEP_STEP_M = 5.0e4;
+
+    // Combat: queued one-shot events kept per update for the visuals and audio (extra events that frame are dropped)
+    inline constexpr int32 COMBAT_MAX_EVENTS_PER_UPDATE = 4096;
+
+    // Combat: bolts handed to one parallel sweep task (below this the sweep runs on the game thread alone)
+    inline constexpr int32 COMBAT_SWEEP_MIN_BOLTS_PER_TASK = 256;
+
     // Registry names of bodies that code refers to directly
     namespace BodyNames
     {

@@ -4,9 +4,9 @@
 
 Design: [`Docs/SDDs/7-weapons-targets-destruction.md`](../SDDs/7-weapons-targets-destruction.md).
 
-- [ ] **7a — Pure logic, test-first.** Contract tests (separate opus agent): `SOLBoltMath`, `SOLDamageMath`, `SOLCombatGrid`,
+- [x] **7a — Pure logic, test-first.** Contract tests (separate opus agent): `SOLBoltMath`, `SOLDamageMath`, `SOLCombatGrid`,
   `SOLTargetDrop`; then implement to green.
-- [ ] **7b — Mass bolts and targets.** Fragments, `USOLBoltProcessor`, combat subsystem (pools, grid), input action
+- [x] **7b — Mass bolts and targets.** Fragments, `USOLBoltProcessor`, combat subsystem (pools, grid), input action
   (fire, drop target), constants.
 - [ ] **7c — Visuals.** Bolt, impact, explosion and debris Niagara systems, target instanced meshes with hit flash, shield
   and health feedback.

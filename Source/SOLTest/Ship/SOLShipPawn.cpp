@@ -5,6 +5,7 @@
 
 #include "Ship/SOLShipPawn.h"
 
+#include "Combat/SOLCombatSubsystem.h"
 #include "Game/SOLInputHelpers.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
@@ -15,6 +16,7 @@
 #include "UI/SOLFlightHud.h"
 #include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
+#include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
 #include "Camera/CameraComponent.h"
@@ -177,6 +179,7 @@ void ASOLShipPawn::BeginPlay()
     SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
+    Combat = world->GetSubsystem<USOLCombatSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -244,6 +247,11 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
         AnchorSubsystem->OnUniverseUpdated().Remove(mUniverseUpdatedHandle);
         AnchorSubsystem->SetObserverActor(nullptr);
     }
+    if (Combat != nullptr)
+    {
+        Combat->SetPlayerTriggerHeld(false);
+    }
+    mIsFireHeld = false;
     mUniverseUpdatedHandle.Reset();
     mSmokeInput.Reset();
     mSmokeHud.Reset();
@@ -342,8 +350,26 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         Ships->SetControl(mControl);
     }
+    UpdateCombatInput();
 
     UpdateCameraFov(deltaSeconds);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Hands the gun trigger and the camera aim (ecliptic) to the combat subsystem
+void ASOLShipPawn::UpdateCombatInput()
+{
+    if (Combat == nullptr)
+    {
+        return;
+    }
+    Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !mIsSpeedPanelOpen && !IsJumpWarping());
+
+    // Render space has Unreal-handed axes around the render origin, so the camera's offset from the actor (the ship)
+    // and its forward are Unreal-handed universe vectors; EclipticToUnreal (a Y flip) turns them into ecliptic ones
+    const FVector3d cameraOffsetM = FVector3d(Camera->GetComponentLocation() - GetActorLocation()) * SOL::CM_TO_METERS;
+    Combat->SetPlayerAim(SOLRender::EclipticToUnreal(cameraOffsetM),
+        SOLRender::EclipticToUnreal(FVector3d(Camera->GetForwardVector())));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -452,6 +478,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(RollAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnRollCompleted);
     input->BindAction(BoostAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnBoostStarted);
     input->BindAction(BoostAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnBoostCompleted);
+    input->BindAction(FireAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFireStarted);
+    input->BindAction(FireAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnFireCompleted);
     input->BindAction(FreeLookAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFreeLookStarted);
     input->BindAction(FreeLookAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnFreeLookCompleted);
     input->BindAction(LookAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnLookAction);
@@ -462,6 +490,7 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(RecenterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRecenterAction);
     input->BindAction(MatchLockAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMatchLockAction);
     input->BindAction(ToggleLevelAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleLevelAction);
+    input->BindAction(DropTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnDropTargetAction);
     input->BindAction(SelectTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSelectTargetAction);
     input->BindAction(NextTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnNextTargetAction);
     input->BindAction(PreviousTargetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPreviousTargetAction);
@@ -586,11 +615,12 @@ void ASOLShipPawn::HandleFocusLost()
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
+    mIsFireHeld = false;
     if (Ships != nullptr && !Ships->IsControlScripted())
     {
         Ships->SetControl(mControl);
     }
-    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: viewport lost focus; stick recentered, thrust/roll/boost released"),
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: viewport lost focus; stick recentered, thrust/roll/boost/trigger released"),
         *GetName());
 }
 
@@ -621,6 +651,8 @@ void ASOLShipPawn::CreateInputObjects()
     SpeedCapAction = CreateAction(this, TEXT("IA_ShipSpeedCap"), EInputActionValueType::Axis1D);
     MatchLockAction = CreateAction(this, TEXT("IA_ShipMatchLock"), EInputActionValueType::Boolean);
     ToggleLevelAction = CreateAction(this, TEXT("IA_ShipLevel"), EInputActionValueType::Boolean);
+    FireAction = CreateAction(this, TEXT("IA_ShipFire"), EInputActionValueType::Boolean);
+    DropTargetAction = CreateAction(this, TEXT("IA_ShipDropTarget"), EInputActionValueType::Boolean);
     SelectTargetAction = CreateAction(this, TEXT("IA_ShipSelectTarget"), EInputActionValueType::Boolean);
     NextTargetAction = CreateAction(this, TEXT("IA_ShipNextTarget"), EInputActionValueType::Boolean);
     PreviousTargetAction = CreateAction(this, TEXT("IA_ShipPreviousTarget"), EInputActionValueType::Boolean);
@@ -658,8 +690,10 @@ void ASOLShipPawn::CreateInputObjects()
     MapAxisKey(MappingContext, RollAction, EKeys::E, this, false, EInputAxisSwizzle::YXZ, false);
     MapAxisKey(MappingContext, RollAction, EKeys::Q, this, false, EInputAxisSwizzle::YXZ, true);
 
-    // Held keys and axes: boost, free-look, the mouse (virtual joystick) and the wheel (speed cap)
+    // Held keys and axes: boost, the gun trigger (left mouse; the map's own context uses it for picking, but the two
+    // contexts are never active together), free-look, the mouse (virtual joystick) and the wheel (speed cap)
     MappingContext->MapKey(BoostAction, EKeys::LeftShift);
+    MappingContext->MapKey(FireAction, EKeys::LeftMouseButton);
     MappingContext->MapKey(FreeLookAction, EKeys::LeftAlt);
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
     MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
@@ -670,6 +704,7 @@ void ASOLShipPawn::CreateInputObjects()
     MapPressedKey(MappingContext, RecenterAction, EKeys::MiddleMouseButton, this);
     MapPressedKey(MappingContext, MatchLockAction, EKeys::M, this);
     MapPressedKey(MappingContext, ToggleLevelAction, EKeys::L, this);
+    MapPressedKey(MappingContext, DropTargetAction, EKeys::G, this);
     MapPressedKey(MappingContext, SelectTargetAction, EKeys::T, this);
     MapPressedKey(MappingContext, NextTargetAction, EKeys::R, this);
     MapPressedKey(MappingContext, PreviousTargetAction, EKeys::F, this);
@@ -909,6 +944,23 @@ void ASOLShipPawn::HandleToggleLevel()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sets whether the fire trigger (left mouse) is held; the combat subsystem fires at its cadence while it is
+void ASOLShipPawn::HandleFire(const bool bHeld)
+{
+    mIsFireHeld = bHeld;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests a target drop ahead of the ship (G); the combat subsystem drops it in its next update
+void ASOLShipPawn::HandleDropTarget()
+{
+    if (Combat != nullptr && !IsJumpWarping() && !mIsMapOpen && !mIsSpeedPanelOpen)
+    {
+        Combat->RequestPlayerTargetDrop();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Selects the target under the forward reticle (T)
 void ASOLShipPawn::HandleSelectTarget()
 {
@@ -1091,6 +1143,7 @@ void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
+    mIsFireHeld = false;
     mIsFreeLooking = false;
     mFreeLookRotation = FRotator::ZeroRotator;
 }
@@ -1534,6 +1587,27 @@ void ASOLShipPawn::OnMatchLockAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnToggleLevelAction(const FInputActionValue& /*value*/)
 {
     HandleToggleLevel();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: fire trigger pressed
+void ASOLShipPawn::OnFireStarted(const FInputActionValue& /*value*/)
+{
+    HandleFire(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: fire trigger released
+void ASOLShipPawn::OnFireCompleted(const FInputActionValue& /*value*/)
+{
+    HandleFire(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: drop a target
+void ASOLShipPawn::OnDropTargetAction(const FInputActionValue& /*value*/)
+{
+    HandleDropTarget();
 }
 
 //////////////////////////////////////////////////////////////////////////

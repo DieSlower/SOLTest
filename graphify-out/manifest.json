@@ -20,8 +20,8 @@
     "semantic_hash": "2e01d00a4cda8a448001da46507388d9"
   },
   "Source/SOLTest/SOLTest.Build.cs": {
-    "mtime": 1790819476.836265,
-    "ast_hash": "27115b919257b52757aa3fc99144e3b4",
+    "mtime": 1791425129.005739,
+    "ast_hash": "cfbeb1942f1afb409189c107690bd514",
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLTest.cpp": {
@@ -45,18 +45,18 @@
     "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
   },
   "CLAUDE.md": {
-    "mtime": 1791285948.7323773,
-    "ast_hash": "538f87bc868fe7f1b4cb24f6ecb391d9",
+    "mtime": 1791521813.9331691,
+    "ast_hash": "e6f3007f3e1526a89d0a9961b4e3fbe5",
     "semantic_hash": ""
   },
   "Docs/GAME_MECHANICS.md": {
-    "mtime": 1790791074.4218774,
-    "ast_hash": "d37f05c5dfbe2fe1587f80078b55d8bb",
+    "mtime": 1791526033.5294755,
+    "ast_hash": "816627e7b61acbc118e282b4da6941e7",
     "semantic_hash": ""
   },
   "Docs/Plans/1-solar-system-architecture-plan.md": {
-    "mtime": 1790822940.0297587,
-    "ast_hash": "b142b8dab56e76e4b24ee7623ba25761",
+    "mtime": 1791521831.0491438,
+    "ast_hash": "6acc9b6c0fbeeacaac7409608d7b255f",
     "semantic_hash": ""
   },
   "Docs/Research/STAR_FIELD_CELESTIALVAULT_AND_ATHYG.md": {
@@ -105,18 +105,18 @@
     "semantic_hash": "d4e2121aafc0ca9ae3ff74cbe717f3aa"
   },
   "Source/SOLTest/Game/SOLGameMode.cpp": {
-    "mtime": 1790861869.574764,
-    "ast_hash": "ff37faaba5f46eebd52dfc25d0b41f32",
+    "mtime": 1791509774.984249,
+    "ast_hash": "6981f0ace67589f344ef538a5031e1f8",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLGameMode.h": {
-    "mtime": 1790861869.574764,
-    "ast_hash": "66dee4a30409b0ef690230ae0e963a3b",
+    "mtime": 1791509774.984753,
+    "ast_hash": "85430a4fe2ffd360607a56865fb006db",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLSpectatorPawn.cpp": {
-    "mtime": 1790821443.3049107,
-    "ast_hash": "2a4f0c5cdf32eedf39473097f9c109b5",
+    "mtime": 1791502895.0115702,
+    "ast_hash": "fed087cb3a9f26b2e4fcff3ab55295e5",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLSpectatorPawn.h": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1791286057.4339097,
-    "ast_hash": "21bdc2c600cce9e4daad39db8b500559",
+    "mtime": 1791525512.4506612,
+    "ast_hash": "421c01691346454086cb66f58a0c71d1",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -335,8 +335,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipSubsystem.cpp": {
-    "mtime": 1790863365.4640496,
-    "ast_hash": "b0e30269e7a712b2880e46652748b8b1",
+    "mtime": 1791509761.9814591,
+    "ast_hash": "33b7eb9f012cbff8f6bdf409c141d995",
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipSubsystem.h": {
@@ -365,13 +365,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipPawn.cpp": {
-    "mtime": 1790791853.7851255,
-    "ast_hash": "47ee50e6a4e337f0095c16428242e36a",
+    "mtime": 1791525889.5199635,
+    "ast_hash": "8a472c617e57b5cd2200208777d98ee5",
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipPawn.h": {
-    "mtime": 1790788997.8423367,
-    "ast_hash": "60f223b09d0d907f7d6b43a11aa251ae",
+    "mtime": 1791525840.9255538,
+    "ast_hash": "8697d9ffd8bf2ca77c812fb8448acab4",
     "semantic_hash": ""
   },
   "Source/SOLTest/Ship/SOLShipSmokeInput.cpp": {
@@ -425,8 +425,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.cpp": {
-    "mtime": 1790791066.4968867,
-    "ast_hash": "278a090f2fbad39b8048d0971ded3fe5",
+    "mtime": 1791526008.4643312,
+    "ast_hash": "c529c3f84a234a6c38954cbc7e85cae6",
     "semantic_hash": ""
   },
   "Source/SOLTest/UI/SOLFlightHud.h": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1791286619.4210262,
-    "ast_hash": "201fad16f6cde013b77f2a14d48acc48",
+    "mtime": 1791526075.039318,
+    "ast_hash": "a90331aabaa293a65f01978d501c33e5",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -815,13 +815,13 @@
     "semantic_hash": ""
   },
   "Docs/Plans/6-moons-asteroids-rings-plan.md": {
-    "mtime": 1791281191.8183217,
-    "ast_hash": "278791bb519e2f7c784e59dd8492dd4a",
+    "mtime": 1791521831.0491438,
+    "ast_hash": "bff96cb64ac4cf0cb77f08fe00a9da9a",
     "semantic_hash": ""
   },
   "Docs/SDDs/6-moons-asteroids-rings.md": {
-    "mtime": 1791285993.2837138,
-    "ast_hash": "fe9a4c21731448400353996917949a5f",
+    "mtime": 1791519176.6567698,
+    "ast_hash": "a9e25cc0b2b4d981176a596dfebbec23",
     "semantic_hash": ""
   },
   "Docs/ToDo/asteroid-ring-collision.md": {
@@ -845,8 +845,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLAsteroidBeltVisuals.cpp": {
-    "mtime": 1790863442.719481,
-    "ast_hash": "eb56f09e6a5e19799ece1bf8d0f3a17e",
+    "mtime": 1791435852.2861078,
+    "ast_hash": "a9086782eec9882de53bd928c61a619c",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLAsteroidBeltVisuals.h": {
@@ -855,8 +855,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLMinorBodyFragments.h": {
-    "mtime": 1791284888.2100134,
-    "ast_hash": "773ac2e7c44c06bc2788851fe0501e96",
+    "mtime": 1791427354.1635914,
+    "ast_hash": "d3fba7b7b54025abe5744848cc3e93e4",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLMinorBodyOrbit.cpp": {
@@ -880,8 +880,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLMinorBodySubsystem.cpp": {
-    "mtime": 1790863392.2732642,
-    "ast_hash": "13eab8b349d90ff1bcad4279ceedb230",
+    "mtime": 1791424675.6317513,
+    "ast_hash": "b3f281b4907b080648aede5c39a37f48",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLMinorBodySubsystem.h": {
@@ -910,28 +910,168 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLRingPatch.cpp": {
-    "mtime": 1791284530.406155,
-    "ast_hash": "4794b579231d99355c70d1ae41b7888e",
+    "mtime": 1791502433.9237387,
+    "ast_hash": "03d5bae58dfa89e381c2d0761eea4667",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLRingPatch.h": {
-    "mtime": 1791284124.739054,
-    "ast_hash": "889bda62b82e737c672918250e167949",
+    "mtime": 1791502433.9242425,
+    "ast_hash": "3d5399cdf4b2c2b9767634024ce595c0",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/SOLRingPatchTest.cpp": {
-    "mtime": 1791284421.4236577,
-    "ast_hash": "4c155fbb53d5708605fdc4ea354f0c17",
+    "mtime": 1791502433.9227328,
+    "ast_hash": "6f2235b5a229fcb2647f40c0acae065c",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLRingSubsystem.cpp": {
-    "mtime": 1791286232.9932768,
-    "ast_hash": "9eebf9064c8658d8167741b55e0bdabd",
+    "mtime": 1791427394.0141659,
+    "ast_hash": "38b25dcae23ef4c73666ec3884ca078c",
     "semantic_hash": ""
   },
   "Source/SOLTest/MinorBodies/SOLRingSubsystem.h": {
-    "mtime": 1791286126.21845,
-    "ast_hash": "5babccdc3918ce8e56a9941e1dadaf8e",
+    "mtime": 1791427368.638203,
+    "ast_hash": "faf2e44518f6b6656764666c7f4c892f",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLBoltMath.cpp": {
+    "mtime": 1791523812.625617,
+    "ast_hash": "ed9afb699e4d6a4e61b34e060700753c",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLBoltMath.h": {
+    "mtime": 1791523811.5976083,
+    "ast_hash": "a2de7e1f4c76004f56de6ccda83e708e",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLCombatGrid.cpp": {
+    "mtime": 1791525424.1336453,
+    "ast_hash": "2e24bbbcbf1d04e87ef81f9c3f7be521",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLCombatGrid.h": {
+    "mtime": 1791525423.2140758,
+    "ast_hash": "f3fe41ce9f21775dd83af20037c2f2cd",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLCombatSubsystem.cpp": {
+    "mtime": 1791525806.7486699,
+    "ast_hash": "44cecb8bab6602385fc4e3e87f5ed705",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLCombatSubsystem.h": {
+    "mtime": 1791525678.6545994,
+    "ast_hash": "fde94c1f1a9cbc6fbb78b8f74c21f6b3",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLCombatTypes.h": {
+    "mtime": 1791525495.82417,
+    "ast_hash": "775bd82034ae3bf40b9b2243b752b6f4",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLDamageMath.cpp": {
+    "mtime": 1791524796.2151082,
+    "ast_hash": "607ebbecff43b6cccde7a7ca32800c2f",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLDamageMath.h": {
+    "mtime": 1791523813.657559,
+    "ast_hash": "8f1558b7e34d35e3e1ee85041fcb12fe",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLFireCadence.cpp": {
+    "mtime": 1791525439.2310917,
+    "ast_hash": "71c600c3f3447336fa25b5028c3673e5",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLFireCadence.h": {
+    "mtime": 1791525438.1942298,
+    "ast_hash": "ee3d9378bdc72ec4af38d8f749afd251",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLTargetDrop.cpp": {
+    "mtime": 1791523816.8584168,
+    "ast_hash": "eb51ff61a113abf482d5593e2b17596b",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Combat/SOLTargetDrop.h": {
+    "mtime": 1791523815.817533,
+    "ast_hash": "98ffaca88611f0d6bce3a52ef9fb1544",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLMinorBodyVisualsUtil.h": {
+    "mtime": 1791435814.276657,
+    "ast_hash": "054142373fe6e71befbf26ab96b4421c",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingDense.cpp": {
+    "mtime": 1791505495.0204499,
+    "ast_hash": "af883af3586544313d553f5e4ed062ca",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingDense.h": {
+    "mtime": 1791505495.0204499,
+    "ast_hash": "838357f63c2d17f0cbb8335302bf31a2",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingVisuals.cpp": {
+    "mtime": 1791521734.3188565,
+    "ast_hash": "be6ea448543afe8003c317959f924ce3",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/MinorBodies/SOLRingVisuals.h": {
+    "mtime": 1791521734.3203628,
+    "ast_hash": "da4293a1c6d1f622602f1fca857e7c4f",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLBoltMathTest.cpp": {
+    "mtime": 1791523842.2399135,
+    "ast_hash": "715afe59175da2c6f22b9e5586e5b173",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLCombatGridTest.cpp": {
+    "mtime": 1791523986.7787895,
+    "ast_hash": "a49b1c57ed7bb43ca3c5d728a3b0b76e",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLDamageMathTest.cpp": {
+    "mtime": 1791523908.8555658,
+    "ast_hash": "4bd57a6d21badab3ba83fe5463f41ebe",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLFireCadenceTest.cpp": {
+    "mtime": 1791525980.4871027,
+    "ast_hash": "20c321ef2e719b8d1e7a9b651d2bde30",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLRingDenseTest.cpp": {
+    "mtime": 1791505601.4555855,
+    "ast_hash": "0358a5c24e24a72b355dd1e4074bc26e",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tests/SOLTargetDropTest.cpp": {
+    "mtime": 1791524021.5243847,
+    "ast_hash": "2b1b57854aafdb110357e6cf888a68ca",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tools/SOLEditorAuthoring.cpp": {
+    "mtime": 1791505495.0230145,
+    "ast_hash": "e595dbe524e1d1da4a669454023a158b",
+    "semantic_hash": ""
+  },
+  "Source/SOLTest/Tools/SOLEditorAuthoring.h": {
+    "mtime": 1791505495.0230145,
+    "ast_hash": "b99f03fabf0feb71ddeaaa5202b613f1",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/7-weapons-targets-destruction-plan.md": {
+    "mtime": 1791523674.030131,
+    "ast_hash": "6b5a3fa555fc10e137ba9abc7089c84c",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/7-weapons-targets-destruction.md": {
+    "mtime": 1791523673.984523,
+    "ast_hash": "e66d33ad85d6b10edc72304a71345a2f",
     "semantic_hash": ""
   }
 }

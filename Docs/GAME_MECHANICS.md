@@ -39,8 +39,8 @@ Status column: **Designed** = decided in an SDD, not built; **Built** = implemen
 | Map: Enter | Jump to the destination (needs at least the XY lock; height 0 if it was not locked; with no lock Enter does nothing). The map closes as with J / Esc and the 3 s warp plays (section 4); the arrival uses the reference's position at the END of the warp | Built (2e) | `Ship/SOLShipPawn.cpp`, `Map/SOLMapModeSubsystem.cpp`, `Map/SOLJumpSubsystem.cpp` |
 | Map: mouse wheel | Zoom: wheel forward = in, one notch = distance x/÷ 1.2, clamped 1,000 km to 6e13 m | Built (2b-2) | `Map/SOLMapModeSubsystem.cpp`, `Map/SOLMapCamera.h` |
 | L | Toggle surface-lock (section 5): while locked, release it at once (and suppress auto-engage on that body until you climb past 12.5 km or another body becomes nearest); while unlocked, lock onto the nearest body if its altitude is within that body's manual range (max(1,000 km, body radius)); beyond it L does nothing. Does nothing during a jump warp; not available while the map or the F3 panel is open (the ship's mapping is removed) | Built (3b) | `Ship/SOLShipPawn.cpp`, `Ship/SOLShipSubsystem.cpp`, `Level/SOLSurfaceLock.cpp` |
-
-Weapons and target-drop bindings are decided per part and will be added here.
+| Left mouse (hold) | Fire the pulse guns: 8 shots/s while held, alternating between the right and left muzzle (wing roots, 3 m either side of the centreline); see section 7. Not while the map or F3 panel is open, during a jump warp, or after the window loses focus | Built (6b) | `Ship/SOLShipPawn.cpp`, `Combat/SOLCombatSubsystem.cpp`, `Combat/SOLFireCadence.cpp` |
+| G | Drop a target 200 m ahead of the ship, at rest in the current reference frame (at most one per 0.25 s; at 1,000 targets the oldest is removed). Does nothing during a jump warp | Built (6b) | `Ship/SOLShipPawn.cpp`, `Combat/SOLCombatSubsystem.cpp`, `Combat/SOLTargetDrop.cpp` |
 
 ### 1.1 Debug and verification switches
 
@@ -119,6 +119,9 @@ The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOL
 
 | Mechanic | Value / rule | Status |
 |---|---|---|
-| Weapons | Projectile bolts (not hitscan), ship velocity inherited, limited lifetime | Designed |
-| Targets | Player-dropped; health and shields; destruction VFX and sound | Designed |
-| Numbers (damage, rate of fire, range, target health) | To be set in Part 6 | Open |
+| Weapons | Two fixed forward pulse guns firing projectile bolts (not hitscan), alternately, 8 shots/s total while the left mouse is held. The cadence runs on a continuous timeline, so frame rate never changes the rate (a long frame fires every shot due in it, at most 8, spaced along their flight). Each bolt leaves its muzzle at 1,500 m/s plus the ship's own velocity (inherited), aimed so both guns converge on the camera's centre ray 1,000 m ahead of the camera; it flies straight (no gravity) for 3.5 s, moving with the reference frame it was fired in (so it keeps up under time warp like the ship). At most 20,000 live bolts (a shot beyond that is dropped) | Built (6b), `Combat/SOLCombatSubsystem.cpp`, `Combat/SOLBoltMath.cpp`, `Combat/SOLFireCadence.cpp`, `SOLConstants.h` |
+| Hits | Each frame every bolt's path is swept (0.5 m bolt radius) against targets and minor bodies as they move during that frame, so nothing is skipped at any speed; the earliest contact wins. A bolt that hits anything is removed | Built (6b), `Combat/SOLCombatSubsystem.cpp`, `Combat/SOLCombatGrid.cpp` |
+| Damage | 10 per bolt: the shield absorbs first, the rest goes to health; health 0 destroys the target (an earlier bolt's kill in the same frame lets later bolts fly on). A hit flashes the target (fading over 0.15 s) | Built (6b), `Combat/SOLDamageMath.cpp` |
+| Targets | Dropped with G (section 1): a 10 m hit sphere with 100 shield and 100 health; the shield regenerates at 25 per second once 3 s have passed without a hit. Up to 1,000 at once, the oldest replaced first. They are not yet selectable or on the radar | Built (6b), `Combat/SOLCombatSubsystem.cpp`, `Combat/SOLTargetDrop.cpp`, `SOLConstants.h` |
+| Asteroids and ring rocks | Bolts hitting a belt asteroid (its real radius, at least 1 m) or one of a ring's nearby rock entities are absorbed with a spark puff; the rock is unharmed. The ring's million-rock GPU layer has no collision, so bolts pass through it | Built (6b/6e logic; the puff effect is 6c), `Combat/SOLCombatSubsystem.cpp` |
+| Effects and sound | Bolt, impact, shield-break, explosion and debris effects and placeholder sounds | Designed (6c, 6d) |

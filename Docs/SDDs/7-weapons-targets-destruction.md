@@ -54,3 +54,15 @@ shield and health fall, explosion, bolts absorbed by an asteroid) with screensho
 ## 4. Open questions
 
 None deferred. Ship stats beyond the gun (energy, heat, ammo) are intentionally out of scope.
+
+## 5. Amendments
+
+### Amendment 1 — 7b implementation deviations (2026-10-09)
+
+Flagged to the user because decision 3 chose Mass entities for bolts:
+
+- **Bolts and targets are pooled structure-of-arrays inside `USOLCombatSubsystem`, not Mass entities** (no `USOLBoltProcessor`, no `SOLCombatFragments.h`; shared types are in `SOLCombatTypes.h`). Reasons: a bolt hit writes into a target (random-access cross-archetype writes from a processor), bolts spawn and die 8 times a second (archetype churn or a pool the processor must still walk), and the Niagara bolt renderer wants one packed position array, which these arrays already are. Still reserved once, allocation-free per frame, parallel sweep. Reversible if the user prefers Mass.
+- **Drop target is G** (T is already "select target under the reticle").
+- **Update order:** runs on `USOLAnchorSubsystem::OnUniverseUpdated`, after every `OnBodiesUpdated` listener, so order is guaranteed.
+- **Frames:** bolts and targets are stored relative to the player's reference body at fire/drop time; collision sweeps in a ship-centred frame. Bolts pass through the GPU-only dense ring layer (no CPU positions); belt asteroids and the ring pool's active rocks absorb them.
+- Values picked: shield regen 25/s, drop cooldown 0.25 s, target radius 10 m, bolt hit radius 0.5 m.

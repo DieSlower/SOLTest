@@ -26,6 +26,7 @@ class UInputMappingContext;
 class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
+class USOLCombatSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLShipSubsystem;
@@ -74,6 +75,12 @@ struct FInputActionValue;
  * lock state and consumes the press as the edge-triggered input of exactly its next ship step, so a press is never
  * lost or counted twice however the pawn tick and the ship step interleave. L is ignored during a jump warp; while the
  * map or the speed panel is open the ship mapping (and with it L) is removed anyway.
+ *
+ * Combat (6b, SDD 7): holding the left mouse button holds the gun trigger and G drops a target; both only hand state to
+ * USOLCombatSubsystem, which owns the fire cadence, the muzzles and the drop rules and acts in its own update. Every
+ * tick the pawn also hands it the chase camera's offset from the ship and its forward direction (ecliptic), the camera
+ * ray the bolts converge on. The trigger reads as released while the map or the speed panel is open, during a jump
+ * warp, and once the viewport loses focus.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -126,6 +133,12 @@ public:
 
     // Toggles surface-lock (L): hands the press to the ship subsystem, which consumes it in exactly its next step
     void HandleToggleLevel();
+
+    // Sets whether the fire trigger (left mouse) is held
+    void HandleFire(bool bHeld);
+
+    // Requests a target drop ahead of the ship (G)
+    void HandleDropTarget();
 
     // Selects the target under the forward reticle (T)
     void HandleSelectTarget();
@@ -324,6 +337,9 @@ private:
     // Tells the map whether a camera drag (right or middle button) is active, and re-syncs the OS cursor once it ends
     void HandleMapCameraDragChanged();
 
+    // Hands the gun trigger and the camera aim (ecliptic) to the combat subsystem
+    void UpdateCombatInput();
+
     // Builds the placeholder ship from engine primitives with a light hull and a glowing engine
     void BuildShipMesh();
 
@@ -378,6 +394,15 @@ private:
 
     // Enhanced Input: surface-lock toggle
     void OnToggleLevelAction(const FInputActionValue& value);
+
+    // Enhanced Input: fire trigger pressed
+    void OnFireStarted(const FInputActionValue& value);
+
+    // Enhanced Input: fire trigger released
+    void OnFireCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: drop a target
+    void OnDropTargetAction(const FInputActionValue& value);
 
     // Enhanced Input: select under reticle
     void OnSelectTargetAction(const FInputActionValue& value);
@@ -513,6 +538,12 @@ private:
     TObjectPtr<UInputAction> ToggleLevelAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> FireAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> DropTargetAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputAction> SelectTargetAction;
 
     UPROPERTY(Transient)
@@ -603,6 +634,9 @@ private:
     TObjectPtr<USOLAnchorSubsystem> AnchorSubsystem;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLCombatSubsystem> Combat;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLSimClockSubsystem> SimClock;
 
     TWeakObjectPtr<ULocalPlayer> mMappedLocalPlayer;        // Local player that currently has MappingContext added
@@ -626,6 +660,7 @@ private:
     double mWarpBaseFovDeg = 0.0;                           // Camera FOV when the warp effect started
     double mWarpEffectElapsedS = 0.0;                       // Sequence time the warp effect was last computed for
     bool mIsFreeLooking = false;                            // True while Alt is held
+    bool mIsFireHeld = false;                               // True while the left mouse (gun trigger) is held
     bool mHasCameraRotation = false;                        // False until the camera rotation is first set
     bool mHadViewportFocus = false;                         // Viewport focus last frame (focus loss is an edge)
     bool mHasCapturedMouse = false;                         // True while this pawn hides the cursor (game-only input)
