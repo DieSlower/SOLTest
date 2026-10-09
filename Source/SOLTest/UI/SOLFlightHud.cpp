@@ -570,7 +570,7 @@ void ASOLFlightHud::DrawInfoBlock()
     }
     mText.Append(mShowOrbitLines ? TEXT("ORBITS ON (O)") : TEXT("ORBITS OFF (O)"));
     mText.Append(TEXT("   F3 speed panel   J jump map   T/R/F/X target   M match frame   L surface-lock   [ ] warp"));
-    mText.Append(TEXT("   - = radar zoom   Home radar auto"));
+    mText.Append(TEXT("   - = radar zoom   Home radar auto   LMB fire   G drop target"));
     DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }
 

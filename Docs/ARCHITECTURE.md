@@ -4,7 +4,7 @@
 
 A high-level map of how the game's systems fit together: modules, the per-frame update order, coordinate frames, key types and the main data flows. It is a living reference, not a design record. The *why* behind each decision lives in the SDDs ([`SDDs/1-solar-system-architecture.md`](SDDs/1-solar-system-architecture.md) for the cross-cutting decisions, [`SDDs/2-foundations-flight-scaffold.md`](SDDs/2-foundations-flight-scaffold.md) section 3 for what Part 1 actually built, [`SDDs/3-jump-map.md`](SDDs/3-jump-map.md) for Part 2, [`SDDs/4-surface-lock.md`](SDDs/4-surface-lock.md) for Part 3). Exact numbers and bindings are in [`GAME_MECHANICS.md`](GAME_MECHANICS.md).
 
-**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) is built: the pure logic (`Level/SOLSurfaceLock`, 3a) and its engine integration (3b: the `L` key, `USOLShipSubsystem` stepping the lock state, the flight processor applying the alignment per substep, the HUD status/hint line, and the jump clearing the lock). Part 4 (star field) is built: the offline bake and import (`Tools/StarField/`, 4a/4b) and the runtime sky actor `ASOLStarField` (4c).
+**Status:** Part 1 (foundations, ship flight, HUD) and Part 2 (jump map) are complete. Part 3 (surface-lock) is built: the pure logic (`Level/SOLSurfaceLock`, 3a) and its engine integration (3b: the `L` key, `USOLShipSubsystem` stepping the lock state, the flight processor applying the alignment per substep, the HUD status/hint line, and the jump clearing the lock). Part 4 (star field) is built: the offline bake and import (`Tools/StarField/`, 4a/4b) and the runtime sky actor `ASOLStarField` (4c). Part 6 (weapons, issue #7) is in progress: the pure combat math (6a) and the combat subsystem with fire/drop input and asteroid/ring-rock hits (6b, 6e logic) are built; visuals (6c) and audio (6d) are not.
 
 ---
 
@@ -33,6 +33,8 @@ flowchart TD
     Visuals["Visuals<br/>body meshes and sun light"]
     StarField["StarField (Part 4)<br/>star data asset, sky actor"]
     Map["Map (Part 2)<br/>jump-map picking math"]
+    Combat["Combat (Part 6)<br/>bolts, targets, damage, sweeps"]
+    MinorBodies["MinorBodies (Part 5)<br/>belt and ring-rock Mass entities"]
     Level["Level (Part 3)<br/>pure surface-lock state machine and alignment math"]
     Flight["Flight<br/>pure flight and targeting math"]
     Universe["Universe<br/>clock, orbits, registry, anchor, render origin"]
@@ -54,6 +56,11 @@ flowchart TD
     Targeting --> Flight
     Targeting --> Universe
     Visuals --> Universe
+    Ship --> Combat
+    Combat --> Ship
+    Combat --> Targeting
+    Combat --> MinorBodies
+    Combat --> Universe
     Universe -. "IsSOLGameWorld gate" .-> Game
     Flight --> Const
     Universe --> Const
@@ -61,7 +68,7 @@ flowchart TD
     Level --> Const
 ```
 
-`Ship` and `UI` depend on each other: the pawn opens the F3 panel and forwards radar zoom keys to the HUD, and the HUD reads the pawn's joystick and camera state. The Universe subsystems ask `ASOLGameMode::IsSOLGameWorld` whether to exist at all. Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
+`Ship` and `UI` depend on each other: the pawn opens the F3 panel and forwards radar zoom keys to the HUD, and the HUD reads the pawn's joystick and camera state. `Ship` and `Combat` also point both ways: the pawn hands the trigger, aim and drop requests to `USOLCombatSubsystem`, which reads the player ship's state from `USOLShipSubsystem`. The Universe subsystems ask `ASOLGameMode::IsSOLGameWorld` whether to exist at all. Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
 
 | Folder | Responsibility | Key files |
 |---|---|---|
@@ -73,6 +80,7 @@ flowchart TD
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction | `SOLBodyVisuals` |
 | `StarField/` | Star field (Part 4, issue #5): the baked star data asset (4b) and the runtime sky actor (4c) that draws the bright-star sprites and the faint-star cubemap sphere. Content is produced offline by `Tools/StarField/` (bake, then `import_star_field.py`, then `create_star_field_materials.py`) | `SOLStarFieldData`, `SOLStarField` |
 | `MinorBodies/` | Minor bodies (Part 5, issue #6): the asteroid belt's pure-logic generator (5b), the shared minor-body orbit math, Mass fragments and orbit processor, the subsystem that spawns and steps the belt entities, and the belt's instanced-mesh visuals (5c); real ring structure/gap data (5d) and the near-field ring-rock patch system (pure logic plus a streaming Mass pool, 5e-i/ii) | `SOLAsteroidBelt`, `SOLMinorBodyOrbit`, `SOLMinorBodyFragments`, `SOLMinorBodyOrbitProcessor`, `SOLMinorBodySubsystem`, `SOLAsteroidBeltVisuals`, `SOLPlanetRing`, `SOLRingPatch`, `SOLRingDense`, `SOLRingSubsystem`, `SOLRingVisuals` |
+| `Combat/` | Weapons, targets and destruction (Part 6, issue #7): pure bolt, damage, grid, drop and fire-cadence math (6a), and the combat subsystem that owns the pooled bolts and targets, sweeps bolts against targets and minor bodies, and queues one-shot events for the visuals and audio (6b, 6e) | `SOLBoltMath`, `SOLDamageMath`, `SOLCombatGrid`, `SOLTargetDrop`, `SOLFireCadence`, `SOLCombatTypes`, `SOLCombatSubsystem` |
 | `Map/` | Jump map (Part 2): picking, orbit-camera and warp-curve math, the map mode and its camera, the jump sequence, the smoke scripts | `SOLMapPicking`, `SOLMapCamera`, `SOLWarpCurve`, `SOLMapModeSubsystem`, `SOLJumpSubsystem`, `SOLMapSmoke`, `SOLMapPickSmoke`, `SOLJumpSmoke` |
 | `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
 | `Game/` | Game mode (default pawn and HUD, spawns the body visuals, the star field and the asteroid-belt visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
@@ -112,6 +120,7 @@ sequenceDiagram
     Note over Anchor: OnBodiesUpdated also runs USOLMinorBodySubsystem (Executor::Run of USOLMinorBodyOrbitProcessor, raw ecliptic positions) - this also places USOLRingSubsystem's ring-rock entities, since they share the same fragments and Mass matches by composition, not by creator
     Anchor->>Anchor: anchor selector update (25% hysteresis), RebaseRenderOrigin
     Anchor->>Vis: OnUniverseUpdated (place bodies, pawn follows ship, ASOLAsteroidBeltVisuals bulk-updates its ISMs)
+    Note over Anchor: OnUniverseUpdated also runs USOLCombatSubsystem::Update (targets, drop, bolts, grids, parallel sweep, hits, guns), which then broadcasts OnCombatUpdated for the combat visuals and audio
     Note over HUD: after the world tick, at draw time
     HUD->>HUD: read subsystems, draw reticle, markers, bracket, radar, text
 ```
@@ -120,6 +129,7 @@ sequenceDiagram
 
 - **Time-warp frame carry:** ship flight always runs in real time, so each frame the ship also inherits the part of its reference frame's motion that warp adds beyond real time (`SOLFlight::FrameCarryDisplacement`, for both position and velocity). This keeps the ship co-moving with Earth at 1 d/s.
 - **Surface-lock timing:** the lock state is advanced after the flight run, when the ship and the bodies are both at this frame's positions (before the run the ship is one body-step behind, which misreads altitude by up to the body's speed times the frame time). Its decision (the body to align to, the frame lock) takes effect from the next step; the alignment itself runs inside the processor per substep with the substep's real dt.
+- **Combat timing:** `USOLCombatSubsystem` updates on `OnUniverseUpdated`, i.e. after every `OnBodiesUpdated` listener has finished (ship step, ring streaming, minor-body orbits, whatever their bind order), so this frame's ship, bodies and rocks are final; it only stores the frame's clamped real delta from `OnBodiesUpdated`. Anything that draws or plays combat state binds to its own `OnCombatUpdated`, never beside it on `OnUniverseUpdated`. Bolts fired by the gun in an update start sweeping in the next one; the pawn's trigger and aim, set in its pre-physics tick, are read by the same frame's update.
 - **Hitch budget:** the real delta is clamped once to `SOL::MAX_FRAME_DELTA_S` (0.5 s) and fed to both the clock and the ship. It is split into at most `SHIP_MAX_SUBSTEPS` (16) substeps of 1/30 s, which cover that budget exactly (a `static_assert` enforces this), so a hitch slows the universe uniformly and no ship time is dropped.
 
 To change this order, update this section, SDD 2 section 3, and the tick comments in `SOLAnchorSubsystem.cpp` together.
@@ -215,6 +225,13 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `SOLRingDense` (pure, `SOLRingDense.h`, issue #6 5e-v): the dense rock layer's per-frame maths: `WindowPhaseCm` (tile modulo), `AdvanceSpinAngle` (Keplerian co-rotation integration), `ComputeDenseAlpha` (smoothstep fade by distance from the ring volume), `RingFramePositionCm` (camera position in the ring's co-rotating frame), `ShouldShowDenseTier`, `DenseFillFraction`.
 - `ASOLRingVisuals` (engine actor, one per ringed planet, spawned deferred by `ASOLGameMode` with `PlanetName` set before `BeginPlay`, 5e-iii): near field is a `UInstancedStaticMeshComponent` over `USOLRingSubsystem`'s pool (same bulk-transform pattern as `ASOLAsteroidBeltVisuals`, filtered per-entity to its own planet since the shared tag matches all 4 rings, scaled to zero for an inactive entity or when the cross-fade alpha is 0 rather than hidden a different way); far field is one `UNiagaraComponent` on the shared, parameterized `/Game/SOL/Rings/NS_SOLRingFar` system (SDD 6 Amendments 11 and 15: since Amendment 15 a single analytic-profile disc mesh whose material computes the real radial ring profile per pixel, not sprites), given this ring's radii/colour/gap bands, profile index, planet radius and (every frame) Sun direction as Niagara User Parameters, and always rendering. A third layer, the dense rock layer (SDD 6 Amendments 14-15), is a second `UNiagaraComponent` on `/Game/SOL/Rings/NS_SOLRingDense`: ~1M GPU-simulated rock meshes in a wrapped window around the camera, activated once in `BeginPlay`, then shown/hidden and paused/resumed (never deactivated, which would respawn every rock) by `SOLRingDense::ComputeDenseAlpha` / `ShouldShowDenseTier` (near the ring and at low time warp only); `UpdateDenseLayer` integrates its co-rotation angle (`SOLRingDense::AdvanceSpinAngle`), places it at the viewpoint, and feeds the window phase/centre parameters. The far-field disc's material fades out near the camera so the rocks show through. `SOLRingPatch::ComputeNearFieldAlpha` (from the ring's own `DistanceOutsideRingVolumeM` helper) drives the near-field scale every `OnUniverseUpdated`.
 
+**Combat** (`Source/SOLTest/Combat/`, Part 6)
+- `SOLBoltMath`, `SOLDamageMath`, `SOLTargetDrop` (pure, 6a): muzzle velocity, crosshair convergence, bolt integration and lifetime, swept sphere (stationary and moving) hit times; shield-then-health damage and shield regeneration; drop position, drop cooldown and oldest-first eviction.
+- `SOLCombatGrid::FGrid` (pure, 6a; internals reworked in 6b): uniform spatial hash over double positions. Cells are linked lists threaded through one flat entry array with an int-valued cell map, so `Clear` keeps every allocation and a rebuild allocates nothing however far objects moved; queries de-duplicate in place and are safe to run from several threads at once.
+- `SOLFireCadence` (pure, 6b): the gun's shot timeline (shots per step, cooldown, each shot's age within the step), frame-rate independent.
+- `FSOLCombatEvent` / `ESOLCombatEventType` (`SOLCombatTypes.h`): the one-shot events (fired, target hit, shield broken, destroyed, absorbed by a rock, dropped, evicted) with a universe position and velocity.
+- `USOLCombatSubsystem` (engine world subsystem, 6b/6e): owns the bolt pool (packed structure-of-arrays, reserved to `COMBAT_MAX_BOLTS`) and the target pool (fixed `COMBAT_MAX_TARGETS` slots), deliberately not Mass entities (see the class comment: cross-population writes, spawn/destroy churn, and a packed render array). Each bolt and target is stored relative to the player's reference body at the time it was fired or dropped, so both keep their frame's motion, including the time-warp carry the ship gets. Each update sweeps every bolt segment in a ship-centred frame against the targets and the minor bodies (belt asteroids and active ring-pool rocks, read through its own Mass query into a snapshot that supplies last frame's positions) as they move, through two `FGrid`s filled only with what the frame's bolt bounding box can reach; the sweep is a `ParallelForWithExistingTaskContext` over bolts with per-task scratch; hits are applied serially in bolt order. Read API for 6c/6d: packed bolt positions/velocities/owners, per-slot target flags/positions/shield and health fractions/hit flash, the queued events, and `OnCombatUpdated`. Input API: `SetPlayerTriggerHeld`, `SetPlayerAim`, `RequestPlayerTargetDrop`, plus `FireBolt` and `DropTarget` for scripts.
+
 **Game** (`Source/SOLTest/Game/`)
 - `ASOLGameMode` (engine, `SOLGameMode.h`): default pawn (ship, or spectator with `-SOLSpectator`) and HUD, spawns `ASOLBodyVisuals`, `ASOLStarField`, `ASOLAsteroidBeltVisuals` and one `ASOLRingVisuals` per `SOLPlanetRing::RealRings()` entry (deferred spawn, `PlanetName` set before `FinishSpawning`), runs `-SOLSmokeShot`, and provides `IsSOLGameWorld`, which gates all the SOL subsystems.
 - `SOLInputHelpers` (engine, `SOLInputHelpers.h`): shared helpers that create Enhanced Input actions and mappings in C++.
@@ -286,7 +303,7 @@ These are grounded in SDD 1, SDD 2 and the roadmap ([`Plans/1-solar-system-archi
 
 - **Part 2 (jump map):** `SOLMapPicking` produces a universe-frame destination; `USOLJumpSubsystem` executes the jump through `USOLShipSubsystem::SetState` (a teleport that refreshes targeting and force-snaps the render origin). Listeners that must run after the ship step bind to `OnShipsStepped`, not beside it on `OnBodiesUpdated`. Native `TMulticastDelegate` broadcasts iterate in reverse of the *current* bind order, but any unbind compacts the list with `RemoveAtSwap`, so that order is not a durable guarantee and nothing should rely on relative bind or fire order for correctness. `OnShipsStepped` fires after the flight processor's step because of *where* it is broadcast (after `UE::Mass::Executor::Run` returns in `StepShips`), not because of delegate ordering. On arrival the jump clears the selected target, the M frame lock and any surface-lock (with its suppression latch) before the teleport, and it aborts the warp if a frame's universe update runs without a ship step.
 - **Part 5 (moons, asteroids, rings):** `FSOLBodyDef::ParentIndex` already chains a child's orbit to its parent (parent GM, positions summed), so moons are more registry entries. Asteroids and ring particles are Keplerian too but are planned as Mass entities, not registry bodies. The collision broadphase is an O(bodies) reject per substep, and a spatial structure is deferred until body counts grow. `USOLRingSubsystem::UpdateRings` binds to `OnShipsStepped` specifically to get this frame's real ship position (not `OnBodiesUpdated` directly, which is where `USOLMinorBodySubsystem`'s orbit-processor run also lives) — but per the bind-order caveat above, its ordering RELATIVE to that processor run is still not guaranteed; today's bind order happens to put the ring update first, which is correct, but only by accident of subsystem dependency-initialization order (tracked in `CLAUDE.md`'s tech debt list).
-- **Part 6 (weapons, targets):** dropped targets and enemies implement `ISOLTargetable` and register with `USOLTargetingSubsystem`, which makes them selectable, M-lockable and visible on the radar with no HUD changes. Bolts are planned as data-driven arrays with swept traces, rendered through Niagara, not Actors.
+- **Part 6 (weapons, targets):** bolts and targets live in `USOLCombatSubsystem`'s pools (6b) and are rendered from its packed arrays (6c: Niagara bolts, instanced target meshes). Dropped targets are not yet `ISOLTargetable`s; registering them with `USOLTargetingSubsystem` would make them selectable, M-lockable and visible on the radar with no HUD changes (a target dropped while the frame is locked to a non-body targetable already moves with that targetable's velocity).
 - **Part 10 (scale demo):** NPC ships reuse the ship archetype (state and control fragments, a const shared params fragment per ship class) and the parallel `USOLShipFlightProcessor`. `FSOLPlayerShipTag` is what separates the player's entity from other ships.
 - **Pawn/entity bridge:** any new controllable entity follows the same pattern: a thin Actor writes control state into the entity through a subsystem, and reads its state back once per `OnUniverseUpdated`.
 
