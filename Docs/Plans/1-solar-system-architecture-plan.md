@@ -22,7 +22,7 @@
 - [x] **Part 3 (#4) — Level / surface-lock (L).** Complete: see [`4-surface-lock-plan.md`](4-surface-lock-plan.md) (3a `05e82fa`+`6733591`, 3b `cbf6e7a`; 31 new automation tests, 308 total).
 - [x] **Part 3.5 (#12) — Planet axial rotation** (spin + real axial tilts), filed as a follow-up during Part 3's grill; not a prerequisite for Part 3. Complete: see [`12-planet-axial-rotation-plan.md`](12-planet-axial-rotation-plan.md) (12a `894f895`+`a8e8c4e`, 12b `1620059`; 20 new automation tests, 328 total).
 - [x] **Part 4 (#5) — Star field** (AT-HYG pipeline, hybrid renderer, Milky Way). Complete: see [`5-star-field-plan.md`](5-star-field-plan.md) (4a `5591976`+`7c1785e`, 4b `60eb498`+`0acdb11`, 4c `1848673`; 4 new automation tests, 332 total).
-- [ ] **Part 5 (#6) — Moons, dwarf planets, asteroid belt (Mass), planet rings.**
+- [x] **Part 5 (#6) — Moons, dwarf planets, asteroid belt (Mass), planet rings.**
 - [ ] **Part 6 (#7) — Weapons, target drops, destruction VFX and audio.**
 - [ ] **Part 7 (#8) — HUD/menus, controls and info/about screens, settings.**
 - [ ] **Part 8 (#9) — Art and audio pass** (real ship model, textures, sounds).

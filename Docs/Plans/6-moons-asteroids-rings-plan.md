@@ -97,7 +97,7 @@ Keep it in sync if the design shifts.
   gaps, with real per-moon gap widths after review caught a uniform-width bug making
   Daphnis's gap ~7x too wide). 5 new `SOLTest.PlanetRing` tests + extended
   `BodyRegistry` tests, 365 automation tests passing (was 360).
-- [ ] **5e — Ring rendering (near/far LOD).** Grilled before implementation (SDD 6
+- [x] **5e — Ring rendering (near/far LOD).** Grilled before implementation (SDD 6
   Amendment 6) — scope grew from the original two-sentence sketch into a genuinely
   bigger feature: Saturn's ring alone spans ~70,000 km radially, so a whole-ring
   flyable-density Mass population is infeasible; the near field is a **player-streamed
@@ -231,8 +231,8 @@ Keep it in sync if the design shifts.
 
 ## Cross-cutting
 
-- [ ] `Docs/ARCHITECTURE.md`: new `MinorBodies/` module entry, the new Mass
+- [x] `Docs/ARCHITECTURE.md`: new `MinorBodies/` module entry, the new Mass
   archetype/processor in the frame-order section (where it runs relative to the
   existing ship/body update), key types.
-- [ ] No `GAME_MECHANICS.md` entry needed unless implementation adds player-facing
+- [x] No `GAME_MECHANICS.md` entry needed unless implementation adds player-facing
   controls (none currently anticipated — purely environmental/visual).
