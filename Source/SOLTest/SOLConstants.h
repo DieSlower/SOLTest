@@ -166,7 +166,8 @@ namespace SOL
         inline constexpr const TCHAR* CULL_ANGULAR_RADIUS = TEXT("RingRockCullAngularRadius");
         inline constexpr const TCHAR* FILL = TEXT("RingDenseFill");
         inline constexpr const TCHAR* WINDOW_PHASE_CM = TEXT("RingWindowPhaseCm");
-        inline constexpr const TCHAR* WINDOW_CENTER_CM = TEXT("RingWindowCenterCm");
+        inline constexpr const TCHAR* WINDOW_CENTER_KM = TEXT("RingWindowCenterKm");   // km, not cm: Niagara warns on a
+                                                                                          // vec3 beyond ~10 km, and this is ~1e5 km
     }
 
     // Profile indices of the far-field material's radial ring-profile table (order fixed by the asset)
@@ -289,6 +290,8 @@ namespace SOL
                                                                                   // plane at this radius from its centre
         inline constexpr const TCHAR* RING_HEIGHT_KM = TEXT("SOLRingHeightKm="); // ...and this far above that plane
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
+        inline constexpr const TCHAR* SMOKE_CONSOLE = TEXT("SOLSmokeConsole="); // Console commands ('|'-separated) run
+                                                                                  // just before the -SOLSmokeShot screenshot
         inline constexpr const TCHAR* SMOKE_FLIGHT = TEXT("SOLSmokeFlight");    // Scripted ship flight, then quit
         inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit

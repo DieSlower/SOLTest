@@ -27,6 +27,7 @@
 
 namespace
 {
+    constexpr float SMOKE_CONSOLE_SETTLE_SECONDS = 2.0f;                        // Time for console stats (stat unit/gpu) to fill
     constexpr float SMOKE_QUIT_DELAY_SECONDS = 3.0f;                            // Time for the screenshot to be written
     const TCHAR* const SMOKE_SCREENSHOT_COMMAND = TEXT("HighResShot 1280x720"); // Written to Saved/Screenshots
 }
@@ -116,6 +117,25 @@ void ASOLGameMode::EndPlay(const EEndPlayReason::Type endPlayReason)
 // Takes the smoke-test screenshot and schedules the quit (verification runs only)
 void ASOLGameMode::TakeSmokeScreenshot()
 {
+    // Optional console commands (e.g. "ProfileGPU|memreport -full") run just before the screenshot, so a verification
+    // run can capture GPU timings and memory in exactly the scene the screenshot shows
+    FString smokeCommands;
+    if (!mSmokeConsoleRun && FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_CONSOLE, smokeCommands, false))
+    {
+        mSmokeConsoleRun = true;
+        TArray<FString> commands;
+        smokeCommands.ParseIntoArray(commands, TEXT("|"));
+        if (APlayerController* playerController = GetWorld()->GetFirstPlayerController())
+        {
+            for (const FString& command : commands)
+            {
+                playerController->ConsoleCommand(command);
+            }
+        }
+        // Let on-screen stats settle for a couple of seconds, then come back for the screenshot
+        GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::TakeSmokeScreenshot, SMOKE_CONSOLE_SETTLE_SECONDS);
+        return;
+    }
     CaptureScreenshot();
     GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::QuitAfterSmokeTest, SMOKE_QUIT_DELAY_SECONDS);
 }

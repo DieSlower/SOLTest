@@ -271,6 +271,7 @@ void USOLShipSubsystem::SpawnPlayerShip()
     FVector3d spawnDirection = sunM - cache.PositionsM[bodyIndex];
     FVector3d spawnOffsetM = FVector3d::ZeroVector;
     FVector3d spawnTangent = FVector3d::ZeroVector;
+    bool bRingStart = false;
 
     // Verification-only: -SOLRingStartKm=<r> starts inside the start body's ring plane, r km from its centre along the
     // ring's X axis and -SOLRingHeightKm=<h> above the plane, so the ring's dense rock layer can be screenshotted
@@ -284,6 +285,7 @@ void USOLShipSubsystem::SpawnPlayerShip()
         spawnOffsetM = SOLRender::EclipticToUnreal(orientation.RotateVector(FVector3d(0.0, 0.0, 1.0)))
             * (ringHeightKm * SOL::METERS_PER_KM);
         spawnTangent = SOLRender::EclipticToUnreal(orientation.RotateVector(FVector3d(0.0, 1.0, 0.0)));
+        bRingStart = true;
         altitudeKm = ringStartKm - cache.RadiiM[bodyIndex] / SOL::METERS_PER_KM;
         if (altitudeKm <= 0.0)
         {
@@ -317,7 +319,9 @@ void USOLShipSubsystem::SpawnPlayerShip()
     mPlayerShip = mEntityManager->CreateEntity(archetype, sharedValues);
 
     FSOLShipControl control;
-    control.bFlightAssist = true;
+    // A ring-plane verification start flies ballistically so it keeps co-rotating with the ring instead of being
+    // braked toward the anchor's frame and drifting out of the plane within seconds
+    control.bFlightAssist = !bRingStart;
     control.SpeedCapMps = FMath::Clamp(SOL::SHIP_START_SPEED_CAP_MPS, SOL::MIN_SPEED_CAP_MPS, SOL::MAX_SPEED_CAP_MPS);
     mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).State = state;
     mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).Control = control;
