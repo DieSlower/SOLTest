@@ -152,6 +152,7 @@ namespace SOL
     inline constexpr double RING_DENSE_FADE_OUT_DISTANCE_M = 6000.0;     // fully off beyond this distance
     static_assert(RING_DENSE_FADE_OUT_DISTANCE_M <= RING_DENSE_ROCK_MAX_RADIUS_CM / RING_DENSE_CULL_ANGULAR_RADIUS / METERS_TO_CM * 1.0e0 + 1.0,
         "Fade out beyond the distance the largest rock is still drawn would simulate a million rocks for nothing");
+    inline constexpr double RING_DENSE_RELEASE_DELAY_SECONDS = 20.0;     // hidden this long: free the rocks' VRAM
     inline constexpr double RING_DENSE_MAX_TIME_WARP = 10.0;             // a co-rotating carpet is meaningless above this
 
     // Niagara User Parameter names of Paths::RING_DENSE_NIAGARA_SYSTEM (SDD 6 Amendment 15). The ring radii, gaps and

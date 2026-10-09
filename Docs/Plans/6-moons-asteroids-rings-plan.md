@@ -209,12 +209,9 @@ Keep it in sync if the design shifts.
       spawn, zero `LogSOL` errors) and `Tools/RunTests.bat` re-run clean (400/400)
       after the fixes.
     - [x] `ASOLGameMode::StartPlay` spawns 4 `ASOLRingVisuals` via `RealRings()`.
-  - [ ] **5e-iv — Integration and verification.** All four gas giants get rings
-    (decision 8). Adversarial review (entity-pool reuse correctness, cell-boundary
-    hysteresis, Niagara system cost, style-guide conformance), fix, re-verify. Real PIE
-    screenshot verification at multiple distances per ring (confirm real gaps are
-    visible in both tiers, the cross-fade isn't jarring, rapid cell-crossing at warp
-    speed doesn't pop/crash). Commit.
+  - [x] **5e-iv — Integration and verification.** Folded into 5e-v: all four gas giants have rings, the adversarial
+    review ran on the final three-tier design (SDD 6 Amendments 14-16), PIE screenshots at several distances and a
+    full 421-test run were done there. Dense-layer VRAM is capped by releasing a layer hidden for 20 s.
   - [x] **5e-v — Realistic rings (SDD 6 Amendments 14-16).** Cassini-style three-tier look, built as:
     - [x] PCG GPU spike: instances draw (1M) but are wiped by scalability changes and cannot follow a moving
       actor, so PCG was rejected for the rings (Amendment 14 findings); `USOLEditorAuthoring` kept as an editor helper.
