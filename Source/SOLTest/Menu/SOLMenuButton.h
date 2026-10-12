@@ -19,8 +19,9 @@ DECLARE_DELEGATE_OneParam(FSOLMenuButtonClicked, int32 /*index*/);
 /**
  * Menu button (SDD 8, 8c): a UButton with the menu's dark translucent look, a text label and an index, whose clicks go
  * to one native delegate so a menu can route a whole list of buttons through one handler. Hovering it with the mouse
- * gives it keyboard focus, so the mouse and the keyboard share one highlight; the owning menu refreshes the highlight
- * (focused, selected or normal) from its tick through RefreshHighlight.
+ * gives it keyboard focus (except while a Settings page listens for a rebind key), so the mouse and the keyboard share
+ * one highlight; the owning menu refreshes the highlight (focused, selected or normal) from its tick through
+ * RefreshHighlight.
  */
 UCLASS()
 class SOLTEST_API USOLMenuButton : public UButton
@@ -46,6 +47,10 @@ public:
 
     // Recolours the button for keyboard focus, selection or neither (cheap; skips unchanged states)
     void RefreshHighlight();
+
+    // Takes keyboard focus as a mouse hover does, unless a Settings page is listening for a rebind key (the hover
+    // handler calls it; verification scripts call it to simulate a hover)
+    void NotifyHovered();
 
     // Clicks, with the button's index
     FSOLMenuButtonClicked OnMenuClicked;

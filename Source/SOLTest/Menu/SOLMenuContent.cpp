@@ -8,7 +8,11 @@
 #include "Flight/SOLFlight.h"
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLInfoText.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSettingsSubsystem.h"
+#include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
 #include "Universe/SOLSimClock.h"
 
@@ -21,6 +25,9 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Misc/EngineVersion.h"
 #include "Styling/CoreStyle.h"
 
@@ -43,15 +50,20 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Creates a two-column row: a fixed-width left cell and a wrapping right cell
+    // Creates a two-column row: a fixed-width left cell and a wrapping right cell (outLeft gets the left text block)
     UHorizontalBox* MenuContentMakeRow(UWidgetTree& tree, const FString& left, const FString& right,
-        const float leftWidth, const FLinearColor& leftColor)
+        const float leftWidth, const FLinearColor& leftColor, UTextBlock** outLeft = nullptr)
     {
         using namespace SOL::MenuStyle;
         UHorizontalBox* row = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
         USizeBox* leftBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
         leftBox->SetWidthOverride(leftWidth);
-        leftBox->SetContent(SOLMenuContent::MakeText(tree, left, BODY_FONT_SIZE, leftColor, true, true));
+        UTextBlock* leftText = SOLMenuContent::MakeText(tree, left, BODY_FONT_SIZE, leftColor, true, true);
+        leftBox->SetContent(leftText);
+        if (outLeft != nullptr)
+        {
+            *outLeft = leftText;
+        }
         row->AddChildToHorizontalBox(leftBox)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
         UHorizontalBoxSlot* rightSlot = row->AddChildToHorizontalBox(SOLMenuContent::MakeText(tree, right,
             BODY_FONT_SIZE, TEXT_COLOR, false, true));
@@ -109,8 +121,8 @@ UVerticalBox* SOLMenuContent::MakePage(UWidgetTree& tree, const TCHAR* title)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a key binding cell's text: '|' alternatives of '+' chords, each key through SOLBindingLabel
-FString SOLMenuContent::FormatBindings(const TCHAR* bindings)
+// Returns a key binding cell's text: '|' alternatives, each a rebindable action's live key or a '+' chord of fixed keys
+FString SOLMenuContent::FormatBindings(const TCHAR* bindings, const TArray<FString>& liveKeys)
 {
     TArray<FString> alternatives;
     FString(bindings).ParseIntoArray(alternatives, SOLMenuText::BINDING_ALTERNATIVE_DELIMITER);
@@ -118,11 +130,42 @@ FString SOLMenuContent::FormatBindings(const TCHAR* bindings)
     labels.Reserve(alternatives.Num());
     for (const FString& alternative : alternatives)
     {
+        // '@Id': the action's current key (an unknown id or a missing key reads as unbound)
+        if (!alternative.IsEmpty() && alternative[0] == SOLMenuText::BINDING_ID_PREFIX)
+        {
+            const int32 binding = SOLKeyBindings::FindById(alternative.RightChop(1));
+            labels.Add(SOLBindingLabel::KeyDisplayName(liveKeys.IsValidIndex(binding) ? liveKeys[binding]
+                : FString()));
+            continue;
+        }
         TArray<FString> chord;
         alternative.ParseIntoArray(chord, SOLMenuText::BINDING_CHORD_DELIMITER);
         labels.Add(SOLBindingLabel::JoinChord(chord));
     }
     return FString::Join(labels, SOLMenuText::BINDING_ALTERNATIVE_SEPARATOR);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// FormatBindings with the default keys
+FString SOLMenuContent::FormatBindings(const TCHAR* bindings)
+{
+    return FormatBindings(bindings, SOLKeyBindings::DefaultKeys());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ship pawn's live keys, else the applied settings' keys, else the defaults
+TArray<FString> SOLMenuContent::ResolveLiveKeys(const UWorld* world)
+{
+    const APlayerController* playerController = world != nullptr ? world->GetFirstPlayerController() : nullptr;
+    const ASOLShipPawn* pawn = playerController != nullptr ? Cast<ASOLShipPawn>(playerController->GetPawn()) : nullptr;
+    if (pawn != nullptr && pawn->GetBoundKeyNames().Num() == SOLKeyBindings::BINDING_COUNT)
+    {
+        return pawn->GetBoundKeyNames();
+    }
+    const UGameInstance* gameInstance = world != nullptr ? world->GetGameInstance() : nullptr;
+    const USOLSettingsSubsystem* settings = gameInstance != nullptr
+        ? gameInstance->GetSubsystem<USOLSettingsSubsystem>() : nullptr;
+    return settings != nullptr ? settings->GetAppliedKeys() : SOLKeyBindings::DefaultKeys();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -141,14 +184,28 @@ FString SOLMenuContent::FormatWarpFactor(const double factor)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the Controls page (every binding grouped by area, in a scroll box)
-UWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree)
+// Returns a Controls row's action text with its gameplay values filled in
+FString SOLMenuContent::FormatControlAction(const TCHAR* action)
+{
+    FStringFormatNamedArguments arguments;
+    arguments.Add(TEXT("DropDistance"), MenuContentWithUnit(SOLMenuText::INFO_METERS_FORMAT,
+        SOL::COMBAT_TARGET_DROP_DISTANCE_M));
+    arguments.Add(TEXT("SpeedCapNotches"), SOLInfoText::FormatPercentOrValue(SOLFlight::SpeedCapStepsPerDecade));
+    return FString::Format(action, arguments);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the Controls page (every binding grouped by area, in a scroll box) and hands back its key cells
+UWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyCells)
 {
     using namespace SOL::MenuStyle;
     UVerticalBox* page = MakePage(tree, SOLMenuText::CONTROLS_TITLE);
     UScrollBox* scroll = MenuContentAddScroll(tree, *page);
 
-    // One section per area, in table order (rows of one area are contiguous)
+    // One section per area, in table order (rows of one area are contiguous); the key cells start from the defaults
+    // and are rewritten from the live keys whenever the page is shown
+    outKeyCells.Reset(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS));
+    const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
     const TCHAR* currentArea = nullptr;
     for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
     {
@@ -157,27 +214,51 @@ UWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree)
             currentArea = row.Area;
             MenuContentAddSection(tree, *scroll, currentArea);
         }
-        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings), row.Action,
-            KEY_COLUMN_WIDTH, ACCENT_COLOR));
+        UTextBlock* keyCell = nullptr;
+        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings, defaultKeys),
+            FormatControlAction(row.Action), KEY_COLUMN_WIDTH, ACCENT_COLOR, &keyCell));
+        outKeyCells.Add(keyCell);
     }
     return page;
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Rewrites the Controls page's key cells from the live keys
+void SOLMenuContent::RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& keyCells,
+    const TArray<FString>& liveKeys)
+{
+    const int32 count = FMath::Min(keyCells.Num(), static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS)));
+    for (int32 row = 0; row < count; ++row)
+    {
+        if (keyCells[row] != nullptr)
+        {
+            keyCells[row]->SetText(FText::FromString(FormatBindings(SOLMenuText::CONTROL_ROWS[row].Bindings,
+                liveKeys)));
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Builds the Info page (flight, time and combat values generated from the real constants, plus prose)
-UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree)
+UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyTexts)
 {
     using namespace SOL::MenuStyle;
     using namespace SOLMenuText;
     UVerticalBox* page = MakePage(tree, INFO_TITLE);
     UScrollBox* scroll = MenuContentAddScroll(tree, *page);
     const FSOLFlightParams flight;
+    const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
+    outKeyTexts.Reset(UE_ARRAY_COUNT(INFO_PROSE) + 1);
 
     // Flight, from the speed-cap constants and the default flight parameters the player's ship uses
     MenuContentAddSection(tree, *scroll, INFO_FLIGHT);
+    // Adds a label / value row and returns the label's text block
     const auto addLine = [&tree, scroll](const FString& label, const FString& value)
     {
-        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH, DIM_TEXT_COLOR));
+        UTextBlock* labelText = nullptr;
+        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH, DIM_TEXT_COLOR,
+            &labelText));
+        return labelText;
     };
     addLine(INFO_SPEED_CAP_RANGE, FString::Format(INFO_RANGE_FORMAT, { SOLInfoText::FormatSpeed(SOL::MIN_SPEED_CAP_MPS),
         SOLInfoText::FormatSpeed(SOL::MAX_SPEED_CAP_MPS) }));
@@ -204,8 +285,9 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree)
     addLine(INFO_JUMP_DURATION, MenuContentWithUnit(INFO_SECONDS_FORMAT, SOL::WARP_DURATION_S));
     addLine(INFO_SURFACE_LOCK_AUTO, MenuContentWithUnit(INFO_KM_FORMAT, SOL::SURFACE_LOCK_AUTO_RANGE_M
         / SOL::METERS_PER_KM));
-    addLine(INFO_SURFACE_LOCK_MANUAL, FString::Format(INFO_MANUAL_RANGE_FORMAT, { SOLInfoText::FormatPercentOrValue(
-        SOL::SURFACE_LOCK_MANUAL_RANGE_MIN_M / SOL::METERS_PER_KM) }));
+    outKeyTexts.Add(addLine(SOLInfoText::FormatSurfaceLockManualLabel(defaultKeys), FString::Format(
+        INFO_MANUAL_RANGE_FORMAT, { SOLInfoText::FormatPercentOrValue(SOL::SURFACE_LOCK_MANUAL_RANGE_MIN_M
+        / SOL::METERS_PER_KM) })));
 
     // Combat, through the tested formatter
     MenuContentAddSection(tree, *scroll, INFO_COMBAT);
@@ -216,14 +298,33 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree)
         addLine(line.Label, line.Value);
     }
 
-    // Static prose on how the mechanics behave
+    // Prose on how the mechanics behave (the keys it names follow rebinds, through RefreshInfoPage)
     MenuContentAddSection(tree, *scroll, INFO_HOW_IT_WORKS);
-    for (const TCHAR* paragraph : INFO_PROSE)
+    for (const FString& paragraph : SOLInfoText::BuildProse(defaultKeys))
     {
-        Cast<UScrollBoxSlot>(scroll->AddChild(MakeText(tree, paragraph, BODY_FONT_SIZE, TEXT_COLOR, false, true)))
-            ->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
+        UTextBlock* text = MakeText(tree, paragraph, BODY_FONT_SIZE, TEXT_COLOR, false, true);
+        Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
+        outKeyTexts.Add(text);
     }
     return page;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Rewrites the Info page's key-naming texts from the live keys
+void SOLMenuContent::RefreshInfoPage(const TArray<TObjectPtr<UTextBlock>>& keyTexts, const TArray<FString>& liveKeys)
+{
+    // Same order as BuildInfoPage: the manual surface-lock label, then the prose paragraphs
+    const TArray<FString> prose = SOLInfoText::BuildProse(liveKeys);
+    for (int32 index = 0; index < keyTexts.Num(); ++index)
+    {
+        if (keyTexts[index] == nullptr)
+        {
+            continue;
+        }
+        const FString text = index == 0 ? SOLInfoText::FormatSurfaceLockManualLabel(liveKeys)
+            : (prose.IsValidIndex(index - 1) ? prose[index - 1] : FString());
+        keyTexts[index]->SetText(FText::FromString(text));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -248,8 +349,8 @@ UWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the Settings page placeholder (filled by part 8d)
-UWidget* SOLMenuContent::BuildSettingsPage(UWidgetTree& tree)
+// Builds the Settings page (a child user widget that builds its own controls)
+USOLSettingsPageWidget* SOLMenuContent::BuildSettingsPage(UWidgetTree& tree)
 {
-    return MakePage(tree, SOLMenuText::SETTINGS_TITLE);
+    return tree.ConstructWidget<USOLSettingsPageWidget>(USOLSettingsPageWidget::StaticClass());
 }

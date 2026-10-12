@@ -87,6 +87,14 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns whether a key has its own meaning inside the panel (steppers, list, unit)
+    bool SpeedPanelIsOwnKey(const FKey& key)
+    {
+        return key == EKeys::Up || key == EKeys::Down || key == EKeys::Left || key == EKeys::Right
+            || key == EKeys::Enter || key == EKeys::Tab || key == EKeys::U || key == EKeys::Escape;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Creates a text block in the tree with a font face, size and color
     UTextBlock* SpeedPanelMakeText(UWidgetTree* tree, const TCHAR* text, const TCHAR* face, const int32 size,
         const FLinearColor& color)
@@ -119,8 +127,8 @@ void USOLSpeedPanelWidget::NativeOnInitialized()
     root->SetContent(panel);
     UVerticalBox* column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass(), TEXT("Column"));
     panel->SetContent(column);
-    column->AddChildToVerticalBox(SpeedPanelMakeText(WidgetTree, TEXT("SPEED CAP  (F3 / Enter close, Esc close)"),
-        PANEL_FONT_REGULAR, PANEL_TITLE_FONT_SIZE, PANEL_TEXT));
+    TitleText = SpeedPanelMakeText(WidgetTree, TEXT(""), PANEL_FONT_REGULAR, PANEL_TITLE_FONT_SIZE, PANEL_TEXT);
+    column->AddChildToVerticalBox(TitleText);
 
     // Steppers side by side: odometer digits (10^MaxDigit .. 10^MinDigit, point before the tenths) and the unit
     UHorizontalBox* steppers = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -169,9 +177,15 @@ void USOLSpeedPanelWidget::NativeOnInitialized()
 
 //////////////////////////////////////////////////////////////////////////
 // Seeds the steppers from the current cap, refreshes the body speeds and remembers the pawn to apply the cap to
-void USOLSpeedPanelWidget::Open(ASOLShipPawn* pawn, const double currentCapMps)
+void USOLSpeedPanelWidget::Open(ASOLShipPawn* pawn, const double currentCapMps, const FKey& toggleKey,
+    const FString& title)
 {
     mPawn = pawn;
+    mToggleKey = toggleKey;
+    if (TitleText != nullptr)
+    {
+        TitleText->SetText(FText::FromString(title));
+    }
     mStepper = SOLSpeedStepper::FromSpeedMps(currentCapMps);
     mIsUnitHighlighted = false;
     mIsListFocused = false;
@@ -191,7 +205,9 @@ double USOLSpeedPanelWidget::GetListedBodySpeedMps(const int32 bodyIndex) const
 // Handles one key press; returns true when the panel used it (verification scripts call it like Slate does)
 bool USOLSpeedPanelWidget::HandlePanelKey(const FKey& key)
 {
-    if (key == EKeys::F3 || key == EKeys::Escape || (key == EKeys::Enter && !mIsListFocused))
+    // The panel's own keys keep their meaning even when the speed-panel binding was moved onto one of them
+    const bool bToggleKey = key == mToggleKey && !SpeedPanelIsOwnKey(key);
+    if (bToggleKey || key == EKeys::Escape || (key == EKeys::Enter && !mIsListFocused))
     {
         RequestClose();
         return true;

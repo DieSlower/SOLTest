@@ -29,4 +29,12 @@ namespace SOLInfoText
     // Returns the six combat lines of the Info screen
     SOLTEST_API TArray<FInfoLine> BuildCombatLines(double boltSpeedMps, double damage, double shotsPerSecond,
         double targetShield, double targetHealth, double shieldRegenPerSecond, double shieldRegenDelaySeconds);
+
+    // Returns the "Surface-lock with <key> from up to" label, with the surface-lock binding's key from the key array
+    // (SOLKeyBindings order)
+    SOLTEST_API FString FormatSurfaceLockManualLabel(const TArray<FString>& keys);
+
+    // Returns the Info page's prose paragraphs (SOLMenuText::INFO_PROSE), with every key they name taken from the key
+    // array (SOLKeyBindings order), so they follow rebinds
+    SOLTEST_API TArray<FString> BuildProse(const TArray<FString>& keys);
 }

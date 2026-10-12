@@ -102,6 +102,19 @@ bool USOLJumpSubsystem::StartJump(const FSOLMapPickState& pick)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Stops a running warp sequence without arriving (the ship is being removed)
+void USOLJumpSubsystem::CancelJump()
+{
+    if (!mIsWarping)
+    {
+        return;
+    }
+    mIsWarping = false;
+    mElapsedS = 0.0;
+    UE_LOG(LogSOL, Log, TEXT("Jump %s: warp cancelled"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the chase camera FOV for this point of the sequence, pulsing from baseFovDeg to WARP_PEAK_FOV_DEG
 double USOLJumpSubsystem::ComputeFovDeg(const double baseFovDeg) const
 {
@@ -144,8 +157,9 @@ void USOLJumpSubsystem::HandleUniverseUpdated()
         return;
     }
 
-    // Defensive (not reachable today): the ship step skipped this frame, so the clock would never run out. The pawn
-    // and the HUD read IsWarping, so clearing it restores the FOV, the post-process and the flight HUD
+    // Defensive: the ship step skipped this frame, so the clock would never run out. Quit to menu cancels a running
+    // warp itself (CancelJump) before the ship goes, so this only catches another way of losing the ship. The pawn and
+    // the HUD read IsWarping, so clearing it restores the FOV, the post-process and the flight HUD
     mIsWarping = false;
     mElapsedS = 0.0;
     UE_LOG(LogSOL, Warning, TEXT("Jump %s: warp aborted, the ship step did not run (no valid ship)"), *GetName());

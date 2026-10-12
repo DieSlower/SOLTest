@@ -63,6 +63,10 @@ namespace SOL
     // Lighting: sunlight illuminance (lux) for the Sun light and the body shading, tuned with the fixed exposure
     inline constexpr float SUN_ILLUMINANCE_LUX = 3.0f;
 
+    // Lighting: forward-shading priority of the Sun light, above the ship fill light's default 0, so the Sun is the one
+    // directional light used for translucency and forward shading (two equal priorities make the editor warn on screen)
+    inline constexpr int32 SUN_FORWARD_SHADING_PRIORITY = 1;
+
     // Ship pawn: shadowless directional "headlight" on the camera that lights the ship's shadowed side, as a fraction
     // of SUN_ILLUMINANCE_LUX (bodies use an unlit material and ignore it)
     inline constexpr float SHIP_FILL_LIGHT_FRACTION = 0.1f;
@@ -444,6 +448,8 @@ namespace SOL
         inline constexpr float KEY_COLUMN_WIDTH = 230.0f;        // Controls page key column
         inline constexpr float LABEL_COLUMN_WIDTH = 400.0f;      // Info page label column
         inline constexpr float LIST_BUTTON_HEIGHT = 38.0f;       // Start-location rows
+        inline constexpr float BUTTON_PADDING_X = 18.0f;         // Inside a menu button, around its label
+        inline constexpr float BUTTON_PADDING_Y = 8.0f;
         inline const FLinearColor SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.45f);        // Behind the pause menu
         inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);
         inline const FLinearColor BUTTON_NORMAL(0.06f, 0.09f, 0.14f, 0.85f);
@@ -453,6 +459,39 @@ namespace SOL
         inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);
         inline const FLinearColor DIM_TEXT_COLOR(0.55f, 0.62f, 0.72f, 1.0f);
         inline const FLinearColor ACCENT_COLOR(0.45f, 0.78f, 1.0f, 1.0f);
+        inline const FLinearColor WARNING_COLOR(1.0f, 0.62f, 0.25f, 1.0f);    // Settings: key conflicts, dirty state
+
+        // Settings page (SDD 8, 8d): row layout
+        inline constexpr float SETTINGS_LABEL_WIDTH = 250.0f;     // Left column of a settings row
+        inline constexpr float SETTINGS_VALUE_WIDTH = 80.0f;      // Value readout right of a slider
+        inline constexpr float SETTINGS_ROW_HEIGHT = 34.0f;       // Steppers, sliders, checkboxes and rebind rows
+        inline constexpr float SETTINGS_STEP_BUTTON_WIDTH = 44.0f; // The '<' and '>' buttons of a stepper
+        inline constexpr float SETTINGS_REBIND_WIDTH = 120.0f;    // The Rebind button of a key row
+        inline constexpr float SETTINGS_ACTION_WIDTH = 150.0f;    // Apply / Revert buttons
+        inline constexpr float SETTINGS_RESET_KEYS_WIDTH = 280.0f; // Reset keys button
+    }
+
+    // Settings (SDD 8, 8d): the USOLSettingsSave slot, its schema version and the slider steps
+    namespace Settings
+    {
+        inline constexpr const TCHAR* SAVE_SLOT = TEXT("SOLSettings");                  // Player settings
+        inline constexpr const TCHAR* SMOKE_SAVE_SLOT = TEXT("SOLSettings_MenuSmoke");  // -SOLMenuSmoke runs only
+                                                                                          // (deleted at their start)
+        inline constexpr int32 SAVE_USER_INDEX = 0;
+        inline constexpr int32 SAVE_VERSION = 1;          // Bump (and migrate in USOLSettingsSubsystem) on schema changes
+        inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
+        inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
+        inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;
+        inline constexpr float HUD_SCALE_STEP = 0.05f;
+
+        // Slider ranges; they match the clamping in SOLSettingsModel::Sanitized (keep both in sync)
+        inline constexpr float VOLUME_MIN = 0.0f;
+        inline constexpr float VOLUME_MAX = 1.0f;
+        inline constexpr float MOUSE_SENSITIVITY_MIN = 0.1f;
+        inline constexpr float MOUSE_SENSITIVITY_MAX = 5.0f;
+        inline constexpr float HUD_SCALE_MIN = 0.5f;
+        inline constexpr float HUD_SCALE_MAX = 2.0f;
+        inline constexpr float VALUE_EQUAL_TOLERANCE = 1.0e-4f;    // Two slider values closer than this are equal
     }
 
     // Registry names of bodies that code refers to directly
@@ -528,6 +567,13 @@ namespace SOL
             TEXT("/Game/SOL/Combat/NS_SOLExplosion.NS_SOLExplosion");
         inline constexpr const TCHAR* COMBAT_TARGET_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
         inline constexpr const TCHAR* COMBAT_TARGET_MATERIAL = TEXT("/Game/SOL/Combat/M_SOLTarget.M_SOLTarget");
+
+        // Sound classes (SDD 8, 8d), created by Tools/CreateSOLAudioClasses.py (keep both in sync): master, with the
+        // effects (every S_SOL* combat wave) and music classes as its children. The settings volumes override them
+        // through one runtime sound mix
+        inline constexpr const TCHAR* SOUND_CLASS_MASTER = TEXT("/Game/SOL/Audio/SC_SOLMaster.SC_SOLMaster");
+        inline constexpr const TCHAR* SOUND_CLASS_SFX = TEXT("/Game/SOL/Audio/SC_SOLSfx.SC_SOLSfx");
+        inline constexpr const TCHAR* SOUND_CLASS_MUSIC = TEXT("/Game/SOL/Audio/SC_SOLMusic.SC_SOLMusic");
 
         // Placeholder ship: engine primitives (100 cm across, centered) and the engine's lit basic material
         inline constexpr const TCHAR* SHIP_PART_CUBE = TEXT("/Engine/BasicShapes/Cube.Cube");

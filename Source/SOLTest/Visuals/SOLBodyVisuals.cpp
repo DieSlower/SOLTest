@@ -126,6 +126,7 @@ ASOLBodyVisuals::ASOLBodyVisuals()
     SunLight->SetIntensity(SunIlluminanceLux);
     SunLight->SetCastShadows(false);
     SunLight->bAffectsWorld = true;
+    SunLight->ForwardShadingPriority = SOL::SUN_FORWARD_SHADING_PRIORITY;
 
     // Fixed exposure (no eye adaptation) so the lit planets and the emissive Sun keep a stable brightness
     PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcess"));

@@ -7,6 +7,7 @@
 
 #include "Game/SOLGameMode.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipFlightProcessor.h"
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
@@ -348,9 +349,11 @@ void USOLShipSubsystem::SpawnPlayerShip(const FString& startBody)
     mPlayerShip = mEntityManager->CreateEntity(archetype, sharedValues);
 
     FSOLShipControl control;
-    // A ring-plane verification start flies ballistically so it keeps co-rotating with the ring instead of being
-    // braked toward the anchor's frame and drifting out of the plane within seconds
-    control.bFlightAssist = !bRingStart;
+    // Flight assist starts as the settings say (SDD 8, on by default). A ring-plane verification start flies
+    // ballistically so it keeps co-rotating with the ring instead of being braked toward the anchor's frame and
+    // drifting out of the plane within seconds
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    control.bFlightAssist = !bRingStart && (settings == nullptr || settings->GetSavedValues().bDefaultFlightAssist);
     control.SpeedCapMps = FMath::Clamp(SOL::SHIP_START_SPEED_CAP_MPS, SOL::MIN_SPEED_CAP_MPS, SOL::MAX_SPEED_CAP_MPS);
     mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).State = state;
     mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).Control = control;

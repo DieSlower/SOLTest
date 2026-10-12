@@ -8,7 +8,9 @@
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -166,6 +168,14 @@ void ASOLFlightHud::BeginPlay()
     Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
+    Settings = USOLSettingsSubsystem::Get(this);
+
+    // Key hints follow the player's bindings: built now and again after each applied rebind, never per frame
+    RebuildKeyHints();
+    if (Settings != nullptr)
+    {
+        mKeyBindingsHandle = Settings->OnKeyBindingsChanged().AddUObject(this, &ASOLFlightHud::RebuildKeyHints);
+    }
 
     // Buffers sized once so the draw path only resets and refills them
     mText.Reserve(256);
@@ -192,6 +202,29 @@ void ASOLFlightHud::BeginPlay()
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
     mMapPickOverlay.Initialize();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Unhooks from the settings' key-binding changes
+void ASOLFlightHud::EndPlay(const EEndPlayReason::Type endPlayReason)
+{
+    if (Settings != nullptr)
+    {
+        Settings->OnKeyBindingsChanged().Remove(mKeyBindingsHandle);
+    }
+    mKeyBindingsHandle.Reset();
+    Super::EndPlay(endPlayReason);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Rebuilds the cached key hint lines from the applied key bindings
+void ASOLFlightHud::RebuildKeyHints()
+{
+    const TArray<FString> keys = Settings != nullptr ? Settings->GetAppliedKeys() : SOLKeyBindings::DefaultKeys();
+    mFlightHintsOrbitsOn = SOLHudFormat::FormatFlightKeyHints(keys, true);
+    mFlightHintsOrbitsOff = SOLHudFormat::FormatFlightKeyHints(keys, false);
+    mMapHints = SOLHudFormat::FormatMapKeyHints(keys);
+    mKeyTexts = SOLHudFormat::FormatHudKeyTexts(keys);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -253,7 +286,9 @@ void ASOLFlightHud::DrawHUD()
     {
         return;
     }
-    mUiScale = FMath::Clamp(Canvas->ClipY / HUD_REFERENCE_HEIGHT_PX, 1.0f, HUD_MAX_UI_SCALE);
+    const SOLSettingsModel::FSettingsValues* settings = Settings != nullptr ? &Settings->GetLiveValues() : nullptr;
+    mUiScale = FMath::Clamp(Canvas->ClipY / HUD_REFERENCE_HEIGHT_PX, 1.0f, HUD_MAX_UI_SCALE)
+        * (settings != nullptr ? settings->HudScale : 1.0f);
 
     // The main and pause menus (SDD 8) draw over a clean view: no flight HUD while one shows
     const USOLMenuSubsystem* menu = GetWorld()->GetSubsystem<USOLMenuSubsystem>();
@@ -266,6 +301,12 @@ void ASOLFlightHud::DrawHUD()
     if (Jump != nullptr && Jump->IsWarping())
     {
         mLastWarpStreaksDrawn = DrawWarpStreaks(Jump->ComputeStreakIntensity(), Jump->GetElapsedS());
+        return;
+    }
+
+    // The player hid the flight HUD (SDD 8): nothing more, unless the jump map needs its overlays
+    if (settings != nullptr && !settings->bHudVisible && !IsMapOpen())
+    {
         return;
     }
     mWasFlightHudDrawn = true;
@@ -551,7 +592,7 @@ void ASOLFlightHud::DrawInfoBlock()
         else if (!IsMapOpen() && nearest != INDEX_NONE && altitudeM <= SOLSurfaceLock::ComputeManualRangeM(
             registry.GetRadiusM(nearest), Ships->GetSurfaceLockParams()))
         {
-            mText.Append(TEXT("L to surface-lock  "));
+            mText.Append(mKeyTexts.SurfaceLockHint);
             registry.GetName(nearest).AppendString(mText);
             mText.Append(TEXT("   ALT "));
             SOLHudFormat::AppendDistanceM(mText, altitudeM);
@@ -565,7 +606,7 @@ void ASOLFlightHud::DrawInfoBlock()
     mText.Reset();
     if (IsMapOpen())
     {
-        mText.Append(TEXT("JUMP MAP   right drag orbit   middle or Shift+right drag pan   wheel zoom   J / Esc close"));
+        mText.Append(mMapHints);
         DrawBuffer(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
         y += HUD_LINE_SMALL_PX * mUiScale;
 
@@ -576,9 +617,7 @@ void ASOLFlightHud::DrawInfoBlock()
         DrawBuffer(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }
-    mText.Append(mShowOrbitLines ? TEXT("ORBITS ON (O)") : TEXT("ORBITS OFF (O)"));
-    mText.Append(TEXT("   F3 speed panel   J jump map   T/R/F/X target   M match frame   L surface-lock   [ ] warp"));
-    mText.Append(TEXT("   - = radar zoom   Home radar auto   LMB fire   G drop target"));
+    mText.Append(mShowOrbitLines ? mFlightHintsOrbitsOn : mFlightHintsOrbitsOff);
     DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }
 
@@ -607,7 +646,7 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     Targeting->GetFrameName().AppendString(mText);
     if (Targeting->IsFrameLocked())
     {
-        mText.Append(TEXT(" [M LOCK]"));
+        mText.Append(mKeyTexts.FrameLockTag);
     }
     DrawBuffer(ESOLHudLine::Frame, Targeting->IsFrameLocked() ? HUD_TARGET_COLOR : HUD_TEXT_COLOR, x, y, small);
     y += HUD_LINE_SMALL_PX * mUiScale;
@@ -658,7 +697,7 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     mText.Append(TEXT("TARGET  "));
     if (target == nullptr)
     {
-        mText.Append(TEXT("none (T)"));
+        mText.Append(mKeyTexts.NoTarget);
         DrawBuffer(ESOLHudLine::TargetName, HUD_DIM_COLOR, panelX, panelY, medium);
         return;
     }

@@ -5,6 +5,9 @@
 
 #include "Menu/SOLSettingsModel.h"
 
+#include "Menu/SOLSettingsRules.h"
+#include "SOLConstants.h"
+
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
@@ -18,7 +21,7 @@ namespace
     // Returns whether two floats are within the comparison tolerance
     bool Near(float a, float b)
     {
-        return FMath::Abs(a - b) <= 1.0e-4f;
+        return FMath::Abs(a - b) <= SOL::Settings::VALUE_EQUAL_TOLERANCE;
     }
 }
 
@@ -28,12 +31,14 @@ SOLSettingsModel::FSettingsValues SOLSettingsModel::Sanitized(const FSettingsVal
 {
     const FSettingsValues defaults;
     FSettingsValues result = values;
-    result.MasterVolume = ClampOrDefault(values.MasterVolume, 0.0f, 1.0f, defaults.MasterVolume);
-    result.SfxVolume = ClampOrDefault(values.SfxVolume, 0.0f, 1.0f, defaults.SfxVolume);
-    result.MusicVolume = ClampOrDefault(values.MusicVolume, 0.0f, 1.0f, defaults.MusicVolume);
-    result.MouseSensitivity = ClampOrDefault(values.MouseSensitivity, 0.1f, 5.0f, defaults.MouseSensitivity);
-    result.HudScale = ClampOrDefault(values.HudScale, 0.5f, 2.0f, defaults.HudScale);
-    result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, 4);
+    using namespace SOL::Settings;
+    result.MasterVolume = ClampOrDefault(values.MasterVolume, VOLUME_MIN, VOLUME_MAX, defaults.MasterVolume);
+    result.SfxVolume = ClampOrDefault(values.SfxVolume, VOLUME_MIN, VOLUME_MAX, defaults.SfxVolume);
+    result.MusicVolume = ClampOrDefault(values.MusicVolume, VOLUME_MIN, VOLUME_MAX, defaults.MusicVolume);
+    result.MouseSensitivity = ClampOrDefault(values.MouseSensitivity, MOUSE_SENSITIVITY_MIN, MOUSE_SENSITIVITY_MAX,
+        defaults.MouseSensitivity);
+    result.HudScale = ClampOrDefault(values.HudScale, HUD_SCALE_MIN, HUD_SCALE_MAX, defaults.HudScale);
+    result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, SOLSettingsRules::QUALITY_PRESET_COUNT - 1);
     return result;
 }
 

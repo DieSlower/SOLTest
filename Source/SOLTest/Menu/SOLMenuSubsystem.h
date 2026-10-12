@@ -16,8 +16,10 @@
 class APawn;
 class APlayerController;
 class USOLBodyRegistrySubsystem;
+class USOLJumpSubsystem;
 class USOLMainMenuWidget;
 class USOLPauseMenuWidget;
+class USOLSettingsSubsystem;
 class USOLShipSubsystem;
 class USOLTargetingSubsystem;
 
@@ -33,14 +35,19 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FSOLOnMenuStateChanged, const SOLMenuState:
  * (USOLShipSubsystem::SpawnPlayerShip), destroys the menu pawn and possesses a new ASOLShipPawn. Esc in flight (the
  * pawn's IA_ShipPause, which the map's own Esc pre-empts because the ship mapping is removed while the map is open)
  * opens the pause menu: the simulation keeps running (SDD 8 decision 3) and the pawn suspends its control input from
- * OnStateChanged, exactly as for the map. Resume (or Esc) gives control back. Quit to menu destroys the ship pawn and
- * the ship entity (USOLShipSubsystem::DespawnPlayerShip, which also clears its surface-lock and frame history), clears
- * the selected target and frame lock, and possesses a fresh menu pawn, so Play works again any number of times.
+ * OnStateChanged, exactly as for the map. Resume (or Esc) gives control back. Quit to menu cancels a running jump
+ * warp (USOLJumpSubsystem::CancelJump), destroys the ship pawn and the ship entity (USOLShipSubsystem::
+ * DespawnPlayerShip, which also clears its surface-lock and frame history), clears the selected target and frame lock,
+ * and possesses a fresh menu pawn, so Play works again any number of times.
  *
  * Requests from widgets and the pawn are queued and applied at the start of the next frame, outside Slate and
  * Enhanced Input callbacks, because a transition destroys and spawns pawns and changes the input mode. While a menu
  * shows, the controller is in UI-only input with a visible cursor and the menu widget has keyboard focus; in flight the
  * pawn owns the cursor (hidden and captured, or free while the map is open), which matches ShouldShowCursor.
+ *
+ * Settings (8d): every menu state change ends the settings visit (USOLSettingsSubsystem::EndVisit through the pages:
+ * unapplied changes are reverted and the save is written once if an Apply changed something), and the settings' volume
+ * mix is pushed on this world at begin play and popped when the world is torn down.
  *
  * Verification runs: any -SOL* switch other than the menu ones starts straight in flight (ShouldStartInMenu) so the
  * existing smoke scripts are unchanged; -SOLMenu forces the menu, -SOLNoMenu skips it, -SOLMenuSmoke=<all|screens|flow>
@@ -56,7 +63,7 @@ public:
     // Declares its dependencies and picks the starting state (main menu, or straight to flight for verification runs)
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
-    // Removes the menu widgets and stops the timers
+    // Removes the menu widgets, stops the timers and pops the settings' volume mix from this world
     virtual void Deinitialize() override;
 
     // Shows the main menu (next frame, once the viewport is up) and starts the menu smoke script if requested
@@ -66,7 +73,7 @@ public:
     virtual bool ShouldCreateSubsystem(UObject* outer) const override;
 
     // Returns true when the game starts in the main menu: no -SOL* switch, or -SOLMenu / -SOLMenuSmoke, and no
-    // -SOLNoMenu
+    // -SOLNoMenu (switch names and the SOL prefix compare case-insensitively, as the engine's own FParse does)
     static bool ShouldStartInMenu();
 
     // Returns the current menu state
@@ -154,6 +161,9 @@ private:
     // Runs one step of the menu smoke script
     void StepSmoke();
 
+    // Ends the settings visit of both menus' Settings pages (a menu opened or closed)
+    void EndSettingsVisit();
+
     UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
 
@@ -162,6 +172,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLTargetingSubsystem> Targeting;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLJumpSubsystem> Jump;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsSubsystem> Settings;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMainMenuWidget> MainMenu;

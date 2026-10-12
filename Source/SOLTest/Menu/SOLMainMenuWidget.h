@@ -13,6 +13,8 @@
 class UBorder;
 class USOLMenuButton;
 class USOLMenuSubsystem;
+class USOLSettingsPageWidget;
+class UTextBlock;
 class UWidgetSwitcher;
 
 // Pages the main menu shows beside its button column
@@ -29,8 +31,9 @@ enum class ESOLMainMenuPage : uint8
  * Main menu (SDD 8, 8c), a UMG widget tree built entirely in C++: a left column with the title and the Play, Start
  * location, Controls, Settings, About and Quit buttons over the live solar system, and a page panel beside it for the
  * start-location picker (every registry body; the choice is the start body Play uses, the same mechanism as -SOLStart),
- * Controls, Settings (placeholder until 8d) and About. Mouse and keyboard: hover or Tab / arrows move the highlight,
- * Enter / Space or a click activates, Esc closes the open page. Actions go to USOLMenuSubsystem.
+ * Controls (keys from the applied settings, so rebinds show), Settings (8d; leaving the page ends the settings visit)
+ * and About. Mouse and keyboard: hover or Tab / arrows move the highlight, Enter / Space or a click activates, Esc
+ * closes the open page. Actions go to USOLMenuSubsystem.
  */
 UCLASS()
 class SOLTEST_API USOLMainMenuWidget : public UUserWidget
@@ -50,6 +53,9 @@ public:
 
     // Gives keyboard focus to the Play button
     void FocusDefault();
+
+    // Returns the Settings page
+    USOLSettingsPageWidget* GetSettingsPage() const { return SettingsPage; }
 
 protected:
 
@@ -93,6 +99,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UWidgetSwitcher> PageSwitcher;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsPageWidget> SettingsPage;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;

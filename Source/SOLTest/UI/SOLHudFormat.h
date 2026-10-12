@@ -31,4 +31,25 @@ namespace SOLHudFormat
 
     // Appends FormatDistanceM(distanceM)'s exact text to an existing buffer, without a temporary FString
     SOLTEST_API void AppendDistanceM(FString& outText, double distanceM);
+
+    // Returns the flight HUD's key hint line from the ship's keys (SOLKeyBindings order, shown through
+    // SOLBindingLabel), with the orbit-lines state; with the default keys it reads "ORBITS OFF (O)   F3 speed panel
+    // ...   LMB fire   G drop target"
+    SOLTEST_API FString FormatFlightKeyHints(const TArray<FString>& keys, bool bOrbitLinesOn);
+
+    // Returns the jump map's first hint line, whose close key is the (rebindable) map toggle
+    SOLTEST_API FString FormatMapKeyHints(const TArray<FString>& keys);
+
+    // The flight HUD and speed panel texts that name a rebindable key (built when the keys change, not per frame)
+    struct FHudKeyTexts
+    {
+        FString SurfaceLockHint;    // "L to surface-lock  " (before the body name)
+        FString FrameLockTag;       // " [M LOCK]" (after the frame name)
+        FString NoTarget;           // "none (T)" (target panel without a target)
+        FString SpeedPanelTitle;    // "SPEED CAP  (F3 / Enter close, Esc close)"
+    };
+
+    // Returns the HUD and speed panel texts that name a key, from the ship's keys (SOLKeyBindings order); the comments
+    // above show them with the default keys
+    SOLTEST_API FHudKeyTexts FormatHudKeyTexts(const TArray<FString>& keys);
 }

@@ -4,6 +4,8 @@
 */
 
 #include "Menu/SOLInfoText.h"
+#include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLMenuText.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -204,6 +206,42 @@ bool FSOLInfoTextDeterminismTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("FormatSpeed repeatable"), FormatSpeed(4321.0), FormatSpeed(4321.0));
     TestEqual(TEXT("FormatRate repeatable"), FormatRate(2.5), FormatRate(2.5));
     TestEqual(TEXT("FormatPercentOrValue repeatable"), FormatPercentOrValue(7.25), FormatPercentOrValue(7.25));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextFollowsRebindsTest, "SOLTest.InfoText.FollowsRebinds",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The surface-lock label and the prose name the player's current keys, before and after a rebind
+bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLInfoText;
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    TestEqual(TEXT("default surface-lock label"), FormatSurfaceLockManualLabel(keys),
+        FString(TEXT("Surface-lock with L from up to")));
+    TArray<FString> prose = BuildProse(keys);
+    TestEqual(TEXT("one paragraph per prose entry"), prose.Num(),
+        static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::INFO_PROSE)));
+    const FString joined = FString::Join(prose, TEXT(" "));
+    TestTrue(TEXT("default frame lock key"), joined.Contains(TEXT("locked with M.")));
+    TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (Tab)")));
+    TestTrue(TEXT("default map key"), joined.Contains(TEXT("jump map (J)")));
+    TestFalse(TEXT("no placeholder left"), joined.Contains(TEXT("{")));
+
+    keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
+    keys[static_cast<int32>(EBinding::MatchLock)] = TEXT("N");
+    keys[static_cast<int32>(EBinding::ToggleAssist)] = TEXT("CapsLock");
+    keys[static_cast<int32>(EBinding::ToggleMap)] = TEXT("Comma");
+    TestEqual(TEXT("rebound surface-lock label"), FormatSurfaceLockManualLabel(keys),
+        FString(TEXT("Surface-lock with K from up to")));
+    const FString rebound = FString::Join(BuildProse(keys), TEXT(" "));
+    TestTrue(TEXT("rebound frame lock key"), rebound.Contains(TEXT("locked with N.")));
+    TestTrue(TEXT("rebound assist key"), rebound.Contains(TEXT("off (CapsLock)")));
+    TestTrue(TEXT("rebound map key"), rebound.Contains(TEXT("jump map (Comma)")));
+    TestFalse(TEXT("old map key gone"), rebound.Contains(TEXT("(J)")));
     return true;
 }
 

@@ -5,22 +5,33 @@
 
 #include "Menu/SOLMenuSmoke.h"
 
+#include "Combat/SOLCombatSubsystem.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMainMenuWidget.h"
+#include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuCameraPawn.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLMenuText.h"
 #include "Menu/SOLPauseMenuWidget.h"
+#include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSettingsRules.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 
+#include "Engine/Engine.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
+#include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/FileManager.h"
 #include "InputKeyEventArgs.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/Paths.h"
+#include "UI/SOLFlightHud.h"
 #include "UnrealClient.h"
 
 namespace
@@ -30,6 +41,32 @@ namespace
     const TCHAR* const MENUSMOKE_SHOT_EXTENSION = TEXT(".png");
     constexpr double MENUSMOKE_SHOT_SETTLE_S = 0.5;               // After a screenshot request, before the next phase
     constexpr double MENUSMOKE_MIN_THRUST_GAIN_MPS = 50.0;        // Speed the 2.5 s of forward thrust must add
+
+    // Settings phases (8d): the values set through the page, and the slot writes expected after each visit
+    constexpr float MENUSMOKE_MASTER_VOLUME = 0.5f;
+    constexpr float MENUSMOKE_SFX_VOLUME = 0.8f;
+    constexpr float MENUSMOKE_MUSIC_VOLUME = 0.4f;
+    constexpr float MENUSMOKE_MOUSE_SENSITIVITY = 1.5f;
+    constexpr float MENUSMOKE_HUD_SCALE = 1.25f;
+    constexpr float MENUSMOKE_PREVIEW_VOLUME = 0.2f;              // Previewed, then reverted
+    constexpr float MENUSMOKE_VOLUME_TOLERANCE = 0.01f;
+    constexpr int32 MENUSMOKE_WRITES_AFTER_REBIND = 2;            // Main-menu visit, then the pause rebind visit
+    constexpr int32 MENUSMOKE_WRITES_AFTER_RESTORE = 3;           // ...then the restore at the end
+    const TCHAR* const MENUSMOKE_FIRE_ROW = TEXT("@Fire");        // Controls row of the fire binding
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the SOLMenuText::CONTROL_ROWS index whose bindings are exactly this text, or INDEX_NONE
+    int32 FindControlsRow(const TCHAR* bindings)
+    {
+        for (int32 row = 0; row < UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS); ++row)
+        {
+            if (FCString::Strcmp(SOLMenuText::CONTROL_ROWS[row].Bindings, bindings) == 0)
+            {
+                return row;
+            }
+        }
+        return INDEX_NONE;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -39,6 +76,16 @@ void FSOLMenuSmoke::Start(USOLMenuSubsystem& menu, const FString& scenario)
     mController = menu.GetPlayerController();
     mTakesShots = !scenario.Equals(MENUSMOKE_FLOW_SCENARIO, ESearchCase::IgnoreCase);
     mPendingReleases.Reserve(4);
+
+    // The settings the run starts from (its own slot, so the defaults seeded from the engine) are restored at the end
+    if (const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu))
+    {
+        mOriginalValues = settings->GetSavedValues();
+    }
+    if (const UGameUserSettings* engineSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr)
+    {
+        mOriginalQualityLevel = engineSettings->GetOverallScalabilityLevel();
+    }
     UE_LOG(LogSOL, Log, TEXT("MenuSmoke: start (scenario '%s', screenshots %s)"), *scenario,
         mTakesShots ? TEXT("on") : TEXT("off"));
     mPhase = EPhase::MainMenu;
@@ -109,6 +156,7 @@ void FSOLMenuSmoke::EnterPhase(const EPhase phase, USOLMenuSubsystem& menu)
     };
     USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
     ASOLShipPawn* shipPawn = mController.IsValid() ? Cast<ASOLShipPawn>(mController->GetPawn()) : nullptr;
+    EnterSettingsPhase(phase, menu);
     switch (phase)
     {
     case EPhase::StartPicker:
@@ -196,6 +244,7 @@ void FSOLMenuSmoke::ExitPhase(const EPhase phase, USOLMenuSubsystem& menu)
 {
     using SOLMenuState::EMenuMode;
     ASOLShipPawn* shipPawn = mController.IsValid() ? Cast<ASOLShipPawn>(mController->GetPawn()) : nullptr;
+    ExitSettingsPhase(phase, menu);
     switch (phase)
     {
     case EPhase::MainMenu:
@@ -286,6 +335,9 @@ double FSOLMenuSmoke::GetPhaseDuration(const EPhase phase)
         return 4.0;
     case EPhase::Thrust:
         return 2.5;
+    case EPhase::SettingsLeave:
+    case EPhase::FireNewKey:
+        return 2.0;
     default:
         return 1.5;
     }
@@ -305,6 +357,10 @@ const TCHAR* FSOLMenuSmoke::GetPhaseShot(const EPhase phase)
         return TEXT("03_MainControls");
     case EPhase::MainAbout:
         return TEXT("04_MainAbout");
+    case EPhase::MainSettings:
+        return TEXT("04b_MainSettings");
+    case EPhase::SettingsChange:
+        return TEXT("04c_MainSettings_Changed");
     case EPhase::Thrust:
         return TEXT("05_Flight");
     case EPhase::Pause:
@@ -315,6 +371,10 @@ const TCHAR* FSOLMenuSmoke::GetPhaseShot(const EPhase phase)
         return TEXT("08_Pause_Info");
     case EPhase::TabSettings:
         return TEXT("09_Pause_Settings");
+    case EPhase::RebindFire:
+        return TEXT("09b_Pause_Settings_Rebound");
+    case EPhase::ControlsRebound:
+        return TEXT("09c_Pause_Controls_Rebound");
     case EPhase::TabAbout:
         return TEXT("10_Pause_About");
     case EPhase::TabQuit:
@@ -395,6 +455,78 @@ void FSOLMenuSmoke::SlateKey(const FKey& key) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sends a mouse button press and release through Slate at the cursor
+void FSOLMenuSmoke::SlateMouseButton(const FKey& button) const
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        UE_LOG(LogSOL, Warning, TEXT("MenuSmoke: no Slate for mouse button %s"), *button.ToString());
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    const FVector2D cursor = slate.GetCursorPos();
+    TSet<FKey> pressed;
+    pressed.Add(button);
+    const FPointerEvent down(slate.GetUserIndexForMouse(), FSlateApplication::CursorPointerIndex, cursor, cursor,
+        pressed, button, 0.0f, FModifierKeysState());
+    slate.ProcessMouseButtonDownEvent(nullptr, down);
+    const FPointerEvent up(slate.GetUserIndexForMouse(), FSlateApplication::CursorPointerIndex, cursor, cursor,
+        TSet<FKey>(), button, 0.0f, FModifierKeysState());
+    slate.ProcessMouseButtonUpEvent(up);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drives the rebind capture through real Slate events with the focus on another button
+void FSOLMenuSmoke::RunRebindCapture(USOLMenuSubsystem& menu)
+{
+    using SOLKeyBindings::EBinding;
+    USOLPauseMenuWidget* pauseMenu = menu.GetPauseMenu();
+    USOLSettingsPageWidget* page = pauseMenu != nullptr ? pauseMenu->GetSettingsPage() : nullptr;
+    USOLMenuButton* resume = pauseMenu != nullptr ? pauseMenu->GetTabButton(SOLMenuState::EMenuTab::Resume) : nullptr;
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+    mIsCaptureOk = false;
+    mSlateKeysBefore = pauseMenu != nullptr ? pauseMenu->GetSlateKeyCount() : 0;
+    if (page == nullptr || resume == nullptr || settings == nullptr)
+    {
+        mCaptureDetail = TEXT("no pause menu, settings page or Resume tab");
+        return;
+    }
+    const int32 drop = static_cast<int32>(EBinding::DropTarget);
+    const int32 toggleMap = static_cast<int32>(EBinding::ToggleMap);
+
+    // Space while listening, with the mouse hovering Resume (no focus change) and then the keyboard focus forced onto
+    // it anyway: Space is the new key and must not click Resume
+    page->BeginRebind(drop);
+    const bool bHadFocus = resume->HasKeyboardFocus();
+    resume->NotifyHovered();
+    const bool bHoverMovedFocus = !bHadFocus && resume->HasKeyboardFocus();
+    resume->SetKeyboardFocus();
+    SlateKey(EKeys::SpaceBar);
+    const FString spaceKey = settings->GetPendingKeys()[drop];
+
+    // Enter for the map toggle (one of the map's fixed keys): refused, and must not click the focused Resume either
+    page->BeginRebind(toggleMap);
+    SlateKey(EKeys::Enter);
+    const FString mapKey = settings->GetPendingKeys()[toggleMap];
+    const FString refusedStatus = page->GetStatusText();
+
+    // A right mouse press is a key like any other
+    page->BeginRebind(drop);
+    SlateMouseButton(EKeys::RightMouseButton);
+    const FString mouseKey = settings->GetPendingKeys()[drop];
+    const bool bStillListening = page->IsListening();
+
+    // Back to the default drop key, so the next phase starts from the defaults
+    page->BeginRebind(drop);
+    page->CaptureKey(EKeys::G);
+    mIsCaptureOk = !bHoverMovedFocus && spaceKey == TEXT("SpaceBar") && mapKey == TEXT("J")
+        && !refusedStatus.IsEmpty() && mouseKey == TEXT("RightMouseButton") && !bStillListening
+        && settings->GetPendingKeys()[drop] == TEXT("G") && !settings->IsKeyCaptureActive();
+    mCaptureDetail = FString::Printf(TEXT("hover moved focus %d, space -> %s, map Enter -> %s (%s), mouse -> %s"),
+        bHoverMovedFocus, *spaceKey, *mapKey, *refusedStatus, *mouseKey);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Requests a screenshot with the UI to Saved/Screenshots
 void FSOLMenuSmoke::TakeShot(const TCHAR* name) const
 {
@@ -429,5 +561,336 @@ void FSOLMenuSmoke::Check(const TCHAR* label, const bool bPassed, const FString&
     {
         ++mFailed;
         UE_LOG(LogSOL, Error, TEXT("MenuSmoke FAIL: %s %s"), label, *detail);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs a settings phase's entry actions (part 8d)
+void FSOLMenuSmoke::EnterSettingsPhase(const EPhase phase, USOLMenuSubsystem& menu)
+{
+    using SOLKeyBindings::EBinding;
+    USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLSettingsPageWidget* mainPage = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    USOLSettingsPageWidget* pausePage = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetSettingsPage()
+        : nullptr;
+    if (settings == nullptr)
+    {
+        return;
+    }
+    mSaveRequestsBefore = settings->GetSaveRequestCount();
+    switch (phase)
+    {
+    case EPhase::MainSettings:
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ShowPage(ESOLMainMenuPage::Settings);
+        }
+        break;
+    case EPhase::SettingsChange:
+        if (mainPage != nullptr)
+        {
+            // Two Applies in one visit: the volumes, mouse, HUD scale and quality first, then the music volume
+            mainPage->SetSliderValue(ESOLSettingsSlider::MasterVolume, MENUSMOKE_MASTER_VOLUME);
+            mainPage->SetSliderValue(ESOLSettingsSlider::SfxVolume, MENUSMOKE_SFX_VOLUME);
+            mainPage->SetSliderValue(ESOLSettingsSlider::MouseSensitivity, MENUSMOKE_MOUSE_SENSITIVITY);
+            mainPage->SetToggle(ESOLSettingsToggle::InvertY, true);
+            mainPage->SetSliderValue(ESOLSettingsSlider::HudScale, MENUSMOKE_HUD_SCALE);
+            mainPage->Step(ESOLSettingsStepper::Quality, -1);
+            mainPage->Apply();
+            mainPage->SetSliderValue(ESOLSettingsSlider::MusicVolume, MENUSMOKE_MUSIC_VOLUME);
+            mainPage->Apply();
+        }
+        mExpectedValues = mOriginalValues;
+        mExpectedValues.MasterVolume = MENUSMOKE_MASTER_VOLUME;
+        mExpectedValues.SfxVolume = MENUSMOKE_SFX_VOLUME;
+        mExpectedValues.MusicVolume = MENUSMOKE_MUSIC_VOLUME;
+        mExpectedValues.MouseSensitivity = MENUSMOKE_MOUSE_SENSITIVITY;
+        mExpectedValues.bInvertY = true;
+        mExpectedValues.HudScale = MENUSMOKE_HUD_SCALE;
+        mExpectedValues.QualityPreset = SOLSettingsRules::StepIndex(mOriginalValues.QualityPreset,
+            SOLSettingsRules::QUALITY_PRESET_COUNT, -1);
+        break;
+    case EPhase::SettingsLeave:
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ShowPage(ESOLMainMenuPage::None);
+        }
+        break;
+    case EPhase::SettingsNoChange:
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ShowPage(ESOLMainMenuPage::Settings);
+            mainMenu->ShowPage(ESOLMainMenuPage::None);
+        }
+        break;
+    case EPhase::SettingsRevert:
+        if (mainMenu != nullptr && mainPage != nullptr)
+        {
+            // The preview reaches the live values at once; Revert puts the applied ones back
+            mainMenu->ShowPage(ESOLMainMenuPage::Settings);
+            mainPage->SetSliderValue(ESOLSettingsSlider::MasterVolume, MENUSMOKE_PREVIEW_VOLUME);
+            mRevertPreviewOk = FMath::IsNearlyEqual(settings->GetLiveValues().MasterVolume, MENUSMOKE_PREVIEW_VOLUME)
+                && settings->IsDirty();
+            mainPage->Revert();
+            mainMenu->ShowPage(ESOLMainMenuPage::None);
+        }
+        break;
+    case EPhase::AudioProbe:
+        settings->ProbeEffectsVolume();
+        break;
+    case EPhase::RebindCapture:
+        RunRebindCapture(menu);
+        break;
+    case EPhase::RebindFire:
+        if (pausePage != nullptr)
+        {
+            // A fixed key is refused, a used key is bound with a warning (and put back), then Fire goes to K
+            pausePage->BeginRebind(static_cast<int32>(EBinding::DropTarget));
+            pausePage->CaptureKey(EKeys::P);
+            const bool bRefused = settings->GetPendingKeys()[static_cast<int32>(EBinding::DropTarget)] == TEXT("G");
+            pausePage->BeginRebind(static_cast<int32>(EBinding::Boost));
+            pausePage->CaptureKey(EKeys::G);
+            const bool bConflict = SOLKeyBindings::HasConflict(settings->GetPendingKeys(),
+                static_cast<int32>(EBinding::Boost));
+            const FString conflictStatus = pausePage->GetStatusText();
+            pausePage->BeginRebind(static_cast<int32>(EBinding::Boost));
+            pausePage->CaptureKey(EKeys::LeftShift);
+            pausePage->BeginRebind(static_cast<int32>(EBinding::Fire));
+            const bool bListening = pausePage->IsListening();
+            pausePage->CaptureKey(EKeys::K);
+            Check(TEXT("rebind: fixed key refused, used key flagged, Fire listening"), bRefused && bConflict
+                && bListening && !conflictStatus.IsEmpty(), conflictStatus);
+            Check(TEXT("rebind: Fire pending K and the page is dirty"), pausePage->GetKeyRowText(
+                static_cast<int32>(EBinding::Fire)) == TEXT("K") && settings->IsDirty(), pausePage->GetStatusText());
+            pausePage->Apply();
+            pausePage->ScrollToBinding(static_cast<int32>(EBinding::Fire));
+        }
+        break;
+    case EPhase::ControlsRebound:
+        menu.SelectTab(SOLMenuState::EMenuTab::Controls);
+        break;
+    case EPhase::FireOldKey:
+        mBoltsBefore = GetBoltCount(menu);
+        PressKey(EKeys::LeftMouseButton);
+        break;
+    case EPhase::FireNewKey:
+        mBoltsBefore = GetBoltCount(menu);
+        PressKey(EKeys::K);
+        break;
+    case EPhase::RestorePause:
+        menu.RequestEscape();
+        break;
+    case EPhase::RestoreSettings:
+        menu.SelectTab(SOLMenuState::EMenuTab::Settings);
+        if (pausePage != nullptr)
+        {
+            settings->SetPendingValues(mOriginalValues);
+            pausePage->ResetKeys();
+            pausePage->Apply();
+        }
+        break;
+    case EPhase::RestoreResume:
+        menu.RequestResume();
+        break;
+    default:
+        break;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs a settings phase's exit checks (part 8d)
+void FSOLMenuSmoke::ExitSettingsPhase(const EPhase phase, USOLMenuSubsystem& menu)
+{
+    using SOLKeyBindings::EBinding;
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+    const ASOLShipPawn* shipPawn = mController.IsValid() ? Cast<ASOLShipPawn>(mController->GetPawn()) : nullptr;
+    const UGameUserSettings* engineSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr;
+    if (settings == nullptr)
+    {
+        if (phase == EPhase::MainSettings)
+        {
+            Check(TEXT("settings subsystem exists"), false, FString());
+        }
+        return;
+    }
+    const int32 writes = settings->GetSaveRequestCount();
+    const FString writeDetail = FString::Printf(TEXT("writes %d -> %d, completed %d"), mSaveRequestsBefore, writes,
+        settings->GetSaveCompletedCount());
+    switch (phase)
+    {
+    case EPhase::MainSettings:
+        Check(TEXT("Settings page shown"), menu.GetMainMenu() != nullptr
+            && menu.GetMainMenu()->GetPage() == ESOLMainMenuPage::Settings, settings->GetSlotName());
+        break;
+    case EPhase::SettingsChange:
+        Check(TEXT("two Applies commit every value"), SOLSettingsModel::AreEqual(settings->GetSavedValues(),
+            mExpectedValues) && !settings->IsDirty(), FString::Printf(TEXT("master %.2f music %.2f quality %d"),
+            settings->GetSavedValues().MasterVolume, settings->GetSavedValues().MusicVolume,
+            settings->GetSavedValues().QualityPreset));
+        Check(TEXT("Apply does not write (the write waits for the page to close)"), writes == mSaveRequestsBefore,
+            writeDetail);
+        Check(TEXT("quality preset reached the engine"), engineSettings != nullptr
+            && engineSettings->GetOverallScalabilityLevel() == mExpectedValues.QualityPreset, FString::Printf(
+            TEXT("engine %d expected %d"), engineSettings != nullptr ? engineSettings->GetOverallScalabilityLevel()
+            : -2, mExpectedValues.QualityPreset));
+        break;
+    case EPhase::SettingsLeave:
+    {
+        mSlotTimeStamp = IFileManager::Get().GetTimeStamp(*settings->GetSlotFilePath());
+        Check(TEXT("leaving the page writes the slot exactly once"), writes == mSaveRequestsBefore + 1
+            && settings->GetSaveCompletedCount() == writes && mSlotTimeStamp != FDateTime::MinValue(),
+            FString::Printf(TEXT("%s, file %s"), *writeDetail, *settings->GetSlotFilePath()));
+        break;
+    }
+    case EPhase::SettingsNoChange:
+        Check(TEXT("a visit without changes does not write"), writes == mSaveRequestsBefore
+            && IFileManager::Get().GetTimeStamp(*settings->GetSlotFilePath()) == mSlotTimeStamp, writeDetail);
+        break;
+    case EPhase::SettingsReload:
+    {
+        SOLSettingsModel::FSettingsValues reloaded;
+        TArray<FString> keys;
+        const bool bRead = settings->ReadSlotForVerification(reloaded, keys);
+        Check(TEXT("re-reading the slot restores the values"), bRead && SOLSettingsModel::AreEqual(reloaded,
+            mExpectedValues) && keys == SOLKeyBindings::DefaultKeys(), FString::Printf(TEXT("read %d master %.2f "
+            "invert %d hud %.2f"), bRead, reloaded.MasterVolume, reloaded.bInvertY, reloaded.HudScale));
+        break;
+    }
+    case EPhase::SettingsRevert:
+        Check(TEXT("preview then Revert"), mRevertPreviewOk && FMath::IsNearlyEqual(settings->GetLiveValues()
+            .MasterVolume, MENUSMOKE_MASTER_VOLUME) && !settings->IsDirty() && writes == mSaveRequestsBefore,
+            FString::Printf(TEXT("preview %d live %.2f %s"), mRevertPreviewOk, settings->GetLiveValues().MasterVolume,
+            *writeDetail));
+        break;
+    case EPhase::AudioProbe:
+    {
+        const float expected = MENUSMOKE_MASTER_VOLUME * MENUSMOKE_SFX_VOLUME;
+        Check(TEXT("effects class mixed volume = master x effects"), FMath::IsNearlyEqual(
+            settings->GetProbedEffectsVolume(), expected, MENUSMOKE_VOLUME_TOLERANCE), FString::Printf(
+            TEXT("%.3f expected %.3f"), settings->GetProbedEffectsVolume(), expected));
+        break;
+    }
+    case EPhase::Thrust:
+    {
+        const ASOLFlightHud* hud = mController.IsValid() ? Cast<ASOLFlightHud>(mController->GetHUD()) : nullptr;
+        Check(TEXT("HUD scale applied"), hud != nullptr && hud->GetUiScale() >= MENUSMOKE_HUD_SCALE
+            - MENUSMOKE_VOLUME_TOLERANCE, FString::Printf(TEXT("ui scale %.3f"), hud != nullptr ? hud->GetUiScale()
+            : 0.0f));
+        break;
+    }
+    case EPhase::TabControls:
+    {
+        const int32 fireRow = FindControlsRow(MENUSMOKE_FIRE_ROW);
+        const FString text = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetControlsRowText(fireRow)
+            : FString();
+        Check(TEXT("Controls shows the default fire key"), text == TEXT("LMB"), text);
+        break;
+    }
+    case EPhase::RebindCapture:
+    {
+        // A click on the focused Resume tab would have queued a resume (applied a frame later): the menu must still be
+        // paused on the Settings tab, and the pause menu must not have seen the keys
+        const int32 slateKeys = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetSlateKeyCount() : -1;
+        Check(TEXT("rebind capture: keys bound or refused, nothing clicked"), mIsCaptureOk
+            && menu.GetState().Mode == SOLMenuState::EMenuMode::Paused
+            && menu.GetState().Tab == SOLMenuState::EMenuTab::Settings && slateKeys == mSlateKeysBefore,
+            FString::Printf(TEXT("%s; mode %d tab %d slate keys %d -> %d"), *mCaptureDetail,
+            static_cast<int32>(menu.GetState().Mode), static_cast<int32>(menu.GetState().Tab), mSlateKeysBefore,
+            slateKeys));
+        break;
+    }
+    case EPhase::RebindFire:
+        Check(TEXT("rebind applied through the pawn"), shipPawn != nullptr
+            && shipPawn->GetBoundKeyNames()[static_cast<int32>(EBinding::Fire)] == TEXT("K")
+            && shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Fire), EKeys::K)
+            && !shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Fire), EKeys::LeftMouseButton)
+            && shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Boost), EKeys::LeftShift)
+            && writes == mSaveRequestsBefore, writeDetail);
+        break;
+    case EPhase::ControlsRebound:
+    {
+        const int32 fireRow = FindControlsRow(MENUSMOKE_FIRE_ROW);
+        const FString text = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetControlsRowText(fireRow)
+            : FString();
+        Check(TEXT("Controls shows the rebound fire key"), text == TEXT("K"), text);
+        break;
+    }
+    case EPhase::ResumeSlate:
+        Check(TEXT("resuming writes the rebind once"), writes == MENUSMOKE_WRITES_AFTER_REBIND
+            && settings->GetSaveRequestCount() == MENUSMOKE_WRITES_AFTER_REBIND, writeDetail);
+        break;
+    case EPhase::FireOldKey:
+    {
+        const int32 bolts = GetBoltCount(menu);
+        ReleaseKey(EKeys::LeftMouseButton);
+        Check(TEXT("the old fire key no longer fires"), bolts <= mBoltsBefore, FString::Printf(TEXT("bolts %d -> %d"),
+            mBoltsBefore, bolts));
+        break;
+    }
+    case EPhase::FireNewKey:
+    {
+        const int32 bolts = GetBoltCount(menu);
+        ReleaseKey(EKeys::K);
+        SOLSettingsModel::FSettingsValues reloaded;
+        TArray<FString> keys;
+        const bool bRead = settings->ReadSlotForVerification(reloaded, keys);
+        Check(TEXT("the new fire key fires bolts"), bolts > mBoltsBefore, FString::Printf(TEXT("bolts %d -> %d"),
+            mBoltsBefore, bolts));
+        const ASOLFlightHud* hud = mController.IsValid() ? Cast<ASOLFlightHud>(mController->GetHUD()) : nullptr;
+        Check(TEXT("the HUD hint line shows the rebound fire key"), hud != nullptr
+            && hud->GetFlightKeyHints().Contains(TEXT("   K fire   ")), hud != nullptr ? hud->GetFlightKeyHints()
+            : FString());
+        Check(TEXT("the slot holds the rebind"), bRead && keys[static_cast<int32>(EBinding::Fire)] == TEXT("K"),
+            bRead ? keys[static_cast<int32>(EBinding::Fire)] : FString());
+        break;
+    }
+    case EPhase::RestoreSettings:
+        Check(TEXT("restore applied"), SOLSettingsModel::AreEqual(settings->GetSavedValues(), mOriginalValues)
+            && settings->GetAppliedKeys() == SOLKeyBindings::DefaultKeys(), FString());
+        break;
+    case EPhase::RestoreResume:
+    {
+        SOLSettingsModel::FSettingsValues reloaded;
+        TArray<FString> keys;
+        const bool bRead = settings->ReadSlotForVerification(reloaded, keys);
+        Check(TEXT("restored settings written (third write) and the engine quality is back"), bRead
+            && SOLSettingsModel::AreEqual(reloaded, mOriginalValues) && keys == SOLKeyBindings::DefaultKeys()
+            && writes == MENUSMOKE_WRITES_AFTER_RESTORE && engineSettings != nullptr
+            && (mOriginalQualityLevel < 0 || engineSettings->GetOverallScalabilityLevel() == mOriginalQualityLevel),
+            FString::Printf(TEXT("read %d %s quality %d (was %d)"), bRead, *writeDetail, engineSettings != nullptr
+            ? engineSettings->GetOverallScalabilityLevel() : -2, mOriginalQualityLevel));
+        break;
+    }
+    default:
+        break;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the live bolt count of the combat subsystem (0 without it)
+int32 FSOLMenuSmoke::GetBoltCount(const USOLMenuSubsystem& menu)
+{
+    const USOLCombatSubsystem* combat = menu.GetWorld()->GetSubsystem<USOLCombatSubsystem>();
+    return combat != nullptr ? combat->GetBoltCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Presses a game key now and holds it until ReleaseKey
+void FSOLMenuSmoke::PressKey(const FKey& key)
+{
+    if (mController.IsValid())
+    {
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Pressed, 1.0f));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Releases a held game key
+void FSOLMenuSmoke::ReleaseKey(const FKey& key)
+{
+    if (mController.IsValid())
+    {
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Released, 0.0f));
     }
 }

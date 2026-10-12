@@ -32,7 +32,8 @@ class USOLTargetingSubsystem;
  * USOLShipSubsystem::SetState with its orientation unchanged. SetState moves the observer through
  * USOLAnchorSubsystem::SetObserverPositionM, which re-picks the anchor without hysteresis and force-snaps the render
  * origin at once; the frame's anchor update and draw follow, so the ship is never drawn far from the origin. A frame
- * whose universe update ran without a ship step (the ship became invalid) aborts a running sequence.
+ * whose universe update ran without a ship step (the ship became invalid) aborts a running sequence; Quit to menu
+ * cancels it explicitly first (CancelJump).
  */
 UCLASS()
 class SOLTEST_API USOLJumpSubsystem : public UWorldSubsystem
@@ -53,6 +54,9 @@ public:
     // Starts the warp sequence to a pick with at least the planar offset locked; false (nothing starts) otherwise or
     // while a sequence already runs
     bool StartJump(const FSOLMapPickState& pick);
+
+    // Stops a running warp sequence without arriving (Quit to menu removes the ship); nothing happens when none runs
+    void CancelJump();
 
     // Returns true while the warp sequence runs
     bool IsWarping() const { return mIsWarping; }

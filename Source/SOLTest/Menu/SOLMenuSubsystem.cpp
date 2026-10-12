@@ -6,9 +6,12 @@
 #include "Menu/SOLMenuSubsystem.h"
 
 #include "Game/SOLGameMode.h"
+#include "Map/SOLJumpSubsystem.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuSmoke.h"
 #include "Menu/SOLPauseMenuWidget.h"
+#include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -55,6 +58,7 @@ void USOLMenuSubsystem::Initialize(FSubsystemCollectionBase& collection)
     BodyRegistry = collection.InitializeDependency<USOLBodyRegistrySubsystem>();
     Ships = collection.InitializeDependency<USOLShipSubsystem>();
     Targeting = collection.InitializeDependency<USOLTargetingSubsystem>();
+    Jump = collection.InitializeDependency<USOLJumpSubsystem>();
     Super::Initialize(collection);
     mQueuedEvents.Reserve(MENU_EVENT_QUEUE_RESERVE);
 
@@ -78,7 +82,7 @@ void USOLMenuSubsystem::Initialize(FSubsystemCollectionBase& collection)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Removes the menu widgets and stops the timers
+// Removes the menu widgets, stops the timers and pops the settings' volume mix from this world
 void USOLMenuSubsystem::Deinitialize()
 {
     if (UWorld* world = GetWorld())
@@ -86,6 +90,12 @@ void USOLMenuSubsystem::Deinitialize()
         world->GetTimerManager().ClearTimer(mProcessTimer);
         world->GetTimerManager().ClearTimer(mShowTimer);
         world->GetTimerManager().ClearTimer(mSmokeTimer);
+
+        // The settings outlive the world (game instance): the mix pushed at begin play goes with the world
+        if (Settings != nullptr)
+        {
+            Settings->ReleaseWorld(*world);
+        }
     }
     if (MainMenu != nullptr)
     {
@@ -97,6 +107,8 @@ void USOLMenuSubsystem::Deinitialize()
     }
     MainMenu = nullptr;
     PauseMenu = nullptr;
+    Settings = nullptr;
+    Jump = nullptr;
     mSmoke.Reset();
     mQueuedEvents.Empty();
     mOnStateChanged.Clear();
@@ -108,6 +120,13 @@ void USOLMenuSubsystem::Deinitialize()
 void USOLMenuSubsystem::OnWorldBeginPlay(UWorld& world)
 {
     Super::OnWorldBeginPlay(world);
+
+    // The settings' volume mix goes on this world's audio device
+    Settings = USOLSettingsSubsystem::Get(this);
+    if (Settings != nullptr)
+    {
+        Settings->ApplyToWorld(world);
+    }
     if (IsMenuShowing())
     {
         mShowTimer = world.GetTimerManager().SetTimerForNextTick(this, &USOLMenuSubsystem::RefreshWidgets);
@@ -168,7 +187,7 @@ bool USOLMenuSubsystem::ShouldStartInMenu()
         {
             bForceMenu = true;
         }
-        else if (name.StartsWith(SOL::CommandLine::SWITCH_PREFIX, ESearchCase::CaseSensitive))
+        else if (name.StartsWith(SOL::CommandLine::SWITCH_PREFIX, ESearchCase::IgnoreCase))
         {
             bHasOtherSolSwitch = true;
         }
@@ -305,6 +324,9 @@ void USOLMenuSubsystem::ApplyEvent(const SOLMenuState::EMenuEvent event)
     UE_LOG(LogSOL, Log, TEXT("MenuSubsystem %s: %s -> %s"), *GetName(), MenuModeName(previous.Mode),
         MenuModeName(mState.Mode));
 
+    // A menu opening or closing ends any settings visit: what was not applied is reverted, an applied change written
+    EndSettingsVisit();
+
     // Pawn and ship changes first, so the widgets, the input mode and the listeners see the new world
     if (SOLMenuState::ShouldSpawnShip(previous, mState))
     {
@@ -337,7 +359,12 @@ void USOLMenuSubsystem::StartFlight()
 // Removes the ship pawn and entity and possesses a new menu camera pawn
 void USOLMenuSubsystem::ReturnToMainMenu()
 {
-    // The new pawn class comes from the game mode, which reads this (already MainMenu) state
+    // A jump warp in progress stops first (its arrival would need the ship that is about to go); the new pawn class
+    // comes from the game mode, which reads this (already MainMenu) state
+    if (Jump != nullptr)
+    {
+        Jump->CancelJump();
+    }
     SwapPawn();
     if (Ships != nullptr)
     {
@@ -448,6 +475,24 @@ void USOLMenuSubsystem::RefreshWidgets()
     else
     {
         PauseMenu->FocusDefault();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends the settings visit of both menus' Settings pages
+void USOLMenuSubsystem::EndSettingsVisit()
+{
+    if (MainMenu != nullptr && MainMenu->GetSettingsPage() != nullptr)
+    {
+        MainMenu->GetSettingsPage()->NotifyHidden();
+    }
+    if (PauseMenu != nullptr && PauseMenu->GetSettingsPage() != nullptr)
+    {
+        PauseMenu->GetSettingsPage()->NotifyHidden();
+    }
+    if (Settings != nullptr)
+    {
+        Settings->EndVisit();
     }
 }
 
