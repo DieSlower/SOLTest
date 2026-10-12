@@ -32,6 +32,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "TimerManager.h"
+#include "UnrealClient.h"
 
 namespace
 {
@@ -48,6 +49,9 @@ namespace
     constexpr double COMBAT_DEMO_KILL_SHOT_SECONDS = 0.2;                       // ...and these far after the kill
     constexpr double COMBAT_DEMO_DEBRIS_SHOT_SECONDS = 1.0;
     constexpr double COMBAT_DEMO_FIRE_TIMEOUT_SECONDS = 20.0;                   // Gives up on a target not killed by then
+    constexpr double COMBAT_DEMO_HOLD_SHOT_SECONDS = 0.1;                      // -SOLCombatDemoHold: screenshot interval
+    const TCHAR* const COMBAT_DEMO_HOLD_SHOT_NAME = TEXT("CombatHold");         // ...as presented frames (TSR and motion
+                                                                                // blur included), unique-suffixed
     constexpr double COMBAT_STRESS_CONE_HALF_ANGLE_DEG = 25.0;                  // -SOLCombatStress: spread of the bolts
 }
 
@@ -114,6 +118,8 @@ void ASOLGameMode::StartPlay()
     if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::COMBAT_DEMO))
     {
         FParse::Value(FCommandLine::Get(), SOL::CommandLine::COMBAT_STRESS, mCombatStressBolts);
+        FParse::Value(FCommandLine::Get(), SOL::CommandLine::COMBAT_DEMO_HOLD, mCombatDemoHoldSeconds);
+        mCombatDemoHoldSeconds = FMath::Max(mCombatDemoHoldSeconds, 0.0);
         mCombatStressBolts = FMath::Clamp(mCombatStressBolts, 0, SOL::COMBAT_MAX_BOLTS);
         GetWorldTimerManager().SetTimer(mCombatDemoTimer, this, &ASOLGameMode::StepCombatDemo, COMBAT_DEMO_STEP_SECONDS,
             true, COMBAT_DEMO_START_DELAY_SECONDS);
@@ -246,6 +252,18 @@ void ASOLGameMode::StepCombatDemo()
             EndCombatDemoFire(pawn, nowSeconds, phaseSeconds, bKilled ? TEXT("destroyed") : TEXT("lost (not a kill)"));
             break;
         }
+        // -SOLCombatDemoHold: the first target is left unshot for a while, with a presented-frame screenshot every
+        // COMBAT_DEMO_HOLD_SHOT_SECONDS (how a freshly dropped target looks, issue #15); for the second half the ship
+        // strafes right, so the target also moves across the screen
+        const double holdSeconds = phaseSeconds - COMBAT_DEMO_DROP_SETTLE_SECONDS;
+        if (mCombatDemoCycle == 0 && mCombatDemoHoldSeconds > 0.0)
+        {
+            StepCombatDemoHold(pawn, combat, holdSeconds);
+            if (mCombatDemoHoldSeconds > 0.0)
+            {
+                break;
+            }
+        }
         if (phaseSeconds >= COMBAT_DEMO_FIRE_TIMEOUT_SECONDS)
         {
             EndCombatDemoFire(pawn, nowSeconds, phaseSeconds,
@@ -275,6 +293,57 @@ void ASOLGameMode::StepCombatDemo()
         }
         break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// -SOLCombatDemoHold: screenshots and strafes while the first target is held unshot, then puts the ship back where it
+// was relative to the target, at rest in the reference frame, and ends the hold so the fire phase aims true
+void ASOLGameMode::StepCombatDemoHold(ASOLShipPawn* pawn, const USOLCombatSubsystem* combat, const double holdSeconds)
+{
+    USOLShipSubsystem* ships = GetWorld()->GetSubsystem<USOLShipSubsystem>();
+    const TConstArrayView<FVector3d> targetsM = combat->GetTargetPositionsM();
+    const bool bHasTarget = targetsM.IsValidIndex(mCombatDemoSlot);
+
+    // The ship's state and the target's position before the strafe, once the drop has landed
+    if (!mHasCombatDemoHoldStart && bHasTarget && ships != nullptr)
+    {
+        mCombatDemoHoldShipPositionM = ships->GetState().PositionM;
+        mCombatDemoHoldTargetM = targetsM[mCombatDemoSlot];
+        mHasCombatDemoHoldStart = true;
+    }
+
+    if (holdSeconds < mCombatDemoHoldSeconds)
+    {
+        if (holdSeconds >= mCombatDemoHoldShots * COMBAT_DEMO_HOLD_SHOT_SECONDS)
+        {
+            FScreenshotRequest::RequestScreenshot(COMBAT_DEMO_HOLD_SHOT_NAME, false, true);
+            ++mCombatDemoHoldShots;
+        }
+        pawn->HandleThrust(holdSeconds >= SOL::COMBAT_DEMO_HOLD_STRAFE_START_FRACTION * mCombatDemoHoldSeconds
+            ? SOL::COMBAT_DEMO_HOLD_STRAFE_THRUST : FVector3d::ZeroVector);
+        return;
+    }
+
+    // Hold over: stop strafing and cancel the drift (the frame's own motion since then is the target's displacement;
+    // ship state is Unreal-handed, combat positions are ecliptic). The zero thrust also goes straight to the ship: the
+    // pawn only hands its input over on its next tick, and one long frame of stale strafe would drift it again
+    pawn->HandleThrust(FVector3d::ZeroVector);
+    double driftMps = 0.0;
+    if (mHasCombatDemoHoldStart && bHasTarget && ships != nullptr)
+    {
+        FSOLShipControl control = ships->GetControl();
+        control.Thrust = FVector3d::ZeroVector;
+        ships->SetControl(control);
+        FSOLShipState state = ships->GetState();
+        driftMps = (state.VelocityMps - ships->GetReferenceVelocityMps()).Size();
+        state.PositionM = mCombatDemoHoldShipPositionM
+            + SOLRender::EclipticToUnreal(targetsM[mCombatDemoSlot] - mCombatDemoHoldTargetM);
+        state.VelocityMps = ships->GetReferenceVelocityMps();
+        ships->SetState(state);
+    }
+    mCombatDemoHoldSeconds = 0.0;
+    UE_LOG(LogSOL, Log, TEXT("CombatDemo: hold over after %d frame screenshots; ship put back in front of the target, "
+        "at rest in the frame (was drifting at %.1f m/s)"), mCombatDemoHoldShots, driftMps);
 }
 
 //////////////////////////////////////////////////////////////////////////

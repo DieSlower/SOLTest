@@ -150,3 +150,43 @@ The ~0.4 ms floor whenever any bolt is live is the minor-body snapshot scan of 1
 themselves cost ~0.6 ms for ~9,700 (advance, parallel sweep, compaction). Drawing 2,048 bolts adds ~0.07 ms GPU.
 Screenshot diff (stress vs baseline at the same moment) confirmed the bolt cloud renders after the pause/unpause.
 
+### Amendment 5 — dropped target blurry and phasing (issue #15, 2026-10-12)
+
+- **Root cause: the target instances had no previous transforms, so they wrote no motion vectors.** The render origin is
+  fixed in heliocentric space between 10 km rebases, so the camera and a frame-co-moving target both move through
+  render space at the ship's ~30 km/s (130-500 m per frame). An ISM instance without a previous transform counts as
+  static, so TSR and motion blur reproject it with the camera's own motion: a smear (often diagonal) on the target only.
+  It comes and goes because of `r.CameraCutTranslationThreshold` (100 m per frame): below about 300 fps the camera
+  moves more than that, the renderer resets the previous view every frame (`View.bPrevTransformsReset`, motion blur off)
+  and the error is hidden; near that frame rate it flips per frame, so the target alternates between sharp and smeared.
+  Ruled out: the material (opaque unlit, no dither or opacity), the mesh (`/Engine/BasicShapes/Sphere`, one LOD, no
+  Nanite, no cull distance), custom data (written only on change; shield/health/flash stay put while unshot), and
+  culling (the ISM's bounds update with each flush).
+- **Evidence** (`-SOLCombatDemo -SOLCombatDemoHold=2.4`, standalone 1280x720; the high-fps regime emulated with
+  `-ExecCmds="r.CameraCutTranslationThreshold 1e12"`): before the fix the first frame after the drop shows the target as
+  a long streak and the strafing frames as a smeared blob; after it, no streak, still frames sharp (mean gradient over
+  the target 16.1-16.4, steady, vs 12.9-15.3 before), and the moving frames show only motion blur along the true
+  on-screen motion. In the default (reset-every-frame) regime the target looks the same before and after, as it should.
+- **Fix:** `ASOLCombatVisuals` turns on `SetHasPerInstancePrevTransforms` and passes each instance's previous transform
+  to `BatchUpdateInstancesTransforms` (`bWorldSpace=false`: the component is absolute at identity, so render space is
+  its local space): last frame's placement when the target stayed in its slot, its current placement (no motion) when
+  a new target was dropped there or its slot was hidden last frame (`SOLCombatRules::SelectTargetPrevTransform`,
+  tested in `SOLTest.CombatRules.TargetMotionContinuity` and, as frame sequences, `TargetMotionSequence`), so a new
+  target never streaks in from the zero-scale instance or its slot's previous occupant. A render-origin rebase needs
+  nothing: last frame's placement and the camera's previous view are both in the old render space.
+- **New target detection is a per-slot spawn serial, not the events.** `USOLCombatSubsystem` stamps each drop with a
+  serial (`GetTargetSpawnSerials`, unique per drop, never 0) and the visuals keep the last serial they drew per slot.
+  The first version keyed on `TargetDropped` events, which the per-update cap (`COMBAT_MAX_EVENTS_PER_UPDATE`) can
+  drop under heavy fire, so an evict-and-redrop could have streaked; the serial closes that caveat, including an
+  eviction and a redrop within one update (the slot never looks empty).
+- **Cost:** per-instance previous transforms put the target ISM in the velocity pass (it now writes motion vectors) and
+  add three float4 per instance of GPU instance data (the previous transform). Negligible at the 1,000-slot pool, and
+  the instance count follows the high-water mark of used slots.
+- **Verification hook:** `-SOLCombatDemoHold=<s>` (with `-SOLCombatDemo`) leaves the first target unshot for that long,
+  saving a presented-frame screenshot (`CombatHold*.png`, TSR and motion blur included) every 0.1 s, and strafes the
+  ship right for the second half (`SOL::COMBAT_DEMO_HOLD_STRAFE_START_FRACTION`, `COMBAT_DEMO_HOLD_STRAFE_THRUST`) so
+  the target also crosses the screen; when the hold ends the ship is put back where it was relative to the target, at
+  its velocity then, so the fire phase that follows aims true.
+- **Not fixed (same class, recorded in CLAUDE.md tech debt):** the bolt Niagara system and the pooled one-shot effects
+  also move through render space without motion vectors; at high frame rates they get the same camera-motion smear.
+

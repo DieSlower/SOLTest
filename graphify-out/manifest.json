@@ -45,8 +45,8 @@
     "semantic_hash": "5581479d0170f71eaa99870366ffe06d"
   },
   "CLAUDE.md": {
-    "mtime": 1791828901.8523395,
-    "ast_hash": "cf5d72018d0039283e3ec836e2a3e6ce",
+    "mtime": 1791830842.053781,
+    "ast_hash": "9933049da7bec7ece5a4904432f61791",
     "semantic_hash": ""
   },
   "Docs/GAME_MECHANICS.md": {
@@ -105,13 +105,13 @@
     "semantic_hash": "d4e2121aafc0ca9ae3ff74cbe717f3aa"
   },
   "Source/SOLTest/Game/SOLGameMode.cpp": {
-    "mtime": 1791555532.1562994,
-    "ast_hash": "e05279de3b4e815713b40da41f76c566",
+    "mtime": 1791830069.8805563,
+    "ast_hash": "583fe8ec7fa5f123e1f505d24d8cc61f",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLGameMode.h": {
-    "mtime": 1791555532.1552994,
-    "ast_hash": "d86ec226075483860ff9b21a32f13399",
+    "mtime": 1791829642.189526,
+    "ast_hash": "acc23434e33a6009b1022cf70dd9a69c",
     "semantic_hash": ""
   },
   "Source/SOLTest/Game/SOLSpectatorPawn.cpp": {
@@ -125,8 +125,8 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/SOLConstants.h": {
-    "mtime": 1791828384.9273698,
-    "ast_hash": "342374560d9878599b8fa9801cc2f78c",
+    "mtime": 1791829654.2802253,
+    "ast_hash": "adc2a00b660ad4565fdae2a5fffaaf21",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/AnchorTest.cpp": {
@@ -545,8 +545,8 @@
     "semantic_hash": ""
   },
   "Docs/ARCHITECTURE.md": {
-    "mtime": 1791828868.0225344,
-    "ast_hash": "3575487a0d55b588b469e63f6729954f",
+    "mtime": 1791830837.3029788,
+    "ast_hash": "e6d14540739945c3d15eccf10ec73e86",
     "semantic_hash": ""
   },
   "Docs/Plans/3-jump-map-plan.md": {
@@ -1070,8 +1070,8 @@
     "semantic_hash": ""
   },
   "Docs/SDDs/7-weapons-targets-destruction.md": {
-    "mtime": 1791541508.444897,
-    "ast_hash": "10c8adbc03329b80f2db3ce1c6ff536c",
+    "mtime": 1791830818.6353786,
+    "ast_hash": "b349d0d91874880c48666f0a8a4208e1",
     "semantic_hash": ""
   },
   "Source/SOLTest/Combat/SOLCombatAudio.cpp": {
@@ -1095,13 +1095,13 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Combat/SOLCombatVisuals.cpp": {
-    "mtime": 1791541089.6757495,
-    "ast_hash": "c08fd7cc71567d6b36a1744e18a94ec2",
+    "mtime": 1791830592.575411,
+    "ast_hash": "0adcc578ef817d330f9684728e18445d",
     "semantic_hash": ""
   },
   "Source/SOLTest/Combat/SOLCombatVisuals.h": {
-    "mtime": 1791540378.2935596,
-    "ast_hash": "45f2cb46a1ac5156f50925689a0e3dee",
+    "mtime": 1791830601.261501,
+    "ast_hash": "e8e0923aa24fc61c80d2f19d80dd5022",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/SOLCombatAudioRulesTest.cpp": {
@@ -1110,18 +1110,18 @@
     "semantic_hash": ""
   },
   "Source/SOLTest/Combat/SOLCombatRules.cpp": {
-    "mtime": 1791540967.9471896,
-    "ast_hash": "43695c4acb672cb767bef2a95513a5a0",
+    "mtime": 1791830560.76914,
+    "ast_hash": "167bdbefc5ef29a358c741c1b64d2eb9",
     "semantic_hash": ""
   },
   "Source/SOLTest/Combat/SOLCombatRules.h": {
-    "mtime": 1791540967.0451488,
-    "ast_hash": "b9c1c1895caebb6f73c538d5d8256c4a",
+    "mtime": 1791830560.3199508,
+    "ast_hash": "0e046dbeb3fa6743aedcec205d4b4e02",
     "semantic_hash": ""
   },
   "Source/SOLTest/Tests/SOLCombatRulesTest.cpp": {
-    "mtime": 1791540982.5869257,
-    "ast_hash": "2e1c1e00252b5682e58c6f1c99dfc416",
+    "mtime": 1791830561.2163427,
+    "ast_hash": "7c689b486df65a245e2c7b73a608ae2c",
     "semantic_hash": ""
   },
   "Source/SOLTest/Menu/SOLBindingLabel.cpp": {
@@ -1325,13 +1325,33 @@
     "semantic_hash": ""
   },
   "Docs/Plans/8-hud-menus-settings-plan.md": {
-    "mtime": 1791829336.5260098,
-    "ast_hash": "c9d8f1f75f151e8b4662a1c5048308fc",
+    "mtime": 1791829419.1700647,
+    "ast_hash": "d8d12fc61b4d93a6bf5bb80ce1dd4ecf",
     "semantic_hash": ""
   },
   "Docs/SDDs/8-hud-menus-settings.md": {
     "mtime": 1791828892.746827,
     "ast_hash": "961488370c0c52b519abb691348fe611",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/13-star-field-quality-plan.md": {
+    "mtime": 1791829995.0904994,
+    "ast_hash": "6555fa5728c9fac5ccb0ea0a7e81a8f0",
+    "semantic_hash": ""
+  },
+  "Docs/Plans/14-gas-giant-fidelity-plan.md": {
+    "mtime": 1791830243.2447274,
+    "ast_hash": "d32ce72858166e524036714ec7123b30",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/13-star-field-quality.md": {
+    "mtime": 1791829995.06748,
+    "ast_hash": "2d951a8564209d186c96de2b5d6c87b8",
+    "semantic_hash": ""
+  },
+  "Docs/SDDs/14-gas-giant-fidelity.md": {
+    "mtime": 1791830243.215246,
+    "ast_hash": "1be61be6ab391da4d6d9cd4080b6f491",
     "semantic_hash": ""
   }
 }

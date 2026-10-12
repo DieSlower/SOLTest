@@ -131,6 +131,11 @@ public:
     // Returns, per slot, whether a target occupies it (other slots' values are stale)
     TConstArrayView<bool> GetTargetActive() const { return mTargetActive; }
 
+    // Returns, per slot, the serial of the drop that last filled it: unique per drop and never 0 (until 2^32 drops wrap
+    // it), so a changed serial means a new target there even when the slot never looked empty (other slots' values are
+    // stale but unchanged)
+    TConstArrayView<uint32> GetTargetSpawnSerials() const { return mTargetSpawnSerials; }
+
     // Returns, per slot, the target's position (ecliptic universe meters) as of the last update
     TConstArrayView<FVector3d> GetTargetPositionsM() const { return mTargetPositionsM; }
 
@@ -290,10 +295,12 @@ private:
     TArray<FVector3d> mTargetSweepEndsM;               // Per-frame scratch, sweep frame
     TArray<SOLDamageMath::FDamageState> mTargetDamage;
     TArray<double> mTargetSpawnTimesS;                 // Combat time of each drop, for oldest-first eviction
+    TArray<uint32> mTargetSpawnSerials;                // Serial of each drop (GetTargetSpawnSerials)
     TArray<float> mTargetHitFlash;
     TArray<float> mTargetShieldFractions;
     TArray<float> mTargetHealthFractions;
     int32 mActiveTargetCount = 0;
+    uint32 mLastTargetSpawnSerial = 0;                 // Serial of the latest drop (0: none yet)
 
     // Minor bodies: a snapshot indexed by the query's (stable) iteration order, refreshed only while bolts are live
     TSharedPtr<FMassEntityManager> mEntityManager;

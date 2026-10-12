@@ -66,4 +66,12 @@ namespace SOLCombatRules
 
     // Returns how many bolts the renderer draws: the live count clamped to [0, renderCap]
     SOLTEST_API int32 DrawnBoltCount(int32 liveBoltCount, int32 renderCap);
+
+    // Returns a target instance's previous transform (what its motion vectors are measured from): lastPlacement only
+    // for an active target that was drawn last frame and whose slot's spawn serial did not change since (not dropped
+    // there again, even if its previous occupant was evicted or destroyed in the same update). Otherwise placement (no
+    // motion), so a new target never streaks in from the hidden, zero-scale instance or from the slot's previous
+    // occupant; an inactive slot's placement is its hidden transform (issue #15, SDD 7 Amendment 5)
+    SOLTEST_API FTransform SelectTargetPrevTransform(bool bIsActive, bool bWasDrawnLastFrame, bool bSpawnSerialChanged,
+        const FTransform& lastPlacement, const FTransform& placement);
 }

@@ -35,7 +35,10 @@ struct FSOLRenderOrigin;
  *   M_SOLTarget; instance i is target slot i. Instances are added only as the highest used slot grows (a high-water
  *   mark, so a session that never drops a target never has any), and the component is hidden while no target is
  *   active. Only the slot range that is, or was last frame, in use is re-placed; inactive slots are scaled to zero, and
- *   custom data is written only where it changed.
+ *   custom data is written only where it changed. Each instance also gets its previous transform (last frame's
+ *   placement; its current one when its slot's spawn serial changed or it was hidden last frame), so targets write
+ *   real motion vectors for TSR and motion blur as they ride through render space with their frame (issue #15, SDD 7
+ *   Amendment 5).
  * - One-shot effects: fixed pools of Niagara components per kind (impact, shield break, spark, explosion), the oldest
  *   reused for each new event; an effect rides with what it hit until its duration ends: its position is recomputed
  *   every update from the event's frame body (FSOLCombatEvent), so it stays on its target at any time warp. Effects
@@ -148,7 +151,10 @@ private:
     bool mHasLoggedBoltRenderCap = false;      // The "bolts past the render cap" warning was logged
 
     // Targets
-    TArray<FTransform> mTargetTransforms;      // Scratch, reserved to the slot count once
+    TArray<FTransform> mTargetTransforms;      // This frame's placements (next frame's previous ones); reserved once
+    TArray<FTransform> mTargetPrevTransforms;  // Scratch: previous transforms (motion vectors); reserved once
+    TArray<bool> mTargetWasDrawn;              // Per slot: drawn (active) in the last update
+    TArray<uint32> mTargetSeenSerials;         // Per slot: spawn serial when last drawn (0: never)
     TArray<float> mTargetCustomData;           // Last written custom data, COMBAT_TARGET_CUSTOM_DATA_FLOATS per slot
     int32 mTargetRangeEnd = 0;                 // Slots [0, end) were placed last frame (the rest are already hidden)
     bool mIsTargetRendererEnabled = false;

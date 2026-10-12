@@ -11,6 +11,7 @@
 #include "SOLGameMode.generated.h"
 
 class ASOLShipPawn;
+class USOLCombatSubsystem;
 
 /**
  * Game mode for the solar-system test map: spawns the body visuals and the star field and uses the ship pawn and the
@@ -67,6 +68,10 @@ private:
     // Advances the -SOLCombatDemo script: drop a target, hold the trigger until it is destroyed, rest, repeat
     void StepCombatDemo();
 
+    // -SOLCombatDemoHold: screenshots and strafes while the first target is held unshot, then puts the ship back where
+    // it was relative to the target and ends the hold (sets mCombatDemoHoldSeconds to 0)
+    void StepCombatDemoHold(ASOLShipPawn* pawn, const USOLCombatSubsystem* combat, double holdSeconds);
+
     // Ends the demo's fire phase: releases the trigger, logs the outcome and starts the rest
     void EndCombatDemoFire(ASOLShipPawn* pawn, double nowSeconds, double phaseSeconds, const TCHAR* outcome);
 
@@ -84,6 +89,11 @@ private:
     int32 mCombatDemoSlot = INDEX_NONE;       // Slot of this cycle's target, once its drop has landed
     int32 mCombatDemoDropsBefore = 0;         // Subsystem drop count when this cycle's drop was requested
     int32 mCombatDemoKillsBefore = 0;         // Subsystem kill count then
+    double mCombatDemoHoldSeconds = 0.0;      // -SOLCombatDemoHold=<s>: first cycle holds fire this long (0 = off)
+    int32 mCombatDemoHoldShots = 0;           // Frame screenshots taken during that hold
+    bool mHasCombatDemoHoldStart = false;     // The ship and target were recorded at the hold's start
+    FVector3d mCombatDemoHoldShipPositionM = FVector3d::ZeroVector;  // Ship position then (Unreal-handed universe frame)
+    FVector3d mCombatDemoHoldTargetM = FVector3d::ZeroVector;        // Target position then (ecliptic)
     int32 mCombatStressBolts = 0;             // -SOLCombatStress=<bolts>: extra live bolts to keep (0 = off)
     FRandomStream mCombatStressRandom{ 7 };   // Deterministic cone directions for the stress bolts
 };

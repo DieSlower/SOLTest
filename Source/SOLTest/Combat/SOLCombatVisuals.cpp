@@ -116,8 +116,12 @@ void ASOLCombatVisuals::BeginPlay()
         TargetMesh->SetMaterial(0, targetMaterial);
         TargetMesh->SetWorldTransform(FTransform::Identity);
         TargetMesh->SetNumCustomDataFloats(SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS);
+        TargetMesh->SetHasPerInstancePrevTransforms(true);
         TargetMesh->SetVisibility(false);
         mTargetTransforms.Reserve(slotCount);
+        mTargetPrevTransforms.Reserve(slotCount);
+        mTargetWasDrawn.Init(false, slotCount);
+        mTargetSeenSerials.Init(0, slotCount);
         mTargetCustomData.Init(-1.0f, slotCount * SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS);
         mIsTargetRendererEnabled = true;
     }
@@ -315,15 +319,37 @@ void ASOLCombatVisuals::UpdateTargets(const FSOLRenderOrigin& origin)
     const TConstArrayView<float> flashes = Combat->GetTargetHitFlash();
     const FVector scale(Combat->GetTargetRadiusM() * SOL::METERS_TO_CM / SOL::BODY_MESH_RADIUS_CM);
     const FTransform hidden(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector);
+
+    // mTargetTransforms still holds last frame's placements, so it doubles as the previous transforms: a target that
+    // stays in its slot keeps its motion vectors (it moves through render space with its frame, up to tens of km/s).
+    // A target new to its slot (its spawn serial changed, which catches an evict-and-redrop within one update without
+    // relying on the capped event queue) or whose slot was hidden last frame starts with no motion
+    const TConstArrayView<uint32> serials = Combat->GetTargetSpawnSerials();
+    const int32 lastPlacedCount = mTargetTransforms.Num();
     mTargetTransforms.SetNum(rangeEnd, EAllowShrinking::No);
+    mTargetPrevTransforms.SetNum(rangeEnd, EAllowShrinking::No);
     for (int32 slot = 0; slot < rangeEnd; ++slot)
     {
+        // Regrow invariant: a slot at or past last frame's placed count was hidden by the pass that saw it go (or never
+        // drawn), so the default transform SetNum grew into it is never used as a previous transform
+        const bool bWasDrawn = mTargetWasDrawn[slot];
+        checkSlow(slot < lastPlacedCount || !bWasDrawn);
+        mTargetWasDrawn[slot] = active[slot];
+        bool bSerialChanged = false;
+        if (active[slot])
+        {
+            bSerialChanged = serials[slot] != mTargetSeenSerials[slot];
+            mTargetSeenSerials[slot] = serials[slot];
+        }
+        const FTransform placement = active[slot]
+            ? FTransform(FQuat::Identity, FVector(origin.UniverseToRenderCm(positionsM[slot])), scale) : hidden;
+        mTargetPrevTransforms[slot] = SOLCombatRules::SelectTargetPrevTransform(active[slot], bWasDrawn, bSerialChanged,
+            mTargetTransforms[slot], placement);
+        mTargetTransforms[slot] = placement;
         if (!active[slot])
         {
-            mTargetTransforms[slot] = hidden;
             continue;
         }
-        mTargetTransforms[slot] = FTransform(FQuat::Identity, FVector(origin.UniverseToRenderCm(positionsM[slot])), scale);
 
         // Custom data only where it changed (the hit flash fades over a few frames; shields regenerate slowly)
         float* cached = &mTargetCustomData[slot * SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS];
@@ -337,8 +363,12 @@ void ASOLCombatVisuals::UpdateTargets(const FSOLRenderOrigin& origin)
         }
     }
 
+    // With explicit previous transforms, so targets write real motion vectors (issue #15, SDD 7 Amendment 5): without
+    // them an instance counts as static, and TSR and motion blur reproject it with the camera's own render-space motion
+    // (the ship's ~30 km/s around the Sun), which smears it. bWorldSpace=false: the component is absolute at identity,
+    // so render space is its local space and the engine skips a relative-transform solve per instance.
     // bMarkRenderStateDirty=false: the instance-data manager pushes changed instances incrementally (as for the belt)
-    TargetMesh->BatchUpdateInstancesTransforms(0, mTargetTransforms, true, false, true);
+    TargetMesh->BatchUpdateInstancesTransforms(0, mTargetTransforms, mTargetPrevTransforms, false, false, true);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -355,9 +385,11 @@ void ASOLCombatVisuals::EnsureTargetInstances(const int32 instanceCount)
     const int32 slotCount = mTargetCustomData.Num() / SOL::COMBAT_TARGET_CUSTOM_DATA_FLOATS;
     const int32 target = FMath::Min(FMath::Max3(instanceCount, current * 2, COMBAT_TARGET_INSTANCE_MIN_GROWTH),
         slotCount);
-    mTargetTransforms.Init(FTransform(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector), target - current);
-    TargetMesh->AddInstances(mTargetTransforms, false, false, false);
-    mTargetTransforms.Reset();
+    // The previous-transform scratch is free here (it is refilled after this); mTargetTransforms is not, it holds last
+    // frame's placements
+    mTargetPrevTransforms.Init(FTransform(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector), target - current);
+    TargetMesh->AddInstances(mTargetPrevTransforms, false, false, false);
+    mTargetPrevTransforms.Reset();
 }
 
 //////////////////////////////////////////////////////////////////////////

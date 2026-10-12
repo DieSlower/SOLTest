@@ -269,4 +269,182 @@ bool FSOLCombatRulesDrawnBoltsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatRulesTargetMotionTest, "SOLTest.CombatRules.TargetMotionContinuity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A target's previous transform is last frame's placement only while it stays in its slot; a new or gone one has none
+bool FSOLCombatRulesTargetMotionTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLCombatRules;
+    const FTransform last(FQuat::Identity, FVector(100.0, 0.0, 0.0), FVector(2.0));
+    const FTransform now(FQuat::Identity, FVector(130.0, 0.0, 0.0), FVector(2.0));
+    const FTransform hidden(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector);
+    TestTrue(TEXT("Drawn last frame, same serial: last placement"),
+        SelectTargetPrevTransform(true, true, false, last, now).Equals(last));
+    TestTrue(TEXT("Drawn last frame, serial changed (evicted or destroyed and refilled): current placement"),
+        SelectTargetPrevTransform(true, true, true, last, now).Equals(now));
+    TestTrue(TEXT("Hidden last frame, serial changed: current placement"),
+        SelectTargetPrevTransform(true, false, true, last, now).Equals(now));
+    TestTrue(TEXT("Hidden last frame, same serial: current placement"),
+        SelectTargetPrevTransform(true, false, false, last, now).Equals(now));
+    TestTrue(TEXT("Gone this frame: its hidden placement"),
+        SelectTargetPrevTransform(false, true, false, last, hidden).Equals(hidden));
+    TestTrue(TEXT("Inactive slot: its hidden placement"),
+        SelectTargetPrevTransform(false, false, false, last, hidden).Equals(hidden));
+    return true;
+}
+
+namespace
+{
+    constexpr int32 TARGETMOTION_SLOTS = 3;
+    constexpr double TARGETMOTION_SCALE = 2.0;
+
+    // One slot's inputs to one combat update, as the target renderer reads them
+    struct FCombatRulesTargetMotionInput
+    {
+        bool bActive = false;
+        uint32 Serial = 0;
+        double X = 0.0;          // Render-space position along X
+    };
+
+    // A test-side copy of the target renderer's per-frame previous-transform bookkeeping: the placed slot range (last
+    // frame's or this frame's in-use range, whichever is larger), drawn flags, last seen spawn serials, and placements
+    // kept as next frame's previous transforms (grown with default transforms, as TArray::SetNum does)
+    struct FCombatRulesTargetMotionModel
+    {
+        TArray<FTransform> Placements;
+        TArray<FTransform> Prev;
+        TArray<bool> WasDrawn;
+        TArray<uint32> SeenSerials;
+        int32 RangeEnd = 0;
+
+        // Starts with every slot never drawn
+        FCombatRulesTargetMotionModel()
+        {
+            WasDrawn.Init(false, TARGETMOTION_SLOTS);
+            SeenSerials.Init(0, TARGETMOTION_SLOTS);
+        }
+
+        // Runs one update over the slot inputs and fills Prev for the placed range
+        void Step(const TArray<FCombatRulesTargetMotionInput>& inputs)
+        {
+            int32 activeEnd = 0;
+            for (int32 slot = 0; slot < inputs.Num(); ++slot)
+            {
+                activeEnd = inputs[slot].bActive ? slot + 1 : activeEnd;
+            }
+            const int32 rangeEnd = FMath::Max(activeEnd, RangeEnd);
+            RangeEnd = activeEnd;
+            Placements.SetNum(rangeEnd);
+            Prev.SetNum(rangeEnd);
+            const FTransform hidden(FQuat::Identity, FVector::ZeroVector, FVector::ZeroVector);
+
+            // Same order of reads and writes as the renderer's slot loop
+            for (int32 slot = 0; slot < rangeEnd; ++slot)
+            {
+                const FCombatRulesTargetMotionInput& in = inputs[slot];
+                const bool bWasDrawn = WasDrawn[slot];
+                WasDrawn[slot] = in.bActive;
+                bool bSerialChanged = false;
+                if (in.bActive)
+                {
+                    bSerialChanged = in.Serial != SeenSerials[slot];
+                    SeenSerials[slot] = in.Serial;
+                }
+                const FTransform placement = in.bActive
+                    ? FTransform(FQuat::Identity, FVector(in.X, 0.0, 0.0), FVector(TARGETMOTION_SCALE)) : hidden;
+                Prev[slot] = SOLCombatRules::SelectTargetPrevTransform(in.bActive, bWasDrawn, bSerialChanged,
+                    Placements[slot], placement);
+                Placements[slot] = placement;
+            }
+        }
+    };
+
+    // Returns an active slot input
+    FCombatRulesTargetMotionInput TargetMotionLive(const uint32 serial, const double x)
+    {
+        return FCombatRulesTargetMotionInput{ true, serial, x };
+    }
+
+    // Returns an inactive slot input (its serial stays at the last drop's, as the subsystem leaves it)
+    FCombatRulesTargetMotionInput TargetMotionGone(const uint32 serial = 0)
+    {
+        return FCombatRulesTargetMotionInput{ false, serial, 0.0 };
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatRulesTargetMotionSequenceTest, "SOLTest.CombatRules.TargetMotionSequence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Frame sequences through the renderer's bookkeeping: a drop starts still, a staying target moves from last frame, an
+// evict-and-redrop in one update or a destroy-and-redrop starts still, and a slot re-placed after the range shrank and
+// grew again never moves from a stale or default transform
+bool FSOLCombatRulesTargetMotionSequenceTest::RunTest(const FString& /*parameters*/)
+{
+    FCombatRulesTargetMotionModel model;
+
+    // Returns whether a slot's previous transform this frame sits at x with the target's scale
+    auto prevAt = [&model](const int32 slot, const double x)
+    {
+        return model.Prev.IsValidIndex(slot) && FMath::IsNearlyEqual(model.Prev[slot].GetLocation().X, x)
+            && FMath::IsNearlyEqual(model.Prev[slot].GetScale3D().X, TARGETMOTION_SCALE);
+    };
+    // Returns whether a slot's previous transform this frame is the hidden, zero-scale one
+    auto prevHidden = [&model](const int32 slot)
+    {
+        return model.Prev.IsValidIndex(slot) && model.Prev[slot].GetScale3D().IsNearlyZero();
+    };
+
+    // First frame, nothing dropped yet: nothing is placed
+    model.Step({ TargetMotionGone(), TargetMotionGone(), TargetMotionGone() });
+    TestEqual(TEXT("First frame, no target: no slot placed"), model.Prev.Num(), 0);
+
+    // Drop into slot 0: still on its first frame, then moving from where it was
+    model.Step({ TargetMotionLive(1, 100.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Drop: starts still"), prevAt(0, 100.0));
+    model.Step({ TargetMotionLive(1, 150.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Stay: previous is last frame's placement"), prevAt(0, 100.0));
+    model.Step({ TargetMotionLive(1, 210.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Stay again: previous is last frame's placement"), prevAt(0, 150.0));
+
+    // Evicted and refilled within one update (the slot never looks empty): the new target starts still
+    model.Step({ TargetMotionLive(2, 500.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Evict then redrop in one update: starts still"), prevAt(0, 500.0));
+    model.Step({ TargetMotionLive(2, 520.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("New target stays: moves from its own first placement"), prevAt(0, 500.0));
+
+    // Destroyed, then a new drop lands there the next frame
+    model.Step({ TargetMotionGone(2), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Destroy: hidden, no motion"), prevHidden(0));
+    model.Step({ TargetMotionLive(3, 700.0), TargetMotionGone(), TargetMotionGone() });
+    TestTrue(TEXT("Redrop next frame: starts still"), prevAt(0, 700.0));
+
+    // Fill all three slots, then empty the upper two: the range shrinks to slot 0 one frame later
+    model.Step({ TargetMotionLive(3, 710.0), TargetMotionLive(4, 10.0), TargetMotionLive(5, 20.0) });
+    TestTrue(TEXT("Slot 0 keeps moving"), prevAt(0, 700.0));
+    TestTrue(TEXT("Slot 1 drop starts still"), prevAt(1, 10.0));
+    TestTrue(TEXT("Slot 2 drop starts still"), prevAt(2, 20.0));
+    model.Step({ TargetMotionLive(3, 720.0), TargetMotionGone(4), TargetMotionGone(5) });
+    TestTrue(TEXT("Upper slots gone: slot 1 hidden"), prevHidden(1));
+    TestTrue(TEXT("Upper slots gone: slot 2 hidden"), prevHidden(2));
+    model.Step({ TargetMotionLive(3, 730.0), TargetMotionGone(4), TargetMotionGone(5) });
+    TestEqual(TEXT("Range shrunk to slot 0"), model.Prev.Num(), 1);
+    TestTrue(TEXT("Slot 0 still moving after the shrink"), prevAt(0, 720.0));
+
+    // Grow again: slot 2 gets a new drop and slot 1 comes back with an unchanged serial (hidden last frame is enough)
+    model.Step({ TargetMotionLive(3, 740.0), TargetMotionLive(4, 11.0), TargetMotionLive(6, 30.0) });
+    TestEqual(TEXT("Range grown to three slots"), model.Prev.Num(), 3);
+    TestTrue(TEXT("Slot 0 still moving after the regrow"), prevAt(0, 730.0));
+    TestTrue(TEXT("Slot 1 hidden last frame: starts still even with the same serial"), prevAt(1, 11.0));
+    TestTrue(TEXT("Slot 2 regrown (default transform underneath): starts still"), prevAt(2, 30.0));
+    model.Step({ TargetMotionLive(3, 750.0), TargetMotionLive(4, 12.0), TargetMotionLive(6, 35.0) });
+    TestTrue(TEXT("Slot 1 then moves from its own placement"), prevAt(1, 11.0));
+    TestTrue(TEXT("Slot 2 then moves from its own placement"), prevAt(2, 30.0));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
