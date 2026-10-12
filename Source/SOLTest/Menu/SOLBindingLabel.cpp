@@ -5,6 +5,8 @@
 
 #include "Menu/SOLBindingLabel.h"
 
+#include "Menu/SOLMenuText.h"
+
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
@@ -34,7 +36,7 @@ FString SOLBindingLabel::KeyDisplayName(const FString& keyName)
 {
     if (keyName.IsEmpty())
     {
-        return TEXT("Unbound");
+        return SOLMenuText::KEY_UNBOUND;
     }
     const TCHAR* special = SpecialDisplayName(keyName);
     return special != nullptr ? FString(special) : keyName;
@@ -46,7 +48,7 @@ FString SOLBindingLabel::JoinChord(const TArray<FString>& keyNames)
 {
     if (keyNames.IsEmpty())
     {
-        return TEXT("Unbound");
+        return SOLMenuText::KEY_UNBOUND;
     }
     TArray<FString> labels;
     labels.Reserve(keyNames.Num());

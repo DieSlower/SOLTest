@@ -5,6 +5,7 @@
 
 #include "Menu/SOLMenuButton.h"
 
+#include "Menu/SOLSettingsSubsystem.h"
 #include "SOLConstants.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -19,9 +20,6 @@ namespace
     constexpr int32 MENU_BUTTON_NORMAL = 0;
     constexpr int32 MENU_BUTTON_SELECTED = 1;
     constexpr int32 MENU_BUTTON_FOCUSED = 2;
-
-    // Padding inside a button around its label
-    const FMargin MENU_BUTTON_PADDING(18.0f, 8.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -39,8 +37,9 @@ void USOLMenuButton::Setup(UWidgetTree& tree, const FString& label, const int32 
     style.SetHovered(FSlateRoundedBoxBrush(FLinearColor::White, radius));
     style.SetPressed(FSlateRoundedBoxBrush(BUTTON_PRESSED_TINT, radius));
     style.SetDisabled(FSlateRoundedBoxBrush(FLinearColor::White, radius));
-    style.SetNormalPadding(MENU_BUTTON_PADDING);
-    style.SetPressedPadding(MENU_BUTTON_PADDING);
+    const FMargin padding(BUTTON_PADDING_X, BUTTON_PADDING_Y);
+    style.SetNormalPadding(padding);
+    style.SetPressedPadding(padding);
     SetStyle(style);
     SetBackgroundColor(BUTTON_NORMAL);
 
@@ -93,8 +92,21 @@ void USOLMenuButton::HandleClicked()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// UButton hover: takes keyboard focus so the highlight follows the mouse
+// Takes keyboard focus as a mouse hover does, unless a Settings page is listening for a rebind key
+void USOLMenuButton::NotifyHovered()
+{
+    // While a rebind listens, the next key is the new binding: moving the focus would let it land on this button
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    if (settings != nullptr && settings->IsKeyCaptureActive())
+    {
+        return;
+    }
+    SetKeyboardFocus();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// UButton hover: takes keyboard focus so the highlight follows the mouse (NotifyHovered)
 void USOLMenuButton::HandleHovered()
 {
-    SetKeyboardFocus();
+    NotifyHovered();
 }

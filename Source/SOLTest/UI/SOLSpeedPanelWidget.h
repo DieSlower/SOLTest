@@ -9,6 +9,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "CoreMinimal.h"
+#include "InputCoreTypes.h"
 
 #include "SOLSpeedPanelWidget.generated.h"
 
@@ -27,7 +28,8 @@ class USOLBodyRegistrySubsystem;
  * field, cycle the unit; Left/Right move the highlight (one step right of the hundredths is the unit field); U cycles
  * the unit; Tab moves between the steppers and the body list; in the list Up/Down select a body and Enter sets the cap
  * to its speed. Every digit step and every list Enter applies the cap to the ship at once through the same path
- * (ASOLShipPawn::ApplySpeedCapMps). Enter on the steppers, F3 or Esc close the panel and give input back to the ship.
+ * (ASOLShipPawn::ApplySpeedCapMps). Enter on the steppers, the speed-panel key (F3 by default, rebindable; ignored when
+ * it was moved onto one of the panel's own keys) or Esc close the panel and give input back to the ship.
  */
 UCLASS()
 class SOLTEST_API USOLSpeedPanelWidget : public UUserWidget
@@ -36,8 +38,9 @@ class SOLTEST_API USOLSpeedPanelWidget : public UUserWidget
 
 public:
 
-    // Seeds the steppers from the current cap, refreshes the body speeds and remembers the pawn to apply the cap to
-    void Open(ASOLShipPawn* pawn, double currentCapMps);
+    // Seeds the steppers from the current cap, refreshes the body speeds, remembers the pawn to apply the cap to and
+    // the speed-panel key that also closes the panel, and shows the title (which names that key)
+    void Open(ASOLShipPawn* pawn, double currentCapMps, const FKey& toggleKey, const FString& title);
 
     // Handles one key press; returns true when the panel used it (verification scripts call it like Slate does)
     bool HandlePanelKey(const FKey& key);
@@ -104,6 +107,9 @@ private:
     TArray<TObjectPtr<UTextBlock>> DigitTexts;
 
     UPROPERTY(Transient)
+    TObjectPtr<UTextBlock> TitleText;
+
+    UPROPERTY(Transient)
     TObjectPtr<UTextBlock> UnitText;
 
     UPROPERTY(Transient)
@@ -119,6 +125,7 @@ private:
     TObjectPtr<USOLBodyRegistrySubsystem> BodyRegistry;
 
     TWeakObjectPtr<ASOLShipPawn> mPawn;                 // Pawn whose speed cap the panel sets
+    FKey mToggleKey = EKeys::F3;                        // The speed-panel binding's key (closes the panel too)
     TArray<double> mBodySpeedsMps;                      // Listed body speeds (relative to the parent)
     FSOLSpeedStepperState mStepper;                     // Odometer value, unit and highlighted digit
     int32 mListSelection = 0;                           // Highlighted body in the list

@@ -14,6 +14,8 @@
 
 class USOLMenuButton;
 class USOLMenuSubsystem;
+class USOLSettingsPageWidget;
+class UTextBlock;
 class UWidgetSwitcher;
 
 /**
@@ -21,7 +23,9 @@ class UWidgetSwitcher;
  * flight with a tab bar (Resume, Controls, Info, Settings, About, Quit) and the selected tab's page. Resume closes the
  * menu; Quit shows "Quit to main menu" and "Quit to desktop". Mouse and keyboard: hover or Tab / arrows move the
  * highlight, Enter / Space or a click activates, Esc resumes. Actions go to USOLMenuSubsystem, which calls ShowTab back
- * with the state's tab.
+ * with the state's tab. Showing the Controls or Info tab rewrites its key texts from the ship's live mapping (so rebinds
+ * show);
+ * showing the Settings tab refreshes it and leaving it ends the settings visit (8d).
  */
 UCLASS()
 class SOLTEST_API USOLPauseMenuWidget : public UUserWidget
@@ -36,8 +40,20 @@ public:
     // Gives keyboard focus to the selected tab's button
     void FocusDefault();
 
+    // Returns the Settings tab's page
+    USOLSettingsPageWidget* GetSettingsPage() const { return SettingsPage; }
+
+    // Returns a Controls row's key text (row = SOLMenuText::CONTROL_ROWS index; verification)
+    FString GetControlsRowText(int32 row) const;
+
     // Returns how many key presses arrived through Slate (verification)
     int32 GetSlateKeyCount() const { return mSlateKeyCount; }
+
+    // Returns an Info page key-naming text (0 the manual surface-lock label, then the prose paragraphs; verification)
+    FString GetInfoKeyText(int32 index) const;
+
+    // Returns a tab's button, or nullptr (verification)
+    USOLMenuButton* GetTabButton(SOLMenuState::EMenuTab tab) const;
 
 protected:
 
@@ -47,7 +63,8 @@ protected:
     // Refreshes the button highlights (focus follows the keyboard and the mouse)
     virtual void NativeTick(const FGeometry& geometry, float deltaSeconds) override;
 
-    // Esc resumes; every other key is left to the focused button and Slate navigation
+    // Esc resumes (an auto-repeat of a held Esc does not); every other key is left to the focused button and Slate
+    // navigation
     virtual FReply NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent) override;
 
 private:
@@ -73,6 +90,15 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UWidgetSwitcher> PageSwitcher;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsPageWidget> SettingsPage;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTextBlock>> InfoKeyTexts;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;

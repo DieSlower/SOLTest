@@ -30,6 +30,7 @@ class USOLCombatSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLMenuSubsystem;
+class USOLSettingsSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
 class USOLSimClockSubsystem;
@@ -92,6 +93,13 @@ namespace SOLMenuState
  * asks USOLMenuSubsystem to pause, at the next tick. While its state suspends flight input (the pause menu) the pawn
  * suspends its control exactly as for the map (SuspendShipControl; the simulation keeps running) and restores it on
  * resume. Opening and closing the map are reported to the menu subsystem.
+ *
+ * Settings (8d, SDD 8): the rebindable keys of the ship mapping (and J in the map mapping) come from
+ * USOLSettingsSubsystem's applied keys (SOLKeyBindings order) and are mapped again when they change (Apply), with a
+ * control-mapping rebuild; the fixed keys (mouse, wheel, Esc, P and the map's own keys) stay as they are. Mouse-look
+ * deltas from Enhanced Input are scaled by the live mouse sensitivity and Y-flipped when inverted
+ * (SOLSettingsRules::ApplyLookSettings; scripts calling HandleMouseDelta are unaffected), and flight assist starts in
+ * the setting's state.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -256,6 +264,12 @@ public:
     // Returns true while the map's mapping context is active on the local player
     bool IsMapInputMapped() const { return mMapMappedLocalPlayer.IsValid(); }
 
+    // Returns the engine key names the ship mapping uses for each rebindable action (SOLKeyBindings order)
+    const TArray<FString>& GetBoundKeyNames() const { return mBoundKeys; }
+
+    // Returns true if the ship mapping context maps this key to a binding's action
+    bool IsKeyMappedToBinding(int32 binding, const FKey& key) const;
+
     // Returns the control the pawn composed this frame
     const FSOLShipControl& GetComposedControl() const { return mControl; }
 
@@ -295,6 +309,15 @@ private:
 
     // Creates the input actions and the mapping context once
     void CreateInputObjects();
+
+    // Maps every key of the ship and map contexts, the rebindable ones from the settings' applied keys
+    void MapShipKeys();
+
+    // The applied key bindings changed: maps the keys again and asks Enhanced Input to rebuild its mappings
+    void HandleKeyBindingsChanged();
+
+    // Returns the input action a rebindable binding drives (thrust and roll bindings share their axis action)
+    UInputAction* GetBindingAction(int32 binding) const;
 
     // Removes the mapping context from the local player it was added to, if any
     void RemoveMappingContext();
@@ -651,6 +674,9 @@ private:
     TObjectPtr<USOLMenuSubsystem> Menu;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsSubsystem> Settings;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
 
     UPROPERTY(Transient)
@@ -684,6 +710,8 @@ private:
     FQuat mCameraRotation = FQuat::Identity;                // Lagged world rotation of the camera arm
     FDelegateHandle mUniverseUpdatedHandle;                 // Binding to the anchor subsystem's OnUniverseUpdated
     FDelegateHandle mMenuStateHandle;                       // Binding to the menu subsystem's OnStateChanged
+    FDelegateHandle mKeyBindingsHandle;                     // Binding to the settings' OnKeyBindingsChanged
+    TArray<FString> mBoundKeys;                             // Key names mapped per rebindable action
     double mRollInput = 0.0;                                // Q/E roll input
     double mStickRadiusPx = 1.0;                            // Virtual joystick radius for the current viewport
     double mMouseUnitsToPixels = 1.0;                       // Undoes the Mouse2D axis sensitivity of the input config

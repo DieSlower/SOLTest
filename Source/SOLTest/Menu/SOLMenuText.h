@@ -42,15 +42,121 @@ namespace SOLMenuText
     inline constexpr const TCHAR* START_LOCATION_BODY = TEXT("Choose the body to start above. Play puts the ship in "
         "orbit on its sunlit side.");
 
-    // Settings page (8d fills it)
+    // Settings page (8d)
     inline constexpr const TCHAR* SETTINGS_TITLE = TEXT("Settings");
+    inline constexpr const TCHAR* SETTINGS_GRAPHICS = TEXT("Graphics");
+    inline constexpr const TCHAR* SETTINGS_AUDIO = TEXT("Audio");
+    inline constexpr const TCHAR* SETTINGS_MOUSE = TEXT("Mouse");
+    inline constexpr const TCHAR* SETTINGS_GAMEPLAY = TEXT("Gameplay");
+    inline constexpr const TCHAR* SETTINGS_KEYS = TEXT("Key bindings");
+    inline constexpr const TCHAR* SETTINGS_RESOLUTION = TEXT("Resolution");
+    inline constexpr const TCHAR* SETTINGS_WINDOW_MODE = TEXT("Window mode");
+    inline constexpr const TCHAR* SETTINGS_QUALITY = TEXT("Quality preset");
+    inline constexpr const TCHAR* SETTINGS_VSYNC = TEXT("VSync");
+    inline constexpr const TCHAR* SETTINGS_MASTER_VOLUME = TEXT("Master volume");
+    inline constexpr const TCHAR* SETTINGS_SFX_VOLUME = TEXT("Effects volume");
+    inline constexpr const TCHAR* SETTINGS_MUSIC_VOLUME = TEXT("Music volume");
+    inline constexpr const TCHAR* SETTINGS_MOUSE_SENSITIVITY = TEXT("Mouse sensitivity");
+    inline constexpr const TCHAR* SETTINGS_INVERT_Y = TEXT("Invert mouse Y");
+    inline constexpr const TCHAR* SETTINGS_HUD_SCALE = TEXT("HUD scale");
+    inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
+    inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
+    inline constexpr const TCHAR* SETTINGS_APPLY = TEXT("Apply");
+    inline constexpr const TCHAR* SETTINGS_REVERT = TEXT("Revert");
+    inline constexpr const TCHAR* SETTINGS_RESET_KEYS = TEXT("Reset keys to defaults");
+    inline constexpr const TCHAR* SETTINGS_REBIND = TEXT("Rebind");
+    inline constexpr const TCHAR* SETTINGS_STEP_BACK = TEXT("<");
+    inline constexpr const TCHAR* SETTINGS_STEP_FORWARD = TEXT(">");
+    inline constexpr const TCHAR* SETTINGS_KEY_WAITING = TEXT("Press a key...");
+    inline constexpr const TCHAR* SETTINGS_HINT = TEXT("Audio, mouse and HUD changes preview at once; graphics and key "
+        "bindings take effect on Apply. Leaving this page discards changes that were not applied.");
+    inline constexpr const TCHAR* SETTINGS_STATUS_CLEAN = TEXT("All changes applied.");
+    inline constexpr const TCHAR* SETTINGS_STATUS_DIRTY = TEXT("Unapplied changes: Apply keeps them, Revert discards "
+        "them.");
+    inline constexpr const TCHAR* SETTINGS_REBIND_PROMPT_FORMAT = TEXT("Press the new key for \"{0}\" (Esc cancels).");
+    inline constexpr const TCHAR* SETTINGS_REBIND_CANCELLED = TEXT("Rebind cancelled.");
+    inline constexpr const TCHAR* SETTINGS_REBIND_REFUSED_FORMAT = TEXT("{0} cannot be bound: it is fixed to another "
+        "control.");
+    inline constexpr const TCHAR* SETTINGS_REBIND_DONE_FORMAT = TEXT("\"{0}\" set to {1}. Apply to use it.");
+    inline constexpr const TCHAR* SETTINGS_REBIND_CONFLICT_FORMAT = TEXT("\"{0}\" set to {1}, which is also bound to "
+        "\"{2}\": both will trigger until one is changed.");
+    inline constexpr const TCHAR* SETTINGS_KEYS_RESET = TEXT("Keys reset to the defaults. Apply to use them.");
+    inline constexpr const TCHAR* RESOLUTION_FORMAT = TEXT("{0} x {1}");
+    inline constexpr const TCHAR* PERCENT_FORMAT = TEXT("{0}%");
+    inline constexpr const TCHAR* MULTIPLIER_FORMAT = TEXT("{0}x");
+
+    // Quality presets (index = scalability level) and window modes (index = EWindowMode::Type)
+    inline constexpr const TCHAR* QUALITY_NAMES[] = { TEXT("Low"), TEXT("Medium"), TEXT("High"), TEXT("Epic"),
+        TEXT("Cinematic") };
+    inline constexpr const TCHAR* WINDOW_MODE_NAMES[] = { TEXT("Fullscreen"), TEXT("Borderless window"),
+        TEXT("Windowed") };
+
+    // Rebindable ship actions (SOLKeyBindings::EBinding order): the area and label shown on the Settings page
+    struct FKeyBindingText
+    {
+        const TCHAR* Area;
+        const TCHAR* Label;
+    };
+
+    inline constexpr FKeyBindingText KEY_BINDING_TEXTS[] =
+    {
+        { TEXT("Flight"), TEXT("Thrust forward") },
+        { TEXT("Flight"), TEXT("Thrust backward") },
+        { TEXT("Flight"), TEXT("Strafe left") },
+        { TEXT("Flight"), TEXT("Strafe right") },
+        { TEXT("Flight"), TEXT("Thrust up") },
+        { TEXT("Flight"), TEXT("Thrust down") },
+        { TEXT("Flight"), TEXT("Roll left") },
+        { TEXT("Flight"), TEXT("Roll right") },
+        { TEXT("Flight"), TEXT("Boost (hold)") },
+        { TEXT("Flight"), TEXT("Toggle flight assist") },
+        { TEXT("Flight"), TEXT("Free-look (hold)") },
+        { TEXT("Flight"), TEXT("Recenter the joystick") },
+        { TEXT("Flight"), TEXT("Speed panel") },
+        { TEXT("Targeting"), TEXT("Select target at reticle") },
+        { TEXT("Targeting"), TEXT("Next farther target") },
+        { TEXT("Targeting"), TEXT("Next nearer target") },
+        { TEXT("Targeting"), TEXT("Clear the target") },
+        { TEXT("Targeting"), TEXT("Lock frame to target") },
+        { TEXT("Targeting"), TEXT("Surface-lock") },
+        { TEXT("Combat"), TEXT("Fire (hold)") },
+        { TEXT("Combat"), TEXT("Drop a practice target") },
+        { TEXT("Time"), TEXT("Time warp down") },
+        { TEXT("Time"), TEXT("Time warp up") },
+        { TEXT("Time"), TEXT("Time warp to 1x") },
+        { TEXT("HUD"), TEXT("Orbit lines") },
+        { TEXT("HUD"), TEXT("Radar range in") },
+        { TEXT("HUD"), TEXT("Radar range out") },
+        { TEXT("HUD"), TEXT("Radar automatic range") },
+        { TEXT("Jump map"), TEXT("Open or close the jump map") },
+    };
+
+    // Shown for a binding without a key
+    inline constexpr const TCHAR* KEY_UNBOUND = TEXT("Unbound");
+
+    // Flight HUD and speed panel texts that name a key. '{<BindingId>}' is that SOLKeyBindings action's current key
+    // (SOLKeyBindings::FormatKeyText); the hint formats' '{N}' are filled by SOLHudFormat in the order it lists
+    inline constexpr const TCHAR* HUD_HINT_ORBITS_ON_FORMAT = TEXT("ORBITS ON ({0})");
+    inline constexpr const TCHAR* HUD_HINT_ORBITS_OFF_FORMAT = TEXT("ORBITS OFF ({0})");
+    inline constexpr const TCHAR* HUD_HINT_KEYS_FORMAT = TEXT("   {0} speed panel   {1} jump map   {2}/{3}/{4}/{5} "
+        "target   {6} match frame   {7} surface-lock   {8} {9} warp   {10} {11} radar zoom   {12} radar auto   {13} fire"
+        "   {14} drop target");
+    inline constexpr const TCHAR* HUD_HINT_MAP_FORMAT = TEXT("JUMP MAP   right drag orbit   middle or Shift+right drag "
+        "pan   wheel zoom   {0} / Esc close");
+    inline constexpr const TCHAR* HUD_SURFACE_LOCK_HINT_FORMAT = TEXT("{SurfaceLock} to surface-lock  ");
+    inline constexpr const TCHAR* HUD_FRAME_LOCK_TAG_FORMAT = TEXT(" [{MatchLock} LOCK]");
+    inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
+    inline constexpr const TCHAR* SPEED_PANEL_TITLE_FORMAT = TEXT("SPEED CAP  ({SpeedPanel} / Enter close, Esc close)");
 
     // Controls page
     inline constexpr const TCHAR* CONTROLS_TITLE = TEXT("Controls");
     inline constexpr const TCHAR* BINDING_ALTERNATIVE_SEPARATOR = TEXT(" / ");
 
-    // One Controls row: its area heading, the bindings (engine key names; '|' separates alternatives, '+' joins a
-    // chord; each name is shown through SOLBindingLabel) and what it does. Keep in sync with GAME_MECHANICS.md section 1
+    // One Controls row: its area heading, the bindings and what it does. '|' separates alternatives; an alternative
+    // starting with '@' is a rebindable action's id (SOLKeyBindings) and shows that action's current key, any other
+    // is a '+' chord of fixed engine key names. Every key is shown through SOLBindingLabel. An action's
+    // '{DropDistance}' and '{SpeedCapNotches}' are filled from the gameplay constants (SOLMenuContent::
+    // FormatControlAction). Keep in sync with GAME_MECHANICS.md section 1
     struct FControlRow
     {
         const TCHAR* Area;
@@ -60,33 +166,35 @@ namespace SOLMenuText
 
     inline constexpr const TCHAR* BINDING_ALTERNATIVE_DELIMITER = TEXT("|");
     inline constexpr const TCHAR* BINDING_CHORD_DELIMITER = TEXT("+");
+    inline constexpr TCHAR BINDING_ID_PREFIX = TEXT('@');
 
     inline constexpr FControlRow CONTROL_ROWS[] =
     {
         { TEXT("Flight"), TEXT("Mouse2D"), TEXT("Steer: the mouse moves a virtual joystick (yaw and pitch)") },
-        { TEXT("Flight"), TEXT("MiddleMouseButton"), TEXT("Recenter the joystick (stop turning)") },
-        { TEXT("Flight"), TEXT("W|S"), TEXT("Thrust forward / backward") },
-        { TEXT("Flight"), TEXT("A|D"), TEXT("Strafe left / right") },
-        { TEXT("Flight"), TEXT("SpaceBar|LeftControl"), TEXT("Thrust up / down") },
-        { TEXT("Flight"), TEXT("Q|E"), TEXT("Roll left / right") },
-        { TEXT("Flight"), TEXT("LeftShift"), TEXT("Boost (hold)") },
-        { TEXT("Flight"), TEXT("Tab"), TEXT("Toggle flight assist (starts on)") },
-        { TEXT("Flight"), TEXT("LeftAlt"), TEXT("Free-look around the ship (hold)") },
-        { TEXT("Flight"), TEXT("MouseWheelAxis"), TEXT("Step the speed cap (10 notches per factor of ten)") },
-        { TEXT("Flight"), TEXT("F3"), TEXT("Speed panel: set the cap digit by digit or from a body's speed") },
-        { TEXT("Targeting"), TEXT("T"), TEXT("Select the target nearest the reticle") },
-        { TEXT("Targeting"), TEXT("R|F"), TEXT("Next farther / next nearer target") },
-        { TEXT("Targeting"), TEXT("X"), TEXT("Clear the target") },
-        { TEXT("Targeting"), TEXT("M"), TEXT("Lock the reference frame to the target (match its velocity)") },
-        { TEXT("Targeting"), TEXT("L"), TEXT("Surface-lock: keep the ship upright over the nearest body") },
-        { TEXT("Combat"), TEXT("LeftMouseButton"), TEXT("Fire the pulse guns (hold)") },
-        { TEXT("Combat"), TEXT("G"), TEXT("Drop a practice target 200 m ahead") },
-        { TEXT("Time"), TEXT("LeftBracket|RightBracket"), TEXT("Time warp down / up") },
-        { TEXT("Time"), TEXT("BackSpace"), TEXT("Time warp back to 1x") },
-        { TEXT("HUD"), TEXT("O"), TEXT("Show or hide orbit lines") },
-        { TEXT("HUD"), TEXT("Hyphen|Equals"), TEXT("Radar range in / out (manual)") },
-        { TEXT("HUD"), TEXT("Home"), TEXT("Radar back to automatic range") },
-        { TEXT("Jump map"), TEXT("J"), TEXT("Open or close the jump map") },
+        { TEXT("Flight"), TEXT("@RecenterStick"), TEXT("Recenter the joystick (stop turning)") },
+        { TEXT("Flight"), TEXT("@ThrustForward|@ThrustBackward"), TEXT("Thrust forward / backward") },
+        { TEXT("Flight"), TEXT("@StrafeLeft|@StrafeRight"), TEXT("Strafe left / right") },
+        { TEXT("Flight"), TEXT("@ThrustUp|@ThrustDown"), TEXT("Thrust up / down") },
+        { TEXT("Flight"), TEXT("@RollLeft|@RollRight"), TEXT("Roll left / right") },
+        { TEXT("Flight"), TEXT("@Boost"), TEXT("Boost (hold)") },
+        { TEXT("Flight"), TEXT("@ToggleAssist"),
+            TEXT("Toggle flight assist (starts on unless turned off in Settings)") },
+        { TEXT("Flight"), TEXT("@FreeLook"), TEXT("Free-look around the ship (hold)") },
+        { TEXT("Flight"), TEXT("MouseWheelAxis"), TEXT("Step the speed cap ({SpeedCapNotches} notches per factor of ten)") },
+        { TEXT("Flight"), TEXT("@SpeedPanel"), TEXT("Speed panel: set the cap digit by digit or from a body's speed") },
+        { TEXT("Targeting"), TEXT("@SelectTarget"), TEXT("Select the target nearest the reticle") },
+        { TEXT("Targeting"), TEXT("@NextTarget|@PreviousTarget"), TEXT("Next farther / next nearer target") },
+        { TEXT("Targeting"), TEXT("@ClearTarget"), TEXT("Clear the target") },
+        { TEXT("Targeting"), TEXT("@MatchLock"), TEXT("Lock the reference frame to the target (match its velocity)") },
+        { TEXT("Targeting"), TEXT("@SurfaceLock"), TEXT("Surface-lock: keep the ship upright over the nearest body") },
+        { TEXT("Combat"), TEXT("@Fire"), TEXT("Fire the pulse guns (hold)") },
+        { TEXT("Combat"), TEXT("@DropTarget"), TEXT("Drop a practice target {DropDistance} ahead") },
+        { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
+        { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
+        { TEXT("HUD"), TEXT("@ToggleOrbitLines"), TEXT("Show or hide orbit lines") },
+        { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
+        { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
+        { TEXT("Jump map"), TEXT("@ToggleMap"), TEXT("Open or close the jump map") },
         { TEXT("Jump map"), TEXT("RightMouseButton"), TEXT("Orbit the map camera (drag)") },
         { TEXT("Jump map"), TEXT("MiddleMouseButton|LeftShift+RightMouseButton"), TEXT("Pan the map (drag)") },
         { TEXT("Jump map"), TEXT("MouseWheelAxis"), TEXT("Zoom the map") },
@@ -117,7 +225,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* INFO_WARP_STEPS = TEXT("Time warp steps");
     inline constexpr const TCHAR* INFO_JUMP_DURATION = TEXT("Jump warp duration");
     inline constexpr const TCHAR* INFO_SURFACE_LOCK_AUTO = TEXT("Surface-lock engages automatically within");
-    inline constexpr const TCHAR* INFO_SURFACE_LOCK_MANUAL = TEXT("Surface-lock with L from up to");
+    inline constexpr const TCHAR* INFO_SURFACE_LOCK_MANUAL = TEXT("Surface-lock with {SurfaceLock} from up to");
     inline constexpr const TCHAR* INFO_BOOST_FORMAT = TEXT("x{0} speed (assist), x{1} thrust (Newtonian)");
     inline constexpr const TCHAR* INFO_RANGE_FORMAT = TEXT("{0} to {1}");
     inline constexpr const TCHAR* INFO_PAIR_FORMAT = TEXT("{0} / {1}");
@@ -132,18 +240,31 @@ namespace SOLMenuText
     inline constexpr const TCHAR* WARP_DAYS_FORMAT = TEXT("{0} d/s");
     inline constexpr const TCHAR* LIST_SEPARATOR = TEXT(", ");
 
-    // Info page prose: how the mechanics behave (the numbers above stay generated)
+    // Info page combat lines (SOLInfoText::BuildCombatLines) and the text for a value that cannot be shown
+    inline constexpr const TCHAR* INFO_BOLT_SPEED = TEXT("Bolt speed");
+    inline constexpr const TCHAR* INFO_DAMAGE = TEXT("Damage per hit");
+    inline constexpr const TCHAR* INFO_FIRE_RATE = TEXT("Fire rate");
+    inline constexpr const TCHAR* INFO_TARGET_SHIELD = TEXT("Target shield");
+    inline constexpr const TCHAR* INFO_TARGET_HEALTH = TEXT("Target health");
+    inline constexpr const TCHAR* INFO_SHIELD_REGEN = TEXT("Shield regen");
+    inline constexpr const TCHAR* INFO_RATE_FORMAT = TEXT("{0} /s");
+    inline constexpr const TCHAR* INFO_REGEN_FORMAT = TEXT("{0} after {1} s");
+    inline constexpr const TCHAR* INFO_NOT_AVAILABLE = TEXT("n/a");
+
+    // Info page prose: how the mechanics behave (the numbers above stay generated; '{<BindingId>}' is that action's
+    // current key, SOLKeyBindings::FormatKeyText)
     inline constexpr const TCHAR* INFO_PROSE[] =
     {
         TEXT("Everything is at true scale and on real orbits. The planets, dwarf planets and major moons move along "
-            "their Keplerian orbits from today's date; the Sun is the only light."),
+            "their Keplerian orbits from today's date; the Sun lights the system, and a faint fill light along your "
+            "view keeps the ship's shadowed side readable."),
         TEXT("Flight assist flies you relative to a reference frame: the nearest body, or the target you locked with "
-            "M. It holds the velocity your keys ask for, up to the speed cap, and cancels drift and gravity. Turn it "
-            "off (Tab) for pure Newtonian flight, where gravity pulls and the ship coasts."),
+            "{MatchLock}. It holds the velocity your keys ask for, up to the speed cap, and cancels drift and gravity. "
+            "Turn it off ({ToggleAssist}) for pure Newtonian flight, where gravity pulls and the ship coasts."),
         TEXT("Time warp speeds up the planets, not your ship: the ship is carried along with its reference frame, so "
             "an orbit or a landing spot stays put at any warp."),
-        TEXT("The jump map (J) shows the whole system. Press on a body or on empty space, drag to set where you want "
-            "to be relative to it, release, then press Enter to jump there."),
+        TEXT("The jump map ({ToggleMap}) shows the whole system. Press on a body or on empty space, drag to set where "
+            "you want to be relative to it, release, then press Enter to jump there."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
     };

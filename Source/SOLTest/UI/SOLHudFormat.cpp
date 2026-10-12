@@ -5,6 +5,9 @@
 
 #include "UI/SOLHudFormat.h"
 
+#include "Menu/SOLBindingLabel.h"
+#include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
 
 namespace
@@ -89,4 +92,54 @@ namespace SOLHudFormat
             outText.Appendf(TEXT("%.4f AU"), distanceM / SOL::AU_M);
         }
     }
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a binding's key label (unbound when the array is short)
+    FString HudKeyLabel(const TArray<FString>& keys, const SOLKeyBindings::EBinding binding)
+    {
+        const int32 index = static_cast<int32>(binding);
+        return SOLBindingLabel::KeyDisplayName(keys.IsValidIndex(index) ? keys[index] : FString());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the flight HUD's key hint line from the ship's keys
+FString SOLHudFormat::FormatFlightKeyHints(const TArray<FString>& keys, const bool bOrbitLinesOn)
+{
+    using SOLKeyBindings::EBinding;
+    using namespace SOLMenuText;
+    FString hints = FString::Format(bOrbitLinesOn ? HUD_HINT_ORBITS_ON_FORMAT : HUD_HINT_ORBITS_OFF_FORMAT,
+        { HudKeyLabel(keys, EBinding::ToggleOrbitLines) });
+    hints += FString::Format(HUD_HINT_KEYS_FORMAT, { HudKeyLabel(keys, EBinding::SpeedPanel),
+        HudKeyLabel(keys, EBinding::ToggleMap), HudKeyLabel(keys, EBinding::SelectTarget),
+        HudKeyLabel(keys, EBinding::NextTarget), HudKeyLabel(keys, EBinding::PreviousTarget),
+        HudKeyLabel(keys, EBinding::ClearTarget), HudKeyLabel(keys, EBinding::MatchLock),
+        HudKeyLabel(keys, EBinding::SurfaceLock), HudKeyLabel(keys, EBinding::WarpDown),
+        HudKeyLabel(keys, EBinding::WarpUp), HudKeyLabel(keys, EBinding::RadarZoomIn),
+        HudKeyLabel(keys, EBinding::RadarZoomOut), HudKeyLabel(keys, EBinding::RadarAuto),
+        HudKeyLabel(keys, EBinding::Fire), HudKeyLabel(keys, EBinding::DropTarget) });
+    return hints;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the jump map's first hint line
+FString SOLHudFormat::FormatMapKeyHints(const TArray<FString>& keys)
+{
+    return FString::Format(SOLMenuText::HUD_HINT_MAP_FORMAT,
+        { HudKeyLabel(keys, SOLKeyBindings::EBinding::ToggleMap) });
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD and speed panel texts that name a key, from the ship's keys
+SOLHudFormat::FHudKeyTexts SOLHudFormat::FormatHudKeyTexts(const TArray<FString>& keys)
+{
+    FHudKeyTexts texts;
+    texts.SurfaceLockHint = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_SURFACE_LOCK_HINT_FORMAT, keys);
+    texts.FrameLockTag = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_FRAME_LOCK_TAG_FORMAT, keys);
+    texts.NoTarget = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_NO_TARGET_FORMAT, keys);
+    texts.SpeedPanelTitle = SOLKeyBindings::FormatKeyText(SOLMenuText::SPEED_PANEL_TITLE_FORMAT, keys);
+    return texts;
 }

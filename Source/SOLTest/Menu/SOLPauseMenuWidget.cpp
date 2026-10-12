@@ -9,6 +9,7 @@
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSettingsPageWidget.h"
 #include "SOLConstants.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -97,9 +98,10 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_HINT, SMALL_FONT_SIZE,
         DIM_TEXT_COLOR, false, true));
     PageSwitcher->AddChild(resumePage);
-    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree));
-    PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree));
-    PageSwitcher->AddChild(SOLMenuContent::BuildSettingsPage(*WidgetTree));
+    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
+    PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree, InfoKeyTexts));
+    SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
+    PageSwitcher->AddChild(SettingsPage);
     PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
 
     // Quit page: a prompt and the two ways out
@@ -126,6 +128,24 @@ void USOLPauseMenuWidget::NativeOnInitialized()
 // Shows a tab's page and marks its tab button selected
 void USOLPauseMenuWidget::ShowTab(const SOLMenuState::EMenuTab tab)
 {
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls and Settings re-read
+    // their state when shown
+    if (mTab == SOLMenuState::EMenuTab::Settings && tab != SOLMenuState::EMenuTab::Settings && SettingsPage != nullptr)
+    {
+        SettingsPage->NotifyHidden();
+    }
+    if (tab == SOLMenuState::EMenuTab::Settings && SettingsPage != nullptr)
+    {
+        SettingsPage->RefreshFromSettings();
+    }
+    if (tab == SOLMenuState::EMenuTab::Controls)
+    {
+        SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+    }
+    if (tab == SOLMenuState::EMenuTab::Info)
+    {
+        SOLMenuContent::RefreshInfoPage(InfoKeyTexts, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+    }
     mTab = tab;
     if (PageSwitcher != nullptr)
     {
@@ -135,6 +155,29 @@ void USOLPauseMenuWidget::ShowTab(const SOLMenuState::EMenuTab tab)
     {
         button->SetSelected(button->GetIndex() == static_cast<int32>(tab));
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a Controls row's key text
+FString USOLPauseMenuWidget::GetControlsRowText(const int32 row) const
+{
+    return ControlsKeyCells.IsValidIndex(row) && ControlsKeyCells[row] != nullptr
+        ? ControlsKeyCells[row]->GetText().ToString() : FString();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an Info page key-naming text
+FString USOLPauseMenuWidget::GetInfoKeyText(const int32 index) const
+{
+    return InfoKeyTexts.IsValidIndex(index) && InfoKeyTexts[index] != nullptr
+        ? InfoKeyTexts[index]->GetText().ToString() : FString();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a tab's button, or nullptr
+USOLMenuButton* USOLPauseMenuWidget::GetTabButton(const SOLMenuState::EMenuTab tab) const
+{
+    return TabButtons.IsValidIndex(static_cast<int32>(tab)) ? TabButtons[static_cast<int32>(tab)].Get() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -163,13 +206,15 @@ void USOLPauseMenuWidget::NativeTick(const FGeometry& geometry, const float delt
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Esc resumes; every other key is left to the focused button and Slate navigation
+// Esc resumes (an auto-repeat of a held Esc does not); every other key is left to the focused button and Slate
+// navigation
 FReply USOLPauseMenuWidget::NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent)
 {
     ++mSlateKeyCount;
     if (keyEvent.GetKey() == EKeys::Escape)
     {
-        if (Menu != nullptr)
+        // The Esc that opened the menu, held down, repeats into it: only a fresh press resumes
+        if (Menu != nullptr && !keyEvent.IsRepeat())
         {
             Menu->RequestEscape();
         }

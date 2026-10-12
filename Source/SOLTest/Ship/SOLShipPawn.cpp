@@ -9,13 +9,17 @@
 #include "Game/SOLInputHelpers.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLSettingsRules.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLFlightHud.h"
+#include "UI/SOLHudFormat.h"
 #include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
@@ -25,6 +29,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
+#include "EnhancedInputSubsystems.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
@@ -190,12 +195,13 @@ void ASOLShipPawn::BeginPlay()
         return;
     }
 
-    // Start state per SDD 2: assist on, cap at the start value, stick centered
+    // Start state per SDD 2: cap at the start value, stick centered. Flight assist keeps what the ship's spawn set
+    // (USOLShipSubsystem::SpawnPlayerShip: the settings' launch value, SDD 8, or off for a -SOLRingStartKm start)
+    Settings = USOLSettingsSubsystem::Get(this);
     mControl = Ships->GetControl();
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
-    mControl.bFlightAssist = true;
     mControl.SpeedCapMps = SOL::SHIP_START_SPEED_CAP_MPS;
     BuildShipMesh();
 
@@ -208,6 +214,12 @@ void ASOLShipPawn::BeginPlay()
     if (Menu != nullptr)
     {
         mMenuStateHandle = Menu->OnStateChanged().AddUObject(this, &ASOLShipPawn::HandleMenuStateChanged);
+    }
+
+    // Applied rebinds map the ship's keys again
+    if (Settings != nullptr)
+    {
+        mKeyBindingsHandle = Settings->OnKeyBindingsChanged().AddUObject(this, &ASOLShipPawn::HandleKeyBindingsChanged);
     }
 
     // Verification hook: drive the real input pipeline through a fixed script, log checkpoints, then quit
@@ -265,6 +277,11 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
         Menu->OnStateChanged().Remove(mMenuStateHandle);
     }
     mMenuStateHandle.Reset();
+    if (Settings != nullptr)
+    {
+        Settings->OnKeyBindingsChanged().Remove(mKeyBindingsHandle);
+    }
+    mKeyBindingsHandle.Reset();
     mIsFireHeld = false;
     mUniverseUpdatedHandle.Reset();
     mSmokeInput.Reset();
@@ -707,54 +724,91 @@ void ASOLShipPawn::CreateInputObjects()
     MappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Ship"));
     MapMappingContext = NewObject<UInputMappingContext>(this, TEXT("IMC_Map"));
 
-    // Thrust: W/S forward/back (x), D/A right/left (y), Space/Ctrl up/down (z); roll: E right, Q left
-    MapAxisKey(MappingContext, ThrustAction, EKeys::W, this, false, EInputAxisSwizzle::YXZ, false);
-    MapAxisKey(MappingContext, ThrustAction, EKeys::S, this, false, EInputAxisSwizzle::YXZ, true);
-    MapAxisKey(MappingContext, ThrustAction, EKeys::D, this, true, EInputAxisSwizzle::YXZ, false);
-    MapAxisKey(MappingContext, ThrustAction, EKeys::A, this, true, EInputAxisSwizzle::YXZ, true);
-    MapAxisKey(MappingContext, ThrustAction, EKeys::SpaceBar, this, true, EInputAxisSwizzle::ZYX, false);
-    MapAxisKey(MappingContext, ThrustAction, EKeys::LeftControl, this, true, EInputAxisSwizzle::ZYX, true);
-    MapAxisKey(MappingContext, RollAction, EKeys::E, this, false, EInputAxisSwizzle::YXZ, false);
-    MapAxisKey(MappingContext, RollAction, EKeys::Q, this, false, EInputAxisSwizzle::YXZ, true);
+    MapShipKeys();
+}
 
-    // Held keys and axes: boost, the gun trigger (left mouse; the map's own context uses it for picking, but the two
-    // contexts are never active together), free-look, the mouse (virtual joystick) and the wheel (speed cap)
-    MappingContext->MapKey(BoostAction, EKeys::LeftShift);
-    MappingContext->MapKey(FireAction, EKeys::LeftMouseButton);
-    MappingContext->MapKey(FreeLookAction, EKeys::LeftAlt);
+//////////////////////////////////////////////////////////////////////////
+// Maps every key of the ship and map contexts, the rebindable ones from the settings' applied keys
+void ASOLShipPawn::MapShipKeys()
+{
+    using namespace SOLInput;
+    using SOLKeyBindings::EBinding;
+    if (MappingContext == nullptr || MapMappingContext == nullptr)
+    {
+        return;
+    }
+
+    // Rebindable keys from the settings (defaults without them); a key name the engine does not know falls back to
+    // its default, and the bound names record what was really mapped (the Controls page shows them)
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
+    mBoundKeys = settings != nullptr ? settings->GetAppliedKeys() : SOLKeyBindings::DefaultKeys();
+    mBoundKeys.SetNum(SOLKeyBindings::BINDING_COUNT);
+    for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
+    {
+        if (!FKey(*mBoundKeys[binding]).IsValid())
+        {
+            mBoundKeys[binding] = SOLKeyBindings::GetDef(binding).DefaultKey;
+        }
+    }
+
+    // Returns the key mapped for a binding
+    const auto key = [this](const EBinding binding)
+    {
+        return FKey(*mBoundKeys[static_cast<int32>(binding)]);
+    };
+    MappingContext->UnmapAll();
+    MapMappingContext->UnmapAll();
+
+    // Thrust: forward/back (x), right/left (y), up/down (z); roll: right, left
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::ThrustForward), this, false, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::ThrustBackward), this, false, EInputAxisSwizzle::YXZ, true);
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::StrafeRight), this, true, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::StrafeLeft), this, true, EInputAxisSwizzle::YXZ, true);
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::ThrustUp), this, true, EInputAxisSwizzle::ZYX, false);
+    MapAxisKey(MappingContext, ThrustAction, key(EBinding::ThrustDown), this, true, EInputAxisSwizzle::ZYX, true);
+    MapAxisKey(MappingContext, RollAction, key(EBinding::RollRight), this, false, EInputAxisSwizzle::YXZ, false);
+    MapAxisKey(MappingContext, RollAction, key(EBinding::RollLeft), this, false, EInputAxisSwizzle::YXZ, true);
+
+    // Held keys and axes: boost, the gun trigger (left mouse by default; the map's own context uses the left mouse for
+    // picking, but the two contexts are never active together), free-look, the mouse (virtual joystick, fixed) and the
+    // wheel (speed cap, fixed)
+    MappingContext->MapKey(BoostAction, key(EBinding::Boost));
+    MappingContext->MapKey(FireAction, key(EBinding::Fire));
+    MappingContext->MapKey(FreeLookAction, key(EBinding::FreeLook));
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
     MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
 
-    // One-shot keys, including the HUD keys: O orbit lines, P predicted path (reserved), F3 speed panel, '-' / '='
-    // radar zoom in/out, Home radar back to AUTO
-    MapPressedKey(MappingContext, ToggleAssistAction, EKeys::Tab, this);
-    MapPressedKey(MappingContext, RecenterAction, EKeys::MiddleMouseButton, this);
-    MapPressedKey(MappingContext, MatchLockAction, EKeys::M, this);
-    MapPressedKey(MappingContext, ToggleLevelAction, EKeys::L, this);
-    MapPressedKey(MappingContext, DropTargetAction, EKeys::G, this);
-    MapPressedKey(MappingContext, SelectTargetAction, EKeys::T, this);
-    MapPressedKey(MappingContext, NextTargetAction, EKeys::R, this);
-    MapPressedKey(MappingContext, PreviousTargetAction, EKeys::F, this);
-    MapPressedKey(MappingContext, ClearTargetAction, EKeys::X, this);
-    MapPressedKey(MappingContext, WarpDownAction, EKeys::LeftBracket, this);
-    MapPressedKey(MappingContext, WarpUpAction, EKeys::RightBracket, this);
-    MapPressedKey(MappingContext, WarpResetAction, EKeys::BackSpace, this);
-    MapPressedKey(MappingContext, ToggleOrbitLinesAction, EKeys::O, this);
+    // One-shot keys, including the HUD keys: orbit lines, P predicted path (reserved, fixed), the speed panel, radar
+    // zoom in/out and back to AUTO
+    MapPressedKey(MappingContext, ToggleAssistAction, key(EBinding::ToggleAssist), this);
+    MapPressedKey(MappingContext, RecenterAction, key(EBinding::RecenterStick), this);
+    MapPressedKey(MappingContext, MatchLockAction, key(EBinding::MatchLock), this);
+    MapPressedKey(MappingContext, ToggleLevelAction, key(EBinding::SurfaceLock), this);
+    MapPressedKey(MappingContext, DropTargetAction, key(EBinding::DropTarget), this);
+    MapPressedKey(MappingContext, SelectTargetAction, key(EBinding::SelectTarget), this);
+    MapPressedKey(MappingContext, NextTargetAction, key(EBinding::NextTarget), this);
+    MapPressedKey(MappingContext, PreviousTargetAction, key(EBinding::PreviousTarget), this);
+    MapPressedKey(MappingContext, ClearTargetAction, key(EBinding::ClearTarget), this);
+    MapPressedKey(MappingContext, WarpDownAction, key(EBinding::WarpDown), this);
+    MapPressedKey(MappingContext, WarpUpAction, key(EBinding::WarpUp), this);
+    MapPressedKey(MappingContext, WarpResetAction, key(EBinding::WarpReset), this);
+    MapPressedKey(MappingContext, ToggleOrbitLinesAction, key(EBinding::ToggleOrbitLines), this);
     MapPressedKey(MappingContext, TogglePredictedPathAction, EKeys::P, this);
-    MapPressedKey(MappingContext, SpeedPanelAction, EKeys::F3, this);
-    MapPressedKey(MappingContext, RadarZoomInAction, EKeys::Hyphen, this);
-    MapPressedKey(MappingContext, RadarZoomOutAction, EKeys::Equals, this);
-    MapPressedKey(MappingContext, RadarAutoAction, EKeys::Home, this);
-    MapPressedKey(MappingContext, ToggleMapAction, EKeys::J, this);
+    MapPressedKey(MappingContext, SpeedPanelAction, key(EBinding::SpeedPanel), this);
+    MapPressedKey(MappingContext, RadarZoomInAction, key(EBinding::RadarZoomIn), this);
+    MapPressedKey(MappingContext, RadarZoomOutAction, key(EBinding::RadarZoomOut), this);
+    MapPressedKey(MappingContext, RadarAutoAction, key(EBinding::RadarAuto), this);
+    MapPressedKey(MappingContext, ToggleMapAction, key(EBinding::ToggleMap), this);
 
     // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
     MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
 
-    // Jump map: J or Esc close; right drag orbits, middle or Shift+right drag pans (held buttons gate the mouse
-    // delta), the wheel zooms. Destination picking: left button (press and release), Shift (the same action as the
-    // pan modifier) previews and locks the height, X clears the pick, Enter jumps. The ship's X (clear target) lives
-    // in the ship's context, which is removed while the map is open, so the two never conflict
-    MapPressedKey(MapMappingContext, ToggleMapAction, EKeys::J, this);
+    // Jump map: the map toggle (rebindable, the same key as in the ship context) or Esc close; right drag orbits,
+    // middle or Shift+right drag pans (held buttons gate the mouse delta), the wheel zooms. Destination picking: left
+    // button (press and release), Shift (the same action as the pan modifier) previews and locks the height, X clears
+    // the pick, Enter jumps. The ship's X (clear target) lives in the ship's context, which is removed while the map is
+    // open, so the two never conflict
+    MapPressedKey(MapMappingContext, ToggleMapAction, key(EBinding::ToggleMap), this);
     MapPressedKey(MapMappingContext, MapCloseAction, EKeys::Escape, this);
     MapPressedKey(MapMappingContext, MapClearPickAction, EKeys::X, this);
     MapPressedKey(MapMappingContext, MapJumpAction, EKeys::Enter, this);
@@ -765,6 +819,106 @@ void ASOLShipPawn::CreateInputObjects()
     MapMappingContext->MapKey(MapPanModifierAction, EKeys::RightShift);
     MapMappingContext->MapKey(MapLookAction, EKeys::Mouse2D);
     MapMappingContext->MapKey(MapZoomAction, EKeys::MouseWheelAxis);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The applied key bindings changed: maps the keys again and asks Enhanced Input to rebuild its mappings
+void ASOLShipPawn::HandleKeyBindingsChanged()
+{
+    MapShipKeys();
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    const ULocalPlayer* localPlayer = playerController != nullptr ? playerController->GetLocalPlayer() : nullptr;
+    UEnhancedInputLocalPlayerSubsystem* inputSubsystem = localPlayer != nullptr
+        ? ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(localPlayer) : nullptr;
+    if (inputSubsystem != nullptr)
+    {
+        inputSubsystem->RequestRebuildControlMappings();
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: key bindings mapped again (fire = %s)"), *GetName(),
+        *mBoundKeys[static_cast<int32>(SOLKeyBindings::EBinding::Fire)]);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the input action a rebindable binding drives (thrust and roll bindings share their axis action)
+UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
+{
+    using SOLKeyBindings::EBinding;
+    switch (static_cast<EBinding>(binding))
+    {
+    case EBinding::ThrustForward:
+    case EBinding::ThrustBackward:
+    case EBinding::StrafeLeft:
+    case EBinding::StrafeRight:
+    case EBinding::ThrustUp:
+    case EBinding::ThrustDown:
+        return ThrustAction;
+    case EBinding::RollLeft:
+    case EBinding::RollRight:
+        return RollAction;
+    case EBinding::Boost:
+        return BoostAction;
+    case EBinding::ToggleAssist:
+        return ToggleAssistAction;
+    case EBinding::FreeLook:
+        return FreeLookAction;
+    case EBinding::RecenterStick:
+        return RecenterAction;
+    case EBinding::SpeedPanel:
+        return SpeedPanelAction;
+    case EBinding::SelectTarget:
+        return SelectTargetAction;
+    case EBinding::NextTarget:
+        return NextTargetAction;
+    case EBinding::PreviousTarget:
+        return PreviousTargetAction;
+    case EBinding::ClearTarget:
+        return ClearTargetAction;
+    case EBinding::MatchLock:
+        return MatchLockAction;
+    case EBinding::SurfaceLock:
+        return ToggleLevelAction;
+    case EBinding::Fire:
+        return FireAction;
+    case EBinding::DropTarget:
+        return DropTargetAction;
+    case EBinding::WarpDown:
+        return WarpDownAction;
+    case EBinding::WarpUp:
+        return WarpUpAction;
+    case EBinding::WarpReset:
+        return WarpResetAction;
+    case EBinding::ToggleOrbitLines:
+        return ToggleOrbitLinesAction;
+    case EBinding::RadarZoomIn:
+        return RadarZoomInAction;
+    case EBinding::RadarZoomOut:
+        return RadarZoomOutAction;
+    case EBinding::RadarAuto:
+        return RadarAutoAction;
+    case EBinding::ToggleMap:
+        return ToggleMapAction;
+    default:
+        return nullptr;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true if the ship mapping context maps this key to a binding's action
+bool ASOLShipPawn::IsKeyMappedToBinding(const int32 binding, const FKey& key) const
+{
+    const UInputAction* action = GetBindingAction(binding);
+    if (action == nullptr || MappingContext == nullptr)
+    {
+        return false;
+    }
+    for (const FEnhancedActionKeyMapping& mapping : MappingContext->GetMappings())
+    {
+        if (mapping.Action == action && mapping.Key == key)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1135,7 +1289,11 @@ void ASOLShipPawn::OpenSpeedPanel()
     SuspendShipControl(*playerController);
 
     // Show the panel with keyboard focus; the viewport stays visible and the Mass simulation keeps running
-    SpeedPanel->Open(this, mControl.SpeedCapMps);
+    // The title and the closing key name the speed-panel binding's current key
+    const FString& toggleKeyName = mBoundKeys.IsValidIndex(static_cast<int32>(SOLKeyBindings::EBinding::SpeedPanel))
+        ? mBoundKeys[static_cast<int32>(SOLKeyBindings::EBinding::SpeedPanel)] : FString();
+    SpeedPanel->Open(this, mControl.SpeedCapMps, FKey(*toggleKeyName),
+        SOLHudFormat::FormatHudKeyTexts(mBoundKeys).SpeedPanelTitle);
     SpeedPanel->AddToViewport(SPEED_PANEL_Z_ORDER);
     FInputModeUIOnly inputMode;
     inputMode.SetWidgetToFocus(SpeedPanel->TakeWidget());
@@ -1624,7 +1782,15 @@ void ASOLShipPawn::OnFreeLookCompleted(const FInputActionValue& /*value*/)
 // Enhanced Input: mouse delta, converted back to pixels
 void ASOLShipPawn::OnLookAction(const FInputActionValue& value)
 {
-    HandleMouseDelta(FVector2d(value.Get<FVector2D>()) * mMouseUnitsToPixels);
+    // The player's mouse sensitivity and invert Y apply to real mouse input only (scripts call HandleMouseDelta)
+    const FVector2d deltaPixels = FVector2d(value.Get<FVector2D>()) * mMouseUnitsToPixels;
+    if (Settings != nullptr)
+    {
+        const SOLSettingsModel::FSettingsValues& values = Settings->GetLiveValues();
+        HandleMouseDelta(SOLSettingsRules::ApplyLookSettings(deltaPixels, values.MouseSensitivity, values.bInvertY));
+        return;
+    }
+    HandleMouseDelta(deltaPixels);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -9,6 +9,7 @@
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSettingsPageWidget.h"
 #include "SOLConstants.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 
@@ -127,8 +128,9 @@ void USOLMainMenuWidget::NativeOnInitialized()
         BodyButtons.Add(button);
     }
     PageSwitcher->AddChild(startPage);
-    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree));
-    PageSwitcher->AddChild(SOLMenuContent::BuildSettingsPage(*WidgetTree));
+    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
+    SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
+    PageSwitcher->AddChild(SettingsPage);
     PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
     ShowPage(ESOLMainMenuPage::None);
     RefreshStartBody();
@@ -138,6 +140,20 @@ void USOLMainMenuWidget::NativeOnInitialized()
 // Shows a page beside the column (None hides the panel)
 void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
 {
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls and Settings re-read
+    // their state when shown
+    if (mPage == ESOLMainMenuPage::Settings && page != ESOLMainMenuPage::Settings && SettingsPage != nullptr)
+    {
+        SettingsPage->NotifyHidden();
+    }
+    if (page == ESOLMainMenuPage::Settings && SettingsPage != nullptr)
+    {
+        SettingsPage->RefreshFromSettings();
+    }
+    if (page == ESOLMainMenuPage::Controls)
+    {
+        SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+    }
     mPage = page;
     if (PageSwitcher == nullptr || PagePanel == nullptr)
     {

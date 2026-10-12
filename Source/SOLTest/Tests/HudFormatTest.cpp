@@ -5,6 +5,8 @@
 
 #include "UI/SOLHudFormat.h"
 
+#include "Menu/SOLKeyBindings.h"
+
 #include "SOLConstants.h"
 #include "Tests/SOLTestHelpers.h"
 
@@ -218,6 +220,66 @@ bool FSOLHudFormatAppendDistanceTest::RunTest(const FString& /*parameters*/)
     FString label;
     SOLHudFormat::AppendDistanceM(label, 1.0e7);
     TestEqual(TEXT("10,000 km floor label"), label, FString(TEXT("10000.0 km")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatKeyHintsTest, "SOLTest.HudFormat.KeyHints",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The key hint lines read the player's bindings: the defaults give the original text, a rebind shows its new key
+bool FSOLHudFormatKeyHintsTest::RunTest(const FString& /*parameters*/)
+{
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    TestEqual(TEXT("default flight hints, orbits off"), SOLHudFormat::FormatFlightKeyHints(keys, false),
+        FString(TEXT("ORBITS OFF (O)   F3 speed panel   J jump map   T/R/F/X target   M match frame   L surface-lock"
+        "   [ ] warp   - = radar zoom   Home radar auto   LMB fire   G drop target")));
+    TestTrue(TEXT("orbits on"), SOLHudFormat::FormatFlightKeyHints(keys, true).StartsWith(TEXT("ORBITS ON (O)   ")));
+    TestEqual(TEXT("default map hints"), SOLHudFormat::FormatMapKeyHints(keys), FString(TEXT("JUMP MAP   right drag "
+        "orbit   middle or Shift+right drag pan   wheel zoom   J / Esc close")));
+
+    keys[static_cast<int32>(SOLKeyBindings::EBinding::Fire)] = TEXT("K");
+    keys[static_cast<int32>(SOLKeyBindings::EBinding::ToggleMap)] = TEXT("N");
+    keys[static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines)] = TEXT("SpaceBar");
+    const FString rebound = SOLHudFormat::FormatFlightKeyHints(keys, false);
+    TestTrue(TEXT("rebound fire shown"), rebound.Contains(TEXT("   K fire   ")));
+    TestFalse(TEXT("old fire key gone"), rebound.Contains(TEXT("LMB")));
+    TestTrue(TEXT("rebound map toggle shown"), rebound.Contains(TEXT("   N jump map   ")));
+    TestTrue(TEXT("rebound orbit key shown"), rebound.StartsWith(TEXT("ORBITS OFF (Space)")));
+    TestTrue(TEXT("rebound map close key"), SOLHudFormat::FormatMapKeyHints(keys).EndsWith(TEXT("N / Esc close")));
+    TestTrue(TEXT("short key array reads unbound"), SOLHudFormat::FormatMapKeyHints(TArray<FString>())
+        .EndsWith(TEXT("Unbound / Esc close")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatKeyTextsTest, "SOLTest.HudFormat.KeyTexts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The surface-lock hint, frame-lock tag, no-target text and speed panel title name the player's keys
+bool FSOLHudFormatKeyTextsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    SOLHudFormat::FHudKeyTexts texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("default surface-lock hint"), texts.SurfaceLockHint, FString(TEXT("L to surface-lock  ")));
+    TestEqual(TEXT("default frame-lock tag"), texts.FrameLockTag, FString(TEXT(" [M LOCK]")));
+    TestEqual(TEXT("default no-target text"), texts.NoTarget, FString(TEXT("none (T)")));
+    TestEqual(TEXT("default speed panel title"), texts.SpeedPanelTitle,
+        FString(TEXT("SPEED CAP  (F3 / Enter close, Esc close)")));
+
+    keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
+    keys[static_cast<int32>(EBinding::MatchLock)] = TEXT("N");
+    keys[static_cast<int32>(EBinding::SelectTarget)] = TEXT("MiddleMouseButton");
+    keys[static_cast<int32>(EBinding::SpeedPanel)] = TEXT("F4");
+    texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("rebound surface-lock hint"), texts.SurfaceLockHint, FString(TEXT("K to surface-lock  ")));
+    TestEqual(TEXT("rebound frame-lock tag"), texts.FrameLockTag, FString(TEXT(" [N LOCK]")));
+    TestEqual(TEXT("rebound no-target text"), texts.NoTarget, FString(TEXT("none (MMB)")));
+    TestEqual(TEXT("rebound speed panel title"), texts.SpeedPanelTitle,
+        FString(TEXT("SPEED CAP  (F4 / Enter close, Esc close)")));
     return true;
 }
 

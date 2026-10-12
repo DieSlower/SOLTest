@@ -8,6 +8,7 @@
 #include "Flight/SOLFlight.h"
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
+#include "UI/SOLHudFormat.h"
 #include "UI/SOLRadarLayout.h"
 
 #include "CoreMinimal.h"
@@ -20,6 +21,7 @@ class UFont;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLJumpSubsystem;
+class USOLSettingsSubsystem;
 class USOLMapModeSubsystem;
 class USOLShipSubsystem;
 class USOLSimClockSubsystem;
@@ -39,6 +41,10 @@ class USOLTargetingSubsystem;
  * subsystems. The draw path reuses member buffers (text, radar contacts, orbit points) and keeps one cached FText per
  * text line, rebuilt only when that line's text changes; what still allocates is the FText of a changed line and
  * whatever Canvas does internally to draw text.
+ *
+ * Settings (SDD 8, 8d): the player's HUD scale multiplies the canvas-height scale of every element, and with the HUD
+ * hidden nothing of the flight HUD is drawn in flight (the warp streaks still are, and with the jump map open the
+ * HUD is drawn as usual, since picking a destination needs its overlays).
  *
  * During a jump's warp sequence (SDD 3 Appendix I) the whole flight HUD is hidden and only the warp's radial streaks
  * are drawn: a fixed table of canvas lines from the screen center, built once, that stream outward and brighten and
@@ -90,6 +96,15 @@ public:
     // Returns the jump map's destination-pick overlay (disc, guide line, marker draw state)
     const FSOLMapPickOverlay& GetMapPickOverlay() const { return mMapPickOverlay; }
 
+    // Returns the flight key hint line as drawn with the orbit lines off (verification)
+    const FString& GetFlightKeyHints() const { return mFlightHintsOrbitsOff; }
+
+    // Returns the HUD texts that name a key, as drawn (verification)
+    const SOLHudFormat::FHudKeyTexts& GetKeyTexts() const { return mKeyTexts; }
+
+    // Returns the layout and font scale of the last frame (canvas height times the settings' HUD scale; verification)
+    float GetUiScale() const { return mUiScale; }
+
     // Returns true if the last frame drew the flight HUD (false while a jump warp hides it; verification)
     bool WasFlightHudDrawn() const { return mWasFlightHudDrawn; }
 
@@ -112,6 +127,9 @@ protected:
 
     // Caches the subsystems and sizes the per-body orbit point buffers once
     virtual void BeginPlay() override;
+
+    // Unhooks from the settings' key-binding changes
+    virtual void EndPlay(const EEndPlayReason::Type endPlayReason) override;
 
 private:
 
@@ -170,6 +188,9 @@ private:
     // Draws the text buffer as one HUD line at a position with a font and color, scaled by UI scale times textScale
     void DrawBuffer(ESOLHudLine line, const FLinearColor& color, float x, float y, UFont* font,
         float textScale = 1.0f);
+
+    // Rebuilds the cached key hint lines from the applied key bindings (at begin play and after a rebind)
+    void RebuildKeyHints();
 
     // Draws the center reticle
     void DrawReticle(const FVector2D& center);
@@ -239,6 +260,9 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLJumpSubsystem> Jump;
 
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsSubsystem> Settings;
+
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
@@ -249,6 +273,11 @@ private:
     double mOrbitSampledAtS = 0.0;                  // Real time the orbit points were last sampled
     double mLastRadarRangeM = 0.0;                  // Radar range of the last frame
     double mManualRadarRangeM = 0.0;                // Radar range while in MANUAL mode, reclamped every frame
+    FString mFlightHintsOrbitsOn;                   // Key hint line with the orbit lines on (rebuilt on rebinds)
+    FString mFlightHintsOrbitsOff;                  // ...and off
+    FString mMapHints;                              // The jump map's first hint line
+    SOLHudFormat::FHudKeyTexts mKeyTexts;           // Surface-lock hint, frame-lock tag, no-target text (rebinds)
+    FDelegateHandle mKeyBindingsHandle;             // Binding to the settings' OnKeyBindingsChanged
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
     int32 mLastOrbitSegmentsDrawn = 0;              // Orbit segments drawn last frame
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
