@@ -336,6 +336,11 @@ namespace SOL
     // Combat: queued one-shot events kept per update for the visuals and audio (extra events that frame are dropped)
     inline constexpr int32 COMBAT_MAX_EVENTS_PER_UPDATE = 4096;
 
+    // -SOLCombatDemoHold (verification, issue #15): the ship strafes from this fraction of the hold to its end, with this
+    // thrust input (ship axes: X forward, Y right, Z up), so the held target also crosses the screen
+    inline constexpr double COMBAT_DEMO_HOLD_STRAFE_START_FRACTION = 0.5;
+    inline const FVector3d COMBAT_DEMO_HOLD_STRAFE_THRUST(0.0, 1.0, 0.0);
+
     // Combat: bolts handed to one parallel sweep task (below this the sweep runs on the game thread alone)
     inline constexpr int32 COMBAT_SWEEP_MIN_BOLTS_PER_TASK = 256;
 
@@ -530,6 +535,9 @@ namespace SOL
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
         inline constexpr const TCHAR* COMBAT_STRESS = TEXT("SOLCombatStress="); // With -SOLCombatDemo: keeps this many
                                                                                   // extra bolts alive (load test)
+        inline constexpr const TCHAR* COMBAT_DEMO_HOLD = TEXT("SOLCombatDemoHold="); // With -SOLCombatDemo: the first
+                                                                                  // target is left unshot this many s,
+                                                                                  // with frame screenshots (issue #15)
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
 
         // Menu flow (SDD 8, 8b): any other -SOL* switch starts straight in flight (verification runs); -SOLMenu forces

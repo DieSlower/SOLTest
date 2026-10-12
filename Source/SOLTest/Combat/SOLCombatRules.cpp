@@ -92,3 +92,11 @@ int32 SOLCombatRules::DrawnBoltCount(const int32 liveBoltCount, const int32 rend
 {
     return FMath::Clamp(liveBoltCount, 0, FMath::Max(renderCap, 0));
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a target instance's previous transform: last frame's placement while it stays in its slot, else its current one
+FTransform SOLCombatRules::SelectTargetPrevTransform(const bool bIsActive, const bool bWasDrawnLastFrame,
+    const bool bSpawnSerialChanged, const FTransform& lastPlacement, const FTransform& placement)
+{
+    return bIsActive && bWasDrawnLastFrame && !bSpawnSerialChanged ? lastPlacement : placement;
+}

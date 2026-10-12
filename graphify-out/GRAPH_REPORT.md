@@ -1,16 +1,16 @@
 # Graph Report - SOLTest  (2026-10-12)
 
 ## Corpus Check
-- 267 files · ~345,557 words
+- 271 files · ~347,771 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2915 nodes · 4890 edges · 265 communities (177 shown, 88 thin omitted)
-- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 168 edges (avg confidence: 0.81)
+- 2933 nodes · 4905 edges · 272 communities (182 shown, 90 thin omitted)
+- Extraction: 97% EXTRACTED · 3% INFERRED · 0% AMBIGUOUS · INFERRED: 169 edges (avg confidence: 0.81)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `921466ea`
+- Built from commit: `da536b68`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -265,6 +265,13 @@
 - [[_COMMUNITY_Community 262|Community 262]]
 - [[_COMMUNITY_Community 263|Community 263]]
 - [[_COMMUNITY_Community 264|Community 264]]
+- [[_COMMUNITY_Community 265|Community 265]]
+- [[_COMMUNITY_Community 266|Community 266]]
+- [[_COMMUNITY_Community 267|Community 267]]
+- [[_COMMUNITY_Community 268|Community 268]]
+- [[_COMMUNITY_Community 269|Community 269]]
+- [[_COMMUNITY_Community 270|Community 270]]
+- [[_COMMUNITY_Community 271|Community 271]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `GetName()` - 71 edges
@@ -298,7 +305,7 @@
 - **Kepler orbit evaluation pipeline (secular elements to state vector)** — universe_solkepler_fsolsecularelements, universe_solkepler_fsolkeplerelements, universe_solkepler_solkepler_solveeccentricanomaly, universe_solkepler_solkepler_elementstostate, universe_soltypes_fsolstate [INFERRED 0.85]
 - **Design governance document set (CLAUDE.md, SDD, plan, style guide, performance research)** — claude_project_guidance, sdds_1_solar_system_architecture, plans_1_solar_system_architecture_plan, docs_style_guide, research_ue_performance_guidelines [INFERRED 0.85]
 
-## Communities (265 total, 88 thin omitted)
+## Communities (272 total, 90 thin omitted)
 
 ### Community 0 - "Style Guide & Perf Review"
 Cohesion: 0.19
@@ -406,7 +413,7 @@ Nodes (6): 1a — Foundations, 1b — Ship flight, 1c — HUD, Foundations and F
 
 ### Community 36 - "Community 36"
 Cohesion: 0.09
-Nodes (57): ESOLHudLine, FSOLHudView, Draw(), DrawDisc(), DrawLine(), DrawMarker(), DrawScreenCircle(), Initialize() (+49 more)
+Nodes (55): ESOLHudLine, FSOLHudView, Draw(), DrawDisc(), DrawLine(), DrawMarker(), DrawScreenCircle(), Initialize() (+47 more)
 
 ### Community 37 - "Community 37"
 Cohesion: 0.40
@@ -445,8 +452,8 @@ Cohesion: 0.42
 Nodes (8): FSOLTargetInfo, FString, FVector3d, TCHAR, RunTest(), TargetingDeg(), TargetingMakeAtDistance(), TargetingMakeOffAxis()
 
 ### Community 56 - "Community 56"
-Cohesion: 0.20
-Nodes (11): GetBindingAction(), HandleKeyBindingsChanged(), HandleMapZoom(), HandleSpeedCapSteps(), IsKeyMappedToBinding(), MapShipKeys(), OnMapZoomAction(), OnSpeedCapAction() (+3 more)
+Cohesion: 0.14
+Nodes (15): CreateInputObjects(), GetBindingAction(), HandleKeyBindingsChanged(), HandleMapZoom(), HandleSpeedCapSteps(), IsKeyMappedToBinding(), MapShipKeys(), NotifyControllerChanged() (+7 more)
 
 ### Community 57 - "Community 57"
 Cohesion: 0.18
@@ -454,7 +461,7 @@ Nodes (10): TDD with tests authored by separate subagent, UE Automation Framewor
 
 ### Community 58 - "Community 58"
 Cohesion: 0.07
-Nodes (54): HandleBoost(), HandleCloseMap(), HandleFire(), HandleFreeLook(), HandleMapClearPick(), HandleMapJump(), HandleMapOrbitHeld(), HandleMapPanModifierHeld() (+46 more)
+Nodes (52): HandleBoost(), HandleCloseMap(), HandleFire(), HandleFocusLost(), HandleFreeLook(), HandleMapClearPick(), HandleMapJump(), HandleMapOrbitHeld() (+44 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.44
@@ -505,16 +512,16 @@ Cohesion: 0.14
 Nodes (21): FBox2D, FSOLMapOverlayView, AppendDisc(), AppendRing(), Draw(), Initialize(), IsFree(), IsOccluded() (+13 more)
 
 ### Community 82 - "Community 82"
-Cohesion: 0.13
-Nodes (21): ESOLShipPartLook, ESOLShipPartShape, AddShipPart(), BeginPlay(), BuildShipMesh(), CreateHullMaterial(), FSOLShipPartSpec, LocationCm (+13 more)
+Cohesion: 0.14
+Nodes (20): ESOLShipPartLook, ESOLShipPartShape, AddShipPart(), BuildShipMesh(), CreateHullMaterial(), FSOLShipPartSpec, LocationCm, Look (+12 more)
 
 ### Community 83 - "Community 83"
 Cohesion: 0.27
 Nodes (11): ESOLSpeedUnit, FAutomationTestBase, FSOLSpeedStepperState, FString, int32, TCHAR, RunTest(), StepperExpectStep() (+3 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.25
-Nodes (11): CreateInputObjects(), DismissMap(), DismissSpeedPanel(), EndPlay(), NotifyControllerChanged(), ReleaseMouse(), RemoveMappingContext(), SetupPlayerInputComponent() (+3 more)
+Cohesion: 0.18
+Nodes (18): CloseMap(), CloseSpeedPanel(), DismissMap(), DismissSpeedPanel(), EndPlay(), HandleMenuStateChanged(), OpenMap(), OpenSpeedPanel() (+10 more)
 
 ### Community 85 - "Community 85"
 Cohesion: 0.36
@@ -545,8 +552,8 @@ Cohesion: 0.33
 Nodes (8): FSOLRadarPoint, FSOLRadarContact, TConstArrayView, ComputeRange(), EffectiveFloorM(), ProjectContact(), RadarCollapse(), StepManualRange()
 
 ### Community 92 - "Community 92"
-Cohesion: 0.20
-Nodes (11): GetShipPose(), HandleNextTarget(), HandlePreviousTarget(), HandleSelectTarget(), HandleThrust(), OnNextTargetAction(), OnPreviousTargetAction(), OnSelectTargetAction() (+3 more)
+Cohesion: 0.11
+Nodes (21): GetShipPose(), HandleClearTarget(), HandleDropTarget(), HandleMatchLock(), HandleNextTarget(), HandlePreviousTarget(), HandleSelectTarget(), HandleThrust() (+13 more)
 
 ### Community 93 - "Community 93"
 Cohesion: 0.42
@@ -561,8 +568,8 @@ Cohesion: 0.13
 Nodes (19): HandleMapCameraDragChanged(), HandleMapCursorMoved(), HandleMapMouseDelta(), HandleMapPanHeld(), HandleMapPickPressed(), HandleMapPickReleased(), HandleMapRightHeld(), HandleMouseDelta() (+11 more)
 
 ### Community 96 - "Community 96"
-Cohesion: 0.05
-Nodes (48): FSOLMapBodyOverlay, FSOLMapPickState, CancelJump(), CompleteJump(), DoesSupportWorldType(), HandleShipsStepped(), HandleUniverseUpdated(), Initialize() (+40 more)
+Cohesion: 0.08
+Nodes (37): FSOLMapBodyOverlay, FSOLMapPickState, AddOrbitPixels(), AddPanPixels(), AddZoomNotches(), ClearPick(), CloseMap(), ComputeCursorRay() (+29 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.33
@@ -649,8 +656,8 @@ Cohesion: 0.25
 Nodes (23): FAutomationTestBase, FQuat4d, FSOLSurfaceLockParams, FSOLSurfaceLockState, FString, FVector3d, int32, RunTest() (+15 more)
 
 ### Community 140 - "Community 140"
-Cohesion: 0.15
-Nodes (19): CloseMap(), EndWarpEffect(), FollowShip(), HandleClearTarget(), HandleDropTarget(), HandleFocusLost(), IsJumpWarping(), OnClearTargetAction() (+11 more)
+Cohesion: 0.40
+Nodes (5): BeginPlay(), EndWarpEffect(), FollowShip(), UpdateCameraFov(), UpdateCameraRotation()
 
 ### Community 141 - "Community 141"
 Cohesion: 0.29
@@ -709,8 +716,8 @@ Cohesion: 0.36
 Nodes (7): FAssetData, FString, TArray, LoadStarFieldData(), RunTest(), ScanStarFieldAssets(), USOLStarFieldData
 
 ### Community 162 - "Community 162"
-Cohesion: 0.11
-Nodes (23): CloseSpeedPanel(), HandleMenuStateChanged(), RestoreShipControl(), FMenuState, ASOLStarField(), Type, UPrimitiveComponent, FSubsystemCollectionBase (+15 more)
+Cohesion: 0.24
+Nodes (11): ASOLStarField(), Type, UPrimitiveComponent, BeginPlay(), EndPlay(), HandleUniverseUpdated(), MakeBackgroundPrimitive(), SetUpBrightStars() (+3 more)
 
 ### Community 163 - "Community 163"
 Cohesion: 0.56
@@ -801,8 +808,8 @@ Cohesion: 0.25
 Nodes (3): RingFramePositionCm(), RingFrameToNiagaraLocalCm(), FVector3d
 
 ### Community 195 - "Community 195"
-Cohesion: 0.14
-Nodes (13): 1. Problem, 2. Decisions, 3.1 Pure logic (test-first, `Source/SOLTest/Combat/`), 3.2 Mass and rendering, 3.3 Verification, 3. Design, 4. Open questions, 5. Amendments (+5 more)
+Cohesion: 0.13
+Nodes (14): 1. Problem, 2. Decisions, 3.1 Pure logic (test-first, `Source/SOLTest/Combat/`), 3.2 Mass and rendering, 3.3 Verification, 3. Design, 4. Open questions, 5. Amendments (+6 more)
 
 ### Community 196 - "Community 196"
 Cohesion: 0.29
@@ -853,16 +860,16 @@ Cohesion: 0.29
 Nodes (6): MayPlay(), SoundForEvent(), ESOLCombatEventType, ESOLCombatSound, FString, RunTest()
 
 ### Community 223 - "Community 223"
-Cohesion: 0.20
-Nodes (17): DrawnBoltCount(), EventPositionNowM(), EventsToTrim(), HasPreviousPosition(), HitPointAtFrameEndM(), IsBoltInRange(), IsSweepable(), MayQueueEvent() (+9 more)
+Cohesion: 0.19
+Nodes (18): DrawnBoltCount(), EventPositionNowM(), EventsToTrim(), HasPreviousPosition(), HitPointAtFrameEndM(), IsBoltInRange(), IsSweepable(), IsTargetMotionContinuous() (+10 more)
 
 ### Community 225 - "Community 225"
 Cohesion: 0.08
 Nodes (34): EMenuMode, ApplyEvent(), DoesSupportWorldType(), EndSettingsVisit(), GetPlayerController(), Initialize(), MenuModeName(), OnWorldBeginPlay() (+26 more)
 
 ### Community 226 - "Community 226"
-Cohesion: 0.09
-Nodes (37): ApplyAudio(), ApplyPending(), ApplyToWorld(), Deinitialize(), EndVisit(), FillSaveObject(), FlushSave(), Get() (+29 more)
+Cohesion: 0.13
+Nodes (27): ApplyAudio(), ApplyPending(), ApplyToWorld(), Deinitialize(), EndVisit(), FillSaveObject(), FlushSave(), Get() (+19 more)
 
 ### Community 227 - "Community 227"
 Cohesion: 0.18
@@ -948,24 +955,44 @@ Nodes (7): CaptureKey(), NativeOnPreviewKeyDown(), NativeOnPreviewMouseButtonDow
 Cohesion: 0.50
 Nodes (4): Items, Lifecycle, Naming, ToDo — Future Planned Items
 
+### Community 265 - "Community 265"
+Cohesion: 0.14
+Nodes (14): CancelJump(), CompleteJump(), DoesSupportWorldType(), HandleShipsStepped(), HandleUniverseUpdated(), Initialize(), ShouldCreateSubsystem(), StartJump() (+6 more)
+
+### Community 266 - "Community 266"
+Cohesion: 0.22
+Nodes (10): GetSlotFilePath(), HandleSaveCompleted(), ReadSlotForVerification(), RebindKey(), SetPendingWindowMode(), ERebindResult, FSettingsValues, FString (+2 more)
+
+### Community 267 - "Community 267"
+Cohesion: 0.29
+Nodes (7): FSubsystemCollectionBase, Type, UObject, DoesSupportWorldType(), Initialize(), ShouldCreateSubsystem(), UpdateFromClock()
+
+### Community 268 - "Community 268"
+Cohesion: 0.33
+Nodes (5): 1. Problem, 2. Decisions, 3. Acceptance, 4. Open questions, SDD 13 — Star field quality: realistic size, sharpness and brightness
+
+### Community 269 - "Community 269"
+Cohesion: 0.33
+Nodes (5): 1. Problem, 2. Decisions, 3. Acceptance, 4. Open questions, SDD 14 — Gas giant fidelity: layered clouds, volumetric near layer, moving storms
+
 ## Knowledge Gaps
-- **783 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `namespace`, `Type`, `USoundAttenuation` (+778 more)
+- **794 isolated node(s):** `enabledMcpjsonServers`, `unreal-mcp`, `namespace`, `Type`, `USoundAttenuation` (+789 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **88 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **90 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `GetName()` connect `Community 162` to `SOLTypes Namespace`, `Community 140`, `Community 19`, `Community 20`, `Community 36`, `Community 171`, `Community 172`, `Community 56`, `Community 58`, `Community 187`, `Community 189`, `Community 190`, `Community 63`, `Community 65`, `Community 82`, `Community 84`, `Community 217`, `Community 218`, `Community 96`, `Community 225`, `Community 226`, `Community 237`, `Community 109`?**
-  _High betweenness centrality (0.062) - this node is a cross-community bridge._
-- **Why does `DropTarget()` connect `Community 189` to `Community 162`?**
-  _High betweenness centrality (0.011) - this node is a cross-community bridge._
-- **Why does `OpenMap()` connect `Community 96` to `Community 162`?**
+- **Why does `GetName()` connect `Community 265` to `SOLTypes Namespace`, `Community 266`, `Community 267`, `Community 140`, `Community 19`, `Community 20`, `Community 162`, `Community 36`, `Community 171`, `Community 172`, `Community 56`, `Community 58`, `Community 187`, `Community 189`, `Community 190`, `Community 63`, `Community 65`, `Community 82`, `Community 84`, `Community 217`, `Community 218`, `Community 96`, `Community 225`, `Community 226`, `Community 237`, `Community 109`?**
+  _High betweenness centrality (0.053) - this node is a cross-community bridge._
+- **Why does `DropTarget()` connect `Community 189` to `Community 265`?**
+  _High betweenness centrality (0.012) - this node is a cross-community bridge._
+- **Why does `OpenMap()` connect `Community 96` to `Community 265`?**
   _High betweenness centrality (0.006) - this node is a cross-community bridge._
 - **Are the 68 inferred relationships involving `GetName()` (e.g. with `BeginPlay()` and `EndPlay()`) actually correct?**
   _`GetName()` has 68 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `enabledMcpjsonServers`, `unreal-mcp`, `namespace` to the rest of the system?**
-  _789 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _800 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 6` be split into smaller, more focused modules?**
   _Cohesion score 0.10317460317460317 - nodes in this community are weakly interconnected._
 - **Should `SOLTypes Namespace` be split into smaller, more focused modules?**

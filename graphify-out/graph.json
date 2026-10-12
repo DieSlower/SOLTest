@@ -786,6 +786,15 @@
       "norm_label": "drawnboltcount()"
     },
     {
+      "label": "IsTargetMotionContinuous()",
+      "file_type": "code",
+      "source_file": "Source/SOLTest/Combat/SOLCombatRules.cpp",
+      "source_location": "L98",
+      "id": "combat_solcombatrules_istargetmotioncontinuous",
+      "community": 223,
+      "norm_label": "istargetmotioncontinuous()"
+    },
+    {
       "label": "SOLCombatRules.h",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatRules.h",
@@ -1311,7 +1320,7 @@
       "label": "EndPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L150",
+      "source_location": "L154",
       "id": "combat_solcombatvisuals_endplay",
       "community": 217,
       "norm_label": "endplay()"
@@ -1320,7 +1329,7 @@
       "label": "Type",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L150",
+      "source_location": "L154",
       "id": "source_soltest_combat_solcombatvisuals_cpp_type",
       "community": 217,
       "norm_label": "type"
@@ -1329,7 +1338,7 @@
       "label": "CreatePool()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L162",
+      "source_location": "L166",
       "id": "combat_solcombatvisuals_createpool",
       "community": 217,
       "norm_label": "createpool()"
@@ -1338,7 +1347,7 @@
       "label": "FSOLEffectPool",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L162",
+      "source_location": "L166",
       "id": "fsoleffectpool",
       "community": 217,
       "norm_label": "fsoleffectpool"
@@ -1347,7 +1356,7 @@
       "label": "int32",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L162",
+      "source_location": "L166",
       "id": "source_soltest_combat_solcombatvisuals_cpp_int32",
       "community": 217,
       "norm_label": "int32"
@@ -1356,7 +1365,7 @@
       "label": "HandleCombatUpdated()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L187",
+      "source_location": "L191",
       "id": "combat_solcombatvisuals_handlecombatupdated",
       "community": 217,
       "norm_label": "handlecombatupdated()"
@@ -1365,7 +1374,7 @@
       "label": "GetObserverVelocityMps()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L199",
+      "source_location": "L203",
       "id": "combat_solcombatvisuals_getobservervelocitymps",
       "community": 217,
       "norm_label": "getobservervelocitymps()"
@@ -1374,7 +1383,7 @@
       "label": "FVector3d",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L199",
+      "source_location": "L203",
       "id": "source_soltest_combat_solcombatvisuals_cpp_fvector3d",
       "community": 217,
       "norm_label": "fvector3d"
@@ -1383,7 +1392,7 @@
       "label": "UpdateBolts()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L208",
+      "source_location": "L212",
       "id": "combat_solcombatvisuals_updatebolts",
       "community": 217,
       "norm_label": "updatebolts()"
@@ -1392,7 +1401,7 @@
       "label": "FSOLRenderOrigin",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L208",
+      "source_location": "L212",
       "id": "source_soltest_combat_solcombatvisuals_cpp_fsolrenderorigin",
       "community": 217,
       "norm_label": "fsolrenderorigin"
@@ -1401,7 +1410,7 @@
       "label": "SetBoltRendererRunning()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L257",
+      "source_location": "L261",
       "id": "combat_solcombatvisuals_setboltrendererrunning",
       "community": 217,
       "norm_label": "setboltrendererrunning()"
@@ -1410,7 +1419,7 @@
       "label": "UpdateTargets()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L272",
+      "source_location": "L276",
       "id": "combat_solcombatvisuals_updatetargets",
       "community": 217,
       "norm_label": "updatetargets()"
@@ -1419,7 +1428,7 @@
       "label": "EnsureTargetInstances()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L346",
+      "source_location": "L382",
       "id": "combat_solcombatvisuals_ensuretargetinstances",
       "community": 217,
       "norm_label": "ensuretargetinstances()"
@@ -1428,7 +1437,7 @@
       "label": "StartEventEffects()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L365",
+      "source_location": "L403",
       "id": "combat_solcombatvisuals_starteventeffects",
       "community": 217,
       "norm_label": "starteventeffects()"
@@ -1437,7 +1446,7 @@
       "label": "StartEffect()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L401",
+      "source_location": "L439",
       "id": "combat_solcombatvisuals_starteffect",
       "community": 217,
       "norm_label": "starteffect()"
@@ -1446,7 +1455,7 @@
       "label": "FSOLCombatEvent",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L401",
+      "source_location": "L439",
       "id": "source_soltest_combat_solcombatvisuals_cpp_fsolcombatevent",
       "community": 217,
       "norm_label": "fsolcombatevent"
@@ -1455,7 +1464,7 @@
       "label": "FLinearColor",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L401",
+      "source_location": "L439",
       "id": "source_soltest_combat_solcombatvisuals_cpp_flinearcolor",
       "community": 217,
       "norm_label": "flinearcolor"
@@ -1464,7 +1473,7 @@
       "label": "UpdateEffects()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.cpp",
-      "source_location": "L437",
+      "source_location": "L475",
       "id": "combat_solcombatvisuals_updateeffects",
       "community": 217,
       "norm_label": "updateeffects()"
@@ -1482,7 +1491,7 @@
       "label": "ASOLCombatVisuals()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.h",
-      "source_location": "L48",
+      "source_location": "L50",
       "id": "source_soltest_combat_solcombatvisuals_h_combat_solcombatvisuals_asolcombatvisuals",
       "community": 221,
       "norm_label": "asolcombatvisuals()"
@@ -1491,7 +1500,7 @@
       "label": "SOLTEST_API",
       "file_type": "code",
       "source_file": "Source/SOLTest/Combat/SOLCombatVisuals.h",
-      "source_location": "L48",
+      "source_location": "L50",
       "id": "source_soltest_combat_solcombatvisuals_h_soltest_api",
       "community": 221,
       "norm_label": "soltest_api"
@@ -2085,7 +2094,7 @@
       "label": "ASOLGameMode()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L56",
+      "source_location": "L60",
       "id": "game_solgamemode_asolgamemode",
       "community": 29,
       "norm_label": "asolgamemode()"
@@ -2094,7 +2103,7 @@
       "label": "GetDefaultPawnClassForController_Implementation()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L64",
+      "source_location": "L68",
       "id": "game_solgamemode_getdefaultpawnclassforcontroller_implementation",
       "community": 29,
       "norm_label": "getdefaultpawnclassforcontroller_implementation()"
@@ -2103,7 +2112,7 @@
       "label": "UClass",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L64",
+      "source_location": "L68",
       "id": "uclass",
       "community": 29,
       "norm_label": "uclass"
@@ -2112,7 +2121,7 @@
       "label": "AController",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L64",
+      "source_location": "L68",
       "id": "acontroller",
       "community": 29,
       "norm_label": "acontroller"
@@ -2121,7 +2130,7 @@
       "label": "StartPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L82",
+      "source_location": "L86",
       "id": "game_solgamemode_startplay",
       "community": 29,
       "norm_label": "startplay()"
@@ -2130,7 +2139,7 @@
       "label": "IsSOLGameWorld()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L127",
+      "source_location": "L133",
       "id": "game_solgamemode_issolgameworld",
       "community": 29,
       "norm_label": "issolgameworld()"
@@ -2139,7 +2148,7 @@
       "label": "UWorld",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L127",
+      "source_location": "L133",
       "id": "source_soltest_game_solgamemode_cpp_uworld",
       "community": 29,
       "norm_label": "uworld"
@@ -2148,7 +2157,7 @@
       "label": "EndPlay()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L146",
+      "source_location": "L152",
       "id": "game_solgamemode_endplay",
       "community": 29,
       "norm_label": "endplay()"
@@ -2157,7 +2166,7 @@
       "label": "Type",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L146",
+      "source_location": "L152",
       "id": "source_soltest_game_solgamemode_cpp_type",
       "community": 29,
       "norm_label": "type"
@@ -2166,7 +2175,7 @@
       "label": "TakeSmokeScreenshot()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L155",
+      "source_location": "L161",
       "id": "game_solgamemode_takesmokescreenshot",
       "community": 29,
       "norm_label": "takesmokescreenshot()"
@@ -2175,7 +2184,7 @@
       "label": "CaptureScreenshot()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L182",
+      "source_location": "L188",
       "id": "game_solgamemode_capturescreenshot",
       "community": 29,
       "norm_label": "capturescreenshot()"
@@ -2184,7 +2193,7 @@
       "label": "QuitAfterSmokeTest()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L193",
+      "source_location": "L199",
       "id": "game_solgamemode_quitaftersmoketest",
       "community": 29,
       "norm_label": "quitaftersmoketest()"
@@ -2193,7 +2202,7 @@
       "label": "StepCombatDemo()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L201",
+      "source_location": "L207",
       "id": "game_solgamemode_stepcombatdemo",
       "community": 29,
       "norm_label": "stepcombatdemo()"
@@ -2202,7 +2211,7 @@
       "label": "EndCombatDemoFire()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L282",
+      "source_location": "L307",
       "id": "game_solgamemode_endcombatdemofire",
       "community": 29,
       "norm_label": "endcombatdemofire()"
@@ -2211,7 +2220,7 @@
       "label": "ASOLShipPawn",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L282",
+      "source_location": "L307",
       "id": "source_soltest_game_solgamemode_cpp_asolshippawn",
       "community": 29,
       "norm_label": "asolshippawn"
@@ -2220,7 +2229,7 @@
       "label": "TCHAR",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L282",
+      "source_location": "L307",
       "id": "source_soltest_game_solgamemode_cpp_tchar",
       "community": 29,
       "norm_label": "tchar"
@@ -2229,7 +2238,7 @@
       "label": "StepCombatStress()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L293",
+      "source_location": "L318",
       "id": "game_solgamemode_stepcombatstress",
       "community": 29,
       "norm_label": "stepcombatstress()"
@@ -2238,7 +2247,7 @@
       "label": "FinishRestartPlayer()",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L322",
+      "source_location": "L347",
       "id": "game_solgamemode_finishrestartplayer",
       "community": 29,
       "norm_label": "finishrestartplayer()"
@@ -2247,7 +2256,7 @@
       "label": "FRotator",
       "file_type": "code",
       "source_file": "Source/SOLTest/Game/SOLGameMode.cpp",
-      "source_location": "L322",
+      "source_location": "L347",
       "id": "source_soltest_game_solgamemode_cpp_frotator",
       "community": 29,
       "norm_label": "frotator"
@@ -3005,7 +3014,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L1",
       "id": "source_soltest_map_soljumpsubsystem_cpp_map_soljumpsubsystem",
-      "community": 96,
+      "community": 265,
       "norm_label": "soljumpsubsystem.cpp"
     },
     {
@@ -3014,7 +3023,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L23",
       "id": "map_soljumpsubsystem_initialize",
-      "community": 96,
+      "community": 265,
       "norm_label": "initialize()"
     },
     {
@@ -3023,7 +3032,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L23",
       "id": "source_soltest_map_soljumpsubsystem_cpp_fsubsystemcollectionbase",
-      "community": 96,
+      "community": 265,
       "norm_label": "fsubsystemcollectionbase"
     },
     {
@@ -3032,7 +3041,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L48",
       "id": "map_soljumpsubsystem_deinitialize",
-      "community": 96,
+      "community": 265,
       "norm_label": "deinitialize()"
     },
     {
@@ -3041,7 +3050,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L72",
       "id": "map_soljumpsubsystem_shouldcreatesubsystem",
-      "community": 96,
+      "community": 265,
       "norm_label": "shouldcreatesubsystem()"
     },
     {
@@ -3050,7 +3059,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L72",
       "id": "source_soltest_map_soljumpsubsystem_cpp_uobject",
-      "community": 96,
+      "community": 265,
       "norm_label": "uobject"
     },
     {
@@ -3059,7 +3068,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L79",
       "id": "map_soljumpsubsystem_doessupportworldtype",
-      "community": 96,
+      "community": 265,
       "norm_label": "doessupportworldtype()"
     },
     {
@@ -3068,7 +3077,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L79",
       "id": "source_soltest_map_soljumpsubsystem_cpp_type",
-      "community": 96,
+      "community": 265,
       "norm_label": "type"
     },
     {
@@ -3077,7 +3086,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L86",
       "id": "map_soljumpsubsystem_startjump",
-      "community": 96,
+      "community": 265,
       "norm_label": "startjump()"
     },
     {
@@ -3095,7 +3104,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L106",
       "id": "map_soljumpsubsystem_canceljump",
-      "community": 96,
+      "community": 265,
       "norm_label": "canceljump()"
     },
     {
@@ -3104,7 +3113,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L119",
       "id": "map_soljumpsubsystem_computefovdeg",
-      "community": 96,
+      "community": 265,
       "norm_label": "computefovdeg()"
     },
     {
@@ -3113,7 +3122,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L127",
       "id": "map_soljumpsubsystem_computestreakintensity",
-      "community": 96,
+      "community": 265,
       "norm_label": "computestreakintensity()"
     },
     {
@@ -3122,7 +3131,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L135",
       "id": "map_soljumpsubsystem_handleshipsstepped",
-      "community": 96,
+      "community": 265,
       "norm_label": "handleshipsstepped()"
     },
     {
@@ -3131,7 +3140,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L151",
       "id": "map_soljumpsubsystem_handleuniverseupdated",
-      "community": 96,
+      "community": 265,
       "norm_label": "handleuniverseupdated()"
     },
     {
@@ -3140,7 +3149,7 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L170",
       "id": "map_soljumpsubsystem_completejump",
-      "community": 96,
+      "community": 265,
       "norm_label": "completejump()"
     },
     {
@@ -8639,7 +8648,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L245",
       "id": "source_soltest_menu_solsettingssubsystem_cpp_fsettingsvalues",
-      "community": 226,
+      "community": 266,
       "norm_label": "fsettingsvalues"
     },
     {
@@ -8666,7 +8675,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L277",
       "id": "menu_solsettingssubsystem_setpendingwindowmode",
-      "community": 226,
+      "community": 266,
       "norm_label": "setpendingwindowmode()"
     },
     {
@@ -8675,7 +8684,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L277",
       "id": "source_soltest_menu_solsettingssubsystem_cpp_int32",
-      "community": 226,
+      "community": 266,
       "norm_label": "int32"
     },
     {
@@ -8684,7 +8693,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L284",
       "id": "menu_solsettingssubsystem_rebindkey",
-      "community": 226,
+      "community": 266,
       "norm_label": "rebindkey()"
     },
     {
@@ -8693,7 +8702,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L284",
       "id": "source_soltest_menu_solsettingssubsystem_cpp_erebindresult",
-      "community": 226,
+      "community": 266,
       "norm_label": "erebindresult"
     },
     {
@@ -8702,7 +8711,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L284",
       "id": "source_soltest_menu_solsettingssubsystem_cpp_fstring",
-      "community": 226,
+      "community": 266,
       "norm_label": "fstring"
     },
     {
@@ -8765,7 +8774,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L403",
       "id": "menu_solsettingssubsystem_handlesavecompleted",
-      "community": 226,
+      "community": 266,
       "norm_label": "handlesavecompleted()"
     },
     {
@@ -8819,7 +8828,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L479",
       "id": "menu_solsettingssubsystem_getslotfilepath",
-      "community": 226,
+      "community": 266,
       "norm_label": "getslotfilepath()"
     },
     {
@@ -8828,7 +8837,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L487",
       "id": "menu_solsettingssubsystem_readslotforverification",
-      "community": 226,
+      "community": 266,
       "norm_label": "readslotforverification()"
     },
     {
@@ -8837,7 +8846,7 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L487",
       "id": "source_soltest_menu_solsettingssubsystem_cpp_tarray",
-      "community": 226,
+      "community": 266,
       "norm_label": "tarray"
     },
     {
@@ -11276,7 +11285,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L178",
       "id": "ship_solshippawn_beginplay",
-      "community": 82,
+      "community": 140,
       "norm_label": "beginplay()"
     },
     {
@@ -11303,7 +11312,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L298",
       "id": "ship_solshippawn_tick",
-      "community": 140,
+      "community": 84,
       "norm_label": "tick()"
     },
     {
@@ -11312,7 +11321,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L401",
       "id": "ship_solshippawn_updatecombatinput",
-      "community": 140,
+      "community": 92,
       "norm_label": "updatecombatinput()"
     },
     {
@@ -11339,7 +11348,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L464",
       "id": "ship_solshippawn_isjumpwarping",
-      "community": 140,
+      "community": 92,
       "norm_label": "isjumpwarping()"
     },
     {
@@ -11366,7 +11375,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L485",
       "id": "ship_solshippawn_startmapjump",
-      "community": 140,
+      "community": 84,
       "norm_label": "startmapjump()"
     },
     {
@@ -11375,7 +11384,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L504",
       "id": "ship_solshippawn_setupplayerinputcomponent",
-      "community": 84,
+      "community": 56,
       "norm_label": "setupplayerinputcomponent()"
     },
     {
@@ -11384,7 +11393,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L504",
       "id": "source_soltest_ship_solshippawn_cpp_uinputcomponent",
-      "community": 84,
+      "community": 56,
       "norm_label": "uinputcomponent"
     },
     {
@@ -11393,7 +11402,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L573",
       "id": "ship_solshippawn_notifycontrollerchanged",
-      "community": 84,
+      "community": 56,
       "norm_label": "notifycontrollerchanged()"
     },
     {
@@ -11420,7 +11429,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L631",
       "id": "ship_solshippawn_updateviewportfocus",
-      "community": 140,
+      "community": 58,
       "norm_label": "updateviewportfocus()"
     },
     {
@@ -11429,7 +11438,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L654",
       "id": "ship_solshippawn_handlefocuslost",
-      "community": 140,
+      "community": 58,
       "norm_label": "handlefocuslost()"
     },
     {
@@ -11447,7 +11456,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L680",
       "id": "ship_solshippawn_createinputobjects",
-      "community": 84,
+      "community": 56,
       "norm_label": "createinputobjects()"
     },
     {
@@ -11663,7 +11672,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1111",
       "id": "ship_solshippawn_handlematchlock",
-      "community": 58,
+      "community": 92,
       "norm_label": "handlematchlock()"
     },
     {
@@ -11672,7 +11681,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1121",
       "id": "ship_solshippawn_handletogglelevel",
-      "community": 58,
+      "community": 92,
       "norm_label": "handletogglelevel()"
     },
     {
@@ -11690,7 +11699,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1139",
       "id": "ship_solshippawn_handledroptarget",
-      "community": 140,
+      "community": 92,
       "norm_label": "handledroptarget()"
     },
     {
@@ -11726,7 +11735,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1185",
       "id": "ship_solshippawn_handlecleartarget",
-      "community": 140,
+      "community": 92,
       "norm_label": "handlecleartarget()"
     },
     {
@@ -11807,7 +11816,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1272",
       "id": "ship_solshippawn_openspeedpanel",
-      "community": 140,
+      "community": 84,
       "norm_label": "openspeedpanel()"
     },
     {
@@ -11816,7 +11825,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1310",
       "id": "ship_solshippawn_closespeedpanel",
-      "community": 162,
+      "community": 84,
       "norm_label": "closespeedpanel()"
     },
     {
@@ -11825,7 +11834,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1324",
       "id": "ship_solshippawn_suspendshipcontrol",
-      "community": 140,
+      "community": 84,
       "norm_label": "suspendshipcontrol()"
     },
     {
@@ -11834,7 +11843,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1324",
       "id": "source_soltest_ship_solshippawn_cpp_aplayercontroller",
-      "community": 140,
+      "community": 84,
       "norm_label": "aplayercontroller"
     },
     {
@@ -11843,7 +11852,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1341",
       "id": "ship_solshippawn_restoreshipcontrol",
-      "community": 162,
+      "community": 84,
       "norm_label": "restoreshipcontrol()"
     },
     {
@@ -11852,7 +11861,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1359",
       "id": "ship_solshippawn_openmap",
-      "community": 140,
+      "community": 84,
       "norm_label": "openmap()"
     },
     {
@@ -11861,7 +11870,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1404",
       "id": "ship_solshippawn_closemap",
-      "community": 140,
+      "community": 84,
       "norm_label": "closemap()"
     },
     {
@@ -11969,7 +11978,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1586",
       "id": "ship_solshippawn_handlemenustatechanged",
-      "community": 162,
+      "community": 84,
       "norm_label": "handlemenustatechanged()"
     },
     {
@@ -11978,7 +11987,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1586",
       "id": "source_soltest_ship_solshippawn_cpp_fmenustate",
-      "community": 162,
+      "community": 84,
       "norm_label": "fmenustate"
     },
     {
@@ -12176,7 +12185,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1818",
       "id": "ship_solshippawn_onmatchlockaction",
-      "community": 58,
+      "community": 92,
       "norm_label": "onmatchlockaction()"
     },
     {
@@ -12185,7 +12194,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1825",
       "id": "ship_solshippawn_ontogglelevelaction",
-      "community": 58,
+      "community": 92,
       "norm_label": "ontogglelevelaction()"
     },
     {
@@ -12212,7 +12221,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1846",
       "id": "ship_solshippawn_ondroptargetaction",
-      "community": 140,
+      "community": 92,
       "norm_label": "ondroptargetaction()"
     },
     {
@@ -12248,7 +12257,7 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1874",
       "id": "ship_solshippawn_oncleartargetaction",
-      "community": 140,
+      "community": 92,
       "norm_label": "oncleartargetaction()"
     },
     {
@@ -18206,7 +18215,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L239",
       "id": "ui_solflighthud_toggleorbitlines",
-      "community": 36,
+      "community": 265,
       "norm_label": "toggleorbitlines()"
     },
     {
@@ -18224,7 +18233,7 @@
       "source_file": "Source/SOLTest/UI/SOLFlightHud.cpp",
       "source_location": "L269",
       "id": "ui_solflighthud_resetradarauto",
-      "community": 36,
+      "community": 265,
       "norm_label": "resetradarauto()"
     },
     {
@@ -20141,7 +20150,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistry.cpp",
       "source_location": "L443",
       "id": "universe_solbodyregistry_getname",
-      "community": 162,
+      "community": 265,
       "norm_label": "getname()"
     },
     {
@@ -20249,7 +20258,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L1",
       "id": "source_soltest_universe_solbodyregistrysubsystem_cpp_universe_solbodyregistrysubsystem",
-      "community": 162,
+      "community": 267,
       "norm_label": "solbodyregistrysubsystem.cpp"
     },
     {
@@ -20258,7 +20267,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L17",
       "id": "universe_solbodyregistrysubsystem_initialize",
-      "community": 162,
+      "community": 267,
       "norm_label": "initialize()"
     },
     {
@@ -20267,7 +20276,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L17",
       "id": "source_soltest_universe_solbodyregistrysubsystem_cpp_fsubsystemcollectionbase",
-      "community": 162,
+      "community": 267,
       "norm_label": "fsubsystemcollectionbase"
     },
     {
@@ -20276,7 +20285,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L30",
       "id": "universe_solbodyregistrysubsystem_updatefromclock",
-      "community": 162,
+      "community": 267,
       "norm_label": "updatefromclock()"
     },
     {
@@ -20285,7 +20294,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L53",
       "id": "universe_solbodyregistrysubsystem_shouldcreatesubsystem",
-      "community": 162,
+      "community": 267,
       "norm_label": "shouldcreatesubsystem()"
     },
     {
@@ -20294,7 +20303,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L53",
       "id": "source_soltest_universe_solbodyregistrysubsystem_cpp_uobject",
-      "community": 162,
+      "community": 267,
       "norm_label": "uobject"
     },
     {
@@ -20303,7 +20312,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L60",
       "id": "universe_solbodyregistrysubsystem_doessupportworldtype",
-      "community": 162,
+      "community": 267,
       "norm_label": "doessupportworldtype()"
     },
     {
@@ -20312,7 +20321,7 @@
       "source_file": "Source/SOLTest/Universe/SOLBodyRegistrySubsystem.cpp",
       "source_location": "L60",
       "id": "source_soltest_universe_solbodyregistrysubsystem_cpp_type",
-      "community": 162,
+      "community": 267,
       "norm_label": "type"
     },
     {
@@ -22362,7 +22371,7 @@
       "label": "graphify",
       "file_type": "document",
       "source_file": "CLAUDE.md",
-      "source_location": "L173",
+      "source_location": "L175",
       "id": "claude_graphify",
       "community": 22,
       "norm_label": "graphify"
@@ -22479,7 +22488,7 @@
       "label": "8. Extension points for future parts",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L325",
+      "source_location": "L326",
       "id": "docs_architecture_8_extension_points_for_future_parts",
       "community": 107,
       "norm_label": "8. extension points for future parts"
@@ -22488,7 +22497,7 @@
       "label": "Keeping this document in sync",
       "file_type": "document",
       "source_file": "Docs/ARCHITECTURE.md",
-      "source_location": "L337",
+      "source_location": "L338",
       "id": "docs_architecture_keeping_this_document_in_sync",
       "community": 107,
       "norm_label": "keeping this document in sync"
@@ -22699,6 +22708,42 @@
       "id": "plans_12_planet_axial_rotation_plan_cross_cutting",
       "community": 150,
       "norm_label": "cross-cutting"
+    },
+    {
+      "label": "13-star-field-quality-plan.md",
+      "file_type": "document",
+      "source_file": "Docs/Plans/13-star-field-quality-plan.md",
+      "source_location": "L1",
+      "id": "plans_13_star_field_quality_plan",
+      "community": 270,
+      "norm_label": "13-star-field-quality-plan.md"
+    },
+    {
+      "label": "Plan 13 \u2014 Star field quality",
+      "file_type": "document",
+      "source_file": "Docs/Plans/13-star-field-quality-plan.md",
+      "source_location": "L3",
+      "id": "plans_13_star_field_quality_plan_plan_13_star_field_quality",
+      "community": 270,
+      "norm_label": "plan 13 \u2014 star field quality"
+    },
+    {
+      "label": "14-gas-giant-fidelity-plan.md",
+      "file_type": "document",
+      "source_file": "Docs/Plans/14-gas-giant-fidelity-plan.md",
+      "source_location": "L1",
+      "id": "plans_14_gas_giant_fidelity_plan",
+      "community": 271,
+      "norm_label": "14-gas-giant-fidelity-plan.md"
+    },
+    {
+      "label": "Plan 14 \u2014 Gas giant fidelity",
+      "file_type": "document",
+      "source_file": "Docs/Plans/14-gas-giant-fidelity-plan.md",
+      "source_location": "L3",
+      "id": "plans_14_gas_giant_fidelity_plan_plan_14_gas_giant_fidelity",
+      "community": 271,
+      "norm_label": "plan 14 \u2014 gas giant fidelity"
     },
     {
       "label": "2-foundations-flight-scaffold-plan.md",
@@ -23329,6 +23374,114 @@
       "id": "sdds_12_planet_axial_rotation_5_revision_history",
       "community": 148,
       "norm_label": "5. revision history"
+    },
+    {
+      "label": "13-star-field-quality.md",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L1",
+      "id": "sdds_13_star_field_quality",
+      "community": 268,
+      "norm_label": "13-star-field-quality.md"
+    },
+    {
+      "label": "SDD 13 \u2014 Star field quality: realistic size, sharpness and brightness",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L3",
+      "id": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "community": 268,
+      "norm_label": "sdd 13 \u2014 star field quality: realistic size, sharpness and brightness"
+    },
+    {
+      "label": "1. Problem",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L7",
+      "id": "sdds_13_star_field_quality_1_problem",
+      "community": 268,
+      "norm_label": "1. problem"
+    },
+    {
+      "label": "2. Decisions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L11",
+      "id": "sdds_13_star_field_quality_2_decisions",
+      "community": 268,
+      "norm_label": "2. decisions"
+    },
+    {
+      "label": "3. Acceptance",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L19",
+      "id": "sdds_13_star_field_quality_3_acceptance",
+      "community": 268,
+      "norm_label": "3. acceptance"
+    },
+    {
+      "label": "4. Open questions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L25",
+      "id": "sdds_13_star_field_quality_4_open_questions",
+      "community": 268,
+      "norm_label": "4. open questions"
+    },
+    {
+      "label": "14-gas-giant-fidelity.md",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L1",
+      "id": "sdds_14_gas_giant_fidelity",
+      "community": 269,
+      "norm_label": "14-gas-giant-fidelity.md"
+    },
+    {
+      "label": "SDD 14 \u2014 Gas giant fidelity: layered clouds, volumetric near layer, moving storms",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L3",
+      "id": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "community": 269,
+      "norm_label": "sdd 14 \u2014 gas giant fidelity: layered clouds, volumetric near layer, moving storms"
+    },
+    {
+      "label": "1. Problem",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L7",
+      "id": "sdds_14_gas_giant_fidelity_1_problem",
+      "community": 269,
+      "norm_label": "1. problem"
+    },
+    {
+      "label": "2. Decisions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L11",
+      "id": "sdds_14_gas_giant_fidelity_2_decisions",
+      "community": 269,
+      "norm_label": "2. decisions"
+    },
+    {
+      "label": "3. Acceptance",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L21",
+      "id": "sdds_14_gas_giant_fidelity_3_acceptance",
+      "community": 269,
+      "norm_label": "3. acceptance"
+    },
+    {
+      "label": "4. Open questions",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L25",
+      "id": "sdds_14_gas_giant_fidelity_4_open_questions",
+      "community": 269,
+      "norm_label": "4. open questions"
     },
     {
       "label": "2-foundations-flight-scaffold.md",
@@ -24643,6 +24796,15 @@
       "id": "sdds_7_weapons_targets_destruction_amendment_4_7f_adversarial_review_fixes_and_load_measurements_2026_10_09",
       "community": 195,
       "norm_label": "amendment 4 \u2014 7f adversarial-review fixes and load measurements (2026-10-09)"
+    },
+    {
+      "label": "Amendment 5 \u2014 dropped target blurry and phasing (issue #15, 2026-10-12)",
+      "file_type": "document",
+      "source_file": "Docs/SDDs/7-weapons-targets-destruction.md",
+      "source_location": "L153",
+      "id": "sdds_7_weapons_targets_destruction_amendment_5_dropped_target_blurry_and_phasing_issue_15_2026_10_12",
+      "community": 195,
+      "norm_label": "amendment 5 \u2014 dropped target blurry and phasing (issue #15, 2026-10-12)"
     },
     {
       "label": "8-hud-menus-settings.md",
@@ -27517,6 +27679,16 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "Source/SOLTest/Combat/SOLCombatRules.cpp",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "source_soltest_combat_solcombatrules_cpp_combat_solcombatrules",
+      "target": "combat_solcombatrules_istargetmotioncontinuous",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Source/SOLTest/Combat/SOLCombatRules.cpp",
       "source_location": "L66",
       "weight": 1.0,
       "confidence_score": 1.0,
@@ -27784,6 +27956,17 @@
       "weight": 1.0,
       "source": "tests_solcombatrulestest_runtest",
       "target": "combat_solcombatrules_drawnboltcount"
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "INFERRED",
+      "confidence_score": 0.8,
+      "source_file": "Source/SOLTest/Tests/SOLCombatRulesTest.cpp",
+      "source_location": "L281",
+      "weight": 1.0,
+      "source": "tests_solcombatrulestest_runtest",
+      "target": "combat_solcombatrules_istargetmotioncontinuous"
     },
     {
       "relation": "contains",
@@ -32336,9 +32519,9 @@
       "source_file": "Source/SOLTest/Map/SOLJumpSubsystem.cpp",
       "source_location": "L106",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_map_soljumpsubsystem_cpp_map_soljumpsubsystem",
-      "target": "map_soljumpsubsystem_canceljump",
-      "confidence_score": 1.0
+      "target": "map_soljumpsubsystem_canceljump"
     },
     {
       "relation": "contains",
@@ -36800,9 +36983,9 @@
       "source_file": "Source/SOLTest/Menu/SOLInfoText.cpp",
       "source_location": "L100",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solinfotext_cpp_menu_solinfotext",
-      "target": "menu_solinfotext_buildprose",
-      "confidence_score": 1.0
+      "target": "menu_solinfotext_buildprose"
     },
     {
       "relation": "contains",
@@ -36840,9 +37023,9 @@
       "source_file": "Source/SOLTest/Menu/SOLInfoText.cpp",
       "source_location": "L93",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solinfotext_cpp_menu_solinfotext",
-      "target": "menu_solinfotext_formatsurfacelockmanuallabel",
-      "confidence_score": 1.0
+      "target": "menu_solinfotext_formatsurfacelockmanuallabel"
     },
     {
       "relation": "contains",
@@ -36915,9 +37098,9 @@
       "source_location": "L100",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solinfotext_buildprose",
-      "target": "source_soltest_menu_solinfotext_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solinfotext_cpp_fstring"
     },
     {
       "relation": "references",
@@ -36959,9 +37142,9 @@
       "source_location": "L93",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solinfotext_formatsurfacelockmanuallabel",
-      "target": "source_soltest_menu_solinfotext_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solinfotext_cpp_fstring"
     },
     {
       "relation": "calls",
@@ -37080,9 +37263,9 @@
       "source_location": "L100",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solinfotext_buildprose",
-      "target": "source_soltest_menu_solinfotext_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solinfotext_cpp_tarray"
     },
     {
       "relation": "references",
@@ -37091,9 +37274,9 @@
       "source_location": "L93",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solinfotext_formatsurfacelockmanuallabel",
-      "target": "source_soltest_menu_solinfotext_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solinfotext_cpp_tarray"
     },
     {
       "relation": "calls",
@@ -37154,9 +37337,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L157",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_canbindkeyto",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_canbindkeyto"
     },
     {
       "relation": "contains",
@@ -37194,9 +37377,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L168",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_formatkeytext",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_formatkeytext"
     },
     {
       "relation": "contains",
@@ -37214,9 +37397,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L131",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_ismapfixedkey",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_ismapfixedkey"
     },
     {
       "relation": "contains",
@@ -37224,9 +37407,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L138",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_ispressablekey",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_ispressablekey"
     },
     {
       "relation": "contains",
@@ -37244,9 +37427,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L20",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_keybindingdef",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_keybindingdef"
     },
     {
       "relation": "contains",
@@ -37254,9 +37437,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L88",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solkeybindings_cpp_menu_solkeybindings",
-      "target": "menu_solkeybindings_keybindingislisted",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_keybindingislisted"
     },
     {
       "relation": "contains",
@@ -37305,9 +37488,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingdef",
-      "target": "fbindingdef",
-      "confidence_score": 1.0
+      "target": "fbindingdef"
     },
     {
       "relation": "references",
@@ -37316,9 +37499,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingdef",
-      "target": "source_soltest_menu_solkeybindings_cpp_ebinding",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_ebinding"
     },
     {
       "relation": "references",
@@ -37327,9 +37510,9 @@
       "source_location": "L20",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingdef",
-      "target": "source_soltest_menu_solkeybindings_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_tchar"
     },
     {
       "relation": "references",
@@ -37338,9 +37521,9 @@
       "source_location": "L168",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_formatkeytext",
-      "target": "source_soltest_menu_solkeybindings_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_tchar"
     },
     {
       "relation": "references",
@@ -37349,9 +37532,9 @@
       "source_location": "L88",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingislisted",
-      "target": "source_soltest_menu_solkeybindings_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_tchar"
     },
     {
       "relation": "calls",
@@ -37360,9 +37543,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L159",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkeyto",
-      "target": "menu_solkeybindings_keybindingisvalid",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_keybindingisvalid"
     },
     {
       "relation": "references",
@@ -37393,9 +37576,9 @@
       "source_location": "L157",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkeyto",
-      "target": "source_soltest_menu_solkeybindings_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_int32"
     },
     {
       "relation": "references",
@@ -37448,9 +37631,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L133",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_ismapfixedkey",
-      "target": "menu_solkeybindings_keybindingislisted",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_keybindingislisted"
     },
     {
       "relation": "calls",
@@ -37459,9 +37642,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L126",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_isreservedkey",
-      "target": "menu_solkeybindings_keybindingislisted",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_keybindingislisted"
     },
     {
       "relation": "references",
@@ -37470,9 +37653,9 @@
       "source_location": "L88",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingislisted",
-      "target": "source_soltest_menu_solkeybindings_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_fstring"
     },
     {
       "relation": "references",
@@ -37481,9 +37664,9 @@
       "source_location": "L88",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_keybindingislisted",
-      "target": "tarrayview",
-      "confidence_score": 1.0
+      "target": "tarrayview"
     },
     {
       "relation": "references",
@@ -37503,9 +37686,9 @@
       "source_location": "L157",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkeyto",
-      "target": "source_soltest_menu_solkeybindings_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_fstring"
     },
     {
       "relation": "references",
@@ -37547,9 +37730,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L168",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_formatkeytext",
-      "target": "source_soltest_menu_solkeybindings_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_fstring"
     },
     {
       "relation": "references",
@@ -37569,9 +37752,9 @@
       "source_location": "L131",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_ismapfixedkey",
-      "target": "source_soltest_menu_solkeybindings_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_fstring"
     },
     {
       "relation": "references",
@@ -37580,9 +37763,9 @@
       "source_location": "L138",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_ispressablekey",
-      "target": "source_soltest_menu_solkeybindings_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_fstring"
     },
     {
       "relation": "references",
@@ -37679,9 +37862,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L163",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkeyto",
-      "target": "menu_solkeybindings_ismapfixedkey",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_ismapfixedkey"
     },
     {
       "relation": "calls",
@@ -37701,9 +37884,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L152",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkey",
-      "target": "menu_solkeybindings_ispressablekey",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_ispressablekey"
     },
     {
       "relation": "calls",
@@ -37723,9 +37906,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L159",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_canbindkeyto",
-      "target": "menu_solkeybindings_canbindkey",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_canbindkey"
     },
     {
       "relation": "calls",
@@ -37767,9 +37950,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L256",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_rebind",
-      "target": "menu_solkeybindings_canbindkeyto",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_canbindkeyto"
     },
     {
       "relation": "calls",
@@ -37778,9 +37961,9 @@
       "source_file": "Source/SOLTest/Menu/SOLKeyBindings.cpp",
       "source_location": "L201",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_resolvekeys",
-      "target": "menu_solkeybindings_canbindkeyto",
-      "confidence_score": 1.0
+      "target": "menu_solkeybindings_canbindkeyto"
     },
     {
       "relation": "calls",
@@ -37800,9 +37983,9 @@
       "source_location": "L168",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solkeybindings_formatkeytext",
-      "target": "source_soltest_menu_solkeybindings_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solkeybindings_cpp_tarray"
     },
     {
       "relation": "calls",
@@ -38336,9 +38519,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuButton.cpp",
       "source_location": "L96",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solmenubutton_cpp_menu_solmenubutton",
-      "target": "menu_solmenubutton_notifyhovered",
-      "confidence_score": 1.0
+      "target": "menu_solmenubutton_notifyhovered"
     },
     {
       "relation": "contains",
@@ -38421,9 +38604,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuButton.cpp",
       "source_location": "L111",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenubutton_handlehovered",
-      "target": "menu_solmenubutton_notifyhovered",
-      "confidence_score": 1.0
+      "target": "menu_solmenubutton_notifyhovered"
     },
     {
       "relation": "contains",
@@ -38660,9 +38843,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuContent.cpp",
       "source_location": "L188",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solmenucontent_cpp_menu_solmenucontent",
-      "target": "menu_solmenucontent_formatcontrolaction",
-      "confidence_score": 1.0
+      "target": "menu_solmenucontent_formatcontrolaction"
     },
     {
       "relation": "contains",
@@ -38760,9 +38943,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuContent.cpp",
       "source_location": "L314",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solmenucontent_cpp_menu_solmenucontent",
-      "target": "menu_solmenucontent_refreshinfopage",
-      "confidence_score": 1.0
+      "target": "menu_solmenucontent_refreshinfopage"
     },
     {
       "relation": "contains",
@@ -38946,9 +39129,9 @@
       "source_location": "L188",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_formatcontrolaction",
-      "target": "source_soltest_menu_solmenucontent_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_fstring"
     },
     {
       "relation": "references",
@@ -39012,9 +39195,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuContent.cpp",
       "source_location": "L314",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_refreshinfopage",
-      "target": "source_soltest_menu_solmenucontent_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_fstring"
     },
     {
       "relation": "references",
@@ -39243,9 +39426,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuContent.cpp",
       "source_location": "L191",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_formatcontrolaction",
-      "target": "menu_solmenucontent_menucontentwithunit",
-      "confidence_score": 1.0
+      "target": "menu_solmenucontent_menucontentwithunit"
     },
     {
       "relation": "calls",
@@ -39287,9 +39470,9 @@
       "source_location": "L188",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_formatcontrolaction",
-      "target": "source_soltest_menu_solmenucontent_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_tchar"
     },
     {
       "relation": "references",
@@ -39375,9 +39558,9 @@
       "source_location": "L243",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_buildinfopage",
-      "target": "source_soltest_menu_solmenucontent_cpp_utextblock",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_utextblock"
     },
     {
       "relation": "references",
@@ -39397,9 +39580,9 @@
       "source_location": "L314",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_refreshinfopage",
-      "target": "source_soltest_menu_solmenucontent_cpp_utextblock",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_utextblock"
     },
     {
       "relation": "calls",
@@ -39485,9 +39668,9 @@
       "source_location": "L243",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_buildinfopage",
-      "target": "source_soltest_menu_solmenucontent_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_tarray"
     },
     {
       "relation": "references",
@@ -39507,9 +39690,9 @@
       "source_location": "L314",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_refreshinfopage",
-      "target": "source_soltest_menu_solmenucontent_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenucontent_cpp_tarray"
     },
     {
       "relation": "references",
@@ -39551,9 +39734,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuContent.cpp",
       "source_location": "L219",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_buildcontrolspage",
-      "target": "menu_solmenucontent_formatcontrolaction",
-      "confidence_score": 1.0
+      "target": "menu_solmenucontent_formatcontrolaction"
     },
     {
       "relation": "references",
@@ -39573,9 +39756,9 @@
       "source_location": "L243",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_buildinfopage",
-      "target": "tobjectptr",
-      "confidence_score": 1.0
+      "target": "tobjectptr"
     },
     {
       "relation": "references",
@@ -39595,9 +39778,9 @@
       "source_location": "L314",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solmenucontent_refreshinfopage",
-      "target": "tobjectptr",
-      "confidence_score": 1.0
+      "target": "tobjectptr"
     },
     {
       "relation": "references",
@@ -39787,9 +39970,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuSmoke.cpp",
       "source_location": "L480",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solmenusmoke_cpp_menu_solmenusmoke",
-      "target": "menu_solmenusmoke_runrebindcapture",
-      "confidence_score": 1.0
+      "target": "menu_solmenusmoke_runrebindcapture"
     },
     {
       "relation": "contains",
@@ -39807,9 +39990,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuSmoke.cpp",
       "source_location": "L459",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solmenusmoke_cpp_menu_solmenusmoke",
-      "target": "menu_solmenusmoke_slatemousebutton",
-      "confidence_score": 1.0
+      "target": "menu_solmenusmoke_slatemousebutton"
     },
     {
       "relation": "contains",
@@ -40111,9 +40294,9 @@
       "source_location": "L480",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenusmoke_runrebindcapture",
-      "target": "usolmenusubsystem",
-      "confidence_score": 1.0
+      "target": "usolmenusubsystem"
     },
     {
       "relation": "references",
@@ -40485,9 +40668,9 @@
       "source_location": "L459",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solmenusmoke_slatemousebutton",
-      "target": "source_soltest_menu_solmenusmoke_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solmenusmoke_cpp_fkey"
     },
     {
       "relation": "calls",
@@ -40496,9 +40679,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuSmoke.cpp",
       "source_location": "L504",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenusmoke_runrebindcapture",
-      "target": "menu_solmenusmoke_slatekey",
-      "confidence_score": 1.0
+      "target": "menu_solmenusmoke_slatekey"
     },
     {
       "relation": "calls",
@@ -40507,9 +40690,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuSmoke.cpp",
       "source_location": "L515",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenusmoke_runrebindcapture",
-      "target": "menu_solmenusmoke_slatemousebutton",
-      "confidence_score": 1.0
+      "target": "menu_solmenusmoke_slatemousebutton"
     },
     {
       "relation": "calls",
@@ -40518,9 +40701,9 @@
       "source_file": "Source/SOLTest/Menu/SOLMenuSmoke.cpp",
       "source_location": "L643",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solmenusmoke_entersettingsphase",
-      "target": "menu_solmenusmoke_runrebindcapture",
-      "confidence_score": 1.0
+      "target": "menu_solmenusmoke_runrebindcapture"
     },
     {
       "relation": "calls",
@@ -41599,9 +41782,9 @@
       "source_file": "Source/SOLTest/Menu/SOLPauseMenuWidget.cpp",
       "source_location": "L170",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solpausemenuwidget_cpp_menu_solpausemenuwidget",
-      "target": "menu_solpausemenuwidget_getinfokeytext",
-      "confidence_score": 1.0
+      "target": "menu_solpausemenuwidget_getinfokeytext"
     },
     {
       "relation": "contains",
@@ -41609,9 +41792,9 @@
       "source_file": "Source/SOLTest/Menu/SOLPauseMenuWidget.cpp",
       "source_location": "L178",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solpausemenuwidget_cpp_menu_solpausemenuwidget",
-      "target": "menu_solpausemenuwidget_gettabbutton",
-      "confidence_score": 1.0
+      "target": "menu_solpausemenuwidget_gettabbutton"
     },
     {
       "relation": "contains",
@@ -41756,9 +41939,9 @@
       "source_location": "L178",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "menu_solpausemenuwidget_gettabbutton",
-      "target": "usolmenubutton",
-      "confidence_score": 1.0
+      "target": "usolmenubutton"
     },
     {
       "relation": "references",
@@ -41778,9 +41961,9 @@
       "source_location": "L170",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solpausemenuwidget_getinfokeytext",
-      "target": "source_soltest_menu_solpausemenuwidget_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solpausemenuwidget_cpp_int32"
     },
     {
       "relation": "references",
@@ -41833,9 +42016,9 @@
       "source_location": "L178",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solpausemenuwidget_gettabbutton",
-      "target": "source_soltest_menu_solpausemenuwidget_cpp_emenutab",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solpausemenuwidget_cpp_emenutab"
     },
     {
       "relation": "references",
@@ -41855,9 +42038,9 @@
       "source_file": "Source/SOLTest/Menu/SOLPauseMenuWidget.cpp",
       "source_location": "L170",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solpausemenuwidget_getinfokeytext",
-      "target": "source_soltest_menu_solpausemenuwidget_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solpausemenuwidget_cpp_fstring"
     },
     {
       "relation": "references",
@@ -42284,9 +42467,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L28",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "iinputprocessor",
-      "confidence_score": 1.0
+      "target": "iinputprocessor"
     },
     {
       "relation": "contains",
@@ -42334,9 +42517,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L81",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor"
     },
     {
       "relation": "contains",
@@ -42374,9 +42557,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L761",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_handlecapturedown",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecapturedown"
     },
     {
       "relation": "contains",
@@ -42384,9 +42567,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L774",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_handlecaptureup",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecaptureup"
     },
     {
       "relation": "contains",
@@ -42504,9 +42687,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L423",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_nativeconstruct",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_nativeconstruct"
     },
     {
       "relation": "contains",
@@ -42514,9 +42697,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L435",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_nativedestruct",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_nativedestruct"
     },
     {
       "relation": "contains",
@@ -42624,9 +42807,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L786",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingspagewidget_cpp_menu_solsettingspagewidget",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "contains",
@@ -42831,9 +43014,9 @@
       "source_location": "L131",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_getdebugname",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_tchar",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_tchar"
     },
     {
       "relation": "references",
@@ -42852,9 +43035,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L81",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "iinputprocessor",
-      "confidence_score": 1.0
+      "target": "iinputprocessor"
     },
     {
       "relation": "method",
@@ -42862,9 +43045,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L86",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_fsolrebindinputprocessor",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_fsolrebindinputprocessor"
     },
     {
       "relation": "method",
@@ -42872,9 +43055,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L131",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_getdebugname",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_getdebugname"
     },
     {
       "relation": "method",
@@ -42882,9 +43065,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L95",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeydownevent",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeydownevent"
     },
     {
       "relation": "method",
@@ -42892,9 +43075,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L102",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeyupevent",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeyupevent"
     },
     {
       "relation": "method",
@@ -42902,9 +43085,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L116",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondoubleclickevent",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondoubleclickevent"
     },
     {
       "relation": "method",
@@ -42912,9 +43095,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L109",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondownevent",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondownevent"
     },
     {
       "relation": "method",
@@ -42922,9 +43105,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L124",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttonupevent",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttonupevent"
     },
     {
       "relation": "defines",
@@ -42933,9 +43116,9 @@
       "source_location": "L138",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_mpage",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_mpage"
     },
     {
       "relation": "method",
@@ -42943,9 +43126,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L89",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_tick",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_fsolrebindinputprocessor_tick"
     },
     {
       "relation": "references",
@@ -42954,9 +43137,9 @@
       "source_location": "L138",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_usolsettingspagewidget",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_usolsettingspagewidget"
     },
     {
       "relation": "references",
@@ -42965,9 +43148,9 @@
       "source_location": "L138",
       "weight": 1.0,
       "context": "field",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor",
-      "target": "tweakobjectptr",
-      "confidence_score": 1.0
+      "target": "tweakobjectptr"
     },
     {
       "relation": "references",
@@ -42976,9 +43159,9 @@
       "source_location": "L86",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_fsolrebindinputprocessor",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_usolsettingspagewidget",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_usolsettingspagewidget"
     },
     {
       "relation": "references",
@@ -42987,9 +43170,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_tick",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "references",
@@ -42998,9 +43181,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_tick",
-      "target": "icursor",
-      "confidence_score": 1.0
+      "target": "icursor"
     },
     {
       "relation": "references",
@@ -43009,9 +43192,9 @@
       "source_location": "L89",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_tick",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_tsharedref",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_tsharedref"
     },
     {
       "relation": "references",
@@ -43020,9 +43203,9 @@
       "source_location": "L95",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeydownevent",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "references",
@@ -43031,9 +43214,9 @@
       "source_location": "L102",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeyupevent",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "references",
@@ -43042,9 +43225,9 @@
       "source_location": "L116",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondoubleclickevent",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "references",
@@ -43053,9 +43236,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondownevent",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "references",
@@ -43064,9 +43247,9 @@
       "source_location": "L124",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttonupevent",
-      "target": "fslateapplication",
-      "confidence_score": 1.0
+      "target": "fslateapplication"
     },
     {
       "relation": "calls",
@@ -43075,9 +43258,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L98",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeydownevent",
-      "target": "menu_solsettingspagewidget_handlecapturedown",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecapturedown"
     },
     {
       "relation": "references",
@@ -43086,9 +43269,9 @@
       "source_location": "L95",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeydownevent",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkeyevent",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkeyevent"
     },
     {
       "relation": "references",
@@ -43097,9 +43280,9 @@
       "source_location": "L102",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeyupevent",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkeyevent",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkeyevent"
     },
     {
       "relation": "references",
@@ -43119,9 +43302,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L105",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlekeyupevent",
-      "target": "menu_solsettingspagewidget_handlecaptureup",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecaptureup"
     },
     {
       "relation": "calls",
@@ -43130,9 +43313,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L112",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondownevent",
-      "target": "menu_solsettingspagewidget_handlecapturedown",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecapturedown"
     },
     {
       "relation": "references",
@@ -43141,9 +43324,9 @@
       "source_location": "L109",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondownevent",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent"
     },
     {
       "relation": "references",
@@ -43152,9 +43335,9 @@
       "source_location": "L116",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondoubleclickevent",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent"
     },
     {
       "relation": "references",
@@ -43163,9 +43346,9 @@
       "source_location": "L124",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttonupevent",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fpointerevent"
     },
     {
       "relation": "references",
@@ -43185,9 +43368,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L120",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttondoubleclickevent",
-      "target": "menu_solsettingspagewidget_handlecapturedown",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecapturedown"
     },
     {
       "relation": "calls",
@@ -43196,9 +43379,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L127",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_fsolrebindinputprocessor_handlemousebuttonupevent",
-      "target": "menu_solsettingspagewidget_handlecaptureup",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_handlecaptureup"
     },
     {
       "relation": "calls",
@@ -43680,9 +43863,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L437",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_nativedestruct",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -43691,9 +43874,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L454",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_notifyhidden",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -43944,9 +44127,9 @@
       "source_location": "L786",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_setlistening",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_int32"
     },
     {
       "relation": "calls",
@@ -43955,9 +44138,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L590",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_apply",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -43988,9 +44171,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L603",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_revert",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -44010,9 +44193,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L616",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_resetkeys",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -44032,9 +44215,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L632",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_beginrebind",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -44065,9 +44248,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L645",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_capturekey",
-      "target": "menu_solsettingspagewidget_setlistening",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_setlistening"
     },
     {
       "relation": "calls",
@@ -44098,9 +44281,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsPageWidget.cpp",
       "source_location": "L767",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_handlecapturedown",
-      "target": "menu_solsettingspagewidget_capturekey",
-      "confidence_score": 1.0
+      "target": "menu_solsettingspagewidget_capturekey"
     },
     {
       "relation": "calls",
@@ -44131,9 +44314,9 @@
       "source_location": "L761",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_handlecapturedown",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkey"
     },
     {
       "relation": "references",
@@ -44142,9 +44325,9 @@
       "source_location": "L774",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingspagewidget_handlecaptureup",
-      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingspagewidget_cpp_fkey"
     },
     {
       "relation": "calls",
@@ -44247,9 +44430,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsRules.cpp",
       "source_location": "L150",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingsrules_cpp_menu_solsettingsrules",
-      "target": "menu_solsettingsrules_decidebootgraphics",
-      "confidence_score": 1.0
+      "target": "menu_solsettingsrules_decidebootgraphics"
     },
     {
       "relation": "contains",
@@ -44480,9 +44663,9 @@
       "source_location": "L150",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingsrules_decidebootgraphics",
-      "target": "source_soltest_menu_solsettingsrules_cpp_int32",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingsrules_cpp_int32"
     },
     {
       "relation": "references",
@@ -44678,9 +44861,9 @@
       "source_location": "L150",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingsrules_decidebootgraphics",
-      "target": "fbootgraphics",
-      "confidence_score": 1.0
+      "target": "fbootgraphics"
     },
     {
       "relation": "calls",
@@ -44865,9 +45048,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L420",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingssubsystem_cpp_menu_solsettingssubsystem",
-      "target": "menu_solsettingssubsystem_fillsaveobject",
-      "confidence_score": 1.0
+      "target": "menu_solsettingssubsystem_fillsaveobject"
     },
     {
       "relation": "contains",
@@ -44995,9 +45178,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L431",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_menu_solsettingssubsystem_cpp_menu_solsettingssubsystem",
-      "target": "menu_solsettingssubsystem_releaseworld",
-      "confidence_score": 1.0
+      "target": "menu_solsettingssubsystem_releaseworld"
     },
     {
       "relation": "contains",
@@ -45197,9 +45380,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L79",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingssubsystem_deinitialize",
-      "target": "menu_solsettingssubsystem_fillsaveobject",
-      "confidence_score": 1.0
+      "target": "menu_solsettingssubsystem_fillsaveobject"
     },
     {
       "relation": "calls",
@@ -45274,9 +45457,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L433",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingssubsystem_releaseworld",
-      "target": "menu_solsettingssubsystem_get",
-      "confidence_score": 1.0
+      "target": "menu_solsettingssubsystem_get"
     },
     {
       "relation": "calls",
@@ -45549,9 +45732,9 @@
       "source_file": "Source/SOLTest/Menu/SOLSettingsSubsystem.cpp",
       "source_location": "L381",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "menu_solsettingssubsystem_flushsave",
-      "target": "menu_solsettingssubsystem_fillsaveobject",
-      "confidence_score": 1.0
+      "target": "menu_solsettingssubsystem_fillsaveobject"
     },
     {
       "relation": "calls",
@@ -45582,9 +45765,9 @@
       "source_location": "L431",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "menu_solsettingssubsystem_releaseworld",
-      "target": "source_soltest_menu_solsettingssubsystem_cpp_uworld",
-      "confidence_score": 1.0
+      "target": "source_soltest_menu_solsettingssubsystem_cpp_uworld"
     },
     {
       "relation": "references",
@@ -51903,9 +52086,9 @@
       "source_file": "Source/SOLTest/Ship/SOLShipPawn.cpp",
       "source_location": "L1295",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ship_solshippawn_openspeedpanel",
-      "target": "source_soltest_ship_solshippawn_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_ship_solshippawn_cpp_fkey"
     },
     {
       "relation": "calls",
@@ -67205,9 +67388,9 @@
       "source_file": "Source/SOLTest/UI/SOLHudFormat.cpp",
       "source_location": "L137",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ui_solhudformat_cpp_ui_solhudformat",
-      "target": "ui_solhudformat_formathudkeytexts",
-      "confidence_score": 1.0
+      "target": "ui_solhudformat_formathudkeytexts"
     },
     {
       "relation": "contains",
@@ -67386,9 +67569,9 @@
       "source_location": "L137",
       "weight": 1.0,
       "context": "generic_arg",
+      "confidence_score": 1.0,
       "source": "ui_solhudformat_formathudkeytexts",
-      "target": "source_soltest_ui_solhudformat_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solhudformat_cpp_fstring"
     },
     {
       "relation": "references",
@@ -67452,9 +67635,9 @@
       "source_location": "L101",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ui_solhudformat_hudkeylabel",
-      "target": "source_soltest_ui_solhudformat_cpp_ebinding",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solhudformat_cpp_ebinding"
     },
     {
       "relation": "references",
@@ -67485,9 +67668,9 @@
       "source_location": "L137",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ui_solhudformat_formathudkeytexts",
-      "target": "source_soltest_ui_solhudformat_cpp_tarray",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solhudformat_cpp_tarray"
     },
     {
       "relation": "references",
@@ -67507,9 +67690,9 @@
       "source_location": "L137",
       "weight": 1.0,
       "context": "return_type",
+      "confidence_score": 1.0,
       "source": "ui_solhudformat_formathudkeytexts",
-      "target": "fhudkeytexts",
-      "confidence_score": 1.0
+      "target": "fhudkeytexts"
     },
     {
       "relation": "contains",
@@ -68381,9 +68564,9 @@
       "source_file": "Source/SOLTest/UI/SOLSpeedPanelWidget.cpp",
       "source_location": "L91",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "source_soltest_ui_solspeedpanelwidget_cpp_ui_solspeedpanelwidget",
-      "target": "ui_solspeedpanelwidget_speedpanelisownkey",
-      "confidence_score": 1.0
+      "target": "ui_solspeedpanelwidget_speedpanelisownkey"
     },
     {
       "relation": "contains",
@@ -68455,9 +68638,9 @@
       "source_location": "L180",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ui_solspeedpanelwidget_open",
-      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fstring",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fstring"
     },
     {
       "relation": "calls",
@@ -68521,9 +68704,9 @@
       "source_file": "Source/SOLTest/UI/SOLSpeedPanelWidget.cpp",
       "source_location": "L209",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "ui_solspeedpanelwidget_handlepanelkey",
-      "target": "ui_solspeedpanelwidget_speedpanelisownkey",
-      "confidence_score": 1.0
+      "target": "ui_solspeedpanelwidget_speedpanelisownkey"
     },
     {
       "relation": "references",
@@ -68532,9 +68715,9 @@
       "source_location": "L91",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ui_solspeedpanelwidget_speedpanelisownkey",
-      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fkey"
     },
     {
       "relation": "references",
@@ -68554,9 +68737,9 @@
       "source_location": "L180",
       "weight": 1.0,
       "context": "parameter_type",
+      "confidence_score": 1.0,
       "source": "ui_solspeedpanelwidget_open",
-      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fkey",
-      "confidence_score": 1.0
+      "target": "source_soltest_ui_solspeedpanelwidget_cpp_fkey"
     },
     {
       "relation": "calls",
@@ -75026,6 +75209,26 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/13-star-field-quality-plan.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "plans_13_star_field_quality_plan",
+      "target": "plans_13_star_field_quality_plan_plan_13_star_field_quality",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/Plans/14-gas-giant-fidelity-plan.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "plans_14_gas_giant_fidelity_plan",
+      "target": "plans_14_gas_giant_fidelity_plan_plan_14_gas_giant_fidelity",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Docs/Plans/2-foundations-flight-scaffold-plan.md",
       "source_location": "L3",
       "weight": 1.0,
@@ -75912,6 +76115,106 @@
       "confidence_score": 1.0,
       "source": "sdds_12_planet_axial_rotation_3_design",
       "target": "sdds_12_planet_axial_rotation_3_3_engine_integration_appendix_b"
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "sdds_13_star_field_quality",
+      "target": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "target": "sdds_13_star_field_quality_1_problem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "target": "sdds_13_star_field_quality_2_decisions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L19",
+      "weight": 1.0,
+      "source": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "target": "sdds_13_star_field_quality_3_acceptance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/13-star-field-quality.md",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "sdds_13_star_field_quality_sdd_13_star_field_quality_realistic_size_sharpness_and_brightness",
+      "target": "sdds_13_star_field_quality_4_open_questions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "sdds_14_gas_giant_fidelity",
+      "target": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "target": "sdds_14_gas_giant_fidelity_1_problem",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "target": "sdds_14_gas_giant_fidelity_2_decisions",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "target": "sdds_14_gas_giant_fidelity_3_acceptance",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/14-gas-giant-fidelity.md",
+      "source_location": "L25",
+      "weight": 1.0,
+      "source": "sdds_14_gas_giant_fidelity_sdd_14_gas_giant_fidelity_layered_clouds_volumetric_near_layer_moving_storms",
+      "target": "sdds_14_gas_giant_fidelity_4_open_questions",
+      "confidence_score": 1.0
     },
     {
       "relation": "contains",
@@ -77316,6 +77619,16 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "Docs/SDDs/7-weapons-targets-destruction.md",
+      "source_location": "L153",
+      "weight": 1.0,
+      "source": "sdds_7_weapons_targets_destruction_5_amendments",
+      "target": "sdds_7_weapons_targets_destruction_amendment_5_dropped_target_blurry_and_phasing_issue_15_2026_10_12",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "Docs/SDDs/8-hud-menus-settings.md",
       "source_location": "L3",
       "weight": 1.0,
@@ -77389,9 +77702,9 @@
       "source_file": "Docs/SDDs/8-hud-menus-settings.md",
       "source_location": "L64",
       "weight": 1.0,
+      "confidence_score": 1.0,
       "source": "sdds_8_hud_menus_settings_sdd_8_hud_menus_controls_info_about_screens_settings",
-      "target": "sdds_8_hud_menus_settings_amendment_3_8e_adversarial_review_fixes_2026_10_12",
-      "confidence_score": 1.0
+      "target": "sdds_8_hud_menus_settings_amendment_3_8e_adversarial_review_fixes_2026_10_12"
     },
     {
       "relation": "references",
@@ -78515,5 +78828,5 @@
       "source_file": "CLAUDE.md"
     }
   ],
-  "built_at_commit": "921466ea4c6514afca816ee253fd8c2196b7d03f"
+  "built_at_commit": "da536b68dbdf7867e66bd839aa43a137c123bbb9"
 }

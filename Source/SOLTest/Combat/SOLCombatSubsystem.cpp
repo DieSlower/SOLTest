@@ -109,6 +109,7 @@ void USOLCombatSubsystem::Initialize(FSubsystemCollectionBase& collection)
     mTargetSweepEndsM.Init(FVector3d::ZeroVector, maxTargets);
     mTargetDamage.Init(SOLDamageMath::FDamageState(), maxTargets);
     mTargetSpawnTimesS.Init(0.0, maxTargets);
+    mTargetSpawnSerials.Init(0, maxTargets);
     mTargetHitFlash.Init(0.0f, maxTargets);
     mTargetShieldFractions.Init(0.0f, maxTargets);
     mTargetHealthFractions.Init(0.0f, maxTargets);
@@ -169,6 +170,7 @@ void USOLCombatSubsystem::Deinitialize()
     mTargetSweepEndsM.Empty();
     mTargetDamage.Empty();
     mTargetSpawnTimesS.Empty();
+    mTargetSpawnSerials.Empty();
     mTargetHitFlash.Empty();
     mTargetShieldFractions.Empty();
     mTargetHealthFractions.Empty();
@@ -324,6 +326,8 @@ int32 USOLCombatSubsystem::DropTarget(const FVector3d& shipPositionM, const FVec
     mTargetSweepEndsM[slot] = positionM - mSweepOriginM;
     mTargetDamage[slot] = SOLDamageMath::MakeState(SOL::COMBAT_TARGET_SHIELD, SOL::COMBAT_TARGET_HEALTH);
     mTargetSpawnTimesS[slot] = mCombatTimeS;
+    mLastTargetSpawnSerial = mLastTargetSpawnSerial == MAX_uint32 ? 1 : mLastTargetSpawnSerial + 1;
+    mTargetSpawnSerials[slot] = mLastTargetSpawnSerial;
     mTargetHitFlash[slot] = 0.0f;
     mTargetShieldFractions[slot] = 1.0f;
     mTargetHealthFractions[slot] = 1.0f;
