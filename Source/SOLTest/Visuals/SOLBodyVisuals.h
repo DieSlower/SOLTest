@@ -21,10 +21,11 @@ class UStaticMeshComponent;
 
 /**
  * Presentation proxy for the body registry: one sphere mesh per body with a recognizable parametric material, and a
- * fixed-exposure post-process with bloom. Bodies shade themselves: every frame each body's material receives the unit
- * direction from that body toward the Sun, so every phase is correct wherever the body is relative to the observer. A
- * shadowless directional light, aimed from the Sun toward the observer, is kept for lit objects near the observer (the
- * ship in 1b); the unlit body material ignores it. It does not tick; it re-places everything when the anchor subsystem
+ * post-process with bloom and a manual exposure it moves itself from the bodies in view (SOLSceneExposure). Bodies
+ * shade themselves: every frame each body's material receives the unit direction from that body toward the Sun, so
+ * every phase is correct wherever the body is relative to the observer. A shadowless directional light, aimed from
+ * the Sun toward the observer, is kept for lit objects near the observer (the ship in 1b); the unlit body material
+ * ignores it. It does not tick; it re-places everything, and updates the exposure, when the anchor subsystem
  * broadcasts its per-frame universe update.
  */
 UCLASS()
@@ -50,6 +51,9 @@ private:
     // Places every body mesh, updates each body's Sun direction and re-aims the sun light for the current frame
     void HandleUniverseUpdated();
 
+    // Moves the manual exposure toward the target set by the bodies in view (SDD 13 decision 2, Amendment 1)
+    void UpdateExposure(const FVector3d& sunPositionM);
+
     /** Scene root at the render origin. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<USceneComponent> SceneRoot;
@@ -58,11 +62,11 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UDirectionalLightComponent> SunLight;
 
-    /** Unbound post-process: fixed exposure and bloom. */
+    /** Unbound post-process: bloom and the manual exposure (bias 0 = the old fixed exposure) UpdateExposure moves. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UPostProcessComponent> PostProcess;
 
-    /** Sunlight illuminance in lux for the light and the body shading (tuned together with the fixed exposure). */
+    /** Sunlight illuminance in lux for the light and the body shading (tuned at the dark-sky exposure, EV100 0). */
     UPROPERTY(EditAnywhere, Category = "SOL|Visuals", meta = (ClampMin = "0.0"))
     float SunIlluminanceLux = SOL::SUN_ILLUMINANCE_LUX;
 
@@ -82,6 +86,10 @@ private:
 
     TArray<int32> mSunDirectionParamIndices; // Per body: cached SunDirection parameter index in its material instance
     FDelegateHandle mUniverseUpdatedHandle;  // Subscription to the anchor subsystem's per-frame update
+    TArray<double> mAlbedoLuminances;        // Per body: mean albedo luminance (exposure estimate)
+    TArray<double> mEmissiveLuminances;      // Per body: emissive luminance (exposure estimate)
+    double mExposureEv100 = SOL::EXPOSURE_MIN_EV100; // Smoothed exposure; bias = EXPOSURE_MIN_EV100 - this
+    bool mExposureInitialized = false;       // False until the first update sets the exposure to its target
     int32 mSunIndex = INDEX_NONE;            // Registry index of the Sun (light source)
 };
 

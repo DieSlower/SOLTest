@@ -9,12 +9,15 @@
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
+#include "Visuals/SOLSceneExposure.h"
 
+#include "Camera/PlayerCameraManager.h"
 #include "Components/DirectionalLightComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 
@@ -128,7 +131,10 @@ ASOLBodyVisuals::ASOLBodyVisuals()
     SunLight->bAffectsWorld = true;
     SunLight->ForwardShadingPriority = SOL::SUN_FORWARD_SHADING_PRIORITY;
 
-    // Fixed exposure (no eye adaptation) so the lit planets and the emissive Sun keep a stable brightness
+    // Manual exposure moved by this actor (SDD 13 decision 2, Amendment 1): bias 0 is the dark-sky exposure the lit
+    // planets and the emissive Sun were tuned against; UpdateExposure lowers it (at most EXPOSURE_MAX_EV100 -
+    // EXPOSURE_MIN_EV100) when bright bodies fill the view. The engine's eye adaptation is not used: the render-origin
+    // rebase resets the previous view every frame at speed, which makes it snap instead of adapting
     PostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("PostProcess"));
     PostProcess->SetupAttachment(SceneRoot);
     PostProcess->bUnbound = true;
@@ -188,9 +194,15 @@ void ASOLBodyVisuals::BeginPlay()
         bodyMesh->SetupAttachment(SceneRoot);
 
         UMaterialInstanceDynamic* bodyMaterial = UMaterialInstanceDynamic::Create(material, this);
+        double albedoLuminance = 0.0;
+        double emissiveLuminance = 0.0;
         if (const FSOLBodyAppearance* appearance = FindAppearance(bodyName))
         {
             ApplyAppearance(bodyMaterial, *appearance);
+
+            // Exposure inputs: the surface's mean albedo (halfway between its two colors) and its own emission
+            albedoLuminance = 0.5 * (appearance->ColorA.GetLuminance() + appearance->ColorB.GetLuminance());
+            emissiveLuminance = appearance->Emissive.GetLuminance();
         }
         bodyMaterial->SetScalarParameterValue(FName(SOL::BodyMaterialParams::SUN_ILLUMINANCE), SunIlluminanceLux);
 
@@ -204,6 +216,8 @@ void ASOLBodyVisuals::BeginPlay()
         BodyMeshes.Add(bodyMesh);
         BodyMaterials.Add(bodyMaterial);
         mSunDirectionParamIndices.Add(sunDirectionParamIndex);
+        mAlbedoLuminances.Add(albedoLuminance);
+        mEmissiveLuminances.Add(emissiveLuminance);
     }
     mSunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
 
@@ -260,4 +274,70 @@ void ASOLBodyVisuals::HandleUniverseUpdated()
             SunLight->SetWorldRotation(FVector(lightDirection).Rotation());
         }
     }
+
+    UpdateExposure(sunPositionM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the manual exposure toward the target set by the bodies in view (SDD 13 decision 2, Amendment 1)
+void ASOLBodyVisuals::UpdateExposure(const FVector3d& sunPositionM)
+{
+    const UWorld* world = GetWorld();
+    const APlayerController* playerController = world->GetFirstPlayerController();
+    const APlayerCameraManager* cameraManager = playerController != nullptr ? playerController->PlayerCameraManager
+        : nullptr;
+    if (cameraManager == nullptr)
+    {
+        return;
+    }
+
+    // The view as last rendered: position and axis in Unreal space, and its solid angle
+    const FMinimalViewInfo& view = cameraManager->GetCameraCacheView();
+    const FVector3d cameraCm = view.Location;
+    const FVector3d viewAxis = view.Rotation.Vector();
+    const double tanHalfFovX = FMath::Tan(FMath::DegreesToRadians(0.5 * static_cast<double>(view.FOV)));
+    const double aspectRatio = FMath::Max(static_cast<double>(view.AspectRatio), UE_DOUBLE_KINDA_SMALL_NUMBER);
+    const double tanHalfFovY = tanHalfFovX / aspectRatio;
+    const double viewSr = SOLSceneExposure::ViewSolidAngleSr(tanHalfFovX, tanHalfFovY);
+
+    // Mean radiance of the view: each body's share of it times its mean radiance at its phase angle (the sky is ~0)
+    const FSOLBodyRegistry& registry = BodyRegistrySubsystem->GetRegistry();
+    double meanRadiance = 0.0;
+    const int32 bodyCount = BodyMeshes.Num();
+    for (int32 index = 0; index < bodyCount; ++index)
+    {
+        const FSOLRenderPlacement placement = AnchorSubsystem->ComputeBodyRenderPlacement(index);
+        const FVector3d toBody = placement.LocationCm - cameraCm;
+        const double distanceCm = toBody.Size();
+        if (distanceCm <= UE_DOUBLE_KINDA_SMALL_NUMBER)
+        {
+            continue;
+        }
+        const FVector3d toBodyDir = toBody / distanceCm;
+        const double angularRadius = FMath::Asin(FMath::Min(1.0, placement.RadiusCm / distanceCm));
+        const double offAxis = FMath::Acos(FMath::Clamp(FVector3d::DotProduct(toBodyDir, viewAxis), -1.0, 1.0));
+        const double coverage = SOLSceneExposure::DiscViewCoverage(angularRadius, offAxis, viewSr);
+        if (coverage <= 0.0)
+        {
+            continue;
+        }
+
+        // Phase angle Sun-body-camera; the Sun itself is emissive, so its phase does not matter
+        const FVector3d towardSun = SOLRender::EclipticToUnreal(sunPositionM - registry.GetPositionM(index))
+            .GetSafeNormal();
+        const double phase = FMath::Acos(FMath::Clamp(FVector3d::DotProduct(-toBodyDir, towardSun), -1.0, 1.0));
+        meanRadiance += coverage * SOLSceneExposure::BodyMeanRadiance(mEmissiveLuminances[index],
+            mAlbedoLuminances[index], SunIlluminanceLux, phase);
+    }
+
+    // Exponential approach to the target, frame-rate independent; the first frame starts at the target
+    const double target = SOLSceneExposure::TargetEv100(meanRadiance, SOL::EXPOSURE_KEY_RADIANCE,
+        SOL::EXPOSURE_MIN_EV100, SOL::EXPOSURE_MAX_EV100);
+    mExposureEv100 = mExposureInitialized
+        ? SOLSceneExposure::SmoothEv100(mExposureEv100, target, world->GetDeltaSeconds(),
+            SOL::EXPOSURE_TIME_CONSTANT_SECONDS)
+        : target;
+    mExposureInitialized = true;
+    PostProcess->Settings.AutoExposureBias = static_cast<float>(
+        SOLSceneExposure::ExposureBias(mExposureEv100, SOL::EXPOSURE_MIN_EV100));
 }

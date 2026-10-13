@@ -53,6 +53,8 @@ namespace
     const TCHAR* const COMBAT_DEMO_HOLD_SHOT_NAME = TEXT("CombatHold");         // ...as presented frames (TSR and motion
                                                                                 // blur included), unique-suffixed
     constexpr double COMBAT_STRESS_CONE_HALF_ANGLE_DEG = 25.0;                  // -SOLCombatStress: spread of the bolts
+    constexpr float STAR_SMOKE_START_DELAY_SECONDS = 10.0f;                     // -SOLStarSmoke: first FOV once loaded
+    constexpr float STAR_SMOKE_STEP_SECONDS = 1.5f;                             // ...then one FOV or shot per step
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -114,6 +116,20 @@ void ASOLGameMode::StartPlay()
         GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::TakeSmokeScreenshot, smokeDelaySeconds);
     }
 
+    // Verification hook for the star field (SDD 13): the same view at several FOVs, one screenshot each
+    FString starSmokeFovs;
+    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::STAR_SMOKE, starSmokeFovs, false))
+    {
+        TArray<FString> fovs;
+        starSmokeFovs.ParseIntoArray(fovs, TEXT(","));
+        for (const FString& fov : fovs)
+        {
+            mStarSmokeFovs.Add(FCString::Atof(*fov));
+        }
+        GetWorldTimerManager().SetTimer(mStarSmokeTimer, this, &ASOLGameMode::StepStarSmoke, STAR_SMOKE_STEP_SECONDS,
+            true, STAR_SMOKE_START_DELAY_SECONDS);
+    }
+
     // Verification hook for the combat visuals: drop a target ahead of the ship and shoot it until it dies, repeatedly
     if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::COMBAT_DEMO))
     {
@@ -153,6 +169,7 @@ void ASOLGameMode::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
     GetWorldTimerManager().ClearTimer(mSmokeTimer);
     GetWorldTimerManager().ClearTimer(mCombatDemoTimer);
+    GetWorldTimerManager().ClearTimer(mStarSmokeTimer);
     Super::EndPlay(endPlayReason);
 }
 
@@ -192,6 +209,40 @@ void ASOLGameMode::CaptureScreenshot()
     {
         playerController->ConsoleCommand(SMOKE_SCREENSHOT_COMMAND);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// -SOLStarSmoke: sets the next FOV of the list, or screenshots the one set last step; quits after the last shot
+void ASOLGameMode::StepStarSmoke()
+{
+    APlayerController* playerController = GetWorld()->GetFirstPlayerController();
+    const int32 fovIndex = mStarSmokeStep / 2;
+    if (playerController == nullptr || fovIndex >= mStarSmokeFovs.Num())
+    {
+        // Its own timer quits, so a pending -SOLSmokeShot screenshot on mSmokeTimer is left alone
+        GetWorldTimerManager().SetTimer(mStarSmokeTimer, this, &ASOLGameMode::QuitAfterSmokeTest,
+            SMOKE_QUIT_DELAY_SECONDS);
+        return;
+    }
+
+    // The mouse must not turn the view between shots, so every FOV shows the same stars. SetIgnoreLookInput counts
+    // calls, so lock once; only pawns that read look input through the controller obey it (-SOLSpectator does, the
+    // ship pawn's Enhanced Input look does not)
+    if (!mStarSmokeLookLocked)
+    {
+        playerController->SetIgnoreLookInput(true);
+        mStarSmokeLookLocked = true;
+    }
+    if (mStarSmokeStep % 2 == 0)
+    {
+        playerController->ConsoleCommand(FString::Printf(TEXT("fov %g"), mStarSmokeFovs[fovIndex]));
+    }
+    else
+    {
+        UE_LOG(LogSOL, Log, TEXT("StarSmoke: screenshot at FOV %g"), mStarSmokeFovs[fovIndex]);
+        CaptureScreenshot();
+    }
+    ++mStarSmokeStep;
 }
 
 //////////////////////////////////////////////////////////////////////////

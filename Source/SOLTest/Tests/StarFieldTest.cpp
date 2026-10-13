@@ -8,6 +8,7 @@
 
 #include "AssetRegistry/IAssetRegistry.h"
 #include "Engine/TextureCube.h"
+#include "Materials/MaterialInterface.h"
 #include "Misc/AutomationTest.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
@@ -181,6 +182,48 @@ bool FSOLStarFieldCubeTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("Compression is HDR Compressed (BC6H)"), static_cast<int32>(cube->CompressionSettings.GetValue()),
         static_cast<int32>(TC_HDR_Compressed));
     TestFalse(TEXT("sRGB is off"), static_cast<bool>(cube->SRGB));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLStarFieldMaterialParamsTest, "SOLTest.StarField.MaterialParameters",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Both star materials expose every scalar parameter ASOLStarField sets on them (SOL::StarFieldMaterialParams), so a
+// rebuilt material with a renamed parameter fails here instead of silently drawing with its default
+bool FSOLStarFieldMaterialParamsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::StarFieldMaterialParams;
+    struct FExpected
+    {
+        const TCHAR* MaterialPath;
+        TArray<const TCHAR*> Names;
+    };
+    const FExpected expectations[] =
+    {
+        { SOL::Paths::STAR_SPRITE_MATERIAL, { BASE_ANGULAR_DIAMETER, POINT_DIAMETER_PX, BRIGHTNESS_SCALE } },
+        { SOL::Paths::STAR_SKY_MATERIAL,
+            { CUBE_TEXEL_SOLID_ANGLE, CUBE_FACE_SIZE, POINT_DIAMETER_PX, BRIGHTNESS_SCALE } },
+    };
+    for (const FExpected& expected : expectations)
+    {
+        const UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, expected.MaterialPath);
+        if (!TestNotNull(FString::Printf(TEXT("%s loads"), expected.MaterialPath), material))
+        {
+            continue;
+        }
+        TArray<FMaterialParameterInfo> infos;
+        TArray<FGuid> ids;
+        material->GetAllScalarParameterInfo(infos, ids);
+        for (const TCHAR* name : expected.Names)
+        {
+            const bool bFound = infos.ContainsByPredicate([name](const FMaterialParameterInfo& info)
+            {
+                return info.Name == FName(name);
+            });
+            TestTrue(FString::Printf(TEXT("%s has scalar parameter %s"), expected.MaterialPath, name), bFound);
+        }
+    }
     return true;
 }
 

@@ -7,6 +7,7 @@
 
 #include "SOLConstants.h"
 #include "SOLTest.h"
+#include "StarField/SOLStarBrightness.h"
 #include "StarField/SOLStarFieldData.h"
 #include "Universe/SOLRenderPlacement.h"
 
@@ -37,14 +38,6 @@ namespace
         component->bAffectDynamicIndirectLighting = false;
         component->bVisibleInRayTracing = false;
         component->bReceivesDecals = false;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the exact solid angle (sr) of a square that subtends angularDiameterRad edge to edge, seen face-on
-    double SquareSolidAngleSr(const double angularDiameterRad)
-    {
-        const double sinHalf = FMath::Sin(0.5 * angularDiameterRad);
-        return 4.0 * FMath::Asin(sinHalf * sinHalf);
     }
 }
 
@@ -86,15 +79,34 @@ void ASOLStarField::BeginPlay()
 {
     Super::BeginPlay();
 
+    const USOLStarFieldData* data = LoadObject<USOLStarFieldData>(nullptr, SOL::Paths::STAR_FIELD_DATA);
+    if (data == nullptr)
+    {
+        UE_LOG(LogSOL, Error, TEXT("StarField %s: failed to load %s"), *GetName(), SOL::Paths::STAR_FIELD_DATA);
+        return;
+    }
+
+    // One brightness multiplier on both layers (SDD 13 Amendment 1): STAR_FIELD_WHITE_MAGNITUDE is display white
+    const float brightnessScale = static_cast<float>(SOLStarBrightness::BrightnessScaleForWhiteMagnitude(
+        SOL::STAR_FIELD_WHITE_MAGNITUDE, data->FluxReferenceMagnitude));
+
     // Either half can fail on its own (each logs why); the other still draws
-    SetUpSky();
-    SetUpBrightStars();
+    SetUpSky(*data, brightnessScale);
+    SetUpBrightStars(*data, brightnessScale);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the sky sphere's mesh, material and radius; returns false if an asset is missing
-bool ASOLStarField::SetUpSky()
+// Sets the sky sphere's mesh, material and radius; returns false if an asset is missing or the cube data is invalid
+bool ASOLStarField::SetUpSky(const USOLStarFieldData& data, const float brightnessScale)
 {
+    // The sky material divides by both (texel to pixel flux, texel size): a bad bake would draw garbage, so skip it
+    if (data.CubeFaceSize <= 0 || data.CubeTexelSolidAngleSr <= 0.0f)
+    {
+        UE_LOG(LogSOL, Error, TEXT("StarField %s: %s has CubeFaceSize %d and CubeTexelSolidAngleSr %g; no sky drawn"),
+            *GetName(), SOL::Paths::STAR_FIELD_DATA, data.CubeFaceSize, data.CubeTexelSolidAngleSr);
+        return false;
+    }
+
     UStaticMesh* mesh = LoadObject<UStaticMesh>(nullptr, SOL::Paths::STAR_SKY_MESH);
     UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::STAR_SKY_MATERIAL);
     if (mesh == nullptr || material == nullptr)
@@ -104,9 +116,12 @@ bool ASOLStarField::SetUpSky()
         return false;
     }
 
+    using namespace SOL::StarFieldMaterialParams;
     UMaterialInstanceDynamic* skyMaterial = UMaterialInstanceDynamic::Create(material, this);
-    skyMaterial->SetScalarParameterValue(FName(SOL::StarFieldMaterialParams::BRIGHTNESS_SCALE),
-        SOL::STAR_FIELD_BRIGHTNESS_SCALE);
+    skyMaterial->SetScalarParameterValue(FName(BRIGHTNESS_SCALE), brightnessScale);
+    skyMaterial->SetScalarParameterValue(FName(CUBE_TEXEL_SOLID_ANGLE), data.CubeTexelSolidAngleSr);
+    skyMaterial->SetScalarParameterValue(FName(CUBE_FACE_SIZE), static_cast<float>(data.CubeFaceSize));
+    skyMaterial->SetScalarParameterValue(FName(POINT_DIAMETER_PX), SOL::STAR_POINT_DIAMETER_PX);
     Sky->SetStaticMesh(mesh);
     Sky->SetMaterial(0, skyMaterial);
     Sky->SetRelativeScale3D(FVector(SOL::STAR_FIELD_SKY_RADIUS_CM / STAR_SKY_MESH_RADIUS_CM));
@@ -115,34 +130,35 @@ bool ASOLStarField::SetUpSky()
 
 //////////////////////////////////////////////////////////////////////////
 // Adds one camera-facing quad per bright star with its flux-scaled color as custom data; returns false on failure
-bool ASOLStarField::SetUpBrightStars()
+bool ASOLStarField::SetUpBrightStars(const USOLStarFieldData& data, const float brightnessScale)
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLStarField::SetUpBrightStars);
 
-    const USOLStarFieldData* data = LoadObject<USOLStarFieldData>(nullptr, SOL::Paths::STAR_FIELD_DATA);
     UStaticMesh* mesh = LoadObject<UStaticMesh>(nullptr, SOL::Paths::STAR_QUAD_MESH);
     UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::STAR_SPRITE_MATERIAL);
-    if (data == nullptr || mesh == nullptr || material == nullptr)
+    if (mesh == nullptr || material == nullptr)
     {
-        UE_LOG(LogSOL, Error, TEXT("StarField %s: failed to load %s, %s or %s"), *GetName(),
-            SOL::Paths::STAR_FIELD_DATA, SOL::Paths::STAR_QUAD_MESH, SOL::Paths::STAR_SPRITE_MATERIAL);
+        UE_LOG(LogSOL, Error, TEXT("StarField %s: failed to load %s or %s"), *GetName(), SOL::Paths::STAR_QUAD_MESH,
+            SOL::Paths::STAR_SPRITE_MATERIAL);
         return false;
     }
 
-    // Brightness contract (SOLStarFieldData.h): flux F over the sprite's solid angle emits F * texel sr / sprite sr
+    // Brightness contract (SDD 13 Amendment 1): the material resizes each quad to a STAR_POINT_DIAMETER_PX kernel every
+    // frame, peaking at flux * scale / kernel pixel area (SOLStarBrightness::PointPeakPerFlux), so a star's pixel sum
+    // is flux * scale at any FOV and resolution
     using namespace SOL::StarFieldMaterialParams;
-    const double spriteSolidAngleSr = SquareSolidAngleSr(SOL::STAR_SPRITE_ANGULAR_DIAMETER_RAD);
     UMaterialInstanceDynamic* spriteMaterial = UMaterialInstanceDynamic::Create(material, this);
-    spriteMaterial->SetScalarParameterValue(FName(CUBE_TEXEL_SOLID_ANGLE), data->CubeTexelSolidAngleSr);
-    spriteMaterial->SetScalarParameterValue(FName(SPRITE_SOLID_ANGLE), static_cast<float>(spriteSolidAngleSr));
-    spriteMaterial->SetScalarParameterValue(FName(BRIGHTNESS_SCALE), SOL::STAR_FIELD_BRIGHTNESS_SCALE);
+    spriteMaterial->SetScalarParameterValue(FName(BASE_ANGULAR_DIAMETER),
+        static_cast<float>(SOL::STAR_SPRITE_ANGULAR_DIAMETER_RAD));
+    spriteMaterial->SetScalarParameterValue(FName(POINT_DIAMETER_PX), SOL::STAR_POINT_DIAMETER_PX);
+    spriteMaterial->SetScalarParameterValue(FName(BRIGHTNESS_SCALE), brightnessScale);
     BrightStars->SetStaticMesh(mesh);
     BrightStars->SetMaterial(0, spriteMaterial);
 
-    // Every quad sits at the same radius, scaled to the fixed angular size and turned to face the center, where the
-    // camera is (its roll is irrelevant for a round sprite). The camera stays within ~1e6 cm of the center, so each
-    // quad stays face-on to it within 5e-7 rad
-    const TArray<FSOLBrightStar>& stars = data->BrightStars;
+    // Every quad sits at the same radius, built at the base angular size (bounds) and turned to face the center,
+    // where the camera is (its roll is irrelevant for a round sprite). The camera stays within ~1e6 cm of the center,
+    // so each quad stays face-on to it within 5e-7 rad
+    const TArray<FSOLBrightStar>& stars = data.BrightStars;
     const int32 starCount = stars.Num();
     if (starCount == 0)
     {
@@ -170,7 +186,7 @@ bool ASOLStarField::SetUpBrightStars()
     // One bulk add and one bulk custom-data write, then a single render-state update
     BrightStars->AddInstances(transforms, false, false, false);
     BrightStars->SetCustomData(0, starCount - 1, customData, true);
-    UE_LOG(LogSOL, Log, TEXT("StarField %s: %d bright-star sprites, %.4f rad across (%.3g sr)"), *GetName(), starCount,
-        SOL::STAR_SPRITE_ANGULAR_DIAMETER_RAD, spriteSolidAngleSr);
+    UE_LOG(LogSOL, Log, TEXT("StarField %s: %d bright-star sprites, %.1f px points, white at V %.1f (scale %.4g)"),
+        *GetName(), starCount, SOL::STAR_POINT_DIAMETER_PX, SOL::STAR_FIELD_WHITE_MAGNITUDE, brightnessScale);
     return true;
 }

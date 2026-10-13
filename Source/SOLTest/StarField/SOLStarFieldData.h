@@ -59,10 +59,9 @@ public:
 
     /**
      * Solid angle (sr) of a face-center cubemap texel, (2 / CubeFaceSize)^2. Cube texel values are flux per this solid
-     * angle (a mag-8 star's splatted texels sum to 1.0, weighted by relative texel solid angle). To match those units, a sprite of flux F
-     * drawn over an on-screen solid angle OmegaSprite (sr) emits F * CubeTexelSolidAngleSr / OmegaSprite, so its total
-     * light equals a cube star of the same flux whatever size it is drawn at. Example: a sprite at the minimum
-     * on-screen size has emissive F * CubeTexelSolidAngleSr / OmegaMin.
+     * angle (a mag-8 star's splatted texels sum to 1.0, weighted by relative texel solid angle). On screen (SDD 13
+     * Amendment 1) a star's pixels sum to Flux * brightness scale: the sky material turns texel values into pixel flux
+     * with pixel sr / CubeTexelSolidAngleSr, and sprites peak at Flux * scale / kernel pixel area (SOLStarBrightness).
      */
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "SOL|StarField")
     float CubeTexelSolidAngleSr = 0.0f;
