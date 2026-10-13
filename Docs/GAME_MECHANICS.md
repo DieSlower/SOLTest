@@ -91,6 +91,14 @@ The ship pawn (`Source/SOLTest/Ship/SOLShipPawn.cpp`) is the default pawn. `-SOL
 | Ring far field | Each of Jupiter, Saturn, Uranus and Neptune has an always-drawn ring disc whose material evaluates the real radial profile (bands, gaps, ringlets) per pixel; it fades out within 1-4 km of the camera so the rocks show through | Built (5e-iii/v), `MinorBodies/SOLRingVisuals.cpp`, `/Game/SOL/Rings/M_SOLRingFar` |
 | Ring rock layers | Within 1.5 km (fully on) to 6 km (off) of a ring's volume, about 1,000,000 GPU-simulated rocks fill a 1.5 km window around the camera and rotate with the ring; the nearest ~2,500 rocks per ring are separate physical entities. The million-rock layer is hidden above 10x time warp | Built (5e-v), `MinorBodies/SOLRingDense.cpp`, `SOLConstants.h` (`RING_DENSE_*`) |
 
+### 3.1a Gas giant atmospheres (issue #14)
+
+| Mechanic | Value / rule | Status |
+|---|---|---|
+| Band drift | Jupiter, Saturn, Uranus and Neptune draw banded cloud decks (plus a thin translucent haze above) that spin with the planet and additionally drift by latitude, rate `eq + (polar - eq) sin^2(lat)` (per-planet rates in `SOLGasGiantVisuals.cpp`, e.g. Jupiter 1.4e-6 rad/s at the equator) times `SOL::GAS_GIANT_BAND_SPEED_FACTOR` = 200, so at 1x Jupiter's equator visibly slides ~1 deg per real minute (a full relative turn takes ~6 real hours). Driven by sim time, so it follows time warp and freezes when paused; above `SOL::GAS_GIANT_BAND_MAX_TIME_WARP` = 1000x the drift runs at 1000x speed instead, so the bands do not alias into noise. The haze drifts 1.35x faster than the deck. | Built (14c) |
+| Storms | Jupiter has a Great-Red-Spot-style storm at 22.4 deg S, Neptune a dark spot at ~20 deg S; each giant also has up to 2-5 generated light ovals (Jupiter 5, Saturn 3, Uranus 2, Neptune 3 requested; fewer if they cannot be placed clear of each other and of the primary storm; deterministic per planet, `GAS_GIANT_STORM_SEED` + body index). Every storm rides the band at its latitude. | Built (14c) |
+| Near volumetric clouds | Within `GAS_GIANT_NEAR_FADE_IN_RADII` = 2 planet radii of a giant's centre an engine volumetric cloud layer (`GAS_GIANT_CLOUD_LAYER_BOTTOM_KM` = 2 to 42 km above the deck, band-coloured, cloud features of ~300, 150 and 75 km (`GAS_GIANT_CLOUD_FEATURE_KM`, 3 noise octaves), advected with the deck's bands) is fully shown; it fades out by `GAS_GIANT_NEAR_FADE_OUT_RADII` = 4 radii while the haze shell fades back in. Its resources are released `GAS_GIANT_NEAR_RELEASE_DELAY_SECONDS` = 20 real seconds after it was last visible (time warp does not change this). Only one giant can show it at a time. Cloud tops are lit by the Sun light, with planet shadow on the night side. | Built (14d) |
+
 ### 3.2 Star field and exposure (issue #13)
 
 | Mechanic | Value / rule | Status |

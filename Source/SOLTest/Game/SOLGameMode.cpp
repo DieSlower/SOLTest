@@ -8,6 +8,7 @@
 #include "Combat/SOLCombatAudio.h"
 #include "Combat/SOLCombatSubsystem.h"
 #include "Combat/SOLCombatVisuals.h"
+#include "GasGiants/SOLGasGiantVisuals.h"
 #include "Game/SOLSpectatorPawn.h"
 #include "Menu/SOLMenuCameraPawn.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -21,6 +22,7 @@
 #include "StarField/SOLStarField.h"
 #include "UI/SOLFlightHud.h"
 #include "Universe/SOLRenderPlacement.h"
+#include "Universe/SOLSimClockSubsystem.h"
 #include "Visuals/SOLBodyVisuals.h"
 
 #include "Engine/World.h"
@@ -83,13 +85,14 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field, asteroid-belt, per-ring and combat visuals and the combat audio, arms the optional
-// smoke-test hooks, then starts play
+// Spawns the body, star-field, asteroid-belt, per-ring, per-gas-giant and combat visuals and the combat audio, arms
+// the optional smoke-test hooks, then starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
     params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-    GetWorld()->SpawnActor<ASOLBodyVisuals>(ASOLBodyVisuals::StaticClass(), FTransform::Identity, params);
+    ASOLBodyVisuals* bodyVisuals = GetWorld()->SpawnActor<ASOLBodyVisuals>(ASOLBodyVisuals::StaticClass(),
+        FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLStarField>(ASOLStarField::StaticClass(), FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
@@ -109,11 +112,38 @@ void ASOLGameMode::StartPlay()
         }
     }
 
+    // One ASOLGasGiantVisuals per giant (SDD 14, 14c); deferred so PlanetName and BodyVisuals are set before BeginPlay
+    for (const TCHAR* giantName : ASOLGasGiantVisuals::GetGasGiantBodyNames())
+    {
+        ASOLGasGiantVisuals* giantVisuals = GetWorld()->SpawnActorDeferred<ASOLGasGiantVisuals>(
+            ASOLGasGiantVisuals::StaticClass(), FTransform::Identity, nullptr, nullptr,
+            ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+        if (giantVisuals != nullptr)
+        {
+            giantVisuals->PlanetName = FName(giantName);
+            giantVisuals->BodyVisuals = bodyVisuals;
+            giantVisuals->FinishSpawning(FTransform::Identity);
+        }
+    }
+
     // Verification hook for headless smoke runs: screenshot after the given delay, then quit
     float smokeDelaySeconds = 0.0f;
     if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_SHOT, smokeDelaySeconds) && smokeDelaySeconds > 0.0f)
     {
         GetWorldTimerManager().SetTimer(mSmokeTimer, this, &ASOLGameMode::TakeSmokeScreenshot, smokeDelaySeconds);
+    }
+
+    // Verification hook for animation under time warp (SDD 14): step the warp up this many times at start
+    int32 smokeWarpSteps = 0;
+    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_WARP_STEPS, smokeWarpSteps))
+    {
+        if (USOLSimClockSubsystem* simClock = GetWorld()->GetSubsystem<USOLSimClockSubsystem>())
+        {
+            for (int32 step = 0; step < smokeWarpSteps; ++step)
+            {
+                simClock->StepWarpUp();
+            }
+        }
     }
 
     // Verification hook for the star field (SDD 13): the same view at several FOVs, one screenshot each

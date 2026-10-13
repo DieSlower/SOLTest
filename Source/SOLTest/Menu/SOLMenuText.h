@@ -267,6 +267,10 @@ namespace SOLMenuText
             "you want to be relative to it, release, then press Enter to jump there."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
+        TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "
+            "also drifts at its own speed by latitude; storms such as Jupiter's Great Red Spot ride their bands. The "
+            "drift follows time warp up to a cap, so the bands stay smooth at the highest warps. Fly close to a giant "
+            "and a layer of volumetric clouds fades in just above the deck, replacing the thin haze seen from afar."),
     };
 
     // About page
