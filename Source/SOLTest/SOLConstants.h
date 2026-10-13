@@ -525,6 +525,8 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
         inline constexpr const TCHAR* SMOKE_CONSOLE = TEXT("SOLSmokeConsole="); // Console commands ('|'-separated) run
                                                                                   // just before the -SOLSmokeShot screenshot
+        inline constexpr const TCHAR* SMOKE_WARP_STEPS = TEXT("SOLSmokeWarpSteps="); // Time-warp steps up at start
+                                                                                       // (visual checks under warp)
         inline constexpr const TCHAR* SMOKE_FLIGHT = TEXT("SOLSmokeFlight");    // Scripted ship flight, then quit
         inline constexpr const TCHAR* SMOKE_INPUT = TEXT("SOLSmokeInput");      // Scripted player input, then quit
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit
@@ -621,6 +623,15 @@ namespace SOL
             TEXT("/Game/SOL/StarField/M_SOLStarSprite.M_SOLStarSprite");
         inline constexpr const TCHAR* STAR_SKY_MATERIAL = TEXT("/Game/SOL/StarField/M_SOLStarSky.M_SOLStarSky");
         inline constexpr const TCHAR* STAR_SKY_MESH = TEXT("/Engine/BasicShapes/Sphere.Sphere");
+
+        // Gas giant band shells (SDD 14, 14c), created by Tools/GasGiants/create_gas_giant_materials.py (keep both in
+        // sync): the opaque cloud deck and the translucent haze, both drawn on BODY_MESH
+        inline constexpr const TCHAR* GAS_GIANT_DECK_MATERIAL =
+            TEXT("/Game/SOL/GasGiants/M_SOLGasGiantDeck.M_SOLGasGiantDeck");
+        inline constexpr const TCHAR* GAS_GIANT_HAZE_MATERIAL =
+            TEXT("/Game/SOL/GasGiants/M_SOLGasGiantHaze.M_SOLGasGiantHaze");
+        inline constexpr const TCHAR* GAS_GIANT_CLOUD_MATERIAL =
+            TEXT("/Game/SOL/GasGiants/M_SOLGasGiantCloud.M_SOLGasGiantCloud");
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's
@@ -708,4 +719,124 @@ namespace SOL
         inline constexpr const TCHAR* SUN_ILLUMINANCE = TEXT("SunIlluminance"); // Sunlight illuminance (lux) for shading
         inline constexpr const TCHAR* AMBIENT_LIGHT = TEXT("AmbientLight");     // Night-side fraction of full sunlight
     }
+
+    // Gas giants (SDD 14, plan "14a contract"). Artistic multiplier on band and storm drift relative to the body's
+    // spin, so the bands visibly drift at 1x: Jupiter's ~1.4e-6 rad/s (~100 m/s) equatorial jet moves ~0.96 deg per
+    // real minute and takes ~6.2 real hours per full relative turn
+    inline constexpr double GAS_GIANT_BAND_SPEED_FACTOR = 200.0;
+
+    // Gas giants (SDD 14 Amendment 4): above this time warp the band and storm drift runs at this warp's speed
+    // instead (SOLGasGiant::CappedDriftStepSeconds), so at 1000x Jupiter's equator still moves only ~0.27 deg per frame
+    // at 60 fps instead of aliasing into noise; below it the drift is the exact function of sim time
+    inline constexpr double GAS_GIANT_BAND_MAX_TIME_WARP = 1000.0;
+
+    // Gas giants: latitudes sampled by SOLGasGiant::ComputeBandPhases (four float4 material parameters)
+    inline constexpr int32 GAS_GIANT_BAND_SAMPLE_COUNT = 16;
+
+    // Gas giants (SDD 14 Amendment 3): half-width, as a fraction of the gap between two band samples, of the zone in
+    // which the materials cross-fade the two samples' rigidly advected noise (SOLGasGiant::BandBlendAt). The materials
+    // hard-code it (Tools/GasGiants/create_gas_giant_materials.py BAND_BLEND_HALF_WIDTH; keep both in sync)
+    inline constexpr double GAS_GIANT_BAND_BLEND_HALF_WIDTH = 0.25;
+
+    // Gas giants: base storm seed (a giant's seed is this plus its body index), the upper clamp on storms per giant
+    // and the rejection-sampling attempts per storm
+    inline constexpr int32 GAS_GIANT_STORM_SEED = 20261014;
+    inline constexpr int32 GAS_GIANT_MAX_STORMS = 8;
+    inline constexpr int32 GAS_GIANT_STORM_PLACEMENT_ATTEMPTS = 64;
+
+    // Gas giants: the near volumetric layer is fully on within FADE_IN planet radii of the centre, fully off beyond
+    // FADE_OUT, and its resources are released after it has been hidden for RELEASE_DELAY real seconds
+    inline constexpr double GAS_GIANT_NEAR_FADE_IN_RADII = 2.0;
+    inline constexpr double GAS_GIANT_NEAR_FADE_OUT_RADII = 4.0;
+    inline constexpr double GAS_GIANT_NEAR_RELEASE_DELAY_SECONDS = 20.0;
+
+    // Gas giants (14c): radius of the translucent haze shell relative to the planet radius (the opaque deck is at
+    // exactly 1, replacing the placeholder body mesh), and the haze's drift relative to the deck's, so the high clouds
+    // visibly slide over the bands
+    inline constexpr double GAS_GIANT_HAZE_RADIUS_SCALE = 1.003;
+    inline constexpr double GAS_GIANT_HAZE_SPEED_SCALE = 1.35;
+
+    // Gas giants: translucency sort priority of the haze shell, below the default 0 so a ring passing in front of the
+    // planet (NS_SOLRingFar, priority 0) draws over the haze instead of the shared planet-centred bounds deciding
+    inline constexpr int32 GAS_GIANT_HAZE_TRANSLUCENCY_SORT_PRIORITY = -10;
+
+    // Gas giants: storms are generated within this latitude band and angular-radius range (rad); the authored primary
+    // storms (Jupiter's Great Red Spot, Neptune's dark spot) are set per planet in ASOLGasGiantVisuals
+    inline constexpr double GAS_GIANT_STORM_MAX_LATITUDE_RAD = 1.1;
+    inline constexpr double GAS_GIANT_STORM_MIN_RADIUS_RAD = 0.015;
+    inline constexpr double GAS_GIANT_STORM_MAX_RADIUS_RAD = 0.04;
+
+    // Gas giants: storm ovals are this many times longer east-west than north-south (the deck material's
+    // StormShape.x; generated ovals keep this clearance from the primary storm); storm vector .w kinds (1 primary,
+    // drawn in StormColor; 0.5 light oval; 0 none) and the threshold above which the material uses StormColor
+    inline constexpr double GAS_GIANT_STORM_EAST_WEST_STRETCH = 1.6;
+    inline constexpr float GAS_GIANT_PRIMARY_STORM_KIND = 1.0f;
+    inline constexpr float GAS_GIANT_OVAL_STORM_KIND = 0.5f;
+    inline constexpr float GAS_GIANT_PRIMARY_STORM_KIND_THRESHOLD = 0.75f;
+
+    // Gas giants: shell materials are animated only while a shell was rendered within this many real seconds (or the
+    // giant is in the camera's view cone), and their night-side light floor as a fraction of full sunlight
+    inline constexpr float GAS_GIANT_RECENT_RENDER_SECONDS = 0.5f;
+    inline constexpr float GAS_GIANT_AMBIENT_LIGHT = 0.02f;
+
+    // Gas giants (14d, SDD 14 Amendment 3): the near volumetric cloud layer (engine VolumetricCloud around a
+    // SkyAtmosphere that only carries the planet centre). Layer bottom above the deck and thickness (km); view samples
+    // (scale of the engine's 96 per ray), the view ray length through the layer and the self-shadow ray (km)
+    inline constexpr float GAS_GIANT_CLOUD_LAYER_BOTTOM_KM = 2.0f;
+    inline constexpr float GAS_GIANT_CLOUD_LAYER_HEIGHT_KM = 40.0f;
+    inline constexpr float GAS_GIANT_CLOUD_VIEW_SAMPLE_SCALE = 0.25f;
+    inline constexpr float GAS_GIANT_CLOUD_SHADOW_SAMPLE_SCALE = 0.5f;
+    inline constexpr float GAS_GIANT_CLOUD_TRACING_MAX_KM = 100.0f;
+    inline constexpr float GAS_GIANT_CLOUD_SHADOW_TRACING_KM = 5.0f;
+
+    // Gas giants (14d): near cloud look (M_SOLGasGiantCloud CloudNoise / CloudAmbientLuminance). Largest noise feature
+    // (km; 3 octaves, so ~300/150/75 km), cloud coverage over belts and zones, extinction (1/m) at full density, and
+    // the ambient emission factor standing in for sky light on cloud sides away from the Sun
+    inline constexpr float GAS_GIANT_CLOUD_FEATURE_KM = 300.0f;
+    inline constexpr float GAS_GIANT_CLOUD_BELT_COVERAGE = 0.35f;
+    inline constexpr float GAS_GIANT_CLOUD_ZONE_COVERAGE = 0.6f;
+    inline constexpr float GAS_GIANT_CLOUD_EXTINCTION_PER_M = 0.0005f;
+    inline constexpr float GAS_GIANT_CLOUD_AMBIENT_LUMINANCE = 0.2f;
+
+    // Parameter names of Paths::GAS_GIANT_DECK_MATERIAL and GAS_GIANT_HAZE_MATERIAL
+    // (Tools/GasGiants/create_gas_giant_materials.py; keep both in sync)
+    namespace GasGiantMaterialParams
+    {
+        // Band phases (turns, [0, 1)) of the GAS_GIANT_BAND_SAMPLE_COUNT latitudes, south to north, 4 per vector
+        inline constexpr const TCHAR* BAND_PHASES[] = { TEXT("BandPhases0"), TEXT("BandPhases1"), TEXT("BandPhases2"),
+            TEXT("BandPhases3") };
+        inline constexpr const TCHAR* HAZE_PHASES[] = { TEXT("HazePhases0"), TEXT("HazePhases1"), TEXT("HazePhases2"),
+            TEXT("HazePhases3") };
+
+        // Storm i: (latitude rad, body-frame longitude rad now, angular radius rad, kind: 1 primary, 0.5 oval, 0 none)
+        inline constexpr const TCHAR* STORMS[] = { TEXT("Storm0"), TEXT("Storm1"), TEXT("Storm2"), TEXT("Storm3"),
+            TEXT("Storm4"), TEXT("Storm5"), TEXT("Storm6"), TEXT("Storm7") };
+
+        inline constexpr const TCHAR* ZONE_COLOR = TEXT("ZoneColor");     // Light bands (and the haze colour)
+        inline constexpr const TCHAR* BELT_COLOR = TEXT("BeltColor");     // Dark bands
+        inline constexpr const TCHAR* ACCENT_COLOR = TEXT("AccentColor"); // Turbulent detail tint
+        inline constexpr const TCHAR* POLAR_COLOR = TEXT("PolarColor");   // Polar regions
+        inline constexpr const TCHAR* STORM_COLOR = TEXT("StormColor");   // Primary storm
+        inline constexpr const TCHAR* SHAPE_PARAMS = TEXT("ShapeParams"); // (bands per unit sin(lat), turbulence or
+                                                                           // haze opacity, noise scale, polar start)
+        inline constexpr const TCHAR* SUN_DIRECTION = TEXT("SunDirection");     // Unit vector body -> Sun, Unreal axes
+        inline constexpr const TCHAR* SUN_ILLUMINANCE = TEXT("SunIlluminance"); // Sunlight illuminance (lux)
+        inline constexpr const TCHAR* AMBIENT_LIGHT = TEXT("AmbientLight");     // Night-side fraction of sunlight
+        inline constexpr const TCHAR* STORM_SHAPE = TEXT("StormShape"); // Deck: (east-west stretch, primary threshold)
+
+        // Near cloud material only (14d): it also takes BAND_PHASES, ZONE_COLOR, BELT_COLOR and SHAPE_PARAMS
+        inline constexpr const TCHAR* PLANET_CENTER = TEXT("PlanetCenter"); // Render-space centre (cm), w = radius cm
+        inline constexpr const TCHAR* BODY_AXIS_X = TEXT("BodyAxisX");      // Body frame axes in Unreal space
+        inline constexpr const TCHAR* BODY_AXIS_Y = TEXT("BodyAxisY");
+        inline constexpr const TCHAR* BODY_AXIS_Z = TEXT("BodyAxisZ");
+        inline constexpr const TCHAR* NEAR_BLEND = TEXT("NearBlend");       // NearLayerBlend; scales density
+        inline constexpr const TCHAR* CLOUD_LAYER = TEXT("CloudLayer");     // (layer bottom km, layer thickness km)
+        // (feature km, belt coverage, zone coverage, extinction 1/m)
+        inline constexpr const TCHAR* CLOUD_NOISE = TEXT("CloudNoise");
+        inline constexpr const TCHAR* CLOUD_AMBIENT_LUMINANCE = TEXT("CloudAmbientLuminance");
+    }
+    static_assert(UE_ARRAY_COUNT(GasGiantMaterialParams::BAND_PHASES) * 4 == GAS_GIANT_BAND_SAMPLE_COUNT,
+        "Band phase vector parameters must hold exactly GAS_GIANT_BAND_SAMPLE_COUNT phases");
+    static_assert(UE_ARRAY_COUNT(GasGiantMaterialParams::STORMS) == GAS_GIANT_MAX_STORMS,
+        "One storm vector parameter per possible storm");
 }

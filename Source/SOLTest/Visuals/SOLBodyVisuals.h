@@ -9,6 +9,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "UObject/ObjectKey.h"
 
 #include "SOLBodyVisuals.generated.h"
 
@@ -37,6 +38,21 @@ public:
 
     // Creates the root, the sun light and the post-process component
     ASOLBodyVisuals();
+
+    // Hides or shows one body's placeholder mesh (a dedicated visual such as ASOLGasGiantVisuals draws it instead);
+    // returns false if the meshes are not created yet or the index is invalid. Exposure still counts the body
+    bool SetBodyMeshHidden(int32 bodyIndex, bool bHide);
+
+    // Returns true if a body's placeholder mesh exists and is currently hidden
+    bool IsBodyMeshHidden(int32 bodyIndex) const;
+
+    // Adds or removes a requester for the sun light acting as the atmosphere sun light (SDD 14 Amendment 3): it is on
+    // while at least one requester (a gas giant showing its near volumetric cloud layer) holds it, so the engine
+    // clouds are lit by it; off otherwise. Its sun disk is never drawn
+    void SetSunDrivesAtmosphere(const UObject* requester, bool bDrives);
+
+    // Returns true while the sun light is flagged as the atmosphere sun light
+    bool IsSunDrivingAtmosphere() const;
 
 protected:
 
@@ -91,6 +107,7 @@ private:
     double mExposureEv100 = SOL::EXPOSURE_MIN_EV100; // Smoothed exposure; bias = EXPOSURE_MIN_EV100 - this
     bool mExposureInitialized = false;       // False until the first update sets the exposure to its target
     int32 mSunIndex = INDEX_NONE;            // Registry index of the Sun (light source)
+    TSet<FObjectKey> mSunAtmosphereRequesters; // Holders of SetSunDrivesAtmosphere(true); flag on while non-empty
 };
 
 // Read access to the placeholder body appearances, for presentation that must match the meshes (map icons)

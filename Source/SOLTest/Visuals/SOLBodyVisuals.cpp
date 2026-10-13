@@ -130,6 +130,8 @@ ASOLBodyVisuals::ASOLBodyVisuals()
     SunLight->SetCastShadows(false);
     SunLight->bAffectsWorld = true;
     SunLight->ForwardShadingPriority = SOL::SUN_FORWARD_SHADING_PRIORITY;
+    SunLight->bAtmosphereSunLight = false;
+    SunLight->AtmosphereSunDiskColorScale = FLinearColor::Black;
 
     // Manual exposure moved by this actor (SDD 13 decision 2, Amendment 1): bias 0 is the dark-sky exposure the lit
     // planets and the emissive Sun were tuned against; UpdateExposure lowers it (at most EXPOSURE_MAX_EV100 -
@@ -149,6 +151,52 @@ ASOLBodyVisuals::ASOLBodyVisuals()
     settings.BloomIntensity = 1.0f;
     settings.bOverride_VignetteIntensity = true;
     settings.VignetteIntensity = 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Hides or shows one body's placeholder mesh; false if the meshes do not exist yet or the index is invalid
+bool ASOLBodyVisuals::SetBodyMeshHidden(const int32 bodyIndex, const bool bHide)
+{
+    if (!BodyMeshes.IsValidIndex(bodyIndex) || BodyMeshes[bodyIndex] == nullptr)
+    {
+        return false;
+    }
+    BodyMeshes[bodyIndex]->SetVisibility(!bHide);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true if a body's placeholder mesh exists and is currently hidden
+bool ASOLBodyVisuals::IsBodyMeshHidden(const int32 bodyIndex) const
+{
+    return BodyMeshes.IsValidIndex(bodyIndex) && BodyMeshes[bodyIndex] != nullptr &&
+        !BodyMeshes[bodyIndex]->IsVisible();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Adds or removes a requester of the atmosphere-sun flag; the flag is on while any requester holds it
+void ASOLBodyVisuals::SetSunDrivesAtmosphere(const UObject* requester, const bool bDrives)
+{
+    if (bDrives)
+    {
+        mSunAtmosphereRequesters.Add(FObjectKey(requester));
+    }
+    else
+    {
+        mSunAtmosphereRequesters.Remove(FObjectKey(requester));
+    }
+    const bool bOn = mSunAtmosphereRequesters.Num() > 0;
+    if (SunLight->IsUsedAsAtmosphereSunLight() != bOn)
+    {
+        SunLight->SetAtmosphereSunLight(bOn);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the sun light is flagged as the atmosphere sun light
+bool ASOLBodyVisuals::IsSunDrivingAtmosphere() const
+{
+    return SunLight != nullptr && SunLight->IsUsedAsAtmosphereSunLight();
 }
 
 //////////////////////////////////////////////////////////////////////////

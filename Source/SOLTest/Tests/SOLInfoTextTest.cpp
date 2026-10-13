@@ -229,6 +229,7 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("default frame lock key"), joined.Contains(TEXT("locked with M.")));
     TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (Tab)")));
     TestTrue(TEXT("default map key"), joined.Contains(TEXT("jump map (J)")));
+    TestTrue(TEXT("gas giant paragraph (issue #14)"), joined.Contains(TEXT("Great Red Spot")));
     TestFalse(TEXT("no placeholder left"), joined.Contains(TEXT("{")));
 
     keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
