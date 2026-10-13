@@ -539,6 +539,9 @@ namespace SOL
                                                                                   // target is left unshot this many s,
                                                                                   // with frame screenshots (issue #15)
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
+        inline constexpr const TCHAR* STAR_SMOKE = TEXT("SOLStarSmoke=");       // Comma-separated FOVs (deg): one
+                                                                                  // screenshot each, look input locked,
+                                                                                  // then quit (SDD 13 star checks)
 
         // Menu flow (SDD 8, 8b): any other -SOL* switch starts straight in flight (verification runs); -SOLMenu forces
         // the main menu anyway, -SOLNoMenu skips it, and -SOLMenuSmoke=<all|screens|flow> runs the menu script
@@ -636,20 +639,46 @@ namespace SOL
     // translucency (bolts, effects) draws over the stars instead of the camera-centered sprite bounds sorting nearest
     inline constexpr int32 STAR_SPRITE_TRANSLUCENCY_SORT_PRIORITY = -1000;
 
-    // Star field: angular diameter of every bright-star sprite (decision 10: fixed, camera-independent). 0.006 rad
-    // (~0.34 deg, ~6 cube texels) is ~4 px at 1280x720 and ~6 px at 1920x1080 with the 90 deg chase camera, enough for
-    // the round falloff to read as a soft disc; brightness is energy-conserving, so the size never changes total light
-    inline constexpr double STAR_SPRITE_ANGULAR_DIAMETER_RAD = 0.006;
+    // Star field: angular diameter of every bright-star quad as built (bounds only). The sprite material rescales each
+    // quad to STAR_POINT_DIAMETER_PX output pixels every frame (SDD 13), so this only has to be at least as large as
+    // the widest pixel kernel ever drawn: 0.02 rad covers 3 px at the 135 deg warp peak down to a 900 px wide output
+    inline constexpr double STAR_SPRITE_ANGULAR_DIAMETER_RAD = 0.02;
 
-    // Star field: one multiplier on both the sprites and the sky cube, so their relative brightness stays exact. 1.0
-    // shows the baked flux units as-is under the fixed exposure of ASOLBodyVisuals
-    inline constexpr float STAR_FIELD_BRIGHTNESS_SCALE = 1.0f;
+    // Star field (SDD 13): diameter in output (post-upscale) pixels of every point star, sprites and the faint-star
+    // cube's point reconstruction alike, at every FOV and resolution. Flux-conserving: brightness, not size, carries
+    // magnitude. The kernel is saturate(1 - (d / r)^2)^2, so its half-maximum width is ~0.54 of this
+    inline constexpr float STAR_POINT_DIAMETER_PX = 2.5f;
+
+    // Star field (SDD 13 Amendment 1): V magnitude whose pixel sum is 1.0 (one display-white pixel's worth before
+    // tonemapping) at the dark-sky exposure (EV100 0), at every FOV and resolution. Pogson below it: a star's peak
+    // pixel is 0.611 * 10^(-0.4 (V - 2.5)) linear with the 2.5 px kernel, so it reaches 1.0 at V ~2.0 (about 50
+    // stars on the whole sky), the naked-eye limit V 6.5 peaks at 0.0153 (just visible after the tonemapper's toe)
+    // and V 8 at 0.0039. Replaces SDD 5's mapping, which put magnitude 8 there
+    inline constexpr double STAR_FIELD_WHITE_MAGNITUDE = 2.5;
+
+    // Exposure (SDD 13 decision 2, Amendment 1): ASOLBodyVisuals keeps a manual exposure and moves it itself from the
+    // bodies in view (SOLSceneExposure). The minimum EV100 is the old fixed exposure, so dark sky (stars, the lit
+    // bodies tuned against it) looks exactly as before; a view whose mean radiance is above the key adapts down by
+    // log2(mean / key) EV, at most MAX - MIN (4x), which fades the stars (and the bright body itself)
+    inline constexpr double EXPOSURE_MIN_EV100 = 0.0;
+    inline constexpr double EXPOSURE_MAX_EV100 = 2.0;
+
+    // Exposure: view mean radiance (emissive at EV100 0) above which the exposure adapts down. 0.05 = Earth (mean
+    // albedo luminance ~0.18) fully lit and filling the view adapts ~1.2 EV, Jupiter, Mars or the Sun close up hit the
+    // 2 EV cap, a half-lit or distant planet and the Sun from 1 AU (6e-5 of the view) do not adapt
+    inline constexpr double EXPOSURE_KEY_RADIANCE = 0.05;
+
+    // Exposure: time constant (s) of the exponential approach to the target EV, frame-rate independent; ~1 s to
+    // settle within 10%
+    inline constexpr double EXPOSURE_TIME_CONSTANT_SECONDS = 0.4;
 
     // Parameter names of STAR_SPRITE_MATERIAL and STAR_SKY_MATERIAL (Tools/StarField/create_star_field_materials.py)
     namespace StarFieldMaterialParams
     {
-        inline constexpr const TCHAR* CUBE_TEXEL_SOLID_ANGLE = TEXT("CubeTexelSolidAngleSr"); // Sprite: from data asset
-        inline constexpr const TCHAR* SPRITE_SOLID_ANGLE = TEXT("SpriteSolidAngleSr");        // Sprite: its quad's sr
+        inline constexpr const TCHAR* CUBE_TEXEL_SOLID_ANGLE = TEXT("CubeTexelSolidAngleSr"); // Sky: from data asset
+        inline constexpr const TCHAR* BASE_ANGULAR_DIAMETER = TEXT("BaseAngularDiameterRad"); // Sprite: built quad size
+        inline constexpr const TCHAR* POINT_DIAMETER_PX = TEXT("PointDiameterPx");            // Both: kernel width
+        inline constexpr const TCHAR* CUBE_FACE_SIZE = TEXT("CubeFaceSize");                  // Sky: texels per face
         inline constexpr const TCHAR* BRIGHTNESS_SCALE = TEXT("BrightnessScale");             // Both materials
 
         // Per-instance custom data of the sprite: Flux * linear Color (R, G, B)

@@ -12,6 +12,7 @@
 
 class UInstancedStaticMeshComponent;
 class UStaticMeshComponent;
+class USOLStarFieldData;
 
 /**
  * The night sky (SDD 5 Appendix B): one instanced quad per bright star (V < 8) from USOLStarFieldData, and a large
@@ -19,7 +20,9 @@ class UStaticMeshComponent;
  * pinned at the Unreal origin, which the render origin keeps within 10 km of the camera (see the constructor), and
  * nothing ever moves or rotates: the baked directions are already in the ecliptic frame, converted once with
  * SOLRender::EclipticToUnreal. Each quad is turned toward the center when it is created, so every sprite faces the
- * camera without per-frame or per-vertex work. It does not tick, binds no events, and is written once in BeginPlay.
+ * camera without per-frame CPU work; the sprite material resizes each quad on the GPU to a fixed pixel diameter, and
+ * the sky material draws the cube's faint stars as the same pixel-sized points when its texels are magnified (SDD 13).
+ * It does not tick, binds no events, and is written once in BeginPlay.
  */
 UCLASS()
 class SOLTEST_API ASOLStarField : public AActor
@@ -38,11 +41,11 @@ protected:
 
 private:
 
-    // Sets the sky sphere's mesh, material and radius; returns false if an asset is missing
-    bool SetUpSky();
+    // Sets the sky sphere's mesh, material and radius; returns false if an asset is missing or the cube data is invalid
+    bool SetUpSky(const USOLStarFieldData& data, float brightnessScale);
 
     // Adds one camera-facing quad per bright star with its flux-scaled color as custom data; returns false on failure
-    bool SetUpBrightStars();
+    bool SetUpBrightStars(const USOLStarFieldData& data, float brightnessScale);
 
     /** Scene root; both primitives use absolute transforms at the Unreal origin. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|StarField")

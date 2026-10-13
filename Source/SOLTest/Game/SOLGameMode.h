@@ -75,6 +75,9 @@ private:
     // Ends the demo's fire phase: releases the trigger, logs the outcome and starts the rest
     void EndCombatDemoFire(ASOLShipPawn* pawn, double nowSeconds, double phaseSeconds, const TCHAR* outcome);
 
+    // -SOLStarSmoke: sets the next FOV of the list, or screenshots the one set last step; quits after the last shot
+    void StepStarSmoke();
+
     // -SOLCombatStress: tops the live bolts up toward the requested count, spread over one bolt lifetime so they
     // reach a steady state instead of expiring all at once, fired in a forward cone from the player ship
     void StepCombatStress();
@@ -82,6 +85,10 @@ private:
     bool mSmokeConsoleRun = false; // Verification-only: the -SOLSmokeConsole commands have been run
     FTimerHandle mSmokeTimer; // Verification-only: -SOLSmokeShot=<seconds> screenshots, then quits
     FTimerHandle mCombatDemoTimer; // Verification-only: -SOLCombatDemo script steps
+    FTimerHandle mStarSmokeTimer;  // Verification-only: -SOLStarSmoke steps
+    TArray<float> mStarSmokeFovs;  // Verification-only: -SOLStarSmoke FOV list (deg)
+    int32 mStarSmokeStep = 0;      // Verification-only: even = set FOV i/2, odd = screenshot it
+    bool mStarSmokeLookLocked = false; // Verification-only: -SOLStarSmoke has locked look input (once)
     ECombatDemoPhase mCombatDemoPhase = ECombatDemoPhase::Drop;
     double mCombatDemoPhaseStartSeconds = 0.0;
     int32 mCombatDemoCycle = 0;    // Completed drop-and-kill cycles
