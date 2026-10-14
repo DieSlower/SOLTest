@@ -177,3 +177,11 @@ SOLSettingsRules::FBootGraphics SOLSettingsRules::DecideBootGraphics(const bool 
     result.bPushQuality = bUseSavedQuality && savedQuality != engineQuality;
     return result;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the settings slot needs a write
+bool SOLSettingsRules::IsSaveOwed(const bool bWriteOwed, const bool bAppliedShowOrbitLines,
+    const bool bWrittenShowOrbitLines)
+{
+    return bWriteOwed || bAppliedShowOrbitLines != bWrittenShowOrbitLines;
+}

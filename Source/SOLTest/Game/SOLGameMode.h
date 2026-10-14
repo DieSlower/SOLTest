@@ -10,6 +10,7 @@
 
 #include "SOLGameMode.generated.h"
 
+class ASOLOrbitLineVisuals;
 class ASOLShipPawn;
 class USOLCombatSubsystem;
 
@@ -40,6 +41,9 @@ public:
     // Takes a verification screenshot (Saved/Screenshots) without quitting
     void CaptureScreenshot();
 
+    // Returns the world-space orbit-line actor spawned in StartPlay, or nullptr
+    ASOLOrbitLineVisuals* GetOrbitLineVisuals() const { return OrbitLineVisuals; }
+
     // Returns the menu camera while the main menu shows, else the ship pawn (the debug spectator with -SOLSpectator)
     virtual UClass* GetDefaultPawnClassForController_Implementation(AController* controller) override;
 
@@ -53,6 +57,8 @@ protected:
 
 private:
 
+    UPROPERTY(Transient)
+    TObjectPtr<ASOLOrbitLineVisuals> OrbitLineVisuals;        // Spawned in StartPlay (SDD 17)
 
     // Phases of the -SOLCombatDemo script
     enum class ECombatDemoPhase : uint8

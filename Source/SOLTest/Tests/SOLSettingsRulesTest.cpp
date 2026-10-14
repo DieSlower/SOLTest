@@ -5,9 +5,12 @@
 
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSave.h"
+#include "SOLConstants.h"
 
 #include "GenericPlatform/GenericWindow.h"
+#include "Kismet/GameplayStatics.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/ScopeExit.h"
 
 #include <limits>
 
@@ -238,6 +241,243 @@ bool FSOLSettingsRulesBootGraphicsTest::RunTest(const FString& /*parameters*/)
     boot = DecideBootGraphics(false, true, true, false, 1, true, 4, 1);
     TestTrue(TEXT("flags of an unused save are ignored"), boot.bVsync && boot.QualityPreset == 4 && !boot.bPushVsync
         && !boot.bPushQuality);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.SettingsRules.OrbitLinesSave",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 2 carries the orbit-lines flag: a new save shows them, and SetValues/GetValues round-trip both values
+bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestEqual(TEXT("schema version is 2"), SOL::Settings::SAVE_VERSION, 2);
+    TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
+        SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
+
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestTrue(TEXT("new save shows orbit lines"), fresh->bShowOrbitLines);
+    TestTrue(TEXT("new save reads shown"), fresh->GetValues().bShowOrbitLines);
+
+    // Hidden round-trips as hidden
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.bShowOrbitLines = false;
+    save->SetValues(values);
+    TestFalse(TEXT("SetValues stores hidden"), save->bShowOrbitLines);
+    TestFalse(TEXT("GetValues gives hidden back"), save->GetValues().bShowOrbitLines);
+    TestTrue(TEXT("hidden round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+
+    // And shown again as shown
+    values.bShowOrbitLines = true;
+    save->SetValues(values);
+    TestTrue(TEXT("SetValues stores shown"), save->bShowOrbitLines);
+    TestTrue(TEXT("GetValues gives shown back"), save->GetValues().bShowOrbitLines);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV1Test, "SOLTest.SettingsRules.MigrateV1",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A schema 1 save migrates to the current version with orbit lines shown and every other field kept
+bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
+{
+    // A schema 1 save with non-default values everywhere (and a stale orbit-lines value schema 1 never wrote)
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 1;
+    save->MasterVolume = 0.3f;
+    save->SfxVolume = 0.4f;
+    save->MusicVolume = 0.5f;
+    save->MouseSensitivity = 2.5f;
+    save->bInvertY = true;
+    save->HudScale = 1.5f;
+    save->bHudVisible = false;
+    save->bDefaultFlightAssist = false;
+    save->bVsync = false;
+    save->QualityPreset = 1;
+    save->bVsyncChosen = true;
+    save->bQualityChosen = true;
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
+    save->bShowOrbitLines = false;
+
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("upgraded to the current version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("orbit lines default to shown"), save->bShowOrbitLines);
+
+    // Every other field is untouched
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), save->bInvertY);
+    TestEqual(TEXT("HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("HUD hidden kept"), save->bHudVisible);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestFalse(TEXT("vsync kept"), save->bVsync);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+    TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
+    TestEqual(TEXT("key overrides count kept"), save->KeyOverrides.Num(), 2);
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    const FString* mapKey = save->KeyOverrides.Find(TEXT("ToggleMap"));
+    TestTrue(TEXT("map override kept"), mapKey != nullptr && *mapKey == TEXT("Comma"));
+
+    // Migrating again is a no-op
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("second migrate keeps the flag"), save->bShowOrbitLines);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateNoOpTest, "SOLTest.SettingsRules.MigrateNoOp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A current, unversioned, negative or newer save is left completely unchanged by MigrateToCurrentVersion
+bool FSOLSettingsRulesMigrateNoOpTest::RunTest(const FString& /*parameters*/)
+{
+    // A current save keeps hidden orbit lines and everything else
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->bShowOrbitLines = false;
+    current->MasterVolume = 0.2f;
+    current->bVsyncChosen = true;
+    current->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("current: hidden stays hidden"), current->bShowOrbitLines);
+    TestEqual(TEXT("current: master kept"), current->MasterVolume, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("current: vsync chosen kept"), current->bVsyncChosen);
+    TestEqual(TEXT("current: overrides kept"), current->KeyOverrides.Num(), 1);
+
+    // Versions that are never migrated stay exactly as they were
+    const int32 untouchedVersions[] = { 0, -1, SOL::Settings::SAVE_VERSION + 1, SOL::Settings::SAVE_VERSION + 7 };
+    for (const int32 version : untouchedVersions)
+    {
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = version;
+        save->bShowOrbitLines = false;
+        save->MusicVolume = 0.1f;
+        save->QualityPreset = 0;
+        save->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("version %d"), version);
+        TestEqual(label + TEXT(": version kept"), save->Version, version);
+        TestFalse(label + TEXT(": flag kept"), save->bShowOrbitLines);
+        TestEqual(label + TEXT(": music kept"), save->MusicVolume, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": quality kept"), save->QualityPreset, 0);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSaveOwedOrbitLinesTest, "SOLTest.SettingsRules.SaveOwedOrbitLines",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A write is owed after an Apply, a migration or a failed write, or while the O key left the flag off its written value
+bool FSOLSettingsRulesSaveOwedOrbitLinesTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSettingsRules::IsSaveOwed;
+
+    // The truth table: owed || applied != written
+    TestFalse(TEXT("nothing owed, same value (shown)"), IsSaveOwed(false, true, true));
+    TestFalse(TEXT("nothing owed, same value (hidden)"), IsSaveOwed(false, false, false));
+    TestTrue(TEXT("flag differs (hidden vs shown)"), IsSaveOwed(false, false, true));
+    TestTrue(TEXT("flag differs (shown vs hidden)"), IsSaveOwed(false, true, false));
+    TestTrue(TEXT("owed, same value"), IsSaveOwed(true, true, true));
+    TestTrue(TEXT("owed, flag differs"), IsSaveOwed(true, false, true));
+
+    // The subsystem's bookkeeping: loaded with lines shown, nothing owed
+    bool bWritten = true;
+    bool bApplied = true;
+    bool bOwed = false;
+    TestFalse(TEXT("after load: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+
+    // O twice returns to the written value: nothing to write
+    bApplied = false;
+    TestTrue(TEXT("after one O: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    bApplied = true;
+    TestFalse(TEXT("after O twice: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+
+    // O once, then a successful write records the new value and clears the debt
+    bApplied = false;
+    TestTrue(TEXT("O once: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    bWritten = bApplied;
+    bOwed = false;
+    TestFalse(TEXT("after the write: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+
+    // A migration owes one write back even with the flag unchanged
+    bOwed = true;
+    TestTrue(TEXT("migration: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    bWritten = bApplied;
+    bOwed = false;
+    TestFalse(TEXT("after the migration write: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+
+    // A failed write keeps the debt even though applied now equals written
+    bApplied = true;
+    bWritten = bApplied;
+    bOwed = true;
+    TestTrue(TEXT("failed write: owed with applied == written"), IsSaveOwed(bOwed, bApplied, bWritten));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSchemaOneRoundTripTest, "SOLTest.SettingsRules.SchemaOneRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A schema 1 save written to disk loads back as schema 1 and migrates to the current schema with orbit lines shown
+bool FSOLSettingsRulesSchemaOneRoundTripTest::RunTest(const FString& /*parameters*/)
+{
+    const FString slotName = TEXT("SOLTest_OrbitLinesSchema1");
+    constexpr int32 userIndex = 0;
+
+    // Start clean, and always remove the test slot when the test ends, whichever path it takes
+    UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    ON_SCOPE_EXIT
+    {
+        UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    };
+
+    // A schema 1 file with hidden lines (a value schema 1 never wrote) and a few non-default fields
+    USOLSettingsSave* written = NewObject<USOLSettingsSave>();
+    written->Version = 1;
+    written->bShowOrbitLines = false;
+    written->MasterVolume = 0.35f;
+    written->bInvertY = true;
+    written->QualityPreset = 1;
+    written->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    if (!TestTrue(TEXT("schema 1 save written"), UGameplayStatics::SaveGameToSlot(written, slotName, userIndex)))
+    {
+        return false;
+    }
+
+    // It loads back as a schema 1 settings save
+    USOLSettingsSave* loaded = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("schema 1 save loaded as a settings save"), loaded))
+    {
+        return false;
+    }
+    TestEqual(TEXT("loaded as schema 1"), loaded->Version, 1);
+
+    // Migration upgrades it, shows the lines and keeps the other fields
+    loaded->MigrateToCurrentVersion();
+    TestEqual(TEXT("migrated to the current schema"), loaded->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("orbit lines shown after migration"), loaded->bShowOrbitLines);
+    TestEqual(TEXT("master volume kept"), loaded->MasterVolume, 0.35f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), loaded->bInvertY);
+    TestEqual(TEXT("quality kept"), loaded->QualityPreset, 1);
+    const FString* fireKey = loaded->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("key override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
     return true;
 }
 

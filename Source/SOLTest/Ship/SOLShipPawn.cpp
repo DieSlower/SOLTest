@@ -1224,7 +1224,7 @@ void ASOLShipPawn::HandleWarpReset()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Toggles the flight HUD's body orbit ellipses (O)
+// Toggles the world-space orbit lines (O) through the HUD
 void ASOLShipPawn::HandleToggleOrbitLines()
 {
     const APlayerController* playerController = Cast<APlayerController>(GetController());

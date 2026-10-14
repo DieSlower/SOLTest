@@ -61,6 +61,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_HUD_SCALE = TEXT("HUD scale");
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
+    inline constexpr const TCHAR* SETTINGS_ORBIT_LINES = TEXT("Show orbit lines");
     inline constexpr const TCHAR* SETTINGS_APPLY = TEXT("Apply");
     inline constexpr const TCHAR* SETTINGS_REVERT = TEXT("Revert");
     inline constexpr const TCHAR* SETTINGS_RESET_KEYS = TEXT("Reset keys to defaults");
@@ -124,7 +125,7 @@ namespace SOLMenuText
         { TEXT("Time"), TEXT("Time warp down") },
         { TEXT("Time"), TEXT("Time warp up") },
         { TEXT("Time"), TEXT("Time warp to 1x") },
-        { TEXT("HUD"), TEXT("Orbit lines") },
+        { TEXT("Gameplay"), TEXT("Orbit lines") },
         { TEXT("HUD"), TEXT("Radar range in") },
         { TEXT("HUD"), TEXT("Radar range out") },
         { TEXT("HUD"), TEXT("Radar automatic range") },
@@ -191,7 +192,7 @@ namespace SOLMenuText
         { TEXT("Combat"), TEXT("@DropTarget"), TEXT("Drop a practice target {DropDistance} ahead") },
         { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
         { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
-        { TEXT("HUD"), TEXT("@ToggleOrbitLines"), TEXT("Show or hide orbit lines") },
+        { TEXT("Gameplay"), TEXT("@ToggleOrbitLines"), TEXT("Show or hide the orbit lines") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
         { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
         { TEXT("Jump map"), TEXT("@ToggleMap"), TEXT("Open or close the jump map") },
@@ -263,6 +264,10 @@ namespace SOLMenuText
             "Turn it off ({ToggleAssist}) for pure Newtonian flight, where gravity pulls and the ship coasts."),
         TEXT("Time warp speeds up the planets, not your ship: the ship is carried along with its reference frame, so "
             "an orbit or a landing spot stays put at any warp."),
+        TEXT("Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbit of every planet, dwarf planet and "
+            "moon and of the 50 largest named asteroids, dashed and fading with distance. Your target's orbit is "
+            "drawn in gold. A line behind a planet or moon is hidden by it, and the part in front of it stays visible. "
+            "The choice is remembered."),
         TEXT("The jump map ({ToggleMap}) shows the whole system. Press on a body or on empty space, drag to set where "
             "you want to be relative to it, release, then press Enter to jump there."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "

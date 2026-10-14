@@ -362,4 +362,130 @@ bool FSOLSettingsModelCommitTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOrbitLinesDefaultTest, "SOLTest.SettingsModel.OrbitLinesDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Orbit lines are shown by default, Sanitized passes the flag through, and AreEqual sees it on its own
+bool FSOLSettingsModelOrbitLinesDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues defaults;
+    TestTrue(TEXT("Orbit lines shown by default"), defaults.bShowOrbitLines);
+    TestTrue(TEXT("Sanitized keeps true"), Sanitized(defaults).bShowOrbitLines);
+
+    FSettingsValues hidden = SettingsModelCustomValues();
+    hidden.bShowOrbitLines = false;
+    TestFalse(TEXT("Sanitized keeps false"), Sanitized(hidden).bShowOrbitLines);
+
+    // Only the orbit-lines flag differs
+    FSettingsValues shown = hidden;
+    shown.bShowOrbitLines = true;
+    TestFalse(TEXT("bShowOrbitLines differs"), AreEqual(hidden, shown));
+    TestFalse(TEXT("Symmetric"), AreEqual(shown, hidden));
+    TestTrue(TEXT("Same flag is equal"), AreEqual(hidden, hidden));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOrbitLinesDirtyTest, "SOLTest.SettingsModel.OrbitLinesDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The orbit-lines flag goes through MakeModel, SetPending, IsDirty, Revert and CommitIfDirty like any other field
+bool FSOLSettingsModelOrbitLinesDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    FSettingsValues loaded = SettingsModelCustomValues();
+    loaded.bShowOrbitLines = false;
+    FSettingsModel model = MakeModel(loaded);
+    TestFalse(TEXT("MakeModel keeps Saved flag"), model.Saved.bShowOrbitLines);
+    TestFalse(TEXT("MakeModel keeps Pending flag"), model.Pending.bShowOrbitLines);
+    TestFalse(TEXT("Fresh model is clean"), IsDirty(model));
+
+    // A pending change in only the orbit-lines flag is dirty, and Revert discards it
+    FSettingsValues edited = model.Saved;
+    edited.bShowOrbitLines = true;
+    SetPending(model, edited);
+    TestTrue(TEXT("Pending takes the flag"), model.Pending.bShowOrbitLines);
+    TestFalse(TEXT("Saved untouched"), model.Saved.bShowOrbitLines);
+    TestTrue(TEXT("Dirty when only the flag differs"), IsDirty(model));
+    const FSettingsValues reverted = Revert(model);
+    TestFalse(TEXT("Revert returns the saved flag"), reverted.bShowOrbitLines);
+    TestFalse(TEXT("Pending flag reverted"), model.Pending.bShowOrbitLines);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+
+    // Committing the flag alone needs a write and Saved takes it
+    SetPending(model, edited);
+    TestTrue(TEXT("Commit of the flag needs a write"), CommitIfDirty(model));
+    TestTrue(TEXT("Saved takes the flag"), model.Saved.bShowOrbitLines);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+    TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelSetAppliedOrbitLinesTest,
+    "SOLTest.SettingsModel.SetAppliedOrbitLines",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetAppliedShowOrbitLines sets the flag in both Saved and Pending, keeps every other field (pending edits included),
+// and returns true only when the saved flag changed
+bool FSOLSettingsModelSetAppliedOrbitLinesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues saved = SettingsModelCustomValues();
+    FSettingsModel model = MakeModel(saved);
+
+    // A pending edit of another field is in flight
+    FSettingsValues edited = saved;
+    edited.MasterVolume = 0.25f;
+    edited.QualityPreset = 4;
+    SetPending(model, edited);
+
+    TestTrue(TEXT("Hiding changes the saved flag"), SetAppliedShowOrbitLines(model, false));
+    TestFalse(TEXT("Saved flag hidden"), model.Saved.bShowOrbitLines);
+    TestFalse(TEXT("Pending flag hidden"), model.Pending.bShowOrbitLines);
+
+    // Every other field of Saved and Pending is untouched
+    FSettingsValues savedExpected = saved;
+    savedExpected.bShowOrbitLines = false;
+    TestTrue(TEXT("Saved otherwise unchanged"), AreEqual(model.Saved, savedExpected));
+    FSettingsValues pendingExpected = edited;
+    pendingExpected.bShowOrbitLines = false;
+    TestTrue(TEXT("Pending edits kept"), AreEqual(model.Pending, pendingExpected));
+    TestEqual(TEXT("Pending master volume kept"), model.Pending.MasterVolume, 0.25f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Pending quality kept"), model.Pending.QualityPreset, 4);
+    TestEqual(TEXT("Saved master volume kept"), model.Saved.MasterVolume, 0.8f, SETTINGSMODEL_TOLERANCE);
+    TestTrue(TEXT("Still dirty from the other edits"), IsDirty(model));
+
+    // Applying the same value again changes nothing
+    TestFalse(TEXT("Same value returns false"), SetAppliedShowOrbitLines(model, false));
+    TestFalse(TEXT("Saved flag still hidden"), model.Saved.bShowOrbitLines);
+    TestFalse(TEXT("Pending flag still hidden"), model.Pending.bShowOrbitLines);
+
+    // Showing again changes it back
+    TestTrue(TEXT("Showing changes the saved flag"), SetAppliedShowOrbitLines(model, true));
+    TestTrue(TEXT("Saved flag shown"), model.Saved.bShowOrbitLines);
+    TestTrue(TEXT("Pending flag shown"), model.Pending.bShowOrbitLines);
+
+    // Applied on a clean model, the flag alone leaves it clean (Saved and Pending move together)
+    FSettingsModel clean = MakeModel(FSettingsValues());
+    TestTrue(TEXT("Clean model: change returns true"), SetAppliedShowOrbitLines(clean, false));
+    TestFalse(TEXT("Clean model stays clean"), IsDirty(clean));
+    TestFalse(TEXT("Nothing pending to commit"), CommitIfDirty(clean));
+
+    // A pending-only flag change is overwritten in Pending, and the return value follows Saved only
+    FSettingsModel pendingOnly = MakeModel(FSettingsValues());
+    FSettingsValues pendingHidden = pendingOnly.Saved;
+    pendingHidden.bShowOrbitLines = false;
+    SetPending(pendingOnly, pendingHidden);
+    TestFalse(TEXT("Saved already true returns false"), SetAppliedShowOrbitLines(pendingOnly, true));
+    TestTrue(TEXT("Pending overwritten to true"), pendingOnly.Pending.bShowOrbitLines);
+    TestFalse(TEXT("No longer dirty"), IsDirty(pendingOnly));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

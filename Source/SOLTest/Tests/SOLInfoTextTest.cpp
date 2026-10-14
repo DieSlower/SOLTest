@@ -249,4 +249,87 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+namespace
+{
+    // Returns the index of the only paragraph that mentions orbit lines (case-insensitive), or INDEX_NONE when none or
+    // several do; outCount is the number that do
+    int32 InfoTextFindOrbitLinesParagraph(const TArray<FString>& prose, int32& outCount)
+    {
+        outCount = 0;
+        int32 found = INDEX_NONE;
+        for (int32 index = 0; index < prose.Num(); ++index)
+        {
+            if (prose[index].Contains(TEXT("orbit lines"), ESearchCase::IgnoreCase))
+            {
+                ++outCount;
+                found = index;
+            }
+        }
+        return outCount == 1 ? found : INDEX_NONE;
+    }
+
+    // Returns the displayed key label of the orbit-lines toggle for a key array
+    FString InfoTextOrbitLinesKeyLabel(const TArray<FString>& keys)
+    {
+        const FString format = FString::Printf(TEXT("{%s}"),
+            SOLKeyBindings::GetDef(static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines)).Id);
+        return SOLKeyBindings::FormatKeyText(*format, keys);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextOrbitLinesParagraphTest, "SOLTest.InfoText.OrbitLinesParagraph",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Exactly one paragraph explains orbit lines and names the current orbit-lines toggle key, before and after a rebind
+bool FSOLInfoTextOrbitLinesParagraphTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    const TArray<FString> prose = SOLInfoText::BuildProse(keys);
+    int32 count = 0;
+    const int32 paragraph = InfoTextFindOrbitLinesParagraph(prose, count);
+    TestEqual(TEXT("exactly one orbit-lines paragraph"), count, 1);
+    if (!TestTrue(TEXT("orbit-lines paragraph found"), paragraph != INDEX_NONE))
+    {
+        return false;
+    }
+    const FString defaultLabel = InfoTextOrbitLinesKeyLabel(keys);
+    TestFalse(TEXT("default toggle key has a label"), defaultLabel.IsEmpty());
+    TestTrue(TEXT("paragraph names the default toggle key"),
+        prose[paragraph].Contains(defaultLabel, ESearchCase::CaseSensitive));
+    TestFalse(TEXT("default paragraph does not name the later key"),
+        prose[paragraph].Contains(TEXT("F7"), ESearchCase::CaseSensitive));
+
+    // No paragraph keeps a placeholder brace
+    for (const FString& text : prose)
+    {
+        TestFalse(TEXT("no '{' left"), text.Contains(TEXT("{")));
+        TestFalse(TEXT("no '}' left"), text.Contains(TEXT("}")));
+    }
+
+    // Rebinding the toggle changes that paragraph to the new key
+    keys[static_cast<int32>(EBinding::ToggleOrbitLines)] = TEXT("F7");
+    const FString reboundLabel = InfoTextOrbitLinesKeyLabel(keys);
+    TestNotEqual(TEXT("rebound label differs from the default"), reboundLabel, defaultLabel);
+    const TArray<FString> reboundProse = SOLInfoText::BuildProse(keys);
+    int32 reboundCount = 0;
+    const int32 reboundParagraph = InfoTextFindOrbitLinesParagraph(reboundProse, reboundCount);
+    TestEqual(TEXT("still exactly one orbit-lines paragraph"), reboundCount, 1);
+    if (!TestTrue(TEXT("rebound orbit-lines paragraph found"), reboundParagraph != INDEX_NONE))
+    {
+        return false;
+    }
+    TestTrue(TEXT("paragraph names the rebound key"),
+        reboundProse[reboundParagraph].Contains(reboundLabel, ESearchCase::CaseSensitive));
+    TestNotEqual(TEXT("paragraph text changed with the rebind"), reboundProse[reboundParagraph], prose[paragraph]);
+    for (const FString& text : reboundProse)
+    {
+        TestFalse(TEXT("rebound: no '{' left"), text.Contains(TEXT("{")));
+        TestFalse(TEXT("rebound: no '}' left"), text.Contains(TEXT("}")));
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

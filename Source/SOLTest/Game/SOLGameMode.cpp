@@ -23,6 +23,7 @@
 #include "UI/SOLFlightHud.h"
 #include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
+#include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Visuals/SOLBodyVisuals.h"
 
 #include "Engine/World.h"
@@ -85,8 +86,8 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field, asteroid-belt, per-ring, per-gas-giant and combat visuals and the combat audio, arms
-// the optional smoke-test hooks, then starts play
+// Spawns the body, star-field, asteroid-belt, orbit-line, per-ring, per-gas-giant and combat visuals and the combat
+// audio, arms the optional smoke-test hooks, then starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
@@ -97,6 +98,8 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
     GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
+    OrbitLineVisuals = GetWorld()->SpawnActor<ASOLOrbitLineVisuals>(ASOLOrbitLineVisuals::StaticClass(),
+        FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);
 
     // One ASOLRingVisuals per ringed planet (SDD 6 Amendment 11, 5e-iii); deferred so PlanetName is set before

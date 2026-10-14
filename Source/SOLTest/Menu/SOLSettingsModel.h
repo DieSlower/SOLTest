@@ -23,6 +23,7 @@ namespace SOLSettingsModel
         bool bDefaultFlightAssist = true;
         bool bVsync = true;
         int32 QualityPreset = 3;
+        bool bShowOrbitLines = true;          // World-space orbit lines shown (SDD 17); also toggled by the O key
     };
 
     struct FSettingsModel
@@ -51,4 +52,8 @@ namespace SOLSettingsModel
 
     // Commits the pending values and returns true if a write is needed (false, and no change, when nothing differs)
     SOLTEST_API bool CommitIfDirty(FSettingsModel& model);
+
+    // Sets the applied and pending orbit-line flag (the O key in flight, SDD 17) without touching any other pending
+    // edit; returns true if the applied value changed
+    SOLTEST_API bool SetAppliedShowOrbitLines(FSettingsModel& model, bool bShown);
 }

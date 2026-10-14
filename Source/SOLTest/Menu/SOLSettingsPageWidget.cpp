@@ -60,7 +60,7 @@ namespace
 
     // Checkbox labels in ESOLSettingsToggle order
     const TCHAR* const SETTINGS_TOGGLE_LABELS[] = { SOLMenuText::SETTINGS_VSYNC, SOLMenuText::SETTINGS_INVERT_Y,
-        SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST };
+        SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST, SOLMenuText::SETTINGS_ORBIT_LINES };
     static_assert(UE_ARRAY_COUNT(SETTINGS_TOGGLE_LABELS) == static_cast<int32>(ESOLSettingsToggle::Count),
         "one label per toggle");
 
@@ -178,6 +178,8 @@ namespace
             return values.bInvertY;
         case ESOLSettingsToggle::HudVisible:
             return values.bHudVisible;
+        case ESOLSettingsToggle::OrbitLines:
+            return values.bShowOrbitLines;
         case ESOLSettingsToggle::DefaultAssist:
         default:
             return values.bDefaultFlightAssist;
@@ -353,6 +355,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleHudVisibleChanged);
     addToggle(ESOLSettingsToggle::DefaultAssist)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleDefaultAssistChanged);
+    addToggle(ESOLSettingsToggle::OrbitLines)->OnCheckStateChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleOrbitLinesChanged);
 
     // Key bindings: the reset button, then one row per rebindable action
     SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_KEYS);
@@ -529,6 +533,9 @@ void USOLSettingsPageWidget::SetToggle(const ESOLSettingsToggle toggle, const bo
         break;
     case ESOLSettingsToggle::HudVisible:
         values.bHudVisible = bChecked;
+        break;
+    case ESOLSettingsToggle::OrbitLines:
+        values.bShowOrbitLines = bChecked;
         break;
     case ESOLSettingsToggle::DefaultAssist:
     default:
@@ -886,4 +893,11 @@ void USOLSettingsPageWidget::HandleActionClicked(const int32 action)
 void USOLSettingsPageWidget::HandleRebindClicked(const int32 binding)
 {
     BeginRebind(binding);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Show orbit lines checkbox clicked (previews live: ASOLOrbitLineVisuals follows the pending value)
+void USOLSettingsPageWidget::HandleOrbitLinesChanged(const bool bChecked)
+{
+    SetToggle(ESOLSettingsToggle::OrbitLines, bChecked);
 }
