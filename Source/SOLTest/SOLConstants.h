@@ -67,6 +67,15 @@ namespace SOL
     // directional light used for translucency and forward shading (two equal priorities make the editor warn on screen)
     inline constexpr int32 SUN_FORWARD_SHADING_PRIORITY = 1;
 
+    // Lighting (SDD 16, 16d): the ship and dropped targets are on lighting channel 1 only. While the observer is lit,
+    // the Sun light lights channels 0 and 1 and the ship's own sun light is hidden (no extra light pass); while it is
+    // shadowed, the Sun light keeps channel 0 (the ring rocks, which shadow themselves per pixel) and the ship sun
+    // light lights channel 1 at the shadowed intensity. Hysteresis (SOLRingShadow::NextShipShadowedState): the observer
+    // becomes shadowed when the sunlight fraction drops below ENTER and lit again only at LEAVE or above, so a
+    // fraction hovering at one value cannot flip the lights (and rebuild their proxies) every frame
+    inline constexpr double SHIP_SUN_SHADOW_ENTER_BELOW = 0.9999;
+    inline constexpr double SHIP_SUN_SHADOW_LEAVE_AT = 0.99995;
+
     // Ship pawn: shadowless directional "headlight" on the camera that lights the ship's shadowed side, as a fraction
     // of SUN_ILLUMINANCE_LUX (bodies use an unlit material and ignore it)
     inline constexpr float SHIP_FILL_LIGHT_FRACTION = 0.1f;
@@ -181,6 +190,51 @@ namespace SOL
     inline constexpr int32 RING_PROFILE_INDEX_URANUS = 2;
     inline constexpr int32 RING_PROFILE_INDEX_NEPTUNE = 3;
     inline constexpr int32 RING_PROFILE_INDEX_INFER = -1;    // let the asset infer it from the outer radius
+
+    // Ring shadows (SDD 16): analytic ring and planet shadows, SOLRingShadowMath and Shaders/Private/SOLRingShadow.ush
+    inline constexpr double SUN_RADIUS_M = 6.957e8;                       // IAU 2015 nominal solar radius
+    inline constexpr double RING_SHADOW_MIN_SUN_ELEVATION_SIN = 1.0e-3;   // below this |mu| the Sun is in the plane
+    inline constexpr double RING_SHADOW_MAX_SUN_ANGULAR_RADIUS_RAD = 0.5; // clamp on alpha inside tan()
+    inline constexpr double RING_SHADOW_LAYER_HALF_THICKNESS_M = RING_DENSE_HALF_THICKNESS_CM * CM_TO_METERS;
+    inline constexpr int32 RING_SHADOW_PROFILE_COUNT = 4;                 // profiles served by RealTauProfile
+    // Bands one shader box filter visits exactly (SOLRS_MAX_FILTER_BANDS); a wider window fills its rest with the last
+    // band's value. The window rarely spans more than three bands
+    inline constexpr int32 RING_SHADOW_MAX_FILTER_BANDS = 16;
+
+    // Project shader folder (relative to the project directory) and the virtual path the module maps it to, so
+    // material Custom nodes can include "/Project/SOLTest/Private/<file>.ush" (SDD 16)
+    inline constexpr const TCHAR* SHADER_SOURCE_FOLDER = TEXT("Shaders");
+    inline constexpr const TCHAR* SHADER_VIRTUAL_DIRECTORY = TEXT("/Project/SOLTest");
+    // The generated profile include, relative to SHADER_SOURCE_FOLDER (SOLRingShadow::BuildShaderProfileSource)
+    inline constexpr const TCHAR* RING_SHADOW_PROFILE_SHADER_FILE = TEXT("Private/SOLRingShadowProfile.ush");
+
+    // Vector parameters of Paths::RING_SHADOW_PARAMETER_COLLECTION (SDD 16), written by the ring whose dense layer is
+    // shown; the defaults (1, 0, 1, 0) and (0, 0, 1, 0) mean "no shadow"
+    namespace RingShadowMpcParams
+    {
+        // (planet shadow at the viewpoint, slant optical depth tau/|mu|, Sun side +-1, layer 1-sigma half-thickness cm)
+        inline constexpr const TCHAR* STATE = TEXT("RingShadowState");
+        // (ring normal in Unreal world axes, viewpoint height above the ring plane in cm)
+        inline constexpr const TCHAR* PLANE = TEXT("RingShadowPlane");
+        // (the viewpoint's render-space position in cm, where PLANE's height applies; -)
+        inline constexpr const TCHAR* ORIGIN = TEXT("RingShadowOrigin");
+    }
+
+    // The "no shadow" values of RingShadowMpcParams::STATE (planet lit, tau 0, Sun on the normal's side, no layer) and
+    // PLANE (any unit normal, height 0), matching the collection's defaults (Tools/Rings/create_ring_shadow_assets.py)
+    inline constexpr float RING_SHADOW_MPC_UNSHADOWED_STATE[4] = { 1.0f, 0.0f, 1.0f, 0.0f };
+    inline constexpr float RING_SHADOW_MPC_UNSHADOWED_PLANE[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+
+    // RingFarDiscParams::PLANET_RADIUS_CM sent while sol.RingShadows is 0: a 1 cm planet casts no visible shadow on the
+    // far disc (M_SOLRingFar replaces 0 or less with a built-in default radius)
+    inline constexpr float RING_FAR_SHADOW_OFF_PLANET_RADIUS_CM = 1.0f;
+
+    // Vector parameter of Paths::RING_ROCK_MATERIAL (SDD 16 Amendment 4): multiplies ParticleColor, which is white
+    // outside Niagara, so the near-field Mass ISM sets it to the ring colour (the Niagara layer leaves it white)
+    namespace RingRockMaterialParams
+    {
+        inline constexpr const TCHAR* TINT = TEXT("RockTint");
+    }
 
     // Ring far field disc (SDD 6 Amendment 15): optional parameters of NS_SOLRingFar's analytic ring-profile material
     namespace RingFarDiscParams
@@ -517,6 +571,7 @@ namespace SOL
     namespace CommandLine
     {
         inline constexpr const TCHAR* START_BODY = TEXT("SOLStart=");           // Body the ship spawns above
+        inline constexpr const TCHAR* SIM_DATE = TEXT("SOLSimDate=");           // Start sim time (UTC date), dev only
         inline constexpr const TCHAR* ALTITUDE_KM = TEXT("SOLAltitudeKm=");     // Spawn altitude above its surface
         inline constexpr const TCHAR* LOOK_AT_BODY = TEXT("SOLLookAt=");        // Body the debug camera faces
         inline constexpr const TCHAR* RING_START_KM = TEXT("SOLRingStartKm=");  // Ship spawns IN the start body's ring
@@ -567,6 +622,12 @@ namespace SOL
 
         // Ring dense rock layer (SDD 6 Amendment 15): GPU mesh-particle carpet around the camera near a ring
         inline constexpr const TCHAR* RING_DENSE_NIAGARA_SYSTEM = TEXT("/Game/SOL/Rings/NS_SOLRingDense.NS_SOLRingDense");
+        // Ring shadow state near the viewpoint, read by M_SOLRingRock (SDD 16; SOL::RingShadowMpcParams)
+        inline constexpr const TCHAR* RING_SHADOW_PARAMETER_COLLECTION =
+            TEXT("/Game/SOL/Rings/MPC_SOLRingShadow.MPC_SOLRingShadow");
+        // Shadowed rock material of the dense Niagara layer and the near-field Mass ISM (Tools/Rings/
+        // create_ring_shadow_assets.py; SOL::RingRockMaterialParams)
+        inline constexpr const TCHAR* RING_ROCK_MATERIAL = TEXT("/Game/SOL/Rings/M_SOLRingRock.M_SOLRingRock");
 
         // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the
         // (CPU-sim) bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is
@@ -830,6 +891,10 @@ namespace SOL
         inline constexpr const TCHAR* BODY_AXIS_Y = TEXT("BodyAxisY");
         inline constexpr const TCHAR* BODY_AXIS_Z = TEXT("BodyAxisZ");
         inline constexpr const TCHAR* NEAR_BLEND = TEXT("NearBlend");       // NearLayerBlend; scales density
+        // Ring shadow (SDD 16), deck, haze and cloud: Sun direction in the mesh's local axes, w = Sun angular radius
+        inline constexpr const TCHAR* RING_SHADOW_SUN = TEXT("RingShadowSun");
+        // Ring shadow: (profile index or -1 for off, planet radius km, -, -)
+        inline constexpr const TCHAR* RING_SHADOW_PARAMS = TEXT("RingShadowParams");
         inline constexpr const TCHAR* CLOUD_LAYER = TEXT("CloudLayer");     // (layer bottom km, layer thickness km)
         // (feature km, belt coverage, zone coverage, extinction 1/m)
         inline constexpr const TCHAR* CLOUD_NOISE = TEXT("CloudNoise");

@@ -9,6 +9,8 @@
 #include "MinorBodies/SOLMinorBodyVisualsUtil.h"
 #include "MinorBodies/SOLRingDense.h"
 #include "MinorBodies/SOLRingPatch.h"
+#include "MinorBodies/SOLRingShadowMath.h"
+#include "MinorBodies/SOLRingShadowSwitch.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
@@ -25,6 +27,8 @@
 #include "MassExecutionContext.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
+#include "Materials/MaterialParameterCollection.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 
@@ -57,18 +61,6 @@ namespace
             }
         }
         return SOLPlanetRing::AllGapBandsM(ringDef, moonOrbitRadiiM, moonGapHalfWidthsM);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the far-field material's ring-profile index for a host planet (0 Jupiter, 1 Saturn, 2 Uranus,
-    // 3 Neptune; SDD 6 Amendment 15), or -1 to let the asset infer it from the outer radius
-    int32 ProfileIndexForPlanet(FName planetName)
-    {
-        if (planetName == FName(SOL::BodyNames::JUPITER)) { return SOL::RING_PROFILE_INDEX_JUPITER; }
-        if (planetName == FName(SOL::BodyNames::SATURN)) { return SOL::RING_PROFILE_INDEX_SATURN; }
-        if (planetName == FName(SOL::BodyNames::URANUS)) { return SOL::RING_PROFILE_INDEX_URANUS; }
-        if (planetName == FName(SOL::BodyNames::NEPTUNE)) { return SOL::RING_PROFILE_INDEX_NEPTUNE; }
-        return SOL::RING_PROFILE_INDEX_INFER;
     }
 }
 
@@ -162,13 +154,14 @@ void ASOLRingVisuals::BeginPlay()
     mRingAxisE2 = mRingOrientation.RotateVector(FVector3d(0.0, 1.0, 0.0));
 
     UStaticMesh* mesh = LoadObject<UStaticMesh>(nullptr, SOL::Paths::BODY_MESH);
-    UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::BODY_MATERIAL);
+    UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::RING_ROCK_MATERIAL);
     UNiagaraSystem* farFieldSystem = LoadObject<UNiagaraSystem>(nullptr, SOL::Paths::RING_FAR_NIAGARA_SYSTEM);
+    ShadowParameters = LoadObject<UMaterialParameterCollection>(nullptr, SOL::Paths::RING_SHADOW_PARAMETER_COLLECTION);
     UNiagaraSystem* denseSystem = LoadObject<UNiagaraSystem>(nullptr, SOL::Paths::RING_DENSE_NIAGARA_SYSTEM);
     if (mesh == nullptr || material == nullptr || farFieldSystem == nullptr)
     {
         UE_LOG(LogSOL, Error, TEXT("RingVisuals %s: failed to load %s, %s or %s"), *GetName(), SOL::Paths::BODY_MESH,
-            SOL::Paths::BODY_MATERIAL, SOL::Paths::RING_FAR_NIAGARA_SYSTEM);
+            SOL::Paths::RING_ROCK_MATERIAL, SOL::Paths::RING_FAR_NIAGARA_SYSTEM);
         return;
     }
     // The dense rock layer is an optional extra: without its asset or the sim clock the ring still draws, minus it
@@ -188,7 +181,8 @@ void ASOLRingVisuals::BeginPlay()
     FarFieldNiagara->SetVariableLinearColor(SOL::RingFarFieldParams::COLOR, mRingDef.Color);
     // The far field is one analytic-profile disc since SDD 6 Amendment 15 (no sprite count/size parameters); these
     // optional parameters pick the ring's real radial profile and feed the planet's shadow
-    FarFieldNiagara->SetVariableInt(SOL::RingFarDiscParams::PROFILE_INDEX, ProfileIndexForPlanet(PlanetName));
+    FarFieldNiagara->SetVariableInt(SOL::RingFarDiscParams::PROFILE_INDEX,
+        SOLRingShadow::ProfileIndexForPlanet(PlanetName));
     FarFieldNiagara->SetVariableFloat(SOL::RingFarDiscParams::PLANET_RADIUS_CM,
         static_cast<float>(registry.GetRadiusM(mPlanetIndex) * SOL::METERS_TO_CM));
 
@@ -267,11 +261,10 @@ void ASOLRingVisuals::BeginPlay()
         SOLRingPatch::PoolEntityCountPerRing());
     FillTransforms();
 
-    // One placeholder material instance and one bulk instance add (the per-frame update only moves them)
+    // The dense layer's shadowed rock material, tinted to the ring colour (ParticleColor is white outside Niagara), and
+    // one bulk instance add (the per-frame update only moves them)
     UMaterialInstanceDynamic* nearFieldMaterial = UMaterialInstanceDynamic::Create(material, this);
-    nearFieldMaterial->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_A), mRingDef.Color);
-    nearFieldMaterial->SetVectorParameterValue(FName(SOL::BodyMaterialParams::COLOR_B), mRingDef.Color);
-    nearFieldMaterial->SetScalarParameterValue(FName(SOL::BodyMaterialParams::SUN_ILLUMINANCE), SOL::SUN_ILLUMINANCE_LUX);
+    nearFieldMaterial->SetVectorParameterValue(FName(SOL::RingRockMaterialParams::TINT), mRingDef.Color);
     NearFieldMesh->SetStaticMesh(mesh);
     NearFieldMesh->SetMaterial(0, nearFieldMaterial);
     NearFieldMesh->SetWorldTransform(FTransform::Identity);
@@ -328,7 +321,8 @@ bool ASOLRingVisuals::FillTransforms()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Pushes the far field's Sun direction (unit vector toward the Sun, in the disc's own local axes) when it changes
+// Pushes the far field's Sun direction (toward the Sun, in the disc's own local axes, length 1 + the Sun's angular
+// radius) when it changes
 void ASOLRingVisuals::UpdateFarFieldLighting()
 {
     if (mSunIndex == INDEX_NONE)
@@ -336,14 +330,29 @@ void ASOLRingVisuals::UpdateFarFieldLighting()
         return;
     }
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+
+    // sol.RingShadows 0 shrinks the disc's shadowing planet to SOL::RING_FAR_SHADOW_OFF_PLANET_RADIUS_CM, which leaves
+    // no visible planet shadow (the material falls back to a default radius for 0 or less, so 0 cannot be used)
+    const bool bShadows = SOLRingShadow::AreShadowsEnabled();
+    if (bShadows != mIsFarShadowEnabled)
+    {
+        mIsFarShadowEnabled = bShadows;
+        FarFieldNiagara->SetVariableFloat(SOL::RingFarDiscParams::PLANET_RADIUS_CM, bShadows ?
+            static_cast<float>(registry.GetRadiusM(mPlanetIndex) * SOL::METERS_TO_CM) :
+            SOL::RING_FAR_SHADOW_OFF_PLANET_RADIUS_CM);
+    }
+
     const FVector3d towardSunEcliptic = registry.GetPositionM(mSunIndex) - registry.GetPositionM(mPlanetIndex);
     if (towardSunEcliptic.IsNearlyZero())
     {
         return;
     }
     // Ecliptic -> ring-local (inverse of the host orientation) -> the Niagara disc's left-handed local axes (Y mirrored)
+    // The vector's length carries the Sun's angular radius for the soft planet shadow (SDD 16): 1 + alpha
     const FVector3d ringLocal = mRingOrientation.UnrotateVector(towardSunEcliptic.GetSafeNormal());
-    const FVector3d niagaraLocal = SOLRingDense::RingFrameToNiagaraLocalCm(ringLocal);
+    const FVector3d niagaraLocal = SOLRingShadow::EncodeSunDirectionWithAngularRadius(
+        SOLRingDense::RingFrameToNiagaraLocalCm(ringLocal),
+        SOLRingShadow::SunAngularRadiusRad(towardSunEcliptic.Length()));
     // The direction changes over hours, not frames: skip the Niagara write unless it moved by about 0.01 degrees
     if ((niagaraLocal - mLastSunDirection).SizeSquared() < 1.0e-8)
     {
@@ -396,6 +405,8 @@ void ASOLRingVisuals::UpdateDenseLayer()
     }
     if (!bShow)
     {
+        UpdateShadowParameters(false, FVector3d::ZeroVector);
+
         // Stay in step with the sim clock so the first visible frame's angle step is one frame, not the whole absence
         mLastSecondsSinceJ2000 = secondsSinceJ2000;
 
@@ -422,6 +433,7 @@ void ASOLRingVisuals::UpdateDenseLayer()
     const FVector3d relativeM = mFrameViewpointM - registry.GetPositionM(mPlanetIndex);
     const double planeDistanceM = FVector3d::DotProduct(relativeM, mRingNormal);
     const double planeRadiusM = FMath::Sqrt(FMath::Max(relativeM.SizeSquared() - planeDistanceM * planeDistanceM, 0.0));
+    UpdateShadowParameters(SOLRingShadow::AreShadowsEnabled(), relativeM);   // sol.RingShadows 0: rocks unshadowed
 
     // Integrating (not omega * t) means a radial move, which changes omega, never makes the carpet jump
     mDenseSpinAngleRad = SOLRingDense::AdvanceSpinAngle(mDenseSpinAngleRad, mPlanetGM, planeRadiusM,
@@ -450,6 +462,48 @@ void ASOLRingVisuals::UpdateDenseLayer()
     DenseNiagara->SetVariableVec3(SOL::RingDenseParams::WINDOW_CENTER_KM, FVector(FVector3f(localCm / centimetersPerKilometer)));
     DenseNiagara->SetVariableFloat(SOL::RingDenseParams::FILL,
         static_cast<float>(SOLRingDense::DenseFillFraction(mRingDef.Density) * denseAlpha));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes (or, once on hiding, clears) the viewpoint's ring-shadow state in the shared parameter collection
+void ASOLRingVisuals::UpdateShadowParameters(const bool bShown, const FVector3d& viewpointRelPlanetM)
+{
+    UMaterialParameterCollectionInstance* instance = ShadowParameters != nullptr ?
+        GetWorld()->GetParameterCollectionInstance(ShadowParameters) : nullptr;
+    if (instance == nullptr || (!bShown && !mIsWritingShadowState))
+    {
+        return;
+    }
+    mIsWritingShadowState = bShown;
+
+    // Parameter names resolved once (FName construction hashes the string)
+    static const FName stateName(SOL::RingShadowMpcParams::STATE);
+    static const FName planeName(SOL::RingShadowMpcParams::PLANE);
+    static const FName originName(SOL::RingShadowMpcParams::ORIGIN);
+    if (!bShown || mSunIndex == INDEX_NONE)
+    {
+        const float* state = SOL::RING_SHADOW_MPC_UNSHADOWED_STATE;
+        const float* plane = SOL::RING_SHADOW_MPC_UNSHADOWED_PLANE;
+        instance->SetVectorParameterValue(stateName, FLinearColor(state[0], state[1], state[2], state[3]));
+        instance->SetVectorParameterValue(planeName, FLinearColor(plane[0], plane[1], plane[2], plane[3]));
+        return;
+    }
+
+    // One evaluation per frame at the viewpoint: every penumbra is kilometres wide, the rock window 1.5 km
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const FVector3d towardSun = registry.GetPositionM(mSunIndex) - registry.GetPositionM(mPlanetIndex);
+    const SOLRingShadow::FViewpointShadowState state = SOLRingShadow::ComputeViewpointShadowState(viewpointRelPlanetM,
+        towardSun, mRingNormal, registry.GetRadiusM(mPlanetIndex),
+        SOLRingShadow::SunAngularRadiusRad(towardSun.Length()),
+        SOLRingShadow::RealTauProfile(SOLRingShadow::ProfileIndexForPlanet(PlanetName)));
+    const FVector3f normalUnreal(SOLRender::EclipticToUnreal(mRingNormal));
+    instance->SetVectorParameterValue(stateName, FLinearColor(static_cast<float>(state.PlanetShadow),
+        static_cast<float>(state.SlantOpticalDepth), static_cast<float>(state.SunSide),
+        static_cast<float>(SOL::RING_DENSE_HALF_THICKNESS_CM)));
+    instance->SetVectorParameterValue(planeName, FLinearColor(normalUnreal.X, normalUnreal.Y, normalUnreal.Z,
+        static_cast<float>(state.HeightM * SOL::METERS_TO_CM)));
+    const FVector3f originCm(mFrameRenderOrigin.UniverseToRenderCm(mFrameViewpointM));
+    instance->SetVectorParameterValue(originName, FLinearColor(originCm.X, originCm.Y, originCm.Z, 0.0f));
 }
 
 //////////////////////////////////////////////////////////////////////////

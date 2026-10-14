@@ -24,6 +24,7 @@
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
+#include "Visuals/SOLBodyVisuals.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
@@ -167,6 +168,7 @@ ASOLShipPawn::ASOLShipPawn()
     FillLight->SetMobility(EComponentMobility::Movable);
     FillLight->SetIntensity(SOL::SUN_ILLUMINANCE_LUX * SOL::SHIP_FILL_LIGHT_FRACTION);
     FillLight->SetCastShadows(false);
+    FillLight->LightingChannels.bChannel1 = true;   // The ship is on channel 1 (SDD 16, 16d)
 
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
@@ -971,6 +973,7 @@ void ASOLShipPawn::AddShipPart(UStaticMesh* mesh, UMaterialInterface* material, 
     part->SetMaterial(0, material);
     part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     part->SetCastShadow(false);
+    SOLShipSunlight::PutOnShipLightingChannel(part);   // Lit by the shadowed ship sun light, not the rocks' (SDD 16)
     part->SetupAttachment(ShipRoot);
     part->SetRelativeTransform(FTransform(rotation, locationCm, scale));
     part->RegisterComponent();

@@ -26,6 +26,10 @@ public:
     // Advances sim time by one frame's real delta times the warp factor (called by the universe driver)
     void AdvanceFrame(double realDeltaSeconds);
 
+    // Sets the sim time to a Julian date with warp 1x (tests pin a date with it; the body registry picks it up on its
+    // next UpdateFromClock)
+    void SetJulianDate(double julianDate);
+
     // Returns the wrapped clock (read-only)
     const FSOLSimClock& GetClock() const { return mClock; }
 

@@ -5,6 +5,8 @@
 
 #include "GasGiants/SOLGasGiantVisuals.h"
 
+#include "MinorBodies/SOLRingShadowMath.h"
+#include "MinorBodies/SOLRingShadowSwitch.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -231,6 +233,15 @@ void ASOLGasGiantVisuals::BeginPlay()
     mHazeOpacity = look.HazeOpacity;
     DeckMaterial->InitializeVectorParameterAndGetIndex(FName(SUN_DIRECTION), FLinearColor::Black, mDeckSunParamIndex);
     HazeMaterial->InitializeVectorParameterAndGetIndex(FName(SUN_DIRECTION), FLinearColor::Black, mHazeSunParamIndex);
+    // Ring shadow on the deck and haze (SDD 16): static profile and radius, per-frame Sun in the mesh's local axes
+    mRingShadowParams = FLinearColor(static_cast<float>(SOLRingShadow::ProfileIndexForPlanet(PlanetName)),
+        static_cast<float>(registry.GetRadiusM(mBodyIndex) / SOL::METERS_PER_KM), 0.0f, 0.0f);
+    DeckMaterial->SetVectorParameterValue(FName(RING_SHADOW_PARAMS), mRingShadowParams);
+    HazeMaterial->SetVectorParameterValue(FName(RING_SHADOW_PARAMS), mRingShadowParams);
+    DeckMaterial->InitializeVectorParameterAndGetIndex(FName(RING_SHADOW_SUN), FLinearColor::Transparent,
+        mDeckRingSunParamIndex);
+    HazeMaterial->InitializeVectorParameterAndGetIndex(FName(RING_SHADOW_SUN), FLinearColor::Transparent,
+        mHazeRingSunParamIndex);
     DeckMesh->SetMaterial(0, DeckMaterial);
     HazeMesh->SetMaterial(0, HazeMaterial);
 
@@ -307,6 +318,20 @@ void ASOLGasGiantVisuals::HandleUniverseUpdated()
     HazeMesh->SetWorldTransform(FTransform(rotation, FVector(placement.LocationCm),
         FVector(deckScale * SOL::GAS_GIANT_HAZE_RADIUS_SCALE)));
 
+    // Ring shadow input: the Sun in the meshes' local axes (z = pole = ring normal) and its angular radius (SDD 16)
+    const FVector3d towardSunEcliptic = (mSunIndex != INDEX_NONE ? registry.GetPositionM(mSunIndex) :
+        FVector3d::ZeroVector) - registry.GetPositionM(mBodyIndex);
+    const FVector4d ringSun = SOLRingShadow::SunDirectionAndAngularRadius(
+        FVector3d(rotation.UnrotateVector(FVector(SOLRender::EclipticToUnreal(towardSunEcliptic)))),
+        towardSunEcliptic.Length());
+    mRingShadowSun = FLinearColor(static_cast<float>(ringSun.X), static_cast<float>(ringSun.Y),
+        static_cast<float>(ringSun.Z), static_cast<float>(ringSun.W));
+    // A zero Sun vector switches the shadow off in the material (the profiling switch)
+    if (!SOLRingShadow::AreShadowsEnabled())
+    {
+        mRingShadowSun = FLinearColor::Transparent;
+    }
+
     // Near volumetric layer; the haze shell fades out as it fades in (hidden once fully replaced)
     const double nearBlend = UpdateNearLayer(placement.LocationCm, rotation, registry.GetRadiusM(mBodyIndex));
     const FSOLGasGiantAppearance& look = GAS_GIANT_APPEARANCES[mAppearanceIndex];
@@ -340,6 +365,8 @@ void ASOLGasGiantVisuals::HandleUniverseUpdated()
             static_cast<float>(towardSun.Z), 0.0f);
         DeckMaterial->SetVectorParameterByIndex(mDeckSunParamIndex, sunDirection);
         HazeMaterial->SetVectorParameterByIndex(mHazeSunParamIndex, sunDirection);
+        DeckMaterial->SetVectorParameterByIndex(mDeckRingSunParamIndex, mRingShadowSun);
+        HazeMaterial->SetVectorParameterByIndex(mHazeRingSunParamIndex, mRingShadowSun);
         UpdateAnimation(mDriftSeconds);
     }
 }
@@ -431,6 +458,7 @@ double ASOLGasGiantVisuals::UpdateNearLayer(const FVector3d& centerCm, const FQu
     CloudMaterial->SetVectorParameterByIndex(mCloudAxisParamIndices[1], FLinearColor(FVector3f(rotation.GetAxisY())));
     CloudMaterial->SetVectorParameterByIndex(mCloudAxisParamIndices[2], FLinearColor(FVector3f(rotation.GetAxisZ())));
     CloudMaterial->SetScalarParameterByIndex(mCloudBlendParamIndex, static_cast<float>(blend));
+    CloudMaterial->SetVectorParameterByIndex(mCloudRingSunParamIndex, mRingShadowSun);
     return blend;
 }
 
@@ -475,6 +503,9 @@ void ASOLGasGiantVisuals::ActivateNearLayer(const double radiusM)
     CloudMaterial->SetVectorParameterValue(FName(CLOUD_NOISE), FLinearColor(SOL::GAS_GIANT_CLOUD_FEATURE_KM,
         SOL::GAS_GIANT_CLOUD_BELT_COVERAGE, SOL::GAS_GIANT_CLOUD_ZONE_COVERAGE, SOL::GAS_GIANT_CLOUD_EXTINCTION_PER_M));
     CloudMaterial->SetScalarParameterValue(FName(CLOUD_AMBIENT_LUMINANCE), SOL::GAS_GIANT_CLOUD_AMBIENT_LUMINANCE);
+    CloudMaterial->SetVectorParameterValue(FName(RING_SHADOW_PARAMS), mRingShadowParams);
+    CloudMaterial->InitializeVectorParameterAndGetIndex(FName(RING_SHADOW_SUN), FLinearColor::Transparent,
+        mCloudRingSunParamIndex);
     for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(BAND_PHASES)); ++index)
     {
         CloudMaterial->InitializeVectorParameterAndGetIndex(FName(BAND_PHASES[index]), FLinearColor::Black,

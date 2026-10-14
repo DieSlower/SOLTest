@@ -230,6 +230,9 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (Tab)")));
     TestTrue(TEXT("default map key"), joined.Contains(TEXT("jump map (J)")));
     TestTrue(TEXT("gas giant paragraph (issue #14)"), joined.Contains(TEXT("Great Red Spot")));
+    TestTrue(TEXT("ring shadow paragraph (issue #16)"), joined.Contains(TEXT("Rings and planets cast real shadows")));
+    TestTrue(TEXT("ship eclipse sentence (issue #16)"),
+        joined.Contains(TEXT("Your ship and targets are shadowed too")));
     TestFalse(TEXT("no placeholder left"), joined.Contains(TEXT("{")));
 
     keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");

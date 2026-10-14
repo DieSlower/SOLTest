@@ -16,6 +16,7 @@
 class UDirectionalLightComponent;
 class UMaterialInstanceDynamic;
 class UPostProcessComponent;
+class UPrimitiveComponent;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
 class UStaticMeshComponent;
@@ -26,8 +27,10 @@ class UStaticMeshComponent;
  * shade themselves: every frame each body's material receives the unit direction from that body toward the Sun, so
  * every phase is correct wherever the body is relative to the observer. A shadowless directional light, aimed from
  * the Sun toward the observer, is kept for lit objects near the observer (the ship in 1b); the unlit body material
- * ignores it. It does not tick; it re-places everything, and updates the exposure, when the anchor subsystem
- * broadcasts its per-frame universe update.
+ * ignores it. The ship and dropped targets sit on lighting channel 1: while a planet or ring shadow covers the
+ * observer (SOLRingShadow::BodySunTransmittance, SDD 16), a second light lights them at the shadowed intensity. It does
+ * not tick; it re-places everything, and updates the exposure, when the anchor subsystem broadcasts its per-frame
+ * universe update.
  */
 UCLASS()
 class SOLTEST_API ASOLBodyVisuals : public AActor
@@ -54,6 +57,15 @@ public:
     // Returns true while the sun light is flagged as the atmosphere sun light
     bool IsSunDrivingAtmosphere() const;
 
+    // Returns the fraction of sunlight every body's and ring's shadow leaves at the observer (1 before any update)
+    double GetShipSunTransmittance() const { return mShipSunTransmittance; }
+
+    // Returns the Sun light (lighting channel 0, plus channel 1 while the observer is lit)
+    const UDirectionalLightComponent* GetSunLight() const { return SunLight; }
+
+    // Returns the ship's sun light (lighting channel 1 only; shown while the observer is in a shadow)
+    const UDirectionalLightComponent* GetShipSunLight() const { return ShipSunLight; }
+
 protected:
 
     // Creates one mesh and material instance per body and subscribes to universe updates
@@ -70,6 +82,9 @@ private:
     // Moves the manual exposure toward the target set by the bodies in view (SDD 13 decision 2, Amendment 1)
     void UpdateExposure(const FVector3d& sunPositionM);
 
+    // Shadows the ship's and targets' sunlight by every body and ring at the observer (SDD 16, 16d)
+    void UpdateShipSunlight(const FVector3d& sunPositionM);
+
     /** Scene root at the render origin. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<USceneComponent> SceneRoot;
@@ -77,6 +92,10 @@ private:
     /** Sunlight for lit objects near the observer, aimed from the Sun toward the observer every frame. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
     TObjectPtr<UDirectionalLightComponent> SunLight;
+
+    /** Shadowed sunlight for the ship and dropped targets (channel 1), shown only while the observer is shadowed. */
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
+    TObjectPtr<UDirectionalLightComponent> ShipSunLight;
 
     /** Unbound post-process: bloom and the manual exposure (bias 0 = the old fixed exposure) UpdateExposure moves. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Visuals")
@@ -104,11 +123,22 @@ private:
     FDelegateHandle mUniverseUpdatedHandle;  // Subscription to the anchor subsystem's per-frame update
     TArray<double> mAlbedoLuminances;        // Per body: mean albedo luminance (exposure estimate)
     TArray<double> mEmissiveLuminances;      // Per body: emissive luminance (exposure estimate)
+    TArray<int32> mRingProfileIndices;       // Per body: SOL::RING_PROFILE_INDEX_* of its rings, or -1 (no rings)
+    double mShipSunTransmittance = 1.0;      // Sunlight fraction left at the observer by every body and ring shadow
+    bool mIsShipShadowed = false;            // True while the ship sun light is shown (Sun light on channel 0 only)
     double mExposureEv100 = SOL::EXPOSURE_MIN_EV100; // Smoothed exposure; bias = EXPOSURE_MIN_EV100 - this
     bool mExposureInitialized = false;       // False until the first update sets the exposure to its target
     int32 mSunIndex = INDEX_NONE;            // Registry index of the Sun (light source)
     TSet<FObjectKey> mSunAtmosphereRequesters; // Holders of SetSunDrivesAtmosphere(true); flag on while non-empty
 };
+
+// The ship sunlight's lighting channel (SDD 16, 16d), shared by every primitive it lights
+namespace SOLShipSunlight
+{
+    // Puts a primitive on lighting channel 1 only (the ship's parts and the dropped targets), so the Sun light reaches
+    // it only while the observer is lit and the ship sun light while it is shadowed. Safe before registration
+    SOLTEST_API void PutOnShipLightingChannel(UPrimitiveComponent* primitive);
+}
 
 // Read access to the placeholder body appearances, for presentation that must match the meshes (map icons)
 namespace SOLBodyAppearance

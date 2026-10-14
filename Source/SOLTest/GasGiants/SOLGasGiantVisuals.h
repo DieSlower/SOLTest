@@ -162,6 +162,11 @@ private:
     int32 mCloudCenterParamIndex = INDEX_NONE;   // Cloud PlanetCenter slot
     int32 mCloudAxisParamIndices[3] = {};        // Cloud BodyAxisX/Y/Z slots
     int32 mCloudBlendParamIndex = INDEX_NONE;    // Cloud NearBlend slot
+    int32 mDeckRingSunParamIndex = INDEX_NONE;   // Deck RingShadowSun slot
+    int32 mHazeRingSunParamIndex = INDEX_NONE;   // Haze RingShadowSun slot
+    int32 mCloudRingSunParamIndex = INDEX_NONE;  // Cloud RingShadowSun slot
+    FLinearColor mRingShadowSun = FLinearColor::Transparent; // This frame's RingShadowSun (local Sun direction, alpha)
+    FLinearColor mRingShadowParams = FLinearColor(-1.0f, 0.0f, 0.0f, 0.0f); // RingShadowParams (profile, radius km)
     SOLGasGiant::FNearLayerState mNearLayer;     // Near layer residency (StepNearLayer)
     bool mIsNearLayerShown = false;              // Whether the near layer's components are visible
     float mHazeOpacity = 0.0f;                   // Haze opacity currently in the haze ShapeParams

@@ -271,6 +271,11 @@ namespace SOLMenuText
             "also drifts at its own speed by latitude; storms such as Jupiter's Great Red Spot ride their bands. The "
             "drift follows time warp up to a cap, so the bands stay smooth at the highest warps. Fly close to a giant "
             "and a layer of volumetric clouds fades in just above the deck, replacing the thin haze seen from afar."),
+        TEXT("Rings and planets cast real shadows. A ring darkens its planet's cloud deck by how dense it is, the "
+            "planet's shadow falls across its rings, and rocks inside a ring are darker on its far side from the Sun. "
+            "Your ship and targets are shadowed too: fly under a dense ring or into a planet's night-side shadow and "
+            "the sunlight on them dims or goes out, leaving only the fill light. The edges are soft, as wide as the "
+            "Sun's disc seen from there."),
     };
 
     // About page

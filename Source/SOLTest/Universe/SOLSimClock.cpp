@@ -7,6 +7,8 @@
 
 #include "SOLConstants.h"
 
+#include "Misc/DateTime.h"
+
 namespace
 {
     // Sim seconds per real second: 1x, 10x, 100x, 1000x, 1 h/s, 1 d/s, 10 d/s, 30 d/s
@@ -35,6 +37,23 @@ double FSOLSimClock::JulianDateFromUtc(const int32 year, const int32 month, cons
     // Offset from noon in seconds, added as a single day fraction to keep rounding to one step
     const double secondsFromNoon = static_cast<double>((hour - 12) * 3600 + minute * 60) + second;
     return static_cast<double>(dayNumber) + secondsFromNoon / SOL::SECONDS_PER_DAY;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Parses an ISO 8601 or Unreal-format UTC date into a Julian date; false if it does not parse
+bool FSOLSimClock::TryParseUtcJulianDate(const FString& text, double& outJulianDate)
+{
+    const FString trimmed = text.TrimStartAndEnd();
+    FDateTime utc;
+    if (trimmed.IsEmpty() || !(FDateTime::ParseIso8601(*trimmed, utc) || FDateTime::Parse(trimmed, utc)))
+    {
+        return false;
+    }
+    const double second = static_cast<double>(utc.GetSecond()) + static_cast<double>(utc.GetMillisecond()) /
+        SOL::MILLISECONDS_PER_SECOND;
+    outJulianDate = JulianDateFromUtc(utc.GetYear(), utc.GetMonth(), utc.GetDay(), utc.GetHour(), utc.GetMinute(),
+        second);
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
