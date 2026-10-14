@@ -14,6 +14,7 @@
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderOrigin.h"
 #include "Universe/SOLRenderPlacement.h"
+#include "Visuals/SOLBodyVisuals.h"
 
 #include "Components/InstancedStaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
@@ -72,6 +73,7 @@ ASOLCombatVisuals::ASOLCombatVisuals()
     TargetMesh->SetupAttachment(SceneRoot);
     SOLMinorBodyVisualsUtil::MakeVisualOnlyPrimitive(TargetMesh);
     MakeCombatComponentAbsolute(TargetMesh);
+    SOLShipSunlight::PutOnShipLightingChannel(TargetMesh);   // Lit like the ship, by the ship sun light (SDD 16)
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -5,6 +5,8 @@
 
 #include "Visuals/SOLBodyVisuals.h"
 
+#include "MinorBodies/SOLRingShadowMath.h"
+#include "MinorBodies/SOLRingShadowSwitch.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
@@ -101,6 +103,18 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Puts a primitive on lighting channel 1 only (the ship sunlight's channel)
+void SOLShipSunlight::PutOnShipLightingChannel(UPrimitiveComponent* primitive)
+{
+    if (primitive != nullptr)
+    {
+        primitive->LightingChannels.bChannel0 = false;
+        primitive->LightingChannels.bChannel1 = true;
+        primitive->LightingChannels.bChannel2 = false;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Writes a body's base color (the material's linear ColorA) and returns true, or returns false if it has none
 bool SOLBodyAppearance::FindBaseColor(const FName bodyName, FLinearColor& outColor)
 {
@@ -132,6 +146,20 @@ ASOLBodyVisuals::ASOLBodyVisuals()
     SunLight->ForwardShadingPriority = SOL::SUN_FORWARD_SHADING_PRIORITY;
     SunLight->bAtmosphereSunLight = false;
     SunLight->AtmosphereSunDiskColorScale = FLinearColor::Black;
+    SunLight->LightingChannels.bChannel1 = true;
+
+    // Shadowed sunlight for the ship and targets (channel 1 only), hidden until the observer enters a shadow (SDD 16)
+    ShipSunLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("ShipSunLight"));
+    ShipSunLight->SetupAttachment(SceneRoot);
+    ShipSunLight->SetMobility(EComponentMobility::Movable);
+    ShipSunLight->SetIntensity(SunIlluminanceLux);
+    ShipSunLight->SetCastShadows(false);
+    ShipSunLight->bAffectsWorld = true;
+    ShipSunLight->bAtmosphereSunLight = false;
+    ShipSunLight->AtmosphereSunDiskColorScale = FLinearColor::Black;
+    ShipSunLight->LightingChannels.bChannel0 = false;
+    ShipSunLight->LightingChannels.bChannel1 = true;
+    ShipSunLight->SetVisibleFlag(false);
 
     // Manual exposure moved by this actor (SDD 13 decision 2, Amendment 1): bias 0 is the dark-sky exposure the lit
     // planets and the emissive Sun were tuned against; UpdateExposure lowers it (at most EXPOSURE_MAX_EV100 -
@@ -224,11 +252,22 @@ void ASOLBodyVisuals::BeginPlay()
     }
     SunLight->SetIntensity(SunIlluminanceLux);
 
+    // The ship sun light is the Sun light seen through a shadow: same colour and shape, only dimmer
+    ShipSunLight->SetLightColor(SunLight->GetLightColor());
+    ShipSunLight->SetUseTemperature(SunLight->bUseTemperature);
+    ShipSunLight->SetTemperature(SunLight->Temperature);
+    ShipSunLight->SetSpecularScale(SunLight->SpecularScale);
+    ShipSunLight->SetDiffuseScale(SunLight->DiffuseScale);
+    ShipSunLight->SetLightSourceAngle(SunLight->LightSourceAngle);
+    ShipSunLight->SetLightSourceSoftAngle(SunLight->LightSourceSoftAngle);
+    ShipSunLight->SetIntensity(SunIlluminanceLux);
+
     // One sphere and one material instance per body, created once; the per-frame update only moves them
     const FSOLBodyRegistry& registry = BodyRegistrySubsystem->GetRegistry();
     const int32 bodyCount = registry.Num();
     BodyMeshes.Reserve(bodyCount);
     BodyMaterials.Reserve(bodyCount);
+    mRingProfileIndices.Reserve(bodyCount);
     for (int32 index = 0; index < bodyCount; ++index)
     {
         const FName bodyName = registry.GetName(index);
@@ -266,6 +305,7 @@ void ASOLBodyVisuals::BeginPlay()
         mSunDirectionParamIndices.Add(sunDirectionParamIndex);
         mAlbedoLuminances.Add(albedoLuminance);
         mEmissiveLuminances.Add(emissiveLuminance);
+        mRingProfileIndices.Add(SOLRingShadow::ProfileIndexForPlanet(bodyName));
     }
     mSunIndex = registry.FindByName(FName(SOL::BodyNames::SUN));
 
@@ -321,9 +361,62 @@ void ASOLBodyVisuals::HandleUniverseUpdated()
         {
             SunLight->SetWorldRotation(FVector(lightDirection).Rotation());
         }
+        UpdateShipSunlight(sunPositionM);
     }
 
     UpdateExposure(sunPositionM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Shadows the ship's and targets' sunlight by every body and ring at the observer (SDD 16, 16d): one CPU evaluation
+// per frame (the ship and targets are metres across, every penumbra kilometres wide), applied by lighting channel
+void ASOLBodyVisuals::UpdateShipSunlight(const FVector3d& sunPositionM)
+{
+    const FSOLBodyRegistry& registry = BodyRegistrySubsystem->GetRegistry();
+    const FVector3d observerM = AnchorSubsystem->GetObserverPositionM();
+    const FVector3d towardSun = sunPositionM - observerM;
+    const double sunAngularRadiusRad = SOLRingShadow::SunAngularRadiusRad(towardSun.Length());
+
+    // Product of every body's planet shadow and, for the ringed planets, their ring shadow (none while sol.RingShadows
+    // is 0)
+    double transmittance = 1.0;
+    const int32 bodyCount = SOLRingShadow::AreShadowsEnabled() ? mRingProfileIndices.Num() : 0;
+    for (int32 index = 0; index < bodyCount && transmittance > 0.0; ++index)
+    {
+        if (index == mSunIndex)
+        {
+            continue;
+        }
+        const int32 profileIndex = mRingProfileIndices[index];
+        const FVector3d ringNormal = profileIndex != INDEX_NONE ?
+            registry.GetOrientation(index).RotateVector(FVector3d(0.0, 0.0, 1.0)) : FVector3d::ZeroVector;
+        transmittance *= SOLRingShadow::BodySunTransmittance(observerM - registry.GetPositionM(index), towardSun,
+            registry.GetRadiusM(index), sunAngularRadiusRad, ringNormal, SOL::RING_SHADOW_LAYER_HALF_THICKNESS_M,
+            SOLRingShadow::RealTauProfile(profileIndex));
+    }
+    mShipSunTransmittance = transmittance;
+
+    // Lit: the Sun light covers both channels and the ship light stays off (no extra light pass); shadowed: the Sun
+    // light keeps channel 0 (the rocks shadow themselves per pixel) and the ship light lights channel 1, dimmed.
+    // Visibility and channel changes rebuild the light proxies, so they happen only on a transition
+    const bool bShadowed = SOLRingShadow::NextShipShadowedState(mIsShipShadowed, transmittance);
+    if (bShadowed != mIsShipShadowed)
+    {
+        mIsShipShadowed = bShadowed;
+        SunLight->SetLightingChannels(true, !bShadowed, false);
+        ShipSunLight->SetVisibility(bShadowed);
+        UE_LOG(LogSOL, Verbose, TEXT("BodyVisuals %s: ship sunlight %s (%.6f of full)"), *GetName(),
+            bShadowed ? TEXT("shadowed") : TEXT("lit"), transmittance);
+    }
+    if (bShadowed)
+    {
+        ShipSunLight->SetWorldRotation(SunLight->GetComponentRotation());
+        const float intensity = SunIlluminanceLux * static_cast<float>(transmittance);
+        if (ShipSunLight->Intensity != intensity)
+        {
+            ShipSunLight->SetIntensity(intensity);
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

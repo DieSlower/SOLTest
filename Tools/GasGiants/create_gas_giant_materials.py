@@ -18,6 +18,11 @@
 #                                          coverage and 3 octaves of value noise (CloudNoise.x = 300 km features, so
 #                                          ~300/150/75 km) around the planet centre, in the body frame, advected by the
 #                                          deck's phases; faded by NearBlend
+# Ring shadow (issue #16, SDD 16): every material includes /Project/SOLTest/Private/SOLRingShadow.ush and multiplies its
+# direct sunlight (deck and haze: the Lambert term; cloud: the albedo) by SOLRS_RingShadowTransmittance. Inputs, set by
+# ASOLGasGiantVisuals: RingShadowSun = (Sun direction in the mesh's local axes, z = pole = ring normal; w = the Sun's
+# angular radius in rad) and RingShadowParams = (profile index, planet radius km, -, -); a negative profile index
+# (the default) disables it.
 # Phases arrive as floats in [0, 1) computed in double on the CPU (a float cannot hold rate * t at t ~ 1e9 s).
 # Parameter names must match SOL::GasGiantMaterialParams in Source/SOLTest/SOLConstants.h, and the asset paths
 # SOL::Paths::GAS_GIANT_DECK_MATERIAL / GAS_GIANT_HAZE_MATERIAL / GAS_GIANT_CLOUD_MATERIAL.
@@ -32,6 +37,8 @@ DECK_NAME = "M_SOLGasGiantDeck"
 HAZE_NAME = "M_SOLGasGiantHaze"
 CLOUD_NAME = "M_SOLGasGiantCloud"
 REBUILD = ("-solrebuild" in unreal.SystemLibrary.get_command_line().lower()) or bool(globals().get("SOL_REBUILD"))
+
+RING_SHADOW_INCLUDE = "/Project/SOLTest/Private/SOLRingShadow.ush"   # SOL::SHADER_VIRTUAL_DIRECTORY + file
 
 MEL = unreal.MaterialEditingLibrary
 EAL = unreal.EditorAssetLibrary
@@ -127,6 +134,11 @@ float3 qsA = float3(cosLat * cos(lonA), cosLat * sin(lonA), n.z) * stretch;
 float3 qsB = float3(cosLat * cos(lonB), cosLat * sin(lonB), n.z) * stretch;
 float3 N = normalize(NormalWS);
 float light = saturate(dot(N, SunDir.xyz)) * pow(saturate(dot(N, normalize(CamVec))), 0.25);
+// Ring shadow on the cloud tops (thin plane: the ring's own thickness is negligible at the planet)
+[branch] if (RS.x >= 0.0 && light > 0.0)
+{
+    light *= SOLRS_RingShadowTransmittance(n * RS.y, RSun.xyz, RSun.w, 0.0, SOLRS_ProfileIndex(RS.x));
+}
 """
 
 DECK_HLSL = COMMON_HLSL + r"""
@@ -226,7 +238,7 @@ const float TWO_PI_F = 6.2831853;
 const float BAND_BLEND_HALF_WIDTH = 0.25; // SOL::GAS_GIANT_BAND_BLEND_HALF_WIDTH (keep in sync)
 float3 d = WP - Center.xyz;
 float r = length(d);
-float hN = ((r - Center.w) * 1e-5 - Layer.x) / Layer.y;
+float hN = ((r - Center.w) * SOLRS_KM_PER_CM - Layer.x) / Layer.y;
 if (hN <= 0.0 || hN >= 1.0 || Blend <= 0.0)
 {
     return float4(0, 0, 0, 0);
@@ -245,7 +257,7 @@ float lonA = lon - TWO_PI_F * g.Phase(P0, P1, P2, P3, i0);
 float lonB = lon - TWO_PI_F * g.Phase(P0, P1, P2, P3, i0 + 1);
 
 // Noise space in kilometres over FeatureKm, stretched east-west, with altitude as a slow third axis
-float radiusKm = Center.w * 1e-5;
+float radiusKm = Center.w * SOLRS_KM_PER_CM;
 float3 k = float3(1.0, 1.0, 2.5) * (radiusKm / Noise.x);
 float altK = hN * Layer.y / Noise.x * 4.0;
 float3 pA = float3(cosLat * cos(lonA), cosLat * sin(lonA), b.z) * k + altK;
@@ -273,6 +285,11 @@ float coverage = lerp(Noise.y, Noise.z, zone);
 float profile = smoothstep(0.0, 0.12, hN) * (1.0 - smoothstep(0.55, 1.0, hN));
 float density = saturate((shape - (1.0 - coverage) - 0.3 * hN) * 3.0) * profile;
 float3 albedo = saturate(lerp(Belt, Zone, zone) * 1.15);
+// Ring shadow: scales the sunlight the cloud scatters (its albedo); the ambient emission is unaffected
+[branch] if (RS.x >= 0.0)
+{
+    albedo *= SOLRS_RingShadowTransmittance(b * (r * SOLRS_KM_PER_CM), RSun.xyz, RSun.w, 0.0, SOLRS_ProfileIndex(RS.x));
+}
 return float4(albedo, density * Noise.w * Blend);
 """
 
@@ -327,6 +344,7 @@ def append(material, a, b, x, y):
 def custom(material, code, output_type, inputs, x, y, description):
     expr = node(material, unreal.MaterialExpressionCustom, x, y)
     expr.set_editor_property("code", code)
+    expr.set_editor_property("include_file_paths", [RING_SHADOW_INCLUDE])
     expr.set_editor_property("output_type", output_type)
     expr.set_editor_property("description", description)
     custom_inputs = []
@@ -380,7 +398,14 @@ def common_inputs(material, phase_prefix, with_storms):
     inputs.append(("Light", append(material, illum, ambient, -1100, 150)))
     inputs.append(("NormalWS", node(material, unreal.MaterialExpressionVertexNormalWS, -1300, 300)))
     inputs.append(("CamVec", node(material, unreal.MaterialExpressionCameraVectorWS, -1300, 400)))
+    ring_shadow_inputs(material, inputs, -1300, 500)
     return inputs
+
+
+# Appends the ring-shadow inputs (RingShadowSun, RingShadowParams; disabled by default) to a Custom node's input list
+def ring_shadow_inputs(material, inputs, x, y):
+    inputs.append(("RSun", vector(material, "RingShadowSun", (0, 0, 1, 0), x, y), "RGBA"))
+    inputs.append(("RS", vector(material, "RingShadowParams", (-1, 0, 0, 0), x, y + 100), "RGBA"))
 
 
 # Builds the opaque deck material
@@ -447,6 +472,7 @@ def build_cloud():
     # (layer bottom km above the planet radius, layer thickness km)
     inputs.append(("Layer", vector(material, "CloudLayer", (2.0, 40.0, 0, 0), -1600, 600), "RGBA"))
     inputs.append(("Blend", scalar(material, "NearBlend", 1.0, -1600, 700)))
+    ring_shadow_inputs(material, inputs, -1600, 800)
     cloud = custom(material, CLOUD_HLSL, unreal.CustomMaterialOutputType.CMOT_FLOAT4, inputs, -900, 0,
                    "SOL gas giant near cloud")
     albedo = mask(material, cloud, "rgb", -500, -50)

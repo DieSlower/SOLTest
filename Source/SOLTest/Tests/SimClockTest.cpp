@@ -303,4 +303,33 @@ bool FSOLSimClockResetWarpTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSimClockParseDateTest, "SOLTest.SimClock.ParseSimDate",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// -SOLSimDate= values parse as ISO 8601 or Unreal dates into Julian dates; garbage is rejected untouched
+bool FSOLSimClockParseDateTest::RunTest(const FString& /*parameters*/)
+{
+    double jd = 0.0;
+    TestTrue(TEXT("ISO date parses"), FSOLSimClock::TryParseUtcJulianDate(TEXT("2000-01-01T12:00:00Z"), jd));
+    TestEqual(TEXT("J2000 noon -> 2451545.0"), jd, 2451545.0, 1.0e-9);
+    TestTrue(TEXT("ISO date only parses"), FSOLSimClock::TryParseUtcJulianDate(TEXT("2032-06-01"), jd));
+    TestEqual(TEXT("2032-06-01 00:00 -> JD 2463384.5"), jd, 2463384.5, 1.0e-9);
+    TestTrue(TEXT("Unreal format parses"), FSOLSimClock::TryParseUtcJulianDate(TEXT("2032.06.01-12.00.00"), jd));
+    TestEqual(TEXT("2032-06-01 12:00 -> JD 2463385.0"), jd, 2463385.0, 1.0e-9);
+    TestTrue(TEXT("ISO with a timezone offset parses"),
+        FSOLSimClock::TryParseUtcJulianDate(TEXT("2000-01-01T14:00:00+02:00"), jd));
+    TestEqual(TEXT("The offset is converted to UTC (J2000 noon)"), jd, 2451545.0, 1.0e-9);
+
+    double untouched = 42.0;
+    TestFalse(TEXT("Garbage is rejected"), FSOLSimClock::TryParseUtcJulianDate(TEXT("tomorrow"), untouched));
+    TestFalse(TEXT("An impossible ISO date is rejected"),
+        FSOLSimClock::TryParseUtcJulianDate(TEXT("2026-02-30T00:00:00Z"), untouched));
+    TestFalse(TEXT("An impossible Unreal date is rejected"),
+        FSOLSimClock::TryParseUtcJulianDate(TEXT("2026.13.01-00.00.00"), untouched));
+    TestFalse(TEXT("Empty is rejected"), FSOLSimClock::TryParseUtcJulianDate(TEXT(""), untouched));
+    TestEqual(TEXT("A rejected value leaves the output untouched"), untouched, 42.0, 0.0);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

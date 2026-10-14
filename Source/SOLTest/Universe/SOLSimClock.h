@@ -20,6 +20,10 @@ public:
     // Converts a proleptic Gregorian UTC date and time to a Julian date
     static double JulianDateFromUtc(int32 year, int32 month, int32 day, int32 hour, int32 minute, double second);
 
+    // Parses a -SOLSimDate= value as a UTC date: ISO 8601 ("2032-06-01", "2032-06-01T12:30:00Z") or Unreal's
+    // "2032.06.01-12.30.00"; returns the Julian date, or false (outJulianDate untouched) if it does not parse
+    static bool TryParseUtcJulianDate(const FString& text, double& outJulianDate);
+
     // Sets the sim time and resets the warp to index 0
     void Init(double startJulianDate);
 

@@ -15,6 +15,7 @@
 #include "SOLRingVisuals.generated.h"
 
 class UInstancedStaticMeshComponent;
+class UMaterialParameterCollection;
 class UNiagaraComponent;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
@@ -86,6 +87,10 @@ private:
     // wrapped-window parameters to the Niagara system, all in the Niagara component's mirrored-Y local axes
     void UpdateDenseLayer();
 
+    // Writes the ring-shadow state at the viewpoint (planet-relative, ecliptic) to the shared parameter collection
+    // while the dense layer is shown, and restores the no-shadow defaults once when it stops showing (SDD 16)
+    void UpdateShadowParameters(bool bShown, const FVector3d& viewpointRelPlanetM);
+
     // Pushes the far field's optional Sun-direction parameter (ring-local, Unreal-handed axes) from the Sun's and
     // the planet's current positions
     void UpdateFarFieldLighting();
@@ -123,6 +128,10 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLSimClockSubsystem> SimClock;
 
+    /** Ring-shadow state shared with M_SOLRingRock (SDD 16); optional, nothing is shadowed without it. */
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialParameterCollection> ShadowParameters;
+
     UPROPERTY(Transient)
     TObjectPtr<USOLBodyRegistrySubsystem> BodyRegistry;
 
@@ -146,6 +155,8 @@ private:
     FVector3d mRingAxisE2 = FVector3d::YAxisVector;  // Ring-frame Y axis in ECLIPTIC axes, cached in BeginPlay
     FVector3d mLastSunDirection = FVector3d::ZeroVector; // Last Sun direction pushed to the far field, to skip no-ops
     FQuat mFarFieldRotation = FQuat::Identity;   // mRingNormal converted to Unreal axes, cached once in BeginPlay
+    bool mIsWritingShadowState = false;          // Whether this ring last wrote the ring-shadow parameter collection
+    bool mIsFarShadowEnabled = true;             // Whether the far disc gets the planet radius (its planet shadow)
 
     TSharedPtr<FMassEntityManager> mEntityManager;
     FMassEntityQuery mQuery;                     // Ring rocks: render/state/orbit (ro), tag FSOLRingRockTag (All)

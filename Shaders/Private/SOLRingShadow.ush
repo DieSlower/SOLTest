@@ -1,0 +1,244 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// Analytic ring and planet shadows (SDD 16): the HLSL mirror of Source/SOLTest/MinorBodies/SOLRingShadowMath.cpp,
+// function for function. Lengths are in km (the generated profile is in km), angles in radians. The ring frame is
+// planet-centred: x and y in the ring plane, z along the ring normal. Included by material Custom nodes as
+// "/Project/SOLTest/Private/SOLRingShadow.ush". Lit (1) is the safe default for degenerate input.
+
+#pragma once
+
+#include "/Project/SOLTest/Private/SOLRingShadowProfile.ush"
+
+// SOLRS_MAX_FILTER_BANDS (bands one box filter visits) and SOLRS_SEARCH_STEPS (binary search steps, 2^steps >= the
+// largest profile's band count) come from the generated profile include, which BuildShaderProfileSource derives
+
+// Kilometres per centimetre (render-space lengths are cm, the profile is km)
+#define SOLRS_KM_PER_CM 1.0e-5
+
+// Returns the profile index a material parameter carries as a float, rounded to the nearest integer (non-negative
+// indices only: hosts send a negative value to disable the shadow, and callers test that before calling)
+int SOLRS_ProfileIndex(float encodedIndex)
+{
+    return (int)floor(encodedIndex + 0.5);
+}
+
+// Returns L tan(min(alpha, max)); 0 for non-positive input
+float SOLRS_PenumbraHalfWidth(float distanceToOccluder, float sunAngularRadius)
+{
+    if (distanceToOccluder <= 0.0 || sunAngularRadius <= 0.0)
+    {
+        return 0.0;
+    }
+    return distanceToOccluder * tan(min(sunAngularRadius, SOLRS_MAX_SUN_ANGULAR_RADIUS_RAD));
+}
+
+// Returns w sqrt(1 + c^2 (1/mu^2 - 1)): the radial half-extent of the Sun's footprint on the ring plane
+float SOLRS_FootprintRadialHalfWidth(float penumbraHalfWidth, float sunElevationSin, float radialSunAzimuthCos)
+{
+    if (penumbraHalfWidth <= 0.0)
+    {
+        return 0.0;
+    }
+    float mu = clamp(abs(sunElevationSin), SOLRS_MIN_SUN_ELEVATION_SIN, 1.0);
+    float c = clamp(radialSunAzimuthCos, -1.0, 1.0);
+    return penumbraHalfWidth * sqrt(1.0 + c * c * (1.0 / (mu * mu) - 1.0));
+}
+
+// Returns the absolute index of the first band of a profile whose outer radius is beyond radius (start + count if none)
+int SOLRS_FirstBandEndingAfter(float radius, int start, int count)
+{
+    int low = start;
+    int high = start + count;
+    [unroll]
+    for (int step = 0; step < SOLRS_SEARCH_STEPS; step++)
+    {
+        if (low < high)
+        {
+            int mid = (low + high) / 2;
+            if (SOLRS_BANDS_KM[mid].y > radius)
+            {
+                high = mid;
+            }
+            else
+            {
+                low = mid + 1;
+            }
+        }
+    }
+    return low;
+}
+
+// Returns exp(-tau * slant) (tau 0 transmits fully)
+float SOLRS_BandTransmittance(float tau, float slantFactor)
+{
+    return tau > 0.0 ? exp(-tau * slantFactor) : 1.0;
+}
+
+// Returns the mean of exp(-tau(r) * slant) over r in [c - h, c + h] for a profile index (a point sample if h <= 0);
+// exact up to SOLRS_MAX_FILTER_BANDS bands, beyond which the last band's value fills the rest of the window
+float SOLRS_FilteredTransmittance(float centerRadius, float halfWidth, float slantFactor, int profileIndex)
+{
+    if (slantFactor <= 0.0 || profileIndex < 0 || profileIndex >= SOLRS_PROFILE_COUNT)
+    {
+        return 1.0;
+    }
+    int start = SOLRS_PROFILE_START[profileIndex];
+    int count = SOLRS_PROFILE_BANDS[profileIndex];
+    int end = start + count;
+    float low = centerRadius - max(halfWidth, 0.0);
+    float high = centerRadius + max(halfWidth, 0.0);
+
+    // Point sample: the band containing the centre
+    if (high <= low)
+    {
+        int index = SOLRS_FirstBandEndingAfter(centerRadius, start, count);
+        return index < end && SOLRS_BANDS_KM[index].x <= centerRadius ?
+            SOLRS_BandTransmittance(SOLRS_BANDS_KM[index].z, slantFactor) : 1.0;
+    }
+
+    // Box filter: absorbed fraction summed over the overlapped bands; uncovered radii transmit fully
+    float absorbed = 0.0;
+    float coveredEnd = low;            // the window is accounted for up to here
+    float lastAbsorption = 0.0;        // 1 - transmittance of the last band visited
+    bool isCapped = true;              // stays true only if the loop ran out of bands to visit, not out of window
+    int first = SOLRS_FirstBandEndingAfter(low, start, count);
+    [loop]
+    for (int i = 0; i < SOLRS_MAX_FILTER_BANDS; i++)
+    {
+        int index = first + i;
+        if (index >= end || SOLRS_BANDS_KM[index].x >= high)
+        {
+            isCapped = false;
+            break;
+        }
+        float3 band = SOLRS_BANDS_KM[index];
+        float overlap = min(high, band.y) - max(low, band.x);
+        lastAbsorption = 1.0 - SOLRS_BandTransmittance(band.z, slantFactor);
+        absorbed += max(overlap, 0.0) * lastAbsorption;
+        coveredEnd = min(high, band.y);
+    }
+
+    // A window wider than SOLRS_MAX_FILTER_BANDS bands (a sub-pixel footprint far from the ring): the rest of it takes
+    // the last visited band's absorption instead of transmitting fully, which would bias the mean bright
+    if (isCapped)
+    {
+        absorbed += max(high - coveredEnd, 0.0) * lastAbsorption;
+    }
+    return saturate(1.0 - absorbed / (high - low));
+}
+
+// Returns A&S 7.1.26 erfc(x) for x >= 0 (the same coefficients as the C++)
+float SOLRS_ErfcNonNegative(float x)
+{
+    float t = 1.0 / (1.0 + 0.3275911 * x);
+    float poly = t * (0.254829592 + t * (-0.284496736 + t * (1.421413741 + t * (-1.453152027 + t * 1.061405429))));
+    return poly * exp(-x * x);
+}
+
+// Returns 0.5 erfc(z / (sigma sqrt 2)): the fraction of a Gaussian layer between the receiver and the Sun
+float SOLRS_LayerFractionTowardSun(float heightTowardSun, float layerHalfThickness)
+{
+    if (layerHalfThickness <= 0.0)
+    {
+        return heightTowardSun > 0.0 ? 0.0 : (heightTowardSun < 0.0 ? 1.0 : 0.5);
+    }
+    float x = heightTowardSun / (layerHalfThickness * 1.41421356);
+    return x >= 0.0 ? 0.5 * SOLRS_ErfcNonNegative(x) : 1.0 - 0.5 * SOLRS_ErfcNonNegative(-x);
+}
+
+// Returns the ring's sunlight transmittance at a receiver (ring frame, km), with the Sun's real angular radius for the
+// penumbra and a Gaussian layer of 1-sigma half-thickness layerHalfThickness (0 = thin plane)
+float SOLRS_RingShadowTransmittance(float3 receiver, float3 towardSun, float sunAngularRadius, float layerHalfThickness,
+    int profileIndex)
+{
+    float sunLength = length(towardSun);
+    if (!(sunLength > 0.0))
+    {
+        return 1.0;
+    }
+
+    // A Sun (nearly) in the ring plane casts no ring shadow
+    float3 s = towardSun / sunLength;
+    float mu = s.z;
+    if (abs(mu) < SOLRS_MIN_SUN_ELEVATION_SIN)
+    {
+        return 1.0;
+    }
+
+    // Fraction of the layer between the receiver and the Sun
+    float layerFraction = SOLRS_LayerFractionTowardSun(mu > 0.0 ? receiver.z : -receiver.z,
+        max(layerHalfThickness, 0.0));
+    if (layerFraction <= 0.0)
+    {
+        return 1.0;
+    }
+
+    // Where the ray toward the Sun pierces the ring plane, and the penumbra stretched along the Sun's azimuth
+    float t = -receiver.z / mu;
+    float2 hit = receiver.xy + t * s.xy;
+    float hitRadius = length(hit);
+    float sunHorizontal = length(s.xy);
+    float radialSunCos = hitRadius > 0.0 && sunHorizontal > 0.0 ? dot(hit, s.xy) / (hitRadius * sunHorizontal) : 0.0;
+    float halfWidth = SOLRS_FootprintRadialHalfWidth(SOLRS_PenumbraHalfWidth(abs(t), max(sunAngularRadius, 0.0)), mu,
+        radialSunCos);
+    return SOLRS_FilteredTransmittance(hitRadius, halfWidth, layerFraction / abs(mu), profileIndex);
+}
+
+// Returns the fraction of a uniform Sun disc (radius a) left uncovered by an occluder disc (radius b) |sep| away
+float SOLRS_SunVisibleFraction(float a, float b, float separation)
+{
+    float d = abs(separation);
+    if (b <= 0.0)
+    {
+        return 1.0;
+    }
+    if (a <= 0.0)
+    {
+        return d < b ? 0.0 : 1.0;
+    }
+    if (d >= a + b)
+    {
+        return 1.0;
+    }
+    if (b >= a + d)
+    {
+        return 0.0;
+    }
+    if (a >= b + d)
+    {
+        return 1.0 - (b * b) / (a * a);
+    }
+
+    // Partial overlap: lens area from the half-angles at each centre (atan2 for precision when a << b)
+    float k = (-d + a + b) * (d + a - b) * (d - a + b) * (d + a + b);
+    float rootK = sqrt(max(k, 0.0));
+    float halfAngleSun = atan2(rootK, (d - b) * (d + b) + a * a);
+    float halfAngleOccluder = atan2(rootK, (d - a) * (d + a) + b * b);
+    float lens = a * a * halfAngleSun + b * b * halfAngleOccluder - 0.5 * rootK;
+    return saturate(1.0 - lens / (3.14159265 * a * a));
+}
+
+// Returns the fraction of the Sun a spherical planet (radius in km) leaves visible from a point relative to its centre
+float SOLRS_PlanetShadowTransmittance(float3 pointRelPlanet, float3 towardSun, float planetRadius,
+    float sunAngularRadius)
+{
+    float sunLength = length(towardSun);
+    if (planetRadius <= 0.0 || !(sunLength > 0.0))
+    {
+        return 1.0;
+    }
+    float distance = length(pointRelPlanet);
+    if (distance <= planetRadius)
+    {
+        return 0.0;
+    }
+
+    // Angle between the Sun and the planet's centre as seen from the point
+    float3 s = towardSun / sunLength;
+    float3 towardPlanet = -pointRelPlanet;
+    float separation = atan2(length(cross(s, towardPlanet)), dot(s, towardPlanet));
+    return SOLRS_SunVisibleFraction(max(sunAngularRadius, 0.0), asin(planetRadius / distance), separation);
+}

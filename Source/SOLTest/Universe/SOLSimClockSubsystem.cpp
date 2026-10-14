@@ -10,12 +10,32 @@
 #include "SOLTest.h"
 
 #include "Engine/World.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 //////////////////////////////////////////////////////////////////////////
-// Starts the clock at the current real UTC date and time with warp 1x
+// Starts the clock at the current real UTC date and time (or the -SOLSimDate= override) with warp 1x
 void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
 {
     Super::Initialize(collection);
+
+#if !UE_BUILD_SHIPPING
+    // Developer verification override: start at a fixed date (SDD 16 section 7, question 1); not in Shipping builds
+    FString simDate;
+    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    {
+        double julianDate = 0.0;
+        if (FSOLSimClock::TryParseUtcJulianDate(simDate, julianDate))
+        {
+            mClock.Init(julianDate);
+            UE_LOG(LogSOL, Log, TEXT("SimClock %s: -SOLSimDate=%s, started at JD %.5f"), *GetName(), *simDate,
+                mClock.GetJulianDate());
+            return;
+        }
+        UE_LOG(LogSOL, Warning, TEXT("SimClock %s: -SOLSimDate=%s does not parse, using the real date"), *GetName(),
+            *simDate);
+    }
+#endif
 
     const FDateTime now = FDateTime::UtcNow();
     const double seconds = static_cast<double>(now.GetSecond()) + static_cast<double>(now.GetMillisecond())
@@ -31,6 +51,13 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
 void USOLSimClockSubsystem::AdvanceFrame(const double realDeltaSeconds)
 {
     mClock.Advance(realDeltaSeconds);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the sim time to a Julian date with warp 1x (tests pin a date with it)
+void USOLSimClockSubsystem::SetJulianDate(const double julianDate)
+{
+    mClock.Init(julianDate);
 }
 
 //////////////////////////////////////////////////////////////////////////
