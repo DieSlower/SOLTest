@@ -74,7 +74,7 @@ void USOLSettingsSubsystem::Deinitialize()
     // finished yet (it could be cut off by the shutdown, and its completion would never be seen) is written now,
     // synchronously. An unfinished async write carries the same content, so a late finish leaves the same file
     RevertPending();
-    if ((mIsSaveOwed || mSaveWritesInFlight > 0) && SaveObject != nullptr)
+    if ((IsSaveOwed() || mSaveWritesInFlight > 0) && SaveObject != nullptr)
     {
         FillSaveObject();
         const bool bSaved = UGameplayStatics::SaveGameToSlot(SaveObject, mSlotName, SOL::Settings::SAVE_USER_INDEX);
@@ -131,6 +131,7 @@ void USOLSettingsSubsystem::LoadOnce()
         overrides = save->KeyOverrides;
         mIsVsyncChosen = save->bVsyncChosen;
         mIsQualityChosen = save->bQualityChosen;
+        mWrittenShowOrbitLines = save->bShowOrbitLines;
     }
     else if (raw != nullptr)
     {
@@ -164,11 +165,11 @@ void USOLSettingsSubsystem::LoadOnce()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Upgrades an older save to the current schema in memory (no older schema exists yet)
+// Upgrades an older save to the current schema in memory (USOLSettingsSave::MigrateToCurrentVersion)
 void USOLSettingsSubsystem::MigrateSave(USOLSettingsSave& save)
 {
-    // One case per schema bump goes here, each upgrading Version by one; schema 1 is the first, so there is none yet
-    save.Version = SOL::Settings::SAVE_VERSION;
+    // The steps live on the save object (schema 1 -> 2: orbit lines, SDD 17); the upgraded save is written once
+    save.MigrateToCurrentVersion();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -374,7 +375,7 @@ void USOLSettingsSubsystem::EndVisit()
 // Starts the owed writes: one async save of the slot and/or one GameUserSettings save
 void USOLSettingsSubsystem::FlushSave()
 {
-    if (mIsSaveOwed && SaveObject != nullptr)
+    if (IsSaveOwed() && SaveObject != nullptr)
     {
         // The save object is serialized to memory here, on the game thread; only the file write runs async. The write
         // counts as in flight until it reports back (a failure makes the write owed again, possibly at once)
@@ -424,6 +425,22 @@ void USOLSettingsSubsystem::FillSaveObject()
     SaveObject->KeyOverrides = SOLKeyBindings::MakeOverrides(mAppliedKeys);
     SaveObject->bVsyncChosen = mIsVsyncChosen;
     SaveObject->bQualityChosen = mIsQualityChosen;
+    mWrittenShowOrbitLines = mModel.Saved.bShowOrbitLines;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the applied (and pending) orbit-line flag from the O key; the write waits for the next write point
+void USOLSettingsSubsystem::SetOrbitLinesShown(const bool bShown)
+{
+    SOLSettingsModel::SetAppliedShowOrbitLines(mModel, bShown);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the slot needs a write: an Apply or a migration owes one, or the O key left the orbit-line flag
+// different from what is on disk
+bool USOLSettingsSubsystem::IsSaveOwed() const
+{
+    return SOLSettingsRules::IsSaveOwed(mIsSaveOwed, mModel.Saved.bShowOrbitLines, mWrittenShowOrbitLines);
 }
 
 //////////////////////////////////////////////////////////////////////////

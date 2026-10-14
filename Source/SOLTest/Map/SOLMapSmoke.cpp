@@ -7,6 +7,7 @@
 
 #include "Game/SOLGameMode.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -117,6 +118,15 @@ void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
 {
     mReferenceState = mMapMode->GetCameraState();
     mReferenceSimSeconds = mClock->GetClock().GetSecondsSinceJ2000();
+    // Orbit lines on and detached from the player's saved setting for the whole run (they are in every map shot)
+    if (phase == ESOLMapPhase::OpenJ)
+    {
+        const ASOLFlightHud* hud = mController->GetHUD<ASOLFlightHud>();
+        if (ASOLOrbitLineVisuals* orbitLines = hud != nullptr ? hud->GetOrbitLineVisuals() : nullptr)
+        {
+            orbitLines->BeginVerificationOverride();
+        }
+    }
     switch (phase)
     {
     case ESOLMapPhase::OpenJ:
@@ -142,13 +152,6 @@ void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
         PressKey(EKeys::RightMouseButton);
         break;
     case ESOLMapPhase::ShotOrbits:
-        if (ASOLFlightHud* hud = mController->GetHUD<ASOLFlightHud>())
-        {
-            if (!hud->AreOrbitLinesVisible())
-            {
-                hud->ToggleOrbitLines();
-            }
-        }
         break;
     case ESOLMapPhase::CloseEsc:
         TapKey(EKeys::Escape);
@@ -287,9 +290,9 @@ void FSOLMapSmoke::ExitPhase(const ESOLMapPhase phase, ASOLShipPawn& pawn)
         default:
             break;
         }
-        UE_LOG(LogSOL, Log, TEXT("SmokeMap: screenshot (%s), distance %.4g m, yaw %.3f, pitch %.3f, orbit segments "
-            "drawn %d"), shotName, state.DistanceM, state.YawRad, state.PitchRad,
-            hud != nullptr ? hud->GetLastOrbitSegmentsDrawn() : -1);
+        UE_LOG(LogSOL, Log, TEXT("SmokeMap: screenshot (%s), distance %.4g m, yaw %.3f, pitch %.3f, orbit lines "
+            "%s"), shotName, state.DistanceM, state.YawRad, state.PitchRad,
+            hud != nullptr && hud->AreOrbitLinesVisible() ? TEXT("ON") : TEXT("OFF"));
         if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
         {
             gameMode->CaptureScreenshot();

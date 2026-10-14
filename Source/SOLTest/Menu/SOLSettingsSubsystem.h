@@ -101,6 +101,13 @@ public:
     // Returns whether anything pending differs from what is applied
     bool IsDirty() const;
 
+    // Returns whether the world-space orbit lines are shown (the pending value, so the Settings page previews live)
+    bool AreOrbitLinesShown() const { return mModel.Pending.bShowOrbitLines; }
+
+    // Sets the applied (and pending) orbit-line flag from the O key in flight; the slot is written at the next write
+    // point (EndVisit or shutdown), and only if the value then differs from what is on disk
+    void SetOrbitLinesShown(bool bShown);
+
     // Applies everything pending; returns true if anything changed (the write happens at EndVisit)
     bool ApplyPending();
 
@@ -176,6 +183,9 @@ private:
     // Copies the applied values, keys and chosen flags into the save object
     void FillSaveObject();
 
+    // Returns whether the slot needs a write (an Apply or migration owed one, or the orbit-line flag differs from disk)
+    bool IsSaveOwed() const;
+
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSave> SaveObject;
 
@@ -209,6 +219,7 @@ private:
     int32 mSaveWritesInFlight = 0;                      // Async slot writes started and not yet reported back
     bool mIsSaveOwed = false;                           // An Apply changed the slot's content since the last write (or
                                                         // the last write failed)
+    bool mWrittenShowOrbitLines = true;                 // bShowOrbitLines as on disk (loaded or last written)
     bool mIsVsyncChosen = false;                        // The player changed vsync on the page (pushed at boot)
     bool mIsQualityChosen = false;                      // The player changed the quality preset (pushed at boot)
     bool mIsKeyCaptureActive = false;                   // A Settings page is listening for a rebind key

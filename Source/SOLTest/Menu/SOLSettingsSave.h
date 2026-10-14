@@ -35,6 +35,9 @@ public:
     // Returns the saved fields as model values (unsanitized; the model sanitizes them)
     SOLSettingsModel::FSettingsValues GetValues() const;
 
+    // Upgrades an older schema step by step to SOL::Settings::SAVE_VERSION (current, unversioned or newer: unchanged)
+    void MigrateToCurrentVersion();
+
     /** Schema version this save was written with. */
     UPROPERTY()
     int32 Version = 0;
@@ -78,6 +81,10 @@ public:
      *  boot). Added within schema 1 like bVsyncChosen. */
     UPROPERTY()
     bool bQualityChosen = false;
+
+    /** World-space orbit lines shown (SDD 17). Added in schema 2; a schema 1 save is migrated to true. */
+    UPROPERTY()
+    bool bShowOrbitLines = true;
 
     /** Rebound keys only: SOLKeyBindings binding id -> engine key name (the other bindings use their defaults). */
     UPROPERTY()

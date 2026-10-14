@@ -16,6 +16,7 @@
 
 #include "SOLFlightHud.generated.h"
 
+class ASOLOrbitLineVisuals;
 class ASOLShipPawn;
 class UFont;
 class USOLAnchorSubsystem;
@@ -63,14 +64,14 @@ public:
     // Draws every HUD element for this frame
     virtual void DrawHUD() override;
 
-    // Toggles the body orbit ellipses (O); they are sampled again when turned on
+    // Toggles the world-space orbit lines (O), owned by ASOLOrbitLineVisuals (SDD 17)
     void ToggleOrbitLines();
 
-    // Returns true while the body orbit ellipses are shown
-    bool AreOrbitLinesVisible() const { return mShowOrbitLines; }
+    // Returns true while the world-space orbit lines are shown
+    bool AreOrbitLinesVisible() const;
 
-    // Returns the number of orbit-line segments drawn in the last frame (verification)
-    int32 GetLastOrbitSegmentsDrawn() const { return mLastOrbitSegmentsDrawn; }
+    // Returns the game mode's orbit-line actor, or nullptr
+    ASOLOrbitLineVisuals* GetOrbitLineVisuals() const;
 
     // Returns the number of radar contacts plotted in the last frame (verification)
     int32 GetLastRadarContactCount() const { return mRadarContacts.Num(); }
@@ -216,15 +217,6 @@ private:
     // Returns true when a target is selected (sets the radar's range floor)
     bool HasSelectedTarget() const;
 
-    // Samples every body's orbit ellipse (parent-relative) into the reused point buffers
-    void RefreshOrbitCache();
-
-    // Draws every body's orbit ellipse, clipped at the near plane and to the screen
-    void DrawOrbitLines(const FSOLHudView& view);
-
-    // Draws one 3D segment given in camera-local cm, clipped at the near plane and to the canvas; true if drawn
-    bool DrawLocalSegment(const FSOLHudView& view, FVector localA, FVector localB, const FLinearColor& color);
-
     // Appends a speed with its auto-picked unit to the text buffer
     void AppendSpeed(double speedMps);
 
@@ -268,9 +260,7 @@ private:
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame
-    TArray<TArray<FVector3d>> mOrbitPoints;         // Per-body parent-relative ellipse points (ecliptic, m)
     TArray<FSOLWarpStreak> mWarpStreaks;            // Jump warp streak table, built once
-    double mOrbitSampledAtS = 0.0;                  // Real time the orbit points were last sampled
     double mLastRadarRangeM = 0.0;                  // Radar range of the last frame
     double mManualRadarRangeM = 0.0;                // Radar range while in MANUAL mode, reclamped every frame
     FString mFlightHintsOrbitsOn;                   // Key hint line with the orbit lines on (rebuilt on rebinds)
@@ -279,11 +269,8 @@ private:
     SOLHudFormat::FHudKeyTexts mKeyTexts;           // Surface-lock hint, frame-lock tag, no-target text (rebinds)
     FDelegateHandle mKeyBindingsHandle;             // Binding to the settings' OnKeyBindingsChanged
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
-    int32 mLastOrbitSegmentsDrawn = 0;              // Orbit segments drawn last frame
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
     ESOLSurfaceLockHudLine mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;  // Surface-lock line drawn last frame
     bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
-    bool mShowOrbitLines = false;                   // O toggle; off by default (SDD 2)
-    bool mHasOrbitSamples = false;                  // True once the orbit points were sampled for this toggle-on
     bool mIsRadarManual = false;                    // Radar range mode: false = AUTO (starts here), true = MANUAL
 };

@@ -5,19 +5,20 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Game/SOLGameMode.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLHudFormat.h"
-#include "UI/SOLOrbitLines.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -75,9 +76,6 @@ namespace
     constexpr float HUD_RADAR_SELECTED_BLIP_PX = 7.0f;
     constexpr float HUD_RADAR_INNER_RING = 0.5f;
 
-    // Orbit lines: real seconds between re-samples while shown (the secular elements change slowly even under warp)
-    constexpr double HUD_ORBIT_REFRESH_S = 5.0;
-
     // Colors (canvas lines ignore alpha, so line colors are dimmed in RGB)
     const FLinearColor HUD_COLOR(0.55f, 0.95f, 0.65f, 0.95f);
     const FLinearColor HUD_DIM_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
@@ -90,8 +88,6 @@ namespace
     const FLinearColor HUD_BAR_BACK_COLOR(0.0f, 0.0f, 0.0f, 0.45f);
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.05f, 0.02f, 0.35f);
     const FLinearColor HUD_RADAR_BEHIND_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
-    const FLinearColor HUD_ORBIT_COLOR(0.25f, 0.42f, 0.75f, 1.0f);
-    const FLinearColor HUD_ORBIT_TARGET_COLOR(0.85f, 0.72f, 0.25f, 1.0f);
 
     // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
     // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
@@ -105,47 +101,6 @@ namespace
     constexpr float WARP_STREAK_EXTRA_THICKNESS_PX = 2.0f;
     constexpr int32 WARP_STREAK_SEED = 2026;
     const FLinearColor WARP_STREAK_COLOR(0.8f, 0.9f, 1.0f, 1.0f);
-
-    //////////////////////////////////////////////////////////////////////////
-    // Clips a 2D segment to a rectangle (Liang-Barsky); false when nothing of it is inside
-    bool FlightHudClipSegment(FVector2D& a, FVector2D& b, const FVector2D& minCorner, const FVector2D& maxCorner)
-    {
-        const FVector2D delta = b - a;
-        const double p[4] = { -delta.X, delta.X, -delta.Y, delta.Y };
-        const double q[4] = { a.X - minCorner.X, maxCorner.X - a.X, a.Y - minCorner.Y, maxCorner.Y - a.Y };
-        double tStart = 0.0;
-        double tEnd = 1.0;
-
-        // Narrow [tStart, tEnd] against each of the four edges
-        for (int32 edge = 0; edge < 4; ++edge)
-        {
-            if (p[edge] == 0.0)
-            {
-                if (q[edge] < 0.0)
-                {
-                    return false;
-                }
-                continue;
-            }
-            const double t = q[edge] / p[edge];
-            if (p[edge] < 0.0)
-            {
-                tStart = FMath::Max(tStart, t);
-            }
-            else
-            {
-                tEnd = FMath::Min(tEnd, t);
-            }
-            if (tStart > tEnd)
-            {
-                return false;
-            }
-        }
-        const FVector2D start = a;
-        a = start + delta * tStart;
-        b = start + delta * tEnd;
-        return true;
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -193,11 +148,6 @@ void ASOLFlightHud::BeginPlay()
     if (BodyRegistry != nullptr)
     {
         const int32 bodyCount = BodyRegistry->GetRegistry().Num();
-        mOrbitPoints.SetNum(bodyCount);
-        for (TArray<FVector3d>& points : mOrbitPoints)
-        {
-            points.Reserve(SOLOrbitLines::EllipseSegments + 1);
-        }
         mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
@@ -235,12 +185,29 @@ bool ASOLFlightHud::IsMapOpen() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Toggles the body orbit ellipses (O); they are sampled again when turned on
+// Toggles the world-space orbit lines (O), owned by ASOLOrbitLineVisuals (SDD 17)
 void ASOLFlightHud::ToggleOrbitLines()
 {
-    mShowOrbitLines = !mShowOrbitLines;
-    mHasOrbitSamples = false;
-    UE_LOG(LogSOL, Log, TEXT("FlightHud %s: orbit lines %s"), *GetName(), mShowOrbitLines ? TEXT("ON") : TEXT("OFF"));
+    if (ASOLOrbitLineVisuals* lines = GetOrbitLineVisuals())
+    {
+        lines->ToggleLines();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the world-space orbit lines are shown
+bool ASOLFlightHud::AreOrbitLinesVisible() const
+{
+    const ASOLOrbitLineVisuals* lines = GetOrbitLineVisuals();
+    return lines != nullptr && lines->AreLinesEnabled();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the game mode's orbit-line actor, or nullptr
+ASOLOrbitLineVisuals* ASOLFlightHud::GetOrbitLineVisuals() const
+{
+    const ASOLGameMode* gameMode = GetWorld() != nullptr ? GetWorld()->GetAuthGameMode<ASOLGameMode>() : nullptr;
+    return gameMode != nullptr ? gameMode->GetOrbitLineVisuals() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -277,7 +244,6 @@ void ASOLFlightHud::ResetRadarAuto()
 void ASOLFlightHud::DrawHUD()
 {
     Super::DrawHUD();
-    mLastOrbitSegmentsDrawn = 0;
     mLastWarpStreaksDrawn = 0;
     mWasFlightHudDrawn = false;
     mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;
@@ -315,10 +281,6 @@ void ASOLFlightHud::DrawHUD()
     const bool bHasView = BuildView(view);
 
     // World-anchored overlays first so the panels draw on top of them
-    if (bHasView && mShowOrbitLines)
-    {
-        DrawOrbitLines(view);
-    }
     if (bHasView && IsMapOpen())
     {
         // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
@@ -617,7 +579,7 @@ void ASOLFlightHud::DrawInfoBlock()
         DrawBuffer(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }
-    mText.Append(mShowOrbitLines ? mFlightHintsOrbitsOn : mFlightHintsOrbitsOff);
+    mText.Append(AreOrbitLinesVisible() ? mFlightHintsOrbitsOn : mFlightHintsOrbitsOff);
     DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }
 
@@ -904,97 +866,6 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
 bool ASOLFlightHud::HasSelectedTarget() const
 {
     return Targeting != nullptr && Targeting->GetSelectedTarget() != nullptr;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Samples every body's orbit ellipse (parent-relative) into the reused point buffers
-void ASOLFlightHud::RefreshOrbitCache()
-{
-    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    const double centuries = SimClock->GetClock().GetCenturiesSinceJ2000();
-    const int32 bodyCount = FMath::Min(registry.Num(), mOrbitPoints.Num());
-    for (int32 index = 0; index < bodyCount; ++index)
-    {
-        mOrbitPoints[index].Reset();
-        if (registry.GetParent(index) != INDEX_NONE)
-        {
-            SOLOrbitLines::SampleEllipse(registry.GetElements(index).AtCenturies(centuries), mOrbitPoints[index]);
-        }
-    }
-    mOrbitSampledAtS = GetWorld()->GetRealTimeSeconds();
-    mHasOrbitSamples = true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Draws every body's orbit ellipse, clipped at the near plane and to the screen
-void ASOLFlightHud::DrawOrbitLines(const FSOLHudView& view)
-{
-    if (!mHasOrbitSamples || GetWorld()->GetRealTimeSeconds() - mOrbitSampledAtS >= HUD_ORBIT_REFRESH_S)
-    {
-        RefreshOrbitCache();
-    }
-    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    const int32 selectedIndex = Targeting != nullptr ? Targeting->GetSelectedIndex() : INDEX_NONE;
-    const int32 bodyCount = FMath::Min(registry.Num(), mOrbitPoints.Num());
-
-    // Each point is parent-relative: parent's universe position + point, placed like a body, then camera-local
-    for (int32 index = 0; index < bodyCount; ++index)
-    {
-        const TArray<FVector3d>& points = mOrbitPoints[index];
-        if (points.Num() < 2)
-        {
-            continue;
-        }
-        const FVector3d& parentM = registry.GetPositionM(registry.GetParent(index));
-        const FLinearColor& color = index == selectedIndex ? HUD_ORBIT_TARGET_COLOR : HUD_ORBIT_COLOR;
-        FVector previous = view.Rotation.UnrotateVector(
-            AnchorSubsystem->ComputePointRenderLocationCm(parentM + points[0]) - view.Location);
-        for (int32 pointIndex = 1; pointIndex < points.Num(); ++pointIndex)
-        {
-            const FVector next = view.Rotation.UnrotateVector(
-                AnchorSubsystem->ComputePointRenderLocationCm(parentM + points[pointIndex]) - view.Location);
-            mLastOrbitSegmentsDrawn += DrawLocalSegment(view, previous, next, color) ? 1 : 0;
-            previous = next;
-        }
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Draws one 3D segment given in camera-local cm, clipped at the near plane and to the canvas; true if drawn
-bool ASOLFlightHud::DrawLocalSegment(const FSOLHudView& view, FVector localA, FVector localB,
-    const FLinearColor& color)
-{
-    // Near-plane clip: a segment with no endpoint strictly in front of the plane is dropped, so past this test the
-    // other endpoint of any X < near endpoint has X > near. The clip ratio (near - p.X) / (q.X - p.X) then has
-    // 0 < numerator < denominator, so it lies in (0, 1) by construction; the clipped X is pinned to the plane
-    if (localA.X <= HUD_NEAR_PLANE_CM && localB.X <= HUD_NEAR_PLANE_CM)
-    {
-        return false;
-    }
-    if (localA.X < HUD_NEAR_PLANE_CM)
-    {
-        localA = localA + (localB - localA) * ((HUD_NEAR_PLANE_CM - localA.X) / (localB.X - localA.X));
-        localA.X = HUD_NEAR_PLANE_CM;
-    }
-    else if (localB.X < HUD_NEAR_PLANE_CM)
-    {
-        localB = localB + (localA - localB) * ((HUD_NEAR_PLANE_CM - localB.X) / (localA.X - localB.X));
-        localB.X = HUD_NEAR_PLANE_CM;
-    }
-    FVector2D screenA;
-    FVector2D screenB;
-    if (!ProjectLocal(view, localA, screenA) || !ProjectLocal(view, localB, screenB))
-    {
-        return false;
-    }
-
-    // Screen clip so a segment that ends far off-screen is not handed to the canvas with huge coordinates
-    if (!FlightHudClipSegment(screenA, screenB, FVector2D::ZeroVector, FVector2D(Canvas->ClipX, Canvas->ClipY)))
-    {
-        return false;
-    }
-    DrawLine(screenA.X, screenA.Y, screenB.X, screenB.Y, color, 1.0f);
-    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////

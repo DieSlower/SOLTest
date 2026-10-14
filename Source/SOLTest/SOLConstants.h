@@ -270,6 +270,103 @@ namespace SOL
     // screen) and sweeps the whole pitch range in ~600 px: quick but still fine-grained for a single-pixel nudge
     inline constexpr double MAP_ORBIT_RAD_PER_PIXEL = 0.005;
 
+    // Orbit lines (SDD 17): segment count range per orbit; the count is chosen so the chord error stays within
+    // ORBIT_LINE_SAGITTA_RADIUS_FRACTION of the body's radius
+    inline constexpr int32 ORBIT_LINE_MIN_SEGMENTS = 128;
+    inline constexpr int32 ORBIT_LINE_MAX_SEGMENTS = 8192;
+
+    // Orbit lines: largest chord error, and the drift that triggers a rebuild, as a fraction of the body's radius
+    inline constexpr double ORBIT_LINE_SAGITTA_RADIUS_FRACTION = 0.05;
+
+    // Orbit lines: rebuild tolerance as a fraction of the semi-major axis when the body's radius is unknown
+    inline constexpr double ORBIT_LINE_REBUILD_FALLBACK_FRACTION = 1.0e-6;
+
+    // Orbit lines: drift rebuilds allowed per frame (round robin)
+    inline constexpr int32 ORBIT_LINE_MAX_REBUILDS_PER_FRAME = 4;
+
+    // Orbit lines: whole dashes per orbit (an integer, so the loop closes on a whole dash) and their lit fraction
+    inline constexpr int32 ORBIT_LINE_DASH_COUNT = 120;
+    inline constexpr double ORBIT_LINE_DASH_DUTY = 0.6;
+
+    // Orbit lines: multi-scale dashes (SDD 17 Amendment 1). Up close, a dash of the 120 per orbit spans millions of km,
+    // so the dash period is halved in power-of-two levels (crossfaded) while it is longer than DASH_MIN_PERIOD_PX on
+    // screen, up to DASH_MAX_LEVEL halvings (the float phase keeps ~1e-3 dash precision there); beyond that the line
+    // fades to solid between DASH_SOLID_START_PX and DASH_SOLID_END_PX of period, so it never vanishes in a gap
+    inline constexpr double ORBIT_LINE_DASH_MIN_PERIOD_PX = 24.0;
+    inline constexpr int32 ORBIT_LINE_DASH_MAX_LEVEL = 8;
+    inline constexpr double ORBIT_LINE_DASH_SOLID_START_PX = 200.0;
+    inline constexpr double ORBIT_LINE_DASH_SOLID_END_PX = 800.0;
+
+    // Orbit lines: width at the reference viewport height (scaled with the height), and the anti-aliasing feather
+    inline constexpr double ORBIT_LINE_WIDTH_PX = 1.5;
+    inline constexpr double ORBIT_LINE_REFERENCE_HEIGHT_PX = 1080.0;
+    inline constexpr double ORBIT_LINE_AA_MARGIN_PX = 1.0;
+
+    // Orbit lines: fully opaque within FADE_START semi-major axes of the camera, gone beyond FADE_END (log-linear)
+    inline constexpr double ORBIT_LINE_FADE_START_SMA = 20.0;
+    inline constexpr double ORBIT_LINE_FADE_END_SMA = 200.0;
+
+    // Orbit lines: the targeted (highlighted) line never fades below this alpha
+    inline constexpr double ORBIT_LINE_HIGHLIGHT_MIN_ALPHA = 0.35;
+
+    // Orbit lines: the largest named asteroids that get permanent lines
+    inline constexpr int32 ORBIT_LINE_NAMED_MINOR_COUNT = 50;
+
+    // Orbit lines: occluder spheres passed to the shader, and the relative bias of the 1:1-zone scene-depth test
+    inline constexpr int32 ORBIT_LINE_MAX_OCCLUDERS = 8;
+    inline constexpr double ORBIT_LINE_DEPTH_BIAS = 1.0e-3;
+
+    // Orbit lines: normal and targeted line colors (alpha is the line's peak opacity)
+    inline const FLinearColor ORBIT_LINE_COLOR(0.25f, 0.42f, 0.75f, 0.6f);
+    inline const FLinearColor ORBIT_LINE_HIGHLIGHT_COLOR(0.95f, 0.78f, 0.25f, 0.9f);
+
+    // Orbit lines: the named asteroids' lines, dimmer so their 50 orbits do not swamp the inner system (17b tuning)
+    inline const FLinearColor ORBIT_LINE_MINOR_COLOR(0.42f, 0.42f, 0.5f, 0.12f);
+
+    // Orbit lines: smallest angular radius (rad) of an occluder sphere passed to the shader, about half a pixel at
+    // 1920 px and a 90 deg horizontal field of view; smaller spheres cannot hide a visible part of a line
+    inline constexpr double ORBIT_LINE_MIN_OCCLUDER_ANGULAR_RADIUS_RAD = 5.0e-4;
+
+    // Orbit lines: custom primitive data floats per line component (M_SOLOrbitLine): 0-2 parent - viewpoint (high
+    // floats, m, ecliptic), 3 semi-major axis (m), 4-6 the low floats, 7 highlight (0 or 1), 8-11 the line color
+    inline constexpr int32 ORBIT_LINE_CUSTOM_DATA_FLOATS = 12;
+
+    // Orbit lines: all custom primitive data floats per line (SDD 17 Amendment 3): the 12 above, then 12-15 the
+    // rotation from the built orientation to the current one (quaternion x, y, z, w; ecliptic), 16 shared parent
+    // (1 = the parent offset comes from OrbitLineMpcParams::SHARED_PARENT_*, used by the Sun-parented asteroid lines)
+    inline constexpr int32 ORBIT_LINE_CUSTOM_DATA_TOTAL_FLOATS = 20;
+
+    // Orbit lines: translucency sort priority of the line components, drawn after the bodies, ring discs and gas-giant
+    // haze (which use small priorities); the lines draw over translucent ring discs by design (SDD 17 open question 7)
+    inline constexpr int32 ORBIT_LINE_TRANSLUCENCY_SORT_PRIORITY = 100;
+
+    // Orbit lines: render bounds radius (cm) of every line component around the Unreal origin; covers the farthest
+    // log-compressed placement (Eris at ~68 AU lands near 1.9e11 cm), so a line is never frustum- or distance-culled
+    inline constexpr double ORBIT_LINE_BOUNDS_RADIUS_CM = 4.0e11;
+
+    // Vector parameters of Paths::ORBIT_LINE_PARAMETER_COLLECTION (SDD 17), written by ASOLOrbitLineVisuals; the
+    // names must match Tools/OrbitLines/create_orbit_line_assets.py
+    namespace OrbitLineMpcParams
+    {
+        // (viewpoint render location cm, max render distance cm), every frame
+        inline constexpr const TCHAR* FRAME = TEXT("OrbitLineFrame");
+        // (width px at 1080 p, dash duty, fade start SMA, fade end SMA), once at BeginPlay
+        inline constexpr const TCHAR* STYLE = TEXT("OrbitLineStyle");
+        // (highlight min alpha, feather margin px, depth bias, scene-depth trust limit cm), every frame
+        inline constexpr const TCHAR* STYLE2 = TEXT("OrbitLineStyle2");
+        // The Sun minus the viewpoint as a double-float pair (high xyz, low xyz; m, ecliptic), every frame, for the
+        // asteroid lines (whose own custom data then changes only with the highlight)
+        inline constexpr const TCHAR* SHARED_PARENT_HIGH = TEXT("OrbitLineSharedParentHigh");
+        inline constexpr const TCHAR* SHARED_PARENT_LOW = TEXT("OrbitLineSharedParentLow");
+        // (dash min period px, dash max level, solid start px, solid end px), once at BeginPlay
+        inline constexpr const TCHAR* DASH = TEXT("OrbitLineDash");
+        // OrbitLineOccluder0..7: (viewpoint-relative centre m, ecliptic; radius m), every frame (radius 0 = unused)
+        inline constexpr const TCHAR* OCCLUDERS[] = {
+            TEXT("OrbitLineOccluder0"), TEXT("OrbitLineOccluder1"), TEXT("OrbitLineOccluder2"),
+            TEXT("OrbitLineOccluder3"), TEXT("OrbitLineOccluder4"), TEXT("OrbitLineOccluder5"),
+            TEXT("OrbitLineOccluder6"), TEXT("OrbitLineOccluder7") };
+    }
+
     // Jump map camera: middle/Shift+right-drag pan per mouse pixel as a fraction of camera distance. 0.0015 roughly
     // keeps the ground plane under the cursor in a top-down view at 720 p (visible half-height D * tan(~17.6 deg) /
     // 360 px)
@@ -537,7 +634,9 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_SAVE_SLOT = TEXT("SOLSettings_MenuSmoke");  // -SOLMenuSmoke runs only
                                                                                           // (deleted at their start)
         inline constexpr int32 SAVE_USER_INDEX = 0;
-        inline constexpr int32 SAVE_VERSION = 1;          // Bump (and migrate in USOLSettingsSubsystem) on schema changes
+        // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
+        // lines, SDD 17)
+        inline constexpr int32 SAVE_VERSION = 2;
         inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
         inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
         inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;
@@ -656,6 +755,11 @@ namespace SOL
         inline constexpr const TCHAR* SHIP_PART_SPHERE = TEXT("/Engine/BasicShapes/Sphere.Sphere");
         inline constexpr const TCHAR* SHIP_HULL_MATERIAL =
             TEXT("/Engine/BasicShapes/BasicShapeMaterial.BasicShapeMaterial");
+
+        // Orbit lines (SDD 17), created by Tools/OrbitLines/create_orbit_line_assets.py (keep both in sync)
+        inline constexpr const TCHAR* ORBIT_LINE_MATERIAL = TEXT("/Game/SOL/OrbitLines/M_SOLOrbitLine.M_SOLOrbitLine");
+        inline constexpr const TCHAR* ORBIT_LINE_PARAMETER_COLLECTION =
+            TEXT("/Game/SOL/OrbitLines/MPC_SOLOrbitLine.MPC_SOLOrbitLine");
 
         // Star field (SDD 5), created by Tools/StarField/import_star_field.py (keep both in sync): the faint-star
         // TextureCube and the bright-star USOLStarFieldData

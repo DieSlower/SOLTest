@@ -37,6 +37,7 @@ enum class ESOLSettingsToggle : uint8
     InvertY,
     HudVisible,
     DefaultAssist,
+    OrbitLines,
     Count,
 };
 
@@ -192,6 +193,10 @@ private:
     // Flight assist at launch checkbox clicked
     UFUNCTION()
     void HandleDefaultAssistChanged(bool bChecked);
+
+    // Show orbit lines checkbox clicked
+    UFUNCTION()
+    void HandleOrbitLinesChanged(bool bChecked);
 
     // A stepper button was clicked (index = stepper * 2 + 0 back / 1 forward)
     void HandleStepClicked(int32 index);

@@ -72,6 +72,10 @@ namespace SOLSettingsRules
     // Returns what to do with a save of savedVersion when the current schema is currentVersion
     SOLTEST_API ESaveVersionAction ClassifySaveVersion(int32 savedVersion, int32 currentVersion);
 
+    // Returns whether the settings slot needs a write: an Apply, a migration or a failed write owes one, or the O key
+    // left the orbit-line flag different from the value last loaded or written (SDD 17)
+    SOLTEST_API bool IsSaveOwed(bool bWriteOwed, bool bAppliedShowOrbitLines, bool bWrittenShowOrbitLines);
+
     // Decides at boot what vsync and the quality preset start as and what is pushed to the engine. Only a value the
     // player chose on the Settings page (bSaveUsed and its "chosen" flag, and for the quality a valid preset) is the
     // model's value and is pushed, and only when it differs from the engine's; anything else starts from the engine

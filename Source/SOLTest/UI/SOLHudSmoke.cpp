@@ -6,6 +6,7 @@
 #include "UI/SOLHudSmoke.h"
 
 #include "Game/SOLGameMode.h"
+#include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -130,6 +131,11 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     switch (phase)
     {
     case ESOLHudPhase::Setup:
+        // Orbit lines start on and stay detached from the player's saved setting for the whole run
+        if (ASOLOrbitLineVisuals* orbitLines = mHud.IsValid() ? mHud->GetOrbitLineVisuals() : nullptr)
+        {
+            orbitLines->BeginVerificationOverride();
+        }
         SetupShip(state.PositionM, (earthM - state.PositionM).GetSafeNormal(), mShips->GetReferenceVelocityMps());
         break;
     case ESOLHudPhase::SelectEarth:
@@ -224,7 +230,6 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
             : FVector3d::ZeroVector;
         SetupShip(sunM + FVector3d(0.0, 0.0, HUDSMOKE_ORBIT_VIEW_HEIGHT_AU * SOL::AU_M), FVector3d(0.0, 0.0, -1.0),
             sunVelocity);
-        TapKey(EKeys::O);
         break;
     }
     default:
@@ -241,7 +246,8 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
     const FSOLSpeedStepperState stepper = panel != nullptr ? panel->GetStepperState() : FSOLSpeedStepperState();
     const bool bOrbits = mHud.IsValid() && mHud->AreOrbitLinesVisible();
-    const int32 segments = mHud.IsValid() ? mHud->GetLastOrbitSegmentsDrawn() : 0;
+    const ASOLOrbitLineVisuals* orbitLines = mHud.IsValid() ? mHud->GetOrbitLineVisuals() : nullptr;
+    const int32 segments = orbitLines != nullptr ? orbitLines->CountVisibleLines() : 0;
     ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>();
 
     // Each phase checks one expectation
@@ -260,15 +266,16 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         }
         break;
     case ESOLHudPhase::OrbitsOn:
-        Check(TEXT("b-orbits-on"), bOrbits && segments > 0, FString::Printf(TEXT("O: orbit lines %s, %d segments "
-            "drawn last frame"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
+        // The lines start on (SDD 17), so the first O turns them off
+        Check(TEXT("b-orbits-off"), !bOrbits && segments == 0, FString::Printf(TEXT("O: orbit lines %s, %d "
+            "lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
         break;
     case ESOLHudPhase::OrbitsOff:
-        Check(TEXT("b-orbits-off"), !bOrbits && segments == 0, FString::Printf(TEXT("O again: orbit lines %s, %d "
-            "segments drawn last frame"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
+        Check(TEXT("b-orbits-on"), bOrbits && segments > 0, FString::Printf(TEXT("O again: orbit lines %s, %d "
+            "lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
         break;
     case ESOLHudPhase::PredictedPath:
-        Check(TEXT("b-path-noop"), !bOrbits && !pawn.IsSpeedPanelOpen(),
+        Check(TEXT("b-path-noop"), bOrbits && !pawn.IsSpeedPanelOpen(),
             TEXT("P: reserved no-op, HUD state unchanged"));
         break;
     case ESOLHudPhase::PanelOpen:
@@ -383,7 +390,7 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::OrbitShotSetup:
         Check(TEXT("g-orbit-view"), bOrbits && segments > 0, FString::Printf(TEXT("3 AU above the Sun: orbit lines "
-            "%s, %d segments drawn"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
+            "%s, %d lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
         UE_LOG(LogSOL, Log, TEXT("SmokeHud: complete after %.1f s, %d/%d checks passed%s; %d panel keys not delivered "
             "by Slate"), mTotalTimeS, mChecksPassed, mChecksRun, mChecksPassed == mChecksRun ? TEXT("")
             : TEXT(" (FAILURES)"), mSlateMisses);

@@ -1,0 +1,248 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// Orbit lines (SDD 17): the HLSL mirror of Source/SOLTest/OrbitLines/SOLOrbitLineMath.cpp, plus the vertex and pixel
+// entry points the M_SOLOrbitLine Custom nodes call. Universe lengths are metres in J2000 ecliptic axes, render lengths
+// are cm in Unreal axes, widths are pixels. The tunables arrive through MPC_SOLOrbitLine (written from SOLConstants.h
+// once at BeginPlay), so this file has no copy of them. Included as "/Project/SOLTest/Private/SOLOrbitLine.ush".
+
+#pragma once
+
+// Depth compression beyond the 1:1 range, SOLRender::FarDepthLogScale
+#define SOLOL_FAR_DEPTH_LOG_SCALE 0.1
+#define SOLOL_CM_PER_M 100.0
+#define SOLOL_MAX_OCCLUDERS 8
+
+// Converts right-handed ecliptic axes to Unreal's left-handed axes (and back): (x, -y, z)
+float3 SOLOL_EclipticToUnreal(float3 v)
+{
+    return float3(v.x, -v.y, v.z);
+}
+
+// Returns the placed (log-compressed beyond maxCm) distance for a true distance, both in cm
+float SOLOL_PlacedDistanceCm(float distanceCm, float maxCm)
+{
+    if (distanceCm <= maxCm)
+    {
+        return distanceCm;
+    }
+    return maxCm * (1.0 + SOLOL_FAR_DEPTH_LOG_SCALE * log(distanceCm / maxCm));
+}
+
+// PlaceLinePointCm: 1:1 within range, otherwise log-compressed along the same direction (ecliptic axes, cm)
+float3 SOLOL_PlaceLinePointCm(float3 relativeM, float maxCm)
+{
+    const float3 cm = relativeM * SOLOL_CM_PER_M;
+    const float distanceCm = length(cm);
+    if (distanceCm <= maxCm)
+    {
+        return cm;
+    }
+    return cm * (SOLOL_PlacedDistanceCm(distanceCm, maxCm) / distanceCm);
+}
+
+// ViewportPixelWidth: the reference width scaled by the viewport height (reference height 1080)
+float SOLOL_ViewportPixelWidth(float viewportHeightPx, float widthAt1080Px)
+{
+    return viewportHeightPx > 0.0 ? widthAt1080Px * viewportHeightPx / 1080.0 : widthAt1080Px;
+}
+
+// LineCoverage: analytic anti-aliased coverage across the line; under 1 px keeps a 1 px footprint, dimmed
+float SOLOL_LineCoverage(float distanceFromCenterPx, float widthPx)
+{
+    if (widthPx <= 0.0)
+    {
+        return 0.0;
+    }
+    const float effectiveWidth = max(widthPx, 1.0);
+    return (widthPx / effectiveWidth) * saturate(effectiveWidth * 0.5 + 0.5 - abs(distanceFromCenterPx));
+}
+
+// RibbonHalfExtentPx: max(w, 1)/2 plus the feather margin
+float SOLOL_RibbonHalfExtentPx(float widthPx, float marginPx)
+{
+    return max(widthPx, 1.0) * 0.5 + marginPx;
+}
+
+// Integral of the dash square wave (duty d) from 0 to x
+float SOLOL_DashIntegral(float x, float duty)
+{
+    return floor(x) * duty + min(frac(x), duty);
+}
+
+// DashCoverage: point sample, exact box mean over the footprint, or the duty cycle once a whole period fits
+float SOLOL_DashCoverage(float phase, float duty, float footprint)
+{
+    duty = saturate(duty);
+    if (footprint <= 0.0)
+    {
+        return frac(phase) < duty ? 1.0 : 0.0;
+    }
+    if (footprint >= 1.0)
+    {
+        return duty;
+    }
+    const float halfFootprint = 0.5 * footprint;
+    return saturate((SOLOL_DashIntegral(phase + halfFootprint, duty) - SOLOL_DashIntegral(phase - halfFootprint, duty))
+        / footprint);
+}
+
+// MultiScaleDashCoverage: power-of-two finer dashes while the period is long on screen, then a fade to solid.
+// dash = (min period px, max level, solid start px, solid end px)
+float SOLOL_MultiScaleDashCoverage(float phase, float duty, float footprint, float4 dash)
+{
+    if (footprint <= 0.0 || dash.x <= 0.0)
+    {
+        return SOLOL_DashCoverage(phase, duty, footprint);
+    }
+    const float periodPx = 1.0 / footprint;
+    const float level = clamp(log2(periodPx / dash.x), 0.0, dash.y);
+    const float lower = min(floor(level), dash.y);
+    const float blend = level - lower;
+    const float lowerScale = exp2(lower);
+    const float lowerCoverage = SOLOL_DashCoverage(phase * lowerScale, duty, footprint * lowerScale);
+    float coverage = lowerCoverage;
+    if (blend > 0.0 && lower < dash.y)
+    {
+        coverage = lerp(lowerCoverage, SOLOL_DashCoverage(phase * 2.0 * lowerScale, duty, footprint * 2.0 * lowerScale),
+            blend);
+    }
+    const float remainingPeriodPx = periodPx / exp2(level);
+    const float solid = dash.w > dash.z ? saturate((remainingPeriodPx - dash.z) / (dash.w - dash.z))
+        : (remainingPeriodPx >= dash.z ? 1.0 : 0.0);
+    return lerp(coverage, 1.0, solid);
+}
+
+// DistanceFade: 1 within startSma semi-major axes, 0 beyond endSma, linear in log distance; highlighted keeps a floor
+float SOLOL_DistanceFade(float distanceM, float semiMajorAxisM, bool bHighlighted, float startSma, float endSma,
+    float highlightMinAlpha)
+{
+    if (semiMajorAxisM <= 0.0 || distanceM < 0.0)
+    {
+        return 0.0;
+    }
+    const float ratio = distanceM / semiMajorAxisM;
+    const float fade = saturate(1.0 - (log(max(ratio, 1e-30)) - log(startSma)) / (log(endSma) - log(startSma)));
+    return bHighlighted ? max(fade, highlightMinAlpha) : fade;
+}
+
+// IsPointOccludedBySphere: the camera-to-point segment passes strictly inside the sphere (camera outside it)
+bool SOLOL_IsPointOccludedBySphere(float3 cameraM, float3 pointM, float3 centerM, float radiusM)
+{
+    if (radiusM <= 0.0)
+    {
+        return false;
+    }
+    const float3 toCenter = centerM - cameraM;
+    const float radiusSq = radiusM * radiusM;
+    if (dot(toCenter, toCenter) <= radiusSq)
+    {
+        return false;
+    }
+    const float3 toPoint = pointM - cameraM;
+    const float lengthSq = dot(toPoint, toPoint);
+    const float t = lengthSq > 0.0 ? saturate(dot(toCenter, toPoint) / lengthSq) : 0.0;
+    const float3 offset = toCenter - toPoint * t;
+    return dot(offset, offset) < radiusSq;
+}
+
+// IsHiddenBySceneDepth: only scene depth inside the 1:1 zone hides a line that lies beyond it
+bool SOLOL_IsHiddenBySceneDepth(float lineDepthCm, float sceneDepthCm, float maxCm, float bias)
+{
+    return sceneDepthCm > 0.0 && sceneDepthCm < maxCm && lineDepthCm > sceneDepthCm * (1.0 + bias);
+}
+
+// RotationOffset: q.RotateVector(v) - v as 2 cross(q.xyz, cross(q.xyz, v) + q.w v) (small for a small rotation)
+float3 SOLOL_RotationOffset(float4 q, float3 v)
+{
+    return 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v);
+}
+
+// RibbonSideDirection: unit vector perpendicular to the view ray and the tangent, with a fixed-axis fallback
+float3 SOLOL_RibbonSideDirection(float3 cameraToPoint, float3 tangent)
+{
+    const float viewLength = length(cameraToPoint);
+    if (viewLength <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    const float3 view = cameraToPoint / viewLength;
+    const float3 side = cross(view, tangent);
+    const float sideLength = length(side);
+    if (sideLength > 1e-6)
+    {
+        return side / sideLength;
+    }
+    const float3 axis = abs(view.z) < 0.9 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    return normalize(cross(view, axis));
+}
+
+// Vertex stage: returns the ribbon vertex's render position (cm, Unreal axes) and the values the pixel stage needs.
+// The point's viewpoint-relative position is the double-float sum (parent - viewpoint) + (point - parent).
+// frame = (viewpoint render location cm, max render distance cm); style = (width at 1080 px, dash duty, fade start,
+// fade end in semi-major axes); style2 = (highlight min alpha, feather margin px, depth bias, scene-depth trust limit
+// cm); dash = (min period px, max level, solid start px, solid end px). rotation (ecliptic quaternion) turns the line
+// from the orientation it was built with to the orbit's current one (SOLOrbitLineLogic::OrbitRotationBetween)
+float3 SOLOL_Vertex(float3 parentHi, float3 parentLo, float3 pointHi, float3 pointLo, float4 rotation,
+    float3 tangentUnreal, float side, float3 cameraUnreal, float4 frame, float4 style, float4 style2,
+    float3 viewForward, float projectionScaleX, float2 viewSize, out float3 outTrueRelativeM, out float outSignedPx)
+{
+    // The rotation's offset is small and computed on the high part only (SOLOrbitLineLogic::RotationOffset), then
+    // added to the double-float point, so the point keeps its precision
+    const float3 rotationOffset = SOLOL_RotationOffset(rotation, pointHi);
+    const FDFVector3 pointDF = DFAdd(MakeDFVector3(pointHi, pointLo), rotationOffset);
+    const float3 relativeM = DFAddDemote(MakeDFVector3(parentHi, parentLo), pointDF);
+    const float3 centerUnreal = frame.xyz + SOLOL_EclipticToUnreal(SOLOL_PlaceLinePointCm(relativeM, frame.w));
+
+    // Expand across the line by the ribbon half extent in pixels, converted at this point's view depth
+    const float3 tangentEcliptic = SOLOL_EclipticToUnreal(tangentUnreal);
+    const float3 rotatedTangent = SOLOL_EclipticToUnreal(tangentEcliptic
+        + SOLOL_RotationOffset(rotation, tangentEcliptic));
+    const float3 toPoint = centerUnreal - cameraUnreal;
+    const float3 sideDirection = SOLOL_RibbonSideDirection(toPoint, rotatedTangent);
+    const float depth = max(abs(dot(toPoint, viewForward)), 1.0);
+    const float worldPerPixel = 2.0 * depth / max(projectionScaleX * viewSize.x, 1.0);
+    const float widthPx = SOLOL_ViewportPixelWidth(viewSize.y, style.x);
+    outSignedPx = side * SOLOL_RibbonHalfExtentPx(widthPx, style2.y);
+    outTrueRelativeM = relativeM;
+    return centerUnreal + sideDirection * (outSignedPx * worldPerPixel);
+}
+
+// Pixel stage: returns the line's opacity (coverage x dash x fade x occlusion x color alpha).
+// occluders[i] = (viewpoint-relative centre m, ecliptic axes; radius m), radius 0 = unused
+float SOLOL_Pixel(float3 trueRelativeM, float signedPx, float dashPhase, float dashFootprint, float3 cameraUnreal,
+    float4 frame, float4 style, float4 style2, float4 dash, float semiMajorAxisM, bool bHighlighted, float colorAlpha,
+    float viewportHeightPx, float pixelDepthCm, float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS])
+{
+    const float widthPx = SOLOL_ViewportPixelWidth(viewportHeightPx, style.x);
+    const float coverage = SOLOL_LineCoverage(signedPx, widthPx)
+        * SOLOL_MultiScaleDashCoverage(dashPhase, style.y, dashFootprint, dash);
+    if (coverage <= 0.0)
+    {
+        return 0.0;
+    }
+
+    // True-scale analytic occlusion by the selected spheres, from the camera's true position
+    const float3 cameraM = SOLOL_EclipticToUnreal(cameraUnreal - frame.xyz) / SOLOL_CM_PER_M;
+    for (int index = 0; index < SOLOL_MAX_OCCLUDERS; ++index)
+    {
+        if (SOLOL_IsPointOccludedBySphere(cameraM, trueRelativeM, occluders[index].xyz, occluders[index].w))
+        {
+            return 0.0;
+        }
+    }
+
+    // Scene depth only nearer than any log-compressed body can be (style2.w, SOLOrbitLineLogic::
+    // SceneDepthTrustLimitCm): the line's true depth is its render depth scaled back out
+    const float distanceM = length(trueRelativeM - cameraM);
+    const float trueDistanceCm = distanceM * SOLOL_CM_PER_M;
+    const float placedCm = max(SOLOL_PlacedDistanceCm(trueDistanceCm, frame.w), 1.0);
+    if (SOLOL_IsHiddenBySceneDepth(pixelDepthCm * (trueDistanceCm / placedCm), sceneDepthCm, style2.w, style2.z))
+    {
+        return 0.0;
+    }
+    const float fade = SOLOL_DistanceFade(distanceM, semiMajorAxisM, bHighlighted, style.z, style.w, style2.x);
+    return coverage * fade * colorAlpha;
+}
