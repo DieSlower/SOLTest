@@ -25,7 +25,7 @@ Design: [`Docs/SDDs/16-ring-shadows.md`](../SDDs/16-ring-shadows.md).
   - ~~Decide with the user whether the planet's eclipse of the ship stays on~~: answered, it stays on (SDD 16 section 7).
   - The rock self-shadow already exists (16c, statistical); 16d judges contact shadows as an add-on and measures hardware RT if available.
   - Make a final budget measurement.
-- [ ] **16e — Docs, review, verification.**
+- [x] **16e — Docs, review, verification.**
   - Update `ARCHITECTURE.md` (shader directory, the new math module, host inputs), `GAME_MECHANICS.md` and the in-game Info text (`SOLMenuText::INFO_PROSE`).
   - Take the screenshot set and record the GPU numbers.
   - Run the adversarial opus review, apply the fixes, run the full suite, then commit and push (`Issue #16: ...`).
