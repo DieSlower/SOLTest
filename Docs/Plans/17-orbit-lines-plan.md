@@ -22,7 +22,7 @@ Design: [`Docs/SDDs/17-orbit-lines.md`](../SDDs/17-orbit-lines.md).
   - (Done in 17c: the HUD canvas orbit lines, `UI/SOLOrbitLines` and `OrbitLinesTest.cpp` are retired.)
   - Update the HUD hint, `SOLMenuText::INFO_PROSE`, `GAME_MECHANICS.md` and `-SOLSmokeHud`.
   - Tests: extend `SOLSettingsModelTest`, `HudFormatTest` and `SOLInfoTextTest`.
-- [ ] **17e — Docs, review, verification.**
+- [x] **17e — Docs, review, verification.**
   - Update `ARCHITECTURE.md` (the `OrbitLines/` folder, the actor, the frame order, the shader file).
   - Run the final screenshot set and budget measurement.
   - Run the adversarial opus review, apply the fixes, run the full suite, `graphify update .`, then commit and push (`Issue #17: ...`).
