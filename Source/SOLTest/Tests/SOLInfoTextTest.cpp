@@ -332,4 +332,24 @@ bool FSOLInfoTextOrbitLinesParagraphTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextDemoParagraphTest, "SOLTest.InfoText.DemoParagraph",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// One paragraph names the Ctrl+F1 menu hotkey and the Demo page (issue #11, Part 10e), and no placeholder is left
+bool FSOLInfoTextDemoParagraphTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    bool bFoundDemo = false;
+    for (const FString& text : prose)
+    {
+        bFoundDemo |= text.Contains(TEXT("Ctrl+F1"), ESearchCase::CaseSensitive)
+            && text.Contains(TEXT("Demo"), ESearchCase::CaseSensitive);
+        TestFalse(TEXT("no '{' left"), text.Contains(TEXT("{")));
+    }
+    TestTrue(TEXT("a paragraph names Ctrl+F1 and the Demo page"), bFoundDemo);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

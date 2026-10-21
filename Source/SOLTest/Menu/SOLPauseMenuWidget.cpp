@@ -5,6 +5,8 @@
 
 #include "Menu/SOLPauseMenuWidget.h"
 
+#include "Menu/SOLDemoPageWidget.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -75,7 +77,7 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     UHorizontalBox* tabBar = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     column->AddChildToVerticalBox(tabBar)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, PANEL_PADDING * 0.5f));
     const TCHAR* tabLabels[] = { SOLMenuText::RESUME, SOLMenuText::CONTROLS, SOLMenuText::INFO, SOLMenuText::SETTINGS,
-        SOLMenuText::ABOUT, SOLMenuText::QUIT_TAB };
+        SOLMenuText::DEMO, SOLMenuText::ABOUT, SOLMenuText::QUIT_TAB };
     static_assert(UE_ARRAY_COUNT(tabLabels) == PAUSE_TAB_COUNT, "one label per tab");
     TabButtons.Reset();
     for (int32 tab = 0; tab < PAUSE_TAB_COUNT; ++tab)
@@ -102,6 +104,9 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree, InfoKeyTexts));
     SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
     PageSwitcher->AddChild(SettingsPage);
+    DemoPage = WidgetTree->ConstructWidget<USOLDemoPageWidget>(USOLDemoPageWidget::StaticClass());
+    DemoPage->SetInFlight(true);
+    PageSwitcher->AddChild(DemoPage);
     PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
 
     // Quit page: a prompt and the two ways out
@@ -141,6 +146,10 @@ void USOLPauseMenuWidget::ShowTab(const SOLMenuState::EMenuTab tab)
     if (tab == SOLMenuState::EMenuTab::Controls)
     {
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+    }
+    if (tab == SOLMenuState::EMenuTab::Demo && DemoPage != nullptr)
+    {
+        DemoPage->RefreshFromMenu();
     }
     if (tab == SOLMenuState::EMenuTab::Info)
     {
@@ -206,12 +215,13 @@ void USOLPauseMenuWidget::NativeTick(const FGeometry& geometry, const float delt
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Esc resumes (an auto-repeat of a held Esc does not); every other key is left to the focused button and Slate
-// navigation
+// Esc or Ctrl+F1 (SDD 11 section 3.9) resumes (an auto-repeat of a held Esc does not); every other key is left to
+// the focused button and Slate navigation
 FReply USOLPauseMenuWidget::NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent)
 {
     ++mSlateKeyCount;
-    if (keyEvent.GetKey() == EKeys::Escape)
+    if (keyEvent.GetKey() == EKeys::Escape
+        || SOLKeyBindings::IsMenuHotkey(keyEvent.GetKey().GetFName().ToString(), keyEvent.IsControlDown()))
     {
         // The Esc that opened the menu, held down, repeats into it: only a fresh press resumes
         if (Menu != nullptr && !keyEvent.IsRepeat())

@@ -74,8 +74,14 @@ namespace SOLKeyBindings
     SOLTEST_API int32 FindById(const FString& id);
 
     // Returns whether a key is fixed to an action that cannot be rebound (Escape pause, mouse look and wheel, the
-    // reserved P), so no rebindable action may take it
+    // reserved P, the F1 / F2 of the Ctrl hotkeys), so no rebindable action may take it
     SOLTEST_API bool IsReservedKey(const FString& keyName);
+
+    // Returns whether a key press is the Ctrl+F1 menu hotkey (acts like Esc; SDD 11 section 3.9)
+    SOLTEST_API bool IsMenuHotkey(const FString& keyName, bool bControlDown);
+
+    // Returns whether a key press is the Ctrl+F2 NPC stats overlay hotkey
+    SOLTEST_API bool IsStatsHotkey(const FString& keyName, bool bControlDown);
 
     // Returns whether a key is one of the jump map's own fixed keys (left, right and middle mouse, Left / Right Shift,
     // X, Enter), which the map toggle (mapped in the map's context too) may not take

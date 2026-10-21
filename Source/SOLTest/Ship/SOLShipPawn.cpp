@@ -14,6 +14,7 @@
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -555,6 +556,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(ToggleMapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleMapAction);
     input->BindAction(MapCloseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapCloseAction);
     input->BindAction(PauseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPauseAction);
+    input->BindAction(MenuHotkeyAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMenuHotkeyAction);
+    input->BindAction(StatsHotkeyAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnStatsHotkeyAction);
     input->BindAction(MapRightDragAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapRightStarted);
     input->BindAction(MapRightDragAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnMapRightCompleted);
     input->BindAction(MapPanAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnMapPanStarted);
@@ -714,6 +717,8 @@ void ASOLShipPawn::CreateInputObjects()
     RadarAutoAction = CreateAction(this, TEXT("IA_ShipRadarAuto"), EInputActionValueType::Boolean);
     ToggleMapAction = CreateAction(this, TEXT("IA_MapToggle"), EInputActionValueType::Boolean);
     PauseAction = CreateAction(this, TEXT("IA_ShipPause"), EInputActionValueType::Boolean);
+    MenuHotkeyAction = CreateAction(this, TEXT("IA_MenuHotkey"), EInputActionValueType::Boolean);
+    StatsHotkeyAction = CreateAction(this, TEXT("IA_NpcStatsHotkey"), EInputActionValueType::Boolean);
     MapCloseAction = CreateAction(this, TEXT("IA_MapClose"), EInputActionValueType::Boolean);
     MapRightDragAction = CreateAction(this, TEXT("IA_MapRightDrag"), EInputActionValueType::Boolean);
     MapPanAction = CreateAction(this, TEXT("IA_MapPan"), EInputActionValueType::Boolean);
@@ -804,6 +809,12 @@ void ASOLShipPawn::MapShipKeys()
 
     // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
     MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
+
+    // Ctrl+F1 acts as Esc in both contexts (Esc stops Play-In-Editor first) and Ctrl+F2 toggles the NPC stats overlay;
+    // F1 and F2 are reserved (SOLKeyBindings), and the handlers check Ctrl
+    MapPressedKey(MappingContext, MenuHotkeyAction, EKeys::F1, this);
+    MapPressedKey(MappingContext, StatsHotkeyAction, EKeys::F2, this);
+    MapPressedKey(MapMappingContext, MenuHotkeyAction, EKeys::F1, this);
 
     // Jump map: the map toggle (rebindable, the same key as in the ship context) or Esc close; right drag orbits,
     // middle or Shift+right drag pans (held buttons gate the mouse delta), the wheel zooms. Destination picking: left
@@ -2051,4 +2062,42 @@ void ASOLShipPawn::OnMapClearPickAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnMapJumpAction(const FInputActionValue& /*value*/)
 {
     HandleMapJump();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: F1; with Ctrl held it acts as Esc (closes the map, else opens the pause menu)
+void ASOLShipPawn::OnMenuHotkeyAction(const FInputActionValue& /*value*/)
+{
+    if (!SOLKeyBindings::IsMenuHotkey(EKeys::F1.GetFName().ToString(), IsControlHeld()))
+    {
+        return;
+    }
+    if (mIsMapOpen)
+    {
+        HandleCloseMap();
+    }
+    else
+    {
+        HandlePause();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: F2; with Ctrl held it shows or hides the NPC stats overlay
+void ASOLShipPawn::OnStatsHotkeyAction(const FInputActionValue& /*value*/)
+{
+    USOLNpcSubsystem* npcs = GetWorld() != nullptr ? GetWorld()->GetSubsystem<USOLNpcSubsystem>() : nullptr;
+    if (npcs != nullptr && SOLKeyBindings::IsStatsHotkey(EKeys::F2.GetFName().ToString(), IsControlHeld()))
+    {
+        npcs->SetStatsVisible(!npcs->IsStatsVisible());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether Left or Right Ctrl is held
+bool ASOLShipPawn::IsControlHeld() const
+{
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    return playerController != nullptr && (playerController->IsInputKeyDown(EKeys::LeftControl)
+        || playerController->IsInputKeyDown(EKeys::RightControl));
 }

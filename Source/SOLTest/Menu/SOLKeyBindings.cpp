@@ -60,13 +60,18 @@ namespace
     };
     static_assert(UE_ARRAY_COUNT(KEY_BINDING_DEFS) == SOLKeyBindings::BINDING_COUNT, "one definition per binding");
 
-    // Keys fixed to actions that are not rebindable: Esc pauses, the mouse steers, the wheel steps the speed cap and
-    // P is reserved for the predicted path
+    // Keys fixed to actions that are not rebindable: Esc pauses, the mouse steers, the wheel steps the speed cap, P is
+    // reserved for the predicted path, and F1 / F2 are the Ctrl+F1 menu and Ctrl+F2 stats hotkeys (an action on F1 or
+    // F2 would fire with every hotkey press)
     const TCHAR* const KEY_BINDING_RESERVED[] =
     {
         TEXT("Escape"), TEXT("Mouse2D"), TEXT("MouseX"), TEXT("MouseY"), TEXT("MouseWheelAxis"),
-        TEXT("MouseScrollUp"), TEXT("MouseScrollDown"), TEXT("P"),
+        TEXT("MouseScrollUp"), TEXT("MouseScrollDown"), TEXT("P"), TEXT("F1"), TEXT("F2"),
     };
+
+    // The hotkeys' keys (held with Ctrl): the pause menu (SDD 11 section 3.9) and the NPC stats overlay
+    const TCHAR* const KEY_BINDING_MENU_HOTKEY = TEXT("F1");
+    const TCHAR* const KEY_BINDING_STATS_HOTKEY = TEXT("F2");
 
     // The jump map's own fixed keys (ASOLShipPawn::MapShipKeys): pick, orbit and pan drags, the pan / height modifier,
     // clear and jump. The map toggle is mapped in the map's context too, so it may not take any of them
@@ -124,6 +129,20 @@ int32 SOLKeyBindings::FindById(const FString& id)
 bool SOLKeyBindings::IsReservedKey(const FString& keyName)
 {
     return KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_RESERVED));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a key press is the Ctrl+F1 menu hotkey
+bool SOLKeyBindings::IsMenuHotkey(const FString& keyName, const bool bControlDown)
+{
+    return bControlDown && keyName.Equals(KEY_BINDING_MENU_HOTKEY, ESearchCase::IgnoreCase);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a key press is the Ctrl+F2 stats overlay hotkey
+bool SOLKeyBindings::IsStatsHotkey(const FString& keyName, const bool bControlDown)
+{
+    return bControlDown && keyName.Equals(KEY_BINDING_STATS_HOTKEY, ESearchCase::IgnoreCase);
 }
 
 //////////////////////////////////////////////////////////////////////////

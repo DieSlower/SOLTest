@@ -12,6 +12,7 @@
 
 #include "SOLPauseMenuWidget.generated.h"
 
+class USOLDemoPageWidget;
 class USOLMenuButton;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
@@ -43,6 +44,9 @@ public:
     // Returns the Settings tab's page
     USOLSettingsPageWidget* GetSettingsPage() const { return SettingsPage; }
 
+    // Returns the Demo tab's page
+    USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
+
     // Returns a Controls row's key text (row = SOLMenuText::CONTROL_ROWS index; verification)
     FString GetControlsRowText(int32 row) const;
 
@@ -63,8 +67,8 @@ protected:
     // Refreshes the button highlights (focus follows the keyboard and the mouse)
     virtual void NativeTick(const FGeometry& geometry, float deltaSeconds) override;
 
-    // Esc resumes (an auto-repeat of a held Esc does not); every other key is left to the focused button and Slate
-    // navigation
+    // Esc (or Ctrl+F1) resumes (an auto-repeat of a held Esc does not); every other key is left to the focused button
+    // and Slate navigation
     virtual FReply NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent) override;
 
 private:
@@ -93,6 +97,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsPageWidget> SettingsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLDemoPageWidget> DemoPage;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;

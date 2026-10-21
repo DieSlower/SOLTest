@@ -15,12 +15,13 @@ namespace SOLCombatGrid
     inline constexpr int64 MAX_CELLS_PER_OPERATION = 4096;
 
     /**
-     * Each cell is a singly linked list threaded through one flat entry array, and the cell map's values are plain ints,
-     * so Clear keeps every allocation and a rebuild of a similar size allocates nothing: no per-cell arrays exist to be
-     * freed or regrown, and cells that went empty never linger (the map itself is reset), however far the inserted
-     * objects move between rebuilds. QueryCandidates de-duplicates in place (sort + unique on the output array), so a
-     * query allocates nothing either once the caller's output array has grown to its working size. Queries are const and
-     * touch no shared state, so several threads may query one grid at once.
+     * Each cell is a singly linked list threaded through one flat entry array, and the cell table (open addressing,
+     * linear probing, at most half full) holds plain ints, so Clear keeps every allocation and a rebuild of a similar
+     * size allocates nothing: no per-cell arrays exist to be freed or regrown, and cells that went empty never linger
+     * (the table itself is reset), however far the inserted objects move between rebuilds. QueryCandidates
+     * de-duplicates in place (sort + unique on the output array), so a query allocates nothing either once the
+     * caller's output array has grown to its working size. Queries are const and touch no shared state, so several
+     * threads may query one grid at once.
      */
     class SOLTEST_API FGrid
     {
@@ -37,7 +38,8 @@ namespace SOLCombatGrid
         // Inserts an object's bounding sphere under the given id
         void Insert(int32 id, const FVector3d& center, double radius);
 
-        // Fills outIds with the ids whose sphere may touch the segment expanded by padding (no false negatives, each id once)
+        // Fills outIds with the ids whose sphere may touch the segment expanded by padding (no false negatives, each id
+        // once)
         void QueryCandidates(const FVector3d& segmentStart, const FVector3d& segmentEnd, double padding,
             TArray<int32>& outIds) const;
 
@@ -55,8 +57,22 @@ namespace SOLCombatGrid
         // Returns the 64-bit hash key of an integer cell
         static uint64 CellKey(int64 x, int64 y, int64 z);
 
+        // Returns the head slot of a cell key's list, adding the key (head INDEX_NONE) when absent
+        int32& FindOrAddHead(uint64 key);
+
+        // Returns the head of a cell key's list, or INDEX_NONE when the cell is empty
+        int32 FindHead(uint64 key) const;
+
+        // Returns the first probe slot of a key (the table size is a power of two)
+        int32 ProbeStart(uint64 key) const;
+
+        // Rebuilds the cell table at twice its size (or the given minimum), keeping every key's list
+        void GrowTable(int32 minimumSlots);
+
         double mCellSizeM;
-        TMap<uint64, int32> mCellHeads;     // Cell key -> index of its first entry in mEntries
+        TArray<uint64> mSlotKeys;           // Open-addressed cell table (linear probing): key of each slot
+        TArray<int32> mSlotHeads;           // ...and the index of its first entry in mEntries (INDEX_NONE = empty slot)
+        int32 mOccupiedSlots = 0;           // (SDD 11 Amendment 6: replaces a TMap, ~3x faster inserts and lookups)
         TArray<FEntry> mEntries;            // Every cell's linked list, rebuilt from scratch after each Clear
         TArray<int32> mAllIds;
         TArray<int32> mOversizedIds;        // Objects covering too many cells: always candidates

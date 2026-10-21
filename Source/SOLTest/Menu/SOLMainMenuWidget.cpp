@@ -5,6 +5,8 @@
 
 #include "Menu/SOLMainMenuWidget.h"
 
+#include "Menu/SOLDemoPageWidget.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -84,8 +86,8 @@ void USOLMainMenuWidget::NativeOnInitialized()
         TEXT_COLOR));
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::STUDIO_NAME, SMALL_FONT_SIZE,
         ACCENT_COLOR, true))->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, PANEL_PADDING));
-    const TCHAR* entryLabels[] = { SOLMenuText::PLAY, SOLMenuText::START_LOCATION_FORMAT, SOLMenuText::CONTROLS,
-        SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
+    const TCHAR* entryLabels[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
+        SOLMenuText::CONTROLS, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
     static_assert(UE_ARRAY_COUNT(entryLabels) == static_cast<int32>(EEntry::Count), "one label per entry");
     EntryButtons.Reset();
     for (int32 entry = 0; entry < static_cast<int32>(EEntry::Count); ++entry)
@@ -132,6 +134,8 @@ void USOLMainMenuWidget::NativeOnInitialized()
     SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
     PageSwitcher->AddChild(SettingsPage);
     PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
+    DemoPage = WidgetTree->ConstructWidget<USOLDemoPageWidget>(USOLDemoPageWidget::StaticClass());
+    PageSwitcher->AddChild(DemoPage);
     ShowPage(ESOLMainMenuPage::None);
     RefreshStartBody();
 }
@@ -150,6 +154,10 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
     {
         SettingsPage->RefreshFromSettings();
     }
+    if (page == ESOLMainMenuPage::Demo && DemoPage != nullptr)
+    {
+        DemoPage->RefreshFromMenu();
+    }
     if (page == ESOLMainMenuPage::Controls)
     {
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
@@ -166,7 +174,8 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
     const int32 pageEntry = page == ESOLMainMenuPage::StartLocation ? static_cast<int32>(EEntry::StartLocation)
         : page == ESOLMainMenuPage::Controls ? static_cast<int32>(EEntry::Controls)
         : page == ESOLMainMenuPage::Settings ? static_cast<int32>(EEntry::Settings)
-        : page == ESOLMainMenuPage::About ? static_cast<int32>(EEntry::About) : INDEX_NONE;
+        : page == ESOLMainMenuPage::About ? static_cast<int32>(EEntry::About)
+        : page == ESOLMainMenuPage::Demo ? static_cast<int32>(EEntry::Demo) : INDEX_NONE;
     for (USOLMenuButton* button : EntryButtons)
     {
         button->SetSelected(button->GetIndex() == pageEntry);
@@ -218,10 +227,12 @@ void USOLMainMenuWidget::NativeTick(const FGeometry& geometry, const float delta
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Esc closes the open page; every other key is left to the focused button and Slate navigation
+// Esc (or Ctrl+F1, SDD 11 section 3.9) closes the open page; every other key is left to the focused button and Slate
+// navigation
 FReply USOLMainMenuWidget::NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent)
 {
-    if (keyEvent.GetKey() == EKeys::Escape)
+    if (keyEvent.GetKey() == EKeys::Escape
+        || SOLKeyBindings::IsMenuHotkey(keyEvent.GetKey().GetFName().ToString(), keyEvent.IsControlDown()))
     {
         if (mPage != ESOLMainMenuPage::None)
         {
@@ -250,6 +261,9 @@ void USOLMainMenuWidget::HandleEntryClicked(const int32 entry)
     {
     case EEntry::Play:
         Menu->RequestPlay();
+        break;
+    case EEntry::Demo:
+        togglePage(ESOLMainMenuPage::Demo);
         break;
     case EEntry::StartLocation:
         togglePage(ESOLMainMenuPage::StartLocation);

@@ -6,6 +6,7 @@
 #include "Menu/SOLMenuSmoke.h"
 
 #include "Combat/SOLCombatSubsystem.h"
+#include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuButton.h"
@@ -16,6 +17,8 @@
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcStatsWidget.h"
+#include "Npc/SOLNpcSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -222,7 +225,54 @@ void FSOLMenuSmoke::EnterPhase(const EPhase phase, USOLMenuSubsystem& menu)
     case EPhase::MapEscape:
         TapKey(EKeys::Escape);
         break;
-    case EPhase::QuitToMenu:
+    case EPhase::MainDemo:
+        if (mainMenu != nullptr && mainMenu->GetDemoPage() != nullptr)
+        {
+            // Showcase (250k), one preset step down (100k), the battle max distance one step up (21 km)
+            mainMenu->ShowPage(ESOLMainMenuPage::Demo);
+            mainMenu->GetDemoPage()->ApplyPreset(SOLMenuState::EDemoPreset::Showcase);
+            mainMenu->GetDemoPage()->Step(static_cast<int32>(SOLNpcScale::EDemoOption::NpcCount), -1);
+            mainMenu->GetDemoPage()->Step(static_cast<int32>(SOLNpcScale::EDemoOption::BattleMaxDistanceM), 1);
+        }
+        break;
+    case EPhase::TabDemo:
+        menu.SelectTab(SOLMenuState::EMenuTab::Demo);
+        break;
+    case EPhase::HotkeyPause:
+        PressKey(EKeys::LeftControl);
+        TapKey(EKeys::F1);
+        break;
+    case EPhase::HotkeyResume:
+        ReleaseKey(EKeys::LeftControl);
+        mSlateKeysBefore = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetSlateKeyCount() : 0;
+        SlateKey(EKeys::F1, true);
+        break;
+    case EPhase::DemoApply:
+        menu.RequestEscape();
+        break;
+    case EPhase::DemoRunning:
+    {
+        // From the pause menu's Demo tab: Showcase at 100k with the overlay on, applied (respawn and resume)
+        menu.SelectTab(SOLMenuState::EMenuTab::Demo);
+        SOLMenuState::FDemoPage page = SOLMenuState::ApplyDemoPreset(menu.GetDemoPage(),
+            SOLMenuState::EDemoPreset::Showcase);
+        page = SOLMenuState::StepDemoRow(page, static_cast<int32>(SOLNpcScale::EDemoOption::NpcCount), -1);
+        menu.SetDemoPage(page);
+        if (menu.GetPauseMenu() != nullptr && menu.GetPauseMenu()->GetDemoPage() != nullptr)
+        {
+            menu.GetPauseMenu()->GetDemoPage()->RefreshFromMenu();
+            menu.GetPauseMenu()->GetDemoPage()->Start();
+        }
+        break;
+    }
+    case EPhase::StatsHotkey:
+        PressKey(EKeys::LeftControl);
+        TapKey(EKeys::F2);
+        break;
+    case EPhase::DemoStop:
+        ReleaseKey(EKeys::LeftControl);
+        menu.RequestStopNpcs();
+        break;    case EPhase::QuitToMenu:
     case EPhase::QuitToMenuAgain:
         menu.RequestQuitToMenu();
         break;
@@ -294,7 +344,56 @@ void FSOLMenuSmoke::ExitPhase(const EPhase phase, USOLMenuSubsystem& menu)
             && !menu.GetState().bMapOpen && menu.GetState().Mode == EMenuMode::Playing, FString::Printf(
             TEXT("mode %d"), static_cast<int32>(menu.GetState().Mode)));
         break;
-    case EPhase::PauseAgain:
+    case EPhase::MainDemo:
+    {
+        const USOLDemoPageWidget* demo = menu.GetMainMenu() != nullptr ? menu.GetMainMenu()->GetDemoPage() : nullptr;
+        const FString count = demo != nullptr ? demo->GetValueText(0) : FString();
+        const FString distance = demo != nullptr
+            ? demo->GetValueText(static_cast<int32>(SOLNpcScale::EDemoOption::BattleMaxDistanceM)) : FString();
+        Check(TEXT("Demo page steppers and preset"), count == TEXT("100,000") && distance == TEXT("21 km")
+            && menu.GetDemoPage().Options.NpcCount == 100000, FString::Printf(TEXT("count %s distance %s"), *count,
+            *distance));
+        break;
+    }
+    case EPhase::TabDemo:
+        Check(TEXT("pause Demo tab"), menu.GetState().Tab == SOLMenuState::EMenuTab::Demo, FString());
+        break;
+    case EPhase::HotkeyPause:
+        CheckPaused(menu, TEXT("Ctrl+F1 pauses"));
+        break;
+    case EPhase::HotkeyResume:
+    {
+        const int32 slateKeys = menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetSlateKeyCount() : 0;
+        Check(TEXT("Ctrl+F1 reached the pause menu through Slate"), slateKeys > mSlateKeysBefore,
+            FString::Printf(TEXT("%d -> %d"), mSlateKeysBefore, slateKeys));
+        CheckFlight(menu, TEXT("Ctrl+F1 resumes"), 1);
+        break;
+    }
+    case EPhase::DemoRunning:
+    {
+        const USOLNpcSubsystem* npcs = menu.GetWorld()->GetSubsystem<USOLNpcSubsystem>();
+        const FString overlay = npcs != nullptr && npcs->GetStatsWidget() != nullptr
+            ? npcs->GetStatsWidget()->GetText() : FString();
+        Check(TEXT("Demo applied from the pause menu"), npcs != nullptr && npcs->GetStats().Total == 100000
+            && menu.GetState().Mode == SOLMenuState::EMenuMode::Playing, FString::Printf(TEXT("total %d"),
+            npcs != nullptr ? npcs->GetStats().Total : -1));
+        Check(TEXT("stats overlay shows"), npcs != nullptr && npcs->IsStatsVisible()
+            && overlay.Contains(TEXT("NPCs 100,000")), overlay.Replace(TEXT("\n"), TEXT(" | ")));
+        break;
+    }
+    case EPhase::StatsHotkey:
+    {
+        const USOLNpcSubsystem* npcs = menu.GetWorld()->GetSubsystem<USOLNpcSubsystem>();
+        Check(TEXT("Ctrl+F2 hides the stats overlay"), npcs != nullptr && !npcs->IsStatsVisible(), FString());
+        break;
+    }
+    case EPhase::DemoStop:
+    {
+        const USOLNpcSubsystem* npcs = menu.GetWorld()->GetSubsystem<USOLNpcSubsystem>();
+        Check(TEXT("Stop NPCs removes the population"), npcs != nullptr && npcs->GetStats().Total == 0
+            && npcs->GetRequestedCount() == 0, FString());
+        break;
+    }    case EPhase::PauseAgain:
         CheckPaused(menu, TEXT("Esc pauses again"));
         break;
     case EPhase::PauseThird:
@@ -335,6 +434,8 @@ double FSOLMenuSmoke::GetPhaseDuration(const EPhase phase)
         return 4.0;
     case EPhase::Thrust:
         return 2.5;
+    case EPhase::DemoRunning:
+        return 6.0;
     case EPhase::SettingsLeave:
     case EPhase::FireNewKey:
         return 2.0;
@@ -357,6 +458,12 @@ const TCHAR* FSOLMenuSmoke::GetPhaseShot(const EPhase phase)
         return TEXT("03_MainControls");
     case EPhase::MainAbout:
         return TEXT("04_MainAbout");
+    case EPhase::MainDemo:
+        return TEXT("04d_MainDemo");
+    case EPhase::TabDemo:
+        return TEXT("09d_Pause_Demo");
+    case EPhase::DemoRunning:
+        return TEXT("14_Demo_Overlay");
     case EPhase::MainSettings:
         return TEXT("04b_MainSettings");
     case EPhase::SettingsChange:
@@ -440,8 +547,8 @@ void FSOLMenuSmoke::TapKey(const FKey& key)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sends a key press and release through Slate to the focused widget
-void FSOLMenuSmoke::SlateKey(const FKey& key) const
+// Sends a key press and release through Slate to the focused widget (with Left Ctrl held when bControl)
+void FSOLMenuSmoke::SlateKey(const FKey& key, const bool bControl) const
 {
     if (!FSlateApplication::IsInitialized())
     {
@@ -449,7 +556,8 @@ void FSOLMenuSmoke::SlateKey(const FKey& key) const
         return;
     }
     FSlateApplication& slate = FSlateApplication::Get();
-    const FKeyEvent keyEvent(key, FModifierKeysState(), slate.GetUserIndexForKeyboard(), false, 0, 0);
+    const FModifierKeysState modifiers(false, false, bControl, false, false, false, false, false, false);
+    const FKeyEvent keyEvent(key, modifiers, slate.GetUserIndexForKeyboard(), false, 0, 0);
     slate.ProcessKeyDownEvent(keyEvent);
     slate.ProcessKeyUpEvent(keyEvent);
 }

@@ -331,4 +331,148 @@ bool FSOLKeyBindingsControlsActionsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// Menu and stats hotkey tests (issue #11, Part 10e), written against the 10e contract in
+// Docs/Plans/11-scale-and-performance-demo-plan.md before any production code existed.
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsMenuHotkeysTest, "SOLTest.KeyBindings.MenuHotkeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Ctrl+F1 is the menu hotkey and Ctrl+F2 the stats hotkey (key name case-insensitive); nothing else matches either
+bool FSOLKeyBindingsMenuHotkeysTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TestTrue(TEXT("Ctrl+F1 opens the menu"), IsMenuHotkey(TEXT("F1"), true));
+    TestTrue(TEXT("Ctrl+f1 opens the menu"), IsMenuHotkey(TEXT("f1"), true));
+    TestFalse(TEXT("F1 without Ctrl"), IsMenuHotkey(TEXT("F1"), false));
+    TestFalse(TEXT("Ctrl+F2 is not the menu hotkey"), IsMenuHotkey(TEXT("F2"), true));
+
+    TestTrue(TEXT("Ctrl+F2 toggles the stats"), IsStatsHotkey(TEXT("F2"), true));
+    TestTrue(TEXT("Ctrl+f2 toggles the stats"), IsStatsHotkey(TEXT("f2"), true));
+    TestFalse(TEXT("F2 without Ctrl"), IsStatsHotkey(TEXT("F2"), false));
+    TestFalse(TEXT("Ctrl+F1 is not the stats hotkey"), IsStatsHotkey(TEXT("F1"), true));
+
+    // Other keys never match, with or without Ctrl
+    const TCHAR* others[] = { TEXT(""), TEXT("Escape"), TEXT("F3"), TEXT("F11"), TEXT("F12"), TEXT("F"), TEXT("1"),
+        TEXT("LeftControl"), TEXT("K"), TEXT(" F1"), TEXT("F1 ") };
+    for (const TCHAR* key : others)
+    {
+        TestFalse(FString::Printf(TEXT("Ctrl+'%s' is not the menu hotkey"), key), IsMenuHotkey(key, true));
+        TestFalse(FString::Printf(TEXT("'%s' is not the menu hotkey"), key), IsMenuHotkey(key, false));
+        TestFalse(FString::Printf(TEXT("Ctrl+'%s' is not the stats hotkey"), key), IsStatsHotkey(key, true));
+        TestFalse(FString::Printf(TEXT("'%s' is not the stats hotkey"), key), IsStatsHotkey(key, false));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsReservedFunctionKeysTest, "SOLTest.KeyBindings.ReservedFunctionKeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// F1 and F2 are reserved like Escape (refused by every bind path); F3 and F4 stay bindable
+bool FSOLKeyBindingsReservedFunctionKeysTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    const TCHAR* reserved[] = { TEXT("F1"), TEXT("F2"), TEXT("f1"), TEXT("f2") };
+    for (const TCHAR* key : reserved)
+    {
+        TestTrue(FString::Printf(TEXT("'%s' reserved"), key), IsReservedKey(key));
+        TestFalse(FString::Printf(TEXT("'%s' refused"), key), CanBindKey(key));
+        TestFalse(FString::Printf(TEXT("fire refuses '%s'"), key), CanBindKeyTo(KEYBINDINGS_FIRE, key));
+        TestFalse(FString::Printf(TEXT("boost refuses '%s'"), key), CanBindKeyTo(KEYBINDINGS_BOOST, key));
+    }
+    const TCHAR* bindable[] = { TEXT("F3"), TEXT("F4") };
+    for (const TCHAR* key : bindable)
+    {
+        TestFalse(FString::Printf(TEXT("'%s' not reserved"), key), IsReservedKey(key));
+        TestTrue(FString::Printf(TEXT("'%s' accepted"), key), CanBindKey(key));
+        TestTrue(FString::Printf(TEXT("fire may take '%s'"), key), CanBindKeyTo(KEYBINDINGS_FIRE, key));
+    }
+
+    // Rebind refuses F1 and F2 and leaves the keys alone, but takes F3
+    TArray<FString> keys = DefaultKeys();
+    const TArray<FString> before = keys;
+    int32 conflict = 123;
+    TestTrue(TEXT("rebind to F1 refused"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("F1"), conflict)
+        == ERebindResult::Refused);
+    TestEqual(TEXT("refusal reports no conflict"), conflict, INDEX_NONE);
+    TestTrue(TEXT("rebind to F2 refused"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("F2"), conflict)
+        == ERebindResult::Refused);
+    TestTrue(TEXT("refusals left the keys alone"), keys == before);
+    TestTrue(TEXT("rebind to F3 binds"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("F3"), conflict) == ERebindResult::Bound);
+    TestEqual(TEXT("fire is F3"), keys[KEYBINDINGS_FIRE], FString(TEXT("F3")));
+
+    // A saved override onto F1 or F2 is ignored; one onto F4 applies
+    TMap<FString, FString> overrides;
+    overrides.Add(TEXT("Fire"), TEXT("F1"));
+    overrides.Add(TEXT("Boost"), TEXT("F2"));
+    overrides.Add(TEXT("DropTarget"), TEXT("F4"));
+    const TArray<FString> resolved = ResolveKeys(overrides);
+    TestEqual(TEXT("F1 override ignored"), resolved[KEYBINDINGS_FIRE], FString(TEXT("LeftMouseButton")));
+    TestEqual(TEXT("F2 override ignored"), resolved[KEYBINDINGS_BOOST], FString(TEXT("LeftShift")));
+    TestEqual(TEXT("F4 override applied"), resolved[KEYBINDINGS_DROP], FString(TEXT("F4")));
+    return true;
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how many Controls rows have exactly this bindings text; outRow is the last such row's index
+    int32 KeyBindingsCountControlRows(const TCHAR* bindings, int32& outRow)
+    {
+        int32 count = 0;
+        outRow = INDEX_NONE;
+        for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS)); ++index)
+        {
+            if (FCString::Strcmp(SOLMenuText::CONTROL_ROWS[index].Bindings, bindings) == 0)
+            {
+                ++count;
+                outRow = index;
+            }
+        }
+        return count;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsHotkeyControlRowsTest, "SOLTest.KeyBindings.HotkeyControlRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The Controls page lists Ctrl+F1 (Menu) and Ctrl+F2 (Demo) once each, shown as "Ctrl+F1" and "Ctrl+F2"
+bool FSOLKeyBindingsHotkeyControlRowsTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    int32 menuRow = INDEX_NONE;
+    TestEqual(TEXT("one Ctrl+F1 row"), KeyBindingsCountControlRows(TEXT("LeftControl+F1"), menuRow), 1);
+    if (menuRow != INDEX_NONE)
+    {
+        const SOLMenuText::FControlRow& row = SOLMenuText::CONTROL_ROWS[menuRow];
+        TestEqual(TEXT("Ctrl+F1 row area"), FString(row.Area), FString(TEXT("Menu")));
+        TestFalse(TEXT("Ctrl+F1 row has an action"), FString(row.Action).IsEmpty());
+        TestEqual(TEXT("Ctrl+F1 shown"), SOLMenuContent::FormatBindings(row.Bindings, keys),
+            FString(TEXT("Ctrl+F1")));
+    }
+
+    int32 demoRow = INDEX_NONE;
+    TestEqual(TEXT("one Ctrl+F2 row"), KeyBindingsCountControlRows(TEXT("LeftControl+F2"), demoRow), 1);
+    if (demoRow != INDEX_NONE)
+    {
+        const SOLMenuText::FControlRow& row = SOLMenuText::CONTROL_ROWS[demoRow];
+        TestEqual(TEXT("Ctrl+F2 row area"), FString(row.Area), FString(TEXT("Demo")));
+        TestFalse(TEXT("Ctrl+F2 row has an action"), FString(row.Action).IsEmpty());
+        TestEqual(TEXT("Ctrl+F2 shown"), SOLMenuContent::FormatBindings(row.Bindings, keys),
+            FString(TEXT("Ctrl+F2")));
+    }
+
+    // The chords are fixed keys, so the default overload shows the same text
+    TestEqual(TEXT("Ctrl+F1 default overload"), SOLMenuContent::FormatBindings(TEXT("LeftControl+F1")),
+        FString(TEXT("Ctrl+F1")));
+    TestEqual(TEXT("Ctrl+F2 default overload"), SOLMenuContent::FormatBindings(TEXT("LeftControl+F2")),
+        FString(TEXT("Ctrl+F2")));
+    return true;
+}
+
 #endif

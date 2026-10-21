@@ -377,4 +377,141 @@ bool FSOLCombatGridFallbackKeepsBufferTest::RunTest(const FString& /*parameters*
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatGridGrowthTest, "SOLTest.CombatGrid.GrowthDuringBuild",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Thousands of objects in distinct cells grow the cell table many times mid-build (from empty and after a small
+// Reserve); every object is still found in its own cell and nowhere else
+bool FSOLCombatGridGrowthTest::RunTest(const FString& /*parameters*/)
+{
+    for (const int32 reserved : { 0, 16 })
+    {
+        SOLCombatGrid::FGrid grid(COMBATGRID_CELL_M);
+        grid.Reserve(reserved, reserved);
+        constexpr int32 COUNT = 5000;
+        for (int32 id = 0; id < COUNT; ++id)
+        {
+            grid.Insert(id, FVector3d(id * 1000.0 + 50.0, (id % 7) * 1000.0 + 50.0, -(id % 13) * 1000.0 + 50.0), 1.0);
+        }
+        TestEqual(TEXT("Every object inserted"), grid.Num(), COUNT);
+        TArray<int32> ids;
+        int32 exact = 0;
+        for (int32 id = 0; id < COUNT; ++id)
+        {
+            const FVector3d center(id * 1000.0 + 50.0, (id % 7) * 1000.0 + 50.0, -(id % 13) * 1000.0 + 50.0);
+            grid.QueryCandidates(center, center, 1.0, ids);
+            exact += (ids.Num() == 1 && ids[0] == id) ? 1 : 0;
+        }
+        TestEqual(*FString::Printf(TEXT("Reserve %d: each object alone in its cell"), reserved), exact, COUNT);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatGridClearRegrowTest, "SOLTest.CombatGrid.ClearThenRegrow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A grid cleared after a small build and then grown far past it keeps nothing of the first build, finds every new
+// object, and is still right after a second clear and a small rebuild
+bool FSOLCombatGridClearRegrowTest::RunTest(const FString& /*parameters*/)
+{
+    SOLCombatGrid::FGrid grid(COMBATGRID_CELL_M);
+    for (int32 id = 0; id < 300; ++id)
+    {
+        grid.Insert(id, FVector3d(id * 500.0 + 50.0, 50.0, 50.0), 1.0);
+    }
+    grid.Clear();
+
+    // Regrow to ten times the first build in other cells
+    for (int32 id = 0; id < 3000; ++id)
+    {
+        grid.Insert(10000 + id, FVector3d(50.0, id * 500.0 + 50.0, 50.0), 1.0);
+    }
+    TArray<int32> ids;
+    int32 oldFound = 0;
+    for (int32 id = 0; id < 300; ++id)
+    {
+        const FVector3d center(id * 500.0 + 50.0, 50.0, 50.0);
+        grid.QueryCandidates(center, center, 1.0, ids);
+        oldFound += ids.ContainsByPredicate([](const int32 value) { return value < 10000; }) ? 1 : 0;
+    }
+    TestEqual(TEXT("Nothing of the first build survives Clear"), oldFound, 0);
+    int32 newFound = 0;
+    for (int32 id = 0; id < 3000; ++id)
+    {
+        const FVector3d center(50.0, id * 500.0 + 50.0, 50.0);
+        grid.QueryCandidates(center, center, 1.0, ids);
+        newFound += CombatGridCount(ids, 10000 + id) == 1 ? 1 : 0;
+    }
+    TestEqual(TEXT("Every regrown object found"), newFound, 3000);
+
+    // Second clear and a small rebuild on the grown table
+    grid.Clear();
+    grid.Insert(42, FVector3d(50.0, 50.0, 50.0), 1.0);
+    grid.QueryCandidates(FVector3d(50.0, 50.0, 50.0), FVector3d(50.0, 50.0, 50.0), 1.0, ids);
+    TestTrue(TEXT("Small rebuild after the regrow"), ids.Num() == 1 && ids[0] == 42);
+    grid.QueryCandidates(FVector3d(50.0, 1550.0, 50.0), FVector3d(50.0, 1550.0, 50.0), 1.0, ids);
+    TestEqual(TEXT("A cell of the big build is empty again"), ids.Num(), 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLCombatGridDenseBlockTest, "SOLTest.CombatGrid.DenseCellBlock",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A solid block of adjacent occupied cells (neighbouring keys, so long probe runs in the cell table) keeps every
+// cell's list separate, including several objects per cell, and empty cells around the block return nothing
+bool FSOLCombatGridDenseBlockTest::RunTest(const FString& /*parameters*/)
+{
+    SOLCombatGrid::FGrid grid(COMBATGRID_CELL_M);
+    constexpr int32 SIDE = 24;
+    constexpr int32 DEPTH = 6;
+
+    // Returns the centre of a cell of the block (negative indices too)
+    const auto cellCenter = [](const int32 x, const int32 y, const int32 z)
+    {
+        return FVector3d((x - SIDE / 2) * COMBATGRID_CELL_M + 50.0, (y - SIDE / 2) * COMBATGRID_CELL_M + 50.0,
+            (z - DEPTH / 2) * COMBATGRID_CELL_M + 50.0);
+    };
+    int32 id = 0;
+    for (int32 z = 0; z < DEPTH; ++z)
+    {
+        for (int32 y = 0; y < SIDE; ++y)
+        {
+            for (int32 x = 0; x < SIDE; ++x)
+            {
+                // Two objects per cell (ids 2k and 2k + 1)
+                grid.Insert(id++, cellCenter(x, y, z) + FVector3d(-10.0, 0.0, 0.0), 1.0);
+                grid.Insert(id++, cellCenter(x, y, z) + FVector3d(10.0, 0.0, 0.0), 1.0);
+            }
+        }
+    }
+    TArray<int32> ids;
+    int32 exact = 0;
+    int32 expected = 0;
+    for (int32 z = 0; z < DEPTH; ++z)
+    {
+        for (int32 y = 0; y < SIDE; ++y)
+        {
+            for (int32 x = 0; x < SIDE; ++x)
+            {
+                const FVector3d center = cellCenter(x, y, z);
+                grid.QueryCandidates(center, center, 1.0, ids);
+                ids.Sort();
+                exact += (ids.Num() == 2 && ids[0] == expected && ids[1] == expected + 1) ? 1 : 0;
+                expected += 2;
+            }
+        }
+    }
+    TestEqual(TEXT("Every cell holds exactly its two objects"), exact, SIDE * SIDE * DEPTH);
+    const FVector3d outside = cellCenter(SIDE + 1, 0, 0);
+    grid.QueryCandidates(outside, outside, 1.0, ids);
+    TestEqual(TEXT("A cell beyond the block is empty"), ids.Num(), 0);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS
