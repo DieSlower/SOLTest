@@ -27,7 +27,7 @@
 - [x] **Part 7 (#8) — HUD/menus, controls and info/about screens, settings.**
 - [ ] **Part 8 (#9) — Art and audio pass** (real ship model, textures, sounds).
 - [ ] **Part 9 (#10) — Procedural terrain and atmospheres** (PCG/Nanite).
-- [ ] **Part 10 (#11) — Scale and performance demo** (NPC ships in Mass, stress test toward 1M).
+- [x] **Part 10 (#11) — Scale and performance demo** (NPC ships in Mass, stress test toward 1M).
 
 ## Cross-cutting tooling
 
