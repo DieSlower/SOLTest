@@ -492,6 +492,15 @@ private:
     // Enhanced Input: pause menu (Esc in the ship mapping)
     void OnPauseAction(const FInputActionValue& value);
 
+    // Enhanced Input: F1 in the ship and map mappings; with Ctrl held it acts as Esc (SDD 11 section 3.9)
+    void OnMenuHotkeyAction(const FInputActionValue& value);
+
+    // Enhanced Input: F2 in the ship mapping; with Ctrl held it shows or hides the NPC stats overlay
+    void OnStatsHotkeyAction(const FInputActionValue& value);
+
+    // Returns whether Left or Right Ctrl is held (the Ctrl+F1 / Ctrl+F2 hotkeys)
+    bool IsControlHeld() const;
+
     // Menu state changed: suspends the ship's control while a menu shows and restores it on resume
     void HandleMenuStateChanged(const SOLMenuState::FMenuState& previous, const SOLMenuState::FMenuState& next);
 
@@ -633,6 +642,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> PauseAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MenuHotkeyAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> StatsHotkeyAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputMappingContext> MapMappingContext;

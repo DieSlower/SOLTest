@@ -29,10 +29,13 @@ public class SOLTest : ModuleRules
             "EngineSettings",
             "EnhancedInput",
             "InputCore",
+            "MeshDescription",
             "Niagara",
             "RenderCore",
+            "RHI",
             "Slate",
             "SlateCore",
+            "StaticMeshDescription",
             "UMG",
         });
     }

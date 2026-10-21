@@ -625,6 +625,13 @@ namespace SOL
         inline constexpr float SETTINGS_REBIND_WIDTH = 120.0f;    // The Rebind button of a key row
         inline constexpr float SETTINGS_ACTION_WIDTH = 150.0f;    // Apply / Revert buttons
         inline constexpr float SETTINGS_RESET_KEYS_WIDTH = 280.0f; // Reset keys button
+
+        // Demo page (SDD 11, Part 10e) and the NPC stats overlay
+        inline constexpr float DEMO_ACTION_WIDTH = 160.0f;        // Preset, Reset, Stop and Start buttons
+        inline constexpr float STATS_OVERLAY_MARGIN = 16.0f;      // Overlay inset from the screen's top-right corner
+        inline constexpr float STATS_OVERLAY_WIDTH = 520.0f;        // Minimum; the panel grows with its longest line
+        inline constexpr int32 STATS_FONT_SIZE = 12;
+        inline const FLinearColor STATS_BACKGROUND(0.0f, 0.0f, 0.0f, 0.55f);
     }
 
     // Settings (SDD 8, 8d): the USOLSettingsSave slot, its schema version and the slider steps
@@ -695,6 +702,16 @@ namespace SOL
                                                                                   // target is left unshot this many s,
                                                                                   // with frame screenshots (issue #15)
         inline constexpr const TCHAR* SPECTATOR = TEXT("SOLSpectator");         // Debug free-fly pawn, not the ship
+        inline constexpr const TCHAR* NPC_COUNT = TEXT("SOLNpcCount=");          // NPC ships to spawn (SDD 11; "250k",
+                                                                                  // "1M" accepted, see ParseNpcCount)
+        inline constexpr const TCHAR* NPC_SEED = TEXT("SOLNpcSeed=");            // NPC population seed
+        inline constexpr const TCHAR* NPC_BATTLE_SHIPS = TEXT("SOLNpcBattleShips="); // NPC battle ships near the
+                                                                                  // player (Demo option; 10d tests)
+        inline constexpr const TCHAR* NPC_FACE_BATTLE = TEXT("SOLNpcFaceBattle="); // Turn the ship toward this
+                                                                                  // NPC battle after each spawn (10d
+                                                                                  // measurements and screenshots)
+        inline constexpr const TCHAR* NPC_RAMP = TEXT("SOLNpcRamp");             // Ramp up to -SOLNpcCount, log each
+                                                                                  // stage, then quit
         inline constexpr const TCHAR* STAR_SMOKE = TEXT("SOLStarSmoke=");       // Comma-separated FOVs (deg): one
                                                                                   // screenshot each, look input locked,
                                                                                   // then quit (SDD 13 star checks)
@@ -731,6 +748,12 @@ namespace SOL
         // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the
         // (CPU-sim) bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is
         // optional: a missing asset disables only its own effect, with a warning
+        // NPC renderer (SDD 11 section 3.4, Part 10c): GPU point material (rail evaluation in the vertex shader) and
+        // the placeholder hull material; the two placeholder hulls are engine basic shapes (open question 10)
+        inline constexpr const TCHAR* NPC_POINTS_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcPoints.M_SOLNpcPoints");
+        inline constexpr const TCHAR* NPC_HULL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcHull.M_SOLNpcHull");
+        inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_0 = TEXT("/Engine/BasicShapes/Cone.Cone");
+        inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_1 = TEXT("/Engine/BasicShapes/Cube.Cube");
         inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
         inline constexpr const TCHAR* COMBAT_IMPACT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLImpact.NS_SOLImpact");
         inline constexpr const TCHAR* COMBAT_SHIELD_BREAK_NIAGARA_SYSTEM =
@@ -1008,4 +1031,79 @@ namespace SOL
         "Band phase vector parameters must hold exactly GAS_GIANT_BAND_SAMPLE_COUNT phases");
     static_assert(UE_ARRAY_COUNT(GasGiantMaterialParams::STORMS) == GAS_GIANT_MAX_STORMS,
         "One storm vector parameter per possible storm");
+
+    // NPC scale demo (SDD 11, issue #11): population cap, ramp stages, Demo-page count presets, frame target, seed
+    inline constexpr int32 NPC_MAX_COUNT = 1000000;
+    inline constexpr int32 NPC_RAMP_STAGE_COUNTS[] = { 10000, 100000, 250000, 500000, 1000000 };
+    inline constexpr int32 NPC_COUNT_PRESETS[] = { 0, 1000, 10000, 100000, 250000, 500000, 1000000 };
+    inline constexpr double NPC_TARGET_FPS = 60.0;
+    inline constexpr uint32 NPC_DEFAULT_SEED = 0x50C1A11Du;
+
+    // NPC Mid-tier deviation spring (SDD 11 section 3.1): critically damped angular frequency (1/s) and leash (m; at
+    // least every class's leash, so a Full ship demoted to Mid never jumps: SDD 11 Amendment 7)
+    inline constexpr double NPC_MID_DEVIATION_OMEGA = 0.5;
+    inline constexpr double NPC_MID_DEVIATION_LEASH_M = 3000.0;
+
+    // NPC population (SDD 11 sections 3.1-3.2): spawn slicing, Mass chunks, class hash, temporal cull
+    inline constexpr int32 NPC_SPAWN_ENTITIES_PER_FRAME = 25000;       // Spawn time-slice: entities created per frame
+                                                                       // (SDD 11 Amendment 6)
+    inline constexpr int32 NPC_CHUNK_MEMORY_BYTES = 512 * 1024;        // Mass chunk size of the NPC archetypes (the
+                                                                       // engine maximum; default is 128 KB)
+    inline constexpr uint32 NPC_CLASS_HASH_STREAM = 0xC1A55u;          // HashUnit stream picking each ship's class
+    inline constexpr double NPC_WAKE_SPEED_MARGIN = 1.25;              // Safety factor on each group's ship speed
+                                                                       // bound (temporal cull, Amendment 1)
+
+    // NPC renderer (SDD 11 section 3.4, Part 10c)
+    inline constexpr int32 NPC_POINT_BLOCK_SHIPS = 4096;               // Ships per point-block mesh (one ISM instance)
+    inline constexpr int32 NPC_RAIL_TEXTURE_WIDTH = 2048;              // Rail texture width (2 texels per ship)
+    inline constexpr int32 NPC_CPU_TEXTURE_WIDTH = 1024;               // CPU point texture width (1 texel per ship)
+    inline constexpr int32 NPC_GROUP_TEXTURE_WIDTH = 64;               // Group texture width (max groups)
+    inline constexpr double NPC_RENDER_SPACE_BOUNDS_CM = 5.0e11;       // Half-extent of the NPC point layers' and
+                                                                       // hulls' fixed bounds (all render space)
+    inline constexpr double NPC_GPU_RAIL_EPOCH_S = 1.0e4;              // The GPU rail copy is re-based once the rail
+                                                                       // time runs this far (sim s) from its epoch...
+    inline constexpr double NPC_GPU_RAIL_EPOCH_MIN_INTERVAL_S = 2.0;   // ...at most once per this many real seconds
+                                                                       // (Amendment 7)
+    inline constexpr double NPC_POINT_MIN_PIXELS = 2.0;                // Point diameter floor, in pixels
+    inline constexpr double NPC_HULL_LENGTH_M = 30.0;                  // Placeholder hull length
+    inline constexpr double NPC_HULL_MIN_PIXELS = 3.0;                 // Instanced hulls never shrink below this
+    inline constexpr int32 NPC_HULL_MIN_INSTANCES = 1024;              // Hull ISM instance count floor once grown...
+    inline constexpr int32 NPC_HULL_SHRINK_FRAMES = 300;               // ...shrunk after this many frames in a row
+                                                                       // using under a quarter of the instances
+    inline constexpr double NPC_HEADING_MIN_SPEED_SQ_MPS2 = 1.0;       // Hulls face their steering velocity above
+                                                                       // 1 m/s (squared), else their motion
+    inline constexpr double NPC_POINT_BRIGHTNESS_REF_M = 2.0e6;        // Full brightness up to this distance...
+    inline constexpr double NPC_POINT_BRIGHTNESS_EXPONENT = 0.5;       // ...then falls off as (ref / d)^exponent...
+    inline constexpr double NPC_POINT_BRIGHTNESS_MIN = 0.04;           // ...down to this floor (open question 9)
+    inline constexpr double NPC_POINT_EMISSIVE = 4.0;                  // Point emissive scale (exposure-relative)
+    inline constexpr FLinearColor NPC_FACTION_COLORS[] = {
+        FLinearColor(0.25f, 0.6f, 1.0f),                               // Faction 0: blue
+        FLinearColor(1.0f, 0.4f, 0.2f),                                // Faction 1: orange
+    };
+
+    // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
+    inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist
+    inline constexpr double NPC_STATS_REFRESH_PERIOD_S = 0.25;         // Stats overlay text refresh (4 Hz)
+    inline constexpr int32 NPC_STATS_FRAME_WINDOW = 240;               // Overlay frame-time window (frames, for p95)
+    inline constexpr int32 NPC_STATS_OVERLAY_Z_ORDER = 5;              // Above the HUD, below the menus
+
+    // NPC Full-tier AI and NPC-vs-NPC combat (SDD 11 section 3.6, Part 10d; class numbers in SOLNpcAiMath.cpp)
+    inline constexpr double NPC_AI_TARGET_GRID_CELL_M = 2000.0;        // Target-search grid cell
+    inline constexpr double NPC_AI_SHIP_GRID_CELL_M = 250.0;           // Separation and bolt-sweep grid cell
+    inline constexpr double NPC_AI_NEAR_TARGET_SEARCH_M = 1000.0;      // First, cheap target-search ring
+    inline constexpr uint32 NPC_AI_IDLE_SEARCH_INTERVAL_FRAMES = 8;    // A ship with no target searches every 8th
+                                                                       // frame (staggered by index; Amendment 6)
+    inline constexpr double NPC_AI_KEEP_RANGE_SCALE = 1.2;             // A target is kept out to 1.2x the engage range
+    inline constexpr double NPC_AI_IDLE_RETURN_RATE = 0.05;            // Without a target: back to the rail at this
+                                                                       // fraction of the deviation per second
+    inline constexpr int32 NPC_AI_MAX_SHOTS_PER_FRAME = 2;             // Per ship and frame (SOLFireCadence cap)
+    inline constexpr int32 NPC_MAX_BOLTS = 65536;                      // NPC bolt pool (real and cosmetic); shots
+                                                                       // beyond it are dropped and counted
+    inline constexpr int32 NPC_BOLT_RENDER_CAP = 8192;                 // NPC bolts drawn at once (nearest first)
+    inline constexpr double NPC_COMBAT_VISUAL_RADIUS_M = 20000.0;      // Hybrid real-bolt radius; tracers and effects
+                                                                       // are only made inside it (the player's range)
+    inline constexpr int32 NPC_COMBAT_DEFAULT_MODEL = 2;               // SOLNpcAi::ECombatModel: Hybrid (SDD 11
+                                                                       // open question 11, Amendment 4)
+    inline constexpr int32 NPC_FX_EXPLOSION_POOL_SIZE = 16;            // Pooled NPC explosions near the camera
+    inline constexpr int32 NPC_FX_IMPACT_POOL_SIZE = 24;               // Pooled NPC bolt impacts near the camera
 }

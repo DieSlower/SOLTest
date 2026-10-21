@@ -206,6 +206,9 @@ namespace SOLMenuText
         { TEXT("Jump map"), TEXT("Enter"), TEXT("Jump to the destination") },
         { TEXT("Jump map"), TEXT("Escape"), TEXT("Close the map") },
         { TEXT("Menu"), TEXT("Escape"), TEXT("Pause menu (in flight) / resume") },
+        { TEXT("Menu"), TEXT("LeftControl+F1"),
+            TEXT("Same as Esc (temporary: Esc stops Play-In-Editor before the game sees it)") },
+        { TEXT("Demo"), TEXT("LeftControl+F2"), TEXT("Show or hide the NPC stats overlay") },
     };
 
     // Info page headings
@@ -281,7 +284,69 @@ namespace SOLMenuText
             "Your ship and targets are shadowed too: fly under a dense ring or into a planet's night-side shadow and "
             "the sunlight on them dims or goes out, leaving only the fill light. The edges are soft, as wide as the "
             "Sun's disc seen from there."),
+        TEXT("The Demo page (main menu, or the Demo tab here) fills the solar system with up to a million NPC ships "
+            "on lanes between the planets, in clusters around bodies and the asteroid belt, and in battles a few "
+            "kilometres from you. Ships near you fly and fight with full AI; farther ones follow simpler motion and "
+            "are drawn as points. Ctrl+F2 shows or hides the stats overlay. Ctrl+F1 does the same as Esc, for "
+            "Play-In-Editor, where Esc stops the game."),
     };
+
+    // Demo page (SDD 11 section 3.8, Part 10e); row labels in SOLMenuState Demo row order (every option, then the
+    // combat model, seed and ramp rows)
+    inline constexpr const TCHAR* DEMO = TEXT("Demo");
+    inline constexpr const TCHAR* DEMO_TITLE = TEXT("Scale demo");
+    inline constexpr const TCHAR* DEMO_HINT = TEXT("NPC ships across the solar system, up to a million. Options "
+        "last for this session. Start demo spawns your ship above the start body, then the NPCs.");
+    inline constexpr const TCHAR* DEMO_PAUSE_HINT = TEXT("Apply respawns the NPCs with these options around your ship "
+        "and resumes; Stop NPCs removes them.");
+    inline constexpr const TCHAR* DEMO_PRESETS = TEXT("Presets");
+    inline constexpr const TCHAR* DEMO_PRESET_LABELS[] = { TEXT("Showcase"), TEXT("Benchmark"), TEXT("Ramp") };
+    inline constexpr const TCHAR* DEMO_RESET = TEXT("Reset");
+    inline constexpr const TCHAR* DEMO_START = TEXT("Start demo");
+    inline constexpr const TCHAR* DEMO_APPLY = TEXT("Apply");
+    inline constexpr const TCHAR* DEMO_STOP = TEXT("Stop NPCs");
+    inline constexpr const TCHAR* DEMO_NO_WARNINGS = TEXT("No warnings.");
+    inline constexpr const TCHAR* DEMO_VALUE_ON = TEXT("On");
+    inline constexpr const TCHAR* DEMO_VALUE_OFF = TEXT("Off");
+    inline constexpr const TCHAR* DEMO_UNIT_KM = TEXT(" km");
+    inline constexpr const TCHAR* DEMO_UNIT_SECONDS = TEXT(" s");
+    // Combat model names, in SOLNpcAi::ECombatModel order (bolts, statistical, hybrid)
+    inline constexpr const TCHAR* DEMO_COMBAT_MODEL_LABELS[] = { TEXT("Bolts"), TEXT("Statistical"), TEXT("Hybrid") };
+    inline constexpr const TCHAR* DEMO_WARNING_FULL_BUDGET = TEXT("More battle ships than the Full AI budget: some "
+        "battle ships run Mid AI and do not fight.");
+    inline constexpr const TCHAR* DEMO_WARNING_BEYOND_FULL = TEXT("Battles reach past the Full AI radius: ships there "
+        "run Mid AI and do not fight.");
+    inline constexpr const TCHAR* DEMO_ROW_LABELS[] =
+    {
+        TEXT("NPC count"),
+        TEXT("Lane fraction"),
+        TEXT("Battle ships near you"),
+        TEXT("Battles"),
+        TEXT("Battle radius"),
+        TEXT("Battle distance min"),
+        TEXT("Battle distance max"),
+        TEXT("Full AI radius"),
+        TEXT("Mid AI radius"),
+        TEXT("Full AI budget"),
+        TEXT("Mid AI budget"),
+        TEXT("AI hysteresis"),
+        TEXT("Mesh radius"),
+        TEXT("Instanced radius"),
+        TEXT("Mesh budget"),
+        TEXT("Instanced budget"),
+        TEXT("Render hysteresis"),
+        TEXT("NPC combat"),
+        TEXT("Stats overlay"),
+        TEXT("Ramp settle time"),
+        TEXT("Ramp measure time"),
+        TEXT("Combat model"),
+        TEXT("Seed"),
+        TEXT("Run the stress ramp"),
+    };
+
+    // Demo page section headings, in page order (USOLDemoPageWidget lays out the rows under each)
+    inline constexpr const TCHAR* DEMO_SECTION_TITLES[] = { TEXT("Population"), TEXT("Battles"), TEXT("AI tiers"),
+        TEXT("Render tiers"), TEXT("Combat"), TEXT("Stats and stress ramp") };
 
     // About page
     inline constexpr const TCHAR* ABOUT_TITLE = TEXT("About");
@@ -290,6 +355,6 @@ namespace SOLMenuText
     inline constexpr const TCHAR* ABOUT_COPYRIGHT = TEXT("Copyright © 2026 Acid Rain Studios LLC. All rights reserved.");
     inline constexpr const TCHAR* ABOUT_ENGINE_FORMAT = TEXT("Built with Unreal Engine {0}");
     inline constexpr const TCHAR* ABOUT_CREDITS_TITLE = TEXT("Credits");
-    inline constexpr const TCHAR* ABOUT_CREDITS = TEXT("Design and development: Acid Rain Studios LLC. Orbital elements: "
-        "NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0).");
+    inline constexpr const TCHAR* ABOUT_CREDITS = TEXT("Design and development: Acid Rain Studios LLC. ")
+        TEXT("Orbital elements: NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0).");
 }

@@ -18,6 +18,7 @@ class APlayerController;
 class USOLBodyRegistrySubsystem;
 class USOLJumpSubsystem;
 class USOLMainMenuWidget;
+class USOLNpcSubsystem;
 class USOLPauseMenuWidget;
 class USOLSettingsSubsystem;
 class USOLShipSubsystem;
@@ -130,6 +131,19 @@ public:
     // Returns the local player controller, or nullptr
     APlayerController* GetPlayerController() const;
 
+    // Returns the Demo page's options (session-only; re-read from the NPC subsystem whenever a menu opens)
+    const SOLMenuState::FDemoPage& GetDemoPage() const { return mDemoPage; }
+
+    // Replaces the Demo page's options (its steppers, presets and Reset)
+    void SetDemoPage(const SOLMenuState::FDemoPage& page) { mDemoPage = page; }
+
+    // Starts the demo with the Demo page's options: from the main menu as Play does (the NPCs follow the ship), from
+    // the pause menu at once (the population respawns around the ship) and resumes
+    void RequestStartDemo();
+
+    // Stops the NPC ramp and removes every NPC (pause menu Demo tab)
+    void RequestStopNpcs();
+
 protected:
 
     // Limits the subsystem to game and PIE worlds so editor and automation worlds are unaffected
@@ -164,6 +178,9 @@ private:
     // Ends the settings visit of both menus' Settings pages (a menu opened or closed)
     void EndSettingsVisit();
 
+    // Re-reads the Demo page's options and combat model from the NPC subsystem (console and flag changes show)
+    void SyncDemoPageFromNpcs();
+
     UPROPERTY(Transient)
     TObjectPtr<USOLShipSubsystem> Ships;
 
@@ -178,6 +195,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSubsystem> Settings;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLNpcSubsystem> Npcs;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMainMenuWidget> MainMenu;
@@ -195,4 +215,6 @@ private:
     double mLastSmokeStepSeconds = 0.0;                // Real time of the last smoke step
     int32 mStartBodyIndex = INDEX_NONE;                // Body the ship starts above
     int32 mPlayCount = 0;                              // Ship spawns through Play
+    SOLMenuState::FDemoPage mDemoPage;                 // Demo page options (session-only, SDD 11 answer 6)
+    bool mIsDemoStartPending = false;                  // Start demo pressed in the main menu: NPCs follow the ship
 };

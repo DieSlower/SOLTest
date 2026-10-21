@@ -12,6 +12,7 @@
 
 class UBorder;
 class USOLMenuButton;
+class USOLDemoPageWidget;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
 class UTextBlock;
@@ -25,11 +26,13 @@ enum class ESOLMainMenuPage : uint8
     Controls,
     Settings,
     About,
+    Demo,
 };
 
 /**
  * Main menu (SDD 8, 8c), a UMG widget tree built entirely in C++: a left column with the title and the Play, Start
- * location, Controls, Settings, About and Quit buttons over the live solar system, and a page panel beside it for the
+ * location, Controls, Settings, About and Quit buttons (and Demo, SDD 11 Part 10e: the NPC scale demo's options and
+ * Start demo) over the live solar system, and a page panel beside it for the
  * start-location picker (every registry body; the choice is the start body Play uses, the same mechanism as -SOLStart),
  * Controls (keys from the applied settings, so rebinds show), Settings (8d; leaving the page ends the settings visit)
  * and About. Mouse and keyboard: hover or Tab / arrows move the highlight, Enter / Space or a click activates, Esc
@@ -57,6 +60,9 @@ public:
     // Returns the Settings page
     USOLSettingsPageWidget* GetSettingsPage() const { return SettingsPage; }
 
+    // Returns the Demo page
+    USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
+
 protected:
 
     // Builds the widget tree (no widget blueprint) and makes the menu focusable
@@ -65,7 +71,7 @@ protected:
     // Refreshes the button highlights (focus follows the keyboard and the mouse)
     virtual void NativeTick(const FGeometry& geometry, float deltaSeconds) override;
 
-    // Esc closes the open page; every other key is left to the focused button and Slate navigation
+    // Esc (or Ctrl+F1) closes the open page; every other key is left to the focused button and Slate navigation
     virtual FReply NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent) override;
 
 private:
@@ -74,6 +80,7 @@ private:
     enum class EEntry : uint8
     {
         Play,
+        Demo,
         StartLocation,
         Controls,
         Settings,
@@ -102,6 +109,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsPageWidget> SettingsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLDemoPageWidget> DemoPage;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;

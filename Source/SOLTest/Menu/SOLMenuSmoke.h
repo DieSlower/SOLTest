@@ -36,6 +36,11 @@ class USOLMenuSubsystem;
  * shows K, resumes (the second write), then holds the left mouse (no bolt) and K (bolts fire). At the end it restores
  * the starting values and default keys through the page (the third write) and checks the slot and the engine's
  * quality level are back.
+ *
+ * Demo (SDD 11, Part 10e): the main menu's Demo page (stepper and preset, screenshot), the pause menu's Demo tab
+ * (screenshot), Ctrl+F1 through the ship mapping (pauses) and through Slate (resumes), then a demo applied from the
+ * pause menu's Demo tab with 100k ships (the population spawns and the stats overlay shows; screenshot), Ctrl+F2 hides
+ * the overlay, and Stop NPCs removes the population.
  */
 class SOLTEST_API FSOLMenuSmoke
 {
@@ -56,6 +61,7 @@ private:
         StartPicker,
         MainControls,
         MainAbout,
+        MainDemo,
         MainSettings,
         SettingsChange,
         SettingsLeave,
@@ -72,9 +78,12 @@ private:
         RebindCapture,
         RebindFire,
         ControlsRebound,
+        TabDemo,
         TabAbout,
         TabQuit,
         ResumeSlate,
+        HotkeyPause,
+        HotkeyResume,
         FireOldKey,
         FireNewKey,
         MapOpen,
@@ -88,6 +97,10 @@ private:
         RestorePause,
         RestoreSettings,
         RestoreResume,
+        DemoApply,
+        DemoRunning,
+        StatsHotkey,
+        DemoStop,
         Done,
     };
 
@@ -130,8 +143,8 @@ private:
     // Returns the live bolt count of the combat subsystem (0 without it)
     static int32 GetBoltCount(const USOLMenuSubsystem& menu);
 
-    // Sends a key press and release through Slate to the focused widget
-    void SlateKey(const FKey& key) const;
+    // Sends a key press and release through Slate to the focused widget (with Left Ctrl held when bControl)
+    void SlateKey(const FKey& key, bool bControl = false) const;
 
     // Sends a mouse button press and release through Slate at the cursor
     void SlateMouseButton(const FKey& button) const;

@@ -15,6 +15,8 @@
 #include "MinorBodies/SOLAsteroidBeltVisuals.h"
 #include "MinorBodies/SOLPlanetRing.h"
 #include "MinorBodies/SOLRingVisuals.h"
+#include "Npc/SOLNpcCombatVisuals.h"
+#include "Npc/SOLNpcVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -98,6 +100,8 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
     GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
+    GetWorld()->SpawnActor<ASOLNpcVisuals>(ASOLNpcVisuals::StaticClass(), FTransform::Identity, params);
+    GetWorld()->SpawnActor<ASOLNpcCombatVisuals>(ASOLNpcCombatVisuals::StaticClass(), FTransform::Identity, params);
     OrbitLineVisuals = GetWorld()->SpawnActor<ASOLOrbitLineVisuals>(ASOLOrbitLineVisuals::StaticClass(),
         FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);

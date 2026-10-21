@@ -12,6 +12,7 @@
 #include "Menu/SOLPauseMenuWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcSubsystem.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -59,7 +60,10 @@ void USOLMenuSubsystem::Initialize(FSubsystemCollectionBase& collection)
     Ships = collection.InitializeDependency<USOLShipSubsystem>();
     Targeting = collection.InitializeDependency<USOLTargetingSubsystem>();
     Jump = collection.InitializeDependency<USOLJumpSubsystem>();
+    Npcs = collection.InitializeDependency<USOLNpcSubsystem>();
     Super::Initialize(collection);
+    mDemoPage = SOLMenuState::DefaultDemoPage();
+    SyncDemoPageFromNpcs();
     mQueuedEvents.Reserve(MENU_EVENT_QUEUE_RESERVE);
 
     // The start body defaults to -SOLStart (else Earth); verification runs skip the menu and start in flight
@@ -109,6 +113,7 @@ void USOLMenuSubsystem::Deinitialize()
     PauseMenu = nullptr;
     Settings = nullptr;
     Jump = nullptr;
+    Npcs = nullptr;
     mSmoke.Reset();
     mQueuedEvents.Empty();
     mOnStateChanged.Clear();
@@ -224,6 +229,44 @@ void USOLMenuSubsystem::RequestQuitToMenu()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Starts the demo with the Demo page's options
+void USOLMenuSubsystem::RequestStartDemo()
+{
+    if (mState.Mode == SOLMenuState::EMenuMode::MainMenu)
+    {
+        // The NPCs are set up when Play spawns the ship (StartFlight), so the battles form around it
+        mIsDemoStartPending = true;
+        RequestPlay();
+    }
+    else if (mState.Mode == SOLMenuState::EMenuMode::Paused && Npcs != nullptr)
+    {
+        Npcs->StartDemo(mDemoPage.Options, mDemoPage.CombatModel, mDemoPage.bRamp);
+        RequestResume();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Stops the NPC ramp and removes every NPC
+void USOLMenuSubsystem::RequestStopNpcs()
+{
+    if (Npcs != nullptr)
+    {
+        Npcs->Stop();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Re-reads the Demo page's options and combat model from the NPC subsystem
+void USOLMenuSubsystem::SyncDemoPageFromNpcs()
+{
+    if (Npcs != nullptr)
+    {
+        mDemoPage.Options = Npcs->GetOptions();
+        mDemoPage.CombatModel = Npcs->GetCombatModel();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Quits the application
 void USOLMenuSubsystem::RequestQuitGame()
 {
@@ -336,6 +379,12 @@ void USOLMenuSubsystem::ApplyEvent(const SOLMenuState::EMenuEvent event)
     {
         ReturnToMainMenu();
     }
+
+    // A menu opening shows the NPC options in use (a console command or flag may have changed them in flight)
+    if (previous.Mode == SOLMenuState::EMenuMode::Playing)
+    {
+        SyncDemoPageFromNpcs();
+    }
     RefreshWidgets();
     mOnStateChanged.Broadcast(previous, mState);
 }
@@ -353,6 +402,13 @@ void USOLMenuSubsystem::StartFlight()
     Ships->SpawnPlayerShip(GetStartBodyName());
     ++mPlayCount;
     SwapPawn();
+
+    // Start demo: the NPC population spawns at the NPC subsystem's next update, around the new ship
+    if (mIsDemoStartPending && Npcs != nullptr)
+    {
+        Npcs->StartDemo(mDemoPage.Options, mDemoPage.CombatModel, mDemoPage.bRamp);
+    }
+    mIsDemoStartPending = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -364,6 +420,12 @@ void USOLMenuSubsystem::ReturnToMainMenu()
     if (Jump != nullptr)
     {
         Jump->CancelJump();
+    }
+
+    // The NPCs go with the flight (their options stay for the Demo page)
+    if (Npcs != nullptr)
+    {
+        Npcs->Stop();
     }
     SwapPawn();
     if (Ships != nullptr)
@@ -394,7 +456,8 @@ void USOLMenuSubsystem::SwapPawn()
         return;
     }
 
-    // Destroying the old pawn runs its EndPlay now, so it unregisters as the observer actor before the new one registers
+    // Destroying the old pawn runs its EndPlay now, so it unregisters as the observer actor before the new one
+    // registers
     if (APawn* oldPawn = playerController->GetPawn())
     {
         playerController->UnPossess();
