@@ -111,6 +111,7 @@ namespace SOLMenuText
         { TEXT("Flight"), TEXT("Roll right") },
         { TEXT("Flight"), TEXT("Boost (hold)") },
         { TEXT("Flight"), TEXT("Toggle flight assist") },
+        { TEXT("Flight"), TEXT("Stop spin") },
         { TEXT("Flight"), TEXT("Free-look (hold)") },
         { TEXT("Flight"), TEXT("Recenter the joystick") },
         { TEXT("Flight"), TEXT("Speed panel") },
@@ -171,7 +172,8 @@ namespace SOLMenuText
 
     inline constexpr FControlRow CONTROL_ROWS[] =
     {
-        { TEXT("Flight"), TEXT("Mouse2D"), TEXT("Steer: the mouse moves a virtual joystick (yaw and pitch)") },
+        { TEXT("Flight"), TEXT("Mouse2D"),
+            TEXT("Steer: the mouse moves a virtual joystick (yaw and pitch rate; torque in manual flight)") },
         { TEXT("Flight"), TEXT("@RecenterStick"), TEXT("Recenter the joystick (stop turning)") },
         { TEXT("Flight"), TEXT("@ThrustForward|@ThrustBackward"), TEXT("Thrust forward / backward") },
         { TEXT("Flight"), TEXT("@StrafeLeft|@StrafeRight"), TEXT("Strafe left / right") },
@@ -179,7 +181,8 @@ namespace SOLMenuText
         { TEXT("Flight"), TEXT("@RollLeft|@RollRight"), TEXT("Roll left / right") },
         { TEXT("Flight"), TEXT("@Boost"), TEXT("Boost (hold)") },
         { TEXT("Flight"), TEXT("@ToggleAssist"),
-            TEXT("Toggle flight assist (starts on unless turned off in Settings)") },
+            TEXT("Toggle flight assist: on = assisted, off = manual (starts on unless turned off in Settings)") },
+        { TEXT("Flight"), TEXT("@StopSpin"), TEXT("Stop spin: cancel all rotation (hold)") },
         { TEXT("Flight"), TEXT("@FreeLook"), TEXT("Free-look around the ship (hold)") },
         { TEXT("Flight"), TEXT("MouseWheelAxis"), TEXT("Step the speed cap ({SpeedCapNotches} notches per factor of ten)") },
         { TEXT("Flight"), TEXT("@SpeedPanel"), TEXT("Speed panel: set the cap digit by digit or from a body's speed") },
@@ -222,15 +225,23 @@ namespace SOLMenuText
     inline constexpr const TCHAR* INFO_SPEED_CAP_RANGE = TEXT("Speed cap range");
     inline constexpr const TCHAR* INFO_START_SPEED_CAP = TEXT("Starting speed cap");
     inline constexpr const TCHAR* INFO_ASSIST_RESPONSE = TEXT("Assist response time");
-    inline constexpr const TCHAR* INFO_NEWTONIAN_ACCEL = TEXT("Newtonian thrust (main / lateral)");
+    inline constexpr const TCHAR* INFO_THRUST = TEXT("Thrust (forward / reverse / lateral / vertical)");
+    inline constexpr const TCHAR* INFO_THRUST_CAP = TEXT("Thrust limit (whole ship)");
     inline constexpr const TCHAR* INFO_BOOST = TEXT("Boost");
     inline constexpr const TCHAR* INFO_TURN_RATES = TEXT("Turn rate (pitch and yaw / roll)");
+    inline constexpr const TCHAR* INFO_TURN_ACCEL = TEXT("Turn acceleration (pitch and yaw / roll)");
+    inline constexpr const TCHAR* INFO_PILOT_G = TEXT("Pilot G limit (sustained / combat)");
+    inline constexpr const TCHAR* INFO_G_TOLERANCE = TEXT("G meter: empty at the combat limit after");
+    inline constexpr const TCHAR* INFO_BLACKOUT = TEXT("Blackout lasts at least");
     inline constexpr const TCHAR* INFO_SHIP_RADIUS = TEXT("Ship collision radius");
     inline constexpr const TCHAR* INFO_WARP_STEPS = TEXT("Time warp steps");
     inline constexpr const TCHAR* INFO_JUMP_DURATION = TEXT("Jump warp duration");
     inline constexpr const TCHAR* INFO_SURFACE_LOCK_AUTO = TEXT("Surface-lock engages automatically within");
     inline constexpr const TCHAR* INFO_SURFACE_LOCK_MANUAL = TEXT("Surface-lock with {SurfaceLock} from up to");
-    inline constexpr const TCHAR* INFO_BOOST_FORMAT = TEXT("x{0} speed (assist), x{1} thrust (Newtonian)");
+    inline constexpr const TCHAR* INFO_BOOST_FORMAT = TEXT("x{0} speed (assisted), x{1} thrust");
+    inline constexpr const TCHAR* INFO_QUAD_FORMAT = TEXT("{0} / {1} / {2} / {3}");
+    inline constexpr const TCHAR* INFO_G_FORMAT = TEXT("{0} G");
+    inline constexpr const TCHAR* INFO_RAD_PER_S2_FORMAT = TEXT("{0} rad/s²");
     inline constexpr const TCHAR* INFO_RANGE_FORMAT = TEXT("{0} to {1}");
     inline constexpr const TCHAR* INFO_PAIR_FORMAT = TEXT("{0} / {1}");
     inline constexpr const TCHAR* INFO_SECONDS_FORMAT = TEXT("{0} s");
@@ -263,8 +274,15 @@ namespace SOLMenuText
             "their Keplerian orbits from today's date; the Sun lights the system, and a faint fill light along your "
             "view keeps the ship's shadowed side readable."),
         TEXT("Flight assist flies you relative to a reference frame: the nearest body, or the target you locked with "
-            "{MatchLock}. It holds the velocity your keys ask for, up to the speed cap, and cancels drift and gravity. "
-            "Turn it off ({ToggleAssist}) for pure Newtonian flight, where gravity pulls and the ship coasts."),
+            "{MatchLock}. It holds the velocity your keys ask for, up to the speed cap, but only with real thrust and "
+            "never above your sustained G limit: it spends that on holding against gravity first, so large speed "
+            "changes take time, and a planet heavier than the limit cannot be hovered over. Turn it off "
+            "({ToggleAssist}) for manual flight: the keys fire the thrusters directly, the stick applies torque and a "
+            "spin keeps going until you hold {StopSpin}. Gravity pulls in both modes."),
+        TEXT("Above the sustained G limit your body takes a G dose. The G meter on the HUD drains, faster the harder "
+            "you pull, and refills below the limit. Manual flight warns when you pass the limit (assisted flight "
+            "never does). As the meter runs low your vision narrows and grays out; when it empties you black out "
+            "for a few seconds and the ship takes no input until you come to."),
         TEXT("Time warp speeds up the planets, not your ship: the ship is carried along with its reference frame, so "
             "an orbit or a landing spot stays put at any warp."),
         TEXT("Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbit of every planet, dwarf planet and "
@@ -295,6 +313,9 @@ namespace SOLMenuText
     // combat model, seed and ramp rows)
     inline constexpr const TCHAR* DEMO = TEXT("Demo");
     inline constexpr const TCHAR* DEMO_TITLE = TEXT("Scale demo");
+    // HUD line under the AUTOPILOT marker (SDD 18 Amendment 7): how to cancel the console autopilot
+    inline constexpr const TCHAR* AUTOPILOT_CANCEL_HINT = TEXT("sol.Autopilot Off to cancel");
+
     inline constexpr const TCHAR* DEMO_HINT = TEXT("NPC ships across the solar system, up to a million. Options "
         "last for this session. Start demo spawns your ship above the start body, then the NPCs.");
     inline constexpr const TCHAR* DEMO_PAUSE_HINT = TEXT("Apply respawns the NPCs with these options around your ship "

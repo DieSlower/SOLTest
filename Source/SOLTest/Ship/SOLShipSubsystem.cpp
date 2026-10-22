@@ -19,6 +19,7 @@
 #include "Universe/SOLSimClockSubsystem.h"
 
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "MassCommandBuffer.h"
 #include "MassEntityManager.h"
@@ -27,6 +28,55 @@
 #include "MassProcessingContext.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the world's ship subsystem, or null
+    USOLShipSubsystem* FindShipSubsystem(const UWorld* world)
+    {
+        return world != nullptr ? world->GetSubsystem<USOLShipSubsystem>() : nullptr;
+    }
+
+    // sol.Autopilot <Body|Target|Off>: orders the player ship's autopilot (SDD 18; #19 adds the real controls)
+    FAutoConsoleCommandWithWorldAndArgs GShipAutopilotCommand(TEXT("sol.Autopilot"),
+        TEXT("sol.Autopilot <Body|Target|Off>: fly the player ship to a body (by name or the selected target), "
+            "or stop"),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& args, UWorld* world)
+        {
+            USOLShipSubsystem* ships = FindShipSubsystem(world);
+            const USOLBodyRegistrySubsystem* registry = world != nullptr
+                ? world->GetSubsystem<USOLBodyRegistrySubsystem>() : nullptr;
+            const USOLTargetingSubsystem* targeting = world != nullptr
+                ? world->GetSubsystem<USOLTargetingSubsystem>() : nullptr;
+            if (ships == nullptr || registry == nullptr || args.Num() == 0)
+            {
+                UE_LOG(LogSOL, Warning, TEXT("sol.Autopilot: usage sol.Autopilot <Body|Target|Off>"));
+                return;
+            }
+            if (args[0].Equals(TEXT("Off"), ESearchCase::IgnoreCase))
+            {
+                ships->DisengageAutopilot();
+                return;
+            }
+
+            // A body name, or the selected target when it is a body (other targetables are not supported yet)
+            int32 bodyIndex = INDEX_NONE;
+            if (args[0].Equals(TEXT("Target"), ESearchCase::IgnoreCase))
+            {
+                const int32 selected = targeting != nullptr ? targeting->GetSelectedIndex() : INDEX_NONE;
+                bodyIndex = selected >= 0 && selected < registry->GetUnrealFrameCache().Num() ? selected : INDEX_NONE;
+            }
+            else
+            {
+                bodyIndex = registry->GetRegistry().FindByName(FName(*args[0]));
+            }
+            if (!ships->EngageAutopilot(bodyIndex))
+            {
+                UE_LOG(LogSOL, Warning, TEXT("sol.Autopilot: no body for '%s'"), *args[0]);
+            }
+        }));
+}
 
 //////////////////////////////////////////////////////////////////////////
 // Declares its dependencies and prepares the flight processor
@@ -266,6 +316,7 @@ void USOLShipSubsystem::DespawnPlayerShip()
         return;
     }
     ClearSurfaceLock();
+    ResetPilotState();
     mEntityManager->DestroyEntity(mPlayerShip);
     mPlayerShip = FMassEntityHandle();
     mHasFrameHistory = false;
@@ -387,11 +438,20 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
         FSOLShipFrameInputs inputs;
         ComputeFrameInputs(realDeltaSeconds, inputs);
         FlightProcessor->SetFrameInputs(inputs);
+        mLastWarpFactor = inputs.WarpFactor;
         UE::Mass::FProcessingContext context(*mEntityManager, realDeltaSeconds);
         context.SetCommandBuffer(mCommandBuffer);
         UE::Mass::Executor::Run(*FlightProcessor, context);
     }
     SaveFrameHistory();
+
+    // The autopilot order ends at arrival; assisted or manual flight resumes from there
+    if (mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived)
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot arrived at %s"), *GetName(),
+            *BodyRegistry->GetRegistry().GetName(GetAutopilotBodyIndex()).ToString());
+        DisengageAutopilot();
+    }
 
     // Surface-lock after the flight run, when the ship and the bodies are both at this frame's positions (before the
     // run the ship is still where last frame's bodies left it, which misreads the altitude by up to the body's speed
@@ -407,6 +467,107 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
     {
         mSmokeFlight.Reset();
         UKismetSystemLibrary::QuitGame(GetWorld(), nullptr, EQuitPreference::Quit, false);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side; false if invalid
+bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
+{
+    if (!HasPlayerShip() || BodyRegistry == nullptr || bodyIndex < 0
+        || bodyIndex >= BodyRegistry->GetUnrealFrameCache().Num())
+    {
+        return false;
+    }
+
+    // The arrival side stays fixed in the body's (non-rotating) frame: the side the ship is on now
+    const FVector3d towardShip = GetState().PositionM - BodyRegistry->GetUnrealFrameCache().PositionsM[bodyIndex];
+    FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
+    control.AutopilotBodyIndex = bodyIndex;
+    control.AutopilotOffsetDir = towardShip.GetSafeNormal(UE_DOUBLE_SMALL_NUMBER, FVector3d(0.0, 0.0, 1.0));
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)"), *GetName(),
+        *BodyRegistry->GetRegistry().GetName(bodyIndex).ToString(), towardShip.Size() / SOL::METERS_PER_KM);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Cancels the autopilot order, if any
+void USOLShipSubsystem::DisengageAutopilot()
+{
+    if (!HasPlayerShip())
+    {
+        return;
+    }
+    FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
+    if (control.AutopilotBodyIndex != INDEX_NONE)
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot disengaged"), *GetName());
+    }
+    control.AutopilotBodyIndex = INDEX_NONE;
+    FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    state.Guidance = FSOLGuidanceOutput();
+    state.bAutopilotArrived = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the body the autopilot flies to, or INDEX_NONE
+int32 USOLShipSubsystem::GetAutopilotBodyIndex() const
+{
+    return HasPlayerShip()
+        ? mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).AutopilotBodyIndex : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the autopilot guidance of the last step (ETA, phase, distance); default when not engaged
+FSOLGuidanceOutput USOLShipSubsystem::GetAutopilotGuidance() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).Guidance
+        : FSOLGuidanceOutput();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the pilot's G meter state as of the last step
+FSOLGMeterState USOLShipSubsystem::GetGMeter() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).GMeter
+        : FSOLGMeterState();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the pilot's G-load (thrust plus surface contact) as of the last step
+double USOLShipSubsystem::GetGLoadG() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).GLoadG : 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the autopilot flies under a warp too high for precise gravity near a body (HUD hint)
+bool USOLShipSubsystem::IsAutopilotPrecisionReduced() const
+{
+    if (GetAutopilotBodyIndex() == INDEX_NONE)
+    {
+        return false;
+    }
+    double altitudeM = 0.0;
+    const int32 nearest = FindNearestBody(altitudeM);
+    if (nearest == INDEX_NONE)
+    {
+        return false;
+    }
+    const double radiusM = BodyRegistry->GetUnrealFrameCache().RadiiM[nearest];
+    return SOLFlight::IsAutopilotPrecisionReduced(mLastWarpFactor, altitudeM + radiusM, radiusM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Cancels the autopilot order and wakes the pilot with a full G meter (a jump arrival or a spawn: SDD 18 Amendment 7)
+void USOLShipSubsystem::ResetPilotState()
+{
+    DisengageAutopilot();
+    if (HasPlayerShip())
+    {
+        FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+        state.GMeter = FSOLGMeterState();
+        state.GLoadG = 0.0;
     }
 }
 
@@ -494,8 +655,7 @@ void USOLShipSubsystem::UpdateSurfaceLock()
             ? TEXT("pressed") : TEXT("not pressed"));
     }
 
-    // The flight processor aligns the ship's up to the locked body each substep, at its class's time constant
-    // (FSOLFlightParams::AlignTimeConstantS)
+    // The flight processor flies the ship's up toward the locked body each substep, as an assisted attitude target
     mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).AlignBodyIndex =
         mSurfaceLockState.bEngaged ? mSurfaceLockState.BodyIndex : INDEX_NONE;
 }

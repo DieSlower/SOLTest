@@ -45,6 +45,62 @@ namespace SOL
     // Ship: speed cap at spawn, relative to the reference frame (the wheel steps it by 10^0.1)
     inline constexpr double SHIP_START_SPEED_CAP_MPS = 1000.0;
 
+    // Autopilot under user time warp (SDD 18 section 3.5): the ship integrates SIM time in substeps of
+    // max(AUTOPILOT_MIN_SUBSTEP_S, frame sim time / AUTOPILOT_MAX_SUBSTEPS), at most AUTOPILOT_MAX_SUBSTEPS per frame
+    inline constexpr double AUTOPILOT_MIN_SUBSTEP_S = 10.0;
+    inline constexpr int32 AUTOPILOT_MAX_SUBSTEPS = 256;
+
+    // Autopilot HUD hint (SDD 18 decision 26): "precision reduced" above this warp (1 d/s) within this many body radii
+    inline constexpr double AUTOPILOT_HINT_WARP = 86400.0;
+    inline constexpr double AUTOPILOT_HINT_RADII = 10.0;
+
+    // Autopilot to a body: the arrival point is this many body radii above the surface on the ship's side, plus the
+    // fixed standoff below (so a small moon still gets a safe margin)
+    inline constexpr double AUTOPILOT_BODY_STANDOFF_RADII = 0.25;
+    inline constexpr double AUTOPILOT_BODY_STANDOFF_M = 10000.0;
+
+    // ...moved out until the body's gravity there is at most this fraction of the autopilot's limit, so the arrival
+    // can be held (Sun, Jupiter; SDD 18 Amendment 7, user decision H1)
+    inline constexpr double AUTOPILOT_GRAVITY_STANDOFF_FRACTION = 0.9;
+
+    // Autopilot sim-time substeps longer than this set the attitude kinematically (nose straight to the guidance's
+    // forward, no spin): a rate-limited turn cannot be integrated stably in 10-169 s steps (SDD 18 Amendment 7)
+    inline constexpr double AUTOPILOT_KINEMATIC_ATTITUDE_S = 1.0;
+
+    // Player ship thrust capability (SDD 18 section 3.2, decision 20): G per axis, boost, total cap, rotation
+    inline constexpr double PLAYER_THRUST_FORWARD_G = 3.0;
+    inline constexpr double PLAYER_THRUST_REVERSE_G = 1.5;
+    inline constexpr double PLAYER_THRUST_LATERAL_G = 2.0;
+    inline constexpr double PLAYER_THRUST_VERTICAL_G = 2.0;
+    inline constexpr double PLAYER_THRUST_BOOST_MULTIPLIER = 3.0;
+    inline constexpr double PLAYER_THRUST_TOTAL_CAP_G = 9.0;
+    inline constexpr double PLAYER_ANGULAR_ACCEL_ROLL_RADPS2 = 4.0;
+    inline constexpr double PLAYER_ANGULAR_ACCEL_PITCH_YAW_RADPS2 = 3.0;
+    inline constexpr double PLAYER_ANGULAR_RATE_ROLL_RADPS = 2.0943951023931953;       // 120 deg/s
+    inline constexpr double PLAYER_ANGULAR_RATE_PITCH_YAW_RADPS = 1.5707963267948966;  // 90 deg/s
+    inline constexpr double PLAYER_SPIN_CLAMP_RADPS = 6.283185307179586;               // 360 deg/s
+
+    // Untrained pilot G tolerance (SDD 18 section 3.2; Amendment 7 adds the G-LOC recovery floor and the lethal-G
+    // warning, user decision H2)
+    inline constexpr double PILOT_SUSTAINED_G = 1.5;
+    inline constexpr double PILOT_MAX_G = 9.0;
+    inline constexpr double PILOT_TIME_TO_EMPTY_AT_MAX_G_S = 10.0;
+    inline constexpr double PILOT_DRAIN_EXPONENT = 2.0;
+    inline constexpr double PILOT_RECOVER_PER_S = 0.05;
+    inline constexpr double PILOT_BLACKOUT_DURATION_S = 5.0;
+    inline constexpr double PILOT_WAKE_METER = 0.2;
+    inline constexpr double PILOT_CRITICAL_METER = 0.25;
+    inline constexpr double PILOT_VISION_START_METER = 0.4;
+    inline constexpr double PILOT_AUTOPILOT_RECOVERY_G = 1.5;
+    inline constexpr double PILOT_UNCONSCIOUS_RECOVER_PER_S = 0.02;
+    inline constexpr double PILOT_LETHAL_WARNING_S = 30.0;
+
+    // Pilot G vision loss post-process (SDD 18): the look at full loss (blacked out), blended in by the G meter
+    inline constexpr float G_VISION_POST_PROCESS_PRIORITY = 10.0f;
+    inline constexpr float G_VISION_VIGNETTE_INTENSITY = 3.0f;
+    inline constexpr double G_VISION_SATURATION = 0.0;
+    inline const FLinearColor G_VISION_SCENE_TINT(0.02f, 0.02f, 0.02f, 1.0f);
+
     // Ship pawn, virtual joystick: the stick's travel radius as a fraction of the smaller viewport dimension...
     inline constexpr double JOYSTICK_RADIUS_FRACTION = 0.35;
 
@@ -419,9 +475,6 @@ namespace SOL
     inline constexpr double SURFACE_LOCK_MANUAL_RANGE_MIN_M = 1.0e6;
     inline constexpr double SURFACE_LOCK_MANUAL_RELEASE_FACTOR = 1.25;
 
-    // Surface lock (SDD 4): time constant of the exponential alignment rotation that aligns the ship's up with the local vertical
-    inline constexpr double SURFACE_LOCK_ALIGN_TIME_CONSTANT_S = 1.0;
-
     // Combat (SDD 7), pulse guns: shots per second while the trigger is held, muzzle speed added to the ship's velocity,
     // damage per bolt, bolt lifetime, and the bolt's hit radius (added to every target and rock it is swept against)
     inline constexpr double COMBAT_FIRE_RATE_PER_S = 8.0;
@@ -664,6 +717,7 @@ namespace SOL
     {
         inline constexpr const TCHAR* SUN = TEXT("Sun");
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
+        inline constexpr const TCHAR* MOON = TEXT("Moon");
         inline constexpr const TCHAR* MARS = TEXT("Mars");
         inline constexpr const TCHAR* JUPITER = TEXT("Jupiter");
         inline constexpr const TCHAR* SATURN = TEXT("Saturn");
@@ -1039,11 +1093,6 @@ namespace SOL
     inline constexpr double NPC_TARGET_FPS = 60.0;
     inline constexpr uint32 NPC_DEFAULT_SEED = 0x50C1A11Du;
 
-    // NPC Mid-tier deviation spring (SDD 11 section 3.1): critically damped angular frequency (1/s) and leash (m; at
-    // least every class's leash, so a Full ship demoted to Mid never jumps: SDD 11 Amendment 7)
-    inline constexpr double NPC_MID_DEVIATION_OMEGA = 0.5;
-    inline constexpr double NPC_MID_DEVIATION_LEASH_M = 3000.0;
-
     // NPC population (SDD 11 sections 3.1-3.2): spawn slicing, Mass chunks, class hash, temporal cull
     inline constexpr int32 NPC_SPAWN_ENTITIES_PER_FRAME = 25000;       // Spawn time-slice: entities created per frame
                                                                        // (SDD 11 Amendment 6)
@@ -1067,11 +1116,10 @@ namespace SOL
     inline constexpr double NPC_POINT_MIN_PIXELS = 2.0;                // Point diameter floor, in pixels
     inline constexpr double NPC_HULL_LENGTH_M = 30.0;                  // Placeholder hull length
     inline constexpr double NPC_HULL_MIN_PIXELS = 3.0;                 // Instanced hulls never shrink below this
+    inline constexpr double NPC_REFERENCE_VIEWPORT_WIDTH_PX = 1920.0;  // Pixel-size fallback before a viewport exists
     inline constexpr int32 NPC_HULL_MIN_INSTANCES = 1024;              // Hull ISM instance count floor once grown...
     inline constexpr int32 NPC_HULL_SHRINK_FRAMES = 300;               // ...shrunk after this many frames in a row
                                                                        // using under a quarter of the instances
-    inline constexpr double NPC_HEADING_MIN_SPEED_SQ_MPS2 = 1.0;       // Hulls face their steering velocity above
-                                                                       // 1 m/s (squared), else their motion
     inline constexpr double NPC_POINT_BRIGHTNESS_REF_M = 2.0e6;        // Full brightness up to this distance...
     inline constexpr double NPC_POINT_BRIGHTNESS_EXPONENT = 0.5;       // ...then falls off as (ref / d)^exponent...
     inline constexpr double NPC_POINT_BRIGHTNESS_MIN = 0.04;           // ...down to this floor (open question 9)

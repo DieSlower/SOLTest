@@ -45,6 +45,10 @@ FSOLNpcCombat::FSOLNpcCombat()
     : mTargetGrid(SOL::NPC_AI_TARGET_GRID_CELL_M),
       mShipGrid(SOL::NPC_AI_SHIP_GRID_CELL_M)
 {
+    for (int32 classIndex = 0; classIndex < SOLNpcAi::ClassCount(); ++classIndex)
+    {
+        mClassEnvelopes.Add(SOLNpcAi::ClassEnvelope(SOLNpcAi::GetClass(classIndex)));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -205,7 +209,7 @@ void FSOLNpcCombat::Step(const FSOLNpcCombatInputs& inputs)
         }
     });
 
-    // Steering and gun decisions, in parallel (each task writes only its own ships)
+    // Flight and gun decisions, in parallel (each task writes only its own ships)
     ParallelForWithExistingTaskContext(MakeArrayView(mScratch), mShips.Num(), NPC_AI_MIN_BATCH,
         [this, &inputs](FScratch& scratch, const int32 slot)
         {
@@ -239,7 +243,7 @@ void FSOLNpcCombat::Step(const FSOLNpcCombatInputs& inputs)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Steers one ship and decides its shots (parallel; reads the other ships, writes only this one)
+// Flies one ship and decides its shots (parallel; reads the other ships, writes only this one)
 void FSOLNpcCombat::StepShip(FScratch& scratch, const int32 slot, const FSOLNpcCombatInputs& inputs)
 {
     FSOLNpcAiShip& ship = mShips[slot];
@@ -311,21 +315,40 @@ void FSOLNpcCombat::StepShip(FScratch& scratch, const int32 slot, const FSOLNpcC
     }
     desiredMps += SOLNpcAi::SeparationVelocity(ship.PositionM, scratch.Neighbours, shipClass.SeparationRadiusM,
         shipClass.MaxSpeedMps);
-    desiredMps = SOLNpcAi::LeashVelocity(desiredMps, ship.DeviationM, shipClass.LeashM, shipClass.MaxSpeedMps);
+    desiredMps = SOLNpcAi::LeashVelocity(desiredMps, ship.DeviationM, shipClass.LeashM, shipClass.MaxSpeedMps)
+        .GetClampedToMaxSize(shipClass.MaxSpeedMps);
 
-    // Point-mass flight under the class's acceleration and turn limits
-    ship.NewDeviationVelocityMps = SOLNpcAi::LimitSteering(ship.DeviationVelocityMps, desiredMps,
-        shipClass.MaxSpeedMps, shipClass.MaxAccelMps2, shipClass.MaxTurnRateRadPerS, dt);
-    ship.NewDeviationM = ship.DeviationM + ship.NewDeviationVelocityMps * dt;
+    // Lead aim at the target (the nose goes there near the target, and the guns fire along it)
+    ship.AimDirection = target != nullptr ? SOLNpcAi::LeadAimDirection(ship.PositionM, ship.VelocityMps,
+        target->PositionM, target->VelocityMps, shipClass.MuzzleSpeedMps) : FVector3d::ZeroVector;
 
-    // Gun: lead aim, fired only inside the cone around the heading and within range
+    // 6-DOF Newtonian flight in the rail frame under the class envelope (SDD 18 section 3.7); away from the target
+    // the nose follows the desired (else the current) velocity relative to the group's anchors
+    FSOLShipState flight;
+    flight.PositionM = ship.DeviationM;
+    flight.VelocityMps = ship.DeviationVelocityMps;
+    flight.Orientation = ship.Orientation;
+    flight.AngularVelocityRadPerS = ship.AngularVelocityRadPerS;
+    const FVector3d desiredForward = SOLNpcAi::FullShipDesiredForward(ship.AimDirection, distanceM,
+        shipClass.FireRangeM, ship.RailVelocityMps + desiredMps, ship.RailVelocityMps + ship.DeviationVelocityMps,
+        ship.Orientation.GetForwardVector());
+    flight = SOLNpcAi::StepFullShip(flight, desiredMps, desiredForward, ship.UpHint,
+        mClassEnvelopes[FMath::Clamp(ship.ClassIndex, 0, mClassEnvelopes.Num() - 1)], dt);
+    ship.NewDeviationM = flight.PositionM;
+    ship.NewDeviationVelocityMps = flight.VelocityMps;
+    ship.Orientation = flight.Orientation;
+    ship.AngularVelocityRadPerS = flight.AngularVelocityRadPerS;
+
+    // Gun: fired only inside the cone around the nose and within range
     bool bTrigger = false;
     if (target != nullptr && inputs.bCombatEnabled)
     {
-        ship.AimDirection = SOLNpcAi::LeadAimDirection(ship.PositionM, ship.VelocityMps, target->PositionM,
-            target->VelocityMps, shipClass.MuzzleSpeedMps);
-        bTrigger = SOLNpcAi::ShouldFire(ship.NewDeviationVelocityMps, ship.AimDirection, distanceM,
-            shipClass.FireRangeM, shipClass.FireConeRad);
+        const FVector3d noseDirection = ship.Orientation.GetForwardVector();
+        bTrigger = SOLNpcAi::ShouldFire(noseDirection, ship.AimDirection, distanceM, shipClass.FireRangeM,
+            shipClass.FireConeRad);
+
+        // Shots leave along the aim only as far as the guns swivel off the nose (fixed guns miss by the nose error)
+        ship.AimDirection = SOLNpcAi::GunDirection(noseDirection, ship.AimDirection, shipClass.GunGimbalRad);
     }
     const SOLFireCadence::FStep gun = SOLFireCadence::Step(ship.CooldownS, dt, shipClass.FireRatePerS, bTrigger,
         SOL::NPC_AI_MAX_SHOTS_PER_FRAME);

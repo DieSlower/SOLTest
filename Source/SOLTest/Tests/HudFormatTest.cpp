@@ -12,6 +12,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 // Helpers here carry names unique across the test files so unity builds do not collide
@@ -250,6 +252,71 @@ bool FSOLHudFormatKeyHintsTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("rebound map close key"), SOLHudFormat::FormatMapKeyHints(keys).EndsWith(TEXT("N / Esc close")));
     TestTrue(TEXT("short key array reads unbound"), SOLHudFormat::FormatMapKeyHints(TArray<FString>())
         .EndsWith(TEXT("Unbound / Esc close")));
+    return true;
+}
+
+// --- AppendDurationS ---
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts AppendDurationS writes an exact string into an empty buffer
+    void HudFormatExpectDuration(FAutomationTestBase& test, const double seconds, const TCHAR* expected)
+    {
+        FString text;
+        SOLHudFormat::AppendDurationS(text, seconds);
+        test.TestEqual(FString::Printf(TEXT("AppendDurationS(%.3f)"), seconds), text, FString(expected));
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatAppendDurationTest, "SOLTest.HudFormat.AppendDurationS",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Rounds to whole seconds (half up), then "<s> s", "M:SS", "H:MM:SS" or "<d> d <hh> h"; "--" when invalid; appends
+bool FSOLHudFormatAppendDurationTest::RunTest(const FString& /*parameters*/)
+{
+    // Under a minute (after rounding)
+    HudFormatExpectDuration(*this, 0.0, TEXT("0 s"));
+    HudFormatExpectDuration(*this, 0.4, TEXT("0 s"));
+    HudFormatExpectDuration(*this, 0.5, TEXT("1 s"));
+    HudFormatExpectDuration(*this, 45.4, TEXT("45 s"));
+    HudFormatExpectDuration(*this, 59.0, TEXT("59 s"));
+    HudFormatExpectDuration(*this, 59.5, TEXT("1:00"));
+    HudFormatExpectDuration(*this, 59.6, TEXT("1:00"));
+
+    // Minutes: M:SS
+    HudFormatExpectDuration(*this, 60.0, TEXT("1:00"));
+    HudFormatExpectDuration(*this, 725.0, TEXT("12:05"));
+    HudFormatExpectDuration(*this, 3599.0, TEXT("59:59"));
+    HudFormatExpectDuration(*this, 3599.5, TEXT("1:00:00"));
+
+    // Hours: H:MM:SS
+    HudFormatExpectDuration(*this, 3600.0, TEXT("1:00:00"));
+    HudFormatExpectDuration(*this, 10927.0, TEXT("3:02:07"));
+    HudFormatExpectDuration(*this, 86399.0, TEXT("23:59:59"));
+
+    // Days: "<d> d <hh> h", minutes and seconds dropped
+    HudFormatExpectDuration(*this, 86399.5, TEXT("1 d 00 h"));
+    HudFormatExpectDuration(*this, 86400.0, TEXT("1 d 00 h"));
+    HudFormatExpectDuration(*this, 90061.0, TEXT("1 d 01 h"));
+    HudFormatExpectDuration(*this, 1166400.0, TEXT("13 d 12 h"));
+    HudFormatExpectDuration(*this, 1166400.0 + 3599.0, TEXT("13 d 12 h"));
+    HudFormatExpectDuration(*this, 1000.0 * 86400.0, TEXT("1000 d 00 h"));
+
+    // Invalid: negative or non-finite
+    HudFormatExpectDuration(*this, -1.0, TEXT("--"));
+    HudFormatExpectDuration(*this, -1000.0, TEXT("--"));
+    HudFormatExpectDuration(*this, std::numeric_limits<double>::quiet_NaN(), TEXT("--"));
+    HudFormatExpectDuration(*this, std::numeric_limits<double>::infinity(), TEXT("--"));
+    HudFormatExpectDuration(*this, -std::numeric_limits<double>::infinity(), TEXT("--"));
+
+    // Appends after existing text, never resets it
+    FString text(TEXT("ETA "));
+    SOLHudFormat::AppendDurationS(text, 725.0);
+    TestEqual(TEXT("Appends after a prefix"), text, FString(TEXT("ETA 12:05")));
+    SOLHudFormat::AppendDurationS(text, -1.0);
+    TestEqual(TEXT("Appends again, including the invalid marker"), text, FString(TEXT("ETA 12:05--")));
     return true;
 }
 

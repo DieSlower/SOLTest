@@ -6,6 +6,7 @@
 #include "Ship/SOLShipPawn.h"
 
 #include "Combat/SOLCombatSubsystem.h"
+#include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLInputHelpers.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
@@ -29,6 +30,7 @@
 
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
+#include "Components/PostProcessComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
@@ -36,6 +38,7 @@
 #include "Engine/LocalPlayer.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
+#include "GameFramework/InputSettings.h"
 #include "GameFramework/PlayerController.h"
 #include "GameFramework/PlayerInput.h"
 #include "GameFramework/SpringArmComponent.h"
@@ -162,6 +165,22 @@ ASOLShipPawn::ASOLShipPawn()
     warpPostProcess.SceneColorTint = SOL::WARP_SCENE_TINT;
     Camera->PostProcessBlendWeight = 0.0f;
 
+    // Pilot G vision loss (SDD 18; engine features, no material asset): an unbound post-process whose overrides are
+    // the full blackout look, blended in by SOLNewtonian::GVisionLoss, so it narrows, grays and darkens together
+    GVisionPostProcess = CreateDefaultSubobject<UPostProcessComponent>(TEXT("GVisionPostProcess"));
+    GVisionPostProcess->SetupAttachment(RootComponent);
+    GVisionPostProcess->bUnbound = true;
+    GVisionPostProcess->Priority = SOL::G_VISION_POST_PROCESS_PRIORITY;
+    GVisionPostProcess->BlendWeight = 0.0f;
+    FPostProcessSettings& visionPostProcess = GVisionPostProcess->Settings;
+    visionPostProcess.bOverride_VignetteIntensity = true;
+    visionPostProcess.VignetteIntensity = SOL::G_VISION_VIGNETTE_INTENSITY;
+    visionPostProcess.bOverride_ColorSaturation = true;
+    visionPostProcess.ColorSaturation = FVector4(SOL::G_VISION_SATURATION, SOL::G_VISION_SATURATION,
+        SOL::G_VISION_SATURATION, 1.0);
+    visionPostProcess.bOverride_SceneColorTint = true;
+    visionPostProcess.SceneColorTint = SOL::G_VISION_SCENE_TINT;
+
     // Shadowless fill "headlight" along the view so the ship's side facing away from the Sun is not black
     FillLight = CreateDefaultSubobject<UDirectionalLightComponent>(TEXT("FillLight"));
     FillLight->SetupAttachment(Camera);
@@ -205,6 +224,7 @@ void ASOLShipPawn::BeginPlay()
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
+    mControl.bStopSpin = false;
     mControl.SpeedCapMps = SOL::SHIP_START_SPEED_CAP_MPS;
     BuildShipMesh();
 
@@ -256,6 +276,16 @@ void ASOLShipPawn::BeginPlay()
         mSmokeLevel = MakeUnique<FSOLSurfaceLockSmoke>();
         mSmokeLevel->Start(*this);
     }
+
+    // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
+    // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
+    if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+    {
+        UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
+        mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
+        inputSettings->bShouldFlushPressedKeysOnViewportFocusLost = false;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -293,6 +323,12 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeMapPick.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
+    if (mSmokeSavedFocusFlush.IsSet())
+    {
+        GetMutableDefault<UInputSettings>()->bShouldFlushPressedKeysOnViewportFocusLost
+            = mSmokeSavedFocusFlush.GetValue();
+        mSmokeSavedFocusFlush.Reset();
+    }
     Super::EndPlay(endPlayReason);
 }
 
@@ -396,6 +432,11 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     }
     UpdateCombatInput();
 
+    // Pilot G vision loss from the meter the flight step left (SDD 18)
+    GVisionPostProcess->BlendWeight = Ships->HasPlayerShip()
+        ? static_cast<float>(SOLNewtonian::GVisionLoss(Ships->GetGMeter(), Ships->GetFlightParams().PilotLimits))
+        : 0.0f;
+
     UpdateCameraFov(deltaSeconds);
 }
 
@@ -484,6 +525,13 @@ float ASOLShipPawn::GetWarpPostProcessWeight() const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the pilot G vision-loss post-process weight this frame (0 = clear, 1 = blacked out)
+float ASOLShipPawn::GetGVisionWeight() const
+{
+    return GVisionPostProcess->BlendWeight;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Hands the map's locked destination to the jump sequence and closes the map as J / Esc would
 void ASOLShipPawn::StartMapJump()
 {
@@ -523,6 +571,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(RollAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnRollCompleted);
     input->BindAction(BoostAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnBoostStarted);
     input->BindAction(BoostAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnBoostCompleted);
+    input->BindAction(StopSpinAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnStopSpinStarted);
+    input->BindAction(StopSpinAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnStopSpinCompleted);
     input->BindAction(FireAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFireStarted);
     input->BindAction(FireAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnFireCompleted);
     input->BindAction(FreeLookAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFreeLookStarted);
@@ -663,6 +713,7 @@ void ASOLShipPawn::HandleFocusLost()
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
+    mControl.bStopSpin = false;
     mIsFireHeld = false;
     if (Ships != nullptr && !Ships->IsControlScripted())
     {
@@ -692,6 +743,7 @@ void ASOLShipPawn::CreateInputObjects()
     ThrustAction = CreateAction(this, TEXT("IA_ShipThrust"), EInputActionValueType::Axis3D);
     RollAction = CreateAction(this, TEXT("IA_ShipRoll"), EInputActionValueType::Axis1D);
     BoostAction = CreateAction(this, TEXT("IA_ShipBoost"), EInputActionValueType::Boolean);
+    StopSpinAction = CreateAction(this, TEXT("IA_ShipStopSpin"), EInputActionValueType::Boolean);
     ToggleAssistAction = CreateAction(this, TEXT("IA_ShipToggleAssist"), EInputActionValueType::Boolean);
     FreeLookAction = CreateAction(this, TEXT("IA_ShipFreeLook"), EInputActionValueType::Boolean);
     LookAction = CreateAction(this, TEXT("IA_ShipLook"), EInputActionValueType::Axis2D);
@@ -780,6 +832,7 @@ void ASOLShipPawn::MapShipKeys()
     // picking, but the two contexts are never active together), free-look, the mouse (virtual joystick, fixed) and the
     // wheel (speed cap, fixed)
     MappingContext->MapKey(BoostAction, key(EBinding::Boost));
+    MappingContext->MapKey(StopSpinAction, key(EBinding::StopSpin));
     MappingContext->MapKey(FireAction, key(EBinding::Fire));
     MappingContext->MapKey(FreeLookAction, key(EBinding::FreeLook));
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
@@ -870,6 +923,8 @@ UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
         return RollAction;
     case EBinding::Boost:
         return BoostAction;
+    case EBinding::StopSpin:
+        return StopSpinAction;
     case EBinding::ToggleAssist:
         return ToggleAssistAction;
     case EBinding::FreeLook:
@@ -1066,6 +1121,13 @@ void ASOLShipPawn::HandleRoll(const double roll)
 void ASOLShipPawn::HandleBoost(const bool bBoost)
 {
     mControl.bBoost = bBoost;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether stop spin is held (SDD 18: cancels all rotation, in every flight mode)
+void ASOLShipPawn::HandleStopSpin(const bool bStopSpin)
+{
+    mControl.bStopSpin = bStopSpin;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1345,6 +1407,7 @@ void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
     mControl.bBoost = false;
+    mControl.bStopSpin = false;
     mIsFireHeld = false;
     mIsFreeLooking = false;
     mFreeLookRotation = FRotator::ZeroRotator;
@@ -1769,6 +1832,20 @@ void ASOLShipPawn::OnBoostStarted(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnBoostCompleted(const FInputActionValue& /*value*/)
 {
     HandleBoost(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: stop spin pressed
+void ASOLShipPawn::OnStopSpinStarted(const FInputActionValue& /*value*/)
+{
+    HandleStopSpin(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: stop spin released
+void ASOLShipPawn::OnStopSpinCompleted(const FInputActionValue& /*value*/)
+{
+    HandleStopSpin(false);
 }
 
 //////////////////////////////////////////////////////////////////////////

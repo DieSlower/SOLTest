@@ -5,12 +5,14 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLGameMode.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
@@ -86,6 +88,11 @@ namespace
     const FLinearColor HUD_RETROGRADE_COLOR(1.0f, 0.45f, 0.35f, 0.95f);
     const FLinearColor HUD_STICK_COLOR(0.22f, 0.24f, 0.23f, 1.0f);
     const FLinearColor HUD_BAR_BACK_COLOR(0.0f, 0.0f, 0.0f, 0.45f);
+    const FLinearColor HUD_ALARM_COLOR(1.0f, 0.2f, 0.15f, 1.0f);           // G critical / blackout (SDD 18)
+    constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
+    constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
+    constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
+    constexpr double HUD_PERCENT = 100.0;
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.05f, 0.02f, 0.35f);
     const FLinearColor HUD_RADAR_BEHIND_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
 
@@ -305,6 +312,7 @@ void ASOLFlightHud::DrawHUD()
     const FSOLShipState state = Ships->GetState();
     const FSOLShipControl control = Ships->GetControl();
     DrawSpeedBlock(state, control);
+    DrawPilotBlock(control);
     DrawRadar(state);
 
     // The jump map views from its own camera: the ship-view pilot aids (reticle, joystick, velocity markers) are
@@ -640,9 +648,104 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
 
     // Flight-assist and boost
     mText.Reset();
-    mText.Append(control.bFlightAssist ? TEXT("ASSIST ON") : TEXT("ASSIST OFF (Newtonian)"));
+    mText.Append(control.bFlightAssist ? TEXT("ASSIST ON") : TEXT("ASSIST OFF (manual)"));
     mText.Append(control.bBoost ? TEXT("   BOOST") : TEXT("   boost off"));
     DrawBuffer(ESOLHudLine::Assist, control.bFlightAssist ? HUD_TEXT_COLOR : HUD_WARN_COLOR, x, y, small);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the pilot G meter (above the speed block), the G warning (under the reticle) and the autopilot marker
+// with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
+void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
+{
+    UFont* medium = GEngine->GetMediumFont();
+    UFont* small = GEngine->GetSmallFont();
+    const FSOLPilotGLimits limits = Ships->GetFlightParams().PilotLimits;
+    const FSOLGMeterState meter = Ships->GetGMeter();
+    const double gLoad = Ships->GetGLoadG();
+    const ESOLGWarning warning = SOLNewtonian::GWarningLevel(meter, gLoad, limits);
+    const bool bAlarm = warning == ESOLGWarning::Critical || warning == ESOLGWarning::Blackout
+        || warning == ESOLGWarning::Lethal;
+
+    // G meter: the G-load and a bar of the tolerance left, above the speed block (bottom left)
+    const float x = HUD_MARGIN_PX * mUiScale;
+    const float speedBlockHeight = (HUD_LINE_LARGE_PX + 2.0f * HUD_LINE_SMALL_PX + HUD_LINE_MEDIUM_PX
+        + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
+    const float barWidth = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
+    const float barHeight = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
+    float y = Canvas->ClipY - HUD_MARGIN_PX * mUiScale - speedBlockHeight - HUD_G_BLOCK_GAP_PX * mUiScale
+        - barHeight - HUD_LINE_SMALL_PX * mUiScale;
+    const FLinearColor meterColor = bAlarm ? HUD_ALARM_COLOR
+        : (warning == ESOLGWarning::OverSustained ? HUD_WARN_COLOR : HUD_TEXT_COLOR);
+    mText.Reset();
+    mText.Appendf(TEXT("G %.1f   tolerance %.0f%%"), gLoad, meter.Meter * HUD_PERCENT);
+    DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, small);
+    y += HUD_LINE_SMALL_PX * mUiScale;
+    DrawRect(HUD_BAR_BACK_COLOR, x, y, barWidth, barHeight);
+    DrawRect(meterColor, x, y, barWidth * static_cast<float>(FMath::Clamp(meter.Meter, 0.0, 1.0)), barHeight);
+    DrawLine(x + barWidth, y, x + barWidth, y + barHeight, HUD_DIM_COLOR, 1.0f);
+
+    // Warning under the reticle: over the sustained limit only in manual flight (assist never exceeds it), the
+    // critical meter and the blackout in every mode
+    const bool bShowWarning = bAlarm || (warning == ESOLGWarning::OverSustained && !control.bFlightAssist);
+    if (bShowWarning)
+    {
+        mText.Reset();
+        switch (warning)
+        {
+        case ESOLGWarning::Lethal:
+            mText.Appendf(TEXT("LETHAL G - %.1f G FOR %.0f S"), gLoad, meter.DepletedS);
+            break;
+        case ESOLGWarning::Blackout:
+            mText.Append(TEXT("BLACKOUT - NO CONTROL"));
+            break;
+        case ESOLGWarning::Critical:
+            mText.Appendf(TEXT("G CRITICAL - EASE OFF (%.1f G)"), gLoad);
+            break;
+        default:
+            mText.Appendf(TEXT("G LIMIT EXCEEDED: %.1f G (sustained %.1f G)"), gLoad, limits.SustainedG);
+            break;
+        }
+        float textWidth = 0.0f;
+        float textHeight = 0.0f;
+        Canvas->StrLen(medium, mText, textWidth, textHeight);
+        DrawBuffer(ESOLHudLine::GWarning, bAlarm ? HUD_ALARM_COLOR : HUD_WARN_COLOR,
+            Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale, Canvas->ClipY * HUD_G_WARNING_Y_FRACTION, medium);
+    }
+
+    // Autopilot marker with the ETA countdown (sim time), and the high-warp precision hint
+    const int32 autopilotBody = Ships->GetAutopilotBodyIndex();
+    if (autopilotBody == INDEX_NONE)
+    {
+        return;
+    }
+    const FSOLGuidanceOutput guidance = Ships->GetAutopilotGuidance();
+    mText.Reset();
+    mText.Append(TEXT("AUTOPILOT > "));
+    BodyRegistry->GetRegistry().GetName(autopilotBody).AppendString(mText);
+    mText.Append(TEXT("   ETA "));
+    SOLHudFormat::AppendDurationS(mText, guidance.EtaS);
+    mText.Append(TEXT("   "));
+    SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
+    float textWidth = 0.0f;
+    float textHeight = 0.0f;
+    Canvas->StrLen(medium, mText, textWidth, textHeight);
+    const float top = HUD_AUTOPILOT_TOP_PX * mUiScale;
+    DrawBuffer(ESOLHudLine::Autopilot, HUD_TARGET_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale, top,
+        medium);
+    mText.Reset();
+    mText.Append(SOLMenuText::AUTOPILOT_CANCEL_HINT);
+    Canvas->StrLen(small, mText, textWidth, textHeight);
+    DrawBuffer(ESOLHudLine::AutopilotCancel, HUD_DIM_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
+        top + HUD_LINE_MEDIUM_PX * mUiScale, small);
+    if (Ships->IsAutopilotPrecisionReduced())
+    {
+        mText.Reset();
+        mText.Append(TEXT("WARP: autopilot precision reduced"));
+        Canvas->StrLen(small, mText, textWidth, textHeight);
+        DrawBuffer(ESOLHudLine::AutopilotHint, HUD_WARN_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
+            top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX) * mUiScale, small);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

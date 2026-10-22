@@ -137,6 +137,30 @@ public:
     // Releases any surface-lock and clears its auto-engage suppression and a pending L press (used by a jump arrival)
     void ClearSurfaceLock();
 
+    // Cancels the autopilot order and wakes the pilot with a full G meter (a jump arrival or a spawn)
+    void ResetPilotState();
+
+    // Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side; false if invalid
+    bool EngageAutopilot(int32 bodyIndex);
+
+    // Cancels the autopilot order, if any
+    void DisengageAutopilot();
+
+    // Returns the body the autopilot flies to, or INDEX_NONE
+    int32 GetAutopilotBodyIndex() const;
+
+    // Returns the autopilot guidance of the last step (ETA, phase, distance); default when not engaged
+    FSOLGuidanceOutput GetAutopilotGuidance() const;
+
+    // Returns the pilot's G meter state as of the last step
+    FSOLGMeterState GetGMeter() const;
+
+    // Returns the pilot's G-load (thrust plus surface contact) as of the last step
+    double GetGLoadG() const;
+
+    // Returns true while the autopilot flies under a warp too high for precise gravity near a body (HUD hint)
+    bool IsAutopilotPrecisionReduced() const;
+
 protected:
 
     // Limits the subsystem to game and PIE worlds so editor and automation worlds are unaffected
@@ -185,6 +209,7 @@ private:
     FSOLSurfaceLockState mSurfaceLockState;                // Player ship's surface-lock (default: released)
     FSOLSurfaceLockParams mSurfaceLockParams;              // Surface-lock ranges and time constant (SOLConstants)
     double mSurfaceLockAltitudeM = 0.0;                    // Altitude above the locked body at the last step
+    double mLastWarpFactor = 1.0;                          // Sim seconds per real second of the last step
     bool mHasFrameHistory = false;                         // False until the first step has saved the bodies
     bool mIsSurfaceLockToggleRequested = false;            // L pressed since the last step
 };

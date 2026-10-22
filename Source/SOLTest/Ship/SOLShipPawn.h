@@ -20,6 +20,7 @@
 
 class APlayerController;
 class UCameraComponent;
+class UPostProcessComponent;
 class UDirectionalLightComponent;
 class UInputAction;
 class UInputMappingContext;
@@ -131,6 +132,9 @@ public:
 
     // Sets whether boost is held
     void HandleBoost(bool bBoost);
+
+    // Sets whether stop spin is held (SDD 18: cancels all rotation, in every flight mode)
+    void HandleStopSpin(bool bStopSpin);
 
     // Toggles flight-assist
     void HandleToggleAssist();
@@ -288,6 +292,9 @@ public:
     // Returns the blend weight of the camera's warp post-process (0 outside a jump warp)
     float GetWarpPostProcessWeight() const;
 
+    // Returns the pilot G vision-loss post-process weight this frame (0 = clear, 1 = blacked out)
+    float GetGVisionWeight() const;
+
     // Returns true while the pawn shows the warp effect (FOV pulse and post-process)
     bool IsWarpEffectActive() const { return mIsWarpEffectActive; }
 
@@ -410,6 +417,12 @@ private:
 
     // Enhanced Input: boost released
     void OnBoostCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: stop spin pressed
+    void OnStopSpinStarted(const FInputActionValue& value);
+
+    // Enhanced Input: stop spin released
+    void OnStopSpinCompleted(const FInputActionValue& value);
 
     // Enhanced Input: flight-assist toggle
     void OnToggleAssistAction(const FInputActionValue& value);
@@ -552,6 +565,10 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<UCameraComponent> Camera;
 
+    /** Pilot G vision loss (SDD 18): tunnel vignette, gray-out and blackout, blended in by the G meter. */
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
+    TObjectPtr<UPostProcessComponent> GVisionPostProcess;
+
     /** Shadowless directional fill light along the view, lighting the ship's shadowed side. */
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<UDirectionalLightComponent> FillLight;
@@ -570,6 +587,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> BoostAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> StopSpinAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> ToggleAssistAction;
@@ -717,6 +737,7 @@ private:
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
+    TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor

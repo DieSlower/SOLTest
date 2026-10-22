@@ -223,6 +223,7 @@ void USOLJumpSubsystem::CompleteJump()
         }
     }
     Ships->ClearSurfaceLock();
+    Ships->ResetPilotState();
     Ships->SetState(state);
 
     mLastArrivalReferenceM = referenceM;

@@ -450,8 +450,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const float gpuHideRadiusM = static_cast<float>(Npcs->GetStats().MidRadiusM);
     int32 meshSlots[2] = { 0, 1 };
 
-    // Returns a ship's render location, previous location and hull heading (steering heading when the AI flies it,
-    // else the motion since last frame)
+    // Returns a ship's render location, previous location and hull heading (the collected heading: a Full ship's nose,
+    // a Mid ship's rail plus deviation velocity; the motion since last frame if none)
     const auto placeShip = [&origin](const FSOLNpcCpuShip& ship, FVector& outLocationCm, FVector& outPrevLocationCm,
         FVector& outHeading)
     {

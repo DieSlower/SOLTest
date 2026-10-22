@@ -7,18 +7,21 @@
 
 namespace
 {
-    // The ship classes: a fighter (wide gun arc), a gunship (turrets) and an interceptor (forward guns); placeholder
-    // numbers until the Part 8 art pass
+    // The ship classes: a human-piloted fighter (forward guns), a human-piloted gunship (turrets) and an AI drone
+    // interceptor (forward guns). Thrust and angular limits per SDD 18 section 3.7; the gun cones are measured
+    // around the nose (SDD 18 Amendment 5); the rest are placeholder numbers until the Part 8 art pass
     const SOLNpcAi::FClassParams NPC_CLASSES[] =
     {
-        // Speed, accel, turn, leash, hit radius, health, rate, muzzle, damage, lifetime, engage, fire range, cone,
-        // standoff, separation, spread, respawn
-        { 250.0, 80.0, 1.5, 3000.0, 15.0, 60.0, 3.0, 1500.0, 10.0, 2.5, 4000.0, 3000.0, 1.6, 600.0, 60.0, 0.004,
-            8.0 },
-        { 150.0, 40.0, 0.8, 3000.0, 25.0, 150.0, 2.0, 1200.0, 20.0, 3.0, 4000.0, 3000.0, 3.1, 1200.0, 100.0, 0.006,
-            12.0 },
-        { 350.0, 120.0, 2.5, 3000.0, 10.0, 40.0, 4.0, 1800.0, 6.0, 2.0, 4000.0, 2500.0, 1.0, 400.0, 50.0, 0.003,
-            6.0 },
+        // Speed, pilot, thrust fwd / rev / lat / vert (G), G cap, angular accel, angular rate, leash, hit radius,
+        // health, rate, muzzle, damage, lifetime, engage, fire range, cone, standoff, separation, spread, respawn,
+        // gun gimbal
+        { 250.0, ESOLPilotKind::Human, 8.0, 4.0, 4.0, 4.0, 6.0, FVector3d(6.0, 4.0, 4.0), FVector3d(3.0, 1.5, 1.5),
+            3000.0, 15.0, 60.0, 3.0, 1500.0, 10.0, 2.5, 4000.0, 3000.0, 0.15, 600.0, 60.0, 0.004, 8.0, 0.015 },
+        { 150.0, ESOLPilotKind::Human, 4.0, 2.0, 2.0, 2.0, 4.0, FVector3d(2.0, 1.5, 1.5), FVector3d(1.2, 0.8, 0.8),
+            3000.0, 25.0, 150.0, 2.0, 1200.0, 20.0, 3.0, 4000.0, 3000.0, 3.1, 1200.0, 100.0, 0.006, 12.0,
+            UE_DOUBLE_PI },
+        { 350.0, ESOLPilotKind::AI, 15.0, 8.0, 8.0, 8.0, 20.0, FVector3d(8.0, 6.0, 6.0), FVector3d(4.0, 2.5, 2.5),
+            3000.0, 10.0, 40.0, 4.0, 1800.0, 6.0, 2.0, 4000.0, 2500.0, 0.1, 400.0, 50.0, 0.003, 6.0, 0.015 },
     };
 
     //////////////////////////////////////////////////////////////////////////
@@ -82,40 +85,184 @@ int32 SOLNpcAi::PickClass(const double unit)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the velocity after steering from current toward desired under speed, acceleration and turn-rate limits
-FVector3d SOLNpcAi::LimitSteering(const FVector3d& currentVelocityMps, const FVector3d& desiredVelocityMps,
-    const double maxSpeedMps, const double maxAccelMps2, const double maxTurnRateRadPerS, const double dt)
+// Returns a class's thrust envelope: the G box, its angular limits and the total cap of its pilot kind
+FSOLThrustEnvelope SOLNpcAi::ClassEnvelope(const FClassParams& shipClass)
+{
+    const double g0 = SOLNewtonian::STANDARD_GRAVITY_MPS2;
+    FSOLThrustEnvelope env;
+    env.ForwardAccelMps2 = shipClass.ForwardG * g0;
+    env.ReverseAccelMps2 = shipClass.ReverseG * g0;
+    env.LateralAccelMps2 = shipClass.LateralG * g0;
+    env.VerticalAccelMps2 = shipClass.VerticalG * g0;
+    env.BoostMultiplier = 1.0;
+    env.MaxTotalAccelMps2 = SOLNewtonian::EffectiveGCapG(shipClass.PilotKind, shipClass.ClassGCapG) * g0;
+    env.MaxAngularAccelRadPerS2 = shipClass.MaxAngularAccelRadPerS2;
+    env.MaxAngularRateRadPerS = shipClass.MaxAngularRateRadPerS;
+    env.MaxSpinRateRadPerS = CLASS_SPIN_RATE_SCALE * shipClass.MaxAngularRateRadPerS.GetMax();
+    env.MaxSpeedMps = SOL::MAX_SPEED_CAP_MPS;
+    return env;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the Mid tier's point-mass acceleration budget: the lateral thrust, at most the class cap
+double SOLNpcAi::MidReturnAccelMps2(const FClassParams& shipClass)
+{
+    if (!FMath::IsFinite(shipClass.LateralG) || shipClass.LateralG <= 0.0)
+    {
+        return 0.0;
+    }
+    return FMath::Min(shipClass.LateralG, SOLNewtonian::EffectiveGCapG(shipClass.PilotKind, shipClass.ClassGCapG))
+        * SOLNewtonian::STANDARD_GRAVITY_MPS2;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the guidance parameters of a Mid ship's return to its rail
+FSOLGuidanceParams SOLNpcAi::MidReturnGuidanceParams(const FClassParams& shipClass)
+{
+    FSOLGuidanceParams params;
+    params.PlanAccelMps2 = SOLNewtonian::GUIDANCE_ACCEL_MARGIN * MidReturnAccelMps2(shipClass);
+    params.BrakeAccelMps2 = params.PlanAccelMps2;
+    params.FlipTimeS = 0.0;
+    params.MaxCruiseSpeedMps = shipClass.MaxSpeedMps;
+    params.ArrivalRadiusM = MID_ARRIVAL_RADIUS_M;
+    params.ArrivalSpeedMps = MID_ARRIVAL_SPEED_MPS;
+    return params;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a Mid ship's deviation after one point-mass step back toward its rail (at rest once arrived)
+SOLNpcAi::FMidReturnStep SOLNpcAi::StepMidReturn(const FVector3d& deviationM, const FVector3d& deviationVelocityMps,
+    const FSOLGuidanceParams& params, const double dt)
+{
+    FMidReturnStep step;
+    if (!IsFiniteVector(deviationM) || !IsFiniteVector(deviationVelocityMps)
+        || (deviationM.IsZero() && deviationVelocityMps.IsZero()))
+    {
+        step.bAtRest = true;
+        return step;
+    }
+    step.DeviationM = deviationM;
+    step.DeviationVelocityMps = deviationVelocityMps;
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return step;
+    }
+
+    // The rail is the rendezvous target: no target acceleration, no gravity (the rail absorbs it)
+    const FSOLGuidanceOutput guidance = SOLNewtonian::ComputeRendezvousGuidance(-deviationM, deviationVelocityMps,
+        FVector3d::ZeroVector, FVector3d::ZeroVector, params, dt, false);
+    if (guidance.Phase == ESOLGuidancePhase::Arrived)
+    {
+        step.DeviationM = FVector3d::ZeroVector;
+        step.DeviationVelocityMps = FVector3d::ZeroVector;
+        step.bAtRest = true;
+        return step;
+    }
+    step.DeviationVelocityMps = deviationVelocityMps + guidance.DesiredNetAccelMps2 * dt;
+    step.DeviationM = deviationM + step.DeviationVelocityMps * dt;
+    return step;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the unit hull heading for a velocity (a direction perpendicular to the up hint when nearly at rest)
+FVector3d SOLNpcAi::HullForward(const FVector3d& velocityMps, const FVector3d& upHint)
+{
+    if (IsFiniteVector(velocityMps) && velocityMps.Size() > HULL_HEADING_MIN_SPEED_MPS)
+    {
+        return velocityMps.GetSafeNormal();
+    }
+    const double upLength = IsFiniteVector(upHint) ? upHint.Size() : 0.0;
+    if (upLength >= STEER_EPSILON)
+    {
+        // Divided by hand: GetSafeNormal treats lengths below 1e-4 as zero
+        return AnyPerpendicular(upHint / upLength);
+    }
+    return FVector3d::XAxisVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the orientation a ship is promoted to the Full tier with (its forward is HullForward)
+FQuat4d SOLNpcAi::HandoffOrientation(const FVector3d& velocityMps, const FVector3d& upHint)
+{
+    return SOLNewtonian::OrientationFromForward(HullForward(velocityMps, upHint), upHint, FQuat4d::Identity);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns where a Full ship points its nose: the aim near its target, else its desired or current velocity
+FVector3d SOLNpcAi::FullShipDesiredForward(const FVector3d& aimDirection, const double targetDistanceM,
+    const double fireRangeM, const FVector3d& desiredVelocityMps, const FVector3d& velocityMps,
+    const FVector3d& currentForward)
+{
+    if (IsFiniteVector(aimDirection) && aimDirection.Size() >= STEER_EPSILON && FMath::IsFinite(targetDistanceM)
+        && targetDistanceM > 0.0 && FMath::IsFinite(fireRangeM) && fireRangeM > 0.0
+        && targetDistanceM <= NOSE_ON_TARGET_RANGE_SCALE * fireRangeM)
+    {
+        return aimDirection.GetSafeNormal();
+    }
+    for (const FVector3d& velocity : { desiredVelocityMps, velocityMps })
+    {
+        if (IsFiniteVector(velocity) && velocity.Size() > HULL_HEADING_MIN_SPEED_MPS)
+        {
+            return velocity.GetSafeNormal();
+        }
+    }
+    return IsFiniteVector(currentForward) && !currentForward.IsZero() ? currentForward.GetSafeNormal()
+        : FVector3d::XAxisVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a Full ship's state after one 6-DOF step in its rail frame: velocity hold, thrust allocation, attitude
+FSOLShipState SOLNpcAi::StepFullShip(const FSOLShipState& state, const FVector3d& desiredVelocityMps,
+    const FVector3d& desiredForward, const FVector3d& desiredUp, const FSOLThrustEnvelope& env, const double dt)
 {
     if (!FMath::IsFinite(dt) || dt <= 0.0)
     {
-        return currentVelocityMps;
+        return state;
     }
-    const FVector3d current = FiniteOrZero(currentVelocityMps);
-    FVector3d desired = ClampLength(FiniteOrZero(desiredVelocityMps), NonNegativeOrZero(maxSpeedMps));
+    const FVector3d holdAccelMps2 = SOLNewtonian::VelocityHoldAccelMps2(state.VelocityMps, desiredVelocityMps,
+        FVector3d::ZeroVector, FULL_HOLD_TIME_CONSTANT_S, dt);
+    FSOLNewtonianCommand command;
+    command.ThrustFraction = SOLNewtonian::AllocateThrust(holdAccelMps2, state.Orientation, env, false).ThrustFraction;
+    command.AngularAccelFraction = SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS,
+        SOLNewtonian::AttitudeRateCommand(state.Orientation, desiredForward, desiredUp, env), env, dt);
+    command.bBoost = false;
+    return SOLNewtonian::StepNewtonian(state, command, env, FVector3d::ZeroVector, dt);
+}
 
-    // Turn limit: rotate the current direction toward the desired one by at most maxTurn * dt
-    const double currentSpeed = current.Size();
-    const double desiredSpeed = desired.Size();
-    if (currentSpeed >= STEER_EPSILON && desiredSpeed >= STEER_EPSILON)
+//////////////////////////////////////////////////////////////////////////
+// Returns the direction a shot leaves in: the aim, swivelled at most gimbalRad off the nose
+FVector3d SOLNpcAi::GunDirection(const FVector3d& noseDirection, const FVector3d& aimDirection, const double gimbalRad)
+{
+    if (!IsFiniteVector(aimDirection) || aimDirection.Size() < STEER_EPSILON)
     {
-        const FVector3d currentDir = current / currentSpeed;
-        const FVector3d desiredDir = desired / desiredSpeed;
-        const FVector3d cross = FVector3d::CrossProduct(currentDir, desiredDir);
-        const double angle = FMath::Atan2(cross.Size(), FVector3d::DotProduct(currentDir, desiredDir));
-        const double theta = NonNegativeOrZero(maxTurnRateRadPerS) * dt;
-        if (angle > theta)
-        {
-            // In-plane unit vector perpendicular to the current direction, toward the desired one
-            const FVector3d towardDesired = desiredDir - currentDir * FVector3d::DotProduct(currentDir, desiredDir);
-            const FVector3d perpendicular = towardDesired.Size() >= STEER_EPSILON
-                ? towardDesired.GetSafeNormal() : AnyPerpendicular(currentDir);
-            desired = (currentDir * FMath::Cos(theta) + perpendicular * FMath::Sin(theta)) * desiredSpeed;
-        }
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d aim = aimDirection.GetSafeNormal();
+    if (!IsFiniteVector(noseDirection) || noseDirection.Size() < STEER_EPSILON)
+    {
+        return aim;
+    }
+    const FVector3d nose = noseDirection.GetSafeNormal();
+    const double gimbal = FMath::IsNaN(gimbalRad) || gimbalRad < 0.0 ? 0.0 : gimbalRad;   // +inf: any direction
+    const double dot = FVector3d::DotProduct(nose, aim);
+    if (FMath::Atan2(FVector3d::CrossProduct(nose, aim).Size(), dot) <= gimbal)
+    {
+        return aim;
     }
 
-    // Acceleration limit
-    const FVector3d deltaV = ClampLength(desired - current, NonNegativeOrZero(maxAccelMps2) * dt);
-    return current + deltaV;
+    // The gimbal's edge in the nose-aim plane, toward the aim
+    const FVector3d towardAim = aim - nose * dot;
+    const FVector3d perpendicular = towardAim.Size() >= STEER_EPSILON ? towardAim.GetSafeNormal()
+        : AnyPerpendicular(nose);
+    return nose * FMath::Cos(gimbal) + perpendicular * FMath::Sin(gimbal);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a ship may drop to the Far tier (its deviation snaps to the rail): sub-pixel or budget-forced
+bool SOLNpcAi::AllowFarDemotion(const double deviationLengthM, const double distanceM, const double pixelAngleRad,
+    const bool bBudgetForced)
+{
+    return bBudgetForced || SOLNewtonian::IsHandoffSnapInvisible(deviationLengthM, distanceM, pixelAngleRad);
 }
 
 //////////////////////////////////////////////////////////////////////////

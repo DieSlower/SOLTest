@@ -5,6 +5,7 @@
 
 #include "Ship/SOLShipSmokeInput.h"
 
+#include "Flight/SOLNewtonianFlight.h"
 #include "Flight/SOLTargeting.h"
 #include "Game/SOLGameMode.h"
 #include "Ship/SOLShipPawn.h"
@@ -42,17 +43,19 @@ namespace
     constexpr int32 INPUT_SEEK_TAP_INTERVAL_FRAMES = 6;     // Frames between R presses while looking for Mars
 
     // Verdict thresholds
-    constexpr double INPUT_THRUST_MIN_CAP_FRACTION = 0.7;   // 3 s at tau 1.5 s reaches ~86% of the cap
+    constexpr double INPUT_THRUST_MIN_SUSTAINED_FRACTION = 0.85; // Assisted W: at least 85% of 1.5 G x t (SDD 18; the
+                                                                 // rest goes to holding against gravity)
     constexpr double INPUT_MIN_ALIGNMENT = 0.99;            // Relative velocity along forward
-    constexpr double INPUT_BRAKE_MAX_REL_MPS = 2.0;         // 865 m/s * exp(-10/1.5) = ~1.1 m/s
-    constexpr double INPUT_THRUST_GAIN_TOLERANCE_MPS = 15.0; // Newtonian gain vs 50 m/s^2 * t (gravity ~1.5 m/s^2)
+    constexpr double INPUT_BRAKE_MAX_REL_MPS = 2.0;         // ~44 m/s braked at up to 1.5 G well within the phase
+    constexpr double INPUT_THRUST_GAIN_TOLERANCE_MPS = 15.0; // Manual gain vs 3 G * t (gravity ~1.5 m/s^2)
     constexpr double INPUT_COAST_MAX_CHANGE = 0.08;         // Coasting keeps the speed (only gravity changes it)
     constexpr double INPUT_TURN_MIN_SIN = 0.2588190451;     // Forward turned at least 15 deg toward the mouse
     constexpr double INPUT_TURN_MAX_CROSS = 0.1;            // ...and less than ~6 deg along the other axis
     constexpr double INPUT_MAX_RESIDUAL_RATE_RAD_PER_S = 0.05; // Rotation stopped after the recenter
     constexpr double INPUT_CAP_RELATIVE_TOLERANCE = 1.0e-9;
     constexpr double INPUT_FRAME_VELOCITY_TOLERANCE_MPS = 1.0e-6;
-    constexpr double INPUT_LOCK_MAX_REL_MPS = 1.0;          // Boosted ramp: tau 0.5 s over 6 s
+    constexpr double INPUT_LOCK_MIN_SUSTAINED_FRACTION = 0.8; // Matching Mars (~28 km/s away) at 1.5 G: the speed
+    constexpr double INPUT_LOCK_MAX_SUSTAINED_FRACTION = 1.05; // change from Earth over the phase is ~1.5 G x t
 
     const TCHAR* const INPUT_MARS = TEXT("Mars");
 }
@@ -227,9 +230,12 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
     case ESOLInputPhase::ThrustHold:
     {
         const double alignment = FVector3d::DotProduct(relVelocity.GetSafeNormal(), forward);
-        Check(TEXT("a-thrust"), relSpeed >= INPUT_THRUST_MIN_CAP_FRACTION * cap && relSpeed <= cap + 1.0
+        const double sustainedGainMps = SOLNewtonian::PilotSustainedAccelMps2(params.PilotLimits) * mPhaseTimeS;
+        Check(TEXT("a-thrust"), relSpeed >= INPUT_THRUST_MIN_SUSTAINED_FRACTION * FMath::Min(cap, sustainedGainMps)
+            && relSpeed <= cap + 1.0
             && alignment >= INPUT_MIN_ALIGNMENT, FString::Printf(TEXT("W held %.2f s: relative speed %.1f m/s "
-            "(cap %.0f), alignment with forward %.4f"), mPhaseTimeS, relSpeed, cap, alignment));
+            "(cap %.0f, 1.5 G x t = %.1f), alignment with forward %.4f"), mPhaseTimeS, relSpeed, cap, sustainedGainMps,
+            alignment));
         ReleaseKey(EKeys::W);
         break;
     }
@@ -242,7 +248,7 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         const bool bAssist = mShips->GetControl().bFlightAssist;
         const double gain = FVector3d::DotProduct(relVelocity - mReferenceRelVelocityMps,
             mReference.Orientation.GetForwardVector());
-        const double expected = params.NewtonianMainAccelMps2 * mPhaseTimeS;
+        const double expected = params.Envelope.ForwardAccelMps2 * mPhaseTimeS;
         Check(TEXT("c-assist-off"), !bAssist && FMath::Abs(gain - expected) <= INPUT_THRUST_GAIN_TOLERANCE_MPS,
             FString::Printf(TEXT("Tab: assist %s; W held %.2f s: forward gain %.1f m/s (expected ~%.0f)"),
                 bAssist ? TEXT("ON") : TEXT("OFF"), mPhaseTimeS, gain, expected));
@@ -371,13 +377,16 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         const FVector3d marsVelocity = candidates.IsValidIndex(mMarsIndex) ? candidates[mMarsIndex].VelocityMps
             : FVector3d::ZeroVector;
         const double frameError = (mTargeting->GetReferenceVelocityMps() - marsVelocity).Size();
+        const double lockGainMps = SOLNewtonian::PilotSustainedAccelMps2(params.PilotLimits) * mPhaseTimeS;
         const double earthRelSpeed = candidates.IsValidIndex(mEarthIndex)
             ? (state.VelocityMps - candidates[mEarthIndex].VelocityMps).Size() : 0.0;
         Check(TEXT("g-lock-mars"), mTargeting->GetLockedIndex() == mMarsIndex
             && mTargeting->GetFrameName() == FName(INPUT_MARS) && frameError <= INPUT_FRAME_VELOCITY_TOLERANCE_MPS
-            && relSpeed <= INPUT_LOCK_MAX_REL_MPS, FString::Printf(TEXT("M (+Shift boost %.1f s): frame %s, frame "
-            "velocity error %.3g m/s, speed rel frame %.3f m/s (rel Earth %.1f m/s)"), mPhaseTimeS,
-            *mTargeting->GetFrameName().ToString(), frameError, relSpeed, earthRelSpeed));
+            && earthRelSpeed >= INPUT_LOCK_MIN_SUSTAINED_FRACTION * lockGainMps
+            && earthRelSpeed <= INPUT_LOCK_MAX_SUSTAINED_FRACTION * lockGainMps, FString::Printf(TEXT("M (+Shift boost "
+            "%.1f s): frame %s, frame velocity error %.3g m/s, speed rel frame %.3f m/s, rel Earth %.1f m/s (1.5 G x t "
+            "= %.1f)"), mPhaseTimeS, *mTargeting->GetFrameName().ToString(), frameError, relSpeed, earthRelSpeed,
+            lockGainMps));
         ReleaseKey(EKeys::LeftShift);
         TapKey(EKeys::M);
         break;

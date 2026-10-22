@@ -13,6 +13,7 @@
 
 #include "SOLNpcTierProcessor.generated.h"
 
+struct FSOLNpcAttitudeFragment;
 struct FSOLNpcChunkWakeFragment;
 struct FSOLNpcCombatFragment;
 struct FSOLNpcDeviationFragment;
@@ -27,8 +28,8 @@ struct FSOLNpcCpuShip
     uint8 Faction = 0;
     uint8 RenderTier = 2;                             // SOLNpcScale::ERenderTier
     uint8 AiTier = 1;                                 // SOLNpcScale::EAiTier
-    FVector3f HeadingDirection = FVector3f::ZeroVector; // Unit steering heading (ecliptic) relative to the rail,
-                                                      // or zero to take the heading from the motion
+    FVector3f HeadingDirection = FVector3f::ZeroVector; // Unit hull heading (ecliptic): a Full ship's nose, a Mid
+                                                      // ship's SOLNpcAi::HullForward (zero for Point-tier ships)
     uint8 bHidden = 0;                                // Dead (waiting to respawn): not drawn
     int32 NpcIndex = INDEX_NONE;                      // Population index (stable owner key for pooled meshes)
     float RailDistanceM = 0.0f;                       // Bare-rail distance from the viewpoint (the GPU far layer's
@@ -85,6 +86,8 @@ public:
         double MeshRadiusM = 0.0;                     // Budgeted
         double InstancedRadiusM = 0.0;                // Budgeted
         double RenderHysteresis = 0.0;
+        double PixelAngleRad = 0.0;                   // One pixel's angle on screen (Mid-to-Far snap gate)
+        bool bMidBudgetForced = false;                // The Mid budget shrank the Mid radius (demotions are forced)
     };
 
     // Sets the pass and inputs of the next run
@@ -132,6 +135,7 @@ private:
         FSOLNpcStateFragment* States = nullptr;
         FSOLNpcDeviationFragment* Deviations = nullptr;
         FSOLNpcCombatFragment* Combats = nullptr;      // Select: respawn on leaving Full; Collect: read only
+        const FSOLNpcAttitudeFragment* Attitudes = nullptr; // Collect: Full chunks only (else nullptr)
         const FMassEntityHandle* Entities = nullptr;
         FSOLNpcChunkWakeFragment* Wake = nullptr;
         int32 Count = 0;
@@ -166,7 +170,8 @@ private:
 
     FMassEntityQuery mEvaluateQuery;            // All NPCs, chunk-filtered: rail (ro), deviation, state, wake (rw)
     FMassEntityQuery mSelectQuery;              // All NPCs, chunk-filtered: state, deviation, combat, wake (rw)
-    FMassEntityQuery mCollectQuery;             // Mid or Full NPCs: rail, combat (ro), state, deviation (rw)
+    FMassEntityQuery mCollectQuery;             // Mid or Full NPCs: rail, combat, attitude (optional) (ro), state,
+                                                // deviation (rw)
     TArray<FChunkView> mChunks;                 // This pass's chunks (reused every frame)
     TArray<FTierMove> mMoves;                   // Select's archetype moves (reused; sized to the visited ships)
     int32 mMoveCount = 0;

@@ -29,7 +29,8 @@ namespace
     // Phase durations (real seconds) and frame counts
     constexpr double LEVEL_SMOKE_SETUP_S = 1.0;
     constexpr double LEVEL_SMOKE_STEP_S = 0.5;              // Long enough for a tap or a teleport to take effect
-    constexpr double LEVEL_SMOKE_ALIGN_S = 6.0;             // Six alignment time constants
+    constexpr double LEVEL_SMOKE_ALIGN_S = 6.0;             // Long enough for the assisted attitude target to level
+    constexpr double LEVEL_SMOKE_TAU_CHECK_S = 1.0;         // Progress check this long into the alignment
     constexpr double LEVEL_SMOKE_HOLD_S = 2.0;              // The released lock must stay released this long
     constexpr double LEVEL_SMOKE_NO_ALIGN_S = 1.5;          // A re-tilted, released ship must stay tilted this long
     constexpr double LEVEL_SMOKE_ARRIVE_MARGIN_S = 0.5;     // Past the warp's end before the arrival checks
@@ -50,7 +51,9 @@ namespace
     constexpr double LEVEL_SMOKE_MIN_TILT_DEG = 80.0;
     constexpr double LEVEL_SMOKE_MAX_ALIGNED_DEG = 1.0;
     constexpr double LEVEL_SMOKE_MIN_UNALIGNED_DEG = 85.0;  // A released lock leaves a 90-degree tilt alone
-    constexpr double LEVEL_SMOKE_TAU_TOLERANCE_DEG = 5.0;   // One time constant in: ~90 * e^-1 = 33.1 degrees
+    // Assisted attitude target (SDD 18): one second in, a 90-degree up error has at least halved (roll and pitch
+    // rates of 90-120 deg/s with 3-4 rad/s^2, braked at 80%, converge in about 2 s)
+    constexpr double LEVEL_SMOKE_ONE_SECOND_MAX_FRACTION = 0.5;
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the HUD's surface-lock line as text for the check details
@@ -308,14 +311,12 @@ void FSOLSurfaceLockSmoke::ExitPhase(const ESOLLevelPhase phase, ASOLShipPawn& p
         break;
     case ESOLLevelPhase::Align:
     {
-        // One time constant in, the up error is the start error times e^-1 (the exact decay over the measured time)
-        const double tauS = SOL::SURFACE_LOCK_ALIGN_TIME_CONSTANT_S;
-        const double expectedTauDeg = mTauElapsedS >= 0.0 ? mAlignStartErrorDeg * FMath::Exp(-mTauElapsedS / tauS)
-            : 0.0;
-        Check(TEXT("d0-time-constant"), mTauElapsedS >= 0.0 && FMath::Abs(mTauErrorDeg - expectedTauDeg)
-            <= LEVEL_SMOKE_TAU_TOLERANCE_DEG, FString::Printf(TEXT("%.3f s after the engage (tau %.2f s): up %.2f deg "
-            "off, expected %.2f (from %.2f; 90 * e^-1 = %.2f), tolerance %.1f"), mTauElapsedS, tauS, mTauErrorDeg,
-            expectedTauDeg, mAlignStartErrorDeg, 90.0 * FMath::Exp(-1.0), LEVEL_SMOKE_TAU_TOLERANCE_DEG));
+        // One second in, the attitude target has turned the up error at least halfway (SDD 18: an attitude target
+        // with bounded rates and angular acceleration, no longer an exponential nudge)
+        const double maxOneSecondDeg = mAlignStartErrorDeg * LEVEL_SMOKE_ONE_SECOND_MAX_FRACTION;
+        Check(TEXT("d0-attitude-target"), mTauElapsedS >= 0.0 && mTauErrorDeg <= maxOneSecondDeg,
+            FString::Printf(TEXT("%.3f s after the engage: up %.2f deg off (from %.2f, limit %.2f)"), mTauElapsedS,
+            mTauErrorDeg, mAlignStartErrorDeg, maxOneSecondDeg));
 
         const double errorDeg = ComputeUpErrorDeg();
         Check(TEXT("d-aligned"), lock.bEngaged && errorDeg <= LEVEL_SMOKE_MAX_ALIGNED_DEG
@@ -518,7 +519,7 @@ void FSOLSurfaceLockSmoke::TrackAlignment()
         }
         return;
     }
-    if (mTauElapsedS < 0.0 && mTotalTimeS - mAlignStartS >= SOL::SURFACE_LOCK_ALIGN_TIME_CONSTANT_S)
+    if (mTauElapsedS < 0.0 && mTotalTimeS - mAlignStartS >= LEVEL_SMOKE_TAU_CHECK_S)
     {
         mTauElapsedS = mTotalTimeS - mAlignStartS;
         mTauErrorDeg = ComputeUpErrorDeg();

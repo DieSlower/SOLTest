@@ -20,6 +20,10 @@ struct FSOLNpcAiShip
     FVector3d NewDeviationM = FVector3d::ZeroVector;        // Deviation after the step (written by Step)
     FVector3d NewDeviationVelocityMps = FVector3d::ZeroVector;
     FVector3d AimDirection = FVector3d::ZeroVector;         // Gun aim for this frame's shots
+    FVector3d RailVelocityMps = FVector3d::ZeroVector;      // The rail's velocity relative to its group's anchors
+    FVector3d UpHint = FVector3d::ZeroVector;               // Away from the group's body (the attitude's desired up)
+    FQuat4d Orientation = FQuat4d::Identity;                // Attitude (read and written by Step; rail-frame axes =
+    FVector3d AngularVelocityRadPerS = FVector3d::ZeroVector; // universe ecliptic axes)
     int32 NpcIndex = INDEX_NONE;
     int32 TargetNpc = INDEX_NONE;
     int32 ClassIndex = 0;
@@ -78,10 +82,11 @@ struct FSOLNpcCombatStats
 
 /**
  * Full-tier NPC AI and NPC-vs-NPC combat (SDD 11 section 3.6, Part 10d): owns the per-frame ship list gathered by
- * USOLNpcFullAiProcessor, steers every ship in parallel (SOLNpcAi: pursuit, separation through a spatial grid, leash,
- * acceleration and turn limits), runs the guns (SOLFireCadence), and resolves shots with the selected combat model:
- * real bolts swept against the ships (a structure-of-arrays pool reusing SOLBoltMath and SOLCombatGrid, like
- * USOLCombatSubsystem), statistical hits with cosmetic tracers near the camera, or the hybrid of both. Everything is
+ * USOLNpcFullAiProcessor, flies every ship in parallel (SOLNpcAi: pursuit, separation through a spatial grid and
+ * leash give a desired velocity; SOLNpcAi::StepFullShip flies it 6-DOF under the class thrust envelope with the nose
+ * on the lead aim near the target, SDD 18 section 3.7), runs the guns (SOLFireCadence, fired inside a cone around the
+ * nose), and resolves shots with the selected combat model: real bolts swept against the ships (a structure-of-arrays
+ * pool reusing SOLBoltMath and SOLCombatGrid, like USOLCombatSubsystem), statistical hits with cosmetic tracers near the camera, or the hybrid of both. Everything is
  * relative to one frame body (the battles' body), in real time. Plain C++, owned by USOLNpcSubsystem; NPCs never touch
  * the player's combat (SDD 11 decision 4).
  */
@@ -133,7 +138,7 @@ private:
         TArray<FVector3d> Neighbours;
     };
 
-    // Steers one ship and decides its shots (parallel; reads the other ships, writes only this one)
+    // Flies one ship and decides its shots (parallel; reads the other ships, writes only this one)
     void StepShip(FScratch& scratch, int32 slot, const FSOLNpcCombatInputs& inputs);
 
     // Advances, sweeps and resolves the bolts
@@ -159,6 +164,7 @@ private:
     TArray<int32> mSlotOfNpc;                       // Population index -> this frame's ship slot, or INDEX_NONE
     SOLCombatGrid::FGrid mTargetGrid;               // Alive ships, coarse (target search)
     SOLCombatGrid::FGrid mShipGrid;                 // Alive ships' swept hit spheres, fine (separation, bolt sweeps)
+    TArray<FSOLThrustEnvelope> mClassEnvelopes;     // SOLNpcAi::ClassEnvelope per class (built once)
     TArray<FScratch> mScratch;                      // One per parallel task
 
     // Bolt pool (structure of arrays, relative to the frame body)

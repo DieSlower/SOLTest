@@ -6,6 +6,8 @@
 #include "Ship/SOLShipSmokeFlight.h"
 
 #include "Flight/SOLFlight.h"
+#include "Flight/SOLNewtonianFlight.h"
+#include "Game/SOLGameMode.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -19,12 +21,26 @@
 namespace
 {
     // Phase durations (real seconds)
-    constexpr double SMOKE_HOVER_S = 15.0;
-    constexpr double SMOKE_CRUISE_S = 5.0;
+    constexpr double SMOKE_HOVER_S = 10.0;
+    constexpr double SMOKE_CRUISE_S = 15.0;
     constexpr double SMOKE_NEWTON_THRUST_S = 5.0;
     constexpr double SMOKE_NEWTON_COAST_S = 5.0;
     constexpr double SMOKE_PITCH_S = 2.0;
-    constexpr double SMOKE_BRAKE_S = 10.0;
+    constexpr double SMOKE_PITCH_TORQUE_S = 0.5;             // Full pitch torque this long, then stop spin
+    constexpr double SMOKE_BRAKE_S = 40.0;
+    constexpr double SMOKE_GLOC_S = 20.0;
+    constexpr double SMOKE_AUTOPILOT_S = 40.0;
+    constexpr double SMOKE_ETA_SAMPLE_S = 2.0;
+
+    // Verification screenshots (SDD 18): the manual G warning, the gray-out, the blackout and the AUTOPILOT marker
+    constexpr double SMOKE_SHOT_WARNING_S = 1.0;             // G-LOC phase time of the over-the-limit warning shot
+    constexpr double SMOKE_SHOT_GRAYOUT_METER = 0.15;        // Meter at the gray-out shot (vision loss 62%)
+    constexpr double SMOKE_SHOT_BLACKOUT_S = 1.0;            // Into the blackout
+    constexpr double SMOKE_SHOT_AUTOPILOT_S = 1.0;           // Into the autopilot phase
+    constexpr uint32 SMOKE_SHOT_WARNING = 1u << 0;
+    constexpr uint32 SMOKE_SHOT_GRAYOUT = 1u << 1;
+    constexpr uint32 SMOKE_SHOT_BLACKOUT = 1u << 2;
+    constexpr uint32 SMOKE_SHOT_AUTOPILOT = 1u << 3;
     constexpr double SMOKE_WARP_S = 5.0;
     constexpr double SMOKE_COLLIDE_S = 14.0;
     constexpr double SMOKE_SURFACE_S = 5.0;
@@ -33,21 +49,33 @@ namespace
     // Scripted inputs
     constexpr double SMOKE_CRUISE_CAP_MPS = 100.0;
     constexpr double SMOKE_COLLIDE_START_ALTITUDE_M = 5000.0;
-    constexpr int32 SMOKE_WARP_INDEX = 5;                    // 1 day per second, from the warp phase to the end
+    constexpr int32 SMOKE_WARP_INDEX = 5;                    // 1 day per second, for the warp and surface phases
+    constexpr int32 SMOKE_AUTOPILOT_WARP_INDEX = 3;          // 1000x, chosen by the "user" for the autopilot leg
+    constexpr double SMOKE_GLOC_ALTITUDE_M = 2.0e6;          // G-LOC run: far enough above Earth to never touch it
 
     // Verdict thresholds
-    constexpr double SMOKE_HOVER_MAX_REL_MPS = 1.0;          // Assist has cancelled the spawn orbit speed
-    constexpr double SMOKE_CRUISE_MIN_REL_MPS = 90.0;        // 5 s at tau 1.5 s reaches ~96% of the cap
+    constexpr double SMOKE_HOVER_MAX_REL_MPS = 1.0;          // Assist holds the hover it starts in
+    constexpr double SMOKE_SUSTAINED_G = 1.5 * (1.0 + 1.0e-6); // Assisted flight never pulls more than 1.5 G
+    constexpr double SMOKE_CRUISE_MIN_REL_MPS = 90.0;        // ~12 m/s^2 left after gravity: 100 m/s in ~9 s
     constexpr double SMOKE_CRUISE_MIN_ALIGNMENT = 0.99;      // Relative velocity points along forward
-    constexpr double SMOKE_THRUST_GAIN_TOLERANCE_MPS = 10.0; // Forward gain vs 50 m/s^2 * 5 s (gravity is ~1.5 m/s^2)
+    constexpr double SMOKE_THRUST_GAIN_TOLERANCE_MPS = 10.0; // Forward gain vs 3 G * 5 s (gravity is ~across)
     constexpr double SMOKE_COAST_MAX_CHANGE = 0.05;          // Coasting keeps the speed (only gravity changes it)
-    constexpr double SMOKE_PITCH_MIN_ANGLE_DEG = 120.0;      // 90 deg/s for 2 s, minus the 0.15 s response lag
+    constexpr double SMOKE_PITCH_MIN_ANGLE_DEG = 38.0;       // 3 rad/s^2 for 0.5 s, then stopped: 0.75 rad = 43 deg
+    constexpr double SMOKE_PITCH_MAX_ANGLE_DEG = 48.0;
+    constexpr double SMOKE_PITCH_MAX_RATE_RAD_PER_S = 0.01;  // Stop spin has cancelled the rotation
     constexpr double SMOKE_BRAKE_MAX_REL_MPS = 2.0;          // Assist braked to the reference frame
     constexpr double SMOKE_CONTACT_ALTITUDE_TOLERANCE_M = 0.5;
     constexpr double SMOKE_MAX_INWARD_MPS = 0.01;            // Velocity into the surface is removed
     constexpr double SMOKE_WARP_MAX_ALTITUDE_DRIFT_M = 50.0; // Hands-off hover co-moves with Earth under 1 d/s
     constexpr double SMOKE_WARP_MAX_REL_MPS = 5.0;           // ...and stays (nearly) at rest relative to it
     constexpr double SMOKE_SURFACE_MAX_REL_MPS = 0.1;        // Resting on the surface under warp: no slide, no bounce
+    constexpr double SMOKE_GLOC_EMPTY_S = 10.0;              // A full meter at 9 G empties in 10 s...
+    constexpr double SMOKE_GLOC_START_TOLERANCE_S = 0.5;     // ...so G-LOC starts at 10 s x the starting meter
+    constexpr double SMOKE_GLOC_MIN_BOOST_G = 8.9;           // The boosted main engine reaches the 9 G cap
+    constexpr double SMOKE_GLOC_MAX_BLACKOUT_G = 0.01;       // Held thrust is ignored while blacked out
+    constexpr double SMOKE_GLOC_MIN_BLACKOUT_S = 4.9;        // G-LOC lasts at least 5 s
+    constexpr double SMOKE_ARRIVAL_DISTANCE_TOLERANCE_M = 1000.0;  // Arrival point vs the standoff radius
+    constexpr double SMOKE_ARRIVAL_MAX_REL_MPS = 5.0;        // At rest relative to the Moon at arrival
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -79,6 +107,23 @@ bool FSOLShipSmokeFlight::Update(USOLShipSubsystem& ships, const USOLAnchorSubsy
     if (mPhase == ESOLSmokePhase::Collide || mPhase == ESOLSmokePhase::Surface)
     {
         ships.ClearSurfaceLock();
+    }
+
+    // The pitch phase releases the stick and presses stop spin after its torque pulse; the G-LOC phase lets go of
+    // the throttle once the pilot wakes up, so the meter can recover
+    FSOLShipControl control = ships.GetControl();
+    if (mPhase == ESOLSmokePhase::Pitch && mPhaseTimeS >= SMOKE_PITCH_TORQUE_S && !control.bStopSpin)
+    {
+        control.Rotation = FVector3d::ZeroVector;
+        control.bStopSpin = true;
+        ships.SetControl(control);
+    }
+    TrackFlightPhase(ships, registry);
+    if (mPhase == ESOLSmokePhase::GLoc && mBlackoutEndS >= 0.0 && !control.Thrust.IsZero())
+    {
+        control.Thrust = FVector3d::ZeroVector;
+        control.bBoost = false;
+        ships.SetControl(control);
     }
 
     // The warp phases watch every frame, not just the checkpoints
@@ -163,11 +208,30 @@ void FSOLShipSmokeFlight::BeginPhase(const ESOLSmokePhase phase, USOLShipSubsyst
     control.Thrust = FVector3d::ZeroVector;
     control.Rotation = FVector3d::ZeroVector;
     control.bBoost = false;
+    control.bStopSpin = false;
+    mMaxGLoadG = 0.0;
+    mMaxBlackoutGLoadG = 0.0;
+    mBlackoutStartS = -1.0;
+    mBlackoutEndS = -1.0;
+    mFirstEtaS = -1.0;
+    mEtaAfterS = -1.0;
+    mArrivalS = -1.0;
+    mPhaseStartMeter = ships.GetGMeter().Meter;
 
     // Per-phase inputs
     switch (phase)
     {
     case ESOLSmokePhase::Hover:
+    {
+        // Assisted flight now spends real thrust (1.5 G) and would take minutes to cancel the spawn orbit, so the
+        // hover starts at rest relative to Earth where it is and only has to hold it against gravity
+        const int32 earth = registry.FindByName(FName(SOL::BodyNames::EARTH));
+        FSOLShipState state = ships.GetState();
+        state.VelocityMps = SOLRender::EclipticToUnreal(registry.GetVelocityMps(earth));
+        ships.SetState(state);
+        control.bFlightAssist = true;
+        break;
+    }
     case ESOLSmokePhase::Brake:
         control.bFlightAssist = true;
         break;
@@ -217,6 +281,35 @@ void FSOLShipSmokeFlight::BeginPhase(const ESOLSmokePhase phase, USOLShipSubsyst
         control.Thrust = FVector3d(1.0, 0.0, 0.0);
         break;
     }
+    case ESOLSmokePhase::GLoc:
+    {
+        // 2,000 km above Earth at rest relative to it at 1x, nose level: hold the boosted main engine (9 G) through
+        // the blackout (input must be ignored), release it once the pilot wakes
+        SetWarpIndex(ships, 0);
+        const int32 earth = registry.FindByName(FName(SOL::BodyNames::EARTH));
+        const FVector3d earthM = SOLRender::EclipticToUnreal(registry.GetPositionM(earth));
+        const FVector3d radial = (ships.GetState().PositionM - earthM).GetSafeNormal(UE_DOUBLE_SMALL_NUMBER,
+            FVector3d::ZAxisVector);
+        FSOLShipState state;
+        state.PositionM = earthM + radial * (registry.GetRadiusM(earth) + SMOKE_GLOC_ALTITUDE_M);
+        state.VelocityMps = SOLRender::EclipticToUnreal(registry.GetVelocityMps(earth));
+        state.Orientation = UE::Math::TRotationMatrix<double>::MakeFromZX(radial,
+            FVector3d::CrossProduct(radial, FVector3d::ZAxisVector)).ToQuat();
+        ships.SetState(state);
+        ships.ClearSurfaceLock();
+        control.bFlightAssist = false;
+        control.bBoost = true;
+        control.Thrust = FVector3d(1.0, 0.0, 0.0);
+        break;
+    }
+    case ESOLSmokePhase::Autopilot:
+    {
+        // The console autopilot to the Moon, under a 1000x warp the "user" picked; the autopilot never changes it
+        control.bFlightAssist = true;
+        SetWarpIndex(ships, SMOKE_AUTOPILOT_WARP_INDEX);
+        ships.EngageAutopilot(registry.FindByName(FName(SOL::BodyNames::MOON)));
+        break;
+    }
     case ESOLSmokePhase::Done:
         control.bFlightAssist = true;
         break;
@@ -254,6 +347,94 @@ void FSOLShipSmokeFlight::SetWarpIndex(const USOLShipSubsystem& ships, const int
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Tracks the per-frame G, G-LOC and autopilot measurements of the current phase (SDD 18)
+void FSOLShipSmokeFlight::TrackFlightPhase(USOLShipSubsystem& ships, const FSOLBodyRegistry& registry)
+{
+    const double gLoad = ships.GetGLoadG();
+    const FSOLGMeterState meter = ships.GetGMeter();
+    mMaxGLoadG = FMath::Max(mMaxGLoadG, gLoad);
+
+    // Screenshots of the pilot G effects and the autopilot marker, once each
+    if (mPhase == ESOLSmokePhase::GLoc)
+    {
+        TakeShotOnce(ships, SMOKE_SHOT_WARNING, TEXT("g-warning"), mPhaseTimeS >= SMOKE_SHOT_WARNING_S);
+        TakeShotOnce(ships, SMOKE_SHOT_GRAYOUT, TEXT("g-grayout"), !meter.bBlackout
+            && meter.Meter <= SMOKE_SHOT_GRAYOUT_METER && mBlackoutStartS < 0.0);
+        TakeShotOnce(ships, SMOKE_SHOT_BLACKOUT, TEXT("g-blackout"), mBlackoutStartS >= 0.0 && meter.bBlackout
+            && mPhaseTimeS - mBlackoutStartS >= SMOKE_SHOT_BLACKOUT_S);
+    }
+    if (mPhase == ESOLSmokePhase::Autopilot)
+    {
+        TakeShotOnce(ships, SMOKE_SHOT_AUTOPILOT, TEXT("autopilot"), mPhaseTimeS >= SMOKE_SHOT_AUTOPILOT_S);
+    }
+
+    // G-LOC: when it starts and ends, and the G-load while it lasts
+    if (meter.bBlackout)
+    {
+        // The frame G-LOC began still carries the thrust of the substep that blacked the pilot out; from the
+        // next frame on, held input must have no effect
+        if (mBlackoutStartS >= 0.0)
+        {
+            mMaxBlackoutGLoadG = FMath::Max(mMaxBlackoutGLoadG, gLoad);
+        }
+        mBlackoutStartS = mBlackoutStartS < 0.0 ? mPhaseTimeS : mBlackoutStartS;
+    }
+    else if (mBlackoutStartS >= 0.0 && mBlackoutEndS < 0.0)
+    {
+        mBlackoutEndS = mPhaseTimeS;
+        UE_LOG(LogSOL, Log, TEXT("SmokeFlight: G-LOC from %.2f s to %.2f s, meter %.3f"), mBlackoutStartS,
+            mBlackoutEndS, meter.Meter);
+    }
+
+    // Autopilot: the ETA at the start and a little later, then the arrival state when the order ends
+    if (mPhase != ESOLSmokePhase::Autopilot || mArrivalS >= 0.0)
+    {
+        return;
+    }
+    const FSOLGuidanceOutput guidance = ships.GetAutopilotGuidance();
+    if (ships.GetAutopilotBodyIndex() != INDEX_NONE)
+    {
+        if (mFirstEtaS < 0.0 && guidance.EtaS > 0.0)
+        {
+            mFirstEtaS = guidance.EtaS;
+            UE_LOG(LogSOL, Log, TEXT("SmokeFlight: autopilot ETA %.0f s sim, distance %.0f km"), guidance.EtaS,
+                guidance.DistanceM / SOL::METERS_PER_KM);
+        }
+        else if (mEtaAfterS < 0.0 && mPhaseTimeS >= SMOKE_ETA_SAMPLE_S)
+        {
+            mEtaAfterS = guidance.EtaS;
+        }
+        return;
+    }
+    const int32 moon = registry.FindByName(FName(SOL::BodyNames::MOON));
+    const FSOLShipState state = ships.GetState();
+    mArrivalS = mPhaseTimeS;
+    mArrivalDistanceM = FVector3d::Dist(state.PositionM, SOLRender::EclipticToUnreal(registry.GetPositionM(moon)));
+    mArrivalRelSpeedMps = (state.VelocityMps - SOLRender::EclipticToUnreal(registry.GetVelocityMps(moon))).Size();
+    const USOLSimClockSubsystem* clock = ships.GetWorld()->GetSubsystem<USOLSimClockSubsystem>();
+    mWarpAtArrival = clock != nullptr ? clock->GetClock().GetWarpFactor() : 0.0;
+    SetWarpIndex(ships, 0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Takes one verification screenshot the first time its condition holds
+void FSOLShipSmokeFlight::TakeShotOnce(const USOLShipSubsystem& ships, const uint32 shotBit, const TCHAR* name,
+    const bool bCondition)
+{
+    if (!bCondition || (mShotsTaken & shotBit) != 0)
+    {
+        return;
+    }
+    mShotsTaken |= shotBit;
+    UE_LOG(LogSOL, Log, TEXT("SmokeFlight: screenshot (%s) at G %.2f, meter %.3f"), name, ships.GetGLoadG(),
+        ships.GetGMeter().Meter);
+    if (ASOLGameMode* gameMode = ships.GetWorld()->GetAuthGameMode<ASOLGameMode>())
+    {
+        gameMode->CaptureScreenshot();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Tracks the worst altitude drift and whether the anchor stayed Earth during the warp phases
 void FSOLShipSmokeFlight::TrackWarpPhase(const FSOLSmokeSample& sample, const USOLAnchorSubsystem& anchor,
     const FSOLBodyRegistry& registry)
@@ -279,22 +460,22 @@ void FSOLShipSmokeFlight::EndPhase(const FSOLSmokeSample& sample, const USOLShip
     switch (mPhase)
     {
     case ESOLSmokePhase::Hover:
-        bPassed = relSpeed < SMOKE_HOVER_MAX_REL_MPS;
-        detail = FString::Printf(TEXT("relative speed %.1f -> %.3f m/s (limit %.1f)"), startRelSpeed, relSpeed,
-            SMOKE_HOVER_MAX_REL_MPS);
+        bPassed = relSpeed < SMOKE_HOVER_MAX_REL_MPS && mMaxGLoadG <= SMOKE_SUSTAINED_G;
+        detail = FString::Printf(TEXT("relative speed %.1f -> %.3f m/s (limit %.1f), max %.3f G (limit 1.5)"),
+            startRelSpeed, relSpeed, SMOKE_HOVER_MAX_REL_MPS, mMaxGLoadG);
         break;
     case ESOLSmokePhase::Cruise:
     {
         const double alignment = FVector3d::DotProduct(sample.RelativeVelocityMps.GetSafeNormal(), sample.ForwardDir);
         bPassed = relSpeed >= SMOKE_CRUISE_MIN_REL_MPS && relSpeed <= SMOKE_CRUISE_CAP_MPS + 1.0
-            && alignment >= SMOKE_CRUISE_MIN_ALIGNMENT;
-        detail = FString::Printf(TEXT("relative speed %.2f m/s at cap %.0f, alignment with forward %.4f"), relSpeed,
-            SMOKE_CRUISE_CAP_MPS, alignment);
+            && alignment >= SMOKE_CRUISE_MIN_ALIGNMENT && mMaxGLoadG <= SMOKE_SUSTAINED_G;
+        detail = FString::Printf(TEXT("relative speed %.2f m/s at cap %.0f, alignment with forward %.4f, max %.3f G "
+            "(limit 1.5)"), relSpeed, SMOKE_CRUISE_CAP_MPS, alignment, mMaxGLoadG);
         break;
     }
     case ESOLSmokePhase::NewtonThrust:
     {
-        const double expectedGain = ships.GetFlightParams().NewtonianMainAccelMps2 * SMOKE_NEWTON_THRUST_S;
+        const double expectedGain = ships.GetFlightParams().Envelope.ForwardAccelMps2 * SMOKE_NEWTON_THRUST_S;
         const double gain = FVector3d::DotProduct(sample.RelativeVelocityMps - mPhaseStart.RelativeVelocityMps,
             mPhaseStart.ForwardDir);
         bPassed = FMath::Abs(gain - expectedGain) <= SMOKE_THRUST_GAIN_TOLERANCE_MPS;
@@ -311,14 +492,17 @@ void FSOLShipSmokeFlight::EndPhase(const FSOLSmokeSample& sample, const USOLShip
         const double angleDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
             FVector3d::DotProduct(sample.ForwardDir, mPhaseStart.ForwardDir), -1.0, 1.0)));
         const double towardUp = FVector3d::DotProduct(sample.ForwardDir, mPhaseStart.UpDir);
-        bPassed = angleDeg >= SMOKE_PITCH_MIN_ANGLE_DEG && towardUp > 0.0;
-        detail = FString::Printf(TEXT("forward rotated %.1f deg, toward the old up %.3f"), angleDeg, towardUp);
+        const double spinRate = ships.GetState().AngularVelocityRadPerS.Size();
+        bPassed = angleDeg >= SMOKE_PITCH_MIN_ANGLE_DEG && angleDeg <= SMOKE_PITCH_MAX_ANGLE_DEG && towardUp > 0.0
+            && spinRate <= SMOKE_PITCH_MAX_RATE_RAD_PER_S;
+        detail = FString::Printf(TEXT("forward rotated %.1f deg (%.0f-%.0f), toward the old up %.3f, spin after stop "
+            "%.4f rad/s"), angleDeg, SMOKE_PITCH_MIN_ANGLE_DEG, SMOKE_PITCH_MAX_ANGLE_DEG, towardUp, spinRate);
         break;
     }
     case ESOLSmokePhase::Brake:
-        bPassed = relSpeed < SMOKE_BRAKE_MAX_REL_MPS;
-        detail = FString::Printf(TEXT("relative speed %.1f -> %.3f m/s (limit %.1f)"), startRelSpeed, relSpeed,
-            SMOKE_BRAKE_MAX_REL_MPS);
+        bPassed = relSpeed < SMOKE_BRAKE_MAX_REL_MPS && mMaxGLoadG <= SMOKE_SUSTAINED_G;
+        detail = FString::Printf(TEXT("relative speed %.1f -> %.3f m/s (limit %.1f), max %.3f G (limit 1.5)"),
+            startRelSpeed, relSpeed, SMOKE_BRAKE_MAX_REL_MPS, mMaxGLoadG);
         break;
     case ESOLSmokePhase::Collide:
     {
@@ -356,6 +540,36 @@ void FSOLShipSmokeFlight::EndPhase(const FSOLSmokeSample& sample, const USOLShip
             mAnchorStayedEarth ? TEXT("yes") : TEXT("NO"));
         break;
     }
+    case ESOLSmokePhase::GLoc:
+    {
+        const FSOLGMeterState meter = ships.GetGMeter();
+        const double blackoutS = mBlackoutEndS - mBlackoutStartS;
+        const double expectedStartS = SMOKE_GLOC_EMPTY_S * mPhaseStartMeter;
+        bPassed = mMaxGLoadG >= SMOKE_GLOC_MIN_BOOST_G
+            && FMath::Abs(mBlackoutStartS - expectedStartS) <= SMOKE_GLOC_START_TOLERANCE_S && mBlackoutEndS > 0.0
+            && blackoutS >= SMOKE_GLOC_MIN_BLACKOUT_S && mMaxBlackoutGLoadG <= SMOKE_GLOC_MAX_BLACKOUT_G
+            && SOLNewtonian::PilotHasControl(meter);
+        detail = FString::Printf(TEXT("max %.2f G, G-LOC at %.2f s (expected %.2f from a %.3f meter) for %.2f s "
+            "(>= %.1f), max %.4f G while out (input ignored), meter %.3f at the end, control %s"), mMaxGLoadG,
+            mBlackoutStartS, expectedStartS, mPhaseStartMeter, blackoutS, SMOKE_GLOC_MIN_BLACKOUT_S, mMaxBlackoutGLoadG,
+            meter.Meter, SOLNewtonian::PilotHasControl(meter) ? TEXT("yes") : TEXT("NO"));
+        break;
+    }
+    case ESOLSmokePhase::Autopilot:
+    {
+        const int32 moon = registry.FindByName(FName(SOL::BodyNames::MOON));
+        const double standoffM = registry.GetRadiusM(moon) * (1.0 + SOL::AUTOPILOT_BODY_STANDOFF_RADII)
+            + SOL::AUTOPILOT_BODY_STANDOFF_M;
+        bPassed = mArrivalS >= 0.0 && mFirstEtaS > 0.0 && mEtaAfterS >= 0.0 && mEtaAfterS < mFirstEtaS
+            && FMath::Abs(mArrivalDistanceM - standoffM) <= SMOKE_ARRIVAL_DISTANCE_TOLERANCE_M
+            && mArrivalRelSpeedMps <= SMOKE_ARRIVAL_MAX_REL_MPS && mMaxGLoadG <= SMOKE_SUSTAINED_G
+            && mWarpAtArrival == FSOLSimClock::WarpFactors()[SMOKE_AUTOPILOT_WARP_INDEX];
+        detail = FString::Printf(TEXT("ETA %.0f s -> %.0f s after %.0f s real; arrived at %.2f s real, %.0f m from "
+            "the Moon's centre (standoff %.0f), %.3f m/s relative; max %.3f G; warp at arrival x%.0f"), mFirstEtaS,
+            mEtaAfterS, SMOKE_ETA_SAMPLE_S, mArrivalS, mArrivalDistanceM, standoffM, mArrivalRelSpeedMps, mMaxGLoadG,
+            mWarpAtArrival);
+        break;
+    }
     case ESOLSmokePhase::Done:
         return;
     }
@@ -390,6 +604,10 @@ double FSOLShipSmokeFlight::GetPhaseDuration(const ESOLSmokePhase phase)
         return SMOKE_COLLIDE_S;
     case ESOLSmokePhase::Surface:
         return SMOKE_SURFACE_S;
+    case ESOLSmokePhase::GLoc:
+        return SMOKE_GLOC_S;
+    case ESOLSmokePhase::Autopilot:
+        return SMOKE_AUTOPILOT_S;
     default:
         return 0.0;
     }
@@ -419,6 +637,10 @@ const TCHAR* FSOLShipSmokeFlight::GetPhaseName(const ESOLSmokePhase phase)
         return TEXT("g-Collide");
     case ESOLSmokePhase::Surface:
         return TEXT("h-Surface");
+    case ESOLSmokePhase::GLoc:
+        return TEXT("i-GLoc");
+    case ESOLSmokePhase::Autopilot:
+        return TEXT("j-Autopilot");
     default:
         return TEXT("Done");
     }
