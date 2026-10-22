@@ -53,7 +53,10 @@ struct FSOLNpcChunkWakeFragment : public FMassChunkFragment
     double MinWakeKeyM = 0.0;
 };
 
-/** Deviation from the rail (SDD 11 section 3.1), integrated in real time by the Mid and Full tiers; zero when Far. */
+/**
+ * Deviation from the rail (SDD 11 section 3.1): the ship's position and velocity in its rail's frame, integrated in
+ * real time by the Mid tier (point mass) and the Full tier (6-DOF, SDD 18 section 3.7); zero when Far.
+ */
 USTRUCT()
 struct FSOLNpcDeviationFragment : public FMassFragment
 {
@@ -61,6 +64,20 @@ struct FSOLNpcDeviationFragment : public FMassFragment
 
     FVector3d DeviationM = FVector3d::ZeroVector;
     FVector3d DeviationVelocityMps = FVector3d::ZeroVector;
+};
+
+/**
+ * Attitude of a Full-tier ship (SDD 18 section 3.7): added on promotion to Full and removed on demotion. The zero
+ * quaternion means "not set yet": the Full AI's gather sets it from the rail plus deviation velocity
+ * (SOLNpcAi::HandoffOrientation), so the nose starts where the Mid hull was drawn heading.
+ */
+USTRUCT()
+struct FSOLNpcAttitudeFragment : public FMassFragment
+{
+    GENERATED_BODY()
+
+    FQuat4d Orientation = FQuat4d(0.0, 0.0, 0.0, 0.0);     // Ship-local -> universe axes; zero until set
+    FVector3d AngularVelocityRadPerS = FVector3d::ZeroVector; // Ship-local axes: X roll, Y pitch, Z yaw
 };
 
 /** The ship's group (lane, cluster or battle) as a const shared fragment, so chunks are grouped and culled by group. */
@@ -118,7 +135,7 @@ struct FSOLNpcClassFragment : public FMassConstSharedFragment
     int32 ClassIndex = 0;
 };
 
-/** Marks an NPC ship in the Mid AI tier (CPU-simulated, simple steering). */
+/** Marks an NPC ship in the Mid AI tier (CPU-simulated, point-mass return to the rail). */
 USTRUCT()
 struct FSOLNpcMidAiTag : public FMassTag
 {

@@ -38,9 +38,16 @@ struct FSOLShipFrameInputs
  * position by ~r * (w * warp * dt)^2 / 2 (about 6 km for Earth at 1 d/s and 60 fps). Collision uses each body's
  * instantaneous velocity.
  *
- * Surface-lock (SDD 4): a ship whose control fragment names an AlignBodyIndex gets, after each substep's collision,
- * SOLSurfaceLock::ApplyAlignmentCorrection toward that body's local vertical at the substep's end, with the substep's
- * REAL length as dt (never the warp-scaled sim time), so the alignment time constant is the same at any warp.
+ * Flight (SDD 18): each substep runs SOLFlight::Step (assisted or manual, gravity in both), then the pilot G meter
+ * (SOLNewtonian::StepGMeter) on the G-load of the achieved thrust plus any resting surface contact. While the pilot is
+ * blacked out (G-LOC) the ship coasts with no input. Surface-lock (SDD 4) in assisted mode is an attitude target: the
+ * control's AttitudeUpWorld is that body's local vertical at the substep start.
+ *
+ * Autopilot (SDD 18 section 3.5): a ship whose control fragment names an AutopilotBodyIndex flies SOLFlight::
+ * AutopilotStep toward a point above that body, whatever the pilot's state. Under user time warp (> 1) it integrates
+ * SIM time instead (SOLFlight::AutopilotSubstepCount substeps over warp x the frame, against the bodies interpolated
+ * over the same frame) and gets no frame carry, since it then covers the same time the bodies moved. It never changes
+ * the warp. Arrival sets bAutopilotArrived; the ship subsystem then ends the order.
  *
  * Chunks run with ParallelForEachEntityChunk: each job writes only its own entities' state; everything shared (body
  * cache, scratch positions, frame inputs, the const shared params) is read-only during the run. The query issues no
@@ -76,10 +83,11 @@ protected:
 
 private:
 
-    // Fills the scratch array with every body's position at each substep boundary of the frame
-    void PrepareSubstepBodyPositions(double frameS);
+    // Fills a scratch array with every body's position at each of substepCount + 1 evenly spaced frame boundaries
+    void PrepareSubstepBodyPositions(double frameS, int32 substepCount, TArray<FVector3d>& outPositionsM) const;
 
-    // Steps the ships of one chunk: carry, gravity, flight step, swept collision and surface-lock alignment per substep
+    // Steps the ships of one chunk: carry, gravity, flight or autopilot step, swept collision and the G meter per
+    // substep
     void ProcessChunk(FMassExecutionContext& context) const;
 
     FMassEntityQuery mQuery;                            // Ships: state (rw), control (ro), params (const shared)
@@ -87,7 +95,10 @@ private:
     const FSOLBodyFrameCache* mBodyCache = nullptr;     // Unreal-handed body data, owned by the registry subsystem
     FSOLShipFrameInputs mFrame;                         // Carry, warp and last frame's bodies for the current run
     TArray<FVector3d> mSubstepBodyPositionsM;           // [boundary * bodyCount + body], sized once, rewritten per run
+    TArray<FVector3d> mSimSubstepBodyPositionsM;        // Same for the autopilot's sim-time substeps under warp
     FVector3d mCarryPerSubstepM = FVector3d::ZeroVector; // Position carry added after each substep
     double mSubstepS = 0.0;                             // Substep length for the current run
     int32 mSubstepCount = 0;                            // Substeps for the current run
+    double mSimSubstepS = 0.0;                          // Autopilot sim-time substep length under warp (this run)
+    int32 mSimSubstepCount = 0;                         // Autopilot sim-time substeps (0 = no warp, real time)
 };

@@ -25,6 +25,7 @@ namespace SOLKeyBindings
         RollRight,
         Boost,
         ToggleAssist,
+        StopSpin,
         FreeLook,
         RecenterStick,
         SpeedPanel,

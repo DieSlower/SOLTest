@@ -34,9 +34,18 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Defers the tag change that moves an entity from one AI tier's archetype to another's
+    // Defers the tag change that moves an entity from one AI tier's archetype to another's (a Full ship also gains or
+    // loses its attitude fragment, SDD 18 section 3.7)
     void DeferTierMove(FMassCommandBuffer& commands, FMassEntityHandle entity, uint8 fromTier, uint8 toTier)
     {
+        if (toTier == NPC_TIER_FULL)
+        {
+            commands.AddFragment<FSOLNpcAttitudeFragment>(entity);
+        }
+        else if (fromTier == NPC_TIER_FULL)
+        {
+            commands.RemoveFragment<FSOLNpcAttitudeFragment>(entity);
+        }
         if (fromTier == NPC_TIER_FAR)
         {
             if (toTier == NPC_TIER_MID)
@@ -110,6 +119,8 @@ void USOLNpcTierProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>
     mCollectQuery.AddRequirement<FSOLNpcStateFragment>(EMassFragmentAccess::ReadWrite);
     mCollectQuery.AddRequirement<FSOLNpcDeviationFragment>(EMassFragmentAccess::ReadWrite);
     mCollectQuery.AddRequirement<FSOLNpcCombatFragment>(EMassFragmentAccess::ReadOnly);
+    mCollectQuery.AddRequirement<FSOLNpcAttitudeFragment>(EMassFragmentAccess::ReadOnly,
+        EMassFragmentPresence::Optional);
     mCollectQuery.AddTagRequirement<FSOLNpcMidAiTag>(EMassFragmentPresence::Any);
     mCollectQuery.AddTagRequirement<FSOLNpcFullAiTag>(EMassFragmentPresence::Any);
 }
@@ -147,6 +158,7 @@ void USOLNpcTierProcessor::AddChunkView(FMassExecutionContext& context, const bo
         // Read only in Collect (the view type is shared with Select, which writes it)
         view.Rails = context.GetFragmentView<FSOLNpcRailFragment>().GetData();
         view.Combats = const_cast<FSOLNpcCombatFragment*>(context.GetFragmentView<FSOLNpcCombatFragment>().GetData());
+        view.Attitudes = context.GetFragmentView<FSOLNpcAttitudeFragment>().GetData();
         return;
     }
     view.Group = context.GetConstSharedFragment<FSOLNpcGroupFragment>().GroupIndex;
@@ -361,9 +373,17 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
             continue;
         }
         const double distanceM = state.DistanceM;
-        const uint8 aiTier = static_cast<uint8>(SOLNpcScale::SelectAiTier(
+        uint8 aiTier = static_cast<uint8>(SOLNpcScale::SelectAiTier(
             static_cast<SOLNpcScale::EAiTier>(state.AiTier), distanceM, mInputs.FullRadiusM, mInputs.MidRadiusM,
             mInputs.AiHysteresis));
+
+        // Dropping to Far snaps the deviation to the rail: only when that is under half a pixel, or the budget forces
+        // it (SDD 18 section 3.7); otherwise the ship stays Mid while it flies back to its rail
+        if (aiTier == NPC_TIER_FAR && state.AiTier != NPC_TIER_FAR && !SOLNpcAi::AllowFarDemotion(
+            view.Deviations[entity].DeviationM.Size(), distanceM, mInputs.PixelAngleRad, mInputs.bMidBudgetForced))
+        {
+            aiTier = NPC_TIER_MID;
+        }
 
         // Far: drawn by the GPU point layer from the bare rail, so the deviation snaps to zero (beyond the Mid radius)
         if (aiTier == NPC_TIER_FAR)
@@ -436,11 +456,11 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
 // Copies one Mid / Full chunk's ships into the CPU ship list at its offset
 void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
 {
+    const FSOLNpcRailFrame& frame = *mInputs.RailFrame;
     FSOLNpcCpuShip* const out = mCpuShips->GetData() + view.Offset;
     for (int32 entity = 0; entity < view.Count; ++entity)
     {
         const FSOLNpcStateFragment& state = view.States[entity];
-        const FVector3d& steerVelocityMps = view.Deviations[entity].DeviationVelocityMps;
         FSOLNpcCpuShip& ship = out[entity];
         ship.PositionM = state.PositionM;
         ship.PrevPositionM = state.bHasPrevPosition != 0 ? state.PrevPositionM : state.PositionM;
@@ -450,8 +470,25 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
         ship.NpcIndex = view.Combats[entity].NpcIndex;
         ship.RailDistanceM = static_cast<float>((state.PositionM - view.Deviations[entity].DeviationM
             - mInputs.ViewpointM).Size());
-        ship.HeadingDirection = steerVelocityMps.SizeSquared() > SOL::NPC_HEADING_MIN_SPEED_SQ_MPS2
-            ? FVector3f(steerVelocityMps.GetSafeNormal()) : FVector3f::ZeroVector;
+
+        // Hull heading (hulls only): a Full ship's nose, else the rail plus deviation velocity, which is also the nose
+        // a promotion to Full starts with (SOLNpcAi::HandoffOrientation), so neither hand-off turns the hull
+        ship.HeadingDirection = FVector3f::ZeroVector;
+        if (state.RenderTier != NPC_RENDER_POINT)
+        {
+            const FQuat4d* const orientation = view.Attitudes != nullptr ? &view.Attitudes[entity].Orientation
+                : nullptr;
+            if (orientation != nullptr && orientation->SizeSquared() > 0.0)
+            {
+                ship.HeadingDirection = FVector3f(orientation->GetForwardVector());
+            }
+            else
+            {
+                const FSOLNpcRail& rail = view.Rails[entity].Rail;
+                ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::VelocityMps(rail, frame)
+                    + view.Deviations[entity].DeviationVelocityMps, state.PositionM - frame.GroupBodyM[rail.Group]));
+            }
+        }
 
         // Dead ships (waiting to respawn) are not drawn
         ship.bHidden = view.Combats[entity].bAlive == 0 ? 1 : 0;

@@ -5,6 +5,7 @@
 
 #include "Npc/SOLNpcFullAiProcessor.h"
 
+#include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcCombat.h"
 #include "Npc/SOLNpcFragments.h"
 
@@ -28,6 +29,7 @@ void USOLNpcFullAiProcessor::ConfigureQueries(const TSharedRef<FMassEntityManage
     mQuery.AddRequirement<FSOLNpcStateFragment>(EMassFragmentAccess::ReadWrite);
     mQuery.AddRequirement<FSOLNpcDeviationFragment>(EMassFragmentAccess::ReadWrite);
     mQuery.AddRequirement<FSOLNpcCombatFragment>(EMassFragmentAccess::ReadWrite);
+    mQuery.AddRequirement<FSOLNpcAttitudeFragment>(EMassFragmentAccess::ReadWrite);
     mQuery.AddConstSharedRequirement<FSOLNpcClassFragment>();
     mQuery.AddTagRequirement<FSOLNpcFullAiTag>(EMassFragmentPresence::All);
 }
@@ -36,7 +38,7 @@ void USOLNpcFullAiProcessor::ConfigureQueries(const TSharedRef<FMassEntityManage
 // Runs the current pass (serial chunk walk, then parallel over the chunks)
 void USOLNpcFullAiProcessor::Execute(FMassEntityManager& /*entityManager*/, FMassExecutionContext& context)
 {
-    if (mInputs.Combat == nullptr || !(mInputs.RealDeltaS > 0.0))
+    if (mInputs.Combat == nullptr || mInputs.RailFrame == nullptr || !(mInputs.RealDeltaS > 0.0))
     {
         return;
     }
@@ -55,6 +57,7 @@ void USOLNpcFullAiProcessor::Execute(FMassEntityManager& /*entityManager*/, FMas
         view.States = chunkContext.GetMutableFragmentView<FSOLNpcStateFragment>().GetData();
         view.Deviations = chunkContext.GetMutableFragmentView<FSOLNpcDeviationFragment>().GetData();
         view.Combats = chunkContext.GetMutableFragmentView<FSOLNpcCombatFragment>().GetData();
+        view.Attitudes = chunkContext.GetMutableFragmentView<FSOLNpcAttitudeFragment>().GetData();
         view.Count = chunkContext.GetNumEntities();
         view.ClassIndex = chunkContext.GetConstSharedFragment<FSOLNpcClassFragment>().ClassIndex;
         view.FirstSlot = total;
@@ -82,12 +85,28 @@ void USOLNpcFullAiProcessor::Execute(FMassEntityManager& /*entityManager*/, FMas
 void USOLNpcFullAiProcessor::GatherChunk(const FChunkView& view) const
 {
     const double inverseDt = 1.0 / mInputs.RealDeltaS;
+    const FSOLNpcRailFrame& frame = *mInputs.RailFrame;
     for (int32 entity = 0; entity < view.Count; ++entity)
     {
         const FSOLNpcStateFragment& state = view.States[entity];
         const FSOLNpcDeviationFragment& deviation = view.Deviations[entity];
         const FSOLNpcCombatFragment& combat = view.Combats[entity];
+        const FSOLNpcRail& rail = view.Rails[entity].Rail;
         FSOLNpcAiShip ship;
+
+        // Rail velocity and the up hint (away from the group's body); a ship just promoted to Full starts with its
+        // nose along its rail plus deviation velocity, the heading its hull was drawn with, and no spin
+        ship.RailVelocityMps = SOLNpcRail::VelocityMps(rail, frame);
+        ship.UpHint = state.PositionM - frame.GroupBodyM[rail.Group];
+        FSOLNpcAttitudeFragment& attitude = view.Attitudes[entity];
+        if (attitude.Orientation.SizeSquared() <= 0.0)
+        {
+            attitude.Orientation = SOLNpcAi::HandoffOrientation(ship.RailVelocityMps + deviation.DeviationVelocityMps,
+                ship.UpHint);
+            attitude.AngularVelocityRadPerS = FVector3d::ZeroVector;
+        }
+        ship.Orientation = attitude.Orientation;
+        ship.AngularVelocityRadPerS = attitude.AngularVelocityRadPerS;
         ship.PositionM = state.PositionM - mInputs.FrameBodyM;
 
         // Velocity relative to the frame body: the rail's move since last frame (this frame's position and last
@@ -105,7 +124,7 @@ void USOLNpcFullAiProcessor::GatherChunk(const FChunkView& view) const
         ship.Health = combat.Health;
         ship.RespawnS = combat.RespawnS;
         ship.CooldownS = combat.CooldownS;
-        ship.Faction = view.Rails[entity].Rail.Faction;
+        ship.Faction = rail.Faction;
         ship.bAlive = combat.bAlive;
         mInputs.Combat->SetShip(view.FirstSlot + entity, ship);
     }
@@ -129,6 +148,8 @@ void USOLNpcFullAiProcessor::ScatterChunk(const FChunkView& view) const
         view.States[entity].PositionM += ship->NewDeviationM - deviation.DeviationM;
         deviation.DeviationM = ship->NewDeviationM;
         deviation.DeviationVelocityMps = ship->NewDeviationVelocityMps;
+        view.Attitudes[entity].Orientation = ship->Orientation;
+        view.Attitudes[entity].AngularVelocityRadPerS = ship->AngularVelocityRadPerS;
         combat.TargetNpc = ship->TargetNpc;
         combat.Health = ship->Health;
         combat.RespawnS = ship->RespawnS;

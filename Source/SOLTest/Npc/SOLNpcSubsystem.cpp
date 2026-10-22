@@ -24,6 +24,8 @@
 #include "Async/TaskGraphInterfaces.h"
 #include "Blueprint/UserWidget.h"
 #include "Engine/World.h"
+#include "Camera/PlayerCameraManager.h"
+#include "Engine/GameViewportClient.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "HAL/PlatformMemory.h"
@@ -351,6 +353,45 @@ void USOLNpcSubsystem::FaceBattle(const int32 battleIndex)
     FSOLShipState state = Ship->GetState();
     state.Orientation = FQuat4d(FRotationMatrix44d::MakeFromX(direction.GetSafeNormal()).ToQuat());
     state.AngularVelocityRadPerS = FVector3d::ZeroVector;
+    Ship->SetState(state);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the angle one screen pixel spans, from the player camera (the Mid-to-Far snap gate, SDD 18 section 3.7)
+double USOLNpcSubsystem::ViewPixelAngleRad() const
+{
+    double fovDeg = SOL::SHIP_CAMERA_BASE_FOV_DEG;
+    double viewportWidth = SOL::NPC_REFERENCE_VIEWPORT_WIDTH_PX;
+    const APlayerController* controller = GetWorld()->GetFirstPlayerController();
+    if (controller != nullptr && controller->PlayerCameraManager != nullptr)
+    {
+        fovDeg = controller->PlayerCameraManager->GetFOVAngle();
+    }
+    if (GetWorld()->GetGameViewport() != nullptr)
+    {
+        FVector2D size;
+        GetWorld()->GetGameViewport()->GetViewportSize(size);
+        viewportWidth = size.X > 0.0 ? size.X : viewportWidth;
+    }
+
+    // The camera's FOV is horizontal: the view width over the viewport's pixel width (square pixels)
+    return 2.0 * FMath::Tan(FMath::DegreesToRadians(fovDeg) * 0.5) / viewportWidth;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// On a population's first spawn, puts the player ship at rest relative to the battles' body (battles stay around it)
+void USOLNpcSubsystem::MatchShipToBattleBody()
+{
+    // An explicit exception to SDD 18 decision 1 (nothing writes velocity directly), for the demo / benchmark scene
+    // only: a ship flying an autopilot order keeps its velocity
+    const TConstArrayView<FVector3d> bodyVelocitiesMps = BodyRegistry->GetUnrealFrameCache().VelocitiesMps;
+    if (mGroups.BattleCount <= 0 || !Ship->HasPlayerShip() || Ship->GetAutopilotBodyIndex() != INDEX_NONE
+        || !bodyVelocitiesMps.IsValidIndex(mGroups.BattleBody))
+    {
+        return;
+    }
+    FSOLShipState state = Ship->GetState();
+    state.VelocityMps = bodyVelocitiesMps[mGroups.BattleBody];
     Ship->SetState(state);
 }
 
@@ -734,7 +775,12 @@ void USOLNpcSubsystem::Update()
     if ((mRequestedCount != mSpawnedCount || mIsRespawnRequested) && Ship->HasPlayerShip())
     {
         mIsRespawnRequested = false;
+        const bool bInitialSpawn = mSpawnedCount == 0;
         Spawn(mRequestedCount);
+        if (bInitialSpawn)
+        {
+            MatchShipToBattleBody();
+        }
         FParse::Value(FCommandLine::Get(), SOL::CommandLine::NPC_FACE_BATTLE, mPendingFaceBattle);
     }
     ContinueSpawn();
@@ -838,6 +884,8 @@ void USOLNpcSubsystem::Update()
 
     // A Mid budget that shrank the Mid radius below the Full radius also caps the Full radius (Full stays inside Mid)
     inputs.FullRadiusM = FMath::Min(inputs.FullRadiusM, inputs.MidRadiusM);
+    inputs.bMidBudgetForced = inputs.MidRadiusM < mOptions.MidAiRadiusM;
+    inputs.PixelAngleRad = ViewPixelAngleRad();
     ParallelFor(2, [this, &inputs, budgetDistancesM](const int32 tier)
     {
         if (tier == 0)
@@ -910,6 +958,7 @@ void USOLNpcSubsystem::UpdateFullAi(const double realDeltaS)
         : FVector3d::ZeroVector;
     USOLNpcFullAiProcessor::FRunInputs inputs;
     inputs.Combat = &mCombat;
+    inputs.RailFrame = &mRailFrame;
     inputs.FrameBodyM = mCombatFrameBodyM;
     inputs.FrameBodyStepM = mCombatFrameBodyM - mPrevCombatFrameBodyM;
     inputs.bHasFrameBodyStep = mHasPrevCombatFrameBody;

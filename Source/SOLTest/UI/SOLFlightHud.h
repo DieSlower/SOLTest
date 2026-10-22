@@ -170,6 +170,11 @@ private:
         AbsoluteSpeed,
         Cap,
         Assist,
+        GMeter,
+        GWarning,
+        Autopilot,
+        AutopilotHint,
+        AutopilotCancel,
         TargetName,
         TargetDistance,
         TargetRelative,
@@ -204,6 +209,10 @@ private:
 
     // Draws the relative and absolute speed, the cap and its fill bar, assist and boost (bottom left)
     void DrawSpeedBlock(const FSOLShipState& state, const FSOLShipControl& control);
+
+    // Draws the pilot G meter (above the speed block), the G warning (under the reticle) and the autopilot marker
+    // with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
+    void DrawPilotBlock(const FSOLShipControl& control);
 
     // Draws the selected target's bracket and readout, or an edge arrow when it is off-screen
     void DrawTarget(const FSOLHudView& view, const FSOLShipState& state);

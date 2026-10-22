@@ -264,14 +264,29 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
         SOLInfoText::FormatSpeed(SOL::MAX_SPEED_CAP_MPS) }));
     addLine(INFO_START_SPEED_CAP, SOLInfoText::FormatSpeed(SOL::SHIP_START_SPEED_CAP_MPS));
     addLine(INFO_ASSIST_RESPONSE, MenuContentWithUnit(INFO_SECONDS_FORMAT, flight.AssistTimeConstantS));
-    addLine(INFO_NEWTONIAN_ACCEL, FString::Format(INFO_PAIR_FORMAT, {
-        MenuContentWithUnit(INFO_ACCEL_FORMAT, flight.NewtonianMainAccelMps2),
-        MenuContentWithUnit(INFO_ACCEL_FORMAT, flight.NewtonianStrafeAccelMps2) }));
+    // Thrust and the pilot's limits in G (SDD 18), from the envelope and the pilot limits the player's ship uses
+    const FSOLThrustEnvelope& envelope = flight.Envelope;
+    const FSOLPilotGLimits& pilot = flight.PilotLimits;
+    // Returns an acceleration formatted in G
+    const auto inG = [](const double accelMps2)
+    {
+        return MenuContentWithUnit(INFO_G_FORMAT, accelMps2 / SOLNewtonian::STANDARD_GRAVITY_MPS2);
+    };
+    addLine(INFO_THRUST, FString::Format(INFO_QUAD_FORMAT, { inG(envelope.ForwardAccelMps2),
+        inG(envelope.ReverseAccelMps2), inG(envelope.LateralAccelMps2), inG(envelope.VerticalAccelMps2) }));
+    addLine(INFO_THRUST_CAP, inG(envelope.MaxTotalAccelMps2));
     addLine(INFO_BOOST, FString::Format(INFO_BOOST_FORMAT, { SOLInfoText::FormatPercentOrValue(
-        flight.BoostSpeedMultiplier), SOLInfoText::FormatPercentOrValue(flight.BoostAccelMultiplier) }));
+        flight.BoostSpeedMultiplier), SOLInfoText::FormatPercentOrValue(envelope.BoostMultiplier) }));
     addLine(INFO_TURN_RATES, FString::Format(INFO_PAIR_FORMAT, {
-        MenuContentWithUnit(INFO_DEG_PER_S_FORMAT, FMath::RadiansToDegrees(flight.MaxPitchYawRateRadPerS)),
-        MenuContentWithUnit(INFO_DEG_PER_S_FORMAT, FMath::RadiansToDegrees(flight.MaxRollRateRadPerS)) }));
+        MenuContentWithUnit(INFO_DEG_PER_S_FORMAT, FMath::RadiansToDegrees(envelope.MaxAngularRateRadPerS.Y)),
+        MenuContentWithUnit(INFO_DEG_PER_S_FORMAT, FMath::RadiansToDegrees(envelope.MaxAngularRateRadPerS.X)) }));
+    addLine(INFO_TURN_ACCEL, FString::Format(INFO_PAIR_FORMAT, {
+        MenuContentWithUnit(INFO_RAD_PER_S2_FORMAT, envelope.MaxAngularAccelRadPerS2.Y),
+        MenuContentWithUnit(INFO_RAD_PER_S2_FORMAT, envelope.MaxAngularAccelRadPerS2.X) }));
+    addLine(INFO_PILOT_G, FString::Format(INFO_PAIR_FORMAT, { MenuContentWithUnit(INFO_G_FORMAT, pilot.SustainedG),
+        MenuContentWithUnit(INFO_G_FORMAT, pilot.MaxG) }));
+    addLine(INFO_G_TOLERANCE, MenuContentWithUnit(INFO_SECONDS_FORMAT, pilot.TimeToEmptyAtMaxGS));
+    addLine(INFO_BLACKOUT, MenuContentWithUnit(INFO_SECONDS_FORMAT, pilot.BlackoutDurationS));
     addLine(INFO_SHIP_RADIUS, MenuContentWithUnit(INFO_METERS_FORMAT, flight.ShipRadiusM));
 
     // Time and travel: the warp ladder, the jump and surface-lock ranges

@@ -43,3 +43,7 @@ archive.
   cross/starburst flare on bright stars, deferred from Part 4's star field.
 - [`asteroid-ring-collision.md`](asteroid-ring-collision.md) — real collision against
   asteroid-belt and ring-particle bodies, deferred from Part 5.
+- [`ship-tech-upgrades.md`](ship-tech-upgrades.md) — upgradeable pilot G tolerance and
+  ship thrust (equipment), deferred from issue #18.
+- [`damage-and-death.md`](damage-and-death.md) — hull damage, pilot injury and death
+  (prolonged G drain, impacts), deferred from issue #18.

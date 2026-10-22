@@ -47,7 +47,8 @@ namespace
     // Verdict thresholds
     constexpr double HUDSMOKE_CAP_RELATIVE_TOLERANCE = 1.0e-9;
     constexpr double HUDSMOKE_BLOCKED_MAX_GAIN_MPS = 0.5;   // W while the panel is open: no speed gained
-    constexpr double HUDSMOKE_THRUST_MIN_GAIN_MPS = 100.0;  // W after closing: clearly accelerating
+    constexpr double HUDSMOKE_THRUST_MIN_GAIN_MPS = 20.0;   // W after closing: clearly accelerating (assisted 1.5 G
+                                                            // for 2 s is ~29 m/s, SDD 18)
 }
 
 //////////////////////////////////////////////////////////////////////////

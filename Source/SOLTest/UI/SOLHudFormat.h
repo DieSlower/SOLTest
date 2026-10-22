@@ -32,6 +32,9 @@ namespace SOLHudFormat
     // Appends FormatDistanceM(distanceM)'s exact text to an existing buffer, without a temporary FString
     SOLTEST_API void AppendDistanceM(FString& outText, double distanceM);
 
+    // Appends a duration rounded to whole seconds: "45 s", "12:05", "3:02:07" or "13 d 12 h" ("--" if invalid)
+    SOLTEST_API void AppendDurationS(FString& outText, double seconds);
+
     // Returns the flight HUD's key hint line from the ship's keys (SOLKeyBindings order, shown through
     // SOLBindingLabel), with the orbit-lines state; with the default keys it reads "ORBITS OFF (O)   F3 speed panel
     // ...   LMB fire   G drop target"

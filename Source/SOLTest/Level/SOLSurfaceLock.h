@@ -16,7 +16,6 @@ struct FSOLSurfaceLockParams
     double AutoReleaseFactor = SOL::SURFACE_LOCK_AUTO_RELEASE_FACTOR;           // release above 12.5 km
     double ManualRangeMinM = SOL::SURFACE_LOCK_MANUAL_RANGE_MIN_M;              // 1,000 km floor
     double ManualReleaseFactor = SOL::SURFACE_LOCK_MANUAL_RELEASE_FACTOR;
-    double AlignTimeConstantS = SOL::SURFACE_LOCK_ALIGN_TIME_CONSTANT_S;
 };
 
 // Surface-lock state carried between frames; the default is fully released
@@ -43,8 +42,4 @@ namespace SOLSurfaceLock
 
     // Returns the unit direction from the body's center to the ship (the local vertical)
     SOLTEST_API FVector3d TargetUpDir(const FVector3d& shipPositionM, const FVector3d& bodyPositionM);
-
-    // Rotates the orientation along the shortest arc from its up toward targetUpDir by the fraction 1 - e^(-dt / tau)
-    SOLTEST_API FQuat4d ApplyAlignmentCorrection(const FQuat4d& currentOrientation, const FVector3d& targetUpDir,
-        double tauS, double dt);
 }

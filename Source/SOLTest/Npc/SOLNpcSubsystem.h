@@ -169,6 +169,14 @@ private:
     // Creates the next slice of a pending spawn's entities (at most NPC_SPAWN_ENTITIES_PER_FRAME per call)
     void ContinueSpawn();
 
+    // On a population's first spawn, puts the player ship at rest relative to the battles' body, so the battles formed
+    // around it stay around it (an explicit exception to SDD 18 decision 1; skipped while the autopilot flies)
+    // (since SDD 18 an assisted ship only brakes at 1.5 G, so it would otherwise keep its spawn orbit and leave them)
+    void MatchShipToBattleBody();
+
+    // Returns the angle one screen pixel spans, from the player camera (the Mid-to-Far snap gate)
+    double ViewPixelAngleRad() const;
+
     // Resolves the layout's body names and fills the group table (battles around the current anchor)
     void BuildGroups(const SOLNpcScale::FLayout& layout, const SOLNpcScale::FBattleParams& battle);
 

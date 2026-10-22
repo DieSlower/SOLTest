@@ -7,23 +7,20 @@
 
 namespace
 {
-    // Below this rotation angle (radians) the rotation-vector quaternion uses its small-angle limit sin(a/2)/a -> 1/2
-    constexpr double FLIGHT_SMALL_ROTATION_ANGLE_RAD = 1.0e-8;
-
-    // Guard for divisions by a time constant that a caller may set to zero
-    constexpr double FLIGHT_MIN_TIME_CONSTANT_S = UE_DOUBLE_SMALL_NUMBER;
-
     // Below this squared length the orbit tangent cross(+Z, towardSun) counts as parallel and falls back to +Y
     constexpr double FLIGHT_PARALLEL_CROSS_SIZE_SQUARED = 1.0e-24;
 
     // Below this squared relative travel (m^2, i.e. 0.1 mm) a swept collision degenerates to the end-point test
     constexpr double FLIGHT_MIN_SWEEP_TRAVEL_SQUARED = 1.0e-8;
 
+    // LevelForward keeps the current forward when its level projection is at most this long (nose along the up)
+    constexpr double FLIGHT_MIN_LEVEL_PROJECTION = 1.0e-6;
+
     //////////////////////////////////////////////////////////////////////////
-    // Returns the fraction of the gap that remains after dt of exponential relaxation with time constant tau
-    double FlightRemainingFraction(const double dt, const double tau)
+    // Returns true when every component of v is finite
+    bool FlightIsFinite(const FVector3d& v)
     {
-        return FMath::Exp(-dt / FMath::Max(tau, FLIGHT_MIN_TIME_CONSTANT_S));
+        return FMath::IsFinite(v.X) && FMath::IsFinite(v.Y) && FMath::IsFinite(v.Z);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -35,71 +32,265 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns each component of v clamped to [-1, 1]
+    // Returns each component of v clamped to [-1, 1], with non-finite components as 0
     FVector3d FlightClampUnitComponents(const FVector3d& v)
     {
-        return FVector3d(FMath::Clamp(v.X, -1.0, 1.0), FMath::Clamp(v.Y, -1.0, 1.0), FMath::Clamp(v.Z, -1.0, 1.0));
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the quaternion rotating by |rotationVector| radians about its direction (standard right-hand quaternion math)
-    FQuat4d FlightQuatFromRotationVector(const FVector3d& rotationVector)
-    {
-        const double angle = rotationVector.Size();
-        const double halfAngle = 0.5 * angle;
-        const double sinHalfOverAngle = angle > FLIGHT_SMALL_ROTATION_ANGLE_RAD ? FMath::Sin(halfAngle) / angle : 0.5;
-        return FQuat4d(rotationVector.X * sinHalfOverAngle, rotationVector.Y * sinHalfOverAngle,
-            rotationVector.Z * sinHalfOverAngle, FMath::Cos(halfAngle));
+        // Returns one component clamped to [-1, 1], or 0 when non-finite
+        auto clampOne = [](const double value)
+        {
+            return FMath::IsFinite(value) ? FMath::Clamp(value, -1.0, 1.0) : 0.0;
+        };
+        return FVector3d(clampOne(v.X), clampOne(v.Y), clampOne(v.Z));
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Advances the ship by dt seconds with quaternion rotation and assist or Newtonian translation
-FSOLShipState SOLFlight::Step(const FSOLShipState& state, const FSOLShipControl& control,
-    const FSOLFlightParams& params, const FVector3d& gravityAccelMps2, const double dt)
+// Returns the assisted thrust request: gravity compensation first, then as much velocity hold as the limit allows
+FVector3d SOLFlight::AssistThrustAccelMps2(const FVector3d& velocityMps, const FVector3d& targetVelocityMps,
+    const FVector3d& gravityAccelMps2, const double timeConstantS, const double dt, const double limitMps2)
 {
-    FSOLShipState result = state;
+    if (!FlightIsFinite(velocityMps) || !FlightIsFinite(targetVelocityMps) || !FlightIsFinite(gravityAccelMps2)
+        || FMath::IsNaN(limitMps2) || limitMps2 <= 0.0)
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d hold = SOLNewtonian::VelocityHoldAccelMps2(velocityMps, targetVelocityMps, FVector3d::ZeroVector,
+        timeConstantS, dt);
+    const FVector3d compensation = -gravityAccelMps2;
+    if (!FMath::IsFinite(limitMps2))
+    {
+        return compensation + hold;
+    }
+    const double compensationSize = compensation.Size();
+    if (compensationSize >= limitMps2)
+    {
+        return compensation * (limitMps2 / compensationSize);
+    }
 
-    // Sanitize the inputs: each component in [-1, 1], thrust also clamped to unit length overall
-    const FVector3d thrust = FlightClampLength(FlightClampUnitComponents(control.Thrust), 1.0);
+    // Largest s in [0, 1] with |c + s h| <= L: the positive root of |h|^2 s^2 + 2 (c.h) s + |c|^2 - L^2 = 0
+    if ((compensation + hold).SizeSquared() <= limitMps2 * limitMps2)
+    {
+        return compensation + hold;
+    }
+    const double a = hold.SizeSquared();
+    const double halfB = FVector3d::DotProduct(compensation, hold);
+    const double c = (compensationSize - limitMps2) * (compensationSize + limitMps2);
+    const double root = (-halfB + FMath::Sqrt(FMath::Max(halfB * halfB - a * c, 0.0))) / a;
+    return compensation + hold * FMath::Clamp(root, 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Advances the ship by dt in assisted (rate command, velocity hold at the pilot limit) or manual (torque, thrust)
+// mode on the Newtonian core, gravity included in both
+FSOLShipState SOLFlight::Step(const FSOLShipState& state, const FSOLShipControl& control,
+    const FSOLFlightParams& params, const FVector3d& gravityAccelMps2, const double dt,
+    FSOLFlightStepOutput* outStep)
+{
+    if (outStep != nullptr)
+    {
+        *outStep = FSOLFlightStepOutput();
+    }
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return state;
+    }
+    const FSOLThrustEnvelope& env = params.Envelope;
     const FVector3d rotation = FlightClampUnitComponents(control.Rotation);
+    const FQuat4d& q = state.Orientation;
 
-    // Rotation (both modes): relax the local rate toward the command, then turn by rate * dt about the local axes.
-    // Standard quaternion math is right-handed, so roll and pitch are negated to get Unreal's left-handed conventions
-    // (+pitch: forward gains +up, +roll: up gains +right); +yaw about +Z already turns forward toward +right.
-    const FVector3d commandedRate(rotation.X * params.MaxRollRateRadPerS, rotation.Y * params.MaxPitchYawRateRadPerS,
-        rotation.Z * params.MaxPitchYawRateRadPerS);
-    const double rateRemaining = FlightRemainingFraction(dt, params.AngularResponseTimeS);
-    const FVector3d rate = commandedRate + (state.AngularVelocityRadPerS - commandedRate) * rateRemaining;
-    const FVector3d localRotation = FVector3d(-rate.X, -rate.Y, rate.Z) * dt;
-    result.AngularVelocityRadPerS = rate;
-    result.Orientation = (state.Orientation * FlightQuatFromRotationVector(localRotation)).GetNormalized();
-
-    // Translation uses the orientation at the start of the step
-    const double boostSpeed = control.bBoost ? params.BoostSpeedMultiplier : 1.0;
-    const double boostAccel = control.bBoost ? params.BoostAccelMultiplier : 1.0;
-    FVector3d velocity;
+    FSOLNewtonianCommand command;
+    command.bBoost = control.bBoost;
     if (control.bFlightAssist)
     {
-        // Assist: exact exponential relaxation toward reference + thrust * cap (relative target clamped to max speed)
-        const FVector3d relativeTarget = FlightClampLength(
-            state.Orientation.RotateVector(thrust) * (control.SpeedCapMps * boostSpeed), params.MaxSpeedMps);
-        const FVector3d target = control.ReferenceVelocityMps + relativeTarget;
-        const double remaining = FlightRemainingFraction(dt, params.AssistTimeConstantS / boostAccel);
-        velocity = target + (state.VelocityMps - target) * remaining;
+        // Assisted rotation: rate command per axis; the attitude target (surface-lock) flies the axes left free
+        FVector3d rateCommand = rotation * env.MaxAngularRateRadPerS;
+        if (FlightIsFinite(control.AttitudeUpWorld) && !control.AttitudeUpWorld.IsZero())
+        {
+            const FVector3d attitude = SOLNewtonian::AttitudeRateCommand(q,
+                LevelForward(q, control.AttitudeUpWorld), control.AttitudeUpWorld, env);
+            for (int32 axis = 0; axis < 3; ++axis)
+            {
+                rateCommand[axis] = rotation[axis] == 0.0 ? attitude[axis] : rateCommand[axis];
+            }
+        }
+        if (control.bStopSpin)
+        {
+            rateCommand = FVector3d::ZeroVector;
+        }
+        command.AngularAccelFraction = SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS,
+            rateCommand, env, dt);
+
+        // Assisted translation: hold reference + thrust * cap, spending at most the pilot's sustained limit
+        const FVector3d thrust = FlightClampLength(FlightClampUnitComponents(control.Thrust), 1.0);
+        const double boostSpeed = control.bBoost ? params.BoostSpeedMultiplier : 1.0;
+        const FVector3d relativeTarget = FlightClampLength(q.RotateVector(thrust) * (control.SpeedCapMps * boostSpeed),
+            params.MaxSpeedMps);
+        const FVector3d request = AssistThrustAccelMps2(state.VelocityMps,
+            control.ReferenceVelocityMps + relativeTarget, gravityAccelMps2, params.AssistTimeConstantS, dt,
+            SOLNewtonian::PilotSustainedAccelMps2(params.PilotLimits));
+        command.ThrustFraction = SOLNewtonian::AllocateThrust(request, q, env, control.bBoost).ThrustFraction;
     }
     else
     {
-        // Newtonian: fixed thruster accelerations along the ship axes plus gravity, no damping
-        const FVector3d localAccel = FVector3d(thrust.X * params.NewtonianMainAccelMps2,
-            thrust.Y * params.NewtonianStrafeAccelMps2, thrust.Z * params.NewtonianStrafeAccelMps2) * boostAccel;
-        velocity = state.VelocityMps + (state.Orientation.RotateVector(localAccel) + gravityAccelMps2) * dt;
+        // Manual: torque and thrust fractions straight to the thrusters; stop spin brakes the rotation
+        command.AngularAccelFraction = control.bStopSpin
+            ? SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS, FVector3d::ZeroVector, env, dt)
+            : rotation;
+        command.ThrustFraction = FlightClampUnitComponents(control.Thrust);
     }
 
-    // Absolute speed limit, then semi-implicit Euler position update
-    result.VelocityMps = FlightClampLength(velocity, params.MaxSpeedMps);
-    result.PositionM = state.PositionM + result.VelocityMps * dt;
-    return result;
+    if (outStep != nullptr)
+    {
+        outStep->ThrustAccelWorldMps2 = q.RotateVector(
+            SOLNewtonian::LocalThrustAccelMps2(command.ThrustFraction, env, command.bBoost));
+    }
+    return SOLNewtonian::StepNewtonian(state, command, env, gravityAccelMps2, dt);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ship's forward projected level to the plane perpendicular to up (the forward itself if degenerate)
+FVector3d SOLFlight::LevelForward(const FQuat4d& orientation, const FVector3d& upWorld)
+{
+    const FVector3d forward = orientation.GetForwardVector();
+    if (!FlightIsFinite(upWorld) || upWorld.IsZero())
+    {
+        return forward;
+    }
+    const FVector3d up = upWorld.GetUnsafeNormal();
+    const double forwardAlongUp = FVector3d::DotProduct(forward, up);
+    const FVector3d level = forward - up * forwardAlongUp;
+    const double size = level.Size();
+    if (size > FLIGHT_MIN_LEVEL_PROJECTION)
+    {
+        return level / size;
+    }
+
+    // Nose along the up: level out by the shortest pitch, toward minus the ship's up (nose up) or plus it (nose down)
+    const FVector3d shipUp = orientation.GetUpVector() * (forwardAlongUp > 0.0 ? -1.0 : 1.0);
+    const FVector3d pitchLevel = shipUp - up * FVector3d::DotProduct(shipUp, up);
+    const double pitchSize = pitchLevel.Size();
+    return pitchSize > FLIGHT_MIN_LEVEL_PROJECTION ? pitchLevel / pitchSize : forward;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the contact (normal) acceleration of a ship resting on a surface: what presses it into the ground
+FVector3d SOLFlight::ContactAccelMps2(const FVector3d& outwardNormal, const FVector3d& bodyGravityAccelMps2,
+    const FVector3d& thrustAccelWorldMps2)
+{
+    if (!FlightIsFinite(outwardNormal) || !FlightIsFinite(bodyGravityAccelMps2) || !FlightIsFinite(thrustAccelWorldMps2)
+        || outwardNormal.IsZero())
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d normal = outwardNormal.GetUnsafeNormal();
+    const double press = -FVector3d::DotProduct(bodyGravityAccelMps2 + thrustAccelWorldMps2, normal);
+    return normal * FMath::Max(press, 0.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of sim-time substeps the autopilot uses for one frame of sim time (0 for invalid input)
+int32 SOLFlight::AutopilotSubstepCount(const double frameSimS)
+{
+    if (!FMath::IsFinite(frameSimS) || frameSimS <= 0.0)
+    {
+        return 0;
+    }
+    const double substepS = FMath::Max(SOL::AUTOPILOT_MIN_SUBSTEP_S, frameSimS / SOL::AUTOPILOT_MAX_SUBSTEPS);
+    return FMath::Clamp(FMath::CeilToInt32(frameSimS / substepS), 1, SOL::AUTOPILOT_MAX_SUBSTEPS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Advances the ship by dt under the rendezvous autopilot (flip-and-burn at the pilot's autopilot limit)
+FSOLShipState SOLFlight::AutopilotStep(const FSOLShipState& state, const FVector3d& targetPositionM,
+    const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
+    const FSOLFlightParams& params, const FSOLGMeterState& meter, const double dt, FSOLFlightStepOutput* outStep,
+    FSOLGuidanceOutput* outGuidance, const double targetGravityMps2)
+{
+    if (outStep != nullptr)
+    {
+        *outStep = FSOLFlightStepOutput();
+    }
+    if (outGuidance != nullptr)
+    {
+        *outGuidance = FSOLGuidanceOutput();
+    }
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return state;
+    }
+    const FSOLThrustEnvelope& env = params.Envelope;
+
+    // Guidance planned at the pilot's autopilot limit (sustained, or the recovery limit while the meter is out), with
+    // the stronger of the gravity here and at the target, so braking into a deep well is planned for the well's
+    // bottom (SDD 18 Amendment 7)
+    const double limitMps2 = SOLNewtonian::AutopilotAccelLimitMps2(params.PilotLimits, meter);
+    const double planGravityMps2 = FMath::Max(gravityAccelMps2.Size(),
+        FMath::IsFinite(targetGravityMps2) ? targetGravityMps2 : 0.0);
+    const FSOLGuidanceParams guidanceParams = SOLNewtonian::MakeGuidanceParams(env, limitMps2, planGravityMps2, true,
+        false);
+    const FSOLGuidanceOutput guidance = SOLNewtonian::ComputeRendezvousGuidance(targetPositionM - state.PositionM,
+        state.VelocityMps - targetVelocityMps, targetAccelMps2, gravityAccelMps2, guidanceParams, dt);
+
+    // Long sim-time substeps (user warp) cannot integrate a rate-limited turn: the nose is set straight to the
+    // guidance's forward with no spin; otherwise it follows the guidance through the rate command
+    FSOLShipState start = state;
+    FSOLNewtonianCommand command;
+    if (dt > SOL::AUTOPILOT_KINEMATIC_ATTITUDE_S && !guidance.DesiredForward.IsZero())
+    {
+        start.Orientation = SOLNewtonian::OrientationFromForward(guidance.DesiredForward,
+            state.Orientation.GetUpVector(), state.Orientation);
+        start.AngularVelocityRadPerS = FVector3d::ZeroVector;
+    }
+    else
+    {
+        const FVector3d rateCommand = SOLNewtonian::AttitudeRateCommand(state.Orientation, guidance.DesiredForward,
+            FVector3d::ZeroVector, env);
+        command.AngularAccelFraction = SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS,
+            rateCommand, env, dt);
+    }
+
+    // Thrust within the pilot limit and the envelope
+    command.ThrustFraction = SOLNewtonian::AllocateThrust(
+        SOLNewtonian::ClampToPilotLimit(guidance.DesiredThrustAccelMps2, limitMps2), start.Orientation, env, false)
+        .ThrustFraction;
+
+    if (outStep != nullptr)
+    {
+        outStep->ThrustAccelWorldMps2 = start.Orientation.RotateVector(
+            SOLNewtonian::LocalThrustAccelMps2(command.ThrustFraction, env, false));
+    }
+    if (outGuidance != nullptr)
+    {
+        *outGuidance = guidance;
+    }
+    return SOLNewtonian::StepNewtonian(start, command, env, gravityAccelMps2, dt);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the autopilot's arrival distance from a body's centre: the geometric standoff, moved out until the body's
+// gravity there is at most AUTOPILOT_GRAVITY_STANDOFF_FRACTION of the autopilot limit (so the arrival can be held)
+double SOLFlight::AutopilotStandoffM(const double bodyRadiusM, const double bodyGM, const double accelLimitMps2)
+{
+    const double radiusM = FMath::IsFinite(bodyRadiusM) && bodyRadiusM > 0.0 ? bodyRadiusM : 0.0;
+    const double geometricM = radiusM * (1.0 + SOL::AUTOPILOT_BODY_STANDOFF_RADII) + SOL::AUTOPILOT_BODY_STANDOFF_M;
+    if (!FMath::IsFinite(bodyGM) || bodyGM <= 0.0 || !FMath::IsFinite(accelLimitMps2) || accelLimitMps2 <= 0.0)
+    {
+        return geometricM;
+    }
+    return FMath::Max(geometricM, FMath::Sqrt(bodyGM / (SOL::AUTOPILOT_GRAVITY_STANDOFF_FRACTION * accelLimitMps2)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true when the autopilot flies under a warp too high for precise gravity near a body (the HUD hint)
+bool SOLFlight::IsAutopilotPrecisionReduced(const double warpFactor, const double distanceToBodyCenterM,
+    const double bodyRadiusM)
+{
+    if (!FMath::IsFinite(warpFactor) || !FMath::IsFinite(distanceToBodyCenterM) || !FMath::IsFinite(bodyRadiusM)
+        || bodyRadiusM <= 0.0)
+    {
+        return false;
+    }
+    return warpFactor > SOL::AUTOPILOT_HINT_WARP && distanceToBodyCenterM < SOL::AUTOPILOT_HINT_RADII * bodyRadiusM;
 }
 
 //////////////////////////////////////////////////////////////////////////

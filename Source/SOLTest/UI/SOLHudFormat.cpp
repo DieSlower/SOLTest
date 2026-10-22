@@ -16,6 +16,10 @@ namespace
     constexpr double HUD_LIGHT_UNIT_MIN_MPS = 0.01 * SOL::SPEED_OF_LIGHT_MPS;   // Speeds above this read in c
     constexpr double HUD_KM_DISTANCE_MIN_M = 1000.0;                            // Distances at or above this read in km
     constexpr double HUD_AU_DISTANCE_MIN_M = 0.01 * SOL::AU_M;                  // Distances at or above this read in AU
+    constexpr int64 HUD_SECONDS_PER_MINUTE = 60;                                // Duration formatting (whole seconds)
+    constexpr int64 HUD_MINUTES_PER_HOUR = 60;
+    constexpr int64 HUD_SECONDS_PER_HOUR = 3600;
+    constexpr int64 HUD_HOURS_PER_DAY = 24;
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the number of meters per second in one of the unit
@@ -90,6 +94,37 @@ namespace SOLHudFormat
         else
         {
             outText.Appendf(TEXT("%.4f AU"), distanceM / SOL::AU_M);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Appends a duration rounded to whole seconds: "45 s", "12:05", "3:02:07" or "13 d 12 h" ("--" if invalid)
+    void AppendDurationS(FString& outText, const double seconds)
+    {
+        if (!FMath::IsFinite(seconds) || seconds < 0.0)
+        {
+            outText.Append(TEXT("--"));
+            return;
+        }
+        const int64 total = static_cast<int64>(FMath::FloorToDouble(seconds + 0.5));
+        const int64 secondsPart = total % HUD_SECONDS_PER_MINUTE;
+        const int64 minutesPart = (total / HUD_SECONDS_PER_MINUTE) % HUD_MINUTES_PER_HOUR;
+        const int64 hoursTotal = total / HUD_SECONDS_PER_HOUR;
+        if (total < HUD_SECONDS_PER_MINUTE)
+        {
+            outText.Appendf(TEXT("%lld s"), total);
+        }
+        else if (total < HUD_SECONDS_PER_HOUR)
+        {
+            outText.Appendf(TEXT("%lld:%02lld"), total / HUD_SECONDS_PER_MINUTE, secondsPart);
+        }
+        else if (hoursTotal < HUD_HOURS_PER_DAY)
+        {
+            outText.Appendf(TEXT("%lld:%02lld:%02lld"), hoursTotal, minutesPart, secondsPart);
+        }
+        else
+        {
+            outText.Appendf(TEXT("%lld d %02lld h"), hoursTotal / HUD_HOURS_PER_DAY, hoursTotal % HUD_HOURS_PER_DAY);
         }
     }
 }

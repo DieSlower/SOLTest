@@ -6,6 +6,7 @@
 #include "Ship/SOLShipFlightProcessor.h"
 
 #include "Flight/SOLFlight.h"
+#include "Flight/SOLNewtonianFlight.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
@@ -38,6 +39,7 @@ void USOLShipFlightProcessor::SetBodyCache(const FSOLBodyFrameCache* bodyCache)
     mBodyCache = bodyCache;
     const int32 bodyCount = bodyCache != nullptr ? bodyCache->Num() : 0;
     mSubstepBodyPositionsM.SetNumUninitialized((SOL::SHIP_MAX_SUBSTEPS + 1) * bodyCount);
+    mSimSubstepBodyPositionsM.SetNumUninitialized((SOL::AUTOPILOT_MAX_SUBSTEPS + 1) * bodyCount);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -56,7 +58,8 @@ void USOLShipFlightProcessor::Execute(FMassEntityManager& /*entityManager*/, FMa
     TRACE_CPUPROFILER_EVENT_SCOPE(USOLShipFlightProcessor::Execute);
     const double deltaS = static_cast<double>(context.GetDeltaTimeSeconds());
     if (mBodyCache == nullptr || deltaS <= 0.0
-        || mSubstepBodyPositionsM.Num() < (SOL::SHIP_MAX_SUBSTEPS + 1) * mBodyCache->Num())
+        || mSubstepBodyPositionsM.Num() < (SOL::SHIP_MAX_SUBSTEPS + 1) * mBodyCache->Num()
+        || mSimSubstepBodyPositionsM.Num() < (SOL::AUTOPILOT_MAX_SUBSTEPS + 1) * mBodyCache->Num())
     {
         return;
     }
@@ -66,18 +69,29 @@ void USOLShipFlightProcessor::Execute(FMassEntityManager& /*entityManager*/, FMa
     mSubstepCount = FMath::Clamp(FMath::CeilToInt32(budgetS / SOL::SHIP_MAX_SUBSTEP_S), 1, SOL::SHIP_MAX_SUBSTEPS);
     mSubstepS = budgetS / mSubstepCount;
     mCarryPerSubstepM = mFrame.CarryPositionM / static_cast<double>(mSubstepCount);
-    PrepareSubstepBodyPositions(budgetS);
+    PrepareSubstepBodyPositions(budgetS, mSubstepCount, mSubstepBodyPositionsM);
+
+    // Under user warp an autopilot ship integrates the frame's sim time instead (the bodies' own interval)
+    const double warpFactor = FMath::Max(mFrame.WarpFactor, 1.0);
+    mSimSubstepCount = warpFactor > 1.0 ? SOLFlight::AutopilotSubstepCount(warpFactor * budgetS) : 0;
+    mSimSubstepS = mSimSubstepCount > 0 ? warpFactor * budgetS / mSimSubstepCount : 0.0;
+    if (mSimSubstepCount > 0)
+    {
+        PrepareSubstepBodyPositions(budgetS, mSimSubstepCount, mSimSubstepBodyPositionsM);
+    }
 
     mQuery.ParallelForEachEntityChunk(context, mChunkFunction);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Fills the scratch array with every body's position at each substep boundary of the frame
-void USOLShipFlightProcessor::PrepareSubstepBodyPositions(const double frameS)
+// Fills a scratch array with every body's position at each of substepCount + 1 evenly spaced frame boundaries
+void USOLShipFlightProcessor::PrepareSubstepBodyPositions(const double frameS, const int32 substepCount,
+    TArray<FVector3d>& outPositionsM) const
 {
     const int32 bodyCount = mBodyCache->Num();
     const double warpFactor = FMath::Max(mFrame.WarpFactor, 1.0);
     const bool bHasPrevious = mFrame.PrevBodyPositionsM.Num() == bodyCount;
+    const double boundaryRealS = frameS / substepCount;
 
     // Average velocity over the frame (displacement / sim time) so boundary 0 is exactly last frame's position; the
     // instantaneous velocity is the fallback on the first frame
@@ -86,17 +100,17 @@ void USOLShipFlightProcessor::PrepareSubstepBodyPositions(const double frameS)
         const FVector3d& endM = mBodyCache->PositionsM[body];
         const FVector3d velocityMps = bHasPrevious
             ? (endM - mFrame.PrevBodyPositionsM[body]) / (warpFactor * frameS) : mBodyCache->VelocitiesMps[body];
-        for (int32 boundary = 0; boundary <= mSubstepCount; ++boundary)
+        for (int32 boundary = 0; boundary <= substepCount; ++boundary)
         {
-            const double remainingS = (mSubstepCount - boundary) * mSubstepS;
-            mSubstepBodyPositionsM[boundary * bodyCount + body] =
+            const double remainingS = (substepCount - boundary) * boundaryRealS;
+            outPositionsM[boundary * bodyCount + body] =
                 SOLFlight::BodyPositionAtSubstep(endM, velocityMps, warpFactor, remainingS);
         }
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Steps the ships of one chunk: carry, gravity, flight step, swept collision and surface-lock alignment per substep
+// Steps the ships of one chunk: carry, gravity, flight or autopilot step, swept collision and the G meter per substep
 void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
 {
     const TArrayView<FSOLShipStateFragment> states = context.GetMutableFragmentView<FSOLShipStateFragment>();
@@ -107,33 +121,78 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
     const TConstArrayView<double> bodyRadiiM = mBodyCache->RadiiM;
     const TConstArrayView<double> bodyGMs = mBodyCache->GMs;
     const int32 bodyCount = bodyVelocitiesMps.Num();
-    const FVector3d* const substepBodies = mSubstepBodyPositionsM.GetData();
 
     const int32 entityCount = context.GetNumEntities();
     for (int32 entity = 0; entity < entityCount; ++entity)
     {
-        const FSOLShipControl& control = controls[entity].Control;
-        const int32 alignBody = controls[entity].AlignBodyIndex;
-        FSOLShipState state = states[entity].State;
+        const FSOLShipControlFragment& controlFragment = controls[entity];
+        FSOLShipControl control = controlFragment.Control;
+        const int32 alignBody = controlFragment.AlignBodyIndex;
+        const int32 autopilotBody = controlFragment.AutopilotBodyIndex;
+        const bool bAutopilot = autopilotBody >= 0 && autopilotBody < bodyCount;
+        FSOLShipStateFragment& stateFragment = states[entity];
+        FSOLShipState state = stateFragment.State;
+        FSOLGMeterState meter = stateFragment.GMeter;
+        FSOLGuidanceOutput guidance;
+        double gLoad = 0.0;
         int32 contactBody = INDEX_NONE;
 
-        // The ship inherits its frame's velocity change under warp once, at the frame start
-        state.VelocityMps += mFrame.CarryVelocityMps;
+        // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot
+        // under warp integrates the frame's sim time itself and needs no carry
+        const bool bSimTime = bAutopilot && mSimSubstepCount > 0;
+        const int32 substepCount = bSimTime ? mSimSubstepCount : mSubstepCount;
+        const double substepS = bSimTime ? mSimSubstepS : mSubstepS;
+        const FVector3d* const substepBodies = bSimTime ? mSimSubstepBodyPositionsM.GetData()
+            : mSubstepBodyPositionsM.GetData();
+        if (!bSimTime)
+        {
+            state.VelocityMps += mFrame.CarryVelocityMps;
+        }
 
-        for (int32 substep = 0; substep < mSubstepCount; ++substep)
+        for (int32 substep = 0; substep < substepCount; ++substep)
         {
             const TConstArrayView<FVector3d> bodiesBeforeM(substepBodies + substep * bodyCount, bodyCount);
             const TConstArrayView<FVector3d> bodiesAfterM(substepBodies + (substep + 1) * bodyCount, bodyCount);
-
-            // Assist ignores gravity (the thrusters cancel it), so only Newtonian flight pays for the gravity sum
-            const FVector3d gravityMps2 = control.bFlightAssist ? FVector3d::ZeroVector
-                : SOLFlight::GravityAcceleration(state.PositionM, bodiesBeforeM, bodyGMs, bodyRadiiM);
+            const FVector3d gravityMps2 = SOLFlight::GravityAcceleration(state.PositionM, bodiesBeforeM, bodyGMs,
+                bodyRadiiM);
             const FSOLShipState before = state;
-            state = SOLFlight::Step(state, control, flightParams, gravityMps2, mSubstepS);
-            state.PositionM += mCarryPerSubstepM;
+            FSOLFlightStepOutput stepOutput;
+
+            if (bAutopilot)
+            {
+                // Toward a point above the body on the ordered side (far enough out that its gravity can be held,
+                // SDD 18 Amendment 7); the body's own acceleration is the gravity of the others at its centre (a body
+                // gets nothing from itself)
+                const FVector3d& bodyM = bodiesBeforeM[autopilotBody];
+                const double standoffM = SOLFlight::AutopilotStandoffM(bodyRadiiM[autopilotBody],
+                    bodyGMs[autopilotBody], SOLNewtonian::AutopilotAccelLimitMps2(flightParams.PilotLimits, meter));
+                const FVector3d bodyAccelMps2 = SOLFlight::GravityAcceleration(bodyM, bodiesBeforeM, bodyGMs,
+                    bodyRadiiM);
+                state = SOLFlight::AutopilotStep(state, bodyM + controlFragment.AutopilotOffsetDir * standoffM,
+                    bodyVelocitiesMps[autopilotBody], bodyAccelMps2, gravityMps2, flightParams, meter, substepS,
+                    &stepOutput, &guidance, bodyGMs[autopilotBody] / (standoffM * standoffM));
+            }
+            else if (!SOLNewtonian::PilotHasControl(meter))
+            {
+                // G-LOC: no input reaches the ship, it coasts
+                state = SOLNewtonian::StepNewtonian(state, FSOLNewtonianCommand(), flightParams.Envelope, gravityMps2,
+                    substepS);
+            }
+            else
+            {
+                // Surface-lock (SDD 4) is an attitude target in assisted mode only
+                control.AttitudeUpWorld = control.bFlightAssist && alignBody >= 0 && alignBody < bodyCount
+                    ? SOLSurfaceLock::TargetUpDir(state.PositionM, bodiesBeforeM[alignBody]) : FVector3d::ZeroVector;
+                state = SOLFlight::Step(state, control, flightParams, gravityMps2, substepS, &stepOutput);
+            }
+            if (!bSimTime)
+            {
+                state.PositionM += mCarryPerSubstepM;
+            }
 
             // Swept collision against every body the ship could reach this substep (the Sun included): a body is
             // skipped when the ship's start distance exceeds the contact radius plus the relative travel
+            int32 substepContact = INDEX_NONE;
             for (int32 body = 0; body < bodyCount; ++body)
             {
                 const FVector3d startRel = before.PositionM - bodiesBeforeM[body];
@@ -146,21 +205,32 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
                 if (SOLFlight::ResolveSweptSphereCollision(before, state, bodiesBeforeM[body], bodiesAfterM[body],
                     bodyVelocitiesMps[body], bodyRadiiM[body], flightParams.ShipRadiusM))
                 {
-                    contactBody = body;
+                    substepContact = body;
                 }
             }
 
-            // Surface-lock (SDD 4): nudge the ship's up toward the locked body's local vertical on top of the player's
-            // rotation, with this substep's real dt so the time constant holds under warp and multi-substep frames
-            if (alignBody >= 0 && alignBody < bodyCount)
+            // Pilot G-load: the achieved thrust plus, while resting on a surface, its contact push (gravity itself
+            // is never felt); then the G meter over this substep
+            FVector3d properAccelMps2 = stepOutput.ThrustAccelWorldMps2;
+            if (substepContact != INDEX_NONE)
             {
-                state.Orientation = SOLSurfaceLock::ApplyAlignmentCorrection(state.Orientation,
-                    SOLSurfaceLock::TargetUpDir(state.PositionM, bodiesAfterM[alignBody]), flightParams.AlignTimeConstantS,
-                    mSubstepS);
+                contactBody = substepContact;
+                const FVector3d towardBody = bodiesAfterM[substepContact] - state.PositionM;
+                const double distanceM = FMath::Max(towardBody.Size(), bodyRadiiM[substepContact]);
+                const FVector3d bodyGravityMps2 = towardBody.GetSafeNormal()
+                    * (bodyGMs[substepContact] / (distanceM * distanceM));
+                properAccelMps2 += SOLFlight::ContactAccelMps2(-towardBody, bodyGravityMps2,
+                    stepOutput.ThrustAccelWorldMps2);
             }
+            gLoad = SOLNewtonian::GLoadG(properAccelMps2);
+            meter = SOLNewtonian::StepGMeter(meter, gLoad, flightParams.PilotLimits, substepS);
         }
 
-        states[entity].State = state;
-        states[entity].ContactBodyIndex = contactBody;
+        stateFragment.State = state;
+        stateFragment.ContactBodyIndex = contactBody;
+        stateFragment.GMeter = meter;
+        stateFragment.GLoadG = gLoad;
+        stateFragment.Guidance = guidance;
+        stateFragment.bAutopilotArrived = bAutopilot && guidance.Phase == ESOLGuidancePhase::Arrived;
     }
 }

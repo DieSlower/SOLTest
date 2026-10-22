@@ -50,12 +50,15 @@ struct FSOLNpcRailFrame
     double RailTimeS = 0.0;              // Sim seconds since the population epoch
     TArray<FVector3d> GroupPointAM;      // Lane: endpoint A; cluster: body centre; battle: battle centre
     TArray<FVector3d> GroupPointBM;      // Lane: endpoint B; otherwise equal to A
+    TArray<FVector3d> GroupBodyM;        // The group's body (lane: body A; battle: the battle body): the up hint
 };
 
 // The NPC motion model's rail half (the swappable seam, SDD 11 section 5 answer 3): spawn parameters to a compact rail,
 // and rail plus frame to a position. Tier selection, rendering and combat only consume the resulting positions.
 namespace SOLNpcRail
 {
+    inline constexpr double RAIL_VELOCITY_STEP_S = 0.5;  // Half step of VelocityMps's central difference
+
     // Packs one ship's spawn parameters into its rail; laneLengthM and bodyGM are its group's nominal lane length and
     // cluster body GM (ignored for other kinds), groupBase the first global index of its kind
     SOLTEST_API FSOLNpcRail FromSpawn(const SOLNpcScale::FSpawn& spawn, int32 groupBase, double laneLengthM,
@@ -67,6 +70,12 @@ namespace SOLNpcRail
 
     // Returns the rail position (universe metres) of one ship in a frame
     SOLTEST_API FVector3d EvaluateM(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame);
+
+    // Returns the rail position at a rail time with the frame's group points held fixed (EvaluateM at its own time)
+    SOLTEST_API FVector3d EvaluateAtTimeM(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, double railTimeS);
+
+    // Returns the rail's velocity relative to its group's anchor points (a central difference of EvaluateAtTimeM)
+    SOLTEST_API FVector3d VelocityMps(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame);
 
     // Returns the rail re-based to an epoch deltaS later, for the GPU copy (SDD 11 Amendment 7): the lane parameter
     // (period 2) and the cluster phase (period 2 pi) are advanced by rate * deltaS in double and wrapped, so the GPU's

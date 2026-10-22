@@ -45,14 +45,28 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns a battle rail (group 2) with a fixed slot offset from the battle centre
+    FSOLNpcRail NpcRailBattle()
+    {
+        FSOLNpcRail rail;
+        rail.Kind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Battle);
+        rail.Group = 2;
+        rail.P[0] = 120.0f;
+        rail.P[1] = -40.0f;
+        rail.P[2] = 9.0f;
+        return rail;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns a frame with a lane from the origin to (length, 0, 0) (group 0), a cluster body (group 1) and a battle
-    // centre (group 2), at a rail time
+    // centre (group 2), at a rail time; the group body points are the lane's body A, the cluster body and a battle body
     FSOLNpcRailFrame NpcRailFrame(const double laneLengthM, const double railTimeS)
     {
         FSOLNpcRailFrame frame;
         frame.RailTimeS = railTimeS;
         frame.GroupPointAM = { FVector3d::ZeroVector, FVector3d(1.0e11, 2.0e10, 0.0), FVector3d(5.0e10, 0.0, 0.0) };
         frame.GroupPointBM = { FVector3d(laneLengthM, 0.0, 0.0), frame.GroupPointAM[1], frame.GroupPointAM[2] };
+        frame.GroupBodyM = { FVector3d::ZeroVector, frame.GroupPointAM[1], FVector3d(4.9e10, 0.0, 0.0) };
         return frame;
     }
 
@@ -120,6 +134,169 @@ bool FSOLNpcRailEpochMatchesTest::RunTest(const FString& /*parameters*/)
     // A non-finite delta leaves the rail as it was
     const FSOLNpcRail same = SOLNpcRail::AdvancedToEpoch(cluster, std::numeric_limits<double>::quiet_NaN());
     TestEqual(TEXT("NaN delta keeps the phase"), same.P[3], cluster.P[3]);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailEvaluateAtTimeTest, "SOLTest.NpcRail.EvaluateAtTimeMatches",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// EvaluateAtTimeM at the frame's rail time is EvaluateM exactly, and at another time it matches a frame with that rail
+// time and the same group points (issue #18 Part 18c contract item 10)
+bool FSOLNpcRailEvaluateAtTimeTest::RunTest(const FString& /*parameters*/)
+{
+    const double laneLengthM = 3.8e8;
+    const FSOLNpcRail rails[] = { NpcRailLane(0.37f, 4.0e-4f), NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f),
+        NpcRailBattle() };
+    const TCHAR* names[] = { TEXT("Lane"), TEXT("Cluster"), TEXT("Battle") };
+    for (int32 railIndex = 0; railIndex < 3; ++railIndex)
+    {
+        const FSOLNpcRail& rail = rails[railIndex];
+        for (const double t : { 0.0, 250.0, 3000.0, 9000.0 })
+        {
+            const FSOLNpcRailFrame frame = NpcRailFrame(laneLengthM, t);
+            const bool bExact = SOLNpcRail::EvaluateAtTimeM(rail, frame, frame.RailTimeS)
+                == SOLNpcRail::EvaluateM(rail, frame);
+            TestTrue(*FString::Printf(TEXT("%s t %.0f: EvaluateAtTimeM(RailTimeS) == EvaluateM exactly"),
+                names[railIndex], t), bExact);
+
+            // Group points held, time moved: the same as a frame at that time (identical inputs, so rounding-level)
+            for (const double otherS : { t + 0.5, t - 0.5, t + 1234.5 })
+            {
+                const FVector3d atOther = SOLNpcRail::EvaluateAtTimeM(rail, frame, otherS);
+                const FVector3d viaFrame = SOLNpcRail::EvaluateM(rail, NpcRailFrame(laneLengthM, otherS));
+                TestTrue(*FString::Printf(TEXT("%s t %.0f: EvaluateAtTimeM(%.1f) == EvaluateM of that frame"),
+                    names[railIndex], t, otherS),
+                    (atOther - viaFrame).Size() <= 1.0e-12 * FMath::Max(1.0, viaFrame.Size()));
+            }
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailVelocityTest, "SOLTest.NpcRail.RailVelocity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The rail velocity is the central difference at RAIL_VELOCITY_STEP_S: zero for a battle, tangential at r * n for a
+// cluster, (B - A) * rate * (+-1) for a lane away from a turnaround (issue #18 Part 18c contract item 11)
+bool FSOLNpcRailVelocityTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("RAIL_VELOCITY_STEP_S"), SOLNpcRail::RAIL_VELOCITY_STEP_S, 0.5);
+    const double laneLengthM = 3.8e8;
+    const double h = SOLNpcRail::RAIL_VELOCITY_STEP_S;
+
+    // Returns an independent central difference of EvaluateAtTimeM at the frame's time with step stepS
+    const auto centralDifference = [](const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const double stepS)
+    {
+        return (SOLNpcRail::EvaluateAtTimeM(rail, frame, frame.RailTimeS + stepS)
+            - SOLNpcRail::EvaluateAtTimeM(rail, frame, frame.RailTimeS - stepS)) / (2.0 * stepS);
+    };
+
+    // Battle: exactly zero
+    const FSOLNpcRail battle = NpcRailBattle();
+    for (const double t : { 0.0, 250.0, 1.0e6 })
+    {
+        TestTrue(*FString::Printf(TEXT("Battle t %.0f: exactly zero"), t),
+            SOLNpcRail::VelocityMps(battle, NpcRailFrame(laneLengthM, t)) == FVector3d::ZeroVector);
+    }
+
+    // Cluster: tangential, |v| = r * n within 0.1% (the central difference shortens it by sin(nh) / (nh) ~ 1 - 5e-8)
+    const FSOLNpcRail cluster = NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f);
+    const double expectedSpeed = static_cast<double>(cluster.P[0]) * static_cast<double>(cluster.P[4]);
+    for (const double t : { 0.0, 250.0, 4321.0 })
+    {
+        const FSOLNpcRailFrame frame = NpcRailFrame(laneLengthM, t);
+        const FVector3d velocity = SOLNpcRail::VelocityMps(cluster, frame);
+        const FVector3d radius = SOLNpcRail::EvaluateM(cluster, frame) - frame.GroupPointAM[1];
+        const FString name = FString::Printf(TEXT("Cluster t %.0f"), t);
+        TestTrue(*(name + TEXT(": |v| = r * n within 0.1%")),
+            FMath::Abs(velocity.Size() - expectedSpeed) <= 1.0e-3 * expectedSpeed);
+
+        // A symmetric chord of a circle is perpendicular to the radius; 1e-6 covers rounding at 1e11 m
+        TestTrue(*(name + TEXT(": perpendicular to the radius")),
+            FMath::Abs(FVector3d::DotProduct(velocity.GetSafeNormal(), radius.GetSafeNormal())) <= 1.0e-6);
+        TestTrue(*(name + TEXT(": the definition (central difference at RAIL_VELOCITY_STEP_S)")),
+            (velocity - centralDifference(cluster, frame, h)).Size() <= 1.0e-9 * expectedSpeed);
+
+        // A finer independent difference differs only by the O((nh)^2) truncation (~5e-8 relative) and rounding
+        TestTrue(*(name + TEXT(": matches a finer difference")),
+            (velocity - centralDifference(cluster, frame, 0.05)).Size() <= 1.0e-6 * expectedSpeed);
+    }
+
+    // Lane: (B - A) * P1 * (+-1); at t = 100 the parameter is ~0.41 and at t = 3000 ~1.57, both far (> 0.4) from a
+    // turnaround compared with the step's parameter change P1 * h = 2e-4
+    const FSOLNpcRail lane = NpcRailLane(0.37f, 4.0e-4f);
+    const FVector3d laneVelocity = FVector3d(laneLengthM, 0.0, 0.0) * static_cast<double>(lane.P[1]);
+    for (const double t : { 100.0, 3000.0 })
+    {
+        const FSOLNpcRailFrame frame = NpcRailFrame(laneLengthM, t);
+        const FVector3d velocity = SOLNpcRail::VelocityMps(lane, frame);
+        const FString name = FString::Printf(TEXT("Lane t %.0f"), t);
+        const double error = FMath::Min((velocity - laneVelocity).Size(), (velocity + laneVelocity).Size());
+        TestTrue(*(name + TEXT(": (B - A) * rate * (+-1) within 1e-6 relative")),
+            error <= 1.0e-6 * laneVelocity.Size());
+        TestTrue(*(name + TEXT(": the definition (central difference at RAIL_VELOCITY_STEP_S)")),
+            (velocity - centralDifference(lane, frame, h)).Size() <= 1.0e-9 * laneVelocity.Size());
+        TestTrue(*(name + TEXT(": matches a finer difference")),
+            (velocity - centralDifference(lane, frame, 0.05)).Size() <= 1.0e-6 * laneVelocity.Size());
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailBuildFrameGroupBodyTest, "SOLTest.NpcRail.BuildFrameGroupBody",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// BuildFrame fills GroupBodyM: lane = body A, cluster = its body, battle = the battle body, zero for an invalid
+// index (issue #18 Part 18c contract item 12)
+bool FSOLNpcRailBuildFrameGroupBodyTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FVector3d> bodies = { FVector3d(1.0, 2.0, 3.0), FVector3d(1.0e11, -4.0e10, 5.0e8),
+        FVector3d(-2.0e11, 7.0e10, -1.0e9), FVector3d(3.0e10, 3.0e10, 3.0e10) };
+
+    // Two lanes (the second with an unknown body A), one cluster, one battle
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 2;
+    groups.ClusterCount = 1;
+    groups.BattleCount = 1;
+    groups.LaneBodyA = { 1, INDEX_NONE };
+    groups.LaneBodyB = { 2, 0 };
+    groups.LaneRadiusM = { 1.0e5, 1.0e5 };
+    groups.ClusterBody = { 3 };
+    groups.ClusterInnerM = { 7.0e6 };
+    groups.ClusterOuterM = { 9.0e6 };
+    groups.BattleCenterFromBodyM = { FVector3d(1.0e5, 0.0, 0.0) };
+    groups.BattleBody = 2;
+    groups.BattleRadiusM = 2.0e4;
+
+    FSOLNpcRailFrame frame;
+    SOLNpcRail::BuildFrame(groups, bodies, 100.0, frame);
+    TestEqual(TEXT("One body point per group"), frame.GroupBodyM.Num(), groups.Num());
+    if (frame.GroupBodyM.Num() == 4)
+    {
+        TestTrue(TEXT("Lane 0: body A"), frame.GroupBodyM[0] == bodies[1]);
+        TestTrue(TEXT("Lane 1: unknown body A gives zero"), frame.GroupBodyM[1] == FVector3d::ZeroVector);
+        TestTrue(TEXT("Cluster: its body"), frame.GroupBodyM[2] == bodies[3]);
+        TestTrue(TEXT("Battle: the battle body"), frame.GroupBodyM[3] == bodies[2]);
+    }
+
+    // Out-of-range and missing indices give zero; rebuilding into the same frame does not append
+    groups.LaneBodyA = { 7, 0 };
+    groups.ClusterBody = { 99 };
+    groups.BattleBody = INDEX_NONE;
+    SOLNpcRail::BuildFrame(groups, bodies, 200.0, frame);
+    TestEqual(TEXT("Rebuilt: one body point per group"), frame.GroupBodyM.Num(), groups.Num());
+    if (frame.GroupBodyM.Num() == 4)
+    {
+        TestTrue(TEXT("Lane 0: out-of-range body A gives zero"), frame.GroupBodyM[0] == FVector3d::ZeroVector);
+        TestTrue(TEXT("Lane 1: body A"), frame.GroupBodyM[1] == bodies[0]);
+        TestTrue(TEXT("Cluster: out-of-range body gives zero"), frame.GroupBodyM[2] == FVector3d::ZeroVector);
+        TestTrue(TEXT("Battle: no battle body gives zero"), frame.GroupBodyM[3] == FVector3d::ZeroVector);
+    }
     return true;
 }
 

@@ -53,6 +53,7 @@ void SOLNpcRail::BuildFrame(const FSOLNpcGroupTable& groups, TConstArrayView<FVe
     outFrame.RailTimeS = railTimeS;
     outFrame.GroupPointAM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
     outFrame.GroupPointBM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
+    outFrame.GroupBodyM.SetNumUninitialized(groups.Num(), EAllowShrinking::No);
 
     // Returns a body's position, or the universe origin for an unknown index
     const auto bodyAt = [&bodyPositionsM](int32 body)
@@ -65,17 +66,20 @@ void SOLNpcRail::BuildFrame(const FSOLNpcGroupTable& groups, TConstArrayView<FVe
     {
         outFrame.GroupPointAM[group] = bodyAt(groups.LaneBodyA[lane]);
         outFrame.GroupPointBM[group] = bodyAt(groups.LaneBodyB[lane]);
+        outFrame.GroupBodyM[group] = outFrame.GroupPointAM[group];
     }
     for (int32 cluster = 0; cluster < groups.ClusterCount; ++cluster, ++group)
     {
         outFrame.GroupPointAM[group] = bodyAt(groups.ClusterBody[cluster]);
         outFrame.GroupPointBM[group] = outFrame.GroupPointAM[group];
+        outFrame.GroupBodyM[group] = outFrame.GroupPointAM[group];
     }
     const FVector3d battleBody = bodyAt(groups.BattleBody);
     for (int32 battle = 0; battle < groups.BattleCount; ++battle, ++group)
     {
         outFrame.GroupPointAM[group] = battleBody + groups.BattleCenterFromBodyM[battle];
         outFrame.GroupPointBM[group] = outFrame.GroupPointAM[group];
+        outFrame.GroupBodyM[group] = battleBody;
     }
 }
 
@@ -83,20 +87,39 @@ void SOLNpcRail::BuildFrame(const FSOLNpcGroupTable& groups, TConstArrayView<FVe
 // Evaluates a lane, cluster or battle rail in double precision from its float parameters
 FVector3d SOLNpcRail::EvaluateM(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame)
 {
+    return EvaluateAtTimeM(rail, frame, frame.RailTimeS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the rail's velocity relative to its group's anchor points (central difference, points held fixed)
+FVector3d SOLNpcRail::VelocityMps(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame)
+{
+    if (static_cast<SOLNpcScale::EPlacementKind>(rail.Kind) == SOLNpcScale::EPlacementKind::Battle)
+    {
+        return FVector3d::ZeroVector;
+    }
+    return (EvaluateAtTimeM(rail, frame, frame.RailTimeS + RAIL_VELOCITY_STEP_S)
+        - EvaluateAtTimeM(rail, frame, frame.RailTimeS - RAIL_VELOCITY_STEP_S)) / (2.0 * RAIL_VELOCITY_STEP_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Evaluates a rail at a given rail time with the frame's group points held fixed
+FVector3d SOLNpcRail::EvaluateAtTimeM(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const double railTimeS)
+{
     const FVector3d& pointA = frame.GroupPointAM[rail.Group];
     switch (static_cast<SOLNpcScale::EPlacementKind>(rail.Kind))
     {
     case SOLNpcScale::EPlacementKind::Lane:
     {
         const double s = SOLNpcScale::TriangleWave01(static_cast<double>(rail.P[0])
-            + static_cast<double>(rail.P[1]) * frame.RailTimeS);
+            + static_cast<double>(rail.P[1]) * railTimeS);
         return SOLNpcScale::LanePositionM(pointA, frame.GroupPointBM[rail.Group], s,
             FVector2d(rail.P[2], rail.P[3]));
     }
     case SOLNpcScale::EPlacementKind::Cluster:
     {
         // Circular orbit: r (cos theta P + sin theta Q), as SOLNpcScale::ClusterOffsetM
-        const double theta = static_cast<double>(rail.P[3]) + static_cast<double>(rail.P[4]) * frame.RailTimeS;
+        const double theta = static_cast<double>(rail.P[3]) + static_cast<double>(rail.P[4]) * railTimeS;
         double sinI = 0.0;
         double cosI = 0.0;
         double sinNode = 0.0;

@@ -475,4 +475,57 @@ bool FSOLKeyBindingsHotkeyControlRowsTest::RunTest(const FString& /*parameters*/
     return true;
 }
 
+// Stop spin save-migration conflict (issue #18 review fix L5, SDD 18 Amendment 7), written against the contract in
+// Docs/Plans/18-newtonian-flight-core-plan.md
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsStopSpinConflictTest, "SOLTest.KeyBindings.StopSpinOverrideConflict",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A save made before Stop spin existed that put Z on another action resolves with both on Z, and both are flagged
+// as a conflict like any other duplicate until the player rebinds one
+bool FSOLKeyBindingsStopSpinConflictTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    const int32 stopSpin = static_cast<int32>(EBinding::StopSpin);
+    TestEqual(TEXT("Stop spin found by its id"), FindById(GetDef(stopSpin).Id), stopSpin);
+    TestEqual(TEXT("Stop spin defaults to Z"), DefaultKeys()[stopSpin], FString(TEXT("Z")));
+
+    // The old save: drop target on Z (Stop spin has no entry, so it keeps its default Z)
+    TMap<FString, FString> overrides;
+    overrides.Add(GetDef(KEYBINDINGS_DROP).Id, TEXT("Z"));
+    TArray<FString> keys = ResolveKeys(overrides);
+    TestEqual(TEXT("override applied"), keys[KEYBINDINGS_DROP], FString(TEXT("Z")));
+    TestEqual(TEXT("Stop spin keeps Z"), keys[stopSpin], FString(TEXT("Z")));
+    TestTrue(TEXT("Stop spin flagged"), HasConflict(keys, stopSpin));
+    TestTrue(TEXT("drop target flagged"), HasConflict(keys, KEYBINDINGS_DROP));
+    TestEqual(TEXT("FindConflict from Stop spin"), FindConflict(keys, stopSpin, keys[stopSpin]), KEYBINDINGS_DROP);
+    TestEqual(TEXT("FindConflict from drop target, any case"), FindConflict(keys, KEYBINDINGS_DROP, TEXT("z")),
+        stopSpin);
+    for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
+    {
+        if (binding != stopSpin && binding != KEYBINDINGS_DROP)
+        {
+            TestFalse(FString::Printf(TEXT("%s not flagged"), GetDef(binding).Id), HasConflict(keys, binding));
+        }
+    }
+
+    // A lower-case key in the save is the same duplicate
+    TMap<FString, FString> lowerCase;
+    lowerCase.Add(GetDef(KEYBINDINGS_FIRE).Id, TEXT("z"));
+    const TArray<FString> lowerKeys = ResolveKeys(lowerCase);
+    TestTrue(TEXT("lower-case z: Stop spin flagged"), HasConflict(lowerKeys, stopSpin));
+    TestTrue(TEXT("lower-case z: fire flagged"), HasConflict(lowerKeys, KEYBINDINGS_FIRE));
+
+    // Rebinding either one clears both flags
+    int32 conflict = 123;
+    TestTrue(TEXT("drop target back to G"), Rebind(keys, KEYBINDINGS_DROP, TEXT("G"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("no conflict on G"), conflict, INDEX_NONE);
+    TestFalse(TEXT("Stop spin clear"), HasConflict(keys, stopSpin));
+    TestFalse(TEXT("drop target clear"), HasConflict(keys, KEYBINDINGS_DROP));
+    return true;
+}
+
 #endif

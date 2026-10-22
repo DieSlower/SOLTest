@@ -38,6 +38,7 @@ namespace
         KeyBindingDef(SOLKeyBindings::EBinding::RollRight, TEXT("RollRight"), TEXT("E")),
         KeyBindingDef(SOLKeyBindings::EBinding::Boost, TEXT("Boost"), TEXT("LeftShift")),
         KeyBindingDef(SOLKeyBindings::EBinding::ToggleAssist, TEXT("ToggleAssist"), TEXT("Tab")),
+        KeyBindingDef(SOLKeyBindings::EBinding::StopSpin, TEXT("StopSpin"), TEXT("Z")),
         KeyBindingDef(SOLKeyBindings::EBinding::FreeLook, TEXT("FreeLook"), TEXT("LeftAlt")),
         KeyBindingDef(SOLKeyBindings::EBinding::RecenterStick, TEXT("RecenterStick"), TEXT("MiddleMouseButton")),
         KeyBindingDef(SOLKeyBindings::EBinding::SpeedPanel, TEXT("SpeedPanel"), TEXT("F3")),

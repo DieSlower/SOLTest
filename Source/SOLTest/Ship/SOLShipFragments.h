@@ -20,6 +20,10 @@ struct FSOLShipStateFragment : public FMassFragment
 
     FSOLShipState State;                      // Position, velocity, orientation, angular velocity
     int32 ContactBodyIndex = INDEX_NONE;      // Body the ship rested on during the last step, or INDEX_NONE
+    FSOLGMeterState GMeter;                   // Pilot G-tolerance meter and G-LOC state (SDD 18; not saved)
+    double GLoadG = 0.0;                      // Pilot G-load (thrust plus surface contact) of the last substep
+    FSOLGuidanceOutput Guidance;              // Autopilot guidance of the last substep (default when not engaged)
+    bool bAutopilotArrived = false;           // The autopilot reached its target during the last step
 };
 
 /** Control input a ship flies with this frame (written by the player pawn, AI or a script). */
@@ -30,6 +34,8 @@ struct FSOLShipControlFragment : public FMassFragment
 
     FSOLShipControl Control;                  // Thrust, rotation, boost, assist, speed cap, reference velocity
     int32 AlignBodyIndex = INDEX_NONE;        // Surface-lock (SDD 4): body whose local vertical up aligns to, or none
+    int32 AutopilotBodyIndex = INDEX_NONE;    // Autopilot order (SDD 18): body to fly to, or none
+    FVector3d AutopilotOffsetDir = FVector3d::ZeroVector;  // Arrival side: unit vector from that body's centre
 };
 
 /**

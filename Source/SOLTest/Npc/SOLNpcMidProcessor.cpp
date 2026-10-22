@@ -5,8 +5,8 @@
 
 #include "Npc/SOLNpcMidProcessor.h"
 
+#include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcFragments.h"
-#include "SOLConstants.h"
 
 #include "MassExecutionContext.h"
 
@@ -32,6 +32,7 @@ void USOLNpcMidProcessor::ConfigureQueries(const TSharedRef<FMassEntityManager>&
 {
     mQuery.AddRequirement<FSOLNpcDeviationFragment>(EMassFragmentAccess::ReadWrite);
     mQuery.AddRequirement<FSOLNpcStateFragment>(EMassFragmentAccess::ReadWrite);
+    mQuery.AddConstSharedRequirement<FSOLNpcClassFragment>();
     mQuery.AddTagRequirement<FSOLNpcMidAiTag>(EMassFragmentPresence::All);
 }
 
@@ -54,24 +55,22 @@ void USOLNpcMidProcessor::ProcessChunk(FMassExecutionContext& context) const
 {
     const TArrayView<FSOLNpcDeviationFragment> deviations = context.GetMutableFragmentView<FSOLNpcDeviationFragment>();
     const TArrayView<FSOLNpcStateFragment> states = context.GetMutableFragmentView<FSOLNpcStateFragment>();
-
-    // Critically damped spring x'' = -2 w x' - w^2 x, semi-implicit Euler (stable for w * dt < 1)
-    const double omega = SOL::NPC_MID_DEVIATION_OMEGA;
-    const double dt = FMath::Min(mRealDeltaSeconds, 0.5 / omega);
-    const double leashM = SOL::NPC_MID_DEVIATION_LEASH_M;
+    const FSOLGuidanceParams params = SOLNpcAi::MidReturnGuidanceParams(
+        SOLNpcAi::GetClass(context.GetConstSharedFragment<FSOLNpcClassFragment>().ClassIndex));
 
     const int32 entityCount = context.GetNumEntities();
     for (int32 entity = 0; entity < entityCount; ++entity)
     {
+        // A ship at rest on its rail stays there
         FSOLNpcDeviationFragment& deviation = deviations[entity];
-        const FVector3d oldDeviationM = deviation.DeviationM;
-        const FVector3d acceleration = deviation.DeviationVelocityMps * (-2.0 * omega)
-            - oldDeviationM * (omega * omega);
-        deviation.DeviationVelocityMps += acceleration * dt;
-
-        // The leash never pulls a ship in by more than the spring does (a Full ship demoted beyond it does not jump)
-        deviation.DeviationM = (oldDeviationM + deviation.DeviationVelocityMps * dt).GetClampedToMaxSize(
-            FMath::Max(leashM, oldDeviationM.Size()));
-        states[entity].PositionM += deviation.DeviationM - oldDeviationM;
+        if (deviation.DeviationM.IsZero() && deviation.DeviationVelocityMps.IsZero())
+        {
+            continue;
+        }
+        const SOLNpcAi::FMidReturnStep step = SOLNpcAi::StepMidReturn(deviation.DeviationM,
+            deviation.DeviationVelocityMps, params, mRealDeltaSeconds);
+        states[entity].PositionM += step.DeviationM - deviation.DeviationM;
+        deviation.DeviationM = step.DeviationM;
+        deviation.DeviationVelocityMps = step.DeviationVelocityMps;
     }
 }
