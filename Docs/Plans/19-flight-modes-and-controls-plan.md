@@ -49,6 +49,10 @@ Q1-Q16 (SDD section 5). If an answer changes a contract rule, update the contrac
   PlayerFlight 16, MenuState 24: 130/130. Smokes: `-SOLSmokeInput` 39/39 (new k-map-open, k-relatch),
   `-SOLSmokeHud` 17/17 (saved orbit lines OFF), `-SOLSmokeFlight` 11/11, `-SOLSmokeMapPick` 22/22; a standalone
   focus run with real OS input (no focus loss). The full suite was not run (19d).
+- [x] **Bug fix: steering off loses the mouse (SDD 19 Amendment 4).** Done 2026-10-27 (uncommitted). Cursor shown
+  but locked to the viewport, viewport focused, centred on steer-off; Controls and Info text updated. Reproduced and
+  verified with real OS input in standalone and PIE. Tests FlightModeMath, KeyBindings, InfoText, MenuState 88/88;
+  smokes `-SOLSmokeInput` 40/40 (new `i-steer-off-focus`), `-SOLSmokeHud` 17/17, `-SOLSmokeMapPick` 22/22.
 - [ ] **19c — Settings, key-binding UI, migration, Info and Controls text.**
   - Settings key list (32 rows) and conflict flags with the new defaults; the one-time "default controls changed"
     notice (Q11); a real v2 save migrated in the editor.

@@ -111,7 +111,7 @@ same frame's input flies the ship in assisted mode.
 - **Recenter on every off-to-on edge**: the virtual stick returns to the centre whenever steering turns on, including
   when it resumes after a suspension. `B` (`RecenterStick`) still recenters on demand.
 - **While inactive** the stick command is zero, mouse deltas do not move the stick (Alt free-look still orbits the
-  camera), and the OS cursor is shown and free (open question Q8). This is the groundwork for the G-key icons and
+  camera), and the OS cursor is shown (open question Q8; since Amendment 4 it stays locked inside the viewport). This is the groundwork for the G-key icons and
   the radial / list menus of #22. The left mouse still fires along the camera aim.
 - **While active** the cursor is hidden and captured as today. The command is the stick's offset from the centre,
   through SOL's existing virtual stick (radius 0.35 of the short side, dead zone 0.05, exponent 1.5,
@@ -262,8 +262,8 @@ One player ship: a few branches per frame. No allocation, no new Mass processor,
   table grows to 32 rows. The contract and the `FlightModeMath.KeyDefaults` constant were corrected together.
 - **Amendment 2 (19b, 2026-10-26): implementation details within the decisions.** The pawn learns of a jump arrival
   or respawn through `USOLShipSubsystem::GetPilotResetCount` (bumped by `ResetPilotState`) and clears its boost
-  toggle then. While steering is off the cursor uses the jump map's input mode (game and UI, not locked, hidden only
-  while a button is held), and Alt free-look captures it again while held. The steer toggle's start state is
+  toggle then. While steering is off the cursor uses game-and-UI input (superseded by Amendment 4: it was the jump
+  map's unlocked mode), and Alt free-look captures it again while held. The steer toggle's start state is
   `SOL::SHIP_STEER_TOGGLE_START_ON`. The one-time notice is set by `USOLSettingsSubsystem` when it migrates a save
   for which `DefaultLayoutChangedSince` is true and shown by the HUD for 15 s near the top.
 
@@ -313,6 +313,23 @@ One player ship: a few branches per frame. No allocation, no new Mass processor,
     identity function `SOLKeyBindings::MigrateOverrides` is removed (`USOLSettingsSave` 2 -> 3 keeps the overrides
     as they are), and its tautological tests were replaced with `ResolveKeys` / `HasConflict` / `MakeOverrides`
     assertions, with duplicated cases merged.
+
+- **Amendment 4 (bug fix, 2026-10-27): steering off keeps the cursor in the game.** Reported in play: a wheel click
+  (steering off) let the mouse leave the game, and input stopped until the player clicked back into the viewport.
+  Cause: while steering, the hidden OS cursor is clamped to the viewport and often sits at its edge; the steering-off
+  mode (game and UI, `DoNotLock`) released both capture and lock, so the cursor reappeared at the edge and a small
+  move took it outside, where the next click moved focus to another window. Now, with steering off, the cursor is
+  **shown but locked inside the viewport**: `FInputModeGameAndUI` with `EMouseLockMode::LockAlways`,
+  `SetHideCursorDuringCapture(false)` (the cursor stays visible while a button is held) and the game viewport as the
+  focused widget, and the cursor is placed at the viewport centre when steering turns off (matching the recentred
+  stick). The jump map and the F3 panel keep their own unlocked modes. Verified with real OS input (mouse moved
+  hard while steering, wheel click, Tab / C, mouse moved to the edge, left click, wheel click) in a standalone
+  `-game` window and in a PIE floating window: the cursor stays inside the window, the window keeps OS focus, no
+  "viewport lost focus", and every key and wheel click registers with no extra click. On the HEAD build the same
+  run lost focus. Smoke: `-SOLSmokeInput` `i-steer-off-focus` (viewport has keyboard focus, mouse lock
+  `LockAlways`, cursor shown, at the viewport centre). Known limit: in a windowed (not fullscreen) game the lock
+  rectangle reaches the window's resize border, so a click in the outermost few pixels lands on the window frame
+  and does not reach the game (focus is kept).
 
 ## 7. Revision history
 

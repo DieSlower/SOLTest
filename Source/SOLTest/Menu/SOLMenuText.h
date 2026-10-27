@@ -176,7 +176,7 @@ namespace SOLMenuText
     {
         { TEXT("Flight"), TEXT("Mouse2D"),
             TEXT("Steer while mouse steering is on: the mouse moves a virtual joystick (yaw and pitch rate; torque in "
-                "manual flight). With it off the cursor is free") },
+                "manual flight). With it off the cursor is shown and stays inside the game window") },
         { TEXT("Flight"), TEXT("@SteerHold"), TEXT("Steer with the mouse while held (the joystick recenters)") },
         { TEXT("Flight"), TEXT("@SteerToggle"),
             TEXT("Mouse steering on / off (on at every flight start; the joystick recenters)") },
@@ -289,7 +289,7 @@ namespace SOLMenuText
             "MANUAL, ASSISTED or AUTO."),
         TEXT("The mouse steers only while mouse steering is on: hold {SteerHold}, or press {SteerToggle} to turn it "
             "on or off (it starts on). Each time it turns on, the joystick recenters. While it is off the cursor is "
-            "free and moving the mouse does not turn the ship. Boost ({Boost}) is a switch: it stays on until you "
+            "shown (it stays inside the game window) and moving the mouse does not turn the ship. Boost ({Boost}) is a switch: it stays on until you "
             "press it again, black out, jump or respawn."),
         TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
             "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "

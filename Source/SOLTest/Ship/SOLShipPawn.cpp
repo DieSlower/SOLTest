@@ -1213,7 +1213,7 @@ void ASOLShipPawn::UpdateSteering()
     if (update.bActive != mIsSteering)
     {
         UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: mouse steering %s"), *GetName(),
-            update.bActive ? TEXT("ON (stick recentered)") : TEXT("OFF (cursor free)"));
+            update.bActive ? TEXT("ON (stick recentered)") : TEXT("OFF (cursor shown, locked to the viewport)"));
     }
     mIsSteering = update.bActive;
 
@@ -1246,10 +1246,11 @@ void ASOLShipPawn::ApplyShipCursor(const bool bCapture)
     }
     else
     {
-        // Keyboard focus stays on the game viewport, so Tab (boost) and Space never move Slate focus off it
+        // The cursor is shown but stays locked inside the viewport, and keyboard focus stays on the viewport, so a
+        // click never lands outside the game and Tab / Space never move Slate focus off it (SDD 19 Amendment 4)
         FInputModeGameAndUI inputMode;
-        inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
-        inputMode.SetHideCursorDuringCapture(true);
+        inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
+        inputMode.SetHideCursorDuringCapture(false);
         const ULocalPlayer* localPlayer = playerController->GetLocalPlayer();
         const UGameViewportClient* viewportClient = localPlayer != nullptr ? localPlayer->ViewportClient.Get() : nullptr;
         if (viewportClient != nullptr && viewportClient->GetGameViewportWidget().IsValid())
@@ -1258,6 +1259,15 @@ void ASOLShipPawn::ApplyShipCursor(const bool bCapture)
         }
         playerController->SetInputMode(inputMode);
         playerController->bShowMouseCursor = true;
+
+        // The hidden cursor may sit at the viewport edge after steering; it reappears at the centre, like the stick
+        int32 sizeX = 0;
+        int32 sizeY = 0;
+        playerController->GetViewportSize(sizeX, sizeY);
+        if (sizeX > 0 && sizeY > 0)
+        {
+            playerController->SetMouseLocation(sizeX / 2, sizeY / 2);
+        }
     }
     mHasCapturedMouse = bCapture;
 }

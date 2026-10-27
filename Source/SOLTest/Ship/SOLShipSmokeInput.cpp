@@ -16,6 +16,8 @@
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
+#include "Engine/GameViewportClient.h"
+#include "Engine/LocalPlayer.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "InputKeyEventArgs.h"
@@ -323,6 +325,7 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
             "wheel click: steering %s, icon %d, mouse moved %.0f px: stick (%.1f, %.1f)"),
             pawn.IsSteering() ? TEXT("on") : TEXT("off"), static_cast<int32>(pawn.GetSteerIcon()),
             (INPUT_MOUSE_FRAMES - 1) * INPUT_MOUSE_PIXELS_PER_FRAME, stick.X, stick.Y));
+        CheckSteerOffFocus();
         CaptureScreenshot(pawn);
         PressKey(EKeys::SpaceBar);
         break;
@@ -628,6 +631,31 @@ void FSOLShipSmokeInput::CaptureScreenshot(const ASOLShipPawn& pawn)
 void FSOLShipSmokeInput::PressKey(const FKey& key) const
 {
     mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Pressed, 1.0f));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks that with steering off the game viewport keeps keyboard focus and the shown cursor stays locked inside it
+// (SDD 19 Amendment 4)
+void FSOLShipSmokeInput::CheckSteerOffFocus()
+{
+    const ULocalPlayer* localPlayer = mController->GetLocalPlayer();
+    const UGameViewportClient* viewportClient = localPlayer != nullptr ? localPlayer->ViewportClient.Get() : nullptr;
+    FViewport* viewport = viewportClient != nullptr ? viewportClient->Viewport : nullptr;
+    const bool bFocused = viewport != nullptr && viewport->HasFocus();
+    const bool bLocked = viewportClient != nullptr && viewportClient->GetMouseLockMode() == EMouseLockMode::LockAlways;
+    const bool bShown = mController->ShouldShowMouseCursor();
+    int32 sizeX = 0;
+    int32 sizeY = 0;
+    mController->GetViewportSize(sizeX, sizeY);
+    FIntPoint mousePos(-1, -1);
+    if (viewport != nullptr)
+    {
+        viewport->GetMousePos(mousePos);
+    }
+    Check(TEXT("i-steer-off-focus"), bFocused && bLocked && bShown, FString::Printf(TEXT("steering off: viewport "
+        "focus %s, mouse lock %s, cursor %s, at (%d, %d) of %dx%d"), bFocused ? TEXT("yes") : TEXT("NO"),
+        bLocked ? TEXT("always") : TEXT("NOT locked"), bShown ? TEXT("shown") : TEXT("hidden"), mousePos.X,
+        mousePos.Y, sizeX, sizeY));
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -109,6 +109,9 @@ private:
     // Sends a key press to the player controller
     void PressKey(const FKey& key) const;
 
+    // Checks that with steering off the game viewport keeps keyboard focus and the shown cursor stays locked inside it
+    void CheckSteerOffFocus();
+
     // Sends a key release to the player controller
     void ReleaseKey(const FKey& key) const;
 
