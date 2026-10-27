@@ -17,6 +17,7 @@
 #include "Components/DirectionalLightComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Components/StaticMeshComponent.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -437,8 +438,15 @@ void ASOLBodyVisuals::UpdateExposure(const FVector3d& sunPositionM)
     const FVector3d cameraCm = view.Location;
     const FVector3d viewAxis = view.Rotation.Vector();
     const double tanHalfFovX = FMath::Tan(FMath::DegreesToRadians(0.5 * static_cast<double>(view.FOV)));
-    const double aspectRatio = FMath::Max(static_cast<double>(view.AspectRatio), UE_DOUBLE_KINDA_SMALL_NUMBER);
-    const double tanHalfFovY = tanHalfFovX / aspectRatio;
+    // The FOV is horizontal across the viewport (Config/DefaultEngine.ini, issue #25), so the vertical extent follows
+    // the viewport's own aspect ratio, not the camera's 16:9 default
+    FVector2D viewportPx(16.0, 9.0);
+    if (const UGameViewportClient* gameViewport = world->GetGameViewport())
+    {
+        gameViewport->GetViewportSize(viewportPx);
+    }
+    const double aspectRatio = viewportPx.Y > 0.0 ? viewportPx.X / viewportPx.Y : 16.0 / 9.0;
+    const double tanHalfFovY = tanHalfFovX / FMath::Max(aspectRatio, UE_DOUBLE_KINDA_SMALL_NUMBER);
     const double viewSr = SOLSceneExposure::ViewSolidAngleSr(tanHalfFovX, tanHalfFovY);
 
     // Mean radiance of the view: each body's share of it times its mean radiance at its phase angle (the sky is ~0)

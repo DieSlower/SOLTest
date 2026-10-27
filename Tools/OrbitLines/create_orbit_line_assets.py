@@ -13,10 +13,11 @@
 #       OrbitLineOccluder0..7 = (viewpoint-relative centre m, ecliptic; radius m).
 #       The defaults are read from Source/SOLTest/SOLConstants.h (the C++ writes every value at BeginPlay anyway).
 #   /Game/SOL/OrbitLines/M_SOLOrbitLine
-#       Translucent, unlit, depth test off. The vertex stage (WPO) rebuilds each ribbon vertex from its double-float
-#       point (UV0-UV2), dash phase and side (UV3) and orbit tangent (vertex normal), and the per-line custom
-#       primitive data (0-3 parent hi + SMA, 4-7 parent lo + highlight, 8-11 color, 12-15 rotation quaternion,
-#       16 shared parent); the pixel stage computes coverage x dash x fade x occlusion (SOLOrbitLine.ush).
+#       Translucent (after motion blur, issue #25), unlit, depth test off. The vertex stage (WPO) rebuilds each
+#       ribbon vertex from its double-float point (UV0-UV2), dash phase and side (UV3) and orbit tangent (vertex
+#       normal), and the per-line custom primitive data (0-3 parent hi + SMA, 4-7 parent lo + highlight, 8-11
+#       color, 12-15 rotation quaternion, 16 shared parent); the pixel stage computes coverage x dash x fade x
+#       occlusion (SOLOrbitLine.ush).
 # The parameter names must match SOL::OrbitLineMpcParams in Source/SOLTest/SOLConstants.h and the asset paths
 # SOL::Paths::ORBIT_LINE_MATERIAL / ORBIT_LINE_PARAMETER_COLLECTION.
 # Run (editor closed):
@@ -142,6 +143,10 @@ def build_material(material, mpc):
     material.set_editor_property("two_sided", True)
     material.set_editor_property("disable_depth_test", True)
     material.set_editor_property("use_translucency_vertex_fog", False)
+    # Issue #25: drawn after motion blur, i.e. after TSR. That pass is unjittered and kept out of TSR's history, so
+    # the analytically anti-aliased lines stay sharp and steady while the camera moves (TSR reprojected them with the
+    # background's motion, as they have no velocity, which smeared and shimmered them, worst in the jump map)
+    material.set_editor_property("translucency_pass", unreal.MaterialTranslucencyPass.MTP_AFTER_MOTION_BLUR)
     material.set_editor_property("allow_negative_emissive_color", False)
 
     # Shared inputs: texture coordinates, the orbit tangent, per-line custom primitive data and the collection

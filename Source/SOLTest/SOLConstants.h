@@ -324,6 +324,9 @@ namespace SOL
     // the orbit camera's own 1e10 m default would only show the inner neighborhood of the ship
     inline constexpr double MAP_DEFAULT_DISTANCE_M = 1.0e13;
 
+    // -SOLSmokeMapAlign (issue #25): a body must project within this many pixels of its own orbit line
+    inline constexpr double MAP_ALIGN_SMOKE_TOLERANCE_PX = 1.0;
+
     // Jump map camera: horizontal field of view (degrees); narrower than the ship's 90 deg to limit edge distortion
     inline constexpr float MAP_CAMERA_FOV_DEG = 60.0f;
 
@@ -397,8 +400,9 @@ namespace SOL
     // (1 = the parent offset comes from OrbitLineMpcParams::SHARED_PARENT_*, used by the Sun-parented asteroid lines)
     inline constexpr int32 ORBIT_LINE_CUSTOM_DATA_TOTAL_FLOATS = 20;
 
-    // Orbit lines: translucency sort priority of the line components, drawn after the bodies, ring discs and gas-giant
-    // haze (which use small priorities); the lines draw over translucent ring discs by design (SDD 17 open question 7)
+    // Orbit lines: translucency sort priority of the line components. Since issue #25 the lines are drawn in their own
+    // after-motion-blur pass, composited over all other translucency (ring discs, haze) by pass order, so this only
+    // orders the lines among themselves (lines over ring discs by design, SDD 17 open question 7)
     inline constexpr int32 ORBIT_LINE_TRANSLUCENCY_SORT_PRIORITY = 100;
 
     // Orbit lines: render bounds radius (cm) of every line component around the Unreal origin; covers the farthest
@@ -766,6 +770,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_HUD = TEXT("SOLSmokeHud");          // Scripted HUD/F3 panel input, then quit
         inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
+        inline constexpr const TCHAR* SMOKE_MAP_ALIGN = TEXT("SOLSmokeMapAlign"); // Map icons on their lines
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

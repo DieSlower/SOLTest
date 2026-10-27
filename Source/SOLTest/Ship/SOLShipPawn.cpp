@@ -275,6 +275,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeMapPick = MakeUnique<FSOLMapPickSmoke>();
         mSmokeMapPick->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_MAP_ALIGN))
+    {
+        mSmokeMapAlign = MakeUnique<FSOLMapAlignSmoke>();
+        mSmokeMapAlign->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -289,7 +294,7 @@ void ASOLShipPawn::BeginPlay()
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeMapAlign.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
         mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
@@ -330,6 +335,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeHud.Reset();
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
+    mSmokeMapAlign.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -367,6 +373,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeMapPick.IsValid() && mSmokeMapPick->Update(*this, deltaSeconds))
     {
         mSmokeMapPick.Reset();
+    }
+    if (mSmokeMapAlign.IsValid() && mSmokeMapAlign->Update(*this, deltaSeconds))
+    {
+        mSmokeMapAlign.Reset();
     }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
@@ -718,7 +728,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeMapAlign.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
         return;

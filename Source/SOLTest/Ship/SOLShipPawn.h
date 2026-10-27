@@ -8,6 +8,7 @@
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
 #include "Map/SOLJumpSmoke.h"
+#include "Map/SOLMapAlignSmoke.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
@@ -776,6 +777,7 @@ private:
     TUniquePtr<FSOLHudSmoke> mSmokeHud;                     // Verification-only HUD/panel script (-SOLSmokeHud)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
+    TUniquePtr<FSOLMapAlignSmoke> mSmokeMapAlign;           // Verification-only map alignment (-SOLSmokeMapAlign)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay

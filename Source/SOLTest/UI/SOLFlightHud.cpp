@@ -412,7 +412,8 @@ bool ASOLFlightHud::BuildView(FSOLHudView& outView) const
     outView.Rotation = pov.Rotation.Quaternion();
     outView.Center = FVector2D(Canvas->ClipX * 0.5, Canvas->ClipY * 0.5);
 
-    // Horizontal FOV across the canvas width (the local player keeps the X FOV by default)
+    // Horizontal FOV across the canvas width: Config/DefaultEngine.ini sets the local player to keep the X FOV at
+    // every aspect ratio (issue #25; the engine default keeps Y, which matches this only at 16:9)
     outView.FocalPx = outView.Center.X / FMath::Tan(halfFovRad);
     return true;
 }
