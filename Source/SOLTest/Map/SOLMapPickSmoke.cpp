@@ -304,6 +304,11 @@ void FSOLMapPickSmoke::ExitPhase(const ESOLMapPickPhase phase, ASOLShipPawn& paw
             FString::Printf(TEXT("Shift held, cursor 60 px up: height preview %.9g m (want %.9g = 60 px x %.6g m/px), "
             "grew every step %s, previewing %s"), previewM, expectedM, metersPerPixel, mIsHeightMonotonic
             ? TEXT("yes") : TEXT("NO"), mMapMode->IsHeightPreviewing() ? TEXT("yes") : TEXT("NO")));
+
+        // Left Shift is also the ship's thrust up (SDD 19): with the map open the ship's mapping is removed
+        const FSOLShipControl& control = pawn.GetComposedControl();
+        Check(TEXT("d3-shift-no-thrust"), control.Thrust.IsNearlyZero(), FString::Printf(TEXT("Shift held on the map: "
+            "ship thrust (%.2f, %.2f, %.2f), must be zero"), control.Thrust.X, control.Thrust.Y, control.Thrust.Z));
         break;
     }
     case ESOLMapPickPhase::ShotGuide:

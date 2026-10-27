@@ -87,6 +87,10 @@ bool FSOLHudSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
     {
         mHud = mController->GetHUD<ASOLFlightHud>();
     }
+    if (!mIsOrbitOverrideOn)
+    {
+        TryBeginOrbitOverride(true);
+    }
 
     // Game keys tapped last frame are released now, so each tap spans exactly one processed frame
     for (const FKey& key : mPendingReleases)
@@ -121,6 +125,23 @@ bool FSOLHudSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
+void FSOLHudSmoke::TryBeginOrbitOverride(const bool bLate)
+{
+    ASOLOrbitLineVisuals* orbitLines = mHud.IsValid() ? mHud->GetOrbitLineVisuals() : nullptr;
+    if (orbitLines == nullptr)
+    {
+        return;
+    }
+    orbitLines->BeginVerificationOverride();
+    mIsOrbitOverrideOn = true;
+    if (bLate)
+    {
+        UE_LOG(LogSOL, Log, TEXT("SmokeHud: orbit-line override applied late (the line actor was missing at start)"));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Runs a phase's entry actions (key presses, setup)
 void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
 {
@@ -133,10 +154,7 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     {
     case ESOLHudPhase::Setup:
         // Orbit lines start on and stay detached from the player's saved setting for the whole run
-        if (ASOLOrbitLineVisuals* orbitLines = mHud.IsValid() ? mHud->GetOrbitLineVisuals() : nullptr)
-        {
-            orbitLines->BeginVerificationOverride();
-        }
+        TryBeginOrbitOverride(false);
         SetupShip(state.PositionM, (earthM - state.PositionM).GetSafeNormal(), mShips->GetReferenceVelocityMps());
         break;
     case ESOLHudPhase::SelectEarth:
@@ -387,7 +405,7 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     case ESOLHudPhase::HudShot:
         ReleaseKey(EKeys::W);
         ReleaseKey(EKeys::D);
-        TapKey(EKeys::MiddleMouseButton);
+        TapKey(EKeys::B);
         break;
     case ESOLHudPhase::OrbitShotSetup:
         Check(TEXT("g-orbit-view"), bOrbits && segments > 0, FString::Printf(TEXT("3 AU above the Sun: orbit lines "

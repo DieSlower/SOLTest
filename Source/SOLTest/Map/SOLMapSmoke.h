@@ -120,6 +120,9 @@ private:
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
 
+    // Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
+    void TryBeginOrbitOverride(bool bLate);
+
     TWeakObjectPtr<APlayerController> mController;          // Controller the events are injected into
     TWeakObjectPtr<USOLMapModeSubsystem> mMapMode;          // Map camera state
     TWeakObjectPtr<USOLAnchorSubsystem> mAnchor;            // Observer, viewpoint and render origin
@@ -132,6 +135,7 @@ private:
     double mPhaseTimeS = 0.0;                               // Real time in the current phase
     double mTotalTimeS = 0.0;                               // Real time since the script started
     int32 mPhaseFrames = 0;                                 // Frames in the current phase
+    bool mIsOrbitOverrideOn = false;                        // The orbit-line verification override is applied
     int32 mChecksPassed = 0;                                // Checks that passed
     int32 mChecksRun = 0;                                   // Checks evaluated
 };

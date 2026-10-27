@@ -107,6 +107,11 @@ namespace SOL
     // ...its dead zone and response exponent (fractions of the radius, SOLFlight::JoystickToRotation)
     inline constexpr double JOYSTICK_DEAD_ZONE = 0.05;
     inline constexpr double JOYSTICK_EXPONENT = 1.5;
+    // Mouse steering (SDD 19 section 3.4) starts on at every flight start; Space holds it, the wheel click toggles it
+    inline constexpr bool SHIP_STEER_TOGGLE_START_ON = true;
+    // Frames the keys held when ship control comes back (map, menu, F3 panel closed) stay latched in AUTO even if they
+    // read as released, covering the key flush before the OS key repeat resumes (SDD 19 Amendment 3)
+    inline constexpr int32 SHIP_RELATCH_GRACE_FRAMES = 3;
 
     // Ship pawn, chase camera: spring-arm length behind the ship and camera height above it (cm, 60 m and 15 m)
     inline constexpr float SHIP_CAMERA_ARM_LENGTH_CM = 6000.0f;
@@ -627,6 +632,17 @@ namespace SOL
     inline constexpr float MENU_CAMERA_LOOK_YAW_OFFSET_DEG = -16.0f;
 
     // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
+    // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
+    // flight mode label uses it now; ticket #21 applies it, with LT's glow shading, to the whole HUD
+    namespace HudPalette
+    {
+        inline const FLinearColor PRIMARY(0.2f, 0.7f, 1.0f, 1.0f);      // LT Primary (blue-cyan)
+        inline const FLinearColor SECONDARY(1.0f, 0.3f, 0.1f, 1.0f);    // LT Secondary (orange)
+        inline const FLinearColor GOOD(0.25f, 1.0f, 0.25f, 1.0f);       // LT Good / Friendly (green)
+        inline const FLinearColor BAD(1.0f, 0.1f, 0.1f, 1.0f);          // LT Bad (red)
+        inline const FLinearColor HOSTILE(1.0f, 0.1f, 0.01f, 1.0f);     // LT Hostile (red-orange)
+    }
+
     namespace MenuStyle
     {
         inline constexpr int32 Z_ORDER = 20;                     // Above the HUD canvas and the F3 panel
@@ -695,8 +711,11 @@ namespace SOL
                                                                                           // (deleted at their start)
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
-        // lines, SDD 17)
-        inline constexpr int32 SAVE_VERSION = 2;
+        // lines, SDD 17; 3: the issue #19 key layout, SDD 19)
+        inline constexpr int32 SAVE_VERSION = 3;
+        // The save schema that introduced the current default key layout (issue #19); older saves get the one-time
+        // "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
+        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 3;
         inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
         inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
         inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;

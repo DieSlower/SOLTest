@@ -763,7 +763,7 @@ void FSOLMenuSmoke::EnterSettingsPhase(const EPhase phase, USOLMenuSubsystem& me
                 static_cast<int32>(EBinding::Boost));
             const FString conflictStatus = pausePage->GetStatusText();
             pausePage->BeginRebind(static_cast<int32>(EBinding::Boost));
-            pausePage->CaptureKey(EKeys::LeftShift);
+            pausePage->CaptureKey(EKeys::Tab);
             pausePage->BeginRebind(static_cast<int32>(EBinding::Fire));
             const bool bListening = pausePage->IsListening();
             pausePage->CaptureKey(EKeys::K);
@@ -913,7 +913,7 @@ void FSOLMenuSmoke::ExitSettingsPhase(const EPhase phase, USOLMenuSubsystem& men
             && shipPawn->GetBoundKeyNames()[static_cast<int32>(EBinding::Fire)] == TEXT("K")
             && shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Fire), EKeys::K)
             && !shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Fire), EKeys::LeftMouseButton)
-            && shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Boost), EKeys::LeftShift)
+            && shipPawn->IsKeyMappedToBinding(static_cast<int32>(EBinding::Boost), EKeys::Tab)
             && writes == mSaveRequestsBefore, writeDetail);
         break;
     case EPhase::ControlsRebound:

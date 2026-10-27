@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Flight/SOLFlightMode.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
@@ -130,13 +131,19 @@ public:
     // Sets the roll input in [-1, 1] (positive = right wing down)
     void HandleRoll(double roll);
 
-    // Sets whether boost is held
-    void HandleBoost(bool bBoost);
+    // Toggles boost on / off (SDD 19 section 3.6); ignored while the pilot has no control
+    void HandleToggleBoost();
+
+    // Sets whether the steer-hold key (Space) is down: the mouse steers while it is (SDD 19 section 3.4)
+    void HandleSteerHold(bool bDown);
+
+    // Toggles mouse steering on / off (wheel click)
+    void HandleToggleSteer();
 
     // Sets whether stop spin is held (SDD 18: cancels all rotation, in every flight mode)
     void HandleStopSpin(bool bStopSpin);
 
-    // Toggles flight-assist
+    // Toggles assisted / manual flight; during the autopilot, takes control back in assisted flight
     void HandleToggleAssist();
 
     // Sets whether the Alt free-look is held; releasing it returns the camera behind the ship
@@ -286,6 +293,15 @@ public:
     // Returns true while Alt free-look is held
     bool IsFreeLooking() const { return mIsFreeLooking; }
 
+    // Returns true while the mouse steers (the steering gate is active this frame)
+    bool IsSteering() const { return mIsSteering; }
+
+    // Returns the HUD's mouse-steer icon state (Free, Held, Locked)
+    ESOLSteerIcon GetSteerIcon() const { return SOLFlightMode::SteerIconFor(mSteerGate); }
+
+    // Returns true while boost is toggled on
+    bool IsBoostOn() const { return mBoost.bOn; }
+
     // Returns the chase camera's current horizontal field of view (degrees)
     float GetCameraFovDeg() const;
 
@@ -332,10 +348,19 @@ private:
     // Undoes the mouse capture: shows the cursor and restores game-and-UI input on the controller that had it
     void ReleaseMouse();
 
+    // Updates the steering gate (suspension, recenter edge) and the cursor capture that follows it
+    void UpdateSteering();
+
+    // Returns true while something else has the input or the view (map, speed panel, menu, jump warp, focus loss)
+    bool IsSteerSuspended() const;
+
+    // Captures and hides the cursor (mouse steering or free-look) or shows it free over the game
+    void ApplyShipCursor(bool bCapture);
+
     // Detects the viewport losing focus (alt-tab, another window) and drops the held flight input once when it does
     void UpdateViewportFocus();
 
-    // Recenters the virtual stick and zeroes thrust, roll and boost, so nothing stays held while the game is unfocused
+    // Recenters the virtual stick and zeroes thrust and roll, so nothing stays held while the game is unfocused
     void HandleFocusLost();
 
     // Sets the chase camera's FOV: the warp pulse and post-process during a jump, else the speed-based widening
@@ -362,8 +387,12 @@ private:
     // Suspends the ship's own control input: flushes held keys, drops the ship mapping and zeroes the flight input
     void SuspendShipControl(APlayerController& playerController);
 
-    // Restores the ship's mapping and the hidden, captured cursor of the virtual joystick
+    // Restores the ship's mapping and the hidden, captured cursor of the virtual joystick; in AUTO, latches the ship
+    // keys still held so they do not cancel the autopilot until released
     void RestoreShipControl();
+
+    // Returns the pilot input the ship's bound flight keys hold right now (no stick: it is zeroed while suspended)
+    FSOLPilotInput HeldKeyPilotInput(const APlayerController& playerController) const;
 
     // Opens the jump map: adds the map mapping (rolling back on failure), suspends ship control and frees the OS cursor
     void OpenMap();
@@ -412,11 +441,17 @@ private:
     // Enhanced Input: roll released
     void OnRollCompleted(const FInputActionValue& value);
 
-    // Enhanced Input: boost pressed
-    void OnBoostStarted(const FInputActionValue& value);
+    // Enhanced Input: boost toggle pressed
+    void OnBoostAction(const FInputActionValue& value);
 
-    // Enhanced Input: boost released
-    void OnBoostCompleted(const FInputActionValue& value);
+    // Enhanced Input: steer hold pressed
+    void OnSteerHoldStarted(const FInputActionValue& value);
+
+    // Enhanced Input: steer hold released
+    void OnSteerHoldCompleted(const FInputActionValue& value);
+
+    // Enhanced Input: steering toggle pressed
+    void OnSteerToggleAction(const FInputActionValue& value);
 
     // Enhanced Input: stop spin pressed
     void OnStopSpinStarted(const FInputActionValue& value);
@@ -592,6 +627,12 @@ private:
     TObjectPtr<UInputAction> StopSpinAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> SteerHoldAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> SteerToggleAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputAction> ToggleAssistAction;
 
     UPROPERTY(Transient)
@@ -739,6 +780,9 @@ private:
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
+    FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)
+    FSOLBoostToggle mBoost;                                 // Boost toggle (SDD 19)
+    uint32 mSeenPilotResetCount = 0;                        // Ship subsystem pilot resets already applied to boost
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
@@ -772,4 +816,6 @@ private:
     bool mHasOsMousePx = false;                             // mLastOsMousePx holds a reading since the map opened
     bool mIsPauseRequested = false;                         // Esc pressed in flight; handed to the menu next tick
     bool mIsMenuSuspended = false;                          // A menu has the ship's control input suspended
+    bool mIsSteering = false;                               // The mouse steers this frame (steering gate active)
+    bool mIsViewportFocused = true;                         // The game viewport had focus at the last check
 };

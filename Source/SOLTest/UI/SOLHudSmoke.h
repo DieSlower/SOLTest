@@ -95,6 +95,9 @@ private:
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
 
+    // Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
+    void TryBeginOrbitOverride(bool bLate);
+
     TWeakObjectPtr<APlayerController> mController;          // Controller the game keys are injected into
     TWeakObjectPtr<ASOLFlightHud> mHud;                     // The flight HUD
     TWeakObjectPtr<USOLShipSubsystem> mShips;               // Ship state and control
@@ -106,6 +109,7 @@ private:
     double mTotalTimeS = 0.0;                               // Real time since the script started
     double mReferenceValue = 0.0;                           // Value recorded at a phase boundary (cap, speed)
     int32 mPhaseFrames = 0;                                 // Frames in the current phase
+    bool mIsOrbitOverrideOn = false;                        // The orbit-line verification override is applied
     int32 mRadarZoomTaps = 0;                               // '-' presses made so far in the RadarZoomIn phase
     int32 mEarthIndex = INDEX_NONE;                         // Registry index of Earth
     int32 mSlateMisses = 0;                                 // Panel keys Slate did not deliver (sent directly)

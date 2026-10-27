@@ -6,7 +6,12 @@ Design: [`Docs/SDDs/19-flight-modes-and-controls.md`](../SDDs/19-flight-modes-an
 decisions are SDD section 2. The 19a contract below holds for the **recommended** answers to the open questions
 Q1-Q16 (SDD section 5). If an answer changes a contract rule, update the contract and the matching test together.
 
-- [ ] **19a — Pure logic, test-first.** Tests written 2026-10-22 against the contract below, before any production
+- [x] **19a — Pure logic, test-first.** Done 2026-10-26: `SOLTest.FlightModeMath.*` 32/32; `KeyBindings`, `SettingsRules`,
+  `InfoText`, `HudFormat` green (82/82 together). One contract fix: `BINDING_COUNT` is 32, not 31 (there were 30
+  bindings before #19, not 29); the test's `FMM_BINDING_COUNT` and this contract were corrected together. The stale
+  tests were re-validated by a separate test-author agent (Boost default Tab in four `KeyBindings` cases, the
+  lower-case override moved from B to K, `SettingsRules.OrbitLinesSave` asserted `SAVE_VERSION == 2`, `InfoText`
+  expects `off (C)`). Tests written 2026-10-22 against the contract below, before any production
   code: `Source/SOLTest/Tests/FlightModeMathTest.cpp` (`SOLTest.FlightModeMath.*`). Build
   `Source/SOLTest/Flight/SOLFlightMode.{h,cpp}` and the `SOLKeyBindings` / settings-save changes to the contract and
   make the tests pass without editing them. If a test contradicts the contract, stop and ask.
@@ -18,7 +23,17 @@ Q1-Q16 (SDD section 5). If an answer changes a contract rule, update the contrac
   - Re-validate (CLAUDE.md "modified classes"): `SOLKeyBindingsTest` (cases asserting `Boost` = `LeftShift`, at
     lines ~113, ~149, ~281, ~414 in the 18 version, and the "boost B" override now sharing `RecenterStick`'s B) and
     `SOLSettingsRulesTest` (version-agnostic today; confirm). Done by a test-author agent per CLAUDE.md.
-- [ ] **19b — Controls, pawn and subsystem integration, HUD label and icon.**
+- [x] **19b — Controls, pawn and subsystem integration, HUD label and icon.** Done 2026-10-26 (uncommitted). Smokes:
+  `-SOLSmokeInput` 37/37 (new phases i-steer-off / hold / release / toggle-on, j-thrust-up, j-brake-up, k-auto,
+  k-auto-cancel; C, B and Tab boost retuned; screenshots of the MANUAL, ASSISTED and AUTO labels and icons),
+  `-SOLSmokeFlight` 11/11, `-SOLSmokeMapPick` 22/22 (new d3: Left Shift held on the map leaves ship thrust zero),
+  `-SOLSmokeHud` 13/17: the four failures are the orbit-line checks, because the player's saved orbit lines are OFF
+  and the saved value overrides the smoke's `BeginVerificationOverride` at world start (pre-existing, not #19; it
+  passes with the default ON). `-SOLSmokeMenu` retuned (Boost back to Tab) but not run. Also pulled forward from 19c:
+  Controls rows, Info prose (modes, steering gate, cancel rule), labels, the one-time notice (seen in the log on the
+  first migrated launch; the v2 save was written back as v3 on shutdown), `GAME_MECHANICS.md`, `ARCHITECTURE.md`.
+  Not done: the steering-off free cursor was smoke-checked only through the state (screenshots do not show
+  the OS cursor); the HUD's AUTOPILOT marker overlaps the key-hint line at 1280x720 (pre-existing #18 layout).
   - Pawn: `IA_ShipSteerHold`, `IA_ShipSteerToggle`, boost as a press toggle; gate update, recenter on the edge,
     cursor show / capture on a change, gated stick; boost toggle from `PilotHasControl`; hand `FSOLPilotInput` to the
     subsystem; `bFlightAssist` from the mode.
@@ -27,8 +42,15 @@ Q1-Q16 (SDD section 5). If an answer changes a contract rule, update the contrac
     resets boost; `sol.Autopilot` through the same API.
   - HUD: mode label (replacing ASSIST ON / OFF) and colour, steer icon, new cancel hint; `HudFormatTest` cases.
   - Smoke (`-SOLSmokeInput` phases, SDD 3.10) and PIE screenshots.
+- [x] **Review fixes (SDD 19 Amendment 3).** Done 2026-10-26 (uncommitted). Per-channel latch (tests first by a
+  separate agent), relatch on map / menu / F3 / jump close with a 3-frame grace, LT palette mode colours, orbit-line
+  override fix, live-key notice, viewport focus with steering off, scripted-control reset, version constant moved and
+  `MigrateOverrides` removed. Tests: FlightModeMath 39, KeyBindings 13, SettingsRules 12, InfoText 12, HudFormat 14,
+  PlayerFlight 16, MenuState 24: 130/130. Smokes: `-SOLSmokeInput` 39/39 (new k-map-open, k-relatch),
+  `-SOLSmokeHud` 17/17 (saved orbit lines OFF), `-SOLSmokeFlight` 11/11, `-SOLSmokeMapPick` 22/22; a standalone
+  focus run with real OS input (no focus loss). The full suite was not run (19d).
 - [ ] **19c — Settings, key-binding UI, migration, Info and Controls text.**
-  - Settings key list (31 rows) and conflict flags with the new defaults; the one-time "default controls changed"
+  - Settings key list (32 rows) and conflict flags with the new defaults; the one-time "default controls changed"
     notice (Q11); a real v2 save migrated in the editor.
   - `SOLMenuText`: `CONTROL_ROWS` (Steer hold / toggle, Boost toggle, Thrust up, Toggle assist, Recenter), `INFO_PROSE`
     (modes, steering gate, cancel rule), mode labels; `GAME_MECHANICS.md` sections 1-2 and 8; `SOLInfoTextTest` and
@@ -131,14 +153,13 @@ struct FSOLBoostToggle
 ### Key bindings (`namespace SOLKeyBindings`)
 
 - `EBinding` gains `SteerHold` and `SteerToggle`, in that order, directly after `StopSpin`. Ids `"SteerHold"`,
-  `"SteerToggle"`. `BINDING_COUNT` becomes 31. `KEY_BINDING_TEXTS` gets an Area and a Label for each.
+  `"SteerToggle"`. `BINDING_COUNT` becomes 32 (30 before; first written as 31, a miscount corrected in 19a). `KEY_BINDING_TEXTS` gets an Area and a Label for each.
 - Defaults: `ThrustUp` `LeftShift`, `ThrustDown` `LeftControl`, `Boost` `Tab`, `ToggleAssist` `C`, `StopSpin` `Z`,
   `SteerHold` `SpaceBar`, `SteerToggle` `MiddleMouseButton`, `RecenterStick` `B`. Every other default is unchanged.
   All defaults remain distinct, bindable (`CanBindKey`) and not reserved.
-- `TMap<FString, FString> MigrateOverrides(const TMap<FString, FString>& overrides, int32 fromVersion)`: returns the
-  overrides **verbatim** (same entries, keys and values, invalid ones included; `ResolveKeys` keeps ignoring those)
-  for every `fromVersion`. Schemas 1-3 share binding ids, so an explicit choice survives and every binding without
-  an override takes its new default. Conflicts are not resolved.
+- ~~`MigrateOverrides`~~ (removed in Amendment 3: it was the identity). Schemas 1-3 share binding ids, so the save
+  keeps its overrides as they are; `ResolveKeys` gives every binding without one its new default. Conflicts are not
+  resolved.
 - `bool DefaultLayoutChangedSince(int32 savedVersion)`: true for `1 <= savedVersion < 3`; false for 3 and above,
   and for `savedVersion <= 0`.
 - Unchanged: `CanBindKeyTo` (the map toggle still refuses `LeftShift` and `MiddleMouseButton`; any other binding may
@@ -179,7 +200,7 @@ struct FSOLBoostToggle
 | `BoostToggle` | Toggle on / off with control, return value |
 | `BoostOffWithoutControl` | Toggle refused and `UpdateBoost` clears at G-LOC; it stays off after control returns |
 | `BoostReset` | `ResetBoost` |
-| `KeyDefaults` | New ids exist after `StopSpin`, the eight defaults, count 31, labels present |
+| `KeyDefaults` | New ids exist after `StopSpin`, the eight defaults, count 32, labels present |
 | `KeyDefaultsBindable` | New defaults bindable, not reserved, distinct; map toggle refuses Left Shift / MMB; F1 / F2 refused for the new bindings |
 | `KeyMigrationAdoptsNewDefaults` | An empty v2 override map resolves to the new layout |
 | `KeyMigrationKeepsOverrides` | Explicit v1 / v2 overrides survive verbatim, including invalid entries |

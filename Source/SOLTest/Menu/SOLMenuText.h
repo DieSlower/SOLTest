@@ -109,9 +109,11 @@ namespace SOLMenuText
         { TEXT("Flight"), TEXT("Thrust down") },
         { TEXT("Flight"), TEXT("Roll left") },
         { TEXT("Flight"), TEXT("Roll right") },
-        { TEXT("Flight"), TEXT("Boost (hold)") },
-        { TEXT("Flight"), TEXT("Toggle flight assist") },
+        { TEXT("Flight"), TEXT("Boost (toggle)") },
+        { TEXT("Flight"), TEXT("Flight assist / manual") },
         { TEXT("Flight"), TEXT("Stop spin") },
+        { TEXT("Flight"), TEXT("Steer with the mouse (hold)") },
+        { TEXT("Flight"), TEXT("Mouse steering on / off") },
         { TEXT("Flight"), TEXT("Free-look (hold)") },
         { TEXT("Flight"), TEXT("Recenter the joystick") },
         { TEXT("Flight"), TEXT("Speed panel") },
@@ -173,15 +175,20 @@ namespace SOLMenuText
     inline constexpr FControlRow CONTROL_ROWS[] =
     {
         { TEXT("Flight"), TEXT("Mouse2D"),
-            TEXT("Steer: the mouse moves a virtual joystick (yaw and pitch rate; torque in manual flight)") },
+            TEXT("Steer while mouse steering is on: the mouse moves a virtual joystick (yaw and pitch rate; torque in "
+                "manual flight). With it off the cursor is free") },
+        { TEXT("Flight"), TEXT("@SteerHold"), TEXT("Steer with the mouse while held (the joystick recenters)") },
+        { TEXT("Flight"), TEXT("@SteerToggle"),
+            TEXT("Mouse steering on / off (on at every flight start; the joystick recenters)") },
         { TEXT("Flight"), TEXT("@RecenterStick"), TEXT("Recenter the joystick (stop turning)") },
         { TEXT("Flight"), TEXT("@ThrustForward|@ThrustBackward"), TEXT("Thrust forward / backward") },
         { TEXT("Flight"), TEXT("@StrafeLeft|@StrafeRight"), TEXT("Strafe left / right") },
         { TEXT("Flight"), TEXT("@ThrustUp|@ThrustDown"), TEXT("Thrust up / down") },
         { TEXT("Flight"), TEXT("@RollLeft|@RollRight"), TEXT("Roll left / right") },
-        { TEXT("Flight"), TEXT("@Boost"), TEXT("Boost (hold)") },
+        { TEXT("Flight"), TEXT("@Boost"), TEXT("Boost on / off (turns off at a blackout, a jump and a respawn)") },
         { TEXT("Flight"), TEXT("@ToggleAssist"),
-            TEXT("Toggle flight assist: on = assisted, off = manual (starts on unless turned off in Settings)") },
+            TEXT("Assisted / manual flight (starts assisted unless turned off in Settings); during autopilot: take "
+                "control in assisted flight") },
         { TEXT("Flight"), TEXT("@StopSpin"), TEXT("Stop spin: cancel all rotation (hold)") },
         { TEXT("Flight"), TEXT("@FreeLook"), TEXT("Free-look around the ship (hold)") },
         { TEXT("Flight"), TEXT("MouseWheelAxis"), TEXT("Step the speed cap ({SpeedCapNotches} notches per factor of ten)") },
@@ -278,7 +285,15 @@ namespace SOLMenuText
             "never above your sustained G limit: it spends that on holding against gravity first, so large speed "
             "changes take time, and a planet heavier than the limit cannot be hovered over. Turn it off "
             "({ToggleAssist}) for manual flight: the keys fire the thrusters directly, the stick applies torque and a "
-            "spin keeps going until you hold {StopSpin}. Gravity pulls in both modes."),
+            "spin keeps going until you hold {StopSpin}. Gravity pulls in both modes. The HUD shows the mode: "
+            "MANUAL, ASSISTED or AUTO."),
+        TEXT("The mouse steers only while mouse steering is on: hold {SteerHold}, or press {SteerToggle} to turn it "
+            "on or off (it starts on). Each time it turns on, the joystick recenters. While it is off the cursor is "
+            "free and moving the mouse does not turn the ship. Boost ({Boost}) is a switch: it stays on until you "
+            "press it again, black out, jump or respawn."),
+        TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
+            "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "
+            "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go."),
         TEXT("Above the sustained G limit your body takes a G dose. The G meter on the HUD drains, faster the harder "
             "you pull, and refills below the limit. Manual flight warns when you pass the limit (assisted flight "
             "never does). As the meter runs low your vision narrows and grays out; when it empties you black out "
@@ -313,8 +328,16 @@ namespace SOLMenuText
     // combat model, seed and ramp rows)
     inline constexpr const TCHAR* DEMO = TEXT("Demo");
     inline constexpr const TCHAR* DEMO_TITLE = TEXT("Scale demo");
-    // HUD line under the AUTOPILOT marker (SDD 18 Amendment 7): how to cancel the console autopilot
-    inline constexpr const TCHAR* AUTOPILOT_CANCEL_HINT = TEXT("sol.Autopilot Off to cancel");
+    // HUD line under the AUTOPILOT marker (SDD 19 section 3.7): how to take control back from the autopilot
+    inline constexpr const TCHAR* AUTOPILOT_CANCEL_HINT = TEXT("Thrust or steer to take control");
+
+    // HUD flight mode labels (SDD 19 section 3.7), in ESOLFlightMode order
+    inline constexpr const TCHAR* HUD_FLIGHT_MODE_LABELS[] = { TEXT("MANUAL"), TEXT("ASSISTED"), TEXT("AUTO") };
+
+    // One-time notice after a settings save from before the issue #19 key layout was migrated (SDD 19 Q11)
+    inline constexpr const TCHAR* HUD_CONTROLS_CHANGED_NOTICE_FORMAT = TEXT("Default controls changed: "
+        "{SteerHold} or {SteerToggle} steers, {ThrustUp} thrust up, {Boost} boost, {ToggleAssist} assist. "
+        "See Controls (Esc)");
 
     inline constexpr const TCHAR* DEMO_HINT = TEXT("NPC ships across the solar system, up to a million. Options "
         "last for this session. Start demo spawns your ship above the start body, then the NPCs.");

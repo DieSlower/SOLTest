@@ -90,6 +90,12 @@ bool FSOLMapSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
     }
     mPendingReleases.Reset();
 
+    // The override starts with the map's first open; retried each frame if the line actor did not exist yet
+    if (!mIsOrbitOverrideOn && mPhase > ESOLMapPhase::OpenJ)
+    {
+        TryBeginOrbitOverride(true);
+    }
+
     mPhaseTimeS += realDeltaSeconds;
     mTotalTimeS += realDeltaSeconds;
     ++mPhaseFrames;
@@ -113,6 +119,24 @@ bool FSOLMapSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
+void FSOLMapSmoke::TryBeginOrbitOverride(const bool bLate)
+{
+    const ASOLFlightHud* hud = mController.IsValid() ? mController->GetHUD<ASOLFlightHud>() : nullptr;
+    ASOLOrbitLineVisuals* orbitLines = hud != nullptr ? hud->GetOrbitLineVisuals() : nullptr;
+    if (orbitLines == nullptr)
+    {
+        return;
+    }
+    orbitLines->BeginVerificationOverride();
+    mIsOrbitOverrideOn = true;
+    if (bLate)
+    {
+        UE_LOG(LogSOL, Log, TEXT("SmokeMap: orbit-line override applied late (the line actor was missing at open)"));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Runs a phase's entry actions (key presses, records)
 void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
 {
@@ -121,11 +145,7 @@ void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
     // Orbit lines on and detached from the player's saved setting for the whole run (they are in every map shot)
     if (phase == ESOLMapPhase::OpenJ)
     {
-        const ASOLFlightHud* hud = mController->GetHUD<ASOLFlightHud>();
-        if (ASOLOrbitLineVisuals* orbitLines = hud != nullptr ? hud->GetOrbitLineVisuals() : nullptr)
-        {
-            orbitLines->BeginVerificationOverride();
-        }
+        TryBeginOrbitOverride(false);
     }
     switch (phase)
     {

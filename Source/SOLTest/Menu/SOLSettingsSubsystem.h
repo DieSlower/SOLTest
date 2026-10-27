@@ -92,6 +92,10 @@ public:
     // Returns the applied keys the ship pawn maps
     const TArray<FString>& GetAppliedKeys() const { return mAppliedKeys; }
 
+    // Returns true once (then false) when the loaded save predates the current default key layout, so the HUD shows
+    // its one-time "Default controls changed" notice (SDD 19 Q11)
+    bool ConsumeControlsChangedNotice();
+
     // Rebinds one pending key (SOLKeyBindings::Rebind); outConflict is another binding with the same key
     SOLKeyBindings::ERebindResult RebindKey(int32 binding, const FString& keyName, int32& outConflict);
 
@@ -217,6 +221,7 @@ private:
     int32 mSaveCompletedCount = 0;
     int32 mEngineSettingsWriteCount = 0;
     int32 mSaveWritesInFlight = 0;                      // Async slot writes started and not yet reported back
+    bool mIsControlsChangedNoticePending = false;       // The loaded save predates the current default key layout
     bool mIsSaveOwed = false;                           // An Apply changed the slot's content since the last write (or
                                                         // the last write failed)
     bool mWrittenShowOrbitLines = true;                 // bShowOrbitLines as on disk (loaded or last written)

@@ -31,6 +31,8 @@ namespace
     constexpr double INPUT_COAST_S = 2.0;
     constexpr double INPUT_TURN_S = 1.2;
     constexpr double INPUT_RECENTER_S = 1.0;
+    constexpr double INPUT_THRUST_UP_S = 1.0;
+    constexpr double INPUT_BRAKE_UP_S = 4.0;
     constexpr double INPUT_AIM_S = 1.0;
     constexpr double INPUT_SEEK_S = 3.0;
     constexpr double INPUT_LOCK_RAMP_S = 6.0;
@@ -54,6 +56,7 @@ namespace
     constexpr double INPUT_MAX_RESIDUAL_RATE_RAD_PER_S = 0.05; // Rotation stopped after the recenter
     constexpr double INPUT_CAP_RELATIVE_TOLERANCE = 1.0e-9;
     constexpr double INPUT_FRAME_VELOCITY_TOLERANCE_MPS = 1.0e-6;
+    constexpr double INPUT_THRUST_UP_MIN_MPS = 5.0;         // Left Shift 1 s assisted: ~1.5 G x 1 s = ~14 m/s up
     constexpr double INPUT_LOCK_MIN_SUSTAINED_FRACTION = 0.8; // Matching Mars (~28 km/s away) at 1.5 G: the speed
     constexpr double INPUT_LOCK_MAX_SUSTAINED_FRACTION = 1.05; // change from Earth over the phase is ~1.5 G x t
 
@@ -140,12 +143,23 @@ void FSOLShipSmokeInput::EnterPhase(const ESOLInputPhase phase, ASOLShipPawn& pa
     case ESOLInputPhase::AssistOffThrust:
         mReference = state;
         mReferenceRelVelocityMps = GetRelativeVelocityMps();
-        TapKey(EKeys::Tab);
+        TapKey(EKeys::C);
         PressKey(EKeys::W);
         break;
     case ESOLInputPhase::YawRight:
     case ESOLInputPhase::PitchUp:
         mReference = state;
+        break;
+    case ESOLInputPhase::SteerOffMouse:
+        TapKey(EKeys::MiddleMouseButton);
+        break;
+    case ESOLInputPhase::ThrustUpShift:
+        mReference = state;
+        mReferenceRelVelocityMps = GetRelativeVelocityMps();
+        PressKey(EKeys::LeftShift);
+        break;
+    case ESOLInputPhase::AutoEngage:
+        mShips->EngageAutopilot(mEarthIndex);
         break;
     case ESOLInputPhase::WheelOneUp:
         mReferenceValue = pawn.GetComposedControl().SpeedCapMps;
@@ -183,6 +197,14 @@ void FSOLShipSmokeInput::TickPhase(const ESOLInputPhase phase, ASOLShipPawn& /*p
         if (mPhaseFrames <= INPUT_MOUSE_FRAMES)
         {
             InjectAxis(EKeys::MouseY, INPUT_MOUSE_PIXELS_PER_FRAME);
+        }
+        break;
+    case ESOLInputPhase::SteerOffMouse:
+    case ESOLInputPhase::SteerHeld:
+        // Mouse motion from the second frame on (the gate change of the first frame's key is applied by then)
+        if (mPhaseFrames > 1 && mPhaseFrames <= INPUT_MOUSE_FRAMES)
+        {
+            InjectAxis(EKeys::MouseX, INPUT_MOUSE_PIXELS_PER_FRAME);
         }
         break;
     case ESOLInputPhase::WheelToMax:
@@ -245,25 +267,27 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         break;
     case ESOLInputPhase::AssistOffThrust:
     {
-        const bool bAssist = mShips->GetControl().bFlightAssist;
+        const bool bAssist = mShips->GetControl().bFlightAssist || mShips->GetFlightMode() != ESOLFlightMode::Manual;
         const double gain = FVector3d::DotProduct(relVelocity - mReferenceRelVelocityMps,
             mReference.Orientation.GetForwardVector());
         const double expected = params.Envelope.ForwardAccelMps2 * mPhaseTimeS;
         Check(TEXT("c-assist-off"), !bAssist && FMath::Abs(gain - expected) <= INPUT_THRUST_GAIN_TOLERANCE_MPS,
-            FString::Printf(TEXT("Tab: assist %s; W held %.2f s: forward gain %.1f m/s (expected ~%.0f)"),
+            FString::Printf(TEXT("C: assist %s; W held %.2f s: forward gain %.1f m/s (expected ~%.0f)"),
                 bAssist ? TEXT("ON") : TEXT("OFF"), mPhaseTimeS, gain, expected));
         mReferenceValue = relSpeed;
         ReleaseKey(EKeys::W);
+        CaptureScreenshot(pawn);
         break;
     }
     case ESOLInputPhase::Coast:
         Check(TEXT("c-coast"), FMath::Abs(relSpeed - mReferenceValue) <= INPUT_COAST_MAX_CHANGE * mReferenceValue,
             FString::Printf(TEXT("coasting %.2f s: relative speed %.2f -> %.2f m/s"), mPhaseTimeS, mReferenceValue,
                 relSpeed));
-        TapKey(EKeys::Tab);
+        TapKey(EKeys::C);
         break;
     case ESOLInputPhase::AssistOn:
-        Check(TEXT("c-assist-on"), mShips->GetControl().bFlightAssist, TEXT("Tab again: assist ON"));
+        Check(TEXT("c-assist-on"), mShips->GetControl().bFlightAssist
+            && mShips->GetFlightMode() == ESOLFlightMode::Assisted, TEXT("C again: ASSISTED"));
         break;
     case ESOLInputPhase::YawRight:
     case ESOLInputPhase::PitchUp:
@@ -281,7 +305,7 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
             bYaw ? TEXT("right") : TEXT("up"), INPUT_MOUSE_FRAMES * INPUT_MOUSE_PIXELS_PER_FRAME, stick.X, stick.Y,
             pawn.GetStickRadiusPixels(), bYaw ? TEXT("right") : TEXT("up"), toward,
             FMath::RadiansToDegrees(FMath::Asin(FMath::Clamp(toward, -1.0, 1.0))), sideways));
-        TapKey(EKeys::MiddleMouseButton);
+        TapKey(EKeys::B);
         break;
     }
     case ESOLInputPhase::YawRecenter:
@@ -289,10 +313,84 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
     {
         const double rate = state.AngularVelocityRadPerS.Size();
         Check(TEXT("d-recenter"), stick.IsNearlyZero() && rate <= INPUT_MAX_RESIDUAL_RATE_RAD_PER_S,
-            FString::Printf(TEXT("middle mouse: stick (%.1f, %.1f), residual turn rate %.4f rad/s"), stick.X, stick.Y,
+            FString::Printf(TEXT("B: stick (%.1f, %.1f), residual turn rate %.4f rad/s"), stick.X, stick.Y,
                 rate));
         break;
     }
+    case ESOLInputPhase::SteerOffMouse:
+        Check(TEXT("i-steer-off"), !pawn.IsSteering() && pawn.GetSteerIcon() == ESOLSteerIcon::Free
+            && stick.IsNearlyZero() && pawn.GetComposedControl().Rotation.IsNearlyZero(), FString::Printf(TEXT(
+            "wheel click: steering %s, icon %d, mouse moved %.0f px: stick (%.1f, %.1f)"),
+            pawn.IsSteering() ? TEXT("on") : TEXT("off"), static_cast<int32>(pawn.GetSteerIcon()),
+            (INPUT_MOUSE_FRAMES - 1) * INPUT_MOUSE_PIXELS_PER_FRAME, stick.X, stick.Y));
+        CaptureScreenshot(pawn);
+        PressKey(EKeys::SpaceBar);
+        break;
+    case ESOLInputPhase::SteerHeld:
+        Check(TEXT("i-steer-hold"), pawn.IsSteering() && pawn.GetSteerIcon() == ESOLSteerIcon::Held && stick.X > 0.0,
+            FString::Printf(TEXT("Space held: steering %s, icon %d, stick (%.1f, %.1f)"),
+                pawn.IsSteering() ? TEXT("on") : TEXT("off"), static_cast<int32>(pawn.GetSteerIcon()), stick.X,
+                stick.Y));
+        ReleaseKey(EKeys::SpaceBar);
+        break;
+    case ESOLInputPhase::SteerReleased:
+        Check(TEXT("i-steer-release"), !pawn.IsSteering() && pawn.GetComposedControl().Rotation.IsNearlyZero(),
+            FString::Printf(TEXT("Space released: steering %s"), pawn.IsSteering() ? TEXT("on") : TEXT("off")));
+        TapKey(EKeys::MiddleMouseButton);
+        break;
+    case ESOLInputPhase::SteerLockedAgain:
+        Check(TEXT("i-steer-toggle-on"), pawn.IsSteering() && pawn.GetSteerIcon() == ESOLSteerIcon::Locked
+            && stick.IsNearlyZero(), FString::Printf(TEXT("wheel click: steering %s, icon %d, stick recentered "
+            "(%.1f, %.1f)"), pawn.IsSteering() ? TEXT("on") : TEXT("off"), static_cast<int32>(pawn.GetSteerIcon()),
+            stick.X, stick.Y));
+        break;
+    case ESOLInputPhase::ThrustUpShift:
+    {
+        const double upGain = FVector3d::DotProduct(relVelocity - mReferenceRelVelocityMps,
+            mReference.Orientation.GetUpVector());
+        Check(TEXT("j-thrust-up"), upGain >= INPUT_THRUST_UP_MIN_MPS, FString::Printf(TEXT("Left Shift held %.2f s: "
+            "upward gain %.1f m/s (min %.1f)"), mPhaseTimeS, upGain, INPUT_THRUST_UP_MIN_MPS));
+        ReleaseKey(EKeys::LeftShift);
+        break;
+    }
+    case ESOLInputPhase::BrakeUp:
+        Check(TEXT("j-brake-up"), relSpeed < INPUT_BRAKE_MAX_REL_MPS, FString::Printf(TEXT("Left Shift released "
+            "%.2f s: relative speed %.3f m/s"), mPhaseTimeS, relSpeed));
+        break;
+    case ESOLInputPhase::AutoEngage:
+        Check(TEXT("k-auto"), mShips->GetFlightMode() == ESOLFlightMode::Auto
+            && mShips->GetAutopilotBodyIndex() == mEarthIndex, FString::Printf(TEXT("autopilot to Earth: mode %d, "
+            "body %s"), static_cast<int32>(mShips->GetFlightMode()),
+            *GetCandidateName(mShips->GetAutopilotBodyIndex())));
+        CaptureScreenshot(pawn);
+
+        // Issue #19 review: a key held on the map and still held when it closes must not cancel the autopilot
+        TapKey(EKeys::J);
+        break;
+    case ESOLInputPhase::AutoMapShift:
+        Check(TEXT("k-map-open"), pawn.IsMapOpen() && mShips->GetFlightMode() == ESOLFlightMode::Auto,
+            FString::Printf(TEXT("J during autopilot: map %s, mode %d"), pawn.IsMapOpen() ? TEXT("open")
+                : TEXT("closed"), static_cast<int32>(mShips->GetFlightMode())));
+        PressKey(EKeys::LeftShift);
+        break;
+    case ESOLInputPhase::AutoMapClose:
+        TapKey(EKeys::J);
+        break;
+    case ESOLInputPhase::AutoRelatched:
+        Check(TEXT("k-relatch"), !pawn.IsMapOpen() && mShips->GetFlightMode() == ESOLFlightMode::Auto,
+            FString::Printf(TEXT("map closed with Left Shift held: map %s, mode %d (autopilot kept; latch now "
+                "0x%04x)"), pawn.IsMapOpen() ? TEXT("open") : TEXT("closed"),
+                static_cast<int32>(mShips->GetFlightMode()), mShips->GetLatchedChannels()));
+        ReleaseKey(EKeys::LeftShift);
+        PressKey(EKeys::W);
+        break;
+    case ESOLInputPhase::AutoCancel:
+        Check(TEXT("k-auto-cancel"), mShips->GetFlightMode() == ESOLFlightMode::Assisted
+            && mShips->GetAutopilotBodyIndex() == INDEX_NONE && mShips->GetControl().bFlightAssist,
+            FString::Printf(TEXT("W during autopilot: mode %d, autopilot %s"),
+                static_cast<int32>(mShips->GetFlightMode()), *GetCandidateName(mShips->GetAutopilotBodyIndex())));
+        ReleaseKey(EKeys::W);
+        break;
     case ESOLInputPhase::WheelOneUp:
     {
         const double ratio = cap / mReferenceValue;
@@ -370,7 +468,7 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         Check(TEXT("g-seek-mars"), selected == mMarsIndex, FString::Printf(TEXT("R until Mars: selected %s"),
             *GetCandidateName(selected)));
         TapKey(EKeys::M);
-        PressKey(EKeys::LeftShift);
+        TapKey(EKeys::Tab);
         break;
     case ESOLInputPhase::LockMars:
     {
@@ -383,11 +481,12 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         Check(TEXT("g-lock-mars"), mTargeting->GetLockedIndex() == mMarsIndex
             && mTargeting->GetFrameName() == FName(INPUT_MARS) && frameError <= INPUT_FRAME_VELOCITY_TOLERANCE_MPS
             && earthRelSpeed >= INPUT_LOCK_MIN_SUSTAINED_FRACTION * lockGainMps
-            && earthRelSpeed <= INPUT_LOCK_MAX_SUSTAINED_FRACTION * lockGainMps, FString::Printf(TEXT("M (+Shift boost "
-            "%.1f s): frame %s, frame velocity error %.3g m/s, speed rel frame %.3f m/s, rel Earth %.1f m/s (1.5 G x t "
-            "= %.1f)"), mPhaseTimeS, *mTargeting->GetFrameName().ToString(), frameError, relSpeed, earthRelSpeed,
+            && earthRelSpeed <= INPUT_LOCK_MAX_SUSTAINED_FRACTION * lockGainMps && pawn.IsBoostOn(),
+            FString::Printf(TEXT("M (+Tab boost %s, %.1f s): frame %s, frame velocity error %.3g m/s, speed rel "
+            "frame %.3f m/s, rel Earth %.1f m/s (1.5 G x t = %.1f)"), pawn.IsBoostOn() ? TEXT("on") : TEXT("off"),
+            mPhaseTimeS, *mTargeting->GetFrameName().ToString(), frameError, relSpeed, earthRelSpeed,
             lockGainMps));
-        ReleaseKey(EKeys::LeftShift);
+        TapKey(EKeys::Tab);
         TapKey(EKeys::M);
         break;
     }
@@ -396,10 +495,10 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         const FVector3d earthVelocity = candidates.IsValidIndex(mEarthIndex) ? candidates[mEarthIndex].VelocityMps
             : FVector3d::ZeroVector;
         const double frameError = (mTargeting->GetReferenceVelocityMps() - earthVelocity).Size();
-        Check(TEXT("g-unlock"), !mTargeting->IsFrameLocked() && frameError <= INPUT_FRAME_VELOCITY_TOLERANCE_MPS,
-            FString::Printf(TEXT("M again: locked %s, frame %s, frame velocity error vs Earth %.3g m/s"),
-                mTargeting->IsFrameLocked() ? TEXT("yes") : TEXT("no"), *mTargeting->GetFrameName().ToString(),
-                frameError));
+        Check(TEXT("g-unlock"), !mTargeting->IsFrameLocked() && frameError <= INPUT_FRAME_VELOCITY_TOLERANCE_MPS
+            && !pawn.IsBoostOn(), FString::Printf(TEXT("M and Tab again: locked %s, frame %s, frame velocity error vs "
+            "Earth %.3g m/s, boost %s"), mTargeting->IsFrameLocked() ? TEXT("yes") : TEXT("no"),
+            *mTargeting->GetFrameName().ToString(), frameError, pawn.IsBoostOn() ? TEXT("on") : TEXT("off")));
         TapKey(EKeys::X);
         break;
     }
@@ -472,6 +571,10 @@ double FSOLShipSmokeInput::GetPhaseDuration(const ESOLInputPhase phase)
     case ESOLInputPhase::YawRecenter:
     case ESOLInputPhase::PitchRecenter:
         return INPUT_RECENTER_S;
+    case ESOLInputPhase::ThrustUpShift:
+        return INPUT_THRUST_UP_S;
+    case ESOLInputPhase::BrakeUp:
+        return INPUT_BRAKE_UP_S;
     case ESOLInputPhase::WheelToMax:
     case ESOLInputPhase::WheelToMin:
     case ESOLInputPhase::WheelRestore:
@@ -497,6 +600,8 @@ int32 FSOLShipSmokeInput::GetPhaseMinFrames(const ESOLInputPhase phase)
     {
     case ESOLInputPhase::YawRight:
     case ESOLInputPhase::PitchUp:
+    case ESOLInputPhase::SteerOffMouse:
+    case ESOLInputPhase::SteerHeld:
         return INPUT_MOUSE_FRAMES + INPUT_WHEEL_SETTLE_FRAMES;
     case ESOLInputPhase::WheelToMax:
     case ESOLInputPhase::WheelToMin:
@@ -505,6 +610,16 @@ int32 FSOLShipSmokeInput::GetPhaseMinFrames(const ESOLInputPhase phase)
         return INPUT_WHEEL_RESTORE_FRAMES + INPUT_WHEEL_SETTLE_FRAMES;
     default:
         return INPUT_WHEEL_SETTLE_FRAMES;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Saves a screenshot without ending the script (the HUD's mode label and steer icon at this point)
+void FSOLShipSmokeInput::CaptureScreenshot(const ASOLShipPawn& pawn)
+{
+    if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
+    {
+        gameMode->CaptureScreenshot();
     }
 }
 

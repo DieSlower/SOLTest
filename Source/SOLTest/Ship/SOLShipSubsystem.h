@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Flight/SOLFlightMode.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipSmokeFlight.h"
 
@@ -137,14 +138,41 @@ public:
     // Releases any surface-lock and clears its auto-engage suppression and a pending L press (used by a jump arrival)
     void ClearSurfaceLock();
 
-    // Cancels the autopilot order and wakes the pilot with a full G meter (a jump arrival or a spawn)
+    // Cancels the autopilot order (back to assisted flight), wakes the pilot with a full G meter and counts a pilot
+    // reset, which turns the pawn's boost off (a jump arrival or a spawn)
     void ResetPilotState();
 
-    // Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side; false if invalid
+    // Returns how many pilot resets happened (the pawn turns its boost toggle off when this changes)
+    uint32 GetPilotResetCount() const { return mPilotResetCount; }
+
+    // Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side and enters AUTO, with
+    // the pilot input of the last frame latched (SDD 19 section 3.3); false if invalid
     bool EngageAutopilot(int32 bodyIndex);
 
-    // Cancels the autopilot order, if any
+    // Cancels the autopilot order, if any, and hands back to assisted flight
     void DisengageAutopilot();
+
+    // Returns the player's flight mode (SDD 19)
+    ESOLFlightMode GetFlightMode() const { return mFlightMode.Mode; }
+
+    // Returns the AUTO input latch (SOLFlightMode::CHANNEL_* bits; verification)
+    uint16 GetLatchedChannels() const { return mFlightMode.LatchedChannels; }
+
+    // Toggles assisted / manual flight (C); in AUTO it takes control back in assisted flight. Ignored while the pilot
+    // has no control (G-LOC). Returns whether the mode changed
+    bool ToggleAssist();
+
+    // Hands the frame's gated pilot input to the cancel rule: manual input in AUTO takes control back in assisted
+    // flight (each channel held when AUTO engaged is latched until released). Returns whether it cancelled the
+    // autopilot
+    bool ApplyPilotInput(const FSOLPilotInput& input);
+
+    // In AUTO, latches the channels of input held when the pawn's control comes back (map, menu, F3 panel or jump
+    // warp closed), so they do not cancel the autopilot until released
+    void RelatchPilotInput(const FSOLPilotInput& heldInput);
+
+    // Returns whether the pilot has control (not blacked out) as of the last step
+    bool PilotHasControl() const;
 
     // Returns the body the autopilot flies to, or INDEX_NONE
     int32 GetAutopilotBodyIndex() const;
@@ -176,6 +204,9 @@ private:
 
     // Remembers this frame's bodies and reference frame as the previous state for the next frame's carry
     void SaveFrameHistory();
+
+    // Clears the autopilot order fragment and guidance, without touching the flight mode
+    void ClearAutopilotOrder();
 
     // Advances the surface-lock state one step (consuming a pending L press) and names the body to align to, if any
     void UpdateSurfaceLock();
@@ -210,6 +241,11 @@ private:
     FSOLSurfaceLockParams mSurfaceLockParams;              // Surface-lock ranges and time constant (SOLConstants)
     double mSurfaceLockAltitudeM = 0.0;                    // Altitude above the locked body at the last step
     double mLastWarpFactor = 1.0;                          // Sim seconds per real second of the last step
+    FSOLFlightModeState mFlightMode;                       // Player's flight mode and auto input latch (SDD 19)
+    FSOLPilotInput mLastPilotInput;                        // Last gated pilot input (latched when AUTO engages)
+    FSOLPilotInput mRelatchInput;                          // Input held when control came back (RelatchPilotInput)
+    int32 mRelatchFramesLeft = 0;                          // Frames mRelatchInput is still re-applied to the latch
+    uint32 mPilotResetCount = 0;                           // Pilot resets so far (jump arrival, spawn)
     bool mHasFrameHistory = false;                         // False until the first step has saved the bodies
     bool mIsSurfaceLockToggleRequested = false;            // L pressed since the last step
 };

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Flight/SOLFlightMode.h"
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
 #include "UI/SOLHudFormat.h"
@@ -170,6 +171,7 @@ private:
         AbsoluteSpeed,
         Cap,
         Assist,
+        ControlsNotice,
         GMeter,
         GWarning,
         Autopilot,
@@ -213,6 +215,10 @@ private:
     // Draws the pilot G meter (above the speed block), the G warning (under the reticle) and the autopilot marker
     // with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
     void DrawPilotBlock(const FSOLShipControl& control);
+
+    // Draws the mouse-steer icon centred on a point: Free (an open cursor arrow), Held (a reticle), Locked (a reticle
+    // with a lock tick); bright while the mouse steers, dim otherwise
+    void DrawSteerIcon(const FVector2D& center, ESOLSteerIcon icon, bool bSteering);
 
     // Draws the selected target's bracket and readout, or an edge arrow when it is off-screen
     void DrawTarget(const FSOLHudView& view, const FSOLShipState& state);
@@ -275,11 +281,12 @@ private:
     FString mFlightHintsOrbitsOn;                   // Key hint line with the orbit lines on (rebuilt on rebinds)
     FString mFlightHintsOrbitsOff;                  // ...and off
     FString mMapHints;                              // The jump map's first hint line
-    SOLHudFormat::FHudKeyTexts mKeyTexts;           // Surface-lock hint, frame-lock tag, no-target text (rebinds)
+    SOLHudFormat::FHudKeyTexts mKeyTexts;           // Key-naming HUD texts, incl. the controls notice (rebinds)
     FDelegateHandle mKeyBindingsHandle;             // Binding to the settings' OnKeyBindingsChanged
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
     ESOLSurfaceLockHudLine mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;  // Surface-lock line drawn last frame
+    double mControlsNoticeEndS = -1.0;              // Real time until which the controls-changed notice shows
     bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
     bool mIsRadarManual = false;                    // Radar range mode: false = AUTO (starts here), true = MANUAL
 };

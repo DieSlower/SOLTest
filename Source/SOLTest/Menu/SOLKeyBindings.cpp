@@ -7,6 +7,7 @@
 
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLMenuText.h"
+#include "SOLConstants.h"
 
 #include "InputCoreTypes.h"
 
@@ -24,23 +25,25 @@ namespace
             SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey };
     }
 
-    // Every rebindable action, in EBinding order. Defaults match the ship pawn's original hardcoded mapping and
-    // GAME_MECHANICS.md section 1 (keep all three in sync)
+    // Every rebindable action, in EBinding order. Defaults are the issue #19 layout (settings schema 3) and match
+    // GAME_MECHANICS.md section 1 (keep both in sync)
     constexpr SOLKeyBindings::FBindingDef KEY_BINDING_DEFS[] =
     {
         KeyBindingDef(SOLKeyBindings::EBinding::ThrustForward, TEXT("ThrustForward"), TEXT("W")),
         KeyBindingDef(SOLKeyBindings::EBinding::ThrustBackward, TEXT("ThrustBackward"), TEXT("S")),
         KeyBindingDef(SOLKeyBindings::EBinding::StrafeLeft, TEXT("StrafeLeft"), TEXT("A")),
         KeyBindingDef(SOLKeyBindings::EBinding::StrafeRight, TEXT("StrafeRight"), TEXT("D")),
-        KeyBindingDef(SOLKeyBindings::EBinding::ThrustUp, TEXT("ThrustUp"), TEXT("SpaceBar")),
+        KeyBindingDef(SOLKeyBindings::EBinding::ThrustUp, TEXT("ThrustUp"), TEXT("LeftShift")),
         KeyBindingDef(SOLKeyBindings::EBinding::ThrustDown, TEXT("ThrustDown"), TEXT("LeftControl")),
         KeyBindingDef(SOLKeyBindings::EBinding::RollLeft, TEXT("RollLeft"), TEXT("Q")),
         KeyBindingDef(SOLKeyBindings::EBinding::RollRight, TEXT("RollRight"), TEXT("E")),
-        KeyBindingDef(SOLKeyBindings::EBinding::Boost, TEXT("Boost"), TEXT("LeftShift")),
-        KeyBindingDef(SOLKeyBindings::EBinding::ToggleAssist, TEXT("ToggleAssist"), TEXT("Tab")),
+        KeyBindingDef(SOLKeyBindings::EBinding::Boost, TEXT("Boost"), TEXT("Tab")),
+        KeyBindingDef(SOLKeyBindings::EBinding::ToggleAssist, TEXT("ToggleAssist"), TEXT("C")),
         KeyBindingDef(SOLKeyBindings::EBinding::StopSpin, TEXT("StopSpin"), TEXT("Z")),
+        KeyBindingDef(SOLKeyBindings::EBinding::SteerHold, TEXT("SteerHold"), TEXT("SpaceBar")),
+        KeyBindingDef(SOLKeyBindings::EBinding::SteerToggle, TEXT("SteerToggle"), TEXT("MiddleMouseButton")),
         KeyBindingDef(SOLKeyBindings::EBinding::FreeLook, TEXT("FreeLook"), TEXT("LeftAlt")),
-        KeyBindingDef(SOLKeyBindings::EBinding::RecenterStick, TEXT("RecenterStick"), TEXT("MiddleMouseButton")),
+        KeyBindingDef(SOLKeyBindings::EBinding::RecenterStick, TEXT("RecenterStick"), TEXT("B")),
         KeyBindingDef(SOLKeyBindings::EBinding::SpeedPanel, TEXT("SpeedPanel"), TEXT("F3")),
         KeyBindingDef(SOLKeyBindings::EBinding::SelectTarget, TEXT("SelectTarget"), TEXT("T")),
         KeyBindingDef(SOLKeyBindings::EBinding::NextTarget, TEXT("NextTarget"), TEXT("R")),
@@ -284,4 +287,11 @@ SOLKeyBindings::ERebindResult SOLKeyBindings::Rebind(TArray<FString>& keys, cons
     }
     keys[binding] = keyName;
     return ERebindResult::Bound;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the default key layout changed since a saved settings schema version
+bool SOLKeyBindings::DefaultLayoutChangedSince(const int32 savedVersion)
+{
+    return savedVersion >= 1 && savedVersion < SOL::Settings::KEY_BINDING_LAYOUT_VERSION;
 }

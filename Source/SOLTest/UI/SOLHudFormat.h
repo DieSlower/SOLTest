@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "Flight/SOLFlightMode.h"
+
 #include "CoreMinimal.h"
 
 // Display unit for a speed readout or the F3 speed-cap stepper
@@ -50,9 +52,17 @@ namespace SOLHudFormat
         FString FrameLockTag;       // " [M LOCK]" (after the frame name)
         FString NoTarget;           // "none (T)" (target panel without a target)
         FString SpeedPanelTitle;    // "SPEED CAP  (F3 / Enter close, Esc close)"
+        FString ControlsChangedNotice;  // "Default controls changed: Space or Middle Mouse steers, ..." (SDD 19)
     };
 
     // Returns the HUD and speed panel texts that name a key, from the ship's keys (SOLKeyBindings order); the comments
     // above show them with the default keys
     SOLTEST_API FHudKeyTexts FormatHudKeyTexts(const TArray<FString>& keys);
+
+    // Returns the HUD's flight mode label: "MANUAL", "ASSISTED" or "AUTO" (SDD 19 section 3.7)
+    SOLTEST_API const TCHAR* FlightModeLabel(ESOLFlightMode mode);
+
+    // Returns the flight mode label's color from the original Limit Theory palette: MANUAL Secondary (orange),
+    // ASSISTED Primary (blue-cyan), AUTO Good (green)
+    SOLTEST_API FLinearColor FlightModeColor(ESOLFlightMode mode);
 }

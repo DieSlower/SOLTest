@@ -120,7 +120,9 @@ void USOLSettingsSubsystem::LoadOnce()
         : ESaveVersionAction::UseDefaults;
     if (action == ESaveVersionAction::Migrate)
     {
-        // The upgraded save is written back once, at the next write point
+        // The upgraded save is written back once, at the next write point; a save from before the current default key
+        // layout also gets the one-time notice
+        mIsControlsChangedNoticePending = SOLKeyBindings::DefaultLayoutChangedSince(save->Version);
         MigrateSave(*save);
         mIsSaveOwed = true;
     }
@@ -162,6 +164,15 @@ void USOLSettingsSubsystem::LoadOnce()
     PushEngineGraphics(bPushVsync, bPushQuality, false);
     UE_LOG(LogSOL, Log, TEXT("Settings %s: slot %s %s; %d rebound keys"), *GetName(), *mSlotName,
         action == ESaveVersionAction::UseDefaults ? TEXT("not used (defaults)") : TEXT("loaded"), overrides.Num());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true once when the loaded save predates the current default key layout
+bool USOLSettingsSubsystem::ConsumeControlsChangedNotice()
+{
+    const bool bPending = mIsControlsChangedNoticePending;
+    mIsControlsChangedNoticePending = false;
+    return bPending;
 }
 
 //////////////////////////////////////////////////////////////////////////

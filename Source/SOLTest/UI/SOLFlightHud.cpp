@@ -92,6 +92,11 @@ namespace
     constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
     constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
     constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
+    constexpr float HUD_STEER_ICON_RADIUS_PX = 6.0f;                        // Mouse-steer icon radius (SDD 19)
+    constexpr float HUD_STEER_ICON_GAP_PX = 10.0f;                          // Gap between the mode line and the icon
+    constexpr int32 HUD_STEER_ICON_SEGMENTS = 16;
+    constexpr double HUD_CONTROLS_NOTICE_S = 15.0;                          // One-time controls notice duration
+    constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
     constexpr double HUD_PERCENT = 100.0;
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.05f, 0.02f, 0.35f);
     const FLinearColor HUD_RADAR_BEHIND_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
@@ -311,6 +316,25 @@ void ASOLFlightHud::DrawHUD()
     }
     const FSOLShipState state = Ships->GetState();
     const FSOLShipControl control = Ships->GetControl();
+
+    // One-time notice after a save from before the issue #19 key layout was migrated (SDD 19 Q11)
+    const double realTimeS = GetWorld()->GetRealTimeSeconds();
+    if (Settings != nullptr && Settings->ConsumeControlsChangedNotice())
+    {
+        mControlsNoticeEndS = realTimeS + HUD_CONTROLS_NOTICE_S;
+        UE_LOG(LogSOL, Log, TEXT("FlightHud %s: default controls changed notice shown"), *GetName());
+    }
+    if (realTimeS < mControlsNoticeEndS)
+    {
+        UFont* medium = GEngine->GetMediumFont();
+        float textWidth = 0.0f;
+        float textHeight = 0.0f;
+        mText.Reset();
+        mText.Append(mKeyTexts.ControlsChangedNotice);
+        Canvas->StrLen(medium, mText, textWidth, textHeight);
+        DrawBuffer(ESOLHudLine::ControlsNotice, HUD_TARGET_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
+            Canvas->ClipY * HUD_CONTROLS_NOTICE_Y_FRACTION, medium);
+    }
     DrawSpeedBlock(state, control);
     DrawPilotBlock(control);
     DrawRadar(state);
@@ -477,7 +501,7 @@ void ASOLFlightHud::DrawJoystick(const FVector2D& center, const ASOLShipPawn& pa
     // The stick offset is X right, Y up; the screen's Y grows downward
     const FVector2d& offset = pawn.GetStickOffsetPixels();
     const FVector2D stick(center.X + offset.X, center.Y - offset.Y);
-    const FLinearColor color = pawn.IsFreeLooking() ? HUD_DIM_COLOR : HUD_COLOR;
+    const FLinearColor color = pawn.IsFreeLooking() || !pawn.IsSteering() ? HUD_DIM_COLOR : HUD_COLOR;
     if (offset.Size() > radius * SOL::JOYSTICK_DEAD_ZONE)
     {
         DrawLine(center.X, center.Y, stick.X, stick.Y, HUD_DIM_COLOR, 1.0f);
@@ -646,11 +670,50 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     DrawLine(x + barWidth, y, x + barWidth, y + barHeight, HUD_DIM_COLOR, 1.0f);
     y += barHeight + 6.0f * mUiScale;
 
-    // Flight-assist and boost
+    // Flight mode label in its color (SDD 19 section 3.7) and boost, then the mouse-steer icon to their right
+    const ESOLFlightMode mode = Ships->GetFlightMode();
     mText.Reset();
-    mText.Append(control.bFlightAssist ? TEXT("ASSIST ON") : TEXT("ASSIST OFF (manual)"));
+    mText.Append(SOLHudFormat::FlightModeLabel(mode));
     mText.Append(control.bBoost ? TEXT("   BOOST") : TEXT("   boost off"));
-    DrawBuffer(ESOLHudLine::Assist, control.bFlightAssist ? HUD_TEXT_COLOR : HUD_WARN_COLOR, x, y, small);
+    DrawBuffer(ESOLHudLine::Assist, SOLHudFormat::FlightModeColor(mode), x, y, small);
+    if (const ASOLShipPawn* shipPawn = Cast<ASOLShipPawn>(GetOwningPawn()))
+    {
+        float textWidth = 0.0f;
+        float textHeight = 0.0f;
+        Canvas->StrLen(small, mText, textWidth, textHeight);
+        const FVector2D iconCenter(x + (textWidth + HUD_STEER_ICON_GAP_PX + HUD_STEER_ICON_RADIUS_PX) * mUiScale,
+            y + textHeight * 0.5f * mUiScale);
+        DrawSteerIcon(iconCenter, shipPawn->GetSteerIcon(), shipPawn->IsSteering());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the mouse-steer icon: an open cursor arrow (Free), a reticle (Held) or a reticle with a lock tick (Locked)
+void ASOLFlightHud::DrawSteerIcon(const FVector2D& center, const ESOLSteerIcon icon, const bool bSteering)
+{
+    const float radius = HUD_STEER_ICON_RADIUS_PX * mUiScale;
+    const FLinearColor color = bSteering ? HUD_COLOR : HUD_DIM_COLOR;
+    if (icon == ESOLSteerIcon::Free)
+    {
+        // Cursor arrow: a tip at the top left, a vertical edge and a slanted edge closed by a short base
+        const FVector2D tip(center.X - radius * 0.6f, center.Y - radius);
+        const FVector2D bottom(tip.X, tip.Y + radius * 2.0f);
+        const FVector2D side(tip.X + radius * 1.4f, tip.Y + radius * 1.4f);
+        DrawLine(tip.X, tip.Y, bottom.X, bottom.Y, color, 1.5f);
+        DrawLine(tip.X, tip.Y, side.X, side.Y, color, 1.5f);
+        DrawLine(bottom.X, bottom.Y, side.X, side.Y, color, 1.5f);
+        return;
+    }
+
+    // Held and Locked: a reticle (circle, centre dot)
+    DrawCircle(center, radius, color, HUD_STEER_ICON_SEGMENTS, 1.0f, 1.5f);
+    DrawRect(color, center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f);
+    if (icon == ESOLSteerIcon::Locked)
+    {
+        // Lock tick: a small filled square on the lower right of the ring
+        const float tick = radius * 0.7f;
+        DrawRect(color, center.X + radius * 0.5f, center.Y + radius * 0.5f, tick, tick);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

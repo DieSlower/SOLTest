@@ -123,10 +123,11 @@ void ASOLOrbitLineVisuals::BeginPlay()
 {
     Super::BeginPlay();
 
-    // The persisted choice (SDD 17, 17d) decides the starting state; without settings (tests) the lines start on
+    // The persisted choice (SDD 17, 17d) decides the starting state; without settings (tests) the lines start on. A
+    // verification override applied before BeginPlay (a smoke that starts first) keeps the lines on
     UWorld* world = GetWorld();
     Settings = USOLSettingsSubsystem::Get(this);
-    if (Settings != nullptr)
+    if (Settings != nullptr && !mIsVerificationOverride)
     {
         mIsEnabled = Settings->AreOrbitLinesShown();
     }

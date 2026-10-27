@@ -66,4 +66,12 @@ void USOLSettingsSave::MigrateToCurrentVersion()
         bShowOrbitLines = true;
         Version = 2;
     }
+
+    // Schema 2 -> 3 (SDD 19 section 3.5): the new default key layout. Schemas 1-3 share binding ids and overrides are
+    // deltas from the defaults, so every override is kept verbatim (ResolveKeys ignores invalid ones) and every binding
+    // without one takes its new default; conflicts with the new defaults are flagged by Settings, not resolved here
+    if (Version == 2)
+    {
+        Version = 3;
+    }
 }

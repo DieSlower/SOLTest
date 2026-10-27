@@ -26,6 +26,8 @@ namespace SOLKeyBindings
         Boost,
         ToggleAssist,
         StopSpin,
+        SteerHold,
+        SteerToggle,
         FreeLook,
         RecenterStick,
         SpeedPanel,
@@ -122,4 +124,8 @@ namespace SOLKeyBindings
     // Binds a key to a binding; outConflict is another binding that also uses the key (INDEX_NONE if none). A conflict
     // does not block the rebind: both keep the key until the player changes one, and both are flagged
     SOLTEST_API ERebindResult Rebind(TArray<FString>& keys, int32 binding, const FString& keyName, int32& outConflict);
+
+    // Returns whether the default key layout changed since a saved settings schema version (true for 1 and 2, the
+    // layouts before issue #19; false for 3 and above and for an unversioned save)
+    SOLTEST_API bool DefaultLayoutChangedSince(int32 savedVersion);
 }

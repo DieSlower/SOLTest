@@ -176,5 +176,42 @@ SOLHudFormat::FHudKeyTexts SOLHudFormat::FormatHudKeyTexts(const TArray<FString>
     texts.FrameLockTag = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_FRAME_LOCK_TAG_FORMAT, keys);
     texts.NoTarget = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_NO_TARGET_FORMAT, keys);
     texts.SpeedPanelTitle = SOLKeyBindings::FormatKeyText(SOLMenuText::SPEED_PANEL_TITLE_FORMAT, keys);
+    texts.ControlsChangedNotice = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_CONTROLS_CHANGED_NOTICE_FORMAT, keys);
     return texts;
+}
+
+namespace
+{
+    // Flight mode label colors from the original Limit Theory palette (SDD 19 Amendment 3), in ESOLFlightMode order:
+    // MANUAL LT Secondary (orange), ASSISTED LT Primary (blue-cyan), AUTO LT Good (green)
+    const FLinearColor HUD_FLIGHT_MODE_COLORS[] =
+    {
+        SOL::HudPalette::SECONDARY,
+        SOL::HudPalette::PRIMARY,
+        SOL::HudPalette::GOOD,
+    };
+    static_assert(UE_ARRAY_COUNT(HUD_FLIGHT_MODE_COLORS) == UE_ARRAY_COUNT(SOLMenuText::HUD_FLIGHT_MODE_LABELS),
+        "one color per flight mode label");
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a flight mode's index into the label and color tables (clamped into range)
+    int32 HudFlightModeIndex(const ESOLFlightMode mode)
+    {
+        return FMath::Clamp(static_cast<int32>(mode), 0,
+            static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::HUD_FLIGHT_MODE_LABELS)) - 1);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD's flight mode label
+const TCHAR* SOLHudFormat::FlightModeLabel(const ESOLFlightMode mode)
+{
+    return SOLMenuText::HUD_FLIGHT_MODE_LABELS[HudFlightModeIndex(mode)];
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the flight mode label's color
+FLinearColor SOLHudFormat::FlightModeColor(const ESOLFlightMode mode)
+{
+    return HUD_FLIGHT_MODE_COLORS[HudFlightModeIndex(mode)];
 }

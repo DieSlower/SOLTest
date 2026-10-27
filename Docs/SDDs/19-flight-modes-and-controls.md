@@ -90,11 +90,14 @@ steering stick command after the gate, stop spin). In Auto:
   spin held. Non-finite values do not count. Boost, the speed cap wheel, targeting, warp, the M / L locks, free-look
   and the steering gate itself do **not** cancel (open question Q3).
 - Mouse motion while steering is **off** never cancels: the gate zeroes the stick command first.
-- **Input latch.** Input already held at the moment auto engages (for example a key still down when the map closes)
-  does not cancel. It is latched, and the latch clears on the first frame with no manual input. Only input after that
-  cancels (open question Q4).
+- **Input latch (per channel, Amendment 3).** Input already held at the moment auto engages does not cancel. Each
+  held signed channel (thrust forward / back / right / left / up / down, roll right / left, stick right / left / up /
+  down, stop spin) is latched, and each clears the first frame it is released. Any channel that is not latched cancels
+  at once, even while others are still latched; a latched channel released and pressed again cancels. When the map,
+  a menu or the F3 panel closes in AUTO, the flight keys still held are latched the same way (open question Q4).
 - **G-LOC.** While the pilot has no control, input never cancels (it is ignored), and the engaged autopilot keeps
-  flying at its recovery limit (SDD 18 decision 13). The latch can still clear while blacked out.
+  flying at its recovery limit (SDD 18 decision 13). Latched channels can still clear while blacked out, but input
+  never adds a latch then; once control returns, a held channel that is not latched cancels.
 
 On a cancel the mode becomes Assisted, the autopilot order is cleared (`AutopilotBodyIndex = INDEX_NONE`), and the
 same frame's input flies the ship in assisted mode.
@@ -133,7 +136,7 @@ same frame's input flies the ship in assisted mode.
 | `SteerToggle` (new) | - | **MiddleMouseButton** | Click to toggle mouse steering (open question Q10: rebindable) |
 
 The two new bindings sit right after `StopSpin` in `EBinding` order (Settings and Controls order). The table grows
-from 29 to 31 rows. All defaults stay distinct, bindable and outside the reserved keys (Escape, the mouse axes and
+from 30 to 32 rows. All defaults stay distinct, bindable and outside the reserved keys (Escape, the mouse axes and
 wheel, P, F1, F2). `LeftShift` and `MiddleMouseButton` are jump-map fixed keys, which only the map toggle is refused;
 the ship's whole mapping context is removed while the map is open (`SuspendShipControl`), so Left Shift never
 thrusts with the map open. 19b adds a smoke check for that. Ctrl+F1 / Ctrl+F2 are unaffected: Left Ctrl was already
@@ -169,7 +172,8 @@ makes sure an old save is classified Migrate and kept, never discarded.
 ### 3.7 HUD
 
 - **Mode label** next to the speed readout, replacing today's `ASSIST ON` / `ASSIST OFF (manual)`. `MANUAL` amber,
-  `ASSISTED` the HUD cyan, `AUTO` magenta (the map destination colour) (open question Q13). Text lives in
+  `ASSISTED` the HUD cyan, `AUTO` magenta (the map destination colour) (open question Q13; superseded by Amendment 3:
+  the original Limit Theory palette). Text lives in
   `SOLMenuText`; the label and colour functions go in `SOLHudFormat` (tested in `HudFormatTest`, 19b).
 - **Steer icon** beside it: three states, Free (an open cursor glyph), Held, Locked (a closed reticle with a lock
   tick) (open question Q14).
@@ -205,7 +209,7 @@ One player ship: a few branches per frame. No allocation, no new Mass processor,
   `FSOLShipControl` changes. `-SOLSmokeInput` phases: Space hold steers and recenters, MMB toggles, mouse motion is
   ignored with steering off, C cycles manual / assisted, Tab latches boost, Left Shift thrusts up but not with the map
   open, and `sol.Autopilot` then W cancels to ASSISTED. PIE screenshots of the three labels and icons.
-- **19c:** the Controls / Info pages and the Settings key list (31 rows), the one-time notice, and the migration of a
+- **19c:** the Controls / Info pages and the Settings key list (32 rows), the one-time notice, and the migration of a
   real v2 save file.
 - **19d:** adversarial review, full suite, docs, commit.
 
@@ -254,7 +258,61 @@ One player ship: a few branches per frame. No allocation, no new Mass processor,
 
 ## 6. Amendments
 
-None yet.
+- **Amendment 1 (19a, 2026-10-26): binding count.** There were 30 rebindable actions before #19, not 29, so the
+  table grows to 32 rows. The contract and the `FlightModeMath.KeyDefaults` constant were corrected together.
+- **Amendment 2 (19b, 2026-10-26): implementation details within the decisions.** The pawn learns of a jump arrival
+  or respawn through `USOLShipSubsystem::GetPilotResetCount` (bumped by `ResetPilotState`) and clears its boost
+  toggle then. While steering is off the cursor uses the jump map's input mode (game and UI, not locked, hidden only
+  while a button is held), and Alt free-look captures it again while held. The steer toggle's start state is
+  `SOL::SHIP_STEER_TOGGLE_START_ON`. The one-time notice is set by `USOLSettingsSubsystem` when it migrates a save
+  for which `DefaultLayoutChangedSince` is true and shown by the HUD for 15 s near the top.
+
+- **Amendment 3 (review fixes, 2026-10-26).** From the adversarial review of 19a/19b, with the user's decisions on
+  findings 3, 6 and 8:
+  - **Per-channel latch (finding 3, user decision).** `FSOLFlightModeState::bInputLatched` becomes
+    `uint16 LatchedChannels`, a mask of 13 signed channels (`SOLFlightMode::CHANNEL_*`, `ActiveChannels`). Only the
+    channels held at engage are ignored, each until it is released; any other manual input cancels AUTO at once (see
+    section 3.1). `EngageAuto` replaces the mask; the new `RelatchInput` ORs held channels in AUTO and does nothing
+    outside it. Tests: `FlightModeMath.ChannelBits`, `ActiveChannels`, `ActiveChannelsNonFinite`,
+    `OtherChannelCancelsWhileLatched`, `SignFlipCancels`, `PartialRelease`, `RelatchInput`, `RelatchOutsideAuto`, and
+    the earlier latch tests rewritten to the mask.
+  - **Relatch when control comes back (finding 4).** `ASOLShipPawn::RestoreShipControl` (menu, F3 panel, jump warp)
+    passes the flight keys still held (`HeldKeyPilotInput`, from the bound keys) to
+    `USOLShipSubsystem::RelatchPilotInput`. Closing the map flushes the keys, so `CloseMap` reads them before the
+    flush and relatches after the restore. A flushed key reads as released until the OS key repeat brings it back,
+    so the subsystem re-applies the relatched channels for `SOL::SHIP_RELATCH_GRACE_FRAMES` (3) frames. Smoke:
+    `-SOLSmokeInput` k-map-open / k-relatch (Left Shift held on the map across the close keeps AUTO; W then
+    cancels). The smoke cannot reproduce an OS key repeat, so the grace is verified by the log only ("held input
+    latched (0x0010)").
+  - **Steer toggle reset (finding 6, user decision).** The toggle turns ON on spawn and respawn only (each creates a
+    new pawn, whose BeginPlay builds the gate), not on a jump arrival; a jump clears boost only.
+  - **Mode label colours (finding 8, user decision).** Taken from the original Limit Theory
+    (`LimitTheory-Original/resource/script/Colors.lts`): MANUAL = LT Secondary (1.0, 0.3, 0.1) orange, ASSISTED =
+    LT Primary (0.2, 0.7, 1.0) blue-cyan, AUTO = LT Good (0.25, 1.0, 0.25) green (LT has no magenta). The palette is
+    `SOL::HudPalette` in `SOLConstants.h`. The full LT palette, for ticket #21: Primary (0.2, 0.7, 1.0), Secondary
+    (1.0, 0.3, 0.1), Good and Friendly (0.25, 1.0, 0.25), Bad (1.0, 0.1, 0.1), Hostile (1.0, 0.1, 0.01), White
+    (1, 1, 1), Gray (0.5, 0.5, 0.5), DGray (0.25, 0.25, 0.25); the HUD compositor grade-blue (0.40, 0.50, 0.75)
+    (`Compositor_Basic` in `Widget/HUD.lts`). LT draws UI colours doubled (2 x colour) and additively so cores clip
+    toward white, with the glow-SDF falloffs in `Docs/Research/LT_features_for_SOL.md` section C. **Ticket #21 applies
+    the full LT palette and glow shading to the whole HUD**; #19 only recolours the mode label (flat Canvas text, no
+    glow).
+  - **Orbit-line override (finding 1).** `ASOLOrbitLineVisuals::BeginPlay` no longer overwrites a verification
+    override set before it ran; `-SOLSmokeHud` and `-SOLSmokeMap` retry the override each frame until the HUD's line
+    actor exists (logged when late). `-SOLSmokeHud` is 17/17 with the player's saved orbit lines OFF.
+  - **Notice keys (finding 2).** The controls-changed notice is `HUD_CONTROLS_CHANGED_NOTICE_FORMAT` with
+    `{SteerHold}`, `{SteerToggle}`, `{ThrustUp}`, `{Boost}`, `{ToggleAssist}`, formatted into
+    `FHudKeyTexts::ControlsChangedNotice` in `RebuildKeyHints` (cached; rebinds follow). Test:
+    `HudFormat.ControlsChangedNotice`.
+  - **Steering-off focus (finding 5).** Verified in a standalone run driven by real OS key and mouse events: wheel
+    click (steering off), Tab twice, Space held, Tab, C twice. Boost, steering and the mode all responded, and no
+    "viewport lost focus" was logged on the final build. One earlier run lost focus after Space, together with OS
+    foreground (cause not identified, not reproduced). As a safeguard the steering-off `FInputModeGameAndUI` now
+    focuses the game viewport widget.
+  - **Scripted control (finding 7).** `mLastPilotInput` is reset when `-SOLSmokeFlight` takes the controls.
+  - **Tidy-up (finding 9).** `KEY_BINDING_LAYOUT_VERSION` moved to `SOL::Settings` next to `SAVE_VERSION`. The
+    identity function `SOLKeyBindings::MigrateOverrides` is removed (`USOLSettingsSave` 2 -> 3 keeps the overrides
+    as they are), and its tautological tests were replaced with `ResolveKeys` / `HasConflict` / `MakeOverrides`
+    assertions, with duplicated cases merged.
 
 ## 7. Revision history
 

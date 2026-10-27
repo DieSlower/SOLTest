@@ -49,6 +49,7 @@
 #include "Misc/App.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Widgets/SViewport.h"
 
 namespace
 {
@@ -226,6 +227,14 @@ void ASOLShipPawn::BeginPlay()
     mControl.bBoost = false;
     mControl.bStopSpin = false;
     mControl.SpeedCapMps = SOL::SHIP_START_SPEED_CAP_MPS;
+    mControl.bFlightAssist = SOLFlightMode::FlightAssistFor(Ships->GetFlightMode());
+
+    // Mouse steering starts on at every flight start (SDD 19 Q7), boost off; neither is saved. Every spawn or respawn
+    // creates a new pawn, so this is the only reset of the steer toggle: a jump arrival (USOLShipSubsystem::
+    // ResetPilotState) turns boost off but keeps the toggle (SDD 19 Amendment 3)
+    mSteerGate = SOLFlightMode::MakeSteerGate(SOL::SHIP_STEER_TOGGLE_START_ON);
+    SOLFlightMode::ResetBoost(mBoost);
+    mSeenPilotResetCount = Ships->GetPilotResetCount();
     BuildShipMesh();
 
     // The pawn represents the observer: rebases move it, and it follows the ship after every universe update
@@ -410,6 +419,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     }
     UpdateViewportFocus();
     UpdateMapCursor();
+    UpdateSteering();
 
     // Virtual joystick: radius from the current viewport, offset mapped through the dead zone and response curve
     if (const APlayerController* playerController = Cast<APlayerController>(GetController()))
@@ -423,11 +433,29 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         }
     }
     mStickOffsetPx = mStickOffsetPx.GetClampedToMaxSize(mStickRadiusPx);
-    const FVector2d stick = SOLFlight::JoystickToRotation(mStickOffsetPx / mStickRadiusPx, SOL::JOYSTICK_DEAD_ZONE,
-        SOL::JOYSTICK_EXPONENT);
+    const FVector2d stick = SOLFlightMode::GateSteer(SOLFlight::JoystickToRotation(mStickOffsetPx / mStickRadiusPx,
+        SOL::JOYSTICK_DEAD_ZONE, SOL::JOYSTICK_EXPONENT), mIsSteering);
     mControl.Rotation = FVector3d(mRollInput, stick.Y, stick.X);
+
+    // Boost: off after a jump arrival or respawn, and at a blackout (it never turns itself back on)
+    if (Ships->GetPilotResetCount() != mSeenPilotResetCount)
+    {
+        mSeenPilotResetCount = Ships->GetPilotResetCount();
+        SOLFlightMode::ResetBoost(mBoost);
+    }
+    SOLFlightMode::UpdateBoost(mBoost, Ships->PilotHasControl());
+    mControl.bBoost = mBoost.bOn;
+
+    // The gated pilot input goes through the autopilot's cancel rule first, then the mode sets the assist flag
     if (!Ships->IsControlScripted())
     {
+        FSOLPilotInput pilotInput;
+        pilotInput.Thrust = mControl.Thrust;
+        pilotInput.Roll = mRollInput;
+        pilotInput.Steer = stick;
+        pilotInput.bStopSpin = mControl.bStopSpin;
+        Ships->ApplyPilotInput(pilotInput);
+        mControl.bFlightAssist = SOLFlightMode::FlightAssistFor(Ships->GetFlightMode());
         Ships->SetControl(mControl);
     }
     UpdateCombatInput();
@@ -569,8 +597,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(ThrustAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnThrustCompleted);
     input->BindAction(RollAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRollAction);
     input->BindAction(RollAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnRollCompleted);
-    input->BindAction(BoostAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnBoostStarted);
-    input->BindAction(BoostAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnBoostCompleted);
+    input->BindAction(SteerHoldAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnSteerHoldStarted);
+    input->BindAction(SteerHoldAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnSteerHoldCompleted);
     input->BindAction(StopSpinAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnStopSpinStarted);
     input->BindAction(StopSpinAction, ETriggerEvent::Completed, this, &ASOLShipPawn::OnStopSpinCompleted);
     input->BindAction(FireAction, ETriggerEvent::Started, this, &ASOLShipPawn::OnFireStarted);
@@ -582,6 +610,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
 
     // One-shot keys trigger once per press
     input->BindAction(ToggleAssistAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleAssistAction);
+    input->BindAction(BoostAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnBoostAction);
+    input->BindAction(SteerToggleAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSteerToggleAction);
     input->BindAction(RecenterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRecenterAction);
     input->BindAction(MatchLockAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMatchLockAction);
     input->BindAction(ToggleLevelAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleLevelAction);
@@ -688,7 +718,12 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mIsSpeedPanelOpen || mIsMapOpen || mIsMenuSuspended)
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+    {
+        mIsViewportFocused = true;
+        return;
+    }
+    if (mIsSpeedPanelOpen || mIsMapOpen || mIsMenuSuspended)
     {
         return;
     }
@@ -702,24 +737,26 @@ void ASOLShipPawn::UpdateViewportFocus()
         HandleFocusLost();
     }
     mHadViewportFocus = bHasFocus;
+    mIsViewportFocused = bHasFocus;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Recenters the virtual stick and zeroes thrust, roll and boost, so nothing stays held while the game is unfocused
+// Recenters the virtual stick and zeroes thrust and roll, so nothing stays held while the game is unfocused; the
+// steer hold is released and the boost toggle survives (SDD 19 Q12)
 void ASOLShipPawn::HandleFocusLost()
 {
     mStickOffsetPx = FVector2d::ZeroVector;
     mRollInput = 0.0;
+    SOLFlightMode::SetSteerHold(mSteerGate, false);
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
-    mControl.bBoost = false;
     mControl.bStopSpin = false;
     mIsFireHeld = false;
     if (Ships != nullptr && !Ships->IsControlScripted())
     {
         Ships->SetControl(mControl);
     }
-    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: viewport lost focus; stick recentered, thrust/roll/boost/trigger released"),
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: viewport lost focus; stick recentered, thrust/roll/steer/trigger released"),
         *GetName());
 }
 
@@ -744,6 +781,8 @@ void ASOLShipPawn::CreateInputObjects()
     RollAction = CreateAction(this, TEXT("IA_ShipRoll"), EInputActionValueType::Axis1D);
     BoostAction = CreateAction(this, TEXT("IA_ShipBoost"), EInputActionValueType::Boolean);
     StopSpinAction = CreateAction(this, TEXT("IA_ShipStopSpin"), EInputActionValueType::Boolean);
+    SteerHoldAction = CreateAction(this, TEXT("IA_ShipSteerHold"), EInputActionValueType::Boolean);
+    SteerToggleAction = CreateAction(this, TEXT("IA_ShipSteerToggle"), EInputActionValueType::Boolean);
     ToggleAssistAction = CreateAction(this, TEXT("IA_ShipToggleAssist"), EInputActionValueType::Boolean);
     FreeLookAction = CreateAction(this, TEXT("IA_ShipFreeLook"), EInputActionValueType::Boolean);
     LookAction = CreateAction(this, TEXT("IA_ShipLook"), EInputActionValueType::Axis2D);
@@ -828,19 +867,21 @@ void ASOLShipPawn::MapShipKeys()
     MapAxisKey(MappingContext, RollAction, key(EBinding::RollRight), this, false, EInputAxisSwizzle::YXZ, false);
     MapAxisKey(MappingContext, RollAction, key(EBinding::RollLeft), this, false, EInputAxisSwizzle::YXZ, true);
 
-    // Held keys and axes: boost, the gun trigger (left mouse by default; the map's own context uses the left mouse for
-    // picking, but the two contexts are never active together), free-look, the mouse (virtual joystick, fixed) and the
-    // wheel (speed cap, fixed)
-    MappingContext->MapKey(BoostAction, key(EBinding::Boost));
+    // Held keys and axes: stop spin, steer hold, the gun trigger (left mouse by default; the map's own context uses
+    // the left mouse for picking, but the two contexts are never active together), free-look, the mouse (virtual
+    // joystick, fixed) and the wheel (speed cap, fixed)
     MappingContext->MapKey(StopSpinAction, key(EBinding::StopSpin));
+    MappingContext->MapKey(SteerHoldAction, key(EBinding::SteerHold));
     MappingContext->MapKey(FireAction, key(EBinding::Fire));
     MappingContext->MapKey(FreeLookAction, key(EBinding::FreeLook));
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
     MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
 
-    // One-shot keys, including the HUD keys: orbit lines, P predicted path (reserved, fixed), the speed panel, radar
-    // zoom in/out and back to AUTO
+    // One-shot keys: the assist, boost and steering toggles, and the HUD keys: orbit lines, P predicted path
+    // (reserved, fixed), the speed panel, radar zoom in/out and back to AUTO
     MapPressedKey(MappingContext, ToggleAssistAction, key(EBinding::ToggleAssist), this);
+    MapPressedKey(MappingContext, BoostAction, key(EBinding::Boost), this);
+    MapPressedKey(MappingContext, SteerToggleAction, key(EBinding::SteerToggle), this);
     MapPressedKey(MappingContext, RecenterAction, key(EBinding::RecenterStick), this);
     MapPressedKey(MappingContext, MatchLockAction, key(EBinding::MatchLock), this);
     MapPressedKey(MappingContext, ToggleLevelAction, key(EBinding::SurfaceLock), this);
@@ -925,6 +966,10 @@ UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
         return BoostAction;
     case EBinding::StopSpin:
         return StopSpinAction;
+    case EBinding::SteerHold:
+        return SteerHoldAction;
+    case EBinding::SteerToggle:
+        return SteerToggleAction;
     case EBinding::ToggleAssist:
         return ToggleAssistAction;
     case EBinding::FreeLook:
@@ -1117,10 +1162,104 @@ void ASOLShipPawn::HandleRoll(const double roll)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets whether boost is held
-void ASOLShipPawn::HandleBoost(const bool bBoost)
+// Toggles boost on / off; ignored while the pilot has no control
+void ASOLShipPawn::HandleToggleBoost()
 {
-    mControl.bBoost = bBoost;
+    const bool bHasControl = Ships == nullptr || Ships->PilotHasControl();
+    SOLFlightMode::ToggleBoost(mBoost, bHasControl);
+    mControl.bBoost = mBoost.bOn;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: boost %s%s"), *GetName(), mBoost.bOn ? TEXT("ON") : TEXT("OFF"),
+        bHasControl ? TEXT("") : TEXT(" (no pilot control)"));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets whether the steer-hold key is down
+void ASOLShipPawn::HandleSteerHold(const bool bDown)
+{
+    SOLFlightMode::SetSteerHold(mSteerGate, bDown);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles mouse steering on / off
+void ASOLShipPawn::HandleToggleSteer()
+{
+    SOLFlightMode::ToggleSteer(mSteerGate);
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: mouse steering toggle %s"), *GetName(),
+        mSteerGate.bToggleOn ? TEXT("ON") : TEXT("OFF"));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while something else has the input or the view
+bool ASOLShipPawn::IsSteerSuspended() const
+{
+    return mIsMapOpen || mIsSpeedPanelOpen || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Updates the steering gate and the cursor capture that follows it
+void ASOLShipPawn::UpdateSteering()
+{
+    // Suspension releases the hold (the key's release may never arrive); the toggle survives
+    const bool bSuspended = IsSteerSuspended();
+    if (bSuspended)
+    {
+        SOLFlightMode::SetSteerHold(mSteerGate, false);
+    }
+    const FSOLSteerGateUpdate update = SOLFlightMode::UpdateSteerGate(mSteerGate, bSuspended);
+    if (update.bRecenter)
+    {
+        mStickOffsetPx = FVector2d::ZeroVector;
+    }
+    if (update.bActive != mIsSteering)
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: mouse steering %s"), *GetName(),
+            update.bActive ? TEXT("ON (stick recentered)") : TEXT("OFF (cursor free)"));
+    }
+    mIsSteering = update.bActive;
+
+    // The ship owns the cursor only while nothing else has the input: captured while steering or free-looking, else
+    // shown and free over the game
+    if (mIsMapOpen || mIsSpeedPanelOpen || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused)
+    {
+        return;
+    }
+    const bool bCapture = mIsSteering || mIsFreeLooking;
+    if (bCapture != mHasCapturedMouse)
+    {
+        ApplyShipCursor(bCapture);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Captures and hides the cursor, or shows it free over the game (the viewport hides it only while a button is held)
+void ASOLShipPawn::ApplyShipCursor(const bool bCapture)
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (playerController == nullptr)
+    {
+        return;
+    }
+    if (bCapture)
+    {
+        playerController->bShowMouseCursor = false;
+        playerController->SetInputMode(FInputModeGameOnly());
+    }
+    else
+    {
+        // Keyboard focus stays on the game viewport, so Tab (boost) and Space never move Slate focus off it
+        FInputModeGameAndUI inputMode;
+        inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        inputMode.SetHideCursorDuringCapture(true);
+        const ULocalPlayer* localPlayer = playerController->GetLocalPlayer();
+        const UGameViewportClient* viewportClient = localPlayer != nullptr ? localPlayer->ViewportClient.Get() : nullptr;
+        if (viewportClient != nullptr && viewportClient->GetGameViewportWidget().IsValid())
+        {
+            inputMode.SetWidgetToFocus(viewportClient->GetGameViewportWidget());
+        }
+        playerController->SetInputMode(inputMode);
+        playerController->bShowMouseCursor = true;
+    }
+    mHasCapturedMouse = bCapture;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1131,12 +1270,13 @@ void ASOLShipPawn::HandleStopSpin(const bool bStopSpin)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Toggles flight-assist
+// Toggles assisted / manual flight; during the autopilot, takes control back in assisted flight
 void ASOLShipPawn::HandleToggleAssist()
 {
-    mControl.bFlightAssist = !mControl.bFlightAssist;
-    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: flight-assist %s"), *GetName(), mControl.bFlightAssist ? TEXT("ON")
-        : TEXT("OFF"));
+    if (Ships != nullptr && Ships->ToggleAssist())
+    {
+        mControl.bFlightAssist = SOLFlightMode::FlightAssistFor(Ships->GetFlightMode());
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1160,6 +1300,12 @@ void ASOLShipPawn::HandleMouseDelta(const FVector2d& deltaPixels)
         mFreeLookRotation.Yaw = FRotator::NormalizeAxis(mFreeLookRotation.Yaw + orbitDeg.X);
         mFreeLookRotation.Pitch = FMath::Clamp(mFreeLookRotation.Pitch + orbitDeg.Y, -SOL::SHIP_FREE_LOOK_MAX_PITCH_DEG,
             SOL::SHIP_FREE_LOOK_MAX_PITCH_DEG);
+        return;
+    }
+
+    // With mouse steering off the mouse is a free cursor and the stick stays put
+    if (!mIsSteering)
+    {
         return;
     }
     mStickOffsetPx = (mStickOffsetPx + deltaPixels).GetClampedToMaxSize(mStickRadiusPx);
@@ -1404,9 +1550,9 @@ void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
     RemoveMappingContext();
     mStickOffsetPx = FVector2d::ZeroVector;
     mRollInput = 0.0;
+    SOLFlightMode::SetSteerHold(mSteerGate, false);
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
-    mControl.bBoost = false;
     mControl.bStopSpin = false;
     mIsFireHeld = false;
     mIsFreeLooking = false;
@@ -1414,7 +1560,7 @@ void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Restores the ship's mapping and the hidden, captured cursor of the virtual joystick
+// Restores the ship's mapping and its cursor mode (captured while mouse steering is on, else free)
 void ASOLShipPawn::RestoreShipControl()
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
@@ -1424,11 +1570,36 @@ void ASOLShipPawn::RestoreShipControl()
         {
             mMappedLocalPlayer = playerController->GetLocalPlayer();
         }
-        playerController->bShowMouseCursor = false;
-        playerController->SetInputMode(FInputModeGameOnly());
-        mHasCapturedMouse = true;
+        ApplyShipCursor(mSteerGate.bToggleOn);
+
+        // A key held across the close (e.g. Left Shift from the map) would otherwise cancel the autopilot at once
+        if (Ships != nullptr && !Ships->IsControlScripted())
+        {
+            Ships->RelatchPilotInput(HeldKeyPilotInput(*playerController));
+        }
     }
     mHadViewportFocus = false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the pilot input the ship's bound flight keys hold right now
+FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerController) const
+{
+    using SOLKeyBindings::EBinding;
+
+    // Returns 1 when the binding's key is down, else 0
+    const auto held = [this, &playerController](const EBinding binding)
+    {
+        const int32 index = static_cast<int32>(binding);
+        return mBoundKeys.IsValidIndex(index) && playerController.IsInputKeyDown(FKey(*mBoundKeys[index])) ? 1.0 : 0.0;
+    };
+    FSOLPilotInput input;
+    input.Thrust = FVector3d(held(EBinding::ThrustForward) - held(EBinding::ThrustBackward),
+        held(EBinding::StrafeRight) - held(EBinding::StrafeLeft),
+        held(EBinding::ThrustUp) - held(EBinding::ThrustDown));
+    input.Roll = held(EBinding::RollRight) - held(EBinding::RollLeft);
+    input.bStopSpin = held(EBinding::StopSpin) > 0.0;
+    return input;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1484,12 +1655,21 @@ void ASOLShipPawn::CloseMap()
     {
         return;
     }
-    if (APlayerController* playerController = Cast<APlayerController>(GetController()))
+    // Flight keys still held (Left Shift is also the map's height key) are read before the flush forgets them and
+    // latched in AUTO, so a key repeat after the close does not cancel the autopilot (SDD 19 Amendment 3)
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    FSOLPilotInput heldAtClose;
+    if (playerController != nullptr)
     {
+        heldAtClose = HeldKeyPilotInput(*playerController);
         playerController->FlushPressedKeys();
     }
     DismissMap();
     RestoreShipControl();
+    if (Ships != nullptr && !Ships->IsControlScripted())
+    {
+        Ships->RelatchPilotInput(heldAtClose);
+    }
     UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: jump map closed; ship control input restored"), *GetName());
 }
 
@@ -1821,17 +2001,31 @@ void ASOLShipPawn::OnRollCompleted(const FInputActionValue& /*value*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enhanced Input: boost pressed
-void ASOLShipPawn::OnBoostStarted(const FInputActionValue& /*value*/)
+// Enhanced Input: boost toggle pressed
+void ASOLShipPawn::OnBoostAction(const FInputActionValue& /*value*/)
 {
-    HandleBoost(true);
+    HandleToggleBoost();
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enhanced Input: boost released
-void ASOLShipPawn::OnBoostCompleted(const FInputActionValue& /*value*/)
+// Enhanced Input: steer hold pressed
+void ASOLShipPawn::OnSteerHoldStarted(const FInputActionValue& /*value*/)
 {
-    HandleBoost(false);
+    HandleSteerHold(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: steer hold released
+void ASOLShipPawn::OnSteerHoldCompleted(const FInputActionValue& /*value*/)
+{
+    HandleSteerHold(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: steering toggle pressed
+void ASOLShipPawn::OnSteerToggleAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleSteer();
 }
 
 //////////////////////////////////////////////////////////////////////////

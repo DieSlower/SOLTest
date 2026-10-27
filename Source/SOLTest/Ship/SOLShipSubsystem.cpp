@@ -5,6 +5,8 @@
 
 #include "Ship/SOLShipSubsystem.h"
 
+#include "Flight/SOLNewtonianFlight.h"
+
 #include "Game/SOLGameMode.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
@@ -160,6 +162,8 @@ void USOLShipSubsystem::OnWorldBeginPlay(UWorld& world)
     // Verification hook: fly a fixed script without a pawn, log checkpoints, then quit
     if (HasPlayerShip() && FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_FLIGHT))
     {
+        // The script owns the controls from here: no pawn input may be latched by its autopilot phase
+        mLastPilotInput = FSOLPilotInput();
         mSmokeFlight = MakeUnique<FSOLShipSmokeFlight>();
         mSmokeFlight->Start(*this, *Anchor, BodyRegistry->GetRegistry());
     }
@@ -405,6 +409,7 @@ void USOLShipSubsystem::SpawnPlayerShip(const FString& startBody)
     // drifting out of the plane within seconds
     const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(this);
     control.bFlightAssist = !bRingStart && (settings == nullptr || settings->GetSavedValues().bDefaultFlightAssist);
+    mFlightMode = SOLFlightMode::MakeInitialState(control.bFlightAssist);
     control.SpeedCapMps = FMath::Clamp(SOL::SHIP_START_SPEED_CAP_MPS, SOL::MIN_SPEED_CAP_MPS, SOL::MAX_SPEED_CAP_MPS);
     mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).State = state;
     mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).Control = control;
@@ -445,12 +450,13 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
     }
     SaveFrameHistory();
 
-    // The autopilot order ends at arrival; assisted or manual flight resumes from there
+    // The autopilot order ends at arrival; assisted flight resumes from there (SDD 19 section 3.2)
     if (mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived)
     {
         UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot arrived at %s"), *GetName(),
             *BodyRegistry->GetRegistry().GetName(GetAutopilotBodyIndex()).ToString());
-        DisengageAutopilot();
+        ClearAutopilotOrder();
+        SOLFlightMode::NotifyAutopilotArrived(mFlightMode);
     }
 
     // Surface-lock after the flight run, when the ship and the bodies are both at this frame's positions (before the
@@ -485,14 +491,88 @@ bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
     control.AutopilotBodyIndex = bodyIndex;
     control.AutopilotOffsetDir = towardShip.GetSafeNormal(UE_DOUBLE_SMALL_NUMBER, FVector3d(0.0, 0.0, 1.0));
-    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)"), *GetName(),
-        *BodyRegistry->GetRegistry().GetName(bodyIndex).ToString(), towardShip.Size() / SOL::METERS_PER_KM);
+    SOLFlightMode::EngageAuto(mFlightMode, mLastPilotInput);
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)%s"), *GetName(),
+        *BodyRegistry->GetRegistry().GetName(bodyIndex).ToString(), towardShip.Size() / SOL::METERS_PER_KM,
+        mFlightMode.LatchedChannels != 0 ? TEXT("; held input latched") : TEXT(""));
     return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Cancels the autopilot order, if any
+// Cancels the autopilot order, if any, and hands back to assisted flight
 void USOLShipSubsystem::DisengageAutopilot()
+{
+    ClearAutopilotOrder();
+    SOLFlightMode::DisengageAuto(mFlightMode);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles assisted / manual flight; in AUTO, takes control back in assisted flight
+bool USOLShipSubsystem::ToggleAssist()
+{
+    const bool bWasAuto = SOLFlightMode::IsAuto(mFlightMode);
+    if (!SOLFlightMode::ToggleAssist(mFlightMode, PilotHasControl()))
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: assist toggle ignored (no pilot control)"), *GetName());
+        return false;
+    }
+    if (bWasAuto)
+    {
+        ClearAutopilotOrder();
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: flight mode %s"), *GetName(),
+        SOLFlightMode::FlightAssistFor(mFlightMode.Mode) ? TEXT("ASSISTED") : TEXT("MANUAL"));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Applies the cancel-on-manual-input rule to the frame's gated pilot input
+bool USOLShipSubsystem::ApplyPilotInput(const FSOLPilotInput& input)
+{
+    mLastPilotInput = input;
+
+    // Keys flushed at a close read as released for a frame or two before their OS repeat; the relatched channels are
+    // re-applied meanwhile so that gap cannot clear them
+    if (mRelatchFramesLeft > 0)
+    {
+        --mRelatchFramesLeft;
+        SOLFlightMode::RelatchInput(mFlightMode, mRelatchInput);
+    }
+    if (!SOLFlightMode::ApplyPilotInput(mFlightMode, input, PilotHasControl()))
+    {
+        return false;
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: manual input took control (channels 0x%04x); autopilot cancelled, "
+        "ASSISTED"), *GetName(), SOLFlightMode::ActiveChannels(input));
+    ClearAutopilotOrder();
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// In AUTO, latches the channels of input held when the pawn's control comes back
+void USOLShipSubsystem::RelatchPilotInput(const FSOLPilotInput& heldInput)
+{
+    const uint16 before = mFlightMode.LatchedChannels;
+    SOLFlightMode::RelatchInput(mFlightMode, heldInput);
+    mRelatchInput = heldInput;
+    mRelatchFramesLeft = SOLFlightMode::IsAuto(mFlightMode) ? SOL::SHIP_RELATCH_GRACE_FRAMES : 0;
+    if (mFlightMode.LatchedChannels != before)
+    {
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: control restored in AUTO; held input latched (0x%04x)"),
+            *GetName(), mFlightMode.LatchedChannels);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the pilot has control (not blacked out) as of the last step
+bool USOLShipSubsystem::PilotHasControl() const
+{
+    return !HasPlayerShip() || SOLNewtonian::PilotHasControl(GetGMeter());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clears the autopilot order fragment and guidance, without touching the flight mode
+void USOLShipSubsystem::ClearAutopilotOrder()
 {
     if (!HasPlayerShip())
     {
@@ -563,6 +643,7 @@ bool USOLShipSubsystem::IsAutopilotPrecisionReduced() const
 void USOLShipSubsystem::ResetPilotState()
 {
     DisengageAutopilot();
+    ++mPilotResetCount;
     if (HasPlayerShip())
     {
         FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);

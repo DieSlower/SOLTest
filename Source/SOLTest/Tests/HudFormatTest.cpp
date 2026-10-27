@@ -5,6 +5,8 @@
 
 #include "UI/SOLHudFormat.h"
 
+#include "Flight/SOLFlightMode.h"
+#include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
 
 #include "SOLConstants.h"
@@ -347,6 +349,112 @@ bool FSOLHudFormatKeyTextsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("rebound no-target text"), texts.NoTarget, FString(TEXT("none (MMB)")));
     TestEqual(TEXT("rebound speed panel title"), texts.SpeedPanelTitle,
         FString(TEXT("SPEED CAP  (F4 / Enter close, Esc close)")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatControlsChangedNoticeTest, "SOLTest.HudFormat.ControlsChangedNotice",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The one-time "default controls changed" notice names the live keys of its five bindings
+bool FSOLHudFormatControlsChangedNoticeTest::RunTest(const FString& /*parameters*/)
+{
+    // Builds the expected notice text from five key names
+    const auto expectedNotice = [](const TCHAR* hold, const TCHAR* toggle, const TCHAR* up, const TCHAR* boost,
+                                    const TCHAR* assist)
+    {
+        return FString::Printf(
+            TEXT("Default controls changed: %s or %s steers, %s thrust up, %s boost, %s assist. See Controls (Esc)"),
+            *SOLBindingLabel::KeyDisplayName(hold), *SOLBindingLabel::KeyDisplayName(toggle),
+            *SOLBindingLabel::KeyDisplayName(up), *SOLBindingLabel::KeyDisplayName(boost),
+            *SOLBindingLabel::KeyDisplayName(assist));
+    };
+
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    SOLHudFormat::FHudKeyTexts texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("default notice"), texts.ControlsChangedNotice,
+        expectedNotice(TEXT("SpaceBar"), TEXT("MiddleMouseButton"), TEXT("LeftShift"), TEXT("Tab"), TEXT("C")));
+
+    keys[static_cast<int32>(SOLKeyBindings::FindById(TEXT("SteerHold")))] = TEXT("K");
+    keys[static_cast<int32>(SOLKeyBindings::FindById(TEXT("SteerToggle")))] = TEXT("RightMouseButton");
+    keys[static_cast<int32>(SOLKeyBindings::FindById(TEXT("ThrustUp")))] = TEXT("Home");
+    keys[static_cast<int32>(SOLKeyBindings::FindById(TEXT("Boost")))] = TEXT("RightShift");
+    keys[static_cast<int32>(SOLKeyBindings::FindById(TEXT("ToggleAssist")))] = TEXT("V");
+    texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("rebound notice"), texts.ControlsChangedNotice,
+        expectedNotice(TEXT("K"), TEXT("RightMouseButton"), TEXT("Home"), TEXT("RightShift"), TEXT("V")));
+    TestFalse(TEXT("rebound notice has no unresolved placeholder"), texts.ControlsChangedNotice.Contains(TEXT("{")));
+    TestFalse(TEXT("rebound notice has no stale Boost key"), texts.ControlsChangedNotice.Contains(TEXT(" Tab boost")));
+    TestFalse(TEXT("rebound notice has no stale assist key"), texts.ControlsChangedNotice.Contains(TEXT(" C assist")));
+    return true;
+}
+
+// --- Flight mode label and color ---
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts FlightModeLabel returns a non-null, exact string for a mode
+    void HudFormatExpectModeLabel(FAutomationTestBase& test, const ESOLFlightMode mode, const TCHAR* expected)
+    {
+        const TCHAR* label = SOLHudFormat::FlightModeLabel(mode);
+        test.TestNotNull(FString::Printf(TEXT("FlightModeLabel(%s) is not null"), expected), label);
+        if (label != nullptr)
+        {
+            test.TestEqual(FString::Printf(TEXT("FlightModeLabel(%s)"), expected), FString(label), FString(expected));
+        }
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatFlightModeLabelsTest, "SOLTest.HudFormat.FlightModeLabels",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Each flight mode has its upper-case HUD label: MANUAL, ASSISTED, AUTO
+bool FSOLHudFormatFlightModeLabelsTest::RunTest(const FString& /*parameters*/)
+{
+    HudFormatExpectModeLabel(*this, ESOLFlightMode::Manual, TEXT("MANUAL"));
+    HudFormatExpectModeLabel(*this, ESOLFlightMode::Assisted, TEXT("ASSISTED"));
+    HudFormatExpectModeLabel(*this, ESOLFlightMode::Auto, TEXT("AUTO"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatFlightModeColorsTest, "SOLTest.HudFormat.FlightModeColors",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Mode colors are the Limit Theory palette: Manual orange, Assisted blue-cyan, Auto green; opaque and pairwise distinct
+bool FSOLHudFormatFlightModeColorsTest::RunTest(const FString& /*parameters*/)
+{
+    const FLinearColor manual = SOLHudFormat::FlightModeColor(ESOLFlightMode::Manual);
+    const FLinearColor assisted = SOLHudFormat::FlightModeColor(ESOLFlightMode::Assisted);
+    const FLinearColor autoColor = SOLHudFormat::FlightModeColor(ESOLFlightMode::Auto);
+
+    // Expected values typed independently of the palette constants
+    const FLinearColor expectedManual(1.0f, 0.3f, 0.1f, 1.0f);
+    const FLinearColor expectedAssisted(0.2f, 0.7f, 1.0f, 1.0f);
+    const FLinearColor expectedAuto(0.25f, 1.0f, 0.25f, 1.0f);
+
+    TestTrue(FString::Printf(TEXT("Manual is LT orange: expected %s, actual %s"),
+                 *expectedManual.ToString(), *manual.ToString()),
+        manual.Equals(expectedManual, 1e-4f));
+    TestTrue(FString::Printf(TEXT("Assisted is LT blue-cyan: expected %s, actual %s"),
+                 *expectedAssisted.ToString(), *assisted.ToString()),
+        assisted.Equals(expectedAssisted, 1e-4f));
+    TestTrue(FString::Printf(TEXT("Auto is LT green: expected %s, actual %s"),
+                 *expectedAuto.ToString(), *autoColor.ToString()),
+        autoColor.Equals(expectedAuto, 1e-4f));
+
+    // Opaque
+    TestEqual(TEXT("Manual alpha is 1"), manual.A, 1.0f);
+    TestEqual(TEXT("Assisted alpha is 1"), assisted.A, 1.0f);
+    TestEqual(TEXT("Auto alpha is 1"), autoColor.A, 1.0f);
+
+    // Pairwise distinct
+    TestTrue(TEXT("Manual differs from Assisted"), !manual.Equals(assisted, 0.01f));
+    TestTrue(TEXT("Manual differs from Auto"), !manual.Equals(autoColor, 0.01f));
+    TestTrue(TEXT("Assisted differs from Auto"), !assisted.Equals(autoColor, 0.01f));
     return true;
 }
 

@@ -51,11 +51,22 @@ private:
         YawRecenter,
         PitchUp,
         PitchRecenter,
+        SteerOffMouse,
+        SteerHeld,
+        SteerReleased,
+        SteerLockedAgain,
+        ThrustUpShift,
+        BrakeUp,
         WheelOneUp,
         WheelOneDown,
         WheelToMax,
         WheelToMin,
         WheelRestore,
+        AutoEngage,
+        AutoMapShift,
+        AutoMapClose,
+        AutoRelatched,
+        AutoCancel,
         AimEarth,
         SelectEarth,
         CycleNext1,
@@ -88,6 +99,9 @@ private:
 
     // Returns the minimum real duration of a phase in seconds
     static double GetPhaseDuration(ESOLInputPhase phase);
+
+    // Saves a screenshot without ending the script (the HUD's mode label and steer icon at this point)
+    static void CaptureScreenshot(const ASOLShipPawn& pawn);
 
     // Returns the minimum number of frames a phase lasts
     static int32 GetPhaseMinFrames(ESOLInputPhase phase);

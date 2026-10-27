@@ -227,7 +227,7 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
         static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::INFO_PROSE)));
     const FString joined = FString::Join(prose, TEXT(" "));
     TestTrue(TEXT("default frame lock key"), joined.Contains(TEXT("locked with M.")));
-    TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (Tab)")));
+    TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (C)")));
     TestTrue(TEXT("default map key"), joined.Contains(TEXT("jump map (J)")));
     TestTrue(TEXT("gas giant paragraph (issue #14)"), joined.Contains(TEXT("Great Red Spot")));
     TestTrue(TEXT("ring shadow paragraph (issue #16)"), joined.Contains(TEXT("Rings and planets cast real shadows")));

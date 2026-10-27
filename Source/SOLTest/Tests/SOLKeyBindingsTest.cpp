@@ -106,11 +106,12 @@ bool FSOLKeyBindingsOverridesTest::RunTest(const FString& /*parameters*/)
     bad.Add(TEXT("NoSuchAction"), TEXT("K"));
     bad.Add(TEXT("Fire"), TEXT("Escape"));
     bad.Add(TEXT("DropTarget"), TEXT(""));
-    bad.Add(TEXT("boost"), TEXT("B"));
+    bad.Add(TEXT("boost"), TEXT("K"));
     const TArray<FString> resolved = ResolveKeys(bad);
     TestEqual(TEXT("Escape override ignored"), resolved[KEYBINDINGS_FIRE], FString(TEXT("LeftMouseButton")));
     TestEqual(TEXT("empty override ignored"), resolved[KEYBINDINGS_DROP], FString(TEXT("G")));
-    TestEqual(TEXT("lower-case id still applies"), resolved[KEYBINDINGS_BOOST], FString(TEXT("B")));
+    TestEqual(TEXT("lower-case id still applies"), resolved[KEYBINDINGS_BOOST], FString(TEXT("K")));
+    TestFalse(TEXT("lower-case id override is not a conflict"), HasConflict(resolved, KEYBINDINGS_BOOST));
 
     // A short key array (older data) only yields overrides for what it has
     TArray<FString> shortKeys;
@@ -146,7 +147,8 @@ bool FSOLKeyBindingsRebindTest::RunTest(const FString& /*parameters*/)
         KEYBINDINGS_BOOST);
 
     // Moving boost away clears both flags
-    TestTrue(TEXT("boost back"), Rebind(keys, KEYBINDINGS_BOOST, TEXT("LeftShift"), conflict) == ERebindResult::Bound);
+    TestTrue(TEXT("boost back"), Rebind(keys, KEYBINDINGS_BOOST, TEXT("Tab"), conflict) == ERebindResult::Bound);
+    TestEqual(TEXT("boost back on its default reports no conflict"), conflict, INDEX_NONE);
     TestFalse(TEXT("boost clear"), HasConflict(keys, KEYBINDINGS_BOOST));
     TestFalse(TEXT("drop clear"), HasConflict(keys, KEYBINDINGS_DROP));
 
@@ -278,7 +280,7 @@ bool FSOLKeyBindingsInvalidNamesTest::RunTest(const FString& /*parameters*/)
     corrupt.Add(TEXT("DropTarget"), TEXT("H"));
     const TArray<FString> resolved = ResolveKeys(corrupt);
     TestEqual(TEXT("unknown name dropped"), resolved[KEYBINDINGS_FIRE], FString(TEXT("LeftMouseButton")));
-    TestEqual(TEXT("axis dropped"), resolved[KEYBINDINGS_BOOST], FString(TEXT("LeftShift")));
+    TestEqual(TEXT("axis dropped"), resolved[KEYBINDINGS_BOOST], FString(TEXT("Tab")));
     TestEqual(TEXT("valid entry kept"), resolved[KEYBINDINGS_DROP], FString(TEXT("H")));
 
     TArray<FString> keys = DefaultKeys();
@@ -411,7 +413,7 @@ bool FSOLKeyBindingsReservedFunctionKeysTest::RunTest(const FString& /*parameter
     overrides.Add(TEXT("DropTarget"), TEXT("F4"));
     const TArray<FString> resolved = ResolveKeys(overrides);
     TestEqual(TEXT("F1 override ignored"), resolved[KEYBINDINGS_FIRE], FString(TEXT("LeftMouseButton")));
-    TestEqual(TEXT("F2 override ignored"), resolved[KEYBINDINGS_BOOST], FString(TEXT("LeftShift")));
+    TestEqual(TEXT("F2 override ignored"), resolved[KEYBINDINGS_BOOST], FString(TEXT("Tab")));
     TestEqual(TEXT("F4 override applied"), resolved[KEYBINDINGS_DROP], FString(TEXT("F4")));
     return true;
 }
