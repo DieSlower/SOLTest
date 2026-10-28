@@ -47,6 +47,8 @@ The cross-cutting design decisions are in [`Docs/SDDs/1-solar-system-architectur
 
 **[`Docs/ARCHITECTURE.md`](Docs/ARCHITECTURE.md) is the living high-level map** of modules, the per-frame update order, coordinate systems, key types and data flows — read it before working across more than one feature folder. The *why* behind each decision lives in the SDDs: [`Docs/SDDs/1-solar-system-architecture.md`](Docs/SDDs/1-solar-system-architecture.md) (scale and origin rebasing, Keplerian orbits, flight model, Mass for everything, star field, combat) and each part's own SDD for what it actually built. Module and file layout rules are in [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) §14.2: the game module is `Source/SOLTest/`, organized by feature folder with each type's `.h` and `.cpp` side by side.
 
+**Keep [`Docs/Plans/STATUS.md`](Docs/Plans/STATUS.md) in sync**: it lists every ticket (done, in progress, to do), the unticketed ToDo items and the remaining work. Update it whenever a ticket is added, started, finished or re-scoped, and in the same commit as the ticket's work.
+
 **Keep `Docs/ARCHITECTURE.md` in sync**, per its own "Keeping this document in sync" section: whenever a module/subsystem/Actor/widget is added or removed, a class's responsibility or a module dependency changes, the frame update order changes, a coordinate frame/conversion changes, or a `-SOL*` command-line flag changes.
 
 **Read [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) before writing or refactoring any C++.** The guide is still a draft with `Review needed` notes; where it is unsettled, follow the surrounding code and ask the user.
