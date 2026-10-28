@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include "SOLConstants.h"
+
 #include "CoreMinimal.h"
 
 // Pure-logic settings model (SDD 8): clamping, dirty tracking and the "write only when something changed" decision that
@@ -24,6 +26,7 @@ namespace SOLSettingsModel
         bool bVsync = true;
         int32 QualityPreset = 3;
         bool bShowOrbitLines = true;          // World-space orbit lines shown (SDD 17); also toggled by the O key
+        float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;   // HUD hologram effects (jitter; SDD 21)
     };
 
     struct FSettingsModel

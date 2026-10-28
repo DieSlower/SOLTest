@@ -27,6 +27,7 @@ enum class ESOLSettingsSlider : uint8
     MusicVolume,
     MouseSensitivity,
     HudScale,
+    HudEffects,     // HUD hologram effects strength (SDD 21)
     Count,
 };
 
@@ -177,6 +178,10 @@ private:
     // HUD scale slider moved
     UFUNCTION()
     void HandleHudScaleChanged(float value);
+
+    // HUD hologram effects slider moved (SDD 21)
+    UFUNCTION()
+    void HandleHudEffectsChanged(float value);
 
     // VSync checkbox clicked
     UFUNCTION()

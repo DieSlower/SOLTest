@@ -59,6 +59,7 @@ private:
         RadarZoomIn,
         HudShotSetup,
         HudShot,
+        CanvasFallback,     // sol.HudRenderer 0 (SDD 21): the reticle back on Canvas; RadarAuto's exit restores 1
         RadarAuto,
         OrbitShotSetup,
         OrbitShot,
@@ -91,6 +92,12 @@ private:
 
     // Returns the ship's velocity relative to the active reference frame
     FVector3d GetRelativeVelocityMps() const;
+
+    // Requests a window screenshot with the UI (Slate layers such as the glow-shape layer) to Saved/Screenshots
+    static void TakeUiShot(const TCHAR* name);
+
+    // Sets sol.HudRenderer (1 = glow-shape renderer, 0 = Canvas fallback)
+    static void SetHudRendererCvar(int32 value);
 
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);

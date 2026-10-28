@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Menu/SOLSettingsModel.h"
+#include "SOLConstants.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/SaveGame.h"
@@ -85,6 +86,10 @@ public:
     /** World-space orbit lines shown (SDD 17). Added in schema 2; a schema 1 save is migrated to true. */
     UPROPERTY()
     bool bShowOrbitLines = true;
+
+    /** HUD hologram effects strength (SDD 21). Added in schema 5; an older save is migrated to the default. */
+    UPROPERTY()
+    float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
 
     /** Rebound keys only: SOLKeyBindings binding id -> engine key name (the other bindings use their defaults). */
     UPROPERTY()

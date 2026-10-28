@@ -746,6 +746,64 @@ namespace SOL
         inline constexpr double STEM_FOOT_RADIUS_PX = 3.0;          // Ring at a stem's foot, 720 px canvas
         inline constexpr int32 MAX_STEMS = 256;
         inline constexpr int32 OVERLAY_MAX_TRIANGLES = 24576;       // Grid plus stems, one additive batch
+
+        // Flight HUD shape renderer (SDD 21 phase A): one batched Slate custom-vertex element drawn with
+        // HUD_SHAPE_MATERIAL (Tools/UI/create_hud_shape_material.py reads these defaults). Every shape is one quad
+        // padded by HUD_GLOW_PAD_PX; the material computes the pixel distance d to the shape and draws LT's glow
+        // HUD_GLOW_CORE_WEIGHT exp(-HUD_GLOW_CORE_FALLOFF max(0, d - 0.5))
+        // + HUD_GLOW_HALO_WEIGHT exp(-(HUD_GLOW_HALO_SCALE d)^HUD_GLOW_HALO_POWER), times colour x HUD_COLOR_GAIN, then
+        // LT's tone curve 1 - exp(-2 c^1.25) and blue grade (HUD_GRADE_BLUE_1..3 as a Bezier from 0 to 1), additive
+        inline constexpr const TCHAR* CVAR_HUD_RENDERER = TEXT("sol.HudRenderer");     // 1 = shape renderer, 0 = Canvas
+        inline constexpr const TCHAR* CVAR_HUD_COMPOSITE = TEXT("sol.HudComposite");   // 1 = grain and scanlines on
+        inline constexpr double HUD_GLOW_CORE_HALF_PX = 0.5;        // Full-strength core around the centre line
+        inline constexpr double HUD_GLOW_CORE_WEIGHT = 0.8;
+        inline constexpr double HUD_GLOW_CORE_FALLOFF = 2.0;
+        inline constexpr double HUD_GLOW_HALO_WEIGHT = 0.2;
+        inline constexpr double HUD_GLOW_HALO_SCALE = 0.2;
+        inline constexpr double HUD_GLOW_HALO_POWER = 0.75;
+        inline constexpr float HUD_GLOW_PAD_PX = 32.0f;             // Quad padding around a shape (LT kExpansion)
+        inline constexpr double HUD_PAD_FADE_START = 0.5;           // The halo fades out from this fraction of the pad
+        inline constexpr double HUD_TONE_GAIN = 2.0;                // LT tone curve 1 - exp(-GAIN c^POWER)
+        inline constexpr double HUD_TONE_POWER = 1.25;
+        inline constexpr double HUD_PANEL_FILL_BASE = 0.4;          // Panel fill: BASE + (1 - BASE) exp(d / falloff)
+        inline constexpr int32 HUD_VERTICES_PER_SHAPE = 4;          // One quad per shape
+        inline constexpr int32 HUD_INDICES_PER_SHAPE = 6;
+        inline constexpr uint64 HUD_PILOT_MAX_FRAME_LAG = 2;        // Older pilot snapshots are not drawn (SDD 21 D4)
+
+        // Value noise of the jitter (CPU and material alike): hash frac(sin(i x FREQUENCY) x SCALE) of the lattice
+        // index wrapped to PERIOD (keeps GPU sin accurate), and the time wrapped to TIME_WRAP_S
+        inline constexpr float HUD_NOISE_HASH_FREQUENCY = 127.1f;
+        inline constexpr float HUD_NOISE_HASH_SCALE = 43758.5453f;
+        inline constexpr float HUD_NOISE_LATTICE_PERIOD = 289.0f;
+        inline constexpr float HUD_TIME_WRAP_S = 1000.0f;
+        inline constexpr double HUD_COLOR_GAIN = 2.0;               // LT doubles colours so cores clip toward white
+        inline constexpr double HUD_DISPLAY_GAMMA = 2.2;            // Slate's display gamma: LT's maths is in display
+                                                                    // space, Slate's material output is linear
+        inline constexpr double HUD_GRADE_BLUE_1 = 0.40;            // LT gradeBlue Bezier control points
+        inline constexpr double HUD_GRADE_BLUE_2 = 0.50;
+        inline constexpr double HUD_GRADE_BLUE_3 = 0.75;
+        inline constexpr double HUD_PANEL_CORNER_PX = 4.0;          // Panel corner radius
+        inline constexpr double HUD_PANEL_EDGE_FALLOFF_PX = 6.0;    // Panel fill brightens toward its edge over this
+        inline constexpr double HUD_PANEL_SCANLINE = 0.2;           // Panel fill 1 px scanlines 1 + this sin(PI y)
+        inline constexpr float HUD_SHAPE_KIND_STRIDE = 8192.0f;     // Kind packed as kind x stride + size parameter
+        inline constexpr int32 HUD_MAX_SHAPES = 4096;               // Quads per frame, reserved once
+        inline constexpr float HUD_LINE_HALF_WIDTH_PX = 0.5f;       // A 1 px glow line (LT)
+
+        // Row jitter (LT Compositor_Basic): offset.x = HUD_JITTER_MAX_FRACTION x strength x screen width
+        // x exp(-HUD_JITTER_SHARPNESS n) x sign, n a smooth noise of the screen row (HUD_JITTER_ROW_CELLS cells per
+        // screen height) scrolling at HUD_JITTER_SCROLL_RATE cells per second; strength is the Settings slider (default
+        // 1 = half LT's 0.002, the maximum 2 = LT's)
+        inline constexpr double HUD_JITTER_MAX_FRACTION = 0.001;
+        inline constexpr double HUD_JITTER_SHARPNESS = 48.0;
+        inline constexpr double HUD_JITTER_ROW_CELLS = 64.0;
+        inline constexpr double HUD_JITTER_SCROLL_RATE = 1.0;
+        inline constexpr double HUD_JITTER_SIGN_SPEED = 5.0;        // The sign's noise scrolls this much faster
+        inline constexpr double HUD_JITTER_SIGN_OFFSET = 17.0;      // ...and is offset so it is uncorrelated
+
+        // Grain and scanline composite (LT noise 0.10, lines 0.05), off by default (sol.HudComposite 0); scaled by the
+        // same strength slider when on
+        inline constexpr double HUD_GRAIN_AMOUNT = 0.10;
+        inline constexpr double HUD_SCANLINE_AMOUNT = 0.05;
     }
 
     // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
@@ -828,8 +886,9 @@ namespace SOL
                                                                                           // (deleted at their start)
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
-        // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20)
-        inline constexpr int32 SAVE_VERSION = 4;
+        // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
+        // strength, SDD 21)
+        inline constexpr int32 SAVE_VERSION = 5;
         // The save schema that introduced the current default key layout (issue #20); older saves get the one-time
         // "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 4;
@@ -845,6 +904,10 @@ namespace SOL
         inline constexpr float MOUSE_SENSITIVITY_MAX = 5.0f;
         inline constexpr float HUD_SCALE_MIN = 0.5f;
         inline constexpr float HUD_SCALE_MAX = 2.0f;
+        inline constexpr float HUD_EFFECTS_MIN = 0.0f;      // HUD hologram effects strength (jitter; SDD 21)
+        inline constexpr float HUD_EFFECTS_MAX = 2.0f;
+        inline constexpr float HUD_EFFECTS_DEFAULT = 1.0f;
+        inline constexpr float HUD_EFFECTS_STEP = 0.05f;
         inline constexpr float VALUE_EQUAL_TOLERANCE = 1.0e-4f;    // Two slider values closer than this are equal
     }
 
@@ -983,6 +1046,8 @@ namespace SOL
         inline constexpr const TCHAR* HOLOGRAM_POST_MATERIAL =
             TEXT("/Game/SOL/Map/M_SOLHologramPost.M_SOLHologramPost");
         inline constexpr const TCHAR* HOLOGRAM_RING_MESH = TEXT("/Engine/BasicShapes/Plane.Plane");
+        // Flight HUD shape material (SDD 21), built by Tools/UI/create_hud_shape_material.py
+        inline constexpr const TCHAR* HUD_SHAPE_MATERIAL = TEXT("/Game/SOL/UI/M_SOLHudShape.M_SOLHudShape");
         inline constexpr const TCHAR* ORBIT_LINE_PARAMETER_COLLECTION =
             TEXT("/Game/SOL/OrbitLines/MPC_SOLOrbitLine.MPC_SOLOrbitLine");
 
@@ -1100,6 +1165,15 @@ namespace SOL
         inline constexpr const TCHAR* RING_INNER_FRACTION = TEXT("RingInnerFraction"); // Ring inner / outer radius
         inline constexpr const TCHAR* POST_STRENGTH = TEXT("Strength");          // Post-process overall strength
         inline constexpr const TCHAR* POST_TINT = TEXT("Tint");                  // Post-process tint colour
+    }
+
+    // Parameter names of HUD_SHAPE_MATERIAL (Tools/UI/create_hud_shape_material.py creates them with these names)
+    namespace HudShapeMaterialParams
+    {
+        inline constexpr const TCHAR* EFFECTS_STRENGTH = TEXT("EffectsStrength");   // Settings slider (jitter)
+        inline constexpr const TCHAR* COMPOSITE = TEXT("Composite");                 // 1 = grain and scanlines on
+        inline constexpr const TCHAR* VIEW_WIDTH = TEXT("ViewWidthPx");              // Canvas size in pixels
+        inline constexpr const TCHAR* VIEW_HEIGHT = TEXT("ViewHeightPx");
     }
 
     // Parameter names of BODY_MATERIAL (created by Tools/CreateSOLContent.py; keep both in sync)

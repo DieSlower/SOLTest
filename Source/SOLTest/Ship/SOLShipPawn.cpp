@@ -8,6 +8,7 @@
 #include "Combat/SOLCombatSubsystem.h"
 #include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLInputHelpers.h"
+#include "HudEvents/SOLHudEventSubsystem.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Map/SOLRouteSubsystem.h"
@@ -21,7 +22,6 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
-#include "UI/SOLFlightHud.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
@@ -213,6 +213,7 @@ void ASOLShipPawn::BeginPlay()
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
     Menu = world->GetSubsystem<USOLMenuSubsystem>();
+    HudEvents = world->GetSubsystem<USOLHudEventSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -350,6 +351,10 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mKeyBindingsHandle.Reset();
     mIsFireHeld = false;
     mUniverseUpdatedHandle.Reset();
+    if (HudEvents != nullptr)
+    {
+        HudEvents->GetBus().ClearPilot();
+    }
     mSmokeInput.Reset();
     mSmokeHud.Reset();
     mSmokeMap.Reset();
@@ -488,6 +493,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     const FVector2d stick = SOLFlightMode::GateSteer(SOLFlight::JoystickToRotation(mStickOffsetPx / mStickRadiusPx,
         SOL::JOYSTICK_DEAD_ZONE, SOL::JOYSTICK_EXPONENT), mIsSteering);
     mControl.Rotation = FVector3d(mRollInput, stick.Y, stick.X);
+    PublishHudPilot();
 
     // Boost: off after a jump arrival or respawn, and at a blackout (it never turns itself back on)
     if (Ships->GetPilotResetCount() != mSeenPilotResetCount)
@@ -766,7 +772,38 @@ void ASOLShipPawn::UnPossessed()
     DismissMap();
     RemoveMappingContext();
     ReleaseMouse();
+    if (HudEvents != nullptr)
+    {
+        HudEvents->GetBus().ClearPilot();
+    }
     Super::UnPossessed();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Publishes this frame's pilot aids on the HUD event bus while a player flies the pawn (one coalesced snapshot)
+void ASOLShipPawn::PublishHudPilot()
+{
+    if (HudEvents == nullptr || !IsPlayerControlled())
+    {
+        return;
+    }
+    FSOLHudPilotSnapshot snapshot;
+    snapshot.StickOffsetPx = mStickOffsetPx;
+    snapshot.StickRadiusPx = mStickRadiusPx;
+    snapshot.SteerIcon = GetSteerIcon();
+    snapshot.bIsSteering = mIsSteering;
+    snapshot.bIsFreeLooking = mIsFreeLooking;
+    HudEvents->GetBus().PublishPilot(snapshot, GFrameCounter);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sends a command to the flight HUD through the HUD event bus
+void ASOLShipPawn::SendHudCommand(const ESOLHudCommand command)
+{
+    if (HudEvents != nullptr)
+    {
+        HudEvents->GetBus().SendCommand(command);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1559,11 +1596,7 @@ void ASOLShipPawn::HandleWarpReset()
 // Toggles the world-space orbit lines (O) through the HUD
 void ASOLShipPawn::HandleToggleOrbitLines()
 {
-    const APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
-    {
-        hud->ToggleOrbitLines();
-    }
+    SendHudCommand(ESOLHudCommand::ToggleOrbitLines);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1590,22 +1623,14 @@ void ASOLShipPawn::HandleResumeRoute()
 // Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
 void ASOLShipPawn::HandleRadarZoom(const bool bZoomIn)
 {
-    const APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
-    {
-        hud->StepRadarZoom(bZoomIn);
-    }
+    SendHudCommand(bZoomIn ? ESOLHudCommand::RadarZoomIn : ESOLHudCommand::RadarZoomOut);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the flight HUD's radar to AUTO range (Home)
 void ASOLShipPawn::HandleRadarAuto()
 {
-    const APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr)
-    {
-        hud->ResetRadarAuto();
-    }
+    SendHudCommand(ESOLHudCommand::RadarAuto);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1640,7 +1665,8 @@ void ASOLShipPawn::OpenSpeedPanel()
     // The title and the closing key name the speed-panel binding's current key
     const FString& toggleKeyName = mBoundKeys.IsValidIndex(static_cast<int32>(SOLKeyBindings::EBinding::SpeedPanel))
         ? mBoundKeys[static_cast<int32>(SOLKeyBindings::EBinding::SpeedPanel)] : FString();
-    SpeedPanel->Open(this, mControl.SpeedCapMps, FKey(*toggleKeyName),
+    SpeedPanel->Open(FSOLSpeedPanelApplyCap::CreateUObject(this, &ASOLShipPawn::ApplySpeedCapMps),
+        FSimpleDelegate::CreateUObject(this, &ASOLShipPawn::CloseSpeedPanel), mControl.SpeedCapMps, FKey(*toggleKeyName),
         SOLHudFormat::FormatHudKeyTexts(mBoundKeys).SpeedPanelTitle);
     SpeedPanel->AddToViewport(SPEED_PANEL_Z_ORDER);
     FInputModeUIOnly inputMode;
@@ -1885,9 +1911,7 @@ void ASOLShipPawn::HandleMapPickPressed()
     // HUD drew last frame
     UpdateMapCursor();
     mIsMapPickHeld = true;
-    const APlayerController* playerController = Cast<APlayerController>(GetController());
-    const ASOLFlightHud* hud = playerController != nullptr ? playerController->GetHUD<ASOLFlightHud>() : nullptr;
-    MapMode->PressPick(hud != nullptr ? &hud->GetMapBodyOverlay() : nullptr, mIsMapPanModifierHeld);
+    MapMode->PressPick(HudEvents != nullptr ? HudEvents->GetBus().GetMapBodyOverlay() : nullptr, mIsMapPanModifierHeld);
 }
 
 //////////////////////////////////////////////////////////////////////////

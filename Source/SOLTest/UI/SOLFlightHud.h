@@ -7,11 +7,13 @@
 
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
+#include "HudEvents/SOLHudBus.h"
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLMapHologramOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
 #include "Map/SOLMapRouteOverlay.h"
 #include "UI/SOLHudFormat.h"
+#include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLRadarLayout.h"
 
 #include "CoreMinimal.h"
@@ -20,9 +22,11 @@
 #include "SOLFlightHud.generated.h"
 
 class ASOLOrbitLineVisuals;
-class ASOLShipPawn;
+class SSOLHudShapeLayer;
 class UFont;
+class UMaterialInstanceDynamic;
 class USOLAnchorSubsystem;
+class USOLHudEventSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLJumpSubsystem;
 class USOLSettingsSubsystem;
@@ -50,6 +54,10 @@ class USOLTargetingSubsystem;
  * Settings (SDD 8, 8d): the player's HUD scale multiplies the canvas-height scale of every element, and with the HUD
  * hidden nothing of the flight HUD is drawn in flight (the warp streaks still are, and with the jump map open the
  * HUD is drawn as usual, since picking a destination needs its overlays).
+ *
+ * Glow shapes (SDD 21 phase A): ported pieces (so far the centre reticle) go into SSOLHudShapeLayer's batch, drawn
+ * by Slate in one custom-vertex draw with M_SOLHudShape; sol.HudRenderer 0 draws them with Canvas instead. The pawn
+ * is never included: its pilot snapshot and the HUD commands arrive through USOLHudEventSubsystem (SDD 21 D4).
  *
  * During a jump's warp sequence (SDD 3 Appendix I) the whole flight HUD is hidden and only the warp's radial streaks
  * are drawn: a fixed table of canvas lines from the screen center, built once, that stream outward and brighten and
@@ -127,6 +135,12 @@ public:
 
     // Returns true if the last frame drew the flight HUD (false while a jump warp hides it; verification)
     bool WasFlightHudDrawn() const { return mWasFlightHudDrawn; }
+
+    // Returns true if the last frame drew with the shape renderer (SDD 21; verification)
+    bool WasShapeRendererActive() const { return mWasShapeRendererActive; }
+
+    // Returns the number of glow shapes the last frame queued (verification)
+    int32 GetLastShapeCount() const;
 
     // Returns the number of warp streaks drawn in the last frame (verification)
     int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
@@ -219,11 +233,29 @@ private:
     // Rebuilds the cached key hint lines from the applied key bindings (at begin play and after a rebind)
     void RebuildKeyHints();
 
-    // Draws the center reticle
+    // Draws the center reticle (glow shapes while the shape renderer is active, else Canvas lines; SDD 21 proof element)
     void DrawReticle(const FVector2D& center);
 
+    // Handles a command from the HUD event bus (orbit lines, radar zoom)
+    void HandleHudCommand(ESOLHudCommand command);
+
+    // Creates the shape layer widget and its material and adds it to the game viewport (SDD 21)
+    void CreateShapeLayer();
+
+    // Removes the shape layer widget from the game viewport
+    void DestroyShapeLayer();
+
+    // Starts this frame's shape batch and pushes changed material parameters (strength, composite, view size)
+    void BeginShapeFrame();
+
+    // Returns the shape batch while the shape renderer is active (sol.HudRenderer 1 and the layer exists), else nullptr
+    FSOLHudShapeBatch* GetActiveShapeBatch();
+
+    // Returns true when the bus holds a pilot snapshot published within SOL::Hologram::HUD_PILOT_MAX_FRAME_LAG frames
+    bool HasFreshPilot() const;
+
     // Draws the virtual-joystick circle, dead zone and the current stick offset
-    void DrawJoystick(const FVector2D& center, const ASOLShipPawn& pawn);
+    void DrawJoystick(const FVector2D& center, const FSOLHudPilotSnapshot& pilot);
 
     // Draws the sim date and warp, anchor, nearest body and altitude, and the key hints (top left)
     void DrawInfoBlock();
@@ -305,6 +337,12 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSubsystem> Settings;
 
+    UPROPERTY(Transient)
+    TObjectPtr<USOLHudEventSubsystem> HudEvents;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> ShapeMaterial;     // M_SOLHudShape instance drawn by the shape layer
+
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
@@ -324,6 +362,12 @@ private:
     FString mMapHints;                              // The jump map's first hint line
     SOLHudFormat::FHudKeyTexts mKeyTexts;           // Key-naming HUD texts, incl. the controls notice (rebinds)
     FDelegateHandle mKeyBindingsHandle;             // Binding to the settings' OnKeyBindingsChanged
+    FDelegateHandle mHudCommandHandle;              // Binding to the HUD event bus's commands
+    TSharedPtr<SSOLHudShapeLayer> mShapeLayer;      // Batched glow-shape widget over the game viewport (SDD 21)
+    float mShapeStrength = -1.0f;                   // Material parameters last pushed (-1 = never)
+    float mShapeComposite = -1.0f;
+    FVector2f mShapeViewSize = FVector2f::ZeroVector;
+    bool mWasShapeRendererActive = false;           // The last frame drew with the shape renderer
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
     ESOLSurfaceLockHudLine mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;  // Surface-lock line drawn last frame

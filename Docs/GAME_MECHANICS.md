@@ -199,6 +199,7 @@ Constants in `SOLConstants.h` (`SOL::Route`, and `SOL::Hologram` for the map loo
 | Mouse sensitivity | 0.1x-5x in 0.05 steps; default 1x | At once | Built (8d) |
 | Invert mouse Y | Off by default | At once | Built (8d) |
 | HUD scale | 0.5x-2x in 0.05 steps, multiplying the canvas-height scale; default 1x | At once | Built (8d), `UI/SOLFlightHud.cpp` |
+| HUD hologram effects | 0-2 in 0.05 steps; default 1. Scales the glow HUD's row jitter: rare thin bands of rows shift sideways by up to 0.1% of the screen width per unit (2 = LT's 0.2%), `exp(-48 n)` of a smooth row noise (64 cells per screen height, scrolling 1 cell/s), sign from a second noise; 0 = off. With `sol.HudComposite 1` (off by default) it also scales LT's grain (0.10) and scanlines (0.05). The glow HUD (so far only the centre reticle, in LT Primary blue) is drawn by the batched shape renderer (`sol.HudRenderer 1`, 0 = the old Canvas reticle) with LT's glow `0.8 e^(-2 max(0, d-0.5)) + 0.2 e^(-(0.2d)^0.75)`, colour x2, tone curve and blue grade | At once (preview); kept on Apply (save schema 5) | Built (#28), `UI/SOLHudShapeMath.cpp`, `SOLConstants.h` (`SOL::Hologram::HUD_*`) |
 | Show flight HUD | On by default; off hides the whole flight HUD in flight (the jump map still shows its overlays, and the warp streaks still play) | At once | Built (8d) |
 | Flight assist on at launch | On by default | The next ship spawn (Play) | Built (8d) |
 | Show orbit lines | On by default; the same setting the O key flips in flight (see the O row) | At once (preview) | Built (#17) |

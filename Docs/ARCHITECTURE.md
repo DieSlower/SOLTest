@@ -56,7 +56,10 @@ flowchart TD
     Ship --> Level
     UI --> Level
     Ship --> Universe
-    Ship <--> UI
+    Ship -. "F3 panel (delegates), HUD key texts" .-> UI
+    UI -. "ship state (USOLShipSubsystem)" .-> Ship
+    Ship --> HudEvents["HudEvents (#28)<br/>HUD event bus"]
+    UI --> HudEvents
     UI --> Targeting
     UI --> Universe
     UI --> Flight
@@ -80,7 +83,7 @@ flowchart TD
     Level --> Const
 ```
 
-`Ship` and `UI` read `USOLSettingsSubsystem` (in `Menu/`): the pawn maps its keys from the applied key bindings and scales mouse look, the ship subsystem reads the default flight assist at spawn, and the HUD reads the HUD scale, visibility and key hints. `Ship` and `UI` depend on each other: the pawn opens the F3 panel and forwards radar zoom keys to the HUD, and the HUD reads the pawn's joystick and camera state. `Ship` and `Combat` also point both ways: the pawn hands the trigger, aim and drop requests to `USOLCombatSubsystem`, which reads the player ship's state from `USOLShipSubsystem`. The Universe subsystems ask `ASOLGameMode::IsSOLGameWorld` whether to exist at all. `Menu` depends on `Npc`: the Demo page reads and edits the pure demo options (`SOLNpcScale`) and the menu subsystem starts, stops and re-reads `USOLNpcSubsystem`; `Npc` reads the player ship (`USOLShipSubsystem`, it spawns around it) and reuses `Combat`'s pure grid and bolt math (`SOLCombatGrid`, `SOLBoltMath`, `SOLFireCadence`). Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
+`Ship` and `UI` read `USOLSettingsSubsystem` (in `Menu/`): the pawn maps its keys from the applied key bindings and scales mouse look, the ship subsystem reads the default flight assist at spawn, and the HUD reads the HUD scale, visibility and key hints. The ship pawn and the flight HUD never include each other (issue #28, SDD 21 D4; checked with `grep "Ship/SOLShipPawn.h" Source/SOLTest/UI/SOLFlightHud.* Source/SOLTest/UI/SOLSpeedPanelWidget.*` and `grep "UI/SOLFlightHud.h" Source/SOLTest/Ship/SOLShipPawn.*`, both empty; only the verification smoke scripts include both, and the pawn header includes `UI/SOLHudSmoke.h` because the pawn owns the smoke scripts; see the CLAUDE.md tech-debt list): they talk through `USOLHudEventSubsystem` (`HudEvents/`), whose plain-C++ `FSOLHudBus` carries the pawn's coalesced pilot snapshot (joystick, steering, free look, steer icon; published once per pawn tick, read by `DrawHUD`), the HUD commands (orbit lines, radar zoom and AUTO, broadcast when the pawn handles the key) and the HUD's jump-map body overlay (published by the HUD, read by the pawn's map picking). The pawn still opens the F3 panel, which applies the cap and closes itself through delegates the pawn binds, and the HUD still reads the ship's state from `USOLShipSubsystem`. `Ship` and `Combat` also point both ways: the pawn hands the trigger, aim and drop requests to `USOLCombatSubsystem`, which reads the player ship's state from `USOLShipSubsystem`. The Universe subsystems ask `ASOLGameMode::IsSOLGameWorld` whether to exist at all. `Menu` depends on `Npc`: the Demo page reads and edits the pure demo options (`SOLNpcScale`) and the menu subsystem starts, stops and re-reads `USOLNpcSubsystem`; `Npc` reads the player ship (`USOLShipSubsystem`, it spawns around it) and reuses `Combat`'s pure grid and bolt math (`SOLCombatGrid`, `SOLBoltMath`, `SOLFireCadence`). Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
 
 | Folder | Responsibility | Key files |
 |---|---|---|
@@ -88,7 +91,8 @@ flowchart TD
 | `Flight/` | Pure flight model (issue #18 Newtonian core, pilot G model, autopilot guidance), gravity, collision, warp carry, and target-picking math | `SOLNewtonianFlight`, `SOLFlight`, `SOLFlightMode`, `SOLShipState`, `SOLTargeting` |
 | `Ship/` | Player ship as a Mass entity, its processor and subsystem (including the surface-lock state and its per-substep alignment), the Pawn proxy, scripted smoke tests | `SOLShipSubsystem`, `SOLShipFlightProcessor`, `SOLShipFragments`, `SOLShipPawn`, `SOLShipSmokeFlight`, `SOLShipSmokeInput`, `SOLSurfaceLockSmoke` |
 | `Targeting/` | Target candidates, selection, the M frame lock, reference velocity | `SOLTargetingSubsystem`, `SOLTargetable` |
-| `UI/` | Canvas flight HUD, radar, F3 speed panel, and their pure layout and format math (the O key and the hint read the orbit-line actor) | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudSmoke` |
+| `UI/` | Canvas flight HUD, radar, F3 speed panel, and their pure layout and format math (the O key and the hint read the orbit-line actor); the batched glow-shape renderer (issue #28, SDD 21: pure shape math and the custom-vertex batch, the Slate layer drawing it with `M_SOLHudShape` from `Tools/UI/create_hud_shape_material.py`; cvars `sol.HudRenderer`, `sol.HudComposite`) | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudShapeMath`, `SOLHudShapeBatch`, `SOLHudShapeLayer`, `SOLHudSmoke` |
+| `HudEvents/` | The HUD event bus between the ship pawn and the flight HUD (issue #28, SDD 21 D4) | `SOLHudBus`, `SOLHudEventSubsystem` |
 | `OrbitLines/` | World-space orbit lines (issue #17): pure line math, ribbon packing, the line component and actor; HLSL in `Shaders/Private/SOLOrbitLine.ush` | `SOLOrbitLineMath`, `SOLOrbitLineLogic`, `SOLOrbitLineMesh`, `SOLOrbitLineComponent`, `SOLOrbitLineVisuals` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction; the map hologram look (proxy bodies and ring discs, map post-process, its cvars and pure math) | `SOLBodyVisuals`, `SOLHologramVisuals`, `SOLHologramMath` |
 | `StarField/` | Star field (Part 4, issue #5; quality pass issue #13): the baked star data asset (4b), the runtime sky actor (4c) that draws the bright-star sprites and the faint-star cubemap sphere as pixel-sized points, and the pure brightness/size math. Content is produced offline by `Tools/StarField/` (bake, then `import_star_field.py`, then `create_star_field_materials.py`) | `SOLStarFieldData`, `SOLStarField`, `SOLStarBrightness` |
@@ -122,6 +126,7 @@ sequenceDiagram
     participant HUD as ASOLFlightHud::DrawHUD
 
     Pawn->>Ship: SetControl(composed input)
+    Note over Pawn: publishes its pilot snapshot on the HUD event bus (FSOLHudBus::PublishPilot, coalesced, once per tick)
     Note over Anchor: dt = min(realDelta, MAX_FRAME_DELTA_S)
     Anchor->>Clock: AdvanceFrame(dt) (sim time += dt x warp)
     Anchor->>Reg: UpdateFromClock() (Kepler positions, then refresh Unreal-handed FSOLBodyFrameCache)
@@ -140,7 +145,8 @@ sequenceDiagram
     Note over Anchor: OnUniverseUpdated also runs USOLCombatSubsystem::Update (targets, drop, bolts, grids, parallel sweep, hits, guns), which then broadcasts OnCombatUpdated for the combat visuals and audio
     Note over Anchor: OnUniverseUpdated also runs USOLNpcSubsystem::Update (respawn if requested, group and temporal cull, USOLNpcTierProcessor Evaluate and Select, USOLNpcMidProcessor, USOLNpcFullAiProcessor Gather, FSOLNpcCombat::Step, Scatter, then Collect), which then broadcasts OnNpcsUpdated for ASOLNpcVisuals and ASOLNpcCombatVisuals
     Note over HUD: after the world tick, at draw time
-    HUD->>HUD: read subsystems, draw reticle, markers, bracket, radar, text
+    HUD->>HUD: read subsystems and the bus's pilot snapshot, draw reticle, markers, bracket, radar, text
+    Note over HUD: glow shapes (the reticle, SDD 21) go into SSOLHudShapeLayer's batch, drawn by Slate's paint in one custom-vertex draw (same frame, or the next if Slate painted first)
 ```
 
 **Why the order matters.** Each stage consumes the output of the previous one *from the same frame*. The ship needs this frame's bodies for gravity and collision, and this frame's reference velocity (so targeting is refreshed first). The anchor and rebase need this frame's ship position. The visuals and HUD need the final render origin. If the processor were phase-registered, the ship would step against last frame's bodies and the anchor would lag it by one frame.
@@ -338,7 +344,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLCombatDemoHold=<s>` | `ASOLGameMode` | With `-SOLCombatDemo`: leaves the first target unshot for this long, saving a presented-frame screenshot (`CombatHold*.png`) every 0.1 s, and strafes the ship right for the second half, then puts it back where it was relative to the target before firing (issue #15 target look check) |
 | `-SOLSmokeFlight` | `FSOLShipSmokeFlight` | Pawn-less scripted flight: hover, assisted cruise and braking at or below the 1.5 G sustained limit, manual thrust and coast, pitch with stop spin, Earth impact, 1 d/s warp co-motion, collision and surface rest under warp, a manual 9 G boost to G-LOC and back (input ignored while out), and the autopilot to the Moon under 1000x user warp (ETA counting down, arrival) |
 | `-SOLSmokeInput` | `FSOLShipSmokeInput` | Simulated key, mouse and wheel events through the real mapping context and callbacks (thrust, stick, targeting, M lock, warp), with a screenshot |
-| `-SOLSmokeHud` | `FSOLHudSmoke` | HUD toggles and radar zoom via game keys, and the F3 panel via Slate key events to the focused widget |
+| `-SOLSmokeHud` | `FSOLHudSmoke` | HUD toggles and radar zoom via game keys (through the HUD event bus), and the F3 panel via Slate key events to the focused widget; the pilot snapshot on the bus, the glow-shape reticle (SDD 21) and its `sol.HudRenderer 0` Canvas fallback, with screenshots. Run it at more than one aspect ratio |
 | `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots; body icon/label state checked at 1e13 m, ~9e10 m, ~8e8 m (Earth cross-fade) and ~5e7 m (mesh only) |
 | `-SOLSmokeMapPick` | `FSOLMapPickSmoke` | Destination pick via injected events: body and empty-space references, planar drag/lock, Shift height preview/lock, X clear, OS-cursor sync after a drag, close/reopen clears; screenshots of the disc, guide line and marker |
 | `-SOLSmokeRoute` | `FSOLRouteSmoke` | Map modes (Shift+M, J, P, P, M), two waypoint clicks, Ctrl+right-click undo, Enter starts the Move (AUTO on a waypoint order), Shift+M close keeps AUTO, W pauses, V resumes, P toggles the overlay, Delete clears, Shift+J opens in Jump mode, Esc closes |

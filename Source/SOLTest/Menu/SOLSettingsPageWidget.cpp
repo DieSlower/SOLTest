@@ -54,6 +54,8 @@ namespace
             SOL::Settings::MOUSE_SENSITIVITY_MAX, SOL::Settings::MOUSE_SENSITIVITY_STEP, false },
         { SOLMenuText::SETTINGS_HUD_SCALE, SOL::Settings::HUD_SCALE_MIN, SOL::Settings::HUD_SCALE_MAX,
             SOL::Settings::HUD_SCALE_STEP, false },
+        { SOLMenuText::SETTINGS_HUD_EFFECTS, SOL::Settings::HUD_EFFECTS_MIN, SOL::Settings::HUD_EFFECTS_MAX,
+            SOL::Settings::HUD_EFFECTS_STEP, false },
     };
     static_assert(UE_ARRAY_COUNT(SETTINGS_SLIDERS) == static_cast<int32>(ESOLSettingsSlider::Count),
         "one spec per slider");
@@ -160,6 +162,8 @@ namespace
             return values.MusicVolume;
         case ESOLSettingsSlider::MouseSensitivity:
             return values.MouseSensitivity;
+        case ESOLSettingsSlider::HudEffects:
+            return values.HudEffectsStrength;
         case ESOLSettingsSlider::HudScale:
         default:
             return values.HudScale;
@@ -351,6 +355,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_GAMEPLAY);
     addSlider(ESOLSettingsSlider::HudScale)->OnValueChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHudScaleChanged);
+    addSlider(ESOLSettingsSlider::HudEffects)->OnValueChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleHudEffectsChanged);
     addToggle(ESOLSettingsToggle::HudVisible)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHudVisibleChanged);
     addToggle(ESOLSettingsToggle::DefaultAssist)->OnCheckStateChanged.AddDynamic(this,
@@ -503,6 +509,9 @@ void USOLSettingsPageWidget::ApplySliderValue(const ESOLSettingsSlider slider, c
         break;
     case ESOLSettingsSlider::MouseSensitivity:
         values.MouseSensitivity = snapped;
+        break;
+    case ESOLSettingsSlider::HudEffects:
+        values.HudEffectsStrength = snapped;
         break;
     case ESOLSettingsSlider::HudScale:
     default:
@@ -832,6 +841,13 @@ void USOLSettingsPageWidget::HandleMouseSensitivityChanged(const float value)
 void USOLSettingsPageWidget::HandleHudScaleChanged(const float value)
 {
     ApplySliderValue(ESOLSettingsSlider::HudScale, value);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// HUD hologram effects slider moved (SDD 21)
+void USOLSettingsPageWidget::HandleHudEffectsChanged(const float value)
+{
+    ApplySliderValue(ESOLSettingsSlider::HudEffects, value);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -29,6 +29,7 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     bVsync = values.bVsync;
     QualityPreset = values.QualityPreset;
     bShowOrbitLines = values.bShowOrbitLines;
+    HudEffectsStrength = values.HudEffectsStrength;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -47,6 +48,7 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.bVsync = bVsync;
     values.QualityPreset = QualityPreset;
     values.bShowOrbitLines = bShowOrbitLines;
+    values.HudEffectsStrength = HudEffectsStrength;
     return values;
 }
 
@@ -86,5 +88,12 @@ void USOLSettingsSave::MigrateToCurrentVersion()
             KeyOverrides.Add(TEXT("OpenMapJump"), toggleKey);
         }
         Version = 4;
+    }
+
+    // Schema 4 -> 5 (SDD 21): the HUD hologram effects strength, which a v4 file does not have, starts at its default
+    if (Version == 4)
+    {
+        HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
+        Version = 5;
     }
 }

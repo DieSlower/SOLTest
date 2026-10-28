@@ -6,6 +6,7 @@
 #include "UI/SOLHudSmoke.h"
 
 #include "Game/SOLGameMode.h"
+#include "HudEvents/SOLHudEventSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
@@ -21,7 +22,10 @@
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
 #include "InputKeyEventArgs.h"
+#include "Misc/Paths.h"
+#include "UnrealClient.h"
 
 namespace
 {
@@ -49,6 +53,28 @@ namespace
     constexpr double HUDSMOKE_BLOCKED_MAX_GAIN_MPS = 0.5;   // W while the panel is open: no speed gained
     constexpr double HUDSMOKE_THRUST_MIN_GAIN_MPS = 20.0;   // W after closing: clearly accelerating (assisted 1.5 G
                                                             // for 2 s is ~29 m/s, SDD 18)
+    constexpr uint64 HUDSMOKE_BUS_MAX_FRAME_LAG = 2;        // Pilot snapshot at most this many frames old (SDD 21)
+    constexpr int32 HUDSMOKE_RETICLE_SHAPES = 5;            // Glow reticle: 4 arms and a dot
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests a window screenshot with the UI (Slate layers such as the glow-shape layer) to Saved/Screenshots
+void FSOLHudSmoke::TakeUiShot(const TCHAR* name)
+{
+    const FString path = FPaths::ConvertRelativePathToFull(FPaths::ScreenShotDir()
+        / FString::Printf(TEXT("HudSmoke_%s.png"), name));
+    FScreenshotRequest::RequestScreenshot(path, true, false);
+    UE_LOG(LogSOL, Log, TEXT("SmokeHud: screenshot with UI %s"), *path);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets sol.HudRenderer (1 = glow-shape renderer, 0 = Canvas fallback)
+void FSOLHudSmoke::SetHudRendererCvar(const int32 value)
+{
+    if (IConsoleVariable* cvar = IConsoleManager::Get().FindConsoleVariable(SOL::Hologram::CVAR_HUD_RENDERER))
+    {
+        cvar->Set(value, ECVF_SetByCode);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -225,6 +251,9 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         TapKey(EKeys::Hyphen);
         ++mRadarZoomTaps;
         break;
+    case ESOLHudPhase::CanvasFallback:
+        SetHudRendererCvar(0);
+        break;
     case ESOLHudPhase::RadarAuto:
         TapKey(EKeys::Home);
         break;
@@ -385,6 +414,9 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     }
     case ESOLHudPhase::RadarAuto:
     {
+        // The Canvas screenshot has been taken by now: the glow-shape renderer back on
+        SetHudRendererCvar(1);
+
         // AUTO range is the floor for the current target state (SDD 2 Appendix C Amendment 3)
         const double rangeM = mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0;
         const double floorM = SOLRadar::EffectiveFloorM(mTargeting->GetSelectedTarget() != nullptr);
@@ -397,16 +429,41 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         UE_LOG(LogSOL, Log, TEXT("SmokeHud: HUD screenshot - relative speed %.1f m/s, cap %.1f, frame %s, radar "
             "range %.3g m"), relSpeed, cap, *mTargeting->GetFrameName().ToString(),
             mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0);
-        if (gameMode != nullptr)
         {
-            gameMode->CaptureScreenshot();
+            // SDD 21: the pawn's pilot snapshot reached the bus this frame or the last, and the reticle is drawn by
+            // the glow-shape renderer (4 arms and a dot)
+            const USOLHudEventSubsystem* hudEvents = USOLHudEventSubsystem::Get(&pawn);
+            const bool bPilot = hudEvents != nullptr && hudEvents->GetBus().HasPilot()
+                && GFrameCounter <= hudEvents->GetBus().GetPilotFrame() + HUDSMOKE_BUS_MAX_FRAME_LAG;
+            Check(TEXT("i-hud-bus-pilot"), bPilot, FString::Printf(TEXT("pilot snapshot %s, published frame %llu, "
+                "now %llu, %d publishes"), bPilot ? TEXT("fresh") : TEXT("missing or stale"),
+                hudEvents != nullptr ? hudEvents->GetBus().GetPilotFrame() : 0ull, GFrameCounter,
+                hudEvents != nullptr ? hudEvents->GetBus().GetPilotPublishCount() : 0));
+            const int32 shapes = mHud.IsValid() ? mHud->GetLastShapeCount() : 0;
+            Check(TEXT("i-shape-renderer"), mHud.IsValid() && mHud->WasShapeRendererActive()
+                && shapes >= HUDSMOKE_RETICLE_SHAPES, FString::Printf(TEXT("glow-shape renderer %s, %d shapes "
+                "(reticle needs %d)"), mHud.IsValid() && mHud->WasShapeRendererActive() ? TEXT("active")
+                : TEXT("inactive"), shapes, HUDSMOKE_RETICLE_SHAPES));
         }
+
+        // With the UI, so the glow-shape layer (Slate) is in it; a HighResShot in the same frame would replace it
+        TakeUiShot(TEXT("Glow"));
         break;
     case ESOLHudPhase::HudShot:
         ReleaseKey(EKeys::W);
         ReleaseKey(EKeys::D);
         TapKey(EKeys::B);
         break;
+    case ESOLHudPhase::CanvasFallback:
+    {
+        // sol.HudRenderer 0: the reticle goes back to Canvas lines and the batch stays empty (screenshot)
+        const int32 shapes = mHud.IsValid() ? mHud->GetLastShapeCount() : -1;
+        Check(TEXT("i-canvas-fallback"), mHud.IsValid() && !mHud->WasShapeRendererActive() && shapes == 0,
+            FString::Printf(TEXT("sol.HudRenderer 0: shape renderer %s, %d shapes"), mHud.IsValid()
+                && mHud->WasShapeRendererActive() ? TEXT("active") : TEXT("inactive"), shapes));
+        TakeUiShot(TEXT("Canvas"));
+        break;
+    }
     case ESOLHudPhase::OrbitShotSetup:
         Check(TEXT("g-orbit-view"), bOrbits && segments > 0, FString::Printf(TEXT("3 AU above the Sun: orbit lines "
             "%s, %d lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));

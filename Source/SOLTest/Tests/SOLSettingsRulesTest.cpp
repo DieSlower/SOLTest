@@ -253,12 +253,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 4"), SOL::Settings::SAVE_VERSION, 4);
+    TestEqual(TEXT("schema version is 5"), SOL::Settings::SAVE_VERSION, 5);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 3 migrates"), ClassifySaveVersion(3, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 4 migrates"), ClassifySaveVersion(4, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -310,10 +312,13 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
     save->bShowOrbitLines = false;
+    save->HudEffectsStrength = 0.3f;
 
     save->MigrateToCurrentVersion();
     TestEqual(TEXT("upgraded to the current version"), save->Version, SOL::Settings::SAVE_VERSION);
     TestTrue(TEXT("orbit lines default to shown"), save->bShowOrbitLines);
+    TestEqual(TEXT("HUD effects default from the 4 -> 5 step"), save->HudEffectsStrength,
+        SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
 
     // Every other field is untouched
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -361,7 +366,7 @@ bool FSOLSettingsRulesMigrateV3RouteKeysTest::RunTest(const FString& /*parameter
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("K"));
     save->KeyOverrides.Add(TEXT("SurfaceLock"), TEXT("Home"));
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v3 -> 4"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("v3 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestNull(TEXT("ToggleMap removed"), save->KeyOverrides.Find(TEXT("ToggleMap")));
     const FString* jumpKey = save->KeyOverrides.Find(TEXT("OpenMapJump"));
     TestTrue(TEXT("its key moved to OpenMapJump"), jumpKey != nullptr && *jumpKey == TEXT("Comma"));
@@ -387,7 +392,7 @@ bool FSOLSettingsRulesMigrateV3RouteKeysTest::RunTest(const FString& /*parameter
     both->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
     both->KeyOverrides.Add(TEXT("OpenMapJump"), TEXT("Period"));
     both->MigrateToCurrentVersion();
-    TestEqual(TEXT("both: v3 -> 4"), both->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("both: v3 -> current"), both->Version, SOL::Settings::SAVE_VERSION);
     TestNull(TEXT("both: ToggleMap removed"), both->KeyOverrides.Find(TEXT("ToggleMap")));
     const FString* keptJump = both->KeyOverrides.Find(TEXT("OpenMapJump"));
     TestTrue(TEXT("both: existing OpenMapJump wins"), keptJump != nullptr && *keptJump == TEXT("Period"));
@@ -398,13 +403,13 @@ bool FSOLSettingsRulesMigrateV3RouteKeysTest::RunTest(const FString& /*parameter
     plain->Version = 3;
     plain->KeyOverrides.Add(TEXT("Boost"), TEXT("RightShift"));
     plain->MigrateToCurrentVersion();
-    TestEqual(TEXT("plain: v3 -> 4"), plain->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("plain: v3 -> current"), plain->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("plain: one override"), plain->KeyOverrides.Num(), 1);
     const FString* boostKey = plain->KeyOverrides.Find(TEXT("Boost"));
     TestTrue(TEXT("plain: boost kept"), boostKey != nullptr && *boostKey == TEXT("RightShift"));
     TestNull(TEXT("plain: no OpenMapJump invented"), plain->KeyOverrides.Find(TEXT("OpenMapJump")));
 
-    // A current (v4) save holding a stray ToggleMap entry is not migrated, so it is left untouched
+    // A current save holding a stray ToggleMap entry is not migrated, so it is left untouched
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
     current->Version = SOL::Settings::SAVE_VERSION;
     current->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
@@ -555,6 +560,120 @@ bool FSOLSettingsRulesSchemaOneRoundTripTest::RunTest(const FString& /*parameter
     TestEqual(TEXT("quality kept"), loaded->QualityPreset, 1);
     const FString* fireKey = loaded->KeyOverrides.Find(TEXT("Fire"));
     TestTrue(TEXT("key override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV4HudEffectsTest, "SOLTest.SettingsRules.MigrateV4HudEffects",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 4 -> 5 (issue #28): the HUD effects strength (absent from a v4 file) becomes the default; every other field and
+// override is kept, and a second migrate changes nothing
+bool FSOLSettingsRulesMigrateV4HudEffectsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestTrue(TEXT("a v4 save is migrated"), ClassifySaveVersion(4, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(4, 5) migrates"), ClassifySaveVersion(4, 5) == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(5, 5) uses"), ClassifySaveVersion(5, 5) == ESaveVersionAction::Use);
+
+    // A v4 save with non-default values everywhere and a stray strength a v4 file never wrote
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 4;
+    save->MasterVolume = 0.3f;
+    save->SfxVolume = 0.4f;
+    save->MusicVolume = 0.5f;
+    save->MouseSensitivity = 2.5f;
+    save->bInvertY = true;
+    save->HudScale = 1.5f;
+    save->bHudVisible = false;
+    save->bDefaultFlightAssist = false;
+    save->bVsync = false;
+    save->QualityPreset = 1;
+    save->bVsyncChosen = true;
+    save->bQualityChosen = true;
+    save->bShowOrbitLines = false;
+    save->HudEffectsStrength = 0.3f;
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));     // Already past 3 -> 4: must not be moved again
+
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v4 -> 5"), save->Version, 5);
+    TestEqual(TEXT("v4 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("strength set to the default"), save->HudEffectsStrength, SOL::Settings::HUD_EFFECTS_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("default is 1"), save->HudEffectsStrength, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // Every other field is untouched
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), save->bInvertY);
+    TestEqual(TEXT("HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("HUD hidden kept"), save->bHudVisible);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestFalse(TEXT("vsync kept"), save->bVsync);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+    TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
+    TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
+    TestEqual(TEXT("override count kept"), save->KeyOverrides.Num(), 2);
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    const FString* toggleKey = save->KeyOverrides.Find(TEXT("ToggleMap"));
+    TestTrue(TEXT("v4 overrides are not re-run through 3 -> 4"), toggleKey != nullptr && *toggleKey == TEXT("Comma"));
+    TestNull(TEXT("no OpenMapJump invented"), save->KeyOverrides.Find(TEXT("OpenMapJump")));
+
+    // Idempotent: a later strength change survives a second migrate
+    save->HudEffectsStrength = 0.6f;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the strength"), save->HudEffectsStrength, 0.6f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("second migrate keeps the overrides"), save->KeyOverrides.Num(), 2);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV4CurrentKeepsTest,
+    "SOLTest.SettingsRules.MigrateV4CurrentKeepsHudEffects",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A v5 save keeps its HUD effects strength and version; the save object defaults and round-trips the strength
+bool FSOLSettingsRulesMigrateV4CurrentKeepsTest::RunTest(const FString& /*parameters*/)
+{
+    // A current save is not migrated
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->HudEffectsStrength = 0.3f;
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("v5: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("v5: strength kept"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("v5: strength kept twice"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // A new save holds the default strength
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestEqual(TEXT("new save: default strength"), fresh->HudEffectsStrength, SOL::Settings::HUD_EFFECTS_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("new save: GetValues default strength"), fresh->GetValues().HudEffectsStrength,
+        SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+
+    // SetValues / GetValues round-trip the strength
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.HudEffectsStrength = 1.65f;
+    save->SetValues(values);
+    TestEqual(TEXT("SetValues stores the strength"), save->HudEffectsStrength, 1.65f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("GetValues gives it back"), save->GetValues().HudEffectsStrength, 1.65f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    values.HudEffectsStrength = SOL::Settings::HUD_EFFECTS_MIN;
+    save->SetValues(values);
+    TestEqual(TEXT("off round-trips"), save->GetValues().HudEffectsStrength, SOL::Settings::HUD_EFFECTS_MIN,
+        SETTINGSRULES_TEST_TOLERANCE);
     return true;
 }
 

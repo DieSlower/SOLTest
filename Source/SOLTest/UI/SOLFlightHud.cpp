@@ -7,6 +7,7 @@
 
 #include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLGameMode.h"
+#include "HudEvents/SOLHudEventSubsystem.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
@@ -17,12 +18,12 @@
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
-#include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLHudFormat.h"
+#include "UI/SOLHudShapeLayer.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -33,8 +34,11 @@
 #include "Engine/Canvas.h"
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
+#include "HAL/IConsoleManager.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Math/RandomStream.h"
 
 namespace
@@ -117,6 +121,19 @@ namespace
     constexpr float WARP_STREAK_EXTRA_THICKNESS_PX = 2.0f;
     constexpr int32 WARP_STREAK_SEED = 2026;
     const FLinearColor WARP_STREAK_COLOR(0.8f, 0.9f, 1.0f, 1.0f);
+
+    // Shape renderer (SDD 21): the reticle's glow dot radius, its layer under the menus and the F3 panel
+    constexpr float HUD_RETICLE_DOT_RADIUS_PX = 1.0f;
+    constexpr float HUD_RETICLE_DOT_INTENSITY = 0.5f;          // Dimmer than the arms: the centre stays readable
+    constexpr int32 HUD_SHAPE_LAYER_Z_ORDER = 0;
+
+    // sol.HudRenderer: 1 draws the ported HUD pieces with the glow-shape renderer, 0 falls back to Canvas
+    TAutoConsoleVariable<int32> CVarHudRenderer(SOL::Hologram::CVAR_HUD_RENDERER, 1,
+        TEXT("Flight HUD glow-shape renderer (SDD 21): 1 = on, 0 = the old Canvas drawing"), ECVF_Default);
+
+    // sol.HudComposite: 1 adds LT's grain and scanlines to the glow shapes (off by default)
+    TAutoConsoleVariable<int32> CVarHudComposite(SOL::Hologram::CVAR_HUD_COMPOSITE, 0,
+        TEXT("Flight HUD grain and scanline composite (SDD 21): 1 = on, 0 = off"), ECVF_Default);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -141,6 +158,15 @@ void ASOLFlightHud::BeginPlay()
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
     Routes = world->GetSubsystem<USOLRouteSubsystem>();
     Settings = USOLSettingsSubsystem::Get(this);
+    HudEvents = world->GetSubsystem<USOLHudEventSubsystem>();
+
+    // The pawn talks to the HUD only through the HUD event bus (SDD 21 D4): commands in, the map overlay out
+    if (HudEvents != nullptr)
+    {
+        mHudCommandHandle = HudEvents->GetBus().OnCommand().AddUObject(this, &ASOLFlightHud::HandleHudCommand);
+        HudEvents->GetBus().SetMapBodyOverlay(&mMapBodyOverlay);
+    }
+    CreateShapeLayer();
 
     // Key hints follow the player's bindings: built now and again after each applied rebind, never per frame
     RebuildKeyHints();
@@ -183,7 +209,137 @@ void ASOLFlightHud::EndPlay(const EEndPlayReason::Type endPlayReason)
         Settings->OnKeyBindingsChanged().Remove(mKeyBindingsHandle);
     }
     mKeyBindingsHandle.Reset();
+    if (HudEvents != nullptr)
+    {
+        HudEvents->GetBus().OnCommand().Remove(mHudCommandHandle);
+        if (HudEvents->GetBus().GetMapBodyOverlay() == &mMapBodyOverlay)
+        {
+            HudEvents->GetBus().SetMapBodyOverlay(nullptr);
+        }
+    }
+    mHudCommandHandle.Reset();
+    DestroyShapeLayer();
     Super::EndPlay(endPlayReason);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Handles a command from the HUD event bus (orbit lines, radar zoom)
+void ASOLFlightHud::HandleHudCommand(const ESOLHudCommand command)
+{
+    switch (command)
+    {
+    case ESOLHudCommand::ToggleOrbitLines:
+        ToggleOrbitLines();
+        break;
+    case ESOLHudCommand::RadarZoomIn:
+        StepRadarZoom(true);
+        break;
+    case ESOLHudCommand::RadarZoomOut:
+        StepRadarZoom(false);
+        break;
+    case ESOLHudCommand::RadarAuto:
+        ResetRadarAuto();
+        break;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates the shape layer widget and its material and adds it to the game viewport
+void ASOLFlightHud::CreateShapeLayer()
+{
+    UGameViewportClient* viewport = GetWorld()->GetGameViewport();
+    UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::HUD_SHAPE_MATERIAL);
+    if (viewport == nullptr || material == nullptr)
+    {
+        UE_LOG(LogSOL, Warning, TEXT("FlightHud %s: no %s; the HUD draws with Canvas only"), *GetName(),
+            viewport == nullptr ? TEXT("game viewport") : SOL::Paths::HUD_SHAPE_MATERIAL);
+        return;
+    }
+    ShapeMaterial = UMaterialInstanceDynamic::Create(material, this);
+    mShapeLayer = SNew(SSOLHudShapeLayer);
+    mShapeLayer->SetMaterial(ShapeMaterial);
+    viewport->AddViewportWidgetContent(mShapeLayer.ToSharedRef(), HUD_SHAPE_LAYER_Z_ORDER);
+    mShapeStrength = -1.0f;
+    mShapeComposite = -1.0f;
+    mShapeViewSize = FVector2f::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the shape layer widget from the game viewport
+void ASOLFlightHud::DestroyShapeLayer()
+{
+    if (mShapeLayer.IsValid())
+    {
+        UWorld* world = GetWorld();
+        if (UGameViewportClient* viewport = world != nullptr ? world->GetGameViewport() : nullptr)
+        {
+            viewport->RemoveViewportWidgetContent(mShapeLayer.ToSharedRef());
+        }
+        mShapeLayer.Reset();
+    }
+    ShapeMaterial = nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts this frame's shape batch and pushes changed material parameters (strength, composite, view size)
+void ASOLFlightHud::BeginShapeFrame()
+{
+    mWasShapeRendererActive = false;
+    if (!mShapeLayer.IsValid())
+    {
+        return;
+    }
+    mShapeLayer->GetBatch().Reset();
+    mShapeLayer->MarkBatchFrame(GFrameCounter);
+    if (ShapeMaterial == nullptr || Canvas == nullptr)
+    {
+        return;
+    }
+
+    // Parameters change rarely (Settings, the cvar, a resize): pushed only when they differ
+    const float strength = Settings != nullptr ? Settings->GetLiveValues().HudEffectsStrength
+        : SOL::Settings::HUD_EFFECTS_DEFAULT;
+    const float composite = CVarHudComposite.GetValueOnGameThread() != 0 ? 1.0f : 0.0f;
+    const FVector2f viewSize(Canvas->ClipX, Canvas->ClipY);
+    if (strength != mShapeStrength)
+    {
+        mShapeStrength = strength;
+        ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH, strength);
+    }
+    if (composite != mShapeComposite)
+    {
+        mShapeComposite = composite;
+        ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::COMPOSITE, composite);
+    }
+    if (viewSize != mShapeViewSize)
+    {
+        mShapeViewSize = viewSize;
+        ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_WIDTH, viewSize.X);
+        ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_HEIGHT, viewSize.Y);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the shape batch while the shape renderer is active, else nullptr
+FSOLHudShapeBatch* ASOLFlightHud::GetActiveShapeBatch()
+{
+    return mShapeLayer.IsValid() && ShapeMaterial != nullptr && CVarHudRenderer.GetValueOnGameThread() != 0
+        ? &mShapeLayer->GetBatch() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true when the bus holds a pilot snapshot published within the last few frames
+bool ASOLFlightHud::HasFreshPilot() const
+{
+    return HudEvents != nullptr && HudEvents->GetBus().HasPilot()
+        && GFrameCounter <= HudEvents->GetBus().GetPilotFrame() + SOL::Hologram::HUD_PILOT_MAX_FRAME_LAG;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of glow shapes the last frame queued
+int32 ASOLFlightHud::GetLastShapeCount() const
+{
+    return mShapeLayer.IsValid() ? mShapeLayer->GetBatch().GetShapeCount() : 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -273,6 +429,9 @@ void ASOLFlightHud::DrawHUD()
     mAutopilotBlockBottomY = 0.0f;
     mRouteOverlay.ResetFrame();
     mHologramOverlay.ResetFrame();
+
+    // The glow-shape batch is emptied first, so a frame that returns early below leaves nothing on screen
+    BeginShapeFrame();
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
@@ -340,7 +499,6 @@ void ASOLFlightHud::DrawHUD()
     }
     DrawInfoBlock();
 
-    const ASOLShipPawn* shipPawn = Cast<ASOLShipPawn>(GetOwningPawn());
     if (Ships == nullptr || Targeting == nullptr || !Ships->HasPlayerShip())
     {
         return;
@@ -386,9 +544,9 @@ void ASOLFlightHud::DrawHUD()
     // the target bracket and velocity markers so they never paint over them
     const FVector2D center(Canvas->ClipX * 0.5, Canvas->ClipY * 0.5);
     DrawReticle(center);
-    if (shipPawn != nullptr)
+    if (HasFreshPilot())
     {
-        DrawJoystick(center, *shipPawn);
+        DrawJoystick(center, HudEvents->GetBus().GetPilot());
     }
     if (bHasView)
     {
@@ -515,6 +673,26 @@ void ASOLFlightHud::DrawReticle(const FVector2D& center)
 {
     const float gap = HUD_RETICLE_GAP_PX * mUiScale;
     const float arm = gap + HUD_RETICLE_ARM_PX * mUiScale;
+
+    // Shape renderer (SDD 21 proof element): four glow arms and a glow dot in the LT palette, one batched draw
+    if (FSOLHudShapeBatch* batch = GetActiveShapeBatch())
+    {
+        using namespace SOL::Hologram;
+        const FVector2f c(center);
+        const FLinearColor& color = SOL::HudPalette::PRIMARY;
+        batch->AddLine(FVector2f(c.X - arm, c.Y), FVector2f(c.X - gap, c.Y), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
+            HUD_GLOW_PAD_PX);
+        batch->AddLine(FVector2f(c.X + gap, c.Y), FVector2f(c.X + arm, c.Y), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
+            HUD_GLOW_PAD_PX);
+        batch->AddLine(FVector2f(c.X, c.Y - arm), FVector2f(c.X, c.Y - gap), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
+            HUD_GLOW_PAD_PX);
+        batch->AddLine(FVector2f(c.X, c.Y + gap), FVector2f(c.X, c.Y + arm), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
+            HUD_GLOW_PAD_PX);
+        batch->AddRing(c, HUD_RETICLE_DOT_RADIUS_PX * mUiScale, HUD_LINE_HALF_WIDTH_PX, color, HUD_RETICLE_DOT_INTENSITY,
+            HUD_GLOW_PAD_PX);
+        mWasShapeRendererActive = true;
+        return;
+    }
     DrawLine(center.X - arm, center.Y, center.X - gap, center.Y, HUD_COLOR, 1.5f);
     DrawLine(center.X + gap, center.Y, center.X + arm, center.Y, HUD_COLOR, 1.5f);
     DrawLine(center.X, center.Y - arm, center.X, center.Y - gap, HUD_COLOR, 1.5f);
@@ -524,17 +702,17 @@ void ASOLFlightHud::DrawReticle(const FVector2D& center)
 
 //////////////////////////////////////////////////////////////////////////
 // Draws the virtual-joystick circle, dead zone and the current stick offset
-void ASOLFlightHud::DrawJoystick(const FVector2D& center, const ASOLShipPawn& pawn)
+void ASOLFlightHud::DrawJoystick(const FVector2D& center, const FSOLHudPilotSnapshot& pilot)
 {
-    const float radius = static_cast<float>(pawn.GetStickRadiusPixels());
+    const float radius = static_cast<float>(pilot.StickRadiusPx);
     DrawCircle(center, radius, HUD_STICK_COLOR, HUD_CIRCLE_SEGMENTS, 1.0f, 1.0f);
     DrawCircle(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), HUD_STICK_COLOR, HUD_CIRCLE_SEGMENTS / 2,
         1.0f, 1.0f);
 
     // The stick offset is X right, Y up; the screen's Y grows downward
-    const FVector2d& offset = pawn.GetStickOffsetPixels();
+    const FVector2d& offset = pilot.StickOffsetPx;
     const FVector2D stick(center.X + offset.X, center.Y - offset.Y);
-    const FLinearColor color = pawn.IsFreeLooking() || !pawn.IsSteering() ? HUD_DIM_COLOR : HUD_COLOR;
+    const FLinearColor color = pilot.bIsFreeLooking || !pilot.bIsSteering ? HUD_DIM_COLOR : HUD_COLOR;
     if (offset.Size() > radius * SOL::JOYSTICK_DEAD_ZONE)
     {
         DrawLine(center.X, center.Y, stick.X, stick.Y, HUD_DIM_COLOR, 1.0f);
@@ -710,14 +888,15 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     mText.Append(SOLHudFormat::FlightModeLabel(mode));
     mText.Append(control.bBoost ? TEXT("   BOOST") : TEXT("   boost off"));
     DrawBuffer(ESOLHudLine::Assist, SOLHudFormat::FlightModeColor(mode), x, y, small);
-    if (const ASOLShipPawn* shipPawn = Cast<ASOLShipPawn>(GetOwningPawn()))
+    if (HasFreshPilot())
     {
+        const FSOLHudPilotSnapshot& pilot = HudEvents->GetBus().GetPilot();
         float textWidth = 0.0f;
         float textHeight = 0.0f;
         Canvas->StrLen(small, mText, textWidth, textHeight);
         const FVector2D iconCenter(x + (textWidth + HUD_STEER_ICON_GAP_PX + HUD_STEER_ICON_RADIUS_PX) * mUiScale,
             y + textHeight * 0.5f * mUiScale);
-        DrawSteerIcon(iconCenter, shipPawn->GetSteerIcon(), shipPawn->IsSteering());
+        DrawSteerIcon(iconCenter, pilot.SteerIcon, pilot.bIsSteering);
     }
 }
 

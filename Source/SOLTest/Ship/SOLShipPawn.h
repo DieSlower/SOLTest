@@ -7,6 +7,7 @@
 
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
+#include "HudEvents/SOLHudBus.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
 #include "Map/SOLMapModeState.h"
@@ -34,6 +35,7 @@ class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
 class USOLCombatSubsystem;
+class USOLHudEventSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLMenuSubsystem;
@@ -435,6 +437,12 @@ private:
     // Hands the gun trigger and the camera aim (ecliptic) to the combat subsystem
     void UpdateCombatInput();
 
+    // Publishes this frame's pilot aids (stick, steering, free look) on the HUD event bus while a player flies the pawn
+    void PublishHudPilot();
+
+    // Sends a command to the flight HUD through the HUD event bus (SDD 21 D4)
+    void SendHudCommand(ESOLHudCommand command);
+
     // Builds the placeholder ship from engine primitives with a light hull and a glowing engine
     void BuildShipMesh();
 
@@ -809,6 +817,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLHudEventSubsystem> HudEvents;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSubsystem> Settings;

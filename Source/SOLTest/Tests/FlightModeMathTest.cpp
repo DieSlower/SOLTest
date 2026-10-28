@@ -1605,6 +1605,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSettingsSaveMigrationTest,
 bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*parameters*/)
 {
     TestTrue(TEXT("schema bumped for the new layout"), SOL::Settings::SAVE_VERSION >= FMM_ROUTE_LAYOUT_VERSION);
+    TestTrue(TEXT("a v4 save is migrated"), SOLSettingsRules::ClassifySaveVersion(4, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v3 save is migrated"), SOLSettingsRules::ClassifySaveVersion(3, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v2 save is migrated"), SOLSettingsRules::ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)

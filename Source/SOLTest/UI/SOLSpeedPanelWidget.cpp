@@ -5,7 +5,6 @@
 
 #include "UI/SOLSpeedPanelWidget.h"
 
-#include "Ship/SOLShipPawn.h"
 #include "SOLTest.h"
 #include "UI/SOLHudFormat.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -176,11 +175,12 @@ void USOLSpeedPanelWidget::NativeOnInitialized()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Seeds the steppers from the current cap, refreshes the body speeds and remembers the pawn to apply the cap to
-void USOLSpeedPanelWidget::Open(ASOLShipPawn* pawn, const double currentCapMps, const FKey& toggleKey,
-    const FString& title)
+// Seeds the steppers from the current cap, refreshes the body speeds and remembers the owner's apply and close delegates
+void USOLSpeedPanelWidget::Open(const FSOLSpeedPanelApplyCap& applyCap, const FSimpleDelegate& close,
+    const double currentCapMps, const FKey& toggleKey, const FString& title)
 {
-    mPawn = pawn;
+    mApplyCap = applyCap;
+    mClose = close;
     mToggleKey = toggleKey;
     if (TitleText != nullptr)
     {
@@ -364,9 +364,9 @@ void USOLSpeedPanelWidget::ApplySelectedBody()
 void USOLSpeedPanelWidget::ApplyCapMps(const double capMps)
 {
     double appliedMps = capMps;
-    if (ASOLShipPawn* pawn = mPawn.Get())
+    if (mApplyCap.IsBound())
     {
-        appliedMps = pawn->ApplySpeedCapMps(capMps);
+        appliedMps = mApplyCap.Execute(capMps);
     }
     mStepper.ValueInUnit = SOLHudFormat::ToUnitValue(appliedMps, mStepper.Unit);
     UE_LOG(LogSOL, Log, TEXT("SpeedPanel: cap %.3f m/s (%.2f %s, digit %d)"), appliedMps, mStepper.ValueInUnit,
@@ -454,12 +454,12 @@ void USOLSpeedPanelWidget::RefreshListText()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Closes the panel through the pawn (which restores ship input)
+// Closes the panel through its owner (the pawn, which restores ship input)
 void USOLSpeedPanelWidget::RequestClose()
 {
-    if (ASOLShipPawn* pawn = mPawn.Get())
+    if (mClose.IsBound())
     {
-        pawn->CloseSpeedPanel();
+        mClose.Execute();
         return;
     }
     RemoveFromParent();

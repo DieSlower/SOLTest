@@ -38,6 +38,8 @@ SOLSettingsModel::FSettingsValues SOLSettingsModel::Sanitized(const FSettingsVal
     result.MouseSensitivity = ClampOrDefault(values.MouseSensitivity, MOUSE_SENSITIVITY_MIN, MOUSE_SENSITIVITY_MAX,
         defaults.MouseSensitivity);
     result.HudScale = ClampOrDefault(values.HudScale, HUD_SCALE_MIN, HUD_SCALE_MAX, defaults.HudScale);
+    result.HudEffectsStrength = ClampOrDefault(values.HudEffectsStrength, HUD_EFFECTS_MIN, HUD_EFFECTS_MAX,
+        defaults.HudEffectsStrength);
     result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, SOLSettingsRules::QUALITY_PRESET_COUNT - 1);
     return result;
 }
@@ -51,7 +53,8 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
     return Near(x.MasterVolume, y.MasterVolume) && Near(x.SfxVolume, y.SfxVolume) && Near(x.MusicVolume, y.MusicVolume)
         && Near(x.MouseSensitivity, y.MouseSensitivity) && x.bInvertY == y.bInvertY && Near(x.HudScale, y.HudScale)
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
-        && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines;
+        && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines
+        && Near(x.HudEffectsStrength, y.HudEffectsStrength);
 }
 
 //////////////////////////////////////////////////////////////////////////

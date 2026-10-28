@@ -4,6 +4,7 @@
 */
 
 #include "Menu/SOLSettingsModel.h"
+#include "SOLConstants.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -485,6 +486,103 @@ bool FSOLSettingsModelSetAppliedOrbitLinesTest::RunTest(const FString& /*paramet
     TestFalse(TEXT("Saved already true returns false"), SetAppliedShowOrbitLines(pendingOnly, true));
     TestTrue(TEXT("Pending overwritten to true"), pendingOnly.Pending.bShowOrbitLines);
     TestFalse(TEXT("No longer dirty"), IsDirty(pendingOnly));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudEffectsSanitizeTest, "SOLTest.SettingsModel.HudEffectsSanitize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The HUD effects strength defaults to HUD_EFFECTS_DEFAULT, clamps to [MIN, MAX], NaN -> default, infinities -> ends
+bool FSOLSettingsModelHudEffectsSanitizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    using namespace SOL::Settings;
+    const FSettingsValues defaults;
+    TestEqual(TEXT("Default"), defaults.HudEffectsStrength, HUD_EFFECTS_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default is 1"), defaults.HudEffectsStrength, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Sanitized default kept"), Sanitized(defaults).HudEffectsStrength, HUD_EFFECTS_DEFAULT,
+        SETTINGSMODEL_TOLERANCE);
+
+    // In range and the exact ends pass through
+    const float inRange[] = { HUD_EFFECTS_MIN, 0.3f, 1.55f, HUD_EFFECTS_MAX };
+    for (const float strength : inRange)
+    {
+        FSettingsValues values = SettingsModelCustomValues();
+        values.HudEffectsStrength = strength;
+        TestEqual(FString::Printf(TEXT("%.2f kept"), strength), Sanitized(values).HudEffectsStrength, strength,
+            SETTINGSMODEL_TOLERANCE);
+    }
+
+    // Out of range clamps
+    FSettingsValues values = SettingsModelCustomValues();
+    values.HudEffectsStrength = -0.5f;
+    TestEqual(TEXT("Below -> MIN"), Sanitized(values).HudEffectsStrength, HUD_EFFECTS_MIN, SETTINGSMODEL_TOLERANCE);
+    values.HudEffectsStrength = 7.0f;
+    TestEqual(TEXT("Above -> MAX"), Sanitized(values).HudEffectsStrength, HUD_EFFECTS_MAX, SETTINGSMODEL_TOLERANCE);
+
+    // Non-finite values
+    values.HudEffectsStrength = SETTINGSMODEL_NAN;
+    const FSettingsValues nanOut = Sanitized(values);
+    TestEqual(TEXT("NaN -> default"), nanOut.HudEffectsStrength, HUD_EFFECTS_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN leaves other fields alone"), nanOut.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
+    values.HudEffectsStrength = SETTINGSMODEL_INF;
+    TestEqual(TEXT("+inf -> MAX"), Sanitized(values).HudEffectsStrength, HUD_EFFECTS_MAX, SETTINGSMODEL_TOLERANCE);
+    values.HudEffectsStrength = -SETTINGSMODEL_INF;
+    TestEqual(TEXT("-inf -> MIN"), Sanitized(values).HudEffectsStrength, HUD_EFFECTS_MIN, SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudEffectsDirtyTest, "SOLTest.SettingsModel.HudEffectsDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AreEqual compares the HUD effects strength within the tolerance, so changing only it makes the model dirty
+bool FSOLSettingsModelHudEffectsDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues base = SettingsModelCustomValues();
+
+    FSettingsValues changed = base;
+    changed.HudEffectsStrength = 0.4f;
+    TestFalse(TEXT("Strength differs"), AreEqual(base, changed));
+    TestFalse(TEXT("Symmetric"), AreEqual(changed, base));
+
+    FSettingsValues nearlySame = base;
+    nearlySame.HudEffectsStrength += SOL::Settings::VALUE_EQUAL_TOLERANCE * 0.5f;
+    TestTrue(TEXT("Within the tolerance is equal"), AreEqual(base, nearlySame));
+
+    // Two values that clamp to the same end, and NaN vs the default, compare equal
+    FSettingsValues overA = base;
+    overA.HudEffectsStrength = 5.0f;
+    FSettingsValues overB = base;
+    overB.HudEffectsStrength = 9.0f;
+    TestTrue(TEXT("Both clamp to MAX"), AreEqual(overA, overB));
+    FSettingsValues nanStrength;
+    nanStrength.HudEffectsStrength = SETTINGSMODEL_NAN;
+    TestTrue(TEXT("NaN equals the default"), AreEqual(nanStrength, FSettingsValues()));
+
+    // The model sees a strength-only edit as dirty; commit adopts it, revert discards it
+    FSettingsModel model = MakeModel(base);
+    SetPending(model, changed);
+    TestTrue(TEXT("Dirty when only the strength differs"), IsDirty(model));
+    const FSettingsValues reverted = Revert(model);
+    TestEqual(TEXT("Revert returns the saved strength"), reverted.HudEffectsStrength, base.HudEffectsStrength,
+        SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+    SetPending(model, changed);
+    TestTrue(TEXT("Commit of the strength needs a write"), CommitIfDirty(model));
+    TestEqual(TEXT("Saved takes the strength"), model.Saved.HudEffectsStrength, 0.4f, SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+
+    // An out-of-range pending strength is stored sanitized
+    FSettingsValues over = model.Saved;
+    over.HudEffectsStrength = 12.0f;
+    SetPending(model, over);
+    TestEqual(TEXT("Pending sanitized"), model.Pending.HudEffectsStrength, SOL::Settings::HUD_EFFECTS_MAX,
+        SETTINGSMODEL_TOLERANCE);
     return true;
 }
 
