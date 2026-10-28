@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-10-28.
+Last updated: 2026-10-29.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -28,6 +28,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #18 | Newtonian flight core, G-force pilot model, autopilot, NPC motion | 18 |
 | #19 | Three flight modes and controls | 19 |
 | #20 | Hologram map, Move/Patrol routes, route overlay, map hologram look | 20 |
+| #28 | HUD phase A: event bus, batched Slate renderer, shape material, effects slider | 21 |
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
 
 ## In progress
@@ -35,21 +36,20 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | Issue | What | Notes |
 |---|---|---|
 | #21 | HUD hologram rendering (umbrella) | SDD 21 |
-| #28 | Phase A: event bus (Ship/UI cycle), batched Slate renderer, shape material, Settings slider | agent running |
+| #29 | Phase B: port every flight HUD element | agent running |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1 | #29 | HUD phase B: port every flight HUD element, hologram panels, glow text | L | #28 |
-| 2 | #30 | HUD phase C: 3D hologram radar | M | #28 |
-| 3 | #22 | Overlay icons for every object, flight overlay layer (O / Ctrl+O / Shift+O), radial interaction menu, icon shapes | L | #21 |
-| 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
-| 5 | #27 | Ship jitters slightly at rest | M | #18 |
-| 6 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
-| 7 | #24 | Decide each of the 120 Limit Theory catalogue features, split adopted ones into tickets | M (user decisions) | none |
-| 8 | #10 | Part 9: procedural terrain and atmospheres | L | #2, #4 |
-| 9 | #9 | Part 8: art and audio pass | L | #2-#8 |
+| 1 | #30 | HUD phase C: 3D hologram radar | M | #28 |
+| 2 | #22 | Overlay icons for every object, flight overlay layer (O / Ctrl+O / Shift+O), radial interaction menu, icon shapes | L | #21 |
+| 3 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
+| 4 | #27 | Ship jitters slightly at rest | M | #18 |
+| 5 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
+| 6 | #24 | Decide each of the 120 Limit Theory catalogue features, split adopted ones into tickets | M (user decisions) | none |
+| 7 | #10 | Part 9: procedural terrain and atmospheres | L | #2, #4 |
+| 8 | #9 | Part 8: art and audio pass | L | #2-#8 |
 | - | #1 | Umbrella: architecture and roadmap, closes when the above is done | - | all |
 
 Order is a proposal; the user can reorder at any time. #24 produces new tickets, so the total will grow.
