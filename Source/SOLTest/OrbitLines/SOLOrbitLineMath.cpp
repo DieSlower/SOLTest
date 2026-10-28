@@ -17,7 +17,7 @@ namespace
 
     //////////////////////////////////////////////////////////////////////////
     // True if every component of the vector is finite
-    bool IsFiniteVector(const FVector3d& value)
+    bool OrbitLineIsFiniteVector(const FVector3d& value)
     {
         return FMath::IsFinite(value.X) && FMath::IsFinite(value.Y) && FMath::IsFinite(value.Z);
     }
@@ -48,7 +48,7 @@ namespace
     // Returns the angular radius of a valid occluder seen from the camera, or a negative value if it is not valid
     double OccluderAngularRadius(const FVector3d& cameraM, const FVector3d& centerM, const double radiusM)
     {
-        if (!IsFiniteVector(centerM) || !FMath::IsFinite(radiusM) || radiusM <= 0.0)
+        if (!OrbitLineIsFiniteVector(centerM) || !FMath::IsFinite(radiusM) || radiusM <= 0.0)
         {
             return -1.0;
         }
@@ -321,7 +321,7 @@ namespace SOLOrbitLineMath
     // Returns the unit ribbon side direction, with a deterministic fallback when looking along the line
     FVector3d RibbonSideDirection(const FVector3d& cameraToPoint, const FVector3d& tangent)
     {
-        if (!IsFiniteVector(cameraToPoint))
+        if (!OrbitLineIsFiniteVector(cameraToPoint))
         {
             return FVector3d::ZeroVector;
         }
@@ -332,7 +332,7 @@ namespace SOLOrbitLineMath
         }
 
         // The normal case: perpendicular to both the view ray and the tangent
-        if (IsFiniteVector(tangent))
+        if (OrbitLineIsFiniteVector(tangent))
         {
             const FVector3d cross = view ^ NormalizeOrZero(tangent);
             if (cross.Size() > SIDE_DIRECTION_MIN_CROSS)
@@ -373,7 +373,8 @@ namespace SOLOrbitLineMath
     bool IsPointOccludedBySphere(const FVector3d& cameraM, const FVector3d& pointM, const FVector3d& centerM,
         const double radiusM)
     {
-        if (!IsFiniteVector(cameraM) || !IsFiniteVector(pointM) || !IsFiniteVector(centerM) || !FMath::IsFinite(radiusM)
+        if (!OrbitLineIsFiniteVector(cameraM) || !OrbitLineIsFiniteVector(pointM) || !OrbitLineIsFiniteVector(centerM)
+            || !FMath::IsFinite(radiusM)
             || radiusM <= 0.0)
         {
             return false;

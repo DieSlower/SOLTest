@@ -21,7 +21,7 @@ namespace
 
     // Projection: points closer than this in front of the camera (cm) are not drawn, nor points projecting farther
     // than this many pixels from the screen (keeps canvas coordinates sane at grazing angles)
-    constexpr double MAP_PICK_NEAR_PLANE_CM = 10.0;
+    constexpr double MAP_PICK_NEAR_PLANE_CM = SOL::MAP_OVERLAY_NEAR_PLANE_CM;
     constexpr double MAP_PICK_MAX_SCREEN_PX = 1.0e5;
 
     // Sizes at a 720 px canvas (scaled with the HUD's UI scale): reference ring radius, XY point half-size, guide

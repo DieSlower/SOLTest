@@ -152,6 +152,7 @@ namespace SOLMenuText
         "middle or Shift+right drag pan   wheel zoom   {0} / Esc close");
     inline constexpr const TCHAR* HUD_SURFACE_LOCK_HINT_FORMAT = TEXT("{SurfaceLock} to surface-lock  ");
     inline constexpr const TCHAR* HUD_FRAME_LOCK_TAG_FORMAT = TEXT(" [{MatchLock} LOCK]");
+    inline constexpr const TCHAR* HUD_ROUTE_RESUME_HINT_FORMAT = TEXT("   {Resume} resume");
     inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
     inline constexpr const TCHAR* SPEED_PANEL_TITLE_FORMAT = TEXT("SPEED CAP  ({SpeedPanel} / Enter close, Esc close)");
 
@@ -224,7 +225,8 @@ namespace SOLMenuText
         { TEXT("Map"), TEXT("Delete"), TEXT("Clear the active route") },
         { TEXT("Map"), TEXT("Escape"), TEXT("Close the map") },
         { TEXT("Routes"), TEXT("@Resume"), TEXT("Resume a paused route (in flight and on the map)") },
-        { TEXT("Routes"), TEXT("@ToggleRouteOverlay"), TEXT("Show or hide routes") },
+        { TEXT("Routes"), TEXT("@ToggleRouteOverlay"),
+            TEXT("Show or hide routes in flight (the map always shows them)") },
         { TEXT("Menu"), TEXT("Escape"), TEXT("Pause menu (in flight) / resume") },
         { TEXT("Menu"), TEXT("LeftControl+F1"),
             TEXT("Same as Esc (temporary: Esc stops Play-In-Editor before the game sees it)") },
@@ -320,9 +322,13 @@ namespace SOLMenuText
             "waypoint that moves with its body (Ctrl+right click undoes the last one, X clears them) and Enter starts "
             "the route: the autopilot flies through each waypoint at a speed its turn allows (a sharp turn stops) and "
             "stops at the last one of a Move, while a patrol of two or more waypoints repeats in a loop or back and "
-            "forth (P again switches) until you clear it with Delete on the map. Thrust or steer (or C, a jump, another "
-            "autopilot order) pauses a route and {Resume} resumes it; {ToggleRouteOverlay} shows or hides the route "
-            "overlay. Time warp is never changed for you."),
+            "forth (P again switches) until you clear it with Delete on the map. Thrust or steer (or C, a jump, "
+            "another autopilot order) pauses a route and {Resume} resumes it. Routes are drawn as blue lines that "
+            "brighten toward each waypoint, with arrows for the direction (a loop's closing leg is dashed); a "
+            "waypoint above the plane through your ship has a ring with a centre dot, one below it a hollow orange "
+            "ring. The plan is dim, a paused route dimmer and tagged PAUSED; the top of the screen shows the route's "
+            "progress and ETA. {ToggleRouteOverlay} shows or hides routes in flight (the map always shows them). "
+            "Time warp is never changed for you."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

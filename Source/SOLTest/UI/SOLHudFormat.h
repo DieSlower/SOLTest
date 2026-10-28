@@ -53,6 +53,7 @@ namespace SOLHudFormat
         FString NoTarget;           // "none (T)" (target panel without a target)
         FString SpeedPanelTitle;    // "SPEED CAP  (F3 / Enter close, Esc close)"
         FString ControlsChangedNotice;  // "Default controls changed: Space or Middle Mouse steers, ..." (SDD 19)
+        FString RouteResumeHint;    // "   V resume" (after the paused route marker, SDD 20)
     };
 
     // Returns the HUD and speed panel texts that name a key, from the ship's keys (SOLKeyBindings order); the comments

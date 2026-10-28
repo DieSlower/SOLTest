@@ -176,6 +176,7 @@ SOLHudFormat::FHudKeyTexts SOLHudFormat::FormatHudKeyTexts(const TArray<FString>
     texts.NoTarget = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_NO_TARGET_FORMAT, keys);
     texts.SpeedPanelTitle = SOLKeyBindings::FormatKeyText(SOLMenuText::SPEED_PANEL_TITLE_FORMAT, keys);
     texts.ControlsChangedNotice = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_CONTROLS_CHANGED_NOTICE_FORMAT, keys);
+    texts.RouteResumeHint = SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_ROUTE_RESUME_HINT_FORMAT, keys);
     return texts;
 }
 

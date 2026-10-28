@@ -3,7 +3,7 @@
 # SDD 20: Hologram map and move orders
 
 Status: design agreed (grill-me complete); steps 1-4 (keys, route logic, map modes, route subsystem) built, see
-Amendment 1; steps 5-8 (overlay, hologram look) not yet. Depends on SDD 3 (jump map), SDD 18 (autopilot),
+Amendment 1; step 5 (route overlay, HUD route marker) built, see Amendment 2; steps 6-8 (hologram look) not yet. Depends on SDD 3 (jump map), SDD 18 (autopilot),
 SDD 19 (flight modes). Issue #25 (map alignment and shimmer) is fixed first as its own commit.
 
 ## 1. Goal
@@ -154,3 +154,40 @@ What shifted or was decided during implementation (none of it changes a grill an
   failure ("thrust flies the ship", relative speed falls 4876 -> 4839 m/s at Mars) that does not involve any code this
   change touched; `-SOLSmokeJump` reports anchor Deimos instead of Mars at arrival (ephemeris-dependent; jump code
   untouched). Both left for follow-up.
+
+## Amendment 2: step 5 as built (route overlay and HUD route marker)
+
+- **Drawing.** `FSOLMapRouteOverlay` (owned by `ASOLFlightHud`) draws on the map always and in flight while P is on.
+  Everything is one additive `FCanvasTriangleItem` batch (canvas lines ignore alpha, so brightness is carried in RGB):
+  each leg is a glow line (bright core plus a halo fading to nothing) tessellated into pieces of at most 32 px (16 per
+  leg) so the LT fade `exp(-2 (1 - t))` reads along it; a Ping-pong travelling back fades the other way. Arrowheads sit
+  at each leg's true middle (two opposite ones for Ping-pong); a Loop's closing leg is dashed (10 px / 7 px at 720 px).
+  Rings at waypoints: Primary with a centre dot above the ecliptic plane through the ship (map: the camera focus),
+  hollow Secondary below; the current target's ring is larger. Alphas: active 1, draft 0.4, paused 0.3 with a PAUSED
+  tag at the target, finished 0.3. The ship has a leg to the route's current target (the "progress" leg). The draft's
+  segment to the cursor (Secondary, 0.8) runs from the last draft waypoint, or the ship, to the live drag point.
+- **Projection.** The HUD's view (horizontal-FOV focal length, issue #25) as the pick overlay. Points are placed at
+  their true (uncompressed) offset from the render viewpoint plus the viewpoint's render location: the far-field
+  compression is radial from the viewpoint (where the map camera is), so this projects where the bodies' compressed
+  placement does (markers within 0.5 px of the engine's projection in the smoke) while depths stay true, so the
+  near-plane clip, the perspective-correct fade parameter and the arrows at each leg's true middle are exact for far
+  legs too (review fix). Each leg is clipped to the near plane, then to the screen (Liang-Barsky), before tessellation,
+  and stops short of the rings at its own on-screen ends so a hollow ring stays hollow.
+- **Bounds.** Legs are visited in priority order around the active leg (draft and finished: the last leg), at most
+  512 looked at and 128 drawn per route; markers over the visited range, nearest the target first, at most 256. One
+  batch of at most 16,384 triangles (reserved once), filled in order: the draft's cursor segment, the route (ship leg,
+  legs, markers) within 75%, then the draft in the rest, so the plan being edited is never starved. Pure helpers (leg indexing, active leg, priority order, clipping, fade, tessellation, dashes, plane test,
+  style alphas) are `SOLRouteOverlayMath`, tested in `SOLTest.RouteOverlayMath` (written from the contract by a
+  separate agent).
+- **HUD marker.** One line under the autopilot block (or where it would be): kind, Move leg n/N and percent or patrol
+  waypoint and legs flown, ETA (Move: to the end; patrol: next waypoint), `PAUSED   <Resume> resume` in Secondary, or
+  `COMPLETE` dim. If it would overlap the key-hint lines (measured each frame) it moves below them. Known: the existing
+  AUTOPILOT line at 64 px already overlaps the long flight key-hint line horizontally at 1280x720 (not changed here).
+- **Glow style.** Core and halo widths and the halo intensity are `SOL::Hologram` (shared with #21). The halo is a
+  linear ramp from 0.3 of the core to nothing, a cheap stand-in for LT's `0.8 exp(..) + 0.2 exp(-(0.2 d)^0.75)` profile.
+- **Review leftovers (accepted).** The closing leg's dash phase is anchored to the visible start, so dashes can crawl
+  while the camera moves; the key-hint lines are measured (`StrLen`) every frame for the overlap check.
+- **Verification.** `-SOLSmokeRouteOverlay` (25 checks, markers within 2 px of the engine's
+  `ProjectWorldLocationToScreen`, screenshots in flight, map and with a draft).
+- A unity-build clash (`IsFiniteVector` in two anonymous namespaces) surfaced when the new files reshuffled the blobs;
+  `SOLOrbitLineMath.cpp`'s copy is renamed `OrbitLineIsFiniteVector`.

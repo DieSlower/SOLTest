@@ -339,12 +339,15 @@ bool FSOLHudFormatKeyTextsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("default no-target text"), texts.NoTarget, FString(TEXT("none (T)")));
     TestEqual(TEXT("default speed panel title"), texts.SpeedPanelTitle,
         FString(TEXT("SPEED CAP  (F3 / Enter close, Esc close)")));
+    TestEqual(TEXT("default route resume hint"), texts.RouteResumeHint, FString(TEXT("   V resume")));
 
     keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
     keys[static_cast<int32>(EBinding::MatchLock)] = TEXT("N");
     keys[static_cast<int32>(EBinding::SelectTarget)] = TEXT("MiddleMouseButton");
     keys[static_cast<int32>(EBinding::SpeedPanel)] = TEXT("F4");
+    keys[static_cast<int32>(EBinding::Resume)] = TEXT("B");
     texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("rebound route resume hint"), texts.RouteResumeHint, FString(TEXT("   B resume")));
     TestEqual(TEXT("rebound surface-lock hint"), texts.SurfaceLockHint, FString(TEXT("K to surface-lock  ")));
     TestEqual(TEXT("rebound frame-lock tag"), texts.FrameLockTag, FString(TEXT(" [N LOCK]")));
     TestEqual(TEXT("rebound no-target text"), texts.NoTarget, FString(TEXT("none (MMB)")));

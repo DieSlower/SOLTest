@@ -10,6 +10,8 @@
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Map/SOLMapPicking.h"
+#include "Map/SOLRouteSubsystem.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
@@ -92,6 +94,7 @@ namespace
     constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
     constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
     constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
+    constexpr float HUD_ROUTE_HINT_GAP_PX = 2.0f;                           // Route marker gap below the key hints
     constexpr float HUD_STEER_ICON_RADIUS_PX = 6.0f;                        // Mouse-steer icon radius (SDD 19)
     constexpr float HUD_STEER_ICON_GAP_PX = 10.0f;                          // Gap between the mode line and the icon
     constexpr int32 HUD_STEER_ICON_SEGMENTS = 16;
@@ -135,6 +138,7 @@ void ASOLFlightHud::BeginPlay()
     Targeting = world->GetSubsystem<USOLTargetingSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
+    Routes = world->GetSubsystem<USOLRouteSubsystem>();
     Settings = USOLSettingsSubsystem::Get(this);
 
     // Key hints follow the player's bindings: built now and again after each applied rebind, never per frame
@@ -146,6 +150,7 @@ void ASOLFlightHud::BeginPlay()
 
     // Buffers sized once so the draw path only resets and refills them
     mText.Reserve(256);
+    mLastRouteLineText.Reserve(128);
 
     // Warp streak table: random directions, phases and speeds from a fixed seed
     FRandomStream random(WARP_STREAK_SEED);
@@ -164,6 +169,7 @@ void ASOLFlightHud::BeginPlay()
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
     mMapPickOverlay.Initialize();
+    mRouteOverlay.Initialize();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -259,6 +265,11 @@ void ASOLFlightHud::DrawHUD()
     mLastWarpStreaksDrawn = 0;
     mWasFlightHudDrawn = false;
     mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;
+    mLastRouteLineText.Reset();
+    mLastRouteLineRect = FBox2D(ForceInit);
+    mLastHintsRect = FBox2D(ForceInit);
+    mAutopilotBlockBottomY = 0.0f;
+    mRouteOverlay.ResetFrame();
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
@@ -293,17 +304,25 @@ void ASOLFlightHud::DrawHUD()
     const bool bHasView = BuildView(view);
 
     // World-anchored overlays first so the panels draw on top of them
+    FSOLMapOverlayView overlayView;
+    overlayView.LocationCm = view.Location;
+    overlayView.Rotation = view.Rotation;
+    overlayView.Center = view.Center;
+    overlayView.FocalPx = view.FocalPx;
     if (bHasView && IsMapOpen())
     {
         // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
-        FSOLMapOverlayView overlayView;
-        overlayView.LocationCm = view.Location;
-        overlayView.Rotation = view.Rotation;
-        overlayView.Center = view.Center;
-        overlayView.FocalPx = view.FocalPx;
         mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
             GEngine->GetSmallFont(), HUD_TEXT_COLOR, mUiScale);
+    }
 
+    // Routes and the draft (SDD 20): always on the map, in flight while the route overlay is on (P)
+    if (bHasView && Routes != nullptr && (IsMapOpen() || Routes->IsOverlayVisible()))
+    {
+        DrawRouteOverlay(overlayView);
+    }
+    if (bHasView && IsMapOpen())
+    {
         // Destination pick (2d): reference ring, disc, height guide line and destination marker over the icons
         mMapPickOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, mUiScale);
     }
@@ -337,6 +356,7 @@ void ASOLFlightHud::DrawHUD()
     }
     DrawSpeedBlock(state, control);
     DrawPilotBlock(control);
+    DrawRouteMarker();
     DrawRadar(state);
 
     // The jump map views from its own camera: the ship-view pilot aids (reticle, joystick, velocity markers) are
@@ -602,18 +622,18 @@ void ASOLFlightHud::DrawInfoBlock()
     if (IsMapOpen())
     {
         mText.Append(mMapHints);
-        DrawBuffer(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
+        mLastHintsRect += DrawBufferMeasured(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
         y += HUD_LINE_SMALL_PX * mUiScale;
 
         // Destination picking (2d) and the jump (2e)
         mText.Reset();
         mText.Append(TEXT("PICK   left click body/space + drag: XY   hold Shift + move: height   Shift+click: lock"));
         mText.Append(TEXT("   X clear   Enter jump"));
-        DrawBuffer(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
+        mLastHintsRect += DrawBufferMeasured(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }
     mText.Append(AreOrbitLinesVisible() ? mFlightHintsOrbitsOn : mFlightHintsOrbitsOff);
-    DrawBuffer(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
+    mLastHintsRect += DrawBufferMeasured(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -810,6 +830,134 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         DrawBuffer(ESOLHudLine::AutopilotHint, HUD_WARN_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
             top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX) * mUiScale, small);
     }
+    mAutopilotBlockBottomY = top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX
+        + (Ships->IsAutopilotPrecisionReduced() ? HUD_LINE_SMALL_PX : 0.0f)) * mUiScale;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the route overlay's inputs from the route and map-mode subsystems and draws it (map, or flight with P on)
+void ASOLFlightHud::DrawRouteOverlay(const FSOLMapOverlayView& overlayView)
+{
+    FSOLRouteOverlayInputs inputs;
+    const ESOLRouteState state = Routes->GetState();
+    if (state != ESOLRouteState::None)
+    {
+        inputs.RouteWaypoints = Routes->GetWaypoints();
+        inputs.RouteCursor = Routes->GetCursor();
+        inputs.RouteKind = Routes->GetKind();
+        inputs.RouteStyle = state == ESOLRouteState::Paused ? ESOLRouteDrawStyle::Paused
+            : (state == ESOLRouteState::Finished ? ESOLRouteDrawStyle::Finished : ESOLRouteDrawStyle::Active);
+    }
+    if (Ships != nullptr && Ships->HasPlayerShip())
+    {
+        inputs.bHasShip = true;
+        inputs.ShipPositionM = Ships->GetUniversePositionM();
+    }
+    inputs.PlanePointM = inputs.bHasShip ? inputs.ShipPositionM : AnchorSubsystem->GetViewpointM();
+
+    // The draft (hidden in the map's Jump mode) and, while a pick drags in Move / Patrol mode, the cursor point
+    const bool bMapOpen = IsMapOpen();
+    if (MapMode != nullptr)
+    {
+        const FSOLMapModeState& modeState = MapMode->GetModeState();
+        const bool bRouteMode = modeState.Mode != ESOLMapMode::Jump;
+        if (!bMapOpen || bRouteMode)
+        {
+            inputs.DraftWaypoints = modeState.Draft;
+            inputs.DraftKind = SOLMapModeState::RouteKindFor(modeState);
+        }
+        if (bMapOpen && bRouteMode && MapMode->IsPickDragging() && MapMode->GetPickState().bHasReference)
+        {
+            const FVector2D planarM = MapMode->GetPickPlanarOffsetM();
+            inputs.CursorPointM = SOLMapPicking::ComposeDestination(MapMode->GetPickReferencePositionM(), planarM.X,
+                planarM.Y, 0.0, SOL::MAP_PICK_ECLIPTIC_X, SOL::MAP_PICK_ECLIPTIC_Y, SOL::MAP_PICK_UP);
+            inputs.bHasCursorPoint = true;
+        }
+        if (bMapOpen)
+        {
+            inputs.PlanePointM = MapMode->GetCameraState().FocusPositionM;
+        }
+    }
+    mRouteOverlay.Draw(*Canvas, overlayView, *AnchorSubsystem, BodyRegistry->GetRegistry(), inputs,
+        GEngine->GetSmallFont(), mUiScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the route marker (state, progress, total ETA) below the autopilot marker, moved below the key hints if it
+// would overlap them (top centre)
+void ASOLFlightHud::DrawRouteMarker()
+{
+    if (Routes == nullptr || Routes->GetState() == ESOLRouteState::None)
+    {
+        return;
+    }
+    const ESOLRouteState state = Routes->GetState();
+    const ESOLRouteKind kind = Routes->GetKind();
+    const FSOLRouteCursor& cursor = Routes->GetCursor();
+    const int32 waypointCount = Routes->GetWaypoints().Num();
+
+    // "ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03", "ROUTE  PATROL LOOP  waypoint 3/4  legs 7   next ETA 5:00"
+    mText.Reset();
+    mText.Append(TEXT("ROUTE  "));
+    mText.Append(kind == ESOLRouteKind::Move ? TEXT("MOVE") : (kind == ESOLRouteKind::PatrolLoop
+        ? TEXT("PATROL LOOP") : TEXT("PATROL PING-PONG")));
+    if (kind == ESOLRouteKind::Move)
+    {
+        const int32 totalLegs = SOLRoute::TotalLegs(kind, waypointCount);
+        const int32 legNumber = state == ESOLRouteState::Finished ? totalLegs
+            : FMath::Min(cursor.LegsCompleted + 1, totalLegs);
+        mText.Appendf(TEXT("  leg %d/%d  %.0f%%"), legNumber, totalLegs, Routes->GetProgress() * HUD_PERCENT);
+    }
+    else
+    {
+        mText.Appendf(TEXT("  waypoint %d/%d  legs %d"), cursor.TargetIndex + 1, waypointCount, cursor.LegsCompleted);
+    }
+    FLinearColor color = SOL::HudPalette::PRIMARY;
+    switch (state)
+    {
+    case ESOLRouteState::Paused:
+        mText.Append(TEXT("   PAUSED"));
+        mText.Append(mKeyTexts.RouteResumeHint);
+        color = SOL::HudPalette::SECONDARY;
+        break;
+    case ESOLRouteState::Finished:
+        mText.Append(TEXT("   COMPLETE"));
+        color = HUD_DIM_COLOR;
+        break;
+    default:
+        mText.Append(kind == ESOLRouteKind::Move ? TEXT("   ETA ") : TEXT("   next ETA "));
+        SOLHudFormat::AppendDurationS(mText, Routes->GetRouteEtaS());
+        break;
+    }
+
+    // Below the autopilot block (or where it would be), and below the key hints if it would overlap them
+    UFont* medium = GEngine->GetMediumFont();
+    float textWidth = 0.0f;
+    float textHeight = 0.0f;
+    Canvas->StrLen(medium, mText, textWidth, textHeight);
+    const float x = Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale;
+    float y = mAutopilotBlockBottomY > 0.0f ? mAutopilotBlockBottomY : HUD_AUTOPILOT_TOP_PX * mUiScale;
+    FBox2D rect(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
+    if (mLastHintsRect.bIsValid && rect.Intersect(mLastHintsRect))
+    {
+        y = mLastHintsRect.Max.Y + HUD_ROUTE_HINT_GAP_PX * mUiScale;
+        rect = FBox2D(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
+    }
+    DrawBuffer(ESOLHudLine::Route, color, x, y, medium);
+    mLastRouteLineRect = rect;
+    mLastRouteLineText.Append(mText);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the text buffer as a HUD line and returns its screen rectangle
+FBox2D ASOLFlightHud::DrawBufferMeasured(const ESOLHudLine line, const FLinearColor& color, const float x,
+    const float y, UFont* font)
+{
+    float textWidth = 0.0f;
+    float textHeight = 0.0f;
+    Canvas->StrLen(font, mText, textWidth, textHeight);
+    DrawBuffer(line, color, x, y, font);
+    return FBox2D(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
 }
 
 //////////////////////////////////////////////////////////////////////////

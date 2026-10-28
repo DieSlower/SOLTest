@@ -9,6 +9,7 @@
 #include "Flight/SOLFlightMode.h"
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
+#include "Map/SOLMapRouteOverlay.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLRadarLayout.h"
 
@@ -25,6 +26,7 @@ class USOLBodyRegistrySubsystem;
 class USOLJumpSubsystem;
 class USOLSettingsSubsystem;
 class USOLMapModeSubsystem;
+class USOLRouteSubsystem;
 class USOLShipSubsystem;
 class USOLSimClockSubsystem;
 class USOLTargetingSubsystem;
@@ -97,6 +99,18 @@ public:
 
     // Returns the jump map's destination-pick overlay (disc, guide line, marker draw state)
     const FSOLMapPickOverlay& GetMapPickOverlay() const { return mMapPickOverlay; }
+
+    // Returns the route overlay (legs, markers and their screen positions; verification)
+    const FSOLMapRouteOverlay& GetRouteOverlay() const { return mRouteOverlay; }
+
+    // Returns the route marker line drawn in the last frame, empty when none (verification)
+    const FString& GetLastRouteLineText() const { return mLastRouteLineText; }
+
+    // Returns the route marker line's screen rectangle of the last frame (verification)
+    const FBox2D& GetLastRouteLineRect() const { return mLastRouteLineRect; }
+
+    // Returns the key-hint lines' screen rectangle of the last frame (verification)
+    const FBox2D& GetLastHintsRect() const { return mLastHintsRect; }
 
     // Returns the flight key hint line as drawn with the orbit lines off (verification)
     const FString& GetFlightKeyHints() const { return mFlightHintsOrbitsOff; }
@@ -177,6 +191,7 @@ private:
         Autopilot,
         AutopilotHint,
         AutopilotCancel,
+        Route,
         TargetName,
         TargetDistance,
         TargetRelative,
@@ -215,6 +230,16 @@ private:
     // Draws the pilot G meter (above the speed block), the G warning (under the reticle) and the autopilot marker
     // with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
     void DrawPilotBlock(const FSOLShipControl& control);
+
+    // Fills the route overlay's inputs from the route and map-mode subsystems and draws it (map, or flight with P on)
+    void DrawRouteOverlay(const FSOLMapOverlayView& overlayView);
+
+    // Draws the route marker (state, progress, total ETA) below the autopilot marker, moved below the key hints if it
+    // would overlap them (top centre)
+    void DrawRouteMarker();
+
+    // Draws the text buffer as a HUD line and returns its screen rectangle
+    FBox2D DrawBufferMeasured(ESOLHudLine line, const FLinearColor& color, float x, float y, UFont* font);
 
     // Draws the mouse-steer icon centred on a point: Free (an open cursor arrow), Held (a reticle), Locked (a reticle
     // with a lock tick); bright while the mouse steers, dim otherwise
@@ -268,10 +293,18 @@ private:
     TObjectPtr<USOLJumpSubsystem> Jump;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLRouteSubsystem> Routes;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSubsystem> Settings;
 
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
+    FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
+    FString mLastRouteLineText;                     // Route marker drawn last frame (verification)
+    FBox2D mLastRouteLineRect = FBox2D(ForceInit);  // Its screen rectangle
+    FBox2D mLastHintsRect = FBox2D(ForceInit);      // Key-hint lines' screen rectangle of the last frame
+    float mAutopilotBlockBottomY = 0.0f;            // Bottom of the autopilot marker block this frame, 0 if none
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame

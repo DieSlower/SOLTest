@@ -342,6 +342,29 @@ namespace SOL
         // In AUTO, flight input held only on Shift keys (thrust up by default) counts after this long, so the Shift+M /
         // Shift+J map chords do not cancel the autopilot
         inline constexpr double SHIFT_CHORD_GRACE_S = 0.5;
+
+        // Route overlay (SDD 20 section 2.4): style alphas (active 1, draft ~0.4, paused and finished ~0.3)
+        inline constexpr double OVERLAY_ALPHA_ACTIVE = 1.0;
+        inline constexpr double OVERLAY_ALPHA_DRAFT = 0.4;
+        inline constexpr double OVERLAY_ALPHA_PAUSED = 0.3;
+        inline constexpr double OVERLAY_ALPHA_FINISHED = 0.3;
+        // LT directional fade along a leg: exp(-OVERLAY_FADE_RATE (1 - t)), dimmest at the leg's start
+        inline constexpr double OVERLAY_FADE_RATE = 2.0;
+        // Per-frame bounds: legs looked at (projected), legs drawn, and triangles in the one batch (sized once)
+        inline constexpr int32 OVERLAY_MAX_LEGS_CONSIDERED = 512;
+        inline constexpr int32 OVERLAY_MAX_LEGS_DRAWN = 128;
+        inline constexpr int32 OVERLAY_MAX_TRIANGLES = 16384;
+        // Waypoint markers drawn per route (nearest the target first), and the active route's share of the triangles
+        // (the rest is kept for the draft, so the plan being edited is never starved)
+        inline constexpr int32 OVERLAY_MAX_MARKERS_DRAWN = 256;
+        inline constexpr double OVERLAY_ROUTE_TRIANGLE_SHARE = 0.75;
+        // A leg's fade is tessellated into one piece per this many pixels on screen, at most OVERLAY_MAX_SUBDIVISIONS
+        inline constexpr double OVERLAY_PX_PER_SUBDIVISION = 32.0;
+        inline constexpr int32 OVERLAY_MAX_SUBDIVISIONS = 16;
+        // Patrol Loop closing leg: dash and gap lengths (pixels at a 720 px canvas), at most this many dashes per leg
+        inline constexpr double OVERLAY_DASH_PX = 10.0;
+        inline constexpr double OVERLAY_GAP_PX = 7.0;
+        inline constexpr int32 OVERLAY_MAX_DASHES = 256;
     }
 
     // Jump map camera: horizontal field of view (degrees); narrower than the ship's 90 deg to limit edge distortion
@@ -473,6 +496,9 @@ namespace SOL
     // Jump map destination picking works in ecliptic axes: the planar offset along X/Y, the height along Up (SDD 3
     // section 3). Shared by the map mode's pick math, the pick overlay and the pick smoke script
     inline const FVector3d MAP_PICK_ECLIPTIC_X(1.0, 0.0, 0.0);
+
+    // Map / route canvas overlays: points closer than this in front of the camera (cm) are clipped
+    inline constexpr double MAP_OVERLAY_NEAR_PLANE_CM = 10.0;
     inline const FVector3d MAP_PICK_ECLIPTIC_Y(0.0, 1.0, 0.0);
     inline const FVector3d MAP_PICK_UP(0.0, 0.0, 1.0);
 
@@ -655,6 +681,16 @@ namespace SOL
     // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
     // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
     // flight mode label uses it now; ticket #21 applies it, with LT's glow shading, to the whole HUD
+    // Shared hologram style (SDD 20 section 2.4; #21 reuses it). Glow line, pixels at a 720 px canvas: a bright core
+    // and a halo fading linearly from GLOW_HALO_INTENSITY of the core to nothing (a cheap stand-in for LT's
+    // 0.8 exp(-2 max(0, d - 0.5)) + 0.2 exp(-(0.2 d)^0.75) profile)
+    namespace Hologram
+    {
+        inline constexpr double GLOW_CORE_HALF_PX = 0.9;
+        inline constexpr double GLOW_HALO_HALF_PX = 4.5;
+        inline constexpr double GLOW_HALO_INTENSITY = 0.3;
+    }
+
     namespace HudPalette
     {
         inline const FLinearColor PRIMARY(0.2f, 0.7f, 1.0f, 1.0f);      // LT Primary (blue-cyan)
@@ -789,6 +825,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
         inline constexpr const TCHAR* SMOKE_MAP_ALIGN = TEXT("SOLSmokeMapAlign"); // Map icons on their lines
         inline constexpr const TCHAR* SMOKE_ROUTE = TEXT("SOLSmokeRoute");      // Map modes and a route, then quit
+        inline constexpr const TCHAR* SMOKE_ROUTE_OVERLAY = TEXT("SOLSmokeRouteOverlay");   // Route overlay, then quit
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

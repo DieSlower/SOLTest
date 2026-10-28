@@ -12,6 +12,7 @@
 #include "Map/SOLMapModeState.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
+#include "Map/SOLRouteOverlaySmoke.h"
 #include "Map/SOLRouteSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
@@ -837,6 +838,7 @@ private:
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLMapAlignSmoke> mSmokeMapAlign;           // Verification-only map alignment (-SOLSmokeMapAlign)
     TUniquePtr<FSOLRouteSmoke> mSmokeRoute;                 // Verification-only map mode and route script
+    TUniquePtr<FSOLRouteOverlaySmoke> mSmokeRouteOverlay;   // Verification-only route overlay script
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
