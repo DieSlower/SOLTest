@@ -220,7 +220,9 @@ void FSOLMenuSmoke::EnterPhase(const EPhase phase, USOLMenuSubsystem& menu)
         SlateKey(EKeys::Escape);
         break;
     case EPhase::MapOpen:
-        TapKey(EKeys::J);
+        // Shift+M opens the map (SDD 20); Shift is released with M next frame
+        TapKey(EKeys::LeftShift);
+        TapKey(EKeys::M);
         break;
     case EPhase::MapEscape:
         TapKey(EKeys::Escape);
@@ -600,7 +602,7 @@ void FSOLMenuSmoke::RunRebindCapture(USOLMenuSubsystem& menu)
         return;
     }
     const int32 drop = static_cast<int32>(EBinding::DropTarget);
-    const int32 toggleMap = static_cast<int32>(EBinding::ToggleMap);
+    const int32 toggleMap = static_cast<int32>(EBinding::Resume);
 
     // Space while listening, with the mouse hovering Resume (no focus change) and then the keyboard focus forced onto
     // it anyway: Space is the new key and must not click Resume
@@ -612,7 +614,8 @@ void FSOLMenuSmoke::RunRebindCapture(USOLMenuSubsystem& menu)
     SlateKey(EKeys::SpaceBar);
     const FString spaceKey = settings->GetPendingKeys()[drop];
 
-    // Enter for the map toggle (one of the map's fixed keys): refused, and must not click the focused Resume either
+    // Enter for Resume (one of the map's fixed keys; Resume is mapped on the map too): refused, and must not click the
+    // focused Resume button either
     page->BeginRebind(toggleMap);
     SlateKey(EKeys::Enter);
     const FString mapKey = settings->GetPendingKeys()[toggleMap];
@@ -627,7 +630,7 @@ void FSOLMenuSmoke::RunRebindCapture(USOLMenuSubsystem& menu)
     // Back to the default drop key, so the next phase starts from the defaults
     page->BeginRebind(drop);
     page->CaptureKey(EKeys::G);
-    mIsCaptureOk = !bHoverMovedFocus && spaceKey == TEXT("SpaceBar") && mapKey == TEXT("J")
+    mIsCaptureOk = !bHoverMovedFocus && spaceKey == TEXT("SpaceBar") && mapKey == TEXT("V")
         && !refusedStatus.IsEmpty() && mouseKey == TEXT("RightMouseButton") && !bStillListening
         && settings->GetPendingKeys()[drop] == TEXT("G") && !settings->IsKeyCaptureActive();
     mCaptureDetail = FString::Printf(TEXT("hover moved focus %d, space -> %s, map Enter -> %s (%s), mouse -> %s"),
@@ -755,7 +758,7 @@ void FSOLMenuSmoke::EnterSettingsPhase(const EPhase phase, USOLMenuSubsystem& me
         {
             // A fixed key is refused, a used key is bound with a warning (and put back), then Fire goes to K
             pausePage->BeginRebind(static_cast<int32>(EBinding::DropTarget));
-            pausePage->CaptureKey(EKeys::P);
+            pausePage->CaptureKey(EKeys::F1);
             const bool bRefused = settings->GetPendingKeys()[static_cast<int32>(EBinding::DropTarget)] == TEXT("G");
             pausePage->BeginRebind(static_cast<int32>(EBinding::Boost));
             pausePage->CaptureKey(EKeys::G);

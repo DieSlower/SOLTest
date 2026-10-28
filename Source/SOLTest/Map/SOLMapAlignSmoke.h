@@ -17,7 +17,7 @@ class USOLSimClockSubsystem;
 class USOLTargetingSubsystem;
 
 /**
- * Verification-only map alignment run (-SOLSmokeMapAlign, issue #25): opens the jump map with J, then for a fixed list
+ * Verification-only map alignment run (-SOLSmokeMapAlign, issue #25): opens the jump map with Shift+M, then for a fixed list
  * of views (a focus body, a target body whose orbit line is highlighted, a camera distance) points the map camera at
  * the focus, waits for the view to settle and checks that the target body's map icon lies on its own orbit line: the
  * icon is projected as the HUD projects it (the FOV as horizontal across the viewport), the line is rebuilt on the
@@ -74,7 +74,7 @@ private:
     int32 mStep = 0;                // 0 = opening, 1..views = views, then the motion sweep, then closing
     int32 mStepFrames = 0;
     double mStepTimeS = 0.0;
-    bool mHasPendingJRelease = false;
+    bool mHasPendingMapKeyRelease = false;
     bool mIsFinished = false;
     int32 mPassed = 0;
     int32 mFailed = 0;

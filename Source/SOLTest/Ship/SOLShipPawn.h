@@ -9,8 +9,10 @@
 #include "Flight/SOLFlightMode.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
+#include "Map/SOLMapModeState.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
+#include "Map/SOLRouteSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHudSmoke.h"
@@ -33,6 +35,7 @@ class USOLCombatSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLMenuSubsystem;
+class USOLRouteSubsystem;
 class USOLSettingsSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
@@ -59,7 +62,7 @@ namespace SOLMenuState
  * Middle mouse recenters it. Holding Alt freezes the stick and orbits the camera instead. Every Enhanced Input
  * callback forwards to a plain Handle* function so scripts (-SOLSmokeInput) and future UI can drive the same paths.
  *
- * HUD keys (1c): O toggles the flight HUD's orbit ellipses, P is reserved for the predicted path (no-op), and F3 opens
+ * HUD keys (1c): O toggles the flight HUD's orbit ellipses, P the route overlay (issue #20), and F3 opens
  * the speed panel (USOLSpeedPanelWidget). While the panel is open the ship's own control input is suspended: the
  * mapping context is removed, held keys are flushed, thrust/roll/boost and the stick are zeroed and the panel has
  * UI-only keyboard focus. The ship's Mass simulation keeps running. Closing restores the mapping and game-only input.
@@ -195,8 +198,11 @@ public:
     // Toggles the flight HUD's body orbit ellipses (O)
     void HandleToggleOrbitLines();
 
-    // Reserved for the ship's predicted path (P); does nothing yet (SDD 2 section 6)
-    void HandleTogglePredictedPath();
+    // Shows or hides the route overlay (P; SDD 20)
+    void HandleToggleRouteOverlay();
+
+    // Resumes a paused route (V; flight and map)
+    void HandleResumeRoute();
 
     // Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
     void HandleRadarZoom(bool bZoomIn);
@@ -219,8 +225,16 @@ public:
     // Sets the speed cap (clamped to the flight parameters' range) and returns the value set; the panel's apply path
     double ApplySpeedCapMps(double capMps);
 
-    // Requests the jump map to open or close (J; done at the next tick, outside the input callback)
-    void HandleToggleMap();
+    // Shift+M (bForJump false) or Shift+J (true): in flight, requests the map to open in the last used mode or in Jump
+    // mode (done at the next tick, outside the input callback); on the map, Shift+M closes it and Shift+J switches to
+    // Jump mode
+    void HandleOpenMap(bool bForJump);
+
+    // An in-map mode key: J Jump, M Move, P Patrol (P again flips loop / ping-pong)
+    void HandleMapModeKey(ESOLMapMode key);
+
+    // Clears the active route (Delete on the map)
+    void HandleMapClearRoute();
 
     // Requests the jump map to close (Esc; done at the next tick)
     void HandleCloseMap();
@@ -246,10 +260,10 @@ public:
     // Left mouse released on the map: locks the pick's planar offset
     void HandleMapPickReleased();
 
-    // Clears the map's destination pick (X)
+    // Clears the map's destination pick, and the draft route in Move / Patrol mode (X)
     void HandleMapClearPick();
 
-    // Requests a jump to the map's locked destination (Enter; started at the next tick, outside the input callback)
+    // Enter on the map: requests the jump (Jump mode) or the route start (Move / Patrol), done at the next tick
     void HandleMapJump();
 
     // Moves the map cursor to a pixel position (top-left origin) and forwards it to the map
@@ -392,11 +406,13 @@ private:
     // keys still held so they do not cancel the autopilot until released
     void RestoreShipControl();
 
-    // Returns the pilot input the ship's bound flight keys hold right now (no stick: it is zeroed while suspended)
-    FSOLPilotInput HeldKeyPilotInput(const APlayerController& playerController) const;
+    // Returns the pilot input the ship's bound flight keys hold right now (no stick: it is zeroed while suspended);
+    // with bShiftKeysOnly, only the bindings whose key is Left / Right Shift count
+    FSOLPilotInput HeldKeyPilotInput(const APlayerController& playerController, bool bShiftKeysOnly = false) const;
 
-    // Opens the jump map: adds the map mapping (rolling back on failure), suspends ship control and frees the OS cursor
-    void OpenMap();
+    // Opens the map (in the last used mode, or Jump mode for Shift+J): adds the map mapping (rolling back on failure),
+    // suspends ship control and frees the OS cursor
+    void OpenMap(bool bForJump);
 
     // Closes the jump map and gives input and the view back to the ship
     void CloseMap();
@@ -517,8 +533,11 @@ private:
     // Enhanced Input: orbit lines toggle
     void OnToggleOrbitLinesAction(const FInputActionValue& value);
 
-    // Enhanced Input: predicted path toggle (reserved)
-    void OnTogglePredictedPathAction(const FInputActionValue& value);
+    // Enhanced Input: route overlay toggle (P)
+    void OnToggleRouteOverlayAction(const FInputActionValue& value);
+
+    // Enhanced Input: resume a paused route (V)
+    void OnResumeRouteAction(const FInputActionValue& value);
 
     // Enhanced Input: speed panel
     void OnSpeedPanelAction(const FInputActionValue& value);
@@ -532,8 +551,23 @@ private:
     // Enhanced Input: radar back to AUTO range
     void OnRadarAutoAction(const FInputActionValue& value);
 
-    // Enhanced Input: jump map toggle (J, in both the ship and the map mapping)
-    void OnToggleMapAction(const FInputActionValue& value);
+    // Enhanced Input: Shift+M (open the map in the last mode / close it on the map)
+    void OnOpenMapAction(const FInputActionValue& value);
+
+    // Enhanced Input: Shift+J (open the map in Jump mode / Jump mode on the map)
+    void OnOpenMapJumpAction(const FInputActionValue& value);
+
+    // Enhanced Input: J on the map (Jump mode)
+    void OnMapModeJumpAction(const FInputActionValue& value);
+
+    // Enhanced Input: M on the map (Move mode)
+    void OnMapModeMoveAction(const FInputActionValue& value);
+
+    // Enhanced Input: P on the map (Patrol mode; again flips loop / ping-pong)
+    void OnMapModePatrolAction(const FInputActionValue& value);
+
+    // Enhanced Input: Delete on the map (clear the active route)
+    void OnMapClearRouteAction(const FInputActionValue& value);
 
     // Enhanced Input: jump map close (Esc)
     void OnMapCloseAction(const FInputActionValue& value);
@@ -685,7 +719,13 @@ private:
     TObjectPtr<UInputAction> ToggleOrbitLinesAction;
 
     UPROPERTY(Transient)
-    TObjectPtr<UInputAction> TogglePredictedPathAction;
+    TObjectPtr<UInputAction> ToggleRouteOverlayAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ResumeRouteAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ShiftChordAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> SpeedPanelAction;
@@ -700,7 +740,22 @@ private:
     TObjectPtr<UInputAction> RadarAutoAction;
 
     UPROPERTY(Transient)
-    TObjectPtr<UInputAction> ToggleMapAction;
+    TObjectPtr<UInputAction> OpenMapAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> OpenMapJumpAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapModeJumpAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapModeMoveAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapModePatrolAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> MapClearRouteAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> PauseAction;
@@ -748,6 +803,9 @@ private:
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLRouteSubsystem> Routes;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;
 
     UPROPERTY(Transient)
@@ -778,6 +836,7 @@ private:
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLMapAlignSmoke> mSmokeMapAlign;           // Verification-only map alignment (-SOLSmokeMapAlign)
+    TUniquePtr<FSOLRouteSmoke> mSmokeRoute;                 // Verification-only map mode and route script
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
@@ -785,6 +844,7 @@ private:
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)
     FSOLBoostToggle mBoost;                                 // Boost toggle (SDD 19)
     uint32 mSeenPilotResetCount = 0;                        // Ship subsystem pilot resets already applied to boost
+    double mShiftOnlyHeldS = 0.0;                           // AUTO: how long only Shift keys have held flight input
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
@@ -807,10 +867,13 @@ private:
     bool mIsSpeedPanelOpen = false;                         // True while the F3 panel has focus
     bool mIsSpeedPanelRequested = false;                    // F3 pressed; the panel opens at the next tick
     bool mIsMapOpen = false;                                // True while the jump map is open
-    bool mIsMapToggleRequested = false;                     // J/Esc pressed; the map opens or closes at the next tick
+    bool mIsMapToggleRequested = false;                     // Shift+M/Esc pressed; the map opens or closes next tick
+    bool mIsMapOpenForJump = false;                         // The requested open is Shift+J (Jump mode)
     bool mIsJumpRequested = false;                          // Enter pressed on the map; the jump starts next tick
     bool mIsWarpEffectActive = false;                       // The warp FOV pulse and post-process are applied
     bool mIsMapRightHeld = false;                           // Right mouse held on the map (orbit, or pan with Shift)
+    double mMapRightPressS = 0.0;                           // Real time the right button went down (undo click)
+    double mMapRightTravelPx = 0.0;                         // Mouse travel since then (undo click vs orbit drag)
     bool mIsMapPanHeld = false;                             // Middle mouse held on the map (pan drag)
     bool mIsMapPanModifierHeld = false;                     // Shift held on the map (right drag pans instead)
     bool mIsMapPickHeld = false;                            // Left mouse held on the map (destination pick drag)

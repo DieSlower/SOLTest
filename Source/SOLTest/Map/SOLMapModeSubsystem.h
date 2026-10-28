@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Map/SOLMapCamera.h"
+#include "Map/SOLMapModeState.h"
 #include "Map/SOLMapPicking.h"
 #include "Map/SOLMapScreenPick.h"
 
@@ -19,6 +20,7 @@ class APlayerController;
 class FSOLMapBodyOverlay;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLRouteSubsystem;
 
 /**
  * Jump-map camera mode (SDD 3, sub-part 2b-2). Owns the orbit-camera state (FSOLOrbitCameraState, driven by the pure
@@ -38,6 +40,12 @@ class USOLBodyRegistrySubsystem;
  * position (planar preview); mouse-up locks it; Shift + vertical mouse travel previews the height; Shift + click locks
  * it. The pick is recomputed on OnUniverseUpdated (positions final, before the HUD draws), so a moving reference
  * carries its locked offsets with it. Opening or closing the map clears the pick.
+ *
+ * Map modes (SDD 20 section 2.1): the map is in Jump, Move or Patrol mode (FSOLMapModeState, kept while closed; Shift+M
+ * opens it in the last mode, Shift+J in Jump mode). In Jump mode picking works as above. In Move and Patrol mode each
+ * planar lock appends a waypoint to the draft route (a ship-referenced pick is re-expressed relative to the anchor
+ * body, so every waypoint follows a body) and a height lock sets that waypoint's height; Enter hands the draft to
+ * USOLRouteSubsystem as the active route. The draft survives closing the map until X clears it or Enter starts it.
  */
 UCLASS()
 class SOLTEST_API USOLMapModeSubsystem : public UWorldSubsystem
@@ -55,8 +63,9 @@ public:
     // Creates the subsystem only in game and PIE worlds that run ASOLGameMode
     virtual bool ShouldCreateSubsystem(UObject* outer) const override;
 
-    // Opens the map for a controller: orbit state around the ship, map camera as the view target; false on failure
-    bool OpenMap(APlayerController* playerController);
+    // Opens the map for a controller: orbit state around the ship, map camera as the view target, in the last used
+    // mode or (bForJump) in Jump mode; false on failure
+    bool OpenMap(APlayerController* playerController, bool bForJump = false);
 
     // Closes the map: gives the view back to the controller's pawn and the render viewpoint back to the observer
     void CloseMap(APlayerController* playerController);
@@ -144,6 +153,29 @@ public:
     // true once the planar offset is locked; false (and outDestinationM untouched) before that. What 2e jumps to
     bool GetLiveDestinationM(FVector3d& outDestinationM) const;
 
+    // Returns the map's mode (SDD 20)
+    ESOLMapMode GetMapMode() const { return mModeState.Mode; }
+
+    // Returns the mode state: mode, patrol shape and the draft route
+    const FSOLMapModeState& GetModeState() const { return mModeState; }
+
+    // An in-map mode key (J / M / P; P again flips the patrol shape); a mode change drops the pick in progress.
+    // Returns whether anything changed
+    bool PressModeKey(ESOLMapMode key);
+
+    // Ctrl+right click: removes the last draft waypoint; returns whether one was removed
+    bool UndoWaypoint();
+
+    // X: clears the pick and, in Move or Patrol mode, the draft route
+    void ClearPickAndDraft();
+
+    // Returns what Enter does in the current state
+    ESOLMapEnterAction GetEnterAction() const { return SOLMapModeState::EnterAction(mModeState); }
+
+    // Enter in Move / Patrol mode: starts the draft as the active route and empties the draft; false (draft kept) when
+    // it is empty or the route does not start
+    bool StartDraftRoute();
+
     // Returns the number of jump requests (Enter with a locked destination) since the map opened (verification)
     int32 GetJumpRequestCount() const { return mJumpRequestCount; }
 
@@ -185,11 +217,17 @@ private:
     // Drops the pick state and every preview back to "no reference"
     void ResetPick();
 
+    // Appends the just-locked pick to the draft route (Move / Patrol mode); a ship reference becomes the anchor body
+    void AppendPickToDraft();
+
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> AnchorSubsystem;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLBodyRegistrySubsystem> BodyRegistry;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLRouteSubsystem> Routes;
 
     UPROPERTY(Transient)
     TObjectPtr<ACameraActor> CameraActor;
@@ -221,4 +259,9 @@ private:
     bool mIsHeightModifierHeld = false;                         // Shift held on the map
     bool mIsHeightPreviewing = false;                           // Shift previewing the height
     bool mIsCameraDragging = false;                             // Right or middle button drags the camera
+
+    // Map modes and the draft route (SDD 20)
+    FSOLMapModeState mModeState;                                // Mode, patrol shape, draft (kept while closed)
+    double mDraftBaseHeightM = 0.0;                             // Last appended waypoint's height before a height lock
+    bool mIsPickInDraft = false;                                // The current pick's planar lock made a waypoint
 };

@@ -132,7 +132,10 @@ namespace SOLMenuText
         { TEXT("HUD"), TEXT("Radar range in") },
         { TEXT("HUD"), TEXT("Radar range out") },
         { TEXT("HUD"), TEXT("Radar automatic range") },
-        { TEXT("Jump map"), TEXT("Open or close the jump map") },
+        { TEXT("Map"), TEXT("Open or close the map") },
+        { TEXT("Map"), TEXT("Open the map in Jump mode") },
+        { TEXT("Routes"), TEXT("Resume a paused route") },
+        { TEXT("Routes"), TEXT("Show or hide routes") },
     };
 
     // Shown for a binding without a key
@@ -142,11 +145,11 @@ namespace SOLMenuText
     // (SOLKeyBindings::FormatKeyText); the hint formats' '{N}' are filled by SOLHudFormat in the order it lists
     inline constexpr const TCHAR* HUD_HINT_ORBITS_ON_FORMAT = TEXT("ORBITS ON ({0})");
     inline constexpr const TCHAR* HUD_HINT_ORBITS_OFF_FORMAT = TEXT("ORBITS OFF ({0})");
-    inline constexpr const TCHAR* HUD_HINT_KEYS_FORMAT = TEXT("   {0} speed panel   {1} jump map   {2}/{3}/{4}/{5} "
+    inline constexpr const TCHAR* HUD_HINT_KEYS_FORMAT = TEXT("   {0} speed panel   {1} map   {2}/{3}/{4}/{5} "
         "target   {6} match frame   {7} surface-lock   {8} {9} warp   {10} {11} radar zoom   {12} radar auto   {13} fire"
-        "   {14} drop target");
-    inline constexpr const TCHAR* HUD_HINT_MAP_FORMAT = TEXT("JUMP MAP   right drag orbit   middle or Shift+right drag "
-        "pan   wheel zoom   {0} / Esc close");
+        "   {14} drop target   {15} routes   {16} resume");
+    inline constexpr const TCHAR* HUD_HINT_MAP_FORMAT = TEXT("MAP   J jump   M move   P patrol   right drag orbit   "
+        "middle or Shift+right drag pan   wheel zoom   {0} / Esc close");
     inline constexpr const TCHAR* HUD_SURFACE_LOCK_HINT_FORMAT = TEXT("{SurfaceLock} to surface-lock  ");
     inline constexpr const TCHAR* HUD_FRAME_LOCK_TAG_FORMAT = TEXT(" [{MatchLock} LOCK]");
     inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
@@ -205,16 +208,23 @@ namespace SOLMenuText
         { TEXT("Gameplay"), TEXT("@ToggleOrbitLines"), TEXT("Show or hide the orbit lines") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
         { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
-        { TEXT("Jump map"), TEXT("@ToggleMap"), TEXT("Open or close the jump map") },
-        { TEXT("Jump map"), TEXT("RightMouseButton"), TEXT("Orbit the map camera (drag)") },
-        { TEXT("Jump map"), TEXT("MiddleMouseButton|LeftShift+RightMouseButton"), TEXT("Pan the map (drag)") },
-        { TEXT("Jump map"), TEXT("MouseWheelAxis"), TEXT("Zoom the map") },
-        { TEXT("Jump map"), TEXT("LeftMouseButton"), TEXT("Pick a destination: press on a body or space, drag, release") },
-        { TEXT("Jump map"), TEXT("LeftShift|LeftShift+LeftMouseButton"),
+        { TEXT("Map"), TEXT("@OpenMap"), TEXT("Open the map in the last mode used / close it") },
+        { TEXT("Map"), TEXT("@OpenMapJump"), TEXT("Open the map in Jump mode") },
+        { TEXT("Map"), TEXT("J|M|P"), TEXT("Jump / Move / Patrol mode (P again: loop or ping-pong patrol)") },
+        { TEXT("Map"), TEXT("RightMouseButton"), TEXT("Orbit the map camera (drag)") },
+        { TEXT("Map"), TEXT("MiddleMouseButton|LeftShift+RightMouseButton"), TEXT("Pan the map (drag)") },
+        { TEXT("Map"), TEXT("MouseWheelAxis"), TEXT("Zoom the map") },
+        { TEXT("Map"), TEXT("LeftMouseButton"),
+            TEXT("Pick a destination or add a waypoint: press on a body or space, drag, release") },
+        { TEXT("Map"), TEXT("LeftShift|LeftShift+LeftMouseButton"),
             TEXT("Preview the height above the plane / lock it") },
-        { TEXT("Jump map"), TEXT("X"), TEXT("Clear the destination") },
-        { TEXT("Jump map"), TEXT("Enter"), TEXT("Jump to the destination") },
-        { TEXT("Jump map"), TEXT("Escape"), TEXT("Close the map") },
+        { TEXT("Map"), TEXT("LeftControl+RightMouseButton"), TEXT("Undo the last waypoint (click)") },
+        { TEXT("Map"), TEXT("X"), TEXT("Clear the destination and the planned waypoints") },
+        { TEXT("Map"), TEXT("Enter"), TEXT("Jump to the destination / start the route") },
+        { TEXT("Map"), TEXT("Delete"), TEXT("Clear the active route") },
+        { TEXT("Map"), TEXT("Escape"), TEXT("Close the map") },
+        { TEXT("Routes"), TEXT("@Resume"), TEXT("Resume a paused route (in flight and on the map)") },
+        { TEXT("Routes"), TEXT("@ToggleRouteOverlay"), TEXT("Show or hide routes") },
         { TEXT("Menu"), TEXT("Escape"), TEXT("Pause menu (in flight) / resume") },
         { TEXT("Menu"), TEXT("LeftControl+F1"),
             TEXT("Same as Esc (temporary: Esc stops Play-In-Editor before the game sees it)") },
@@ -304,8 +314,15 @@ namespace SOLMenuText
             "moon and of the 50 largest named asteroids, dashed and fading with distance. Your target's orbit is "
             "drawn in gold. A line behind a planet or moon is hidden by it, and the part in front of it stays visible. "
             "The choice is remembered."),
-        TEXT("The jump map ({ToggleMap}) shows the whole system. Press on a body or on empty space, drag to set where "
-            "you want to be relative to it, release, then press Enter to jump there."),
+        TEXT("The map ({OpenMap}; {OpenMapJump} opens it in Jump mode) shows the whole system; J, M and P switch "
+            "between Jump, Move and Patrol mode. Press on a body or on empty space, drag to set where you want to be "
+            "relative to it and release. In Jump mode, Enter jumps there. In Move and Patrol mode each pick adds a "
+            "waypoint that moves with its body (Ctrl+right click undoes the last one, X clears them) and Enter starts "
+            "the route: the autopilot flies through each waypoint at a speed its turn allows (a sharp turn stops) and "
+            "stops at the last one of a Move, while a patrol of two or more waypoints repeats in a loop or back and "
+            "forth (P again switches) until you clear it with Delete on the map. Thrust or steer (or C, a jump, another "
+            "autopilot order) pauses a route and {Resume} resumes it; {ToggleRouteOverlay} shows or hides the route "
+            "overlay. Time warp is never changed for you."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

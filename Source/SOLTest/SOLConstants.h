@@ -327,6 +327,23 @@ namespace SOL
     // -SOLSmokeMapAlign (issue #25): a body must project within this many pixels of its own orbit line
     inline constexpr double MAP_ALIGN_SMOKE_TOLERANCE_PX = 1.0;
 
+    // Move / Patrol routes (SDD 20 section 2.3): corner planning and the map's route input
+    namespace Route
+    {
+        // A corner turning by more than this (150 deg) is a full stop instead of a fly-through
+        inline constexpr double STOP_TURN_ANGLE_RAD = UE_DOUBLE_PI * 150.0 / 180.0;
+        // A fly-through's capture radius is at most this fraction of the shorter adjacent leg, and never below
+        // MIN_CAPTURE_RADIUS_M (the pass speed follows from it, the turn angle and the G budget)
+        inline constexpr double CAPTURE_LEG_FRACTION = 0.25;
+        inline constexpr double MIN_CAPTURE_RADIUS_M = 1000.0;
+        // Ctrl+right click (undo the last waypoint): at most this cursor travel and press time, else an orbit drag
+        inline constexpr double UNDO_CLICK_MAX_TRAVEL_PX = 4.0;
+        inline constexpr double UNDO_CLICK_MAX_S = 0.25;
+        // In AUTO, flight input held only on Shift keys (thrust up by default) counts after this long, so the Shift+M /
+        // Shift+J map chords do not cancel the autopilot
+        inline constexpr double SHIFT_CHORD_GRACE_S = 0.5;
+    }
+
     // Jump map camera: horizontal field of view (degrees); narrower than the ship's 90 deg to limit edge distortion
     inline constexpr float MAP_CAMERA_FOV_DEG = 60.0f;
 
@@ -715,11 +732,11 @@ namespace SOL
                                                                                           // (deleted at their start)
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
-        // lines, SDD 17; 3: the issue #19 key layout, SDD 19)
-        inline constexpr int32 SAVE_VERSION = 3;
-        // The save schema that introduced the current default key layout (issue #19); older saves get the one-time
+        // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20)
+        inline constexpr int32 SAVE_VERSION = 4;
+        // The save schema that introduced the current default key layout (issue #20); older saves get the one-time
         // "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
-        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 3;
+        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 4;
         inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
         inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
         inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;
@@ -771,6 +788,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_MAP = TEXT("SOLSmokeMap");          // Scripted jump-map input, then quit
         inline constexpr const TCHAR* SMOKE_MAP_PICK = TEXT("SOLSmokeMapPick"); // Scripted map destination pick, quit
         inline constexpr const TCHAR* SMOKE_MAP_ALIGN = TEXT("SOLSmokeMapAlign"); // Map icons on their lines
+        inline constexpr const TCHAR* SMOKE_ROUTE = TEXT("SOLSmokeRoute");      // Map modes and a route, then quit
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

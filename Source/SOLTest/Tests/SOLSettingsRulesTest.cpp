@@ -253,10 +253,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 3"), SOL::Settings::SAVE_VERSION, 3);
+    TestEqual(TEXT("schema version is 4"), SOL::Settings::SAVE_VERSION, 4);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 3 migrates"), ClassifySaveVersion(3, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -329,13 +331,86 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("key overrides count kept"), save->KeyOverrides.Num(), 2);
     const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
     TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
-    const FString* mapKey = save->KeyOverrides.Find(TEXT("ToggleMap"));
-    TestTrue(TEXT("map override kept"), mapKey != nullptr && *mapKey == TEXT("Comma"));
+    TestNull(TEXT("map toggle override removed by the 3 -> 4 step"), save->KeyOverrides.Find(TEXT("ToggleMap")));
+    const FString* mapKey = save->KeyOverrides.Find(TEXT("OpenMapJump"));
+    TestTrue(TEXT("map override moved to the jump-map opener"), mapKey != nullptr && *mapKey == TEXT("Comma"));
 
     // Migrating again is a no-op
     save->MigrateToCurrentVersion();
     TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
     TestTrue(TEXT("second migrate keeps the flag"), save->bShowOrbitLines);
+    TestEqual(TEXT("second migrate keeps the overrides"), save->KeyOverrides.Num(), 2);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV3RouteKeysTest, "SOLTest.SettingsRules.MigrateV3RouteKeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 3 -> 4 (issue #20): a ToggleMap override moves to OpenMapJump unless one exists already (which wins); every
+// other override and field is kept verbatim, and a second migrate changes nothing
+bool FSOLSettingsRulesMigrateV3RouteKeysTest::RunTest(const FString& /*parameters*/)
+{
+    // A v3 save with a map toggle override and two unrelated ones
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 3;
+    save->bShowOrbitLines = false;
+    save->MouseSensitivity = 1.75f;
+    save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("K"));
+    save->KeyOverrides.Add(TEXT("SurfaceLock"), TEXT("Home"));
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v3 -> 4"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestNull(TEXT("ToggleMap removed"), save->KeyOverrides.Find(TEXT("ToggleMap")));
+    const FString* jumpKey = save->KeyOverrides.Find(TEXT("OpenMapJump"));
+    TestTrue(TEXT("its key moved to OpenMapJump"), jumpKey != nullptr && *jumpKey == TEXT("Comma"));
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire kept verbatim"), fireKey != nullptr && *fireKey == TEXT("K"));
+    const FString* lockKey = save->KeyOverrides.Find(TEXT("SurfaceLock"));
+    TestTrue(TEXT("surface lock kept verbatim"), lockKey != nullptr && *lockKey == TEXT("Home"));
+    TestEqual(TEXT("override count"), save->KeyOverrides.Num(), 3);
+    TestFalse(TEXT("v3 hidden orbit lines kept"), save->bShowOrbitLines);
+    TestEqual(TEXT("v3 sensitivity kept"), save->MouseSensitivity, 1.75f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // Idempotent
+    const TMap<FString, FString> afterFirst = save->KeyOverrides;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the count"), save->KeyOverrides.Num(), afterFirst.Num());
+    const FString* jumpAgain = save->KeyOverrides.Find(TEXT("OpenMapJump"));
+    TestTrue(TEXT("second migrate keeps OpenMapJump"), jumpAgain != nullptr && *jumpAgain == TEXT("Comma"));
+
+    // An existing OpenMapJump override wins over the moved ToggleMap one
+    USOLSettingsSave* both = NewObject<USOLSettingsSave>();
+    both->Version = 3;
+    both->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
+    both->KeyOverrides.Add(TEXT("OpenMapJump"), TEXT("Period"));
+    both->MigrateToCurrentVersion();
+    TestEqual(TEXT("both: v3 -> 4"), both->Version, SOL::Settings::SAVE_VERSION);
+    TestNull(TEXT("both: ToggleMap removed"), both->KeyOverrides.Find(TEXT("ToggleMap")));
+    const FString* keptJump = both->KeyOverrides.Find(TEXT("OpenMapJump"));
+    TestTrue(TEXT("both: existing OpenMapJump wins"), keptJump != nullptr && *keptJump == TEXT("Period"));
+    TestEqual(TEXT("both: one override left"), both->KeyOverrides.Num(), 1);
+
+    // A v3 save with no ToggleMap override keeps its overrides as they are
+    USOLSettingsSave* plain = NewObject<USOLSettingsSave>();
+    plain->Version = 3;
+    plain->KeyOverrides.Add(TEXT("Boost"), TEXT("RightShift"));
+    plain->MigrateToCurrentVersion();
+    TestEqual(TEXT("plain: v3 -> 4"), plain->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("plain: one override"), plain->KeyOverrides.Num(), 1);
+    const FString* boostKey = plain->KeyOverrides.Find(TEXT("Boost"));
+    TestTrue(TEXT("plain: boost kept"), boostKey != nullptr && *boostKey == TEXT("RightShift"));
+    TestNull(TEXT("plain: no OpenMapJump invented"), plain->KeyOverrides.Find(TEXT("OpenMapJump")));
+
+    // A current (v4) save holding a stray ToggleMap entry is not migrated, so it is left untouched
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
+    current->MigrateToCurrentVersion();
+    TestNotNull(TEXT("current: untouched"), current->KeyOverrides.Find(TEXT("ToggleMap")));
+    TestNull(TEXT("current: nothing moved"), current->KeyOverrides.Find(TEXT("OpenMapJump")));
     return true;
 }
 

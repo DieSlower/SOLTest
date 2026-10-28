@@ -136,6 +136,7 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         FSOLGuidanceOutput guidance;
         double gLoad = 0.0;
         int32 contactBody = INDEX_NONE;
+        bool bPointArrived = false;
 
         // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot
         // under warp integrates the frame's sim time itself and needs no carry
@@ -158,7 +159,30 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
             const FSOLShipState before = state;
             FSOLFlightStepOutput stepOutput;
 
-            if (bAutopilot)
+            if (bAutopilot && controlFragment.bAutopilotPoint && bPointArrived
+                && controlFragment.AutopilotCaptureRadiusM > 0.0)
+            {
+                // A fly-through captured earlier this frame: coast through the rest of it (homing on the passed point
+                // would turn the ship back); the route orders the next waypoint after the step
+                state = SOLNewtonian::StepNewtonian(state, FSOLNewtonianCommand(), flightParams.Envelope, gravityMps2,
+                    substepS);
+            }
+            else if (bAutopilot && controlFragment.bAutopilotPoint)
+            {
+                // Route waypoint (SDD 20): a fixed offset from the body, flown through at the ordered pass speed or
+                // stopped at; an arrival in any substep counts for the frame
+                const FVector3d& bodyM = bodiesBeforeM[autopilotBody];
+                const double offsetM = FMath::Max(controlFragment.AutopilotPointOffsetM.Size(),
+                    bodyRadiiM[autopilotBody]);
+                const FVector3d bodyAccelMps2 = SOLFlight::GravityAcceleration(bodyM, bodiesBeforeM, bodyGMs,
+                    bodyRadiiM);
+                state = SOLFlight::AutopilotStep(state, bodyM + controlFragment.AutopilotPointOffsetM,
+                    bodyVelocitiesMps[autopilotBody], bodyAccelMps2, gravityMps2, flightParams, meter, substepS,
+                    &stepOutput, &guidance, bodyGMs[autopilotBody] / FMath::Max(offsetM * offsetM, 1.0),
+                    controlFragment.AutopilotPassSpeedMps, controlFragment.AutopilotCaptureRadiusM);
+                bPointArrived |= guidance.Phase == ESOLGuidancePhase::Arrived;
+            }
+            else if (bAutopilot)
             {
                 // Toward a point above the body on the ordered side (far enough out that its gravity can be held,
                 // SDD 18 Amendment 7); the body's own acceleration is the gravity of the others at its centre (a body
@@ -231,6 +255,6 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         stateFragment.GMeter = meter;
         stateFragment.GLoadG = gLoad;
         stateFragment.Guidance = guidance;
-        stateFragment.bAutopilotArrived = bAutopilot && guidance.Phase == ESOLGuidancePhase::Arrived;
+        stateFragment.bAutopilotArrived = bAutopilot && (bPointArrived || guidance.Phase == ESOLGuidancePhase::Arrived);
     }
 }

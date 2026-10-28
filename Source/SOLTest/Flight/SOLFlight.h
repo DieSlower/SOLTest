@@ -67,12 +67,13 @@ namespace SOLFlight
     // Returns the number of sim-time substeps the autopilot uses for one frame of sim time (0 for invalid input)
     SOLTEST_API int32 AutopilotSubstepCount(double frameSimS);
 
-    // Advances the ship by dt under the rendezvous autopilot (flip-and-burn at the pilot's autopilot limit)
+    // Advances the ship by dt under the rendezvous autopilot (flip-and-burn at the pilot's autopilot limit). A route
+    // fly-through (SDD 20) passes its pass speed and capture radius into the guidance (both 0: stop at the target)
     SOLTEST_API FSOLShipState AutopilotStep(const FSOLShipState& state, const FVector3d& targetPositionM,
         const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
         const FSOLFlightParams& params, const FSOLGMeterState& meter, double dt,
         FSOLFlightStepOutput* outStep = nullptr, FSOLGuidanceOutput* outGuidance = nullptr,
-        double targetGravityMps2 = 0.0);
+        double targetGravityMps2 = 0.0, double passSpeedMps = 0.0, double captureRadiusM = 0.0);
 
     // Returns the autopilot's arrival distance from a body's centre: the geometric standoff, moved out until the
     // body's gravity there is at most AUTOPILOT_GRAVITY_STANDOFF_FRACTION of the autopilot limit

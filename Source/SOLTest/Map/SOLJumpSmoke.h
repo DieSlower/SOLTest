@@ -20,7 +20,7 @@ class USOLTargetingSubsystem;
 /**
  * Verification-only scripted jump (-SOLSmokeJump, SDD 3 sub-part 2e): drives the REAL input pipeline by injecting key,
  * mouse-button and mouse-delta events into the player controller, as -SOLSmokeMapPick does. It first locks the
- * reference frame with M and selects a target with R (both must be cleared by the arrival), then opens the map with J,
+ * reference frame with M and selects a target with R (both must be cleared by the arrival), then opens the map with Shift+J,
  * presses Enter with nothing picked (must do nothing), moves the map camera onto Mars (a verification-only camera
  * setter, since a pan never leaves the ecliptic plane), clicks Mars (reference = Mars), drags and releases (planar
  * offset locked, height left unlocked), turns the ship to face Mars from the destination (test setup, so the arrival

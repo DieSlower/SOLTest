@@ -99,10 +99,11 @@ bool FSOLMapAlignSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         }
         return true;
     }
-    if (mHasPendingJRelease)
+    if (mHasPendingMapKeyRelease)
     {
-        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::J, IE_Released, 0.0f));
-        mHasPendingJRelease = false;
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::M, IE_Released, 0.0f));
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftShift, IE_Released, 0.0f));
+        mHasPendingMapKeyRelease = false;
     }
     mStepTimeS += realDeltaSeconds;
     ++mStepFrames;
@@ -131,8 +132,9 @@ bool FSOLMapAlignSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
             UE_LOG(LogSOL, Warning, TEXT("SmokeMapAlign: the viewport is 16:9 (%.0f x %.0f), where a HUD/renderer FOV "
                 "mismatch cannot show; run with e.g. -windowed -ResX=1280 -ResY=1024"), viewportPx.X, viewportPx.Y);
         }
-        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::J, IE_Pressed, 1.0f));
-        mHasPendingJRelease = true;
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftShift, IE_Pressed, 1.0f));
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::M, IE_Pressed, 1.0f));
+        mHasPendingMapKeyRelease = true;
         mStep = 1;
         mStepFrames = 0;
         mStepTimeS = 0.0;
@@ -210,8 +212,9 @@ bool FSOLMapAlignSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         {
             return false;
         }
-        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::J, IE_Pressed, 1.0f));
-        mHasPendingJRelease = true;
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::LeftShift, IE_Pressed, 1.0f));
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::M, IE_Pressed, 1.0f));
+        mHasPendingMapKeyRelease = true;
         ++mStep;
         mStepFrames = 0;
         mStepTimeS = 0.0;

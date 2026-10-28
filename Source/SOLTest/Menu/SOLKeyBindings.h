@@ -46,19 +46,24 @@ namespace SOLKeyBindings
         RadarZoomIn,
         RadarZoomOut,
         RadarAuto,
-        ToggleMap,
+        OpenMap,
+        OpenMapJump,
+        Resume,
+        ToggleRouteOverlay,
         Count,
     };
 
     inline constexpr int32 BINDING_COUNT = static_cast<int32>(EBinding::Count);
 
-    // One rebindable action: its stable id (persisted), its area and label (shown) and its default engine key name
+    // One rebindable action: its stable id (persisted), its area and label (shown), its default engine key name and
+    // whether it is a Shift chord (pressed with Shift held; the plain key stays free for another action)
     struct FBindingDef
     {
         const TCHAR* Id;
         const TCHAR* Area;
         const TCHAR* Label;
         const TCHAR* DefaultKey;
+        bool bShiftChord;
     };
 
     // Outcome of a rebind request
@@ -66,8 +71,8 @@ namespace SOLKeyBindings
     {
         Bound,      // The binding now uses the key
         Unchanged,  // It already used the key
-        Refused,    // The key cannot be bound (Escape, empty, unknown, an axis, a fixed ship key, or a jump map key for
-                    // the map toggle)
+        Refused,    // The key cannot be bound (Escape, empty, unknown, an axis, a fixed ship key, a map key for an action
+                    // also mapped on the map, or Shift / a mouse button for a Shift chord)
     };
 
     // Returns a binding's definition (index clamped into range)
@@ -76,8 +81,8 @@ namespace SOLKeyBindings
     // Returns the binding with this id (case-insensitive), or INDEX_NONE
     SOLTEST_API int32 FindById(const FString& id);
 
-    // Returns whether a key is fixed to an action that cannot be rebound (Escape pause, mouse look and wheel, the
-    // reserved P, the F1 / F2 of the Ctrl hotkeys), so no rebindable action may take it
+    // Returns whether a key is fixed to an action that cannot be rebound (Escape pause, mouse look and wheel, the F1 /
+    // F2 of the Ctrl hotkeys), so no rebindable action may take it
     SOLTEST_API bool IsReservedKey(const FString& keyName);
 
     // Returns whether a key press is the Ctrl+F1 menu hotkey (acts like Esc; SDD 11 section 3.9)
@@ -86,8 +91,8 @@ namespace SOLKeyBindings
     // Returns whether a key press is the Ctrl+F2 NPC stats overlay hotkey
     SOLTEST_API bool IsStatsHotkey(const FString& keyName, bool bControlDown);
 
-    // Returns whether a key is one of the jump map's own fixed keys (left, right and middle mouse, Left / Right Shift,
-    // X, Enter), which the map toggle (mapped in the map's context too) may not take
+    // Returns whether a key is one of the map's own fixed keys (left, right and middle mouse, Left / Right Shift, X,
+    // Enter, Delete and the J / M / P mode keys), which Resume (mapped in the map's context too) may not take
     SOLTEST_API bool IsMapFixedKey(const FString& keyName);
 
     // Returns whether a key name is an engine key that can be pressed: known to the engine (FKey::IsValid) and not an
@@ -97,12 +102,20 @@ namespace SOLKeyBindings
     // Returns whether a rebindable action may take this key (SOLBindingLabel::IsRebindable, not reserved, pressable)
     SOLTEST_API bool CanBindKey(const FString& keyName);
 
-    // Returns whether one binding may take this key: CanBindKey, and the map toggle also refuses the map's fixed keys
-    // (false for an out-of-range binding)
+    // Returns whether one binding may take this key: CanBindKey; Resume also refuses the map's fixed keys, and a Shift
+    // chord refuses Left / Right Shift and the left, right and middle mouse buttons (false for an out-of-range binding)
     SOLTEST_API bool CanBindKeyTo(int32 binding, const FString& keyName);
 
-    // Returns the text with every '{<BindingId>}' (e.g. "{SurfaceLock}") replaced by that binding's key label
-    // (SOLBindingLabel) from the key array; a short array reads as unbound, other text is unchanged
+    // Returns whether a binding is a Shift chord (false for an out-of-range binding)
+    SOLTEST_API bool IsShiftChord(int32 binding);
+
+    // Returns a binding's shown key: the key label (SOLBindingLabel::KeyDisplayName) of keys[binding], prefixed
+    // "Shift+" for a Shift chord; a missing or empty entry reads as unbound (KeyDisplayName of an empty name, no
+    // prefix)
+    SOLTEST_API FString BindingDisplayName(int32 binding, const TArray<FString>& keys);
+
+    // Returns the text with every '{<BindingId>}' (e.g. "{SurfaceLock}") replaced by that binding's shown key
+    // (BindingDisplayName) from the key array; a short array reads as unbound, other text is unchanged
     SOLTEST_API FString FormatKeyText(const TCHAR* format, const TArray<FString>& keys);
 
     // Returns the default key of every binding
@@ -115,7 +128,8 @@ namespace SOLKeyBindings
     // Returns the overrides that turn the defaults into these keys (only the bindings that differ from their default)
     SOLTEST_API TMap<FString, FString> MakeOverrides(const TArray<FString>& keys);
 
-    // Returns another binding that uses the key (case-insensitive), or INDEX_NONE
+    // Returns another binding that uses the key (case-insensitive) with the same chord (a Shift chord and a plain
+    // binding on one key do not conflict), or INDEX_NONE
     SOLTEST_API int32 FindConflict(const TArray<FString>& keys, int32 binding, const FString& keyName);
 
     // Returns whether a binding shares its key with another binding
@@ -125,7 +139,7 @@ namespace SOLKeyBindings
     // does not block the rebind: both keep the key until the player changes one, and both are flagged
     SOLTEST_API ERebindResult Rebind(TArray<FString>& keys, int32 binding, const FString& keyName, int32& outConflict);
 
-    // Returns whether the default key layout changed since a saved settings schema version (true for 1 and 2, the
-    // layouts before issue #19; false for 3 and above and for an unversioned save)
+    // Returns whether the default key layout changed since a saved settings schema version (true for 1 to 3, the
+    // layouts before issue #20; false for 4 and above and for an unversioned save)
     SOLTEST_API bool DefaultLayoutChangedSince(int32 savedVersion);
 }

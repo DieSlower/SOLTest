@@ -134,7 +134,10 @@ void FSOLMapPickSmoke::EnterPhase(const ESOLMapPickPhase phase, ASOLShipPawn& pa
     case ESOLMapPickPhase::CloseJ:
     case ESOLMapPickPhase::ReopenJ:
     case ESOLMapPickPhase::CloseAgain:
-        TapKey(EKeys::J);
+        // Shift+J opens the map in Jump mode and Shift+M closes it (SDD 20); Shift is released with the key next frame
+        PressKey(EKeys::LeftShift);
+        mPendingReleases.Add(EKeys::LeftShift);
+        TapKey(phase == ESOLMapPickPhase::CloseJ || phase == ESOLMapPickPhase::CloseAgain ? EKeys::M : EKeys::J);
         break;
     case ESOLMapPickPhase::ClickBody:
     case ESOLMapPickPhase::ClickEmpty:

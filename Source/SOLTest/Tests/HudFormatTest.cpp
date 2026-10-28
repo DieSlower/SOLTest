@@ -237,21 +237,22 @@ bool FSOLHudFormatKeyHintsTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> keys = SOLKeyBindings::DefaultKeys();
     TestEqual(TEXT("default flight hints, orbits off"), SOLHudFormat::FormatFlightKeyHints(keys, false),
-        FString(TEXT("ORBITS OFF (O)   F3 speed panel   J jump map   T/R/F/X target   M match frame   L surface-lock"
-        "   [ ] warp   - = radar zoom   Home radar auto   LMB fire   G drop target")));
+        FString(TEXT("ORBITS OFF (O)   F3 speed panel   Shift+M map   T/R/F/X target   M match frame   L surface-lock"
+        "   [ ] warp   - = radar zoom   Home radar auto   LMB fire   G drop target   P routes   V resume")));
     TestTrue(TEXT("orbits on"), SOLHudFormat::FormatFlightKeyHints(keys, true).StartsWith(TEXT("ORBITS ON (O)   ")));
-    TestEqual(TEXT("default map hints"), SOLHudFormat::FormatMapKeyHints(keys), FString(TEXT("JUMP MAP   right drag "
-        "orbit   middle or Shift+right drag pan   wheel zoom   J / Esc close")));
+    TestEqual(TEXT("default map hints"), SOLHudFormat::FormatMapKeyHints(keys), FString(TEXT("MAP   J jump   M move   "
+        "P patrol   right drag orbit   middle or Shift+right drag pan   wheel zoom   Shift+M / Esc close")));
 
     keys[static_cast<int32>(SOLKeyBindings::EBinding::Fire)] = TEXT("K");
-    keys[static_cast<int32>(SOLKeyBindings::EBinding::ToggleMap)] = TEXT("N");
+    keys[static_cast<int32>(SOLKeyBindings::EBinding::OpenMap)] = TEXT("N");
     keys[static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines)] = TEXT("SpaceBar");
     const FString rebound = SOLHudFormat::FormatFlightKeyHints(keys, false);
     TestTrue(TEXT("rebound fire shown"), rebound.Contains(TEXT("   K fire   ")));
     TestFalse(TEXT("old fire key gone"), rebound.Contains(TEXT("LMB")));
-    TestTrue(TEXT("rebound map toggle shown"), rebound.Contains(TEXT("   N jump map   ")));
+    TestTrue(TEXT("rebound map key shown"), rebound.Contains(TEXT("   Shift+N map   ")));
     TestTrue(TEXT("rebound orbit key shown"), rebound.StartsWith(TEXT("ORBITS OFF (Space)")));
-    TestTrue(TEXT("rebound map close key"), SOLHudFormat::FormatMapKeyHints(keys).EndsWith(TEXT("N / Esc close")));
+    TestTrue(TEXT("rebound map close key"), SOLHudFormat::FormatMapKeyHints(keys).EndsWith(
+        TEXT("Shift+N / Esc close")));
     TestTrue(TEXT("short key array reads unbound"), SOLHudFormat::FormatMapKeyHints(TArray<FString>())
         .EndsWith(TEXT("Unbound / Esc close")));
     return true;

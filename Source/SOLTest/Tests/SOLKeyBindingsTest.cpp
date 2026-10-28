@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuText.h"
@@ -55,20 +56,23 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsBindableTest, "SOLTest.KeyBindin
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Escape, the mouse axes, the wheel and the reserved P cannot be taken; ordinary keys and mouse buttons can
+// Escape, the mouse axes and the wheel cannot be taken; ordinary keys, P (no longer reserved since issue #20) and mouse
+// buttons can
 bool FSOLKeyBindingsBindableTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
     const TCHAR* refused[] = { TEXT("Escape"), TEXT("escape"), TEXT(""), TEXT("Mouse2D"), TEXT("MouseX"),
-        TEXT("MouseY"), TEXT("MouseWheelAxis"), TEXT("MouseScrollUp"), TEXT("MouseScrollDown"), TEXT("P"), TEXT("p") };
+        TEXT("MouseY"), TEXT("MouseWheelAxis"), TEXT("MouseScrollUp"), TEXT("MouseScrollDown") };
     for (const TCHAR* key : refused)
     {
         TestFalse(FString::Printf(TEXT("'%s' refused"), key), CanBindKey(key));
     }
     TestTrue(TEXT("Escape reserved"), IsReservedKey(TEXT("Escape")));
     TestFalse(TEXT("K not reserved"), IsReservedKey(TEXT("K")));
+    TestFalse(TEXT("P not reserved"), IsReservedKey(TEXT("P")));
+    TestFalse(TEXT("p not reserved"), IsReservedKey(TEXT("p")));
     const TCHAR* accepted[] = { TEXT("K"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("ThumbMouseButton"),
-        TEXT("F5"), TEXT("SpaceBar"), TEXT("LeftShift") };
+        TEXT("F5"), TEXT("SpaceBar"), TEXT("LeftShift"), TEXT("P") };
     for (const TCHAR* key : accepted)
     {
         TestTrue(FString::Printf(TEXT("'%s' accepted"), key), CanBindKey(key));
@@ -157,7 +161,8 @@ bool FSOLKeyBindingsRebindTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Escape refused"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("Escape"), conflict)
         == ERebindResult::Refused);
     TestEqual(TEXT("refusal reports no conflict"), conflict, INDEX_NONE);
-    TestTrue(TEXT("reserved P refused"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("P"), conflict) == ERebindResult::Refused);
+    TestTrue(TEXT("mouse axis refused"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("MouseX"), conflict)
+        == ERebindResult::Refused);
     TestTrue(TEXT("bad index refused"), Rebind(keys, BINDING_COUNT, TEXT("K"), conflict) == ERebindResult::Refused);
     TestTrue(TEXT("negative index refused"), Rebind(keys, -1, TEXT("K"), conflict) == ERebindResult::Refused);
     TArray<FString> empty;
@@ -193,6 +198,30 @@ bool FSOLKeyBindingsControlsCellTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("short key array reads unbound"), SOLMenuContent::FormatBindings(TEXT("@Fire"), TArray<FString>()),
         FString(TEXT("Unbound")));
     TestEqual(TEXT("default overload"), SOLMenuContent::FormatBindings(TEXT("@Fire")), FString(TEXT("LMB")));
+    TestEqual(TEXT("map opener cell is a Shift chord"), SOLMenuContent::FormatBindings(TEXT("@OpenMap"), keys),
+        FString(TEXT("Shift+M")));
+
+    // The issue #20 rows are listed and the removed map toggle is not
+    bool bFoundOpenMap = false;
+    bool bFoundOpenMapJump = false;
+    bool bFoundResume = false;
+    bool bFoundRouteOverlay = false;
+    bool bFoundToggleMap = false;
+    for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+    {
+        TArray<FString> alternatives;
+        FString(row.Bindings).ParseIntoArray(alternatives, SOLMenuText::BINDING_ALTERNATIVE_DELIMITER);
+        bFoundOpenMap |= alternatives.Contains(TEXT("@OpenMap"));
+        bFoundOpenMapJump |= alternatives.Contains(TEXT("@OpenMapJump"));
+        bFoundResume |= alternatives.Contains(TEXT("@Resume"));
+        bFoundRouteOverlay |= alternatives.Contains(TEXT("@ToggleRouteOverlay"));
+        bFoundToggleMap |= alternatives.Contains(TEXT("@ToggleMap"));
+    }
+    TestTrue(TEXT("Controls lists @OpenMap"), bFoundOpenMap);
+    TestTrue(TEXT("Controls lists @OpenMapJump"), bFoundOpenMapJump);
+    TestTrue(TEXT("Controls lists @Resume"), bFoundResume);
+    TestTrue(TEXT("Controls lists @ToggleRouteOverlay"), bFoundRouteOverlay);
+    TestFalse(TEXT("Controls no longer lists @ToggleMap"), bFoundToggleMap);
 
     // Every '@' id in the Controls table names a real binding, and every binding appears in the table once
     TArray<int32> seen;
@@ -221,39 +250,213 @@ bool FSOLKeyBindingsControlsCellTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// Issue #20 map and route bindings, written against the issue #20 contract (SDD 20) before the production code
+
+namespace
+{
+    constexpr int32 KEYBINDINGS_RADAR_AUTO = static_cast<int32>(SOLKeyBindings::EBinding::RadarAuto);
+    constexpr int32 KEYBINDINGS_OPEN_MAP = static_cast<int32>(SOLKeyBindings::EBinding::OpenMap);
+    constexpr int32 KEYBINDINGS_OPEN_MAP_JUMP = static_cast<int32>(SOLKeyBindings::EBinding::OpenMapJump);
+    constexpr int32 KEYBINDINGS_RESUME = static_cast<int32>(SOLKeyBindings::EBinding::Resume);
+    constexpr int32 KEYBINDINGS_ROUTE_OVERLAY = static_cast<int32>(SOLKeyBindings::EBinding::ToggleRouteOverlay);
+    constexpr int32 KEYBINDINGS_MATCH_LOCK = static_cast<int32>(SOLKeyBindings::EBinding::MatchLock);
+}
+
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsMapToggleTest, "SOLTest.KeyBindings.MapToggleKeys",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsRouteBindingsTest, "SOLTest.KeyBindings.RouteBindings",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The map toggle (also mapped in the jump map's context) refuses the map's fixed keys; other actions may take them
-bool FSOLKeyBindingsMapToggleTest::RunTest(const FString& /*parameters*/)
+// ToggleMap is gone; OpenMap, OpenMapJump, Resume and ToggleRouteOverlay follow RadarAuto, with defaults and chords
+bool FSOLKeyBindingsRouteBindingsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
-    const int32 toggleMap = static_cast<int32>(EBinding::ToggleMap);
-    const TCHAR* mapKeys[] = { TEXT("Enter"), TEXT("X"), TEXT("x"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
-        TEXT("MiddleMouseButton"), TEXT("LeftShift"), TEXT("RightShift") };
+    TestEqual(TEXT("ToggleMap removed"), FindById(TEXT("ToggleMap")), INDEX_NONE);
+    TestEqual(TEXT("OpenMap after RadarAuto"), KEYBINDINGS_OPEN_MAP, KEYBINDINGS_RADAR_AUTO + 1);
+    TestEqual(TEXT("OpenMapJump next"), KEYBINDINGS_OPEN_MAP_JUMP, KEYBINDINGS_RADAR_AUTO + 2);
+    TestEqual(TEXT("Resume next"), KEYBINDINGS_RESUME, KEYBINDINGS_RADAR_AUTO + 3);
+    TestEqual(TEXT("ToggleRouteOverlay next"), KEYBINDINGS_ROUTE_OVERLAY, KEYBINDINGS_RADAR_AUTO + 4);
+    TestEqual(TEXT("ToggleRouteOverlay is last"), KEYBINDINGS_ROUTE_OVERLAY, BINDING_COUNT - 1);
+
+    struct FExpected
+    {
+        int32 Binding;
+        const TCHAR* Id;
+        const TCHAR* DefaultKey;
+        bool bChord;
+        const TCHAR* Area;
+        const TCHAR* Label;
+    };
+    const FExpected expected[] =
+    {
+        { KEYBINDINGS_OPEN_MAP, TEXT("OpenMap"), TEXT("M"), true, TEXT("Map"), TEXT("Open or close the map") },
+        { KEYBINDINGS_OPEN_MAP_JUMP, TEXT("OpenMapJump"), TEXT("J"), true, TEXT("Map"),
+            TEXT("Open the map in Jump mode") },
+        { KEYBINDINGS_RESUME, TEXT("Resume"), TEXT("V"), false, TEXT("Routes"), TEXT("Resume a paused route") },
+        { KEYBINDINGS_ROUTE_OVERLAY, TEXT("ToggleRouteOverlay"), TEXT("P"), false, TEXT("Routes"),
+            TEXT("Show or hide routes") },
+    };
+    const TArray<FString> defaults = DefaultKeys();
+    for (const FExpected& entry : expected)
+    {
+        const FBindingDef& def = GetDef(entry.Binding);
+        TestEqual(FString::Printf(TEXT("%s id"), entry.Id), FString(def.Id), FString(entry.Id));
+        TestEqual(FString::Printf(TEXT("%s found by id"), entry.Id), FindById(entry.Id), entry.Binding);
+        TestEqual(FString::Printf(TEXT("%s default"), entry.Id), FString(def.DefaultKey), FString(entry.DefaultKey));
+        TestEqual(FString::Printf(TEXT("%s resolved default"), entry.Id), defaults[entry.Binding],
+            FString(entry.DefaultKey));
+        TestEqual(FString::Printf(TEXT("%s chord flag"), entry.Id), def.bShiftChord, entry.bChord);
+        TestEqual(FString::Printf(TEXT("%s IsShiftChord"), entry.Id), IsShiftChord(entry.Binding), entry.bChord);
+        TestEqual(FString::Printf(TEXT("%s area"), entry.Id), FString(def.Area), FString(entry.Area));
+        TestEqual(FString::Printf(TEXT("%s label"), entry.Id), FString(def.Label), FString(entry.Label));
+    }
+
+    // Only the two map openers are chords
+    for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
+    {
+        const bool bExpectChord = binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP;
+        TestEqual(FString::Printf(TEXT("%s chord"), GetDef(binding).Id), IsShiftChord(binding), bExpectChord);
+    }
+    TestFalse(TEXT("IsShiftChord negative"), IsShiftChord(-1));
+    TestFalse(TEXT("IsShiftChord past the end"), IsShiftChord(BINDING_COUNT));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsMapFixedKeysTest, "SOLTest.KeyBindings.MapFixedKeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Resume refuses every map fixed key, the Shift-chord openers refuse Shift and the mouse buttons, the rest only need
+// CanBindKey
+bool FSOLKeyBindingsMapFixedKeysTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    const TCHAR* mapKeys[] = { TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton"),
+        TEXT("LeftShift"), TEXT("RightShift"), TEXT("X"), TEXT("x"), TEXT("Enter"), TEXT("Delete"), TEXT("J"),
+        TEXT("j"), TEXT("M"), TEXT("m"), TEXT("P"), TEXT("p") };
     for (const TCHAR* key : mapKeys)
     {
         TestTrue(FString::Printf(TEXT("'%s' is a map key"), key), IsMapFixedKey(key));
-        TestFalse(FString::Printf(TEXT("map toggle refuses '%s'"), key), CanBindKeyTo(toggleMap, key));
+        TestFalse(FString::Printf(TEXT("resume refuses '%s'"), key), CanBindKeyTo(KEYBINDINGS_RESUME, key));
         TestTrue(FString::Printf(TEXT("fire may take '%s'"), key), CanBindKeyTo(KEYBINDINGS_FIRE, key));
     }
-    TestFalse(TEXT("J is not a map key"), IsMapFixedKey(TEXT("J")));
-    TestTrue(TEXT("map toggle takes N"), CanBindKeyTo(toggleMap, TEXT("N")));
-    TestFalse(TEXT("map toggle refuses Escape"), CanBindKeyTo(toggleMap, TEXT("Escape")));
+    const TCHAR* notMapKeys[] = { TEXT("V"), TEXT("K"), TEXT("Comma") };
+    for (const TCHAR* key : notMapKeys)
+    {
+        TestFalse(FString::Printf(TEXT("'%s' is not a map key"), key), IsMapFixedKey(key));
+        TestTrue(FString::Printf(TEXT("resume takes '%s'"), key), CanBindKeyTo(KEYBINDINGS_RESUME, key));
+    }
+    TestTrue(TEXT("route overlay takes P"), CanBindKeyTo(KEYBINDINGS_ROUTE_OVERLAY, TEXT("P")));
+    TestTrue(TEXT("route overlay takes X"), CanBindKeyTo(KEYBINDINGS_ROUTE_OVERLAY, TEXT("X")));
+
+    // The Shift-chord openers refuse Shift and the mouse buttons, but take other map keys and plain keys
+    const int32 openers[] = { KEYBINDINGS_OPEN_MAP, KEYBINDINGS_OPEN_MAP_JUMP };
+    const TCHAR* chordRefused[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftMouseButton"),
+        TEXT("RightMouseButton"), TEXT("MiddleMouseButton") };
+    const TCHAR* chordAccepted[] = { TEXT("X"), TEXT("Enter"), TEXT("M"), TEXT("J"), TEXT("K") };
+    for (const int32 opener : openers)
+    {
+        for (const TCHAR* key : chordRefused)
+        {
+            TestFalse(FString::Printf(TEXT("%s refuses '%s'"), GetDef(opener).Id, key), CanBindKeyTo(opener, key));
+        }
+        for (const TCHAR* key : chordAccepted)
+        {
+            TestTrue(FString::Printf(TEXT("%s takes '%s'"), GetDef(opener).Id, key), CanBindKeyTo(opener, key));
+        }
+        TestFalse(FString::Printf(TEXT("%s refuses Escape"), GetDef(opener).Id), CanBindKeyTo(opener, TEXT("Escape")));
+    }
     TestFalse(TEXT("out-of-range binding"), CanBindKeyTo(BINDING_COUNT, TEXT("N")));
 
-    // Rebind refuses and leaves the key; a save override onto a map key is ignored
+    // Rebind refuses and leaves the key; save overrides a binding cannot take are ignored
     TArray<FString> keys = DefaultKeys();
     int32 conflict = 0;
-    TestTrue(TEXT("rebind map toggle to Enter refused"), Rebind(keys, toggleMap, TEXT("Enter"), conflict)
+    TestTrue(TEXT("rebind resume to X refused"), Rebind(keys, KEYBINDINGS_RESUME, TEXT("X"), conflict)
         == ERebindResult::Refused);
-    TestEqual(TEXT("map toggle stays J"), keys[toggleMap], FString(TEXT("J")));
-    TestTrue(TEXT("rebind map toggle to N"), Rebind(keys, toggleMap, TEXT("N"), conflict) == ERebindResult::Bound);
+    TestEqual(TEXT("resume stays V"), keys[KEYBINDINGS_RESUME], FString(TEXT("V")));
+    TestTrue(TEXT("rebind map opener to LeftShift refused"), Rebind(keys, KEYBINDINGS_OPEN_MAP, TEXT("LeftShift"),
+        conflict) == ERebindResult::Refused);
+    TestEqual(TEXT("map opener stays M"), keys[KEYBINDINGS_OPEN_MAP], FString(TEXT("M")));
     TMap<FString, FString> overrides;
-    overrides.Add(TEXT("ToggleMap"), TEXT("LeftShift"));
-    TestEqual(TEXT("override onto a map key ignored"), ResolveKeys(overrides)[toggleMap], FString(TEXT("J")));
+    overrides.Add(TEXT("Resume"), TEXT("X"));
+    overrides.Add(TEXT("OpenMap"), TEXT("LeftShift"));
+    overrides.Add(TEXT("ToggleRouteOverlay"), TEXT("K"));
+    const TArray<FString> resolved = ResolveKeys(overrides);
+    TestEqual(TEXT("resume override onto a map key ignored"), resolved[KEYBINDINGS_RESUME], FString(TEXT("V")));
+    TestEqual(TEXT("chord override onto Shift ignored"), resolved[KEYBINDINGS_OPEN_MAP], FString(TEXT("M")));
+    TestEqual(TEXT("valid overlay override applied"), resolved[KEYBINDINGS_ROUTE_OVERLAY], FString(TEXT("K")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsChordConflictTest, "SOLTest.KeyBindings.ChordConflicts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A Shift chord and a plain binding on one key do not conflict; two plain or two chord bindings on one key do
+bool FSOLKeyBindingsChordConflictTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TArray<FString> keys = DefaultKeys();
+    TestEqual(TEXT("match lock defaults to M"), keys[KEYBINDINGS_MATCH_LOCK], FString(TEXT("M")));
+    TestFalse(TEXT("Shift+M opener does not conflict with M"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+    TestFalse(TEXT("M match lock does not conflict with Shift+M"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
+    TestEqual(TEXT("FindConflict: plain M vs chord M"), FindConflict(keys, KEYBINDINGS_MATCH_LOCK, TEXT("M")),
+        INDEX_NONE);
+    TestEqual(TEXT("FindConflict: chord M vs plain M"), FindConflict(keys, KEYBINDINGS_OPEN_MAP, TEXT("m")),
+        INDEX_NONE);
+
+    // Two chords on one key conflict
+    int32 conflict = 123;
+    TestTrue(TEXT("jump opener to M binds"), Rebind(keys, KEYBINDINGS_OPEN_MAP_JUMP, TEXT("M"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("chord conflict reported"), conflict, KEYBINDINGS_OPEN_MAP);
+    TestTrue(TEXT("opener flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+    TestTrue(TEXT("jump opener flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP_JUMP));
+    TestFalse(TEXT("plain M still not flagged"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
+    TestTrue(TEXT("jump opener back to J"), Rebind(keys, KEYBINDINGS_OPEN_MAP_JUMP, TEXT("J"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("J free for a chord"), conflict, INDEX_NONE);
+
+    // Two plain bindings on one key conflict; a plain binding on a chord's key does not
+    TestTrue(TEXT("route overlay to M binds"), Rebind(keys, KEYBINDINGS_ROUTE_OVERLAY, TEXT("M"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("plain conflict reported"), conflict, KEYBINDINGS_MATCH_LOCK);
+    TestTrue(TEXT("route overlay flagged"), HasConflict(keys, KEYBINDINGS_ROUTE_OVERLAY));
+    TestTrue(TEXT("match lock flagged"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
+    TestFalse(TEXT("chord opener not flagged by plain M"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+    TestTrue(TEXT("fire to J binds"), Rebind(keys, KEYBINDINGS_FIRE, TEXT("J"), conflict) == ERebindResult::Bound);
+    TestEqual(TEXT("plain J vs chord J: no conflict"), conflict, INDEX_NONE);
+    TestFalse(TEXT("fire not flagged"), HasConflict(keys, KEYBINDINGS_FIRE));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsDisplayNameTest, "SOLTest.KeyBindings.BindingDisplayName",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A chord shows "Shift+<key>", a plain binding its key label, and a missing or empty entry "Unbound" with no prefix
+bool FSOLKeyBindingsDisplayNameTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TArray<FString> keys = DefaultKeys();
+    TestEqual(TEXT("map opener"), BindingDisplayName(KEYBINDINGS_OPEN_MAP, keys), FString(TEXT("Shift+M")));
+    TestEqual(TEXT("jump opener"), BindingDisplayName(KEYBINDINGS_OPEN_MAP_JUMP, keys), FString(TEXT("Shift+J")));
+    TestEqual(TEXT("resume"), BindingDisplayName(KEYBINDINGS_RESUME, keys), FString(TEXT("V")));
+    TestEqual(TEXT("route overlay"), BindingDisplayName(KEYBINDINGS_ROUTE_OVERLAY, keys), FString(TEXT("P")));
+    TestEqual(TEXT("fire label"), BindingDisplayName(KEYBINDINGS_FIRE, keys), FString(TEXT("LMB")));
+
+    keys[KEYBINDINGS_OPEN_MAP] = TEXT("Comma");
+    TestEqual(TEXT("rebound opener"), BindingDisplayName(KEYBINDINGS_OPEN_MAP, keys),
+        TEXT("Shift+") + SOLBindingLabel::KeyDisplayName(TEXT("Comma")));
+    keys[KEYBINDINGS_OPEN_MAP] = FString();
+    TestEqual(TEXT("empty chord entry reads unbound"), BindingDisplayName(KEYBINDINGS_OPEN_MAP, keys),
+        SOLBindingLabel::KeyDisplayName(FString()));
+    TestEqual(TEXT("missing chord entry reads unbound"), BindingDisplayName(KEYBINDINGS_OPEN_MAP, TArray<FString>()),
+        SOLBindingLabel::KeyDisplayName(FString()));
+    TestEqual(TEXT("unbound text"), SOLBindingLabel::KeyDisplayName(FString()), FString(TEXT("Unbound")));
     return true;
 }
 
@@ -300,8 +503,10 @@ bool FSOLKeyBindingsFormatKeyTextTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
     TArray<FString> keys = DefaultKeys();
-    TestEqual(TEXT("defaults"), FormatKeyText(TEXT("{SurfaceLock} lock, {Fire} fire, {ToggleMap} map"), keys),
-        FString(TEXT("L lock, LMB fire, J map")));
+    TestEqual(TEXT("defaults"), FormatKeyText(TEXT("{SurfaceLock} lock, {Fire} fire, {OpenMap} map"), keys),
+        FString(TEXT("L lock, LMB fire, Shift+M map")));
+    TestEqual(TEXT("chord and plain route keys"), FormatKeyText(TEXT("{OpenMapJump} jump, {Resume} resume"), keys),
+        FString(TEXT("Shift+J jump, V resume")));
     keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
     keys[KEYBINDINGS_FIRE] = TEXT("SpaceBar");
     TestEqual(TEXT("rebound"), FormatKeyText(TEXT("{SurfaceLock} lock, {Fire} fire"), keys),

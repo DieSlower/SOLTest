@@ -28,9 +28,12 @@ namespace
     // Settings schema version that introduced the issue #19 key layout
     constexpr int32 FMM_LAYOUT_VERSION = 3;
 
-    // Number of rebindable actions after issue #19 (30 before, plus SteerHold and SteerToggle; the contract first said
-    // 29 / 31, a miscount corrected in 19a)
-    constexpr int32 FMM_BINDING_COUNT = 32;
+    // Settings schema version that introduced the issue #20 key layout (the current one)
+    constexpr int32 FMM_ROUTE_LAYOUT_VERSION = 4;
+
+    // Number of rebindable actions after issue #20 (32 after issue #19; issue #20 removes ToggleMap and adds OpenMap,
+    // OpenMapJump, Resume and ToggleRouteOverlay)
+    constexpr int32 FMM_BINDING_COUNT = 35;
 
     // The signed input channel bits of the contract, restated so the tests stay independent
     constexpr int32 FMM_CH_THRUST_FORWARD = 1 << 0;
@@ -1368,7 +1371,9 @@ bool FSOLFlightModeMathKeyDefaultsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("forward still W"), FmmKeyOf(defaults, TEXT("ThrustForward")), FString(TEXT("W")));
     TestEqual(TEXT("fire still left mouse"), FmmKeyOf(defaults, TEXT("Fire")), FString(TEXT("LeftMouseButton")));
     TestEqual(TEXT("free look still Alt"), FmmKeyOf(defaults, TEXT("FreeLook")), FString(TEXT("LeftAlt")));
-    TestEqual(TEXT("map still J"), FmmKeyOf(defaults, TEXT("ToggleMap")), FString(TEXT("J")));
+    TestEqual(TEXT("jump map on J (issue #20)"), FmmKeyOf(defaults, TEXT("OpenMapJump")), FString(TEXT("J")));
+    TestEqual(TEXT("map on M (issue #20)"), FmmKeyOf(defaults, TEXT("OpenMap")), FString(TEXT("M")));
+    TestEqual(TEXT("ToggleMap removed (issue #20)"), FmmBinding(TEXT("ToggleMap")), static_cast<int32>(INDEX_NONE));
 
     // The new rows are labelled for Settings and Controls
     if (steerHold != INDEX_NONE && steerToggle != INDEX_NONE)
@@ -1411,10 +1416,10 @@ bool FSOLFlightModeMathKeyDefaultsBindableTest::RunTest(const FString& /*paramet
         TestFalse(FString::Printf(TEXT("%s refuses Escape"), id), CanBindKeyTo(binding, TEXT("Escape")));
     }
 
-    // Left Shift and the middle mouse are map-fixed keys: only the map toggle refuses them
-    const int32 toggleMap = FmmBinding(TEXT("ToggleMap"));
-    TestFalse(TEXT("map toggle refuses Left Shift"), CanBindKeyTo(toggleMap, TEXT("LeftShift")));
-    TestFalse(TEXT("map toggle refuses middle mouse"), CanBindKeyTo(toggleMap, TEXT("MiddleMouseButton")));
+    // Left Shift and the middle mouse are map-fixed keys: the Shift-chord map opener refuses them, others may take them
+    const int32 openMap = FmmBinding(TEXT("OpenMap"));
+    TestFalse(TEXT("map opener refuses Left Shift"), CanBindKeyTo(openMap, TEXT("LeftShift")));
+    TestFalse(TEXT("map opener refuses middle mouse"), CanBindKeyTo(openMap, TEXT("MiddleMouseButton")));
     TestTrue(TEXT("thrust up takes Left Shift"), CanBindKeyTo(FmmBinding(TEXT("ThrustUp")), TEXT("LeftShift")));
     TestTrue(TEXT("steer toggle takes middle mouse"),
         CanBindKeyTo(FmmBinding(TEXT("SteerToggle")), TEXT("MiddleMouseButton")));
@@ -1557,11 +1562,12 @@ bool FSOLFlightModeMathKeyMigrationConflictsTest::RunTest(const FString& /*param
         TestTrue(FString::Printf(TEXT("%s: conflicting override round-trips"), entry.OverrideId),
             FmmSameOverrides(MakeOverrides(keys), saved));
 
-        // The player moves the new default to V (no default uses it): both flags clear
+        // The player moves the new default to Insert (no default uses it; V is Resume's since issue #20): both clear
         int32 conflict = 123;
         TestTrue(FString::Printf(TEXT("%s rebinds"), entry.NewDefaultId),
-            Rebind(keys, newDefault, TEXT("V"), conflict) == ERebindResult::Bound);
-        TestEqual(FString::Printf(TEXT("%s: V free"), entry.NewDefaultId), conflict, static_cast<int32>(INDEX_NONE));
+            Rebind(keys, newDefault, TEXT("Insert"), conflict) == ERebindResult::Bound);
+        TestEqual(FString::Printf(TEXT("%s: Insert free"), entry.NewDefaultId), conflict,
+            static_cast<int32>(INDEX_NONE));
         TestFalse(FString::Printf(TEXT("%s clear"), entry.OverrideId), HasConflict(keys, overridden));
         TestFalse(FString::Printf(TEXT("%s clear"), entry.NewDefaultId), HasConflict(keys, newDefault));
     }
@@ -1573,7 +1579,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathLayoutChangedTest, "SOLTest.F
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The one-time "default controls changed" notice applies only to real schema 1 and 2 saves
+// The one-time "default controls changed" notice applies only to real schema 1 to 3 saves (issue #20 changed the
+// layout again)
 bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -1581,8 +1588,10 @@ bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("0 (unversioned)"), DefaultLayoutChangedSince(0));
     TestTrue(TEXT("1"), DefaultLayoutChangedSince(1));
     TestTrue(TEXT("2"), DefaultLayoutChangedSince(2));
-    TestFalse(TEXT("3"), DefaultLayoutChangedSince(FMM_LAYOUT_VERSION));
-    TestFalse(TEXT("4"), DefaultLayoutChangedSince(FMM_LAYOUT_VERSION + 1));
+    TestTrue(TEXT("3 (issue #19 layout)"), DefaultLayoutChangedSince(FMM_LAYOUT_VERSION));
+    TestFalse(TEXT("4 (issue #20 layout)"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION));
+    TestFalse(TEXT("5"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION + 1));
+    TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_ROUTE_LAYOUT_VERSION);
     return true;
 }
 
@@ -1595,7 +1604,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSettingsSaveMigrationTest,
 // Schema 1 and 2 saves are migrated (never discarded) to the current version with their key overrides kept
 bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*parameters*/)
 {
-    TestTrue(TEXT("schema bumped for the new layout"), SOL::Settings::SAVE_VERSION >= FMM_LAYOUT_VERSION);
+    TestTrue(TEXT("schema bumped for the new layout"), SOL::Settings::SAVE_VERSION >= FMM_ROUTE_LAYOUT_VERSION);
+    TestTrue(TEXT("a v3 save is migrated"), SOLSettingsRules::ClassifySaveVersion(3, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v2 save is migrated"), SOLSettingsRules::ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v1 save is migrated"), SOLSettingsRules::ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
@@ -1617,7 +1628,7 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     TestEqual(TEXT("v2 sensitivity kept"), v2->MouseSensitivity, 2.0f);
     TestFalse(TEXT("v2 assist-at-launch kept"), v2->bDefaultFlightAssist);
 
-    // A schema 1 save goes through both steps
+    // A schema 1 save goes through every step; its map toggle override moves to the jump-map opener (3 -> 4)
     USOLSettingsSave* v1 = NewObject<USOLSettingsSave>();
     v1->Version = 1;
     v1->bShowOrbitLines = false;
@@ -1625,8 +1636,9 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     v1->MigrateToCurrentVersion();
     TestEqual(TEXT("v1 -> current"), v1->Version, SOL::Settings::SAVE_VERSION);
     TestTrue(TEXT("v1 orbit lines shown by the 1 -> 2 step"), v1->bShowOrbitLines);
-    const FString* mapKey = v1->KeyOverrides.Find(TEXT("ToggleMap"));
-    TestTrue(TEXT("v1 override kept"), mapKey != nullptr && *mapKey == TEXT("Comma"));
+    TestNull(TEXT("v1 ToggleMap override removed"), v1->KeyOverrides.Find(TEXT("ToggleMap")));
+    const FString* mapKey = v1->KeyOverrides.Find(TEXT("OpenMapJump"));
+    TestTrue(TEXT("v1 override moved to OpenMapJump"), mapKey != nullptr && *mapKey == TEXT("Comma"));
     TestEqual(TEXT("v1 override count"), v1->KeyOverrides.Num(), 1);
 
     // A current save is untouched, and migrating again is a no-op

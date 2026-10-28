@@ -204,7 +204,8 @@ int32 SOLFlight::AutopilotSubstepCount(const double frameSimS)
 FSOLShipState SOLFlight::AutopilotStep(const FSOLShipState& state, const FVector3d& targetPositionM,
     const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
     const FSOLFlightParams& params, const FSOLGMeterState& meter, const double dt, FSOLFlightStepOutput* outStep,
-    FSOLGuidanceOutput* outGuidance, const double targetGravityMps2)
+    FSOLGuidanceOutput* outGuidance, const double targetGravityMps2, const double passSpeedMps,
+    const double captureRadiusM)
 {
     if (outStep != nullptr)
     {
@@ -226,8 +227,9 @@ FSOLShipState SOLFlight::AutopilotStep(const FSOLShipState& state, const FVector
     const double limitMps2 = SOLNewtonian::AutopilotAccelLimitMps2(params.PilotLimits, meter);
     const double planGravityMps2 = FMath::Max(gravityAccelMps2.Size(),
         FMath::IsFinite(targetGravityMps2) ? targetGravityMps2 : 0.0);
-    const FSOLGuidanceParams guidanceParams = SOLNewtonian::MakeGuidanceParams(env, limitMps2, planGravityMps2, true,
-        false);
+    FSOLGuidanceParams guidanceParams = SOLNewtonian::MakeGuidanceParams(env, limitMps2, planGravityMps2, true, false);
+    guidanceParams.PassSpeedMps = passSpeedMps;
+    guidanceParams.CaptureRadiusM = captureRadiusM;
     const FSOLGuidanceOutput guidance = SOLNewtonian::ComputeRendezvousGuidance(targetPositionM - state.PositionM,
         state.VelocityMps - targetVelocityMps, targetAccelMps2, gravityAccelMps2, guidanceParams, dt);
 

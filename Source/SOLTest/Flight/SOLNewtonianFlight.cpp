@@ -597,12 +597,31 @@ FSOLGuidanceOutput SOLNewtonian::ComputeRendezvousGuidance(const FVector3d& rela
     const double flipTimeS = FMath::Max(params.FlipTimeS, 0.0);
     const double tfEff = flipTimeS + dt;
     const double cap = params.MaxCruiseSpeedMps;
-    const double curve = BrakingSpeedLimitMps(d, params.BrakeAccelMps2, tfEff);
+
+    // A route fly-through (SDD 20) may still have its pass speed at the target: the braking curve ends there instead
+    // of at rest (v^2 = pass^2 + curve^2, the same braking from the pass speed up). The next leg starts at the capture
+    // radius, so the curve reaches the pass speed there (the corner's arc starts at that distance)
+    const double captureM = FMath::IsFinite(params.CaptureRadiusM) ? FMath::Max(params.CaptureRadiusM, 0.0) : 0.0;
+    const double curveDistanceM = FMath::Max(d - captureM, 0.0);
+    const double stopCurve = BrakingSpeedLimitMps(curveDistanceM, params.BrakeAccelMps2, tfEff);
+    const double passSpeed = FMath::IsFinite(params.PassSpeedMps) ? FMath::Clamp(params.PassSpeedMps, 0.0, cap) : 0.0;
+    const double curve = passSpeed > 0.0 ? FMath::Sqrt(stopCurve * stopCurve + passSpeed * passSpeed) : stopCurve;
     const double speedLimit = FMath::Min(cap, curve);
     const FVector3d desiredVelocity = dir * speedLimit;
 
+    // A fly-through arrives when the step's straight-line motion comes within the capture radius, at any speed (swept,
+    // so a fast pass cannot step over it)
+    bool bCaptured = false;
+    if (captureM > 0.0)
+    {
+        const double speedSquared = v.SizeSquared();
+        const double closestS = speedSquared > 0.0
+            ? FMath::Clamp(FVector3d::DotProduct(relativePositionM, v) / speedSquared, 0.0, dt) : 0.0;
+        bCaptured = (relativePositionM - v * closestS).Size() <= captureM;
+    }
+
     // Phase
-    if (d <= params.ArrivalRadiusM && v.Size() <= params.ArrivalSpeedMps)
+    if (bCaptured || (d <= params.ArrivalRadiusM && v.Size() <= params.ArrivalSpeedMps))
     {
         out.Phase = ESOLGuidancePhase::Arrived;
     }
@@ -626,11 +645,14 @@ FSOLGuidanceOutput SOLNewtonian::ComputeRendezvousGuidance(const FVector3d& rela
     const double gainTimeS = params.VelocityGainPerS > 0.0 ? 1.0 / params.VelocityGainPerS : 0.0;
     const double trackerTimeS = FMath::Max3(gainTimeS, dt, MIN_TIME_CONSTANT_S);
     FVector3d correction = (desiredVelocity - v) / trackerTimeS;
-    if (out.Phase == ESOLGuidancePhase::Brake && d > EPSILON && params.BrakeAccelMps2 > 0.0)
+    if (out.Phase == ESOLGuidancePhase::Brake && curveDistanceM > EPSILON && params.BrakeAccelMps2 > 0.0)
     {
         const double feedforwardScale = gainTimeS > 0.0 ? FMath::Min3(1.0, gainTimeS / trackerTimeS,
             FMath::Clamp(2.0 * (1.0 - FMath::Max(dt, 0.0) * params.VelocityGainPerS), 0.0, 1.0)) : 1.0;
-        correction -= dir * (feedforwardScale * vc / FMath::Sqrt(tfEff * tfEff + 2.0 * d / params.BrakeAccelMps2));
+        // The pass-speed curve's slope is the stop curve's scaled by stopCurve / curve
+        const double passSlopeScale = curve > 0.0 ? stopCurve / curve : 1.0;
+        correction -= dir * (feedforwardScale * passSlopeScale * vc
+            / FMath::Sqrt(tfEff * tfEff + 2.0 * curveDistanceM / params.BrakeAccelMps2));
     }
 
     // Clamp to the phase budget, then net and thrust accelerations

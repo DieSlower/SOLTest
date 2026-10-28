@@ -134,8 +134,7 @@ FString SOLMenuContent::FormatBindings(const TCHAR* bindings, const TArray<FStri
         if (!alternative.IsEmpty() && alternative[0] == SOLMenuText::BINDING_ID_PREFIX)
         {
             const int32 binding = SOLKeyBindings::FindById(alternative.RightChop(1));
-            labels.Add(SOLBindingLabel::KeyDisplayName(liveKeys.IsValidIndex(binding) ? liveKeys[binding]
-                : FString()));
+            labels.Add(SOLKeyBindings::BindingDisplayName(binding, liveKeys));
             continue;
         }
         TArray<FString> chord;

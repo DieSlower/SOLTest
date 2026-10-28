@@ -2,7 +2,8 @@
 
 # SDD 20: Hologram map and move orders
 
-Status: design agreed (grill-me complete), not yet implemented. Depends on SDD 3 (jump map), SDD 18 (autopilot),
+Status: design agreed (grill-me complete); steps 1-4 (keys, route logic, map modes, route subsystem) built, see
+Amendment 1; steps 5-8 (overlay, hologram look) not yet. Depends on SDD 3 (jump map), SDD 18 (autopilot),
 SDD 19 (flight modes). Issue #25 (map alignment and shimmer) is fixed first as its own commit.
 
 ## 1. Goal
@@ -114,3 +115,42 @@ directional fade `exp(-2 (1 - t))` (used for route direction). Palette: Primary 
 Pure-logic tests (route model, planner corner speed, patrol sequencing, mode state machine, key bindings and the
 settings migration) authored by a subagent from the contract; smokes for map mode switching, route start/pause/resume
 and the overlay; full suite; adversarial opus review.
+
+## Amendment 1: steps 1-4 as built (2026-10-28)
+
+What shifted or was decided during implementation (none of it changes a grill answer):
+
+- **Keys.** `ToggleMap` is replaced by the Shift chords `OpenMap` (M) and `OpenMapJump` (J), plus `Resume` (V) and
+  `ToggleRouteOverlay` (P, rebindable; P is no longer reserved). The chords use `UInputTriggerChordAction` on an
+  `IA_ShiftChord` action (Left/Right Shift) in both contexts, and Enhanced Input's automatic chord blockers keep plain
+  M (match-lock) and the map's plain J/M/P from firing with Shift held. On the map Shift+M closes it (the "existing close
+  action" kept beside Esc) and Shift+J switches to Jump mode. `FBindingDef::bShiftChord`; a chord and a plain binding on
+  one key do not conflict; chords refuse Shift and the mouse buttons; Resume (also mapped on the map) refuses the map's
+  fixed keys (now including Delete, J, M, P). Settings schema 4 (`KEY_BINDING_LAYOUT_VERSION` 4): a rebound ToggleMap
+  moves to OpenMapJump. Shown keys come from `SOLKeyBindings::BindingDisplayName` ("Shift+M").
+- **Shift as thrust up.** Left Shift is also thrust up, so pressing Shift+M in AUTO would cancel the autopilot. In AUTO,
+  flight input held only on Shift keys counts after `SOL::Route::SHIFT_CHORD_GRACE_S` (0.5 s). Still to check hands-on.
+- **Ship-referenced picks.** A waypoint must follow a body, so a pick with the ship as reference is re-expressed
+  relative to the anchor body at that moment. A waypoint closer to its body than the autopilot's geometric standoff
+  (1.25 radii + 10 km) is pushed out to it at route start.
+- **Corner planner.** The turn is an arc at the corner G budget (player: sustained 1.5 G capped by the hull; AI: hull)
+  whose tangent length is at most 25% of the shorter adjacent leg and at least 1 km; pass speed
+  `sqrt(a * tangent / tan(turn/2))` capped at the cruise cap, capture radius = that tangent length. Turns of 150 deg or
+  more (and ping-pong ends) are full stops. Only the current waypoint is planned, when its leg starts.
+- **Guidance.** `FSOLGuidanceParams` gains `PassSpeedMps` and `CaptureRadiusM`: the braking curve is
+  `sqrt(stop(d - capture)^2 + pass^2)` (the pass speed is reached at the capture radius, where the next leg starts),
+  and arrival is a swept check of the step's straight-line motion against the capture radius. A captured fly-through
+  coasts through the rest of its frame (no homing back). The waypoint order is `USOLShipSubsystem::EngageAutopilotPoint`
+  (body + fixed offset); a pass-through order keeps AUTO on arrival; arrivals carry an order serial so the route only
+  advances on its own orders.
+- **Route subsystem.** `USOLRouteSubsystem` listens to `OnShipsStepped` (another bind-order-dependent listener of that
+  event). A one-waypoint route of any kind is a Move (a patrol needs two to repeat). The Move's remaining-time estimate
+  of the later legs is built once per start (suffix sums, O(waypoints)); ETAs use the plan acceleration without gravity
+  (optimistic). StartRoute requires pilot control, as Resume does.
+- **Draft.** The draft route survives closing the map (X clears it); a mode change drops the pick in progress.
+- **Verification hooks.** `sol.Route <Status|Resume|Clear>`, `-SOLSmokeRoute` (modes, picks, undo, start, pause,
+  resume, overlay toggle, Delete, Shift+J / Esc, and a scripted 2-waypoint Move flown through its 90 deg corner to rest).
+- **Open.** The overlay and HUD route marker (step 5) are not built, so P only flips a flag. `-SOLMenuSmoke=all` has one
+  failure ("thrust flies the ship", relative speed falls 4876 -> 4839 m/s at Mars) that does not involve any code this
+  change touched; `-SOLSmokeJump` reports anchor Deimos instead of Mars at arrival (ephemeris-dependent; jump code
+  untouched). Both left for follow-up.

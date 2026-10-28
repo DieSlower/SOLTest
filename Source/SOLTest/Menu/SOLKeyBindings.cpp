@@ -17,15 +17,15 @@ namespace
         "one area and label per binding");
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a binding's definition: its id and default key, with its shown area and label from SOLMenuText
+    // Returns a binding's definition: its id, default key and chord, with its shown area and label from SOLMenuText
     constexpr SOLKeyBindings::FBindingDef KeyBindingDef(const SOLKeyBindings::EBinding binding,
-        const TCHAR* id, const TCHAR* defaultKey)
+        const TCHAR* id, const TCHAR* defaultKey, const bool bShiftChord = false)
     {
         return { id, SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Area,
-            SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey };
+            SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey, bShiftChord };
     }
 
-    // Every rebindable action, in EBinding order. Defaults are the issue #19 layout (settings schema 3) and match
+    // Every rebindable action, in EBinding order. Defaults are the issue #20 layout (settings schema 4) and match
     // GAME_MECHANICS.md section 1 (keep both in sync)
     constexpr SOLKeyBindings::FBindingDef KEY_BINDING_DEFS[] =
     {
@@ -60,30 +60,43 @@ namespace
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomIn, TEXT("RadarZoomIn"), TEXT("Hyphen")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomOut, TEXT("RadarZoomOut"), TEXT("Equals")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarAuto, TEXT("RadarAuto"), TEXT("Home")),
-        KeyBindingDef(SOLKeyBindings::EBinding::ToggleMap, TEXT("ToggleMap"), TEXT("J")),
+        KeyBindingDef(SOLKeyBindings::EBinding::OpenMap, TEXT("OpenMap"), TEXT("M"), true),
+        KeyBindingDef(SOLKeyBindings::EBinding::OpenMapJump, TEXT("OpenMapJump"), TEXT("J"), true),
+        KeyBindingDef(SOLKeyBindings::EBinding::Resume, TEXT("Resume"), TEXT("V")),
+        KeyBindingDef(SOLKeyBindings::EBinding::ToggleRouteOverlay, TEXT("ToggleRouteOverlay"), TEXT("P")),
     };
     static_assert(UE_ARRAY_COUNT(KEY_BINDING_DEFS) == SOLKeyBindings::BINDING_COUNT, "one definition per binding");
 
-    // Keys fixed to actions that are not rebindable: Esc pauses, the mouse steers, the wheel steps the speed cap, P is
-    // reserved for the predicted path, and F1 / F2 are the Ctrl+F1 menu and Ctrl+F2 stats hotkeys (an action on F1 or
-    // F2 would fire with every hotkey press)
+    // Keys fixed to actions that are not rebindable: Esc pauses, the mouse steers, the wheel steps the speed cap, and
+    // F1 / F2 are the Ctrl+F1 menu and Ctrl+F2 stats hotkeys (an action on F1 or F2 would fire with every hotkey press)
     const TCHAR* const KEY_BINDING_RESERVED[] =
     {
         TEXT("Escape"), TEXT("Mouse2D"), TEXT("MouseX"), TEXT("MouseY"), TEXT("MouseWheelAxis"),
-        TEXT("MouseScrollUp"), TEXT("MouseScrollDown"), TEXT("P"), TEXT("F1"), TEXT("F2"),
+        TEXT("MouseScrollUp"), TEXT("MouseScrollDown"), TEXT("F1"), TEXT("F2"),
     };
 
     // The hotkeys' keys (held with Ctrl): the pause menu (SDD 11 section 3.9) and the NPC stats overlay
     const TCHAR* const KEY_BINDING_MENU_HOTKEY = TEXT("F1");
     const TCHAR* const KEY_BINDING_STATS_HOTKEY = TEXT("F2");
 
-    // The jump map's own fixed keys (ASOLShipPawn::MapShipKeys): pick, orbit and pan drags, the pan / height modifier,
-    // clear and jump. The map toggle is mapped in the map's context too, so it may not take any of them
+    // The map's own fixed keys (ASOLShipPawn::MapShipKeys): pick, orbit and pan drags, the pan / height modifier,
+    // clear, jump / start, clear the route and the J / M / P mode keys. Resume is mapped in the map's context too, so
+    // it may not take any of them
     const TCHAR* const KEY_BINDING_MAP_FIXED[] =
     {
         TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton"), TEXT("LeftShift"),
-        TEXT("RightShift"), TEXT("X"), TEXT("Enter"),
+        TEXT("RightShift"), TEXT("X"), TEXT("Enter"), TEXT("Delete"), TEXT("J"), TEXT("M"), TEXT("P"),
     };
+
+    // Keys a Shift chord may not take: Shift itself, and the map's mouse buttons (Shift already modifies them there)
+    const TCHAR* const KEY_BINDING_CHORD_REFUSED[] =
+    {
+        TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
+        TEXT("MiddleMouseButton"),
+    };
+
+    // Prefix of a Shift chord's shown key
+    const TCHAR* const KEY_BINDING_SHIFT_PREFIX = TEXT("Shift+");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns whether a binding index is inside the table
@@ -176,26 +189,47 @@ bool SOLKeyBindings::CanBindKey(const FString& keyName)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether one binding may take this key (CanBindKey, and the map toggle refuses the map's fixed keys)
+// Returns whether one binding may take this key (CanBindKey; Resume refuses the map's fixed keys and a Shift chord
+// refuses Shift and the mouse buttons)
 bool SOLKeyBindings::CanBindKeyTo(const int32 binding, const FString& keyName)
 {
     if (!KeyBindingIsValid(binding) || !CanBindKey(keyName))
     {
         return false;
     }
-    return binding != static_cast<int32>(EBinding::ToggleMap) || !IsMapFixedKey(keyName);
+    if (binding == static_cast<int32>(EBinding::Resume) && IsMapFixedKey(keyName))
+    {
+        return false;
+    }
+    return !KEY_BINDING_DEFS[binding].bShiftChord
+        || !KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_CHORD_REFUSED));
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the text with every '{<BindingId>}' replaced by that binding's key label
+// Returns whether a binding is a Shift chord
+bool SOLKeyBindings::IsShiftChord(const int32 binding)
+{
+    return KeyBindingIsValid(binding) && KEY_BINDING_DEFS[binding].bShiftChord;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a binding's shown key: its key label, prefixed "Shift+" for a Shift chord; unbound without a key
+FString SOLKeyBindings::BindingDisplayName(const int32 binding, const TArray<FString>& keys)
+{
+    const FString keyName = keys.IsValidIndex(binding) ? keys[binding] : FString();
+    const FString label = SOLBindingLabel::KeyDisplayName(keyName);
+    return IsShiftChord(binding) && !keyName.IsEmpty() ? KEY_BINDING_SHIFT_PREFIX + label : label;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the text with every '{<BindingId>}' replaced by that binding's shown key
 FString SOLKeyBindings::FormatKeyText(const TCHAR* format, const TArray<FString>& keys)
 {
     FStringFormatNamedArguments arguments;
     arguments.Reserve(BINDING_COUNT);
     for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
     {
-        arguments.Add(KEY_BINDING_DEFS[binding].Id, SOLBindingLabel::KeyDisplayName(keys.IsValidIndex(binding)
-            ? keys[binding] : FString()));
+        arguments.Add(KEY_BINDING_DEFS[binding].Id, BindingDisplayName(binding, keys));
     }
     return FString::Format(format, arguments);
 }
@@ -246,16 +280,18 @@ TMap<FString, FString> SOLKeyBindings::MakeOverrides(const TArray<FString>& keys
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns another binding that uses the key, or INDEX_NONE
+// Returns another binding that uses the key with the same chord, or INDEX_NONE
 int32 SOLKeyBindings::FindConflict(const TArray<FString>& keys, const int32 binding, const FString& keyName)
 {
     if (keyName.IsEmpty())
     {
         return INDEX_NONE;
     }
+    const bool bShiftChord = IsShiftChord(binding);
     for (int32 other = 0; other < keys.Num(); ++other)
     {
-        if (other != binding && keys[other].Equals(keyName, ESearchCase::IgnoreCase))
+        if (other != binding && IsShiftChord(other) == bShiftChord
+            && keys[other].Equals(keyName, ESearchCase::IgnoreCase))
         {
             return other;
         }

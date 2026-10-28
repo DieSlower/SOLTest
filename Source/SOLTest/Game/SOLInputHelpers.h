@@ -28,6 +28,11 @@ namespace SOLInput
     // Maps a key to an action that triggers once per press
     void MapPressedKey(UInputMappingContext* context, UInputAction* action, const FKey& key, UObject* outer);
 
+    // Maps a key to an action that triggers once per press while the chord action triggers (e.g. Shift held); Enhanced
+    // Input then blocks other mappings of that key in the same context while the chord is held
+    void MapChordedKey(UInputMappingContext* context, UInputAction* action, const FKey& key,
+        const UInputAction* chordAction, UObject* outer);
+
     // Adds a mapping context to a local player's Enhanced Input subsystem; returns true on success
     bool AddMappingContext(ULocalPlayer* localPlayer, UInputMappingContext* context, int32 priority);
 

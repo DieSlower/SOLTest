@@ -47,6 +47,18 @@ void SOLInput::MapPressedKey(UInputMappingContext* context, UInputAction* action
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Maps a key to an action that triggers once per press while the chord action triggers
+void SOLInput::MapChordedKey(UInputMappingContext* context, UInputAction* action, const FKey& key,
+    const UInputAction* chordAction, UObject* outer)
+{
+    FEnhancedActionKeyMapping& mapping = context->MapKey(action, key);
+    UInputTriggerChordAction* chord = NewObject<UInputTriggerChordAction>(outer);
+    chord->ChordAction = chordAction;
+    mapping.Triggers.Add(chord);
+    mapping.Triggers.Add(NewObject<UInputTriggerPressed>(outer));
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Adds a mapping context to a local player's Enhanced Input subsystem; returns true on success
 bool SOLInput::AddMappingContext(ULocalPlayer* localPlayer, UInputMappingContext* context, const int32 priority)
 {

@@ -731,7 +731,7 @@ void USOLSettingsPageWidget::RefreshTexts()
     {
         const bool bListening = binding == mListeningBinding;
         KeyTexts[binding]->SetText(FText::FromString(bListening ? FString(SOLMenuText::SETTINGS_KEY_WAITING)
-            : SOLBindingLabel::KeyDisplayName(keys.IsValidIndex(binding) ? keys[binding] : FString())));
+            : SOLKeyBindings::BindingDisplayName(binding, keys)));
         KeyTexts[binding]->SetColorAndOpacity(FSlateColor(bListening ? TEXT_COLOR
             : (SOLKeyBindings::HasConflict(keys, binding) ? WARNING_COLOR : ACCENT_COLOR)));
     }

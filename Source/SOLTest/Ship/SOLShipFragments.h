@@ -36,6 +36,10 @@ struct FSOLShipControlFragment : public FMassFragment
     int32 AlignBodyIndex = INDEX_NONE;        // Surface-lock (SDD 4): body whose local vertical up aligns to, or none
     int32 AutopilotBodyIndex = INDEX_NONE;    // Autopilot order (SDD 18): body to fly to, or none
     FVector3d AutopilotOffsetDir = FVector3d::ZeroVector;  // Arrival side: unit vector from that body's centre
+    FVector3d AutopilotPointOffsetM = FVector3d::ZeroVector;  // Point order (SDD 20): target offset from the body
+    double AutopilotPassSpeedMps = 0.0;       // Point order: fly-through speed at the target (0 = stop there)
+    double AutopilotCaptureRadiusM = 0.0;     // Point order: fly-through capture radius (0 = stop there)
+    bool bAutopilotPoint = false;             // The order is a route waypoint (body + fixed offset), not a standoff
 };
 
 /**

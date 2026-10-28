@@ -10,6 +10,7 @@
 #include "Game/SOLInputHelpers.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Map/SOLRouteSubsystem.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -208,6 +209,7 @@ void ASOLShipPawn::BeginPlay()
     AnchorSubsystem = world->GetSubsystem<USOLAnchorSubsystem>();
     SimClock = world->GetSubsystem<USOLSimClockSubsystem>();
     MapMode = world->GetSubsystem<USOLMapModeSubsystem>();
+    Routes = world->GetSubsystem<USOLRouteSubsystem>();
     Jump = world->GetSubsystem<USOLJumpSubsystem>();
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
     Menu = world->GetSubsystem<USOLMenuSubsystem>();
@@ -280,6 +282,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeMapAlign = MakeUnique<FSOLMapAlignSmoke>();
         mSmokeMapAlign->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_ROUTE))
+    {
+        mSmokeRoute = MakeUnique<FSOLRouteSmoke>();
+        mSmokeRoute->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -294,7 +301,7 @@ void ASOLShipPawn::BeginPlay()
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
         mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
@@ -336,6 +343,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
     mSmokeMapAlign.Reset();
+    mSmokeRoute.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -378,6 +386,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeMapAlign.Reset();
     }
+    if (mSmokeRoute.IsValid() && mSmokeRoute->Update(*this, deltaSeconds))
+    {
+        mSmokeRoute.Reset();
+    }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
         mSmokeJump.Reset();
@@ -407,7 +419,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         }
         else
         {
-            OpenMap();
+            OpenMap(mIsMapOpenForJump);
         }
     }
 
@@ -421,11 +433,19 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         }
     }
 
-    // Enter was pressed on the map; the jump starts (and the map closes) here, outside the Enhanced Input callback
+    // Enter was pressed on the map; the jump starts (and the map closes) or the draft route starts here, outside the
+    // Enhanced Input callback
     if (mIsJumpRequested)
     {
         mIsJumpRequested = false;
-        StartMapJump();
+        if (MapMode != nullptr && MapMode->GetEnterAction() == ESOLMapEnterAction::StartRoute)
+        {
+            MapMode->StartDraftRoute();
+        }
+        else
+        {
+            StartMapJump();
+        }
     }
     UpdateViewportFocus();
     UpdateMapCursor();
@@ -464,6 +484,19 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         pilotInput.Roll = mRollInput;
         pilotInput.Steer = stick;
         pilotInput.bStopSpin = mControl.bStopSpin;
+
+        // Shift is both a flight key (thrust up by default) and the map chord (SDD 20): in AUTO, input held only on
+        // Shift keys waits SHIFT_CHORD_GRACE_S before it counts, so Shift+M / Shift+J do not cancel the autopilot
+        const APlayerController* playerController = Cast<APlayerController>(GetController());
+        const uint16 channels = SOLFlightMode::ActiveChannels(pilotInput);
+        const bool bShiftOnly = channels != 0 && playerController != nullptr
+            && Ships->GetFlightMode() == ESOLFlightMode::Auto
+            && (channels & ~SOLFlightMode::ActiveChannels(HeldKeyPilotInput(*playerController, true))) == 0;
+        mShiftOnlyHeldS = bShiftOnly ? mShiftOnlyHeldS + deltaSeconds : 0.0;
+        if (bShiftOnly && mShiftOnlyHeldS < SOL::Route::SHIFT_CHORD_GRACE_S)
+        {
+            pilotInput = FSOLPilotInput();
+        }
         Ships->ApplyPilotInput(pilotInput);
         mControl.bFlightAssist = SOLFlightMode::FlightAssistFor(Ships->GetFlightMode());
         Ships->SetControl(mControl);
@@ -635,15 +668,22 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(WarpResetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpResetAction);
     input->BindAction(ToggleOrbitLinesAction, ETriggerEvent::Triggered, this,
         &ASOLShipPawn::OnToggleOrbitLinesAction);
-    input->BindAction(TogglePredictedPathAction, ETriggerEvent::Triggered, this,
-        &ASOLShipPawn::OnTogglePredictedPathAction);
+    input->BindAction(ToggleRouteOverlayAction, ETriggerEvent::Triggered, this,
+        &ASOLShipPawn::OnToggleRouteOverlayAction);
+    input->BindAction(ResumeRouteAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnResumeRouteAction);
     input->BindAction(SpeedPanelAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnSpeedPanelAction);
     input->BindAction(RadarZoomInAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomInAction);
     input->BindAction(RadarZoomOutAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarZoomOutAction);
     input->BindAction(RadarAutoAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnRadarAutoAction);
 
-    // Jump map: J toggles (mapped in both contexts); the rest only exist in the map's context while it is open
-    input->BindAction(ToggleMapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnToggleMapAction);
+    // Map: Shift+M / Shift+J open it (mapped in both contexts: on the map Shift+M closes and Shift+J is Jump mode);
+    // the rest only exist in the map's context while it is open
+    input->BindAction(OpenMapAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOpenMapAction);
+    input->BindAction(OpenMapJumpAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOpenMapJumpAction);
+    input->BindAction(MapModeJumpAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapModeJumpAction);
+    input->BindAction(MapModeMoveAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapModeMoveAction);
+    input->BindAction(MapModePatrolAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapModePatrolAction);
+    input->BindAction(MapClearRouteAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapClearRouteAction);
     input->BindAction(MapCloseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMapCloseAction);
     input->BindAction(PauseAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnPauseAction);
     input->BindAction(MenuHotkeyAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnMenuHotkeyAction);
@@ -728,7 +768,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
         return;
@@ -810,13 +850,19 @@ void ASOLShipPawn::CreateInputObjects()
     WarpDownAction = CreateAction(this, TEXT("IA_ShipWarpDown"), EInputActionValueType::Boolean);
     WarpResetAction = CreateAction(this, TEXT("IA_ShipWarpReset"), EInputActionValueType::Boolean);
     ToggleOrbitLinesAction = CreateAction(this, TEXT("IA_ShipToggleOrbitLines"), EInputActionValueType::Boolean);
-    TogglePredictedPathAction = CreateAction(this, TEXT("IA_ShipTogglePredictedPath"),
-        EInputActionValueType::Boolean);
+    ToggleRouteOverlayAction = CreateAction(this, TEXT("IA_ShipToggleRouteOverlay"), EInputActionValueType::Boolean);
+    ResumeRouteAction = CreateAction(this, TEXT("IA_RouteResume"), EInputActionValueType::Boolean);
+    ShiftChordAction = CreateAction(this, TEXT("IA_ShiftChord"), EInputActionValueType::Boolean);
     SpeedPanelAction = CreateAction(this, TEXT("IA_ShipSpeedPanel"), EInputActionValueType::Boolean);
     RadarZoomInAction = CreateAction(this, TEXT("IA_ShipRadarZoomIn"), EInputActionValueType::Boolean);
     RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
     RadarAutoAction = CreateAction(this, TEXT("IA_ShipRadarAuto"), EInputActionValueType::Boolean);
-    ToggleMapAction = CreateAction(this, TEXT("IA_MapToggle"), EInputActionValueType::Boolean);
+    OpenMapAction = CreateAction(this, TEXT("IA_MapOpen"), EInputActionValueType::Boolean);
+    OpenMapJumpAction = CreateAction(this, TEXT("IA_MapOpenJump"), EInputActionValueType::Boolean);
+    MapModeJumpAction = CreateAction(this, TEXT("IA_MapModeJump"), EInputActionValueType::Boolean);
+    MapModeMoveAction = CreateAction(this, TEXT("IA_MapModeMove"), EInputActionValueType::Boolean);
+    MapModePatrolAction = CreateAction(this, TEXT("IA_MapModePatrol"), EInputActionValueType::Boolean);
+    MapClearRouteAction = CreateAction(this, TEXT("IA_MapClearRoute"), EInputActionValueType::Boolean);
     PauseAction = CreateAction(this, TEXT("IA_ShipPause"), EInputActionValueType::Boolean);
     MenuHotkeyAction = CreateAction(this, TEXT("IA_MenuHotkey"), EInputActionValueType::Boolean);
     StatsHotkeyAction = CreateAction(this, TEXT("IA_NpcStatsHotkey"), EInputActionValueType::Boolean);
@@ -887,8 +933,8 @@ void ASOLShipPawn::MapShipKeys()
     MappingContext->MapKey(LookAction, EKeys::Mouse2D);
     MappingContext->MapKey(SpeedCapAction, EKeys::MouseWheelAxis);
 
-    // One-shot keys: the assist, boost and steering toggles, and the HUD keys: orbit lines, P predicted path
-    // (reserved, fixed), the speed panel, radar zoom in/out and back to AUTO
+    // One-shot keys: the assist, boost and steering toggles, and the HUD keys: orbit lines, the route overlay and
+    // Resume (SDD 20), the speed panel, radar zoom in/out and back to AUTO
     MapPressedKey(MappingContext, ToggleAssistAction, key(EBinding::ToggleAssist), this);
     MapPressedKey(MappingContext, BoostAction, key(EBinding::Boost), this);
     MapPressedKey(MappingContext, SteerToggleAction, key(EBinding::SteerToggle), this);
@@ -904,12 +950,20 @@ void ASOLShipPawn::MapShipKeys()
     MapPressedKey(MappingContext, WarpUpAction, key(EBinding::WarpUp), this);
     MapPressedKey(MappingContext, WarpResetAction, key(EBinding::WarpReset), this);
     MapPressedKey(MappingContext, ToggleOrbitLinesAction, key(EBinding::ToggleOrbitLines), this);
-    MapPressedKey(MappingContext, TogglePredictedPathAction, EKeys::P, this);
+    MapPressedKey(MappingContext, ToggleRouteOverlayAction, key(EBinding::ToggleRouteOverlay), this);
+    MapPressedKey(MappingContext, ResumeRouteAction, key(EBinding::Resume), this);
     MapPressedKey(MappingContext, SpeedPanelAction, key(EBinding::SpeedPanel), this);
     MapPressedKey(MappingContext, RadarZoomInAction, key(EBinding::RadarZoomIn), this);
     MapPressedKey(MappingContext, RadarZoomOutAction, key(EBinding::RadarZoomOut), this);
     MapPressedKey(MappingContext, RadarAutoAction, key(EBinding::RadarAuto), this);
-    MapPressedKey(MappingContext, ToggleMapAction, key(EBinding::ToggleMap), this);
+
+    // Shift chords (SDD 20): the map keys fire only with Shift held, and Enhanced Input then blocks a plain mapping of
+    // the same key in the same context (Shift+M opens the map, plain M stays the frame lock). Left Shift is also thrust
+    // up in flight
+    MappingContext->MapKey(ShiftChordAction, EKeys::LeftShift);
+    MappingContext->MapKey(ShiftChordAction, EKeys::RightShift);
+    MapChordedKey(MappingContext, OpenMapAction, key(EBinding::OpenMap), ShiftChordAction, this);
+    MapChordedKey(MappingContext, OpenMapJumpAction, key(EBinding::OpenMapJump), ShiftChordAction, this);
 
     // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
     MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
@@ -920,12 +974,21 @@ void ASOLShipPawn::MapShipKeys()
     MapPressedKey(MappingContext, StatsHotkeyAction, EKeys::F2, this);
     MapPressedKey(MapMappingContext, MenuHotkeyAction, EKeys::F1, this);
 
-    // Jump map: the map toggle (rebindable, the same key as in the ship context) or Esc close; right drag orbits,
-    // middle or Shift+right drag pans (held buttons gate the mouse delta), the wheel zooms. Destination picking: left
-    // button (press and release), Shift (the same action as the pan modifier) previews and locks the height, X clears
-    // the pick, Enter jumps. The ship's X (clear target) lives in the ship's context, which is removed while the map is
-    // open, so the two never conflict
-    MapPressedKey(MapMappingContext, ToggleMapAction, key(EBinding::ToggleMap), this);
+    // Map: Shift+M (the open key) or Esc closes, Shift+J switches to Jump mode, J / M / P pick the mode, Delete clears
+    // the active route and Resume works here too; right drag orbits (Ctrl+right click undoes the last waypoint),
+    // middle or Shift+right drag pans (held buttons gate the mouse delta), the wheel zooms. Picking: left button (press
+    // and release), Shift (the same action as the pan modifier) previews and locks the height, X clears the pick and
+    // the draft, Enter jumps or starts the route. The ship's X (clear target) and M (frame lock) live in the ship's
+    // context, which is removed while the map is open, so the two never conflict
+    MapMappingContext->MapKey(ShiftChordAction, EKeys::LeftShift);
+    MapMappingContext->MapKey(ShiftChordAction, EKeys::RightShift);
+    MapChordedKey(MapMappingContext, OpenMapAction, key(EBinding::OpenMap), ShiftChordAction, this);
+    MapChordedKey(MapMappingContext, OpenMapJumpAction, key(EBinding::OpenMapJump), ShiftChordAction, this);
+    MapPressedKey(MapMappingContext, MapModeJumpAction, EKeys::J, this);
+    MapPressedKey(MapMappingContext, MapModeMoveAction, EKeys::M, this);
+    MapPressedKey(MapMappingContext, MapModePatrolAction, EKeys::P, this);
+    MapPressedKey(MapMappingContext, MapClearRouteAction, EKeys::Delete, this);
+    MapPressedKey(MapMappingContext, ResumeRouteAction, key(EBinding::Resume), this);
     MapPressedKey(MapMappingContext, MapCloseAction, EKeys::Escape, this);
     MapPressedKey(MapMappingContext, MapClearPickAction, EKeys::X, this);
     MapPressedKey(MapMappingContext, MapJumpAction, EKeys::Enter, this);
@@ -1018,8 +1081,14 @@ UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
         return RadarZoomOutAction;
     case EBinding::RadarAuto:
         return RadarAutoAction;
-    case EBinding::ToggleMap:
-        return ToggleMapAction;
+    case EBinding::OpenMap:
+        return OpenMapAction;
+    case EBinding::OpenMapJump:
+        return OpenMapJumpAction;
+    case EBinding::Resume:
+        return ResumeRouteAction;
+    case EBinding::ToggleRouteOverlay:
+        return ToggleRouteOverlayAction;
     default:
         return nullptr;
     }
@@ -1474,10 +1543,23 @@ void ASOLShipPawn::HandleToggleOrbitLines()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Reserved for the ship's predicted path (P); does nothing yet (SDD 2 section 6)
-void ASOLShipPawn::HandleTogglePredictedPath()
+// Shows or hides the route overlay (P; SDD 20)
+void ASOLShipPawn::HandleToggleRouteOverlay()
 {
-    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: predicted path (P) is reserved and not built yet"), *GetName());
+    if (Routes != nullptr)
+    {
+        Routes->ToggleOverlay();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Resumes a paused route (V; flight and map)
+void ASOLShipPawn::HandleResumeRoute()
+{
+    if (Routes != nullptr)
+    {
+        Routes->Resume();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1603,15 +1685,22 @@ void ASOLShipPawn::RestoreShipControl()
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the pilot input the ship's bound flight keys hold right now
-FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerController) const
+FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerController,
+    const bool bShiftKeysOnly) const
 {
     using SOLKeyBindings::EBinding;
 
-    // Returns 1 when the binding's key is down, else 0
-    const auto held = [this, &playerController](const EBinding binding)
+    // Returns 1 when the binding's key is down (and, with bShiftKeysOnly, is a Shift key), else 0
+    const auto held = [this, &playerController, bShiftKeysOnly](const EBinding binding)
     {
         const int32 index = static_cast<int32>(binding);
-        return mBoundKeys.IsValidIndex(index) && playerController.IsInputKeyDown(FKey(*mBoundKeys[index])) ? 1.0 : 0.0;
+        if (!mBoundKeys.IsValidIndex(index))
+        {
+            return 0.0;
+        }
+        const FKey key(*mBoundKeys[index]);
+        const bool bShiftKey = key == EKeys::LeftShift || key == EKeys::RightShift;
+        return (!bShiftKeysOnly || bShiftKey) && playerController.IsInputKeyDown(key) ? 1.0 : 0.0;
     };
     FSOLPilotInput input;
     input.Thrust = FVector3d(held(EBinding::ThrustForward) - held(EBinding::ThrustBackward),
@@ -1624,14 +1713,14 @@ FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerCo
 
 //////////////////////////////////////////////////////////////////////////
 // Opens the jump map: adds the map mapping (rolling back on failure), suspends ship control and frees the OS cursor
-void ASOLShipPawn::OpenMap()
+void ASOLShipPawn::OpenMap(const bool bForJump)
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
     if (mIsMapOpen || mIsSpeedPanelOpen || playerController == nullptr || MapMode == nullptr)
     {
         return;
     }
-    if (!MapMode->OpenMap(playerController))
+    if (!MapMode->OpenMap(playerController, bForJump))
     {
         return;
     }
@@ -1826,7 +1915,7 @@ void ASOLShipPawn::HandleMapClearPick()
 {
     if (mIsMapOpen && MapMode != nullptr)
     {
-        MapMode->ClearPick();
+        MapMode->ClearPickAndDraft();
     }
 }
 
@@ -1838,10 +1927,36 @@ void ASOLShipPawn::HandleMapJump()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Requests the jump map to open or close (J; done at the next tick, outside the input callback)
-void ASOLShipPawn::HandleToggleMap()
+// Shift+M / Shift+J: opens the map (next tick) in flight; on the map Shift+M closes it and Shift+J is Jump mode
+void ASOLShipPawn::HandleOpenMap(const bool bForJump)
 {
+    if (mIsMapOpen && bForJump)
+    {
+        HandleMapModeKey(ESOLMapMode::Jump);
+        return;
+    }
     mIsMapToggleRequested = true;
+    mIsMapOpenForJump = bForJump;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// An in-map mode key: J Jump, M Move, P Patrol (P again flips loop / ping-pong)
+void ASOLShipPawn::HandleMapModeKey(const ESOLMapMode key)
+{
+    if (mIsMapOpen && MapMode != nullptr)
+    {
+        MapMode->PressModeKey(key);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clears the active route (Delete on the map)
+void ASOLShipPawn::HandleMapClearRoute()
+{
+    if (mIsMapOpen && Routes != nullptr)
+    {
+        Routes->ClearRoute();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1849,6 +1964,7 @@ void ASOLShipPawn::HandleToggleMap()
 void ASOLShipPawn::HandleCloseMap()
 {
     mIsMapToggleRequested = mIsMapOpen;
+    mIsMapOpenForJump = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1893,6 +2009,19 @@ void ASOLShipPawn::HandleMapRightHeld(const bool bHeld)
     if (bHeld)
     {
         UpdateMapCursor();
+        mMapRightPressS = FPlatformTime::Seconds();
+        mMapRightTravelPx = 0.0;
+    }
+    else if (mIsMapRightHeld && mIsMapOpen && MapMode != nullptr)
+    {
+        // Ctrl + a short, still right click undoes the last waypoint (SDD 20); anything longer was an orbit drag
+        const APlayerController* playerController = Cast<APlayerController>(GetController());
+        const bool bControlDown = playerController != nullptr && (playerController->IsInputKeyDown(EKeys::LeftControl)
+            || playerController->IsInputKeyDown(EKeys::RightControl));
+        if (SOLMapModeState::IsUndoClick(bControlDown, mMapRightTravelPx, FPlatformTime::Seconds() - mMapRightPressS))
+        {
+            MapMode->UndoWaypoint();
+        }
     }
     mIsMapRightHeld = bHeld;
     HandleMapCameraDragChanged();
@@ -1954,6 +2083,10 @@ void ASOLShipPawn::HandleMapMouseDelta(const FVector2d& deltaPixels)
     else if (mIsMapRightHeld)
     {
         MapMode->AddOrbitPixels(deltaPixels);
+    }
+    if (mIsMapRightHeld)
+    {
+        mMapRightTravelPx += deltaPixels.Size();
     }
 }
 
@@ -2210,10 +2343,17 @@ void ASOLShipPawn::OnToggleOrbitLinesAction(const FInputActionValue& /*value*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enhanced Input: predicted path toggle (reserved)
-void ASOLShipPawn::OnTogglePredictedPathAction(const FInputActionValue& /*value*/)
+// Enhanced Input: route overlay toggle (P)
+void ASOLShipPawn::OnToggleRouteOverlayAction(const FInputActionValue& /*value*/)
 {
-    HandleTogglePredictedPath();
+    HandleToggleRouteOverlay();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: resume a paused route (V)
+void ASOLShipPawn::OnResumeRouteAction(const FInputActionValue& /*value*/)
+{
+    HandleResumeRoute();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2245,10 +2385,45 @@ void ASOLShipPawn::OnRadarAutoAction(const FInputActionValue& /*value*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enhanced Input: jump map toggle (J, in both the ship and the map mapping)
-void ASOLShipPawn::OnToggleMapAction(const FInputActionValue& /*value*/)
+// Enhanced Input: Shift+M (open the map in the last mode / close it on the map)
+void ASOLShipPawn::OnOpenMapAction(const FInputActionValue& /*value*/)
 {
-    HandleToggleMap();
+    HandleOpenMap(false);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: Shift+J (open the map in Jump mode / Jump mode on the map)
+void ASOLShipPawn::OnOpenMapJumpAction(const FInputActionValue& /*value*/)
+{
+    HandleOpenMap(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: J on the map (Jump mode)
+void ASOLShipPawn::OnMapModeJumpAction(const FInputActionValue& /*value*/)
+{
+    HandleMapModeKey(ESOLMapMode::Jump);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: M on the map (Move mode)
+void ASOLShipPawn::OnMapModeMoveAction(const FInputActionValue& /*value*/)
+{
+    HandleMapModeKey(ESOLMapMode::Move);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: P on the map (Patrol mode; again flips loop / ping-pong)
+void ASOLShipPawn::OnMapModePatrolAction(const FInputActionValue& /*value*/)
+{
+    HandleMapModeKey(ESOLMapMode::Patrol);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: Delete on the map (clear the active route)
+void ASOLShipPawn::OnMapClearRouteAction(const FInputActionValue& /*value*/)
+{
+    HandleMapClearRoute();
 }
 
 //////////////////////////////////////////////////////////////////////////

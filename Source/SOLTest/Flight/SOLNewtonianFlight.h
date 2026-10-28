@@ -69,6 +69,8 @@ struct FSOLGuidanceParams
     double ArrivalRadiusM = 10.0;
     double ArrivalSpeedMps = 1.0;
     double VelocityGainPerS = 2.0;
+    double PassSpeedMps = 0.0;      // Route fly-through (SDD 20): speed still allowed at the target (0 = stop)
+    double CaptureRadiusM = 0.0;    // Route fly-through: > 0 arrives once the step comes this close, at any speed
 };
 
 // Phase of the rendezvous guidance

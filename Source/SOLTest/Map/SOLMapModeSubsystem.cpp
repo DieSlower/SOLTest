@@ -7,6 +7,7 @@
 
 #include "Game/SOLGameMode.h"
 #include "Map/SOLMapBodyOverlay.h"
+#include "Map/SOLRouteSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Universe/SOLAnchorSubsystem.h"
@@ -24,6 +25,7 @@ void USOLMapModeSubsystem::Initialize(FSubsystemCollectionBase& collection)
 {
     AnchorSubsystem = collection.InitializeDependency<USOLAnchorSubsystem>();
     BodyRegistry = collection.InitializeDependency<USOLBodyRegistrySubsystem>();
+    Routes = collection.InitializeDependency<USOLRouteSubsystem>();
     Super::Initialize(collection);
     if (BodyRegistry != nullptr)
     {
@@ -59,6 +61,7 @@ void USOLMapModeSubsystem::Deinitialize()
     CameraActor = nullptr;
     AnchorSubsystem = nullptr;
     BodyRegistry = nullptr;
+    Routes = nullptr;
     Super::Deinitialize();
 }
 
@@ -77,13 +80,14 @@ bool USOLMapModeSubsystem::DoesSupportWorldType(const EWorldType::Type worldType
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Opens the map for a controller: orbit state around the ship, map camera as the view target; false on failure
-bool USOLMapModeSubsystem::OpenMap(APlayerController* playerController)
+// Opens the map for a controller in the last used mode or (bForJump) in Jump mode; false on failure
+bool USOLMapModeSubsystem::OpenMap(APlayerController* playerController, const bool bForJump)
 {
     if (mIsOpen)
     {
         return true;
     }
+    mModeState.Mode = SOLMapModeState::ModeOnOpen(mModeState.Mode, bForJump);
     if (playerController == nullptr || AnchorSubsystem == nullptr || !EnsureCameraActor())
     {
         UE_LOG(LogSOL, Error, TEXT("MapMode %s: cannot open the map (controller, anchor or camera missing)"),
@@ -110,8 +114,9 @@ bool USOLMapModeSubsystem::OpenMap(APlayerController* playerController)
     mPreviousViewTarget = playerController->GetViewTarget();
     playerController->SetViewTarget(CameraActor);
     mIsOpen = true;
-    UE_LOG(LogSOL, Log, TEXT("MapMode %s: map open, focus (%.4g, %.4g, %.4g) m, distance %.4g m"), *GetName(),
-        mState.FocusPositionM.X, mState.FocusPositionM.Y, mState.FocusPositionM.Z, mState.DistanceM);
+    UE_LOG(LogSOL, Log, TEXT("MapMode %s: map open in mode %d, focus (%.4g, %.4g, %.4g) m, distance %.4g m"),
+        *GetName(), static_cast<int32>(mModeState.Mode), mState.FocusPositionM.X, mState.FocusPositionM.Y,
+        mState.FocusPositionM.Z, mState.DistanceM);
     return true;
 }
 
@@ -271,6 +276,10 @@ void USOLMapModeSubsystem::PressPick(const FSOLMapBodyOverlay* overlay, const bo
         UpdatePick();
         mPick.HeightOffsetZM = mPreviewHeightM;
         mPick.bHeightLocked = true;
+        if (mIsPickInDraft)
+        {
+            SOLMapModeState::SetLastWaypointHeight(mModeState, mDraftBaseHeightM + mPick.HeightOffsetZM);
+        }
         mIsHeightPreviewing = false;
         mPreviewHeightM = 0.0;
         FVector3d destinationM;
@@ -330,6 +339,10 @@ void USOLMapModeSubsystem::ReleasePick()
     mPick.bPlanarLocked = true;
     UE_LOG(LogSOL, Log, TEXT("MapPick: planar offset locked at (%.6g, %.6g) m from the reference (range %.6g m)"),
         mPick.PlanarOffsetXM, mPick.PlanarOffsetYM, mPreviewPlanarM.Size());
+    if (mModeState.Mode != ESOLMapMode::Jump)
+    {
+        AppendPickToDraft();
+    }
     if (mIsHeightModifierHeld && !mIsCameraDragging)
     {
         StartHeightPreview();
@@ -382,11 +395,119 @@ void USOLMapModeSubsystem::ClearPick()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// An in-map mode key (J / M / P; P again flips the patrol shape); a mode change drops the pick in progress
+bool USOLMapModeSubsystem::PressModeKey(const ESOLMapMode key)
+{
+    if (!mIsOpen)
+    {
+        return false;
+    }
+    const ESOLMapMode before = mModeState.Mode;
+    if (!SOLMapModeState::PressModeKey(mModeState, key))
+    {
+        return false;
+    }
+    if (mModeState.Mode != before)
+    {
+        ResetPick();
+    }
+    UE_LOG(LogSOL, Log, TEXT("MapMode %s: mode %d%s"), *GetName(), static_cast<int32>(mModeState.Mode),
+        mModeState.Mode == ESOLMapMode::Patrol ? (mModeState.bPatrolPingPong ? TEXT(" (ping-pong)") : TEXT(" (loop)"))
+        : TEXT(""));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ctrl+right click: removes the last draft waypoint; returns whether one was removed
+bool USOLMapModeSubsystem::UndoWaypoint()
+{
+    if (!mIsOpen || !SOLMapModeState::UndoWaypoint(mModeState))
+    {
+        return false;
+    }
+    // The pick that made the removed waypoint no longer has one to set the height of
+    ResetPick();
+    UE_LOG(LogSOL, Log, TEXT("MapMode %s: last waypoint undone, %d left"), *GetName(), mModeState.Draft.Num());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// X: clears the pick and, in Move or Patrol mode, the draft route
+void USOLMapModeSubsystem::ClearPickAndDraft()
+{
+    ClearPick();
+    if (mIsOpen && mModeState.Mode != ESOLMapMode::Jump && SOLMapModeState::ClearDraft(mModeState))
+    {
+        UE_LOG(LogSOL, Log, TEXT("MapMode %s: draft route cleared"), *GetName());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enter in Move / Patrol mode: starts the draft as the active route and empties the draft
+bool USOLMapModeSubsystem::StartDraftRoute()
+{
+    if (!mIsOpen || Routes == nullptr || SOLMapModeState::EnterAction(mModeState) != ESOLMapEnterAction::StartRoute)
+    {
+        UE_LOG(LogSOL, Log, TEXT("MapMode %s: Enter ignored, no draft route"), *GetName());
+        return false;
+    }
+    if (!Routes->StartRoute(SOLMapModeState::RouteKindFor(mModeState), mModeState.Draft))
+    {
+        return false;
+    }
+    SOLMapModeState::ClearDraft(mModeState);
+    ResetPick();
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Appends the just-locked pick to the draft route; a ship reference becomes the anchor body
+void USOLMapModeSubsystem::AppendPickToDraft()
+{
+    const FSOLBodyRegistry* registry = BodyRegistry != nullptr ? &BodyRegistry->GetRegistry() : nullptr;
+    if (registry == nullptr)
+    {
+        return;
+    }
+    FSOLRouteWaypoint waypoint;
+    if (mPick.bReferenceIsBody)
+    {
+        waypoint = SOLRoute::MakeWaypoint(mPick.ReferenceBodyIndex, mPick.PlanarOffsetXM, mPick.PlanarOffsetYM, 0.0);
+    }
+    else
+    {
+        // The ship moves on; a waypoint must follow a body, so the picked point is kept relative to the anchor body
+        // (the body the ship is near) from where it is now
+        const int32 anchorIndex = AnchorSubsystem != nullptr ? AnchorSubsystem->GetAnchorIndex() : INDEX_NONE;
+        if (anchorIndex < 0 || anchorIndex >= registry->Num())
+        {
+            UE_LOG(LogSOL, Warning, TEXT("MapMode %s: waypoint not added (no anchor body)"), *GetName());
+            return;
+        }
+        FVector3d pointM = FVector3d::ZeroVector;
+        if (!GetLiveDestinationM(pointM))
+        {
+            return;
+        }
+        waypoint = SOLRoute::MakeWaypointAtPoint(anchorIndex, pointM, registry->GetPositionM(anchorIndex));
+    }
+    if (!SOLMapModeState::AppendWaypoint(mModeState, waypoint))
+    {
+        return;
+    }
+    mDraftBaseHeightM = waypoint.OffsetM.Z;
+    mIsPickInDraft = true;
+    UE_LOG(LogSOL, Log, TEXT("MapMode %s: waypoint %d added at %s offset (%.6g, %.6g, %.6g) m"), *GetName(),
+        mModeState.Draft.Num(), *registry->GetName(waypoint.ReferenceBodyIndex).ToString(), waypoint.OffsetM.X,
+        waypoint.OffsetM.Y, waypoint.OffsetM.Z);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Enter: validates and records the live destination of a jump; false when none is locked yet
 bool USOLMapModeSubsystem::RequestJump()
 {
     FVector3d destinationM;
-    if (!mIsOpen || !GetLiveDestinationM(destinationM))
+    if (!mIsOpen || mModeState.Mode != ESOLMapMode::Jump || !GetLiveDestinationM(destinationM))
     {
         UE_LOG(LogSOL, Log, TEXT("MapPick: Enter ignored, no destination locked yet"));
         return false;
@@ -544,6 +665,7 @@ void USOLMapModeSubsystem::ResetPick()
     mHeightMetersPerPixel = 0.0;
     mIsPickDragging = false;
     mIsHeightPreviewing = false;
+    mIsPickInDraft = false;
 }
 
 //////////////////////////////////////////////////////////////////////////

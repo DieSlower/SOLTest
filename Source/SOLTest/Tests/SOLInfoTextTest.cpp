@@ -228,7 +228,9 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     const FString joined = FString::Join(prose, TEXT(" "));
     TestTrue(TEXT("default frame lock key"), joined.Contains(TEXT("locked with M.")));
     TestTrue(TEXT("default assist key"), joined.Contains(TEXT("off (C)")));
-    TestTrue(TEXT("default map key"), joined.Contains(TEXT("jump map (J)")));
+    TestTrue(TEXT("default map keys (issue #20)"),
+        joined.Contains(TEXT("The map (Shift+M; Shift+J opens it in Jump mode)")));
+    TestTrue(TEXT("default resume key (issue #20)"), joined.Contains(TEXT("V resumes it")));
     TestTrue(TEXT("gas giant paragraph (issue #14)"), joined.Contains(TEXT("Great Red Spot")));
     TestTrue(TEXT("ring shadow paragraph (issue #16)"), joined.Contains(TEXT("Rings and planets cast real shadows")));
     TestTrue(TEXT("ship eclipse sentence (issue #16)"),
@@ -238,14 +240,14 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     keys[static_cast<int32>(EBinding::SurfaceLock)] = TEXT("K");
     keys[static_cast<int32>(EBinding::MatchLock)] = TEXT("N");
     keys[static_cast<int32>(EBinding::ToggleAssist)] = TEXT("CapsLock");
-    keys[static_cast<int32>(EBinding::ToggleMap)] = TEXT("Comma");
+    keys[static_cast<int32>(EBinding::OpenMap)] = TEXT("Comma");
     TestEqual(TEXT("rebound surface-lock label"), FormatSurfaceLockManualLabel(keys),
         FString(TEXT("Surface-lock with K from up to")));
     const FString rebound = FString::Join(BuildProse(keys), TEXT(" "));
     TestTrue(TEXT("rebound frame lock key"), rebound.Contains(TEXT("locked with N.")));
     TestTrue(TEXT("rebound assist key"), rebound.Contains(TEXT("off (CapsLock)")));
-    TestTrue(TEXT("rebound map key"), rebound.Contains(TEXT("jump map (Comma)")));
-    TestFalse(TEXT("old map key gone"), rebound.Contains(TEXT("(J)")));
+    TestTrue(TEXT("rebound map key"), rebound.Contains(TEXT("The map (Shift+Comma;")));
+    TestFalse(TEXT("old map key gone"), rebound.Contains(TEXT("(Shift+M;")));
     return true;
 }
 

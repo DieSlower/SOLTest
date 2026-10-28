@@ -136,6 +136,9 @@ void FSOLJumpSmoke::EnterPhase(const ESOLJumpPhase phase, ASOLShipPawn& pawn)
         TapKey(EKeys::R);
         break;
     case ESOLJumpPhase::OpenJ:
+        // Shift+J opens the map in Jump mode (SDD 20); Shift is released with the key next frame
+        PressKey(EKeys::LeftShift);
+        mPendingReleases.Add(EKeys::LeftShift);
         TapKey(EKeys::J);
         break;
     case ESOLJumpPhase::EnterEmpty:

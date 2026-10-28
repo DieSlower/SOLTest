@@ -25,6 +25,17 @@ struct FMassCommandBuffer;
 struct FMassEntityManager;
 struct FSOLShipFrameInputs;
 
+// A route waypoint order for the player's autopilot (SDD 20): a point at a fixed offset from a body, flown through or
+// stopped at. Vectors are in the Unreal-handed universe frame (meters)
+struct FSOLAutopilotPointOrder
+{
+    int32 BodyIndex = INDEX_NONE;                   // Body the point moves with
+    FVector3d OffsetM = FVector3d::ZeroVector;      // Point offset from the body's centre
+    double PassSpeedMps = 0.0;                      // Fly-through speed at the point (0 = stop)
+    double CaptureRadiusM = 0.0;                    // Fly-through capture radius (0 = stop)
+    bool bStayAutoOnArrival = false;                // Arrival keeps AUTO and the order (the route sets the next one)
+};
+
 // Fired at the end of every ship step (after the observer sync, before the anchor update) with the step's real delta
 DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnShipsStepped, float /*realDeltaSeconds*/);
 
@@ -152,6 +163,22 @@ public:
     // Cancels the autopilot order, if any, and hands back to assisted flight
     void DisengageAutopilot();
 
+    // Orders the autopilot to a route waypoint (SDD 20). Outside AUTO it enters AUTO with the last frame's held input
+    // latched (as EngageAutopilot); in AUTO it only replaces the order. False (nothing changed) if invalid
+    bool EngageAutopilotPoint(const FSOLAutopilotPointOrder& order);
+
+    // Returns whether the current autopilot order is a route waypoint (false without an order)
+    bool IsAutopilotPointOrder() const;
+
+    // Returns how many times the autopilot arrived so far (bodies and waypoints); a route compares it each frame
+    uint32 GetAutopilotArrivalCount() const { return mAutopilotArrivalCount; }
+
+    // Returns the serial of the current (or last) autopilot order; every engage gives a new one
+    uint32 GetAutopilotOrderSerial() const { return mAutopilotOrderSerial; }
+
+    // Returns the serial of the order the last arrival belonged to (a route only advances on its own orders)
+    uint32 GetLastArrivalOrderSerial() const { return mLastArrivalOrderSerial; }
+
     // Returns the player's flight mode (SDD 19)
     ESOLFlightMode GetFlightMode() const { return mFlightMode.Mode; }
 
@@ -246,6 +273,10 @@ private:
     FSOLPilotInput mRelatchInput;                          // Input held when control came back (RelatchPilotInput)
     int32 mRelatchFramesLeft = 0;                          // Frames mRelatchInput is still re-applied to the latch
     uint32 mPilotResetCount = 0;                           // Pilot resets so far (jump arrival, spawn)
+    uint32 mAutopilotArrivalCount = 0;                     // Autopilot arrivals so far (SDD 20 routes)
+    uint32 mAutopilotOrderSerial = 0;                      // Serial of the current / last autopilot order
+    uint32 mLastArrivalOrderSerial = 0;                    // Serial of the order the last arrival belonged to
+    bool mIsAutopilotPassThrough = false;                  // Point order whose arrival keeps AUTO (route waypoint)
     bool mHasFrameHistory = false;                         // False until the first step has saved the bodies
     bool mIsSurfaceLockToggleRequested = false;            // L pressed since the last step
 };

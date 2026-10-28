@@ -367,17 +367,21 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
             *GetCandidateName(mShips->GetAutopilotBodyIndex())));
         CaptureScreenshot(pawn);
 
-        // Issue #19 review: a key held on the map and still held when it closes must not cancel the autopilot
-        TapKey(EKeys::J);
+        // Issue #19 review: a key held on the map and still held when it closes must not cancel the autopilot. The
+        // Shift of Shift+M must not cancel it either (SDD 20 Shift chord grace)
+        PressKey(EKeys::LeftShift);
+        mPendingReleases.Add(EKeys::LeftShift);
+        TapKey(EKeys::M);
         break;
     case ESOLInputPhase::AutoMapShift:
         Check(TEXT("k-map-open"), pawn.IsMapOpen() && mShips->GetFlightMode() == ESOLFlightMode::Auto,
-            FString::Printf(TEXT("J during autopilot: map %s, mode %d"), pawn.IsMapOpen() ? TEXT("open")
+            FString::Printf(TEXT("Shift+M during autopilot: map %s, mode %d"), pawn.IsMapOpen() ? TEXT("open")
                 : TEXT("closed"), static_cast<int32>(mShips->GetFlightMode())));
         PressKey(EKeys::LeftShift);
         break;
     case ESOLInputPhase::AutoMapClose:
-        TapKey(EKeys::J);
+        // Left Shift is still held from the previous phase, so M is the Shift+M close chord
+        TapKey(EKeys::M);
         break;
     case ESOLInputPhase::AutoRelatched:
         Check(TEXT("k-relatch"), !pawn.IsMapOpen() && mShips->GetFlightMode() == ESOLFlightMode::Auto,

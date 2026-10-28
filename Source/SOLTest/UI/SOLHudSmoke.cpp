@@ -295,7 +295,7 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::PredictedPath:
         Check(TEXT("b-path-noop"), bOrbits && !pawn.IsSpeedPanelOpen(),
-            TEXT("P: reserved no-op, HUD state unchanged"));
+            TEXT("P: route overlay toggled, HUD state unchanged"));
         break;
     case ESOLHudPhase::PanelOpen:
     case ESOLHudPhase::EscOpen:

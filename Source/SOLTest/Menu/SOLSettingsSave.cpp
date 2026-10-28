@@ -74,4 +74,17 @@ void USOLSettingsSave::MigrateToCurrentVersion()
     {
         Version = 3;
     }
+
+    // Schema 3 -> 4 (SDD 20 section 2.1): the J map toggle became Shift+J (OpenMapJump) and Shift+M (OpenMap); a
+    // rebound toggle's key moves to OpenMapJump (the map it opened), unless that already has its own override
+    if (Version == 3)
+    {
+        FString toggleKey;
+        if (KeyOverrides.RemoveAndCopyValue(TEXT("ToggleMap"), toggleKey)
+            && !KeyOverrides.Contains(TEXT("OpenMapJump")))
+        {
+            KeyOverrides.Add(TEXT("OpenMapJump"), toggleKey);
+        }
+        Version = 4;
+    }
 }

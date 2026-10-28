@@ -451,12 +451,24 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
     SaveFrameHistory();
 
     // The autopilot order ends at arrival; assisted flight resumes from there (SDD 19 section 3.2)
-    if (mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived)
+    // A route's fly-through waypoint (SDD 20) keeps AUTO and its order: the route listener (OnShipsStepped, below)
+    // sees the arrival count change and orders the next waypoint this frame
+    FSOLShipStateFragment& stateFragment = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    if (stateFragment.bAutopilotArrived)
     {
-        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot arrived at %s"), *GetName(),
-            *BodyRegistry->GetRegistry().GetName(GetAutopilotBodyIndex()).ToString());
-        ClearAutopilotOrder();
-        SOLFlightMode::NotifyAutopilotArrived(mFlightMode);
+        ++mAutopilotArrivalCount;
+        mLastArrivalOrderSerial = mAutopilotOrderSerial;
+        if (mIsAutopilotPassThrough && IsAutopilotPointOrder())
+        {
+            stateFragment.bAutopilotArrived = false;
+        }
+        else
+        {
+            UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot arrived at %s"), *GetName(),
+                *BodyRegistry->GetRegistry().GetName(GetAutopilotBodyIndex()).ToString());
+            ClearAutopilotOrder();
+            SOLFlightMode::NotifyAutopilotArrived(mFlightMode);
+        }
     }
 
     // Surface-lock after the flight run, when the ship and the bodies are both at this frame's positions (before the
@@ -491,11 +503,58 @@ bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
     control.AutopilotBodyIndex = bodyIndex;
     control.AutopilotOffsetDir = towardShip.GetSafeNormal(UE_DOUBLE_SMALL_NUMBER, FVector3d(0.0, 0.0, 1.0));
+    control.bAutopilotPoint = false;
+    mIsAutopilotPassThrough = false;
+    ++mAutopilotOrderSerial;
     SOLFlightMode::EngageAuto(mFlightMode, mLastPilotInput);
     UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)%s"), *GetName(),
         *BodyRegistry->GetRegistry().GetName(bodyIndex).ToString(), towardShip.Size() / SOL::METERS_PER_KM,
         mFlightMode.LatchedChannels != 0 ? TEXT("; held input latched") : TEXT(""));
     return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Orders the autopilot to a route waypoint; enters AUTO (latching held input) unless already in it
+bool USOLShipSubsystem::EngageAutopilotPoint(const FSOLAutopilotPointOrder& order)
+{
+    if (!HasPlayerShip() || BodyRegistry == nullptr || order.BodyIndex < 0
+        || order.BodyIndex >= BodyRegistry->GetUnrealFrameCache().Num() || !FMath::IsFinite(order.OffsetM.X)
+        || !FMath::IsFinite(order.OffsetM.Y) || !FMath::IsFinite(order.OffsetM.Z)
+        || !FMath::IsFinite(order.PassSpeedMps) || !FMath::IsFinite(order.CaptureRadiusM))
+    {
+        return false;
+    }
+    FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
+    control.AutopilotBodyIndex = order.BodyIndex;
+    control.AutopilotPointOffsetM = order.OffsetM;
+    control.AutopilotPassSpeedMps = FMath::Max(order.PassSpeedMps, 0.0);
+    control.AutopilotCaptureRadiusM = FMath::Max(order.CaptureRadiusM, 0.0);
+    control.bAutopilotPoint = true;
+    mIsAutopilotPassThrough = order.bStayAutoOnArrival;
+    ++mAutopilotOrderSerial;
+    mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived = false;
+    if (!SOLFlightMode::IsAuto(mFlightMode))
+    {
+        SOLFlightMode::EngageAuto(mFlightMode, mLastPilotInput);
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot to a waypoint at %s (offset %.0f km, pass %.0f m/s, capture "
+        "%.0f m)%s"), *GetName(), *BodyRegistry->GetRegistry().GetName(order.BodyIndex).ToString(),
+        order.OffsetM.Size() / SOL::METERS_PER_KM, control.AutopilotPassSpeedMps, control.AutopilotCaptureRadiusM,
+        mFlightMode.LatchedChannels != 0 ? TEXT("; held input latched") : TEXT(""));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the current autopilot order is a route waypoint (false without an order)
+bool USOLShipSubsystem::IsAutopilotPointOrder() const
+{
+    if (!HasPlayerShip())
+    {
+        return false;
+    }
+    const FSOLShipControlFragment& control =
+        mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
+    return control.AutopilotBodyIndex != INDEX_NONE && control.bAutopilotPoint;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -584,6 +643,8 @@ void USOLShipSubsystem::ClearAutopilotOrder()
         UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot disengaged"), *GetName());
     }
     control.AutopilotBodyIndex = INDEX_NONE;
+    control.bAutopilotPoint = false;
+    mIsAutopilotPassThrough = false;
     FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
     state.Guidance = FSOLGuidanceOutput();
     state.bAutopilotArrived = false;

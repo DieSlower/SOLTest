@@ -5,7 +5,6 @@
 
 #include "UI/SOLHudFormat.h"
 
-#include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
@@ -132,11 +131,10 @@ namespace SOLHudFormat
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
-    // Returns a binding's key label (unbound when the array is short)
+    // Returns a binding's shown key, "Shift+" included for a chord (unbound when the array is short)
     FString HudKeyLabel(const TArray<FString>& keys, const SOLKeyBindings::EBinding binding)
     {
-        const int32 index = static_cast<int32>(binding);
-        return SOLBindingLabel::KeyDisplayName(keys.IsValidIndex(index) ? keys[index] : FString());
+        return SOLKeyBindings::BindingDisplayName(static_cast<int32>(binding), keys);
     }
 }
 
@@ -149,13 +147,14 @@ FString SOLHudFormat::FormatFlightKeyHints(const TArray<FString>& keys, const bo
     FString hints = FString::Format(bOrbitLinesOn ? HUD_HINT_ORBITS_ON_FORMAT : HUD_HINT_ORBITS_OFF_FORMAT,
         { HudKeyLabel(keys, EBinding::ToggleOrbitLines) });
     hints += FString::Format(HUD_HINT_KEYS_FORMAT, { HudKeyLabel(keys, EBinding::SpeedPanel),
-        HudKeyLabel(keys, EBinding::ToggleMap), HudKeyLabel(keys, EBinding::SelectTarget),
+        HudKeyLabel(keys, EBinding::OpenMap), HudKeyLabel(keys, EBinding::SelectTarget),
         HudKeyLabel(keys, EBinding::NextTarget), HudKeyLabel(keys, EBinding::PreviousTarget),
         HudKeyLabel(keys, EBinding::ClearTarget), HudKeyLabel(keys, EBinding::MatchLock),
         HudKeyLabel(keys, EBinding::SurfaceLock), HudKeyLabel(keys, EBinding::WarpDown),
         HudKeyLabel(keys, EBinding::WarpUp), HudKeyLabel(keys, EBinding::RadarZoomIn),
         HudKeyLabel(keys, EBinding::RadarZoomOut), HudKeyLabel(keys, EBinding::RadarAuto),
-        HudKeyLabel(keys, EBinding::Fire), HudKeyLabel(keys, EBinding::DropTarget) });
+        HudKeyLabel(keys, EBinding::Fire), HudKeyLabel(keys, EBinding::DropTarget),
+        HudKeyLabel(keys, EBinding::ToggleRouteOverlay), HudKeyLabel(keys, EBinding::Resume) });
     return hints;
 }
 
@@ -164,7 +163,7 @@ FString SOLHudFormat::FormatFlightKeyHints(const TArray<FString>& keys, const bo
 FString SOLHudFormat::FormatMapKeyHints(const TArray<FString>& keys)
 {
     return FString::Format(SOLMenuText::HUD_HINT_MAP_FORMAT,
-        { HudKeyLabel(keys, SOLKeyBindings::EBinding::ToggleMap) });
+        { HudKeyLabel(keys, SOLKeyBindings::EBinding::OpenMap) });
 }
 
 //////////////////////////////////////////////////////////////////////////

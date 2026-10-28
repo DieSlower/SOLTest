@@ -152,7 +152,10 @@ void FSOLMapSmoke::EnterPhase(const ESOLMapPhase phase, ASOLShipPawn& /*pawn*/)
     case ESOLMapPhase::OpenJ:
     case ESOLMapPhase::CloseJ:
     case ESOLMapPhase::ReopenJ:
-        TapKey(EKeys::J);
+        // Shift+M opens / closes the map (SDD 20); Shift is released with the key next frame
+        PressKey(EKeys::LeftShift);
+        mPendingReleases.Add(EKeys::LeftShift);
+        TapKey(EKeys::M);
         break;
     case ESOLMapPhase::SuppressW:
     case ESOLMapPhase::RestoreW:
