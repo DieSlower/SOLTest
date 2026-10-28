@@ -14,4 +14,5 @@ SDD: [`SDDs/25-map-alignment-and-shimmer.md`](../SDDs/25-map-alignment-and-shimm
 | 6 | Identify the white line (asteroid orbit lines; joystick ring; pick overlay) | Done |
 | 7 | Docs: SDD, this plan, `GAME_MECHANICS.md`, `ARCHITECTURE.md` | Done |
 | 8 | Full suite (960/960), adversarial opus review: fixed the vacuous test (view rect, Y scale), exposure's vertical FOV, highlight-slot check, map-open check once, abort quits, 16:9 warning, includes/line lengths, stale sort-priority comment, docs (screen-percentage trade-off, ultrawide cost) | Done |
-| 9 | Re-run the suite, commit and push | In progress |
+| 9 | Re-run the suite, commit and push | Done |
+| 10 | Amendment 1: date-dependent 'Earth on line' smoke failure; mirror clips chords at the near plane and samples like the line actor, tolerance includes the line's chord error; tests `SOLTest.MapAlign.*`; smoke at five dates, suite 1014/1014 | Done |

@@ -62,8 +62,9 @@ namespace
     constexpr double ALIGN_SWEEP_PX_PER_FRAME = 4.0;
     constexpr int32 ALIGN_SWEEP_FRAMES = 120;
 
-    // Orbit-line samples for the CPU mirror (dense enough that its chords stay well inside the tolerance)
-    constexpr int32 ALIGN_LINE_SEGMENTS = 8192;
+    // Clip-space W (view depth, cm) a line chord is clipped to before projecting; approximately the rasterizer's near
+    // clip (GNearClippingPlane, 10 cm), which makes no measurable difference at these distances
+    constexpr double ALIGN_NEAR_W_CM = 1.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -175,11 +176,14 @@ bool FSOLMapAlignSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         // Measured on this frame's state (camera cache, bodies and lines all from the last universe update)
         FVector2D bodyPx = FVector2D::ZeroVector;
         double distancePx = 0.0;
-        const bool bMeasured = target != INDEX_NONE && MeasureBodyToLinePx(target, bodyPx, distancePx);
+        double chordErrorPx = 0.0;
+        const bool bMeasured = target != INDEX_NONE
+            && MeasureBodyToLinePx(target, bodyPx, distancePx, chordErrorPx);
+        const double tolerancePx = SOL::MAP_ALIGN_SMOKE_TOLERANCE_PX + chordErrorPx;
         const FString label = FString::Printf(TEXT("%s on line"), view.TargetName);
-        Check(*label, bMeasured && distancePx <= SOL::MAP_ALIGN_SMOKE_TOLERANCE_PX, FString::Printf(
-            TEXT("focus %s at %.3g m: body at (%.1f, %.1f) px, %.3f px from its line"), view.FocusName,
-            view.DistanceM, bodyPx.X, bodyPx.Y, distancePx));
+        Check(*label, bMeasured && distancePx <= tolerancePx, FString::Printf(
+            TEXT("focus %s at %.3g m: body at (%.1f, %.1f) px, %.3f px from its line (tolerance %.3f px)"),
+            view.FocusName, view.DistanceM, bodyPx.X, bodyPx.Y, distancePx, tolerancePx));
         const int32 highlighted = mOrbitLines.IsValid() ? mOrbitLines->GetHighlightedSlot() : INDEX_NONE;
         const int32 expectedSlot = target != INDEX_NONE ? PermanentLineSlot(target) : INDEX_NONE;
         Check(TEXT("line highlighted"), highlighted != INDEX_NONE && highlighted == expectedSlot,
@@ -270,11 +274,14 @@ int32 FSOLMapAlignSmoke::PermanentLineSlot(const int32 bodyIndex) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the screen distance (px) from the body's map icon to its orbit line as the GPU draws it
-bool FSOLMapAlignSmoke::MeasureBodyToLinePx(const int32 bodyIndex, FVector2D& outBodyPx, double& outDistancePx) const
+// Returns the screen distance (px) from the body's map icon to its orbit line as the GPU draws it, and the line's
+// designed chord error seen from the camera (px)
+bool FSOLMapAlignSmoke::MeasureBodyToLinePx(const int32 bodyIndex, FVector2D& outBodyPx, double& outDistancePx,
+    double& outChordErrorPx) const
 {
     outBodyPx = FVector2D::ZeroVector;
     outDistancePx = TNumericLimits<double>::Max();
+    outChordErrorPx = 0.0;
     const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
     const int32 parent = registry.GetParent(bodyIndex);
     FMatrix viewProjection;
@@ -285,43 +292,82 @@ bool FSOLMapAlignSmoke::MeasureBodyToLinePx(const int32 bodyIndex, FVector2D& ou
         return false;
     }
 
-    // The shader's placement: (parent - viewpoint) + point, log-compressed about the viewpoint, at its render
-    // location, then projected as the renderer projects it
+    // The line actor's sampling (its own segment count, so its own chord error), then the shader's placement:
+    // (parent - viewpoint) + point, log-compressed about the viewpoint, at its render location, in clip space
     TArray<FVector3d> pointsM;
     TArray<FVector3d> tangents;
     TArray<double> arcs;
     const FSOLKeplerElements elements = registry.GetElements(bodyIndex).AtCenturies(
         mClock->GetClock().GetCenturiesSinceJ2000());
-    if (SOLOrbitLineMath::SampleOrbit(elements, ALIGN_LINE_SEGMENTS, pointsM, tangents, arcs) < 2)
+    const int32 segments = SOLOrbitLineMath::SegmentCountFor(elements.SemiMajorAxisM, registry.GetRadiusM(bodyIndex));
+    if (SOLOrbitLineMath::SampleOrbit(elements, segments, pointsM, tangents, arcs) < 2)
     {
         return false;
     }
     const FVector3d& viewpointM = mAnchor->GetViewpointM();
     const FVector3d parentOffsetM = registry.GetPositionM(parent) - viewpointM;
     const FVector viewpointRenderCm = mAnchor->UniverseToRenderCm(viewpointM);
-    bool bHasPrevious = false;
-    FVector2D previousPx = FVector2D::ZeroVector;
+    TArray<FVector4> clipPoints;
+    clipPoints.Reserve(pointsM.Num());
     for (const FVector3d& pointM : pointsM)
     {
         const FVector renderCm = viewpointRenderCm + FVector(SOLRender::EclipticToUnreal(
             SOLOrbitLineMath::PlaceLinePointCm(parentOffsetM + pointM, SOL::DEFAULT_MAX_RENDER_DISTANCE_CM)));
-        const FVector4 clip = viewProjection.TransformFVector4(FVector4(renderCm, 1.0));
-        if (clip.W <= 0.0)
-        {
-            bHasPrevious = false;
-            continue;
-        }
-        const FVector2D screenPx(viewRect.Min.X + (0.5 + 0.5 * clip.X / clip.W) * viewRect.Width(),
-            viewRect.Min.Y + (0.5 - 0.5 * clip.Y / clip.W) * viewRect.Height());
-        if (bHasPrevious)
-        {
-            const FVector2D closest = FMath::ClosestPointOnSegment2D(outBodyPx, previousPx, screenPx);
-            outDistancePx = FMath::Min(outDistancePx, FVector2D::Distance(closest, outBodyPx));
-        }
-        previousPx = screenPx;
-        bHasPrevious = true;
+        clipPoints.Add(viewProjection.TransformFVector4(FVector4(renderCm, 1.0)));
+    }
+    outDistancePx = ScreenDistanceToClipPolylinePx(outBodyPx, clipPoints, viewRect, ALIGN_NEAR_W_CM);
+
+    // The chord error the line is built with (SDD 17: a fraction of the body's radius), at the body's true distance
+    // from the camera, through the HUD's focal length
+    const APlayerCameraManager* cameraManager = mController->PlayerCameraManager;
+    FVector2D viewportPx = FVector2D::ZeroVector;
+    GEngine->GameViewport->GetViewportSize(viewportPx);
+    const FMinimalViewInfo& pov = cameraManager->GetCameraCacheView();
+    const double cameraDistanceM = FVector3d::Dist(registry.GetPositionM(bodyIndex),
+        mAnchor->RenderToUniverseM(pov.Location));
+    const double focalPx = 0.5 * viewportPx.X
+        / FMath::Tan(FMath::DegreesToRadians(static_cast<double>(pov.FOV)) * 0.5);
+    if (cameraDistanceM > 0.0)
+    {
+        outChordErrorPx = focalPx * SOLOrbitLineMath::ChordSagittaM(elements.SemiMajorAxisM, segments)
+            / cameraDistanceM;
     }
     return outDistancePx < TNumericLimits<double>::Max();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the screen distance (px) from a point to a clip-space polyline, each segment clipped to W >= nearW first
+double FSOLMapAlignSmoke::ScreenDistanceToClipPolylinePx(const FVector2D& pointPx,
+    const TConstArrayView<FVector4> clipPoints, const FIntRect& viewRect, const double nearW)
+{
+    double distancePx = TNumericLimits<double>::Max();
+    const auto toScreen = [&viewRect](const FVector4& clip)
+    {
+        return FVector2D(viewRect.Min.X + (0.5 + 0.5 * clip.X / clip.W) * viewRect.Width(),
+            viewRect.Min.Y + (0.5 - 0.5 * clip.Y / clip.W) * viewRect.Height());
+    };
+    for (int32 index = 1; index < clipPoints.Num(); ++index)
+    {
+        // Clip the chord against the near plane in homogeneous space (linear in clip space, as the rasterizer does);
+        // a chord entirely behind it is not drawn
+        FVector4 start = clipPoints[index - 1];
+        FVector4 end = clipPoints[index];
+        if (start.W < nearW && end.W < nearW)
+        {
+            continue;
+        }
+        if (start.W < nearW)
+        {
+            start = start + (end - start) * ((nearW - start.W) / (end.W - start.W));
+        }
+        else if (end.W < nearW)
+        {
+            end = end + (start - end) * ((nearW - end.W) / (start.W - end.W));
+        }
+        const FVector2D closest = FMath::ClosestPointOnSegment2D(pointPx, toScreen(start), toScreen(end));
+        distancePx = FMath::Min(distancePx, FVector2D::Distance(closest, pointPx));
+    }
+    return distancePx;
 }
 
 //////////////////////////////////////////////////////////////////////////
