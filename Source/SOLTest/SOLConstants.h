@@ -678,19 +678,78 @@ namespace SOL
     inline constexpr float MENU_CAMERA_FOV_DEG = 60.0f;
     inline constexpr float MENU_CAMERA_LOOK_YAW_OFFSET_DEG = -16.0f;
 
-    // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
-    // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
-    // flight mode label uses it now; ticket #21 applies it, with LT's glow shading, to the whole HUD
     // Shared hologram style (SDD 20 section 2.4; #21 reuses it). Glow line, pixels at a 720 px canvas: a bright core
     // and a halo fading linearly from GLOW_HALO_INTENSITY of the core to nothing (a cheap stand-in for LT's
     // 0.8 exp(-2 max(0, d - 0.5)) + 0.2 exp(-(0.2 d)^0.75) profile)
     namespace Hologram
     {
+        inline constexpr const TCHAR* CVAR_ENABLED = TEXT("sol.Hologram");             // Whole look on / off
+        inline constexpr const TCHAR* CVAR_POST_STRENGTH = TEXT("sol.HologramPostStrength"); // Post-process strength
         inline constexpr double GLOW_CORE_HALF_PX = 0.9;
         inline constexpr double GLOW_HALO_HALF_PX = 4.5;
         inline constexpr double GLOW_HALO_INTENSITY = 0.3;
+
+        // LT hologram fragment (proxy bodies and rings, Tools/Map/create_hologram_assets.py reads these defaults):
+        // Fresnel rim 1 - |N.V| x time noise 1 - NOISE_LOG_SCALE log(1 - noise) x 1 px scanlines
+        // 1 + SCANLINE_AMPLITUDE sin(PI y), additive, colour x COLOR_GAIN; contour bands
+        // CONTOUR_GAIN exp(-CONTOUR_SHARPNESS |spec - k|) on latitude and longitude lines
+        inline constexpr double NOISE_LOG_SCALE = 0.1;
+        inline constexpr double NOISE_RATE_HZ = 30.0;               // Noise pattern changes per second
+        inline constexpr double SCANLINE_AMPLITUDE = 0.2;
+        inline constexpr double COLOR_GAIN = 2.0;
+        inline constexpr double CONTOUR_GAIN = 2.0;
+        inline constexpr double CONTOUR_SHARPNESS = 4.0;
+        inline constexpr double CONTOUR_LATITUDE_BANDS = 6.0;       // Latitude lines from pole to pole
+        inline constexpr double CONTOUR_LONGITUDE_BANDS = 12.0;     // Meridians around the body
+        inline constexpr double CONTOUR_AMOUNT = 0.35;              // Contour lines' share against the rim
+        inline constexpr double RING_FILL = 0.12;                   // Ring disc base glow
+        inline constexpr double RING_BANDS = 8.0;                   // Contour bands across a ring disc
+        inline constexpr double PROXY_INTENSITY_PLANET = 0.5;       // Emissive scale of a planet proxy
+        inline constexpr double PROXY_INTENSITY_MOON = 0.35;
+        inline constexpr double PROXY_INTENSITY_SUN = 0.5;
+        inline constexpr double PROXY_INTENSITY_RING = 0.5;
+        inline const FLinearColor PROXY_COLOR_BODY(0.2f, 0.7f, 1.0f, 1.0f);    // LT Primary
+        inline const FLinearColor PROXY_COLOR_SUN(1.0f, 0.3f, 0.1f, 1.0f);     // LT Secondary
+
+        // Map post-process over the scene colour (after tonemapping; the HUD canvas is drawn over it untouched):
+        // tint toward Primary, 1 px scanlines, a global flicker and a small horizontal jitter of a few rows, all
+        // scaled by sol.HologramPostStrength (default POST_STRENGTH_DEFAULT, clamped to [0, POST_STRENGTH_MAX])
+        inline constexpr double POST_TINT = 0.25;
+        inline constexpr double POST_SCANLINE = 0.06;
+        inline constexpr double POST_FLICKER = 0.03;
+        inline constexpr double POST_JITTER_PX = 0.75;
+        inline constexpr double POST_JITTER_ROW_FRACTION = 0.03;    // Fraction of 2 px rows jittered at any time
+        inline constexpr double POST_STRENGTH_DEFAULT = 1.0;
+        inline constexpr double POST_STRENGTH_MAX = 2.0;
+        inline constexpr float POST_PRIORITY = 10.0f;               // Over ASOLBodyVisuals' unbound post-process
+        inline constexpr float POST_EXPOSURE_BIAS = 0.0f;           // Fixed exposure in the map (dark-sky exposure)
+
+        // Ecliptic grid through the map camera focus (LT's two scales 16 and 64: ratio 4). Minor spacing is the
+        // largest power of GRID_SCALE_RATIO metres not above cameraDistance / GRID_MINOR_LINES_PER_VIEW, major =
+        // minor x ratio; the minor lines fade out across a level. Lines reach GRID_EXTENT_MAJOR_CELLS major spacings
+        // from the focus and fade with the LT distance field exp(-2 d^2) + 0.2 exp(-(0.2 d)^0.75) (d in major
+        // spacings), tapered to nothing over the outer (1 - GRID_EDGE_TAPER_START) of the extent
+        inline constexpr double GRID_SCALE_RATIO = 4.0;
+        inline constexpr double GRID_MINOR_LINES_PER_VIEW = 16.0;
+        inline constexpr double GRID_EXTENT_MAJOR_CELLS = 4.0;
+        inline constexpr double GRID_EDGE_TAPER_START = 0.75;
+        inline constexpr double GRID_ALPHA = 0.1;                   // LT: Primary at 0.1 alpha (major lines)
+        inline constexpr double GRID_MINOR_ALPHA_SCALE = 0.5;       // Minor lines relative to the major ones
+        inline constexpr int32 GRID_PIECES_PER_LINE = 32;           // Fade tessellation along a grid line (world)
+
+        // Stems from bodies and waypoints down (or up) to the grid plane: drawn when the height is at least
+        // STEM_MIN_HEIGHT_FRACTION of the camera distance; alpha STEM_ALPHA x max(STEM_MIN_ALPHA, grid fade at the
+        // foot's distance from the focus), clamped to 1
+        inline constexpr double STEM_MIN_HEIGHT_FRACTION = 1.0e-3;
+        inline constexpr double STEM_ALPHA = 0.5;
+        inline constexpr double STEM_MIN_ALPHA = 0.15;
+        inline constexpr double STEM_FOOT_RADIUS_PX = 3.0;          // Ring at a stem's foot, 720 px canvas
+        inline constexpr int32 MAX_STEMS = 256;
+        inline constexpr int32 OVERLAY_MAX_TRIANGLES = 24576;       // Grid plus stems, one additive batch
     }
 
+    // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
+    // flight mode label uses it now; ticket #21 applies it, with LT's glow shading, to the whole HUD
     namespace HudPalette
     {
         inline const FLinearColor PRIMARY(0.2f, 0.7f, 1.0f, 1.0f);      // LT Primary (blue-cyan)
@@ -700,6 +759,7 @@ namespace SOL
         inline const FLinearColor HOSTILE(1.0f, 0.1f, 0.01f, 1.0f);     // LT Hostile (red-orange)
     }
 
+    // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
     namespace MenuStyle
     {
         inline constexpr int32 Z_ORDER = 20;                     // Above the HUD canvas and the F3 panel
@@ -826,6 +886,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_MAP_ALIGN = TEXT("SOLSmokeMapAlign"); // Map icons on their lines
         inline constexpr const TCHAR* SMOKE_ROUTE = TEXT("SOLSmokeRoute");      // Map modes and a route, then quit
         inline constexpr const TCHAR* SMOKE_ROUTE_OVERLAY = TEXT("SOLSmokeRouteOverlay");   // Route overlay, then quit
+        inline constexpr const TCHAR* SMOKE_HOLOGRAM = TEXT("SOLSmokeHologram");   // Map hologram look, then quit
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
@@ -914,6 +975,14 @@ namespace SOL
 
         // Orbit lines (SDD 17), created by Tools/OrbitLines/create_orbit_line_assets.py (keep both in sync)
         inline constexpr const TCHAR* ORBIT_LINE_MATERIAL = TEXT("/Game/SOL/OrbitLines/M_SOLOrbitLine.M_SOLOrbitLine");
+        // Map hologram look (SDD 20 section 2.4), built by Tools/Map/create_hologram_assets.py
+        inline constexpr const TCHAR* HOLOGRAM_BODY_MATERIAL =
+            TEXT("/Game/SOL/Map/M_SOLHologramBody.M_SOLHologramBody");
+        inline constexpr const TCHAR* HOLOGRAM_RING_MATERIAL =
+            TEXT("/Game/SOL/Map/M_SOLHologramRing.M_SOLHologramRing");
+        inline constexpr const TCHAR* HOLOGRAM_POST_MATERIAL =
+            TEXT("/Game/SOL/Map/M_SOLHologramPost.M_SOLHologramPost");
+        inline constexpr const TCHAR* HOLOGRAM_RING_MESH = TEXT("/Engine/BasicShapes/Plane.Plane");
         inline constexpr const TCHAR* ORBIT_LINE_PARAMETER_COLLECTION =
             TEXT("/Game/SOL/OrbitLines/MPC_SOLOrbitLine.MPC_SOLOrbitLine");
 
@@ -1023,7 +1092,18 @@ namespace SOL
     // Radius of the BODY_MESH sphere in its own units (the engine sphere is 100 cm across)
     inline constexpr double BODY_MESH_RADIUS_CM = 50.0;
 
+    // Parameter names of the hologram materials (Tools/Map/create_hologram_assets.py creates them with these names)
+    namespace HologramMaterialParams
+    {
+        inline constexpr const TCHAR* COLOR = TEXT("HoloColor");                 // Proxy and ring colour
+        inline constexpr const TCHAR* INTENSITY = TEXT("HoloIntensity");         // Proxy and ring emissive scale
+        inline constexpr const TCHAR* RING_INNER_FRACTION = TEXT("RingInnerFraction"); // Ring inner / outer radius
+        inline constexpr const TCHAR* POST_STRENGTH = TEXT("Strength");          // Post-process overall strength
+        inline constexpr const TCHAR* POST_TINT = TEXT("Tint");                  // Post-process tint colour
+    }
+
     // Parameter names of BODY_MATERIAL (created by Tools/CreateSOLContent.py; keep both in sync)
+
     namespace BodyMaterialParams
     {
         inline constexpr const TCHAR* COLOR_A = TEXT("ColorA");                 // Base color

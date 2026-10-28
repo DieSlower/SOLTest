@@ -8,6 +8,7 @@
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
 #include "Map/SOLMapBodyOverlay.h"
+#include "Map/SOLMapHologramOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
 #include "Map/SOLMapRouteOverlay.h"
 #include "UI/SOLHudFormat.h"
@@ -102,6 +103,9 @@ public:
 
     // Returns the route overlay (legs, markers and their screen positions; verification)
     const FSOLMapRouteOverlay& GetRouteOverlay() const { return mRouteOverlay; }
+
+    // Returns the map hologram grid and stems overlay (verification)
+    const FSOLMapHologramOverlay& GetHologramOverlay() const { return mHologramOverlay; }
 
     // Returns the route marker line drawn in the last frame, empty when none (verification)
     const FString& GetLastRouteLineText() const { return mLastRouteLineText; }
@@ -234,6 +238,9 @@ private:
     // Fills the route overlay's inputs from the route and map-mode subsystems and draws it (map, or flight with P on)
     void DrawRouteOverlay(const FSOLMapOverlayView& overlayView);
 
+    // Fills the hologram overlay's inputs from the map camera and the routes and draws the grid and stems (map only)
+    void DrawHologramOverlay(const FSOLMapOverlayView& overlayView);
+
     // Draws the route marker (state, progress, total ETA) below the autopilot marker, moved below the key hints if it
     // would overlap them (top centre)
     void DrawRouteMarker();
@@ -301,6 +308,7 @@ private:
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
+    FSOLMapHologramOverlay mHologramOverlay;        // Map grid plane and stems (SDD 20 hologram look)
     FString mLastRouteLineText;                     // Route marker drawn last frame (verification)
     FBox2D mLastRouteLineRect = FBox2D(ForceInit);  // Its screen rectangle
     FBox2D mLastHintsRect = FBox2D(ForceInit);      // Key-hint lines' screen rectangle of the last frame

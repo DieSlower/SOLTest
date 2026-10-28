@@ -328,7 +328,9 @@ namespace SOLMenuText
             "waypoint above the plane through your ship has a ring with a centre dot, one below it a hollow orange "
             "ring. The plan is dim, a paused route dimmer and tagged PAUSED; the top of the screen shows the route's "
             "progress and ETA. {ToggleRouteOverlay} shows or hides routes in flight (the map always shows them). "
-            "Time warp is never changed for you."),
+            "Time warp is never changed for you. The map is drawn as a hologram: bodies and rings as glowing "
+            "outlines (the Sun orange), a faint grid on the ecliptic plane through the point the map camera circles, "
+            "and a line from each body and waypoint to that plane (orange when it lies below it)."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

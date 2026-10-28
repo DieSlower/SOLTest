@@ -10,6 +10,7 @@
 
 #include "SOLGameMode.generated.h"
 
+class ASOLHologramVisuals;
 class ASOLOrbitLineVisuals;
 class ASOLShipPawn;
 class USOLCombatSubsystem;
@@ -44,6 +45,9 @@ public:
     // Returns the world-space orbit-line actor spawned in StartPlay, or nullptr
     ASOLOrbitLineVisuals* GetOrbitLineVisuals() const { return OrbitLineVisuals; }
 
+    // Returns the map hologram look actor (SDD 20), or nullptr before StartPlay
+    ASOLHologramVisuals* GetHologramVisuals() const { return HologramVisuals; }
+
     // Returns the menu camera while the main menu shows, else the ship pawn (the debug spectator with -SOLSpectator)
     virtual UClass* GetDefaultPawnClassForController_Implementation(AController* controller) override;
 
@@ -59,6 +63,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<ASOLOrbitLineVisuals> OrbitLineVisuals;        // Spawned in StartPlay (SDD 17)
+
+    UPROPERTY(Transient)
+    TObjectPtr<ASOLHologramVisuals> HologramVisuals;          // Spawned in StartPlay (SDD 20 hologram look)
 
     // Phases of the -SOLCombatDemo script
     enum class ECombatDemoPhase : uint8

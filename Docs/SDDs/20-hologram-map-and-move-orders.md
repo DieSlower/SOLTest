@@ -191,3 +191,59 @@ What shifted or was decided during implementation (none of it changes a grill an
   `ProjectWorldLocationToScreen`, screenshots in flight, map and with a draft).
 - A unity-build clash (`IsFiniteVector` in two anonymous namespaces) surfaced when the new files reshuffled the blobs;
   `SOLOrbitLineMath.cpp`'s copy is renamed `OrbitLineIsFiniteVector`.
+
+## Amendment 3: step 6 as built (hologram look) and closing
+
+All three layers of section 2.4, map view only, switched off together by `sol.Hologram 0`:
+
+- **(a) Proxies.** `ASOLHologramVisuals` (spawned by the game mode, follows `OnUniverseUpdated`) shows one hologram
+  sphere per body (`M_SOLHologramBody`) and one disc per ringed planet (`M_SOLHologramRing`, plane mesh in the planet's
+  equator, scaled by the planet's own render scale), placed exactly like `ASOLBodyVisuals`. The real visuals are not
+  touched: the `ASOLBodyVisuals`, `ASOLRingVisuals` and `ASOLGasGiantVisuals` actors go into the player controller's
+  `HiddenActors` while the look shows (the renderer skips them for that view only) and are removed on close, cvar off
+  or `EndPlay`. So the gas giants' own placeholder hiding and the ring layers' logic keep running, and nothing can stay
+  hidden after the map closes (checked by the smoke). Ring shadows and gas-giant detail are not shown in the map. The
+  show/hide transitions are `SOLHologramMath::NextTransition` (map open and enabled).
+- **Shader.** The LT recipe as given: rim `1 - |N.V|`, per-2-px-row time noise `1 - 0.1 log(1 - n)` at 30 Hz, 1 px
+  scanlines `1 + 0.2 sin(PI y)`, colour x2. LT's contour bands `2 exp(-4 |spec - k|)` are applied to the body-local
+  latitude (6 bands) and longitude (12) with `d` measured in pixels (`fwidth`), so the lines stay about 1-2 px wide at
+  any zoom; they add 0.35 x contour x (0.25 + rim). Planets and moons in Primary, the Sun in Secondary. Emissive scales
+  (planet 0.5, moon 0.35, Sun 0.5, ring 0.5) were tuned on screenshots: at 1.0 / 1.5 the rim saturated to white. Both
+  materials are unlit additive translucents drawn after motion blur (like the orbit lines, issue #25): unjittered and
+  outside TSR's history, so the scanlines and contours do not smear while the camera moves.
+- **(b) Post-process.** `M_SOLHologramPost` after tonemapping (so the HUD canvas, drawn later, is untouched): tint 25%
+  toward Primary keeping luminance, 6% scanlines, 3% global flicker at 15 Hz, a 0.75 px sideways jitter of about 3% of
+  the 2 px rows, re-drawn 10 times a second; no grain. All scaled by `sol.HologramPostStrength` (0-2, default 1; a cvar,
+  not a settings slider, so no settings schema change). Its unbound component has priority 10 over the body visuals'
+  and fixes the exposure bias at 0 (the dark-sky exposure): the body visuals' exposure estimate is computed from the
+  real bodies, which the map no longer shows.
+- **(c) Overlay.** `FSOLMapHologramOverlay` on the HUD canvas under the icons: grid level from the camera distance
+  (minor = largest power of 4 m not above distance / 16, major x4, the minor lines fading out across a level so zooming
+  never pops), lines snapped to the grid out to 4 major spacings around the focus, 32 world-space pieces per line faded
+  by `GridFade` (LT dfield, d in major spacings, tapered to 0 over the outer quarter), Primary at 0.1 (minor x0.5). Stems
+  from every body and route / draft waypoint to the plane (Primary above, Secondary below) with a foot ring, skipped
+  under 0.1% of the camera distance, alpha 0.5 x max(0.15, grid fade at the foot), at most 256. One additive batch of at
+  most 24,576 triangles (about 2,000-3,500 used in the smoke views). A canvas overlay rather than a world-space grid
+  mesh: the bodies are placed with radial depth compression from the viewpoint, and projecting true positions on the
+  canvas (as the route overlay does) keeps grid, stems and bodies consistent at any distance.
+- **Leftovers fixed.** The map's PICK hint line says "Enter start route" in Move / Patrol mode ("Enter jump" in Jump
+  mode). The AUTOPILOT block moves below the key-hint lines when it would overlap them (1280x720).
+- **Cost.** Mean GPU frame time over 240 frames of the Saturn map view (`-SOLSmokeHologram`, editor build `-game`):
+  look on 2.55 / 2.36 / 2.70 ms vs off 2.54 / 2.39 / 2.74 ms at 1000x800, 1280x540 and 1280x720, i.e. equal within noise; 2.45 vs 2.46 ms at 1000x800 after the review fixes
+  (the post pass and the ~40 small additive proxies replace the real bodies, ring layers and gas-giant materials).
+  Shader sizes: body 153, ring 125, post 91 pixel instructions. A `ProfileGPU` dump from the smoke captured an empty
+  frame (0.04 ms), so the per-pass split was not recorded.
+- **Adversarial review (opus) fixes.** Smoke step names prefixed (`HoloStep*`, a unity-build clash with the route
+  overlay smoke); the post tint is set from `SOL::Hologram::PROXY_COLOR_BODY` in C++ (the material's value is only a
+  default); at strength 0 the post blendable's weight is 0, so the full-screen pass is skipped; `Show()` waits for a
+  player controller instead of showing the proxies over the real bodies; a ring disc whose planet has no radius is
+  hidden; the HUD draws the grid and stems only while `ASOLHologramVisuals` is shown (held by the game mode), so missing
+  assets do not put a grid over the real bodies; each grid point is transformed to camera space once; shader time is
+  wrapped (`fmod(Time, 3600)`) so the row hashes stay precise after hours; the jitter is in viewport pixels
+  (`ViewSize`); cvar names in `SOL::Hologram`. Accepted: the hidden real actors (and the ring dense rock layer) keep
+  ticking and rendering-side updates while the map shows, since the measured frame cost did not change; the look's
+  listener on `OnUniverseUpdated` relies on map state already being current (the existing unordered-listener tech debt).
+- **Verification.** `SOLTest.HologramMath` (12 tests, authored from the contract by a separate agent); suite
+  1012/1012 in the editor. `-SOLSmokeHologram` 12/12 at 1280x720, 1000x800 and 1280x540 (screenshots with
+  `HighResShot 1` at the viewport size, because `ASOLGameMode::CaptureScreenshot` always renders 1280x720: earlier
+  "non-16:9" screenshots of other smokes were in fact 16:9 renders).

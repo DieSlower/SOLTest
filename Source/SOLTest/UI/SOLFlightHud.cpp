@@ -26,6 +26,7 @@
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
+#include "Visuals/SOLHologramVisuals.h"
 
 #include "Camera/PlayerCameraManager.h"
 #include "CanvasItem.h"
@@ -170,6 +171,7 @@ void ASOLFlightHud::BeginPlay()
     }
     mMapPickOverlay.Initialize();
     mRouteOverlay.Initialize();
+    mHologramOverlay.Initialize();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -270,6 +272,7 @@ void ASOLFlightHud::DrawHUD()
     mLastHintsRect = FBox2D(ForceInit);
     mAutopilotBlockBottomY = 0.0f;
     mRouteOverlay.ResetFrame();
+    mHologramOverlay.ResetFrame();
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
@@ -311,6 +314,15 @@ void ASOLFlightHud::DrawHUD()
     overlayView.FocalPx = view.FocalPx;
     if (bHasView && IsMapOpen())
     {
+        // Hologram look (SDD 20): the ecliptic grid through the camera focus and the stems, under the icons, only
+        // while the proxies show (not over the real bodies if the hologram assets are missing)
+        const ASOLGameMode* gameMode = GetWorld()->GetAuthGameMode<ASOLGameMode>();
+        const ASOLHologramVisuals* hologram = gameMode != nullptr ? gameMode->GetHologramVisuals() : nullptr;
+        if (hologram != nullptr && hologram->IsShown() && SOLHologramSwitch::IsHologramEnabled())
+        {
+            DrawHologramOverlay(overlayView);
+        }
+
         // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
         mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
             GEngine->GetSmallFont(), HUD_TEXT_COLOR, mUiScale);
@@ -628,7 +640,8 @@ void ASOLFlightHud::DrawInfoBlock()
         // Destination picking (2d) and the jump (2e)
         mText.Reset();
         mText.Append(TEXT("PICK   left click body/space + drag: XY   hold Shift + move: height   Shift+click: lock"));
-        mText.Append(TEXT("   X clear   Enter jump"));
+        const bool bRouteMode = MapMode != nullptr && MapMode->GetMapMode() != ESOLMapMode::Jump;
+        mText.Append(bRouteMode ? TEXT("   X clear   Enter start route") : TEXT("   X clear   Enter jump"));
         mLastHintsRect += DrawBufferMeasured(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
         return;
     }
@@ -814,7 +827,18 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     float textWidth = 0.0f;
     float textHeight = 0.0f;
     Canvas->StrLen(medium, mText, textWidth, textHeight);
-    const float top = HUD_AUTOPILOT_TOP_PX * mUiScale;
+
+    // The block sits below the top edge, or below the key-hint lines where it would overlap them (long hint lines at
+    // 1280x720)
+    float top = HUD_AUTOPILOT_TOP_PX * mUiScale;
+    const float halfWidth = 0.5f * textWidth * mUiScale;
+    const float blockHeight = (HUD_LINE_MEDIUM_PX + 2.0f * HUD_LINE_SMALL_PX) * mUiScale;
+    if (mLastHintsRect.bIsValid && mLastHintsRect.Min.X < Canvas->ClipX * 0.5f + halfWidth
+        && mLastHintsRect.Max.X > Canvas->ClipX * 0.5f - halfWidth && mLastHintsRect.Min.Y < top + blockHeight
+        && mLastHintsRect.Max.Y > top)
+    {
+        top = static_cast<float>(mLastHintsRect.Max.Y) + HUD_LINE_SMALL_PX * mUiScale;
+    }
     DrawBuffer(ESOLHudLine::Autopilot, HUD_TARGET_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale, top,
         medium);
     mText.Reset();
@@ -832,6 +856,25 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     }
     mAutopilotBlockBottomY = top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX
         + (Ships->IsAutopilotPrecisionReduced() ? HUD_LINE_SMALL_PX : 0.0f)) * mUiScale;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the hologram overlay's inputs from the map camera and the routes and draws the grid and stems (map only)
+void ASOLFlightHud::DrawHologramOverlay(const FSOLMapOverlayView& overlayView)
+{
+    FSOLHologramOverlayInputs inputs;
+    const FSOLOrbitCameraState& camera = MapMode->GetCameraState();
+    inputs.FocusM = camera.FocusPositionM;
+    inputs.CameraDistanceM = camera.DistanceM;
+    if (Routes != nullptr && Routes->GetState() != ESOLRouteState::None)
+    {
+        inputs.RouteWaypoints = Routes->GetWaypoints();
+    }
+    if (MapMode->GetMapMode() != ESOLMapMode::Jump)
+    {
+        inputs.DraftWaypoints = MapMode->GetModeState().Draft;
+    }
+    mHologramOverlay.Draw(*Canvas, overlayView, *AnchorSubsystem, BodyRegistry->GetRegistry(), inputs, mUiScale);
 }
 
 //////////////////////////////////////////////////////////////////////////

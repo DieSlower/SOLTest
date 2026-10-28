@@ -27,6 +27,7 @@
 #include "Universe/SOLSimClockSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Visuals/SOLBodyVisuals.h"
+#include "Visuals/SOLHologramVisuals.h"
 
 #include "Engine/World.h"
 #include "GameFramework/Controller.h"
@@ -88,8 +89,8 @@ UClass* ASOLGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Spawns the body, star-field, asteroid-belt, orbit-line, per-ring, per-gas-giant and combat visuals and the combat
-// audio, arms the optional smoke-test hooks, then starts play
+// Spawns the body, star-field, asteroid-belt, orbit-line, map-hologram, per-ring, per-gas-giant and combat visuals and
+// the combat audio, arms the optional smoke-test hooks, then starts play
 void ASOLGameMode::StartPlay()
 {
     FActorSpawnParameters params;
@@ -105,6 +106,8 @@ void ASOLGameMode::StartPlay()
     OrbitLineVisuals = GetWorld()->SpawnActor<ASOLOrbitLineVisuals>(ASOLOrbitLineVisuals::StaticClass(),
         FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);
+    HologramVisuals = GetWorld()->SpawnActor<ASOLHologramVisuals>(ASOLHologramVisuals::StaticClass(),
+        FTransform::Identity, params);
 
     // One ASOLRingVisuals per ringed planet (SDD 6 Amendment 11, 5e-iii); deferred so PlanetName is set before
     // BeginPlay resolves the ring definition and planet index

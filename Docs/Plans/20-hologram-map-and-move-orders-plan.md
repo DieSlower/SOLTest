@@ -4,7 +4,7 @@
 
 Design: `Docs/SDDs/20-hologram-map-and-move-orders.md`. Tick steps as they are done.
 
-- [ ] 0. Issue #25 (map alignment and shimmer) fixed and pushed as its own commit (agent running).
+- [x] 0. Issue #25 (map alignment and shimmer) fixed and pushed as its own commit (commit 3a7de13).
 - [x] 1. Key scheme: `OpenMap` / `OpenMapJump` (Shift required), `Resume`, route toggle on P (flight), map-mode keys,
   Ctrl+right click, Delete; `SOLKeyBindings`, settings SAVE_VERSION bump and migration; menu text.
 - [x] 2. Pure route logic (test-first): `SOLRoute` model, waypoint resolution, patrol Loop/Ping-pong sequencing,
@@ -12,10 +12,10 @@ Design: `Docs/SDDs/20-hologram-map-and-move-orders.md`. Tick steps as they are d
 - [x] 3. Map mode state (Jump/Move/Patrol), draft route editing, Esc/close behaviour.
 - [x] 4. Route subsystem driving the autopilot through waypoints; pause on manual input, resume; Move end at rest.
 - [x] 5. Route overlay (map and flight view), styles from SDD 2.4; P toggle; HUD marker with route ETA.
-- [ ] 6. Hologram look: `SOL::Hologram` constants, proxy body materials, ecliptic grid, stems, map post-process
+- [x] 6. Hologram look: `SOL::Hologram` constants, proxy body materials, ecliptic grid, stems, map post-process
   (`Tools/Map/create_hologram_assets.py`).
-- [ ] 7. Docs: GAME_MECHANICS, ARCHITECTURE, in-game Controls/Info, ToDo files, SDD amendments.
-- [ ] 8. Adversarial opus review, fixes, full suite (baseline 959 + new), smokes, commit and push, close #20 (and #25).
+- [x] 7. Docs: GAME_MECHANICS, ARCHITECTURE, in-game Controls/Info, ToDo files, SDD amendments.
+- [x] 8. Adversarial opus review, fixes, full suite (baseline 959 + new), smokes, commit and push, close #20 (and #25).
 
 Progress (2026-10-28): steps 1-4 done (SDD 20 Amendment 1): suite 990/990 in the editor, `-SOLSmokeRoute` 26/26;
 `-SOLSmokeMap`, `-SOLSmokeMapPick`, `-SOLSmokeInput`, `-SOLSmokeHud` and `-SOLSmokeMapAlign` all PASS on the new keys;
@@ -28,3 +28,7 @@ flight, map and with a draft). Next: step 6 (hologram look).
 
 Notes: split into sub-agents per ~2-3 steps (context under 35%). Tests are authored by a separate subagent from the
 contract only.
+
+Progress (2026-10-28, steps 6-8): hologram look built (SDD 20 Amendment 3): suite 1012/1012 in the editor (12 new
+`SOLTest.HologramMath`), `-SOLSmokeHologram` 12/12 at three aspect ratios; docs updated; adversarial review findings
+fixed (suite re-run 1012/1012, hologram smoke 12/12 after the fixes); not yet committed, issue #20 still open.

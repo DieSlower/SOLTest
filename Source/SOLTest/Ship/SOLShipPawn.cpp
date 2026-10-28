@@ -292,6 +292,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeRouteOverlay = MakeUnique<FSOLRouteOverlaySmoke>();
         mSmokeRouteOverlay->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_HOLOGRAM))
+    {
+        mSmokeHologram = MakeUnique<FSOLHologramSmoke>();
+        mSmokeHologram->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -306,7 +311,8 @@ void ASOLShipPawn::BeginPlay()
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid() || mSmokeJump.IsValid()
+        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
@@ -351,6 +357,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeMapAlign.Reset();
     mSmokeRoute.Reset();
     mSmokeRouteOverlay.Reset();
+    mSmokeHologram.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -400,6 +407,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeRouteOverlay.IsValid() && mSmokeRouteOverlay->Update(*this, deltaSeconds))
     {
         mSmokeRouteOverlay.Reset();
+    }
+    if (mSmokeHologram.IsValid() && mSmokeHologram->Update(*this, deltaSeconds))
+    {
+        mSmokeHologram.Reset();
     }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
@@ -779,7 +790,8 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid() || mSmokeJump.IsValid()
+        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
