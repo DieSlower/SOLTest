@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-10-29.
+Last updated: 2026-10-30.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -27,6 +27,9 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #17 | Orbit lines | 17 |
 | #18 | Newtonian flight core, G-force pilot model, autopilot, NPC motion | 18 |
 | #19 | Three flight modes and controls | 19 |
+| #29 | HUD phase B: every flight HUD element on the hologram renderer, panels, glow text | 21 |
+| #30 | HUD phase C: 3D hologram radar (closes #21) | 21 |
+| #21 | HUD hologram rendering (umbrella) | 21 |
 | #20 | Hologram map, Move/Patrol routes, route overlay, map hologram look | 20 |
 | #28 | HUD phase A: event bus, batched Slate renderer, shape material, effects slider | 21 |
 | #29 | HUD phase B: every flight HUD element on the glow renderer, hologram panels, glow text | 21 |
