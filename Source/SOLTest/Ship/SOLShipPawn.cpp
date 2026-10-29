@@ -232,10 +232,12 @@ void ASOLShipPawn::BeginPlay()
     mControl.SpeedCapMps = SOL::SHIP_START_SPEED_CAP_MPS;
     mControl.bFlightAssist = SOLFlightMode::FlightAssistFor(Ships->GetFlightMode());
 
-    // Mouse steering starts on at every flight start (SDD 19 Q7), boost off; neither is saved. Every spawn or respawn
-    // creates a new pawn, so this is the only reset of the steer toggle: a jump arrival (USOLShipSubsystem::
-    // ResetPilotState) turns boost off but keeps the toggle (SDD 19 Amendment 3)
-    mSteerGate = SOLFlightMode::MakeSteerGate(SOL::SHIP_STEER_TOGGLE_START_ON);
+    // The mouse steering toggle starts as the Settings option "Mouse steering at start" says (default off, so Space
+    // steers and the cursor is free; SDD 19 Amendment 5), boost off. Every spawn or respawn creates a new pawn, so
+    // this is the only reset of the steer toggle: a jump arrival (USOLShipSubsystem::ResetPilotState) turns boost off
+    // but keeps the toggle (SDD 19 Amendment 3)
+    mSteerGate = SOLFlightMode::MakeSteerGate(Settings != nullptr ? Settings->GetSavedValues().bMouseSteerAtStart
+        : SOL::SHIP_STEER_TOGGLE_START_ON);
     SOLFlightMode::ResetBoost(mBoost);
     mSeenPilotResetCount = Ships->GetPilotResetCount();
     BuildShipMesh();
@@ -793,7 +795,16 @@ void ASOLShipPawn::PublishHudPilot()
     snapshot.SteerIcon = GetSteerIcon();
     snapshot.bIsSteering = mIsSteering;
     snapshot.bIsFreeLooking = mIsFreeLooking;
+    snapshot.bShowSteerHint = Settings != nullptr && !Settings->HasSteeredThisSession();
     HudEvents->GetBus().PublishPilot(snapshot, GFrameCounter);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the stick offset in the last published pilot snapshot (zero without one)
+FVector2d ASOLShipPawn::GetPublishedStickOffsetPixels() const
+{
+    return HudEvents != nullptr && HudEvents->GetBus().HasPilot() ? HudEvents->GetBus().GetPilot().StickOffsetPx
+        : FVector2d::ZeroVector;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1345,6 +1356,8 @@ void ASOLShipPawn::UpdateSteering()
     {
         SOLFlightMode::SetSteerHold(mSteerGate, false);
     }
+    // The stick recenters on every edge: when steering turns on and when it turns off (issue #31: the HUD stick dot
+    // used to stay where it was while the OS cursor was centred)
     const FSOLSteerGateUpdate update = SOLFlightMode::UpdateSteerGate(mSteerGate, bSuspended);
     if (update.bRecenter)
     {
@@ -1352,10 +1365,14 @@ void ASOLShipPawn::UpdateSteering()
     }
     if (update.bActive != mIsSteering)
     {
-        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: mouse steering %s"), *GetName(),
-            update.bActive ? TEXT("ON (stick recentered)") : TEXT("OFF (cursor shown, locked to the viewport)"));
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: mouse steering %s, stick recentered"), *GetName(),
+            update.bActive ? TEXT("ON") : TEXT("OFF (cursor shown, locked to the viewport)"));
     }
     mIsSteering = update.bActive;
+    if (mIsSteering && Settings != nullptr)
+    {
+        Settings->MarkSteeredThisSession();
+    }
 
     // The ship owns the cursor only while nothing else has the input: captured while steering or free-looking, else
     // shown and free over the game

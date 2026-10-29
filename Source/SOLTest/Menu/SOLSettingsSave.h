@@ -91,6 +91,11 @@ public:
     UPROPERTY()
     float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
 
+    /** Mouse steering toggle on at every flight start (SDD 19 Amendment 5). Added in schema 6; an older save is
+     *  migrated to off (the new default). */
+    UPROPERTY()
+    bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
+
     /** Rebound keys only: SOLKeyBindings binding id -> engine key name (the other bindings use their defaults). */
     UPROPERTY()
     TMap<FString, FString> KeyOverrides;

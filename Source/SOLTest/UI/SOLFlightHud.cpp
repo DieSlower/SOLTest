@@ -137,6 +137,9 @@ namespace
     constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
     constexpr double HUD_PERCENT = 100.0;
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar backing (Canvas fallback)
+    constexpr float HUD_RADAR_BACKING_GROW = 0.25f;     // Radar disc backing: grown by this x the squashed radius and
+                                                        // feathered over twice that (a soft stadium, issue #31)
+    constexpr float HUD_STEER_HINT_Y_FRACTION = 0.8f;   // "Hold Space to steer": this far down the screen (issue #31)
 
     // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
     // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
@@ -346,6 +349,7 @@ void ASOLFlightHud::BeginShapeFrame()
     mBatch = nullptr;
     mTextList = nullptr;
     mLastPanelCount = 0;
+    mWasSteerHintDrawn = false;
     if (!mShapeLayer.IsValid())
     {
         return;
@@ -596,10 +600,12 @@ void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& colo
     FVector2f halfSize;
     SOLHudShapeMath::PanelAroundRect(FBox2f(FVector2f(content.Min), FVector2f(content.Max)),
         SOL::Hologram::HUD_PANEL_PADDING_PX * mUiScale, center, halfSize);
-    if (mBatch->AddPanel(center, halfSize, color, SOL::Hologram::HUD_PANEL_EDGE_INTENSITY,
-        SOL::Hologram::HUD_PANEL_FILL, SOL::Hologram::HUD_GLOW_PAD_PX))
+    if (mBatch->AddPanel(center, halfSize, color, SOL::Hologram::HUD_PANEL_INTENSITY,
+        SOL::Hologram::HUD_PANEL_FILL, SOL::Hologram::HUD_PANEL_QUAD_PAD_PX))
     {
-        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(center - halfSize, center + halfSize));
+        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(center - halfSize, center + halfSize),
+            static_cast<float>(SOL::Hologram::HUD_PANEL_CORNER_PX) * mUiScale,
+            SOL::Hologram::HUD_PANEL_BACKING_FEATHER_PX * mUiScale);
         ++mLastPanelCount;
     }
 }
@@ -989,12 +995,16 @@ void ASOLFlightHud::DrawReticle(const FVector2D& center)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the virtual-joystick circle, dead zone and the current stick offset
+// Draws the virtual-joystick circle, dead zone and the current stick offset (yellow during free look), and the steer
+// hint until the player first steers this session
 void ASOLFlightHud::DrawJoystick(const FVector2D& center, const FSOLHudPilotSnapshot& pilot)
 {
+    // Yellow while Alt free-look is held (the mouse orbits the camera, not the stick; issue #31)
+    const FLinearColor color = SOLHudFormat::PilotCircleColor(pilot.bIsFreeLooking);
+    mLastJoystickColor = color;
     const float radius = static_cast<float>(pilot.StickRadiusPx);
-    GlowRing(center, radius, HUD_PRIMARY, HUD_FAINT, 1.0f, HUD_CIRCLE_SEGMENTS);
-    GlowRing(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), HUD_PRIMARY, HUD_FAINT, 1.0f,
+    GlowRing(center, radius, color, HUD_FAINT, 1.0f, HUD_CIRCLE_SEGMENTS);
+    GlowRing(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), color, HUD_FAINT, 1.0f,
         HUD_CIRCLE_SEGMENTS / 2);
 
     // The stick offset is X right, Y up; the screen's Y grows downward
@@ -1003,10 +1013,20 @@ void ASOLFlightHud::DrawJoystick(const FVector2D& center, const FSOLHudPilotSnap
     const float intensity = (pilot.bIsFreeLooking || !pilot.bIsSteering ? HUD_DIM : 1.0f) * HUD_STICK_DOT_INTENSITY;
     if (offset.Size() > radius * SOL::JOYSTICK_DEAD_ZONE)
     {
-        GlowLine(center, stick, HUD_PRIMARY, HUD_DIM, 1.0f);
+        GlowLine(center, stick, color, HUD_DIM, 1.0f);
     }
     const float dot = HUD_STICK_DOT_PX * mUiScale;
-    GlowBox(stick.X - dot * 0.5f, stick.Y - dot * 0.5f, dot, dot, HUD_PRIMARY, intensity);
+    GlowBox(stick.X - dot * 0.5f, stick.Y - dot * 0.5f, dot, dot, color, intensity);
+
+    // Until the player first steers this session, a hint names the steer-hold key (issue #31)
+    if (pilot.bShowSteerHint)
+    {
+        mText.Reset();
+        mText.Append(mKeyTexts.SteerHint);
+        AddHoloPanel(DrawBufferCentered(ESOLHudLine::SteerHint, HudDimText(HUD_PRIMARY), Canvas->ClipX * 0.5f,
+            Canvas->ClipY * HUD_STEER_HINT_Y_FRACTION, ESOLHudFont::Medium), HUD_PRIMARY);
+        mWasSteerHintDrawn = true;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1767,18 +1787,16 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
     const FBox2D labelRect = DrawBuffer(ESOLHudLine::RadarRange, HudDimText(HUD_PRIMARY), labelPos.X, labelPos.Y,
         ESOLHudFont::Small);
 
-    // One hologram panel around the disc and the label
-    FBox2D panelRect(FVector2D(center.X - radius, center.Y - squashedRadius),
-        FVector2D(center.X + radius, center.Y + squashedRadius));
-    panelRect += labelRect;
-    AddHoloPanel(panelRect, HUD_PRIMARY);
-
-    // A second dark backing under the disc: the additive glow can only brighten, and over a sunlit planet the orange
-    // below-plane contacts would otherwise wash out to white
+    // A soft hologram panel behind the label, and a soft dark stadium-shaped backing under the disc (no box around the
+    // radar, issue #31): the additive glow can only brighten, and over a sunlit planet the orange below-plane contacts
+    // would otherwise wash out to white
+    AddHoloPanel(labelRect, HUD_PRIMARY);
     if (mBatch != nullptr && mShapeLayer.IsValid())
     {
-        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(FVector2f(center.X - radius, center.Y - squashedRadius),
-            FVector2f(center.X + radius, center.Y + squashedRadius)));
+        const float grow = squashedRadius * HUD_RADAR_BACKING_GROW;
+        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(FVector2f(center.X - radius - grow,
+            center.Y - squashedRadius - grow), FVector2f(center.X + radius + grow, center.Y + squashedRadius + grow)),
+            squashedRadius + grow, 2.0f * grow);
     }
 }
 

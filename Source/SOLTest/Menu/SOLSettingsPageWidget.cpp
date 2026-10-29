@@ -62,7 +62,8 @@ namespace
 
     // Checkbox labels in ESOLSettingsToggle order
     const TCHAR* const SETTINGS_TOGGLE_LABELS[] = { SOLMenuText::SETTINGS_VSYNC, SOLMenuText::SETTINGS_INVERT_Y,
-        SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST, SOLMenuText::SETTINGS_ORBIT_LINES };
+        SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST,
+        SOLMenuText::SETTINGS_MOUSE_STEER_AT_START, SOLMenuText::SETTINGS_ORBIT_LINES };
     static_assert(UE_ARRAY_COUNT(SETTINGS_TOGGLE_LABELS) == static_cast<int32>(ESOLSettingsToggle::Count),
         "one label per toggle");
 
@@ -184,6 +185,8 @@ namespace
             return values.bHudVisible;
         case ESOLSettingsToggle::OrbitLines:
             return values.bShowOrbitLines;
+        case ESOLSettingsToggle::MouseSteerAtStart:
+            return values.bMouseSteerAtStart;
         case ESOLSettingsToggle::DefaultAssist:
         default:
             return values.bDefaultFlightAssist;
@@ -361,6 +364,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleHudVisibleChanged);
     addToggle(ESOLSettingsToggle::DefaultAssist)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleDefaultAssistChanged);
+    addToggle(ESOLSettingsToggle::MouseSteerAtStart)->OnCheckStateChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleMouseSteerAtStartChanged);
     addToggle(ESOLSettingsToggle::OrbitLines)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleOrbitLinesChanged);
 
@@ -545,6 +550,9 @@ void USOLSettingsPageWidget::SetToggle(const ESOLSettingsToggle toggle, const bo
         break;
     case ESOLSettingsToggle::OrbitLines:
         values.bShowOrbitLines = bChecked;
+        break;
+    case ESOLSettingsToggle::MouseSteerAtStart:
+        values.bMouseSteerAtStart = bChecked;
         break;
     case ESOLSettingsToggle::DefaultAssist:
     default:
@@ -876,6 +884,13 @@ void USOLSettingsPageWidget::HandleHudVisibleChanged(const bool bChecked)
 void USOLSettingsPageWidget::HandleDefaultAssistChanged(const bool bChecked)
 {
     SetToggle(ESOLSettingsToggle::DefaultAssist, bChecked);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Mouse steering at start checkbox clicked
+void USOLSettingsPageWidget::HandleMouseSteerAtStartChanged(const bool bChecked)
+{
+    SetToggle(ESOLSettingsToggle::MouseSteerAtStart, bChecked);
 }
 
 //////////////////////////////////////////////////////////////////////////

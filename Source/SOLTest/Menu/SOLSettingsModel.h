@@ -27,6 +27,8 @@ namespace SOLSettingsModel
         int32 QualityPreset = 3;
         bool bShowOrbitLines = true;          // World-space orbit lines shown (SDD 17); also toggled by the O key
         float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;   // HUD hologram effects (jitter; SDD 21)
+        bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;      // Steering toggle on at flight start (SDD 19
+                                                                        // Amendment 5; default off)
     };
 
     struct FSettingsModel

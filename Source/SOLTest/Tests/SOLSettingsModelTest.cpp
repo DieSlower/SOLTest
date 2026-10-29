@@ -586,4 +586,79 @@ bool FSOLSettingsModelHudEffectsDirtyTest::RunTest(const FString& /*parameters*/
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelMouseSteerDefaultTest,
+    "SOLTest.SettingsModel.MouseSteerAtStartDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Mouse steering at start defaults to SHIP_STEER_TOGGLE_START_ON (off); Sanitized and AreEqual treat it as a bool
+bool FSOLSettingsModelMouseSteerDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues defaults;
+    TestFalse(TEXT("Start-on constant is off"), SOL::SHIP_STEER_TOGGLE_START_ON);
+    TestTrue(TEXT("Default follows the constant"), defaults.bMouseSteerAtStart == SOL::SHIP_STEER_TOGGLE_START_ON);
+    TestFalse(TEXT("Default is off"), defaults.bMouseSteerAtStart);
+
+    FSettingsValues on = SettingsModelCustomValues();
+    on.bMouseSteerAtStart = true;
+    TestTrue(TEXT("Sanitized keeps true"), Sanitized(on).bMouseSteerAtStart);
+    FSettingsValues off = SettingsModelCustomValues();
+    off.bMouseSteerAtStart = false;
+    TestFalse(TEXT("Sanitized keeps false"), Sanitized(off).bMouseSteerAtStart);
+
+    // Only the steer-at-start flag differs
+    TestFalse(TEXT("bMouseSteerAtStart differs"), AreEqual(off, on));
+    TestFalse(TEXT("Symmetric"), AreEqual(on, off));
+    TestTrue(TEXT("Same flag is equal"), AreEqual(on, on));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelMouseSteerDirtyTest,
+    "SOLTest.SettingsModel.MouseSteerAtStartDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The steer-at-start flag goes through MakeModel, SetPending, IsDirty, Revert and CommitIfDirty like any other field
+bool FSOLSettingsModelMouseSteerDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    FSettingsModel model = MakeModel(SettingsModelCustomValues());
+    TestFalse(TEXT("MakeModel keeps Saved flag"), model.Saved.bMouseSteerAtStart);
+    TestFalse(TEXT("MakeModel keeps Pending flag"), model.Pending.bMouseSteerAtStart);
+    TestFalse(TEXT("Fresh model is clean"), IsDirty(model));
+
+    // A pending change in only this flag is dirty, and Revert discards it
+    FSettingsValues edited = model.Saved;
+    edited.bMouseSteerAtStart = true;
+    SetPending(model, edited);
+    TestTrue(TEXT("Pending takes the flag"), model.Pending.bMouseSteerAtStart);
+    TestFalse(TEXT("Saved untouched"), model.Saved.bMouseSteerAtStart);
+    TestTrue(TEXT("Dirty when only the flag differs"), IsDirty(model));
+    const FSettingsValues reverted = Revert(model);
+    TestFalse(TEXT("Revert returns the saved flag"), reverted.bMouseSteerAtStart);
+    TestFalse(TEXT("Pending flag reverted"), model.Pending.bMouseSteerAtStart);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+
+    // Committing the flag alone needs a write and Saved takes it; a second commit needs none
+    SetPending(model, edited);
+    TestTrue(TEXT("Commit of the flag needs a write"), CommitIfDirty(model));
+    TestTrue(TEXT("Saved takes the flag"), model.Saved.bMouseSteerAtStart);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+    TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
+
+    // Applying the orbit-lines flag leaves a pending steer-at-start edit alone
+    FSettingsModel orbit = MakeModel(SettingsModelCustomValues());
+    FSettingsValues pendingSteer = orbit.Saved;
+    pendingSteer.bMouseSteerAtStart = true;
+    SetPending(orbit, pendingSteer);
+    SetAppliedShowOrbitLines(orbit, false);
+    TestTrue(TEXT("Orbit-lines apply keeps pending steer flag"), orbit.Pending.bMouseSteerAtStart);
+    TestFalse(TEXT("Orbit-lines apply keeps saved steer flag"), orbit.Saved.bMouseSteerAtStart);
+    TestTrue(TEXT("Still dirty from the steer edit"), IsDirty(orbit));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

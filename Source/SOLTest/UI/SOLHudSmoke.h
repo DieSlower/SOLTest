@@ -59,6 +59,8 @@ private:
         RadarZoomIn,
         HudShotSetup,
         HudShot,
+        FreeLookSetup,      // Issue #31: Left Alt held, the joystick circles turn yellow (screenshot)
+        FreeLookShot,
         RadarShotSetup,     // SDD 21 C: ship pitched and rolled, radar zoomed out: contacts above and below the plane
         RadarShot,
         CanvasFallback,     // sol.HudRenderer 0 (SDD 21): the reticle back on Canvas; RadarAuto's exit restores 1

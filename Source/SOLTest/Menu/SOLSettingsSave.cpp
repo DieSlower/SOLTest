@@ -30,6 +30,7 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     QualityPreset = values.QualityPreset;
     bShowOrbitLines = values.bShowOrbitLines;
     HudEffectsStrength = values.HudEffectsStrength;
+    bMouseSteerAtStart = values.bMouseSteerAtStart;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -49,6 +50,7 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.QualityPreset = QualityPreset;
     values.bShowOrbitLines = bShowOrbitLines;
     values.HudEffectsStrength = HudEffectsStrength;
+    values.bMouseSteerAtStart = bMouseSteerAtStart;
     return values;
 }
 
@@ -95,5 +97,13 @@ void USOLSettingsSave::MigrateToCurrentVersion()
     {
         HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
         Version = 5;
+    }
+
+    // Schema 5 -> 6 (SDD 19 Amendment 5): mouse steering at start, which a v5 file does not have, starts off (the new
+    // default; the user chose off for migrated saves too, so Space is the way to steer)
+    if (Version == 5)
+    {
+        bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
+        Version = 6;
     }
 }

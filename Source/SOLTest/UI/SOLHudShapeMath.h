@@ -13,7 +13,7 @@ enum class ESOLHudShapeKind : uint8
 {
     Line = 0,       // Capsule segment: half length, half width
     Arc = 1,        // Ring sector symmetric about local +Y: radius, half width, half aperture (pi = full ring)
-    Panel = 2,      // Rounded box: half width, half height; filled with a glowing outline
+    Panel = 2,      // Rounded box: half width, half height; a borderless fill fading in from its edge (#31)
     Ellipse = 3,    // Ellipse ring, axes along local X and Y: X radius, half width, Y / X radius ratio (SDD 21 C)
     DashedLine = 4, // Dashed capsule segment: half length, half width, dash period in px (SDD 21 C)
 };
@@ -68,10 +68,18 @@ namespace SOLHudShapeMath
     // 1 when padPx <= 0
     SOLTEST_API float PadFade(float distancePx, float padPx);
 
-    // A panel's interior fill at a signed distance (negative inside) and screen row: 0 outside (distancePx >= 0), else
-    // fill x (HUD_PANEL_FILL_BASE + (1 - HUD_PANEL_FILL_BASE) exp(distancePx / HUD_PANEL_EDGE_FALLOFF_PX))
-    // x (1 + HUD_PANEL_SCANLINE x max(strength, 0) x sin(pi screenY)) (a fresnel-like edge and 1 px scanlines)
+    // A borderless panel's fill at a signed distance (negative inside) and screen row: 0 outside (distancePx >= 0),
+    // else fill x SmoothStep(0, HUD_PANEL_FEATHER_PX, -distancePx) x (1 + HUD_PANEL_SCANLINE x max(strength, 0)
+    // x sin(pi screenY)) (fades in from the edge, no outline; 1 px scanlines; SDD 21 Amendment 4)
     SOLTEST_API float PanelFill(float distancePx, float fill, float screenY, float strength);
+
+    // One of `count` stacked rounded boxes that together draw a panel's soft dark backing (SDD 21 Amendment 4).
+    // f = clamp(featherPx, 0, min(width, height) / 2); layer `index` is `rect` inset by f x index / count per side,
+    // with corner radius clamp(max(cornerPx, 0) + f - inset, 0, min(its width, its height) / 2), and alpha
+    // 1 - (1 - clamp(totalAlpha, 0, 1))^(1 / count), so all layers composited over each other reach totalAlpha where
+    // they all overlap. False (outputs untouched) for an invalid rect, count <= 0 or index outside [0, count)
+    SOLTEST_API bool BackingLayer(const FBox2f& rect, float cornerPx, float featherPx, float totalAlpha, int32 index,
+        int32 count, FBox2f& outRect, float& outCornerPx, float& outAlpha);
 
     // Panel brightness factor of the flicker: 1 - HUD_PANEL_FLICKER x max(strength, 0)
     // x SmoothNoise(fmod(ageS, HUD_TIME_WRAP_S) x HUD_PANEL_FLICKER_RATE_HZ + HUD_PANEL_FLICKER_OFFSET)

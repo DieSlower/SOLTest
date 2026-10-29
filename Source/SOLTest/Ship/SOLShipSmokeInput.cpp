@@ -8,6 +8,7 @@
 #include "Flight/SOLNewtonianFlight.h"
 #include "Flight/SOLTargeting.h"
 #include "Game/SOLGameMode.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -136,8 +137,22 @@ void FSOLShipSmokeInput::EnterPhase(const ESOLInputPhase phase, ASOLShipPawn& pa
     switch (phase)
     {
     case ESOLInputPhase::Setup:
+    {
         SetupShipAtRest(INDEX_NONE);
+
+        // Issue #31: the toggle starts as the Settings option says (default off); the script then turns it on with
+        // the wheel click so the steering phases below start from the same state either way
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        mIsSteerStartExpected = settings != nullptr ? settings->GetSavedValues().bMouseSteerAtStart
+            : SOL::SHIP_STEER_TOGGLE_START_ON;
+        mWasSteerStartLocked = pawn.GetSteerIcon() == ESOLSteerIcon::Locked;
+        mWasSteerHintAtStart = settings != nullptr && !settings->HasSteeredThisSession();
+        if (!mWasSteerStartLocked)
+        {
+            TapKey(EKeys::MiddleMouseButton);
+        }
         break;
+    }
     case ESOLInputPhase::ThrustHold:
         mReference = state;
         PressKey(EKeys::W);
@@ -319,6 +334,17 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
                 rate));
         break;
     }
+    case ESOLInputPhase::Setup:
+    {
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        Check(TEXT("i-steer-start"), mWasSteerStartLocked == mIsSteerStartExpected && pawn.IsSteering()
+            && settings != nullptr && settings->HasSteeredThisSession(), FString::Printf(TEXT("toggle at start %s "
+            "(setting %s), steer hint at start %s; after the wheel click steering %s, steered this session %s"),
+            mWasSteerStartLocked ? TEXT("on") : TEXT("off"), mIsSteerStartExpected ? TEXT("on") : TEXT("off"),
+            mWasSteerHintAtStart ? TEXT("asked") : TEXT("not asked"), pawn.IsSteering() ? TEXT("on") : TEXT("off"),
+            settings != nullptr && settings->HasSteeredThisSession() ? TEXT("yes") : TEXT("no")));
+        break;
+    }
     case ESOLInputPhase::SteerOffMouse:
         Check(TEXT("i-steer-off"), !pawn.IsSteering() && pawn.GetSteerIcon() == ESOLSteerIcon::Free
             && stick.IsNearlyZero() && pawn.GetComposedControl().Rotation.IsNearlyZero(), FString::Printf(TEXT(
@@ -337,8 +363,13 @@ void FSOLShipSmokeInput::ExitPhase(const ESOLInputPhase phase, ASOLShipPawn& paw
         ReleaseKey(EKeys::SpaceBar);
         break;
     case ESOLInputPhase::SteerReleased:
-        Check(TEXT("i-steer-release"), !pawn.IsSteering() && pawn.GetComposedControl().Rotation.IsNearlyZero(),
-            FString::Printf(TEXT("Space released: steering %s"), pawn.IsSteering() ? TEXT("on") : TEXT("off")));
+        // Issue #31 regression: the stick (and the HUD's stick dot, drawn from the pilot snapshot) snaps back to the
+        // centre on the on-to-off edge, as the OS cursor does
+        Check(TEXT("i-steer-release"), !pawn.IsSteering() && pawn.GetComposedControl().Rotation.IsNearlyZero()
+            && stick.IsNearlyZero() && pawn.GetPublishedStickOffsetPixels().IsNearlyZero(), FString::Printf(TEXT(
+            "Space released: steering %s, stick (%.1f, %.1f), HUD stick (%.1f, %.1f)"),
+            pawn.IsSteering() ? TEXT("on") : TEXT("off"), stick.X, stick.Y, pawn.GetPublishedStickOffsetPixels().X,
+            pawn.GetPublishedStickOffsetPixels().Y));
         TapKey(EKeys::MiddleMouseButton);
         break;
     case ESOLInputPhase::SteerLockedAgain:

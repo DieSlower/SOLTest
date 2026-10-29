@@ -173,7 +173,7 @@ float SOLHudShapeMath::PadFade(const float distancePx, const float padPx)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// A panel's interior fill: a fresnel-like edge and 1 px scanlines scaled by the strength; 0 outside
+// A borderless panel's fill: fades in from the edge over the feather, 1 px scanlines scaled by the strength; 0 outside
 float SOLHudShapeMath::PanelFill(const float distancePx, const float fill, const float screenY, const float strength)
 {
     using namespace SOL::Hologram;
@@ -181,11 +181,34 @@ float SOLHudShapeMath::PanelFill(const float distancePx, const float fill, const
     {
         return 0.0f;
     }
-    const float base = static_cast<float>(HUD_PANEL_FILL_BASE);
-    const float edge = base + (1.0f - base) * FMath::Exp(distancePx / static_cast<float>(HUD_PANEL_EDGE_FALLOFF_PX));
+    const float t = FMath::Clamp(-distancePx / static_cast<float>(HUD_PANEL_FEATHER_PX), 0.0f, 1.0f);
+    const float edge = t * t * (3.0f - 2.0f * t);
     const float scan = 1.0f + static_cast<float>(HUD_PANEL_SCANLINE) * FMath::Max(strength, 0.0f)
         * FMath::Sin(UE_PI * screenY);
     return fill * edge * scan;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// One stacked rounded box of a panel's soft backing: inset rect, corner radius and per-layer alpha
+bool SOLHudShapeMath::BackingLayer(const FBox2f& rect, const float cornerPx, const float featherPx,
+    const float totalAlpha, const int32 index, const int32 count, FBox2f& outRect, float& outCornerPx, float& outAlpha)
+{
+    if (!rect.bIsValid || count <= 0 || index < 0 || index >= count)
+    {
+        return false;
+    }
+    const FVector2f size = rect.GetSize();
+    const float shortSide = FMath::Min(size.X, size.Y);
+    const float feather = FMath::Clamp(featherPx, 0.0f, 0.5f * shortSide);
+    const float inset = feather * static_cast<float>(index) / static_cast<float>(count);
+    outRect = FBox2f(rect.Min + FVector2f(inset), rect.Max - FVector2f(inset));
+    const FVector2f layerSize = outRect.GetSize();
+    outCornerPx = FMath::Clamp(FMath::Max(cornerPx, 0.0f) + feather - inset, 0.0f,
+        0.5f * FMath::Min(layerSize.X, layerSize.Y));
+
+    // Alpha-over of `count` equal layers reaches the total: 1 - (1 - a)^count = total
+    outAlpha = 1.0f - FMath::Pow(1.0f - FMath::Clamp(totalAlpha, 0.0f, 1.0f), 1.0f / static_cast<float>(count));
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////

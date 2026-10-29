@@ -6,6 +6,7 @@
 #include "UI/SOLHudShapeLayer.h"
 
 #include "SOLConstants.h"
+#include "UI/SOLHudShapeMath.h"
 
 #include "Framework/Application/SlateApplication.h"
 #include "Materials/MaterialInterface.h"
@@ -33,10 +34,12 @@ void SSOLHudShapeLayer::Construct(const FArguments& /*args*/)
     mBackings.Reserve(SOL::Hologram::HUD_MAX_PANELS);
     mPaintVertices.Reserve(SOL::Hologram::HUD_MAX_SHAPES * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
 
-    // A solid white box tinted per backing
+    // A white rounded box (no outline) tinted per backing layer
     mBackingBrush = FSlateBrush();
-    mBackingBrush.DrawAs = ESlateBrushDrawType::Box;
+    mBackingBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
     mBackingBrush.TintColor = FSlateColor(FLinearColor::White);
+    mBackingBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+    mBackingBrush.OutlineSettings.Width = 0.0f;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -59,14 +62,14 @@ void SSOLHudShapeLayer::ResetFrame()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds a dark translucent backing under a hologram panel; false when the backing buffer is full
-bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect)
+// Adds a soft dark backing under a hologram panel; false when the backing buffer is full
+bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx)
 {
     if (!rect.bIsValid || mBackings.Num() >= SOL::Hologram::HUD_MAX_PANELS)
     {
         return false;
     }
-    mBackings.Add(rect);
+    mBackings.Add({ rect, cornerPx, featherPx });
     return true;
 }
 
@@ -98,12 +101,28 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
     }
     const float inverseScale = allottedGeometry.Scale > 0.0f ? 1.0f / allottedGeometry.Scale : 1.0f;
 
-    // Dark backings under the panels (alpha-blended), so text stays readable over a bright planet
-    for (const FBox2f& rect : mBackings)
+    // Dark backings under the panels (alpha-blended), so text stays readable over a bright planet: each is a stack of
+    // rounded boxes inset step by step, so it fades in from its edge and never shows a box outline (issue #31)
+    using namespace SOL::Hologram;
+    for (const FSOLHudBacking& backing : mBackings)
     {
-        FSlateDrawElement::MakeBox(outDrawElements, layerId, allottedGeometry.ToPaintGeometry(rect.GetSize()
-            * inverseScale, FSlateLayoutTransform(rect.Min * inverseScale)), &mBackingBrush, ESlateDrawEffect::None,
-            SOL::Hologram::HUD_PANEL_BACKING_COLOR);
+        for (int32 layer = 0; layer < HUD_PANEL_BACKING_LAYERS; ++layer)
+        {
+            FBox2f rect;
+            float corner = 0.0f;
+            float alpha = 0.0f;
+            if (!SOLHudShapeMath::BackingLayer(backing.Rect, backing.CornerPx, backing.FeatherPx,
+                HUD_PANEL_BACKING_COLOR.A, layer, HUD_PANEL_BACKING_LAYERS, rect, corner, alpha))
+            {
+                break;
+            }
+            const float localCorner = corner * inverseScale;
+            mBackingBrush.OutlineSettings.CornerRadii = FVector4(localCorner, localCorner, localCorner, localCorner);
+            FSlateDrawElement::MakeBox(outDrawElements, layerId, allottedGeometry.ToPaintGeometry(rect.GetSize()
+                * inverseScale, FSlateLayoutTransform(rect.Min * inverseScale)), &mBackingBrush,
+                ESlateDrawEffect::None, FLinearColor(HUD_PANEL_BACKING_COLOR.R, HUD_PANEL_BACKING_COLOR.G,
+                    HUD_PANEL_BACKING_COLOR.B, alpha));
+        }
     }
     mLastPaintedBackingCount = mBackings.Num();
 

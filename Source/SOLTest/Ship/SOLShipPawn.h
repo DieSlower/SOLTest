@@ -306,6 +306,9 @@ public:
     // Returns the virtual joystick offset in pixels (X right, Y up)
     const FVector2d& GetStickOffsetPixels() const { return mStickOffsetPx; }
 
+    // Returns the stick offset in the last pilot snapshot published for the HUD (zero without one; verification)
+    FVector2d GetPublishedStickOffsetPixels() const;
+
     // Returns the virtual joystick radius in pixels for the current viewport
     double GetStickRadiusPixels() const { return mStickRadiusPx; }
 

@@ -8,6 +8,7 @@
 #include "Flight/SOLFlightMode.h"
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLMenuText.h"
 
 #include "SOLConstants.h"
 #include "Tests/SOLTestHelpers.h"
@@ -353,6 +354,61 @@ bool FSOLHudFormatKeyTextsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("rebound no-target text"), texts.NoTarget, FString(TEXT("none (MMB)")));
     TestEqual(TEXT("rebound speed panel title"), texts.SpeedPanelTitle,
         FString(TEXT("SPEED CAP  (F4 / Enter close, Esc close)")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatSteerHintTest, "SOLTest.HudFormat.SteerHint",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The first-flight steer hint names the live steer-hold key and matches HUD_STEER_HINT_FORMAT filled with the keys
+bool FSOLHudFormatSteerHintTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    SOLHudFormat::FHudKeyTexts texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("default steer hint"), texts.SteerHint, FString(TEXT("Hold Space to steer")));
+    TestEqual(TEXT("default steer hint follows the format"), texts.SteerHint,
+        SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_STEER_HINT_FORMAT, keys));
+
+    // Rebinding the steer-hold key changes only the hint's key; the other texts stay as they were
+    const SOLHudFormat::FHudKeyTexts defaults = texts;
+    keys[static_cast<int32>(EBinding::SteerHold)] = TEXT("F");
+    texts = SOLHudFormat::FormatHudKeyTexts(keys);
+    TestEqual(TEXT("rebound steer hint"), texts.SteerHint, FString(TEXT("Hold F to steer")));
+    TestEqual(TEXT("rebound steer hint follows the format"), texts.SteerHint,
+        SOLKeyBindings::FormatKeyText(SOLMenuText::HUD_STEER_HINT_FORMAT, keys));
+    TestFalse(TEXT("rebound steer hint has no placeholder"), texts.SteerHint.Contains(TEXT("{")));
+    TestEqual(TEXT("surface-lock hint unchanged"), texts.SurfaceLockHint, defaults.SurfaceLockHint);
+    TestEqual(TEXT("frame-lock tag unchanged"), texts.FrameLockTag, defaults.FrameLockTag);
+    TestEqual(TEXT("no-target text unchanged"), texts.NoTarget, defaults.NoTarget);
+    TestEqual(TEXT("speed panel title unchanged"), texts.SpeedPanelTitle, defaults.SpeedPanelTitle);
+    TestEqual(TEXT("route resume hint unchanged"), texts.RouteResumeHint, defaults.RouteResumeHint);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatPilotCircleColorTest, "SOLTest.HudFormat.PilotCircleColor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The joystick circles are yellow (FREE_LOOK) while free-looking and the primary blue-cyan otherwise
+bool FSOLHudFormatPilotCircleColorTest::RunTest(const FString& /*parameters*/)
+{
+    const FLinearColor freeLook = SOLHudFormat::PilotCircleColor(true);
+    const FLinearColor normal = SOLHudFormat::PilotCircleColor(false);
+    TestTrue(TEXT("free-looking uses FREE_LOOK"), freeLook.Equals(SOL::HudPalette::FREE_LOOK, 1e-6f));
+    TestTrue(TEXT("not free-looking uses PRIMARY"), normal.Equals(SOL::HudPalette::PRIMARY, 1e-6f));
+
+    // FREE_LOOK is an opaque yellow, distinct from PRIMARY
+    const FLinearColor yellow = SOL::HudPalette::FREE_LOOK;
+    TestTrue(TEXT("FREE_LOOK red is high"), yellow.R >= 0.8f);
+    TestTrue(TEXT("FREE_LOOK green is high"), yellow.G >= 0.6f);
+    TestTrue(TEXT("FREE_LOOK blue is low"), yellow.B <= 0.4f);
+    TestEqual(TEXT("FREE_LOOK is opaque"), yellow.A, 1.0f);
+    TestFalse(TEXT("FREE_LOOK differs from PRIMARY"), yellow.Equals(SOL::HudPalette::PRIMARY, 0.01f));
+    TestFalse(TEXT("the two states differ"), freeLook.Equals(normal, 0.01f));
     return true;
 }
 

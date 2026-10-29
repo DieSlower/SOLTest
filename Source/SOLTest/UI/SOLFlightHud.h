@@ -155,6 +155,12 @@ public:
     // Returns the number of hologram panels the last frame queued (verification)
     int32 GetLastPanelCount() const { return mLastPanelCount; }
 
+    // Returns whether the last DrawHUD drew the "Hold Space to steer" hint (verification, issue #31)
+    bool WasSteerHintDrawn() const { return mWasSteerHintDrawn; }
+
+    // Returns the colour the joystick circles were last drawn in (verification, issue #31)
+    const FLinearColor& GetLastJoystickColor() const { return mLastJoystickColor; }
+
     // Returns the number of glow-text lines the shape layer's last paint actually drew (verification)
     int32 GetLastPaintedTextCount() const;
 
@@ -267,6 +273,7 @@ private:
         TargetLabel,
         RadarSelected,
         RadarRange,
+        SteerHint,
         Count
     };
 
@@ -433,6 +440,8 @@ private:
     FBox2D mLeftBlockRect = FBox2D(ForceInit);      // Speed and G block text this frame (its panel)
     FBox2D mTopBlockRect = FBox2D(ForceInit);       // Autopilot and route text this frame (its panel)
     int32 mLastPanelCount = 0;                      // Hologram panels queued this frame
+    bool mWasSteerHintDrawn = false;                // The steer hint was drawn this frame
+    FLinearColor mLastJoystickColor = FLinearColor::Transparent;   // Joystick circles' colour when last drawn
     bool mWasBackingDropped = false;                // A panel backing was dropped this frame (layer full)
     bool mIsOverflowWarned = false;                 // The capacity-overflow warning was logged (once per HUD)
     float mShapeStrength = -1.0f;                   // Material parameters last pushed (-1 = never)

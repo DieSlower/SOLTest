@@ -150,6 +150,9 @@ private:
     double mReferenceValue = 0.0;                           // Scalar recorded at a phase boundary (cap, speed)
     int32 mPhaseFrames = 0;                                 // Frames in the current phase
     int32 mReferenceIndex = INDEX_NONE;                     // Candidate or warp index recorded at a phase boundary
+    bool mWasSteerStartLocked = false;                       // The steer toggle was on when the script began
+    bool mIsSteerStartExpected = false;                       // ...as the Settings option "Mouse steering at start" says
+    bool mWasSteerHintAtStart = false;                         // The pawn asked the HUD for the steer hint at the start
     int32 mEarthIndex = INDEX_NONE;                         // Registry index of Earth
     int32 mMarsIndex = INDEX_NONE;                          // Registry index of Mars
     int32 mFirstCycled = INDEX_NONE;                        // Target after the first R

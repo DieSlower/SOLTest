@@ -19,6 +19,7 @@ struct FSOLHudPilotSnapshot
     ESOLSteerIcon SteerIcon = ESOLSteerIcon::Free;      // Mouse-steer icon
     bool bIsSteering = false;                           // The mouse steers the ship
     bool bIsFreeLooking = false;                        // Free look is held
+    bool bShowSteerHint = false;                        // Not steered yet this session: show the steer hint
 };
 
 // Commands sent to the HUD (input handled by the pawn, state owned by the HUD)

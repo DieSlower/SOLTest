@@ -7,6 +7,7 @@
 
 #include "Game/SOLGameMode.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
@@ -259,6 +260,9 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     case ESOLHudPhase::CanvasFallback:
         SetHudRendererCvar(0);
         break;
+    case ESOLHudPhase::FreeLookSetup:
+        PressKey(EKeys::LeftAlt);
+        break;
     case ESOLHudPhase::RadarAuto:
         TapKey(EKeys::Home);
         break;
@@ -480,9 +484,36 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
                     backings, HUDSMOKE_MIN_PANELS));
         }
 
+        {
+            // Issue #31: until the player first steers this session the HUD shows "Hold Space to steer"
+            // (compared with the snapshot the HUD drew from, not the live flag, which may flip on this very frame)
+            const USOLHudEventSubsystem* events = USOLHudEventSubsystem::Get(&pawn);
+            const bool bHintExpected = events != nullptr && events->GetBus().HasPilot()
+                && events->GetBus().GetPilot().bShowSteerHint;
+            const bool bHintDrawn = mHud.IsValid() && mHud->WasSteerHintDrawn();
+            Check(TEXT("i-steer-hint"), bHintDrawn == bHintExpected, FString::Printf(TEXT("steer hint %s, expected %s "
+                "(steered this session: %s)"), bHintDrawn ? TEXT("drawn") : TEXT("not drawn"),
+                bHintExpected ? TEXT("drawn") : TEXT("not drawn"), bHintExpected ? TEXT("no") : TEXT("yes")));
+        }
+
         // With the UI, so the glow-shape layer (Slate) is in it; a HighResShot in the same frame would replace it
         TakeUiShot(TEXT("Glow"));
         break;
+    case ESOLHudPhase::FreeLookSetup:
+    {
+        // Issue #31: while Left Alt is held the joystick circles are drawn in the free-look yellow
+        const bool bYellow = mHud.IsValid() && mHud->GetLastJoystickColor().Equals(SOL::HudPalette::FREE_LOOK);
+        Check(TEXT("k-free-look-yellow"), pawn.IsFreeLooking() && bYellow, FString::Printf(TEXT("Left Alt held: "
+            "free look %s, joystick colour %s"), pawn.IsFreeLooking() ? TEXT("on") : TEXT("off"),
+            mHud.IsValid() ? *mHud->GetLastJoystickColor().ToString() : TEXT("none")));
+        TakeUiShot(TEXT("FreeLook"));
+        break;
+    }
+    case ESOLHudPhase::FreeLookShot:
+    {
+        ReleaseKey(EKeys::LeftAlt);
+        break;
+    }
     case ESOLHudPhase::HudShot:
         ReleaseKey(EKeys::W);
         ReleaseKey(EKeys::D);
@@ -542,8 +573,10 @@ double FSOLHudSmoke::GetPhaseDuration(const ESOLHudPhase phase)
     case ESOLHudPhase::HudShotSetup:
     case ESOLHudPhase::RadarShotSetup:
     case ESOLHudPhase::OrbitShotSetup:
+    case ESOLHudPhase::FreeLookSetup:
         return HUDSMOKE_SHOT_SETUP_S;
     case ESOLHudPhase::HudShot:
+    case ESOLHudPhase::FreeLookShot:
     case ESOLHudPhase::RadarShot:
         return HUDSMOKE_SHOT_WAIT_S;
     case ESOLHudPhase::OrbitShot:

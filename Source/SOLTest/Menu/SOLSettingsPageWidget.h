@@ -38,6 +38,7 @@ enum class ESOLSettingsToggle : uint8
     InvertY,
     HudVisible,
     DefaultAssist,
+    MouseSteerAtStart,  // Mouse steering toggle on at flight start (SDD 19 Amendment 5)
     OrbitLines,
     Count,
 };
@@ -198,6 +199,10 @@ private:
     // Flight assist at launch checkbox clicked
     UFUNCTION()
     void HandleDefaultAssistChanged(bool bChecked);
+
+    // Mouse steering at start checkbox clicked
+    UFUNCTION()
+    void HandleMouseSteerAtStartChanged(bool bChecked);
 
     // Show orbit lines checkbox clicked
     UFUNCTION()

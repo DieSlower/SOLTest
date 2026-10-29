@@ -108,8 +108,8 @@ same frame's input flies the ship in assisted mode.
   toggle is on keeps steering on, and releasing it does not turn steering off (OR, open question Q6).
 - **Suspended** while the jump map, the pause menu or the F3 speed panel has input, during the jump warp, and while
   the viewport is unfocused. Suspension (and focus loss) also releases the hold. The toggle latch survives.
-- **Recenter on every off-to-on edge**: the virtual stick returns to the centre whenever steering turns on, including
-  when it resumes after a suspension. `B` (`RecenterStick`) still recenters on demand.
+- **Recenter on every edge** (on-to-off too since Amendment 5): the virtual stick returns to the centre whenever
+  steering turns on, including when it resumes after a suspension, and whenever it turns off. `B` (`RecenterStick`) still recenters on demand.
 - **While inactive** the stick command is zero, mouse deltas do not move the stick (Alt free-look still orbits the
   camera), and the OS cursor is shown (open question Q8; since Amendment 4 it stays locked inside the viewport). This is the groundwork for the G-key icons and
   the radial / list menus of #22. The left mouse still fires along the camera aim.
@@ -118,7 +118,8 @@ same frame's input flies the ship in assisted mode.
   `SOLFlight::JoystickToRotation`) rather than LT's linear absolute cursor offset (open question Q9).
 - **Assisted** reads the command as a rate (as today). **Manual** reads it as pitch / yaw torque (as #18 built): when
   steering turns off, the torque goes to zero but the spin persists until Z.
-- **Start state** of the toggle at each flight start: ON (open question Q7). It is not saved.
+- **Start state** of the toggle at each flight start: the Settings option "Mouse steering at start", default OFF
+  (Q7 changed by Amendment 5; it was ON).
 - **HUD icon** (`SteerIconFor`): `Locked` when the toggle is on, else `Held` while Space is held, else `Free`.
 
 ### 3.5 Keys, reservations and the settings migration
@@ -330,6 +331,21 @@ One player ship: a few branches per frame. No allocation, no new Mass processor,
   `LockAlways`, cursor shown, at the viewport centre). Known limit: in a windowed (not fullscreen) game the lock
   rectangle reaches the window's resize border, so a click in the outermost few pixels lands on the window frame
   and does not reach the game (focus is kept).
+
+- **Amendment 5 (issue #31, 2026-10-29): steering start setting, hint and recenter on release.** User decisions
+  (grill-me): Q7 changed. A Settings checkbox "Mouse steering at start" (`FSettingsValues::bMouseSteerAtStart`,
+  persisted, default **off**; `SAVE_VERSION` 6, the 5 -> 6 migration sets off for old saves too). With it off the
+  toggle latch starts off at every ship spawn, so Space is the way to steer and the cursor is free; with it on the
+  toggle starts on as before. The pawn reads the applied value at BeginPlay (`USOLSettingsSubsystem::GetSavedValues`).
+  Until the player first steers in the session (`USOLSettingsSubsystem::HasSteeredThisSession`, session only, never
+  saved) the HUD shows "Hold {SteerHold} to steer" (`SOLMenuText::HUD_STEER_HINT_FORMAT`, key label from the bindings).
+  Bug fix: when steering turned off the OS cursor was centred but the stick (`mStickOffsetPx`, published in the HUD
+  pilot snapshot) kept its offset, so the HUD's stick dot stayed off-centre. Cause: `UpdateSteerGate` reported a
+  recenter only on the off-to-on edge; it now reports `bRecenter` on every edge, and the pawn zeroes the stick in the
+  same tick before it publishes the snapshot (no stale snapshot or one-frame lag involved). Tests: the steer-gate tests
+  updated plus `SteerGateRecenterEveryEdge`; settings model / save / migration tests. Smoke `-SOLSmokeInput`:
+  `i-steer-start` (toggle at start matches the setting), `i-steer-release` now also requires the stick and the
+  published HUD stick at the centre (41/41).
 
 ## 7. Revision history
 

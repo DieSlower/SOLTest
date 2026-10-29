@@ -54,7 +54,7 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
         && Near(x.MouseSensitivity, y.MouseSensitivity) && x.bInvertY == y.bInvertY && Near(x.HudScale, y.HudScale)
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
         && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines
-        && Near(x.HudEffectsStrength, y.HudEffectsStrength);
+        && Near(x.HudEffectsStrength, y.HudEffectsStrength) && x.bMouseSteerAtStart == y.bMouseSteerAtStart;
 }
 
 //////////////////////////////////////////////////////////////////////////

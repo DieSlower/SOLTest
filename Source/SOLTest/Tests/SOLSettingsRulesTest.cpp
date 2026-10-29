@@ -253,7 +253,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 5"), SOL::Settings::SAVE_VERSION, 5);
+    TestEqual(TEXT("schema version is 6"), SOL::Settings::SAVE_VERSION, 6);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -261,6 +261,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 3 migrates"), ClassifySaveVersion(3, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 4 migrates"), ClassifySaveVersion(4, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 5 migrates"), ClassifySaveVersion(5, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -599,7 +601,6 @@ bool FSOLSettingsRulesMigrateV4HudEffectsTest::RunTest(const FString& /*paramete
     save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));     // Already past 3 -> 4: must not be moved again
 
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v4 -> 5"), save->Version, 5);
     TestEqual(TEXT("v4 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("strength set to the default"), save->HudEffectsStrength, SOL::Settings::HUD_EFFECTS_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
@@ -641,7 +642,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV4CurrentKeepsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A v5 save keeps its HUD effects strength and version; the save object defaults and round-trips the strength
+// A current save keeps its HUD effects strength and version; the save object defaults and round-trips the strength
 bool FSOLSettingsRulesMigrateV4CurrentKeepsTest::RunTest(const FString& /*parameters*/)
 {
     // A current save is not migrated
@@ -649,10 +650,10 @@ bool FSOLSettingsRulesMigrateV4CurrentKeepsTest::RunTest(const FString& /*parame
     current->Version = SOL::Settings::SAVE_VERSION;
     current->HudEffectsStrength = 0.3f;
     current->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
-    TestEqual(TEXT("v5: strength kept"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("current: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("current: strength kept"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
     current->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5: strength kept twice"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("current: strength kept twice"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
 
     // A new save holds the default strength
     const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
@@ -674,6 +675,103 @@ bool FSOLSettingsRulesMigrateV4CurrentKeepsTest::RunTest(const FString& /*parame
     save->SetValues(values);
     TestEqual(TEXT("off round-trips"), save->GetValues().HudEffectsStrength, SOL::Settings::HUD_EFFECTS_MIN,
         SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMouseSteerSaveTest, "SOLTest.SettingsRules.MouseSteerAtStartSave",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 6 carries the steer-at-start flag: a new save holds off, and SetValues/GetValues round-trip both values
+bool FSOLSettingsRulesMouseSteerSaveTest::RunTest(const FString& /*parameters*/)
+{
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestFalse(TEXT("new save: steer at start off"), fresh->bMouseSteerAtStart);
+    TestFalse(TEXT("new save: GetValues off"), fresh->GetValues().bMouseSteerAtStart);
+
+    // On round-trips as on
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.bMouseSteerAtStart = true;
+    save->SetValues(values);
+    TestTrue(TEXT("SetValues stores on"), save->bMouseSteerAtStart);
+    TestTrue(TEXT("GetValues gives on back"), save->GetValues().bMouseSteerAtStart);
+    TestTrue(TEXT("on round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+
+    // And off again as off
+    values.bMouseSteerAtStart = false;
+    save->SetValues(values);
+    TestFalse(TEXT("SetValues stores off"), save->bMouseSteerAtStart);
+    TestFalse(TEXT("GetValues gives off back"), save->GetValues().bMouseSteerAtStart);
+    TestTrue(TEXT("off round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV5MouseSteerTest, "SOLTest.SettingsRules.MigrateV5MouseSteer",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 5 -> 6 (issue #31): the steer-at-start flag (absent from older files) becomes off; everything else is kept
+bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*parameters*/)
+{
+    // A v5 save with a stale steer flag a v5 file never wrote, and non-default values elsewhere
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 5;
+    save->bMouseSteerAtStart = true;
+    save->HudEffectsStrength = 0.3f;
+    save->bShowOrbitLines = false;
+    save->bDefaultFlightAssist = false;
+    save->MasterVolume = 0.45f;
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v5 -> 6"), save->Version, 6);
+    TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
+    TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("override count kept"), save->KeyOverrides.Num(), 1);
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+
+    // Older saves also end at the current schema with the flag off
+    const int32 olderVersions[] = { 1, 4 };
+    for (const int32 version : olderVersions)
+    {
+        USOLSettingsSave* older = NewObject<USOLSettingsSave>();
+        older->Version = version;
+        older->bMouseSteerAtStart = true;
+        older->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        TestEqual(label + TEXT(": ends at 6"), older->Version, 6);
+        TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
+    }
+
+    // A current save keeps the player's choice across two migrate calls
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = 6;
+    current->bMouseSteerAtStart = true;
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), current->Version, 6);
+    TestTrue(TEXT("current: steer at start kept"), current->bMouseSteerAtStart);
+    current->MigrateToCurrentVersion();
+    TestTrue(TEXT("current: steer at start kept twice"), current->bMouseSteerAtStart);
+
+    // Unversioned and newer saves are never migrated
+    const int32 untouchedVersions[] = { 0, 7 };
+    for (const int32 version : untouchedVersions)
+    {
+        USOLSettingsSave* untouched = NewObject<USOLSettingsSave>();
+        untouched->Version = version;
+        untouched->bMouseSteerAtStart = true;
+        untouched->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("version %d"), version);
+        TestEqual(label + TEXT(": version kept"), untouched->Version, version);
+        TestTrue(label + TEXT(": steer at start kept"), untouched->bMouseSteerAtStart);
+    }
     return true;
 }
 

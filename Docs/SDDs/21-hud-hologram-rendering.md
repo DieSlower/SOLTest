@@ -5,6 +5,7 @@
 Umbrella issue #21; phases are issues #28 (A), #29 (B) and #30 (C). Depends on SDD 20 (`SOL::Hologram` shared style),
 SDD 8 (HUD, menus, settings) and the Limit Theory research (`Docs/Research/LT_features_for_SOL.md` section C).
 Status: done. Phase A built (Amendment 1), phase B built (Amendment 2), phase C built (Amendment 3); #21 closed.
+Amendment 4: issue #31 polish (less glow, borderless panels, free-look colour).
 
 ## 1. Goal
 
@@ -242,3 +243,46 @@ assumed dash == gap (now a `static_assert`). Fixed Lows: ellipse radius clamp (C
 ship-up/down, comments on the 8-bit ratio and whole-pixel dash period, long lines, a parenthesised ternary. Not fixed,
 in `CLAUDE.md` tech debt: `SelectContacts` sorts every candidate each frame (fine at ~100 candidates; a bounded heap or
 partial selection when NPCs or minor bodies become targetable).
+
+## Amendment 4: issue #31 polish (glow, panels, free-look colour)
+
+**Decisions (grill-me, user).** Halve the glow of every HUD overlay, keeping text legible; while Left Alt free-look
+is held the joystick circles turn yellow; no visible rectangle around the radar or any panel (soft, borderless panels
+with fading edges, text backing kept).
+
+**Glow.** `HUD_GLOW_HALO_WEIGHT` 0.2 -> 0.1 and `HUD_GLOW_CORE_FALLOFF` 2 -> 3 (about half the energy outside the 1 px
+core); `HUD_GLOW_CORE_WEIGHT` 0.8 -> 0.9 so the core still peaks at 1 (`SOLTest.HudShapes.GlowProfile` unchanged).
+Glow-text outline alpha `HUD_TEXT_GLOW_ALPHA` 0.35 -> 0.18. The map and route overlays' Canvas halo
+(`GLOW_HALO_INTENSITY`, SDD 20) 0.3 -> 0.15. Side effect seen in the screenshots: a thin orange line over the blue
+Earth now reads whitish (additive orange + blue), where the wider halo used to tint it; accepted.
+
+**Borderless panels.** The panel kind of `M_SOLHudShape` no longer glows along its outline: it is only its fill,
+`fill x smoothstep(0, HUD_PANEL_FEATHER_PX (8), -d)` x scanlines x flicker (`SOLHudShapeMath::PanelFill`, test-first).
+`HUD_PANEL_FILL_BASE` and `HUD_PANEL_EDGE_FALLOFF_PX` are gone; `HUD_PANEL_EDGE_INTENSITY` became `HUD_PANEL_INTENSITY`
+(the fill's colour scale); corner 4 -> 6 px, padding 6 -> 8 px. The dark backing is no longer one square box (the
+CLAUDE.md "square backing corners" item): `SSOLHudShapeLayer` draws each backing as `HUD_PANEL_BACKING_LAYERS` (6)
+rounded Slate boxes inset step by step over `HUD_PANEL_BACKING_FEATHER_PX` (8 x UI scale), rounder outside, each with
+alpha `1 - (1 - 0.45)^(1/6)` so the stack reaches 0.45 inside (`SOLHudShapeMath::BackingLayer`, test-first). The
+radar lost its rectangular panel: a soft stadium backing under the disc (grown 25% of the squashed radius, feathered
+over twice that, corner = half its height) and a small panel behind the range label. Cost: at most 32 x 6 = 192
+rounded boxes in one Slate layer (one brush, batched), no allocation (backings reserved once). The GPU cost is about 6x alpha-blended overdraw over each backing's area (largest for the radar stadium); not
+profiled, accepted at HUD sizes. Panel quads are padded only `HUD_PANEL_QUAD_PAD_PX` (2 px, for the row jitter)
+instead of the 32 px glow pad, since a borderless panel draws nothing outside itself.
+
+**Adversarial review (fixed).** Controls rows for SteerHold / SteerToggle still said "on at every flight start";
+GAME_MECHANICS still quoted the LT glow numbers; stale "glowing outline" comments and the `edgeIntensity` parameter
+name; the panel quad pad; smoke member naming; `i-steer-hint` now compares with the snapshot the HUD drew from; long
+lines. `-SOLSmokeMap`'s close checks now expect the cursor shown when the steer toggle is off (the new default).
+
+**Free-look colour.** `SOL::HudPalette::FREE_LOOK` (1, 0.82, 0.25): `SOLHudFormat::PilotCircleColor` gives it to the
+joystick circles, stick line and dot while `FSOLHudPilotSnapshot::bIsFreeLooking`, else LT Primary.
+
+**Steer hint (SDD 19 Amendment 5).** The pilot snapshot carries `bShowSteerHint`; the HUD draws
+`FHudKeyTexts::SteerHint` ("Hold Space to steer", the SteerHold key's label) centred at 0.8 of the screen height on a
+panel, dim Primary, until the player first steers in the session.
+
+**Verification.** Screenshots before (`HudSmoke_Glow.png` from #30) and after at 1280x720 and 1000x800 looked at: no
+rectangle around any panel or the radar, thinner glow, text readable, yellow circles in `HudSmoke_FreeLook.png`.
+`-SOLSmokeHud` 24/24 at both sizes (new `i-steer-hint`, `k-free-look-yellow`). Tests: HudPanels PanelFill rewritten,
+BackingLayer 3 new; HudFormat SteerHint and PilotCircleColor new (written from the contract by a separate agent; red on
+stubs, then green).

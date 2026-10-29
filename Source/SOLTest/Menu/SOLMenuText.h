@@ -63,6 +63,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
     inline constexpr const TCHAR* SETTINGS_ORBIT_LINES = TEXT("Show orbit lines");
+    inline constexpr const TCHAR* SETTINGS_MOUSE_STEER_AT_START = TEXT("Mouse steering at start");
     inline constexpr const TCHAR* SETTINGS_APPLY = TEXT("Apply");
     inline constexpr const TCHAR* SETTINGS_REVERT = TEXT("Revert");
     inline constexpr const TCHAR* SETTINGS_RESET_KEYS = TEXT("Reset keys to defaults");
@@ -154,6 +155,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* HUD_SURFACE_LOCK_HINT_FORMAT = TEXT("{SurfaceLock} to surface-lock  ");
     inline constexpr const TCHAR* HUD_FRAME_LOCK_TAG_FORMAT = TEXT(" [{MatchLock} LOCK]");
     inline constexpr const TCHAR* HUD_ROUTE_RESUME_HINT_FORMAT = TEXT("   {Resume} resume");
+    // HUD hint under the reticle until the player first steers in this session (issue #31, SDD 19 Amendment 5)
+    inline constexpr const TCHAR* HUD_STEER_HINT_FORMAT = TEXT("Hold {SteerHold} to steer");
     inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
     inline constexpr const TCHAR* SPEED_PANEL_TITLE_FORMAT = TEXT("SPEED CAP  ({SpeedPanel} / Enter close, Esc close)");
 
@@ -182,9 +185,11 @@ namespace SOLMenuText
         { TEXT("Flight"), TEXT("Mouse2D"),
             TEXT("Steer while mouse steering is on: the mouse moves a virtual joystick (yaw and pitch rate; torque in "
                 "manual flight). With it off the cursor is shown and stays inside the game window") },
-        { TEXT("Flight"), TEXT("@SteerHold"), TEXT("Steer with the mouse while held (the joystick recenters)") },
+        { TEXT("Flight"), TEXT("@SteerHold"),
+            TEXT("Steer with the mouse while held (the joystick recenters on press and release)") },
         { TEXT("Flight"), TEXT("@SteerToggle"),
-            TEXT("Mouse steering on / off (on at every flight start; the joystick recenters)") },
+            TEXT("Mouse steering on / off (off at flight start unless Settings \"Mouse steering at start\" is on; the "
+                "joystick recenters when it turns on or off)") },
         { TEXT("Flight"), TEXT("@RecenterStick"), TEXT("Recenter the joystick (stop turning)") },
         { TEXT("Flight"), TEXT("@ThrustForward|@ThrustBackward"), TEXT("Thrust forward / backward") },
         { TEXT("Flight"), TEXT("@StrafeLeft|@StrafeRight"), TEXT("Strafe left / right") },
@@ -301,9 +306,11 @@ namespace SOLMenuText
             "spin keeps going until you hold {StopSpin}. Gravity pulls in both modes. The HUD shows the mode: "
             "MANUAL, ASSISTED or AUTO."),
         TEXT("The mouse steers only while mouse steering is on: hold {SteerHold}, or press {SteerToggle} to turn it "
-            "on or off (it starts on). Each time it turns on, the joystick recenters. While it is off the cursor is "
-            "shown (it stays inside the game window) and moving the mouse does not turn the ship. Boost ({Boost}) is a switch: it stays on until you "
-            "press it again, black out, jump or respawn."),
+            "on or off. It starts off (the HUD says \"Hold {SteerHold} to steer\" until you first steer); the "
+            "Settings option Mouse steering at start makes it start on. Each time it turns on or off, the joystick "
+            "recenters. While it is off the cursor is shown (it stays inside the game window) and moving the mouse "
+            "does not turn the ship. While you hold {FreeLook} to look around, the joystick circles turn yellow. "
+            "Boost ({Boost}) is a switch: it stays on until you press it again, black out, jump or respawn."),
         TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
             "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "
             "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go."),
@@ -332,12 +339,13 @@ namespace SOLMenuText
             "Time warp is never changed for you. The map is drawn as a hologram: bodies and rings as glowing "
             "outlines (the Sun orange), a faint grid on the ecliptic plane through the point the map camera circles, "
             "and a line from each body and waypoint to that plane (orange when it lies below it)."),
-        TEXT("The flight HUD is a hologram: glowing blue lines and text on faint panels. Now and then a thin band of "
-            "it shifts sideways for a moment, like a flickering hologram, and the radar's range rings pulse like "
-            "sonar; the HUD hologram effects slider in Settings sets how strong that is (0 turns it off). The radar "
-            "(bottom right) is drawn on your ship's own horizontal plane, ahead at the top, with the camera's view "
-            "cone: contacts above the plane are blue with a solid line down to it, contacts below are orange with a "
-            "dashed line up to it and a hollow mark, and the selected target is larger, ringed and named."),
+        TEXT("The flight HUD is a hologram: thin glowing blue lines and text on soft, borderless dark panels. Now "
+            "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
+            "range rings pulse like sonar; the HUD hologram effects slider in Settings sets how strong that is (0 "
+            "turns it off). The radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
+            "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
+            "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "
+            "ringed and named. While you hold {FreeLook} the joystick circles turn yellow."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

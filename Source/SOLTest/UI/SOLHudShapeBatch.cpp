@@ -111,13 +111,13 @@ bool FSOLHudShapeBatch::AddEllipse(const FVector2f& center, const float radiusXP
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds an axis-aligned hologram panel: a fill and a glowing outline
+// Adds an axis-aligned borderless hologram panel: a fill that fades in from its edge
 bool FSOLHudShapeBatch::AddPanel(const FVector2f& center, const FVector2f& halfSizePx, const FLinearColor& color,
-    const float edgeIntensity, const float fill, const float padPx)
+    const float intensity, const float fill, const float padPx)
 {
     return AddQuad(center, FVector2f(1.0f, 0.0f), FVector2f(0.0f, 1.0f),
         FVector2f(halfSizePx.X + padPx, halfSizePx.Y + padPx), halfSizePx.X,
-        SOLHudShapeMath::EncodeKind(ESOLHudShapeKind::Panel, halfSizePx.Y), HudBatchColor(color, edgeIntensity, fill));
+        SOLHudShapeMath::EncodeKind(ESOLHudShapeKind::Panel, halfSizePx.Y), HudBatchColor(color, intensity, fill));
 }
 
 //////////////////////////////////////////////////////////////////////////

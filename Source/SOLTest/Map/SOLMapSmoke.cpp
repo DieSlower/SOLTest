@@ -548,16 +548,20 @@ void FSOLMapSmoke::CheckClosed(const TCHAR* label, ASOLShipPawn& pawn)
 {
     const AActor* viewTarget = mController->GetViewTarget();
     const double originOffsetM = FVector3d::Dist(mAnchor->GetRenderOriginM(), mAnchor->GetObserverPositionM());
-    const bool bPassed = !pawn.IsMapOpen() && !mMapMode->IsMapOpen() && !mController->bShowMouseCursor
-        && pawn.IsShipInputMapped() && !pawn.IsMapInputMapped() && viewTarget == &pawn
-        && !mAnchor->HasViewpointOverride() && originOffsetM <= SOL::RENDER_REBASE_DISTANCE_M;
-    Check(label, bPassed, FString::Printf(TEXT("map open %s, cursor %s, ship mapping %s, map mapping %s, view target "
-        "%s (ship pawn %s), viewpoint override %s, render origin %.1f m from the ship"),
+
+    // The ship's cursor comes back as its steer toggle says: captured with the toggle on, else shown (issue #31: the
+    // toggle starts off unless Settings "Mouse steering at start" is on)
+    const bool bCursorExpected = pawn.GetSteerIcon() != ESOLSteerIcon::Locked;
+    const bool bPassed = !pawn.IsMapOpen() && !mMapMode->IsMapOpen()
+        && mController->bShowMouseCursor == bCursorExpected && pawn.IsShipInputMapped() && !pawn.IsMapInputMapped()
+        && viewTarget == &pawn && !mAnchor->HasViewpointOverride() && originOffsetM <= SOL::RENDER_REBASE_DISTANCE_M;
+    Check(label, bPassed, FString::Printf(TEXT("map open %s, cursor %s (expected %s), ship mapping %s, map mapping "
+        "%s, view target %s (ship pawn %s), viewpoint override %s, render origin %.1f m from the ship"),
         mMapMode->IsMapOpen() ? TEXT("yes") : TEXT("no"), mController->bShowMouseCursor ? TEXT("visible")
-        : TEXT("hidden"), pawn.IsShipInputMapped() ? TEXT("active") : TEXT("removed"), pawn.IsMapInputMapped()
-        ? TEXT("active") : TEXT("removed"), viewTarget != nullptr ? *viewTarget->GetName() : TEXT("none"),
-        viewTarget == &pawn ? TEXT("yes") : TEXT("NO"), mAnchor->HasViewpointOverride() ? TEXT("on") : TEXT("off"),
-        originOffsetM));
+        : TEXT("hidden"), bCursorExpected ? TEXT("visible") : TEXT("hidden"), pawn.IsShipInputMapped()
+        ? TEXT("active") : TEXT("removed"), pawn.IsMapInputMapped() ? TEXT("active") : TEXT("removed"),
+        viewTarget != nullptr ? *viewTarget->GetName() : TEXT("none"), viewTarget == &pawn ? TEXT("yes") : TEXT("NO"),
+        mAnchor->HasViewpointOverride() ? TEXT("on") : TEXT("off"), originOffsetM));
 }
 
 //////////////////////////////////////////////////////////////////////////

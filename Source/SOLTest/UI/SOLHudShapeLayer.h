@@ -51,8 +51,9 @@ public:
     // Empties the batch, the text lines and the panel backings for a new frame
     void ResetFrame();
 
-    // Adds a dark translucent backing under a hologram panel (canvas pixels); false when the backing buffer is full
-    bool AddBacking(const FBox2f& rect);
+    // Adds a soft dark backing under a hologram panel (canvas pixels, rounded with cornerPx and fading in over
+    // featherPx from its edge; SOLHudShapeMath::BackingLayer); false when the backing buffer is full
+    bool AddBacking(const FBox2f& rect, float cornerPx, float featherPx);
 
     // Sets the font a text line of a given ESOLHudFont is drawn with (the engine fonts' legacy Slate font info)
     void SetFont(ESOLHudFont font, const FSlateFontInfo& fontInfo);
@@ -88,9 +89,18 @@ private:
 
     FSOLHudShapeBatch mBatch;                           // Filled by the HUD in canvas pixels
     FSOLHudTextList mTexts;                             // Glow-text lines, canvas pixels
-    TArray<FBox2f> mBackings;                           // Panel backings, canvas pixels (reserved once)
+    // One panel backing: its rectangle, corner radius and edge feather in canvas pixels
+    struct FSOLHudBacking
+    {
+        FBox2f Rect;
+        float CornerPx = 0.0f;
+        float FeatherPx = 0.0f;
+    };
+
+    TArray<FSOLHudBacking> mBackings;                   // Panel backings, canvas pixels (reserved once)
     FSlateFontInfo mFonts[static_cast<int32>(ESOLHudFont::Count)];     // Fonts per ESOLHudFont
-    FSlateBrush mBackingBrush;                          // Solid white brush tinted per backing
+    mutable FSlateBrush mBackingBrush;                  // White rounded box tinted per layer; its corner radius is set
+                                                        // per layer in OnPaint (Slate copies it into each element)
     bool mIsTextGlow = true;                            // Glow-text style (false: plain text over the shadow)
     mutable int32 mLastPaintedTextCount = 0;            // Text lines drawn by the last paint
     mutable int32 mLastPaintedBackingCount = 0;         // Panel backings drawn by the last paint

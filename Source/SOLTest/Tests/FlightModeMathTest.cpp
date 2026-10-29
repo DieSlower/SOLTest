@@ -973,7 +973,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSteerGateHoldTest, "SOLTest.F
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Holding Space steers until it is released; the stick recenters on each press edge only
+// Holding Space steers until it is released; the stick recenters on each press and each release edge
 bool FSOLFlightModeMathSteerGateHoldTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLFlightMode;
@@ -994,7 +994,10 @@ bool FSOLFlightModeMathSteerGateHoldTest::RunTest(const FString& /*parameters*/)
     SetSteerHold(gate, false);
     update = UpdateSteerGate(gate, false);
     TestFalse(TEXT("release: inactive"), update.bActive);
-    TestFalse(TEXT("release: no recenter"), update.bRecenter);
+    // Issue #31: the on-to-off edge recenters too (previously it did not)
+    TestTrue(TEXT("release: recenter"), update.bRecenter);
+    update = UpdateSteerGate(gate, false);
+    TestFalse(TEXT("released steady: no recenter"), update.bRecenter);
     TestFalse(TEXT("toggle untouched"), gate.bToggleOn);
 
     SetSteerHold(gate, true);
@@ -1009,7 +1012,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSteerGateToggleTest, "SOLTest
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A wheel click latches steering on until the next click; recenter on each turn-on
+// A wheel click latches steering on until the next click; recenter on each turn-on and turn-off
 bool FSOLFlightModeMathSteerGateToggleTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLFlightMode;
@@ -1030,7 +1033,10 @@ bool FSOLFlightModeMathSteerGateToggleTest::RunTest(const FString& /*parameters*
     TestFalse(TEXT("toggle off"), gate.bToggleOn);
     update = UpdateSteerGate(gate, false);
     TestFalse(TEXT("off: inactive"), update.bActive);
-    TestFalse(TEXT("off: no recenter"), update.bRecenter);
+    // Issue #31: the on-to-off edge recenters too (previously it did not)
+    TestTrue(TEXT("off: recenter"), update.bRecenter);
+    update = UpdateSteerGate(gate, false);
+    TestFalse(TEXT("off steady: no recenter"), update.bRecenter);
 
     ToggleSteer(gate);
     update = UpdateSteerGate(gate, false);
@@ -1078,6 +1084,8 @@ bool FSOLFlightModeMathSteerGateOrTest::RunTest(const FString& /*parameters*/)
     SetSteerHold(gate, false);
     update = UpdateSteerGate(gate, false);
     TestFalse(TEXT("both off: inactive"), update.bActive);
+    // Issue #31: the on-to-off edge recenters too (previously it did not)
+    TestTrue(TEXT("both off: recenter"), update.bRecenter);
 
     // Hold first, then the toggle turns on: no extra recenter
     FSOLSteerGateState holdFirst = MakeSteerGate(false);
@@ -1098,7 +1106,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSteerGateSuspensionTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Menus / map / panel / focus loss suspend steering without losing the toggle; resuming recenters
+// Menus / map / panel / focus loss suspend steering without losing the toggle; suspending and resuming recenter
 bool FSOLFlightModeMathSteerGateSuspensionTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLFlightMode;
@@ -1107,10 +1115,12 @@ bool FSOLFlightModeMathSteerGateSuspensionTest::RunTest(const FString& /*paramet
 
     FSOLSteerGateUpdate update = UpdateSteerGate(gate, true);
     TestFalse(TEXT("suspended: inactive"), update.bActive);
-    TestFalse(TEXT("suspended: no recenter"), update.bRecenter);
+    // Issue #31: the on-to-off edge recenters too (previously it did not)
+    TestTrue(TEXT("suspended: recenter"), update.bRecenter);
     TestTrue(TEXT("suspension keeps the toggle"), gate.bToggleOn);
     update = UpdateSteerGate(gate, true);
     TestFalse(TEXT("still suspended: inactive"), update.bActive);
+    TestFalse(TEXT("still suspended: no recenter"), update.bRecenter);
 
     update = UpdateSteerGate(gate, false);
     TestTrue(TEXT("resume: active"), update.bActive);
@@ -1129,7 +1139,9 @@ bool FSOLFlightModeMathSteerGateSuspensionTest::RunTest(const FString& /*paramet
     SetSteerHold(flushed, true);
     TestTrue(TEXT("hold active"), UpdateSteerGate(flushed, false).bActive);
     SetSteerHold(flushed, false);
-    TestFalse(TEXT("map opens: inactive"), UpdateSteerGate(flushed, true).bActive);
+    update = UpdateSteerGate(flushed, true);
+    TestFalse(TEXT("map opens: inactive"), update.bActive);
+    TestTrue(TEXT("map opens: recenter (issue #31)"), update.bRecenter);
     update = UpdateSteerGate(flushed, false);
     TestFalse(TEXT("map closes, hold gone: inactive"), update.bActive);
     TestFalse(TEXT("map closes, hold gone: no recenter"), update.bRecenter);
@@ -1179,6 +1191,65 @@ bool FSOLFlightModeMathSteerGateInitialTest::RunTest(const FString& /*parameters
     TestFalse(TEXT("default: toggle off"), defaulted.bToggleOn);
     TestFalse(TEXT("default: no hold"), defaulted.bHoldDown);
     TestFalse(TEXT("default: not active"), defaulted.bWasActive);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSteerGateEveryEdgeTest,
+    "SOLTest.FlightModeMath.SteerGateRecenterEveryEdge",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #31: recenter is exactly (active != was active), so both edges recenter and steady frames never do
+bool FSOLFlightModeMathSteerGateEveryEdgeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLFlightMode;
+
+    // Every input combination from both previous states: recenter iff the result differs from the previous one
+    for (int32 combo = 0; combo < 16; ++combo)
+    {
+        FSOLSteerGateState gate;
+        gate.bToggleOn = (combo & 1) != 0;
+        gate.bHoldDown = (combo & 2) != 0;
+        gate.bWasActive = (combo & 4) != 0;
+        const bool bSuspended = (combo & 8) != 0;
+        const bool bWasActive = gate.bWasActive;
+        const bool bExpectedActive = (gate.bToggleOn || gate.bHoldDown) && !bSuspended;
+        const FSOLSteerGateUpdate update = UpdateSteerGate(gate, bSuspended);
+        const FString label = FString::Printf(TEXT("combo %d"), combo);
+        TestTrue(label + TEXT(": active"), update.bActive == bExpectedActive);
+        TestTrue(label + TEXT(": recenter on any edge"), update.bRecenter == (bExpectedActive != bWasActive));
+        TestTrue(label + TEXT(": remembers the result"), gate.bWasActive == bExpectedActive);
+    }
+
+    // Hold released with the toggle off: the on-to-off edge recenters (the bug fix)
+    FSOLSteerGateState hold = MakeSteerGate(false);
+    SetSteerHold(hold, true);
+    TestTrue(TEXT("hold press: recenter"), UpdateSteerGate(hold, false).bRecenter);
+    TestFalse(TEXT("hold steady: no recenter"), UpdateSteerGate(hold, false).bRecenter);
+    SetSteerHold(hold, false);
+    TestTrue(TEXT("hold release: recenter"), UpdateSteerGate(hold, false).bRecenter);
+    TestFalse(TEXT("released steady: no recenter"), UpdateSteerGate(hold, false).bRecenter);
+
+    // Hold released while the toggle is on: steering stays active, no edge, no recenter
+    FSOLSteerGateState both = MakeSteerGate(true);
+    SetSteerHold(both, true);
+    TestTrue(TEXT("both: first update recenters"), UpdateSteerGate(both, false).bRecenter);
+    SetSteerHold(both, false);
+    const FSOLSteerGateUpdate kept = UpdateSteerGate(both, false);
+    TestTrue(TEXT("toggle keeps steering"), kept.bActive);
+    TestFalse(TEXT("toggle keeps steering: no recenter"), kept.bRecenter);
+
+    // Suspension while active recenters, and so does the resume
+    FSOLSteerGateState suspended = MakeSteerGate(true);
+    UpdateSteerGate(suspended, false);
+    TestTrue(TEXT("suspend while active: recenter"), UpdateSteerGate(suspended, true).bRecenter);
+    TestFalse(TEXT("suspended steady: no recenter"), UpdateSteerGate(suspended, true).bRecenter);
+    TestTrue(TEXT("resume: recenter"), UpdateSteerGate(suspended, false).bRecenter);
+
+    // A gate made off with nothing held never recenters on its first update
+    FSOLSteerGateState idle = MakeSteerGate(false);
+    TestFalse(TEXT("idle first update: no recenter"), UpdateSteerGate(idle, false).bRecenter);
     return true;
 }
 

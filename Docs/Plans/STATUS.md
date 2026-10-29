@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-10-30.
+Last updated: 2026-10-29.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -33,12 +33,12 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #30 | HUD phase C: 3D hologram radar (ship-horizontal plane, above/below colours, sonar rings) | 21 |
 | #21 | HUD hologram rendering (umbrella, phases A-C) | 21 |
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
+| #31 | HUD polish: half glow, Alt yellow circles, borderless panels, steering start setting and hint, stick recenter on release | 19, 21 (amendments) |
 
 ## In progress
 
 | Issue | What | Notes |
 |---|---|---|
-| #31 | HUD polish (glow, Alt colour, no rectangles, steering start setting, cursor snap) | agent next |
 
 ## To do (ordered)
 

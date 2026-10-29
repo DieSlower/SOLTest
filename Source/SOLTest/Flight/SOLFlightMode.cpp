@@ -170,12 +170,12 @@ void SOLFlightMode::ToggleSteer(FSOLSteerGateState& gate)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Updates the gate and reports the off-to-on edge
+// Updates the gate and reports every edge (off-to-on and on-to-off) as a recenter
 FSOLSteerGateUpdate SOLFlightMode::UpdateSteerGate(FSOLSteerGateState& gate, const bool bSuspended)
 {
     FSOLSteerGateUpdate update;
     update.bActive = (gate.bToggleOn || gate.bHoldDown) && !bSuspended;
-    update.bRecenter = update.bActive && !gate.bWasActive;
+    update.bRecenter = update.bActive != gate.bWasActive;
     gate.bWasActive = update.bActive;
     return update;
 }

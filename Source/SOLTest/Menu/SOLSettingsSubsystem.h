@@ -112,6 +112,13 @@ public:
     // point (EndVisit or shutdown), and only if the value then differs from what is on disk
     void SetOrbitLinesShown(bool bShown);
 
+    // Returns whether the player has steered with the mouse since the game started (session only, never saved; the HUD
+    // shows its "Hold Space to steer" hint until then, issue #31)
+    bool HasSteeredThisSession() const { return mHasSteeredThisSession; }
+
+    // Records that the player steered with the mouse this session
+    void MarkSteeredThisSession() { mHasSteeredThisSession = true; }
+
     // Applies everything pending; returns true if anything changed (the write happens at EndVisit)
     bool ApplyPending();
 
@@ -228,6 +235,7 @@ private:
     bool mIsVsyncChosen = false;                        // The player changed vsync on the page (pushed at boot)
     bool mIsQualityChosen = false;                      // The player changed the quality preset (pushed at boot)
     bool mIsKeyCaptureActive = false;                   // A Settings page is listening for a rebind key
+    bool mHasSteeredThisSession = false;                // Mouse steering was on at least once this session
     bool mIsEngineSettingsSaveOwed = false;             // GameUserSettings changed since its last write
     bool mHasResolutionChoices = false;
 };

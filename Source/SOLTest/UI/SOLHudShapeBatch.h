@@ -54,8 +54,9 @@ struct SOLTEST_API FSOLHudShapeBatch
     bool AddEllipse(const FVector2f& center, float radiusXPx, float radiusYPx, float halfWidthPx,
         const FLinearColor& color, float intensity, float padPx);
 
-    // Adds an axis-aligned hologram panel: a fill (0..1) and a glowing outline at edgeIntensity; false if dropped
-    bool AddPanel(const FVector2f& center, const FVector2f& halfSizePx, const FLinearColor& color, float edgeIntensity,
+    // Adds an axis-aligned borderless hologram panel: a fill (0..1) in the colour x intensity that fades in over
+    // HUD_PANEL_FEATHER_PX from its edge (issue #31); false if dropped
+    bool AddPanel(const FVector2f& center, const FVector2f& halfSizePx, const FLinearColor& color, float intensity,
         float fill, float padPx);
 
     // Returns the vertices in canvas pixel space

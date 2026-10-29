@@ -55,7 +55,7 @@ struct FSOLSteerGateState
 struct FSOLSteerGateUpdate
 {
     bool bActive = false;           // The mouse steers this frame (cursor captured)
-    bool bRecenter = false;         // Off-to-on edge: recenter the stick now
+    bool bRecenter = false;         // Any edge (off-to-on or on-to-off): recenter the stick now (issue #31)
 };
 
 // The boost toggle (Tab)
@@ -130,7 +130,7 @@ namespace SOLFlightMode
     // Flips the steering toggle latch
     SOLTEST_API void ToggleSteer(FSOLSteerGateState& gate);
 
-    // Updates the gate: active = (toggle or hold) and not suspended; recenter on the off-to-on edge
+    // Updates the gate: active = (toggle or hold) and not suspended; recenter on every edge (off-to-on and on-to-off)
     SOLTEST_API FSOLSteerGateUpdate UpdateSteerGate(FSOLSteerGateState& gate, bool bSuspended);
 
     // Returns the stick command when steering is active, else zero

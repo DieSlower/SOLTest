@@ -17,6 +17,7 @@ namespace
     constexpr float HUDPANELS_TOLERANCE = 1.0e-5f;          // Pure math values (relative, scaled by max(1, |expected|))
     constexpr float HUDPANELS_WRAP_TOLERANCE = 1.0e-3f;     // Flicker at age vs age + wrap (float fmod near the wrap)
     constexpr float HUDPANELS_POS_TOLERANCE = 1.0e-4f;      // Panel centres and half sizes in pixels
+    constexpr float HUDPANELS_BACKING_TOLERANCE = 1.0e-4f;  // Backing layer rects, corners and alphas
 
     // Pad fade geometry
     constexpr float HUDPANELS_PAD_PX = 8.0f;
@@ -72,10 +73,17 @@ namespace
         {
             return 0.0;
         }
-        const double edge = HUD_PANEL_FILL_BASE + (1.0 - HUD_PANEL_FILL_BASE) * FMath::Exp(distancePx
-            / HUD_PANEL_EDGE_FALLOFF_PX);
+        const double feather = HudPanelsSmoothstep(0.0, HUD_PANEL_FEATHER_PX, -distancePx);
         const double scan = 1.0 + HUD_PANEL_SCANLINE * FMath::Max(strength, 0.0) * FMath::Sin(UE_DOUBLE_PI * screenY);
-        return fill * edge * scan;
+        return fill * feather * scan;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the full (unfeathered) scanlined fill at a screen row: the value deep inside the panel
+    double HudPanelsFullFill(const double fill, const double screenY, const double strength)
+    {
+        using namespace SOL::Hologram;
+        return fill * (1.0 + HUD_PANEL_SCANLINE * FMath::Max(strength, 0.0) * FMath::Sin(UE_DOUBLE_PI * screenY));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -181,21 +189,31 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsPanelFillTest, "SOLTest.HudPanels.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The fill is 0 outside, the edge-brightened scanlined formula inside, and settles to fill x BASE deep inside
+// The fill is 0 outside, fades in from the edge over HUD_PANEL_FEATHER_PX (no bright rim), and is the full scanlined
+// fill from the feather inward
 bool FSOLHudPanelsPanelFillTest::RunTest(const FString& /*parameters*/)
 {
     using SOLHudShapeMath::PanelFill;
     using namespace SOL::Hologram;
     constexpr float fill = HUDPANELS_FILL;
     constexpr float s = HUDPANELS_STRENGTH;
+    const float feather = static_cast<float>(HUD_PANEL_FEATHER_PX);
+
+    // The contract's constants
+    HudPanelsTestNear(*this, TEXT("feather is 8 px"), feather, 8.0);
+    HudPanelsTestNear(*this, TEXT("scanline is 0.2"), static_cast<float>(HUD_PANEL_SCANLINE), 0.2);
 
     // Outside (and on the edge) is empty
     HudPanelsTestNear(*this, TEXT("on the edge is 0"), PanelFill(0.0f, fill, 0.5f, s), 0.0);
     HudPanelsTestNear(*this, TEXT("outside is 0"), PanelFill(3.0f, fill, 0.5f, s), 0.0);
     HudPanelsTestNear(*this, TEXT("far outside is 0"), PanelFill(100.0f, fill, 10.25f, s), 0.0);
 
+    // Just inside the edge the fill tends to 0
+    TestTrue(TEXT("just inside the edge is near 0"), PanelFill(-0.01f, fill, 0.5f, s) < 1.0e-3f * fill);
+    TestTrue(TEXT("just inside the edge is not negative"), PanelFill(-0.01f, fill, 0.5f, s) >= 0.0f);
+
     // Formula inside at several depths and rows
-    const float depths[] = { -0.01f, -1.0f, -3.0f, -6.0f, -20.0f };
+    const float depths[] = { -0.01f, -1.0f, -3.0f, -4.0f, -6.0f, -7.99f, -8.0f, -20.0f };
     const float rows[] = { 0.0f, 0.25f, 0.5f, 7.3f, 123.75f };
     for (const float d : depths)
     {
@@ -206,8 +224,42 @@ bool FSOLHudPanelsPanelFillTest::RunTest(const FString& /*parameters*/)
         }
     }
 
-    // Brighter toward the edge than deeper inside (same row)
-    TestTrue(TEXT("edge brighter than interior"), PanelFill(-0.5f, fill, 0.0f, s) > PanelFill(-20.0f, fill, 0.0f, s));
+    // Exactly half way through the feather the smoothstep is one half
+    const float halfDepth = -0.5f * feather;
+    HudPanelsTestNear(*this, TEXT("half feather is half the fill (y 0)"), PanelFill(halfDepth, fill, 0.0f, s),
+        0.5 * HudPanelsFullFill(fill, 0.0, s));
+    HudPanelsTestNear(*this, TEXT("half feather is half the fill (y 0.5)"), PanelFill(halfDepth, fill, 0.5f, s),
+        0.5 * HudPanelsFullFill(fill, 0.5, s));
+
+    // At and beyond the feather the fill is the full scanlined fill
+    const float fullDepths[] = { -feather, -feather - 0.5f, -20.0f, HUDPANELS_DEEP_INSIDE_PX };
+    for (const float d : fullDepths)
+    {
+        HudPanelsTestNear(*this, FString::Printf(TEXT("full fill at d %.2f (y 0.5)"), d), PanelFill(d, fill, 0.5f, s),
+            HudPanelsFullFill(fill, 0.5, s));
+        HudPanelsTestNear(*this, FString::Printf(TEXT("full fill at d %.2f (y 1.5)"), d), PanelFill(d, fill, 1.5f, s),
+            HudPanelsFullFill(fill, 1.5, s));
+    }
+
+    // Monotonic non-decreasing going inward, and never brighter near the edge than deep inside (no bright rim)
+    const float rowsForSweep[] = { 0.0f, 0.5f, 1.5f };
+    for (const float y : rowsForSweep)
+    {
+        const float deep = PanelFill(HUDPANELS_DEEP_INSIDE_PX, fill, y, s);
+        bool bNonDecreasing = true;
+        bool bNoRim = true;
+        float previous = PanelFill(0.0f, fill, y, s);
+        for (int32 i = 1; i <= HUDPANELS_SWEEP_STEPS; ++i)
+        {
+            const float d = -(feather + 2.0f) * static_cast<float>(i) / static_cast<float>(HUDPANELS_SWEEP_STEPS);
+            const float value = PanelFill(d, fill, y, s);
+            bNonDecreasing &= value >= previous - HUDPANELS_TOLERANCE;
+            bNoRim &= value <= deep + HUDPANELS_TOLERANCE;
+            previous = value;
+        }
+        TestTrue(FString::Printf(TEXT("non-decreasing inward at y %.1f"), y), bNonDecreasing);
+        TestTrue(FString::Printf(TEXT("no brighter edge at y %.1f"), y), bNoRim);
+    }
 
     // Strength 0 (and negative strength) removes the scanlines: no row dependence
     const double noScan = HudPanelsReferenceFill(-2.0, fill, 0.0, 0.0);
@@ -215,13 +267,15 @@ bool FSOLHudPanelsPanelFillTest::RunTest(const FString& /*parameters*/)
     HudPanelsTestNear(*this, TEXT("strength 0 at y 1.5"), PanelFill(-2.0f, fill, 1.5f, 0.0f), noScan);
     HudPanelsTestNear(*this, TEXT("negative strength at y 0.5"), PanelFill(-2.0f, fill, 0.5f, -1.0f), noScan);
     HudPanelsTestNear(*this, TEXT("negative strength at y 1.5"), PanelFill(-2.0f, fill, 1.5f, -1.0f), noScan);
+    HudPanelsTestNear(*this, TEXT("strength 0 deep inside is the plain fill"),
+        PanelFill(HUDPANELS_DEEP_INSIDE_PX, fill, 0.5f, 0.0f), fill);
 
     // Zero fill is dark everywhere inside
     HudPanelsTestNear(*this, TEXT("fill 0 near the edge"), PanelFill(-0.5f, 0.0f, 0.5f, s), 0.0);
     HudPanelsTestNear(*this, TEXT("fill 0 deep inside"), PanelFill(-50.0f, 0.0f, 0.5f, s), 0.0);
 
-    // Deep inside the edge term vanishes: fill x BASE x scan term
-    const double base = fill * HUD_PANEL_FILL_BASE;
+    // Deep inside: fill x scan term
+    const double base = fill;
     HudPanelsTestNear(*this, TEXT("deep inside, y 0 (sin 0)"), PanelFill(HUDPANELS_DEEP_INSIDE_PX, fill, 0.0f, s),
         base);
     HudPanelsTestNear(*this, TEXT("deep inside, y 0.5 (sin +1)"), PanelFill(HUDPANELS_DEEP_INSIDE_PX, fill, 0.5f, s),
@@ -409,6 +463,245 @@ bool FSOLHudPanelsPanelAroundRectTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("invalid: centre y"), center.Y, 0.0f);
     TestEqual(TEXT("invalid: half x"), half.X, 0.0f);
     TestEqual(TEXT("invalid: half y"), half.Y, 0.0f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsBackingLayerGeometryTest, "SOLTest.HudPanels.BackingLayerGeometry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Backing layers start at the rect, nest inward by feather x index / count, and round their corners outward-first
+bool FSOLHudPanelsBackingLayerGeometryTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::BackingLayer;
+    constexpr float tol = HUDPANELS_BACKING_TOLERANCE;
+    const FBox2f rect(FVector2f(100.0f, 40.0f), FVector2f(300.0f, 120.0f));    // 200 x 80
+    constexpr float corner = 6.0f;
+    constexpr float feather = 8.0f;
+    constexpr int32 count = 6;
+
+    FBox2f previousRect(ForceInit);
+    float previousCorner = 0.0f;
+    for (int32 index = 0; index < count; ++index)
+    {
+        const FString label = FString::Printf(TEXT("layer %d"), index);
+        FBox2f layer(ForceInit);
+        float layerCorner = -1.0f;
+        float layerAlpha = -1.0f;
+        if (!TestTrue(label + TEXT(": accepted"), BackingLayer(rect, corner, feather, 0.45f, index, count, layer,
+            layerCorner, layerAlpha)))
+        {
+            continue;
+        }
+        TestTrue(label + TEXT(": valid"), layer.bIsValid != 0);
+
+        // Inset by f x index / count on every side
+        const float inset = feather * static_cast<float>(index) / static_cast<float>(count);
+        TestEqual(label + TEXT(": min x"), layer.Min.X, rect.Min.X + inset, tol);
+        TestEqual(label + TEXT(": min y"), layer.Min.Y, rect.Min.Y + inset, tol);
+        TestEqual(label + TEXT(": max x"), layer.Max.X, rect.Max.X - inset, tol);
+        TestEqual(label + TEXT(": max y"), layer.Max.Y, rect.Max.Y - inset, tol);
+
+        // Corner radius max(corner, 0) + f - inset, within half the smaller side
+        const float width = layer.Max.X - layer.Min.X;
+        const float height = layer.Max.Y - layer.Min.Y;
+        TestEqual(label + TEXT(": corner"), layerCorner, FMath::Clamp(corner + feather - inset, 0.0f,
+            0.5f * FMath::Min(width, height)), tol);
+        TestTrue(label + TEXT(": corner within half the smaller side"),
+            layerCorner <= 0.5f * FMath::Min(width, height) + tol);
+
+        if (index == 0)
+        {
+            TestEqual(TEXT("layer 0 is the rect: min x"), layer.Min.X, rect.Min.X, tol);
+            TestEqual(TEXT("layer 0 is the rect: min y"), layer.Min.Y, rect.Min.Y, tol);
+            TestEqual(TEXT("layer 0 is the rect: max x"), layer.Max.X, rect.Max.X, tol);
+            TestEqual(TEXT("layer 0 is the rect: max y"), layer.Max.Y, rect.Max.Y, tol);
+        }
+        else
+        {
+            // Nested: inside the previous layer, with a corner no larger than the outer one
+            TestTrue(label + TEXT(": nested inside the previous layer"),
+                layer.Min.X >= previousRect.Min.X - tol && layer.Min.Y >= previousRect.Min.Y - tol
+                && layer.Max.X <= previousRect.Max.X + tol && layer.Max.Y <= previousRect.Max.Y + tol);
+            TestTrue(label + TEXT(": strictly smaller than the previous layer"),
+                layer.Max.X - layer.Min.X < previousRect.Max.X - previousRect.Min.X);
+            TestTrue(label + TEXT(": outer corner >= inner corner"), previousCorner >= layerCorner - tol);
+        }
+        previousRect = layer;
+        previousCorner = layerCorner;
+    }
+
+    // A single layer is the rect, with the full alpha and the corner grown by the feather
+    FBox2f single(ForceInit);
+    float singleCorner = -1.0f;
+    float singleAlpha = -1.0f;
+    TestTrue(TEXT("count 1 accepted"), BackingLayer(rect, corner, feather, 0.45f, 0, 1, single, singleCorner,
+        singleAlpha));
+    TestEqual(TEXT("count 1: min x"), single.Min.X, rect.Min.X, tol);
+    TestEqual(TEXT("count 1: max y"), single.Max.Y, rect.Max.Y, tol);
+    TestEqual(TEXT("count 1: alpha is the total"), singleAlpha, 0.45f, tol);
+    TestEqual(TEXT("count 1: corner + feather"), singleCorner, corner + feather, tol);
+
+    // Negative feather is 0: every layer is the rect with the plain corner
+    for (int32 index = 0; index < count; ++index)
+    {
+        FBox2f layer(ForceInit);
+        float layerCorner = -1.0f;
+        float layerAlpha = -1.0f;
+        BackingLayer(rect, corner, -5.0f, 0.45f, index, count, layer, layerCorner, layerAlpha);
+        const FString label = FString::Printf(TEXT("no feather layer %d"), index);
+        TestEqual(label + TEXT(": min x"), layer.Min.X, rect.Min.X, tol);
+        TestEqual(label + TEXT(": min y"), layer.Min.Y, rect.Min.Y, tol);
+        TestEqual(label + TEXT(": max x"), layer.Max.X, rect.Max.X, tol);
+        TestEqual(label + TEXT(": max y"), layer.Max.Y, rect.Max.Y, tol);
+        TestEqual(label + TEXT(": corner"), layerCorner, corner, tol);
+    }
+
+    // Negative corner counts as 0 (no feather: corner 0)
+    FBox2f sharp(ForceInit);
+    float sharpCorner = -1.0f;
+    float sharpAlpha = -1.0f;
+    BackingLayer(rect, -4.0f, 0.0f, 0.45f, 0, count, sharp, sharpCorner, sharpAlpha);
+    TestEqual(TEXT("negative corner, no feather: corner 0"), sharpCorner, 0.0f, tol);
+
+    // A corner larger than the rect allows is clamped to half the smaller side
+    FBox2f rounded(ForceInit);
+    float roundCorner = -1.0f;
+    float roundAlpha = -1.0f;
+    BackingLayer(rect, 500.0f, feather, 0.45f, 2, count, rounded, roundCorner, roundAlpha);
+    TestEqual(TEXT("huge corner clamped"), roundCorner,
+        0.5f * FMath::Min(rounded.Max.X - rounded.Min.X, rounded.Max.Y - rounded.Min.Y), tol);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsBackingLayerAlphaTest, "SOLTest.HudPanels.BackingLayerAlpha",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// All layers' alphas composited alpha-over reach the total alpha; the total is clamped to [0, 1]
+bool FSOLHudPanelsBackingLayerAlphaTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::BackingLayer;
+    constexpr float tol = HUDPANELS_BACKING_TOLERANCE;
+    const FBox2f rect(FVector2f(0.0f, 0.0f), FVector2f(160.0f, 48.0f));
+    const int32 counts[] = { 1, 6, 8 };
+    const float totals[] = { 0.45f, 0.0f, 0.9f, 1.0f };
+    for (const int32 count : counts)
+    {
+        for (const float total : totals)
+        {
+            double transmit = 1.0;
+            float firstAlpha = -1.0f;
+            bool bSameAlpha = true;
+            for (int32 index = 0; index < count; ++index)
+            {
+                FBox2f layer(ForceInit);
+                float layerCorner = 0.0f;
+                float layerAlpha = -1.0f;
+                BackingLayer(rect, 6.0f, 8.0f, total, index, count, layer, layerCorner, layerAlpha);
+                transmit *= 1.0 - static_cast<double>(layerAlpha);
+                if (index == 0)
+                {
+                    firstAlpha = layerAlpha;
+                }
+                bSameAlpha &= FMath::Abs(layerAlpha - firstAlpha) <= tol;
+            }
+            const FString label = FString::Printf(TEXT("count %d total %.2f"), count, total);
+            TestEqual(label + TEXT(": composite"), 1.0 - transmit, static_cast<double>(total),
+                static_cast<double>(tol));
+            TestTrue(label + TEXT(": every layer has the same alpha"), bSameAlpha);
+            TestEqual(label + TEXT(": alpha formula"), firstAlpha,
+                static_cast<float>(1.0 - FMath::Pow(1.0 - static_cast<double>(total), 1.0 / count)), tol);
+        }
+    }
+
+    // Out-of-range totals clamp: above 1 -> every layer opaque, below 0 -> every layer clear
+    for (int32 index = 0; index < 6; ++index)
+    {
+        FBox2f layer(ForceInit);
+        float layerCorner = 0.0f;
+        float over = -1.0f;
+        float under = -1.0f;
+        BackingLayer(rect, 6.0f, 8.0f, 2.0f, index, 6, layer, layerCorner, over);
+        BackingLayer(rect, 6.0f, 8.0f, -1.0f, index, 6, layer, layerCorner, under);
+        TestEqual(FString::Printf(TEXT("total 2, layer %d: alpha 1"), index), over, 1.0f, tol);
+        TestEqual(FString::Printf(TEXT("total -1, layer %d: alpha 0"), index), under, 0.0f, tol);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsBackingLayerClampTest, "SOLTest.HudPanels.BackingLayerClamp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A huge feather is clamped to half the smaller side; invalid input returns false and leaves the outputs untouched
+bool FSOLHudPanelsBackingLayerClampTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::BackingLayer;
+    constexpr float tol = HUDPANELS_BACKING_TOLERANCE;
+
+    // A small 20 x 10 rect with a 100 px feather: f = 5, the innermost layer still has area
+    const FBox2f smallRect(FVector2f(10.0f, 10.0f), FVector2f(30.0f, 20.0f));
+    constexpr int32 count = 8;
+    FBox2f inner(ForceInit);
+    float innerCorner = -1.0f;
+    float innerAlpha = -1.0f;
+    TestTrue(TEXT("huge feather accepted"), BackingLayer(smallRect, 2.0f, 100.0f, 0.45f, count - 1, count, inner,
+        innerCorner, innerAlpha));
+    const float f = 5.0f;
+    const float inset = f * static_cast<float>(count - 1) / static_cast<float>(count);
+    TestEqual(TEXT("huge feather: inset clamped (min x)"), inner.Min.X, smallRect.Min.X + inset, tol);
+    TestEqual(TEXT("huge feather: inset clamped (max y)"), inner.Max.Y, smallRect.Max.Y - inset, tol);
+    TestTrue(TEXT("huge feather: innermost width positive"), inner.Max.X - inner.Min.X > 0.0f);
+    TestTrue(TEXT("huge feather: innermost height positive"), inner.Max.Y - inner.Min.Y > 0.0f);
+    TestTrue(TEXT("huge feather: corner within half the smaller side"),
+        innerCorner <= 0.5f * FMath::Min(inner.Max.X - inner.Min.X, inner.Max.Y - inner.Min.Y) + tol);
+    TestTrue(TEXT("huge feather: corner not negative"), innerCorner >= 0.0f);
+
+    // Every layer of the small rect keeps its corner within half its smaller side
+    for (int32 index = 0; index < count; ++index)
+    {
+        FBox2f layer(ForceInit);
+        float layerCorner = -1.0f;
+        float layerAlpha = -1.0f;
+        BackingLayer(smallRect, 50.0f, 100.0f, 0.45f, index, count, layer, layerCorner, layerAlpha);
+        TestTrue(FString::Printf(TEXT("small rect layer %d: corner within half the smaller side"), index),
+            layerCorner <= 0.5f * FMath::Min(layer.Max.X - layer.Min.X, layer.Max.Y - layer.Min.Y) + tol);
+    }
+
+    // Rejected input leaves sentinel outputs untouched
+    const FBox2f rect(FVector2f(0.0f, 0.0f), FVector2f(100.0f, 50.0f));
+    const FBox2f sentinelRect(FVector2f(-7.0f, -7.0f), FVector2f(-3.0f, -3.0f));
+    struct FRejectCase
+    {
+        const TCHAR* Label;
+        FBox2f Rect;
+        int32 Index;
+        int32 Count;
+    };
+    const FRejectCase cases[] = {
+        { TEXT("invalid rect"), FBox2f(ForceInit), 0, 6 },
+        { TEXT("count 0"), rect, 0, 0 },
+        { TEXT("negative count"), rect, 0, -2 },
+        { TEXT("negative index"), rect, -1, 6 },
+        { TEXT("index == count"), rect, 6, 6 },
+        { TEXT("index > count"), rect, 9, 6 },
+    };
+    for (const FRejectCase& reject : cases)
+    {
+        FBox2f outRect = sentinelRect;
+        float outCorner = -11.0f;
+        float outAlpha = -13.0f;
+        TestFalse(FString::Printf(TEXT("%s: rejected"), reject.Label), BackingLayer(reject.Rect, 6.0f, 8.0f, 0.45f,
+            reject.Index, reject.Count, outRect, outCorner, outAlpha));
+        TestTrue(FString::Printf(TEXT("%s: rect untouched"), reject.Label), outRect.Min == sentinelRect.Min
+            && outRect.Max == sentinelRect.Max && outRect.bIsValid == sentinelRect.bIsValid);
+        TestEqual(FString::Printf(TEXT("%s: corner untouched"), reject.Label), outCorner, -11.0f);
+        TestEqual(FString::Printf(TEXT("%s: alpha untouched"), reject.Label), outAlpha, -13.0f);
+    }
     return true;
 }
 

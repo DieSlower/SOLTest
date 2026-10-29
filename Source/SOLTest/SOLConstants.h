@@ -107,8 +107,9 @@ namespace SOL
     // ...its dead zone and response exponent (fractions of the radius, SOLFlight::JoystickToRotation)
     inline constexpr double JOYSTICK_DEAD_ZONE = 0.05;
     inline constexpr double JOYSTICK_EXPONENT = 1.5;
-    // Mouse steering (SDD 19 section 3.4) starts on at every flight start; Space holds it, the wheel click toggles it
-    inline constexpr bool SHIP_STEER_TOGGLE_START_ON = true;
+    // Mouse steering (SDD 19 section 3.4): Space holds it, the wheel click toggles it; the toggle's state at every
+    // flight start is the Settings option "Mouse steering at start", whose default this is (off; SDD 19 Amendment 5)
+    inline constexpr bool SHIP_STEER_TOGGLE_START_ON = false;
     // Frames the keys held when ship control comes back (map, menu, F3 panel closed) stay latched in AUTO even if they
     // read as released, covering the key flush before the OS key repeat resumes (SDD 19 Amendment 3)
     inline constexpr int32 SHIP_RELATCH_GRACE_FRAMES = 3;
@@ -687,7 +688,7 @@ namespace SOL
         inline constexpr const TCHAR* CVAR_POST_STRENGTH = TEXT("sol.HologramPostStrength"); // Post-process strength
         inline constexpr double GLOW_CORE_HALF_PX = 0.9;
         inline constexpr double GLOW_HALO_HALF_PX = 4.5;
-        inline constexpr double GLOW_HALO_INTENSITY = 0.3;
+        inline constexpr double GLOW_HALO_INTENSITY = 0.15;     // Halved in issue #31 (was 0.3)
 
         // LT hologram fragment (proxy bodies and rings, Tools/Map/create_hologram_assets.py reads these defaults):
         // Fresnel rim 1 - |N.V| x time noise 1 - NOISE_LOG_SCALE log(1 - noise) x 1 px scanlines
@@ -756,16 +757,15 @@ namespace SOL
         inline constexpr const TCHAR* CVAR_HUD_RENDERER = TEXT("sol.HudRenderer");     // 1 = shape renderer, 0 = Canvas
         inline constexpr const TCHAR* CVAR_HUD_COMPOSITE = TEXT("sol.HudComposite");   // 1 = grain and scanlines on
         inline constexpr double HUD_GLOW_CORE_HALF_PX = 0.5;        // Full-strength core around the centre line
-        inline constexpr double HUD_GLOW_CORE_WEIGHT = 0.8;
-        inline constexpr double HUD_GLOW_CORE_FALLOFF = 2.0;
-        inline constexpr double HUD_GLOW_HALO_WEIGHT = 0.2;
+        inline constexpr double HUD_GLOW_CORE_WEIGHT = 0.9;         // LT 0.8; + halo = 1 at the core (#31)
+        inline constexpr double HUD_GLOW_CORE_FALLOFF = 3.0;        // Issue #31 halved the glow: LT's 2.0 -> 3.0 and
+        inline constexpr double HUD_GLOW_HALO_WEIGHT = 0.1;         // halo 0.2 -> 0.1 (SDD 21 Amendment 4)
         inline constexpr double HUD_GLOW_HALO_SCALE = 0.2;
         inline constexpr double HUD_GLOW_HALO_POWER = 0.75;
         inline constexpr float HUD_GLOW_PAD_PX = 32.0f;             // Quad padding around a shape (LT kExpansion)
         inline constexpr double HUD_PAD_FADE_START = 0.5;           // The halo fades out from this fraction of the pad
         inline constexpr double HUD_TONE_GAIN = 2.0;                // LT tone curve 1 - exp(-GAIN c^POWER)
         inline constexpr double HUD_TONE_POWER = 1.25;
-        inline constexpr double HUD_PANEL_FILL_BASE = 0.4;          // Panel fill: BASE + (1 - BASE) exp(d / falloff)
         inline constexpr int32 HUD_VERTICES_PER_SHAPE = 4;          // One quad per shape
         inline constexpr int32 HUD_INDICES_PER_SHAPE = 6;
         inline constexpr uint64 HUD_PILOT_MAX_FRAME_LAG = 2;        // Older pilot snapshots are not drawn (SDD 21 D4)
@@ -782,8 +782,9 @@ namespace SOL
         inline constexpr double HUD_GRADE_BLUE_1 = 0.40;            // LT gradeBlue Bezier control points
         inline constexpr double HUD_GRADE_BLUE_2 = 0.50;
         inline constexpr double HUD_GRADE_BLUE_3 = 0.75;
-        inline constexpr double HUD_PANEL_CORNER_PX = 4.0;          // Panel corner radius
-        inline constexpr double HUD_PANEL_EDGE_FALLOFF_PX = 6.0;    // Panel fill brightens toward its edge over this
+        inline constexpr double HUD_PANEL_CORNER_PX = 6.0;          // Panel corner radius
+        inline constexpr double HUD_PANEL_FEATHER_PX = 8.0;         // Borderless panel: the fill fades in over this
+                                                                    // from the edge (SDD 21 Amendment 4)
         inline constexpr double HUD_PANEL_SCANLINE = 0.2;           // Panel fill 1 px scanlines 1 + this x strength
                                                                     // x sin(PI y)
         // Panel flicker (SDD 21 phase B): every panel's brightness x (1 - HUD_PANEL_FLICKER x strength x n), n a smooth
@@ -795,13 +796,19 @@ namespace SOL
         inline constexpr int32 HUD_MAX_TEXTS = 64;                  // Glow-text lines per frame, reserved once
         inline constexpr int32 HUD_MAX_PANELS = 32;                 // Panel backings per frame, reserved once
 
-        // Hologram panels behind HUD text blocks (SDD 21 phase B): a dark translucent backing (alpha-blended, for
-        // contrast) under an additive panel shape with fill HUD_PANEL_FILL and its outline at HUD_PANEL_EDGE_INTENSITY,
-        // grown HUD_PANEL_PADDING_PX (x UI scale) around the block's text
+        // Hologram panels behind HUD text blocks (SDD 21 phase B, borderless since issue #31): a dark translucent
+        // backing (alpha-blended, for contrast) drawn as HUD_PANEL_BACKING_LAYERS stacked rounded boxes that fade in
+        // over HUD_PANEL_BACKING_FEATHER_PX from the edge (SOLHudShapeMath::BackingLayer), under an additive panel
+        // shape with fill HUD_PANEL_FILL in the colour x HUD_PANEL_INTENSITY and no outline, grown
+        // HUD_PANEL_PADDING_PX (x UI scale) around the block's text
         inline const FLinearColor HUD_PANEL_BACKING_COLOR(0.0f, 0.01f, 0.03f, 0.45f);
+        inline constexpr int32 HUD_PANEL_BACKING_LAYERS = 6;
+        inline constexpr float HUD_PANEL_BACKING_FEATHER_PX = 8.0f;
         inline constexpr float HUD_PANEL_FILL = 0.06f;
-        inline constexpr float HUD_PANEL_EDGE_INTENSITY = 0.35f;
-        inline constexpr float HUD_PANEL_PADDING_PX = 6.0f;
+        inline constexpr float HUD_PANEL_INTENSITY = 0.35f;
+        inline constexpr float HUD_PANEL_PADDING_PX = 8.0f;
+        inline constexpr float HUD_PANEL_QUAD_PAD_PX = 2.0f;        // A borderless panel draws nothing outside itself:
+                                                                    // its quad only covers the row jitter
 
         // Glow text (SDD 21 Amendment 2): the engine fonts drawn by Slate over the shapes; the fill is the colour
         // moved HUD_TEXT_CORE_WHITEN toward white (a hot core), the outline HUD_TEXT_GLOW_OUTLINE font units wide in
@@ -810,7 +817,7 @@ namespace SOL
         inline constexpr const TCHAR* CVAR_HUD_TEXT_GLOW = TEXT("sol.HudTextGlow");
         inline constexpr float HUD_TEXT_CORE_WHITEN = 0.3f;
         inline constexpr int32 HUD_TEXT_GLOW_OUTLINE = 1;
-        inline constexpr float HUD_TEXT_GLOW_ALPHA = 0.35f;
+        inline constexpr float HUD_TEXT_GLOW_ALPHA = 0.18f;         // Halved in issue #31 (was 0.35)
         inline constexpr float HUD_TEXT_SHADOW_PX = 1.0f;
         inline constexpr float HUD_TEXT_SHADOW_ALPHA = 0.7f;
         inline constexpr float HUD_SHAPE_KIND_STRIDE = 8192.0f;     // Kind packed as kind x stride + size parameter
@@ -845,6 +852,7 @@ namespace SOL
         inline const FLinearColor GOOD(0.25f, 1.0f, 0.25f, 1.0f);       // LT Good / Friendly (green)
         inline const FLinearColor BAD(1.0f, 0.1f, 0.1f, 1.0f);          // LT Bad (red)
         inline const FLinearColor HOSTILE(1.0f, 0.1f, 0.01f, 1.0f);     // LT Hostile (red-orange)
+        inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
     }
 
     // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
@@ -917,8 +925,8 @@ namespace SOL
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
         // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
-        // strength, SDD 21)
-        inline constexpr int32 SAVE_VERSION = 5;
+        // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5)
+        inline constexpr int32 SAVE_VERSION = 6;
         // The save schema that introduced the current default key layout (issue #20); older saves get the one-time
         // "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 4;

@@ -9,9 +9,9 @@
 #       size 2), vertex colour = sRGB(colour x intensity) with alpha = the shape's extra parameter (arc: half aperture
 #       / pi, panel: fill). The Custom node mirrors SOLHudShapeMath (UI/SOLHudShapeMath.cpp): row jitter (moved into
 #       the local frame through ddx), the line / arc / panel / ellipse / dashed line signed distance (the last two
-#       phase C, issue #30; alpha = Y / X radius or dash period / 255), LT's glow profile, the panel fill with fresnel
-#       edge, scanlines and flicker (phase B, issue #29), the optional grain and scanline composite, LT's tone
-#       curve and blue grade.
+#       phase C, issue #30; alpha = Y / X radius or dash period / 255), LT's glow profile, the borderless panel fill
+#       (fades in from the edge, no outline; issue #31), scanlines and flicker (phase B, issue #29), the optional grain
+#       and scanline composite, LT's tone curve and blue grade.
 # Every default is read from Source/SOLTest/SOLConstants.h (SOL::Hologram HUD_*, SOL::Settings::HUD_EFFECTS_DEFAULT);
 # the parameter names must match SOL::HudShapeMaterialParams and the asset path SOL::Paths::HUD_SHAPE_MATERIAL.
 # Run (editor closed):
@@ -109,18 +109,18 @@ else
 }
 const bool isPanel = kind >= 1.5 && kind < 2.5;
 
-// LT glow of the distance from a CoreHalf px core; panels glow along their outline and add a fill with a fresnel edge
-const float dd = !isPanel ? max(d + CoreHalf, 0.0) : abs(d);
-float shape = CoreW * exp(-CoreF * max(0.0, dd - CoreHalf)) + HaloW * exp(-pow(HaloS * dd, HaloP));
+// LT glow of the distance from a CoreHalf px core (lines, arcs, ellipses, dashes); a panel has no outline glow
+const float dd = max(d + CoreHalf, 0.0);
+float shape = isPanel ? 0.0 : CoreW * exp(-CoreF * max(0.0, dd - CoreHalf)) + HaloW * exp(-pow(HaloS * dd, HaloP));
 
 // The halo fades to nothing over the outer part of the quad padding, so no quad edge ever shows
 shape *= 1.0 - smoothstep(PadFade * Pad, Pad, dd);
-// (SOLHudShapeMath::PadFade, PanelFill and PanelFlicker; scanlines and flicker scale with the strength slider)
+// (SOLHudShapeMath::PadFade, PanelFill and PanelFlicker; scanlines and flicker scale with the strength slider). A
+// panel is only a fill that fades in over Feather px from its edge: no box outline anywhere (issue #31)
 const float strength0 = max(Strength, 0.0);
 if (isPanel && d < 0.0)
 {
-    shape += VAlpha * (FillBase + (1.0 - FillBase) * exp(d / EdgeFall))
-        * (1.0 + PanelScan * strength0 * sin(kPi * Parameters.SvPosition.y));
+    shape += VAlpha * smoothstep(0.0, Feather, -d) * (1.0 + PanelScan * strength0 * sin(kPi * Parameters.SvPosition.y));
 }
 if (isPanel)
 {
@@ -166,13 +166,13 @@ CONSTANT_PINS = [
     ("SignOffset", "HUD_JITTER_SIGN_OFFSET"), ("JitterMax", "HUD_JITTER_MAX_FRACTION"),
     ("Sharp", "HUD_JITTER_SHARPNESS"), ("Corner", "HUD_PANEL_CORNER_PX"), ("CoreW", "HUD_GLOW_CORE_WEIGHT"),
     ("CoreF", "HUD_GLOW_CORE_FALLOFF"), ("HaloW", "HUD_GLOW_HALO_WEIGHT"), ("HaloS", "HUD_GLOW_HALO_SCALE"),
-    ("HaloP", "HUD_GLOW_HALO_POWER"), ("EdgeFall", "HUD_PANEL_EDGE_FALLOFF_PX"),
+    ("HaloP", "HUD_GLOW_HALO_POWER"), ("Feather", "HUD_PANEL_FEATHER_PX"),
     ("PanelScan", "HUD_PANEL_SCANLINE"), ("ColorGain", "HUD_COLOR_GAIN"), ("Grain", "HUD_GRAIN_AMOUNT"),
     ("Scan", "HUD_SCANLINE_AMOUNT"), ("B1", "HUD_GRADE_BLUE_1"), ("B2", "HUD_GRADE_BLUE_2"),
     ("B3", "HUD_GRADE_BLUE_3"), ("Pad", "HUD_GLOW_PAD_PX"), ("DisplayGamma", "HUD_DISPLAY_GAMMA"),
     ("TimeWrap", "HUD_TIME_WRAP_S"), ("Lattice", "HUD_NOISE_LATTICE_PERIOD"), ("HashF", "HUD_NOISE_HASH_FREQUENCY"),
     ("HashS", "HUD_NOISE_HASH_SCALE"), ("CoreHalf", "HUD_GLOW_CORE_HALF_PX"), ("PadFade", "HUD_PAD_FADE_START"),
-    ("FillBase", "HUD_PANEL_FILL_BASE"), ("ToneGain", "HUD_TONE_GAIN"), ("TonePower", "HUD_TONE_POWER"),
+    ("ToneGain", "HUD_TONE_GAIN"), ("TonePower", "HUD_TONE_POWER"),
     ("Flicker", "HUD_PANEL_FLICKER"), ("FlickerRate", "HUD_PANEL_FLICKER_RATE_HZ"),
     ("FlickerOffset", "HUD_PANEL_FLICKER_OFFSET"), ("DashFraction", "HUD_DASH_FRACTION"),
 ]
