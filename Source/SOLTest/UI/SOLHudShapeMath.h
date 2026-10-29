@@ -14,6 +14,8 @@ enum class ESOLHudShapeKind : uint8
     Line = 0,       // Capsule segment: half length, half width
     Arc = 1,        // Ring sector symmetric about local +Y: radius, half width, half aperture (pi = full ring)
     Panel = 2,      // Rounded box: half width, half height; filled with a glowing outline
+    Ellipse = 3,    // Ellipse ring, axes along local X and Y: X radius, half width, Y / X radius ratio (SDD 21 C)
+    DashedLine = 4, // Dashed capsule segment: half length, half width, dash period in px (SDD 21 C)
 };
 
 /**
@@ -33,6 +35,17 @@ namespace SOLHudShapeMath
     // Signed distance to an arc of a ring centred on the origin, symmetric about local +Y, spanning +-halfApertureRad
     // from +Y (pi = the full ring), with round caps
     SOLTEST_API float ArcDistancePx(const FVector2f& local, float radiusPx, float halfWidthPx, float halfApertureRad);
+
+    // Signed distance to an ellipse ring centred on the origin (radii along local X and Y, half width), first-order
+    // approximation |k0 (k0 - 1) / k1| - halfWidth with k0 = |p / r|, k1 = |p / r^2| (exact on the axes); at the centre
+    // (k1 = 0) the unsigned distance is min(radiusX, radiusY); radii are clamped to >= 1e-3 px (no division by zero)
+    SOLTEST_API float EllipseDistancePx(const FVector2f& local, float radiusXPx, float radiusYPx, float halfWidthPx);
+
+    // Signed distance to a dashed segment along local X from -halfLength to +halfLength: dashes of length
+    // HUD_DASH_FRACTION x period start at -halfLength every period (period clamped to >= 1), the last one clipped at
+    // +halfLength; length(dx, y) - halfWidth with dx the distance along X to the nearest dash's span (0 within one)
+    SOLTEST_API float DashedLineDistancePx(const FVector2f& local, float halfLengthPx, float halfWidthPx,
+        float periodPx);
 
     // Signed distance to a rounded box centred on the origin (half size, corner radius)
     SOLTEST_API float PanelDistancePx(const FVector2f& local, const FVector2f& halfSizePx, float cornerRadiusPx);

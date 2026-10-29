@@ -699,4 +699,505 @@ bool FSOLHudShapesBatchColorTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// --- Ellipse (SDD 21 phase C) ---
+
+namespace
+{
+    // Ellipse geometry used by the ellipse tests
+    constexpr float HUDSHAPES_ELLIPSE_RX = 40.0f;
+    constexpr float HUDSHAPES_ELLIPSE_RY = 20.0f;
+    constexpr float HUDSHAPES_ELLIPSE_HALF_WIDTH = 1.0f;
+    constexpr int32 HUDSHAPES_ELLIPSE_SAMPLES = 72;            // Points sampled around the ellipse
+    constexpr float HUDSHAPES_ELLIPSE_ON_TOLERANCE = 1.0e-3f * HUDSHAPES_ELLIPSE_RX;    // On-curve distance error
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the expected 8-bit alpha of an ellipse with the given radii (the Y / X ratio, clamped, 1 for rx <= 0)
+    int32 HudShapesEllipseAlpha(const float radiusX, const float radiusY)
+    {
+        if (radiusX <= 0.0f)
+        {
+            return 255;
+        }
+        return FMath::RoundToInt(255.0f * FMath::Clamp(radiusY / radiusX, 0.0f, 1.0f));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesEllipseDistanceTest, "SOLTest.HudShapes.EllipseDistance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The ellipse distance is -w on the curve, exact on the axes, symmetric, a circle's ring distance when rx == ry, and
+// min(rx, ry) - w at the centre
+bool FSOLHudShapesEllipseDistanceTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::EllipseDistancePx;
+    constexpr float rx = HUDSHAPES_ELLIPSE_RX;
+    constexpr float ry = HUDSHAPES_ELLIPSE_RY;
+    constexpr float w = HUDSHAPES_ELLIPSE_HALF_WIDTH;
+
+    // On the curve: -w all the way round
+    bool bOnCurve = true;
+    float worstError = 0.0f;
+    for (int32 i = 0; i < HUDSHAPES_ELLIPSE_SAMPLES; ++i)
+    {
+        const float t = 2.0f * UE_PI * static_cast<float>(i) / static_cast<float>(HUDSHAPES_ELLIPSE_SAMPLES);
+        const float d = EllipseDistancePx(FVector2f(rx * FMath::Cos(t), ry * FMath::Sin(t)), rx, ry, w);
+        const float error = FMath::Abs(d + w);
+        bOnCurve &= error <= HUDSHAPES_ELLIPSE_ON_TOLERANCE;
+        worstError = FMath::Max(worstError, error);
+    }
+    TestTrue(FString::Printf(TEXT("on the curve: -w (worst error %.5f px)"), worstError), bOnCurve);
+
+    // Exact on the axes, outside and inside (unsigned distance minus w)
+    TestEqual(TEXT("5 px outside on +X"), EllipseDistancePx(FVector2f(rx + 5.0f, 0.0f), rx, ry, w), 5.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("5 px outside on -X"), EllipseDistancePx(FVector2f(-rx - 5.0f, 0.0f), rx, ry, w), 5.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("3 px outside on +Y"), EllipseDistancePx(FVector2f(0.0f, ry + 3.0f), rx, ry, w), 3.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("3 px outside on -Y"), EllipseDistancePx(FVector2f(0.0f, -ry - 3.0f), rx, ry, w), 3.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("2 px inside on +Y"), EllipseDistancePx(FVector2f(0.0f, ry - 2.0f), rx, ry, w), 2.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("4 px inside on -X"), EllipseDistancePx(FVector2f(-rx + 4.0f, 0.0f), rx, ry, w), 4.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+
+    // Symmetric in the sign of x and y
+    const FVector2f probes[] = { FVector2f(10.0f, 5.0f), FVector2f(30.0f, 18.0f), FVector2f(45.0f, 2.0f),
+        FVector2f(3.0f, 25.0f), FVector2f(20.0f, 30.0f) };
+    for (const FVector2f& p : probes)
+    {
+        const float reference = EllipseDistancePx(p, rx, ry, w);
+        const FString label = FString::Printf(TEXT("symmetric at (%.0f, %.0f)"), p.X, p.Y);
+        TestEqual(label + TEXT(": -x"), EllipseDistancePx(FVector2f(-p.X, p.Y), rx, ry, w), reference,
+            HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(": -y"), EllipseDistancePx(FVector2f(p.X, -p.Y), rx, ry, w), reference,
+            HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(": -x -y"), EllipseDistancePx(FVector2f(-p.X, -p.Y), rx, ry, w), reference,
+            HUDSHAPES_TOLERANCE);
+    }
+
+    // A circle (rx == ry) is the full ring's distance
+    constexpr float R = HUDSHAPES_ARC_RADIUS;
+    const FVector2f ringProbes[] = { FVector2f(0.0f, R), FVector2f(R, 0.0f), FVector2f(6.0f, -8.0f),
+        FVector2f(-3.0f, 2.0f), FVector2f(15.0f, 4.0f), FVector2f(-1.0f, -0.5f), FVector2f(0.0f, 0.0f) };
+    for (const FVector2f& p : ringProbes)
+    {
+        TestEqual(FString::Printf(TEXT("circle matches the full ring at (%.1f, %.1f)"), p.X, p.Y),
+            EllipseDistancePx(p, R, R, w), SOLHudShapeMath::ArcDistancePx(p, R, w, UE_PI), HUDSHAPES_POS_TOLERANCE);
+    }
+
+    // The centre: min(rx, ry) - w, finite, whichever axis is the shorter
+    const float centre = EllipseDistancePx(FVector2f::ZeroVector, rx, ry, w);
+    TestFalse(TEXT("centre: not NaN"), FMath::IsNaN(centre));
+    TestEqual(TEXT("centre: min(rx, ry) - w"), centre, FMath::Min(rx, ry) - w, HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("centre, tall ellipse: min(rx, ry) - w"), EllipseDistancePx(FVector2f::ZeroVector, ry, rx, w),
+        FMath::Min(rx, ry) - w, HUDSHAPES_POS_TOLERANCE);
+
+    // No NaN or infinity near the centre either
+    const FVector2f nearCentre[] = { FVector2f(1.0e-6f, 0.0f), FVector2f(0.0f, -1.0e-6f), FVector2f(1.0e-3f, 1.0e-3f) };
+    for (const FVector2f& p : nearCentre)
+    {
+        const float d = EllipseDistancePx(p, rx, ry, w);
+        TestTrue(FString::Printf(TEXT("finite near the centre at (%g, %g)"), p.X, p.Y), FMath::IsFinite(d));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchEllipseTest, "SOLTest.HudShapes.BatchEllipse",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An ellipse is one axis-aligned quad around its centre: X radius in size 1, half width in the kind param, the Y / X
+// ratio in alpha (clamped, 1 for a non-positive X radius), its colour as a line's; a full batch drops it
+bool FSOLHudShapesBatchEllipseTest::RunTest(const FString& /*parameters*/)
+{
+    const FVector2f center(320.0f, 240.0f);
+    constexpr float rx = 50.0f;
+    constexpr float ry = 20.0f;
+    constexpr float halfWidth = SOL::Hologram::HUD_LINE_HALF_WIDTH_PX;
+    constexpr float pad = SOL::Hologram::HUD_GLOW_PAD_PX;
+    const FLinearColor color(0.2f, 0.8f, 0.5f, 1.0f);
+    constexpr float intensity = 0.6f;
+
+    // The colour a line with the same colour and intensity gets
+    FSOLHudShapeBatch lineBatch;
+    lineBatch.Initialize(1);
+    lineBatch.AddLine(FVector2f(0.0f, 0.0f), FVector2f(10.0f, 0.0f), halfWidth, color, intensity, pad);
+    if (!TestEqual(TEXT("reference line added"), lineBatch.GetVertices().Num(), HUDSHAPES_VERTS_PER_SHAPE))
+    {
+        return false;
+    }
+    const FColor lineRgb = lineBatch.GetVertices()[0].Color;
+
+    FSOLHudShapeBatch batch;
+    batch.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+    TestTrue(TEXT("ellipse added"), batch.AddEllipse(center, rx, ry, halfWidth, color, intensity, pad));
+    TestEqual(TEXT("one shape"), batch.GetShapeCount(), 1);
+    TestEqual(TEXT("four vertices"), batch.GetVertices().Num(), HUDSHAPES_VERTS_PER_SHAPE);
+    TestEqual(TEXT("six indices"), batch.GetIndices().Num(), HUDSHAPES_INDICES_PER_SHAPE);
+    HudShapesCheckIndices(*this, batch, 0);
+    HudShapesCheckParams(*this, batch, 0, rx, ESOLHudShapeKind::Ellipse, halfWidth, lineRgb,
+        HudShapesEllipseAlpha(rx, ry), 1);
+    HudShapesCheckCorners(*this, batch, 0, FVector2f(rx + halfWidth + pad, ry + halfWidth + pad));
+    for (const FSlateVertex& vertex : batch.GetVertices())
+    {
+        const FVector2f offset = HudShapesPos(vertex) - center;
+        const FVector2f local = HudShapesLocal(vertex);
+        TestEqual(TEXT("local.x = pos.x - centre.x"), local.X, offset.X, HUDSHAPES_POS_TOLERANCE);
+        TestEqual(TEXT("local.y = pos.y - centre.y"), local.Y, offset.Y, HUDSHAPES_POS_TOLERANCE);
+    }
+
+    // A second ellipse's indices continue from its own four vertices
+    TestTrue(TEXT("second ellipse added"), batch.AddEllipse(center, rx, ry, halfWidth, color, intensity, pad));
+    HudShapesCheckIndices(*this, batch, 1);
+
+    // radiusY > radiusX clamps to radiusX: alpha 255, a square quad of the X radius
+    TestTrue(TEXT("tall ellipse added"), batch.AddEllipse(center, rx, 80.0f, halfWidth, color, intensity, pad));
+    HudShapesCheckParams(*this, batch, 2, rx, ESOLHudShapeKind::Ellipse, halfWidth, lineRgb, 255, 0);
+    HudShapesCheckCorners(*this, batch, 2, FVector2f(rx + halfWidth + pad, rx + halfWidth + pad));
+
+    // radiusY < 0 clamps to 0: alpha 0, a quad only as tall as the half width and the pad
+    TestTrue(TEXT("negative-Y ellipse added"), batch.AddEllipse(center, rx, -5.0f, halfWidth, color, intensity, pad));
+    HudShapesCheckParams(*this, batch, 3, rx, ESOLHudShapeKind::Ellipse, halfWidth, lineRgb, 0, 0);
+    HudShapesCheckCorners(*this, batch, 3, FVector2f(rx + halfWidth + pad, halfWidth + pad));
+
+    // radiusX <= 0: ratio 1 (alpha 255), finite vertices
+    TestTrue(TEXT("zero-X ellipse added"), batch.AddEllipse(center, 0.0f, 10.0f, halfWidth, color, intensity, pad));
+    TestEqual(TEXT("zero-X ellipse: shape count"), batch.GetShapeCount(), 5);
+    if (batch.GetVertices().Num() >= 5 * HUDSHAPES_VERTS_PER_SHAPE)
+    {
+        for (int32 v = 4 * HUDSHAPES_VERTS_PER_SHAPE; v < 5 * HUDSHAPES_VERTS_PER_SHAPE; ++v)
+        {
+            const FSlateVertex& vertex = batch.GetVertices()[v];
+            TestEqual(FString::Printf(TEXT("zero-X ellipse vertex %d: alpha 255"), v), static_cast<int32>(vertex.Color.A),
+                255);
+            TestFalse(FString::Printf(TEXT("zero-X ellipse vertex %d: finite position"), v),
+                HudShapesPos(vertex).ContainsNaN());
+            TestFalse(FString::Printf(TEXT("zero-X ellipse vertex %d: finite local"), v),
+                HudShapesLocal(vertex).ContainsNaN());
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchEllipseCapacityTest, "SOLTest.HudShapes.BatchEllipseCapacity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An ellipse added to a full batch is dropped and counted, without growing the buffers
+bool FSOLHudShapesBatchEllipseCapacityTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float halfWidth = SOL::Hologram::HUD_LINE_HALF_WIDTH_PX;
+    constexpr float pad = SOL::Hologram::HUD_GLOW_PAD_PX;
+    const FVector2f center(0.0f, 0.0f);
+
+    FSOLHudShapeBatch batch;
+    batch.Initialize(1);
+    const int32 vertexMax = batch.GetVertices().Max();
+    const int32 indexMax = batch.GetIndices().Max();
+    TestTrue(TEXT("first ellipse fits"), batch.AddEllipse(center, 10.0f, 5.0f, halfWidth, FLinearColor::White, 1.0f,
+        pad));
+    TestEqual(TEXT("full"), batch.GetShapeCount(), 1);
+    TestEqual(TEXT("nothing dropped while filling"), batch.GetDroppedCount(), 0);
+
+    TestFalse(TEXT("extra ellipse dropped"), batch.AddEllipse(center, 10.0f, 5.0f, halfWidth, FLinearColor::White, 1.0f,
+        pad));
+    TestEqual(TEXT("one dropped"), batch.GetDroppedCount(), 1);
+    TestEqual(TEXT("count unchanged"), batch.GetShapeCount(), 1);
+    TestEqual(TEXT("vertex count unchanged"), batch.GetVertices().Num(), HUDSHAPES_VERTS_PER_SHAPE);
+    TestEqual(TEXT("index count unchanged"), batch.GetIndices().Num(), HUDSHAPES_INDICES_PER_SHAPE);
+    TestEqual(TEXT("vertex capacity did not grow"), batch.GetVertices().Max(), vertexMax);
+    TestEqual(TEXT("index capacity did not grow"), batch.GetIndices().Max(), indexMax);
+    return true;
+}
+
+// --- Dashed line (SDD 21 phase C) ---
+
+namespace
+{
+    // Dashed line geometry used by the dashed line tests
+    constexpr float HUDSHAPES_DASH_HALF_LENGTH = 10.0f;
+    constexpr float HUDSHAPES_DASH_PERIOD = 5.0f;
+    constexpr float HUDSHAPES_DASH_CLIP_HALF_LENGTH = 8.0f;     // With period 5: dashes start at -8, -3, 2, 7
+    constexpr float HUDSHAPES_DASH_HALF_WIDTH = 1.0f;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the dash length for a period straight from the spec (HUD_DASH_FRACTION x max(period, 1))
+    float HudShapesDashLength(const float periodPx)
+    {
+        return SOL::Hologram::HUD_DASH_FRACTION * FMath::Max(periodPx, 1.0f);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the spec's dashed-line distance by walking every dash span (the reference formula)
+    float HudShapesReferenceDashed(const FVector2f& local, const float halfLength, const float halfWidth,
+        const float periodPx)
+    {
+        const float period = FMath::Max(periodPx, 1.0f);
+        const float dash = HudShapesDashLength(period);
+        float bestDx = TNumericLimits<float>::Max();
+        // Each dash i starts at -L + i P while that start is below +L, and ends at min(start + D, +L)
+        for (int32 i = 0; ; ++i)
+        {
+            const float start = -halfLength + static_cast<float>(i) * period;
+            if (i > 0 && start >= halfLength)
+            {
+                break;
+            }
+            const float end = FMath::Min(start + dash, halfLength);
+            const float dx = local.X < start ? start - local.X : (local.X > end ? local.X - end : 0.0f);
+            bestDx = FMath::Min(bestDx, dx);
+        }
+        return FMath::Sqrt(bestDx * bestDx + local.Y * local.Y) - halfWidth;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesDashedLineDistanceTest, "SOLTest.HudShapes.DashedLineDistance",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The dashed distance is -w inside a dash, measured to the nearest existing dash in gaps and past the ends, clips the
+// last dash at +L, clamps the period to 1, is a solid capsule when shorter than one dash and is symmetric in y
+bool FSOLHudShapesDashedLineDistanceTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::DashedLineDistancePx;
+    constexpr float L = HUDSHAPES_DASH_HALF_LENGTH;
+    constexpr float P = HUDSHAPES_DASH_PERIOD;
+    constexpr float w = HUDSHAPES_DASH_HALF_WIDTH;
+    const float D = HudShapesDashLength(P);
+
+    // The spec examples below assume a dash shorter than the period and long enough to hold their probes
+    if (!TestTrue(TEXT("dash fraction leaves a gap and a dash of at least 2 px at period 5"), D >= 2.0f && D < P - 0.2f))
+    {
+        return false;
+    }
+
+    // Inside the first dash [-L, -L + D]
+    TestEqual(TEXT("inside the first dash"), DashedLineDistancePx(FVector2f(-L + 0.5f * D, 0.0f), L, w, P), -w,
+        HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("inside the third dash"), DashedLineDistancePx(FVector2f(0.5f * D, 0.0f), L, w, P), -w,
+        HUDSHAPES_TOLERANCE);
+
+    // In the first gap (between -L + D and -L + P): the nearer of the two dash ends
+    const float gapX = -L + 0.5f * (D + P);
+    const float gapDx = 0.5f * (P - D);
+    TestEqual(TEXT("middle of the first gap"), DashedLineDistancePx(FVector2f(gapX, 0.0f), L, w, P), gapDx - w,
+        HUDSHAPES_POS_TOLERANCE);
+    const float gapX2 = -6.0f;     // Between the first dash's end (-L + D) and the second dash's start (-5)
+    const float gapDx2 = FMath::Max(0.0f, FMath::Min(gapX2 - (-L + D), (-L + P) - gapX2));
+    TestEqual(TEXT("gap at x = -6"), DashedLineDistancePx(FVector2f(gapX2, 0.0f), L, w, P), gapDx2 - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("gap at x = -6, 3 px off the axis"), DashedLineDistancePx(FVector2f(gapX2, 3.0f), L, w, P),
+        FMath::Sqrt(gapDx2 * gapDx2 + 9.0f) - w, HUDSHAPES_POS_TOLERANCE);
+
+    // Before the start: measured from -L
+    TestEqual(TEXT("3 px before the start"), DashedLineDistancePx(FVector2f(-L - 3.0f, 0.0f), L, w, P), 3.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("before the start (3-4-5)"), DashedLineDistancePx(FVector2f(-L - 3.0f, 4.0f), L, w, P), 5.0f - w,
+        HUDSHAPES_POS_TOLERANCE);
+
+    // Past the end: the last dash starts at L - P (= 5) and ends at min(L - P + D, L), before +L here
+    const float lastEnd = FMath::Min(L - P + D, L);
+    TestEqual(TEXT("past the last dash at x = 9.5"), DashedLineDistancePx(FVector2f(9.5f, 0.0f), L, w, P),
+        FMath::Max(0.0f, 9.5f - lastEnd) - w, HUDSHAPES_POS_TOLERANCE);
+    TestEqual(TEXT("past the end at x = 12"), DashedLineDistancePx(FVector2f(12.0f, 0.0f), L, w, P), 12.0f - lastEnd - w,
+        HUDSHAPES_POS_TOLERANCE);
+
+    // No phantom dash starting at +L: x = 9.9 is measured from the last real dash, not from +L
+    const float nearEnd = DashedLineDistancePx(FVector2f(9.9f, 0.0f), L, w, P);
+    TestEqual(TEXT("near the end: measured from the last dash"), nearEnd, 9.9f - lastEnd - w, HUDSHAPES_POS_TOLERANCE);
+    TestTrue(TEXT("near the end: not attracted to a dash beyond +L"),
+        FMath::Abs(nearEnd - (0.1f - w)) > HUDSHAPES_POS_TOLERANCE);
+
+    // Last dash clipped at +L: with L = 8 and P = 5 the dashes start at -8, -3, 2, 7, the last one ending at min(7 + D, 8)
+    {
+        constexpr float Lc = HUDSHAPES_DASH_CLIP_HALF_LENGTH;
+        const float clippedEnd = FMath::Min(7.0f + D, Lc);
+        TestTrue(TEXT("clip case: the last dash really is clipped"), 7.0f + D >= Lc);
+        TestEqual(TEXT("clip case: inside the clipped dash"), DashedLineDistancePx(FVector2f(Lc - 0.5f, 0.0f), Lc, w, P),
+            -w, HUDSHAPES_TOLERANCE);
+        TestEqual(TEXT("clip case: on +L"), DashedLineDistancePx(FVector2f(Lc, 0.0f), Lc, w, P), -w,
+            HUDSHAPES_TOLERANCE);
+        TestEqual(TEXT("clip case: 1 px past +L"), DashedLineDistancePx(FVector2f(Lc + 1.0f, 0.0f), Lc, w, P),
+            (Lc + 1.0f) - clippedEnd - w, HUDSHAPES_POS_TOLERANCE);
+        TestEqual(TEXT("clip case: 3 px past +L"), DashedLineDistancePx(FVector2f(Lc + 3.0f, 0.0f), Lc, w, P),
+            (Lc + 3.0f) - clippedEnd - w, HUDSHAPES_POS_TOLERANCE);
+    }
+
+    // A sweep against the reference walk over every dash, for both test lengths and a few periods
+    {
+        const float lengths[] = { L, HUDSHAPES_DASH_CLIP_HALF_LENGTH, 37.5f };
+        const float periods[] = { P, 3.0f, 8.0f, 13.0f };
+        bool bMatches = true;
+        float worst = 0.0f;
+        for (const float length : lengths)
+        {
+            for (const float period : periods)
+            {
+                for (float x = -length - 6.0f; x <= length + 6.0f; x += 0.37f)
+                {
+                    for (const float y : { 0.0f, 0.8f, 2.5f })
+                    {
+                        const FVector2f p(x, y);
+                        const float error = FMath::Abs(DashedLineDistancePx(p, length, w, period)
+                            - HudShapesReferenceDashed(p, length, w, period));
+                        bMatches &= error <= HUDSHAPES_POS_TOLERANCE;
+                        worst = FMath::Max(worst, error);
+                    }
+                }
+            }
+        }
+        TestTrue(FString::Printf(TEXT("matches the reference walk (worst error %.5f px)"), worst), bMatches);
+    }
+
+    // A period below 1 behaves as a period of 1
+    const FVector2f periodProbes[] = { FVector2f(-9.8f, 0.0f), FVector2f(-9.3f, 0.2f), FVector2f(0.1f, 0.0f),
+        FVector2f(0.75f, 0.5f), FVector2f(9.95f, 0.0f), FVector2f(11.0f, 1.0f) };
+    for (const FVector2f& p : periodProbes)
+    {
+        const FString label = FString::Printf(TEXT("period 0.2 = period 1 at (%.2f, %.2f)"), p.X, p.Y);
+        TestEqual(label, DashedLineDistancePx(p, L, w, 0.2f), DashedLineDistancePx(p, L, w, 1.0f), HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(" (period 0)"), DashedLineDistancePx(p, L, w, 0.0f), DashedLineDistancePx(p, L, w, 1.0f),
+            HUDSHAPES_TOLERANCE);
+    }
+
+    // Shorter than one dash: a solid capsule
+    {
+        constexpr float shortHalf = 1.0f;
+        constexpr float longPeriod = 20.0f;
+        TestTrue(TEXT("short case: the segment is shorter than one dash"),
+            2.0f * shortHalf <= HudShapesDashLength(longPeriod));
+        const FVector2f capsuleProbes[] = { FVector2f(0.0f, 0.0f), FVector2f(0.9f, 0.0f), FVector2f(-0.9f, 0.3f),
+            FVector2f(1.0f, 0.0f), FVector2f(3.0f, 4.0f), FVector2f(-4.0f, -3.0f), FVector2f(0.5f, 2.0f) };
+        for (const FVector2f& p : capsuleProbes)
+        {
+            TestEqual(FString::Printf(TEXT("short segment is a capsule at (%.1f, %.1f)"), p.X, p.Y),
+                DashedLineDistancePx(p, shortHalf, w, longPeriod), SOLHudShapeMath::LineDistancePx(p, shortHalf, w),
+                HUDSHAPES_POS_TOLERANCE);
+        }
+    }
+
+    // Symmetric in the sign of y
+    const FVector2f symProbes[] = { FVector2f(-8.5f, 1.5f), FVector2f(-6.0f, 3.0f), FVector2f(9.9f, 0.7f),
+        FVector2f(-13.0f, 2.0f), FVector2f(4.0f, 5.0f) };
+    for (const FVector2f& p : symProbes)
+    {
+        TestEqual(FString::Printf(TEXT("symmetric in y at (%.1f, %.1f)"), p.X, p.Y), DashedLineDistancePx(p, L, w, P),
+            DashedLineDistancePx(FVector2f(p.X, -p.Y), L, w, P), HUDSHAPES_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchDashedLineTest, "SOLTest.HudShapes.BatchDashedLine",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A dashed line is AddLine's quad with the DashedLine kind and the rounded, clamped period in alpha; local X runs from
+// a toward b; a full batch drops it
+bool FSOLHudShapesBatchDashedLineTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float halfWidth = 1.0f;
+    constexpr float pad = SOL::Hologram::HUD_GLOW_PAD_PX;
+    const FVector2f a(100.0f, 50.0f);
+    const FVector2f b(160.0f, 130.0f);          // 60-80-100 triangle: length 100
+    const FLinearColor color(0.2f, 0.6f, 1.0f, 1.0f);
+    constexpr float intensity = 0.75f;
+
+    // The reference: AddLine with the same endpoints, width, colour and pad
+    FSOLHudShapeBatch lineBatch;
+    lineBatch.Initialize(1);
+    lineBatch.AddLine(a, b, halfWidth, color, intensity, pad);
+    if (!TestEqual(TEXT("reference line added"), lineBatch.GetVertices().Num(), HUDSHAPES_VERTS_PER_SHAPE))
+    {
+        return false;
+    }
+    const TArray<FSlateVertex>& lineVertices = lineBatch.GetVertices();
+
+    // Periods and their expected alpha bytes: round(clamp(period, 1, HUD_DASH_MAX_PERIOD_PX))
+    const float periods[] = { 5.0f, 7.6f, 0.2f, 400.0f };
+    const int32 expectedAlphas[] = { 5, 8, 1, 255 };
+    constexpr int32 periodCount = UE_ARRAY_COUNT(periods);
+
+    FSOLHudShapeBatch batch;
+    batch.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+    for (int32 s = 0; s < periodCount; ++s)
+    {
+        const float period = periods[s];
+        const FString label = FString::Printf(TEXT("period %.1f"), period);
+        TestTrue(label + TEXT(": added"), batch.AddDashedLine(a, b, halfWidth, period, color, intensity, pad));
+        TestEqual(label + TEXT(": shape count"), batch.GetShapeCount(), s + 1);
+        TestEqual(label + TEXT(": vertex count"), batch.GetVertices().Num(), (s + 1) * HUDSHAPES_VERTS_PER_SHAPE);
+        TestEqual(label + TEXT(": index count"), batch.GetIndices().Num(), (s + 1) * HUDSHAPES_INDICES_PER_SHAPE);
+        HudShapesCheckIndices(*this, batch, s);
+
+        const int32 alpha = FMath::RoundToInt(FMath::Clamp(period, 1.0f, SOL::Hologram::HUD_DASH_MAX_PERIOD_PX));
+        TestEqual(label + TEXT(": expected alpha from the spec"), alpha, expectedAlphas[s]);
+        HudShapesCheckParams(*this, batch, s, lineVertices[0].TexCoords[2], ESOLHudShapeKind::DashedLine, halfWidth,
+            lineVertices[0].Color, alpha, 0);
+
+        if (batch.GetVertices().Num() < (s + 1) * HUDSHAPES_VERTS_PER_SHAPE)
+        {
+            continue;
+        }
+
+        // Same quad as AddLine: positions and TexCoords[0..2]
+        int32 nearestToA = INDEX_NONE;
+        float nearestDistance = TNumericLimits<float>::Max();
+        for (int32 v = 0; v < HUDSHAPES_VERTS_PER_SHAPE; ++v)
+        {
+            const FSlateVertex& vertex = batch.GetVertices()[s * HUDSHAPES_VERTS_PER_SHAPE + v];
+            const FSlateVertex& reference = lineVertices[v];
+            const FString vLabel = FString::Printf(TEXT("%s vertex %d"), *label, v);
+            TestEqual(vLabel + TEXT(": position X"), vertex.Position.X, reference.Position.X, HUDSHAPES_POS_TOLERANCE);
+            TestEqual(vLabel + TEXT(": position Y"), vertex.Position.Y, reference.Position.Y, HUDSHAPES_POS_TOLERANCE);
+            for (int32 t = 0; t < 3; ++t)
+            {
+                TestEqual(FString::Printf(TEXT("%s: TexCoords[%d]"), *vLabel, t), vertex.TexCoords[t],
+                    reference.TexCoords[t], HUDSHAPES_POS_TOLERANCE);
+            }
+            TestEqual(vLabel + TEXT(": R as the line's"), static_cast<int32>(vertex.Color.R),
+                static_cast<int32>(reference.Color.R));
+            TestEqual(vLabel + TEXT(": G as the line's"), static_cast<int32>(vertex.Color.G),
+                static_cast<int32>(reference.Color.G));
+            TestEqual(vLabel + TEXT(": B as the line's"), static_cast<int32>(vertex.Color.B),
+                static_cast<int32>(reference.Color.B));
+            const float distanceToA = FVector2f::Distance(HudShapesPos(vertex), a);
+            if (distanceToA < nearestDistance)
+            {
+                nearestDistance = distanceToA;
+                nearestToA = v;
+            }
+        }
+
+        // Local X runs from a toward b: the vertex nearest a has negative local X
+        if (nearestToA != INDEX_NONE)
+        {
+            TestTrue(label + TEXT(": vertex nearest a has negative local X"),
+                HudShapesLocal(batch.GetVertices()[s * HUDSHAPES_VERTS_PER_SHAPE + nearestToA]).X < 0.0f);
+        }
+    }
+
+    // A full batch drops it, counted, without growing the buffers
+    FSOLHudShapeBatch fullBatch;
+    fullBatch.Initialize(1);
+    const int32 vertexMax = fullBatch.GetVertices().Max();
+    const int32 indexMax = fullBatch.GetIndices().Max();
+    TestTrue(TEXT("first dashed line fits"), fullBatch.AddDashedLine(a, b, halfWidth, 5.0f, color, intensity, pad));
+    TestEqual(TEXT("nothing dropped while filling"), fullBatch.GetDroppedCount(), 0);
+    TestFalse(TEXT("extra dashed line dropped"), fullBatch.AddDashedLine(a, b, halfWidth, 5.0f, color, intensity, pad));
+    TestEqual(TEXT("one dropped"), fullBatch.GetDroppedCount(), 1);
+    TestEqual(TEXT("count unchanged"), fullBatch.GetShapeCount(), 1);
+    TestEqual(TEXT("vertex count unchanged"), fullBatch.GetVertices().Num(), HUDSHAPES_VERTS_PER_SHAPE);
+    TestEqual(TEXT("index count unchanged"), fullBatch.GetIndices().Num(), HUDSHAPES_INDICES_PER_SHAPE);
+    TestEqual(TEXT("vertex capacity did not grow"), fullBatch.GetVertices().Max(), vertexMax);
+    TestEqual(TEXT("index capacity did not grow"), fullBatch.GetIndices().Max(), indexMax);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

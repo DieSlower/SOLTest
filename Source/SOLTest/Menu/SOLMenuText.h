@@ -332,9 +332,12 @@ namespace SOLMenuText
             "Time warp is never changed for you. The map is drawn as a hologram: bodies and rings as glowing "
             "outlines (the Sun orange), a faint grid on the ecliptic plane through the point the map camera circles, "
             "and a line from each body and waypoint to that plane (orange when it lies below it)."),
-        TEXT("The flight HUD is moving to a hologram look: the centre reticle already glows in blue. Now and then a "
-            "thin band of the glowing HUD shifts sideways for a moment, like a flickering hologram; the HUD hologram "
-            "effects slider in Settings sets how strong that is (0 turns it off)."),
+        TEXT("The flight HUD is a hologram: glowing blue lines and text on faint panels. Now and then a thin band of "
+            "it shifts sideways for a moment, like a flickering hologram, and the radar's range rings pulse like "
+            "sonar; the HUD hologram effects slider in Settings sets how strong that is (0 turns it off). The radar "
+            "(bottom right) is drawn on your ship's own horizontal plane, ahead at the top, with the camera's view "
+            "cone: contacts above the plane are blue with a solid line down to it, contacts below are orange with a "
+            "dashed line up to it and a hollow mark, and the selected target is larger, ringed and named."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

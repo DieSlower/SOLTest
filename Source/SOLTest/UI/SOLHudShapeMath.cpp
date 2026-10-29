@@ -12,6 +12,10 @@ namespace
     // LT core: the glow stays at full strength within this distance of the shape's centre line (pixels)
     constexpr float HUDSHAPE_CORE_HALF_PX = static_cast<float>(SOL::Hologram::HUD_GLOW_CORE_HALF_PX);
 
+    // An ellipse's implicit gradient below this is the centre (the material uses the same 1e-6)
+    constexpr float HUDSHAPE_ELLIPSE_MIN_GRADIENT = 1.0e-6f;
+    constexpr float HUDSHAPE_ELLIPSE_MIN_RADIUS_PX = 1.0e-3f;    // Radii are clamped to this (the material too)
+
     //////////////////////////////////////////////////////////////////////////
     // Returns the lattice hash of an integer-valued x in [0, 1): frac(sin(wrap(x) x frequency) x scale), the lattice
     // wrapped so sin never sees a large argument (GPU sin loses precision there); the same as the material
@@ -56,6 +60,49 @@ float SOLHudShapeMath::ArcDistancePx(const FVector2f& local, const float radiusP
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Signed distance to an ellipse ring (first-order approximation, exact on the axes)
+float SOLHudShapeMath::EllipseDistancePx(const FVector2f& local, const float radiusXPx, const float radiusYPx,
+    const float halfWidthPx)
+{
+    // Gradient-normalised implicit distance |k0 (k0 - 1) / k1|; k1 = 0 only at the centre, whose distance is the
+    // shorter radius (mirrored in M_SOLHudShape's Custom node)
+    const FVector2f radius(FMath::Max(radiusXPx, HUDSHAPE_ELLIPSE_MIN_RADIUS_PX),
+        FMath::Max(radiusYPx, HUDSHAPE_ELLIPSE_MIN_RADIUS_PX));
+    const float k0 = (local / radius).Size();
+    const float k1 = (local / (radius * radius)).Size();
+    const float distance = k1 > HUDSHAPE_ELLIPSE_MIN_GRADIENT ? FMath::Abs(k0 * (k0 - 1.0f) / k1)
+        : FMath::Min(radius.X, radius.Y);
+    return distance - halfWidthPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Signed distance to a dashed segment (dashes from -halfLength, the last clipped at +halfLength)
+float SOLHudShapeMath::DashedLineDistancePx(const FVector2f& local, const float halfLengthPx, const float halfWidthPx,
+    const float periodPx)
+{
+    // Clamp to the segment, find the position within the dash period there, then the distance to the end of this
+    // period's dash or the start of the next one (only if that dash exists); plus the overshoot past either end
+    const float period = FMath::Max(periodPx, 1.0f);
+    const float dashLength = SOL::Hologram::HUD_DASH_FRACTION * period;
+    const float length = 2.0f * FMath::Max(halfLengthPx, 0.0f);
+    const float t = local.X + FMath::Max(halfLengthPx, 0.0f);
+    const float clamped = FMath::Clamp(t, 0.0f, length);
+    float inPeriod = clamped - FMath::Floor(clamped / period) * period;
+    if (length > 0.0f && clamped - inPeriod >= length)
+    {
+        // The far end falls exactly on a period start: no dash starts there, so it is in the previous period's gap
+        inPeriod += period;
+    }
+    const float nextStart = clamped - inPeriod + period;
+    float gap = FMath::Max(inPeriod - dashLength, 0.0f);
+    if (inPeriod > dashLength && nextStart < length)
+    {
+        gap = FMath::Min(gap, nextStart - clamped);
+    }
+    return FVector2f(FMath::Abs(t - clamped) + gap, local.Y).Size() - halfWidthPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Signed distance to a rounded box
 float SOLHudShapeMath::PanelDistancePx(const FVector2f& local, const FVector2f& halfSizePx, const float cornerRadiusPx)
 {
@@ -80,7 +127,7 @@ void SOLHudShapeMath::DecodeKind(const float encoded, ESOLHudShapeKind& outKind,
 {
     const float kind = FMath::Floor(encoded / SOL::Hologram::HUD_SHAPE_KIND_STRIDE + 1.0e-4f);
     outKind = static_cast<ESOLHudShapeKind>(FMath::Clamp(static_cast<int32>(kind), 0,
-        static_cast<int32>(ESOLHudShapeKind::Panel)));
+        static_cast<int32>(ESOLHudShapeKind::DashedLine)));
     outParam = encoded - kind * SOL::Hologram::HUD_SHAPE_KIND_STRIDE;
 }
 

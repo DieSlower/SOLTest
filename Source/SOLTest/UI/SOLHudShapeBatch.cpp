@@ -83,6 +83,34 @@ bool FSOLHudShapeBatch::AddRing(const FVector2f& center, const float radiusPx, c
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Adds a dashed glow line from a to b (dashes start at a)
+bool FSOLHudShapeBatch::AddDashedLine(const FVector2f& a, const FVector2f& b, const float halfWidthPx,
+    const float periodPx, const FLinearColor& color, const float intensity, const float padPx)
+{
+    const FVector2f delta = b - a;
+    const float length = delta.Size();
+    const FVector2f dir = length > HUDBATCH_MIN_LINE_LENGTH_PX ? delta / length : FVector2f(1.0f, 0.0f);
+    const float halfLength = length > HUDBATCH_MIN_LINE_LENGTH_PX ? 0.5f * length : 0.0f;
+    const float period = FMath::RoundToFloat(FMath::Clamp(periodPx, 1.0f, SOL::Hologram::HUD_DASH_MAX_PERIOD_PX));
+    return AddQuad((a + b) * 0.5f, dir, FVector2f(-dir.Y, dir.X),
+        FVector2f(halfLength + halfWidthPx + padPx, halfWidthPx + padPx), halfLength,
+        SOLHudShapeMath::EncodeKind(ESOLHudShapeKind::DashedLine, halfWidthPx),
+        HudBatchColor(color, intensity, period / HUDBATCH_ALPHA_MAX));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Adds an axis-aligned ellipse ring (radius Y clamped to [0, radius X])
+bool FSOLHudShapeBatch::AddEllipse(const FVector2f& center, const float radiusXPx, const float radiusYPx,
+    const float halfWidthPx, const FLinearColor& color, const float intensity, const float padPx)
+{
+    const float radiusY = FMath::Clamp(radiusYPx, 0.0f, FMath::Max(radiusXPx, 0.0f));
+    const float ratio = radiusXPx > 0.0f ? radiusY / radiusXPx : 1.0f;
+    return AddQuad(center, FVector2f(1.0f, 0.0f), FVector2f(0.0f, 1.0f),
+        FVector2f(radiusXPx + halfWidthPx + padPx, radiusY + halfWidthPx + padPx), radiusXPx,
+        SOLHudShapeMath::EncodeKind(ESOLHudShapeKind::Ellipse, halfWidthPx), HudBatchColor(color, intensity, ratio));
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Adds an axis-aligned hologram panel: a fill and a glowing outline
 bool FSOLHudShapeBatch::AddPanel(const FVector2f& center, const FVector2f& halfSizePx, const FLinearColor& color,
     const float edgeIntensity, const float fill, const float padPx)

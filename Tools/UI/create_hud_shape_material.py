@@ -8,8 +8,9 @@
 #       per vertex TexCoord0 = the pixel position in the shape's local frame, TexCoord1 = (size 1, kind x stride +
 #       size 2), vertex colour = sRGB(colour x intensity) with alpha = the shape's extra parameter (arc: half aperture
 #       / pi, panel: fill). The Custom node mirrors SOLHudShapeMath (UI/SOLHudShapeMath.cpp): row jitter (moved into
-#       the local frame through ddx), the line / arc / panel signed distance, LT's glow profile, the panel fill with
-#       fresnel edge, scanlines and flicker (phase B, issue #29), the optional grain and scanline composite, LT's tone
+#       the local frame through ddx), the line / arc / panel / ellipse / dashed line signed distance (the last two
+#       phase C, issue #30; alpha = Y / X radius or dash period / 255), LT's glow profile, the panel fill with fresnel
+#       edge, scanlines and flicker (phase B, issue #29), the optional grain and scanline composite, LT's tone
 #       curve and blue grade.
 # Every default is read from Source/SOLTest/SOLConstants.h (SOL::Hologram HUD_*, SOL::Settings::HUD_EFFECTS_DEFAULT);
 # the parameter names must match SOL::HudShapeMaterialParams and the asset path SOL::Paths::HUD_SHAPE_MATERIAL.
@@ -75,26 +76,53 @@ else if (kind < 1.5)
     const float2 q = float2(abs(p.x), p.y);
     d = ((sc.y * q.x > sc.x * q.y) ? length(q - sc * s1) : abs(length(q) - s1)) - s2;
 }
-else
+else if (kind < 2.5)
 {
     const float2 q = abs(p) - float2(s1, s2) + Corner;
     d = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - Corner;
 }
+else if (kind < 3.5)
+{
+    // Ellipse ring (phase C, issue #30; SOLHudShapeMath::EllipseDistancePx): radii (s1, s1 x alpha), half width s2
+    const float2 r = max(float2(s1, s1 * VAlpha), 1e-3);   // A zero radius would divide by zero
+    const float k0 = length(p / r);
+    const float k1 = length(p / (r * r));
+    d = (k1 > 1e-6 ? abs(k0 * (k0 - 1.0) / k1) : min(r.x, r.y)) - s2;
+}
+else
+{
+    // Dashed line (phase C; SOLHudShapeMath::DashedLineDistancePx): half length s1, half width s2, period alpha x 255
+    // px, dashes from -s1; dx is the distance along the line to the nearest existing dash
+    const float period = max(VAlpha * 255.0, 1.0);
+    const float dashLen = DashFraction * period;
+    const float t = p.x + s1;
+    const float tc = clamp(t, 0.0, 2.0 * s1);
+    float tt = tc - floor(tc / period) * period;
+    tt += (s1 > 0.0 && tc - tt >= 2.0 * s1) ? period : 0.0;   // No dash starts exactly at the far end
+    const float nextStart = tc - tt + period;
+    float gapD = max(tt - dashLen, 0.0);
+    if (tt > dashLen && nextStart < 2.0 * s1)
+    {
+        gapD = min(gapD, nextStart - tc);
+    }
+    d = length(float2(abs(t - tc) + gapD, p.y)) - s2;
+}
+const bool isPanel = kind >= 1.5 && kind < 2.5;
 
 // LT glow of the distance from a CoreHalf px core; panels glow along their outline and add a fill with a fresnel edge
-const float dd = kind < 1.5 ? max(d + CoreHalf, 0.0) : abs(d);
+const float dd = !isPanel ? max(d + CoreHalf, 0.0) : abs(d);
 float shape = CoreW * exp(-CoreF * max(0.0, dd - CoreHalf)) + HaloW * exp(-pow(HaloS * dd, HaloP));
 
 // The halo fades to nothing over the outer part of the quad padding, so no quad edge ever shows
 shape *= 1.0 - smoothstep(PadFade * Pad, Pad, dd);
 // (SOLHudShapeMath::PadFade, PanelFill and PanelFlicker; scanlines and flicker scale with the strength slider)
 const float strength0 = max(Strength, 0.0);
-if (kind >= 1.5 && d < 0.0)
+if (isPanel && d < 0.0)
 {
     shape += VAlpha * (FillBase + (1.0 - FillBase) * exp(d / EdgeFall))
         * (1.0 + PanelScan * strength0 * sin(kPi * Parameters.SvPosition.y));
 }
-if (kind >= 1.5)
+if (isPanel)
 {
     const float fx = age * FlickerRate + FlickerOffset;
     const float fi = floor(fx);
@@ -146,7 +174,7 @@ CONSTANT_PINS = [
     ("HashS", "HUD_NOISE_HASH_SCALE"), ("CoreHalf", "HUD_GLOW_CORE_HALF_PX"), ("PadFade", "HUD_PAD_FADE_START"),
     ("FillBase", "HUD_PANEL_FILL_BASE"), ("ToneGain", "HUD_TONE_GAIN"), ("TonePower", "HUD_TONE_POWER"),
     ("Flicker", "HUD_PANEL_FLICKER"), ("FlickerRate", "HUD_PANEL_FLICKER_RATE_HZ"),
-    ("FlickerOffset", "HUD_PANEL_FLICKER_OFFSET"),
+    ("FlickerOffset", "HUD_PANEL_FLICKER_OFFSET"), ("DashFraction", "HUD_DASH_FRACTION"),
 ]
 
 

@@ -41,6 +41,19 @@ struct SOLTEST_API FSOLHudShapeBatch
     bool AddRing(const FVector2f& center, float radiusPx, float halfWidthPx, const FLinearColor& color, float intensity,
         float padPx);
 
+    // Adds a dashed glow line from a to b (local X along a -> b, origin at the midpoint, dashes starting at a):
+    // size 1 = half length, kind param = halfWidthPx, alpha = round(periodPx clamped to [1, HUD_DASH_MAX_PERIOD_PX])
+    // / 255 (the period travels as whole pixels), quad as AddLine's; false if dropped
+    bool AddDashedLine(const FVector2f& a, const FVector2f& b, float halfWidthPx, float periodPx,
+        const FLinearColor& color, float intensity, float padPx);
+
+    // Adds an axis-aligned ellipse ring (radiusYPx clamped to [0, radiusXPx]): local X and Y along screen X and Y,
+    // size 1 = radiusXPx, kind param = halfWidthPx, alpha = radiusYPx / radiusXPx (8 bits, so the GPU's ratio is within
+    // 1/510 of it, e.g. 0.5 draws as 128/255; 1 for radiusXPx <= 0), quad
+    // half extents (radiusX + halfWidth + pad, radiusY + halfWidth + pad); false if dropped
+    bool AddEllipse(const FVector2f& center, float radiusXPx, float radiusYPx, float halfWidthPx,
+        const FLinearColor& color, float intensity, float padPx);
+
     // Adds an axis-aligned hologram panel: a fill (0..1) and a glowing outline at edgeIntensity; false if dropped
     bool AddPanel(const FVector2f& center, const FVector2f& halfSizePx, const FLinearColor& color, float edgeIntensity,
         float fill, float padPx);

@@ -30,26 +30,27 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #20 | Hologram map, Move/Patrol routes, route overlay, map hologram look | 20 |
 | #28 | HUD phase A: event bus, batched Slate renderer, shape material, effects slider | 21 |
 | #29 | HUD phase B: every flight HUD element on the glow renderer, hologram panels, glow text | 21 |
+| #30 | HUD phase C: 3D hologram radar (ship-horizontal plane, above/below colours, sonar rings) | 21 |
+| #21 | HUD hologram rendering (umbrella, phases A-C) | 21 |
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
 
 ## In progress
 
 | Issue | What | Notes |
 |---|---|---|
-| #21 | HUD hologram rendering (umbrella) | SDD 21 |
+| - | Nothing in progress | |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1 | #30 | HUD phase C: 3D hologram radar | M | #28 |
-| 2 | #22 | Overlay icons for every object, flight overlay layer (O / Ctrl+O / Shift+O), radial interaction menu, icon shapes | L | #21 |
-| 3 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
-| 4 | #27 | Ship jitters slightly at rest | M | #18 |
-| 5 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
-| 6 | #24 | Decide each of the 120 Limit Theory catalogue features, split adopted ones into tickets | M (user decisions) | none |
-| 7 | #10 | Part 9: procedural terrain and atmospheres | L | #2, #4 |
-| 8 | #9 | Part 8: art and audio pass | L | #2-#8 |
+| 1 | #22 | Overlay icons for every object, flight overlay layer (O / Ctrl+O / Shift+O), radial interaction menu, icon shapes | L | #21 |
+| 2 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
+| 3 | #27 | Ship jitters slightly at rest | M | #18 |
+| 4 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
+| 5 | #24 | Decide each of the 120 Limit Theory catalogue features, split adopted ones into tickets | M (user decisions) | none |
+| 6 | #10 | Part 9: procedural terrain and atmospheres | L | #2, #4 |
+| 7 | #9 | Part 8: art and audio pass | L | #2-#8 |
 | - | #1 | Umbrella: architecture and roadmap, closes when the above is done | - | all |
 
 Order is a proposal; the user can reorder at any time. #24 produces new tickets, so the total will grow.
@@ -79,5 +80,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 8 tickets (#21 phases A-C, #22, #23, #26, #27, #24 decisions) before the two large roadmap items (#10, #9),
+About 5 tickets (#22, #23, #26, #27, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

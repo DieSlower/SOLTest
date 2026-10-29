@@ -84,7 +84,30 @@ namespace
     constexpr float HUD_RADAR_STALK_SCALE = 0.6f;
     constexpr float HUD_RADAR_BLIP_PX = 4.0f;
     constexpr float HUD_RADAR_SELECTED_BLIP_PX = 7.0f;
-    constexpr float HUD_RADAR_INNER_RING = 0.5f;
+    // Hologram radar (SDD 21 phase C): range rings (fractions of the range; the 1% collapse zone sits inside the
+    // first), the outer ring's glow factor, the axis and cone intensities, the ring ticks, the ship chevron, the contact foot
+    // tick and the selected target's highlight ring
+    constexpr float HUD_RADAR_RINGS[] = { 0.25f, 0.5f, 0.75f, 1.0f };
+    constexpr float HUD_RADAR_OUTER_RING_GAIN = 1.3f;
+    constexpr float HUD_RADAR_AXIS_INTENSITY = 0.12f;
+    constexpr float HUD_RADAR_CONE_INTENSITY = 0.2f;
+    constexpr float HUD_RADAR_TICK_PX = 5.0f;
+    constexpr float HUD_RADAR_HEADING_TICK_PX = 9.0f;
+    constexpr float HUD_RADAR_CHEVRON_PX = 5.0f;
+    constexpr float HUD_RADAR_CHEVRON_INTENSITY = 0.6f; // The ship chevron (the cone and axes also meet there)
+    constexpr float HUD_RADAR_FOOT_HALF_PX = 2.5f;
+    constexpr float HUD_RADAR_FOOT_INTENSITY = 0.35f;
+    constexpr float HUD_RADAR_BEHIND_INTENSITY = 0.7f;
+    constexpr float HUD_RADAR_HIGHLIGHT_GAP_PX = 3.0f;
+    constexpr float HUD_RADAR_BLIP_INTENSITY = 0.6f;    // A blip (dot or ring); overlapping glows add up, so the
+    constexpr float HUD_RADAR_STEM_INTENSITY = 0.45f;   // contact shapes stay dim (36 contacts crowd the rim at 1 km)
+    constexpr float HUD_RADAR_BEYOND_INTENSITY = 0.45f; // A contact beyond the range (pulled onto the rim) is dimmer
+    constexpr float HUD_RADAR_MERGE_PX = 14.0f;         // A blip this close to a drawn one is skipped (stacked moons)
+    constexpr double HUD_RADAR_CONE_MIN_LATERAL = 0.1;  // View cone hidden when the camera looks this near ship-up/down
+
+    // The glow dashed line's dash fraction (SOL::Hologram::HUD_DASH_FRACTION 0.5) assumes equal dashes and gaps
+    static_assert(SOLRadar::StemDashPx == SOLRadar::StemGapPx, "Dashed stems: the glow shape assumes dash == gap");
+    constexpr int32 HUD_RADAR_CANVAS_SEGMENTS = 12;     // Canvas fallback: segments of a blip ring
 
     // LT palette (SDD 21 phase B). A tone is a palette colour and an intensity: glow shapes scale their glow by it,
     // Canvas lines (which ignore alpha) their RGB, and text lines take a dim tone as alpha (HudDimText)
@@ -113,7 +136,7 @@ namespace
     constexpr double HUD_CONTROLS_NOTICE_S = 15.0;                          // One-time controls notice duration
     constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
     constexpr double HUD_PERCENT = 100.0;
-    const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar (Canvas until phase C, #30)
+    const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar backing (Canvas fallback)
 
     // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
     // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
@@ -217,6 +240,7 @@ void ASOLFlightHud::BeginPlay()
     {
         const int32 bodyCount = BodyRegistry->GetRegistry().Num();
         mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
+        mRadarOrder.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
     }
     mMapPickOverlay.Initialize();
@@ -489,6 +513,59 @@ void ASOLFlightHud::GlowBox(const float x, const float y, const float width, con
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Draws an axis-aligned glow ellipse ring (shape renderer) or a Canvas ellipse of line segments
+void ASOLFlightHud::GlowEllipse(const FVector2D& center, const float radiusXPx, const float squashY,
+    const FLinearColor& color, const float intensity)
+{
+    if (mBatch != nullptr)
+    {
+        mBatch->AddEllipse(FVector2f(center), radiusXPx, radiusXPx * squashY, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
+            color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+        return;
+    }
+    DrawCircle(center, radiusXPx, HudScaled(color, intensity), HUD_CIRCLE_SEGMENTS, squashY, 1.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a dashed glow line from a to b, dashes starting at a (one dashed-line shape, or Canvas dashes)
+void ASOLFlightHud::GlowDashedLine(const FVector2D& a, const FVector2D& b, const double dashPx, const double gapPx,
+    const FLinearColor& color, const float intensity)
+{
+    if (mBatch != nullptr)
+    {
+        // One shape: separate dash quads would each add the whole line's halo (a white column)
+        mBatch->AddDashedLine(FVector2f(a), FVector2f(b), SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
+            static_cast<float>(dashPx + gapPx), color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+        return;
+    }
+    const double lengthPx = FVector2D::Distance(a, b);
+    const FVector2D dir = lengthPx > 0.0 ? (b - a) / lengthPx : FVector2D::ZeroVector;
+    const int32 dashes = SOLRadar::DashCount(lengthPx, dashPx, gapPx);
+    for (int32 dash = 0; dash < dashes; ++dash)
+    {
+        double startPx = 0.0;
+        double endPx = 0.0;
+        SOLRadar::DashSegment(lengthPx, dashPx, gapPx, dash, startPx, endPx);
+        DrawLine(a.X + dir.X * startPx, a.Y + dir.Y * startPx, a.X + dir.X * endPx, a.Y + dir.Y * endPx,
+            HudScaled(color, intensity), 1.0f);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a filled glow dot (shape renderer) or a Canvas square of the same size
+void ASOLFlightHud::GlowDot(const FVector2D& center, const float radiusPx, const FLinearColor& color,
+    const float intensity)
+{
+    if (mBatch != nullptr)
+    {
+        mBatch->AddLine(FVector2f(center), FVector2f(center), radiusPx, color, intensity,
+            SOL::Hologram::HUD_GLOW_PAD_PX);
+        return;
+    }
+    DrawRect(HudScaled(color, intensity), center.X - radiusPx, center.Y - radiusPx, 2.0f * radiusPx, 2.0f * radiusPx);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
 void ASOLFlightHud::DrawBar(const float x, const float y, const double fill01, const FLinearColor& color)
 {
@@ -714,7 +791,7 @@ void ASOLFlightHud::DrawHUD()
     DrawRouteMarker();
     AddHoloPanel(mLeftBlockRect, HUD_PRIMARY);
     AddHoloPanel(mTopBlockRect, HUD_PRIMARY);
-    DrawRadar(state);
+    DrawRadar(bHasView ? &view : nullptr, state);
 
     // The jump map views from its own camera: the ship-view pilot aids (reticle, joystick, velocity markers) are
     // hidden; the target bracket still projects through the active camera
@@ -1510,17 +1587,18 @@ void ASOLFlightHud::DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipS
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the radar contacts from the targeting candidates, picks the range and draws the scope (bottom right)
-void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
+// Builds the radar contacts, picks the range and draws the hologram scope on the ship-horizontal plane (bottom right)
+void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& state)
 {
-    // Contacts in the ship-local frame (X forward, Y right, Z up), rebuilt in place (capacity kept)
+    // Contacts in the ship-horizontal frame (X forward, Y right, Z ship-up), rebuilt in place (capacity kept)
     const TConstArrayView<FSOLTargetInfo> candidates = Targeting->GetCandidates();
     const int32 selectedIndex = Targeting->GetSelectedIndex();
     mRadarContacts.Reset();
     for (int32 index = 0; index < candidates.Num(); ++index)
     {
         FSOLRadarContact& contact = mRadarContacts.AddDefaulted_GetRef();
-        contact.RelativePositionM = state.Orientation.UnrotateVector(candidates[index].PositionM - state.PositionM);
+        contact.RelativePositionM = SOLRadar::ToShipFrame(candidates[index].PositionM, state.PositionM,
+            state.Orientation);
         contact.Name = candidates[index].Name;
         contact.bSelected = index == selectedIndex;
     }
@@ -1536,8 +1614,8 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
     const double rangeM = mIsRadarManual ? mManualRadarRangeM : floorM;
     mLastRadarRangeM = rangeM;
 
-    // Scope: a tilted disc (ellipse) with a half-range ring and the forward/right axes; below the disc it reserves
-    // the longest downward stalk (plus half a selected blip) so no blip reaches the range label or the screen edge
+    // Scope layout: the plane is an ellipse (the tilted disc); below it the longest downward stem (plus half a
+    // selected blip) is reserved so no blip reaches the range label or the screen edge
     const float radius = HUD_RADAR_RADIUS_PX * mUiScale;
     const float labelHeight = HUD_LINE_SMALL_PX * mUiScale;
     const float squashedRadius = radius * HUD_RADAR_TILT;
@@ -1545,48 +1623,163 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
     const float rightEdge = Canvas->ClipX - HUD_MARGIN_PX * mUiScale;
     const FVector2D center(rightEdge - radius,
         Canvas->ClipY - HUD_MARGIN_PX * mUiScale - labelHeight - stalkReserve - squashedRadius);
-    DrawRect(HUD_RADAR_BACK_COLOR, center.X - radius, center.Y - squashedRadius, 2.0f * radius,
-        2.0f * squashedRadius);
-    const FLinearColor radarDim = HudScaled(HUD_PRIMARY, HUD_DIM);
-    DrawCircle(center, radius, HUD_PRIMARY, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.5f);
-    DrawCircle(center, radius * HUD_RADAR_INNER_RING, radarDim, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.0f);
-    DrawLine(center.X - radius, center.Y, center.X + radius, center.Y, radarDim, 1.0f);
-    DrawLine(center.X, center.Y - squashedRadius, center.X, center.Y + squashedRadius, radarDim, 1.0f);
-    DrawRect(HUD_PRIMARY, center.X - 2.0f, center.Y - 2.0f, 4.0f, 4.0f);
-
-    // Blips: a stalk from the disc to the contact's height, the selected target larger and highlighted
-    UFont* small = GetHudFont(ESOLHudFont::Small);
-    for (const FSOLRadarContact& contact : mRadarContacts)
+    const FVector2D labelPos(center.X - radius, center.Y + squashedRadius + stalkReserve);
+    if (mBatch == nullptr)
     {
-        const FSOLRadarPoint point = SOLRadar::ProjectContact(contact, rangeM);
-        const FVector2D base(center.X + point.ScreenOffsetUnit.X * radius,
-            center.Y - point.ScreenOffsetUnit.Y * squashedRadius);
-        const FVector2D top(base.X, base.Y - point.HeightStalkUnit * radius * HUD_RADAR_STALK_SCALE);
-        const FLinearColor color = point.bSelected ? HUD_SECONDARY
-            : (point.bBehind ? radarDim : HUD_PRIMARY);
-        DrawLine(base.X, base.Y, top.X, top.Y, color, 1.0f);
-        const float blip = (point.bSelected ? HUD_RADAR_SELECTED_BLIP_PX : HUD_RADAR_BLIP_PX) * mUiScale;
-        DrawRect(color, top.X - blip * 0.5f, top.Y - blip * 0.5f, blip, blip);
-        if (point.bSelected)
+        DrawRect(HUD_RADAR_BACK_COLOR, center.X - radius, center.Y - squashedRadius, 2.0f * radius,
+            2.0f * squashedRadius);
+    }
+
+    // Range rings with LT's sonar pulse travelling outward (strength = the HUD effects slider), the outer ring brighter
+    const double timeS = GetWorld()->GetRealTimeSeconds();
+    const double strength = FMath::Max(mShapeStrength, 0.0f);
+    for (const float ring : HUD_RADAR_RINGS)
+    {
+        const float gain = ring >= 1.0f ? HUD_RADAR_OUTER_RING_GAIN : 1.0f;
+        GlowEllipse(center, radius * ring, HUD_RADAR_TILT, HUD_PRIMARY,
+            gain * static_cast<float>(SOLRadar::SonarRingIntensity(ring, timeS, strength)));
+    }
+
+    // Fore-aft and side axes, the side and aft ticks outside the ring and the longer heading tick ahead
+    GlowLine(SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(-1.0, 0.0)),
+        SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(1.0, 0.0)), HUD_PRIMARY,
+        HUD_RADAR_AXIS_INTENSITY, 1.0f);
+    GlowLine(SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(0.0, -1.0)),
+        SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(0.0, 1.0)), HUD_PRIMARY,
+        HUD_RADAR_AXIS_INTENSITY, 1.0f);
+    const float tick = HUD_RADAR_TICK_PX * mUiScale;
+    GlowLine(FVector2D(center.X - radius - tick, center.Y), FVector2D(center.X - radius, center.Y), HUD_PRIMARY,
+        HUD_DIM, 1.0f);
+    GlowLine(FVector2D(center.X + radius, center.Y), FVector2D(center.X + radius + tick, center.Y), HUD_PRIMARY,
+        HUD_DIM, 1.0f);
+    GlowLine(FVector2D(center.X, center.Y + squashedRadius), FVector2D(center.X, center.Y + squashedRadius + tick),
+        HUD_PRIMARY, HUD_DIM, 1.0f);
+    GlowLine(FVector2D(center.X, center.Y - squashedRadius - HUD_RADAR_HEADING_TICK_PX * mUiScale),
+        FVector2D(center.X, center.Y - squashedRadius), HUD_PRIMARY, 1.0f, 1.5f);
+
+    // View cone: the camera's horizontal field of view around its heading on the plane (free look turns it)
+    if (view != nullptr)
+    {
+        const FVector3d cameraForward = SOLRadar::ToShipFrame(FVector3d(view->Rotation.GetForwardVector()),
+            FVector3d::ZeroVector, state.Orientation);
+        const double heading = SOLRadar::ShipAzimuth(cameraForward);
+        const double halfFov = FMath::Atan2(0.5 * Canvas->ClipX, FMath::Max(view->FocalPx, 1.0));
+        const bool bHasHeading = FVector2D(cameraForward.X, cameraForward.Y).Length() >= HUD_RADAR_CONE_MIN_LATERAL;
+        for (const double side : { -1.0, 1.0 })
         {
-            // Name to the right of the blip, flipped to its left when it would run past the screen edge
+            if (!bHasHeading)
+            {
+                break;   // Looking almost straight up or down the plane: the heading is undefined
+            }
+            GlowLine(center, SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT,
+                SOLRadar::AzimuthToScope(heading + side * halfFov)), HUD_PRIMARY, HUD_RADAR_CONE_INTENSITY, 1.0f);
+        }
+    }
+
+    // The ship: a small chevron at the centre pointing forward
+    const float chevron = HUD_RADAR_CHEVRON_PX * mUiScale;
+    GlowLine(FVector2D(center.X - chevron, center.Y + 0.6f * chevron), FVector2D(center.X, center.Y - 0.6f * chevron),
+        HUD_PRIMARY, HUD_RADAR_CHEVRON_INTENSITY, 1.0f);
+    GlowLine(FVector2D(center.X, center.Y - 0.6f * chevron), FVector2D(center.X + chevron, center.Y + 0.6f * chevron),
+        HUD_PRIMARY, HUD_RADAR_CHEVRON_INTENSITY, 1.0f);
+
+    // Contacts within the budget (the selected one first, then the nearest): a foot tick on the plane, a stem to the
+    // contact's height and a blip; above the plane solid and filled in Primary, below dashed and hollow in Secondary
+    // The whole order is kept so a crowded (skipped) blip does not use up the budget: drawing stops at the budget
+    SOLRadar::SelectContacts(mRadarContacts, mRadarContacts.Num(), mRadarOrder);
+    mLastRadarAboveCount = 0;
+    mLastRadarBelowCount = 0;
+    const float footHalf = HUD_RADAR_FOOT_HALF_PX * mUiScale;
+    const double dashPx = SOLRadar::StemDashPx * mUiScale;
+    const double gapPx = SOLRadar::StemGapPx * mUiScale;
+    UFont* small = GetHudFont(ESOLHudFont::Small);
+    FVector2D drawnTops[SOLRadar::MaxDrawnContacts];
+    int32 drawnCount = 0;
+    const double mergePx = HUD_RADAR_MERGE_PX * mUiScale;
+    for (const int32 contactIndex : mRadarOrder)
+    {
+        if (drawnCount >= SOLRadar::MaxDrawnContacts)
+        {
+            break;
+        }
+        const FSOLRadarContact& contact = mRadarContacts[contactIndex];
+        const FSOLRadarPoint point = SOLRadar::ProjectContact(contact, rangeM);
+        const FSOLRadarStyle style = SOLRadar::ContactStyle(point);
+        const bool bAbove = style.Side == ESOLRadarSide::Above;
+        const FLinearColor& color = bAbove ? HUD_PRIMARY : HUD_SECONDARY;
+        const bool bBeyond = contact.RelativePositionM.SquaredLength() > rangeM * rangeM;
+        const float intensity = style.bLarge ? 1.0f
+            : ((point.bBehind ? HUD_RADAR_BEHIND_INTENSITY : 1.0f) * (bBeyond ? HUD_RADAR_BEYOND_INTENSITY : 1.0f));
+        const FVector2D foot = SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, point.ScreenOffsetUnit);
+        const FVector2D top = SOLRadar::StemTop(foot, point.HeightStalkUnit, radius, HUD_RADAR_STALK_SCALE);
+
+        // A blip on top of one already drawn (moons stacked on their planet) is skipped; the selected one comes first
+        if (SOLRadar::IsCrowded(TConstArrayView<FVector2D>(drawnTops, drawnCount), top, mergePx))
+        {
+            continue;
+        }
+        drawnTops[drawnCount++] = top;
+
+        ++(bAbove ? mLastRadarAboveCount : mLastRadarBelowCount);
+        GlowLine(FVector2D(foot.X - footHalf, foot.Y), FVector2D(foot.X + footHalf, foot.Y), color,
+            HUD_RADAR_FOOT_INTENSITY * intensity, 1.0f);
+        if (style.bDashedStem)
+        {
+            // Dashes from the plane down to the blip
+            GlowDashedLine(foot, top, dashPx, gapPx, color, HUD_RADAR_STEM_INTENSITY * intensity);
+        }
+        else
+        {
+            GlowLine(foot, top, color, HUD_RADAR_STEM_INTENSITY * intensity, 1.0f);
+        }
+
+        const float blip = (style.bLarge ? HUD_RADAR_SELECTED_BLIP_PX : HUD_RADAR_BLIP_PX) * mUiScale;
+        const float blipRing = style.bHollowBlip ? blip : 0.5f * blip;   // The blip's outer radius
+        if (style.bHollowBlip)
+        {
+            // A ring as wide as the blip is tall, so its hollow centre survives the glow at 720p
+            GlowRing(top, blipRing, color, HUD_RADAR_BLIP_INTENSITY * intensity, 1.0f, HUD_RADAR_CANVAS_SEGMENTS);
+        }
+        else
+        {
+            GlowDot(top, 0.5f * blip, color, HUD_RADAR_BLIP_INTENSITY * intensity);
+        }
+        if (style.bLarge)
+        {
+            // Highlight ring and the name to the right of the blip, flipped to its left at the screen edge
+            GlowRing(top, blipRing + HUD_RADAR_HIGHLIGHT_GAP_PX * mUiScale, color, HUD_RADAR_STEM_INTENSITY, 1.0f,
+                HUD_RADAR_CANVAS_SEGMENTS);
             mText.Reset();
             point.Name.AppendString(mText);
             float labelWidth = 0.0f;
             float labelTall = 0.0f;
             GetTextSize(mText, labelWidth, labelTall, small, mUiScale);
             const float labelX = top.X + blip + labelWidth <= rightEdge ? top.X + blip : top.X - blip - labelWidth;
-            DrawBuffer(ESOLHudLine::RadarSelected, HUD_SECONDARY, labelX, top.Y - blip, ESOLHudFont::Small);
+            DrawBuffer(ESOLHudLine::RadarSelected, color, labelX, top.Y - blip, ESOLHudFont::Small);
         }
     }
 
-    // Range label below the reserved stalk space, with the range mode
+    // Range label below the reserved stem space, with the range mode
     mText.Reset();
     mText.Append(TEXT("RADAR "));
     SOLHudFormat::AppendDistanceM(mText, rangeM);
     mText.Append(mIsRadarManual ? TEXT(" (MANUAL)") : TEXT(" (AUTO)"));
-    DrawBuffer(ESOLHudLine::RadarRange, HudDimText(HUD_PRIMARY), center.X - radius,
-        center.Y + squashedRadius + stalkReserve, ESOLHudFont::Small);
+    const FBox2D labelRect = DrawBuffer(ESOLHudLine::RadarRange, HudDimText(HUD_PRIMARY), labelPos.X, labelPos.Y,
+        ESOLHudFont::Small);
+
+    // One hologram panel around the disc and the label
+    FBox2D panelRect(FVector2D(center.X - radius, center.Y - squashedRadius),
+        FVector2D(center.X + radius, center.Y + squashedRadius));
+    panelRect += labelRect;
+    AddHoloPanel(panelRect, HUD_PRIMARY);
+
+    // A second dark backing under the disc: the additive glow can only brighten, and over a sunlit planet the orange
+    // below-plane contacts would otherwise wash out to white
+    if (mBatch != nullptr && mShapeLayer.IsValid())
+    {
+        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(FVector2f(center.X - radius, center.Y - squashedRadius),
+            FVector2f(center.X + radius, center.Y + squashedRadius)));
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

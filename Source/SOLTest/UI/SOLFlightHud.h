@@ -91,6 +91,10 @@ public:
     // Returns the number of radar contacts plotted in the last frame (verification)
     int32 GetLastRadarContactCount() const { return mRadarContacts.Num(); }
 
+    // Returns the number of radar contacts drawn above / below the ship-horizontal plane last frame (SDD 21 C)
+    int32 GetLastRadarAboveCount() const { return mLastRadarAboveCount; }
+    int32 GetLastRadarBelowCount() const { return mLastRadarBelowCount; }
+
     // Returns the radar range used in the last frame, meters (verification)
     double GetLastRadarRangeM() const { return mLastRadarRangeM; }
 
@@ -209,6 +213,19 @@ private:
 
     // Draws a filled glow box (a capsule as tall as the box; shape renderer) or a Canvas rectangle
     void GlowBox(float x, float y, float width, float height, const FLinearColor& color, float intensity);
+
+    // Draws an axis-aligned glow ellipse ring (shape renderer) or a Canvas ellipse of line segments; radius Y is
+    // radiusXPx x squashY (squashY in [0, 1])
+    void GlowEllipse(const FVector2D& center, float radiusXPx, float squashY, const FLinearColor& color,
+        float intensity);
+
+    // Draws a dashed glow line from a to b with dashes starting at a (shape renderer: one dashed-line shape whose dash
+    // fraction is SOL::Hologram::HUD_DASH_FRACTION of dashPx + gapPx; Canvas: SOLRadar::DashSegment's dashes)
+    void GlowDashedLine(const FVector2D& a, const FVector2D& b, double dashPx, double gapPx, const FLinearColor& color,
+        float intensity);
+
+    // Draws a filled glow dot (shape renderer) or a Canvas square of the same size
+    void GlowDot(const FVector2D& center, float radiusPx, const FLinearColor& color, float intensity);
 
     // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
     void DrawBar(float x, float y, double fill01, const FLinearColor& color);
@@ -332,8 +349,10 @@ private:
     // Draws the prograde and retrograde markers of the velocity relative to the active frame
     void DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state);
 
-    // Builds the radar contacts from the targeting candidates, picks the range and draws the scope (bottom right)
-    void DrawRadar(const FSOLShipState& state);
+    // Builds the radar contacts from the targeting candidates, picks the range and draws the hologram scope (bottom
+    // right): the ship-horizontal plane, range rings with a sonar pulse, the view cone (needs the view, else omitted)
+    // and each budgeted contact's stem and blip, above the plane LT Primary, below LT Secondary dashed and hollow
+    void DrawRadar(const FSOLHudView* view, const FSOLShipState& state);
 
     // Returns true when a target is selected (sets the radar's range floor)
     bool HasSelectedTarget() const;
@@ -396,6 +415,9 @@ private:
     FString mText;                                  // Reused text buffer (Reset keeps its capacity)
     FSOLHudLineCache mLines[static_cast<int32>(ESOLHudLine::Count)];   // Per-line cached text
     TArray<FSOLRadarContact> mRadarContacts;        // Reused radar contacts, rebuilt in place each frame
+    TArray<int32> mRadarOrder;                      // Budgeted contacts to draw (indices), reused each frame
+    int32 mLastRadarAboveCount = 0;                 // Contacts drawn above / below the plane last frame
+    int32 mLastRadarBelowCount = 0;
     TArray<FSOLWarpStreak> mWarpStreaks;            // Jump warp streak table, built once
     double mLastRadarRangeM = 0.0;                  // Radar range of the last frame
     double mManualRadarRangeM = 0.0;                // Radar range while in MANUAL mode, reclamped every frame

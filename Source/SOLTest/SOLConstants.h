@@ -816,6 +816,8 @@ namespace SOL
         inline constexpr float HUD_SHAPE_KIND_STRIDE = 8192.0f;     // Kind packed as kind x stride + size parameter
         inline constexpr int32 HUD_MAX_SHAPES = 4096;               // Quads per frame, reserved once
         inline constexpr float HUD_LINE_HALF_WIDTH_PX = 0.5f;       // A 1 px glow line (LT)
+        inline constexpr float HUD_DASH_FRACTION = 0.5f;            // Dashed line: dash length / period (SDD 21 C)
+        inline constexpr float HUD_DASH_MAX_PERIOD_PX = 255.0f;     // Dashed line period travels in the 8-bit alpha
 
         // Row jitter (LT Compositor_Basic): offset.x = HUD_JITTER_MAX_FRACTION x strength x screen width
         // x exp(-HUD_JITTER_SHARPNESS n) x sign, n a smooth noise of the screen row (HUD_JITTER_ROW_CELLS cells per

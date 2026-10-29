@@ -47,6 +47,9 @@ namespace
     constexpr float HUDSMOKE_SHOT_STICK_Y_PX = 15.0f;
     constexpr double HUDSMOKE_ORBIT_VIEW_HEIGHT_AU = 3.0;   // Vantage above the Sun for the orbit screenshot
     constexpr int32 HUDSMOKE_RADAR_ZOOM_STEPS = 8;          // '-' presses: enough to reach the 1 km floor from any range
+    constexpr int32 HUDSMOKE_RADAR_OUT_STEPS = 9;           // Zoom-out steps for the radar shot: 1 km -> 1 AU (clamped)
+    constexpr double HUDSMOKE_RADAR_PITCH_DEG = 30.0;       // Radar shot ship attitude (relative to facing Earth)
+    constexpr double HUDSMOKE_RADAR_ROLL_DEG = 40.0;
 
     // Verdict thresholds
     constexpr double HUDSMOKE_CAP_RELATIVE_TOLERANCE = 1.0e-9;
@@ -270,6 +273,25 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::MouseY, IE_Axis, HUDSMOKE_SHOT_STICK_Y_PX, 1));
         break;
     }
+    case ESOLHudPhase::RadarShotSetup:
+    {
+        // SDD 21 C: the stick back to centre, the ship pitched and rolled relative to facing Earth, the radar zoomed
+        // out to 1 AU so the planets and asteroids spread above and below the ship-horizontal plane
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::MouseX, IE_Axis, -HUDSMOKE_SHOT_STICK_X_PX,
+            1));
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(EKeys::MouseY, IE_Axis, -HUDSMOKE_SHOT_STICK_Y_PX,
+            1));
+        FSOLShipState attitude = mShips->GetState();
+        attitude.AngularVelocityRadPerS = FVector3d::ZeroVector;
+        attitude.Orientation = UE::Math::TRotationMatrix<double>::MakeFromX((earthM - state.PositionM)
+            .GetSafeNormal()).ToQuat() * FQuat4d(FRotator3d(HUDSMOKE_RADAR_PITCH_DEG, 0.0, HUDSMOKE_RADAR_ROLL_DEG));
+        mShips->SetState(attitude);
+        for (int32 step = 0; step < HUDSMOKE_RADAR_OUT_STEPS && mHud.IsValid(); ++step)
+        {
+            mHud->StepRadarZoom(false);
+        }
+        break;
+    }
     case ESOLHudPhase::OrbitShotSetup:
     {
         // 3 AU above the Sun (Unreal-handed +Z is ecliptic north), looking straight down, at rest in the Sun's frame
@@ -466,6 +488,18 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         ReleaseKey(EKeys::D);
         TapKey(EKeys::B);
         break;
+    case ESOLHudPhase::RadarShotSetup:
+    {
+        // SDD 21 C: with the ship pitched and rolled, contacts are drawn on both sides of the plane
+        const int32 above = mHud.IsValid() ? mHud->GetLastRadarAboveCount() : 0;
+        const int32 below = mHud.IsValid() ? mHud->GetLastRadarBelowCount() : 0;
+        Check(TEXT("j-radar-above-below"), above > 0 && below > 0 && above + below <= SOLRadar::MaxDrawnContacts,
+            FString::Printf(TEXT("radar at %.4g m: %d contacts, %d drawn above and %d below the ship plane (budget "
+                "%d)"), mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0, mHud.IsValid()
+                ? mHud->GetLastRadarContactCount() : 0, above, below, SOLRadar::MaxDrawnContacts));
+        TakeUiShot(TEXT("Radar"));
+        break;
+    }
     case ESOLHudPhase::CanvasFallback:
     {
         // sol.HudRenderer 0: the reticle goes back to Canvas lines and the batch stays empty (screenshot)
@@ -506,9 +540,11 @@ double FSOLHudSmoke::GetPhaseDuration(const ESOLHudPhase phase)
     case ESOLHudPhase::ThrustAfterClose:
         return HUDSMOKE_THRUST_S;
     case ESOLHudPhase::HudShotSetup:
+    case ESOLHudPhase::RadarShotSetup:
     case ESOLHudPhase::OrbitShotSetup:
         return HUDSMOKE_SHOT_SETUP_S;
     case ESOLHudPhase::HudShot:
+    case ESOLHudPhase::RadarShot:
         return HUDSMOKE_SHOT_WAIT_S;
     case ESOLHudPhase::OrbitShot:
         return HUDSMOKE_QUIT_WAIT_S;

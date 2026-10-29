@@ -4,7 +4,7 @@
 
 Umbrella issue #21; phases are issues #28 (A), #29 (B) and #30 (C). Depends on SDD 20 (`SOL::Hologram` shared style),
 SDD 8 (HUD, menus, settings) and the Limit Theory research (`Docs/Research/LT_features_for_SOL.md` section C).
-Status: design agreed (grill-me complete); phase A built (Amendment 1), phase B built (Amendment 2), C open.
+Status: done. Phase A built (Amendment 1), phase B built (Amendment 2), phase C built (Amendment 3); #21 closed.
 
 ## 1. Goal
 
@@ -181,3 +181,64 @@ shape, text or backing capacity. The Canvas fallback is not pixel-identical to p
 border lines and the key hints sit 8 px lower (the panel gap), although the fallback draws no panels; accepted as
 cosmetic.
 
+## Amendment 3: phase C as built (issue #30)
+
+**Decisions (grill-me, user).** The radar stays 3D on the **ship-horizontal plane** (the ship's forward/right plane,
+so it follows pitch and roll), not the ecliptic; contacts above the plane in LT Primary, below in LT Secondary drawn
+dashed and hollow; smooth glow lines through the batched renderer; the shared hologram style (panel, flicker, strength
+slider); zoom decades, AUTO and the contact set unchanged; no per-frame heap allocation; a contact budget.
+
+**Pure logic (`UI/SOLRadarLayout`, test-first).** `ToShipFrame` (the orientation's UnrotateVector of the offset),
+`ClassifySide` (height < 0 is Below; 0 and NaN Above), `ContactStyle` (below: dashed stem, hollow blip; the selected
+one large), `DashCount` / `DashSegment` (dashes anchored at the plane, the last clipped), `ScopeToScreen` / `StemTop`
+(the plane drawn as an ellipse squashed 0.5, forward up), `AzimuthToScope` / `ShipAzimuth`, `SelectContacts` (the
+selected first, then by distance, ties by index, into a reused index array), `SonarRingIntensity` (`0.18 + 0.3 s
+|sin(pi (0.5 t - r))|^8`, s the effects strength clamped to 0-2) and `IsCrowded`. The projection's range compression
+(whole-vector scaling onto the range sphere, square-root collapse inside 1%) is unchanged. 21 + 3 tests written from
+the contract by a separate agent (red on stubs, then green); `IsCrowded` was added after the first screenshots
+(test-after, 1 test).
+
+**Two new shape kinds (`M_SOLHudShape`, C++ mirrors in `SOLHudShapeMath`, test-first, 4 + 2 tests).** `Ellipse`
+(3): size 1 = X radius, kind param = half width, alpha = Y / X ratio (8 bits: the GPU draws 0.5 as 128/255);
+distance `|k0 (k0 - 1) / k1| - w` with k0 = |p/r|, k1 = |p/r^2| (exact on the axes; the shorter radius at the centre;
+radii clamped to 1e-3). `DashedLine` (4): a capsule whose distance along the line is measured to the nearest existing
+dash (dashes from the start every period, `HUD_DASH_FRACTION` 0.5 of it, none starting exactly at the far end),
+period in whole pixels in the alpha. A dashed stem must be one shape: drawn as separate dash quads each dash added the
+whole line's halo and a 60 px stem became a white column (first screenshot). The panel-only paths (fill, flicker) are
+now gated on the panel kind alone.
+
+**Drawing (`ASOLFlightHud::DrawRadar`).** Same place and size as before (radius 105 px x UI scale, squash 0.5, stem
+scale 0.6), on one hologram panel around the disc and range label plus a second dark backing under the disc (the
+additive glow can only brighten; over a sunlit Earth the orange contacts washed out to white). Four ellipse range
+rings at 25/50/75/100% with the sonar pulse (outer x1.3), faint axes, side and aft ticks, a heading tick ahead, the
+camera's horizontal view cone (from the view's focal length; hidden when the camera looks within ~6 degrees of
+ship-up or ship-down, where the heading is undefined), a ship chevron. Each contact: a foot tick, a stem (solid or one
+dashed shape) and a blip (dot, or a ring of the blip's size below the plane); the selected one larger with a highlight
+ring outside the blip and its name in its side's colour. Brightness: blips 0.6, stems 0.45, foot 0.35; non-selected
+contacts x0.7 behind the ship and x0.45 beyond the range (pulled onto the rim). Tuned from the screenshots: at 1 km
+AUTO with a target every contact sits on the rim and their halos added up to white blots, so a blip within 14 px x UI
+scale of one already drawn is skipped (moons on their planet, bunched rim contacts) and does not use the budget;
+drawing stops at `MaxDrawnContacts` (64) drawn blips. `sol.HudRenderer 0` draws the same with Canvas (ellipses as
+segments, `DashSegment` dashes). Known look issue: a selected contact near the centre overlaps the chevron, cone and
+axes, which glow together.
+
+**Smoke.** `-SOLSmokeHud` adds `j-radar-above-below` (ship pitched 30 and rolled 40 degrees from facing Earth, radar
+zoomed out to 1 AU: contacts drawn on both sides of the plane, within the budget) and the screenshot
+`HudSmoke_Radar.png`; 22/22 at 1280x720 and 1000x800 (5 above, 5 below drawn of 36 contacts). Screenshots looked at
+(Glow at 1 km AUTO, Radar at 1 AU, Canvas fallback).
+
+**Cost (`-game -SOLNoMenu` start view, 1280x720, editor build, ProfileGPU with `r.ProfileGPU.ShowUI 1`, `stat
+dumpframe`; single frames).** GPU: the shape batch `MID_M_SOLHudShape_0` 0.034 ms (69 shapes, 138 triangles; phase B
+0.020 ms for 24), the whole Slate UI pass 0.065 ms (6 draws; phase B 0.046 ms). Game thread: `HUD Time` 0.066 ms and
+`Game UI Paint` 0.073 ms in that frame (phase B's 0.37 / 0.071 ms were 240-frame averages, so not comparable
+one-to-one; both are well under a tenth of a millisecond here). Per frame the radar adds about 14 shapes plus 3 per
+drawn contact (at most ~207 of the 4096 capacity) and 2 backings; no heap allocation (the contact and order arrays
+are reserved at BeginPlay, the crowding list is a 64-entry stack array).
+
+**Adversarial review.** Blocker: the radar row in `GAME_MECHANICS.md` still had the pre-tuning numbers, fixed. Fixed
+Mediums: the selected below-plane contact's highlight ring sat on its blip ring (now outside the blip's real radius);
+crowded skips used up the budget (now the whole order is walked until 64 are drawn); the glow dash fraction silently
+assumed dash == gap (now a `static_assert`). Fixed Lows: ellipse radius clamp (C++ and HLSL), the cone flip near
+ship-up/down, comments on the 8-bit ratio and whole-pixel dash period, long lines, a parenthesised ternary. Not fixed,
+in `CLAUDE.md` tech debt: `SelectContacts` sorts every candidate each frame (fine at ~100 candidates; a bounded heap or
+partial selection when NPCs or minor bodies become targetable).
