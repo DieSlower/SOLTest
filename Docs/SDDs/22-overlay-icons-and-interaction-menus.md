@@ -68,6 +68,11 @@ start. Also reachable from the Settings screen.
   control and GUI element is issue #33.
 - No rectangles around hologram panels (outline-free soft panels) is part of #31.
 
+### 2.7 Follow-up (issue #34)
+
+Overlay profiles (5, vertical tabs in the Overlay Menu, RShift+O cycles) are a separate later ticket. #22 stores the
+overlay choices as one profile in a data structure that can hold several (profile 1 = the defaults above).
+
 ## 3. Open items for the implementation notes
 
 - Alt+O versus Left Alt free look (a chord with Alt must not re-orient the camera).

@@ -46,6 +46,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 |---|---|---|---|---|
 | 1 | #22 | Overlay icons, Overlay Menu (Ctrl+O), O/Alt+O/Shift+O keys, radial and list interaction menus, hologram cursor (SDD 22 written) | L | #31 |
 | 2 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
+| 2b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
 | 3 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
