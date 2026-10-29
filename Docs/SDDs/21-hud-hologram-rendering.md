@@ -4,7 +4,7 @@
 
 Umbrella issue #21; phases are issues #28 (A), #29 (B) and #30 (C). Depends on SDD 20 (`SOL::Hologram` shared style),
 SDD 8 (HUD, menus, settings) and the Limit Theory research (`Docs/Research/LT_features_for_SOL.md` section C).
-Status: design agreed (grill-me complete); phase A built (Amendment 1), B and C open.
+Status: design agreed (grill-me complete); phase A built (Amendment 1), phase B built (Amendment 2), C open.
 
 ## 1. Goal
 
@@ -25,7 +25,8 @@ flight-HUD element the hologram look, with a 3D radar that reads clearly. Menus 
 ## 3. Open questions (decide in the phase SDD notes with the user if they affect behaviour)
 
 - Glow text implementation (signed-distance font atlas versus the engine font drawn as glow quads) is chosen in phase B
-  after measuring readability at 1280x720.
+  after measuring readability at 1280x720. **Resolved in Amendment 2:** the engine font drawn by Slate with an outline
+  glow.
 - Bus payload shape (one coalesced snapshot struct versus several) is chosen in phase A; it must be allocation-free per
   frame.
 
@@ -95,3 +96,88 @@ with it and 0.012 ms with `sol.HudRenderer 0` (single-frame captures, so within 
 Game thread: 5 quads written into reserved arrays in `DrawHUD` and one 20-vertex transform copy in `OnPaint`, too
 small to show in `stat` (sub-microsecond); `MakeCustomVerts` copies the arrays inside Slate (engine-side, like
 Canvas's own batching). Phase B re-measures with every element ported.
+
+## Amendment 2: phase B as built (issue #29)
+
+**Scope.** Every flight-HUD element is drawn by the hologram renderer: reticle, joystick and stick, steer icon, the
+speed / frame / absolute / cap readouts and the cap bar, the flight-mode and boost line, the G meter and its bar, the G
+warning and blackout / lethal lines, the autopilot, cancel-hint and warp-precision lines, the route marker, the target
+readout, bracket, label and edge arrow, the prograde / retrograde markers, the key hints, the controls-changed notice,
+the date / anchor / nearest / surface-lock lines and the jump warp streaks. Not ported: the radar (phase C, #30; Canvas
+in the LT palette, its two labels already glow text) and the jump map's overlays (body icons, pick, route and grid;
+SDD 20's own batches). `sol.HudRenderer 0` still draws everything with Canvas (same layout and palette); `ASOLFlightHud`
+routes each primitive through `GlowLine` / `GlowRing` / `GlowBox` / `DrawBar` / `DrawBuffer`, which pick the batch or
+Canvas, so the fallback costs one branch per primitive.
+
+**Palette.** LT palette everywhere (`SOL::HudPalette`): Primary for readouts and lines, Secondary for the target, the
+locked frame, warnings and the over-cap bar, Good prograde, Hostile retrograde, Bad for G critical / blackout / lethal.
+A tone is a colour and an intensity (glow intensity, Canvas RGB scale, or text alpha 0.7 for dim lines). Tuned from the
+screenshots: target bracket 0.6 (its corners overlap and add), stick dot 0.6, joystick circles 0.18, bar fill 0.45 and
+track 0.1. The F3 panel (UMG) takes the palette too (Primary-tinted text on dark blue, Secondary highlight); its layout is
+unchanged.
+
+**Panels (D2).** Each text block gets one panel around the union of its line rectangles (padding
+`HUD_PANEL_PADDING_PX` 6 x UI scale): the top-left info lines, the bottom-left speed + G block, the top-right target
+readout, the top-centre autopilot + route block, the G warning (Secondary or Bad), the controls notice and the target's
+in-world label. A panel is the phase-A panel shape (`HUD_PANEL_FILL` 0.06, outline `HUD_PANEL_EDGE_INTENSITY` 0.35,
+fresnel edge fill) plus, new, a dark alpha-blended backing box (`HUD_PANEL_BACKING_COLOR` (0, 0.01, 0.03, 0.45)) under
+it for contrast, since the additive glow can only brighten. The panel scanlines now scale with the effects strength
+(`HUD_PANEL_SCANLINE` x strength) and every panel flickers: brightness x (1 - `HUD_PANEL_FLICKER` 0.08 x strength x
+SmoothNoise(age x 12 Hz + 41)), one global noise (all panels flicker together, like LT's global flicker). The key hints
+have no panel (dim help text, often wider than the screen at 720p); the info panel pushes them down by 8 px.
+
+**Glow text (open question resolved).** Options measured: (a) the engine font (GEngine Small / Medium / Large, their
+legacy Slate font info, so glyphs and layout match Canvas's `StrLen`) drawn by Slate in the shape layer with an outline
+glow, (b) plain Slate text over a drop shadow (`sol.HudTextGlow 0`), (c) the old Canvas text, and the SDF route. UE 5.8
+does have Slate SDF / MSDF text (the device profile sets `UI.SlateSDFText.RasterizationMode Msdf`), but it is enabled
+per font face asset and would need our own font assets for a glow that (a) already gives; rejected for now. Chosen: (a).
+Each line is a drop shadow (black, alpha 0.7, 1 px x UI scale down-right) then the text with its fill moved 30% toward
+white (a hot core) and a 1-unit outline in its own colour at alpha 0.35 (the glow). Slate rasterises at the final size,
+so the 1.8x speed readout is crisp (Canvas stretched a bitmap). Readability, WCAG contrast of the text (95th-percentile
+luminance) against its background (median) in the smoke's Earth view, info / speed / cap / target regions:
+
+| Variant | 1280x720 | 1000x800 |
+|---|---|---|
+| (a) glow text on panels | 7.4 / 6.7 / 7.7 / 7.5 : 1 | 7.9 / 7.4 / 8.2 / 8.3 : 1 |
+| (b) plain text on panels | 7.7 / 8.2 / 8.1 / 6.4 : 1 | 8.2 / 8.6 / 8.7 / 6.9 : 1 |
+| (c) Canvas, no panels | 11.1 / 6.1 / 11.4 / 8.3 : 1 | 6.2 / 6.2 / 6.8 / 4.9 : 1 |
+
+All panel variants clear WCAG AA (4.5:1) everywhere and vary little with what is behind (the backing), while Canvas
+text depends on the scene (4.9:1 for the target over Earth at 1000x800). The glow costs (b) at most 1.5 contrast points
+for the look D2 asks for. Text does not take the row jitter (Slate draws it, not our material); accepted.
+
+**Text and backings in the layer.** `FSOLHudTextList` (pure, `UI/SOLHudTextList`): `HUD_MAX_TEXTS` 64 lines reserved
+once; each line keeps a reference-counted copy of the HUD's cached per-line `FText` (no allocation), position, scale,
+colour and font slot; a full list drops and counts. `SSOLHudShapeLayer` now paints, in order, the backings
+(`HUD_MAX_PANELS` 32, `MakeBox` with a white box brush tinted), the shapes (one custom-vertex draw), the text shadows
+and the text (`MakeText`, layer ids +0..+3); everything follows the same frame stamp (this frame or the last). Slate's
+own text path copies each string into its draw element (engine-side, like Canvas's own batching).
+
+**Phase-A leftovers.** C++ mirrors of the material's panel fill (`PanelFill`), pad fade (`PadFade`), flicker
+(`PanelFlicker`), tone curve (`ToneCurve`), blue grade (`GradeBlue`) and the panel rectangle (`PanelAroundRect`) in
+`SOLHudShapeMath`, test-first (`SOLTest.HudPanels.*`, 10 tests written from the contract by a separate agent; red on
+stubs, then green).
+
+**Verification.** Suite 1047 tests (1037 + 10); 1048 after the review fixes (+ `BoxCapsule`). `-SOLSmokeHud` 21/21 at 1280x720 and 1000x800, glow and
+`sol.HudTextGlow 0` (new check `i-glow-text-panels`: at least 10 text lines and 3 panels; `i-canvas-fallback` also
+requires no text lines). Screenshots looked at (`HudSmoke_Glow.png`, `HudSmoke_Canvas.png`).
+
+**Cost (`-game -SOLNoMenu` start view, 1280x720, editor build, ProfileGPU with `r.ProfileGPU.ShowUI 1` and
+`stat dumpave -num=240`).** GPU: the shape batch `Slate Material: MID_M_SOLHudShape_0` 0.020 ms (24 shapes, 48
+triangles); the game window's whole Slate UI pass 0.046 ms (5 draws, including the backings and all text). Game thread:
+`HUD Time` (DrawHUD and the Canvas flush) 0.37 ms with the renderer against 0.53 ms with `sol.HudRenderer 0` (the
+Canvas text no longer draws there); `Game UI Paint` 0.071 ms against 0.055 ms (the layer's text moved into Slate's
+paint). Measured in the start view only; the heaviest case (map open with target, autopilot, route, controls notice and
+G warning panels all showing) was not profiled.
+
+**Adversarial review fixes.** Each line's measured size now lives in its line cache (`MeasureLine`), measured again
+only when its text or font changes, so unchanged lines no longer go through `StrLen` every frame (its measure cache is
+keyed by the string, so a miss copied the string), and the centred, autopilot and route lines are no longer measured
+twice. A bar's box-to-capsule maths moved to `SOLHudShapeMath::BoxCapsule` (tested, `SOLTest.HudPanels.BoxCapsule`)
+with the half width clamped to half the box's length, so a nearly empty bar no longer draws a dot wider than its fill
+that pokes out of the bar's start. The smoke's `i-glow-text-panels` now checks the text lines and backings the layer
+actually painted (a line whose font is missing is no longer counted). The HUD logs one warning if a frame overflows the
+shape, text or backing capacity. The Canvas fallback is not pixel-identical to phase A: the bar lost its top and bottom
+border lines and the key hints sit 8 px lower (the panel gap), although the fallback draws no panels; accepted as
+cosmetic.
+

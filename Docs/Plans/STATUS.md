@@ -29,6 +29,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #19 | Three flight modes and controls | 19 |
 | #20 | Hologram map, Move/Patrol routes, route overlay, map hologram look | 20 |
 | #28 | HUD phase A: event bus, batched Slate renderer, shape material, effects slider | 21 |
+| #29 | HUD phase B: every flight HUD element on the glow renderer, hologram panels, glow text | 21 |
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
 
 ## In progress
@@ -36,7 +37,6 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | Issue | What | Notes |
 |---|---|---|
 | #21 | HUD hologram rendering (umbrella) | SDD 21 |
-| #29 | Phase B: port every flight HUD element | agent running |
 
 ## To do (ordered)
 

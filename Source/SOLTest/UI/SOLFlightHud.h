@@ -14,6 +14,7 @@
 #include "Map/SOLMapRouteOverlay.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeBatch.h"
+#include "UI/SOLHudTextList.h"
 #include "UI/SOLRadarLayout.h"
 
 #include "CoreMinimal.h"
@@ -55,9 +56,11 @@ class USOLTargetingSubsystem;
  * hidden nothing of the flight HUD is drawn in flight (the warp streaks still are, and with the jump map open the
  * HUD is drawn as usual, since picking a destination needs its overlays).
  *
- * Glow shapes (SDD 21 phase A): ported pieces (so far the centre reticle) go into SSOLHudShapeLayer's batch, drawn
- * by Slate in one custom-vertex draw with M_SOLHudShape; sol.HudRenderer 0 draws them with Canvas instead. The pawn
- * is never included: its pilot snapshot and the HUD commands arrive through USOLHudEventSubsystem (SDD 21 D4).
+ * Hologram HUD (SDD 21 phases A and B): every flight-HUD element except the radar (phase C) and the jump map's
+ * overlays goes into SSOLHudShapeLayer: lines, rings, bars and hologram panels into its glow-shape batch (one Slate
+ * custom-vertex draw with M_SOLHudShape) and every text line into its glow-text list (engine fonts drawn by Slate in
+ * the LT palette, over a dark panel backing per text block); sol.HudRenderer 0 draws all of it with Canvas instead.
+ * The pawn is never included: its pilot snapshot and the HUD commands arrive through USOLHudEventSubsystem (SDD 21 D4).
  *
  * During a jump's warp sequence (SDD 3 Appendix I) the whole flight HUD is hidden and only the warp's radial streaks
  * are drawn: a fixed table of canvas lines from the screen center, built once, that stream outward and brighten and
@@ -142,6 +145,18 @@ public:
     // Returns the number of glow shapes the last frame queued (verification)
     int32 GetLastShapeCount() const;
 
+    // Returns the number of glow-text lines the last frame queued (verification)
+    int32 GetLastTextCount() const;
+
+    // Returns the number of hologram panels the last frame queued (verification)
+    int32 GetLastPanelCount() const { return mLastPanelCount; }
+
+    // Returns the number of glow-text lines the shape layer's last paint actually drew (verification)
+    int32 GetLastPaintedTextCount() const;
+
+    // Returns the number of panel backings the shape layer's last paint actually drew (verification)
+    int32 GetLastPaintedBackingCount() const;
+
     // Returns the number of warp streaks drawn in the last frame (verification)
     int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
 
@@ -185,6 +200,25 @@ private:
     // Returns true when a screen point lies inside the canvas, shrunk by a margin
     bool IsOnScreen(const FVector2D& screen, float marginPx) const;
 
+    // Draws a glow line (shape renderer) or a Canvas line in colour x intensity
+    void GlowLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, float intensity, float thickness);
+
+    // Draws a glow ring (shape renderer) or a Canvas circle of line segments in colour x intensity
+    void GlowRing(const FVector2D& center, float radiusPx, const FLinearColor& color, float intensity, float thickness,
+        int32 segments);
+
+    // Draws a filled glow box (a capsule as tall as the box; shape renderer) or a Canvas rectangle
+    void GlowBox(float x, float y, float width, float height, const FLinearColor& color, float intensity);
+
+    // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
+    void DrawBar(float x, float y, double fill01, const FLinearColor& color);
+
+    // Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only)
+    void AddHoloPanel(const FBox2D& content, const FLinearColor& color);
+
+    // Returns the engine font of a HUD font slot
+    static UFont* GetHudFont(ESOLHudFont font);
+
     // Draws a circle (or an ellipse when squashY < 1) as line segments
     void DrawCircle(const FVector2D& center, float radiusPx, const FLinearColor& color, int32 segments, float squashY,
         float thickness);
@@ -219,16 +253,27 @@ private:
         Count
     };
 
-    // The last text drawn on one line and the FText built from it (rebuilt only when the text changes)
+    // The last text drawn on one line, the FText built from it and its unscaled measured size (all rebuilt only when
+    // the text or font changes)
     struct FSOLHudLineCache
     {
         FString Source;
         FText Text;
+        FVector2D Size = FVector2D::ZeroVector;
+        ESOLHudFont Font = ESOLHudFont::Small;
+        bool bMeasured = false;
     };
 
-    // Draws the text buffer as one HUD line at a position with a font and color, scaled by UI scale times textScale
-    void DrawBuffer(ESOLHudLine line, const FLinearColor& color, float x, float y, UFont* font,
+    // Brings a line's cache up to date with the text buffer and font; returns the text's unscaled size
+    FVector2D MeasureLine(ESOLHudLine line, ESOLHudFont font);
+
+    // Draws the text buffer as one HUD line (glow text with the shape renderer, else Canvas) at a position with a font
+    // and colour, scaled by the UI scale times textScale; returns its screen rectangle
+    FBox2D DrawBuffer(ESOLHudLine line, const FLinearColor& color, float x, float y, ESOLHudFont font,
         float textScale = 1.0f);
+
+    // Draws the text buffer as one HUD line centred on centerX; returns its screen rectangle
+    FBox2D DrawBufferCentered(ESOLHudLine line, const FLinearColor& color, float centerX, float y, ESOLHudFont font);
 
     // Rebuilds the cached key hint lines from the applied key bindings (at begin play and after a rebind)
     void RebuildKeyHints();
@@ -276,9 +321,6 @@ private:
     // Draws the route marker (state, progress, total ETA) below the autopilot marker, moved below the key hints if it
     // would overlap them (top centre)
     void DrawRouteMarker();
-
-    // Draws the text buffer as a HUD line and returns its screen rectangle
-    FBox2D DrawBufferMeasured(ESOLHudLine line, const FLinearColor& color, float x, float y, UFont* font);
 
     // Draws the mouse-steer icon centred on a point: Free (an open cursor arrow), Held (a reticle), Locked (a reticle
     // with a lock tick); bright while the mouse steers, dim otherwise
@@ -364,6 +406,13 @@ private:
     FDelegateHandle mKeyBindingsHandle;             // Binding to the settings' OnKeyBindingsChanged
     FDelegateHandle mHudCommandHandle;              // Binding to the HUD event bus's commands
     TSharedPtr<SSOLHudShapeLayer> mShapeLayer;      // Batched glow-shape widget over the game viewport (SDD 21)
+    FSOLHudShapeBatch* mBatch = nullptr;            // This frame's shape batch while the shape renderer is active
+    FSOLHudTextList* mTextList = nullptr;           // This frame's glow-text lines while the shape renderer is active
+    FBox2D mLeftBlockRect = FBox2D(ForceInit);      // Speed and G block text this frame (its panel)
+    FBox2D mTopBlockRect = FBox2D(ForceInit);       // Autopilot and route text this frame (its panel)
+    int32 mLastPanelCount = 0;                      // Hologram panels queued this frame
+    bool mWasBackingDropped = false;                // A panel backing was dropped this frame (layer full)
+    bool mIsOverflowWarned = false;                 // The capacity-overflow warning was logged (once per HUD)
     float mShapeStrength = -1.0f;                   // Material parameters last pushed (-1 = never)
     float mShapeComposite = -1.0f;
     FVector2f mShapeViewSize = FVector2f::ZeroVector;

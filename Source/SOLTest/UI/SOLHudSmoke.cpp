@@ -55,6 +55,8 @@ namespace
                                                             // for 2 s is ~29 m/s, SDD 18)
     constexpr uint64 HUDSMOKE_BUS_MAX_FRAME_LAG = 2;        // Pilot snapshot at most this many frames old (SDD 21)
     constexpr int32 HUDSMOKE_RETICLE_SHAPES = 5;            // Glow reticle: 4 arms and a dot
+    constexpr int32 HUDSMOKE_MIN_GLOW_TEXTS = 10;           // Info, speed, G, target and radar lines (SDD 21 B)
+    constexpr int32 HUDSMOKE_MIN_PANELS = 3;                // Info, speed and G, target readout
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -444,6 +446,16 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
                 && shapes >= HUDSMOKE_RETICLE_SHAPES, FString::Printf(TEXT("glow-shape renderer %s, %d shapes "
                 "(reticle needs %d)"), mHud.IsValid() && mHud->WasShapeRendererActive() ? TEXT("active")
                 : TEXT("inactive"), shapes, HUDSMOKE_RETICLE_SHAPES));
+
+            // SDD 21 phase B: the text lines are glow text in the Slate layer and the text blocks have panels; the
+            // painted counts prove the layer drew them (a failed font setup would queue lines but draw none)
+            const int32 texts = mHud.IsValid() ? mHud->GetLastPaintedTextCount() : 0;
+            const int32 panels = mHud.IsValid() ? mHud->GetLastPanelCount() : 0;
+            const int32 backings = mHud.IsValid() ? mHud->GetLastPaintedBackingCount() : 0;
+            Check(TEXT("i-glow-text-panels"), texts >= HUDSMOKE_MIN_GLOW_TEXTS && panels >= HUDSMOKE_MIN_PANELS
+                && backings >= HUDSMOKE_MIN_PANELS, FString::Printf(TEXT("%d glow-text lines painted (need %d), "
+                    "%d panels queued, %d backings painted (need %d)"), texts, HUDSMOKE_MIN_GLOW_TEXTS, panels,
+                    backings, HUDSMOKE_MIN_PANELS));
         }
 
         // With the UI, so the glow-shape layer (Slate) is in it; a HighResShot in the same frame would replace it
@@ -458,9 +470,10 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     {
         // sol.HudRenderer 0: the reticle goes back to Canvas lines and the batch stays empty (screenshot)
         const int32 shapes = mHud.IsValid() ? mHud->GetLastShapeCount() : -1;
-        Check(TEXT("i-canvas-fallback"), mHud.IsValid() && !mHud->WasShapeRendererActive() && shapes == 0,
-            FString::Printf(TEXT("sol.HudRenderer 0: shape renderer %s, %d shapes"), mHud.IsValid()
-                && mHud->WasShapeRendererActive() ? TEXT("active") : TEXT("inactive"), shapes));
+        const int32 texts = mHud.IsValid() ? mHud->GetLastTextCount() : -1;
+        Check(TEXT("i-canvas-fallback"), mHud.IsValid() && !mHud->WasShapeRendererActive() && shapes == 0
+            && texts == 0, FString::Printf(TEXT("sol.HudRenderer 0: shape renderer %s, %d shapes, %d glow-text lines"),
+                mHud.IsValid() && mHud->WasShapeRendererActive() ? TEXT("active") : TEXT("inactive"), shapes, texts));
         TakeUiShot(TEXT("Canvas"));
         break;
     }

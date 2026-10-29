@@ -24,6 +24,7 @@
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeLayer.h"
+#include "UI/SOLHudShapeMath.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -85,17 +86,23 @@ namespace
     constexpr float HUD_RADAR_SELECTED_BLIP_PX = 7.0f;
     constexpr float HUD_RADAR_INNER_RING = 0.5f;
 
-    // Colors (canvas lines ignore alpha, so line colors are dimmed in RGB)
-    const FLinearColor HUD_COLOR(0.55f, 0.95f, 0.65f, 0.95f);
-    const FLinearColor HUD_DIM_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
-    const FLinearColor HUD_TEXT_COLOR(0.85f, 1.0f, 0.88f, 1.0f);
-    const FLinearColor HUD_WARN_COLOR(1.0f, 0.55f, 0.25f, 1.0f);
-    const FLinearColor HUD_TARGET_COLOR(1.0f, 0.85f, 0.3f, 1.0f);
-    const FLinearColor HUD_PROGRADE_COLOR(0.4f, 1.0f, 0.4f, 0.95f);
-    const FLinearColor HUD_RETROGRADE_COLOR(1.0f, 0.45f, 0.35f, 0.95f);
-    const FLinearColor HUD_STICK_COLOR(0.22f, 0.24f, 0.23f, 1.0f);
+    // LT palette (SDD 21 phase B). A tone is a palette colour and an intensity: glow shapes scale their glow by it,
+    // Canvas lines (which ignore alpha) their RGB, and text lines take a dim tone as alpha (HudDimText)
+    const FLinearColor& HUD_PRIMARY = SOL::HudPalette::PRIMARY;
+    const FLinearColor& HUD_SECONDARY = SOL::HudPalette::SECONDARY;   // Warnings, the target, the locked frame
+    const FLinearColor& HUD_GOOD = SOL::HudPalette::GOOD;             // Prograde marker
+    const FLinearColor& HUD_HOSTILE = SOL::HudPalette::HOSTILE;       // Retrograde marker
+    const FLinearColor& HUD_BAD = SOL::HudPalette::BAD;               // G critical / blackout / lethal (SDD 18)
+    constexpr float HUD_DIM = 0.55f;                                    // Secondary lines (axes, ticks, stalks)
+    constexpr float HUD_FAINT = 0.18f;                                  // The joystick circles
+    constexpr float HUD_BRACKET_INTENSITY = 0.6f;                       // Target bracket and edge arrow (corners add)
+    constexpr float HUD_STICK_DOT_INTENSITY = 0.6f;                     // The stick dot (a filled glow blob)
+    constexpr float HUD_TEXT_DIM_ALPHA = 0.7f;                          // Dim text lines (hints, absolute speed)
+    constexpr float HUD_BAR_TRACK_INTENSITY = 0.1f;                     // A glow bar's empty track
+    constexpr float HUD_BAR_FILL_INTENSITY = 0.45f;                     // A glow bar's filled part
+    constexpr float HUD_PANEL_GAP_PX = 8.0f;                            // Info panel to the key hints below it
+    constexpr int32 HUD_VELOCITY_MARKER_SEGMENTS = 16;                  // Canvas fallback circle segments
     const FLinearColor HUD_BAR_BACK_COLOR(0.0f, 0.0f, 0.0f, 0.45f);
-    const FLinearColor HUD_ALARM_COLOR(1.0f, 0.2f, 0.15f, 1.0f);           // G critical / blackout (SDD 18)
     constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
     constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
     constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
@@ -106,8 +113,7 @@ namespace
     constexpr double HUD_CONTROLS_NOTICE_S = 15.0;                          // One-time controls notice duration
     constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
     constexpr double HUD_PERCENT = 100.0;
-    const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.05f, 0.02f, 0.35f);
-    const FLinearColor HUD_RADAR_BEHIND_COLOR(0.3f, 0.52f, 0.36f, 1.0f);
+    const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar (Canvas until phase C, #30)
 
     // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
     // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
@@ -134,6 +140,24 @@ namespace
     // sol.HudComposite: 1 adds LT's grain and scanlines to the glow shapes (off by default)
     TAutoConsoleVariable<int32> CVarHudComposite(SOL::Hologram::CVAR_HUD_COMPOSITE, 0,
         TEXT("Flight HUD grain and scanline composite (SDD 21): 1 = on, 0 = off"), ECVF_Default);
+
+    // sol.HudTextGlow: 1 draws the HUD text in the glow style, 0 plain over its drop shadow (shape renderer only)
+    TAutoConsoleVariable<int32> CVarHudTextGlow(SOL::Hologram::CVAR_HUD_TEXT_GLOW, 1,
+        TEXT("Flight HUD glow text (SDD 21): 1 = glow style, 0 = plain text over a drop shadow"), ECVF_Default);
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a colour's RGB scaled by an intensity (opaque), for Canvas lines and boxes
+    FLinearColor HudScaled(const FLinearColor& color, const float intensity)
+    {
+        return FLinearColor(color.R * intensity, color.G * intensity, color.B * intensity, 1.0f);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a text colour dimmed through its alpha
+    FLinearColor HudDimText(const FLinearColor& color)
+    {
+        return FLinearColor(color.R, color.G, color.B, HUD_TEXT_DIM_ALPHA);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -244,12 +268,12 @@ void ASOLFlightHud::HandleHudCommand(const ESOLHudCommand command)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Creates the shape layer widget and its material and adds it to the game viewport
+// Creates the shape layer widget, its material and its fonts and adds it to the game viewport
 void ASOLFlightHud::CreateShapeLayer()
 {
     UGameViewportClient* viewport = GetWorld()->GetGameViewport();
     UMaterialInterface* material = LoadObject<UMaterialInterface>(nullptr, SOL::Paths::HUD_SHAPE_MATERIAL);
-    if (viewport == nullptr || material == nullptr)
+    if (viewport == nullptr || material == nullptr || GEngine == nullptr)
     {
         UE_LOG(LogSOL, Warning, TEXT("FlightHud %s: no %s; the HUD draws with Canvas only"), *GetName(),
             viewport == nullptr ? TEXT("game viewport") : SOL::Paths::HUD_SHAPE_MATERIAL);
@@ -258,6 +282,16 @@ void ASOLFlightHud::CreateShapeLayer()
     ShapeMaterial = UMaterialInstanceDynamic::Create(material, this);
     mShapeLayer = SNew(SSOLHudShapeLayer);
     mShapeLayer->SetMaterial(ShapeMaterial);
+
+    // The text lines use the same engine fonts and sizes Canvas draws them with (GEngine's fonts stay loaded)
+    for (int32 index = 0; index < static_cast<int32>(ESOLHudFont::Count); ++index)
+    {
+        const ESOLHudFont font = static_cast<ESOLHudFont>(index);
+        if (const UFont* engineFont = GetHudFont(font))
+        {
+            mShapeLayer->SetFont(font, engineFont->GetLegacySlateFontInfo());
+        }
+    }
     viewport->AddViewportWidgetContent(mShapeLayer.ToSharedRef(), HUD_SHAPE_LAYER_Z_ORDER);
     mShapeStrength = -1.0f;
     mShapeComposite = -1.0f;
@@ -281,20 +315,39 @@ void ASOLFlightHud::DestroyShapeLayer()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Starts this frame's shape batch and pushes changed material parameters (strength, composite, view size)
+// Starts this frame's shape batch and text lines and pushes changed material parameters (strength, composite, size)
 void ASOLFlightHud::BeginShapeFrame()
 {
     mWasShapeRendererActive = false;
+    mBatch = nullptr;
+    mTextList = nullptr;
+    mLastPanelCount = 0;
     if (!mShapeLayer.IsValid())
     {
         return;
     }
-    mShapeLayer->GetBatch().Reset();
+
+    // Warn once if the previous frame overflowed a fixed capacity (lines, shapes or backings silently disappear)
+    const int32 droppedShapes = mShapeLayer->GetBatch().GetDroppedCount();
+    const int32 droppedTexts = mShapeLayer->GetTexts().GetDroppedCount();
+    if (!mIsOverflowWarned && (droppedShapes > 0 || droppedTexts > 0 || mWasBackingDropped))
+    {
+        mIsOverflowWarned = true;
+        UE_LOG(LogSOL, Warning, TEXT("FlightHud %s: HUD capacity overflow (%d shapes, %d text lines dropped, "
+            "backings %s); raise the HUD_MAX_* limits in SOLConstants.h"), *GetName(), droppedShapes, droppedTexts,
+            mWasBackingDropped ? TEXT("dropped") : TEXT("fit"));
+    }
+    mWasBackingDropped = false;
+    mShapeLayer->ResetFrame();
     mShapeLayer->MarkBatchFrame(GFrameCounter);
     if (ShapeMaterial == nullptr || Canvas == nullptr)
     {
         return;
     }
+    mBatch = GetActiveShapeBatch();
+    mTextList = mBatch != nullptr ? &mShapeLayer->GetTexts() : nullptr;
+    mWasShapeRendererActive = mBatch != nullptr;
+    mShapeLayer->SetTextGlow(CVarHudTextGlow.GetValueOnGameThread() != 0);
 
     // Parameters change rarely (Settings, the cvar, a resize): pushed only when they differ
     const float strength = Settings != nullptr ? Settings->GetLiveValues().HudEffectsStrength
@@ -340,6 +393,138 @@ bool ASOLFlightHud::HasFreshPilot() const
 int32 ASOLFlightHud::GetLastShapeCount() const
 {
     return mShapeLayer.IsValid() ? mShapeLayer->GetBatch().GetShapeCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of glow-text lines the last frame queued
+int32 ASOLFlightHud::GetLastTextCount() const
+{
+    return mShapeLayer.IsValid() ? mShapeLayer->GetTexts().Num() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of glow-text lines the shape layer's last paint actually drew
+int32 ASOLFlightHud::GetLastPaintedTextCount() const
+{
+    return mShapeLayer.IsValid() ? mShapeLayer->GetLastPaintedTextCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of panel backings the shape layer's last paint actually drew
+int32 ASOLFlightHud::GetLastPaintedBackingCount() const
+{
+    return mShapeLayer.IsValid() ? mShapeLayer->GetLastPaintedBackingCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the engine font of a HUD font slot
+UFont* ASOLFlightHud::GetHudFont(const ESOLHudFont font)
+{
+    if (GEngine == nullptr)
+    {
+        return nullptr;
+    }
+    switch (font)
+    {
+    case ESOLHudFont::Large:
+        return GEngine->GetLargeFont();
+    case ESOLHudFont::Medium:
+        return GEngine->GetMediumFont();
+    default:
+        return GEngine->GetSmallFont();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a glow line (shape renderer) or a Canvas line in colour x intensity
+void ASOLFlightHud::GlowLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, const float intensity,
+    const float thickness)
+{
+    if (mBatch != nullptr)
+    {
+        // Canvas widths up to 2 px become LT's 1 px glow line; thicker ones keep their extra width in the core
+        const float halfWidth = FMath::Max(SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, 0.5f * (thickness - 1.0f));
+        mBatch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+        return;
+    }
+    DrawLine(a.X, a.Y, b.X, b.Y, HudScaled(color, intensity), thickness);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a glow ring (shape renderer) or a Canvas circle of line segments in colour x intensity
+void ASOLFlightHud::GlowRing(const FVector2D& center, const float radiusPx, const FLinearColor& color,
+    const float intensity, const float thickness, const int32 segments)
+{
+    if (mBatch != nullptr)
+    {
+        mBatch->AddRing(FVector2f(center), radiusPx, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, color, intensity,
+            SOL::Hologram::HUD_GLOW_PAD_PX);
+        return;
+    }
+    DrawCircle(center, radiusPx, HudScaled(color, intensity), segments, 1.0f, thickness);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a filled glow box (a capsule as tall as the box) or a Canvas rectangle
+void ASOLFlightHud::GlowBox(const float x, const float y, const float width, const float height,
+    const FLinearColor& color, const float intensity)
+{
+    if (width <= 0.0f || height <= 0.0f)
+    {
+        return;
+    }
+    if (mBatch != nullptr)
+    {
+        FVector2f start;
+        FVector2f end;
+        float halfWidth = 0.0f;
+        if (SOLHudShapeMath::BoxCapsule(x, y, width, height, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, start, end,
+            halfWidth))
+        {
+            mBatch->AddLine(start, end, halfWidth, color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+        }
+        return;
+    }
+    DrawRect(HudScaled(color, intensity), x, y, width, height);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
+void ASOLFlightHud::DrawBar(const float x, const float y, const double fill01, const FLinearColor& color)
+{
+    const float width = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
+    const float height = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
+    const float filled = width * static_cast<float>(FMath::Clamp(fill01, 0.0, 1.0));
+    if (mBatch != nullptr)
+    {
+        GlowBox(x, y, width, height, HUD_PRIMARY, HUD_BAR_TRACK_INTENSITY);
+    }
+    else
+    {
+        DrawRect(HUD_BAR_BACK_COLOR, x, y, width, height);
+    }
+    GlowBox(x, y, filled, height, color, HUD_BAR_FILL_INTENSITY);
+    GlowLine(FVector2D(x + width, y), FVector2D(x + width, y + height), HUD_PRIMARY, HUD_DIM, 1.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only)
+void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& color)
+{
+    if (mBatch == nullptr || !content.bIsValid || !mShapeLayer.IsValid())
+    {
+        return;
+    }
+    FVector2f center;
+    FVector2f halfSize;
+    SOLHudShapeMath::PanelAroundRect(FBox2f(FVector2f(content.Min), FVector2f(content.Max)),
+        SOL::Hologram::HUD_PANEL_PADDING_PX * mUiScale, center, halfSize);
+    if (mBatch->AddPanel(center, halfSize, color, SOL::Hologram::HUD_PANEL_EDGE_INTENSITY,
+        SOL::Hologram::HUD_PANEL_FILL, SOL::Hologram::HUD_GLOW_PAD_PX))
+    {
+        mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(center - halfSize, center + halfSize));
+        ++mLastPanelCount;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -427,6 +612,8 @@ void ASOLFlightHud::DrawHUD()
     mLastRouteLineRect = FBox2D(ForceInit);
     mLastHintsRect = FBox2D(ForceInit);
     mAutopilotBlockBottomY = 0.0f;
+    mLeftBlockRect = FBox2D(ForceInit);
+    mTopBlockRect = FBox2D(ForceInit);
     mRouteOverlay.ResetFrame();
     mHologramOverlay.ResetFrame();
 
@@ -484,7 +671,7 @@ void ASOLFlightHud::DrawHUD()
 
         // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
         mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
-            GEngine->GetSmallFont(), HUD_TEXT_COLOR, mUiScale);
+            GEngine->GetSmallFont(), HUD_PRIMARY, mUiScale);
     }
 
     // Routes and the draft (SDD 20): always on the map, in flight while the route overlay is on (P)
@@ -515,18 +702,18 @@ void ASOLFlightHud::DrawHUD()
     }
     if (realTimeS < mControlsNoticeEndS)
     {
-        UFont* medium = GEngine->GetMediumFont();
-        float textWidth = 0.0f;
-        float textHeight = 0.0f;
         mText.Reset();
         mText.Append(mKeyTexts.ControlsChangedNotice);
-        Canvas->StrLen(medium, mText, textWidth, textHeight);
-        DrawBuffer(ESOLHudLine::ControlsNotice, HUD_TARGET_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
-            Canvas->ClipY * HUD_CONTROLS_NOTICE_Y_FRACTION, medium);
+        AddHoloPanel(DrawBufferCentered(ESOLHudLine::ControlsNotice, HUD_SECONDARY, Canvas->ClipX * 0.5f,
+            Canvas->ClipY * HUD_CONTROLS_NOTICE_Y_FRACTION, ESOLHudFont::Medium), HUD_SECONDARY);
     }
+
+    // Text blocks gather their rectangles while drawing; each gets one hologram panel
     DrawSpeedBlock(state, control);
     DrawPilotBlock(control);
     DrawRouteMarker();
+    AddHoloPanel(mLeftBlockRect, HUD_PRIMARY);
+    AddHoloPanel(mTopBlockRect, HUD_PRIMARY);
     DrawRadar(state);
 
     // The jump map views from its own camera: the ship-view pilot aids (reticle, joystick, velocity markers) are
@@ -564,8 +751,8 @@ int32 ASOLFlightHud::DrawWarpStreaks(const double intensity, const double elapse
         return 0;
     }
 
-    // Each streak streams outward from near the center and wraps around; canvas lines ignore alpha, so brightness
-    // (intensity, and the streak's progress outward) scales the RGB instead
+    // Each streak streams outward from near the center and wraps around, brightening (intensity, and the streak's
+    // progress outward) as glow lines, or as Canvas lines whose RGB is scaled (Canvas lines ignore alpha)
     const FVector2D center(Canvas->ClipX * 0.5, Canvas->ClipY * 0.5);
     const double halfDiagonalPx = center.Size();
     int32 drawn = 0;
@@ -579,9 +766,7 @@ int32 ASOLFlightHud::DrawWarpStreaks(const double intensity, const double elapse
         const FVector2D start = center + streak.Direction * innerPx;
         const FVector2D end = center + streak.Direction * (innerPx + lengthPx);
         const float brightness = static_cast<float>(intensity * (0.25 + 0.75 * phase));
-        FLinearColor color = WARP_STREAK_COLOR * brightness;
-        color.A = 1.0f;
-        DrawLine(start.X, start.Y, end.X, end.Y, color, (1.0f + WARP_STREAK_EXTRA_THICKNESS_PX
+        GlowLine(start, end, WARP_STREAK_COLOR, brightness, (1.0f + WARP_STREAK_EXTRA_THICKNESS_PX
             * static_cast<float>(phase)) * mUiScale);
         ++drawn;
     }
@@ -647,57 +832,83 @@ void ASOLFlightHud::DrawCircle(const FVector2D& center, const float radiusPx, co
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the text buffer as one HUD line at a position with a font and color, scaled by the UI scale times textScale
-void ASOLFlightHud::DrawBuffer(const ESOLHudLine line, const FLinearColor& color, const float x, const float y,
-    UFont* font, const float textScale)
+// Brings a line's cache up to date with the text buffer and font; returns the text's unscaled size
+FVector2D ASOLFlightHud::MeasureLine(const ESOLHudLine line, const ESOLHudFont font)
 {
-    // Rebuild the line's FText only when its text changed (the FText is the one allocation left per changed line)
+    // Rebuild the FText and re-measure only when the text or font changed (StrLen's measure cache is keyed by the
+    // string, so measuring a changing line every frame would copy it into that cache every frame)
     FSOLHudLineCache& cache = mLines[static_cast<int32>(line)];
-    if (!cache.Source.Equals(mText, ESearchCase::CaseSensitive))
+    const bool bTextChanged = !cache.Source.Equals(mText, ESearchCase::CaseSensitive);
+    if (bTextChanged)
     {
         cache.Source.Reset();
         cache.Source.Append(mText);
         cache.Text = FText::FromString(cache.Source);
     }
-
-    // Canvas copies the FText by reference count; its own glyph layout inside DrawItem is out of our control
-    FCanvasTextItem item(FVector2D(x, y), cache.Text, font, color);
-    item.Scale = FVector2D(mUiScale * textScale, mUiScale * textScale);
-    item.EnableShadow(FLinearColor::Black);
-    Canvas->DrawItem(item);
+    if (bTextChanged || !cache.bMeasured || cache.Font != font)
+    {
+        float textWidth = 0.0f;
+        float textHeight = 0.0f;
+        Canvas->StrLen(GetHudFont(font), mText, textWidth, textHeight);
+        cache.Size = FVector2D(textWidth, textHeight);
+        cache.Font = font;
+        cache.bMeasured = true;
+    }
+    return cache.Size;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the center reticle
+// Draws the text buffer as one HUD line (glow text with the shape renderer, else Canvas); returns its rectangle
+FBox2D ASOLFlightHud::DrawBuffer(const ESOLHudLine line, const FLinearColor& color, const float x, const float y,
+    const ESOLHudFont font, const float textScale)
+{
+    const FVector2D size = MeasureLine(line, font);
+    const FSOLHudLineCache& cache = mLines[static_cast<int32>(line)];
+    UFont* engineFont = GetHudFont(font);
+    const float scale = mUiScale * textScale;
+    const FBox2D rect(FVector2D(x, y), FVector2D(x + size.X * scale, y + size.Y * scale));
+
+    // Glow text: the FText is shared by reference count with the Slate layer, which draws it this frame
+    if (mTextList != nullptr)
+    {
+        mTextList->Add(cache.Text, FVector2f(x, y), scale, color, font);
+        return rect;
+    }
+
+    // Canvas copies the FText by reference count; its own glyph layout inside DrawItem is out of our control
+    FCanvasTextItem item(FVector2D(x, y), cache.Text, engineFont, color);
+    item.Scale = FVector2D(scale, scale);
+    item.EnableShadow(FLinearColor::Black);
+    Canvas->DrawItem(item);
+    return rect;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the text buffer as one HUD line centred on centerX; returns its screen rectangle
+FBox2D ASOLFlightHud::DrawBufferCentered(const ESOLHudLine line, const FLinearColor& color, const float centerX,
+    const float y, const ESOLHudFont font)
+{
+    const float textWidth = static_cast<float>(MeasureLine(line, font).X);
+    return DrawBuffer(line, color, centerX - 0.5f * textWidth * mUiScale, y, font);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the center reticle: four arms and a dimmer centre dot in LT Primary (glow shapes, or Canvas lines)
 void ASOLFlightHud::DrawReticle(const FVector2D& center)
 {
     const float gap = HUD_RETICLE_GAP_PX * mUiScale;
     const float arm = gap + HUD_RETICLE_ARM_PX * mUiScale;
-
-    // Shape renderer (SDD 21 proof element): four glow arms and a glow dot in the LT palette, one batched draw
-    if (FSOLHudShapeBatch* batch = GetActiveShapeBatch())
+    GlowLine(FVector2D(center.X - arm, center.Y), FVector2D(center.X - gap, center.Y), HUD_PRIMARY, 1.0f, 1.5f);
+    GlowLine(FVector2D(center.X + gap, center.Y), FVector2D(center.X + arm, center.Y), HUD_PRIMARY, 1.0f, 1.5f);
+    GlowLine(FVector2D(center.X, center.Y - arm), FVector2D(center.X, center.Y - gap), HUD_PRIMARY, 1.0f, 1.5f);
+    GlowLine(FVector2D(center.X, center.Y + gap), FVector2D(center.X, center.Y + arm), HUD_PRIMARY, 1.0f, 1.5f);
+    if (mBatch != nullptr)
     {
-        using namespace SOL::Hologram;
-        const FVector2f c(center);
-        const FLinearColor& color = SOL::HudPalette::PRIMARY;
-        batch->AddLine(FVector2f(c.X - arm, c.Y), FVector2f(c.X - gap, c.Y), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
-            HUD_GLOW_PAD_PX);
-        batch->AddLine(FVector2f(c.X + gap, c.Y), FVector2f(c.X + arm, c.Y), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
-            HUD_GLOW_PAD_PX);
-        batch->AddLine(FVector2f(c.X, c.Y - arm), FVector2f(c.X, c.Y - gap), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
-            HUD_GLOW_PAD_PX);
-        batch->AddLine(FVector2f(c.X, c.Y + gap), FVector2f(c.X, c.Y + arm), HUD_LINE_HALF_WIDTH_PX, color, 1.0f,
-            HUD_GLOW_PAD_PX);
-        batch->AddRing(c, HUD_RETICLE_DOT_RADIUS_PX * mUiScale, HUD_LINE_HALF_WIDTH_PX, color, HUD_RETICLE_DOT_INTENSITY,
-            HUD_GLOW_PAD_PX);
-        mWasShapeRendererActive = true;
+        mBatch->AddRing(FVector2f(center), HUD_RETICLE_DOT_RADIUS_PX * mUiScale, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
+            HUD_PRIMARY, HUD_RETICLE_DOT_INTENSITY, SOL::Hologram::HUD_GLOW_PAD_PX);
         return;
     }
-    DrawLine(center.X - arm, center.Y, center.X - gap, center.Y, HUD_COLOR, 1.5f);
-    DrawLine(center.X + gap, center.Y, center.X + arm, center.Y, HUD_COLOR, 1.5f);
-    DrawLine(center.X, center.Y - arm, center.X, center.Y - gap, HUD_COLOR, 1.5f);
-    DrawLine(center.X, center.Y + gap, center.X, center.Y + arm, HUD_COLOR, 1.5f);
-    DrawRect(HUD_COLOR, center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f);
+    DrawRect(HUD_PRIMARY, center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -705,31 +916,30 @@ void ASOLFlightHud::DrawReticle(const FVector2D& center)
 void ASOLFlightHud::DrawJoystick(const FVector2D& center, const FSOLHudPilotSnapshot& pilot)
 {
     const float radius = static_cast<float>(pilot.StickRadiusPx);
-    DrawCircle(center, radius, HUD_STICK_COLOR, HUD_CIRCLE_SEGMENTS, 1.0f, 1.0f);
-    DrawCircle(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), HUD_STICK_COLOR, HUD_CIRCLE_SEGMENTS / 2,
-        1.0f, 1.0f);
+    GlowRing(center, radius, HUD_PRIMARY, HUD_FAINT, 1.0f, HUD_CIRCLE_SEGMENTS);
+    GlowRing(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), HUD_PRIMARY, HUD_FAINT, 1.0f,
+        HUD_CIRCLE_SEGMENTS / 2);
 
     // The stick offset is X right, Y up; the screen's Y grows downward
     const FVector2d& offset = pilot.StickOffsetPx;
     const FVector2D stick(center.X + offset.X, center.Y - offset.Y);
-    const FLinearColor color = pilot.bIsFreeLooking || !pilot.bIsSteering ? HUD_DIM_COLOR : HUD_COLOR;
+    const float intensity = (pilot.bIsFreeLooking || !pilot.bIsSteering ? HUD_DIM : 1.0f) * HUD_STICK_DOT_INTENSITY;
     if (offset.Size() > radius * SOL::JOYSTICK_DEAD_ZONE)
     {
-        DrawLine(center.X, center.Y, stick.X, stick.Y, HUD_DIM_COLOR, 1.0f);
+        GlowLine(center, stick, HUD_PRIMARY, HUD_DIM, 1.0f);
     }
     const float dot = HUD_STICK_DOT_PX * mUiScale;
-    DrawRect(color, stick.X - dot * 0.5f, stick.Y - dot * 0.5f, dot, dot);
+    GlowBox(stick.X - dot * 0.5f, stick.Y - dot * 0.5f, dot, dot, HUD_PRIMARY, intensity);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the sim date and warp, anchor, nearest body and altitude, and the key hints (top left)
+// Draws the sim date and warp, anchor, nearest body and altitude in a panel, and the key hints (top left)
 void ASOLFlightHud::DrawInfoBlock()
 {
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    UFont* medium = GEngine->GetMediumFont();
-    UFont* small = GEngine->GetSmallFont();
     const float x = HUD_MARGIN_PX * mUiScale;
     float y = HUD_MARGIN_PX * mUiScale;
+    FBox2D panel(ForceInit);
 
     // Sim date and time (UTC) and the warp label
     const FDateTime utc = SimClock->GetUtcDateTime();
@@ -749,7 +959,7 @@ void ASOLFlightHud::DrawInfoBlock()
     {
         mText.Appendf(TEXT("%.0fx"), warp);
     }
-    DrawBuffer(ESOLHudLine::DateWarp, warp > 1.0 ? HUD_WARN_COLOR : HUD_TEXT_COLOR, x, y, medium);
+    panel += DrawBuffer(ESOLHudLine::DateWarp, warp > 1.0 ? HUD_SECONDARY : HUD_PRIMARY, x, y, ESOLHudFont::Medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
     // Anchor body
@@ -760,7 +970,7 @@ void ASOLFlightHud::DrawInfoBlock()
     {
         registry.GetName(anchorIndex).AppendString(mText);
     }
-    DrawBuffer(ESOLHudLine::Anchor, HUD_TEXT_COLOR, x, y, medium);
+    panel += DrawBuffer(ESOLHudLine::Anchor, HUD_PRIMARY, x, y, ESOLHudFont::Medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
     // Nearest body and the altitude above its surface
@@ -774,7 +984,7 @@ void ASOLFlightHud::DrawInfoBlock()
         mText.Append(TEXT("   ALT "));
         SOLHudFormat::AppendDistanceM(mText, altitudeM);
     }
-    DrawBuffer(ESOLHudLine::Nearest, HUD_TEXT_COLOR, x, y, medium);
+    panel += DrawBuffer(ESOLHudLine::Nearest, HUD_PRIMARY, x, y, ESOLHudFont::Medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
     // Surface-lock (SDD 4 decision 6): the status while engaged (warning color past the mode's warn threshold), else a
@@ -791,7 +1001,8 @@ void ASOLFlightHud::DrawInfoBlock()
             mText.Append(TEXT("   ALT "));
             SOLHudFormat::AppendDistanceM(mText, Ships->GetSurfaceLockAltitudeM());
             mLastSurfaceLockLine = lock.bWarning ? ESOLSurfaceLockHudLine::Warning : ESOLSurfaceLockHudLine::Engaged;
-            DrawBuffer(ESOLHudLine::SurfaceLock, lock.bWarning ? HUD_WARN_COLOR : HUD_TEXT_COLOR, x, y, medium);
+            panel += DrawBuffer(ESOLHudLine::SurfaceLock, lock.bWarning ? HUD_SECONDARY : HUD_PRIMARY, x, y,
+                ESOLHudFont::Medium);
             y += HUD_LINE_MEDIUM_PX * mUiScale;
         }
         else if (!IsMapOpen() && nearest != INDEX_NONE && altitudeM <= SOLSurfaceLock::ComputeManualRangeM(
@@ -802,17 +1013,19 @@ void ASOLFlightHud::DrawInfoBlock()
             mText.Append(TEXT("   ALT "));
             SOLHudFormat::AppendDistanceM(mText, altitudeM);
             mLastSurfaceLockLine = ESOLSurfaceLockHudLine::Hint;
-            DrawBuffer(ESOLHudLine::SurfaceLock, HUD_DIM_COLOR, x, y, medium);
+            panel += DrawBuffer(ESOLHudLine::SurfaceLock, HudDimText(HUD_PRIMARY), x, y, ESOLHudFont::Medium);
             y += HUD_LINE_MEDIUM_PX * mUiScale;
         }
     }
+    AddHoloPanel(panel, HUD_PRIMARY);
 
-    // Overlay state and key hints (the jump map's own keys while it is open)
+    // Overlay state and key hints (the jump map's own keys while it is open), below the panel
+    y += HUD_PANEL_GAP_PX * mUiScale;
     mText.Reset();
     if (IsMapOpen())
     {
         mText.Append(mMapHints);
-        mLastHintsRect += DrawBufferMeasured(ESOLHudLine::Hints, HUD_TEXT_COLOR, x, y, small);
+        mLastHintsRect += DrawBuffer(ESOLHudLine::Hints, HUD_PRIMARY, x, y, ESOLHudFont::Small);
         y += HUD_LINE_SMALL_PX * mUiScale;
 
         // Destination picking (2d) and the jump (2e)
@@ -820,20 +1033,17 @@ void ASOLFlightHud::DrawInfoBlock()
         mText.Append(TEXT("PICK   left click body/space + drag: XY   hold Shift + move: height   Shift+click: lock"));
         const bool bRouteMode = MapMode != nullptr && MapMode->GetMapMode() != ESOLMapMode::Jump;
         mText.Append(bRouteMode ? TEXT("   X clear   Enter start route") : TEXT("   X clear   Enter jump"));
-        mLastHintsRect += DrawBufferMeasured(ESOLHudLine::MapPickHints, HUD_TEXT_COLOR, x, y, small);
+        mLastHintsRect += DrawBuffer(ESOLHudLine::MapPickHints, HUD_PRIMARY, x, y, ESOLHudFont::Small);
         return;
     }
     mText.Append(AreOrbitLinesVisible() ? mFlightHintsOrbitsOn : mFlightHintsOrbitsOff);
-    mLastHintsRect += DrawBufferMeasured(ESOLHudLine::Hints, HUD_DIM_COLOR, x, y, small);
+    mLastHintsRect += DrawBuffer(ESOLHudLine::Hints, HudDimText(HUD_PRIMARY), x, y, ESOLHudFont::Small);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Draws the relative and absolute speed, the cap and its fill bar, assist and boost (bottom left)
 void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipControl& control)
 {
-    UFont* large = GEngine->GetLargeFont();
-    UFont* medium = GEngine->GetMediumFont();
-    UFont* small = GEngine->GetSmallFont();
     const float x = HUD_MARGIN_PX * mUiScale;
     const float blockHeight = (HUD_LINE_LARGE_PX + 2.0f * HUD_LINE_SMALL_PX + HUD_LINE_MEDIUM_PX
         + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
@@ -843,7 +1053,7 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     // Speed relative to the active frame, large
     mText.Reset();
     AppendSpeed(relativeSpeedMps);
-    DrawBuffer(ESOLHudLine::Speed, HUD_TEXT_COLOR, x, y, large, HUD_SPEED_TEXT_SCALE);
+    mLeftBlockRect += DrawBuffer(ESOLHudLine::Speed, HUD_PRIMARY, x, y, ESOLHudFont::Large, HUD_SPEED_TEXT_SCALE);
     y += HUD_LINE_LARGE_PX * mUiScale;
 
     // Frame name (locked target, else anchor) and the absolute Sun-frame speed, smaller
@@ -854,49 +1064,46 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     {
         mText.Append(mKeyTexts.FrameLockTag);
     }
-    DrawBuffer(ESOLHudLine::Frame, Targeting->IsFrameLocked() ? HUD_TARGET_COLOR : HUD_TEXT_COLOR, x, y, small);
+    mLeftBlockRect += DrawBuffer(ESOLHudLine::Frame, Targeting->IsFrameLocked() ? HUD_SECONDARY : HUD_PRIMARY, x, y,
+        ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
     mText.Reset();
     mText.Append(TEXT("abs "));
     AppendSpeed(state.VelocityMps.Size());
     mText.Append(TEXT(" (Sun frame)"));
-    DrawBuffer(ESOLHudLine::AbsoluteSpeed, HUD_DIM_COLOR, x, y, small);
+    mLeftBlockRect += DrawBuffer(ESOLHudLine::AbsoluteSpeed, HudDimText(HUD_PRIMARY), x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
 
     // Speed cap
     mText.Reset();
     mText.Append(TEXT("CAP "));
     AppendSpeed(control.SpeedCapMps);
-    DrawBuffer(ESOLHudLine::Cap, HUD_TEXT_COLOR, x, y, medium);
+    mLeftBlockRect += DrawBuffer(ESOLHudLine::Cap, HUD_PRIMARY, x, y, ESOLHudFont::Medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
 
-    // Fill bar of the relative speed against the cap (orange above the cap, e.g. while boosting)
-    const float barWidth = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
-    const float barHeight = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
+    // Fill bar of the relative speed against the cap (Secondary above the cap, e.g. while boosting)
     const double fill = control.SpeedCapMps > 0.0 ? relativeSpeedMps / control.SpeedCapMps : 0.0;
-    DrawRect(HUD_BAR_BACK_COLOR, x, y, barWidth, barHeight);
-    DrawRect(fill > 1.0 ? HUD_WARN_COLOR : HUD_COLOR, x, y, barWidth * static_cast<float>(FMath::Clamp(fill, 0.0, 1.0)),
-        barHeight);
-    DrawLine(x, y, x + barWidth, y, HUD_DIM_COLOR, 1.0f);
-    DrawLine(x, y + barHeight, x + barWidth, y + barHeight, HUD_DIM_COLOR, 1.0f);
-    DrawLine(x + barWidth, y, x + barWidth, y + barHeight, HUD_DIM_COLOR, 1.0f);
-    y += barHeight + 6.0f * mUiScale;
+    DrawBar(x, y, fill, fill > 1.0 ? HUD_SECONDARY : HUD_PRIMARY);
+    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale,
+        y + HUD_SPEED_BAR_HEIGHT_PX * mUiScale));
+    y += (HUD_SPEED_BAR_HEIGHT_PX + 6.0f) * mUiScale;
 
     // Flight mode label in its color (SDD 19 section 3.7) and boost, then the mouse-steer icon to their right
     const ESOLFlightMode mode = Ships->GetFlightMode();
     mText.Reset();
     mText.Append(SOLHudFormat::FlightModeLabel(mode));
     mText.Append(control.bBoost ? TEXT("   BOOST") : TEXT("   boost off"));
-    DrawBuffer(ESOLHudLine::Assist, SOLHudFormat::FlightModeColor(mode), x, y, small);
+    const FBox2D modeRect = DrawBuffer(ESOLHudLine::Assist, SOLHudFormat::FlightModeColor(mode), x, y,
+        ESOLHudFont::Small);
+    mLeftBlockRect += modeRect;
     if (HasFreshPilot())
     {
         const FSOLHudPilotSnapshot& pilot = HudEvents->GetBus().GetPilot();
-        float textWidth = 0.0f;
-        float textHeight = 0.0f;
-        Canvas->StrLen(small, mText, textWidth, textHeight);
-        const FVector2D iconCenter(x + (textWidth + HUD_STEER_ICON_GAP_PX + HUD_STEER_ICON_RADIUS_PX) * mUiScale,
-            y + textHeight * 0.5f * mUiScale);
+        const FVector2D iconCenter(modeRect.Max.X + (HUD_STEER_ICON_GAP_PX + HUD_STEER_ICON_RADIUS_PX) * mUiScale,
+            0.5 * (modeRect.Min.Y + modeRect.Max.Y));
         DrawSteerIcon(iconCenter, pilot.SteerIcon, pilot.bIsSteering);
+        mLeftBlockRect += FBox2D(iconCenter - FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale),
+            iconCenter + FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale));
     }
 }
 
@@ -905,37 +1112,35 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
 void ASOLFlightHud::DrawSteerIcon(const FVector2D& center, const ESOLSteerIcon icon, const bool bSteering)
 {
     const float radius = HUD_STEER_ICON_RADIUS_PX * mUiScale;
-    const FLinearColor color = bSteering ? HUD_COLOR : HUD_DIM_COLOR;
+    const float intensity = bSteering ? 1.0f : HUD_DIM;
     if (icon == ESOLSteerIcon::Free)
     {
         // Cursor arrow: a tip at the top left, a vertical edge and a slanted edge closed by a short base
         const FVector2D tip(center.X - radius * 0.6f, center.Y - radius);
         const FVector2D bottom(tip.X, tip.Y + radius * 2.0f);
         const FVector2D side(tip.X + radius * 1.4f, tip.Y + radius * 1.4f);
-        DrawLine(tip.X, tip.Y, bottom.X, bottom.Y, color, 1.5f);
-        DrawLine(tip.X, tip.Y, side.X, side.Y, color, 1.5f);
-        DrawLine(bottom.X, bottom.Y, side.X, side.Y, color, 1.5f);
+        GlowLine(tip, bottom, HUD_PRIMARY, intensity, 1.5f);
+        GlowLine(tip, side, HUD_PRIMARY, intensity, 1.5f);
+        GlowLine(bottom, side, HUD_PRIMARY, intensity, 1.5f);
         return;
     }
 
     // Held and Locked: a reticle (circle, centre dot)
-    DrawCircle(center, radius, color, HUD_STEER_ICON_SEGMENTS, 1.0f, 1.5f);
-    DrawRect(color, center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f);
+    GlowRing(center, radius, HUD_PRIMARY, intensity, 1.5f, HUD_STEER_ICON_SEGMENTS);
+    GlowBox(center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f, HUD_PRIMARY, intensity * HUD_STICK_DOT_INTENSITY);
     if (icon == ESOLSteerIcon::Locked)
     {
         // Lock tick: a small filled square on the lower right of the ring
         const float tick = radius * 0.7f;
-        DrawRect(color, center.X + radius * 0.5f, center.Y + radius * 0.5f, tick, tick);
+        GlowBox(center.X + radius * 0.5f, center.Y + radius * 0.5f, tick, tick, HUD_PRIMARY, intensity);
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Draws the pilot G meter (above the speed block), the G warning (under the reticle) and the autopilot marker
-// with its ETA and the high-warp hint (top centre); SDD 18 placeholders, #19 owns the final layout
+// with its ETA and the high-warp hint (top centre)
 void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
 {
-    UFont* medium = GEngine->GetMediumFont();
-    UFont* small = GEngine->GetSmallFont();
     const FSOLPilotGLimits limits = Ships->GetFlightParams().PilotLimits;
     const FSOLGMeterState meter = Ships->GetGMeter();
     const double gLoad = Ships->GetGLoadG();
@@ -947,22 +1152,20 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     const float x = HUD_MARGIN_PX * mUiScale;
     const float speedBlockHeight = (HUD_LINE_LARGE_PX + 2.0f * HUD_LINE_SMALL_PX + HUD_LINE_MEDIUM_PX
         + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
-    const float barWidth = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
     const float barHeight = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
     float y = Canvas->ClipY - HUD_MARGIN_PX * mUiScale - speedBlockHeight - HUD_G_BLOCK_GAP_PX * mUiScale
         - barHeight - HUD_LINE_SMALL_PX * mUiScale;
-    const FLinearColor meterColor = bAlarm ? HUD_ALARM_COLOR
-        : (warning == ESOLGWarning::OverSustained ? HUD_WARN_COLOR : HUD_TEXT_COLOR);
+    const FLinearColor& meterColor = bAlarm ? HUD_BAD
+        : (warning == ESOLGWarning::OverSustained ? HUD_SECONDARY : HUD_PRIMARY);
     mText.Reset();
     mText.Appendf(TEXT("G %.1f   tolerance %.0f%%"), gLoad, meter.Meter * HUD_PERCENT);
-    DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, small);
+    mLeftBlockRect += DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
-    DrawRect(HUD_BAR_BACK_COLOR, x, y, barWidth, barHeight);
-    DrawRect(meterColor, x, y, barWidth * static_cast<float>(FMath::Clamp(meter.Meter, 0.0, 1.0)), barHeight);
-    DrawLine(x + barWidth, y, x + barWidth, y + barHeight, HUD_DIM_COLOR, 1.0f);
+    DrawBar(x, y, meter.Meter, meterColor);
+    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale, y + barHeight));
 
-    // Warning under the reticle: over the sustained limit only in manual flight (assist never exceeds it), the
-    // critical meter and the blackout in every mode
+    // Warning under the reticle in its own panel: over the sustained limit only in manual flight (assist never
+    // exceeds it), the critical meter and the blackout in every mode
     const bool bShowWarning = bAlarm || (warning == ESOLGWarning::OverSustained && !control.bFlightAssist);
     if (bShowWarning)
     {
@@ -982,11 +1185,9 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
             mText.Appendf(TEXT("G LIMIT EXCEEDED: %.1f G (sustained %.1f G)"), gLoad, limits.SustainedG);
             break;
         }
-        float textWidth = 0.0f;
-        float textHeight = 0.0f;
-        Canvas->StrLen(medium, mText, textWidth, textHeight);
-        DrawBuffer(ESOLHudLine::GWarning, bAlarm ? HUD_ALARM_COLOR : HUD_WARN_COLOR,
-            Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale, Canvas->ClipY * HUD_G_WARNING_Y_FRACTION, medium);
+        const FLinearColor& warningColor = bAlarm ? HUD_BAD : HUD_SECONDARY;
+        AddHoloPanel(DrawBufferCentered(ESOLHudLine::GWarning, warningColor, Canvas->ClipX * 0.5f,
+            Canvas->ClipY * HUD_G_WARNING_Y_FRACTION, ESOLHudFont::Medium), warningColor);
     }
 
     // Autopilot marker with the ETA countdown (sim time), and the high-warp precision hint
@@ -1003,35 +1204,31 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     SOLHudFormat::AppendDurationS(mText, guidance.EtaS);
     mText.Append(TEXT("   "));
     SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
-    float textWidth = 0.0f;
-    float textHeight = 0.0f;
-    Canvas->StrLen(medium, mText, textWidth, textHeight);
+    const float textWidth = static_cast<float>(MeasureLine(ESOLHudLine::Autopilot, ESOLHudFont::Medium).X);
 
     // The block sits below the top edge, or below the key-hint lines where it would overlap them (long hint lines at
     // 1280x720)
+    const float centerX = Canvas->ClipX * 0.5f;
     float top = HUD_AUTOPILOT_TOP_PX * mUiScale;
     const float halfWidth = 0.5f * textWidth * mUiScale;
     const float blockHeight = (HUD_LINE_MEDIUM_PX + 2.0f * HUD_LINE_SMALL_PX) * mUiScale;
-    if (mLastHintsRect.bIsValid && mLastHintsRect.Min.X < Canvas->ClipX * 0.5f + halfWidth
-        && mLastHintsRect.Max.X > Canvas->ClipX * 0.5f - halfWidth && mLastHintsRect.Min.Y < top + blockHeight
+    if (mLastHintsRect.bIsValid && mLastHintsRect.Min.X < centerX + halfWidth
+        && mLastHintsRect.Max.X > centerX - halfWidth && mLastHintsRect.Min.Y < top + blockHeight
         && mLastHintsRect.Max.Y > top)
     {
         top = static_cast<float>(mLastHintsRect.Max.Y) + HUD_LINE_SMALL_PX * mUiScale;
     }
-    DrawBuffer(ESOLHudLine::Autopilot, HUD_TARGET_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale, top,
-        medium);
+    mTopBlockRect += DrawBuffer(ESOLHudLine::Autopilot, HUD_SECONDARY, centerX - halfWidth, top, ESOLHudFont::Medium);
     mText.Reset();
     mText.Append(SOLMenuText::AUTOPILOT_CANCEL_HINT);
-    Canvas->StrLen(small, mText, textWidth, textHeight);
-    DrawBuffer(ESOLHudLine::AutopilotCancel, HUD_DIM_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
-        top + HUD_LINE_MEDIUM_PX * mUiScale, small);
+    mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotCancel, HudDimText(HUD_PRIMARY), centerX,
+        top + HUD_LINE_MEDIUM_PX * mUiScale, ESOLHudFont::Small);
     if (Ships->IsAutopilotPrecisionReduced())
     {
         mText.Reset();
         mText.Append(TEXT("WARP: autopilot precision reduced"));
-        Canvas->StrLen(small, mText, textWidth, textHeight);
-        DrawBuffer(ESOLHudLine::AutopilotHint, HUD_WARN_COLOR, Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale,
-            top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX) * mUiScale, small);
+        mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotHint, HUD_SECONDARY, centerX,
+            top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX) * mUiScale, ESOLHudFont::Small);
     }
     mAutopilotBlockBottomY = top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX
         + (Ships->IsAutopilotPrecisionReduced() ? HUD_LINE_SMALL_PX : 0.0f)) * mUiScale;
@@ -1134,17 +1331,17 @@ void ASOLFlightHud::DrawRouteMarker()
     {
         mText.Appendf(TEXT("  waypoint %d/%d  legs %d"), cursor.TargetIndex + 1, waypointCount, cursor.LegsCompleted);
     }
-    FLinearColor color = SOL::HudPalette::PRIMARY;
+    FLinearColor color = HUD_PRIMARY;
     switch (state)
     {
     case ESOLRouteState::Paused:
         mText.Append(TEXT("   PAUSED"));
         mText.Append(mKeyTexts.RouteResumeHint);
-        color = SOL::HudPalette::SECONDARY;
+        color = HUD_SECONDARY;
         break;
     case ESOLRouteState::Finished:
         mText.Append(TEXT("   COMPLETE"));
-        color = HUD_DIM_COLOR;
+        color = HudDimText(HUD_PRIMARY);
         break;
     default:
         mText.Append(kind == ESOLRouteKind::Move ? TEXT("   ETA ") : TEXT("   next ETA "));
@@ -1153,10 +1350,9 @@ void ASOLFlightHud::DrawRouteMarker()
     }
 
     // Below the autopilot block (or where it would be), and below the key hints if it would overlap them
-    UFont* medium = GEngine->GetMediumFont();
-    float textWidth = 0.0f;
-    float textHeight = 0.0f;
-    Canvas->StrLen(medium, mText, textWidth, textHeight);
+    const FVector2D textSize = MeasureLine(ESOLHudLine::Route, ESOLHudFont::Medium);
+    const float textWidth = static_cast<float>(textSize.X);
+    const float textHeight = static_cast<float>(textSize.Y);
     const float x = Canvas->ClipX * 0.5f - textWidth * 0.5f * mUiScale;
     float y = mAutopilotBlockBottomY > 0.0f ? mAutopilotBlockBottomY : HUD_AUTOPILOT_TOP_PX * mUiScale;
     FBox2D rect(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
@@ -1165,29 +1361,16 @@ void ASOLFlightHud::DrawRouteMarker()
         y = mLastHintsRect.Max.Y + HUD_ROUTE_HINT_GAP_PX * mUiScale;
         rect = FBox2D(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
     }
-    DrawBuffer(ESOLHudLine::Route, color, x, y, medium);
+    DrawBuffer(ESOLHudLine::Route, color, x, y, ESOLHudFont::Medium);
+    mTopBlockRect += rect;
     mLastRouteLineRect = rect;
     mLastRouteLineText.Append(mText);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the text buffer as a HUD line and returns its screen rectangle
-FBox2D ASOLFlightHud::DrawBufferMeasured(const ESOLHudLine line, const FLinearColor& color, const float x,
-    const float y, UFont* font)
-{
-    float textWidth = 0.0f;
-    float textHeight = 0.0f;
-    Canvas->StrLen(font, mText, textWidth, textHeight);
-    DrawBuffer(line, color, x, y, font);
-    return FBox2D(FVector2D(x, y), FVector2D(x + textWidth * mUiScale, y + textHeight * mUiScale));
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Draws the selected target's bracket and readout, or an edge arrow when it is off-screen
+// Draws the selected target's readout panel and bracket, or an edge arrow when it is off-screen
 void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& state)
 {
-    UFont* medium = GEngine->GetMediumFont();
-    UFont* small = GEngine->GetSmallFont();
     const float panelX = Canvas->ClipX - (HUD_MARGIN_PX + HUD_TARGET_PANEL_WIDTH_PX) * mUiScale;
     float panelY = HUD_MARGIN_PX * mUiScale;
     const FSOLTargetInfo* target = Targeting->GetSelectedTarget();
@@ -1197,7 +1380,8 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     if (target == nullptr)
     {
         mText.Append(mKeyTexts.NoTarget);
-        DrawBuffer(ESOLHudLine::TargetName, HUD_DIM_COLOR, panelX, panelY, medium);
+        AddHoloPanel(DrawBuffer(ESOLHudLine::TargetName, HudDimText(HUD_PRIMARY), panelX, panelY,
+            ESOLHudFont::Medium), HUD_PRIMARY);
         return;
     }
 
@@ -1205,17 +1389,18 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     const double distanceM = FVector3d::Dist(target->PositionM, state.PositionM);
     const double relativeSpeedMps = (state.VelocityMps - target->VelocityMps).Size();
     target->Name.AppendString(mText);
-    DrawBuffer(ESOLHudLine::TargetName, HUD_TARGET_COLOR, panelX, panelY, medium);
+    FBox2D readout = DrawBuffer(ESOLHudLine::TargetName, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Medium);
     panelY += HUD_LINE_MEDIUM_PX * mUiScale;
     mText.Reset();
     mText.Append(TEXT("DIST "));
     SOLHudFormat::AppendDistanceM(mText, distanceM);
-    DrawBuffer(ESOLHudLine::TargetDistance, HUD_TARGET_COLOR, panelX, panelY, small);
+    readout += DrawBuffer(ESOLHudLine::TargetDistance, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Small);
     panelY += HUD_LINE_SMALL_PX * mUiScale;
     mText.Reset();
     mText.Append(TEXT("REL "));
     AppendSpeed(relativeSpeedMps);
-    DrawBuffer(ESOLHudLine::TargetRelative, HUD_TARGET_COLOR, panelX, panelY, small);
+    readout += DrawBuffer(ESOLHudLine::TargetRelative, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Small);
+    AddHoloPanel(readout, HUD_SECONDARY);
 
     // Where the target is drawn: a body through the same placement as its visual, anything else through the point
     // placement from the current render viewpoint (correct while the map overrides the viewpoint)
@@ -1245,15 +1430,15 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
             const float sx = (cornerIndex & 1) ? 1.0f : -1.0f;
             const float sy = (cornerIndex & 2) ? 1.0f : -1.0f;
             const FVector2D tip(screen.X + sx * half, screen.Y + sy * half);
-            DrawLine(tip.X, tip.Y, tip.X - sx * corner, tip.Y, HUD_TARGET_COLOR, 1.5f);
-            DrawLine(tip.X, tip.Y, tip.X, tip.Y - sy * corner, HUD_TARGET_COLOR, 1.5f);
+            GlowLine(tip, FVector2D(tip.X - sx * corner, tip.Y), HUD_SECONDARY, HUD_BRACKET_INTENSITY, 1.5f);
+            GlowLine(tip, FVector2D(tip.X, tip.Y - sy * corner), HUD_SECONDARY, HUD_BRACKET_INTENSITY, 1.5f);
         }
         mText.Reset();
         target->Name.AppendString(mText);
         mText.Append(TEXT("  "));
         SOLHudFormat::AppendDistanceM(mText, distanceM);
-        DrawBuffer(ESOLHudLine::TargetLabel, HUD_TARGET_COLOR, screen.X - half, screen.Y + half + 4.0f * mUiScale,
-            small);
+        AddHoloPanel(DrawBuffer(ESOLHudLine::TargetLabel, HUD_SECONDARY, screen.X - half,
+            screen.Y + half + 4.0f * mUiScale, ESOLHudFont::Small), HUD_SECONDARY);
         return;
     }
 
@@ -1275,14 +1460,14 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     const FVector2D tip = anchor + direction * (HUD_EDGE_ARROW_LENGTH_PX * mUiScale);
     const FVector2D left = anchor + perpendicular * (HUD_EDGE_ARROW_WIDTH_PX * mUiScale);
     const FVector2D right = anchor - perpendicular * (HUD_EDGE_ARROW_WIDTH_PX * mUiScale);
-    DrawLine(tip.X, tip.Y, left.X, left.Y, HUD_TARGET_COLOR, 2.0f);
-    DrawLine(tip.X, tip.Y, right.X, right.Y, HUD_TARGET_COLOR, 2.0f);
-    DrawLine(left.X, left.Y, right.X, right.Y, HUD_TARGET_COLOR, 2.0f);
+    GlowLine(tip, left, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
+    GlowLine(tip, right, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
+    GlowLine(left, right, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
     mText.Reset();
     target->Name.AppendString(mText);
     const FVector2D label = anchor - direction * (3.0f * HUD_EDGE_ARROW_LENGTH_PX * mUiScale);
-    DrawBuffer(ESOLHudLine::TargetLabel, HUD_TARGET_COLOR, label.X - 20.0f * mUiScale, label.Y - 8.0f * mUiScale,
-        small);
+    DrawBuffer(ESOLHudLine::TargetLabel, HUD_SECONDARY, label.X - 20.0f * mUiScale, label.Y - 8.0f * mUiScale,
+        ESOLHudFont::Small);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1300,22 +1485,27 @@ void ASOLFlightHud::DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipS
     const float radius = HUD_VELOCITY_MARKER_RADIUS_PX * mUiScale;
     FVector2D screen;
 
-    // Prograde: a circle with three ticks (left, right, up)
+    // Prograde (LT Good): a circle with three ticks (left, right, up)
     if (ProjectLocal(view, local, screen) && IsOnScreen(screen, radius))
     {
-        DrawCircle(screen, radius, HUD_PROGRADE_COLOR, 16, 1.0f, 1.5f);
-        DrawLine(screen.X - radius, screen.Y, screen.X - 2.0f * radius, screen.Y, HUD_PROGRADE_COLOR, 1.5f);
-        DrawLine(screen.X + radius, screen.Y, screen.X + 2.0f * radius, screen.Y, HUD_PROGRADE_COLOR, 1.5f);
-        DrawLine(screen.X, screen.Y - radius, screen.X, screen.Y - 2.0f * radius, HUD_PROGRADE_COLOR, 1.5f);
+        GlowRing(screen, radius, HUD_GOOD, 1.0f, 1.5f, HUD_VELOCITY_MARKER_SEGMENTS);
+        GlowLine(FVector2D(screen.X - radius, screen.Y), FVector2D(screen.X - 2.0f * radius, screen.Y), HUD_GOOD,
+            1.0f, 1.5f);
+        GlowLine(FVector2D(screen.X + radius, screen.Y), FVector2D(screen.X + 2.0f * radius, screen.Y), HUD_GOOD,
+            1.0f, 1.5f);
+        GlowLine(FVector2D(screen.X, screen.Y - radius), FVector2D(screen.X, screen.Y - 2.0f * radius), HUD_GOOD,
+            1.0f, 1.5f);
     }
 
-    // Retrograde: a circle with a cross
+    // Retrograde (LT Hostile): a circle with a cross
     if (ProjectLocal(view, -local, screen) && IsOnScreen(screen, radius))
     {
         const float arm = radius * 0.7f;
-        DrawCircle(screen, radius, HUD_RETROGRADE_COLOR, 16, 1.0f, 1.5f);
-        DrawLine(screen.X - arm, screen.Y - arm, screen.X + arm, screen.Y + arm, HUD_RETROGRADE_COLOR, 1.5f);
-        DrawLine(screen.X - arm, screen.Y + arm, screen.X + arm, screen.Y - arm, HUD_RETROGRADE_COLOR, 1.5f);
+        GlowRing(screen, radius, HUD_HOSTILE, 1.0f, 1.5f, HUD_VELOCITY_MARKER_SEGMENTS);
+        GlowLine(FVector2D(screen.X - arm, screen.Y - arm), FVector2D(screen.X + arm, screen.Y + arm), HUD_HOSTILE,
+            1.0f, 1.5f);
+        GlowLine(FVector2D(screen.X - arm, screen.Y + arm), FVector2D(screen.X + arm, screen.Y - arm), HUD_HOSTILE,
+            1.0f, 1.5f);
     }
 }
 
@@ -1357,22 +1547,23 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
         Canvas->ClipY - HUD_MARGIN_PX * mUiScale - labelHeight - stalkReserve - squashedRadius);
     DrawRect(HUD_RADAR_BACK_COLOR, center.X - radius, center.Y - squashedRadius, 2.0f * radius,
         2.0f * squashedRadius);
-    DrawCircle(center, radius, HUD_COLOR, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.5f);
-    DrawCircle(center, radius * HUD_RADAR_INNER_RING, HUD_DIM_COLOR, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.0f);
-    DrawLine(center.X - radius, center.Y, center.X + radius, center.Y, HUD_DIM_COLOR, 1.0f);
-    DrawLine(center.X, center.Y - squashedRadius, center.X, center.Y + squashedRadius, HUD_DIM_COLOR, 1.0f);
-    DrawRect(HUD_COLOR, center.X - 2.0f, center.Y - 2.0f, 4.0f, 4.0f);
+    const FLinearColor radarDim = HudScaled(HUD_PRIMARY, HUD_DIM);
+    DrawCircle(center, radius, HUD_PRIMARY, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.5f);
+    DrawCircle(center, radius * HUD_RADAR_INNER_RING, radarDim, HUD_CIRCLE_SEGMENTS, HUD_RADAR_TILT, 1.0f);
+    DrawLine(center.X - radius, center.Y, center.X + radius, center.Y, radarDim, 1.0f);
+    DrawLine(center.X, center.Y - squashedRadius, center.X, center.Y + squashedRadius, radarDim, 1.0f);
+    DrawRect(HUD_PRIMARY, center.X - 2.0f, center.Y - 2.0f, 4.0f, 4.0f);
 
     // Blips: a stalk from the disc to the contact's height, the selected target larger and highlighted
-    UFont* small = GEngine->GetSmallFont();
+    UFont* small = GetHudFont(ESOLHudFont::Small);
     for (const FSOLRadarContact& contact : mRadarContacts)
     {
         const FSOLRadarPoint point = SOLRadar::ProjectContact(contact, rangeM);
         const FVector2D base(center.X + point.ScreenOffsetUnit.X * radius,
             center.Y - point.ScreenOffsetUnit.Y * squashedRadius);
         const FVector2D top(base.X, base.Y - point.HeightStalkUnit * radius * HUD_RADAR_STALK_SCALE);
-        const FLinearColor color = point.bSelected ? HUD_TARGET_COLOR
-            : (point.bBehind ? HUD_RADAR_BEHIND_COLOR : HUD_COLOR);
+        const FLinearColor color = point.bSelected ? HUD_SECONDARY
+            : (point.bBehind ? radarDim : HUD_PRIMARY);
         DrawLine(base.X, base.Y, top.X, top.Y, color, 1.0f);
         const float blip = (point.bSelected ? HUD_RADAR_SELECTED_BLIP_PX : HUD_RADAR_BLIP_PX) * mUiScale;
         DrawRect(color, top.X - blip * 0.5f, top.Y - blip * 0.5f, blip, blip);
@@ -1385,7 +1576,7 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
             float labelTall = 0.0f;
             GetTextSize(mText, labelWidth, labelTall, small, mUiScale);
             const float labelX = top.X + blip + labelWidth <= rightEdge ? top.X + blip : top.X - blip - labelWidth;
-            DrawBuffer(ESOLHudLine::RadarSelected, HUD_TARGET_COLOR, labelX, top.Y - blip, small);
+            DrawBuffer(ESOLHudLine::RadarSelected, HUD_SECONDARY, labelX, top.Y - blip, ESOLHudFont::Small);
         }
     }
 
@@ -1394,8 +1585,8 @@ void ASOLFlightHud::DrawRadar(const FSOLShipState& state)
     mText.Append(TEXT("RADAR "));
     SOLHudFormat::AppendDistanceM(mText, rangeM);
     mText.Append(mIsRadarManual ? TEXT(" (MANUAL)") : TEXT(" (AUTO)"));
-    DrawBuffer(ESOLHudLine::RadarRange, HUD_DIM_COLOR, center.X - radius, center.Y + squashedRadius + stalkReserve,
-        small);
+    DrawBuffer(ESOLHudLine::RadarRange, HudDimText(HUD_PRIMARY), center.X - radius,
+        center.Y + squashedRadius + stalkReserve, ESOLHudFont::Small);
 }
 
 //////////////////////////////////////////////////////////////////////////

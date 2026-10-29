@@ -50,4 +50,34 @@ namespace SOLHudShapeMath
     // HUD_JITTER_MAX_FRACTION x strength x exp(-HUD_JITTER_SHARPNESS n) x sign (n = SmoothNoise of the row);
     // 0 for strength <= 0
     SOLTEST_API float JitterOffsetFraction(float y01, float ageS, float strength);
+
+    // Fade of a shape's glow across the quad padding: 1 - smoothstep(HUD_PAD_FADE_START x padPx, padPx, distancePx);
+    // 1 when padPx <= 0
+    SOLTEST_API float PadFade(float distancePx, float padPx);
+
+    // A panel's interior fill at a signed distance (negative inside) and screen row: 0 outside (distancePx >= 0), else
+    // fill x (HUD_PANEL_FILL_BASE + (1 - HUD_PANEL_FILL_BASE) exp(distancePx / HUD_PANEL_EDGE_FALLOFF_PX))
+    // x (1 + HUD_PANEL_SCANLINE x max(strength, 0) x sin(pi screenY)) (a fresnel-like edge and 1 px scanlines)
+    SOLTEST_API float PanelFill(float distancePx, float fill, float screenY, float strength);
+
+    // Panel brightness factor of the flicker: 1 - HUD_PANEL_FLICKER x max(strength, 0)
+    // x SmoothNoise(fmod(ageS, HUD_TIME_WRAP_S) x HUD_PANEL_FLICKER_RATE_HZ + HUD_PANEL_FLICKER_OFFSET)
+    SOLTEST_API float PanelFlicker(float ageS, float strength);
+
+    // LT tone curve: 1 - exp(-HUD_TONE_GAIN x max(c, 0)^HUD_TONE_POWER)
+    SOLTEST_API float ToneCurve(float c);
+
+    // LT blue grade: the quartic Bezier with control points 0, HUD_GRADE_BLUE_1, _2, _3, 1 at t (t clamped to [0, 1])
+    SOLTEST_API float GradeBlue(float t);
+
+    // The panel around a content rectangle grown by paddingPx on every side: its centre and half size; a zero centre
+    // and half size for an invalid (bIsValid false) rectangle
+    SOLTEST_API void PanelAroundRect(const FBox2f& content, float paddingPx, FVector2f& outCenter,
+        FVector2f& outHalfSize);
+
+    // The horizontal capsule filling a box (x, y, width, height) whose glow core reaches coreHalfPx past the capsule:
+    // half width min(max(height/2 - coreHalfPx, coreHalfPx), width/2), so the capsule never extends past the box's
+    // ends; its end centres and half width; false (outputs untouched) for a non-positive width or height
+    SOLTEST_API bool BoxCapsule(float x, float y, float width, float height, float coreHalfPx, FVector2f& outStart,
+        FVector2f& outEnd, float& outHalfWidth);
 }

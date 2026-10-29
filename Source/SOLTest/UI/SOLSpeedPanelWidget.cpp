@@ -5,6 +5,7 @@
 
 #include "UI/SOLSpeedPanelWidget.h"
 
+#include "SOLConstants.h"
 #include "SOLTest.h"
 #include "UI/SOLHudFormat.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -38,12 +39,13 @@ namespace
     constexpr float PANEL_LIST_WIDTH = 440.0f;
     constexpr float PANEL_LIST_HEIGHT = 230.0f;
 
-    // Colors
+    // Colors: the LT HUD palette like the flight HUD (SDD 21 phase B): Primary-tinted text on a dark blue panel, the
+    // highlight in LT Secondary
     const FLinearColor PANEL_SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.35f);
-    const FLinearColor PANEL_BACKGROUND(0.02f, 0.06f, 0.04f, 0.92f);
-    const FLinearColor PANEL_TEXT(0.85f, 1.0f, 0.88f, 1.0f);
-    const FLinearColor PANEL_DIM_TEXT(0.4f, 0.5f, 0.44f, 1.0f);
-    const FLinearColor PANEL_HIGHLIGHT(1.0f, 0.85f, 0.3f, 1.0f);
+    const FLinearColor PANEL_BACKGROUND(0.01f, 0.03f, 0.06f, 0.92f);
+    const FLinearColor PANEL_TEXT(0.75f, 0.9f, 1.0f, 1.0f);
+    const FLinearColor PANEL_DIM_TEXT(0.35f, 0.47f, 0.58f, 1.0f);
+    const FLinearColor& PANEL_HIGHLIGHT = SOL::HudPalette::SECONDARY;
 
     // Hundredths per unit: the odometer's least significant place is 10^MinDigit
     constexpr double PANEL_HUNDREDTHS_PER_UNIT = 100.0;

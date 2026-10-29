@@ -784,7 +784,35 @@ namespace SOL
         inline constexpr double HUD_GRADE_BLUE_3 = 0.75;
         inline constexpr double HUD_PANEL_CORNER_PX = 4.0;          // Panel corner radius
         inline constexpr double HUD_PANEL_EDGE_FALLOFF_PX = 6.0;    // Panel fill brightens toward its edge over this
-        inline constexpr double HUD_PANEL_SCANLINE = 0.2;           // Panel fill 1 px scanlines 1 + this sin(PI y)
+        inline constexpr double HUD_PANEL_SCANLINE = 0.2;           // Panel fill 1 px scanlines 1 + this x strength
+                                                                    // x sin(PI y)
+        // Panel flicker (SDD 21 phase B): every panel's brightness x (1 - HUD_PANEL_FLICKER x strength x n), n a smooth
+        // noise of the time at HUD_PANEL_FLICKER_RATE_HZ lattice cells per second, offset so it is uncorrelated with
+        // the row jitter
+        inline constexpr double HUD_PANEL_FLICKER = 0.08;
+        inline constexpr double HUD_PANEL_FLICKER_RATE_HZ = 12.0;
+        inline constexpr double HUD_PANEL_FLICKER_OFFSET = 41.0;
+        inline constexpr int32 HUD_MAX_TEXTS = 64;                  // Glow-text lines per frame, reserved once
+        inline constexpr int32 HUD_MAX_PANELS = 32;                 // Panel backings per frame, reserved once
+
+        // Hologram panels behind HUD text blocks (SDD 21 phase B): a dark translucent backing (alpha-blended, for
+        // contrast) under an additive panel shape with fill HUD_PANEL_FILL and its outline at HUD_PANEL_EDGE_INTENSITY,
+        // grown HUD_PANEL_PADDING_PX (x UI scale) around the block's text
+        inline const FLinearColor HUD_PANEL_BACKING_COLOR(0.0f, 0.01f, 0.03f, 0.45f);
+        inline constexpr float HUD_PANEL_FILL = 0.06f;
+        inline constexpr float HUD_PANEL_EDGE_INTENSITY = 0.35f;
+        inline constexpr float HUD_PANEL_PADDING_PX = 6.0f;
+
+        // Glow text (SDD 21 Amendment 2): the engine fonts drawn by Slate over the shapes; the fill is the colour
+        // moved HUD_TEXT_CORE_WHITEN toward white (a hot core), the outline HUD_TEXT_GLOW_OUTLINE font units wide in
+        // the colour at HUD_TEXT_GLOW_ALPHA, over a drop shadow HUD_TEXT_SHADOW_PX (x UI scale) down-right, black at
+        // HUD_TEXT_SHADOW_ALPHA. sol.HudTextGlow 0 draws plain text over the shadow
+        inline constexpr const TCHAR* CVAR_HUD_TEXT_GLOW = TEXT("sol.HudTextGlow");
+        inline constexpr float HUD_TEXT_CORE_WHITEN = 0.3f;
+        inline constexpr int32 HUD_TEXT_GLOW_OUTLINE = 1;
+        inline constexpr float HUD_TEXT_GLOW_ALPHA = 0.35f;
+        inline constexpr float HUD_TEXT_SHADOW_PX = 1.0f;
+        inline constexpr float HUD_TEXT_SHADOW_ALPHA = 0.7f;
         inline constexpr float HUD_SHAPE_KIND_STRIDE = 8192.0f;     // Kind packed as kind x stride + size parameter
         inline constexpr int32 HUD_MAX_SHAPES = 4096;               // Quads per frame, reserved once
         inline constexpr float HUD_LINE_HALF_WIDTH_PX = 0.5f;       // A 1 px glow line (LT)

@@ -111,3 +111,99 @@ float SOLHudShapeMath::JitterOffsetFraction(const float y01, const float ageS, c
     return static_cast<float>(HUD_JITTER_MAX_FRACTION) * strength
         * FMath::Exp(-static_cast<float>(HUD_JITTER_SHARPNESS) * n1) * (n2 >= 0.5f ? 1.0f : -1.0f);
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Fade of a shape's glow across the quad padding: 1 - smoothstep(fade start x pad, pad, distance)
+float SOLHudShapeMath::PadFade(const float distancePx, const float padPx)
+{
+    if (padPx <= 0.0f)
+    {
+        return 1.0f;
+    }
+    const float start = static_cast<float>(SOL::Hologram::HUD_PAD_FADE_START) * padPx;
+    const float t = FMath::Clamp((distancePx - start) / (padPx - start), 0.0f, 1.0f);
+    return 1.0f - t * t * (3.0f - 2.0f * t);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// A panel's interior fill: a fresnel-like edge and 1 px scanlines scaled by the strength; 0 outside
+float SOLHudShapeMath::PanelFill(const float distancePx, const float fill, const float screenY, const float strength)
+{
+    using namespace SOL::Hologram;
+    if (distancePx >= 0.0f)
+    {
+        return 0.0f;
+    }
+    const float base = static_cast<float>(HUD_PANEL_FILL_BASE);
+    const float edge = base + (1.0f - base) * FMath::Exp(distancePx / static_cast<float>(HUD_PANEL_EDGE_FALLOFF_PX));
+    const float scan = 1.0f + static_cast<float>(HUD_PANEL_SCANLINE) * FMath::Max(strength, 0.0f)
+        * FMath::Sin(UE_PI * screenY);
+    return fill * edge * scan;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Panel brightness factor of the flicker: 1 minus a smooth time noise scaled by the strength
+float SOLHudShapeMath::PanelFlicker(const float ageS, const float strength)
+{
+    using namespace SOL::Hologram;
+    if (strength <= 0.0f)
+    {
+        return 1.0f;
+    }
+    const float x = FMath::Fmod(ageS, HUD_TIME_WRAP_S) * static_cast<float>(HUD_PANEL_FLICKER_RATE_HZ)
+        + static_cast<float>(HUD_PANEL_FLICKER_OFFSET);
+    return 1.0f - static_cast<float>(HUD_PANEL_FLICKER) * strength * SmoothNoise(x);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// LT tone curve: 1 - exp(-gain x max(c, 0)^power)
+float SOLHudShapeMath::ToneCurve(const float c)
+{
+    using namespace SOL::Hologram;
+    return 1.0f - FMath::Exp(-static_cast<float>(HUD_TONE_GAIN) * FMath::Pow(FMath::Max(c, 0.0f),
+        static_cast<float>(HUD_TONE_POWER)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// LT blue grade: the quartic Bezier 0, B1, B2, B3, 1 at t clamped to [0, 1]
+float SOLHudShapeMath::GradeBlue(const float tIn)
+{
+    using namespace SOL::Hologram;
+    const float t = FMath::Clamp(tIn, 0.0f, 1.0f);
+    const float u = 1.0f - t;
+    return 4.0f * t * u * u * u * static_cast<float>(HUD_GRADE_BLUE_1)
+        + 6.0f * t * t * u * u * static_cast<float>(HUD_GRADE_BLUE_2)
+        + 4.0f * t * t * t * u * static_cast<float>(HUD_GRADE_BLUE_3) + t * t * t * t;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The panel around a content rectangle grown by a padding: its centre and half size (zero for an invalid rectangle)
+void SOLHudShapeMath::PanelAroundRect(const FBox2f& content, const float paddingPx, FVector2f& outCenter,
+    FVector2f& outHalfSize)
+{
+    if (!content.bIsValid)
+    {
+        outCenter = FVector2f::ZeroVector;
+        outHalfSize = FVector2f::ZeroVector;
+        return;
+    }
+    outCenter = content.GetCenter();
+    outHalfSize = content.GetExtent() + FVector2f(paddingPx, paddingPx);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The horizontal capsule filling a box (glow core reaching coreHalfPx past it): end centres and half width
+bool SOLHudShapeMath::BoxCapsule(const float x, const float y, const float width, const float height,
+    const float coreHalfPx, FVector2f& outStart, FVector2f& outEnd, float& outHalfWidth)
+{
+    if (width <= 0.0f || height <= 0.0f)
+    {
+        return false;
+    }
+    // Thinner than the box by the core's reach, but never wider than the box is long (a short fill stays inside it)
+    outHalfWidth = FMath::Min(FMath::Max(0.5f * height - coreHalfPx, coreHalfPx), 0.5f * width);
+    const float midY = y + 0.5f * height;
+    outStart = FVector2f(x + outHalfWidth, midY);
+    outEnd = FVector2f(x + width - outHalfWidth, midY);
+    return true;
+}

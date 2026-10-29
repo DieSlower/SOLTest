@@ -9,7 +9,8 @@
 #       size 2), vertex colour = sRGB(colour x intensity) with alpha = the shape's extra parameter (arc: half aperture
 #       / pi, panel: fill). The Custom node mirrors SOLHudShapeMath (UI/SOLHudShapeMath.cpp): row jitter (moved into
 #       the local frame through ddx), the line / arc / panel signed distance, LT's glow profile, the panel fill with
-#       fresnel edge and scanlines, the optional grain and scanline composite, LT's tone curve and blue grade.
+#       fresnel edge, scanlines and flicker (phase B, issue #29), the optional grain and scanline composite, LT's tone
+#       curve and blue grade.
 # Every default is read from Source/SOLTest/SOLConstants.h (SOL::Hologram HUD_*, SOL::Settings::HUD_EFFECTS_DEFAULT);
 # the parameter names must match SOL::HudShapeMaterialParams and the asset path SOL::Paths::HUD_SHAPE_MATERIAL.
 # Run (editor closed):
@@ -86,9 +87,21 @@ float shape = CoreW * exp(-CoreF * max(0.0, dd - CoreHalf)) + HaloW * exp(-pow(H
 
 // The halo fades to nothing over the outer part of the quad padding, so no quad edge ever shows
 shape *= 1.0 - smoothstep(PadFade * Pad, Pad, dd);
+// (SOLHudShapeMath::PadFade, PanelFill and PanelFlicker; scanlines and flicker scale with the strength slider)
+const float strength0 = max(Strength, 0.0);
 if (kind >= 1.5 && d < 0.0)
 {
-    shape += VAlpha * (FillBase + (1.0 - FillBase) * exp(d / EdgeFall)) * (1.0 + PanelScan * sin(kPi * Parameters.SvPosition.y));
+    shape += VAlpha * (FillBase + (1.0 - FillBase) * exp(d / EdgeFall))
+        * (1.0 + PanelScan * strength0 * sin(kPi * Parameters.SvPosition.y));
+}
+if (kind >= 1.5)
+{
+    const float fx = age * FlickerRate + FlickerOffset;
+    const float fi = floor(fx);
+    const float ff = fx - fi;
+    const float fn = lerp(frac(sin(fmod(fi, Lattice) * HashF) * HashS),
+        frac(sin(fmod(fi + 1.0, Lattice) * HashF) * HashS), ff * ff * (3.0 - 2.0 * ff));
+    shape *= 1.0 - Flicker * strength0 * fn;
 }
 
 // LT's maths is in display (gamma) space: when Slate shades in linear space (the vertex colour arrives linearised
@@ -132,6 +145,8 @@ CONSTANT_PINS = [
     ("TimeWrap", "HUD_TIME_WRAP_S"), ("Lattice", "HUD_NOISE_LATTICE_PERIOD"), ("HashF", "HUD_NOISE_HASH_FREQUENCY"),
     ("HashS", "HUD_NOISE_HASH_SCALE"), ("CoreHalf", "HUD_GLOW_CORE_HALF_PX"), ("PadFade", "HUD_PAD_FADE_START"),
     ("FillBase", "HUD_PANEL_FILL_BASE"), ("ToneGain", "HUD_TONE_GAIN"), ("TonePower", "HUD_TONE_POWER"),
+    ("Flicker", "HUD_PANEL_FLICKER"), ("FlickerRate", "HUD_PANEL_FLICKER_RATE_HZ"),
+    ("FlickerOffset", "HUD_PANEL_FLICKER_OFFSET"),
 ]
 
 
