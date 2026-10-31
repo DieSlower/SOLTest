@@ -49,7 +49,7 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
  * carried by, exactly as the ship is. Bolts integrate in real time, like the ship. LIMITATION: when the reference is
  * M-locked to a non-body targetable, bolts and targets are stored relative to the anchor body instead, so under time
  * warp they get the anchor's carry while the ship gets the targetable's (no ISOLTargetable implementer exists yet, so
- * this cannot happen today; CLAUDE.md tech debt). Events carry their frame body and offset (FSOLCombatEvent), so effects
+ * this cannot happen today; project-docs tech debt). Events carry their frame body and offset (FSOLCombatEvent), so effects
  * and sounds follow the same carry. A bolt farther than COMBAT_BOLT_MAX_RANGE_M from the ship is removed.
  *
  * SWEEPS. Hit tests run in a ship-centred sweep frame (each position minus the player ship's position at the same
@@ -62,14 +62,14 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnCombatUpdated);
  * cell), is treated as having teleported (tested at its new position only), and a bolt whose own segment is that long
  * skips hit tests for the frame. A new bolt's first segment runs from its muzzle. Only minor bodies inside the
  * bounding box of this frame's bolt segments enter the grid, and the whole minor-body pass is skipped while no bolt is
- * live (while one is, every minor body is still scanned once a frame for the snapshot: CLAUDE.md tech debt). The dense
+ * live (while one is, every minor body is still scanned once a frame for the snapshot: project-docs tech debt). The dense
  * GPU-only ring rock layer (Niagara) has no CPU positions, so bolts pass through it; only belt asteroids and the ring
  * pool's active rocks absorb bolts.
  *
  * ORDER. The update runs on USOLAnchorSubsystem::OnUniverseUpdated, i.e. strictly after OnBodiesUpdated has finished
  * (the ship step, the ring-pool streaming on OnShipsStepped and the minor-body orbit run, in whatever order they bind),
  * so this frame's ship, bodies and minor bodies are all final whatever their bind order. That makes the order explicit
- * rather than relying on bind order among OnBodiesUpdated listeners (CLAUDE.md tech debt). Visuals and audio that read
+ * rather than relying on bind order among OnBodiesUpdated listeners (project-docs tech debt). Visuals and audio that read
  * this subsystem bind to OnCombatUpdated, not beside it on OnUniverseUpdated, for the same reason. The frame's real
  * (hitch-clamped) delta is captured from OnBodiesUpdated, which only stores it.
  *

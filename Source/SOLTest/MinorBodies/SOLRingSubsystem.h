@@ -34,7 +34,7 @@ struct FMassEntityManager;
  * frame is cheap (ReassignPoolSlots leaves an unchanged group alone, and both functions are a few dozen cheap
  * operations over a ~25-cell window), so there is no reason to gate it behind a cell-change check. Reassigned
  * groups get their Mass fragment data rewritten in place (SOLRingPatch::GenerateCellRocks) - never creating or
- * destroying Mass entities at runtime, per CLAUDE.md's "pooled, not spawn-destroy" guidance.
+ * destroying Mass entities at runtime, per the project docs' "pooled, not spawn-destroy" guidance.
  *
  * Does NOT run its own orbit-processor pass: ring-rock entities share FSOLMinorBodyOrbitFragment/
  * FSOLMinorBodyStateFragment with the asteroid belt, and USOLMinorBodySubsystem's existing per-frame run (also

@@ -16,7 +16,7 @@
 #                                      the ring colour, since ParticleColor is white outside Niagara.
 # The parameter names must match SOL::RingShadowMpcParams and SOL::RingRockMaterialParams in
 # Source/SOLTest/SOLConstants.h, and the asset paths SOL::Paths::RING_SHADOW_PARAMETER_COLLECTION /
-# RING_ROCK_MATERIAL. M_SOLRingFar is not built by a script (see CLAUDE.md, Known tech debt).
+# RING_ROCK_MATERIAL. M_SOLRingFar is not built by a script (see the project docs, Known tech debt).
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript
 #       -script="<abs path>/Tools/Rings/create_ring_shadow_assets.py" -unattended [-SOLRebuild]

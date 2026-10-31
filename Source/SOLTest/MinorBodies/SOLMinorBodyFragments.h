@@ -47,7 +47,7 @@ struct FSOLMinorBodyRenderFragment : public FMassFragment
     // skips/zero-scales a stale or duplicate instance rather than rendering it (SDD 6 Amendment 10's "no inactive
     // marker" gap, plus the review follow-up that caught the gap-reduced-cell duplicate and the spawn-time default
     // both still rendering). A plain fragment bool rather than a Mass tag deliberately: a ring group can be
-    // reassigned up to ~90 times/second per active ring (see CLAUDE.md's ring-rock tech debt notes), and an
+    // reassigned up to ~90 times/second per active ring (see the ring-rock tech debt notes in the project docs), and an
     // archetype move at that rate would cost far more than flipping one field the renderer already reads every
     // frame regardless.
     bool bActive = true;
