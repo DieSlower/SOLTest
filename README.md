@@ -13,6 +13,7 @@ A solar-system space simulation by **Acid Rain Studios LLC**, built with **Unrea
 - [Dependencies](#dependencies)
 - [Generated content and Tools](#generated-content-and-tools)
 - [Tests and smoke runs](#tests-and-smoke-runs)
+- [Development effort](#development-effort)
 - [Documentation map](#documentation-map)
 - [Licence](#licence)
 
@@ -127,12 +128,27 @@ It runs `UnrealEditor-Cmd` headless, prints a summary, and exits 0 (pass), 1 (fa
 
 Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, map, map pick, route, jump, menu, level) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
+## Development effort
+
+<!-- METRICS:BEGIN -->
+Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`; the price is notional (the project runs on a subscription). Full breakdown by model, agent type and effort: [Docs/PROJECT_METRICS.md](Docs/PROJECT_METRICS.md).
+
+| Metric | So far |
+|---|---|
+| Work time (wall-clock) | 59.3 h |
+| Time spent answering questions | 6.0 h |
+| Tokens | 3,109.9M |
+| Notional API price | $1,139 |
+| Subagents dispatched | 228 |
+<!-- METRICS:END -->
+
 ## Documentation map
 
 - [CLAUDE.md](CLAUDE.md): workflow rules, build commands, known hands-on checks and tech debt.
 - [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md): modules, update order, coordinate frames, command-line flags.
 - [Docs/GAME_MECHANICS.md](Docs/GAME_MECHANICS.md): every control, mechanic and tunable.
 - [Docs/Plans/STATUS.md](Docs/Plans/STATUS.md): ticket status and roadmap; [Docs/SDDs/](Docs/SDDs/README.md): design documents; [Docs/Plans/](Docs/Plans/): implementation plans.
+- [Docs/PROJECT_METRICS.md](Docs/PROJECT_METRICS.md): generated effort metrics (time, tokens, notional price, agents).
 - [Docs/STYLE_GUIDE.md](Docs/STYLE_GUIDE.md): C++ style. [Docs/Research/](Docs/Research/): research notes, including the performance guidelines. [Docs/ToDo/](Docs/ToDo/README.md): unscheduled ideas.
 
 ## Licence
