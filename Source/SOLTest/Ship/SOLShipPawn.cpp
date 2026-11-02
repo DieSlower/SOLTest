@@ -15,6 +15,7 @@
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcSubsystem.h"
@@ -23,6 +24,7 @@
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLHudFormat.h"
+#include "UI/SOLOverlayMenuWidget.h"
 #include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
@@ -224,6 +226,11 @@ void ASOLShipPawn::BeginPlay()
     // Start state per SDD 2: cap at the start value, stick centered. Flight assist keeps what the ship's spawn set
     // (USOLShipSubsystem::SpawnPlayerShip: the settings' launch value, SDD 8, or off for a -SOLRingStartKm start)
     Settings = USOLSettingsSubsystem::Get(this);
+    if (Settings != nullptr)
+    {
+        // Overlays are on at every flight start (SDD 22 section 2.3); the Overlay Menu's choices are kept
+        Settings->SetOverlayMasterOn(true);
+    }
     mControl = Ships->GetControl();
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
@@ -300,6 +307,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeHologram = MakeUnique<FSOLHologramSmoke>();
         mSmokeHologram->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY))
+    {
+        mSmokeOverlay = MakeUnique<FSOLOverlaySmoke>();
+        mSmokeOverlay->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -315,7 +327,7 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeJump.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
@@ -329,6 +341,7 @@ void ASOLShipPawn::BeginPlay()
 void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
     DismissSpeedPanel();
+    DismissOverlayMenu();
     DismissMap();
     RemoveMappingContext();
     ReleaseMouse();
@@ -365,6 +378,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeRoute.Reset();
     mSmokeRouteOverlay.Reset();
     mSmokeHologram.Reset();
+    mSmokeOverlay.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -419,6 +433,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeHologram.Reset();
     }
+    if (mSmokeOverlay.IsValid() && mSmokeOverlay->Update(*this, deltaSeconds))
+    {
+        mSmokeOverlay.Reset();
+    }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
         mSmokeJump.Reset();
@@ -434,6 +452,29 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mIsSpeedPanelRequested = false;
         OpenSpeedPanel();
+    }
+    if (mIsOverlayMenuRequested)
+    {
+        mIsOverlayMenuRequested = false;
+        if (mIsOverlayMenuOpen)
+        {
+            CloseOverlayMenu();
+        }
+        else
+        {
+            OpenOverlayMenu();
+        }
+    }
+
+    // Free look arms after a short hold (or the first mouse move while held), so an Alt chord such as Alt+O never
+    // turns the camera or flips the cursor capture (SDD 22)
+    if (mIsFreeLookHeld && !mIsFreeLooking && !mIsFreeLookSuppressed && !IsSteerSuspended())
+    {
+        mFreeLookHeldS += deltaSeconds;
+        if (mFreeLookHeldS >= SOL::Overlay::FREE_LOOK_ARM_S)
+        {
+            HandleFreeLook(true);
+        }
     }
     if (mIsMapToggleRequested)
     {
@@ -515,8 +556,9 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         pilotInput.Steer = stick;
         pilotInput.bStopSpin = mControl.bStopSpin;
 
-        // Shift is both a flight key (thrust up by default) and the map chord (SDD 20): in AUTO, input held only on
-        // Shift keys waits SHIFT_CHORD_GRACE_S before it counts, so Shift+M / Shift+J do not cancel the autopilot
+        // Shift and Ctrl are both flight keys (thrust up / down by default) and chord modifiers (Shift+M, SDD 20;
+        // Ctrl+O and Shift+O, SDD 22): in AUTO, input held only on modifier keys waits SHIFT_CHORD_GRACE_S before
+        // it counts, so a chord does not cancel the autopilot
         const APlayerController* playerController = Cast<APlayerController>(GetController());
         const uint16 channels = SOLFlightMode::ActiveChannels(pilotInput);
         const bool bShiftOnly = channels != 0 && playerController != nullptr
@@ -549,7 +591,7 @@ void ASOLShipPawn::UpdateCombatInput()
     {
         return;
     }
-    Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !mIsSpeedPanelOpen && !mIsMenuSuspended
+    Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !IsPanelOpen() && !mIsMenuSuspended
         && !IsJumpWarping());
 
     // Render space has Unreal-handed axes around the render origin, so the camera's offset from the actor (the ship)
@@ -698,6 +740,10 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
     input->BindAction(WarpResetAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnWarpResetAction);
     input->BindAction(ToggleOrbitLinesAction, ETriggerEvent::Triggered, this,
         &ASOLShipPawn::OnToggleOrbitLinesAction);
+    input->BindAction(OverlayMasterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOverlayMasterAction);
+    input->BindAction(OverlayMenuAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOverlayMenuAction);
+    input->BindAction(ToggleDarkeningAction, ETriggerEvent::Triggered, this,
+        &ASOLShipPawn::OnToggleDarkeningAction);
     input->BindAction(ToggleRouteOverlayAction, ETriggerEvent::Triggered, this,
         &ASOLShipPawn::OnToggleRouteOverlayAction);
     input->BindAction(ResumeRouteAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnResumeRouteAction);
@@ -771,6 +817,7 @@ void ASOLShipPawn::NotifyControllerChanged()
 void ASOLShipPawn::UnPossessed()
 {
     DismissSpeedPanel();
+    DismissOverlayMenu();
     DismissMap();
     RemoveMappingContext();
     ReleaseMouse();
@@ -839,13 +886,13 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeJump.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
         return;
     }
-    if (mIsSpeedPanelOpen || mIsMapOpen || mIsMenuSuspended)
+    if (IsPanelOpen() || mIsMapOpen || mIsMenuSuspended)
     {
         return;
     }
@@ -925,6 +972,11 @@ void ASOLShipPawn::CreateInputObjects()
     ToggleRouteOverlayAction = CreateAction(this, TEXT("IA_ShipToggleRouteOverlay"), EInputActionValueType::Boolean);
     ResumeRouteAction = CreateAction(this, TEXT("IA_RouteResume"), EInputActionValueType::Boolean);
     ShiftChordAction = CreateAction(this, TEXT("IA_ShiftChord"), EInputActionValueType::Boolean);
+    AltChordAction = CreateAction(this, TEXT("IA_AltChord"), EInputActionValueType::Boolean);
+    CtrlChordAction = CreateAction(this, TEXT("IA_CtrlChord"), EInputActionValueType::Boolean);
+    OverlayMasterAction = CreateAction(this, TEXT("IA_OverlayMaster"), EInputActionValueType::Boolean);
+    OverlayMenuAction = CreateAction(this, TEXT("IA_OverlayMenu"), EInputActionValueType::Boolean);
+    ToggleDarkeningAction = CreateAction(this, TEXT("IA_OverlayDarkening"), EInputActionValueType::Boolean);
     SpeedPanelAction = CreateAction(this, TEXT("IA_ShipSpeedPanel"), EInputActionValueType::Boolean);
     RadarZoomInAction = CreateAction(this, TEXT("IA_ShipRadarZoomIn"), EInputActionValueType::Boolean);
     RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
@@ -1021,7 +1073,6 @@ void ASOLShipPawn::MapShipKeys()
     MapPressedKey(MappingContext, WarpDownAction, key(EBinding::WarpDown), this);
     MapPressedKey(MappingContext, WarpUpAction, key(EBinding::WarpUp), this);
     MapPressedKey(MappingContext, WarpResetAction, key(EBinding::WarpReset), this);
-    MapPressedKey(MappingContext, ToggleOrbitLinesAction, key(EBinding::ToggleOrbitLines), this);
     MapPressedKey(MappingContext, ToggleRouteOverlayAction, key(EBinding::ToggleRouteOverlay), this);
     MapPressedKey(MappingContext, ResumeRouteAction, key(EBinding::Resume), this);
     MapPressedKey(MappingContext, SpeedPanelAction, key(EBinding::SpeedPanel), this);
@@ -1036,6 +1087,18 @@ void ASOLShipPawn::MapShipKeys()
     MappingContext->MapKey(ShiftChordAction, EKeys::RightShift);
     MapChordedKey(MappingContext, OpenMapAction, key(EBinding::OpenMap), ShiftChordAction, this);
     MapChordedKey(MappingContext, OpenMapJumpAction, key(EBinding::OpenMapJump), ShiftChordAction, this);
+
+    // Overlay keys (SDD 22): O master, Alt+O orbit lines, Ctrl+O the Overlay Menu, Shift+O darkening. The Alt and
+    // Ctrl chord actions are held by either Alt / Ctrl key; while one is held Enhanced Input blocks the plain O. Left
+    // Alt stays free look (it arms only after a short hold) and Left Ctrl thrust down (AUTO waits the chord grace)
+    MappingContext->MapKey(AltChordAction, EKeys::LeftAlt);
+    MappingContext->MapKey(AltChordAction, EKeys::RightAlt);
+    MappingContext->MapKey(CtrlChordAction, EKeys::LeftControl);
+    MappingContext->MapKey(CtrlChordAction, EKeys::RightControl);
+    MapBindingPressed(OverlayMasterAction, static_cast<int32>(EBinding::OverlayMaster));
+    MapBindingPressed(ToggleOrbitLinesAction, static_cast<int32>(EBinding::ToggleOrbitLines));
+    MapBindingPressed(OverlayMenuAction, static_cast<int32>(EBinding::OverlayMenu));
+    MapBindingPressed(ToggleDarkeningAction, static_cast<int32>(EBinding::ToggleDarkening));
 
     // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
     MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
@@ -1071,6 +1134,28 @@ void ASOLShipPawn::MapShipKeys()
     MapMappingContext->MapKey(MapPanModifierAction, EKeys::RightShift);
     MapMappingContext->MapKey(MapLookAction, EKeys::Mouse2D);
     MapMappingContext->MapKey(MapZoomAction, EKeys::MouseWheelAxis);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt or Ctrl) in the ship's context
+void ASOLShipPawn::MapBindingPressed(UInputAction* action, const int32 binding)
+{
+    const FKey key(*mBoundKeys[binding]);
+    switch (SOLKeyBindings::GetChord(binding))
+    {
+    case SOLKeyBindings::EKeyChord::Shift:
+        SOLInput::MapChordedKey(MappingContext, action, key, ShiftChordAction, this);
+        break;
+    case SOLKeyBindings::EKeyChord::Alt:
+        SOLInput::MapChordedKey(MappingContext, action, key, AltChordAction, this);
+        break;
+    case SOLKeyBindings::EKeyChord::Control:
+        SOLInput::MapChordedKey(MappingContext, action, key, CtrlChordAction, this);
+        break;
+    default:
+        SOLInput::MapPressedKey(MappingContext, action, key, this);
+        break;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1147,6 +1232,12 @@ UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
         return WarpResetAction;
     case EBinding::ToggleOrbitLines:
         return ToggleOrbitLinesAction;
+    case EBinding::OverlayMaster:
+        return OverlayMasterAction;
+    case EBinding::OverlayMenu:
+        return OverlayMenuAction;
+    case EBinding::ToggleDarkening:
+        return ToggleDarkeningAction;
     case EBinding::RadarZoomIn:
         return RadarZoomInAction;
     case EBinding::RadarZoomOut:
@@ -1343,7 +1434,7 @@ void ASOLShipPawn::HandleToggleSteer()
 // Returns true while something else has the input or the view
 bool ASOLShipPawn::IsSteerSuspended() const
 {
-    return mIsMapOpen || mIsSpeedPanelOpen || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused;
+    return mIsMapOpen || IsPanelOpen() || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1376,7 +1467,7 @@ void ASOLShipPawn::UpdateSteering()
 
     // The ship owns the cursor only while nothing else has the input: captured while steering or free-looking, else
     // shown and free over the game
-    if (mIsMapOpen || mIsSpeedPanelOpen || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused)
+    if (mIsMapOpen || IsPanelOpen() || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused)
     {
         return;
     }
@@ -1451,6 +1542,8 @@ void ASOLShipPawn::HandleToggleAssist()
 void ASOLShipPawn::HandleFreeLook(const bool bFreeLook)
 {
     mIsFreeLooking = bFreeLook;
+    mFreeLookHeldS = 0.0;
+    mFreeLookArmPx = 0.0;
     if (!bFreeLook)
     {
         mFreeLookRotation = FRotator::ZeroRotator;
@@ -1461,6 +1554,16 @@ void ASOLShipPawn::HandleFreeLook(const bool bFreeLook)
 // Moves the virtual joystick (or, during free-look, orbits the camera) by a mouse delta in pixels (X right, Y up)
 void ASOLShipPawn::HandleMouseDelta(const FVector2d& deltaPixels)
 {
+    // A deliberate mouse move while the free-look key is held arms free look at once (SDD 22): the deltas since the
+    // press add up to more than FREE_LOOK_ARM_PX, so the jitter of a resting or steering hand does not arm it
+    if (mIsFreeLookHeld && !mIsFreeLooking && !mIsFreeLookSuppressed && !IsSteerSuspended())
+    {
+        mFreeLookArmPx += deltaPixels.Size();
+        if (mFreeLookArmPx > SOL::Overlay::FREE_LOOK_ARM_PX)
+        {
+            HandleFreeLook(true);
+        }
+    }
     if (mIsFreeLooking)
     {
         const FVector2d orbitDeg = deltaPixels * SOL::SHIP_FREE_LOOK_DEG_PER_PIXEL;
@@ -1510,7 +1613,7 @@ void ASOLShipPawn::HandleMatchLock()
 void ASOLShipPawn::HandleToggleLevel()
 {
     // The open map and speed panel remove the ship mapping, so L cannot arrive then; a jump warp is gated here
-    if (Ships != nullptr && !IsJumpWarping() && !mIsMapOpen && !mIsSpeedPanelOpen)
+    if (Ships != nullptr && !IsJumpWarping() && !mIsMapOpen && !IsPanelOpen())
     {
         Ships->RequestSurfaceLockToggle();
     }
@@ -1527,7 +1630,7 @@ void ASOLShipPawn::HandleFire(const bool bHeld)
 // Requests a target drop ahead of the ship (G); the combat subsystem drops it in its next update
 void ASOLShipPawn::HandleDropTarget()
 {
-    if (Combat != nullptr && !IsJumpWarping() && !mIsMapOpen && !mIsSpeedPanelOpen)
+    if (Combat != nullptr && !IsJumpWarping() && !mIsMapOpen && !IsPanelOpen())
     {
         Combat->RequestPlayerTargetDrop();
     }
@@ -1610,10 +1713,109 @@ void ASOLShipPawn::HandleWarpReset()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Toggles the world-space orbit lines (O) through the HUD
+// Toggles the world-space orbit lines (Alt+O) through the HUD
 void ASOLShipPawn::HandleToggleOrbitLines()
 {
+    // The Alt press of the chord must not leave free look on: it ends now and stays off until Alt is released
+    if (mIsFreeLookHeld)
+    {
+        mIsFreeLookSuppressed = true;
+        HandleFreeLook(false);
+    }
     SendHudCommand(ESOLHudCommand::ToggleOrbitLines);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Turns every overlay checked in the Overlay Menu on or off together (O)
+void ASOLShipPawn::HandleToggleOverlayMaster()
+{
+    if (Settings != nullptr)
+    {
+        Settings->SetOverlayMasterOn(!Settings->IsOverlayMasterOn());
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: overlays %s"), *GetName(),
+            Settings->IsOverlayMasterOn() ? TEXT("ON") : TEXT("OFF"));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Toggles the distance darkening of far overlays (Shift+O): the Darkening row of the active overlay profile
+void ASOLShipPawn::HandleToggleDarkening()
+{
+    if (Settings != nullptr)
+    {
+        const bool bOn = Settings->ToggleOverlay(SOLOverlay::EOverlay::Darkening);
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: overlay darkening %s"), *GetName(), bOn ? TEXT("ON") : TEXT("OFF"));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Requests the Overlay Menu to open or close (Ctrl+O; done at the next tick)
+void ASOLShipPawn::HandleToggleOverlayMenu()
+{
+    mIsOverlayMenuRequested = true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Opens the Overlay Menu: suspends the ship's control input and gives the menu UI-only keyboard focus
+void ASOLShipPawn::OpenOverlayMenu()
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (IsPanelOpen() || mIsMapOpen || IsJumpWarping() || playerController == nullptr)
+    {
+        return;
+    }
+    if (OverlayMenu == nullptr)
+    {
+        OverlayMenu = CreateWidget<USOLOverlayMenuWidget>(playerController, USOLOverlayMenuWidget::StaticClass());
+        if (OverlayMenu == nullptr)
+        {
+            UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to create the Overlay Menu"), *GetName());
+            return;
+        }
+    }
+    SuspendShipControl(*playerController);
+    const int32 menuBinding = static_cast<int32>(SOLKeyBindings::EBinding::OverlayMenu);
+    const FString& toggleKeyName = mBoundKeys.IsValidIndex(menuBinding) ? mBoundKeys[menuBinding] : FString();
+    OverlayMenu->Open(FSimpleDelegate::CreateUObject(this, &ASOLShipPawn::CloseOverlayMenu), FKey(*toggleKeyName),
+        SOLKeyBindings::FormatKeyText(SOLMenuText::OVERLAY_MENU_TITLE_FORMAT, mBoundKeys));
+    OverlayMenu->AddToViewport(SOL::Overlay::MENU_Z_ORDER);
+    FInputModeUIOnly inputMode;
+    inputMode.SetWidgetToFocus(OverlayMenu->TakeWidget());
+    inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
+    playerController->SetInputMode(inputMode);
+    playerController->bShowMouseCursor = true;
+    mIsOverlayMenuOpen = true;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: Overlay Menu open; ship control input suspended"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Closes the Overlay Menu, gives input back to the ship and writes the overlay choices if they changed
+void ASOLShipPawn::CloseOverlayMenu()
+{
+    if (!mIsOverlayMenuOpen)
+    {
+        return;
+    }
+    DismissOverlayMenu();
+    RestoreShipControl();
+    if (Settings != nullptr)
+    {
+        // The write point of the menu (SDD 22): one async save, only when something differs from disk
+        Settings->FlushSave();
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: Overlay Menu closed; ship control input restored"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the Overlay Menu without restoring input (teardown)
+void ASOLShipPawn::DismissOverlayMenu()
+{
+    if (OverlayMenu != nullptr)
+    {
+        OverlayMenu->RemoveFromParent();
+    }
+    mIsOverlayMenuOpen = false;
+    mIsOverlayMenuRequested = false;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1662,7 +1864,7 @@ void ASOLShipPawn::HandleToggleSpeedPanel()
 void ASOLShipPawn::OpenSpeedPanel()
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (mIsSpeedPanelOpen || mIsMapOpen || IsJumpWarping() || playerController == nullptr || Ships == nullptr)
+    if (IsPanelOpen() || mIsMapOpen || IsJumpWarping() || playerController == nullptr || Ships == nullptr)
     {
         return;
     }
@@ -1725,6 +1927,10 @@ void ASOLShipPawn::SuspendShipControl(APlayerController& playerController)
     mControl.bStopSpin = false;
     mIsFireHeld = false;
     mIsFreeLooking = false;
+    mIsFreeLookHeld = false;
+    mIsFreeLookSuppressed = false;
+    mFreeLookHeldS = 0.0;
+    mFreeLookArmPx = 0.0;
     mFreeLookRotation = FRotator::ZeroRotator;
 }
 
@@ -1766,8 +1972,8 @@ FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerCo
             return 0.0;
         }
         const FKey key(*mBoundKeys[index]);
-        const bool bShiftKey = key == EKeys::LeftShift || key == EKeys::RightShift;
-        return (!bShiftKeysOnly || bShiftKey) && playerController.IsInputKeyDown(key) ? 1.0 : 0.0;
+        const bool bModifierKey = SOLKeyBindings::IsModifierKey(mBoundKeys[index]);
+        return (!bShiftKeysOnly || bModifierKey) && playerController.IsInputKeyDown(key) ? 1.0 : 0.0;
     };
     FSOLPilotInput input;
     input.Thrust = FVector3d(held(EBinding::ThrustForward) - held(EBinding::ThrustBackward),
@@ -1783,7 +1989,7 @@ FSOLPilotInput ASOLShipPawn::HeldKeyPilotInput(const APlayerController& playerCo
 void ASOLShipPawn::OpenMap(const bool bForJump)
 {
     APlayerController* playerController = Cast<APlayerController>(GetController());
-    if (mIsMapOpen || mIsSpeedPanelOpen || playerController == nullptr || MapMode == nullptr)
+    if (mIsMapOpen || IsPanelOpen() || playerController == nullptr || MapMode == nullptr)
     {
         return;
     }
@@ -2271,13 +2477,18 @@ void ASOLShipPawn::OnToggleAssistAction(const FInputActionValue& /*value*/)
 // Enhanced Input: free-look pressed
 void ASOLShipPawn::OnFreeLookStarted(const FInputActionValue& /*value*/)
 {
-    HandleFreeLook(true);
+    // Held but not yet armed: the tick or the first mouse move arms it (an Alt chord in between cancels it)
+    mIsFreeLookHeld = true;
+    mFreeLookHeldS = 0.0;
+    mFreeLookArmPx = 0.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Enhanced Input: free-look released
 void ASOLShipPawn::OnFreeLookCompleted(const FInputActionValue& /*value*/)
 {
+    mIsFreeLookHeld = false;
+    mIsFreeLookSuppressed = false;
     HandleFreeLook(false);
 }
 
@@ -2405,6 +2616,27 @@ void ASOLShipPawn::OnWarpResetAction(const FInputActionValue& /*value*/)
 void ASOLShipPawn::OnToggleOrbitLinesAction(const FInputActionValue& /*value*/)
 {
     HandleToggleOrbitLines();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: overlay master (O)
+void ASOLShipPawn::OnOverlayMasterAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleOverlayMaster();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: Overlay Menu (Ctrl+O)
+void ASOLShipPawn::OnOverlayMenuAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleOverlayMenu();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enhanced Input: distance darkening (Shift+O)
+void ASOLShipPawn::OnToggleDarkeningAction(const FInputActionValue& /*value*/)
+{
+    HandleToggleDarkening();
 }
 
 //////////////////////////////////////////////////////////////////////////

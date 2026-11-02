@@ -194,6 +194,9 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::OrbitsOn:
     case ESOLHudPhase::OrbitsOff:
+        // Alt+O toggles the orbit lines (SDD 22); Alt is released with the key next frame
+        PressKey(EKeys::LeftAlt);
+        mPendingReleases.Add(EKeys::LeftAlt);
         TapKey(EKeys::O);
         break;
     case ESOLHudPhase::PredictedPath:
@@ -343,11 +346,11 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::OrbitsOn:
         // The lines start on (SDD 17), so the first O turns them off
-        Check(TEXT("b-orbits-off"), !bOrbits && segments == 0, FString::Printf(TEXT("O: orbit lines %s, %d "
+        Check(TEXT("b-orbits-off"), !bOrbits && segments == 0, FString::Printf(TEXT("Alt+O: orbit lines %s, %d "
             "lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
         break;
     case ESOLHudPhase::OrbitsOff:
-        Check(TEXT("b-orbits-on"), bOrbits && segments > 0, FString::Printf(TEXT("O again: orbit lines %s, %d "
+        Check(TEXT("b-orbits-on"), bOrbits && segments > 0, FString::Printf(TEXT("Alt+O again: orbit lines %s, %d "
             "lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
         break;
     case ESOLHudPhase::PredictedPath:

@@ -46,7 +46,8 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
     // A menu smoke run writes its own slot, cleared first, so it starts from the defaults and never touches the
     // player's
     mSlotName = SOL::Settings::SAVE_SLOT;
-    if (FCString::Strifind(FCommandLine::Get(), SOL::CommandLine::MENU_SMOKE_NAME) != nullptr)
+    if (FCString::Strifind(FCommandLine::Get(), SOL::CommandLine::MENU_SMOKE_NAME) != nullptr
+        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY))
     {
         mSlotName = SOL::Settings::SMOKE_SAVE_SLOT;
         UGameplayStatics::DeleteGameInSlot(mSlotName, SOL::Settings::SAVE_USER_INDEX);
@@ -134,6 +135,7 @@ void USOLSettingsSubsystem::LoadOnce()
         mIsVsyncChosen = save->bVsyncChosen;
         mIsQualityChosen = save->bQualityChosen;
         mWrittenShowOrbitLines = save->bShowOrbitLines;
+        mWrittenOverlayPrefs = SOLOverlay::Sanitized(loaded.OverlayPrefs);
     }
     else if (raw != nullptr)
     {
@@ -437,6 +439,7 @@ void USOLSettingsSubsystem::FillSaveObject()
     SaveObject->bVsyncChosen = mIsVsyncChosen;
     SaveObject->bQualityChosen = mIsQualityChosen;
     mWrittenShowOrbitLines = mModel.Saved.bShowOrbitLines;
+    mWrittenOverlayPrefs = mModel.Saved.OverlayPrefs;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -451,7 +454,40 @@ void USOLSettingsSubsystem::SetOrbitLinesShown(const bool bShown)
 // different from what is on disk
 bool USOLSettingsSubsystem::IsSaveOwed() const
 {
-    return SOLSettingsRules::IsSaveOwed(mIsSaveOwed, mModel.Saved.bShowOrbitLines, mWrittenShowOrbitLines);
+    return SOLSettingsRules::IsSaveOwed(mIsSaveOwed, mModel.Saved.bShowOrbitLines, mWrittenShowOrbitLines)
+        || !SOLOverlay::AreEqual(mModel.Saved.OverlayPrefs, mWrittenOverlayPrefs);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the applied (and pending) overlay choices; written at the next write point only if they differ from disk
+void USOLSettingsSubsystem::SetOverlayPrefs(const SOLOverlay::FOverlayPrefs& prefs)
+{
+    SOLSettingsModel::SetAppliedOverlayPrefs(mModel, prefs);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Flips one Overlay Menu row (applied at once; written at the next write point)
+bool USOLSettingsSubsystem::ToggleOverlay(const SOLOverlay::EOverlay overlay)
+{
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    const bool bOn = SOLOverlay::Toggle(prefs, overlay);
+    SetOverlayPrefs(prefs);
+    return bOn;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether an overlay shows now (the master O and the active profile's rows)
+bool USOLSettingsSubsystem::IsOverlayShown(const SOLOverlay::EOverlay overlay) const
+{
+    return SOLOverlay::IsShown(mModel.Pending.OverlayPrefs, mIsOverlayMasterOn, overlay);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether an orbit category's lines show (master, its row and the Alt+O orbit-lines switch)
+bool USOLSettingsSubsystem::IsOverlayOrbitShown(const SOLOverlay::EOverlay overlay) const
+{
+    return SOLOverlay::IsOrbitShown(mModel.Pending.OverlayPrefs, mIsOverlayMasterOn, mModel.Pending.bShowOrbitLines,
+        overlay);
 }
 
 //////////////////////////////////////////////////////////////////////////

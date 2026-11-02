@@ -10,6 +10,7 @@
 #include "GameFramework/Actor.h"
 
 #include "MinorBodies/SOLAsteroidBelt.h"
+#include "UI/SOLOverlayModel.h"
 #include "OrbitLines/SOLOrbitLineMath.h"
 #include "SOLConstants.h"
 #include "Universe/SOLKepler.h"
@@ -99,6 +100,7 @@ private:
         bool bIsShown = true;                    // Component visibility last applied
         bool bWasHighlighted = false;            // Highlight last written (asteroid data is written only on change)
         bool bHasWrittenData = false;            // Custom data written at least once
+        SOLOverlay::EOverlay Category = SOLOverlay::EOverlay::OtherOrbits;  // Overlay Menu row that shows it (SDD 22)
     };
 
     // Resolves a key's current elements, parent and body radius; false if it has no drawable orbit
@@ -129,6 +131,9 @@ private:
 
     // Returns whether the lines should be drawn now (setting on, main menu not showing, sol.OrbitLines on)
     bool ShouldDrawLines() const;
+
+    // Returns the Overlay Menu row of a permanent line (SDD 22): planet, moon, other (dwarf planets) or asteroid orbits
+    SOLOverlay::EOverlay ClassifyLine(const SOLOrbitLineMath::FLineKey& key, int32 parentIndex) const;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> AnchorSubsystem;
@@ -201,4 +206,5 @@ private:
     bool mIsDrawn = true;                                          // Actor visibility last applied (ShouldDrawLines)
     bool mIsTransientShown = false;
     bool mIsVerificationOverride = false;                          // Settings ignored (smoke runs)
+    bool mIsCategoryShown[SOLOverlay::OVERLAY_COUNT] = {};         // Per overlay row this frame (orbit rows used)
 };

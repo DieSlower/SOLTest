@@ -28,12 +28,15 @@ namespace
     // Settings schema version that introduced the issue #19 key layout
     constexpr int32 FMM_LAYOUT_VERSION = 3;
 
-    // Settings schema version that introduced the issue #20 key layout (the current one)
+    // Settings schema version that introduced the issue #20 key layout
     constexpr int32 FMM_ROUTE_LAYOUT_VERSION = 4;
 
-    // Number of rebindable actions after issue #20 (32 after issue #19; issue #20 removes ToggleMap and adds OpenMap,
-    // OpenMapJump, Resume and ToggleRouteOverlay)
-    constexpr int32 FMM_BINDING_COUNT = 35;
+    // Settings schema version that introduced the issue #22 key layout (the current one: O, Alt+O, Ctrl+O, Shift+O)
+    constexpr int32 FMM_OVERLAY_LAYOUT_VERSION = 7;
+
+    // Number of rebindable actions after issue #22 (32 after issue #19; issue #20 removes ToggleMap and adds OpenMap,
+    // OpenMapJump, Resume and ToggleRouteOverlay; issue #22 adds OverlayMaster, OverlayMenu and ToggleDarkening)
+    constexpr int32 FMM_BINDING_COUNT = 38;
 
     // The signed input channel bits of the contract, restated so the tests stay independent
     constexpr int32 FMM_CH_THRUST_FORWARD = 1 << 0;
@@ -1650,8 +1653,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathLayoutChangedTest, "SOLTest.F
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The one-time "default controls changed" notice applies only to real schema 1 to 3 saves (issue #20 changed the
-// layout again)
+// The one-time "default controls changed" notice applies to every real schema 1 to 6 save (issue #22 moved the
+// orbit-lines key to Alt+O), never to an unversioned or current one
 bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -1660,9 +1663,13 @@ bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("1"), DefaultLayoutChangedSince(1));
     TestTrue(TEXT("2"), DefaultLayoutChangedSince(2));
     TestTrue(TEXT("3 (issue #19 layout)"), DefaultLayoutChangedSince(FMM_LAYOUT_VERSION));
-    TestFalse(TEXT("4 (issue #20 layout)"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION));
-    TestFalse(TEXT("5"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION + 1));
-    TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_ROUTE_LAYOUT_VERSION);
+    TestTrue(TEXT("4 (issue #20 layout)"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION));
+    TestTrue(TEXT("5"), DefaultLayoutChangedSince(5));
+    TestTrue(TEXT("6"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION - 1));
+    TestFalse(TEXT("7 (issue #22 layout)"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION));
+    TestFalse(TEXT("8"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION + 1));
+    TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_OVERLAY_LAYOUT_VERSION);
+    TestEqual(TEXT("schema version matches the layout"), SOL::Settings::SAVE_VERSION, FMM_OVERLAY_LAYOUT_VERSION);
     return true;
 }
 
@@ -1672,7 +1679,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathSettingsSaveMigrationTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Schema 1 and 2 saves are migrated (never discarded) to the current version with their key overrides kept
+// Schema 1, 2 and 6 saves are migrated (never discarded) to the current version with their key overrides kept
 bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*parameters*/)
 {
     TestTrue(TEXT("schema bumped for the new layout"), SOL::Settings::SAVE_VERSION >= FMM_ROUTE_LAYOUT_VERSION);
@@ -1683,6 +1690,8 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     TestTrue(TEXT("a v2 save is migrated"), SOLSettingsRules::ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v1 save is migrated"), SOLSettingsRules::ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v6 save is migrated"), SOLSettingsRules::ClassifySaveVersion(6, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
 
     // A schema 2 save: overrides (one now conflicting) and the other fields survive
@@ -1713,6 +1722,20 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     const FString* mapKey = v1->KeyOverrides.Find(TEXT("OpenMapJump"));
     TestTrue(TEXT("v1 override moved to OpenMapJump"), mapKey != nullptr && *mapKey == TEXT("Comma"));
     TestEqual(TEXT("v1 override count"), v1->KeyOverrides.Num(), 1);
+    TestEqual(TEXT("v1 gets one overlay profile"), v1->OverlayProfiles.Num(), 1);
+
+    // A schema 6 save keeps its orbit-lines override verbatim (the action is now an Alt chord: Alt+K)
+    USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
+    v6->Version = 6;
+    v6->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    v6->MigrateToCurrentVersion();
+    TestEqual(TEXT("v6 -> current"), v6->Version, SOL::Settings::SAVE_VERSION);
+    const FString* orbitKey = v6->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
+    TestTrue(TEXT("v6 orbit-lines override kept"), orbitKey != nullptr && *orbitKey == TEXT("K"));
+    TestEqual(TEXT("v6 override count"), v6->KeyOverrides.Num(), 1);
+    const TArray<FString> v6Keys = SOLKeyBindings::ResolveKeys(v6->KeyOverrides);
+    TestEqual(TEXT("v6 orbit lines shown as Alt+K"), SOLKeyBindings::BindingDisplayName(
+        static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines), v6Keys), FString(TEXT("Alt+K")));
 
     // A current save is untouched, and migrating again is a no-op
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();

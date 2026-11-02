@@ -6,6 +6,7 @@
 #pragma once
 
 #include "SOLConstants.h"
+#include "UI/SOLOverlayModel.h"
 
 #include "CoreMinimal.h"
 
@@ -29,6 +30,7 @@ namespace SOLSettingsModel
         float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;   // HUD hologram effects (jitter; SDD 21)
         bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;      // Steering toggle on at flight start (SDD 19
                                                                         // Amendment 5; default off)
+        SOLOverlay::FOverlayPrefs OverlayPrefs = SOLOverlay::MakeDefaultPrefs();  // Overlay Menu choices (SDD 22)
     };
 
     struct FSettingsModel
@@ -61,4 +63,8 @@ namespace SOLSettingsModel
     // Sets the applied and pending orbit-line flag (the O key in flight, SDD 17) without touching any other pending
     // edit; returns true if the applied value changed
     SOLTEST_API bool SetAppliedShowOrbitLines(FSettingsModel& model, bool bShown);
+
+    // Sets the applied and pending overlay prefs (the Overlay Menu and Shift+O in flight, SDD 22; sanitized) without
+    // touching any other pending edit; returns true if the applied prefs changed
+    SOLTEST_API bool SetAppliedOverlayPrefs(FSettingsModel& model, const SOLOverlay::FOverlayPrefs& prefs);
 }

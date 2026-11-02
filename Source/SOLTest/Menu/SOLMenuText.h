@@ -48,6 +48,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_AUDIO = TEXT("Audio");
     inline constexpr const TCHAR* SETTINGS_MOUSE = TEXT("Mouse");
     inline constexpr const TCHAR* SETTINGS_GAMEPLAY = TEXT("Gameplay");
+    inline constexpr const TCHAR* SETTINGS_OVERLAYS = TEXT("Overlays (what the overlay key turns on and off)");
     inline constexpr const TCHAR* SETTINGS_KEYS = TEXT("Key bindings");
     inline constexpr const TCHAR* SETTINGS_RESOLUTION = TEXT("Resolution");
     inline constexpr const TCHAR* SETTINGS_WINDOW_MODE = TEXT("Window mode");
@@ -130,7 +131,10 @@ namespace SOLMenuText
         { TEXT("Time"), TEXT("Time warp down") },
         { TEXT("Time"), TEXT("Time warp up") },
         { TEXT("Time"), TEXT("Time warp to 1x") },
-        { TEXT("Gameplay"), TEXT("Orbit lines") },
+        { TEXT("Overlays"), TEXT("Overlays on / off") },
+        { TEXT("Overlays"), TEXT("Orbit lines on / off") },
+        { TEXT("Overlays"), TEXT("Overlay Menu") },
+        { TEXT("Overlays"), TEXT("Darken far overlays") },
         { TEXT("HUD"), TEXT("Radar range in") },
         { TEXT("HUD"), TEXT("Radar range out") },
         { TEXT("HUD"), TEXT("Radar automatic range") },
@@ -159,6 +163,16 @@ namespace SOLMenuText
     inline constexpr const TCHAR* HUD_STEER_HINT_FORMAT = TEXT("Hold {SteerHold} to steer");
     inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
     inline constexpr const TCHAR* SPEED_PANEL_TITLE_FORMAT = TEXT("SPEED CAP  ({SpeedPanel} / Enter close, Esc close)");
+
+    // Overlay Menu (SDD 22): title ('{<BindingId>}' is that action's current key), row marks and the key hint
+    inline constexpr const TCHAR* OVERLAY_MENU_TITLE_FORMAT = TEXT("OVERLAYS  ({OverlayMenu} / Esc close)");
+    inline constexpr const TCHAR* OVERLAY_MENU_HINT = TEXT("Click or Space: toggle   Up / Down: move   "
+        "{OverlayMaster}: everything checked on / off together");
+    inline constexpr const TCHAR* OVERLAY_MENU_HINT_EMBEDDED = TEXT("Click a row to toggle it (applies at once).   "
+        "{OverlayMaster} in flight: everything checked on / off together");
+    inline constexpr const TCHAR* OVERLAY_MENU_CHECKED = TEXT("[x] ");
+    inline constexpr const TCHAR* OVERLAY_MENU_UNCHECKED = TEXT("[ ] ");
+    inline constexpr const TCHAR* OVERLAY_MENU_CHILD_INDENT = TEXT("    ");
 
     // Controls page
     inline constexpr const TCHAR* CONTROLS_TITLE = TEXT("Controls");
@@ -212,7 +226,13 @@ namespace SOLMenuText
         { TEXT("Combat"), TEXT("@DropTarget"), TEXT("Drop a practice target {DropDistance} ahead") },
         { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
         { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
-        { TEXT("Gameplay"), TEXT("@ToggleOrbitLines"), TEXT("Show or hide the orbit lines") },
+        { TEXT("Overlays"), TEXT("@OverlayMaster"),
+            TEXT("Overlays on / off: everything checked in the Overlay Menu together (on at every flight start)") },
+        { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off") },
+        { TEXT("Overlays"), TEXT("@OverlayMenu"),
+            TEXT("Overlay Menu: choose what the overlay key shows (icons per kind, orbits per kind, ships on radar, "
+                "darkening); also in Settings") },
+        { TEXT("Overlays"), TEXT("@ToggleDarkening"), TEXT("Darken far overlays on / off") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
         { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
         { TEXT("Map"), TEXT("@OpenMap"), TEXT("Open the map in the last mode used / close it") },
@@ -320,10 +340,16 @@ namespace SOLMenuText
             "for a few seconds and the ship takes no input until you come to."),
         TEXT("Time warp speeds up the planets, not your ship: the ship is carried along with its reference frame, so "
             "an orbit or a landing spot stays put at any warp."),
-        TEXT("Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbit of every planet, dwarf planet and "
-            "moon and of the 50 largest named asteroids, dashed and fading with distance. Your target's orbit is "
-            "drawn in gold. A line behind a planet or moon is hidden by it, and the part in front of it stays visible. "
-            "The choice is remembered."),
+        TEXT("Overlays: {OverlayMaster} turns on or off, together, everything checked in the Overlay Menu "
+            "({OverlayMenu}, also in Settings); they are on at every flight start and the menu's choices are "
+            "remembered. The star, every planet, moon and dwarf planet, the 50 largest named asteroids, ring "
+            "systems, the nearest practice targets and the nearest NPC ships get a small hologram icon that fades out "
+            "as the real object grows on screen; the nearest objects off screen get an arrow at the edge pointing to "
+            "them. Far icons are darker while darkening is on "
+            "({ToggleDarkening}). Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbits of the planets, "
+            "moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the Overlay Menu; "
+            "asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is drawn in gold. "
+            "A line behind a planet or moon is hidden by it, and the part in front of it stays visible."),
         TEXT("The map ({OpenMap}; {OpenMapJump} opens it in Jump mode) shows the whole system; J, M and P switch "
             "between Jump, Move and Patrol mode. Press on a body or on empty space, drag to set where you want to be "
             "relative to it and release. In Jump mode, Enter jumps there. In Move and Patrol mode each pick adds a "

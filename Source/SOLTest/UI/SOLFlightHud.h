@@ -15,6 +15,7 @@
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudTextList.h"
+#include "UI/SOLOverlayIconLayer.h"
 #include "UI/SOLRadarLayout.h"
 
 #include "CoreMinimal.h"
@@ -29,6 +30,8 @@ class UMaterialInstanceDynamic;
 class USOLAnchorSubsystem;
 class USOLHudEventSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLCombatSubsystem;
+class USOLNpcSubsystem;
 class USOLJumpSubsystem;
 class USOLSettingsSubsystem;
 class USOLMapModeSubsystem;
@@ -145,6 +148,12 @@ public:
 
     // Returns true if the last frame drew with the shape renderer (SDD 21; verification)
     bool WasShapeRendererActive() const { return mWasShapeRendererActive; }
+
+    // Returns the flight view's overlay icon layer (SDD 22; verification)
+    const FSOLOverlayIconLayer& GetIconLayer() const { return mIconLayer; }
+
+    // Returns the NPC ship contacts the radar drew last frame (Ships on Radar; verification)
+    int32 GetLastRadarShipCount() const { return mLastRadarShipCount; }
 
     // Returns the number of glow shapes the last frame queued (verification)
     int32 GetLastShapeCount() const;
@@ -353,6 +362,9 @@ private:
     // Draws the selected target's bracket and readout, or an edge arrow when it is off-screen
     void DrawTarget(const FSOLHudView& view, const FSOLShipState& state);
 
+    // Draws the overlay icons and edge arrows (SDD 22) and chooses the NPC ships for the icons and the radar
+    void DrawOverlayIcons(const FSOLHudView* view);
+
     // Draws the prograde and retrograde markers of the velocity relative to the active frame
     void DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state);
 
@@ -409,9 +421,18 @@ private:
     TObjectPtr<USOLHudEventSubsystem> HudEvents;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLCombatSubsystem> Combat;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLNpcSubsystem> Npcs;
+
+    UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> ShapeMaterial;     // M_SOLHudShape instance drawn by the shape layer
 
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
+    FSOLOverlayIconLayer mIconLayer;                // Flight view overlay icons (SDD 22)
+    bool mAreShipsSelected = false;                 // The icon layer chose NPC ships this frame (icons or radar)
+    int32 mLastRadarShipCount = 0;                  // NPC ship contacts on the radar last frame
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
     FSOLMapHologramOverlay mHologramOverlay;        // Map grid plane and stems (SDD 20 hologram look)

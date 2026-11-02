@@ -19,6 +19,7 @@
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHudSmoke.h"
+#include "UI/SOLOverlaySmoke.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
@@ -43,6 +44,7 @@ class USOLRouteSubsystem;
 class USOLSettingsSubsystem;
 class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
+class USOLOverlayMenuWidget;
 class USOLSimClockSubsystem;
 class USOLTargetingSubsystem;
 class USpringArmComponent;
@@ -199,8 +201,26 @@ public:
     // Resets the time-warp to 1x (Backspace)
     void HandleWarpReset();
 
-    // Toggles the flight HUD's body orbit ellipses (O)
+    // Toggles the world-space orbit lines (Alt+O; SDD 22) and ends the free look the Alt press began
     void HandleToggleOrbitLines();
+
+    // Turns every overlay checked in the Overlay Menu on or off together (O; SDD 22)
+    void HandleToggleOverlayMaster();
+
+    // Toggles the distance darkening of far overlays (Shift+O; SDD 22)
+    void HandleToggleDarkening();
+
+    // Requests the Overlay Menu to open or close (Ctrl+O; done at the next tick, outside the input callback)
+    void HandleToggleOverlayMenu();
+
+    // Closes the Overlay Menu, gives input back to the ship and writes the overlay choices if they changed
+    void CloseOverlayMenu();
+
+    // Returns true while the Overlay Menu is open (and the ship's own control input is suspended)
+    bool IsOverlayMenuOpen() const { return mIsOverlayMenuOpen; }
+
+    // Returns the Overlay Menu widget, or nullptr before it was first opened
+    USOLOverlayMenuWidget* GetOverlayMenu() const { return OverlayMenu; }
 
     // Shows or hides the route overlay (P; SDD 20)
     void HandleToggleRouteOverlay();
@@ -543,8 +563,29 @@ private:
     // Enhanced Input: warp reset
     void OnWarpResetAction(const FInputActionValue& value);
 
-    // Enhanced Input: orbit lines toggle
+    // Enhanced Input: orbit lines toggle (Alt+O)
     void OnToggleOrbitLinesAction(const FInputActionValue& value);
+
+    // Enhanced Input: overlay master (O)
+    void OnOverlayMasterAction(const FInputActionValue& value);
+
+    // Enhanced Input: Overlay Menu (Ctrl+O)
+    void OnOverlayMenuAction(const FInputActionValue& value);
+
+    // Enhanced Input: distance darkening (Shift+O)
+    void OnToggleDarkeningAction(const FInputActionValue& value);
+
+    // Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt or Ctrl) in the ship's context
+    void MapBindingPressed(UInputAction* action, int32 binding);
+
+    // Opens the Overlay Menu: suspends the ship's control input and gives the menu UI-only focus
+    void OpenOverlayMenu();
+
+    // Removes the Overlay Menu without restoring input (unpossess, EndPlay)
+    void DismissOverlayMenu();
+
+    // Returns true while a panel (the F3 speed panel or the Overlay Menu) has the input
+    bool IsPanelOpen() const { return mIsSpeedPanelOpen || mIsOverlayMenuOpen; }
 
     // Enhanced Input: route overlay toggle (P)
     void OnToggleRouteOverlayAction(const FInputActionValue& value);
@@ -741,6 +782,21 @@ private:
     TObjectPtr<UInputAction> ShiftChordAction;
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> AltChordAction;                // Left / Right Alt held (Alt chords, SDD 22)
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> CtrlChordAction;               // Left / Right Ctrl held (Ctrl chords, SDD 22)
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> OverlayMasterAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> OverlayMenuAction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UInputAction> ToggleDarkeningAction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputAction> SpeedPanelAction;
 
     UPROPERTY(Transient)
@@ -813,6 +869,9 @@ private:
     TObjectPtr<USOLSpeedPanelWidget> SpeedPanel;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLOverlayMenuWidget> OverlayMenu;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
     UPROPERTY(Transient)
@@ -855,6 +914,7 @@ private:
     TUniquePtr<FSOLRouteSmoke> mSmokeRoute;                 // Verification-only map mode and route script
     TUniquePtr<FSOLRouteOverlaySmoke> mSmokeRouteOverlay;   // Verification-only route overlay script
     TUniquePtr<FSOLHologramSmoke> mSmokeHologram;           // Verification-only map hologram script
+    TUniquePtr<FSOLOverlaySmoke> mSmokeOverlay;             // Verification-only overlay script (SDD 22)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
@@ -862,7 +922,10 @@ private:
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)
     FSOLBoostToggle mBoost;                                 // Boost toggle (SDD 19)
     uint32 mSeenPilotResetCount = 0;                        // Ship subsystem pilot resets already applied to boost
-    double mShiftOnlyHeldS = 0.0;                           // AUTO: how long only Shift keys have held flight input
+    double mShiftOnlyHeldS = 0.0;                           // AUTO: how long only modifier keys (Shift, Ctrl, Alt)
+                                                            // have held flight input
+    double mFreeLookHeldS = 0.0;                            // How long the free-look key has been held unarmed
+    double mFreeLookArmPx = 0.0;                            // Mouse travel (px) since the free-look key went down
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
@@ -877,7 +940,11 @@ private:
     double mMouseUnitsToPixels = 1.0;                       // Undoes the Mouse2D axis sensitivity of the input config
     double mWarpBaseFovDeg = 0.0;                           // Camera FOV when the warp effect started
     double mWarpEffectElapsedS = 0.0;                       // Sequence time the warp effect was last computed for
-    bool mIsFreeLooking = false;                            // True while Alt is held
+    bool mIsFreeLooking = false;                            // True while free look is active (Alt held, armed)
+    bool mIsFreeLookHeld = false;                           // The free-look key is down
+    bool mIsFreeLookSuppressed = false;                     // An Alt chord (Alt+O) cancelled it until Alt is released
+    bool mIsOverlayMenuOpen = false;                        // True while the Overlay Menu has focus
+    bool mIsOverlayMenuRequested = false;                   // Ctrl+O pressed; the menu opens or closes next tick
     bool mIsFireHeld = false;                               // True while the left mouse (gun trigger) is held
     bool mHasCameraRotation = false;                        // False until the camera rotation is first set
     bool mHadViewportFocus = false;                         // Viewport focus last frame (focus loss is an edge)

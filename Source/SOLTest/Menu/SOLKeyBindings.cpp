@@ -19,13 +19,14 @@ namespace
     //////////////////////////////////////////////////////////////////////////
     // Returns a binding's definition: its id, default key and chord, with its shown area and label from SOLMenuText
     constexpr SOLKeyBindings::FBindingDef KeyBindingDef(const SOLKeyBindings::EBinding binding,
-        const TCHAR* id, const TCHAR* defaultKey, const bool bShiftChord = false)
+        const TCHAR* id, const TCHAR* defaultKey,
+        const SOLKeyBindings::EKeyChord chord = SOLKeyBindings::EKeyChord::None)
     {
         return { id, SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Area,
-            SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey, bShiftChord };
+            SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey, chord };
     }
 
-    // Every rebindable action, in EBinding order. Defaults are the issue #20 layout (settings schema 4) and match
+    // Every rebindable action, in EBinding order. Defaults are the issue #22 layout (settings schema 7) and match
     // GAME_MECHANICS.md section 1 (keep both in sync)
     constexpr SOLKeyBindings::FBindingDef KEY_BINDING_DEFS[] =
     {
@@ -56,12 +57,20 @@ namespace
         KeyBindingDef(SOLKeyBindings::EBinding::WarpDown, TEXT("WarpDown"), TEXT("LeftBracket")),
         KeyBindingDef(SOLKeyBindings::EBinding::WarpUp, TEXT("WarpUp"), TEXT("RightBracket")),
         KeyBindingDef(SOLKeyBindings::EBinding::WarpReset, TEXT("WarpReset"), TEXT("BackSpace")),
-        KeyBindingDef(SOLKeyBindings::EBinding::ToggleOrbitLines, TEXT("ToggleOrbitLines"), TEXT("O")),
+        KeyBindingDef(SOLKeyBindings::EBinding::OverlayMaster, TEXT("OverlayMaster"), TEXT("O")),
+        KeyBindingDef(SOLKeyBindings::EBinding::ToggleOrbitLines, TEXT("ToggleOrbitLines"), TEXT("O"),
+            SOLKeyBindings::EKeyChord::Alt),
+        KeyBindingDef(SOLKeyBindings::EBinding::OverlayMenu, TEXT("OverlayMenu"), TEXT("O"),
+            SOLKeyBindings::EKeyChord::Control),
+        KeyBindingDef(SOLKeyBindings::EBinding::ToggleDarkening, TEXT("ToggleDarkening"), TEXT("O"),
+            SOLKeyBindings::EKeyChord::Shift),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomIn, TEXT("RadarZoomIn"), TEXT("Hyphen")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomOut, TEXT("RadarZoomOut"), TEXT("Equals")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarAuto, TEXT("RadarAuto"), TEXT("Home")),
-        KeyBindingDef(SOLKeyBindings::EBinding::OpenMap, TEXT("OpenMap"), TEXT("M"), true),
-        KeyBindingDef(SOLKeyBindings::EBinding::OpenMapJump, TEXT("OpenMapJump"), TEXT("J"), true),
+        KeyBindingDef(SOLKeyBindings::EBinding::OpenMap, TEXT("OpenMap"), TEXT("M"),
+            SOLKeyBindings::EKeyChord::Shift),
+        KeyBindingDef(SOLKeyBindings::EBinding::OpenMapJump, TEXT("OpenMapJump"), TEXT("J"),
+            SOLKeyBindings::EKeyChord::Shift),
         KeyBindingDef(SOLKeyBindings::EBinding::Resume, TEXT("Resume"), TEXT("V")),
         KeyBindingDef(SOLKeyBindings::EBinding::ToggleRouteOverlay, TEXT("ToggleRouteOverlay"), TEXT("P")),
     };
@@ -88,15 +97,27 @@ namespace
         TEXT("RightShift"), TEXT("X"), TEXT("Enter"), TEXT("Delete"), TEXT("J"), TEXT("M"), TEXT("P"),
     };
 
-    // Keys a Shift chord may not take: Shift itself, and the map's mouse buttons (Shift already modifies them there)
-    const TCHAR* const KEY_BINDING_CHORD_REFUSED[] =
+    // The modifier keys (a chord's own keys)
+    const TCHAR* const KEY_BINDING_MODIFIERS[] =
     {
-        TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
-        TEXT("MiddleMouseButton"),
+        TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftAlt"), TEXT("RightAlt"), TEXT("LeftControl"),
+        TEXT("RightControl"),
     };
 
-    // Prefix of a Shift chord's shown key
-    const TCHAR* const KEY_BINDING_SHIFT_PREFIX = TEXT("Shift+");
+    // Mouse buttons a chord may not take (Shift already modifies them on the map)
+    const TCHAR* const KEY_BINDING_CHORD_REFUSED_BUTTONS[] =
+    {
+        TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton"),
+    };
+
+    // Keys an Alt chord may not take: Windows uses Alt+F4 (close), Alt+Tab, Alt+Space (window menu) and Alt+Enter
+    const TCHAR* const KEY_BINDING_ALT_REFUSED[] =
+    {
+        TEXT("F4"), TEXT("Tab"), TEXT("SpaceBar"), TEXT("Enter"),
+    };
+
+    // Prefix of a chord's shown key, per SOLKeyBindings::EKeyChord
+    const TCHAR* const KEY_BINDING_CHORD_PREFIXES[] = { TEXT(""), TEXT("Shift+"), TEXT("Alt+"), TEXT("Ctrl+") };
 
     //////////////////////////////////////////////////////////////////////////
     // Returns whether a binding index is inside the table
@@ -201,15 +222,34 @@ bool SOLKeyBindings::CanBindKeyTo(const int32 binding, const FString& keyName)
     {
         return false;
     }
-    return !KEY_BINDING_DEFS[binding].bShiftChord
-        || !KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_CHORD_REFUSED));
+    if (KEY_BINDING_DEFS[binding].Chord == EKeyChord::Alt
+        && KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_ALT_REFUSED)))
+    {
+        return false;
+    }
+    return KEY_BINDING_DEFS[binding].Chord == EKeyChord::None
+        || (!IsModifierKey(keyName) && !KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_CHORD_REFUSED_BUTTONS)));
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Returns whether a binding is a Shift chord
 bool SOLKeyBindings::IsShiftChord(const int32 binding)
 {
-    return KeyBindingIsValid(binding) && KEY_BINDING_DEFS[binding].bShiftChord;
+    return KeyBindingIsValid(binding) && KEY_BINDING_DEFS[binding].Chord == EKeyChord::Shift;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a binding's chord (None out of range)
+SOLKeyBindings::EKeyChord SOLKeyBindings::GetChord(const int32 binding)
+{
+    return KeyBindingIsValid(binding) ? KEY_BINDING_DEFS[binding].Chord : EKeyChord::None;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a key is a modifier (Shift, Alt or Control, either side)
+bool SOLKeyBindings::IsModifierKey(const FString& keyName)
+{
+    return KeyBindingIsListed(keyName, MakeArrayView(KEY_BINDING_MODIFIERS));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -218,7 +258,8 @@ FString SOLKeyBindings::BindingDisplayName(const int32 binding, const TArray<FSt
 {
     const FString keyName = keys.IsValidIndex(binding) ? keys[binding] : FString();
     const FString label = SOLBindingLabel::KeyDisplayName(keyName);
-    return IsShiftChord(binding) && !keyName.IsEmpty() ? KEY_BINDING_SHIFT_PREFIX + label : label;
+    return keyName.IsEmpty() ? label
+        : FString(KEY_BINDING_CHORD_PREFIXES[static_cast<int32>(GetChord(binding))]) + label;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -287,10 +328,10 @@ int32 SOLKeyBindings::FindConflict(const TArray<FString>& keys, const int32 bind
     {
         return INDEX_NONE;
     }
-    const bool bShiftChord = IsShiftChord(binding);
+    const EKeyChord chord = GetChord(binding);
     for (int32 other = 0; other < keys.Num(); ++other)
     {
-        if (other != binding && IsShiftChord(other) == bShiftChord
+        if (other != binding && GetChord(other) == chord
             && keys[other].Equals(keyName, ESearchCase::IgnoreCase))
         {
             return other;

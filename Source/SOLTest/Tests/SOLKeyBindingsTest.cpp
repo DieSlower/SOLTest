@@ -283,17 +283,19 @@ bool FSOLKeyBindingsRouteBindingsTest::RunTest(const FString& /*parameters*/)
         int32 Binding;
         const TCHAR* Id;
         const TCHAR* DefaultKey;
-        bool bChord;
+        EKeyChord Chord;
         const TCHAR* Area;
         const TCHAR* Label;
     };
     const FExpected expected[] =
     {
-        { KEYBINDINGS_OPEN_MAP, TEXT("OpenMap"), TEXT("M"), true, TEXT("Map"), TEXT("Open or close the map") },
-        { KEYBINDINGS_OPEN_MAP_JUMP, TEXT("OpenMapJump"), TEXT("J"), true, TEXT("Map"),
+        { KEYBINDINGS_OPEN_MAP, TEXT("OpenMap"), TEXT("M"), EKeyChord::Shift, TEXT("Map"),
+            TEXT("Open or close the map") },
+        { KEYBINDINGS_OPEN_MAP_JUMP, TEXT("OpenMapJump"), TEXT("J"), EKeyChord::Shift, TEXT("Map"),
             TEXT("Open the map in Jump mode") },
-        { KEYBINDINGS_RESUME, TEXT("Resume"), TEXT("V"), false, TEXT("Routes"), TEXT("Resume a paused route") },
-        { KEYBINDINGS_ROUTE_OVERLAY, TEXT("ToggleRouteOverlay"), TEXT("P"), false, TEXT("Routes"),
+        { KEYBINDINGS_RESUME, TEXT("Resume"), TEXT("V"), EKeyChord::None, TEXT("Routes"),
+            TEXT("Resume a paused route") },
+        { KEYBINDINGS_ROUTE_OVERLAY, TEXT("ToggleRouteOverlay"), TEXT("P"), EKeyChord::None, TEXT("Routes"),
             TEXT("Show or hide routes") },
     };
     const TArray<FString> defaults = DefaultKeys();
@@ -305,20 +307,26 @@ bool FSOLKeyBindingsRouteBindingsTest::RunTest(const FString& /*parameters*/)
         TestEqual(FString::Printf(TEXT("%s default"), entry.Id), FString(def.DefaultKey), FString(entry.DefaultKey));
         TestEqual(FString::Printf(TEXT("%s resolved default"), entry.Id), defaults[entry.Binding],
             FString(entry.DefaultKey));
-        TestEqual(FString::Printf(TEXT("%s chord flag"), entry.Id), def.bShiftChord, entry.bChord);
-        TestEqual(FString::Printf(TEXT("%s IsShiftChord"), entry.Id), IsShiftChord(entry.Binding), entry.bChord);
+        TestTrue(FString::Printf(TEXT("%s def chord"), entry.Id), def.Chord == entry.Chord);
+        TestTrue(FString::Printf(TEXT("%s GetChord"), entry.Id), GetChord(entry.Binding) == entry.Chord);
+        TestEqual(FString::Printf(TEXT("%s IsShiftChord"), entry.Id), IsShiftChord(entry.Binding),
+            entry.Chord == EKeyChord::Shift);
         TestEqual(FString::Printf(TEXT("%s area"), entry.Id), FString(def.Area), FString(entry.Area));
         TestEqual(FString::Printf(TEXT("%s label"), entry.Id), FString(def.Label), FString(entry.Label));
     }
 
-    // Only the two map openers are chords
+    // Only the two map openers and the distance-darkening toggle (issue #22) are Shift chords
+    const int32 darkening = static_cast<int32>(EBinding::ToggleDarkening);
     for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
     {
-        const bool bExpectChord = binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP;
-        TestEqual(FString::Printf(TEXT("%s chord"), GetDef(binding).Id), IsShiftChord(binding), bExpectChord);
+        const bool bExpectShift = binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP
+            || binding == darkening;
+        TestEqual(FString::Printf(TEXT("%s Shift chord"), GetDef(binding).Id), IsShiftChord(binding), bExpectShift);
     }
     TestFalse(TEXT("IsShiftChord negative"), IsShiftChord(-1));
     TestFalse(TEXT("IsShiftChord past the end"), IsShiftChord(BINDING_COUNT));
+    TestTrue(TEXT("GetChord negative"), GetChord(-1) == EKeyChord::None);
+    TestTrue(TEXT("GetChord past the end"), GetChord(BINDING_COUNT) == EKeyChord::None);
     return true;
 }
 
@@ -350,10 +358,11 @@ bool FSOLKeyBindingsMapFixedKeysTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("route overlay takes P"), CanBindKeyTo(KEYBINDINGS_ROUTE_OVERLAY, TEXT("P")));
     TestTrue(TEXT("route overlay takes X"), CanBindKeyTo(KEYBINDINGS_ROUTE_OVERLAY, TEXT("X")));
 
-    // The Shift-chord openers refuse Shift and the mouse buttons, but take other map keys and plain keys
+    // The Shift-chord openers refuse every modifier and the mouse buttons, but take other map keys and plain keys
     const int32 openers[] = { KEYBINDINGS_OPEN_MAP, KEYBINDINGS_OPEN_MAP_JUMP };
-    const TCHAR* chordRefused[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftMouseButton"),
-        TEXT("RightMouseButton"), TEXT("MiddleMouseButton") };
+    const TCHAR* chordRefused[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftAlt"), TEXT("RightAlt"),
+        TEXT("LeftControl"), TEXT("RightControl"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
+        TEXT("MiddleMouseButton") };
     const TCHAR* chordAccepted[] = { TEXT("X"), TEXT("Enter"), TEXT("M"), TEXT("J"), TEXT("K") };
     for (const int32 opener : openers)
     {
@@ -732,6 +741,261 @@ bool FSOLKeyBindingsStopSpinConflictTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("no conflict on G"), conflict, INDEX_NONE);
     TestFalse(TEXT("Stop spin clear"), HasConflict(keys, stopSpin));
     TestFalse(TEXT("drop target clear"), HasConflict(keys, KEYBINDINGS_DROP));
+    return true;
+}
+
+// Issue #22 overlay bindings and Alt / Ctrl chords, written against the issue #22 contract (SDD 22) before the
+// production code
+
+namespace
+{
+    constexpr int32 KEYBINDINGS_WARP_RESET = static_cast<int32>(SOLKeyBindings::EBinding::WarpReset);
+    constexpr int32 KEYBINDINGS_OVERLAY_MASTER = static_cast<int32>(SOLKeyBindings::EBinding::OverlayMaster);
+    constexpr int32 KEYBINDINGS_ORBIT_LINES = static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines);
+    constexpr int32 KEYBINDINGS_OVERLAY_MENU = static_cast<int32>(SOLKeyBindings::EBinding::OverlayMenu);
+    constexpr int32 KEYBINDINGS_DARKENING = static_cast<int32>(SOLKeyBindings::EBinding::ToggleDarkening);
+    constexpr int32 KEYBINDINGS_RADAR_ZOOM_IN = static_cast<int32>(SOLKeyBindings::EBinding::RadarZoomIn);
+    constexpr int32 KEYBINDINGS_FREE_LOOK = static_cast<int32>(SOLKeyBindings::EBinding::FreeLook);
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsOverlayBindingsTest, "SOLTest.KeyBindings.OverlayBindings",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The four O bindings follow WarpReset in order with their ids, area, default key O and chords None / Alt / Ctrl /
+// Shift; every other binding except the map openers is a plain key
+bool FSOLKeyBindingsOverlayBindingsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TestEqual(TEXT("OverlayMaster after WarpReset"), KEYBINDINGS_OVERLAY_MASTER, KEYBINDINGS_WARP_RESET + 1);
+    TestEqual(TEXT("ToggleOrbitLines next"), KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_WARP_RESET + 2);
+    TestEqual(TEXT("OverlayMenu next"), KEYBINDINGS_OVERLAY_MENU, KEYBINDINGS_WARP_RESET + 3);
+    TestEqual(TEXT("ToggleDarkening next"), KEYBINDINGS_DARKENING, KEYBINDINGS_WARP_RESET + 4);
+    TestEqual(TEXT("RadarZoomIn after the overlay bindings"), KEYBINDINGS_RADAR_ZOOM_IN, KEYBINDINGS_WARP_RESET + 5);
+    TestEqual(TEXT("binding count"), BINDING_COUNT, 38);
+
+    struct FExpected
+    {
+        int32 Binding;
+        const TCHAR* Id;
+        EKeyChord Chord;
+    };
+    const FExpected expected[] =
+    {
+        { KEYBINDINGS_OVERLAY_MASTER, TEXT("OverlayMaster"), EKeyChord::None },
+        { KEYBINDINGS_ORBIT_LINES, TEXT("ToggleOrbitLines"), EKeyChord::Alt },
+        { KEYBINDINGS_OVERLAY_MENU, TEXT("OverlayMenu"), EKeyChord::Control },
+        { KEYBINDINGS_DARKENING, TEXT("ToggleDarkening"), EKeyChord::Shift },
+    };
+    const TArray<FString> defaults = DefaultKeys();
+    for (const FExpected& entry : expected)
+    {
+        const FBindingDef& def = GetDef(entry.Binding);
+        TestEqual(FString::Printf(TEXT("%s id"), entry.Id), FString(def.Id), FString(entry.Id));
+        TestEqual(FString::Printf(TEXT("%s found by id"), entry.Id), FindById(entry.Id), entry.Binding);
+        TestEqual(FString::Printf(TEXT("%s area"), entry.Id), FString(def.Area), FString(TEXT("Overlays")));
+        TestFalse(FString::Printf(TEXT("%s has a label"), entry.Id), FString(def.Label).IsEmpty());
+        TestEqual(FString::Printf(TEXT("%s default key"), entry.Id), FString(def.DefaultKey), FString(TEXT("O")));
+        TestEqual(FString::Printf(TEXT("%s resolved default"), entry.Id), defaults[entry.Binding],
+            FString(TEXT("O")));
+        TestTrue(FString::Printf(TEXT("%s def chord"), entry.Id), def.Chord == entry.Chord);
+        TestTrue(FString::Printf(TEXT("%s GetChord"), entry.Id), GetChord(entry.Binding) == entry.Chord);
+    }
+
+    // Every other binding is plain, apart from the Shift-chord map openers
+    for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
+    {
+        EKeyChord expectedChord = EKeyChord::None;
+        if (binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP
+            || binding == KEYBINDINGS_DARKENING)
+        {
+            expectedChord = EKeyChord::Shift;
+        }
+        else if (binding == KEYBINDINGS_ORBIT_LINES)
+        {
+            expectedChord = EKeyChord::Alt;
+        }
+        else if (binding == KEYBINDINGS_OVERLAY_MENU)
+        {
+            expectedChord = EKeyChord::Control;
+        }
+        TestTrue(FString::Printf(TEXT("%s chord"), GetDef(binding).Id), GetChord(binding) == expectedChord);
+    }
+    TestEqual(TEXT("the map opener stays on M"), defaults[KEYBINDINGS_OPEN_MAP], FString(TEXT("M")));
+    TestEqual(TEXT("the jump-map opener stays on J"), defaults[KEYBINDINGS_OPEN_MAP_JUMP], FString(TEXT("J")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsModifierKeysTest, "SOLTest.KeyBindings.ModifierKeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The six Shift / Alt / Control keys are modifiers (any case); Shift, Alt and Ctrl chords refuse them and the three
+// mouse buttons, while plain bindings may still take them
+bool FSOLKeyBindingsModifierKeysTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    const TCHAR* modifiers[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftAlt"), TEXT("RightAlt"),
+        TEXT("LeftControl"), TEXT("RightControl"), TEXT("leftalt"), TEXT("RIGHTCONTROL") };
+    for (const TCHAR* key : modifiers)
+    {
+        TestTrue(FString::Printf(TEXT("'%s' is a modifier"), key), IsModifierKey(key));
+    }
+    const TCHAR* notModifiers[] = { TEXT("O"), TEXT("LeftMouseButton"), TEXT(""), TEXT("Tab"), TEXT("CapsLock") };
+    for (const TCHAR* key : notModifiers)
+    {
+        TestFalse(FString::Printf(TEXT("'%s' is not a modifier"), key), IsModifierKey(key));
+    }
+
+    // Every chord binding refuses modifiers and mouse buttons and takes ordinary keys
+    const int32 chords[] = { KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_OVERLAY_MENU, KEYBINDINGS_DARKENING,
+        KEYBINDINGS_OPEN_MAP };
+    const TCHAR* chordRefused[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftAlt"), TEXT("RightAlt"),
+        TEXT("LeftControl"), TEXT("RightControl"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
+        TEXT("MiddleMouseButton") };
+    for (const int32 chord : chords)
+    {
+        for (const TCHAR* key : chordRefused)
+        {
+            TestFalse(FString::Printf(TEXT("%s refuses '%s'"), GetDef(chord).Id, key), CanBindKeyTo(chord, key));
+        }
+        TestTrue(FString::Printf(TEXT("%s takes K"), GetDef(chord).Id), CanBindKeyTo(chord, TEXT("K")));
+        TestTrue(FString::Printf(TEXT("%s takes O"), GetDef(chord).Id), CanBindKeyTo(chord, TEXT("O")));
+        TestFalse(FString::Printf(TEXT("%s refuses Escape"), GetDef(chord).Id), CanBindKeyTo(chord, TEXT("Escape")));
+    }
+
+    // Plain bindings keep taking modifier keys (free look defaults to Left Alt)
+    TestEqual(TEXT("free look defaults to Left Alt"), DefaultKeys()[KEYBINDINGS_FREE_LOOK], FString(TEXT("LeftAlt")));
+    TestTrue(TEXT("free look takes Left Alt"), CanBindKeyTo(KEYBINDINGS_FREE_LOOK, TEXT("LeftAlt")));
+    TestTrue(TEXT("overlay master takes Left Alt"), CanBindKeyTo(KEYBINDINGS_OVERLAY_MASTER, TEXT("LeftAlt")));
+    TestTrue(TEXT("overlay master takes Right Control"), CanBindKeyTo(KEYBINDINGS_OVERLAY_MASTER,
+        TEXT("RightControl")));
+    TestTrue(TEXT("overlay master takes a mouse button"), CanBindKeyTo(KEYBINDINGS_OVERLAY_MASTER,
+        TEXT("RightMouseButton")));
+
+    // Rebind and saved overrides follow the same rule
+    TArray<FString> keys = DefaultKeys();
+    int32 conflict = 123;
+    TestTrue(TEXT("orbit lines to Left Alt refused"), Rebind(keys, KEYBINDINGS_ORBIT_LINES, TEXT("LeftAlt"), conflict)
+        == ERebindResult::Refused);
+    TestTrue(TEXT("overlay menu to Left Control refused"), Rebind(keys, KEYBINDINGS_OVERLAY_MENU,
+        TEXT("LeftControl"), conflict) == ERebindResult::Refused);
+    TestTrue(TEXT("refusals left the keys alone"), keys == DefaultKeys());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsOverlayDisplayTest, "SOLTest.KeyBindings.OverlayDisplayAndConflicts",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The O bindings show as O, Alt+O, Ctrl+O and Shift+O, never conflict with each other, and a same-chord duplicate
+// on one key does
+bool FSOLKeyBindingsOverlayDisplayTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TArray<FString> keys = DefaultKeys();
+    TestEqual(TEXT("overlay master"), BindingDisplayName(KEYBINDINGS_OVERLAY_MASTER, keys), FString(TEXT("O")));
+    TestEqual(TEXT("orbit lines"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, keys), FString(TEXT("Alt+O")));
+    TestEqual(TEXT("overlay menu"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, keys), FString(TEXT("Ctrl+O")));
+    TestEqual(TEXT("darkening"), BindingDisplayName(KEYBINDINGS_DARKENING, keys), FString(TEXT("Shift+O")));
+    TestEqual(TEXT("format text"), FormatKeyText(TEXT("{ToggleOrbitLines} {OverlayMenu} {ToggleDarkening} "
+        "{OverlayMaster}"), keys), FString(TEXT("Alt+O Ctrl+O Shift+O O")));
+
+    // An unbound chord reads unbound with no prefix
+    TArray<FString> unbound = keys;
+    unbound[KEYBINDINGS_ORBIT_LINES] = FString();
+    unbound[KEYBINDINGS_OVERLAY_MENU] = FString();
+    TestEqual(TEXT("unbound Alt chord"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, unbound),
+        SOLBindingLabel::KeyDisplayName(FString()));
+    TestEqual(TEXT("unbound Ctrl chord"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, unbound),
+        SOLBindingLabel::KeyDisplayName(FString()));
+
+    // No default conflicts, and the four O bindings do not conflict with each other
+    for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
+    {
+        TestFalse(FString::Printf(TEXT("%s default not flagged"), GetDef(binding).Id), HasConflict(keys, binding));
+    }
+    const int32 overlayBindings[] = { KEYBINDINGS_OVERLAY_MASTER, KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_OVERLAY_MENU,
+        KEYBINDINGS_DARKENING };
+    for (const int32 binding : overlayBindings)
+    {
+        TestEqual(FString::Printf(TEXT("%s: no conflict on O"), GetDef(binding).Id), FindConflict(keys, binding,
+            TEXT("O")), static_cast<int32>(INDEX_NONE));
+        TestEqual(FString::Printf(TEXT("%s: no conflict on o"), GetDef(binding).Id), FindConflict(keys, binding,
+            TEXT("o")), static_cast<int32>(INDEX_NONE));
+    }
+
+    // A rebound Alt chord shows its key, and does not conflict with a plain or Shift binding on that key
+    int32 conflict = 123;
+    TestTrue(TEXT("orbit lines to M binds"), Rebind(keys, KEYBINDINGS_ORBIT_LINES, TEXT("M"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Alt+M is free"), conflict, static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("Alt+M shown"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, keys), FString(TEXT("Alt+M")));
+    TestFalse(TEXT("plain M match lock not flagged"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
+    TestFalse(TEXT("Shift+M map opener not flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+
+    // Two Shift chords on one key conflict (darkening onto the map opener's M)
+    TestTrue(TEXT("darkening to M binds"), Rebind(keys, KEYBINDINGS_DARKENING, TEXT("M"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Shift+M conflict reported"), conflict, KEYBINDINGS_OPEN_MAP);
+    TestTrue(TEXT("darkening flagged"), HasConflict(keys, KEYBINDINGS_DARKENING));
+    TestFalse(TEXT("Alt+M still not flagged"), HasConflict(keys, KEYBINDINGS_ORBIT_LINES));
+
+    // A Ctrl chord on M conflicts with neither
+    TestTrue(TEXT("overlay menu to M binds"), Rebind(keys, KEYBINDINGS_OVERLAY_MENU, TEXT("M"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Ctrl+M is free"), conflict, static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("Ctrl+M shown"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, keys), FString(TEXT("Ctrl+M")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsOrbitLinesOverrideTest, "SOLTest.KeyBindings.OrbitLinesOverride",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An older save's ToggleOrbitLines override keeps its key (now an Alt chord), unless the key is a modifier
+bool FSOLKeyBindingsOrbitLinesOverrideTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    TMap<FString, FString> overrides;
+    overrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    const TArray<FString> keys = ResolveKeys(overrides);
+    TestEqual(TEXT("override applied"), keys[KEYBINDINGS_ORBIT_LINES], FString(TEXT("K")));
+    TestEqual(TEXT("shown as an Alt chord"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, keys), FString(TEXT("Alt+K")));
+    TestEqual(TEXT("the override round-trips"), MakeOverrides(keys).FindRef(TEXT("ToggleOrbitLines")),
+        FString(TEXT("K")));
+    TestEqual(TEXT("overlay master keeps O"), keys[KEYBINDINGS_OVERLAY_MASTER], FString(TEXT("O")));
+
+    TMap<FString, FString> modifier;
+    modifier.Add(TEXT("ToggleOrbitLines"), TEXT("LeftAlt"));
+    const TArray<FString> ignored = ResolveKeys(modifier);
+    TestEqual(TEXT("modifier override ignored"), ignored[KEYBINDINGS_ORBIT_LINES], FString(TEXT("O")));
+    TestTrue(TEXT("resolves to the defaults"), ignored == DefaultKeys());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsLayoutVersionTest, "SOLTest.KeyBindings.LayoutChangedSince",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #22 moved the orbit-lines key, so every save from schema 1 to 6 sees the "controls changed" notice
+bool FSOLKeyBindingsLayoutVersionTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    for (int32 version = 1; version <= 6; ++version)
+    {
+        TestTrue(FString::Printf(TEXT("schema %d changed"), version), DefaultLayoutChangedSince(version));
+    }
+    const int32 unchanged[] = { -5, -1, 0, 7, 8, 100 };
+    for (const int32 version : unchanged)
+    {
+        TestFalse(FString::Printf(TEXT("schema %d unchanged"), version), DefaultLayoutChangedSince(version));
+    }
     return true;
 }
 

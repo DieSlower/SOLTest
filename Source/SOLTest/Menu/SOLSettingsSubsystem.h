@@ -112,6 +112,28 @@ public:
     // point (EndVisit or shutdown), and only if the value then differs from what is on disk
     void SetOrbitLinesShown(bool bShown);
 
+    // Returns the overlay choices (the pending value, so the Settings page previews live; SDD 22)
+    const SOLOverlay::FOverlayPrefs& GetOverlayPrefs() const { return mModel.Pending.OverlayPrefs; }
+
+    // Sets the applied (and pending) overlay choices from the Overlay Menu or Shift+O; written at the next write point
+    // (the Overlay Menu's close, EndVisit or shutdown) and only if they then differ from what is on disk
+    void SetOverlayPrefs(const SOLOverlay::FOverlayPrefs& prefs);
+
+    // Flips one row of the active overlay profile (applied at once) and returns its new state
+    bool ToggleOverlay(SOLOverlay::EOverlay overlay);
+
+    // Returns whether the master overlay switch (O) is on (session only, on at every flight start)
+    bool IsOverlayMasterOn() const { return mIsOverlayMasterOn; }
+
+    // Sets the master overlay switch (O)
+    void SetOverlayMasterOn(bool bOn) { mIsOverlayMasterOn = bOn; }
+
+    // Returns whether an overlay shows now: the master switch and the active profile's rows (SOLOverlay::IsShown)
+    bool IsOverlayShown(SOLOverlay::EOverlay overlay) const;
+
+    // Returns whether an orbit category's lines show: IsOverlayShown and the orbit lines switch (Alt+O)
+    bool IsOverlayOrbitShown(SOLOverlay::EOverlay overlay) const;
+
     // Returns whether the player has steered with the mouse since the game started (session only, never saved; the HUD
     // shows its "Hold Space to steer" hint until then, issue #31)
     bool HasSteeredThisSession() const { return mHasSteeredThisSession; }
@@ -232,6 +254,8 @@ private:
     bool mIsSaveOwed = false;                           // An Apply changed the slot's content since the last write (or
                                                         // the last write failed)
     bool mWrittenShowOrbitLines = true;                 // bShowOrbitLines as on disk (loaded or last written)
+    SOLOverlay::FOverlayPrefs mWrittenOverlayPrefs = SOLOverlay::MakeDefaultPrefs();   // Overlay prefs as on disk
+    bool mIsOverlayMasterOn = true;                     // Master overlay switch (O): session only
     bool mIsVsyncChosen = false;                        // The player changed vsync on the page (pushed at boot)
     bool mIsQualityChosen = false;                      // The player changed the quality preset (pushed at boot)
     bool mIsKeyCaptureActive = false;                   // A Settings page is listening for a rebind key

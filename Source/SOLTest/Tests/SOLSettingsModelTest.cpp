@@ -661,4 +661,130 @@ bool FSOLSettingsModelMouseSteerDirtyTest::RunTest(const FString& /*parameters*/
     return true;
 }
 
+// Issue #22 overlay prefs in the settings model, written against the issue #22 contract (SDD 22) before the
+// production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOverlayPrefsTest, "SOLTest.SettingsModel.OverlayPrefs",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The overlay prefs default to the default profile, are sanitized with the values, and AreEqual / IsDirty see a
+// single overlay bit
+bool FSOLSettingsModelOverlayPrefsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues defaults;
+    TestTrue(TEXT("Default prefs"), SOLOverlay::AreEqual(defaults.OverlayPrefs, SOLOverlay::MakeDefaultPrefs()));
+    TestEqual(TEXT("Default profile count"), defaults.OverlayPrefs.ProfileCount, 1);
+    TestEqual(TEXT("Default mask"), defaults.OverlayPrefs.Masks[0], SOLOverlay::DefaultMask());
+
+    // Sanitized clamps the prefs like SOLOverlay::Sanitized
+    FSettingsValues messy = SettingsModelCustomValues();
+    messy.OverlayPrefs.ProfileCount = 40;
+    messy.OverlayPrefs.ActiveProfile = -2;
+    messy.OverlayPrefs.Masks[0] = 0xFFFFFFFFu;
+    const FSettingsValues clean = Sanitized(messy);
+    const SOLOverlay::FOverlayPrefs expected = SOLOverlay::Sanitized(messy.OverlayPrefs);
+    TestEqual(TEXT("Profile count clamped"), clean.OverlayPrefs.ProfileCount, SOL::Overlay::MAX_PROFILES);
+    TestEqual(TEXT("Active profile clamped"), clean.OverlayPrefs.ActiveProfile, 0);
+    TestEqual(TEXT("Invalid bits dropped"), clean.OverlayPrefs.Masks[0], SOLOverlay::AllBitsMask());
+    TestTrue(TEXT("Matches SOLOverlay::Sanitized"), SOLOverlay::AreEqual(clean.OverlayPrefs, expected));
+    TestEqual(TEXT("Other fields untouched"), clean.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
+
+    // One overlay bit is significant on its own
+    const FSettingsValues base = SettingsModelCustomValues();
+    FSettingsValues flipped = base;
+    SOLOverlay::Toggle(flipped.OverlayPrefs, SOLOverlay::EOverlay::IconAsteroids);
+    TestFalse(TEXT("One overlay bit differs"), AreEqual(base, flipped));
+    TestFalse(TEXT("Symmetric"), AreEqual(flipped, base));
+    FSettingsValues unusedSlot = base;
+    unusedSlot.OverlayPrefs.Masks[4] = 0u;
+    TestTrue(TEXT("An unused profile slot is ignored"), AreEqual(base, unusedSlot));
+
+    // The model sees an overlay-only edit as dirty; revert discards it, commit adopts it
+    FSettingsModel model = MakeModel(base);
+    SetPending(model, flipped);
+    TestTrue(TEXT("Dirty when only an overlay bit differs"), IsDirty(model));
+    Revert(model);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+    SetPending(model, flipped);
+    TestTrue(TEXT("Commit of the overlay bit needs a write"), CommitIfDirty(model));
+    TestTrue(TEXT("Saved takes the overlay bit"), SOLOverlay::IsEnabled(model.Saved.OverlayPrefs,
+        SOLOverlay::EOverlay::IconAsteroids) == SOLOverlay::IsEnabled(flipped.OverlayPrefs,
+        SOLOverlay::EOverlay::IconAsteroids));
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelSetAppliedOverlayPrefsTest,
+    "SOLTest.SettingsModel.SetAppliedOverlayPrefs",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetAppliedOverlayPrefs sets the sanitized prefs in Saved and Pending, keeps every other pending edit, and returns
+// true only when the saved prefs changed
+bool FSOLSettingsModelSetAppliedOverlayPrefsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues saved = SettingsModelCustomValues();
+    FSettingsModel model = MakeModel(saved);
+
+    // A pending edit of another field is in flight
+    FSettingsValues edited = saved;
+    edited.MasterVolume = 0.25f;
+    SetPending(model, edited);
+
+    SOLOverlay::FOverlayPrefs prefs = SOLOverlay::MakeDefaultPrefs();
+    SOLOverlay::SetEnabled(prefs, SOLOverlay::EOverlay::Darkening, false);
+    TestTrue(TEXT("A change returns true"), SetAppliedOverlayPrefs(model, prefs));
+    TestTrue(TEXT("Saved prefs set"), SOLOverlay::AreEqual(model.Saved.OverlayPrefs, prefs));
+    TestTrue(TEXT("Pending prefs set"), SOLOverlay::AreEqual(model.Pending.OverlayPrefs, prefs));
+    TestEqual(TEXT("Pending master volume kept"), model.Pending.MasterVolume, 0.25f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Saved master volume kept"), model.Saved.MasterVolume, 0.8f, SETTINGSMODEL_TOLERANCE);
+    TestTrue(TEXT("Still dirty from the other edit"), IsDirty(model));
+
+    // Applying equal prefs again changes nothing
+    TestFalse(TEXT("Same prefs return false"), SetAppliedOverlayPrefs(model, prefs));
+    TestTrue(TEXT("Saved prefs unchanged"), SOLOverlay::AreEqual(model.Saved.OverlayPrefs, prefs));
+    TestEqual(TEXT("Pending master volume still kept"), model.Pending.MasterVolume, 0.25f, SETTINGSMODEL_TOLERANCE);
+
+    // Out-of-range prefs are stored sanitized; ones equal after sanitizing return false
+    SOLOverlay::FOverlayPrefs messy = prefs;
+    messy.ActiveProfile = 9;
+    messy.Masks[0] |= 1u << 31;
+    TestFalse(TEXT("Equal after sanitizing returns false"), SetAppliedOverlayPrefs(model, messy));
+    TestEqual(TEXT("Saved active sanitized"), model.Saved.OverlayPrefs.ActiveProfile, 0);
+    TestEqual(TEXT("Saved mask sanitized"), model.Saved.OverlayPrefs.Masks[0] & ~SOLOverlay::AllBitsMask(), 0u);
+    TestEqual(TEXT("Pending active sanitized"), model.Pending.OverlayPrefs.ActiveProfile, 0);
+
+    // On a clean model the prefs alone leave it clean (Saved and Pending move together)
+    FSettingsModel clean = MakeModel(FSettingsValues());
+    TestTrue(TEXT("Clean model: change returns true"), SetAppliedOverlayPrefs(clean, prefs));
+    TestFalse(TEXT("Clean model stays clean"), IsDirty(clean));
+    TestFalse(TEXT("Nothing pending to commit"), CommitIfDirty(clean));
+
+    // A pending-only overlay edit is overwritten, and the return value follows Saved only
+    FSettingsModel pendingOnly = MakeModel(FSettingsValues());
+    FSettingsValues pendingEdit = pendingOnly.Saved;
+    SOLOverlay::Toggle(pendingEdit.OverlayPrefs, SOLOverlay::EOverlay::IconRings);
+    SetPending(pendingOnly, pendingEdit);
+    TestTrue(TEXT("Pending-only edit is dirty"), IsDirty(pendingOnly));
+    TestFalse(TEXT("Saved already default returns false"), SetAppliedOverlayPrefs(pendingOnly,
+        SOLOverlay::MakeDefaultPrefs()));
+    TestTrue(TEXT("Pending overwritten"), SOLOverlay::AreEqual(pendingOnly.Pending.OverlayPrefs,
+        SOLOverlay::MakeDefaultPrefs()));
+    TestFalse(TEXT("No longer dirty"), IsDirty(pendingOnly));
+
+    // Applying the orbit-lines flag leaves a pending overlay edit alone
+    FSettingsModel orbit = MakeModel(FSettingsValues());
+    SetPending(orbit, pendingEdit);
+    SetAppliedShowOrbitLines(orbit, false);
+    TestTrue(TEXT("Orbit-lines apply keeps the pending overlay edit"), SOLOverlay::AreEqual(
+        orbit.Pending.OverlayPrefs, pendingEdit.OverlayPrefs));
+    TestTrue(TEXT("Still dirty from the overlay edit"), IsDirty(orbit));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

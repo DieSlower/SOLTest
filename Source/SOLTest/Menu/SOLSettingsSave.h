@@ -13,6 +13,17 @@
 
 #include "SOLSettingsSave.generated.h"
 
+/** One overlay profile on disk (SDD 22): every Overlay Menu row id mapped to whether it is checked
+ *  (SOLOverlay::ToSavedProfile / FromSavedProfile; rows missing from an older file take their default). */
+USTRUCT()
+struct FSOLOverlayProfileSave
+{
+    GENERATED_BODY()
+
+    UPROPERTY()
+    TMap<FString, bool> Overlays;
+};
+
 /**
  * The player's settings on disk (SDD 8, 8d): one USaveGame in the SOL::Settings::SAVE_SLOT slot, written by
  * USOLSettingsSubsystem at most once per settings visit and only when something was applied. Version is the schema
@@ -95,6 +106,15 @@ public:
      *  migrated to off (the new default). */
     UPROPERTY()
     bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
+
+    /** Overlay Menu choices (SDD 22), one entry per profile (issue #22 writes one). Added in schema 7; an older save
+     *  is migrated to one default profile (every overlay on except Asteroid Orbits). */
+    UPROPERTY()
+    TArray<FSOLOverlayProfileSave> OverlayProfiles;
+
+    /** The active overlay profile (index into OverlayProfiles). Added in schema 7. */
+    UPROPERTY()
+    int32 ActiveOverlayProfile = 0;
 
     /** Rebound keys only: SOLKeyBindings binding id -> engine key name (the other bindings use their defaults). */
     UPROPERTY()

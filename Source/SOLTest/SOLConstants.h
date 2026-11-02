@@ -855,6 +855,37 @@ namespace SOL
         inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
     }
 
+    // Overlay icons, the Overlay Menu and the hologram cursor (SDD 22). Pixel sizes are at a 720 px canvas (x UI scale)
+    namespace Overlay
+    {
+        inline constexpr int32 MAX_PROFILES = 5;                  // Room for the overlay profiles of issue #34
+        inline constexpr int32 LAST_PLANET_INDEX = 8;             // Registry: Sun 0, planets 1-8 (Neptune), then the
+                                                                  // dwarf planets and moons (PopulateSolarSystem)
+        inline constexpr float ICON_RADIUS_PX = 7.0f;             // Icon shape radius
+        inline constexpr float ICON_INTENSITY = 0.7f;             // Glow intensity of a fully bright icon
+        inline constexpr double ICON_FADE_START_PX = 6.0;         // Apparent radius where the icon starts to fade
+        inline constexpr double ICON_FADE_END_PX = 30.0;          // Apparent radius where the icon is gone
+        inline constexpr double DARKEN_NEAR_M = 1.0e7;            // Distance darkening: full brightness up to here
+        inline constexpr double DARKEN_FAR_M = 1.0e12;            // ... down to the floor from here (log scale)
+        inline constexpr double DARKEN_FLOOR = 0.25;              // Brightness of the farthest icons with darkening on
+        inline constexpr double ICON_MIN_BRIGHTNESS = 0.02;       // Icons dimmer than this are not drawn
+        inline constexpr int32 MAX_SHAPES_PER_ICON = 4;           // Vector shapes of one icon (bounded vertex budget)
+        inline constexpr int32 MAX_ICONS = 192;                   // Icons per frame, all categories
+        inline constexpr int32 MAX_SHIP_ICONS = 24;               // NPC ship icons per frame (nearest first)
+        inline constexpr int32 MAX_TARGET_ICONS = 16;             // Dropped-target icons per frame (nearest first)
+        inline constexpr float EDGE_MARGIN_PX = 18.0f;            // Edge-pinned arrows sit this far inside the edge
+        inline constexpr float EDGE_ARROW_PX = 7.0f;              // Edge arrow length
+        inline constexpr float EDGE_ARROW_INTENSITY = 0.45f;      // Edge arrows are dimmer than icons
+        inline constexpr int32 MAX_EDGE_ARROWS = 24;              // Edge arrows per frame (nearest first)
+        inline constexpr float RING_ICON_SCALE = 1.9f;            // Ring icon: ellipse this many icon radii wide
+        inline constexpr int32 CURSOR_SEGMENTS = 4;               // Hologram cursor: arrow outline segments
+        inline constexpr float CURSOR_LENGTH_PX = 18.0f;          // Arrow length from the tip (hot spot)
+        inline constexpr float CURSOR_INTENSITY = 0.9f;           // Glow intensity of the cursor
+        inline constexpr float FREE_LOOK_ARM_S = 0.2f;            // Free look arms after this hold or this much mouse
+        inline constexpr double FREE_LOOK_ARM_PX = 8.0;           // travel, so a quick Alt+O does not turn the camera
+        inline constexpr int32 MENU_Z_ORDER = 15;                 // Overlay Menu: above the HUD, below the pause menu
+    }
+
     // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
     namespace MenuStyle
     {
@@ -925,11 +956,11 @@ namespace SOL
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
         // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
-        // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5)
-        inline constexpr int32 SAVE_VERSION = 6;
-        // The save schema that introduced the current default key layout (issue #20); older saves get the one-time
-        // "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
-        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 4;
+        // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22)
+        inline constexpr int32 SAVE_VERSION = 7;
+        // The save schema that introduced the current default key layout (issue #22: O / Alt+O / Ctrl+O / Shift+O);
+        // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
+        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 7;
         inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
         inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
         inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;
@@ -988,6 +1019,8 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_ROUTE = TEXT("SOLSmokeRoute");      // Map modes and a route, then quit
         inline constexpr const TCHAR* SMOKE_ROUTE_OVERLAY = TEXT("SOLSmokeRouteOverlay");   // Route overlay, then quit
         inline constexpr const TCHAR* SMOKE_HOLOGRAM = TEXT("SOLSmokeHologram");   // Map hologram look, then quit
+        // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
+        inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

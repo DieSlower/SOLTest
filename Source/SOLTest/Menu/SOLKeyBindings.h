@@ -42,7 +42,10 @@ namespace SOLKeyBindings
         WarpDown,
         WarpUp,
         WarpReset,
+        OverlayMaster,
         ToggleOrbitLines,
+        OverlayMenu,
+        ToggleDarkening,
         RadarZoomIn,
         RadarZoomOut,
         RadarAuto,
@@ -55,15 +58,25 @@ namespace SOLKeyBindings
 
     inline constexpr int32 BINDING_COUNT = static_cast<int32>(EBinding::Count);
 
+    // The modifier a chord binding is pressed with (SDD 20 Shift chords; SDD 22 adds Alt and Ctrl): Enhanced Input
+    // blocks the plain key's other mappings while the modifier is held, so one key can carry several actions
+    enum class EKeyChord : uint8
+    {
+        None,       // A plain key
+        Shift,      // Left or Right Shift held
+        Alt,        // Left or Right Alt held
+        Control,    // Left or Right Ctrl held
+    };
+
     // One rebindable action: its stable id (persisted), its area and label (shown), its default engine key name and
-    // whether it is a Shift chord (pressed with Shift held; the plain key stays free for another action)
+    // the modifier it is chorded with (None for a plain key)
     struct FBindingDef
     {
         const TCHAR* Id;
         const TCHAR* Area;
         const TCHAR* Label;
         const TCHAR* DefaultKey;
-        bool bShiftChord;
+        EKeyChord Chord;
     };
 
     // Outcome of a rebind request
@@ -72,7 +85,7 @@ namespace SOLKeyBindings
         Bound,      // The binding now uses the key
         Unchanged,  // It already used the key
         Refused,    // The key cannot be bound (Escape, empty, unknown, an axis, a fixed ship key, a map key for an action
-                    // also mapped on the map, or Shift / a mouse button for a Shift chord)
+                    // also mapped on the map, or a modifier key / a mouse button for a chord)
     };
 
     // Returns a binding's definition (index clamped into range)
@@ -102,16 +115,24 @@ namespace SOLKeyBindings
     // Returns whether a rebindable action may take this key (SOLBindingLabel::IsRebindable, not reserved, pressable)
     SOLTEST_API bool CanBindKey(const FString& keyName);
 
-    // Returns whether one binding may take this key: CanBindKey; Resume also refuses the map's fixed keys, and a Shift
-    // chord refuses Left / Right Shift and the left, right and middle mouse buttons (false for an out-of-range binding)
+    // Returns whether a key is a modifier: Left / Right Shift, Alt or Control (case-insensitive engine key names)
+    SOLTEST_API bool IsModifierKey(const FString& keyName);
+
+    // Returns whether one binding may take this key: CanBindKey; Resume also refuses the map's fixed keys, and a chord
+    // (Shift, Alt or Ctrl) refuses every modifier key (IsModifierKey) and the left, right and middle mouse buttons,
+    // and an Alt chord also refuses F4, Tab, SpaceBar and Enter (Windows' own Alt combinations; a migrated override on
+    // one of them falls back to the default) (false for an out-of-range binding)
     SOLTEST_API bool CanBindKeyTo(int32 binding, const FString& keyName);
+
+    // Returns a binding's chord (None for an out-of-range binding)
+    SOLTEST_API EKeyChord GetChord(int32 binding);
 
     // Returns whether a binding is a Shift chord (false for an out-of-range binding)
     SOLTEST_API bool IsShiftChord(int32 binding);
 
     // Returns a binding's shown key: the key label (SOLBindingLabel::KeyDisplayName) of keys[binding], prefixed
-    // "Shift+" for a Shift chord; a missing or empty entry reads as unbound (KeyDisplayName of an empty name, no
-    // prefix)
+    // "Shift+", "Alt+" or "Ctrl+" for a chord; a missing or empty entry reads as unbound (KeyDisplayName of an empty
+    // name, no prefix)
     SOLTEST_API FString BindingDisplayName(int32 binding, const TArray<FString>& keys);
 
     // Returns the text with every '{<BindingId>}' (e.g. "{SurfaceLock}") replaced by that binding's shown key
@@ -128,8 +149,8 @@ namespace SOLKeyBindings
     // Returns the overrides that turn the defaults into these keys (only the bindings that differ from their default)
     SOLTEST_API TMap<FString, FString> MakeOverrides(const TArray<FString>& keys);
 
-    // Returns another binding that uses the key (case-insensitive) with the same chord (a Shift chord and a plain
-    // binding on one key do not conflict), or INDEX_NONE
+    // Returns another binding that uses the key (case-insensitive) with the same chord (bindings with different chords,
+    // e.g. O, Alt+O, Ctrl+O and Shift+O, do not conflict), or INDEX_NONE
     SOLTEST_API int32 FindConflict(const TArray<FString>& keys, int32 binding, const FString& keyName);
 
     // Returns whether a binding shares its key with another binding
@@ -139,7 +160,7 @@ namespace SOLKeyBindings
     // does not block the rebind: both keep the key until the player changes one, and both are flagged
     SOLTEST_API ERebindResult Rebind(TArray<FString>& keys, int32 binding, const FString& keyName, int32& outConflict);
 
-    // Returns whether the default key layout changed since a saved settings schema version (true for 1 to 3, the
-    // layouts before issue #20; false for 4 and above and for an unversioned save)
+    // Returns whether the default key layout changed since a saved settings schema version (true for 1 to 6, the
+    // layouts before issue #22; false for 7 and above and for an unversioned save)
     SOLTEST_API bool DefaultLayoutChangedSince(int32 savedVersion);
 }

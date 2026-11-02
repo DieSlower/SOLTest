@@ -41,6 +41,7 @@ SOLSettingsModel::FSettingsValues SOLSettingsModel::Sanitized(const FSettingsVal
     result.HudEffectsStrength = ClampOrDefault(values.HudEffectsStrength, HUD_EFFECTS_MIN, HUD_EFFECTS_MAX,
         defaults.HudEffectsStrength);
     result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, SOLSettingsRules::QUALITY_PRESET_COUNT - 1);
+    result.OverlayPrefs = SOLOverlay::Sanitized(values.OverlayPrefs);
     return result;
 }
 
@@ -54,7 +55,8 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
         && Near(x.MouseSensitivity, y.MouseSensitivity) && x.bInvertY == y.bInvertY && Near(x.HudScale, y.HudScale)
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
         && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines
-        && Near(x.HudEffectsStrength, y.HudEffectsStrength) && x.bMouseSteerAtStart == y.bMouseSteerAtStart;
+        && Near(x.HudEffectsStrength, y.HudEffectsStrength) && x.bMouseSteerAtStart == y.bMouseSteerAtStart
+        && SOLOverlay::AreEqual(x.OverlayPrefs, y.OverlayPrefs);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -108,5 +110,16 @@ bool SOLSettingsModel::SetAppliedShowOrbitLines(FSettingsModel& model, const boo
     const bool bChanged = model.Saved.bShowOrbitLines != bShown;
     model.Saved.bShowOrbitLines = bShown;
     model.Pending.bShowOrbitLines = bShown;
+    return bChanged;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the applied and pending overlay prefs (sanitized) without touching other pending edits
+bool SOLSettingsModel::SetAppliedOverlayPrefs(FSettingsModel& model, const SOLOverlay::FOverlayPrefs& prefs)
+{
+    const SOLOverlay::FOverlayPrefs sanitized = SOLOverlay::Sanitized(prefs);
+    const bool bChanged = !SOLOverlay::AreEqual(model.Saved.OverlayPrefs, sanitized);
+    model.Saved.OverlayPrefs = sanitized;
+    model.Pending.OverlayPrefs = sanitized;
     return bChanged;
 }

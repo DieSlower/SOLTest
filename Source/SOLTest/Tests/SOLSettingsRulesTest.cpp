@@ -253,7 +253,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 6"), SOL::Settings::SAVE_VERSION, 6);
+    TestEqual(TEXT("schema version is 7"), SOL::Settings::SAVE_VERSION, 7);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -263,6 +263,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 4 migrates"), ClassifySaveVersion(4, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 5 migrates"), ClassifySaveVersion(5, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 6 migrates"), ClassifySaveVersion(6, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -726,7 +728,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->MasterVolume = 0.45f;
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 6"), save->Version, 6);
+    TestEqual(TEXT("v5 -> 7 (through 5 -> 6 and 6 -> 7)"), save->Version, 7);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -746,22 +748,28 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         older->bMouseSteerAtStart = true;
         older->MigrateToCurrentVersion();
         const FString label = FString::Printf(TEXT("v%d"), version);
-        TestEqual(label + TEXT(": ends at 6"), older->Version, 6);
+        TestEqual(label + TEXT(": ends at the current schema"), older->Version, SOL::Settings::SAVE_VERSION);
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A current save keeps the player's choice across two migrate calls
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7, and a current one across two calls
+    USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
+    v6->Version = 6;
+    v6->bMouseSteerAtStart = true;
+    v6->MigrateToCurrentVersion();
+    TestEqual(TEXT("v6: migrated to the current schema"), v6->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("v6: steer at start kept"), v6->bMouseSteerAtStart);
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
-    current->Version = 6;
+    current->Version = SOL::Settings::SAVE_VERSION;
     current->bMouseSteerAtStart = true;
     current->MigrateToCurrentVersion();
-    TestEqual(TEXT("current: version kept"), current->Version, 6);
+    TestEqual(TEXT("current: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
     TestTrue(TEXT("current: steer at start kept"), current->bMouseSteerAtStart);
     current->MigrateToCurrentVersion();
     TestTrue(TEXT("current: steer at start kept twice"), current->bMouseSteerAtStart);
 
     // Unversioned and newer saves are never migrated
-    const int32 untouchedVersions[] = { 0, 7 };
+    const int32 untouchedVersions[] = { 0, SOL::Settings::SAVE_VERSION + 1 };
     for (const int32 version : untouchedVersions)
     {
         USOLSettingsSave* untouched = NewObject<USOLSettingsSave>();
@@ -772,6 +780,224 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestEqual(label + TEXT(": version kept"), untouched->Version, version);
         TestTrue(label + TEXT(": steer at start kept"), untouched->bMouseSteerAtStart);
     }
+    return true;
+}
+
+// Issue #22 overlay profiles in the settings save (schema 7), written against the issue #22 contract (SDD 22)
+// before the production code
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two saved overlay maps hold exactly the same ids and values
+    bool SettingsRulesSameOverlayMap(const TMap<FString, bool>& a, const TMap<FString, bool>& b)
+    {
+        if (a.Num() != b.Num())
+        {
+            return false;
+        }
+        for (const TPair<FString, bool>& entry : a)
+        {
+            const bool* other = b.Find(entry.Key);
+            if (other == nullptr || *other != entry.Value)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns one saved overlay profile holding a mask
+    FSOLOverlayProfileSave SettingsRulesOverlayProfile(const uint32 mask)
+    {
+        FSOLOverlayProfileSave profile;
+        profile.Overlays = SOLOverlay::ToSavedProfile(mask);
+        return profile;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV6OverlaysTest, "SOLTest.SettingsRules.MigrateV6Overlays",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 6 -> 7 (issue #22): one default overlay profile, active 0; key overrides and every other field are kept
+bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestTrue(TEXT("a v6 save is migrated"), ClassifySaveVersion(6, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+
+    // A v6 save with stale overlay fields a v6 file never wrote and non-default values elsewhere
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 6;
+    save->OverlayProfiles.Add(SettingsRulesOverlayProfile(0u));
+    save->OverlayProfiles.Add(SettingsRulesOverlayProfile(0u));
+    save->ActiveOverlayProfile = 1;
+    save->bMouseSteerAtStart = true;
+    save->HudEffectsStrength = 0.3f;
+    save->bShowOrbitLines = false;
+    save->MasterVolume = 0.45f;
+    save->QualityPreset = 2;
+    save->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->MigrateToCurrentVersion();
+
+    TestEqual(TEXT("v6 -> 7"), save->Version, 7);
+    TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
+    if (save->OverlayProfiles.Num() == 1)
+    {
+        TestTrue(TEXT("the profile holds the defaults"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
+            SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask())));
+    }
+    TestEqual(TEXT("active profile 0"), save->ActiveOverlayProfile, 0);
+
+    // Everything else is untouched, the orbit-lines override verbatim
+    TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
+    TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 2);
+    TestEqual(TEXT("override count kept"), save->KeyOverrides.Num(), 2);
+    const FString* orbitKey = save->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
+    TestTrue(TEXT("orbit-lines override kept verbatim"), orbitKey != nullptr && *orbitKey == TEXT("K"));
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+
+    // The migrated save reads as the default overlay prefs
+    const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
+    TestTrue(TEXT("reads as the default prefs"), SOLOverlay::AreEqual(prefs, SOLOverlay::MakeDefaultPrefs()));
+
+    // Idempotent: a later overlay change survives a second migrate
+    save->OverlayProfiles[0] = SettingsRulesOverlayProfile(0x3u);
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("second migrate keeps the profile"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
+        SOLOverlay::ToSavedProfile(0x3u)));
+
+    // A schema 1 save migrates all the way with one default profile
+    USOLSettingsSave* v1 = NewObject<USOLSettingsSave>();
+    v1->Version = 1;
+    v1->MigrateToCurrentVersion();
+    TestEqual(TEXT("v1 -> current"), v1->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("v1: one overlay profile"), v1->OverlayProfiles.Num(), 1);
+    if (v1->OverlayProfiles.Num() == 1)
+    {
+        TestTrue(TEXT("v1: default profile"), SettingsRulesSameOverlayMap(v1->OverlayProfiles[0].Overlays,
+            SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask())));
+    }
+    TestEqual(TEXT("v1: active profile 0"), v1->ActiveOverlayProfile, 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.SettingsRules.CurrentKeepsOverlays",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A schema 7 save is not migrated: its overlay profiles and active profile stay exactly as they were
+bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
+{
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x1u));
+    current->OverlayProfiles.Add(SettingsRulesOverlayProfile(SOLOverlay::AllBitsMask()));
+    current->ActiveOverlayProfile = 1;
+    current->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("version kept"), current->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("two profiles kept"), current->OverlayProfiles.Num(), 2);
+    if (current->OverlayProfiles.Num() == 2)
+    {
+        TestTrue(TEXT("profile 0 kept"), SettingsRulesSameOverlayMap(current->OverlayProfiles[0].Overlays,
+            SOLOverlay::ToSavedProfile(0x1u)));
+        TestTrue(TEXT("profile 1 kept"), SettingsRulesSameOverlayMap(current->OverlayProfiles[1].Overlays,
+            SOLOverlay::ToSavedProfile(SOLOverlay::AllBitsMask())));
+    }
+    TestEqual(TEXT("active profile kept"), current->ActiveOverlayProfile, 1);
+    const FString* orbitKey = current->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
+    TestTrue(TEXT("override kept"), orbitKey != nullptr && *orbitKey == TEXT("K"));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOverlaySaveValuesTest, "SOLTest.SettingsRules.OverlaySaveValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// GetValues reads the saved profiles (clamped to MAX_PROFILES, empty = the defaults) and SetValues writes one entry
+// per profile; the two round-trip
+bool FSOLSettingsRulesOverlaySaveValuesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLOverlay;
+
+    // A new save reads as the default prefs
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestEqual(TEXT("new save: no profiles stored"), fresh->OverlayProfiles.Num(), 0);
+    TestEqual(TEXT("new save: active 0"), fresh->ActiveOverlayProfile, 0);
+    const FOverlayPrefs freshPrefs = fresh->GetValues().OverlayPrefs;
+    TestEqual(TEXT("empty: one profile"), freshPrefs.ProfileCount, 1);
+    TestEqual(TEXT("empty: active 0"), freshPrefs.ActiveProfile, 0);
+    TestEqual(TEXT("empty: default mask"), freshPrefs.Masks[0], DefaultMask());
+
+    // Three stored profiles read back as three masks with the stored active index
+    USOLSettingsSave* three = NewObject<USOLSettingsSave>();
+    three->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x11u));
+    three->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x22u));
+    TMap<FString, bool> partial;
+    partial.Add(TEXT("asteroidorbits"), true);
+    FSOLOverlayProfileSave partialProfile;
+    partialProfile.Overlays = partial;
+    three->OverlayProfiles.Add(partialProfile);
+    three->ActiveOverlayProfile = 2;
+    const FOverlayPrefs threePrefs = three->GetValues().OverlayPrefs;
+    TestEqual(TEXT("three: count"), threePrefs.ProfileCount, 3);
+    TestEqual(TEXT("three: active carried"), threePrefs.ActiveProfile, 2);
+    TestEqual(TEXT("three: mask 0"), threePrefs.Masks[0], 0x11u);
+    TestEqual(TEXT("three: mask 1"), threePrefs.Masks[1], 0x22u);
+    TestEqual(TEXT("three: partial profile fills defaults"), threePrefs.Masks[2], FromSavedProfile(partial));
+    TestEqual(TEXT("three: partial profile = default + asteroid orbits"), threePrefs.Masks[2], AllBitsMask());
+
+    // More stored profiles than MAX_PROFILES are clamped
+    USOLSettingsSave* many = NewObject<USOLSettingsSave>();
+    for (int32 index = 0; index < SOL::Overlay::MAX_PROFILES + 2; ++index)
+    {
+        many->OverlayProfiles.Add(SettingsRulesOverlayProfile(static_cast<uint32>(index)));
+    }
+    const FOverlayPrefs manyPrefs = many->GetValues().OverlayPrefs;
+    TestEqual(TEXT("many: clamped to MAX_PROFILES"), manyPrefs.ProfileCount, SOL::Overlay::MAX_PROFILES);
+    TestEqual(TEXT("many: last kept mask"), manyPrefs.Masks[SOL::Overlay::MAX_PROFILES - 1],
+        static_cast<uint32>(SOL::Overlay::MAX_PROFILES - 1));
+
+    // SetValues writes one entry per profile and the active index; GetValues gives the same prefs back
+    SOLSettingsModel::FSettingsValues values;
+    values.OverlayPrefs = MakeDefaultPrefs();
+    values.OverlayPrefs.ProfileCount = 2;
+    values.OverlayPrefs.ActiveProfile = 1;
+    values.OverlayPrefs.Masks[0] = DefaultMask() & ~(1u << static_cast<uint32>(EOverlay::IconShips));
+    values.OverlayPrefs.Masks[1] = 0x5u;
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->SetValues(values);
+    TestEqual(TEXT("SetValues: two profiles"), save->OverlayProfiles.Num(), 2);
+    TestEqual(TEXT("SetValues: active 1"), save->ActiveOverlayProfile, 1);
+    if (save->OverlayProfiles.Num() == 2)
+    {
+        TestTrue(TEXT("SetValues: profile 0"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
+            ToSavedProfile(values.OverlayPrefs.Masks[0])));
+        TestTrue(TEXT("SetValues: profile 1"), SettingsRulesSameOverlayMap(save->OverlayProfiles[1].Overlays,
+            ToSavedProfile(0x5u)));
+    }
+    const FOverlayPrefs roundTrip = save->GetValues().OverlayPrefs;
+    TestTrue(TEXT("prefs round trip"), AreEqual(roundTrip, values.OverlayPrefs));
+    TestTrue(TEXT("values round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+
+    // Writing fewer profiles later shrinks the stored list
+    values.OverlayPrefs = MakeDefaultPrefs();
+    save->SetValues(values);
+    TestEqual(TEXT("SetValues: back to one profile"), save->OverlayProfiles.Num(), 1);
+    TestEqual(TEXT("SetValues: active 0"), save->ActiveOverlayProfile, 0);
     return true;
 }
 

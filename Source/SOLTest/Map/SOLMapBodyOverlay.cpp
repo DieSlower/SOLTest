@@ -7,7 +7,10 @@
 
 #include "Map/SOLMapModeSubsystem.h"
 #include "Map/SOLMapPickRadius.h"
+#include "MinorBodies/SOLPlanetRing.h"
 #include "SOLConstants.h"
+#include "UI/SOLHudShapeBatch.h"
+#include "UI/SOLOverlayIcons.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistry.h"
 #include "Visuals/SOLBodyVisuals.h"
@@ -67,6 +70,8 @@ void FSOLMapBodyOverlay::Initialize(const FSOLBodyRegistry& registry)
 {
     const int32 bodyCount = registry.Num();
     mIconColors.Reset(bodyCount);
+    mIconCategories.Reset(bodyCount);
+    mHasRings.Init(false, bodyCount);
     mLabelSources.Reset(bodyCount);
     mLabels.Reset(bodyCount);
     mLabelOrder.Reset(bodyCount);
@@ -74,9 +79,20 @@ void FSOLMapBodyOverlay::Initialize(const FSOLBodyRegistry& registry)
     {
         const FName bodyName = registry.GetName(index);
         mIconColors.Add(MapOverlayIconColor(bodyName));
+        mIconCategories.Add(static_cast<uint8>(SOLOverlayIcons::ClassifyBody(index, registry.GetParent(index),
+            SOL::Overlay::LAST_PLANET_INDEX)));
         mLabelSources.Add(bodyName.ToString());
         mLabels.Add(FText::FromString(mLabelSources.Last()));
         mLabelOrder.Add(index);
+    }
+
+    for (const FSOLPlanetRingDef& ring : SOLPlanetRing::RealRings())
+    {
+        const int32 planet = registry.FindByName(ring.PlanetName);
+        if (mHasRings.IsValidIndex(planet))
+        {
+            mHasRings[planet] = true;
+        }
     }
 
     // Bigger bodies claim their label spot first
@@ -112,10 +128,10 @@ void FSOLMapBodyOverlay::Initialize(const FSOLBodyRegistry& registry)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Evaluates every body's LOD from the map camera and draws its icon and label on the canvas
+// Evaluates every body's LOD from the map camera and draws its icon (hologram batch or canvas) and label
 void FSOLMapBodyOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, const USOLMapModeSubsystem& mapMode,
     const USOLAnchorSubsystem& anchor, const FSOLBodyRegistry& registry, UFont* font, const FLinearColor& labelColor,
-    const float uiScale)
+    const float uiScale, FSOLHudShapeBatch* batch)
 {
     mLastIconsDrawn = 0;
     mLastLabelsDrawn = 0;
@@ -220,10 +236,29 @@ void FSOLMapBodyOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, c
         const FVector2D& screen = mScreenPx[index];
         const double radiusPx = mIconRadiusPx[index];
         const float alpha = static_cast<float>(mIconAlphas[index]);
-        FLinearColor fill = mIconColors[index];
-        fill.A = alpha;
-        AppendDisc(screen, radiusPx, fill);
-        AppendRing(screen, radiusPx, radiusPx + rimPx, FLinearColor(0.0f, 0.0f, 0.0f, MAP_OVERLAY_RIM_ALPHA * alpha));
+        if (batch != nullptr)
+        {
+            // Hologram icon set (SDD 22): the category's vector icon at the disc's size, its LOD alpha as intensity
+            const SOLOverlayIcons::EIconCategory category
+                = static_cast<SOLOverlayIcons::EIconCategory>(mIconCategories[index]);
+            const float intensity = SOL::Overlay::ICON_INTENSITY * alpha;
+            SOLOverlayIcons::AddIconShapes(*batch, category, FVector2f(screen), static_cast<float>(radiusPx),
+                SOLOverlayIcons::CategoryColor(category), intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+            if (mHasRings[index])
+            {
+                SOLOverlayIcons::AddIconShapes(*batch, SOLOverlayIcons::EIconCategory::Ring, FVector2f(screen),
+                    static_cast<float>(radiusPx), SOLOverlayIcons::CategoryColor(SOLOverlayIcons::EIconCategory::Ring),
+                    intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+            }
+        }
+        else
+        {
+            FLinearColor fill = mIconColors[index];
+            fill.A = alpha;
+            AppendDisc(screen, radiusPx, fill);
+            AppendRing(screen, radiusPx, radiusPx + rimPx,
+                FLinearColor(0.0f, 0.0f, 0.0f, MAP_OVERLAY_RIM_ALPHA * alpha));
+        }
         if (mIconAlphas[index] > MAP_OVERLAY_MIN_LABEL_ALPHA)
         {
             mOccupied.Add(FBox2D(screen - FVector2D(radiusPx), screen + FVector2D(radiusPx)));

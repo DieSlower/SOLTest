@@ -14,6 +14,7 @@
 #include "OrbitLines/SOLOrbitLineMesh.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLOverlayIcons.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -118,6 +119,26 @@ bool ASOLOrbitLineVisuals::ShouldDrawLines() const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the Overlay Menu row of a permanent line: asteroid lines, else by the body's category
+SOLOverlay::EOverlay ASOLOrbitLineVisuals::ClassifyLine(const SOLOrbitLineMath::FLineKey& key,
+    const int32 parentIndex) const
+{
+    if (key.Source == SOLOrbitLineMath::ELineSource::MinorBody)
+    {
+        return SOLOverlay::EOverlay::AsteroidOrbits;
+    }
+    switch (SOLOverlayIcons::ClassifyBody(key.Index, parentIndex, SOL::Overlay::LAST_PLANET_INDEX))
+    {
+    case SOLOverlayIcons::EIconCategory::Planet:
+        return SOLOverlay::EOverlay::PlanetOrbits;
+    case SOLOverlayIcons::EIconCategory::Moon:
+        return SOLOverlay::EOverlay::MoonOrbits;
+    default:
+        return SOLOverlay::EOverlay::OtherOrbits;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Resolves subsystems and assets, builds every permanent line and subscribes to universe updates
 void ASOLOrbitLineVisuals::BeginPlay()
 {
@@ -207,6 +228,7 @@ void ASOLOrbitLineVisuals::BeginPlay()
         FSOLKeplerElements elements;
         const bool bDrawable = ResolveLineSource(key, elements, line.ParentIndex, line.BodyRadiusM);
         line.bUsesSharedParent = key.Source == SOLOrbitLineMath::ELineSource::MinorBody;
+        line.Category = ClassifyLine(key, line.ParentIndex);
         UStaticMesh* mesh = nullptr;
         USOLOrbitLineComponent* component = CreateLineComponent(mesh);
         line.VertexCount = bDrawable ? BuildLineMesh(elements, line.BodyRadiusM, mesh) : 0;
@@ -358,6 +380,16 @@ void ASOLOrbitLineVisuals::HandleUniverseUpdated()
         ParameterCollectionInstance->SetVectorParameterValue(mSharedParentLowParamName, OrbitLineToColor(low, 0.0f));
     }
 
+    // Overlay Menu categories (SDD 22): which orbit rows show this frame (master O, the row and Alt+O); without
+    // settings or in a verification run every category shows
+    for (int32 overlay = 0; overlay < SOLOverlay::OVERLAY_COUNT; ++overlay)
+    {
+        const SOLOverlay::EOverlay row = static_cast<SOLOverlay::EOverlay>(overlay);
+        mIsCategoryShown[overlay] = Settings == nullptr || mIsVerificationOverride
+            || Settings->IsOverlayOrbitShown(row);
+    }
+    const bool bMasterOn = Settings == nullptr || mIsVerificationOverride || Settings->IsOverlayMasterOn();
+
     // Which line the target highlights, or whether it needs the transient line
     bool bTargetHasOrbit = false;
     const SOLOrbitLineMath::FLineKey targetKey = GetTargetKey(bTargetHasOrbit);
@@ -375,8 +407,10 @@ void ASOLOrbitLineVisuals::HandleUniverseUpdated()
         }
         const bool bHighlighted = slot == target.HighlightSlot;
         const double parentDistanceM = (registry.GetPositionM(line.ParentIndex) - viewpointM).Size();
-        const bool bShown = !SOLOrbitLineLogic::IsLineBeyondFade(parentDistanceM, line.BuiltElements.SemiMajorAxisM,
-            line.BuiltElements.Eccentricity, bHighlighted);
+        // The target's line shows whatever its category (while the master is on); the others follow their row
+        const bool bCategoryShown = bHighlighted ? bMasterOn : mIsCategoryShown[static_cast<int32>(line.Category)];
+        const bool bShown = bCategoryShown && !SOLOrbitLineLogic::IsLineBeyondFade(parentDistanceM,
+            line.BuiltElements.SemiMajorAxisM, line.BuiltElements.Eccentricity, bHighlighted);
         if (bShown != line.bIsShown)
         {
             line.bIsShown = bShown;
@@ -403,7 +437,7 @@ void ASOLOrbitLineVisuals::HandleUniverseUpdated()
 
     // The transient line: rebuilt only when the target changes
     bool bShowTransient = false;
-    if (target.bShowTransient)
+    if (target.bShowTransient && mIsCategoryShown[static_cast<int32>(SOLOverlay::EOverlay::OtherOrbits)])
     {
         if (!(mTransientLine.Key == targetKey))
         {

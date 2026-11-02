@@ -13,6 +13,7 @@
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "SOLConstants.h"
+#include "UI/SOLOverlayMenuWidget.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/CheckBox.h"
@@ -369,6 +370,15 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     addToggle(ESOLSettingsToggle::OrbitLines)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleOrbitLinesChanged);
 
+    // Overlays (SDD 22): the Overlay Menu's own list, embedded; a click applies at once (like Ctrl+O in flight)
+    SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_OVERLAYS);
+    OverlayList = CreateWidget<USOLOverlayMenuWidget>(this, USOLOverlayMenuWidget::StaticClass());
+    if (OverlayList != nullptr)
+    {
+        OverlayList->SetEmbedded(true);
+        scroll->AddChild(OverlayList);
+    }
+
     // Key bindings: the reset button, then one row per rebindable action
     SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_KEYS);
 
@@ -429,6 +439,10 @@ void USOLSettingsPageWidget::RefreshFromSettings()
     for (int32 toggle = 0; toggle < Toggles.Num(); ++toggle)
     {
         Toggles[toggle]->SetIsChecked(SettingsGetToggleValue(values, static_cast<ESOLSettingsToggle>(toggle)));
+    }
+    if (OverlayList != nullptr)
+    {
+        OverlayList->RefreshRows();
     }
     RefreshTexts();
 }

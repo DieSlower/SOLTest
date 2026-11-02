@@ -8,10 +8,13 @@
 #include "SOLConstants.h"
 
 //////////////////////////////////////////////////////////////////////////
-// Starts with the default settings values
+// Starts with the default settings values (no overlay profile stored yet)
 USOLSettingsSave::USOLSettingsSave()
 {
     SetValues(SOLSettingsModel::FSettingsValues());
+
+    // No overlay profile stored until the first write (an empty list reads as the default profile, SDD 22)
+    OverlayProfiles.Reset();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -31,6 +34,15 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     bShowOrbitLines = values.bShowOrbitLines;
     HudEffectsStrength = values.HudEffectsStrength;
     bMouseSteerAtStart = values.bMouseSteerAtStart;
+
+    // One saved profile per overlay profile (SDD 22)
+    const SOLOverlay::FOverlayPrefs prefs = SOLOverlay::Sanitized(values.OverlayPrefs);
+    OverlayProfiles.SetNum(prefs.ProfileCount);
+    for (int32 profile = 0; profile < prefs.ProfileCount; ++profile)
+    {
+        OverlayProfiles[profile].Overlays = SOLOverlay::ToSavedProfile(prefs.Masks[profile]);
+    }
+    ActiveOverlayProfile = prefs.ActiveProfile;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -51,6 +63,15 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.bShowOrbitLines = bShowOrbitLines;
     values.HudEffectsStrength = HudEffectsStrength;
     values.bMouseSteerAtStart = bMouseSteerAtStart;
+
+    // Overlay profiles: none saved (an older file) gives the defaults; the model sanitizes the active profile
+    values.OverlayPrefs = SOLOverlay::MakeDefaultPrefs();
+    values.OverlayPrefs.ProfileCount = FMath::Clamp(OverlayProfiles.Num(), 1, SOL::Overlay::MAX_PROFILES);
+    for (int32 profile = 0; profile < FMath::Min(OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES); ++profile)
+    {
+        values.OverlayPrefs.Masks[profile] = SOLOverlay::FromSavedProfile(OverlayProfiles[profile].Overlays);
+    }
+    values.OverlayPrefs.ActiveProfile = ActiveOverlayProfile;
     return values;
 }
 
@@ -105,5 +126,16 @@ void USOLSettingsSave::MigrateToCurrentVersion()
     {
         bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
         Version = 6;
+    }
+
+    // Schema 6 -> 7 (SDD 22): one default overlay profile (every overlay on except Asteroid Orbits). The O key now
+    // turns the overlays on and off and the orbit lines moved to Alt+O; a rebound ToggleOrbitLines key keeps its
+    // override (the same action, now pressed with Alt), so the overrides are kept verbatim
+    if (Version == 6)
+    {
+        OverlayProfiles.SetNum(1);
+        OverlayProfiles[0].Overlays = SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask());
+        ActiveOverlayProfile = 0;
+        Version = 7;
     }
 }

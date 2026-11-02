@@ -5,6 +5,7 @@
 
 #include "UI/SOLFlightHud.h"
 
+#include "Combat/SOLCombatSubsystem.h"
 #include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLGameMode.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
@@ -17,6 +18,8 @@
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcSubsystem.h"
+#include "Npc/SOLNpcTierProcessor.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
@@ -27,6 +30,7 @@
 #include "UI/SOLHudShapeMath.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
+#include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
 #include "Visuals/SOLHologramVisuals.h"
 
@@ -209,6 +213,8 @@ void ASOLFlightHud::BeginPlay()
     Routes = world->GetSubsystem<USOLRouteSubsystem>();
     Settings = USOLSettingsSubsystem::Get(this);
     HudEvents = world->GetSubsystem<USOLHudEventSubsystem>();
+    Combat = world->GetSubsystem<USOLCombatSubsystem>();
+    Npcs = world->GetSubsystem<USOLNpcSubsystem>();
 
     // The pawn talks to the HUD only through the HUD event bus (SDD 21 D4): commands in, the map overlay out
     if (HudEvents != nullptr)
@@ -242,9 +248,11 @@ void ASOLFlightHud::BeginPlay()
     if (BodyRegistry != nullptr)
     {
         const int32 bodyCount = BodyRegistry->GetRegistry().Num();
-        mRadarContacts.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
-        mRadarOrder.Reserve(bodyCount + SOL::TARGETING_RESERVED_TARGETABLES);
+        const int32 radarCapacity = bodyCount + SOL::TARGETING_RESERVED_TARGETABLES + SOL::Overlay::MAX_SHIP_ICONS;
+        mRadarContacts.Reserve(radarCapacity);
+        mRadarOrder.Reserve(radarCapacity);
         mMapBodyOverlay.Initialize(BodyRegistry->GetRegistry());
+        mIconLayer.Initialize(BodyRegistry->GetRegistry());
     }
     mMapPickOverlay.Initialize();
     mRouteOverlay.Initialize();
@@ -699,6 +707,8 @@ void ASOLFlightHud::DrawHUD()
     mTopBlockRect = FBox2D(ForceInit);
     mRouteOverlay.ResetFrame();
     mHologramOverlay.ResetFrame();
+    mIconLayer.ClearStats();
+    mLastRadarShipCount = 0;
 
     // The glow-shape batch is emptied first, so a frame that returns early below leaves nothing on screen
     BeginShapeFrame();
@@ -754,7 +764,7 @@ void ASOLFlightHud::DrawHUD()
 
         // Jump map: bodies too small on screen get their icon and name label (SDD 3, sub-part 2c)
         mMapBodyOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, BodyRegistry->GetRegistry(),
-            GEngine->GetSmallFont(), HUD_PRIMARY, mUiScale);
+            GEngine->GetSmallFont(), HUD_PRIMARY, mUiScale, mBatch);
     }
 
     // Routes and the draft (SDD 20): always on the map, in flight while the route overlay is on (P)
@@ -767,6 +777,7 @@ void ASOLFlightHud::DrawHUD()
         // Destination pick (2d): reference ring, disc, height guide line and destination marker over the icons
         mMapPickOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, mUiScale);
     }
+    DrawOverlayIcons(bHasView && !IsMapOpen() ? &view : nullptr);
     DrawInfoBlock();
 
     if (Ships == nullptr || Targeting == nullptr || !Ships->HasPlayerShip())
@@ -1568,6 +1579,62 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Draws the overlay icons and edge arrows (only while the icons overlay shows, flight view only) and chooses the NPC
+// ships for the icons and the radar
+void ASOLFlightHud::DrawOverlayIcons(const FSOLHudView* view)
+{
+    using SOLOverlay::EOverlay;
+    using SOLOverlayIcons::EIconCategory;
+    mAreShipsSelected = false;
+    mIconLayer.ClearStats();
+
+    // Returns whether an overlay row shows now (every row with its default and the master on without settings)
+    const SOLOverlay::FOverlayPrefs defaultPrefs = SOLOverlay::MakeDefaultPrefs();
+    const auto isShown = [this, &defaultPrefs](const EOverlay overlay)
+    {
+        return Settings != nullptr ? Settings->IsOverlayShown(overlay) : SOLOverlay::IsShown(defaultPrefs, true,
+            overlay);
+    };
+    FSOLOverlayIconFrame frame;
+    for (int32 category = 0; category < static_cast<int32>(EIconCategory::Count); ++category)
+    {
+        frame.bCategoryShown[category] = isShown(EOverlay::Icons)
+            && isShown(SOLOverlayIcons::CategoryOverlay(static_cast<EIconCategory>(category)));
+    }
+    frame.bDarkening = isShown(EOverlay::Darkening);
+    frame.ViewpointM = AnchorSubsystem->GetViewpointM();
+    if (Npcs != nullptr)
+    {
+        frame.Ships = Npcs->GetCpuShips();
+    }
+
+    // The ships are chosen when the icons or the radar need them
+    if (frame.bCategoryShown[static_cast<int32>(EIconCategory::Ship)] || isShown(EOverlay::ShipsOnRadar))
+    {
+        mIconLayer.SelectShips(frame);
+        mAreShipsSelected = true;
+    }
+    if (view == nullptr || mBatch == nullptr || !isShown(EOverlay::Icons))
+    {
+        return;
+    }
+    frame.LocationCm = view->Location;
+    frame.Rotation = view->Rotation;
+    frame.CenterPx = view->Center;
+    frame.SizePx = FVector2D(Canvas->ClipX, Canvas->ClipY);
+    frame.FocalPx = view->FocalPx;
+    frame.UiScale = mUiScale;
+    frame.Centuries = SimClock->GetClock().GetCenturiesSinceJ2000();
+    if (Combat != nullptr)
+    {
+        frame.TargetActive = Combat->GetTargetActive();
+        frame.TargetPositionsM = Combat->GetTargetPositionsM();
+        frame.TargetRadiusM = Combat->GetTargetRadiusM();
+    }
+    mIconLayer.Draw(*mBatch, frame, BodyRegistry->GetRegistry(), *AnchorSubsystem);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Draws the prograde and retrograde markers of the velocity relative to the active frame
 void ASOLFlightHud::DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state)
 {
@@ -1621,6 +1688,27 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
             state.Orientation);
         contact.Name = candidates[index].Name;
         contact.bSelected = index == selectedIndex;
+    }
+
+    // Ships on Radar (SDD 22): the NPC ships the icon layer chose this frame (nearest first, a hard cap)
+    mLastRadarShipCount = 0;
+    if (mAreShipsSelected && Npcs != nullptr && (Settings == nullptr
+        || Settings->IsOverlayShown(SOLOverlay::EOverlay::ShipsOnRadar)))
+    {
+        static const FName shipContactName(TEXT("Ship"));
+        const TConstArrayView<FSOLNpcCpuShip> ships = Npcs->GetCpuShips();
+        for (const int32 ship : mIconLayer.GetSelectedShips())
+        {
+            if (!ships.IsValidIndex(ship) || mRadarContacts.Num() >= mRadarContacts.Max())
+            {
+                continue;
+            }
+            FSOLRadarContact& contact = mRadarContacts.AddDefaulted_GetRef();
+            contact.RelativePositionM = SOLRadar::ToShipFrame(SOLRender::EclipticToUnreal(ships[ship].PositionM),
+                state.PositionM, state.Orientation);
+            contact.Name = shipContactName;
+            ++mLastRadarShipCount;
+        }
     }
 
     // AUTO: the range floor for the current target state (SDD 2 Appendix C Amendment 3); MANUAL: the zoomed range,

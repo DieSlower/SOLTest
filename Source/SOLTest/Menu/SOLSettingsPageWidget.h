@@ -16,6 +16,7 @@ class UCheckBox;
 class UScrollBox;
 class USlider;
 class USOLMenuButton;
+class USOLOverlayMenuWidget;
 class USOLSettingsSubsystem;
 class UTextBlock;
 
@@ -219,6 +220,9 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<USlider>> Sliders;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLOverlayMenuWidget> OverlayList;          // The Overlay Menu's list, embedded (SDD 22)
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> SliderValueTexts;

@@ -40,15 +40,22 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Issue | What | Notes |
 |---|---|---|
+| #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor | Part 1 done and committed (icons, O / Alt+O / Ctrl+O / Shift+O, Overlay Menu, hologram cursor; settings schema 7; plan 22). Part 2 (radial / list menus, action table) next |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1 | #22 | Overlay icons, Overlay Menu (Ctrl+O), O/Alt+O/Shift+O keys, radial and list interaction menus, hologram cursor (SDD 22 written) | L | #31 |
+| 1 | #22 | Part 2: radial (flight) and list (map) interaction menus, action table (Part 1 done) | M | #31 |
 | 2 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
 | 2b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
 | 3 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
+| 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
+| 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
+| 3b3 | #38 | NPC lanes drawn as one animated hologram line per lane, with an overlay-menu toggle | M | #22 |
+| 3b4 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
+| 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range | M | #22 |
+| 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
 | 6 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |

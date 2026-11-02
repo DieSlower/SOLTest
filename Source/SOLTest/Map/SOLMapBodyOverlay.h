@@ -15,6 +15,7 @@ class UCanvas;
 class UFont;
 class USOLAnchorSubsystem;
 class USOLMapModeSubsystem;
+struct FSOLHudShapeBatch;
 
 // The camera the overlay projects with: render-space location and rotation, screen center and focal length in pixels
 struct FSOLMapOverlayView
@@ -36,7 +37,9 @@ struct FSOLMapOverlayView
  * first spot free of other discs and labels, bigger bodies first) or skipped when none is free; icons that are nearly
  * transparent neither get a label nor block label space. It also keeps each body's map pick radius for the frame
  * (SOLMapPickRadius) and its screen position and on-screen pick radius for the screen-space destination pick
- * (SOLMapScreenPick, 2d). All buffers are sized once; a frame only resets and refills them
+ * (SOLMapScreenPick, 2d). With the hologram batch (SDD 22) the discs are replaced by the overlay icon set (one vector
+ * icon per category, a ring ellipse around ringed planets; SOLOverlayIcons), with the same LOD alpha; the Canvas discs
+ * stay the fallback of `sol.HudRenderer 0`. All buffers are sized once; a frame only resets and refills them
  * (Canvas's own text layout is the only allocation left).
  */
 class SOLTEST_API FSOLMapBodyOverlay
@@ -50,10 +53,11 @@ public:
     // Caches each body's icon color, label text and label priority, and sizes the per-frame buffers
     void Initialize(const FSOLBodyRegistry& registry);
 
-    // Evaluates every body's LOD from the map camera and draws its icon and label on the canvas
+    // Evaluates every body's LOD from the map camera and draws its icon and label on the canvas; with the hologram
+    // batch (SDD 22) each icon is its category's vector icon there instead of a Canvas disc
     void Draw(UCanvas& canvas, const FSOLMapOverlayView& view, const USOLMapModeSubsystem& mapMode,
         const USOLAnchorSubsystem& anchor, const FSOLBodyRegistry& registry, UFont* font,
-        const FLinearColor& labelColor, float uiScale);
+        const FLinearColor& labelColor, float uiScale, FSOLHudShapeBatch* batch = nullptr);
 
     // Returns each body's icon alpha of the last frame, indexed like the registry (verification)
     TConstArrayView<double> GetIconAlphas() const { return mIconAlphas; }
@@ -94,6 +98,8 @@ private:
     TUniquePtr<FCanvasTriangleItem> mIconBatch;     // One translucent triangle batch for all icon discs
     TArray<FVector2D> mUnitCircle;                  // Unit-circle points of the disc tessellation, built once
     TArray<FLinearColor> mIconColors;               // Per body: icon color (base color at full brightness)
+    TArray<uint8> mIconCategories;                  // Per body: SOLOverlayIcons::EIconCategory (hologram icons)
+    TArray<bool> mHasRings;                         // Per body: has a ring system (ring ellipse on its icon)
     TArray<FString> mLabelSources;                  // Per body: name, for measuring
     TArray<FText> mLabels;                          // Per body: name, built once
     TArray<FVector2D> mLabelSizesPx;                // Per body: label size at scale 1 (measured on the first draw)
