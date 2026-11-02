@@ -174,6 +174,39 @@ namespace SOLMenuText
     inline constexpr const TCHAR* OVERLAY_MENU_UNCHECKED = TEXT("[ ] ");
     inline constexpr const TCHAR* OVERLAY_MENU_CHILD_INDENT = TEXT("    ");
 
+    // Interaction menus (SDD 22 section 2.4): action labels (SOLActionTable::ESOLAction order), the reasons an action
+    // is unavailable (ESOLActionBlock order, None first), object type names (ESOLObjectType order), the HUD info card
+    // and hint, and the map list menu
+    inline constexpr const TCHAR* INTERACT_ACTION_LABELS[] =
+    {
+        TEXT("Target"), TEXT("Info"), TEXT("Move To"), TEXT("Follow / Orbit"), TEXT("Jump To"), TEXT("Match speed"),
+        TEXT("Attack"), TEXT("Chase Down"), TEXT("Communications"), TEXT("Trade"),
+    };
+    inline constexpr const TCHAR* INTERACT_BLOCK_TEXTS[] =
+    {
+        TEXT(""), TEXT("Not yet available"), TEXT("Not offered for this object"), TEXT("No ship"),
+        TEXT("The pilot has no control (blackout)"), TEXT("Not during a jump"), TEXT("Cannot be targeted yet"),
+        TEXT("Already the target"), TEXT("Already matched"), TEXT("Already flying there"),
+        TEXT("Already following it"),
+    };
+    inline constexpr const TCHAR* INTERACT_TYPE_NAMES[] =
+    {
+        TEXT("Star"), TEXT("Planet"), TEXT("Moon"), TEXT("Dwarf planet"), TEXT("Asteroid"), TEXT("Ship"),
+        TEXT("Dropped target"),
+    };
+    inline constexpr const TCHAR* INTERACT_INFO_OF = TEXT(" of ");
+    inline constexpr const TCHAR* INTERACT_INFO_DISTANCE = TEXT("DIST  ");
+    inline constexpr const TCHAR* INTERACT_INFO_RADIUS = TEXT("RADIUS  ");
+    inline constexpr const TCHAR* INTERACT_INFO_SHIELD = TEXT("SHIELD ");
+    inline constexpr const TCHAR* INTERACT_INFO_HULL = TEXT("   HULL ");
+    inline constexpr const TCHAR* INTERACT_INFO_PERCENT = TEXT("%");
+    inline constexpr const TCHAR* INTERACT_TARGET_NAME_PREFIX = TEXT("Target ");
+    inline constexpr const TCHAR* INTERACT_LIST_REASON_OPEN = TEXT("   (");
+    inline constexpr const TCHAR* INTERACT_LIST_REASON_CLOSE = TEXT(")");
+    inline constexpr const TCHAR* INTERACT_ATTACK_HINT_PREFIX = TEXT("ATTACK  ");
+    inline constexpr const TCHAR* INTERACT_ATTACK_HINT_SUFFIX = TEXT(":  aim at it and fire (hold)");
+    inline constexpr const TCHAR* INTERACT_LIST_HINT = TEXT("Up / Down, Enter or click: choose   Esc: close");
+
     // Controls page
     inline constexpr const TCHAR* CONTROLS_TITLE = TEXT("Controls");
     inline constexpr const TCHAR* BINDING_ALTERNATIVE_SEPARATOR = TEXT(" / ");
@@ -222,7 +255,9 @@ namespace SOLMenuText
         { TEXT("Targeting"), TEXT("@ClearTarget"), TEXT("Clear the target") },
         { TEXT("Targeting"), TEXT("@MatchLock"), TEXT("Lock the reference frame to the target (match its velocity)") },
         { TEXT("Targeting"), TEXT("@SurfaceLock"), TEXT("Surface-lock: keep the ship upright over the nearest body") },
-        { TEXT("Combat"), TEXT("@Fire"), TEXT("Fire the pulse guns (hold)") },
+        { TEXT("Combat"), TEXT("@Fire"),
+            TEXT("Fire the pulse guns (hold). With mouse steering off, on an overlay icon: press, drag toward an "
+                "action and release to choose it (release in the centre, or Esc, cancels)") },
         { TEXT("Combat"), TEXT("@DropTarget"), TEXT("Drop a practice target {DropDistance} ahead") },
         { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
         { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
@@ -239,6 +274,8 @@ namespace SOLMenuText
         { TEXT("Map"), TEXT("@OpenMapJump"), TEXT("Open the map in Jump mode") },
         { TEXT("Map"), TEXT("J|M|P"), TEXT("Jump / Move / Patrol mode (P again: loop or ping-pong patrol)") },
         { TEXT("Map"), TEXT("RightMouseButton"), TEXT("Orbit the map camera (drag)") },
+        { TEXT("Map"), TEXT("RightMouseButton"),
+            TEXT("Click a body: its action menu (Up / Down and Enter, or click; Esc closes)") },
         { TEXT("Map"), TEXT("MiddleMouseButton|LeftShift+RightMouseButton"), TEXT("Pan the map (drag)") },
         { TEXT("Map"), TEXT("MouseWheelAxis"), TEXT("Zoom the map") },
         { TEXT("Map"), TEXT("LeftMouseButton"),
@@ -350,6 +387,14 @@ namespace SOLMenuText
             "moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the Overlay Menu; "
             "asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is drawn in gold. "
             "A line behind a planet or moon is hidden by it, and the part in front of it stays visible."),
+        TEXT("Interaction menus: with mouse steering off, hovering an overlay icon highlights it. Press {Fire} on "
+            "it, drag toward an action and release to choose it; releasing in the centre (or Esc) cancels, and "
+            "{Fire} away from icons still fires. On the map, a right click on a body opens the same actions as a list. "
+            "Target selects it; Info shows its card (top right) for a few seconds; Move To flies the autopilot there "
+            "and stops; Follow / Orbit keeps station at the autopilot's safe distance on your side until you take "
+            "control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
+            "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down, "
+            "Communications and Trade are not available yet)."),
         TEXT("The map ({OpenMap}; {OpenMapJump} opens it in Jump mode) shows the whole system; J, M and P switch "
             "between Jump, Move and Patrol mode. Press on a body or on empty space, drag to set where you want to be "
             "relative to it and release. In Jump mode, Enter jumps there. In Move and Patrol mode each pick adds a "

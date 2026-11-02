@@ -31,6 +31,7 @@ flowchart TD
     Ship["Ship<br/>Mass ship, pawn, smoke scripts"]
     UI["UI<br/>flight HUD, radar, F3 panel"]
     Targeting["Targeting<br/>candidates, selection, M lock"]
+    Interaction["Interaction (#22)<br/>action table, radial and list menus, order execution"]
     Visuals["Visuals<br/>body meshes and sun light"]
     StarField["StarField (Part 4)<br/>star data asset, sky actor"]
     Map["Map (Part 2)<br/>jump-map picking math"]
@@ -63,6 +64,14 @@ flowchart TD
     UI --> Targeting
     UI --> Universe
     UI --> Flight
+    UI --> Interaction
+    Ship --> Interaction
+    Interaction --> Targeting
+    Interaction --> Ship
+    Interaction --> Map
+    Interaction --> Combat
+    Interaction --> Npc
+    Interaction --> Universe
     Targeting --> Flight
     Targeting --> Universe
     Visuals --> Universe
@@ -91,7 +100,8 @@ flowchart TD
 | `Flight/` | Pure flight model (issue #18 Newtonian core, pilot G model, autopilot guidance), gravity, collision, warp carry, and target-picking math | `SOLNewtonianFlight`, `SOLFlight`, `SOLFlightMode`, `SOLShipState`, `SOLTargeting` |
 | `Ship/` | Player ship as a Mass entity, its processor and subsystem (including the surface-lock state and its per-substep alignment), the Pawn proxy, scripted smoke tests | `SOLShipSubsystem`, `SOLShipFlightProcessor`, `SOLShipFragments`, `SOLShipPawn`, `SOLShipSmokeFlight`, `SOLShipSmokeInput`, `SOLSurfaceLockSmoke` |
 | `Targeting/` | Target candidates, selection, the M frame lock, reference velocity | `SOLTargetingSubsystem`, `SOLTargetable` |
-| `UI/` | Hologram flight HUD (Canvas fallback), 3D hologram radar (#30), F3 speed panel, and their pure layout and format math (Alt+O and the hint read the orbit-line actor); the batched glow-shape renderer (issue #28, SDD 21: pure shape math and the custom-vertex batch, the Slate layer drawing it with `M_SOLHudShape` from `Tools/UI/create_hud_shape_material.py`; issue #29 adds the fixed-capacity glow-text list, panel backings and the panel fill / flicker / tone mirror; cvars `sol.HudRenderer`, `sol.HudComposite`, `sol.HudTextGlow`) | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudShapeMath`, `SOLHudShapeBatch`, `SOLHudShapeLayer`, `SOLHudTextList`, `SOLHudSmoke`, `SOLOverlayModel`, `SOLOverlayIcons`, `SOLOverlayIconLayer`, `SOLOverlayMenuWidget`, `SOLHologramCursorSubsystem`, `SOLOverlaySmoke` |
+| `UI/` | Hologram flight HUD (Canvas fallback), 3D hologram radar (#30), F3 speed panel, and their pure layout and format math (Alt+O and the hint read the orbit-line actor); the batched glow-shape renderer (issue #28, SDD 21: pure shape math and the custom-vertex batch, the Slate layer drawing it with `M_SOLHudShape` from `Tools/UI/create_hud_shape_material.py`; issue #29 adds the fixed-capacity glow-text list, panel backings and the panel fill / flicker / tone mirror; cvars `sol.HudRenderer`, `sol.HudComposite`, `sol.HudTextGlow`) | `SOLFlightHud`, `SOLSpeedPanelWidget`, `SOLRadarLayout`, `SOLHudFormat`, `SOLSpeedStepper`, `SOLHudShapeMath`, `SOLHudShapeBatch`, `SOLHudShapeLayer`, `SOLHudTextList`, `SOLHudSmoke`, `SOLOverlayModel`, `SOLOverlayIcons`, `SOLOverlayIconLayer`, `SOLOverlayMenuWidget`, `SOLHologramCursorSubsystem`, `SOLOverlaySmoke`, `SOLActionListWidget` |
+| `Interaction/` | Interaction menus (issue #22 Part 2): the pure action table (what each object type offers and when it is blocked), the pure radial and list menu geometry, and the world subsystem that holds hover and menu state and runs the chosen action through existing APIs (targeting, autopilot, jump, frame lock) | `SOLActionTable`, `SOLInteractMenus`, `SOLInteractionSubsystem`, `SOLDroppedTargetTargetable`, `SOLInteractSmoke` |
 | `HudEvents/` | The HUD event bus between the ship pawn and the flight HUD (issue #28, SDD 21 D4) | `SOLHudBus`, `SOLHudEventSubsystem` |
 | `OrbitLines/` | World-space orbit lines (issue #17): pure line math, ribbon packing, the line component and actor; HLSL in `Shaders/Private/SOLOrbitLine.ush` | `SOLOrbitLineMath`, `SOLOrbitLineLogic`, `SOLOrbitLineMesh`, `SOLOrbitLineComponent`, `SOLOrbitLineVisuals` |
 | `Visuals/` | Places body meshes each frame and sets their per-body sun direction; the map hologram look (proxy bodies and ring discs, map post-process, its cvars and pure math) | `SOLBodyVisuals`, `SOLHologramVisuals`, `SOLHologramMath` |
@@ -222,6 +232,12 @@ Each type is marked **pure** (plain C++, unit-tested without a world) or **engin
 - `SOLOverlay` (pure, `SOLOverlayModel.h`, issue #22): the data-driven overlay table (Overlay Menu rows), the per-profile masks (room for 5 profiles, #34) and `IsShown` (master O x row x parent row). `USOLSettingsSubsystem` owns the prefs (saved, schema 7) and the session master switch; the HUD, the orbit-line actor and the pawn read them there.
 - `SOLOverlayIcons` / `SOLHologramCursor` (pure, `SOLOverlayIcons.h`): icon categories, size fade, distance darkening, edge pinning, budgeted nearest-first selection, the icon and edge-arrow vector shapes, the cursor arrow. `FSOLOverlayIconLayer` (`SOLOverlayIconLayer.h`) gathers the bodies, named asteroids, dropped targets (`USOLCombatSubsystem`) and nearest NPC ships (`USOLNpcSubsystem::GetCpuShips`) each frame into the HUD's shape batch (`ASOLFlightHud::DrawOverlayIcons`, also the radar's ship contacts); `FSOLMapBodyOverlay` draws the same icons on the map.
 - `USOLOverlayMenuWidget` (engine UMG, `SOLOverlayMenuWidget.h`): the Ctrl+O checkbox list (opened by the pawn like the F3 panel; embedded in the Settings page).
+- `USOLActionListWidget` (engine UMG, `SOLActionListWidget.h`, issue #22): the map's list interaction menu, built in C++; it shows the action table's rows for a body and reports the chosen row to `USOLInteractionSubsystem`.
+
+**Interaction** (`Source/SOLTest/Interaction/`, issue #22 Part 2)
+- `SOLActionTable` (pure): `ESOLObjectKind` / `FSOLObjectRef`, `ESOLObjectType`, `ESOLAction`, the block reasons, `FSOLActionContext`, the fixed-capacity `FSOLActionList` (10 rows), and `SOLActionTable::Build` / `Evaluate` / `Offers` plus the label, reason and type-name texts; `SOLActionOrders` holds the Follow / Jump arrival math.
+- `SOLInteractMenus` (pure): `SOLRadialMenu` (icon hit test, sector angles, placement, open / move / release / cancel) and `SOLListMenu` (highlight, confirm, panel placement).
+- `USOLInteractionSubsystem` (engine world subsystem): the HUD hands it each frame's icon hits; it keeps hover, the radial state, the info card and the Attack hint, and runs the chosen action through `USOLTargetingSubsystem`, the autopilot, `USOLJumpSubsystem` and the frame lock. While a dropped target is targeted it registers one `USOLDroppedTargetTargetable` proxy (position = live frame-body position plus offset) with targeting, and unregisters it on `OnCombatUpdated` once the slot is gone or the selection moved. The pawn opens the radial on a Fire press over an icon and the list on a map right click; the HUD draws the menu, card and hint (`DrawInteraction`).
 - `USOLHologramCursorSubsystem` / `SSOLHologramCursor` (engine world subsystem and Slate leaf, `SOLHologramCursorSubsystem.h`): installs the hologram pointer as the game viewport's software cursor for every cursor type at world begin play and removes it at teardown.
 - `SOLRadar` / `FSOLRadarContact` (pure, `SOLRadarLayout.h`): radar projection into the ship-horizontal frame, floor and zoom, above/below style, dashes, the contact budget, crowding and the sonar pulse.
 - `SOLHudFormat`, `SOLSpeedStepper` (pure): unit and distance formatting, odometer stepping.
@@ -356,6 +372,7 @@ The project splits **pure logic** from **engine glue**. The math that decides be
 | `-SOLSmokeMap` | `FSOLMapSmoke` | Jump map via injected events: J open (cursor, ship input suspended, map camera, render viewpoint), orbit/zoom/pan drags, J and Esc close, with screenshots; body icon/label state checked at 1e13 m, ~9e10 m, ~8e8 m (Earth cross-fade) and ~5e7 m (mesh only) |
 | `-SOLSmokeMapPick` | `FSOLMapPickSmoke` | Destination pick via injected events: body and empty-space references, planar drag/lock, Shift height preview/lock, X clear, OS-cursor sync after a drag, close/reopen clears; screenshots of the disc, guide line and marker |
 | `-SOLSmokeRoute` | `FSOLRouteSmoke` | Map modes (Shift+M, J, P, P, M), two waypoint clicks, Ctrl+right-click undo, Enter starts the Move (AUTO on a waypoint order), Shift+M close keeps AUTO, W pauses, V resumes, P toggles the overlay, Delete clears, Shift+J opens in Jump mode, Esc closes |
+| `-SOLSmokeInteract` (optional `-SOLSmokeInteractProfile`) | `FSOLInteractSmoke` | Interaction menus (issue #22 Part 2): hover, radial open with the trigger released, Target / centre / Esc outcomes, Fire off an icon, Info card, Move To, Follow, Match speed, Attack on a dropped target, Jump To arrival, the map list menu; screenshots; the profile flag adds a cost capture |
 | `-SOLSmokeRouteOverlay` | `FSOLRouteOverlaySmoke` | A paused 3-waypoint Patrol Loop in front of the camera: legs, dashes, arrows, ship leg, PAUSED tag, markers within 2 px of the engine projection and their above/below-plane flags, the HUD route marker clear of the key hints, P off/on; then the same in the map, two scripted draft picks (cursor segment while dragging, draft markers); screenshots |
 | `-SOLSmokeHologram` | `FSOLHologramSmoke` | Map hologram look: nothing hidden before the map; on open every proxy visible, the body / ring / gas-giant actors in the controller's HiddenActors, the post-process on; grid drawn at six views (Earth and Moon, Earth close, Jupiter, the Sun, the inner system, Saturn with its rings), one viewport-sized screenshot each; mean GPU frame time with the look on and off; `sol.Hologram 0` restores the real visuals (screenshot), 1 brings the look back; closing the map leaves nothing hidden and the body placeholders as before. Run it at more than one aspect ratio (`-windowed -ResX=1000 -ResY=800`) |
 | `-SOLSmokeJump` | `FSOLJumpSmoke` | Pick on Mars and jump: Enter with no pick ignored, warp start, midpoint FOV/post-process on the warp curve with the HUD hidden, arrival position/velocity/orientation/anchor/origin, restore; mid-warp and arrival screenshots |

@@ -243,7 +243,8 @@ void USOLRouteSubsystem::HandleShipsStepped(const float /*realDeltaSeconds*/)
     }
 
     // Manual input, C, a jump's pilot reset or another autopilot order ended this route's order: keep it, paused
-    if (Ships->GetFlightMode() != ESOLFlightMode::Auto || !Ships->IsAutopilotPointOrder())
+    if (Ships->GetFlightMode() != ESOLFlightMode::Auto || !Ships->IsAutopilotPointOrder()
+        || Ships->GetAutopilotOrderSerial() != mOrderSerial)
     {
         Pause(TEXT("the autopilot no longer flies it"));
         return;

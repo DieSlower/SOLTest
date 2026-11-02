@@ -886,6 +886,39 @@ namespace SOL
         inline constexpr int32 MENU_Z_ORDER = 15;                 // Overlay Menu: above the HUD, below the pause menu
     }
 
+    // Interaction menus (SDD 22 section 2.4): the radial menu on flight icons, the map's list menu, the action table.
+    // Pixel sizes are at a 720 px canvas (x UI scale)
+    namespace Interact
+    {
+        inline constexpr int32 MAX_ACTIONS = 10;                  // Actions one object's menu can hold (table rows)
+        inline constexpr double ICON_HIT_SLACK_PX = 6.0;          // Hover / press reach beyond an icon's radius
+        inline constexpr float HOVER_RING_SCALE = 1.7f;           // Hovered icon: highlight ring this many icon radii
+        inline constexpr float RADIAL_INNER_PX = 24.0f;           // Radial menu: cancel zone and the sector ring's
+        inline constexpr float RADIAL_OUTER_PX = 64.0f;           // inner and outer radius
+        inline constexpr float RADIAL_LABEL_PX = 78.0f;           // Action labels are anchored on this radius
+        inline constexpr float TITLE_GAP_PX = 4.0f;               // Radial title: gap above the top label
+        inline constexpr float RADIAL_SECTOR_GAP_RAD = 0.07f;     // Gap between two sectors (radians)
+        inline constexpr float RADIAL_MARGIN_PX = 90.0f;          // The menu centre stays this far inside the screen
+        inline constexpr float RADIAL_INTENSITY = 0.6f;           // Sector edge glow: enabled, highlighted, disabled
+        inline constexpr float RADIAL_HIGHLIGHT_INTENSITY = 1.0f;
+        inline constexpr float RADIAL_DISABLED_INTENSITY = 0.22f;
+        inline constexpr float RADIAL_FILL_INTENSITY = 0.12f;     // Highlighted sector's fill (a wide arc)
+        inline constexpr float RADIAL_EDGE_HALF_WIDTH_PX = 1.0f;  // Sector edge arcs (inner and outer rim)
+        inline constexpr double INFO_CARD_S = 10.0;               // Info: the object's card shows this long
+        inline constexpr double HINT_S = 5.0;                     // The Attack hint shows this long
+        inline constexpr double JUMP_STANDOFF_RADII = 1.5;        // Jump To arrives this many radii from the centre,
+        inline constexpr double JUMP_STANDOFF_M = 1000.0;         // plus this (LT's "1.5 R + 1000")
+        inline constexpr float LIST_MARGIN_PX = 12.0f;            // Map list menu: kept this far inside the screen
+        inline constexpr float LIST_CURSOR_OFFSET_PX = 14.0f;     // ... and opened this far right / below the cursor
+        inline constexpr int32 LIST_Z_ORDER = 15;                 // Map list menu: above the HUD, below the pause menu
+        inline constexpr double LABEL_SIDE_COSINE = 0.3;          // Radial labels beside the ring past this |cos|
+        inline constexpr float DISABLED_TEXT_SCALE = 0.4f;        // Disabled radial labels: colour scale
+        inline constexpr float HINT_Y_FRACTION = 0.68f;           // Attack hint line (fraction of the screen height)
+        inline constexpr float INFO_CARD_WIDTH_PX = 230.0f;       // Info card: left edge this far from the right edge
+        inline constexpr float INFO_CARD_TOP_PX = 120.0f;         // ... and its top this far below the top margin
+                                                                  // (under the target readout and the key hints)
+    }
+
     // Menu widgets (SDD 8, 8c): viewport layer, layout sizes (UMG units at the 1080p reference DPI), fonts and colours
     namespace MenuStyle
     {
@@ -1021,6 +1054,11 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_HOLOGRAM = TEXT("SOLSmokeHologram");   // Map hologram look, then quit
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
+        // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
+        // menu, then quit (SDD 22; smoke settings slot)
+        inline constexpr const TCHAR* SMOKE_INTERACT = TEXT("SOLSmokeInteract");
+        // With -SOLSmokeInteract: profile while the radial menu is open (ProfileGPU, stat dumpave), for the SDD's cost
+        inline constexpr const TCHAR* SMOKE_INTERACT_PROFILE = TEXT("SOLSmokeInteractProfile");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

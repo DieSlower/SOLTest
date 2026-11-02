@@ -292,25 +292,7 @@ void USOLMapModeSubsystem::PressPick(const FSOLMapBodyOverlay* overlay, const bo
     // Any other click starts over: the body under the cursor on screen (nearest center within its pick radius) is
     // the reference, else the ship. The candidates are the bodies the overlay projected last frame
     ResetPick();
-    int32 bodyIndex = INDEX_NONE;
-    if (overlay != nullptr)
-    {
-        const TConstArrayView<FVector2D> screenPx = overlay->GetScreenPositionsPx();
-        const TConstArrayView<double> pickRadiiPx = overlay->GetPickRadiiPx();
-        const int32 bodyCount = FMath::Min(screenPx.Num(), pickRadiiPx.Num());
-        mPickCandidates.Reset();
-        for (int32 index = 0; index < bodyCount; ++index)
-        {
-            if (pickRadiiPx[index] > 0.0)
-            {
-                FSOLScreenPickCandidate& candidate = mPickCandidates.AddDefaulted_GetRef();
-                candidate.BodyIndex = index;
-                candidate.ScreenPositionPx = screenPx[index];
-                candidate.PickRadiusPx = pickRadiiPx[index];
-            }
-        }
-        bodyIndex = SOLMapScreenPick::PickNearestOnScreen(mPickCandidates, mPickCursorPx);
-    }
+    const int32 bodyIndex = FindBodyUnderCursor(overlay);
     mPick.bHasReference = true;
     mPick.bReferenceIsBody = bodyIndex != INDEX_NONE;
     mPick.ReferenceBodyIndex = bodyIndex;
@@ -320,6 +302,31 @@ void USOLMapModeSubsystem::PressPick(const FSOLMapBodyOverlay* overlay, const bo
         ? BodyRegistry->GetRegistry().GetName(bodyIndex) : FName(TEXT("ship"));
     UE_LOG(LogSOL, Log, TEXT("MapPick: mouse-down at (%.1f, %.1f) px; reference %s (body index %d)"),
         mPickCursorPx.X, mPickCursorPx.Y, *referenceName.ToString(), bodyIndex);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the body under the map cursor on screen (nearest centre within its pick radius), or INDEX_NONE
+int32 USOLMapModeSubsystem::FindBodyUnderCursor(const FSOLMapBodyOverlay* overlay)
+{
+    if (overlay == nullptr)
+    {
+        return INDEX_NONE;
+    }
+    const TConstArrayView<FVector2D> screenPx = overlay->GetScreenPositionsPx();
+    const TConstArrayView<double> pickRadiiPx = overlay->GetPickRadiiPx();
+    const int32 bodyCount = FMath::Min(screenPx.Num(), pickRadiiPx.Num());
+    mPickCandidates.Reset();
+    for (int32 index = 0; index < bodyCount; ++index)
+    {
+        if (pickRadiiPx[index] > 0.0)
+        {
+            FSOLScreenPickCandidate& candidate = mPickCandidates.AddDefaulted_GetRef();
+            candidate.BodyIndex = index;
+            candidate.ScreenPositionPx = screenPx[index];
+            candidate.PickRadiusPx = pickRadiiPx[index];
+        }
+    }
+    return SOLMapScreenPick::PickNearestOnScreen(mPickCandidates, mPickCursorPx);
 }
 
 //////////////////////////////////////////////////////////////////////////

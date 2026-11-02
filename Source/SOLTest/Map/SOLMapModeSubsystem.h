@@ -110,6 +110,10 @@ public:
     // on the overlay) or the ship
     void PressPick(const FSOLMapBodyOverlay* overlay, bool bHeightModifierHeld);
 
+    // Returns the body under the map cursor on screen (nearest centre within its pick radius among the bodies the
+    // overlay projected last frame), or INDEX_NONE; the right-click list menu (SDD 22) and PressPick share it
+    int32 FindBodyUnderCursor(const FSOLMapBodyOverlay* overlay);
+
     // Left mouse up: locks the planar offset of the drag
     void ReleasePick();
 

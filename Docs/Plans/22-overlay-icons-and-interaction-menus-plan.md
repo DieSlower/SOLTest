@@ -34,11 +34,26 @@ Pure logic is test-first (tests written from the contract by a separate opus age
 10. [x] Full suite, adversarial review, fixes, re-run suite and smokes (Hud, Input, Route, RouteOverlay, Map, MapPick,
     MapAlign, Hologram, Overlay), commit and push.
 
-## Part 2: interaction menus (later agent)
+## Part 2: interaction menus
 
 Radial menu on icons in flight (press-drag-release), list menu on the map, generic action table (Target, Info, Move
 To, Follow / Orbit, Jump To, Match speed; dropped targets: Target, Info, Attack; disabled entries with reasons, Chase
 Down greyed until #32), icon hover and hit-testing versus Fire on left mouse.
+
+1. [x] Pure logic, test-first: `Interaction/SOLActionTable` (types, rows, availability rules, labels, arrival
+   offsets) and `Interaction/SOLInteractMenus` (icon hit-test, radial sectors and press-drag-release state, list
+   highlight and placement); `Tests/InteractMenusTest.cpp` (29 tests, separate opus agent from the contract, red on
+   stubs 28/29, then green).
+2. [x] Icon layer pointer hits (drawn icons and faded ones) with object refs and the hover highlight;
+   `USOLInteractionSubsystem` (hover, radial, Execute through targeting / ship autopilot / jump, info card, Attack
+   hint, dropped-target targetable proxy); targeting `SelectCandidate`; combat target velocity / live position.
+3. [x] HUD: radial menu, info card, Attack hint; non-body target bracket frame fix.
+4. [x] Pawn: flight cursor, Fire press / release to the radial, steering suspended while open, Esc cancels; map
+   plain right click on a body opens `USOLActionListWidget` (UI-only focus, Up / Down / Enter / click / Esc).
+5. [x] Smoke `-SOLSmokeInteract` (18 checks, 18/18 at 1280x720 and 1000x800; optional
+   `-SOLSmokeInteractProfile`).
+6. [x] Cost measurement, adversarial review and fixes, full suite, regression smokes, docs (Controls / Info text,
+   GAME_MECHANICS, ARCHITECTURE, SDD amendment 2, STATUS, TECH_DEBT), commit, push, close #22.
 
 ## Progress notes
 
@@ -48,3 +63,6 @@ Down greyed until #32), icon hover and hit-testing versus Fire on left mouse.
   re-dispatched. Next: apply review fixes, re-run suite + smokes, commit and push.
 - 2026-11-01: resumed; review fixes verified (suite 1118/1118, every smoke green again), committed and pushed.
   Part 1 complete.
+- 2026-11-02: Part 2 steps 1-5 done (suite 1147 with one Controls-row test fixed by merging the Fire rows; interact
+  smoke green). Then: cost measured, review fixes applied (SDD 22 Amendment 2), suite 1147/1147,
+  `-SOLSmokeInteract` 18/18 at both sizes, every regression smoke green; committed and pushed. Part 2 complete.

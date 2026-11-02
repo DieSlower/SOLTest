@@ -42,20 +42,7 @@ void FSOLOverlayIconLayer::Initialize(const FSOLBodyRegistry& registry)
             mHasRings[planet] = true;
         }
     }
-    // The named asteroids with orbit lines (the largest ORBIT_LINE_NAMED_MINOR_COUNT, SDD 17) get icons
-    mNamedAsteroids.Reset();
-    for (const FSOLAsteroidDef& asteroid : SOLAsteroidBelt::RealAsteroids())
-    {
-        if (!asteroid.Name.IsNone())
-        {
-            mNamedAsteroids.Add(asteroid);
-        }
-    }
-    mNamedAsteroids.Sort([](const FSOLAsteroidDef& a, const FSOLAsteroidDef& b)
-    {
-        return a.RadiusM > b.RadiusM;
-    });
-    mNamedAsteroids.SetNum(FMath::Min(mNamedAsteroids.Num(), SOL::ORBIT_LINE_NAMED_MINOR_COUNT));
+    BuildNamedAsteroids(mNamedAsteroids);
 
     // Every per-frame buffer at its bound once
     const int32 maxCandidates = bodyCount + mNamedAsteroids.Num() + SOL::Overlay::MAX_TARGET_ICONS
@@ -71,6 +58,27 @@ void FSOLOverlayIconLayer::Initialize(const FSOLBodyRegistry& registry)
     mArrowBrightness.Reset(maxCandidates);
     mArrowOrder.Reset(SOL::Overlay::MAX_EDGE_ARROWS);
     mDrawnPx.Reset(SOL::Overlay::MAX_ICONS);
+    mHits.Reset(SOL::Overlay::MAX_ICONS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the named asteroids that get icons: the largest ORBIT_LINE_NAMED_MINOR_COUNT with a name (SDD 17), largest
+// first (a stable sort, so every caller gets the same order and the same object indices)
+void FSOLOverlayIconLayer::BuildNamedAsteroids(TArray<FSOLAsteroidDef>& outAsteroids)
+{
+    outAsteroids.Reset();
+    for (const FSOLAsteroidDef& asteroid : SOLAsteroidBelt::RealAsteroids())
+    {
+        if (!asteroid.Name.IsNone())
+        {
+            outAsteroids.Add(asteroid);
+        }
+    }
+    outAsteroids.StableSort([](const FSOLAsteroidDef& a, const FSOLAsteroidDef& b)
+    {
+        return a.RadiusM > b.RadiusM;
+    });
+    outAsteroids.SetNum(FMath::Min(outAsteroids.Num(), SOL::ORBIT_LINE_NAMED_MINOR_COUNT));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -119,7 +127,8 @@ void FSOLOverlayIconLayer::SelectShips(const FSOLOverlayIconFrame& frame)
 //////////////////////////////////////////////////////////////////////////
 // Adds a candidate when its category shows (the candidate buffer is never grown)
 void FSOLOverlayIconLayer::AddCandidate(const FSOLOverlayIconFrame& frame, const FVector3d& positionM,
-    const double radiusM, const int32 bodyIndex, const SOLOverlayIcons::EIconCategory category)
+    const double radiusM, const int32 bodyIndex, const SOLOverlayIcons::EIconCategory category,
+    const FSOLObjectRef& object)
 {
     const int32 categoryIndex = static_cast<int32>(category);
     if (categoryIndex < 0 || categoryIndex >= static_cast<int32>(SOLOverlayIcons::EIconCategory::Count)
@@ -133,6 +142,17 @@ void FSOLOverlayIconLayer::AddCandidate(const FSOLOverlayIconFrame& frame, const
     candidate.DistanceM = FVector3d::Dist(positionM, frame.ViewpointM);
     candidate.BodyIndex = bodyIndex;
     candidate.Category = category;
+    candidate.Object = object;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Records one pointer hit (the caller keeps the buffer within its reserved capacity)
+void FSOLOverlayIconLayer::AddHit(const FVector2D& centerPx, const double radiusPx, const FSOLObjectRef& object)
+{
+    FSOLIconHit& hit = mHits.AddDefaulted_GetRef();
+    hit.CenterPx = centerPx;
+    hit.RadiusPx = radiusPx;
+    hit.Object = object;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -159,6 +179,7 @@ void FSOLOverlayIconLayer::Draw(FSOLHudShapeBatch& batch, const FSOLOverlayIconF
     ClearStats();
     mCandidates.Reset();
     mDrawnPx.Reset();
+    mHits.Reset();
     mArrowBasesPx.Reset();
     mArrowDirections.Reset();
     mArrowColors.Reset();
@@ -170,17 +191,20 @@ void FSOLOverlayIconLayer::Draw(FSOLHudShapeBatch& batch, const FSOLOverlayIconF
     const int32 bodyCount = FMath::Min(registry.Num(), mBodyCategories.Num());
     for (int32 index = 0; index < bodyCount; ++index)
     {
-        AddCandidate(frame, registry.GetPositionM(index), registry.GetRadiusM(index), index, mBodyCategories[index]);
+        AddCandidate(frame, registry.GetPositionM(index), registry.GetRadiusM(index), index, mBodyCategories[index],
+            FSOLObjectRef{ ESOLObjectKind::Body, index });
     }
     if (frame.bCategoryShown[static_cast<int32>(EIconCategory::Asteroid)] && bodyCount > 0)
     {
         const FVector3d& sunM = registry.GetPositionM(0);
         const double sunGm = registry.GetGM(0);
-        for (const FSOLAsteroidDef& asteroid : mNamedAsteroids)
+        for (int32 index = 0; index < mNamedAsteroids.Num(); ++index)
         {
+            const FSOLAsteroidDef& asteroid = mNamedAsteroids[index];
             const FSOLOrbitState state = SOLKepler::ElementsToState(asteroid.Elements.AtCenturies(frame.Centuries),
                 sunGm, 0.0);
-            AddCandidate(frame, sunM + state.PositionM, asteroid.RadiusM, INDEX_NONE, EIconCategory::Asteroid);
+            AddCandidate(frame, sunM + state.PositionM, asteroid.RadiusM, INDEX_NONE, EIconCategory::Asteroid,
+                FSOLObjectRef{ ESOLObjectKind::Asteroid, index });
         }
     }
     if (frame.bCategoryShown[static_cast<int32>(EIconCategory::Target)])
@@ -196,7 +220,8 @@ void FSOLOverlayIconLayer::Draw(FSOLHudShapeBatch& batch, const FSOLOverlayIconF
             mSelectedTargets);
         for (const int32 slot : mSelectedTargets)
         {
-            AddCandidate(frame, frame.TargetPositionsM[slot], frame.TargetRadiusM, INDEX_NONE, EIconCategory::Target);
+            AddCandidate(frame, frame.TargetPositionsM[slot], frame.TargetRadiusM, INDEX_NONE, EIconCategory::Target,
+                FSOLObjectRef{ ESOLObjectKind::DroppedTarget, slot });
         }
     }
     if (frame.bCategoryShown[static_cast<int32>(EIconCategory::Ship)])
@@ -205,7 +230,8 @@ void FSOLOverlayIconLayer::Draw(FSOLHudShapeBatch& batch, const FSOLOverlayIconF
         {
             if (frame.Ships.IsValidIndex(ship))
             {
-                AddCandidate(frame, frame.Ships[ship].PositionM, 0.0, INDEX_NONE, EIconCategory::Ship);
+                AddCandidate(frame, frame.Ships[ship].PositionM, 0.0, INDEX_NONE, EIconCategory::Ship,
+                    FSOLObjectRef{ ESOLObjectKind::Ship, frame.Ships[ship].NpcIndex });
             }
         }
     }
@@ -255,17 +281,39 @@ void FSOLOverlayIconLayer::Draw(FSOLHudShapeBatch& batch, const FSOLOverlayIconF
             continue;
         }
         const double apparentPx = local.X > 0.0 ? frame.FocalPx * placement.RadiusCm / local.X : 0.0;
-        const double brightness = SOLOverlayIcons::SizeFade(apparentPx) * darkening;
+        const bool bHighlighted = frame.Highlighted.IsValid() && candidate.Object == frame.Highlighted;
+        const double brightness = bHighlighted ? 1.0 : SOLOverlayIcons::SizeFade(apparentPx) * darkening;
         if (brightness < SOL::Overlay::ICON_MIN_BRIGHTNESS || mLastIconCount >= SOL::Overlay::MAX_ICONS
             || IsCrowded(pin.PositionPx, radiusPx))
         {
+            // A faded icon (its object is large on screen) stays a pointer hit at its centre, so the interaction
+            // menus still reach the object; hovering it draws the icon (SDD 22 Amendment 2). Not the selected
+            // target: that is what the guns aim at, and Fire must fire
+            if (brightness < SOL::Overlay::ICON_MIN_BRIGHTNESS && mHits.Num() < mHits.Max()
+                && candidate.Object != frame.Selected)
+            {
+                AddHit(pin.PositionPx, radiusPx, candidate.Object);
+            }
             continue;
         }
         const FVector2f center(pin.PositionPx);
         const float intensity = SOL::Overlay::ICON_INTENSITY * static_cast<float>(brightness);
-        if (SOLOverlayIcons::AddIconShapes(batch, candidate.Category, center, radiusPx, color, intensity, padPx) == 0)
+        const FLinearColor iconColor = bHighlighted ? SOL::HudPalette::SECONDARY : color;
+        if (SOLOverlayIcons::AddIconShapes(batch, candidate.Category, center, radiusPx, iconColor, intensity, padPx)
+            == 0)
         {
             continue;
+        }
+
+        // The hovered (or menu) object gets a highlight ring; every drawn icon is a pointer hit (SDD 22 section 2.4)
+        if (bHighlighted)
+        {
+            batch.AddRing(center, radiusPx * SOL::Interact::HOVER_RING_SCALE, 1.0f, SOL::HudPalette::SECONDARY,
+                SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY, padPx);
+        }
+        if (mHits.Num() < mHits.Max())
+        {
+            AddHit(pin.PositionPx, radiusPx, candidate.Object);
         }
         // The ring system's ellipse goes around its planet's icon (so it needs the Planets row too)
         if (bRingsShown && HasRings(candidate.BodyIndex) && SOLOverlayIcons::AddIconShapes(batch, EIconCategory::Ring,

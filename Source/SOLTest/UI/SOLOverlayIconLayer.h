@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Interaction/SOLInteractMenus.h"
 #include "MinorBodies/SOLAsteroidBelt.h"
 #include "UI/SOLOverlayIcons.h"
 
@@ -33,6 +34,8 @@ struct FSOLOverlayIconFrame
     TConstArrayView<FVector3d> TargetPositionsM;
     double TargetRadiusM = 0.0;
     TConstArrayView<FSOLNpcCpuShip> Ships;              // NPC ships near the camera (CPU side)
+    FSOLObjectRef Highlighted;                          // Hovered or menu object: drawn bright with a ring (SDD 22)
+    FSOLObjectRef Selected;                             // Selected target: no pointer hit while its icon is faded
 };
 
 /**
@@ -50,6 +53,14 @@ public:
 
     // Caches the registry's categories and ring planets and the named asteroids, and reserves the frame buffers
     void Initialize(const FSOLBodyRegistry& registry);
+
+    // Fills the named asteroids that get icons (the largest SOL::ORBIT_LINE_NAMED_MINOR_COUNT real ones with a name,
+    // largest first); an asteroid object's index is its position in this list (the interaction menus build the same)
+    static void BuildNamedAsteroids(TArray<FSOLAsteroidDef>& outAsteroids);
+
+    // Returns last frame's pointer hits (centre, radius, object), nearest first: every icon drawn, and every on-screen
+    // object whose icon faded out because the object itself is large on screen
+    TConstArrayView<FSOLIconHit> GetHits() const { return mHits; }
 
     // Chooses this frame's NPC ships (nearest first, at most MAX_SHIP_ICONS; also the radar's ship contacts)
     void SelectShips(const FSOLOverlayIconFrame& frame);
@@ -87,11 +98,15 @@ private:
         double DistanceM = 0.0;                         // From the viewpoint
         int32 BodyIndex = INDEX_NONE;                   // Registry body (its own render placement), else a point
         SOLOverlayIcons::EIconCategory Category = SOLOverlayIcons::EIconCategory::Count;
+        FSOLObjectRef Object;                           // What the icon stands for (interaction menus)
     };
 
     // Adds a candidate when its category shows
     void AddCandidate(const FSOLOverlayIconFrame& frame, const FVector3d& positionM, double radiusM, int32 bodyIndex,
-        SOLOverlayIcons::EIconCategory category);
+        SOLOverlayIcons::EIconCategory category, const FSOLObjectRef& object);
+
+    // Records one pointer hit (the caller keeps the buffer within its reserved capacity)
+    void AddHit(const FVector2D& centerPx, double radiusPx, const FSOLObjectRef& object);
 
     // Returns true when a point lies within the skip radius of an icon already drawn this frame
     bool IsCrowded(const FVector2D& screenPx, double radiusPx) const;
@@ -112,6 +127,7 @@ private:
     TArray<double> mArrowBrightness;
     TArray<int32> mArrowOrder;
     TArray<FVector2D> mDrawnPx;                                 // Icon centres drawn this frame (crowding)
+    TArray<FSOLIconHit> mHits;                                  // Icons drawn this frame (pointer hits)
     int32 mLastIconCount = 0;
     int32 mLastArrowCount = 0;
     int32 mLastCategoryCounts[static_cast<int32>(SOLOverlayIcons::EIconCategory::Count)] = {};

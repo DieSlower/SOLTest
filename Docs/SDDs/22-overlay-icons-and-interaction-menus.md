@@ -3,7 +3,7 @@
 # SDD 22: Overlay icons, overlay menu and interaction menus
 
 Issue #22. Depends on SDD 21 (hologram HUD renderer), SDD 20 (map, routes, `SOL::Hologram`), SDD 19 (steering gate),
-SDD 17 (orbit lines). Status: Part 1 built (Amendment 1); Part 2 (interaction menus) to do.
+SDD 17 (orbit lines). Status: Part 1 built (Amendment 1); Part 2 (interaction menus) built (Amendment 2).
 
 ## 1. Goal
 
@@ -91,7 +91,7 @@ review.
 ## Amendment 1: Part 1 as built (icons, O keys, Overlay Menu, hologram cursor)
 
 Plan: [`Docs/Plans/22-overlay-icons-and-interaction-menus-plan.md`](../Plans/22-overlay-icons-and-interaction-menus-plan.md).
-Part 2 (radial / list menus, action table) is still to do; #22 stays open.
+Part 2 is Amendment 2.
 
 **Overlay model (`UI/SOLOverlayModel`, pure, test-first).** A data-driven table (`EOverlay` + one `FOverlayDef` row:
 id, label, default, parent): Icons with its eight category rows (parent Icons), Planet / Asteroid / Moon / Other
@@ -187,3 +187,34 @@ ranking uses squared distances. Low: ring icons counted only when drawn (they ne
 radar-ship counts are cleared at the top of `DrawHUD`; the smoke checks that the cursor paints; prose and comments.
 Not fixed, in `Docs/TECH_DEBT.md`: `SelectShips` unprofiled at the 20k-ship worst case; the cursor's fixed size.
 Suite 1118 / 1118 after the fixes.
+
+## Amendment 2: Part 2 as built (interaction menus)
+
+**Design as built.** New folder `Interaction/`. `SOLActionTable` (pure) holds the object kinds and types (star, planet, moon, dwarf, asteroid, ship, dropped target), the ten actions (Target, Info, Move To, Follow, Jump To, Match speed, Attack, Chase Down, Communicate, Trade), the block reasons and a fixed-capacity action list (10 rows); `Build` / `Evaluate` give each type's rows and whether each is enabled, `SOLActionOrders` the Follow and Jump arrival offsets. `SOLInteractMenus` (pure) holds the radial geometry (icon hit test, sector angles clockwise from the top, placement, open / move / release / cancel) and the list menu (highlight, confirm, panel placement). `USOLInteractionSubsystem` (world subsystem) takes the icon hits the HUD hands it each frame, keeps hover and the radial state, runs actions through the existing APIs, shows the Info card and the Attack hint, and registers one `USOLDroppedTargetTargetable` proxy with targeting while a dropped target is targeted (unregistered on `OnCombatUpdated` once the slot is gone or the selection moved). `UI/SOLActionListWidget` is the map's list menu (C++ UMG). Row sets, block rules, numbers and action behavior are in `Docs/GAME_MECHANICS.md` section 7a.
+
+Changes elsewhere: `SOLOverlayIconLayer` keeps object refs and gives pointer hits for every drawn icon and for on-screen objects whose icon faded because they are large; the hovered object is drawn in Secondary at full brightness with a highlight ring. `SOLFlightHud::DrawInteraction` draws the radial menu, the info card (top right under the target readout, below the key hints) and the Attack hint. `SOLShipPawn` adds the flight cursor: a Fire press with the cursor free over an icon opens the radial instead of firing, the trigger stays released, steering is suspended while it is open, the Fire release confirms or cancels, and Esc cancels instead of pausing. On the map a plain right click (short and still, no Ctrl, the same thresholds as the Ctrl undo click) on a body opens the list menu with UI-only focus; closing it restores the map input, or closes the map after a Jump To. Supporting additions: `SOLMapModeSubsystem::FindBodyUnderCursor`, targeting `SelectCandidate` / `FindTargetableCandidate`, combat `GetTargetVelocityMps` / `GetTargetLivePositionM` / `IsPlayerTriggerHeld`, `SOLMenuText` texts, `SOL::Interact` constants, `-SOLSmokeInteract` (optional `-SOLSmokeInteractProfile`). Module dependencies: UI -> Interaction, Ship -> Interaction, Interaction -> Targeting, Ship, Map, Combat, Npc, Universe. No persisted schema change (no `SAVE_VERSION`, no settings field, no new key binding; `KEY_BINDING_LAYOUT_VERSION` unchanged).
+
+A fix found on the way: a non-body target's bracket converted the Unreal-handed candidate to ecliptic before `ComputePointRenderLocationCm`, so it was misplaced (no non-body targetable existed before). The dropped-target proxy uses the live frame-body position plus offset, because the candidate position is one frame stale and visibly lags at orbital speed.
+
+**Verification.** 29 new tests `SOLTest.InteractMenus.*`, written from the contract by a separate agent (28 of 29 red on stubs, then green); one existing test (`KeyBindings.ControlsCell`) needed the Fire rows merged. Full suite 1147 / 1147. `-SOLSmokeInteract` 18/18 at 1280x720 and 1000x800 (hover, press opens with the trigger released, drag and release Target, centre cancel, Esc cancel without pause, Fire off an icon fires, Info card, Move To, Follow, Match speed, Attack on a dropped target, Jump To arrival at 1.5R + 1000 m, map list open / Down + Esc / Move To). Regression smokes green: Hud 24/24 x2, Input 41/41, Route 26/26, RouteOverlay 25/25, Map 16/16, MapPick 22/22, Hologram 12/12, Overlay 11/11 x2, MapAlign 26/26. Screenshots looked at (`InteractSmoke_Start/Radial/Info/Attack/List.png`): wide filled sectors glowed into a white blob, so they became thin rim arcs with only the highlighted sector filled; the info card overlapped the target readout and moved below the key hints; the dropped target's bracket was misplaced (the frame bug above).
+
+**Cost (1280x720, editor build `-game`, radial menu open, near Earth; `stat dumpave` over 60 frames).** GPU shape batch draw ("Slate Material") 0.052 ms for 170 shapes, whole Slate UI 0.096 ms. Game thread `HUD Time` 0.128 ms, `Game UI Paint` 0.091 ms. Part 1 baseline: 0.039 ms batch, 0.110 ms `HUD Time`.
+
+**Known limits.** A faded icon's hit sits at the object's centre only. Asteroids and NPC ships have no autopilot, jump or target orders yet (greyed rows). Follow keeps station in the body's non-rotating frame at a fixed offset, not a true orbit, and counts an autopilot arrival every frame (harmless; the route ignores foreign orders). The dropped-target proxy makes the existing non-body M-lock carry item (`Docs/TECH_DEBT.md`) reachable via M on a targeted dropped target; the carry matches as long as the target's frame body is the anchor. The radial menu uses the Fire binding, so a Fire rebound to a key opens it at the cursor too. The code-debt ones are in `Docs/TECH_DEBT.md`.
+
+**Adversarial review (opus, no Blockers; fixed).** High: a dead dropped-target proxy returned a zero snapshot,
+which with an M lock on it would have carried the ship toward the universe origin for one step (the proxy now keeps
+its last live snapshot until it is unregistered); the info lookup of an NPC ship scanned the whole CPU ship view every
+frame while its menu or card showed (now a cached slot, checked in O(1), rescanned only when the ship moved in the
+view). Medium: Follow during an active route left the route "Active" with a stale ETA (the route now also pauses when
+the ship's order serial is not its own); targeting a second dropped target released the first one's binding before
+checking the new slot (checked first now; with one proxy, an M lock on the previous drop still ends, documented); the
+non-body M-lock carry item is now reachable (`Docs/TECH_DEBT.md` updated); faded (invisible) hits could take a Fire
+press meant for the guns: a press now opens a menu only on the object hovered at the previous update (whose icon is
+then drawn), and the selected target has no faded hit (it is what the guns aim at). Low: the map list menu now opens
+and closes at the pawn's next tick, outside the input callback and the Slate handler; an open radial menu is cancelled
+when its object leaves the icons (HUD hidden, overlays off, off screen); strings moved to `SOLMenuText`; style nits
+(line length, comments, the rows' `static_assert`). Not changed: station keeping counts an arrival every frame (in
+`Docs/TECH_DEBT.md`); the modified engine classes (targeting `SelectCandidate`, combat getters, the icon layer's hits,
+the proxy) are covered by `-SOLSmokeInteract`, not unit tests (they need a world). Suite and smokes re-run after the
+fixes (results above).

@@ -9,6 +9,7 @@
 #include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLInputHelpers.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
+#include "Interaction/SOLInteractionSubsystem.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
 #include "Map/SOLRouteSubsystem.h"
@@ -23,6 +24,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLActionListWidget.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLOverlayMenuWidget.h"
 #include "UI/SOLSpeedPanelWidget.h"
@@ -216,6 +218,7 @@ void ASOLShipPawn::BeginPlay()
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
     Menu = world->GetSubsystem<USOLMenuSubsystem>();
     HudEvents = world->GetSubsystem<USOLHudEventSubsystem>();
+    Interaction = world->GetSubsystem<USOLInteractionSubsystem>();
     if (Ships == nullptr || Targeting == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr
         || !Ships->HasPlayerShip())
     {
@@ -312,6 +315,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeOverlay = MakeUnique<FSOLOverlaySmoke>();
         mSmokeOverlay->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_INTERACT))
+    {
+        mSmokeInteract = MakeUnique<FSOLInteractSmoke>();
+        mSmokeInteract->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -327,7 +335,7 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeJump.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
@@ -379,6 +387,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeRouteOverlay.Reset();
     mSmokeHologram.Reset();
     mSmokeOverlay.Reset();
+    mSmokeInteract.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -437,6 +446,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeOverlay.Reset();
     }
+    if (mSmokeInteract.IsValid() && mSmokeInteract->Update(*this, deltaSeconds))
+    {
+        mSmokeInteract.Reset();
+    }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
         mSmokeJump.Reset();
@@ -452,6 +465,16 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mIsSpeedPanelRequested = false;
         OpenSpeedPanel();
+    }
+    if (mIsActionListCloseRequested)
+    {
+        mIsActionListCloseRequested = false;
+        CloseActionList();
+    }
+    if (mIsActionListRequested)
+    {
+        mIsActionListRequested = false;
+        OpenActionList(mRequestedListObject, mRequestedListCursorPx);
     }
     if (mIsOverlayMenuRequested)
     {
@@ -520,6 +543,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     UpdateViewportFocus();
     UpdateMapCursor();
     UpdateSteering();
+    UpdateInteraction();
 
     // Virtual joystick: radius from the current viewport, offset mapped through the dead zone and response curve
     if (const APlayerController* playerController = Cast<APlayerController>(GetController()))
@@ -592,7 +616,7 @@ void ASOLShipPawn::UpdateCombatInput()
         return;
     }
     Combat->SetPlayerTriggerHeld(mIsFireHeld && !mIsMapOpen && !IsPanelOpen() && !mIsMenuSuspended
-        && !IsJumpWarping());
+        && !IsJumpWarping() && !IsRadialMenuOpen());
 
     // Render space has Unreal-handed axes around the render origin, so the camera's offset from the actor (the ship)
     // and its forward are Unreal-handed universe vectors; EclipticToUnreal (a Y flip) turns them into ecliptic ones
@@ -886,7 +910,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeJump.IsValid()
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeJump.IsValid()
         || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
@@ -1434,7 +1458,8 @@ void ASOLShipPawn::HandleToggleSteer()
 // Returns true while something else has the input or the view
 bool ASOLShipPawn::IsSteerSuspended() const
 {
-    return mIsMapOpen || IsPanelOpen() || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused;
+    return mIsMapOpen || IsPanelOpen() || mIsMenuSuspended || IsJumpWarping() || !mIsViewportFocused
+        || IsRadialMenuOpen();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1623,6 +1648,21 @@ void ASOLShipPawn::HandleToggleLevel()
 // Sets whether the fire trigger (left mouse) is held; the combat subsystem fires at its cadence while it is
 void ASOLShipPawn::HandleFire(const bool bHeld)
 {
+    // With a free cursor a press on an overlay icon opens its radial menu instead of firing, and the release of that
+    // press confirms or cancels it (SDD 22 section 2.4); the trigger stays released throughout
+    if (Interaction != nullptr)
+    {
+        if (bHeld && IsInteractCursorFree() && Interaction->PressPrimary(mFlightCursorPx))
+        {
+            mIsFireHeld = false;
+            return;
+        }
+        if (!bHeld && Interaction->ReleasePrimary(mFlightCursorPx))
+        {
+            mIsFireHeld = false;
+            return;
+        }
+    }
     mIsFireHeld = bHeld;
 }
 
@@ -2059,6 +2099,7 @@ void ASOLShipPawn::CloseMap()
 // Closes the map without restoring the ship's input (teardown)
 void ASOLShipPawn::DismissMap()
 {
+    DismissActionList();
     SOLInput::RemoveMappingContext(mMapMappedLocalPlayer.Get(), MapMappingContext);
     mMapMappedLocalPlayer.Reset();
     if (mIsMapOpen && MapMode != nullptr)
@@ -2242,6 +2283,11 @@ void ASOLShipPawn::HandleCloseMap()
 // Requests the pause menu (Esc in flight; handed to the menu subsystem at the next tick)
 void ASOLShipPawn::HandlePause()
 {
+    // Esc closes an open radial menu first (SDD 22)
+    if (Interaction != nullptr && Interaction->CancelRadial())
+    {
+        return;
+    }
     mIsPauseRequested = !mIsMapOpen && !mIsMenuSuspended;
 }
 
@@ -2289,9 +2335,23 @@ void ASOLShipPawn::HandleMapRightHeld(const bool bHeld)
         const APlayerController* playerController = Cast<APlayerController>(GetController());
         const bool bControlDown = playerController != nullptr && (playerController->IsInputKeyDown(EKeys::LeftControl)
             || playerController->IsInputKeyDown(EKeys::RightControl));
-        if (SOLMapModeState::IsUndoClick(bControlDown, mMapRightTravelPx, FPlatformTime::Seconds() - mMapRightPressS))
+        const double heldS = FPlatformTime::Seconds() - mMapRightPressS;
+        if (SOLMapModeState::IsUndoClick(bControlDown, mMapRightTravelPx, heldS))
         {
             MapMode->UndoWaypoint();
+        }
+        else if (!bControlDown && SOLMapModeState::IsUndoClick(true, mMapRightTravelPx, heldS))
+        {
+            // The same short, still click without Ctrl on a body opens its list menu (SDD 22); a drag orbited
+            const int32 body = MapMode->FindBodyUnderCursor(HudEvents != nullptr
+                ? HudEvents->GetBus().GetMapBodyOverlay() : nullptr);
+            if (body != INDEX_NONE)
+            {
+                // Opened at the next tick, outside the input callback (as the map and the panels)
+                mRequestedListObject = FSOLObjectRef{ ESOLObjectKind::Body, body };
+                mRequestedListCursorPx = mMapCursorPx;
+                mIsActionListRequested = true;
+            }
         }
     }
     mIsMapRightHeld = bHeld;
@@ -2863,4 +2923,134 @@ bool ASOLShipPawn::IsControlHeld() const
     const APlayerController* playerController = Cast<APlayerController>(GetController());
     return playerController != nullptr && (playerController->IsInputKeyDown(EKeys::LeftControl)
         || playerController->IsInputKeyDown(EKeys::RightControl));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true while the radial menu is open
+bool ASOLShipPawn::IsRadialMenuOpen() const
+{
+    return Interaction != nullptr && Interaction->IsRadialOpen();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns true when the cursor is free for the interaction menus: mouse steering and free look off, the ship's own
+// input active (no map, panel, menu or jump warp) and the viewport focused
+bool ASOLShipPawn::IsInteractCursorFree() const
+{
+    return !mIsSteering && !mIsFreeLooking && !mIsMapOpen && !IsPanelOpen() && !mIsMenuSuspended && !IsJumpWarping()
+        && mIsViewportFocused && IsShipInputMapped();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the flight cursor used for the icon hover and the radial menu (scripts)
+void ASOLShipPawn::HandleFlightCursorMoved(const FVector2D& cursorPx)
+{
+    mFlightCursorPx = cursorPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Follows the OS mouse with the flight cursor, updates the icon hover and the open radial menu, and cancels the radial
+// menu when something else takes the cursor
+void ASOLShipPawn::UpdateInteraction()
+{
+    if (Interaction == nullptr)
+    {
+        return;
+    }
+    const bool bFree = IsInteractCursorFree();
+    if (!bFree)
+    {
+        Interaction->CancelRadial();
+    }
+    const APlayerController* playerController = Cast<APlayerController>(GetController());
+    float mouseX = 0.0f;
+    float mouseY = 0.0f;
+    if (bFree && !mIsFlightCursorScripted && playerController != nullptr
+        && playerController->GetMousePosition(mouseX, mouseY))
+    {
+        mFlightCursorPx = FVector2D(mouseX, mouseY);
+    }
+    if (Interaction->IsRadialOpen())
+    {
+        Interaction->MovePointer(mFlightCursorPx);
+    }
+    Interaction->UpdateHover(mFlightCursorPx, bFree);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Opens the map's list menu for an object at a cursor position, with UI-only focus (as the Overlay Menu)
+bool ASOLShipPawn::OpenActionList(const FSOLObjectRef& object, const FVector2D& cursorPx)
+{
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (!mIsMapOpen || mIsActionListOpen || Interaction == nullptr || playerController == nullptr)
+    {
+        return false;
+    }
+    if (ActionList == nullptr)
+    {
+        ActionList = CreateWidget<USOLActionListWidget>(playerController, USOLActionListWidget::StaticClass());
+        if (ActionList == nullptr)
+        {
+            UE_LOG(LogSOL, Error, TEXT("ShipPawn %s: failed to create the action list"), *GetName());
+            return false;
+        }
+    }
+    int32 viewportWidth = 0;
+    int32 viewportHeight = 0;
+    playerController->GetViewportSize(viewportWidth, viewportHeight);
+    if (!ActionList->Open(Interaction, object, cursorPx, FVector2D(viewportWidth, viewportHeight),
+        FSimpleDelegate::CreateUObject(this, &ASOLShipPawn::RequestCloseActionList)))
+    {
+        return false;
+    }
+    ActionList->AddToViewport(SOL::Interact::LIST_Z_ORDER);
+    FInputModeUIOnly inputMode;
+    inputMode.SetWidgetToFocus(ActionList->TakeWidget());
+    inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+    playerController->SetInputMode(inputMode);
+    playerController->bShowMouseCursor = true;
+    mIsActionListOpen = true;
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: action list open for %d:%d"), *GetName(), static_cast<int32>(object.Kind),
+        object.Index);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Closes the list menu and gives the map its input back, or closes the map when the chosen action started a jump
+void ASOLShipPawn::CloseActionList()
+{
+    if (!mIsActionListOpen)
+    {
+        return;
+    }
+    DismissActionList();
+    if (Jump != nullptr && Jump->IsWarping())
+    {
+        CloseMap();
+        return;
+    }
+    APlayerController* playerController = Cast<APlayerController>(GetController());
+    if (mIsMapOpen && playerController != nullptr)
+    {
+        // The map's own input mode (OpenMap): game and UI, the cursor free and hidden only during a button capture
+        FInputModeGameAndUI inputMode;
+        inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+        inputMode.SetHideCursorDuringCapture(true);
+        playerController->SetInputMode(inputMode);
+        playerController->bShowMouseCursor = true;
+    }
+    UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: action list closed"), *GetName());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Removes the list menu without restoring input (teardown, map close)
+void ASOLShipPawn::DismissActionList()
+{
+    if (ActionList != nullptr)
+    {
+        ActionList->RemoveFromParent();
+    }
+    mIsActionListOpen = false;
+    mIsActionListRequested = false;
+    mIsActionListCloseRequested = false;
 }

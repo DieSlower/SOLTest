@@ -188,6 +188,32 @@ void USOLTargetingSubsystem::ClearTarget()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Selects a candidate by index (bodies first, then the registered targetables); false when out of range
+bool USOLTargetingSubsystem::SelectCandidate(const int32 candidateIndex)
+{
+    if (candidateIndex < 0 || candidateIndex >= mBodyCount + mTargetables.Num())
+    {
+        return false;
+    }
+    mSelectedIndex = candidateIndex;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the candidate index of a registered targetable object, or INDEX_NONE
+int32 USOLTargetingSubsystem::FindTargetableCandidate(const UObject* object) const
+{
+    for (int32 slot = 0; object != nullptr && slot < mTargetables.Num(); ++slot)
+    {
+        if (mTargetables[slot].GetObject() == object)
+        {
+            return mBodyCount + slot;
+        }
+    }
+    return INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Locks the reference frame to the selected target (else the anchor body), or releases an active lock
 void USOLTargetingSubsystem::ToggleFrameLock()
 {

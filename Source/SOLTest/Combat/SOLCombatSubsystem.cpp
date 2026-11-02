@@ -223,6 +223,30 @@ double USOLCombatSubsystem::GetTargetRadiusM() const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns an active target's velocity (ecliptic): its frame body's plus its own in that frame
+bool USOLCombatSubsystem::GetTargetVelocityMps(const int32 slot, FVector3d& outVelocityMps) const
+{
+    if (!mTargetActive.IsValidIndex(slot) || !mTargetActive[slot])
+    {
+        return false;
+    }
+    outVelocityMps = GetFrameBodyVelocityMps(mTargetFrameBodies[slot]) + mTargetRelVelocitiesMps[slot];
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an active target's position from its frame body's current position (ecliptic)
+bool USOLCombatSubsystem::GetTargetLivePositionM(const int32 slot, FVector3d& outPositionM) const
+{
+    if (!mTargetActive.IsValidIndex(slot) || !mTargetActive[slot])
+    {
+        return false;
+    }
+    outPositionM = GetFrameBodyPositionM(mTargetFrameBodies[slot]) + mTargetRelPositionsM[slot];
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the body bolts and targets are stored relative to: the player's reference body, else the anchor, else none
 int32 USOLCombatSubsystem::ResolveFrameBody() const
 {

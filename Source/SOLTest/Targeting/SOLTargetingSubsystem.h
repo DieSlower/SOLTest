@@ -65,6 +65,13 @@ public:
     // Clears the selected target (the frame lock, if any, stays)
     void ClearTarget();
 
+    // Selects a candidate by index (a body index, or the body count plus a registered targetable's slot, valid from
+    // its registration on); false (selection unchanged) when out of range (SDD 22 interaction menus)
+    bool SelectCandidate(int32 candidateIndex);
+
+    // Returns the candidate index of a registered targetable object, or INDEX_NONE
+    int32 FindTargetableCandidate(const UObject* object) const;
+
     // Locks the reference frame to the selected target (else the anchor body), or releases an active lock
     void ToggleFrameLock();
 

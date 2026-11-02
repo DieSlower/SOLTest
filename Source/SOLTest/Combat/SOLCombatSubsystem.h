@@ -97,6 +97,9 @@ public:
     // Sets whether the player's fire trigger is held; the guns fire at the cadence rate on the next updates
     void SetPlayerTriggerHeld(bool bHeld) { mIsPlayerTriggerHeld = bHeld; }
 
+    // Returns whether the player's trigger is held as last handed over (verification)
+    bool IsPlayerTriggerHeld() const { return mIsPlayerTriggerHeld; }
+
     // Sets the player's aim: the camera's offset from the ship and its forward direction (ecliptic, meters)
     void SetPlayerAim(const FVector3d& cameraOffsetM, const FVector3d& cameraForward);
 
@@ -150,6 +153,15 @@ public:
 
     // Returns the radius every target is hit-tested with (meters)
     double GetTargetRadiusM() const;
+
+    // Returns an active target's velocity (ecliptic, m/s: its frame body's plus its own in that frame); false for an
+    // inactive or invalid slot (SDD 22: a targeted dropped target's candidate velocity)
+    bool GetTargetVelocityMps(int32 slot, FVector3d& outVelocityMps) const;
+
+    // Returns an active target's position from its frame body's CURRENT position (ecliptic metres): valid between this
+    // frame's body update and the combat update, when GetTargetPositionsM still holds last frame's; false for an
+    // inactive or invalid slot (SDD 22: the targeted dropped target's candidate)
+    bool GetTargetLivePositionM(int32 slot, FVector3d& outPositionM) const;
 
     // Returns the events queued by the last update (and by any call since); readable until the next update
     TConstArrayView<FSOLCombatEvent> GetEvents() const { return mEvents; }

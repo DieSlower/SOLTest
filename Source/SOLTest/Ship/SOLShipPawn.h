@@ -8,6 +8,8 @@
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
 #include "HudEvents/SOLHudBus.h"
+#include "Interaction/SOLActionTable.h"
+#include "Interaction/SOLInteractSmoke.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
 #include "Map/SOLMapModeState.h"
@@ -36,7 +38,9 @@ class ULocalPlayer;
 class UMaterialInterface;
 class USOLAnchorSubsystem;
 class USOLCombatSubsystem;
+class USOLActionListWidget;
 class USOLHudEventSubsystem;
+class USOLInteractionSubsystem;
 class USOLJumpSubsystem;
 class USOLMapModeSubsystem;
 class USOLMenuSubsystem;
@@ -100,6 +104,14 @@ namespace SOLMenuState
  * tick the pawn also hands it the chase camera's offset from the ship and its forward direction (ecliptic), the camera
  * ray the bolts converge on. The trigger reads as released while the map or the speed panel is open, during a jump
  * warp, and once the viewport loses focus.
+ *
+ * Interaction menus (SDD 22 section 2.4): with the cursor free (mouse steering and free look off, nothing else
+ * holding the input) the pawn hands the OS cursor (the flight cursor; a script can drive it instead) to
+ * USOLInteractionSubsystem every tick for the icon hover. A Fire press on a hovered icon opens the radial menu instead
+ * of firing; while it is open the trigger stays released, steering is suspended, the pointer moves the highlight and
+ * the Fire release confirms or cancels; Esc cancels it instead of pausing. On the map a plain right click (short and
+ * still, without Ctrl) on a body opens the list menu (USOLActionListWidget, UI-only focus like the Overlay Menu);
+ * closing it gives the map its input back, or closes the map when the chosen action started a jump.
  *
  * Menus (8b, SDD 8): Esc (IA_ShipPause, in the ship mapping only, so the open map's own Esc closes the map instead)
  * asks USOLMenuSubsystem to pause, at the next tick. While its state suspends flight input (the pause menu) the pawn
@@ -221,6 +233,33 @@ public:
 
     // Returns the Overlay Menu widget, or nullptr before it was first opened
     USOLOverlayMenuWidget* GetOverlayMenu() const { return OverlayMenu; }
+
+    // Sets the flight cursor used for the icon hover and the radial menu (pixels, top-left origin; scripts)
+    void HandleFlightCursorMoved(const FVector2D& cursorPx);
+
+    // Verification: while set, the flight cursor ignores the OS mouse and only follows HandleFlightCursorMoved
+    void SetFlightCursorScripted(bool bScripted) { mIsFlightCursorScripted = bScripted; }
+
+    // Returns the flight cursor (pixels, top-left origin)
+    const FVector2D& GetFlightCursorPx() const { return mFlightCursorPx; }
+
+    // Returns true when the cursor is free for the interaction menus (steering and free look off, the ship's input)
+    bool IsInteractCursorFree() const;
+
+    // Opens the map's list menu for an object at a cursor position (pixels); false when it has no actions
+    bool OpenActionList(const FSOLObjectRef& object, const FVector2D& cursorPx);
+
+    // Closes the list menu and gives the map its input back (or closes the map after a Jump To)
+    void CloseActionList();
+
+    // Asks for the list menu to close at the next tick (its close delegate; outside the Slate handler)
+    void RequestCloseActionList() { mIsActionListCloseRequested = mIsActionListOpen; }
+
+    // Returns true while the map's list menu is open
+    bool IsActionListOpen() const { return mIsActionListOpen; }
+
+    // Returns the list menu widget, or nullptr before it was first opened
+    USOLActionListWidget* GetActionList() const { return ActionList; }
 
     // Shows or hides the route overlay (P; SDD 20)
     void HandleToggleRouteOverlay();
@@ -587,6 +626,16 @@ private:
     // Returns true while a panel (the F3 speed panel or the Overlay Menu) has the input
     bool IsPanelOpen() const { return mIsSpeedPanelOpen || mIsOverlayMenuOpen; }
 
+    // Follows the OS mouse with the flight cursor, updates the icon hover and the open radial menu, and cancels the
+    // radial menu when something else takes the cursor (SDD 22)
+    void UpdateInteraction();
+
+    // Removes the list menu without restoring input (teardown, map close)
+    void DismissActionList();
+
+    // Returns true while the radial menu is open
+    bool IsRadialMenuOpen() const;
+
     // Enhanced Input: route overlay toggle (P)
     void OnToggleRouteOverlayAction(const FInputActionValue& value);
 
@@ -872,6 +921,12 @@ private:
     TObjectPtr<USOLOverlayMenuWidget> OverlayMenu;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLActionListWidget> ActionList;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLInteractionSubsystem> Interaction;
+
+    UPROPERTY(Transient)
     TObjectPtr<USOLMapModeSubsystem> MapMode;
 
     UPROPERTY(Transient)
@@ -915,6 +970,7 @@ private:
     TUniquePtr<FSOLRouteOverlaySmoke> mSmokeRouteOverlay;   // Verification-only route overlay script
     TUniquePtr<FSOLHologramSmoke> mSmokeHologram;           // Verification-only map hologram script
     TUniquePtr<FSOLOverlaySmoke> mSmokeOverlay;             // Verification-only overlay script (SDD 22)
+    TUniquePtr<FSOLInteractSmoke> mSmokeInteract;           // Verification-only interaction menu script (SDD 22)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
@@ -927,6 +983,7 @@ private:
     double mFreeLookHeldS = 0.0;                            // How long the free-look key has been held unarmed
     double mFreeLookArmPx = 0.0;                            // Mouse travel (px) since the free-look key went down
     FVector2D mMapCursorPx = FVector2D::ZeroVector;         // Map cursor (pixels, top-left origin)
+    FVector2D mFlightCursorPx = FVector2D::ZeroVector;      // Flight cursor for the icon hover (pixels)
     FVector2D mLastOsMousePx = FVector2D::ZeroVector;       // OS mouse position last read for the map cursor
     FVector2d mStickOffsetPx = FVector2d::ZeroVector;       // Virtual joystick offset (X right, Y up), pixels
     FRotator mFreeLookRotation = FRotator::ZeroRotator;     // Camera orbit around the ship while Alt is held
@@ -944,6 +1001,12 @@ private:
     bool mIsFreeLookHeld = false;                           // The free-look key is down
     bool mIsFreeLookSuppressed = false;                     // An Alt chord (Alt+O) cancelled it until Alt is released
     bool mIsOverlayMenuOpen = false;                        // True while the Overlay Menu has focus
+    bool mIsActionListOpen = false;                         // True while the map's list menu has focus
+    bool mIsFlightCursorScripted = false;                   // Verification: the OS mouse does not move it
+    bool mIsActionListRequested = false;                    // A right click asked for the list (opens next tick)
+    bool mIsActionListCloseRequested = false;               // The list asked to close (closes next tick)
+    FSOLObjectRef mRequestedListObject;                     // The object and cursor of the requested list
+    FVector2D mRequestedListCursorPx = FVector2D::ZeroVector;
     bool mIsOverlayMenuRequested = false;                   // Ctrl+O pressed; the menu opens or closes next tick
     bool mIsFireHeld = false;                               // True while the left mouse (gun trigger) is held
     bool mHasCameraRotation = false;                        // False until the camera rotation is first set

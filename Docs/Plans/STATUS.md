@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-11-01.
+Last updated: 2026-11-02.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -35,22 +35,22 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
 | #31 | HUD polish: half glow, Alt yellow circles, borderless panels, steering start setting and hint, stick recenter on release | 19, 21 (amendments) |
 | #41 | Project metrics tracking: generated effort page (time, tokens, notional price, agents by model and effort), README summary, update rule | 41 |
+| #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor (Part 1: icons, O keys, Overlay Menu, cursor; Part 2: radial and list menus, action table) | 22 |
 
 ## In progress
 
 | Issue | What | Notes |
 |---|---|---|
-| #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor | Part 1 done and committed (icons, O / Alt+O / Ctrl+O / Shift+O, Overlay Menu, hologram cursor; settings schema 7; plan 22). Part 2 (radial / list menus, action table) next |
+| - | Nothing in progress | - |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1 | #22 | Part 2: radial (flight) and list (map) interaction menus, action table (Part 1 done) | M | #31 |
-| 2 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
-| 2b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
-| 2c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
-| 3 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
+| 1 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
+| 1b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
+| 1c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
+| 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
 | 3b3 | #38 | NPC lanes drawn as one animated hologram line per lane, with an overlay-menu toggle | M | #22 |
@@ -92,5 +92,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 5 tickets (#22, #23, #26, #27, #24 decisions) before the two large roadmap items (#10, #9),
+About 4 tickets (#23, #26, #27, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

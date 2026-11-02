@@ -29,6 +29,7 @@ class UFont;
 class UMaterialInstanceDynamic;
 class USOLAnchorSubsystem;
 class USOLHudEventSubsystem;
+class USOLInteractionSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLCombatSubsystem;
 class USOLNpcSubsystem;
@@ -151,6 +152,10 @@ public:
 
     // Returns the flight view's overlay icon layer (SDD 22; verification)
     const FSOLOverlayIconLayer& GetIconLayer() const { return mIconLayer; }
+
+    // Returns the radial menu sectors and the info card lines drawn last frame (SDD 22; verification)
+    int32 GetLastRadialSectorCount() const { return mLastRadialSectorCount; }
+    int32 GetLastInfoCardLineCount() const { return mLastInfoCardLineCount; }
 
     // Returns the NPC ship contacts the radar drew last frame (Ships on Radar; verification)
     int32 GetLastRadarShipCount() const { return mLastRadarShipCount; }
@@ -283,8 +288,28 @@ private:
         RadarSelected,
         RadarRange,
         SteerHint,
+        InfoTitle,
+        InfoType,
+        InfoDistance,
+        InfoDetail,
+        InfoStatus,
+        InteractHint,
+        RadialTitle,
+        RadialReason,
+        RadialItem0,
+        RadialItem1,
+        RadialItem2,
+        RadialItem3,
+        RadialItem4,
+        RadialItem5,
+        RadialItem6,
+        RadialItem7,
+        RadialItem8,
+        RadialItem9,
         Count
     };
+    static_assert(static_cast<int32>(ESOLHudLine::RadialItem9) - static_cast<int32>(ESOLHudLine::RadialItem0) + 1
+        == SOL::Interact::MAX_ACTIONS, "One radial label line per action");
 
     // The last text drawn on one line, the FText built from it and its unscaled measured size (all rebuilt only when
     // the text or font changes)
@@ -365,6 +390,17 @@ private:
     // Draws the overlay icons and edge arrows (SDD 22) and chooses the NPC ships for the icons and the radar
     void DrawOverlayIcons(const FSOLHudView* view);
 
+    // Draws the interaction menus' HUD parts (SDD 22 section 2.4): the info card and the action hint (flight and map)
+    // and, in flight, the open radial menu
+    void DrawInteraction();
+
+    // Draws the open radial menu: one sector per action around its centre, the labels, the title and the highlighted
+    // disabled action's reason
+    void DrawRadialMenu();
+
+    // Draws the info card of the object Info was chosen for (top right)
+    void DrawInfoCard(const FSOLObjectRef& object);
+
     // Draws the prograde and retrograde markers of the velocity relative to the active frame
     void DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state);
 
@@ -427,12 +463,17 @@ private:
     TObjectPtr<USOLNpcSubsystem> Npcs;
 
     UPROPERTY(Transient)
+    TObjectPtr<USOLInteractionSubsystem> Interaction;
+
+    UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> ShapeMaterial;     // M_SOLHudShape instance drawn by the shape layer
 
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLOverlayIconLayer mIconLayer;                // Flight view overlay icons (SDD 22)
     bool mAreShipsSelected = false;                 // The icon layer chose NPC ships this frame (icons or radar)
     int32 mLastRadarShipCount = 0;                  // NPC ship contacts on the radar last frame
+    int32 mLastRadialSectorCount = 0;               // Radial menu sectors drawn last frame (SDD 22)
+    int32 mLastInfoCardLineCount = 0;               // Info card lines drawn last frame
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
     FSOLMapHologramOverlay mHologramOverlay;        // Map grid plane and stems (SDD 20 hologram look)

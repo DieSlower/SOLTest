@@ -9,6 +9,7 @@
 #include "Flight/SOLNewtonianFlight.h"
 #include "Game/SOLGameMode.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
+#include "Interaction/SOLInteractionSubsystem.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
@@ -215,6 +216,7 @@ void ASOLFlightHud::BeginPlay()
     HudEvents = world->GetSubsystem<USOLHudEventSubsystem>();
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
     Npcs = world->GetSubsystem<USOLNpcSubsystem>();
+    Interaction = world->GetSubsystem<USOLInteractionSubsystem>();
 
     // The pawn talks to the HUD only through the HUD event bus (SDD 21 D4): commands in, the map overlay out
     if (HudEvents != nullptr)
@@ -709,6 +711,13 @@ void ASOLFlightHud::DrawHUD()
     mHologramOverlay.ResetFrame();
     mIconLayer.ClearStats();
     mLastRadarShipCount = 0;
+    mLastRadialSectorCount = 0;
+    mLastInfoCardLineCount = 0;
+    if (Interaction != nullptr)
+    {
+        // A frame that draws no icons leaves nothing to hover or press
+        Interaction->ClearIconHits();
+    }
 
     // The glow-shape batch is emptied first, so a frame that returns early below leaves nothing on screen
     BeginShapeFrame();
@@ -779,6 +788,7 @@ void ASOLFlightHud::DrawHUD()
     }
     DrawOverlayIcons(bHasView && !IsMapOpen() ? &view : nullptr);
     DrawInfoBlock();
+    DrawInteraction();
 
     if (Ships == nullptr || Targeting == nullptr || !Ships->HasPlayerShip())
     {
@@ -1522,7 +1532,8 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     }
     else
     {
-        renderCm = AnchorSubsystem->ComputePointRenderLocationCm(target->PositionM);
+        // Candidates are Unreal-handed; the placement takes ecliptic universe metres (the Y flip is its own inverse)
+        renderCm = AnchorSubsystem->ComputePointRenderLocationCm(SOLRender::EclipticToUnreal(target->PositionM));
         radiusCm = target->RadiusM * SOL::METERS_TO_CM;
     }
     const FVector local = view.Rotation.UnrotateVector(renderCm - view.Location);
@@ -1631,7 +1642,211 @@ void ASOLFlightHud::DrawOverlayIcons(const FSOLHudView* view)
         frame.TargetPositionsM = Combat->GetTargetPositionsM();
         frame.TargetRadiusM = Combat->GetTargetRadiusM();
     }
+    if (Interaction != nullptr)
+    {
+        frame.Highlighted = Interaction->GetHovered();
+        frame.Selected = Interaction->GetSelectedObject();
+    }
     mIconLayer.Draw(*mBatch, frame, BodyRegistry->GetRegistry(), *AnchorSubsystem);
+    if (Interaction != nullptr)
+    {
+        // The icons as drawn are what the free cursor hovers and presses (SDD 22 section 2.4)
+        Interaction->SetIconHits(mIconLayer.GetHits(), frame.SizePx, mUiScale);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the interaction menus' HUD parts: the info card, the action hint and the open radial menu
+void ASOLFlightHud::DrawInteraction()
+{
+    if (Interaction == nullptr)
+    {
+        return;
+    }
+    const FSOLObjectRef infoObject = Interaction->GetInfoObject();
+    if (infoObject.IsValid())
+    {
+        DrawInfoCard(infoObject);
+    }
+
+    // The Attack hint, below the screen centre
+    if (Interaction->GetHintAction() == ESOLAction::Attack)
+    {
+        FSOLObjectInfo info;
+        mText.Reset();
+        mText.Append(SOLMenuText::INTERACT_ATTACK_HINT_PREFIX);
+        if (Interaction->GetObjectInfo(Interaction->GetHintObject(), info) && !info.Name.IsNone())
+        {
+            info.Name.AppendString(mText);
+        }
+        mText.Append(SOLMenuText::INTERACT_ATTACK_HINT_SUFFIX);
+        AddHoloPanel(DrawBufferCentered(ESOLHudLine::InteractHint, SOL::HudPalette::SECONDARY, Canvas->ClipX * 0.5f,
+            Canvas->ClipY * SOL::Interact::HINT_Y_FRACTION, ESOLHudFont::Medium), SOL::HudPalette::SECONDARY);
+    }
+    if (Interaction->IsRadialOpen() && !IsMapOpen())
+    {
+        DrawRadialMenu();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the open radial menu: sectors, labels, title and the highlighted disabled action's reason
+void ASOLFlightHud::DrawRadialMenu()
+{
+    const FSOLRadialMenuState& radial = Interaction->GetRadial();
+    const FSOLActionList& actions = Interaction->GetRadialActions();
+    const int32 count = FMath::Min(radial.Count, actions.Num);
+    if (count <= 0)
+    {
+        return;
+    }
+    const FVector2f center(radial.CenterPx);
+    const float innerPx = SOL::Interact::RADIAL_INNER_PX * mUiScale;
+    const float outerPx = SOL::Interact::RADIAL_OUTER_PX * mUiScale;
+    const float labelPx = SOL::Interact::RADIAL_LABEL_PX * mUiScale;
+    const float padPx = SOL::Hologram::HUD_GLOW_PAD_PX;
+    const float halfAperture = count == 1 ? UE_PI
+        : UE_PI / static_cast<float>(count) - 0.5f * SOL::Interact::RADIAL_SECTOR_GAP_RAD;
+
+    // Sectors (LT's radial panel): thin arcs on the inner and outer rim with a gap between neighbours; the highlighted
+    // one in Secondary, brighter and filled (a faint wide arc), a disabled one dim
+    const float edgePx = SOL::Interact::RADIAL_EDGE_HALF_WIDTH_PX;
+    for (int32 index = 0; mBatch != nullptr && index < count; ++index)
+    {
+        const bool bHighlighted = index == radial.Highlighted;
+        const bool bEnabled = actions.Entries[index].IsEnabled();
+        const FLinearColor& color = bHighlighted ? SOL::HudPalette::SECONDARY : SOL::HudPalette::PRIMARY;
+        const float midAngle = static_cast<float>(SOLRadialMenu::SectorMidAngleRad(index, count));
+        const float edgeIntensity = !bEnabled ? SOL::Interact::RADIAL_DISABLED_INTENSITY
+            : bHighlighted ? SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY : SOL::Interact::RADIAL_INTENSITY;
+        if (bEnabled && bHighlighted)
+        {
+            mBatch->AddArc(center, 0.5f * (innerPx + outerPx), 0.5f * (outerPx - innerPx), midAngle, halfAperture,
+                color, SOL::Interact::RADIAL_FILL_INTENSITY, padPx);
+        }
+        mBatch->AddArc(center, innerPx, edgePx, midAngle, halfAperture, color, edgeIntensity, padPx);
+        if (mBatch->AddArc(center, outerPx, edgePx, midAngle, halfAperture, color, edgeIntensity, padPx))
+        {
+            ++mLastRadialSectorCount;
+        }
+    }
+    // Labels on the label radius: right of the anchor on the right half, left of it on the left, centred near the
+    // vertical; dim when disabled
+    const float lineHeightPx = HUD_LINE_SMALL_PX * mUiScale;
+    for (int32 index = 0; index < count; ++index)
+    {
+        const FSOLActionEntry& entry = actions.Entries[index];
+        const ESOLHudLine line = static_cast<ESOLHudLine>(static_cast<int32>(ESOLHudLine::RadialItem0) + index);
+        mText.Reset();
+        mText.Append(SOLActionTable::ActionLabel(entry.Action));
+        const double angle = SOLRadialMenu::SectorMidAngleRad(index, count);
+        const double cosine = FMath::Cos(angle);
+        const FVector2D anchor = radial.CenterPx + FVector2D(cosine, FMath::Sin(angle)) * labelPx;
+        const float widthPx = static_cast<float>(MeasureLine(line, ESOLHudFont::Small).X) * mUiScale;
+        const float x = cosine > SOL::Interact::LABEL_SIDE_COSINE ? static_cast<float>(anchor.X)
+            : cosine < -SOL::Interact::LABEL_SIDE_COSINE ? static_cast<float>(anchor.X) - widthPx
+            : static_cast<float>(anchor.X) - 0.5f * widthPx;
+        const FLinearColor color = index == radial.Highlighted ? SOL::HudPalette::SECONDARY
+            : entry.IsEnabled() ? SOL::HudPalette::PRIMARY
+            : SOL::HudPalette::PRIMARY * SOL::Interact::DISABLED_TEXT_SCALE;
+        DrawBuffer(line, color, x, static_cast<float>(anchor.Y) - 0.5f * lineHeightPx, ESOLHudFont::Small);
+    }
+
+    // Title (the object's name, else its type) above the ring; a highlighted disabled action's reason below it
+    FSOLObjectInfo info;
+    mText.Reset();
+    if (Interaction->GetObjectInfo(radial.Object, info))
+    {
+        if (!info.Name.IsNone())
+        {
+            info.Name.AppendString(mText);
+        }
+        else
+        {
+            mText.Append(SOLActionTable::TypeName(info.Type));
+        }
+    }
+    DrawBufferCentered(ESOLHudLine::RadialTitle, SOL::HudPalette::PRIMARY, center.X,
+        center.Y - labelPx - 0.5f * lineHeightPx - (HUD_LINE_MEDIUM_PX + SOL::Interact::TITLE_GAP_PX) * mUiScale,
+        ESOLHudFont::Medium);
+    if (radial.Highlighted >= 0 && radial.Highlighted < count && !actions.Entries[radial.Highlighted].IsEnabled())
+    {
+        mText.Reset();
+        mText.Append(SOLActionTable::BlockText(actions.Entries[radial.Highlighted].Block));
+        DrawBufferCentered(ESOLHudLine::RadialReason, SOL::HudPalette::SECONDARY, center.X,
+            center.Y + labelPx + lineHeightPx, ESOLHudFont::Small);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the info card of the object Info was chosen for (top right): name, type, distance, size and status
+void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
+{
+    FSOLObjectInfo info;
+    if (!Interaction->GetObjectInfo(object, info))
+    {
+        return;
+    }
+    const float x = Canvas->ClipX - (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_WIDTH_PX) * mUiScale;
+    float y = (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_TOP_PX) * mUiScale;
+    FBox2D panel(ForceInit);
+
+    // Name (or the type when the object has none), then the type with a moon's planet
+    mText.Reset();
+    if (!info.Name.IsNone())
+    {
+        info.Name.AppendString(mText);
+    }
+    else
+    {
+        mText.Append(SOLActionTable::TypeName(info.Type));
+    }
+    panel += DrawBuffer(ESOLHudLine::InfoTitle, SOL::HudPalette::SECONDARY, x, y, ESOLHudFont::Medium);
+    y += HUD_LINE_MEDIUM_PX * mUiScale;
+    mText.Reset();
+    mText.Append(SOLActionTable::TypeName(info.Type));
+    if (!info.ParentName.IsNone())
+    {
+        mText.Append(SOLMenuText::INTERACT_INFO_OF);
+        info.ParentName.AppendString(mText);
+    }
+    panel += DrawBuffer(ESOLHudLine::InfoType, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+    y += HUD_LINE_SMALL_PX * mUiScale;
+
+    // Distance from the player ship (else the viewpoint), and the radius
+    const FVector3d fromM = Ships != nullptr && Ships->HasPlayerShip() ? Ships->GetUniversePositionM()
+        : AnchorSubsystem->GetViewpointM();
+    mText.Reset();
+    mText.Append(SOLMenuText::INTERACT_INFO_DISTANCE);
+    SOLHudFormat::AppendDistanceM(mText, FVector3d::Dist(info.PositionM, fromM));
+    panel += DrawBuffer(ESOLHudLine::InfoDistance, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+    y += HUD_LINE_SMALL_PX * mUiScale;
+    int32 lines = 3;
+    if (info.RadiusM > 0.0)
+    {
+        mText.Reset();
+        mText.Append(SOLMenuText::INTERACT_INFO_RADIUS);
+        SOLHudFormat::AppendDistanceM(mText, info.RadiusM);
+        panel += DrawBuffer(ESOLHudLine::InfoDetail, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+        y += HUD_LINE_SMALL_PX * mUiScale;
+        ++lines;
+    }
+
+    // A dropped target's shield and hull
+    if (info.ShieldFraction >= 0.0f)
+    {
+        mText.Reset();
+        mText.Append(SOLMenuText::INTERACT_INFO_SHIELD);
+        mText.AppendInt(FMath::RoundToInt32(100.0f * info.ShieldFraction));
+        mText.Append(SOLMenuText::INTERACT_INFO_PERCENT);
+        mText.Append(SOLMenuText::INTERACT_INFO_HULL);
+        mText.AppendInt(FMath::RoundToInt32(100.0f * info.HealthFraction));
+        mText.Append(SOLMenuText::INTERACT_INFO_PERCENT);
+        panel += DrawBuffer(ESOLHudLine::InfoStatus, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+        ++lines;
+    }
+    AddHoloPanel(panel, SOL::HudPalette::PRIMARY);
+    mLastInfoCardLineCount = lines;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -47,7 +47,8 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
     // player's
     mSlotName = SOL::Settings::SAVE_SLOT;
     if (FCString::Strifind(FCommandLine::Get(), SOL::CommandLine::MENU_SMOKE_NAME) != nullptr
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY))
+        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY)
+        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_INTERACT))
     {
         mSlotName = SOL::Settings::SMOKE_SAVE_SLOT;
         UGameplayStatics::DeleteGameInSlot(mSlotName, SOL::Settings::SAVE_USER_INDEX);
