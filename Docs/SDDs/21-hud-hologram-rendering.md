@@ -286,3 +286,5 @@ rectangle around any panel or the radar, thinner glow, text readable, yellow cir
 `-SOLSmokeHud` 24/24 at both sizes (new `i-steer-hint`, `k-free-look-yellow`). Tests: HudPanels PanelFill rewritten,
 BackingLayer 3 new; HudFormat SteerHint and PilotCircleColor new (written from the contract by a separate agent; red on
 stubs, then green).
+
+The earlier statement that menus stay unchanged is superseded: the user wants all in-game menus as holograms; tracked as issue #42.

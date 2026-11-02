@@ -49,6 +49,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 1 | #22 | Part 2: radial (flight) and list (map) interaction menus, action table (Part 1 done) | M | #31 |
 | 2 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
 | 2b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
+| 2c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
 | 3 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |

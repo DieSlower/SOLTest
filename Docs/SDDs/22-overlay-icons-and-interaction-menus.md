@@ -67,6 +67,7 @@ start. Also reachable from the Settings screen.
 - The green marker the user asked about is the prograde marker (red = retrograde); player documentation of every
   control and GUI element is issue #33.
 - No rectangles around hologram panels (outline-free soft panels) is part of #31.
+- The earlier statement that menus stay unchanged is superseded: the user wants all in-game menus as holograms; tracked as issue #42.
 
 ### 2.7 Follow-up (issue #34)
 
