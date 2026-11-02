@@ -33,6 +33,29 @@ The cross-cutting design decisions are in [`Docs/SDDs/1-solar-system-architectur
 - **Simple / mechanical work gets a cheaper, faster model.** Finding a string across files, listing where a symbol is used, fetching/searching the web for a fact, dumping a value, or other low-judgment lookups don't need a frontier model — dispatch these on `haiku` to save cost and latency.
 - **Apply best judgment to the task in front of you.** These are guidelines, not a fixed table — weigh how much reasoning, code understanding, and design judgment the task actually demands, and pick the cheapest model that will still do the job well. When genuinely unsure, err toward the more capable model so quality isn't sacrificed.
 
+### Effort levels by workflow step
+
+Effort is separate from model. Set the `Agent` call's `effort` field per the table below; match it to the cost of being wrong, and don't raise it on mechanical work. Avoid `max` unless the user explicitly asks for it. Do not use `fork` for these jobs: a fork always inherits the parent's model and effort, so use a fresh subagent with an explicit `model` and `effort`.
+
+**Delegate all work to subagents; keep the main session's context free.** The main session is the user-facing coordinator: it talks to the user, runs grill-me, briefs subagents, and reads their summaries. It does not do implementation, test authoring, debugging, audits, lookups or doc edits itself. The main session's own model and effort are user-controlled (`/model`, `/effort`) and Claude cannot change them, so delegating is also how the right model and effort get applied per step. Subagents start cold, so each brief must carry all needed context (decisions, SDD/plan path, files, constraints) and ask for a short summary back, not file dumps.
+
+| Step | Runs in | Model | Effort |
+|---|---|---|---|
+| Grill-me / design interview | Main session (needs the user's live answers) | session model | — |
+| SDD and plan drafting (from resolved grill-me decisions in the brief) | Subagent | `opus` | high |
+| TDD test authoring (spec only, no implementation shown) | Subagent | `opus` | high |
+| Implementation — multi-file or logic-dense (Mass processors, numerics, rendering) | Subagent | `opus` | high |
+| Implementation — single file or routine wiring | Subagent | `sonnet` | medium |
+| Persistence / schema changes (`USaveGame`, `UGameUserSettings`, config layout) | Subagent | `opus` | xhigh |
+| Performance and style adversarial review (report only) | Fresh subagent | `opus` | xhigh |
+| `GAME_MECHANICS.md` / in-game info screen audit after a mechanic changes | Subagent | `sonnet` | medium |
+| Grep, symbol lookups, reading `Saved/AutomationReports/index.json`, web facts | Subagent | `haiku` | low |
+| Debugging an engine / Mass / Niagara / rendering oddity (read engine source first) | Subagent | `opus` | high |
+| Docs sync (`STATUS.md`, `ARCHITECTURE.md`, metrics refresh), ToDo notes | Subagent | `sonnet` | low–medium |
+
+- **Schema changes are delegated, with guardrails in the brief.** A wrong schema change silently discards a player's saved data, so the brief must state the decisions already made (grill-me answers, SDD path), the "version and migrate, never silently discard" rule, and that a schema version is bumped only if the user approved it. The subagent must report exactly which version constants and fields it changed (or that it changed none). The main session confirms that report matches the user's approved decision before treating the work as done, and the usual adversarial review still applies.
+- **Decisions stay with the user.** Delegation moves the work, not the calls. If a subagent hits a decision the user hasn't made (a schema change, a behavior change), it stops and reports it back instead of choosing; the main session then asks the user.
+
 ## Build & Run
 
 - **Engine:** `C:\Program Files\Epic Games\UE_5.8`.
