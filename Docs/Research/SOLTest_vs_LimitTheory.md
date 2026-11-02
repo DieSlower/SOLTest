@@ -119,7 +119,7 @@ Reading guide: chapter 3 gives the domain overview; chapters 4 and 5 are the det
 
 **`Docs/ToDo/` items:** supercruise travel, planetary perturbations, surface landing, accurate pole directions, star diffraction spikes, Sun glow and flare, adaptive body tessellation, asteroid/ring collision, minor-body targeting.
 
-**Known tech debt, grouped** (22 items in `CLAUDE.md`):
+**Known tech debt, grouped** (22 items in `Docs/TECH_DEBT.md`):
 
 | Group | Items |
 |---|---|

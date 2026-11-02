@@ -144,7 +144,8 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 ## Documentation map
 
-- [CLAUDE.md](CLAUDE.md): workflow rules, build commands, known hands-on checks and tech debt.
+- [CLAUDE.md](CLAUDE.md): workflow rules, build commands and known hands-on checks.
+- [Docs/TECH_DEBT.md](Docs/TECH_DEBT.md): known tech debt in existing code (imperfections and deferred cleanups).
 - [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md): modules, update order, coordinate frames, command-line flags.
 - [Docs/GAME_MECHANICS.md](Docs/GAME_MECHANICS.md): every control, mechanic and tunable.
 - [Docs/Plans/STATUS.md](Docs/Plans/STATUS.md): ticket status and roadmap; [Docs/SDDs/](Docs/SDDs/README.md): design documents; [Docs/Plans/](Docs/Plans/): implementation plans.

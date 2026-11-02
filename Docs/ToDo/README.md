@@ -7,8 +7,8 @@ scheduled as a ticket/branch. Unlike [`Docs/SDDs/`](../SDDs/) and
 [`Docs/Plans/`](../Plans/) (design docs and plans for work that already has an issue
 number), these are pre-ticket: the "we should do this eventually" list.
 
-Not the same thing as the **Known tech debt to revisit** section in
-[`../../CLAUDE.md`](../../CLAUDE.md) — that list is imperfections in code that already
+Not the same thing as the known tech debt list in
+[`../TECH_DEBT.md`](../TECH_DEBT.md) (tech debt lives there, not in ToDo) — that list is imperfections in code that already
 exists (a shortcut taken, a cleanup deferred). This folder is for **new capabilities or
 follow-up features** that haven't been built yet.
 

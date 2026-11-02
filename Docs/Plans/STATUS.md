@@ -79,7 +79,7 @@ Picked up as tickets when scheduled; each needs grill-me first.
   behaviour, map-close key repeat.
 - Failing or unverified smokes: `-SOLMenuSmoke=all` 49/50 ("Thrust flies the ship" at Mars), `-SOLSmokeJump` 13/14
   (arrives at Deimos not Mars).
-- Tech debt list: `CLAUDE.md` "Known tech debt to revisit" (M2 Mid-to-Far pop, packaged 1M run, render-thread stalls,
+- Tech debt list: `Docs/TECH_DEBT.md` (M2 Mid-to-Far pop, packaged 1M run, render-thread stalls,
   orbit-line memory, and others).
 
 ## How much is left
