@@ -88,6 +88,15 @@ Effort is separate from model. Set the `Agent` call's `effort` field per the tab
 - **Accepted trade-off:** a change made and not yet flushed is lost if the OS kills the app before the boundary.
 - When the persisted schema changes incompatibly, version it and migrate rather than silently discarding a player's data.
 
+## Project metrics
+
+[`Docs/PROJECT_METRICS.md`](Docs/PROJECT_METRICS.md) and the README's "Development effort" section track what the project has cost: wall-clock work time, time spent waiting on the user's answers, tokens, notional API price (list rates, the project runs on a subscription), subagents dispatched, and agents/main contexts by model and effort. Both are **generated** by `Tools\UpdateMetrics.bat` (`Tools/Metrics/update_metrics.py`, design in [SDD 41](Docs/SDDs/41-project-metrics-tracking.md)) from the Claude Code session transcripts and the work-timer files; never edit them by hand.
+
+- **Always keep them current.** Run `Tools\UpdateMetrics.bat` (a few seconds) **before each ticket/part commit** and include `Docs/PROJECT_METRICS.md` and `README.md` in that commit, **and at every pause point** (context above 35%, usage-limit pause, 70% weekly pause) so a fresh context starts from current numbers. Run it again when a user question batch (grill-me) has finished.
+- **Never estimate by hand.** Everything is measured; if a figure looks wrong, fix the script or its rates table (`PRICES`, with the date of the rates), not the output.
+- The per-session ledger lives outside the repo (`~/.claude/metrics-ledger/`); do not delete it, it is what keeps totals correct once Claude Code purges old transcripts.
+- When a new model or price appears, add it to `PRICES` in the script (the page lists unpriced models in its caveats).
+
 ## Game mechanics catalog & in-game info
 
 [`Docs/GAME_MECHANICS.md`](Docs/GAME_MECHANICS.md) is the catalog of every mechanic, control binding and tunable value, with exact numbers and source locations. Consult it first when reasoning about gameplay. **Keep it in sync** whenever any of these change: a control binding, a flight/jump/level/weapon/time-warp value or rule, or any tunable that the player can feel.

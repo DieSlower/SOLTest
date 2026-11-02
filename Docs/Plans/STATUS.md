@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-10-29.
+Last updated: 2026-11-01.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -34,6 +34,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #21 | HUD hologram rendering (umbrella, phases A-C) | 21 |
 | #25 | Map alignment and shimmer (incl. date-dependent smoke fix) | 25 |
 | #31 | HUD polish: half glow, Alt yellow circles, borderless panels, steering start setting and hint, stick recenter on release | 19, 21 (amendments) |
+| #41 | Project metrics tracking: generated effort page (time, tokens, notional price, agents by model and effort), README summary, update rule | 41 |
 
 ## In progress
 
