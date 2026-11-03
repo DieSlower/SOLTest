@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Flight/SOLChase.h"
 #include "Flight/SOLFlightMode.h"
 
 #include "CoreMinimal.h"
@@ -36,6 +37,27 @@ namespace SOLHudFormat
 
     // Appends a duration rounded to whole seconds: "45 s", "12:05", "3:02:07" or "13 d 12 h" ("--" if invalid)
     SOLTEST_API void AppendDurationS(FString& outText, double seconds);
+
+    // Appends a speed with its auto-picked unit: "12.3 m/s", "4.50 km/s" or "0.0123 c"; a negative speed keeps its
+    // minus sign ("-3.20 km/s")
+    SOLTEST_API void AppendSpeedMps(FString& outText, double speedMps);
+
+    // Appends the chase marker's first line (SDD 32 section 3.9): "CHASE > Moon  384.4 km  closing 1.20 km/s  T 3:20";
+    // T reads "HOLD" on the tail (bHolding) and "--" when the time is not finite or not known
+    SOLTEST_API void AppendChaseMarker(FString& outText, FStringView targetName, double distanceM,
+        double closingSpeedMps, double timeToInterceptS, bool bHolding);
+
+    // Returns a chase activity's HUD and log name: "BURST", "COOL", "BRAKE", "BRAKE COOL" or "HOLD"
+    SOLTEST_API const TCHAR* ChaseActivityName(ESOLChaseActivity activity);
+
+    // Returns whether a cool off's resume meter is shown (text and G meter tick): finite and at most a full meter
+    SOLTEST_API bool IsChaseResumeShown(double resumeMeter);
+
+    // Appends the chase marker's activity line (SDD 32 section 3.9): "BURST 6.8 G", "COOL 1.5 G (resume at 45%)",
+    // "BRAKE 6.8 G", "BRAKE COOL 1.5 G" or "HOLD" (no G); resumeMeter is the fraction of a full meter (a cool off ends
+    // there). A resume meter above a full meter or not finite (the cool off lasts until the brake) shows no "resume at"
+    SOLTEST_API void AppendChaseActivity(FString& outText, ESOLChaseActivity activity, double limitG,
+        double resumeMeter);
 
     // Returns the flight HUD's key hint line from the ship's keys (SOLKeyBindings order, shown through
     // SOLBindingLabel), with the orbit-lines state; with the default keys it reads "ORBITS OFF (O)   F3 speed panel

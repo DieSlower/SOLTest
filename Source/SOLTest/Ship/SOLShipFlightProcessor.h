@@ -49,6 +49,12 @@ struct FSOLShipFrameInputs
  * over the same frame) and gets no frame carry, since it then covers the same time the bodies moved. It never changes
  * the warp. Arrival sets bAutopilotArrived; the ship subsystem then ends the order.
  *
+ * Chase Down (SDD 32 section 3.8): a ship whose control fragment has bChase flies SOLFlight::ChaseStep toward the
+ * target's tail (SOLChase::ChaseAimPointM) in the autopilot's time domain (sim-time substeps under warp, no carry). The
+ * target is interpolated per substep like the bodies: its frame body's substep position plus its offset moving at its
+ * frame-relative velocity; its acceleration is that body's gravity from the others plus the subsystem's estimate. The
+ * per-substep G policy state (FSOLChaseRunState) lives in the state fragment. A chase never counts an arrival.
+ *
  * Chunks run with ParallelForEachEntityChunk: each job writes only its own entities' state; everything shared (body
  * cache, scratch positions, frame inputs, the const shared params) is read-only during the run. The query issues no
  * commands, so per-job command buffers are disabled.
@@ -97,6 +103,7 @@ private:
     TArray<FVector3d> mSubstepBodyPositionsM;           // [boundary * bodyCount + body], sized once, rewritten per run
     TArray<FVector3d> mSimSubstepBodyPositionsM;        // Same for the autopilot's sim-time substeps under warp
     FVector3d mCarryPerSubstepM = FVector3d::ZeroVector; // Position carry added after each substep
+    double mFrameRealS = 0.0;                           // Real seconds the current run covers (both substep grids)
     double mSubstepS = 0.0;                             // Substep length for the current run
     int32 mSubstepCount = 0;                            // Substeps for the current run
     double mSimSubstepS = 0.0;                          // Autopilot sim-time substep length under warp (this run)

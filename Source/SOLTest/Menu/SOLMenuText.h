@@ -65,6 +65,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
     inline constexpr const TCHAR* SETTINGS_ORBIT_LINES = TEXT("Show orbit lines");
     inline constexpr const TCHAR* SETTINGS_MOUSE_STEER_AT_START = TEXT("Mouse steering at start");
+    inline constexpr const TCHAR* SETTINGS_CHASE_SAFETY_MARGIN = TEXT("Chase Down safety margin");
     inline constexpr const TCHAR* SETTINGS_APPLY = TEXT("Apply");
     inline constexpr const TCHAR* SETTINGS_REVERT = TEXT("Revert");
     inline constexpr const TCHAR* SETTINGS_RESET_KEYS = TEXT("Reset keys to defaults");
@@ -187,7 +188,7 @@ namespace SOLMenuText
         TEXT(""), TEXT("Not yet available"), TEXT("Not offered for this object"), TEXT("No ship"),
         TEXT("The pilot has no control (blackout)"), TEXT("Not during a jump"), TEXT("Cannot be targeted yet"),
         TEXT("Already the target"), TEXT("Already matched"), TEXT("Already flying there"),
-        TEXT("Already following it"),
+        TEXT("Already following it"), TEXT("Already chasing it"),
     };
     inline constexpr const TCHAR* INTERACT_TYPE_NAMES[] =
     {
@@ -290,7 +291,7 @@ namespace SOLMenuText
         { TEXT("Routes"), TEXT("@Resume"), TEXT("Resume a paused route (in flight and on the map)") },
         { TEXT("Routes"), TEXT("@ToggleRouteOverlay"),
             TEXT("Show or hide routes in flight (the map always shows them)") },
-        { TEXT("Menu"), TEXT("Escape"), TEXT("Pause menu (in flight) / resume") },
+        { TEXT("Menu"), TEXT("Escape"), TEXT("Stop a Chase Down; else pause menu (in flight) / resume") },
         { TEXT("Menu"), TEXT("LeftControl+F1"),
             TEXT("Same as Esc (temporary: Esc stops Play-In-Editor before the game sees it)") },
         { TEXT("Demo"), TEXT("LeftControl+F2"), TEXT("Show or hide the NPC stats overlay") },
@@ -393,8 +394,17 @@ namespace SOLMenuText
             "Target selects it; Info shows its card (top right) for a few seconds; Move To flies the autopilot there "
             "and stops; Follow / Orbit keeps station at the autopilot's safe distance on your side until you take "
             "control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
-            "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down, "
-            "Communications and Trade are not available yet)."),
+            "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down on a "
+            "ship, Communications and Trade are not available yet)."),
+        TEXT("Chase Down (from a body's or a dropped target's menu) chases it in bursts: the autopilot pulls above "
+            "its usual gentle G limit, up to what you can survive (the full pull needs boost, which the chase uses "
+            "only while your boost switch ({Boost}) is on), then cools at the sustained limit while the G meter "
+            "recovers, and plans the bursts so the meter never drops below the Chase Down safety margin set in "
+            "Settings (default 25%). The meter's floor and its resume mark show on the G bar. When it catches up it "
+            "stays on the target's tail until you stop it. Any thrust, roll, steering or stop spin of yours, Esc, "
+            "{ToggleAssist}, or another order ends the chase and returns you to assisted flight (the next Esc then "
+            "opens the pause menu). It works under time warp, and it ends by itself if the target is destroyed or "
+            "lost."),
         TEXT("The map ({OpenMap}; {OpenMapJump} opens it in Jump mode) shows the whole system; J, M and P switch "
             "between Jump, Move and Patrol mode. Press on a body or on empty space, drag to set where you want to be "
             "relative to it and release. In Jump mode, Enter jumps there. In Move and Patrol mode each pick adds a "
@@ -441,6 +451,21 @@ namespace SOLMenuText
     inline constexpr const TCHAR* DEMO_TITLE = TEXT("Scale demo");
     // HUD line under the AUTOPILOT marker (SDD 19 section 3.7): how to take control back from the autopilot
     inline constexpr const TCHAR* AUTOPILOT_CANCEL_HINT = TEXT("Thrust or steer to take control");
+
+    // HUD chase marker (SDD 32 section 3.9): "CHASE > <name>  <distance>  closing <speed>  T <time>", the activity line
+    // ("BURST 6.8 G", "COOL 1.5 G (resume at 45%)", "BRAKE 6.8 G", "BRAKE COOL 1.5 G", "HOLD"), the cancel hint and the
+    // target-lost note
+    inline constexpr const TCHAR* CHASE_MARKER_PREFIX = TEXT("CHASE > ");
+    inline constexpr const TCHAR* CHASE_CLOSING_LABEL = TEXT("closing ");
+    inline constexpr const TCHAR* CHASE_TIME_LABEL = TEXT("T ");
+    inline constexpr const TCHAR* CHASE_HOLD = TEXT("HOLD");
+    inline constexpr const TCHAR* CHASE_BURST = TEXT("BURST");
+    inline constexpr const TCHAR* CHASE_COOL = TEXT("COOL");
+    inline constexpr const TCHAR* CHASE_BRAKE = TEXT("BRAKE");
+    inline constexpr const TCHAR* CHASE_BRAKE_COOL = TEXT("BRAKE COOL");
+    inline constexpr const TCHAR* CHASE_RESUME_LABEL = TEXT("resume at ");
+    inline constexpr const TCHAR* CHASE_CANCEL_HINT = TEXT("Thrust, steer or Esc to stop chasing");
+    inline constexpr const TCHAR* CHASE_ENDED_NOTE = TEXT("CHASE ENDED: target lost");
 
     // HUD flight mode labels (SDD 19 section 3.7), in ESOLFlightMode order
     inline constexpr const TCHAR* HUD_FLIGHT_MODE_LABELS[] = { TEXT("MANUAL"), TEXT("ASSISTED"), TEXT("AUTO") };

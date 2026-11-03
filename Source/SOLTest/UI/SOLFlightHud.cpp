@@ -133,6 +133,7 @@ namespace
     const FLinearColor HUD_BAR_BACK_COLOR(0.0f, 0.0f, 0.0f, 0.45f);
     constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
     constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
+    constexpr float HUD_CHASE_TICK_OVERHANG_PX = 2.0f;                      // Chase floor tick extends past the bar
     constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
     constexpr float HUD_ROUTE_HINT_GAP_PX = 2.0f;                           // Route marker gap below the key hints
     constexpr float HUD_STEER_ICON_RADIUS_PX = 6.0f;                        // Mouse-steer icon radius (SDD 19)
@@ -1280,6 +1281,21 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     mLeftBlockRect += DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
     DrawBar(x, y, meter.Meter, meterColor);
+    const FSOLChaseStatus chase = Ships->GetChaseStatus();
+    if (chase.bActive)
+    {
+        // Chase Down: a floor tick at the safety margin and a fainter resume tick while cooling toward a reachable
+        // resume meter (SDD 32 section 3.9)
+        const float barWidth = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
+        const float floorX = x + barWidth * static_cast<float>(FMath::Clamp(chase.FloorMeter, 0.0, 1.0));
+        GlowLine(FVector2D(floorX, y - HUD_CHASE_TICK_OVERHANG_PX * mUiScale),
+            FVector2D(floorX, y + barHeight + HUD_CHASE_TICK_OVERHANG_PX * mUiScale), HUD_SECONDARY, 1.0f, 2.0f);
+        if (chase.bCooling && SOLHudFormat::IsChaseResumeShown(chase.ResumeMeter))
+        {
+            const float resumeX = x + barWidth * static_cast<float>(FMath::Clamp(chase.ResumeMeter, 0.0, 1.0));
+            GlowLine(FVector2D(resumeX, y), FVector2D(resumeX, y + barHeight), HUD_SECONDARY, HUD_DIM, 1.0f);
+        }
+    }
     mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale, y + barHeight));
 
     // Warning under the reticle in its own panel: over the sustained limit only in manual flight (assist never
@@ -1308,20 +1324,37 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
             Canvas->ClipY * HUD_G_WARNING_Y_FRACTION, ESOLHudFont::Medium), warningColor);
     }
 
-    // Autopilot marker with the ETA countdown (sim time), and the high-warp precision hint
-    const int32 autopilotBody = Ships->GetAutopilotBodyIndex();
-    if (autopilotBody == INDEX_NONE)
+    // Top marker: the chase (or its target-lost note) in place of the autopilot marker, else the autopilot marker
+    // with the ETA countdown (sim time) and the high-warp precision hint
+    const bool bChase = chase.bActive;
+    const bool bLostNote = !bChase && Interaction != nullptr && Interaction->IsChaseTargetLostNoteShown();
+    const int32 autopilotBody = (bChase || bLostNote) ? INDEX_NONE : Ships->GetAutopilotBodyIndex();
+    if (!bChase && !bLostNote && autopilotBody == INDEX_NONE)
     {
         return;
     }
-    const FSOLGuidanceOutput guidance = Ships->GetAutopilotGuidance();
     mText.Reset();
-    mText.Append(TEXT("AUTOPILOT > "));
-    BodyRegistry->GetRegistry().GetName(autopilotBody).AppendString(mText);
-    mText.Append(TEXT("   ETA "));
-    SOLHudFormat::AppendDurationS(mText, guidance.EtaS);
-    mText.Append(TEXT("   "));
-    SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
+    if (bChase)
+    {
+        // The name through a stack builder: no heap string per frame
+        const FNameBuilder targetName(chase.TargetName);
+        SOLHudFormat::AppendChaseMarker(mText, targetName.ToView(), chase.TargetDistanceM, chase.ClosingSpeedMps,
+            chase.TimeToInterceptS, chase.bHolding);
+    }
+    else if (bLostNote)
+    {
+        mText.Append(SOLMenuText::CHASE_ENDED_NOTE);
+    }
+    else
+    {
+        const FSOLGuidanceOutput guidance = Ships->GetAutopilotGuidance();
+        mText.Append(TEXT("AUTOPILOT > "));
+        BodyRegistry->GetRegistry().GetName(autopilotBody).AppendString(mText);
+        mText.Append(TEXT("   ETA "));
+        SOLHudFormat::AppendDurationS(mText, guidance.EtaS);
+        mText.Append(TEXT("   "));
+        SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
+    }
     const float textWidth = static_cast<float>(MeasureLine(ESOLHudLine::Autopilot, ESOLHudFont::Medium).X);
 
     // The block sits below the top edge, or below the key-hint lines where it would overlap them (long hint lines at
@@ -1336,20 +1369,37 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     {
         top = static_cast<float>(mLastHintsRect.Max.Y) + HUD_LINE_SMALL_PX * mUiScale;
     }
-    mTopBlockRect += DrawBuffer(ESOLHudLine::Autopilot, HUD_SECONDARY, centerX - halfWidth, top, ESOLHudFont::Medium);
+    mTopBlockRect += DrawBuffer(ESOLHudLine::Autopilot, bLostNote ? HUD_BAD : HUD_SECONDARY, centerX - halfWidth, top,
+        ESOLHudFont::Medium);
+    if (bLostNote)
+    {
+        mAutopilotBlockBottomY = top + HUD_LINE_MEDIUM_PX * mUiScale;
+        return;
+    }
+    float lineY = top + HUD_LINE_MEDIUM_PX * mUiScale;
+    if (bChase)
+    {
+        // Second line: the activity and its G limit
+        mText.Reset();
+        SOLHudFormat::AppendChaseActivity(mText, chase.Activity, chase.LimitG, chase.ResumeMeter);
+        mTopBlockRect += DrawBufferCentered(ESOLHudLine::ChaseActivity, HUD_SECONDARY, centerX, lineY,
+            ESOLHudFont::Small);
+        lineY += HUD_LINE_SMALL_PX * mUiScale;
+    }
     mText.Reset();
-    mText.Append(SOLMenuText::AUTOPILOT_CANCEL_HINT);
-    mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotCancel, HudDimText(HUD_PRIMARY), centerX,
-        top + HUD_LINE_MEDIUM_PX * mUiScale, ESOLHudFont::Small);
-    if (Ships->IsAutopilotPrecisionReduced())
+    mText.Append(bChase ? SOLMenuText::CHASE_CANCEL_HINT : SOLMenuText::AUTOPILOT_CANCEL_HINT);
+    mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotCancel, HudDimText(HUD_PRIMARY), centerX, lineY,
+        ESOLHudFont::Small);
+    lineY += HUD_LINE_SMALL_PX * mUiScale;
+    if (!bChase && Ships->IsAutopilotPrecisionReduced())
     {
         mText.Reset();
         mText.Append(TEXT("WARP: autopilot precision reduced"));
-        mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotHint, HUD_SECONDARY, centerX,
-            top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX) * mUiScale, ESOLHudFont::Small);
+        mTopBlockRect += DrawBufferCentered(ESOLHudLine::AutopilotHint, HUD_SECONDARY, centerX, lineY,
+            ESOLHudFont::Small);
+        lineY += HUD_LINE_SMALL_PX * mUiScale;
     }
-    mAutopilotBlockBottomY = top + (HUD_LINE_MEDIUM_PX + HUD_LINE_SMALL_PX
-        + (Ships->IsAutopilotPrecisionReduced() ? HUD_LINE_SMALL_PX : 0.0f)) * mUiScale;
+    mAutopilotBlockBottomY = lineY;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2114,19 +2164,5 @@ bool ASOLFlightHud::HasSelectedTarget() const
 // Appends a speed with its auto-picked unit to the text buffer
 void ASOLFlightHud::AppendSpeed(const double speedMps)
 {
-    const ESOLSpeedUnit unit = SOLHudFormat::PickSpeedUnit(speedMps);
-    const double value = SOLHudFormat::ToUnitValue(speedMps, unit);
-    switch (unit)
-    {
-    case ESOLSpeedUnit::KilometersPerSecond:
-        mText.Appendf(TEXT("%.2f km/s"), value);
-        break;
-    case ESOLSpeedUnit::LightSpeed:
-        mText.Appendf(TEXT("%.4f c"), value);
-        break;
-    case ESOLSpeedUnit::MetersPerSecond:
-    default:
-        mText.Appendf(TEXT("%.1f m/s"), value);
-        break;
-    }
+    SOLHudFormat::AppendSpeedMps(mText, speedMps);
 }

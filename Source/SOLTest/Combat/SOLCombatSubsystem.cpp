@@ -247,6 +247,14 @@ bool USOLCombatSubsystem::GetTargetLivePositionM(const int32 slot, FVector3d& ou
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the registry body an active target is held relative to, or INDEX_NONE for an inactive or invalid slot
+int32 USOLCombatSubsystem::GetTargetFrameBodyIndex(const int32 slot) const
+{
+    return mTargetActive.IsValidIndex(slot) && mTargetActive[slot] && mTargetFrameBodies.IsValidIndex(slot)
+        ? mTargetFrameBodies[slot] : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the body bolts and targets are stored relative to: the player's reference body, else the anchor, else none
 int32 USOLCombatSubsystem::ResolveFrameBody() const
 {

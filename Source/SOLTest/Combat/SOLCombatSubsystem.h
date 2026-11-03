@@ -163,6 +163,10 @@ public:
     // inactive or invalid slot (SDD 22: the targeted dropped target's candidate)
     bool GetTargetLivePositionM(int32 slot, FVector3d& outPositionM) const;
 
+    // Returns the registry body an active target is held relative to (its frame body), or INDEX_NONE for an inactive
+    // or invalid slot (SDD 32: a chased dropped target's frame)
+    int32 GetTargetFrameBodyIndex(int32 slot) const;
+
     // Returns the events queued by the last update (and by any call since); readable until the next update
     TConstArrayView<FSOLCombatEvent> GetEvents() const { return mEvents; }
 

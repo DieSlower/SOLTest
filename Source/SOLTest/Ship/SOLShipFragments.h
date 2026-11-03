@@ -23,7 +23,7 @@ struct FSOLShipStateFragment : public FMassFragment
     FSOLGMeterState GMeter;                   // Pilot G-tolerance meter and G-LOC state (SDD 18; not saved)
     double GLoadG = 0.0;                      // Pilot G-load (thrust plus surface contact) of the last substep
     FSOLGuidanceOutput Guidance;              // Autopilot guidance of the last substep (default when not engaged)
-    bool bAutopilotArrived = false;           // The autopilot reached its target during the last step
+    bool bAutopilotArrived = false;           // The autopilot reached its target during the last step (never a chase)
 };
 
 /** Control input a ship flies with this frame (written by the player pawn, AI or a script). */
@@ -40,6 +40,32 @@ struct FSOLShipControlFragment : public FMassFragment
     double AutopilotPassSpeedMps = 0.0;       // Point order: fly-through speed at the target (0 = stop there)
     double AutopilotCaptureRadiusM = 0.0;     // Point order: fly-through capture radius (0 = stop there)
     bool bAutopilotPoint = false;             // The order is a route waypoint (body + fixed offset), not a standoff
+};
+
+/**
+ * Chase Down order and run state (SDD 32 section 3.8), carried only by the player ship's archetype (the flight
+ * processor reads it as optional). The ship subsystem refreshes the order every step before the flight run; the target
+ * is interpolated per substep as its frame body (the substep bodies) plus its offset from that body moving at its
+ * frame-relative velocity, or with no frame body from its own position and velocity. The processor writes the run state
+ * and the last substep's limit (defaults while no chase runs).
+ */
+USTRUCT()
+struct FSOLShipChaseFragment : public FMassFragment
+{
+    GENERATED_BODY()
+
+    bool bChase = false;                                    // Fly the chase (exclusive with an autopilot body order)
+    int32 ChaseFrameBodyIndex = INDEX_NONE;                 // Body the target moves with (a body target: itself)
+    FVector3d ChaseTargetM = FVector3d::ZeroVector;         // Target's end-of-frame position
+    FVector3d ChaseTargetVelocityMps = FVector3d::ZeroVector;   // Target's velocity
+    FVector3d ChaseFrameVelocityMps = FVector3d::ZeroVector;    // Its frame's velocity (the tail direction is relative)
+    FVector3d ChaseTargetAccelMps2 = FVector3d::ZeroVector; // Target's own acceleration beyond its frame body's gravity
+    FVector3d ChaseApproachDir = FVector3d::ZeroVector;     // Unit target-to-ship direction captured at engage
+    double ChaseTrailM = 0.0;                               // Tail distance from the target's centre
+    double ChasePlanGravityMps2 = 0.0;                      // Gravity magnitude at the tail point (planning budget)
+    FSOLChasePolicy ChasePolicy;                            // The current plan's G levels and the meter floor
+    FSOLChaseRunState ChaseRun;                             // Processor-written: cooling flag, last limit, activity
+    FSOLChaseGLimit ChaseLimit;                             // Processor-written: last substep's limit, reserve, resume
 };
 
 /**

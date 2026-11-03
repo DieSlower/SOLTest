@@ -57,6 +57,8 @@ namespace
             SOL::Settings::HUD_SCALE_STEP, false },
         { SOLMenuText::SETTINGS_HUD_EFFECTS, SOL::Settings::HUD_EFFECTS_MIN, SOL::Settings::HUD_EFFECTS_MAX,
             SOL::Settings::HUD_EFFECTS_STEP, false },
+        { SOLMenuText::SETTINGS_CHASE_SAFETY_MARGIN, SOL::Settings::CHASE_SAFETY_MARGIN_MIN,
+            SOL::Settings::CHASE_SAFETY_MARGIN_MAX, SOL::Settings::CHASE_SAFETY_MARGIN_STEP, true },
     };
     static_assert(UE_ARRAY_COUNT(SETTINGS_SLIDERS) == static_cast<int32>(ESOLSettingsSlider::Count),
         "one spec per slider");
@@ -166,6 +168,8 @@ namespace
             return values.MouseSensitivity;
         case ESOLSettingsSlider::HudEffects:
             return values.HudEffectsStrength;
+        case ESOLSettingsSlider::ChaseSafetyMargin:
+            return values.ChaseSafetyMargin;
         case ESOLSettingsSlider::HudScale:
         default:
             return values.HudScale;
@@ -367,6 +371,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleDefaultAssistChanged);
     addToggle(ESOLSettingsToggle::MouseSteerAtStart)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleMouseSteerAtStartChanged);
+    addSlider(ESOLSettingsSlider::ChaseSafetyMargin)->OnValueChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleChaseSafetyMarginChanged);
     addToggle(ESOLSettingsToggle::OrbitLines)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleOrbitLinesChanged);
 
@@ -531,6 +537,9 @@ void USOLSettingsPageWidget::ApplySliderValue(const ESOLSettingsSlider slider, c
         break;
     case ESOLSettingsSlider::HudEffects:
         values.HudEffectsStrength = snapped;
+        break;
+    case ESOLSettingsSlider::ChaseSafetyMargin:
+        values.ChaseSafetyMargin = snapped;
         break;
     case ESOLSettingsSlider::HudScale:
     default:
@@ -870,6 +879,13 @@ void USOLSettingsPageWidget::HandleHudScaleChanged(const float value)
 void USOLSettingsPageWidget::HandleHudEffectsChanged(const float value)
 {
     ApplySliderValue(ESOLSettingsSlider::HudEffects, value);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Chase Down safety margin slider moved (SDD 32)
+void USOLSettingsPageWidget::HandleChaseSafetyMarginChanged(const float value)
+{
+    ApplySliderValue(ESOLSettingsSlider::ChaseSafetyMargin, value);
 }
 
 //////////////////////////////////////////////////////////////////////////

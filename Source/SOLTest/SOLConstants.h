@@ -67,6 +67,10 @@ namespace SOL
     // forward, no spin): a rate-limited turn cannot be integrated stably in 10-169 s steps (SDD 18 Amendment 7)
     inline constexpr double AUTOPILOT_KINEMATIC_ATTITUDE_S = 1.0;
 
+    // Rendezvous guidance arrival tolerances (SDD 18): arrived within this distance of the target, below this speed
+    inline constexpr double AUTOPILOT_ARRIVAL_RADIUS_M = 10.0;
+    inline constexpr double AUTOPILOT_ARRIVAL_SPEED_MPS = 1.0;
+
     // Player ship thrust capability (SDD 18 section 3.2, decision 20): G per axis, boost, total cap, rotation
     inline constexpr double PLAYER_THRUST_FORWARD_G = 3.0;
     inline constexpr double PLAYER_THRUST_REVERSE_G = 1.5;
@@ -94,6 +98,36 @@ namespace SOL
     inline constexpr double PILOT_AUTOPILOT_RECOVERY_G = 1.5;
     inline constexpr double PILOT_UNCONSCIOUS_RECOVER_PER_S = 0.02;
     inline constexpr double PILOT_LETHAL_WARNING_S = 30.0;
+
+    // Chase Down autopilot (SDD 32): G bursts planned against the pilot model, the meter floor and the tail point
+    namespace Chase
+    {
+        // "CHASE ENDED: target lost" shows this long (real seconds from the loss)
+        inline constexpr double TARGET_LOST_NOTE_S = 3.0;
+        inline constexpr double MIN_METER_FLOOR = 0.01;             // Technical floor under any margin (0 is G-LOC)
+        inline constexpr double COOL_HYSTERESIS_METER = 0.15;       // A cool off ends this far above floor + reserve
+        // A burst turns into a cool off this close above floor + reserve: the per-step safety clamp makes the meter
+        // approach that level without ever reaching it (the guidance flies 90% of the limit), so an exact test would
+        // pin the meter there at about sustained G instead of cooling and bursting again (32a amendment)
+        inline constexpr double COOL_SWITCH_TOLERANCE_METER = 0.01;
+        inline constexpr int32 PLAN_G_LEVELS = 8;                   // Grid steps from sustained to the cap (9 levels)
+        inline constexpr double PLAN_TIE_FRACTION = 0.005;          // Predicted times this close are a tie
+        inline constexpr double REPLAN_INTERVAL_S = 0.25;           // Real seconds between periodic replans
+        inline constexpr double REPLAN_METER_DELTA = 0.05;          // Meter off the prediction by more: replan now
+        // A change of the target's frame-relative velocity above this fraction of the plan's closing speed (and at
+        // least REPLAN_TARGET_DV_MIN_MPS) replans at once
+        inline constexpr double REPLAN_TARGET_DV_FRACTION = 0.1;
+        inline constexpr double REPLAN_TARGET_DV_MIN_MPS = 1.0;
+        inline constexpr double REPLAN_IMPROVEMENT_FRACTION = 0.02; // A new plan must be this much faster to replace
+        // Slack of the replan feasibility tests of the current plan (its burst against the cap, its meter vs the floor)
+        inline constexpr double REPLAN_FEASIBILITY_TOLERANCE = 1.0e-9;
+        inline constexpr double TAIL_MIN_SPEED_MPS = 1.0;           // Slower relative to its frame: approach side
+        inline constexpr double TARGET_TRAIL_M = 200.0;             // Minimum trail distance behind a targetable
+        inline constexpr double TARGET_TRAIL_RADIUS_FACTOR = 3.0;   // Tunable k: trail = max(TARGET_TRAIL_M, k x r)
+        inline constexpr double REPLAN_MAX_SIM_S = 30.0;            // Sim seconds between replans under time warp
+        inline constexpr double TARGET_ACCEL_FILTER_S = 0.5;        // Low-pass time constant of the target accel
+        inline constexpr int32 PLAN_MAX_SEGMENTS = 4096;            // Segment cap of a prediction (then: no intercept)
+    }
 
     // Pilot G vision loss post-process (SDD 18): the look at full loss (blacked out), blended in by the G meter
     inline constexpr float G_VISION_POST_PROCESS_PRIORITY = 10.0f;
@@ -989,8 +1023,9 @@ namespace SOL
         inline constexpr int32 SAVE_USER_INDEX = 0;
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
         // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
-        // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22)
-        inline constexpr int32 SAVE_VERSION = 7;
+        // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
+        // 8: Chase Down safety margin, SDD 32)
+        inline constexpr int32 SAVE_VERSION = 8;
         // The save schema that introduced the current default key layout (issue #22: O / Alt+O / Ctrl+O / Shift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 7;
@@ -1011,6 +1046,12 @@ namespace SOL
         inline constexpr float HUD_EFFECTS_DEFAULT = 1.0f;
         inline constexpr float HUD_EFFECTS_STEP = 0.05f;
         inline constexpr float VALUE_EQUAL_TOLERANCE = 1.0e-4f;    // Two slider values closer than this are equal
+
+        // Chase Down safety margin (SDD 32 section 3.10): a floor on the G meter, as a fraction of a full meter
+        inline constexpr float CHASE_SAFETY_MARGIN_DEFAULT = 0.25f;
+        inline constexpr float CHASE_SAFETY_MARGIN_MIN = 0.0f;
+        inline constexpr float CHASE_SAFETY_MARGIN_MAX = 0.30f;
+        inline constexpr float CHASE_SAFETY_MARGIN_STEP = 0.01f;
     }
 
     // Registry names of bodies that code refers to directly
@@ -1059,6 +1100,12 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_INTERACT = TEXT("SOLSmokeInteract");
         // With -SOLSmokeInteract: profile while the radial menu is open (ProfileGPU, stat dumpave), for the SDD's cost
         inline constexpr const TCHAR* SMOKE_INTERACT_PROFILE = TEXT("SOLSmokeInteractProfile");
+        // Chase Down from the radial menu: bursts, the meter floor, intercept, hold, cancels, margins, standoff, warp,
+        // boost and a lost target, then quit (SDD 32 section 5; smoke settings slot)
+        inline constexpr const TCHAR* SMOKE_CHASE = TEXT("SOLSmokeChase");
+        // With -SOLSmokeChase: cost captures (stat dumpsum / dumpmax of the SOL ship stats) during the 20 km chase, the
+        // Moon chase, and a 1 d/s warp chase and autopilot, for the SDD's cost numbers
+        inline constexpr const TCHAR* SMOKE_CHASE_PROFILE = TEXT("SOLSmokeChaseProfile");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

@@ -1654,7 +1654,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathLayoutChangedTest, "SOLTest.F
 
 //////////////////////////////////////////////////////////////////////////
 // The one-time "default controls changed" notice applies to every real schema 1 to 6 save (issue #22 moved the
-// orbit-lines key to Alt+O), never to an unversioned or current one
+// orbit-lines key to Alt+O), never to an unversioned, schema 7 or current (8) one
 bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -1669,7 +1669,16 @@ bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("7 (issue #22 layout)"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION));
     TestFalse(TEXT("8"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION + 1));
     TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_OVERLAY_LAYOUT_VERSION);
-    TestEqual(TEXT("schema version matches the layout"), SOL::Settings::SAVE_VERSION, FMM_OVERLAY_LAYOUT_VERSION);
+
+    // Issue #32 bumped the schema to 8 (Chase Down safety margin) without changing the key layout (still 7)
+    TestEqual(TEXT("layout version is 7"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 7);
+    TestEqual(TEXT("schema version is 8"), SOL::Settings::SAVE_VERSION, 8);
+    TestEqual(TEXT("schema is one past the layout"), SOL::Settings::SAVE_VERSION,
+        SOL::Settings::KEY_BINDING_LAYOUT_VERSION + 1);
+    TestFalse(TEXT("a v7 save gets no controls-changed notice"), DefaultLayoutChangedSince(7));
+    TestFalse(TEXT("a v8 (current) save gets no controls-changed notice"),
+        DefaultLayoutChangedSince(SOL::Settings::SAVE_VERSION));
+    TestTrue(TEXT("a v6 save still gets the notice"), DefaultLayoutChangedSince(6));
     return true;
 }
 
@@ -1692,6 +1701,8 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     TestTrue(TEXT("a v1 save is migrated"), SOLSettingsRules::ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v6 save is migrated"), SOLSettingsRules::ClassifySaveVersion(6, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v7 save is migrated"), SOLSettingsRules::ClassifySaveVersion(7, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
 
     // A schema 2 save: overrides (one now conflicting) and the other fields survive

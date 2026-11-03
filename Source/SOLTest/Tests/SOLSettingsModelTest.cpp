@@ -787,4 +787,130 @@ bool FSOLSettingsModelSetAppliedOverlayPrefsTest::RunTest(const FString& /*param
     return true;
 }
 
+// Issue #32 Chase Down safety margin in the settings model, written against the SDD 32 section 3.10 contract before
+// the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelChaseMarginSanitizeTest,
+    "SOLTest.SettingsModel.ChaseSafetyMarginSanitize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The Chase Down safety margin defaults to 0.25, clamps to [0, 0.30], NaN -> the default, infinities -> the ends
+bool FSOLSettingsModelChaseMarginSanitizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    using namespace SOL::Settings;
+
+    // The constants of the contract
+    TestEqual(TEXT("Default constant is 0.25"), CHASE_SAFETY_MARGIN_DEFAULT, 0.25f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Min constant is 0"), CHASE_SAFETY_MARGIN_MIN, 0.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Max constant is 0.30"), CHASE_SAFETY_MARGIN_MAX, 0.30f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Step constant is 0.01"), CHASE_SAFETY_MARGIN_STEP, 0.01f, SETTINGSMODEL_TOLERANCE);
+
+    // The default value is the constant and survives sanitizing
+    const FSettingsValues defaults;
+    TestEqual(TEXT("Default"), defaults.ChaseSafetyMargin, CHASE_SAFETY_MARGIN_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default is 0.25"), defaults.ChaseSafetyMargin, 0.25f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Sanitized default kept"), Sanitized(defaults).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_DEFAULT,
+        SETTINGSMODEL_TOLERANCE);
+
+    // In range and the exact ends pass through
+    const float inRange[] = { CHASE_SAFETY_MARGIN_MIN, 0.01f, 0.1f, 0.25f, CHASE_SAFETY_MARGIN_MAX };
+    for (const float margin : inRange)
+    {
+        FSettingsValues values = SettingsModelCustomValues();
+        values.ChaseSafetyMargin = margin;
+        TestEqual(FString::Printf(TEXT("%.2f kept"), margin), Sanitized(values).ChaseSafetyMargin, margin,
+            SETTINGSMODEL_TOLERANCE);
+    }
+
+    // Out of range clamps
+    FSettingsValues values = SettingsModelCustomValues();
+    values.ChaseSafetyMargin = -0.1f;
+    TestEqual(TEXT("Below -> MIN"), Sanitized(values).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MIN,
+        SETTINGSMODEL_TOLERANCE);
+    values.ChaseSafetyMargin = 0.31f;
+    TestEqual(TEXT("Just above -> MAX"), Sanitized(values).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    values.ChaseSafetyMargin = 1.0f;
+    TestEqual(TEXT("A full meter -> MAX"), Sanitized(values).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MAX,
+        SETTINGSMODEL_TOLERANCE);
+
+    // Non-finite values
+    values.ChaseSafetyMargin = SETTINGSMODEL_NAN;
+    const FSettingsValues nanOut = Sanitized(values);
+    TestEqual(TEXT("NaN -> default"), nanOut.ChaseSafetyMargin, CHASE_SAFETY_MARGIN_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN -> 0.25"), nanOut.ChaseSafetyMargin, 0.25f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN leaves other fields alone"), nanOut.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
+    values.ChaseSafetyMargin = SETTINGSMODEL_INF;
+    TestEqual(TEXT("+inf -> MAX"), Sanitized(values).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    values.ChaseSafetyMargin = -SETTINGSMODEL_INF;
+    TestEqual(TEXT("-inf -> MIN"), Sanitized(values).ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MIN,
+        SETTINGSMODEL_TOLERANCE);
+
+    // Sanitizing a clamped value again changes nothing
+    values.ChaseSafetyMargin = 0.9f;
+    const FSettingsValues once = Sanitized(values);
+    TestEqual(TEXT("Idempotent"), Sanitized(once).ChaseSafetyMargin, once.ChaseSafetyMargin, SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelChaseMarginDirtyTest, "SOLTest.SettingsModel.ChaseSafetyMarginDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AreEqual sees a 0.01 margin change and ignores 5e-5, so a margin-only edit makes the model dirty
+bool FSOLSettingsModelChaseMarginDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues base = SettingsModelCustomValues();
+
+    // One 1% step is a difference on its own
+    FSettingsValues changed = base;
+    changed.ChaseSafetyMargin = base.ChaseSafetyMargin + 0.01f;
+    TestFalse(TEXT("A 0.01 change differs"), AreEqual(base, changed));
+    TestFalse(TEXT("Symmetric"), AreEqual(changed, base));
+
+    // Below the tolerance is equal
+    FSettingsValues nearlySame = base;
+    nearlySame.ChaseSafetyMargin += 0.00005f;
+    TestTrue(TEXT("A 5e-5 change is equal"), AreEqual(base, nearlySame));
+
+    // Two values that clamp to the same end, and NaN vs the default, compare equal
+    FSettingsValues overA = base;
+    overA.ChaseSafetyMargin = 0.5f;
+    FSettingsValues overB = base;
+    overB.ChaseSafetyMargin = 0.9f;
+    TestTrue(TEXT("Both clamp to MAX"), AreEqual(overA, overB));
+    FSettingsValues nanMargin;
+    nanMargin.ChaseSafetyMargin = SETTINGSMODEL_NAN;
+    TestTrue(TEXT("NaN equals the default"), AreEqual(nanMargin, FSettingsValues()));
+
+    // The model sees a margin-only edit as dirty; revert discards it, commit adopts it
+    FSettingsValues edited = base;
+    edited.ChaseSafetyMargin = 0.10f;
+    FSettingsModel model = MakeModel(base);
+    SetPending(model, edited);
+    TestTrue(TEXT("Dirty when only the margin differs"), IsDirty(model));
+    const FSettingsValues reverted = Revert(model);
+    TestEqual(TEXT("Revert returns the saved margin"), reverted.ChaseSafetyMargin, base.ChaseSafetyMargin,
+        SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+    SetPending(model, edited);
+    TestTrue(TEXT("Commit of the margin needs a write"), CommitIfDirty(model));
+    TestEqual(TEXT("Saved takes the margin"), model.Saved.ChaseSafetyMargin, 0.10f, SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+
+    // An out-of-range pending margin is stored sanitized
+    FSettingsValues over = model.Saved;
+    over.ChaseSafetyMargin = 2.0f;
+    SetPending(model, over);
+    TestEqual(TEXT("Pending sanitized"), model.Pending.ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

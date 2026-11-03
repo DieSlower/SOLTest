@@ -320,6 +320,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeInteract = MakeUnique<FSOLInteractSmoke>();
         mSmokeInteract->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_CHASE))
+    {
+        mSmokeChase = MakeUnique<FSOLChaseSmoke>();
+        mSmokeChase->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_JUMP))
     {
         mSmokeJump = MakeUnique<FSOLJumpSmoke>();
@@ -335,8 +340,8 @@ void ASOLShipPawn::BeginPlay()
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeJump.IsValid()
-        || mSmokeLevel.IsValid())
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
         mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
@@ -388,6 +393,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeHologram.Reset();
     mSmokeOverlay.Reset();
     mSmokeInteract.Reset();
+    mSmokeChase.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
@@ -449,6 +455,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeInteract.IsValid() && mSmokeInteract->Update(*this, deltaSeconds))
     {
         mSmokeInteract.Reset();
+    }
+    if (mSmokeChase.IsValid() && mSmokeChase->Update(*this, deltaSeconds))
+    {
+        mSmokeChase.Reset();
     }
     if (mSmokeJump.IsValid() && mSmokeJump->Update(*this, deltaSeconds))
     {
@@ -910,8 +920,8 @@ void ASOLShipPawn::UpdateViewportFocus()
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
-        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeJump.IsValid()
-        || mSmokeLevel.IsValid())
+        || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
     {
         mIsViewportFocused = true;
         return;
@@ -2286,6 +2296,13 @@ void ASOLShipPawn::HandlePause()
     // Esc closes an open radial menu first (SDD 22)
     if (Interaction != nullptr && Interaction->CancelRadial())
     {
+        return;
+    }
+
+    // Then Esc cancels a running chase only (it lands in ASSISTED); the next Esc opens the pause menu (SDD 32)
+    if (!mIsMapOpen && !mIsMenuSuspended && Ships != nullptr && Ships->IsChasing())
+    {
+        Ships->DisengageChase();
         return;
     }
     mIsPauseRequested = !mIsMapOpen && !mIsMenuSuspended;

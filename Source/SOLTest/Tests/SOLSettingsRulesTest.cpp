@@ -253,7 +253,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 7"), SOL::Settings::SAVE_VERSION, 7);
+    TestEqual(TEXT("schema version is 8"), SOL::Settings::SAVE_VERSION, 8);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -265,6 +265,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 5 migrates"), ClassifySaveVersion(5, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 6 migrates"), ClassifySaveVersion(6, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 7 migrates"), ClassifySaveVersion(7, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -728,7 +730,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->MasterVolume = 0.45f;
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 7 (through 5 -> 6 and 6 -> 7)"), save->Version, 7);
+    TestEqual(TEXT("v5 -> 8 (through 5 -> 6, 6 -> 7 and 7 -> 8)"), save->Version, 8);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -752,7 +754,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7, and a current one across two calls
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8, and a current one across two calls
     USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
     v6->Version = 6;
     v6->bMouseSteerAtStart = true;
@@ -844,7 +846,7 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v6 -> 7"), save->Version, 7);
+    TestEqual(TEXT("v6 -> 8 (through 6 -> 7 and 7 -> 8)"), save->Version, 8);
     TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
@@ -897,7 +899,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A schema 7 save is not migrated: its overlay profiles and active profile stay exactly as they were
+// A current (schema 8) save is not migrated: its overlay profiles and active profile stay exactly as they were
 bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
 {
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
@@ -998,6 +1000,221 @@ bool FSOLSettingsRulesOverlaySaveValuesTest::RunTest(const FString& /*parameters
     save->SetValues(values);
     TestEqual(TEXT("SetValues: back to one profile"), save->OverlayProfiles.Num(), 1);
     TestEqual(TEXT("SetValues: active 0"), save->ActiveOverlayProfile, 0);
+    return true;
+}
+
+// Issue #32 Chase Down safety margin in the settings save (schema 8), written against the SDD 32 section 3.10
+// contract before the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV7ChaseMarginTest, "SOLTest.SettingsRules.MigrateV7ChaseMargin",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 7 -> 8 (issue #32): the Chase Down safety margin (absent from a v7 file) becomes 0.25; volumes, key overrides,
+// overlay profiles and every other field are kept, and a second migrate changes nothing
+bool FSOLSettingsRulesMigrateV7ChaseMarginTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestEqual(TEXT("schema version is 8"), SOL::Settings::SAVE_VERSION, 8);
+    TestTrue(TEXT("a v7 save is migrated"), ClassifySaveVersion(7, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v8 save is used"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Use);
+    TestTrue(TEXT("a v9 (newer) save is ignored"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::UseDefaults);
+
+    // A v7 save with non-default values everywhere and a stray margin a v7 file never wrote
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 7;
+    save->MasterVolume = 0.3f;
+    save->SfxVolume = 0.4f;
+    save->MusicVolume = 0.5f;
+    save->MouseSensitivity = 2.5f;
+    save->bInvertY = true;
+    save->HudScale = 1.5f;
+    save->bHudVisible = false;
+    save->bDefaultFlightAssist = false;
+    save->bVsync = false;
+    save->QualityPreset = 1;
+    save->bVsyncChosen = true;
+    save->bQualityChosen = true;
+    save->bShowOrbitLines = false;
+    save->HudEffectsStrength = 0.3f;
+    save->bMouseSteerAtStart = true;
+    save->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x3u));
+    save->OverlayProfiles.Add(SettingsRulesOverlayProfile(SOLOverlay::AllBitsMask()));
+    save->ActiveOverlayProfile = 1;
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));     // Already past 3 -> 4: must not be moved again
+    save->ChaseSafetyMargin = 0.05f;
+
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v7 -> 8"), save->Version, 8);
+    TestEqual(TEXT("v7 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("margin set to the default"), save->ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("default is 0.25"), save->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // Volumes and every other scalar field are untouched
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), save->bInvertY);
+    TestEqual(TEXT("HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("HUD hidden kept"), save->bHudVisible);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestFalse(TEXT("vsync kept"), save->bVsync);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+    TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
+    TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
+    TestEqual(TEXT("HUD effects strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
+
+    // The key overrides are kept verbatim
+    TestEqual(TEXT("override count kept"), save->KeyOverrides.Num(), 3);
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    const FString* orbitKey = save->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
+    TestTrue(TEXT("orbit-lines override kept"), orbitKey != nullptr && *orbitKey == TEXT("K"));
+    const FString* toggleKey = save->KeyOverrides.Find(TEXT("ToggleMap"));
+    TestTrue(TEXT("v7 overrides are not re-run through 3 -> 4"), toggleKey != nullptr && *toggleKey == TEXT("Comma"));
+    TestNull(TEXT("no OpenMapJump invented"), save->KeyOverrides.Find(TEXT("OpenMapJump")));
+
+    // The overlay profiles are kept (not reset by the 6 -> 7 step)
+    TestEqual(TEXT("two overlay profiles kept"), save->OverlayProfiles.Num(), 2);
+    if (save->OverlayProfiles.Num() == 2)
+    {
+        TestTrue(TEXT("profile 0 kept"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
+            SOLOverlay::ToSavedProfile(0x3u)));
+        TestTrue(TEXT("profile 1 kept"), SettingsRulesSameOverlayMap(save->OverlayProfiles[1].Overlays,
+            SOLOverlay::ToSavedProfile(SOLOverlay::AllBitsMask())));
+    }
+    TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 1);
+
+    // Idempotent: a second migrate changes nothing, and a later margin change survives a third
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the margin"), save->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("second migrate keeps the overrides"), save->KeyOverrides.Num(), 3);
+    TestEqual(TEXT("second migrate keeps the profiles"), save->OverlayProfiles.Num(), 2);
+    TestEqual(TEXT("second migrate keeps the master volume"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    save->ChaseSafetyMargin = 0.1f;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("a later margin change survives a migrate"), save->ChaseSafetyMargin, 0.1f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginVersionsTest,
+    "SOLTest.SettingsRules.ChaseMarginVersions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Saves 1 to 7 reach schema 8 with the default margin; a v8 save keeps its margin; a v9 (newer) save is left alone
+bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+
+    // Every older schema migrates and ends at 8 with the default margin
+    for (int32 version = 1; version <= 7; ++version)
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        TestTrue(label + TEXT(": classified as migrate"), ClassifySaveVersion(version, SOL::Settings::SAVE_VERSION)
+            == ESaveVersionAction::Migrate);
+        USOLSettingsSave* older = NewObject<USOLSettingsSave>();
+        older->Version = version;
+        older->ChaseSafetyMargin = 0.05f;
+        older->MasterVolume = 0.45f;
+        older->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": ends at 8"), older->Version, 8);
+        TestEqual(label + TEXT(": default margin"), older->ChaseSafetyMargin,
+            SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": master kept"), older->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    }
+
+    // A schema 1 save goes through every step to 8 and keeps its other fields
+    USOLSettingsSave* v1 = NewObject<USOLSettingsSave>();
+    v1->Version = 1;
+    v1->MusicVolume = 0.2f;
+    v1->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    v1->MigrateToCurrentVersion();
+    TestEqual(TEXT("v1 -> 8"), v1->Version, 8);
+    TestEqual(TEXT("v1: margin 0.25"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("v1: music kept"), v1->MusicVolume, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    const FString* fireKey = v1->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("v1: fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    TestEqual(TEXT("v1: one overlay profile"), v1->OverlayProfiles.Num(), 1);
+    v1->MigrateToCurrentVersion();
+    TestEqual(TEXT("v1: second migrate keeps 8"), v1->Version, 8);
+    TestEqual(TEXT("v1: second migrate keeps the margin"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // A schema 8 save is used as is: its margin is the player's choice
+    USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
+    v8->Version = 8;
+    v8->ChaseSafetyMargin = 0.1f;
+    v8->MigrateToCurrentVersion();
+    TestEqual(TEXT("v8: version kept"), v8->Version, 8);
+    TestEqual(TEXT("v8: margin kept"), v8->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    v8->ChaseSafetyMargin = 0.0f;
+    v8->MigrateToCurrentVersion();
+    TestEqual(TEXT("v8: margin 0 kept"), v8->ChaseSafetyMargin, 0.0f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // A newer (v9) or unversioned save is never migrated
+    const int32 untouchedVersions[] = { 0, 9 };
+    for (const int32 version : untouchedVersions)
+    {
+        USOLSettingsSave* untouched = NewObject<USOLSettingsSave>();
+        untouched->Version = version;
+        untouched->ChaseSafetyMargin = 0.1f;
+        untouched->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("version %d"), version);
+        TestEqual(label + TEXT(": version kept"), untouched->Version, version);
+        TestEqual(label + TEXT(": margin kept"), untouched->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginSaveValuesTest,
+    "SOLTest.SettingsRules.ChaseMarginSaveValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A new save holds the default margin, and SetValues / GetValues round-trip it
+bool FSOLSettingsRulesChaseMarginSaveValuesTest::RunTest(const FString& /*parameters*/)
+{
+    // A new save holds the default margin
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestEqual(TEXT("new save: default margin"), fresh->ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("new save: GetValues default margin"), fresh->GetValues().ChaseSafetyMargin,
+        SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+
+    // SetValues / GetValues round-trip the margin
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.ChaseSafetyMargin = 0.12f;
+    save->SetValues(values);
+    TestEqual(TEXT("SetValues stores the margin"), save->ChaseSafetyMargin, 0.12f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("GetValues gives it back"), save->GetValues().ChaseSafetyMargin, 0.12f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+
+    // Both range ends round-trip
+    values.ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_MIN;
+    save->SetValues(values);
+    TestEqual(TEXT("MIN round-trips"), save->GetValues().ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_MIN,
+        SETTINGSRULES_TEST_TOLERANCE);
+    values.ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_MAX;
+    save->SetValues(values);
+    TestEqual(TEXT("MAX round-trips"), save->GetValues().ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_MAX,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("MAX round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
     return true;
 }
 

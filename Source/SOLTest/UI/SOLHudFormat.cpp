@@ -15,6 +15,8 @@ namespace
     constexpr double HUD_LIGHT_UNIT_MIN_MPS = 0.01 * SOL::SPEED_OF_LIGHT_MPS;   // Speeds above this read in c
     constexpr double HUD_KM_DISTANCE_MIN_M = 1000.0;                            // Distances at or above this read in km
     constexpr double HUD_AU_DISTANCE_MIN_M = 0.01 * SOL::AU_M;                  // Distances at or above this read in AU
+    constexpr double HUD_CHASE_TIME_UNKNOWN_S = 1.0e12;                         // Chase times at or above this read "--"
+    constexpr double HUD_CHASE_PERCENT = 100.0;                                 // Meter fraction -> percent
     constexpr int64 HUD_SECONDS_PER_MINUTE = 60;                                // Duration formatting (whole seconds)
     constexpr int64 HUD_MINUTES_PER_HOUR = 60;
     constexpr int64 HUD_SECONDS_PER_HOUR = 3600;
@@ -124,6 +126,104 @@ namespace SOLHudFormat
         else
         {
             outText.Appendf(TEXT("%lld d %02lld h"), hoursTotal / HUD_HOURS_PER_DAY, hoursTotal % HUD_HOURS_PER_DAY);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Appends a speed with its auto-picked unit; a negative speed keeps its minus sign
+    void AppendSpeedMps(FString& outText, const double speedMps)
+    {
+        const double magnitude = FMath::Abs(speedMps);
+        const ESOLSpeedUnit unit = PickSpeedUnit(magnitude);
+        const double value = ToUnitValue(speedMps, unit);
+        switch (unit)
+        {
+        case ESOLSpeedUnit::KilometersPerSecond:
+            outText.Appendf(TEXT("%.2f km/s"), value);
+            break;
+        case ESOLSpeedUnit::LightSpeed:
+            outText.Appendf(TEXT("%.4f c"), value);
+            break;
+        case ESOLSpeedUnit::MetersPerSecond:
+        default:
+            outText.Appendf(TEXT("%.1f m/s"), value);
+            break;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Appends the chase marker's first line: name, distance, closing speed and the time to intercept (HOLD on the tail)
+    void AppendChaseMarker(FString& outText, const FStringView targetName, const double distanceM,
+        const double closingSpeedMps, const double timeToInterceptS, const bool bHolding)
+    {
+        outText.Append(SOLMenuText::CHASE_MARKER_PREFIX);
+        outText.Append(targetName.GetData(), targetName.Len());
+        outText.Append(TEXT("  "));
+        AppendDistanceM(outText, distanceM);
+        outText.Append(TEXT("  "));
+        outText.Append(SOLMenuText::CHASE_CLOSING_LABEL);
+        AppendSpeedMps(outText, closingSpeedMps);
+        outText.Append(TEXT("  "));
+        outText.Append(SOLMenuText::CHASE_TIME_LABEL);
+        if (bHolding)
+        {
+            outText.Append(SOLMenuText::CHASE_HOLD);
+        }
+        else if (timeToInterceptS < HUD_CHASE_TIME_UNKNOWN_S)
+        {
+            AppendDurationS(outText, timeToInterceptS);
+        }
+        else
+        {
+            outText.Append(TEXT("--"));
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a chase activity's HUD and log name (SOLMenuText)
+    const TCHAR* ChaseActivityName(const ESOLChaseActivity activity)
+    {
+        switch (activity)
+        {
+        case ESOLChaseActivity::Hold:
+            return SOLMenuText::CHASE_HOLD;
+        case ESOLChaseActivity::Cool:
+            return SOLMenuText::CHASE_COOL;
+        case ESOLChaseActivity::BrakeBurst:
+            return SOLMenuText::CHASE_BRAKE;
+        case ESOLChaseActivity::BrakeCool:
+            return SOLMenuText::CHASE_BRAKE_COOL;
+        case ESOLChaseActivity::Burst:
+        default:
+            return SOLMenuText::CHASE_BURST;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a resume meter can be reached: finite and at most a full meter
+    bool IsChaseResumeShown(const double resumeMeter)
+    {
+        return FMath::IsFinite(resumeMeter) && resumeMeter <= 1.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Appends the chase marker's activity line: the activity, its G limit and the cool off's resume meter
+    void AppendChaseActivity(FString& outText, const ESOLChaseActivity activity, const double limitG,
+        const double resumeMeter)
+    {
+        outText.Append(ChaseActivityName(activity));
+        if (activity == ESOLChaseActivity::Hold)
+        {
+            return;
+        }
+        outText.Appendf(TEXT(" %.1f G"), limitG);
+
+        // The resume meter only while it can be reached (above a full meter the cool off lasts until the brake)
+        if (activity == ESOLChaseActivity::Cool && IsChaseResumeShown(resumeMeter))
+        {
+            outText.Append(TEXT(" ("));
+            outText.Append(SOLMenuText::CHASE_RESUME_LABEL);
+            outText.Appendf(TEXT("%.0f%%)"), resumeMeter * HUD_CHASE_PERCENT);
         }
     }
 }

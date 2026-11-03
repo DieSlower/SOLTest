@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Flight/SOLChase.h"
 #include "Flight/SOLNewtonianFlight.h"
 #include "Flight/SOLShipState.h"
 #include "SOLConstants.h"
@@ -74,6 +75,17 @@ namespace SOLFlight
         const FSOLFlightParams& params, const FSOLGMeterState& meter, double dt,
         FSOLFlightStepOutput* outStep = nullptr, FSOLGuidanceOutput* outGuidance = nullptr,
         double targetGravityMps2 = 0.0, double passSpeedMps = 0.0, double captureRadiusM = 0.0);
+
+    // Advances the ship by dt under Chase Down (SDD 32 section 3.4): the phase probe, the policy's G limit
+    // (SOLChase::ChaseGLimit, which updates inOutRun), the rendezvous guidance toward the aim point with the chase
+    // budgets, the pilot-limit clamp and the thrust allocation, boosted only with bBoost (the Tab toggle, Q10).
+    // planGravityMps2 is the gravity magnitude the budgets subtract (at least the gravity here)
+    SOLTEST_API FSOLShipState ChaseStep(const FSOLShipState& state, const FVector3d& aimPointM,
+        const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
+        double planGravityMps2, const FSOLFlightParams& params, const FSOLGMeterState& meter,
+        const FSOLChasePolicy& policy, bool bBoost, double dt, FSOLChaseRunState& inOutRun,
+        FSOLFlightStepOutput* outStep = nullptr, FSOLGuidanceOutput* outGuidance = nullptr,
+        FSOLChaseGLimit* outLimit = nullptr);
 
     // Returns the autopilot's arrival distance from a body's centre: the geometric standoff, moved out until the
     // body's gravity there is at most AUTOPILOT_GRAVITY_STANDOFF_FRACTION of the autopilot limit

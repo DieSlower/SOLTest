@@ -5,6 +5,7 @@
 
 #include "Ship/SOLShipSubsystem.h"
 
+#include "Flight/SOLChase.h"
 #include "Flight/SOLNewtonianFlight.h"
 
 #include "Game/SOLGameMode.h"
@@ -15,6 +16,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLHudFormat.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
@@ -30,6 +32,13 @@
 #include "MassProcessingContext.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "Stats/Stats.h"
+
+// Game-thread cycle stats of the ship step (`stat SOLShip`, `stat dumpsum -root=STAT_SOL_`; SDD 32 section 3.5 cost)
+DECLARE_STATS_GROUP(TEXT("SOLShip"), STATGROUP_SOLShip, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("SOL_ChasePlan"), STAT_SOL_ChasePlan, STATGROUP_SOLShip);
+DECLARE_CYCLE_STAT(TEXT("SOL_ChaseUpdate"), STAT_SOL_ChaseUpdate, STATGROUP_SOLShip);
+DECLARE_CYCLE_STAT(TEXT("SOL_ShipFlightRun"), STAT_SOL_ShipFlightRun, STATGROUP_SOLShip);
 
 namespace
 {
@@ -38,6 +47,23 @@ namespace
     USOLShipSubsystem* FindShipSubsystem(const UWorld* world)
     {
         return world != nullptr ? world->GetSubsystem<USOLShipSubsystem>() : nullptr;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the Chase Down meter floor of the applied safety-margin setting (the default without settings)
+    double ChaseFloorMeter(const UObject* worldContext)
+    {
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(worldContext);
+        return SOLChase::EffectiveMeterFloor(settings != nullptr ? settings->GetChaseSafetyMargin()
+            : SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a chase sample's tail point (behind a target moving in its frame, else on the approach side)
+    FVector3d ChaseSampleAimPointM(const FSOLChaseTargetSample& sample, const FVector3d& approachDir)
+    {
+        return SOLChase::ChaseAimPointM(sample.PositionM, sample.VelocityMps - sample.FrameVelocityMps, approachDir,
+            sample.TrailM);
     }
 
     // sol.Autopilot <Body|Target|Off>: orders the player ship's autopilot (SDD 18; #19 adds the real controls)
@@ -391,10 +417,12 @@ void USOLShipSubsystem::SpawnPlayerShip(const FString& startBody)
         state.VelocityMps = cache.VelocitiesMps[bodyIndex] + spawnTangent * FMath::Sqrt(cache.GMs[bodyIndex] / ringRadiusM);
     }
 
-    // One archetype for ships; the player's carries the player tag, and its class's params are a const shared value
+    // One archetype for ships; the player's carries the player tag and the Chase Down fragment (a player order), and
+    // its class's params are a const shared value
     const UScriptStruct* const elements[] = {
         FSOLShipStateFragment::StaticStruct(),
         FSOLShipControlFragment::StaticStruct(),
+        FSOLShipChaseFragment::StaticStruct(),
         FSOLPlayerShipTag::StaticStruct(),
     };
     const FMassArchetypeHandle archetype = mEntityManager->CreateArchetype(MakeArrayView(elements));
@@ -437,9 +465,16 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
     mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip).Control.ReferenceVelocityMps =
         Targeting->GetReferenceVelocityMps();
 
+    // A chase's target from this frame's bodies and targetables, and its plan, before the flight run (SDD 32)
+    {
+        SCOPE_CYCLE_COUNTER(STAT_SOL_ChaseUpdate);
+        UpdateChase(realDeltaSeconds);
+    }
+
     // Time-warp carry and substep inputs, then the flight processor, with the shared command buffer so the context
     // allocates none
     {
+        SCOPE_CYCLE_COUNTER(STAT_SOL_ShipFlightRun);
         FSOLShipFrameInputs inputs;
         ComputeFrameInputs(realDeltaSeconds, inputs);
         FlightProcessor->SetFrameInputs(inputs);
@@ -498,7 +533,9 @@ bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
         return false;
     }
 
-    // The arrival side stays fixed in the body's (non-rotating) frame: the side the ship is on now
+    // Any other order ends a chase (SDD 32 section 3.7); the arrival side stays fixed in the body's (non-rotating)
+    // frame: the side the ship is on now
+    ClearChaseOrder();
     const FVector3d towardShip = GetState().PositionM - BodyRegistry->GetUnrealFrameCache().PositionsM[bodyIndex];
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
     control.AutopilotBodyIndex = bodyIndex;
@@ -524,6 +561,9 @@ bool USOLShipSubsystem::EngageAutopilotPoint(const FSOLAutopilotPointOrder& orde
     {
         return false;
     }
+
+    // A route start or Resume replaces a chase (SDD 32 section 3.7)
+    ClearChaseOrder();
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
     control.AutopilotBodyIndex = order.BodyIndex;
     control.AutopilotPointOffsetM = order.OffsetM;
@@ -555,6 +595,348 @@ bool USOLShipSubsystem::IsAutopilotPointOrder() const
     const FSOLShipControlFragment& control =
         mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
     return control.AutopilotBodyIndex != INDEX_NONE && control.bAutopilotPoint;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a Chase Down on a body or a targetable, replacing any autopilot order; false (nothing changed) if invalid
+bool USOLShipSubsystem::EngageChase(const FSOLChaseOrder& order)
+{
+    if (!HasPlayerShip() || BodyRegistry == nullptr)
+    {
+        return false;
+    }
+    FSOLChaseOrderState chase;
+    chase.Order = order;
+    if (!ResolveChaseTarget(0.0, chase))
+    {
+        UE_LOG(LogSOL, Warning, TEXT("ShipSubsystem %s: chase not started (no live target)"), *GetName());
+        return false;
+    }
+
+    // The previous order (autopilot or chase) ends first; the tail side is the side the ship is on now, fixed in the
+    // target's non-rotating frame (as Move To and Follow)
+    ClearAutopilotOrder();
+    const FSOLShipState ship = GetState();
+    const FVector3d towardShip = ship.PositionM - chase.Sample.PositionM;
+    chase.ApproachDir = towardShip.GetSafeNormal(UE_DOUBLE_SMALL_NUMBER, FVector3d(0.0, 0.0, 1.0));
+    chase.bActive = true;
+    mChase = chase;
+    mIsChaseTargetLost = false;
+    FSOLShipChaseFragment& chaseFragment = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+    chaseFragment.ChaseRun = FSOLChaseRunState();
+    chaseFragment.ChaseLimit = FSOLChaseGLimit();
+    mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived = false;
+
+    // A new order serial (an active route pauses, SDD 20), AUTO with the held input latched, then the first plan
+    ++mAutopilotOrderSerial;
+    SOLFlightMode::EngageAuto(mFlightMode, mLastPilotInput);
+    WriteChaseControl();
+    ReplanChase();
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: chase engaged on %s (%.1f km, trail %.0f m): burst %.2f G, "
+        "brake %.2f G, floor %.2f, predicted %.1f s%s"), *GetName(), *chase.Sample.Name.ToString(),
+        towardShip.Size() / SOL::METERS_PER_KM, chase.Sample.TrailM, mChase.Plan.Policy.BurstG,
+        mChase.Plan.Policy.BrakePlanG, mChase.Plan.Policy.FloorMeter, mChase.Plan.Prediction.TimeS,
+        mFlightMode.LatchedChannels != 0 ? TEXT("; held input latched") : TEXT(""));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends a running chase in assisted flight; does nothing when no chase runs
+void USOLShipSubsystem::DisengageChase()
+{
+    if (mChase.bActive)
+    {
+        DisengageAutopilot();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the chase's HUD snapshot
+FSOLChaseStatus USOLShipSubsystem::GetChaseStatus() const
+{
+    FSOLChaseStatus status;
+    status.bTargetLost = mIsChaseTargetLost;
+    status.TargetName = mChase.Sample.Name;
+    if (!mChase.bActive || !HasPlayerShip())
+    {
+        return status;
+    }
+    const FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    const FSOLShipChaseFragment& chase = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+    status.bActive = true;
+    status.TargetDistanceM = FVector3d::Dist(state.State.PositionM, mChase.Sample.PositionM);
+    status.AimDistanceM = state.Guidance.DistanceM;
+    status.ClosingSpeedMps = state.Guidance.ClosingSpeedMps;
+    status.bHolding = chase.ChaseLimit.Activity == ESOLChaseActivity::Hold;
+    status.Activity = chase.ChaseLimit.Activity;
+    status.LimitG = chase.ChaseLimit.LimitG;
+    status.ResumeMeter = chase.ChaseLimit.ResumeMeter;
+    status.bCooling = chase.ChaseRun.bCooling;
+    status.FloorMeter = chase.ChasePolicy.FloorMeter;
+    status.BurstG = chase.ChasePolicy.BurstG;
+    status.BrakePlanG = chase.ChasePolicy.BrakePlanG;
+    status.TrailM = mChase.Sample.TrailM;
+
+    // The plan's prediction counts down in sim time until the next plan replaces it
+    const FSOLChasePrediction& prediction = mChase.Plan.Prediction;
+    status.TimeToInterceptS = status.bHolding ? 0.0 : (prediction.bIntercepts
+        ? FMath::Max(prediction.TimeS - mChase.SinceReplanSimS, 0.0) : DBL_MAX);
+    return status;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends the chase order (fragment, run state and plan), without touching the flight mode or the autopilot order
+void USOLShipSubsystem::ClearChaseOrder()
+{
+    const bool bWasActive = mChase.bActive;
+    mChase.bActive = false;
+    mChase.Plan = FSOLChasePlan();
+    if (HasPlayerShip())
+    {
+        FSOLShipChaseFragment& chase = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+        chase.bChase = false;
+        chase.ChaseFrameBodyIndex = INDEX_NONE;
+        if (bWasActive)
+        {
+            UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: chase on %s ended (last %s %.2f G, meter %.2f)"), *GetName(),
+                *mChase.Sample.Name.ToString(), SOLHudFormat::ChaseActivityName(chase.ChaseLimit.Activity),
+                chase.ChaseLimit.LimitG, GetGMeter().Meter);
+        }
+        chase.ChaseRun = FSOLChaseRunState();
+        chase.ChaseLimit = FSOLChaseGLimit();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Resolves a chase's source into its Sample for this frame; false when the source is invalid or gone
+bool USOLShipSubsystem::ResolveChaseTarget(const double simDeltaS, FSOLChaseOrderState& inOutChase) const
+{
+    const FSOLBodyFrameCache& cache = BodyRegistry->GetUnrealFrameCache();
+    const FSOLFlightParams params = GetFlightParams();
+    FSOLChaseTargetSample& sample = inOutChase.Sample;
+    const FName lastName = sample.Name;
+    sample = FSOLChaseTargetSample();
+    sample.Name = lastName;
+
+    // A body: the cache's position and velocity; it is its own frame (its acceleration, the other bodies' gravity at
+    // its centre, is added per substep by the flight processor). The tail is holdable at the sustained limit
+    const int32 bodyIndex = inOutChase.Order.BodyIndex;
+    if (bodyIndex != INDEX_NONE)
+    {
+        if (!cache.PositionsM.IsValidIndex(bodyIndex))
+        {
+            return false;
+        }
+        const double radiusM = cache.RadiiM[bodyIndex];
+        sample.Name = BodyRegistry->GetRegistry().GetName(bodyIndex);
+        sample.PositionM = cache.PositionsM[bodyIndex];
+        sample.VelocityMps = cache.VelocitiesMps[bodyIndex];
+        sample.FrameVelocityMps = sample.VelocityMps;
+        sample.FrameBodyIndex = bodyIndex;
+        sample.RadiusM = radiusM;
+        sample.TrailM = SOLChase::ChaseTrailM(radiusM, SOLFlight::AutopilotStandoffM(radiusM, cache.GMs[bodyIndex],
+            SOLNewtonian::PilotSustainedAccelMps2(params.PilotLimits)), SOL::Chase::TARGET_TRAIL_RADIUS_FACTOR);
+        sample.bAlive = true;
+        return true;
+    }
+
+    // A targetable: its snapshot, the velocity of the body it moves with (or its own when it has none)
+    const ISOLTargetable* targetable = inOutChase.Order.Targetable.Get();
+    if (targetable == nullptr || !targetable->IsTargetAlive())
+    {
+        return false;
+    }
+    const FSOLTargetInfo info = targetable->GetTargetInfo();
+    const int32 frameBody = targetable->GetTargetFrameBodyIndex();
+    sample.Name = info.Name;
+    sample.PositionM = info.PositionM;
+    sample.VelocityMps = info.VelocityMps;
+    sample.FrameBodyIndex = cache.PositionsM.IsValidIndex(frameBody) ? frameBody : INDEX_NONE;
+    sample.FrameVelocityMps = sample.FrameBodyIndex != INDEX_NONE ? cache.VelocitiesMps[frameBody] : info.VelocityMps;
+    sample.RadiusM = info.RadiusM;
+    sample.TrailM = SOLChase::ChaseTrailM(info.RadiusM, SOL::Chase::TARGET_TRAIL_M,
+        SOL::Chase::TARGET_TRAIL_RADIUS_FACTOR);
+
+    // Own acceleration from the change of its velocity relative to its frame body (absolute without one), in sim
+    // seconds, clamped to twice the boosted chase cap; a new frame body restarts the estimate
+    const FVector3d ownVelocityMps = sample.FrameBodyIndex != INDEX_NONE ? info.VelocityMps - sample.FrameVelocityMps
+        : info.VelocityMps;
+    if (inOutChase.bHasPrevVelocity && inOutChase.PrevFrameBodyIndex == sample.FrameBodyIndex)
+    {
+        const double capMps2 = 2.0 * SOLChase::ChaseMaxG(params.Envelope, params.PilotLimits, true)
+            * SOLNewtonian::STANDARD_GRAVITY_MPS2;
+        inOutChase.AccelEstimateMps2 = SOLChase::EstimateTargetAccelMps2(inOutChase.PrevRelVelocityMps,
+            ownVelocityMps, inOutChase.AccelEstimateMps2, simDeltaS, capMps2);
+    }
+    else
+    {
+        inOutChase.AccelEstimateMps2 = FVector3d::ZeroVector;
+    }
+    inOutChase.PrevRelVelocityMps = ownVelocityMps;
+    inOutChase.PrevFrameBodyIndex = sample.FrameBodyIndex;
+    inOutChase.bHasPrevVelocity = true;
+    sample.AccelMps2 = inOutChase.AccelEstimateMps2;
+    sample.bAlive = true;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Per step before the flight run: resolves the target (a lost one ends the chase), writes the inputs and replans
+void USOLShipSubsystem::UpdateChase(const double realDeltaS)
+{
+    if (!mChase.bActive || !HasPlayerShip())
+    {
+        return;
+    }
+    const double simDeltaS = FMath::Max(SimClock->GetClock().GetWarpFactor(), 1.0) * realDeltaS;
+    if (!ResolveChaseTarget(simDeltaS, mChase))
+    {
+        // Target lost (destroyed, evicted, its slot reused, or the object gone): ASSISTED, and the HUD note
+        UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: chase target %s lost; ASSISTED"), *GetName(),
+            *mChase.Sample.Name.ToString());
+        ClearAutopilotOrder();
+        SOLFlightMode::DisengageAuto(mFlightMode);
+        mIsChaseTargetLost = true;
+        ++mChaseTargetLostCount;
+        mChaseTargetLostRealS = GetWorld() != nullptr ? GetWorld()->GetRealTimeSeconds() : 0.0;
+        return;
+    }
+    WriteChaseControl();
+
+    // Replan triggers (SDD 32 sections 3.5 and 3.8): the real-time interval, the sim-time cap under warp, a new floor
+    // or boost toggle, the meter leaving the plan's predicted band, and a target velocity change
+    mChase.SinceReplanRealS += realDeltaS;
+    mChase.SinceReplanSimS += simDeltaS;
+    mChase.ShipLagS = simDeltaS;
+    const FSOLShipChaseFragment& chase = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+    const bool bBoost = GetControl().bBoost;
+    const double meter = GetGMeter().Meter;
+    const FSOLChasePrediction& prediction = mChase.Plan.Prediction;
+    const bool bMeterOff = prediction.bIntercepts && (meter < prediction.MinMeter - SOL::Chase::REPLAN_METER_DELTA
+        || meter > FMath::Max(mChase.PlanStartMeter, prediction.EndMeter) + SOL::Chase::REPLAN_METER_DELTA);
+    // The target's velocity relative to its frame (as the aim point uses it), so the frame's own orbit (the Sun's pull
+    // on the Earth frame under warp) does not count as the target turning
+    const FVector3d targetRelVelocityMps = mChase.Sample.VelocityMps - mChase.Sample.FrameVelocityMps;
+    const double targetDvMps = FVector3d::Dist(targetRelVelocityMps, mChase.PlanTargetRelVelocityMps);
+    const bool bTargetTurned = targetDvMps > FMath::Max(SOL::Chase::REPLAN_TARGET_DV_MIN_MPS,
+        SOL::Chase::REPLAN_TARGET_DV_FRACTION * FMath::Abs(mChase.PlanClosingSpeedMps));
+    if (mChase.SinceReplanRealS >= SOL::Chase::REPLAN_INTERVAL_S
+        || mChase.SinceReplanSimS >= SOL::Chase::REPLAN_MAX_SIM_S
+        || chase.ChasePolicy.FloorMeter != mChase.PlanFloorMeter || bBoost != mChase.bPlanBoost
+        || bMeterOff || bTargetTurned)
+    {
+        ReplanChase();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes this frame's target, tail and planning gravity to the control fragment
+void USOLShipSubsystem::WriteChaseControl()
+{
+    const FSOLBodyFrameCache& cache = BodyRegistry->GetUnrealFrameCache();
+    const FSOLChaseTargetSample& sample = mChase.Sample;
+    FSOLShipChaseFragment& chase = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+    chase.bChase = true;
+    chase.ChaseFrameBodyIndex = sample.FrameBodyIndex;
+    chase.ChaseTargetM = sample.PositionM;
+    chase.ChaseTargetVelocityMps = sample.VelocityMps;
+    chase.ChaseFrameVelocityMps = sample.FrameVelocityMps;
+    chase.ChaseTargetAccelMps2 = sample.AccelMps2;
+    chase.ChaseApproachDir = mChase.ApproachDir;
+    chase.ChaseTrailM = sample.TrailM;
+    chase.ChasePlanGravityMps2 = SOLFlight::GravityAcceleration(ChaseSampleAimPointM(sample, mChase.ApproachDir),
+        cache.PositionsM, cache.GMs, cache.RadiiM).Size();
+
+    // The safety clamp follows an applied margin at once (SDD 32 section 3.10); the levels change only at a replan
+    chase.ChasePolicy = mChase.Plan.Policy;
+    chase.ChasePolicy.FloorMeter = ChaseFloorMeter(this);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Plans the chase from the ship's current state; the new plan replaces the current one per ShouldReplacePlan
+void USOLShipSubsystem::ReplanChase()
+{
+    const FSOLBodyFrameCache& cache = BodyRegistry->GetUnrealFrameCache();
+    const FSOLShipState ship = GetState();
+    const FSOLFlightParams params = GetFlightParams();
+    FSOLShipChaseFragment& chase = mEntityManager->GetFragmentDataChecked<FSOLShipChaseFragment>(mPlayerShip);
+    const FSOLChaseTargetSample& sample = mChase.Sample;
+
+    // The target where it was at the ship's state time: before the flight run the ship is still where last frame's
+    // bodies left it, and this frame's bodies (and the sample) moved on by ShipLagS (warp x the frame: 500 m for an
+    // Earth-frame target at 60 fps, hundreds of km under warp). Its frame body's last position is exact; else its
+    // velocity backs it off
+    FVector3d targetM = sample.PositionM;
+    const int32 frameBody = sample.FrameBodyIndex;
+    if (mChase.ShipLagS > 0.0)
+    {
+        const FVector3d ownVelocityMps = sample.VelocityMps - sample.FrameVelocityMps;
+        const bool bFrameHistory = mHasFrameHistory && mPrevBodyPositionsM.IsValidIndex(frameBody)
+            && cache.PositionsM.IsValidIndex(frameBody);
+        targetM -= bFrameHistory
+            ? cache.PositionsM[frameBody] - mPrevBodyPositionsM[frameBody] + ownVelocityMps * mChase.ShipLagS
+            : sample.VelocityMps * mChase.ShipLagS;
+    }
+
+    // The 1-D chase along the line of sight to the tail, in the target's frame (closing > 0); at the tail itself any
+    // relative motion recedes
+    const FVector3d toAimM = SOLChase::ChaseAimPointM(targetM, sample.VelocityMps - sample.FrameVelocityMps,
+        mChase.ApproachDir, sample.TrailM) - ship.PositionM;
+    const FVector3d relativeVelocityMps = ship.VelocityMps - sample.VelocityMps;
+    const double distanceM = toAimM.Size();
+    FSOLChasePlanInput input;
+    input.DistanceM = distanceM;
+    input.ClosingSpeedMps = distanceM > UE_DOUBLE_SMALL_NUMBER
+        ? FVector3d::DotProduct(relativeVelocityMps, toAimM / distanceM) : -relativeVelocityMps.Size();
+    input.GravityMps2 = FMath::Max(SOLFlight::GravityAcceleration(ship.PositionM, cache.PositionsM, cache.GMs,
+        cache.RadiiM).Size(), chase.ChasePlanGravityMps2);
+    input.Envelope = params.Envelope;
+    input.Limits = params.PilotLimits;
+    input.Meter = GetGMeter();
+    input.FloorMeter = chase.ChasePolicy.FloorMeter;
+    input.bBoost = GetControl().bBoost;
+    // The plan alone under its cycle stat (the SDD 32 section 3.5 budget: 0.1 ms)
+    const FSOLChasePlan candidate = [&input]()
+    {
+        SCOPE_CYCLE_COUNTER(STAT_SOL_ChasePlan);
+        return SOLChase::PlanChase(input);
+    }();
+
+    // The current policy is re-predicted from now (its old prediction counted from its own plan time), and is no
+    // longer feasible when it would go under the floor or bursts above a cap lowered by the boost toggle
+    FSOLChasePlan current = mChase.Plan;
+    if (current.bValid)
+    {
+        current.Policy.FloorMeter = input.FloorMeter;
+        current.Prediction = SOLChase::PredictChase(input, current.Policy);
+        current.bValid = current.Prediction.bIntercepts
+            && current.Policy.BurstG <= SOLChase::ChaseMaxG(input.Envelope, input.Limits, input.bBoost)
+                + SOL::Chase::REPLAN_FEASIBILITY_TOLERANCE
+            && current.Prediction.MinMeter >= FMath::Min(input.FloorMeter, input.Meter.Meter)
+                - SOL::Chase::REPLAN_FEASIBILITY_TOLERANCE;
+    }
+    const bool bReplace = SOLChase::ShouldReplacePlan(current, candidate) || !current.bValid;
+    const bool bLevelsChanged = bReplace && (candidate.Policy.BurstG != mChase.Plan.Policy.BurstG
+        || candidate.Policy.BrakePlanG != mChase.Plan.Policy.BrakePlanG);
+    mChase.Plan = bReplace ? candidate : current;
+    mChase.Plan.Policy.FloorMeter = input.FloorMeter;
+    if (bLevelsChanged && mChase.PlanFloorMeter > 0.0)
+    {
+        UE_LOG(LogSOL, Verbose, TEXT("ShipSubsystem %s: chase replanned: burst %.2f G, brake %.2f G, predicted %.1f s "
+            "(%.1f km, closing %.0f m/s, meter %.2f)"), *GetName(), mChase.Plan.Policy.BurstG,
+            mChase.Plan.Policy.BrakePlanG, mChase.Plan.Prediction.TimeS, distanceM / SOL::METERS_PER_KM,
+            input.ClosingSpeedMps, input.Meter.Meter);
+    }
+
+    // What the triggers compare against until the next plan
+    mChase.PlanTargetRelVelocityMps = sample.VelocityMps - sample.FrameVelocityMps;
+    mChase.PlanClosingSpeedMps = input.ClosingSpeedMps;
+    mChase.PlanStartMeter = input.Meter.Meter;
+    mChase.PlanFloorMeter = input.FloorMeter;
+    mChase.bPlanBoost = input.bBoost;
+    mChase.SinceReplanRealS = 0.0;
+    mChase.SinceReplanSimS = 0.0;
+    chase.ChasePolicy = mChase.Plan.Policy;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -630,9 +1012,10 @@ bool USOLShipSubsystem::PilotHasControl() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Clears the autopilot order fragment and guidance, without touching the flight mode
+// Clears the autopilot order fragment and guidance, and any chase, without touching the flight mode
 void USOLShipSubsystem::ClearAutopilotOrder()
 {
+    ClearChaseOrder();
     if (!HasPlayerShip())
     {
         return;

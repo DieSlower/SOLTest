@@ -17,12 +17,100 @@
 #include "SOLTest.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLHudFormat.h"
 #include "UI/SOLOverlayIconLayer.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLKepler.h"
+#include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
 #include "Engine/World.h"
+#include "HAL/IConsoleManager.h"
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Logs the running (or last) chase's status in one line (sol.Chase Status)
+    void LogChaseStatus(const USOLShipSubsystem& ships)
+    {
+        const FSOLChaseStatus status = ships.GetChaseStatus();
+        const FSOLGMeterState meter = ships.GetGMeter();
+        UE_LOG(LogSOL, Log, TEXT("sol.Chase: %s %s%s: activity %s, limit %.2f G, load %.2f G, meter %.3f (floor %.2f, "
+            "resume %.2f%s), burst %.2f G, brake %.2f G, target %.0f m, tail %.0f m (trail %.0f m), closing %.1f m/s, "
+            "T %.1f s"), status.bActive ? TEXT("chasing") : TEXT("not chasing"), *status.TargetName.ToString(),
+            status.bTargetLost ? TEXT(" (target lost)") : TEXT(""), SOLHudFormat::ChaseActivityName(status.Activity),
+            status.LimitG, ships.GetGLoadG(), meter.Meter, status.FloorMeter, status.ResumeMeter,
+            status.bCooling ? TEXT(", cooling") : TEXT(""), status.BurstG, status.BrakePlanG, status.TargetDistanceM,
+            status.AimDistanceM, status.TrailM, status.ClosingSpeedMps,
+            status.TimeToInterceptS < DBL_MAX ? status.TimeToInterceptS : -1.0);
+    }
+
+    // sol.Chase <Body [Name]|Target|Drop|Off|Status>: Chase Down for verification and smokes (SDD 32 section 3.8)
+    FAutoConsoleCommandWithWorldAndArgs GChaseCommand(TEXT("sol.Chase"),
+        TEXT("sol.Chase <Body [Name]|<BodyName>|Target|Drop|Off|Status>: Chase Down a body (default the Moon), the "
+            "selected target, the most recent dropped target (dropping one ahead when none is alive), or stop / log"),
+        FConsoleCommandWithWorldAndArgsDelegate::CreateLambda([](const TArray<FString>& args, UWorld* world)
+        {
+            USOLInteractionSubsystem* interaction = world != nullptr
+                ? world->GetSubsystem<USOLInteractionSubsystem>() : nullptr;
+            USOLShipSubsystem* ships = world != nullptr ? world->GetSubsystem<USOLShipSubsystem>() : nullptr;
+            const USOLBodyRegistrySubsystem* registry = world != nullptr
+                ? world->GetSubsystem<USOLBodyRegistrySubsystem>() : nullptr;
+            USOLCombatSubsystem* combat = world != nullptr ? world->GetSubsystem<USOLCombatSubsystem>() : nullptr;
+            if (interaction == nullptr || ships == nullptr || registry == nullptr || args.Num() == 0)
+            {
+                UE_LOG(LogSOL, Warning, TEXT("sol.Chase: usage sol.Chase <Body [Name]|Target|Drop|Off|Status>"));
+                return;
+            }
+            const FString& mode = args[0];
+            if (mode.Equals(TEXT("Off"), ESearchCase::IgnoreCase))
+            {
+                ships->DisengageChase();
+                return;
+            }
+            if (mode.Equals(TEXT("Status"), ESearchCase::IgnoreCase))
+            {
+                LogChaseStatus(*ships);
+                return;
+            }
+
+            // The selected body or dropped target; the latest drop (one dropped ahead if none is alive); or a body
+            bool bEngaged = false;
+            if (mode.Equals(TEXT("Target"), ESearchCase::IgnoreCase))
+            {
+                const FSOLObjectRef selected = interaction->GetSelectedObject();
+                FSOLChaseOrder order;
+                order.BodyIndex = selected.Kind == ESOLObjectKind::Body ? selected.Index : INDEX_NONE;
+                bEngaged = selected.Kind == ESOLObjectKind::DroppedTarget
+                    ? interaction->ChaseDroppedTarget(selected.Index)
+                    : order.BodyIndex != INDEX_NONE && ships->EngageChase(order);
+            }
+            else if (mode.Equals(TEXT("Drop"), ESearchCase::IgnoreCase))
+            {
+                int32 slot = combat != nullptr ? combat->GetLastDroppedTargetSlot() : INDEX_NONE;
+                const TConstArrayView<bool> active = combat != nullptr ? combat->GetTargetActive()
+                    : TConstArrayView<bool>();
+                if (combat != nullptr && (!active.IsValidIndex(slot) || !active[slot]) && ships->HasPlayerShip())
+                {
+                    slot = combat->DropTarget(ships->GetUniversePositionM(),
+                        SOLRender::EclipticToUnreal(ships->GetState().Orientation.GetForwardVector()));
+                }
+                bEngaged = interaction->ChaseDroppedTarget(slot);
+            }
+            else
+            {
+                const bool bBodyKeyword = mode.Equals(TEXT("Body"), ESearchCase::IgnoreCase);
+                const FString name = bBodyKeyword ? (args.Num() > 1 ? args[1] : FString(SOL::BodyNames::MOON)) : mode;
+                FSOLChaseOrder order;
+                order.BodyIndex = registry->GetRegistry().FindByName(FName(*name));
+                bEngaged = order.BodyIndex != INDEX_NONE && ships->EngageChase(order);
+            }
+            if (!bEngaged)
+            {
+                UE_LOG(LogSOL, Warning, TEXT("sol.Chase: no chase started for '%s'"), *mode);
+            }
+        }));
+}
 
 //////////////////////////////////////////////////////////////////////////
 // Resolves the subsystems the orders go through, caches the named asteroids and reserves the hit buffer
@@ -40,6 +128,7 @@ void USOLInteractionSubsystem::Initialize(FSubsystemCollectionBase& collection)
     FSOLOverlayIconLayer::BuildNamedAsteroids(mNamedAsteroids);
     mHits.Reset(SOL::Overlay::MAX_ICONS);
     TargetProxy = NewObject<USOLDroppedTargetTargetable>(this);
+    ChaseProxy = NewObject<USOLDroppedTargetTargetable>(this);
     if (Combat != nullptr)
     {
         mCombatUpdatedHandle = Combat->OnCombatUpdated().AddUObject(this,
@@ -283,6 +372,19 @@ FSOLActionContext USOLInteractionSubsystem::BuildContext(const FSOLObjectRef& ob
         context.bIsMoveTarget = !bPointOrder;
         context.bIsFollowed = bPointOrder && Ships->GetAutopilotOrderSerial() == mFollowOrderSerial;
     }
+
+    // The chase: the ship's running chase has this object (a body index, or the dropped target's slot)
+    if (context.bHasShip && Ships->IsChasing())
+    {
+        if (object.Kind == ESOLObjectKind::Body)
+        {
+            context.bIsChased = Ships->GetChaseOrder().BodyIndex == object.Index;
+        }
+        else if (object.Kind == ESOLObjectKind::DroppedTarget)
+        {
+            context.bIsChased = GetChasedDroppedTargetSlot() == object.Index;
+        }
+    }
     return context;
 }
 
@@ -334,6 +436,42 @@ bool USOLInteractionSubsystem::TargetObject(const FSOLObjectRef& object)
         mIsProxyRegistered = true;
     }
     return Targeting->SelectCandidate(Targeting->FindTargetableCandidate(TargetProxy));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a Chase Down on a dropped target through the chase proxy; false when the slot is empty or the order failed
+bool USOLInteractionSubsystem::ChaseDroppedTarget(const int32 slot)
+{
+    if (Combat == nullptr || Ships == nullptr || ChaseProxy == nullptr)
+    {
+        return false;
+    }
+    const TConstArrayView<bool> active = Combat->GetTargetActive();
+    const TConstArrayView<uint32> serials = Combat->GetTargetSpawnSerials();
+    if (!active.IsValidIndex(slot) || !active[slot] || !serials.IsValidIndex(slot))
+    {
+        return false;
+    }
+
+    // The proxy follows this drop only (its spawn serial), named as the menus name it
+    FString name = SOLMenuText::INTERACT_TARGET_NAME_PREFIX;
+    name.AppendInt(slot + 1);
+    ChaseProxy->Bind(Combat, slot, serials[slot], FName(*name));
+    FSOLChaseOrder order;
+    order.Targetable = TWeakInterfacePtr<ISOLTargetable>(ChaseProxy.Get());
+    return Ships->EngageChase(order);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the chase proxy's slot while the running chase is on a dropped target, else INDEX_NONE
+int32 USOLInteractionSubsystem::GetChasedDroppedTargetSlot() const
+{
+    if (Ships == nullptr || ChaseProxy == nullptr || !Ships->IsChasing()
+        || Ships->GetChaseOrder().Targetable.GetObject() != ChaseProxy.Get())
+    {
+        return INDEX_NONE;
+    }
+    return ChaseProxy->GetSlot();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -416,6 +554,19 @@ bool USOLInteractionSubsystem::Execute(const FSOLObjectRef& object, const ESOLAc
         break;
     case ESOLAction::Follow:
         bDone = bBody && FollowBody(object.Index);
+        break;
+    case ESOLAction::ChaseDown:
+        // Does not touch the selection (SDD 32 Q4): a dropped target goes through the chase proxy, a body by index
+        if (object.Kind == ESOLObjectKind::DroppedTarget)
+        {
+            bDone = ChaseDroppedTarget(object.Index);
+        }
+        else if (bBody)
+        {
+            FSOLChaseOrder order;
+            order.BodyIndex = object.Index;
+            bDone = Ships->EngageChase(order);
+        }
         break;
     case ESOLAction::JumpTo:
         bDone = bBody && JumpToBody(object.Index);
@@ -569,6 +720,18 @@ FSOLObjectRef USOLInteractionSubsystem::GetInfoObject() const
 ESOLAction USOLInteractionSubsystem::GetHintAction() const
 {
     return GetNowS() < mHintUntilS ? mHintAction : ESOLAction::Count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the "target lost" note shows now: within its window of the loss and while no order or chase runs
+bool USOLInteractionSubsystem::IsChaseTargetLostNoteShown() const
+{
+    if (Ships == nullptr || Ships->IsChasing() || Ships->GetAutopilotBodyIndex() != INDEX_NONE)
+    {
+        return false;
+    }
+    const double lostAtS = Ships->GetChaseTargetLostRealS();
+    return lostAtS >= 0.0 && GetNowS() - lostAtS < SOL::Chase::TARGET_LOST_NOTE_S;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -30,6 +30,7 @@ namespace
         { ESOLAction::Info, false },
         { ESOLAction::MoveTo, false },
         { ESOLAction::Follow, false },
+        { ESOLAction::ChaseDown, false },
         { ESOLAction::JumpTo, false },
         { ESOLAction::MatchSpeed, false },
         { ESOLAction::Communicate, true },
@@ -64,7 +65,7 @@ namespace
         { ESOLAction::Target, false },
         { ESOLAction::Info, false },
         { ESOLAction::Attack, false },
-        { ESOLAction::ChaseDown, true },
+        { ESOLAction::ChaseDown, false },
     };
 
     static_assert(UE_ARRAY_COUNT(ACTION_TABLE_BODY_ROWS) <= SOL::Interact::MAX_ACTIONS
@@ -219,11 +220,17 @@ ESOLActionBlock SOLActionTable::Evaluate(const ESOLObjectType type, const ESOLAc
         return block != ESOLActionBlock::None ? block
             : context.bIsFollowed ? ESOLActionBlock::AlreadyFollowing : ESOLActionBlock::None;
     }
+    case ESOLAction::ChaseDown:
+    {
+        const ESOLActionBlock block = ActionTableOrderBlock(context);
+        return block != ESOLActionBlock::None ? block
+            : context.bIsChased ? ESOLActionBlock::AlreadyChasing : ESOLActionBlock::None;
+    }
     case ESOLAction::JumpTo:
         return !context.bHasShip ? ESOLActionBlock::NoShip
             : context.bJumpWarping ? ESOLActionBlock::JumpWarping : ESOLActionBlock::None;
     default:
-        // ChaseDown, Communicate and Trade are placeholder rows only in v1
+        // Communicate and Trade are placeholder rows only in v1
         return ESOLActionBlock::NotYetAvailable;
     }
 }

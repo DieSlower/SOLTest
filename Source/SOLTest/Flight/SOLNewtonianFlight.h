@@ -66,8 +66,8 @@ struct FSOLGuidanceParams
     double BrakeAccelMps2 = 0.0;
     double FlipTimeS = 0.0;
     double MaxCruiseSpeedMps = SOL::MAX_SPEED_CAP_MPS;
-    double ArrivalRadiusM = 10.0;
-    double ArrivalSpeedMps = 1.0;
+    double ArrivalRadiusM = SOL::AUTOPILOT_ARRIVAL_RADIUS_M;
+    double ArrivalSpeedMps = SOL::AUTOPILOT_ARRIVAL_SPEED_MPS;
     double VelocityGainPerS = 2.0;
     double PassSpeedMps = 0.0;      // Route fly-through (SDD 20): speed still allowed at the target (0 = stop)
     double CaptureRadiusM = 0.0;    // Route fly-through: > 0 arrives once the step comes this close, at any speed

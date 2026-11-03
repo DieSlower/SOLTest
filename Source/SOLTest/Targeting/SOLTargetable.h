@@ -32,4 +32,11 @@ public:
 
     // Returns the target's snapshot in the Unreal-handed universe frame (meters, m/s); called once per frame, no allocation
     virtual FSOLTargetInfo GetTargetInfo() const = 0;
+
+    // Returns true while the target exists (a Chase Down ends when it turns false; SDD 32 section 3.6)
+    virtual bool IsTargetAlive() const { return true; }
+
+    // Returns the registry body the target moves with (its frame, whose velocity it is at rest in), or INDEX_NONE when
+    // it has none: then its own velocity is its frame's (a Chase Down holds on its approach side; SDD 32 section 3.6)
+    virtual int32 GetTargetFrameBodyIndex() const { return INDEX_NONE; }
 };

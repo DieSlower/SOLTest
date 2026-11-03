@@ -42,6 +42,8 @@ SOLSettingsModel::FSettingsValues SOLSettingsModel::Sanitized(const FSettingsVal
         defaults.HudEffectsStrength);
     result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, SOLSettingsRules::QUALITY_PRESET_COUNT - 1);
     result.OverlayPrefs = SOLOverlay::Sanitized(values.OverlayPrefs);
+    result.ChaseSafetyMargin = ClampOrDefault(values.ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MIN,
+        CHASE_SAFETY_MARGIN_MAX, defaults.ChaseSafetyMargin);
     return result;
 }
 
@@ -56,7 +58,7 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
         && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines
         && Near(x.HudEffectsStrength, y.HudEffectsStrength) && x.bMouseSteerAtStart == y.bMouseSteerAtStart
-        && SOLOverlay::AreEqual(x.OverlayPrefs, y.OverlayPrefs);
+        && SOLOverlay::AreEqual(x.OverlayPrefs, y.OverlayPrefs) && Near(x.ChaseSafetyMargin, y.ChaseSafetyMargin);
 }
 
 //////////////////////////////////////////////////////////////////////////

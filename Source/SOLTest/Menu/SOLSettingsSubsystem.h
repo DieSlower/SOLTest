@@ -68,6 +68,10 @@ public:
     // Returns the applied (committed) values
     const SOLSettingsModel::FSettingsValues& GetSavedValues() const { return mModel.Saved; }
 
+    // Returns the applied Chase Down safety margin (SDD 32 section 3.10; a pending edit counts only after Apply), read
+    // by the ship subsystem when it plans a chase
+    float GetChaseSafetyMargin() const { return mModel.Saved.ChaseSafetyMargin; }
+
     // Sets the pending values (sanitized by the model) and previews them
     void SetPendingValues(const SOLSettingsModel::FSettingsValues& values);
 

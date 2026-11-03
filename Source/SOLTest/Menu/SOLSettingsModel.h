@@ -31,6 +31,7 @@ namespace SOLSettingsModel
         bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;      // Steering toggle on at flight start (SDD 19
                                                                         // Amendment 5; default off)
         SOLOverlay::FOverlayPrefs OverlayPrefs = SOLOverlay::MakeDefaultPrefs();  // Overlay Menu choices (SDD 22)
+        float ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT;   // Chase Down meter floor (SDD 32)
     };
 
     struct FSettingsModel

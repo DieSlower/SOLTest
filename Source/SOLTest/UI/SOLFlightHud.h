@@ -280,6 +280,7 @@ private:
         Autopilot,
         AutopilotHint,
         AutopilotCancel,
+        ChaseActivity,
         Route,
         TargetName,
         TargetDistance,

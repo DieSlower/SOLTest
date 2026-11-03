@@ -58,3 +58,11 @@ FSOLTargetInfo USOLDroppedTargetTargetable::GetTargetInfo() const
     mLastInfo = info;
     return info;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the combat frame body the drop is held relative to, or INDEX_NONE once it is gone
+int32 USOLDroppedTargetTargetable::GetTargetFrameBodyIndex() const
+{
+    const USOLCombatSubsystem* combat = mCombat.Get();
+    return combat != nullptr && IsBoundTargetAlive() ? combat->GetTargetFrameBodyIndex(mSlot) : INDEX_NONE;
+}

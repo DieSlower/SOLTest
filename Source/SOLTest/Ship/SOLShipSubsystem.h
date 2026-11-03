@@ -9,10 +9,14 @@
 #include "Flight/SOLFlightMode.h"
 #include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipSmokeFlight.h"
+#include "Targeting/SOLTargetable.h"
 
 #include "CoreMinimal.h"
 #include "Mass/EntityHandle.h"
 #include "Subsystems/WorldSubsystem.h"
+#include "UObject/WeakInterfacePtr.h"
+
+#include <cfloat>
 
 #include "SOLShipSubsystem.generated.h"
 
@@ -34,6 +38,72 @@ struct FSOLAutopilotPointOrder
     double PassSpeedMps = 0.0;                      // Fly-through speed at the point (0 = stop)
     double CaptureRadiusM = 0.0;                    // Fly-through capture radius (0 = stop)
     bool bStayAutoOnArrival = false;                // Arrival keeps AUTO and the order (the route sets the next one)
+};
+
+// What a Chase Down chases (SDD 32 section 3.6), target-agnostic: a body by registry index, else a targetable (a
+// dropped target now, an NPC ship in #40). The ship subsystem resolves it into an FSOLChaseTargetSample every frame
+struct FSOLChaseOrder
+{
+    int32 BodyIndex = INDEX_NONE;                   // A registry body, or INDEX_NONE to chase the targetable
+    TWeakInterfacePtr<ISOLTargetable> Targetable;   // Chased when BodyIndex is INDEX_NONE (the caller keeps it alive)
+};
+
+// One frame's resolution of a chase source (Unreal-handed universe frame, metres, m/s)
+struct FSOLChaseTargetSample
+{
+    FName Name;
+    FVector3d PositionM = FVector3d::ZeroVector;
+    FVector3d VelocityMps = FVector3d::ZeroVector;
+    FVector3d AccelMps2 = FVector3d::ZeroVector;        // Own acceleration beyond its frame body's gravity (estimated)
+    FVector3d FrameVelocityMps = FVector3d::ZeroVector; // Velocity of the frame it moves in (a body: its own)
+    int32 FrameBodyIndex = INDEX_NONE;                  // Body it moves with (a body: itself), or INDEX_NONE
+    double RadiusM = 0.0;
+    double TrailM = 0.0;                                // Tail distance from its centre (SDD 32 section 3.6 table)
+    bool bAlive = false;
+};
+
+// A running chase's HUD and verification snapshot (USOLShipSubsystem::GetChaseStatus)
+struct FSOLChaseStatus
+{
+    bool bActive = false;                       // A chase runs
+    bool bTargetLost = false;                   // The last chase ended because its target was lost (until the next)
+    FName TargetName;
+    double TargetDistanceM = 0.0;               // Ship to the target's centre
+    double AimDistanceM = 0.0;                  // Ship to the tail point
+    double ClosingSpeedMps = 0.0;               // Toward the tail point in the target's frame (< 0 receding)
+    double TimeToInterceptS = DBL_MAX;          // Predicted, counting down between replans (0 on the tail)
+    bool bHolding = false;                      // On the tail (guidance Arrived): the HUD shows HOLD
+    ESOLChaseActivity Activity = ESOLChaseActivity::Cool;
+    double LimitG = 0.0;                        // The last substep's G limit
+    double FloorMeter = 0.0;                    // The meter floor (EffectiveMeterFloor of the setting)
+    double ResumeMeter = 0.0;                   // A cool off ends at this meter
+    bool bCooling = false;
+    double BurstG = 0.0;                        // The plan's levels
+    double BrakePlanG = 0.0;
+    double TrailM = 0.0;
+};
+
+// The running chase order kept by the ship subsystem: the source, the plan, the replan clocks and the target estimate
+struct FSOLChaseOrderState
+{
+    FSOLChaseOrder Order;
+    FSOLChasePlan Plan;
+    FSOLChaseTargetSample Sample;                           // This frame's target
+    FVector3d ApproachDir = FVector3d(0.0, 0.0, 1.0);       // Target to ship at engage, fixed in its non-rotating frame
+    FVector3d PrevRelVelocityMps = FVector3d::ZeroVector;   // Last frame's frame-relative velocity (accel estimate)
+    FVector3d AccelEstimateMps2 = FVector3d::ZeroVector;    // Low-pass own acceleration (targetables)
+    FVector3d PlanTargetRelVelocityMps = FVector3d::ZeroVector; // Target's frame-relative velocity at the last plan
+    double PlanClosingSpeedMps = 0.0;                       // Closing speed at the last plan
+    double PlanStartMeter = 1.0;                            // Meter at the last plan
+    double PlanFloorMeter = 0.0;                            // Floor the last plan used
+    double SinceReplanRealS = 0.0;                          // Real seconds since the last plan
+    double SinceReplanSimS = 0.0;                           // Sim seconds since the last plan
+    double ShipLagS = 0.0;                                  // Sim seconds the ship's state lags the Sample (this
+                                                            // frame's bodies moved on since the ship's last step)
+    int32 PrevFrameBodyIndex = INDEX_NONE;                  // Frame body of last frame's sample
+    bool bHasPrevVelocity = false;                          // PrevRelVelocityMps is valid
+    bool bPlanBoost = false;                                // Tab boost toggle at the last plan
+    bool bActive = false;
 };
 
 // Fired at the end of every ship step (after the observer sync, before the anchor update) with the step's real delta
@@ -58,6 +128,12 @@ DECLARE_MULTICAST_DELEGATE_OneParam(FSOLOnShipsStepped, float /*realDeltaSeconds
  * (USOLTargetingSubsystem::LockToBodyIndex), which the next step's assist uses. L presses arrive through
  * RequestSurfaceLockToggle and are consumed by exactly one step as its edge-triggered press. While engaged, the step
  * names the locked body in the ship's control fragment and the next flight run applies the alignment per substep.
+ *
+ * Chase Down (SDD 32): EngageChase holds the order (a body or an ISOLTargetable). Each step, after the targeting
+ * refresh and before the flight run, the source is resolved into an FSOLChaseTargetSample (a lost target ends the chase
+ * in ASSISTED), the target and tail go into the control fragment, and the chase is replanned (SOLChase::PlanChase) on
+ * the SDD 32 section 3.5 / 3.8 triggers. Every cancel of the autopilot (the AUTO cancel rule, C, ResetPilotState, any
+ * other engage) also ends a chase. A chase never counts an autopilot arrival.
  *
  * All ship-facing values are in the Unreal-handed universe frame (SOLRender::EclipticToUnreal applied, meters).
  */
@@ -170,6 +246,29 @@ public:
     // Returns whether the current autopilot order is a route waypoint (false without an order)
     bool IsAutopilotPointOrder() const;
 
+    // Starts a Chase Down (SDD 32) on a body or a targetable, replacing any autopilot order: enters AUTO with the last
+    // frame's held input latched (as EngageAutopilot), gives a new order serial (an active route pauses), leaves the
+    // target selection alone and plans at once. False (nothing changed) without a ship or for an invalid or dead target
+    bool EngageChase(const FSOLChaseOrder& order);
+
+    // Ends a running chase in assisted flight; does nothing when no chase runs (an autopilot order is left alone)
+    void DisengageChase();
+
+    // Returns true while a Chase Down runs
+    bool IsChasing() const { return mChase.bActive; }
+
+    // Returns the running (or last) chase's source
+    const FSOLChaseOrder& GetChaseOrder() const { return mChase.Order; }
+
+    // Returns the chase's HUD snapshot (bActive false without a chase; bTargetLost after one ended on a lost target)
+    FSOLChaseStatus GetChaseStatus() const;
+
+    // Returns how many chases ended because their target was lost (the HUD starts its note when this changes)
+    uint32 GetChaseTargetLostCount() const { return mChaseTargetLostCount; }
+
+    // Returns the world real time of the last chase target loss (negative: none yet), which times the HUD note
+    double GetChaseTargetLostRealS() const { return mChaseTargetLostRealS; }
+
     // Returns how many times the autopilot arrived so far (bodies and waypoints); a route compares it each frame
     uint32 GetAutopilotArrivalCount() const { return mAutopilotArrivalCount; }
 
@@ -232,8 +331,25 @@ private:
     // Remembers this frame's bodies and reference frame as the previous state for the next frame's carry
     void SaveFrameHistory();
 
-    // Clears the autopilot order fragment and guidance, without touching the flight mode
+    // Clears the autopilot order fragment and guidance, and any chase, without touching the flight mode
     void ClearAutopilotOrder();
+
+    // Ends the chase order (fragment, run state and plan), without touching the flight mode or the autopilot order
+    void ClearChaseOrder();
+
+    // Resolves a chase's source into its Sample for this frame (simDeltaS feeds a targetable's acceleration estimate,
+    // kept in the same state); false when the source is invalid or gone
+    bool ResolveChaseTarget(double simDeltaS, FSOLChaseOrderState& inOutChase) const;
+
+    // Per step before the flight run: resolves the target (ending the chase on a lost one), writes the chase inputs to
+    // the control fragment and replans per SDD 32 sections 3.5 and 3.8
+    void UpdateChase(double realDeltaS);
+
+    // Writes this frame's target, tail and planning gravity to the control fragment
+    void WriteChaseControl();
+
+    // Plans the chase from the ship's current state; the new plan replaces the current one per ShouldReplacePlan
+    void ReplanChase();
 
     // Advances the surface-lock state one step (consuming a pending L press) and names the body to align to, if any
     void UpdateSurfaceLock();
@@ -276,6 +392,10 @@ private:
     uint32 mAutopilotArrivalCount = 0;                     // Autopilot arrivals so far (SDD 20 routes)
     uint32 mAutopilotOrderSerial = 0;                      // Serial of the current / last autopilot order
     uint32 mLastArrivalOrderSerial = 0;                    // Serial of the order the last arrival belonged to
+    uint32 mChaseTargetLostCount = 0;                      // Chases ended by a lost target
+    double mChaseTargetLostRealS = -1.0;                   // World real time of the last loss (negative: none)
+    FSOLChaseOrderState mChase;                            // The Chase Down order (SDD 32), bActive while it runs
+    bool mIsChaseTargetLost = false;                       // The last chase ended on a lost target (until the next)
     bool mIsAutopilotPassThrough = false;                  // Point order whose arrival keeps AUTO (route waypoint)
     bool mHasFrameHistory = false;                         // False until the first step has saved the bodies
     bool mIsSurfaceLockToggleRequested = false;            // L pressed since the last step

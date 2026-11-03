@@ -4,6 +4,7 @@
 */
 
 #include "Flight/SOLTargeting.h"
+#include "Targeting/SOLTargetable.h"
 
 #include "Tests/SOLTestHelpers.h"
 
@@ -396,6 +397,59 @@ bool FSOLTargetingReferenceTest::RunTest(const FString& /*parameters*/)
         SOLTargeting::ResolveReferenceVelocity(false, &target, anchor) == anchor);
     TestTrue(TEXT("Lock inactive without target: anchor velocity"),
         SOLTargeting::ResolveReferenceVelocity(false, nullptr, anchor) == anchor);
+    return true;
+}
+
+// --- ISOLTargetable::IsTargetAlive (issue #32, SDD 32 section 3.6) ---
+
+namespace
+{
+    // A targetable that implements only GetTargetInfo and keeps the interface's IsTargetAlive default
+    class FTargetingTestDefaultTargetable final : public ISOLTargetable
+    {
+    public:
+
+        //////////////////////////////////////////////////////////////////////////
+        // Returns a fixed snapshot named "Fake"
+        virtual FSOLTargetInfo GetTargetInfo() const override
+        {
+            FSOLTargetInfo info;
+            info.Name = FName(TEXT("Fake"));
+            info.PositionM = TARGETING_SHIP_M;
+            return info;
+        }
+    };
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLTargetingTargetableAliveDefaultTest, "SOLTest.Targeting.TargetableAliveByDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A targetable that does not override IsTargetAlive reports itself alive, called directly or through the interface
+bool FSOLTargetingTargetableAliveDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    const FTargetingTestDefaultTargetable fake;
+    const ISOLTargetable& targetable = fake;
+    TestTrue(TEXT("Alive by default"), targetable.IsTargetAlive());
+    TestTrue(TEXT("Still alive on a second call"), targetable.IsTargetAlive());
+    TestEqual(TEXT("Its snapshot is unaffected"), targetable.GetTargetInfo().Name, FName(TEXT("Fake")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLTargetingTargetableFrameBodyDefaultTest,
+    "SOLTest.Targeting.TargetableFrameBodyNoneByDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A targetable that does not override GetTargetFrameBodyIndex has no frame body (INDEX_NONE; SDD 32 Amendment 2c)
+bool FSOLTargetingTargetableFrameBodyDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    const FTargetingTestDefaultTargetable fake;
+    const ISOLTargetable& targetable = fake;
+    TestEqual(TEXT("No frame body by default"), targetable.GetTargetFrameBodyIndex(), static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("Still none on a second call"), targetable.GetTargetFrameBodyIndex(),
+        static_cast<int32>(INDEX_NONE));
+    TestTrue(TEXT("Still alive"), targetable.IsTargetAlive());
     return true;
 }
 

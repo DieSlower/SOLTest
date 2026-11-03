@@ -383,10 +383,10 @@ double USOLNpcSubsystem::ViewPixelAngleRad() const
 void USOLNpcSubsystem::MatchShipToBattleBody()
 {
     // An explicit exception to SDD 18 decision 1 (nothing writes velocity directly), for the demo / benchmark scene
-    // only: a ship flying an autopilot order keeps its velocity
+    // only: a ship flying an autopilot order or a chase keeps its velocity
     const TConstArrayView<FVector3d> bodyVelocitiesMps = BodyRegistry->GetUnrealFrameCache().VelocitiesMps;
     if (mGroups.BattleCount <= 0 || !Ship->HasPlayerShip() || Ship->GetAutopilotBodyIndex() != INDEX_NONE
-        || !bodyVelocitiesMps.IsValidIndex(mGroups.BattleBody))
+        || Ship->IsChasing() || !bodyVelocitiesMps.IsValidIndex(mGroups.BattleBody))
     {
         return;
     }

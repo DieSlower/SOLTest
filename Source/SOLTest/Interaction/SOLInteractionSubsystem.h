@@ -146,6 +146,17 @@ public:
     // Returns the icon hits of the last SetIconHits (verification)
     TConstArrayView<FSOLIconHit> GetIconHits() const { return mHits; }
 
+    // Starts a Chase Down on a dropped target through the chase proxy (never a targeting candidate, so the selection
+    // and R / F cycling are unaffected; SDD 32 section 3.6); false when the slot holds no target or the order failed
+    bool ChaseDroppedTarget(int32 slot);
+
+    // Returns the chase proxy's slot while the running chase is on a dropped target, else INDEX_NONE
+    int32 GetChasedDroppedTargetSlot() const;
+
+    // Returns whether the HUD shows "CHASE ENDED: target lost" now: for SOL::Chase::TARGET_LOST_NOTE_S real seconds
+    // after the loss, and only while no autopilot order or chase runs (a new order's marker is never hidden)
+    bool IsChaseTargetLostNoteShown() const;
+
 protected:
 
     // Limits the subsystem to game and PIE worlds so editor and automation worlds are unaffected
@@ -200,6 +211,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLDroppedTargetTargetable> TargetProxy;    // Created once, registered while a drop is targeted
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLDroppedTargetTargetable> ChaseProxy;     // Created once, bound to the chased drop (never registered)
 
     TArray<FSOLIconHit> mHits;                              // Icons the HUD drew last (reserved once)
     TArray<FSOLAsteroidDef> mNamedAsteroids;                // Same list and order as the icon layer's

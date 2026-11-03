@@ -5,6 +5,7 @@
 
 #include "Ship/SOLShipFlightProcessor.h"
 
+#include "Flight/SOLChase.h"
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLNewtonianFlight.h"
 #include "Level/SOLSurfaceLock.h"
@@ -48,6 +49,7 @@ void USOLShipFlightProcessor::ConfigureQueries(const TSharedRef<FMassEntityManag
 {
     mQuery.AddRequirement<FSOLShipStateFragment>(EMassFragmentAccess::ReadWrite);
     mQuery.AddRequirement<FSOLShipControlFragment>(EMassFragmentAccess::ReadOnly);
+    mQuery.AddRequirement<FSOLShipChaseFragment>(EMassFragmentAccess::ReadWrite, EMassFragmentPresence::Optional);
     mQuery.AddConstSharedRequirement<FSOLShipParamsFragment>();
 }
 
@@ -66,6 +68,7 @@ void USOLShipFlightProcessor::Execute(FMassEntityManager& /*entityManager*/, FMa
 
     // Fixed-length substeps keep Newtonian gravity stable; the cap covers SOL::MAX_FRAME_DELTA_S, so the min is a guard
     const double budgetS = FMath::Min(deltaS, SOL::SHIP_MAX_SUBSTEP_S * SOL::SHIP_MAX_SUBSTEPS);
+    mFrameRealS = budgetS;
     mSubstepCount = FMath::Clamp(FMath::CeilToInt32(budgetS / SOL::SHIP_MAX_SUBSTEP_S), 1, SOL::SHIP_MAX_SUBSTEPS);
     mSubstepS = budgetS / mSubstepCount;
     mCarryPerSubstepM = mFrame.CarryPositionM / static_cast<double>(mSubstepCount);
@@ -115,6 +118,8 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
 {
     const TArrayView<FSOLShipStateFragment> states = context.GetMutableFragmentView<FSOLShipStateFragment>();
     const TConstArrayView<FSOLShipControlFragment> controls = context.GetFragmentView<FSOLShipControlFragment>();
+    // Only the player ship's archetype carries the chase fragment; an empty view means a chunk without it
+    const TArrayView<FSOLShipChaseFragment> chases = context.GetMutableFragmentView<FSOLShipChaseFragment>();
     const FSOLFlightParams& flightParams = context.GetConstSharedFragment<FSOLShipParamsFragment>().Params;
 
     const TConstArrayView<FVector3d> bodyVelocitiesMps = mBodyCache->VelocitiesMps;
@@ -137,10 +142,14 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         double gLoad = 0.0;
         int32 contactBody = INDEX_NONE;
         bool bPointArrived = false;
+        FSOLShipChaseFragment* const chaseFragment = chases.Num() > 0 ? &chases[entity] : nullptr;
+        const bool bChase = chaseFragment != nullptr && chaseFragment->bChase;
+        FSOLChaseRunState chaseRun;
+        FSOLChaseGLimit chaseLimit;
 
-        // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot
-        // under warp integrates the frame's sim time itself and needs no carry
-        const bool bSimTime = bAutopilot && mSimSubstepCount > 0;
+        // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot or
+        // a chase under warp integrates the frame's sim time itself and needs no carry
+        const bool bSimTime = (bAutopilot || bChase) && mSimSubstepCount > 0;
         const int32 substepCount = bSimTime ? mSimSubstepCount : mSubstepCount;
         const double substepS = bSimTime ? mSimSubstepS : mSubstepS;
         const FVector3d* const substepBodies = bSimTime ? mSimSubstepBodyPositionsM.GetData()
@@ -149,6 +158,26 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         {
             state.VelocityMps += mFrame.CarryVelocityMps;
         }
+
+        // Chase target interpolation inputs: the offset from its frame body at the frame end (that body's last
+        // boundary is its end-of-frame position) and the velocity the offset moves at; no frame body, absolute
+        int32 chaseFrameBody = INDEX_NONE;
+        FVector3d chaseOffsetEndM = FVector3d::ZeroVector;
+        FVector3d chaseRelVelocityMps = FVector3d::ZeroVector;
+        FVector3d chaseOffsetVelocityMps = FVector3d::ZeroVector;
+        if (bChase)
+        {
+            const FSOLShipChaseFragment& chase = *chaseFragment;
+            chaseRun = chase.ChaseRun;
+            chaseFrameBody = chase.ChaseFrameBodyIndex >= 0 && chase.ChaseFrameBodyIndex < bodyCount
+                ? chase.ChaseFrameBodyIndex : INDEX_NONE;
+            chaseOffsetEndM = chaseFrameBody != INDEX_NONE
+                ? chase.ChaseTargetM - substepBodies[substepCount * bodyCount + chaseFrameBody] : chase.ChaseTargetM;
+            chaseRelVelocityMps = chase.ChaseTargetVelocityMps - chase.ChaseFrameVelocityMps;
+            chaseOffsetVelocityMps = chaseFrameBody != INDEX_NONE ? chaseRelVelocityMps : chase.ChaseTargetVelocityMps;
+        }
+        const double boundaryRealS = mFrameRealS / substepCount;
+        const double warpFactor = FMath::Max(mFrame.WarpFactor, 1.0);
 
         for (int32 substep = 0; substep < substepCount; ++substep)
         {
@@ -159,7 +188,29 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
             const FSOLShipState before = state;
             FSOLFlightStepOutput stepOutput;
 
-            if (bAutopilot && controlFragment.bAutopilotPoint && bPointArrived
+            if (bChase)
+            {
+                // Chase Down (SDD 32): the target where it is at this substep's start, its acceleration (its frame
+                // body's gravity from the others, plus its own), the tail point, then the G-policy step. The budgets
+                // subtract the stronger of the gravity here and at the tail point
+                const double remainingS = (substepCount - substep) * boundaryRealS;
+                FVector3d targetM = SOLFlight::BodyPositionAtSubstep(chaseOffsetEndM, chaseOffsetVelocityMps,
+                    warpFactor, remainingS);
+                const FSOLShipChaseFragment& chase = *chaseFragment;
+                FVector3d targetAccelMps2 = chase.ChaseTargetAccelMps2;
+                if (chaseFrameBody != INDEX_NONE)
+                {
+                    const FVector3d& frameBodyM = bodiesBeforeM[chaseFrameBody];
+                    targetM += frameBodyM;
+                    targetAccelMps2 += SOLFlight::GravityAcceleration(frameBodyM, bodiesBeforeM, bodyGMs, bodyRadiiM);
+                }
+                const FVector3d aimM = SOLChase::ChaseAimPointM(targetM, chaseRelVelocityMps, chase.ChaseApproachDir,
+                    chase.ChaseTrailM);
+                state = SOLFlight::ChaseStep(state, aimM, chase.ChaseTargetVelocityMps, targetAccelMps2, gravityMps2,
+                    chase.ChasePlanGravityMps2, flightParams, meter, chase.ChasePolicy, control.bBoost, substepS,
+                    chaseRun, &stepOutput, &guidance, &chaseLimit);
+            }
+            else if (bAutopilot && controlFragment.bAutopilotPoint && bPointArrived
                 && controlFragment.AutopilotCaptureRadiusM > 0.0)
             {
                 // A fly-through captured earlier this frame: coast through the rest of it (homing on the passed point
@@ -255,6 +306,12 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         stateFragment.GMeter = meter;
         stateFragment.GLoadG = gLoad;
         stateFragment.Guidance = guidance;
-        stateFragment.bAutopilotArrived = bAutopilot && (bPointArrived || guidance.Phase == ESOLGuidancePhase::Arrived);
+        if (chaseFragment != nullptr)
+        {
+            chaseFragment->ChaseRun = chaseRun;
+            chaseFragment->ChaseLimit = chaseLimit;
+        }
+        stateFragment.bAutopilotArrived = !bChase && bAutopilot
+            && (bPointArrived || guidance.Phase == ESOLGuidancePhase::Arrived);
     }
 }

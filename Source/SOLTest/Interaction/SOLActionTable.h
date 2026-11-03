@@ -58,7 +58,7 @@ enum class ESOLAction : uint8
     JumpTo,         // Jump next to it
     MatchSpeed,     // Lock the reference frame to it (as M)
     Attack,         // Select it and show the fire hint
-    ChaseDown,      // Issue #32: greyed until it lands
+    ChaseDown,      // Issue #32: chase it down (autopilot)
     Communicate,    // Placeholder
     Trade,          // Placeholder
     Count,
@@ -78,6 +78,7 @@ enum class ESOLActionBlock : uint8
     AlreadyMatched,     // The reference frame is locked to it already
     AlreadyMovingTo,    // The autopilot flies to it already
     AlreadyFollowing,   // The autopilot keeps station on it already
+    AlreadyChasing,     // A Chase Down runs on it already (issue #32)
     Count,
 };
 
@@ -92,6 +93,7 @@ struct FSOLActionContext
     bool bIsFrameLocked = false;    // The reference frame is locked to the object
     bool bIsMoveTarget = false;     // The autopilot flies a Move To order to the object
     bool bIsFollowed = false;       // The autopilot keeps station on the object
+    bool bIsChased = false;         // A Chase Down runs on the object (issue #32)
 };
 
 // One action of a menu and why it is unavailable (Block None = available)
@@ -126,14 +128,15 @@ struct FSOLActionList
  *   AlreadyMovingTo if bIsMoveTarget;
  * - Follow: as MoveTo, with AlreadyFollowing if bIsFollowed in place of the last rule;
  * - JumpTo: NoShip unless bHasShip; JumpWarping if bJumpWarping;
- * - ChaseDown, Communicate, Trade: only ever placeholder rows in v1.
+ * - ChaseDown: as MoveTo, with AlreadyChasing if bIsChased in place of the last rule;
+ * - Communicate, Trade: only ever placeholder rows in v1.
  *
  * Rows (v1):
- * - Star, Planet, Moon, Dwarf: Target, Info, MoveTo, Follow, JumpTo, MatchSpeed, Communicate (placeholder),
+ * - Star, Planet, Moon, Dwarf: Target, Info, MoveTo, Follow, ChaseDown, JumpTo, MatchSpeed, Communicate (placeholder),
  *   Trade (placeholder);
  * - Asteroid: Target, Info, MoveTo (placeholder), Follow (placeholder), JumpTo (placeholder), MatchSpeed;
  * - Ship: Target, Info, ChaseDown (placeholder), Follow (placeholder), Communicate (placeholder), Trade (placeholder);
- * - DroppedTarget: Target, Info, Attack, ChaseDown (placeholder).
+ * - DroppedTarget: Target, Info, Attack, ChaseDown.
  */
 namespace SOLActionTable
 {

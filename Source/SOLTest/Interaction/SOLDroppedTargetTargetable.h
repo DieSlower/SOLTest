@@ -40,6 +40,12 @@ public:
     // live one after the drop is gone
     virtual FSOLTargetInfo GetTargetInfo() const override;
 
+    // Returns true while the bound slot still holds the same drop (IsBoundTargetAlive)
+    virtual bool IsTargetAlive() const override { return IsBoundTargetAlive(); }
+
+    // Returns the combat frame body the drop is held relative to, or INDEX_NONE once it is gone
+    virtual int32 GetTargetFrameBodyIndex() const override;
+
 private:
 
     TWeakObjectPtr<USOLCombatSubsystem> mCombat;    // The combat subsystem that owns the slot

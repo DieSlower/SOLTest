@@ -518,4 +518,193 @@ bool FSOLHudFormatFlightModeColorsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// --- Chase Down marker (SDD 32 section 3.9) ---
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts AppendSpeedMps writes an exact string into an empty buffer
+    void HudFormatExpectSpeed(FAutomationTestBase& test, const double speedMps, const TCHAR* expected)
+    {
+        FString text;
+        SOLHudFormat::AppendSpeedMps(text, speedMps);
+        test.TestEqual(FString::Printf(TEXT("AppendSpeedMps(%.3f)"), speedMps), text, FString(expected));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts AppendChaseMarker writes an exact string into an empty buffer
+    void HudFormatExpectChaseMarker(FAutomationTestBase& test, const TCHAR* what, const FString& name,
+        const double distanceM, const double closingMps, const double timeS, const bool bHolding, const FString& expected)
+    {
+        FString text;
+        SOLHudFormat::AppendChaseMarker(text, name, distanceM, closingMps, timeS, bHolding);
+        test.TestEqual(FString::Printf(TEXT("AppendChaseMarker: %s"), what), text, expected);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts AppendChaseActivity writes an exact string into an empty buffer
+    void HudFormatExpectChaseActivity(FAutomationTestBase& test, const TCHAR* what, const ESOLChaseActivity activity,
+        const double limitG, const double resumeMeter, const TCHAR* expected)
+    {
+        FString text;
+        SOLHudFormat::AppendChaseActivity(text, activity, limitG, resumeMeter);
+        test.TestEqual(FString::Printf(TEXT("AppendChaseActivity: %s"), what), text, FString(expected));
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatChaseSpeedTest, "SOLTest.HudFormat.ChaseSpeed",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Below 1000 m/s prints m/s with one decimal, from 1000 m/s km/s with two decimals; the sign is kept; appends
+bool FSOLHudFormatChaseSpeedTest::RunTest(const FString& /*parameters*/)
+{
+    // m/s band
+    HudFormatExpectSpeed(*this, 0.0, TEXT("0.0 m/s"));
+    HudFormatExpectSpeed(*this, 12.3, TEXT("12.3 m/s"));
+    HudFormatExpectSpeed(*this, 512.3, TEXT("512.3 m/s"));
+    HudFormatExpectSpeed(*this, 999.9, TEXT("999.9 m/s"));
+
+    // km/s band, from exactly 1000 m/s
+    HudFormatExpectSpeed(*this, 1000.0, TEXT("1.00 km/s"));
+    HudFormatExpectSpeed(*this, 1200.0, TEXT("1.20 km/s"));
+    HudFormatExpectSpeed(*this, 4500.0, TEXT("4.50 km/s"));
+    HudFormatExpectSpeed(*this, 29780.0, TEXT("29.78 km/s"));
+
+    // Negative speeds (opening, not closing) keep their minus sign in the unit picked by magnitude
+    HudFormatExpectSpeed(*this, -12.3, TEXT("-12.3 m/s"));
+    HudFormatExpectSpeed(*this, -3200.0, TEXT("-3.20 km/s"));
+    HudFormatExpectSpeed(*this, -1000.0, TEXT("-1.00 km/s"));
+
+    // Light-speed band ends in the c unit
+    FString light;
+    SOLHudFormat::AppendSpeedMps(light, 0.1 * HUDFORMAT_C_MPS);
+    TestTrue(FString::Printf(TEXT("0.1c reads in c (got \"%s\")"), *light), light.EndsWith(TEXT(" c")));
+
+    // Appends after existing text, never resets it
+    FString text(TEXT("closing "));
+    SOLHudFormat::AppendSpeedMps(text, 1200.0);
+    TestEqual(TEXT("Appends after a prefix"), text, FString(TEXT("closing 1.20 km/s")));
+    SOLHudFormat::AppendSpeedMps(text, 12.3);
+    TestEqual(TEXT("Appends again"), text, FString(TEXT("closing 1.20 km/s12.3 m/s")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatChaseMarkerTest, "SOLTest.HudFormat.ChaseMarker",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// "CHASE > <name>  <distance>  closing <speed>  T <time>", T HOLD on the tail, T -- for NaN, negative or huge times
+bool FSOLHudFormatChaseMarkerTest::RunTest(const FString& /*parameters*/)
+{
+    const FString moon(TEXT("Moon"));
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+
+    // The SDD example: 384400 m, 1200 m/s, 200 s
+    HudFormatExpectChaseMarker(*this, TEXT("SDD example"), moon, 384400.0, 1200.0, 200.0, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T 3:20")));
+
+    // Short range, m and m/s, a time under a minute
+    HudFormatExpectChaseMarker(*this, TEXT("short range"), FString(TEXT("Ceres")), 512.3, 12.3, 45.0, false,
+        FString(TEXT("CHASE > Ceres  512.3 m  closing 12.3 m/s  T 45 s")));
+
+    // Long range: AU distance, an hours time and a days time follow the existing formatters
+    HudFormatExpectChaseMarker(*this, TEXT("AU and hours"), FString(TEXT("Mars")), SOLTestHelpers::AU_M, 29780.0,
+        10927.0, false, FString(TEXT("CHASE > Mars  1.0000 AU  closing 29.78 km/s  T 3:02:07")));
+    HudFormatExpectChaseMarker(*this, TEXT("days"), moon, 384400.0, 1200.0, 90061.0, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T 1 d 01 h")));
+
+    // The fields match the shared formatters exactly
+    {
+        FString expected(TEXT("CHASE > Moon  "));
+        SOLHudFormat::AppendDistanceM(expected, 23402900.0);
+        expected += TEXT("  closing ");
+        SOLHudFormat::AppendSpeedMps(expected, 4500.0);
+        expected += TEXT("  T ");
+        SOLHudFormat::AppendDurationS(expected, 725.0);
+        HudFormatExpectChaseMarker(*this, TEXT("built from the shared formatters"), moon, 23402900.0, 4500.0, 725.0,
+            false, expected);
+    }
+
+    // Opening (negative closing speed) keeps its sign
+    HudFormatExpectChaseMarker(*this, TEXT("opening"), moon, 384400.0, -3200.0, 200.0, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing -3.20 km/s  T 3:20")));
+
+    // On the tail: T HOLD
+    HudFormatExpectChaseMarker(*this, TEXT("holding"), moon, 512.3, 0.0, 200.0, true,
+        FString(TEXT("CHASE > Moon  512.3 m  closing 0.0 m/s  T HOLD")));
+
+    // Unknown time: NaN, negative, infinite or >= 1e12 s reads T --
+    HudFormatExpectChaseMarker(*this, TEXT("NaN time"), moon, 384400.0, 1200.0, nan, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T --")));
+    HudFormatExpectChaseMarker(*this, TEXT("negative time"), moon, 384400.0, 1200.0, -5.0, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T --")));
+    HudFormatExpectChaseMarker(*this, TEXT("infinite time"), moon, 384400.0, 1200.0, inf, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T --")));
+    HudFormatExpectChaseMarker(*this, TEXT("time at 1e12"), moon, 384400.0, 1200.0, 1.0e12, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T --")));
+    HudFormatExpectChaseMarker(*this, TEXT("time above 1e12"), moon, 384400.0, 1200.0, 5.0e13, false,
+        FString(TEXT("CHASE > Moon  384.4 km  closing 1.20 km/s  T --")));
+
+    // Appends after existing text, never resets it
+    FString text(TEXT(">> "));
+    SOLHudFormat::AppendChaseMarker(text, moon, 384400.0, 1200.0, 200.0, false);
+    TestEqual(TEXT("Appends after a prefix"), text,
+        FString(TEXT(">> CHASE > Moon  384.4 km  closing 1.20 km/s  T 3:20")));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatChaseActivityTest, "SOLTest.HudFormat.ChaseActivity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The activity line: BURST / COOL (with the resume percent) / BRAKE / BRAKE COOL with one-decimal G, or HOLD; appends
+bool FSOLHudFormatChaseActivityTest::RunTest(const FString& /*parameters*/)
+{
+    HudFormatExpectChaseActivity(*this, TEXT("burst"), ESOLChaseActivity::Burst, 6.8, 0.45, TEXT("BURST 6.8 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("cool"), ESOLChaseActivity::Cool, 1.5, 0.45,
+        TEXT("COOL 1.5 G (resume at 45%)"));
+    HudFormatExpectChaseActivity(*this, TEXT("brake burst"), ESOLChaseActivity::BrakeBurst, 6.8, 0.45,
+        TEXT("BRAKE 6.8 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("brake cool"), ESOLChaseActivity::BrakeCool, 1.5, 0.45,
+        TEXT("BRAKE COOL 1.5 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("hold"), ESOLChaseActivity::Hold, 6.8, 0.45, TEXT("HOLD"));
+
+    // Other G levels and resume points
+    HudFormatExpectChaseActivity(*this, TEXT("burst 9 G"), ESOLChaseActivity::Burst, 9.0, 0.45, TEXT("BURST 9.0 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("cool resume at 100%"), ESOLChaseActivity::Cool, 1.5, 1.0,
+        TEXT("COOL 1.5 G (resume at 100%)"));
+    HudFormatExpectChaseActivity(*this, TEXT("cool resume at 30%"), ESOLChaseActivity::Cool, 1.5, 0.30,
+        TEXT("COOL 1.5 G (resume at 30%)"));
+
+    // An unreachable resume meter (above a full meter or not finite: the cool off lasts until the brake) is not shown
+    const double infinity = std::numeric_limits<double>::infinity();
+    HudFormatExpectChaseActivity(*this, TEXT("cool resume 116%"), ESOLChaseActivity::Cool, 1.5, 1.16,
+        TEXT("COOL 1.5 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("cool resume +inf"), ESOLChaseActivity::Cool, 1.5, infinity,
+        TEXT("COOL 1.5 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("cool resume NaN"), ESOLChaseActivity::Cool, 1.5,
+        std::numeric_limits<double>::quiet_NaN(), TEXT("COOL 1.5 G"));
+    HudFormatExpectChaseActivity(*this, TEXT("brake cool resume 116%"), ESOLChaseActivity::BrakeCool, 1.5, 1.16,
+        TEXT("BRAKE COOL 1.5 G"));
+    TestTrue(TEXT("Resume shown at 100%"), SOLHudFormat::IsChaseResumeShown(1.0));
+    TestFalse(TEXT("Resume not shown at 116%"), SOLHudFormat::IsChaseResumeShown(1.16));
+    TestFalse(TEXT("Resume not shown at +inf"), SOLHudFormat::IsChaseResumeShown(infinity));
+
+    // The activity names (also the log's)
+    TestEqual(TEXT("Name of BrakeCool"), FString(SOLHudFormat::ChaseActivityName(ESOLChaseActivity::BrakeCool)),
+        FString(TEXT("BRAKE COOL")));
+    TestEqual(TEXT("Name of Hold"), FString(SOLHudFormat::ChaseActivityName(ESOLChaseActivity::Hold)),
+        FString(TEXT("HOLD")));
+
+    // Appends after existing text, never resets it
+    FString text(TEXT("AUTO "));
+    SOLHudFormat::AppendChaseActivity(text, ESOLChaseActivity::Burst, 6.8, 0.45);
+    TestEqual(TEXT("Appends after a prefix"), text, FString(TEXT("AUTO BURST 6.8 G")));
+    SOLHudFormat::AppendChaseActivity(text, ESOLChaseActivity::Hold, 6.8, 0.45);
+    TestEqual(TEXT("Appends again"), text, FString(TEXT("AUTO BURST 6.8 GHOLD")));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

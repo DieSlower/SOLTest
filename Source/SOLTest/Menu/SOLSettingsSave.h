@@ -116,6 +116,11 @@ public:
     UPROPERTY()
     int32 ActiveOverlayProfile = 0;
 
+    /** Chase Down safety margin, a floor on the G meter as a fraction of a full meter (SDD 32). Added in schema 8; an
+     *  older save is migrated to the default. */
+    UPROPERTY()
+    float ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT;
+
     /** Rebound keys only: SOLKeyBindings binding id -> engine key name (the other bindings use their defaults). */
     UPROPERTY()
     TMap<FString, FString> KeyOverrides;

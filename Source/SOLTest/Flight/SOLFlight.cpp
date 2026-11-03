@@ -42,6 +42,44 @@ namespace
         };
         return FVector3d(clampOne(v.X), clampOne(v.Y), clampOne(v.Z));
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Flies one guidance output for dt: the nose (kinematic on long substeps), the thrust clamped to the pilot limit
+    // and allocated (boosted with bBoost), then the Newtonian step; shared by the autopilot and the chase
+    FSOLShipState FlyGuidance(const FSOLShipState& state, const FSOLGuidanceOutput& guidance, const double limitMps2,
+        const FSOLThrustEnvelope& env, const bool bBoost, const FVector3d& gravityAccelMps2, const double dt,
+        FSOLFlightStepOutput* outStep)
+    {
+        // Long sim-time substeps (user warp) cannot integrate a rate-limited turn: the nose is set straight to the
+        // guidance's forward with no spin; otherwise it follows the guidance through the rate command
+        FSOLShipState start = state;
+        FSOLNewtonianCommand command;
+        command.bBoost = bBoost;
+        if (dt > SOL::AUTOPILOT_KINEMATIC_ATTITUDE_S && !guidance.DesiredForward.IsZero())
+        {
+            start.Orientation = SOLNewtonian::OrientationFromForward(guidance.DesiredForward,
+                state.Orientation.GetUpVector(), state.Orientation);
+            start.AngularVelocityRadPerS = FVector3d::ZeroVector;
+        }
+        else
+        {
+            const FVector3d rateCommand = SOLNewtonian::AttitudeRateCommand(state.Orientation, guidance.DesiredForward,
+                FVector3d::ZeroVector, env);
+            command.AngularAccelFraction = SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS,
+                rateCommand, env, dt);
+        }
+
+        // Thrust within the pilot limit and the envelope
+        command.ThrustFraction = SOLNewtonian::AllocateThrust(
+            SOLNewtonian::ClampToPilotLimit(guidance.DesiredThrustAccelMps2, limitMps2), start.Orientation, env,
+            bBoost).ThrustFraction;
+        if (outStep != nullptr)
+        {
+            outStep->ThrustAccelWorldMps2 = start.Orientation.RotateVector(
+                SOLNewtonian::LocalThrustAccelMps2(command.ThrustFraction, env, bBoost));
+        }
+        return SOLNewtonian::StepNewtonian(start, command, env, gravityAccelMps2, dt);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -232,40 +270,70 @@ FSOLShipState SOLFlight::AutopilotStep(const FSOLShipState& state, const FVector
     guidanceParams.CaptureRadiusM = captureRadiusM;
     const FSOLGuidanceOutput guidance = SOLNewtonian::ComputeRendezvousGuidance(targetPositionM - state.PositionM,
         state.VelocityMps - targetVelocityMps, targetAccelMps2, gravityAccelMps2, guidanceParams, dt);
-
-    // Long sim-time substeps (user warp) cannot integrate a rate-limited turn: the nose is set straight to the
-    // guidance's forward with no spin; otherwise it follows the guidance through the rate command
-    FSOLShipState start = state;
-    FSOLNewtonianCommand command;
-    if (dt > SOL::AUTOPILOT_KINEMATIC_ATTITUDE_S && !guidance.DesiredForward.IsZero())
+    if (outGuidance != nullptr)
     {
-        start.Orientation = SOLNewtonian::OrientationFromForward(guidance.DesiredForward,
-            state.Orientation.GetUpVector(), state.Orientation);
-        start.AngularVelocityRadPerS = FVector3d::ZeroVector;
+        *outGuidance = guidance;
     }
-    else
-    {
-        const FVector3d rateCommand = SOLNewtonian::AttitudeRateCommand(state.Orientation, guidance.DesiredForward,
-            FVector3d::ZeroVector, env);
-        command.AngularAccelFraction = SOLNewtonian::RateCommandAngularFraction(state.AngularVelocityRadPerS,
-            rateCommand, env, dt);
-    }
+    return FlyGuidance(state, guidance, limitMps2, env, false, gravityAccelMps2, dt, outStep);
+}
 
-    // Thrust within the pilot limit and the envelope
-    command.ThrustFraction = SOLNewtonian::AllocateThrust(
-        SOLNewtonian::ClampToPilotLimit(guidance.DesiredThrustAccelMps2, limitMps2), start.Orientation, env, false)
-        .ThrustFraction;
-
+//////////////////////////////////////////////////////////////////////////
+// Advances the ship by dt under Chase Down: phase probe, the policy's G limit, the chase guidance, clamp and allocation
+FSOLShipState SOLFlight::ChaseStep(const FSOLShipState& state, const FVector3d& aimPointM,
+    const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
+    const double planGravityMps2, const FSOLFlightParams& params, const FSOLGMeterState& meter,
+    const FSOLChasePolicy& policy, const bool bBoost, const double dt, FSOLChaseRunState& inOutRun,
+    FSOLFlightStepOutput* outStep, FSOLGuidanceOutput* outGuidance, FSOLChaseGLimit* outLimit)
+{
     if (outStep != nullptr)
     {
-        outStep->ThrustAccelWorldMps2 = start.Orientation.RotateVector(
-            SOLNewtonian::LocalThrustAccelMps2(command.ThrustFraction, env, false));
+        *outStep = FSOLFlightStepOutput();
+    }
+    if (outGuidance != nullptr)
+    {
+        *outGuidance = FSOLGuidanceOutput();
+    }
+    if (outLimit != nullptr)
+    {
+        *outLimit = FSOLChaseGLimit();
+    }
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return state;
+    }
+    const FSOLThrustEnvelope& env = params.Envelope;
+    const FSOLPilotGLimits& limits = params.PilotLimits;
+    const double gravityMps2 = FMath::Max(gravityAccelMps2.Size(),
+        FMath::IsFinite(planGravityMps2) ? planGravityMps2 : 0.0);
+    const FVector3d relativePositionM = aimPointM - state.PositionM;
+    const FVector3d relativeVelocityMps = state.VelocityMps - targetVelocityMps;
+
+    // Phase probe with the policy's own levels: the guidance phase depends only on the brake budget, the flip time,
+    // the cruise cap and the tolerances, so it is the phase of the step's real guidance too (SOLChase.h)
+    const FSOLGuidanceParams probeParams = SOLChase::MakeChasePhaseProbeParams(env, policy, gravityMps2, bBoost);
+    const FSOLGuidanceOutput probe = SOLNewtonian::ComputeRendezvousGuidance(relativePositionM, relativeVelocityMps,
+        targetAccelMps2, gravityAccelMps2, probeParams, dt, false);
+    const FSOLChaseGLimit limit = SOLChase::ChaseGLimit(policy, inOutRun, meter, probe.Phase, probe.ClosingSpeedMps,
+        probeParams.BrakeAccelMps2, SOLChase::ChaseMaxG(env, limits, bBoost), limits, dt);
+
+    // The step's guidance with the limit's budget; at the policy's burst level it is the probe itself
+    FSOLGuidanceOutput guidance = probe;
+    if (limit.LimitG != policy.BurstG)
+    {
+        guidance = SOLNewtonian::ComputeRendezvousGuidance(relativePositionM, relativeVelocityMps, targetAccelMps2,
+            gravityAccelMps2, SOLChase::MakeChaseGuidanceParams(env, limit.LimitG, policy.BrakePlanG, gravityMps2,
+            bBoost), dt, false);
     }
     if (outGuidance != nullptr)
     {
         *outGuidance = guidance;
     }
-    return SOLNewtonian::StepNewtonian(start, command, env, gravityAccelMps2, dt);
+    if (outLimit != nullptr)
+    {
+        *outLimit = limit;
+    }
+    return FlyGuidance(state, guidance, limit.LimitG * SOLNewtonian::STANDARD_GRAVITY_MPS2, env, bBoost,
+        gravityAccelMps2, dt, outStep);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -90,6 +90,10 @@ bool USOLJumpSubsystem::StartJump(const FSOLMapPickState& pick)
         return false;
     }
 
+    // A Chase Down ends as the jump starts, in assisted flight (SDD 32 section 3.7: Jump To replaces it); a plain
+    // autopilot order keeps flying through the warp until the arrival resets the pilot state
+    Ships->DisengageChase();
+
     // The reference (what the arrival matches) is fixed now; only its position is re-read at the end
     mPick = pick;
     mElapsedS = 0.0;

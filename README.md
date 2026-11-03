@@ -13,6 +13,7 @@ A solar-system space simulation by **Acid Rain Studios LLC**, built with **Unrea
 - [Dependencies](#dependencies)
 - [Generated content and Tools](#generated-content-and-tools)
 - [Tests and smoke runs](#tests-and-smoke-runs)
+- [Gallery](#gallery)
 - [Development effort](#development-effort)
 - [Documentation map](#documentation-map)
 - [Licence](#licence)
@@ -128,6 +129,20 @@ It runs `UnrealEditor-Cmd` headless, prints a summary, and exits 0 (pass), 1 (fa
 
 Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, map, map pick, route, jump, menu, level) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
+## Gallery
+
+![Chase Down in the radial menu](Docs/Images/chase-down-radial-menu.png)
+
+Chase Down in the radial menu: the autopilot runs down a dropped target with G bursts.
+
+![Chase Down burst](Docs/Images/chase-down-hud-burst.png)
+
+The CHASE marker during a burst: range, closing speed, time to intercept and the G load.
+
+![Chase Down cool-off](Docs/Images/chase-down-hud-cool.png)
+
+The cool-off between bursts: the marker shows the G floor and the tolerance at which the next burst resumes.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -135,11 +150,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 59.9 h |
-| Time spent answering questions | 6.0 h |
-| Tokens | 3,198.1M |
-| Notional API price | $1,181 |
-| Subagents dispatched | 234 |
+| Work time (wall-clock) | 67.0 h |
+| Time spent answering questions | 6.4 h |
+| Tokens | 3,369.5M |
+| Notional API price | $1,271 |
+| Subagents dispatched | 259 |
 <!-- METRICS:END -->
 
 ## Documentation map

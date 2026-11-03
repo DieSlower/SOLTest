@@ -9,6 +9,7 @@
 #include "Flight/SOLFlightMode.h"
 #include "HudEvents/SOLHudBus.h"
 #include "Interaction/SOLActionTable.h"
+#include "Interaction/SOLChaseSmoke.h"
 #include "Interaction/SOLInteractSmoke.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
@@ -971,6 +972,7 @@ private:
     TUniquePtr<FSOLHologramSmoke> mSmokeHologram;           // Verification-only map hologram script
     TUniquePtr<FSOLOverlaySmoke> mSmokeOverlay;             // Verification-only overlay script (SDD 22)
     TUniquePtr<FSOLInteractSmoke> mSmokeInteract;           // Verification-only interaction menu script (SDD 22)
+    TUniquePtr<FSOLChaseSmoke> mSmokeChase;                 // Verification-only Chase Down script (SDD 32)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay

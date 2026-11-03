@@ -34,6 +34,7 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     bShowOrbitLines = values.bShowOrbitLines;
     HudEffectsStrength = values.HudEffectsStrength;
     bMouseSteerAtStart = values.bMouseSteerAtStart;
+    ChaseSafetyMargin = values.ChaseSafetyMargin;
 
     // One saved profile per overlay profile (SDD 22)
     const SOLOverlay::FOverlayPrefs prefs = SOLOverlay::Sanitized(values.OverlayPrefs);
@@ -63,6 +64,7 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.bShowOrbitLines = bShowOrbitLines;
     values.HudEffectsStrength = HudEffectsStrength;
     values.bMouseSteerAtStart = bMouseSteerAtStart;
+    values.ChaseSafetyMargin = ChaseSafetyMargin;
 
     // Overlay profiles: none saved (an older file) gives the defaults; the model sanitizes the active profile
     values.OverlayPrefs = SOLOverlay::MakeDefaultPrefs();
@@ -137,5 +139,13 @@ void USOLSettingsSave::MigrateToCurrentVersion()
         OverlayProfiles[0].Overlays = SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask());
         ActiveOverlayProfile = 0;
         Version = 7;
+    }
+
+    // Schema 7 -> 8 (SDD 32 section 3.10): the Chase Down safety margin, which a v7 file does not have, starts at its
+    // default; every other field is kept as loaded, and the key layout is unchanged (no controls-changed notice)
+    if (Version == 7)
+    {
+        ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT;
+        Version = 8;
     }
 }

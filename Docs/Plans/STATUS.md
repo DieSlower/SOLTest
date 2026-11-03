@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-11-02.
+Last updated: 2026-11-03.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -36,18 +36,18 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #31 | HUD polish: half glow, Alt yellow circles, borderless panels, steering start setting and hint, stick recenter on release | 19, 21 (amendments) |
 | #41 | Project metrics tracking: generated effort page (time, tokens, notional price, agents by model and effort), README summary, update rule | 41 |
 | #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor (Part 1: icons, O keys, Overlay Menu, cursor; Part 2: radial and list menus, action table) | 22 |
+| #32 | Chase Down autopilot (2026-11-03): G bursts above 1.5 G planned against the pilot G model, meter-floor safety margin setting (save schema 8), radial / list menu entry, Esc cancel, HUD CHASE marker; Jump To ends the chase. The NPC ship row stays greyed until #40 | 32 |
 
 ## In progress
 
 | Issue | What | Notes |
 |---|---|---|
-| - | Nothing in progress | - |
+| - | (none) | - |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1 | #32 | Chase Down autopilot mode (exceeds 1.5 G, G-meter bursts) | M | #22 |
 | 1b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
 | 1c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
 | 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
@@ -55,7 +55,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
 | 3b3 | #38 | NPC lanes drawn as one animated hologram line per lane, with an overlay-menu toggle | M | #22 |
 | 3b4 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
-| 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range | M | #22 |
+| 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
@@ -85,7 +85,7 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 - Hands-on PIE checks the user needs to do: Left Shift vs Shift+M chord in Auto, shimmer gone in the map, free-cursor
   behaviour, map-close key repeat.
-- Failing or unverified smokes: `-SOLMenuSmoke=all` 49/50 ("Thrust flies the ship" at Mars), `-SOLSmokeJump` 13/14
+- Failing or unverified smokes: `-SOLMenuSmoke=all` 47/50 (stale cursor expectations after #31 and "Thrust flies the ship" at Mars, see TECH_DEBT), `-SOLSmokeJump` 13/14
   (arrives at Deimos not Mars).
 - Tech debt list: `Docs/TECH_DEBT.md` (M2 Mid-to-Far pop, packaged 1M run, render-thread stalls,
   orbit-line memory, and others).
