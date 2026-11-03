@@ -10,7 +10,8 @@
 #include "CoreMinimal.h"
 
 // Pure-logic overlay model (SDD 22 section 2.3): the data-driven table of overlay toggles the Overlay Menu (Ctrl+O)
-// shows, which of them the master O key turns on and off together, and the per-profile choices saved in Settings.
+// shows, which of them the master O key turns on and off together (every row but a world effect marked
+// bIgnoresMaster, such as the issue #43 Space Dust), and the per-profile choices saved in Settings.
 // A profile is a bit mask over the table (bit i = row i checked). The struct holds up to SOL::Overlay::MAX_PROFILES
 // profiles for issue #34; issue #22 uses one (profile 1 = the defaults: every row on except Asteroid Orbits).
 namespace SOLOverlay
@@ -34,19 +35,22 @@ namespace SOLOverlay
         OtherOrbits,        // Dwarf-planet orbits and the transient line of a target without a permanent line
         ShipsOnRadar,       // NPC ship contacts on the radar
         Darkening,          // Distance darkening of far icons (Shift+O)
+        SpaceDust,          // Space dust speed cues (issue #43): a world effect, not governed by the master O
         Count,
     };
 
     inline constexpr int32 OVERLAY_COUNT = static_cast<int32>(EOverlay::Count);
 
-    // One table row: stable id (persisted), shown label, default (profile 1) and the row whose checkbox gates it
-    // (INDEX_NONE for a top-level row; the icon categories have Icons as their parent)
+    // One table row: stable id (persisted), shown label, default (profile 1), the row whose checkbox gates it
+    // (INDEX_NONE for a top-level row; the icon categories have Icons as their parent) and whether the master O key
+    // leaves it alone (bIgnoresMaster: set only for the Space Dust world effect, so IsShown skips the master for it)
     struct FOverlayDef
     {
         const TCHAR* Id;
         const TCHAR* Label;
         bool bDefaultOn;
         int32 Parent;
+        bool bIgnoresMaster = false;    // true: IsShown does not depend on the master O key
     };
 
     // The player's overlay choices: one mask per profile, how many profiles exist and which one is active
@@ -81,8 +85,9 @@ namespace SOLOverlay
     // Flips a row in the active profile and returns its new state
     SOLTEST_API bool Toggle(FOverlayPrefs& prefs, EOverlay overlay);
 
-    // Returns whether an overlay shows now: the master (O) is on, its row is checked and its parent row (if any) is
-    // checked. Turning the master off and on again therefore restores exactly what showed before (nothing is lost)
+    // Returns whether an overlay shows now: its row is checked, the master (O) is on and its parent row (if any) is
+    // checked. A row whose bIgnoresMaster is set (Space Dust) skips the master test, so only its own checkbox and its
+    // parent apply. Turning the master off and on again therefore restores exactly what showed before (nothing is lost)
     SOLTEST_API bool IsShown(const FOverlayPrefs& prefs, bool bMasterOn, EOverlay overlay);
 
     // Returns whether a row is one of the four orbit-line rows

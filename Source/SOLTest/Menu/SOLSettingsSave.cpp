@@ -148,4 +148,22 @@ void USOLSettingsSave::MigrateToCurrentVersion()
         ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT;
         Version = 8;
     }
+
+    // Schema 8 -> 9 (SDD 43 section 6.3): every stored overlay profile without a Space Dust entry gains it as on (its
+    // default); a profile that already holds the key keeps its value, every other key and the active profile are kept,
+    // and a save without profiles gains none (the key layout is unchanged: no controls-changed notice)
+    if (Version == 8)
+    {
+        // The id as it was written at schema 9, a literal on purpose: a migration step must stay fixed forever, even if
+        // the live overlay table is renamed or reordered later
+        const TCHAR* dustId = TEXT("SpaceDust");
+        for (FSOLOverlayProfileSave& profile : OverlayProfiles)
+        {
+            if (!profile.Overlays.Contains(dustId))
+            {
+                profile.Overlays.Add(dustId, true);
+            }
+        }
+        Version = 9;
+    }
 }

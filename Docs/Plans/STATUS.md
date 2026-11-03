@@ -37,6 +37,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #41 | Project metrics tracking: generated effort page (time, tokens, notional price, agents by model and effort), README summary, update rule | 41 |
 | #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor (Part 1: icons, O keys, Overlay Menu, cursor; Part 2: radial and list menus, action table) | 22 |
 | #32 | Chase Down autopilot (2026-11-03): G bursts above 1.5 G planned against the pilot G model, meter-floor safety margin setting (save schema 8), radial / list menu entry, Esc cancel, HUD CHASE marker; Jump To ends the chase. The NPC ship row stays greyed until #40 | 32 |
+| #43 | Space dust speed cues (2026-11-03): GPU Niagara dust in a 400 m wrap volume around the ship, saturating speed map with a dead zone, points to streaks, hidden under warp / jump / map / pause; Space Dust row in the Overlay Menu, not governed by the master O (save schema 9) | 43 |
 
 ## In progress
 

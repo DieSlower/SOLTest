@@ -127,7 +127,7 @@ Tools\RunTests.bat [-Filter SOLTest.<Topic>] [-Build] [-List] [-ShowLog] [-Rhi]
 
 It runs `UnrealEditor-Cmd` headless, prints a summary, and exits 0 (pass), 1 (failures) or 2 (could not run); results are in `Saved/AutomationReports/index.json`. It refuses to run while the editor has the project open. **Known problem:** the headless path currently stalls on the author's machine, so tests are being run from the open editor instead (details in [CLAUDE.md](CLAUDE.md), "Known tech debt").
 
-Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, map, map pick, route, jump, menu, level) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
+Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, map, map pick, route, jump, menu, level, space dust) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
 ## Gallery
 
@@ -143,6 +143,18 @@ The CHASE marker during a burst: range, closing speed, time to intercept and the
 
 The cool-off between bursts: the marker shows the G floor and the tolerance at which the next burst resumes.
 
+![Space dust at slow speed](Docs/Images/43-dust-slow.png)
+
+Slow drift: sparse soft dust points give a sense of motion.
+
+![Space dust streaks in fast flight](Docs/Images/43-dust-fast.png)
+
+Fast flight: the dust stretches into streaks along the direction of motion.
+
+![Space Dust row in the Overlay Menu](Docs/Images/43-dust-menu.jpg)
+
+Ctrl+O Overlay Menu: the Space Dust row, checked, with the dust behind it.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -150,11 +162,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 67.0 h |
+| Work time (wall-clock) | 69.8 h |
 | Time spent answering questions | 6.4 h |
-| Tokens | 3,369.5M |
-| Notional API price | $1,271 |
-| Subagents dispatched | 259 |
+| Tokens | 3,554.5M |
+| Notional API price | $1,346 |
+| Subagents dispatched | 276 |
 <!-- METRICS:END -->
 
 ## Documentation map

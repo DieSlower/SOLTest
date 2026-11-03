@@ -280,6 +280,64 @@ namespace SOL
                                                                                           // vec3 beyond ~10 km, and this is ~1e5 km
     }
 
+    // Space dust speed cues (SDD 43): a camera-local Niagara particle box whose motion shows the ship's speed relative
+    // to its reference frame
+    namespace SpaceDust
+    {
+        inline constexpr double DEAD_ZONE_MPS = 0.5;             // relative speed below this: no dust at all
+        inline constexpr double FULL_OPACITY_MPS = 5.0;          // relative speed at which the dust is fully faded in
+        inline constexpr double APPARENT_MAX_MPS = 150.0;        // cap on the apparent (displayed) speed
+        inline constexpr double STREAK_START_MPS = 10.0;         // apparent speed at which points start to streak
+        inline constexpr double STREAK_TIME_S = 0.12;            // streak length = apparent speed x this
+        inline constexpr double STREAK_MAX_CM = 2000.0;          // cap on the streak length
+        inline constexpr double STREAK_MIN_ALPHA = 0.35;         // alpha floor of a fully stretched streak
+        inline constexpr double POINT_SIZE_CM = 60.0;            // base point (streak width) size (tuned from 30)
+        inline constexpr double POINT_SIZE_RANDOM_MIN = 0.6;     // per-particle size multiplier, low end
+        inline constexpr double POINT_SIZE_RANDOM_MAX = 1.4;     // per-particle size multiplier, high end
+        inline constexpr double SMOOTHING_TAU_S = 0.15;          // time constant of the velocity / opacity smoothing
+        inline constexpr double OPACITY_EPSILON = 1.0e-3;        // opacity below this counts as off
+        inline constexpr double MAX_TIME_WARP = 1.0;             // dust is hidden above this time-warp factor
+        inline const FLinearColor DUST_COLOR(0.75f, 0.80f, 0.90f); // point tint, cool grey (COLOR is an engine macro)
+        inline constexpr double INTENSITY = 2.0;                 // emissive intensity of the points (tuned from 0.6)
+        inline constexpr int32 PARTICLE_COUNT = 4096;            // particles at High effects quality
+        inline constexpr int32 PARTICLE_COUNT_LOW = 1024;        // particles at Low effects quality
+        inline constexpr int32 PARTICLE_COUNT_MEDIUM = 2048;     // particles at Medium effects quality
+        inline constexpr double BOX_SIZE_CM = 40000.0;           // edge of the camera-local wrapping box
+        inline constexpr double RADIAL_FADE_START_FRACTION = 0.7;  // fade starts at this fraction of the box half-size
+        inline constexpr double NEAR_FADE_START_CM = 300.0;      // points closer to the camera than this are invisible
+        inline constexpr double NEAR_FADE_END_CM = 1500.0;       // points are fully visible beyond this camera distance
+        inline constexpr const TCHAR* CVAR_ENABLED = TEXT("sol.SpaceDust");  // console switch for the whole effect
+    }
+
+    // Niagara User Parameter names of Paths::SPACE_DUST_NIAGARA_SYSTEM (SDD 43), without the "User." prefix like the
+    // other parameter-name blocks
+    namespace SpaceDustParams
+    {
+        inline constexpr const TCHAR* PARTICLE_COUNT = TEXT("SpaceDustParticleCount");
+        inline constexpr const TCHAR* BOX_SIZE_CM = TEXT("SpaceDustBoxSizeCm");
+        inline constexpr const TCHAR* POINT_SIZE_CM = TEXT("SpaceDustPointSizeCm");
+        inline constexpr const TCHAR* RADIAL_FADE_START = TEXT("SpaceDustRadialFadeStart");
+        inline constexpr const TCHAR* NEAR_FADE_START_CM = TEXT("SpaceDustNearFadeStartCm");
+        inline constexpr const TCHAR* NEAR_FADE_END_CM = TEXT("SpaceDustNearFadeEndCm");
+        inline constexpr const TCHAR* COLOR = TEXT("SpaceDustColor");
+        inline constexpr const TCHAR* OFFSET_CM = TEXT("SpaceDustOffsetCm");
+        inline constexpr const TCHAR* VELOCITY_CM_S = TEXT("SpaceDustVelocityCmS");
+        inline constexpr const TCHAR* OPACITY = TEXT("SpaceDustOpacity");
+        inline constexpr const TCHAR* STREAK_LENGTH_CM = TEXT("SpaceDustStreakLengthCm");
+        inline constexpr const TCHAR* STREAK_ALPHA = TEXT("SpaceDustStreakAlpha");
+        inline constexpr const TCHAR* CAMERA_LOCAL_CM = TEXT("SpaceDustCameraLocalCm");
+    }
+
+    // The camera must sit inside the fully faded-in core of the box (SDD 4.4): the core half-size minus the near fade
+    // end must exceed the camera's distance from the ship (arm and height are orthogonal; compared as squares)
+    static_assert(
+        (SpaceDust::RADIAL_FADE_START_FRACTION * SpaceDust::BOX_SIZE_CM * 0.5 - SpaceDust::NEAR_FADE_END_CM) > 0.0
+        && (SpaceDust::RADIAL_FADE_START_FRACTION * SpaceDust::BOX_SIZE_CM * 0.5 - SpaceDust::NEAR_FADE_END_CM)
+            * (SpaceDust::RADIAL_FADE_START_FRACTION * SpaceDust::BOX_SIZE_CM * 0.5 - SpaceDust::NEAR_FADE_END_CM)
+            > static_cast<double>(SHIP_CAMERA_ARM_LENGTH_CM) * SHIP_CAMERA_ARM_LENGTH_CM
+                + static_cast<double>(SHIP_CAMERA_HEIGHT_CM) * SHIP_CAMERA_HEIGHT_CM,
+        "The chase camera must stay inside the fully faded-in core of the space dust box");
+
     // Profile indices of the far-field material's radial ring-profile table (order fixed by the asset)
     inline constexpr int32 RING_PROFILE_INDEX_JUPITER = 0;
     inline constexpr int32 RING_PROFILE_INDEX_SATURN = 1;
@@ -1024,8 +1082,8 @@ namespace SOL
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
         // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
         // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
-        // 8: Chase Down safety margin, SDD 32)
-        inline constexpr int32 SAVE_VERSION = 8;
+        // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43)
+        inline constexpr int32 SAVE_VERSION = 9;
         // The save schema that introduced the current default key layout (issue #22: O / Alt+O / Ctrl+O / Shift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 7;
@@ -1106,6 +1164,10 @@ namespace SOL
         // With -SOLSmokeChase: cost captures (stat dumpsum / dumpmax of the SOL ship stats) during the 20 km chase, the
         // Moon chase, and a 1 d/s warp chase and autopilot, for the SDD's cost numbers
         inline constexpr const TCHAR* SMOKE_CHASE_PROFILE = TEXT("SOLSmokeChaseProfile");
+        // Space dust speed cues: scripted speeds, dust visibility checks and screenshots, then quit (SDD 43)
+        inline constexpr const TCHAR* SMOKE_DUST = TEXT("SOLSmokeDust");
+        // With -SOLSmokeDust in -game: cost captures (stat dumpave of STAT_SOL_SpaceDustUpdate, ProfileGPU) for the SDD
+        inline constexpr const TCHAR* SMOKE_DUST_PROFILE = TEXT("SOLSmokeDustProfile");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
@@ -1157,6 +1219,11 @@ namespace SOL
         // Shadowed rock material of the dense Niagara layer and the near-field Mass ISM (Tools/Rings/
         // create_ring_shadow_assets.py; SOL::RingRockMaterialParams)
         inline constexpr const TCHAR* RING_ROCK_MATERIAL = TEXT("/Game/SOL/Rings/M_SOLRingRock.M_SOLRingRock");
+
+        // Space dust speed cues (SDD 43): the camera-local Niagara particle system and its point material
+        inline constexpr const TCHAR* SPACE_DUST_NIAGARA_SYSTEM =
+            TEXT("/Game/SOL/SpaceDust/NS_SOLSpaceDust.NS_SOLSpaceDust");
+        inline constexpr const TCHAR* SPACE_DUST_MATERIAL = TEXT("/Game/SOL/SpaceDust/M_SOLSpaceDust.M_SOLSpaceDust");
 
         // Combat visuals (SDD 7, 7c), authored live through the editor's Niagara and material scripting APIs: the
         // (CPU-sim) bolt renderer, the four pooled one-shot effects, and the target mesh and its custom-data material. Each is

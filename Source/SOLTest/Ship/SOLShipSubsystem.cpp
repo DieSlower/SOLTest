@@ -260,6 +260,17 @@ void USOLShipSubsystem::SetState(const FSOLShipState& state)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sets only the player ship's velocity (Unreal-handed universe frame, m/s; verification only, -SOLSmokeDust); the
+// position and the observer stay put, and the contact or surface-lock state is not cleared
+void USOLShipSubsystem::SetVelocityMps(const FVector3d& velocityMps)
+{
+    if (HasPlayerShip())
+    {
+        mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).State.VelocityMps = velocityMps;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the player ship's universe position in the ecliptic frame (meters)
 FVector3d USOLShipSubsystem::GetUniversePositionM() const
 {

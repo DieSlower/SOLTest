@@ -32,6 +32,7 @@
 #include "Universe/SOLRenderPlacement.h"
 #include "Universe/SOLSimClockSubsystem.h"
 #include "Visuals/SOLBodyVisuals.h"
+#include "Visuals/SOLSpaceDustComponent.h"
 
 #include "Camera/CameraComponent.h"
 #include "Components/DirectionalLightComponent.h"
@@ -196,6 +197,9 @@ ASOLShipPawn::ASOLShipPawn()
     FillLight->SetCastShadows(false);
     FillLight->LightingChannels.bChannel1 = true;   // The ship is on channel 1 (SDD 16, 16d)
 
+    // Space dust speed cues (SDD 43): idle until a player ship exists; drives its own Niagara component
+    SpaceDust = CreateDefaultSubobject<USOLSpaceDustComponent>(TEXT("SpaceDust"));
+
     bUseControllerRotationPitch = false;
     bUseControllerRotationYaw = false;
     bUseControllerRotationRoll = false;
@@ -335,13 +339,18 @@ void ASOLShipPawn::BeginPlay()
         mSmokeLevel = MakeUnique<FSOLSurfaceLockSmoke>();
         mSmokeLevel->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_DUST))
+    {
+        mSmokeDust = MakeUnique<FSOLSpaceDustSmoke>();
+        mSmokeDust->Start(*this);
+    }
 
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
         mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
@@ -396,6 +405,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeChase.Reset();
     mSmokeJump.Reset();
     mSmokeLevel.Reset();
+    mSmokeDust.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
     {
         GetMutableDefault<UInputSettings>()->bShouldFlushPressedKeysOnViewportFocusLost
@@ -467,6 +477,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeLevel.IsValid() && mSmokeLevel->Update(*this, deltaSeconds))
     {
         mSmokeLevel.Reset();
+    }
+    if (mSmokeDust.IsValid() && mSmokeDust->Update(*this, deltaSeconds))
+    {
+        mSmokeDust.Reset();
     }
 
     // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
@@ -921,7 +935,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
-        || mSmokeJump.IsValid() || mSmokeLevel.IsValid())
+        || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid())
     {
         mIsViewportFocused = true;
         return;

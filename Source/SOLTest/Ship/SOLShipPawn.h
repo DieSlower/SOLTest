@@ -23,6 +23,7 @@
 #include "Ship/SOLSurfaceLockSmoke.h"
 #include "UI/SOLHudSmoke.h"
 #include "UI/SOLOverlaySmoke.h"
+#include "Visuals/SOLSpaceDustSmoke.h"
 
 #include "CoreMinimal.h"
 #include "GameFramework/Pawn.h"
@@ -51,6 +52,7 @@ class USOLShipSubsystem;
 class USOLSpeedPanelWidget;
 class USOLOverlayMenuWidget;
 class USOLSimClockSubsystem;
+class USOLSpaceDustComponent;
 class USOLTargetingSubsystem;
 class USpringArmComponent;
 class UStaticMesh;
@@ -125,6 +127,9 @@ namespace SOLMenuState
  * deltas from Enhanced Input are scaled by the live mouse sensitivity and Y-flipped when inverted
  * (SOLSettingsRules::ApplyLookSettings; scripts calling HandleMouseDelta are unaffected), and flight assist starts in
  * the setting's state.
+ *
+ * Space dust (SDD 43): the pawn carries USOLSpaceDustComponent, which runs on its own from the universe update and
+ * reads the pawn's camera and ship root for its near fade; the pawn does not drive it.
  */
 UCLASS()
 class SOLTEST_API ASOLShipPawn : public APawn
@@ -401,6 +406,9 @@ public:
 
     // Returns the sequence time the warp FOV and post-process were last computed for (verification)
     double GetWarpEffectElapsedS() const { return mWarpEffectElapsedS; }
+
+    // Returns the space dust speed-cue component (SDD 43)
+    USOLSpaceDustComponent* GetSpaceDust() const { return SpaceDust; }
 
 protected:
 
@@ -747,6 +755,10 @@ private:
     UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
     TObjectPtr<UDirectionalLightComponent> FillLight;
 
+    /** Space dust speed cues (SDD 43): camera-local particles showing the speed relative to the reference frame. */
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Ship")
+    TObjectPtr<USOLSpaceDustComponent> SpaceDust;
+
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> ShipParts;
 
@@ -975,6 +987,7 @@ private:
     TUniquePtr<FSOLChaseSmoke> mSmokeChase;                 // Verification-only Chase Down script (SDD 32)
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
+    TUniquePtr<FSOLSpaceDustSmoke> mSmokeDust;              // Verification-only space dust script (-SOLSmokeDust)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)

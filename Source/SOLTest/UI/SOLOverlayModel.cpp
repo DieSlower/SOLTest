@@ -10,7 +10,8 @@ namespace
     // Parent row of the eight icon categories
     constexpr int32 OVERLAY_ICONS_ROW = static_cast<int32>(SOLOverlay::EOverlay::Icons);
 
-    // Every overlay row in EOverlay order (Overlay Menu order): id (persisted), label, default and parent row
+    // Every overlay row in EOverlay order (Overlay Menu order): id (persisted), label, default, parent row and whether
+    // the master O key leaves it alone (only the Space Dust world effect, SDD 43)
     constexpr SOLOverlay::FOverlayDef OVERLAY_DEFS[] =
     {
         { TEXT("Icons"), TEXT("Icons"), true, INDEX_NONE },
@@ -28,6 +29,7 @@ namespace
         { TEXT("OtherOrbits"), TEXT("Other Orbits"), true, INDEX_NONE },
         { TEXT("ShipsOnRadar"), TEXT("Ships on Radar"), true, INDEX_NONE },
         { TEXT("Darkening"), TEXT("Darkening"), true, INDEX_NONE },
+        { TEXT("SpaceDust"), TEXT("Space Dust"), true, INDEX_NONE, true },
     };
     static_assert(UE_ARRAY_COUNT(OVERLAY_DEFS) == SOLOverlay::OVERLAY_COUNT, "one definition per overlay");
     static_assert(SOLOverlay::OVERLAY_COUNT <= 32, "a profile mask holds 32 overlays");
@@ -132,15 +134,21 @@ bool SOLOverlay::Toggle(FOverlayPrefs& prefs, const EOverlay overlay)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether an overlay shows now: master on, its row and its parent row checked
+// Returns whether an overlay shows now: its row checked, the master on (unless the row ignores it) and its parent row
+// checked
 bool SOLOverlay::IsShown(const FOverlayPrefs& prefs, const bool bMasterOn, const EOverlay overlay)
 {
-    if (!bMasterOn || !IsEnabled(prefs, overlay))
+    // The row's own checkbox first (false out of range, so the table is only indexed for a valid row)
+    if (!IsEnabled(prefs, overlay))
     {
         return false;
     }
-    const int32 parent = OVERLAY_DEFS[static_cast<int32>(overlay)].Parent;
-    return parent == INDEX_NONE || IsEnabled(prefs, static_cast<EOverlay>(parent));
+    const FOverlayDef& def = OVERLAY_DEFS[static_cast<int32>(overlay)];
+    if (!bMasterOn && !def.bIgnoresMaster)
+    {
+        return false;
+    }
+    return def.Parent == INDEX_NONE || IsEnabled(prefs, static_cast<EOverlay>(def.Parent));
 }
 
 //////////////////////////////////////////////////////////////////////////

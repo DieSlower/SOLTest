@@ -168,9 +168,9 @@ namespace SOLMenuText
     // Overlay Menu (SDD 22): title ('{<BindingId>}' is that action's current key), row marks and the key hint
     inline constexpr const TCHAR* OVERLAY_MENU_TITLE_FORMAT = TEXT("OVERLAYS  ({OverlayMenu} / Esc close)");
     inline constexpr const TCHAR* OVERLAY_MENU_HINT = TEXT("Click or Space: toggle   Up / Down: move   "
-        "{OverlayMaster}: everything checked on / off together");
+        "{OverlayMaster}: all checked overlays on / off (not Space Dust)");
     inline constexpr const TCHAR* OVERLAY_MENU_HINT_EMBEDDED = TEXT("Click a row to toggle it (applies at once).   "
-        "{OverlayMaster} in flight: everything checked on / off together");
+        "{OverlayMaster} in flight: all checked overlays on / off (not Space Dust)");
     inline constexpr const TCHAR* OVERLAY_MENU_CHECKED = TEXT("[x] ");
     inline constexpr const TCHAR* OVERLAY_MENU_UNCHECKED = TEXT("[ ] ");
     inline constexpr const TCHAR* OVERLAY_MENU_CHILD_INDENT = TEXT("    ");
@@ -263,11 +263,12 @@ namespace SOLMenuText
         { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
         { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
         { TEXT("Overlays"), TEXT("@OverlayMaster"),
-            TEXT("Overlays on / off: everything checked in the Overlay Menu together (on at every flight start)") },
+            TEXT("Overlays on / off: everything checked in the Overlay Menu together, except Space Dust (on at "
+                "every flight start)") },
         { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off") },
         { TEXT("Overlays"), TEXT("@OverlayMenu"),
             TEXT("Overlay Menu: choose what the overlay key shows (icons per kind, orbits per kind, ships on radar, "
-                "darkening); also in Settings") },
+                "darkening, space dust); also in Settings") },
         { TEXT("Overlays"), TEXT("@ToggleDarkening"), TEXT("Darken far overlays on / off") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
         { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
@@ -387,7 +388,10 @@ namespace SOLMenuText
             "({ToggleDarkening}). Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbits of the planets, "
             "moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the Overlay Menu; "
             "asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is drawn in gold. "
-            "A line behind a planet or moon is hidden by it, and the part in front of it stays visible."),
+            "A line behind a planet or moon is hidden by it, and the part in front of it stays visible. Space dust "
+            "(a row of the Overlay Menu) streams past when the ship moves relative to its reference frame; its speed "
+            "is compressed and only shows motion and direction. It is hidden when stopped, under time warp, during "
+            "jumps, on the map and while paused, and {OverlayMaster} does not affect it."),
         TEXT("Interaction menus: with mouse steering off, hovering an overlay icon highlights it. Press {Fire} on "
             "it, drag toward an action and release to choose it; releasing in the centre (or Esc) cancels, and "
             "{Fire} away from icons still fires. On the map, a right click on a body opens the same actions as a list. "

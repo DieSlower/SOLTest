@@ -108,7 +108,8 @@ public:
     bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
 
     /** Overlay Menu choices (SDD 22), one entry per profile (issue #22 writes one). Added in schema 7; an older save
-     *  is migrated to one default profile (every overlay on except Asteroid Orbits). */
+     *  is migrated to one default profile (every overlay on except Asteroid Orbits). Schema 9 (SDD 43) writes
+     *  SpaceDust = on into every profile of an older save that lacks it. */
     UPROPERTY()
     TArray<FSOLOverlayProfileSave> OverlayProfiles;
 

@@ -185,6 +185,11 @@ public:
     // Teleports the player ship to a new state (Unreal-handed universe frame) and moves the observer with it
     void SetState(const FSOLShipState& state);
 
+    // Sets only the player ship's velocity (Unreal-handed universe frame, m/s); the position and the observer stay put,
+    // so the ship flies on and the render origin rebases by its normal hysteresis. Verification only (used by
+    // -SOLSmokeDust); it does not clear the contact or surface-lock state
+    void SetVelocityMps(const FVector3d& velocityMps);
+
     // Returns the player ship's universe position in the ecliptic frame (meters)
     FVector3d GetUniversePositionM() const;
 
