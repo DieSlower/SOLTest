@@ -9,9 +9,11 @@ and SDD 8 (Settings). Sister ticket: #46 (solid console menus for the full scree
 Plan: [`Docs/Plans/42-hologram-in-flight-menus-plan.md`](../Plans/42-hologram-in-flight-menus-plan.md).
 
 Status: **draft, not approved.** The grill-me decisions below are resolved. The user approved A1 and A2 (section 9.1)
-and answered Q1 and Q2 on 2026-11-03 (D7-D10). Q6 waits on the card style samples (section 13); Q3-Q5 and Q7-Q11
-are still open. A part that depends on an open question does not start until it is answered. Checked against the
-code at HEAD `4128a05`.
+and answered Q1 and Q2 on 2026-11-03 (D7-D10), then Q2b, Q3-Q8, Q10 and Q11 the same day (D11-D19). **Q9 (the frame
+shape of the Overlay Menu and the speed panel) is still open**: the user asked for visual examples, which are in
+`Docs/Images/hologram-frame-samples/` (section 13). Q12 (cues at strength 0) is a small follow-up item raised while
+recording D18. A part that depends on an open question does not start until it is answered. Checked against the code
+at HEAD `4128a05`; the card scope of D15 was checked at HEAD `9846dc8`.
 
 ## 1. Goal
 
@@ -24,7 +26,7 @@ sets how strong these effects are, separately from the HUD's own slider. The fli
 
 | # | Decision |
 |---|---|
-| D1 | **Scope: in-flight menus only.** The radial interaction menu (#22), the Ctrl+O Overlay Menu with its profile tabs (#34), the F3 speed panel, and the target / info cards. **The HUD stays as it is** (readouts, radar, icons, reticle, panels, glow). The main menu, Settings, demo page, Controls / Info / About and pause are **not** in scope; they are #46 (solid look). |
+| D1 | **Scope: in-flight menus only.** The radial interaction menu (#22), the Ctrl+O Overlay Menu with its profile tabs (#34), the F3 speed panel, and the target / info cards. **The HUD stays as it is** (readouts, radar, icons, reticle, panels, glow). The main menu, Settings, demo page, Controls / Info / About and pause are **not** in scope; they are #46 (solid look). *Extended by D15 and D16:* the HUD's speed card and date-and-anchor card become hologram cards too, and the map's right-click list menu joins the scope; the rest of the HUD stays as it is. |
 | D2 | **Rendering: reuse the HUD's glow-line shape renderer** (`FSOLHudShapeBatch`, `M_SOLHudShape`, the SDD 21 effects pipeline). Panels are **outline frames with no solid fill**. |
 | D3 | **Backdrop:** a very faint dark tint behind each panel (no solid fill). Its strength follows the effects control. |
 | D4 | **Effects:** (a) **open / close:** the frame lines draw in, then the fill fades up, about 0.2 s; (b) **hover:** an edge glow and a brief flicker on the hovered item, pairing with the #22 hologram cursor; (c) **idle:** a faint scanline sweep and jitter, off at effects 0; (d) **sound cues** for open, hover and select. |
@@ -33,7 +35,16 @@ sets how strong these effects are, separately from the HUD's own slider. The fli
 | D7 | **A1 approved:** settings `SAVE_VERSION` 10 -> **11** for the new field `HoloMenuEffects`, with a 10 -> 11 migration step. `KEY_BINDING_LAYOUT_VERSION` stays **10**. |
 | D8 | **A2 approved:** a migrated (v1-v10) save **copies its current `HudEffectsStrength`** into `HoloMenuEffects` (sanitized); a new save defaults to **1.0**. The 1.0 is the full-strength multiplier of the effects slider (shown as "1.00x"); it is not related to the schema version number 11. |
 | D9 | **Q1 answered, (a): make the cues now.** Open, hover and select sounds were made with the SoundCraft MCP tool from CC0 source sounds in `D:\MediaLib\Sounds`; sources, licences and the import plan are in section 7.1. |
-| D10 | **Q2 answered:** the new slider goes in **Settings > Graphics, right under the HUD effects slider**. Note: in the code today the "HUD hologram effects" slider is in the **Gameplay** section, not Graphics (`USOLSettingsPageWidget`, `SOLSettingsPageWidget.cpp` lines 364-369). The answer is recorded as the user gave it; how to resolve the mismatch is open item **Q2b** (section 13). |
+| D10 | **Q2 answered:** the new slider goes in **Settings > Graphics, right under the HUD effects slider**. Note: in the code today the "HUD hologram effects" slider is in the **Gameplay** section, not Graphics (`USOLSettingsPageWidget`, `SOLSettingsPageWidget.cpp` lines 364-369). *Superseded by D11.* |
+| D11 | **Q2b answered:** the new slider goes in **Settings > Gameplay, right under the "HUD hologram effects" slider**. The HUD slider does not move. |
+| D12 | **Q3 answered:** #42 builds the **shared hover, cursor and animation code first** (part 42a's renderer-free pure logic, then 42c's kit), and #46 reuses it without a refactor. |
+| D13 | **Q4 answered:** conversion order **radial, Overlay Menu, F3 speed panel, then the cards** (info card, target card, speed card, date-and-anchor card). The map list menu (D16) was not placed in that order by the user; the plan puts it last (part 42g), after the cards. |
+| D14 | **Q5 answered:** budget **under 0.1 ms extra CPU and under 0.1 ms extra GPU with all menus open**, measured by a profiling smoke (section 11). |
+| D15 | **Q6 answered: frameless cards** (option 1 of the card samples): glowing **corner ticks + a faint dark tint**, no outline, so #31's "no visible rectangle around any panel" still holds. Applies to the **info card** and the **target card** (the top-right target readout of `DrawTarget` becomes the target card). **Scope extension:** the **speed card** (bottom-left block: speed, frame, absolute speed, cap and bar, assist / boost, and the G meter above it) and the **date-and-anchor card** (top-left block: sim date and warp, anchor, nearest body and altitude, surface lock) get the same look and effects (section 5). |
+| D16 | **Q7 answered:** the map's right-click **list menu** (`USOLActionListWidget`) gets the hologram look. The Attack hint and the profile tag stay HUD. |
+| D17 | **Q8 answered:** the Overlay list **embedded in the Settings page stays solid / plain** and follows #46's solid Settings look. #42 does **not** convert it: with `SetEmbedded(true)` no frame widget is added and the embedded copy keeps today's look until #46 restyles it. |
+| D18 | **Q10 answered:** at **strength 0 the menus are plain flat panels**: no glow, no open / close animation, no jitter, no sweep, no flicker, and **fully usable** (every row, tab, digit and sector still reads and responds; the highlight keeps its Secondary colour). |
+| D19 | **Q11 answered:** the hologram **cursor follows the new slider** (`HoloMenuEffects`), not the HUD slider. |
 
 ## 3. What exists today (checked in code at HEAD `4128a05`)
 
@@ -55,13 +66,24 @@ sets how strong these effects are, separately from the HUD's own slider. The fli
 - **Info card.** `ASOLFlightHud::DrawInfoCard`: text lines in a borderless `AddHoloPanel` at the top right, under the
   key hints. **Target readout:** `ASOLFlightHud::DrawTarget`'s top-right text block on a borderless panel (part of
   the HUD today).
+- **Speed card (D15, checked at `9846dc8`).** Bottom left: `ASOLFlightHud::DrawSpeedBlock` (relative speed large,
+  frame line, absolute speed, `CAP`, the cap fill bar, assist mode and boost with the steer icon) and the G meter
+  line and bar that `DrawPilotBlock` draws above it all grow `mLeftBlockRect`; `DrawHUD` then calls
+  `AddHoloPanel(mLeftBlockRect, HUD_PRIMARY)` (`SOLFlightHud.cpp` line 853), a borderless panel on the HUD layer.
+- **Date-and-anchor card (D15).** Top left: `ASOLFlightHud::DrawInfoBlock` draws the sim date and warp, `ANCHOR`,
+  `NEAREST` with the altitude and the surface-lock line into a local `panel` rectangle and calls
+  `AddHoloPanel(panel, HUD_PRIMARY)` (line 1201). The key-hint lines under it are drawn after the panel and are not
+  part of the card (they stay HUD). The autopilot / route block (`mTopBlockRect`, top centre) is not a card and stays
+  HUD.
+- **Map list menu (D16).** `USOLActionListWidget` (`UI/SOLActionListWidget.h`), the map's right-click list of the
+  same action table as the radial, C++ UMG.
 - **Overlay Menu.** `USOLOverlayMenuWidget`, C++ UMG: `RootBorder` -> `PanelBorder` (dark translucent fill) -> title,
   5 profile tabs and up to 17 rows of `UTextBlock`, hint. Mouse hover and click via cached geometry; Up / Down,
   Space / Enter, PgUp / PgDn, RShift+O, Esc / Ctrl+O. Embedded, mouse-driven, in the Settings page.
 - **F3 speed panel.** `USOLSpeedPanelWidget`, C++ UMG: steppers (digits and unit) and a scrollable body list. Keys and
   the mouse wheel only (no mouse hover or click); the highlight moves by keys.
 - **Hologram cursor.** `USOLHologramCursorSubsystem` / `SSOLHologramCursor`: its own `M_SOLHudShape` instance,
-  following `HudEffectsStrength`.
+  following `HudEffectsStrength` (`SOLHologramCursorSubsystem.cpp` line 71). D19 moves it to `HoloMenuEffects`.
 - **Audio.** No UI sounds exist. `ASOLCombatAudio` loads `USoundBase` assets from `SOL::COMBAT_SOUNDS` paths; the
   Settings subsystem drives the Master / SFX / Music sound classes (`SOL::Paths::SOUND_CLASS_*`) through a sound mix.
 - **Tech debt in these areas** (`Docs/TECH_DEBT.md`, to respect, not re-report): glow text costs two string copies
@@ -79,12 +101,18 @@ USOLSettingsSubsystem --(HoloMenuEffects)--> USOLHoloMenuSubsystem (world)
                                                |- owns the menu MID of M_SOLHudShape (strength = HoloMenuEffects)
                                                |- plays the cues (open / hover / select) through the SFX class
                                                v
-     ASOLFlightHud: HUD layer (unchanged, HUD MID)   +   menu layer (2nd SSOLHudShapeLayer, menu MID, above it)
-                                                          radial menu, info card, target card
-     USOLOverlayMenuWidget / USOLSpeedPanelWidget: USOLHoloFrameWidget (UMG wrapper of SSOLHoloFrame, menu MID)
-                                                          behind the existing UTextBlock content
+     ASOLFlightHud: HUD layer (HUD MID, minus the cards)  +  menu layer (2nd SSOLHudShapeLayer, menu MID, above it)
+                                                          radial menu, info card, target card, speed card,
+                                                          date-and-anchor card
+     USOLOverlayMenuWidget / USOLSpeedPanelWidget / USOLActionListWidget: USOLHoloFrameWidget (UMG wrapper of
+                                                          SSOLHoloFrame, menu MID) behind the existing UTextBlock content
+                                                          (not added to the Overlay list embedded in Settings, D17)
+     USOLHologramCursorSubsystem: its own MID, strength = HoloMenuEffects (D19)
      All of them run FSOLHoloMenuAnim + SOLHoloMenu pure maths (open / close, hover, idle, backdrop, cue rules)
 ```
+
+D12: the pure maths and the anim state are built first (42a) with no dependency on the hologram renderer, so the #46
+solid menus reuse the same open / close, hover and cue code with their own drawing.
 
 ### 4.2 Why a second material instance
 
@@ -104,8 +132,10 @@ custom-vertex draw while a HUD-drawn menu shows, and one per open UMG frame (sec
 | `USOLHoloFrameWidget` | `UWidget` wrapping `SSOLHoloFrame` | Lets the C++ UMG menus place a frame behind their content and feed it the anim look and the hovered item's rectangle |
 
 The menu layer in the HUD is a second `SSOLHudShapeLayer` instance (no new class): `ASOLFlightHud` gets
-`mMenuLayer` (z just above the HUD layer, below the UMG menus), filled in `DrawHUD` by `DrawInteraction` and the
-target card, with its material set to the subsystem's menu MID. `ResetFrame` / `MarkBatchFrame` follow the HUD
+`mMenuLayer` (z just above the HUD layer, below the UMG menus), filled in `DrawHUD` by `DrawInteraction`, the
+target card, the speed card and the date-and-anchor card (D15), with its material set to the subsystem's menu MID.
+The two always-on cards move off the HUD layer, so the HUD effects slider no longer moves them; they follow
+`HoloMenuEffects` like the other cards. `ResetFrame` / `MarkBatchFrame` follow the HUD
 layer's frame-stamp rule. The HUD keeps `GlowLine` / `AddHoloPanel` for the HUD; a few `Menu*` helpers write to the
 menu layer's batch. The `sol.HudRenderer 0` Canvas fallback draws the menus as today (no effects).
 
@@ -130,10 +160,23 @@ Closing gives input back at once, as today. The visual close then plays for `CLO
 | Menu | Open / close | Hover | Idle | Cues |
 |---|---|---|---|---|
 | **Radial** (HUD menu layer) | The rim arcs grow from each sector's middle to its full aperture (`FrameFraction`), then the highlighted sector's fill and the labels, title and reason fade up (`FillAlpha`). Close plays it backwards from the last drawn state | Highlighted sector change = hover: its rim arcs take `HoverGlow` (edge glow + flicker) on top of today's highlight | Jitter through the menu MID; no sweep (no rectangle to sweep) | Open at the press that opens it; hover on each sector change; select when an **enabled** action is confirmed (none on cancel or a disabled row) |
-| **Overlay Menu with tabs** (UMG + `USOLHoloFrameWidget`) | Frame draw-in around the panel, then backdrop, fill and the text (the content box's render opacity) fade up | The highlighted row or tab (mouse or keys, today's highlight) gets an edge-glow frame around its rectangle with the flicker | Sweep across the panel + jitter | Open at Ctrl+O; hover on each highlight change; select on a row toggle or tab switch |
-| **F3 speed panel** (UMG + frame) | As the Overlay Menu | The highlighted digit, unit field or body row (keys and wheel move it; no mouse, D5) | Sweep + jitter | Open at F3; hover on each highlight move; select on each applied cap (digit step, list Enter) |
-| **Info card** (HUD menu layer) | Opens when Info is chosen, closes when the card goes away | None (no input) | Sweep + jitter | Open only |
-| **Target card** (HUD menu layer; scope in Q6) | Opens when a target is selected, closes when it is cleared | None | Sweep + jitter | None (proposed: a target change is frequent, Q6) |
+| **Overlay Menu with tabs** (UMG + `USOLHoloFrameWidget`; frame shape per Q9; the copy embedded in Settings is not converted, D17) | Frame draw-in around the panel, then backdrop, fill and the text (the content box's render opacity) fade up | The highlighted row or tab (mouse or keys, today's highlight) gets an edge-glow frame around its rectangle with the flicker | Sweep across the panel + jitter | Open at Ctrl+O; hover on each highlight change; select on a row toggle or tab switch |
+| **F3 speed panel** (UMG + frame; frame shape per Q9) | As the Overlay Menu | The highlighted digit, unit field or body row (keys and wheel move it; no mouse, D5) | Sweep + jitter | Open at F3; hover on each highlight move; select on each applied cap (digit step, list Enter) |
+| **Info card** (HUD menu layer; frameless, D15) | Corner ticks grow from the corners, then tint and text fade up, when Info is chosen; reverse when the card goes away | None (no input) | Sweep + jitter | Open only |
+| **Target card** (HUD menu layer; frameless, D15; the top-right target readout) | As the info card, when a target is selected / cleared. The "no target" line stays a plain HUD line | None | Sweep + jitter | None (proposed: a target change is frequent; not separately answered) |
+| **Speed card** (HUD menu layer; frameless, D15) | Always shown in flight: no open / close event, so no draw-in and no cue (the card is there whenever the HUD is) | None | Sweep + jitter | None |
+| **Date-and-anchor card** (HUD menu layer; frameless, D15) | As the speed card (always shown, also on the map) | None | Sweep + jitter | None |
+| **Map list menu** (UMG + frame, D16) | As the Overlay Menu | The highlighted row (mouse, as today) | Sweep + jitter | Open, hover, select on an enabled action (as the radial) |
+
+**Card look (D15).** The four cards are frameless: a glowing L-shaped corner tick at each corner of the content
+rectangle (`CARD_TICK_PX` long) and the faint dark tint behind it, no outline. Reference:
+[`card-frameless.png`](../Images/hologram-card-samples/card-frameless.png). The frame shape of the Overlay Menu and the
+speed panel is Q9 (open); the map list menu is proposed to take the Overlay Menu's answer.
+
+**Strength 0 (D18).** Every menu and card becomes a plain flat panel: the open / close is instant, the backdrop is a
+flat dark panel (`FLAT_PANEL_ALPHA`, readable without glow), outlines and ticks are thin lines with no glow halo, and
+there is no sweep, jitter, flicker or hover glow. The highlighted row, tab, digit or sector keeps today's Secondary
+colour, so the menus stay fully usable.
 
 All frames use the HUD palette (`SOL::HudPalette::PRIMARY` lines, `SECONDARY` for the hovered / highlighted item,
 dim rows as today). Text stays the existing glow text (HUD layer path for HUD-drawn menus) or the UMG `UTextBlock`s
@@ -148,13 +191,14 @@ These contracts are written for a separate test author (no implementation shown 
 
 | Function | Contract |
 |---|---|
-| `float OpenProgress(double elapsedS, float durationS, float s)` | `s <= 0`: 1 (instant, pending Q10). Else `clamp(elapsedS / durationS, 0, 1)`; `durationS <= 0` gives 1; negative elapsed gives 0 |
+| `float OpenProgress(double elapsedS, float durationS, float s)` | `s <= 0`: 1 (instant, D18). Else `clamp(elapsedS / durationS, 0, 1)`; `durationS <= 0` gives 1; negative elapsed gives 0 |
 | `float FrameDrawIn(float progress)` | `SmoothStep(0, LINE_PHASE_END, progress)`; 0 at 0, 1 from `LINE_PHASE_END` on, monotonic |
 | `float FillFade(float progress)` | `SmoothStep(FILL_PHASE_START, 1, progress)`; 0 up to `FILL_PHASE_START`, 1 at 1, monotonic. With `FILL_PHASE_START < LINE_PHASE_END` the two overlap a little |
-| `float HoverGlow(double sinceHoverS, float s)` | 0 for `sinceHoverS < 0`. Ramp `r = SmoothStep(0, HOVER_RAMP_S, since)`. Flicker `f = 1 - HOVER_FLICKER_DEPTH * s * SmoothNoise(since * HOVER_FLICKER_RATE_HZ + HOVER_FLICKER_OFFSET)` while `since < HOVER_FLICKER_S`, else 1. Returns `HOVER_GLOW_INTENSITY * r * f`, always in `[0, HOVER_GLOW_INTENSITY]`; with `s = 0` it is `HOVER_GLOW_INTENSITY * r` (glow kept, no flicker); from `HOVER_RAMP_S` and `HOVER_FLICKER_S` on it is exactly `HOVER_GLOW_INTENSITY` |
+| `float HoverGlow(double sinceHoverS, float s)` | 0 for `sinceHoverS < 0`. Ramp `r = SmoothStep(0, HOVER_RAMP_S, since)`. Flicker `f = 1 - HOVER_FLICKER_DEPTH * s * SmoothNoise(since * HOVER_FLICKER_RATE_HZ + HOVER_FLICKER_OFFSET)` while `since < HOVER_FLICKER_S`, else 1. Returns `HOVER_GLOW_INTENSITY * r * f`, always in `[0, HOVER_GLOW_INTENSITY]`; with `s <= 0` it is **0** (no glow, D18; the item's Secondary colour shows the highlight); for `s > 0`, from `HOVER_RAMP_S` and `HOVER_FLICKER_S` on it is exactly `HOVER_GLOW_INTENSITY` |
 | `float SweepFraction(double ageS)` | `frac(fmod(ageS, HUD_TIME_WRAP_S) / IDLE_SWEEP_PERIOD_S)` in `[0, 1)`: 0 at the top of the frame |
 | `float SweepIntensity(float s)` | `IDLE_SWEEP_INTENSITY * s`; 0 at `s = 0` (D4c) |
-| `float BackdropAlpha(float s, float fillAlpha)` | `BACKDROP_ALPHA_PER_UNIT * s * clamp(fillAlpha, 0, 1)`; 0 at `s = 0` (pending Q10), at most `2 * BACKDROP_ALPHA_PER_UNIT` |
+| `float BackdropAlpha(float s, float fillAlpha)` | `base(s) * clamp(fillAlpha, 0, 1)` with `base(s)` = `lerp(FLAT_PANEL_ALPHA, BACKDROP_ALPHA_PER_UNIT, s)` for `s` in `[0, 1]` and `BACKDROP_ALPHA_PER_UNIT * s` for `s` in `(1, 2]`: a **flat panel at `s = 0`** (`FLAT_PANEL_ALPHA`, D18), the faint tint at 1, continuous in `s`, never above `max(FLAT_PANEL_ALPHA, 2 * BACKDROP_ALPHA_PER_UNIT)`; 0 when `fillAlpha` is 0 (the shape of `base` between 0 and 1 is proposed, not answered) |
+| `float GlowScale(float s)` | `clamp(s, 0, 1)`: scales the glow halo of outlines, ticks and sweep; 0 at `s = 0` gives thin flat lines (D18) |
 
 `SmoothNoise` and `HUD_TIME_WRAP_S` are SDD 21's (`SOLHudShapeMath`), reused.
 
@@ -175,7 +219,7 @@ struct FSOLHoloMenuAnim
 
 | Function | Contract |
 |---|---|
-| `float Progress(const FSOLHoloMenuAnim&, double nowS, float s)` | Closed 0, Open 1. Opening: `PhaseStartProgress` plus the elapsed fraction of `OPEN_S`, clamped to 1. Closing: `PhaseStartProgress` minus the elapsed fraction of `CLOSE_S`, clamped to 0. With `s <= 0`: Opening reads 1 and Closing 0 (pending Q10) |
+| `float Progress(const FSOLHoloMenuAnim&, double nowS, float s)` | Closed 0, Open 1. Opening: `PhaseStartProgress` plus the elapsed fraction of `OPEN_S`, clamped to 1. Closing: `PhaseStartProgress` minus the elapsed fraction of `CLOSE_S`, clamped to 0. With `s <= 0`: Opening reads 1 and Closing 0 (D18) |
 | `bool BeginOpen(FSOLHoloMenuAnim&, double nowS, float s)` | Closed -> Opening from 0; Closing -> Opening from the current progress; Opening / Open unchanged. Returns true when it left Closed or Closing (the open cue). Clears the hover |
 | `bool BeginClose(FSOLHoloMenuAnim&, double nowS, float s)` | Opening / Open -> Closing from the current progress; Closed / Closing unchanged. Returns true when it started a close. Clears the hover |
 | `void Advance(FSOLHoloMenuAnim&, double nowS, float s)` | Opening at progress 1 -> Open; Closing at progress 0 -> Closed. Idempotent; never skips a state backwards |
@@ -193,15 +237,21 @@ The select cue is fired by the caller when an enabled item is confirmed; it need
 | `float FramePerimeter(const FBox2f& rect, float chamferPx)` | Length of that outline |
 | `int32 FrameDrawSegments(const FBox2f& rect, float chamferPx, float fraction, FSOLHoloSegment outSegments[FRAME_MAX_SEGMENTS])` | The drawn part of the outline at a draw-in fraction: two strokes start at the top edge's midpoint and run in opposite directions, each covering `fraction` of half the perimeter, meeting at the bottom edge's midpoint at 1. Returns the segment count: 0 at `fraction <= 0` or an invalid rect; the summed length is `fraction * perimeter` (within 1e-3 px); segments are contiguous along each stroke; the result is mirror-symmetric about the rect's vertical centre line; `fraction` is clamped to `[0, 1]`; at most `FRAME_MAX_SEGMENTS` (18) |
 | `void RadialArcDrawIn(float halfApertureRad, float frameFraction, float& outHalfApertureRad)` | A radial sector's rim arc grows from its middle: `halfApertureRad * clamp(frameFraction, 0, 1)` |
+| `int32 CardCornerTicks(const FBox2f& rect, float tickPx, float fraction, FSOLHoloSegment outSegments[8])` | The frameless card look (D15): two segments per corner, each starting at the corner and running along its edge for `tickPx * clamp(fraction, 0, 1)` (NaN reads 0), with `tickPx` clamped to `[0, min(w, h) / 2]`. Returns 8, or 0 for an invalid or empty rect or a zero length. Mirror-symmetric about both centre lines |
+
+`FrameOutline`, `FramePerimeter` and `FrameDrawSegments` describe a chamfered outline (Q9 option b). **They wait on
+Q9:** with (a) the menus reuse `CardCornerTicks` plus a notched title-tab path; with (c) the outline becomes a stepped
+path drawn with fixed gaps. This section is finalised before 42a's tests are briefed.
 
 ### 6.4 Test cases (for the separate test author; `Tests/HoloMenuTest.cpp`, `SOLTest.HoloMenu.*`)
 
 1. `OpenProgress`: 0 / half / full / beyond the duration; negative elapsed; zero duration; `s = 0` instant.
 2. `FrameDrawIn` and `FillFade`: end values, the phase thresholds, monotonic over 101 samples, outputs in `[0, 1]`.
-3. `HoverGlow`: negative time 0; ramp end; exact intensity after both windows; `s = 0` has no flicker; bounds over a
-   sample sweep at `s` = 0, 1, 2.
+3. `HoverGlow`: negative time 0; ramp end; exact intensity after both windows; `s = 0` gives 0 at every time; bounds
+   over a sample sweep at `s` = 0, 1, 2.
 4. `SweepFraction` wraps into `[0, 1)` (including large and negative ages); `SweepIntensity(0)` is 0.
-5. `BackdropAlpha`: 0 at `s = 0` or fill 0; linear in `s`; clamps `fillAlpha`.
+5. `BackdropAlpha`: `FLAT_PANEL_ALPHA` at `s = 0` with fill 1; `BACKDROP_ALPHA_PER_UNIT` at `s = 1`; 0 at fill 0;
+   continuous across `s = 1`; clamps `fillAlpha` and `s`; `GlowScale(0)` is 0 and `GlowScale(2)` is 1.
 6. Anim: open -> Open after `OPEN_S`; close -> Closed after `CLOSE_S`; reopen during a close resumes from the current
    progress (no jump); close during an open likewise; `BeginOpen` twice returns true once; `Advance` idempotent;
    `s = 0` reaches Open / Closed on the next `Advance`; hover cleared by open and close.
@@ -212,6 +262,8 @@ The select cue is fired by the caller when an enabled item is confirmed; it need
 9. `FrameDrawSegments`: 0 / 0.5 / 1 lengths, symmetry, contiguity, start at the top midpoint, capacity never exceeded,
    NaN fraction treated as 0.
 10. `RadialArcDrawIn`: 0, 1, clamping.
+11. `CardCornerTicks`: 8 segments each `tickPx` long at fraction 1, half at 0.5, 0 at 0 or NaN; every segment starts
+    at a corner of the rect; tick clamped on a small rect; invalid rect 0; symmetry.
 
 ## 7. Constants (`SOL::HoloMenu` in `SOLConstants.h`; proposed, tuned from screenshots)
 
@@ -227,7 +279,9 @@ The select cue is fired by the caller when an enabled item is confirmed; it need
 | `HOVER_GLOW_INTENSITY` | 0.9 | Edge glow of the hovered item |
 | `FRAME_INTENSITY` | 0.5 | Outline frame glow (not scaled by the slider) |
 | `FRAME_HALF_WIDTH_PX` | 0.5 | Outline line half width (a 1 px core, x UI scale) |
-| `FRAME_CHAMFER_PX` | 6 | Corner cut (x UI scale; pending Q9) |
+| `FRAME_CHAMFER_PX` | 6 | Corner cut (x UI scale; only if Q9 = b) |
+| `CARD_TICK_PX` | 16 | Corner tick length of the frameless cards (x UI scale, at a 720 px canvas; as in the approved sample, D15) |
+| `FLAT_PANEL_ALPHA` | 0.45 | Backdrop alpha at strength 0, a plain flat panel (D18; the HUD backing's 0.45) |
 | `FRAME_MAX_SEGMENTS` | 18 | Capacity of `FrameDrawSegments` (8 sides split by the 2 stroke starts, plus margin) |
 | `IDLE_SWEEP_PERIOD_S` | 4.0 | One scanline pass from top to bottom |
 | `IDLE_SWEEP_INTENSITY` | 0.08 | Sweep line glow per unit of strength |
@@ -292,12 +346,17 @@ wants sounds from a non-CC0 pack, two questions come back: whether committing th
 - Label `SOLMenuText::SETTINGS_HOLO_MENU_EFFECTS` = "Hologram menu effects" (shown as a multiplier, "1.00x", like the
   HUD slider).
 - `ESOLSettingsSlider::HoloMenuEffects` with its `SETTINGS_SLIDERS` row (the `static_assert` count grows), a handler
-  and `ApplySliderValue` / value-read cases. Placement on the page (Q2, D10): **Settings > Graphics, right under the
-  HUD effects slider.** Since the HUD effects slider is in Gameplay today, the exact placement waits on **Q2b**.
+  and `ApplySliderValue` / value-read cases. Placement on the page (D11): **Settings > Gameplay, right under the
+  "HUD hologram effects" slider**; the HUD slider stays where it is.
 - It is a normal Settings field: Apply / Revert, written at the page's `EndVisit` (no new write point). Live
   preview: the menu MID reads the live values, like the HUD slider does today; no menu is open while Settings shows,
   so the preview is seen on the next open (the user may want a preview frame on the page; not proposed).
-- The cursor keeps following the HUD slider (pending Q11).
+- **The hologram cursor follows the new slider (D19):** `USOLHologramCursorSubsystem` reads `HoloMenuEffects`
+  instead of `HudEffectsStrength`. The cursor also shows on the #46 screens, so this slider sets its effects there
+  too. A migrated save copies the HUD value (D8), so an existing player sees no change until they move a slider.
+- What each slider drives after #42: **HUD hologram effects** = the flight HUD (readouts, radar, icons, reticle, the
+  remaining HUD panels and lines); **Hologram menu effects** = the radial, Overlay Menu, speed panel, map list menu,
+  the four cards (D15) and the cursor.
 
 ## 9. Persistence (schema 11, approved 2026-11-03)
 
@@ -352,10 +411,11 @@ settings test is walked to confirm it still states the current contract.
 
 - **`Docs/GAME_MECHANICS.md`:** section 8.1 Settings (new slider row with range, step, default and what it scales);
   section 7a (radial look, open / close, hover, cues); the Ctrl+O and F3 rows of section 1 (frame, effects); a
-  tunables table for `SOL::HoloMenu`; the HUD-effects row says it no longer drives the radial menu and info card.
+  tunables table for `SOL::HoloMenu`; the HUD-effects row says it no longer drives the radial menu, the cards
+  (info, target, speed, date-and-anchor) or the cursor; the map list menu row.
 - **In-game Controls / Info / About** (`SOLMenuText` texts shown by `SOLMenuContent`): the Settings description of the
-  new slider; the sentence that names the HUD hologram effects slider (`SOLMenuText.h` around line 452) narrowed to
-  the HUD; a line that the in-flight menus animate and play cues (truthful to whatever Q1 decides: no claim of
+  new slider (it also sets the cursor, D19); the sentence that names the HUD hologram effects slider (`SOLMenuText.h`
+  around line 452) narrowed to the HUD; a line that the in-flight menus animate and play cues (truthful to whatever Q1 decides: no claim of
   sounds if the cues are silent placeholders).
 - **`Docs/ARCHITECTURE.md`:** the new types (section 4.3) in "Key types per module"; the HUD's second layer in the
   frame-order diagram (menu layer painted above the HUD layer, below the UMG menus); the `-SOLSmokeHoloMenu` flag;
@@ -368,16 +428,24 @@ settings test is walked to confirm it still states the current contract.
 
 ## 11. Performance
 
-- Proposed budget (pending **Q5**), 1280x720, editor build, one menu open: GPU at most +0.05 ms over the #22 radial
-  baseline (shape batch 0.052 ms, Slate UI 0.096 ms); game thread at most +0.05 ms in `HUD Time` + `Game UI Paint`;
-  **zero heap allocation per frame**; at most `FRAME_MAX_SHAPES` shapes per frame widget; one extra custom-vertex
-  draw per visible menu.
+- **Budget (D14):** with **all menus open** (every menu and card that can be shown at the same time), the extra cost
+  over the pre-#42 baseline is **under 0.1 ms CPU** (game thread: `HUD Time` + `Game UI Paint` + Slate paint) and
+  **under 0.1 ms GPU** (`ProfileGPU` with `r.ProfileGPU.ShowUI 1`: the shape batches and Slate UI), 1280x720, editor
+  build. Menus that exclude each other (the radial, Ctrl+O, F3 and the map list menu take the same input) are measured
+  one per pass, each together with all four cards; the worst pass must meet the budget. Also: **zero heap allocation
+  per frame**; at most `FRAME_MAX_SHAPES` shapes per frame widget; one extra custom-vertex draw per visible menu.
+- **Profiling smoke (D14):** `-SOLSmokeHoloMenuProfile` (flag constant in `SOLConstants.h`, listed in ARCHITECTURE)
+  flies the fixed smoke scene, opens each pass's menus, waits for the open animation to end, runs
+  `stat dumpave -num=240` and one `ProfileGPU`, and logs the numbers with a PASS / FAIL against the budget. The
+  baseline is the same scene and passes at the commit before 42c (the menus as they are today), captured once and
+  written into the SDD amendment; the final numbers are captured in 42i.
 - Event-driven: a closed menu costs nothing (the HUD's menu layer draws nothing and is not stamped; a closed UMG
   frame is removed). The UMG `NativeTick` returns at once when the menu is Open and idle; the idle sweep and hover
   glow are evaluated in the frame's paint from `nowS` (a few float ops), no timers.
 - The menu MID parameters are pushed only when they change (strength, view size), as the HUD does.
-- Measured with `ProfileGPU` (`r.ProfileGPU.ShowUI 1`) and `stat dumpave -num=240`, radial and Ctrl+O each open,
-  numbers written into the SDD amendment. No claim without a measurement.
+- The always-on speed and date-and-anchor cards are drawn every flight frame: their idle sweep and jitter are a few
+  float ops in the paint, and they cost no more shapes than today's two panels plus 16 tick segments.
+- No claim without a measurement; the numbers go into an SDD amendment.
 
 ## 12. Verification
 
@@ -394,12 +462,19 @@ settings test is walked to confirm it still states the current contract.
   5. Radial: press on an icon, check the draw-in, drag across two sectors (hover cues), release on an enabled action
      (select cue), check the close animation from the cached state.
   6. F3: open, step a digit (select cue), move the highlight (hover cue), close.
-  7. Info card: open via Info, then close; target card per Q6.
-  8. Strength 0 (set in the smoke slot): open is instant, no sweep or flicker drawn, the backdrop per Q10; strength 2
+  7. Info card: open via Info, then close; target card: select and clear a target (corner ticks drawn, no outline);
+     speed card and date-and-anchor card: present in the menu layer with 8 tick segments each, and gone from the HUD
+     layer's panels.
+  8. Map list menu: open on the map, hover a row, choose an enabled action (open, hover and select cues).
+  9. Strength 0 (set in the smoke slot): open is instant, no sweep, flicker, jitter or hover glow drawn, the backdrop
+     is `FLAT_PANEL_ALPHA`, and a row toggle, a digit step and a radial selection still work (D18); strength 2
      screenshot.
-  9. Settings: the slider exists in the agreed section, Apply writes once at `EndVisit`.
-  10. Cue playback is counted through the subsystem (the section 7.1 assets), not heard.
-- **Regression smokes:** `-SOLSmokeOverlay`, `-SOLSmokeInteract`, `-SOLSmokeHud` (F3 checks), `-SOLSmokeChase`
+  10. Settings: the slider is in Gameplay right under the HUD effects slider (D11); Apply writes once at `EndVisit`;
+      the cursor's effects strength follows `HoloMenuEffects`, not `HudEffectsStrength` (D19).
+  11. The Overlay list embedded in Settings has no frame widget and keeps today's look (D17).
+  12. Cue playback is counted through the subsystem (the section 7.1 assets), not heard.
+- **Regression smokes:** `-SOLSmokeOverlay`, `-SOLSmokeInteract`, `-SOLSmokeHud` (F3 checks; any check that counts
+  the HUD layer's panels or backings is updated for the two cards that move to the menu layer), `-SOLSmokeChase`
   (radial entry), `-SOLMenuSmoke=all` (Settings page; its known stale checks stay as in TECH_DEBT).
 - **PIE smoke** with unreal-mcp when the editor is open: screenshots looked at for each menu at strength 0, 1, 2.
 - **Adversarial review** per part (opus, xhigh, report only), briefed with this SDD, the STYLE_GUIDE, the performance
@@ -407,31 +482,34 @@ settings test is walked to confirm it still states the current contract.
 
 ## 13. Questions for the user
 
-Answered on 2026-11-03 (kept here for the record; the decisions are D7-D10):
+Answered on 2026-11-03 (kept here for the record; the decisions are D7-D19):
 
 | # | Question | Answer |
 |---|---|---|
 | A1 / A2 | Schema bump and the default / migrated value (section 9.1) | Approved: `SAVE_VERSION` 11, migrated saves copy `HudEffectsStrength`, new saves 1.0 (D7, D8) |
 | Q1 | **Sound cue assets** for open / hover / select | **(a), now:** made with SoundCraft from CC0 Kenney sounds in `D:\MediaLib\Sounds`; licence check and import plan in section 7.1 (D9). The listen-and-approve round is still to come (part 42h) |
-| Q2 | **Where the new slider lives** in Settings | **Settings > Graphics, right under the HUD effects slider** (D10); see Q2b |
+| Q2 | **Where the new slider lives** in Settings | Settings > Graphics, right under the HUD effects slider (D10), clarified by Q2b |
+| Q2b | The HUD effects slider is in Gameplay, not Graphics | **Settings > Gameplay, right under the HUD effects slider** (D11) |
+| Q3 | #46 shared code | **#42 builds the shared hover / cursor / animation code first; #46 reuses it** (D12) |
+| Q4 | Per-widget order | **Radial, Overlay Menu, speed panel, then the cards** (info, target, speed card, date-and-anchor card) (D13) |
+| Q5 | Performance budget | **Under 0.1 ms extra CPU and GPU with all menus open, measured by a profiling smoke** (D14, section 11) |
+| Q6 | Card look ([`card-compare.png`](../Images/hologram-card-samples/card-compare.png)) | **Frameless** (glowing corner ticks + faint dark tint) for the info and target cards, and the **speed card and the date-and-anchor card get the same look and effects** (scope extension, D15) |
+| Q7 | Panels not named | **The map list menu is hologram** (D16); the Attack hint and profile tag stay HUD |
+| Q8 | The Overlay list embedded in Settings | **Stays solid / plain, follows #46's solid Settings; not converted by #42** (D17) |
+| Q10 | Strength 0 | **Plain flat panels: no glow, animation or jitter; fully usable** (D18) |
+| Q11 | Cursor | **Follows the new slider** (D19) |
 
 Still open (not decided; a recommendation is attached but the user decides):
 
 | # | Question | Options (recommendation first, not a decision) |
 |---|---|---|
-| Q2b | **Section mismatch in the Q2 answer:** the "HUD hologram effects" slider is in the **Gameplay** section today, not Graphics | (a) put the new slider in Gameplay right under the HUD effects slider (keeps "right under" literally); (b) move the HUD effects slider into Graphics and put the new slider right under it there (both effects sliders together in Graphics; a small change to an existing control's place, and `GAME_MECHANICS.md` 8.1 and the in-game Settings text follow); (c) the new slider alone in Graphics, apart from the HUD slider. No recommendation; it is the user's wording to clarify |
-| Q3 | **#46 shared code:** factor the hover / cursor / animation code for #46 first, or build it inside #42 and let #46 reuse it | Build it in #42 as renderer-free pure logic (`SOLHoloMenuMath`'s anim state, curves and cue rules have no hologram dependency), so #46 reuses it without a refactor (recommended); or a separate shared-UI part before both; or let #46 extract it later |
-| Q4 | **Per-widget order** of the conversions | Radial, Overlay Menu, F3 panel, info / target cards (recommended: most visible first, the radial also proves the HUD menu layer); or Overlay Menu first (proves the UMG frame); or all in one part |
-| Q5 | **Performance budget** | Section 11's numbers (recommended); or a looser cap; or "measure and report only" |
-| Q6 | **Target / info cards vs #31's "no visible rectangle around any panel":** which look the two cards get, and is the "target card" the top-right target readout (today part of the HUD). **Pending the user's look at the visual samples:** [`card-frameless.png`](../Images/hologram-card-samples/card-frameless.png) (option 1: no frame, only glowing corner ticks and the faint dark tint, so #31's rule holds), [`card-framed.png`](../Images/hologram-card-samples/card-framed.png) (option 2: a full glowing outline frame with the 6 px chamfer of Q9, plus the tint) and the side-by-side [`card-compare.png`](../Images/hologram-card-samples/card-compare.png). They are VectorCraft mock-ups over a real game screenshot (`43-dust-slow.png`), not in-game captures | (1) frameless corner ticks + tint for both cards; (2) full outline frame for both; or a mix (e.g. the info card framed like the other menus, the target readout frameless). Also: target readout becomes the target card or stays HUD, and no cue on target change (proposed) |
-| Q7 | **Panels not named:** the map's right-click list menu (`USOLActionListWidget`, same action table as the radial), the Attack hint and the profile tag | Include the map list menu (same menu family), leave the hint and the tag as HUD (recommended); or exclude all |
-| Q8 | **The Overlay list embedded in the Settings page** | Leave it to #46 (it sits on a solid page; the frame widget is not added when `SetEmbedded(true)`) (recommended); or hologram there too |
-| Q9 | **Frame shape** | Chamfered corners (`FRAME_CHAMFER_PX` 6) (recommended, matches the radial's cut sectors); plain rectangle; corner brackets only |
-| Q10 | **At strength 0:** is open / close instant and is the backdrop tint gone | Animations instant and no tint, the text keeps its drop shadow (recommended, a true "off"); or keep the 0.2 s draw-in and a minimum tint at 0 |
-| Q11 | **Cursor:** does the hologram cursor follow the new slider | Keep it on the HUD slider (recommended; it also shows on the #46 screens); or the menu slider |
+| Q9 | **Frame shape of the Ctrl+O Overlay Menu and the F3 speed panel** (and, proposed, the map list menu). The user asked for visual examples: [`overlay-a.png`](../Images/hologram-frame-samples/overlay-a.png), [`overlay-b.png`](../Images/hologram-frame-samples/overlay-b.png), [`overlay-c.png`](../Images/hologram-frame-samples/overlay-c.png), [`speed-a.png`](../Images/hologram-frame-samples/speed-a.png), [`speed-b.png`](../Images/hologram-frame-samples/speed-b.png), [`speed-c.png`](../Images/hologram-frame-samples/speed-c.png) and the side-by-side [`frames-compare.png`](../Images/hologram-frame-samples/frames-compare.png). They are Python / Pillow mock-ups over the same real game screenshot as the card samples (`43-dust-slow.png`), with today's menu text and the hover / highlight in Secondary; not in-game captures. The speed panel sits a little higher than its real centred place so the ship does not cover it; today's full-screen dim behind it is not drawn | (a) **corner ticks + faint tint with a notched title tab** (recommended: the same family as the chosen frameless cards, so #31's "no visible rectangle" rule holds for every in-flight panel; tabs marked by a left bar, the hovered row by small Secondary corner ticks); (b) **chamfered glowing outline** + faint tint (the selected profile tab opens into the divider like a real tab; the hovered row gets a chamfered Secondary outline; the most readable "panel" look, but it is a visible rectangle); (c) **segmented / stepped broken lines** (Homeworld-style: thin cyan glow only, no fill, a raised title step, cut corners, gaps with end dots, ruler ticks; the hovered row gets Secondary brackets with a pointer line; the lightest look, but with no tint, bright scenery behind the text, such as orbit lines, stays visible) |
+| Q12 | **Cues at strength 0** (raised while recording D18, which covers glow, animation and jitter but not sound) | Cues still play at strength 0, since the SFX volume already controls them (recommended); or silence them at strength 0 too |
 
 ## 14. Out of scope
 
-The flight HUD (D1); the full-screen menus (#46); keyboard / gamepad navigation (D5); mouse support for the F3 panel
-(D5); in-world cockpit screens (`Docs/ToDo/cockpit-3d-screens.md`); the glow-text and panel-flicker tech debt (may be
-fixed on the way only if the user asks).
+The flight HUD (D1) except the speed card and the date-and-anchor card (D15); the full-screen menus (#46); the Overlay
+list embedded in Settings (#46, D17; it keeps today's look until #46 restyles it); the Attack hint and the profile tag
+(stay HUD, D16); keyboard / gamepad navigation (D5); mouse support for the F3 panel (D5); in-world cockpit screens
+(`Docs/ToDo/cockpit-3d-screens.md`); the glow-text and panel-flicker tech debt (may be fixed on the way only if the
+user asks).
