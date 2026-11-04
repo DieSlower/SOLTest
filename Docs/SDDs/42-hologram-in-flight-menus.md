@@ -8,12 +8,12 @@ and SDD 8 (Settings). Sister ticket: #46 (solid console menus for the full scree
 `Docs/Plans/46-solid-menus-grill-notes.md`), which depends on #42 for the shared hover, cursor and animation code.
 Plan: [`Docs/Plans/42-hologram-in-flight-menus-plan.md`](../Plans/42-hologram-in-flight-menus-plan.md).
 
-Status: **draft, not approved.** The grill-me decisions below are resolved. The user approved A1 and A2 (section 9.1)
-and answered Q1 and Q2 on 2026-11-03 (D7-D10), then Q2b, Q3-Q8, Q10 and Q11 the same day (D11-D19). **Q9 (the frame
-shape of the Overlay Menu and the speed panel) is still open**: the user asked for visual examples, which are in
-`Docs/Images/hologram-frame-samples/` (section 13). Q12 (cues at strength 0) is a small follow-up item raised while
-recording D18. A part that depends on an open question does not start until it is answered. Checked against the code
-at HEAD `4128a05`; the card scope of D15 was checked at HEAD `9846dc8`.
+Status: **every question is answered (2026-11-03); implementation in progress.** The grill-me decisions below are
+resolved. The user approved A1 and A2 (section 9.1) and answered Q1 and Q2 on 2026-11-03 (D7-D10), then Q2b, Q3-Q8,
+Q10 and Q11 the same day (D11-D19), then Q9 (frame shape, D20) and Q12 (cues at strength 0, D21). One item is to be
+confirmed by the user at the hand check: the map list menu takes the same option (c) frame as the Overlay Menu (D20;
+it was proposed in the Q9 wording, not separately answered). Checked against the code at HEAD `4128a05`; the card
+scope of D15 was checked at HEAD `9846dc8`.
 
 ## 1. Goal
 
@@ -45,6 +45,8 @@ sets how strong these effects are, separately from the HUD's own slider. The fli
 | D17 | **Q8 answered:** the Overlay list **embedded in the Settings page stays solid / plain** and follows #46's solid Settings look. #42 does **not** convert it: with `SetEmbedded(true)` no frame widget is added and the embedded copy keeps today's look until #46 restyles it. |
 | D18 | **Q10 answered:** at **strength 0 the menus are plain flat panels**: no glow, no open / close animation, no jitter, no sweep, no flicker, and **fully usable** (every row, tab, digit and sector still reads and responds; the highlight keeps its Secondary colour). |
 | D19 | **Q11 answered:** the hologram **cursor follows the new slider** (`HoloMenuEffects`), not the HUD slider. |
+| D20 | **Q9 answered: option (c) with a faint dark tint** for the **Ctrl+O Overlay Menu** and the **F3 speed panel**: a segmented, stepped broken-line glow frame (Homeworld-style). Thin cyan glow lines, a raised title step on the left of the top edge, cut corners and a stepped-in bottom-right corner, fixed gaps with end dots, ruler ticks on the left edge; the hovered row gets Secondary brackets with a pointer line; plus the faint dark tint behind the panel (the `BackdropAlpha` path). Approved samples: [`overlay-c-tint.png`](../Images/hologram-frame-samples/overlay-c-tint.png), [`speed-c-tint.png`](../Images/hologram-frame-samples/speed-c-tint.png), [`frames-compare-c-tint.png`](../Images/hologram-frame-samples/frames-compare-c-tint.png). Geometry in section 6.3. The **map list menu** (D16) uses the same option (c) frame, as proposed in the Q9 wording; **to be confirmed by the user at the hand check** (not separately answered). |
+| D21 | **Q12 answered:** the menu **sounds are independent of the hologram strength** and still play at strength 0; the SFX volume controls them. |
 
 ## 3. What exists today (checked in code at HEAD `4128a05`)
 
@@ -128,7 +130,7 @@ custom-vertex draw while a HUD-drawn menu shows, and one per open UMG frame (sec
 | `SOLHoloMenu` (`SOLHoloMenuMath.h/.cpp`) | Pure namespace, test-first | Open / close progress, frame draw-in and its segments, fill fade, hover glow and flicker, idle sweep, backdrop alpha, cue rules (section 6) |
 | `FSOLHoloMenuAnim` (same file) | Plain struct | One menu's phase (Closed / Opening / Open / Closing), phase start, hovered item and hover start, last cue time |
 | `USOLHoloMenuSubsystem` | `UWorldSubsystem` | Owns the menu MID (`UPROPERTY` `TObjectPtr`), pushes `HoloMenuEffects` and the view size into it only when they change, loads the cue sounds once from `SOL::Paths` and plays them 2D in the SFX class (`PlayCue`); a missing asset is silent with one warning |
-| `SSOLHoloFrame` | Slate leaf, hit-test invisible | Draws one frame: backdrop tint (backing boxes), outline segments, the borderless panel fill, the idle sweep line and the hover edge glow around the hovered item's rectangle, as one custom-vertex draw with the menu MID; buffers reserved once |
+| `SSOLHoloFrame` | Slate leaf, hit-test invisible | Draws one frame: backdrop tint (backing boxes), the option (c) broken outline with its gap dots, ruler ticks and accents (D20, section 6.3), the dividers and tab markers its menu asks for, the borderless panel fill, the idle sweep line and the hover brackets of the hovered item, as one custom-vertex draw with the menu MID; buffers reserved once |
 | `USOLHoloFrameWidget` | `UWidget` wrapping `SSOLHoloFrame` | Lets the C++ UMG menus place a frame behind their content and feed it the anim look and the hovered item's rectangle |
 
 The menu layer in the HUD is a second `SSOLHudShapeLayer` instance (no new class): `ASOLFlightHud` gets
@@ -160,23 +162,34 @@ Closing gives input back at once, as today. The visual close then plays for `CLO
 | Menu | Open / close | Hover | Idle | Cues |
 |---|---|---|---|---|
 | **Radial** (HUD menu layer) | The rim arcs grow from each sector's middle to its full aperture (`FrameFraction`), then the highlighted sector's fill and the labels, title and reason fade up (`FillAlpha`). Close plays it backwards from the last drawn state | Highlighted sector change = hover: its rim arcs take `HoverGlow` (edge glow + flicker) on top of today's highlight | Jitter through the menu MID; no sweep (no rectangle to sweep) | Open at the press that opens it; hover on each sector change; select when an **enabled** action is confirmed (none on cancel or a disabled row) |
-| **Overlay Menu with tabs** (UMG + `USOLHoloFrameWidget`; frame shape per Q9; the copy embedded in Settings is not converted, D17) | Frame draw-in around the panel, then backdrop, fill and the text (the content box's render opacity) fade up | The highlighted row or tab (mouse or keys, today's highlight) gets an edge-glow frame around its rectangle with the flicker | Sweep across the panel + jitter | Open at Ctrl+O; hover on each highlight change; select on a row toggle or tab switch |
-| **F3 speed panel** (UMG + frame; frame shape per Q9) | As the Overlay Menu | The highlighted digit, unit field or body row (keys and wheel move it; no mouse, D5) | Sweep + jitter | Open at F3; hover on each highlight move; select on each applied cap (digit step, list Enter) |
+| **Overlay Menu with tabs** (UMG + `USOLHoloFrameWidget`; option (c) stepped broken-line frame + faint tint, D20; the copy embedded in Settings is not converted, D17) | The broken outline draws in from the title corner, then backdrop, fill, ruler ticks, accents, dividers, tab markers and the text (the content box's render opacity) fade up | The highlighted row (mouse or keys, today's highlight) gets Secondary brackets with a pointer line, glowing with the flicker (`HoverMark` `RowPointer`); a highlighted tab gets the brackets only (`BracketsOnly`, proposed). The selected profile tab keeps its tab marker (section 6.3) | Sweep across the panel + jitter | Open at Ctrl+O; hover on each highlight change; select on a row toggle or tab switch |
+| **F3 speed panel** (UMG + frame; option (c) stepped broken-line frame + faint tint, D20) | As the Overlay Menu | The highlighted digit or unit field gets Secondary brackets with a short tick above and below (`CentreTicks`); a highlighted body row gets brackets with a pointer line (`RowPointer`, proposed). Keys and wheel move it; no mouse, D5 | Sweep + jitter | Open at F3; hover on each highlight move; select on each applied cap (digit step, list Enter) |
 | **Info card** (HUD menu layer; frameless, D15) | Corner ticks grow from the corners, then tint and text fade up, when Info is chosen; reverse when the card goes away | None (no input) | Sweep + jitter | Open only |
 | **Target card** (HUD menu layer; frameless, D15; the top-right target readout) | As the info card, when a target is selected / cleared. The "no target" line stays a plain HUD line | None | Sweep + jitter | None (proposed: a target change is frequent; not separately answered) |
 | **Speed card** (HUD menu layer; frameless, D15) | Always shown in flight: no open / close event, so no draw-in and no cue (the card is there whenever the HUD is) | None | Sweep + jitter | None |
 | **Date-and-anchor card** (HUD menu layer; frameless, D15) | As the speed card (always shown, also on the map) | None | Sweep + jitter | None |
-| **Map list menu** (UMG + frame, D16) | As the Overlay Menu | The highlighted row (mouse, as today) | Sweep + jitter | Open, hover, select on an enabled action (as the radial) |
+| **Map list menu** (UMG + frame, D16; the same option (c) frame + tint as the Overlay Menu, D20, to be confirmed at the hand check) | As the Overlay Menu | The highlighted row (mouse, as today) gets brackets with a pointer line (`RowPointer`) | Sweep + jitter | Open, hover, select on an enabled action (as the radial) |
 
 **Card look (D15).** The four cards are frameless: a glowing L-shaped corner tick at each corner of the content
 rectangle (`CARD_TICK_PX` long) and the faint dark tint behind it, no outline. Reference:
-[`card-frameless.png`](../Images/hologram-card-samples/card-frameless.png). The frame shape of the Overlay Menu and the
-speed panel is Q9 (open); the map list menu is proposed to take the Overlay Menu's answer.
+[`card-frameless.png`](../Images/hologram-card-samples/card-frameless.png).
+
+**Menu frame look (D20).** The Overlay Menu, the speed panel and the map list menu use option (c) with the faint dark
+tint: a stepped broken-line outline (raised title step on the left, cut corners, a stepped-in bottom-right corner),
+fixed gaps with an end dot on each side, six ruler ticks on the left edge, two inner corner accents and a broken title
+underline, all thin cyan glow lines; the faint dark tint behind the panel is the `BackdropAlpha` path (section 6.1).
+Inside the panel the Overlay Menu has a dashed column divider between the tabs and the rows (open beside the selected
+tab), tab markers and a broken divider above the hints; the speed panel has a stepped broken divider between the
+steppers and the body list. References: [`overlay-c-tint.png`](../Images/hologram-frame-samples/overlay-c-tint.png),
+[`speed-c-tint.png`](../Images/hologram-frame-samples/speed-c-tint.png). Exact geometry in section 6.3. The map list
+menu taking this frame was proposed in the Q9 wording; the user confirms it at the hand check.
 
 **Strength 0 (D18).** Every menu and card becomes a plain flat panel: the open / close is instant, the backdrop is a
 flat dark panel (`FLAT_PANEL_ALPHA`, readable without glow), outlines and ticks are thin lines with no glow halo, and
-there is no sweep, jitter, flicker or hover glow. The highlighted row, tab, digit or sector keeps today's Secondary
-colour, so the menus stay fully usable.
+there is no sweep, jitter, flicker or hover glow. The option (c) frame draws whole at once (gaps, dots, ruler ticks,
+accents, dividers and tab markers included) as thin flat lines. The highlighted row, tab, digit or sector keeps
+today's Secondary colour, and its hover brackets stay as thin flat Secondary lines (proposed, section 6.3), so the
+menus stay fully usable. The sound cues still play at strength 0 (D21).
 
 All frames use the HUD palette (`SOL::HudPalette::PRIMARY` lines, `SECONDARY` for the hovered / highlighted item,
 dim rows as today). Text stays the existing glow text (HUD layer path for HUD-drawn menus) or the UMG `UTextBlock`s
@@ -229,19 +242,91 @@ struct FSOLHoloMenuAnim
 
 The select cue is fired by the caller when an enabled item is confirmed; it needs no rule.
 
-### 6.3 Frame geometry
+### 6.3 Frame geometry (option (c) + tint, D20)
+
+All functions here are pure and renderer-free. They write into fixed-size output arrays the caller owns (no heap
+allocation, no `TArray`), never write past the stated capacity, and return how many entries they wrote. Shared types:
+
+```
+struct FSOLHoloSegment { FVector2f A; FVector2f B; };      // One straight line piece, drawn A -> B
+struct FSOLHoloGap { float AtFraction; float LengthPx; };   // A fixed outline gap: start as a fraction of the
+                                                            // perimeter, length in px at 1x
+enum class ESOLHoloHoverMark : uint8 { BracketsOnly, RowPointer, CentreTicks };
+```
+
+**Common rules.** Screen space, y down, px of the 720 px canvas times the UI scale (like `CARD_TICK_PX`).
+- A rect is **valid** when all four coordinates are finite and `w = Max.X - Min.X > 0`, `h = Max.Y - Min.Y > 0`.
+  An invalid rect gives a count of 0 (and a perimeter of 0).
+- `uiScale` that is NaN, infinite or `<= 0` reads 1.
+- **Effective scale of the outline:** `k = min(uiScale, w / FRAME_MIN_W_PX, h / FRAME_MIN_H_PX)`, so a rect too small
+  for the stepped shape shrinks every outline length uniformly instead of folding over. With it:
+  `a = FRAME_CUT_TL_PX * k` (top-left cut), `s = FRAME_STEP_PX * k` (title step and bottom-right step-in),
+  `c = FRAME_CUT_PX * k` (top-right and bottom-left cuts), `n = FRAME_NOTCH_PX * k` (height of the bottom-right
+  step-in). `FRAME_MIN_W_PX = FRAME_CUT_TL_PX + FRAME_STEP_PX + FRAME_CUT_PX` and
+  `FRAME_MIN_H_PX = FRAME_STEP_PX + FRAME_CUT_PX + FRAME_NOTCH_PX`.
+- **Title step width** `T = clamp(titleStepWidthPx, a, w - s - c)`; NaN reads `a`. The widget passes its title text
+  width plus `FRAME_TITLE_STEP_PAD_PX * uiScale`; a menu with no title passes 0.
+- A piece shorter than 1e-3 px is never written (degenerate pieces are skipped, not counted).
+
+**The stepped outline.** With `x0, y0, x1, y1` the rect's corners, the closed outline is these 11 points, clockwise
+on screen, back to `P0` (sample: `overlay-c-tint.png`, `speed-c-tint.png`):
+
+| Point | Position | Edge to the next point |
+|---|---|---|
+| `P0` | `(x0, y0 + a)` | top-left cut, `a * sqrt(2)` |
+| `P1` | `(x0 + a, y0)` | raised title section, `T - a` |
+| `P2` | `(x0 + T, y0)` | title step down at 45 degrees, `s * sqrt(2)` |
+| `P3` | `(x0 + T + s, y0 + s)` | lower top edge, `w - c - T - s` |
+| `P4` | `(x1 - c, y0 + s)` | top-right cut, `c * sqrt(2)` |
+| `P5` | `(x1, y0 + s + c)` | right edge, `h - n - s - c` |
+| `P6` | `(x1, y1 - n)` | step in at 45 degrees, `s * sqrt(2)` |
+| `P7` | `(x1 - s, y1 - n + s)` | inset right edge, `n - s` |
+| `P8` | `(x1 - s, y1)` | bottom edge (square corner at `P8`), `w - s - c` |
+| `P9` | `(x0 + c, y1)` | bottom-left cut, `c * sqrt(2)` |
+| `P10` | `(x0, y1 - c)` | left edge back to `P0`, `h - c - a` |
+
+The arc coordinate `u` is the distance along the outline from `P0`, clockwise, in `[0, L]` (`L` = perimeter).
+
+**Gaps.** Gap `i` of `FRAME_GAPS` (sorted by `AtFraction`) covers `u` in
+`[AtFraction * L, AtFraction * L + LengthPx * k]`, clipped at `L`; gaps that overlap or touch merge into one. The same
+table is used by every option (c) frame, so the gaps sit at the same relative places on every menu.
+
+**Draw-in.** At a draw-in fraction `f = clamp(fraction, 0, 1)` (NaN reads 0) two strokes leave `P0`, the title
+corner: one clockwise (up the top-left cut, along the title and the top edge, down the right edge), one
+counter-clockwise (down the left edge, along the bottom). The drawn arc is `D(f) = [0, f * L / 2]` together with
+`[L - f * L / 2, L]`; at `f = 1` the strokes meet at `u = L / 2` and the whole outline is drawn. The visible outline is
+`D(f)` minus the gaps.
 
 | Function | Contract |
 |---|---|
-| `int32 FrameOutline(const FBox2f& rect, float chamferPx, FVector2f outPoints[8])` | The closed outline clockwise from the top edge's left end: a rectangle with its four corners cut by `chamferPx` (clamped to `[0, min(w, h) / 2]`; 0 gives the 4 corners, 4 points). Returns the point count (8, 4, or 0 for an invalid or empty rect) |
-| `float FramePerimeter(const FBox2f& rect, float chamferPx)` | Length of that outline |
-| `int32 FrameDrawSegments(const FBox2f& rect, float chamferPx, float fraction, FSOLHoloSegment outSegments[FRAME_MAX_SEGMENTS])` | The drawn part of the outline at a draw-in fraction: two strokes start at the top edge's midpoint and run in opposite directions, each covering `fraction` of half the perimeter, meeting at the bottom edge's midpoint at 1. Returns the segment count: 0 at `fraction <= 0` or an invalid rect; the summed length is `fraction * perimeter` (within 1e-3 px); segments are contiguous along each stroke; the result is mirror-symmetric about the rect's vertical centre line; `fraction` is clamped to `[0, 1]`; at most `FRAME_MAX_SEGMENTS` (18) |
+| `int32 FrameOutline(const FBox2f& rect, float titleStepWidthPx, float uiScale, FVector2f outPoints[FRAME_OUTLINE_POINTS])` | Writes `P0`-`P10` of the table above (closed implicitly back to `P0`; `P0` is not repeated). Returns `FRAME_OUTLINE_POINTS` (11) for a valid rect, 0 otherwise. Points may coincide when the rect is at the minimum size; the count stays 11 |
+| `float FramePerimeter(const FBox2f& rect, float titleStepWidthPx, float uiScale)` | `L`, the length of that closed outline: `2 (w + h) - (2a + 4c + 4s) + sqrt(2) (a + 2c + 2s)` with the effective `a, c, s` (independent of `T` and `n`). 0 for an invalid rect |
+| `int32 FrameDrawSegments(const FBox2f& rect, float titleStepWidthPx, float uiScale, float fraction, FSOLHoloSegment outSegments[FRAME_MAX_SEGMENTS])` | The visible outline at the draw-in fraction: its maximal straight pieces, split at every outline point `P0`-`P10` and at `u = L / 2` (where the two strokes meet; each stroke is cut into pieces on its own), ordered by increasing `u` of their start, each running clockwise (`A` at the smaller `u`). The summed length equals `f * L` minus the gap length inside `D(f)` (within 1e-3 px); at `f = 1` it is `L` minus the merged gap length. 0 at `f <= 0`, NaN or an invalid rect. Every piece lies on the outline. Worst case `11 + FRAME_GAP_COUNT + 1` pieces; never more than `FRAME_MAX_SEGMENTS` (24) |
+| `int32 FrameGapDots(const FBox2f& rect, float titleStepWidthPx, float uiScale, float fraction, FVector2f outDots[FRAME_MAX_DOTS])` | The end dots: one dot at each end of each merged gap whose `u` lies inside `D(f)` (ends included), at the outline point of that `u`, ordered by increasing `u`. A dot appears as a stroke reaches it. No dot at the stroke fronts and none at `P0` unless a gap ends there. At `f = 1` with no merged gaps: `2 * FRAME_GAP_COUNT` (14). 0 at `f <= 0`, NaN or an invalid rect; never more than `FRAME_MAX_DOTS` (14). Drawn as filled dots of radius `FRAME_DOT_RADIUS_PX * k` |
+| `int32 FrameRulerTicks(const FBox2f& rect, float uiScale, FSOLHoloSegment outSegments[FRAME_RULER_TICK_COUNT])` | The left-edge ruler: tick `i` (from 0) at `y_i = y0 + FRAME_RULER_START * h + i * FRAME_RULER_SPACING_PX * k`, from `(x0, y_i)` inward to `(x0 + FRAME_RULER_TICK_PX * k, y_i)`. Ticks are written in order and stop at the first `y_i > y1 - c` (past the left edge's straight part). Returns the count (6 on a normal panel), 0 for an invalid rect |
+| `int32 FrameAccents(const FBox2f& rect, float titleStepWidthPx, float uiScale, FSOLHoloSegment outSegments[FRAME_ACCENT_COUNT])` | Up to 4 pieces, in this order, each skipped when it would have no length or run the wrong way (its end not beyond its start: downward for 1, leftward for 2, rightward for 3 and 4); the rest keep their order: (1) the top-left inner accent `(x0 + 6k, y0 + 18k)` -> `(x0 + 6k, min(y0 + 70k, y1 - c))`; (2) the bottom-right inner accent `(x1 - s - 6k, y1 - 6k)` -> `(max(x1 - s - 80k, x0 + c), y1 - 6k)`; (3) the title underline `(x0 + 12k, y0 + 34k)` -> `(x0 + T - 40k, y0 + 34k)`; (4) its short dash `(x0 + T - 32k, y0 + 34k)` -> `(x0 + T - 20k, y0 + 34k)`; pieces 3 and 4 are both skipped when piece 3 would have no length (a short or missing title). The numbers are the `FRAME_ACCENT_*` and `FRAME_TITLE_*` constants (section 7). Pieces 1-2 draw at the frame intensity, 3-4 dim (`FRAME_DIM_ALPHA`). Returns the count, 0 for an invalid rect |
+| `int32 HoverMark(const FBox2f& rect, ESOLHoloHoverMark mark, float uiScale, FSOLHoloSegment outSegments[HOVER_MAX_SEGMENTS], FVector2f& outDot, int32& outDotCount)` | The hovered item's mark, in Secondary. `rect` is the item's rectangle inflated by `HOVER_PAD_X_PX` / `HOVER_PAD_Y_PX` (times `uiScale`, done by the widget). With arm `e = min(HOVER_BRACKET_ARM_PX * uiScale, w / 2)`: left bracket `(x0 + e, y0) -> (x0, y0)`, `(x0, y0) -> (x0, y1)`, `(x0, y1) -> (x0 + e, y1)`; right bracket mirrored, `(x1 - e, y0) -> (x1, y0)`, `(x1, y0) -> (x1, y1)`, `(x1, y1) -> (x1 - e, y1)` (6 pieces, in this order). `RowPointer` adds, with `m = (y0 + y1) / 2`, `p = HOVER_POINTER_RUN_PX`, `r = HOVER_POINTER_RISE_PX` (times `uiScale`): `(x1, m) -> (x1 + p, m)`, `(x1 + p, m) -> (x1 + p + r, m - r)` and one dot at `(x1 + p + r + d, m - r - d)`, `d = HOVER_POINTER_DOT_PX * uiScale` (8 pieces, 1 dot). `CentreTicks` adds, with `mx = (x0 + x1) / 2`, `t = HOVER_CENTRE_TICK_PX * uiScale`: `(mx, y0) -> (mx, y0 - t)` and `(mx, y1) -> (mx, y1 + t)` (8 pieces, 0 dots). `BracketsOnly`: 6 pieces, 0 dots. An invalid rect gives 0 pieces and `outDotCount = 0`. Never more than `HOVER_MAX_SEGMENTS` (8) |
+| `int32 TabMarker(const FBox2f& tabRect, float dividerX, bool bSelected, float uiScale, FSOLHoloSegment outSegments[TAB_MAX_SEGMENTS], FVector2f& outDot, int32& outDotCount)` | The Overlay Menu's profile tab marker. `D = max(dividerX, x1)` (NaN reads `x1`). **Not selected:** a dim left bar with short arms, `g = min(TAB_BRACKET_ARM_PX * uiScale, w)`, `i = min(TAB_BRACKET_INSET_PX * uiScale, h / 2)`: `(x0 + g, y0 + i) -> (x0, y0 + i)`, `(x0, y0 + i) -> (x0, y1 - i)`, `(x0, y1 - i) -> (x0 + g, y1 - i)`; 3 pieces, 0 dots. **Selected:** an outline open on the right that runs into the column divider, with a cut top-left corner `q = min(TAB_CUT_PX * uiScale, w, h / 2)`: `(D, y0) -> (x0 + q, y0)`, `(x0 + q, y0) -> (x0, y0 + q)`, `(x0, y0 + q) -> (x0, y1)`, `(x0, y1) -> (D, y1)`; 4 pieces, in Primary, plus one dot at `(x0 - TAB_DOT_OFFSET_PX * uiScale, (y0 + y1) / 2)`. Invalid rect: 0 pieces, 0 dots. Never more than `TAB_MAX_SEGMENTS` (4) |
+| `int32 DashedDivider(FVector2f top, float bottomY, float openTopY, float openBottomY, float uiScale, FSOLHoloSegment outSegments[DIVIDER_MAX_DASHES])` | The Overlay Menu's dim vertical column divider between the tabs and the rows. Dash `j` runs from `y = top.Y + j * DIVIDER_PERIOD_PX * uiScale` down `DIVIDER_DASH_PX * uiScale`, clipped at `bottomY`, all at `x = top.X`. A dash that overlaps `[openTopY, openBottomY]` (ends included) is left out whole; that is where the selected tab joins the divider. No opening when `openTopY > openBottomY` or either is NaN. 0 when `bottomY <= top.Y` or a coordinate is not finite. Dashes are written top to bottom and stop at `DIVIDER_MAX_DASHES` (40); the rest are dropped |
+| `int32 BrokenDivider(FVector2f start, float endX, float stepAtPx, float stepPx, float uiScale, FSOLHoloSegment outSegments[DIVIDER_MAX_SEGMENTS])` | A dim horizontal divider with two fixed gaps (the Overlay Menu's line above the hints, the speed panel's line between the steppers and the body list). The path runs from `start` to `x = endX` at `y = start.Y`; when `stepPx > 0` it rises at `x = start.X + stepAtPx` by `stepPx` (toward smaller y) at 45 degrees and carries on at `y = start.Y - stepPx`, with `stepAtPx` clamped to `[0, endX - start.X - stepPx]`. The gaps of `DIVIDER_GAPS` are placed like the outline's (fraction of the path length, length times `uiScale`); no end dots. Pieces are split at the path's corners, ordered left to right. 0 when `endX <= start.X` or a value is not finite; `stepPx` NaN or `<= 0` means no step. Never more than `DIVIDER_MAX_SEGMENTS` (6) |
 | `void RadialArcDrawIn(float halfApertureRad, float frameFraction, float& outHalfApertureRad)` | A radial sector's rim arc grows from its middle: `halfApertureRad * clamp(frameFraction, 0, 1)` |
 | `int32 CardCornerTicks(const FBox2f& rect, float tickPx, float fraction, FSOLHoloSegment outSegments[8])` | The frameless card look (D15): two segments per corner, each starting at the corner and running along its edge for `tickPx * clamp(fraction, 0, 1)` (NaN reads 0), with `tickPx` clamped to `[0, min(w, h) / 2]`. Returns 8, or 0 for an invalid or empty rect or a zero length. Mirror-symmetric about both centre lines |
 
-`FrameOutline`, `FramePerimeter` and `FrameDrawSegments` describe a chamfered outline (Q9 option b). **They wait on
-Q9:** with (a) the menus reuse `CardCornerTicks` plus a notched title-tab path; with (c) the outline becomes a stepped
-path drawn with fixed gaps. This section is finalised before 42a's tests are briefed.
+**How a frame uses them (the widget, not the pure maths).** Per paint, from the menu's `FSOLHoloMenuLook`:
+- The outline is `FrameDrawSegments` and `FrameGapDots` at `FrameFraction`, in Primary at `FRAME_INTENSITY`, the glow
+  halo scaled by `GlowScale(s)`.
+- The ruler ticks, the accents, the dividers and the tab markers are drawn whole, their alpha times `FillAlpha`, so
+  they fade up with the fill and the text after the outline has drawn in (proposed).
+- The hover mark: for `s > 0`, in Secondary at `HoverIntensity` (ramp and flicker of section 6.1). At `s = 0`
+  `HoverGlow` is 0, so the mark is drawn as thin flat Secondary lines at `FRAME_INTENSITY`, with no ramp or flicker
+  (proposed): the highlight stays visible without glow (D18).
+- **The faint dark tint** is the existing `BackdropAlpha` path (section 6.1): one backing box, the frame rect inset by
+  `FRAME_TINT_INSET_PX * k`, a plain rectangle (not the stepped shape, as in the sample), alpha
+  `BackdropAlpha(s, FillAlpha)`.
+- **Strength 0 (D18).** `Progress` is 1 at once (section 6.2), so `FrameFraction` and `FillAlpha` are 1: the whole
+  broken outline, every gap dot, the ruler ticks, accents, dividers and tab markers draw at once, as thin flat lines
+  (`GlowScale(0) = 0`), on the flat `FLAT_PANEL_ALPHA` backdrop. The gaps and dots are part of the shape, not an
+  effect, so they stay. No draw-in, sweep, jitter or flicker.
 
 ### 6.4 Test cases (for the separate test author; `Tests/HoloMenuTest.cpp`, `SOLTest.HoloMenu.*`)
 
@@ -257,13 +342,56 @@ path drawn with fixed gaps. This section is finalised before 42a's tests are bri
    `s = 0` reaches Open / Closed on the next `Advance`; hover cleared by open and close.
 7. `SetHovered` and `ShouldPlayHoverCue`: same item no cue; new item cue; INDEX_NONE no cue; no cue while Opening;
    rate limit at `HOVER_CUE_MIN_INTERVAL_S`.
-8. `FrameOutline` / `FramePerimeter`: chamfer 0 (4 points, `2(w + h)`), normal chamfer (8 points), chamfer clamped,
-   invalid rect 0.
-9. `FrameDrawSegments`: 0 / 0.5 / 1 lengths, symmetry, contiguity, start at the top midpoint, capacity never exceeded,
-   NaN fraction treated as 0.
+Worked example for cases 8-13 (computed from the contracts with the section 7 values; distances within 1e-2 px):
+rect **R** = `(0, 0)-(400, 300)`, title step width 200, `uiScale` 1, so `k = 1` and `T = 200`.
+
+8. `FrameOutline` / `FramePerimeter`: R gives 11 points, `P0` to `P10` = `(0,10) (10,0) (200,0) (210,10) (386,10)
+   (400,24) (400,260) (390,270) (390,300) (14,300) (0,286)`, and `L = 1284 + 58 sqrt(2) = 1366.024`, equal to the sum
+   of the point-to-point distances; `L` does not change with the title step width (try 50 and 300). `uiScale` 2 on R:
+   `k = 2`, `L = 1332.049`. Title step clamping: 0 and NaN give `P1 == P2`; 1000 gives `P2.X = w - s - c = 376`.
+   Small rect `(0,0)-(17,32)` at `uiScale` 1: `k = 0.5`, still 11 points, `(0,5) (5,0) (5,0) (10,5) (10,5) (17,12)
+   (17,12) (12,17) (12,32) (7,32) (0,25)`, `L = 81.012`. Invalid rects (zero or negative width or height, NaN or
+   infinite coordinate): 0 points and `L = 0`. `uiScale` 0, -1 and NaN behave as 1.
+9. `FrameDrawSegments` on R: `f = 1`: 19 pieces, summed length `L - 96 = 1270.024`; `f = 0.5`: 9 pieces, summed length
+   661.012; `f = 0.25`: 4 pieces, 329.506; `f <= 0`, NaN, or an invalid rect: 0; `f = 1.5` equals `f = 1`. For every
+   `f` in 0.05 steps: the count never exceeds `FRAME_MAX_SEGMENTS`, every piece is at least 1e-3 px long, both ends of
+   every piece lie on the outline (distance to the nearest outline edge below 1e-3), the pieces are ordered by `u`
+   with no two overlapping, the first piece starts at `P0` `(0, 10)` and runs toward `P1`, and the summed length is
+   non-decreasing in `f`. No piece crosses an outline point (each piece lies on one edge).
 10. `RadialArcDrawIn`: 0, 1, clamping.
 11. `CardCornerTicks`: 8 segments each `tickPx` long at fraction 1, half at 0.5, 0 at 0 or NaN; every segment starts
     at a corner of the rect; tick clamped on a small rect; invalid rect 0; symmetry.
+12. `FrameGapDots` on R: `f = 1`: 14 dots, the first two at `(264.921, 10)` and `(274.921, 10)` (the first gap, on the
+    lower top edge), the last two at `(0, 146.602)` and `(0, 134.602)` (on the left edge); `f = 0.5`: 4 dots;
+    `f = 0.25`: 2 dots (the last gap's, on the left edge); `f = 0`, NaN, invalid rect: 0. Every dot lies on the
+    outline; every dot at `f = 1` is an end of a gap, so the summed piece length of case 9 plus the summed gap lengths
+    (pairs of dots along `u`) equals `L`. Small rect `(0,0)-(17,32)`: gaps merge, the count is even, at most 14, and
+    below 14.
+13. `FrameRulerTicks` and `FrameAccents` on R: 6 ticks at `y = 150, 159, ..., 195`, each from `(0, y)` to `(4, y)`;
+    rect `(0,0)-(40,70)`: 3 ticks at `y = 35, 44, 53`; invalid rect 0. Accents on R: 4 pieces, `(6,18)->(6,70)`,
+    `(384,294)->(310,294)`, `(12,34)->(160,34)`, `(168,34)->(180,34)`; with title step width 0: 2 pieces (the two
+    corner accents only); invalid rect 0.
+14. `HoverMark` on `(100,50)-(200,70)`, `uiScale` 1: `RowPointer` gives 8 pieces, in order `(105,50)->(100,50)`,
+    `(100,50)->(100,70)`, `(100,70)->(105,70)`, `(195,50)->(200,50)`, `(200,50)->(200,70)`, `(200,70)->(195,70)`,
+    `(200,60)->(234,60)`, `(234,60)->(242,52)`, and 1 dot at `(244,50)`; `CentreTicks` gives the same 6 bracket pieces
+    plus `(150,50)->(150,42)` and `(150,70)->(150,78)`, 0 dots; `BracketsOnly` gives the 6 bracket pieces, 0 dots. A
+    rect 6 px wide: arm 3. `uiScale` 2 doubles the arm, pointer and tick lengths. Invalid rect: 0 pieces, dot count 0.
+15. `TabMarker` on `(78,160)-(228,185)`, divider at 238, `uiScale` 1: not selected, 3 pieces `(84,162)->(78,162)`,
+    `(78,162)->(78,183)`, `(78,183)->(84,183)`, 0 dots; selected, 4 pieces `(238,160)->(84,160)`, `(84,160)->(78,166)`,
+    `(78,166)->(78,185)`, `(78,185)->(238,185)`, 1 dot at `(74,172.5)`; divider NaN or 100 (left of the tab's right
+    edge) reads 228; invalid rect 0.
+16. `DashedDivider` from `(0,0)` to 100, `uiScale` 1: no opening (`openTopY` 1 > `openBottomY` 0, or NaN): 8 dashes,
+    `0-9, 14-23, 28-37, 42-51, 56-65, 70-79, 84-93, 98-100` (the last clipped); opening `[30, 50]`: 6 (the 28-37 and
+    42-51 dashes left out); an opening that only touches a dash end (`[23, 27]`) still leaves that dash out; bottom
+    1000: exactly `DIVIDER_MAX_DASHES` (40) written; bottom at or above the top: 0.
+17. `BrokenDivider` from `(0,0)` to 200, `uiScale` 1: no step, 3 pieces `(0,0)->(66,0)`, `(74,0)->(150,0)`,
+    `(166,0)->(200,0)`; step at 100 by 6: path length `194 + 6 sqrt(2) = 202.485`, 5 pieces `(0,0)->(66.820,0)`,
+    `(74.820,0)->(100,0)`, `(100,0)->(106,-6)`, `(106,-6)->(149.379,-6)`, `(165.379,-6)->(200,-6)`; step NaN or 0 is
+    the no-step case; `endX <= start.X`: 0; never more than `DIVIDER_MAX_SEGMENTS`.
+18. Capacity and allocation: every function in 6.3 called with an output array of exactly its stated capacity, over a
+    sweep of rects (1x1 up to 4000x2000), fractions (-1, 0, NaN, 0.01-1 in 0.01 steps, 2) and `uiScale` (0.5, 1, 2,
+    NaN) never writes past the capacity (guard entries after the array stay untouched) and returns a count within
+    `[0, capacity]`.
 
 ## 7. Constants (`SOL::HoloMenu` in `SOLConstants.h`; proposed, tuned from screenshots)
 
@@ -279,15 +407,56 @@ path drawn with fixed gaps. This section is finalised before 42a's tests are bri
 | `HOVER_GLOW_INTENSITY` | 0.9 | Edge glow of the hovered item |
 | `FRAME_INTENSITY` | 0.5 | Outline frame glow (not scaled by the slider) |
 | `FRAME_HALF_WIDTH_PX` | 0.5 | Outline line half width (a 1 px core, x UI scale) |
-| `FRAME_CHAMFER_PX` | 6 | Corner cut (x UI scale; only if Q9 = b) |
 | `CARD_TICK_PX` | 16 | Corner tick length of the frameless cards (x UI scale, at a 720 px canvas; as in the approved sample, D15) |
 | `FLAT_PANEL_ALPHA` | 0.45 | Backdrop alpha at strength 0, a plain flat panel (D18; the HUD backing's 0.45) |
-| `FRAME_MAX_SEGMENTS` | 18 | Capacity of `FrameDrawSegments` (8 sides split by the 2 stroke starts, plus margin) |
 | `IDLE_SWEEP_PERIOD_S` | 4.0 | One scanline pass from top to bottom |
 | `IDLE_SWEEP_INTENSITY` | 0.08 | Sweep line glow per unit of strength |
-| `BACKDROP_ALPHA_PER_UNIT` | 0.15 | Dark tint alpha per unit of strength (0.30 at 2; the HUD backing is 0.45) |
+| `BACKDROP_ALPHA_PER_UNIT` | 0.15 | Dark tint alpha per unit of strength (0.30 at 2; the HUD backing is 0.45). Also the faint tint of the option (c) frames (D20). The approved sample `overlay-c-tint.png` is darker (the background kept at about 22 %, an alpha near 0.78); compare at the hand check |
 | `HOVER_CUE_MIN_INTERVAL_S` | 0.05 | Shortest gap between two hover cues |
-| `FRAME_MAX_SHAPES` | 128 | Shape capacity of one `SSOLHoloFrame` (reserved once) |
+| `FRAME_MAX_SHAPES` | 160 | Shape capacity of one `SSOLHoloFrame` (reserved once). Worst case, the Overlay Menu: outline 24 + gap dots 14 + ruler 6 + accents 4 + column divider 40 + hint divider 6 + tab markers 16 + tab dot 1 + hover mark 8 + its dot 1 + sweep, fill and backdrop 3 = 123 |
+
+**Option (c) frame (D20).** All lengths in px at a 720 px canvas, x UI scale (as `CARD_TICK_PX`), measured from the
+approved samples (`overlay-c-tint.png`, `speed-c-tint.png`); proposed, tuned from screenshots.
+
+| Constant | Proposed | Meaning |
+|---|---|---|
+| `FRAME_CUT_TL_PX` | 10 | Top-left corner cut (`a`) |
+| `FRAME_CUT_PX` | 14 | Top-right and bottom-left corner cuts (`c`) |
+| `FRAME_STEP_PX` | 10 | Height of the title step and depth of the bottom-right step-in (`s`), both at 45 degrees |
+| `FRAME_NOTCH_PX` | 40 | Height above the bottom edge where the right edge steps in (`n`) |
+| `FRAME_MIN_W_PX` / `FRAME_MIN_H_PX` | 34 / 64 | Smallest rect for the full-size shape (`a + s + c` / `s + c + n`); a smaller rect shrinks the shape (`k`) |
+| `FRAME_TITLE_STEP_PAD_PX` | 26 | The raised title section's width is the title text width plus this |
+| `FRAME_OUTLINE_POINTS` | 11 | Points of the stepped outline (`P0`-`P10`) |
+| `FRAME_GAPS[]` / `FRAME_GAP_COUNT` | `{0.20, 10}, {0.27, 20}, {0.36, 12}, {0.52, 10}, {0.66, 24}, {0.70, 8}, {0.90, 12}` / 7 | The outline's fixed gaps: start as a fraction of the perimeter from `P0`, length in px (96 px in all). One table for every option (c) frame |
+| `FRAME_MAX_SEGMENTS` | 24 | Capacity of `FrameDrawSegments` (worst case 11 points + 7 gaps + the stroke meeting point = 19, plus margin) |
+| `FRAME_MAX_DOTS` | 14 | Capacity of `FrameGapDots` (2 per gap) |
+| `FRAME_DOT_RADIUS_PX` | 1.4 | Radius of a gap end dot |
+| `FRAME_RULER_TICK_COUNT` | 6 | Ruler ticks on the left edge |
+| `FRAME_RULER_TICK_PX` | 4 | Ruler tick length, pointing inward |
+| `FRAME_RULER_SPACING_PX` | 9 | Distance between ruler ticks |
+| `FRAME_RULER_START` | 0.5 | First tick at this fraction of the rect height from the top |
+| `FRAME_ACCENT_COUNT` | 4 | Capacity of `FrameAccents` |
+| `FRAME_ACCENT_INSET_PX` | 6 | Inset of both corner accents from their edge |
+| `FRAME_ACCENT_LEFT_TOP_PX` / `FRAME_ACCENT_LEFT_BOTTOM_PX` | 18 / 70 | Top-left accent, from and to (below the top) |
+| `FRAME_ACCENT_BOTTOM_PX` | 74 | Length of the bottom-right accent (from 6 to 80 px left of the inset edge) |
+| `FRAME_TITLE_UNDERLINE_Y_PX` | 34 | Title underline, below the top |
+| `FRAME_TITLE_UNDERLINE_START_PX` / `_END_PX` | 12 / 40 | Underline starts 12 px from the left, ends 40 px before the title step |
+| `FRAME_TITLE_DASH_START_PX` / `_END_PX` | 32 / 20 | Its short dash, 32 to 20 px before the title step |
+| `FRAME_DIM_ALPHA` | 0.45 | Alpha of the dim lines (title underline, dividers, unselected tab bars) relative to the frame lines |
+| `FRAME_TINT_INSET_PX` | 2 | Inset of the tint box from the frame rect |
+| `HOVER_PAD_X_PX` / `HOVER_PAD_Y_PX` | 8 / 3 | The widget inflates the hovered item's rectangle by these before `HoverMark` |
+| `HOVER_BRACKET_ARM_PX` | 5 | Arm of the hover brackets |
+| `HOVER_POINTER_RUN_PX` / `HOVER_POINTER_RISE_PX` / `HOVER_POINTER_DOT_PX` | 34 / 8 / 2 | Pointer line: straight run, 45-degree rise, dot beyond its end |
+| `HOVER_CENTRE_TICK_PX` | 8 | Tick above and below a hovered digit or unit field |
+| `HOVER_MAX_SEGMENTS` | 8 | Capacity of `HoverMark` |
+| `TAB_BRACKET_ARM_PX` / `TAB_BRACKET_INSET_PX` | 6 / 2 | Unselected tab bar: arm length and vertical inset |
+| `TAB_CUT_PX` / `TAB_DOT_OFFSET_PX` | 6 / 4 | Selected tab: top-left cut, and the dot's distance left of the tab |
+| `TAB_MAX_SEGMENTS` | 4 | Capacity of `TabMarker` |
+| `DIVIDER_DASH_PX` / `DIVIDER_PERIOD_PX` | 9 / 14 | Column divider dash length and repeat |
+| `DIVIDER_MAX_DASHES` | 40 | Capacity of `DashedDivider` (a full-height Overlay Menu needs about 25) |
+| `DIVIDER_GAPS[]` | `{0.33, 8}, {0.75, 16}` | Gaps of `BrokenDivider`, like `FRAME_GAPS` |
+| `DIVIDER_MAX_SEGMENTS` | 6 | Capacity of `BrokenDivider` (worst case 3 legs + 2 gaps = 5) |
+| `SPEED_DIVIDER_STEP_AT_PX` / `SPEED_DIVIDER_STEP_PX` | 104 / 6 | The speed panel's divider steps up 6 px, 104 px from its start (the Overlay Menu's hint divider has no step) |
 
 Settings constants (`SOL::Settings`): `HOLO_MENU_EFFECTS_MIN` 0, `HOLO_MENU_EFFECTS_MAX` 2,
 `HOLO_MENU_EFFECTS_DEFAULT` 1 (approved, D8), `HOLO_MENU_EFFECTS_STEP` 0.05.
@@ -457,7 +626,8 @@ settings test is walked to confirm it still states the current contract.
   1. Ctrl+O: the frame widget exists; after `OPEN_S` + a frame the phase is Open and the frame drew its full outline
      (shape count >= outline segments); one open cue requested.
   2. Mid-open capture at about 0.1 s: frame fraction strictly between 0 and 1 (a screenshot for the look).
-  3. Hover a row with the mouse, then Down: two hover cues at most, the hover glow drawn around the highlighted row.
+  3. Hover a row with the mouse, then Down: two hover cues at most, the hover brackets and pointer line drawn at the
+     highlighted row.
   4. Toggle a row: one select cue. Esc: input back to the ship in the same frame; the widget gone after `CLOSE_S`.
   5. Radial: press on an icon, check the draw-in, drag across two sectors (hover cues), release on an enabled action
      (select cue), check the close animation from the cached state.
@@ -466,8 +636,9 @@ settings test is walked to confirm it still states the current contract.
      speed card and date-and-anchor card: present in the menu layer with 8 tick segments each, and gone from the HUD
      layer's panels.
   8. Map list menu: open on the map, hover a row, choose an enabled action (open, hover and select cues).
-  9. Strength 0 (set in the smoke slot): open is instant, no sweep, flicker, jitter or hover glow drawn, the backdrop
-     is `FLAT_PANEL_ALPHA`, and a row toggle, a digit step and a radial selection still work (D18); strength 2
+  9. Strength 0 (set in the smoke slot): open is instant (the whole broken outline on the first frame), no sweep,
+     flicker, jitter or hover glow drawn, the backdrop is `FLAT_PANEL_ALPHA`, and a row toggle, a digit step and a
+     radial selection still work (D18); the open, hover and select cues are still requested (D21); strength 2
      screenshot.
   10. Settings: the slider is in Gameplay right under the HUD effects slider (D11); Apply writes once at `EndVisit`;
       the cursor's effects strength follows `HoloMenuEffects`, not `HudEffectsStrength` (D19).
@@ -482,7 +653,7 @@ settings test is walked to confirm it still states the current contract.
 
 ## 13. Questions for the user
 
-Answered on 2026-11-03 (kept here for the record; the decisions are D7-D19):
+All answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
 
 | # | Question | Answer |
 |---|---|---|
@@ -496,15 +667,12 @@ Answered on 2026-11-03 (kept here for the record; the decisions are D7-D19):
 | Q6 | Card look ([`card-compare.png`](../Images/hologram-card-samples/card-compare.png)) | **Frameless** (glowing corner ticks + faint dark tint) for the info and target cards, and the **speed card and the date-and-anchor card get the same look and effects** (scope extension, D15) |
 | Q7 | Panels not named | **The map list menu is hologram** (D16); the Attack hint and profile tag stay HUD |
 | Q8 | The Overlay list embedded in Settings | **Stays solid / plain, follows #46's solid Settings; not converted by #42** (D17) |
+| Q9 | **Frame shape of the Ctrl+O Overlay Menu and the F3 speed panel** (and, proposed in the question, the map list menu). Options shown as Pillow mock-ups over `43-dust-slow.png` (not in-game captures): (a) corner ticks + tint with a notched title tab ([`overlay-a.png`](../Images/hologram-frame-samples/overlay-a.png), [`speed-a.png`](../Images/hologram-frame-samples/speed-a.png)); (b) chamfered glowing outline + tint ([`overlay-b.png`](../Images/hologram-frame-samples/overlay-b.png), [`speed-b.png`](../Images/hologram-frame-samples/speed-b.png)); (c) segmented / stepped broken lines, glow only ([`overlay-c.png`](../Images/hologram-frame-samples/overlay-c.png), [`speed-c.png`](../Images/hologram-frame-samples/speed-c.png)); side by side in [`frames-compare.png`](../Images/hologram-frame-samples/frames-compare.png) | **(c) with a faint dark tint behind the panel** (D20): samples [`overlay-c-tint.png`](../Images/hologram-frame-samples/overlay-c-tint.png), [`speed-c-tint.png`](../Images/hologram-frame-samples/speed-c-tint.png), [`frames-compare-c-tint.png`](../Images/hologram-frame-samples/frames-compare-c-tint.png). The map list menu uses the same frame, as proposed in the question; **to be confirmed by the user at the hand check** (not separately answered) |
 | Q10 | Strength 0 | **Plain flat panels: no glow, animation or jitter; fully usable** (D18) |
 | Q11 | Cursor | **Follows the new slider** (D19) |
+| Q12 | Cues at strength 0 (raised while recording D18) | **Sounds are independent of the hologram strength and still play at strength 0**; the SFX volume controls them (D21) |
 
-Still open (not decided; a recommendation is attached but the user decides):
-
-| # | Question | Options (recommendation first, not a decision) |
-|---|---|---|
-| Q9 | **Frame shape of the Ctrl+O Overlay Menu and the F3 speed panel** (and, proposed, the map list menu). The user asked for visual examples: [`overlay-a.png`](../Images/hologram-frame-samples/overlay-a.png), [`overlay-b.png`](../Images/hologram-frame-samples/overlay-b.png), [`overlay-c.png`](../Images/hologram-frame-samples/overlay-c.png), [`speed-a.png`](../Images/hologram-frame-samples/speed-a.png), [`speed-b.png`](../Images/hologram-frame-samples/speed-b.png), [`speed-c.png`](../Images/hologram-frame-samples/speed-c.png) and the side-by-side [`frames-compare.png`](../Images/hologram-frame-samples/frames-compare.png). They are Python / Pillow mock-ups over the same real game screenshot as the card samples (`43-dust-slow.png`), with today's menu text and the hover / highlight in Secondary; not in-game captures. The speed panel sits a little higher than its real centred place so the ship does not cover it; today's full-screen dim behind it is not drawn | (a) **corner ticks + faint tint with a notched title tab** (recommended: the same family as the chosen frameless cards, so #31's "no visible rectangle" rule holds for every in-flight panel; tabs marked by a left bar, the hovered row by small Secondary corner ticks); (b) **chamfered glowing outline** + faint tint (the selected profile tab opens into the divider like a real tab; the hovered row gets a chamfered Secondary outline; the most readable "panel" look, but it is a visible rectangle); (c) **segmented / stepped broken lines** (Homeworld-style: thin cyan glow only, no fill, a raised title step, cut corners, gaps with end dots, ruler ticks; the hovered row gets Secondary brackets with a pointer line; the lightest look, but with no tint, bright scenery behind the text, such as orbit lines, stays visible) | <br>**Still open.** The user is leaning toward (c) with a faint dark tint behind the panel; a sample was made for that: [`overlay-c-tint.png`](../Images/hologram-frame-samples/overlay-c-tint.png), [`speed-c-tint.png`](../Images/hologram-frame-samples/speed-c-tint.png) and [`frames-compare-c-tint.png`](../Images/hologram-frame-samples/frames-compare-c-tint.png). Decision pending that sample.
-| Q12 | **Cues at strength 0** (raised while recording D18, which covers glow, animation and jitter but not sound) | Cues still play at strength 0, since the SFX volume already controls them (recommended); or silence them at strength 0 too | <br>**Resolved:** menu sounds are independent of the hologram strength and still play at strength 0 (the SFX volume controls them).
+Still open: **none.**
 
 ## 14. Out of scope
 

@@ -8,16 +8,18 @@ it lands. Each part is built by its own subagent with its context kept under ~35
 verify without the user. Commit convention: `Issue #42: Part 42x - <short description>` on `master`, then push.
 Run `Tools\UpdateMetrics.bat` before each part commit and include `Docs/PROJECT_METRICS.md` and `README.md`.
 
-**Gate before any code:** the user answers the open questions of SDD section 13. Answered on 2026-11-03: A1 / A2
+**Gate before any code:** the user answers the open questions of SDD section 13. **Every question is answered**
+(2026-11-03), so no part is gated on a question any more. A1 / A2
 approved (SDD 9.1, D7 / D8), Q1 = (a) cues made now (D9, SDD 7.1), Q2 / Q2b = Settings > **Gameplay** right under the
 HUD effects slider (D10 / D11), Q3 = shared code built first in #42 (D12), Q4 = radial, Overlay Menu, speed panel,
 cards (D13), Q5 = under 0.1 ms CPU and GPU extra with all menus open, profiling smoke (D14), Q6 = frameless cards,
 extended to the speed card and the date-and-anchor card (D15), Q7 = map list menu hologram (D16), Q8 = the embedded
 Overlay list stays solid for #46 (D17), Q10 = strength 0 is plain flat panels, fully usable (D18), Q11 = the cursor
-follows the new slider (D19). **Still open: Q9** (frame shape of the Overlay Menu and speed panel; samples in
-`Docs/Images/hologram-frame-samples/`) and **Q12** (cues at strength 0). A part does not start while a question it
-depends on is open: Q9 gates the frame-geometry contracts of 42a (SDD 6.3) and the frame drawing of 42c / 42e / 42f /
-42g's map list menu; Q12 gates 42c's cue rule only. Starting values at HEAD `4128a05`: `SAVE_VERSION` 10,
+follows the new slider (D19), Q9 = option (c), the segmented / stepped broken-line glow frame, with a faint dark tint
+behind the panel, for the Overlay Menu and the speed panel (D20, SDD 6.3; samples `overlay-c-tint.png`,
+`speed-c-tint.png`, `frames-compare-c-tint.png` in `Docs/Images/hologram-frame-samples/`), Q12 = the cues are
+independent of the hologram strength and still play at strength 0 (D21). The map list menu takes the same option (c)
+frame, as proposed in the Q9 wording; the user confirms it at the hand check. Starting values at HEAD `4128a05`: `SAVE_VERSION` 10,
 `KEY_BINDING_LAYOUT_VERSION` 10. Approved target values: `SAVE_VERSION` **11**, `KEY_BINDING_LAYOUT_VERSION` **10**
 (unchanged).
 
@@ -29,8 +31,9 @@ was not placed by the user and comes last, in 42g. 42a-42c come first because th
 ### 42a: shared pure logic (tests opus/high; implementation sonnet/medium)
 
 Q3 (D12: built here first, renderer-free, reused by #46) and Q10 (D18: strength 0 is flat and instant) are answered.
-The frame-geometry contracts (SDD 6.3, `FrameOutline` / `FrameDrawSegments`) wait on **Q9**; the rest of the part
-(curves, anim state, cue rules, `CardCornerTicks`) does not.
+The frame-geometry contracts are final for option (c) (D20, SDD 6.3): `FrameOutline`, `FramePerimeter`,
+`FrameDrawSegments`, `FrameGapDots`, `FrameRulerTicks`, `FrameAccents`, `HoverMark`, `TabMarker`, `DashedDivider`,
+`BrokenDivider`, plus `RadialArcDrawIn` and `CardCornerTicks`, with the curves, anim state and cue rules.
 
 0. [ ] Capture the D14 baseline before any rendering change: the profiling passes of SDD 11 at the current HEAD (the
    menus as today), numbers into the SDD amendment. (The `-SOLSmokeHoloMenuProfile` harness is built here as a
@@ -70,9 +73,10 @@ Depends on 42a; 42b for the strength (until 42b lands the subsystem may read `HU
 committed as done before 42b, so no build ships a menu slider that does nothing).
 
 1. [ ] `USOLHoloMenuSubsystem`: the menu MID (strength and view size pushed on change), `PlayCue` hooks (assets from
-   `SOL::Paths`, Q1 = a), a cue counter for the smoke; the strength-0 cue rule per Q12.
-2. [ ] `SSOLHoloFrame` + `USOLHoloFrameWidget`: backdrop backings, outline draw-in segments (shape per Q9), the
-   frameless card ticks (`CardCornerTicks`, D15), borderless fill, sweep line, hover edge glow; the flat strength-0
+   `SOL::Paths`, Q1 = a), a cue counter for the smoke; the cues play at every strength, including 0 (D21).
+2. [ ] `SSOLHoloFrame` + `USOLHoloFrameWidget`: backdrop backings (the faint tint, `BackdropAlpha`), the option (c)
+   frame (D20: broken outline draw-in, gap dots, ruler ticks, accents, dividers, tab markers; SDD 6.3), the
+   frameless card ticks (`CardCornerTicks`, D15), borderless fill, sweep line, hover brackets (`HoverMark`); the flat strength-0
    look (D18: `FLAT_PANEL_ALPHA` backdrop, `GlowScale` 0, no sweep or flicker); buffers reserved once; one
    custom-vertex draw.
 2b. [ ] Cursor (D19): `USOLHologramCursorSubsystem` reads `HoloMenuEffects` instead of `HudEffectsStrength`
@@ -95,7 +99,8 @@ committed as done before 42b, so no build ships a menu slider that does nothing)
 
 1. [ ] `USOLOverlayMenuWidget`: replace `PanelBorder`'s dark fill by a `USOLHoloFrameWidget` behind the content; the
    hovered / highlighted row or tab feeds the hover rectangle; content render opacity follows `FillAlpha`; the
-   non-blocking close of SDD 4.5 through the pawn's close path. The frame shape per Q9. The copy embedded in
+   non-blocking close of SDD 4.5 through the pawn's close path. The option (c) frame + tint (D20), with the dashed
+   column divider open at the selected tab, the tab markers, the hint divider and `RowPointer` hover brackets. The copy embedded in
    Settings is **not** converted (D17): with `SetEmbedded(true)` no frame widget is added and it keeps today's
    `PanelBorder` look until #46 restyles it with the solid Settings page.
 2. [ ] Cues: open, hover, select (row toggle, tab switch, the cycle key inside the menu).
@@ -104,16 +109,16 @@ committed as done before 42b, so no build ships a menu slider that does nothing)
 
 ### 42f: F3 speed panel (sonnet, medium)
 
-1. [ ] Same frame (shape per Q9), highlight-as-hover (digit, unit field, body row), open / close, cues (select on each
-   applied cap).
+1. [ ] Same option (c) frame + tint (D20) with the stepped section divider (`BrokenDivider`), highlight-as-hover
+   (digit and unit field: `CentreTicks`; body row: `RowPointer`), open / close, cues (select on each applied cap).
 2. [ ] Smoke step 6; `-SOLSmokeHud` F3 checks green; screenshot looked at.
 3. [ ] Review; fixes; suite. Commit `Issue #42: Part 42f - hologram speed panel`.
 
 ### 42g: the four cards, then the map list menu (cards sonnet, medium; map list menu opus, high)
 
 Q6 answered (D15: frameless corner ticks + faint tint, extended to the speed card and the date-and-anchor card) and Q7
-answered (D16: the map list menu is hologram). The map list menu's frame shape waits on Q9 (proposed: the Overlay
-Menu's answer).
+answered (D16: the map list menu is hologram). The map list menu uses the Overlay Menu's option (c) frame + tint
+(D20, as proposed in the Q9 wording; the user confirms it at the hand check).
 
 1. [ ] Info card and target card (the top-right `DrawTarget` readout) in the menu layer: corner ticks + tint
    (`CardCornerTicks`, `CARD_TICK_PX`), open / close from the cached object, sweep, jitter; the open cue for the info
@@ -124,7 +129,8 @@ Menu's answer).
    `-SOLSmokeHud` check that counts HUD-layer panels or backings updated.
 3. [ ] Smoke step 7; `-SOLSmokeInteract` Info checks and `-SOLSmokeHud` green; screenshots looked at.
 4. [ ] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram cards`.
-5. [ ] Map list menu (`USOLActionListWidget`, opus/high): frame widget (shape per Q9), hover row, open / close,
+5. [ ] Map list menu (`USOLActionListWidget`, opus/high): frame widget (option (c) + tint, D20), hover row
+   (`RowPointer`), open / close,
    cues as the radial (select on an enabled action); smoke step 8; map smokes green; screenshot looked at.
 6. [ ] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram map list menu`.
 
@@ -196,3 +202,11 @@ Remaining steps (after 42c, which loads the cues):
   `Docs/Images/hologram-frame-samples/` (`overlay-a/b/c.png`, `speed-a/b/c.png`, `frames-compare.png`; Pillow
   mock-ups over `43-dust-slow.png`). Opened Q12 (cues at strength 0). Next step: the user answers Q9 and Q12; 42a
   can start on everything except the frame-geometry contracts once Q12 is answered.
+- 2026-11-03: the last two answers recorded, so every question is answered: Q9 = option (c) with a faint dark tint
+  (D20; samples `overlay-c-tint.png`, `speed-c-tint.png`, `frames-compare-c-tint.png`), the map list menu takes the
+  same frame as proposed in the question (to be confirmed by the user at the hand check); Q12 = cues independent of
+  the hologram strength, still played at strength 0 (D21). SDD 6.3 finalised for option (c): the stepped outline,
+  perimeter, two-stroke broken draw-in from the title corner, gap dots, ruler ticks, accents, hover marks, tab markers
+  and dividers, with fixed-capacity outputs; the 6.4 test cases and the section 7 constants updated to match
+  (`FRAME_MAX_SEGMENTS` 24, `FRAME_MAX_SHAPES` 160). Next step: 42a (baseline capture, then the test brief from SDD
+  sections 6 and 7).
