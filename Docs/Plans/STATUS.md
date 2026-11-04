@@ -50,7 +50,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
+| 1c | #42 | Hologram style for in-flight menus and HUD only (radial menu, Overlay Menu, speed panel, target/info cards); full screens (main menu, settings, demo, info) get a separate solid brushed-metal/console look, split into two tickets still undecided. SCOPE CHANGED 2026-11-04: grill paused, waiting on the user's texture/material tooling for agents (notes: Plans/42-hologram-menus-grill-notes.md) | L | #22, maybe #9 |
 | 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
@@ -59,6 +59,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
 | 3d | #44 | Space dust look: subtler, debris-like particles (user feedback on #43: too coarse, uniform lines or spheres); needs grill-me | S-M | #43 |
+| 3e | #45 | Key rebinding conflict prevention: Settings warns and refuses a binding that conflicts with another bound key (also covers the RShift+O cycle key case in TECH_DEBT); needs grill-me | S-M | none |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
 | 6 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
