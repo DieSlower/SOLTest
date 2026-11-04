@@ -5,6 +5,8 @@
 
 #include "UI/SOLHoloMenuSmoke.h"
 
+#include "Interaction/SOLInteractionSubsystem.h"
+#include "Map/SOLJumpSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
@@ -14,6 +16,7 @@
 #include "UI/SOLHoloFrameWidget.h"
 #include "UI/SOLHoloMenuSubsystem.h"
 #include "UI/SOLHologramCursorSubsystem.h"
+#include "Universe/SOLAnchorSubsystem.h"
 
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
@@ -40,7 +43,16 @@ namespace
         FrameStrong,    // Strength 2
         Cursor,         // The cursor's strength follows HoloMenuEffects, not the HUD slider (D19, step 10)
         FrameClose,     // BeginClose at strength 1: Closing, then Closed with nothing drawn; the preview removed
-        Stubs,          // The section 12 checks later parts fill in
+        RadialOpen,     // Radial (step 5): Fire on a body's icon: the open cue, the rim arcs mid draw-in, then Open
+        RadialHover,    // Drag onto Target, then Info: two hover cues, the hover glow on the highlighted sector
+        RadialSelect,   // Release on Info: the select cue, the close drawn from the cached state, then nothing drawn
+        RadialFlat,     // Strength 0 (step 9): open whole at once, flat arcs and no glow, the hover cue still asked
+        RadialFlatSelect,   // Release on Info at strength 0: the action runs, the select cue, closed at once
+        RadialStrong,   // Strength 2: wide glow pads and the hover glow
+        RadialCancel,   // Release in the centre: cancelled, no select cue
+        RadialDisabled, // Release on a disabled sector (Communications): nothing runs, no select cue (SDD 5)
+        RadialJump,     // Release on Jump To: the select cue on the release frame, not after the warp (42d review)
+        Stubs,         // The section 12 checks later parts fill in
         Quit,           // The SUMMARY line, then quit
         Count,
     };
@@ -53,6 +65,9 @@ namespace
     constexpr double HOLOSMOKE_OPENED_S = SOL::HoloMenu::OPEN_S + 0.2;         // Open, plus a margin
     constexpr double HOLOSMOKE_CLOSED_S = SOL::HoloMenu::CLOSE_S + 0.2;        // Closed, plus a margin
     constexpr double HOLOSMOKE_SETTLED_S = 0.6;                                // Past the hover ramp and flicker
+    constexpr double HOLOSMOKE_MID_CLOSE_S = 0.6 * SOL::HoloMenu::CLOSE_S;     // A capture inside the close
+    constexpr double HOLOSMOKE_HOVER_GAP_S = 0.25;     // Between the two sector drags (past every hover rate limit)
+    constexpr double HOLOSMOKE_WARP_TIMEOUT_S = 20.0;  // Longest wait for the Jump To warp to end
     constexpr double HOLOSMOKE_CURSOR_TIMEOUT_S = 2.0;
     constexpr int32 HOLOSMOKE_CURSOR_PAINTS = 3;                               // Cursor paints after a change
     constexpr double HOLOSMOKE_QUIT_S = 1.0;
@@ -118,7 +133,8 @@ void FSOLHoloMenuSmoke::Start(ASOLShipPawn& pawn)
     mHud = mController.IsValid() ? mController->GetHUD<ASOLFlightHud>() : nullptr;
     mHoloMenu = world->GetSubsystem<USOLHoloMenuSubsystem>();
     mSettings = USOLSettingsSubsystem::Get(world);
-    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (part 42c scaffold)"));
+    mInteraction = world->GetSubsystem<USOLInteractionSubsystem>();
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (parts 42c-42d)"));
     mStep = 0;
     EnterStep(mStep, pawn);
 }
@@ -131,9 +147,9 @@ bool FSOLHoloMenuSmoke::Update(ASOLShipPawn& pawn, const float /*deltaSeconds*/)
     {
         return true;
     }
-    if (!mController.IsValid() || !mHoloMenu.IsValid() || !mSettings.IsValid())
+    if (!mController.IsValid() || !mHoloMenu.IsValid() || !mSettings.IsValid() || !mInteraction.IsValid())
     {
-        UE_LOG(LogSOL, Error, TEXT("HoloMenu: controller, menu or settings subsystem missing; aborting"));
+        UE_LOG(LogSOL, Error, TEXT("HoloMenu: controller, menu, settings or interaction subsystem missing; aborting"));
         mStep = static_cast<int32>(EHoloStep::Count);
         UKismetSystemLibrary::QuitGame(pawn.GetWorld(), nullptr, EQuitPreference::Quit, false);
         return true;
@@ -218,6 +234,74 @@ void FSOLHoloMenuSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
             mFrameWidget->BeginClose();
         }
         break;
+    case EHoloStep::RadialOpen:
+        // The script moves the flight cursor from here on (the OS mouse would move the highlight)
+        pawn.SetFlightCursorScripted(true);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mMidOpenFraction = -1.0f;
+        mIsMidOpenShot = false;
+        if (FindRadialBody(pawn))
+        {
+            // A press without a drag: the pointer rests in the centre, so the menu opens with nothing highlighted
+            PressOnRadialBody(pawn);
+            pawn.HandleFlightCursorMoved(mInteraction->GetRadial().CenterPx);
+            mInteraction->MovePointer(pawn.GetFlightCursorPx());
+        }
+        break;
+    case EHoloStep::RadialHover:
+        // Onto Target now (the menu is Open: a hover cue), onto Info later in the step
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mIsSecondDrag = false;
+        mRadialSectorA = DragToRadialAction(pawn, ESOLAction::Target);
+        mRadialSectorB = INDEX_NONE;
+        break;
+    case EHoloStep::RadialSelect:
+    case EHoloStep::RadialFlatSelect:
+        // Release on Info (the cursor is on it): it runs, and the menu closes
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mMidCloseFraction = -1.0f;
+        mFlatCloseSectors = -1;
+        pawn.HandleFire(false);
+        break;
+    case EHoloStep::RadialFlat:
+        SetStrength(0.0f);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mFirstFlatFraction = -1.0f;
+        mFirstFlatFill = -1.0f;
+        mFirstFlatSectors = 0;
+        PressOnRadialBody(pawn);
+        break;
+    case EHoloStep::RadialStrong:
+        // Opened and dragged onto Info in one frame (no hover cue while it draws in)
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        PressOnRadialBody(pawn);
+        mRadialSectorB = DragToRadialAction(pawn, ESOLAction::Info);
+        break;
+    case EHoloStep::RadialCancel:
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mCancelsBefore = mInteraction->GetRadialCancelCount();
+        pawn.HandleFlightCursorMoved(mInteraction->GetRadial().CenterPx);
+        mInteraction->MovePointer(pawn.GetFlightCursorPx());
+        pawn.HandleFire(false);
+        break;
+    case EHoloStep::RadialDisabled:
+    case EHoloStep::RadialJump:
+        // Opened and dragged onto the step's action; released once Open (TickStep)
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mCancelsBefore = mInteraction->GetRadialCancelCount();
+        mReleaseFrame = INDEX_NONE;
+        mSelectsAtRelease = -1;
+        mIsWarpingAtRelease = false;
+        mReleaseRim = -1.0f;
+        mReleaseLook = FSOLHoloMenuLook();
+        PressOnRadialBody(pawn);
+        mRadialSectorB = DragToRadialAction(pawn, static_cast<EHoloStep>(step) == EHoloStep::RadialJump
+            ? ESOLAction::JumpTo : ESOLAction::Communicate);
+        break;
     case EHoloStep::Stubs:
         LogStubs();
         break;
@@ -233,6 +317,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
     const double elapsedS = FPlatformTime::Seconds() - mStepStartS;
     SSOLHoloFrame* frame = mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid()
         ? mFrameWidget->GetFrame().Get() : nullptr;
+    const ASOLFlightHud* hud = mHud.Get();
     switch (static_cast<EHoloStep>(step))
     {
     case EHoloStep::Setup:
@@ -272,6 +357,82 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
     }
     case EHoloStep::FrameClose:
         return elapsedS >= HOLOSMOKE_CLOSED_S;
+    case EHoloStep::RadialOpen:
+        // The rim arcs caught about half-way through the draw-in (the last HUD frame's look), with a screenshot
+        if (hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_OPEN_S)
+        {
+            mMidOpenFraction = hud->GetLastRadialLook().FrameFraction;
+            TakeUiShot(TEXT("RadialMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return elapsedS >= HOLOSMOKE_OPENED_S;
+    case EHoloStep::RadialHover:
+        if (!mIsSecondDrag && elapsedS >= HOLOSMOKE_HOVER_GAP_S)
+        {
+            mRadialSectorB = DragToRadialAction(pawn, ESOLAction::Info);
+            mIsSecondDrag = true;
+        }
+        return ShotThenDone(TEXT("Radial_S1"), mIsSecondDrag && elapsedS >= HOLOSMOKE_HOVER_GAP_S
+            + HOLOSMOKE_SETTLED_S);
+    case EHoloStep::RadialSelect:
+        // The close caught half-way: drawn from the cached state after the interaction closed the menu
+        if (hud != nullptr && mMidCloseFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_CLOSE_S)
+        {
+            mMidCloseFraction = hud->GetLastRadialLook().FrameFraction;
+            mMidClosePhase = hud->GetRadialHolo().Anim.Phase;
+            mMidCloseSectors = hud->GetLastRadialSectorCount();
+            mMidCloseHighlight = hud->GetRadialHolo().Radial.Highlighted;
+            mMidCloseHovered = hud->GetRadialHolo().Anim.HoveredItem;
+            mIsMidCloseOpen = mInteraction->IsRadialOpen();
+            TakeUiShot(TEXT("RadialClosing"));
+        }
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    case EHoloStep::RadialFlat:
+        // The first HUD frame after the press, then onto Info
+        if (mStepFrames == 1 && hud != nullptr)
+        {
+            mFirstFlatFraction = hud->GetLastRadialLook().FrameFraction;
+            mFirstFlatFill = hud->GetLastRadialLook().FillAlpha;
+            mFirstFlatSectors = hud->GetLastRadialSectorCount();
+            mRadialSectorB = DragToRadialAction(pawn, ESOLAction::Info);
+        }
+        return ShotThenDone(TEXT("Radial_S0"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::RadialFlatSelect:
+        // The first HUD frame after the release: closed at once at strength 0
+        if (mStepFrames == 1 && hud != nullptr)
+        {
+            mFlatClosePhase = hud->GetRadialHolo().Anim.Phase;
+            mFlatCloseSectors = hud->GetLastRadialSectorCount();
+        }
+        return elapsedS >= HOLOSMOKE_STEP_S;
+    case EHoloStep::RadialStrong:
+        return ShotThenDone(TEXT("Radial_S2"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::RadialCancel:
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    case EHoloStep::RadialDisabled:
+    case EHoloStep::RadialJump:
+    {
+        // Once Open: the highlighted rim, then the release; the next tick reads the cues the release frame asked for
+        // (that frame's HUD update ran after the release), then the close (and the warp) plays out
+        const USOLJumpSubsystem* jump = pawn.GetWorld()->GetSubsystem<USOLJumpSubsystem>();
+        if (mReleaseFrame == INDEX_NONE && elapsedS >= HOLOSMOKE_OPENED_S)
+        {
+            mReleaseRim = hud != nullptr ? hud->GetLastRadialHighlightIntensity() : -1.0f;
+            mReleaseLook = hud != nullptr ? hud->GetLastRadialLook() : FSOLHoloMenuLook();
+            pawn.HandleFire(false);
+            mReleaseFrame = mStepFrames;
+            mReleaseS = elapsedS;
+        }
+        else if (mReleaseFrame != INDEX_NONE && mStepFrames == mReleaseFrame + 1)
+        {
+            mSelectsAtRelease = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+            mIsWarpingAtRelease = jump != nullptr && jump->IsWarping();
+        }
+        const bool bIsWarping = jump != nullptr && jump->IsWarping();
+        return mReleaseFrame != INDEX_NONE && mStepFrames > mReleaseFrame + 1
+            && elapsedS >= mReleaseS + HOLOSMOKE_CLOSED_S
+            && (!bIsWarping || elapsedS >= mReleaseS + HOLOSMOKE_WARP_TIMEOUT_S);
+    }
     case EHoloStep::Quit:
         return elapsedS >= HOLOSMOKE_QUIT_S;
     default:
@@ -466,9 +627,175 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
                 ? hud->GetLastMenuShapeCount() : -1, hud != nullptr ? hud->GetMenuLayerBatchFrame() : 0));
         break;
     }
+    case EHoloStep::RadialOpen:
+    {
+        // Step 5: the open cue at the press, the draw-in caught mid-way, then Open with every sector on the menu layer
+        const FSOLRadialMenuState& radial = mInteraction->GetRadial();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const FSOLHoloMenuLook look = hud != nullptr ? hud->GetLastRadialLook() : FSOLHoloMenuLook();
+        const bool bIsOpen = hud != nullptr && hud->GetRadialHolo().Anim.Phase == ESOLHoloMenuPhase::Open;
+        const int32 sectors = hud != nullptr ? hud->GetLastRadialSectorCount() : 0;
+        const int32 menuShapes = hud != nullptr ? hud->GetLastMenuShapeCount() : 0;
+        Check(TEXT("r-radial-open"), radial.bOpen && opens == 1 && bIsOpen && sectors > 0 && sectors == radial.Count
+            && look.FrameFraction == 1.0f && look.FillAlpha == 1.0f && menuShapes >= 2 * sectors,
+            FString::Printf(TEXT("radial %s on body %d, %d open cue requests, phase %s, %d of %d sectors drawn, frame "
+                "%.2f, fill %.2f, %d menu layer shapes"), radial.bOpen ? TEXT("open") : TEXT("CLOSED"),
+                mRadialBody.Index, opens, bIsOpen ? TEXT("Open") : TEXT("NOT open"), sectors, radial.Count,
+                look.FrameFraction, look.FillAlpha, menuShapes));
+        Check(TEXT("r-radial-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f,
+            FString::Printf(TEXT("rim arc draw-in %.3f at %.2f s"), mMidOpenFraction, HOLOSMOKE_MID_OPEN_S));
+        break;
+    }
+    case EHoloStep::RadialHover:
+    {
+        // Two sector changes while Open: two hover cues, the glow on top of the highlight, full glow pads at 1
+        const FSOLRadialMenuState& radial = mInteraction->GetRadial();
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const FSOLHoloMenuLook look = hud != nullptr ? hud->GetLastRadialLook() : FSOLHoloMenuLook();
+        const float rim = hud != nullptr ? hud->GetLastRadialHighlightIntensity() : -1.0f;
+        const int32 hovered = hud != nullptr ? hud->GetRadialHolo().Anim.HoveredItem : INDEX_NONE;
+        const float padPx = hud != nullptr ? hud->GetLastRadialPadPx() : -1.0f;
+        Check(TEXT("r-radial-hover"), hovers == 2 && mRadialSectorA != INDEX_NONE && mRadialSectorB != INDEX_NONE
+            && mRadialSectorA != mRadialSectorB && radial.Highlighted == mRadialSectorB && hovered == mRadialSectorB
+            && look.HoverIntensity > 0.0f && rim > SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY
+            && FMath::IsNearlyEqual(rim, SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY
+                + look.HoverIntensity * look.FillAlpha)
+            && FMath::IsNearlyEqual(padPx, SOL::Hologram::HUD_GLOW_PAD_PX),
+            FString::Printf(TEXT("%d hover cue requests over sectors %d then %d; highlighted %d, hovered %d, hover "
+                "glow %.2f, highlighted rim %.2f, arc pad %.2f"), hovers, mRadialSectorA, mRadialSectorB,
+                radial.Highlighted, hovered, look.HoverIntensity, rim, padPx));
+        break;
+    }
+    case EHoloStep::RadialSelect:
+    {
+        // The release ran Info with the select cue; the close was drawn from the cached state, then nothing
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const ESOLAction last = mInteraction->GetLastExecutedAction();
+        Check(TEXT("r-radial-select"), selects == 1 && executed == 1 && last == ESOLAction::Info
+            && !mInteraction->IsRadialOpen(), FString::Printf(TEXT("release on Info: %d select cue requests, %d "
+                "action(s), last %s, menu %s"), selects, executed, SOLActionTable::ActionLabel(last),
+                mInteraction->IsRadialOpen() ? TEXT("OPEN") : TEXT("closed")));
+        const bool bIsClosed = hud != nullptr && hud->GetRadialHolo().Anim.Phase == ESOLHoloMenuPhase::Closed;
+        const int32 sectors = hud != nullptr ? hud->GetLastRadialSectorCount() : -1;
+        Check(TEXT("r-radial-close"), !mIsMidCloseOpen && mMidClosePhase == ESOLHoloMenuPhase::Closing
+            && mMidCloseFraction > 0.0f && mMidCloseFraction < 1.0f && mMidCloseSectors > 0
+            && mMidCloseHighlight == mRadialSectorB && mMidCloseHovered == mRadialSectorB && bIsClosed && sectors == 0,
+            FString::Printf(TEXT("mid-close (menu %s): phase %d, draw-in %.3f, %d sectors from the cache, cached "
+                "highlight %d, hovered %d (Info %d, the glow fades with the fill); after %.2f s: phase %s, %d "
+                "sectors"), mIsMidCloseOpen ? TEXT("OPEN") : TEXT("closed"), static_cast<int32>(mMidClosePhase),
+                mMidCloseFraction, mMidCloseSectors, mMidCloseHighlight, mMidCloseHovered, mRadialSectorB,
+                HOLOSMOKE_CLOSED_S, bIsClosed ? TEXT("Closed") : TEXT("NOT closed"), sectors));
+        break;
+    }
+    case EHoloStep::RadialFlat:
+    {
+        // Step 9, the radial at strength 0 (D18): whole on the first frame, flat arcs, no glow; the cues still asked
+        const FSOLRadialMenuState& radial = mInteraction->GetRadial();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const FSOLHoloMenuLook look = hud != nullptr ? hud->GetLastRadialLook() : FSOLHoloMenuLook();
+        const float rim = hud != nullptr ? hud->GetLastRadialHighlightIntensity() : -1.0f;
+        const float padPx = hud != nullptr ? hud->GetLastRadialPadPx() : -1.0f;
+        const float strength = hud != nullptr ? hud->GetLastRadialStrength() : -1.0f;
+        Check(TEXT("r-strength0-open"), mFirstFlatFraction == 1.0f && mFirstFlatFill == 1.0f && mFirstFlatSectors > 0
+            && opens == 1, FString::Printf(TEXT("first frame after the press: draw-in %.2f, fill %.2f, %d sectors; %d "
+                "open cue requests (D21)"), mFirstFlatFraction, mFirstFlatFill, mFirstFlatSectors, opens));
+        Check(TEXT("r-strength0-flat"), strength == 0.0f && radial.bOpen && radial.Highlighted == mRadialSectorB
+            && mRadialSectorB != INDEX_NONE && look.HoverIntensity == 0.0f
+            && rim == SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY && padPx == SOL::HoloMenu::FRAME_FLAT_PAD_PX
+            && hovers == 1 && GetMenuParam(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH) == 0.0f,
+            FString::Printf(TEXT("strength %.2f, highlighted %d (Info %d), hover glow %.2f, highlighted rim %.2f, arc "
+                "pad %.2f, %d hover cue requests (D21), material strength %.2f"), strength, radial.Highlighted,
+                mRadialSectorB, look.HoverIntensity, rim, padPx, hovers,
+                GetMenuParam(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH)));
+        break;
+    }
+    case EHoloStep::RadialFlatSelect:
+    {
+        // A strength-0 selection still works (D18) with its select cue (D21), and the menu closes at once
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const ESOLAction last = mInteraction->GetLastExecutedAction();
+        Check(TEXT("r-strength0-select"), selects == 1 && executed == 1 && last == ESOLAction::Info
+            && mFlatClosePhase == ESOLHoloMenuPhase::Closed && mFlatCloseSectors == 0,
+            FString::Printf(TEXT("release on Info: %d select cue requests, %d action(s), last %s; the next frame: "
+                "phase %d, %d sectors"), selects, executed, SOLActionTable::ActionLabel(last),
+                static_cast<int32>(mFlatClosePhase), mFlatCloseSectors));
+        break;
+    }
+    case EHoloStep::RadialStrong:
+    {
+        const FSOLRadialMenuState& radial = mInteraction->GetRadial();
+        const FSOLHoloMenuLook look = hud != nullptr ? hud->GetLastRadialLook() : FSOLHoloMenuLook();
+        const float rim = hud != nullptr ? hud->GetLastRadialHighlightIntensity() : -1.0f;
+        const float padPx = hud != nullptr ? hud->GetLastRadialPadPx() : -1.0f;
+        const float strength = hud != nullptr ? hud->GetLastRadialStrength() : -1.0f;
+        Check(TEXT("r-strength2"), strength == SOL::Settings::HOLO_MENU_EFFECTS_MAX && radial.bOpen
+            && radial.Highlighted == mRadialSectorB && mRadialSectorB != INDEX_NONE
+            && FMath::IsNearlyEqual(look.HoverIntensity, HOVER_GLOW_INTENSITY)
+            && rim > SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY
+            && FMath::IsNearlyEqual(padPx, SOL::Hologram::HUD_GLOW_PAD_PX)
+            && GetMenuParam(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH) == SOL::Settings::HOLO_MENU_EFFECTS_MAX,
+            FString::Printf(TEXT("strength %.2f, highlighted %d (Info %d), hover glow %.2f, highlighted rim %.2f, arc "
+                "pad %.2f, material strength %.2f"), strength, radial.Highlighted, mRadialSectorB, look.HoverIntensity,
+                rim, padPx, GetMenuParam(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH)));
+        break;
+    }
+    case EHoloStep::RadialCancel:
+    {
+        // A release in the centre cancels: no select cue, nothing runs, and the close plays out
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const int32 cancels = mInteraction->GetRadialCancelCount() - mCancelsBefore;
+        const bool bIsClosed = hud != nullptr && hud->GetRadialHolo().Anim.Phase == ESOLHoloMenuPhase::Closed;
+        Check(TEXT("r-radial-cancel"), selects == 0 && executed == 0 && cancels == 1 && !mInteraction->IsRadialOpen()
+            && bIsClosed && hud->GetLastRadialSectorCount() == 0, FString::Printf(TEXT("release in the centre: %d "
+                "cancel(s), %d action(s), %d select cue requests, phase %s"), cancels, executed, selects, bIsClosed
+                ? TEXT("Closed") : TEXT("NOT closed")));
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        break;
+    }
+    case EHoloStep::RadialDisabled:
+    {
+        // A release on a disabled sector runs nothing and asks no select cue (SDD 5); its highlighted rim glows by
+        // RADIAL_DISABLED_HOVER_GLOW_SCALE (pending the user's answer, SDD 13 Q13)
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const int32 cancels = mInteraction->GetRadialCancelCount() - mCancelsBefore;
+        const bool bIsClosed = hud != nullptr && hud->GetRadialHolo().Anim.Phase == ESOLHoloMenuPhase::Closed;
+        const float expectedRim = SOL::Interact::RADIAL_DISABLED_INTENSITY + mReleaseLook.HoverIntensity
+            * FMath::Clamp(mReleaseLook.FillAlpha, 0.0f, 1.0f) * RADIAL_DISABLED_HOVER_GLOW_SCALE;
+        Check(TEXT("r-radial-disabled"), mRadialSectorB != INDEX_NONE && mSelectsAtRelease == 0 && selects == 0
+            && executed == 0 && cancels == 1 && !mInteraction->IsRadialOpen() && bIsClosed
+            && FMath::IsNearlyEqual(mReleaseRim, expectedRim, 1.0e-3f),
+            FString::Printf(TEXT("release on Communications (sector %d, disabled): %d select cue requests (%d on the "
+                "release frame), %d action(s), %d cancel(s), phase %s; highlighted rim %.3f (expected %.3f)"),
+                mRadialSectorB, selects, mSelectsAtRelease, executed, cancels, bIsClosed ? TEXT("Closed")
+                : TEXT("NOT closed"), mReleaseRim, expectedRim));
+        break;
+    }
+    case EHoloStep::RadialJump:
+    {
+        // Jump To hides the flight HUD at its release (the warp starts): the select cue is still asked on that frame,
+        // and not again on arrival
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const ESOLAction last = mInteraction->GetLastExecutedAction();
+        const USOLJumpSubsystem* jump = pawn.GetWorld()->GetSubsystem<USOLJumpSubsystem>();
+        const bool bIsWarping = jump != nullptr && jump->IsWarping();
+        Check(TEXT("r-radial-jump-select"), mRadialSectorB != INDEX_NONE && mSelectsAtRelease == 1
+            && mIsWarpingAtRelease && selects == 1 && executed == 1 && last == ESOLAction::JumpTo && !bIsWarping,
+            FString::Printf(TEXT("release on Jump To (sector %d): %d select cue requests on the release frame (warp "
+                "%s then), %d after the warp (%s), %d action(s), last %s"), mRadialSectorB, mSelectsAtRelease,
+                mIsWarpingAtRelease ? TEXT("running") : TEXT("NOT running"), selects, bIsWarping ? TEXT("STILL warping")
+                : TEXT("ended"), executed, SOLActionTable::ActionLabel(last)));
+        pawn.SetFlightCursorScripted(false);
+        break;
+    }
     case EHoloStep::Quit:
-        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (part 42c scaffold; menu steps are stubs)"),
-            mChecksPassed, mChecksRun);
+        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (parts 42c-42d; the other menu steps are "
+            "stubs)"), mChecksPassed, mChecksRun);
         UKismetSystemLibrary::QuitGame(pawn.GetWorld(), nullptr, EQuitPreference::Quit, false);
         break;
     default:
@@ -655,6 +982,68 @@ float FSOLHoloMenuSmoke::GetMenuParam(const TCHAR* name) const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Finds a body's icon for the radial steps (not the Sun, preferring one that is not the anchor)
+bool FSOLHoloMenuSmoke::FindRadialBody(ASOLShipPawn& pawn)
+{
+    const USOLAnchorSubsystem* anchor = pawn.GetWorld()->GetSubsystem<USOLAnchorSubsystem>();
+    const int32 anchorBody = anchor != nullptr ? anchor->GetAnchorIndex() : INDEX_NONE;
+    bool bIsFound = false;
+    for (const FSOLIconHit& hit : mInteraction->GetIconHits())
+    {
+        if (hit.Object.Kind != ESOLObjectKind::Body || hit.Object.Index == 0)
+        {
+            continue;
+        }
+        if (!bIsFound || (mRadialBody.Index == anchorBody && hit.Object.Index != anchorBody))
+        {
+            mRadialBody = hit.Object;
+            mRadialBodyPx = hit.CenterPx;
+            bIsFound = true;
+        }
+    }
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: radial body %s (%d) at (%.0f, %.0f) of %d icons"), bIsFound ? TEXT("found")
+        : TEXT("NOT found"), mRadialBody.Index, mRadialBodyPx.X, mRadialBodyPx.Y, mInteraction->GetIconHits().Num());
+    return bIsFound;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Presses Fire on the radial body's icon (its current centre, else where it was found)
+void FSOLHoloMenuSmoke::PressOnRadialBody(ASOLShipPawn& pawn) const
+{
+    FVector2D iconPx = mRadialBodyPx;
+    for (const FSOLIconHit& hit : mInteraction->GetIconHits())
+    {
+        iconPx = hit.Object == mRadialBody ? hit.CenterPx : iconPx;
+    }
+    pawn.HandleFlightCursorMoved(iconPx);
+    mInteraction->UpdateHover(pawn.GetFlightCursorPx(), true);
+    pawn.HandleFire(true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the cursor onto an action's sector of the open radial menu (the middle of the sector ring) and updates the
+// highlight; returns the sector, or INDEX_NONE
+int32 FSOLHoloMenuSmoke::DragToRadialAction(ASOLShipPawn& pawn, const ESOLAction action) const
+{
+    const FSOLRadialMenuState& radial = mInteraction->GetRadial();
+    const FSOLActionList& actions = mInteraction->GetRadialActions();
+    const float uiScale = mHud.IsValid() ? mHud->GetUiScale() : 1.0f;
+    for (int32 index = 0; radial.bOpen && index < actions.Num; ++index)
+    {
+        if (actions.Entries[index].Action == action)
+        {
+            const double angle = SOLRadialMenu::SectorMidAngleRad(index, radial.Count);
+            const double radiusPx = 0.5 * (SOL::Interact::RADIAL_INNER_PX + SOL::Interact::RADIAL_OUTER_PX) * uiScale;
+            pawn.HandleFlightCursorMoved(radial.CenterPx + FVector2D(FMath::Cos(angle), FMath::Sin(angle)) * radiusPx);
+            mInteraction->MovePointer(pawn.GetFlightCursorPx());
+            return index;
+        }
+    }
+    UE_LOG(LogSOL, Warning, TEXT("HoloMenu: the radial menu does not offer %s"), SOLActionTable::ActionLabel(action));
+    return INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Logs the section 12 checks later parts fill in
 void FSOLHoloMenuSmoke::LogStubs()
 {
@@ -664,11 +1053,11 @@ void FSOLHoloMenuSmoke::LogStubs()
         TEXT("2 Ctrl+O mid-open capture at ~0.1 s, frame fraction in (0, 1) (42e)"),
         TEXT("3 hover a row, then Down: at most two hover cues, brackets and pointer at the row (42e)"),
         TEXT("4 toggle a row: one select cue; Esc: input back at once, widget gone after CLOSE_S (42e)"),
-        TEXT("5 radial: draw-in, hover cues across two sectors, select cue, close from the cached state (42d)"),
         TEXT("6 F3: open, digit step (select cue), highlight move (hover cue), close (42f)"),
         TEXT("7 info / target / speed / date-and-anchor cards on the menu layer, 8 ticks each (42g)"),
         TEXT("8 map list menu: open, hover, select cues (42g)"),
-        TEXT("9 strength 0 in the menus: instant open, flat look, still usable, cues requested (42d-42g)"),
+        TEXT("9 strength 0 in the Overlay Menu, F3 panel and map list: instant open, flat look, still usable, cues "
+            "requested (42e-42g; the radial's part runs here)"),
         TEXT("10 Settings: slider under the HUD effects slider, Apply writes once (covered by -SOLMenuSmoke; the "
             "cursor part runs here)"),
         TEXT("11 the Overlay list embedded in Settings has no frame widget (42e)"),

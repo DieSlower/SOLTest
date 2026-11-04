@@ -88,12 +88,12 @@ committed as done before 42b, so no build ships a menu slider that does nothing)
 
 ### 42d: radial menu (opus, high)
 
-1. [ ] Draw the radial in the menu layer with `FSOLHoloMenuAnim` (open / close from the cached state, rim arcs via
+1. [x] Draw the radial in the menu layer with `FSOLHoloMenuAnim` (open / close from the cached state, rim arcs via
    `RadialArcDrawIn`, fill and labels by `FillAlpha`, hover glow and flicker on the highlighted sector).
-2. [ ] Cues: open at the opening press, hover per highlight change (rate limited), select on an enabled action.
-3. [ ] Smoke steps 5 (and 9 for the radial); `-SOLSmokeInteract` and `-SOLSmokeChase` green; screenshots looked at
+2. [x] Cues: open at the opening press, hover per highlight change (rate limited), select on an enabled action.
+3. [x] Smoke steps 5 (and 9 for the radial); `-SOLSmokeInteract` and `-SOLSmokeChase` green; screenshots looked at
    (mid-open, hovered, strength 0 and 2).
-4. [ ] Review; fixes; suite. Commit `Issue #42: Part 42d - hologram radial menu`.
+4. [x] Review; fixes; suite. Commit `Issue #42: Part 42d - hologram radial menu`.
 
 ### 42e: Overlay Menu with profile tabs (opus, high)
 
@@ -245,3 +245,9 @@ Remaining steps (after 42c, which loads the cues):
   backing, title-step pad, volatile UMG frame, dark `BACKDROP_TINT` to match the approved sample, an idempotent cue
   import (MD5 tag). Suite 1292 / 1292; `-SOLSmokeHoloMenu` 18/18, `-SOLSmokeHud` 24/24 at 1280x720 and 1000x800,
   `-SOLSmokeOverlay` 34/34, `-SOLSmokeInteract` 18/18, profile P0-P4 PASS. Next step: 42d (radial).
+- 2026-11-04: 42d done: the radial draws on the menu layer (`UI/SOLHoloRadial`), closes from a cached state, cues via
+  the subsystem; review fixes (radial update before the HUD's early returns so the Jump To select cue is not late,
+  hover glow kept through the close, new opens snap to Closed, select counted only when `Execute` succeeds). Suite
+  1305 / 1305; `-SOLSmokeHoloMenu` 30/30, Interact 18/18, Chase 26/26, Hud 24/24, Jump 14/14, profile P1 PASS
+  (+0.018 ms GPU). Open user question Q13 (disabled-sector hover glow), behaviour unchanged behind
+  `RADIAL_DISABLED_HOVER_GLOW_SCALE` until answered. Next step: 42e + 42f (Overlay Menu and speed panel frames).

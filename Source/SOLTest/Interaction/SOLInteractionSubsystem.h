@@ -140,6 +140,9 @@ public:
     // Returns how many radial menus were cancelled so far (verification)
     int32 GetRadialCancelCount() const { return mRadialCancelCount; }
 
+    // Returns how many radial menus were released on an enabled action that ran so far (the HUD's select cue, SDD 42)
+    int32 GetRadialConfirmCount() const { return mRadialConfirmCount; }
+
     // Returns the selected target as an object (a body, or the targeted dropped target), else an invalid reference
     FSOLObjectRef GetSelectedObject() const;
 
@@ -233,6 +236,7 @@ private:
     int32 mExecutedCount = 0;
     int32 mRadialOpenCount = 0;
     int32 mRadialCancelCount = 0;
+    int32 mRadialConfirmCount = 0;
     ESOLAction mHintAction = ESOLAction::Count;
     ESOLAction mLastExecutedAction = ESOLAction::Count;
     bool mIsProxyRegistered = false;                        // TargetProxy is a targeting candidate now

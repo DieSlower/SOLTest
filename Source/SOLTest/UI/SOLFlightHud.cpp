@@ -46,6 +46,7 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Math/RandomStream.h"
 
@@ -561,6 +562,15 @@ FBox2D ASOLFlightHud::MenuText(const ESOLHudLine line, const FLinearColor& color
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Draws a menu text line centred on centerX on the menu layer (as MenuText); returns its rectangle
+FBox2D ASOLFlightHud::MenuTextCentered(const ESOLHudLine line, const FLinearColor& color, const float centerX,
+    const float y, const ESOLHudFont font)
+{
+    const float textWidth = static_cast<float>(MeasureLine(line, font).X);
+    return MenuText(line, color, centerX - 0.5f * textWidth * mUiScale, y, font);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Draws a menu glow arc on the menu layer (else the HUD batch); false when dropped or with no batch
 bool ASOLFlightHud::MenuArc(const FVector2f& center, const float radiusPx, const float halfWidthPx,
     const float midAngleRad, const float halfApertureRad, const FLinearColor& color, const float intensity,
@@ -938,23 +948,31 @@ void ASOLFlightHud::DrawHUD()
     mUiScale = FMath::Clamp(Canvas->ClipY / SOL::Hologram::HUD_REFERENCE_HEIGHT_PX, 1.0f,
         SOL::Hologram::HUD_MAX_UI_SCALE)
         * (settings != nullptr ? settings->HudScale : 1.0f);
+    const USOLMenuSubsystem* menu = GetWorld()->GetSubsystem<USOLMenuSubsystem>();
+    const bool bIsMenuShowing = menu != nullptr && menu->IsMenuShowing();
+    const bool bIsWarping = Jump != nullptr && Jump->IsWarping();
+    const bool bIsHudHidden = settings != nullptr && !settings->bHudVisible && !IsMapOpen();
+
+    // The radial menu's anim and cues (SDD 42) run every frame before the early returns below, so an action that
+    // hides the flight HUD at its release (Jump To starts the warp) still plays its select cue on that frame; the
+    // radial shows only while the flight HUD draws and the map is closed (drawn in DrawInteraction)
+    UpdateRadialMenu(!bIsMenuShowing && !bIsWarping && !bIsHudHidden && !IsMapOpen());
 
     // The main and pause menus (SDD 8) draw over a clean view: no flight HUD while one shows
-    const USOLMenuSubsystem* menu = GetWorld()->GetSubsystem<USOLMenuSubsystem>();
-    if (menu != nullptr && menu->IsMenuShowing())
+    if (bIsMenuShowing)
     {
         return;
     }
 
     // Jump warp: the flight HUD is hidden for the whole sequence; only the radial streaks are drawn
-    if (Jump != nullptr && Jump->IsWarping())
+    if (bIsWarping)
     {
         mLastWarpStreaksDrawn = DrawWarpStreaks(Jump->ComputeStreakIntensity(), Jump->GetElapsedS());
         return;
     }
 
     // The player hid the flight HUD (SDD 8): nothing more, unless the jump map needs its overlays
-    if (settings != nullptr && !settings->bHudVisible && !IsMapOpen())
+    if (bIsHudHidden)
     {
         return;
     }
@@ -1970,18 +1988,83 @@ void ASOLFlightHud::DrawInteraction()
         AddHoloPanel(DrawBufferCentered(ESOLHudLine::InteractHint, SOL::HudPalette::SECONDARY, Canvas->ClipX * 0.5f,
             Canvas->ClipY * SOL::Interact::HINT_Y_FRACTION, ESOLHudFont::Medium), SOL::HudPalette::SECONDARY);
     }
-    if (Interaction->IsRadialOpen() && !IsMapOpen())
+
+    // The radial menu (SDD 42), at the look this frame's update (DrawHUD) gave it: it closes from its cached state
+    // after the interaction closed it
+    if (mLastRadialLook.bVisible && !IsMapOpen())
     {
-        DrawRadialMenu();
+        DrawRadialMenu(mLastRadialLook, mLastRadialStrength);
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the open radial menu: sectors, labels, title and the highlighted disabled action's reason
-void ASOLFlightHud::DrawRadialMenu()
+// Runs the radial menu's anim for this frame, plays its cues and keeps the look to draw
+void ASOLFlightHud::UpdateRadialMenu(const bool bShown)
 {
-    const FSOLRadialMenuState& radial = Interaction->GetRadial();
-    const FSOLActionList& actions = Interaction->GetRadialActions();
+    const float s = HoloMenu != nullptr ? HoloMenu->GetStrength() : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
+    mLastRadialStrength = s;
+    mLastRadialPadPx = SOLHoloFrameBuild::LinePad(s);
+    mLastRadialHighlightIntensity = -1.0f;
+    if (Interaction == nullptr)
+    {
+        mLastRadialLook = FSOLHoloMenuLook();
+        return;
+    }
+    const double nowS = FPlatformTime::Seconds();
+    const bool bIsContinuous = mLastRadialUpdateFrame != 0 && GFrameCounter <= mLastRadialUpdateFrame + 1;
+    mLastRadialUpdateFrame = GFrameCounter;
+    const FSOLHoloRadialCues cues = SOLHoloRadial::Update(mRadialHolo, Interaction->GetRadial(),
+        Interaction->GetRadialActions(), Interaction->GetRadialOpenCount(), Interaction->GetRadialConfirmCount(),
+        bShown, bIsContinuous, nowS, s);
+    if (HoloMenu != nullptr)
+    {
+        // The cues play at every strength, 0 included (D21)
+        if (cues.bOpen)
+        {
+            HoloMenu->PlayCue(ESOLHoloCue::Open, nowS);
+        }
+        if (cues.bHover)
+        {
+            HoloMenu->PlayCue(ESOLHoloCue::Hover, nowS);
+        }
+        if (cues.bSelect)
+        {
+            HoloMenu->PlayCue(ESOLHoloCue::Select, nowS);
+        }
+    }
+
+    // The open menu's title, looked up once per opened menu (a body's info solves its orbit) and kept so the close
+    // still shows it after the object went away
+    const int32 openCount = Interaction->GetRadialOpenCount();
+    if (Interaction->IsRadialOpen() && openCount != mRadialTitleOpenCount)
+    {
+        FSOLObjectInfo info;
+        const bool bHasInfo = Interaction->GetObjectInfo(Interaction->GetRadial().Object, info);
+        mRadialTitleName = bHasInfo ? info.Name : NAME_None;
+        mRadialTitleType = bHasInfo ? info.Type : ESOLObjectType::Count;
+        mRadialTitleOpenCount = openCount;
+    }
+
+    // The Canvas fallback draws the open menu whole, as before (no effects)
+    if (mBatch == nullptr)
+    {
+        mLastRadialLook = FSOLHoloMenuLook();
+        mLastRadialLook.bVisible = bShown && Interaction->IsRadialOpen();
+        mLastRadialLook.Progress = 1.0f;
+        mLastRadialLook.FrameFraction = 1.0f;
+        mLastRadialLook.FillAlpha = 1.0f;
+        return;
+    }
+    mLastRadialLook = SOLHoloMenu::Evaluate(mRadialHolo.Anim, nowS, s);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the radial menu from its cached state at a look: sectors, labels, title and the highlighted disabled action's
+// reason, on the menu layer
+void ASOLFlightHud::DrawRadialMenu(const FSOLHoloMenuLook& look, const float s)
+{
+    const FSOLRadialMenuState& radial = mRadialHolo.Radial;
+    const FSOLActionList& actions = mRadialHolo.Actions;
     const int32 count = FMath::Min(radial.Count, actions.Num);
     if (count <= 0)
     {
@@ -1991,34 +2074,47 @@ void ASOLFlightHud::DrawRadialMenu()
     const float innerPx = SOL::Interact::RADIAL_INNER_PX * mUiScale;
     const float outerPx = SOL::Interact::RADIAL_OUTER_PX * mUiScale;
     const float labelPx = SOL::Interact::RADIAL_LABEL_PX * mUiScale;
-    const float padPx = SOL::Hologram::HUD_GLOW_PAD_PX;
     const float halfAperture = count == 1 ? UE_PI
         : UE_PI / static_cast<float>(count) - 0.5f * SOL::Interact::RADIAL_SECTOR_GAP_RAD;
 
-    // Sectors (LT's radial panel): thin arcs on the inner and outer rim with a gap between neighbours; the highlighted
-    // one in Secondary, brighter and filled (a faint wide arc), a disabled one dim
+    // Sectors (LT's radial panel): thin arcs on the inner and outer rim with a gap between neighbours, grown from each
+    // sector's middle while the menu draws in; the highlighted one in Secondary, brighter, glowing on hover and filled
+    // (a faint wide arc), a disabled one dim
     const float edgePx = SOL::Interact::RADIAL_EDGE_HALF_WIDTH_PX;
     for (int32 index = 0; mBatch != nullptr && index < count; ++index)
     {
         const bool bHighlighted = index == radial.Highlighted;
-        const bool bEnabled = actions.Entries[index].IsEnabled();
-        const FLinearColor& color = bHighlighted ? SOL::HudPalette::SECONDARY : SOL::HudPalette::PRIMARY;
-        const float midAngle = static_cast<float>(SOLRadialMenu::SectorMidAngleRad(index, count));
-        const float edgeIntensity = !bEnabled ? SOL::Interact::RADIAL_DISABLED_INTENSITY
-            : bHighlighted ? SOL::Interact::RADIAL_HIGHLIGHT_INTENSITY : SOL::Interact::RADIAL_INTENSITY;
-        if (bEnabled && bHighlighted)
+        const FSOLHoloRadialSectorLook sector = SOLHoloRadial::SectorLook(halfAperture, bHighlighted,
+            actions.Entries[index].IsEnabled(), look, s);
+        if (sector.HalfApertureRad <= 0.0f)
         {
-            mBatch->AddArc(center, 0.5f * (innerPx + outerPx), 0.5f * (outerPx - innerPx), midAngle, halfAperture,
-                color, SOL::Interact::RADIAL_FILL_INTENSITY, padPx);
+            continue;
         }
-        mBatch->AddArc(center, innerPx, edgePx, midAngle, halfAperture, color, edgeIntensity, padPx);
-        if (mBatch->AddArc(center, outerPx, edgePx, midAngle, halfAperture, color, edgeIntensity, padPx))
+        const float midAngle = static_cast<float>(SOLRadialMenu::SectorMidAngleRad(index, count));
+        if (sector.FillIntensity > 0.0f)
+        {
+            MenuArc(center, 0.5f * (innerPx + outerPx), 0.5f * (outerPx - innerPx), midAngle, sector.HalfApertureRad,
+                sector.Color, sector.FillIntensity, sector.PadPx);
+        }
+        MenuArc(center, innerPx, edgePx, midAngle, sector.HalfApertureRad, sector.Color, sector.EdgeIntensity,
+            sector.PadPx);
+        if (MenuArc(center, outerPx, edgePx, midAngle, sector.HalfApertureRad, sector.Color, sector.EdgeIntensity,
+            sector.PadPx))
         {
             ++mLastRadialSectorCount;
         }
+        if (bHighlighted)
+        {
+            mLastRadialHighlightIntensity = sector.EdgeIntensity;
+        }
     }
+    if (look.FillAlpha <= 0.0f)
+    {
+        return;
+    }
+
     // Labels on the label radius: right of the anchor on the right half, left of it on the left, centred near the
-    // vertical; dim when disabled
+    // vertical; dim when disabled; all faded by the fill
     const float lineHeightPx = HUD_LINE_SMALL_PX * mUiScale;
     for (int32 index = 0; index < count; ++index)
     {
@@ -2033,35 +2129,31 @@ void ASOLFlightHud::DrawRadialMenu()
         const float x = cosine > SOL::Interact::LABEL_SIDE_COSINE ? static_cast<float>(anchor.X)
             : cosine < -SOL::Interact::LABEL_SIDE_COSINE ? static_cast<float>(anchor.X) - widthPx
             : static_cast<float>(anchor.X) - 0.5f * widthPx;
-        const FLinearColor color = index == radial.Highlighted ? SOL::HudPalette::SECONDARY
-            : entry.IsEnabled() ? SOL::HudPalette::PRIMARY
-            : SOL::HudPalette::PRIMARY * SOL::Interact::DISABLED_TEXT_SCALE;
-        DrawBuffer(line, color, x, static_cast<float>(anchor.Y) - 0.5f * lineHeightPx, ESOLHudFont::Small);
+        MenuText(line, SOLHoloRadial::LabelColor(index == radial.Highlighted, entry.IsEnabled(), look.FillAlpha), x,
+            static_cast<float>(anchor.Y) - 0.5f * lineHeightPx, ESOLHudFont::Small);
     }
 
-    // Title (the object's name, else its type) above the ring; a highlighted disabled action's reason below it
-    FSOLObjectInfo info;
+    // Title (the object's name, else its type, as cached while open) above the ring; a highlighted disabled action's
+    // reason below it
     mText.Reset();
-    if (Interaction->GetObjectInfo(radial.Object, info))
+    if (!mRadialTitleName.IsNone())
     {
-        if (!info.Name.IsNone())
-        {
-            info.Name.AppendString(mText);
-        }
-        else
-        {
-            mText.Append(SOLActionTable::TypeName(info.Type));
-        }
+        mRadialTitleName.AppendString(mText);
     }
-    DrawBufferCentered(ESOLHudLine::RadialTitle, SOL::HudPalette::PRIMARY, center.X,
-        center.Y - labelPx - 0.5f * lineHeightPx - (HUD_LINE_MEDIUM_PX + SOL::Interact::TITLE_GAP_PX) * mUiScale,
-        ESOLHudFont::Medium);
+    else if (mRadialTitleType != ESOLObjectType::Count)
+    {
+        mText.Append(SOLActionTable::TypeName(mRadialTitleType));
+    }
+    const float titleY = center.Y - labelPx - 0.5f * lineHeightPx
+        - (HUD_LINE_MEDIUM_PX + SOL::Interact::TITLE_GAP_PX) * mUiScale;
+    MenuTextCentered(ESOLHudLine::RadialTitle, SOLHoloRadial::Faded(SOL::HudPalette::PRIMARY, look.FillAlpha),
+        center.X, titleY, ESOLHudFont::Medium);
     if (radial.Highlighted >= 0 && radial.Highlighted < count && !actions.Entries[radial.Highlighted].IsEnabled())
     {
         mText.Reset();
         mText.Append(SOLActionTable::BlockText(actions.Entries[radial.Highlighted].Block));
-        DrawBufferCentered(ESOLHudLine::RadialReason, SOL::HudPalette::SECONDARY, center.X,
-            center.Y + labelPx + lineHeightPx, ESOLHudFont::Small);
+        MenuTextCentered(ESOLHudLine::RadialReason, SOLHoloRadial::Faded(SOL::HudPalette::SECONDARY, look.FillAlpha),
+            center.X, center.Y + labelPx + lineHeightPx, ESOLHudFont::Small);
     }
 }
 

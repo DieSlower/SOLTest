@@ -158,6 +158,12 @@ Closing gives input back at once, as today. The visual close then plays for `CLO
   reverses from the current progress (section 6.2).
 - **HUD-drawn menus (radial, info, target):** the HUD keeps a copy of the last drawn state (radial state and its
   action list, the info / target object; value types, no allocation) and draws the closing animation from it.
+  For the radial (42d review): the close keeps the last hovered sector, so its hover glow fades with the fill rather
+  than dropping in one frame; a new radial menu (a new press, possibly on another object) always draws in from
+  Closed, even while the previous one still closes (a different menu never reverses from the old one's progress);
+  the menu's anim and cues update on every HUD frame, also while the flight HUD is hidden (Jump To starts the warp
+  at the release, and its select cue still plays on that frame); the opening update never asks for a hover cue,
+  even at strength 0 where the menu is Open at once (the press asks for the open cue only, D21).
 
 ### 4.6 Part 42c testable contracts
 
@@ -816,7 +822,7 @@ The numbers are machine-specific: on another machine, re-measure at the 42c pare
 
 ## 13. Questions for the user
 
-All answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
+All but Q13 answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
 
 | # | Question | Answer |
 |---|---|---|
@@ -834,8 +840,9 @@ All answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
 | Q10 | Strength 0 | **Plain flat panels: no glow, animation or jitter; fully usable** (D18) |
 | Q11 | Cursor | **Follows the new slider** (D19) |
 | Q12 | Cues at strength 0 (raised while recording D18) | **Sounds are independent of the hologram strength and still play at strength 0**; the SFX volume controls them (D21) |
+| Q13 | **Hover glow on a highlighted disabled radial sector** (raised by the 42d review): today the rim takes the disabled intensity (0.22) plus the full hover glow (up to 0.9), so it peaks at 1.12, brighter than an enabled highlighted sector's rim without glow. Options: **(a, recommended)** no hover glow on disabled sectors; (b) the glow scaled by the disabled dimming; (c) full glow, as now | **Open** (asked 2026-11-04). The code keeps (c) behind `SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE` (1 = as now), so the answer is a one-line change |
 
-Still open: **none.**
+Still open: **Q13.**
 
 ## 14. Out of scope
 

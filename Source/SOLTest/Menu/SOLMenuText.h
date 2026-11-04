@@ -423,7 +423,10 @@ namespace SOLMenuText
             "and stops; Follow / Orbit keeps station at the autopilot's safe distance on your side until you take "
             "control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
             "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down on a "
-            "ship, Communications and Trade are not available yet)."),
+            "ship, Communications and Trade are not available yet). The menu is a hologram: its ring draws in and "
+            "out in a fifth of a second, the highlighted action glows and flickers, and it plays a sound when it "
+            "opens, on each new highlight and when an action is chosen (Settings Effects volume). The Hologram menu "
+            "effects slider sets how strong the look is; at 0 it is a plain flat ring that shows at once."),
         TEXT("Chase Down (from a body's or a dropped target's menu) chases it in bursts: the autopilot pulls above "
             "its usual gentle G limit, up to what you can survive (the full pull needs boost, which the chase uses "
             "only while your boost switch ({Boost}) is on), then cools at the sustained limit while the G meter "

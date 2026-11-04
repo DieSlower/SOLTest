@@ -12,6 +12,7 @@
 #include "Map/SOLMapHologramOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
 #include "Map/SOLMapRouteOverlay.h"
+#include "UI/SOLHoloRadial.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudTextList.h"
@@ -168,6 +169,16 @@ public:
     // Returns the radial menu sectors and the info card lines drawn last frame (SDD 22; verification)
     int32 GetLastRadialSectorCount() const { return mLastRadialSectorCount; }
     int32 GetLastInfoCardLineCount() const { return mLastInfoCardLineCount; }
+
+    // Returns the hologram radial menu's anim and the state it last drew (kept while it closes; SDD 42; verification)
+    const FSOLHoloRadialState& GetRadialHolo() const { return mRadialHolo; }
+
+    // Returns the radial's look, strength, arc glow pad and highlighted rim intensity of the last frame (-1: none
+    // drawn; SDD 42; verification)
+    const FSOLHoloMenuLook& GetLastRadialLook() const { return mLastRadialLook; }
+    float GetLastRadialStrength() const { return mLastRadialStrength; }
+    float GetLastRadialPadPx() const { return mLastRadialPadPx; }
+    float GetLastRadialHighlightIntensity() const { return mLastRadialHighlightIntensity; }
 
     // Returns the NPC ship contacts the radar drew last frame (Ships on Radar; verification)
     int32 GetLastRadarShipCount() const { return mLastRadarShipCount; }
@@ -407,6 +418,9 @@ private:
     FBox2D MenuText(ESOLHudLine line, const FLinearColor& color, float x, float y, ESOLHudFont font,
         float textScale = 1.0f);
 
+    // Draws the text buffer as one menu line centred on centerX (as MenuText); returns its screen rectangle
+    FBox2D MenuTextCentered(ESOLHudLine line, const FLinearColor& color, float centerX, float y, ESOLHudFont font);
+
     // Draws a menu glow arc on the menu layer (else the HUD batch); false when dropped or there is no batch (Canvas)
     bool MenuArc(const FVector2f& center, float radiusPx, float halfWidthPx, float midAngleRad, float halfApertureRad,
         const FLinearColor& color, float intensity, float padPx);
@@ -455,9 +469,16 @@ private:
     // and, in flight, the open radial menu
     void DrawInteraction();
 
-    // Draws the open radial menu: one sector per action around its centre, the labels, the title and the highlighted
-    // disabled action's reason
-    void DrawRadialMenu();
+    // Runs the hologram radial menu's anim for this frame from the interaction's state (SDD 42 section 5), every
+    // DrawHUD before its early returns: caches the open menu, starts the open or the close (bShown false while the
+    // flight HUD is not drawn or the map is open), follows the highlighted sector, plays the open, hover and select
+    // cues and keeps the look DrawInteraction draws (always whole, with no effects, under the Canvas fallback)
+    void UpdateRadialMenu(bool bShown);
+
+    // Draws the radial menu from its cached state on the menu layer at a look: one sector per action around its
+    // centre (rim arcs grown by the draw-in, the highlighted one glowing on hover), then the labels, the title and
+    // the highlighted disabled action's reason faded by the fill
+    void DrawRadialMenu(const FSOLHoloMenuLook& look, float s);
 
     // Draws the info card of the object Info was chosen for (top right)
     void DrawInfoCard(const FSOLObjectRef& object);
@@ -538,6 +559,15 @@ private:
     int32 mLastRadarShipCount = 0;                  // NPC ship contacts on the radar last frame
     int32 mLastRadialSectorCount = 0;               // Radial menu sectors drawn last frame (SDD 22)
     int32 mLastInfoCardLineCount = 0;               // Info card lines drawn last frame
+    FSOLHoloRadialState mRadialHolo;                // Hologram radial: anim and the last drawn state (SDD 42)
+    FSOLHoloMenuLook mLastRadialLook;               // Its look, strength, arc pad and highlighted rim glow last frame
+    float mLastRadialStrength = 0.0f;
+    float mLastRadialPadPx = 0.0f;
+    float mLastRadialHighlightIntensity = -1.0f;
+    uint64 mLastRadialUpdateFrame = 0;              // Frame of the radial's last update (a gap closes it at once)
+    FName mRadialTitleName;                         // The open radial's title (its object's name, else its type),
+    ESOLObjectType mRadialTitleType = ESOLObjectType::Count;   // kept to draw the close after the object went away
+    int32 mRadialTitleOpenCount = INDEX_NONE;       // The radial open count the title was looked up for
     FSOLMapPickOverlay mMapPickOverlay;             // Jump map: destination-pick disc, guide line and marker
     FSOLMapRouteOverlay mRouteOverlay;              // Routes and the draft (map, and flight with P on; SDD 20)
     FSOLMapHologramOverlay mHologramOverlay;        // Map grid plane and stems (SDD 20 hologram look)

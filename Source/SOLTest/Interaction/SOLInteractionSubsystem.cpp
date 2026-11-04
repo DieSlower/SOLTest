@@ -266,7 +266,11 @@ bool USOLInteractionSubsystem::ReleasePrimary(const FVector2D& cursorPx)
         SOL::Interact::RADIAL_INNER_PX * mUiScale, MakeArrayView(enabled, mRadialActions.Num), sector);
     if (outcome == ESOLRadialOutcome::Confirmed && sector >= 0 && sector < mRadialActions.Num)
     {
-        Execute(object, mRadialActions.Entries[sector].Action);
+        // Only an action that ran counts (the HUD's select cue); one refused at release plays no cue
+        if (Execute(object, mRadialActions.Entries[sector].Action))
+        {
+            ++mRadialConfirmCount;
+        }
     }
     else
     {
