@@ -191,10 +191,10 @@ Remaining steps (after 42c, which loads the cues):
    runs, SDD 11.2); the SDD `BACKDROP_TINT` row and two SDD wordings fixed; unused `MenuLine` removed; style nits
    (line lengths, one-line getter headers, smoke class comment); the profile's single-run verdict in TECH_DEBT. Q16
    (text glow at strength 0) raised for the user.
-6. [ ] `STATUS.md`: #42 to Done (after Q13 and Q16 are answered); `graphify update .`; metrics; commit
+6. [x] `STATUS.md`: #42 to Done (after Q13 and Q16 are answered); `graphify update .`; metrics; commit
    `Issue #42: Part 42i - docs, profile and screenshots`; push. (Committed and pushed 2026-11-04 with #42 left open:
    Q13, Q16, the hand check and the cue listen round remain.)
-7. [ ] Q13: the user picks from the in-game samples in `Docs/Images/hologram-radial-glow-samples/`; set
+7. [x] Q13 (a, scale 0) and Q16 (a, no change) answered 2026-11-04 and applied; samples deleted. Was: Q13: the user picks from the in-game samples in `Docs/Images/hologram-radial-glow-samples/`; set
    `RADIAL_DISABLED_HOVER_GLOW_SCALE` (a 0, b about 0.22, c 1), update the `HoloRadialTest` and smoke expectations and
    GAME_MECHANICS; Q16 likewise.
 

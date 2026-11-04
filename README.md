@@ -40,7 +40,7 @@ Placeholder or not built yet:
 
 - **Art and audio** are placeholder (engine meshes, generated materials, a few combat sounds, no music): ticket #9.
 - **Procedural terrain and atmospheres** are not built: ticket #10 (surface-lock only holds the ship near a body).
-- **Overlay icons, the Overlay Menu and radial menu** are designed (SDD 22) and in progress; the **Chase Down autopilot mode** and player documentation are queued.
+- **Overlay icons, the Overlay Menu and radial menu** are built (SDD 22) and now hologram-styled (SDD 42); the **Chase Down autopilot mode** and player documentation are queued.
 
 ## How to play
 
@@ -188,11 +188,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 78.1 h |
+| Work time (wall-clock) | 79.1 h |
 | Time spent answering questions | 7.2 h |
-| Tokens | 4,274.1M |
-| Notional API price | $1,663 |
-| Subagents dispatched | 339 |
+| Tokens | 4,276.4M |
+| Notional API price | $1,664 |
+| Subagents dispatched | 340 |
 <!-- METRICS:END -->
 
 ## Documentation map

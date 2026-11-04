@@ -985,9 +985,8 @@ namespace SOL
         inline constexpr float IDLE_SWEEP_INTENSITY = 0.08f;      // Sweep line glow per unit of strength
         inline constexpr float BACKDROP_ALPHA_PER_UNIT = 0.15f;   // Dark tint alpha per unit of strength (D20 tint)
         inline constexpr double HOVER_CUE_MIN_INTERVAL_S = 0.05;  // Shortest gap between two hover cues
-        // Hover glow on a highlighted DISABLED radial sector, as a factor of the enabled one's (1 = full glow, as now);
-        // pending the user's answer, SDD 13 Q13
-        inline constexpr float RADIAL_DISABLED_HOVER_GLOW_SCALE = 1.0f;
+        // Hover glow on a highlighted DISABLED radial sector, as a factor of the enabled one's (0 = none, SDD 42 Q13 option a)
+        inline constexpr float RADIAL_DISABLED_HOVER_GLOW_SCALE = 0.0f;
         inline constexpr int32 FRAME_MAX_SHAPES = 160;           // Shape capacity of one SSOLHoloFrame
         inline constexpr int32 CARD_MAX_SHAPES = 10;              // Shapes of one frameless card: fill, 8 ticks, sweep
         inline constexpr float FRAME_FLAT_PAD_PX = 1.0f;          // Glow pad of frame lines and dots at strength 0

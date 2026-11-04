@@ -361,7 +361,8 @@ bool FSOLHoloRadialSectorLookTest::RunTest(const FString& /*parameters*/)
 
     const FSOLHoloRadialSectorLook highlightedDisabled = SOLHoloRadial::SectorLook(half, true, false, look, 1.0f);
     TestEqual(TEXT("a highlighted disabled sector has no fill"), highlightedDisabled.FillIntensity, 0.0f);
-    // How much hover glow a disabled sector takes is the user's open call (SDD 13 Q13): asserted through the constant
+    // How much hover glow a disabled sector takes is SDD 42 Q13 (a): none, so the rim stays dim; asserted through the constant and the literal 0.22
+    TestEqual(TEXT("no hover glow on a disabled sector"), SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE, 0.0f);
     TestEqual(TEXT("its edge is dim plus the hover glow at the disabled glow scale"), highlightedDisabled.EdgeIntensity,
         RADIAL_DISABLED_INTENSITY + 0.8f * 0.25f * SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE,
         HOLORADIALTEST_TOLERANCE);

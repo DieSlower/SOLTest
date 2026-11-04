@@ -1714,7 +1714,7 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     case EHoloStep::RadialDisabled:
     {
         // A release on a disabled sector runs nothing and asks no select cue (SDD 5); its highlighted rim glows by
-        // RADIAL_DISABLED_HOVER_GLOW_SCALE (pending the user's answer, SDD 13 Q13)
+        // RADIAL_DISABLED_HOVER_GLOW_SCALE (0, SDD 42 Q13)
         const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
         const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
         const int32 cancels = mInteraction->GetRadialCancelCount() - mCancelsBefore;
