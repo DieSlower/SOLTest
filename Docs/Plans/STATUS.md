@@ -50,7 +50,8 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1c | #42 | Hologram style for in-flight menus and HUD only (radial menu, Overlay Menu, speed panel, target/info cards); full screens (main menu, settings, demo, info) get a separate solid brushed-metal/console look, split into two tickets still undecided. SCOPE CHANGED 2026-11-04: grill paused, waiting on the user's texture/material tooling for agents (notes: Plans/42-hologram-menus-grill-notes.md) | L | #22, maybe #9 |
+| 1c | #42 | Hologram in-flight menus: HUD, radial menu, Overlay Menu, speed panel, target/info cards (re-scoped 2026-11-03; full screens moved to #46). Grill not finished (notes: Plans/42-hologram-menus-grill-notes.md) | M-L | #22 |
+| 1d | #46 | Solid console-style menus: main menu, settings, demo, Controls / Info / About (full-screen read-only mechanics screens) and pause, as a solid brushed-metal console with textured panels, clearly different from the hologram; input unchanged (mouse + keyboard + #22 hologram cursor and hover glow); textures and materials generated now with the MCP texture/material tools, not waiting for #9. Needs: the user to pick a direction from the samples (Images/menu-style-samples/, Research/SOLID_MENU_STYLE_REFERENCES.md), then the remaining grill (notes: Plans/42-hologram-menus-grill-notes.md) | M | #42 (shared hover/cursor) |
 | 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
