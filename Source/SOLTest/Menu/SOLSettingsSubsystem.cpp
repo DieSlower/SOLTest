@@ -137,7 +137,6 @@ void USOLSettingsSubsystem::LoadOnce()
         overrides = save->KeyOverrides;
         mIsVsyncChosen = save->bVsyncChosen;
         mIsQualityChosen = save->bQualityChosen;
-        mWrittenShowOrbitLines = save->bShowOrbitLines;
         mWrittenOverlayPrefs = SOLOverlay::Sanitized(loaded.OverlayPrefs);
     }
     else if (raw != nullptr)
@@ -441,24 +440,69 @@ void USOLSettingsSubsystem::FillSaveObject()
     SaveObject->KeyOverrides = SOLKeyBindings::MakeOverrides(mAppliedKeys);
     SaveObject->bVsyncChosen = mIsVsyncChosen;
     SaveObject->bQualityChosen = mIsQualityChosen;
-    mWrittenShowOrbitLines = mModel.Saved.bShowOrbitLines;
     mWrittenOverlayPrefs = mModel.Saved.OverlayPrefs;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the applied (and pending) orbit-line flag from the O key; the write waits for the next write point
+// Sets the active overlay profile's orbit-lines switch (Alt+O); the write waits for the next write point
 void USOLSettingsSubsystem::SetOrbitLinesShown(const bool bShown)
 {
-    SOLSettingsModel::SetAppliedShowOrbitLines(mModel, bShown);
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    SOLOverlay::SetOrbitLinesOn(prefs, bShown);
+    SetOverlayPrefs(prefs);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the slot needs a write: an Apply or a migration owes one, or the O key left the orbit-line flag
-// different from what is on disk
+// Sets the active overlay profile's master switch (O); the write waits for the next write point
+void USOLSettingsSubsystem::SetOverlayMasterOn(const bool bOn)
+{
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    SOLOverlay::SetMasterOn(prefs, bOn);
+    SetOverlayPrefs(prefs);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Makes the next enabled overlay profile active and returns it; the write waits for the next write point
+int32 USOLSettingsSubsystem::CycleOverlayProfile()
+{
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    const int32 profile = SOLOverlay::CycleActiveProfile(prefs);
+    SetOverlayPrefs(prefs);
+    return profile;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Makes an enabled overlay profile active; returns whether the active profile changed
+bool USOLSettingsSubsystem::SetActiveOverlayProfile(const int32 profile)
+{
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    const bool bChanged = SOLOverlay::SetActiveProfile(prefs, profile);
+    if (bChanged)
+    {
+        SetOverlayPrefs(prefs);
+    }
+    return bChanged;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Enables or disables an overlay profile; returns whether anything changed
+bool USOLSettingsSubsystem::SetOverlayProfileEnabled(const int32 profile, const bool bEnabled)
+{
+    SOLOverlay::FOverlayPrefs prefs = mModel.Saved.OverlayPrefs;
+    const bool bChanged = SOLOverlay::SetProfileEnabled(prefs, profile, bEnabled);
+    if (bChanged)
+    {
+        SetOverlayPrefs(prefs);
+    }
+    return bChanged;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the slot needs a write: an Apply or a migration owes one, or the overlay prefs (rows, profiles,
+// each profile's master and orbit-lines switch) differ from what is on disk
 bool USOLSettingsSubsystem::IsSaveOwed() const
 {
-    return SOLSettingsRules::IsSaveOwed(mIsSaveOwed, mModel.Saved.bShowOrbitLines, mWrittenShowOrbitLines)
-        || !SOLOverlay::AreEqual(mModel.Saved.OverlayPrefs, mWrittenOverlayPrefs);
+    return SOLSettingsRules::IsSaveOwed(mIsSaveOwed, mModel.Saved.OverlayPrefs, mWrittenOverlayPrefs);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -479,18 +523,17 @@ bool USOLSettingsSubsystem::ToggleOverlay(const SOLOverlay::EOverlay overlay)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether an overlay shows now (the master O and the active profile's rows)
+// Returns whether an overlay shows now (the active profile's master O and rows)
 bool USOLSettingsSubsystem::IsOverlayShown(const SOLOverlay::EOverlay overlay) const
 {
-    return SOLOverlay::IsShown(mModel.Pending.OverlayPrefs, mIsOverlayMasterOn, overlay);
+    return SOLOverlay::IsShown(mModel.Saved.OverlayPrefs, overlay);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether an orbit category's lines show (master, its row and the Alt+O orbit-lines switch)
+// Returns whether an orbit category's lines show (the active profile's master, its row and its Alt+O switch)
 bool USOLSettingsSubsystem::IsOverlayOrbitShown(const SOLOverlay::EOverlay overlay) const
 {
-    return SOLOverlay::IsOrbitShown(mModel.Pending.OverlayPrefs, mIsOverlayMasterOn, mModel.Pending.bShowOrbitLines,
-        overlay);
+    return SOLOverlay::IsOrbitShown(mModel.Saved.OverlayPrefs, overlay);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -218,3 +218,7 @@ when its object leaves the icons (HUD hidden, overlays off, off screen); strings
 `Docs/TECH_DEBT.md`); the modified engine classes (targeting `SelectCandidate`, combat getters, the icon layer's hits,
 the proxy) are covered by `-SOLSmokeInteract`, not unit tests (they need a world). Suite and smokes re-run after the
 fixes (results above).
+
+## Amendment 3: overlay profiles delivered by #34
+
+Section 2.7 (overlay profiles) is delivered by issue #34, see [`34-overlay-profiles.md`](34-overlay-profiles.md): five profiles with vertical tabs in the Overlay Menu, per-profile enable, master O and Alt+O orbit-lines switch, save schema 10. The Shift+O row of section 2.2 (darkening) is replaced by RShift+O, which cycles the enabled profiles; Left Shift+O does nothing, and darkening is now only the Darkening row of the Overlay Menu (saved per profile). The Space Dust row of the table (SDD 43) left the overlay table and became a Settings option.

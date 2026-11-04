@@ -225,8 +225,8 @@ public:
     // Turns every overlay checked in the Overlay Menu on or off together (O; SDD 22)
     void HandleToggleOverlayMaster();
 
-    // Toggles the distance darkening of far overlays (Shift+O; SDD 22)
-    void HandleToggleDarkening();
+    // Makes the next enabled overlay profile active (RShift+O; SDD 34)
+    void HandleCycleOverlayProfile();
 
     // Requests the Overlay Menu to open or close (Ctrl+O; done at the next tick, outside the input callback)
     void HandleToggleOverlayMenu();
@@ -409,6 +409,11 @@ public:
 
     // Returns the space dust speed-cue component (SDD 43)
     USOLSpaceDustComponent* GetSpaceDust() const { return SpaceDust; }
+
+    // Leaving flight's settings write point (SDD 34 section 5.4), run by EndPlay: starts an owed settings write, except
+    // on quit and PIE end, where the settings subsystem's Deinitialize writes synchronously right after (public so
+    // -SOLSmokeOverlay can check each reason)
+    void FlushSettingsAtLeave(EEndPlayReason::Type endPlayReason) const;
 
 protected:
 
@@ -620,11 +625,16 @@ private:
     // Enhanced Input: Overlay Menu (Ctrl+O)
     void OnOverlayMenuAction(const FInputActionValue& value);
 
-    // Enhanced Input: distance darkening (Shift+O)
-    void OnToggleDarkeningAction(const FInputActionValue& value);
+    // Enhanced Input: cycle the overlay profiles (RShift+O)
+    void OnCycleOverlayProfileAction(const FInputActionValue& value);
 
-    // Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt or Ctrl) in the ship's context
+    // Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt, Ctrl or Right Shift) in the ship's
+    // context
     void MapBindingPressed(UInputAction* action, int32 binding);
+
+    // Gives every plain ship mapping whose key a Right Shift chord binding also uses an explicit Shift chord blocker
+    // and moves it behind the chorded mappings of that key (SDD 34 section 6.2)
+    void BlockPlainMappingsUnderShift();
 
     // Opens the Overlay Menu: suspends the ship's control input and gives the menu UI-only focus
     void OpenOverlayMenu();
@@ -850,13 +860,16 @@ private:
     TObjectPtr<UInputAction> CtrlChordAction;               // Left / Right Ctrl held (Ctrl chords, SDD 22)
 
     UPROPERTY(Transient)
+    TObjectPtr<UInputAction> RightShiftChordAction;         // Right Shift held (the profile cycle's chord, SDD 34)
+
+    UPROPERTY(Transient)
     TObjectPtr<UInputAction> OverlayMasterAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> OverlayMenuAction;
 
     UPROPERTY(Transient)
-    TObjectPtr<UInputAction> ToggleDarkeningAction;
+    TObjectPtr<UInputAction> CycleOverlayProfileAction;
 
     UPROPERTY(Transient)
     TObjectPtr<UInputAction> SpeedPanelAction;

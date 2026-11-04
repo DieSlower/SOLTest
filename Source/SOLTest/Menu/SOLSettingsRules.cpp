@@ -6,6 +6,7 @@
 #include "Menu/SOLSettingsRules.h"
 
 #include "Menu/SOLMenuText.h"
+#include "UI/SOLOverlayModel.h"
 
 namespace
 {
@@ -180,8 +181,8 @@ SOLSettingsRules::FBootGraphics SOLSettingsRules::DecideBootGraphics(const bool 
 
 //////////////////////////////////////////////////////////////////////////
 // Returns whether the settings slot needs a write
-bool SOLSettingsRules::IsSaveOwed(const bool bWriteOwed, const bool bAppliedShowOrbitLines,
-    const bool bWrittenShowOrbitLines)
+bool SOLSettingsRules::IsSaveOwed(const bool bWriteOwed, const SOLOverlay::FOverlayPrefs& applied,
+    const SOLOverlay::FOverlayPrefs& written)
 {
-    return bWriteOwed || bAppliedShowOrbitLines != bWrittenShowOrbitLines;
+    return bWriteOwed || !SOLOverlay::AreEqual(applied, written);
 }

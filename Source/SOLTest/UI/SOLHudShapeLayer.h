@@ -52,8 +52,9 @@ public:
     void ResetFrame();
 
     // Adds a soft dark backing under a hologram panel (canvas pixels, rounded with cornerPx and fading in over
-    // featherPx from its edge; SOLHudShapeMath::BackingLayer); false when the backing buffer is full
-    bool AddBacking(const FBox2f& rect, float cornerPx, float featherPx);
+    // featherPx from its edge; SOLHudShapeMath::BackingLayer), its darkness scaled by opacity (0-1, so a fading panel
+    // fades its backing too); false when the backing buffer is full
+    bool AddBacking(const FBox2f& rect, float cornerPx, float featherPx, float opacity = 1.0f);
 
     // Sets the font a text line of a given ESOLHudFont is drawn with (the engine fonts' legacy Slate font info)
     void SetFont(ESOLHudFont font, const FSlateFontInfo& fontInfo);
@@ -89,12 +90,13 @@ private:
 
     FSOLHudShapeBatch mBatch;                           // Filled by the HUD in canvas pixels
     FSOLHudTextList mTexts;                             // Glow-text lines, canvas pixels
-    // One panel backing: its rectangle, corner radius and edge feather in canvas pixels
+    // One panel backing: its rectangle, corner radius and edge feather in canvas pixels, and its opacity
     struct FSOLHudBacking
     {
         FBox2f Rect;
         float CornerPx = 0.0f;
         float FeatherPx = 0.0f;
+        float Opacity = 1.0f;
     };
 
     TArray<FSOLHudBacking> mBackings;                   // Panel backings, canvas pixels (reserved once)

@@ -29,6 +29,7 @@ enum class ESOLHudCommand : uint8
     RadarZoomIn,
     RadarZoomOut,
     RadarAuto,
+    ShowOverlayProfileTag,      // The profile cycle key was pressed: show the active profile's tag (SDD 34 section 8)
 };
 
 DECLARE_MULTICAST_DELEGATE_OneParam(FSOLHudCommandSignal, ESOLHudCommand);

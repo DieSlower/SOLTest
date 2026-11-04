@@ -31,11 +31,16 @@ namespace
     // Settings schema version that introduced the issue #20 key layout
     constexpr int32 FMM_ROUTE_LAYOUT_VERSION = 4;
 
-    // Settings schema version that introduced the issue #22 key layout (the current one: O, Alt+O, Ctrl+O, Shift+O)
+    // Settings schema version that introduced the issue #22 key layout (O, Alt+O, Ctrl+O, Shift+O)
     constexpr int32 FMM_OVERLAY_LAYOUT_VERSION = 7;
 
+    // Settings schema version that introduced the issue #34 key layout (the current one: Shift+O darkening replaced by
+    // the RightShift+O profile cycle; SDD 34 section 6.5)
+    constexpr int32 FMM_PROFILES_LAYOUT_VERSION = 10;
+
     // Number of rebindable actions after issue #22 (32 after issue #19; issue #20 removes ToggleMap and adds OpenMap,
-    // OpenMapJump, Resume and ToggleRouteOverlay; issue #22 adds OverlayMaster, OverlayMenu and ToggleDarkening)
+    // OpenMapJump, Resume and ToggleRouteOverlay; issue #22 adds OverlayMaster, OverlayMenu and ToggleDarkening; issue
+    // #34 replaces ToggleDarkening with CycleOverlayProfile in place)
     constexpr int32 FMM_BINDING_COUNT = 38;
 
     // The signed input channel bits of the contract, restated so the tests stay independent
@@ -1653,12 +1658,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathLayoutChangedTest, "SOLTest.F
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The one-time "default controls changed" notice applies to every real schema 1 to 6 save (issue #22 moved the
-// orbit-lines key to Alt+O), never to an unversioned, schema 7, 8 or current (9) one
+// The one-time "default controls changed" notice applies to every real schema 1 to 9 save (issue #34 replaced the
+// Shift+O darkening key with the RightShift+O profile cycle, D9), never to an unversioned or current (10) one
 bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
     TestFalse(TEXT("-1"), DefaultLayoutChangedSince(-1));
+    TestFalse(TEXT("-7"), DefaultLayoutChangedSince(-7));
     TestFalse(TEXT("0 (unversioned)"), DefaultLayoutChangedSince(0));
     TestTrue(TEXT("1"), DefaultLayoutChangedSince(1));
     TestTrue(TEXT("2"), DefaultLayoutChangedSince(2));
@@ -1666,19 +1672,23 @@ bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("4 (issue #20 layout)"), DefaultLayoutChangedSince(FMM_ROUTE_LAYOUT_VERSION));
     TestTrue(TEXT("5"), DefaultLayoutChangedSince(5));
     TestTrue(TEXT("6"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION - 1));
-    TestFalse(TEXT("7 (issue #22 layout)"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION));
-    TestFalse(TEXT("8"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION + 1));
-    TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_OVERLAY_LAYOUT_VERSION);
+    TestTrue(TEXT("7 (issue #22 layout, now superseded)"), DefaultLayoutChangedSince(FMM_OVERLAY_LAYOUT_VERSION));
+    TestTrue(TEXT("8"), DefaultLayoutChangedSince(8));
+    TestTrue(TEXT("9"), DefaultLayoutChangedSince(FMM_PROFILES_LAYOUT_VERSION - 1));
+    TestFalse(TEXT("10 (issue #34 layout)"), DefaultLayoutChangedSince(FMM_PROFILES_LAYOUT_VERSION));
+    TestFalse(TEXT("11"), DefaultLayoutChangedSince(FMM_PROFILES_LAYOUT_VERSION + 1));
+    TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_PROFILES_LAYOUT_VERSION);
 
-    // Issue #32 bumped the schema to 8 (Chase Down safety margin) and issue #43 to 9 (Space Dust overlay row), neither
-    // changing the key layout (still 7)
-    TestEqual(TEXT("layout version is 7"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 7);
-    TestEqual(TEXT("schema version is 9"), SOL::Settings::SAVE_VERSION, 9);
-    TestTrue(TEXT("schema is past the layout"),
-        SOL::Settings::SAVE_VERSION > SOL::Settings::KEY_BINDING_LAYOUT_VERSION);
-    TestFalse(TEXT("a v7 save gets no controls-changed notice"), DefaultLayoutChangedSince(7));
-    TestFalse(TEXT("a v8 save gets no controls-changed notice"), DefaultLayoutChangedSince(8));
-    TestFalse(TEXT("a v9 (current) save gets no controls-changed notice"),
+    // Issue #34 bumped both the schema and the key layout to 10, so the layout is the current schema (D9: the invariant
+    // "schema past the layout" became "schema at or past the layout")
+    TestEqual(TEXT("layout version is 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
+    TestTrue(TEXT("schema is at or past the layout"),
+        SOL::Settings::SAVE_VERSION >= SOL::Settings::KEY_BINDING_LAYOUT_VERSION);
+    TestTrue(TEXT("a v7 save gets the controls-changed notice"), DefaultLayoutChangedSince(7));
+    TestTrue(TEXT("a v8 save gets the controls-changed notice"), DefaultLayoutChangedSince(8));
+    TestTrue(TEXT("a v9 save gets the controls-changed notice"), DefaultLayoutChangedSince(9));
+    TestFalse(TEXT("a v10 (current) save gets no controls-changed notice"),
         DefaultLayoutChangedSince(SOL::Settings::SAVE_VERSION));
     TestTrue(TEXT("a v6 save still gets the notice"), DefaultLayoutChangedSince(6));
     return true;
@@ -1707,6 +1717,8 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     TestTrue(TEXT("a v7 save is migrated"), SOLSettingsRules::ClassifySaveVersion(7, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v8 save is migrated"), SOLSettingsRules::ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v9 save is migrated"), SOLSettingsRules::ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
 
     // A schema 2 save: overrides (one now conflicting) and the other fields survive

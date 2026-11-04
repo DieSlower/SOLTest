@@ -223,6 +223,41 @@ bool FSOLKeyBindingsControlsCellTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Controls lists @ToggleRouteOverlay"), bFoundRouteOverlay);
     TestFalse(TEXT("Controls no longer lists @ToggleMap"), bFoundToggleMap);
 
+    // Issue #34: the darkening row is gone and the profile cycle row replaces it, shown as RShift+O
+    bool bFoundCycleProfile = false;
+    bool bFoundDarkening = false;
+    for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+    {
+        TArray<FString> alternatives;
+        FString(row.Bindings).ParseIntoArray(alternatives, SOLMenuText::BINDING_ALTERNATIVE_DELIMITER);
+        bFoundDarkening |= alternatives.Contains(TEXT("@ToggleDarkening"));
+        if (alternatives.Contains(TEXT("@CycleOverlayProfile")))
+        {
+            bFoundCycleProfile = true;
+            TestEqual(TEXT("cycle row area"), FString(row.Area), FString(TEXT("Overlays")));
+            TestTrue(TEXT("cycle row action names the profile cycle"),
+                FString(row.Action).Contains(TEXT("Cycle overlay profiles")));
+        }
+        // The overlay master and the Overlay Menu rows speak of profiles, and the menu no longer lists space dust
+        if (alternatives.Contains(TEXT("@OverlayMaster")))
+        {
+            TestTrue(TEXT("overlay master row names the active profile"),
+                FString(row.Action).Contains(TEXT("active profile")));
+        }
+        if (alternatives.Contains(TEXT("@OverlayMenu")))
+        {
+            TestTrue(TEXT("overlay menu row names profiles"), FString(row.Action).Contains(TEXT("profile")));
+            TestFalse(TEXT("overlay menu row no longer lists space dust"),
+                FString(row.Action).Contains(TEXT("space dust")));
+        }
+    }
+    TestTrue(TEXT("Controls lists @CycleOverlayProfile"), bFoundCycleProfile);
+    TestFalse(TEXT("Controls no longer lists @ToggleDarkening"), bFoundDarkening);
+    TestEqual(TEXT("cycle cell shows the Right Shift chord"),
+        SOLMenuContent::FormatBindings(TEXT("@CycleOverlayProfile"), keys), FString(TEXT("RShift+O")));
+    TestEqual(TEXT("removed darkening id reads unbound"), SOLMenuContent::FormatBindings(TEXT("@ToggleDarkening"),
+        keys), FString(TEXT("Unbound")));
+
     // Every '@' id in the Controls table names a real binding, and every binding appears in the table once
     TArray<int32> seen;
     seen.Init(0, BINDING_COUNT);
@@ -315,12 +350,11 @@ bool FSOLKeyBindingsRouteBindingsTest::RunTest(const FString& /*parameters*/)
         TestEqual(FString::Printf(TEXT("%s label"), entry.Id), FString(def.Label), FString(entry.Label));
     }
 
-    // Only the two map openers and the distance-darkening toggle (issue #22) are Shift chords
-    const int32 darkening = static_cast<int32>(EBinding::ToggleDarkening);
+    // Only the two map openers are Shift chords (issue #34 replaced the Shift+O darkening toggle with the Right Shift
+    // profile cycle, which IsShiftChord does not count)
     for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
     {
-        const bool bExpectShift = binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP
-            || binding == darkening;
+        const bool bExpectShift = binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP;
         TestEqual(FString::Printf(TEXT("%s Shift chord"), GetDef(binding).Id), IsShiftChord(binding), bExpectShift);
     }
     TestFalse(TEXT("IsShiftChord negative"), IsShiftChord(-1));
@@ -753,7 +787,7 @@ namespace
     constexpr int32 KEYBINDINGS_OVERLAY_MASTER = static_cast<int32>(SOLKeyBindings::EBinding::OverlayMaster);
     constexpr int32 KEYBINDINGS_ORBIT_LINES = static_cast<int32>(SOLKeyBindings::EBinding::ToggleOrbitLines);
     constexpr int32 KEYBINDINGS_OVERLAY_MENU = static_cast<int32>(SOLKeyBindings::EBinding::OverlayMenu);
-    constexpr int32 KEYBINDINGS_DARKENING = static_cast<int32>(SOLKeyBindings::EBinding::ToggleDarkening);
+    constexpr int32 KEYBINDINGS_CYCLE_PROFILE = static_cast<int32>(SOLKeyBindings::EBinding::CycleOverlayProfile);
     constexpr int32 KEYBINDINGS_RADAR_ZOOM_IN = static_cast<int32>(SOLKeyBindings::EBinding::RadarZoomIn);
     constexpr int32 KEYBINDINGS_FREE_LOOK = static_cast<int32>(SOLKeyBindings::EBinding::FreeLook);
 }
@@ -764,16 +798,32 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsOverlayBindingsTest, "SOLTest.Ke
 
 //////////////////////////////////////////////////////////////////////////
 // The four O bindings follow WarpReset in order with their ids, area, default key O and chords None / Alt / Ctrl /
-// Shift; every other binding except the map openers is a plain key
+// Right Shift (issue #34 replaced the Shift+O darkening toggle in place with the profile cycle); every other binding
+// except the Shift-chord map openers is a plain key
 bool FSOLKeyBindingsOverlayBindingsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
     TestEqual(TEXT("OverlayMaster after WarpReset"), KEYBINDINGS_OVERLAY_MASTER, KEYBINDINGS_WARP_RESET + 1);
     TestEqual(TEXT("ToggleOrbitLines next"), KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_WARP_RESET + 2);
     TestEqual(TEXT("OverlayMenu next"), KEYBINDINGS_OVERLAY_MENU, KEYBINDINGS_WARP_RESET + 3);
-    TestEqual(TEXT("ToggleDarkening next"), KEYBINDINGS_DARKENING, KEYBINDINGS_WARP_RESET + 4);
+    TestEqual(TEXT("CycleOverlayProfile next (in the darkening toggle's place)"), KEYBINDINGS_CYCLE_PROFILE,
+        KEYBINDINGS_WARP_RESET + 4);
     TestEqual(TEXT("RadarZoomIn after the overlay bindings"), KEYBINDINGS_RADAR_ZOOM_IN, KEYBINDINGS_WARP_RESET + 5);
     TestEqual(TEXT("binding count"), BINDING_COUNT, 38);
+    TestEqual(TEXT("ToggleDarkening removed"), FindById(TEXT("ToggleDarkening")), static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("ToggleDarkening removed, any case"), FindById(TEXT("toggledarkening")),
+        static_cast<int32>(INDEX_NONE));
+    TestTrue(TEXT("RightShift chord appended after Control"),
+        static_cast<uint8>(EKeyChord::RightShift) == static_cast<uint8>(EKeyChord::Control) + 1);
+
+    // The cycle's area and label, in the table and in the Settings texts
+    const FBindingDef& cycleDef = GetDef(KEYBINDINGS_CYCLE_PROFILE);
+    TestEqual(TEXT("cycle label"), FString(cycleDef.Label), FString(TEXT("Cycle overlay profiles")));
+    TestEqual(TEXT("cycle Settings area"), FString(SOLMenuText::KEY_BINDING_TEXTS[KEYBINDINGS_CYCLE_PROFILE].Area),
+        FString(TEXT("Overlays")));
+    TestEqual(TEXT("cycle Settings label"), FString(SOLMenuText::KEY_BINDING_TEXTS[KEYBINDINGS_CYCLE_PROFILE].Label),
+        FString(TEXT("Cycle overlay profiles")));
+    TestFalse(TEXT("the cycle is not a Shift chord"), IsShiftChord(KEYBINDINGS_CYCLE_PROFILE));
 
     struct FExpected
     {
@@ -786,7 +836,7 @@ bool FSOLKeyBindingsOverlayBindingsTest::RunTest(const FString& /*parameters*/)
         { KEYBINDINGS_OVERLAY_MASTER, TEXT("OverlayMaster"), EKeyChord::None },
         { KEYBINDINGS_ORBIT_LINES, TEXT("ToggleOrbitLines"), EKeyChord::Alt },
         { KEYBINDINGS_OVERLAY_MENU, TEXT("OverlayMenu"), EKeyChord::Control },
-        { KEYBINDINGS_DARKENING, TEXT("ToggleDarkening"), EKeyChord::Shift },
+        { KEYBINDINGS_CYCLE_PROFILE, TEXT("CycleOverlayProfile"), EKeyChord::RightShift },
     };
     const TArray<FString> defaults = DefaultKeys();
     for (const FExpected& entry : expected)
@@ -807,10 +857,13 @@ bool FSOLKeyBindingsOverlayBindingsTest::RunTest(const FString& /*parameters*/)
     for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
     {
         EKeyChord expectedChord = EKeyChord::None;
-        if (binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP
-            || binding == KEYBINDINGS_DARKENING)
+        if (binding == KEYBINDINGS_OPEN_MAP || binding == KEYBINDINGS_OPEN_MAP_JUMP)
         {
             expectedChord = EKeyChord::Shift;
+        }
+        else if (binding == KEYBINDINGS_CYCLE_PROFILE)
+        {
+            expectedChord = EKeyChord::RightShift;
         }
         else if (binding == KEYBINDINGS_ORBIT_LINES)
         {
@@ -832,8 +885,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsModifierKeysTest, "SOLTest.KeyBi
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The six Shift / Alt / Control keys are modifiers (any case); Shift, Alt and Ctrl chords refuse them and the three
-// mouse buttons, while plain bindings may still take them
+// The six Shift / Alt / Control keys are modifiers (any case); Shift, Right Shift, Alt and Ctrl chords refuse them and
+// the three mouse buttons, while plain bindings may still take them
 bool FSOLKeyBindingsModifierKeysTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -850,7 +903,7 @@ bool FSOLKeyBindingsModifierKeysTest::RunTest(const FString& /*parameters*/)
     }
 
     // Every chord binding refuses modifiers and mouse buttons and takes ordinary keys
-    const int32 chords[] = { KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_OVERLAY_MENU, KEYBINDINGS_DARKENING,
+    const int32 chords[] = { KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_OVERLAY_MENU, KEYBINDINGS_CYCLE_PROFILE,
         KEYBINDINGS_OPEN_MAP };
     const TCHAR* chordRefused[] = { TEXT("LeftShift"), TEXT("RightShift"), TEXT("LeftAlt"), TEXT("RightAlt"),
         TEXT("LeftControl"), TEXT("RightControl"), TEXT("LeftMouseButton"), TEXT("RightMouseButton"),
@@ -882,7 +935,20 @@ bool FSOLKeyBindingsModifierKeysTest::RunTest(const FString& /*parameters*/)
         == ERebindResult::Refused);
     TestTrue(TEXT("overlay menu to Left Control refused"), Rebind(keys, KEYBINDINGS_OVERLAY_MENU,
         TEXT("LeftControl"), conflict) == ERebindResult::Refused);
+    TestTrue(TEXT("cycle to Right Shift refused"), Rebind(keys, KEYBINDINGS_CYCLE_PROFILE, TEXT("RightShift"),
+        conflict) == ERebindResult::Refused);
+    TestTrue(TEXT("cycle to the left mouse refused"), Rebind(keys, KEYBINDINGS_CYCLE_PROFILE,
+        TEXT("LeftMouseButton"), conflict) == ERebindResult::Refused);
     TestTrue(TEXT("refusals left the keys alone"), keys == DefaultKeys());
+
+    // A Right Shift chord refuses exactly what a Shift chord refuses: the Alt chord's Windows keys stay bindable
+    const TCHAR* shiftAccepted[] = { TEXT("Tab"), TEXT("F4"), TEXT("SpaceBar"), TEXT("Enter"), TEXT("M") };
+    for (const TCHAR* key : shiftAccepted)
+    {
+        TestEqual(FString::Printf(TEXT("cycle and map opener agree on '%s'"), key),
+            CanBindKeyTo(KEYBINDINGS_CYCLE_PROFILE, key), CanBindKeyTo(KEYBINDINGS_OPEN_MAP, key));
+        TestTrue(FString::Printf(TEXT("cycle takes '%s'"), key), CanBindKeyTo(KEYBINDINGS_CYCLE_PROFILE, key));
+    }
     return true;
 }
 
@@ -891,8 +957,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsOverlayDisplayTest, "SOLTest.Key
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The O bindings show as O, Alt+O, Ctrl+O and Shift+O, never conflict with each other, and a same-chord duplicate
-// on one key does
+// The O bindings show as O, Alt+O, Ctrl+O and RShift+O, never conflict with each other, and a same-chord (or
+// Shift / Right Shift) duplicate on one key does
 bool FSOLKeyBindingsOverlayDisplayTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -900,17 +966,20 @@ bool FSOLKeyBindingsOverlayDisplayTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("overlay master"), BindingDisplayName(KEYBINDINGS_OVERLAY_MASTER, keys), FString(TEXT("O")));
     TestEqual(TEXT("orbit lines"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, keys), FString(TEXT("Alt+O")));
     TestEqual(TEXT("overlay menu"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, keys), FString(TEXT("Ctrl+O")));
-    TestEqual(TEXT("darkening"), BindingDisplayName(KEYBINDINGS_DARKENING, keys), FString(TEXT("Shift+O")));
-    TestEqual(TEXT("format text"), FormatKeyText(TEXT("{ToggleOrbitLines} {OverlayMenu} {ToggleDarkening} "
-        "{OverlayMaster}"), keys), FString(TEXT("Alt+O Ctrl+O Shift+O O")));
+    TestEqual(TEXT("profile cycle"), BindingDisplayName(KEYBINDINGS_CYCLE_PROFILE, keys), FString(TEXT("RShift+O")));
+    TestEqual(TEXT("format text"), FormatKeyText(TEXT("{ToggleOrbitLines} {OverlayMenu} {CycleOverlayProfile} "
+        "{OverlayMaster}"), keys), FString(TEXT("Alt+O Ctrl+O RShift+O O")));
 
     // An unbound chord reads unbound with no prefix
     TArray<FString> unbound = keys;
     unbound[KEYBINDINGS_ORBIT_LINES] = FString();
     unbound[KEYBINDINGS_OVERLAY_MENU] = FString();
+    unbound[KEYBINDINGS_CYCLE_PROFILE] = FString();
     TestEqual(TEXT("unbound Alt chord"), BindingDisplayName(KEYBINDINGS_ORBIT_LINES, unbound),
         SOLBindingLabel::KeyDisplayName(FString()));
     TestEqual(TEXT("unbound Ctrl chord"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, unbound),
+        SOLBindingLabel::KeyDisplayName(FString()));
+    TestEqual(TEXT("unbound Right Shift chord"), BindingDisplayName(KEYBINDINGS_CYCLE_PROFILE, unbound),
         SOLBindingLabel::KeyDisplayName(FString()));
 
     // No default conflicts, and the four O bindings do not conflict with each other
@@ -919,7 +988,7 @@ bool FSOLKeyBindingsOverlayDisplayTest::RunTest(const FString& /*parameters*/)
         TestFalse(FString::Printf(TEXT("%s default not flagged"), GetDef(binding).Id), HasConflict(keys, binding));
     }
     const int32 overlayBindings[] = { KEYBINDINGS_OVERLAY_MASTER, KEYBINDINGS_ORBIT_LINES, KEYBINDINGS_OVERLAY_MENU,
-        KEYBINDINGS_DARKENING };
+        KEYBINDINGS_CYCLE_PROFILE };
     for (const int32 binding : overlayBindings)
     {
         TestEqual(FString::Printf(TEXT("%s: no conflict on O"), GetDef(binding).Id), FindConflict(keys, binding,
@@ -937,18 +1006,138 @@ bool FSOLKeyBindingsOverlayDisplayTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("plain M match lock not flagged"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
     TestFalse(TEXT("Shift+M map opener not flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
 
-    // Two Shift chords on one key conflict (darkening onto the map opener's M)
-    TestTrue(TEXT("darkening to M binds"), Rebind(keys, KEYBINDINGS_DARKENING, TEXT("M"), conflict)
+    // A Right Shift chord on a Shift chord's key conflicts (the cycle onto the map opener's M: Right Shift held
+    // satisfies both)
+    TestTrue(TEXT("cycle to M binds"), Rebind(keys, KEYBINDINGS_CYCLE_PROFILE, TEXT("M"), conflict)
         == ERebindResult::Bound);
-    TestEqual(TEXT("Shift+M conflict reported"), conflict, KEYBINDINGS_OPEN_MAP);
-    TestTrue(TEXT("darkening flagged"), HasConflict(keys, KEYBINDINGS_DARKENING));
+    TestEqual(TEXT("RShift+M vs Shift+M conflict reported"), conflict, KEYBINDINGS_OPEN_MAP);
+    TestEqual(TEXT("RShift+M shown"), BindingDisplayName(KEYBINDINGS_CYCLE_PROFILE, keys), FString(TEXT("RShift+M")));
+    TestTrue(TEXT("cycle flagged"), HasConflict(keys, KEYBINDINGS_CYCLE_PROFILE));
+    TestTrue(TEXT("map opener flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
     TestFalse(TEXT("Alt+M still not flagged"), HasConflict(keys, KEYBINDINGS_ORBIT_LINES));
+    TestFalse(TEXT("plain M still not flagged"), HasConflict(keys, KEYBINDINGS_MATCH_LOCK));
 
-    // A Ctrl chord on M conflicts with neither
+    // A Ctrl chord on M conflicts with none of them
     TestTrue(TEXT("overlay menu to M binds"), Rebind(keys, KEYBINDINGS_OVERLAY_MENU, TEXT("M"), conflict)
         == ERebindResult::Bound);
     TestEqual(TEXT("Ctrl+M is free"), conflict, static_cast<int32>(INDEX_NONE));
     TestEqual(TEXT("Ctrl+M shown"), BindingDisplayName(KEYBINDINGS_OVERLAY_MENU, keys), FString(TEXT("Ctrl+M")));
+    TestFalse(TEXT("Ctrl+M not flagged"), HasConflict(keys, KEYBINDINGS_OVERLAY_MENU));
+    return true;
+}
+
+// Issue #34 profile cycle (Right Shift chord) conflicts and stale overrides, written against the issue #34 contract
+// (SDD 34 section 6) before the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsRightShiftOverlapTest, "SOLTest.KeyBindings.RightShiftChordOverlap",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Shift and Right Shift chords on one key conflict both ways (any case); a Right Shift chord stays independent of a
+// plain, an Alt and a Ctrl binding on that key
+bool FSOLKeyBindingsRightShiftOverlapTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+
+    // Shift+X and RShift+X: the map opener and the cycle both on X
+    TArray<FString> keys = DefaultKeys();
+    int32 conflict = 123;
+    TestTrue(TEXT("map opener to X binds"), Rebind(keys, KEYBINDINGS_OPEN_MAP, TEXT("X"), conflict)
+        == ERebindResult::Bound);
+    TestTrue(TEXT("cycle to X binds"), Rebind(keys, KEYBINDINGS_CYCLE_PROFILE, TEXT("X"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("RShift+X vs Shift+X reported"), conflict, KEYBINDINGS_OPEN_MAP);
+    TestTrue(TEXT("cycle flagged"), HasConflict(keys, KEYBINDINGS_CYCLE_PROFILE));
+    TestTrue(TEXT("map opener flagged"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+    TestEqual(TEXT("FindConflict from the Shift side"), FindConflict(keys, KEYBINDINGS_OPEN_MAP, TEXT("x")),
+        KEYBINDINGS_CYCLE_PROFILE);
+    TestEqual(TEXT("FindConflict from the Right Shift side"), FindConflict(keys, KEYBINDINGS_CYCLE_PROFILE,
+        TEXT("X")), KEYBINDINGS_OPEN_MAP);
+
+    // Moving the cycle back to O clears both flags
+    TestTrue(TEXT("cycle back to O"), Rebind(keys, KEYBINDINGS_CYCLE_PROFILE, TEXT("O"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("RShift+O free"), conflict, static_cast<int32>(INDEX_NONE));
+    TestFalse(TEXT("cycle clear"), HasConflict(keys, KEYBINDINGS_CYCLE_PROFILE));
+    TestFalse(TEXT("map opener clear"), HasConflict(keys, KEYBINDINGS_OPEN_MAP));
+
+    // The other way round (SDD 34 section 6.4): a Shift-chord jump-map opener onto O meets the cycle's RShift+O
+    TArray<FString> jumpKeys = DefaultKeys();
+    TestTrue(TEXT("jump opener to O binds"), Rebind(jumpKeys, KEYBINDINGS_OPEN_MAP_JUMP, TEXT("O"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Shift+O vs RShift+O reported"), conflict, KEYBINDINGS_CYCLE_PROFILE);
+    TestTrue(TEXT("jump opener flagged"), HasConflict(jumpKeys, KEYBINDINGS_OPEN_MAP_JUMP));
+    TestTrue(TEXT("cycle flagged by the jump opener"), HasConflict(jumpKeys, KEYBINDINGS_CYCLE_PROFILE));
+    TestFalse(TEXT("plain O master not flagged"), HasConflict(jumpKeys, KEYBINDINGS_OVERLAY_MASTER));
+    TestFalse(TEXT("Alt+O not flagged"), HasConflict(jumpKeys, KEYBINDINGS_ORBIT_LINES));
+    TestFalse(TEXT("Ctrl+O not flagged"), HasConflict(jumpKeys, KEYBINDINGS_OVERLAY_MENU));
+
+    // RShift+K stays independent of a plain K, an Alt+K and a Ctrl+K
+    TArray<FString> kKeys = DefaultKeys();
+    TestTrue(TEXT("cycle to K binds"), Rebind(kKeys, KEYBINDINGS_CYCLE_PROFILE, TEXT("K"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("RShift+K free"), conflict, static_cast<int32>(INDEX_NONE));
+    TestTrue(TEXT("plain fire to K binds"), Rebind(kKeys, KEYBINDINGS_FIRE, TEXT("K"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("plain K vs RShift+K: no conflict"), conflict, static_cast<int32>(INDEX_NONE));
+    TestTrue(TEXT("orbit lines to K binds"), Rebind(kKeys, KEYBINDINGS_ORBIT_LINES, TEXT("K"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Alt+K vs RShift+K: no conflict"), conflict, static_cast<int32>(INDEX_NONE));
+    TestTrue(TEXT("overlay menu to K binds"), Rebind(kKeys, KEYBINDINGS_OVERLAY_MENU, TEXT("K"), conflict)
+        == ERebindResult::Bound);
+    TestEqual(TEXT("Ctrl+K vs RShift+K: no conflict"), conflict, static_cast<int32>(INDEX_NONE));
+    TestFalse(TEXT("cycle on K not flagged"), HasConflict(kKeys, KEYBINDINGS_CYCLE_PROFILE));
+    TestEqual(TEXT("FindConflict: RShift+K vs the rest"), FindConflict(kKeys, KEYBINDINGS_CYCLE_PROFILE, TEXT("k")),
+        static_cast<int32>(INDEX_NONE));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsCycleOverridesTest, "SOLTest.KeyBindings.CycleProfileOverrides",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A stale ToggleDarkening override is ignored; a CycleOverlayProfile override keeps the Right Shift chord, round-trips
+// and is ignored on a modifier or a mouse button
+bool FSOLKeyBindingsCycleOverridesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+
+    // An older save's darkening override has no binding to land on
+    TMap<FString, FString> stale;
+    stale.Add(TEXT("ToggleDarkening"), TEXT("K"));
+    TestTrue(TEXT("stale darkening override resolves to the defaults"), ResolveKeys(stale) == DefaultKeys());
+    stale.Add(TEXT("Fire"), TEXT("H"));
+    const TArray<FString> mixed = ResolveKeys(stale);
+    TestEqual(TEXT("other overrides still apply"), mixed[KEYBINDINGS_FIRE], FString(TEXT("H")));
+    TestEqual(TEXT("cycle keeps O"), mixed[KEYBINDINGS_CYCLE_PROFILE], FString(TEXT("O")));
+    const TMap<FString, FString> written = MakeOverrides(mixed);
+    TestFalse(TEXT("ToggleDarkening not written back"), written.Contains(TEXT("ToggleDarkening")));
+    TestEqual(TEXT("only the fire override written back"), written.Num(), 1);
+
+    // A cycle override applies, shows with the Right Shift prefix and round-trips
+    TMap<FString, FString> cycle;
+    cycle.Add(TEXT("CycleOverlayProfile"), TEXT("K"));
+    const TArray<FString> keys = ResolveKeys(cycle);
+    TestEqual(TEXT("cycle override applied"), keys[KEYBINDINGS_CYCLE_PROFILE], FString(TEXT("K")));
+    TestEqual(TEXT("shown as a Right Shift chord"), BindingDisplayName(KEYBINDINGS_CYCLE_PROFILE, keys),
+        FString(TEXT("RShift+K")));
+    TestEqual(TEXT("FormatKeyText follows the rebind"), FormatKeyText(TEXT("{CycleOverlayProfile}"), keys),
+        FString(TEXT("RShift+K")));
+    TestEqual(TEXT("cycle override round-trips"), MakeOverrides(keys).FindRef(TEXT("CycleOverlayProfile")),
+        FString(TEXT("K")));
+
+    // Overrides a Right Shift chord cannot take fall back to the default
+    const TCHAR* refused[] = { TEXT("RightShift"), TEXT("LeftShift"), TEXT("LeftAlt"), TEXT("RightControl"),
+        TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton"), TEXT("Escape") };
+    for (const TCHAR* key : refused)
+    {
+        TMap<FString, FString> bad;
+        bad.Add(TEXT("CycleOverlayProfile"), key);
+        TestEqual(FString::Printf(TEXT("cycle override '%s' ignored"), key),
+            ResolveKeys(bad)[KEYBINDINGS_CYCLE_PROFILE], FString(TEXT("O")));
+    }
     return true;
 }
 
@@ -983,15 +1172,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsLayoutVersionTest, "SOLTest.KeyB
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Issue #22 moved the orbit-lines key, so every save from schema 1 to 6 sees the "controls changed" notice
+// Issue #34 replaced Shift+O with RShift+O in the schema 10 layout (SDD 34 D9), so every save from schema 1 to 9
+// sees the "controls changed" notice
 bool FSOLKeyBindingsLayoutVersionTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
-    for (int32 version = 1; version <= 6; ++version)
+    for (int32 version = 1; version <= 9; ++version)
     {
         TestTrue(FString::Printf(TEXT("schema %d changed"), version), DefaultLayoutChangedSince(version));
     }
-    const int32 unchanged[] = { -5, -1, 0, 7, 8, 100 };
+    const int32 unchanged[] = { -5, -1, 0, 10, 11, 100 };
     for (const int32 version : unchanged)
     {
         TestFalse(FString::Printf(TEXT("schema %d unchanged"), version), DefaultLayoutChangedSince(version));

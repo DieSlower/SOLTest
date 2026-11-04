@@ -232,12 +232,8 @@ void ASOLShipPawn::BeginPlay()
 
     // Start state per SDD 2: cap at the start value, stick centered. Flight assist keeps what the ship's spawn set
     // (USOLShipSubsystem::SpawnPlayerShip: the settings' launch value, SDD 8, or off for a -SOLRingStartKm start)
+    // The overlay master O is saved per overlay profile (SDD 34 D10), so each profile starts as saved
     Settings = USOLSettingsSubsystem::Get(this);
-    if (Settings != nullptr)
-    {
-        // Overlays are on at every flight start (SDD 22 section 2.3); the Overlay Menu's choices are kept
-        Settings->SetOverlayMasterOn(true);
-    }
     mControl = Ships->GetControl();
     mControl.Thrust = FVector3d::ZeroVector;
     mControl.Rotation = FVector3d::ZeroVector;
@@ -359,6 +355,21 @@ void ASOLShipPawn::BeginPlay()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Leaving flight's settings write point: starts an owed write, except on quit and PIE end (Deinitialize writes then)
+void ASOLShipPawn::FlushSettingsAtLeave(const EEndPlayReason::Type endPlayReason) const
+{
+    // Leaving flight is a write point (SDD 34 section 5.4): the overlay prefs changed by O, Alt+O or the profile cycle
+    // are written now, and only if they differ from what is on disk. Not on quit or PIE end: the engine shuts the game
+    // instance down right after (GameEngine.cpp / PlayLevel.cpp), and the subsystem's Deinitialize then writes the slot
+    // synchronously; an async write started here would still be in flight on the same file
+    if (Settings != nullptr && endPlayReason != EEndPlayReason::Quit
+        && endPlayReason != EEndPlayReason::EndPlayInEditor)
+    {
+        Settings->FlushSave();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Removes the mapping context, releases the mouse and unhooks from the universe update
 void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
 {
@@ -385,6 +396,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     {
         Settings->OnKeyBindingsChanged().Remove(mKeyBindingsHandle);
     }
+    FlushSettingsAtLeave(endPlayReason);
     mKeyBindingsHandle.Reset();
     mIsFireHeld = false;
     mUniverseUpdatedHandle.Reset();
@@ -605,7 +617,7 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
         pilotInput.bStopSpin = mControl.bStopSpin;
 
         // Shift and Ctrl are both flight keys (thrust up / down by default) and chord modifiers (Shift+M, SDD 20;
-        // Ctrl+O and Shift+O, SDD 22): in AUTO, input held only on modifier keys waits SHIFT_CHORD_GRACE_S before
+        // Ctrl+O, SDD 22): in AUTO, input held only on modifier keys waits SHIFT_CHORD_GRACE_S before
         // it counts, so a chord does not cancel the autopilot
         const APlayerController* playerController = Cast<APlayerController>(GetController());
         const uint16 channels = SOLFlightMode::ActiveChannels(pilotInput);
@@ -790,8 +802,8 @@ void ASOLShipPawn::SetupPlayerInputComponent(UInputComponent* playerInputCompone
         &ASOLShipPawn::OnToggleOrbitLinesAction);
     input->BindAction(OverlayMasterAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOverlayMasterAction);
     input->BindAction(OverlayMenuAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnOverlayMenuAction);
-    input->BindAction(ToggleDarkeningAction, ETriggerEvent::Triggered, this,
-        &ASOLShipPawn::OnToggleDarkeningAction);
+    input->BindAction(CycleOverlayProfileAction, ETriggerEvent::Triggered, this,
+        &ASOLShipPawn::OnCycleOverlayProfileAction);
     input->BindAction(ToggleRouteOverlayAction, ETriggerEvent::Triggered, this,
         &ASOLShipPawn::OnToggleRouteOverlayAction);
     input->BindAction(ResumeRouteAction, ETriggerEvent::Triggered, this, &ASOLShipPawn::OnResumeRouteAction);
@@ -1022,9 +1034,10 @@ void ASOLShipPawn::CreateInputObjects()
     ShiftChordAction = CreateAction(this, TEXT("IA_ShiftChord"), EInputActionValueType::Boolean);
     AltChordAction = CreateAction(this, TEXT("IA_AltChord"), EInputActionValueType::Boolean);
     CtrlChordAction = CreateAction(this, TEXT("IA_CtrlChord"), EInputActionValueType::Boolean);
+    RightShiftChordAction = CreateAction(this, TEXT("IA_RightShiftChord"), EInputActionValueType::Boolean);
     OverlayMasterAction = CreateAction(this, TEXT("IA_OverlayMaster"), EInputActionValueType::Boolean);
     OverlayMenuAction = CreateAction(this, TEXT("IA_OverlayMenu"), EInputActionValueType::Boolean);
-    ToggleDarkeningAction = CreateAction(this, TEXT("IA_OverlayDarkening"), EInputActionValueType::Boolean);
+    CycleOverlayProfileAction = CreateAction(this, TEXT("IA_CycleOverlayProfile"), EInputActionValueType::Boolean);
     SpeedPanelAction = CreateAction(this, TEXT("IA_ShipSpeedPanel"), EInputActionValueType::Boolean);
     RadarZoomInAction = CreateAction(this, TEXT("IA_ShipRadarZoomIn"), EInputActionValueType::Boolean);
     RadarZoomOutAction = CreateAction(this, TEXT("IA_ShipRadarZoomOut"), EInputActionValueType::Boolean);
@@ -1136,17 +1149,19 @@ void ASOLShipPawn::MapShipKeys()
     MapChordedKey(MappingContext, OpenMapAction, key(EBinding::OpenMap), ShiftChordAction, this);
     MapChordedKey(MappingContext, OpenMapJumpAction, key(EBinding::OpenMapJump), ShiftChordAction, this);
 
-    // Overlay keys (SDD 22): O master, Alt+O orbit lines, Ctrl+O the Overlay Menu, Shift+O darkening. The Alt and
-    // Ctrl chord actions are held by either Alt / Ctrl key; while one is held Enhanced Input blocks the plain O. Left
-    // Alt stays free look (it arms only after a short hold) and Left Ctrl thrust down (AUTO waits the chord grace)
+    // Overlay keys (SDD 22, 34): O master, Alt+O orbit lines, Ctrl+O the Overlay Menu, RShift+O the profile cycle. The
+    // Alt and Ctrl chord actions are held by either Alt / Ctrl key, the Right Shift chord by Right Shift only; while
+    // one is held Enhanced Input blocks the plain O. Left Alt stays free look (it arms only after a short hold) and
+    // Left Ctrl thrust down (AUTO waits the chord grace)
     MappingContext->MapKey(AltChordAction, EKeys::LeftAlt);
     MappingContext->MapKey(AltChordAction, EKeys::RightAlt);
     MappingContext->MapKey(CtrlChordAction, EKeys::LeftControl);
     MappingContext->MapKey(CtrlChordAction, EKeys::RightControl);
+    MappingContext->MapKey(RightShiftChordAction, EKeys::RightShift);
     MapBindingPressed(OverlayMasterAction, static_cast<int32>(EBinding::OverlayMaster));
     MapBindingPressed(ToggleOrbitLinesAction, static_cast<int32>(EBinding::ToggleOrbitLines));
     MapBindingPressed(OverlayMenuAction, static_cast<int32>(EBinding::OverlayMenu));
-    MapBindingPressed(ToggleDarkeningAction, static_cast<int32>(EBinding::ToggleDarkening));
+    MapBindingPressed(CycleOverlayProfileAction, static_cast<int32>(EBinding::CycleOverlayProfile));
 
     // Esc pauses (SDD 8): only in the ship's context, so while the map is open its own Esc closes the map instead
     MapPressedKey(MappingContext, PauseAction, EKeys::Escape, this);
@@ -1155,6 +1170,9 @@ void ASOLShipPawn::MapShipKeys()
     // F1 and F2 are reserved (SOLKeyBindings), and the handlers check Ctrl
     MapPressedKey(MappingContext, MenuHotkeyAction, EKeys::F1, this);
     MapPressedKey(MappingContext, StatsHotkeyAction, EKeys::F2, this);
+
+    // Last in the ship's context: the plain mappings that share a key with a Right Shift chord get the Shift blocker
+    BlockPlainMappingsUnderShift();
     MapPressedKey(MapMappingContext, MenuHotkeyAction, EKeys::F1, this);
 
     // Map: Shift+M (the open key) or Esc closes, Shift+J switches to Jump mode, J / M / P pick the mode, Delete clears
@@ -1185,12 +1203,15 @@ void ASOLShipPawn::MapShipKeys()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt or Ctrl) in the ship's context
+// Maps a rebindable one-shot key with its binding's chord (plain, Shift, Alt, Ctrl, Right Shift) in the ship's context
 void ASOLShipPawn::MapBindingPressed(UInputAction* action, const int32 binding)
 {
     const FKey key(*mBoundKeys[binding]);
     switch (SOLKeyBindings::GetChord(binding))
     {
+    case SOLKeyBindings::EKeyChord::RightShift:
+        SOLInput::MapChordedKey(MappingContext, action, key, RightShiftChordAction, this);
+        break;
     case SOLKeyBindings::EKeyChord::Shift:
         SOLInput::MapChordedKey(MappingContext, action, key, ShiftChordAction, this);
         break;
@@ -1204,6 +1225,23 @@ void ASOLShipPawn::MapBindingPressed(UInputAction* action, const int32 binding)
         SOLInput::MapPressedKey(MappingContext, action, key, this);
         break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Gives the plain ship mappings of every Right Shift chord binding's key an explicit Shift chord blocker (SDD 34 6.2)
+void ASOLShipPawn::BlockPlainMappingsUnderShift()
+{
+    // Without it Left Shift+O would toggle the master: nothing else blocks plain O under Left Shift, since the cycle's
+    // auto-injected blocker only acts while Right Shift is held. IA_ShiftChord is held by either Shift
+    TArray<FKey> keys;
+    for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
+    {
+        if (SOLKeyBindings::GetChord(binding) == SOLKeyBindings::EKeyChord::RightShift)
+        {
+            keys.AddUnique(FKey(*mBoundKeys[binding]));
+        }
+    }
+    SOLInput::BlockPlainMappingsUnderChord(MappingContext, keys, ShiftChordAction, this);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1284,8 +1322,8 @@ UInputAction* ASOLShipPawn::GetBindingAction(const int32 binding) const
         return OverlayMasterAction;
     case EBinding::OverlayMenu:
         return OverlayMenuAction;
-    case EBinding::ToggleDarkening:
-        return ToggleDarkeningAction;
+    case EBinding::CycleOverlayProfile:
+        return CycleOverlayProfileAction;
     case EBinding::RadarZoomIn:
         return RadarZoomInAction;
     case EBinding::RadarZoomOut:
@@ -1802,14 +1840,17 @@ void ASOLShipPawn::HandleToggleOverlayMaster()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Toggles the distance darkening of far overlays (Shift+O): the Darkening row of the active overlay profile
-void ASOLShipPawn::HandleToggleDarkening()
+// Makes the next enabled overlay profile active (RShift+O; SDD 34)
+void ASOLShipPawn::HandleCycleOverlayProfile()
 {
     if (Settings != nullptr)
     {
-        const bool bOn = Settings->ToggleOverlay(SOLOverlay::EOverlay::Darkening);
-        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: overlay darkening %s"), *GetName(), bOn ? TEXT("ON") : TEXT("OFF"));
+        const int32 profile = Settings->CycleOverlayProfile();
+        UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: overlay profile %d active"), *GetName(), profile + 1);
     }
+
+    // The HUD tag names the active profile after every press, also one that changed nothing (D13)
+    SendHudCommand(ESOLHudCommand::ShowOverlayProfileTag);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2724,10 +2765,10 @@ void ASOLShipPawn::OnOverlayMenuAction(const FInputActionValue& /*value*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Enhanced Input: distance darkening (Shift+O)
-void ASOLShipPawn::OnToggleDarkeningAction(const FInputActionValue& /*value*/)
+// Enhanced Input: cycle the overlay profiles (RShift+O)
+void ASOLShipPawn::OnCycleOverlayProfileAction(const FInputActionValue& /*value*/)
 {
-    HandleToggleDarkening();
+    HandleCycleOverlayProfile();
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -57,6 +57,8 @@ bool FSOLSettingsModelDefaultsTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Default flight assist"), defaults.bDefaultFlightAssist);
     TestTrue(TEXT("VSync"), defaults.bVsync);
     TestEqual(TEXT("Quality preset"), defaults.QualityPreset, 3);
+    TestTrue(TEXT("Space dust follows the constant"), defaults.bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
+    TestTrue(TEXT("Space dust on"), defaults.bSpaceDust);
     TestTrue(TEXT("Defaults equal their sanitized form"), AreEqual(defaults, Sanitized(defaults)));
     return true;
 }
@@ -233,6 +235,9 @@ bool FSOLSettingsModelAreEqualTest::RunTest(const FString& /*parameters*/)
     flipped = base;
     flipped.QualityPreset = 2;
     TestFalse(TEXT("QualityPreset differs"), AreEqual(base, flipped));
+    flipped = base;
+    flipped.bSpaceDust = !flipped.bSpaceDust;
+    TestFalse(TEXT("bSpaceDust differs"), AreEqual(base, flipped));
 
     // Two out-of-range values that sanitize to the same value compare equal, and NaN equals the default
     FSettingsValues overA;
@@ -364,128 +369,127 @@ bool FSOLSettingsModelCommitTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOrbitLinesDefaultTest, "SOLTest.SettingsModel.OrbitLinesDefault",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelSpaceDustDefaultTest, "SOLTest.SettingsModel.SpaceDustDefault",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Orbit lines are shown by default, Sanitized passes the flag through, and AreEqual sees it on its own
-bool FSOLSettingsModelOrbitLinesDefaultTest::RunTest(const FString& /*parameters*/)
+// Space dust (issue #34, a global setting) is on by default, Sanitized passes it through, and AreEqual sees it alone
+bool FSOLSettingsModelSpaceDustDefaultTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsModel;
+    TestTrue(TEXT("Default constant is on"), SOL::Settings::SPACE_DUST_DEFAULT);
     const FSettingsValues defaults;
-    TestTrue(TEXT("Orbit lines shown by default"), defaults.bShowOrbitLines);
-    TestTrue(TEXT("Sanitized keeps true"), Sanitized(defaults).bShowOrbitLines);
+    TestTrue(TEXT("Space dust on by default"), defaults.bSpaceDust);
+    TestTrue(TEXT("Sanitized keeps true"), Sanitized(defaults).bSpaceDust);
 
-    FSettingsValues hidden = SettingsModelCustomValues();
-    hidden.bShowOrbitLines = false;
-    TestFalse(TEXT("Sanitized keeps false"), Sanitized(hidden).bShowOrbitLines);
+    FSettingsValues off = SettingsModelCustomValues();
+    off.bSpaceDust = false;
+    const FSettingsValues offOut = Sanitized(off);
+    TestFalse(TEXT("Sanitized keeps false"), offOut.bSpaceDust);
+    TestEqual(TEXT("Sanitized leaves other fields alone"), offOut.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
 
-    // Only the orbit-lines flag differs
-    FSettingsValues shown = hidden;
-    shown.bShowOrbitLines = true;
-    TestFalse(TEXT("bShowOrbitLines differs"), AreEqual(hidden, shown));
-    TestFalse(TEXT("Symmetric"), AreEqual(shown, hidden));
-    TestTrue(TEXT("Same flag is equal"), AreEqual(hidden, hidden));
+    // Only the dust flag differs
+    FSettingsValues on = off;
+    on.bSpaceDust = true;
+    TestFalse(TEXT("bSpaceDust differs"), AreEqual(off, on));
+    TestFalse(TEXT("Symmetric"), AreEqual(on, off));
+    TestTrue(TEXT("Same flag is equal"), AreEqual(off, off));
+    TestTrue(TEXT("Sanitizing twice keeps it"), AreEqual(Sanitized(Sanitized(off)), off));
     return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOrbitLinesDirtyTest, "SOLTest.SettingsModel.OrbitLinesDirty",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelSpaceDustDirtyTest, "SOLTest.SettingsModel.SpaceDustDirty",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The orbit-lines flag goes through MakeModel, SetPending, IsDirty, Revert and CommitIfDirty like any other field
-bool FSOLSettingsModelOrbitLinesDirtyTest::RunTest(const FString& /*parameters*/)
+// The dust flag goes through MakeModel, SetPending, IsDirty, Revert and CommitIfDirty like any other Apply / Revert
+// setting (SDD 34 D16)
+bool FSOLSettingsModelSpaceDustDirtyTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsModel;
     FSettingsValues loaded = SettingsModelCustomValues();
-    loaded.bShowOrbitLines = false;
+    loaded.bSpaceDust = false;
     FSettingsModel model = MakeModel(loaded);
-    TestFalse(TEXT("MakeModel keeps Saved flag"), model.Saved.bShowOrbitLines);
-    TestFalse(TEXT("MakeModel keeps Pending flag"), model.Pending.bShowOrbitLines);
+    TestFalse(TEXT("MakeModel keeps Saved flag"), model.Saved.bSpaceDust);
+    TestFalse(TEXT("MakeModel keeps Pending flag"), model.Pending.bSpaceDust);
     TestFalse(TEXT("Fresh model is clean"), IsDirty(model));
 
-    // A pending change in only the orbit-lines flag is dirty, and Revert discards it
+    // A pending change in only the dust flag is dirty, and Revert discards it
     FSettingsValues edited = model.Saved;
-    edited.bShowOrbitLines = true;
+    edited.bSpaceDust = true;
     SetPending(model, edited);
-    TestTrue(TEXT("Pending takes the flag"), model.Pending.bShowOrbitLines);
-    TestFalse(TEXT("Saved untouched"), model.Saved.bShowOrbitLines);
+    TestTrue(TEXT("Pending takes the flag"), model.Pending.bSpaceDust);
+    TestFalse(TEXT("Saved untouched"), model.Saved.bSpaceDust);
     TestTrue(TEXT("Dirty when only the flag differs"), IsDirty(model));
     const FSettingsValues reverted = Revert(model);
-    TestFalse(TEXT("Revert returns the saved flag"), reverted.bShowOrbitLines);
-    TestFalse(TEXT("Pending flag reverted"), model.Pending.bShowOrbitLines);
+    TestFalse(TEXT("Revert returns the saved flag"), reverted.bSpaceDust);
+    TestFalse(TEXT("Pending flag reverted"), model.Pending.bSpaceDust);
     TestFalse(TEXT("Clean after revert"), IsDirty(model));
 
-    // Committing the flag alone needs a write and Saved takes it
+    // Committing the flag alone needs a write and Saved takes it; a second commit needs none
     SetPending(model, edited);
     TestTrue(TEXT("Commit of the flag needs a write"), CommitIfDirty(model));
-    TestTrue(TEXT("Saved takes the flag"), model.Saved.bShowOrbitLines);
+    TestTrue(TEXT("Saved takes the flag"), model.Saved.bSpaceDust);
     TestFalse(TEXT("Clean after commit"), IsDirty(model));
     TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
+    TestTrue(TEXT("Revert after commit returns the committed flag"), Revert(model).bSpaceDust);
+
+    // Applying overlay prefs (O, Alt+O, the cycle key) leaves a pending dust edit alone
+    FSettingsModel overlay = MakeModel(SettingsModelCustomValues());
+    FSettingsValues pendingDust = overlay.Saved;
+    pendingDust.bSpaceDust = false;
+    SetPending(overlay, pendingDust);
+    SOLOverlay::FOverlayPrefs prefs = overlay.Saved.OverlayPrefs;
+    SOLOverlay::ToggleOrbitLines(prefs);
+    TestTrue(TEXT("Overlay apply changes the prefs"), SetAppliedOverlayPrefs(overlay, prefs));
+    TestFalse(TEXT("Overlay apply keeps the pending dust flag"), overlay.Pending.bSpaceDust);
+    TestTrue(TEXT("Overlay apply keeps the saved dust flag"), overlay.Saved.bSpaceDust);
+    TestTrue(TEXT("Still dirty from the dust edit"), IsDirty(overlay));
     return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelSetAppliedOrbitLinesTest,
-    "SOLTest.SettingsModel.SetAppliedOrbitLines",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOverlayOrbitLinesTest, "SOLTest.SettingsModel.OverlayOrbitLines",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SetAppliedShowOrbitLines sets the flag in both Saved and Pending, keeps every other field (pending edits included),
-// and returns true only when the saved flag changed
-bool FSOLSettingsModelSetAppliedOrbitLinesTest::RunTest(const FString& /*parameters*/)
+// The Alt+O orbit-lines switch lives in the overlay prefs (per profile, SDD 34 D18): on by default, applied through
+// SetAppliedOverlayPrefs (Saved and Pending together), and a switch-only edit is dirty through the prefs
+bool FSOLSettingsModelOverlayOrbitLinesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsModel;
+    const FSettingsValues defaults;
+    TestTrue(TEXT("Orbit lines on by default"), SOLOverlay::AreOrbitLinesOn(defaults.OverlayPrefs));
+
+    // Applying the switch off (Alt+O in flight) moves Saved and Pending together and keeps other pending edits
     const FSettingsValues saved = SettingsModelCustomValues();
     FSettingsModel model = MakeModel(saved);
-
-    // A pending edit of another field is in flight
     FSettingsValues edited = saved;
-    edited.MasterVolume = 0.25f;
     edited.QualityPreset = 4;
     SetPending(model, edited);
-
-    TestTrue(TEXT("Hiding changes the saved flag"), SetAppliedShowOrbitLines(model, false));
-    TestFalse(TEXT("Saved flag hidden"), model.Saved.bShowOrbitLines);
-    TestFalse(TEXT("Pending flag hidden"), model.Pending.bShowOrbitLines);
-
-    // Every other field of Saved and Pending is untouched
-    FSettingsValues savedExpected = saved;
-    savedExpected.bShowOrbitLines = false;
-    TestTrue(TEXT("Saved otherwise unchanged"), AreEqual(model.Saved, savedExpected));
-    FSettingsValues pendingExpected = edited;
-    pendingExpected.bShowOrbitLines = false;
-    TestTrue(TEXT("Pending edits kept"), AreEqual(model.Pending, pendingExpected));
-    TestEqual(TEXT("Pending master volume kept"), model.Pending.MasterVolume, 0.25f, SETTINGSMODEL_TOLERANCE);
+    SOLOverlay::FOverlayPrefs hidden = model.Saved.OverlayPrefs;
+    SOLOverlay::SetOrbitLinesOn(hidden, false);
+    TestTrue(TEXT("Hiding changes the applied prefs"), SetAppliedOverlayPrefs(model, hidden));
+    TestFalse(TEXT("Saved switch off"), SOLOverlay::AreOrbitLinesOn(model.Saved.OverlayPrefs));
+    TestFalse(TEXT("Pending switch off"), SOLOverlay::AreOrbitLinesOn(model.Pending.OverlayPrefs));
     TestEqual(TEXT("Pending quality kept"), model.Pending.QualityPreset, 4);
-    TestEqual(TEXT("Saved master volume kept"), model.Saved.MasterVolume, 0.8f, SETTINGSMODEL_TOLERANCE);
-    TestTrue(TEXT("Still dirty from the other edits"), IsDirty(model));
+    TestEqual(TEXT("Saved quality kept"), model.Saved.QualityPreset, 1);
+    TestFalse(TEXT("Same switch again returns false"), SetAppliedOverlayPrefs(model, hidden));
 
-    // Applying the same value again changes nothing
-    TestFalse(TEXT("Same value returns false"), SetAppliedShowOrbitLines(model, false));
-    TestFalse(TEXT("Saved flag still hidden"), model.Saved.bShowOrbitLines);
-    TestFalse(TEXT("Pending flag still hidden"), model.Pending.bShowOrbitLines);
-
-    // Showing again changes it back
-    TestTrue(TEXT("Showing changes the saved flag"), SetAppliedShowOrbitLines(model, true));
-    TestTrue(TEXT("Saved flag shown"), model.Saved.bShowOrbitLines);
-    TestTrue(TEXT("Pending flag shown"), model.Pending.bShowOrbitLines);
-
-    // Applied on a clean model, the flag alone leaves it clean (Saved and Pending move together)
-    FSettingsModel clean = MakeModel(FSettingsValues());
-    TestTrue(TEXT("Clean model: change returns true"), SetAppliedShowOrbitLines(clean, false));
-    TestFalse(TEXT("Clean model stays clean"), IsDirty(clean));
-    TestFalse(TEXT("Nothing pending to commit"), CommitIfDirty(clean));
-
-    // A pending-only flag change is overwritten in Pending, and the return value follows Saved only
-    FSettingsModel pendingOnly = MakeModel(FSettingsValues());
-    FSettingsValues pendingHidden = pendingOnly.Saved;
-    pendingHidden.bShowOrbitLines = false;
-    SetPending(pendingOnly, pendingHidden);
-    TestFalse(TEXT("Saved already true returns false"), SetAppliedShowOrbitLines(pendingOnly, true));
-    TestTrue(TEXT("Pending overwritten to true"), pendingOnly.Pending.bShowOrbitLines);
-    TestFalse(TEXT("No longer dirty"), IsDirty(pendingOnly));
+    // A pending-only switch edit is dirty, Revert discards it, commit adopts it
+    FSettingsModel pending = MakeModel(SettingsModelCustomValues());
+    FSettingsValues switchOff = pending.Saved;
+    SOLOverlay::SetOrbitLinesOn(switchOff.OverlayPrefs, false);
+    TestFalse(TEXT("Switch-only values differ"), AreEqual(pending.Saved, switchOff));
+    SetPending(pending, switchOff);
+    TestTrue(TEXT("Dirty when only the switch differs"), IsDirty(pending));
+    TestTrue(TEXT("Revert returns the saved switch"), SOLOverlay::AreOrbitLinesOn(Revert(pending).OverlayPrefs));
+    TestFalse(TEXT("Clean after revert"), IsDirty(pending));
+    SetPending(pending, switchOff);
+    TestTrue(TEXT("Commit of the switch needs a write"), CommitIfDirty(pending));
+    TestFalse(TEXT("Saved takes the switch"), SOLOverlay::AreOrbitLinesOn(pending.Saved.OverlayPrefs));
+    TestFalse(TEXT("Clean after commit"), IsDirty(pending));
     return true;
 }
 
@@ -649,12 +653,14 @@ bool FSOLSettingsModelMouseSteerDirtyTest::RunTest(const FString& /*parameters*/
     TestFalse(TEXT("Clean after commit"), IsDirty(model));
     TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
 
-    // Applying the orbit-lines flag leaves a pending steer-at-start edit alone
+    // Applying the orbit-lines switch (now in the overlay prefs) leaves a pending steer-at-start edit alone
     FSettingsModel orbit = MakeModel(SettingsModelCustomValues());
     FSettingsValues pendingSteer = orbit.Saved;
     pendingSteer.bMouseSteerAtStart = true;
     SetPending(orbit, pendingSteer);
-    SetAppliedShowOrbitLines(orbit, false);
+    SOLOverlay::FOverlayPrefs orbitOff = orbit.Saved.OverlayPrefs;
+    SOLOverlay::SetOrbitLinesOn(orbitOff, false);
+    SetAppliedOverlayPrefs(orbit, orbitOff);
     TestTrue(TEXT("Orbit-lines apply keeps pending steer flag"), orbit.Pending.bMouseSteerAtStart);
     TestFalse(TEXT("Orbit-lines apply keeps saved steer flag"), orbit.Saved.bMouseSteerAtStart);
     TestTrue(TEXT("Still dirty from the steer edit"), IsDirty(orbit));
@@ -676,17 +682,29 @@ bool FSOLSettingsModelOverlayPrefsTest::RunTest(const FString& /*parameters*/)
     using namespace SOLSettingsModel;
     const FSettingsValues defaults;
     TestTrue(TEXT("Default prefs"), SOLOverlay::AreEqual(defaults.OverlayPrefs, SOLOverlay::MakeDefaultPrefs()));
-    TestEqual(TEXT("Default profile count"), defaults.OverlayPrefs.ProfileCount, 1);
+    TestEqual(TEXT("Default: only profile 1 enabled"), static_cast<int32>(defaults.OverlayPrefs.EnabledProfiles), 0x01);
+    TestEqual(TEXT("Default: only profile 1 used"), static_cast<int32>(defaults.OverlayPrefs.UsedProfiles), 0x01);
+    TestEqual(TEXT("Default: every master on"), static_cast<int32>(defaults.OverlayPrefs.MasterOnProfiles), 0x1F);
+    TestEqual(TEXT("Default: every orbit switch on"), static_cast<int32>(defaults.OverlayPrefs.OrbitLinesProfiles),
+        0x1F);
+    TestEqual(TEXT("Default: active profile 1"), defaults.OverlayPrefs.ActiveProfile, 0);
     TestEqual(TEXT("Default mask"), defaults.OverlayPrefs.Masks[0], SOLOverlay::DefaultMask());
 
-    // Sanitized clamps the prefs like SOLOverlay::Sanitized
+    // Sanitized cleans the prefs like SOLOverlay::Sanitized
     FSettingsValues messy = SettingsModelCustomValues();
-    messy.OverlayPrefs.ProfileCount = 40;
+    messy.OverlayPrefs.EnabledProfiles = 0xE0;
+    messy.OverlayPrefs.UsedProfiles = 0xFF;
+    messy.OverlayPrefs.MasterOnProfiles = 0xFF;
+    messy.OverlayPrefs.OrbitLinesProfiles = 0xE3;
     messy.OverlayPrefs.ActiveProfile = -2;
     messy.OverlayPrefs.Masks[0] = 0xFFFFFFFFu;
     const FSettingsValues clean = Sanitized(messy);
     const SOLOverlay::FOverlayPrefs expected = SOLOverlay::Sanitized(messy.OverlayPrefs);
-    TestEqual(TEXT("Profile count clamped"), clean.OverlayPrefs.ProfileCount, SOL::Overlay::MAX_PROFILES);
+    TestEqual(TEXT("Enabled: garbage stripped, profile 1 forced on"),
+        static_cast<int32>(clean.OverlayPrefs.EnabledProfiles), 0x01);
+    TestEqual(TEXT("Used: garbage stripped"), static_cast<int32>(clean.OverlayPrefs.UsedProfiles), 0x1F);
+    TestEqual(TEXT("Master: garbage stripped"), static_cast<int32>(clean.OverlayPrefs.MasterOnProfiles), 0x1F);
+    TestEqual(TEXT("Orbit: garbage stripped"), static_cast<int32>(clean.OverlayPrefs.OrbitLinesProfiles), 0x03);
     TestEqual(TEXT("Active profile clamped"), clean.OverlayPrefs.ActiveProfile, 0);
     TestEqual(TEXT("Invalid bits dropped"), clean.OverlayPrefs.Masks[0], SOLOverlay::AllBitsMask());
     TestTrue(TEXT("Matches SOLOverlay::Sanitized"), SOLOverlay::AreEqual(clean.OverlayPrefs, expected));
@@ -777,13 +795,91 @@ bool FSOLSettingsModelSetAppliedOverlayPrefsTest::RunTest(const FString& /*param
         SOLOverlay::MakeDefaultPrefs()));
     TestFalse(TEXT("No longer dirty"), IsDirty(pendingOnly));
 
-    // Applying the orbit-lines flag leaves a pending overlay edit alone
-    FSettingsModel orbit = MakeModel(FSettingsValues());
-    SetPending(orbit, pendingEdit);
-    SetAppliedShowOrbitLines(orbit, false);
-    TestTrue(TEXT("Orbit-lines apply keeps the pending overlay edit"), SOLOverlay::AreEqual(
-        orbit.Pending.OverlayPrefs, pendingEdit.OverlayPrefs));
-    TestTrue(TEXT("Still dirty from the overlay edit"), IsDirty(orbit));
+    // A profile change (enable, cycle, per-profile master and orbit switch) is applied whole to Saved and Pending
+    FSettingsModel profiles = MakeModel(FSettingsValues());
+    SOLOverlay::FOverlayPrefs cycled = SOLOverlay::MakeDefaultPrefs();
+    SOLOverlay::SetProfileEnabled(cycled, 2, true);
+    SOLOverlay::CycleActiveProfile(cycled);
+    SOLOverlay::SetMasterOn(cycled, false);
+    SOLOverlay::SetOrbitLinesOn(cycled, false);
+    TestTrue(TEXT("Profile change returns true"), SetAppliedOverlayPrefs(profiles, cycled));
+    TestEqual(TEXT("Saved active profile"), profiles.Saved.OverlayPrefs.ActiveProfile, 2);
+    TestEqual(TEXT("Pending active profile"), profiles.Pending.OverlayPrefs.ActiveProfile, 2);
+    TestTrue(TEXT("Saved profile 3 enabled"), SOLOverlay::IsProfileEnabled(profiles.Saved.OverlayPrefs, 2));
+    TestFalse(TEXT("Saved master of profile 3 off"), SOLOverlay::IsMasterOn(profiles.Saved.OverlayPrefs));
+    TestFalse(TEXT("Saved orbit switch of profile 3 off"), SOLOverlay::AreOrbitLinesOn(profiles.Saved.OverlayPrefs));
+    TestTrue(TEXT("Saved and Pending prefs equal"), SOLOverlay::AreEqual(profiles.Saved.OverlayPrefs,
+        profiles.Pending.OverlayPrefs));
+    TestFalse(TEXT("Profile change leaves the model clean"), IsDirty(profiles));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOverlayProfilesEqualTest,
+    "SOLTest.SettingsModel.OverlayProfilesEqual",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Settings equality (and so IsDirty and the owed write) covers every profile field of the overlay prefs: the enabled,
+// used, master and orbit-lines bits and the active profile (SDD 34 section 4.3)
+bool FSOLSettingsModelOverlayProfilesEqualTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+
+    // Base: profiles 1 and 2 enabled, profile 1 active
+    FSettingsValues base = SettingsModelCustomValues();
+    SOLOverlay::SetProfileEnabled(base.OverlayPrefs, 1, true);
+    TestTrue(TEXT("Equal to itself"), AreEqual(base, base));
+
+    // Enabled bit
+    FSettingsValues changed = base;
+    SOLOverlay::SetProfileEnabled(changed.OverlayPrefs, 3, true);
+    TestFalse(TEXT("An enabled profile differs"), AreEqual(base, changed));
+    TestFalse(TEXT("Symmetric"), AreEqual(changed, base));
+
+    // Used bit only: profile 4 enabled then disabled again is used but disabled, with the same content as an unused
+    // slot (a copy of the default profile 1)
+    FSettingsValues defaultsBase;
+    FSettingsValues usedOnly = defaultsBase;
+    SOLOverlay::SetProfileEnabled(usedOnly.OverlayPrefs, 3, true);
+    SOLOverlay::SetProfileEnabled(usedOnly.OverlayPrefs, 3, false);
+    TestTrue(TEXT("Profile 4 is used"), SOLOverlay::IsProfileUsed(usedOnly.OverlayPrefs, 3));
+    TestFalse(TEXT("Profile 4 is disabled"), SOLOverlay::IsProfileEnabled(usedOnly.OverlayPrefs, 3));
+    TestFalse(TEXT("A used bit differs"), AreEqual(defaultsBase, usedOnly));
+
+    // Active profile
+    changed = base;
+    SOLOverlay::SetActiveProfile(changed.OverlayPrefs, 1);
+    TestFalse(TEXT("The active profile differs"), AreEqual(base, changed));
+
+    // Master bit of one profile (O)
+    changed = base;
+    SOLOverlay::SetMasterOn(changed.OverlayPrefs, false);
+    TestFalse(TEXT("A master bit differs"), AreEqual(base, changed));
+
+    // Orbit-lines bit of one profile (Alt+O)
+    changed = base;
+    SOLOverlay::SetOrbitLinesOn(changed.OverlayPrefs, false);
+    TestFalse(TEXT("An orbit-lines bit differs"), AreEqual(base, changed));
+
+    // A row of an enabled but not active profile
+    changed = base;
+    changed.OverlayPrefs.Masks[1] ^= 1u << static_cast<uint32>(SOLOverlay::EOverlay::IconRings);
+    TestFalse(TEXT("A row of profile 2 differs"), AreEqual(base, changed));
+
+    // A difference only in an unused slot is ignored
+    changed = base;
+    changed.OverlayPrefs.Masks[4] = 0u;
+    TestTrue(TEXT("An unused slot is ignored"), AreEqual(base, changed));
+
+    // The model sees a profile-only edit as dirty, and Revert discards it
+    FSettingsModel model = MakeModel(base);
+    FSettingsValues edited = base;
+    SOLOverlay::SetActiveProfile(edited.OverlayPrefs, 1);
+    SetPending(model, edited);
+    TestTrue(TEXT("Dirty when only the active profile differs"), IsDirty(model));
+    TestEqual(TEXT("Revert returns the saved active profile"), Revert(model).OverlayPrefs.ActiveProfile, 0);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
     return true;
 }
 

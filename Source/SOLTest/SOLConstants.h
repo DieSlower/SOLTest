@@ -950,8 +950,12 @@ namespace SOL
     // Overlay icons, the Overlay Menu and the hologram cursor (SDD 22). Pixel sizes are at a 720 px canvas (x UI scale)
     namespace Overlay
     {
-        inline constexpr int32 MAX_PROFILES = 5;                  // Room for the overlay profiles of issue #34
-        inline constexpr int32 LAST_PLANET_INDEX = 8;             // Registry: Sun 0, planets 1-8 (Neptune), then the
+        inline constexpr int32 MAX_PROFILES = 5;                  // Overlay profiles (issue #34, SDD 34)
+        inline constexpr uint32 ALL_PROFILES_MASK = (1u << MAX_PROFILES) - 1u;  // Every profile's bit in a profile mask
+        static_assert(MAX_PROFILES <= 8, "the per-profile bit sets of SOLOverlay::FOverlayPrefs are uint8 masks");
+        inline constexpr double PROFILE_TAG_SHOW_S = 2.0;         // HUD profile tag at full brightness after a cycle
+        inline constexpr double PROFILE_TAG_FADE_S = 0.5;         // ... then fading out over this time
+        inline constexpr int32 LAST_PLANET_INDEX = 8;            // Registry: Sun 0, planets 1-8 (Neptune), then the
                                                                   // dwarf planets and moons (PopulateSolarSystem)
         inline constexpr float ICON_RADIUS_PX = 7.0f;             // Icon shape radius
         inline constexpr float ICON_INTENSITY = 0.7f;             // Glow intensity of a fully bright icon
@@ -1082,11 +1086,13 @@ namespace SOL
         // Save schema; bump it and add a step to USOLSettingsSave::MigrateToCurrentVersion on schema changes (2: orbit
         // lines, SDD 17; 3: the issue #19 key layout, SDD 19; 4: the issue #20 map keys, SDD 20; 5: the HUD effects
         // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
-        // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43)
-        inline constexpr int32 SAVE_VERSION = 9;
-        // The save schema that introduced the current default key layout (issue #22: O / Alt+O / Ctrl+O / Shift+O);
+        // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43;
+        // 10: overlay profiles with their enabled, master and orbit-lines flags, the global space dust and the
+        // RShift+O profile cycle, SDD 34)
+        inline constexpr int32 SAVE_VERSION = 10;
+        // The save schema that introduced the current default key layout (issue #34: O / Alt+O / Ctrl+O / RShift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
-        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 7;
+        inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 10;
         inline constexpr float AUDIO_FADE_S = 0.0f;       // Volume changes are immediate (preview while dragging)
         inline constexpr float VOLUME_STEP = 0.05f;       // Slider steps
         inline constexpr float MOUSE_SENSITIVITY_STEP = 0.05f;
@@ -1110,6 +1116,9 @@ namespace SOL
         inline constexpr float CHASE_SAFETY_MARGIN_MIN = 0.0f;
         inline constexpr float CHASE_SAFETY_MARGIN_MAX = 0.30f;
         inline constexpr float CHASE_SAFETY_MARGIN_STEP = 0.01f;
+
+        // Space dust speed cues (SDD 34 section 9): one global Settings option (Graphics), on by default
+        inline constexpr bool SPACE_DUST_DEFAULT = true;
     }
 
     // Registry names of bodies that code refers to directly

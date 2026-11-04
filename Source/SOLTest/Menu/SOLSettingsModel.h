@@ -26,11 +26,13 @@ namespace SOLSettingsModel
         bool bDefaultFlightAssist = true;
         bool bVsync = true;
         int32 QualityPreset = 3;
-        bool bShowOrbitLines = true;          // World-space orbit lines shown (SDD 17); also toggled by the O key
+        bool bSpaceDust = SOL::Settings::SPACE_DUST_DEFAULT;             // Space dust speed cues (SDD 34 section 9)
         float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;   // HUD hologram effects (jitter; SDD 21)
         bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;      // Steering toggle on at flight start (SDD 19
                                                                         // Amendment 5; default off)
-        SOLOverlay::FOverlayPrefs OverlayPrefs = SOLOverlay::MakeDefaultPrefs();  // Overlay Menu choices (SDD 22)
+        SOLOverlay::FOverlayPrefs OverlayPrefs = SOLOverlay::MakeDefaultPrefs();  // Overlay profiles (SDD 22, 34),
+                                                                                  // with each one's master and
+                                                                                  // Alt+O orbit-lines switch
         float ChaseSafetyMargin = SOL::Settings::CHASE_SAFETY_MARGIN_DEFAULT;   // Chase Down meter floor (SDD 32)
     };
 
@@ -61,11 +63,7 @@ namespace SOLSettingsModel
     // Commits the pending values and returns true if a write is needed (false, and no change, when nothing differs)
     SOLTEST_API bool CommitIfDirty(FSettingsModel& model);
 
-    // Sets the applied and pending orbit-line flag (the O key in flight, SDD 17) without touching any other pending
-    // edit; returns true if the applied value changed
-    SOLTEST_API bool SetAppliedShowOrbitLines(FSettingsModel& model, bool bShown);
-
-    // Sets the applied and pending overlay prefs (the Overlay Menu and Shift+O in flight, SDD 22; sanitized) without
-    // touching any other pending edit; returns true if the applied prefs changed
+    // Sets the applied and pending overlay prefs (the Overlay Menu, O, Alt+O and the profile cycle in flight, SDD 22
+    // and 34; sanitized) without touching any other pending edit; returns true if the applied prefs changed
     SOLTEST_API bool SetAppliedOverlayPrefs(FSettingsModel& model, const SOLOverlay::FOverlayPrefs& prefs);
 }

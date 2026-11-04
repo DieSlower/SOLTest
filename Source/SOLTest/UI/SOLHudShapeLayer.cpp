@@ -62,14 +62,14 @@ void SSOLHudShapeLayer::ResetFrame()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds a soft dark backing under a hologram panel; false when the backing buffer is full
-bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx)
+// Adds a soft dark backing under a hologram panel (its darkness scaled by opacity); false when the buffer is full
+bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx, const float opacity)
 {
     if (!rect.bIsValid || mBackings.Num() >= SOL::Hologram::HUD_MAX_PANELS)
     {
         return false;
     }
-    mBackings.Add({ rect, cornerPx, featherPx });
+    mBackings.Add({ rect, cornerPx, featherPx, FMath::Clamp(opacity, 0.0f, 1.0f) });
     return true;
 }
 
@@ -112,7 +112,7 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
             float corner = 0.0f;
             float alpha = 0.0f;
             if (!SOLHudShapeMath::BackingLayer(backing.Rect, backing.CornerPx, backing.FeatherPx,
-                HUD_PANEL_BACKING_COLOR.A, layer, HUD_PANEL_BACKING_LAYERS, rect, corner, alpha))
+                HUD_PANEL_BACKING_COLOR.A * backing.Opacity, layer, HUD_PANEL_BACKING_LAYERS, rect, corner, alpha))
             {
                 break;
             }

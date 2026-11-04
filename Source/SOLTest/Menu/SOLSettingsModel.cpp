@@ -56,7 +56,7 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
     return Near(x.MasterVolume, y.MasterVolume) && Near(x.SfxVolume, y.SfxVolume) && Near(x.MusicVolume, y.MusicVolume)
         && Near(x.MouseSensitivity, y.MouseSensitivity) && x.bInvertY == y.bInvertY && Near(x.HudScale, y.HudScale)
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
-        && x.QualityPreset == y.QualityPreset && x.bShowOrbitLines == y.bShowOrbitLines
+        && x.QualityPreset == y.QualityPreset && x.bSpaceDust == y.bSpaceDust
         && Near(x.HudEffectsStrength, y.HudEffectsStrength) && x.bMouseSteerAtStart == y.bMouseSteerAtStart
         && SOLOverlay::AreEqual(x.OverlayPrefs, y.OverlayPrefs) && Near(x.ChaseSafetyMargin, y.ChaseSafetyMargin);
 }
@@ -103,16 +103,6 @@ bool SOLSettingsModel::CommitIfDirty(FSettingsModel& model)
     }
     model.Saved = model.Pending;
     return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Sets the applied and pending orbit-line flag; returns true if the applied value changed
-bool SOLSettingsModel::SetAppliedShowOrbitLines(FSettingsModel& model, const bool bShown)
-{
-    const bool bChanged = model.Saved.bShowOrbitLines != bShown;
-    model.Saved.bShowOrbitLines = bShown;
-    model.Pending.bShowOrbitLines = bShown;
-    return bChanged;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -64,9 +64,9 @@ namespace
         "one spec per slider");
 
     // Checkbox labels in ESOLSettingsToggle order
-    const TCHAR* const SETTINGS_TOGGLE_LABELS[] = { SOLMenuText::SETTINGS_VSYNC, SOLMenuText::SETTINGS_INVERT_Y,
-        SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST,
-        SOLMenuText::SETTINGS_MOUSE_STEER_AT_START, SOLMenuText::SETTINGS_ORBIT_LINES };
+    const TCHAR* const SETTINGS_TOGGLE_LABELS[] = { SOLMenuText::SETTINGS_VSYNC, SOLMenuText::SETTINGS_SPACE_DUST,
+        SOLMenuText::SETTINGS_INVERT_Y, SOLMenuText::SETTINGS_HUD_VISIBLE, SOLMenuText::SETTINGS_DEFAULT_ASSIST,
+        SOLMenuText::SETTINGS_MOUSE_STEER_AT_START };
     static_assert(UE_ARRAY_COUNT(SETTINGS_TOGGLE_LABELS) == static_cast<int32>(ESOLSettingsToggle::Count),
         "one label per toggle");
 
@@ -184,12 +184,12 @@ namespace
         {
         case ESOLSettingsToggle::Vsync:
             return values.bVsync;
+        case ESOLSettingsToggle::SpaceDust:
+            return values.bSpaceDust;
         case ESOLSettingsToggle::InvertY:
             return values.bInvertY;
         case ESOLSettingsToggle::HudVisible:
             return values.bHudVisible;
-        case ESOLSettingsToggle::OrbitLines:
-            return values.bShowOrbitLines;
         case ESOLSettingsToggle::MouseSteerAtStart:
             return values.bMouseSteerAtStart;
         case ESOLSettingsToggle::DefaultAssist:
@@ -342,6 +342,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     addStepper(ESOLSettingsStepper::Quality);
     addToggle(ESOLSettingsToggle::Vsync)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleVsyncChanged);
+    addToggle(ESOLSettingsToggle::SpaceDust)->OnCheckStateChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleSpaceDustChanged);
 
     // Audio
     SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_AUDIO);
@@ -373,8 +375,6 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleMouseSteerAtStartChanged);
     addSlider(ESOLSettingsSlider::ChaseSafetyMargin)->OnValueChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleChaseSafetyMarginChanged);
-    addToggle(ESOLSettingsToggle::OrbitLines)->OnCheckStateChanged.AddDynamic(this,
-        &USOLSettingsPageWidget::HandleOrbitLinesChanged);
 
     // Overlays (SDD 22): the Overlay Menu's own list, embedded; a click applies at once (like Ctrl+O in flight)
     SettingsAddSection(*WidgetTree, *scroll, SOLMenuText::SETTINGS_OVERLAYS);
@@ -565,14 +565,14 @@ void USOLSettingsPageWidget::SetToggle(const ESOLSettingsToggle toggle, const bo
     case ESOLSettingsToggle::Vsync:
         values.bVsync = bChecked;
         break;
+    case ESOLSettingsToggle::SpaceDust:
+        values.bSpaceDust = bChecked;
+        break;
     case ESOLSettingsToggle::InvertY:
         values.bInvertY = bChecked;
         break;
     case ESOLSettingsToggle::HudVisible:
         values.bHudVisible = bChecked;
-        break;
-    case ESOLSettingsToggle::OrbitLines:
-        values.bShowOrbitLines = bChecked;
         break;
     case ESOLSettingsToggle::MouseSteerAtStart:
         values.bMouseSteerAtStart = bChecked;
@@ -896,6 +896,13 @@ void USOLSettingsPageWidget::HandleVsyncChanged(const bool bChecked)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Space dust checkbox clicked (pending until Apply; the dust reads the applied value)
+void USOLSettingsPageWidget::HandleSpaceDustChanged(const bool bChecked)
+{
+    SetToggle(ESOLSettingsToggle::SpaceDust, bChecked);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Invert Y checkbox clicked
 void USOLSettingsPageWidget::HandleInvertYChanged(const bool bChecked)
 {
@@ -954,11 +961,4 @@ void USOLSettingsPageWidget::HandleActionClicked(const int32 action)
 void USOLSettingsPageWidget::HandleRebindClicked(const int32 binding)
 {
     BeginRebind(binding);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Show orbit lines checkbox clicked (previews live: ASOLOrbitLineVisuals follows the pending value)
-void USOLSettingsPageWidget::HandleOrbitLinesChanged(const bool bChecked)
-{
-    SetToggle(ESOLSettingsToggle::OrbitLines, bChecked);
 }

@@ -34,9 +34,9 @@ namespace Scalability
  * player ship whose apparent motion shows the ship's speed relative to its reference frame.
  *
  * Lives on ASOLShipPawn and never ticks. Every frame, on USOLAnchorSubsystem::OnUniverseUpdated (render origin final),
- * it gates the effect (ship, overlay row, sol.SpaceDust, time warp, jump warp, map, pause), maps the relative velocity
- * through SOLSpaceDust (dead zone, saturating apparent speed, opacity, streaks), smooths the outputs, advances the
- * wrapped box offset in double on the CPU, places its Niagara component at the ship's render location (identity
+ * it gates the effect (ship, Settings option, sol.SpaceDust, time warp, jump warp, map, pause), maps the relative
+ * velocity through SOLSpaceDust (dead zone, saturating apparent speed, opacity, streaks), smooths the outputs, advances
+ * the wrapped box offset in double on the CPU, places its Niagara component at the ship's render location (identity
  * rotation) and pushes a few small float user parameters. The Niagara component is activated once at BeginPlay and
  * only ever shown/hidden and resumed/paused after that (SDD 6 Amendment 15); the burst re-fires only when the effects
  * quality changes the particle count.
@@ -116,7 +116,7 @@ private:
     // Effects quality changed: sets the new particle count and re-fires the burst once if the count changed
     void HandleScalabilityChanged(const Scalability::FQualityLevels& levels);
 
-    // Builds this frame's visibility gate from the subsystems, the overlay row and the cvar
+    // Builds this frame's visibility gate from the subsystems, the Settings option and the cvar
     FSOLSpaceDustGate BuildGate() const;
 
     // Shows (resumes) or hides (pauses) the Niagara component; never deactivates it
@@ -192,7 +192,6 @@ private:
     bool mIsShown = false;                                            // Visible and simulating
     bool mNeedsReset = true;                                          // Next runnable frame resets the smoothing
     bool mIsPauseSynced = true;                                       // Last SetPaused took effect on the instance
-    bool mIsDefaultRowEnabled = true;                                 // The row's default (no settings subsystem)
     bool mHasBeenActive = false;                                      // The Niagara instance was active once
     bool mIsPushCacheValid = false;                                   // False: the next push writes every value
 };

@@ -68,3 +68,31 @@ Let v = ship speed relative to its reference frame (m/s). Apparent speed:
 - [Warframe: space scenes really need space dust](https://forums.warframe.com/topic/267929-space-scenes-really-need-space-dust/)
 - [Niagara Quick Start (UE 4.27 docs, Velocity facing mode)](https://docs.unrealengine.com/4.27/RenderingAndGraphics/Niagara/QuickStart)
 - [Epic: tutorials for Niagara effects](https://dev.epicgames.com/documentation/unreal-engine/tutorials-for-niagara-effects-in-unreal-engine?lang=en-US)
+
+## Look refinement (issue #44)
+
+Trigger: user feedback on the shipped dust (#43): too coarse, needs to be much more subtle (as in Limit Theory and other space games), and it reads as uniform lines or spheres instead of small pieces of debris.
+
+### What could not be found (honest)
+
+Web searches (2026-11-03) found **no technical source** on how Limit Theory, Homeworld, FreeSpace Open, Elite Dangerous or Everspace render their ambient dust or debris: no size distributions, no sprite or mesh details, no tumbling, no brightness or depth-fade numbers, no motion-blur notes. Only player-side remarks exist. Anything below about those games is therefore an inference to be judged by eye, not a documented fact. Leads not yet followed: Josh Parnell's Limit Theory devlogs and videos, the fs2open GitHub source (background and particle code), Relic's Homeworld postmortems, and GDC talks from Frontier and Rockfish.
+
+### What the sources do support
+
+- A forum comment says Wing Commander and FreeSpace both had dust, and that it gave a sense of speed and direction change ([GOG forum](https://gog.com/forum/freespace_series/freespace_mods/page1)). A user statement, not a developer one.
+- The FSO engine has a general particle system (emitter, initial velocity, lifetime) with a fixed-size pool ([particle.h](https://sources.debian.org/src/freespace2/3.7.4%2Brepack-1/code/particle/particle.h)). It does not show whether ambient dust uses it.
+- Original Elite: stardust moves with speed and the pitch and roll, and distant dust moves less, which gives perspective ([BBC Elite](https://www.bbcelite.com/deep_dives/stardust_in_the_front_view.html)).
+- Frontier forum: at very high speed the smallest-scale lines fade because they are no longer useful for judging speed ([thread](https://forums.frontier.co.uk/goto/post?id=178788)). Supports fewer or dimmer streaks at speed.
+- jMonkeyEngine thread: no particles at a dead stop (fade in and out is visible otherwise), and tiny opaque quads are cheap ([thread](https://hub.jmonkeyengine.org/t/tiny-space-debris/41818)).
+- Warframe forum: dust helps separate camera movement from ship movement ([thread](https://forums.warframe.com/topic/267929-space-scenes-really-need-space-dust/)). Also a 2D devlog on layered speed-ratio dust ([trisect-dev](https://trisect-dev.pages.dev/blog/parallax)) and Asteroidbase on subtle foreground particles ([devlog](https://www.asteroidbase.com/devlog/bringing-warmth-to-deep-space/)).
+- UE: mesh emitters are the standard tool for debris and shrapnel pieces ([Unreal Community Wiki](https://unrealcommunity.wiki/mesh-emitter-(tutorial)-qwfadjey)).
+
+### Design levers for a subtler, debris-like look (engineering judgment, not sourced)
+
+1. **Size distribution:** many tiny particles with a heavy tail of few larger ones (for example a power law) instead of today's 0.6-1.4x spread around 60 cm. Sub-pixel to 1 px for most.
+2. **Shape:** irregular silhouettes (a small set of chip and shard shapes, or an atlas) or tiny real meshes, instead of the round soft dot and capsule. Random per-particle rotation.
+3. **Tumbling:** a per-particle spin, visible as brightness glints (a flat chip catching light) more than as geometry.
+4. **Brightness:** wider spread, mostly dim with rare bright sparks; lower overall intensity than the shipped 2.0; optional lit-side response to the star.
+5. **Depth fade and density:** fade by distance, a denser but dimmer field, or two layers (near sparse and far dense).
+6. **Speed streaks:** shorter and dimmer, thin hairlines only at high speed, with the fade-at-speed note above.
+7. **Cost:** sprites with an atlas stay on the existing GPU emitter. Real tumbling meshes need a mesh renderer and a GPU cost re-check against the #43 budget.

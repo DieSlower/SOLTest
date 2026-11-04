@@ -78,12 +78,12 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a gate where every condition says "run" (ship, row on, cvar on, warp 1, no jump, map closed, unpaused)
+    // Returns a gate where every condition says "run" (ship, setting on, cvar on, warp 1, no jump, no map, unpaused)
     FSOLSpaceDustGate DustGoodGate()
     {
         FSOLSpaceDustGate gate;
         gate.bHasShip = true;
-        gate.bRowEnabled = true;
+        gate.bSettingEnabled = true;
         gate.bCvarEnabled = true;
         gate.TimeWarpFactor = 1.0;
         gate.bJumpWarping = false;
@@ -960,8 +960,8 @@ bool FSOLSpaceDustMathShouldRunTest::RunTest(const FString& /*parameters*/)
     }
     {
         FSOLSpaceDustGate gate = DustGoodGate();
-        gate.bRowEnabled = false;
-        TestFalse(TEXT("row disabled -> false"), SOLSpaceDust::ShouldRun(gate, p));
+        gate.bSettingEnabled = false;
+        TestFalse(TEXT("setting disabled -> false"), SOLSpaceDust::ShouldRun(gate, p));
     }
     {
         FSOLSpaceDustGate gate = DustGoodGate();
@@ -989,7 +989,7 @@ bool FSOLSpaceDustMathShouldRunTest::RunTest(const FString& /*parameters*/)
         TestFalse(TEXT("paused -> false"), SOLSpaceDust::ShouldRun(gate, p));
     }
 
-    // The gate has no master-O input: the seven fields above fully decide the result (a row enabled with no other
+    // The gate has no master-O input: the seven fields above fully decide the result (the setting enabled with no other
     // blocker runs, whatever the overlay master toggle is), and speed is not part of the gate
     return true;
 }

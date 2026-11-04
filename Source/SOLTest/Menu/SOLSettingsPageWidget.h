@@ -37,11 +37,11 @@ enum class ESOLSettingsSlider : uint8
 enum class ESOLSettingsToggle : uint8
 {
     Vsync,
+    SpaceDust,          // Space dust speed cues, global (SDD 34 section 9); Graphics, after VSync
     InvertY,
     HudVisible,
     DefaultAssist,
     MouseSteerAtStart,  // Mouse steering toggle on at flight start (SDD 19 Amendment 5)
-    OrbitLines,
     Count,
 };
 
@@ -195,6 +195,10 @@ private:
     UFUNCTION()
     void HandleVsyncChanged(bool bChecked);
 
+    // Space dust checkbox clicked
+    UFUNCTION()
+    void HandleSpaceDustChanged(bool bChecked);
+
     // Invert Y checkbox clicked
     UFUNCTION()
     void HandleInvertYChanged(bool bChecked);
@@ -210,10 +214,6 @@ private:
     // Mouse steering at start checkbox clicked
     UFUNCTION()
     void HandleMouseSteerAtStartChanged(bool bChecked);
-
-    // Show orbit lines checkbox clicked
-    UFUNCTION()
-    void HandleOrbitLinesChanged(bool bChecked);
 
     // A stepper button was clicked (index = stepper * 2 + 0 back / 1 forward)
     void HandleStepClicked(int32 index);

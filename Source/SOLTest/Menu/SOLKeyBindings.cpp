@@ -26,7 +26,7 @@ namespace
             SOLMenuText::KEY_BINDING_TEXTS[static_cast<int32>(binding)].Label, defaultKey, chord };
     }
 
-    // Every rebindable action, in EBinding order. Defaults are the issue #22 layout (settings schema 7) and match
+    // Every rebindable action, in EBinding order. Defaults are the issue #34 layout (settings schema 10) and match
     // GAME_MECHANICS.md section 1 (keep both in sync)
     constexpr SOLKeyBindings::FBindingDef KEY_BINDING_DEFS[] =
     {
@@ -62,8 +62,8 @@ namespace
             SOLKeyBindings::EKeyChord::Alt),
         KeyBindingDef(SOLKeyBindings::EBinding::OverlayMenu, TEXT("OverlayMenu"), TEXT("O"),
             SOLKeyBindings::EKeyChord::Control),
-        KeyBindingDef(SOLKeyBindings::EBinding::ToggleDarkening, TEXT("ToggleDarkening"), TEXT("O"),
-            SOLKeyBindings::EKeyChord::Shift),
+        KeyBindingDef(SOLKeyBindings::EBinding::CycleOverlayProfile, TEXT("CycleOverlayProfile"), TEXT("O"),
+            SOLKeyBindings::EKeyChord::RightShift),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomIn, TEXT("RadarZoomIn"), TEXT("Hyphen")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarZoomOut, TEXT("RadarZoomOut"), TEXT("Equals")),
         KeyBindingDef(SOLKeyBindings::EBinding::RadarAuto, TEXT("RadarAuto"), TEXT("Home")),
@@ -117,13 +117,27 @@ namespace
     };
 
     // Prefix of a chord's shown key, per SOLKeyBindings::EKeyChord
-    const TCHAR* const KEY_BINDING_CHORD_PREFIXES[] = { TEXT(""), TEXT("Shift+"), TEXT("Alt+"), TEXT("Ctrl+") };
+    const TCHAR* const KEY_BINDING_CHORD_PREFIXES[] = { TEXT(""), TEXT("Shift+"), TEXT("Alt+"), TEXT("Ctrl+"),
+        TEXT("RShift+") };
+    static_assert(UE_ARRAY_COUNT(KEY_BINDING_CHORD_PREFIXES)
+        == static_cast<int32>(SOLKeyBindings::EKeyChord::RightShift) + 1, "one prefix per chord");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns whether a binding index is inside the table
     bool KeyBindingIsValid(const int32 binding)
     {
         return binding >= 0 && binding < SOLKeyBindings::BINDING_COUNT;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two chords can be pressed together: the same chord, or Shift and Right Shift (Right Shift held
+    // satisfies a Shift chord too, SDD 34 section 6.1)
+    bool KeyBindingChordsOverlap(const SOLKeyBindings::EKeyChord a, const SOLKeyBindings::EKeyChord b)
+    {
+        using SOLKeyBindings::EKeyChord;
+        const bool bShiftPair = (a == EKeyChord::Shift && b == EKeyChord::RightShift)
+            || (a == EKeyChord::RightShift && b == EKeyChord::Shift);
+        return a == b || bShiftPair;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -210,8 +224,8 @@ bool SOLKeyBindings::CanBindKey(const FString& keyName)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether one binding may take this key (CanBindKey; Resume refuses the map's fixed keys and a Shift chord
-// refuses Shift and the mouse buttons)
+// Returns whether one binding may take this key (CanBindKey; Resume refuses the map's fixed keys, every chord (Shift,
+// Right Shift, Alt, Ctrl) refuses the modifier keys and the mouse buttons, and Alt also Windows' own Alt keys)
 bool SOLKeyBindings::CanBindKeyTo(const int32 binding, const FString& keyName)
 {
     if (!KeyBindingIsValid(binding) || !CanBindKey(keyName))
@@ -253,7 +267,8 @@ bool SOLKeyBindings::IsModifierKey(const FString& keyName)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a binding's shown key: its key label, prefixed "Shift+" for a Shift chord; unbound without a key
+// Returns a binding's shown key: its key label, prefixed by its chord ("Shift+", "Alt+", "Ctrl+" or "RShift+");
+// unbound without a key
 FString SOLKeyBindings::BindingDisplayName(const int32 binding, const TArray<FString>& keys)
 {
     const FString keyName = keys.IsValidIndex(binding) ? keys[binding] : FString();
@@ -321,7 +336,7 @@ TMap<FString, FString> SOLKeyBindings::MakeOverrides(const TArray<FString>& keys
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns another binding that uses the key with the same chord, or INDEX_NONE
+// Returns another binding that uses the key with an overlapping chord (the same, or Shift / Right Shift), or INDEX_NONE
 int32 SOLKeyBindings::FindConflict(const TArray<FString>& keys, const int32 binding, const FString& keyName)
 {
     if (keyName.IsEmpty())
@@ -331,7 +346,7 @@ int32 SOLKeyBindings::FindConflict(const TArray<FString>& keys, const int32 bind
     const EKeyChord chord = GetChord(binding);
     for (int32 other = 0; other < keys.Num(); ++other)
     {
-        if (other != binding && GetChord(other) == chord
+        if (other != binding && KeyBindingChordsOverlap(GetChord(other), chord)
             && keys[other].Equals(keyName, ESearchCase::IgnoreCase))
         {
             return other;

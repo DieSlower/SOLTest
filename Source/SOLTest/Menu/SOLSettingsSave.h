@@ -13,8 +13,10 @@
 
 #include "SOLSettingsSave.generated.h"
 
-/** One overlay profile on disk (SDD 22): every Overlay Menu row id mapped to whether it is checked
- *  (SOLOverlay::ToSavedProfile / FromSavedProfile; rows missing from an older file take their default). */
+/** One overlay profile on disk (SDD 22, SDD 34 section 5): every Overlay Menu row id mapped to whether it is checked
+ *  (SOLOverlay::ToSavedProfile / FromSavedProfile; rows missing from an older file take their default), with the
+ *  profile's enabled flag, master O state and Alt+O orbit-lines switch. From schema 10 a profile that was never used
+ *  is written with an empty row map (that is how SOLOverlay::FOverlayPrefs::UsedProfiles is stored). */
 USTRUCT()
 struct FSOLOverlayProfileSave
 {
@@ -22,6 +24,18 @@ struct FSOLOverlayProfileSave
 
     UPROPERTY()
     TMap<FString, bool> Overlays;
+
+    /** The profile is enabled (schema 10; entry 0, Profile 1, always reads enabled). */
+    UPROPERTY()
+    bool bEnabled = false;
+
+    /** The profile's master O state (schema 10, D10). */
+    UPROPERTY()
+    bool bMasterOn = true;
+
+    /** The profile's Alt+O orbit-lines switch (schema 10, D18). */
+    UPROPERTY()
+    bool bOrbitLinesOn = true;
 };
 
 /**
@@ -94,7 +108,10 @@ public:
     UPROPERTY()
     bool bQualityChosen = false;
 
-    /** World-space orbit lines shown (SDD 17). Added in schema 2; a schema 1 save is migrated to true. */
+    /** Legacy global orbit-lines switch (SDD 17). Added in schema 2 (a schema 1 save is migrated to true). From schema
+     *  10 (SDD 34 D18) each overlay profile holds its own switch (FSOLOverlayProfileSave::bOrbitLinesOn): this field
+     *  is no longer written or read by SetValues / GetValues, only by the 9 -> 10 step, which copies it into every
+     *  stored profile. Kept so an old file's value can always be migrated. */
     UPROPERTY()
     bool bShowOrbitLines = true;
 
@@ -107,15 +124,21 @@ public:
     UPROPERTY()
     bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;
 
-    /** Overlay Menu choices (SDD 22), one entry per profile (issue #22 writes one). Added in schema 7; an older save
-     *  is migrated to one default profile (every overlay on except Asteroid Orbits). Schema 9 (SDD 43) writes
-     *  SpaceDust = on into every profile of an older save that lacks it. */
+    /** Overlay profiles (SDD 22, SDD 34). Added in schema 7; an older save is migrated to one default profile (every
+     *  overlay on except Asteroid Orbits). Schema 9 (SDD 43) wrote SpaceDust = on into every profile; schema 10
+     *  (SDD 34) moves that value to bSpaceDust, removes the key, and enables every stored entry. From schema 10 it is
+     *  written with SOL::Overlay::MAX_PROFILES entries (a missing entry reads as disabled and unused). */
     UPROPERTY()
     TArray<FSOLOverlayProfileSave> OverlayProfiles;
 
-    /** The active overlay profile (index into OverlayProfiles). Added in schema 7. */
+    /** The active overlay profile (index into OverlayProfiles, any enabled profile). Added in schema 7. */
     UPROPERTY()
     int32 ActiveOverlayProfile = 0;
+
+    /** Space dust speed cues, one global setting (SDD 34 section 9). Added in schema 10; the 9 -> 10 step takes it
+     *  from the first profile's old SpaceDust row (on when it has none). */
+    UPROPERTY()
+    bool bSpaceDust = SOL::Settings::SPACE_DUST_DEFAULT;
 
     /** Chase Down safety margin, a floor on the G meter as a fraction of a full meter (SDD 32). Added in schema 8; an
      *  older save is migrated to the default. */

@@ -239,9 +239,9 @@ float SOLSpaceDust::DustFade(const FVector3f& localCm, const FVector3f& cameraLo
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the effect runs: ship, row and cvar on, finite warp within MaxTimeWarp, no jump warp, map, pause
+// Returns whether the effect runs: ship, setting and cvar on, finite warp within MaxTimeWarp, no jump warp, map, pause
 bool SOLSpaceDust::ShouldRun(const FSOLSpaceDustGate& gate, const FSOLSpaceDustParams& params)
 {
-    return gate.bHasShip && gate.bRowEnabled && gate.bCvarEnabled && FMath::IsFinite(gate.TimeWarpFactor)
+    return gate.bHasShip && gate.bSettingEnabled && gate.bCvarEnabled && FMath::IsFinite(gate.TimeWarpFactor)
         && gate.TimeWarpFactor <= params.MaxTimeWarp && !gate.bJumpWarping && !gate.bMapOpen && !gate.bPaused;
 }

@@ -89,6 +89,16 @@ public:
     // Returns true while the world-space orbit lines are shown
     bool AreOrbitLinesVisible() const;
 
+    // Shows the overlay profile tag ("OVERLAYS: PROFILE N") for a 0-based profile: stores the real time and formats the
+    // text once (SDD 34 section 8); it shows for SOL::Overlay::PROFILE_TAG_SHOW_S, then fades
+    void NotifyOverlayProfileShown(int32 profile);
+
+    // Returns the overlay profile tag's text as last formatted (verification)
+    const FString& GetProfileTagText() const { return mProfileTagText; }
+
+    // Returns the overlay profile tag's alpha in the last frame, 0 when it was not drawn (verification)
+    float GetLastProfileTagAlpha() const { return mLastProfileTagAlpha; }
+
     // Returns the game mode's orbit-line actor, or nullptr
     ASOLOrbitLineVisuals* GetOrbitLineVisuals() const;
 
@@ -250,8 +260,9 @@ private:
     // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
     void DrawBar(float x, float y, double fill01, const FLinearColor& color);
 
-    // Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only)
-    void AddHoloPanel(const FBox2D& content, const FLinearColor& color);
+    // Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only); the
+    // backing's darkness is scaled by backingOpacity (0-1), for a panel that fades out
+    void AddHoloPanel(const FBox2D& content, const FLinearColor& color, float backingOpacity = 1.0f);
 
     // Returns the engine font of a HUD font slot
     static UFont* GetHudFont(ESOLHudFont font);
@@ -275,6 +286,7 @@ private:
         Cap,
         Assist,
         ControlsNotice,
+        OverlayProfileTag,
         GMeter,
         GWarning,
         Autopilot,
@@ -333,6 +345,9 @@ private:
 
     // Draws the text buffer as one HUD line centred on centerX; returns its screen rectangle
     FBox2D DrawBufferCentered(ESOLHudLine line, const FLinearColor& color, float centerX, float y, ESOLHudFont font);
+
+    // Draws the overlay profile tag centred under the controls-notice line while its fade lasts (behind the HUD gates)
+    void DrawOverlayProfileTag(double realTimeS);
 
     // Rebuilds the cached key hint lines from the applied key bindings (at begin play and after a rebind)
     void RebuildKeyHints();
@@ -515,6 +530,9 @@ private:
     int32 mLastWarpStreaksDrawn = 0;                // Warp streaks drawn last frame
     ESOLSurfaceLockHudLine mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;  // Surface-lock line drawn last frame
     double mControlsNoticeEndS = -1.0;              // Real time until which the controls-changed notice shows
+    double mProfileTagStartS = -1.0;                // Real time of the last profile cycle press (-1 = never)
+    FString mProfileTagText;                        // The profile tag as formatted at that press (reserved buffer)
+    float mLastProfileTagAlpha = 0.0f;              // The tag's alpha last frame, 0 when not drawn
     bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
     bool mIsRadarManual = false;                    // Radar range mode: false = AUTO (starts here), true = MANUAL
 };

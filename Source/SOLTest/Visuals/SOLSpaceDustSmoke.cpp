@@ -8,6 +8,7 @@
 #include "Interaction/SOLInteractionSubsystem.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Map/SOLMapModeSubsystem.h"
+#include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
@@ -15,8 +16,6 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
-#include "UI/SOLOverlayMenuWidget.h"
-#include "UI/SOLOverlayModel.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -25,7 +24,6 @@
 
 #include "Engine/Engine.h"
 #include "Engine/World.h"
-#include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
@@ -56,11 +54,11 @@ namespace
         MapBase,            // Fast again
         MapOpen,            // Step 8: the map opens -> hidden
         MapClose,           // Step 8: the map closes -> shown
-        MenuOpen,           // Step 9: Ctrl+O (screenshot with the menu)
-        MenuClickOff,       // Step 9: a Slate click on the Space Dust row (after the Menu shot rendered) -> hidden
-        MenuClickOn,        // Step 9: click again -> shown, fade-in reset
-        MenuClickPlanets,   // Step 9: another row, so the Esc write is owed
-        MenuClose,          // Step 9: Esc -> menu closed, exactly one settings write
+        SettingsOpen,       // Step 9: pause menu, Settings page (screenshot with the Space dust option)
+        SettingsClose,      // Step 9: resume (after the shot rendered) -> the dust fades back in
+        SettingsOff,        // Step 9: pending Space dust off + Apply -> hidden
+        SettingsOn,         // Step 9: on + Apply -> shown, fade-in reset
+        SettingsEndVisit,   // Step 9: EndVisit -> exactly one settings write
         MasterOff,          // Step 10: master O off -> dust unaffected
         MasterOn,           // Step 10: master O on -> dust unaffected
         PauseOpen,          // Step 10a: the pause menu -> hidden
@@ -140,15 +138,13 @@ namespace
             return DUSTSMOKE_CVAR_S;
         case EDustStep::WarpUp:
             return DUSTSMOKE_WARP_UP_S;
-        case EDustStep::MenuOpen:
-        case EDustStep::MenuClickOff:
+        case EDustStep::SettingsOff:
         case EDustStep::MasterOff:
         case EDustStep::MasterOn:
             return DUSTSMOKE_SHORT_S;
-        case EDustStep::MenuClickPlanets:
-            return DUSTSMOKE_WARP_UP_S;
-        case EDustStep::MenuClose:
+        case EDustStep::SettingsEndVisit:
             return DUSTSMOKE_CVAR_S;
+        case EDustStep::SettingsOpen:
         case EDustStep::PauseOpen:
             return DUSTSMOKE_PAUSE_S;
         case EDustStep::Rebase:
@@ -167,6 +163,20 @@ namespace
     int32 FindBodyIndex(const USOLBodyRegistrySubsystem* bodies, const TCHAR* name)
     {
         return bodies != nullptr ? bodies->GetRegistry().FindByName(FName(name)) : INDEX_NONE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Flips the Settings "Space dust" option and applies it (the dust is a Settings option since SDD 34 section 9)
+    void DustSmokeToggleSetting(USOLSettingsSubsystem* settings)
+    {
+        if (settings == nullptr)
+        {
+            return;
+        }
+        SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+        values.bSpaceDust = !values.bSpaceDust;
+        settings->SetPendingValues(values);
+        settings->ApplyPending();
     }
 }
 
@@ -371,44 +381,6 @@ void FSOLSpaceDustSmoke::PlaceOnMoonSurface() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sends a real Slate click to the centre of an Overlay Menu row; false when the menu is not there
-bool FSOLSpaceDustSmoke::ClickRow(const ASOLShipPawn& pawn, const int32 row) const
-{
-    const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
-    if (menu == nullptr || !FSlateApplication::IsInitialized())
-    {
-        return false;
-    }
-
-    // The pointer's hot spot is where the click lands
-    FSlateApplication& slate = FSlateApplication::Get();
-    const FVector2D at = menu->GetRowScreenCenter(row);
-    slate.SetCursorPos(at);
-    const FPointerEvent down(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
-        TSet<FKey>({ EKeys::LeftMouseButton }), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
-    slate.ProcessMouseButtonDownEvent(nullptr, down);
-    const FPointerEvent up(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
-        TSet<FKey>(), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
-    slate.ProcessMouseButtonUpEvent(up);
-    UE_LOG(LogSOL, Log, TEXT("SmokeDust: Slate click on row %d at (%.0f, %.0f)"), row, at.X, at.Y);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Sends Esc through Slate (closes the Overlay Menu)
-void FSOLSpaceDustSmoke::PressEscape() const
-{
-    if (!FSlateApplication::IsInitialized())
-    {
-        return;
-    }
-    FSlateApplication& slate = FSlateApplication::Get();
-    const FKeyEvent keyEvent(EKeys::Escape, FModifierKeysState(), slate.GetUserIndexForKeyboard(), false, 0, 0);
-    slate.ProcessKeyDownEvent(keyEvent);
-    slate.ProcessKeyUpEvent(keyEvent);
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Runs a console command in the game world
 void FSOLSpaceDustSmoke::RunCommand(const TCHAR* command, UWorld* world) const
 {
@@ -517,22 +489,24 @@ void FSOLSpaceDustSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
     case EDustStep::MapClose:
         pawn.HandleCloseMap();
         break;
-    case EDustStep::MenuOpen:
-        pawn.HandleToggleOverlayMenu();
+    case EDustStep::SettingsOpen:
+        // The pause menu opens on a queued event, so the Settings tab is selected a few frames later (TickStep)
+        mIsRowClicked = false;
+        pawn.HandlePause();
         break;
-    case EDustStep::MenuClickOff:
-        // The click itself waits a couple of frames (TickStep), so the Menu screenshot renders the row still checked
-        mSavesBefore = mSettings->GetSaveRequestCount();
+    case EDustStep::SettingsClose:
+        // The resume waits a couple of frames (TickStep), so the Settings screenshot renders first
         mIsRowClicked = false;
         break;
-    case EDustStep::MenuClickOn:
-        ClickRow(pawn, static_cast<int32>(SOLOverlay::EOverlay::SpaceDust));
+    case EDustStep::SettingsOff:
+        mSavesBefore = mSettings->GetSaveRequestCount();
+        DustSmokeToggleSetting(mSettings.Get());
         break;
-    case EDustStep::MenuClickPlanets:
-        ClickRow(pawn, static_cast<int32>(SOLOverlay::EOverlay::IconPlanets));
+    case EDustStep::SettingsOn:
+        DustSmokeToggleSetting(mSettings.Get());
         break;
-    case EDustStep::MenuClose:
-        PressEscape();
+    case EDustStep::SettingsEndVisit:
+        mSettings->EndVisit();
         break;
     case EDustStep::MasterOff:
     case EDustStep::MasterOn:
@@ -571,14 +545,21 @@ bool FSOLSpaceDustSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         return mProfile ? TickProfile(TEXT("sol.SpaceDust 0"), pawn.GetWorld()) : t >= DUSTSMOKE_CVAR_S;
     case EDustStep::MatchPress:
         return (mHiddenFrame >= 0 && t >= DUSTSMOKE_MATCH_MIN_S) || t >= DUSTSMOKE_MATCH_TIMEOUT_S;
-    case EDustStep::MenuClickOff:
-        // The screenshot requested as the menu step ended renders in that frame; the row is clicked only after it
+    case EDustStep::SettingsOpen:
         if (!mIsRowClicked && mStepFrames >= DUSTSMOKE_CLICK_DELAY_FRAMES)
         {
             mIsRowClicked = true;
-            ClickRow(pawn, static_cast<int32>(SOLOverlay::EOverlay::SpaceDust));
+            mMenu->SelectTab(SOLMenuState::EMenuTab::Settings);
         }
-        return mIsRowClicked && t >= DUSTSMOKE_SHORT_S;
+        return mIsRowClicked && t >= DUSTSMOKE_PAUSE_S;
+    case EDustStep::SettingsClose:
+        // The screenshot requested as the Settings step ended renders in that frame; the pause menu closes after it
+        if (!mIsRowClicked && mStepFrames >= DUSTSMOKE_CLICK_DELAY_FRAMES)
+        {
+            mIsRowClicked = true;
+            mMenu->RequestResume();
+        }
+        return mIsRowClicked && t >= DUSTSMOKE_STEP_S;
     case EDustStep::Jump:
         return (mJump->GetCompletedJumpCount() > mJumpsBefore && !mJump->IsWarping() && t >= DUSTSMOKE_JUMP_MIN_S)
             || t >= DUSTSMOKE_JUMP_TIMEOUT_S;
@@ -773,46 +754,43 @@ void FSOLSpaceDustSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             : TEXT("HIDDEN"), mShownOpacity, opacity));
         TakeShot(TEXT("AfterMap"), false);
         break;
-    case EDustStep::MenuOpen:
+    case EDustStep::SettingsOpen:
+        Check(TEXT("9-settings-open"), mMenu->IsMenuShowing()
+            && mMenu->GetState().Tab == SOLMenuState::EMenuTab::Settings && mWasShownAtEnter && !bShown && bPaused,
+            FString::Printf(TEXT("pause menu %s, tab Settings %s, dust %s (it was up before)"),
+            mMenu->IsMenuShowing() ? TEXT("shown") : TEXT("NOT shown"),
+            mMenu->GetState().Tab == SOLMenuState::EMenuTab::Settings ? TEXT("selected") : TEXT("NOT selected"),
+            bShown ? TEXT("SHOWN") : TEXT("hidden")));
+        TakeShot(TEXT("Settings"), true);
+        break;
+    case EDustStep::SettingsClose:
+        Check(TEXT("9-settings-close"), !mMenu->IsMenuShowing() && bShown && opacity >= DUSTSMOKE_OPAQUE,
+            FString::Printf(TEXT("resume: pause menu %s, dust %s, opacity %.4f"), mMenu->IsMenuShowing()
+            ? TEXT("STILL shown") : TEXT("closed"), bShown ? TEXT("shown") : TEXT("HIDDEN"), opacity));
+        break;
+    case EDustStep::SettingsOff:
     {
-        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
-        const int32 rows = menu != nullptr ? menu->GetRowCount() : 0;
-        Check(TEXT("9-menu-open"), pawn.IsOverlayMenuOpen() && rows == SOLOverlay::OVERLAY_COUNT && bShown,
-            FString::Printf(TEXT("Ctrl+O: menu %s, %d rows (table %d), dust %s"), pawn.IsOverlayMenuOpen()
-            ? TEXT("open") : TEXT("CLOSED"), rows, SOLOverlay::OVERLAY_COUNT, bShown ? TEXT("shown") : TEXT("HIDDEN")));
-        TakeShot(TEXT("Menu"), true);
+        const bool bSetting = mSettings->IsSpaceDustOn();
+        Check(TEXT("9-setting-off"), mWasShownAtEnter && !bSetting && !bShown && bPaused && opacity == 0.0,
+            FString::Printf(TEXT("Space dust option applied off: option %s, dust %s, Niagara %s, opacity %.5f"),
+            bSetting ? TEXT("ON") : TEXT("off"), bShown ? TEXT("SHOWN") : TEXT("hidden"), bPaused ? TEXT("paused")
+            : TEXT("RUNNING"), opacity));
         break;
     }
-    case EDustStep::MenuClickOff:
+    case EDustStep::SettingsOn:
     {
-        const bool bRow = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::SpaceDust);
-        Check(TEXT("9-click-off"), mWasShownAtEnter && !bRow && !bShown && bPaused && opacity == 0.0,
-            FString::Printf(TEXT("click on Space Dust: row %s, dust %s, Niagara %s, opacity %.5f"), bRow ? TEXT("ON")
-            : TEXT("off"), bShown ? TEXT("SHOWN") : TEXT("hidden"), bPaused ? TEXT("paused") : TEXT("RUNNING"),
-            opacity));
-        break;
-    }
-    case EDustStep::MenuClickOn:
-    {
-        const bool bRow = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::SpaceDust);
-        Check(TEXT("9-click-on"), bRow && mShownFrame >= 0 && mShownOpacity < DUSTSMOKE_FADE_RESET && bShown
-            && opacity >= DUSTSMOKE_OPAQUE, FString::Printf(TEXT("click again: row %s, dust %s, first shown opacity "
-            "%.3f, now %.4f"), bRow ? TEXT("on") : TEXT("OFF"), bShown ? TEXT("shown") : TEXT("HIDDEN"),
+        const bool bSetting = mSettings->IsSpaceDustOn();
+        Check(TEXT("9-setting-on"), bSetting && mShownFrame >= 0 && mShownOpacity < DUSTSMOKE_FADE_RESET && bShown
+            && opacity >= DUSTSMOKE_OPAQUE, FString::Printf(TEXT("applied on again: option %s, dust %s, first shown "
+            "opacity %.3f, now %.4f"), bSetting ? TEXT("on") : TEXT("OFF"), bShown ? TEXT("shown") : TEXT("HIDDEN"),
             mShownOpacity, opacity));
         break;
     }
-    case EDustStep::MenuClickPlanets:
-        Check(TEXT("9-other-row"), bShown && opacity >= DUSTSMOKE_OPAQUE, FString::Printf(TEXT("click on Planets: "
-            "dust %s, opacity %.4f (another row must not touch the dust)"), bShown ? TEXT("shown") : TEXT("HIDDEN"),
-            opacity));
-        break;
-    case EDustStep::MenuClose:
+    case EDustStep::SettingsEndVisit:
     {
-        // The Space Dust row went off and on again (no net change), so the owed write comes from the Planets row
         const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
-        Check(TEXT("9-menu-close"), !pawn.IsOverlayMenuOpen() && saves == 1 && bShown, FString::Printf(TEXT("Esc: menu "
-            "%s, %d settings write(s) since the first click, dust %s"), pawn.IsOverlayMenuOpen() ? TEXT("OPEN")
-            : TEXT("closed"), saves, bShown ? TEXT("shown") : TEXT("HIDDEN")));
+        Check(TEXT("9-end-visit"), saves == 1 && bShown, FString::Printf(TEXT("EndVisit: %d settings write(s) since "
+            "the first change, dust %s"), saves, bShown ? TEXT("shown") : TEXT("HIDDEN")));
         break;
     }
     case EDustStep::MasterOff:

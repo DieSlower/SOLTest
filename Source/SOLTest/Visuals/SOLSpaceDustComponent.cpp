@@ -12,7 +12,6 @@
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
-#include "UI/SOLOverlayModel.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
@@ -34,7 +33,7 @@ namespace
 {
     // sol.SpaceDust: debug switch for the whole effect (session only, never persisted; SDD 43 section 4.3)
     TAutoConsoleVariable<int32> CVarSOLSpaceDust(SOL::SpaceDust::CVAR_ENABLED, 1,
-        TEXT("Space dust speed cues (SDD 43): 1 = shown while the Overlay Menu's Space Dust row is checked (default), ")
+        TEXT("Space dust speed cues (SDD 43): 1 = shown while the Settings 'Space dust' option is on (default), ")
         TEXT("0 = never shown (A/B profiling)"),
         ECVF_Default);
 
@@ -161,7 +160,6 @@ void USOLSpaceDustComponent::BeginPlay()
     Settings = USOLSettingsSubsystem::Get(this);
     OwnerCamera = owner->FindComponentByClass<UCameraComponent>();
     OwnerRoot = owner->GetRootComponent();
-    mIsDefaultRowEnabled = SOLOverlay::IsEnabled(SOLOverlay::MakeDefaultPrefs(), SOLOverlay::EOverlay::SpaceDust);
     if (Ships == nullptr || AnchorSubsystem == nullptr || SimClock == nullptr)
     {
         UE_LOG(LogSOL, Warning, TEXT("SpaceDust %s: ship or universe subsystems missing; the space dust stays off"),
@@ -280,16 +278,14 @@ void USOLSpaceDustComponent::HandleBodiesUpdated(const float realDeltaSeconds)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds this frame's visibility gate from the subsystems, the overlay row and the cvar
+// Builds this frame's visibility gate from the subsystems, the Settings option and the cvar
 FSOLSpaceDustGate USOLSpaceDustComponent::BuildGate() const
 {
     FSOLSpaceDustGate gate;
     gate.bHasShip = Ships != nullptr && Ships->HasPlayerShip();
 
-    // The row's own checkbox in the active profile (IsEnabled, not IsShown: the master O never affects the dust, Q2)
-    gate.bRowEnabled = Settings != nullptr
-        ? SOLOverlay::IsEnabled(Settings->GetOverlayPrefs(), SOLOverlay::EOverlay::SpaceDust)
-        : mIsDefaultRowEnabled;
+    // The global Settings option (applied value, SDD 34 section 9); not an overlay, so the master O never affects it
+    gate.bSettingEnabled = Settings != nullptr ? Settings->IsSpaceDustOn() : SOL::Settings::SPACE_DUST_DEFAULT;
     gate.bCvarEnabled = CVarSOLSpaceDust.GetValueOnGameThread() != 0;
     gate.TimeWarpFactor = SimClock != nullptr ? SimClock->GetClock().GetWarpFactor() : 1.0;
     gate.bJumpWarping = Jump != nullptr && Jump->IsWarping();

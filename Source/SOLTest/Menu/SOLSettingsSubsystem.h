@@ -109,33 +109,48 @@ public:
     // Returns whether anything pending differs from what is applied
     bool IsDirty() const;
 
-    // Returns whether the world-space orbit lines are shown (the pending value, so the Settings page previews live)
-    bool AreOrbitLinesShown() const { return mModel.Pending.bShowOrbitLines; }
+    // Returns whether the active overlay profile's orbit-lines switch (Alt+O) is on (SDD 34 D18)
+    bool AreOrbitLinesShown() const { return SOLOverlay::AreOrbitLinesOn(mModel.Saved.OverlayPrefs); }
 
-    // Sets the applied (and pending) orbit-line flag from the O key in flight; the slot is written at the next write
-    // point (EndVisit or shutdown), and only if the value then differs from what is on disk
+    // Sets the active overlay profile's orbit-lines switch (Alt+O), applied at once; the slot is written at the next
+    // write point, and only if the prefs then differ from what is on disk
     void SetOrbitLinesShown(bool bShown);
 
-    // Returns the overlay choices (the pending value, so the Settings page previews live; SDD 22)
-    const SOLOverlay::FOverlayPrefs& GetOverlayPrefs() const { return mModel.Pending.OverlayPrefs; }
+    // Returns the overlay choices: the applied prefs, which every overlay read and write uses (an overlay change is
+    // applied at once, never a pending edit, so the pending copy only mirrors them)
+    const SOLOverlay::FOverlayPrefs& GetOverlayPrefs() const { return mModel.Saved.OverlayPrefs; }
 
-    // Sets the applied (and pending) overlay choices from the Overlay Menu or Shift+O; written at the next write point
-    // (the Overlay Menu's close, EndVisit or shutdown) and only if they then differ from what is on disk
+    // Sets the applied (and pending) overlay choices from the Overlay Menu; written at the next write point (the
+    // Overlay Menu's close, EndVisit, the ship pawn's EndPlay or shutdown) and only if they then differ from disk
     void SetOverlayPrefs(const SOLOverlay::FOverlayPrefs& prefs);
 
     // Flips one row of the active overlay profile (applied at once) and returns its new state
     bool ToggleOverlay(SOLOverlay::EOverlay overlay);
 
-    // Returns whether the master overlay switch (O) is on (session only, on at every flight start)
-    bool IsOverlayMasterOn() const { return mIsOverlayMasterOn; }
+    // Returns whether the active overlay profile's master switch (O) is on (saved with the profile, SDD 34 D10)
+    bool IsOverlayMasterOn() const { return SOLOverlay::IsMasterOn(mModel.Saved.OverlayPrefs); }
 
-    // Sets the master overlay switch (O)
-    void SetOverlayMasterOn(bool bOn) { mIsOverlayMasterOn = bOn; }
+    // Sets the active overlay profile's master switch (O), applied at once; written at the next write point
+    void SetOverlayMasterOn(bool bOn);
 
-    // Returns whether an overlay shows now: the master switch and the active profile's rows (SOLOverlay::IsShown)
+    // Makes the next enabled overlay profile active (RShift+O) and returns it; written at the next write point
+    int32 CycleOverlayProfile();
+
+    // Makes an enabled overlay profile active; returns whether the active profile changed (written at the next write
+    // point)
+    bool SetActiveOverlayProfile(int32 profile);
+
+    // Enables or disables overlay profile 1-4 (SOLOverlay::SetProfileEnabled); returns whether anything changed
+    // (written at the next write point)
+    bool SetOverlayProfileEnabled(int32 profile, bool bEnabled);
+
+    // Returns whether the space dust speed cues are on (the applied Settings value, SDD 34 section 9)
+    bool IsSpaceDustOn() const { return mModel.Saved.bSpaceDust; }
+
+    // Returns whether an overlay shows now: the active profile's master switch and rows (SOLOverlay::IsShown)
     bool IsOverlayShown(SOLOverlay::EOverlay overlay) const;
 
-    // Returns whether an orbit category's lines show: IsOverlayShown and the orbit lines switch (Alt+O)
+    // Returns whether an orbit category's lines show: IsOverlayShown and the active profile's orbit-lines switch
     bool IsOverlayOrbitShown(SOLOverlay::EOverlay overlay) const;
 
     // Returns whether the player has steered with the mouse since the game started (session only, never saved; the HUD
@@ -201,7 +216,7 @@ private:
     // Reads the slot once: uses, migrates or ignores it by version, and seeds what it does not hold from the engine
     void LoadOnce();
 
-    // Upgrades an older save to the current schema in memory (no older schema exists yet)
+    // Upgrades an older save to the current schema in memory (USOLSettingsSave::MigrateToCurrentVersion)
     static void MigrateSave(USOLSettingsSave& save);
 
     // Reads the applied resolution and window mode from GameUserSettings
@@ -220,7 +235,7 @@ private:
     // Copies the applied values, keys and chosen flags into the save object
     void FillSaveObject();
 
-    // Returns whether the slot needs a write (an Apply or migration owed one, or the orbit-line flag differs from disk)
+    // Returns whether the slot needs a write (an Apply or migration owed one, or the overlay prefs differ from disk)
     bool IsSaveOwed() const;
 
     UPROPERTY(Transient)
@@ -257,9 +272,7 @@ private:
     bool mIsControlsChangedNoticePending = false;       // The loaded save predates the current default key layout
     bool mIsSaveOwed = false;                           // An Apply changed the slot's content since the last write (or
                                                         // the last write failed)
-    bool mWrittenShowOrbitLines = true;                 // bShowOrbitLines as on disk (loaded or last written)
     SOLOverlay::FOverlayPrefs mWrittenOverlayPrefs = SOLOverlay::MakeDefaultPrefs();   // Overlay prefs as on disk
-    bool mIsOverlayMasterOn = true;                     // Master overlay switch (O): session only
     bool mIsVsyncChosen = false;                        // The player changed vsync on the page (pushed at boot)
     bool mIsQualityChosen = false;                      // The player changed the quality preset (pushed at boot)
     bool mIsKeyCaptureActive = false;                   // A Settings page is listening for a rebind key

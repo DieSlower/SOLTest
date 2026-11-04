@@ -54,6 +54,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_WINDOW_MODE = TEXT("Window mode");
     inline constexpr const TCHAR* SETTINGS_QUALITY = TEXT("Quality preset");
     inline constexpr const TCHAR* SETTINGS_VSYNC = TEXT("VSync");
+    inline constexpr const TCHAR* SETTINGS_SPACE_DUST = TEXT("Space dust");
     inline constexpr const TCHAR* SETTINGS_MASTER_VOLUME = TEXT("Master volume");
     inline constexpr const TCHAR* SETTINGS_SFX_VOLUME = TEXT("Effects volume");
     inline constexpr const TCHAR* SETTINGS_MUSIC_VOLUME = TEXT("Music volume");
@@ -63,7 +64,6 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_HUD_EFFECTS = TEXT("HUD hologram effects");
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
-    inline constexpr const TCHAR* SETTINGS_ORBIT_LINES = TEXT("Show orbit lines");
     inline constexpr const TCHAR* SETTINGS_MOUSE_STEER_AT_START = TEXT("Mouse steering at start");
     inline constexpr const TCHAR* SETTINGS_CHASE_SAFETY_MARGIN = TEXT("Chase Down safety margin");
     inline constexpr const TCHAR* SETTINGS_APPLY = TEXT("Apply");
@@ -135,7 +135,7 @@ namespace SOLMenuText
         { TEXT("Overlays"), TEXT("Overlays on / off") },
         { TEXT("Overlays"), TEXT("Orbit lines on / off") },
         { TEXT("Overlays"), TEXT("Overlay Menu") },
-        { TEXT("Overlays"), TEXT("Darken far overlays") },
+        { TEXT("Overlays"), TEXT("Cycle overlay profiles") },
         { TEXT("HUD"), TEXT("Radar range in") },
         { TEXT("HUD"), TEXT("Radar range out") },
         { TEXT("HUD"), TEXT("Radar automatic range") },
@@ -165,15 +165,30 @@ namespace SOLMenuText
     inline constexpr const TCHAR* HUD_NO_TARGET_FORMAT = TEXT("none ({SelectTarget})");
     inline constexpr const TCHAR* SPEED_PANEL_TITLE_FORMAT = TEXT("SPEED CAP  ({SpeedPanel} / Enter close, Esc close)");
 
-    // Overlay Menu (SDD 22): title ('{<BindingId>}' is that action's current key), row marks and the key hint
-    inline constexpr const TCHAR* OVERLAY_MENU_TITLE_FORMAT = TEXT("OVERLAYS  ({OverlayMenu} / Esc close)");
+    // Overlay Menu (SDD 22, SDD 34 section 7): title ('{<BindingId>}' is that action's current key, '{N}' the viewed
+    // profile's number), row marks, the profile tabs and rows, and the key hint
+    inline constexpr const TCHAR* OVERLAY_PROFILE_NUMBER_TOKEN = TEXT("{N}");
+    inline constexpr const TCHAR* OVERLAY_MENU_TITLE_FORMAT =
+        TEXT("OVERLAYS - Profile {N}  ({OverlayMenu} / Esc close)");
     inline constexpr const TCHAR* OVERLAY_MENU_HINT = TEXT("Click or Space: toggle   Up / Down: move   "
-        "{OverlayMaster}: all checked overlays on / off (not Space Dust)");
-    inline constexpr const TCHAR* OVERLAY_MENU_HINT_EMBEDDED = TEXT("Click a row to toggle it (applies at once).   "
-        "{OverlayMaster} in flight: all checked overlays on / off (not Space Dust)");
+        "PgUp / PgDn: profile   {CycleOverlayProfile}: next profile   {OverlayMaster}: all checked overlays on / off");
+    inline constexpr const TCHAR* OVERLAY_MENU_HINT_EMBEDDED = TEXT("Click a tab to show a profile, a row to toggle it "
+        "(applies at once).   {CycleOverlayProfile} in flight: next profile   {OverlayMaster} in flight: all checked "
+        "overlays on / off");
     inline constexpr const TCHAR* OVERLAY_MENU_CHECKED = TEXT("[x] ");
     inline constexpr const TCHAR* OVERLAY_MENU_UNCHECKED = TEXT("[ ] ");
     inline constexpr const TCHAR* OVERLAY_MENU_CHILD_INDENT = TEXT("    ");
+    inline constexpr const TCHAR* OVERLAY_MENU_TAB_FORMAT = TEXT("Profile {N}");
+    inline constexpr const TCHAR* OVERLAY_MENU_TAB_ACTIVE_MARK = TEXT("> ");
+    inline constexpr const TCHAR* OVERLAY_MENU_TAB_INACTIVE_MARK = TEXT("  ");
+    inline constexpr const TCHAR* OVERLAY_MENU_TAB_OFF_SUFFIX = TEXT(" (off)");
+    inline constexpr const TCHAR* OVERLAY_MENU_ORBIT_LINES_LABEL = TEXT("Orbit Lines");
+    inline constexpr const TCHAR* OVERLAY_MENU_PROFILE_ENABLED_LABEL = TEXT("Profile enabled");
+    inline constexpr const TCHAR* OVERLAY_MENU_ENABLE_NEW_LABEL = TEXT("Enable (starts as a copy of Profile 1)");
+    inline constexpr const TCHAR* OVERLAY_MENU_ENABLE_RESTORE_LABEL = TEXT("Enable (restores its last settings)");
+
+    // Flight HUD tag after the profile cycle key (SDD 34 section 8); '{N}' is the active profile's number
+    inline constexpr const TCHAR* HUD_OVERLAY_PROFILE_TAG_FORMAT = TEXT("OVERLAYS: PROFILE {N}");
 
     // Interaction menus (SDD 22 section 2.4): action labels (SOLActionTable::ESOLAction order), the reasons an action
     // is unavailable (ESOLActionBlock order, None first), object type names (ESOLObjectType order), the HUD info card
@@ -263,13 +278,14 @@ namespace SOLMenuText
         { TEXT("Time"), TEXT("@WarpDown|@WarpUp"), TEXT("Time warp down / up") },
         { TEXT("Time"), TEXT("@WarpReset"), TEXT("Time warp back to 1x") },
         { TEXT("Overlays"), TEXT("@OverlayMaster"),
-            TEXT("Overlays on / off: everything checked in the Overlay Menu together, except Space Dust (on at "
-                "every flight start)") },
-        { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off") },
+            TEXT("Overlays on / off in the active profile: everything checked in the Overlay Menu together (saved "
+                "with the profile)") },
+        { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off in the active profile") },
         { TEXT("Overlays"), TEXT("@OverlayMenu"),
-            TEXT("Overlay Menu: choose what the overlay key shows (icons per kind, orbits per kind, ships on radar, "
-                "darkening, space dust); also in Settings") },
-        { TEXT("Overlays"), TEXT("@ToggleDarkening"), TEXT("Darken far overlays on / off") },
+            TEXT("Overlay Menu: the five overlay profiles and what the overlay key shows in each (icons per kind, "
+                "orbits per kind, ships on radar, darkening); also in Settings") },
+        { TEXT("Overlays"), TEXT("@CycleOverlayProfile"),
+            TEXT("Cycle overlay profiles (the enabled ones; also in the Overlay Menu)") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
         { TEXT("HUD"), TEXT("@RadarAuto"), TEXT("Radar back to automatic range") },
         { TEXT("Map"), TEXT("@OpenMap"), TEXT("Open the map in the last mode used / close it") },
@@ -379,19 +395,26 @@ namespace SOLMenuText
             "for a few seconds and the ship takes no input until you come to."),
         TEXT("Time warp speeds up the planets, not your ship: the ship is carried along with its reference frame, so "
             "an orbit or a landing spot stays put at any warp."),
-        TEXT("Overlays: {OverlayMaster} turns on or off, together, everything checked in the Overlay Menu "
-            "({OverlayMenu}, also in Settings); they are on at every flight start and the menu's choices are "
-            "remembered. The star, every planet, moon and dwarf planet, the 50 largest named asteroids, ring "
+        TEXT("Overlay profiles: there are five, Profile 1 to Profile 5, and each remembers its own choices in the "
+            "Overlay Menu ({OverlayMenu}, also in Settings): which overlays are checked, whether the master switch "
+            "({OverlayMaster}) and the orbit-line switch are on, and darkening. Profile 1 is always on; the first "
+            "time you enable another profile it starts as a copy of Profile 1, and enabling it again later restores "
+            "its last settings. {CycleOverlayProfile} cycles through the enabled profiles (in flight and in the "
+            "Overlay Menu) and briefly shows the active one as a HUD tag; in the menu, PgUp / PgDn switch tabs (Left "
+            "Shift+O does nothing). {OverlayMaster} turns on or off, together, everything checked in the active "
+            "profile. "
+            "The star, every planet, moon and dwarf planet, the 50 largest named asteroids, ring "
             "systems, the nearest practice targets and the nearest NPC ships get a small hologram icon that fades out "
             "as the real object grows on screen; the nearest objects off screen get an arrow at the edge pointing to "
-            "them. Far icons are darker while darkening is on "
-            "({ToggleDarkening}). Orbit lines ({ToggleOrbitLines}, also in Settings) trace the orbits of the planets, "
-            "moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the Overlay Menu; "
-            "asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is drawn in gold. "
-            "A line behind a planet or moon is hidden by it, and the part in front of it stays visible. Space dust "
-            "(a row of the Overlay Menu) streams past when the ship moves relative to its reference frame; its speed "
-            "is compressed and only shows motion and direction. It is hidden when stopped, under time warp, during "
-            "jumps, on the map and while paused, and {OverlayMaster} does not affect it."),
+            "them. Far icons are darker while darkening (a row of the Overlay Menu, it has no key) is on. Orbit lines "
+            "({ToggleOrbitLines} or the Orbit Lines row; saved with the active profile) trace the orbits of the "
+            "planets, moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the "
+            "Overlay Menu; asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is "
+            "drawn in gold. A line behind a planet or moon is hidden by it, and the part in front of it stays "
+            "visible. Space dust (a Settings > Graphics option, the same in every profile) streams past when the ship "
+            "moves relative to its reference frame; its speed is compressed and only shows motion and direction. It "
+            "is hidden when stopped, under time warp, during jumps, on the map and while paused, and {OverlayMaster} "
+            "does not affect it."),
         TEXT("Interaction menus: with mouse steering off, hovering an overlay icon highlights it. Press {Fire} on "
             "it, drag toward an action and release to choose it; releasing in the centre (or Esc) cancels, and "
             "{Fire} away from icons still fires. On the map, a right click on a body opens the same actions as a list. "

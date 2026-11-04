@@ -32,7 +32,7 @@ struct FSOLSpaceDustParams
 struct FSOLSpaceDustGate
 {
     bool bHasShip = false;
-    bool bRowEnabled = false;
+    bool bSettingEnabled = false;   // The Settings "Space dust" option (SDD 34 section 9)
     bool bCvarEnabled = true;
     double TimeWarpFactor = 1.0;
     bool bJumpWarping = false;
@@ -82,7 +82,7 @@ namespace SOLSpaceDust
     SOLTEST_API float DustFade(const FVector3f& localCm, const FVector3f& cameraLocalCm,
         const FSOLSpaceDustParams& params);
 
-    // Returns whether the effect runs this frame: ship present, row and cvar on, time warp within MaxTimeWarp, and no
-    // jump warp, open map or pause
+    // Returns whether the effect runs this frame: ship present, setting and cvar on, time warp within MaxTimeWarp, and
+    // no jump warp, open map or pause
     SOLTEST_API bool ShouldRun(const FSOLSpaceDustGate& gate, const FSOLSpaceDustParams& params);
 }

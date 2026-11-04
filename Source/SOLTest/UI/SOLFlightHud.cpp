@@ -141,6 +141,9 @@ namespace
     constexpr int32 HUD_STEER_ICON_SEGMENTS = 16;
     constexpr double HUD_CONTROLS_NOTICE_S = 15.0;                          // One-time controls notice duration
     constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
+    constexpr float HUD_PROFILE_TAG_GAP_PX = 6.0f;      // Overlay profile tag (SDD 34): its panel this far below the
+                                                        // controls notice's panel
+    constexpr int32 HUD_PROFILE_TAG_RESERVE = 32;       // Characters reserved for the tag text
     constexpr double HUD_PERCENT = 100.0;
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar backing (Canvas fallback)
     constexpr float HUD_RADAR_BACKING_GROW = 0.25f;     // Radar disc backing: grown by this x the squashed radius and
@@ -237,6 +240,7 @@ void ASOLFlightHud::BeginPlay()
     // Buffers sized once so the draw path only resets and refills them
     mText.Reserve(256);
     mLastRouteLineText.Reserve(128);
+    mProfileTagText.Reserve(HUD_PROFILE_TAG_RESERVE);
 
     // Warp streak table: random directions, phases and speeds from a fixed seed
     FRandomStream random(WARP_STREAK_SEED);
@@ -302,7 +306,34 @@ void ASOLFlightHud::HandleHudCommand(const ESOLHudCommand command)
     case ESOLHudCommand::RadarAuto:
         ResetRadarAuto();
         break;
+    case ESOLHudCommand::ShowOverlayProfileTag:
+        NotifyOverlayProfileShown(Settings != nullptr ? Settings->GetOverlayPrefs().ActiveProfile : 0);
+        break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Shows the overlay profile tag for a profile (0-based): remembers the real time and formats the text once
+void ASOLFlightHud::NotifyOverlayProfileShown(const int32 profile)
+{
+    const UWorld* world = GetWorld();
+    mProfileTagStartS = world != nullptr ? world->GetRealTimeSeconds() : 0.0;
+
+    // "{N}" in the format is the 1-based profile number; the buffer was reserved at begin play
+    const TCHAR* format = SOLMenuText::HUD_OVERLAY_PROFILE_TAG_FORMAT;
+    const TCHAR* token = FCString::Strstr(format, SOLMenuText::OVERLAY_PROFILE_NUMBER_TOKEN);
+    mProfileTagText.Reset();
+    if (token == nullptr)
+    {
+        mProfileTagText.Append(format);
+    }
+    else
+    {
+        mProfileTagText.Append(format, static_cast<int32>(token - format));
+        mProfileTagText.AppendInt(profile + 1);
+        mProfileTagText.Append(token + FCString::Strlen(SOLMenuText::OVERLAY_PROFILE_NUMBER_TOKEN));
+    }
+    UE_LOG(LogSOL, Log, TEXT("FlightHud %s: overlay profile tag '%s'"), *GetName(), *mProfileTagText);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -600,8 +631,8 @@ void ASOLFlightHud::DrawBar(const float x, const float y, const double fill01, c
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only)
-void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& color)
+// Queues a hologram panel (glow shape and dark backing, scaled by backingOpacity) around a content rectangle
+void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& color, const float backingOpacity)
 {
     if (mBatch == nullptr || !content.bIsValid || !mShapeLayer.IsValid())
     {
@@ -616,7 +647,7 @@ void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& colo
     {
         mWasBackingDropped |= !mShapeLayer->AddBacking(FBox2f(center - halfSize, center + halfSize),
             static_cast<float>(SOL::Hologram::HUD_PANEL_CORNER_PX) * mUiScale,
-            SOL::Hologram::HUD_PANEL_BACKING_FEATHER_PX * mUiScale);
+            SOL::Hologram::HUD_PANEL_BACKING_FEATHER_PX * mUiScale, backingOpacity);
         ++mLastPanelCount;
     }
 }
@@ -701,6 +732,7 @@ void ASOLFlightHud::DrawHUD()
     Super::DrawHUD();
     mLastWarpStreaksDrawn = 0;
     mWasFlightHudDrawn = false;
+    mLastProfileTagAlpha = 0.0f;
     mLastSurfaceLockLine = ESOLSurfaceLockHudLine::None;
     mLastRouteLineText.Reset();
     mLastRouteLineRect = FBox2D(ForceInit);
@@ -812,6 +844,7 @@ void ASOLFlightHud::DrawHUD()
         AddHoloPanel(DrawBufferCentered(ESOLHudLine::ControlsNotice, HUD_SECONDARY, Canvas->ClipX * 0.5f,
             Canvas->ClipY * HUD_CONTROLS_NOTICE_Y_FRACTION, ESOLHudFont::Medium), HUD_SECONDARY);
     }
+    DrawOverlayProfileTag(realTimeS);
 
     // Text blocks gather their rectangles while drawing; each gets one hologram panel
     DrawSpeedBlock(state, control);
@@ -995,6 +1028,35 @@ FBox2D ASOLFlightHud::DrawBufferCentered(const ESOLHudLine line, const FLinearCo
 {
     const float textWidth = static_cast<float>(MeasureLine(line, font).X);
     return DrawBuffer(line, color, centerX - 0.5f * textWidth * mUiScale, y, font);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the overlay profile tag (SDD 34 section 8) centred under the controls-notice line while its fade lasts
+void ASOLFlightHud::DrawOverlayProfileTag(const double realTimeS)
+{
+    mLastProfileTagAlpha = 0.0f;
+    if (mProfileTagStartS < 0.0 || mProfileTagText.IsEmpty())
+    {
+        return;
+    }
+    const float alpha = SOLOverlay::ProfileTagAlpha(realTimeS - mProfileTagStartS);
+    if (alpha <= 0.0f)
+    {
+        return;
+    }
+    mLastProfileTagAlpha = alpha;
+
+    // One line below the notice line, past both panels' padding (the notice need not be showing)
+    const UFont* font = GetHudFont(ESOLHudFont::Medium);
+    const float lineHeight = (font != nullptr ? font->GetMaxCharHeight() : 0.0f) * mUiScale;
+    const float y = Canvas->ClipY * HUD_CONTROLS_NOTICE_Y_FRACTION + lineHeight
+        + (2.0f * SOL::Hologram::HUD_PANEL_PADDING_PX + HUD_PROFILE_TAG_GAP_PX) * mUiScale;
+    mText.Reset();
+    mText.Append(mProfileTagText);
+    const FLinearColor textColor(HUD_SECONDARY.R, HUD_SECONDARY.G, HUD_SECONDARY.B, HUD_SECONDARY.A * alpha);
+    // The panel's glow and its dark backing fade with the text
+    AddHoloPanel(DrawBufferCentered(ESOLHudLine::OverlayProfileTag, textColor, Canvas->ClipX * 0.5f, y,
+        ESOLHudFont::Medium), HudScaled(HUD_SECONDARY, alpha), alpha);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1653,8 +1715,7 @@ void ASOLFlightHud::DrawOverlayIcons(const FSOLHudView* view)
     const SOLOverlay::FOverlayPrefs defaultPrefs = SOLOverlay::MakeDefaultPrefs();
     const auto isShown = [this, &defaultPrefs](const EOverlay overlay)
     {
-        return Settings != nullptr ? Settings->IsOverlayShown(overlay) : SOLOverlay::IsShown(defaultPrefs, true,
-            overlay);
+        return Settings != nullptr ? Settings->IsOverlayShown(overlay) : SOLOverlay::IsShown(defaultPrefs, overlay);
     };
     FSOLOverlayIconFrame frame;
     for (int32 category = 0; category < static_cast<int32>(EIconCategory::Count); ++category)

@@ -38,6 +38,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | #22 | Overlay icons, Overlay Menu, O keys, interaction menus, hologram cursor (Part 1: icons, O keys, Overlay Menu, cursor; Part 2: radial and list menus, action table) | 22 |
 | #32 | Chase Down autopilot (2026-11-03): G bursts above 1.5 G planned against the pilot G model, meter-floor safety margin setting (save schema 8), radial / list menu entry, Esc cancel, HUD CHASE marker; Jump To ends the chase. The NPC ship row stays greyed until #40 | 32 |
 | #43 | Space dust speed cues (2026-11-03): GPU Niagara dust in a 400 m wrap volume around the ship, saturating speed map with a dead zone, points to streaks, hidden under warp / jump / map / pause; Space Dust row in the Overlay Menu, not governed by the master O (save schema 9) | 43 |
+| #34 | Overlay profiles (2026-11-04): 5 profiles as vertical tabs in the Ctrl+O menu (enable / disable, first enable copies Profile 1, re-enable restores), per-profile master O and Alt+O orbit lines, RShift+O cycles with a HUD tag, darkening a menu row only, space dust a global Settings > Graphics option (save schema 10, key layout 10) | 34 |
 
 ## In progress
 
@@ -49,7 +50,6 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
-| 1b | #34 | Overlay profiles in the Ctrl+O menu (5 profiles, RShift+O cycles) | M | #22 |
 | 1c | #42 | Hologram style for all in-game menus (pause, settings, controls, info, demo, main menu, speed panel) | L | #22 |
 | 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
@@ -58,6 +58,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 3b4 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
+| 3d | #44 | Space dust look: subtler, debris-like particles (user feedback on #43: too coarse, uniform lines or spheres); needs grill-me | S-M | #43 |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
 | 6 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |

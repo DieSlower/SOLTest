@@ -344,7 +344,8 @@ void ASOLOrbitLineVisuals::HandleUniverseUpdated()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLOrbitLineVisuals::HandleUniverseUpdated);
 
-    // Follow the setting (the Settings checkbox previews live), the main menu and the developer switch
+    // Follow the active overlay profile's orbit-lines switch (Alt+O or a profile change), the main menu and the
+    // developer switch
     if (Settings != nullptr && !mIsVerificationOverride && Settings->AreOrbitLinesShown() != mIsEnabled)
     {
         SetLinesEnabled(Settings->AreOrbitLinesShown());

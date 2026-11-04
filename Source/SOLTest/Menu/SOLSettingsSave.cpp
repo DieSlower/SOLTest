@@ -6,6 +6,7 @@
 #include "Menu/SOLSettingsSave.h"
 
 #include "SOLConstants.h"
+#include "UI/SOLOverlayModel.h"
 
 //////////////////////////////////////////////////////////////////////////
 // Starts with the default settings values (no overlay profile stored yet)
@@ -31,17 +32,32 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     bDefaultFlightAssist = values.bDefaultFlightAssist;
     bVsync = values.bVsync;
     QualityPreset = values.QualityPreset;
-    bShowOrbitLines = values.bShowOrbitLines;
     HudEffectsStrength = values.HudEffectsStrength;
     bMouseSteerAtStart = values.bMouseSteerAtStart;
     ChaseSafetyMargin = values.ChaseSafetyMargin;
+    bSpaceDust = values.bSpaceDust;
 
-    // One saved profile per overlay profile (SDD 22)
+    // Overlay profiles (SDD 34 section 5.1): always MAX_PROFILES entries, so each slot's enabled flag is explicit. A
+    // used slot (enabled now or before) keeps its full row map, master and orbit-lines switch; an unused slot is
+    // written with an empty row map (that is how UsedProfiles is stored) and both switches on. The legacy global
+    // bShowOrbitLines is no longer written (the switch lives in each profile, D18)
     const SOLOverlay::FOverlayPrefs prefs = SOLOverlay::Sanitized(values.OverlayPrefs);
-    OverlayProfiles.SetNum(prefs.ProfileCount);
-    for (int32 profile = 0; profile < prefs.ProfileCount; ++profile)
+    OverlayProfiles.SetNum(SOL::Overlay::MAX_PROFILES);
+    for (int32 profile = 0; profile < SOL::Overlay::MAX_PROFILES; ++profile)
     {
-        OverlayProfiles[profile].Overlays = SOLOverlay::ToSavedProfile(prefs.Masks[profile]);
+        FSOLOverlayProfileSave& entry = OverlayProfiles[profile];
+        const bool bUsed = SOLOverlay::IsProfileUsed(prefs, profile);
+        entry.bEnabled = SOLOverlay::IsProfileEnabled(prefs, profile);
+        entry.bMasterOn = !bUsed || SOLOverlay::HasProfileBit(prefs.MasterOnProfiles, profile);
+        entry.bOrbitLinesOn = !bUsed || SOLOverlay::HasProfileBit(prefs.OrbitLinesProfiles, profile);
+        if (bUsed)
+        {
+            entry.Overlays = SOLOverlay::ToSavedProfile(prefs.Masks[profile]);
+        }
+        else
+        {
+            entry.Overlays.Reset();
+        }
     }
     ActiveOverlayProfile = prefs.ActiveProfile;
 }
@@ -61,19 +77,28 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.bDefaultFlightAssist = bDefaultFlightAssist;
     values.bVsync = bVsync;
     values.QualityPreset = QualityPreset;
-    values.bShowOrbitLines = bShowOrbitLines;
     values.HudEffectsStrength = HudEffectsStrength;
     values.bMouseSteerAtStart = bMouseSteerAtStart;
     values.ChaseSafetyMargin = ChaseSafetyMargin;
+    values.bSpaceDust = bSpaceDust;
 
-    // Overlay profiles: none saved (an older file) gives the defaults; the model sanitizes the active profile
+    // Overlay profiles (SDD 34 section 5.2): entry 0 is always enabled, entry p by its bEnabled, and it is used when
+    // enabled or its row map is not empty; a missing entry (none saved by an older file, or fewer than five) keeps the
+    // defaults, disabled and unused, and entries beyond MAX_PROFILES are ignored. The model sanitizes the result
     values.OverlayPrefs = SOLOverlay::MakeDefaultPrefs();
-    values.OverlayPrefs.ProfileCount = FMath::Clamp(OverlayProfiles.Num(), 1, SOL::Overlay::MAX_PROFILES);
-    for (int32 profile = 0; profile < FMath::Min(OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES); ++profile)
+    SOLOverlay::FOverlayPrefs& prefs = values.OverlayPrefs;
+    const int32 stored = FMath::Min(OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES);
+    for (int32 profile = 0; profile < stored; ++profile)
     {
-        values.OverlayPrefs.Masks[profile] = SOLOverlay::FromSavedProfile(OverlayProfiles[profile].Overlays);
+        const FSOLOverlayProfileSave& entry = OverlayProfiles[profile];
+        const bool bEnabled = profile == 0 || entry.bEnabled;
+        SOLOverlay::SetProfileBit(prefs.EnabledProfiles, profile, bEnabled);
+        SOLOverlay::SetProfileBit(prefs.UsedProfiles, profile, bEnabled || entry.Overlays.Num() > 0);
+        SOLOverlay::SetProfileBit(prefs.MasterOnProfiles, profile, entry.bMasterOn);
+        SOLOverlay::SetProfileBit(prefs.OrbitLinesProfiles, profile, entry.bOrbitLinesOn);
+        prefs.Masks[profile] = SOLOverlay::FromSavedProfile(entry.Overlays);
     }
-    values.OverlayPrefs.ActiveProfile = ActiveOverlayProfile;
+    prefs.ActiveProfile = ActiveOverlayProfile;
     return values;
 }
 
@@ -165,5 +190,28 @@ void USOLSettingsSave::MigrateToCurrentVersion()
             }
         }
         Version = 9;
+    }
+
+    // Schema 9 -> 10 (SDD 34 section 5.3): overlay profiles. The space dust leaves the profiles and becomes one global
+    // setting (profile 1's value, else on); every stored entry was a live profile, so each is enabled with its master
+    // on (the old "on at flight start") and its orbit-lines switch from the old global flag (D18), which is left as it
+    // is; entries are not padded (a missing one reads disabled and unused) and the active profile is kept. The
+    // darkening key's override is dropped (the action is gone, D15); every other override is kept verbatim
+    if (Version == 9)
+    {
+        // The ids as they were written at schema 9, literals on purpose: a migration step must stay fixed forever
+        const TCHAR* dustId = TEXT("SpaceDust");
+        const TCHAR* darkeningKeyId = TEXT("ToggleDarkening");
+        const bool* firstDust = OverlayProfiles.Num() > 0 ? OverlayProfiles[0].Overlays.Find(dustId) : nullptr;
+        bSpaceDust = firstDust != nullptr ? *firstDust : SOL::Settings::SPACE_DUST_DEFAULT;
+        for (FSOLOverlayProfileSave& profile : OverlayProfiles)
+        {
+            profile.Overlays.Remove(dustId);
+            profile.bEnabled = true;
+            profile.bMasterOn = true;
+            profile.bOrbitLinesOn = bShowOrbitLines;
+        }
+        KeyOverrides.Remove(darkeningKeyId);
+        Version = 10;
     }
 }

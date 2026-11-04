@@ -665,3 +665,7 @@ speed), then `sol.SpaceDust 0`. Log: `Saved/Logs/Smoke_DustProfile_43f.log`. The
   render space, one `SetWorldLocation` remain per frame (was six `SetVariable*` calls and one `SetWorldLocation`). No
   vector packing: the asset's per-frame scalars are separate float user parameters, and the asset is unchanged.
   Re-measured after the change (editor binary, 1920x1080, `-SOLSmokeDust -SOLSmokeDustProfile`, 50 km/s, 240-frame average): STAT_SOL_SpaceDustUpdate is 0.015 ms per frame with the dust shown and 0.001 ms with `sol.SpaceDust 0`, so the game-thread cost is within the 0.02 ms budget. GPU, shown vs hidden: NiagaraGpuSim 0.010 ms vs absent, NiagaraUpdateDrawIndirectBuffers 0.010 ms vs absent, Niagara.UpdateMeshParticleInstances 0.016 vs 0.015 ms, Translucency 0.127 vs 0.117 ms (about 0.01 ms for the dust), so the dust costs about 0.03 ms of GPU time in all.
+
+## Amendment 3: space dust moves to Settings (#34)
+
+D5, Q2, Q3, Q6 and section 6 (the Space Dust overlay row, not governed by the O master, inside the overlay profiles) are superseded by [`34-overlay-profiles.md`](34-overlay-profiles.md) (D5, D16, section 9): the dust is a global Settings > Graphics option (default on, an Apply / Revert setting, save field `bSpaceDust`), no longer an overlay row or part of a profile. The 8 -> 9 migration step stays in the chain as written; the 9 -> 10 step carries Profile 1's Space Dust value into the global setting and removes the key from the profiles. `-SOLSmokeDust` step 9 now toggles the Settings option.

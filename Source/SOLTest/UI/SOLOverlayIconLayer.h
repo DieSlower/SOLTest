@@ -29,7 +29,7 @@ struct FSOLOverlayIconFrame
     FVector3d ViewpointM = FVector3d::ZeroVector;       // Universe viewpoint (ecliptic), for distances
     double Centuries = 0.0;                             // Sim time (named asteroid positions)
     bool bCategoryShown[static_cast<int32>(SOLOverlayIcons::EIconCategory::Count)] = {};
-    bool bDarkening = false;                            // Distance darkening (Shift+O)
+    bool bDarkening = false;                            // Distance darkening (the Overlay Menu's Darkening row)
     TConstArrayView<bool> TargetActive;                 // Dropped targets: active slots and positions
     TConstArrayView<FVector3d> TargetPositionsM;
     double TargetRadiusM = 0.0;

@@ -33,6 +33,15 @@ namespace SOLInput
     void MapChordedKey(UInputMappingContext* context, UInputAction* action, const FKey& key,
         const UInputAction* chordAction, UObject* outer);
 
+    // Gives every plain mapping (no chord trigger) of one of these keys an explicit chord blocker on blockerAction, so
+    // it stays silent while blockerAction triggers, and moves it to the end of the context. Enhanced Input sorts a
+    // mapping with any chord trigger (a blocker included) among the chorded ones in mapping order and injects a
+    // chorded mapping's blocker only into the same-key mappings after it, so the move keeps the plain mapping blocked
+    // by every chorded mapping of its key (Alt, Ctrl, Right Shift) and keeps it from blocking them in turn. Call it
+    // after the context's last MapKey; returns the number of mappings changed
+    int32 BlockPlainMappingsUnderChord(UInputMappingContext* context, const TArray<FKey>& keys,
+        const UInputAction* blockerAction, UObject* outer);
+
     // Adds a mapping context to a local player's Enhanced Input subsystem; returns true on success
     bool AddMappingContext(ULocalPlayer* localPlayer, UInputMappingContext* context, int32 priority);
 

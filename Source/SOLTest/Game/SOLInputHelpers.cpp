@@ -59,6 +59,60 @@ void SOLInput::MapChordedKey(UInputMappingContext* context, UInputAction* action
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Gives the plain mappings of these keys an explicit chord blocker on blockerAction and moves them to the context's end
+int32 SOLInput::BlockPlainMappingsUnderChord(UInputMappingContext* context, const TArray<FKey>& keys,
+    const UInputAction* blockerAction, UObject* outer)
+{
+    if (context == nullptr || blockerAction == nullptr || keys.IsEmpty())
+    {
+        return 0;
+    }
+
+    // Split copies of the mappings into the kept ones and the plain ones to block (a blocker is a chord trigger too,
+    // so a second call finds nothing to block)
+    TArray<FEnhancedActionKeyMapping> keptMappings;
+    TArray<FEnhancedActionKeyMapping> plainMappings;
+    for (const FEnhancedActionKeyMapping& mapping : context->GetMappings())
+    {
+        const bool bChorded = mapping.Triggers.ContainsByPredicate([](const UInputTrigger* trigger)
+        {
+            return Cast<const UInputTriggerChordAction>(trigger) != nullptr;
+        });
+        if (mapping.Action != nullptr && !bChorded && keys.Contains(mapping.Key))
+        {
+            plainMappings.Add(mapping);
+        }
+        else
+        {
+            keptMappings.Add(mapping);
+        }
+    }
+    if (plainMappings.IsEmpty())
+    {
+        return 0;
+    }
+
+    // Rebuild the context in two passes: the kept mappings in their order, then every blocked plain mapping last with
+    // the blocker (its own triggers and modifiers kept). UnmapKey swaps the last mapping into the hole, so unmapping
+    // and re-adding one at a time could move a re-added mapping ahead of a chorded one. The engine adds a Down trigger
+    // to a mapping without an explicit trigger when it injects its own blockers, as for any blocked plain mapping
+    context->UnmapAll();
+    for (const FEnhancedActionKeyMapping& kept : keptMappings)
+    {
+        context->MapKey(kept.Action, kept.Key) = kept;
+    }
+    for (const FEnhancedActionKeyMapping& plain : plainMappings)
+    {
+        FEnhancedActionKeyMapping& mapping = context->MapKey(plain.Action, plain.Key);
+        mapping = plain;
+        UInputTriggerChordBlocker* blocker = NewObject<UInputTriggerChordBlocker>(outer);
+        blocker->ChordAction = blockerAction;
+        mapping.Triggers.Add(blocker);
+    }
+    return plainMappings.Num();
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Adds a mapping context to a local player's Enhanced Input subsystem; returns true on success
 bool SOLInput::AddMappingContext(ULocalPlayer* localPlayer, UInputMappingContext* context, const int32 priority)
 {

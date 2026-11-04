@@ -30,6 +30,7 @@ Built (see [Docs/Plans/STATUS.md](Docs/Plans/STATUS.md) for tickets and the road
 - Newtonian, thrust-limited flight with a G-force pilot model (boost to 9 G, blackout), and three flight modes: assisted, manual and autopilot (AUTO).
 - Jump map and hologram map with Jump, Move and Patrol (loop / ping-pong) routes, plus a route overlay in the flight view.
 - Orbit lines, a star field baked from the AT-HYG catalogue, gas giants with band shells and storms, rings with planet shadows, and an asteroid belt of about 9,000 bodies.
+- Overlay icons and a Ctrl+O Overlay Menu with up to five overlay profiles (vertical tabs, per-profile master O and Alt+O orbit lines), cycled with RShift+O.
 - Surface-lock, pulse guns, droppable targets, destruction and debris.
 - A scale demo with up to 1M NPC ships (Mass), with a Full / reduced-detail budget.
 - A hologram HUD on a batched glow-shape renderer with a 3D radar, menus, settings, rebindable keys, and in-game Controls / Info / About screens.
@@ -61,7 +62,7 @@ Defaults below; every ship key can be rebound in Settings. The complete list wit
 | | Left click, Shift (height), Enter | Pick a destination, set height, start the jump or route |
 | | Right drag, middle drag, wheel | Orbit, pan, zoom |
 | | Ctrl+right click, Delete, X | Undo a waypoint, clear route, clear pick |
-| Overlays | O / P | Orbit lines / route overlay; `-` `=` Home change radar zoom |
+| Overlays | O / Alt+O / RShift+O / P | Overlays on / off, orbit lines, cycle overlay profiles, route overlay; `-` `=` Home change radar zoom |
 | Targets | T / R / F / X | Select nearest the reticle / next farther / next nearer / clear |
 | | G | Drop a target 200 m ahead |
 | | M | Lock the reference frame to the target |
@@ -127,7 +128,7 @@ Tools\RunTests.bat [-Filter SOLTest.<Topic>] [-Build] [-List] [-ShowLog] [-Rhi]
 
 It runs `UnrealEditor-Cmd` headless, prints a summary, and exits 0 (pass), 1 (failures) or 2 (could not run); results are in `Saved/AutomationReports/index.json`. It refuses to run while the editor has the project open. **Known problem:** the headless path currently stalls on the author's machine, so tests are being run from the open editor instead (details in [CLAUDE.md](CLAUDE.md), "Known tech debt").
 
-Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, map, map pick, route, jump, menu, level, space dust) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
+Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD, overlay and profiles, map, map pick, route, jump, menu, level, space dust) and take screenshots; the flags are in [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md).
 
 ## Gallery
 
@@ -153,7 +154,19 @@ Fast flight: the dust stretches into streaks along the direction of motion.
 
 ![Space Dust row in the Overlay Menu](Docs/Images/43-dust-menu.jpg)
 
-Ctrl+O Overlay Menu: the Space Dust row, checked, with the dust behind it.
+Ctrl+O Overlay Menu as of issue #43: the Space Dust row, checked, with the dust behind it (since issue #34 the dust is a Settings option, shown below).
+
+![Overlay Menu profile tabs](Docs/Images/34-overlay-profile-tabs.png)
+
+Ctrl+O Overlay Menu with the five profile tabs: Profile 3 is active, Profiles 2, 4 and 5 are off, and the orbit kinds are indented under Orbit Lines.
+
+![Overlay profile tag](Docs/Images/34-overlay-profile-tag.png)
+
+Right Shift+O cycles to the next profile and the HUD shows an OVERLAYS: PROFILE N tag.
+
+![Space dust option in Settings](Docs/Images/34-settings-space-dust.png)
+
+Settings: the Space dust option under Graphics.
 
 ## Development effort
 
@@ -162,11 +175,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 69.8 h |
-| Time spent answering questions | 6.4 h |
-| Tokens | 3,554.5M |
-| Notional API price | $1,346 |
-| Subagents dispatched | 276 |
+| Work time (wall-clock) | 73.1 h |
+| Time spent answering questions | 6.6 h |
+| Tokens | 3,692.7M |
+| Notional API price | $1,406 |
+| Subagents dispatched | 290 |
 <!-- METRICS:END -->
 
 ## Documentation map

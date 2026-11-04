@@ -249,11 +249,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Schema 2+ carries the orbit-lines flag: a new save shows them, and SetValues/GetValues round-trip both values
+// Schema 2 to 9 carried one global orbit-lines flag. From schema 10 (SDD 34 D18) it is a legacy field read only by the
+// 9 -> 10 step: GetValues takes the Alt+O switch from each profile's bOrbitLinesOn, never from the legacy field
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 9"), SOL::Settings::SAVE_VERSION, 9);
+    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -270,27 +271,58 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 8 migrates"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 9 migrates"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
 
+    // A new save keeps the legacy field at its default and reads every profile's switch on
     const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
-    TestTrue(TEXT("new save shows orbit lines"), fresh->bShowOrbitLines);
-    TestTrue(TEXT("new save reads shown"), fresh->GetValues().bShowOrbitLines);
+    TestTrue(TEXT("new save: legacy field shown"), fresh->bShowOrbitLines);
+    TestTrue(TEXT("new save reads the switch on"), SOLOverlay::AreOrbitLinesOn(fresh->GetValues().OverlayPrefs));
 
-    // Hidden round-trips as hidden
+    // A current save with the legacy field hidden but profile 1's switch on reads the switch on (legacy not read)
+    USOLSettingsSave* legacyHidden = NewObject<USOLSettingsSave>();
+    legacyHidden->Version = SOL::Settings::SAVE_VERSION;
+    legacyHidden->bShowOrbitLines = false;
+    FSOLOverlayProfileSave shownProfile;
+    shownProfile.Overlays = SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask());
+    shownProfile.bEnabled = true;
+    shownProfile.bOrbitLinesOn = true;
+    legacyHidden->OverlayProfiles.Add(shownProfile);
+    TestTrue(TEXT("legacy hidden, profile shown: reads shown"),
+        SOLOverlay::AreOrbitLinesOn(legacyHidden->GetValues().OverlayPrefs));
+
+    // And the other way round: the legacy field shown, profile 1's switch off, reads off
+    USOLSettingsSave* profileHidden = NewObject<USOLSettingsSave>();
+    profileHidden->Version = SOL::Settings::SAVE_VERSION;
+    profileHidden->bShowOrbitLines = true;
+    FSOLOverlayProfileSave hiddenProfile = shownProfile;
+    hiddenProfile.bOrbitLinesOn = false;
+    profileHidden->OverlayProfiles.Add(hiddenProfile);
+    TestFalse(TEXT("legacy shown, profile hidden: reads hidden"),
+        SOLOverlay::AreOrbitLinesOn(profileHidden->GetValues().OverlayPrefs));
+
+    // The switch round-trips through the profiles: hidden as hidden, then shown as shown
     USOLSettingsSave* save = NewObject<USOLSettingsSave>();
     SOLSettingsModel::FSettingsValues values;
-    values.bShowOrbitLines = false;
+    SOLOverlay::SetOrbitLinesOn(values.OverlayPrefs, false);
     save->SetValues(values);
-    TestFalse(TEXT("SetValues stores hidden"), save->bShowOrbitLines);
-    TestFalse(TEXT("GetValues gives hidden back"), save->GetValues().bShowOrbitLines);
+    TestTrue(TEXT("SetValues writes profile 1"), save->OverlayProfiles.Num() > 0);
+    if (save->OverlayProfiles.Num() > 0)
+    {
+        TestFalse(TEXT("SetValues stores hidden in profile 1"), save->OverlayProfiles[0].bOrbitLinesOn);
+    }
+    TestFalse(TEXT("GetValues gives hidden back"), SOLOverlay::AreOrbitLinesOn(save->GetValues().OverlayPrefs));
     TestTrue(TEXT("hidden round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
-
-    // And shown again as shown
-    values.bShowOrbitLines = true;
+    SOLOverlay::SetOrbitLinesOn(values.OverlayPrefs, true);
     save->SetValues(values);
-    TestTrue(TEXT("SetValues stores shown"), save->bShowOrbitLines);
-    TestTrue(TEXT("GetValues gives shown back"), save->GetValues().bShowOrbitLines);
+    if (save->OverlayProfiles.Num() > 0)
+    {
+        TestTrue(TEXT("SetValues stores shown in profile 1"), save->OverlayProfiles[0].bOrbitLinesOn);
+    }
+    TestTrue(TEXT("GetValues gives shown back"), SOLOverlay::AreOrbitLinesOn(save->GetValues().OverlayPrefs));
+    TestTrue(TEXT("shown round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
     return true;
 }
 
@@ -327,6 +359,16 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("orbit lines default to shown"), save->bShowOrbitLines);
     TestEqual(TEXT("HUD effects default from the 4 -> 5 step"), save->HudEffectsStrength,
         SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("space dust on from the 9 -> 10 step"), save->bSpaceDust);
+    TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
+    if (save->OverlayProfiles.Num() == 1)
+    {
+        TestTrue(TEXT("profile 1 enabled"), save->OverlayProfiles[0].bEnabled);
+        TestTrue(TEXT("profile 1 master on"), save->OverlayProfiles[0].bMasterOn);
+        TestTrue(TEXT("profile 1 orbit lines from the shown legacy flag"), save->OverlayProfiles[0].bOrbitLinesOn);
+        TestFalse(TEXT("profile 1 has no SpaceDust key"),
+            save->OverlayProfiles[0].Overlays.Contains(TEXT("SpaceDust")));
+    }
 
     // Every other field is untouched
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -469,54 +511,82 @@ bool FSOLSettingsRulesMigrateNoOpTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSaveOwedOrbitLinesTest, "SOLTest.SettingsRules.SaveOwedOrbitLines",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSaveOwedTest, "SOLTest.SettingsRules.SaveOwed",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A write is owed after an Apply, a migration or a failed write, or while the O key left the flag off its written value
-bool FSOLSettingsRulesSaveOwedOrbitLinesTest::RunTest(const FString& /*parameters*/)
+// A write is owed after an Apply, a migration or a failed write, or while the applied overlay prefs differ from the
+// written ones (SDD 34 section 5.4: owed || !AreEqual(applied, written)); O, Alt+O, a row and the cycle key all count
+bool FSOLSettingsRulesSaveOwedTest::RunTest(const FString& /*parameters*/)
 {
     using SOLSettingsRules::IsSaveOwed;
+    using namespace SOLOverlay;
 
-    // The truth table: owed || applied != written
-    TestFalse(TEXT("nothing owed, same value (shown)"), IsSaveOwed(false, true, true));
-    TestFalse(TEXT("nothing owed, same value (hidden)"), IsSaveOwed(false, false, false));
-    TestTrue(TEXT("flag differs (hidden vs shown)"), IsSaveOwed(false, false, true));
-    TestTrue(TEXT("flag differs (shown vs hidden)"), IsSaveOwed(false, true, false));
-    TestTrue(TEXT("owed, same value"), IsSaveOwed(true, true, true));
-    TestTrue(TEXT("owed, flag differs"), IsSaveOwed(true, false, true));
+    // The truth table on equal and different prefs
+    const FOverlayPrefs defaults = MakeDefaultPrefs();
+    FOverlayPrefs rowOff = defaults;
+    Toggle(rowOff, EOverlay::IconRings);
+    TestFalse(TEXT("nothing owed, same prefs"), IsSaveOwed(false, defaults, defaults));
+    TestTrue(TEXT("prefs differ (applied changed)"), IsSaveOwed(false, rowOff, defaults));
+    TestTrue(TEXT("prefs differ (written changed)"), IsSaveOwed(false, defaults, rowOff));
+    TestTrue(TEXT("owed, same prefs"), IsSaveOwed(true, defaults, defaults));
+    TestTrue(TEXT("owed, prefs differ"), IsSaveOwed(true, rowOff, defaults));
 
-    // The subsystem's bookkeeping: loaded with lines shown, nothing owed
-    bool bWritten = true;
-    bool bApplied = true;
+    // A difference only in an unused slot owes nothing (AreEqual ignores it)
+    FOverlayPrefs unusedSlot = defaults;
+    unusedSlot.Masks[4] = 0u;
+    TestFalse(TEXT("unused slot only: not owed"), IsSaveOwed(false, unusedSlot, defaults));
+
+    // The subsystem's bookkeeping: loaded, nothing owed
+    FOverlayPrefs written = defaults;
+    FOverlayPrefs applied = written;
     bool bOwed = false;
-    TestFalse(TEXT("after load: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    TestFalse(TEXT("after load: not owed"), IsSaveOwed(bOwed, applied, written));
 
-    // O twice returns to the written value: nothing to write
-    bApplied = false;
-    TestTrue(TEXT("after one O: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
-    bApplied = true;
-    TestFalse(TEXT("after O twice: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    // O (the active profile's master, D10): once owes a write, twice returns to the written value
+    ToggleMaster(applied);
+    TestTrue(TEXT("after one O: owed"), IsSaveOwed(bOwed, applied, written));
+    ToggleMaster(applied);
+    TestFalse(TEXT("after O twice: not owed"), IsSaveOwed(bOwed, applied, written));
 
-    // O once, then a successful write records the new value and clears the debt
-    bApplied = false;
-    TestTrue(TEXT("O once: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
-    bWritten = bApplied;
+    // Alt+O (the active profile's orbit-lines switch, D18): the same
+    ToggleOrbitLines(applied);
+    TestTrue(TEXT("after one Alt+O: owed"), IsSaveOwed(bOwed, applied, written));
+    ToggleOrbitLines(applied);
+    TestFalse(TEXT("after Alt+O twice: not owed"), IsSaveOwed(bOwed, applied, written));
+
+    // A menu row: the same
+    Toggle(applied, EOverlay::Darkening);
+    TestTrue(TEXT("after a row click: owed"), IsSaveOwed(bOwed, applied, written));
+    Toggle(applied, EOverlay::Darkening);
+    TestFalse(TEXT("after the row back: not owed"), IsSaveOwed(bOwed, applied, written));
+
+    // Enabling a profile owes a write; once written, cycling to it owes one, and cycling back owes none
+    SetProfileEnabled(applied, 1, true);
+    TestTrue(TEXT("after enabling profile 2: owed"), IsSaveOwed(bOwed, applied, written));
+    written = applied;
+    TestFalse(TEXT("after its write: not owed"), IsSaveOwed(bOwed, applied, written));
+    CycleActiveProfile(applied);
+    TestTrue(TEXT("after a cycle: owed"), IsSaveOwed(bOwed, applied, written));
+    CycleActiveProfile(applied);
+    TestFalse(TEXT("after cycling back: not owed"), IsSaveOwed(bOwed, applied, written));
+
+    // A change, then a successful write records the new prefs and clears the debt
+    ToggleMaster(applied);
+    TestTrue(TEXT("O once: owed"), IsSaveOwed(bOwed, applied, written));
+    written = applied;
     bOwed = false;
-    TestFalse(TEXT("after the write: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    TestFalse(TEXT("after the write: not owed"), IsSaveOwed(bOwed, applied, written));
 
-    // A migration owes one write back even with the flag unchanged
+    // A migration owes one write back even with the prefs unchanged
     bOwed = true;
-    TestTrue(TEXT("migration: owed"), IsSaveOwed(bOwed, bApplied, bWritten));
-    bWritten = bApplied;
+    TestTrue(TEXT("migration: owed"), IsSaveOwed(bOwed, applied, written));
     bOwed = false;
-    TestFalse(TEXT("after the migration write: not owed"), IsSaveOwed(bOwed, bApplied, bWritten));
+    TestFalse(TEXT("after the migration write: not owed"), IsSaveOwed(bOwed, applied, written));
 
     // A failed write keeps the debt even though applied now equals written
-    bApplied = true;
-    bWritten = bApplied;
     bOwed = true;
-    TestTrue(TEXT("failed write: owed with applied == written"), IsSaveOwed(bOwed, bApplied, bWritten));
+    TestTrue(TEXT("failed write: owed with applied == written"), IsSaveOwed(bOwed, applied, written));
     return true;
 }
 
@@ -563,6 +633,8 @@ bool FSOLSettingsRulesSchemaOneRoundTripTest::RunTest(const FString& /*parameter
     loaded->MigrateToCurrentVersion();
     TestEqual(TEXT("migrated to the current schema"), loaded->Version, SOL::Settings::SAVE_VERSION);
     TestTrue(TEXT("orbit lines shown after migration"), loaded->bShowOrbitLines);
+    TestTrue(TEXT("profile 1's orbit-lines switch shown after migration"),
+        SOLOverlay::AreOrbitLinesOn(loaded->GetValues().OverlayPrefs));
     TestEqual(TEXT("master volume kept"), loaded->MasterVolume, 0.35f, SETTINGSRULES_TEST_TOLERANCE);
     TestTrue(TEXT("invert Y kept"), loaded->bInvertY);
     TestEqual(TEXT("quality kept"), loaded->QualityPreset, 1);
@@ -732,7 +804,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->MasterVolume = 0.45f;
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 9 (through 5 -> 6, 6 -> 7, 7 -> 8 and 8 -> 9)"), save->Version, 9);
+    TestEqual(TEXT("v5 -> 10 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9 and 9 -> 10)"), save->Version, 10);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -756,8 +828,8 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8 -> 9, and a current one across two
-    // calls
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8 -> 9 -> 10, and a current one across
+    // two calls
     USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
     v6->Version = 6;
     v6->bMouseSteerAtStart = true;
@@ -820,6 +892,13 @@ namespace
         profile.Overlays = SOLOverlay::ToSavedProfile(mask);
         return profile;
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a per-profile bit set (enabled, used, master or orbit lines) has a profile's bit set
+    bool SettingsRulesHasBit(const uint8 bits, const int32 profile)
+    {
+        return (static_cast<uint32>(bits) & (1u << static_cast<uint32>(profile))) != 0u;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -849,7 +928,7 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v6 -> 9 (through 6 -> 7, 7 -> 8 and 8 -> 9)"), save->Version, 9);
+    TestEqual(TEXT("v6 -> 10 (through 6 -> 7, 7 -> 8, 8 -> 9 and 9 -> 10)"), save->Version, 10);
     TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
@@ -871,9 +950,15 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
     TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
 
-    // The migrated save reads as the default overlay prefs
+    // The migrated save reads as the default overlay prefs, except profile 1's orbit-lines switch, which the 9 -> 10
+    // step took from the hidden legacy flag (D18)
     const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
-    TestTrue(TEXT("reads as the default prefs"), SOLOverlay::AreEqual(prefs, SOLOverlay::MakeDefaultPrefs()));
+    SOLOverlay::FOverlayPrefs expectedPrefs = SOLOverlay::MakeDefaultPrefs();
+    SOLOverlay::SetOrbitLinesOn(expectedPrefs, false);
+    TestTrue(TEXT("reads as the default prefs with the switch off"), SOLOverlay::AreEqual(prefs, expectedPrefs));
+    TestFalse(TEXT("profile 1's switch off"), SOLOverlay::AreOrbitLinesOn(prefs));
+    TestTrue(TEXT("profile 1's master on"), SOLOverlay::IsMasterOn(prefs));
+    TestTrue(TEXT("space dust on"), save->bSpaceDust);
 
     // Idempotent: a later overlay change survives a second migrate
     save->OverlayProfiles[0] = SettingsRulesOverlayProfile(0x3u);
@@ -902,7 +987,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A current (schema 9) save is not migrated: its overlay profiles and active profile stay exactly as they were
+// A current (schema 10) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
+// they were
 bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
 {
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
@@ -920,6 +1006,7 @@ bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/
             SOLOverlay::ToSavedProfile(0x1u)));
         TestTrue(TEXT("profile 1 kept"), SettingsRulesSameOverlayMap(current->OverlayProfiles[1].Overlays,
             SOLOverlay::ToSavedProfile(SOLOverlay::AllBitsMask())));
+        TestFalse(TEXT("profile 1's enabled flag not set by a migration"), current->OverlayProfiles[1].bEnabled);
     }
     TestEqual(TEXT("active profile kept"), current->ActiveOverlayProfile, 1);
     const FString* orbitKey = current->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
@@ -932,8 +1019,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOverlaySaveValuesTest, "SOLTes
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// GetValues reads the saved profiles (clamped to MAX_PROFILES, empty = the defaults) and SetValues writes one entry
-// per profile; the two round-trip
+// GetValues (SDD 34 section 5.2): entry 0 is always enabled, entry p is enabled by bEnabled and used if enabled or its
+// row map is not empty, a missing entry is disabled and unused, entries beyond MAX_PROFILES are ignored, and the
+// masks, master bits, orbit-lines bits and active index are read as stored
 bool FSOLSettingsRulesOverlaySaveValuesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLOverlay;
@@ -943,66 +1031,197 @@ bool FSOLSettingsRulesOverlaySaveValuesTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("new save: no profiles stored"), fresh->OverlayProfiles.Num(), 0);
     TestEqual(TEXT("new save: active 0"), fresh->ActiveOverlayProfile, 0);
     const FOverlayPrefs freshPrefs = fresh->GetValues().OverlayPrefs;
-    TestEqual(TEXT("empty: one profile"), freshPrefs.ProfileCount, 1);
+    TestTrue(TEXT("empty: profile 1 enabled"), IsProfileEnabled(freshPrefs, 0));
+    for (int32 profile = 1; profile < SOL::Overlay::MAX_PROFILES; ++profile)
+    {
+        const FString label = FString::Printf(TEXT("empty: profile %d"), profile + 1);
+        TestFalse(label + TEXT(" disabled"), IsProfileEnabled(freshPrefs, profile));
+        TestFalse(label + TEXT(" unused"), IsProfileUsed(freshPrefs, profile));
+    }
     TestEqual(TEXT("empty: active 0"), freshPrefs.ActiveProfile, 0);
     TestEqual(TEXT("empty: default mask"), freshPrefs.Masks[0], DefaultMask());
+    TestTrue(TEXT("empty: master on"), IsMasterOn(freshPrefs));
+    TestTrue(TEXT("empty: orbit lines on"), AreOrbitLinesOn(freshPrefs));
+    TestTrue(TEXT("empty: the default prefs"), AreEqual(freshPrefs, MakeDefaultPrefs()));
 
-    // Three stored profiles read back as three masks with the stored active index
-    USOLSettingsSave* three = NewObject<USOLSettingsSave>();
-    three->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x11u));
-    three->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x22u));
+    // Four stored entries: profile 1 (its stored bEnabled ignored), profile 2 enabled with its master off, profile 3
+    // disabled with a partial row map (used) and its switch off, profile 4 disabled with an empty map (unused);
+    // profile 5 is missing
+    USOLSettingsSave* four = NewObject<USOLSettingsSave>();
+    FSOLOverlayProfileSave first = SettingsRulesOverlayProfile(0x11u);
+    first.bEnabled = false;
+    FSOLOverlayProfileSave second = SettingsRulesOverlayProfile(0x22u);
+    second.bEnabled = true;
+    second.bMasterOn = false;
     TMap<FString, bool> partial;
     partial.Add(TEXT("asteroidorbits"), true);
-    FSOLOverlayProfileSave partialProfile;
-    partialProfile.Overlays = partial;
-    three->OverlayProfiles.Add(partialProfile);
-    three->ActiveOverlayProfile = 2;
-    const FOverlayPrefs threePrefs = three->GetValues().OverlayPrefs;
-    TestEqual(TEXT("three: count"), threePrefs.ProfileCount, 3);
-    TestEqual(TEXT("three: active carried"), threePrefs.ActiveProfile, 2);
-    TestEqual(TEXT("three: mask 0"), threePrefs.Masks[0], 0x11u);
-    TestEqual(TEXT("three: mask 1"), threePrefs.Masks[1], 0x22u);
-    TestEqual(TEXT("three: partial profile fills defaults"), threePrefs.Masks[2], FromSavedProfile(partial));
-    TestEqual(TEXT("three: partial profile = default + asteroid orbits"), threePrefs.Masks[2], AllBitsMask());
+    FSOLOverlayProfileSave third;
+    third.Overlays = partial;
+    third.bEnabled = false;
+    third.bOrbitLinesOn = false;
+    FSOLOverlayProfileSave fourth;
+    fourth.bEnabled = false;
+    four->OverlayProfiles.Add(first);
+    four->OverlayProfiles.Add(second);
+    four->OverlayProfiles.Add(third);
+    four->OverlayProfiles.Add(fourth);
+    four->ActiveOverlayProfile = 1;
+    const FOverlayPrefs fourPrefs = four->GetValues().OverlayPrefs;
+    TestTrue(TEXT("four: profile 1 always enabled"), IsProfileEnabled(fourPrefs, 0));
+    TestTrue(TEXT("four: profile 2 enabled"), IsProfileEnabled(fourPrefs, 1));
+    TestFalse(TEXT("four: profile 3 disabled"), IsProfileEnabled(fourPrefs, 2));
+    TestTrue(TEXT("four: profile 3 used (non-empty map)"), IsProfileUsed(fourPrefs, 2));
+    TestFalse(TEXT("four: profile 4 disabled"), IsProfileEnabled(fourPrefs, 3));
+    TestFalse(TEXT("four: profile 4 unused (empty map)"), IsProfileUsed(fourPrefs, 3));
+    TestFalse(TEXT("four: missing profile 5 disabled"), IsProfileEnabled(fourPrefs, 4));
+    TestFalse(TEXT("four: missing profile 5 unused"), IsProfileUsed(fourPrefs, 4));
+    TestEqual(TEXT("four: active carried"), fourPrefs.ActiveProfile, 1);
+    TestEqual(TEXT("four: mask 0"), fourPrefs.Masks[0], 0x11u);
+    TestEqual(TEXT("four: mask 1"), fourPrefs.Masks[1], 0x22u);
+    TestEqual(TEXT("four: partial profile fills defaults"), fourPrefs.Masks[2], FromSavedProfile(partial));
+    TestEqual(TEXT("four: partial profile = default + asteroid orbits"), fourPrefs.Masks[2], AllBitsMask());
+    TestTrue(TEXT("four: profile 1 master on"), SettingsRulesHasBit(fourPrefs.MasterOnProfiles, 0));
+    TestFalse(TEXT("four: profile 2 master off"), SettingsRulesHasBit(fourPrefs.MasterOnProfiles, 1));
+    TestTrue(TEXT("four: profile 3 master on"), SettingsRulesHasBit(fourPrefs.MasterOnProfiles, 2));
+    TestTrue(TEXT("four: profile 1 orbit lines on"), SettingsRulesHasBit(fourPrefs.OrbitLinesProfiles, 0));
+    TestTrue(TEXT("four: profile 2 orbit lines on"), SettingsRulesHasBit(fourPrefs.OrbitLinesProfiles, 1));
+    TestFalse(TEXT("four: profile 3 orbit lines off"), SettingsRulesHasBit(fourPrefs.OrbitLinesProfiles, 2));
+    TestFalse(TEXT("four: active profile 2's master reads off"), IsMasterOn(fourPrefs));
 
-    // More stored profiles than MAX_PROFILES are clamped
+    // An enabled entry with an empty map is used and reads the default rows
+    USOLSettingsSave* emptyEnabled = NewObject<USOLSettingsSave>();
+    emptyEnabled->OverlayProfiles.Add(SettingsRulesOverlayProfile(0x3u));
+    FSOLOverlayProfileSave enabledEmpty;
+    enabledEmpty.bEnabled = true;
+    emptyEnabled->OverlayProfiles.Add(enabledEmpty);
+    const FOverlayPrefs emptyEnabledPrefs = emptyEnabled->GetValues().OverlayPrefs;
+    TestTrue(TEXT("empty enabled: profile 2 enabled"), IsProfileEnabled(emptyEnabledPrefs, 1));
+    TestTrue(TEXT("empty enabled: profile 2 used"), IsProfileUsed(emptyEnabledPrefs, 1));
+    TestEqual(TEXT("empty enabled: profile 2 default rows"), emptyEnabledPrefs.Masks[1], DefaultMask());
+
+    // More stored entries than MAX_PROFILES: the extra ones are ignored
     USOLSettingsSave* many = NewObject<USOLSettingsSave>();
     for (int32 index = 0; index < SOL::Overlay::MAX_PROFILES + 2; ++index)
     {
-        many->OverlayProfiles.Add(SettingsRulesOverlayProfile(static_cast<uint32>(index)));
+        FSOLOverlayProfileSave entry = SettingsRulesOverlayProfile(static_cast<uint32>(index));
+        entry.bEnabled = true;
+        many->OverlayProfiles.Add(entry);
     }
     const FOverlayPrefs manyPrefs = many->GetValues().OverlayPrefs;
-    TestEqual(TEXT("many: clamped to MAX_PROFILES"), manyPrefs.ProfileCount, SOL::Overlay::MAX_PROFILES);
+    for (int32 profile = 0; profile < SOL::Overlay::MAX_PROFILES; ++profile)
+    {
+        TestTrue(FString::Printf(TEXT("many: profile %d enabled"), profile + 1), IsProfileEnabled(manyPrefs, profile));
+    }
     TestEqual(TEXT("many: last kept mask"), manyPrefs.Masks[SOL::Overlay::MAX_PROFILES - 1],
         static_cast<uint32>(SOL::Overlay::MAX_PROFILES - 1));
+    TestEqual(TEXT("many: no enabled bit beyond MAX_PROFILES"),
+        static_cast<int32>(manyPrefs.EnabledProfiles) & ~((1 << SOL::Overlay::MAX_PROFILES) - 1), 0);
+    return true;
+}
 
-    // SetValues writes one entry per profile and the active index; GetValues gives the same prefs back
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOverlaySaveWriteTest, "SOLTest.SettingsRules.OverlaySaveWrite",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetValues (SDD 34 section 5.1) always writes MAX_PROFILES entries: a used slot with its full row map and its own
+// enabled, master and orbit-lines flags, an unused slot with an empty row map and bEnabled false; GetValues gives the
+// same prefs back
+bool FSOLSettingsRulesOverlaySaveWriteTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLOverlay;
+
+    // Profile 1 edited with its orbit-lines switch off; profile 4 enabled, edited (master off) and disabled again (used
+    // but disabled); profile 3 enabled, edited and active; profiles 2 and 5 never enabled (unused)
     SOLSettingsModel::FSettingsValues values;
-    values.OverlayPrefs = MakeDefaultPrefs();
-    values.OverlayPrefs.ProfileCount = 2;
-    values.OverlayPrefs.ActiveProfile = 1;
-    values.OverlayPrefs.Masks[0] = DefaultMask() & ~(1u << static_cast<uint32>(EOverlay::IconShips));
-    values.OverlayPrefs.Masks[1] = 0x5u;
+    FOverlayPrefs& prefs = values.OverlayPrefs;
+    prefs = MakeDefaultPrefs();
+    SetEnabled(prefs, EOverlay::IconShips, false);
+    SetOrbitLinesOn(prefs, false);
+    SetProfileEnabled(prefs, 3, true);
+    SetActiveProfile(prefs, 3);
+    SetMasterOn(prefs, false);
+    Toggle(prefs, EOverlay::PlanetOrbits);
+    SetProfileEnabled(prefs, 3, false);
+    SetProfileEnabled(prefs, 2, true);
+    SetActiveProfile(prefs, 2);
+    SetOrbitLinesOn(prefs, true);
+    Toggle(prefs, EOverlay::IconRings);
+    TestEqual(TEXT("fixture: profile 3 active"), prefs.ActiveProfile, 2);
+    TestTrue(TEXT("fixture: profile 4 used"), IsProfileUsed(prefs, 3));
+    TestFalse(TEXT("fixture: profile 4 disabled"), IsProfileEnabled(prefs, 3));
+
     USOLSettingsSave* save = NewObject<USOLSettingsSave>();
     save->SetValues(values);
-    TestEqual(TEXT("SetValues: two profiles"), save->OverlayProfiles.Num(), 2);
-    TestEqual(TEXT("SetValues: active 1"), save->ActiveOverlayProfile, 1);
-    if (save->OverlayProfiles.Num() == 2)
+    TestEqual(TEXT("SetValues: MAX_PROFILES entries"), save->OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES);
+    TestEqual(TEXT("SetValues: five entries"), save->OverlayProfiles.Num(), 5);
+    TestEqual(TEXT("SetValues: active 2"), save->ActiveOverlayProfile, 2);
+    if (save->OverlayProfiles.Num() == SOL::Overlay::MAX_PROFILES)
     {
-        TestTrue(TEXT("SetValues: profile 0"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
-            ToSavedProfile(values.OverlayPrefs.Masks[0])));
-        TestTrue(TEXT("SetValues: profile 1"), SettingsRulesSameOverlayMap(save->OverlayProfiles[1].Overlays,
-            ToSavedProfile(0x5u)));
-    }
-    const FOverlayPrefs roundTrip = save->GetValues().OverlayPrefs;
-    TestTrue(TEXT("prefs round trip"), AreEqual(roundTrip, values.OverlayPrefs));
-    TestTrue(TEXT("values round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+        const TArray<FSOLOverlayProfileSave>& stored = save->OverlayProfiles;
 
-    // Writing fewer profiles later shrinks the stored list
+        // Profile 1: full map, switch off, master on
+        TestTrue(TEXT("profile 1: full map"), SettingsRulesSameOverlayMap(stored[0].Overlays,
+            ToSavedProfile(prefs.Masks[0])));
+        TestFalse(TEXT("profile 1: switch off"), stored[0].bOrbitLinesOn);
+        TestTrue(TEXT("profile 1: master on"), stored[0].bMasterOn);
+
+        // Profile 2 and 5: unused, empty map, disabled
+        TestFalse(TEXT("profile 2: disabled"), stored[1].bEnabled);
+        TestEqual(TEXT("profile 2: empty map"), stored[1].Overlays.Num(), 0);
+        TestFalse(TEXT("profile 5: disabled"), stored[4].bEnabled);
+        TestEqual(TEXT("profile 5: empty map"), stored[4].Overlays.Num(), 0);
+
+        // Profile 3: enabled, full map, switch on, master on (copied from profile 1, then the switch set on)
+        TestTrue(TEXT("profile 3: enabled"), stored[2].bEnabled);
+        TestTrue(TEXT("profile 3: full map"), SettingsRulesSameOverlayMap(stored[2].Overlays,
+            ToSavedProfile(prefs.Masks[2])));
+        TestTrue(TEXT("profile 3: switch on"), stored[2].bOrbitLinesOn);
+        TestTrue(TEXT("profile 3: master on"), stored[2].bMasterOn);
+
+        // Profile 4: used but disabled, full map kept with its own master and switch
+        TestFalse(TEXT("profile 4: disabled"), stored[3].bEnabled);
+        TestTrue(TEXT("profile 4: full map"), SettingsRulesSameOverlayMap(stored[3].Overlays,
+            ToSavedProfile(prefs.Masks[3])));
+        TestTrue(TEXT("profile 4: map not empty"), stored[3].Overlays.Num() > 0);
+        TestFalse(TEXT("profile 4: master off"), stored[3].bMasterOn);
+        TestFalse(TEXT("profile 4: switch off (copied from profile 1)"), stored[3].bOrbitLinesOn);
+    }
+
+    // GetValues reads every bit back
+    const FOverlayPrefs read = save->GetValues().OverlayPrefs;
+    TestTrue(TEXT("prefs round trip"), AreEqual(read, prefs));
+    TestTrue(TEXT("values round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    const bool expectedEnabled[] = { true, false, true, false, false };
+    const bool expectedUsed[] = { true, false, true, true, false };
+    for (int32 profile = 0; profile < SOL::Overlay::MAX_PROFILES; ++profile)
+    {
+        const FString label = FString::Printf(TEXT("read: profile %d"), profile + 1);
+        TestTrue(label + TEXT(" enabled as written"), IsProfileEnabled(read, profile) == expectedEnabled[profile]);
+        TestTrue(label + TEXT(" used as written"), IsProfileUsed(read, profile) == expectedUsed[profile]);
+    }
+    TestEqual(TEXT("read: active 2"), read.ActiveProfile, 2);
+    TestEqual(TEXT("read: profile 1 mask"), read.Masks[0], prefs.Masks[0]);
+    TestEqual(TEXT("read: profile 3 mask"), read.Masks[2], prefs.Masks[2]);
+    TestEqual(TEXT("read: profile 4 mask"), read.Masks[3], prefs.Masks[3]);
+    TestFalse(TEXT("read: profile 4 master off"), SettingsRulesHasBit(read.MasterOnProfiles, 3));
+    TestTrue(TEXT("read: profile 3 master on"), SettingsRulesHasBit(read.MasterOnProfiles, 2));
+    TestFalse(TEXT("read: profile 1 switch off"), SettingsRulesHasBit(read.OrbitLinesProfiles, 0));
+    TestTrue(TEXT("read: profile 3 switch on"), SettingsRulesHasBit(read.OrbitLinesProfiles, 2));
+    TestFalse(TEXT("read: profile 4 switch off"), SettingsRulesHasBit(read.OrbitLinesProfiles, 3));
+
+    // Writing the defaults later still writes five entries, the four unused ones empty, active 0
     values.OverlayPrefs = MakeDefaultPrefs();
     save->SetValues(values);
-    TestEqual(TEXT("SetValues: back to one profile"), save->OverlayProfiles.Num(), 1);
-    TestEqual(TEXT("SetValues: active 0"), save->ActiveOverlayProfile, 0);
+    TestEqual(TEXT("defaults: five entries"), save->OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES);
+    TestEqual(TEXT("defaults: active 0"), save->ActiveOverlayProfile, 0);
+    for (int32 index = 1; index < save->OverlayProfiles.Num(); ++index)
+    {
+        const FString label = FString::Printf(TEXT("defaults: profile %d"), index + 1);
+        TestFalse(label + TEXT(" disabled"), save->OverlayProfiles[index].bEnabled);
+        TestEqual(label + TEXT(" empty map"), save->OverlayProfiles[index].Overlays.Num(), 0);
+    }
+    TestTrue(TEXT("defaults: round trip"), AreEqual(save->GetValues().OverlayPrefs, MakeDefaultPrefs()));
     return true;
 }
 
@@ -1115,8 +1334,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 only) and a current
-// one keep their margin; a newer save is left alone
+// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 and 9 -> 10 only) and a
+// current one keep their margin; a newer save is left alone
 bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
@@ -1154,7 +1373,7 @@ bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*paramete
     TestEqual(TEXT("v1: second migrate keeps the version"), v1->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("v1: second migrate keeps the margin"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
 
-    // A schema 8 save has the margin: only 8 -> 9 runs, and its margin is the player's choice
+    // A schema 8 save has the margin: only 8 -> 9 and 9 -> 10 run, and its margin is the player's choice
     USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
     v8->Version = 8;
     v8->ChaseSafetyMargin = 0.1f;
@@ -1227,25 +1446,17 @@ bool FSOLSettingsRulesChaseMarginSaveValuesTest::RunTest(const FString& /*parame
     return true;
 }
 
-// Issue #43 Space Dust overlay row in the settings save (schema 9), written against the SDD 43 section 6.3 contract
-// before the production code
+// Issue #43 Space Dust overlay row in the settings save (schema 9, SDD 43 section 6.3), revalidated for issue #34
+// (schema 10, SDD 34 section 5.3): the 8 -> 9 step still adds SpaceDust to every profile, and 9 -> 10 then moves it
+// out of the profiles into the global bSpaceDust
 
 namespace
 {
-    // The saved id of the Space Dust overlay row, restated so the tests stay independent of the production table
+    // The saved id of the old Space Dust overlay row, restated so the tests stay independent of the production table
     constexpr const TCHAR* SETTINGSRULES_DUST_ID = TEXT("SpaceDust");
 
-    //////////////////////////////////////////////////////////////////////////
-    // Returns a saved overlay map with Space Dust added as on when it is missing (what the 8 -> 9 step does)
-    TMap<FString, bool> SettingsRulesWithDust(const TMap<FString, bool>& overlays)
-    {
-        TMap<FString, bool> result = overlays;
-        if (!result.Contains(SETTINGSRULES_DUST_ID))
-        {
-            result.Add(SETTINGSRULES_DUST_ID, true);
-        }
-        return result;
-    }
+    // The binding id of the old Shift+O darkening action that the 9 -> 10 step drops (D15)
+    constexpr const TCHAR* SETTINGSRULES_DARKENING_KEY_ID = TEXT("ToggleDarkening");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns one saved overlay profile holding exactly these entries
@@ -1257,11 +1468,38 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns whether a saved overlay map holds Space Dust = on
-    bool SettingsRulesDustOn(const TMap<FString, bool>& overlays)
+    // Returns a saved overlay map without the SpaceDust key (what the 9 -> 10 step leaves)
+    TMap<FString, bool> SettingsRulesWithoutDust(const TMap<FString, bool>& overlays)
     {
-        const bool* dust = overlays.Find(SETTINGSRULES_DUST_ID);
-        return dust != nullptr && *dust;
+        TMap<FString, bool> result = overlays;
+        result.Remove(SETTINGSRULES_DUST_ID);
+        return result;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a saved overlay map holds the SpaceDust key at all
+    bool SettingsRulesHasDustKey(const TMap<FString, bool>& overlays)
+    {
+        return overlays.Contains(SETTINGSRULES_DUST_ID);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two key-override maps hold exactly the same ids and keys
+    bool SettingsRulesSameOverrides(const TMap<FString, FString>& a, const TMap<FString, FString>& b)
+    {
+        if (a.Num() != b.Num())
+        {
+            return false;
+        }
+        for (const TPair<FString, FString>& entry : a)
+        {
+            const FString* other = b.Find(entry.Key);
+            if (other == nullptr || *other != entry.Value)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }
 
@@ -1270,16 +1508,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV8SpaceDustTest, "SOLTe
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Schema 8 -> 9 (issue #43): every stored overlay profile gains SpaceDust = on, a profile already holding the key keeps
-// its value, every other key, the active profile and the profile count are kept, and a second migrate changes nothing
+// A v8 save goes through 8 -> 9 (SpaceDust added as on where missing) and 9 -> 10 (moved to the global flag): every
+// profile ends as its old map with no SpaceDust key, enabled with its master on and its orbit-lines switch from the
+// legacy flag; the active profile, the count and every other field are kept, and a second migrate changes nothing
 bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 9"), SOL::Settings::SAVE_VERSION, 9);
-    TestEqual(TEXT("key layout unchanged at 7"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 7);
+    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
+    TestEqual(TEXT("key layout is 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v8 save is migrated"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
-    TestTrue(TEXT("classify(9, 9) uses"), ClassifySaveVersion(9, 9) == ESaveVersionAction::Use);
+    TestTrue(TEXT("a v9 save is migrated"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(10, 10) uses"), ClassifySaveVersion(10, 10) == ESaveVersionAction::Use);
 
     // Three pre-#43 profiles: partial maps (one with a row set false, one with an unknown key) and a full older one
     TMap<FString, bool> first;
@@ -1295,7 +1536,7 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     third.Remove(SETTINGSRULES_DUST_ID);
     const TArray<TMap<FString, bool>> before = { first, second, third };
 
-    // A v8 save holding them, with profile 3 active and non-default values elsewhere
+    // A v8 save holding them, with profile 3 active, hidden legacy orbit lines and non-default values elsewhere
     USOLSettingsSave* save = NewObject<USOLSettingsSave>();
     save->Version = 8;
     for (const TMap<FString, bool>& overlays : before)
@@ -1306,63 +1547,66 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     save->ChaseSafetyMargin = 0.1f;
     save->MasterVolume = 0.3f;
     save->bShowOrbitLines = false;
+    save->bSpaceDust = false;                                     // A stray value a v8 file never wrote
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v8 -> 9"), save->Version, 9);
+    TestEqual(TEXT("v8 -> 10"), save->Version, 10);
     TestEqual(TEXT("v8 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
-    TestEqual(TEXT("profile count kept"), save->OverlayProfiles.Num(), before.Num());
+    TestEqual(TEXT("profile count kept (not padded)"), save->OverlayProfiles.Num(), before.Num());
     TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 2);
+    TestTrue(TEXT("global dust on (8 -> 9 added it as on to profile 1)"), save->bSpaceDust);
 
-    // Each profile is exactly its old map plus SpaceDust = on
+    // Each profile is exactly its old map, enabled, master on, switch from the hidden legacy flag
     const int32 checked = FMath::Min(save->OverlayProfiles.Num(), before.Num());
     for (int32 index = 0; index < checked; ++index)
     {
-        const TMap<FString, bool>& overlays = save->OverlayProfiles[index].Overlays;
-        const FString label = FString::Printf(TEXT("profile %d"), index);
-        TestTrue(label + TEXT(": SpaceDust added as on"), SettingsRulesDustOn(overlays));
-        TestEqual(label + TEXT(": exactly one more key"), overlays.Num(), before[index].Num() + 1);
-        for (const TPair<FString, bool>& entry : before[index])
-        {
-            const bool* kept = overlays.Find(entry.Key);
-            TestTrue(label + TEXT(": ") + entry.Key + TEXT(" kept"), kept != nullptr && *kept == entry.Value);
-        }
-        TestTrue(label + TEXT(": old map plus SpaceDust"), SettingsRulesSameOverlayMap(overlays,
-            SettingsRulesWithDust(before[index])));
+        const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
+        const FString label = FString::Printf(TEXT("profile %d"), index + 1);
+        TestFalse(label + TEXT(": no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
+        TestTrue(label + TEXT(": exactly its old map"), SettingsRulesSameOverlayMap(profile.Overlays, before[index]));
+        TestTrue(label + TEXT(": enabled"), profile.bEnabled);
+        TestTrue(label + TEXT(": master on"), profile.bMasterOn);
+        TestFalse(label + TEXT(": orbit lines off from the legacy flag"), profile.bOrbitLinesOn);
     }
 
     // Every other field is untouched
     TestEqual(TEXT("margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
-    TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
+    TestFalse(TEXT("legacy hidden orbit lines kept"), save->bShowOrbitLines);
     TestEqual(TEXT("override count kept"), save->KeyOverrides.Num(), 1);
     const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
     TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
 
-    // The migrated save reads with the dust on in the active profile and its other rows as saved
-    const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
-    TestEqual(TEXT("reads three profiles"), prefs.ProfileCount, 3);
+    // The migrated save reads three enabled profiles, profile 3 active with its rings off, master on, switch off
+    const SOLSettingsModel::FSettingsValues values = save->GetValues();
+    const SOLOverlay::FOverlayPrefs& prefs = values.OverlayPrefs;
+    for (int32 profile = 0; profile < SOL::Overlay::MAX_PROFILES; ++profile)
+    {
+        TestTrue(FString::Printf(TEXT("reads profile %d enabled as stored"), profile + 1),
+            SOLOverlay::IsProfileEnabled(prefs, profile) == (profile < 3));
+    }
     TestEqual(TEXT("reads profile 3 active"), prefs.ActiveProfile, 2);
-    TestTrue(TEXT("dust on in the active profile"), SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::SpaceDust));
     TestFalse(TEXT("rings off in the active profile"), SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::IconRings));
+    TestTrue(TEXT("master on in the active profile"), SOLOverlay::IsMasterOn(prefs));
+    TestFalse(TEXT("orbit lines off in the active profile"), SOLOverlay::AreOrbitLinesOn(prefs));
+    TestTrue(TEXT("reads the global dust on"), values.bSpaceDust);
 
     // Idempotent: a second migrate changes nothing
-    TArray<TMap<FString, bool>> afterFirst;
-    for (const FSOLOverlayProfileSave& profile : save->OverlayProfiles)
-    {
-        afterFirst.Add(profile.Overlays);
-    }
+    const TArray<FSOLOverlayProfileSave> afterFirst = save->OverlayProfiles;
     save->MigrateToCurrentVersion();
     TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("second migrate keeps the count"), save->OverlayProfiles.Num(), afterFirst.Num());
     TestEqual(TEXT("second migrate keeps the active profile"), save->ActiveOverlayProfile, 2);
+    TestTrue(TEXT("second migrate keeps the dust"), save->bSpaceDust);
     for (int32 index = 0; index < FMath::Min(save->OverlayProfiles.Num(), afterFirst.Num()); ++index)
     {
-        TestTrue(FString::Printf(TEXT("second migrate keeps profile %d"), index),
-            SettingsRulesSameOverlayMap(save->OverlayProfiles[index].Overlays, afterFirst[index]));
+        TestTrue(FString::Printf(TEXT("second migrate keeps profile %d"), index + 1),
+            SettingsRulesSameOverlayMap(save->OverlayProfiles[index].Overlays, afterFirst[index].Overlays));
     }
 
-    // A v8 profile that already holds SpaceDust = false keeps it; its sibling without the key gains it as on
+    // A v8 profile 1 that already holds SpaceDust = false keeps it through 8 -> 9, so the global dust migrates off;
+    // its sibling without the key is not consulted
     TMap<FString, bool> dustOff;
     dustOff.Add(SETTINGSRULES_DUST_ID, false);
     dustOff.Add(TEXT("Icons"), true);
@@ -1375,17 +1619,15 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     TestEqual(TEXT("chosen: v8 -> current"), chosen->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("chosen: two profiles"), chosen->OverlayProfiles.Num(), 2);
     TestEqual(TEXT("chosen: active kept"), chosen->ActiveOverlayProfile, 1);
+    TestFalse(TEXT("chosen: global dust off from profile 1"), chosen->bSpaceDust);
     if (chosen->OverlayProfiles.Num() == 2)
     {
-        TestTrue(TEXT("chosen: SpaceDust = false kept, nothing added"),
-            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[0].Overlays, dustOff));
-        TestTrue(TEXT("chosen: sibling gains SpaceDust = on"),
-            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[1].Overlays, SettingsRulesWithDust(first)));
+        TestTrue(TEXT("chosen: profile 1 without SpaceDust"),
+            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[0].Overlays, SettingsRulesWithoutDust(dustOff)));
+        TestTrue(TEXT("chosen: profile 2 its old map"),
+            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[1].Overlays, first));
     }
-    const SOLOverlay::FOverlayPrefs chosenPrefs = chosen->GetValues().OverlayPrefs;
-    const uint32 dustBit = 1u << static_cast<uint32>(SOLOverlay::EOverlay::SpaceDust);
-    TestEqual(TEXT("chosen: profile 1 reads the dust off"), chosenPrefs.Masks[0] & dustBit, 0u);
-    TestEqual(TEXT("chosen: profile 2 reads the dust on"), chosenPrefs.Masks[1] & dustBit, dustBit);
+    TestFalse(TEXT("chosen: reads the dust off"), chosen->GetValues().bSpaceDust);
     return true;
 }
 
@@ -1394,13 +1636,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSpaceDustVersionsTest, "SOLTes
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Saves 1 to 8 end at the current schema with SpaceDust = on in every profile; a current save lacking the key is left
-// alone (the default fills it on read); a v8 save without profiles gains none
+// Saves 1 to 9 end at the current schema with the global dust on and no SpaceDust key in any profile; a current save
+// is left alone (its dust flag and any stray key kept); a v8 save without profiles gains none
 bool FSOLSettingsRulesSpaceDustVersionsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
 
-    // A v7 save with two stored profiles (kept by 7 -> 8) gains the dust in both
+    // A v7 save with two stored profiles (kept by 7 -> 8) ends with both as they were, enabled
     TMap<FString, bool> iconsOff;
     iconsOff.Add(TEXT("Icons"), false);
     TMap<FString, bool> orbits;
@@ -1415,60 +1657,516 @@ bool FSOLSettingsRulesSpaceDustVersionsTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("v7 -> current"), v7->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("v7: two profiles"), v7->OverlayProfiles.Num(), 2);
     TestEqual(TEXT("v7: active kept"), v7->ActiveOverlayProfile, 1);
+    TestTrue(TEXT("v7: dust on"), v7->bSpaceDust);
     if (v7->OverlayProfiles.Num() == 2)
     {
-        TestTrue(TEXT("v7: profile 1 plus SpaceDust"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[0].Overlays,
-            SettingsRulesWithDust(iconsOff)));
-        TestTrue(TEXT("v7: profile 2 plus SpaceDust"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[1].Overlays,
-            SettingsRulesWithDust(orbits)));
+        TestTrue(TEXT("v7: profile 1 as it was"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[0].Overlays,
+            iconsOff));
+        TestTrue(TEXT("v7: profile 2 as it was"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[1].Overlays,
+            orbits));
+        TestTrue(TEXT("v7: profile 1 enabled"), v7->OverlayProfiles[0].bEnabled);
+        TestTrue(TEXT("v7: profile 2 enabled"), v7->OverlayProfiles[1].bEnabled);
     }
 
-    // Every older schema ends at the current one with the dust on in every stored profile
-    for (int32 version = 1; version <= 8; ++version)
+    // Every older schema ends at the current one with the dust on and no SpaceDust key left
+    for (int32 version = 1; version <= 9; ++version)
     {
         const FString label = FString::Printf(TEXT("v%d"), version);
         USOLSettingsSave* older = NewObject<USOLSettingsSave>();
         older->Version = version;
         older->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(iconsOff));
+        older->bSpaceDust = false;                                // A stray value no older file wrote
         older->MigrateToCurrentVersion();
         TestEqual(label + TEXT(": ends at the current schema"), older->Version, SOL::Settings::SAVE_VERSION);
+        TestTrue(label + TEXT(": dust on"), older->bSpaceDust);
         TestTrue(label + TEXT(": has a profile"), older->OverlayProfiles.Num() > 0);
         for (int32 index = 0; index < older->OverlayProfiles.Num(); ++index)
         {
-            TestTrue(label + FString::Printf(TEXT(": profile %d has SpaceDust on"), index),
-                SettingsRulesDustOn(older->OverlayProfiles[index].Overlays));
+            const FString profileLabel = label + FString::Printf(TEXT(": profile %d"), index + 1);
+            TestFalse(profileLabel + TEXT(" has no SpaceDust key"),
+                SettingsRulesHasDustKey(older->OverlayProfiles[index].Overlays));
+            TestTrue(profileLabel + TEXT(" enabled"), older->OverlayProfiles[index].bEnabled);
         }
     }
 
-    // A current save whose profiles lack the key is not migrated; reading supplies the default (on)
+    // A current save is not migrated: its dust flag and a stray SpaceDust key stay as they are
+    TMap<FString, bool> strayDust = iconsOff;
+    strayDust.Add(SETTINGSRULES_DUST_ID, true);
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
     current->Version = SOL::Settings::SAVE_VERSION;
-    current->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(iconsOff));
+    current->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(strayDust));
     current->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(orbits));
     current->ActiveOverlayProfile = 1;
+    current->bSpaceDust = false;
     current->MigrateToCurrentVersion();
     TestEqual(TEXT("current: version kept"), current->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("current: two profiles"), current->OverlayProfiles.Num(), 2);
     TestEqual(TEXT("current: active kept"), current->ActiveOverlayProfile, 1);
+    TestFalse(TEXT("current: dust off kept"), current->bSpaceDust);
+    TestFalse(TEXT("current: reads the dust off"), current->GetValues().bSpaceDust);
     if (current->OverlayProfiles.Num() == 2)
     {
         TestTrue(TEXT("current: profile 1 unchanged"), SettingsRulesSameOverlayMap(current->OverlayProfiles[0].Overlays,
-            iconsOff));
+            strayDust));
         TestTrue(TEXT("current: profile 2 unchanged"), SettingsRulesSameOverlayMap(current->OverlayProfiles[1].Overlays,
             orbits));
     }
-    TestTrue(TEXT("current: the dust reads on by default"), SOLOverlay::IsEnabled(current->GetValues().OverlayPrefs,
-        SOLOverlay::EOverlay::SpaceDust));
 
-    // A v8 save without overlay profiles migrates without inventing one
+    // A v8 save without overlay profiles migrates without inventing one, and its dust is the default (on)
     USOLSettingsSave* empty = NewObject<USOLSettingsSave>();
     empty->Version = 8;
+    empty->bSpaceDust = false;
     empty->MigrateToCurrentVersion();
     TestEqual(TEXT("empty: v8 -> current"), empty->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("empty: still no profiles"), empty->OverlayProfiles.Num(), 0);
     TestEqual(TEXT("empty: active 0 kept"), empty->ActiveOverlayProfile, 0);
-    TestTrue(TEXT("empty: the dust reads on by default"), SOLOverlay::IsEnabled(empty->GetValues().OverlayPrefs,
-        SOLOverlay::EOverlay::SpaceDust));
+    TestTrue(TEXT("empty: dust on"), empty->bSpaceDust);
+    TestTrue(TEXT("empty: reads the dust on"), empty->GetValues().bSpaceDust);
+    return true;
+}
+
+// Issue #34 overlay profiles in the settings save (schema 10), written against the SDD 34 section 5 contract before the
+// production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV9ProfilesTest, "SOLTest.SettingsRules.MigrateV9Profiles",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 9 -> 10 (issue #34): the global dust comes from profile 1's SpaceDust, SpaceDust leaves every profile (other
+// keys kept), every stored entry is enabled with its master on and its orbit-lines switch from the legacy flag, the
+// entries are not padded, the active profile is kept, the ToggleDarkening override is dropped (others verbatim), every
+// other field is kept, and a second migrate changes nothing
+bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestTrue(TEXT("a v9 save is migrated"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+
+    // Two v9 profiles: profile 1 with the dust off, profile 2 with the dust on and an unknown key
+    TMap<FString, bool> first;
+    first.Add(TEXT("Icons"), true);
+    first.Add(TEXT("AsteroidOrbits"), true);
+    first.Add(TEXT("Darkening"), false);
+    first.Add(SETTINGSRULES_DUST_ID, false);
+    TMap<FString, bool> second;
+    second.Add(SETTINGSRULES_DUST_ID, true);
+    second.Add(TEXT("IconShips"), false);
+    second.Add(TEXT("NoSuchOverlay"), true);
+    const TArray<TMap<FString, bool>> before = { first, second };
+
+    // A v9 save holding them with stray flag values a v9 file never wrote, profile 2 active, the legacy orbit lines
+    // hidden, a darkening key override and non-default values elsewhere
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 9;
+    for (const TMap<FString, bool>& overlays : before)
+    {
+        FSOLOverlayProfileSave profile = SettingsRulesOverlayProfileOf(overlays);
+        profile.bEnabled = false;
+        profile.bMasterOn = false;
+        profile.bOrbitLinesOn = true;
+        save->OverlayProfiles.Add(profile);
+    }
+    save->ActiveOverlayProfile = 1;
+    save->bShowOrbitLines = false;
+    save->bSpaceDust = true;
+    save->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    save->ChaseSafetyMargin = 0.1f;
+    save->MasterVolume = 0.3f;
+    save->HudEffectsStrength = 0.4f;
+    save->bMouseSteerAtStart = true;
+    save->QualityPreset = 1;
+    save->bVsyncChosen = true;
+    save->MigrateToCurrentVersion();
+
+    TestEqual(TEXT("v9 -> 10"), save->Version, 10);
+    TestEqual(TEXT("v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("global dust from profile 1 (off)"), save->bSpaceDust);
+    TestEqual(TEXT("entries not padded"), save->OverlayProfiles.Num(), 2);
+    TestEqual(TEXT("active profile kept"), save->ActiveOverlayProfile, 1);
+
+    // Each stored entry: its old map without SpaceDust, enabled, master on, switch off from the legacy flag
+    for (int32 index = 0; index < FMath::Min(save->OverlayProfiles.Num(), before.Num()); ++index)
+    {
+        const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
+        const FString label = FString::Printf(TEXT("profile %d"), index + 1);
+        TestFalse(label + TEXT(": SpaceDust removed"), SettingsRulesHasDustKey(profile.Overlays));
+        TestTrue(label + TEXT(": every other key kept"), SettingsRulesSameOverlayMap(profile.Overlays,
+            SettingsRulesWithoutDust(before[index])));
+        TestEqual(label + TEXT(": one key fewer"), profile.Overlays.Num(), before[index].Num() - 1);
+        TestTrue(label + TEXT(": enabled"), profile.bEnabled);
+        TestTrue(label + TEXT(": master on"), profile.bMasterOn);
+        TestFalse(label + TEXT(": orbit lines off from the legacy flag"), profile.bOrbitLinesOn);
+    }
+
+    // The darkening override is dropped, the others kept verbatim
+    TestNull(TEXT("ToggleDarkening override dropped"), save->KeyOverrides.Find(SETTINGSRULES_DARKENING_KEY_ID));
+    TestEqual(TEXT("two overrides left"), save->KeyOverrides.Num(), 2);
+    const FString* fireKey = save->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    const FString* orbitKey = save->KeyOverrides.Find(TEXT("ToggleOrbitLines"));
+    TestTrue(TEXT("orbit-lines override kept"), orbitKey != nullptr && *orbitKey == TEXT("K"));
+
+    // Every other field is untouched, the legacy orbit-lines flag included
+    TestFalse(TEXT("legacy orbit-lines flag left as it is"), save->bShowOrbitLines);
+    TestEqual(TEXT("margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD effects kept"), save->HudEffectsStrength, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+
+    // The migrated save reads profiles 1 and 2 enabled (2 active), 3 to 5 disabled and unused, masters on, switches
+    // off, profile 1's darkening off and the dust off
+    const SOLSettingsModel::FSettingsValues values = save->GetValues();
+    const SOLOverlay::FOverlayPrefs& prefs = values.OverlayPrefs;
+    TestTrue(TEXT("reads profile 1 enabled"), SOLOverlay::IsProfileEnabled(prefs, 0));
+    TestTrue(TEXT("reads profile 2 enabled"), SOLOverlay::IsProfileEnabled(prefs, 1));
+    for (int32 profile = 2; profile < SOL::Overlay::MAX_PROFILES; ++profile)
+    {
+        const FString label = FString::Printf(TEXT("reads profile %d"), profile + 1);
+        TestFalse(label + TEXT(" disabled"), SOLOverlay::IsProfileEnabled(prefs, profile));
+        TestFalse(label + TEXT(" unused"), SOLOverlay::IsProfileUsed(prefs, profile));
+    }
+    TestEqual(TEXT("reads profile 2 active"), prefs.ActiveProfile, 1);
+    TestTrue(TEXT("reads profile 1 master on"), SettingsRulesHasBit(prefs.MasterOnProfiles, 0));
+    TestTrue(TEXT("reads profile 2 master on"), SettingsRulesHasBit(prefs.MasterOnProfiles, 1));
+    TestFalse(TEXT("reads profile 1 switch off"), SettingsRulesHasBit(prefs.OrbitLinesProfiles, 0));
+    TestFalse(TEXT("reads profile 2 switch off"), SettingsRulesHasBit(prefs.OrbitLinesProfiles, 1));
+    const uint32 darkeningBit = 1u << static_cast<uint32>(SOLOverlay::EOverlay::Darkening);
+    TestEqual(TEXT("reads profile 1 darkening off"), prefs.Masks[0] & darkeningBit, 0u);
+    TestFalse(TEXT("reads the dust off"), values.bSpaceDust);
+
+    // Idempotent: a second migrate changes nothing
+    const TArray<FSOLOverlayProfileSave> afterFirst = save->OverlayProfiles;
+    const TMap<FString, FString> overridesAfterFirst = save->KeyOverrides;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("second migrate keeps the dust"), save->bSpaceDust);
+    TestEqual(TEXT("second migrate keeps the count"), save->OverlayProfiles.Num(), afterFirst.Num());
+    TestEqual(TEXT("second migrate keeps the active profile"), save->ActiveOverlayProfile, 1);
+    TestTrue(TEXT("second migrate keeps the overrides"), SettingsRulesSameOverrides(save->KeyOverrides,
+        overridesAfterFirst));
+    for (int32 index = 0; index < FMath::Min(save->OverlayProfiles.Num(), afterFirst.Num()); ++index)
+    {
+        const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
+        const FString label = FString::Printf(TEXT("second migrate: profile %d"), index + 1);
+        TestTrue(label + TEXT(" map kept"), SettingsRulesSameOverlayMap(profile.Overlays, afterFirst[index].Overlays));
+        TestTrue(label + TEXT(" flags kept"), profile.bEnabled == afterFirst[index].bEnabled
+            && profile.bMasterOn == afterFirst[index].bMasterOn
+            && profile.bOrbitLinesOn == afterFirst[index].bOrbitLinesOn);
+    }
+
+    // Later changes by the player survive another migrate (the step is skipped at schema 10)
+    save->bSpaceDust = true;
+    save->OverlayProfiles[1].bEnabled = false;
+    save->OverlayProfiles[1].bMasterOn = false;
+    save->OverlayProfiles[0].bOrbitLinesOn = true;
+    save->MigrateToCurrentVersion();
+    TestTrue(TEXT("a later dust change survives"), save->bSpaceDust);
+    TestFalse(TEXT("a later disable survives"), save->OverlayProfiles[1].bEnabled);
+    TestFalse(TEXT("a later master change survives"), save->OverlayProfiles[1].bMasterOn);
+    TestTrue(TEXT("a later switch change survives"), save->OverlayProfiles[0].bOrbitLinesOn);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV9DustSourceTest, "SOLTest.SettingsRules.MigrateV9DustSource",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The 9 -> 10 global dust is profile 1's SpaceDust value (true or false, whatever the other profiles hold), and true
+// when profile 1 lacks the key or there are no profiles; the stored bSpaceDust is never what decides
+bool FSOLSettingsRulesMigrateV9DustSourceTest::RunTest(const FString& /*parameters*/)
+{
+    TMap<FString, bool> dustOn;
+    dustOn.Add(SETTINGSRULES_DUST_ID, true);
+    dustOn.Add(TEXT("Icons"), false);
+    TMap<FString, bool> dustOff;
+    dustOff.Add(SETTINGSRULES_DUST_ID, false);
+    dustOff.Add(TEXT("PlanetOrbits"), true);
+    TMap<FString, bool> noDust;
+    noDust.Add(TEXT("IconStars"), false);
+
+    // Profile 1 on, profile 2 off: on
+    USOLSettingsSave* on = NewObject<USOLSettingsSave>();
+    on->Version = 9;
+    on->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(dustOn));
+    on->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(dustOff));
+    on->bSpaceDust = false;
+    on->MigrateToCurrentVersion();
+    TestEqual(TEXT("on: v9 -> current"), on->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("on: dust from profile 1"), on->bSpaceDust);
+
+    // Profile 1 off, profile 2 on: off
+    USOLSettingsSave* off = NewObject<USOLSettingsSave>();
+    off->Version = 9;
+    off->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(dustOff));
+    off->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(dustOn));
+    off->bSpaceDust = true;
+    off->MigrateToCurrentVersion();
+    TestEqual(TEXT("off: v9 -> current"), off->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("off: dust from profile 1"), off->bSpaceDust);
+    TestFalse(TEXT("off: reads the dust off"), off->GetValues().bSpaceDust);
+
+    // Profile 1 without the key, profile 2 off: the default (on)
+    USOLSettingsSave* missing = NewObject<USOLSettingsSave>();
+    missing->Version = 9;
+    missing->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(noDust));
+    missing->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(dustOff));
+    missing->bSpaceDust = false;
+    missing->MigrateToCurrentVersion();
+    TestEqual(TEXT("missing key: v9 -> current"), missing->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("missing key: dust on"), missing->bSpaceDust);
+    TestTrue(TEXT("missing key: default constant"), missing->bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
+    if (missing->OverlayProfiles.Num() == 2)
+    {
+        TestTrue(TEXT("missing key: profile 1 map unchanged"),
+            SettingsRulesSameOverlayMap(missing->OverlayProfiles[0].Overlays, noDust));
+        TestTrue(TEXT("missing key: profile 2 loses SpaceDust"),
+            SettingsRulesSameOverlayMap(missing->OverlayProfiles[1].Overlays, SettingsRulesWithoutDust(dustOff)));
+    }
+
+    // No profiles at all: the default (on), and no profile is invented
+    USOLSettingsSave* none = NewObject<USOLSettingsSave>();
+    none->Version = 9;
+    none->bSpaceDust = false;
+    none->MigrateToCurrentVersion();
+    TestEqual(TEXT("no profiles: v9 -> current"), none->Version, SOL::Settings::SAVE_VERSION);
+    TestTrue(TEXT("no profiles: dust on"), none->bSpaceDust);
+    TestEqual(TEXT("no profiles: none invented"), none->OverlayProfiles.Num(), 0);
+    TestEqual(TEXT("no profiles: active 0 kept"), none->ActiveOverlayProfile, 0);
+
+    // In every case SpaceDust is gone from every profile
+    const USOLSettingsSave* migrated[] = { on, off, missing };
+    for (const USOLSettingsSave* save : migrated)
+    {
+        for (int32 index = 0; index < save->OverlayProfiles.Num(); ++index)
+        {
+            TestFalse(FString::Printf(TEXT("profile %d has no SpaceDust key"), index + 1),
+                SettingsRulesHasDustKey(save->OverlayProfiles[index].Overlays));
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV9OrbitLinesTest, "SOLTest.SettingsRules.MigrateV9OrbitLines",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The 9 -> 10 step copies the file's global bShowOrbitLines into every stored profile's bOrbitLinesOn (D18), shown and
+// hidden alike, and leaves the legacy field as it is
+bool FSOLSettingsRulesMigrateV9OrbitLinesTest::RunTest(const FString& /*parameters*/)
+{
+    TMap<FString, bool> iconsOff;
+    iconsOff.Add(TEXT("Icons"), false);
+    const bool legacyValues[] = { true, false };
+    for (const bool bLegacy : legacyValues)
+    {
+        const FString label = bLegacy ? TEXT("shown") : TEXT("hidden");
+
+        // Three entries holding the opposite stray switch value
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = 9;
+        for (int32 index = 0; index < 3; ++index)
+        {
+            FSOLOverlayProfileSave profile = SettingsRulesOverlayProfileOf(iconsOff);
+            profile.bOrbitLinesOn = !bLegacy;
+            save->OverlayProfiles.Add(profile);
+        }
+        save->ActiveOverlayProfile = 2;
+        save->bShowOrbitLines = bLegacy;
+        save->MigrateToCurrentVersion();
+
+        TestEqual(label + TEXT(": v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+        TestEqual(label + TEXT(": three entries"), save->OverlayProfiles.Num(), 3);
+        TestTrue(label + TEXT(": legacy field left as it is"), save->bShowOrbitLines == bLegacy);
+        for (int32 index = 0; index < save->OverlayProfiles.Num(); ++index)
+        {
+            TestTrue(label + FString::Printf(TEXT(": profile %d switch from the legacy flag"), index + 1),
+                save->OverlayProfiles[index].bOrbitLinesOn == bLegacy);
+        }
+
+        // Read back: every stored profile's switch, and the active profile's
+        const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
+        for (int32 profile = 0; profile < 3; ++profile)
+        {
+            TestTrue(label + FString::Printf(TEXT(": reads profile %d switch"), profile + 1),
+                SettingsRulesHasBit(prefs.OrbitLinesProfiles, profile) == bLegacy);
+        }
+        TestEqual(label + TEXT(": profile 3 active"), prefs.ActiveProfile, 2);
+        TestTrue(label + TEXT(": active profile's switch"), SOLOverlay::AreOrbitLinesOn(prefs) == bLegacy);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV9KeyOverridesTest,
+    "SOLTest.SettingsRules.MigrateV9KeyOverrides",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The 9 -> 10 step drops a ToggleDarkening key override (the action is gone, D15) and keeps every other override
+// verbatim; older saves lose it through the chain, a current save is never touched
+bool FSOLSettingsRulesMigrateV9KeyOverridesTest::RunTest(const FString& /*parameters*/)
+{
+    // A v9 save with the darkening override among others
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 9;
+    save->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
+    save->KeyOverrides.Add(TEXT("OpenMapJump"), TEXT("Comma"));
+    TMap<FString, FString> expected = save->KeyOverrides;
+    expected.Remove(SETTINGSRULES_DARKENING_KEY_ID);
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestNull(TEXT("darkening override dropped"), save->KeyOverrides.Find(SETTINGSRULES_DARKENING_KEY_ID));
+    TestTrue(TEXT("the others verbatim"), SettingsRulesSameOverrides(save->KeyOverrides, expected));
+    TestEqual(TEXT("three overrides left"), save->KeyOverrides.Num(), 3);
+
+    // A v9 save without it keeps its overrides exactly
+    USOLSettingsSave* plain = NewObject<USOLSettingsSave>();
+    plain->Version = 9;
+    plain->KeyOverrides.Add(TEXT("Boost"), TEXT("RightShift"));
+    const TMap<FString, FString> plainBefore = plain->KeyOverrides;
+    plain->MigrateToCurrentVersion();
+    TestTrue(TEXT("plain: overrides unchanged"), SettingsRulesSameOverrides(plain->KeyOverrides, plainBefore));
+
+    // A v9 save whose only override is the darkening one ends with none
+    USOLSettingsSave* only = NewObject<USOLSettingsSave>();
+    only->Version = 9;
+    only->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));
+    only->MigrateToCurrentVersion();
+    TestEqual(TEXT("only: no override left"), only->KeyOverrides.Num(), 0);
+
+    // A v7 save (the layout that introduced the darkening key) loses it through the chain, the rest kept
+    USOLSettingsSave* v7 = NewObject<USOLSettingsSave>();
+    v7->Version = 7;
+    v7->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("L"));
+    v7->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    v7->MigrateToCurrentVersion();
+    TestEqual(TEXT("v7 -> current"), v7->Version, SOL::Settings::SAVE_VERSION);
+    TestNull(TEXT("v7: darkening override dropped"), v7->KeyOverrides.Find(SETTINGSRULES_DARKENING_KEY_ID));
+    const FString* fireKey = v7->KeyOverrides.Find(TEXT("Fire"));
+    TestTrue(TEXT("v7: fire override kept"), fireKey != nullptr && *fireKey == TEXT("F"));
+    TestEqual(TEXT("v7: one override left"), v7->KeyOverrides.Num(), 1);
+
+    // A current save holding a stray darkening override is not migrated, so it is left untouched
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));
+    current->MigrateToCurrentVersion();
+    TestNotNull(TEXT("current: untouched"), current->KeyOverrides.Find(SETTINGSRULES_DARKENING_KEY_ID));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateChainToProfilesTest,
+    "SOLTest.SettingsRules.MigrateChainToProfiles",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A v6 and a v8 save go through the whole chain to schema 10: dust on, profile 1 enabled with its master on, no
+// SpaceDust key anywhere, and the orbit-lines switch from the legacy flag
+bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*parameters*/)
+{
+    // A v6 save (no overlay profiles in its schema; stray ones are replaced by 6 -> 7) with the legacy lines shown
+    USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
+    v6->Version = 6;
+    v6->OverlayProfiles.Add(SettingsRulesOverlayProfile(0u));
+    v6->OverlayProfiles.Add(SettingsRulesOverlayProfile(0u));
+    v6->ActiveOverlayProfile = 1;
+    v6->bShowOrbitLines = true;
+    v6->bSpaceDust = false;
+    v6->MigrateToCurrentVersion();
+    TestEqual(TEXT("v6 -> 10"), v6->Version, 10);
+    TestTrue(TEXT("v6: dust on"), v6->bSpaceDust);
+    TestEqual(TEXT("v6: one profile"), v6->OverlayProfiles.Num(), 1);
+    TestEqual(TEXT("v6: active 0"), v6->ActiveOverlayProfile, 0);
+    if (v6->OverlayProfiles.Num() == 1)
+    {
+        const FSOLOverlayProfileSave& profile = v6->OverlayProfiles[0];
+        TestTrue(TEXT("v6: profile 1 enabled"), profile.bEnabled);
+        TestTrue(TEXT("v6: profile 1 master on"), profile.bMasterOn);
+        TestTrue(TEXT("v6: profile 1 switch on"), profile.bOrbitLinesOn);
+        TestFalse(TEXT("v6: no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
+        TestTrue(TEXT("v6: the default rows"), SettingsRulesSameOverlayMap(profile.Overlays,
+            SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask())));
+    }
+    const SOLSettingsModel::FSettingsValues v6Values = v6->GetValues();
+    TestTrue(TEXT("v6: reads profile 1 enabled"), SOLOverlay::IsProfileEnabled(v6Values.OverlayPrefs, 0));
+    TestTrue(TEXT("v6: reads the default prefs"), SOLOverlay::AreEqual(v6Values.OverlayPrefs,
+        SOLOverlay::MakeDefaultPrefs()));
+    TestTrue(TEXT("v6: reads the dust on"), v6Values.bSpaceDust);
+
+    // A v8 save with one profile and the legacy lines hidden
+    TMap<FString, bool> iconsOff;
+    iconsOff.Add(TEXT("Icons"), false);
+    USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
+    v8->Version = 8;
+    v8->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(iconsOff));
+    v8->bShowOrbitLines = false;
+    v8->bSpaceDust = false;
+    v8->MigrateToCurrentVersion();
+    TestEqual(TEXT("v8 -> 10"), v8->Version, 10);
+    TestTrue(TEXT("v8: dust on"), v8->bSpaceDust);
+    TestEqual(TEXT("v8: one profile"), v8->OverlayProfiles.Num(), 1);
+    if (v8->OverlayProfiles.Num() == 1)
+    {
+        const FSOLOverlayProfileSave& profile = v8->OverlayProfiles[0];
+        TestTrue(TEXT("v8: profile 1 enabled"), profile.bEnabled);
+        TestTrue(TEXT("v8: profile 1 master on"), profile.bMasterOn);
+        TestFalse(TEXT("v8: profile 1 switch off"), profile.bOrbitLinesOn);
+        TestFalse(TEXT("v8: no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
+        TestTrue(TEXT("v8: its old map"), SettingsRulesSameOverlayMap(profile.Overlays, iconsOff));
+    }
+    const SOLSettingsModel::FSettingsValues v8Values = v8->GetValues();
+    TestTrue(TEXT("v8: reads profile 1 enabled"), SOLOverlay::IsProfileEnabled(v8Values.OverlayPrefs, 0));
+    TestFalse(TEXT("v8: reads icons off"), SOLOverlay::IsEnabled(v8Values.OverlayPrefs, SOLOverlay::EOverlay::Icons));
+    TestFalse(TEXT("v8: reads the switch off"), SOLOverlay::AreOrbitLinesOn(v8Values.OverlayPrefs));
+    TestTrue(TEXT("v8: reads the master on"), SOLOverlay::IsMasterOn(v8Values.OverlayPrefs));
+    TestTrue(TEXT("v8: reads the dust on"), v8Values.bSpaceDust);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesSpaceDustSaveValuesTest, "SOLTest.SettingsRules.SpaceDustSaveValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A new save holds the dust on, SetValues / GetValues round-trip the global flag, and the dust never lands in a
+// profile's row map (D5)
+bool FSOLSettingsRulesSpaceDustSaveValuesTest::RunTest(const FString& /*parameters*/)
+{
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestTrue(TEXT("new save: dust follows the constant"), fresh->bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
+    TestTrue(TEXT("new save: dust on"), fresh->bSpaceDust);
+    TestTrue(TEXT("new save: GetValues dust on"), fresh->GetValues().bSpaceDust);
+
+    // Off round-trips as off
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.bSpaceDust = false;
+    save->SetValues(values);
+    TestFalse(TEXT("SetValues stores off"), save->bSpaceDust);
+    TestFalse(TEXT("GetValues gives off back"), save->GetValues().bSpaceDust);
+    TestTrue(TEXT("off round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    for (int32 index = 0; index < save->OverlayProfiles.Num(); ++index)
+    {
+        TestFalse(FString::Printf(TEXT("profile %d has no SpaceDust key"), index + 1),
+            SettingsRulesHasDustKey(save->OverlayProfiles[index].Overlays));
+    }
+
+    // And on again as on
+    values.bSpaceDust = true;
+    save->SetValues(values);
+    TestTrue(TEXT("SetValues stores on"), save->bSpaceDust);
+    TestTrue(TEXT("GetValues gives on back"), save->GetValues().bSpaceDust);
+    TestTrue(TEXT("on round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
     return true;
 }
 

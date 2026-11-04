@@ -5,6 +5,7 @@
 
 #include "UI/SOLOverlaySmoke.h"
 
+#include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
@@ -28,17 +29,41 @@ namespace
     // The script's steps, in order
     enum class EOverlayStep : int32
     {
-        Setup,              // Let the HUD draw a few frames with the overlays on
+        Setup,              // Step 1: let the HUD draw a few frames with the overlays on
         MasterOff,          // O
         MasterOn,           // O again
         OrbitLinesOff,      // Alt+O
         OrbitLinesOn,       // Alt+O again
-        Darkening,          // Shift+O
-        DarkeningBack,      // Shift+O again
-        MenuOpen,           // Ctrl+O
-        MenuClick,          // A Slate click on the Planets row
-        MenuClose,          // Esc through Slate
+        CycleSolo,          // Step 2: Right Shift+O with only Profile 1
+        LeftShift,          // Step 3: Left Shift+O does nothing (D1)
+        MenuOpen,           // Step 4: Ctrl+O
+        TabClick,           // Step 5: a Slate click on the Profile 3 tab (disabled: its enable page)
+        EnableClick,        // Step 5: a Slate click on its Enable row
+        TabsShot,           // Step 5: screenshot of the tabs
+        PlanetsClick,       // Step 6: a Slate click on Planets in Profile 3
+        PageUp,             // Step 7: PageUp views Profile 2 (disabled)
+        MenuClose,          // Step 8: Esc through Slate
         FinalShot,          // Screenshot with the icons
+        CycleToFirst,       // Step 9: Right Shift+O, Profile 3 -> 1
+        TagShot,            // Step 9: screenshot of the tag
+        CycleToThird,       // Step 10: Right Shift+O, back to Profile 3
+        MasterThirdOff,     // Step 11: O in Profile 3
+        MasterCycleFirst,   // Step 11: Right Shift+O to Profile 1
+        MasterCycleThird,   // Step 11: Right Shift+O to Profile 3
+        OrbitThirdOff,      // Step 12: Alt+O in Profile 3
+        OrbitCycleFirst,    // Step 12: Right Shift+O to Profile 1
+        OrbitCycleThird,    // Step 12: Right Shift+O to Profile 3
+        MenuReopen,         // Step 12: Ctrl+O
+        OrbitRowClick,      // Step 12: a Slate click on the Orbit Lines row
+        DisableClick,       // Step 13: a Slate click on Profile enabled (off)
+        ReenableTab,        // Step 13: a Slate click on the Profile 3 tab
+        ReenableClick,      // Step 13: a Slate click on its Enable row
+        MenuCloseAgain,     // Esc again
+        FinalChange,        // Step 14: O makes a write owed (no write yet)
+        LeaveOwed,          // Step 14: the leave-flight write point (level transition) writes it once
+        LeaveUnchanged,     // Step 14: the write point again, nothing changed: no write
+        QuitChange,         // Step 14: O again makes a write owed
+        LeaveQuit,          // Step 14: the write point on quit / PIE end starts none (shutdown writes it)
         Quit,
         Count,
     };
@@ -47,8 +72,42 @@ namespace
     constexpr double OVERLAYSMOKE_SETUP_S = 3.0;
     constexpr double OVERLAYSMOKE_STEP_S = 0.6;
     constexpr double OVERLAYSMOKE_SHOT_S = 1.5;
+    constexpr double OVERLAYSMOKE_TAG_FADE_S = 3.0;             // Longer than the tag's show time and fade
     constexpr double OVERLAYSMOKE_QUIT_S = 3.0;
     constexpr int32 OVERLAYSMOKE_MIN_FRAMES = 5;
+    constexpr int32 OVERLAYSMOKE_PROFILE_COUNT = 5;
+    constexpr int32 OVERLAYSMOKE_THIRD = 2;                     // Profile 3 (0-based)
+    constexpr int32 OVERLAYSMOKE_SECOND = 1;                    // Profile 2 (0-based)
+    constexpr int32 OVERLAYSMOKE_PAGE_ROWS = 16;                // Profile 1's page: the 15 table rows and Orbit Lines
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how long a step lasts at least (real seconds)
+    double StepDurationS(const EOverlayStep step)
+    {
+        switch (step)
+        {
+        case EOverlayStep::Setup:
+            return OVERLAYSMOKE_SETUP_S;
+        case EOverlayStep::CycleSolo:
+            return OVERLAYSMOKE_TAG_FADE_S;
+        case EOverlayStep::FinalShot:
+        case EOverlayStep::MenuOpen:
+        case EOverlayStep::TabsShot:
+        case EOverlayStep::TagShot:
+            return OVERLAYSMOKE_SHOT_S;
+        case EOverlayStep::Quit:
+            return OVERLAYSMOKE_QUIT_S;
+        default:
+            return OVERLAYSMOKE_STEP_S;
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a row is checked in one profile's own mask (not only the active profile's)
+    bool IsRowCheckedIn(const SOLOverlay::FOverlayPrefs& prefs, const int32 profile, const SOLOverlay::EOverlay overlay)
+    {
+        return (prefs.Masks[profile] & (1u << static_cast<int32>(overlay))) != 0;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -91,11 +150,7 @@ bool FSOLOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
     // Each step lasts its duration and at least a few frames, then checks and moves on
     mStepTimeS += realDeltaSeconds;
     ++mStepFrames;
-    const EOverlayStep step = static_cast<EOverlayStep>(mStep);
-    const double durationS = step == EOverlayStep::Setup ? OVERLAYSMOKE_SETUP_S
-        : step == EOverlayStep::FinalShot || step == EOverlayStep::MenuOpen ? OVERLAYSMOKE_SHOT_S
-        : step == EOverlayStep::Quit ? OVERLAYSMOKE_QUIT_S : OVERLAYSMOKE_STEP_S;
-    if (mStepTimeS < durationS || mStepFrames < OVERLAYSMOKE_MIN_FRAMES)
+    if (mStepTimeS < StepDurationS(static_cast<EOverlayStep>(mStep)) || mStepFrames < OVERLAYSMOKE_MIN_FRAMES)
     {
         return false;
     }
@@ -115,60 +170,109 @@ bool FSOLOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
 // Runs the step's action at its start
 void FSOLOverlaySmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
 {
+    const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
     switch (static_cast<EOverlayStep>(step))
     {
     case EOverlayStep::MasterOff:
     case EOverlayStep::MasterOn:
+    case EOverlayStep::MasterThirdOff:
+    case EOverlayStep::FinalChange:
         PressKey(EKeys::O);
         mPendingReleases.Add(EKeys::O);
+        if (static_cast<EOverlayStep>(step) == EOverlayStep::FinalChange)
+        {
+            mSavesBefore = mSettings->GetSaveRequestCount();
+        }
         break;
     case EOverlayStep::OrbitLinesOff:
     case EOverlayStep::OrbitLinesOn:
+    case EOverlayStep::OrbitThirdOff:
         mWasOrbitLinesShown = mSettings->AreOrbitLinesShown();
         TapChord(EKeys::LeftAlt, EKeys::O);
         break;
-    case EOverlayStep::Darkening:
-    case EOverlayStep::DarkeningBack:
+    case EOverlayStep::CycleSolo:
+    case EOverlayStep::CycleToFirst:
+    case EOverlayStep::CycleToThird:
+    case EOverlayStep::MasterCycleFirst:
+    case EOverlayStep::MasterCycleThird:
+    case EOverlayStep::OrbitCycleFirst:
+    case EOverlayStep::OrbitCycleThird:
+        mWasDarkening = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::Darkening);
+        TapChord(EKeys::RightShift, EKeys::O);
+        break;
+    case EOverlayStep::LeftShift:
         mWasDarkening = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::Darkening);
         TapChord(EKeys::LeftShift, EKeys::O);
         break;
     case EOverlayStep::MenuOpen:
+    case EOverlayStep::MenuReopen:
         TapChord(EKeys::LeftControl, EKeys::O);
         break;
-    case EOverlayStep::MenuClick:
-    {
-        // A real Slate click at the Planets row's centre: the pointer's hot spot is where the click lands
-        mWasPlanetsChecked = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::IconPlanets);
-        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
-        if (menu != nullptr && FSlateApplication::IsInitialized())
+    case EOverlayStep::TabClick:
+    case EOverlayStep::ReenableTab:
+        if (menu != nullptr)
         {
-            FSlateApplication& slate = FSlateApplication::Get();
-            const FVector2D at = menu->GetRowScreenCenter(static_cast<int32>(SOLOverlay::EOverlay::IconPlanets));
-            slate.SetCursorPos(at);
-            const FPointerEvent down(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
-                TSet<FKey>({ EKeys::LeftMouseButton }), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
-            slate.ProcessMouseButtonDownEvent(nullptr, down);
-            const FPointerEvent up(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
-                TSet<FKey>(), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
-            slate.ProcessMouseButtonUpEvent(up);
-            UE_LOG(LogSOL, Log, TEXT("SmokeOverlay: Slate click at (%.0f, %.0f)"), at.X, at.Y);
+            ClickAt(menu->GetTabScreenCenter(OVERLAYSMOKE_THIRD));
         }
-        TakeUiShot(TEXT("Menu"));
         break;
-    }
+    case EOverlayStep::EnableClick:
+    case EOverlayStep::ReenableClick:
+        if (menu != nullptr)
+        {
+            ClickAt(menu->GetRowScreenCenter(0));
+        }
+        break;
+    case EOverlayStep::PlanetsClick:
+        // A real Slate click at the Planets row's centre
+        if (menu != nullptr)
+        {
+            ClickAt(menu->GetRowScreenCenter(USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::IconPlanets)));
+        }
+        break;
+    case EOverlayStep::OrbitRowClick:
+        if (menu != nullptr)
+        {
+            ClickAt(menu->GetRowScreenCenter(USOLOverlayMenuWidget::ORBIT_LINES_ROW));
+        }
+        break;
+    case EOverlayStep::DisableClick:
+        if (menu != nullptr)
+        {
+            ClickAt(menu->GetRowScreenCenter(USOLOverlayMenuWidget::PROFILE_ENABLED_ROW));
+        }
+        break;
+    case EOverlayStep::PageUp:
+        SlateKey(EKeys::PageUp);
+        break;
     case EOverlayStep::MenuClose:
-    {
+    case EOverlayStep::MenuCloseAgain:
         mSavesBefore = mSettings->GetSaveRequestCount();
-        if (FSlateApplication::IsInitialized())
-        {
-            FSlateApplication& slate = FSlateApplication::Get();
-            const FKeyEvent keyEvent(EKeys::Escape, FModifierKeysState(), slate.GetUserIndexForKeyboard(), false, 0,
-                0);
-            slate.ProcessKeyDownEvent(keyEvent);
-            slate.ProcessKeyUpEvent(keyEvent);
-        }
+        SlateKey(EKeys::Escape);
         break;
-    }
+    case EOverlayStep::LeaveOwed:
+    case EOverlayStep::LeaveUnchanged:
+        // The pawn's EndPlay write point with a reason that is not quit (a level transition, the pawn destroyed)
+        mSavesBefore = mSettings->GetSaveRequestCount();
+        mSavesCompletedBefore = mSettings->GetSaveCompletedCount();
+        pawn.FlushSettingsAtLeave(static_cast<EOverlayStep>(step) == EOverlayStep::LeaveOwed
+            ? EEndPlayReason::LevelTransition : EEndPlayReason::Destroyed);
+        break;
+    case EOverlayStep::QuitChange:
+        PressKey(EKeys::O);
+        mPendingReleases.Add(EKeys::O);
+        break;
+    case EOverlayStep::LeaveQuit:
+        // Quit and PIE end leave the owed write to the settings subsystem's synchronous shutdown write
+        mSavesBefore = mSettings->GetSaveRequestCount();
+        pawn.FlushSettingsAtLeave(EEndPlayReason::Quit);
+        pawn.FlushSettingsAtLeave(EEndPlayReason::EndPlayInEditor);
+        break;
+    case EOverlayStep::TabsShot:
+        TakeUiShot(TEXT("Tabs"));
+        break;
+    case EOverlayStep::TagShot:
+        TakeUiShot(TEXT("Tag"));
+        break;
     case EOverlayStep::FinalShot:
         TakeUiShot(TEXT("Icons"));
         break;
@@ -187,17 +291,29 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     const ASOLFlightHud* hud = mHud.Get();
     const int32 icons = hud != nullptr ? hud->GetIconLayer().GetLastIconCount() : 0;
     const int32 arrows = hud != nullptr ? hud->GetIconLayer().GetLastArrowCount() : 0;
+    const int32 planets = hud != nullptr
+        ? hud->GetIconLayer().GetLastIconCount(SOLOverlayIcons::EIconCategory::Planet) : 0;
     const ASOLOrbitLineVisuals* lines = hud != nullptr ? hud->GetOrbitLineVisuals() : nullptr;
     const int32 visibleLines = lines != nullptr ? lines->CountVisibleLines() : 0;
     const bool bMaster = mSettings->IsOverlayMasterOn();
+    const SOLOverlay::FOverlayPrefs& prefs = mSettings->GetOverlayPrefs();
+    const int32 active = prefs.ActiveProfile + 1;
+    const float tagAlpha = hud != nullptr ? hud->GetLastProfileTagAlpha() : 0.0f;
+    const FString tagText = hud != nullptr ? hud->GetProfileTagText() : FString();
+    const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+    const int32 rows = menu != nullptr ? menu->GetRowCount() : 0;
+    const int32 viewed = menu != nullptr ? menu->GetViewedProfile() + 1 : 0;
     switch (static_cast<EOverlayStep>(step))
     {
     case EOverlayStep::Setup:
     {
         mStartIcons = icons;
         Check(TEXT("a-start-on"), bMaster && icons + arrows > 0, FString::Printf(TEXT("flight start: master %s, %d "
-            "icons, %d edge arrows, %d orbit lines, %d NPC ship contacts"), bMaster ? TEXT("on") : TEXT("off"),
-            icons, arrows, visibleLines, hud != nullptr ? hud->GetLastRadarShipCount() : 0));
+            "icons (%d planets), %d edge arrows, %d orbit lines, %d NPC ship contacts"), bMaster ? TEXT("on")
+            : TEXT("off"), icons, planets, arrows, visibleLines, hud != nullptr ? hud->GetLastRadarShipCount() : 0));
+        Check(TEXT("1-start"), prefs.ActiveProfile == 0 && prefs.EnabledProfiles == 0x01 && bMaster
+            && tagAlpha == 0.0f, FString::Printf(TEXT("active Profile %d, enabled bits 0x%02x, master %s, tag alpha "
+            "%.2f"), active, prefs.EnabledProfiles, bMaster ? TEXT("on") : TEXT("off"), tagAlpha));
         const USOLHologramCursorSubsystem* cursor = pawn.GetWorld()->GetSubsystem<USOLHologramCursorSubsystem>();
         const UGameViewportClient* viewport = pawn.GetWorld()->GetGameViewport();
         const bool bInstalled = cursor != nullptr && cursor->GetCursorWidget().IsValid() && viewport != nullptr
@@ -229,40 +345,200 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             bMaster ? TEXT("on") : TEXT("off"), pawn.IsFreeLooking() ? TEXT("ON") : TEXT("off")));
         break;
     }
-    case EOverlayStep::Darkening:
-    case EOverlayStep::DarkeningBack:
+    case EOverlayStep::CycleSolo:
     {
-        const bool bDark = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::Darkening);
-        Check(step == static_cast<int32>(EOverlayStep::Darkening) ? TEXT("e-shift-o") : TEXT("e-shift-o-back"),
-            bDark != mWasDarkening && bMaster, FString::Printf(TEXT("Shift+O: darkening %s -> %s, master %s"),
-            mWasDarkening ? TEXT("on") : TEXT("off"), bDark ? TEXT("on") : TEXT("off"), bMaster ? TEXT("on")
-            : TEXT("off")));
+        // Checked after the tag faded: its text is still what the press formatted
+        const bool bDark = SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::Darkening);
+        Check(TEXT("2-rshift-solo"), prefs.ActiveProfile == 0 && bMaster && bDark == mWasDarkening
+            && tagText.Contains(TEXT("PROFILE 1")) && tagAlpha == 0.0f, FString::Printf(TEXT("Right Shift+O, only "
+            "Profile 1: active Profile %d, master %s, darkening unchanged %s, tag text '%s' (faded, alpha %.2f)"),
+            active, bMaster ? TEXT("on") : TEXT("off"), bDark == mWasDarkening ? TEXT("yes") : TEXT("NO"), *tagText,
+            tagAlpha));
+        break;
+    }
+    case EOverlayStep::LeftShift:
+    {
+        const bool bDark = SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::Darkening);
+        Check(TEXT("3-lshift-none"), prefs.ActiveProfile == 0 && bMaster && bDark == mWasDarkening
+            && !pawn.IsOverlayMenuOpen() && tagAlpha == 0.0f && icons == mStartIcons, FString::Printf(TEXT("Left "
+            "Shift+O: active Profile %d, master %s, darkening %s, menu %s, tag alpha %.2f, %d icons (start %d)"),
+            active, bMaster ? TEXT("on") : TEXT("off"), bDark == mWasDarkening ? TEXT("unchanged") : TEXT("CHANGED"),
+            pawn.IsOverlayMenuOpen() ? TEXT("OPEN") : TEXT("closed"), tagAlpha, icons, mStartIcons));
         break;
     }
     case EOverlayStep::MenuOpen:
     {
-        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
-        const int32 rows = menu != nullptr ? menu->GetRowCount() : 0;
-        Check(TEXT("f-menu-open"), pawn.IsOverlayMenuOpen() && rows == SOLOverlay::OVERLAY_COUNT && bMaster,
-            FString::Printf(TEXT("Ctrl+O: menu %s, %d rows (table %d), master %s"), pawn.IsOverlayMenuOpen()
-            ? TEXT("open") : TEXT("closed"), rows, SOLOverlay::OVERLAY_COUNT, bMaster ? TEXT("on") : TEXT("off")));
+        const int32 orbitRow = USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::PlanetOrbits);
+        const int32 moonRow = USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::MoonOrbits);
+        const bool bIndented = menu != nullptr
+            && menu->GetRowText(orbitRow).Contains(SOLMenuText::OVERLAY_MENU_CHILD_INDENT)
+            && menu->GetRowText(moonRow).Contains(SOLMenuText::OVERLAY_MENU_CHILD_INDENT)
+            && !menu->GetRowText(USOLOverlayMenuWidget::ORBIT_LINES_ROW).StartsWith(
+            SOLMenuText::OVERLAY_MENU_CHILD_INDENT);
+        Check(TEXT("4-menu-open"), pawn.IsOverlayMenuOpen() && menu != nullptr
+            && menu->GetTabCount() == OVERLAYSMOKE_PROFILE_COUNT && rows == OVERLAYSMOKE_PAGE_ROWS && bIndented
+            && bMaster, FString::Printf(TEXT("Ctrl+O: menu %s, %d tabs, %d rows (want %d), orbit rows indented %s, "
+            "master %s"), pawn.IsOverlayMenuOpen() ? TEXT("open") : TEXT("closed"),
+            menu != nullptr ? menu->GetTabCount() : 0, rows, OVERLAYSMOKE_PAGE_ROWS, bIndented ? TEXT("yes")
+            : TEXT("NO"), bMaster ? TEXT("on") : TEXT("off")));
         break;
     }
-    case EOverlayStep::MenuClick:
+    case EOverlayStep::TabClick:
+        Check(TEXT("5-tab-click"), viewed == OVERLAYSMOKE_THIRD + 1 && rows == 1 && prefs.ActiveProfile == 0
+            && !SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD), FString::Printf(TEXT("click on the "
+            "Profile 3 tab: viewing Profile %d, %d row(s), active Profile %d, Profile 3 %s"), viewed, rows, active,
+            SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD) ? TEXT("ENABLED") : TEXT("disabled")));
+        break;
+    case EOverlayStep::EnableClick:
+        Check(TEXT("5-enable"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD)
+            && prefs.ActiveProfile == OVERLAYSMOKE_THIRD && prefs.Masks[OVERLAYSMOKE_THIRD] == prefs.Masks[0]
+            && rows == OVERLAYSMOKE_PAGE_ROWS + 1, FString::Printf(TEXT("click on Enable: Profile 3 %s, active "
+            "Profile %d, mask 0x%x (Profile 1: 0x%x), %d rows"), SOLOverlay::IsProfileEnabled(prefs,
+            OVERLAYSMOKE_THIRD) ? TEXT("enabled") : TEXT("NOT enabled"), active, prefs.Masks[OVERLAYSMOKE_THIRD],
+            prefs.Masks[0], rows));
+        break;
+    case EOverlayStep::PlanetsClick:
     {
-        const bool bChecked = SOLOverlay::IsEnabled(mSettings->GetOverlayPrefs(), SOLOverlay::EOverlay::IconPlanets);
-        const int32 planets = hud != nullptr
-            ? hud->GetIconLayer().GetLastIconCount(SOLOverlayIcons::EIconCategory::Planet) : 0;
-        Check(TEXT("g-menu-click"), bChecked != mWasPlanetsChecked && (bChecked || planets == 0),
-            FString::Printf(TEXT("click on Planets: %s -> %s, %d planet icons"), mWasPlanetsChecked ? TEXT("on")
-            : TEXT("off"), bChecked ? TEXT("on") : TEXT("off"), planets));
+        const bool bThird = IsRowCheckedIn(prefs, OVERLAYSMOKE_THIRD, SOLOverlay::EOverlay::IconPlanets);
+        const bool bFirst = IsRowCheckedIn(prefs, 0, SOLOverlay::EOverlay::IconPlanets);
+        Check(TEXT("6-planets-click"), !bThird && bFirst && planets == 0, FString::Printf(TEXT("click on Planets in "
+            "Profile 3: Profile 3 %s, Profile 1 %s, %d planet icons"), bThird ? TEXT("CHECKED") : TEXT("unchecked"),
+            bFirst ? TEXT("checked") : TEXT("UNCHECKED"), planets));
         break;
     }
+    case EOverlayStep::PageUp:
+        Check(TEXT("7-page-up"), viewed == OVERLAYSMOKE_SECOND + 1 && rows == 1 && prefs.ActiveProfile
+            == OVERLAYSMOKE_THIRD, FString::Printf(TEXT("PageUp: viewing Profile %d, %d row(s), active Profile %d"),
+            viewed, rows, active));
+        break;
     case EOverlayStep::MenuClose:
     {
         const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
-        Check(TEXT("h-menu-close"), !pawn.IsOverlayMenuOpen() && saves == 1, FString::Printf(TEXT("Esc: menu %s, "
+        Check(TEXT("8-menu-close"), !pawn.IsOverlayMenuOpen() && saves == 1, FString::Printf(TEXT("Esc: menu %s, "
             "%d settings write(s) at the close"), pawn.IsOverlayMenuOpen() ? TEXT("open") : TEXT("closed"), saves));
+        break;
+    }
+    case EOverlayStep::CycleToFirst:
+    {
+        // No planet is on screen at the start position (they are edge arrows), so the HUD's planet icon count cannot
+        // tell the profiles apart: the model's verdict for the Planets row is checked next to a live icon count
+        const bool bShown = mSettings->IsOverlayShown(SOLOverlay::EOverlay::IconPlanets);
+        Check(TEXT("9-cycle-first"), prefs.ActiveProfile == 0 && bShown && icons > 0
+            && tagText.Contains(TEXT("PROFILE 1")) && tagAlpha > 0.0f, FString::Printf(TEXT("Right Shift+O: active "
+            "Profile %d, Planets row %s, %d icons (%d planet icons), tag '%s' alpha %.2f"), active, bShown
+            ? TEXT("shown") : TEXT("HIDDEN"), icons, planets, *tagText, tagAlpha));
+        break;
+    }
+    case EOverlayStep::CycleToThird:
+    {
+        const bool bShown = mSettings->IsOverlayShown(SOLOverlay::EOverlay::IconPlanets);
+        Check(TEXT("10-cycle-third"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bShown && planets == 0
+            && tagText.Contains(TEXT("PROFILE 3")), FString::Printf(TEXT("Right Shift+O: active Profile %d, Planets "
+            "row %s, %d planet icons, tag '%s'"), active, bShown ? TEXT("SHOWN") : TEXT("hidden"), planets,
+            *tagText));
+        break;
+    }
+    case EOverlayStep::MasterThirdOff:
+        Check(TEXT("11-master-third"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bMaster && icons == 0,
+            FString::Printf(TEXT("O in Profile 3: master %s, %d icons"), bMaster ? TEXT("ON") : TEXT("off"), icons));
+        break;
+    case EOverlayStep::MasterCycleFirst:
+        Check(TEXT("11-master-first"), prefs.ActiveProfile == 0 && bMaster && icons > 0, FString::Printf(TEXT("Right "
+            "Shift+O to Profile %d: master %s, %d icons"), active, bMaster ? TEXT("on") : TEXT("OFF"), icons));
+        break;
+    case EOverlayStep::MasterCycleThird:
+        Check(TEXT("11-master-kept"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bMaster, FString::Printf(TEXT(
+            "Right Shift+O to Profile %d: master %s (Profile 3 left it off)"), active, bMaster ? TEXT("ON")
+            : TEXT("off")));
+        break;
+    case EOverlayStep::OrbitThirdOff:
+        Check(TEXT("12-orbit-third"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && mWasOrbitLinesShown
+            && !mSettings->AreOrbitLinesShown(), FString::Printf(TEXT("Alt+O in Profile %d: orbit lines %s -> %s"),
+            active, mWasOrbitLinesShown ? TEXT("on") : TEXT("off"), mSettings->AreOrbitLinesShown() ? TEXT("ON")
+            : TEXT("off")));
+        break;
+    case EOverlayStep::OrbitCycleFirst:
+        Check(TEXT("12-orbit-first"), prefs.ActiveProfile == 0 && mSettings->AreOrbitLinesShown(),
+            FString::Printf(TEXT("Right Shift+O to Profile %d: orbit lines %s"), active,
+            mSettings->AreOrbitLinesShown() ? TEXT("on") : TEXT("OFF")));
+        break;
+    case EOverlayStep::OrbitCycleThird:
+        Check(TEXT("12-orbit-kept"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !mSettings->AreOrbitLinesShown(),
+            FString::Printf(TEXT("Right Shift+O to Profile %d: orbit lines %s (Profile 3 left them off)"), active,
+            mSettings->AreOrbitLinesShown() ? TEXT("ON") : TEXT("off")));
+        break;
+    case EOverlayStep::MenuReopen:
+        Check(TEXT("12-menu-reopen"), pawn.IsOverlayMenuOpen() && viewed == OVERLAYSMOKE_THIRD + 1,
+            FString::Printf(TEXT("Ctrl+O: menu %s, viewing Profile %d"), pawn.IsOverlayMenuOpen() ? TEXT("open")
+            : TEXT("CLOSED"), viewed));
+        break;
+    case EOverlayStep::OrbitRowClick:
+        Check(TEXT("12-orbit-row"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && mSettings->AreOrbitLinesShown(),
+            FString::Printf(TEXT("click on the Orbit Lines row in Profile %d: orbit lines %s"), active,
+            mSettings->AreOrbitLinesShown() ? TEXT("on") : TEXT("OFF")));
+        break;
+    case EOverlayStep::DisableClick:
+        Check(TEXT("13-disable"), !SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD) && prefs.ActiveProfile == 0
+            && viewed == 1, FString::Printf(TEXT("click on Profile enabled: Profile 3 %s, active Profile %d, viewing "
+            "Profile %d"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD) ? TEXT("ENABLED")
+            : TEXT("disabled"), active, viewed));
+        break;
+    case EOverlayStep::ReenableTab:
+        Check(TEXT("13-tab"), viewed == OVERLAYSMOKE_THIRD + 1 && rows == 1 && prefs.ActiveProfile == 0,
+            FString::Printf(TEXT("click on the Profile 3 tab: viewing Profile %d, %d row(s), active Profile %d"),
+            viewed, rows, active));
+        break;
+    case EOverlayStep::ReenableClick:
+    {
+        // Its own values come back (D12): Planets unchecked, master and orbit lines as left, not a copy of Profile 1
+        const bool bPlanets = IsRowCheckedIn(prefs, OVERLAYSMOKE_THIRD, SOLOverlay::EOverlay::IconPlanets);
+        Check(TEXT("13-reenable"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD)
+            && prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bPlanets && !bMaster && mSettings->AreOrbitLinesShown(),
+            FString::Printf(TEXT("click on Enable: Profile 3 %s, active Profile %d, Planets %s, master %s, orbit "
+            "lines %s"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD) ? TEXT("enabled")
+            : TEXT("NOT enabled"), active, bPlanets ? TEXT("CHECKED") : TEXT("unchecked"), bMaster ? TEXT("ON")
+            : TEXT("off"), mSettings->AreOrbitLinesShown() ? TEXT("on") : TEXT("OFF")));
+        break;
+    }
+    case EOverlayStep::MenuCloseAgain:
+    {
+        const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
+        Check(TEXT("13-menu-close"), !pawn.IsOverlayMenuOpen() && saves == 1,
+            FString::Printf(TEXT("Esc: menu %s, %d settings write(s)"), pawn.IsOverlayMenuOpen()
+            ? TEXT("open") : TEXT("closed"), saves));
+        break;
+    }
+    case EOverlayStep::FinalChange:
+        Check(TEXT("14-no-write-yet"), bMaster && mSettings->GetSaveRequestCount() == mSavesBefore,
+            FString::Printf(TEXT("O in Profile 3: master %s, %d write(s) yet (want 0)"), bMaster ? TEXT("on")
+            : TEXT("OFF"), mSettings->GetSaveRequestCount() - mSavesBefore));
+        break;
+    case EOverlayStep::LeaveOwed:
+    {
+        const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
+        const int32 completed = mSettings->GetSaveCompletedCount() - mSavesCompletedBefore;
+        Check(TEXT("14-leave-owed"), saves == 1 && completed == 1, FString::Printf(TEXT("leaving flight (level "
+            "transition) with the O change owed: %d write(s) started, %d finished (want 1 and 1)"), saves, completed));
+        break;
+    }
+    case EOverlayStep::LeaveUnchanged:
+    {
+        const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
+        Check(TEXT("14-leave-unchanged"), saves == 0, FString::Printf(TEXT("leaving flight (destroyed) with nothing "
+            "changed since the last write: %d write(s) (want 0)"), saves));
+        break;
+    }
+    case EOverlayStep::QuitChange:
+        Check(TEXT("14-quit-change"), !bMaster && mSettings->GetSaveRequestCount() == mSavesBefore,
+            FString::Printf(TEXT("O in Profile 3 again: master %s, %d write(s) (want 0)"), bMaster ? TEXT("ON")
+            : TEXT("off"), mSettings->GetSaveRequestCount() - mSavesBefore));
+        break;
+    case EOverlayStep::LeaveQuit:
+    {
+        // The quit that follows writes the owed change once, synchronously ("shutdown write" in the log)
+        const int32 saves = mSettings->GetSaveRequestCount() - mSavesBefore;
+        Check(TEXT("14-leave-quit"), saves == 0, FString::Printf(TEXT("leaving flight on quit / PIE end with a change "
+            "owed: %d async write(s) (want 0; the shutdown write takes it)"), saves));
         break;
     }
     case EOverlayStep::Quit:
@@ -271,6 +547,39 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     default:
         break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sends a real Slate left click at a screen point (the pointer's hot spot is where the click lands)
+void FSOLOverlaySmoke::ClickAt(const FVector2D& at) const
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    slate.SetCursorPos(at);
+    const FPointerEvent down(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
+        TSet<FKey>({ EKeys::LeftMouseButton }), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
+    slate.ProcessMouseButtonDownEvent(nullptr, down);
+    const FPointerEvent up(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
+        TSet<FKey>(), EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
+    slate.ProcessMouseButtonUpEvent(up);
+    UE_LOG(LogSOL, Log, TEXT("SmokeOverlay: Slate click at (%.0f, %.0f)"), at.X, at.Y);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sends a key press and release through Slate (to the focused widget)
+void FSOLOverlaySmoke::SlateKey(const FKey& key) const
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    const FKeyEvent keyEvent(key, FModifierKeysState(), slate.GetUserIndexForKeyboard(), false, 0, 0);
+    slate.ProcessKeyDownEvent(keyEvent);
+    slate.ProcessKeyUpEvent(keyEvent);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -14,12 +14,16 @@ class ASOLShipPawn;
 class USOLSettingsSubsystem;
 
 /**
- * Verification-only overlay run (-SOLSmokeOverlay, SDD 22): icons on at flight start, O turns every overlay off and
- * on (icons and orbit lines), Alt+O toggles only the orbit lines without free look or the master, Shift+O toggles the
- * darkening, Ctrl+O opens the Overlay Menu (one row per overlay), a Slate click on a row toggles it, Esc closes the
- * menu and writes the settings once, and the hologram cursor is the viewport's software cursor. Screenshots with the
- * UI go to Saved/Screenshots/OverlaySmoke_*.png. Runs with the smoke settings slot (never the player's file) and
- * quits at the end. Each check is logged as "SmokeOverlay CHECK <label> PASS|FAIL: <detail>".
+ * Verification-only overlay run (-SOLSmokeOverlay, SDD 22 and SDD 34 section 12): icons on at flight start, O turns
+ * every overlay off and on (icons and orbit lines), Alt+O toggles only the orbit lines without free look or the master,
+ * Right Shift+O cycles the overlay profile (HUD tag; wraps past disabled profiles; master and orbit lines are per
+ * profile), Left Shift+O does nothing, Ctrl+O opens the Overlay Menu (5 profile tabs, 16 rows, orbit rows indented),
+ * Slate clicks on tabs and rows enable a profile, uncheck a row, flip the Orbit Lines row and the Profile enabled row
+ * (a re-enabled profile keeps its own values), PageUp views the tab above, Esc closes the menu with one settings
+ * write, the pawn's leave-flight write point writes an owed change once and nothing when nothing changed (and leaves
+ * it to the settings subsystem's shutdown write on quit), and the hologram cursor is the viewport's software cursor.
+ * Screenshots with the UI go to Saved/Screenshots/OverlaySmoke_*.png. Runs with the smoke settings slot (never the
+ * player's file) and quits at the end. Each check is logged as "SmokeOverlay CHECK <label> PASS|FAIL: <detail>".
  */
 class SOLTEST_API FSOLOverlaySmoke
 {
@@ -46,6 +50,12 @@ private:
     // Presses a key with a modifier held (both released next frame)
     void TapChord(const FKey& modifier, const FKey& key);
 
+    // Sends a real Slate left click at a screen point
+    void ClickAt(const FVector2D& at) const;
+
+    // Sends a key press and release through Slate (to the focused widget)
+    void SlateKey(const FKey& key) const;
+
     // Requests a window screenshot with the UI
     static void TakeUiShot(const TCHAR* name);
 
@@ -60,10 +70,10 @@ private:
     double mStepTimeS = 0.0;
     int32 mStepFrames = 0;
     int32 mStartIcons = 0;                                  // Icons drawn with the overlays on at the start
-    int32 mSavesBefore = 0;                                 // Slot writes before the menu closed
+    int32 mSavesBefore = 0;                                 // Slot writes before the step's action
+    int32 mSavesCompletedBefore = 0;                        // Finished slot writes before the step's action
     bool mWasOrbitLinesShown = false;
     bool mWasDarkening = false;
-    bool mWasPlanetsChecked = false;
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
 };

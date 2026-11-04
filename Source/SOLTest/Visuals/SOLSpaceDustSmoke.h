@@ -27,12 +27,12 @@ class USOLTargetingSubsystem;
  * Verification-only space dust run (-SOLSmokeDust, SDD 43 section 11), driven through the pawn's real paths: a stopped
  * ship (no dust), 3 m/s (points), 50 km/s (streaks near the cap, direction), 0.3c (still visible, apparent speed at
  * the cap), the M frame lock on a body the ship moves with (fade out and hide), time warp 10x (hidden at once) and back
- * to 1x (fade-in reset), a Moon jump (hidden for the whole warp), the map (hidden), a Slate click on the Space Dust
- * row of the Ctrl+O Overlay Menu (hidden, shown, one settings write at Esc), the master O (no effect), the pause menu
- * (hidden), a 50 km/s run through render-origin rebases (continuous wrapped offset, the Niagara component tracking the
- * ship) and a ship resting on the Moon's surface (no dust). With -SOLSmokeDustProfile (in -game only) it also captures
- * ProfileGPU and stat dumpave of STAT_SOL_SpaceDustUpdate with the dust shown at 50 km/s and again with
- * sol.SpaceDust 0 (numbers in the log).
+ * to 1x (fade-in reset), a Moon jump (hidden for the whole warp), the map (hidden), the Settings page's Space dust
+ * option (shown in a screenshot; applied off: hidden, on: shown, one settings write at EndVisit), the master O (no
+ * effect), the pause menu (hidden), a 50 km/s run through render-origin rebases (continuous wrapped offset, the
+ * Niagara component tracking the ship) and a ship resting on the Moon's surface (no dust). With -SOLSmokeDustProfile
+ * (in -game only) it also captures ProfileGPU and stat dumpave of STAT_SOL_SpaceDustUpdate with the dust shown at
+ * 50 km/s and again with sol.SpaceDust 0 (numbers in the log).
  * Screenshots go to Saved/Screenshots/DustSmoke_*.png. Runs with the smoke settings slot and quits at the end. Each
  * check is logged as "SmokeDust CHECK <label> PASS|FAIL: <detail>".
  */
@@ -89,12 +89,6 @@ private:
     // Moves the ship onto the Moon's surface at rest in the Moon's frame
     void PlaceOnMoonSurface() const;
 
-    // Sends a real Slate click to an Overlay Menu row; false when the menu is not there
-    bool ClickRow(const ASOLShipPawn& pawn, int32 row) const;
-
-    // Sends Esc through Slate (closes the Overlay Menu)
-    void PressEscape() const;
-
     // Runs a console command in the game world
     void RunCommand(const TCHAR* command, UWorld* world) const;
 
@@ -149,7 +143,7 @@ private:
     int32 mWarpSeenFrames = 0;                              // Frames the jump warp ran in the jump step
     int32 mWarpShownFrames = 0;                             // ... of which the dust was shown after the grace frames
     int32 mJumpsBefore = 0;
-    int32 mSavesBefore = 0;                                 // Slot writes before the Overlay Menu row clicks
+    int32 mSavesBefore = 0;                                 // Slot writes before the Settings option changes
     int32 mRebaseCount = 0;
     int32 mContinuityFrames = 0;
     int32 mContinuityViolations = 0;
@@ -163,5 +157,5 @@ private:
     bool mHasPrevOffset = false;
     bool mHasPrevOrigin = false;
     bool mIsLevelPressed = false;                           // Landed step: L pressed once
-    bool mIsRowClicked = false;                             // Click-off step: the Space Dust row clicked once
+    bool mIsRowClicked = false;                             // Settings steps: the tab or the resume requested once
 };

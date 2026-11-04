@@ -7,6 +7,11 @@
 
 #include "CoreMinimal.h"
 
+namespace SOLOverlay
+{
+    struct FOverlayPrefs;
+}
+
 // Pure-logic helpers of the Settings page and USOLSettingsSubsystem (SDD 8, 8d): display names and formatting of the
 // values, the resolution list, stepping through choices, slider snapping, the mouse-look scaling and the save-schema
 // version decision. Nothing here touches the engine's settings objects.
@@ -72,9 +77,11 @@ namespace SOLSettingsRules
     // Returns what to do with a save of savedVersion when the current schema is currentVersion
     SOLTEST_API ESaveVersionAction ClassifySaveVersion(int32 savedVersion, int32 currentVersion);
 
-    // Returns whether the settings slot needs a write: an Apply, a migration or a failed write owes one, or the O key
-    // left the orbit-line flag different from the value last loaded or written (SDD 17)
-    SOLTEST_API bool IsSaveOwed(bool bWriteOwed, bool bAppliedShowOrbitLines, bool bWrittenShowOrbitLines);
+    // Returns whether the settings slot needs a write (SDD 34 section 5.4): an Apply, a migration or a failed write
+    // owes one, or the applied overlay prefs (rows, profiles, each profile's master O and Alt+O orbit-lines switch)
+    // differ from the prefs last loaded or written (SOLOverlay::AreEqual)
+    SOLTEST_API bool IsSaveOwed(bool bWriteOwed, const SOLOverlay::FOverlayPrefs& applied,
+        const SOLOverlay::FOverlayPrefs& written);
 
     // Decides at boot what vsync and the quality preset start as and what is pushed to the engine. Only a value the
     // player chose on the Settings page (bSaveUsed and its "chosen" flag, and for the quality a valid preset) is the
