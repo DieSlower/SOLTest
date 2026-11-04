@@ -26,6 +26,8 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLHoloFrameBuild.h"
+#include "UI/SOLHoloMenuSubsystem.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeLayer.h"
 #include "UI/SOLHudShapeMath.h"
@@ -49,9 +51,7 @@
 
 namespace
 {
-    // Layout at a 720-pixel-high canvas (scaled up with the canvas height, see HUD_REFERENCE_HEIGHT_PX)
-    constexpr float HUD_REFERENCE_HEIGHT_PX = 720.0f;
-    constexpr float HUD_MAX_UI_SCALE = 2.0f;
+    // Layout at a 720-pixel-high canvas (scaled up with the canvas height, see SOL::Hologram::HUD_REFERENCE_HEIGHT_PX)
     constexpr float HUD_MARGIN_PX = 16.0f;
     constexpr float HUD_LINE_LARGE_PX = 36.0f;
     constexpr float HUD_SPEED_TEXT_SCALE = 1.8f;             // The main speed readout, on top of the UI scale
@@ -167,6 +167,7 @@ namespace
     constexpr float HUD_RETICLE_DOT_RADIUS_PX = 1.0f;
     constexpr float HUD_RETICLE_DOT_INTENSITY = 0.5f;          // Dimmer than the arms: the centre stays readable
     constexpr int32 HUD_SHAPE_LAYER_Z_ORDER = 0;
+    constexpr int32 HUD_MENU_LAYER_Z_ORDER = 1;                 // The menu layer: above the HUD layer, below the menus
 
     // sol.HudRenderer: 1 draws the ported HUD pieces with the glow-shape renderer, 0 falls back to Canvas
     TAutoConsoleVariable<int32> CVarHudRenderer(SOL::Hologram::CVAR_HUD_RENDERER, 1,
@@ -221,6 +222,7 @@ void ASOLFlightHud::BeginPlay()
     Combat = world->GetSubsystem<USOLCombatSubsystem>();
     Npcs = world->GetSubsystem<USOLNpcSubsystem>();
     Interaction = world->GetSubsystem<USOLInteractionSubsystem>();
+    HoloMenu = world->GetSubsystem<USOLHoloMenuSubsystem>();
 
     // The pawn talks to the HUD only through the HUD event bus (SDD 21 D4): commands in, the map overlay out
     if (HudEvents != nullptr)
@@ -352,6 +354,11 @@ void ASOLFlightHud::CreateShapeLayer()
     mShapeLayer = SNew(SSOLHudShapeLayer);
     mShapeLayer->SetMaterial(ShapeMaterial);
 
+    // The menu layer (SDD 42 section 4.3): the same widget with the hologram menu material (bound in BeginMenuFrame,
+    // the subsystem creates it at world begin play), just above the HUD layer and below the UMG menus; it holds the
+    // menus' and cards' shapes, backings and text, so their text paints above their own backing
+    mMenuLayer = SNew(SSOLHudShapeLayer).MaxShapes(SOL::HoloMenu::MENU_LAYER_MAX_SHAPES);
+
     // The text lines use the same engine fonts and sizes Canvas draws them with (GEngine's fonts stay loaded)
     for (int32 index = 0; index < static_cast<int32>(ESOLHudFont::Count); ++index)
     {
@@ -359,9 +366,12 @@ void ASOLFlightHud::CreateShapeLayer()
         if (const UFont* engineFont = GetHudFont(font))
         {
             mShapeLayer->SetFont(font, engineFont->GetLegacySlateFontInfo());
+            mMenuLayer->SetFont(font, engineFont->GetLegacySlateFontInfo());
         }
     }
     viewport->AddViewportWidgetContent(mShapeLayer.ToSharedRef(), HUD_SHAPE_LAYER_Z_ORDER);
+    viewport->AddViewportWidgetContent(mMenuLayer.ToSharedRef(), HUD_MENU_LAYER_Z_ORDER);
+    mIsMenuFrameStamped = false;
     mShapeStrength = -1.0f;
     mShapeComposite = -1.0f;
     mShapeViewSize = FVector2f::ZeroVector;
@@ -371,16 +381,27 @@ void ASOLFlightHud::CreateShapeLayer()
 // Removes the shape layer widget from the game viewport
 void ASOLFlightHud::DestroyShapeLayer()
 {
+    UWorld* world = GetWorld();
+    UGameViewportClient* viewport = world != nullptr ? world->GetGameViewport() : nullptr;
     if (mShapeLayer.IsValid())
     {
-        UWorld* world = GetWorld();
-        if (UGameViewportClient* viewport = world != nullptr ? world->GetGameViewport() : nullptr)
+        if (viewport != nullptr)
         {
             viewport->RemoveViewportWidgetContent(mShapeLayer.ToSharedRef());
         }
         mShapeLayer.Reset();
     }
+    if (mMenuLayer.IsValid())
+    {
+        if (viewport != nullptr)
+        {
+            viewport->RemoveViewportWidgetContent(mMenuLayer.ToSharedRef());
+        }
+        mMenuLayer.Reset();
+    }
+    mIsMenuFrameStamped = false;
     ShapeMaterial = nullptr;
+    HoloMenu = nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -398,8 +419,10 @@ void ASOLFlightHud::BeginShapeFrame()
     }
 
     // Warn once if the previous frame overflowed a fixed capacity (lines, shapes or backings silently disappear)
-    const int32 droppedShapes = mShapeLayer->GetBatch().GetDroppedCount();
-    const int32 droppedTexts = mShapeLayer->GetTexts().GetDroppedCount();
+    const int32 droppedShapes = mShapeLayer->GetBatch().GetDroppedCount()
+        + (mMenuLayer.IsValid() ? mMenuLayer->GetBatch().GetDroppedCount() : 0);
+    const int32 droppedTexts = mShapeLayer->GetTexts().GetDroppedCount()
+        + (mMenuLayer.IsValid() ? mMenuLayer->GetTexts().GetDroppedCount() : 0);
     if (!mIsOverflowWarned && (droppedShapes > 0 || droppedTexts > 0 || mWasBackingDropped))
     {
         mIsOverflowWarned = true;
@@ -410,6 +433,7 @@ void ASOLFlightHud::BeginShapeFrame()
     mWasBackingDropped = false;
     mShapeLayer->ResetFrame();
     mShapeLayer->MarkBatchFrame(GFrameCounter);
+    BeginMenuFrame();
     if (ShapeMaterial == nullptr || Canvas == nullptr)
     {
         return;
@@ -418,6 +442,10 @@ void ASOLFlightHud::BeginShapeFrame()
     mTextList = mBatch != nullptr ? &mShapeLayer->GetTexts() : nullptr;
     mWasShapeRendererActive = mBatch != nullptr;
     mShapeLayer->SetTextGlow(CVarHudTextGlow.GetValueOnGameThread() != 0);
+    if (mMenuLayer.IsValid())
+    {
+        mMenuLayer->SetTextGlow(CVarHudTextGlow.GetValueOnGameThread() != 0);
+    }
 
     // Parameters change rarely (Settings, the cvar, a resize): pushed only when they differ
     const float strength = Settings != nullptr ? Settings->GetLiveValues().HudEffectsStrength
@@ -448,6 +476,118 @@ FSOLHudShapeBatch* ASOLFlightHud::GetActiveShapeBatch()
 {
     return mShapeLayer.IsValid() && ShapeMaterial != nullptr && CVarHudRenderer.GetValueOnGameThread() != 0
         ? &mShapeLayer->GetBatch() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts this frame's menu layer: emptied only if the last frame drew on it, stamped only when written to, so a frame
+// with no menu or card costs nothing there; binds the menu material and feeds the subsystem's per-frame update
+void ASOLFlightHud::BeginMenuFrame()
+{
+    mIsMenuFrameStamped = false;
+    if (!mMenuLayer.IsValid())
+    {
+        return;
+    }
+    if (mMenuLayer->GetBatch().GetShapeCount() > 0 || mMenuLayer->GetBackingCount() > 0
+        || mMenuLayer->GetBatch().GetDroppedCount() > 0 || mMenuLayer->GetTexts().GetItems().Num() > 0
+        || mMenuLayer->GetTexts().GetDroppedCount() > 0)
+    {
+        mMenuLayer->ResetFrame();
+    }
+    if (HoloMenu == nullptr)
+    {
+        return;
+    }
+    UMaterialInstanceDynamic* menuMaterial = HoloMenu->GetMenuMaterial();
+    if (mMenuLayer->GetMaterial() != menuMaterial)
+    {
+        mMenuLayer->SetMaterial(menuMaterial);
+    }
+    HoloMenu->UpdateMaterialForFrame();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the batch menu shapes go to this frame (the menu layer's, stamped on first use; else the HUD's; else none)
+FSOLHudShapeBatch* ASOLFlightHud::GetMenuBatch()
+{
+    if (mBatch == nullptr)
+    {
+        return nullptr;
+    }
+    if (!mMenuLayer.IsValid() || mMenuLayer->GetMaterial() == nullptr)
+    {
+        return mBatch;
+    }
+    if (!mIsMenuFrameStamped)
+    {
+        mIsMenuFrameStamped = true;
+        mMenuLayer->MarkBatchFrame(GFrameCounter);
+    }
+    return &mMenuLayer->GetBatch();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a menu glow line on the menu layer, else as GlowLine (HUD batch or Canvas)
+void ASOLFlightHud::MenuLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, const float intensity,
+    const float thickness)
+{
+    FSOLHudShapeBatch* batch = GetMenuBatch();
+    if (batch == nullptr)
+    {
+        GlowLine(a, b, color, intensity, thickness);
+        return;
+    }
+    // The glow pad follows the hologram menu strength: thin and flat at 0 (D18)
+    const float halfWidth = FMath::Max(SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, 0.5f * (thickness - 1.0f));
+    const float strength = HoloMenu != nullptr ? HoloMenu->GetStrength() : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
+    batch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, SOLHoloFrameBuild::LinePad(strength));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a menu text line on the menu layer, above its backing (else as DrawBuffer: HUD layer or Canvas); returns its
+// rectangle
+FBox2D ASOLFlightHud::MenuText(const ESOLHudLine line, const FLinearColor& color, const float x, const float y,
+    const ESOLHudFont font, const float textScale)
+{
+    const FSOLHudShapeBatch* batch = GetMenuBatch();
+    if (batch == nullptr || batch == mBatch)
+    {
+        return DrawBuffer(line, color, x, y, font, textScale);
+    }
+    const FVector2D size = MeasureLine(line, font);
+    const float scale = mUiScale * textScale;
+    mMenuLayer->GetTexts().Add(mLines[static_cast<int32>(line)].Text, FVector2f(x, y), scale, color, font);
+    return FBox2D(FVector2D(x, y), FVector2D(x + size.X * scale, y + size.Y * scale));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a menu glow arc on the menu layer (else the HUD batch); false when dropped or with no batch
+bool ASOLFlightHud::MenuArc(const FVector2f& center, const float radiusPx, const float halfWidthPx,
+    const float midAngleRad, const float halfApertureRad, const FLinearColor& color, const float intensity,
+    const float padPx)
+{
+    FSOLHudShapeBatch* batch = GetMenuBatch();
+    return batch != nullptr && batch->AddArc(center, radiusPx, halfWidthPx, midAngleRad, halfApertureRad, color,
+        intensity, padPx);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws a built frame or card on the menu layer (else the HUD layer): its backing under the shapes, then the shapes
+int32 ASOLFlightHud::MenuHoloShapes(const FSOLHoloFrameOutput& output)
+{
+    FSOLHudShapeBatch* batch = GetMenuBatch();
+    if (batch == nullptr)
+    {
+        return 0;
+    }
+    SSOLHudShapeLayer* layer = batch == mBatch ? mShapeLayer.Get() : mMenuLayer.Get();
+    if (output.bHasBacking && layer != nullptr)
+    {
+        mWasBackingDropped |= !layer->AddBacking(output.Backing.Rect, output.Backing.CornerPx,
+            output.Backing.FeatherPx, SOLHoloFrameBuild::BackingOpacity(output.Backing.Alpha),
+            SOL::HoloMenu::BACKDROP_TINT);
+    }
+    return SOLHoloFrameBuild::AppendToBatch(output, *batch);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -484,6 +624,41 @@ int32 ASOLFlightHud::GetLastPaintedTextCount() const
 int32 ASOLFlightHud::GetLastPaintedBackingCount() const
 {
     return mShapeLayer.IsValid() ? mShapeLayer->GetLastPaintedBackingCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the material the menu layer draws with, or null
+UObject* ASOLFlightHud::GetMenuLayerMaterial() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetMaterial() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the shapes queued on the menu layer this frame
+int32 ASOLFlightHud::GetLastMenuShapeCount() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetBatch().GetShapeCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the backings queued on the menu layer this frame
+int32 ASOLFlightHud::GetLastMenuBackingCount() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetBackingCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the shapes the menu layer's last paint drew
+int32 ASOLFlightHud::GetLastMenuPaintedShapeCount() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetLastPaintedShapeCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the frame the menu layer was last stamped for (0: never)
+uint64 ASOLFlightHud::GetMenuLayerBatchFrame() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetBatchFrame() : 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -760,7 +935,8 @@ void ASOLFlightHud::DrawHUD()
         return;
     }
     const SOLSettingsModel::FSettingsValues* settings = Settings != nullptr ? &Settings->GetLiveValues() : nullptr;
-    mUiScale = FMath::Clamp(Canvas->ClipY / HUD_REFERENCE_HEIGHT_PX, 1.0f, HUD_MAX_UI_SCALE)
+    mUiScale = FMath::Clamp(Canvas->ClipY / SOL::Hologram::HUD_REFERENCE_HEIGHT_PX, 1.0f,
+        SOL::Hologram::HUD_MAX_UI_SCALE)
         * (settings != nullptr ? settings->HudScale : 1.0f);
 
     // The main and pause menus (SDD 8) draw over a clean view: no flight HUD while one shows

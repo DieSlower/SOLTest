@@ -902,6 +902,12 @@ namespace SOL
         inline constexpr float HUD_PANEL_QUAD_PAD_PX = 2.0f;        // A borderless panel draws nothing outside itself:
                                                                     // its quad only covers the row jitter
 
+        // HUD layout is at a 720 px high canvas: the UI scale is the canvas height over HUD_REFERENCE_HEIGHT_PX,
+        // clamped to [1, HUD_MAX_UI_SCALE] (the HUD then multiplies it by the Settings HUD scale; the hologram menu
+        // frames use the clamped value alone, SDD 42 section 4.6)
+        inline constexpr float HUD_REFERENCE_HEIGHT_PX = 720.0f;
+        inline constexpr float HUD_MAX_UI_SCALE = 2.0f;
+
         // Glow text (SDD 21 Amendment 2): the engine fonts drawn by Slate over the shapes; the fill is the colour
         // moved HUD_TEXT_CORE_WHITEN toward white (a hot core), the outline HUD_TEXT_GLOW_OUTLINE font units wide in
         // the colour at HUD_TEXT_GLOW_ALPHA, over a drop shadow HUD_TEXT_SHADOW_PX (x UI scale) down-right, black at
@@ -980,9 +986,37 @@ namespace SOL
         inline constexpr float BACKDROP_ALPHA_PER_UNIT = 0.15f;   // Dark tint alpha per unit of strength (D20 tint)
         inline constexpr double HOVER_CUE_MIN_INTERVAL_S = 0.05;  // Shortest gap between two hover cues
         inline constexpr int32 FRAME_MAX_SHAPES = 160;            // Shape capacity of one SSOLHoloFrame
+        inline constexpr int32 CARD_MAX_SHAPES = 10;              // Shapes of one frameless card: fill, 8 ticks, sweep
+        inline constexpr float FRAME_FLAT_PAD_PX = 1.0f;          // Glow pad of frame lines and dots at strength 0
         inline constexpr float MIN_PIECE_PX = 1.0e-3f;            // A geometry piece shorter than this is never written
         inline constexpr float UI_SCALE_MIN = 0.1f;               // Geometry clamps a valid uiScale to [MIN, MAX]
         inline constexpr float UI_SCALE_MAX = 16.0f;              // ... so no input can stall a loop or overflow
+        inline constexpr int32 MENU_LAYER_MAX_SHAPES = 512;       // Shape capacity of the HUD's menu layer
+
+        // The faint dark tint of the menu frames and cards (D3, D20): the RGB of their backing box (alpha-blended at
+        // BackdropAlpha) and of their additive panel fill, matched to the approved sample overlay-c-tint.png (an
+        // interior of about sRGB (3, 9, 17) over black at strength 1)
+        inline const FLinearColor BACKDROP_TINT(0.007f, 0.028f, 0.07f, 1.0f);
+
+        // Sound cues (section 7.1): tuning of one cue
+        struct FSOLHoloCueTuning
+        {
+            const TCHAR* Path;      // USoundWave asset (optional: a missing one silences only this cue, with a warning)
+            float Volume;           // Volume multiplier
+            double MinIntervalS;    // A cue starts at most once per this many seconds (more are dropped)
+        };
+
+        // One entry per cue, in the order Open, Hover, Select (CUE_OPEN / CUE_HOVER / CUE_SELECT index it). Hover is
+        // the quietest and the most rate limited, as it repeats under a moving cursor
+        inline constexpr int32 CUE_OPEN = 0;
+        inline constexpr int32 CUE_HOVER = 1;
+        inline constexpr int32 CUE_SELECT = 2;
+        inline constexpr FSOLHoloCueTuning CUES[] =
+        {
+            { TEXT("/Game/SOL/UI/Audio/S_SOLHoloOpen.S_SOLHoloOpen"),     0.8f, 0.1 },
+            { TEXT("/Game/SOL/UI/Audio/S_SOLHoloHover.S_SOLHoloHover"),   0.5f, HOVER_CUE_MIN_INTERVAL_S },
+            { TEXT("/Game/SOL/UI/Audio/S_SOLHoloSelect.S_SOLHoloSelect"), 0.8f, 0.1 },
+        };
 
         // Option (c) stepped broken-line frame (D20, section 6.3)
         inline constexpr float FRAME_CUT_TL_PX = 10.0f;           // Top-left corner cut (a)
@@ -1079,6 +1113,12 @@ namespace SOL
         inline constexpr float FREE_LOOK_ARM_S = 0.2f;            // Free look arms after this hold or this much mouse
         inline constexpr double FREE_LOOK_ARM_PX = 8.0;           // travel, so a quick Alt+O does not turn the camera
         inline constexpr int32 MENU_Z_ORDER = 15;                 // Overlay Menu: above the HUD, below the pause menu
+    }
+
+    // Hologram menu frames: one profile tab marker per Overlay profile (SDD 42 section 4.6)
+    namespace HoloMenu
+    {
+        inline constexpr int32 FRAME_MAX_TABS = Overlay::MAX_PROFILES;    // Tab markers one frame can hold
     }
 
     // Interaction menus (SDD 22 section 2.4): the radial menu on flight icons, the map's list menu, the action table.
@@ -1285,6 +1325,9 @@ namespace SOL
         // cards, one pass per menu, logged against the pre-conversion baseline, then quit (SDD 42 section 11; smoke
         // settings slot)
         inline constexpr const TCHAR* SMOKE_HOLO_MENU_PROFILE = TEXT("SOLSmokeHoloMenuProfile");
+        // The hologram menu kit and menus: subsystem, cues, the HUD's menu layer, a frame preview at strengths 1, 0
+        // and 2, the cursor's strength, then quit (SDD 42 section 12; smoke settings slot)
+        inline constexpr const TCHAR* SMOKE_HOLO_MENU = TEXT("SOLSmokeHoloMenu");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

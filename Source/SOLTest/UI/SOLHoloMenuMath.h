@@ -124,6 +124,15 @@ namespace SOLHoloMenu
     SOLTEST_API int32 FrameOutline(const FBox2f& rect, float titleStepWidthPx, float uiScale,
         FVector2f outPoints[SOL::HoloMenu::FRAME_OUTLINE_POINTS]);
 
+    // Whether a rect has four finite coordinates and a positive width and height (what every geometry call accepts)
+    SOLTEST_API bool IsValidRect(const FBox2f& rect);
+
+    // u: the UI scale clamped to [UI_SCALE_MIN, UI_SCALE_MAX], NaN, infinite or <= 0 reading 1
+    SOLTEST_API float UiScale(float uiScale);
+
+    // The outline's effective scale k = min(uiScale, w / FRAME_MIN_W_PX, h / FRAME_MIN_H_PX); 0 for an invalid rect
+    SOLTEST_API float FrameScale(const FBox2f& rect, float uiScale);
+
     // The stepped outline's perimeter L; 0 for an invalid rect
     SOLTEST_API float FramePerimeter(const FBox2f& rect, float titleStepWidthPx, float uiScale);
 

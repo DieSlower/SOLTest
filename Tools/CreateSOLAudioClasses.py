@@ -3,7 +3,8 @@
 #
 # Creates the sound classes the settings volumes control (SDD 8, part 8d), headless and idempotent:
 #   /Game/SOL/Audio/SC_SOLMaster   master class, parent of the two below
-#   /Game/SOL/Audio/SC_SOLSfx      effects: every combat wave /Game/SOL/Combat/Audio/S_SOL* is assigned to it
+#   /Game/SOL/Audio/SC_SOLSfx      effects: every combat wave /Game/SOL/Combat/Audio/S_SOL* and every hologram menu cue
+#                                  /Game/SOL/UI/Audio/S_SOL* is assigned to it
 #   /Game/SOL/Audio/SC_SOLMusic    music (no music content yet; the class is ready for it)
 # Paths must match SOL::Paths::SOUND_CLASS_* in Source/SOLTest/SOLConstants.h.
 # Run: UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/CreateSOLAudioClasses.py"
@@ -15,6 +16,8 @@ MASTER_NAME = "SC_SOLMaster"
 SFX_NAME = "SC_SOLSfx"
 MUSIC_NAME = "SC_SOLMusic"
 COMBAT_AUDIO_DIR = "/Game/SOL/Combat/Audio"
+UI_AUDIO_DIR = "/Game/SOL/UI/Audio"
+WAVE_DIRS = [COMBAT_AUDIO_DIR, UI_AUDIO_DIR]
 DONE_MARKER = "DONE"
 
 EAL = unreal.EditorAssetLibrary
@@ -49,16 +52,19 @@ def link_children(master, children):
         child.set_editor_property("parent_class", master)
 
 
-# Assigns the effects class to every combat sound wave
-def assign_combat_waves(sfx):
+# Assigns the effects class to every S_SOL* sound wave of the combat and hologram menu audio folders
+def assign_sfx_waves(sfx):
     changed = []
-    for path in EAL.list_assets(COMBAT_AUDIO_DIR, recursive=False):
-        asset = EAL.load_asset(path)
-        if isinstance(asset, unreal.SoundWave):
-            if asset.get_editor_property("sound_class_object") != sfx:
-                asset.set_editor_property("sound_class_object", sfx)
-                changed.append(asset)
-            log("%s -> %s" % (asset.get_name(), SFX_NAME))
+    for directory in WAVE_DIRS:
+        if not EAL.does_directory_exist(directory):
+            continue
+        for path in EAL.list_assets(directory, recursive=False):
+            asset = EAL.load_asset(path)
+            if isinstance(asset, unreal.SoundWave) and asset.get_name().startswith("S_SOL"):
+                if asset.get_editor_property("sound_class_object") != sfx:
+                    asset.set_editor_property("sound_class_object", sfx)
+                    changed.append(asset)
+                log("%s -> %s" % (asset.get_name(), SFX_NAME))
     return changed
 
 
@@ -68,7 +74,7 @@ def main():
     sfx = get_or_create_class(SFX_NAME)
     music = get_or_create_class(MUSIC_NAME)
     link_children(master, [sfx, music])
-    waves = assign_combat_waves(sfx)
+    waves = assign_sfx_waves(sfx)
     for asset in [master, sfx, music] + waves:
         EAL.save_loaded_asset(asset, only_if_is_dirty=False)
     log("parent of %s is %s" % (SFX_NAME, sfx.get_editor_property("parent_class").get_name()))

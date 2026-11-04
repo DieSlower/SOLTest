@@ -23,23 +23,87 @@ namespace
 
 //////////////////////////////////////////////////////////////////////////
 // Reserves the batch, text, backing and paint buffers once
-void SSOLHudShapeLayer::Construct(const FArguments& /*args*/)
+void SSOLHudShapeLayer::Construct(const FArguments& args)
 {
     SetVisibility(EVisibility::HitTestInvisible);
 
     // Its content changes every frame without invalidating: volatile, so an invalidation panel never caches it
     ForceVolatile(true);
-    mBatch.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+    const int32 maxShapes = FMath::Max(args._MaxShapes, 0);
+    mBatch.Initialize(maxShapes);
     mTexts.Initialize(SOL::Hologram::HUD_MAX_TEXTS);
     mBackings.Reserve(SOL::Hologram::HUD_MAX_PANELS);
-    mPaintVertices.Reserve(SOL::Hologram::HUD_MAX_SHAPES * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
+    mPaintVertices.Reserve(maxShapes * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
 
-    // A white rounded box (no outline) tinted per backing layer
-    mBackingBrush = FSlateBrush();
-    mBackingBrush.DrawAs = ESlateBrushDrawType::RoundedBox;
-    mBackingBrush.TintColor = FSlateColor(FLinearColor::White);
-    mBackingBrush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
-    mBackingBrush.OutlineSettings.Width = 0.0f;
+    InitBackingBrush(mBackingBrush);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets a brush up as a white rounded box (no outline) tinted per backing layer
+void SSOLHudShapeLayer::InitBackingBrush(FSlateBrush& brush)
+{
+    brush = FSlateBrush();
+    brush.DrawAs = ESlateBrushDrawType::RoundedBox;
+    brush.TintColor = FSlateColor(FLinearColor::White);
+    brush.OutlineSettings.RoundingType = ESlateBrushRoundingType::FixedRadius;
+    brush.OutlineSettings.Width = 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Paints one soft dark backing: a stack of rounded boxes inset step by step, so it fades in from its edge
+void SSOLHudShapeLayer::PaintBacking(const FGeometry& allottedGeometry, FSlateWindowElementList& outDrawElements,
+    const int32 layerId, FSlateBrush& backingBrush, const FBox2f& rect, const float cornerPx, const float featherPx,
+    const float opacity, const FLinearColor& color, const float inverseScale)
+{
+    using namespace SOL::Hologram;
+    for (int32 layer = 0; layer < HUD_PANEL_BACKING_LAYERS; ++layer)
+    {
+        FBox2f layerRect;
+        float corner = 0.0f;
+        float alpha = 0.0f;
+        if (!SOLHudShapeMath::BackingLayer(rect, cornerPx, featherPx, HUD_PANEL_BACKING_COLOR.A * opacity, layer,
+            HUD_PANEL_BACKING_LAYERS, layerRect, corner, alpha))
+        {
+            break;
+        }
+        const float localCorner = corner * inverseScale;
+        backingBrush.OutlineSettings.CornerRadii = FVector4(localCorner, localCorner, localCorner, localCorner);
+        FSlateDrawElement::MakeBox(outDrawElements, layerId, allottedGeometry.ToPaintGeometry(layerRect.GetSize()
+            * inverseScale, FSlateLayoutTransform(layerRect.Min * inverseScale)), &backingBrush,
+            ESlateDrawEffect::None, FLinearColor(color.R, color.G, color.B, alpha));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Paints a batch as one custom-vertex element: pixels -> widget local units -> window space (the accumulated
+// transform includes the DPI scale); true when drawn
+bool SSOLHudShapeLayer::PaintBatch(const FGeometry& allottedGeometry, FSlateWindowElementList& outDrawElements,
+    const int32 layerId, const FSOLHudShapeBatch& batch, const FSlateBrush& brush,
+    FSlateResourceHandle& resourceHandle, TArray<FSlateVertex>& paintVertices, const float inverseScale)
+{
+    const TArray<FSlateVertex>& vertices = batch.GetVertices();
+    if (vertices.IsEmpty() || brush.GetResourceObject() == nullptr)
+    {
+        return false;
+    }
+    if (!resourceHandle.IsValid())
+    {
+        resourceHandle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(brush);
+    }
+    if (!resourceHandle.IsValid())
+    {
+        return false;
+    }
+    const FSlateRenderTransform& renderTransform = allottedGeometry.GetAccumulatedRenderTransform();
+    paintVertices.Reset();
+    paintVertices.Append(vertices);
+    for (FSlateVertex& vertex : paintVertices)
+    {
+        vertex.Position = renderTransform.TransformPoint(vertex.Position * inverseScale);
+    }
+    FSlateDrawElement::MakeCustomVerts(outDrawElements, layerId, resourceHandle, paintVertices, batch.GetIndices(),
+        nullptr, 0, 0);
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -62,14 +126,16 @@ void SSOLHudShapeLayer::ResetFrame()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds a soft dark backing under a hologram panel (its darkness scaled by opacity); false when the buffer is full
-bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx, const float opacity)
+// Adds a soft dark backing under a hologram panel (its darkness scaled by opacity, in a colour's RGB); false when the
+// buffer is full
+bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx, const float opacity,
+    const FLinearColor& color)
 {
     if (!rect.bIsValid || mBackings.Num() >= SOL::Hologram::HUD_MAX_PANELS)
     {
         return false;
     }
-    mBackings.Add({ rect, cornerPx, featherPx, FMath::Clamp(opacity, 0.0f, 1.0f) });
+    mBackings.Add({ rect, cornerPx, featherPx, FMath::Clamp(opacity, 0.0f, 1.0f), color });
     return true;
 }
 
@@ -103,50 +169,18 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
 
     // Dark backings under the panels (alpha-blended), so text stays readable over a bright planet: each is a stack of
     // rounded boxes inset step by step, so it fades in from its edge and never shows a box outline (issue #31)
-    using namespace SOL::Hologram;
     for (const FSOLHudBacking& backing : mBackings)
     {
-        for (int32 layer = 0; layer < HUD_PANEL_BACKING_LAYERS; ++layer)
-        {
-            FBox2f rect;
-            float corner = 0.0f;
-            float alpha = 0.0f;
-            if (!SOLHudShapeMath::BackingLayer(backing.Rect, backing.CornerPx, backing.FeatherPx,
-                HUD_PANEL_BACKING_COLOR.A * backing.Opacity, layer, HUD_PANEL_BACKING_LAYERS, rect, corner, alpha))
-            {
-                break;
-            }
-            const float localCorner = corner * inverseScale;
-            mBackingBrush.OutlineSettings.CornerRadii = FVector4(localCorner, localCorner, localCorner, localCorner);
-            FSlateDrawElement::MakeBox(outDrawElements, layerId, allottedGeometry.ToPaintGeometry(rect.GetSize()
-                * inverseScale, FSlateLayoutTransform(rect.Min * inverseScale)), &mBackingBrush,
-                ESlateDrawEffect::None, FLinearColor(HUD_PANEL_BACKING_COLOR.R, HUD_PANEL_BACKING_COLOR.G,
-                    HUD_PANEL_BACKING_COLOR.B, alpha));
-        }
+        PaintBacking(allottedGeometry, outDrawElements, layerId, mBackingBrush, backing.Rect, backing.CornerPx,
+            backing.FeatherPx, backing.Opacity, backing.Color, inverseScale);
     }
     mLastPaintedBackingCount = mBackings.Num();
 
-    // Shapes: canvas pixels -> widget local units -> window space (the accumulated transform includes the DPI scale)
-    const TArray<FSlateVertex>& vertices = mBatch.GetVertices();
-    if (!vertices.IsEmpty() && mBrush.GetResourceObject() != nullptr)
+    // Shapes: canvas pixels -> widget local units -> window space, one custom-vertex element
+    if (PaintBatch(allottedGeometry, outDrawElements, layerId + 1, mBatch, mBrush, mResourceHandle, mPaintVertices,
+        inverseScale))
     {
-        if (!mResourceHandle.IsValid())
-        {
-            mResourceHandle = FSlateApplication::Get().GetRenderer()->GetResourceHandle(mBrush);
-        }
-        if (mResourceHandle.IsValid())
-        {
-            const FSlateRenderTransform& renderTransform = allottedGeometry.GetAccumulatedRenderTransform();
-            mPaintVertices.Reset();
-            mPaintVertices.Append(vertices);
-            for (FSlateVertex& vertex : mPaintVertices)
-            {
-                vertex.Position = renderTransform.TransformPoint(vertex.Position * inverseScale);
-            }
-            FSlateDrawElement::MakeCustomVerts(outDrawElements, layerId + 1, mResourceHandle, mPaintVertices,
-                mBatch.GetIndices(), nullptr, 0, 0);
-            mLastPaintedShapeCount = mBatch.GetShapeCount();
-        }
+        mLastPaintedShapeCount = mBatch.GetShapeCount();
     }
     PaintTexts(allottedGeometry, outDrawElements, layerId + 2, inverseScale);
     return layerId + HUDLAYER_LAYERS_USED;

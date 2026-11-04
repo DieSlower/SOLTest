@@ -129,7 +129,7 @@ custom-vertex draw while a HUD-drawn menu shows, and one per open UMG frame (sec
 |---|---|---|
 | `SOLHoloMenu` (`SOLHoloMenuMath.h/.cpp`) | Pure namespace, test-first | Open / close progress, frame draw-in and its segments, fill fade, hover glow and flicker, idle sweep, backdrop alpha, cue rules (section 6) |
 | `FSOLHoloMenuAnim` (same file) | Plain struct | One menu's phase (Closed / Opening / Open / Closing), phase start, hovered item and hover start, last cue time |
-| `USOLHoloMenuSubsystem` | `UWorldSubsystem` | Owns the menu MID (`UPROPERTY` `TObjectPtr`), pushes `HoloMenuEffects` and the view size into it only when they change, loads the cue sounds once from `SOL::Paths` and plays them 2D in the SFX class (`PlayCue`); a missing asset is silent with one warning |
+| `USOLHoloMenuSubsystem` | `UWorldSubsystem` | Owns the menu MID (`UPROPERTY` `TObjectPtr`), pushes `HoloMenuEffects` and the view size into it only when they change, loads the cue sounds once from `SOL::HoloMenu::CUES` and plays them 2D in the SFX class (`PlayCue`); a missing asset is silent with one warning |
 | `SSOLHoloFrame` | Slate leaf, hit-test invisible | Draws one frame: backdrop tint (backing boxes), the option (c) broken outline with its gap dots, ruler ticks and accents (D20, section 6.3), the dividers and tab markers its menu asks for, the borderless panel fill, the idle sweep line and the hover brackets of the hovered item, as one custom-vertex draw with the menu MID; buffers reserved once |
 | `USOLHoloFrameWidget` | `UWidget` wrapping `SSOLHoloFrame` | Lets the C++ UMG menus place a frame behind their content and feed it the anim look and the hovered item's rectangle |
 
@@ -139,7 +139,9 @@ target card, the speed card and the date-and-anchor card (D15), with its materia
 The two always-on cards move off the HUD layer, so the HUD effects slider no longer moves them; they follow
 `HoloMenuEffects` like the other cards. `ResetFrame` / `MarkBatchFrame` follow the HUD
 layer's frame-stamp rule. The HUD keeps `GlowLine` / `AddHoloPanel` for the HUD; a few `Menu*` helpers write to the
-menu layer's batch. The `sol.HudRenderer 0` Canvas fallback draws the menus as today (no effects).
+menu layer's batch, backings and text list (`MenuText`, so a menu's text paints above its own backing and fill; the
+menu layer is sized `MENU_LAYER_MAX_SHAPES`). The `sol.HudRenderer 0` Canvas fallback draws the menus as today (no
+effects).
 
 ### 4.4 Time source
 
@@ -156,6 +158,88 @@ Closing gives input back at once, as today. The visual close then plays for `CLO
   reverses from the current progress (section 6.2).
 - **HUD-drawn menus (radial, info, target):** the HUD keeps a copy of the last drawn state (radial state and its
   action list, the info / target object; value types, no allocation) and draws the closing animation from it.
+
+### 4.6 Part 42c testable contracts
+
+Written for the separate test author (`Tests/HoloMenuKitTest.cpp`, `SOLTest.HoloMenuKit.*`). Everything here runs
+headless: no Slate, no RHI, no sound. `u` is the `uiScale` after the section 6.3 rule (NaN, infinite or `<= 0` reads
+1, then clamped to `[UI_SCALE_MIN, UI_SCALE_MAX]`); `s` is the strength after the section 6 rule. Items marked
+(proposed) are not settled by D1-D21 or the samples.
+
+**Frame builder (`UI/SOLHoloFrameBuild.h/.cpp`, namespace `SOLHoloFrameBuild`).** It writes into a fixed-capacity
+output, not straight into the batch, so colours and roles can be asserted without decoding vertices; a second call
+appends that output to an `FSOLHudShapeBatch` (a plain struct, usable headless).
+
+```
+enum class ESOLHoloPart : uint8 { Fill, Outline, GapDot, Ruler, Accent, TitleAccent, ColumnDivider, BrokenDivider,
+                                  Tab, TabDot, CardTick, Sweep, Hover, HoverDot };
+struct FSOLHoloShape { ESOLHoloPart Part; ESOLHudShapeKind Kind; FVector2f A; FVector2f B; float HalfWidthPx;
+                       FLinearColor Color; float Intensity; float Fill; float PadPx; };
+                       // Line: A -> B (a dot is A == B, HalfWidthPx = radius). Panel: A = centre, B = half size
+struct FSOLHoloBacking { FBox2f Rect; float CornerPx; float FeatherPx; float Alpha; };   // Alpha is absolute
+struct FSOLHoloFrameOutput { FSOLHoloShape Shapes[FRAME_MAX_SHAPES]; int32 ShapeCount = 0;
+                             bool bHasBacking = false; FSOLHoloBacking Backing; };
+struct FSOLHoloFrameSpec { FBox2f Rect; float TitleStepWidthPx = 0; float UiScale = 1;
+    bool bColumnDivider = false; FVector2f DividerTop; float DividerBottomY; float OpenTopY; float OpenBottomY;
+    bool bBrokenDivider = false; FVector2f BrokenStart; float BrokenEndX; float BrokenStepAtPx; float BrokenStepPx;
+    int32 TabCount = 0; FBox2f TabRects[FRAME_MAX_TABS]; int32 SelectedTab = INDEX_NONE; float TabDividerX;
+    FBox2f HoverItemRect;  /* invalid = nothing hovered */  ESOLHoloHoverMark HoverMark = RowPointer; };
+```
+
+| Function | Contract |
+|---|---|
+| `int32 BuildFrame(const FSOLHoloFrameSpec& spec, const FSOLHoloMenuLook& look, float s, FSOLHoloFrameOutput& out)` | Empties `out` first (a dirty output gives the same result). Returns `out.ShapeCount`. 0 shapes and no backing when `!look.bVisible` or `spec.Rect` is invalid (section 6.3). Shapes are written in this order, each group taken unchanged from its section 6.3 function: Fill; Outline = `FrameDrawSegments(Rect, TitleStepWidthPx, UiScale, look.FrameFraction)`; GapDot = `FrameGapDots(...)` at the same fraction; Ruler = `FrameRulerTicks`; Accent = `FrameAccents` pieces 1-2, TitleAccent = pieces 3-4 (told apart by direction, as
+`FrameAccents` skips pieces: the rightward ones are 3-4), in `FrameAccents`' order; ColumnDivider = `DashedDivider` (when `bColumnDivider`); BrokenDivider = `BrokenDivider` (when `bBrokenDivider`); Tab and TabDot = `TabMarker` per tab in index order, `bSelected = (i == SelectedTab)`, its dot after its pieces; Sweep; Hover and HoverDot = `HoverMark(HoverItemRect inflated by HOVER_PAD_X_PX * u, HOVER_PAD_Y_PX * u)`. Same `A`, `B` and counts as those functions (bit for bit) |
+| Which groups appear | Outline and GapDot only when `FrameFraction > 0` (0 gives no outline). Fill, Ruler, Accent, TitleAccent, dividers and tabs only when `FillAlpha > 0`. Sweep only when `look.SweepIntensity > 0` (none at `s = 0` or fill 0). Hover only when `HoverItemRect` is valid (the section 6.3 rect rule) and its intensity below is `> 0`. Backing only when `look.BackdropAlpha > 0`: `Rect` inset by `FRAME_TINT_INSET_PX * FrameScale(Rect, UiScale)` per side, `CornerPx` 0, `FeatherPx` `HUD_PANEL_BACKING_FEATHER_PX * u` (proposed), `Alpha = look.BackdropAlpha`. A shape with intensity `<= 0` is never written |
+| Colour and intensity | Every shape's `Color` is exactly `SOL::HudPalette::PRIMARY`, except Hover and HoverDot: exactly `SECONDARY`, and Fill: exactly `SOL::HoloMenu::BACKDROP_TINT` (the dark tint of the approved samples; amended at the 42c review, was Primary). Outline, GapDot: `FRAME_INTENSITY`. Ruler, Accent, the selected tab's pieces and TabDot: `FRAME_INTENSITY * FillAlpha`. TitleAccent, both dividers, unselected tab pieces: `FRAME_INTENSITY * FRAME_DIM_ALPHA * FillAlpha`. Sweep: `look.SweepIntensity`. Hover, HoverDot: `look.HoverIntensity * FillAlpha` for `s > 0` (42a review), `FRAME_INTENSITY * FillAlpha` at `s = 0` (D18, the flat Secondary mark of section 6.3, proposed there); the switch uses the sanitized `s`, so NaN and negative strengths count as 0 |
+| Sizes and glow | Lines: `Kind` Line, `HalfWidthPx = FRAME_HALF_WIDTH_PX * u`, `Fill` 0. GapDot: radius `FRAME_DOT_RADIUS_PX * FrameScale(...)`; TabDot, HoverDot: `FRAME_DOT_RADIUS_PX * u` (proposed). Every line and dot: `PadPx = lerp(FRAME_FLAT_PAD_PX, HUD_GLOW_PAD_PX, GlowScale(s))`, so exactly `FRAME_FLAT_PAD_PX` at `s = 0` (thin flat lines, no halo) and `HUD_GLOW_PAD_PX` at `s >= 1`. Fill: `Kind` Panel over the backing rect (centre, half size), `HUD_PANEL_INTENSITY`, `Fill = HUD_PANEL_FILL * FillAlpha`, `PadPx = HUD_PANEL_QUAD_PAD_PX` (proposed: the fill keeps this at `s = 0`). Sweep: one line across the backing rect, from `Min.X` to `Max.X`, at `y = Min.Y + look.SweepFraction * height` |
+| Capacity, allocation, determinism | Never more than `FRAME_MAX_SHAPES`; a `static_assert` checks the worst case (24 + 14 + 6 + 4 + 40 + 6 + `FRAME_MAX_TABS` * 4 + 1 + 8 + 1 + 2 = 126). No heap use (fixed arrays). The same inputs give identical outputs on every call (an outline cache kept while Open, as the 42a review asked, must not change that). `TabCount` above `FRAME_MAX_TABS` reads `FRAME_MAX_TABS` |
+| `int32 BuildCard(const FBox2f& contentRect, float uiScale, const FSOLHoloMenuLook& look, float s, FSOLHoloFrameOutput& out)` | The frameless card (D15). Card rect = `contentRect` grown by `HUD_PANEL_PADDING_PX * u` (`PanelAroundRect`, so the cards keep today's panel size; proposed). Same visibility, colour, pad and "no zero intensity" rules as `BuildFrame`. Order: Fill (as `BuildFrame`, over the card rect); 8 CardTick = `CardCornerTicks(cardRect, CARD_TICK_PX * u, look.FrameFraction)` at `FRAME_INTENSITY`; Sweep across the card rect. No Outline, GapDot, Ruler, Accent, divider, tab or hover shape ever. Backing: the card rect, `CornerPx = HUD_PANEL_CORNER_PX * u`, `FeatherPx = HUD_PANEL_BACKING_FEATHER_PX * u` (as `AddHoloPanel` today), `Alpha = look.BackdropAlpha`. At most `CARD_MAX_SHAPES` (10) |
+| `int32 AppendToBatch(const FSOLHoloFrameOutput& in, FSOLHudShapeBatch& batch)` | Adds the shapes in order: Line by `AddLine(A, B, HalfWidthPx, Color, Intensity, PadPx)`, Panel by `AddPanel(A, B, Color, Intensity, Fill, PadPx)`. Does not reset the batch. Returns how many the batch took (the rest are its dropped count). The kind decoded from each new quad (`DecodeKind` of `TexCoords[3]`) matches `Kind`. After `batch.Initialize(FRAME_MAX_SHAPES)`, 200 rounds of `Reset`, `BuildFrame` and `AppendToBatch` leave `GetVertices()` and `GetIndices()` allocated sizes unchanged and `GetDroppedCount()` 0 |
+| `float BackingOpacity(float alpha)` | `clamp(alpha / HUD_PANEL_BACKING_COLOR.A, 0, 1)`, NaN 0: the `opacity` for `SSOLHudShapeLayer::AddBacking` / `PaintBacking` (so `FLAT_PANEL_ALPHA` gives 1). The menus pass `BACKDROP_TINT` as the backing's colour (its RGB; the alpha stays `HUD_PANEL_BACKING_COLOR.A * opacity`) |
+| `float LinePad(float s)` | `lerp(FRAME_FLAT_PAD_PX, HUD_GLOW_PAD_PX, GlowScale(s))`: the pad of every frame / card line and dot and of the HUD's `MenuLine` (42c review); `FRAME_FLAT_PAD_PX` at `s <= 0` and NaN |
+| `float SOLHoloMenu::FrameScale(const FBox2f& rect, float uiScale)` (added to `SOLHoloMenuMath`) | The effective scale `k` of section 6.3; 0 for an invalid rect. R of section 6.4 at `uiScale` 1 / 2: 1 / 2; `(0,0)-(17,32)`: 0.5 |
+| `bool SOLHoloMenu::IsValidRect(const FBox2f&)`, `float SOLHoloMenu::UiScale(float)` | The section 6.3 rect rule and `u` rule, exported so the builders use the geometry's own checks (42c review) |
+
+Strength 0 end to end (D18): an anim opened at `s = 0`, advanced once and `Evaluate`d at `s = 0`, gives on R (title step
+200): 19 Outline and 14 GapDot shapes at once, the backing at `FLAT_PANEL_ALPHA`, no Sweep, every line's and dot's
+`PadPx` equal to `FRAME_FLAT_PAD_PX` (the Fill keeps `HUD_PANEL_QUAD_PAD_PX`, sizes row), and a hovered row's 8 Hover
+pieces and 1 HoverDot in `SECONDARY` at `FRAME_INTENSITY`.
+
+**`USOLHoloMenuSubsystem` (`UI/SOLHoloMenuSubsystem.h/.cpp`).** The testable part is two plain structs in the same
+header that the subsystem owns and forwards to; a test makes them directly, or a bare
+`NewObject<USOLHoloMenuSubsystem>()` that is never initialized (as `AnchorTest` does): no world, settings, MID or sounds.
+
+| Item | Contract |
+|---|---|
+| `enum class ESOLHoloCue : uint8 { Open, Hover, Select, Count }` | Values equal `SOL::HoloMenu::CUE_OPEN / CUE_HOVER / CUE_SELECT`; `Count == UE_ARRAY_COUNT(CUES)` (`static_assert`) |
+| `static float FSOLHoloMenuParamCache::SanitizeStrength(float raw)` | NaN 0 (as section 6), else `clamp(raw, HOLO_MENU_EFFECTS_MIN, HOLO_MENU_EFFECTS_MAX)`; +inf 2, -inf 0 |
+| `bool FSOLHoloMenuParamCache::Update(float rawStrength, const FVector2f& viewSizePx)` | Returns true (a push is due) on the first call and whenever the sanitized strength or the view size differs exactly from the last pushed values; then stores them and increments `GetPushCount()`. Same values again: false, no count. A view size with a component non-finite or `<= 0` keeps the last pushed size. `GetStrength()` returns the last sanitized strength (`HOLO_MENU_EFFECTS_DEFAULT` before the first call) |
+| `bool FSOLHoloCueGate::Request(ESOLHoloCue cue, double nowS)` | `cue >= Count`: false, nothing counted. Else increments `GetRequestCount(cue)` on every call. Accepted (true, increments `GetAcceptedCount(cue)`, stores `nowS`) when `nowS` is finite and it is the cue's first acceptance or `nowS - last >= CUES[cue].MinIntervalS`; otherwise false (NaN and a clock that went back are rejected, proposed). Cues are independent of each other. It takes no strength (D21) |
+| `float USOLHoloMenuSubsystem::GetStrength() const` | The sanitized live `HoloMenuEffects`; `HOLO_MENU_EFFECTS_DEFAULT` with no settings subsystem (a bare subsystem) |
+| `void UpdateMaterial(const FVector2f& viewSizePx)` | Feeds `GetStrength()` and the size to the cache; only when `Update` is true and the MID exists does it set `EFFECTS_STRENGTH`, `VIEW_WIDTH` and `VIEW_HEIGHT` (the two sizes only once a valid size has been stored, so a first call with an invalid size never pushes a zero size). With a MID it also sets `COMPOSITE` from `sol.HudComposite` whenever the cvar changed (the HUD layer's rule). Users call it through `UpdateMaterialForFrame`; `GetParamPushCount()` counts the cache's pushes (with or without a MID) |
+| `void UpdateMaterialForFrame()` | The one per-frame entry of every user (the HUD's menu layer, each `SSOLHoloFrame` paint): the first call in a frame (`GFrameCounter`) feeds `UpdateMaterial` the game viewport's size (`GetViewSizePx`, the one size source, the HUD canvas size); later calls in the same frame do nothing. `GetMaterialViewSizePx()` returns the size the MID last got (zero until a valid one), which the frames read for their UI scale instead of asking the viewport again |
+| `bool PlayCue(ESOLHoloCue cue, double nowS)` | Returns the gate's answer; counters as the gate's (`GetCueRequestCount`, `GetCueAcceptedCount`), whatever the strength (0 included), a missing asset, no world or no audio device. Plays only when accepted and the sound loaded, 2D at `CUES[cue].Volume` (`UGameplayStatics::PlaySound2D` as a UI sound, so it is heard while paused; `GetCuePlayedCount` counts the starts for the smoke). A bare subsystem never crashes |
+| `UMaterialInstanceDynamic* GetMenuMaterial() const` | The menu MID the menu layer and the frames draw with; null on a bare subsystem or with the material missing |
+
+**Smoke only, not unit tested** (`-SOLSmokeHoloMenu` scaffold, section 12):
+- `SSOLHoloFrame` / `USOLHoloFrameWidget` paint: one custom-vertex draw with the menu MID per paint, the backing drawn
+  under it in `BACKDROP_TINT`, window-space mapping; screenshot at strength 0, 1 and 2. The layout is set in the frame's
+  local Slate units and scaled to pixels by the geometry scale; `TitleStepWidthPx` is the title text's local width
+  alone, and the frame adds `FRAME_TITLE_STEP_PAD_PX * u` (a UMG menu does not know `u`). The frame's UI scale is
+  `clamp(material view height / HUD_REFERENCE_HEIGHT_PX, 1, HUD_MAX_UI_SCALE)` **without** the HUD's Settings HUD
+  scale multiplier, so a UMG frame scales like its UMG content (42c review; for the user's hand check). While Open and
+  unchanged it keeps its build and, at an unchanged window placement, rewrites only the sweep quad's four vertices.
+  Both widgets are volatile (`USOLHoloFrameWidget` sets `bIsVolatile`, or `SynchronizeProperties` would undo the Slate
+  widget's own `ForceVolatile`). `sol.HudRenderer 0` is not followed by the frames (a UMG menu has no Canvas fallback).
+- `ASOLFlightHud`'s menu layer: a second `SSOLHudShapeLayer` above the HUD layer with the menu MID, stamped like the
+  HUD layer, drawing nothing when no menu or card is on it; `-SOLSmokeHud` green and the HUD screenshot unchanged.
+- MID binding: the subsystem creates the MID from `HUD_SHAPE_MATERIAL` at `OnWorldBeginPlay`, the menu layer and the
+  frames draw with it, and its `EFFECTS_STRENGTH` equals `HoloMenuEffects` after a Settings change.
+- Cue loading and playback: the three assets load once (one warning per missing one); playback is counted, not heard.
+
+New constants (proposed, `SOL::HoloMenu`): `FRAME_FLAT_PAD_PX` 1, `FRAME_MAX_TABS` = `SOL::Overlay::MAX_PROFILES` (5),
+`CARD_MAX_SHAPES` 10.
 
 ## 5. Per-menu behaviour
 
@@ -192,7 +276,8 @@ today's Secondary colour, and its hover brackets stay as thin flat Secondary lin
 menus stay fully usable. The sound cues still play at strength 0 (D21).
 
 All frames use the HUD palette (`SOL::HudPalette::PRIMARY` lines, `SECONDARY` for the hovered / highlighted item,
-dim rows as today). Text stays the existing glow text (HUD layer path for HUD-drawn menus) or the UMG `UTextBlock`s
+dim rows as today). Text stays the existing glow text (on the menu layer for HUD-drawn menus, through `MenuText`, so it
+paints above the menu's backing and fill; 42c review) or the UMG `UTextBlock`s
 in the HUD palette.
 
 ## 6. Pure logic contracts (`UI/SOLHoloMenuMath`, test-first)
@@ -413,9 +498,14 @@ rect **R** = `(0, 0)-(400, 300)`, title step width 200, `uiScale` 1, so `k = 1` 
 | `IDLE_SWEEP_INTENSITY` | 0.08 | Sweep line glow per unit of strength |
 | `BACKDROP_ALPHA_PER_UNIT` | 0.15 | Dark tint alpha per unit of strength (0.30 at 2; the HUD backing is 0.45). Also the faint tint of the option (c) frames (D20). The approved sample `overlay-c-tint.png` is darker (the background kept at about 22 %, an alpha near 0.78); compare at the hand check |
 | `HOVER_CUE_MIN_INTERVAL_S` | 0.05 | Shortest gap between two hover cues |
-| `FRAME_MAX_SHAPES` | 160 | Shape capacity of one `SSOLHoloFrame` (reserved once). Worst case, the Overlay Menu: outline 24 + gap dots 14 + ruler 6 + accents 4 + column divider 40 + hint divider 6 + tab markers 16 + tab dot 1 + hover mark 8 + its dot 1 + sweep, fill and backdrop 3 = 123 |
+| `FRAME_MAX_SHAPES` | 160 | Shape capacity of one `SSOLHoloFrame` (reserved once). Worst case, the Overlay Menu, as the section 4.6 `static_assert` counts it (the backing is not a shape): outline 24 + gap dots 14 + ruler 6 + accents 4 + column divider 40 + hint divider 6 + tab markers 20 (`FRAME_MAX_TABS` x `TAB_MAX_SEGMENTS`; 16 in practice, one selected tab of 4 and four of 3) + tab dot 1 + hover mark 8 + its dot 1 + fill and sweep 2 = 126 |
+| `CARD_MAX_SHAPES` | 10 | Shapes of one frameless card: fill 1 + corner ticks 8 + sweep 1 (section 4.6) |
+| `FRAME_FLAT_PAD_PX` | 1 | Glow pad of every frame line and dot at strength 0 (thin flat lines, D18), lerped to `HUD_GLOW_PAD_PX` by `GlowScale(s)` |
+| `FRAME_MAX_TABS` | `SOL::Overlay::MAX_PROFILES` (5) | Profile tab markers one frame holds |
 | `MIN_PIECE_PX` | 1e-3 | The section 6.3 minimum piece length: a geometry piece shorter than this is never written (42a review) |
 | `UI_SCALE_MIN` / `UI_SCALE_MAX` | 0.1 / 16 | Section 6.3 geometry clamps a valid `uiScale` to this range (after NaN, infinite or `<= 0` reads 1), so no input can stall `DashedDivider` or give infinite coordinates (42a review) |
+| `MENU_LAYER_MAX_SHAPES` | 512 | Shape capacity of the HUD's menu layer (the HUD layer reserves `HUD_MAX_SHAPES` 4096; the menus and cards need about 100; 42c review) |
+| `BACKDROP_TINT` | (0.007, 0.045, 0.165) linear | RGB of the frames' and cards' dark tint: their backing box (alpha `BackdropAlpha`) and their additive fill. Tuned at the 42c review so a frame's interior over black at strength 1 matches the approved sample's, about sRGB (3, 9, 17); it was the HUD backing colour plus a Primary fill, which read bluer and brighter |
 
 **Option (c) frame (D20).** All lengths in px at a 720 px canvas, x UI scale (as `CARD_TICK_PX`), measured from the
 approved samples (`overlay-c-tint.png`, `speed-c-tint.png`); proposed, tuned from screenshots.
@@ -605,7 +695,8 @@ settings test is walked to confirm it still states the current contract.
   frames; `r.ProfileGPU.ShowUI 0`, because the visualizer window would add its own Slate pass to later profiles while
   the log gets the table either way), 1280x720, editor build. Menus that exclude each other (the radial, Ctrl+O, F3 and the map list menu take the same input) are measured
   one per pass, each together with all four cards; the worst pass must meet the budget. Also: **zero heap allocation
-  per frame**; at most `FRAME_MAX_SHAPES` shapes per frame widget; one extra custom-vertex draw per visible menu.
+  per frame in project code** (as SDD 21: Slate's `MakeCustomVerts` copies the vertex and index arrays into the
+  draw element, two engine allocations per draw); at most `FRAME_MAX_SHAPES` shapes per frame widget; one extra custom-vertex draw per visible menu.
 - **Profiling smoke (D14):** `-SOLSmokeHoloMenuProfile` (flag constant in `SOLConstants.h`, listed in ARCHITECTURE)
   flies the fixed smoke scene (pinned sim date, named body, section 11.1), opens each pass's menus, refreshes the info
   card and waits at least `OPEN_S` + 0.1 s of real time before every capture (so no open animation is caught), runs
@@ -616,9 +707,10 @@ settings test is walked to confirm it still states the current contract.
 - Event-driven: a closed menu costs nothing (the HUD's menu layer draws nothing and is not stamped; a closed UMG
   frame is removed). The UMG `NativeTick` returns at once when the menu is Open and idle; the idle sweep and hover
   glow are evaluated in the frame's paint from `nowS` (a few float ops), no timers.
-- The menu MID parameters are pushed only when they change (strength, view size), as the HUD does.
+- The menu MID parameters are pushed only when they change (strength, view size, the `sol.HudComposite` switch), as
+  the HUD does, once per frame for every user (`UpdateMaterialForFrame`).
 - The always-on speed and date-and-anchor cards are drawn every flight frame: their idle sweep and jitter are a few
-  float ops in the paint, and they cost no more shapes than today's two panels plus 16 tick segments.
+  float ops in the paint, and they cost no more shapes than today's two panels plus 16 tick segments and 2 sweep lines.
 - No claim without a measurement; the numbers go into an SDD amendment.
 
 ### 11.1 Baseline (measured before 42c)

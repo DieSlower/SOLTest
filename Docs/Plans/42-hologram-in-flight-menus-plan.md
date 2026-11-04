@@ -72,19 +72,19 @@ SDD section 9 and the user's answers before ticking.
 Depends on 42a; 42b for the strength (until 42b lands the subsystem may read `HUD_EFFECTS_DEFAULT`, but 42c is not
 committed as done before 42b, so no build ships a menu slider that does nothing).
 
-1. [ ] `USOLHoloMenuSubsystem`: the menu MID (strength and view size pushed on change), `PlayCue` hooks (assets from
+1. [x] `USOLHoloMenuSubsystem`: the menu MID (strength and view size pushed on change), `PlayCue` hooks (assets from
    `SOL::Paths`, Q1 = a), a cue counter for the smoke; the cues play at every strength, including 0 (D21).
-2. [ ] `SSOLHoloFrame` + `USOLHoloFrameWidget`: backdrop backings (the faint tint, `BackdropAlpha`), the option (c)
+2. [x] `SSOLHoloFrame` + `USOLHoloFrameWidget`: backdrop backings (the faint tint, `BackdropAlpha`), the option (c)
    frame (D20: broken outline draw-in, gap dots, ruler ticks, accents, dividers, tab markers; SDD 6.3), the
    frameless card ticks (`CardCornerTicks`, D15), borderless fill, sweep line, hover brackets (`HoverMark`); the flat strength-0
    look (D18: `FLAT_PANEL_ALPHA` backdrop, `GlowScale` 0, no sweep or flicker); buffers reserved once; one
    custom-vertex draw.
 2b. [x] (done in 42b after its review, so the slider does something in the 42b commit) Cursor (D19): `USOLHologramCursorSubsystem` reads `HoloMenuEffects` instead of `HudEffectsStrength`
    (`SOLHologramCursorSubsystem.cpp` line 71); `-SOLMenuSmoke` cursor checks follow.
-3. [ ] `ASOLFlightHud`: the second `SSOLHudShapeLayer` (menu layer) above the HUD layer with the menu MID, frame
+3. [x] `ASOLFlightHud`: the second `SSOLHudShapeLayer` (menu layer) above the HUD layer with the menu MID, frame
    stamping as the HUD layer; `Menu*` draw helpers. HUD output unchanged (`-SOLSmokeHud` green, screenshot compared).
-4. [ ] The `-SOLSmokeHoloMenu` scaffold (flag constant, harness, the strength-0 / 2 settings in the smoke slot).
-5. [ ] Review; fixes; suite. Commit `Issue #42: Part 42c - hologram menu frame and menu layer`.
+4. [x] The `-SOLSmokeHoloMenu` scaffold (flag constant, harness, the strength-0 / 2 settings in the smoke slot).
+5. [x] Review; fixes; suite. Commit `Issue #42: Part 42c - hologram menu frame and menu layer`.
 
 ### 42d: radial menu (opus, high)
 
@@ -141,22 +141,25 @@ committed as sources in `Docs/Art/ui-sounds/` (`S_SOLHoloOpen.wav`, `S_SOLHoloHo
 three `.scsession` files and `Audio Files/`). Licence check: SDD 7.1 (cleared for the game and the public repo).
 Remaining steps (after 42c, which loads the cues):
 
-1. [ ] `SOL::HoloMenu::CUES[]` in `SOLConstants.h` (path, volume, minimum interval) with the `/Game/SOL/UI/Audio/`
+1. [x] `SOL::HoloMenu::CUES[]` in `SOLConstants.h` (path, volume, minimum interval) with the `/Game/SOL/UI/Audio/`
    paths of SDD 7.1.
-2. [ ] `Tools/UI/import_holo_menu_sounds.py` (editor Python, `unreal.AssetImportTask`, automated, replace existing):
+2. [x] `Tools/UI/import_holo_menu_sounds.py` (editor Python, `unreal.AssetImportTask`, automated, replace existing):
    import the three WAVs into `/Game/SOL/UI/Audio/`, set the sound class to `SC_SOLSfx`, save. Extend
    `Tools/CreateSOLAudioClasses.py` to assign `/Game/SOL/UI/Audio/S_SOL*` waves to the SFX class too.
-3. [ ] Run it with the editor open (unreal-mcp) or as a commandlet; check the three assets load (smoke cue counter
+3. [x] Run it with the editor open (unreal-mcp) or as a commandlet; check the three assets load (smoke cue counter
    from 42c), and that the SFX slider scales them.
 4. [ ] The user listens in game (open, hover, select) and approves or asks for changes; changes are remade from the
    `.scsession` files and re-imported.
-5. [ ] Review; commit `Issue #42: Part 42h - hologram menu sound cues` (the `.uasset` files and the script).
+5. [x] (the user listen round of step 4 is still to come; remade cues would be re-imported and committed then) Review; commit `Issue #42: Part 42h - hologram menu sound cues` (the `.uasset` files and the script).
 
 ### 42i: docs, profiling, screenshots and close (sonnet, medium; profiling by opus/high)
 
 1. [ ] Profile (SDD 11, D14): `-SOLSmokeHoloMenuProfile`, every pass with all the menus and cards that can be open
    together; numbers into an SDD 42 amendment next to the 42a baseline; each pass under **0.1 ms extra CPU and
    0.1 ms extra GPU**, or the part is not done.
+   Confirm here that no outline cache inside the geometry functions is needed (closed at the 42c review, about 6 us
+   per frame for 6 frames). If the GPU pass is tight, the column divider can be drawn as 2 dashed-line shapes instead
+   of one quad per dash (a section 4.6 contract change; 42c review note).
 2. [ ] `Docs/GAME_MECHANICS.md`, the in-game Controls / Info / About texts, `Docs/ARCHITECTURE.md` (SDD 10). The
    GAME_MECHANICS / info-screen audit by a sonnet/medium subagent.
 3. [ ] README: 2-3 screenshots into `Docs/Images/` and the gallery (SDD 10).
@@ -223,6 +226,22 @@ Remaining steps (after 42c, which loads the cues):
   the settings range, unity-safe file-local prefixes, `MIN_PIECE_PX` and `UI_SCALE_MIN/MAX` constants, NaN time guard.
   Step 0: `-SOLSmokeHoloMenuProfile` built and reviewed (blocker fixed: pinned sim date JD 2461348.5 and a named body,
   Neptune); baseline in SDD 11.1 and in the smoke's constants (third run all PASS). Suite 1272 / 1272. Notes for 42c
-  from the review: scale the hover intensity by `FillAlpha`; cache the outline while Open and the rect is unchanged;
+  from the review: scale the hover intensity by `FillAlpha`; [x] cache the outline while Open and the rect is unchanged
+  (closed in the 42c review: `SSOLHoloFrame` keeps its built frame while Open and only moves the sweep; a further
+  outline cache inside the geometry functions is not needed at this cost, about 6 us per frame for 6 frames, confirm in
+  42i step 1);
   keep the pawn's `GetLastInfoCardLineCount` / `GetLastRadialSectorCount` current (the profile smoke reads them).
   Next step: 42h import (cue assets), then 42c.
+- 2026-11-04 (resume state): 42h steps 1-3 done, uncommitted (CUES[] in `SOL::HoloMenu`, `Tools/UI/import_holo_menu_sounds.py`,
+  `Tools/CreateSOLAudioClasses.py`, three `.uasset` cues in `Content/SOL/UI/Audio/`; volumes 0.8 / 0.5 / 0.8 chosen
+  by the importer, to retune in the user's listen round); they get reviewed and committed with 42c. SDD 4.6 (42c
+  testable contracts: `SOLHoloFrameBuild`, `FSOLHoloMenuParamCache`, `FSOLHoloCueGate`) written; its tests
+  (`Tests/HoloMenuKitTest.cpp`) are being authored by a separate agent. Next: 42c-1 (builders + subsystem, TDD), then
+  42c-2 (SSOLHoloFrame, USOLHoloFrameWidget, HUD menu layer, `-SOLSmokeHoloMenu` scaffold), review, commit 42c + 42h.
+- 2026-11-04: 42c and 42h steps 1-3 and 5 done. 42c split in two: 42c-1 (SDD 4.6 contracts written first, 19
+  `SOLTest.HoloMenuKit.*` tests by a separate author, then `SOLHoloFrameBuild` and `USOLHoloMenuSubsystem`) and 42c-2
+  (`SSOLHoloFrame`, `USOLHoloFrameWidget`, the HUD menu layer `mMenuLayer` with `Menu*` helpers incl. `MenuText`, the
+  `-SOLSmokeHoloMenu` scaffold). Two reviews; fixes incl. one viewport-size source per frame, menu text above its
+  backing, title-step pad, volatile UMG frame, dark `BACKDROP_TINT` to match the approved sample, an idempotent cue
+  import (MD5 tag). Suite 1292 / 1292; `-SOLSmokeHoloMenu` 18/18, `-SOLSmokeHud` 24/24 at 1280x720 and 1000x800,
+  `-SOLSmokeOverlay` 34/34, `-SOLSmokeInteract` 18/18, profile P0-P4 PASS. Next step: 42d (radial).

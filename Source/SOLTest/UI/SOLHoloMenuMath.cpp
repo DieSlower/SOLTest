@@ -500,6 +500,27 @@ int32 SOLHoloMenu::FrameOutline(const FBox2f& rect, const float titleStepWidthPx
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Whether a rect has four finite coordinates and a positive width and height
+bool SOLHoloMenu::IsValidRect(const FBox2f& rect)
+{
+    return HoloMathIsValidRect(rect);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// u: the UI scale clamped to [UI_SCALE_MIN, UI_SCALE_MAX], NaN, infinite or <= 0 reading 1
+float SOLHoloMenu::UiScale(const float uiScale)
+{
+    return HoloMathScale(uiScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The outline's effective scale k, 0 for an invalid rect
+float SOLHoloMenu::FrameScale(const FBox2f& rect, const float uiScale)
+{
+    return HoloMathIsValidRect(rect) ? HoloMathFrameScale(rect, uiScale) : 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // The stepped outline's perimeter
 float SOLHoloMenu::FramePerimeter(const FBox2f& rect, const float titleStepWidthPx, const float uiScale)
 {

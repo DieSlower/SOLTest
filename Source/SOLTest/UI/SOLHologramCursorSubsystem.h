@@ -40,6 +40,9 @@ public:
     // Returns the number of times the cursor was painted (verification)
     int32 GetPaintCount() const { return mPaintCount; }
 
+    // Returns the effects strength last pushed to the material, -1 before the first paint (verification, D19)
+    float GetPushedStrength() const { return mPushedStrength; }
+
     // Draws the arrow as one custom-vertex element
     virtual int32 OnPaint(const FPaintArgs& args, const FGeometry& allottedGeometry, const FSlateRect& cullingRect,
         FSlateWindowElementList& outDrawElements, int32 layerId, const FWidgetStyle& widgetStyle,

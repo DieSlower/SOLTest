@@ -25,7 +25,9 @@
 
 class ASOLOrbitLineVisuals;
 class SSOLHudShapeLayer;
+struct FSOLHoloFrameOutput;
 class UFont;
+class USOLHoloMenuSubsystem;
 class UMaterialInstanceDynamic;
 class USOLAnchorSubsystem;
 class USOLHudEventSubsystem;
@@ -190,6 +192,24 @@ public:
 
     // Returns the number of panel backings the shape layer's last paint actually drew (verification)
     int32 GetLastPaintedBackingCount() const;
+
+    // Returns true when the menu layer (the second shape layer, SDD 42 section 4.3) exists (verification)
+    bool HasMenuLayer() const { return mMenuLayer.IsValid(); }
+
+    // Returns the material the menu layer draws with, or null (verification: the hologram menu subsystem's MID)
+    UObject* GetMenuLayerMaterial() const;
+
+    // Returns the shapes queued on the menu layer this frame (verification)
+    int32 GetLastMenuShapeCount() const;
+
+    // Returns the backings queued on the menu layer this frame (verification)
+    int32 GetLastMenuBackingCount() const;
+
+    // Returns the shapes the menu layer's last paint drew (verification)
+    int32 GetLastMenuPaintedShapeCount() const;
+
+    // Returns the frame the menu layer was last stamped for (0: never; verification)
+    uint64 GetMenuLayerBatchFrame() const;
 
     // Returns the number of warp streaks drawn in the last frame (verification)
     int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
@@ -370,6 +390,31 @@ private:
     // Returns the shape batch while the shape renderer is active (sol.HudRenderer 1 and the layer exists), else nullptr
     FSOLHudShapeBatch* GetActiveShapeBatch();
 
+    // Starts this frame's menu layer (SDD 42 section 4.3): empties it if the last frame drew on it, binds the menu
+    // material once it exists and feeds the subsystem's material update; the layer is stamped only when written to
+    void BeginMenuFrame();
+
+    // Returns the batch menu shapes go to this frame, stamping the menu layer on first use: the menu layer's with the
+    // menu material, else the HUD's own batch (no menu material), else nullptr (sol.HudRenderer 0: Canvas)
+    FSOLHudShapeBatch* GetMenuBatch();
+
+    // Draws a menu glow line on the menu layer (else as GlowLine: HUD batch or Canvas), its glow pad following the
+    // hologram menu strength (SOLHoloFrameBuild::LinePad: thin and flat at 0, D18)
+    void MenuLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, float intensity, float thickness);
+
+    // Draws the text buffer as one menu line on the menu layer, so it paints above the menu's backing and fill (else as
+    // DrawBuffer: the HUD layer's text or Canvas); returns its screen rectangle
+    FBox2D MenuText(ESOLHudLine line, const FLinearColor& color, float x, float y, ESOLHudFont font,
+        float textScale = 1.0f);
+
+    // Draws a menu glow arc on the menu layer (else the HUD batch); false when dropped or there is no batch (Canvas)
+    bool MenuArc(const FVector2f& center, float radiusPx, float halfWidthPx, float midAngleRad, float halfApertureRad,
+        const FLinearColor& color, float intensity, float padPx);
+
+    // Draws a built hologram frame or card (shapes and backing) on the menu layer (else the HUD layer); returns the
+    // shapes taken (0 under sol.HudRenderer 0: the Canvas fallback draws the menus as before, with no effects)
+    int32 MenuHoloShapes(const FSOLHoloFrameOutput& output);
+
     // Returns true when the bus holds a pilot snapshot published within SOL::Hologram::HUD_PILOT_MAX_FRAME_LAG frames
     bool HasFreshPilot() const;
 
@@ -484,6 +529,9 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> ShapeMaterial;     // M_SOLHudShape instance drawn by the shape layer
 
+    UPROPERTY(Transient)
+    TObjectPtr<USOLHoloMenuSubsystem> HoloMenu;             // Owns the menu material the menu layer draws with
+
     FSOLMapBodyOverlay mMapBodyOverlay;             // Jump map: per-body icons and name labels
     FSOLOverlayIconLayer mIconLayer;                // Flight view overlay icons (SDD 22)
     bool mAreShipsSelected = false;                 // The icon layer chose NPC ships this frame (icons or radar)
@@ -515,6 +563,8 @@ private:
     TSharedPtr<SSOLHudShapeLayer> mShapeLayer;      // Batched glow-shape widget over the game viewport (SDD 21)
     FSOLHudShapeBatch* mBatch = nullptr;            // This frame's shape batch while the shape renderer is active
     FSOLHudTextList* mTextList = nullptr;           // This frame's glow-text lines while the shape renderer is active
+    TSharedPtr<SSOLHudShapeLayer> mMenuLayer;       // Second shape layer, menu material, just above the HUD's (SDD 42)
+    bool mIsMenuFrameStamped = false;               // The menu layer was written to (and stamped) this frame
     FBox2D mLeftBlockRect = FBox2D(ForceInit);      // Speed and G block text this frame (its panel)
     FBox2D mTopBlockRect = FBox2D(ForceInit);       // Autopilot and route text this frame (its panel)
     int32 mLastPanelCount = 0;                      // Hologram panels queued this frame

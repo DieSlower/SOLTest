@@ -33,10 +33,14 @@ class SOLTEST_API SSOLHudShapeLayer : public SLeafWidget
 {
 public:
 
-    SLATE_BEGIN_ARGS(SSOLHudShapeLayer) {}
+    SLATE_BEGIN_ARGS(SSOLHudShapeLayer)
+        : _MaxShapes(SOL::Hologram::HUD_MAX_SHAPES)
+    {}
+        // Shape capacity of the batch and the paint buffer (the HUD's by default; the menu layer asks for less)
+        SLATE_ARGUMENT(int32, MaxShapes)
     SLATE_END_ARGS()
 
-    // Reserves the batch and paint buffers once (SOL::Hologram::HUD_MAX_SHAPES quads)
+    // Reserves the batch and paint buffers once (args.MaxShapes quads)
     void Construct(const FArguments& args);
 
     // Sets the material the shapes are drawn with (kept alive by the owner)
@@ -53,8 +57,10 @@ public:
 
     // Adds a soft dark backing under a hologram panel (canvas pixels, rounded with cornerPx and fading in over
     // featherPx from its edge; SOLHudShapeMath::BackingLayer), its darkness scaled by opacity (0-1, so a fading panel
-    // fades its backing too); false when the backing buffer is full
-    bool AddBacking(const FBox2f& rect, float cornerPx, float featherPx, float opacity = 1.0f);
+    // fades its backing too), in colour's RGB (the HUD backing colour by default; the alpha is always the HUD backing
+    // alpha x opacity); false when the backing buffer is full
+    bool AddBacking(const FBox2f& rect, float cornerPx, float featherPx, float opacity = 1.0f,
+        const FLinearColor& color = SOL::Hologram::HUD_PANEL_BACKING_COLOR);
 
     // Sets the font a text line of a given ESOLHudFont is drawn with (the engine fonts' legacy Slate font info)
     void SetFont(ESOLHudFont font, const FSlateFontInfo& fontInfo);
@@ -74,6 +80,31 @@ public:
     // Returns the number of shapes drawn by the last paint (verification)
     int32 GetLastPaintedShapeCount() const { return mLastPaintedShapeCount; }
 
+    // Returns the frame the batch was last stamped for (verification)
+    uint64 GetBatchFrame() const { return mBatchFrame; }
+
+    // Returns the material the shapes are drawn with, or null (verification)
+    UObject* GetMaterial() const { return mBrush.GetResourceObject(); }
+
+    // Returns the number of panel backings queued this frame
+    int32 GetBackingCount() const { return mBackings.Num(); }
+
+    // Sets a brush up as the white, outline-free rounded box the backings are drawn with (tinted per layer)
+    static void InitBackingBrush(FSlateBrush& brush);
+
+    // Paints one soft dark backing (pixels, SOLHudShapeMath::BackingLayer's stack of rounded boxes) on layerId in
+    // colour's RGB at the HUD backing alpha x opacity; the brush's corner radius is set per box (Slate copies it into
+    // each element)
+    static void PaintBacking(const FGeometry& allottedGeometry, FSlateWindowElementList& outDrawElements,
+        int32 layerId, FSlateBrush& backingBrush, const FBox2f& rect, float cornerPx, float featherPx, float opacity,
+        const FLinearColor& color, float inverseScale);
+
+    // Paints a batch (pixels relative to the geometry's origin) as one custom-vertex element with the brush's
+    // material on layerId, through a reused vertex buffer; fetches the resource handle once; true when drawn
+    static bool PaintBatch(const FGeometry& allottedGeometry, FSlateWindowElementList& outDrawElements, int32 layerId,
+        const FSOLHudShapeBatch& batch, const FSlateBrush& brush, FSlateResourceHandle& resourceHandle,
+        TArray<FSlateVertex>& paintVertices, float inverseScale);
+
     // Draws the batch as one custom-vertex element
     virtual int32 OnPaint(const FPaintArgs& args, const FGeometry& allottedGeometry, const FSlateRect& cullingRect,
         FSlateWindowElementList& outDrawElements, int32 layerId, const FWidgetStyle& widgetStyle,
@@ -90,13 +121,14 @@ private:
 
     FSOLHudShapeBatch mBatch;                           // Filled by the HUD in canvas pixels
     FSOLHudTextList mTexts;                             // Glow-text lines, canvas pixels
-    // One panel backing: its rectangle, corner radius and edge feather in canvas pixels, and its opacity
+    // One panel backing: its rectangle, corner radius and edge feather in canvas pixels, its opacity and colour (RGB)
     struct FSOLHudBacking
     {
         FBox2f Rect;
         float CornerPx = 0.0f;
         float FeatherPx = 0.0f;
         float Opacity = 1.0f;
+        FLinearColor Color = FLinearColor::Black;
     };
 
     TArray<FSOLHudBacking> mBackings;                   // Panel backings, canvas pixels (reserved once)
