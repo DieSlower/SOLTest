@@ -3119,7 +3119,12 @@ bool ASOLShipPawn::OpenActionList(const FSOLObjectRef& object, const FVector2D& 
     {
         return false;
     }
-    ActionList->AddToViewport(SOL::Interact::LIST_Z_ORDER);
+
+    // A list still playing its close (SDD 42 section 4.5) is on the viewport already: Open reversed it
+    if (!ActionList->IsInViewport())
+    {
+        ActionList->AddToViewport(SOL::Interact::LIST_Z_ORDER);
+    }
     FInputModeUIOnly inputMode;
     inputMode.SetWidgetToFocus(ActionList->TakeWidget());
     inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
@@ -3132,14 +3137,21 @@ bool ASOLShipPawn::OpenActionList(const FSOLObjectRef& object, const FVector2D& 
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Closes the list menu and gives the map its input back, or closes the map when the chosen action started a jump
+// Closes the list menu and gives the map its input back, or closes the map when the chosen action started a jump; the
+// list plays its close animation and removes itself (SDD 42 section 4.5), unless the map closes with it
 void ASOLShipPawn::CloseActionList()
 {
     if (!mIsActionListOpen)
     {
         return;
     }
-    DismissActionList();
+    if (ActionList != nullptr)
+    {
+        ActionList->BeginClose();
+    }
+    mIsActionListOpen = false;
+    mIsActionListRequested = false;
+    mIsActionListCloseRequested = false;
     if (Jump != nullptr && Jump->IsWarping())
     {
         CloseMap();
@@ -3159,12 +3171,12 @@ void ASOLShipPawn::CloseActionList()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Removes the list menu without restoring input (teardown, map close)
+// Removes the list menu at once, without its close animation or restoring input (teardown, map close)
 void ASOLShipPawn::DismissActionList()
 {
     if (ActionList != nullptr)
     {
-        ActionList->RemoveFromParent();
+        ActionList->Dismiss();
     }
     mIsActionListOpen = false;
     mIsActionListRequested = false;

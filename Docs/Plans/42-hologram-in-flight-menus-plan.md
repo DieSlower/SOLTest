@@ -122,19 +122,34 @@ Q6 answered (D15: frameless corner ticks + faint tint, extended to the speed car
 answered (D16: the map list menu is hologram). The map list menu uses the Overlay Menu's option (c) frame + tint
 (D20, as proposed in the Q9 wording; the user confirms it at the hand check).
 
-1. [ ] Info card and target card (the top-right `DrawTarget` readout) in the menu layer: corner ticks + tint
+1. [x] Info card and target card (the top-right `DrawTarget` readout) in the menu layer: corner ticks + tint
    (`CardCornerTicks`, `CARD_TICK_PX`), open / close from the cached object, sweep, jitter; the open cue for the info
    card, none for the target card.
-2. [ ] Speed card (`DrawSpeedBlock` + the G meter, `mLeftBlockRect`) and date-and-anchor card (`DrawInfoBlock`'s
+2. [x] Speed card (`DrawSpeedBlock` + the G meter, `mLeftBlockRect`) and date-and-anchor card (`DrawInfoBlock`'s
    panel; the key hints under it stay HUD) moved from `AddHoloPanel` on the HUD layer to the menu layer with the
    same card look; always shown, no open / close or cue; they now follow `HoloMenuEffects` (SDD 4.3). Any
    `-SOLSmokeHud` check that counts HUD-layer panels or backings updated.
-3. [ ] Smoke step 7; `-SOLSmokeInteract` Info checks and `-SOLSmokeHud` green; screenshots looked at.
-4. [ ] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram cards`.
-5. [ ] Map list menu (`USOLActionListWidget`, opus/high): frame widget (option (c) + tint, D20), hover row
+3. [x] Smoke step 7 (and the cards' part of step 9); `-SOLSmokeInteract` Info checks and `-SOLSmokeHud` green;
+   screenshots looked at (2026-11-04: `-SOLSmokeHoloMenu` 70/70 at 1280x720 and 1000x800, Hud 24/24 at both sizes,
+   Interact 18/18, profile P0-P4 PASS; the `-SOLSmokeHud` check `i-glow-text-panels` now counts both layers' painted
+   texts and backings and the HUD-layer panels plus the cards).
+4. [x] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram cards`. (Review, fixes and suite done
+   2026-11-04: the card-content redirect cleared in `BeginShapeFrame`, the content's shapes / texts counted into the
+   card stats and checked on the menu layer, content lines at `LinePad(s)` (flat at 0, D18), style fixes, the SDD 11
+   cards amendment. Q15 answered (a): the target card stays open on a target change and only swaps its text (smoke
+   check `c-target-cycle`). Suite 1323/1323, `-SOLSmokeHoloMenu` 85/85 (86/86 with `c-target-cycle`) at 1280x720
+   and 1000x800, Hud 24/24 at both sizes, profile P0-P4 PASS.)
+5. [x] Map list menu (`USOLActionListWidget`, opus/high): frame widget (option (c) + tint, D20), hover row
    (`RowPointer`), open / close,
-   cues as the radial (select on an enabled action); smoke step 8; map smokes green; screenshot looked at.
-6. [ ] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram map list menu`.
+   cues as the radial (select on an enabled action); smoke step 8; map smokes green; screenshot looked at
+   (2026-11-04: `-SOLSmokeHoloMenu` 84/84 at 1280x720 and 1000x800, Interact 18/18, Map 16/16, MapPick 22/22 (a first
+   run had 5 OS-cursor checks off by 2-5 px, green on the rerun), Route 26/26, profile P0-P4 PASS, suite 1323/1323).
+6. [x] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram map list menu`. (Review, fixes and suite done
+   2026-11-04, commit pending: the select cue only when the action ran, the layout rebuilt from the new content on a
+   reopen during the close, smoke checks `m-list-reopen` (new) and `m-map-close` (first closed frame), the outside
+   click in GAME_MECHANICS, the MapPick OS-cursor flake in TECH_DEBT. Interact 18/18, Map 16/16, MapPick 22/22, Route
+   26/26, RouteOverlay 25/25, Chase 26/26, Dust 24/24, Input 41/41, Jump 13/14 (known), Overlay 33/34 twice
+   (`3-lshift-none`, an icon count 15 vs 16); rerun twice on the same build: `3-lshift-none` passed both times (16 / 16), one run failed `a-cursor` (painted 0 times, focus) and one was 34/34, so a flake of the scene and focus, not 42g (TECH_DEBT).) 42g cards and map list menu committed together.
 
 ### 42h: sound cue import (Q1 = a; sonnet, medium)
 

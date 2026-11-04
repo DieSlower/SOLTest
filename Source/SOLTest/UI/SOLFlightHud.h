@@ -8,10 +8,12 @@
 #include "Flight/SOLFlight.h"
 #include "Flight/SOLFlightMode.h"
 #include "HudEvents/SOLHudBus.h"
+#include "Interaction/SOLInteractionSubsystem.h"
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLMapHologramOverlay.h"
 #include "Map/SOLMapPickOverlay.h"
 #include "Map/SOLMapRouteOverlay.h"
+#include "UI/SOLHoloFrameBuild.h"
 #include "UI/SOLHoloRadial.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudShapeBatch.h"
@@ -26,7 +28,6 @@
 
 class ASOLOrbitLineVisuals;
 class SSOLHudShapeLayer;
-struct FSOLHoloFrameOutput;
 class UFont;
 class USOLHoloMenuSubsystem;
 class UMaterialInstanceDynamic;
@@ -221,6 +222,56 @@ public:
 
     // Returns the frame the menu layer was last stamped for (0: never; verification)
     uint64 GetMenuLayerBatchFrame() const;
+
+    // Returns the text lines the menu layer's last paint drew (verification)
+    int32 GetLastMenuPaintedTextCount() const;
+
+    // Returns the backings the menu layer's last paint drew (verification)
+    int32 GetLastMenuPaintedBackingCount() const;
+
+    // The four frameless hologram cards (SDD 42 D15), all drawn on the menu layer
+    enum class ESOLHudCard : uint8
+    {
+        Info,           // The info card of the object Info was chosen for (top right)
+        Target,         // The selected target's readout (top right)
+        Speed,          // The speed block and the G meter above it (bottom left)
+        DateAnchor,     // The sim date and warp, anchor, nearest body and surface lock (top left)
+        Count
+    };
+
+    // What one card drew last frame (verification)
+    struct FSOLHudCardStats
+    {
+        bool bDrawn = false;                    // Built and drawn this frame
+        bool bOnMenuLayer = false;              // On the menu layer (else the HUD layer: no menu material)
+        int32 Shapes = 0;                       // Shapes the batch took
+        int32 Ticks = 0;                        // Corner tick segments
+        int32 Others = 0;                       // Shapes other than the fill, ticks and sweep (0: no outline)
+        int32 Sweeps = 0;                       // Idle sweep lines
+        float TickPadPx = -1.0f;                // Glow pad of the corner ticks (-1: none drawn)
+        float BackingAlpha = -1.0f;             // Absolute alpha of its dark tint (-1: no backing)
+        FBox2f Rect = FBox2f(ForceInit);        // The card rect (its backing)
+        FSOLHoloMenuLook Look;                  // The look it was drawn at
+        float Strength = 0.0f;                  // The hologram menu strength it was drawn at
+        int32 ContentShapes = 0;                // Content shapes (bars, icon, G meter) added on the menu layer
+        int32 ContentTexts = 0;                 // Content text lines added on the menu layer
+        float ContentPadPx = -1.0f;             // Glow pad of its content lines (-1: no content on the menu layer)
+    };
+
+    // Returns what a card drew last frame (verification)
+    const FSOLHudCardStats& GetLastCard(ESOLHudCard card) const;
+
+    // Returns the info card's anim (the always-on cards have none; verification)
+    const FSOLHoloMenuAnim& GetInfoCardAnim() const { return mInfoCardAnim; }
+
+    // Returns the target card's anim (verification)
+    const FSOLHoloMenuAnim& GetTargetCardAnim() const { return mTargetCardAnim; }
+
+    // Returns the target name the target card shows (kept while it closes; verification)
+    FName GetTargetCardName() const { return mTargetCardName; }
+
+    // Returns how many of the HUD layer's backings this frame overlap a rectangle (verification: a card's rect)
+    int32 CountHudBackingsOverlapping(const FBox2f& rect) const;
 
     // Returns the number of warp streaks drawn in the last frame (verification)
     int32 GetLastWarpStreaksDrawn() const { return mLastWarpStreaksDrawn; }
@@ -429,6 +480,22 @@ private:
     // shapes taken (0 under sol.HudRenderer 0: the Canvas fallback draws the menus as before, with no effects)
     int32 MenuHoloShapes(const FSOLHoloFrameOutput& output);
 
+    // Sends the HUD's draw helpers (DrawBuffer, GlowLine, GlowBox, GlowRing, DrawBar) to the menu layer until
+    // EndCardContent, so an always-on card's content paints above its own backing, its lines padded by the hologram
+    // menu strength (LinePad: flat at 0, D18); false (nothing changed) when the menu layer is not in use this frame.
+    // No AddHoloPanel, MenuHoloShapes or DrawCard call may run in between; BeginShapeFrame clears a missed End
+    bool BeginCardContent(ESOLHudCard card);
+
+    // Sends the HUD's draw helpers back to the HUD layer and records the content added into the card's stats
+    void EndCardContent();
+
+    // Builds a frameless card (SOLHoloFrameBuild::BuildCard: corner ticks, faint tint, sweep) around a content
+    // rectangle at a look and draws it on the menu layer (else the HUD layer), recording what it drew
+    void DrawCard(ESOLHudCard card, const FBox2D& content, const FSOLHoloMenuLook& look);
+
+    // Returns a card's look this frame from its anim (whole and plain under the Canvas fallback while live)
+    FSOLHoloMenuLook CardLook(const FSOLHoloMenuAnim& anim, bool bLive) const;
+
     // Returns true when the bus holds a pilot snapshot published within SOL::Hologram::HUD_PILOT_MAX_FRAME_LAG frames
     bool HasFreshPilot() const;
 
@@ -480,8 +547,14 @@ private:
     // the highlighted disabled action's reason faded by the fill
     void DrawRadialMenu(const FSOLHoloMenuLook& look, float s);
 
-    // Draws the info card of the object Info was chosen for (top right)
-    void DrawInfoCard(const FSOLObjectRef& object);
+    // Draws the info card of the object Info was chosen for (top right) as a frameless card on the menu layer: it
+    // draws in with the open cue when Info is chosen for a new object (the same object again changes nothing) and
+    // closes from its cached object and facts (value types) once the card timed out (SDD 42 sections 4.5 and 5)
+    void DrawInfoCard();
+
+    // Draws the target card (the selected target's readout, top right) on the menu layer at its look, from the cached
+    // name, distance and relative speed (kept while it closes)
+    void DrawTargetCard(const FSOLHoloMenuLook& look);
 
     // Draws the prograde and retrograde markers of the velocity relative to the active frame
     void DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state);
@@ -595,6 +668,26 @@ private:
     FSOLHudTextList* mTextList = nullptr;           // This frame's glow-text lines while the shape renderer is active
     TSharedPtr<SSOLHudShapeLayer> mMenuLayer;       // Second shape layer, menu material, just above the HUD's (SDD 42)
     bool mIsMenuFrameStamped = false;               // The menu layer was written to (and stamped) this frame
+    FSOLHudShapeBatch* mCardHudBatch = nullptr;     // The HUD layer's batch and text list while BeginCardContent sends
+    FSOLHudTextList* mCardHudTextList = nullptr;    // the draw helpers to the menu layer (null otherwise)
+    ESOLHudCard mContentCard = ESOLHudCard::Count;  // The card whose content is being drawn, with the menu layer's
+    int32 mContentShapeStart = 0;                   // shape and text counts when it began
+    int32 mContentTextStart = 0;
+    float mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;   // Glow pad of the Glow* helpers (LinePad on card content)
+    FSOLHoloFrameOutput mCardOutput;                // One card's build, reused (8 KB: a member, never a local)
+    FSOLHudCardStats mCardStats[static_cast<int32>(ESOLHudCard::Count)];   // What each card drew this frame
+    double mCardNowS = 0.0;                         // Real time and hologram menu strength the cards use this frame
+    float mCardStrength = 0.0f;
+    FSOLHoloMenuLook mAlwaysOnCardLook;             // The speed and date-and-anchor cards' look this frame (Open)
+    FSOLHoloMenuAnim mInfoCardAnim;                 // Info card: anim, the object and facts last drawn (kept while it
+    FSOLObjectRef mInfoCardObject;                  // closes) and the frame of its last update (a gap closes it at
+    FSOLObjectInfo mInfoCardInfo;                   // once)
+    uint64 mInfoCardFrame = 0;
+    FSOLHoloMenuAnim mTargetCardAnim;               // Target card: anim, the target and readout last drawn (kept
+    FName mTargetCardName;                          // while it closes) and the frame of its last update
+    double mTargetCardDistanceM = 0.0;
+    double mTargetCardRelativeMps = 0.0;
+    uint64 mTargetCardFrame = 0;
     FBox2D mLeftBlockRect = FBox2D(ForceInit);      // Speed and G block text this frame (its panel)
     FBox2D mTopBlockRect = FBox2D(ForceInit);       // Autopilot and route text this frame (its panel)
     int32 mLastPanelCount = 0;                      // Hologram panels queued this frame

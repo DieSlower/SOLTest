@@ -477,14 +477,24 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
                 : TEXT("inactive"), shapes, HUDSMOKE_RETICLE_SHAPES));
 
             // SDD 21 phase B: the text lines are glow text in the Slate layer and the text blocks have panels; the
-            // painted counts prove the layer drew them (a failed font setup would queue lines but draw none)
-            const int32 texts = mHud.IsValid() ? mHud->GetLastPaintedTextCount() : 0;
-            const int32 panels = mHud.IsValid() ? mHud->GetLastPanelCount() : 0;
-            const int32 backings = mHud.IsValid() ? mHud->GetLastPaintedBackingCount() : 0;
+            // painted counts prove the layer drew them (a failed font setup would queue lines but draw none). SDD 42
+            // D15: the speed, date-and-anchor and target blocks are hologram cards on the menu layer, so the counts
+            // are of both layers: HUD-layer panels plus cards, and both layers' painted texts and backings
+            const int32 texts = mHud.IsValid() ? mHud->GetLastPaintedTextCount() + mHud->GetLastMenuPaintedTextCount()
+                : 0;
+            int32 cards = 0;
+            for (int32 card = 0; mHud.IsValid() && card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count);
+                ++card)
+            {
+                cards += mHud->GetLastCard(static_cast<ASOLFlightHud::ESOLHudCard>(card)).bDrawn ? 1 : 0;
+            }
+            const int32 panels = mHud.IsValid() ? mHud->GetLastPanelCount() + cards : 0;
+            const int32 backings = mHud.IsValid()
+                ? mHud->GetLastPaintedBackingCount() + mHud->GetLastMenuPaintedBackingCount() : 0;
             Check(TEXT("i-glow-text-panels"), texts >= HUDSMOKE_MIN_GLOW_TEXTS && panels >= HUDSMOKE_MIN_PANELS
-                && backings >= HUDSMOKE_MIN_PANELS, FString::Printf(TEXT("%d glow-text lines painted (need %d), "
-                    "%d panels queued, %d backings painted (need %d)"), texts, HUDSMOKE_MIN_GLOW_TEXTS, panels,
-                    backings, HUDSMOKE_MIN_PANELS));
+                && backings >= HUDSMOKE_MIN_PANELS, FString::Printf(TEXT("%d glow-text lines painted on both layers "
+                    "(need %d), %d HUD panels and %d cards queued, %d backings painted on both layers (need %d)"),
+                    texts, HUDSMOKE_MIN_GLOW_TEXTS, panels - cards, cards, backings, HUDSMOKE_MIN_PANELS));
         }
 
         {

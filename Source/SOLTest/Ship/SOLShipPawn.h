@@ -258,7 +258,8 @@ public:
     // Opens the map's list menu for an object at a cursor position (pixels); false when it has no actions
     bool OpenActionList(const FSOLObjectRef& object, const FVector2D& cursorPx);
 
-    // Closes the list menu and gives the map its input back (or closes the map after a Jump To)
+    // Closes the list menu and gives the map its input back (or closes the map after a Jump To); the list plays its
+    // close animation and removes itself (SDD 42 section 4.5)
     void CloseActionList();
 
     // Asks for the list menu to close at the next tick (its close delegate; outside the Slate handler)
@@ -653,7 +654,7 @@ private:
     // radial menu when something else takes the cursor (SDD 22)
     void UpdateInteraction();
 
-    // Removes the list menu without restoring input (teardown, map close)
+    // Removes the list menu at once, without its close animation or restoring input (teardown, map close)
     void DismissActionList();
 
     // Returns true while the radial menu is open

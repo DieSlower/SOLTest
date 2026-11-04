@@ -13,6 +13,8 @@
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
+#include "Targeting/SOLTargetingSubsystem.h"
+#include "UI/SOLActionListWidget.h"
 #include "UI/SOLFlightHud.h"
 #include "UI/SOLHoloFrame.h"
 #include "UI/SOLHoloFrameWidget.h"
@@ -79,7 +81,31 @@ namespace
         SpeedFlat,      // Step 9: strength 0: whole and flat at once, a digit step and the cues still work
         SpeedFlatClose, // Esc at strength 0: the widget removed in the same frame
         SpeedStrong,    // Strength 2: the glow look (screenshot), then Esc; the cap restored
-        Stubs,        // The section 12 checks later parts fill in
+        CardsAlwaysOn,  // Step 7: the speed and date-and-anchor cards on the menu layer at the menu strength (8 ticks,
+                        // no outline) and no longer under a HUD-layer panel
+        CardInfoPrep,   // The info card closed first (Info cleared, its close played out)
+        CardInfoOpen,   // Step 7: Info on the radial body: the open cue, the corner ticks mid draw-in, then Open
+        CardInfoAgain,  // Info again on the same object: no restart, no cue
+        CardTargetOpen, // Step 7: the target cleared, then Target on the radial body: the target card draws in, no cue
+        CardTargetCycle,    // R (next target): the target card stays Open and whole and only swaps its text (Q15)
+        CardsShot,      // All four cards on the menu layer (screenshot at strength 1)
+        CardsClose,     // Step 7: target and Info cleared: both close from their cache, then "TARGET none" on the HUD
+        CardsFlat,      // Step 9: strength 0: Info and Target whole on the first frame, flat and readable, closed at
+                        // once
+        CardsStrong,    // Strength 2: glow pads, the sweep and the darker tint (screenshot); then both cleared
+        MapOpen,        // Step 8: the jump map opened (the list menu's steps run on it)
+        ListOpen,       // Step 8: the list menu on the radial body: the open cue, the draw-in mid-way, then Open with
+                        // the outline, the hint divider and the mark on the highlighted row
+        ListHover,      // Step 8: the mouse onto a row, then onto the Target row: two hover cues, brackets and pointer
+        ListSelect,     // Step 8: Enter on Target (enabled): the select cue, the action runs, input back to the map in
+                        // the same frame, the close plays, the widget gone after CLOSE_S
+        ListCancel,     // Up onto the disabled Target row and Enter: nothing runs, no select cue; Esc: no select cue
+        ListReopen,     // Esc, then the list opened at another point mid-close: one open cue, on the viewport, focused
+        ListFlat,      // Step 9: strength 0: whole and flat at once, Down and Up move the mark (hover cues)
+        ListFlatSelect, // Enter on Target at strength 0: the select cue, the action runs, the widget removed at once
+        ListStrong,     // Strength 2: the glow look (screenshot), then Esc
+        MapClose,       // The map closed mid-close of the list: the list off the viewport and Closed on that frame
+        Stubs,         // The section 12 checks later parts fill in
         Quit,           // The SUMMARY line, then quit
         Count,
     };
@@ -110,6 +136,9 @@ namespace
     constexpr double HOLOSMOKE_CAP_TOLERANCE = 1.0e-3;     // Relative tolerance of a cap read back from the ship
     constexpr float HOLOSMOKE_LIST_SCROLL_NOTCHES = 8.0f;  // Wheel notches over the F3 list (scrolls the row away)
     const FVector2D HOLOSMOKE_MOUSE_PARK(0.85, 0.5);       // Where the mouse waits, as a fraction of the viewport
+    constexpr double HOLOSMOKE_MAP_SETTLE_S = 1.0;         // The jump map opened and drawn before the list opens
+    constexpr int32 HOLOSMOKE_LIST_HOVER_STEP = 2;         // The first hovered row: this many rows below Target
+    const FVector2D HOLOSMOKE_LIST_REOPEN_AT(0.35, 0.4);   // Where the list reopens mid-close (a viewport fraction)
 
     // The frame preview: an Overlay-Menu-like layout in Slate units (the box's size and its offset on the viewport)
     const FVector2f HOLOSMOKE_PREVIEW_OFFSET(60.0f, 60.0f);
@@ -151,6 +180,56 @@ namespace
         return a.Part == b.Part && a.Kind == b.Kind && a.A == b.A && a.B == b.B && a.HalfWidthPx == b.HalfWidthPx
             && a.Color == b.Color && a.Intensity == b.Intensity && a.Fill == b.Fill && a.PadPx == b.PadPx;
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a HUD card's name for the log
+    const TCHAR* HoloSmokeCardName(const ASOLFlightHud::ESOLHudCard card)
+    {
+        switch (card)
+        {
+        case ASOLFlightHud::ESOLHudCard::Info:
+            return TEXT("info");
+        case ASOLFlightHud::ESOLHudCard::Target:
+            return TEXT("target");
+        case ASOLFlightHud::ESOLHudCard::Speed:
+            return TEXT("speed");
+        case ASOLFlightHud::ESOLHudCard::DateAnchor:
+            return TEXT("date-and-anchor");
+        default:
+            return TEXT("?");
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how many of the HUD's cards the last frame drew
+    int32 HoloSmokeCardsDrawn(const ASOLFlightHud& hud)
+    {
+        int32 cards = 0;
+        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        {
+            cards += hud.GetLastCard(static_cast<ASOLFlightHud::ESOLHudCard>(card)).bDrawn ? 1 : 0;
+        }
+        return cards;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a card was drawn frameless on the menu layer: its 8 corner ticks and no outline or other shape
+    bool HoloSmokeIsCardFrameless(const ASOLFlightHud::FSOLHudCardStats& stats)
+    {
+        return stats.bDrawn && stats.bOnMenuLayer && stats.Ticks == SOL::HoloMenu::CARD_TICK_SEGMENTS
+            && stats.Others == 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns what a card drew, for the log
+    FString HoloSmokeCardText(const ASOLFlightHud::FSOLHudCardStats& stats)
+    {
+        return FString::Printf(TEXT("%s on the %s layer, %d shapes (%d ticks, %d sweeps, %d other), tick pad %.2f, "
+            "tint %.3f, strength %.2f, draw-in %.2f, content %d shapes %d texts pad %.2f"), stats.bDrawn
+            ? TEXT("drawn") : TEXT("NOT DRAWN"), stats.bOnMenuLayer ? TEXT("menu") : TEXT("HUD"), stats.Shapes,
+            stats.Ticks, stats.Sweeps, stats.Others, stats.TickPadPx, stats.BackingAlpha, stats.Strength,
+            stats.Look.FrameFraction, stats.ContentShapes, stats.ContentTexts, stats.ContentPadPx);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -170,7 +249,7 @@ void FSOLHoloMenuSmoke::Start(ASOLShipPawn& pawn)
     mHoloMenu = world->GetSubsystem<USOLHoloMenuSubsystem>();
     mSettings = USOLSettingsSubsystem::Get(world);
     mInteraction = world->GetSubsystem<USOLInteractionSubsystem>();
-    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (parts 42c-42f)"));
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (parts 42c-42g)"));
     mPendingReleases.Reserve(4);
     mStep = 0;
     EnterStep(mStep, pawn);
@@ -553,6 +632,197 @@ void FSOLHoloMenuSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
         ParkMouse(pawn);
         TapGameKey(GetSpeedPanelKey());
         break;
+    case EHoloStep::CardsAlwaysOn:
+        // A menu strength that differs from the HUD slider's: the always-on cards must follow it (SDD 42 section 4.3)
+        SetStrength(HOLOSMOKE_CURSOR_STRENGTH);
+        break;
+    case EHoloStep::CardInfoPrep:
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        mInteraction->ClearInfo();
+        break;
+    case EHoloStep::CardInfoOpen:
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mMidOpenFraction = -1.0f;
+        mCardMidTicks = -1;
+        mIsMidOpenShot = false;
+        mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Info);
+        break;
+    case EHoloStep::CardInfoAgain:
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mCardPhaseStartS = mHud.IsValid() ? mHud->GetInfoCardAnim().PhaseStartS : -1.0;
+        mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Info);
+        break;
+    case EHoloStep::CardTargetOpen:
+        // The target cleared first (its close plays out), then Target in TickStep
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mMidOpenFraction = -1.0f;
+        mCardMidTicks = -1;
+        mIsMidOpenShot = false;
+        mIsCardExecuted = false;
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
+        {
+            targeting->ClearTarget();
+        }
+        break;
+    case EHoloStep::CardTargetCycle:
+    {
+        // R, as the key does: the next farther target replaces the open card's target
+        const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
+        const FSOLTargetInfo* before = targeting != nullptr ? targeting->GetSelectedTarget() : nullptr;
+        mCycleNameBefore = before != nullptr ? before->Name : NAME_None;
+        mCardPhaseStartS = mHud.IsValid() ? mHud->GetTargetCardAnim().PhaseStartS : -1.0;
+        mCycleMinFraction = 2.0f;
+        mCycleMinFill = 2.0f;
+        mIsCycleAlwaysDrawn = true;
+        pawn.HandleNextTarget();
+        break;
+    }
+    case EHoloStep::CardsShot:
+        mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Info);
+        break;
+    case EHoloStep::CardsClose:
+        mMidCloseFraction = -1.0f;
+        mMidClosePhase = ESOLHoloMenuPhase::Closed;
+        mCardMidTicks = -1;
+        mCardTargetMidFraction = -1.0f;
+        mCardTargetMidPhase = ESOLHoloMenuPhase::Closed;
+        mCardTargetMidTicks = -1;
+        mCardTargetRect = FBox2f(ForceInit);
+        mIsMidCloseOpen = false;
+        if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
+        {
+            targeting->ClearTarget();
+        }
+        mInteraction->ClearInfo();
+        break;
+    case EHoloStep::CardsFlat:
+        // Strength 0: both opened in one frame, whole on the first drawn frame; cleared later in TickStep
+        SetStrength(0.0f);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mFirstFlatFraction = -1.0f;
+        mFirstFlatFill = -1.0f;
+        mCardTargetMidFraction = -1.0f;
+        mIsFlatClosedAtOnce = false;
+        mSubStep = 0;
+        mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Info)
+            && mInteraction->Execute(mRadialBody, ESOLAction::Target);
+        break;
+    case EHoloStep::CardsStrong:
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Info)
+            && mInteraction->Execute(mRadialBody, ESOLAction::Target);
+        break;
+    case EHoloStep::MapOpen:
+        // No target, so Target is an enabled row of the list (Target runs no card cue); the mouse away from the list
+        ClearTarget(pawn);
+        ParkMouse(pawn);
+        pawn.HandleOpenMap(false);
+        break;
+    case EHoloStep::ListOpen:
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mMidOpenFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mIsMidOpenShot = false;
+        OpenListOnBody(pawn);
+        break;
+    case EHoloStep::ListHover:
+    {
+        // Onto a row below Target now, onto Target later in the step
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const int32 rows = list != nullptr ? list->GetActions().Num : 0;
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mIsSecondDrag = false;
+        mListHoverRow = rows > 0 && mListTargetRow != INDEX_NONE ? (mListTargetRow + HOLOSMOKE_LIST_HOVER_STEP) % rows
+            : INDEX_NONE;
+        if (list != nullptr && mListHoverRow != INDEX_NONE)
+        {
+            SlateMouseMove(list->GetRowScreenCenter(mListHoverRow));
+        }
+        break;
+    }
+    case EHoloStep::ListSelect:
+        // Enter on the highlighted Target row; the pawn closes the list at its next tick (TickStep reads that frame)
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        mIsInputBackAtEsc = false;
+        mEscDetail = TEXT("the list never closed");
+        mIsMidCloseInViewport = false;
+        mMidCloseOpacity = -1.0f;
+        mMidCloseFraction = -1.0f;
+        mMidClosePhase = ESOLHoloMenuPhase::Closed;
+        SlateKey(EKeys::Enter, FModifierKeysState());
+        break;
+    case EHoloStep::ListCancel:
+        // Target is now the selected target, so its row is disabled; the presses run in TickStep
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        mListRowAfterUp = INDEX_NONE;
+        mIsListOpenAfterDisabled = false;
+        ParkMouse(pawn);
+        OpenListOnBody(pawn);
+        break;
+    case EHoloStep::ListReopen:
+        // Opened here, Esc once Open, then the reopen at another point mid-close (TickStep)
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        mIsListClosingAtReopen = false;
+        mListReopenOpens = -1;
+        mIsListReopened = false;
+        mListReopenDetail = TEXT("the reopen never ran");
+        ParkMouse(pawn);
+        OpenListOnBody(pawn);
+        break;
+    case EHoloStep::ListFlat:
+    {
+        // Strength 0: opened, then (TickStep) Down and Up
+        SetStrength(0.0f);
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mPaintsBefore = listFrame != nullptr ? listFrame->GetPaintCount() : 0;
+        mFirstFlatFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        ParkMouse(pawn);
+        OpenListOnBody(pawn);
+        break;
+    }
+    case EHoloStep::ListFlatSelect:
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mExecutedBefore = mInteraction->GetExecutedCount();
+        mIsFlatClosedAtOnce = false;
+        mSubStep = 0;
+        SlateKey(EKeys::Enter, FModifierKeysState());
+        break;
+    case EHoloStep::ListStrong:
+        ClearTarget(pawn);
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        mOverlayOpenS = -1.0;
+        ParkMouse(pawn);
+        OpenListOnBody(pawn);
+        break;
+    case EHoloStep::MapClose:
+    {
+        // The map closes (TickStep) while the list plays the close ListStrong's Esc began: the map's close must remove
+        // it at once (Dismiss), which the first frame with the map closed tells apart from the close's natural end
+        mIsListClosingAtMapClose = false;
+        mIsListGoneAtMapClose = false;
+        mMapCloseDetail = TEXT("the map never closed");
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        TickMapClose(pawn, 0.0);
+        break;
+    }
     case EHoloStep::Stubs:
         LogStubs();
         break;
@@ -861,6 +1131,258 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         }
         return ShotThenDone(TEXT("Speed_S2"), (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS
             + HOLOSMOKE_SETTLED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S);
+    case EHoloStep::CardsAlwaysOn:
+        return ShotThenDone(TEXT("Cards_Always"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::CardInfoPrep:
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    case EHoloStep::CardInfoOpen:
+        // The corner ticks caught about half-way through the draw-in (the last HUD frame), with a screenshot
+        if (hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_OPEN_S)
+        {
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
+            mMidOpenFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
+            mCardMidTicks = info.Ticks;
+            TakeUiShot(TEXT("InfoCardMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return elapsedS >= HOLOSMOKE_OPENED_S;
+    case EHoloStep::CardTargetOpen:
+    {
+        // Target once the cleared target's close played out, then the draw-in caught mid-way
+        if (mSubStep == 0 && elapsedS >= HOLOSMOKE_CLOSED_S)
+        {
+            mOpenRequestsBefore = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Open);
+            mIsCardExecuted = mInteraction->Execute(mRadialBody, ESOLAction::Target);
+            mSubStep = 1;
+            mSubStepS = elapsedS;
+        }
+        if (mSubStep == 1 && hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= mSubStepS
+            + HOLOSMOKE_MID_OPEN_S)
+        {
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            mMidOpenFraction = target.bDrawn ? target.Look.FrameFraction : 0.0f;
+            mCardMidTicks = target.Ticks;
+            TakeUiShot(TEXT("TargetCardMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return mSubStep == 1 && elapsedS >= mSubStepS + HOLOSMOKE_OPENED_S;
+    }
+    case EHoloStep::CardTargetCycle:
+    {
+        // Every HUD frame after R: the card drawn, whole and filled (no draw-in replay), for longer than an open
+        if (hud != nullptr)
+        {
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            mIsCycleAlwaysDrawn = mIsCycleAlwaysDrawn && target.bDrawn;
+            mCycleMinFraction = FMath::Min(mCycleMinFraction, target.bDrawn ? target.Look.FrameFraction : 0.0f);
+            mCycleMinFill = FMath::Min(mCycleMinFill, target.bDrawn ? target.Look.FillAlpha : 0.0f);
+        }
+        return elapsedS >= HOLOSMOKE_OPENED_S;
+    }
+    case EHoloStep::CardsShot:
+        return ShotThenDone(TEXT("Cards_S1"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::CardsClose:
+        // Both cards caught half-way through their close, drawn from the cache after the target and Info went away
+        if (hud != nullptr && mMidCloseFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_CLOSE_S)
+        {
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
+            mMidCloseFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
+            mMidClosePhase = hud->GetInfoCardAnim().Phase;
+            mCardMidTicks = info.Others == 0 ? info.Ticks : -1;
+            mCardTargetMidFraction = target.bDrawn ? target.Look.FrameFraction : 0.0f;
+            mCardTargetMidPhase = hud->GetTargetCardAnim().Phase;
+            mCardTargetMidTicks = target.Others == 0 ? target.Ticks : -1;
+            mCardTargetRect = target.Rect;
+            mIsMidCloseOpen = mInteraction->GetInfoObject().IsValid()
+                || (targeting != nullptr && targeting->GetSelectedTarget() != nullptr);
+            TakeUiShot(TEXT("CardsClosing"));
+        }
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    case EHoloStep::CardsFlat:
+    {
+        // The first drawn frame after the opens; the screenshot; then both cleared and, a frame later, gone at once
+        if (hud != nullptr && mFirstFlatFraction < 0.0f)
+        {
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            if (info.bDrawn || target.bDrawn)
+            {
+                mFirstFlatFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
+                mFirstFlatFill = info.bDrawn ? info.Look.FillAlpha : 0.0f;
+                mCardTargetMidFraction = target.bDrawn ? target.Look.FrameFraction : 0.0f;
+            }
+        }
+        if (mSubStep == 0 && ShotThenDone(TEXT("Cards_S0"), elapsedS >= HOLOSMOKE_SETTLED_S))
+        {
+            // The checks of the open look read this frame's cards in ExitStep, so they are copied before the clear
+            if (hud != nullptr)
+            {
+                mFlatCardStats[0] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
+                mFlatCardStats[1] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+                mFlatCardStats[2] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Speed);
+                mFlatCardStats[3] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::DateAnchor);
+                mFlatInfoLines = hud->GetLastInfoCardLineCount();
+                mFlatMenuTexts = hud->GetLastMenuPaintedTextCount();
+            }
+            if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
+            {
+                targeting->ClearTarget();
+            }
+            mInteraction->ClearInfo();
+            mSubStep = 1;
+            return false;
+        }
+        if (mSubStep == 1)
+        {
+            // The frame after the clear: at strength 0 the close is instant (nothing drawn of either card)
+            mIsFlatClosedAtOnce = hud != nullptr && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn
+                && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target).bDrawn
+                && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
+                && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Closed;
+            mSubStep = 2;
+        }
+        return mSubStep == 2;
+    }
+    case EHoloStep::CardsStrong:
+        return ShotThenDone(TEXT("Cards_S2"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::MapOpen:
+        return elapsedS >= HOLOSMOKE_MAP_SETTLE_S;
+    case EHoloStep::ListOpen:
+    {
+        // The draw-in caught about half-way (with a screenshot), then Open (a screenshot of the opened list)
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        if (listFrame != nullptr && list != nullptr && mMidOpenFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_OPEN_S)
+        {
+            mMidOpenFraction = listFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = list->GetContentOpacity();
+            TakeUiShot(TEXT("ListMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return ShotThenDone(TEXT("List_Open"), elapsedS >= HOLOSMOKE_OPENED_S);
+    }
+    case EHoloStep::ListHover:
+        if (!mIsSecondDrag && elapsedS >= HOLOSMOKE_KEY_GAP_S)
+        {
+            if (const USOLActionListWidget* list = pawn.GetActionList())
+            {
+                SlateMouseMove(list->GetRowScreenCenter(mListTargetRow));
+            }
+            mIsSecondDrag = true;
+        }
+        return ShotThenDone(TEXT("List_Hover"), mIsSecondDrag && elapsedS >= HOLOSMOKE_KEY_GAP_S
+            + HOLOSMOKE_SETTLED_S);
+    case EHoloStep::ListSelect:
+    {
+        // The frame the pawn closed the list: input back at once; then the close caught part-way (a screenshot)
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        if (mSubStep == 0 && !pawn.IsActionListOpen())
+        {
+            const bool bIsClosing = listFrame != nullptr && listFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closing;
+            const bool bIsUnfocused = list != nullptr && !list->IsFocusable() && !list->HasAnyUserFocus();
+            const bool bIsHitInvisible = list != nullptr
+                && list->GetVisibility() == ESlateVisibility::HitTestInvisible;
+            mIsInputBackAtEsc = pawn.IsMapOpen() && list != nullptr && list->IsClosing() && list->IsInViewport()
+                && bIsClosing && bIsUnfocused && bIsHitInvisible;
+            mEscDetail = FString::Printf(TEXT("the frame the list closed: map %s, widget %s and %s, frame %s, %s, %s"),
+                pawn.IsMapOpen() ? TEXT("open") : TEXT("CLOSED"), list != nullptr && list->IsClosing()
+                ? TEXT("closing") : TEXT("NOT closing"), list != nullptr && list->IsInViewport() ? TEXT("still drawn")
+                : TEXT("REMOVED"), bIsClosing ? TEXT("Closing") : TEXT("NOT closing"), bIsUnfocused
+                ? TEXT("unfocusable, no keyboard focus") : TEXT("STILL FOCUSABLE OR FOCUSED"), bIsHitInvisible
+                ? TEXT("hit-test invisible") : TEXT("STILL HIT-TESTABLE"));
+            mSubStep = 1;
+            mSubStepS = elapsedS;
+        }
+        if (mSubStep == 1 && listFrame != nullptr && list != nullptr && elapsedS >= mSubStepS + HOLOSMOKE_MID_CLOSE_S)
+        {
+            mMidCloseFraction = listFrame->GetLastLook().FrameFraction;
+            mMidClosePhase = listFrame->GetAnim().Phase;
+            mMidCloseOpacity = list->GetContentOpacity();
+            mIsMidCloseInViewport = list->IsInViewport();
+            TakeUiShot(TEXT("ListClosing"));
+            mSubStep = 2;
+        }
+        return (mSubStep >= 1 && elapsedS >= mSubStepS + HOLOSMOKE_CLOSED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+    }
+    case EHoloStep::ListCancel:
+    {
+        // Once Open: Up onto the disabled Target row, Enter (nothing runs), then Esc; one press every key gap
+        const USOLActionListWidget* list = pawn.GetActionList();
+        if (list == nullptr || mSubStep >= 3)
+        {
+            return list == nullptr || elapsedS >= mSubStepS + HOLOSMOKE_CLOSED_S;
+        }
+        const double atS = mSubStep == 0 ? HOLOSMOKE_OPENED_S : mSubStepS + HOLOSMOKE_KEY_GAP_S;
+        if (elapsedS >= atS)
+        {
+            if (mSubStep == 0)
+            {
+                SlateKey(EKeys::Up, FModifierKeysState());
+                mListRowAfterUp = list->GetState().Highlighted;
+            }
+            else if (mSubStep == 1)
+            {
+                SlateKey(EKeys::Enter, FModifierKeysState());
+            }
+            else
+            {
+                mIsListOpenAfterDisabled = pawn.IsActionListOpen() && list->IsInViewport() && !list->IsClosing();
+                SlateKey(EKeys::Escape, FModifierKeysState());
+            }
+            ++mSubStep;
+            mSubStepS = elapsedS;
+        }
+        return false;
+    }
+    case EHoloStep::ListReopen:
+        return TickListReopen(pawn, elapsedS);
+    case EHoloStep::ListFlat:
+    {
+        // The first paint after the open, then Down and Up (the mark moves, a hover cue each)
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        if (listFrame != nullptr && list != nullptr && pawn.IsActionListOpen() && mFirstFlatFraction < 0.0f
+            && listFrame->GetPaintCount() != mPaintsBefore)
+        {
+            mFirstFlatFraction = listFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = list->GetContentOpacity();
+            mSubStepS = elapsedS;
+        }
+        if (list == nullptr || mFirstFlatFraction < 0.0f)
+        {
+            return elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+        }
+        if (mSubStep < 2 && elapsedS >= mSubStepS + HOLOSMOKE_KEY_GAP_S)
+        {
+            SlateKey(mSubStep == 0 ? EKeys::Down : EKeys::Up, FModifierKeysState());
+            ++mSubStep;
+            mSubStepS = elapsedS;
+        }
+        return mSubStep >= 2 && ShotThenDone(TEXT("List_S0"), elapsedS >= mSubStepS + HOLOSMOKE_SETTLED_S);
+    }
+    case EHoloStep::ListFlatSelect:
+    {
+        // The frame the pawn closed the list: at strength 0 the widget is already off the viewport
+        const USOLActionListWidget* list = pawn.GetActionList();
+        if (mSubStep == 0 && !pawn.IsActionListOpen())
+        {
+            mIsFlatClosedAtOnce = list != nullptr && !list->IsInViewport();
+            mSubStep = 1;
+        }
+        return mSubStep == 1 || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+    }
+    case EHoloStep::ListStrong:
+        if (mOverlayOpenS < 0.0 && pawn.IsActionListOpen())
+        {
+            mOverlayOpenS = elapsedS;
+        }
+        return ShotThenDone(TEXT("List_S2"), (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS
+            + HOLOSMOKE_SETTLED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S);
+    case EHoloStep::MapClose:
+        return TickMapClose(pawn, elapsedS);
     case EHoloStep::Quit:
         return elapsedS >= HOLOSMOKE_QUIT_S;
     default:
@@ -899,16 +1421,20 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
                 "%.0fx%.0f, %d pushes"), live, strengthParam, viewSize.X, viewSize.Y, widthParam, heightParam,
                 holoMenu->GetParamPushCount()));
 
-        // The menu layer: there, with the menu material, and nothing on it or stamped with no menu open
+        // The menu layer: there, with the menu material, stamped and holding only the cards with no menu open (the
+        // always-on speed and date-and-anchor cards, SDD 42 D15: one backing per card drawn, no other)
         const uint64 stamp = hud != nullptr ? hud->GetMenuLayerBatchFrame() : 0;
-        const bool bIsEmpty = hud != nullptr && hud->GetLastMenuShapeCount() == 0
-            && hud->GetLastMenuBackingCount() == 0 && hud->GetLastMenuPaintedShapeCount() == 0;
+        const int32 cards = hud != nullptr ? HoloSmokeCardsDrawn(*hud) : 0;
+        const bool bIsCardsOnly = hud != nullptr && cards >= 2 && hud->GetLastMenuBackingCount() == cards
+            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Speed).bOnMenuLayer
+            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::DateAnchor).bOnMenuLayer
+            && hud->GetLastMenuPaintedShapeCount() > 0;
         Check(TEXT("a-menu-layer"), hud != nullptr && hud->HasMenuLayer() && hud->GetMenuLayerMaterial() == menuMaterial
-            && bIsEmpty && stamp == 0, FString::Printf(TEXT("menu layer %s, material %s, %d shapes, %d backings, "
-                "%d painted, stamped at frame %llu (now %llu)"), hud != nullptr && hud->HasMenuLayer() ? TEXT("present")
-                : TEXT("MISSING"), hud != nullptr && hud->GetMenuLayerMaterial() == menuMaterial ? TEXT("menu MID")
-                : TEXT("OTHER"), hud != nullptr ? hud->GetLastMenuShapeCount() : -1,
-                hud != nullptr ? hud->GetLastMenuBackingCount() : -1,
+            && bIsCardsOnly && stamp != 0, FString::Printf(TEXT("menu layer %s, material %s, %d shapes, %d backings "
+                "for %d cards, %d painted, stamped at frame %llu (now %llu)"), hud != nullptr && hud->HasMenuLayer()
+                ? TEXT("present") : TEXT("MISSING"), hud != nullptr && hud->GetMenuLayerMaterial() == menuMaterial
+                ? TEXT("menu MID") : TEXT("OTHER"), hud != nullptr ? hud->GetLastMenuShapeCount() : -1,
+                hud != nullptr ? hud->GetLastMenuBackingCount() : -1, cards,
                 hud != nullptr ? hud->GetLastMenuPaintedShapeCount() : -1, stamp, GFrameCounter));
         Check(TEXT("a-hud-layer"), hud != nullptr && hud->WasShapeRendererActive() && hud->GetLastShapeCount() > 0
             && hud->GetLastPanelCount() > 0, FString::Printf(TEXT("HUD layer: renderer %s, %d shapes, %d panels, "
@@ -1049,10 +1575,11 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
                 frame != nullptr ? frame->GetLastPaintedShapeCount() : -1,
                 frame != nullptr ? frame->GetLastPaintedBackingCount() : -1));
         RemoveFramePreview();
-        Check(TEXT("k-menu-layer-idle"), hud != nullptr && hud->GetLastMenuShapeCount() == 0
-            && hud->GetMenuLayerBatchFrame() == 0, FString::Printf(TEXT("menu layer after the frame preview: %d "
-                "shapes, stamped at frame %llu (the UMG frame never draws on it)"), hud != nullptr
-                ? hud->GetLastMenuShapeCount() : -1, hud != nullptr ? hud->GetMenuLayerBatchFrame() : 0));
+        Check(TEXT("k-menu-layer-idle"), hud != nullptr && hud->GetLastMenuBackingCount() == HoloSmokeCardsDrawn(*hud)
+            && hud->GetLastRadialSectorCount() == 0, FString::Printf(TEXT("menu layer after the frame preview: %d "
+                "shapes, %d backings for %d cards, no radial (the UMG frame never draws on it)"), hud != nullptr
+                ? hud->GetLastMenuShapeCount() : -1, hud != nullptr ? hud->GetLastMenuBackingCount() : -1,
+                hud != nullptr ? HoloSmokeCardsDrawn(*hud) : -1));
         break;
     }
     case EHoloStep::RadialOpen:
@@ -1568,9 +2095,398 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         pawn.ApplySpeedCapMps(mSpeedCapRestoreMps);
         break;
     }
+    case EHoloStep::CardsAlwaysOn:
+    {
+        // Step 7: the speed and date-and-anchor cards: frameless on the menu layer, at the menu strength (not the HUD
+        // slider's), Open with no draw-in, no HUD-layer panel left under either, and their content (text; the speed
+        // card's bars and steer icon too) added on the menu layer above the tint, its lines at the menu line pad
+        const float strength = HOLOSMOKE_CURSOR_STRENGTH;
+        const float tint = SOLHoloMenu::BackdropAlpha(strength, 1.0f);
+        const float contentPad = SOLHoloFrameBuild::LinePad(strength);
+        const ASOLFlightHud::ESOLHudCard cards[] = { ASOLFlightHud::ESOLHudCard::Speed,
+            ASOLFlightHud::ESOLHudCard::DateAnchor };
+        int32 passed = 0;
+        FString detail;
+        for (const ASOLFlightHud::ESOLHudCard card : cards)
+        {
+            const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(card)
+                : ASOLFlightHud::FSOLHudCardStats();
+            const int32 hudPanels = hud != nullptr ? hud->CountHudBackingsOverlapping(stats.Rect) : -1;
+            const bool bHasContent = stats.ContentTexts > 0 && stats.ContentPadPx == contentPad
+                && (card != ASOLFlightHud::ESOLHudCard::Speed || stats.ContentShapes > 0);
+            passed += HoloSmokeIsCardFrameless(stats) && stats.Sweeps == 1 && stats.Strength == strength
+                && FMath::IsNearlyEqual(stats.BackingAlpha, tint) && stats.Look.FrameFraction == 1.0f
+                && hudPanels == 0 && bHasContent ? 1 : 0;
+            detail += FString::Printf(TEXT("%s: %s, %d HUD-layer backings under it; "), HoloSmokeCardName(card),
+                *HoloSmokeCardText(stats), hudPanels);
+        }
+        Check(TEXT("c-cards-always-on"), passed == 2, FString::Printf(TEXT("menu strength %.2f (HUD effects %.2f, "
+            "tint %.3f): %s"), strength, mSettings->GetLiveValues().HudEffectsStrength, tint, *detail));
+        break;
+    }
+    case EHoloStep::CardInfoPrep:
+    {
+        const bool bIsClosed = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
+            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
+        Check(TEXT("c-info-prep"), bIsClosed && !mInteraction->GetInfoObject().IsValid(), FString::Printf(TEXT("Info "
+            "cleared: card %s"), bIsClosed ? TEXT("closed, nothing drawn") : TEXT("STILL DRAWN")));
+        break;
+    }
+    case EHoloStep::CardInfoOpen:
+    {
+        // The open cue at Info, the ticks caught mid draw-in, then Open, frameless, with its lines on the menu layer
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr
+            ? hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info) : ASOLFlightHud::FSOLHudCardStats();
+        const bool bIsOpen = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Open;
+        const int32 lines = hud != nullptr ? hud->GetLastInfoCardLineCount() : 0;
+        Check(TEXT("c-info-open"), mIsCardExecuted && opens == 1 && bIsOpen && HoloSmokeIsCardFrameless(stats)
+            && stats.Look.FillAlpha == 1.0f && lines >= 3, FString::Printf(TEXT("Info on body %d %s: %d open cue "
+                "requests, phase %s, %s, %d lines"), mRadialBody.Index, mIsCardExecuted ? TEXT("ran")
+                : TEXT("DID NOT RUN"), opens, bIsOpen ? TEXT("Open") : TEXT("NOT open"), *HoloSmokeCardText(stats),
+                lines));
+        Check(TEXT("c-info-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f
+            && mCardMidTicks == SOL::HoloMenu::CARD_TICK_SEGMENTS, FString::Printf(TEXT("tick draw-in %.3f at %.2f "
+                "s, %d ticks"), mMidOpenFraction, HOLOSMOKE_MID_OPEN_S, mCardMidTicks));
+        break;
+    }
+    case EHoloStep::CardInfoAgain:
+    {
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const double phaseStartS = hud != nullptr ? hud->GetInfoCardAnim().PhaseStartS : -2.0;
+        const bool bIsOpen = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Open
+            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).Look.FrameFraction == 1.0f;
+        Check(TEXT("c-info-again"), mIsCardExecuted && opens == 0 && bIsOpen && phaseStartS == mCardPhaseStartS,
+            FString::Printf(TEXT("Info again on the same object: %d open cue requests, %s, phase start %s"), opens,
+                bIsOpen ? TEXT("still Open and whole") : TEXT("NOT open"), phaseStartS == mCardPhaseStartS
+                ? TEXT("unchanged") : TEXT("RESTARTED")));
+        break;
+    }
+    case EHoloStep::CardTargetOpen:
+    {
+        // Target: the target card draws in (no cue), frameless; the corner ticks caught mid draw-in
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr
+            ? hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target) : ASOLFlightHud::FSOLHudCardStats();
+        const bool bIsOpen = hud != nullptr && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Open;
+        Check(TEXT("c-target-open"), mIsCardExecuted && opens == 0 && bIsOpen && HoloSmokeIsCardFrameless(stats)
+            && stats.Look.FillAlpha == 1.0f, FString::Printf(TEXT("Target on body %d %s: %d open cue requests, phase "
+                "%s, %s"), mRadialBody.Index, mIsCardExecuted ? TEXT("ran") : TEXT("DID NOT RUN"), opens, bIsOpen
+                ? TEXT("Open") : TEXT("NOT open"), *HoloSmokeCardText(stats)));
+        Check(TEXT("c-target-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f
+            && mCardMidTicks == SOL::HoloMenu::CARD_TICK_SEGMENTS, FString::Printf(TEXT("tick draw-in %.3f at %.2f "
+                "s, %d ticks"), mMidOpenFraction, HOLOSMOKE_MID_OPEN_S, mCardMidTicks));
+        break;
+    }
+    case EHoloStep::CardTargetCycle:
+    {
+        // Q15: another target keeps the card open (same phase start, whole and filled every frame) with the new name
+        const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
+        const FSOLTargetInfo* after = targeting != nullptr ? targeting->GetSelectedTarget() : nullptr;
+        const FName nameAfter = after != nullptr ? after->Name : NAME_None;
+        const bool bIsOpen = hud != nullptr && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Open
+            && hud->GetTargetCardAnim().PhaseStartS == mCardPhaseStartS;
+        const FName shown = hud != nullptr ? hud->GetTargetCardName() : NAME_None;
+        Check(TEXT("c-target-cycle"), mCycleNameBefore != NAME_None && nameAfter != NAME_None
+            && nameAfter != mCycleNameBefore && shown == nameAfter && bIsOpen && mIsCycleAlwaysDrawn
+            && mCycleMinFraction == 1.0f && mCycleMinFill == 1.0f, FString::Printf(TEXT("R: target %s -> %s, card "
+                "shows %s, %s, drawn every frame %s, smallest draw-in %.2f and fill %.2f"),
+                *mCycleNameBefore.ToString(), *nameAfter.ToString(), *shown.ToString(), bIsOpen
+                ? TEXT("still Open, phase start unchanged") : TEXT("RESTARTED or not open"), mIsCycleAlwaysDrawn
+                ? TEXT("yes") : TEXT("NO"), mCycleMinFraction, mCycleMinFill));
+        break;
+    }
+    case EHoloStep::CardsShot:
+    {
+        // All four cards at once: each frameless on the menu layer, one backing each and no other menu backing
+        int32 frameless = 0;
+        FString detail;
+        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        {
+            const ASOLFlightHud::ESOLHudCard id = static_cast<ASOLFlightHud::ESOLHudCard>(card);
+            const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(id)
+                : ASOLFlightHud::FSOLHudCardStats();
+            frameless += HoloSmokeIsCardFrameless(stats) ? 1 : 0;
+            detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(id), *HoloSmokeCardText(stats));
+        }
+        const int32 backings = hud != nullptr ? hud->GetLastMenuBackingCount() : -1;
+        Check(TEXT("c-cards-four"), frameless == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)
+            && backings == frameless, FString::Printf(TEXT("%d frameless cards, %d menu layer backings: %s"),
+                frameless, backings, *detail));
+        break;
+    }
+    case EHoloStep::CardsClose:
+    {
+        // Both closed from their cache (frameless, mid-way) after the target and Info went away; then nothing, and
+        // "TARGET none" back on the HUD layer with its own panel where the target card was
+        const bool bIsInfoClosed = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
+            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
+        const bool bIsTargetClosed = hud != nullptr && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Closed
+            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target).bDrawn;
+        const int32 nonePanels = hud != nullptr ? hud->CountHudBackingsOverlapping(mCardTargetRect) : -1;
+        constexpr int32 ticks = SOL::HoloMenu::CARD_TICK_SEGMENTS;
+        Check(TEXT("c-cards-close"), !mIsMidCloseOpen && mMidClosePhase == ESOLHoloMenuPhase::Closing
+            && mMidCloseFraction > 0.0f && mMidCloseFraction < 1.0f && mCardMidTicks == ticks
+            && mCardTargetMidPhase == ESOLHoloMenuPhase::Closing && mCardTargetMidFraction > 0.0f
+            && mCardTargetMidFraction < 1.0f && mCardTargetMidTicks == ticks && bIsInfoClosed && bIsTargetClosed
+            && nonePanels > 0, FString::Printf(TEXT("mid-close (Info and target %s): info phase %d, draw-in %.3f, %d "
+                "ticks; target phase %d, draw-in %.3f, %d ticks; after %.2f s: info %s, target %s, %d HUD panel(s) "
+                "for TARGET none"), mIsMidCloseOpen ? TEXT("STILL SET") : TEXT("cleared"),
+                static_cast<int32>(mMidClosePhase), mMidCloseFraction, mCardMidTicks,
+                static_cast<int32>(mCardTargetMidPhase), mCardTargetMidFraction, mCardTargetMidTicks,
+                HOLOSMOKE_CLOSED_S, bIsInfoClosed ? TEXT("closed") : TEXT("STILL DRAWN"), bIsTargetClosed
+                ? TEXT("closed") : TEXT("STILL DRAWN"), nonePanels));
+        break;
+    }
+    case EHoloStep::CardsFlat:
+    {
+        // Step 9, the cards at strength 0 (D18): whole at once, flat thin ticks, no sweep, the flat tint, readable;
+        // the info card's open cue still asked (D21); closed at once
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        Check(TEXT("c-strength0-open"), mIsCardExecuted && mFirstFlatFraction == 1.0f && mFirstFlatFill == 1.0f
+            && mCardTargetMidFraction == 1.0f && opens == 1, FString::Printf(TEXT("first drawn frame: info draw-in "
+                "%.2f, fill %.2f, target draw-in %.2f; %d open cue requests (D21)"), mFirstFlatFraction,
+                mFirstFlatFill, mCardTargetMidFraction, opens));
+        int32 flat = 0;
+        FString detail;
+        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        {
+            // The always-on cards' content lines (bars, steer icon, G meter) go flat with the ticks (D18)
+            const ASOLFlightHud::FSOLHudCardStats& stats = mFlatCardStats[card];
+            const bool bIsAlwaysOn = card == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Speed)
+                || card == static_cast<int32>(ASOLFlightHud::ESOLHudCard::DateAnchor);
+            flat += HoloSmokeIsCardFrameless(stats) && stats.Strength == 0.0f && stats.Sweeps == 0
+                && stats.BackingAlpha == FLAT_PANEL_ALPHA && stats.TickPadPx == FRAME_FLAT_PAD_PX
+                && (!bIsAlwaysOn || stats.ContentPadPx == FRAME_FLAT_PAD_PX) ? 1 : 0;
+            detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(static_cast<ASOLFlightHud::ESOLHudCard>(
+                card)), *HoloSmokeCardText(stats));
+        }
+        Check(TEXT("c-strength0-flat"), flat == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)
+            && mFlatInfoLines >= 3 && mFlatMenuTexts > 0 && mIsFlatClosedAtOnce, FString::Printf(TEXT("%d flat "
+                "cards, %d info lines, %d menu layer texts painted, cleared: %s; %s"), flat, mFlatInfoLines,
+                mFlatMenuTexts, mIsFlatClosedAtOnce ? TEXT("both gone at once") : TEXT("STILL DRAWN"), *detail));
+        break;
+    }
+    case EHoloStep::CardsStrong:
+    {
+        int32 strong = 0;
+        FString detail;
+        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        {
+            const ASOLFlightHud::ESOLHudCard id = static_cast<ASOLFlightHud::ESOLHudCard>(card);
+            const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(id)
+                : ASOLFlightHud::FSOLHudCardStats();
+            const bool bIsAlwaysOn = id == ASOLFlightHud::ESOLHudCard::Speed
+                || id == ASOLFlightHud::ESOLHudCard::DateAnchor;
+            strong += HoloSmokeIsCardFrameless(stats) && stats.Strength == SOL::Settings::HOLO_MENU_EFFECTS_MAX
+                && stats.Sweeps == 1 && stats.TickPadPx == SOL::Hologram::HUD_GLOW_PAD_PX
+                && (!bIsAlwaysOn || stats.ContentPadPx == SOL::Hologram::HUD_GLOW_PAD_PX)
+                && FMath::IsNearlyEqual(stats.BackingAlpha, 2.0f * BACKDROP_ALPHA_PER_UNIT) ? 1 : 0;
+            detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(id), *HoloSmokeCardText(stats));
+        }
+        Check(TEXT("c-strength2"), mIsCardExecuted && strong == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count),
+            FString::Printf(TEXT("%d cards with the strength-2 look: %s"), strong, *detail));
+        if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
+        {
+            targeting->ClearTarget();
+        }
+        mInteraction->ClearInfo();
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        break;
+    }
+    case EHoloStep::MapOpen:
+        Check(TEXT("m-map-open"), pawn.IsMapOpen() && !pawn.IsActionListOpen(), FString::Printf(TEXT("jump map %s, "
+            "list menu %s"), pawn.IsMapOpen() ? TEXT("open") : TEXT("CLOSED"), pawn.IsActionListOpen() ? TEXT("OPEN")
+            : TEXT("closed")));
+        break;
+    case EHoloStep::ListOpen:
+    {
+        // Step 8: one open cue, no hover cue while it opened, the draw-in mid-way, then the full option (c) frame with
+        // the hint divider (no tabs, no column divider) and the mark around the highlighted row
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const bool bIsOpen = listFrame != nullptr && listFrame->GetAnim().Phase == ESOLHoloMenuPhase::Open;
+        const int32 outline = CountPart(ESOLHoloPart::Outline, listFrame);
+        const int32 fullOutline = listFrame != nullptr ? FullOutlineCount(*listFrame) : -1;
+        const int32 highlighted = list != nullptr ? list->GetState().Highlighted : INDEX_NONE;
+        const int32 hoveredItem = listFrame != nullptr ? listFrame->GetAnim().HoveredItem : INDEX_NONE;
+        const int32 tabParts = CountPart(ESOLHoloPart::Tab, listFrame) + CountPart(ESOLHoloPart::TabDot, listFrame)
+            + CountPart(ESOLHoloPart::ColumnDivider, listFrame);
+        Check(TEXT("m-list-open"), pawn.IsActionListOpen() && list != nullptr && bIsOpen && opens == 1 && hovers == 0
+            && outline == fullOutline && outline > 0 && CountPart(ESOLHoloPart::GapDot, listFrame) > 0
+            && CountPart(ESOLHoloPart::BrokenDivider, listFrame) > 0 && tabParts == 0
+            && listFrame->GetLastPaintedBackingCount() == 1 && listFrame->GetMaterial() == menuMaterial
+            && list->GetContentOpacity() == 1.0f && IsFrameOutputFresh(listFrame) && mListTargetRow != INDEX_NONE
+            && highlighted == mListTargetRow && hoveredItem == highlighted
+            && CountPart(ESOLHoloPart::Hover, listFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::HoverDot, listFrame) == 1,
+            FString::Printf(TEXT("list %s with %d rows, phase %s, %d open / %d hover cue requests, outline %d of %d "
+                "pieces, %d gap dots, %d hint divider pieces, %d tab and column pieces, %d backing, material %s, "
+                "content opacity %.2f; Target row %d, highlighted %d, hovered item %d, %d hover pieces and %d dot"),
+                pawn.IsActionListOpen() ? TEXT("open") : TEXT("CLOSED"), list != nullptr ? list->GetActions().Num : 0,
+                bIsOpen ? TEXT("Open") : TEXT("NOT open"), opens, hovers, outline, fullOutline,
+                CountPart(ESOLHoloPart::GapDot, listFrame), CountPart(ESOLHoloPart::BrokenDivider, listFrame), tabParts,
+                listFrame != nullptr ? listFrame->GetLastPaintedBackingCount() : -1, listFrame != nullptr
+                && listFrame->GetMaterial() == menuMaterial ? TEXT("menu MID") : TEXT("OTHER"), list != nullptr
+                ? list->GetContentOpacity() : -1.0f, mListTargetRow, highlighted, hoveredItem,
+                CountPart(ESOLHoloPart::Hover, listFrame), CountPart(ESOLHoloPart::HoverDot, listFrame)));
+        Check(TEXT("m-list-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f
+            && mMidOpenOpacity >= 0.0f && mMidOpenOpacity < 1.0f, FString::Printf(TEXT("frame fraction %.3f, content "
+                "opacity %.3f at %.2f s after the open"), mMidOpenFraction, mMidOpenOpacity, HOLOSMOKE_MID_OPEN_S));
+        break;
+    }
+    case EHoloStep::ListHover:
+    {
+        // Step 8: the mouse onto a row, then onto Target: two hover cues, the brackets and pointer at Target
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 highlighted = list != nullptr ? list->GetState().Highlighted : INDEX_NONE;
+        const int32 hoveredItem = listFrame != nullptr ? listFrame->GetAnim().HoveredItem : INDEX_NONE;
+        Check(TEXT("m-list-hover"), mListHoverRow != INDEX_NONE && hovers == 2 && highlighted == mListTargetRow
+            && hoveredItem == highlighted && CountPart(ESOLHoloPart::Hover, listFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::HoverDot, listFrame) == 1, FString::Printf(TEXT("mouse onto row %d, then onto "
+                "Target (row %d): %d hover cue requests (want 2), highlighted row %d, hovered item %d, %d hover pieces "
+                "and %d dot"), mListHoverRow, mListTargetRow, hovers, highlighted, hoveredItem,
+                CountPart(ESOLHoloPart::Hover, listFrame), CountPart(ESOLHoloPart::HoverDot, listFrame)));
+        break;
+    }
+    case EHoloStep::ListSelect:
+    {
+        // Step 8: Enter on an enabled action: one select cue, the action ran, the map kept, the close played out
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const bool bIsTargeted = targeting != nullptr && targeting->GetSelectedTarget() != nullptr;
+        Check(TEXT("m-list-select"), selects == 1 && executed == 1 && bIsTargeted && pawn.IsMapOpen(),
+            FString::Printf(TEXT("Enter on Target: %d select cue requests, %d actions run, target %s, map %s"), selects,
+                executed, bIsTargeted ? TEXT("selected") : TEXT("NONE"), pawn.IsMapOpen() ? TEXT("open")
+                : TEXT("CLOSED")));
+        Check(TEXT("m-list-input-back"), mIsInputBackAtEsc, mEscDetail);
+        const bool bIsGone = list != nullptr && !list->IsInViewport();
+        const bool bIsClosed = listFrame == nullptr || listFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closed;
+        Check(TEXT("m-list-close"), mIsMidCloseInViewport && mMidClosePhase == ESOLHoloMenuPhase::Closing
+            && mMidCloseFraction > 0.0f && mMidCloseFraction < 1.0f && mMidCloseOpacity >= 0.0f
+            && mMidCloseOpacity < 1.0f && bIsGone && bIsClosed, FString::Printf(TEXT("mid-close: %s, phase %d, "
+                "draw-in %.3f, content opacity %.3f; after %.2f s: widget %s, frame %s"), mIsMidCloseInViewport
+                ? TEXT("drawn") : TEXT("NOT drawn"), static_cast<int32>(mMidClosePhase), mMidCloseFraction,
+                mMidCloseOpacity, HOLOSMOKE_CLOSED_S, bIsGone ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT"),
+                bIsClosed ? TEXT("Closed") : TEXT("NOT closed")));
+        break;
+    }
+    case EHoloStep::ListCancel:
+    {
+        // A disabled row and a cancel ask no select cue (SDD 5); Up onto the disabled row is a highlight change
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const bool bIsDisabledRow = list != nullptr && mListRowAfterUp >= 0 && mListRowAfterUp < list->GetActions().Num
+            && !list->GetActions().Entries[mListRowAfterUp].IsEnabled();
+        const bool bIsGone = !pawn.IsActionListOpen() && list != nullptr && !list->IsInViewport();
+        Check(TEXT("m-list-cancel"), mSubStep >= 3 && opens == 1 && hovers == 1 && selects == 0 && executed == 0
+            && bIsDisabledRow && mIsListOpenAfterDisabled && bIsGone && pawn.IsMapOpen(), FString::Printf(TEXT("Up "
+                "onto row %d (%s), Enter: list %s; Esc: list %s, map %s; %d open, %d hover and %d select cue requests "
+                "(want 1, 1, 0), %d actions run"), mListRowAfterUp, bIsDisabledRow ? TEXT("disabled")
+                : TEXT("NOT DISABLED"), mIsListOpenAfterDisabled ? TEXT("still open") : TEXT("CLOSED"), bIsGone
+                ? TEXT("gone") : TEXT("STILL SHOWN"), pawn.IsMapOpen() ? TEXT("open") : TEXT("CLOSED"), opens, hovers,
+                selects, executed));
+        ClearTarget(pawn);
+        break;
+    }
+    case EHoloStep::ListReopen:
+    {
+        // A reopen during the close (SDD 4.5): the close reverses with one open cue, the list keeps the viewport, takes
+        // input and focus again, and closes normally after
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const bool bIsGone = !pawn.IsActionListOpen() && list != nullptr && !list->IsInViewport();
+        Check(TEXT("m-list-reopen"), mIsListClosingAtReopen && mListReopenOpens == 1 && mIsListReopened && bIsGone,
+            FString::Printf(TEXT("reopened at %.2f s into the close (%s): %d open cue requests (want 1), %s; Esc "
+                "after: list %s"), 0.5 * SOL::HoloMenu::CLOSE_S, mIsListClosingAtReopen ? TEXT("was closing")
+                : TEXT("WAS NOT CLOSING"), mListReopenOpens, *mListReopenDetail, bIsGone ? TEXT("gone")
+                : TEXT("STILL SHOWN")));
+        break;
+    }
+    case EHoloStep::ListFlat:
+    {
+        // Step 9, the list menu at strength 0 (D18): whole and flat at once, the mark still moves; the cues asked (D21)
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const USOLActionListWidget* list = pawn.GetActionList();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const FSOLHoloFrameOutput* output = listFrame != nullptr ? &listFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        const int32 fullOutline = listFrame != nullptr ? FullOutlineCount(*listFrame) : -1;
+        const int32 highlighted = list != nullptr ? list->GetState().Highlighted : INDEX_NONE;
+        Check(TEXT("m-strength0-open"), mFirstFlatFraction == 1.0f && mMidOpenOpacity == 1.0f && opens == 1,
+            FString::Printf(TEXT("first paint after the open: frame fraction %.3f, content opacity %.3f; %d open cue "
+                "requests (D21)"), mFirstFlatFraction, mMidOpenOpacity, opens));
+        Check(TEXT("m-strength0-flat"), listFrame != nullptr && listFrame->GetLastStrength() == 0.0f
+            && CountPart(ESOLHoloPart::Sweep, listFrame) == 0 && alpha == FLAT_PANEL_ALPHA
+            && AllLinePads(FRAME_FLAT_PAD_PX, listFrame) && CountPart(ESOLHoloPart::Outline, listFrame) == fullOutline
+            && CountPart(ESOLHoloPart::Hover, listFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::BrokenDivider, listFrame) > 0,
+            FString::Printf(TEXT("strength %.2f, %d sweeps, backing alpha %.2f, flat pads %s, outline %d of %d pieces, "
+                "%d hover pieces, %d hint divider pieces"), listFrame != nullptr ? listFrame->GetLastStrength() : -1.0f,
+                CountPart(ESOLHoloPart::Sweep, listFrame), alpha, AllLinePads(FRAME_FLAT_PAD_PX, listFrame)
+                ? TEXT("yes") : TEXT("NO"), CountPart(ESOLHoloPart::Outline, listFrame), fullOutline,
+                CountPart(ESOLHoloPart::Hover, listFrame), CountPart(ESOLHoloPart::BrokenDivider, listFrame)));
+        Check(TEXT("m-strength0-hover"), hovers == 2 && highlighted == mListTargetRow && listFrame != nullptr
+            && listFrame->GetAnim().HoveredItem == highlighted, FString::Printf(TEXT("Down and Up: %d hover cue "
+                "requests (D21; want 2), highlighted row %d (want %d), hovered item %d"), hovers, highlighted,
+                mListTargetRow, listFrame != nullptr ? listFrame->GetAnim().HoveredItem : INDEX_NONE));
+        break;
+    }
+    case EHoloStep::ListFlatSelect:
+    {
+        // Strength 0 is fully usable (D18): Enter runs Target with the select cue (D21) and the close is instant
+        const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 executed = mInteraction->GetExecutedCount() - mExecutedBefore;
+        const bool bIsTargeted = targeting != nullptr && targeting->GetSelectedTarget() != nullptr;
+        Check(TEXT("m-strength0-select"), selects == 1 && executed == 1 && bIsTargeted && mIsFlatClosedAtOnce,
+            FString::Printf(TEXT("Enter on Target at strength 0: %d select cue requests, %d actions run, target %s, "
+                "widget %s the frame the list closed"), selects, executed, bIsTargeted ? TEXT("selected")
+                : TEXT("NONE"), mIsFlatClosedAtOnce ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT")));
+        break;
+    }
+    case EHoloStep::ListStrong:
+    {
+        const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+        const FSOLHoloFrameOutput* output = listFrame != nullptr ? &listFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        Check(TEXT("m-strength2"), listFrame != nullptr
+            && listFrame->GetLastStrength() == SOL::Settings::HOLO_MENU_EFFECTS_MAX
+            && CountPart(ESOLHoloPart::Sweep, listFrame) == 1
+            && AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, listFrame)
+            && FMath::IsNearlyEqual(alpha, 2.0f * BACKDROP_ALPHA_PER_UNIT),
+            FString::Printf(TEXT("strength %.2f, %d sweep, glow pads %s, backing alpha %.2f"), listFrame != nullptr
+                ? listFrame->GetLastStrength() : -1.0f, CountPart(ESOLHoloPart::Sweep, listFrame),
+                AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, listFrame) ? TEXT("yes") : TEXT("NO"), alpha));
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        break;
+    }
+    case EHoloStep::MapClose:
+    {
+        const USOLActionListWidget* list = pawn.GetActionList();
+        Check(TEXT("m-map-close"), !pawn.IsMapOpen() && !pawn.IsActionListOpen() && list != nullptr
+            && !list->IsInViewport() && mIsListClosingAtMapClose && mIsListGoneAtMapClose,
+            FString::Printf(TEXT("map %s, list menu %s; list %s when the map closed, %s"), pawn.IsMapOpen()
+                ? TEXT("OPEN") : TEXT("closed"), list != nullptr && list->IsInViewport()
+                ? TEXT("STILL ON THE VIEWPORT") : TEXT("gone"), mIsListClosingAtMapClose ? TEXT("still closing")
+                : TEXT("NOT CLOSING (nothing to tell apart)"), *mMapCloseDetail));
+        ClearTarget(pawn);
+        break;
+    }
     case EHoloStep::Quit:
-        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (parts 42c-42f; the other menu steps are "
-            "stubs)"), mChecksPassed, mChecksRun);
+        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (parts 42c-42g; the Settings step is a "
+            "stub)"), mChecksPassed, mChecksRun);
         UKismetSystemLibrary::QuitGame(pawn.GetWorld(), nullptr, EQuitPreference::Quit, false);
         break;
     default:
@@ -2108,6 +3024,134 @@ SSOLHoloFrame* FSOLHoloMenuSmoke::GetSpeedFrame(const ASOLShipPawn& pawn)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the map list menu's Slate frame, or null (before its first open)
+SSOLHoloFrame* FSOLHoloMenuSmoke::GetListFrame(const ASOLShipPawn& pawn)
+{
+    const USOLActionListWidget* list = pawn.GetActionList();
+    const USOLHoloFrameWidget* frameWidget = list != nullptr ? list->GetHoloFrame() : nullptr;
+    return frameWidget != nullptr && frameWidget->GetFrame().IsValid() ? frameWidget->GetFrame().Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Opens the map's list menu on the radial body at a point of the view and finds its Target row
+void FSOLHoloMenuSmoke::OpenListOnBody(ASOLShipPawn& pawn, const FVector2D& viewFraction)
+{
+    int32 width = 0;
+    int32 height = 0;
+    if (mController.IsValid())
+    {
+        mController->GetViewportSize(width, height);
+    }
+    const bool bIsOpen = pawn.OpenActionList(mRadialBody, FVector2D(width * viewFraction.X,
+        height * viewFraction.Y));
+    mListTargetRow = INDEX_NONE;
+    const USOLActionListWidget* list = pawn.GetActionList();
+    for (int32 row = 0; list != nullptr && row < list->GetActions().Num; ++row)
+    {
+        mListTargetRow = list->GetActions().Entries[row].Action == ESOLAction::Target ? row : mListTargetRow;
+    }
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: list menu on body %d %s, Target row %d"), mRadialBody.Index, bIsOpen
+        ? TEXT("opened") : TEXT("NOT opened"), mListTargetRow);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the list reopen step: Esc once Open, the reopen at another point half a close later (SDD 4.5: the close
+// reverses), the state a key gap after it, then Esc and the close played out; returns true once done
+bool FSOLHoloMenuSmoke::TickListReopen(ASOLShipPawn& pawn, const double elapsedS)
+{
+    const USOLActionListWidget* list = pawn.GetActionList();
+    if (list == nullptr || !mHoloMenu.IsValid())
+    {
+        return elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+    }
+    if (mSubStep == 0 && elapsedS >= HOLOSMOKE_OPENED_S)
+    {
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        mSubStep = 1;
+        mSubStepS = elapsedS;
+    }
+    else if (mSubStep == 1 && elapsedS >= mSubStepS + 0.5 * SOL::HoloMenu::CLOSE_S)
+    {
+        // Mid-close: the list still on the viewport and closing; reopened at another point
+        mIsListClosingAtReopen = !pawn.IsActionListOpen() && list->IsClosing() && list->IsInViewport();
+        mOpenRequestsBefore = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        OpenListOnBody(pawn, HOLOSMOKE_LIST_REOPEN_AT);
+        mSubStep = 2;
+        mSubStepS = elapsedS;
+    }
+    else if (mSubStep == 2 && elapsedS >= mSubStepS + HOLOSMOKE_KEY_GAP_S)
+    {
+        // A key gap later: one open cue, on the viewport, taking input again and focused; then Esc
+        mListReopenOpens = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const bool bIsFocused = list->HasAnyUserFocus() || list->HasFocusedDescendants();
+        const bool bIsHitTestable = list->GetVisibility() != ESlateVisibility::HitTestInvisible;
+        mIsListReopened = pawn.IsActionListOpen() && list->IsInViewport() && !list->IsClosing()
+            && list->IsFocusable() && bIsFocused && bIsHitTestable;
+        mListReopenDetail = FString::Printf(TEXT("pawn list %s, widget %s and %s, %s, %s, %s"),
+            pawn.IsActionListOpen() ? TEXT("open") : TEXT("CLOSED"), list->IsInViewport() ? TEXT("on the viewport")
+            : TEXT("REMOVED"), list->IsClosing() ? TEXT("STILL CLOSING") : TEXT("not closing"), list->IsFocusable()
+            ? TEXT("focusable") : TEXT("NOT FOCUSABLE"), bIsFocused ? TEXT("focused") : TEXT("NOT FOCUSED"),
+            bIsHitTestable ? TEXT("hit-testable") : TEXT("HIT-TEST INVISIBLE"));
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        mSubStep = 3;
+        mSubStepS = elapsedS;
+    }
+    return mSubStep >= 3 && elapsedS >= mSubStepS + HOLOSMOKE_CLOSED_S;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the map close step: closes the map once the list is closing (or after a key gap), then records the first frame
+// the map is closed; returns true once the close time has passed
+bool FSOLHoloMenuSmoke::TickMapClose(ASOLShipPawn& pawn, const double elapsedS)
+{
+    if (mSubStep == 0)
+    {
+        const USOLActionListWidget* list = pawn.GetActionList();
+        mIsListClosingAtMapClose = list != nullptr && list->IsInViewport() && list->IsClosing();
+        if (!mIsListClosingAtMapClose && elapsedS < HOLOSMOKE_KEY_GAP_S)
+        {
+            return false;
+        }
+        pawn.HandleCloseMap();
+        mSubStep = 1;
+        mSubStepS = elapsedS;
+    }
+    RecordMapCloseFrame(pawn);
+    return mSubStep >= 1 && elapsedS >= mSubStepS + HOLOSMOKE_CLOSED_S;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Records, on the first frame the map is closed, whether the list menu is already off the viewport and Closed (the
+// map's close dismisses it at once rather than letting its close end on its own)
+void FSOLHoloMenuSmoke::RecordMapCloseFrame(const ASOLShipPawn& pawn)
+{
+    if (mSubStep != 1 || pawn.IsMapOpen())
+    {
+        return;
+    }
+    mSubStep = 2;
+    const USOLActionListWidget* list = pawn.GetActionList();
+    const SSOLHoloFrame* listFrame = GetListFrame(pawn);
+    const bool bIsOff = list != nullptr && !list->IsInViewport();
+    // Removing the widget releases its Slate frame, so a released frame counts as Closed (the next open builds it anew)
+    const bool bIsClosed = listFrame == nullptr || listFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closed;
+    mIsListGoneAtMapClose = bIsOff && bIsClosed;
+    mMapCloseDetail = FString::Printf(TEXT("first frame with the map closed: list %s, frame %s"), bIsOff
+        ? TEXT("off the viewport") : TEXT("STILL ON THE VIEWPORT"), listFrame == nullptr
+        ? TEXT("released with the widget") : (bIsClosed ? TEXT("Closed") : TEXT("NOT CLOSED")));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clears the selected target (the list's Target row is enabled again)
+void FSOLHoloMenuSmoke::ClearTarget(const ASOLShipPawn& pawn)
+{
+    if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
+    {
+        targeting->ClearTarget();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Presses a game key through the player controller (game input); it is released next frame
 void FSOLHoloMenuSmoke::TapGameKey(const FKey& key)
 {
@@ -2179,10 +3223,6 @@ void FSOLHoloMenuSmoke::LogStubs()
 {
     // SDD 42 section 12: the step, what it will check and the part that adds it
     static const TCHAR* const STUBS[] = {
-        TEXT("7 info / target / speed / date-and-anchor cards on the menu layer, 8 ticks each (42g)"),
-        TEXT("8 map list menu: open, hover, select cues (42g)"),
-        TEXT("9 strength 0 in the map list: instant open, flat look, still usable, cues requested (42g; the "
-            "radial's, the Overlay Menu's and the F3 panel's parts run here)"),
         TEXT("10 Settings: slider under the HUD effects slider, Apply writes once (covered by -SOLMenuSmoke; the "
             "cursor part runs here)"),
     };

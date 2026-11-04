@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Interaction/SOLActionTable.h"
+#include "UI/SOLFlightHud.h"
 #include "UI/SOLHoloFrameBuild.h"
 #include "UI/SOLHoloFrameWidget.h"
 
@@ -16,7 +17,6 @@
 class APlayerController;
 class FModifierKeysState;
 class UGameViewportClient;
-class ASOLFlightHud;
 class ASOLShipPawn;
 class SSOLHoloFrame;
 class SWidget;
@@ -53,7 +53,19 @@ class USOLSettingsSubsystem;
  * cue) and Enter (a select cue, the row's speed applied), Esc (input back in the same frame, the close plays), a
  * reopen mid-close (reversed), strength 0 (whole and flat at once, a digit step still works, the cues still asked,
  * closed at once) and 2, with screenshots mid-open, open, digit moved, row, row scrolled away, closing and at
- * strengths 0 and 2. The other menu checks of section 12 are stubs logged as "HoloMenu STUB" until their parts land.
+ * strengths 0 and 2. Part 42g adds the four frameless cards (section 12 step 7 and its part of step 9): the speed and
+ * date-and-anchor cards on the menu layer at the menu strength with 8 corner ticks, no outline and no HUD-layer panel
+ * under them; Info (the open cue, the draw-in mid-way, then Open; Info again on the same object restarts nothing);
+ * Target (the target card draws in, no cue); R (another target: the card stays open, only its text changes, Q15);
+ * all four at once; both cleared (closed from their cache, then "TARGET
+ * none" back on the HUD layer); strength 0 (whole on the first frame, flat ticks and tint, no sweep, readable, closed
+ * at once) and 2, with screenshots of each card. Part 42g then adds the map's list menu (section 12 step 8 and its part
+ * of step 9) on the jump map: the list on the radial body (the open cue, the draw-in mid-way, then the full outline
+ * with the hint divider and the mark on the highlighted row), the mouse onto a row and onto Target (two hover cues),
+ * Enter on Target (the select cue, the action runs, input back to the map in the same frame, the close plays), Up
+ * onto the disabled Target row, Enter and Esc (no select cue), strength 0 (whole and flat at once, Down / Up move the
+ * mark with hover cues, Enter still runs Target and the list goes at once) and 2, with screenshots mid-open, open,
+ * hovered, closing and at strengths 0 and 2. The Settings check of section 12 is a stub logged as "HoloMenu STUB".
  * Each check logs "HoloMenu CHECK <label> PASS|FAIL: <detail>", then a "HoloMenu SUMMARY" line; then it quits.
  * Screenshots go to Saved/Screenshots/<platform>/HoloMenu_<name>.png.
  */
@@ -138,6 +150,27 @@ private:
 
     // Returns the speed panel's Slate frame, or null
     static SSOLHoloFrame* GetSpeedFrame(const ASOLShipPawn& pawn);
+
+    // Returns the map list menu's Slate frame, or null
+    static SSOLHoloFrame* GetListFrame(const ASOLShipPawn& pawn);
+
+    // Opens the map's list menu on the radial body at a point of the view (a fraction of it; the centre by default) and
+    // finds its Target row
+    void OpenListOnBody(ASOLShipPawn& pawn, const FVector2D& viewFraction = FVector2D(0.5, 0.5));
+
+    // Clears the selected target
+    static void ClearTarget(const ASOLShipPawn& pawn);
+
+    // Runs the list reopen step (Esc, the reopen mid-close at another point, its state a key gap later, Esc); true
+    // once done
+    bool TickListReopen(ASOLShipPawn& pawn, double elapsedS);
+
+    // Runs the map close step (the map closed once the list is closing, then its first closed frame recorded); true
+    // once done
+    bool TickMapClose(ASOLShipPawn& pawn, double elapsedS);
+
+    // Records, on the first frame the map is closed, whether the list menu is already off the viewport and Closed
+    void RecordMapCloseFrame(const ASOLShipPawn& pawn);
 
     // Presses a game key through the player controller (game input); it is released next frame
     void TapGameKey(const FKey& key);
@@ -249,6 +282,31 @@ private:
     int32 mSpeedScrolledDots = -1;                          // whether the selection and hovered item were kept
     float mSpeedScrollOffset = -1.0f;
     bool mIsSpeedScrolledItem = false;
+    bool mIsCardExecuted = false;                           // Card steps: the step's Info / Target ran,
+    double mCardPhaseStartS = -1.0;                         // the info card's phase start before Info again,
+    int32 mCardMidTicks = -1;                               // ticks caught mid-open or mid-close (-1: other shapes),
+    float mCardTargetMidFraction = -1.0f;                   // the target card mid-close (or its first strength-0
+    ESOLHoloMenuPhase mCardTargetMidPhase = ESOLHoloMenuPhase::Closed;     // frame): draw-in, phase, ticks, rect
+    int32 mCardTargetMidTicks = -1;
+    FBox2f mCardTargetRect = FBox2f(ForceInit);
+    FName mCycleNameBefore;                                 // Target cycling (Q15): the target before R, the card's
+    float mCycleMinFraction = -1.0f;                        // smallest draw-in and fill seen while the step ran and
+    float mCycleMinFill = -1.0f;                            // whether it was drawn on every HUD frame of the step
+    bool mIsCycleAlwaysDrawn = false;
+    ASOLFlightHud::FSOLHudCardStats mFlatCardStats[static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)];  // At
+    int32 mFlatInfoLines = 0;                               // strength 0: the four cards, the info lines and the menu
+    int32 mFlatMenuTexts = 0;                               // layer's painted texts before the clear
+    int32 mListTargetRow = INDEX_NONE;                      // List menu steps: the Target row, the first hovered row,
+    int32 mListHoverRow = INDEX_NONE;                       // the highlight after Up in the cancel step and whether
+    int32 mListRowAfterUp = INDEX_NONE;                     // the list stayed open after Enter on that disabled row
+    bool mIsListOpenAfterDisabled = false;
+    bool mIsListClosingAtReopen = false;                    // Reopen during the close: the list was closing, the open
+    int32 mListReopenOpens = -1;                            // cues the reopen asked, and the state a key gap later
+    FString mListReopenDetail;
+    bool mIsListReopened = false;
+    bool mIsListClosingAtMapClose = false;                  // Map close: the list was still closing, then gone (off the
+    bool mIsListGoneAtMapClose = false;                     // viewport, frame Closed) on the first frame the map was
+    FString mMapCloseDetail;                                // closed
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
 };

@@ -291,7 +291,7 @@ the two table rows above:
 - **Overlay Menu tab hover is the mouse hover.** A tab gets its `BracketsOnly` mark only while the mouse is over it.
   The keys (Up / Down, PgUp / PgDn) move the row highlight as today and drop the tab hover, so the mark goes back to
   the highlighted row. While a tab is hovered its mark wins over the row's. The viewed profile's tab keeps its selected
-  tab marker either way (section 6.3). Whether a resting mouse may take the highlight back from the keys is Q14 (open).
+  tab marker either way (section 6.3). A resting mouse does not take the highlight back from the keys: mouse moves with no movement are ignored for the row highlight (Q14, answered (a)).
 - **The cycle key inside the Overlay Menu plays the select cue** (RShift+O switches the active and viewed profile, like
   a tab switch). A tab click or PgUp / PgDn plays it only when the viewed profile changed.
 - **No hover cue on open.** The initial highlight (row, digit or unit field) is set while the menu is Opening, and
@@ -306,6 +306,22 @@ the two table rows above:
   wheel over the list scrolls it without moving the selection) has no mark and asks for no cue; its rect comes from the
   list's geometry, the row height and the scroll offset (a culled row's own geometry is stale). A menu removed at
   teardown (`Dismiss`: end of play, unpossess) drops its frame to Closed, so the next open draws in with its open cue.
+
+**Map list menu details (42g amendment, written with the code).** These refine the map list menu row above:
+- **Layout.** `MakeOverlayLayout` with no tab column: the title step sized to the object's name and the hint divider
+  between the rows and the key hint; no column divider, no tab markers. The panel's own dark fill and the highlighted
+  row's band are gone (the frame draws the tint and the mark). Room for the frame inside the panel (proposed, tuned
+  from screenshots): 18 local units of padding, 8 more on the left (the row brackets clear the top-left accent), 16
+  more on the right, a 28-unit gap under the title (the rows start under the title underline) and 12 above the hint.
+- **Input as before (D5).** Every mouse move over a row takes the highlight, as before #42; the Overlay Menu's
+  zero-delta filter (Q14) is not used here.
+- **Close.** Choosing an action or Esc / an outside click: the pawn's close calls `BeginClose` (input back to the map
+  at once, the close plays). A right click during the close reopens it, reversing from its progress at the new
+  place (the UMG rule of section 4.5). When the map itself closes (a Jump To from the list, or the map's close key
+  later) the list is dismissed at once with it (`Dismiss`, frame to Closed), so no list outlives the map.
+- **Cues.** Open on each open; hover on each highlight change while open (keys, the mouse, or a click on a disabled
+  row); select only when an enabled action runs (Enter / Space / click), none on a disabled row, Esc or an outside
+  click.
 
 All frames use the HUD palette (`SOL::HudPalette::PRIMARY` lines, `SECONDARY` for the hovered / highlighted item,
 dim rows as today). Text stays the existing glow text (on the menu layer for HUD-drawn menus, through `MenuText`, so it
@@ -859,6 +875,32 @@ settings test is walked to confirm it still states the current contract.
   adds no draw at the captures (the menu is Open, opacity 1). The F3 panel's full-screen dim is today's box (now faded
   with the fill, section 5), not a new draw; P3 adds the same frame parts as P2. The D14 budget is time, not draw
   count; the pass verdicts stay the measure.
+- **The cards (42g amendment, written at the 42g review).** These refine the bullets above and sections 4.3, 5 and 12:
+  - **The menu layer is no longer idle in flight.** "A closed menu costs nothing (the menu layer draws nothing and is
+    not stamped)" holds only with no card drawn: the always-on speed and date-and-anchor cards draw on the menu layer
+    every flight frame, so it is stamped and painted every flight frame (one extra custom-vertex draw for the layer,
+    plus its card backings), with every menu closed. The smoke checks change intent to match: `a-menu-layer` checks
+    that the layer is in use for the cards only (no menu open), and `k-menu-layer-idle` that it holds exactly one
+    backing per drawn card and no radial (the UMG frame never draws on it), not that it is empty.
+  - **Card content on the menu layer (`BeginCardContent(card)` / `EndCardContent`).** The always-on cards' content
+    (the speed block, the G meter and the date-and-anchor lines) is drawn by the HUD's ordinary helpers (`DrawBuffer`,
+    `GlowLine`, `GlowBox`, `GlowRing`, `DrawBar`). Between the two calls they write to the menu layer's batch and text
+    list, so the content paints above the card's own tint. `EndCardContent` records the shapes and text lines added
+    into the card's stats (the smoke checks both are on the menu layer), and `BeginShapeFrame` clears a call left
+    open, so a missed `EndCardContent` cannot send the next frame's HUD to the menu layer. No `AddHoloPanel`,
+    `MenuHoloShapes` or `DrawCard` call may run between the two.
+  - **Card content lines follow D18.** Between the two calls the line helpers pad with `LinePad(s)` of the hologram
+    menu strength, as the card's ticks do, so at strength 0 the bars, the steer icon and the G meter are flat
+    (`FRAME_FLAT_PAD_PX`); the text keeps its glow, as the radial labels do.
+  - **HUD-layer items under a card.** The card's tint is on the menu layer, above the whole HUD layer, so a HUD-layer
+    item drawn where a card is (the off-screen target's edge arrow and label at the top right, the jump map's labels)
+    now sits under that card's tint.
+  - **"TARGET none" timing.** The plain HUD line "TARGET none" (with its HUD panel) shows once the target card has
+    finished closing, not while it closes from its cache.
+  - **Target change (Q15, answered (a)).** Another target (R / F cycling, a click, Target in a menu) keeps the card
+    open and only swaps its text; the card draws in only when a target appears from none and closes only when the
+    target is cleared. A target that appears while the card is still closing reverses the close from its progress (the
+    section 4.5 reopen rule). Checked by the `c-target-cycle` step of `-SOLSmokeHoloMenu`.
 
 ### 11.1 Baseline (measured before 42c)
 
@@ -963,7 +1005,7 @@ The numbers are machine-specific: on another machine, re-measure at the 42c pare
 
 ## 13. Questions for the user
 
-All but Q13 and Q14 answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
+All but Q13 answered (Q1-Q12 on 2026-11-03, Q14 and Q15 on 2026-11-04; kept here for the record; the decisions are D7-D21):
 
 | # | Question | Answer |
 |---|---|---|
@@ -982,9 +1024,10 @@ All but Q13 and Q14 answered on 2026-11-03 (kept here for the record; the decisi
 | Q11 | Cursor | **Follows the new slider** (D19) |
 | Q12 | Cues at strength 0 (raised while recording D18) | **Sounds are independent of the hologram strength and still play at strength 0**; the SFX volume controls them (D21) |
 | Q13 | **Hover glow on a highlighted disabled radial sector** (raised by the 42d review): today the rim takes the disabled intensity (0.22) plus the full hover glow (up to 0.9), so it peaks at 1.12, brighter than an enabled highlighted sector's rim without glow. Options: **(a, recommended)** no hover glow on disabled sectors; (b) the glow scaled by the disabled dimming; (c) full glow, as now | **Open** (asked 2026-11-04). The code keeps (c) behind `SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE` (1 = as now), so the answer is a one-line change |
-| Q14 | **Overlay Menu: ignore zero-delta synthetic mouse moves** so the keyboard highlight stays until the mouse really moves (a D5 input change, raised by the 42e build and review). Before 42e a resting mouse over a row took the highlight back after a key move, because Slate also sends mouse moves with no movement; the 42e code filters those. The filter is meant to gate only the row-highlight takeover; the tab hover follows every move, so the tab brackets stay under the cursor when the panel re-centres (42e review finding 2). Options: **(a, recommended)** keep the filter: a mouse move with zero delta does not take the row highlight; (b) revert to today's input (every mouse move, real or not, takes the highlight) | **Open** (asked 2026-11-04) |
+| Q14 | **Overlay Menu: ignore zero-delta synthetic mouse moves** so the keyboard highlight stays until the mouse really moves (a D5 input change, raised by the 42e build and review). Before 42e a resting mouse over a row took the highlight back after a key move, because Slate also sends mouse moves with no movement; the 42e code filters those. The filter is meant to gate only the row-highlight takeover; the tab hover follows every move, so the tab brackets stay under the cursor when the panel re-centres (42e review finding 2). Options: **(a, recommended)** keep the filter: a mouse move with zero delta does not take the row highlight; (b) revert to today's input (every mouse move, real or not, takes the highlight) | **(a) keep the filter** (answered 2026-11-04): the 42e code stays |
+| Q15 | **Target card on a target change** (raised by the 42g review): cycling targets (R / F) replays the target card's draw-in on every change, so fast cycling keeps the card mid draw-in. Options: **(a, recommended)** keep the card open and swap its text, drawing in only from "no target"; (b) replay the draw-in on every target change, as then | **(a)** (answered 2026-11-04): the card stays open on a target change and only swaps its text; it draws in only when a target appears from none and closes only when cleared (`DrawTarget` no longer restarts the anim on a name change; smoke check `c-target-cycle`; section 11 42g amendment) |
 
-Still open: **Q13, Q14.**
+Still open: **Q13** (in-game samples of the three options for the user: [`Docs/Images/hologram-radial-glow-samples/`](../Images/hologram-radial-glow-samples/)).
 
 ## 14. Out of scope
 

@@ -195,6 +195,34 @@ namespace
     {
         return FLinearColor(color.R, color.G, color.B, HUD_TEXT_DIM_ALPHA);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Runs a HUD card's anim for one frame (SDD 42 section 4.5): a new object restarts it from Closed, a live card
+    // opens (a closing one reverses), a gone one closes, and one gone while HUD frames were skipped closes at once
+    // (never a stale close later); returns true when an open began (the info card's open cue)
+    bool HudCardUpdate(FSOLHoloMenuAnim& anim, const bool bLive, const bool bNewObject, const bool bContinuous,
+        const double nowS, const float s)
+    {
+        bool bOpened = false;
+        if (bLive)
+        {
+            if (bNewObject)
+            {
+                anim = FSOLHoloMenuAnim();
+            }
+            bOpened = SOLHoloMenu::BeginOpen(anim, nowS, s);
+        }
+        else if (bContinuous)
+        {
+            SOLHoloMenu::BeginClose(anim, nowS, s);
+        }
+        else
+        {
+            anim = FSOLHoloMenuAnim();
+        }
+        SOLHoloMenu::Advance(anim, nowS, s);
+        return bOpened;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -412,6 +440,11 @@ void ASOLFlightHud::BeginShapeFrame()
     mWasShapeRendererActive = false;
     mBatch = nullptr;
     mTextList = nullptr;
+    // A card's content left open last frame (a missed EndCardContent) must not send this frame's HUD to the menu layer
+    mCardHudBatch = nullptr;
+    mCardHudTextList = nullptr;
+    mContentCard = ESOLHudCard::Count;
+    mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;
     mLastPanelCount = 0;
     mWasSteerHintDrawn = false;
     if (!mShapeLayer.IsValid())
@@ -601,6 +634,147 @@ int32 ASOLFlightHud::MenuHoloShapes(const FSOLHoloFrameOutput& output)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sends the HUD's draw helpers to the menu layer (an always-on card's content above its backing); false when unused
+bool ASOLFlightHud::BeginCardContent(const ESOLHudCard card)
+{
+    FSOLHudShapeBatch* menuBatch = mCardHudBatch == nullptr ? GetMenuBatch() : nullptr;
+    if (menuBatch == nullptr || menuBatch == mBatch || !mMenuLayer.IsValid())
+    {
+        return false;
+    }
+    mCardHudBatch = mBatch;
+    mCardHudTextList = mTextList;
+    mBatch = menuBatch;
+    mTextList = &mMenuLayer->GetTexts();
+    mContentCard = card;
+    mContentShapeStart = menuBatch->GetShapeCount();
+    mContentTextStart = mTextList->GetItems().Num();
+    // The content lines follow the hologram menu strength as the card's ticks do (flat at 0, D18); text keeps its glow
+    mGlowPadPx = SOLHoloFrameBuild::LinePad(mCardStrength);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sends the HUD's draw helpers back to the HUD layer and records the content added into the card's stats
+void ASOLFlightHud::EndCardContent()
+{
+    if (mCardHudBatch == nullptr)
+    {
+        return;
+    }
+    if (mContentCard != ESOLHudCard::Count)
+    {
+        FSOLHudCardStats& stats = mCardStats[static_cast<int32>(mContentCard)];
+        stats.ContentShapes += mBatch->GetShapeCount() - mContentShapeStart;
+        stats.ContentTexts += mTextList->GetItems().Num() - mContentTextStart;
+        stats.ContentPadPx = mGlowPadPx;
+    }
+    mBatch = mCardHudBatch;
+    mTextList = mCardHudTextList;
+    mCardHudBatch = nullptr;
+    mCardHudTextList = nullptr;
+    mContentCard = ESOLHudCard::Count;
+    mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds a frameless card around a content rectangle at a look, draws it on the menu layer and records what it drew
+void ASOLFlightHud::DrawCard(const ESOLHudCard card, const FBox2D& content, const FSOLHoloMenuLook& look)
+{
+    if (mBatch == nullptr || mCardHudBatch != nullptr || !content.bIsValid || !look.bVisible)
+    {
+        return;
+    }
+    const FBox2f contentRect(FVector2f(content.Min), FVector2f(content.Max));
+    SOLHoloFrameBuild::BuildCard(contentRect, mUiScale, look, mCardStrength, mCardOutput);
+    const FSOLHudShapeBatch* batch = GetMenuBatch();
+
+    // What it drew, for the smokes: its parts, its tint and its rect (as BuildCard grows the content)
+    FSOLHudCardStats& stats = mCardStats[static_cast<int32>(card)];
+    stats.bOnMenuLayer = batch != nullptr && batch != mBatch;
+    stats.Shapes = MenuHoloShapes(mCardOutput);
+    stats.bDrawn = true;
+    stats.Look = look;
+    stats.Strength = mCardStrength;
+    stats.BackingAlpha = mCardOutput.bHasBacking ? mCardOutput.Backing.Alpha : -1.0f;
+    for (int32 index = 0; index < mCardOutput.ShapeCount; ++index)
+    {
+        const FSOLHoloShape& shape = mCardOutput.Shapes[index];
+        if (shape.Part == ESOLHoloPart::CardTick)
+        {
+            ++stats.Ticks;
+            stats.TickPadPx = shape.PadPx;
+        }
+        else if (shape.Part == ESOLHoloPart::Sweep)
+        {
+            ++stats.Sweeps;
+        }
+        else if (shape.Part != ESOLHoloPart::Fill)
+        {
+            ++stats.Others;
+        }
+    }
+    FVector2f center;
+    FVector2f halfSize;
+    SOLHudShapeMath::PanelAroundRect(contentRect, SOL::Hologram::HUD_PANEL_PADDING_PX * mUiScale, center, halfSize);
+    stats.Rect = FBox2f(center - halfSize, center + halfSize);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a card's look this frame from its anim (whole and plain under the Canvas fallback while live)
+FSOLHoloMenuLook ASOLFlightHud::CardLook(const FSOLHoloMenuAnim& anim, const bool bLive) const
+{
+    if (mBatch == nullptr)
+    {
+        // The Canvas fallback draws a live card whole, as before (no effects), and a gone one not at all
+        FSOLHoloMenuLook look;
+        look.bVisible = bLive;
+        look.Progress = bLive ? 1.0f : 0.0f;
+        look.FrameFraction = look.Progress;
+        look.FillAlpha = look.Progress;
+        return look;
+    }
+    return SOLHoloMenu::Evaluate(anim, mCardNowS, mCardStrength);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns what a card drew last frame
+const ASOLFlightHud::FSOLHudCardStats& ASOLFlightHud::GetLastCard(const ESOLHudCard card) const
+{
+    return mCardStats[FMath::Clamp(static_cast<int32>(card), 0, static_cast<int32>(ESOLHudCard::Count) - 1)];
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns how many of the HUD layer's backings this frame overlap a rectangle
+int32 ASOLFlightHud::CountHudBackingsOverlapping(const FBox2f& rect) const
+{
+    if (!mShapeLayer.IsValid() || !rect.bIsValid)
+    {
+        return 0;
+    }
+    int32 count = 0;
+    for (int32 index = 0; index < mShapeLayer->GetBackingCount(); ++index)
+    {
+        count += mShapeLayer->GetBackingRect(index).Intersect(rect) ? 1 : 0;
+    }
+    return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the text lines the menu layer's last paint drew
+int32 ASOLFlightHud::GetLastMenuPaintedTextCount() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetLastPaintedTextCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the backings the menu layer's last paint drew
+int32 ASOLFlightHud::GetLastMenuPaintedBackingCount() const
+{
+    return mMenuLayer.IsValid() ? mMenuLayer->GetLastPaintedBackingCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns true when the bus holds a pilot snapshot published within the last few frames
 bool ASOLFlightHud::HasFreshPilot() const
 {
@@ -699,7 +873,7 @@ void ASOLFlightHud::GlowLine(const FVector2D& a, const FVector2D& b, const FLine
     {
         // Canvas widths up to 2 px become LT's 1 px glow line; thicker ones keep their extra width in the core
         const float halfWidth = FMath::Max(SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, 0.5f * (thickness - 1.0f));
-        mBatch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+        mBatch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, mGlowPadPx);
         return;
     }
     DrawLine(a.X, a.Y, b.X, b.Y, HudScaled(color, intensity), thickness);
@@ -713,7 +887,7 @@ void ASOLFlightHud::GlowRing(const FVector2D& center, const float radiusPx, cons
     if (mBatch != nullptr)
     {
         mBatch->AddRing(FVector2f(center), radiusPx, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, color, intensity,
-            SOL::Hologram::HUD_GLOW_PAD_PX);
+            mGlowPadPx);
         return;
     }
     DrawCircle(center, radiusPx, HudScaled(color, intensity), segments, 1.0f, thickness);
@@ -736,7 +910,7 @@ void ASOLFlightHud::GlowBox(const float x, const float y, const float width, con
         if (SOLHudShapeMath::BoxCapsule(x, y, width, height, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, start, end,
             halfWidth))
         {
-            mBatch->AddLine(start, end, halfWidth, color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+            mBatch->AddLine(start, end, halfWidth, color, intensity, mGlowPadPx);
         }
         return;
     }
@@ -751,7 +925,7 @@ void ASOLFlightHud::GlowEllipse(const FVector2D& center, const float radiusXPx, 
     if (mBatch != nullptr)
     {
         mBatch->AddEllipse(FVector2f(center), radiusXPx, radiusXPx * squashY, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
-            color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+            color, intensity, mGlowPadPx);
         return;
     }
     DrawCircle(center, radiusXPx, HudScaled(color, intensity), HUD_CIRCLE_SEGMENTS, squashY, 1.0f);
@@ -766,7 +940,7 @@ void ASOLFlightHud::GlowDashedLine(const FVector2D& a, const FVector2D& b, const
     {
         // One shape: separate dash quads would each add the whole line's halo (a white column)
         mBatch->AddDashedLine(FVector2f(a), FVector2f(b), SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
-            static_cast<float>(dashPx + gapPx), color, intensity, SOL::Hologram::HUD_GLOW_PAD_PX);
+            static_cast<float>(dashPx + gapPx), color, intensity, mGlowPadPx);
         return;
     }
     const double lengthPx = FVector2D::Distance(a, b);
@@ -789,8 +963,7 @@ void ASOLFlightHud::GlowDot(const FVector2D& center, const float radiusPx, const
 {
     if (mBatch != nullptr)
     {
-        mBatch->AddLine(FVector2f(center), FVector2f(center), radiusPx, color, intensity,
-            SOL::Hologram::HUD_GLOW_PAD_PX);
+        mBatch->AddLine(FVector2f(center), FVector2f(center), radiusPx, color, intensity, mGlowPadPx);
         return;
     }
     DrawRect(HudScaled(color, intensity), center.X - radiusPx, center.Y - radiusPx, 2.0f * radiusPx, 2.0f * radiusPx);
@@ -939,6 +1112,17 @@ void ASOLFlightHud::DrawHUD()
 
     // The glow-shape batch is emptied first, so a frame that returns early below leaves nothing on screen
     BeginShapeFrame();
+
+    // The cards (SDD 42 D15) read one real time and strength per frame; the always-on ones are Open, with no draw-in
+    for (FSOLHudCardStats& stats : mCardStats)
+    {
+        stats = FSOLHudCardStats();
+    }
+    mCardNowS = FPlatformTime::Seconds();
+    mCardStrength = HoloMenu != nullptr ? HoloMenu->GetStrength() : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
+    FSOLHoloMenuAnim alwaysOnAnim;
+    alwaysOnAnim.Phase = ESOLHoloMenuPhase::Open;
+    mAlwaysOnCardLook = CardLook(alwaysOnAnim, true);
     if (Canvas == nullptr || SimClock == nullptr || BodyRegistry == nullptr || AnchorSubsystem == nullptr
         || GEngine == nullptr)
     {
@@ -1040,11 +1224,12 @@ void ASOLFlightHud::DrawHUD()
     }
     DrawOverlayProfileTag(realTimeS);
 
-    // Text blocks gather their rectangles while drawing; each gets one hologram panel
+    // Text blocks gather their rectangles while drawing; the speed and G block is the speed card (menu layer), the
+    // autopilot and route block keeps its HUD panel
     DrawSpeedBlock(state, control);
     DrawPilotBlock(control);
     DrawRouteMarker();
-    AddHoloPanel(mLeftBlockRect, HUD_PRIMARY);
+    DrawCard(ESOLHudCard::Speed, mLeftBlockRect, mAlwaysOnCardLook);
     AddHoloPanel(mTopBlockRect, HUD_PRIMARY);
     DrawRadar(bHasView ? &view : nullptr, state);
 
@@ -1316,6 +1501,9 @@ void ASOLFlightHud::DrawInfoBlock()
     float y = HUD_MARGIN_PX * mUiScale;
     FBox2D panel(ForceInit);
 
+    // The panel's lines are the date-and-anchor card's content (SDD 42 D15): on the menu layer, above its backing
+    const bool bIsCardContent = BeginCardContent(ESOLHudCard::DateAnchor);
+
     // Sim date and time (UTC) and the warp label
     const FDateTime utc = SimClock->GetUtcDateTime();
     const double warp = SimClock->GetClock().GetWarpFactor();
@@ -1392,7 +1580,11 @@ void ASOLFlightHud::DrawInfoBlock()
             y += HUD_LINE_MEDIUM_PX * mUiScale;
         }
     }
-    AddHoloPanel(panel, HUD_PRIMARY);
+    if (bIsCardContent)
+    {
+        EndCardContent();
+    }
+    DrawCard(ESOLHudCard::DateAnchor, panel, mAlwaysOnCardLook);
 
     // Overlay state and key hints (the jump map's own keys while it is open), below the panel
     y += HUD_PANEL_GAP_PX * mUiScale;
@@ -1424,6 +1616,9 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
         + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
     float y = Canvas->ClipY - HUD_MARGIN_PX * mUiScale - blockHeight;
     const double relativeSpeedMps = (state.VelocityMps - Ships->GetReferenceVelocityMps()).Size();
+
+    // The block is the speed card's content (SDD 42 D15): its text, bar and icon on the menu layer, above its backing
+    const bool bIsCardContent = BeginCardContent(ESOLHudCard::Speed);
 
     // Speed relative to the active frame, large
     mText.Reset();
@@ -1480,6 +1675,10 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
         mLeftBlockRect += FBox2D(iconCenter - FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale),
             iconCenter + FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale));
     }
+    if (bIsCardContent)
+    {
+        EndCardContent();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1532,6 +1731,9 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         - barHeight - HUD_LINE_SMALL_PX * mUiScale;
     const FLinearColor& meterColor = bAlarm ? HUD_BAD
         : (warning == ESOLGWarning::OverSustained ? HUD_SECONDARY : HUD_PRIMARY);
+
+    // The G meter is part of the speed card's content (SDD 42 D15), on the menu layer; the warning stays HUD
+    const bool bIsCardContent = BeginCardContent(ESOLHudCard::Speed);
     mText.Reset();
     mText.Appendf(TEXT("G %.1f   tolerance %.0f%%"), gLoad, meter.Meter * HUD_PERCENT);
     mLeftBlockRect += DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, ESOLHudFont::Small);
@@ -1553,6 +1755,10 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         }
     }
     mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale, y + barHeight));
+    if (bIsCardContent)
+    {
+        EndCardContent();
+    }
 
     // Warning under the reticle in its own panel: over the sustained limit only in manual flight (assist never
     // exceeds it), the critical meter and the blackout in every mode
@@ -1795,36 +2001,42 @@ void ASOLFlightHud::DrawRouteMarker()
 // Draws the selected target's readout panel and bracket, or an edge arrow when it is off-screen
 void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& state)
 {
-    const float panelX = Canvas->ClipX - (HUD_MARGIN_PX + HUD_TARGET_PANEL_WIDTH_PX) * mUiScale;
-    float panelY = HUD_MARGIN_PX * mUiScale;
     const FSOLTargetInfo* target = Targeting->GetSelectedTarget();
     const int32 selectedIndex = Targeting->GetSelectedIndex();
-    mText.Reset();
-    mText.Append(TEXT("TARGET  "));
-    if (target == nullptr)
+
+    // The target card (SDD 42 D15): the live readout is cached, so the card closes from it once the target is cleared;
+    // no cue (a target change is frequent, SDD 42 section 5). Another target (R / F cycling) keeps the card open and
+    // only swaps its text (Q15): it draws in only when a target appears from none, and closes only when cleared
+    const bool bLive = target != nullptr;
+    const double distanceM = bLive ? FVector3d::Dist(target->PositionM, state.PositionM) : 0.0;
+    if (bLive)
     {
-        mText.Append(mKeyTexts.NoTarget);
-        AddHoloPanel(DrawBuffer(ESOLHudLine::TargetName, HudDimText(HUD_PRIMARY), panelX, panelY,
-            ESOLHudFont::Medium), HUD_PRIMARY);
+        mTargetCardName = target->Name;
+        mTargetCardDistanceM = distanceM;
+        mTargetCardRelativeMps = (state.VelocityMps - target->VelocityMps).Size();
+    }
+    const bool bContinuous = mTargetCardFrame != 0 && GFrameCounter <= mTargetCardFrame + 1;
+    mTargetCardFrame = GFrameCounter;
+    HudCardUpdate(mTargetCardAnim, bLive, false, bContinuous, mCardNowS, mCardStrength);
+    const FSOLHoloMenuLook look = CardLook(mTargetCardAnim, bLive);
+    if (look.bVisible)
+    {
+        DrawTargetCard(look);
+    }
+    if (!bLive)
+    {
+        // "No target" stays a plain HUD line with its HUD panel, shown once the card has closed
+        if (!look.bVisible)
+        {
+            mText.Reset();
+            mText.Append(TEXT("TARGET  "));
+            mText.Append(mKeyTexts.NoTarget);
+            AddHoloPanel(DrawBuffer(ESOLHudLine::TargetName, HudDimText(HUD_PRIMARY),
+                Canvas->ClipX - (HUD_MARGIN_PX + HUD_TARGET_PANEL_WIDTH_PX) * mUiScale, HUD_MARGIN_PX * mUiScale,
+                ESOLHudFont::Medium), HUD_PRIMARY);
+        }
         return;
     }
-
-    // Readout panel (top right): name, distance, speed relative to the target
-    const double distanceM = FVector3d::Dist(target->PositionM, state.PositionM);
-    const double relativeSpeedMps = (state.VelocityMps - target->VelocityMps).Size();
-    target->Name.AppendString(mText);
-    FBox2D readout = DrawBuffer(ESOLHudLine::TargetName, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Medium);
-    panelY += HUD_LINE_MEDIUM_PX * mUiScale;
-    mText.Reset();
-    mText.Append(TEXT("DIST "));
-    SOLHudFormat::AppendDistanceM(mText, distanceM);
-    readout += DrawBuffer(ESOLHudLine::TargetDistance, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Small);
-    panelY += HUD_LINE_SMALL_PX * mUiScale;
-    mText.Reset();
-    mText.Append(TEXT("REL "));
-    AppendSpeed(relativeSpeedMps);
-    readout += DrawBuffer(ESOLHudLine::TargetRelative, HUD_SECONDARY, panelX, panelY, ESOLHudFont::Small);
-    AddHoloPanel(readout, HUD_SECONDARY);
 
     // Where the target is drawn: a body through the same placement as its visual, anything else through the point
     // placement from the current render viewpoint (correct while the map overrides the viewpoint)
@@ -1893,6 +2105,31 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     const FVector2D label = anchor - direction * (3.0f * HUD_EDGE_ARROW_LENGTH_PX * mUiScale);
     DrawBuffer(ESOLHudLine::TargetLabel, HUD_SECONDARY, label.X - 20.0f * mUiScale, label.Y - 8.0f * mUiScale,
         ESOLHudFont::Small);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the target card (top right) from the cached readout at its look: name, distance and relative speed, faded by
+// the fill, on the menu layer
+void ASOLFlightHud::DrawTargetCard(const FSOLHoloMenuLook& look)
+{
+    const float panelX = Canvas->ClipX - (HUD_MARGIN_PX + HUD_TARGET_PANEL_WIDTH_PX) * mUiScale;
+    float panelY = HUD_MARGIN_PX * mUiScale;
+    const FLinearColor color = SOLHoloRadial::Faded(HUD_SECONDARY, look.FillAlpha);
+    mText.Reset();
+    mText.Append(TEXT("TARGET  "));
+    mTargetCardName.AppendString(mText);
+    FBox2D readout = MenuText(ESOLHudLine::TargetName, color, panelX, panelY, ESOLHudFont::Medium);
+    panelY += HUD_LINE_MEDIUM_PX * mUiScale;
+    mText.Reset();
+    mText.Append(TEXT("DIST "));
+    SOLHudFormat::AppendDistanceM(mText, mTargetCardDistanceM);
+    readout += MenuText(ESOLHudLine::TargetDistance, color, panelX, panelY, ESOLHudFont::Small);
+    panelY += HUD_LINE_SMALL_PX * mUiScale;
+    mText.Reset();
+    mText.Append(TEXT("REL "));
+    AppendSpeed(mTargetCardRelativeMps);
+    readout += MenuText(ESOLHudLine::TargetRelative, color, panelX, panelY, ESOLHudFont::Small);
+    DrawCard(ESOLHudCard::Target, readout, look);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1968,11 +2205,7 @@ void ASOLFlightHud::DrawInteraction()
     {
         return;
     }
-    const FSOLObjectRef infoObject = Interaction->GetInfoObject();
-    if (infoObject.IsValid())
-    {
-        DrawInfoCard(infoObject);
-    }
+    DrawInfoCard();
 
     // The Attack hint, below the screen centre
     if (Interaction->GetHintAction() == ESOLAction::Attack)
@@ -2158,14 +2391,41 @@ void ASOLFlightHud::DrawRadialMenu(const FSOLHoloMenuLook& look, const float s)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws the info card of the object Info was chosen for (top right): name, type, distance, size and status
-void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
+// Draws the info card of the object Info was chosen for (top right): name, type, distance, size and status, as a
+// frameless card that draws in with the open cue and closes from its cached object
+void ASOLFlightHud::DrawInfoCard()
 {
-    FSOLObjectInfo info;
-    if (!Interaction->GetObjectInfo(object, info))
+    // The live card's object and facts are cached; a closing card redraws the cached ones (refreshed while the object
+    // still exists), so it closes after the card timed out or the object went away
+    const FSOLObjectRef live = Interaction->GetInfoObject();
+    FSOLObjectInfo liveInfo;
+    const bool bLive = live.IsValid() && Interaction->GetObjectInfo(live, liveInfo);
+    const bool bNewObject = bLive && !(live == mInfoCardObject);
+    if (bLive)
+    {
+        mInfoCardObject = live;
+        mInfoCardInfo = liveInfo;
+    }
+    else if (mInfoCardAnim.Phase != ESOLHoloMenuPhase::Closed && mInfoCardObject.IsValid()
+        && Interaction->GetObjectInfo(mInfoCardObject, liveInfo))
+    {
+        mInfoCardInfo = liveInfo;
+    }
+    const bool bContinuous = mInfoCardFrame != 0 && GFrameCounter <= mInfoCardFrame + 1;
+    mInfoCardFrame = GFrameCounter;
+    if (HudCardUpdate(mInfoCardAnim, bLive, bNewObject, bContinuous, mCardNowS, mCardStrength) && HoloMenu != nullptr)
+    {
+        // Info chosen for a new object (or again while the card closed): the open cue, at every strength (D21)
+        HoloMenu->PlayCue(ESOLHoloCue::Open, mCardNowS);
+    }
+    const FSOLHoloMenuLook look = CardLook(mInfoCardAnim, bLive);
+    if (!look.bVisible)
     {
         return;
     }
+    const FSOLObjectInfo& info = mInfoCardInfo;
+    const FLinearColor secondary = SOLHoloRadial::Faded(SOL::HudPalette::SECONDARY, look.FillAlpha);
+    const FLinearColor primary = SOLHoloRadial::Faded(SOL::HudPalette::PRIMARY, look.FillAlpha);
     const float x = Canvas->ClipX - (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_WIDTH_PX) * mUiScale;
     float y = (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_TOP_PX) * mUiScale;
     FBox2D panel(ForceInit);
@@ -2180,7 +2440,7 @@ void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
     {
         mText.Append(SOLActionTable::TypeName(info.Type));
     }
-    panel += DrawBuffer(ESOLHudLine::InfoTitle, SOL::HudPalette::SECONDARY, x, y, ESOLHudFont::Medium);
+    panel += MenuText(ESOLHudLine::InfoTitle, secondary, x, y, ESOLHudFont::Medium);
     y += HUD_LINE_MEDIUM_PX * mUiScale;
     mText.Reset();
     mText.Append(SOLActionTable::TypeName(info.Type));
@@ -2189,7 +2449,7 @@ void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
         mText.Append(SOLMenuText::INTERACT_INFO_OF);
         info.ParentName.AppendString(mText);
     }
-    panel += DrawBuffer(ESOLHudLine::InfoType, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+    panel += MenuText(ESOLHudLine::InfoType, primary, x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
 
     // Distance from the player ship (else the viewpoint), and the radius
@@ -2198,7 +2458,7 @@ void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
     mText.Reset();
     mText.Append(SOLMenuText::INTERACT_INFO_DISTANCE);
     SOLHudFormat::AppendDistanceM(mText, FVector3d::Dist(info.PositionM, fromM));
-    panel += DrawBuffer(ESOLHudLine::InfoDistance, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+    panel += MenuText(ESOLHudLine::InfoDistance, primary, x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
     int32 lines = 3;
     if (info.RadiusM > 0.0)
@@ -2206,7 +2466,7 @@ void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
         mText.Reset();
         mText.Append(SOLMenuText::INTERACT_INFO_RADIUS);
         SOLHudFormat::AppendDistanceM(mText, info.RadiusM);
-        panel += DrawBuffer(ESOLHudLine::InfoDetail, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+        panel += MenuText(ESOLHudLine::InfoDetail, primary, x, y, ESOLHudFont::Small);
         y += HUD_LINE_SMALL_PX * mUiScale;
         ++lines;
     }
@@ -2221,10 +2481,10 @@ void ASOLFlightHud::DrawInfoCard(const FSOLObjectRef& object)
         mText.Append(SOLMenuText::INTERACT_INFO_HULL);
         mText.AppendInt(FMath::RoundToInt32(100.0f * info.HealthFraction));
         mText.Append(SOLMenuText::INTERACT_INFO_PERCENT);
-        panel += DrawBuffer(ESOLHudLine::InfoStatus, SOL::HudPalette::PRIMARY, x, y, ESOLHudFont::Small);
+        panel += MenuText(ESOLHudLine::InfoStatus, primary, x, y, ESOLHudFont::Small);
         ++lines;
     }
-    AddHoloPanel(panel, SOL::HudPalette::PRIMARY);
+    DrawCard(ESOLHudCard::Info, panel, look);
     mLastInfoCardLineCount = lines;
 }
 

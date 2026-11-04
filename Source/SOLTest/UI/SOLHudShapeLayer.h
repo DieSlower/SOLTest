@@ -89,6 +89,12 @@ public:
     // Returns the number of panel backings queued this frame
     int32 GetBackingCount() const { return mBackings.Num(); }
 
+    // Returns a queued backing's rectangle in canvas pixels, or an invalid box for an index out of range (verification)
+    FBox2f GetBackingRect(const int32 index) const
+    {
+        return mBackings.IsValidIndex(index) ? mBackings[index].Rect : FBox2f(ForceInit);
+    }
+
     // Sets a brush up as the white, outline-free rounded box the backings are drawn with (tinted per layer)
     static void InitBackingBrush(FSlateBrush& brush);
 
