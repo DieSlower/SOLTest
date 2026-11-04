@@ -14,7 +14,10 @@
 #include "SOLOverlayMenuWidget.generated.h"
 
 class UBorder;
+class UOverlay;
 class UTextBlock;
+class UVerticalBox;
+class USOLHoloFrameWidget;
 class USOLSettingsSubsystem;
 
 /**
@@ -28,6 +31,14 @@ class USOLSettingsSubsystem;
  * view follows. Each change goes to USOLSettingsSubsystem at once (applied live; written at the menu's close only
  * when it changed). Standalone in flight (Ctrl+O, closed by Ctrl+O or Esc through the owner's close delegate), or
  * embedded in the Settings page (no title, no keys: tabs and rows are clicked, D17).
+ *
+ * Standalone, it is a hologram menu (SDD 42 part 42e): a USOLHoloFrameWidget behind the content draws the option (c)
+ * frame with the faint tint (D20): the title step sized to the title, the dashed column divider open beside the viewed
+ * tab, the tab markers, the hint divider, and the hover mark around the highlighted row (brackets and pointer) or the
+ * tab under the mouse (brackets only); the content's render opacity follows the frame's fill. It opens with a draw-in
+ * and plays the open, hover and select cues. BeginClose gives input back at once: the widget turns hit-test invisible
+ * and unfocusable, plays the close and removes itself from its NativeTick (SDD 4.5); Open during the close reverses
+ * it. The NativeTick does nothing while the menu is open and idle. The embedded copy gets no frame (D17).
  */
 UCLASS()
 class SOLTEST_API USOLOverlayMenuWidget : public UUserWidget
@@ -48,6 +59,31 @@ public:
 
     // Makes the widget the Settings page's embedded list: no backing, title or keys, not focusable
     void SetEmbedded(bool bEmbedded);
+
+    // Starts the non-blocking close (SDD 4.5): hit-test invisible and unfocusable at once, the frame's close plays,
+    // then the widget removes itself (at once when nothing is left to draw, e.g. at strength 0)
+    void BeginClose();
+
+    // Removes the menu at once without the close (teardown); the next Open draws in again with its open cue
+    void Dismiss();
+
+    // Returns whether the close is playing or done and the menu not reopened since
+    bool IsClosing() const { return mIsClosing; }
+
+    // Returns whether this is the Settings page's embedded list
+    bool IsEmbedded() const { return mIsEmbedded; }
+
+    // Returns the hologram frame, or null (embedded, or never opened standalone)
+    USOLHoloFrameWidget* GetHoloFrame() const { return HoloFrame; }
+
+    // Returns the panel's backing colour as set (the embedded list's look, verification)
+    FLinearColor GetPanelColor() const;
+
+    // Returns the content's render opacity (the frame's fill alpha, verification)
+    float GetContentOpacity() const { return mContentOpacity; }
+
+    // Returns the profile tab under the mouse (its hover mark), or INDEX_NONE
+    int32 GetHoveredTab() const { return mHoveredTab; }
 
     // Re-reads the tabs, the title and every row from the settings (the view follows the active profile)
     void RefreshRows();
@@ -87,6 +123,10 @@ protected:
     // Builds the widget tree (no widget blueprint)
     virtual void NativeOnInitialized() override;
 
+    // While the frame animates: advances it, sets the content opacity, removes the widget once closed; after a
+    // content or hover change: lays the frame out from the arranged content. Nothing while open and idle
+    virtual void NativeTick(const FGeometry& geometry, float deltaSeconds) override;
+
     // Up / Down move the highlight, Space / Enter toggle, PageUp / PageDown switch tabs, the cycle key cycles, Esc and
     // Ctrl+<toggle key> close (standalone only)
     virtual FReply NativeOnKeyDown(const FGeometry& geometry, const FKeyEvent& keyEvent) override;
@@ -94,8 +134,12 @@ protected:
     // A left click on a tab views it, on a row toggles it
     virtual FReply NativeOnMouseButtonDown(const FGeometry& geometry, const FPointerEvent& mouseEvent) override;
 
-    // The row under the mouse is highlighted
+    // The row under the moving mouse is highlighted; the tab under it gets the hover mark (a synthetic move that did
+    // not move the cursor changes nothing)
     virtual FReply NativeOnMouseMove(const FGeometry& geometry, const FPointerEvent& mouseEvent) override;
+
+    // The mouse left the menu: no tab is hovered
+    virtual void NativeOnMouseLeave(const FPointerEvent& mouseEvent) override;
 
 private:
 
@@ -143,6 +187,30 @@ private:
     // enabled profiles, the active one or the viewed one changed since the last call
     void RefreshTabs(const SOLOverlay::FOverlayPrefs& prefs);
 
+    // Creates the hologram frame behind the panel once (standalone only) and clears the panel's own backing
+    void EnsureHoloFrame();
+
+    // Asks the frame layout to be rebuilt from the arranged content over the next frames
+    void MarkLayoutDirty();
+
+    // Sets the frame's layout and hover mark from the content's arranged geometry (frame-local units)
+    void UpdateFrameLayout();
+
+    // Sets the frame's hovered item: the tab under the mouse, else the highlighted row
+    void UpdateFrameHover();
+
+    // Sets the content's render opacity when it changed
+    void ApplyContentOpacity(float opacity);
+
+    // Opens the built frame (or reverses its close) with the open cue
+    void StartFrameOpen();
+
+    // Ends the close: removes the widget
+    void FinishClose();
+
+    // Requests the select cue (standalone, not while closing)
+    void RequestSelectCue();
+
     UPROPERTY(Transient)
     TObjectPtr<USOLSettingsSubsystem> Settings;
 
@@ -150,7 +218,19 @@ private:
     TObjectPtr<UBorder> RootBorder;                         // Full-screen transparent root (standalone layout)
 
     UPROPERTY(Transient)
-    TObjectPtr<UBorder> PanelBorder;                        // The dark panel behind the list
+    TObjectPtr<UOverlay> PanelStack;                        // The frame (standalone) behind the panel
+
+    UPROPERTY(Transient)
+    TObjectPtr<UBorder> PanelBorder;                        // The panel: dark when embedded, clear over the frame
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLHoloFrameWidget> HoloFrame;              // The hologram frame (standalone only, D17)
+
+    UPROPERTY(Transient)
+    TObjectPtr<UVerticalBox> TabColumn;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UVerticalBox> RowColumn;
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> TitleText;
@@ -179,5 +259,15 @@ private:
     int32 mTabsEnabledProfiles = INDEX_NONE;                // The tab state last written (INDEX_NONE: never)
     int32 mTabsActiveProfile = INDEX_NONE;
     int32 mTabsViewedProfile = INDEX_NONE;
+    int32 mHoveredTab = INDEX_NONE;                         // The tab under the mouse (standalone), or none
+    int32 mLayoutDirtyFrames = 0;                           // Frames left to re-lay the frame out after a change
+    uint32 mIndentedRows = 0;                               // Bit per display row shown indented
+    int32 mLastRowHoverItem = INDEX_NONE;                   // The row last given to the frame as its hover item
+    float mIndentWidth = -1.0f;                             // The child indent's width in the row font (<0: not yet)
+    float mContentOpacity = 1.0f;                           // The content's render opacity as last set
+    ESlateVisibility mOpenVisibility = ESlateVisibility::Visible;  // The widget's visibility while open
     bool mIsEmbedded = false;
+    bool mIsClosing = false;                                // BeginClose ran and Open did not since
+    bool mIsAnimating = false;                              // The frame is opening or closing
+    bool mIsOpenPending = false;                            // Opened before the frame's Slate widget was built
 };

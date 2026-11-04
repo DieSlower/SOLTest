@@ -156,6 +156,11 @@ Closing gives input back at once, as today. The visual close then plays for `CLO
   hit-test invisible and unfocusable, keeps drawing its frame in reverse, and removes itself when the anim reaches
   Closed (from its `NativeTick`, which does nothing while the menu is open and idle). Reopening during the close
   reverses from the current progress (section 6.2).
+- **The first open of a UMG menu (42e amendment).** The frame's Slate widget is only made when the menu is first
+  arranged, so on the first open there is no frame to start yet. The open is then deferred: the frame's open (its
+  `BeginOpen` and the open cue) starts on the widget's first tick, which runs before the content's first paint, and
+  the content waits at render opacity 0 until then, so the text never shows before its frame. Later opens (and a
+  reopen during the close) start the frame at once.
 - **HUD-drawn menus (radial, info, target):** the HUD keeps a copy of the last drawn state (radial state and its
   action list, the info / target object; value types, no allocation) and draws the closing animation from it.
   For the radial (42d review): the close keeps the last hovered sector, so its hover glow fades with the fill rather
@@ -280,6 +285,27 @@ there is no sweep, jitter, flicker or hover glow. The option (c) frame draws who
 accents, dividers and tab markers included) as thin flat lines. The highlighted row, tab, digit or sector keeps
 today's Secondary colour, and its hover brackets stay as thin flat Secondary lines (proposed, section 6.3), so the
 menus stay fully usable. The sound cues still play at strength 0 (D21).
+
+**Overlay Menu and F3 panel details (42e / 42f amendment, written after the code at the 42e review).** These refine
+the two table rows above:
+- **Overlay Menu tab hover is the mouse hover.** A tab gets its `BracketsOnly` mark only while the mouse is over it.
+  The keys (Up / Down, PgUp / PgDn) move the row highlight as today and drop the tab hover, so the mark goes back to
+  the highlighted row. While a tab is hovered its mark wins over the row's. The viewed profile's tab keeps its selected
+  tab marker either way (section 6.3). Whether a resting mouse may take the highlight back from the keys is Q14 (open).
+- **The cycle key inside the Overlay Menu plays the select cue** (RShift+O switches the active and viewed profile, like
+  a tab switch). A tab click or PgUp / PgDn plays it only when the viewed profile changed.
+- **No hover cue on open.** The initial highlight (row, digit or unit field) is set while the menu is Opening, and
+  `ShouldPlayHoverCue` needs the Open phase (section 6.2), so an open plays the open cue only.
+- **The F3 panel keeps today's full-screen dim** (the root border behind the panel, which also catches the wheel
+  anywhere on screen). Its alpha is now today's dim alpha times `FillAlpha`, so it fades in and out with the fill and
+  the content.
+- **A unit change on the F3 panel plays no cue.** Cycling the unit changes how the cap reads, not the cap itself, so it
+  is not an applied cap (no select cue), and the highlight does not move (no hover cue).
+- **Review fixes (42e / 42f reviews).** The mouse leaving a tab hands the mark back to the highlighted row with no
+  hover cue when that row did not change (not a highlight change). An F3 body row scrolled out of the list's view (a
+  wheel over the list scrolls it without moving the selection) has no mark and asks for no cue; its rect comes from the
+  list's geometry, the row height and the scroll offset (a culled row's own geometry is stale). A menu removed at
+  teardown (`Dismiss`: end of play, unpossess) drops its frame to Closed, so the next open draws in with its open cue.
 
 All frames use the HUD palette (`SOL::HudPalette::PRIMARY` lines, `SECONDARY` for the hovered / highlighted item,
 dim rows as today). Text stays the existing glow text (on the menu layer for HUD-drawn menus, through `MenuText`, so it
@@ -419,6 +445,55 @@ counter-clockwise (down the left edge, along the bottom). The drawn arc is `D(f)
   (`GlowScale(0) = 0`), on the flat `FLAT_PANEL_ALPHA` backdrop. The gaps and dots are part of the shape, not an
   effect, so they stay. No draw-in, sweep, jitter or flicker.
 
+**Layout helpers (parts 42e / 42f amendment, `UI/SOLHoloFrameBuild.h`, namespace `SOLHoloFrameBuild`).** Written
+after the code, at the 42e review's request, so a separate author can test them from this contract. They turn a menu's
+arranged content into the layout fields of an `FSOLHoloFrameSpec` (section 4.6) and give the rect a hover mark goes
+around. Pure, no heap, no Slate. Coordinates are the frame's local units with the menu panel's top-left as the origin,
+y down; the frame scales them to px when it paints. "Valid" is the section 6.3 rect rule (`SOLHoloMenu::IsValidRect`);
+"finite" means not NaN and not infinite; "invalid box" is `FBox2f(ForceInit)` (`bIsValid` false). Items marked
+(proposed, tuned from screenshots) are choices the code made that D20, the samples and sections 5 and 6.3 did not
+settle; they were tuned against `overlay-c-tint.png` and `speed-c-tint.png`.
+
+```
+struct FSOLHoloOverlayLayoutInput { float TitleWidth = 0;          // the title text's own width
+    FBox2f TabColumn; FBox2f RowColumn;                          // invalid = missing
+    int32 TabCount = 0; FBox2f TabRects[FRAME_MAX_TABS];         // each tab's rect; all invalid by default
+    int32 SelectedTab = INDEX_NONE;                              // the viewed profile's tab
+    float HintTopY = NaN; };                                     // top of the key hint; NaN = no hint
+struct FSOLHoloSpeedLayoutInput { float TitleWidth = 0;
+    FBox2f StepperSection; FBox2f ListSection;                   // invalid = missing
+    float LocalPerPx = 1; };                                     // local units per px of the 720 px canvas
+```
+
+**Written fields.** Both layout functions write exactly these fields of `out`, on every call and whatever the input:
+`TitleStepWidthPx`, `bColumnDivider`, `DividerTop`, `DividerBottomY`, `OpenTopY`, `OpenBottomY`, `TabDividerX`,
+`TabCount`, all `FRAME_MAX_TABS` entries of `TabRects`, `SelectedTab`, `bBrokenDivider`, `BrokenStart`, `BrokenEndX`,
+`BrokenStepAtPx` and `BrokenStepPx`. They never write `Rect`, `UiScale`, `HoverItemRect` or `HoverMark` (the frame's
+own). So an `out` that already holds other values (a dirty spec) gives the same written fields as a fresh one. A piece
+that is absent writes its "absent" values below, never leftovers.
+
+| Function | Contract |
+|---|---|
+| `void MakeOverlayLayout(const FSOLHoloOverlayLayoutInput& in, FSOLHoloFrameSpec& out)`: title step | `TitleStepWidthPx = in.TitleWidth` when it is finite and `> 0`; else 0 (0, negative, NaN, infinite). The raw text width: the frame adds `FRAME_TITLE_STEP_PAD_PX * u` itself (section 4.6) |
+| `MakeOverlayLayout`: tabs | `n = clamp(in.TabCount, 0, FRAME_MAX_TABS)`. `out.TabCount = n`; `out.TabRects[i] = in.TabRects[i]` for `i < n`, copied as given (an invalid one too); every `i >= n` is an invalid box, even when `in.TabRects[i]` is valid. `out.SelectedTab = in.SelectedTab` when it is in `[0, n)`, else `INDEX_NONE` |
+| `MakeOverlayLayout`: column divider | **Present** (`bColumnDivider` true) when `TabColumn` and `RowColumn` are both valid and `RowColumn.Min.X >= TabColumn.Max.X` (touching allowed, overlapping not). Then `xd = (TabColumn.Max.X + RowColumn.Min.X) / 2`, halfway between the columns (proposed, tuned from screenshots); `DividerTop = (xd, min(TabColumn.Min.Y, RowColumn.Min.Y))`, `DividerBottomY = max(TabColumn.Max.Y, RowColumn.Max.Y)` (the columns' full height), `TabDividerX = xd` (the selected tab's marker runs into the divider). **Absent** (a column missing, or overlapping columns): `bColumnDivider` false, `DividerTop (0, 0)`, `DividerBottomY 0`, `TabDividerX 0` (so `TabMarker` reads the tab's own right edge, section 6.3), and no opening |
+| `MakeOverlayLayout`: opening at the viewed tab | `OpenTopY = TabRects[SelectedTab].Min.Y`, `OpenBottomY = TabRects[SelectedTab].Max.Y` when the column divider is present, `out.SelectedTab != INDEX_NONE` and that tab's rect is valid. Otherwise no opening: `OpenTopY 1`, `OpenBottomY 0` (the `DashedDivider` "top above bottom" rule). A valid selection with an invalid tab rect gives no opening; `SelectedTab` keeps its value (that tab's marker then draws nothing, by the `TabMarker` invalid-rect rule) |
+| `MakeOverlayLayout`: hint divider | `body` = the union of the valid columns (one missing column still gives a body). **Present** (`bBrokenDivider` true) when at least one column is valid, `HintTopY` is finite and `HintTopY > body.Max.Y` (strictly). Then `yh = (body.Max.Y + HintTopY) / 2`, halfway between the columns' bottom and the hint (proposed, tuned from screenshots); `BrokenStart = (body.Min.X, yh)`, `BrokenEndX = body.Max.X`, from the tab column's left to the row column's right (proposed, tuned from screenshots). It never steps: `BrokenStepAtPx` and `BrokenStepPx` are always 0. **Absent** (no valid column, `HintTopY` NaN or infinite, or the hint at or above the columns' bottom): `bBrokenDivider` false, `BrokenStart (0, 0)`, `BrokenEndX 0`. The field's default is NaN, no hint (proposed: the 42e code has 0 with a "NaN: no hint" comment, a review nit to align; for columns at `y >= 0` both defaults give no hint divider) |
+| `FBox2f TextItemRect(const FBox2f& slotRect, float textWidth, float indentWidth)` | The rect a hover mark goes around for a text item (before the frame's `HOVER_PAD_X_PX` / `HOVER_PAD_Y_PX` inflation, section 4.6). Invalid box when `slotRect` is not valid or `textWidth` is not finite. Indent `i = indentWidth` when finite and `> 0`, else 0. `left = slotRect.Min.X + i`, `right = slotRect.Min.X + min(textWidth, slotRect width)` (the text's own width, at most the slot's; proposed, tuned from screenshots). Invalid box when `right <= left` (a zero or negative text width, an indent as wide as the text or wider, an indent past the slot). Else `(left, slotRect.Min.Y) - (right, slotRect.Max.Y)`: the slot's full height |
+| `void MakeSpeedLayout(const FSOLHoloSpeedLayoutInput& in, FSOLHoloFrameSpec& out)`: title step, tabs | Title step as `MakeOverlayLayout`. No column divider and no tabs ever: `bColumnDivider` false, `DividerTop (0, 0)`, `DividerBottomY 0`, `OpenTopY 1`, `OpenBottomY 0`, `TabDividerX 0`, `TabCount 0`, every `TabRects` entry an invalid box, `SelectedTab INDEX_NONE` |
+| `MakeSpeedLayout`: stepped divider | `lp = in.LocalPerPx` when finite and `> 0`, else 1. **Present** (`bBrokenDivider` true) when both sections are valid and `ListSection.Min.Y > StepperSection.Max.Y` (strictly: touching or overlapping sections give none). With `t = SPEED_DIVIDER_STEP_PX * lp` and `m = (StepperSection.Max.Y + ListSection.Min.Y) / 2`: `BrokenStart = (min(StepperSection.Min.X, ListSection.Min.X), m + t / 2)`, `BrokenEndX = max(StepperSection.Max.X, ListSection.Max.X)` (across both sections), `BrokenStepAtPx = SPEED_DIVIDER_STEP_AT_PX * lp`, `BrokenStepPx = t`. `BrokenDivider` rises toward smaller y, so the left level is `m + t / 2` and the right level `m - t / 2`: the two levels straddle the midpoint of the gap (proposed, tuned from screenshots; the sample's left part is the lower one). The levels are not clamped to the gap: a gap narrower than `t` still gives the divider (proposed). The step position's own clamp is `BrokenDivider`'s (section 6.3). **Absent:** `bBrokenDivider` false, `BrokenStart (0, 0)`, `BrokenEndX 0`, `BrokenStepAtPx 0`, `BrokenStepPx 0` |
+
+**How the widgets use them (smoke only, not unit tested).** Each menu rebuilds its layout from its content's cached
+geometry over the 2 frames after a change (the content settles first). The hovered item, its rect and its mark:
+
+| Menu item | Hover item id | Rect given to the frame | Mark |
+|---|---|---|---|
+| Overlay Menu row (the highlighted row, keys or mouse; none for a hidden row) | the row index | `TextItemRect(row text slot, its text width, the child indent's width for an indented row, else 0)`, so the brackets go around `[x] Rings`, not the indent (as in the sample) | `RowPointer` |
+| Overlay Menu tab (only while the mouse is over it; wins over the row) | `ROW_WIDGET_COUNT + tab` | `TextItemRect(tab text slot, its text width, 0)` | `BracketsOnly` |
+| F3 digit | the digit's slot (`MaxDigit - HighlightedDigit`) | `TextItemRect(digit text, its width, 0)`, then narrowed by `6 * LocalPerPx` per side, keeping at least 1 local unit of half width, so the brackets hug the glyph and not the next digits (proposed, tuned from screenshots) | `CentreTicks` |
+| F3 unit field | the digit count | as the digit | `CentreTicks` |
+| F3 body row (list focused) | `digit count + 1 + list index` | `TextItemRect(body row text, its width, 0)` | `RowPointer` |
+
 ### 6.4 Test cases (for the separate test author; `Tests/HoloMenuTest.cpp`, `SOLTest.HoloMenu.*`)
 
 1. `OpenProgress`: 0 / half / full / beyond the duration; negative elapsed; zero duration; `s = 0` instant.
@@ -483,6 +558,63 @@ rect **R** = `(0, 0)-(400, 300)`, title step width 200, `uiScale` 1, so `k = 1` 
     sweep of rects (1x1 up to 4000x2000), fractions (-1, 0, NaN, 0.01-1 in 0.01 steps, 2) and `uiScale` (0.5, 1, 2,
     NaN) never writes past the capacity (guard entries after the array stay untouched) and returns a count within
     `[0, capacity]`.
+
+**Layout helpers (42e / 42f amendment).** Cases 19-26 go in `Tests/HoloOverlayLayoutTest.cpp`
+(`SOLTest.HoloOverlayLayout.*`), cases 27-29 in `Tests/HoloSpeedLayoutTest.cpp` (`SOLTest.HoloSpeedLayout.*`). Exact
+values (all inputs are representable floats). Worked input **O** for `MakeOverlayLayout`: `TitleWidth` 150,
+`TabColumn (10,50)-(110,200)`, `RowColumn (130,40)-(380,260)`, `TabCount` 5 with tab `i` at `(10, 50 + 30i)-(110,
+75 + 30i)` (so tab 2 is `(10,110)-(110,135)`), `SelectedTab` 2, `HintTopY` 280. A **dirty spec** is an
+`FSOLHoloFrameSpec` pre-filled with other values in every written field (column divider on at other places, 5 other
+valid tab rects, `SelectedTab` 4, a broken divider with a step) and with `Rect (0,0)-(400,300)`, `UiScale` 2,
+`HoverItemRect (1,2)-(3,4)`, `HoverMark` `CentreTicks`.
+
+19. `MakeOverlayLayout` on O: `TitleStepWidthPx` 150; `TabCount` 5, `TabRects[0..4]` equal to O's; `SelectedTab` 2;
+    `bColumnDivider` true, `DividerTop (120, 40)`, `DividerBottomY` 260, `TabDividerX` 120; `OpenTopY` 110,
+    `OpenBottomY` 135; `bBrokenDivider` true, `BrokenStart (10, 270)`, `BrokenEndX` 380, `BrokenStepAtPx` 0,
+    `BrokenStepPx` 0. Into a dirty spec: the same written fields, and `Rect`, `UiScale`, `HoverItemRect` and
+    `HoverMark` unchanged.
+20. Title rule (`MakeOverlayLayout` and `MakeSpeedLayout` alike): `TitleWidth` 0, -5, NaN, +inf and -inf give
+    `TitleStepWidthPx` 0; 150 gives 150.
+21. Tabs on O: `TabCount` 7 reads 5 (rects 0-4 copied); `TabCount` 3 copies rects 0-2 and leaves 3 and 4 invalid
+    (`bIsValid` false) although O's are valid; `TabCount` -1 gives 0, every rect invalid, `SelectedTab` `INDEX_NONE`.
+    `SelectedTab` 5 (with 5 tabs), -1, or 3 with `TabCount` 3: `INDEX_NONE`, `OpenTopY` 1, `OpenBottomY` 0, the column
+    divider still present at 120.
+22. Opening with an invalid tab rect: O with tab 2's rect set to `FBox2f(ForceInit)`, to `(10,110)-(110,110)` (zero
+    height) or with a NaN coordinate: `SelectedTab` stays 2, `OpenTopY` 1, `OpenBottomY` 0, `bColumnDivider` true at
+    120; `TabRects[2]` is copied as given.
+23. Missing or overlapping columns: O with `TabColumn` invalid: `bColumnDivider` false, `DividerTop (0,0)`,
+    `DividerBottomY` 0, `TabDividerX` 0, `OpenTopY` 1, `OpenBottomY` 0 (the selection 2 stays); the hint divider from
+    the row column alone, `BrokenStart (130, 270)`, `BrokenEndX` 380. O with `RowColumn` invalid: no column divider; hint
+    divider `BrokenStart (10, 240)`, `BrokenEndX` 110. O with `RowColumn (100,40)-(380,260)` (overlapping): no column
+    divider, no opening; hint divider `BrokenStart (10, 270)`, `BrokenEndX` 380. O with `RowColumn (110,40)-(380,260)`
+    (touching): column divider at `xd` 110, opening 110-135.
+24. No hint divider: O with `HintTopY` NaN, +inf, 260 (equal to the columns' bottom) or 200: `bBrokenDivider` false,
+    `BrokenStart (0,0)`, `BrokenEndX` 0, both step fields 0; the column divider unchanged from case 19. Both columns
+    invalid with `HintTopY` 280: no column divider and no hint divider. A default-constructed input: `TitleStepWidthPx`
+    0, `TabCount` 0, every tab rect invalid, `SelectedTab` `INDEX_NONE`, `bColumnDivider` false, `bBrokenDivider` false,
+    `OpenTopY` 1, `OpenBottomY` 0. Each of these into a dirty spec gives the absent values listed, never the dirty ones.
+25. With the frame builder: the spec of case 19 plus `Rect (0,0)-(400,300)`, `UiScale` 1, through `BuildFrame` with an
+    Open look (`FrameFraction` 1, `FillAlpha` 1) at `s` 1: no `ColumnDivider` shape has a y range that overlaps
+    `[110, 135]` (ends included), every one has `x = 120`, and the selected tab's 4 `Tab` pieces include
+    `(120,110)->(16,110)` and `(10,135)->(120,135)` (section 6.3 `TabMarker` with `D = 120`). Exactly one `TabDot`.
+26. `TextItemRect` with slot `(40,100)-(240,120)`: text 90, indent 0 gives `(40,100)-(130,120)`; text 120, indent 34
+    gives `(74,100)-(160,120)`; text 1000, indent 0 gives `(40,100)-(240,120)` (clamped to the slot); indent NaN or -5
+    reads 0 (text 90 gives `(40,100)-(130,120)`). Invalid box (`bIsValid` false) for: text 34 with indent 34; text 0;
+    text -10; text NaN; text +inf; indent 250 with text 1000; slot `FBox2f(ForceInit)`; slot `(5,5)-(5,20)` (zero
+    width); a slot with a NaN coordinate.
+27. `MakeSpeedLayout` with `TitleWidth` 120, `StepperSection (12,40)-(330,150)`, `ListSection (12,170)-(330,380)`:
+    `LocalPerPx` 1: `TitleStepWidthPx` 120, `bBrokenDivider` true, `BrokenStart (12, 163)`, `BrokenEndX` 330,
+    `BrokenStepAtPx` 104, `BrokenStepPx` 6 (so the right level is 157 and the two levels straddle 160); `LocalPerPx`
+    0.5: `BrokenStart (12, 161.5)`, `BrokenStepAtPx` 52, `BrokenStepPx` 3; `LocalPerPx` 0, -1, NaN and +inf behave as
+    1. Different widths, `StepperSection (20,40)-(300,150)`: `BrokenStart.X` 12, `BrokenEndX` 330 (the outer edges of
+    both). A gap narrower than the step, `ListSection.Min.Y` 154: still present, `BrokenStart.Y` 155, step 6.
+28. `MakeSpeedLayout` into a dirty spec (case 27's input): `bColumnDivider` false, `DividerTop (0,0)`,
+    `DividerBottomY` 0, `OpenTopY` 1, `OpenBottomY` 0, `TabDividerX` 0, `TabCount` 0, all `FRAME_MAX_TABS` tab rects
+    invalid, `SelectedTab` `INDEX_NONE`, the divider as case 27; `Rect`, `UiScale`, `HoverItemRect` and `HoverMark`
+    unchanged.
+29. No speed divider: case 27 with `ListSection` invalid, `StepperSection` invalid, `ListSection.Min.Y` 150 (touching)
+    or 140 (overlapping): `bBrokenDivider` false, `BrokenStart (0,0)`, `BrokenEndX` 0, `BrokenStepAtPx` 0,
+    `BrokenStepPx` 0, also into a dirty spec; the title step is still set (120).
 
 ## 7. Constants (`SOL::HoloMenu` in `SOLConstants.h`; proposed, tuned from screenshots)
 
@@ -718,6 +850,15 @@ settings test is walked to confirm it still states the current contract.
 - The always-on speed and date-and-anchor cards are drawn every flight frame: their idle sweep and jitter are a few
   float ops in the paint, and they cost no more shapes than today's two panels plus 16 tick segments and 2 sweep lines.
 - No claim without a measurement; the numbers go into an SDD amendment.
+- **More draws than one per menu (42e amendment).** The P2 and P3 profile passes add more Slate draws than "one extra
+  custom-vertex draw per visible menu" above: P2 UI draws went from 57 to 62. Attributed from the code (not from a
+  per-draw capture): each open UMG frame (`SSOLHoloFrame` paint) draws its faint tint with `PaintBacking`, a stack of up
+  to `HUD_PANEL_BACKING_LAYERS` (6) rounded `MakeBox` boxes, then its one `MakeCustomVerts`, so up to 7 draws. Against
+  that, the Overlay Menu's own dark panel fill and its viewed-tab / highlighted-row fill boxes are now transparent, and
+  Slate culls a fully transparent box, so 2 draws fewer: net +5, which matches 57 -> 62. The content's render opacity
+  adds no draw at the captures (the menu is Open, opacity 1). The F3 panel's full-screen dim is today's box (now faded
+  with the fill, section 5), not a new draw; P3 adds the same frame parts as P2. The D14 budget is time, not draw
+  count; the pass verdicts stay the measure.
 
 ### 11.1 Baseline (measured before 42c)
 
@@ -822,7 +963,7 @@ The numbers are machine-specific: on another machine, re-measure at the 42c pare
 
 ## 13. Questions for the user
 
-All but Q13 answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
+All but Q13 and Q14 answered on 2026-11-03 (kept here for the record; the decisions are D7-D21):
 
 | # | Question | Answer |
 |---|---|---|
@@ -841,8 +982,9 @@ All but Q13 answered on 2026-11-03 (kept here for the record; the decisions are 
 | Q11 | Cursor | **Follows the new slider** (D19) |
 | Q12 | Cues at strength 0 (raised while recording D18) | **Sounds are independent of the hologram strength and still play at strength 0**; the SFX volume controls them (D21) |
 | Q13 | **Hover glow on a highlighted disabled radial sector** (raised by the 42d review): today the rim takes the disabled intensity (0.22) plus the full hover glow (up to 0.9), so it peaks at 1.12, brighter than an enabled highlighted sector's rim without glow. Options: **(a, recommended)** no hover glow on disabled sectors; (b) the glow scaled by the disabled dimming; (c) full glow, as now | **Open** (asked 2026-11-04). The code keeps (c) behind `SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE` (1 = as now), so the answer is a one-line change |
+| Q14 | **Overlay Menu: ignore zero-delta synthetic mouse moves** so the keyboard highlight stays until the mouse really moves (a D5 input change, raised by the 42e build and review). Before 42e a resting mouse over a row took the highlight back after a key move, because Slate also sends mouse moves with no movement; the 42e code filters those. The filter is meant to gate only the row-highlight takeover; the tab hover follows every move, so the tab brackets stay under the cursor when the panel re-centres (42e review finding 2). Options: **(a, recommended)** keep the filter: a mouse move with zero delta does not take the row highlight; (b) revert to today's input (every mouse move, real or not, takes the highlight) | **Open** (asked 2026-11-04) |
 
-Still open: **Q13.**
+Still open: **Q13, Q14.**
 
 ## 14. Out of scope
 

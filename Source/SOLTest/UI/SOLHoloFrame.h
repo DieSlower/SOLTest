@@ -50,14 +50,19 @@ public:
     void SetLayout(const FSOLHoloFrameSpec& localSpec);
 
     // Sets the hovered item (INDEX_NONE: none), its rect in local units and its mark; returns true when a hover cue is
-    // due (SOLHoloMenu::ShouldPlayHoverCue: a new item while Open, rate limited)
-    bool SetHoveredItem(int32 item, const FBox2f& localRect, ESOLHoloHoverMark mark, double nowS);
+    // due (SOLHoloMenu::ShouldPlayHoverCue: a new item while Open, rate limited; never when bAllowCue is false, for a
+    // mark that moved without the menu's highlight changing)
+    bool SetHoveredItem(int32 item, const FBox2f& localRect, ESOLHoloHoverMark mark, double nowS,
+        bool bAllowCue = true);
 
     // Starts the open (or reverses a close); returns true when it left Closed or Closing (the open cue)
     bool BeginOpen(double nowS);
 
     // Starts the close from the current progress; returns true when a close started
     bool BeginClose(double nowS);
+
+    // Drops the anim to Closed at once, with no close and no hover (a menu removed at teardown); no cue
+    void ResetClosed();
 
     // Advances the anim to nowS (Opening -> Open, Closing -> Closed) and returns its phase
     ESOLHoloMenuPhase Advance(double nowS);

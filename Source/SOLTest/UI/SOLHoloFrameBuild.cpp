@@ -335,3 +335,101 @@ float SOLHoloFrameBuild::BackingOpacity(const float alpha)
     }
     return FMath::Clamp(alpha / SOL::Hologram::HUD_PANEL_BACKING_COLOR.A, 0.0f, 1.0f);
 }
+
+//////////////////////////////////////////////////////////////////////////
+// The Overlay Menu's frame layout from its title, columns, tabs and hint (the frame's own rect, scale and hover are
+// left as they are)
+void SOLHoloFrameBuild::MakeOverlayLayout(const FSOLHoloOverlayLayoutInput& in, FSOLHoloFrameSpec& out)
+{
+    out.TitleStepWidthPx = FMath::IsFinite(in.TitleWidth) && in.TitleWidth > 0.0f ? in.TitleWidth : 0.0f;
+
+    // The tab markers: the tabs given, up to FRAME_MAX_TABS, the rest emptied; a selection outside them is none
+    const int32 tabCount = FMath::Clamp(in.TabCount, 0, SOL::HoloMenu::FRAME_MAX_TABS);
+    out.TabCount = tabCount;
+    for (int32 tab = 0; tab < SOL::HoloMenu::FRAME_MAX_TABS; ++tab)
+    {
+        out.TabRects[tab] = tab < tabCount ? in.TabRects[tab] : FBox2f(ForceInit);
+    }
+    out.SelectedTab = in.SelectedTab >= 0 && in.SelectedTab < tabCount ? in.SelectedTab : INDEX_NONE;
+
+    // The dashed column divider halfway between the two columns, over their full height, open beside the selected
+    // tab (where its marker runs into the divider); none when a column is missing or they overlap
+    const bool bHasTabs = SOLHoloMenu::IsValidRect(in.TabColumn);
+    const bool bHasRows = SOLHoloMenu::IsValidRect(in.RowColumn);
+    const bool bHasDivider = bHasTabs && bHasRows && in.RowColumn.Min.X >= in.TabColumn.Max.X;
+    const float dividerX = bHasDivider ? 0.5f * (in.TabColumn.Max.X + in.RowColumn.Min.X) : 0.0f;
+    out.bColumnDivider = bHasDivider;
+    out.DividerTop = bHasDivider ? FVector2f(dividerX, FMath::Min(in.TabColumn.Min.Y, in.RowColumn.Min.Y))
+        : FVector2f::ZeroVector;
+    out.DividerBottomY = bHasDivider ? FMath::Max(in.TabColumn.Max.Y, in.RowColumn.Max.Y) : 0.0f;
+    out.TabDividerX = dividerX;
+    const bool bHasOpening = bHasDivider && out.SelectedTab != INDEX_NONE
+        && SOLHoloMenu::IsValidRect(out.TabRects[out.SelectedTab]);
+    out.OpenTopY = bHasOpening ? out.TabRects[out.SelectedTab].Min.Y : 1.0f;
+    out.OpenBottomY = bHasOpening ? out.TabRects[out.SelectedTab].Max.Y : 0.0f;
+
+    // The broken hint divider (no step) halfway between the columns' bottom and the hint, across both columns
+    FBox2f body(ForceInit);
+    body += bHasTabs ? in.TabColumn : FBox2f(ForceInit);
+    body += bHasRows ? in.RowColumn : FBox2f(ForceInit);
+    const bool bHasHintDivider = body.bIsValid && FMath::IsFinite(in.HintTopY) && in.HintTopY > body.Max.Y;
+    const float hintDividerY = bHasHintDivider ? 0.5f * (body.Max.Y + in.HintTopY) : 0.0f;
+    out.bBrokenDivider = bHasHintDivider;
+    out.BrokenStart = bHasHintDivider ? FVector2f(body.Min.X, hintDividerY) : FVector2f::ZeroVector;
+    out.BrokenEndX = bHasHintDivider ? body.Max.X : 0.0f;
+    out.BrokenStepAtPx = 0.0f;
+    out.BrokenStepPx = 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The F3 speed panel's frame layout from its title and its two sections (the frame's own rect, scale and hover are
+// left as they are)
+void SOLHoloFrameBuild::MakeSpeedLayout(const FSOLHoloSpeedLayoutInput& in, FSOLHoloFrameSpec& out)
+{
+    out.TitleStepWidthPx = FMath::IsFinite(in.TitleWidth) && in.TitleWidth > 0.0f ? in.TitleWidth : 0.0f;
+
+    // No column divider and no tab markers on this panel
+    out.bColumnDivider = false;
+    out.DividerTop = FVector2f::ZeroVector;
+    out.DividerBottomY = 0.0f;
+    out.OpenTopY = 1.0f;
+    out.OpenBottomY = 0.0f;
+    out.TabCount = 0;
+    for (FBox2f& tabRect : out.TabRects)
+    {
+        tabRect = FBox2f(ForceInit);
+    }
+    out.SelectedTab = INDEX_NONE;
+    out.TabDividerX = 0.0f;
+
+    // The stepped broken divider across both sections, its two levels straddling the midpoint of the gap between them
+    const bool bHasDivider = SOLHoloMenu::IsValidRect(in.StepperSection) && SOLHoloMenu::IsValidRect(in.ListSection)
+        && in.ListSection.Min.Y > in.StepperSection.Max.Y;
+    const float localPerPx = FMath::IsFinite(in.LocalPerPx) && in.LocalPerPx > 0.0f ? in.LocalPerPx : 1.0f;
+    const float stepPx = SOL::HoloMenu::SPEED_DIVIDER_STEP_PX * localPerPx;
+    const float midY = 0.5f * (in.StepperSection.Max.Y + in.ListSection.Min.Y);
+    out.bBrokenDivider = bHasDivider;
+    out.BrokenStart = bHasDivider ? FVector2f(FMath::Min(in.StepperSection.Min.X, in.ListSection.Min.X),
+        midY + 0.5f * stepPx) : FVector2f::ZeroVector;
+    out.BrokenEndX = bHasDivider ? FMath::Max(in.StepperSection.Max.X, in.ListSection.Max.X) : 0.0f;
+    out.BrokenStepAtPx = bHasDivider ? SOL::HoloMenu::SPEED_DIVIDER_STEP_AT_PX * localPerPx : 0.0f;
+    out.BrokenStepPx = bHasDivider ? stepPx : 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The rect a hover mark goes around for a text item: from the slot's left plus the indent to the text's own width
+FBox2f SOLHoloFrameBuild::TextItemRect(const FBox2f& slotRect, const float textWidth, const float indentWidth)
+{
+    if (!SOLHoloMenu::IsValidRect(slotRect) || !FMath::IsFinite(textWidth))
+    {
+        return FBox2f(ForceInit);
+    }
+    const float indent = FMath::IsFinite(indentWidth) && indentWidth > 0.0f ? indentWidth : 0.0f;
+    const float left = slotRect.Min.X + indent;
+    const float right = slotRect.Min.X + FMath::Min(textWidth, slotRect.Max.X - slotRect.Min.X);
+    if (right <= left)
+    {
+        return FBox2f(ForceInit);
+    }
+    return FBox2f(FVector2f(left, slotRect.Min.Y), FVector2f(right, slotRect.Max.Y));
+}

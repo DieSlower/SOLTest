@@ -233,7 +233,8 @@ public:
     // Requests the Overlay Menu to open or close (Ctrl+O; done at the next tick, outside the input callback)
     void HandleToggleOverlayMenu();
 
-    // Closes the Overlay Menu, gives input back to the ship and writes the overlay choices if they changed
+    // Closes the Overlay Menu, gives input back to the ship at once and writes the overlay choices if they changed;
+    // the menu plays its close and removes itself (SDD 42 section 4.5)
     void CloseOverlayMenu();
 
     // Returns true while the Overlay Menu is open (and the ship's own control input is suspended)
@@ -284,7 +285,8 @@ public:
     // Requests the F3 speed panel to open (done at the next tick, outside the input callback)
     void HandleToggleSpeedPanel();
 
-    // Closes the speed panel and gives input back to the ship
+    // Closes the speed panel and gives input back to the ship at once; the panel plays its close and removes itself
+    // (SDD 42 section 4.5)
     void CloseSpeedPanel();
 
     // Returns true while the speed panel is open (and the ship's own control input is suspended)
@@ -478,7 +480,7 @@ private:
     // Opens the speed panel: suspends the ship's control input and gives the panel UI-only keyboard focus
     void OpenSpeedPanel();
 
-    // Removes the panel without restoring input (teardown)
+    // Removes the panel at once, without its close animation or restoring input (teardown)
     void DismissSpeedPanel();
 
     // Suspends the ship's own control input: flushes held keys, drops the ship mapping and zeroes the flight input
@@ -641,7 +643,7 @@ private:
     // Opens the Overlay Menu: suspends the ship's control input and gives the menu UI-only focus
     void OpenOverlayMenu();
 
-    // Removes the Overlay Menu without restoring input (unpossess, EndPlay)
+    // Removes the Overlay Menu at once, without its close animation or restoring input (unpossess, EndPlay)
     void DismissOverlayMenu();
 
     // Returns true while a panel (the F3 speed panel or the Overlay Menu) has the input

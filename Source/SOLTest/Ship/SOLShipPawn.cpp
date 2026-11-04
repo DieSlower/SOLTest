@@ -1905,7 +1905,12 @@ void ASOLShipPawn::OpenOverlayMenu()
     const FString& toggleKeyName = mBoundKeys.IsValidIndex(menuBinding) ? mBoundKeys[menuBinding] : FString();
     OverlayMenu->Open(FSimpleDelegate::CreateUObject(this, &ASOLShipPawn::CloseOverlayMenu), FKey(*toggleKeyName),
         SOLKeyBindings::FormatKeyText(SOLMenuText::OVERLAY_MENU_TITLE_FORMAT, mBoundKeys));
-    OverlayMenu->AddToViewport(SOL::Overlay::MENU_Z_ORDER);
+
+    // A menu still playing its close (SDD 42 section 4.5) is on the viewport already: Open reversed it
+    if (!OverlayMenu->IsInViewport())
+    {
+        OverlayMenu->AddToViewport(SOL::Overlay::MENU_Z_ORDER);
+    }
     FInputModeUIOnly inputMode;
     inputMode.SetWidgetToFocus(OverlayMenu->TakeWidget());
     inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
@@ -1916,14 +1921,20 @@ void ASOLShipPawn::OpenOverlayMenu()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Closes the Overlay Menu, gives input back to the ship and writes the overlay choices if they changed
+// Closes the Overlay Menu, gives input back to the ship at once and writes the overlay choices if they changed; the
+// menu plays its close animation and removes itself (SDD 42 section 4.5)
 void ASOLShipPawn::CloseOverlayMenu()
 {
     if (!mIsOverlayMenuOpen)
     {
         return;
     }
-    DismissOverlayMenu();
+    if (OverlayMenu != nullptr)
+    {
+        OverlayMenu->BeginClose();
+    }
+    mIsOverlayMenuOpen = false;
+    mIsOverlayMenuRequested = false;
     RestoreShipControl();
     if (Settings != nullptr)
     {
@@ -1934,12 +1945,12 @@ void ASOLShipPawn::CloseOverlayMenu()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Removes the Overlay Menu without restoring input (teardown)
+// Removes the Overlay Menu at once, without its close animation or restoring input (teardown)
 void ASOLShipPawn::DismissOverlayMenu()
 {
     if (OverlayMenu != nullptr)
     {
-        OverlayMenu->RemoveFromParent();
+        OverlayMenu->Dismiss();
     }
     mIsOverlayMenuOpen = false;
     mIsOverlayMenuRequested = false;
@@ -2014,7 +2025,12 @@ void ASOLShipPawn::OpenSpeedPanel()
     SpeedPanel->Open(FSOLSpeedPanelApplyCap::CreateUObject(this, &ASOLShipPawn::ApplySpeedCapMps),
         FSimpleDelegate::CreateUObject(this, &ASOLShipPawn::CloseSpeedPanel), mControl.SpeedCapMps, FKey(*toggleKeyName),
         SOLHudFormat::FormatHudKeyTexts(mBoundKeys).SpeedPanelTitle);
-    SpeedPanel->AddToViewport(SPEED_PANEL_Z_ORDER);
+
+    // A panel still playing its close (SDD 42 section 4.5) is on the viewport already: Open reversed it
+    if (!SpeedPanel->IsInViewport())
+    {
+        SpeedPanel->AddToViewport(SPEED_PANEL_Z_ORDER);
+    }
     FInputModeUIOnly inputMode;
     inputMode.SetWidgetToFocus(SpeedPanel->TakeWidget());
     inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
@@ -2026,14 +2042,20 @@ void ASOLShipPawn::OpenSpeedPanel()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Closes the speed panel and gives input back to the ship
+// Closes the speed panel and gives input back to the ship at once; the panel plays its close animation and removes
+// itself (SDD 42 section 4.5)
 void ASOLShipPawn::CloseSpeedPanel()
 {
     if (!mIsSpeedPanelOpen)
     {
         return;
     }
-    DismissSpeedPanel();
+    if (SpeedPanel != nullptr)
+    {
+        SpeedPanel->BeginClose();
+    }
+    mIsSpeedPanelOpen = false;
+    mIsSpeedPanelRequested = false;
     RestoreShipControl();
     UE_LOG(LogSOL, Log, TEXT("ShipPawn %s: speed panel closed; ship control input restored (cap %.3f m/s)"),
         *GetName(), mControl.SpeedCapMps);
@@ -2526,12 +2548,12 @@ void ASOLShipPawn::HandleMapZoom(const int32 notches)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Removes the panel without restoring input (teardown)
+// Removes the panel at once, without its close animation or restoring input (teardown)
 void ASOLShipPawn::DismissSpeedPanel()
 {
     if (SpeedPanel != nullptr)
     {
-        SpeedPanel->RemoveFromParent();
+        SpeedPanel->Dismiss();
     }
     mIsSpeedPanelOpen = false;
     mIsSpeedPanelRequested = false;

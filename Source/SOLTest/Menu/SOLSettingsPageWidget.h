@@ -122,6 +122,9 @@ public:
     // Returns a key row's text (verification)
     FString GetKeyRowText(int32 binding) const;
 
+    // Returns the embedded Overlay Menu list, or null (verification)
+    const USOLOverlayMenuWidget* GetOverlayList() const { return OverlayList; }
+
     // A key or mouse press reached Slate's input pre-processor: captured as the new key (true) while listening
     bool HandleCaptureDown(const FKey& key);
 

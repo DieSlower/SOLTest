@@ -107,7 +107,7 @@ void SSOLHoloFrame::SetLayout(const FSOLHoloFrameSpec& localSpec)
 //////////////////////////////////////////////////////////////////////////
 // Sets the hovered item and its rect; returns true when a hover cue is due
 bool SSOLHoloFrame::SetHoveredItem(const int32 item, const FBox2f& localRect, const ESOLHoloHoverMark mark,
-    const double nowS)
+    const double nowS, const bool bAllowCue)
 {
     const FBox2f rect = item != INDEX_NONE ? localRect : FBox2f(ForceInit);
     if (!HoloFrameBoxEquals(rect, mHoverLocalRect) || mark != mHoverMark)
@@ -117,7 +117,7 @@ bool SSOLHoloFrame::SetHoveredItem(const int32 item, const FBox2f& localRect, co
         ++mLayoutGeneration;
     }
     const bool bIsChanged = SOLHoloMenu::SetHovered(mAnim, item, nowS);
-    return SOLHoloMenu::ShouldPlayHoverCue(mAnim, bIsChanged, nowS);
+    return SOLHoloMenu::ShouldPlayHoverCue(mAnim, bIsChanged && bAllowCue, nowS);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -136,6 +136,14 @@ bool SSOLHoloFrame::BeginClose(const double nowS)
     const bool bIsClosing = SOLHoloMenu::BeginClose(mAnim, nowS, GetStrength());
     ClearHoverRect();
     return bIsClosing;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drops the anim to Closed at once, with no close and no hover
+void SSOLHoloFrame::ResetClosed()
+{
+    mAnim = FSOLHoloMenuAnim();
+    ClearHoverRect();
 }
 
 //////////////////////////////////////////////////////////////////////////

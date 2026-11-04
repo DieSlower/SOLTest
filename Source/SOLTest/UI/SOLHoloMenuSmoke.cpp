@@ -7,6 +7,8 @@
 
 #include "Interaction/SOLInteractionSubsystem.h"
 #include "Map/SOLJumpSubsystem.h"
+#include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
@@ -16,18 +18,25 @@
 #include "UI/SOLHoloFrameWidget.h"
 #include "UI/SOLHoloMenuSubsystem.h"
 #include "UI/SOLHologramCursorSubsystem.h"
+#include "UI/SOLOverlayMenuWidget.h"
+#include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLAnchorSubsystem.h"
 
+#include "Blueprint/UserWidget.h"
+#include "Blueprint/WidgetTree.h"
 #include "Engine/GameViewportClient.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
+#include "InputKeyEventArgs.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 #include "Widgets/Layout/SBox.h"
 #include "Widgets/SOverlay.h"
+#include "Widgets/SViewport.h"
 
 namespace
 {
@@ -52,7 +61,25 @@ namespace
         RadialCancel,   // Release in the centre: cancelled, no select cue
         RadialDisabled, // Release on a disabled sector (Communications): nothing runs, no select cue (SDD 5)
         RadialJump,     // Release on Jump To: the select cue on the release frame, not after the warp (42d review)
-        Stubs,         // The section 12 checks later parts fill in
+        OverlayOpen,    // Steps 1-2: Ctrl+O: the open cue, the draw-in mid-way, then Open with outline, tabs, dividers
+        OverlayHover,   // Step 3: the mouse onto a row, then Down: hover cues, brackets and pointer at the row
+        OverlayTab,     // The mouse onto a tab: brackets only around it, one hover cue
+        OverlaySelect,  // Step 4: a row toggled and back, PageDown, PageUp, the cycle key: one select cue each
+        OverlayClose,   // Step 4: Esc: input back in the same frame, the close plays, the widget gone after CLOSE_S
+        OverlayReverse, // Ctrl+O, Esc, Ctrl+O mid-close: the close reverses from its progress; Esc again
+        OverlayFlat,    // Step 9: strength 0: whole and flat at once, a row toggle and the cues still work
+        OverlayFlatClose,   // Esc at strength 0: the widget removed in the same frame
+        OverlayStrong,  // Strength 2: the glow look (screenshot), then Esc
+        OverlayEmbedded,    // Step 11: the Overlay list embedded in Settings has no frame widget and keeps its look
+        SpeedOpen,      // Step 6: F3: the open cue, the draw-in mid-way, then Open with the outline and stepped divider
+        SpeedDigit,     // Step 6: Up steps the highlighted digit (a select cue), Left moves the highlight (a hover cue)
+        SpeedList,      // Tab and a wheel notch move the highlight into the list (hover cues, row mark), Enter (select)
+        SpeedClose,     // Step 6: Esc: input back in the same frame, the close plays, the widget gone after CLOSE_S
+        SpeedReverse,   // F3, Esc, F3 mid-close: the close reverses from its progress; Esc again
+        SpeedFlat,      // Step 9: strength 0: whole and flat at once, a digit step and the cues still work
+        SpeedFlatClose, // Esc at strength 0: the widget removed in the same frame
+        SpeedStrong,    // Strength 2: the glow look (screenshot), then Esc; the cap restored
+        Stubs,        // The section 12 checks later parts fill in
         Quit,           // The SUMMARY line, then quit
         Count,
     };
@@ -74,6 +101,15 @@ namespace
     constexpr float HOLOSMOKE_CURSOR_STRENGTH = 0.35f;     // A HoloMenuEffects value that differs from the HUD's 1
     constexpr int32 HOLOSMOKE_PREVIEW_Z_ORDER = SOL::Overlay::MENU_Z_ORDER;
     constexpr int32 HOLOSMOKE_HOVER_ITEM = 2;
+    constexpr int32 HOLOSMOKE_OVERLAY_HOVER_ROW = 3;       // The row the mouse moves onto (Down then takes the next)
+    constexpr int32 HOLOSMOKE_OVERLAY_HOVER_TAB = 1;       // The tab the mouse moves onto (Profile 2)
+    constexpr int32 HOLOSMOKE_OVERLAY_SELECT_KEYS = 5;     // Space, Space, PageDown, PageUp, the cycle key
+    constexpr double HOLOSMOKE_OVERLAY_TIMEOUT_S = 3.0;    // Longest wait for Ctrl+O to open the menu
+    constexpr double HOLOSMOKE_REVERSE_TIMEOUT_S = 6.0;    // Longest the reverse step runs
+    constexpr double HOLOSMOKE_KEY_GAP_S = 0.25;           // Between two scripted presses (past every cue rate limit)
+    constexpr double HOLOSMOKE_CAP_TOLERANCE = 1.0e-3;     // Relative tolerance of a cap read back from the ship
+    constexpr float HOLOSMOKE_LIST_SCROLL_NOTCHES = 8.0f;  // Wheel notches over the F3 list (scrolls the row away)
+    const FVector2D HOLOSMOKE_MOUSE_PARK(0.85, 0.5);       // Where the mouse waits, as a fraction of the viewport
 
     // The frame preview: an Overlay-Menu-like layout in Slate units (the box's size and its offset on the viewport)
     const FVector2f HOLOSMOKE_PREVIEW_OFFSET(60.0f, 60.0f);
@@ -134,7 +170,8 @@ void FSOLHoloMenuSmoke::Start(ASOLShipPawn& pawn)
     mHoloMenu = world->GetSubsystem<USOLHoloMenuSubsystem>();
     mSettings = USOLSettingsSubsystem::Get(world);
     mInteraction = world->GetSubsystem<USOLInteractionSubsystem>();
-    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (parts 42c-42d)"));
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: scripted hologram menu checks starting (parts 42c-42f)"));
+    mPendingReleases.Reserve(4);
     mStep = 0;
     EnterStep(mStep, pawn);
 }
@@ -158,6 +195,11 @@ bool FSOLHoloMenuSmoke::Update(ASOLShipPawn& pawn, const float /*deltaSeconds*/)
     {
         mHud = mController->GetHUD<ASOLFlightHud>();
     }
+    for (const FKey& key : mPendingReleases)
+    {
+        mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Released, 0.0f));
+    }
+    mPendingReleases.Reset();
     ++mStepFrames;
     if (!TickStep(mStep, pawn) || mStepFrames < HOLOSMOKE_MIN_FRAMES)
     {
@@ -302,6 +344,215 @@ void FSOLHoloMenuSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
         mRadialSectorB = DragToRadialAction(pawn, static_cast<EHoloStep>(step) == EHoloStep::RadialJump
             ? ESOLAction::JumpTo : ESOLAction::Communicate);
         break;
+    case EHoloStep::OverlayOpen:
+        // The mouse parked away from the menu first, so no hover lands on it while it opens
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mOverlayOpenS = -1.0;
+        mMidOpenFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mIsMidOpenShot = false;
+        ParkMouse(pawn);
+        TapGameChord(EKeys::LeftControl, EKeys::O);
+        break;
+    case EHoloStep::OverlayHover:
+        // Onto a row now, Down later in the step
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mIsSecondDrag = false;
+        if (const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu())
+        {
+            SlateMouseMove(menu->GetRowScreenCenter(HOLOSMOKE_OVERLAY_HOVER_ROW));
+        }
+        break;
+    case EHoloStep::OverlayTab:
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        if (const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu())
+        {
+            SlateMouseMove(menu->GetTabScreenCenter(HOLOSMOKE_OVERLAY_HOVER_TAB));
+        }
+        break;
+    case EHoloStep::OverlaySelect:
+    {
+        // The presses run in TickOverlaySelect, one every HOLOSMOKE_KEY_GAP_S
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mSubStep = 0;
+        mOverlayRow = menu != nullptr ? menu->GetHighlightedRow() : INDEX_NONE;
+        mRowTextBefore = menu != nullptr ? menu->GetRowText(mOverlayRow) : FString();
+        mRowTextToggled.Reset();
+        mViewedAfterPageDown = INDEX_NONE;
+        break;
+    }
+    case EHoloStep::OverlayClose:
+    {
+        // Esc, then at once (the same frame): the ship has the input back and the menu takes none while it closes
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const bool bIsClosing = overlayFrame != nullptr
+            && overlayFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closing;
+        const bool bIsUnfocused = menu != nullptr && !menu->IsFocusable() && !menu->HasAnyUserFocus();
+        const bool bIsHitInvisible = menu != nullptr && menu->GetVisibility() == ESlateVisibility::HitTestInvisible;
+        mIsInputBackAtEsc = !pawn.IsOverlayMenuOpen() && menu != nullptr && menu->IsClosing() && menu->IsInViewport()
+            && bIsClosing && bIsUnfocused && bIsHitInvisible;
+        mEscDetail = FString::Printf(TEXT("right after Esc: pawn menu %s, widget %s and %s, frame %s, %s, %s"),
+            pawn.IsOverlayMenuOpen() ? TEXT("OPEN") : TEXT("closed"), menu != nullptr && menu->IsClosing()
+            ? TEXT("closing") : TEXT("NOT closing"), menu != nullptr && menu->IsInViewport() ? TEXT("still drawn")
+            : TEXT("REMOVED"), bIsClosing ? TEXT("Closing") : TEXT("NOT closing"), bIsUnfocused
+            ? TEXT("unfocusable, no keyboard focus") : (menu != nullptr && menu->IsFocusable() ? TEXT("STILL FOCUSABLE")
+            : TEXT("STILL FOCUSED")), bIsHitInvisible
+            ? TEXT("hit-test invisible") : TEXT("STILL HIT-TESTABLE"));
+        mIsMidCloseInViewport = false;
+        mMidCloseOpacity = -1.0f;
+        mMidCloseFraction = -1.0f;
+        mMidClosePhase = ESOLHoloMenuPhase::Closed;
+        break;
+    }
+    case EHoloStep::OverlayReverse:
+    case EHoloStep::SpeedReverse:
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mSubStep = 0;
+        mReverseProgress = -1.0f;
+        mReversePhase = ESOLHoloMenuPhase::Closed;
+        mIsReverseInViewport = false;
+        ParkMouse(pawn);
+        if (static_cast<EHoloStep>(step) == EHoloStep::SpeedReverse)
+        {
+            TapGameKey(GetSpeedPanelKey());
+        }
+        else
+        {
+            TapGameChord(EKeys::LeftControl, EKeys::O);
+        }
+        break;
+    case EHoloStep::OverlayFlat:
+    {
+        // Strength 0: opened, then (TickStep) a row toggled and back and the mouse onto another row
+        SetStrength(0.0f);
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mPaintsBefore = overlayFrame != nullptr ? overlayFrame->GetPaintCount() : 0;
+        mFirstFlatFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mSubStep = 0;
+        mOverlayRow = INDEX_NONE;
+        mRowTextBefore.Reset();
+        mRowTextToggled.Reset();
+        ParkMouse(pawn);
+        TapGameChord(EKeys::LeftControl, EKeys::O);
+        break;
+    }
+    case EHoloStep::OverlayFlatClose:
+    {
+        // At strength 0 the close is instant: the widget is off the viewport right after Esc
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        mIsFlatClosedAtOnce = !pawn.IsOverlayMenuOpen() && menu != nullptr && !menu->IsInViewport();
+        break;
+    }
+    case EHoloStep::OverlayStrong:
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        mOverlayOpenS = -1.0;
+        ParkMouse(pawn);
+        TapGameChord(EKeys::LeftControl, EKeys::O);
+        break;
+    case EHoloStep::OverlayEmbedded:
+        CheckEmbeddedOverlay();
+        break;
+    case EHoloStep::SpeedOpen:
+        // The mouse parked away first; the cap is kept to restore it at the end of the F3 steps
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mOverlayOpenS = -1.0;
+        mMidOpenFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mIsMidOpenShot = false;
+        mSpeedCapRestoreMps = pawn.GetComposedControl().SpeedCapMps;
+        ParkMouse(pawn);
+        TapGameKey(GetSpeedPanelKey());
+        break;
+    case EHoloStep::SpeedDigit:
+    case EHoloStep::SpeedList:
+    {
+        // The presses run in TickSpeedKeys, one every HOLOSMOKE_KEY_GAP_S
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mSubStep = 0;
+        mSubStepS = 0.0;
+        mCapBeforeMps = pawn.GetComposedControl().SpeedCapMps;
+        mCapAfterStepMps = -1.0;
+        mSpeedItemBefore = panel != nullptr ? panel->GetHighlightedItem() : INDEX_NONE;
+        mSpeedListBefore = panel != nullptr ? panel->GetListSelection() : INDEX_NONE;
+        mSpeedRowHovers = -1;
+        mSpeedRowPieces = -1;
+        mSpeedRowDots = -1;
+        mIsSpeedRowItem = false;
+        mSpeedScrolledHovers = -1;
+        mSpeedScrolledPieces = -1;
+        mSpeedScrolledDots = -1;
+        mSpeedScrollOffset = -1.0f;
+        mIsSpeedScrolledItem = false;
+        break;
+    }
+    case EHoloStep::SpeedClose:
+    {
+        // Esc, then at once (the same frame): the ship has the input back and the panel takes none while it closes
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const bool bIsClosing = speedFrame != nullptr && speedFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closing;
+        const bool bIsUnfocused = panel != nullptr && !panel->IsFocusable() && !panel->HasAnyUserFocus();
+        const bool bIsHitInvisible = panel != nullptr
+            && panel->GetVisibility() == ESlateVisibility::HitTestInvisible;
+        mIsInputBackAtEsc = !pawn.IsSpeedPanelOpen() && panel != nullptr && panel->IsClosing()
+            && panel->IsInViewport() && bIsClosing && bIsUnfocused && bIsHitInvisible;
+        mEscDetail = FString::Printf(TEXT("right after Esc: pawn panel %s, widget %s and %s, frame %s, %s, %s"),
+            pawn.IsSpeedPanelOpen() ? TEXT("OPEN") : TEXT("closed"), panel != nullptr && panel->IsClosing()
+            ? TEXT("closing") : TEXT("NOT closing"), panel != nullptr && panel->IsInViewport() ? TEXT("still drawn")
+            : TEXT("REMOVED"), bIsClosing ? TEXT("Closing") : TEXT("NOT closing"), bIsUnfocused
+            ? TEXT("unfocusable, no keyboard focus") : TEXT("STILL FOCUSABLE OR FOCUSED"), bIsHitInvisible
+            ? TEXT("hit-test invisible") : TEXT("STILL HIT-TESTABLE"));
+        mIsMidCloseInViewport = false;
+        mMidCloseOpacity = -1.0f;
+        mMidCloseFraction = -1.0f;
+        mMidClosePhase = ESOLHoloMenuPhase::Closed;
+        break;
+    }
+    case EHoloStep::SpeedFlat:
+    {
+        // Strength 0: opened, then (TickStep) a digit stepped and the highlight moved
+        SetStrength(0.0f);
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        mOpenRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Open);
+        mHoverRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover);
+        mSelectRequestsBefore = holoMenu->GetCueRequestCount(ESOLHoloCue::Select);
+        mPaintsBefore = speedFrame != nullptr ? speedFrame->GetPaintCount() : 0;
+        mFirstFlatFraction = -1.0f;
+        mMidOpenOpacity = -1.0f;
+        mSubStep = 0;
+        mCapBeforeMps = -1.0;
+        mCapAfterStepMps = -1.0;
+        ParkMouse(pawn);
+        TapGameKey(GetSpeedPanelKey());
+        break;
+    }
+    case EHoloStep::SpeedFlatClose:
+    {
+        // At strength 0 the close is instant: the widget is off the viewport right after Esc
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        mIsFlatClosedAtOnce = !pawn.IsSpeedPanelOpen() && panel != nullptr && !panel->IsInViewport();
+        break;
+    }
+    case EHoloStep::SpeedStrong:
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        mOverlayOpenS = -1.0;
+        ParkMouse(pawn);
+        TapGameKey(GetSpeedPanelKey());
+        break;
     case EHoloStep::Stubs:
         LogStubs();
         break;
@@ -433,6 +684,183 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
             && elapsedS >= mReleaseS + HOLOSMOKE_CLOSED_S
             && (!bIsWarping || elapsedS >= mReleaseS + HOLOSMOKE_WARP_TIMEOUT_S);
     }
+    case EHoloStep::OverlayOpen:
+    {
+        // The draw-in caught about half-way after the menu opened (with a screenshot), then Open
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        if (mOverlayOpenS < 0.0 && pawn.IsOverlayMenuOpen())
+        {
+            mOverlayOpenS = elapsedS;
+        }
+        if (overlayFrame != nullptr && menu != nullptr && mOverlayOpenS >= 0.0 && mMidOpenFraction < 0.0f
+            && elapsedS >= mOverlayOpenS + HOLOSMOKE_MID_OPEN_S)
+        {
+            mMidOpenFraction = overlayFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = menu->GetContentOpacity();
+            TakeUiShot(TEXT("OverlayMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS + HOLOSMOKE_OPENED_S)
+            || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+    }
+    case EHoloStep::OverlayHover:
+        if (!mIsSecondDrag && elapsedS >= HOLOSMOKE_KEY_GAP_S)
+        {
+            SlateKey(EKeys::Down, FModifierKeysState());
+            mIsSecondDrag = true;
+        }
+        return ShotThenDone(TEXT("Overlay_S1"), mIsSecondDrag && elapsedS >= HOLOSMOKE_KEY_GAP_S
+            + HOLOSMOKE_SETTLED_S);
+    case EHoloStep::OverlayTab:
+        return ShotThenDone(TEXT("Overlay_Tab"), elapsedS >= HOLOSMOKE_SETTLED_S);
+    case EHoloStep::OverlaySelect:
+        TickOverlaySelect(pawn, elapsedS);
+        return mSubStep >= HOLOSMOKE_OVERLAY_SELECT_KEYS
+            && elapsedS >= HOLOSMOKE_OVERLAY_SELECT_KEYS * HOLOSMOKE_KEY_GAP_S + HOLOSMOKE_STEP_S;
+    case EHoloStep::OverlayClose:
+    {
+        // The close caught part-way: still on the viewport, closing, with a screenshot
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        if (overlayFrame != nullptr && menu != nullptr && mMidCloseFraction < 0.0f
+            && elapsedS >= HOLOSMOKE_MID_CLOSE_S)
+        {
+            mMidCloseFraction = overlayFrame->GetLastLook().FrameFraction;
+            mMidClosePhase = overlayFrame->GetAnim().Phase;
+            mMidCloseOpacity = menu->GetContentOpacity();
+            mIsMidCloseInViewport = menu->IsInViewport();
+            TakeUiShot(TEXT("OverlayClosing"));
+        }
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    }
+    case EHoloStep::OverlayReverse:
+    case EHoloStep::SpeedReverse:
+        return TickReverse(pawn, static_cast<EHoloStep>(step) == EHoloStep::SpeedReverse, elapsedS);
+    case EHoloStep::OverlayFlat:
+    {
+        // The first paint after the open, then a row toggled and back, then the mouse onto another row
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        if (overlayFrame != nullptr && menu != nullptr && pawn.IsOverlayMenuOpen() && mFirstFlatFraction < 0.0f
+            && overlayFrame->GetPaintCount() != mPaintsBefore)
+        {
+            mFirstFlatFraction = overlayFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = menu->GetContentOpacity();
+            mSubStepS = elapsedS;
+        }
+        if (menu == nullptr || mFirstFlatFraction < 0.0f)
+        {
+            return elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+        }
+        if (mSubStep < 3 && elapsedS >= mSubStepS + HOLOSMOKE_KEY_GAP_S)
+        {
+            if (mSubStep == 0)
+            {
+                mOverlayRow = menu->GetHighlightedRow();
+                mRowTextBefore = menu->GetRowText(mOverlayRow);
+                SlateKey(EKeys::SpaceBar, FModifierKeysState());
+            }
+            else if (mSubStep == 1)
+            {
+                mRowTextToggled = menu->GetRowText(mOverlayRow);
+                SlateKey(EKeys::SpaceBar, FModifierKeysState());
+            }
+            else
+            {
+                SlateMouseMove(menu->GetRowScreenCenter(HOLOSMOKE_OVERLAY_HOVER_ROW));
+            }
+            ++mSubStep;
+            mSubStepS = elapsedS;
+        }
+        return mSubStep >= 3 && ShotThenDone(TEXT("Overlay_S0"), elapsedS >= mSubStepS + HOLOSMOKE_SETTLED_S);
+    }
+    case EHoloStep::OverlayStrong:
+        if (mOverlayOpenS < 0.0 && pawn.IsOverlayMenuOpen())
+        {
+            mOverlayOpenS = elapsedS;
+        }
+        return ShotThenDone(TEXT("Overlay_S2"), (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS
+            + HOLOSMOKE_SETTLED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S);
+    case EHoloStep::SpeedOpen:
+    {
+        // The draw-in caught about half-way after the panel opened (with a screenshot), then Open
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        if (mOverlayOpenS < 0.0 && pawn.IsSpeedPanelOpen())
+        {
+            mOverlayOpenS = elapsedS;
+        }
+        if (speedFrame != nullptr && panel != nullptr && mOverlayOpenS >= 0.0 && mMidOpenFraction < 0.0f
+            && elapsedS >= mOverlayOpenS + HOLOSMOKE_MID_OPEN_S)
+        {
+            mMidOpenFraction = speedFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = panel->GetContentOpacity();
+            TakeUiShot(TEXT("SpeedMidOpen"));
+            mIsMidOpenShot = true;
+        }
+        return ShotThenDone(TEXT("Speed_S1"), (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS
+            + HOLOSMOKE_SETTLED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S);
+    }
+    case EHoloStep::SpeedDigit:
+    case EHoloStep::SpeedList:
+        return TickSpeedKeys(pawn, static_cast<EHoloStep>(step) == EHoloStep::SpeedList, elapsedS);
+    case EHoloStep::SpeedClose:
+    {
+        // The close caught part-way: still on the viewport, closing, with a screenshot
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        if (speedFrame != nullptr && panel != nullptr && mMidCloseFraction < 0.0f
+            && elapsedS >= HOLOSMOKE_MID_CLOSE_S)
+        {
+            mMidCloseFraction = speedFrame->GetLastLook().FrameFraction;
+            mMidClosePhase = speedFrame->GetAnim().Phase;
+            mMidCloseOpacity = panel->GetContentOpacity();
+            mIsMidCloseInViewport = panel->IsInViewport();
+            TakeUiShot(TEXT("SpeedClosing"));
+        }
+        return elapsedS >= HOLOSMOKE_CLOSED_S;
+    }
+    case EHoloStep::SpeedFlat:
+    {
+        // The first paint after the open, then a digit stepped up, then the highlight moved left
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        if (speedFrame != nullptr && panel != nullptr && pawn.IsSpeedPanelOpen() && mFirstFlatFraction < 0.0f
+            && speedFrame->GetPaintCount() != mPaintsBefore)
+        {
+            mFirstFlatFraction = speedFrame->GetLastLook().FrameFraction;
+            mMidOpenOpacity = panel->GetContentOpacity();
+            mSubStepS = elapsedS;
+        }
+        if (panel == nullptr || mFirstFlatFraction < 0.0f)
+        {
+            return elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S;
+        }
+        if (mSubStep < 2 && elapsedS >= mSubStepS + HOLOSMOKE_KEY_GAP_S)
+        {
+            if (mSubStep == 0)
+            {
+                mCapBeforeMps = pawn.GetComposedControl().SpeedCapMps;
+                SlateKey(EKeys::Up, FModifierKeysState());
+            }
+            else
+            {
+                mCapAfterStepMps = pawn.GetComposedControl().SpeedCapMps;
+                SlateKey(EKeys::Left, FModifierKeysState());
+            }
+            ++mSubStep;
+            mSubStepS = elapsedS;
+        }
+        return mSubStep >= 2 && ShotThenDone(TEXT("Speed_S0"), elapsedS >= mSubStepS + HOLOSMOKE_SETTLED_S);
+    }
+    case EHoloStep::SpeedStrong:
+        if (mOverlayOpenS < 0.0 && pawn.IsSpeedPanelOpen())
+        {
+            mOverlayOpenS = elapsedS;
+        }
+        return ShotThenDone(TEXT("Speed_S2"), (mOverlayOpenS >= 0.0 && elapsedS >= mOverlayOpenS
+            + HOLOSMOKE_SETTLED_S) || elapsedS >= HOLOSMOKE_OVERLAY_TIMEOUT_S);
     case EHoloStep::Quit:
         return elapsedS >= HOLOSMOKE_QUIT_S;
     default:
@@ -793,8 +1221,355 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         pawn.SetFlightCursorScripted(false);
         break;
     }
+    case EHoloStep::OverlayOpen:
+    {
+        // Steps 1-2: one open cue, no hover cue while it opened, the draw-in mid-way, then the full option (c) frame
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const bool bIsOpen = overlayFrame != nullptr && overlayFrame->GetAnim().Phase == ESOLHoloMenuPhase::Open;
+        const int32 outline = CountPart(ESOLHoloPart::Outline, overlayFrame);
+        const int32 fullOutline = overlayFrame != nullptr ? FullOutlineCount(*overlayFrame) : -1;
+        const int32 tabs = menu != nullptr ? menu->GetTabCount() : 0;
+        const int32 tabPieces = CountPart(ESOLHoloPart::Tab, overlayFrame);
+        const int32 expectedTabPieces = tabs > 0 ? TAB_MAX_SEGMENTS + 3 * (tabs - 1) : -1;
+        Check(TEXT("o-overlay-open"), pawn.IsOverlayMenuOpen() && menu != nullptr && menu->GetHoloFrame() != nullptr
+            && bIsOpen && opens == 1 && hovers == 0 && outline == fullOutline && outline > 0
+            && CountPart(ESOLHoloPart::GapDot, overlayFrame) > 0 && tabPieces == expectedTabPieces
+            && CountPart(ESOLHoloPart::TabDot, overlayFrame) == 1
+            && CountPart(ESOLHoloPart::ColumnDivider, overlayFrame) > 0
+            && CountPart(ESOLHoloPart::BrokenDivider, overlayFrame) > 0
+            && overlayFrame->GetLastPaintedBackingCount() == 1 && overlayFrame->GetMaterial() == menuMaterial
+            && menu->GetContentOpacity() == 1.0f && IsFrameOutputFresh(overlayFrame),
+            FString::Printf(TEXT("menu %s, phase %s, %d open / %d hover cue requests, outline %d of %d pieces, %d gap "
+                "dots, %d tab pieces (want %d) and %d tab dot, %d column dashes, %d hint divider pieces, %d backing, "
+                "material %s, content opacity %.2f"), pawn.IsOverlayMenuOpen() ? TEXT("open") : TEXT("CLOSED"),
+                bIsOpen ? TEXT("Open") : TEXT("NOT open"), opens, hovers, outline, fullOutline,
+                CountPart(ESOLHoloPart::GapDot, overlayFrame), tabPieces, expectedTabPieces,
+                CountPart(ESOLHoloPart::TabDot, overlayFrame), CountPart(ESOLHoloPart::ColumnDivider, overlayFrame),
+                CountPart(ESOLHoloPart::BrokenDivider, overlayFrame), overlayFrame != nullptr
+                ? overlayFrame->GetLastPaintedBackingCount() : -1, overlayFrame != nullptr
+                && overlayFrame->GetMaterial() == menuMaterial ? TEXT("menu MID") : TEXT("OTHER"),
+                menu != nullptr ? menu->GetContentOpacity() : -1.0f));
+        Check(TEXT("o-overlay-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f
+            && mMidOpenOpacity >= 0.0f && mMidOpenOpacity < 1.0f, FString::Printf(TEXT("frame fraction %.3f, content "
+                "opacity %.3f at %.2f s after the open"), mMidOpenFraction, mMidOpenOpacity, HOLOSMOKE_MID_OPEN_S));
+        break;
+    }
+    case EHoloStep::OverlayHover:
+    {
+        // Step 3: the mouse onto a row and Down: at most two hover cues, brackets and a pointer at the highlighted row
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 highlighted = menu != nullptr ? menu->GetHighlightedRow() : INDEX_NONE;
+        const int32 hoveredItem = overlayFrame != nullptr ? overlayFrame->GetAnim().HoveredItem : INDEX_NONE;
+        const FSOLHoloFrameSpec* spec = overlayFrame != nullptr ? &overlayFrame->GetLastPixelSpec() : nullptr;
+        const bool bIsRowSide = spec != nullptr && spec->HoverItemRect.bIsValid
+            && spec->HoverItemRect.Min.X > spec->TabDividerX;
+        Check(TEXT("o-overlay-hover"), hovers >= 1 && hovers <= 2 && highlighted == HOLOSMOKE_OVERLAY_HOVER_ROW + 1
+            && hoveredItem == highlighted && CountPart(ESOLHoloPart::Hover, overlayFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::HoverDot, overlayFrame) == 1 && bIsRowSide,
+            FString::Printf(TEXT("mouse onto row %d, then Down: %d hover cue requests, highlighted row %d, hovered "
+                "item %d, %d hover pieces and %d dot, mark %s the column divider"), HOLOSMOKE_OVERLAY_HOVER_ROW,
+                hovers, highlighted, hoveredItem, CountPart(ESOLHoloPart::Hover, overlayFrame),
+                CountPart(ESOLHoloPart::HoverDot, overlayFrame), bIsRowSide ? TEXT("right of") : TEXT("NOT right of")));
+        break;
+    }
+    case EHoloStep::OverlayTab:
+    {
+        // A hovered tab gets the brackets only (BracketsOnly), left of the column divider, with one hover cue
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 hoveredItem = overlayFrame != nullptr ? overlayFrame->GetAnim().HoveredItem : INDEX_NONE;
+        const FSOLHoloFrameSpec* spec = overlayFrame != nullptr ? &overlayFrame->GetLastPixelSpec() : nullptr;
+        const bool bIsTabSide = spec != nullptr && spec->HoverItemRect.bIsValid
+            && spec->HoverItemRect.Max.X < spec->TabDividerX;
+        const int32 bracketPieces = HOVER_MAX_SEGMENTS - 2;
+        Check(TEXT("o-overlay-tab-hover"), menu != nullptr && menu->GetHoveredTab() == HOLOSMOKE_OVERLAY_HOVER_TAB
+            && hoveredItem == USOLOverlayMenuWidget::ROW_WIDGET_COUNT + HOLOSMOKE_OVERLAY_HOVER_TAB && hovers == 1
+            && CountPart(ESOLHoloPart::Hover, overlayFrame) == bracketPieces
+            && CountPart(ESOLHoloPart::HoverDot, overlayFrame) == 0 && bIsTabSide,
+            FString::Printf(TEXT("mouse onto tab %d: hovered tab %d, item %d, %d hover cue requests, %d hover pieces "
+                "and %d dots, mark %s the column divider"), HOLOSMOKE_OVERLAY_HOVER_TAB + 1, menu != nullptr
+                ? menu->GetHoveredTab() + 1 : 0, hoveredItem, hovers, CountPart(ESOLHoloPart::Hover, overlayFrame),
+                CountPart(ESOLHoloPart::HoverDot, overlayFrame), bIsTabSide ? TEXT("left of") : TEXT("NOT left of")));
+        break;
+    }
+    case EHoloStep::OverlaySelect:
+    {
+        // Step 4: a row toggle (twice), a tab switch (twice) and the cycle key each asked one select cue
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const FString rowText = menu != nullptr ? menu->GetRowText(mOverlayRow) : FString();
+        const int32 viewed = menu != nullptr ? menu->GetViewedProfile() : INDEX_NONE;
+        Check(TEXT("o-overlay-select"), selects == HOLOSMOKE_OVERLAY_SELECT_KEYS && !mRowTextToggled.IsEmpty()
+            && mRowTextToggled != mRowTextBefore && rowText == mRowTextBefore && mViewedAfterPageDown == 1
+            && viewed == 0, FString::Printf(TEXT("%d select cue requests (want %d); row %d '%s' -> '%s' -> '%s'; "
+                "PageDown viewed Profile %d, then Profile %d"), selects, HOLOSMOKE_OVERLAY_SELECT_KEYS, mOverlayRow,
+                *mRowTextBefore.TrimStart(), *mRowTextToggled.TrimStart(), *rowText.TrimStart(),
+                mViewedAfterPageDown + 1, viewed + 1));
+        break;
+    }
+    case EHoloStep::OverlayClose:
+    {
+        // Step 4: input back at once, the close drawn part-way, then the widget gone
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        Check(TEXT("o-overlay-esc-input"), mIsInputBackAtEsc, mEscDetail);
+        const bool bIsGone = menu != nullptr && !menu->IsInViewport();
+        const bool bIsClosed = overlayFrame == nullptr || overlayFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closed;
+        Check(TEXT("o-overlay-close"), mIsMidCloseInViewport && mMidClosePhase == ESOLHoloMenuPhase::Closing
+            && mMidCloseFraction > 0.0f && mMidCloseFraction < 1.0f && mMidCloseOpacity >= 0.0f
+            && mMidCloseOpacity < 1.0f && bIsGone && bIsClosed, FString::Printf(TEXT("mid-close: %s, phase %d, "
+                "draw-in %.3f, content opacity %.3f; after %.2f s: widget %s, frame %s"), mIsMidCloseInViewport
+                ? TEXT("drawn") : TEXT("NOT drawn"), static_cast<int32>(mMidClosePhase), mMidCloseFraction,
+                mMidCloseOpacity, HOLOSMOKE_CLOSED_S, bIsGone ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT"),
+                bIsClosed ? TEXT("Closed") : TEXT("NOT closed")));
+        break;
+    }
+    case EHoloStep::OverlayReverse:
+    {
+        // Ctrl+O during the close reverses it from its progress (no fresh draw-in, the widget never left)
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const bool bIsGone = menu != nullptr && !menu->IsInViewport();
+        Check(TEXT("o-overlay-reverse"), mSubStep >= 5 && mReversePhase == ESOLHoloMenuPhase::Opening
+            && mReverseProgress > 0.0f && mReverseProgress < 1.0f && mIsReverseInViewport && opens == 2 && bIsGone
+            && !pawn.IsOverlayMenuOpen(), FString::Printf(TEXT("reopened mid-close: phase %d from progress %.3f, "
+                "widget %s; %d open cue requests; closed again: widget %s"), static_cast<int32>(mReversePhase),
+                mReverseProgress, mIsReverseInViewport ? TEXT("kept") : TEXT("RE-ADDED"), opens, bIsGone
+                ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT")));
+        break;
+    }
+    case EHoloStep::SpeedReverse:
+    {
+        // F3 during the close reverses it from its progress (no fresh draw-in, the widget never left)
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const bool bIsGone = panel != nullptr && !panel->IsInViewport();
+        Check(TEXT("f-speed-reverse"), mSubStep >= 5 && mReversePhase == ESOLHoloMenuPhase::Opening
+            && mReverseProgress > 0.0f && mReverseProgress < 1.0f && mIsReverseInViewport && opens == 2 && bIsGone
+            && !pawn.IsSpeedPanelOpen(), FString::Printf(TEXT("reopened mid-close: phase %d from progress %.3f, "
+                "widget %s; %d open cue requests; closed again: widget %s"), static_cast<int32>(mReversePhase),
+                mReverseProgress, mIsReverseInViewport ? TEXT("kept") : TEXT("RE-ADDED"), opens, bIsGone
+                ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT")));
+        break;
+    }
+    case EHoloStep::OverlayFlat:
+    {
+        // Step 9, the Overlay Menu at strength 0 (D18): whole and flat at once, still usable; the cues asked (D21)
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const FSOLHoloFrameOutput* output = overlayFrame != nullptr ? &overlayFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        const FString rowText = menu != nullptr ? menu->GetRowText(mOverlayRow) : FString();
+        const int32 fullOutline = overlayFrame != nullptr ? FullOutlineCount(*overlayFrame) : -1;
+        Check(TEXT("o-strength0-open"), mFirstFlatFraction == 1.0f && mMidOpenOpacity == 1.0f && opens == 1,
+            FString::Printf(TEXT("first paint after Ctrl+O: frame fraction %.3f, content opacity %.3f; %d open cue "
+                "requests (D21)"), mFirstFlatFraction, mMidOpenOpacity, opens));
+        Check(TEXT("o-strength0-flat"), overlayFrame != nullptr && overlayFrame->GetLastStrength() == 0.0f
+            && CountPart(ESOLHoloPart::Sweep, overlayFrame) == 0 && alpha == FLAT_PANEL_ALPHA
+            && AllLinePads(FRAME_FLAT_PAD_PX, overlayFrame)
+            && CountPart(ESOLHoloPart::Outline, overlayFrame) == fullOutline
+            && CountPart(ESOLHoloPart::Hover, overlayFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::Tab, overlayFrame) > 0,
+            FString::Printf(TEXT("strength %.2f, %d sweeps, backing alpha %.2f, flat pads %s, outline %d of %d pieces, "
+                "%d hover pieces, %d tab pieces"), overlayFrame != nullptr ? overlayFrame->GetLastStrength() : -1.0f,
+                CountPart(ESOLHoloPart::Sweep, overlayFrame), alpha, AllLinePads(FRAME_FLAT_PAD_PX, overlayFrame)
+                ? TEXT("yes") : TEXT("NO"), CountPart(ESOLHoloPart::Outline, overlayFrame), fullOutline,
+                CountPart(ESOLHoloPart::Hover, overlayFrame), CountPart(ESOLHoloPart::Tab, overlayFrame)));
+        // Hover cues: none for the open (Open at once at strength 0, SDD 5 "no hover cue on open"), one for the mouse
+        // onto another row (none when that row already had the highlight)
+        const int32 wantHovers = mOverlayRow != HOLOSMOKE_OVERLAY_HOVER_ROW ? 1 : 0;
+        Check(TEXT("o-strength0-usable"), !mRowTextToggled.IsEmpty() && mRowTextToggled != mRowTextBefore
+            && rowText == mRowTextBefore && selects == 2 && hovers == wantHovers, FString::Printf(TEXT("row %d '%s' "
+                "-> '%s' -> '%s'; %d select and %d hover cue requests (D21; want 2 and %d)"), mOverlayRow,
+                *mRowTextBefore.TrimStart(), *mRowTextToggled.TrimStart(), *rowText.TrimStart(), selects, hovers,
+                wantHovers));
+        break;
+    }
+    case EHoloStep::OverlayFlatClose:
+        Check(TEXT("o-strength0-close"), mIsFlatClosedAtOnce, FString::Printf(TEXT("Esc at strength 0: widget %s "
+            "right after it"), mIsFlatClosedAtOnce ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT")));
+        break;
+    case EHoloStep::OverlayStrong:
+    {
+        const SSOLHoloFrame* overlayFrame = GetOverlayFrame(pawn);
+        const FSOLHoloFrameOutput* output = overlayFrame != nullptr ? &overlayFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        Check(TEXT("o-strength2"), overlayFrame != nullptr
+            && overlayFrame->GetLastStrength() == SOL::Settings::HOLO_MENU_EFFECTS_MAX
+            && CountPart(ESOLHoloPart::Sweep, overlayFrame) == 1
+            && AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, overlayFrame)
+            && FMath::IsNearlyEqual(alpha, 2.0f * BACKDROP_ALPHA_PER_UNIT),
+            FString::Printf(TEXT("strength %.2f, %d sweep, glow pads %s, backing alpha %.2f"), overlayFrame != nullptr
+                ? overlayFrame->GetLastStrength() : -1.0f, CountPart(ESOLHoloPart::Sweep, overlayFrame),
+                AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, overlayFrame) ? TEXT("yes") : TEXT("NO"), alpha));
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        break;
+    }
+    case EHoloStep::SpeedOpen:
+    {
+        // Step 6: one open cue, no hover cue while it opened, the draw-in mid-way, then the full option (c) frame with
+        // the stepped divider (no column divider, no tabs) and the centre-tick mark on the highlighted digit
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const bool bIsOpen = speedFrame != nullptr && speedFrame->GetAnim().Phase == ESOLHoloMenuPhase::Open;
+        const int32 outline = CountPart(ESOLHoloPart::Outline, speedFrame);
+        const int32 fullOutline = speedFrame != nullptr ? FullOutlineCount(*speedFrame) : -1;
+        const float stepPx = speedFrame != nullptr ? speedFrame->GetLastPixelSpec().BrokenStepPx : -1.0f;
+        const int32 hoveredItem = speedFrame != nullptr ? speedFrame->GetAnim().HoveredItem : INDEX_NONE;
+        Check(TEXT("f-speed-open"), pawn.IsSpeedPanelOpen() && panel != nullptr && panel->GetHoloFrame() != nullptr
+            && bIsOpen && opens == 1 && hovers == 0 && outline == fullOutline && outline > 0
+            && CountPart(ESOLHoloPart::GapDot, speedFrame) > 0
+            && CountPart(ESOLHoloPart::BrokenDivider, speedFrame) > 0 && stepPx > 0.0f
+            && CountPart(ESOLHoloPart::ColumnDivider, speedFrame) == 0 && CountPart(ESOLHoloPart::Tab, speedFrame) == 0
+            && speedFrame->GetLastPaintedBackingCount() == 1 && speedFrame->GetMaterial() == menuMaterial
+            && panel->GetContentOpacity() == 1.0f && IsFrameOutputFresh(speedFrame),
+            FString::Printf(TEXT("panel %s, phase %s, %d open / %d hover cue requests, outline %d of %d pieces, %d gap "
+                "dots, %d divider pieces (step %.1f px), %d column dashes, %d tab pieces, %d backing, material %s, "
+                "content opacity %.2f"), pawn.IsSpeedPanelOpen() ? TEXT("open") : TEXT("CLOSED"), bIsOpen
+                ? TEXT("Open") : TEXT("NOT open"), opens, hovers, outline, fullOutline,
+                CountPart(ESOLHoloPart::GapDot, speedFrame), CountPart(ESOLHoloPart::BrokenDivider, speedFrame),
+                stepPx, CountPart(ESOLHoloPart::ColumnDivider, speedFrame), CountPart(ESOLHoloPart::Tab, speedFrame),
+                speedFrame != nullptr ? speedFrame->GetLastPaintedBackingCount() : -1, speedFrame != nullptr
+                && speedFrame->GetMaterial() == menuMaterial ? TEXT("menu MID") : TEXT("OTHER"), panel != nullptr
+                ? panel->GetContentOpacity() : -1.0f));
+        Check(TEXT("f-speed-mid-open"), mIsMidOpenShot && mMidOpenFraction > 0.0f && mMidOpenFraction < 1.0f
+            && mMidOpenOpacity >= 0.0f && mMidOpenOpacity < 1.0f, FString::Printf(TEXT("frame fraction %.3f, content "
+                "opacity %.3f at %.2f s after the open"), mMidOpenFraction, mMidOpenOpacity, HOLOSMOKE_MID_OPEN_S));
+        Check(TEXT("f-speed-digit-mark"), panel != nullptr && hoveredItem == panel->GetHighlightedItem()
+            && CountPart(ESOLHoloPart::Hover, speedFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::HoverDot, speedFrame) == 0, FString::Printf(TEXT("hovered item %d (highlight "
+                "%d), %d hover pieces and %d dots (brackets and centre ticks)"), hoveredItem, panel != nullptr
+                ? panel->GetHighlightedItem() : -1, CountPart(ESOLHoloPart::Hover, speedFrame),
+                CountPart(ESOLHoloPart::HoverDot, speedFrame)));
+        break;
+    }
+    case EHoloStep::SpeedDigit:
+    {
+        // Step 6: Up applied a cap (one select cue), Left moved the highlight (one hover cue, the mark followed it)
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 item = panel != nullptr ? panel->GetHighlightedItem() : INDEX_NONE;
+        const int32 hoveredItem = speedFrame != nullptr ? speedFrame->GetAnim().HoveredItem : INDEX_NONE;
+        Check(TEXT("f-speed-digit"), mCapAfterStepMps > 0.0 && mCapAfterStepMps != mCapBeforeMps && selects == 1
+            && hovers == 1 && item != mSpeedItemBefore && hoveredItem == item
+            && CountPart(ESOLHoloPart::Hover, speedFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::HoverDot, speedFrame) == 0, FString::Printf(TEXT("Up: cap %.3f -> %.3f m/s, %d "
+                "select cue requests; Left: item %d -> %d, hovered %d, %d hover cue requests, %d hover pieces and %d "
+                "dots"), mCapBeforeMps, mCapAfterStepMps, selects, mSpeedItemBefore, item, hoveredItem, hovers,
+                CountPart(ESOLHoloPart::Hover, speedFrame), CountPart(ESOLHoloPart::HoverDot, speedFrame)));
+        break;
+    }
+    case EHoloStep::SpeedList:
+    {
+        // Tab and a wheel notch: two hover cues, the row mark (brackets and pointer) on the next row; Enter applied
+        // that row's speed (one select cue) and handed the highlight back to the steppers
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const int32 row = mSpeedListBefore + 1;
+        const double listed = panel != nullptr ? panel->GetListedBodySpeedMps(row) : 0.0;
+        const double cap = pawn.GetComposedControl().SpeedCapMps;
+        Check(TEXT("f-speed-list"), mSpeedRowHovers == 2 && mIsSpeedRowItem && mSpeedRowPieces == HOVER_MAX_SEGMENTS
+            && mSpeedRowDots == 1 && selects == 1 && panel != nullptr && !panel->IsListFocused()
+            && panel->GetListSelection() == row && listed > 0.0
+            && FMath::Abs(cap - listed) <= HOLOSMOKE_CAP_TOLERANCE * listed, FString::Printf(TEXT("Tab, wheel down: "
+                "%d hover cue requests, row mark on row %d %s (%d pieces, %d dot); Enter: %d select cue requests, cap "
+                "%.3f m/s (listed %.3f), list %s"), mSpeedRowHovers, row, mIsSpeedRowItem ? TEXT("yes") : TEXT("NO"),
+                mSpeedRowPieces, mSpeedRowDots, selects, cap, listed, panel != nullptr && panel->IsListFocused()
+                ? TEXT("STILL FOCUSED") : TEXT("left")));
+
+        // The wheel over the list scrolled the selected row out of view (42f review): no mark, no new hover cue
+        Check(TEXT("f-speed-row-scrolled"), mSpeedScrollOffset > 0.0f && mIsSpeedScrolledItem
+            && mSpeedScrolledHovers == mSpeedRowHovers && mSpeedScrolledPieces == 0 && mSpeedScrolledDots == 0,
+            FString::Printf(TEXT("list scrolled to %.1f, selection and hovered item kept %s; %d hover pieces, %d dots; "
+                "%d hover cue requests (want %d)"), mSpeedScrollOffset, mIsSpeedScrolledItem ? TEXT("yes")
+                : TEXT("NO"), mSpeedScrolledPieces, mSpeedScrolledDots, mSpeedScrolledHovers, mSpeedRowHovers));
+        break;
+    }
+    case EHoloStep::SpeedClose:
+    {
+        // Step 6: input back at once, the close drawn part-way, then the widget gone
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+        Check(TEXT("f-speed-esc-input"), mIsInputBackAtEsc, mEscDetail);
+        const bool bIsGone = panel != nullptr && !panel->IsInViewport();
+        const bool bIsClosed = speedFrame == nullptr || speedFrame->GetAnim().Phase == ESOLHoloMenuPhase::Closed;
+        Check(TEXT("f-speed-close"), mIsMidCloseInViewport && mMidClosePhase == ESOLHoloMenuPhase::Closing
+            && mMidCloseFraction > 0.0f && mMidCloseFraction < 1.0f && mMidCloseOpacity >= 0.0f
+            && mMidCloseOpacity < 1.0f && bIsGone && bIsClosed, FString::Printf(TEXT("mid-close: %s, phase %d, "
+                "draw-in %.3f, content opacity %.3f; after %.2f s: widget %s, frame %s"), mIsMidCloseInViewport
+                ? TEXT("drawn") : TEXT("NOT drawn"), static_cast<int32>(mMidClosePhase), mMidCloseFraction,
+                mMidCloseOpacity, HOLOSMOKE_CLOSED_S, bIsGone ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT"),
+                bIsClosed ? TEXT("Closed") : TEXT("NOT closed")));
+        break;
+    }
+    case EHoloStep::SpeedFlat:
+    {
+        // Step 9, the F3 panel at strength 0 (D18): whole and flat at once, still usable; the cues asked (D21)
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
+        const int32 hovers = holoMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        const int32 selects = holoMenu->GetCueRequestCount(ESOLHoloCue::Select) - mSelectRequestsBefore;
+        const FSOLHoloFrameOutput* output = speedFrame != nullptr ? &speedFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        const int32 fullOutline = speedFrame != nullptr ? FullOutlineCount(*speedFrame) : -1;
+        Check(TEXT("f-strength0-open"), mFirstFlatFraction == 1.0f && mMidOpenOpacity == 1.0f && opens == 1,
+            FString::Printf(TEXT("first paint after F3: frame fraction %.3f, content opacity %.3f; %d open cue "
+                "requests (D21)"), mFirstFlatFraction, mMidOpenOpacity, opens));
+        Check(TEXT("f-strength0-flat"), speedFrame != nullptr && speedFrame->GetLastStrength() == 0.0f
+            && CountPart(ESOLHoloPart::Sweep, speedFrame) == 0 && alpha == FLAT_PANEL_ALPHA
+            && AllLinePads(FRAME_FLAT_PAD_PX, speedFrame)
+            && CountPart(ESOLHoloPart::Outline, speedFrame) == fullOutline
+            && CountPart(ESOLHoloPart::Hover, speedFrame) == HOVER_MAX_SEGMENTS
+            && CountPart(ESOLHoloPart::BrokenDivider, speedFrame) > 0,
+            FString::Printf(TEXT("strength %.2f, %d sweeps, backing alpha %.2f, flat pads %s, outline %d of %d pieces, "
+                "%d hover pieces, %d divider pieces"), speedFrame != nullptr ? speedFrame->GetLastStrength() : -1.0f,
+                CountPart(ESOLHoloPart::Sweep, speedFrame), alpha, AllLinePads(FRAME_FLAT_PAD_PX, speedFrame)
+                ? TEXT("yes") : TEXT("NO"), CountPart(ESOLHoloPart::Outline, speedFrame), fullOutline,
+                CountPart(ESOLHoloPart::Hover, speedFrame), CountPart(ESOLHoloPart::BrokenDivider, speedFrame)));
+        // One hover cue, for Left: the open (Open at once at strength 0) asks for none
+        Check(TEXT("f-strength0-usable"), mCapAfterStepMps > 0.0 && mCapAfterStepMps != mCapBeforeMps && selects == 1
+            && hovers == 1, FString::Printf(TEXT("Up: cap %.3f -> %.3f m/s; %d select and %d hover cue requests "
+                "(D21; want 1 and 1)"), mCapBeforeMps, mCapAfterStepMps, selects, hovers));
+        break;
+    }
+    case EHoloStep::SpeedFlatClose:
+        Check(TEXT("f-strength0-close"), mIsFlatClosedAtOnce, FString::Printf(TEXT("Esc at strength 0: widget %s "
+            "right after it"), mIsFlatClosedAtOnce ? TEXT("removed") : TEXT("STILL ON THE VIEWPORT")));
+        break;
+    case EHoloStep::SpeedStrong:
+    {
+        const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+        const FSOLHoloFrameOutput* output = speedFrame != nullptr ? &speedFrame->GetLastOutput() : nullptr;
+        const float alpha = output != nullptr && output->bHasBacking ? output->Backing.Alpha : -1.0f;
+        Check(TEXT("f-strength2"), speedFrame != nullptr
+            && speedFrame->GetLastStrength() == SOL::Settings::HOLO_MENU_EFFECTS_MAX
+            && CountPart(ESOLHoloPart::Sweep, speedFrame) == 1
+            && AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, speedFrame)
+            && FMath::IsNearlyEqual(alpha, 2.0f * BACKDROP_ALPHA_PER_UNIT),
+            FString::Printf(TEXT("strength %.2f, %d sweep, glow pads %s, backing alpha %.2f"), speedFrame != nullptr
+                ? speedFrame->GetLastStrength() : -1.0f, CountPart(ESOLHoloPart::Sweep, speedFrame),
+                AllLinePads(SOL::Hologram::HUD_GLOW_PAD_PX, speedFrame) ? TEXT("yes") : TEXT("NO"), alpha));
+        SlateKey(EKeys::Escape, FModifierKeysState());
+        SetStrength(SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT);
+        pawn.ApplySpeedCapMps(mSpeedCapRestoreMps);
+        break;
+    }
     case EHoloStep::Quit:
-        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (parts 42c-42d; the other menu steps are "
+        UE_LOG(LogSOL, Log, TEXT("HoloMenu SUMMARY: %d of %d checks passed (parts 42c-42f; the other menu steps are "
             "stubs)"), mChecksPassed, mChecksRun);
         UKismetSystemLibrary::QuitGame(pawn.GetWorld(), nullptr, EQuitPreference::Quit, false);
         break;
@@ -901,11 +1676,10 @@ void FSOLHoloMenuSmoke::RemoveFramePreview()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the preview's last drawn frame equals a fresh BuildFrame of the same inputs
-bool FSOLHoloMenuSmoke::IsFrameOutputFresh()
+// Returns whether a frame's (null: the preview's) last drawn frame equals a fresh BuildFrame of the same inputs
+bool FSOLHoloMenuSmoke::IsFrameOutputFresh(const SSOLHoloFrame* frame)
 {
-    const SSOLHoloFrame* frame = mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid()
-        ? mFrameWidget->GetFrame().Get() : nullptr;
+    frame = frame != nullptr ? frame : GetPreviewFrame();
     if (frame == nullptr)
     {
         return false;
@@ -934,11 +1708,10 @@ bool FSOLHoloMenuSmoke::IsFrameOutputFresh()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Counts the preview's last drawn shapes of one part
-int32 FSOLHoloMenuSmoke::CountPart(const ESOLHoloPart part) const
+// Counts a frame's (null: the preview's) last drawn shapes of one part
+int32 FSOLHoloMenuSmoke::CountPart(const ESOLHoloPart part, const SSOLHoloFrame* frame) const
 {
-    const SSOLHoloFrame* frame = mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid()
-        ? mFrameWidget->GetFrame().Get() : nullptr;
+    frame = frame != nullptr ? frame : GetPreviewFrame();
     if (frame == nullptr)
     {
         return 0;
@@ -953,11 +1726,10 @@ int32 FSOLHoloMenuSmoke::CountPart(const ESOLHoloPart part) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether every line and dot (not the fill) of the preview's last frame has this glow pad
-bool FSOLHoloMenuSmoke::AllLinePads(const float padPx) const
+// Returns whether every line and dot (not the fill) of a frame's (null: the preview's) last frame has this glow pad
+bool FSOLHoloMenuSmoke::AllLinePads(const float padPx, const SSOLHoloFrame* frame) const
 {
-    const SSOLHoloFrame* frame = mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid()
-        ? mFrameWidget->GetFrame().Get() : nullptr;
+    frame = frame != nullptr ? frame : GetPreviewFrame();
     if (frame == nullptr || frame->GetLastOutput().ShapeCount == 0)
     {
         return false;
@@ -1044,23 +1816,375 @@ int32 FSOLHoloMenuSmoke::DragToRadialAction(ASOLShipPawn& pawn, const ESOLAction
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the preview's Slate frame, or null
+const SSOLHoloFrame* FSOLHoloMenuSmoke::GetPreviewFrame() const
+{
+    return mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid() ? mFrameWidget->GetFrame().Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the Overlay Menu's Slate frame, or null (before the first Ctrl+O)
+SSOLHoloFrame* FSOLHoloMenuSmoke::GetOverlayFrame(const ASOLShipPawn& pawn)
+{
+    const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+    const USOLHoloFrameWidget* frameWidget = menu != nullptr ? menu->GetHoloFrame() : nullptr;
+    return frameWidget != nullptr && frameWidget->GetFrame().IsValid() ? frameWidget->GetFrame().Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns how many outline pieces a frame draws at its full draw-in for its last pixel layout
+int32 FSOLHoloMenuSmoke::FullOutlineCount(const SSOLHoloFrame& frame)
+{
+    FSOLHoloSegment segments[SOL::HoloMenu::FRAME_MAX_SEGMENTS];
+    const FSOLHoloFrameSpec& spec = frame.GetLastPixelSpec();
+    return SOLHoloMenu::FrameDrawSegments(spec.Rect, spec.TitleStepWidthPx, spec.UiScale, 1.0f, segments);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sends a key press and release through Slate (to the focused widget), with modifiers
+void FSOLHoloMenuSmoke::SlateKey(const FKey& key, const FModifierKeysState& modifiers)
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    const FKeyEvent keyEvent(key, modifiers, slate.GetUserIndexForKeyboard(), false, 0, 0);
+    slate.ProcessKeyDownEvent(keyEvent);
+    slate.ProcessKeyUpEvent(keyEvent);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the mouse through Slate to a screen point (the OS cursor too, so its next real move lands there)
+void FSOLHoloMenuSmoke::SlateMouseMove(const FVector2D& at)
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    const FVector2D from = slate.GetCursorPos();
+    slate.SetCursorPos(at);
+    const FPointerEvent move(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, from,
+        TSet<FKey>(), EKeys::Invalid, 0.0f, FModifierKeysState());
+    slate.ProcessMouseMoveEvent(move);
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: Slate mouse move to (%.0f, %.0f)"), at.X, at.Y);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the mouse to the right of the view, away from the Overlay Menu (so no hover lands on it while it opens)
+void FSOLHoloMenuSmoke::ParkMouse(ASOLShipPawn& pawn)
+{
+    const UGameViewportClient* viewport = pawn.GetWorld()->GetGameViewport();
+    const TSharedPtr<SViewport> viewportWidget = viewport != nullptr ? viewport->GetGameViewportWidget() : nullptr;
+    if (viewportWidget.IsValid())
+    {
+        const FGeometry& geometry = viewportWidget->GetCachedGeometry();
+        SlateMouseMove(FVector2D(geometry.LocalToAbsolute(geometry.GetLocalSize() * HOLOSMOKE_MOUSE_PARK)));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Presses a key with a modifier held through the player controller (game input); both are released next frame
+void FSOLHoloMenuSmoke::TapGameChord(const FKey& modifier, const FKey& key)
+{
+    if (!mController.IsValid())
+    {
+        return;
+    }
+    mController->InputKey(FInputKeyEventArgs::CreateSimulated(modifier, IE_Pressed, 1.0f));
+    mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Pressed, 1.0f));
+    mPendingReleases.Add(key);
+    mPendingReleases.Add(modifier);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the select step's presses one every HOLOSMOKE_KEY_GAP_S: Space, Space (the row back), PageDown, PageUp, then
+// the profile cycle key (Right Shift + its binding)
+void FSOLHoloMenuSmoke::TickOverlaySelect(ASOLShipPawn& pawn, const double elapsedS)
+{
+    const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
+    if (menu == nullptr || mSubStep >= HOLOSMOKE_OVERLAY_SELECT_KEYS
+        || elapsedS < static_cast<double>(mSubStep) * HOLOSMOKE_KEY_GAP_S)
+    {
+        return;
+    }
+    switch (mSubStep)
+    {
+    case 0:
+        SlateKey(EKeys::SpaceBar, FModifierKeysState());
+        break;
+    case 1:
+        mRowTextToggled = menu->GetRowText(mOverlayRow);
+        SlateKey(EKeys::SpaceBar, FModifierKeysState());
+        break;
+    case 2:
+        SlateKey(EKeys::PageDown, FModifierKeysState());
+        break;
+    case 3:
+        mViewedAfterPageDown = menu->GetViewedProfile();
+        SlateKey(EKeys::PageUp, FModifierKeysState());
+        break;
+    default:
+    {
+        const int32 binding = static_cast<int32>(SOLKeyBindings::EBinding::CycleOverlayProfile);
+        const TArray<FString>& keys = mSettings->GetAppliedKeys();
+        if (keys.IsValidIndex(binding))
+        {
+            SlateKey(FKey(*keys[binding]), FModifierKeysState(false, true, false, false, false, false, false, false,
+                false));
+        }
+        break;
+    }
+    }
+    ++mSubStep;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs a reverse step (the Overlay Menu's, or the F3 panel's when bIsSpeed): once Open, Esc; half-way through the
+// close, the open key (the pawn reopens it next frame, which reverses the close); the reversal is read; once Open
+// again, Esc; done once closed
+bool FSOLHoloMenuSmoke::TickReverse(ASOLShipPawn& pawn, const bool bIsSpeed, const double elapsedS)
+{
+    const SSOLHoloFrame* overlayFrame = bIsSpeed ? GetSpeedFrame(pawn) : GetOverlayFrame(pawn);
+    const UUserWidget* menu = bIsSpeed ? static_cast<const UUserWidget*>(pawn.GetSpeedPanel())
+        : static_cast<const UUserWidget*>(pawn.GetOverlayMenu());
+    const bool bIsMenuOpen = bIsSpeed ? pawn.IsSpeedPanelOpen() : pawn.IsOverlayMenuOpen();
+    const bool bIsOpen = overlayFrame != nullptr && overlayFrame->GetAnim().Phase == ESOLHoloMenuPhase::Open;
+    switch (mSubStep)
+    {
+    case 0:
+        if (bIsMenuOpen && bIsOpen && elapsedS >= HOLOSMOKE_OPENED_S)
+        {
+            SlateKey(EKeys::Escape, FModifierKeysState());
+            mSubStepS = elapsedS;
+            ++mSubStep;
+        }
+        break;
+    case 1:
+        if (elapsedS >= mSubStepS + 0.5 * SOL::HoloMenu::CLOSE_S)
+        {
+            if (bIsSpeed)
+            {
+                TapGameKey(GetSpeedPanelKey());
+            }
+            else
+            {
+                TapGameChord(EKeys::LeftControl, EKeys::O);
+            }
+            ++mSubStep;
+        }
+        break;
+    case 2:
+        if (bIsMenuOpen && overlayFrame != nullptr && menu != nullptr)
+        {
+            mReversePhase = overlayFrame->GetAnim().Phase;
+            mReverseProgress = overlayFrame->GetAnim().PhaseStartProgress;
+            mIsReverseInViewport = menu->IsInViewport();
+            mSubStepS = elapsedS;
+            ++mSubStep;
+        }
+        break;
+    case 3:
+        if (bIsOpen && elapsedS >= mSubStepS + HOLOSMOKE_OPENED_S)
+        {
+            SlateKey(EKeys::Escape, FModifierKeysState());
+            mSubStepS = elapsedS;
+            ++mSubStep;
+        }
+        break;
+    case 4:
+        if (elapsedS >= mSubStepS + HOLOSMOKE_CLOSED_S)
+        {
+            ++mSubStep;
+        }
+        break;
+    default:
+        return true;
+    }
+    return elapsedS >= HOLOSMOKE_REVERSE_TIMEOUT_S;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the F3 key steps' presses one every HOLOSMOKE_KEY_GAP_S. Digit step: Up (a cap applied), then Left (the
+// highlight moves). List step: Tab, a wheel notch down, the row mark read with a screenshot, the wheel over the list
+// (the row scrolled out of view) and its mark read, then Enter. Returns true once the step is done
+bool FSOLHoloMenuSmoke::TickSpeedKeys(ASOLShipPawn& pawn, const bool bIsList, const double elapsedS)
+{
+    const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+    if (panel == nullptr || elapsedS < mSubStepS + (mSubStep == 0 ? 0.0 : HOLOSMOKE_KEY_GAP_S))
+    {
+        return panel == nullptr;
+    }
+    if (!bIsList)
+    {
+        // Up, then Left, then the screenshot of the moved mark once its hover glow settled
+        if (mSubStep == 0)
+        {
+            SlateKey(EKeys::Up, FModifierKeysState());
+        }
+        else if (mSubStep == 1)
+        {
+            mCapAfterStepMps = pawn.GetComposedControl().SpeedCapMps;
+            SlateKey(EKeys::Left, FModifierKeysState());
+        }
+        else
+        {
+            return ShotThenDone(TEXT("Speed_Digit"), elapsedS >= mSubStepS + HOLOSMOKE_SETTLED_S);
+        }
+        ++mSubStep;
+        mSubStepS = elapsedS;
+        return false;
+    }
+
+    // Tab, the wheel, then (once the hover settled) the row mark read with a screenshot, then Enter
+    const SSOLHoloFrame* speedFrame = GetSpeedFrame(pawn);
+    switch (mSubStep)
+    {
+    case 0:
+        SlateKey(EKeys::Tab, FModifierKeysState());
+        break;
+    case 1:
+        SlateWheel(pawn, -1.0f);
+        break;
+    case 2:
+        if (elapsedS < mSubStepS + HOLOSMOKE_SETTLED_S)
+        {
+            return false;
+        }
+        mSpeedRowHovers = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        mSpeedRowPieces = CountPart(ESOLHoloPart::Hover, speedFrame);
+        mSpeedRowDots = CountPart(ESOLHoloPart::HoverDot, speedFrame);
+        mIsSpeedRowItem = speedFrame != nullptr && panel->IsListFocused()
+            && panel->GetListSelection() == mSpeedListBefore + 1
+            && speedFrame->GetAnim().HoveredItem == panel->GetHighlightedItem();
+        TakeUiShot(TEXT("Speed_Row"));
+        break;
+    case 3:
+        // The wheel over the list itself: its scroll box takes it, the selection stays and scrolls out of view
+        SlateWheelAt(panel->GetListScreenCenter(), -HOLOSMOKE_LIST_SCROLL_NOTCHES);
+        break;
+    case 4:
+        if (elapsedS < mSubStepS + HOLOSMOKE_STEP_S)
+        {
+            return false;
+        }
+        mSpeedScrollOffset = panel->GetListScrollOffset();
+        mSpeedScrolledHovers = mHoloMenu->GetCueRequestCount(ESOLHoloCue::Hover) - mHoverRequestsBefore;
+        mSpeedScrolledPieces = CountPart(ESOLHoloPart::Hover, speedFrame);
+        mSpeedScrolledDots = CountPart(ESOLHoloPart::HoverDot, speedFrame);
+        mIsSpeedScrolledItem = speedFrame != nullptr && panel->IsListFocused()
+            && panel->GetListSelection() == mSpeedListBefore + 1
+            && speedFrame->GetAnim().HoveredItem == panel->GetHighlightedItem();
+        TakeUiShot(TEXT("Speed_RowScrolled"));
+        break;
+    case 5:
+        SlateKey(EKeys::Enter, FModifierKeysState());
+        break;
+    default:
+        return elapsedS >= mSubStepS + HOLOSMOKE_STEP_S;
+    }
+    ++mSubStep;
+    mSubStepS = elapsedS;
+    return false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the speed-panel binding's key from the applied settings (F3 by default)
+FKey FSOLHoloMenuSmoke::GetSpeedPanelKey() const
+{
+    const int32 binding = static_cast<int32>(SOLKeyBindings::EBinding::SpeedPanel);
+    const TArray<FString>& keys = mSettings->GetAppliedKeys();
+    return keys.IsValidIndex(binding) ? FKey(*keys[binding]) : EKeys::F3;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the speed panel's Slate frame, or null (before the first F3)
+SSOLHoloFrame* FSOLHoloMenuSmoke::GetSpeedFrame(const ASOLShipPawn& pawn)
+{
+    const USOLSpeedPanelWidget* panel = pawn.GetSpeedPanel();
+    const USOLHoloFrameWidget* frameWidget = panel != nullptr ? panel->GetHoloFrame() : nullptr;
+    return frameWidget != nullptr && frameWidget->GetFrame().IsValid() ? frameWidget->GetFrame().Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Presses a game key through the player controller (game input); it is released next frame
+void FSOLHoloMenuSmoke::TapGameKey(const FKey& key)
+{
+    if (!mController.IsValid())
+    {
+        return;
+    }
+    mController->InputKey(FInputKeyEventArgs::CreateSimulated(key, IE_Pressed, 1.0f));
+    mPendingReleases.Add(key);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Turns the mouse wheel through Slate at the parked mouse point (over the speed panel's screen dim, away from its
+// list, so the panel rather than the list's scroll box takes it)
+void FSOLHoloMenuSmoke::SlateWheel(ASOLShipPawn& pawn, const float delta)
+{
+    const UGameViewportClient* viewport = pawn.GetWorld()->GetGameViewport();
+    const TSharedPtr<SViewport> viewportWidget = viewport != nullptr ? viewport->GetGameViewportWidget() : nullptr;
+    if (!viewportWidget.IsValid() || !FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    const FGeometry& geometry = viewportWidget->GetCachedGeometry();
+    SlateWheelAt(FVector2D(geometry.LocalToAbsolute(geometry.GetLocalSize() * HOLOSMOKE_MOUSE_PARK)), delta);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Turns the mouse wheel through Slate at a screen point (the widget under it takes it first)
+void FSOLHoloMenuSmoke::SlateWheelAt(const FVector2D& at, const float delta)
+{
+    if (!FSlateApplication::IsInitialized())
+    {
+        return;
+    }
+    FSlateApplication& slate = FSlateApplication::Get();
+    const FPointerEvent wheel(slate.GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex, at, at,
+        TSet<FKey>(), EKeys::MouseWheelAxis, delta, FModifierKeysState());
+    slate.ProcessMouseWheelOrGestureEvent(wheel, nullptr);
+    UE_LOG(LogSOL, Log, TEXT("HoloMenu: Slate wheel %.0f at (%.0f, %.0f)"), delta, at.X, at.Y);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Section 12 step 11 (D17): a Settings page's embedded Overlay list has no frame widget anywhere in its tree, keeps
+// its clear panel and full opacity, and is marked embedded
+void FSOLHoloMenuSmoke::CheckEmbeddedOverlay()
+{
+    USOLSettingsPageWidget* page = mController.IsValid()
+        ? CreateWidget<USOLSettingsPageWidget>(mController.Get(), USOLSettingsPageWidget::StaticClass()) : nullptr;
+    const USOLOverlayMenuWidget* list = page != nullptr ? page->GetOverlayList() : nullptr;
+    int32 frames = 0;
+    if (list != nullptr && list->WidgetTree != nullptr)
+    {
+        list->WidgetTree->ForEachWidget([&frames](UWidget* widget)
+        {
+            frames += widget != nullptr && widget->IsA<USOLHoloFrameWidget>() ? 1 : 0;
+        });
+    }
+    Check(TEXT("o-embedded-plain"), list != nullptr && list->IsEmbedded() && list->GetHoloFrame() == nullptr
+        && frames == 0 && list->GetPanelColor() == FLinearColor::Transparent && list->GetContentOpacity() == 1.0f,
+        FString::Printf(TEXT("Settings page list %s, %s, %d frame widgets, panel colour alpha %.2f, opacity %.2f"),
+            list != nullptr ? TEXT("found") : TEXT("MISSING"), list != nullptr && list->IsEmbedded()
+            ? TEXT("embedded") : TEXT("NOT embedded"), frames, list != nullptr ? list->GetPanelColor().A : -1.0f,
+            list != nullptr ? list->GetContentOpacity() : -1.0f));
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Logs the section 12 checks later parts fill in
 void FSOLHoloMenuSmoke::LogStubs()
 {
     // SDD 42 section 12: the step, what it will check and the part that adds it
     static const TCHAR* const STUBS[] = {
-        TEXT("1 Ctrl+O: frame widget, Open after OPEN_S with its full outline, one open cue (42e)"),
-        TEXT("2 Ctrl+O mid-open capture at ~0.1 s, frame fraction in (0, 1) (42e)"),
-        TEXT("3 hover a row, then Down: at most two hover cues, brackets and pointer at the row (42e)"),
-        TEXT("4 toggle a row: one select cue; Esc: input back at once, widget gone after CLOSE_S (42e)"),
-        TEXT("6 F3: open, digit step (select cue), highlight move (hover cue), close (42f)"),
         TEXT("7 info / target / speed / date-and-anchor cards on the menu layer, 8 ticks each (42g)"),
         TEXT("8 map list menu: open, hover, select cues (42g)"),
-        TEXT("9 strength 0 in the Overlay Menu, F3 panel and map list: instant open, flat look, still usable, cues "
-            "requested (42e-42g; the radial's part runs here)"),
+        TEXT("9 strength 0 in the map list: instant open, flat look, still usable, cues requested (42g; the "
+            "radial's, the Overlay Menu's and the F3 panel's parts run here)"),
         TEXT("10 Settings: slider under the HUD effects slider, Apply writes once (covered by -SOLMenuSmoke; the "
             "cursor part runs here)"),
-        TEXT("11 the Overlay list embedded in Settings has no frame widget (42e)"),
     };
     for (const TCHAR* stub : STUBS)
     {

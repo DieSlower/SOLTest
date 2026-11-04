@@ -97,22 +97,24 @@ committed as done before 42b, so no build ships a menu slider that does nothing)
 
 ### 42e: Overlay Menu with profile tabs (opus, high)
 
-1. [ ] `USOLOverlayMenuWidget`: replace `PanelBorder`'s dark fill by a `USOLHoloFrameWidget` behind the content; the
+1. [x] `USOLOverlayMenuWidget`: replace `PanelBorder`'s dark fill by a `USOLHoloFrameWidget` behind the content; the
    hovered / highlighted row or tab feeds the hover rectangle; content render opacity follows `FillAlpha`; the
    non-blocking close of SDD 4.5 through the pawn's close path. The option (c) frame + tint (D20), with the dashed
    column divider open at the selected tab, the tab markers, the hint divider and `RowPointer` hover brackets. The copy embedded in
    Settings is **not** converted (D17): with `SetEmbedded(true)` no frame widget is added and it keeps today's
    `PanelBorder` look until #46 restyles it with the solid Settings page.
-2. [ ] Cues: open, hover, select (row toggle, tab switch, the cycle key inside the menu).
-3. [ ] Smoke steps 1-4; `-SOLSmokeOverlay` green at both sizes; screenshots looked at.
-4. [ ] Review; fixes; suite. Commit `Issue #42: Part 42e - hologram Overlay Menu`.
+2. [x] Cues: open, hover, select (row toggle, tab switch, the cycle key inside the menu).
+3. [x] Smoke steps 1-4; `-SOLSmokeOverlay` green at both sizes; screenshots looked at.
+4. [x] Review; fixes; suite (review fixes applied, suite 1323/1323 and smokes green 2026-11-04; commit pending).
+   Commit `Issue #42: Part 42e - hologram Overlay Menu`.
 
 ### 42f: F3 speed panel (sonnet, medium)
 
-1. [ ] Same option (c) frame + tint (D20) with the stepped section divider (`BrokenDivider`), highlight-as-hover
+1. [x] Same option (c) frame + tint (D20) with the stepped section divider (`BrokenDivider`), highlight-as-hover
    (digit and unit field: `CentreTicks`; body row: `RowPointer`), open / close, cues (select on each applied cap).
-2. [ ] Smoke step 6; `-SOLSmokeHud` F3 checks green; screenshot looked at.
-3. [ ] Review; fixes; suite. Commit `Issue #42: Part 42f - hologram speed panel`.
+2. [x] Smoke step 6; `-SOLSmokeHud` F3 checks green; screenshot looked at.
+3. [x] Review; fixes; suite (review fixes applied, suite 1323/1323 and smokes green 2026-11-04; commit pending).
+   Commit `Issue #42: Part 42f - hologram speed panel`.
 
 ### 42g: the four cards, then the map list menu (cards sonnet, medium; map list menu opus, high)
 
@@ -251,3 +253,9 @@ Remaining steps (after 42c, which loads the cues):
   1305 / 1305; `-SOLSmokeHoloMenu` 30/30, Interact 18/18, Chase 26/26, Hud 24/24, Jump 14/14, profile P1 PASS
   (+0.018 ms GPU). Open user question Q13 (disabled-sector hover glow), behaviour unchanged behind
   `RADIAL_DISABLED_HOVER_GLOW_SCALE` until answered. Next step: 42e + 42f (Overlay Menu and speed panel frames).
+- 2026-11-04: 42e and 42f done (one commit): the Ctrl+O Overlay Menu and the F3 speed panel use the option (c) frame
+  with the faint dark tint, non-blocking close, cues; pure layout helpers `MakeOverlayLayout`, `TextItemRect`,
+  `MakeSpeedLayout` with SDD 6.3 contracts and tests rewritten by a separate author (cases 19-29). Review fixes incl.
+  the F3 hover mark after a list scroll, tab hover re-hit-test, teardown reset (`Dismiss` / `ResetClosed`), no hover
+  cue on open at strength 0. Suite 1323 / 1323; `-SOLSmokeHoloMenu` 58/58 at both sizes, Overlay 34/34, Hud 24/24,
+  MenuSmoke 47/50 (known), profile P2 +0.043 / P3 +0.032 ms GPU. Open user questions: Q13, Q14. Next step: 42g.

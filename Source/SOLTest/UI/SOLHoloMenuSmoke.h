@@ -10,14 +10,18 @@
 #include "UI/SOLHoloFrameWidget.h"
 
 #include "CoreMinimal.h"
+#include "InputCoreTypes.h"
 #include "UObject/StrongObjectPtr.h"
 
 class APlayerController;
+class FModifierKeysState;
 class UGameViewportClient;
 class ASOLFlightHud;
 class ASOLShipPawn;
+class SSOLHoloFrame;
 class SWidget;
 class USOLHoloMenuSubsystem;
+class USOLOverlayMenuWidget;
 class USOLInteractionSubsystem;
 class USOLSettingsSubsystem;
 
@@ -35,9 +39,23 @@ class USOLSettingsSubsystem;
  * enabled action (the select cue, the close drawn from the cached state), strength 0 (whole at once, no glow, flat
  * arcs, the selection and the cues still work), strength 2, a cancel and a release on a disabled sector (no select
  * cue), and a release on Jump To (the select cue on the release frame, though the warp hides the HUD), with
- * screenshots mid-open, hovered, closing and at strengths 0 and 2. The other menu checks of section 12 are stubs logged
- * as "HoloMenu STUB" until their parts land. Each check logs "HoloMenu CHECK <label> PASS|FAIL: <detail>", then a
- * "HoloMenu SUMMARY" line; then it quits. Screenshots go to Saved/Screenshots/<platform>/HoloMenu_<name>.png.
+ * screenshots mid-open, hovered, closing and at strengths 0 and 2. Part 42e adds the Ctrl+O Overlay Menu (section 12
+ * steps 1-4, its part of step 9, and step 11) with real injected input: Ctrl+O (the open cue, the draw-in mid-way, then
+ * the full outline, tab markers and dividers), the mouse onto a row and Down (hover cues, brackets and pointer), the
+ * mouse onto a tab (brackets only), a row toggled and back, PageDown / PageUp and the cycle key (a select cue each),
+ * Esc (input back in the same frame, the close plays, the widget gone after CLOSE_S), a reopen mid-close (reversed),
+ * strength 0 (whole and flat at once, still usable, the cues still asked, closed at once) and 2, and the Overlay list
+ * embedded in Settings (no frame, D17), with screenshots mid-open, hovered row and tab, closing and at strengths 0 and
+ * 2. Part 42f adds the F3 speed panel (section 12 step 6 and its part of step 9) with injected F3, keys and a wheel
+ * notch: the open cue, the draw-in mid-way, then the full outline with the stepped divider and the centre-tick mark on
+ * the highlighted digit, a digit step (a select cue) and a highlight move (a hover cue), Tab and the wheel into the
+ * list (hover cues, the row mark with its pointer), the wheel over the list (the row scrolled out of view: no mark, no
+ * cue) and Enter (a select cue, the row's speed applied), Esc (input back in the same frame, the close plays), a
+ * reopen mid-close (reversed), strength 0 (whole and flat at once, a digit step still works, the cues still asked,
+ * closed at once) and 2, with screenshots mid-open, open, digit moved, row, row scrolled away, closing and at
+ * strengths 0 and 2. The other menu checks of section 12 are stubs logged as "HoloMenu STUB" until their parts land.
+ * Each check logs "HoloMenu CHECK <label> PASS|FAIL: <detail>", then a "HoloMenu SUMMARY" line; then it quits.
+ * Screenshots go to Saved/Screenshots/<platform>/HoloMenu_<name>.png.
  */
 class SOLTEST_API FSOLHoloMenuSmoke
 {
@@ -75,14 +93,63 @@ private:
     // Takes the frame preview off the viewport
     void RemoveFramePreview();
 
-    // Returns whether the preview's last drawn frame equals a fresh BuildFrame of the same inputs (the reuse path)
-    bool IsFrameOutputFresh();
+    // Returns whether a frame's (null: the preview's) last drawn frame equals a fresh BuildFrame of the same inputs
+    bool IsFrameOutputFresh(const SSOLHoloFrame* frame = nullptr);
 
-    // Counts the preview's last drawn shapes of one part
-    int32 CountPart(ESOLHoloPart part) const;
+    // Counts a frame's (null: the preview's) last drawn shapes of one part
+    int32 CountPart(ESOLHoloPart part, const SSOLHoloFrame* frame = nullptr) const;
 
-    // Returns whether every line and dot of the preview's last frame has this glow pad
-    bool AllLinePads(float padPx) const;
+    // Returns whether every line and dot of a frame's (null: the preview's) last frame has this glow pad
+    bool AllLinePads(float padPx, const SSOLHoloFrame* frame = nullptr) const;
+
+    // Returns the preview's Slate frame, or null
+    const SSOLHoloFrame* GetPreviewFrame() const;
+
+    // Returns the Overlay Menu's Slate frame, or null
+    static SSOLHoloFrame* GetOverlayFrame(const ASOLShipPawn& pawn);
+
+    // Returns how many outline pieces a frame draws at its full draw-in for its last pixel layout
+    static int32 FullOutlineCount(const SSOLHoloFrame& frame);
+
+    // Sends a key press and release through Slate (to the focused widget), with modifiers
+    static void SlateKey(const FKey& key, const FModifierKeysState& modifiers);
+
+    // Moves the mouse through Slate to a screen point (the OS cursor too)
+    static void SlateMouseMove(const FVector2D& at);
+
+    // Presses a key with a modifier held through the player controller (game input); both released next frame
+    void TapGameChord(const FKey& modifier, const FKey& key);
+
+    // Runs the Overlay Menu select step's timed key presses (row toggle and back, PageDown, PageUp, cycle key)
+    void TickOverlaySelect(ASOLShipPawn& pawn, double elapsedS);
+
+    // Runs a reverse step (the Overlay Menu's, or the F3 panel's when bIsSpeed): open, Esc once Open, the open key
+    // mid-close, Esc once Open again
+    bool TickReverse(ASOLShipPawn& pawn, bool bIsSpeed, double elapsedS);
+
+    // Section 12 step 11: the Overlay list embedded in a Settings page has no frame widget and keeps its look
+    void CheckEmbeddedOverlay();
+
+    // Runs the F3 digit step's (Up, Left) or list step's (Tab, wheel, row mark read, Enter) presses; true once done
+    bool TickSpeedKeys(ASOLShipPawn& pawn, bool bIsList, double elapsedS);
+
+    // Returns the speed-panel binding's key from the applied settings (F3 by default)
+    FKey GetSpeedPanelKey() const;
+
+    // Returns the speed panel's Slate frame, or null
+    static SSOLHoloFrame* GetSpeedFrame(const ASOLShipPawn& pawn);
+
+    // Presses a game key through the player controller (game input); it is released next frame
+    void TapGameKey(const FKey& key);
+
+    // Turns the mouse wheel through Slate at the parked mouse point
+    static void SlateWheel(ASOLShipPawn& pawn, float delta);
+
+    // Turns the mouse wheel through Slate at a screen point
+    static void SlateWheelAt(const FVector2D& at, float delta);
+
+    // Moves the mouse to the right of the view, away from the Overlay Menu
+    static void ParkMouse(ASOLShipPawn& pawn);
 
     // Returns the menu material's scalar parameter, or -1 when there is no material
     float GetMenuParam(const TCHAR* name) const;
@@ -151,6 +218,37 @@ private:
     float mMidOpenFraction = -1.0f;                         // Frame fraction caught mid-open
     float mFirstFlatFraction = -1.0f;                       // Frame fraction of the first strength-0 paint
     bool mIsMidOpenShot = false;
+    TArray<FKey> mPendingReleases;                          // Game keys released at the next update
+    double mOverlayOpenS = -1.0;                            // Step time the Overlay Menu opened, or not yet
+    float mMidOpenOpacity = -1.0f;                          // Overlay content opacity caught mid-open
+    int32 mSubStep = 0;                                     // A multi-action step's next action
+    int32 mOverlayRow = INDEX_NONE;                         // The row the select step toggles
+    FString mRowTextBefore;                                 // Its text before, after the first and the second toggle
+    FString mRowTextToggled;
+    int32 mViewedAfterPageDown = INDEX_NONE;                // Viewed profile after PageDown
+    bool mIsInputBackAtEsc = false;                         // Esc: input back, closing, hit-test invisible, unfocused
+    FString mEscDetail;
+    bool mIsMidCloseInViewport = false;                     // Mid-close: still drawn, its opacity
+    float mMidCloseOpacity = -1.0f;
+    float mReverseProgress = -1.0f;                         // Reverse step: progress the reopen started from,
+    ESOLHoloMenuPhase mReversePhase = ESOLHoloMenuPhase::Closed;   // the phase then,
+    bool mIsReverseInViewport = false;                      // and the widget still on the viewport
+    double mSubStepS = 0.0;                                 // Step time of the last sub-step action
+    bool mIsFlatClosedAtOnce = false;                       // Strength-0 Esc: removed in the same frame
+    double mSpeedCapRestoreMps = 0.0;                       // F3 steps: the cap before them (restored after),
+    double mCapBeforeMps = -1.0;                            // the cap before a digit step and after it,
+    double mCapAfterStepMps = -1.0;
+    int32 mSpeedItemBefore = INDEX_NONE;                    // the highlighted item and list row at a step's start,
+    int32 mSpeedListBefore = INDEX_NONE;
+    int32 mSpeedRowHovers = -1;                             // and the list step's row mark: hover cue requests,
+    int32 mSpeedRowPieces = -1;                             // hover pieces, dots and whether it is on the next row
+    int32 mSpeedRowDots = -1;
+    bool mIsSpeedRowItem = false;
+    int32 mSpeedScrolledHovers = -1;                        // The list scrolled under the selected row: hover cue
+    int32 mSpeedScrolledPieces = -1;                        // requests, hover pieces, dots, the scroll offset and
+    int32 mSpeedScrolledDots = -1;                          // whether the selection and hovered item were kept
+    float mSpeedScrollOffset = -1.0f;
+    bool mIsSpeedScrolledItem = false;
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
 };

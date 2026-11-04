@@ -35,7 +35,8 @@ void USOLHoloFrameWidget::SetLayout(const FSOLHoloFrameSpec& localSpec)
 
 //////////////////////////////////////////////////////////////////////////
 // Sets the hovered item and requests the hover cue when one is due
-void USOLHoloFrameWidget::SetHoveredItem(const int32 item, const FBox2f& localRect, const ESOLHoloHoverMark mark)
+void USOLHoloFrameWidget::SetHoveredItem(const int32 item, const FBox2f& localRect, const ESOLHoloHoverMark mark,
+    const bool bAllowCue)
 {
     if (!mFrame.IsValid())
     {
@@ -43,7 +44,7 @@ void USOLHoloFrameWidget::SetHoveredItem(const int32 item, const FBox2f& localRe
     }
     const double nowS = FPlatformTime::Seconds();
     USOLHoloMenuSubsystem* subsystem = mSubsystem.Get();
-    if (mFrame->SetHoveredItem(item, localRect, mark, nowS) && subsystem != nullptr)
+    if (mFrame->SetHoveredItem(item, localRect, mark, nowS, bAllowCue) && subsystem != nullptr)
     {
         subsystem->PlayCue(ESOLHoloCue::Hover, nowS);
     }
@@ -72,6 +73,16 @@ bool USOLHoloFrameWidget::BeginOpen()
 bool USOLHoloFrameWidget::BeginClose()
 {
     return mFrame.IsValid() && mFrame->BeginClose(FPlatformTime::Seconds());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drops the anim to Closed at once
+void USOLHoloFrameWidget::ResetClosed()
+{
+    if (mFrame.IsValid())
+    {
+        mFrame->ResetClosed();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
