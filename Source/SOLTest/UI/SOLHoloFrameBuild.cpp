@@ -95,7 +95,6 @@ namespace
         }
     };
 
-
     //////////////////////////////////////////////////////////////////////////
     // Returns a rect grown by padX / padY on every side (negative values shrink it)
     FBox2f HoloBuildGrow(const FBox2f& rect, const float padX, const float padY)

@@ -34,6 +34,7 @@ Built (see [Docs/Plans/STATUS.md](Docs/Plans/STATUS.md) for tickets and the road
 - Surface-lock, pulse guns, droppable targets, destruction and debris.
 - A scale demo with up to 1M NPC ships (Mass), with a Full / reduced-detail budget.
 - A hologram HUD on a batched glow-shape renderer with a 3D radar, menus, settings, rebindable keys, and in-game Controls / Info / About screens.
+- Hologram in-flight menus (radial, Ctrl+O Overlay Menu, F3 speed panel, map list menu, info / target / speed / date cards) with draw-in and close animations, hover glow, sound cues and their own effects-strength slider.
 
 Placeholder or not built yet:
 
@@ -132,6 +133,18 @@ Scripted smoke runs launch the game with `-SOLSmoke*` flags (flight, input, HUD,
 
 ## Gallery
 
+![Hologram radial menu](Docs/Images/42-radial-hologram.png)
+
+The hologram radial menu (issue #42) on a moon's icon: the rim arcs draw in, and the hovered Info sector glows and flickers briefly.
+
+![Hologram Overlay Menu](Docs/Images/42-overlay-menu-hologram.png)
+
+The Ctrl+O Overlay Menu as a hologram: a stepped broken-line glow frame over a faint dark tint, with brackets and a pointer on the highlighted row.
+
+![Hologram cards](Docs/Images/42-hologram-cards.png)
+
+The four frameless hologram cards: date and anchor (top left), target and info (top right), speed (bottom left), each with glowing corner ticks and a faint tint.
+
 ![Chase Down in the radial menu](Docs/Images/chase-down-radial-menu.png)
 
 Chase Down in the radial menu: the autopilot runs down a dropped target with G bursts.
@@ -177,9 +190,9 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 |---|---|
 | Work time (wall-clock) | 78.1 h |
 | Time spent answering questions | 7.2 h |
-| Tokens | 4,223.8M |
-| Notional API price | $1,648 |
-| Subagents dispatched | 337 |
+| Tokens | 4,274.1M |
+| Notional API price | $1,663 |
+| Subagents dispatched | 339 |
 <!-- METRICS:END -->
 
 ## Documentation map

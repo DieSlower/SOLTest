@@ -74,8 +74,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_STEP_BACK = TEXT("<");
     inline constexpr const TCHAR* SETTINGS_STEP_FORWARD = TEXT(">");
     inline constexpr const TCHAR* SETTINGS_KEY_WAITING = TEXT("Press a key...");
-    inline constexpr const TCHAR* SETTINGS_HINT = TEXT("Audio, mouse and HUD changes preview at once; graphics and key "
-        "bindings take effect on Apply. Leaving this page discards changes that were not applied.");
+    inline constexpr const TCHAR* SETTINGS_HINT = TEXT("Audio, mouse, HUD and hologram effect changes preview at once; "
+        "graphics and key bindings take effect on Apply. Leaving this page discards changes that were not applied.");
     inline constexpr const TCHAR* SETTINGS_STATUS_CLEAN = TEXT("All changes applied.");
     inline constexpr const TCHAR* SETTINGS_STATUS_DIRTY = TEXT("Unapplied changes: Apply keeps them, Revert discards "
         "them.");
@@ -405,8 +405,10 @@ namespace SOLMenuText
             "Shift+O does nothing). The Overlay Menu is a hologram: its frame draws in and out in a fifth of a "
             "second (your ship has the keys back as soon as you close it), the highlighted row or the tab under the "
             "mouse glows and flickers, and it plays a sound when it opens, on each new highlight and on each toggle, "
-            "tab switch or profile cycle (Settings Effects volume); at Hologram menu effects 0 it is a plain flat "
-            "panel that shows at once. The speed panel ({SpeedPanel}) is the same kind of hologram: the highlighted "
+            "tab switch or profile cycle (Settings Effects volume). Up / Down keep the highlight while the mouse "
+            "rests on another row, and only moving the mouse takes it back. At Hologram menu effects 0 it is a "
+            "plain flat panel that shows at once and still plays the sounds. The speed panel ({SpeedPanel}) is "
+            "the same kind of hologram: the highlighted "
             "digit, unit or body row glows and flickers, and it plays a sound when it opens, on each highlight move "
             "and on each cap it applies. {OverlayMaster} turns on or off, together, everything checked in the active "
             "profile. "
@@ -425,7 +427,7 @@ namespace SOLMenuText
         TEXT("Interaction menus: with mouse steering off, hovering an overlay icon highlights it. Press {Fire} on "
             "it, drag toward an action and release to choose it; releasing in the centre (or Esc) cancels, and "
             "{Fire} away from icons still fires. On the map, a right click on a body opens the same actions as a list. "
-            "Target selects it; Info shows its card (top right) for a few seconds, a hologram card that draws in "
+            "Target selects it; Info shows its card (top right) for ten seconds, a hologram card that draws in "
             "from its corners with a sound and fades away; Move To flies the autopilot there "
             "and stops; Follow / Orbit keeps station at the autopilot's safe distance on your side until you take "
             "control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
@@ -433,10 +435,11 @@ namespace SOLMenuText
             "ship, Communications and Trade are not available yet). The menu is a hologram: its ring draws in and "
             "out in a fifth of a second, the highlighted action glows and flickers, and it plays a sound when it "
             "opens, on each new highlight and when an action is chosen (Settings Effects volume). The Hologram menu "
-            "effects slider sets how strong the look is; at 0 it is a plain flat ring that shows at once. The map's "
-            "list is a hologram too, framed like the Overlay Menu: it draws in and out in a fifth of a second (the "
-            "map has your input back as soon as you choose or close), the highlighted row glows and flickers, and it "
-            "plays the same sounds; at 0 it is a plain flat panel that shows at once."),
+            "effects slider sets how strong the look is; at 0 it is a plain flat ring that shows at once and still "
+            "plays the sounds. The map's list is a hologram too, framed like the Overlay Menu: it draws in and out "
+            "in a fifth of a second (the map has your input back as soon as you choose a row, press Esc or click "
+            "outside the list), the highlighted row glows and flickers, and it plays the same sounds; at 0 it is a "
+            "plain flat panel that shows at once."),
         TEXT("Chase Down (from a body's or a dropped target's menu) chases it in bursts: the autopilot pulls above "
             "its usual gentle G limit, up to what you can survive (the full pull needs boost, which the chase uses "
             "only while your boost switch ({Boost}) is on), then cools at the sustained limit while the G meter "
@@ -463,11 +466,13 @@ namespace SOLMenuText
             "and a line from each body and waypoint to that plane (orange when it lies below it)."),
         TEXT("The flight HUD is a hologram: thin glowing blue lines and text on soft, borderless dark panels. Now "
             "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
-            "range rings pulse like sonar; the HUD hologram effects slider in Settings sets how strong that is (0 "
-            "turns it off). The date and anchor (top left), speed and G (bottom left), target and info blocks (top "
-            "right) are hologram cards: glowing corner marks on a faint dark tint with a slow scanline; the target "
-            "and info cards draw in and fade out. The Hologram menu effects slider sets how strong the cards, the "
-            "menus and the mouse pointer look (0: plain flat panels). The "
+            "range rings pulse like sonar; the HUD hologram effects slider in Settings sets how strong those HUD "
+            "effects are (0 turns them off). The date and anchor (top left), speed and G (bottom left), target (top "
+            "right) and info (top right) blocks are hologram cards: glowing corner marks on a faint dark tint with "
+            "a slow scanline. The date and speed cards are always there, the target card draws in when you select "
+            "a target and fades out when you clear it (switching to another target only changes its text), and "
+            "the info card draws in and fades out. The Hologram menu effects slider, not the HUD one, sets how "
+            "strong the cards, the menus and the mouse pointer look (0: plain flat panels, fully usable). The "
             "radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
             "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
             "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "

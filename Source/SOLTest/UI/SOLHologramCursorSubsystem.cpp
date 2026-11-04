@@ -66,7 +66,8 @@ int32 SSOLHologramCursor::OnPaint(const FPaintArgs& /*args*/, const FGeometry& a
         return layerId;
     }
 
-    // The hologram menu effects slider (row jitter, decision D19) through the HUD material's strength parameter; pushed only when it changes
+    // The hologram menu effects slider (row jitter, decision D19) through the HUD material's strength parameter;
+    // pushed only when it changes
     const USOLSettingsSubsystem* settings = mSettings.Get();
     const float strength = settings != nullptr ? settings->GetLiveValues().HoloMenuEffects
         : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;

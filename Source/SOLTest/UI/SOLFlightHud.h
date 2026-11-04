@@ -174,11 +174,16 @@ public:
     // Returns the hologram radial menu's anim and the state it last drew (kept while it closes; SDD 42; verification)
     const FSOLHoloRadialState& GetRadialHolo() const { return mRadialHolo; }
 
-    // Returns the radial's look, strength, arc glow pad and highlighted rim intensity of the last frame (-1: none
-    // drawn; SDD 42; verification)
+    // Returns the look the radial was drawn at last frame (SDD 42; verification)
     const FSOLHoloMenuLook& GetLastRadialLook() const { return mLastRadialLook; }
+
+    // Returns the hologram menu strength the radial was drawn at last frame (-1: none drawn; verification)
     float GetLastRadialStrength() const { return mLastRadialStrength; }
+
+    // Returns the glow pad of the radial's arcs last frame (-1: none drawn; verification)
     float GetLastRadialPadPx() const { return mLastRadialPadPx; }
+
+    // Returns the highlighted sector's rim intensity last frame (-1: none drawn; verification)
     float GetLastRadialHighlightIntensity() const { return mLastRadialHighlightIntensity; }
 
     // Returns the NPC ship contacts the radar drew last frame (Ships on Radar; verification)
@@ -459,10 +464,6 @@ private:
     // Returns the batch menu shapes go to this frame, stamping the menu layer on first use: the menu layer's with the
     // menu material, else the HUD's own batch (no menu material), else nullptr (sol.HudRenderer 0: Canvas)
     FSOLHudShapeBatch* GetMenuBatch();
-
-    // Draws a menu glow line on the menu layer (else as GlowLine: HUD batch or Canvas), its glow pad following the
-    // hologram menu strength (SOLHoloFrameBuild::LinePad: thin and flat at 0, D18)
-    void MenuLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, float intensity, float thickness);
 
     // Draws the text buffer as one menu line on the menu layer, so it paints above the menu's backing and fill (else as
     // DrawBuffer: the HUD layer's text or Canvas); returns its screen rectangle

@@ -21,8 +21,8 @@ class USOLTargetingSubsystem;
 
 /**
  * Verification-only cost capture of the in-flight menus and cards (-SOLSmokeHoloMenuProfile, SDD 42 section 11, D14),
- * in a standalone -game run at 1280x720. The scene is fixed: the sim date is pinned (PROFILE_SIM_JD in the .cpp) and the
- * ship is placed at the default start above Earth's Sun-facing side for that date, at rest in its frame, facing Earth;
+ * in a standalone -game run at 1280x720. The scene is fixed: the sim date is pinned (PROFILE_SIM_JD in the .cpp) and
+ * the ship is placed at the default start above Earth's Sun-facing side for that date, at rest in its frame, facing Earth;
  * the menus and cards work on one named body (PROFILE_BODY_NAME), whose icon must be on screen. It runs five passes:
  * P0 flight with no menu open (no target, no info card), then, with the body targeted and its info card shown, P1 the
  * radial menu held open over the body's icon, P2 the Ctrl+O Overlay Menu, P3 the F3 speed panel and P4 the map's list

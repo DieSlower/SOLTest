@@ -29,8 +29,8 @@ class USOLSettingsSubsystem;
  * Verification-only script of the hologram menu kit and menus (-SOLSmokeHoloMenu, SDD 42 section 12), on the smoke
  * settings slot. Part 42c checks: the menu subsystem and its material (strength and view size pushed), the three cue
  * assets (one request of each cue moves the request, accepted and played counters; a repeat inside the rate limit is
- * not accepted), the HUD's menu layer (exists with the menu material, empty and unstamped with no menu open, the HUD
- * layer still drawing), a frame preview (a USOLHoloFrameWidget placed on the viewport with an Overlay-Menu-like
+ * not accepted), the HUD's menu layer (exists with the menu material; with no menu open it holds only the always-on
+ * speed and date-and-anchor cards since 42g; the HUD layer still drawing), a frame preview (a USOLHoloFrameWidget placed on the viewport with an Overlay-Menu-like
  * layout: open cue, mid-open draw-in, the full frame once Open with its backing, the hover cue and mark, the reused
  * build equal to a fresh one, strength 0 drawn whole and flat at once, strength 2, the close) with screenshots at
  * strengths 1, 0 and 2, and the cursor's strength following HoloMenuEffects, not the HUD slider (D19). Part 42d adds

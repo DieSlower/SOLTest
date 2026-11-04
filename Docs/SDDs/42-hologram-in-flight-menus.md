@@ -208,7 +208,7 @@ struct FSOLHoloFrameSpec { FBox2f Rect; float TitleStepWidthPx = 0; float UiScal
 | `int32 BuildCard(const FBox2f& contentRect, float uiScale, const FSOLHoloMenuLook& look, float s, FSOLHoloFrameOutput& out)` | The frameless card (D15). Card rect = `contentRect` grown by `HUD_PANEL_PADDING_PX * u` (`PanelAroundRect`, so the cards keep today's panel size; proposed). Same visibility, colour, pad and "no zero intensity" rules as `BuildFrame`. Order: Fill (as `BuildFrame`, over the card rect); 8 CardTick = `CardCornerTicks(cardRect, CARD_TICK_PX * u, look.FrameFraction)` at `FRAME_INTENSITY`; Sweep across the card rect. No Outline, GapDot, Ruler, Accent, divider, tab or hover shape ever. Backing: the card rect, `CornerPx = HUD_PANEL_CORNER_PX * u`, `FeatherPx = HUD_PANEL_BACKING_FEATHER_PX * u` (as `AddHoloPanel` today), `Alpha = look.BackdropAlpha`. At most `CARD_MAX_SHAPES` (10) |
 | `int32 AppendToBatch(const FSOLHoloFrameOutput& in, FSOLHudShapeBatch& batch)` | Adds the shapes in order: Line by `AddLine(A, B, HalfWidthPx, Color, Intensity, PadPx)`, Panel by `AddPanel(A, B, Color, Intensity, Fill, PadPx)`. Does not reset the batch. Returns how many the batch took (the rest are its dropped count). The kind decoded from each new quad (`DecodeKind` of `TexCoords[3]`) matches `Kind`. After `batch.Initialize(FRAME_MAX_SHAPES)`, 200 rounds of `Reset`, `BuildFrame` and `AppendToBatch` leave `GetVertices()` and `GetIndices()` allocated sizes unchanged and `GetDroppedCount()` 0 |
 | `float BackingOpacity(float alpha)` | `clamp(alpha / HUD_PANEL_BACKING_COLOR.A, 0, 1)`, NaN 0: the `opacity` for `SSOLHudShapeLayer::AddBacking` / `PaintBacking` (so `FLAT_PANEL_ALPHA` gives 1). The menus pass `BACKDROP_TINT` as the backing's colour (its RGB; the alpha stays `HUD_PANEL_BACKING_COLOR.A * opacity`) |
-| `float LinePad(float s)` | `lerp(FRAME_FLAT_PAD_PX, HUD_GLOW_PAD_PX, GlowScale(s))`: the pad of every frame / card line and dot and of the HUD's `MenuLine` (42c review); `FRAME_FLAT_PAD_PX` at `s <= 0` and NaN |
+| `float LinePad(float s)` | `lerp(FRAME_FLAT_PAD_PX, HUD_GLOW_PAD_PX, GlowScale(s))`: the pad of every frame / card line and dot and of the card content lines between `BeginCardContent` and `EndCardContent` (the HUD's `MenuLine` helper was removed at the 42i review, unused since 42g); `FRAME_FLAT_PAD_PX` at `s <= 0` and NaN |
 | `float SOLHoloMenu::FrameScale(const FBox2f& rect, float uiScale)` (added to `SOLHoloMenuMath`) | The effective scale `k` of section 6.3; 0 for an invalid rect. R of section 6.4 at `uiScale` 1 / 2: 1 / 2; `(0,0)-(17,32)`: 0.5 |
 | `bool SOLHoloMenu::IsValidRect(const FBox2f&)`, `float SOLHoloMenu::UiScale(float)` | The section 6.3 rect rule and `u` rule, exported so the builders use the geometry's own checks (42c review) |
 
@@ -659,7 +659,7 @@ valid tab rects, `SelectedTab` 4, a broken divider with a step) and with `Rect (
 | `MIN_PIECE_PX` | 1e-3 | The section 6.3 minimum piece length: a geometry piece shorter than this is never written (42a review) |
 | `UI_SCALE_MIN` / `UI_SCALE_MAX` | 0.1 / 16 | Section 6.3 geometry clamps a valid `uiScale` to this range (after NaN, infinite or `<= 0` reads 1), so no input can stall `DashedDivider` or give infinite coordinates (42a review) |
 | `MENU_LAYER_MAX_SHAPES` | 512 | Shape capacity of the HUD's menu layer (the HUD layer reserves `HUD_MAX_SHAPES` 4096; the menus and cards need about 100; 42c review) |
-| `BACKDROP_TINT` | (0.007, 0.045, 0.165) linear | RGB of the frames' and cards' dark tint: their backing box (alpha `BackdropAlpha`) and their additive fill. Tuned at the 42c review so a frame's interior over black at strength 1 matches the approved sample's, about sRGB (3, 9, 17); it was the HUD backing colour plus a Primary fill, which read bluer and brighter |
+| `BACKDROP_TINT` | (0.007, 0.028, 0.07) linear (the code value since 42c; the SDD row was corrected at the 42i review) | RGB of the frames' and cards' dark tint: their backing box (alpha `BackdropAlpha`) and their additive fill. Tuned at the 42c review so a frame's interior over black at strength 1 matches the approved sample's, about sRGB (3, 9, 17); it was the HUD backing colour plus a Primary fill, which read bluer and brighter |
 
 **Option (c) frame (D20).** All lengths in px at a 720 px canvas, x UI scale (as `CARD_TICK_PX`), measured from the
 approved samples (`overlay-c-tint.png`, `speed-c-tint.png`); proposed, tuned from screenshots.
@@ -859,7 +859,7 @@ settings test is walked to confirm it still states the current contract.
   baseline is the same scene and passes at the commit before 42c (the menus as they are today), captured once and
   written into the SDD amendment; the final numbers are captured in 42i.
 - Event-driven: a closed menu costs nothing (the HUD's menu layer draws nothing and is not stamped; a closed UMG
-  frame is removed). The UMG `NativeTick` returns at once when the menu is Open and idle; the idle sweep and hover
+  frame is removed). The UMG `NativeTick` does little when the menu is Open and idle (the F3 panel still compares its list scroll offset and local-per-pixel scale each tick, 42f review fixes); the idle sweep and hover
   glow are evaluated in the frame's paint from `nowS` (a few float ops), no timers.
 - The menu MID parameters are pushed only when they change (strength, view size, the `sol.HudComposite` switch), as
   the HUD does, once per frame for every user (`UpdateMaterialForFrame`).
@@ -968,6 +968,32 @@ line:
 
 The numbers are machine-specific: on another machine, re-measure at the 42c parent commit and replace the constants.
 
+### 11.2 Final measurement (42i amendment)
+
+**Conditions.** As section 11.1, at `d96c36a` plus the 42i review nits (no drawing change), 2026-11-04, three runs back
+to back with no other work on the machine (logs kept as `prof42i_run1-3.log` in the session scratchpad). Every run
+logged all five passes PASS and 12/12 script checks. Medians of the three runs (ms per frame; deltas against the
+stored baseline):
+
+| Pass | CPU total | dCPU | GPU UI | dGPU | UI draws (baseline) |
+|---|---|---|---|---|---|
+| P0 flight | 0.279 | +0.043 | 0.080 | +0.002 | 45 (41) |
+| P1 radial | 0.326 | +0.041 | 0.131 | +0.024 | 57 (53) |
+| P2 Overlay Menu | 0.452 | +0.050 | 0.160 | +0.046 | 66 (57) |
+| P3 F3 panel | 0.475 | +0.047 | 0.166 | +0.039 | 69 (59) |
+| P4 map list | 1.006 | +0.079 | 0.118 | +0.039 | 60 (51) |
+
+- **Budget (D14) met** in every pass on the median and in each of the three runs (worst single delta: P4 dCPU
+  +0.085 ms). The P4 margin is the thinnest: about 0.75 ms of its CPU is the map's own overlays in the HUD time, and
+  two earlier single runs taken while other work ran on the machine read P4 dCPU +0.118 and +0.145 ms (FAIL) with the
+  same draw counts and GPU times, and frame times 10-18 % above the baseline's: machine drift against a baseline from
+  another session (TECH_DEBT: single-run verdict, no median).
+- **Always-on cost.** With no menu open (P0) the two always-on cards on the menu layer add 4 UI draws (41 -> 45:
+  the layer's custom-vertex draw and the card backings) and about +0.03-0.04 ms CPU, GPU unchanged; that part is in
+  every pass.
+- **No outline cache inside the geometry functions is needed** (plan 42a / 42c note): the open frames' CPU cost stays
+  inside the budget with `SSOLHoloFrame` reusing its build while Open. The column divider stays one quad per dash.
+
 ## 12. Verification
 
 - **Unit tests:** section 6.4 (`SOLTest.HoloMenu.*`) and section 9.5, written from the contracts by a separate opus
@@ -1005,7 +1031,7 @@ The numbers are machine-specific: on another machine, re-measure at the 42c pare
 
 ## 13. Questions for the user
 
-All but Q13 answered (Q1-Q12 on 2026-11-03, Q14 and Q15 on 2026-11-04; kept here for the record; the decisions are D7-D21):
+All but Q13 and Q16 answered (Q1-Q12 on 2026-11-03, Q14 and Q15 on 2026-11-04; kept here for the record; the decisions are D7-D21):
 
 | # | Question | Answer |
 |---|---|---|
@@ -1026,8 +1052,9 @@ All but Q13 answered (Q1-Q12 on 2026-11-03, Q14 and Q15 on 2026-11-04; kept here
 | Q13 | **Hover glow on a highlighted disabled radial sector** (raised by the 42d review): today the rim takes the disabled intensity (0.22) plus the full hover glow (up to 0.9), so it peaks at 1.12, brighter than an enabled highlighted sector's rim without glow. Options: **(a, recommended)** no hover glow on disabled sectors; (b) the glow scaled by the disabled dimming; (c) full glow, as now | **Open** (asked 2026-11-04). The code keeps (c) behind `SOL::HoloMenu::RADIAL_DISABLED_HOVER_GLOW_SCALE` (1 = as now), so the answer is a one-line change |
 | Q14 | **Overlay Menu: ignore zero-delta synthetic mouse moves** so the keyboard highlight stays until the mouse really moves (a D5 input change, raised by the 42e build and review). Before 42e a resting mouse over a row took the highlight back after a key move, because Slate also sends mouse moves with no movement; the 42e code filters those. The filter is meant to gate only the row-highlight takeover; the tab hover follows every move, so the tab brackets stay under the cursor when the panel re-centres (42e review finding 2). Options: **(a, recommended)** keep the filter: a mouse move with zero delta does not take the row highlight; (b) revert to today's input (every mouse move, real or not, takes the highlight) | **(a) keep the filter** (answered 2026-11-04): the 42e code stays |
 | Q15 | **Target card on a target change** (raised by the 42g review): cycling targets (R / F) replays the target card's draw-in on every change, so fast cycling keeps the card mid draw-in. Options: **(a, recommended)** keep the card open and swap its text, drawing in only from "no target"; (b) replay the draw-in on every target change, as then | **(a)** (answered 2026-11-04): the card stays open on a target change and only swaps its text; it draws in only when a target appears from none and closes only when cleared (`DrawTarget` no longer restarts the anim on a name change; smoke check `c-target-cycle`; section 11 42g amendment) |
+| Q16 | **Text glow at strength 0** (raised by the 42i final review): D18 says "no glow" at strength 0, but the text of the HUD-drawn menus and cards (radial labels and title, card lines) keeps its glow outline at strength 0 (a 42g amendment choice for readability; it still follows `sol.HudTextGlow`). Options: **(a, recommended)** keep the text glow at strength 0; (b) drop the text glow at strength 0 | **Open** (raised 2026-11-04). The code keeps (a) |
 
-Still open: **Q13** (in-game samples of the three options for the user: [`Docs/Images/hologram-radial-glow-samples/`](../Images/hologram-radial-glow-samples/)).
+Still open: **Q13** and **Q16**. Q13 has in-game samples of the three options for the user in [`Docs/Images/hologram-radial-glow-samples/`](../Images/hologram-radial-glow-samples/) (`radial-glow-compare.png` side by side; rims 0.22, 0.42 and 1.12 against an enabled hovered sector's 1.90).
 
 ## 14. Out of scope
 

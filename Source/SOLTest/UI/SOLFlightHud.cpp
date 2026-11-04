@@ -561,23 +561,6 @@ FSOLHudShapeBatch* ASOLFlightHud::GetMenuBatch()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws a menu glow line on the menu layer, else as GlowLine (HUD batch or Canvas)
-void ASOLFlightHud::MenuLine(const FVector2D& a, const FVector2D& b, const FLinearColor& color, const float intensity,
-    const float thickness)
-{
-    FSOLHudShapeBatch* batch = GetMenuBatch();
-    if (batch == nullptr)
-    {
-        GlowLine(a, b, color, intensity, thickness);
-        return;
-    }
-    // The glow pad follows the hologram menu strength: thin and flat at 0 (D18)
-    const float halfWidth = FMath::Max(SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, 0.5f * (thickness - 1.0f));
-    const float strength = HoloMenu != nullptr ? HoloMenu->GetStrength() : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
-    batch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, SOLHoloFrameBuild::LinePad(strength));
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Draws a menu text line on the menu layer, above its backing (else as DrawBuffer: HUD layer or Canvas); returns its
 // rectangle
 FBox2D ASOLFlightHud::MenuText(const ESOLHudLine line, const FLinearColor& color, const float x, const float y,

@@ -171,20 +171,32 @@ Remaining steps (after 42c, which loads the cues):
 
 ### 42i: docs, profiling, screenshots and close (sonnet, medium; profiling by opus/high)
 
-1. [ ] Profile (SDD 11, D14): `-SOLSmokeHoloMenuProfile`, every pass with all the menus and cards that can be open
+1. [x] Profile (SDD 11, D14; done 2026-11-04, SDD 11.2: three runs, all passes PASS, medians dCPU +0.041 to +0.079
+   ms and dGPU +0.002 to +0.046 ms): `-SOLSmokeHoloMenuProfile`, every pass with all the menus and cards that can be open
    together; numbers into an SDD 42 amendment next to the 42a baseline; each pass under **0.1 ms extra CPU and
    0.1 ms extra GPU**, or the part is not done.
    Confirm here that no outline cache inside the geometry functions is needed (closed at the 42c review, about 6 us
    per frame for 6 frames). If the GPU pass is tight, the column divider can be drawn as 2 dashed-line shapes instead
    of one quad per dash (a section 4.6 contract change; 42c review note).
-2. [ ] `Docs/GAME_MECHANICS.md`, the in-game Controls / Info / About texts, `Docs/ARCHITECTURE.md` (SDD 10). The
-   GAME_MECHANICS / info-screen audit by a sonnet/medium subagent.
-3. [ ] README: 2-3 screenshots into `Docs/Images/` and the gallery (SDD 10).
-4. [ ] Full suite; `-SOLSmokeHoloMenu` at 1280x720 and 1000x800; the regression smokes of SDD 12; PIE smoke via
-   unreal-mcp if the editor is open (else noted here).
-5. [ ] Final adversarial review of the whole ticket (opus/xhigh); fixes; tech debt recorded.
-6. [ ] `STATUS.md`: #42 to Done; `graphify update .`; metrics; commit `Issue #42: Part 42i - docs, profile and
-   screenshots`; push.
+2. [x] `Docs/GAME_MECHANICS.md`, the in-game Controls / Info / About texts, `Docs/ARCHITECTURE.md` (SDD 10). The
+   GAME_MECHANICS / info-screen audit by a sonnet/medium subagent (2026-11-04: tab hover does not switch the profile,
+   the tint alpha curve, the Info renew rule, the cursor row, a `SOL::HoloMenu` tunables table; in-game texts for Q14,
+   Q15, the map list close, the HUD vs hologram menu sliders, cues at strength 0).
+3. [x] README: 3 screenshots (`42-radial-hologram.png`, `42-overlay-menu-hologram.png`, `42-hologram-cards.png`) and
+   a features line.
+4. [x] Full suite 1323/1323; `-SOLSmokeHoloMenu` 86/86 at 1280x720 and 1000x800; regression smokes (Hud, Interact,
+   Overlay, Map, MapPick, Chase green; Jump 13/14 is the known `g3-orientation-rebase`). No PIE smoke: the editor was
+   not open (unreal-mcp unavailable); the standalone smokes' screenshots were looked at instead.
+5. [x] Final adversarial review of the whole ticket (opus/xhigh): no code blockers; the D14 gate re-measured (three
+   runs, SDD 11.2); the SDD `BACKDROP_TINT` row and two SDD wordings fixed; unused `MenuLine` removed; style nits
+   (line lengths, one-line getter headers, smoke class comment); the profile's single-run verdict in TECH_DEBT. Q16
+   (text glow at strength 0) raised for the user.
+6. [ ] `STATUS.md`: #42 to Done (after Q13 and Q16 are answered); `graphify update .`; metrics; commit
+   `Issue #42: Part 42i - docs, profile and screenshots`; push. (Committed and pushed 2026-11-04 with #42 left open:
+   Q13, Q16, the hand check and the cue listen round remain.)
+7. [ ] Q13: the user picks from the in-game samples in `Docs/Images/hologram-radial-glow-samples/`; set
+   `RADIAL_DISABLED_HOVER_GLOW_SCALE` (a 0, b about 0.22, c 1), update the `HoloRadialTest` and smoke expectations and
+   GAME_MECHANICS; Q16 likewise.
 
 ## Model and effort per part
 
@@ -274,3 +286,8 @@ Remaining steps (after 42c, which loads the cues):
   the F3 hover mark after a list scroll, tab hover re-hit-test, teardown reset (`Dismiss` / `ResetClosed`), no hover
   cue on open at strength 0. Suite 1323 / 1323; `-SOLSmokeHoloMenu` 58/58 at both sizes, Overlay 34/34, Hud 24/24,
   MenuSmoke 47/50 (known), profile P2 +0.043 / P3 +0.032 ms GPU. Open user questions: Q13, Q14. Next step: 42g.
+- 2026-11-04: 42g committed (`d96c36a`) with Q14 (keep the resting-mouse filter) and Q15 (target card stays open on a
+  target change) applied; the Overlay smoke's `3-lshift-none` failure was a scene flake (passed on reruns). Q13 samples
+  captured in game (`Docs/Images/hologram-radial-glow-samples/`, a temporary build override, not committed). 42i: final
+  profile (SDD 11.2, all PASS on three runs), docs / in-game text audit, README screenshots, final review fixes. Open:
+  Q13, Q16, the hand check (`handcheck` list in the session notes) and the cue listen round; #42 stays open.

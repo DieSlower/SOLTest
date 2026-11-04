@@ -86,8 +86,8 @@ namespace
 
     // The fixed scene (SDD 42 section 11.1): the sim date is pinned so the bodies behind Earth, the profile body's
     // icon and card and the map's overlays are the same every run (JD 2461348.5 = 2026-11-04 00:00 UTC); the menus and
-    // cards work on Neptune, about six weeks past opposition at that date, so its icon is on screen from the start above
-    // Earth (the bodies drawn there: Earth, Dione, Oberon, Neptune, Eris)
+    // cards work on Neptune, about six weeks past opposition at that date, so its icon is on screen from the start
+    // above Earth (the bodies drawn there: Earth, Dione, Oberon, Neptune, Eris)
     constexpr double PROFILE_SIM_JD = 2461348.5;
     const TCHAR* const PROFILE_BODY_NAME = SOL::BodyNames::NEPTUNE;
 
