@@ -8,9 +8,12 @@ it lands. Each part is built by its own subagent with its context kept under ~35
 verify without the user. Commit convention: `Issue #42: Part 42x - <short description>` on `master`, then push.
 Run `Tools\UpdateMetrics.bat` before each part commit and include `Docs/PROJECT_METRICS.md` and `README.md`.
 
-**Gate before any code:** the user answers SDD section 13 (Q1-Q11) and approves A1 / A2 (SDD section 9.1). Until
-then nothing below starts. Starting values at HEAD `4128a05`: `SAVE_VERSION` 10, `KEY_BINDING_LAYOUT_VERSION` 10.
-Target values (if A1 is approved): `SAVE_VERSION` 11, `KEY_BINDING_LAYOUT_VERSION` 10 (unchanged).
+**Gate before any code:** the user answers the open questions of SDD section 13. Answered on 2026-11-03: A1 / A2
+approved (SDD 9.1, D7 / D8), Q1 = (a) cues made now (D9, SDD 7.1), Q2 = Settings > Graphics right under the HUD
+effects slider (D10). Still open: **Q2b** (the HUD effects slider is in Gameplay today), Q3, Q4, Q5, **Q6** (pending
+the card style samples in `Docs/Images/hologram-card-samples/`), Q7-Q11. A part does not start while a question it
+depends on is open. Starting values at HEAD `4128a05`: `SAVE_VERSION` 10, `KEY_BINDING_LAYOUT_VERSION` 10. Approved
+target values: `SAVE_VERSION` **11**, `KEY_BINDING_LAYOUT_VERSION` **10** (unchanged).
 
 The part order below follows the recommended answer to Q4 (radial, Overlay Menu, F3, cards). If the user picks
 another order, reorder 42d-42g here; 42a-42c stay first.
@@ -31,9 +34,12 @@ Depends on Q3 (where the shared code lives) and Q10 (strength-0 behaviour, which
 
 ### 42b: persistence, schema 11 (opus, xhigh; tests by a separate opus/high subagent)
 
-**Blocked until the user approves A1 (the bump) and A2 (default 1.0, migrated value copy-from-HUD or 1.0).** The
-brief carries: the approved A1 / A2 answers verbatim; "version and migrate, never silently discard"; that the version
-is bumped only as approved; the exact field list of SDD 9.2 (nothing else); `KEY_BINDING_LAYOUT_VERSION` stays 10.
+**A1 and A2 approved by the user on 2026-11-03.** Verbatim for the brief: A1, bump `SAVE_VERSION` 10 -> 11 for the
+new field `HoloMenuEffects` with a 10 -> 11 migration, `KEY_BINDING_LAYOUT_VERSION` stays 10; A2, old saves copy
+their current HUD effects value (`HudEffectsStrength`, sanitized), new saves default to 1.0 (1.0 is the
+full-strength multiplier of the slider, unrelated to the version number 11). The brief also carries "version and
+migrate, never silently discard"; the exact field list of SDD 9.2 (nothing else). Step 4 (the slider's place on the
+page) waits on Q2b.
 The subagent reports exactly which constants and fields it changed; the main session checks that report against
 SDD section 9 and the user's answers before ticking.
 
@@ -43,7 +49,7 @@ SDD section 9 and the user's answers before ticking.
    `SetValues` / `GetValues`, the `SOL::Settings::HOLO_MENU_EFFECTS_*` constants.
 3. [ ] The 10 -> 11 step (SDD 9.3), `SAVE_VERSION` 11 and its schema comment.
 4. [ ] The Settings slider (SDD 8): `ESOLSettingsSlider::HoloMenuEffects`, its `SETTINGS_SLIDERS` row, handler, label in
-   `SOLMenuText`, placed per Q2.
+   `SOLMenuText`, placed per Q2 (Settings > Graphics, right under the HUD effects slider) as clarified by Q2b.
 5. [ ] Suite green; `-SOLMenuSmoke=all` (no new failures beyond its known stale checks); review (opus/xhigh); fixes.
 6. [ ] Commit `Issue #42: Part 42b - hologram menu effects setting (save schema 11)`.
 
@@ -95,11 +101,23 @@ high, since it is a UMG widget with map input).
 2. [ ] Smoke step 7; `-SOLSmokeInteract` Info checks green; screenshots looked at.
 3. [ ] Review; fixes; suite. Commit `Issue #42: Part 42g - hologram info and target cards`.
 
-### 42h: sound cue assets (per Q1; sonnet, medium)
+### 42h: sound cue import (Q1 = a; sonnet, medium)
 
-Only if Q1 = (a): make the open / hover / select sounds with the `soundcraft` MCP tool, import them under the
-content folder named in `SOL::Paths`, route them to the SFX sound class, and let the user listen and approve before
-the commit. If Q1 = (b) or (c), this part is skipped and a `Docs/ToDo/` or #9 note records the missing assets.
+Done ahead of the code (2026-11-03): the three cues were made with the SoundCraft MCP tool from CC0 Kenney sounds and
+committed as sources in `Docs/Art/ui-sounds/` (`S_SOLHoloOpen.wav`, `S_SOLHoloHover.wav`, `S_SOLHoloSelect.wav`, the
+three `.scsession` files and `Audio Files/`). Licence check: SDD 7.1 (cleared for the game and the public repo).
+Remaining steps (after 42c, which loads the cues):
+
+1. [ ] `SOL::HoloMenu::CUES[]` in `SOLConstants.h` (path, volume, minimum interval) with the `/Game/SOL/UI/Audio/`
+   paths of SDD 7.1.
+2. [ ] `Tools/UI/import_holo_menu_sounds.py` (editor Python, `unreal.AssetImportTask`, automated, replace existing):
+   import the three WAVs into `/Game/SOL/UI/Audio/`, set the sound class to `SC_SOLSfx`, save. Extend
+   `Tools/CreateSOLAudioClasses.py` to assign `/Game/SOL/UI/Audio/S_SOL*` waves to the SFX class too.
+3. [ ] Run it with the editor open (unreal-mcp) or as a commandlet; check the three assets load (smoke cue counter
+   from 42c), and that the SFX slider scales them.
+4. [ ] The user listens in game (open, hover, select) and approves or asks for changes; changes are remade from the
+   `.scsession` files and re-imported.
+5. [ ] Review; commit `Issue #42: Part 42h - hologram menu sound cues` (the `.uasset` files and the script).
 
 ### 42i: docs, profiling, screenshots and close (sonnet, medium; profiling by opus/high)
 
@@ -126,7 +144,7 @@ the commit. If Q1 = (b) or (c), this part is skipped and a `Docs/ToDo/` or #9 no
 | 42e | Overlay Menu conversion | opus | high |
 | 42f | Speed panel conversion | sonnet | medium |
 | 42g | Cards (map list menu, if included: opus/high) | sonnet | medium |
-| 42h | Sound assets (if Q1 = a) | sonnet | medium |
+| 42h | Sound cue import (Q1 = a) | sonnet | medium |
 | 42i | Docs sync and mechanics audit | sonnet | medium |
 | 42i | Profiling | opus | high |
 | every part | Adversarial performance / style review (report only) | opus | xhigh |
@@ -135,3 +153,8 @@ the commit. If Q1 = (b) or (c), this part is skipped and a `Docs/ToDo/` or #9 no
 
 - 2026-11-03: SDD and plan drafted from the resolved grill-me decisions (scope, renderer reuse, backdrop, effects,
   input, separate slider). Waiting on Q1-Q11 and A1 / A2.
+- 2026-11-03: user answers recorded: A1 / A2 approved (schema 11, migrated saves copy the HUD effects value, new
+  saves 1.0), Q1 = (a), Q2 = Settings > Graphics under the HUD effects slider (opened Q2b: that slider is in Gameplay
+  today). The three cue WAVs were made from CC0 Kenney sounds (SDD 7.1). For Q6, two card style mock-ups and a
+  side-by-side are in `Docs/Images/hologram-card-samples/` (frameless corner ticks vs a full glowing outline frame).
+  Still open: Q2b, Q3, Q4, Q5, Q6, Q7-Q11. Next step: the user answers them; then 42a starts.

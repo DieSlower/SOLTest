@@ -8,9 +8,10 @@ and SDD 8 (Settings). Sister ticket: #46 (solid console menus for the full scree
 `Docs/Plans/46-solid-menus-grill-notes.md`), which depends on #42 for the shared hover, cursor and animation code.
 Plan: [`Docs/Plans/42-hologram-in-flight-menus-plan.md`](../Plans/42-hologram-in-flight-menus-plan.md).
 
-Status: **draft, not approved.** The grill-me decisions below are resolved. The open questions in section 13 and the
-two approval items in section 9.1 (the schema bump and the default value) must be answered by the user before any
-part that depends on them starts. Checked against the code at HEAD `4128a05`.
+Status: **draft, not approved.** The grill-me decisions below are resolved. The user approved A1 and A2 (section 9.1)
+and answered Q1 and Q2 on 2026-11-03 (D7-D10). Q6 waits on the card style samples (section 13); Q3-Q5 and Q7-Q11
+are still open. A part that depends on an open question does not start until it is answered. Checked against the
+code at HEAD `4128a05`.
 
 ## 1. Goal
 
@@ -28,7 +29,11 @@ sets how strong these effects are, separately from the HUD's own slider. The fli
 | D3 | **Backdrop:** a very faint dark tint behind each panel (no solid fill). Its strength follows the effects control. |
 | D4 | **Effects:** (a) **open / close:** the frame lines draw in, then the fill fades up, about 0.2 s; (b) **hover:** an edge glow and a brief flicker on the hovered item, pairing with the #22 hologram cursor; (c) **idle:** a faint scanline sweep and jitter, off at effects 0; (d) **sound cues** for open, hover and select. |
 | D5 | **Input unchanged:** mouse and keyboard as today. A keyboard / gamepad navigation redesign is a future idea, not part of #42. |
-| D6 | **A separate hologram-menu intensity slider** in Settings, a new saved settings field. This is a schema change (section 9); the bump and the default value still need the user's approval (section 9.1). |
+| D6 | **A separate hologram-menu intensity slider** in Settings, a new saved settings field. This is a schema change (section 9), approved as D7 / D8. |
+| D7 | **A1 approved:** settings `SAVE_VERSION` 10 -> **11** for the new field `HoloMenuEffects`, with a 10 -> 11 migration step. `KEY_BINDING_LAYOUT_VERSION` stays **10**. |
+| D8 | **A2 approved:** a migrated (v1-v10) save **copies its current `HudEffectsStrength`** into `HoloMenuEffects` (sanitized); a new save defaults to **1.0**. The 1.0 is the full-strength multiplier of the effects slider (shown as "1.00x"); it is not related to the schema version number 11. |
+| D9 | **Q1 answered, (a): make the cues now.** Open, hover and select sounds were made with the SoundCraft MCP tool from CC0 source sounds in `D:\MediaLib\Sounds`; sources, licences and the import plan are in section 7.1. |
+| D10 | **Q2 answered:** the new slider goes in **Settings > Graphics, right under the HUD effects slider**. Note: in the code today the "HUD hologram effects" slider is in the **Gameplay** section, not Graphics (`USOLSettingsPageWidget`, `SOLSettingsPageWidget.cpp` lines 364-369). The answer is recorded as the user gave it; how to resolve the mismatch is open item **Q2b** (section 13). |
 
 ## 3. What exists today (checked in code at HEAD `4128a05`)
 
@@ -231,32 +236,81 @@ The select cue is fired by the caller when an enabled item is confirmed; it need
 | `FRAME_MAX_SHAPES` | 128 | Shape capacity of one `SSOLHoloFrame` (reserved once) |
 
 Settings constants (`SOL::Settings`): `HOLO_MENU_EFFECTS_MIN` 0, `HOLO_MENU_EFFECTS_MAX` 2,
-`HOLO_MENU_EFFECTS_DEFAULT` 1 (**pending approval A2**), `HOLO_MENU_EFFECTS_STEP` 0.05.
-Asset paths for the cues go in `SOL::Paths` (STYLE_GUIDE section 7), once Q1 is answered.
+`HOLO_MENU_EFFECTS_DEFAULT` 1 (approved, D8), `HOLO_MENU_EFFECTS_STEP` 0.05.
+Asset paths for the cues go in `SOLConstants.h` (STYLE_GUIDE section 7), section 7.1.
+
+### 7.1 Sound cues (Q1 = a, D9)
+
+**Files made (2026-11-03).** Source files are in `Docs/Art/ui-sounds/` (outside `Content/`, so never cooked):
+
+| Cue | File | Made from (all CC0) | Processing in SoundCraft | Length | Peak |
+|---|---|---|---|---|---|
+| Open | `S_SOLHoloOpen.wav` | `kenney_digital-audio/Audio/phaserUp2.ogg` (first 75 ms of silence trimmed) + `kenney_interface-sounds/Audio/maximize_009.ogg` (at +50 ms, -7 dB) | 350 Hz high-pass and a short plate (15 %) on the sweep, a short plate (18 %) on the blip, exponential fade-outs | 0.40 s | -9.6 dBFS |
+| Hover | `S_SOLHoloHover.wav` | `kenney_interface-sounds/Audio/select_001.ogg` | -13 dB clip gain, 1.2 kHz high-pass, fade-out; dry (it repeats under a moving cursor) | 0.05 s | -14.6 dBFS |
+| Select | `S_SOLHoloSelect.wav` | `kenney_interface-sounds/Audio/select_003.ogg` (-5 dB, cut at 0.27 s) + `kenney_interface-sounds/Audio/confirmation_001.ogg` (-14 dB, 450 Hz high-pass) | a short plate (15 %) on the ping, fade-outs | 0.30 s | -10.0 dBFS |
+
+All three are 48 kHz, 16-bit, stereo WAV, staged so that hover is the quietest. The SoundCraft sessions
+(`holo_open.scsession`, `holo_hover.scsession`, `holo_select.scsession`) and the source sounds they use (`Audio Files/`,
+the Kenney files converted to WAV) sit next to them, so a cue can be reopened and remade. SoundCraft writes to absolute
+paths (no write-root flag needed). Tool note: its `gain` insert plugin had no effect in a bounce, so levels are set
+with clip gain. **The user has not listened to them yet:** the listen-and-approve round of part 42h still applies.
+
+**Licences of `D:\MediaLib\Sounds` (checked 2026-11-03).** The GitHub repo `DieSlower/SOLTest` is **public** and
+CC0-licensed, so a sound committed here (as a WAV source or inside a `.uasset`) is redistributed, not only shipped in
+the game. That rules out packs that allow game use but forbid passing the files on.
+
+| Pack | Licence (from its own licence / readme file) | Shipped game | In this public repo | Used |
+|---|---|---|---|---|
+| `kenney_digital-audio`, `kenney_interface-sounds`, `kenney_sci-fi-sounds`, `kenney_ui-audio` (the other `kenney_*` folders also have a `License.txt`, not read) | CC0 1.0 (public domain); credit optional | Yes | Yes | **Yes**, the only source used |
+| `CrispUI_Sampler` | Royalty-free in commercial games, no credit; no resale or redistribution of the sounds, modified or not | Yes | No (redistribution) | No |
+| `Cosy-UI-Sound-Pack-Sampler` (Leckie Pixel Studio) | Commercial games allowed; no redistribution, even modified | Yes | No | No |
+| `UI-SFX-Vol1-Lite` | Royalty-free, may ship inside a packaged product; no redistribution "as-is, renamed, converted, or edited" | Yes | No | No |
+| `Free UI And Soundtrack Samples` (Echo Chamber Works) | Commercial use allowed; no redistribution "in any form" except inside a larger work; Indian law | Yes, inside the game | Unclear (raw files in a public repo), treated as no | No |
+| `UI Soundpack` (Nathan Gibson) | CC BY 4.0 | Yes, with attribution in the credits | Yes, with attribution | No |
+| `JDSherbert - Ultimate UI SFX Pack (FREE)` | **No licence or readme file in the folder** | **Unknown** | **Unknown** | No |
+| `Sonniss.com - GDC ... Game Audio Bundle` (2015-2026) | Readme: royalty-free, commercial use without attribution; the licence PDFs were not read in detail | Very likely yes | Not checked | No |
+
+Answer: **the three cues are cleared for a shipped game and for this public repo** (all sources CC0, no credit
+required; a credit line for Kenney is welcome but optional). No open licensing item blocks #42. If the user later
+wants sounds from a non-CC0 pack, two questions come back: whether committing them to the public repo is acceptable
+(it is redistribution for most of these licences), and the JDSherbert pack's licence (none on disk).
+
+**Import (part 42h).**
+- Asset paths in `SOLConstants.h`, one table like `COMBAT_SOUNDS`: `SOL::HoloMenu::CUES[]` (path, volume, minimum
+  interval) for Open, Hover and Select, with the paths `/Game/SOL/UI/Audio/S_SOLHoloOpen.S_SOLHoloOpen`,
+  `/Game/SOL/UI/Audio/S_SOLHoloHover.S_SOLHoloHover` and `/Game/SOL/UI/Audio/S_SOLHoloSelect.S_SOLHoloSelect`.
+- An editor Python script `Tools/UI/import_holo_menu_sounds.py` (pattern of `Tools/StarField/import_star_field.py`,
+  `unreal.AssetImportTask`, automated, replace existing) imports the three WAVs from `Docs/Art/ui-sounds/` into
+  `/Game/SOL/UI/Audio/` and sets each wave's sound class to `SC_SOLSfx` (`SOL::Paths::SOUND_CLASS_SFX`), so the SFX
+  volume slider drives them. `Tools/CreateSOLAudioClasses.py` gains the same assignment for `/Game/SOL/UI/Audio/S_SOL*`
+  so a re-run of it keeps them in the SFX class. The import may fold the stereo files to mono (UI cues are 2D).
+- `USOLHoloMenuSubsystem` loads them once (section 4.3); a missing asset stays silent with one warning.
+- The user listens in game and approves (or asks for changes) before part 42h is committed.
 
 ## 8. Settings slider
 
 - Label `SOLMenuText::SETTINGS_HOLO_MENU_EFFECTS` = "Hologram menu effects" (shown as a multiplier, "1.00x", like the
   HUD slider).
 - `ESOLSettingsSlider::HoloMenuEffects` with its `SETTINGS_SLIDERS` row (the `static_assert` count grows), a handler
-  and `ApplySliderValue` / value-read cases. Placement on the page: **Q2**.
+  and `ApplySliderValue` / value-read cases. Placement on the page (Q2, D10): **Settings > Graphics, right under the
+  HUD effects slider.** Since the HUD effects slider is in Gameplay today, the exact placement waits on **Q2b**.
 - It is a normal Settings field: Apply / Revert, written at the page's `EndVisit` (no new write point). Live
   preview: the menu MID reads the live values, like the HUD slider does today; no menu is open while Settings shows,
   so the preview is seen on the next open (the user may want a preview frame on the page; not proposed).
 - The cursor keeps following the HUD slider (pending Q11).
 
-## 9. Persistence (schema 11, NOT YET APPROVED)
+## 9. Persistence (schema 11, approved 2026-11-03)
 
 Rule: **version and migrate, never silently discard.** The implementer reports exactly which constants and fields it
 changed; the main session checks the report against this section and against the user's answer to A1 / A2 before
 the part is ticked.
 
-### 9.1 Approval items (the user must still approve these)
+### 9.1 Approval items (approved by the user, 2026-11-03)
 
-| # | Item | Proposal |
+| # | Item | Decision |
 |---|---|---|
-| A1 | The schema bump `SAVE_VERSION` 10 -> 11 for the new field | Bump to 11 (a new `UPROPERTY` on a versioned save always gets a step, as schemas 5, 6 and 8 did) |
-| A2 | The default value and the migrated value | New saves: **1.0** (the HUD slider's default). A migrated v1-v10 save: **copy its `HudEffectsStrength`** (sanitized), because the radial menu and the info card follow that slider today, so a player who turned the HUD effects down keeps calm menus. The alternative is a fixed 1.0 for every migrated save |
+| A1 | The schema bump `SAVE_VERSION` 10 -> 11 for the new field | **Approved:** bump to 11, new field `HoloMenuEffects`, a 10 -> 11 migration step. `KEY_BINDING_LAYOUT_VERSION` stays 10 (D7) |
+| A2 | The default value and the migrated value | **Approved:** a migrated v1-v10 save **copies its current `HudEffectsStrength`** (sanitized), because the radial menu and the info card follow that slider today, so a player who turned the HUD effects down keeps calm menus. A new save defaults to **1.0** (D8). The 1.0 is the full-strength multiplier of the effects slider, not the schema version |
 
 ### 9.2 Fields
 
@@ -272,7 +326,7 @@ the part is ticked.
 ### 9.3 Migration step 10 -> 11 (`MigrateToCurrentVersion`)
 
 Runs in memory at load; the file is rewritten at the next normal write point (no extra write at load).
-1. `HoloMenuEffects` = per A2: `clamp(HudEffectsStrength, MIN, MAX)` (NaN -> default) **or** the default.
+1. `HoloMenuEffects` = `clamp(HudEffectsStrength, MIN, MAX)` (NaN -> default 1.0), per the approved A2.
 2. Every other field is kept as loaded.
 3. `Version = 11`.
 
@@ -287,7 +341,7 @@ in the same async save, only when something differs.
 
 ### 9.5 Persistence tests (separate test author)
 
-`SOLSettingsRulesTest.cpp`: 10 -> 11 per A2 (a v10 file with `HudEffectsStrength` 0.3 gives 0.3, or 1.0); NaN and
+`SOLSettingsRulesTest.cpp`: 10 -> 11 per A2 (a v10 file with `HudEffectsStrength` 0.3 gives 0.3); NaN and
 out-of-range sources sanitized; whole chain from v4 and from v6; idempotence; a current v11 file keeps its value; a
 fresh save has the default; `SetValues` / `GetValues` round trip incl. 0. `SOLSettingsModelTest.cpp`: default,
 clamping, NaN / inf, `AreEqual` tolerance, dirty and revert. `FlightModeMathTest.cpp`: re-validate the schema and
@@ -344,23 +398,32 @@ settings test is walked to confirm it still states the current contract.
   8. Strength 0 (set in the smoke slot): open is instant, no sweep or flicker drawn, the backdrop per Q10; strength 2
      screenshot.
   9. Settings: the slider exists in the agreed section, Apply writes once at `EndVisit`.
-  10. Cue playback is counted through the subsystem (assets or placeholders per Q1), not heard.
+  10. Cue playback is counted through the subsystem (the section 7.1 assets), not heard.
 - **Regression smokes:** `-SOLSmokeOverlay`, `-SOLSmokeInteract`, `-SOLSmokeHud` (F3 checks), `-SOLSmokeChase`
   (radial entry), `-SOLMenuSmoke=all` (Settings page; its known stale checks stay as in TECH_DEBT).
 - **PIE smoke** with unreal-mcp when the editor is open: screenshots looked at for each menu at strength 0, 1, 2.
 - **Adversarial review** per part (opus, xhigh, report only), briefed with this SDD, the STYLE_GUIDE, the performance
   guidelines and the tech-debt items of section 3.
 
-## 13. Open questions (for the user; not decided)
+## 13. Questions for the user
+
+Answered on 2026-11-03 (kept here for the record; the decisions are D7-D10):
+
+| # | Question | Answer |
+|---|---|---|
+| A1 / A2 | Schema bump and the default / migrated value (section 9.1) | Approved: `SAVE_VERSION` 11, migrated saves copy `HudEffectsStrength`, new saves 1.0 (D7, D8) |
+| Q1 | **Sound cue assets** for open / hover / select | **(a), now:** made with SoundCraft from CC0 Kenney sounds in `D:\MediaLib\Sounds`; licence check and import plan in section 7.1 (D9). The listen-and-approve round is still to come (part 42h) |
+| Q2 | **Where the new slider lives** in Settings | **Settings > Graphics, right under the HUD effects slider** (D10); see Q2b |
+
+Still open (not decided; a recommendation is attached but the user decides):
 
 | # | Question | Options (recommendation first, not a decision) |
 |---|---|---|
-| Q1 | **Sound cue assets** for open / hover / select | (a) create them now with the `soundcraft` MCP tool (short synthetic blips, imported as `USoundWave`, routed to the SFX class); (b) placeholder hooks: the cue calls and counting exist, no assets until #9; (c) defer the cues entirely to #9. Recommendation: (a) if a quick listen-and-approve round with the user is acceptable, else (b) |
-| Q2 | **Where the new slider lives** in Settings | Gameplay, right under "HUD hologram effects" (recommended); or a new "Hologram" group holding both effects sliders. #46 restyles the page later either way |
+| Q2b | **Section mismatch in the Q2 answer:** the "HUD hologram effects" slider is in the **Gameplay** section today, not Graphics | (a) put the new slider in Gameplay right under the HUD effects slider (keeps "right under" literally); (b) move the HUD effects slider into Graphics and put the new slider right under it there (both effects sliders together in Graphics; a small change to an existing control's place, and `GAME_MECHANICS.md` 8.1 and the in-game Settings text follow); (c) the new slider alone in Graphics, apart from the HUD slider. No recommendation; it is the user's wording to clarify |
 | Q3 | **#46 shared code:** factor the hover / cursor / animation code for #46 first, or build it inside #42 and let #46 reuse it | Build it in #42 as renderer-free pure logic (`SOLHoloMenuMath`'s anim state, curves and cue rules have no hologram dependency), so #46 reuses it without a refactor (recommended); or a separate shared-UI part before both; or let #46 extract it later |
 | Q4 | **Per-widget order** of the conversions | Radial, Overlay Menu, F3 panel, info / target cards (recommended: most visible first, the radial also proves the HUD menu layer); or Overlay Menu first (proves the UMG frame); or all in one part |
 | Q5 | **Performance budget** | Section 11's numbers (recommended); or a looser cap; or "measure and report only" |
-| Q6 | **Target / info cards vs #31's "no visible rectangle around any panel":** do the two cards get the outline frame (this ticket's look), and is the "target card" the top-right target readout (today part of the HUD) | Frame both, the target readout becomes the target card, no cue on target change (recommended); or frame only the info card and leave the target readout as HUD |
+| Q6 | **Target / info cards vs #31's "no visible rectangle around any panel":** which look the two cards get, and is the "target card" the top-right target readout (today part of the HUD). **Pending the user's look at the visual samples:** [`card-frameless.png`](../Images/hologram-card-samples/card-frameless.png) (option 1: no frame, only glowing corner ticks and the faint dark tint, so #31's rule holds), [`card-framed.png`](../Images/hologram-card-samples/card-framed.png) (option 2: a full glowing outline frame with the 6 px chamfer of Q9, plus the tint) and the side-by-side [`card-compare.png`](../Images/hologram-card-samples/card-compare.png). They are VectorCraft mock-ups over a real game screenshot (`43-dust-slow.png`), not in-game captures | (1) frameless corner ticks + tint for both cards; (2) full outline frame for both; or a mix (e.g. the info card framed like the other menus, the target readout frameless). Also: target readout becomes the target card or stays HUD, and no cue on target change (proposed) |
 | Q7 | **Panels not named:** the map's right-click list menu (`USOLActionListWidget`, same action table as the radial), the Attack hint and the profile tag | Include the map list menu (same menu family), leave the hint and the tag as HUD (recommended); or exclude all |
 | Q8 | **The Overlay list embedded in the Settings page** | Leave it to #46 (it sits on a solid page; the frame widget is not added when `SetEmbedded(true)`) (recommended); or hologram there too |
 | Q9 | **Frame shape** | Chamfered corners (`FRAME_CHAMFER_PX` 6) (recommended, matches the radial's cut sectors); plain rectangle; corner brackets only |
