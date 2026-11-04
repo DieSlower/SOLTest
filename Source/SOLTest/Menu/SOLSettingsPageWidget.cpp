@@ -57,6 +57,8 @@ namespace
             SOL::Settings::HUD_SCALE_STEP, false },
         { SOLMenuText::SETTINGS_HUD_EFFECTS, SOL::Settings::HUD_EFFECTS_MIN, SOL::Settings::HUD_EFFECTS_MAX,
             SOL::Settings::HUD_EFFECTS_STEP, false },
+        { SOLMenuText::SETTINGS_HOLO_MENU_EFFECTS, SOL::Settings::HOLO_MENU_EFFECTS_MIN,
+            SOL::Settings::HOLO_MENU_EFFECTS_MAX, SOL::Settings::HOLO_MENU_EFFECTS_STEP, false },
         { SOLMenuText::SETTINGS_CHASE_SAFETY_MARGIN, SOL::Settings::CHASE_SAFETY_MARGIN_MIN,
             SOL::Settings::CHASE_SAFETY_MARGIN_MAX, SOL::Settings::CHASE_SAFETY_MARGIN_STEP, true },
     };
@@ -168,12 +170,17 @@ namespace
             return values.MouseSensitivity;
         case ESOLSettingsSlider::HudEffects:
             return values.HudEffectsStrength;
+        case ESOLSettingsSlider::HoloMenuEffects:
+            return values.HoloMenuEffects;
         case ESOLSettingsSlider::ChaseSafetyMargin:
             return values.ChaseSafetyMargin;
         case ESOLSettingsSlider::HudScale:
-        default:
             return values.HudScale;
+        case ESOLSettingsSlider::Count:
+            break;
         }
+        // Not reachable for a valid slider (Count is no slider); keeps the compiler's missing-case warning live
+        return values.HudScale;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -367,6 +374,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleHudScaleChanged);
     addSlider(ESOLSettingsSlider::HudEffects)->OnValueChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHudEffectsChanged);
+    addSlider(ESOLSettingsSlider::HoloMenuEffects)->OnValueChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleHoloMenuEffectsChanged);
     addToggle(ESOLSettingsToggle::HudVisible)->OnCheckStateChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHudVisibleChanged);
     addToggle(ESOLSettingsToggle::DefaultAssist)->OnCheckStateChanged.AddDynamic(this,
@@ -538,12 +547,16 @@ void USOLSettingsPageWidget::ApplySliderValue(const ESOLSettingsSlider slider, c
     case ESOLSettingsSlider::HudEffects:
         values.HudEffectsStrength = snapped;
         break;
+    case ESOLSettingsSlider::HoloMenuEffects:
+        values.HoloMenuEffects = snapped;
+        break;
     case ESOLSettingsSlider::ChaseSafetyMargin:
         values.ChaseSafetyMargin = snapped;
         break;
     case ESOLSettingsSlider::HudScale:
-    default:
         values.HudScale = snapped;
+        break;
+    case ESOLSettingsSlider::Count:
         break;
     }
     Settings->SetPendingValues(values);
@@ -879,6 +892,13 @@ void USOLSettingsPageWidget::HandleHudScaleChanged(const float value)
 void USOLSettingsPageWidget::HandleHudEffectsChanged(const float value)
 {
     ApplySliderValue(ESOLSettingsSlider::HudEffects, value);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Hologram menu effects slider moved (SDD 42)
+void USOLSettingsPageWidget::HandleHoloMenuEffectsChanged(const float value)
+{
+    ApplySliderValue(ESOLSettingsSlider::HoloMenuEffects, value);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -59,6 +59,7 @@ bool FSOLSettingsModelDefaultsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("Quality preset"), defaults.QualityPreset, 3);
     TestTrue(TEXT("Space dust follows the constant"), defaults.bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
     TestTrue(TEXT("Space dust on"), defaults.bSpaceDust);
+    TestEqual(TEXT("Hologram menu effects"), defaults.HoloMenuEffects, 1.0f, SETTINGSMODEL_TOLERANCE);
     TestTrue(TEXT("Defaults equal their sanitized form"), AreEqual(defaults, Sanitized(defaults)));
     return true;
 }
@@ -1006,6 +1007,177 @@ bool FSOLSettingsModelChaseMarginDirtyTest::RunTest(const FString& /*parameters*
     SetPending(model, over);
     TestEqual(TEXT("Pending sanitized"), model.Pending.ChaseSafetyMargin, SOL::Settings::CHASE_SAFETY_MARGIN_MAX,
         SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+// Issue #42 hologram menu effects strength in the settings model, written against the SDD 42 sections 7 and 9.2
+// contract before the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHoloMenuEffectsSanitizeTest,
+    "SOLTest.SettingsModel.HoloMenuEffectsSanitize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The hologram menu effects strength defaults to 1, clamps to [0, 2], NaN -> the default, infinities -> the ends, and
+// is sanitized independently of the HUD effects strength
+bool FSOLSettingsModelHoloMenuEffectsSanitizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    using namespace SOL::Settings;
+
+    // The constants of the contract
+    TestEqual(TEXT("Min constant is 0"), HOLO_MENU_EFFECTS_MIN, 0.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Max constant is 2"), HOLO_MENU_EFFECTS_MAX, 2.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default constant is 1"), HOLO_MENU_EFFECTS_DEFAULT, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Step constant is 0.05"), HOLO_MENU_EFFECTS_STEP, 0.05f, SETTINGSMODEL_TOLERANCE);
+
+    // The default value is the constant and survives sanitizing
+    const FSettingsValues defaults;
+    TestEqual(TEXT("Default"), defaults.HoloMenuEffects, HOLO_MENU_EFFECTS_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default is 1"), defaults.HoloMenuEffects, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Sanitized default kept"), Sanitized(defaults).HoloMenuEffects, HOLO_MENU_EFFECTS_DEFAULT,
+        SETTINGSMODEL_TOLERANCE);
+
+    // In range, one step and the exact ends pass through
+    const float inRange[] = { HOLO_MENU_EFFECTS_MIN, HOLO_MENU_EFFECTS_STEP, 0.3f, 1.55f, HOLO_MENU_EFFECTS_MAX };
+    for (const float strength : inRange)
+    {
+        FSettingsValues values = SettingsModelCustomValues();
+        values.HoloMenuEffects = strength;
+        TestEqual(FString::Printf(TEXT("%.2f kept"), strength), Sanitized(values).HoloMenuEffects, strength,
+            SETTINGSMODEL_TOLERANCE);
+    }
+
+    // Out of range clamps
+    FSettingsValues values = SettingsModelCustomValues();
+    values.HoloMenuEffects = -0.5f;
+    TestEqual(TEXT("Below -> MIN"), Sanitized(values).HoloMenuEffects, HOLO_MENU_EFFECTS_MIN, SETTINGSMODEL_TOLERANCE);
+    values.HoloMenuEffects = 2.01f;
+    TestEqual(TEXT("Just above -> MAX"), Sanitized(values).HoloMenuEffects, HOLO_MENU_EFFECTS_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    values.HoloMenuEffects = 7.0f;
+    TestEqual(TEXT("Above -> MAX"), Sanitized(values).HoloMenuEffects, HOLO_MENU_EFFECTS_MAX, SETTINGSMODEL_TOLERANCE);
+
+    // Non-finite values
+    values.HoloMenuEffects = SETTINGSMODEL_NAN;
+    const FSettingsValues nanOut = Sanitized(values);
+    TestEqual(TEXT("NaN -> default"), nanOut.HoloMenuEffects, HOLO_MENU_EFFECTS_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN leaves other fields alone"), nanOut.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
+    values.HoloMenuEffects = SETTINGSMODEL_INF;
+    TestEqual(TEXT("+inf -> MAX"), Sanitized(values).HoloMenuEffects, HOLO_MENU_EFFECTS_MAX, SETTINGSMODEL_TOLERANCE);
+    values.HoloMenuEffects = -SETTINGSMODEL_INF;
+    TestEqual(TEXT("-inf -> MIN"), Sanitized(values).HoloMenuEffects, HOLO_MENU_EFFECTS_MIN, SETTINGSMODEL_TOLERANCE);
+
+    // The two effects strengths are separate fields: sanitizing one never moves the other
+    FSettingsValues split = SettingsModelCustomValues();
+    split.HudEffectsStrength = 0.3f;
+    split.HoloMenuEffects = 9.0f;
+    const FSettingsValues splitOut = Sanitized(split);
+    TestEqual(TEXT("HUD strength kept beside a clamped menu strength"), splitOut.HudEffectsStrength, 0.3f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Menu strength clamped on its own"), splitOut.HoloMenuEffects, HOLO_MENU_EFFECTS_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    split.HudEffectsStrength = SETTINGSMODEL_NAN;
+    split.HoloMenuEffects = 0.45f;
+    const FSettingsValues hudNanOut = Sanitized(split);
+    TestEqual(TEXT("A NaN HUD strength does not touch the menu strength"), hudNanOut.HoloMenuEffects, 0.45f,
+        SETTINGSMODEL_TOLERANCE);
+
+    // Sanitizing a clamped value again changes nothing
+    values.HoloMenuEffects = 5.0f;
+    const FSettingsValues once = Sanitized(values);
+    TestEqual(TEXT("Idempotent"), Sanitized(once).HoloMenuEffects, once.HoloMenuEffects, SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHoloMenuEffectsDirtyTest,
+    "SOLTest.SettingsModel.HoloMenuEffectsDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AreEqual compares the hologram menu effects strength within the tolerance, so an edit of only it makes the model
+// dirty; revert discards it, commit asks for one write, and an unchanged or set-back value asks for none
+bool FSOLSettingsModelHoloMenuEffectsDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const FSettingsValues base = SettingsModelCustomValues();
+
+    // One slider step is a difference on its own
+    FSettingsValues changed = base;
+    changed.HoloMenuEffects = base.HoloMenuEffects + SOL::Settings::HOLO_MENU_EFFECTS_STEP;
+    TestFalse(TEXT("A one-step change differs"), AreEqual(base, changed));
+    TestFalse(TEXT("Symmetric"), AreEqual(changed, base));
+
+    // Below the tolerance is equal
+    FSettingsValues nearlySame = base;
+    nearlySame.HoloMenuEffects += SOL::Settings::VALUE_EQUAL_TOLERANCE * 0.5f;
+    TestTrue(TEXT("Within the tolerance is equal"), AreEqual(base, nearlySame));
+
+    // Two values that clamp to the same end, and NaN vs the default, compare equal
+    FSettingsValues overA = base;
+    overA.HoloMenuEffects = 5.0f;
+    FSettingsValues overB = base;
+    overB.HoloMenuEffects = 9.0f;
+    TestTrue(TEXT("Both clamp to MAX"), AreEqual(overA, overB));
+    FSettingsValues nanStrength;
+    nanStrength.HoloMenuEffects = SETTINGSMODEL_NAN;
+    TestTrue(TEXT("NaN equals the default"), AreEqual(nanStrength, FSettingsValues()));
+
+    // The menu and HUD strengths are compared separately: moving one value from one field to the other is a change
+    FSettingsValues menuLow = base;
+    menuLow.HudEffectsStrength = 1.0f;
+    menuLow.HoloMenuEffects = 0.4f;
+    FSettingsValues hudLow = base;
+    hudLow.HudEffectsStrength = 0.4f;
+    hudLow.HoloMenuEffects = 1.0f;
+    TestFalse(TEXT("Menu-low differs from HUD-low"), AreEqual(menuLow, hudLow));
+
+    // The model sees a menu-strength-only edit as dirty; revert discards it, commit adopts it with one write
+    FSettingsValues edited = base;
+    edited.HoloMenuEffects = 0.4f;
+    FSettingsModel model = MakeModel(base);
+    TestFalse(TEXT("Fresh model is clean"), IsDirty(model));
+    TestFalse(TEXT("Fresh model needs no write"), CommitIfDirty(model));
+    SetPending(model, edited);
+    TestTrue(TEXT("Dirty when only the menu strength differs"), IsDirty(model));
+    const FSettingsValues reverted = Revert(model);
+    TestEqual(TEXT("Revert returns the saved menu strength"), reverted.HoloMenuEffects, base.HoloMenuEffects,
+        SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+    TestFalse(TEXT("Reverted model needs no write"), CommitIfDirty(model));
+    SetPending(model, edited);
+    TestTrue(TEXT("Commit of the menu strength needs a write"), CommitIfDirty(model));
+    TestEqual(TEXT("Saved takes the menu strength"), model.Saved.HoloMenuEffects, 0.4f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Saved HUD strength untouched"), model.Saved.HudEffectsStrength, base.HudEffectsStrength,
+        SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+    TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
+
+    // Moving the slider away and back within one visit is not dirty and needs no write
+    FSettingsValues away = model.Saved;
+    away.HoloMenuEffects = 1.8f;
+    SetPending(model, away);
+    TestTrue(TEXT("Dirty while moved away"), IsDirty(model));
+    SetPending(model, model.Saved);
+    TestFalse(TEXT("Clean once set back"), IsDirty(model));
+    TestFalse(TEXT("Set back needs no write"), CommitIfDirty(model));
+
+    // An out-of-range pending strength is stored sanitized, and one that clamps to the saved value is not dirty
+    FSettingsValues over = model.Saved;
+    over.HoloMenuEffects = 12.0f;
+    SetPending(model, over);
+    TestEqual(TEXT("Pending sanitized"), model.Pending.HoloMenuEffects, SOL::Settings::HOLO_MENU_EFFECTS_MAX,
+        SETTINGSMODEL_TOLERANCE);
+    FSettingsValues atMax = base;
+    atMax.HoloMenuEffects = SOL::Settings::HOLO_MENU_EFFECTS_MAX;
+    FSettingsModel maxed = MakeModel(atMax);
+    FSettingsValues beyond = maxed.Saved;
+    beyond.HoloMenuEffects = 4.0f;
+    SetPending(maxed, beyond);
+    TestFalse(TEXT("Clamped back to saved is clean"), IsDirty(maxed));
+    TestFalse(TEXT("Clamped back to saved needs no write"), CommitIfDirty(maxed));
     return true;
 }
 

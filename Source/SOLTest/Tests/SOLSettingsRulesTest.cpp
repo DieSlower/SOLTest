@@ -254,7 +254,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
+    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -272,6 +272,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 8 migrates"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 9 migrates"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 10 migrates"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -360,6 +362,8 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("HUD effects default from the 4 -> 5 step"), save->HudEffectsStrength,
         SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
     TestTrue(TEXT("space dust on from the 9 -> 10 step"), save->bSpaceDust);
+    TestEqual(TEXT("menu effects copied from the HUD default by the 10 -> 11 step"), save->HoloMenuEffects,
+        SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
     {
@@ -683,6 +687,8 @@ bool FSOLSettingsRulesMigrateV4HudEffectsTest::RunTest(const FString& /*paramete
     TestEqual(TEXT("strength set to the default"), save->HudEffectsStrength, SOL::Settings::HUD_EFFECTS_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("default is 1"), save->HudEffectsStrength, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects copied from that default by 10 -> 11"), save->HoloMenuEffects, 1.0f,
+        SETTINGSRULES_TEST_TOLERANCE);
 
     // Every other field is untouched
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -804,10 +810,11 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->MasterVolume = 0.45f;
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 10 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9 and 9 -> 10)"), save->Version, 10);
+    TestEqual(TEXT("v5 -> 11 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10 and 10 -> 11)"), save->Version, 11);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects copied from it"), save->HoloMenuEffects, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
     TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
     TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
@@ -828,8 +835,8 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8 -> 9 -> 10, and a current one across
-    // two calls
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8 -> 9 -> 10 -> 11, and a current one
+    // across two calls
     USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
     v6->Version = 6;
     v6->bMouseSteerAtStart = true;
@@ -928,7 +935,7 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v6 -> 10 (through 6 -> 7, 7 -> 8, 8 -> 9 and 9 -> 10)"), save->Version, 10);
+    TestEqual(TEXT("v6 -> 11 (through 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10 and 10 -> 11)"), save->Version, 11);
     TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
@@ -941,6 +948,8 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     // Everything else is untouched, the orbit-lines override verbatim
     TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects copied from it by 10 -> 11"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
     TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("quality kept"), save->QualityPreset, 2);
@@ -987,7 +996,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A current (schema 10) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
+// A current (schema 11) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
 // they were
 bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
 {
@@ -1291,6 +1300,8 @@ bool FSOLSettingsRulesMigrateV7ChaseMarginTest::RunTest(const FString& /*paramet
     TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
     TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
     TestEqual(TEXT("HUD effects strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects copied from it by 10 -> 11"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
     TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
 
     // The key overrides are kept verbatim
@@ -1334,8 +1345,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 and 9 -> 10 only) and a
-// current one keep their margin; a newer save is left alone
+// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9, 9 -> 10 and 10 -> 11
+// only) and a current one keep their margin; a newer save is left alone
 bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
@@ -1373,7 +1384,7 @@ bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*paramete
     TestEqual(TEXT("v1: second migrate keeps the version"), v1->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("v1: second migrate keeps the margin"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
 
-    // A schema 8 save has the margin: only 8 -> 9 and 9 -> 10 run, and its margin is the player's choice
+    // A schema 8 save has the margin: only 8 -> 9, 9 -> 10 and 10 -> 11 run, and its margin is the player's choice
     USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
     v8->Version = 8;
     v8->ChaseSafetyMargin = 0.1f;
@@ -1514,8 +1525,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV8SpaceDustTest, "SOLTe
 bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
-    TestEqual(TEXT("key layout is 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
+    TestEqual(TEXT("key layout is still 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v8 save is migrated"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v9 save is migrated"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
@@ -1551,7 +1562,7 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v8 -> 10"), save->Version, 10);
+    TestEqual(TEXT("v8 -> 11"), save->Version, 11);
     TestEqual(TEXT("v8 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("profile count kept (not padded)"), save->OverlayProfiles.Num(), before.Num());
     TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 2);
@@ -1781,7 +1792,7 @@ bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters
     save->bVsyncChosen = true;
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v9 -> 10"), save->Version, 10);
+    TestEqual(TEXT("v9 -> 11"), save->Version, 11);
     TestEqual(TEXT("v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("global dust from profile 1 (off)"), save->bSpaceDust);
     TestEqual(TEXT("entries not padded"), save->OverlayProfiles.Num(), 2);
@@ -1814,6 +1825,8 @@ bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("HUD effects kept"), save->HudEffectsStrength, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects copied from it by 10 -> 11"), save->HoloMenuEffects, 0.4f,
+        SETTINGSRULES_TEST_TOLERANCE);
     TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
     TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
     TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
@@ -1859,7 +1872,7 @@ bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters
             && profile.bOrbitLinesOn == afterFirst[index].bOrbitLinesOn);
     }
 
-    // Later changes by the player survive another migrate (the step is skipped at schema 10)
+    // Later changes by the player survive another migrate (the step is skipped at the current schema)
     save->bSpaceDust = true;
     save->OverlayProfiles[1].bEnabled = false;
     save->OverlayProfiles[1].bMasterOn = false;
@@ -2070,7 +2083,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateChainToProfilesTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A v6 and a v8 save go through the whole chain to schema 10: dust on, profile 1 enabled with its master on, no
+// A v6 and a v8 save go through the whole chain to schema 11: dust on, profile 1 enabled with its master on, no
 // SpaceDust key anywhere, and the orbit-lines switch from the legacy flag
 bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*parameters*/)
 {
@@ -2083,7 +2096,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v6->bShowOrbitLines = true;
     v6->bSpaceDust = false;
     v6->MigrateToCurrentVersion();
-    TestEqual(TEXT("v6 -> 10"), v6->Version, 10);
+    TestEqual(TEXT("v6 -> 11"), v6->Version, 11);
     TestTrue(TEXT("v6: dust on"), v6->bSpaceDust);
     TestEqual(TEXT("v6: one profile"), v6->OverlayProfiles.Num(), 1);
     TestEqual(TEXT("v6: active 0"), v6->ActiveOverlayProfile, 0);
@@ -2112,7 +2125,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v8->bShowOrbitLines = false;
     v8->bSpaceDust = false;
     v8->MigrateToCurrentVersion();
-    TestEqual(TEXT("v8 -> 10"), v8->Version, 10);
+    TestEqual(TEXT("v8 -> 11"), v8->Version, 11);
     TestTrue(TEXT("v8: dust on"), v8->bSpaceDust);
     TestEqual(TEXT("v8: one profile"), v8->OverlayProfiles.Num(), 1);
     if (v8->OverlayProfiles.Num() == 1)
@@ -2167,6 +2180,413 @@ bool FSOLSettingsRulesSpaceDustSaveValuesTest::RunTest(const FString& /*paramete
     TestTrue(TEXT("SetValues stores on"), save->bSpaceDust);
     TestTrue(TEXT("GetValues gives on back"), save->GetValues().bSpaceDust);
     TestTrue(TEXT("on round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    return true;
+}
+
+// Issue #42 hologram menu effects strength in the settings save (schema 11), written against the SDD 42 section 9
+// contract before the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV10HoloMenuEffectsTest,
+    "SOLTest.SettingsRules.MigrateV10HoloMenuEffects",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 10 -> 11 (issue #42, A1 / A2): the hologram menu effects strength (absent from a v10 file) is copied from the
+// file's HUD effects strength; every other field is kept as loaded (no earlier step re-runs), and a second migrate
+// changes nothing
+bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
+    TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestTrue(TEXT("a v10 save is migrated"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(10, 11) migrates"), ClassifySaveVersion(10, 11) == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(11, 11) uses"), ClassifySaveVersion(11, 11) == ESaveVersionAction::Use);
+    TestTrue(TEXT("a v12 save is ignored"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::UseDefaults);
+
+    // Two v10 profiles in shapes the 9 -> 10 step would change (disabled, master off, a stray SpaceDust key), so a
+    // re-run of an earlier step would show
+    TMap<FString, bool> first;
+    first.Add(TEXT("Icons"), false);
+    first.Add(SETTINGSRULES_DUST_ID, true);
+    TMap<FString, bool> second;
+    second.Add(TEXT("PlanetOrbits"), true);
+    FSOLOverlayProfileSave firstProfile = SettingsRulesOverlayProfileOf(first);
+    firstProfile.bEnabled = true;
+    firstProfile.bMasterOn = false;
+    firstProfile.bOrbitLinesOn = false;
+    FSOLOverlayProfileSave secondProfile = SettingsRulesOverlayProfileOf(second);
+    secondProfile.bEnabled = false;
+    secondProfile.bMasterOn = true;
+    secondProfile.bOrbitLinesOn = true;
+
+    // A v10 save with non-default values everywhere and a stray menu strength a v10 file never wrote
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->Version = 10;
+    save->MasterVolume = 0.3f;
+    save->SfxVolume = 0.4f;
+    save->MusicVolume = 0.5f;
+    save->MouseSensitivity = 2.5f;
+    save->bInvertY = true;
+    save->HudScale = 1.5f;
+    save->bHudVisible = false;
+    save->bDefaultFlightAssist = false;
+    save->bVsync = false;
+    save->QualityPreset = 1;
+    save->bVsyncChosen = true;
+    save->bQualityChosen = true;
+    save->bShowOrbitLines = false;
+    save->HudEffectsStrength = 0.3f;
+    save->bMouseSteerAtStart = true;
+    save->bSpaceDust = false;
+    save->ChaseSafetyMargin = 0.1f;
+    save->OverlayProfiles.Add(firstProfile);
+    save->OverlayProfiles.Add(secondProfile);
+    save->ActiveOverlayProfile = 1;
+    save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));            // Already past 3 -> 4: must not be moved
+    save->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));   // Already past 9 -> 10: must not be dropped
+    save->HoloMenuEffects = 1.7f;
+    const TMap<FString, FString> overridesBefore = save->KeyOverrides;
+
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("v10 -> 11"), save->Version, 11);
+    TestEqual(TEXT("v10 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("menu effects copied from the HUD strength (A2)"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("GetValues reads the copied menu strength"), save->GetValues().HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // Every other field is untouched
+    TestEqual(TEXT("HUD effects strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), save->bInvertY);
+    TestEqual(TEXT("HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("HUD hidden kept"), save->bHudVisible);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestFalse(TEXT("vsync kept"), save->bVsync);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+    TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
+    TestFalse(TEXT("legacy orbit-lines flag kept"), save->bShowOrbitLines);
+    TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
+    TestFalse(TEXT("dust off kept"), save->bSpaceDust);
+    TestEqual(TEXT("margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 1);
+    TestTrue(TEXT("key overrides kept verbatim"), SettingsRulesSameOverrides(save->KeyOverrides, overridesBefore));
+    TestEqual(TEXT("profile count kept"), save->OverlayProfiles.Num(), 2);
+    if (save->OverlayProfiles.Num() == 2)
+    {
+        const FSOLOverlayProfileSave& one = save->OverlayProfiles[0];
+        const FSOLOverlayProfileSave& two = save->OverlayProfiles[1];
+        TestTrue(TEXT("profile 1 map kept (SpaceDust key not removed again)"),
+            SettingsRulesSameOverlayMap(one.Overlays, first));
+        TestTrue(TEXT("profile 1 flags kept"), one.bEnabled && !one.bMasterOn && !one.bOrbitLinesOn);
+        TestTrue(TEXT("profile 2 map kept"), SettingsRulesSameOverlayMap(two.Overlays, second));
+        TestTrue(TEXT("profile 2 flags kept (not re-enabled)"), !two.bEnabled && two.bMasterOn && two.bOrbitLinesOn);
+    }
+
+    // Idempotent: a second migrate changes nothing
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the menu strength"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("second migrate keeps the HUD strength"), save->HudEffectsStrength, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // Later changes by the player survive another migrate: the menu strength is not re-copied from the HUD one
+    save->HoloMenuEffects = 1.6f;
+    save->HudEffectsStrength = 0.2f;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("a later menu strength survives"), save->HoloMenuEffects, 1.6f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("a later HUD strength survives"), save->HudEffectsStrength, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV10HoloMenuSanitizedTest,
+    "SOLTest.SettingsRules.MigrateV10HoloMenuEffectsSanitized",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The 10 -> 11 copy is sanitized: an in-range HUD strength (ends included) is copied as is, an out-of-range or infinite
+// one clamps to [MIN, MAX] and NaN gives the default 1; the HUD strength field itself is kept as loaded
+bool FSOLSettingsRulesMigrateV10HoloMenuSanitizedTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Settings;
+    constexpr float infinity = std::numeric_limits<float>::infinity();
+
+    // Each loaded HUD strength and the menu strength it must migrate to
+    struct FCase
+    {
+        const TCHAR* Label;
+        float HudStrength;
+        float ExpectedMenu;
+    };
+    const FCase cases[] = {
+        { TEXT("0 (off)"), 0.0f, HOLO_MENU_EFFECTS_MIN },
+        { TEXT("one step"), 0.05f, 0.05f },
+        { TEXT("0.3"), 0.3f, 0.3f },
+        { TEXT("1 (default)"), 1.0f, 1.0f },
+        { TEXT("1.85"), 1.85f, 1.85f },
+        { TEXT("2 (max)"), 2.0f, HOLO_MENU_EFFECTS_MAX },
+        { TEXT("below the range"), -0.5f, HOLO_MENU_EFFECTS_MIN },
+        { TEXT("above the range"), 7.0f, HOLO_MENU_EFFECTS_MAX },
+        { TEXT("+inf"), infinity, HOLO_MENU_EFFECTS_MAX },
+        { TEXT("-inf"), -infinity, HOLO_MENU_EFFECTS_MIN },
+        { TEXT("NaN"), SETTINGSRULES_TEST_NAN, HOLO_MENU_EFFECTS_DEFAULT },
+    };
+    for (const FCase& entry : cases)
+    {
+        const FString label = FString(TEXT("HUD ")) + entry.Label;
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = 10;
+        save->HudEffectsStrength = entry.HudStrength;
+        save->HoloMenuEffects = 0.65f;                            // A stray value a v10 file never wrote
+        save->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": v10 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+        TestTrue(label + TEXT(": menu strength is finite"), FMath::IsFinite(save->HoloMenuEffects));
+        TestEqual(label + TEXT(": menu strength"), save->HoloMenuEffects, entry.ExpectedMenu,
+            SETTINGSRULES_TEST_TOLERANCE);
+        TestTrue(label + TEXT(": menu strength in range"), save->HoloMenuEffects >= HOLO_MENU_EFFECTS_MIN
+            && save->HoloMenuEffects <= HOLO_MENU_EFFECTS_MAX);
+
+        // The source field is kept as loaded (section 9.3 step 2); the model sanitizes it on read as before
+        if (FMath::IsNaN(entry.HudStrength))
+        {
+            TestTrue(label + TEXT(": HUD strength kept as loaded"), FMath::IsNaN(save->HudEffectsStrength));
+        }
+        else
+        {
+            TestTrue(label + TEXT(": HUD strength kept as loaded"), save->HudEffectsStrength == entry.HudStrength);
+        }
+    }
+
+    // NaN gives exactly the default constant, which is 1
+    USOLSettingsSave* nanSave = NewObject<USOLSettingsSave>();
+    nanSave->Version = 10;
+    nanSave->HudEffectsStrength = SETTINGSRULES_TEST_NAN;
+    nanSave->MigrateToCurrentVersion();
+    TestEqual(TEXT("NaN: the default constant"), nanSave->HoloMenuEffects, HOLO_MENU_EFFECTS_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("NaN: 1"), nanSave->HoloMenuEffects, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsVersionsTest,
+    "SOLTest.SettingsRules.HoloMenuEffectsVersions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every save from schema 1 to 10 reaches schema 11 with the menu strength copied from the HUD strength the chain leaves
+// (1 for schemas 1 to 4, whose 4 -> 5 step sets the HUD default; the stored value from schema 5 on); a current save
+// keeps its own menu strength; an unversioned or newer save is never migrated
+bool FSOLSettingsRulesHoloMenuEffectsVersionsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    using namespace SOL::Settings;
+
+    // Every older schema, each holding a stray HUD strength of 0.3 and a stray menu strength of 0.7
+    for (int32 version = 1; version <= 10; ++version)
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        TestTrue(label + TEXT(": classified as migrate"), ClassifySaveVersion(version, SAVE_VERSION)
+            == ESaveVersionAction::Migrate);
+        USOLSettingsSave* older = NewObject<USOLSettingsSave>();
+        older->Version = version;
+        older->HudEffectsStrength = 0.3f;
+        older->HoloMenuEffects = 0.7f;
+        older->MasterVolume = 0.45f;
+        older->MigrateToCurrentVersion();
+        const float expected = version <= 4 ? HUD_EFFECTS_DEFAULT : 0.3f;
+        TestEqual(label + TEXT(": ends at the current schema"), older->Version, SAVE_VERSION);
+        TestEqual(label + TEXT(": menu strength equals the migrated HUD strength"), older->HoloMenuEffects,
+            older->HudEffectsStrength, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": menu strength"), older->HoloMenuEffects, expected, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": master kept"), older->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    }
+
+    // The whole chain from v4 (section 9.3): 4 -> 5 sets the HUD strength to 1, so 10 -> 11 copies 1
+    USOLSettingsSave* v4 = NewObject<USOLSettingsSave>();
+    v4->Version = 4;
+    v4->HudEffectsStrength = 0.3f;
+    v4->MigrateToCurrentVersion();
+    TestEqual(TEXT("v4 -> current"), v4->Version, SAVE_VERSION);
+    TestEqual(TEXT("v4: HUD strength 1 from 4 -> 5"), v4->HudEffectsStrength, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("v4: menu strength 1"), v4->HoloMenuEffects, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // The whole chain from v6: the player's HUD strength of 0.45 carries through to the menu strength
+    USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
+    v6->Version = 6;
+    v6->HudEffectsStrength = 0.45f;
+    v6->bMouseSteerAtStart = true;
+    v6->MigrateToCurrentVersion();
+    TestEqual(TEXT("v6 -> current"), v6->Version, SAVE_VERSION);
+    TestEqual(TEXT("v6: HUD strength kept"), v6->HudEffectsStrength, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("v6: menu strength copied"), v6->HoloMenuEffects, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("v6: steer at start kept"), v6->bMouseSteerAtStart);
+    v6->MigrateToCurrentVersion();
+    TestEqual(TEXT("v6: second migrate keeps the menu strength"), v6->HoloMenuEffects, 0.45f,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // A current save keeps its own menu strength (not overwritten by its different HUD strength), across two calls
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SAVE_VERSION;
+    current->HudEffectsStrength = 0.3f;
+    current->HoloMenuEffects = 0.7f;
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), current->Version, SAVE_VERSION);
+    TestEqual(TEXT("current: menu strength kept"), current->HoloMenuEffects, 0.7f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("current: HUD strength kept"), current->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: menu strength kept twice"), current->HoloMenuEffects, 0.7f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // A current save holding 0 (effects off) keeps 0
+    USOLSettingsSave* off = NewObject<USOLSettingsSave>();
+    off->Version = SAVE_VERSION;
+    off->HoloMenuEffects = HOLO_MENU_EFFECTS_MIN;
+    off->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: off kept"), off->HoloMenuEffects, HOLO_MENU_EFFECTS_MIN, SETTINGSRULES_TEST_TOLERANCE);
+
+    // An unversioned or newer save is never migrated
+    const int32 untouchedVersions[] = { 0, SAVE_VERSION + 1 };
+    for (const int32 version : untouchedVersions)
+    {
+        USOLSettingsSave* untouched = NewObject<USOLSettingsSave>();
+        untouched->Version = version;
+        untouched->HudEffectsStrength = 0.3f;
+        untouched->HoloMenuEffects = 0.7f;
+        untouched->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("version %d"), version);
+        TestEqual(label + TEXT(": version kept"), untouched->Version, version);
+        TestEqual(label + TEXT(": menu strength kept"), untouched->HoloMenuEffects, 0.7f, SETTINGSRULES_TEST_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsSaveValuesTest,
+    "SOLTest.SettingsRules.HoloMenuEffectsSaveValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A new save holds the menu strength default (1), and SetValues / GetValues round-trip it (0 and the max included),
+// separately from the HUD strength
+bool FSOLSettingsRulesHoloMenuEffectsSaveValuesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Settings;
+
+    // A new save holds the default
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestEqual(TEXT("new save: default menu strength"), fresh->HoloMenuEffects, HOLO_MENU_EFFECTS_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("new save: 1"), fresh->HoloMenuEffects, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("new save: GetValues default menu strength"), fresh->GetValues().HoloMenuEffects,
+        HOLO_MENU_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+
+    // SetValues / GetValues round-trip a mid value
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    values.HoloMenuEffects = 1.35f;
+    save->SetValues(values);
+    TestEqual(TEXT("SetValues stores the menu strength"), save->HoloMenuEffects, 1.35f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("GetValues gives it back"), save->GetValues().HoloMenuEffects, 1.35f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+
+    // Off (0) and the max round-trip
+    values.HoloMenuEffects = HOLO_MENU_EFFECTS_MIN;
+    save->SetValues(values);
+    TestEqual(TEXT("off stored"), save->HoloMenuEffects, HOLO_MENU_EFFECTS_MIN, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("off round-trips"), save->GetValues().HoloMenuEffects, HOLO_MENU_EFFECTS_MIN,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("off round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    values.HoloMenuEffects = HOLO_MENU_EFFECTS_MAX;
+    save->SetValues(values);
+    TestEqual(TEXT("max round-trips"), save->GetValues().HoloMenuEffects, HOLO_MENU_EFFECTS_MAX,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // The two strengths are stored in their own fields
+    values.HudEffectsStrength = 0.2f;
+    values.HoloMenuEffects = 1.8f;
+    save->SetValues(values);
+    TestEqual(TEXT("HUD strength stored apart"), save->HudEffectsStrength, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu strength stored apart"), save->HoloMenuEffects, 1.8f, SETTINGSRULES_TEST_TOLERANCE);
+    const SOLSettingsModel::FSettingsValues readBack = save->GetValues();
+    TestEqual(TEXT("HUD strength read apart"), readBack.HudEffectsStrength, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu strength read apart"), readBack.HoloMenuEffects, 1.8f, SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsDiskTest,
+    "SOLTest.SettingsRules.HoloMenuEffectsDiskRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A schema 11 file keeps its menu strength through disk, and a schema 10 file loads back as schema 10 and migrates
+// with the menu strength copied from its HUD strength
+bool FSOLSettingsRulesHoloMenuEffectsDiskTest::RunTest(const FString& /*parameters*/)
+{
+    const FString slotName = TEXT("SOLTest_HoloMenuEffects");
+    constexpr int32 userIndex = 0;
+
+    // Start clean, and always remove the test slot when the test ends, whichever path it takes
+    UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    ON_SCOPE_EXIT
+    {
+        UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    };
+
+    // A current file with a menu strength unlike its HUD strength survives the write and the read
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->HudEffectsStrength = 0.3f;
+    current->HoloMenuEffects = 1.45f;
+    if (!TestTrue(TEXT("current save written"), UGameplayStatics::SaveGameToSlot(current, slotName, userIndex)))
+    {
+        return false;
+    }
+    USOLSettingsSave* loadedCurrent = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("current save loaded"), loadedCurrent))
+    {
+        return false;
+    }
+    loadedCurrent->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), loadedCurrent->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("current: menu strength from disk"), loadedCurrent->HoloMenuEffects, 1.45f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("current: HUD strength from disk"), loadedCurrent->HudEffectsStrength, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // A schema 10 file (with a stray menu strength) loads back as schema 10 and migrates per A2
+    USOLSettingsSave* written = NewObject<USOLSettingsSave>();
+    written->Version = 10;
+    written->HudEffectsStrength = 0.55f;
+    written->HoloMenuEffects = 1.9f;
+    written->MasterVolume = 0.35f;
+    if (!TestTrue(TEXT("schema 10 save written"), UGameplayStatics::SaveGameToSlot(written, slotName, userIndex)))
+    {
+        return false;
+    }
+    USOLSettingsSave* loaded = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("schema 10 save loaded"), loaded))
+    {
+        return false;
+    }
+    TestEqual(TEXT("loaded as schema 10"), loaded->Version, 10);
+    loaded->MigrateToCurrentVersion();
+    TestEqual(TEXT("migrated to the current schema"), loaded->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("menu strength copied from the HUD strength"), loaded->HoloMenuEffects, 0.55f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD strength kept"), loaded->HudEffectsStrength, 0.55f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("master volume kept"), loaded->MasterVolume, 0.35f, SETTINGSRULES_TEST_TOLERANCE);
     return true;
 }
 

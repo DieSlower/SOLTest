@@ -119,6 +119,11 @@ public:
     UPROPERTY()
     float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
 
+    /** Hologram menu effects strength (SDD 42 section 8). Added in schema 11; an older save is migrated per A2 (the
+     *  10 -> 11 step copies its HUD effects strength, sanitized). */
+    UPROPERTY()
+    float HoloMenuEffects = SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
+
     /** Mouse steering toggle on at every flight start (SDD 19 Amendment 5). Added in schema 6; an older save is
      *  migrated to off (the new default). */
     UPROPERTY()

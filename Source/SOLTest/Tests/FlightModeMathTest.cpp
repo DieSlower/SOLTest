@@ -1659,7 +1659,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLFlightModeMathLayoutChangedTest, "SOLTest.F
 
 //////////////////////////////////////////////////////////////////////////
 // The one-time "default controls changed" notice applies to every real schema 1 to 9 save (issue #34 replaced the
-// Shift+O darkening key with the RightShift+O profile cycle, D9), never to an unversioned or current (10) one
+// Shift+O darkening key with the RightShift+O profile cycle, D9), never to an unversioned, a layout-10 or a current
+// (11, issue #42: no binding change) one
 bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLKeyBindings;
@@ -1679,16 +1680,17 @@ bool FSOLFlightModeMathLayoutChangedTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("11"), DefaultLayoutChangedSince(FMM_PROFILES_LAYOUT_VERSION + 1));
     TestEqual(TEXT("layout version constant"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, FMM_PROFILES_LAYOUT_VERSION);
 
-    // Issue #34 bumped both the schema and the key layout to 10, so the layout is the current schema (D9: the invariant
-    // "schema past the layout" became "schema at or past the layout")
-    TestEqual(TEXT("layout version is 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
-    TestEqual(TEXT("schema version is 10"), SOL::Settings::SAVE_VERSION, 10);
+    // Issue #34 bumped both the schema and the key layout to 10 (D9: the invariant "schema past the layout" became
+    // "schema at or past the layout"); issue #42 bumped only the schema, to 11 (SDD 42 D7, A1), so the layout stays 10
+    TestEqual(TEXT("layout version is still 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
     TestTrue(TEXT("schema is at or past the layout"),
         SOL::Settings::SAVE_VERSION >= SOL::Settings::KEY_BINDING_LAYOUT_VERSION);
     TestTrue(TEXT("a v7 save gets the controls-changed notice"), DefaultLayoutChangedSince(7));
     TestTrue(TEXT("a v8 save gets the controls-changed notice"), DefaultLayoutChangedSince(8));
     TestTrue(TEXT("a v9 save gets the controls-changed notice"), DefaultLayoutChangedSince(9));
-    TestFalse(TEXT("a v10 (current) save gets no controls-changed notice"),
+    TestFalse(TEXT("a v10 save gets no controls-changed notice"), DefaultLayoutChangedSince(10));
+    TestFalse(TEXT("a v11 (current) save gets no controls-changed notice"),
         DefaultLayoutChangedSince(SOL::Settings::SAVE_VERSION));
     TestTrue(TEXT("a v6 save still gets the notice"), DefaultLayoutChangedSince(6));
     return true;
@@ -1719,6 +1721,8 @@ bool FSOLFlightModeMathSettingsSaveMigrationTest::RunTest(const FString& /*param
     TestTrue(TEXT("a v8 save is migrated"), SOLSettingsRules::ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
     TestTrue(TEXT("a v9 save is migrated"), SOLSettingsRules::ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
+        == SOLSettingsRules::ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v10 save is migrated"), SOLSettingsRules::ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
         == SOLSettingsRules::ESaveVersionAction::Migrate);
 
     // A schema 2 save: overrides (one now conflicting) and the other fields survive

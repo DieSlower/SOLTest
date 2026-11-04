@@ -33,6 +33,7 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     bVsync = values.bVsync;
     QualityPreset = values.QualityPreset;
     HudEffectsStrength = values.HudEffectsStrength;
+    HoloMenuEffects = values.HoloMenuEffects;
     bMouseSteerAtStart = values.bMouseSteerAtStart;
     ChaseSafetyMargin = values.ChaseSafetyMargin;
     bSpaceDust = values.bSpaceDust;
@@ -78,6 +79,7 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.bVsync = bVsync;
     values.QualityPreset = QualityPreset;
     values.HudEffectsStrength = HudEffectsStrength;
+    values.HoloMenuEffects = HoloMenuEffects;
     values.bMouseSteerAtStart = bMouseSteerAtStart;
     values.ChaseSafetyMargin = ChaseSafetyMargin;
     values.bSpaceDust = bSpaceDust;
@@ -213,5 +215,18 @@ void USOLSettingsSave::MigrateToCurrentVersion()
         }
         KeyOverrides.Remove(darkeningKeyId);
         Version = 10;
+    }
+
+    // Schema 10 -> 11 (SDD 42 section 9.3): the hologram menu effects strength, which a v10 file does not have, copies
+    // the HUD effects strength (A2: the menus followed that slider before), clamped into its range with NaN -> the
+    // default; the HUD strength and every other field are kept as loaded, and the key layout is unchanged (no
+    // controls-changed notice). A migration step is frozen on purpose: the clamp stays inline and never calls the
+    // model's sanitizer, so a later change to the sanitizer cannot alter what this step produces
+    if (Version == 10)
+    {
+        HoloMenuEffects = FMath::IsNaN(HudEffectsStrength) ? SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT
+            : FMath::Clamp(HudEffectsStrength, SOL::Settings::HOLO_MENU_EFFECTS_MIN,
+                SOL::Settings::HOLO_MENU_EFFECTS_MAX);
+        Version = 11;
     }
 }

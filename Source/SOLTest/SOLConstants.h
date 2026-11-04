@@ -1088,8 +1088,8 @@ namespace SOL
         // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
         // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43;
         // 10: overlay profiles with their enabled, master and orbit-lines flags, the global space dust and the
-        // RShift+O profile cycle, SDD 34)
-        inline constexpr int32 SAVE_VERSION = 10;
+        // RShift+O profile cycle, SDD 34; 11: the hologram menu effects strength, SDD 42)
+        inline constexpr int32 SAVE_VERSION = 11;
         // The save schema that introduced the current default key layout (issue #34: O / Alt+O / Ctrl+O / RShift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 10;
@@ -1109,6 +1109,11 @@ namespace SOL
         inline constexpr float HUD_EFFECTS_MAX = 2.0f;
         inline constexpr float HUD_EFFECTS_DEFAULT = 1.0f;
         inline constexpr float HUD_EFFECTS_STEP = 0.05f;
+        inline constexpr float HOLO_MENU_EFFECTS_MIN = 0.0f;    // Hologram menu effects strength (SDD 42 section 8)
+        inline constexpr float HOLO_MENU_EFFECTS_MAX = 2.0f;
+        inline constexpr float HOLO_MENU_EFFECTS_DEFAULT = 1.0f; // Full strength (D8); a migrated save copies its HUD
+                                                                 // effects strength instead (SDD 42 section 9, A2)
+        inline constexpr float HOLO_MENU_EFFECTS_STEP = 0.05f;
         inline constexpr float VALUE_EQUAL_TOLERANCE = 1.0e-4f;    // Two slider values closer than this are equal
 
         // Chase Down safety margin (SDD 32 section 3.10): a floor on the G meter, as a fraction of a full meter

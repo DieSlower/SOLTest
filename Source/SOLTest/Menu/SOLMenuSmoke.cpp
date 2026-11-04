@@ -51,6 +51,7 @@ namespace
     constexpr float MENUSMOKE_MUSIC_VOLUME = 0.4f;
     constexpr float MENUSMOKE_MOUSE_SENSITIVITY = 1.5f;
     constexpr float MENUSMOKE_HUD_SCALE = 1.25f;
+    constexpr float MENUSMOKE_HOLO_MENU_EFFECTS = 0.4f;
     constexpr float MENUSMOKE_PREVIEW_VOLUME = 0.2f;              // Previewed, then reverted
     constexpr float MENUSMOKE_VOLUME_TOLERANCE = 0.01f;
     constexpr int32 MENUSMOKE_WRITES_AFTER_REBIND = 2;            // Main-menu visit, then the pause rebind visit
@@ -707,6 +708,7 @@ void FSOLMenuSmoke::EnterSettingsPhase(const EPhase phase, USOLMenuSubsystem& me
             mainPage->SetSliderValue(ESOLSettingsSlider::MouseSensitivity, MENUSMOKE_MOUSE_SENSITIVITY);
             mainPage->SetToggle(ESOLSettingsToggle::InvertY, true);
             mainPage->SetSliderValue(ESOLSettingsSlider::HudScale, MENUSMOKE_HUD_SCALE);
+            mainPage->SetSliderValue(ESOLSettingsSlider::HoloMenuEffects, MENUSMOKE_HOLO_MENU_EFFECTS);
             mainPage->Step(ESOLSettingsStepper::Quality, -1);
             mainPage->Apply();
             mainPage->SetSliderValue(ESOLSettingsSlider::MusicVolume, MENUSMOKE_MUSIC_VOLUME);
@@ -719,6 +721,7 @@ void FSOLMenuSmoke::EnterSettingsPhase(const EPhase phase, USOLMenuSubsystem& me
         mExpectedValues.MouseSensitivity = MENUSMOKE_MOUSE_SENSITIVITY;
         mExpectedValues.bInvertY = true;
         mExpectedValues.HudScale = MENUSMOKE_HUD_SCALE;
+        mExpectedValues.HoloMenuEffects = MENUSMOKE_HOLO_MENU_EFFECTS;
         mExpectedValues.QualityPreset = SOLSettingsRules::StepIndex(mOriginalValues.QualityPreset,
             SOLSettingsRules::QUALITY_PRESET_COUNT, -1);
         break;

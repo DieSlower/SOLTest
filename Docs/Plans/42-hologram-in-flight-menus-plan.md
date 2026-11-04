@@ -38,7 +38,7 @@ The frame-geometry contracts are final for option (c) (D20, SDD 6.3): `FrameOutl
 0. [ ] Capture the D14 baseline before any rendering change: the profiling passes of SDD 11 at the current HEAD (the
    menus as today), numbers into the SDD amendment. (The `-SOLSmokeHoloMenuProfile` harness is built here as a
    stand-alone smoke flag so the same passes run again in 42i.)
-1. [ ] Brief a separate opus subagent with SDD sections 6 and 7 only (no implementation). It writes
+1. [x] Brief a separate opus subagent with SDD sections 6 and 7 only (no implementation). It writes
    `Source/SOLTest/Tests/HoloMenuTest.cpp` (`SOLTest.HoloMenu.*`), the cases of SDD 6.4.
 2. [ ] Stubs `UI/SOLHoloMenuMath.{h,cpp}` (namespace `SOLHoloMenu`, `FSOLHoloMenuAnim`, `FSOLHoloMenuLook`,
    `FSOLHoloSegment`) and the `SOL::HoloMenu` constants. Build, run `Tools\RunTests.bat -Filter SOLTest.HoloMenu`:
@@ -57,15 +57,15 @@ migrate, never silently discard"; the exact field list of SDD 9.2 (nothing else)
 The subagent reports exactly which constants and fields it changed; the main session checks that report against
 SDD section 9 and the user's answers before ticking.
 
-1. [ ] Tests first (SDD 9.5): extend `SOLSettingsRulesTest.cpp` and `SOLSettingsModelTest.cpp`, re-validate the pins
+1. [x] Tests first (SDD 9.5): extend `SOLSettingsRulesTest.cpp` and `SOLSettingsModelTest.cpp`, re-validate the pins
    in `FlightModeMathTest.cpp`. Red.
-2. [ ] Fields: `USOLSettingsSave::HoloMenuEffects`, `FSettingsValues::HoloMenuEffects` (sanitize, equal, dirty),
+2. [x] Fields: `USOLSettingsSave::HoloMenuEffects`, `FSettingsValues::HoloMenuEffects` (sanitize, equal, dirty),
    `SetValues` / `GetValues`, the `SOL::Settings::HOLO_MENU_EFFECTS_*` constants.
-3. [ ] The 10 -> 11 step (SDD 9.3), `SAVE_VERSION` 11 and its schema comment.
-4. [ ] The Settings slider (SDD 8): `ESOLSettingsSlider::HoloMenuEffects`, its `SETTINGS_SLIDERS` row, handler, label in
+3. [x] The 10 -> 11 step (SDD 9.3), `SAVE_VERSION` 11 and its schema comment.
+4. [x] The Settings slider (SDD 8): `ESOLSettingsSlider::HoloMenuEffects`, its `SETTINGS_SLIDERS` row, handler, label in
    `SOLMenuText`, placed in **Settings > Gameplay, right under the "HUD hologram effects" slider** (D11).
-5. [ ] Suite green; `-SOLMenuSmoke=all` (no new failures beyond its known stale checks); review (opus/xhigh); fixes.
-6. [ ] Commit `Issue #42: Part 42b - hologram menu effects setting (save schema 11)`.
+5. [x] Suite green; `-SOLMenuSmoke=all` (no new failures beyond its known stale checks); review (opus/xhigh); fixes.
+6. [x] Commit `Issue #42: Part 42b - hologram menu effects setting (save schema 11)`.
 
 ### 42c: rendering kit (opus, high)
 
@@ -79,7 +79,7 @@ committed as done before 42b, so no build ships a menu slider that does nothing)
    frameless card ticks (`CardCornerTicks`, D15), borderless fill, sweep line, hover brackets (`HoverMark`); the flat strength-0
    look (D18: `FLAT_PANEL_ALPHA` backdrop, `GlowScale` 0, no sweep or flicker); buffers reserved once; one
    custom-vertex draw.
-2b. [ ] Cursor (D19): `USOLHologramCursorSubsystem` reads `HoloMenuEffects` instead of `HudEffectsStrength`
+2b. [x] (done in 42b after its review, so the slider does something in the 42b commit) Cursor (D19): `USOLHologramCursorSubsystem` reads `HoloMenuEffects` instead of `HudEffectsStrength`
    (`SOLHologramCursorSubsystem.cpp` line 71); `-SOLMenuSmoke` cursor checks follow.
 3. [ ] `ASOLFlightHud`: the second `SSOLHudShapeLayer` (menu layer) above the HUD layer with the menu MID, frame
    stamping as the HUD layer; `Menu*` draw helpers. HUD output unchanged (`-SOLSmokeHud` green, screenshot compared).
@@ -210,3 +210,10 @@ Remaining steps (after 42c, which loads the cues):
   and dividers, with fixed-capacity outputs; the 6.4 test cases and the section 7 constants updated to match
   (`FRAME_MAX_SEGMENTS` 24, `FRAME_MAX_SHAPES` 160). Next step: 42a (baseline capture, then the test brief from SDD
   sections 6 and 7).
+- 2026-11-04: 42b done: `SAVE_VERSION` 10 -> 11, new field `HoloMenuEffects` (`USOLSettingsSave`, `FSettingsValues`),
+  constants `HOLO_MENU_EFFECTS_MIN/MAX/DEFAULT/STEP` (0 / 2 / 1 / 0.05), the 10 -> 11 step copies the clamped
+  `HudEffectsStrength` (NaN gives 1), `KEY_BINDING_LAYOUT_VERSION` stays 10. Slider "Hologram menu effects" under "HUD
+  hologram effects" in Settings > Gameplay. The review asked for the cursor switch (42c step 2b, D19) to move into 42b so
+  the slider is not inert; done. Suite 1243 / 1243; `-SOLMenuSmoke=all` 44/50 (the 6 failures are the stale
+  hidden-cursor and Mars thrust checks in TECH_DEBT; the 3 Play checks fail only with a focused window);
+  `-SOLSmokeOverlay` 34/34. 42a tests authored (25 `SOLTest.HoloMenu.*` tests); next step: 42a implementation.

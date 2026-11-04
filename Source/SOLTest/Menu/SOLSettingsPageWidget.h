@@ -28,7 +28,8 @@ enum class ESOLSettingsSlider : uint8
     MusicVolume,
     MouseSensitivity,
     HudScale,
-    HudEffects,     // HUD hologram effects strength (SDD 21)
+    HudEffects,         // HUD hologram effects strength (SDD 21)
+    HoloMenuEffects,    // Hologram menu effects strength (SDD 42 section 8); under the HUD effects slider
     ChaseSafetyMargin,  // Chase Down meter floor, a percent of a full meter (SDD 32); after Mouse steering at start
     Count,
 };
@@ -57,8 +58,8 @@ enum class ESOLSettingsStepper : uint8
 /**
  * Settings page (SDD 8, 8d), shared by the main menu and the pause menu: a UMG widget tree built in C++ with graphics
  * (resolution, window mode and quality steppers, vsync), audio (master, effects and music volume sliders), mouse
- * (sensitivity slider, invert Y), gameplay (HUD scale slider, HUD visible, flight assist at launch, the Chase Down
- * safety margin slider) and key bindings
+ * (sensitivity slider, invert Y), gameplay (HUD scale, HUD hologram effects and hologram menu effects sliders, HUD
+ * visible, flight assist at launch, the Chase Down safety margin slider) and key bindings
  * (one row per SOLKeyBindings action with its pending key and a Rebind button, and Reset keys to defaults), above a
  * footer with the dirty indicator, a status line, Revert and Apply. Every control only calls USOLSettingsSubsystem,
  * which previews audio, mouse and HUD values at once and applies the rest on Apply; the public setters below are the
@@ -186,6 +187,10 @@ private:
     // HUD hologram effects slider moved (SDD 21)
     UFUNCTION()
     void HandleHudEffectsChanged(float value);
+
+    // Hologram menu effects slider moved (SDD 42)
+    UFUNCTION()
+    void HandleHoloMenuEffectsChanged(float value);
 
     // Chase Down safety margin slider moved (SDD 32)
     UFUNCTION()

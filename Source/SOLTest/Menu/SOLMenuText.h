@@ -62,6 +62,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_INVERT_Y = TEXT("Invert mouse Y");
     inline constexpr const TCHAR* SETTINGS_HUD_SCALE = TEXT("HUD scale");
     inline constexpr const TCHAR* SETTINGS_HUD_EFFECTS = TEXT("HUD hologram effects");
+    inline constexpr const TCHAR* SETTINGS_HOLO_MENU_EFFECTS = TEXT("Hologram menu effects");
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
     inline constexpr const TCHAR* SETTINGS_MOUSE_STEER_AT_START = TEXT("Mouse steering at start");
@@ -450,7 +451,8 @@ namespace SOLMenuText
         TEXT("The flight HUD is a hologram: thin glowing blue lines and text on soft, borderless dark panels. Now "
             "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
             "range rings pulse like sonar; the HUD hologram effects slider in Settings sets how strong that is (0 "
-            "turns it off). The radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
+            "turns it off); the Hologram menu effects slider does the same for the menus and the mouse pointer. The "
+            "radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
             "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
             "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "
             "ringed and named. While you hold {FreeLook} the joystick circles turn yellow."),

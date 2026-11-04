@@ -66,10 +66,10 @@ int32 SSOLHologramCursor::OnPaint(const FPaintArgs& /*args*/, const FGeometry& a
         return layerId;
     }
 
-    // The effects slider (row jitter) as the flight HUD's material uses it; pushed only when it changes
+    // The hologram menu effects slider (row jitter, decision D19) through the HUD material's strength parameter; pushed only when it changes
     const USOLSettingsSubsystem* settings = mSettings.Get();
-    const float strength = settings != nullptr ? settings->GetLiveValues().HudEffectsStrength
-        : SOL::Settings::HUD_EFFECTS_DEFAULT;
+    const float strength = settings != nullptr ? settings->GetLiveValues().HoloMenuEffects
+        : SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
     if (strength != mPushedStrength)
     {
         mPushedStrength = strength;
