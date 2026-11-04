@@ -21,6 +21,7 @@
 #include "Map/SOLRouteSmoke.h"
 #include "Ship/SOLShipSmokeInput.h"
 #include "Ship/SOLSurfaceLockSmoke.h"
+#include "UI/SOLHoloMenuProfileSmoke.h"
 #include "UI/SOLHudSmoke.h"
 #include "UI/SOLOverlaySmoke.h"
 #include "Visuals/SOLSpaceDustSmoke.h"
@@ -1001,6 +1002,7 @@ private:
     TUniquePtr<FSOLJumpSmoke> mSmokeJump;                   // Verification-only pick and jump script (-SOLSmokeJump)
     TUniquePtr<FSOLSurfaceLockSmoke> mSmokeLevel;           // Verification-only surface-lock script (-SOLSmokeLevel)
     TUniquePtr<FSOLSpaceDustSmoke> mSmokeDust;              // Verification-only space dust script (-SOLSmokeDust)
+    TUniquePtr<FSOLHoloMenuProfileSmoke> mSmokeHoloMenuProfile; // Verification-only menu cost capture (SDD 42)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)

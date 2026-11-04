@@ -947,6 +947,105 @@ namespace SOL
         inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
     }
 
+    // A fixed gap of a hologram menu frame line (SDD 42 section 6.3): its start as a fraction of the line's length and
+    // its length in px at 1x
+    struct FSOLHoloGap
+    {
+        float AtFraction;
+        float LengthPx;
+    };
+
+    // Hologram in-flight menus (SDD 42 section 7; proposed, tuned from screenshots). Pixel sizes are at a 720 px canvas
+    // (x UI scale); times are real application seconds
+    namespace HoloMenu
+    {
+        // Open / close and hover curves (section 6.1)
+        inline constexpr double OPEN_S = 0.2;                     // Open time (D4a)
+        inline constexpr double CLOSE_S = 0.2;                    // Close time
+        inline constexpr float LINE_PHASE_END = 0.6f;             // Frame lines fully drawn at this progress
+        inline constexpr float FILL_PHASE_START = 0.4f;           // Fill, backdrop and text start fading up here
+        inline constexpr double HOVER_RAMP_S = 0.06;              // Hover glow rise time
+        inline constexpr double HOVER_FLICKER_S = 0.15;           // Length of the hover flicker
+        inline constexpr float HOVER_FLICKER_DEPTH = 0.25f;       // Flicker depth per unit of strength
+        inline constexpr double HOVER_FLICKER_RATE_HZ = 30.0;     // Flicker noise speed
+        inline constexpr double HOVER_FLICKER_OFFSET = 17.0;      // ... and lattice offset
+        inline constexpr float HOVER_GLOW_INTENSITY = 0.9f;       // Edge glow of the hovered item
+        inline constexpr float FRAME_INTENSITY = 0.5f;            // Outline frame glow (not scaled by the slider)
+        inline constexpr float FRAME_HALF_WIDTH_PX = 0.5f;        // Outline line half width (a 1 px core)
+        inline constexpr float CARD_TICK_PX = 16.0f;              // Corner tick length of the frameless cards (D15)
+        inline constexpr int32 CARD_TICK_SEGMENTS = 8;            // Capacity of CardCornerTicks (two per corner)
+        inline constexpr float FLAT_PANEL_ALPHA = 0.45f;          // Backdrop alpha at strength 0, a flat panel (D18)
+        inline constexpr double IDLE_SWEEP_PERIOD_S = 4.0;        // One scanline pass from top to bottom
+        inline constexpr float IDLE_SWEEP_INTENSITY = 0.08f;      // Sweep line glow per unit of strength
+        inline constexpr float BACKDROP_ALPHA_PER_UNIT = 0.15f;   // Dark tint alpha per unit of strength (D20 tint)
+        inline constexpr double HOVER_CUE_MIN_INTERVAL_S = 0.05;  // Shortest gap between two hover cues
+        inline constexpr int32 FRAME_MAX_SHAPES = 160;            // Shape capacity of one SSOLHoloFrame
+        inline constexpr float MIN_PIECE_PX = 1.0e-3f;            // A geometry piece shorter than this is never written
+        inline constexpr float UI_SCALE_MIN = 0.1f;               // Geometry clamps a valid uiScale to [MIN, MAX]
+        inline constexpr float UI_SCALE_MAX = 16.0f;              // ... so no input can stall a loop or overflow
+
+        // Option (c) stepped broken-line frame (D20, section 6.3)
+        inline constexpr float FRAME_CUT_TL_PX = 10.0f;           // Top-left corner cut (a)
+        inline constexpr float FRAME_CUT_PX = 14.0f;              // Top-right and bottom-left corner cuts (c)
+        inline constexpr float FRAME_STEP_PX = 10.0f;             // Title step height, bottom-right step-in depth (s)
+        inline constexpr float FRAME_NOTCH_PX = 40.0f;            // Height above the bottom where the right steps in
+        inline constexpr float FRAME_MIN_W_PX = FRAME_CUT_TL_PX + FRAME_STEP_PX + FRAME_CUT_PX;   // Full-size shape
+        inline constexpr float FRAME_MIN_H_PX = FRAME_STEP_PX + FRAME_CUT_PX + FRAME_NOTCH_PX;    // ... smallest rect
+        inline constexpr float FRAME_TITLE_STEP_PAD_PX = 26.0f;   // Raised title section = title text width + this
+        inline constexpr int32 FRAME_OUTLINE_POINTS = 11;         // Points of the stepped outline (P0-P10)
+        inline constexpr FSOLHoloGap FRAME_GAPS[] = {             // The outline's fixed gaps, sorted (96 px in all)
+            { 0.20f, 10.0f }, { 0.27f, 20.0f }, { 0.36f, 12.0f }, { 0.52f, 10.0f }, { 0.66f, 24.0f }, { 0.70f, 8.0f },
+            { 0.90f, 12.0f } };
+        inline constexpr int32 FRAME_GAP_COUNT = static_cast<int32>(UE_ARRAY_COUNT(FRAME_GAPS));
+        inline constexpr int32 FRAME_MAX_SEGMENTS = 24;           // Capacity of FrameDrawSegments
+        inline constexpr int32 FRAME_MAX_DOTS = 14;               // Capacity of FrameGapDots (2 per gap)
+        inline constexpr float FRAME_DOT_RADIUS_PX = 1.4f;        // Radius of a gap end dot
+        inline constexpr int32 FRAME_RULER_TICK_COUNT = 6;        // Ruler ticks on the left edge
+        inline constexpr float FRAME_RULER_TICK_PX = 4.0f;        // Ruler tick length, pointing inward
+        inline constexpr float FRAME_RULER_SPACING_PX = 9.0f;     // Distance between ruler ticks
+        inline constexpr float FRAME_RULER_START = 0.5f;          // First tick at this fraction of the height
+        inline constexpr int32 FRAME_ACCENT_COUNT = 4;            // Capacity of FrameAccents
+        inline constexpr float FRAME_ACCENT_INSET_PX = 6.0f;      // Inset of both corner accents from their edge
+        inline constexpr float FRAME_ACCENT_LEFT_TOP_PX = 18.0f;  // Top-left accent, from ...
+        inline constexpr float FRAME_ACCENT_LEFT_BOTTOM_PX = 70.0f;   // ... and to (below the top)
+        inline constexpr float FRAME_ACCENT_BOTTOM_PX = 74.0f;    // Length of the bottom-right accent
+        inline constexpr float FRAME_TITLE_UNDERLINE_Y_PX = 34.0f;        // Title underline, below the top
+        inline constexpr float FRAME_TITLE_UNDERLINE_START_PX = 12.0f;    // ... from the left
+        inline constexpr float FRAME_TITLE_UNDERLINE_END_PX = 40.0f;      // ... ending this far before the title step
+        inline constexpr float FRAME_TITLE_DASH_START_PX = 32.0f;         // Its short dash, from this far ...
+        inline constexpr float FRAME_TITLE_DASH_END_PX = 20.0f;           // ... to this far before the title step
+        inline constexpr float FRAME_DIM_ALPHA = 0.45f;           // Dim lines' alpha relative to the frame lines
+        inline constexpr float FRAME_TINT_INSET_PX = 2.0f;        // Inset of the tint box from the frame rect
+
+        // Hover marks, tab markers and dividers (section 6.3)
+        inline constexpr float HOVER_PAD_X_PX = 8.0f;             // The widget inflates the hovered item rect by these
+        inline constexpr float HOVER_PAD_Y_PX = 3.0f;
+        inline constexpr float HOVER_BRACKET_ARM_PX = 5.0f;       // Arm of the hover brackets
+        inline constexpr float HOVER_POINTER_RUN_PX = 34.0f;      // Pointer line: straight run,
+        inline constexpr float HOVER_POINTER_RISE_PX = 8.0f;      // ... 45-degree rise,
+        inline constexpr float HOVER_POINTER_DOT_PX = 2.0f;       // ... dot beyond its end
+        inline constexpr float HOVER_CENTRE_TICK_PX = 8.0f;       // Tick above and below a hovered digit or unit field
+        inline constexpr int32 HOVER_MAX_SEGMENTS = 8;            // Capacity of HoverMark
+        inline constexpr float TAB_BRACKET_ARM_PX = 6.0f;         // Unselected tab bar: arm length
+        inline constexpr float TAB_BRACKET_INSET_PX = 2.0f;       // ... and vertical inset
+        inline constexpr float TAB_CUT_PX = 6.0f;                 // Selected tab: top-left cut
+        inline constexpr float TAB_DOT_OFFSET_PX = 4.0f;          // ... and the dot's distance left of the tab
+        inline constexpr int32 TAB_MAX_SEGMENTS = 4;              // Capacity of TabMarker
+        inline constexpr float DIVIDER_DASH_PX = 9.0f;            // Column divider dash length
+        inline constexpr float DIVIDER_PERIOD_PX = 14.0f;         // ... and repeat
+        inline constexpr int32 DIVIDER_MAX_DASHES = 40;           // Capacity of DashedDivider
+        inline constexpr FSOLHoloGap DIVIDER_GAPS[] = { { 0.33f, 8.0f }, { 0.75f, 16.0f } };   // BrokenDivider gaps
+        inline constexpr int32 DIVIDER_GAP_COUNT = static_cast<int32>(UE_ARRAY_COUNT(DIVIDER_GAPS));
+        inline constexpr int32 DIVIDER_MAX_SEGMENTS = 6;          // Capacity of BrokenDivider
+        inline constexpr float SPEED_DIVIDER_STEP_AT_PX = 104.0f; // The speed panel's divider steps up this far along
+        inline constexpr float SPEED_DIVIDER_STEP_PX = 6.0f;      // ... by this much
+
+        static_assert(FRAME_MAX_SEGMENTS >= FRAME_OUTLINE_POINTS + FRAME_GAP_COUNT + 1,
+            "FrameDrawSegments' worst case is one piece per outline edge and gap plus the stroke meeting point");
+        static_assert(FRAME_MAX_DOTS >= 2 * FRAME_GAP_COUNT, "FrameGapDots writes up to two dots per gap");
+        static_assert(DIVIDER_MAX_SEGMENTS >= 3 + DIVIDER_GAP_COUNT, "BrokenDivider: 3 legs plus one piece per gap");
+    }
+
     // Overlay icons, the Overlay Menu and the hologram cursor (SDD 22). Pixel sizes are at a 720 px canvas (x UI scale)
     namespace Overlay
     {
@@ -1182,6 +1281,10 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_DUST = TEXT("SOLSmokeDust");
         // With -SOLSmokeDust in -game: cost captures (stat dumpave of STAT_SOL_SpaceDustUpdate, ProfileGPU) for the SDD
         inline constexpr const TCHAR* SMOKE_DUST_PROFILE = TEXT("SOLSmokeDustProfile");
+        // In -game: cost captures (ProfileGPU, stat dumpave of HUD Time and the Slate paint) of the in-flight menus and
+        // cards, one pass per menu, logged against the pre-conversion baseline, then quit (SDD 42 section 11; smoke
+        // settings slot)
+        inline constexpr const TCHAR* SMOKE_HOLO_MENU_PROFILE = TEXT("SOLSmokeHoloMenuProfile");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly

@@ -414,6 +414,8 @@ rect **R** = `(0, 0)-(400, 300)`, title step width 200, `uiScale` 1, so `k = 1` 
 | `BACKDROP_ALPHA_PER_UNIT` | 0.15 | Dark tint alpha per unit of strength (0.30 at 2; the HUD backing is 0.45). Also the faint tint of the option (c) frames (D20). The approved sample `overlay-c-tint.png` is darker (the background kept at about 22 %, an alpha near 0.78); compare at the hand check |
 | `HOVER_CUE_MIN_INTERVAL_S` | 0.05 | Shortest gap between two hover cues |
 | `FRAME_MAX_SHAPES` | 160 | Shape capacity of one `SSOLHoloFrame` (reserved once). Worst case, the Overlay Menu: outline 24 + gap dots 14 + ruler 6 + accents 4 + column divider 40 + hint divider 6 + tab markers 16 + tab dot 1 + hover mark 8 + its dot 1 + sweep, fill and backdrop 3 = 123 |
+| `MIN_PIECE_PX` | 1e-3 | The section 6.3 minimum piece length: a geometry piece shorter than this is never written (42a review) |
+| `UI_SCALE_MIN` / `UI_SCALE_MAX` | 0.1 / 16 | Section 6.3 geometry clamps a valid `uiScale` to this range (after NaN, infinite or `<= 0` reads 1), so no input can stall `DashedDivider` or give infinite coordinates (42a review) |
 
 **Option (c) frame (D20).** All lengths in px at a 720 px canvas, x UI scale (as `CARD_TICK_PX`), measured from the
 approved samples (`overlay-c-tint.png`, `speed-c-tint.png`); proposed, tuned from screenshots.
@@ -599,13 +601,16 @@ settings test is walked to confirm it still states the current contract.
 
 - **Budget (D14):** with **all menus open** (every menu and card that can be shown at the same time), the extra cost
   over the pre-#42 baseline is **under 0.1 ms CPU** (game thread: `HUD Time` + `Game UI Paint` + Slate paint) and
-  **under 0.1 ms GPU** (`ProfileGPU` with `r.ProfileGPU.ShowUI 1`: the shape batches and Slate UI), 1280x720, editor
-  build. Menus that exclude each other (the radial, Ctrl+O, F3 and the map list menu take the same input) are measured
+  **under 0.1 ms GPU** (`ProfileGPU`: the game window's Slate UI pass, with the shape batches, the median of three
+  frames; `r.ProfileGPU.ShowUI 0`, because the visualizer window would add its own Slate pass to later profiles while
+  the log gets the table either way), 1280x720, editor build. Menus that exclude each other (the radial, Ctrl+O, F3 and the map list menu take the same input) are measured
   one per pass, each together with all four cards; the worst pass must meet the budget. Also: **zero heap allocation
   per frame**; at most `FRAME_MAX_SHAPES` shapes per frame widget; one extra custom-vertex draw per visible menu.
 - **Profiling smoke (D14):** `-SOLSmokeHoloMenuProfile` (flag constant in `SOLConstants.h`, listed in ARCHITECTURE)
-  flies the fixed smoke scene, opens each pass's menus, waits for the open animation to end, runs
-  `stat dumpave -num=240` and one `ProfileGPU`, and logs the numbers with a PASS / FAIL against the budget. The
+  flies the fixed smoke scene (pinned sim date, named body, section 11.1), opens each pass's menus, refreshes the info
+  card and waits at least `OPEN_S` + 0.1 s of real time before every capture (so no open animation is caught), runs
+  three `ProfileGPU` frames (the median is used) and `stat dumpave -num=240`, and logs the numbers with a PASS / FAIL /
+  NOBASE verdict against the budget. The
   baseline is the same scene and passes at the commit before 42c (the menus as they are today), captured once and
   written into the SDD amendment; the final numbers are captured in 42i.
 - Event-driven: a closed menu costs nothing (the HUD's menu layer draws nothing and is not stamped; a closed UMG
@@ -615,6 +620,72 @@ settings test is walked to confirm it still states the current contract.
 - The always-on speed and date-and-anchor cards are drawn every flight frame: their idle sweep and jitter are a few
   float ops in the paint, and they cost no more shapes than today's two panels plus 16 tick segments.
 - No claim without a measurement; the numbers go into an SDD amendment.
+
+### 11.1 Baseline (measured before 42c)
+
+**Conditions.** `-game -windowed -ResX=1280 -ResY=720 -SOLSmokeHoloMenuProfile`, the Development editor binary
+(`UnrealEditor.exe`, uncooked), commit `49949c0` plus the uncommitted 42a files (pure maths, not drawn, so the
+rendering is the pre-conversion state), UE 5.8.3, D3D12 SM6, Intel i9-9960X, NVIDIA RTX 2080 Ti, VSync off,
+scalability 3 (Epic, from the machine's game user settings; both are logged in every RESULT line), smoke settings slot
+(defaults), measured 2026-11-04. Two baseline runs back to back, then a third run against the stored baseline; logs
+`Saved/Logs/Smoke_HoloMenuProfile_run1.log`, `_run2.log` and `_run3.log`, screenshots per run in
+`Saved/Screenshots/WindowsEditor/HoloMenuProfile_run<n>/`. All 12 script checks passed in every run, and every
+capture frame had its pass's menu open.
+
+**Scene (fixed, the same every run).** The sim date is pinned: Setup calls `USOLSimClockSubsystem::SetJulianDate`
+with `PROFILE_SIM_JD` = **JD 2461348.5 (2026-11-04 00:00 UTC)**, then (once the bodies have moved to that date) places
+the ship as the normal spawn does: 10,000 km above Earth's Sun-facing side, at rest in Earth's frame, facing Earth,
+not rotating (the anchor is Earth). The menus and cards work on one named body, `PROFILE_BODY_NAME` = **Neptune**
+(about six weeks past opposition, so its icon is on screen behind Earth; the icons drawn are Earth, Dione, Oberon,
+Neptune and Eris, Neptune's at (1169, 380)). If Neptune's icon is missing, the `a-body-icon` check fails, an error line
+says every pass is invalid, and every pass logs FAIL. P0: no menu, no target, no info card ("TARGET none"). P1-P4:
+Neptune targeted with the radial menu's Target and its info card shown with Info, so the target card, the info card,
+the speed card and the date-and-anchor card are all on screen. P1: the radial menu held open on Neptune's icon with
+the Info sector highlighted. P2: the Ctrl+O Overlay Menu (Profile 1). P3: the F3 speed panel. P4: the jump map with
+the list menu on Neptune; the four cards show on the map too. Before every capture (each `ProfileGPU` frame and each
+`stat dumpave` window) the info card is refreshed and the script waits at least `SOL::HoloMenu::OPEN_S` + 0.1 s of real
+time, so after the conversion no capture lands on a card's open animation.
+
+**Measures.** CPU: `stat dumpave -num=240 -ms=0`, one 240-frame window per root, ms per frame: `HUD Time` (`DrawHUD`,
+radial menu and cards included) and `Draw Window And Children Time` (the whole Slate paint: the HUD shape layer and
+the UMG menus; `Game UI Paint` is inside it and is listed for reference). `cpu_total` = HUD Time + Draw Window. GPU:
+three `ProfileGPU` frames per pass, the median of the inclusive time of the game window's `SlateUI` pass (all UI
+drawing: HUD shapes, glow text, Canvas, UMG). `r.ProfileGPU.ShowUI 0`: in UE 5.8 that cvar only opens the profile
+visualizer window (the Slate passes are in the log either way), and the visualizer's own Slate pass would join every
+later profile. The table settings the parser relies on (`TableFormatting`, `UnicodeOutput`, `ShowStats`,
+`ShowPercentColumn`, `ShowInclusive`, `ShowExclusive` on, `ThresholdPercent 0`, `Root *`) are set at the start.
+
+| Pass | CPU HUD (ms) run 1 / 2 | CPU Slate (ms) run 1 / 2 | **CPU total** run 1 / 2 | **GPU UI** run 1 / 2 | UI draws |
+|---|---|---|---|---|---|
+| P0 flight | 0.113 / 0.113 | 0.131 / 0.116 | **0.244 / 0.229** | **0.079 / 0.078** | 41 |
+| P1 radial | 0.137 / 0.138 | 0.153 / 0.142 | **0.290 / 0.280** | **0.106 / 0.109** | 53 |
+| P2 Overlay Menu | 0.147 / 0.135 | 0.259 / 0.262 | **0.406 / 0.397** | **0.114 / 0.114** | 57 |
+| P3 F3 panel | 0.147 / 0.134 | 0.292 / 0.282 | **0.439 / 0.416** | **0.128 / 0.126** | 59 |
+| P4 map list | 0.700 / 0.720 | 0.215 / 0.219 | **0.915 / 0.939** | **0.079 / 0.078** | 51 |
+
+`Game UI Paint` (inside Slate): P0 0.075 / 0.080, P1 0.091 / 0.091, P2 0.206 / 0.206, P3 0.230 / 0.231, P4 0.148 /
+0.160. Frames ran at 4.2-5.5 ms (no frame cap). The P4 HUD time is the map's overlays (body icons, labels, routes),
+not the list menu.
+
+**Spread.** Between the two baseline runs the CPU total moved by at most 0.024 ms (P4) and the GPU UI time by at most
+0.003 ms (P1); within a run the three GPU frames agreed within 0.004 ms. Both are well inside the 0.1 ms budget, so a
+single run of the flag after the conversion is a fair comparison.
+
+**Stored baseline and check run.** The mean of the two runs is stored in `SOLHoloMenuProfileSmoke.cpp`
+(`PROFILE_BASELINE_CPU_MS` = 0.2365, 0.285, 0.4015, 0.4275, 0.927; `PROFILE_BASELINE_GPU_MS` = 0.0785, 0.1075, 0.114,
+0.127, 0.0785). The third run, against it, logged PASS for all five passes: CPU deltas +0.008, +0.009, -0.020, +0.006,
+-0.008 ms and GPU deltas -0.003, +0.001, +0.001, +0.001, +0.002 ms (P0-P4).
+
+**Verdicts.** Each pass logs `HoloMenuProfile RESULT P<n> PASS|FAIL|NOBASE ... dcpu=.. dgpu=..`, then a `SUMMARY`
+line:
+
+- **PASS:** the capture is valid and both deltas against the baseline are under 0.1 ms.
+- **FAIL:** a delta is 0.1 ms or more, or the capture is invalid: the ship not placed for the pinned date, Neptune's
+  icon missing, not a standalone `-game` run (`GIsEditor`), a view other than 1280x720, a number not found in the log,
+  the pass's menu closed on any capture frame, or the cards not as the pass wants them (`valid=no` in the line).
+- **NOBASE:** the capture is valid but the pass has no baseline (its constants are zero), so no comparison is made.
+
+The numbers are machine-specific: on another machine, re-measure at the 42c parent commit and replace the constants.
 
 ## 12. Verification
 

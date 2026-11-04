@@ -35,16 +35,16 @@ The frame-geometry contracts are final for option (c) (D20, SDD 6.3): `FrameOutl
 `FrameDrawSegments`, `FrameGapDots`, `FrameRulerTicks`, `FrameAccents`, `HoverMark`, `TabMarker`, `DashedDivider`,
 `BrokenDivider`, plus `RadialArcDrawIn` and `CardCornerTicks`, with the curves, anim state and cue rules.
 
-0. [ ] Capture the D14 baseline before any rendering change: the profiling passes of SDD 11 at the current HEAD (the
+0. [x] Capture the D14 baseline before any rendering change: the profiling passes of SDD 11 at the current HEAD (the
    menus as today), numbers into the SDD amendment. (The `-SOLSmokeHoloMenuProfile` harness is built here as a
    stand-alone smoke flag so the same passes run again in 42i.)
 1. [x] Brief a separate opus subagent with SDD sections 6 and 7 only (no implementation). It writes
    `Source/SOLTest/Tests/HoloMenuTest.cpp` (`SOLTest.HoloMenu.*`), the cases of SDD 6.4.
-2. [ ] Stubs `UI/SOLHoloMenuMath.{h,cpp}` (namespace `SOLHoloMenu`, `FSOLHoloMenuAnim`, `FSOLHoloMenuLook`,
+2. [x] Stubs `UI/SOLHoloMenuMath.{h,cpp}` (namespace `SOLHoloMenu`, `FSOLHoloMenuAnim`, `FSOLHoloMenuLook`,
    `FSOLHoloSegment`) and the `SOL::HoloMenu` constants. Build, run `Tools\RunTests.bat -Filter SOLTest.HoloMenu`:
    red for the right reasons.
-3. [ ] Implement; green. Adversarial review (opus/xhigh, report only); fixes; full suite.
-4. [ ] Commit `Issue #42: Part 42a - hologram menu animation maths`.
+3. [x] Implement; green. Adversarial review (opus/xhigh, report only); fixes; full suite.
+4. [x] Commit `Issue #42: Part 42a - hologram menu animation maths`.
 
 ### 42b: persistence, schema 11 (opus, xhigh; tests by a separate opus/high subagent)
 
@@ -217,3 +217,12 @@ Remaining steps (after 42c, which loads the cues):
   the slider is not inert; done. Suite 1243 / 1243; `-SOLMenuSmoke=all` 44/50 (the 6 failures are the stale
   hidden-cursor and Mars thrust checks in TECH_DEBT; the 3 Play checks fail only with a focused window);
   `-SOLSmokeOverlay` 34/34. 42a tests authored (25 `SOLTest.HoloMenu.*` tests); next step: 42a implementation.
+- 2026-11-04: 42a done: `UI/SOLHoloMenuMath` (curves, anim state, the option (c) frame geometry, card ticks, hover
+  marks, tab markers, dividers), 29 `SOLTest.HoloMenu.*` tests (25 by the separate author, 4 added from the review:
+  sweep across the HUD time wrap, large app time, effective scale, extreme inputs). Review fixes: strength clamp from
+  the settings range, unity-safe file-local prefixes, `MIN_PIECE_PX` and `UI_SCALE_MIN/MAX` constants, NaN time guard.
+  Step 0: `-SOLSmokeHoloMenuProfile` built and reviewed (blocker fixed: pinned sim date JD 2461348.5 and a named body,
+  Neptune); baseline in SDD 11.1 and in the smoke's constants (third run all PASS). Suite 1272 / 1272. Notes for 42c
+  from the review: scale the hover intensity by `FillAlpha`; cache the outline while Open and the rect is unchanged;
+  keep the pawn's `GetLastInfoCardLineCount` / `GetLastRadialSectorCount` current (the profile smoke reads them).
+  Next step: 42h import (cue assets), then 42c.
