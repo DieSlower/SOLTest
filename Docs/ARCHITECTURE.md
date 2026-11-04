@@ -145,11 +145,11 @@ sequenceDiagram
     Ship->>Ship: ComputeFrameInputs (warp carry, previous body positions)
     Ship->>Ship: UpdateChase (#32: resolve the chase target, refresh the plan)
     Ship->>Proc: Executor::Run (substeps: gravity, SOLFlight::Step or AutopilotStep or ChaseStep, swept collision, G meter)
-    Ship->>Ship: UpdateSurfaceLock (state machine on this frame's ship and bodies; engaging calls Tgt LockToBodyIndex)
+    Ship->>Ship: UpdateSurfaceLock (state machine on this frame's ship and bodies, and engaging calls Tgt LockToBodyIndex)
     Ship->>Anchor: SyncObserverPositionM(ship position)
     Ship->>Ship: OnShipsStepped broadcast (end of StepShips, after the observer sync)
-    Note over Ship: USOLRouteSubsystem::HandleShipsStepped runs here (an autopilot arrival advances the route and orders the next waypoint this frame; AUTO lost pauses it)
-    Note over Ship: USOLRingSubsystem::UpdateRings runs here (ring-rock pool streaming; reads this frame's real ship position)
+    Note over Ship: USOLRouteSubsystem::HandleShipsStepped runs here (an autopilot arrival advances the route and orders the next waypoint this frame, and AUTO lost pauses it)
+    Note over Ship: USOLRingSubsystem::UpdateRings runs here (ring-rock pool streaming, reads this frame's real ship position)
     Note over Anchor: OnBodiesUpdated also runs USOLMinorBodySubsystem (Executor::Run of USOLMinorBodyOrbitProcessor, raw ecliptic positions) - this also places USOLRingSubsystem's ring-rock entities, since they share the same fragments and Mass matches by composition, not by creator
     Anchor->>Anchor: anchor selector update (25% hysteresis), RebaseRenderOrigin
     Anchor->>Vis: OnUniverseUpdated (place bodies, pawn follows ship, ASOLAsteroidBeltVisuals bulk-updates its ISMs, ASOLGasGiantVisuals places its shells and near cloud layer, ASOLOrbitLineVisuals writes its per-line data and occluders, USOLSpaceDustComponent on the ship pawn places its Niagara box at the ship's render location and pushes the dust parameters)

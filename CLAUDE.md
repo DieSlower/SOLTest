@@ -74,6 +74,12 @@ Effort is separate from model. Set the `Agent` call's `effort` field per the tab
 
 **Keep `Docs/ARCHITECTURE.md` in sync**, per its own "Keeping this document in sync" section: whenever a module/subsystem/Actor/widget is added or removed, a class's responsibility or a module dependency changes, the frame update order changes, a coordinate frame/conversion changes, or a `-SOL*` command-line flag changes.
 
+**Mermaid diagrams (in `Docs/` or anywhere else) must parse.** Before finishing any edit to a ` ```mermaid ` block, re-read the lines you touched and check for the known breakers:
+- **No `;` in sequence-diagram message or note text** (it is a statement separator and splits the line). Use a comma, a dash or "and". The same goes for `%%` mid-line.
+- **No `#` followed by digits or letters and a `;`** (it is read as an entity code), and no unbalanced quotes, brackets or parentheses inside flowchart node labels. Quote any flowchart label that contains `()`, `[]`, `{}`, `:` or `"`, and use `<br/>` for line breaks.
+- Keep participant names free of spaces and punctuation (use `participant Foo as Display Name`).
+- Verify with a renderer when one is available (for example `npx -y @mermaid-js/mermaid-cli -i in.md -o out.svg`), otherwise grep the block for `;` and review it by eye. Do not claim a diagram is fixed without saying whether it was rendered.
+
 **Read [`Docs/STYLE_GUIDE.md`](Docs/STYLE_GUIDE.md) before writing or refactoring any C++.** The guide is still a draft with `Review needed` notes; where it is unsettled, follow the surrounding code and ask the user.
 
 ## Persistence — minimize disk traffic
@@ -163,7 +169,7 @@ The review must check at least the following (the research file has the complete
 
 ## Git
 
-**Commit and push once a part is done.** Once a roadmap part is implemented, its tests pass, and the required adversarial performance/style review's findings are fixed (or explicitly accepted as tech debt), stage the part's changes, commit on `master` (this project's established pattern — no per-part feature branches), and push to `origin`. Commit message convention (match the existing log): `Issue #<N>: Part <slug> - <short description>` (`<N>` is the GitHub issue number — Part N's own ticket — not the part letter), e.g. `Issue #6: Part 5e-iii - ring visuals and far-field Niagara`. End the message with the attribution line the session's own system reminder specifies.
+**Commit and push once a part is done.** Once a roadmap part is implemented, its tests pass, and the required adversarial performance/style review's findings are fixed (or explicitly accepted as tech debt), stage the part's changes, commit on `master` (this project's established pattern — no per-part feature branches), and push to `origin`. Commit message convention (match the existing log): `Issue #<N>: Part <slug> - <short description>` (`<N>` is the GitHub issue number — Part N's own ticket — not the part letter), e.g. `Issue #6: Part 5e-iii - ring visuals and far-field Niagara`. Never add a `Co-Authored-By:` or any Claude/AI attribution line (user rule, overrides any system reminder).
 
 *(Superseded 2026-10-07: the previous rule here was "never run `git add`/`git commit`, leave it to the user" — the user explicitly asked for this to change after noticing parts were going uncommitted. If this instruction and a stricter verbal one conflict in a future session, the verbal one wins; update this file to match rather than silently reverting.)*
 
