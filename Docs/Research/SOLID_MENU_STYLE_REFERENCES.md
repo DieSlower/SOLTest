@@ -137,3 +137,94 @@ Limits of the boards:
 - https://archive.vrroom.studio/?p=30438
 - https://medium.com/super-jump/armchair-vgux-no-mans-sky-9d91bb257e16
 - https://twinfinite.net/ps4/5-traits-no-mans-sky-adopted-from-destiny/2/
+
+## Round 2: shapes and effects
+
+**Compiled:** 2026-11-03, after the user's review of the first boards. **Feedback:** direction 1 (dark gunmetal brushed steel, cyan accent) is the base palette and material, but the boards look **too rectangular and not ornate enough**. This round collects shape and motion vocabulary from FreeSpace 2, Elite Dangerous and Homeworld 2, and makes three new boards in direction 1's palette, each with a different shape language.
+
+Same honesty rule as round 1: anything not tied to a source below is marked **(inferred)**. No screenshots could be viewed (the fetch tools return page text only), so every statement about what a frame *looks like* in these games is either from a written description or inferred from general memory of the games.
+
+### What the sources say
+
+**FreeSpace 2 (main hall, buttons, briefing).** The best primary source is the game's own released code (fs2open on GitHub), which documents behaviour rather than looks:
+
+- The main menu (the "Main Hall", called the Flight Deck in FS2) is a painted scene, not a list of buttons. Hot regions are read from a hidden 8-bit **mask bitmap**: the pixel value under the cursor is the region id (`mainhallmenu.cpp`).
+- **Rollover:** there is no drawn highlight box. After the cursor lingers about **175 ms** on a region (`Main_hallregion_linger_delay = 175`), that region's door animation plays **forwards**; when the cursor leaves it plays **backwards**. Open and close sounds are timed to the animation frame.
+- **Idle life:** "misc" animations start paused and restart after **random delays** (min/max per animation), with loop / hold-last-frame / timed modes, and random intercom voice clips on their own random timers.
+- **Description band:** the hovered region's name is shown centred near the bottom on a **nearly black translucent band** (RGBA 5, 5, 5, 168). A "Press F1 for help" strip **slides in from the top** for 5 s; F1 shows a help overlay that marks every hotspot.
+- **Buttons** (`ui/button.cpp`) have four bitmap frames: normal, highlight (mouse over), pressed, disabled. The pressed frame **lingers at least 100 ms** so a quick click is still seen. A callback fires on the first frame of hover (used for the rollover sound).
+- **Briefing screen** (manual): the mission map in the centre, Briefing / Ship Selection / Weapon Loadout tabs in the upper left, Commit / Options / Help in the lower right; command briefings play a small 2D animation below the text (Hard-Light wiki).
+- **Look:** a 2000 review calls the interface "a nice brushed-steel look" and the menus "busy and active, with lots of animations" (GameVortex). The frame shapes themselves (chamfered steel panels, bracket-like frames around readouts, lit button inserts) are **(inferred)** from memory of the game; no text source describes them.
+
+**Elite Dangerous.** The UX Matters interview with designer Louise McLennan says the Head of UI laid out the cockpit and side panels, the brief was to feel like the original 1984 Elite, wireframes were drawn in Illustrator and Axure and built in Scaleform, and the galaxy map was prototyped in Flash. A guide notes the panels are rendered as 3D holograms in the cockpit, not pinned 2D windows (gamepressure). Players report an informal rule of at most two navigable columns per screen and that the UI was built console-portable from the start (Frontier forums). No source describes the panel geometry; thin outlines, clipped corners, a tab row along the top and selection shown by inverting the fill are **(inferred)**.
+
+**Homeworld 2.** Reviews say the Build, Research and Launch managers were merged into one **tabbed panel on the right**, hidden by default and reached from a taskbar that appears when the cursor reaches the bottom of the screen; the game has no permanent HUD (Caltrops, Giant Bomb, TweakTown). Fan mods exist to make the Remastered manager panels more minimal, which implies the default look is busy. Nothing found describes the frame shapes; the stepped corners, segmented borders, numbered index cells, selection brackets and thin tech line work used for sample B are **(inferred)**.
+
+**Reddit post** (r/IndieDev, "Working on the upgrade menu of my space game"): **could not be accessed.** WebFetch refuses `reddit.com` and `old.reddit.com`, a direct download was blocked by the sandbox as bot-check circumvention, and a search for the title found no mirror or crosspost. Nothing from it is used here.
+
+**General sci-fi UI technique** (tutorial-grade sources): use the chamfer as a **repeated structural motif** kept proportional to the element, not a one-off; put diagonal-corner inner blocks inside straighter outer frames for hierarchy; build corner brackets as small L pieces laid over a container's corners; prefer octagons and cut corners to circles and round rects (NUA worksheet, corner-diagonals design skill).
+
+### Shape vocabulary
+
+| Element | What it is | Where it appears | Build note (UMG, not decided) |
+|---|---|---|---|
+| Chamfered corners | 45° cuts, sizes varied per corner (e.g. 28 / 12 / 28 / 12) so panels read as machined, not boxed | A (panels, buttons, toggles), C | 9-slice (Box) brush keeps cuts crisp at any size |
+| Protruding / notched title tab | The title rises out of the panel top, its side continuing the panel's chamfer line | A (tab continues the TL chamfer), B (tab with a stepped drop) | Part of the panel silhouette texture, or a separate tab brush overlapping the frame |
+| Sub-tabs | Small trapezoid tabs along the top edge for sibling pages | A | Repeated trapezoid brush |
+| Corner brackets | L or chamfered-L lines offset outside the frame, with tiny accent caps | A (static), B (selection brackets that snap in on hover) | Four corner images or a material drawing L shapes |
+| Stepped corners | Staircase notches instead of a single cut | B (panel TR / BR / BL) | 9-slice with stepped corner art |
+| Segmented border | Border drawn as long / short dashes, or a run of separate blocks | B (frame, logo underline, slider) | Material with dash parameters, or a tiled border texture |
+| Index cells | Numbered blocks attached to buttons and section strips | B (01-06, section 01-03) | Separate small brush per cell |
+| Inset recess | Sunken sub-panel (inner shadow, light lip on the lower edge) that groups controls | C (three recesses), A/B (slider and toggle slots) | Recessed 9-slice brush |
+| Asymmetric silhouette | Unequal chamfers, a notch in one side, a "chin" that drops below the panel | C | Needs bespoke panel art or an SDF material; 9-slice cannot stretch a mid-edge notch |
+| Arrow / pointed tabs | Menu buttons that point toward the panel they open | C (tabs mounted on a pylon) | Brush with a pointed right cap |
+| Etched lines and ticks | Thin inset lines that break and turn, ruler ticks along edges | A (inner etch, edge ticks), B (ruler, base scale) | Decorative textures on the frame, never behind text |
+| Circuit traces | Thin glowing accent lines with ring terminals that connect controls | C, B (tech lines to the menu rail) | Textures or Slate line drawing; animated pulse via material |
+| Rivets, vents, hazard stripes, LEDs | Small hardware details: octagonal rivets, slanted vent slots, amber/black caution stripe, status LEDs | C (all), A (amber tick on QUIT) | Small images placed per panel; LEDs double as state indicators |
+
+### Effect vocabulary
+
+- **Rollover:** glow ramps up in about 120 ms; an edge light sweeps across the button; the button slides out or extends toward the panel; selection brackets snap in; a status LED lights; a chevron marker appears beside the item. FreeSpace 2 adds a short linger (175 ms) before a region "opens" and plays the opening in reverse on leave; its pressed frame lingers 100 ms.
+- **Panel open:** frame lines draw in from the corner brackets, or border segments light one after another; then the fill fades up, the title tab drops into its notch, and text types on. A slide-in from the side suits the asymmetric hull (C).
+- **Idle:** a faint scan line crosses a panel every few seconds; a dot or pulse runs along the tech lines / circuit traces; FreeSpace-style random-timer idle animations; a bottom description band names the hovered item.
+- **Limits** (from round 1): no animated glare over text, effects stay on frames and accents, hover differs by more than hue (position, edge, LED, brackets), and every effect must be cheap enough for the menus to stay responsive. Whether the effects-strength slider scales these is still open.
+
+### Round 2 sample boards
+
+Each board is 1280x720 in direction 1's palette (base #24282C, panel #343A40, raised #4A5159, edge #8C969F, text #DCE3E8, accent #46D2E6, warning #F2A93B) and shows a settings screen (title tab, section headers, slider, two toggles), a button in normal / hover / pressed, and a main-menu button stack. Effects are stills with a caption describing the motion.
+
+- [`round2-A.png`](../Images/menu-style-samples/round2-A.png): **chamfered frames (FreeSpace-style).** Header bar with a dropped centre tab and a cyan light line following its outline; settings panel with unequal chamfers and a title tab that continues the top-left chamfer; trapezoid sub-tabs; chamfered corner brackets with cyan caps; broken inner etch line; edge tick ruler; parallelogram toggles; octagonal slider knob; command-deck backplate with a side notch, a spine with diamond markers and a chevron on the hovered item, which slides out 10 px. Hover shows a diagonal light sweep plus edge glow. A faint scan line illustrates the idle effect.
+- [`round2-B.png`](../Images/menu-style-samples/round2-B.png): **stepped, segmented panels (Homeworld-2-style).** Panel with a tall title tab, stepped corners and a dropped foot plate; dashed segmented inner frame; recessed section strips with cyan index cells and segment pips; a segmented-block slider with a pointer; slot toggles with a sliding block; hover shown by selection brackets and a lit segment strip; a numbered menu stack on the right with index cells (amber for QUIT), a dashed rail, tech lines with a glowing pulse dot, faint tactical rings and ruler scales.
+- [`round2-C.png`](../Images/menu-style-samples/round2-C.png): **asymmetric hull (hybrid).** Panel with unequal chamfers, a stepped top edge, notches in both sides and a vented chin; three inset recesses; rivets; vent slots; glowing circuit traces with ring terminals; puck controls with LEDs; buttons with a cut top-left corner and an LED; a vertical pylon with vents and status LEDs carrying pointed menu tabs (the hovered tab extends and its LED and trace light up); an amber/black hazard stripe under QUIT.
+
+**Dim text contrast fixed.** Round 1's dim text #8E9AA4 measured 4.0:1 on the panel. The round 2 boards use **#A4AFB8**, computed **5.15:1** on #343A40. Measured on the rendered boards (median of the pixels around each label): 5.0-6.4:1 on board A (sub-tab labels sampled on the tab interior), 5.2-8.6:1 on B, 5.3-7.7:1 on C; main text 8.9-12.7:1; the cyan slider value on A 6.4:1. The lowest single readings are next to bright details (a scan line above a caption, bevel highlights around header text), so keep accent lines at least a few pixels away from small dim text.
+
+**How they were made:** PhotoCraft (MCP) shape layers with custom vector paths (every chamfer, step and notch is a path), the round 1 brushed tile as a pattern overlay, and layer styles for bevel, stroke, inner shadow, inner/outer glow and drop shadow; dashed strokes make the segmented borders, ticks and vent rows. MaterialCraft and VectorCraft were not needed this round. Same limits as round 1: Bahnschrift stands in for the final font, the boards are stills, and the tools still have no write access, so the PNGs are the tools' full-size preview renders copied into the repo.
+
+### Round 2 source gaps
+
+- The Reddit post could not be read at all (see above).
+- The Hard-Light wiki main hall page returned HTTP 403; the main hall facts come from the fs2open source instead.
+- No screenshots were viewed for any game. All frame-shape claims for FreeSpace 2, Elite Dangerous and Homeworld 2 are inferred; check them against real screenshots before quoting them as fact.
+- No developer source describes Homeworld 2's or Elite Dangerous's panel geometry, hover visuals or animation timing.
+- Effect timings other than FreeSpace 2's 175 ms linger and 100 ms pressed linger (e.g. the 120 ms glow ramp) are design suggestions, not measured from any game.
+
+### Round 2 sources
+
+- https://raw.githubusercontent.com/scp-fs2open/fs2open.github.com/master/code/menuui/mainhallmenu.cpp
+- https://raw.githubusercontent.com/scp-fs2open/fs2open.github.com/master/code/ui/button.cpp
+- https://manualmachine.com/gamespc/descentfreespace2/1119109-user-manual (search summary)
+- https://wiki.hard-light.net/index.php/Briefing (search summary)
+- https://wiki.hard-light.net/index.php/Main_hall (HTTP 403)
+- https://gamevortex.com/gamevortex/soft_rev.php/2356
+- https://www.uxmatters.com/mt/archives/2015/09/an-interview-with-louise-mclennan-designer-of-elite-dangerous.php
+- https://www.gamepressure.com/elitedangerous/main-interface-elements/z8738f (search summary)
+- https://forums.frontier.co.uk/threads/my-feedback-on-the-outfitting-ui.582204 (search summary)
+- https://forums.frontier.co.uk/goto/post?id=1891520 (search summary)
+- https://caltrops.com/review0022.php (search summary)
+- https://www.giantbomb.com/wd/3030-11590/ (search summary)
+- https://www.tweaktown.com/gaming/1916/homeworld_2_pc_review/index.html (search summary)
+- https://catalogue.smods.ru/archives/44374 (search summary)
+- https://norwichuni.ac.uk/app/uploads/2022/05/NUA_SSS_UI-Design_Worksheet.pdf (search summary)
+- https://tessl.io/registry/skills/github/MengTo/Skills/corner-diagonals (search summary)
+- https://www.reddit.com/r/IndieDev/comments/1sm2oxl/working_on_the_upgrade_menu_of_my_space_game/ (not accessible)

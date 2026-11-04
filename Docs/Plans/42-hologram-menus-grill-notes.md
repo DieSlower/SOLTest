@@ -18,12 +18,20 @@ Status: grill paused. #42 was split on 2026-11-03: #42 keeps the hologram in-fli
   - `Docs/Images/menu-style-samples/direction-3.png` (cool light aluminium, signal orange + info blue)
   - Research and palettes: `Docs/Research/SOLID_MENU_STYLE_REFERENCES.md`.
 - #46 depends on #42 for the shared hover glow and cursor.
+- **Direction 1 is the base** (2026-11-03): dark gunmetal brushed steel with the cyan accent is the palette and material. The user's feedback on the round 1 boards: **too rectangular and not ornate enough**, so the menus need more ornate, non-rectangular shapes. Round 2 research (FreeSpace 2, Elite Dangerous, Homeworld 2 shape and effect vocabulary) and three new boards in direction 1's palette were made for that:
+  - `Docs/Images/menu-style-samples/round2-A.png` (chamfered frames, corner brackets, etched lines; FreeSpace-style)
+  - `Docs/Images/menu-style-samples/round2-B.png` (stepped, segmented panels, index cells, tech line work; Homeworld-2-style)
+  - `Docs/Images/menu-style-samples/round2-C.png` (asymmetric hull, inset recesses, vents, rivets, circuit traces; hybrid)
+  - Research: "Round 2: shapes and effects" in `Docs/Research/SOLID_MENU_STYLE_REFERENCES.md`.
+  - The round 2 boards use dim text #A4AFB8 (5.15:1 on the panel) instead of round 1's #8E9AA4 (4.0:1). Adopting it is part of the shape pick below.
 
 ## Still open (do not decide without the user)
 
 ### #46 solid menus
 
-- **Direction / palette pick** from the three samples (or a mix, e.g. one direction's material with another's accent).
+- **Shape language pick** from round 2 (A, B, C, or a mix, e.g. A's chamfers and brackets with C's recesses and LEDs), or another round of samples.
+- **How much ornament and motion:** which details to keep (rivets, vents, hazard stripes, circuit traces, etched lines, ruler ticks) and which effects (rollover glow / sweep / slide-out / brackets, panel-open draw-in, idle scan line or trace pulse); whether the effects-strength slider scales them.
+- **How non-rectangular shapes are built:** 9-slice brushes (fine for chamfers, steps and brackets) vs bespoke panel art or an SDF / UMG material (needed for side notches and the asymmetric hull of C).
 - **Hover glow colour:** the #22 hologram hover glow is cyan; the samples tint hover with each direction's accent (cyan, amber, blue). Keep the hologram cyan everywhere, or use the direction accent on solid menus?
 - **Pause menu behaviour details:** whether it keeps today's pause behaviour unchanged; is the flight scene visible (dimmed / blurred) behind the console panel; which entries it has.
 - **Fonts:** which typeface(s) for titles and body (the samples use Bahnschrift as a stand-in; Eurostile / Orbitron / DIN Condensed / Rajdhani-like options), licensing, minimum body size.
