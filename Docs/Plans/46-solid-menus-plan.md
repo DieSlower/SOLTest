@@ -53,14 +53,15 @@ Answers: none needed (the asset list of SDD section 10). Font: Rajdhani (D4).
    and seamless where it must tile (offset by half a tile, look for seams).
 2. [x] Rajdhani Regular / Medium / SemiBold / Bold TTFs and `OFL.txt` into `Docs/Art/fonts/rajdhani/` (Google Fonts;
    licence checked: SIL OFL 1.1).
-3. [ ] `SOL::Paths` entries for every asset (SDD section 9) and `Tools/UI/import_solid_menu_assets.py` (headless,
+3. [x] `SOL::Paths` entries for every asset (SDD section 9) and `Tools/UI/import_solid_menu_assets.py` (headless,
    idempotent, MD5 tags, the `import_holo_menu_sounds.py` pattern, paths read from `SOLConstants.h`). Run it twice: the
    second run writes no `.uasset`.
 4. [x] `Docs/Art/menu-style/README.md`: the sources, tool settings and how to regenerate.
 5. [x] Commit `Issue #46: Part 46b - solid menu textures, font and import script` (the PNGs (scripted by
    `generate_textures.py`), the TTFs, the script, the constants). **Open:** no `.uasset` was in the working tree at the
    commit (`Content/SOL/UI/Solid/` absent), so the import script's two runs (step 3) still have to be done and the
-   assets committed, at the latest at the start of 46c.
+   assets committed, at the latest at the start of 46c. **Done in 46c step 1** (script run twice, the second run
+   wrote no `.uasset`; commit `Issue #46: Part 46c - import solid menu textures and Rajdhani font assets`).
 
 ### 46c: hull material and kit (opus, high)
 

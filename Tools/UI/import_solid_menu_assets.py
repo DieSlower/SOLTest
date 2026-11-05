@@ -10,6 +10,9 @@
 # drift from the C++. Each asset keeps the MD5 of its source file plus its import settings in a metadata tag: a re-run
 # skips (never re-imports or re-saves) an asset that is already current, so an unchanged run writes no .uasset.
 # Textures: no mips, texture group UI, compression Masks (grey masks) or UserInterface2D (the rivet, which has alpha).
+# Font faces: the font file import needs Slate, so UnrealEditor-Cmd crashes on a first import. When a face is missing run
+#      UnrealEditor.exe SOLTest.uproject -ExecCmds="py <abs path>/Tools/UI/import_solid_menu_assets.py,quit" -unattended
+#      -nosplash -nullrhi once (closed editor, then end the process if it lingers); textures and F_SOLMenu work headless.
 # Run: UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/UI/import_solid_menu_assets.py"
 #      -unattended -nosplash -nullrhi (add -stdout -FullStdOutLogOutput to see the SOLSolidAssets log lines)
 import hashlib
@@ -32,7 +35,7 @@ FONT_DIR = os.path.join(PROJECT_DIR, "Docs", "Art", "fonts", "rajdhani")
 # SOL::Paths constant, source PNG, compression, sRGB (the settings are part of the hash tag)
 TEXTURES = [
     ("SOLID_TEX_BRUSHED", "brushed-gray-512.png", unreal.TextureCompressionSettings.TC_MASKS, False),
-    ("SOLID_TEX_RIVET", "rivet-32.png", unreal.TextureCompressionSettings.TC_USER_INTERFACE2D, True),
+    ("SOLID_TEX_RIVET", "rivet-32.png", unreal.TextureCompressionSettings.TC_EDITOR_ICON, True),
     ("SOLID_TEX_VENT", "vent-strip-128x16.png", unreal.TextureCompressionSettings.TC_MASKS, False),
     ("SOLID_TEX_HAZARD", "hazard-128x16.png", unreal.TextureCompressionSettings.TC_MASKS, False),
     ("SOLID_TEX_NOISE", "noise-64.png", unreal.TextureCompressionSettings.TC_MASKS, False),
@@ -161,19 +164,15 @@ def build_composite_font(faces):
     if font is None:
         raise RuntimeError("SOLSolidAssets: could not create %s" % font_path)
 
-    # The composite font's default typeface holds one entry per weight, each pointing at its font face asset
+    # FFontData, FTypeface and FTypefaceEntry are not exposed to Python, so the composite font is filled through the
+    # exposed FCompositeFont's text import: one typeface entry per weight, each pointing at its font face asset
     entries = []
     for weight in FONT_WEIGHTS:
-        data = unreal.FontData()
-        data.set_editor_property("font_face_asset", EAL.load_asset(faces[weight][0]))
-        entry = unreal.TypefaceEntry()
-        entry.set_editor_property("name", weight)
-        entry.set_editor_property("font", data)
-        entries.append(entry)
+        face_path = faces[weight][0]
+        asset_name = split_path(face_path)[1]
+        entries.append("(Name=\"%s\",Font=(FontFaceAsset=FontFace'%s.%s'))" % (weight, face_path, asset_name))
     composite = font.get_editor_property("composite_font")
-    typeface = composite.get_editor_property("default_typeface")
-    typeface.set_editor_property("fonts", entries)
-    composite.set_editor_property("default_typeface", typeface)
+    composite.import_text("(DefaultTypeface=(Fonts=(%s)))" % ",".join(entries))
     font.set_editor_property("composite_font", composite)
     font.set_editor_property("font_cache_type", unreal.FontCacheType.RUNTIME)
     EAL.set_metadata_tag(font, HASH_TAG, combined)
