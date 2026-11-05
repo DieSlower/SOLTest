@@ -9,10 +9,10 @@ SDD 42 D12, D17). Plan: [`Docs/Plans/46-solid-menus-plan.md`](../Plans/46-solid-
 [`Docs/Research/SOLID_MENU_STYLE_REFERENCES.md`](../Research/SOLID_MENU_STYLE_REFERENCES.md). Editable style
 sources: [`Docs/Art/menu-style/README.md`](../Art/menu-style/README.md).
 
-Status: **drafted 2026-11-04 from the resolved grill-me decisions; open questions in section 15.** Checked against the
-code at HEAD `8382434`. No code is written until the questions that gate a part (plan, "Gate" lines) are answered.
-Items marked **(proposed)** are starting values or design details that no decision fixes; they are collected for
-approval in Q16.
+Status: **drafted 2026-11-04 from the resolved grill-me decisions; all 17 open questions (section 15) answered by the
+user on 2026-11-04 and folded into the text below.** Checked against the code at HEAD `8382434`. Items marked
+**(proposed)** are starting values or design details that no decision fixes; they were approved as the tuning start in
+Q16 (final values are shown at the hand check).
 
 ## 1. Goal
 
@@ -20,7 +20,7 @@ Give the full-screen menus (main menu, Settings, Demo, the read-only Controls / 
 a solid, opaque brushed-gunmetal "console" look with an asymmetric hull shape language, so they read as clearly
 different from the cyan hologram of the flight HUD and the in-flight menus (#42). Each screen keeps its logic, its
 widgets and its input; a shared solid-panel kit restyles them in place and adds three animations (panel open, circuit
-trace power-up, slow idle pulse) scaled by an existing effects setting. No saved setting is added, so there is no
+trace power-up, slow idle pulse) scaled by the existing HUD effects setting (Q1). No saved setting is added, so there is no
 schema change.
 
 ## 2. Resolved decisions (grill-me, the user's answers)
@@ -31,7 +31,7 @@ schema change.
 | D2 | **Look (2026-11-03):** direction 1 palette (dark gunmetal brushed steel, cyan accent, dim text #A4AFB8) with the round 2 "C" shape language: asymmetric hull, inset recesses, vents, rivets and glowing circuit traces. Reference board `Docs/Images/menu-style-samples/round2-C.png`; editable sources in `Docs/Art/menu-style/`. |
 | D3 | **Textures and materials are generated now** with the MCP texture / material tools, not deferred to #9 (2026-11-03). |
 | D4 | **Font (2026-11-03):** Rajdhani or a similar free OFL techno sans, bundled in the project. The HUD font is unchanged. |
-| D5 | **Animations (2026-11-03):** panel-open, circuit-trace power-up and a slow idle pulse, scaled by the existing effects-intensity setting. **No new saved settings.** |
+| D5 | **Animations (2026-11-03):** panel-open, circuit-trace power-up and a slow idle pulse, scaled by the existing **HUD effects strength** setting (`HudEffectsStrength`, Q1). **No new saved settings.** |
 | D6 | **Input unchanged (2026-11-03):** mouse + keyboard + the #22 hologram cursor and hover glow. A keyboard / gamepad navigation redesign is a future idea, not part of #46. |
 | D7 | **Rebuild approach (2026-11-04): restyle in place.** Each screen keeps its logic and widgets (`USOLMainMenuWidget`, `USOLPauseMenuWidget`, `USOLSettingsPageWidget`, `USOLDemoPageWidget`, the `SOLMenuContent` page builders, `USOLMenuButton`); a shared solid-panel kit adds the frame, buttons, tabs, sliders and toggles. |
 | D8 | **Hull shapes (2026-11-04): SDF in a UMG material** (the procedural shape is computed in a User Interface material), not 9-slice textures. |
@@ -41,7 +41,7 @@ schema change.
 | D12 | **Main menu layout (2026-11-04):** a left button stack on a hull panel, the title on top, version / credits in a small bottom-left recess. |
 | D13 | **Settings layout (2026-11-04):** a large hull panel with a vertical tab column on the left and the content on the right. |
 | D14 | **Controls / Info / About (2026-11-04)** reuse the same shell as Settings, with read-only content. |
-| D15 | **Pause (2026-11-04):** a slide-in side panel on the **left** over a dimmed, frozen flight view (see Q3: today the simulation keeps running under the pause menu). |
+| D15 | **Pause (2026-11-04):** a slide-in side panel on the **left** over a dimmed, frozen flight view (Q3: only the live view is dimmed, the simulation keeps running as today). |
 | D16 | **No schema change (2026-11-04):** no saved setting is added or changed; `SOL::Settings::SAVE_VERSION` stays **11** and `KEY_BINDING_LAYOUT_VERSION` stays **10** (both verified in `SOLConstants.h` at `8382434`). |
 
 The layout boards the user picked from (`layout-1-main-menu.png` option A, `layout-2-settings.png` option A,
@@ -69,9 +69,9 @@ Regular / Bold), a pale-blue accent (`ACCENT_COLOR`) and an orange warning colou
 | **Demo page** | `USOLDemoPageWidget`, `Menu/SOLDemoPageWidget.cpp` (shared) | `MakePage` "Scale demo" + hint, a presets row (Showcase, Benchmark, Ramp), a scroll of stepper rows under 6 section headings (`DEMO_SECTION_TITLES`), warnings text, footer Reset + Start demo (main menu) or Stop NPCs + Apply (pause). |
 | **Controls page** | `SOLMenuContent::BuildControlsPage` | One scroll of `CONTROL_ROWS` (86 rows) grouped by area (Flight, Targeting, Map, Overlays, Time, HUD, Combat, Routes, Menu, Demo), key column `KEY_COLUMN_WIDTH` 230; key cells refreshed from the live keys when shown. |
 | **Info page** (pause only) | `SOLMenuContent::BuildInfoPage` | Flight, Time and travel, Combat (label / value rows, `LABEL_COLUMN_WIDTH` 400, values from the constants), How it works (prose with live key names). |
-| **About page** | `SOLMenuContent::BuildAboutPage` | Description, copyright, engine version (`ABOUT_ENGINE_FORMAT`), credits. There is **no game version string** anywhere in the code or `Config/DefaultGame.ini` (see Q10). |
+| **About page** | `SOLMenuContent::BuildAboutPage` | Description, copyright, engine version (`ABOUT_ENGINE_FORMAT`), credits. There is **no game version string** anywhere in the code or `Config/DefaultGame.ini` (Q10 adds a generated one). |
 | **Flow** | `USOLMenuSubsystem`, `SOLMenuState` | Unchanged by #46: state machine, queued requests, input mode, cursor, settings visits, Demo options. |
-| **Shared #42 code** | `UI/SOLHoloMenuMath.h` (`FSOLHoloMenuAnim`, `SOLHoloMenu::BeginOpen / BeginClose / Advance / SetHovered / Evaluate / OpenProgress / GlowScale`), `USOLHoloMenuSubsystem` (`PlayCue`, `FSOLHoloMenuParamCache::SanitizeStrength`), `USOLHologramCursorSubsystem` | Built renderer-free for #46 to reuse (SDD 42 D12). The cursor already follows `HoloMenuEffects` (SDD 42 D19). |
+| **Shared #42 code** | `UI/SOLHoloMenuMath.h` (`FSOLHoloMenuAnim`, `SOLHoloMenu::BeginOpen / BeginClose / Advance / SetHovered / Evaluate / OpenProgress / GlowScale`), `USOLHoloMenuSubsystem` (`PlayCue`, `FSOLHoloMenuParamCache::SanitizeStrength`), `USOLHologramCursorSubsystem` | Built renderer-free for #46 to reuse (SDD 42 D12). The cursor already follows `HoloMenuEffects` (SDD 42 D19) and stays as it is. |
 
 Out of the restyle and unchanged: the flight HUD and every #42 hologram menu and card, the NPC stats overlay (Ctrl+F2,
 `STATS_*`), the menu camera pawn, the menu flow and the settings model, save and subsystem.
@@ -85,7 +85,7 @@ cooked (`DirectoriesToAlwaysCook`), which now also covers the new `/Game/SOL/UI/
 ### 4.1 Overview
 
 ```
-USOLSettingsSubsystem --(effects strength, Q1)--> USOLSolidMenuSubsystem (world; created with USOLMenuSubsystem)
+USOLSettingsSubsystem --(HudEffectsStrength, Q1)--> USOLSolidMenuSubsystem (world; created with USOLMenuSubsystem)
                                                     |- loads once: the menu font, M_SOLSolidHull / M_SOLSolidTrace,
                                                     |  the style textures (UPROPERTY TObjectPtr)
                                                     |- one shared MID per hull style; strength pushed only on change
@@ -147,7 +147,7 @@ per-screen changes are in section 6.
 Rajdhani (Indian Type Foundry, SIL OFL 1.1, Google Fonts), weights Regular, Medium, SemiBold and Bold (proposed). The
 TTF files and `OFL.txt` are kept in `Docs/Art/fonts/rajdhani/`; the import script makes `UFontFace` assets and one
 composite `UFont` (`F_SOLMenu`) with the weights as typefaces (`FONT_REGULAR` "Regular", `FONT_BOLD` "Bold" keep their
-names; "Medium" and "SemiBold" are added). The OFL text ships with the game (a licence notice line in About, Q10).
+names; "Medium" and "SemiBold" are added). The OFL text ships with the game (a licence credit line in About, Q10).
 Rajdhani is narrower than Bahnschrift and the engine font, so sizes and letter spacing are tuned from screenshots at
 1280x720 and 1000x800 (section 9, proposed values).
 
@@ -156,9 +156,9 @@ Rajdhani is narrower than Bahnschrift and the engine font, so sizes and letter s
 - **Open / close phase:** each animated panel holds an `FSOLHoloMenuAnim`; `SOLHoloMenu::BeginOpen`, `BeginClose`,
   `Advance` and `Progress` give the progress (and instant open at strength 0, as SDD 42 D18 for the hologram). The
   solid look functions of section 8 map that progress to the solid look (no frame draw-in or flicker).
-- **Strength:** `FSOLHoloMenuParamCache::SanitizeStrength` (NaN 0, clamp 0-2) for the setting chosen in Q1.
-- **Hover cue / cue gate:** only if Q11 keeps sounds: `USOLHoloMenuSubsystem::PlayCue` with its gate, as the in-flight
-  menus use it.
+- **Strength:** `FSOLHoloMenuParamCache::SanitizeStrength` (NaN 0, clamp 0-2) applied to `HudEffectsStrength` (Q1).
+- **Cues (Q11):** the #42 open / hover / select cues through `USOLHoloMenuSubsystem::PlayCue` with its gate (SFX class,
+  every strength, SDD 42 D21), as the in-flight menus use them; no new sounds.
 - **Cursor:** the #22 hologram cursor stays as it is (D6).
 
 ### 4.6 Close without blocking input
@@ -182,11 +182,11 @@ close animation is waited for).
 | Edge highlight | #8C969F | 1-2 px edge lines, bevel light |
 | Shadow / vent / LED off | #121416 / #0B0D0F | Shadows, vent slots, unlit LEDs |
 | Rivet | #6A737C | Rivets |
-| Text | **#A4AFB8** (D10) | Body text and button labels at rest (Q12 settles titles and the hovered label) |
-| Bright text | #DCE3E8 | Titles and headings (proposed, Q12) |
-| Cyan trace | **#28D2F0** (D10) | Circuit traces, ring terminals, lit LEDs at rest, slider fill, values (Q13 settles which cyan uses this value) |
-| Amber hover / selected | **#FFA628** (D10) | Hover / keyboard-focus edge, LED, underline and trace; the selected state per Q9 |
-| Warning | Q14 | Key conflicts, the dirty indicator, Demo warnings (today `WARNING_COLOR`, orange, close to the hover amber) |
+| Text | **#A4AFB8** (D10) | Body text and button labels at rest (Q12) |
+| Bright text | #DCE3E8 | Titles, headings and the hovered / focused label (Q12) |
+| Cyan trace | **#28D2F0** (D10) | **Every** cyan of the solid menus (Q13): circuit traces, ring terminals, lit LEDs at rest, slider fill, the selected underline, values and keys |
+| Amber hover / selected | **#FFA628** (D10) | Hover / keyboard-focus only (Q9): edge, LED, underline and trace. The selected state is cyan, not amber |
+| Warning | **#E5533D** (Q14) | Red-orange, so a warning never reads as hover: key conflicts, the dirty indicator, Demo warnings (replaces today's orange `WARNING_COLOR`) |
 
 Palette values are data in `SOLConstants.h`, never baked into a texture (research: Elite's baked colour lesson); the
 brushed tile is a neutral grey tinted in the material.
@@ -210,42 +210,42 @@ brushed tile is a neutral grey tinted in the material.
 | State | Look |
 |---|---|
 | Normal | Raised hull #4A5159, LED off, label #A4AFB8 |
-| Hover = keyboard focus (one highlight, as today) | Lift 3 UMG units up (render transform, no relayout), hull #58626B, amber accent edge, amber LED lit, amber underline, the circuit trace extends from the button's right end into the panel (amber), label per Q12 |
+| Hover = keyboard focus (one highlight, as today) | Lift 3 UMG units up (render transform, no relayout), hull #58626B, amber accent edge, amber LED lit, amber underline, the circuit trace extends from the button's right end into the panel (amber, only where Q15 allows), label #DCE3E8 (Q12) |
 | Pressed | Hull #1C2024, no lift, edge kept; shown at least `PRESSED_LINGER_S` so a quick click is seen (FreeSpace 2's 100 ms, proposed) |
-| Selected (active tab / page / start body) | Per Q9 (recommended: cyan underline + cyan LED, no lift) |
+| Selected (active tab / page / start body) | Cyan underline + cyan LED, no lift, no amber (Q9) |
 | Disabled | Dimmed hull and label, LED off, no hover look (no button is disabled today; kept for completeness) |
 
-The trace extension (D11) applies where a panel lies beside the button (Q15); every button gets the lift, edge, LED and
+The trace extension (D11) applies only on the main menu stack, the pause side panel stack and the shell's tab column (Q15). The settings rows (steppers, sliders, toggles, Rebind) get an amber edge and underline only, no trace; every button gets the lift, edge, LED and
 underline.
 
 ## 6. Per-screen restyle
 
 All dimensions are UMG units at the 1080p reference DPI (proposed, section 9).
 
-| Screen | Restyle (logic and widgets unchanged, D7) | Open questions |
+| Screen | Restyle (logic and widgets unchanged, D7) | Resolved by |
 |---|---|---|
-| **Main menu** (`USOLMainMenuWidget`) | The column becomes a **hull panel** (D12): title "SOLTest" in the stepped top edge with the tagline under it, the 7 entries as **stack buttons** (Play, Demo, Start: <body>, Controls, Settings, About, Quit; the hazard stripe under Quit), the key hint under the stack, and a **small bottom-left recess** in the chin holding the version / credits line (Q10). Circuit traces run along the panel's lower edge; the hovered entry's trace extends to the right edge of the hull (toward the page shell). The page panel becomes the **page shell** (section 6.1). Panel-open plays when the main menu first shows and when returning from flight; the traces power up after it; the idle pulse runs while it shows | Q5 (page placement), Q10 |
-| **Start-location page** | In the page shell, no tab column: the body text, then the body list in a recess with a solid scroll bar; rows are small buttons, the start body is the selected row (Q9) | Q5 |
-| **Settings** (`USOLSettingsPageWidget`, both menus) | The page shell **with a vertical tab column** (D13): the six existing sections become six tabs (Graphics, Audio, Mouse, Gameplay, Overlays, Key bindings); the content area shows the chosen section's rows in a recess (labels left, controls right; sliders, toggles and steppers from `SOLSolidStyle`); the footer (dirty text, status line, Revert, Apply) stays under the content for every tab; `ScrollToBinding` first switches to Key bindings. Every control keeps its handler and the setters the smoke uses | Q8 |
+| **Main menu** (`USOLMainMenuWidget`) | The column becomes a **hull panel** (D12): title "SOLTest" in the stepped top edge with the tagline under it, the 7 entries as **stack buttons** (Play, Demo, Start: <body>, Controls, Settings, About, Quit; the hazard stripe under Quit), the key hint under the stack, and a **small bottom-left recess** in the chin holding the version / studio / engine line (Q10). Circuit traces run along the panel's lower edge; the hovered entry's trace extends to the right edge of the hull (toward the page shell, Q15). The version line (Q10) reads `v0.1.MMYY.<commit count>`, then studio and engine. The page panel becomes the **page shell** (section 6.1). Panel-open plays when the main menu first shows and when returning from flight; the traces power up after it; the idle pulse runs while it shows | Q5, Q10 |
+| **Start-location page** | In the page shell, no tab column: the body text, then the body list in a recess with a solid scroll bar; rows are small buttons, the start body is the selected row (cyan underline + LED, Q9) | Q5, Q9 |
+| **Settings** (`USOLSettingsPageWidget`, both menus) | The page shell **with a vertical tab column** (D13): the six existing sections become six tabs (Graphics, Audio, Mouse, Gameplay, Overlays, Key bindings); the content area shows the chosen section's rows in a recess (labels left, controls right; sliders, toggles and steppers from `SOLSolidStyle`); the footer (dirty text, status line, Revert, Apply) stays under the content for every tab; Settings always opens on the first tab, Graphics, with no last-tab memory (Q8); `ScrollToBinding` first switches to Key bindings. Every control keeps its handler and the setters the smoke uses | Q8, Q15 |
 | **Embedded Overlay list** (in the Overlays tab) | Solid text font and colours, the profile tabs as small tab buttons, rows on the recess, the highlight in the solid hover look; the standalone Ctrl+O menu keeps its hologram frame (`SetEmbedded(true)` path only) | - |
-| **Controls / Info / About** (`SOLMenuContent` builders) | The same page shell as Settings with read-only content (D14): key and value columns in recesses, the key cells in cyan, headings in the heading style | Q6 |
-| **Demo** (`USOLDemoPageWidget`, both menus) | The page shell; presets as small buttons on top, stepper rows in recesses under the 6 section headings, warnings in the warning colour, the footer buttons (Reset, Start demo / Stop NPCs, Apply) bottom right | Q7 |
-| **Pause** (`USOLPauseMenuWidget`) | A **side panel on the left** (D15), full height minus margins, sliding in from the left edge; "PAUSED" in its stepped top edge; the 7 tabs become a vertical stack of stack buttons; the screen behind is dimmed (and frozen per Q3); the pages open per Q4 | Q3, Q4 |
+| **Controls / Info / About** (`SOLMenuContent` builders) | The same page shell as Settings with read-only content (D14): key and value columns in recesses, the key cells in cyan, headings in the heading style. Today's entries are kept (main menu: Controls, About; pause: Controls, Info, About) and each page's sections become tabs (Controls: its 10 areas, Info: Flight, Time and travel, Combat, How it works, About: no tab column) | Q6 |
+| **Demo** (`USOLDemoPageWidget`, both menus) | The page shell; no tab column (Q7): presets as small buttons on top, the 6 sections as recessed groups in one scroll, warnings in the warning colour, the footer buttons (Reset, Start demo / Stop NPCs, Apply) bottom right | Q7 |
+| **Pause** (`USOLPauseMenuWidget`) | A **side panel on the left** (D15), full height minus margins, sliding in from the left edge; "PAUSED" in its stepped top edge; the 7 tabs become a vertical stack of stack buttons; the live flight view behind is only dimmed, the simulation keeps running (Q3). The pages open in the shell to the right of the side panel, Quit's two choices inside the side panel (Q4) | Q3, Q4 |
 
 ### 6.1 The page shell
 
 One kit composition (`USOLSolidPanel` hull + optional tab column + content recess + bottom-right recess with a **Back**
 button + the footer row when the page has one), used by every page of both menus. The Back button does exactly what Esc
-does on that page today (main menu: close the page; pause: per Q4); it is a new button but no new input path (D6).
+does on that page today (close the page; on the pause menu Esc with no page open still resumes, Q4); it is a new button but no new input path (D6).
 Proposed size: 1040 x 760 (the tab column 200 wide), so a Settings row keeps its 250 label column, a slider and the 80
 value column; the main menu's column + gap + shell then spans about 1540 of 1920 units.
 
 ## 7. Animations and the effects strength (D5)
 
-`s` is the sanitized strength of the setting chosen in Q1 (0-2, default 1). The behaviour at 0 and 2 is Q2; the
-recommended rule, mirroring SDD 42 D18 / D21, is used below.
+`s` is the sanitized `HudEffectsStrength` (Q1, 0-2, default 1). The behaviour at 0 and 2 is the same rule as #42
+(Q2, SDD 42 D18 / D21) and is used below.
 
-| Animation | Recommended behaviour (proposed values, Q16) |
+| Animation | Behaviour (starting values approved in Q16) |
 |---|---|
 | **Panel open** | The hull fades up and slides `PANEL_SLIDE_PX` 24 in from its anchor side over `PANEL_OPEN_S` 0.25 s (ease-out); the content fades with it. The pause side panel slides its full width in from the left edge over `PAUSE_SLIDE_S` 0.25 s while the dim fades up. At `s = 0`: no slide or fade, the panel is there at once (`OpenProgress` already returns 1 at strength 0) |
 | **Circuit power-up** | After `TRACE_POWER_DELAY_S` 0.15 s the traces light from their terminals along their length over `TRACE_POWER_S` 0.35 s, the LEDs blink on in stack order. At `s = 0`: traces lit at once, flat (no glow pass) |
@@ -289,7 +289,7 @@ struct FSOLSolidButtonLook { float Lift; float Edge; float Led; float Underline;
 
 | Function | Contract |
 |---|---|
-| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s)` | Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = GlowScale(s) * Edge` (0 at `s = 0`). Pressed: `bPressedHull`, `Lift` 0, `Edge` 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time). Selected: `bSelectedMark` (Q9), no lift. Disabled: everything 0. NaN or negative `sinceChangeS` reads 0. Values always in [0, 1] |
+| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s)` | Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = GlowScale(s) * Edge` (0 at `s = 0`). Pressed: `bPressedHull`, `Lift` 0, `Edge` 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time). Selected: `bSelectedMark` (cyan, Q9), no lift. Disabled: everything 0. NaN or negative `sinceChangeS` reads 0. Values always in [0, 1] |
 | `float LiftOffset(const FSOLSolidButtonLook& look)` | `-HOVER_LIFT_PX * look.Lift` (UMG units, up is negative Y) |
 
 ### 8.3 Tint encoding (no MID per button)
@@ -319,7 +319,7 @@ quantization), `.Panel.*` (slide endpoints and monotonicity, pause slide never p
 ramp, strength 0, polyline partial segment, capacity, zero fraction), `.Pulse.*` (strength 0 exact 1, period, depth,
 NaN). The test author gets sections 8 and 9 only, not the implementation.
 
-## 9. Constants (`SOL::SolidMenu` and `SOL::Paths` in `SOLConstants.h`; proposed, tuned from screenshots, Q16)
+## 9. Constants (`SOL::SolidMenu` and `SOL::Paths` in `SOLConstants.h`; starting values approved in Q16, tuned from screenshots)
 
 | Constant | Value | Notes |
 |---|---|---|
@@ -377,17 +377,36 @@ constants); the layout sizes stay where still used.
 ## 11. Persistence
 
 None (D5, D16). No `USaveGame` field, no `UGameUserSettings` value and no config layout changes; `SAVE_VERSION` stays 11
-and `KEY_BINDING_LAYOUT_VERSION` 10. Whatever Q1 picks, the strength is read from the existing live settings value.
-If Q10 picks a game version from `Config/DefaultGame.ini` (`ProjectVersion`), that is a project config value, not
-player data.
+and `KEY_BINDING_LAYOUT_VERSION` 10. The strength is read from the existing live `HudEffectsStrength` value (Q1). The version line (Q10) is a build-time
+generated header (section 11.1), not player data and not a config value.
+
+### 11.1 Version line (Q10)
+
+Format `0.1.MMYY.<commit count>`, e.g. `0.1.1126.412` (MMYY = month and year of the build, zero padded, so November
+2026 is `1126`; the last field is the number of commits in the repo, `git rev-list --count HEAD`). Nothing is hardcoded
+and `ProjectVersion` is not used. Design (built in 46d):
+
+- `SOLTest.Build.cs` runs, when UBT evaluates the module rules, `git rev-list --count HEAD` in the project directory (via
+  `System.Diagnostics.Process`, short timeout) and reads the build date, and writes
+  `Intermediate/Generated/SOLBuildVersion.generated.h` (`SOL_BUILD_VERSION_STRING`, `SOL_BUILD_COMMIT_COUNT`,
+  `SOL_BUILD_MMYY`). The file is rewritten only when its content changes (no needless recompile), and the folder is added
+  to the module's private include paths.
+- If git is missing or fails the commit count is 0 (`0.1.1126.0`) and the build logs one warning, so a build never
+  fails on it. The generated header is a build artefact (Intermediate), never committed.
+- `SOLConstants.h` (or `SOLMenuText.h`) formats the line from the macros; the format helper is a pure function so a test
+  covers the zero padding and the field order. The check is a unit test plus the smoke screenshot of the main menu.
 
 ## 12. Documentation, in-game text and screenshots (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 rows (main menu, pause menu: the new layout and, per Q3, what pause does);
-  section 8.1 the effects slider row (Q1: it now also scales the solid menu animations); a tunables table for
-  `SOL::SolidMenu`.
-- **In-game text (`SOLMenuText.h`):** the effects slider description (Q1); `PAUSED_BODY` if Q3 changes what pause does;
-  the Back button label; the version / credits line (Q10); the hints if the Back button or tabs change what Esc /
+  section 8.1 the HUD effects slider row (Q1: it now also scales the solid menu animations); a tunables table for
+  `SOL::SolidMenu`; the version line.
+- **In-game text (`SOLMenuText.h`):** the HUD effects slider text (Q1). Today the label is "HUD hologram effects"
+  (`SETTINGS_HUD_EFFECTS`) and the help text near `SOLMenuText.h:469` says it sets "how strong those HUD effects are"
+  and that the Hologram menu effects slider, not the HUD one, sets the menus. **Both need widening** (the label, e.g.
+  "HUD and menu effects", and the help text) to say the HUD slider also scales the full-screen menu animations, and the
+  Hologram menu effects sentence must not claim the HUD slider has no say over menus; `PAUSED_BODY` stays true (Q3, no
+  behaviour change); the Back button label; the version line and the About credit line for the font licence (Q10); the hints if the Back button or tabs change what Esc /
   Tab do on a page (they do not, D6).
 - **`Docs/ARCHITECTURE.md`:** the new types (section 4.2) in "Key types per module"; the new smoke flag(s); no module
   dependency change (`Menu/` already reads Settings and `UI/`).
@@ -399,8 +418,8 @@ player data.
 
 ## 13. Performance
 
-- **Budget:** Q12 (recommended: per screen, against today's look, under 0.1 ms extra CPU on the game thread's Slate
-  paint and under 0.3 ms extra GPU in the Slate UI pass, at 1920x1080 and 1280x720, measured by a profiling smoke).
+- **Budget (Q17):** per screen, against today's look, under 0.1 ms extra CPU on the game thread's Slate paint and under
+  0.3 ms extra GPU in the Slate UI pass, at 1920x1080 and 1280x720, measured by a profiling smoke with three-run medians.
 - **Event-driven:** no per-frame allocation in project code; MIDs are created once (a handful); the shared button MIDs
   never change per frame (state in the vertex colour); strength pushed only on change; `RefreshHighlight` stays a
   state compare and only animates during a 0.12 s ramp; the idle pulse updates a few scalars per tick on the visible
@@ -420,51 +439,46 @@ player data.
   `HoloMenuKitTest` (shared code unchanged).
 - **New smoke `-SOLSmokeSolidMenu`** (flag in `SOLConstants.h`, listed in ARCHITECTURE), 1280x720 and 1000x800, smoke
   settings slot, real injected input, screenshots for every step:
-  1. Main menu: the hull panel, the 7 stack buttons, the version recess; the font asset and hull material loaded (no
+  1. Main menu: the hull panel, the 7 stack buttons, the version recess (format `0.1.MMYY.<n>`); the font asset and hull material loaded (no
      fallback warning); panel-open then power-up then Open.
   2. Hover a stack button with the mouse, then move with Down: one highlight at a time, the lift and the tint encoding
      match `EvaluateButton`; the trace extension drawn.
   3. Each main-menu page in the shell (Start location, Controls, Settings, About, Demo); Back and Esc both close.
-  4. Settings: each tab shows its section; a slider drag, a toggle, a stepper; Apply / Revert unchanged (the settings
+  4. Settings: opens on Graphics (no last-tab memory, Q8), each tab shows its section; a slider drag, a toggle, a stepper; Apply / Revert unchanged (the settings
      smoke checks still pass); a rebind switches to Key bindings and scrolls to the row.
   5. Pause: Esc slides the side panel in from the left; Resume, each page, Quit's two choices; Esc resumes with input
      back in the same frame; the slide-out after.
   6. Strength 0: no animation, hover still lifts and shows the amber edge, LED and underline; strength 2 screenshot.
-  7. Q3's pause behaviour (sim running or frozen view) as the answer specifies.
+  7. Pause behaviour (Q3): the live view is dimmed and the simulation keeps running (the existing "sim keeps running while paused" check stays).
 - **Regression smokes:** `-SOLMenuSmoke=all` (no new failures beyond its known stale checks), `-SOLSmokeHoloMenu`
   (the embedded Overlay list check of step 11 is updated to the solid look), `-SOLSmokeOverlay`.
 - **PIE smoke** with unreal-mcp when the editor is open: screenshots looked at for each screen at strength 0, 1, 2.
 - **Adversarial review** per part (opus, xhigh, report only), briefed with this SDD, the STYLE_GUIDE, the performance
   guidelines and the tech-debt items of section 3.
 
-## 15. Open questions (for the user; none decided here)
+## 15. Open questions: all resolved (user answers, 2026-11-04)
 
-Each has a recommended answer; the plan names the parts each one gates.
-
-| # | Question | Options (recommended first) |
+| # | Question | Answer |
 |---|---|---|
-| Q1 | **Which existing setting scales the solid animations** (D5 says "the existing effects-intensity setting"; there are two: "HUD hologram effects" `HudEffectsStrength` and "Hologram menu effects" `HoloMenuEffects`) | **(a)** `HoloMenuEffects`: it already sets the menus' effects and the cursor; its description (and maybe its label, e.g. "Menu effects") is widened to the full-screen menus, no schema change; (b) `HudEffectsStrength`; (c) neither: the solid animations are fixed |
-| Q2 | **What strength 0 and 2 mean for the solid menus** | **(a)** as SDD 42 D18 for the hologram: 0 = static (no open slide, power-up, pulse or glow halo), hover still fully shown (lift, amber edge, LED, underline), fully usable; 2 = glow and pulse doubled, same durations; (b) the animations only scale their amplitude, durations never shorten |
-| Q3 | **"Frozen" flight view under pause** (D15) vs today's rule that the simulation keeps running while paused (SDD 8 decision 3, the `PAUSED_BODY` text, the "sim keeps running while paused" smoke check, `GAME_MECHANICS.md` section 8) | **(a)** visual only: the live flight view is dimmed (and desaturated, proposed); the simulation keeps running as today and the text stays true; (b) a still of the last flight frame is captured behind the panel while the simulation keeps running underneath; (c) actually pause the simulation (a behaviour change of SDD 8: world pause or clock freeze, the text, smoke and docs change with it) |
-| Q4 | **Pause side panel: where the pages open** | **(a)** the side panel holds PAUSED, a subtitle line, the 7 entries as a vertical stack (Resume, Controls, Info, Settings, Demo, About, Quit) and the hint; choosing Controls / Info / Settings / Demo / About opens the page shell to the right of the side panel; Quit shows its two choices inside the side panel under Quit (Quit to desktop with the hazard stripe); the Resume page's text becomes the subtitle; Back / Esc on a page closes the page, Esc with no page resumes (as today: Esc resumes); (b) the side panel swaps its content to the page (one panel, Back returns to the list); (c) the side panel widens to hold the page |
-| Q5 | **Main menu pages: placement** | **(a)** the page shell opens to the right of the hull panel, as the page panel does today; the stack stays visible; Back and Esc close the page; (b) the shell replaces the stack in the centre of the screen until Back |
-| Q6 | **Controls / Info / About in the shell** (the layout board showed one "CONTROLS / INFO" shell with tabs Controls / Mechanics / About, with placeholder entries) | **(a)** keep today's entries (main menu: Controls, About; pause: Controls, Info, About); each page opens the shell with its own sections in the tab column (Controls: its 10 areas; Info: Flight, Time and travel, Combat, How it works; About: no tab column); (b) one "Controls / Info" entry and shell with three tabs (Controls, Info, About) in both menus (the main menu gains Info; entries and smoke change) |
-| Q7 | **Demo page in the shell** | **(a)** no tab column: presets on top, the 6 sections as recessed groups in one scroll, warnings and footer at the bottom (the warnings stay visible with every option); (b) its 6 sections as tabs |
-| Q8 | **Settings tab details** | **(a)** the shell opens on Graphics, and remembers the last tab while the menu stays open (not saved); the footer (dirty, status, Revert, Apply) is shared under every tab; Reset keys sits at the top of Key bindings; Tab / arrows still move focus between controls as today (D6), the tabs are clicked or focused like buttons; (b) the shell opens on the last tab of the session; (c) one scroll with the tab column as jump links (sections stay one list) |
-| Q9 | **Selected (active tab / page / start body) look** (D10 says "hover / selected" amber; the boards showed amber for hover and a cyan underline for the active tab) | **(a)** amber only for hover / keyboard focus; the selected entry shows a cyan underline and a cyan LED, no lift; (b) amber for both, selected without lift |
-| Q10 | **Version / credits recess** (D12): no game version exists in the code | **(a)** `v<ProjectVersion>` from `Config/DefaultGame.ini` (`[/Script/EngineSettings.GeneralProjectSettings] ProjectVersion`, the user picks the number, e.g. 0.46.0) + "Acid Rain Studios LLC" + "UE 5.8", in a small recess in the hull's chin; the font licence line ("Rajdhani, SIL OFL 1.1") goes to About's credits; (b) studio and engine only, no version; (c) the short git commit hash written at build time |
-| Q11 | **Sounds on the solid menus** (not in the grill notes) | **(a)** reuse #42's open / hover / select cues through `USOLHoloMenuSubsystem::PlayCue` (SFX class, every strength, SDD 42 D21); (b) new "mechanical" solid cues made with SoundCraft (a new asset part); (c) silent, as today |
-| Q12 | **Text colours** (D10: "text #A4AFB8"; the board used #DCE3E8 for main text and #A4AFB8 for dim text) | **(a)** #A4AFB8 for body text and button labels at rest; #DCE3E8 for titles, headings and the hovered / focused label; values and keys in cyan; (b) #A4AFB8 for all text, titles included |
-| Q13 | **Which cyan uses #28D2F0** (direction 1's palette accent was #46D2E6) | **(a)** #28D2F0 for every cyan of the solid menus (traces, ring terminals, LEDs, slider fill, the selected underline, values); (b) #28D2F0 for traces only, #46D2E6 for LEDs, values and the slider |
-| Q14 | **Warning colour** (key conflicts, dirty indicator, Demo warnings): today's orange `WARNING_COLOR` (linear 1.0, 0.62, 0.25) is close to the hover amber #FFA628 | **(a)** a red-orange warning, e.g. #E5533D, so a warning never reads as hover; (b) keep the orange; (c) the round 1 warning amber #F2A93B |
-| Q15 | **Where the hover trace extends** (D11) | **(a)** on the main menu stack, the pause side panel stack and the shell's tab column (a panel lies beside them); other buttons (steppers, Rebind, footer, start-location rows, Back) get the lift, edge, LED and underline without a trace; (b) every button |
-| Q16 | **Approve the proposed starting values** (section 9: timings, chamfers, layout sizes, font sizes and weights, trace widths, dim alpha) as starting points tuned from screenshots, with the final values shown at the hand check | **(a)** approve as starting values; (b) the user sets specific values first |
-| Q17 | **Performance budget** (section 13) | **(a)** per screen, against today's look: under 0.1 ms extra CPU and under 0.3 ms extra GPU (Slate UI pass) at 1920x1080 and 1280x720, by a profiling smoke with three-run medians; (b) the #42 budget, 0.1 ms CPU and 0.1 ms GPU; (c) no fixed budget, only a report |
+| Q1 | Which existing setting scales the solid animations | **`HudEffectsStrength` ("HUD hologram effects").** Not `HoloMenuEffects`. The slider's label and help text must be widened (section 12) because they say it only affects the HUD and that the Hologram menu effects slider governs the menus; the Hologram menu effects slider keeps governing the #42 menus and the cursor only. No schema change |
+| Q2 | Strength 0 and 2 | **Same rule as #42** (SDD 42 D18): 0 = static (no open slide, power-up, pulse or glow halo), hover still fully shown, fully usable; 2 = glow and pulse doubled, same durations |
+| Q3 | "Frozen" view under pause | **Dim the live view only**, no behaviour change: the simulation keeps running, `PAUSED_BODY` and the "sim keeps running while paused" check stay true |
+| Q4 | Pause: where pages open | **Pages open in the shell to the right of the side panel;** Quit's two choices (to main menu, to desktop) appear inside the side panel; Back / Esc on a page closes the page, Esc with no page resumes |
+| Q5 | Main menu page placement | **The shell opens to the right of the button stack;** the stack stays visible; Back and Esc close the page |
+| Q6 | Controls / Info / About | **Keep today's entries** (main menu: Controls, About; pause: Controls, Info, About); each page's sections become tabs in the shell |
+| Q7 | Demo page | **No tab column:** presets on top, the 6 sections as recessed groups in one scroll, warnings and footer at the bottom |
+| Q8 | Settings tabs | **Settings always opens on the first tab** (Graphics), no last-tab memory; one shared footer under every tab; Reset keys at the top of Key bindings |
+| Q9 | Selected look | **Selected tab / page = cyan underline + LED; amber for hover and keyboard focus only** |
+| Q10 | Version / credits | **Version line `0.1.MMYY.<number of commits in the repo>`** (e.g. `0.1.1126.412`), **generated at build time** (section 11.1), no hardcoded value; the `ProjectVersion` alternative is dropped. Plus studio and engine in the chin recess, and the font licence credit ("Rajdhani, SIL OFL 1.1") in About |
+| Q11 | Sounds | **Reuse the #42 cues** (`USOLHoloMenuSubsystem::PlayCue`); no new assets |
+| Q12 | Text colours | **Body #A4AFB8; titles and the hovered label #DCE3E8;** values and keys in cyan |
+| Q13 | Cyan | **All cyan traces #28D2F0** (the same value for every cyan of the solid menus) |
+| Q14 | Warning colour | **Red-orange #E5533D** |
+| Q15 | Hover trace | **Trace only on the main stack, the pause stack and the tab column;** settings rows get an amber edge and underline only (as do the other small buttons: Rebind, footer, start-location rows, Back) |
+| Q16 | Starting values | **Section 9 starting values approved** as the tuning start; final values shown at the hand check |
+| Q17 | Performance budget | **Under 0.1 ms extra CPU and 0.3 ms extra GPU per screen** (against today's look, 1920x1080 and 1280x720), three-run medians |
 
-Q1, Q2, Q16 and Q17 gate the kit (46c); Q12, Q13, Q14 gate the kit's palette constants (46c); Q5, Q9, Q10, Q15 gate
-the main menu (46d); Q8 gates Settings (46e); Q6, Q7 gate the read-only pages and Demo (46f); Q3, Q4, Q11 gate the
-pause menu (46g; Q11 also the cue wiring wherever it lands). 46a (pure logic) and 46b (assets) can start once Q2 and
-Q16 are answered (46a) or at once (46b: the asset list does not depend on any question).
+No question remains open and no part is gated on the user any more.
 
 ## 16. Out of scope
 
