@@ -47,3 +47,5 @@ archive.
   ship thrust (equipment), deferred from issue #18.
 - [`damage-and-death.md`](damage-and-death.md) — hull damage, pilot injury and death
   (prolonged G drain, impacts), deferred from issue #18.
+- [`vr-performance-gate.md`](vr-performance-gate.md) — perf smoke at the VR-equivalent
+  resolution to keep VR-capable frame rates without a headset.
