@@ -1,7 +1,7 @@
 <!-- SOLTest / Copyright © 2026 Acid Rain Studios LLC -->
 # #46 solid console-style menus: grill-me notes
 
-Status: grill done except per-screen layouts and the build details below. Next step: draft the SDD and plan (`Docs/SDDs/46-...`, `Docs/Plans/46-...-plan.md`). Earlier context and the sample boards are in `Plans/42-hologram-menus-grill-notes.md` and `Research/SOLID_MENU_STYLE_REFERENCES.md`.
+Status: **grill done (2026-11-04); SDD and plan drafted:** [`Docs/SDDs/46-solid-menus.md`](../SDDs/46-solid-menus.md) and [`46-solid-menus-plan.md`](46-solid-menus-plan.md). The decisions below are recorded there as D1-D16; what they leave open is listed as Q1-Q17 in SDD section 15 and waits for the user. Earlier context and the sample boards are in `Plans/42-hologram-menus-grill-notes.md` and `Research/SOLID_MENU_STYLE_REFERENCES.md`.
 
 ## Decided (2026-11-03)
 
@@ -13,11 +13,16 @@ Status: grill done except per-screen layouts and the build details below. Next s
 - **Animations:** panel-open, circuit-trace power-up and a slow idle pulse. They are scaled by the existing effects-intensity setting. No new saved settings.
 - **Input unchanged:** mouse + keyboard + the #22 hologram cursor and hover glow. A keyboard / gamepad navigation redesign is a future idea, not part of #46.
 
+## Decided (2026-11-04)
+
+- **Rebuild:** restyle in place; each screen keeps its logic and widgets; a shared solid-panel kit (frame, buttons, tabs, sliders, toggles).
+- **Hull shapes:** SDF in a UMG material, not 9-slice.
+- **Asset pipeline:** PNG sources exported from the craft MCP tools into `Docs/Art/`, imported into `Content/` by an editor Python script under `Tools/`, asset paths fixed in `SOLConstants.h`. VectorCraft takes absolute paths; PhotoCraft needs `--automation-write-root`.
+- **Colours:** hover / selected glow amber #FFA628; hull traces cyan #28D2F0; text #A4AFB8.
+- **Hover:** lift 3 px, accent edge, lit LED, underline, a trace that extends into the panel (sample `hover-compare.png` panel B, deleted once recorded).
+- **Layouts:** main menu = left button stack on a hull panel (title on top, version / credits in a small bottom-left recess); Settings = large hull panel with a vertical tab column on the left, content right; Controls / Info / About reuse the Settings shell with read-only content; pause = slide-in side panel on the left over a dimmed, frozen flight view (layout samples `layout-1` to `layout-4`, deleted once recorded).
+- **No schema change:** no new saved settings; input unchanged.
+
 ## Still open
 
-- Per-screen layouts (main menu, settings tabs, demo, Controls / Info / About, pause entries).
-- Reuse (restyle in place) vs rewrite of the existing UMG widgets, and how non-rectangular shapes are built (9-slice vs SDF / UMG material).
-- Exact asset list: tiles, bevels, vents, rivets, trace glow, button states; resolution and tiling.
-- Asset creation pipeline: the MCP tools had no file read / write roots. Find out how exported textures reach `Content/`, or whether a `Tools/*.py` pipeline is needed.
-- Hover glow colour on solid menus (cyan hologram vs direction accent): confirm if not already implied.
-- SDD and plan drafting.
+See SDD 46 section 15 (Q1-Q17): which effects setting scales the animations, strength 0 / 2, "frozen" pause vs the running simulation, pause and main-menu page placement, Controls / Info / About and Demo in the shell, Settings tab details, the selected look, the version line, sounds, text / cyan / warning colours, where the hover trace extends, the starting values and the performance budget.
