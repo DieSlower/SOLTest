@@ -224,7 +224,7 @@ All dimensions are UMG units at the 1080p reference DPI (proposed, section 9).
 
 | Screen | Restyle (logic and widgets unchanged, D7) | Resolved by |
 |---|---|---|
-| **Main menu** (`USOLMainMenuWidget`) | The column becomes a **hull panel** (D12): title "SOLTest" in the stepped top edge with the tagline under it, the 7 entries as **stack buttons** (Play, Demo, Start: <body>, Controls, Settings, About, Quit; the hazard stripe under Quit), the key hint under the stack, and a **small bottom-left recess** in the chin holding the version / studio / engine line (Q10). Circuit traces run along the panel's lower edge; the hovered entry's trace extends to the right edge of the hull (toward the page shell, Q15). The version line (Q10) reads `v0.1.MMYY.<commit count>`, then studio and engine. The page panel becomes the **page shell** (section 6.1). Panel-open plays when the main menu first shows and when returning from flight; the traces power up after it; the idle pulse runs while it shows | Q5, Q10 |
+| **Main menu** (`USOLMainMenuWidget`) | The column becomes a **hull panel** (D12): title "SOLTest" in the stepped top edge with the tagline under it, the 7 entries as **stack buttons** (Play, Demo, Start: <body>, Controls, Settings, About, Quit; the hazard stripe under Quit), the key hint under the stack, and a **small bottom-left recess** in the chin holding the version / studio / engine line (Q10). Circuit traces run along the panel's lower edge; the hovered entry's trace extends to the right edge of the hull (toward the page shell, Q15). The version line (Q10) reads `v0.1.YYMM.<commit count>`, then studio and engine. The page panel becomes the **page shell** (section 6.1). Panel-open plays when the main menu first shows and when returning from flight; the traces power up after it; the idle pulse runs while it shows | Q5, Q10 |
 | **Start-location page** | In the page shell, no tab column: the body text, then the body list in a recess with a solid scroll bar; rows are small buttons, the start body is the selected row (cyan underline + LED, Q9) | Q5, Q9 |
 | **Settings** (`USOLSettingsPageWidget`, both menus) | The page shell **with a vertical tab column** (D13): the six existing sections become six tabs (Graphics, Audio, Mouse, Gameplay, Overlays, Key bindings); the content area shows the chosen section's rows in a recess (labels left, controls right; sliders, toggles and steppers from `SOLSolidStyle`); the footer (dirty text, status line, Revert, Apply) stays under the content for every tab; Settings always opens on the first tab, Graphics, with no last-tab memory (Q8); `ScrollToBinding` first switches to Key bindings. Every control keeps its handler and the setters the smoke uses | Q8, Q15 |
 | **Embedded Overlay list** (in the Overlays tab) | Solid text font and colours, the profile tabs as small tab buttons, rows on the recess, the highlight in the solid hover look; the standalone Ctrl+O menu keeps its hologram frame (`SetEmbedded(true)` path only) | - |
@@ -382,16 +382,16 @@ generated header (section 11.1), not player data and not a config value.
 
 ### 11.1 Version line (Q10)
 
-Format `0.1.MMYY.<commit count>`, e.g. `0.1.1126.412` (MMYY = month and year of the build, zero padded, so November
-2026 is `1126`; the last field is the number of commits in the repo, `git rev-list --count HEAD`). Nothing is hardcoded
+Format `0.1.YYMM.<commit count>`, e.g. `0.1.2611.412` (YYMM = two-digit year and month of the build, zero padded, so November
+2026 is `2611`; the last field is the number of commits in the repo, `git rev-list --count HEAD`). Nothing is hardcoded
 and `ProjectVersion` is not used. Design (built in 46d):
 
 - `SOLTest.Build.cs` runs, when UBT evaluates the module rules, `git rev-list --count HEAD` in the project directory (via
   `System.Diagnostics.Process`, short timeout) and reads the build date, and writes
   `Intermediate/Generated/SOLBuildVersion.generated.h` (`SOL_BUILD_VERSION_STRING`, `SOL_BUILD_COMMIT_COUNT`,
-  `SOL_BUILD_MMYY`). The file is rewritten only when its content changes (no needless recompile), and the folder is added
+  `SOL_BUILD_YYMM`). The file is rewritten only when its content changes (no needless recompile), and the folder is added
   to the module's private include paths.
-- If git is missing or fails the commit count is 0 (`0.1.1126.0`) and the build logs one warning, so a build never
+- If git is missing or fails the commit count is 0 (`0.1.2611.0`) and the build logs one warning, so a build never
   fails on it. The generated header is a build artefact (Intermediate), never committed.
 - `SOLConstants.h` (or `SOLMenuText.h`) formats the line from the macros; the format helper is a pure function so a test
   covers the zero padding and the field order. The check is a unit test plus the smoke screenshot of the main menu.
@@ -439,7 +439,7 @@ and `ProjectVersion` is not used. Design (built in 46d):
   `HoloMenuKitTest` (shared code unchanged).
 - **New smoke `-SOLSmokeSolidMenu`** (flag in `SOLConstants.h`, listed in ARCHITECTURE), 1280x720 and 1000x800, smoke
   settings slot, real injected input, screenshots for every step:
-  1. Main menu: the hull panel, the 7 stack buttons, the version recess (format `0.1.MMYY.<n>`); the font asset and hull material loaded (no
+  1. Main menu: the hull panel, the 7 stack buttons, the version recess (format `0.1.YYMM.<n>`); the font asset and hull material loaded (no
      fallback warning); panel-open then power-up then Open.
   2. Hover a stack button with the mouse, then move with Down: one highlight at a time, the lift and the tint encoding
      match `EvaluateButton`; the trace extension drawn.
@@ -469,7 +469,7 @@ and `ProjectVersion` is not used. Design (built in 46d):
 | Q7 | Demo page | **No tab column:** presets on top, the 6 sections as recessed groups in one scroll, warnings and footer at the bottom |
 | Q8 | Settings tabs | **Settings always opens on the first tab** (Graphics), no last-tab memory; one shared footer under every tab; Reset keys at the top of Key bindings |
 | Q9 | Selected look | **Selected tab / page = cyan underline + LED; amber for hover and keyboard focus only** |
-| Q10 | Version / credits | **Version line `0.1.MMYY.<number of commits in the repo>`** (e.g. `0.1.1126.412`), **generated at build time** (section 11.1), no hardcoded value; the `ProjectVersion` alternative is dropped. Plus studio and engine in the chin recess, and the font licence credit ("Rajdhani, SIL OFL 1.1") in About |
+| Q10 | Version / credits | **Version line `0.1.YYMM.<number of commits in the repo>`** (e.g. `0.1.2611.412`), **generated at build time** (section 11.1), no hardcoded value; the `ProjectVersion` alternative is dropped. Plus studio and engine in the chin recess, and the font licence credit ("Rajdhani, SIL OFL 1.1") in About |
 | Q11 | Sounds | **Reuse the #42 cues** (`USOLHoloMenuSubsystem::PlayCue`); no new assets |
 | Q12 | Text colours | **Body #A4AFB8; titles and the hovered label #DCE3E8;** values and keys in cyan |
 | Q13 | Cyan | **All cyan traces #28D2F0** (the same value for every cyan of the solid menus) |

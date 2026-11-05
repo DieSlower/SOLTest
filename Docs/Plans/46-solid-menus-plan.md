@@ -82,7 +82,7 @@ Answers: Q5 (shell right of the stack), Q9, Q10, Q15. Depends on 46c.
    version / credits recess per Q10), traces and the hovered entry's trace (Q15), the page shell (SDD 6.1) placed to the
    right of the stack (Q5) with Back, panel-open / power-up / pulse.
 2. [ ] Start-location page in the shell (recess list, solid scroll bar, selected row: cyan underline + LED, Q9).
-3. [ ] The build-time version line (Q10, SDD 11.1): `SOLTest.Build.cs` writes `Intermediate/Generated/SOLBuildVersion.generated.h` from `git rev-list --count HEAD` and the build month / year, only when the content changes, fallback commit count 0 with one warning; a pure format helper (`0.1.MMYY.<count>`) with a unit test; the chin recess shows the line plus studio and engine. Not committed (Intermediate).
+3. [ ] The build-time version line (Q10, SDD 11.1): `SOLTest.Build.cs` writes `Intermediate/Generated/SOLBuildVersion.generated.h` from `git rev-list --count HEAD` and the build month / year, only when the content changes, fallback commit count 0 with one warning; a pure format helper (`0.1.YYMM.<count>`) with a unit test; the chin recess shows the line plus studio and engine. Not committed (Intermediate).
 4. [ ] Smoke steps 1-3 of SDD 14 for the main menu; screenshots looked at; `-SOLMenuSmoke=all` no new failures.
 5. [ ] Review; fixes; suite. Commit `Issue #46: Part 46d - solid main menu`.
 
@@ -155,5 +155,5 @@ Depends on 46d-46g.
 - 2026-11-04: SDD and plan drafted from the grill-me decisions (D1-D16). 17 open questions (SDD section 15) were
   put to the user. The temporary layout and hover sample images were deleted once their decisions were recorded (D11-D15).
 - 2026-11-04: all 17 open questions answered by the user and folded into SDD 46 (Q1 `HudEffectsStrength`, version line
-  `0.1.MMYY.<commits>` generated at build time, dim-only pause, pages in the shell beside the panels, #42 cues reused,
+  `0.1.YYMM.<commits>` generated at build time, dim-only pause, pages in the shell beside the panels, #42 cues reused,
   budget 0.1 ms CPU / 0.3 ms GPU). The plan has no remaining gate; parts follow their dependencies.
