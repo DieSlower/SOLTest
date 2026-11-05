@@ -1217,6 +1217,48 @@ namespace SOL
         inline const FLinearColor STATS_BACKGROUND(0.0f, 0.0f, 0.0f, 0.55f);
     }
 
+    // Solid console-style menus (SDD 46 sections 7-9): animation timings, hull limits and layout (UMG units at the
+    // 1080p reference DPI). Starting values approved in Q16, tuned from screenshots; the palette comes with the kit
+    namespace SolidMenu
+    {
+        // Button look (SDD 46 section 8.2)
+        inline constexpr float HOVER_LIFT_PX = 3.0f;              // A hovered button rises this far (render transform)
+        inline constexpr float HOVER_RAMP_S = 0.12f;              // Hover look fades in, and out, over this
+        inline constexpr float PRESSED_LINGER_S = 0.10f;          // A quick click still shows the pressed hull this long
+        inline constexpr float DISABLED_ALPHA = 0.4f;             // Brush tint alpha of a disabled button
+
+        // Panels, pause and traces (SDD 46 sections 7 and 8.4)
+        inline constexpr float PANEL_OPEN_S = 0.25f;              // Panel open: fade and slide in over this
+        inline constexpr float PANEL_SLIDE_PX = 24.0f;            // ... from this far off its anchor side
+        inline constexpr float PAUSE_SLIDE_S = 0.25f;             // Pause side panel: slides its width in over this
+        inline constexpr float PAUSE_SLIDE_MARGIN_PX = 16.0f;     // ... from this far past the left screen edge
+        inline constexpr float PAUSE_DIM_ALPHA = 0.55f;           // Dim of the live flight view behind the pause panel
+        inline constexpr float TRACE_POWER_DELAY_S = 0.15f;       // Circuit traces light this long after the open
+        inline constexpr float TRACE_POWER_S = 0.35f;             // ... along their length over this
+        inline constexpr float IDLE_PULSE_PERIOD_S = 4.0f;        // Trace brightness swing: period (a sine)
+        inline constexpr float IDLE_PULSE_DEPTH = 0.15f;          // ... and depth per unit of strength (capped at 2)
+        inline constexpr float CLOSE_S = 0.15f;                   // Pause slide-out and page shell close
+
+        // Hull shape (SDD 46 sections 5.2 and 8.1)
+        inline constexpr float HULL_MAX_CHAMFER_FRACTION = 0.45f; // An edge's two chamfers sum to at most this of it
+        inline constexpr float HULL_MAX_FEATURE_FRACTION = 0.25f; // Title step and chin height (of the height) and
+                                                                  // notch depth (of the width) at most this
+        inline constexpr float PANEL_CHAMFER_TL = 28.0f;          // Hull panel corner chamfers
+        inline constexpr float PANEL_CHAMFER_TR = 12.0f;
+        inline constexpr float PANEL_CHAMFER_BR = 28.0f;
+        inline constexpr float PANEL_CHAMFER_BL = 12.0f;
+        inline constexpr float BUTTON_CUT_PX = 10.0f;             // Stack button: top-left cut
+        inline constexpr float BUTTON_POINT_PX = 14.0f;           // ... and right point
+
+        // Layout (SDD 46 section 9); the existing SOL::MenuStyle sizes stay unless listed here
+        inline constexpr float COLUMN_WIDTH = 380.0f;             // Main menu hull column
+        inline constexpr float PAGE_WIDTH = 1040.0f;              // Page shell (SDD 46 section 6.1)
+        inline constexpr float PAGE_HEIGHT = 760.0f;
+        inline constexpr float TAB_COLUMN_WIDTH = 200.0f;         // The shell's vertical tab column
+        inline constexpr float PAUSE_PANEL_WIDTH = 420.0f;        // Pause side panel
+        inline constexpr float BACK_BUTTON_WIDTH = 160.0f;        // The shell's Back button
+    }
+
     // Settings (SDD 8, 8d): the USOLSettingsSave slot, its schema version and the slider steps
     namespace Settings
     {

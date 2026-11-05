@@ -279,36 +279,67 @@ struct FSOLSolidHull { float ChamferTL, ChamferTR, ChamferBR, ChamferBL;   // UM
 | `FSOLSolidHull ClampHull(const FSOLSolidHull& hull, FVector2f size)` | Negative or NaN values read 0. Chamfers are scaled down together so that on every edge the two chamfers sum to at most `HULL_MAX_CHAMFER_FRACTION` of that edge; the title step, notches and chin are clamped inside the rect and never overlap a chamfer; a size with a component `<= 0` or non-finite returns a hull with every value 0 |
 | `float HullDistance(FVector2f p, FVector2f size, const FSOLSolidHull& hull)` | The CPU mirror of the material's SDF: negative inside, 0 on the edge, positive outside; exact on the straight edges and the chamfer diagonals (to 1e-3); a cut corner's tip region is outside. Used by the tests and by the material script as the spec (the script's HLSL mirrors it, as `create_hud_shape_material.py` mirrors `SOLHudShapeMath`) |
 
+**46a amendment (implementation choices, not user decisions).** The feature geometry follows the round 2 C board:
+
+- **Title step:** the top edge is at y 0 left of `TitleStepWidth`, then a 45° flank down to y `TitleStepHeight`, which
+  the rest of the top edge keeps; the top-right chamfer sits on that lowered corner `(w, TitleStepHeight)`.
+- **Chin:** the mirror at the bottom: the bottom edge is at y `h` left of `ChinWidth`, then a 45° flank up to
+  `h - ChinHeight`; the bottom-right chamfer sits on the corner `(w, h - ChinHeight)`.
+- **Notches:** a 45° trapezoid cut into both sides, `NotchHeight` tall at the edge, centred on `NotchY`, `NotchDepth`
+  deep.
+- **SDF:** the max of the chamfered rect's half-plane distances, then `max(d, -cut)` for the step, chin and notch cuts
+  (each a max of half-planes). A feature with a zero size is skipped.
+- **Clamp:** a step or chin with a zero width or height, before or after the clamp, is removed (both 0, so a lone
+  height never lowers a chamfer); the step / chin height is at most
+  `HULL_MAX_FEATURE_FRACTION` (0.25, new constant) of the height and at most `w` minus its edge's two chamfers; the
+  flank starts at or past the near chamfer (width at least `ChamferTL` / `ChamferBL`) and ends before the far one
+  (width at most `w - far chamfer - height`). The notch spans only the straight part both sides share,
+  `[max(TL, step height + TR), min(h - BL, h - chin height - BR)]`; its depth is at most half its height (a V at the
+  limit) and `HULL_MAX_FEATURE_FRACTION` of the width; a notch with `NotchY < 0` or NaN, or a zero depth or height, or
+  no room, is removed as `NotchY -1`, depth and height 0. Non-finite lengths read 0. The clamp is idempotent.
+- `HullDistance` expects a clamped hull and returns `FLT_MAX` for an invalid size or a non-finite point.
+
 ### 8.2 Button look
 
 ```
 enum class ESOLSolidButtonState : uint8 { Normal, Hovered, Pressed, Selected, Disabled };
 struct FSOLSolidButtonLook { float Lift; float Edge; float Led; float Underline; float Trace;   // each 0-1
-                             float Glow; bool bPressedHull; bool bSelectedMark; };
+                             float Glow;                                                        // 0-2
+                             bool bPressedHull; bool bSelectedMark; bool bDisabled; };
 ```
 
 | Function | Contract |
 |---|---|
-| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s)` | Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = GlowScale(s) * Edge` (0 at `s = 0`). Pressed: `bPressedHull`, `Lift` 0, `Edge` 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time). Selected: `bSelectedMark` (cyan, Q9), no lift. Disabled: everything 0. NaN or negative `sinceChangeS` reads 0. Values always in [0, 1] |
+| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s)` | Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = s * Edge` with `s` sanitized to [0, 2], so 0 at `s = 0` and **doubled at `s = 2`** (section 7, Q2; 46a amendment: was `GlowScale(s) * Edge`, which caps at 1 and so contradicted section 7). Pressed: `bPressedHull`, `Lift` 0, `Edge` (and `Led`, `Underline`, `Trace`) 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time; the ramp to the new state starts when the linger ends). Selected: `bSelectedMark` (cyan, Q9), no lift. Disabled: everything 0 and `bDisabled` (46a amendment: the flag is what lets `EncodeButtonTint` give a disabled look its `DISABLED_ALPHA`, since its amounts equal a Normal look's). NaN or negative `sinceChangeS` reads 0. Values always in [0, 1], `Glow` in [0, 2] |
+| `FSOLSolidButtonLook EvaluateButtonFrom(ESOLSolidButtonState state, const FSOLSolidButtonLook& atChange, double sinceChangeS, float s)` | 46a review addition: the same ramp, but from the look the button showed at the change (its amounts clamped to [0, 1]), so a hover that reverses mid-ramp continues instead of popping (the state form ramps from the previous state's *settled* look). No press linger: the caller keeps the state Pressed until `PRESSED_LINGER_S` after the press, then changes it at the release or the linger's end, which also makes the ramp after a long press start at the release. 46c's `USOLMenuButton` should use this form. With the state form, a caller leaving a long press passes `now - max(releaseS - PRESSED_LINGER_S, pressS)` |
 | `float LiftOffset(const FSOLSolidButtonLook& look)` | `-HOVER_LIFT_PX * look.Lift` (UMG units, up is negative Y) |
 
 ### 8.3 Tint encoding (no MID per button)
 
 | Function | Contract |
 |---|---|
-| `FLinearColor EncodeButtonTint(const FSOLSolidButtonLook& look)` | R = `Edge` (also the LED and underline amount, they move together), G = `bPressedHull ? 1 : 0`, B = `bSelectedMark ? 1 : 0`, A = 1 for enabled, `DISABLED_ALPHA` for disabled. Quantized to 8 bits as the vertex colour is |
-| `FSOLSolidButtonLook DecodeButtonTint(const FLinearColor& tint)` | The inverse the material implements: round trip within 1/255 for every field the tint carries |
+| `FLinearColor EncodeButtonTint(const FSOLSolidButtonLook& look)` | R = `Edge` (also the LED and underline amount, they move together), G = `bPressedHull ? 1 : 0`, B = `bSelectedMark ? 1 : 0`, A = 1 for enabled, `DISABLED_ALPHA` for `bDisabled`. Quantized to 8 bits as the vertex colour is |
+| `FSOLSolidButtonLook DecodeButtonTint(const FLinearColor& tint)` | The inverse the material implements: round trip within 1/255 for every field the tint carries (`Edge`, `Led` = `Underline` = `Edge`; G, B on at 0.5 or more; `bDisabled` when A is below the midpoint of 1 and `DISABLED_ALPHA`); `Lift`, `Trace` and `Glow` are not carried and read 0 |
+
+**46a review notes for 46c (tint).** Slate multiplies the brush tint by the widget's inherited colour and opacity
+(`SButton` paints tint x `GetColorAndOpacityTint()` x background colour), so the encoding holds only for a white brush
+at full inherited colour and opacity: fade solid panels with render opacity only, keep every solid brush tint white,
+do not use `SetIsEnabled(false)`'s disabled effect on solid buttons, and have the material use A as a continuous dim
+factor (not a threshold) so a panel fade never reads as disabled. Slate sends RGB vertex colour as sRGB 8-bit, so the
+material must not threshold R on the linear k / 255 grid (the 0 / 1 flags in G and B are unaffected).
+`RefreshHighlight` should skip `SetBackgroundColor` and the render-transform call when the 8-bit tint and the lift are
+unchanged, so settled buttons cost nothing per tick.
 
 ### 8.4 Panels, traces, pause
 
 | Function | Contract |
 |---|---|
-| `float PanelSlide(float progress)` | `PANEL_SLIDE_PX * (1 - EaseOut(progress))`; 0 at progress 1, `PANEL_SLIDE_PX` at 0; progress clamped to [0, 1], NaN 0 |
+| `float PanelSlide(float progress)` | `PANEL_SLIDE_PX * (1 - EaseOut(progress))` with the cubic ease-out `EaseOut(p) = 1 - (1 - p)^3` (46a); 0 at progress 1, `PANEL_SLIDE_PX` at 0; progress clamped to [0, 1], NaN 0 |
 | `float PauseSlideX(float progress, float panelWidth)` | `-(panelWidth + PAUSE_SLIDE_MARGIN_PX) * (1 - EaseOut(progress))`; 0 when open; never positive |
 | `float TracePower(double sinceOpenS, float s)` | 0 before `TRACE_POWER_DELAY_S`, then linear to 1 over `TRACE_POWER_S`; 1 at once at `s = 0`; monotonic |
 | `float IdlePulse(double nowS, float s)` | `1 + IDLE_PULSE_DEPTH * min(s, 2) * sin(2 pi nowS / IDLE_PULSE_PERIOD_S)`; exactly 1 at `s = 0`; NaN `nowS` reads 1 |
-| `int32 TracePolyline(const FVector2f* points, int32 count, float fraction, FVector2f* out, int32 outCapacity)` | The first `fraction` of the polyline's length (clamped [0, 1]): whole segments, then the partial last one; returns the point count (0 for fraction 0 or fewer than 2 points); never writes past `outCapacity`; fixed arrays, no heap |
-| `float DimAlpha(float progress, float s)` | The pause dim's alpha: `PAUSE_DIM_ALPHA * FillFade(progress)`, at `s = 0` `PAUSE_DIM_ALPHA` at once (the dim is not an effect) |
+| `int32 TracePolyline(const FVector2f* points, int32 count, float fraction, FVector2f* out, int32 outCapacity)` | The first `fraction` of the polyline's length (clamped [0, 1]): whole segments, then the partial last one; returns the point count, at least 2 or 0 (0 for fraction 0, fewer than 2 points, no length or `outCapacity < 2`, 46a review); never writes past `outCapacity`; fixed arrays, no heap |
+| `float DimAlpha(float progress, float s)` | The pause dim's alpha: `PAUSE_DIM_ALPHA * FillFade(progress)`, at `s = 0` `PAUSE_DIM_ALPHA` at once (the dim is not an effect); the caller hides the dim once the panel is Closed |
 
 ### 8.5 Test cases (for the separate test author)
 
@@ -333,6 +364,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | `IDLE_PULSE_PERIOD_S` / `IDLE_PULSE_DEPTH` | 4.0 / 0.15 | Per unit of strength |
 | `CLOSE_S` | 0.15 | |
 | `HULL_MAX_CHAMFER_FRACTION` | 0.45 | |
+| `HULL_MAX_FEATURE_FRACTION` | 0.25 | 46a: title step and chin height (of the height), notch depth (of the width) |
 | Hull chamfers (panel) | 28 / 12 / 28 / 12 | TL / TR / BR / BL |
 | Button cut / point | 10 / 14 | Top-left cut, right point |
 | `TRACE_CORE_WIDTH_PX` / `TRACE_GLOW_WIDTH_PX` / `TRACE_GLOW_ALPHA` | 1.5 / 6 / 0.25 | |

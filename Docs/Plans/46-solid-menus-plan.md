@@ -25,30 +25,42 @@ paths only in `SOLConstants.h`", the relevant TECH_DEBT items (SDD section 3), t
 
 Answers: Q2 (strength 0 / 2 as #42), Q16 (starting values approved).
 
-1. [ ] Brief a separate opus subagent with SDD sections 8 and 9 only (no implementation). It writes
+1. [x] Brief a separate opus subagent with SDD sections 8 and 9 only (no implementation). It writes
    `Source/SOLTest/Tests/SolidMenuTest.cpp` (`SOLTest.SolidMenu.*`, the cases of SDD 8.5).
-2. [ ] Stubs `Menu/SOLSolidMenuMath.{h,cpp}` (namespace `SOLSolidMenu`, `FSOLSolidHull`, `ESOLSolidButtonState`,
-   `FSOLSolidButtonLook`) and the `SOL::SolidMenu` constants (timings, hull, layout; the palette comes in 46c). Build,
-   run `Tools\RunTests.bat -Build -Filter SOLTest.SolidMenu`: red for the right reasons.
-3. [ ] Implement; green. Adversarial review (opus/xhigh, report only); fixes; full suite.
-4. [ ] Commit `Issue #46: Part 46a - solid menu maths`.
+2. [x] `Menu/SOLSolidMenuMath.{h,cpp}` (namespace `SOLSolidMenu`, `FSOLSolidHull`, `ESOLSolidButtonState`,
+   `FSOLSolidButtonLook`) and the `SOL::SolidMenu` constants (timings, hull, layout; the palette comes in 46c). The
+   stub / red step was folded into the implementation (the tests already existed).
+3. [x] Implement; green (43 `SOLTest.SolidMenu` tests after the review; full suite 1366). Two test / contract conflicts resolved in the
+   SDD 8.2 amendment: the glow halo is `s x Edge` (doubles at strength 2, section 7) instead of `GlowScale(s) x Edge`;
+   `FSOLSolidButtonLook` gained `bDisabled` so a disabled look's tint carries `DISABLED_ALPHA`. Hull feature geometry
+   and clamp rules recorded in the SDD 8.1 amendment (new `HULL_MAX_FEATURE_FRACTION`). Adversarial review
+   (opus/xhigh, report only); fixes (a step / chin left with no width removed whole, `EvaluateButtonFrom` for a
+   mid-ramp reversal without a pop, `TracePolyline` returns 0 or at least 2 points, chamfer sums in double,
+   `static_assert`s on the constant invariants, step / chin / notch SDF tests, a clamp sweep, the ramp after the press
+   linger, the cubic ease pinned); tint caveats for 46c recorded in SDD 8.3; full suite.
+4. [x] Commit `Issue #46: Part 46a - solid menu maths`.
+5. [ ] **Open, for the user before 46c (review finding):** hover takes keyboard focus and focus stays on a clicked
+   tab, so an active tab that is also focused shows the amber hover look, not its cyan selected mark (one state per
+   button). Keep it (Q9 as written), or let a button show both (a separate selected flag)?
 
 ### 46b: assets and import script (sonnet, medium)
 
 Answers: none needed (the asset list of SDD section 10). Font: Rajdhani (D4).
 
-1. [ ] Textures with the craft MCP tools into `Docs/Art/menu-style/textures/` (SDD 10 table): brushed grain 512 (or
+1. [x] Textures with the craft MCP tools into `Docs/Art/menu-style/textures/` (SDD 10 table): brushed grain 512 (or
    copy the kept sample tile if the PhotoCraft export fails), rivet, vent strip, hazard mask, noise. PhotoCraft started
    with `--automation-write-root <abs Docs/Art path>`; VectorCraft with absolute export paths. Check each PNG is written
    and seamless where it must tile (offset by half a tile, look for seams).
-2. [ ] Rajdhani Regular / Medium / SemiBold / Bold TTFs and `OFL.txt` into `Docs/Art/fonts/rajdhani/` (Google Fonts;
+2. [x] Rajdhani Regular / Medium / SemiBold / Bold TTFs and `OFL.txt` into `Docs/Art/fonts/rajdhani/` (Google Fonts;
    licence checked: SIL OFL 1.1).
 3. [ ] `SOL::Paths` entries for every asset (SDD section 9) and `Tools/UI/import_solid_menu_assets.py` (headless,
    idempotent, MD5 tags, the `import_holo_menu_sounds.py` pattern, paths read from `SOLConstants.h`). Run it twice: the
    second run writes no `.uasset`.
-4. [ ] `Docs/Art/menu-style/README.md`: the sources, tool settings and how to regenerate.
-5. [ ] Commit `Issue #46: Part 46b - solid menu textures, font and import script` (the `.uasset` files, the PNGs, the
-   TTFs, the script, the constants).
+4. [x] `Docs/Art/menu-style/README.md`: the sources, tool settings and how to regenerate.
+5. [x] Commit `Issue #46: Part 46b - solid menu textures, font and import script` (the PNGs (scripted by
+   `generate_textures.py`), the TTFs, the script, the constants). **Open:** no `.uasset` was in the working tree at the
+   commit (`Content/SOL/UI/Solid/` absent), so the import script's two runs (step 3) still have to be done and the
+   assets committed, at the latest at the start of 46c.
 
 ### 46c: hull material and kit (opus, high)
 
