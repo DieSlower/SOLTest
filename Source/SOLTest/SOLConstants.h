@@ -1472,6 +1472,16 @@ namespace SOL
             TEXT("/Game/SOL/GasGiants/M_SOLGasGiantHaze.M_SOLGasGiantHaze");
         inline constexpr const TCHAR* GAS_GIANT_CLOUD_MATERIAL =
             TEXT("/Game/SOL/GasGiants/M_SOLGasGiantCloud.M_SOLGasGiantCloud");
+
+        // Solid menu assets (SDD 46 sections 9 and 10), imported by Tools/UI/import_solid_menu_assets.py and
+        // Tools/UI/create_solid_menu_materials.py (those scripts read these names, keep all in sync). Package paths.
+        inline constexpr const TCHAR* SOLID_MENU_FONT = TEXT("/Game/SOL/UI/Solid/Fonts/F_SOLMenu");
+        inline constexpr const TCHAR* SOLID_HULL_MATERIAL = TEXT("/Game/SOL/UI/Solid/M_SOLSolidHull");
+        inline constexpr const TCHAR* SOLID_TEX_BRUSHED = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidBrushed");
+        inline constexpr const TCHAR* SOLID_TEX_RIVET = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidRivet");
+        inline constexpr const TCHAR* SOLID_TEX_VENT = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidVent");
+        inline constexpr const TCHAR* SOLID_TEX_HAZARD = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidHazard");
+        inline constexpr const TCHAR* SOLID_TEX_NOISE = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidNoise");
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's
