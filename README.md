@@ -185,6 +185,10 @@ Settings: the Space dust option under Graphics.
 
 The solid main menu (issue #46, part 46d): hull column with the start-location button, hazard stripe and the version recess.
 
+![Solid Settings with the tab column](Docs/Images/46-settings-solid.png)
+
+The solid Settings page (issue #46, part 46e): the six sections as a vertical tab column beside the content recess, with the solid steppers and toggles and the shared Revert / Apply footer.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -192,11 +196,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 84.2 h |
+| Work time (wall-clock) | 85.3 h |
 | Time spent answering questions | 7.7 h |
-| Tokens | 4,543.5M |
-| Notional API price | $1,785 |
-| Subagents dispatched | 371 |
+| Tokens | 4,607.9M |
+| Notional API price | $1,808 |
+| Subagents dispatched | 374 |
 <!-- METRICS:END -->
 
 ## Documentation map

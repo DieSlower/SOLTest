@@ -10,6 +10,9 @@
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuMath.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "UI/SOLHoloFrameBuild.h"
 #include "UI/SOLHoloFrameWidget.h"
@@ -97,6 +100,28 @@ namespace
     {
         return FString(format).Replace(SOLMenuText::OVERLAY_PROFILE_NUMBER_TOKEN, *FString::FromInt(profile + 1),
             ESearchCase::CaseSensitive);
+    }
+
+    // Embedded (solid Settings look, SDD 46 section 6.3): the hover ramp's end, where the hover look is settled
+    constexpr double OVERLAY_MENU_SETTLED_S = SOL::SolidMenu::HOVER_RAMP_S;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the embedded list's brush of a tab or row: the Small button hull with the settled solid look (hovered:
+    // the amber edge, LED and underline; selected: the cyan mark; at rest the Normal look when bHullAtRest, a tab),
+    // or none (a row at rest on the recess)
+    FSlateBrush OverlayMenuSolidBrush(const USOLSolidMenuSubsystem* solid, const bool bHovered, const bool bSelected,
+        const bool bHullAtRest)
+    {
+        if (!bHovered && !bSelected && !bHullAtRest)
+        {
+            FSlateBrush none;
+            none.DrawAs = ESlateBrushDrawType::NoDrawType;
+            return none;
+        }
+        const float s = solid != nullptr ? solid->GetStrength() : SOL::Settings::HUD_EFFECTS_DEFAULT;
+        const FSOLSolidButtonLook look = SOLSolidMenu::EvaluateButton(bHovered ? ESOLSolidButtonState::Hovered
+            : ESOLSolidButtonState::Normal, ESOLSolidButtonState::Normal, OVERLAY_MENU_SETTLED_S, s, bSelected);
+        return SOLSolidStyle::MakeHullBrush(solid, ESOLSolidStyle::SmallButton, FVector2f::ZeroVector, look);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -229,8 +254,75 @@ void USOLOverlayMenuWidget::SetEmbedded(const bool bEmbedded)
         PanelBorder->SetPadding(FMargin(bEmbedded ? 0.0f : OVERLAY_MENU_PADDING));
         TitleText->SetVisibility(bEmbedded ? ESlateVisibility::Collapsed : ESlateVisibility::HitTestInvisible);
     }
+
+    // The solid Settings look (embedded only; the standalone menu keeps its hologram fonts): the menu font, padding
+    // that clears the Small hull's cut corner and LED, the dim hint
+    if (bEmbedded)
+    {
+        const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(this);
+        const FSlateFontInfo font = SOLSolidStyle::MenuFont(solid, ESOLMenuTextRole::Body, ESOLMenuFontWeight::Medium);
+        const FMargin padding(SOL::MenuStyle::BUTTON_PADDING_X, SOL::MenuStyle::BUTTON_PADDING_Y);
+        // The borders draw their hull brushes untinted (the brush tint carries the look's encoding)
+        for (int32 tab = 0; tab < TabTexts.Num(); ++tab)
+        {
+            TabTexts[tab]->SetFont(font);
+            TabBorders[tab]->SetPadding(padding);
+            TabBorders[tab]->SetBrushColor(FLinearColor::White);
+            if (UVerticalBoxSlot* tabSlot = Cast<UVerticalBoxSlot>(TabBorders[tab]->Slot))
+            {
+                tabSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, SOL::MenuStyle::ROW_GAP));
+            }
+        }
+        for (int32 row = 0; row < RowTexts.Num(); ++row)
+        {
+            RowTexts[row]->SetFont(font);
+            RowBorders[row]->SetPadding(padding);
+            RowBorders[row]->SetBrushColor(FLinearColor::White);
+        }
+        if (HintText != nullptr)
+        {
+            HintText->SetFont(SOLSolidStyle::MenuFont(solid, ESOLMenuTextRole::Small, ESOLMenuFontWeight::Medium));
+            HintText->SetColorAndOpacity(FSlateColor(SOLSolidStyle::DimTextColor()));
+        }
+        mTabsViewedProfile = INDEX_NONE;
+    }
     RefreshHint();
     RefreshRows();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the rows' font object
+const UObject* USOLOverlayMenuWidget::GetRowFontObject() const
+{
+    return RowTexts.Num() > 0 && RowTexts[0] != nullptr ? RowTexts[0]->GetFont().FontObject.Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drops the embedded list's hover (the page was shown again: no stale hover from a visit that ended without a leave)
+void USOLOverlayMenuWidget::ClearEmbeddedHover()
+{
+    if (!mIsEmbedded)
+    {
+        return;
+    }
+    if (mHoveredTab != INDEX_NONE)
+    {
+        mHoveredTab = INDEX_NONE;
+        RefreshTabs(OverlayMenuPrefs(Settings));
+    }
+    SetEmbeddedHoverRow(INDEX_NONE);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Simulates the mouse over a display row of the embedded list (INDEX_NONE: off the rows)
+void USOLOverlayMenuWidget::SetEmbeddedHoverRow(const int32 row)
+{
+    const int32 hovered = mIsEmbedded && RowBorders.IsValidIndex(row) ? row : INDEX_NONE;
+    if (hovered != mEmbeddedHoverRow)
+    {
+        mEmbeddedHoverRow = hovered;
+        RefreshRows();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -558,14 +650,21 @@ void USOLOverlayMenuWidget::RefreshTabs(const SOLOverlay::FOverlayPrefs& prefs)
     // A row toggle or a hover change leaves the tabs as they are: their texts are rebuilt only when what they show
     // (the enabled profiles, the active one, the viewed one) changed
     const int32 enabledProfiles = static_cast<int32>(prefs.EnabledProfiles);
+    const int32 hoveredTab = mIsEmbedded ? mHoveredTab : INDEX_NONE;
     if (enabledProfiles == mTabsEnabledProfiles && prefs.ActiveProfile == mTabsActiveProfile
-        && mViewedProfile == mTabsViewedProfile)
+        && mViewedProfile == mTabsViewedProfile && hoveredTab == mTabsHoveredTab)
     {
         return;
     }
     mTabsEnabledProfiles = enabledProfiles;
     mTabsActiveProfile = prefs.ActiveProfile;
     mTabsViewedProfile = mViewedProfile;
+    mTabsHoveredTab = hoveredTab;
+    if (mIsEmbedded)
+    {
+        RefreshSolidTabs(prefs);
+        return;
+    }
     for (int32 profile = 0; profile < TabTexts.Num(); ++profile)
     {
         const bool bEnabled = SOLOverlay::IsProfileEnabled(prefs, profile);
@@ -582,6 +681,32 @@ void USOLOverlayMenuWidget::RefreshTabs(const SOLOverlay::FOverlayPrefs& prefs)
             : (bEnabled ? OVERLAY_MENU_TEXT : OVERLAY_MENU_DIM_TEXT)));
         TabBorders[profile]->SetBrushColor(profile == mViewedProfile && HoloFrame == nullptr
             ? OVERLAY_MENU_ROW_HIGHLIGHT : FLinearColor::Transparent);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the embedded tabs in the solid look: each on the Small hull (the viewed one selected, the hovered one in the
+// hover look), the active profile's text cyan, a disabled profile's dim
+void USOLOverlayMenuWidget::RefreshSolidTabs(const SOLOverlay::FOverlayPrefs& prefs)
+{
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(this);
+    for (int32 profile = 0; profile < TabTexts.Num(); ++profile)
+    {
+        const bool bEnabled = SOLOverlay::IsProfileEnabled(prefs, profile);
+        const bool bActive = profile == prefs.ActiveProfile;
+        const bool bHovered = profile == mHoveredTab;
+        FString text = bActive ? SOLMenuText::OVERLAY_MENU_TAB_ACTIVE_MARK
+            : SOLMenuText::OVERLAY_MENU_TAB_INACTIVE_MARK;
+        text += OverlayMenuProfileText(SOLMenuText::OVERLAY_MENU_TAB_FORMAT, profile);
+        if (!bEnabled)
+        {
+            text += SOLMenuText::OVERLAY_MENU_TAB_OFF_SUFFIX;
+        }
+        TabTexts[profile]->SetText(FText::FromString(text));
+        TabTexts[profile]->SetColorAndOpacity(FSlateColor(bHovered ? SOLSolidStyle::BrightTextColor()
+            : (bActive ? SOLSolidStyle::ValueColor() : (bEnabled ? SOLSolidStyle::TextColor()
+            : SOLSolidStyle::DimTextColor()))));
+        TabBorders[profile]->SetBrush(OverlayMenuSolidBrush(solid, bHovered, profile == mViewedProfile, true));
     }
 }
 
@@ -604,6 +729,7 @@ void USOLOverlayMenuWidget::RefreshRows()
 
     // On an enabled page the viewed profile is the active one, so the active-profile reads describe it
     const bool bOrbitLinesOn = SOLOverlay::AreOrbitLinesOn(prefs);
+    const USOLSolidMenuSubsystem* solid = mIsEmbedded ? USOLSolidMenuSubsystem::Get(this) : nullptr;
     mIndentedRows = 0;
     for (int32 row = 0; row < RowTexts.Num(); ++row)
     {
@@ -660,7 +786,16 @@ void USOLOverlayMenuWidget::RefreshRows()
         text += bChecked ? SOLMenuText::OVERLAY_MENU_CHECKED : SOLMenuText::OVERLAY_MENU_UNCHECKED;
         text += label;
         RowTexts[row]->SetText(FText::FromString(text));
-        const bool bHighlighted = row == mHighlightedRow && !mIsEmbedded;
+        if (mIsEmbedded)
+        {
+            // The solid Settings look: rows on the recess, the hovered one on the Small hull in the hover look
+            const bool bHovered = row == mEmbeddedHoverRow;
+            RowTexts[row]->SetColorAndOpacity(FSlateColor(bHovered ? SOLSolidStyle::BrightTextColor()
+                : (bChecked && !bGated ? SOLSolidStyle::TextColor() : SOLSolidStyle::DimTextColor())));
+            RowBorders[row]->SetBrush(OverlayMenuSolidBrush(solid, bHovered, false, false));
+            continue;
+        }
+        const bool bHighlighted = row == mHighlightedRow;
         RowTexts[row]->SetColorAndOpacity(FSlateColor(bHighlighted ? SOL::HudPalette::SECONDARY
             : (bChecked && !bGated ? OVERLAY_MENU_TEXT : OVERLAY_MENU_DIM_TEXT)));
         RowBorders[row]->SetBrushColor(bHighlighted && HoloFrame == nullptr ? OVERLAY_MENU_ROW_HIGHLIGHT
@@ -901,14 +1036,26 @@ FReply USOLOverlayMenuWidget::NativeOnMouseButtonDown(const FGeometry& geometry,
 FReply USOLOverlayMenuWidget::NativeOnMouseMove(const FGeometry& geometry, const FPointerEvent& mouseEvent)
 {
     const FVector2D at = mouseEvent.GetScreenSpacePosition();
-    const int32 tab = HoloFrame != nullptr ? FindTabAt(at) : INDEX_NONE;
+    const int32 tab = HoloFrame != nullptr || mIsEmbedded ? FindTabAt(at) : INDEX_NONE;
     if (tab != mHoveredTab)
     {
         mHoveredTab = tab;
         MarkLayoutDirty();
+        if (mIsEmbedded)
+        {
+            RefreshTabs(OverlayMenuPrefs(Settings));
+        }
     }
+
     if (FVector2D(mouseEvent.GetCursorDelta()).IsZero())
     {
+        return Super::NativeOnMouseMove(geometry, mouseEvent);
+    }
+
+    // The embedded list has no keyboard highlight: its hover look follows the mouse's real moves (off a row: none)
+    if (mIsEmbedded)
+    {
+        SetEmbeddedHoverRow(FindRowAt(at));
         return Super::NativeOnMouseMove(geometry, mouseEvent);
     }
     const int32 row = FindRowAt(at);
@@ -921,7 +1068,7 @@ FReply USOLOverlayMenuWidget::NativeOnMouseMove(const FGeometry& geometry, const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// The mouse left the menu: the hover mark goes back to the highlighted row
+// The mouse left the menu: the hover mark goes back to the highlighted row (embedded: no tab or row is hovered)
 void USOLOverlayMenuWidget::NativeOnMouseLeave(const FPointerEvent& mouseEvent)
 {
     Super::NativeOnMouseLeave(mouseEvent);
@@ -929,5 +1076,10 @@ void USOLOverlayMenuWidget::NativeOnMouseLeave(const FPointerEvent& mouseEvent)
     {
         mHoveredTab = INDEX_NONE;
         MarkLayoutDirty();
+        if (mIsEmbedded)
+        {
+            RefreshTabs(OverlayMenuPrefs(Settings));
+        }
     }
+    SetEmbeddedHoverRow(INDEX_NONE);
 }

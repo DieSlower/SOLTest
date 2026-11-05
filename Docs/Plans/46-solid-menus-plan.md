@@ -183,12 +183,26 @@ Answers: Q5 (shell right of the stack), Q9, Q10, Q15. Depends on 46c.
 Answers: Q8 (opens on the first tab), Q15 (rows: amber edge + underline, no trace). Depends on 46c (46d for the shell if it was built there; otherwise the shell is built here and 46d reuses
 it).
 
-1. [ ] `USOLSettingsPageWidget`: the six sections as six tabs (D13), content recess, `SOLSolidStyle` sliders, toggles
+1. [x] `USOLSettingsPageWidget`: the six sections as six tabs (D13), content recess, `SOLSolidStyle` sliders, toggles
    and steppers, the shared footer, `ScrollToBinding` switching to Key bindings; every handler and smoke setter kept.
-2. [ ] The embedded Overlay list (`USOLOverlayMenuWidget`, embedded path only) in the solid font, colours and hover
-   look; the standalone Ctrl+O menu untouched (check `-SOLSmokeHoloMenu` and `-SOLSmokeOverlay`).
-3. [ ] Smoke step 4; the existing settings checks of `-SOLMenuSmoke` still pass.
-4. [ ] Review; fixes; suite. Commit `Issue #46: Part 46e - solid Settings with the tab column`.
+   **Done** (SDD 6.3): the pure `SOLSettingsTabs` (16 `SOLTest.SolidSettings.*` tests by a separate agent, red on the
+   missing header, then green), the tab rail and content recess, `RefreshFromSettings` on Graphics every open (Q8),
+   `RefreshControls` for Apply / Revert / hide, `USOLSolidPanel::MakeRecess`; tuned `TAB_COLUMN_WIDTH` 220 and the
+   tab label spacing 100 from the screenshots; `SETTINGS_OVERLAYS` shortened to "Overlays" with its explanation as the
+   tab's hint line.
+2. [x] The embedded Overlay list (`USOLOverlayMenuWidget`, embedded path only) in the solid font, colours and hover
+   look; the standalone Ctrl+O menu untouched (check `-SOLSmokeHoloMenu` and `-SOLSmokeOverlay`). **Done:** holo
+   86/86, overlay 34/34.
+3. [x] Smoke step 4; the existing settings checks of `-SOLMenuSmoke` still pass. **Done:** `-SOLSmokeSolidMenu` 55/55
+   (was 42), `-SOLMenuSmoke=all` 47 passed / 3 failed (the TECH_DEBT stale checks: thrust at Mars, Esc and Ctrl+F1
+   resume; no settings failure). Profile medians (SDD 13.1 46e check) P0 +0.021 / +0.058, P1 -0.011 / +0.035, P2
+   -0.043 / +0.010, P3 -0.036 / +0.015 ms, inside the budget.
+4. [x] Review; fixes; suite. Commit `Issue #46: Part 46e - solid Settings with the tab column`. **Review fixes:**
+   the embedded Overlay tabs on the Small hull at rest, the list's hover and the rail's trace cleared on every show,
+   `BeginRebind` shows Key bindings, the settled-look time from `HOVER_RAMP_S`, long lines and comment wraps; the
+   suggested ellipsis for the stepper values was tried and cut nothing (clipping kept). Open for the user: the slider
+   fill, two amber highlights at once (focus kept on a clicked button while a slider is hovered), per-tab scroll memory,
+   the narrow-view stepper values. For 46f: factor the tab rail into a kit piece for Controls / Info.
 
 ### 46f: Controls, Info, About and Demo in the shell (sonnet, medium)
 
@@ -256,3 +270,5 @@ Depends on 46d-46g.
 - 2026-11-05: 46d committed with the user's final decisions (dim text #8A949D, "ARS LLC", focus on Play). Next: 46e.
 - 2026-11-05: 46d review fixes applied and verified (plan step 5; suite 1443/1443, solid smoke 42/42, profile in
   budget). Next: the main session's commit of 46d, then 46e.
+- 2026-11-05: 46e done (SDD 6.3, 13.1 46e check): tab logic test-first (16 tests), the tab column, the embedded list
+  restyle, smoke step 4 (55/55), review fixes; full suite 1459/1459. Next: 46f.

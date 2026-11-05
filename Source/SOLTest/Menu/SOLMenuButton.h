@@ -92,6 +92,10 @@ public:
     // Replaces the label text
     void SetLabel(const FString& label);
 
+    // Replaces the label's letter spacing (Setup gives Stack and Tab LETTER_SPACING_STACK, Small none); the Settings
+    // tab column uses a tighter one so its longer labels fit (SDD 46 section 6.3)
+    void SetLabelLetterSpacing(int32 spacing);
+
     // Marks the button as the selected entry (active tab, page or start body): the cyan underline and LED, orthogonal
     // to hover, focus and press (a selected button that is hovered shows the amber hover look and the cyan mark)
     void SetSelected(bool bSelected) { mIsSelected = bSelected; }

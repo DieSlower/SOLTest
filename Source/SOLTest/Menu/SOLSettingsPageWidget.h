@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include "Menu/SOLSettingsTabs.h"
+#include "Menu/SOLSolidTraceLayer.h"
+
 #include "Blueprint/UserWidget.h"
 #include "CoreMinimal.h"
 #include "InputCoreTypes.h"
@@ -18,7 +21,9 @@ class USlider;
 class USOLMenuButton;
 class USOLOverlayMenuWidget;
 class USOLSettingsSubsystem;
+class USOLSolidPanel;
 class UTextBlock;
+class UWidgetSwitcher;
 
 // Sliders of the Settings page, in page order
 enum class ESOLSettingsSlider : uint8
@@ -61,9 +66,14 @@ enum class ESOLSettingsStepper : uint8
  * (sensitivity slider, invert Y), gameplay (HUD scale, HUD hologram effects and hologram menu effects sliders, HUD
  * visible, flight assist at launch, the Chase Down safety margin slider) and key bindings
  * (one row per SOLKeyBindings action with its pending key and a Rebind button, and Reset keys to defaults), above a
- * footer with the dirty indicator, a status line, Revert and Apply. Every control only calls USOLSettingsSubsystem,
- * which previews audio, mouse and HUD values at once and applies the rest on Apply; the public setters below are the
- * same paths the controls use (the menu smoke script drives them).
+ * footer with the dirty indicator, a status line, Revert and Apply. The solid look (SDD 46 section 6.3): the six
+ * sections are six tabs in a vertical tab column (a tab rail recess, Tab buttons whose hover extends a trace into the
+ * rail; the shown tab carries the selected mark) left of a content recess showing the chosen tab's rows in its own
+ * scroll box (SOLSolidStyle sliders, toggles and Small buttons: amber edge and underline on hover, no trace); the
+ * footer stays under the content on every tab. RefreshFromSettings shows the first tab (Graphics) every time the page
+ * opens (no last-tab memory, Q8); ScrollToBinding first shows the Key bindings tab. Every control only calls
+ * USOLSettingsSubsystem, which previews audio, mouse and HUD values at once and applies the rest on Apply; the public
+ * setters below are the same paths the controls use (the menu smoke script drives them).
  *
  * Rebind: the button puts the page in listening mode; the next key or mouse button is the new key, Esc cancels, and a
  * key that cannot be bound is refused with a message. The key is taken by a Slate input pre-processor (registered while
@@ -80,8 +90,40 @@ class SOLTEST_API USOLSettingsPageWidget : public UUserWidget
 
 public:
 
-    // Re-reads every control from the settings subsystem (the page was shown)
+    // The page was shown: shows the opening tab (Q8) and re-reads every control from the settings subsystem
     void RefreshFromSettings();
+
+    // Shows a tab as a click on its tab button does (SOLSettingsTabs::SelectTab: an invalid tab keeps the current one)
+    void SelectTab(ESOLSettingsTab tab);
+
+    // Returns the tab showing
+    ESOLSettingsTab GetSelectedTab() const { return mTab; }
+
+    // Returns the content switcher's shown index (verification: equals the selected tab), or INDEX_NONE
+    int32 GetShownContentIndex() const;
+
+    // Returns a tab's button in the tab column, or null (verification)
+    USOLMenuButton* GetTabButton(ESOLSettingsTab tab) const;
+
+    // Returns a stepper's back (side 0) or forward (side 1) button, or null (verification)
+    USOLMenuButton* GetStepperButton(ESOLSettingsStepper stepper, int32 side) const;
+
+    // Returns the Revert and Apply buttons, or null (verification)
+    USOLMenuButton* GetRevertButton() const { return RevertButton; }
+    USOLMenuButton* GetApplyButton() const { return ApplyButton; }
+
+    // Returns a slider or a checkbox, or null (verification)
+    const USlider* GetSlider(ESOLSettingsSlider slider) const;
+    const UCheckBox* GetToggle(ESOLSettingsToggle toggle) const;
+
+    // Returns whether the tab rail draws a tab's hover trace (verification)
+    bool IsTabHoverTraceShown(ESOLSettingsTab tab) const;
+
+    // Returns whether the tab rail draws any hover trace (verification: a row's hover draws none, Q15)
+    bool IsAnyTabHoverTraceShown() const;
+
+    // Returns whether a binding's key row lies inside the Key bindings tab's scroll box as last laid out (verification)
+    bool IsBindingRowInView(int32 binding) const;
 
     // The page was hidden: stops listening and ends the settings visit
     void NotifyHidden();
@@ -113,7 +155,7 @@ public:
     // Returns true while waiting for a rebind key
     bool IsListening() const { return mListeningBinding != INDEX_NONE; }
 
-    // Scrolls the page so a binding's key row is in view
+    // Shows the Key bindings tab and scrolls it so a binding's key row is in view (an invalid binding changes nothing)
     void ScrollToBinding(int32 binding);
 
     // Returns the status line's text (verification)
@@ -123,7 +165,7 @@ public:
     FString GetKeyRowText(int32 binding) const;
 
     // Returns the embedded Overlay Menu list, or null (verification)
-    const USOLOverlayMenuWidget* GetOverlayList() const { return OverlayList; }
+    USOLOverlayMenuWidget* GetOverlayList() const { return OverlayList; }
 
     // A key or mouse press reached Slate's input pre-processor: captured as the new key (true) while listening
     bool HandleCaptureDown(const FKey& key);
@@ -136,7 +178,7 @@ protected:
     // Builds the widget tree (no widget blueprint)
     virtual void NativeOnInitialized() override;
 
-    // Registers the rebind key capture with Slate while the page is on screen
+    // Registers the rebind key capture with Slate while the page is on screen and gives the tabs their hover traces
     virtual void NativeConstruct() override;
 
     // Stops listening and unregisters the rebind key capture
@@ -154,6 +196,15 @@ private:
         Apply,
         ResetKeys,
     };
+
+    // Builds the tab rail: one Tab button per tab and each tab's hover trace (rail local units)
+    USOLSolidPanel* BuildTabRail();
+
+    // Re-reads every control from the settings subsystem (the tab is left as it is)
+    void RefreshControls();
+
+    // A tab button was clicked (index = the tab's column position)
+    void HandleTabClicked(int32 index);
 
     // Applies one slider value to the pending settings (no slider position change)
     void ApplySliderValue(ESOLSettingsSlider slider, float value);
@@ -254,7 +305,23 @@ private:
     TArray<TObjectPtr<UTextBlock>> KeyTexts;
 
     UPROPERTY(Transient)
-    TObjectPtr<UScrollBox> Scroll;
+    TArray<TObjectPtr<USOLMenuButton>> TabButtons;          // In ESOLSettingsTab order
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UScrollBox>> TabScrolls;              // Each tab's rows, in ESOLSettingsTab order
+
+    UPROPERTY(Transient)
+    TObjectPtr<UWidgetSwitcher> TabSwitcher;                // Shows the selected tab's scroll box
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSolidPanel> TabRail;                     // The tab column's recess; its trace layer draws the
+                                                            // hovered tab's trace
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLMenuButton> RevertButton;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLMenuButton> ApplyButton;
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> DirtyText;
@@ -269,4 +336,7 @@ private:
     FString mStatusMessage;                         // Last rebind or reset message (cleared by the next action)
     FKey mSwallowedRelease;                         // Release of the captured key, still to be swallowed
     int32 mListeningBinding = INDEX_NONE;           // Binding waiting for its new key
+    FSOLSolidTrace mTabTraces[static_cast<int32>(ESOLSettingsTab::Count)];  // Each tab's hover trace (rail local)
+    float mRailStrength = -1.0f;                    // Effects strength last pushed to the rail's trace layer
+    ESOLSettingsTab mTab = ESOLSettingsTab::Graphics;   // The tab showing
 };

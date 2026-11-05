@@ -5,12 +5,14 @@
 
 #pragma once
 
+#include "Menu/SOLSettingsTabs.h"
 #include "Menu/SOLSolidMenuMath.h"
 
 #include "CoreMinimal.h"
 
 class APlayerController;
 class USOLMenuSubsystem;
+class USOLSettingsPageWidget;
 class USOLSolidMenuSmokeBoard;
 
 /**
@@ -23,8 +25,11 @@ class USOLSolidMenuSmokeBoard;
  * SOLSolidMenu::EvaluateButton's, the entry's hover trace drawn; each main menu page opened in the page shell by its
  * entry's click handler (the shell opens; Start location: the start body is the one selected row) and closed by Back
  * (Enter on the focused Back button) or Esc, alternately (the page and the input back at once, the focus on Play, the
- * shell closing input-transparent, then hidden); a reopen during a close (no pop); the main menu at strength 0 (open
- * and shell instant, the hover look at once) and 2 (glow doubled); the comparison board (USOLSolidMenuSmokeBoard:
+ * shell closing input-transparent, then hidden); a reopen during a close (no pop); Settings (46e, SDD 14 step 4: opens
+ * on Graphics with six Tab buttons and the solid rows, each other tab shown with its hover trace and the footer kept,
+ * the embedded Overlay list in the solid look, a stepper's hover without a trace, a slider / toggle / stepper change
+ * then Revert, ScrollToBinding showing Key bindings with the row in view, a reopen back on Graphics); the main menu at
+ * strength 0 (open and shell instant, the hover look at once) and 2 (glow doubled); the comparison board (USOLSolidMenuSmokeBoard:
  * every control type enabled and disabled side by side) with a selected tab hovered, then hover-only beside
  * selected-only; strength 0 (the hover look at once, no glow) and strength 2 (glow doubled); then the view at 1000x800
  * with Settings and Start location open (the column and the shell inside the view). Each step logs "SolidMenu CHECK
@@ -74,6 +79,12 @@ private:
     // Samples the column's or the shell's animation for the running step (see the sample members)
     void SampleAnim(float progress, float power, bool bShellHitTestInvisible);
 
+    // Clicks a Settings tab as the mouse does: hovers its button (it takes keyboard focus), then its click handler
+    void ClickSettingsTab(USOLSettingsPageWidget* page, ESOLSettingsTab tab) const;
+
+    // Runs the Settings steps' checks and screenshots (SDD 14 step 4)
+    void ExitSettingsStep(int32 step, USOLMenuSubsystem& menu);
+
     TWeakObjectPtr<APlayerController> mController;
     TWeakObjectPtr<USOLSolidMenuSmokeBoard> mBoard;
     double mLastTimeS = 0.0;        // Real time of the last update
@@ -94,6 +105,9 @@ private:
     bool mIsReturnClosed = false;   // Return from flight: the shell was Closed on the first frame back
     bool mIsReturnTraced = false;   // ... and Play focused with its hover trace drawn then
     FString mReturnDetail;          // ... and what was seen then
+    int32 mSettingsTab = 0;         // The Settings tab loop's tab (ESOLSettingsTab position)
+    ESOLSettingsTab mScrollFromTab = ESOLSettingsTab::Count;    // ScrollToBinding: the tab before
+    ESOLSettingsTab mScrollTabAtOnce = ESOLSettingsTab::Count;  // ... and right after the call
     // Animation samples of the running step (SampleAnim)
     int32 mSamples = 0;
     float mFirstProgress = -1.0f;   // Progress and trace power on the first sample

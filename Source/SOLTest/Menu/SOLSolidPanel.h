@@ -19,6 +19,7 @@ class SBox;
 class SImage;
 class SOverlay;
 class UMaterialInstanceDynamic;
+class UWidgetTree;
 
 /**
  * A solid hull panel or recess with its content (SDD 46 sections 4.2, 5.2 and 6.1): a UContentWidget wrapping an
@@ -38,6 +39,10 @@ class SOLTEST_API USOLSolidPanel : public UContentWidget
     GENERATED_BODY()
 
 public:
+
+    // Creates a recess in a widget tree (the recess chamfers on the shared Recess material) around content with a
+    // padding on every side
+    static USOLSolidPanel* MakeRecess(UWidgetTree& tree, UWidget* content, float padding);
 
     // Sets the hull's style (Panel or Recess; others draw as given) and shape in UMG units; a step, chin or notch
     // makes the panel use its own material, written with the shape now (not per frame)

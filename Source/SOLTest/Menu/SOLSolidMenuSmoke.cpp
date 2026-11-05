@@ -10,7 +10,9 @@
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
+#include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSettingsTabs.h"
 #include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSmokeBoard.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
@@ -18,8 +20,12 @@
 #include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
+#include "UI/SOLOverlayMenuWidget.h"
 
 #include "Blueprint/UserWidget.h"
+#include "Components/CheckBox.h"
+#include "Components/Slider.h"
+#include "Engine/Font.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
@@ -44,6 +50,13 @@ namespace
         PageReverse,    // A reopen during a close reverses it without a pop
         PlayReturn,     // Play focused and settled with About open, Play, Esc, Quit to menu: the shell Closed at once
                         // on the first frame back, Play's hover trace drawn on the rebuilt trace layer
+        SettingsOpen,   // Settings from the main menu (SDD 14 step 4): on Graphics, six Tab buttons, solid rows, footer
+        SettingsTab,    // Each other tab clicked in turn (looped): its content shown, its hover trace, the footer kept
+        SettingsRowHover,   // A stepper hovered: the amber edge and underline, no trace on the tab rail (Q15)
+        SettingsControls,   // A slider, a toggle and a stepper changed (dirty), then Revert (clean, values back)
+        SettingsScroll, // From Graphics, ScrollToBinding: the Key bindings tab at once, the row in view after
+        SettingsReopen, // Esc, then Settings again: Graphics (no last-tab memory, Q8)
+        SettingsClose,  // Esc: the page closed for the steps after
         MainStrengthZero,   // Strength 0: the column's open and the shell instant, the hover look at once
         MainStrengthTwo,    // Strength 2: the hovered entry's glow doubled
         BoardCreate,    // Strength 1, the page closed; the comparison board added over the main menu
@@ -105,6 +118,14 @@ namespace
     constexpr int32 SOLID_SMOKE_SETTINGS_ENTRY = 4;
     constexpr int32 SOLID_SMOKE_ABOUT_ENTRY = 5;
     constexpr int32 SOLID_SMOKE_COLUMN_TRACES = 3;              // The column's lower-edge traces
+    constexpr int32 SOLID_SMOKE_OVERLAY_HOVER_ROW = 1;          // The embedded Overlay list's row hovered for the shot
+    constexpr float SOLID_SMOKE_SLIDER_DELTA = 0.25f;           // The Settings slider moves this far (then Revert)
+
+    // Screenshot names of the Settings tabs, in ESOLSettingsTab order
+    const TCHAR* const SOLID_SMOKE_TAB_NAMES[] = { TEXT("graphics"), TEXT("audio"), TEXT("mouse"), TEXT("gameplay"),
+        TEXT("overlays"), TEXT("keys") };
+    static_assert(UE_ARRAY_COUNT(SOLID_SMOKE_TAB_NAMES) == static_cast<int32>(ESOLSettingsTab::Count),
+        "one name per Settings tab");
 
     static_assert(SOLID_SMOKE_SETTLE_S > SOL::SolidMenu::HOVER_RAMP_S + SOL::SolidMenu::PRESSED_LINGER_S,
         "the settle must outlast the hover ramp and the press linger");
@@ -384,6 +405,58 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
             play->NotifyHovered();
         }
         break;
+    case ESolidSmokeStep::SettingsOpen:
+    {
+        // The cursor parked in the top-right corner, off every Settings control, so only the script hovers
+        const FIntPoint size = GetViewSize();
+        if (mController.IsValid() && size.X > SOLID_SMOKE_CURSOR_INSET_PX)
+        {
+            mController->SetMouseLocation(size.X - SOLID_SMOKE_CURSOR_INSET_PX, SOLID_SMOKE_CURSOR_INSET_PX);
+        }
+        mSettingsTab = 0;
+        ClickEntry(menu, SOLID_SMOKE_SETTINGS_ENTRY);
+        break;
+    }
+    case ESolidSmokeStep::SettingsTab:
+    {
+        // The next tab, hovered (it takes the focus) and clicked as the mouse does; on Overlays one embedded row is
+        // hovered too, for the screenshot (cleared on the next tab)
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        ++mSettingsTab;
+        ClickSettingsTab(page, static_cast<ESOLSettingsTab>(mSettingsTab));
+        if (USOLOverlayMenuWidget* list = page != nullptr ? page->GetOverlayList() : nullptr)
+        {
+            list->SetEmbeddedHoverRow(static_cast<ESOLSettingsTab>(mSettingsTab) == ESOLSettingsTab::Overlays
+                ? SOLID_SMOKE_OVERLAY_HOVER_ROW : INDEX_NONE);
+        }
+        break;
+    }
+    case ESolidSmokeStep::SettingsRowHover:
+    {
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        ClickSettingsTab(page, ESOLSettingsTab::Graphics);
+        if (USOLMenuButton* next = page != nullptr ? page->GetStepperButton(ESOLSettingsStepper::Quality, 1) : nullptr)
+        {
+            next->NotifyHovered();
+        }
+        break;
+    }
+    case ESolidSmokeStep::SettingsScroll:
+    {
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        ClickSettingsTab(page, ESOLSettingsTab::Graphics);
+        mScrollFromTab = page != nullptr ? page->GetSelectedTab() : ESOLSettingsTab::Count;
+        if (page != nullptr)
+        {
+            page->ScrollToBinding(SOLKeyBindings::BINDING_COUNT - 1);
+        }
+        mScrollTabAtOnce = page != nullptr ? page->GetSelectedTab() : ESOLSettingsTab::Count;
+        break;
+    }
+    case ESolidSmokeStep::SettingsReopen:
+    case ESolidSmokeStep::SettingsClose:
+        SolidSmokeKey(EKeys::Escape);
+        break;
     case ESolidSmokeStep::MainStrengthZero:
         SetStrength(menu, 0.0f);
         break;
@@ -572,6 +645,15 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
         }
         return mStepTimeS >= SOLID_SMOKE_SETTLE_S;
     }
+    case ESolidSmokeStep::SettingsReopen:
+        // Stage 0: Esc sent, the shell closes; 1: Settings opened again, then a settle
+        if (mSubStage == 0 && mStepTimeS >= SOLID_SMOKE_SETTLE_S)
+        {
+            ClickEntry(menu, SOLID_SMOKE_SETTINGS_ENTRY);
+            mSubStage = 1;
+            mSubStageS = mStepTimeS;
+        }
+        return mSubStage == 1 && mStepTimeS - mSubStageS >= SOLID_SMOKE_SETTLE_S;
     case ESolidSmokeStep::PageReverse:
         // Stage 0: open; 1: Esc; 2 (next frame, mid close): reopen; 3: settle
         if (mainMenu == nullptr)
@@ -872,6 +954,15 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             : TEXT("nothing")));
         break;
     }
+    case ESolidSmokeStep::SettingsOpen:
+    case ESolidSmokeStep::SettingsTab:
+    case ESolidSmokeStep::SettingsRowHover:
+    case ESolidSmokeStep::SettingsControls:
+    case ESolidSmokeStep::SettingsScroll:
+    case ESolidSmokeStep::SettingsReopen:
+    case ESolidSmokeStep::SettingsClose:
+        ExitSettingsStep(step, menu);
+        break;
     case ESolidSmokeStep::MainStrengthZero:
     {
         const bool bInstant = FMath::IsNearlyEqual(mFirstProgress, 1.0f) && FMath::IsNearlyEqual(mFirstPower, 1.0f);
@@ -1089,4 +1180,225 @@ void FSOLSolidMenuSmoke::Check(const TCHAR* label, const bool bPassed, const FSt
     ++mChecksRun;
     mChecksPassed += bPassed ? 1 : 0;
     UE_LOG(LogSOL, Log, TEXT("SolidMenu CHECK %-22s %s: %s"), label, bPassed ? TEXT("PASS") : TEXT("FAIL"), *detail);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Clicks a Settings tab as the mouse does: hovers its button (it takes keyboard focus), then its click handler
+void FSOLSolidMenuSmoke::ClickSettingsTab(USOLSettingsPageWidget* page, const ESOLSettingsTab tab) const
+{
+    USOLMenuButton* button = page != nullptr ? page->GetTabButton(tab) : nullptr;
+    if (button != nullptr)
+    {
+        button->NotifyHovered();
+        button->OnMenuClicked.ExecuteIfBound(button->GetIndex());
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs the Settings steps' checks (SDD 14 step 4) and screenshots
+void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& menu)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(&menu);
+    const float s = solid != nullptr ? solid->GetStrength() : -1.0f;
+
+    // Describes the selected tab, the content shown and the tab buttons' selected marks
+    const auto describeTabs = [page]()
+    {
+        FString text = FString::Printf(TEXT("selected %d, shown %d, marks"), page != nullptr
+            ? static_cast<int32>(page->GetSelectedTab()) : -1, page != nullptr ? page->GetShownContentIndex() : -1);
+        for (int32 tab = 0; tab < static_cast<int32>(ESOLSettingsTab::Count); ++tab)
+        {
+            const USOLMenuButton* button = page != nullptr ? page->GetTabButton(static_cast<ESOLSettingsTab>(tab))
+                : nullptr;
+            text += button != nullptr && button->IsSelected() ? TEXT(" 1") : TEXT(" 0");
+        }
+        return text;
+    };
+    // Returns whether the page shows a tab: selected, its content shown, only its button selected
+    const auto showsTab = [page](const ESOLSettingsTab want)
+    {
+        if (page == nullptr || page->GetSelectedTab() != want
+            || page->GetShownContentIndex() != static_cast<int32>(want))
+        {
+            return false;
+        }
+        for (int32 tab = 0; tab < static_cast<int32>(ESOLSettingsTab::Count); ++tab)
+        {
+            const USOLMenuButton* button = page->GetTabButton(static_cast<ESOLSettingsTab>(tab));
+            if (button == nullptr || button->IsSelected() != (tab == static_cast<int32>(want)))
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+    // Returns whether the footer (Revert, Apply: Small buttons) is laid out on screen under the content
+    const auto footerShown = [page]()
+    {
+        const USOLMenuButton* revert = page != nullptr ? page->GetRevertButton() : nullptr;
+        const USOLMenuButton* apply = page != nullptr ? page->GetApplyButton() : nullptr;
+        return revert != nullptr && apply != nullptr && revert->IsVisible() && apply->IsVisible()
+            && revert->GetCachedGeometry().GetLocalSize().X > 0.0f && apply->GetCachedGeometry().GetLocalSize().X > 0.0f
+            && revert->GetVariant() == SOLSettingsTabs::RowButtonVariant()
+            && apply->GetVariant() == SOLSettingsTabs::RowButtonVariant();
+    };
+
+    switch (static_cast<ESolidSmokeStep>(step))
+    {
+    case ESolidSmokeStep::SettingsOpen:
+    {
+        // The tab column: six Tab buttons on the hull material
+        int32 tabs = 0;
+        for (int32 tab = 0; tab < static_cast<int32>(ESOLSettingsTab::Count); ++tab)
+        {
+            const USOLMenuButton* button = page != nullptr ? page->GetTabButton(static_cast<ESOLSettingsTab>(tab))
+                : nullptr;
+            tabs += button != nullptr && button->GetVariant() == SOLSettingsTabs::TabButtonVariant()
+                && button->IsHullMaterialDrawn() ? 1 : 0;
+        }
+        const bool bOpen = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::Settings;
+        Check(TEXT("u-settings-first-tab"), bOpen && tabs == static_cast<int32>(ESOLSettingsTab::Count)
+            && showsTab(ESOLSettingsTab::Graphics) && footerShown(), FString::Printf(TEXT("page open %d, %d solid Tab "
+            "buttons, %s, footer %d"), bOpen ? 1 : 0, tabs, *describeTabs(), footerShown() ? 1 : 0));
+
+        // The rows' controls: the solid slider and toggle styles (hull material brushes), Small stepper buttons
+        int32 solidSliders = 0;
+        for (int32 slider = 0; slider < static_cast<int32>(ESOLSettingsSlider::Count); ++slider)
+        {
+            const USlider* control = page != nullptr ? page->GetSlider(static_cast<ESOLSettingsSlider>(slider))
+                : nullptr;
+            solidSliders += control != nullptr
+                && control->GetWidgetStyle().NormalBarImage.GetResourceObject() != nullptr
+                && control->GetWidgetStyle().NormalThumbImage.GetResourceObject() != nullptr ? 1 : 0;
+        }
+        int32 solidToggles = 0;
+        for (int32 toggle = 0; toggle < static_cast<int32>(ESOLSettingsToggle::Count); ++toggle)
+        {
+            const UCheckBox* control = page != nullptr ? page->GetToggle(static_cast<ESOLSettingsToggle>(toggle))
+                : nullptr;
+            solidToggles += control != nullptr
+                && control->GetWidgetStyle().UncheckedImage.GetResourceObject() != nullptr ? 1 : 0;
+        }
+        int32 smallSteppers = 0;
+        for (int32 stepper = 0; stepper < static_cast<int32>(ESOLSettingsStepper::Count); ++stepper)
+        {
+            for (int32 side = 0; side < 2; ++side)
+            {
+                const USOLMenuButton* button = page != nullptr
+                    ? page->GetStepperButton(static_cast<ESOLSettingsStepper>(stepper), side) : nullptr;
+                smallSteppers += button != nullptr && button->GetVariant() == SOLSettingsTabs::RowButtonVariant()
+                    && button->IsHullMaterialDrawn() ? 1 : 0;
+            }
+        }
+        Check(TEXT("u-settings-solid-rows"), solidSliders == static_cast<int32>(ESOLSettingsSlider::Count)
+            && solidToggles == static_cast<int32>(ESOLSettingsToggle::Count)
+            && smallSteppers == 2 * static_cast<int32>(ESOLSettingsStepper::Count), FString::Printf(TEXT("%d solid "
+            "sliders, %d solid toggles, %d Small stepper buttons"), solidSliders, solidToggles, smallSteppers));
+        TakeUiShot(TEXT("settings-graphics"));
+        break;
+    }
+    case ESolidSmokeStep::SettingsTab:
+    {
+        const ESOLSettingsTab tab = static_cast<ESOLSettingsTab>(mSettingsTab);
+        const bool bTrace = page != nullptr && page->IsTabHoverTraceShown(tab);
+        Check(*FString::Printf(TEXT("u-tab-%s"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]), showsTab(tab) && bTrace
+            && footerShown(), FString::Printf(TEXT("%s, hover trace %d, footer %d"), *describeTabs(), bTrace ? 1 : 0,
+            footerShown() ? 1 : 0));
+        if (tab == ESOLSettingsTab::Overlays)
+        {
+            // The embedded Overlay list in the solid look: the menu font, its row hovered (the screenshot shows it)
+            const USOLOverlayMenuWidget* list = page != nullptr ? page->GetOverlayList() : nullptr;
+            const UObject* font = list != nullptr ? list->GetRowFontObject() : nullptr;
+            const bool bSolidFont = font != nullptr && solid != nullptr && font == solid->GetMenuFont();
+            Check(TEXT("u-overlay-solid"), list != nullptr && list->IsEmbedded() && bSolidFont
+                && list->GetEmbeddedHoverRow() == SOLID_SMOKE_OVERLAY_HOVER_ROW, FString::Printf(TEXT("list %s, row "
+                "font %s, hovered row %d"), list != nullptr ? TEXT("embedded") : TEXT("MISSING"), font != nullptr
+                ? *font->GetName() : TEXT("none"), list != nullptr ? list->GetEmbeddedHoverRow() : -2));
+        }
+        TakeUiShot(*FString::Printf(TEXT("settings-%s"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]));
+        if (mSettingsTab + 1 < static_cast<int32>(ESOLSettingsTab::Count))
+        {
+            mRepeatStep = static_cast<int32>(ESolidSmokeStep::SettingsTab);
+        }
+        break;
+    }
+    case ESolidSmokeStep::SettingsRowHover:
+    {
+        // A row's Small button in the full hover look (lift, amber edge, LED, underline), and no trace drawn (Q15)
+        const USOLMenuButton* next = page != nullptr ? page->GetStepperButton(ESOLSettingsStepper::Quality, 1)
+            : nullptr;
+        const FSOLSolidButtonLook look = next != nullptr ? next->GetAppliedLook() : FSOLSolidButtonLook();
+        const bool bTrace = page != nullptr && page->IsAnyTabHoverTraceShown();
+        Check(TEXT("u-row-hover"), next != nullptr && next->HasKeyboardFocus() && !SOLSolidStyle::HasHoverTrace(
+            next->GetVariant()) && SolidSmokeLookMatches(look, SolidSmokeSettled(ESOLSolidButtonState::Hovered, s,
+            false)) && !bTrace && showsTab(ESOLSettingsTab::Graphics), FString::Printf(TEXT("Quality forward focused "
+            "%d, look %s, rail trace %d, %s"), next != nullptr && next->HasKeyboardFocus() ? 1 : 0,
+            *SolidSmokeDescribe(look), bTrace ? 1 : 0, *describeTabs()));
+        TakeUiShot(TEXT("settings-row-hover"));
+        break;
+    }
+    case ESolidSmokeStep::SettingsControls:
+    {
+        // A slider drag, a toggle and a stepper as their controls do: dirty; Revert: clean with the values back
+        USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+        if (page == nullptr || settings == nullptr)
+        {
+            Check(TEXT("u-controls-revert"), false, TEXT("no Settings page or settings"));
+            break;
+        }
+        const SOLSettingsModel::FSettingsValues before = settings->GetLiveValues();
+        const bool bWasDirty = settings->IsDirty();
+        const float volume = before.MasterVolume >= SOLID_SMOKE_SLIDER_DELTA ? before.MasterVolume
+            - SOLID_SMOKE_SLIDER_DELTA : before.MasterVolume + SOLID_SMOKE_SLIDER_DELTA;
+        page->SetSliderValue(ESOLSettingsSlider::MasterVolume, volume);
+        page->SetToggle(ESOLSettingsToggle::Vsync, !before.bVsync);
+        page->Step(ESOLSettingsStepper::Quality, before.QualityPreset > 0 ? -1 : 1);
+        const SOLSettingsModel::FSettingsValues changed = settings->GetLiveValues();
+        const bool bDirty = settings->IsDirty();
+        const ESOLSettingsTab tabBefore = page->GetSelectedTab();
+        page->Revert();
+        const SOLSettingsModel::FSettingsValues after = settings->GetLiveValues();
+        const bool bChanged = !FMath::IsNearlyEqual(changed.MasterVolume, before.MasterVolume)
+            && changed.bVsync != before.bVsync && changed.QualityPreset != before.QualityPreset;
+        const bool bBack = FMath::IsNearlyEqual(after.MasterVolume, before.MasterVolume)
+            && after.bVsync == before.bVsync && after.QualityPreset == before.QualityPreset;
+        Check(TEXT("u-controls-revert"), !bWasDirty && bChanged && bDirty && !settings->IsDirty() && bBack
+            && page->GetSelectedTab() == tabBefore, FString::Printf(TEXT("dirty before %d, changed %d (volume %.2f -> "
+            "%.2f, vsync %d -> %d, quality %d -> %d), dirty %d; after Revert dirty %d, values back %d, tab kept %d"),
+            bWasDirty ? 1 : 0, bChanged ? 1 : 0, before.MasterVolume, changed.MasterVolume, before.bVsync ? 1 : 0,
+            changed.bVsync ? 1 : 0, before.QualityPreset, changed.QualityPreset, bDirty ? 1 : 0,
+            settings->IsDirty() ? 1 : 0, bBack ? 1 : 0, page->GetSelectedTab() == tabBefore ? 1 : 0));
+        break;
+    }
+    case ESolidSmokeStep::SettingsScroll:
+    {
+        const int32 binding = SOLKeyBindings::BINDING_COUNT - 1;
+        const bool bInView = page != nullptr && page->IsBindingRowInView(binding);
+        Check(TEXT("u-scroll-binding"), mScrollFromTab == ESOLSettingsTab::Graphics
+            && mScrollTabAtOnce == ESOLSettingsTab::KeyBindings && showsTab(ESOLSettingsTab::KeyBindings) && bInView
+            && footerShown(), FString::Printf(TEXT("from tab %d, tab at once %d, %s, last binding's row in view %d, "
+            "footer %d"), static_cast<int32>(mScrollFromTab), static_cast<int32>(mScrollTabAtOnce), *describeTabs(),
+            bInView ? 1 : 0, footerShown() ? 1 : 0));
+        TakeUiShot(TEXT("settings-keys-scrolled"));
+        break;
+    }
+    case ESolidSmokeStep::SettingsReopen:
+    {
+        const bool bOpen = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::Settings;
+        Check(TEXT("u-reopen-first-tab"), bOpen && showsTab(SOLSettingsTabs::OpeningTab()), FString::Printf(TEXT("left "
+            "on Key bindings, reopened: page open %d, %s"), bOpen ? 1 : 0, *describeTabs()));
+        break;
+    }
+    case ESolidSmokeStep::SettingsClose:
+    {
+        const bool bClosed = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::None;
+        Check(TEXT("u-settings-closed"), bClosed, FString::Printf(TEXT("page %d"), mainMenu != nullptr
+            ? static_cast<int32>(mainMenu->GetPage()) : -1));
+        break;
+    }
+    default:
+        break;
+    }
 }

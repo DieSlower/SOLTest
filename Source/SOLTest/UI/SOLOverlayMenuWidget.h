@@ -57,8 +57,22 @@ public:
     // SOLMenuText::OVERLAY_PROFILE_NUMBER_TOKEN is replaced by the viewed profile's number
     void Open(const FSimpleDelegate& close, const FKey& toggleKey, const FString& titleFormat);
 
-    // Makes the widget the Settings page's embedded list: no backing, title or keys, not focusable
+    // Makes the widget the Settings page's embedded list: no backing, title or keys, not focusable; in the solid
+    // Settings look (SDD 46 section 6.3): the menu font and the solid text colours, the profile tabs on the Small hull
+    // (the viewed one with the selected mark), and the tab or row under the mouse in the settled solid hover look
     void SetEmbedded(bool bEmbedded);
+
+    // Returns the font object of the rows (verification: the menu font when embedded, the engine font standalone)
+    const UObject* GetRowFontObject() const;
+
+    // Returns the embedded list's row under the mouse, or INDEX_NONE (verification)
+    int32 GetEmbeddedHoverRow() const { return mEmbeddedHoverRow; }
+
+    // Simulates the mouse over a display row of the embedded list (verification: the smoke has no real cursor there)
+    void SetEmbeddedHoverRow(int32 row);
+
+    // Drops the embedded list's tab and row hover (its page was shown again; embedded only)
+    void ClearEmbeddedHover();
 
     // Starts the non-blocking close (SDD 4.5): hit-test invisible and unfocusable at once, the frame's close plays,
     // then the widget removes itself (at once when nothing is left to draw, e.g. at strength 0)
@@ -184,8 +198,11 @@ private:
     void RefreshHint();
 
     // Re-reads the five tabs (the active mark and colour, the off suffix, the viewed tab's backing), only when the
-    // enabled profiles, the active one or the viewed one changed since the last call
+    // enabled profiles, the active one, the viewed one or (embedded) the hovered one changed since the last call
     void RefreshTabs(const SOLOverlay::FOverlayPrefs& prefs);
+
+    // Writes the embedded tabs in the solid Settings look (the Small hull, selected and hover looks, solid colours)
+    void RefreshSolidTabs(const SOLOverlay::FOverlayPrefs& prefs);
 
     // Creates the hologram frame behind the panel once (standalone only) and clears the panel's own backing
     void EnsureHoloFrame();
@@ -259,7 +276,9 @@ private:
     int32 mTabsEnabledProfiles = INDEX_NONE;                // The tab state last written (INDEX_NONE: never)
     int32 mTabsActiveProfile = INDEX_NONE;
     int32 mTabsViewedProfile = INDEX_NONE;
-    int32 mHoveredTab = INDEX_NONE;                         // The tab under the mouse (standalone), or none
+    int32 mHoveredTab = INDEX_NONE;                         // The tab under the mouse, or none
+    int32 mTabsHoveredTab = INDEX_NONE;                     // The hovered tab the embedded tabs were last written for
+    int32 mEmbeddedHoverRow = INDEX_NONE;                   // Embedded: the row under the mouse, or none
     int32 mLayoutDirtyFrames = 0;                           // Frames left to re-lay the frame out after a change
     uint32 mIndentedRows = 0;                               // Bit per display row shown indented
     int32 mLastRowHoverItem = INDEX_NONE;                   // The row last given to the frame as its hover item

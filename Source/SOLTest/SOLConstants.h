@@ -1359,7 +1359,8 @@ namespace SOL
         inline constexpr float PAGE_WIDTH = 1040.0f;              // Page shell (SDD 46 section 6.1); narrower when the
                                                                   // view is (it takes the room right of the column)
         inline constexpr float PAGE_HEIGHT = 800.0f;              // (46d: 760 left no room for the column's traces)
-        inline constexpr float TAB_COLUMN_WIDTH = 200.0f;         // The shell's vertical tab column
+        inline constexpr float TAB_COLUMN_WIDTH = 220.0f;         // The shell's vertical tab column (46e: 200 did not
+                                                                  // fit "Key bindings")
         inline constexpr float PAUSE_PANEL_WIDTH = 420.0f;        // Pause side panel
         inline constexpr float BACK_BUTTON_WIDTH = 160.0f;        // The shell's Back button
 
@@ -1397,6 +1398,15 @@ namespace SOL
         inline constexpr float SHELL_NOTCH_DEPTH = 6.0f;          // Hull: a notch in each side, centred
         inline constexpr float SHELL_NOTCH_HEIGHT = 72.0f;
         inline constexpr float LIST_RECESS_PADDING = 10.0f;       // Start-location list recess edge to its rows
+
+        // Settings tab column (46e, SDD 46 section 6.3): a tab rail recess TAB_COLUMN_WIDTH wide left of the content
+        // recess; the tabs are TAB_HEIGHT tall, BUTTON_GAP apart, and leave room on their right for the hover trace
+        inline constexpr float SETTINGS_TAB_RAIL_PADDING = 8.0f;  // Tab rail recess edge to its tabs
+        inline constexpr float SETTINGS_TAB_TRACE_PX = 14.0f;     // Room right of the tabs for the hovered tab's trace
+        inline constexpr float SETTINGS_TAB_TRACE_END_PX = 4.0f;  // ... which ends this far inside the rail's edge
+        inline constexpr int32 SETTINGS_TAB_LETTER_SPACING = 100; // Tab labels (the stack's 260 is too wide for them)
+        inline constexpr float SETTINGS_BODY_GAP = 12.0f;         // Tab rail to the content recess
+        inline constexpr float SETTINGS_CONTENT_PADDING = 10.0f;  // Content recess edge to the rows
     }
     static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
         && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE

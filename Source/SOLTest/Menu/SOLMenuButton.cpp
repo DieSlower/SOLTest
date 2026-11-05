@@ -201,6 +201,18 @@ void USOLMenuButton::Setup(UWidgetTree& tree, const FString& label, const int32 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Replaces the label's letter spacing (the variant's spacing from Setup otherwise)
+void USOLMenuButton::SetLabelLetterSpacing(const int32 spacing)
+{
+    if (Label != nullptr && Label->GetFont().LetterSpacing != spacing)
+    {
+        FSlateFontInfo font = Label->GetFont();
+        font.LetterSpacing = spacing;
+        Label->SetFont(font);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Gives or removes the disabled art and blocks input (hit-test invisible, not focusable, no hover focus, clicks
 // swallowed)
 void USOLMenuButton::SetSolidDisabled(const bool bDisabled)

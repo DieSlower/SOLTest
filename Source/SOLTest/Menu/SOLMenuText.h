@@ -56,7 +56,10 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_AUDIO = TEXT("Audio");
     inline constexpr const TCHAR* SETTINGS_MOUSE = TEXT("Mouse");
     inline constexpr const TCHAR* SETTINGS_GAMEPLAY = TEXT("Gameplay");
-    inline constexpr const TCHAR* SETTINGS_OVERLAYS = TEXT("Overlays (what the overlay key turns on and off)");
+    // The six section names are the tab column's labels (SDD 46 section 6.3); the Overlays explanation, too long for a
+    // tab, heads that tab's content
+    inline constexpr const TCHAR* SETTINGS_OVERLAYS = TEXT("Overlays");
+    inline constexpr const TCHAR* SETTINGS_OVERLAYS_HINT = TEXT("What the overlay key turns on and off");
     inline constexpr const TCHAR* SETTINGS_KEYS = TEXT("Key bindings");
     inline constexpr const TCHAR* SETTINGS_RESOLUTION = TEXT("Resolution");
     inline constexpr const TCHAR* SETTINGS_WINDOW_MODE = TEXT("Window mode");

@@ -457,6 +457,72 @@ value column; the main menu's column + gap + shell then spans about 1540 of 1920
   Quit to menu): `t-return-shell-closed` (page None, Closed, hidden, no selection on the first frame back) and
   `t-return-play-trace` (Play focused with its hover trace drawn, on the first frame back and a settle later).
 
+### 6.3 46e amendment: Settings with the tab column as built
+
+- **Tab logic** (`Menu/SOLSettingsTabs.h/.cpp`, pure, test-first: 16 `SOLTest.SolidSettings.*` tests written from the
+  contract by a separate agent, red on the missing header, then green): `ESOLSettingsTab` (Graphics, Audio, Mouse,
+  Gameplay, Overlays, Key bindings), `OpeningTab` (Graphics), `SelectTab` (an invalid request keeps the tab, an invalid
+  current one falls back to the opening tab), `TabForBinding` (Key bindings for a valid binding), `TabOfSlider` /
+  `TabOfToggle` / `TabOfStepper` (each control's old section), `TabLabel` (the section headings) and the button
+  variants (`TabButtonVariant` Tab, `RowButtonVariant` Small).
+- **Layout** (`USOLSettingsPageWidget`, inside the shell's content recess on the main menu and the flat pause panel
+  until 46g): the heading and hint, then a row of the **tab rail** (`USOLSolidPanel::MakeRecess`, now the one recess
+  factory the main menu uses too, `TAB_COLUMN_WIDTH` wide, the six Tab buttons top-aligned, `TAB_HEIGHT` tall and
+  `BUTTON_GAP` apart, `SETTINGS_TAB_RAIL_PADDING` 8 from the rail's edge) and the **content recess**
+  (`SETTINGS_CONTENT_PADDING` 10, `SETTINGS_BODY_GAP` 12 right of the rail) holding a `UWidgetSwitcher` with one scroll
+  box per tab (the solid scroll bar); then the footer (dirty text, Revert, Apply) and the status line under both, for
+  every tab. Each tab shows its old section's rows without a section heading (the tab names it); the Overlays tab opens
+  with the explanation the old heading carried (`SETTINGS_OVERLAYS_HINT`, dim), since `SETTINGS_OVERLAYS` is now the
+  tab label "Overlays" (it was "Overlays (what the overlay key turns on and off)", too long for a tab).
+- **Tuned from the screenshots.** `TAB_COLUMN_WIDTH` 200 -> **220** and the tab labels' letter spacing
+  `SETTINGS_TAB_LETTER_SPACING` **100** (`USOLMenuButton::SetLabelLetterSpacing`; the stack's 260 is kept everywhere
+  else): at 200 and 260 "Key bindings" ran past its tab and every label touched the LED. Each tab is `TAB_COLUMN_WIDTH
+  - 2 x 8 - SETTINGS_TAB_TRACE_PX` (14) = 190 wide.
+- **Hover (Q15).** The tab buttons are the Tab variant: their hover trace (a straight run at the tab's centre line from
+  its point to `SETTINGS_TAB_TRACE_END_PX` inside the rail's edge) is drawn by the rail's trace layer, bound in
+  `NativeConstruct` (the layer is rebuilt with the page); the page pushes the effects strength to that layer only when
+  it changes. Every row button (steppers, Rebind, Reset keys, Revert, Apply) is Small: lift, amber edge, LED and
+  underline, no trace. The sliders and toggles use `MakeSliderStyle` / `MakeCheckBoxStyle` (bar and handle colours
+  white so the brush tints reach the material). The tab buttons are refreshed in the page's tick with the rest (a
+  state compare when settled); they are not in the row button array, so the stepper, footer and Rebind indices are
+  unchanged.
+- **Opening tab (Q8).** `RefreshFromSettings` (what both menus call when they show the page) shows `OpeningTab()` and
+  re-reads the controls; Apply, Revert and `NotifyHidden` call the new private `RefreshControls`, which leaves the tab,
+  so an Apply on Key bindings stays on Key bindings. `ScrollToBinding` shows `TabForBinding`'s tab first, then asks the
+  Key bindings scroll box to scroll (the scroll box runs the request on its next tick, once the newly shown tab is laid
+  out). New on the page for the smokes: `SelectTab`, `GetSelectedTab`, `GetShownContentIndex`, `GetTabButton`,
+  `GetStepperButton`, `GetRevertButton` / `GetApplyButton`, `GetSlider` / `GetToggle`, `IsTabHoverTraceShown`,
+  `IsAnyTabHoverTraceShown`, `IsBindingRowInView`; `GetOverlayList` returns a non-const pointer.
+- **Animations.** No new animation: the tabs and rows ramp with the kit's hover (`HOVER_RAMP_S`, instant and flat at
+  strength 0, glow doubled at 2) inside the shell's open of 46d. No Settings control is disabled today; the slider
+  style carries the disabled brushes and a toggle would take `MakeCheckBoxStyle(solid, true)` if one were.
+- **Embedded Overlay list** (`USOLOverlayMenuWidget`, `SetEmbedded(true)` only): the menu font (Body, Medium) on the
+  tabs and rows, the Small font on the dim hint, `BUTTON_PADDING_X / Y` around each entry so the hull's cut and LED
+  clear the text; the profile tabs on the Small hull at rest too (the viewed one with the selected mark, the active profile's text
+  cyan, a disabled one's dim); rows on the recess, the one under the mouse on the Small hull in the settled hover look
+  (a brush written on a hover change only, not per frame; no 0.12 s ramp, the list has no tick). The hover follows real
+  mouse moves (a synthetic move after a layout change leaves it, as the standalone rows do) and clears on leave and
+  on every show of the page (`ClearEmbeddedHover` from `RefreshFromSettings`, which also drops the tab rail's trace
+  unless a tab still has the keyboard focus). A hovered row gets no lift (a `UBorder` has no render translation).
+  Review follow-up: `BeginRebind` shows the Key bindings tab, so a rebind started from code never listens on a
+  hidden row. The
+  standalone Ctrl+O menu is unchanged (`-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`).
+- **Narrow views (open, for the user).** At 1000x800 the shell narrows to about 787 units (6.2), and with the tab
+  column the content has about 425 units for a row: the 250 label column leaves about 77 units between a stepper's
+  buttons, so "1000 x 800" and "Borderless window" no longer fit. The value text is now clipped to its slot
+  (`ClipToBounds`; each of the three values then draws in its own batch, part of UI draws 28 -> 31; the review's
+  `ETextOverflowPolicy::Ellipsis` was tried and cut nothing, the row box gives the text its full width) instead of
+  drawing over the buttons. Choices that would fix it (shrink the label column at narrow
+  views, give the shell more room, wrap or abbreviate values) are a layout decision left to the user.
+- **Smoke (SDD 14 step 4).** `-SOLSmokeSolidMenu` grew from 42 to 55 checks: `u-settings-first-tab` (six solid Tab
+  buttons, Graphics shown and the only one selected, the footer laid out), `u-settings-solid-rows` (8 sliders and 6
+  toggles on the solid styles, 6 Small stepper buttons), `u-tab-audio` ... `u-tab-keys` (each tab clicked as the mouse
+  does: shown, the only one selected, its hover trace drawn, the footer kept), `u-overlay-solid` (the embedded list's
+  rows in F_SOLMenu, a hovered row), `u-row-hover` (the Quality stepper's '>' in the settled hover look with no trace
+  drawn on the rail), `u-controls-revert` (a slider, a toggle and a stepper make the page dirty; Revert restores them,
+  the tab kept), `u-scroll-binding` (from Graphics, Key bindings at once, the last binding's row inside the scroll box
+  after a settle), `u-reopen-first-tab` (left on Key bindings, Esc, Settings again: Graphics), `u-settings-closed`.
+
 ## 7. Animations and the effects strength (D5)
 
 `s` is the sanitized `HudEffectsStrength` (Q1, 0-2, default 1). The behaviour at 0 and 2 is the same rule as #42
@@ -597,7 +663,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | `TRACE_CORE_WIDTH_PX` / `TRACE_GLOW_WIDTH_PX` / `TRACE_GLOW_ALPHA` | 1.5 / 6 / 0.25 | |
 | `LED_RADIUS_PX` / `UNDERLINE_PX` / `EDGE_PX` | 3 / 2 / 1.5 | |
 | `DISABLED_ALPHA` | 0.4 | |
-| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200, `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
+| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200 (**220** since 46e, section 6.3), `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
 | Font sizes | Title 56, heading 26, section 20, button 20, body 18, small 15 | Body +2 for Rajdhani's narrower face; checked at 1000x800 |
 | Letter spacing | Titles 400, stack labels 260, small caps 200 | From the board's tracking (README), applied as `FSlateFontInfo::LetterSpacing` |
 | `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD` (46c follow-up: `SOLID_TEX_NOISE` removed) under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
@@ -840,6 +906,16 @@ three runs read P0 +0.136 and P1 +0.174 median `dcpu`, over the budget (an A/B w
 +0.084 / +0.027, +0.128 / +0.021 on two runs, so the noise is large but the extra batch was real); drawn at the core
 width as two concentric octagons the dots batch with the core lines and the medians are back at the earlier 46d
 numbers. The VR floor is still only extrapolated (TECH_DEBT).
+
+**46e check (Settings with the tab column).** 2026-11-05, three runs after 46e (every pass now draws the Settings
+tab rail, the content recess and the solid sliders and toggles; P0 / P1 inside the main menu's shell, P2 / P3 in the
+pause menu's still-flat panel), 9/9 checks and 4/4 PASS each. Medians of `dcpu` / `dgpu` (ms; the three values in
+brackets): P0 **+0.021** (+0.021 / +0.033 / +0.020) / **+0.058** (+0.060 / +0.058 / +0.047), P1 **-0.011** (-0.014 /
+-0.011 / -0.003) / **+0.035** (+0.035 / +0.035 / +0.035), P2 **-0.043** (-0.043 / -0.056 / +0.003) / **+0.010**, P3
+**-0.036** (-0.054 / -0.036 / -0.033) / **+0.015** (+0.015 / +0.015 / +0.016). `gpu_solid` 0.088-0.101 at 1920x1080 and
+0.054-0.056 at 1280x720 on the main menu passes, 0.010-0.017 on the pause passes; UI draws 31 on the main menu (28 in
+46d) and 19 on the pause menu (15-16 before). All inside the Q17 budget. The profile flag still has fixed passes, so no
+number at the VR floor sizes was taken (46h, TECH_DEBT).
 
 **Comparing later (46i).** Close the editor, build, then run three times and take, per pass, the median of `dcpu` and
 of `dgpu` over the three `RESULT` lines (a single run's PASS / FAIL is advisory, the run-to-run spread above is up to

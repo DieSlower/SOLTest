@@ -8,6 +8,7 @@
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "UI/SOLHoloMenuMath.h"
 
+#include "Blueprint/WidgetTree.h"
 #include "Components/PanelSlot.h"
 #include "Engine/Texture2D.h"
 #include "Materials/MaterialInstanceDynamic.h"
@@ -48,6 +49,24 @@ namespace
         brush.SetImageSize(size);
         return brush;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates a recess (the recess chamfers, the shared Recess material) around a widget with a padding
+USOLSolidPanel* USOLSolidPanel::MakeRecess(UWidgetTree& tree, UWidget* content, const float padding)
+{
+    using namespace SOL::SolidMenu;
+    USOLSolidPanel* recess = tree.ConstructWidget<USOLSolidPanel>(USOLSolidPanel::StaticClass());
+    FSOLSolidHull hull;
+    hull.ChamferTL = RECESS_CHAMFER_LARGE_PX;
+    hull.ChamferTR = RECESS_CHAMFER_SMALL_PX;
+    hull.ChamferBR = RECESS_CHAMFER_LARGE_PX;
+    hull.ChamferBL = RECESS_CHAMFER_SMALL_PX;
+    hull.bRecess = true;
+    recess->SetHull(ESOLSolidStyle::Recess, hull);
+    recess->SetContentPadding(FMargin(padding));
+    recess->SetContent(content);
+    return recess;
 }
 
 //////////////////////////////////////////////////////////////////////////
