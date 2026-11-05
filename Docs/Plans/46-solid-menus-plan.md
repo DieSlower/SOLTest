@@ -39,9 +39,10 @@ Answers: Q2 (strength 0 / 2 as #42), Q16 (starting values approved).
    `static_assert`s on the constant invariants, step / chin / notch SDF tests, a clamp sweep, the ramp after the press
    linger, the cubic ease pinned); tint caveats for 46c recorded in SDD 8.3; full suite.
 4. [x] Commit `Issue #46: Part 46a - solid menu maths`.
-5. [ ] **Open, for the user before 46c (review finding):** hover takes keyboard focus and focus stays on a clicked
-   tab, so an active tab that is also focused shows the amber hover look, not its cyan selected mark (one state per
-   button). Keep it (Q9 as written), or let a button show both (a separate selected flag)?
+5. [x] **Answered by the user on 2026-11-04:** selected is orthogonal to hover (a separate selected flag), so an
+   active tab that is also focused or hovered shows the amber hover look *and* its cyan selected mark. Built in 46c
+   (SDD 8.2 46c amendment, `FSOLSolidButtonAnim`, `USOLMenuButton::SetSelected`). (Review finding: hover takes keyboard
+   focus and focus stays on a clicked tab, so one state per button would have hidden the active tab's mark.)
 
 ### 46b: assets and import script (sonnet, medium)
 
@@ -67,25 +68,71 @@ Answers: none needed (the asset list of SDD section 10). Font: Rajdhani (D4).
 
 Answers: Q1 (`HudEffectsStrength`), Q2, Q12, Q13, Q14 (palette), Q16, Q17 (budget). Depends on 46a, 46b.
 
-0. [ ] Capture the profiling baseline before any rendering change: build `-SOLSmokeSolidMenuProfile` as a stand-alone
-   flag (SDD 13) and run it three times at HEAD (today's look), medians into an SDD amendment.
-1. [ ] Verify in the UE 5.8 engine content which outputs `GetUserInterfaceUV` has (the size the SDF needs, SDD 4.3);
+0. [x] Capture the profiling baseline before any rendering change: build `-SOLSmokeSolidMenuProfile` as a stand-alone
+   flag (SDD 13) and run it three times at HEAD (today's look), medians into an SDD amendment. **Done:** the
+   ProfileGPU / `stat dumpave` capture moved out of the holo smoke into the shared `FSOLUiProfileCapture` (holo smoke
+   rechecked, 12/12, all PASS); `FSOLSolidMenuProfileSmoke` (main menu and pause menu with Settings, 1920x1080 and
+   1280x720); three runs at `816da1a` plus the working tree, medians in SDD 13.1 and stored in the .cpp; a check run
+   against them PASS on all four passes.
+1. [x] Verify in the UE 5.8 engine content which outputs `GetUserInterfaceUV` has (the size the SDF needs, SDD 4.3);
    record the answer in an SDD amendment; pick the size path (UV outputs, or the MID size fallback for the big panels).
-2. [ ] `Tools/UI/create_solid_menu_materials.py`: `M_SOLSolidHull` (HLSL mirroring `SOLSolidMenu::HullDistance`, tint
+   **Done:** Pixel Size (UV 3, physical pixels incl. DPI) + normalized UV 4; lengths in UMG units x a pushed
+   `DpiScale` (SDD 4.3 amendment). Engine finding: Slate multiplies a material brush's colour by its tint, so the tint
+   is packed above `TINT_VERTEX_FLOOR` and divided out in the material (SDD 4.3, 8.3 amendments).
+2. [x] `Tools/UI/create_solid_menu_materials.py`: `M_SOLSolidHull` (HLSL mirroring `SOLSolidMenu::HullDistance`, tint
    decode mirroring `DecodeButtonTint`) and the style instances; parameter names in `SOL::SolidMenuMaterialParams`.
-   Idempotent, `-SOLRebuild`.
-3. [ ] `USOLSolidMenuSubsystem` (loads once, one warning per missing asset with a flat fallback, shared MIDs, strength
+   Idempotent, `-SOLRebuild`. **Done:** nine `MI_SOLSolid*` instances, the disabled art with its two cue options (SDD
+   5.3.1, the choice open for the user); compiled with `-AllowCommandletRendering` (no errors); a second run wrote no
+   `.uasset` (SDD 10.1).
+3. [x] **Done** (SDD 4.7 amendment): kit implemented, 27 `SOLTest.SolidMenuKit` tests green without edits (full
+   suite 1402/1402). Material fix found at the first render: `M_SOLSolidHull` shaded in display space (Slate's
+   `SOURCE_IN_LINEAR_SPACE` is not visible to material code) and now shades in linear; rebuilt by the script. Was:
+   **API half done** (headers with stub bodies, the editor target builds): `SOLSolidMenuSubsystem.h`
+   (`FSOLSolidMenuParamCache`, `ESOLSolidTexture`), `SOLSolidStyle.h` (`ESOLSolidStyle`, `ESOLSolidButtonVariant`,
+   `ESOLMenuFontWeight`, `ESOLMenuTextRole`, pure decisions and factories), `SOLSolidPanel.h`, `SOLSolidTraceLayer.h`
+   (`FSOLSolidTrace`), `USOLMenuButton` (variant, `SetSolidDisabled`, hover trace, `FSOLSolidButtonAnim`; the flat
+   look still runs until step 4). Next: tests against the headers (separate agent), then the implementation.
+   `USOLSolidMenuSubsystem` (loads once, one warning per missing asset with a flat fallback, shared MIDs, strength
    pushed on change from `HudEffectsStrength`), `USOLSolidPanel`, `SSOLSolidTraceLayer`, `SOLSolidStyle` (slider, checkbox,
    scroll bar, button variants, `MenuFont`), the palette constants (Q12-Q14).
-3a. [ ] Widen the HUD effects slider's label and help text (`SETTINGS_HUD_EFFECTS`, the help text near
+3a. [x] Widen the HUD effects slider's label and help text (`SETTINGS_HUD_EFFECTS`, the help text near
    `SOLMenuText.h:469`, and the Hologram menu effects sentence "not the HUD one") so they say it also scales the
-   full-screen menu animations (Q1); `SOLInfoTextTest` re-validated.
-4. [ ] `USOLMenuButton` restyle (variants, `RefreshHighlight` drives `EvaluateButton`, tint, lift, trace request;
+   full-screen menu animations (Q1); `SOLInfoTextTest` re-validated. **Done:** label "HUD and menu effects", the HUD
+   help text and the Hologram menu effects sentence widened (`SOLMenuText.h`), `GAME_MECHANICS.md` 8.1 row; the
+   info-text tests pass unchanged (they check placeholders, not this wording).
+4. [x] `USOLMenuButton` restyle (variants, `RefreshHighlight` drives `EvaluateButton`, tint, lift, trace request;
    hover still takes focus, rebind listening unchanged) and `SOLMenuContent::MakeText` / `MakePage` on the new font.
-   At this point every screen shows the new buttons and font with today's layouts.
-5. [ ] The `-SOLSmokeSolidMenu` scaffold (flag constant, harness, strength 0 / 2 in the smoke slot, screenshots).
-6. [ ] `-SOLMenuSmoke=all` no new failures; review (opus/xhigh); fixes; suite. Commit
-   `Issue #46: Part 46c - solid hull material, panel kit and restyled buttons`.
+   At this point every screen shows the new buttons and font with today's layouts. **Done** (SDD 4.7): variants on
+   every screen, the orthogonal selected flag, `SetSolidDisabled`, the background colour = tint / style tint, the
+   Rajdhani font and solid text colours, the unused `SOL::MenuStyle` colours removed, `BUTTON_PADDING_Y` 4.
+5. [x] The `-SOLSmokeSolidMenu` scaffold (flag constant, harness, strength 0 / 2 in the smoke slot, screenshots).
+   **Done:** `FSOLSolidMenuSmoke` + `USOLSolidMenuSmokeBoard` (enabled / disabled comparison of every control type),
+   13/13 checks; the screenshots were looked at and deleted.
+6. [x] `-SOLMenuSmoke=all` no new failures; review (opus/xhigh); fixes; suite. **Done (2026-11-05).** Adversarial
+   review (opus/xhigh, report only), three should-fix items and eight nits, all fixed (SDD 4.7 and 13 amendments):
+   the button compares a refresh with the look **last written** (a ramp in steps under `LIFT_EPSILON_PX` locked a
+   stale lift; the new test failed on the old code and passes now); new `SOLTest.SolidMenuKit.Button.*` tests
+   (normal, selected, selected + hover, disabled, strength 0 / 1 / 2, settled refresh writes nothing, the fine-step
+   ramp, the background divide) and `Panel.UniqueMaterialFollowsStyle`; the panel brushes are `UPROPERTY(Transient)`
+   (early resets in the subsystem's `Deinitialize` dropped); screens read the frame once per tick
+   (`USOLSolidMenuSubsystem::BeginFrame`, `RefreshHighlight` removed); the trace layer's ring is precomputed and each
+   line's points moved in once, its header and SDD 7 / 13 corrected (the layer repaints every frame; one allocation
+   per drawn line is the engine API's); solid-disabled buttons are not focusable; `SetHull` with another style
+   recreates the unique material; only the rivet and vent textures are loaded (`T_SOLSolidNoise` unused, its load
+   removed); the hull dither is +-0.5 / 255 in sRGB output (script rerun, second run wrote nothing); docs and
+   TECH_DEBT (single-run verdicts widened, the per-pixel `ClampHull` at about 307 PS instructions, the trace layer's
+   per-paint arrays). Tests: `SOLTest.SolidMenu` 52, `SOLTest.SolidMenuKit` 35, full suite 1410/1410. Smokes:
+   `-SOLSmokeSolidMenu` 13/13, `-SOLSmokeHoloMenu` 86/86, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24,
+   `-SOLMenuSmoke=all` 47 passed / 3 failed (the three known stale checks of TECH_DEBT: thrust at Mars, Esc and
+   Ctrl+F1 resume cursor). Profile, three runs, medians of `dcpu` / `dgpu` (ms): P0 +0.033 / +0.006, P1 -0.014 /
+   +0.004, P2 -0.017 / +0.002, P3 -0.007 / -0.010 (all inside 0.1 / 0.3; two single-run FAILs, P1 +0.134 and P0
+   +0.180, were run-to-run noise, the TECH_DEBT single-run item). Commit
+   `Issue #46: Part 46c - solid hull material, panel kit, restyled buttons, selected-with-hover and disabled art,
+   profiling baseline`.
+7. [x] **46c addition (user requirement, 2026-11-04): disabled art.** Every control type has a disabled look that is
+   clearly different from normal and hover (desaturated hull without grain or edge highlight, LED off, no hover, the
+   disabled cue, `DISABLED_TEXT_COLOR` label; SDD 5.3.1), `USOLMenuButton::SetSolidDisabled` without Slate's disabled
+   dim, the factories' disabled brushes, checked by the kit tests and the smoke board.
 
 ### 46d: main menu and start-location page (opus, high)
 
@@ -170,3 +217,5 @@ Depends on 46d-46g.
 - 2026-11-04: all 17 open questions answered by the user and folded into SDD 46 (Q1 `HudEffectsStrength`, version line
   `0.1.YYMM.<commits>` generated at build time, dim-only pause, pages in the shell beside the panels, #42 cues reused,
   budget 0.1 ms CPU / 0.3 ms GPU). The plan has no remaining gate; parts follow their dependencies.
+- 2026-11-05: 46c done (review fixes, tests, smokes, profile; plan step 6). Next: 46d (main menu and start-location
+  page).

@@ -13,7 +13,8 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
-// Tests for the issue #46 solid menu pure logic (Docs/SDDs/46-solid-menus.md section 8, constants section 9), written
+// Tests for the issue #46 solid menu pure logic (Docs/SDDs/46-solid-menus.md section 8, constants section 9, palette
+// section 5.1; the 46c selected flag and three-level tint G code are user decisions of 2026-11-04), written
 // against the Menu/SOLSolidMenuMath.h contract before the production code existed. Every number comes from
 // SOL::SolidMenu, never a literal. Hull points are in the widget's local space: origin top-left, x right, y down,
 // the rect spans [0, size.X] x [0, size.Y]
@@ -324,6 +325,71 @@ namespace
     {
         const float scaled = value * 255.0f;
         return FMath::Abs(scaled - FMath::RoundToFloat(scaled)) <= 1.0e-3f;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two looks are exactly equal in every field except bSelectedMark
+    bool SolidMenuTestSameExceptMark(const FSOLSolidButtonLook& a, const FSOLSolidButtonLook& b)
+    {
+        return a.Lift == b.Lift && a.Edge == b.Edge && a.Led == b.Led && a.Underline == b.Underline
+            && a.Trace == b.Trace && a.Glow == b.Glow && a.bPressedHull == b.bPressedHull
+            && a.bDisabled == b.bDisabled;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a look is the disabled look: every amount and the glow exactly 0, no pressed hull, no mark,
+    // bDisabled on
+    bool SolidMenuTestIsDisabledLook(const FSOLSolidButtonLook& look)
+    {
+        return SolidMenuTestLookAll(look, 0.0f, 0.0f) && look.Glow == 0.0f && !look.bPressedHull
+            && !look.bSelectedMark && look.bDisabled;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a decoded tint carries the same flags as a look and its edge within one 8-bit step
+    bool SolidMenuTestTintKeepsLook(const FSOLSolidButtonLook& back, const FSOLSolidButtonLook& look)
+    {
+        return FMath::Abs(back.Edge - look.Edge) <= SOLIDMENUTEST_QUANT_TOLERANCE
+            && back.bPressedHull == look.bPressedHull && back.bSelectedMark == look.bSelectedMark
+            && back.bDisabled == look.bDisabled;
+    }
+
+    // Palette checks (SDD 5.1): the disabled hull and text must read grey
+    constexpr float SOLIDMENUTEST_MAX_DISABLED_SATURATION = 0.08f;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two colours have the same sRGB bytes (alpha ignored)
+    bool SolidMenuTestSameRgb(const FColor a, const FColor b)
+    {
+        return a.R == b.R && a.G == b.G && a.B == b.B;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks a palette colour's sRGB bytes against its SDD 5.1 hex value (0xRRGGBB)
+    void SolidMenuTestExpectHex(FAutomationTestBase& test, const TCHAR* name, const FColor actual, const uint32 hex)
+    {
+        const FString label(name);
+        test.TestEqual(label + TEXT(" R"), static_cast<int32>(actual.R), static_cast<int32>((hex >> 16) & 0xFF));
+        test.TestEqual(label + TEXT(" G"), static_cast<int32>(actual.G), static_cast<int32>((hex >> 8) & 0xFF));
+        test.TestEqual(label + TEXT(" B"), static_cast<int32>(actual.B), static_cast<int32>(hex & 0xFF));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a colour's HSV saturation computed from its sRGB bytes (what a colour picker shows): (max - min) / max,
+    // 0 for black
+    float SolidMenuTestSrgbSaturation(const FColor c)
+    {
+        const int32 high = FMath::Max3(static_cast<int32>(c.R), static_cast<int32>(c.G), static_cast<int32>(c.B));
+        const int32 low = FMath::Min3(static_cast<int32>(c.R), static_cast<int32>(c.G), static_cast<int32>(c.B));
+        return high == 0 ? 0.0f : static_cast<float>(high - low) / static_cast<float>(high);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a colour's relative luminance: linear (FLinearColor::FromSRGBColor), Rec. 709 weights
+    float SolidMenuTestLuma(const FColor c)
+    {
+        const FLinearColor linear = FLinearColor::FromSRGBColor(c);
+        return 0.2126f * linear.R + 0.7152f * linear.G + 0.0722f * linear.B;
     }
 }
 
@@ -1298,6 +1364,293 @@ bool FSOLSolidMenuButtonFromTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedFlagTest, "SOLTest.SolidMenu.Button.SelectedFlagKeepsLook",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// bSelected on a Normal, Hovered or Pressed button adds the cyan mark and changes nothing else: every other field is
+// exactly what the unselected call returns, from every previous state, through the ramp and the press linger, at
+// strengths 0, 1 and 2
+bool FSOLSolidMenuButtonSelectedFlagTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSolidMenu::EvaluateButton;
+    const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
+    const double linger = SOL::SolidMenu::PRESSED_LINGER_S;
+    const double times[] = { 0.0, 0.25 * ramp, 0.5 * ramp, ramp, 0.5 * linger, linger + 0.5 * ramp,
+        SOLIDMENUTEST_SETTLED_S };
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const ESOLSolidButtonState states[] = {
+        ESOLSolidButtonState::Normal, ESOLSolidButtonState::Hovered, ESOLSolidButtonState::Pressed };
+    FSOLSolidMenuSweepLog log;
+    for (const ESOLSolidButtonState state : states)
+    {
+        for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
+        {
+            for (const double t : times)
+            {
+                for (const float s : strengths)
+                {
+                    const FSOLSolidButtonLook plain = EvaluateButton(state, from, t, s, false);
+                    const FSOLSolidButtonLook marked = EvaluateButton(state, from, t, s, true);
+                    if (!marked.bSelectedMark || !SolidMenuTestSameExceptMark(marked, plain))
+                    {
+                        log.Fail(FString::Printf(TEXT("state %d from %d t %f s %f: mark %d lift %f/%f edge %f/%f"),
+                            static_cast<int32>(state), static_cast<int32>(from), t, s, marked.bSelectedMark ? 1 : 0,
+                            marked.Lift, plain.Lift, marked.Edge, plain.Edge));
+                    }
+                }
+            }
+        }
+    }
+    log.Report(*this, TEXT("the selected flag only adds the mark"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedFlagFromTest,
+    "SOLTest.SolidMenu.Button.SelectedFlagKeepsLookFrom",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// EvaluateButtonFrom with bSelected on a Normal, Hovered or Pressed button: the mark on, every other field exactly the
+// unselected call's, from rest, mid-ramp, settled-hover, pressed and hand-made looks at the change
+bool FSOLSolidMenuButtonSelectedFlagFromTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSolidMenu::EvaluateButtonFrom;
+    const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
+    const ESOLSolidButtonState normal = ESOLSolidButtonState::Normal;
+    const ESOLSolidButtonState hovered = ESOLSolidButtonState::Hovered;
+
+    // Looks at the change (none carries the mark)
+    FSOLSolidButtonLook handMade{};
+    handMade.Lift = 0.6f;
+    handMade.Edge = 0.6f;
+    handMade.Led = 0.6f;
+    handMade.Underline = 0.6f;
+    handMade.Trace = 0.6f;
+    handMade.Glow = 0.6f;
+    const FSOLSolidButtonLook atChanges[] = {
+        FSOLSolidButtonLook{},
+        SOLSolidMenu::EvaluateButton(hovered, normal, ramp / 3.0, 1.0f),
+        SOLSolidMenu::EvaluateButton(hovered, normal, SOLIDMENUTEST_SETTLED_S, 1.0f),
+        SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Pressed, normal, 0.0, 1.0f),
+        handMade };
+    const double times[] = { 0.0, 0.25 * ramp, 0.5 * ramp, ramp, SOLIDMENUTEST_SETTLED_S };
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const ESOLSolidButtonState states[] = { normal, hovered, ESOLSolidButtonState::Pressed };
+    FSOLSolidMenuSweepLog log;
+    for (const ESOLSolidButtonState state : states)
+    {
+        for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(atChanges)); ++index)
+        {
+            for (const double t : times)
+            {
+                for (const float s : strengths)
+                {
+                    const FSOLSolidButtonLook plain = EvaluateButtonFrom(state, atChanges[index], t, s, false);
+                    const FSOLSolidButtonLook marked = EvaluateButtonFrom(state, atChanges[index], t, s, true);
+                    if (!marked.bSelectedMark || !SolidMenuTestSameExceptMark(marked, plain))
+                    {
+                        log.Fail(FString::Printf(TEXT("state %d at-change %d t %f s %f: mark %d lift %f/%f"),
+                            static_cast<int32>(state), index, t, s, marked.bSelectedMark ? 1 : 0, marked.Lift,
+                            plain.Lift));
+                    }
+                }
+            }
+        }
+    }
+    log.Report(*this, TEXT("the selected flag only adds the mark (from the look at the change)"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedHoverTest,
+    "SOLTest.SolidMenu.Button.SelectedHoveredFullLook",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A selected tab that is hovered or focused shows the full amber hover look, lift included, plus the cyan mark; a
+// selected tab that is pressed shows the pressed hull plus the mark
+bool FSOLSolidMenuButtonSelectedHoverTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSolidMenu::EvaluateButton;
+    const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
+    const ESOLSolidButtonState hovered = ESOLSolidButtonState::Hovered;
+    const ESOLSolidButtonState normal = ESOLSolidButtonState::Normal;
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    for (const float s : strengths)
+    {
+        const FString label = FString::Printf(TEXT("strength %f"), s);
+        const FSOLSolidButtonLook settled = EvaluateButton(hovered, normal, SOLIDMENUTEST_SETTLED_S, s, true);
+        SolidMenuTestExpectLookAll(*this, label + TEXT(" hovered selected settled"), settled, 1.0f);
+        TestTrue(label + TEXT(" hovered selected: the mark"), settled.bSelectedMark);
+        TestFalse(label + TEXT(" hovered selected: not the pressed hull"), settled.bPressedHull);
+        TestFalse(label + TEXT(" hovered selected: not disabled"), settled.bDisabled);
+        TestEqual(label + TEXT(" hovered selected: glow s x edge"), settled.Glow,
+            SolidMenuTestStrength(s) * settled.Edge, SOLIDMENUTEST_TOLERANCE);
+        TestEqual(label + TEXT(" hovered selected: lifted HOVER_LIFT_PX up"), SOLSolidMenu::LiftOffset(settled),
+            -SOL::SolidMenu::HOVER_LIFT_PX, SOLIDMENUTEST_TOLERANCE);
+
+        const FSOLSolidButtonLook press = EvaluateButton(ESOLSolidButtonState::Pressed, hovered, 0.0, s, true);
+        TestTrue(label + TEXT(" pressed selected: the pressed hull"), press.bPressedHull);
+        TestTrue(label + TEXT(" pressed selected: the mark"), press.bSelectedMark);
+        TestEqual(label + TEXT(" pressed selected: no lift"), press.Lift, 0.0f, SOLIDMENUTEST_TOLERANCE);
+        TestEqual(label + TEXT(" pressed selected: edge 1"), press.Edge, 1.0f, SOLIDMENUTEST_TOLERANCE);
+    }
+
+    // Mid-ramp at strength 1: half lifted, half the amber, the mark already on
+    const FSOLSolidButtonLook half = EvaluateButton(hovered, normal, 0.5 * ramp, 1.0f, true);
+    SolidMenuTestExpectLookAll(*this, TEXT("hovered selected half way"), half, 0.5f);
+    TestTrue(TEXT("hovered selected half way: the mark"), half.bSelectedMark);
+
+    // Hovering a tab whose previous state was Selected ramps the lift from 0 too
+    TestEqual(TEXT("hovered selected from Selected: the lift rises from 0"),
+        EvaluateButton(hovered, ESOLSolidButtonState::Selected, 0.5 * ramp, 1.0f, true).Lift, 0.5f,
+        SOLIDMENUTEST_TOLERANCE);
+
+    // Leaving the hover, a selected tab falls back to the mark alone
+    const FSOLSolidButtonLook left = EvaluateButton(normal, hovered, SOLIDMENUTEST_SETTLED_S, 1.0f, true);
+    SolidMenuTestExpectLookAll(*this, TEXT("selected after the hover"), left, 0.0f);
+    TestTrue(TEXT("selected after the hover: the mark"), left.bSelectedMark);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedStateTest,
+    "SOLTest.SolidMenu.Button.SelectedStateIgnoresFlag",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// State Selected means Normal + selected: its amounts equal Normal's settled look and the mark is on whatever the
+// flag, settled from every previous state and at any time from Normal, in both evaluate forms
+bool FSOLSolidMenuButtonSelectedStateTest::RunTest(const FString& /*parameters*/)
+{
+    const ESOLSolidButtonState selected = ESOLSolidButtonState::Selected;
+    const ESOLSolidButtonState normal = ESOLSolidButtonState::Normal;
+    const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const bool flags[] = { false, true };
+    FSOLSolidMenuSweepLog log;
+    for (const float s : strengths)
+    {
+        const FSOLSolidButtonLook rest = SOLSolidMenu::EvaluateButton(normal, normal, SOLIDMENUTEST_SETTLED_S, s);
+        for (const bool bFlag : flags)
+        {
+            // Every look below must be Normal's settled amounts plus the mark
+            TArray<FSOLSolidButtonLook, TInlineAllocator<16>> looks;
+            for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
+            {
+                looks.Add(SOLSolidMenu::EvaluateButton(selected, from, SOLIDMENUTEST_SETTLED_S, s, bFlag));
+            }
+            looks.Add(SOLSolidMenu::EvaluateButton(selected, normal, 0.0, s, bFlag));
+            looks.Add(SOLSolidMenu::EvaluateButton(selected, normal, 0.5 * ramp, s, bFlag));
+            looks.Add(SOLSolidMenu::EvaluateButtonFrom(selected, FSOLSolidButtonLook{}, 0.0, s, bFlag));
+            looks.Add(SOLSolidMenu::EvaluateButtonFrom(selected, SOLSolidMenu::EvaluateButton(
+                ESOLSolidButtonState::Hovered, normal, SOLIDMENUTEST_SETTLED_S, 1.0f), SOLIDMENUTEST_SETTLED_S, s,
+                bFlag));
+            for (int32 index = 0; index < looks.Num(); ++index)
+            {
+                const FSOLSolidButtonLook& look = looks[index];
+                if (!look.bSelectedMark || !SolidMenuTestSameExceptMark(look, rest) || look.bPressedHull
+                    || look.bDisabled)
+                {
+                    log.Fail(FString::Printf(TEXT("s %f flag %d case %d: mark %d lift %f edge %f"), s, bFlag ? 1 : 0,
+                        index, look.bSelectedMark ? 1 : 0, look.Lift, look.Edge));
+                }
+            }
+        }
+    }
+    log.Report(*this, TEXT("Selected is Normal plus the mark"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedDisabledTest,
+    "SOLTest.SolidMenu.Button.SelectedFlagDisabledIgnored",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Disabled ignores bSelected: all amounts 0, no mark, bDisabled on, from every previous state, at any time and
+// strength, in both evaluate forms
+bool FSOLSolidMenuButtonSelectedDisabledTest::RunTest(const FString& /*parameters*/)
+{
+    const ESOLSolidButtonState disabled = ESOLSolidButtonState::Disabled;
+    const double times[] = { 0.0, 0.5 * SOL::SolidMenu::HOVER_RAMP_S, 0.5 * SOL::SolidMenu::PRESSED_LINGER_S,
+        SOLIDMENUTEST_SETTLED_S };
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const FSOLSolidButtonLook hoverLook = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Hovered,
+        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f, true);
+    FSOLSolidMenuSweepLog log;
+    for (const double t : times)
+    {
+        for (const float s : strengths)
+        {
+            for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
+            {
+                if (!SolidMenuTestIsDisabledLook(SOLSolidMenu::EvaluateButton(disabled, from, t, s, true)))
+                {
+                    log.Fail(FString::Printf(TEXT("state form from %d t %f s %f"), static_cast<int32>(from), t, s));
+                }
+            }
+            if (!SolidMenuTestIsDisabledLook(SOLSolidMenu::EvaluateButtonFrom(disabled, hoverLook, t, s, true))
+                || !SolidMenuTestIsDisabledLook(SOLSolidMenu::EvaluateButtonFrom(disabled, FSOLSolidButtonLook{}, t,
+                    s, true)))
+            {
+                log.Fail(FString::Printf(TEXT("from form t %f s %f"), t, s));
+            }
+        }
+    }
+    log.Report(*this, TEXT("disabled ignores the selected flag"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedDefaultTest,
+    "SOLTest.SolidMenu.Button.SelectedFlagDefaultsOff",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Calls without the flag equal calls with bSelected false, in both forms: hover alone is amber with no mark, Selected
+// alone is the mark with no lift and no amber
+bool FSOLSolidMenuButtonSelectedDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
+    const double times[] = { 0.0, 0.5 * ramp, SOLIDMENUTEST_SETTLED_S };
+    const FSOLSolidButtonLook atChange = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Hovered,
+        ESOLSolidButtonState::Normal, ramp / 3.0, 1.0f);
+    FSOLSolidMenuSweepLog log;
+    for (const ESOLSolidButtonState state : SOLIDMENUTEST_STATES)
+    {
+        for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
+        {
+            for (const double t : times)
+            {
+                const FSOLSolidButtonLook implicit = SOLSolidMenu::EvaluateButton(state, from, t, 1.0f);
+                const FSOLSolidButtonLook explicitOff = SOLSolidMenu::EvaluateButton(state, from, t, 1.0f, false);
+                if (!SolidMenuTestSameExceptMark(implicit, explicitOff)
+                    || implicit.bSelectedMark != explicitOff.bSelectedMark)
+                {
+                    log.Fail(FString::Printf(TEXT("state form %d from %d t %f"), static_cast<int32>(state),
+                        static_cast<int32>(from), t));
+                }
+            }
+        }
+        for (const double t : times)
+        {
+            const FSOLSolidButtonLook implicit = SOLSolidMenu::EvaluateButtonFrom(state, atChange, t, 1.0f);
+            const FSOLSolidButtonLook explicitOff = SOLSolidMenu::EvaluateButtonFrom(state, atChange, t, 1.0f, false);
+            if (!SolidMenuTestSameExceptMark(implicit, explicitOff)
+                || implicit.bSelectedMark != explicitOff.bSelectedMark)
+            {
+                log.Fail(FString::Printf(TEXT("from form %d t %f"), static_cast<int32>(state), t));
+            }
+        }
+    }
+    log.Report(*this, TEXT("the flag defaults to off"));
+
+    const FSOLSolidButtonLook hover = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Hovered,
+        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f);
+    SolidMenuTestExpectLookAll(*this, TEXT("hover alone"), hover, 1.0f);
+    TestFalse(TEXT("hover alone: no mark"), hover.bSelectedMark);
+    const FSOLSolidButtonLook press = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Pressed,
+        ESOLSolidButtonState::Normal, 0.0, 1.0f);
+    TestFalse(TEXT("press alone: no mark"), press.bSelectedMark);
+    const FSOLSolidButtonLook selectedAlone = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Selected,
+        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f);
+    TestTrue(TEXT("Selected alone: the mark"), selectedAlone.bSelectedMark);
+    SolidMenuTestExpectLookAll(*this, TEXT("Selected alone"), selectedAlone, 0.0f);
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Tint encoding (SDD 8.3)
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1305,7 +1658,8 @@ bool FSOLSolidMenuButtonFromTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintEncodeTest, "SOLTest.SolidMenu.Tint.Encode",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// R = Edge, G = pressed hull, B = selected mark, A = 1 for an enabled look
+// R = Edge, G a three-level code (0 normal, 0.5 disabled, 1 pressed hull), B = selected mark, A = 1 for an enabled look
+// and DISABLED_ALPHA for a disabled one
 bool FSOLSolidMenuTintEncodeTest::RunTest(const FString& /*parameters*/)
 {
     const float tol = SOLIDMENUTEST_QUANT_TOLERANCE;
@@ -1340,14 +1694,42 @@ bool FSOLSolidMenuTintEncodeTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("selected: B 1"), tint.B, 1.0f);
     TestEqual(TEXT("selected: A enabled"), tint.A, 1.0f);
 
+    look.bSelectedMark = false;
+    look.bDisabled = true;
+    tint = SOLSolidMenu::EncodeButtonTint(look);
+    TestEqual(TEXT("disabled: R 0"), tint.R, 0.0f);
+    TestEqual(TEXT("disabled: G the 0.5 disabled code"), tint.G, 0.5f, tol);
+    TestEqual(TEXT("disabled: B 0"), tint.B, 0.0f);
+    TestEqual(TEXT("disabled: A DISABLED_ALPHA"), tint.A, SOL::SolidMenu::DISABLED_ALPHA, tol);
+
+    // A hovered selected tab carries the full amber edge and the cyan mark together; a pressed one the hull code too
+    const FLinearColor hoveredSelected = SOLSolidMenu::EncodeButtonTint(SOLSolidMenu::EvaluateButton(
+        ESOLSolidButtonState::Hovered, ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f, true));
+    TestEqual(TEXT("hovered selected: R 1"), hoveredSelected.R, 1.0f);
+    TestEqual(TEXT("hovered selected: G 0"), hoveredSelected.G, 0.0f);
+    TestEqual(TEXT("hovered selected: B 1"), hoveredSelected.B, 1.0f);
+    TestEqual(TEXT("hovered selected: A enabled"), hoveredSelected.A, 1.0f);
+    const FLinearColor pressedSelected = SOLSolidMenu::EncodeButtonTint(SOLSolidMenu::EvaluateButton(
+        ESOLSolidButtonState::Pressed, ESOLSolidButtonState::Normal, 0.0, 1.0f, true));
+    TestEqual(TEXT("pressed selected: G 1"), pressedSelected.G, 1.0f);
+    TestEqual(TEXT("pressed selected: B 1"), pressedSelected.B, 1.0f);
+    TestEqual(TEXT("pressed selected: A enabled"), pressedSelected.A, 1.0f);
+
     const ESOLSolidButtonState enabled[] = { ESOLSolidButtonState::Normal, ESOLSolidButtonState::Hovered,
         ESOLSolidButtonState::Pressed, ESOLSolidButtonState::Selected };
+    const bool flags[] = { false, true };
     for (const ESOLSolidButtonState state : enabled)
     {
-        const FSOLSolidButtonLook evaluated = SOLSolidMenu::EvaluateButton(state, ESOLSolidButtonState::Normal,
-            SOLIDMENUTEST_SETTLED_S, 1.0f);
-        TestEqual(FString::Printf(TEXT("state %d: A enabled"), static_cast<int32>(state)),
-            SOLSolidMenu::EncodeButtonTint(evaluated).A, 1.0f);
+        for (const bool bFlag : flags)
+        {
+            const FSOLSolidButtonLook evaluated = SOLSolidMenu::EvaluateButton(state, ESOLSolidButtonState::Normal,
+                SOLIDMENUTEST_SETTLED_S, 1.0f, bFlag);
+            const FLinearColor enabledTint = SOLSolidMenu::EncodeButtonTint(evaluated);
+            const FString label = FString::Printf(TEXT("state %d flag %d"), static_cast<int32>(state), bFlag ? 1 : 0);
+            TestEqual(label + TEXT(": A enabled"), enabledTint.A, 1.0f);
+            TestTrue(label + TEXT(": G is 0 or 1 (never the disabled code)"),
+                enabledTint.G == 0.0f || enabledTint.G == 1.0f);
+        }
     }
     return true;
 }
@@ -1355,7 +1737,8 @@ bool FSOLSolidMenuTintEncodeTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintQuantizedTest, "SOLTest.SolidMenu.Tint.Quantized",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Every channel of the tint lies on the 8-bit grid k / 255, within one step of the value it encodes
+// Every channel of the tint lies on the 8-bit grid k / 255, R within one step of the edge it encodes, G within one
+// step of its code (0 normal, 0.5 disabled, 1 pressed hull)
 bool FSOLSolidMenuTintQuantizedTest::RunTest(const FString& /*parameters*/)
 {
     FSOLSolidMenuSweepLog log;
@@ -1367,10 +1750,13 @@ bool FSOLSolidMenuTintQuantizedTest::RunTest(const FString& /*parameters*/)
         look.Underline = look.Edge;
         look.bPressedHull = (step % 2) == 0;
         look.bSelectedMark = (step % 3) == 0;
+        look.bDisabled = !look.bPressedHull && (step % 5) == 1;
         const FLinearColor tint = SOLSolidMenu::EncodeButtonTint(look);
         const bool bGrid = SolidMenuTestOn8BitGrid(tint.R) && SolidMenuTestOn8BitGrid(tint.G)
             && SolidMenuTestOn8BitGrid(tint.B) && SolidMenuTestOn8BitGrid(tint.A);
-        const bool bClose = FMath::Abs(tint.R - look.Edge) <= SOLIDMENUTEST_QUANT_TOLERANCE;
+        const float code = look.bPressedHull ? 1.0f : (look.bDisabled ? 0.5f : 0.0f);
+        const bool bClose = FMath::Abs(tint.R - look.Edge) <= SOLIDMENUTEST_QUANT_TOLERANCE
+            && FMath::Abs(tint.G - code) <= SOLIDMENUTEST_QUANT_TOLERANCE;
         if (!bGrid || !bClose)
         {
             log.Fail(FString::Printf(TEXT("edge %f: tint (%f, %f, %f, %f)"), look.Edge, tint.R, tint.G, tint.B,
@@ -1384,84 +1770,271 @@ bool FSOLSolidMenuTintQuantizedTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintRoundTripTest, "SOLTest.SolidMenu.Tint.RoundTrip",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Decode(Encode(look)) gives back the edge within one 8-bit step and both flags exactly, for every state, time and
-// strength; the LED and underline decode as the edge (they move together)
+// Decode(Encode(look)) gives back the edge within one 8-bit step and the three flags exactly, for every state x
+// selected flag combination, previous state, time and strength, in both evaluate forms (Hovered + selected mid-ramp
+// and Pressed + selected included); the LED and underline decode as the edge, Lift, Trace and Glow as 0
 bool FSOLSolidMenuTintRoundTripTest::RunTest(const FString& /*parameters*/)
 {
     const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
     const double times[] = { 0.0, 0.1 * ramp, 0.37 * ramp, 0.5 * ramp, 0.81 * ramp, SOLIDMENUTEST_SETTLED_S };
     const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const bool flags[] = { false, true };
+    const FSOLSolidButtonLook atChange = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Hovered,
+        ESOLSolidButtonState::Normal, ramp / 3.0, 1.0f);
     FSOLSolidMenuSweepLog log;
+
+    // Checks one look's round trip
+    auto expectRoundTrip = [&log](const FSOLSolidButtonLook& look, const FString& where)
+    {
+        const FSOLSolidButtonLook back = SOLSolidMenu::DecodeButtonTint(SOLSolidMenu::EncodeButtonTint(look));
+        const bool bOk = SolidMenuTestTintKeepsLook(back, look)
+            && FMath::IsNearlyEqual(back.Led, back.Edge, SOLIDMENUTEST_QUANT_TOLERANCE)
+            && FMath::IsNearlyEqual(back.Underline, back.Edge, SOLIDMENUTEST_QUANT_TOLERANCE)
+            && back.Lift == 0.0f && back.Trace == 0.0f && back.Glow == 0.0f;
+        if (!bOk)
+        {
+            log.Fail(FString::Printf(TEXT("%s: edge %f -> %f, flags %d%d%d -> %d%d%d"), *where, look.Edge, back.Edge,
+                look.bPressedHull ? 1 : 0, look.bSelectedMark ? 1 : 0, look.bDisabled ? 1 : 0,
+                back.bPressedHull ? 1 : 0, back.bSelectedMark ? 1 : 0, back.bDisabled ? 1 : 0));
+        }
+    };
+
     for (const ESOLSolidButtonState state : SOLIDMENUTEST_STATES)
     {
-        for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
+        for (const bool bFlag : flags)
         {
             for (const double t : times)
             {
                 for (const float s : strengths)
                 {
-                    const FSOLSolidButtonLook look = SOLSolidMenu::EvaluateButton(state, from, t, s);
-                    const FSOLSolidButtonLook back = SOLSolidMenu::DecodeButtonTint(
-                        SOLSolidMenu::EncodeButtonTint(look));
-                    const bool bOk = FMath::Abs(back.Edge - look.Edge) <= SOLIDMENUTEST_QUANT_TOLERANCE
-                        && back.bPressedHull == look.bPressedHull && back.bSelectedMark == look.bSelectedMark
-                        && back.bDisabled == look.bDisabled
-                        && FMath::IsNearlyEqual(back.Led, back.Edge, SOLIDMENUTEST_QUANT_TOLERANCE)
-                        && FMath::IsNearlyEqual(back.Underline, back.Edge, SOLIDMENUTEST_QUANT_TOLERANCE);
-                    if (!bOk)
+                    for (const ESOLSolidButtonState from : SOLIDMENUTEST_STATES)
                     {
-                        log.Fail(FString::Printf(TEXT("state %d from %d t %f s %f: edge %f -> %f"),
-                            static_cast<int32>(state), static_cast<int32>(from), t, s, look.Edge, back.Edge));
+                        expectRoundTrip(SOLSolidMenu::EvaluateButton(state, from, t, s, bFlag),
+                            FString::Printf(TEXT("state %d flag %d from %d t %f s %f"), static_cast<int32>(state),
+                                bFlag ? 1 : 0, static_cast<int32>(from), t, s));
                     }
+                    expectRoundTrip(SOLSolidMenu::EvaluateButtonFrom(state, atChange, t, s, bFlag),
+                        FString::Printf(TEXT("from form state %d flag %d t %f s %f"), static_cast<int32>(state),
+                            bFlag ? 1 : 0, t, s));
                 }
             }
         }
     }
     log.Report(*this, TEXT("tint round trip"));
+
+    // The disabled look decodes disabled only, even when the caller passed the selected flag
+    const FSOLSolidButtonLook disabledBack = SOLSolidMenu::DecodeButtonTint(SOLSolidMenu::EncodeButtonTint(
+        SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Disabled, ESOLSolidButtonState::Hovered,
+            SOLIDMENUTEST_SETTLED_S, 1.0f, true)));
+    TestTrue(TEXT("disabled decodes disabled"), disabledBack.bDisabled);
+    TestFalse(TEXT("disabled decodes no mark"), disabledBack.bSelectedMark);
+    TestFalse(TEXT("disabled decodes no pressed hull"), disabledBack.bPressedHull);
     return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintDecodeTest, "SOLTest.SolidMenu.Tint.Decode",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Decoding a raw tint: R is the edge, G 1 the pressed hull, B 1 the selected mark, 0 means off
+// Decoding a raw tint: R is the edge (and the LED and underline); G >= 0.75 the pressed hull, 0.25 <= G < 0.75
+// disabled, below 0.25 neither; B >= 0.5 the selected mark; A decides nothing (a faded A = 0.3 with G 0 is enabled);
+// Lift, Trace and Glow read 0
 bool FSOLSolidMenuTintDecodeTest::RunTest(const FString& /*parameters*/)
 {
     const FSOLSolidButtonLook a = SOLSolidMenu::DecodeButtonTint(FLinearColor(0.6f, 1.0f, 0.0f, 1.0f));
     TestEqual(TEXT("edge from R"), a.Edge, 0.6f, SOLIDMENUTEST_QUANT_TOLERANCE);
+    TestEqual(TEXT("LED from R"), a.Led, 0.6f, SOLIDMENUTEST_QUANT_TOLERANCE);
+    TestEqual(TEXT("underline from R"), a.Underline, 0.6f, SOLIDMENUTEST_QUANT_TOLERANCE);
+    TestEqual(TEXT("lift not carried"), a.Lift, 0.0f);
+    TestEqual(TEXT("trace not carried"), a.Trace, 0.0f);
+    TestEqual(TEXT("glow not carried"), a.Glow, 0.0f);
     TestTrue(TEXT("G 1 is the pressed hull"), a.bPressedHull);
+    TestFalse(TEXT("G 1 is not disabled"), a.bDisabled);
     TestFalse(TEXT("B 0 is no mark"), a.bSelectedMark);
 
     const FSOLSolidButtonLook b = SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 1.0f, 1.0f));
     TestEqual(TEXT("edge 0 from R"), b.Edge, 0.0f, SOLIDMENUTEST_QUANT_TOLERANCE);
     TestFalse(TEXT("G 0 is no pressed hull"), b.bPressedHull);
+    TestFalse(TEXT("G 0 is enabled"), b.bDisabled);
     TestTrue(TEXT("B 1 is the mark"), b.bSelectedMark);
-    TestFalse(TEXT("A 1 is enabled"), b.bDisabled);
 
     const FSOLSolidButtonLook c = SOLSolidMenu::DecodeButtonTint(
-        FLinearColor(0.0f, 0.0f, 0.0f, SOL::SolidMenu::DISABLED_ALPHA));
-    TestTrue(TEXT("A DISABLED_ALPHA is disabled"), c.bDisabled);
+        FLinearColor(0.0f, 0.5f, 0.0f, SOL::SolidMenu::DISABLED_ALPHA));
+    TestTrue(TEXT("G 0.5 is disabled"), c.bDisabled);
+    TestFalse(TEXT("G 0.5 is no pressed hull"), c.bPressedHull);
+    TestFalse(TEXT("G 0.5 with B 0 is no mark"), c.bSelectedMark);
+
+    // Alpha does not decide the disabled flag
+    TestTrue(TEXT("G 0.5 at A 1 is still disabled"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.5f, 0.0f, 1.0f)).bDisabled);
+    TestFalse(TEXT("G 0 at A 0.3 (a fade) is enabled"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.4f, 0.0f, 0.0f, 0.3f)).bDisabled);
+    TestFalse(TEXT("G 0 at A DISABLED_ALPHA is enabled"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.0f, SOL::SolidMenu::DISABLED_ALPHA)).bDisabled);
+
+    // The G and B thresholds
+    struct FSample
+    {
+        float G;
+        bool bPressed;
+        bool bDisabled;
+    };
+    const FSample samples[] = {
+        { 0.24f, false, false }, { 0.25f, false, true }, { 0.5f, false, true }, { 0.74f, false, true },
+        { 0.75f, true, false }, { 0.9f, true, false } };
+    for (const FSample& sample : samples)
+    {
+        const FSOLSolidButtonLook look = SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, sample.G, 0.0f, 1.0f));
+        TestTrue(FString::Printf(TEXT("G %f pressed hull as expected"), sample.G),
+            look.bPressedHull == sample.bPressed);
+        TestTrue(FString::Printf(TEXT("G %f disabled as expected"), sample.G), look.bDisabled == sample.bDisabled);
+    }
+    TestTrue(TEXT("B 0.5 is the mark"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.5f, 1.0f)).bSelectedMark);
+    TestFalse(TEXT("B 0.49 is no mark"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.49f, 1.0f)).bSelectedMark);
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintDisabledTest, "SOLTest.SolidMenu.Tint.DisabledAlpha",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintDisabledTest, "SOLTest.SolidMenu.Tint.DisabledCode",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// A disabled button's tint has A = DISABLED_ALPHA (8-bit quantized); an enabled one A = 1. The look carries the state
-// in bDisabled, since a disabled look's amounts equal a Normal one's
+// A disabled button's tint has G = 0.5 (the disabled code) and A = DISABLED_ALPHA (a continuous dim), both 8-bit
+// quantized, R and B 0 even when the caller passed bSelected, and decodes disabled with no mark and no pressed hull;
+// an enabled one has A 1 and G 0
 bool FSOLSolidMenuTintDisabledTest::RunTest(const FString& /*parameters*/)
 {
-    const FSOLSolidButtonLook disabled = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Disabled,
-        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f);
-    TestTrue(TEXT("the disabled look is flagged"), disabled.bDisabled);
-    const FLinearColor tint = SOLSolidMenu::EncodeButtonTint(disabled);
-    TestEqual(TEXT("disabled A"), tint.A, SOL::SolidMenu::DISABLED_ALPHA, SOLIDMENUTEST_QUANT_TOLERANCE);
-    TestTrue(TEXT("disabled A on the 8-bit grid"), SolidMenuTestOn8BitGrid(tint.A));
-    TestEqual(TEXT("disabled R"), tint.R, 0.0f);
+    const bool flags[] = { false, true };
+    const ESOLSolidButtonState previous[] = {
+        ESOLSolidButtonState::Normal, ESOLSolidButtonState::Hovered, ESOLSolidButtonState::Pressed };
+    for (const bool bFlag : flags)
+    {
+        for (const ESOLSolidButtonState from : previous)
+        {
+            const FString label = FString::Printf(TEXT("flag %d from %d"), bFlag ? 1 : 0, static_cast<int32>(from));
+            const FSOLSolidButtonLook disabled = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Disabled, from,
+                SOLIDMENUTEST_SETTLED_S, 1.0f, bFlag);
+            TestTrue(label + TEXT(": the disabled look is flagged"), disabled.bDisabled);
+            const FLinearColor tint = SOLSolidMenu::EncodeButtonTint(disabled);
+            TestEqual(label + TEXT(": disabled G"), tint.G, 0.5f, SOLIDMENUTEST_QUANT_TOLERANCE);
+            TestTrue(label + TEXT(": disabled G on the 8-bit grid"), SolidMenuTestOn8BitGrid(tint.G));
+            TestEqual(label + TEXT(": disabled A"), tint.A, SOL::SolidMenu::DISABLED_ALPHA,
+                SOLIDMENUTEST_QUANT_TOLERANCE);
+            TestTrue(label + TEXT(": disabled A on the 8-bit grid"), SolidMenuTestOn8BitGrid(tint.A));
+            TestEqual(label + TEXT(": disabled R"), tint.R, 0.0f);
+            TestEqual(label + TEXT(": disabled B"), tint.B, 0.0f);
 
-    const FSOLSolidButtonLook normal = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Normal,
-        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f);
-    TestEqual(TEXT("normal A"), SOLSolidMenu::EncodeButtonTint(normal).A, 1.0f);
+            const FSOLSolidButtonLook back = SOLSolidMenu::DecodeButtonTint(tint);
+            TestTrue(label + TEXT(": decodes disabled"), back.bDisabled);
+            TestFalse(label + TEXT(": decodes no mark"), back.bSelectedMark);
+            TestFalse(label + TEXT(": decodes no pressed hull"), back.bPressedHull);
+        }
+    }
+
+    const FLinearColor normal = SOLSolidMenu::EncodeButtonTint(SOLSolidMenu::EvaluateButton(
+        ESOLSolidButtonState::Normal, ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f));
+    TestEqual(TEXT("normal A"), normal.A, 1.0f);
+    TestEqual(TEXT("normal G"), normal.G, 0.0f);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintFadeTest, "SOLTest.SolidMenu.Tint.FadedAlphaKeepsFlags",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Slate fades multiply the tint's alpha: an encoded tint whose A is scaled by a fade still decodes the same flags and
+// edge, so a fading panel never reads as disabled and a disabled button stays disabled
+bool FSOLSolidMenuTintFadeTest::RunTest(const FString& /*parameters*/)
+{
+    const double times[] = { 0.5 * SOL::SolidMenu::HOVER_RAMP_S, SOLIDMENUTEST_SETTLED_S };
+    const float fades[] = { 0.05f, 0.3f, 0.6f, 0.95f };
+    const bool flags[] = { false, true };
+    FSOLSolidMenuSweepLog log;
+    for (const ESOLSolidButtonState state : SOLIDMENUTEST_STATES)
+    {
+        for (const bool bFlag : flags)
+        {
+            for (const double t : times)
+            {
+                const FSOLSolidButtonLook look = SOLSolidMenu::EvaluateButton(state, ESOLSolidButtonState::Normal, t,
+                    1.0f, bFlag);
+                for (const float fade : fades)
+                {
+                    FLinearColor tint = SOLSolidMenu::EncodeButtonTint(look);
+                    tint.A *= fade;
+                    if (!SolidMenuTestTintKeepsLook(SOLSolidMenu::DecodeButtonTint(tint), look))
+                    {
+                        log.Fail(FString::Printf(TEXT("state %d flag %d t %f fade %f"), static_cast<int32>(state),
+                            bFlag ? 1 : 0, t, fade));
+                    }
+                }
+            }
+        }
+    }
+    log.Report(*this, TEXT("a faded alpha keeps the flags"));
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Palette (SDD 5.1)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPaletteHexTest, "SOLTest.SolidMenu.Palette.SddHexValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Every SDD 5.1 palette colour's sRGB bytes match its hex value exactly
+bool FSOLSolidMenuPaletteHexTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    SolidMenuTestExpectHex(*this, TEXT("BASE_COLOR"), BASE_COLOR, 0x24282C);
+    SolidMenuTestExpectHex(*this, TEXT("HULL_COLOR"), HULL_COLOR, 0x343A40);
+    SolidMenuTestExpectHex(*this, TEXT("RAISED_COLOR"), RAISED_COLOR, 0x4A5159);
+    SolidMenuTestExpectHex(*this, TEXT("RAISED_LIFTED_COLOR"), RAISED_LIFTED_COLOR, 0x58626B);
+    SolidMenuTestExpectHex(*this, TEXT("PRESSED_COLOR"), PRESSED_COLOR, 0x1C2024);
+    SolidMenuTestExpectHex(*this, TEXT("EDGE_COLOR"), EDGE_COLOR, 0x8C969F);
+    SolidMenuTestExpectHex(*this, TEXT("SHADOW_COLOR"), SHADOW_COLOR, 0x121416);
+    SolidMenuTestExpectHex(*this, TEXT("LED_OFF_COLOR"), LED_OFF_COLOR, 0x0B0D0F);
+    SolidMenuTestExpectHex(*this, TEXT("RIVET_COLOR"), RIVET_COLOR, 0x6A737C);
+    SolidMenuTestExpectHex(*this, TEXT("TEXT_COLOR"), TEXT_COLOR, 0xA4AFB8);
+    SolidMenuTestExpectHex(*this, TEXT("TEXT_BRIGHT_COLOR"), TEXT_BRIGHT_COLOR, 0xDCE3E8);
+    SolidMenuTestExpectHex(*this, TEXT("CYAN_COLOR"), CYAN_COLOR, 0x28D2F0);
+    SolidMenuTestExpectHex(*this, TEXT("AMBER_COLOR"), AMBER_COLOR, 0xFFA628);
+    SolidMenuTestExpectHex(*this, TEXT("WARNING_COLOR"), WARNING_COLOR, 0xE5533D);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPaletteDisabledTest, "SOLTest.SolidMenu.Palette.DisabledArt",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The disabled-art colours: the hull and text grey (HSV saturation from the sRGB bytes below 0.08), the hull distinct
+// from every enabled hull and darker than RAISED_COLOR, the text darker than TEXT_COLOR but brighter than the disabled
+// hull (readable), and the cue never amber or cyan (a disabled cue must not read as hover or selected)
+bool FSOLSolidMenuPaletteDisabledTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    TestTrue(TEXT("DISABLED_HULL_COLOR is desaturated"),
+        SolidMenuTestSrgbSaturation(DISABLED_HULL_COLOR) < SOLIDMENUTEST_MAX_DISABLED_SATURATION);
+    TestTrue(TEXT("DISABLED_TEXT_COLOR is desaturated"),
+        SolidMenuTestSrgbSaturation(DISABLED_TEXT_COLOR) < SOLIDMENUTEST_MAX_DISABLED_SATURATION);
+
+    TestFalse(TEXT("DISABLED_HULL_COLOR differs from RAISED_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_HULL_COLOR, RAISED_COLOR));
+    TestFalse(TEXT("DISABLED_HULL_COLOR differs from RAISED_LIFTED_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_HULL_COLOR, RAISED_LIFTED_COLOR));
+    TestFalse(TEXT("DISABLED_HULL_COLOR differs from PRESSED_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_HULL_COLOR, PRESSED_COLOR));
+    TestFalse(TEXT("DISABLED_HULL_COLOR differs from HULL_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_HULL_COLOR, HULL_COLOR));
+    TestTrue(TEXT("DISABLED_HULL_COLOR is darker than RAISED_COLOR"),
+        SolidMenuTestLuma(DISABLED_HULL_COLOR) < SolidMenuTestLuma(RAISED_COLOR));
+
+    TestTrue(TEXT("DISABLED_TEXT_COLOR is darker than TEXT_COLOR"),
+        SolidMenuTestLuma(DISABLED_TEXT_COLOR) < SolidMenuTestLuma(TEXT_COLOR));
+    TestTrue(TEXT("DISABLED_TEXT_COLOR is brighter than DISABLED_HULL_COLOR"),
+        SolidMenuTestLuma(DISABLED_TEXT_COLOR) > SolidMenuTestLuma(DISABLED_HULL_COLOR));
+
+    TestFalse(TEXT("DISABLED_CUE_COLOR differs from AMBER_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_CUE_COLOR, AMBER_COLOR));
+    TestFalse(TEXT("DISABLED_CUE_COLOR differs from CYAN_COLOR"),
+        SolidMenuTestSameRgb(DISABLED_CUE_COLOR, CYAN_COLOR));
     return true;
 }
 

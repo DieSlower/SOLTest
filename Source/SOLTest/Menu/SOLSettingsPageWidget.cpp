@@ -12,6 +12,8 @@
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "UI/SOLOverlayMenuWidget.h"
 
@@ -213,7 +215,7 @@ namespace
         UHorizontalBox* row = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
         USizeBox* labelBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
         labelBox->SetWidthOverride(SETTINGS_LABEL_WIDTH);
-        labelBox->SetContent(SOLMenuContent::MakeText(tree, label, BODY_FONT_SIZE, TEXT_COLOR));
+        labelBox->SetContent(SOLMenuContent::MakeText(tree, label, BODY_FONT_SIZE, SOLSolidStyle::TextColor()));
         UHorizontalBoxSlot* labelSlot = row->AddChildToHorizontalBox(labelBox);
         labelSlot->SetVerticalAlignment(VAlign_Center);
         labelSlot->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
@@ -263,8 +265,8 @@ namespace
     void SettingsAddSection(UWidgetTree& tree, UScrollBox& scroll, const TCHAR* heading)
     {
         using namespace SOL::MenuStyle;
-        Cast<UScrollBoxSlot>(scroll.AddChild(SOLMenuContent::MakeText(tree, heading, SECTION_FONT_SIZE, ACCENT_COLOR,
-            true)))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP * 2.0f));
+        Cast<UScrollBoxSlot>(scroll.AddChild(SOLMenuContent::MakeText(tree, heading, SECTION_FONT_SIZE,
+            SOLSolidStyle::ValueColor(), true)))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP * 2.0f));
     }
 }
 
@@ -278,7 +280,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     UVerticalBox* page = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::SETTINGS_TITLE);
     WidgetTree->RootWidget = page;
     page->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::SETTINGS_HINT, SMALL_FONT_SIZE,
-        DIM_TEXT_COLOR, false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
+        SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     UScrollBox* scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
     Scroll = scroll;
     page->AddChildToVerticalBox(scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -292,12 +294,14 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         for (int32 side = 0; side < UE_ARRAY_COUNT(labels); ++side)
         {
             USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-            button->Setup(*WidgetTree, labels[side], static_cast<int32>(stepper) * 2 + side, BODY_FONT_SIZE);
+            button->Setup(*WidgetTree, labels[side], static_cast<int32>(stepper) * 2 + side, BODY_FONT_SIZE,
+                ESOLSolidButtonVariant::Small);
             button->OnMenuClicked.BindUObject(this, &USOLSettingsPageWidget::HandleStepClicked);
             Buttons.Add(button);
             if (side == 1)
             {
-                UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE, ACCENT_COLOR);
+                UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE,
+                    SOLSolidStyle::ValueColor());
                 value->SetJustification(ETextJustify::Center);
                 StepperValueTexts.Add(value);
                 SettingsAddToRow(*row, value, true);
@@ -326,12 +330,12 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         control->SetMinValue(spec.Min);
         control->SetMaxValue(spec.Max);
         control->SetStepSize(spec.Step);
-        control->SetSliderBarColor(SOL::MenuStyle::BUTTON_SELECTED);
-        control->SetSliderHandleColor(SOL::MenuStyle::ACCENT_COLOR);
+        control->SetSliderBarColor(SOLSolidStyle::Linear(SOL::SolidMenu::RAISED_COLOR));
+        control->SetSliderHandleColor(SOLSolidStyle::ValueColor());
         Sliders[static_cast<int32>(slider)] = control;
         SettingsAddToRow(*row, control, true);
         UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), SOL::MenuStyle::BODY_FONT_SIZE,
-            SOL::MenuStyle::ACCENT_COLOR);
+            SOLSolidStyle::ValueColor());
         value->SetJustification(ETextJustify::Right);
         SliderValueTexts[static_cast<int32>(slider)] = value;
         SettingsAddToRow(*row, SettingsSized(*WidgetTree, value, SOL::MenuStyle::SETTINGS_VALUE_WIDTH, 0.0f), false);
@@ -402,7 +406,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
         button->Setup(*WidgetTree, label, SETTINGS_STEP_BUTTON_COUNT + static_cast<int32>(action),
-            SOL::MenuStyle::BODY_FONT_SIZE);
+            SOL::MenuStyle::BODY_FONT_SIZE, ESOLSolidButtonVariant::Small);
         button->OnMenuClicked.BindUObject(this, &USOLSettingsPageWidget::HandleActionClicked);
         Buttons.Add(button);
         return SettingsSized(*WidgetTree, button, width, SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
@@ -413,11 +417,13 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
         UHorizontalBox* row = SettingsMakeRow(*WidgetTree, SOLKeyBindings::GetDef(binding).Label);
-        UTextBlock* keyText = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE, ACCENT_COLOR, true);
+        UTextBlock* keyText = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE,
+            SOLSolidStyle::ValueColor(), true);
         KeyTexts.Add(keyText);
         SettingsAddToRow(*row, keyText, true);
         USOLMenuButton* rebind = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        rebind->Setup(*WidgetTree, SOLMenuText::SETTINGS_REBIND, binding, SMALL_FONT_SIZE);
+        rebind->Setup(*WidgetTree, SOLMenuText::SETTINGS_REBIND, binding, SMALL_FONT_SIZE,
+            ESOLSolidButtonVariant::Small);
         rebind->OnMenuClicked.BindUObject(this, &USOLSettingsPageWidget::HandleRebindClicked);
         Buttons.Add(rebind);
         SettingsAddToRow(*row, SettingsSized(*WidgetTree, rebind, SETTINGS_REBIND_WIDTH, 0.0f), false);
@@ -427,13 +433,15 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     // Footer: dirty indicator, Revert and Apply; the status line under it
     UHorizontalBox* footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(footer)->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, 0.0f));
-    DirtyText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, DIM_TEXT_COLOR, false, true);
+    DirtyText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+        true);
     SettingsAddToRow(*footer, DirtyText, true)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     SettingsAddToRow(*footer, makeActionButton(SOLMenuText::SETTINGS_REVERT, EAction::Revert, SETTINGS_ACTION_WIDTH),
         false)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     SettingsAddToRow(*footer, makeActionButton(SOLMenuText::SETTINGS_APPLY, EAction::Apply, SETTINGS_ACTION_WIDTH),
         false);
-    StatusText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, ACCENT_COLOR, false, true);
+    StatusText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::ValueColor(), false,
+        true);
     page->AddChildToVerticalBox(StatusText)->SetPadding(FMargin(0.0f, ROW_GAP * 2.0f, 0.0f, 0.0f));
     RefreshFromSettings();
 }
@@ -785,15 +793,16 @@ void USOLSettingsPageWidget::RefreshTexts()
         const bool bListening = binding == mListeningBinding;
         KeyTexts[binding]->SetText(FText::FromString(bListening ? FString(SOLMenuText::SETTINGS_KEY_WAITING)
             : SOLKeyBindings::BindingDisplayName(binding, keys)));
-        KeyTexts[binding]->SetColorAndOpacity(FSlateColor(bListening ? TEXT_COLOR
-            : (SOLKeyBindings::HasConflict(keys, binding) ? WARNING_COLOR : ACCENT_COLOR)));
+        KeyTexts[binding]->SetColorAndOpacity(FSlateColor(bListening ? SOLSolidStyle::TextColor()
+            : (SOLKeyBindings::HasConflict(keys, binding) ? SOLSolidStyle::WarningColor()
+            : SOLSolidStyle::ValueColor())));
     }
 
     // Dirty indicator and status line
     const bool bDirty = Settings->IsDirty();
     DirtyText->SetText(FText::FromString(bDirty ? SOLMenuText::SETTINGS_STATUS_DIRTY
         : SOLMenuText::SETTINGS_STATUS_CLEAN));
-    DirtyText->SetColorAndOpacity(FSlateColor(bDirty ? WARNING_COLOR : DIM_TEXT_COLOR));
+    DirtyText->SetColorAndOpacity(FSlateColor(bDirty ? SOLSolidStyle::WarningColor() : SOLSolidStyle::TextColor()));
     StatusText->SetText(FText::FromString(mStatusMessage));
 }
 
@@ -810,9 +819,10 @@ void USOLSettingsPageWidget::SetStatus(const FString& message)
 void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlight();
+        button->RefreshHighlightAt(frame.NowS, frame.Strength);
     }
 }
 

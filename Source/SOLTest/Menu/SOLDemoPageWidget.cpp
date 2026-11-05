@@ -9,6 +9,8 @@
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -104,8 +106,8 @@ void USOLDemoPageWidget::NativeOnInitialized()
     Menu = GetWorld() != nullptr ? GetWorld()->GetSubsystem<USOLMenuSubsystem>() : nullptr;
     UVerticalBox* page = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::DEMO_TITLE);
     WidgetTree->RootWidget = page;
-    HintText = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_HINT, SMALL_FONT_SIZE, DIM_TEXT_COLOR, false,
-        true);
+    HintText = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_HINT, SMALL_FONT_SIZE,
+        SOLSolidStyle::TextColor(), false, true);
     page->AddChildToVerticalBox(HintText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     const int32 rowCount = SOLMenuState::DemoRowCount();
     const int32 actionBase = rowCount * DEMO_STEP_BUTTONS_PER_ROW;
@@ -115,7 +117,8 @@ void USOLDemoPageWidget::NativeOnInitialized()
     const auto makeAction = [this, actionBase](const TCHAR* label, const EAction action)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, label, actionBase + static_cast<int32>(action), BODY_FONT_SIZE);
+        button->Setup(*WidgetTree, label, actionBase + static_cast<int32>(action), BODY_FONT_SIZE,
+            ESOLSolidButtonVariant::Small);
         button->OnMenuClicked.BindUObject(this, &USOLDemoPageWidget::HandleActionClicked);
         Buttons.Add(button);
         return button;
@@ -125,7 +128,7 @@ void USOLDemoPageWidget::NativeOnInitialized()
     UHorizontalBox* presets = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(presets)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     USizeBox* presetLabel = DemoSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_PRESETS,
-        BODY_FONT_SIZE, TEXT_COLOR), SETTINGS_LABEL_WIDTH, 0.0f);
+        BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH, 0.0f);
     DemoAddToRow(*presets, presetLabel, false)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_PRESET_LABELS)
         == static_cast<int32>(SOLMenuState::EDemoPreset::Count), "one label per preset");
@@ -157,24 +160,27 @@ void USOLDemoPageWidget::NativeOnInitialized()
         if (bSectionStart && section < UE_ARRAY_COUNT(SOLMenuText::DEMO_SECTION_TITLES))
         {
             Cast<UScrollBoxSlot>(scroll->AddChild(SOLMenuContent::MakeText(*WidgetTree,
-                SOLMenuText::DEMO_SECTION_TITLES[section], SECTION_FONT_SIZE, ACCENT_COLOR, true)))->SetPadding(
-                FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP * 2.0f));
+                SOLMenuText::DEMO_SECTION_TITLES[section], SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(), true)))
+                ->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP * 2.0f));
             bSectionStart = false;
         }
         UHorizontalBox* rowBox = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
         DemoAddToRow(*rowBox, DemoSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree,
-            SOLMenuText::DEMO_ROW_LABELS[row], BODY_FONT_SIZE, TEXT_COLOR), SETTINGS_LABEL_WIDTH, 0.0f), false)
+            SOLMenuText::DEMO_ROW_LABELS[row], BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH,
+            0.0f), false)
             ->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
         const TCHAR* labels[] = { SOLMenuText::SETTINGS_STEP_BACK, SOLMenuText::SETTINGS_STEP_FORWARD };
         for (int32 side = 0; side < UE_ARRAY_COUNT(labels); ++side)
         {
             USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-            button->Setup(*WidgetTree, labels[side], row * DEMO_STEP_BUTTONS_PER_ROW + side, BODY_FONT_SIZE);
+            button->Setup(*WidgetTree, labels[side], row * DEMO_STEP_BUTTONS_PER_ROW + side, BODY_FONT_SIZE,
+                ESOLSolidButtonVariant::Small);
             button->OnMenuClicked.BindUObject(this, &USOLDemoPageWidget::HandleStepClicked);
             Buttons.Add(button);
             if (side == 1)
             {
-                UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE, ACCENT_COLOR);
+                UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE,
+                    SOLSolidStyle::ValueColor());
                 value->SetJustification(ETextJustify::Center);
                 ValueTexts[row] = value;
                 DemoAddToRow(*rowBox, value, true);
@@ -186,7 +192,8 @@ void USOLDemoPageWidget::NativeOnInitialized()
     }
 
     // Warnings, then the footer: Reset, Stop NPCs (in flight only) and Start demo / Apply
-    WarningsText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, WARNING_COLOR, false, true);
+    WarningsText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::WarningColor(),
+        false, true);
     page->AddChildToVerticalBox(WarningsText)->SetPadding(FMargin(0.0f, ROW_GAP * 2.0f, 0.0f, ROW_GAP * 2.0f));
     UHorizontalBox* footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(footer);
@@ -285,9 +292,10 @@ FString USOLDemoPageWidget::GetWarningsText() const
 void USOLDemoPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlight();
+        button->RefreshHighlightAt(frame.NowS, frame.Strength);
     }
 }
 
@@ -323,8 +331,8 @@ void USOLDemoPageWidget::RefreshTexts()
     {
         WarningsText->SetText(FText::FromString(warnings.IsEmpty() ? FString(SOLMenuText::DEMO_NO_WARNINGS)
             : FString::Join(warnings, TEXT(" "))));
-        WarningsText->SetColorAndOpacity(FSlateColor(warnings.IsEmpty() ? SOL::MenuStyle::DIM_TEXT_COLOR
-            : SOL::MenuStyle::WARNING_COLOR));
+        WarningsText->SetColorAndOpacity(FSlateColor(warnings.IsEmpty() ? SOLSolidStyle::TextColor()
+            : SOLSolidStyle::WarningColor()));
     }
 }
 

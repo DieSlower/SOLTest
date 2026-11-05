@@ -1162,19 +1162,20 @@ namespace SOL
         inline constexpr int32 Z_ORDER = 20;                     // Above the HUD canvas and the F3 panel
         inline constexpr const TCHAR* FONT_REGULAR = TEXT("Regular");
         inline constexpr const TCHAR* FONT_BOLD = TEXT("Bold");
+        // Font sizes of the menu font (Rajdhani since SDD 46 section 9, +2 on body text for its narrower face; the
+        // roles' sizes equal SOL::SolidMenu FONT_*_SIZE, checked by the static_asserts after that namespace)
         inline constexpr int32 TITLE_FONT_SIZE = 56;
         inline constexpr int32 SUBTITLE_FONT_SIZE = 18;
-        inline constexpr int32 HEADING_FONT_SIZE = 24;
-        inline constexpr int32 SECTION_FONT_SIZE = 18;
+        inline constexpr int32 HEADING_FONT_SIZE = 26;
+        inline constexpr int32 SECTION_FONT_SIZE = 20;
         inline constexpr int32 BUTTON_FONT_SIZE = 20;
         inline constexpr int32 TAB_FONT_SIZE = 18;
-        inline constexpr int32 BODY_FONT_SIZE = 16;
-        inline constexpr int32 SMALL_FONT_SIZE = 14;
+        inline constexpr int32 BODY_FONT_SIZE = 18;
+        inline constexpr int32 SMALL_FONT_SIZE = 15;
         inline constexpr float SCREEN_MARGIN = 80.0f;            // Main menu column inset from the screen's left edge
         inline constexpr float COLUMN_WIDTH = 340.0f;            // Main menu button column
         inline constexpr float BUTTON_HEIGHT = 52.0f;
         inline constexpr float BUTTON_GAP = 10.0f;
-        inline constexpr float BUTTON_CORNER_RADIUS = 6.0f;
         inline constexpr float PANEL_PADDING = 28.0f;
         inline constexpr float PANEL_GAP = 24.0f;                // Between the main menu column and its page panel
         inline constexpr float PAGE_WIDTH = 760.0f;              // Main menu page panel
@@ -1188,17 +1189,11 @@ namespace SOL
         inline constexpr float LABEL_COLUMN_WIDTH = 400.0f;      // Info page label column
         inline constexpr float LIST_BUTTON_HEIGHT = 38.0f;       // Start-location rows
         inline constexpr float BUTTON_PADDING_X = 18.0f;         // Inside a menu button, around its label
-        inline constexpr float BUTTON_PADDING_Y = 8.0f;
+        inline constexpr float BUTTON_PADDING_Y = 4.0f;         // (SDD 46c: 8 clipped Rajdhani in 34-unit rows)
         inline const FLinearColor SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.45f);        // Behind the pause menu
-        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);
-        inline const FLinearColor BUTTON_NORMAL(0.06f, 0.09f, 0.14f, 0.85f);
-        inline const FLinearColor BUTTON_PRESSED_TINT(1.4f, 1.4f, 1.4f, 1.0f);   // Brightens the tint while pressed
-        inline const FLinearColor BUTTON_FOCUSED(0.16f, 0.3f, 0.5f, 1.0f);    // Keyboard focus (and mouse hover)
-        inline const FLinearColor BUTTON_SELECTED(0.08f, 0.22f, 0.36f, 0.95f); // Active tab, page or start body
-        inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);
-        inline const FLinearColor DIM_TEXT_COLOR(0.55f, 0.62f, 0.72f, 1.0f);
-        inline const FLinearColor ACCENT_COLOR(0.45f, 0.78f, 1.0f, 1.0f);
-        inline const FLinearColor WARNING_COLOR(1.0f, 0.62f, 0.25f, 1.0f);    // Settings: key conflicts, dirty state
+        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);  // Until the 46d / 46g hull panels
+        inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);          // NPC stats overlay (the menus use the
+                                                                                 // SOL::SolidMenu palette)
 
         // Settings page (SDD 8, 8d): row layout
         inline constexpr float SETTINGS_LABEL_WIDTH = 250.0f;     // Left column of a settings row
@@ -1225,7 +1220,33 @@ namespace SOL
         inline constexpr float HOVER_LIFT_PX = 3.0f;              // A hovered button rises this far (render transform)
         inline constexpr float HOVER_RAMP_S = 0.12f;              // Hover look fades in, and out, over this
         inline constexpr float PRESSED_LINGER_S = 0.10f;          // A quick click still shows the pressed hull this long
-        inline constexpr float DISABLED_ALPHA = 0.4f;             // Brush tint alpha of a disabled button
+        inline constexpr float DISABLED_ALPHA = 0.4f;             // Brush tint alpha of a disabled button (continuous dim)
+        inline constexpr float LIFT_EPSILON_PX = 0.01f;           // Lifts closer than this look the same (no re-apply)
+
+        // Brush tint codes (SDD 46 section 8.3, 46c amendment): G is three-level, B the selected mark
+        inline constexpr float TINT_DISABLED_CODE = 0.5f;         // G written for a disabled button (pressed writes 1)
+        inline constexpr float TINT_PRESSED_G_MIN = 0.75f;        // Decode: G at or above this is the pressed hull
+        inline constexpr float TINT_DISABLED_G_MIN = 0.25f;       // ... G from this up to TINT_PRESSED_G_MIN is disabled
+        inline constexpr float TINT_MARK_B_MIN = 0.5f;            // ... B at or above this is the selected mark
+
+        // Palette (SDD 46 section 5.1), sRGB; the three DISABLED_ colours are 46c starting values
+        inline const FColor BASE_COLOR(0x24, 0x28, 0x2C);
+        inline const FColor HULL_COLOR(0x34, 0x3A, 0x40);
+        inline const FColor RAISED_COLOR(0x4A, 0x51, 0x59);
+        inline const FColor RAISED_LIFTED_COLOR(0x58, 0x62, 0x6B);
+        inline const FColor PRESSED_COLOR(0x1C, 0x20, 0x24);
+        inline const FColor EDGE_COLOR(0x8C, 0x96, 0x9F);
+        inline const FColor SHADOW_COLOR(0x12, 0x14, 0x16);
+        inline const FColor LED_OFF_COLOR(0x0B, 0x0D, 0x0F);
+        inline const FColor RIVET_COLOR(0x6A, 0x73, 0x7C);
+        inline const FColor TEXT_COLOR(0xA4, 0xAF, 0xB8);
+        inline const FColor TEXT_BRIGHT_COLOR(0xDC, 0xE3, 0xE8);
+        inline const FColor CYAN_COLOR(0x28, 0xD2, 0xF0);
+        inline const FColor AMBER_COLOR(0xFF, 0xA6, 0x28);
+        inline const FColor WARNING_COLOR(0xE5, 0x53, 0x3D);
+        inline const FColor DISABLED_HULL_COLOR(0x30, 0x32, 0x34);
+        inline const FColor DISABLED_TEXT_COLOR(0x65, 0x69, 0x6C);
+        inline const FColor DISABLED_CUE_COLOR(0x3C, 0x3C, 0x3A);
 
         // Panels, pause and traces (SDD 46 sections 7 and 8.4)
         inline constexpr float PANEL_OPEN_S = 0.25f;              // Panel open: fade and slide in over this
@@ -1250,6 +1271,84 @@ namespace SOL
         inline constexpr float BUTTON_CUT_PX = 10.0f;             // Stack button: top-left cut
         inline constexpr float BUTTON_POINT_PX = 14.0f;           // ... and right point
 
+        // Hull material look (SDD 46 sections 4.3, 5 and 10; 46c starting values). Tools/UI/
+        // create_solid_menu_materials.py reads these as M_SOLSolidHull and style instance defaults (keep both in sync).
+        // Lengths are UMG units; the material turns them into pixels with the DpiScale parameter
+        inline constexpr float TINT_VERTEX_FLOOR = 0.5f;          // Brush tint channels sit in [this, 1] (Slate multiplies
+                                                                  // the material colour by the tint, which the material
+                                                                  // divides out; SOLSolidStyle::PackVertexTint)
+        inline constexpr float GRAIN_TILE_PX = 256.0f;            // One brushed grain tile
+        inline constexpr float GRAIN_AMOUNT = 0.16f;              // Grain contrast on raised hulls (recesses are flat)
+        inline constexpr float BEVEL_PX = 3.0f;                   // Bevel band inside the hull edge
+        inline constexpr float BEVEL_AMOUNT = 0.22f;              // ... its light / shade (inverted on a recess)
+        inline constexpr float LIGHT_DIR_X = -0.6f;               // Bevel light: outward normals facing this way are lit
+        inline constexpr float LIGHT_DIR_Y = -0.8f;               // (top-left, unit length)
+        inline constexpr float EDGE_PX = 1.5f;                    // Edge highlight and accent edge width
+        inline constexpr float EDGE_HIGHLIGHT = 0.55f;            // Edge highlight amount (none on a disabled hull)
+        inline constexpr float GLOW_PX = 6.0f;                    // Hover glow falloff inside the edge, LED halo
+        inline constexpr float GLOW_GAIN = 0.3f;                  // Glow brightness per unit of s x Edge
+        inline constexpr float LED_RADIUS_PX = 3.0f;
+        inline constexpr float LED_CENTRE_X = 10000.0f;           // An LedX this large centres the LED (knob, puck)
+        inline constexpr float UNDERLINE_PX = 2.0f;
+        inline constexpr float SHADOW_PX = 8.0f;                  // Panel drop shadow falloff outside the hull
+        inline constexpr float SHADOW_OPACITY = 0.55f;
+        inline constexpr float PANEL_INSET_PX = 8.0f;             // Panel hull inset in its brush (room for the shadow)
+        inline constexpr float CUE_BAND_PX = 5.0f;                // Disabled cue band above the bottom edge
+        inline constexpr float CUE_PERIOD_PX = 8.0f;              // ... hatch period ((a), T_SOLSolidHazard as the mask)
+        inline constexpr float CUE_MASK_PERIODS_X = 8.0f;         // Stripe periods across the T_SOLSolidHazard tile
+        inline constexpr float CUE_LIP = 0.35f;                   // ... slot lower lip brightness ((b))
+        inline constexpr float DISABLED_CUE_STYLE = 0.0f;         // Disabled cue: 0 hatched stripe (a), 1 dark slotted
+                                                                  // recess (b); open for the user (46c)
+
+        // Style instance geometry (SDD 46 section 5.2; 46c starting values)
+        inline constexpr float BUTTON_LED_X_PX = 16.0f;           // Stack / tab: LED centre from the hull's left edge
+        inline constexpr float BUTTON_UNDERLINE_START_PX = 28.0f; // ... underline from here
+        inline constexpr float BUTTON_UNDERLINE_END_PX = 18.0f;   // ... to this far from the right (past the point)
+        inline constexpr float BUTTON_UNDERLINE_BOTTOM_PX = 5.0f; // ... this far above the bottom edge
+        inline constexpr float SMALL_BUTTON_CUT_PX = 6.0f;        // Small button: top-left cut, no point
+        inline constexpr float SMALL_BUTTON_LED_X_PX = 10.0f;
+        inline constexpr float SMALL_BUTTON_UNDERLINE_START_PX = 18.0f;
+        inline constexpr float SMALL_BUTTON_UNDERLINE_END_PX = 8.0f;
+        inline constexpr float SMALL_BUTTON_UNDERLINE_BOTTOM_PX = 4.0f;
+        inline constexpr float RECESS_CHAMFER_LARGE_PX = 8.0f;    // Recess: top-left and bottom-right
+        inline constexpr float RECESS_CHAMFER_SMALL_PX = 4.0f;    // ... top-right and bottom-left
+        inline constexpr float GROOVE_CHAMFER_PX = 2.0f;          // Slider groove
+        inline constexpr float KNOB_CHAMFER_PX = 5.0f;            // Octagonal slider knob
+        inline constexpr float TOGGLE_CHAMFER_PX = 4.0f;          // Toggle slot
+        inline constexpr float PUCK_CHAMFER_PX = 3.0f;            // Toggle puck
+        inline constexpr float PUCK_TRAVEL_FRACTION = 0.5f;       // The puck is this much narrower than its slot and
+                                                                  // sits right when checked (the tint's mark)
+        inline constexpr float SLIDER_BAR_THICKNESS = 8.0f;       // Style factory sizes
+        inline constexpr float KNOB_WIDTH = 18.0f;
+        inline constexpr float KNOB_HEIGHT = 26.0f;
+        inline constexpr float TOGGLE_WIDTH = 52.0f;
+        inline constexpr float TOGGLE_HEIGHT = 26.0f;
+        inline constexpr float SCROLL_BAR_THICKNESS = 8.0f;
+        inline constexpr float RIVET_SIZE_PX = 10.0f;             // USOLSolidPanel decor (46c starting values): rivets
+        inline constexpr float RIVET_INSET_PX = 16.0f;            // ... this far in from both edges of each corner
+        inline constexpr float VENT_WIDTH_PX = 96.0f;             // ... the top-right vent strip
+        inline constexpr float VENT_HEIGHT_PX = 12.0f;
+        inline constexpr float VENT_INSET_PX = 24.0f;             // ... this far in from the top and right edges
+
+        // Circuit traces (SDD 46 sections 7 and 9; SSOLSolidTraceLayer)
+        inline constexpr float TRACE_CORE_WIDTH_PX = 1.5f;
+        inline constexpr float TRACE_GLOW_WIDTH_PX = 6.0f;
+        inline constexpr float TRACE_GLOW_ALPHA = 0.25f;
+
+        // Font (SDD 46 sections 4.4 and 9): F_SOLMenu typefaces (FONT_REGULAR / FONT_BOLD of SOL::MenuStyle keep their
+        // names), sizes and letter spacing per text role
+        inline constexpr const TCHAR* FONT_MEDIUM = TEXT("Medium");
+        inline constexpr const TCHAR* FONT_SEMIBOLD = TEXT("SemiBold");
+        inline constexpr int32 FONT_TITLE_SIZE = 56;
+        inline constexpr int32 FONT_HEADING_SIZE = 26;
+        inline constexpr int32 FONT_SECTION_SIZE = 20;
+        inline constexpr int32 FONT_BUTTON_SIZE = 20;
+        inline constexpr int32 FONT_BODY_SIZE = 18;
+        inline constexpr int32 FONT_SMALL_SIZE = 15;
+        inline constexpr int32 LETTER_SPACING_TITLE = 400;        // FSlateFontInfo::LetterSpacing (1/1000 em)
+        inline constexpr int32 LETTER_SPACING_STACK = 260;        // Stack and tab labels
+        inline constexpr int32 LETTER_SPACING_SMALL_CAPS = 200;   // Small headings
+
         // Layout (SDD 46 section 9); the existing SOL::MenuStyle sizes stay unless listed here
         inline constexpr float COLUMN_WIDTH = 380.0f;             // Main menu hull column
         inline constexpr float PAGE_WIDTH = 1040.0f;              // Page shell (SDD 46 section 6.1)
@@ -1258,6 +1357,12 @@ namespace SOL
         inline constexpr float PAUSE_PANEL_WIDTH = 420.0f;        // Pause side panel
         inline constexpr float BACK_BUTTON_WIDTH = 160.0f;        // The shell's Back button
     }
+    static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
+        && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE
+        && MenuStyle::SECTION_FONT_SIZE == SolidMenu::FONT_SECTION_SIZE
+        && MenuStyle::BUTTON_FONT_SIZE == SolidMenu::FONT_BUTTON_SIZE
+        && MenuStyle::BODY_FONT_SIZE == SolidMenu::FONT_BODY_SIZE
+        && MenuStyle::SMALL_FONT_SIZE == SolidMenu::FONT_SMALL_SIZE, "menu font sizes are the SDD 46 section 9 roles'");
 
     // Settings (SDD 8, 8d): the USOLSettingsSave slot, its schema version and the slider steps
     namespace Settings
@@ -1372,6 +1477,14 @@ namespace SOL
         // The hologram menu kit and menus: subsystem, cues, the HUD's menu layer, a frame preview at strengths 1, 0
         // and 2, the cursor's strength, then quit (SDD 42 section 12; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_HOLO_MENU = TEXT("SOLSmokeHoloMenu");
+        // In -game: cost captures (ProfileGPU, stat dumpave of the Slate paint) of the main menu and the pause menu, each
+        // with Settings open, at 1920x1080 and 1280x720, logged against the pre-46c baseline, then quit (SDD 46 section
+        // 13; smoke settings slot; the run starts in the main menu)
+        inline constexpr const TCHAR* SMOKE_SOLID_MENU_PROFILE = TEXT("SOLSmokeSolidMenuProfile");
+        // The solid menu kit: assets and fallback, the restyled buttons' hover / focus / selected / disabled looks
+        // against SOLSolidMenu::EvaluateButton, an enabled / disabled comparison board of every control type, strength
+        // 0 and 2, screenshots, then quit (SDD 46 section 14; smoke settings slot; the run starts in the main menu)
+        inline constexpr const TCHAR* SMOKE_SOLID_MENU = TEXT("SOLSmokeSolidMenu");
         inline constexpr const TCHAR* SMOKE_JUMP = TEXT("SOLSmokeJump");        // Scripted pick + jump, then quit
         inline constexpr const TCHAR* SMOKE_LEVEL = TEXT("SOLSmokeLevel");      // Scripted surface-lock (L), then quit
         inline constexpr const TCHAR* COMBAT_DEMO = TEXT("SOLCombatDemo");      // Drops a target and shoots it, repeatedly
@@ -1524,6 +1637,21 @@ namespace SOL
         inline constexpr const TCHAR* SOLID_TEX_VENT = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidVent");
         inline constexpr const TCHAR* SOLID_TEX_HAZARD = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidHazard");
         inline constexpr const TCHAR* SOLID_TEX_NOISE = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidNoise");
+
+        // Hull material style instances (SDD 46 section 10), created by Tools/UI/create_solid_menu_materials.py; in the
+        // order of ESOLSolidStyle (SOLID_STYLE_MATERIALS)
+        inline constexpr const TCHAR* SOLID_MI_PANEL = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidPanel");
+        inline constexpr const TCHAR* SOLID_MI_RECESS = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidRecess");
+        inline constexpr const TCHAR* SOLID_MI_STACK_BUTTON = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidStackButton");
+        inline constexpr const TCHAR* SOLID_MI_TAB = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidTab");
+        inline constexpr const TCHAR* SOLID_MI_SMALL_BUTTON = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidSmallButton");
+        inline constexpr const TCHAR* SOLID_MI_SLIDER_GROOVE = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidSliderGroove");
+        inline constexpr const TCHAR* SOLID_MI_KNOB = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidKnob");
+        inline constexpr const TCHAR* SOLID_MI_TOGGLE_SLOT = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidToggleSlot");
+        inline constexpr const TCHAR* SOLID_MI_PUCK = TEXT("/Game/SOL/UI/Solid/MI_SOLSolidPuck");
+        inline constexpr const TCHAR* SOLID_STYLE_MATERIALS[] = {
+            SOLID_MI_PANEL, SOLID_MI_RECESS, SOLID_MI_STACK_BUTTON, SOLID_MI_TAB, SOLID_MI_SMALL_BUTTON,
+            SOLID_MI_SLIDER_GROOVE, SOLID_MI_KNOB, SOLID_MI_TOGGLE_SLOT, SOLID_MI_PUCK };
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's
@@ -1611,6 +1739,66 @@ namespace SOL
         inline constexpr const TCHAR* COMPOSITE = TEXT("Composite");                 // 1 = grain and scanlines on
         inline constexpr const TCHAR* VIEW_WIDTH = TEXT("ViewWidthPx");              // Canvas size in pixels
         inline constexpr const TCHAR* VIEW_HEIGHT = TEXT("ViewHeightPx");
+    }
+
+    // Parameter names of SOLID_HULL_MATERIAL and its style instances (SDD 46 sections 4.3 and 10; Tools/UI/
+    // create_solid_menu_materials.py creates them with these names). Lengths are UMG units (x DpiScale = pixels)
+    namespace SolidMenuMaterialParams
+    {
+        // Pushed by USOLSolidMenuSubsystem, only when they change
+        inline constexpr const TCHAR* EFFECTS_STRENGTH = TEXT("EffectsStrength");   // Sanitized HudEffectsStrength (Q1)
+        inline constexpr const TCHAR* DPI_SCALE = TEXT("DpiScale");                 // UMG units -> physical pixels
+
+        // Hull shape (FSOLSolidHull; clamped in the material as SOLSolidMenu::ClampHull)
+        inline constexpr const TCHAR* CHAMFER_TL = TEXT("ChamferTL");
+        inline constexpr const TCHAR* CHAMFER_TR = TEXT("ChamferTR");
+        inline constexpr const TCHAR* CHAMFER_BR = TEXT("ChamferBR");
+        inline constexpr const TCHAR* CHAMFER_BL = TEXT("ChamferBL");
+        inline constexpr const TCHAR* TITLE_STEP_WIDTH = TEXT("TitleStepWidth");
+        inline constexpr const TCHAR* TITLE_STEP_HEIGHT = TEXT("TitleStepHeight");
+        inline constexpr const TCHAR* NOTCH_Y = TEXT("NotchY");                     // < 0: no notches
+        inline constexpr const TCHAR* NOTCH_DEPTH = TEXT("NotchDepth");
+        inline constexpr const TCHAR* NOTCH_HEIGHT = TEXT("NotchHeight");
+        inline constexpr const TCHAR* CHIN_WIDTH = TEXT("ChinWidth");
+        inline constexpr const TCHAR* CHIN_HEIGHT = TEXT("ChinHeight");
+        inline constexpr const TCHAR* RECESS = TEXT("Recess");                      // 1: sunken recess, flat fill
+        inline constexpr const TCHAR* INSET = TEXT("InsetPx");                      // Hull inset in the brush rect
+        inline constexpr const TCHAR* MARK_SHIFT = TEXT("MarkShift");               // Puck: narrower by this fraction,
+                                                                                    // right when the mark is set
+
+        // Look
+        inline constexpr const TCHAR* SHADOW_PX = TEXT("ShadowPx");
+        inline constexpr const TCHAR* SHADOW_OPACITY = TEXT("ShadowOpacity");
+        inline constexpr const TCHAR* GRAIN_AMOUNT = TEXT("GrainAmount");
+        inline constexpr const TCHAR* GRAIN_TILE = TEXT("GrainTilePx");
+        inline constexpr const TCHAR* BEVEL_PX = TEXT("BevelPx");
+        inline constexpr const TCHAR* BEVEL_AMOUNT = TEXT("BevelAmount");
+        inline constexpr const TCHAR* EDGE_PX = TEXT("EdgePx");
+        inline constexpr const TCHAR* EDGE_HIGHLIGHT = TEXT("EdgeHighlight");
+        inline constexpr const TCHAR* GLOW_PX = TEXT("GlowPx");
+        inline constexpr const TCHAR* LED_X = TEXT("LedX");                         // < 0: no LED
+        inline constexpr const TCHAR* LED_RADIUS = TEXT("LedRadius");
+        inline constexpr const TCHAR* UNDERLINE_START = TEXT("UnderlineStart");
+        inline constexpr const TCHAR* UNDERLINE_END = TEXT("UnderlineEnd");         // From the right edge
+        inline constexpr const TCHAR* UNDERLINE_BOTTOM = TEXT("UnderlineBottom");   // < 0: no underline
+        inline constexpr const TCHAR* UNDERLINE_PX = TEXT("UnderlinePx");
+        inline constexpr const TCHAR* DISABLED_CUE_STYLE = TEXT("DisabledCueStyle"); // 0 hatch (a), 1 slot (b)
+        inline constexpr const TCHAR* CUE_BAND_PX = TEXT("CueBandPx");
+        inline constexpr const TCHAR* CUE_PERIOD_PX = TEXT("CuePeriodPx");
+
+        // Colours (linear) and textures
+        inline constexpr const TCHAR* BASE_COLOR = TEXT("BaseColor");               // Rest hull / recess fill
+        inline constexpr const TCHAR* LIFTED_COLOR = TEXT("LiftedColor");           // ... with the hover amount
+        inline constexpr const TCHAR* PRESSED_COLOR = TEXT("PressedColor");
+        inline constexpr const TCHAR* DISABLED_COLOR = TEXT("DisabledColor");
+        inline constexpr const TCHAR* EDGE_COLOR = TEXT("EdgeColor");
+        inline constexpr const TCHAR* SHADOW_COLOR = TEXT("ShadowColor");
+        inline constexpr const TCHAR* LED_OFF_COLOR = TEXT("LedOffColor");
+        inline constexpr const TCHAR* ACCENT_COLOR = TEXT("AccentColor");           // Amber hover
+        inline constexpr const TCHAR* MARK_COLOR = TEXT("MarkColor");               // Cyan selected mark
+        inline constexpr const TCHAR* CUE_COLOR = TEXT("CueColor");                 // Disabled hatch
+        inline constexpr const TCHAR* GRAIN_TEXTURE = TEXT("GrainTexture");
+        inline constexpr const TCHAR* CUE_MASK = TEXT("CueMask");
     }
 
     // Parameter names of BODY_MATERIAL (created by Tools/CreateSOLContent.py; keep both in sync)

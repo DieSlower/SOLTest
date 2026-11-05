@@ -63,6 +63,12 @@ public:
     // Returns the Demo page
     USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
 
+    // Returns how many entry buttons the column has
+    int32 GetEntryButtonCount() const { return EntryButtons.Num(); }
+
+    // Returns the column's entry button at an index (Play first), or null (verification)
+    USOLMenuButton* GetEntryButton(int32 index) const;
+
 protected:
 
     // Builds the widget tree (no widget blueprint) and makes the menu focusable

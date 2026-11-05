@@ -12,6 +12,8 @@
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
 #include "Universe/SOLSimClock.h"
@@ -38,14 +40,16 @@ namespace
     void MenuContentAddSection(UWidgetTree& tree, UPanelWidget& box, const FString& heading)
     {
         using namespace SOL::MenuStyle;
-        UTextBlock* text = SOLMenuContent::MakeText(tree, heading, SECTION_FONT_SIZE, ACCENT_COLOR, true);
+        UTextBlock* text = SOLMenuContent::MakeText(tree, heading, SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(),
+            true);
         if (UVerticalBox* vertical = Cast<UVerticalBox>(&box))
         {
             vertical->AddChildToVerticalBox(text)->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP));
         }
         else if (UScrollBox* scroll = Cast<UScrollBox>(&box))
         {
-            Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP));
+            Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f,
+                ROW_GAP));
         }
     }
 
@@ -66,7 +70,7 @@ namespace
         }
         row->AddChildToHorizontalBox(leftBox)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
         UHorizontalBoxSlot* rightSlot = row->AddChildToHorizontalBox(SOLMenuContent::MakeText(tree, right,
-            BODY_FONT_SIZE, TEXT_COLOR, false, true));
+            BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true));
         rightSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         return row;
     }
@@ -100,9 +104,10 @@ namespace
 UTextBlock* SOLMenuContent::MakeText(UWidgetTree& tree, const FString& text, const int32 fontSize,
     const FLinearColor& color, const bool bBold, const bool bWrap)
 {
-    using namespace SOL::MenuStyle;
+    // The solid menu font F_SOLMenu (Rajdhani; the engine font when it is missing): Bold or Medium
     UTextBlock* block = tree.ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
-    block->SetFont(FCoreStyle::GetDefaultFontStyle(bBold ? FONT_BOLD : FONT_REGULAR, fontSize));
+    block->SetFont(SOLSolidStyle::MenuFont(USOLSolidMenuSubsystem::Get(&tree), bBold ? ESOLMenuFontWeight::Bold
+        : ESOLMenuFontWeight::Medium, fontSize));
     block->SetColorAndOpacity(FSlateColor(color));
     block->SetText(FText::FromString(text));
     block->SetAutoWrapText(bWrap);
@@ -115,8 +120,8 @@ UVerticalBox* SOLMenuContent::MakePage(UWidgetTree& tree, const TCHAR* title)
 {
     using namespace SOL::MenuStyle;
     UVerticalBox* page = tree.ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-    page->AddChildToVerticalBox(MakeText(tree, title, HEADING_FONT_SIZE, TEXT_COLOR, true))->SetPadding(
-        FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
+    page->AddChildToVerticalBox(MakeText(tree, title, HEADING_FONT_SIZE, SOLSolidStyle::BrightTextColor(), true))
+        ->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     return page;
 }
 
@@ -215,7 +220,7 @@ UWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree, TArray<TObjectPtr<
         }
         UTextBlock* keyCell = nullptr;
         MenuContentAddRow(*scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings, defaultKeys),
-            FormatControlAction(row.Action), KEY_COLUMN_WIDTH, ACCENT_COLOR, &keyCell));
+            FormatControlAction(row.Action), KEY_COLUMN_WIDTH, SOLSolidStyle::ValueColor(), &keyCell));
         outKeyCells.Add(keyCell);
     }
     return page;
@@ -255,8 +260,8 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
     const auto addLine = [&tree, scroll](const FString& label, const FString& value)
     {
         UTextBlock* labelText = nullptr;
-        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH, DIM_TEXT_COLOR,
-            &labelText));
+        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH,
+            SOLSolidStyle::TextColor(), &labelText));
         return labelText;
     };
     addLine(INFO_SPEED_CAP_RANGE, FString::Format(INFO_RANGE_FORMAT, { SOLInfoText::FormatSpeed(SOL::MIN_SPEED_CAP_MPS),
@@ -316,7 +321,7 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
     MenuContentAddSection(tree, *scroll, INFO_HOW_IT_WORKS);
     for (const FString& paragraph : SOLInfoText::BuildProse(defaultKeys))
     {
-        UTextBlock* text = MakeText(tree, paragraph, BODY_FONT_SIZE, TEXT_COLOR, false, true);
+        UTextBlock* text = MakeText(tree, paragraph, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true);
         Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
         outKeyTexts.Add(text);
     }
@@ -349,16 +354,21 @@ UWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
     using namespace SOLMenuText;
     UVerticalBox* page = MakePage(tree, ABOUT_TITLE);
     const FMargin gap(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f);
-    page->AddChildToVerticalBox(MakeText(tree, GAME_TITLE, TITLE_FONT_SIZE, TEXT_COLOR, true));
-    page->AddChildToVerticalBox(MakeText(tree, STUDIO_NAME, SUBTITLE_FONT_SIZE, ACCENT_COLOR, true))->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_DESCRIPTION, BODY_FONT_SIZE, TEXT_COLOR, false, true))
+    page->AddChildToVerticalBox(MakeText(tree, GAME_TITLE, TITLE_FONT_SIZE, SOLSolidStyle::BrightTextColor(), true));
+    page->AddChildToVerticalBox(MakeText(tree, STUDIO_NAME, SUBTITLE_FONT_SIZE, SOLSolidStyle::ValueColor(), true))
+        ->SetPadding(gap);
+    page->AddChildToVerticalBox(MakeText(tree, ABOUT_DESCRIPTION, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+        true))
         ->SetPadding(gap);
     page->AddChildToVerticalBox(MakeText(tree, FString::Format(ABOUT_ENGINE_FORMAT,
-        { FEngineVersion::Current().ToString(EVersionComponent::Patch) }), BODY_FONT_SIZE, TEXT_COLOR))->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS_TITLE, SECTION_FONT_SIZE, ACCENT_COLOR, true));
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, TEXT_COLOR, false, true))
+        { FEngineVersion::Current().ToString(EVersionComponent::Patch) }), BODY_FONT_SIZE, SOLSolidStyle::TextColor()))
         ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, DIM_TEXT_COLOR, false, true));
+    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS_TITLE, SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(),
+        true));
+    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true))
+        ->SetPadding(gap);
+    page->AddChildToVerticalBox(MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+        true));
     return page;
 }
 

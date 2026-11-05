@@ -80,29 +80,33 @@ namespace SOLSolidMenu
     // PRESSED_LINGER_S after the press, the ramp to the new state starting when the linger ends (so for a press longer
     // than the linger the caller passes now - max(releaseS - PRESSED_LINGER_S, pressS)); Selected is the mark with no
     // lift or amber; Disabled is all 0 and bDisabled
+    // (46c amendment) bSelected is orthogonal to the state: with Normal, Hovered or Pressed it adds bSelectedMark and
+    // changes nothing else, State Selected is Normal plus the mark (always), Disabled ignores bSelected
     SOLTEST_API FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous,
-        double sinceChangeS, float s);
+        double sinceChangeS, float s, bool bSelected = false);
 
     // The same ramp from the look the button showed at the change (atChange's amounts, clamped to [0, 1]), so a hover
     // that reverses mid-ramp continues from where it was instead of popping; no press linger (the caller keeps the
-    // state Pressed until PRESSED_LINGER_S after the press, then changes it at the release or the linger's end)
+    // state Pressed until PRESSED_LINGER_S after the press, then changes it at the release or the linger's end); the
+    // bSelected rule is EvaluateButton's
     SOLTEST_API FSOLSolidButtonLook EvaluateButtonFrom(ESOLSolidButtonState state, const FSOLSolidButtonLook& atChange,
-        double sinceChangeS, float s);
+        double sinceChangeS, float s, bool bSelected = false);
 
     // The render-transform lift: -HOVER_LIFT_PX x Lift (up is negative Y)
     SOLTEST_API float LiftOffset(const FSOLSolidButtonLook& look);
 
     // --- Tint encoding (section 8.3) ---
 
-    // The brush tint carrying a look: R Edge (also the LED and underline), G pressed hull, B selected mark, A 1 or
-    // DISABLED_ALPHA; every channel quantized to 8 bits as the vertex colour is
+    // The brush tint carrying a look: R Edge (also the LED and underline), G a three-level code (0 normal,
+    // TINT_DISABLED_CODE disabled, 1 pressed hull), B selected mark, A 1 or DISABLED_ALPHA (a continuous dim only);
+    // every channel quantized to 8 bits as the vertex colour is
     SOLTEST_API FLinearColor EncodeButtonTint(const FSOLSolidButtonLook& look);
 
-    // The inverse the material implements: Edge, Led and Underline from R, the flags from G, B and A (Lift, Trace and
-    // Glow are not carried and read 0). Holds only for a white brush tint at full inherited colour and opacity: Slate
-    // multiplies the tint by the widget's inherited colour and opacity, so a fading panel must fade by render opacity
-    // and the material should use A as a continuous dim factor, not a threshold. Slate also sends RGB as sRGB 8-bit, so
-    // the material must not threshold R on the linear k / 255 grid
+    // The inverse the material implements: Edge, Led and Underline from R, the flags from G (pressed at or above
+    // TINT_PRESSED_G_MIN, disabled from TINT_DISABLED_G_MIN up to it) and B (mark at or above TINT_MARK_B_MIN); A is
+    // ignored (Lift, Trace and Glow are not carried and read 0). Slate multiplies the tint's alpha by the widget's
+    // inherited opacity in fades, so A decides no flag and the material uses it only as a continuous dim factor. Slate
+    // also sends RGB as sRGB 8-bit, so the material must not threshold R on the linear k / 255 grid
     SOLTEST_API FSOLSolidButtonLook DecodeButtonTint(const FLinearColor& tint);
 
     // --- Panels, traces, pause (section 8.4) ---

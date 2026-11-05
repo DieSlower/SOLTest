@@ -12,6 +12,8 @@
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -34,10 +36,10 @@ namespace
     //////////////////////////////////////////////////////////////////////////
     // Creates a menu button in the tree with a fixed height
     USOLMenuButton* PauseMenuMakeButton(UWidgetTree& tree, const TCHAR* label, const int32 index, const int32 fontSize,
-        USizeBox*& outBox, const float height)
+        USizeBox*& outBox, const float height, const ESOLSolidButtonVariant variant)
     {
         USOLMenuButton* button = tree.ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(tree, label, index, fontSize);
+        button->Setup(tree, label, index, fontSize, variant);
         outBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
         outBox->SetHeightOverride(height);
         outBox->SetContent(button);
@@ -71,7 +73,7 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     UVerticalBox* column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
     panel->SetContent(column);
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_TITLE, HEADING_FONT_SIZE,
-        ACCENT_COLOR, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        SOLSolidStyle::BrightTextColor(), true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
 
     // Tab bar: equal-width buttons
     UHorizontalBox* tabBar = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -83,7 +85,8 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     for (int32 tab = 0; tab < PAUSE_TAB_COUNT; ++tab)
     {
         USizeBox* box = nullptr;
-        USOLMenuButton* button = PauseMenuMakeButton(*WidgetTree, tabLabels[tab], tab, TAB_FONT_SIZE, box, TAB_HEIGHT);
+        USOLMenuButton* button = PauseMenuMakeButton(*WidgetTree, tabLabels[tab], tab, TAB_FONT_SIZE, box, TAB_HEIGHT,
+            ESOLSolidButtonVariant::Tab);
         button->OnMenuClicked.BindUObject(this, &USOLPauseMenuWidget::HandleTabClicked);
         UHorizontalBoxSlot* tabSlot = tabBar->AddChildToHorizontalBox(box);
         tabSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -96,9 +99,9 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     column->AddChildToVerticalBox(PageSwitcher)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     UVerticalBox* resumePage = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::RESUME);
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_BODY, BODY_FONT_SIZE,
-        TEXT_COLOR, false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_HINT, SMALL_FONT_SIZE,
-        DIM_TEXT_COLOR, false, true));
+        SOLSolidStyle::TextColor(), false, true));
     PageSwitcher->AddChild(resumePage);
     PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
     PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree, InfoKeyTexts));
@@ -117,7 +120,7 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     {
         USizeBox* box = nullptr;
         USOLMenuButton* button = PauseMenuMakeButton(*WidgetTree, quitLabels[choice], choice, BUTTON_FONT_SIZE, box,
-            BUTTON_HEIGHT);
+            BUTTON_HEIGHT, ESOLSolidButtonVariant::Stack);
         box->SetWidthOverride(COLUMN_WIDTH);
         button->OnMenuClicked.BindUObject(this, &USOLPauseMenuWidget::HandleQuitClicked);
         UVerticalBoxSlot* quitSlot = quitPage->AddChildToVerticalBox(box);
@@ -204,13 +207,14 @@ void USOLPauseMenuWidget::FocusDefault()
 void USOLPauseMenuWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : TabButtons)
     {
-        button->RefreshHighlight();
+        button->RefreshHighlightAt(frame.NowS, frame.Strength);
     }
     for (USOLMenuButton* button : QuitButtons)
     {
-        button->RefreshHighlight();
+        button->RefreshHighlightAt(frame.NowS, frame.Strength);
     }
 }
 

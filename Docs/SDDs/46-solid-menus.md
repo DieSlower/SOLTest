@@ -142,6 +142,44 @@ per-screen changes are in section 6.
   SDD 42 section 4.4) and fed as a scalar only to the panel MIDs and the trace layer, so a paused or warped world never
   stops it and the shared button MIDs never change per frame. Strength goes into every MID only when it changes.
 
+**46c amendment: the size path (verified in the UE 5.8 engine).**
+
+- `GetUserInterfaceUV` (`Engine/Content/Functions/UserInterface/GetUserInterfaceUV.uasset`) has the outputs **Normalized
+  UV** ("a 0-1 UV set that spans the entire element"), **Pixel Size** ("the screen space size of the element being
+  drawn"), **9-Slice UV**, **9-Slice UV (No Tiling)** and **Tiling**, all built from TextureCoordinate expressions.
+  Pixel Size is UV channel 3: `SlateVertexShader.usf` passes the vertex's `PixelSize` (`ATTRIBUTE5`) as
+  `InstanceParam.zw` = channel 3, and `FSlateVertex::Make(..., LocalSize, Scale, ...)` (`RenderingCommon.h`), which
+  `FSlateElementBatcher::AddBoxElements` uses for every box and image brush, sets it to `round(LocalSize x DrawScale)`
+  as `uint16`. `DrawScale` is the element's accumulated layout scale, so it **includes the DPI scale** (physical
+  pixels) and **excludes render transforms** (the hover lift and the panel slide do not change it). The same `Make`
+  sets channel 4 (`MaterialTexCoords`) to `LocalPosition / LocalSize`, an exact 0-1 UV even with brush margins.
+- **Verdict: the Pixel Size path.** `M_SOLSolidHull` reads TexCoord 4 (normalized UV) and TexCoord 3 (size in physical
+  pixels), so a shared material serves any button width and the MID-size fallback is not needed. The hull lengths are
+  UMG units; the material turns them into pixels with the `DpiScale` scalar that `USOLSolidMenuSubsystem` pushes (with
+  the strength) only when the game viewport's UMG DPI scale changes. Caveat: an element under an extra layout scale (a
+  scale box) would get its features scaled by the viewport DPI scale, not its own; the solid menus have none.
+- **Slate multiplies a material brush's colour by its tint.** For box and image draws (`ST_Default`),
+  `SlateElementPixelShader.usf` `GetColor` returns `MaterialColor x VertexColor` (only custom-vertex draws skip it), so
+  the section 8.3 encoding as written (a normal look is R = G = B = 0) would draw the hull black. Fix (no change to
+  `EncodeButtonTint` / `DecodeButtonTint`): a hull brush carries `SOLSolidStyle::PackVertexTint(EncodeButtonTint(look))`
+  (`SOLSolidStyle::BrushTint`), which maps R, G and B into [`TINT_VERTEX_FLOOR` 0.5, 1] (A unchanged); the material
+  unpacks (`UnpackVertexTint`) before it decodes, and divides its output colour by the vertex tint so Slate's multiply
+  cancels exactly. A stays the continuous dim and fade that Slate applies itself. The packing also widens the decode
+  margins (a disabled G arrives at 0.75, a pressed G at 1). A white tint reads as pressed, selected and lit, so no
+  hull brush is ever left white.
+- **Slate's disabled effect on a material brush** only multiplies its alpha by 0.45 (`USE_LEGACY_DISABLED_EFFECT` 0);
+  the RGB codes survive. It still stacks on the tint's `DISABLED_ALPHA`, so solid buttons do not use
+  `SetIsEnabled(false)` (section 5.3.1); a disabled slider or toggle (Slate-disabled) gets disabled brushes at alpha 1.
+- **Cost.** One Custom node: the hull clamp of section 8.1 runs per pixel (a shared material cannot pre-clamp for one
+  width), then the SDF and the shading, roughly 100-150 ALU (an estimate: Slate shaders have no representative
+  instruction count in the material statistics; measured in the 46h profile against the Q17 budget), one texture
+  sample (grain) on raised hulls, none on recesses, and a second (the hatch) only on a disabled hull. That is above
+  section 13's "a few dozen ALU"; the 46h profile decides whether the clamp moves to the CPU for the unique panels.
+- **No pulse in the hull material:** the idle pulse only drives the trace layer, so no hull MID changes per frame; the
+  unique panel MIDs exist only for their shape (step, chin, notches), written once per `SetHull`. Rivets and the vent
+  strip are texture brushes in `USOLSolidPanel` (not in the material), keeping it at two samples; the hazard stripe
+  comes with the main menu in 46d.
+
 ### 4.4 Fonts (D4)
 
 Rajdhani (Indian Type Foundry, SIL OFL 1.1, Google Fonts), weights Regular, Medium, SemiBold and Bold (proposed). The
@@ -168,6 +206,71 @@ the widget's tick after the input is already back; a reopen during the close rev
 from the main menu is unchanged: the world swaps pawns and the main menu widget is hidden in the same frame as today (no
 close animation is waited for).
 
+### 4.7 46c amendment: kit implementation notes (steps 3, 3a, 4, 5)
+
+- **The hull material shades in linear space.** The first render showed every hull far too bright: UE 5.8 Slate
+  defines `SOURCE_IN_LINEAR_SPACE 1` in `SlateShaderCommon.ush` only after it includes `Material.ush`, so the
+  material's `#if SOURCE_IN_LINEAR_SPACE` tests were always false and it applied a display gamma twice (to the decoded
+  tint and to its output, which Slate gamma-corrects again). `SlateVertexShader.usf` already turns the sRGB vertex
+  colour linear, so `M_SOLSolidHull` now reads the tint as linear and returns linear colour with no `#if` (the
+  `DisplayGamma` input is gone; `HUD_DISPLAY_GAMMA` is no longer one of its constants). Rebuilt with the script.
+- **Button tint through the background colour.** `SButton` paints the style brush's tint x the inherited colour x
+  its background colour, and the style brushes carry the Normal look (the kit tests pin that), so
+  `USOLMenuButton` sets the background colour to the look's tint *divided by* the style brush's tint
+  (`BrushTint(look) / BrushTint(Normal)`, or the flat colours' ratio without the material); the product the material
+  decodes is exactly `BrushTint(look)`. `GetAppliedTint` returns that product.
+- **Refresh cost.** Each solid screen's tick calls `USOLSolidMenuSubsystem::BeginFrame` once (it runs
+  `UpdateForFrame`, a frame-counter compare after the first caller, and reads `FPlatformTime::Seconds` and the
+  strength once) and hands the frame to `USOLMenuButton::RefreshHighlightAt` on each of its buttons (review fix: no
+  per-button subsystem lookup or clock read). A refresh returns at once when the last one was already settled with the
+  same state, selection and strength; otherwise it advances `FSOLSolidButtonAnim` and writes only what differs on
+  screen (`DiffersOnScreen`: the 8-bit tint codes or the lift) from the look **last written** (review fix: comparing
+  with the last refresh let ramp steps under `LIFT_EPSILON_PX` each add up to a lift that was never written; the
+  release from a press to hover, Edge staying 1, showed it, `SOLTest.SolidMenuKit.Button.LiftFollowsFineRamp`).
+  Disabling ends a running press linger at once.
+- **Disabled buttons leave the focus order (review fix).** `SetSolidDisabled(true)` also makes the button not
+  focusable (`UButton::InitIsFocusable` for a rebuild and the built `SButton`'s focusability, which `SButton` keeps
+  protected, so a file-local accessor reaches it), so Tab navigation skips it as the hit-test grid's directional
+  navigation already did (hit-test invisible); `SetSolidDisabled(false)` restores the focusability it had.
+- **Panel brushes (review fix).** `USOLSolidPanel`'s hull, rivet and vent brushes are `UPROPERTY(Transient)` (the
+  SImages hold them by pointer; the property keeps their material or texture referenced), so the subsystem's
+  `Deinitialize` no longer resets its asset properties early. `SetHull` with another style recreates the unique
+  material from that style's instance.
+- **Textures the kit loads (review fix).** `USOLSolidMenuSubsystem` loads only the textures the kit draws itself,
+  `T_SOLSolidRivet` and `T_SOLSolidVent` (`ESOLSolidTexture`). `M_SOLSolidHull` references `T_SOLSolidBrushed` (grain)
+  and `T_SOLSolidHazard` (the cue mask) as its own texture parameters, so they load with it. `T_SOLSolidNoise` is
+  imported (46b) but nothing samples it (the hull dithers with a hash): its load was removed; the asset and
+  `SOL::Paths::SOLID_TEX_NOISE` stay for the import script until a part uses it or the user drops it.
+- **Dither (review fix).** The hull's dither is now +-0.5 / 255 of the sRGB output (scaled in linear by
+  `2.2 x c^0.545`); the flat +-0.5 / 255 in linear was about +-2 output levels on the dark hull colours.
+- **Font and text colours.** `SOLMenuContent::MakeText` uses F_SOLMenu: bold text the Bold face, other text Medium;
+  button labels SemiBold, stack and tab labels with `LETTER_SPACING_STACK`. The `SOL::MenuStyle` font sizes now equal
+  section 9's roles (heading 26, section 20, body 18, small 15; a `static_assert` ties them to `SOL::SolidMenu`).
+  The old colours map to the solid palette: body text `TEXT_COLOR`, titles and page headings `TEXT_BRIGHT_COLOR`,
+  the old accent (values, keys, section headings, the studio name) `CYAN_COLOR`, warnings `WARNING_COLOR`; the old dim
+  tier (hints, the start-location and Demo help lines, the dirty text at rest) has no palette entry and uses
+  `TEXT_COLOR` (open for the user: a dim text colour could be added). `BUTTON_NORMAL`, `BUTTON_PRESSED_TINT`,
+  `BUTTON_FOCUSED`, `BUTTON_SELECTED`, `BUTTON_CORNER_RADIUS`, `DIM_TEXT_COLOR`, `ACCENT_COLOR` and `WARNING_COLOR` were
+  removed from `SOL::MenuStyle`; `TEXT_COLOR` stays for the NPC stats overlay, `PANEL_BACKGROUND` and `SCREEN_DIM`
+  until the 46d / 46g panels. Settings sliders keep the UMG slider until 46e (bar `RAISED_COLOR`, handle cyan).
+- **Button padding.** `BUTTON_PADDING_Y` 8 -> 4: Rajdhani's taller line clipped the labels of the 34-unit small
+  buttons (steppers, Rebind) at 8.
+- **Variants on today's screens.** Main menu entries and the pause Quit choices: Stack; pause tabs: Tab; start-location
+  rows, Settings steppers / actions / Rebind and every Demo button: Small. Selection uses the orthogonal flag.
+- **Panel decor** (`USOLSolidPanel`, starting values): rivets `RIVET_SIZE_PX` 10 at `RIVET_INSET_PX` 16 tinted
+  `RIVET_COLOR`; the vent strip `VENT_WIDTH_PX` 96 x `VENT_HEIGHT_PX` 12 at `VENT_INSET_PX` 24 tinted `LED_OFF_COLOR`.
+  The hull image has no desired size (the content decides the panel's size).
+- **`-SOLSmokeSolidMenu` (46c scaffold, completed in 46h).** Smoke settings slot, starts in the main menu, 1280x720:
+  assets loaded (no fallback), the entry buttons on the hull material, a mouse-style hover and a Down key (one
+  highlight; the settled look and its tint equal `EvaluateButton` / `BrushTint`), then `USOLSolidMenuSmokeBoard`, a
+  hull panel with a title step (its own MID), rivets, vents and a trace, holding every control type enabled and
+  disabled side by side (stack button, tab, small button, settings row, slider, toggle): selected + hovered,
+  hover-only beside selected-only, strength 0 (the full hover look on the next frame, no glow) and strength 2 (glow 2).
+  The screenshots were looked at: disabled reads clearly different on every type (flat dark hull without grain, no LED,
+  dim label, the hatch band; the disabled toggle keeps its puck on the right with the LED off), a selected + hovered tab
+  shows the amber edge, glow and lift with the cyan LED and underline (the mark takes the LED and the underline),
+  hover-only is all amber, selected-only all cyan.
+
 ## 5. Visual specification
 
 ### 5.1 Palette (`SOL::SolidMenu`, sRGB hex; converted with `FLinearColor::FromSRGBColor`)
@@ -187,6 +290,9 @@ close animation is waited for).
 | Cyan trace | **#28D2F0** (D10) | **Every** cyan of the solid menus (Q13): circuit traces, ring terminals, lit LEDs at rest, slider fill, the selected underline, values and keys |
 | Amber hover / selected | **#FFA628** (D10) | Hover / keyboard-focus only (Q9): edge, LED, underline and trace. The selected state is cyan, not amber |
 | Warning | **#E5533D** (Q14) | Red-orange, so a warning never reads as hover: key conflicts, the dirty indicator, Demo warnings (replaces today's orange `WARNING_COLOR`) |
+| Disabled hull (46c amendment, starting value) | #303234 | A disabled button's hull: near-grey, darker than Raised, distinct from every enabled hull. `DISABLED_HULL_COLOR` |
+| Disabled text (46c amendment, starting value) | #65696C | A disabled label: near-grey, darker than Text, brighter than the disabled hull. `DISABLED_TEXT_COLOR` |
+| Disabled cue (46c amendment, starting value) | #3C3C3A | The disabled hatch / cue: a dull colour that never reads as amber or cyan. `DISABLED_CUE_COLOR` |
 
 Palette values are data in `SOLConstants.h`, never baked into a texture (research: Elite's baked colour lesson); the
 brushed tile is a neutral grey tinted in the material.
@@ -212,8 +318,27 @@ brushed tile is a neutral grey tinted in the material.
 | Normal | Raised hull #4A5159, LED off, label #A4AFB8 |
 | Hover = keyboard focus (one highlight, as today) | Lift 3 UMG units up (render transform, no relayout), hull #58626B, amber accent edge, amber LED lit, amber underline, the circuit trace extends from the button's right end into the panel (amber, only where Q15 allows), label #DCE3E8 (Q12) |
 | Pressed | Hull #1C2024, no lift, edge kept; shown at least `PRESSED_LINGER_S` so a quick click is seen (FreeSpace 2's 100 ms, proposed) |
-| Selected (active tab / page / start body) | Cyan underline + cyan LED, no lift, no amber (Q9) |
-| Disabled | Dimmed hull and label, LED off, no hover look (no button is disabled today; kept for completeness) |
+| Selected (active tab / page / start body) | Cyan underline + cyan LED, no lift, no amber (Q9). **46c amendment:** selected is orthogonal to hover / focus / press: a selected button that is hovered or focused shows the full amber hover look (lift included) plus the cyan underline and LED, a pressed one the pressed hull plus the mark; hover-only is amber, selected-only is cyan |
+| Disabled | **46c amendment (user requirement, 2026-11-04):** must never look like an enabled control. Desaturated steel (`DISABLED_HULL_COLOR` #303234, no brushed grain, no edge highlight, half the bevel), LED off, no trace, no hover / glow response, label `DISABLED_TEXT_COLOR` #65696C, the tint's `DISABLED_ALPHA` dim, and a distinct cue (section 5.3.1). Applies to buttons, tabs, sliders, toggles and rows |
+
+#### 5.3.1 Disabled art (46c amendment)
+
+- **Where.** The disabled look is decoded from the brush tint's G code (`TINT_DISABLED_CODE`) by `M_SOLSolidHull`, so
+  every hull style has it: the button variants, the slider groove and knob, the toggle slot and puck. A disabled hull
+  ignores the hover amount (no lift, edge, LED, underline, glow or trace).
+- **Cue, a material parameter (`DisabledCueStyle`) with two options; the choice is open for the user.** (a) **Hatched
+  stripe** (default, `SOL::SolidMenu::DISABLED_CUE_STYLE` 0): a band `CUE_BAND_PX` tall above the bottom edge, inside
+  the hull, hatched with 45-degree stripes in `DISABLED_CUE_COLOR` #3C3C3A, using `T_SOLSolidHazard` as the mask
+  (one stripe period every `CUE_PERIOD_PX`; no new texture). (b) **Dark slotted recess** (1): the same band as a dark
+  slot (`SHADOW_COLOR`) with a faint lit lower lip (`CUE_LIP`). Both are in the shared material; switching is one
+  constant and a re-run of the material script.
+- **Buttons (`USOLMenuButton::SetSolidDisabled`)** never call `SetIsEnabled(false)` (Slate's disabled effect would
+  multiply the hull and label alpha by 0.45 on top of `DISABLED_ALPHA`): the button turns hit-test invisible, refuses
+  hover focus and swallows clicks, and its owner moves keyboard focus off it.
+- **Sliders and toggles** are disabled with Slate's own `SetIsEnabled(false)` (it blocks input, drag and navigation)
+  and show disabled brushes: `MakeSliderStyle` fills `DisabledBarImage` / `DisabledThumbImage`, and a toggle (whose
+  `FCheckBoxStyle` has no disabled images) gets `MakeCheckBoxStyle(subsystem, true)` from its owner; those brushes
+  keep alpha 1, since Slate's 0.45 is the dim.
 
 The trace extension (D11) applies only on the main menu stack, the pause side panel stack and the shell's tab column (Q15). The settings rows (steppers, sliders, toggles, Rebind) get an amber edge and underline only, no trace; every button gets the lift, edge, LED and
 underline.
@@ -255,7 +380,9 @@ value column; the main menu's column + gap + shell then spans about 1540 of 1920
 | **Strength 2** | Glow halo and pulse depth doubled; durations unchanged |
 
 Nothing animates while idle except the pulse, which is a few float ops per tick for the visible panels plus their trace
-layers' repaint; with `s = 0` the menus are static (no per-frame trace repaint).
+layers' repaint; with `s = 0` the menus are static (no pulse, so nothing invalidates). (46c amendment: Slate still
+repaints the trace layers every frame at any strength, as it does every widget, since the menus are not under an
+invalidation panel; the layer's paint-only invalidation saves work only where it is cached. See section 13.)
 
 ## 8. Pure logic contracts (`Menu/SOLSolidMenuMath`, test-first)
 
@@ -310,16 +437,24 @@ struct FSOLSolidButtonLook { float Lift; float Edge; float Led; float Underline;
 
 | Function | Contract |
 |---|---|
-| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s)` | Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = s * Edge` with `s` sanitized to [0, 2], so 0 at `s = 0` and **doubled at `s = 2`** (section 7, Q2; 46a amendment: was `GlowScale(s) * Edge`, which caps at 1 and so contradicted section 7). Pressed: `bPressedHull`, `Lift` 0, `Edge` (and `Led`, `Underline`, `Trace`) 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time; the ramp to the new state starts when the linger ends). Selected: `bSelectedMark` (cyan, Q9), no lift. Disabled: everything 0 and `bDisabled` (46a amendment: the flag is what lets `EncodeButtonTint` give a disabled look its `DISABLED_ALPHA`, since its amounts equal a Normal look's). NaN or negative `sinceChangeS` reads 0. Values always in [0, 1], `Glow` in [0, 2] |
-| `FSOLSolidButtonLook EvaluateButtonFrom(ESOLSolidButtonState state, const FSOLSolidButtonLook& atChange, double sinceChangeS, float s)` | 46a review addition: the same ramp, but from the look the button showed at the change (its amounts clamped to [0, 1]), so a hover that reverses mid-ramp continues instead of popping (the state form ramps from the previous state's *settled* look). No press linger: the caller keeps the state Pressed until `PRESSED_LINGER_S` after the press, then changes it at the release or the linger's end, which also makes the ramp after a long press start at the release. 46c's `USOLMenuButton` should use this form. With the state form, a caller leaving a long press passes `now - max(releaseS - PRESSED_LINGER_S, pressS)` |
+| `FSOLSolidButtonLook EvaluateButton(ESOLSolidButtonState state, ESOLSolidButtonState previous, double sinceChangeS, float s, bool bSelected = false)` | **46c amendment:** `bSelected` is orthogonal to the state. With Normal, Hovered or Pressed it sets `bSelectedMark` and changes nothing else (the full amber hover look incl. lift, plus the cyan mark). State Selected is Normal plus the mark (the mark is always on, whatever `bSelected`). Disabled ignores `bSelected` (all 0, no mark, `bDisabled`). During the press linger the mark follows `bSelected` or state Selected. Hovered: `Lift`, `Edge`, `Led`, `Underline` and `Trace` rise linearly from the previous state's value to 1 over `HOVER_RAMP_S` (instant at `s = 0`); leaving Hovered falls over the same time. `Glow = s * Edge` with `s` sanitized to [0, 2], so 0 at `s = 0` and **doubled at `s = 2`** (section 7, Q2; 46a amendment: was `GlowScale(s) * Edge`, which caps at 1 and so contradicted section 7). Pressed: `bPressedHull`, `Lift` 0, `Edge` (and `Led`, `Underline`, `Trace`) 1, and a Pressed that ends before `PRESSED_LINGER_S` still reports Pressed until then (the caller passes the press time; the ramp to the new state starts when the linger ends). Selected: `bSelectedMark` (cyan, Q9), no lift. Disabled: everything 0 and `bDisabled` (46a amendment: the flag is what lets `EncodeButtonTint` give a disabled look its `DISABLED_ALPHA`, since its amounts equal a Normal look's). NaN or negative `sinceChangeS` reads 0. Values always in [0, 1], `Glow` in [0, 2] |
+| `FSOLSolidButtonLook EvaluateButtonFrom(ESOLSolidButtonState state, const FSOLSolidButtonLook& atChange, double sinceChangeS, float s, bool bSelected = false)` | 46c amendment: the same `bSelected` rule as `EvaluateButton`. 46a review addition: the same ramp, but from the look the button showed at the change (its amounts clamped to [0, 1]), so a hover that reverses mid-ramp continues instead of popping (the state form ramps from the previous state's *settled* look). No press linger: the caller keeps the state Pressed until `PRESSED_LINGER_S` after the press, then changes it at the release or the linger's end, which also makes the ramp after a long press start at the release. 46c's `USOLMenuButton` should use this form. With the state form, a caller leaving a long press passes `now - max(releaseS - PRESSED_LINGER_S, pressS)` |
 | `float LiftOffset(const FSOLSolidButtonLook& look)` | `-HOVER_LIFT_PX * look.Lift` (UMG units, up is negative Y) |
 
 ### 8.3 Tint encoding (no MID per button)
 
 | Function | Contract |
 |---|---|
-| `FLinearColor EncodeButtonTint(const FSOLSolidButtonLook& look)` | R = `Edge` (also the LED and underline amount, they move together), G = `bPressedHull ? 1 : 0`, B = `bSelectedMark ? 1 : 0`, A = 1 for enabled, `DISABLED_ALPHA` for `bDisabled`. Quantized to 8 bits as the vertex colour is |
-| `FSOLSolidButtonLook DecodeButtonTint(const FLinearColor& tint)` | The inverse the material implements: round trip within 1/255 for every field the tint carries (`Edge`, `Led` = `Underline` = `Edge`; G, B on at 0.5 or more; `bDisabled` when A is below the midpoint of 1 and `DISABLED_ALPHA`); `Lift`, `Trace` and `Glow` are not carried and read 0 |
+| `FLinearColor EncodeButtonTint(const FSOLSolidButtonLook& look)` | R = `Edge` (also the LED and underline amount, they move together), G = a three-level code (46c amendment): 0 normal, `TINT_DISABLED_CODE` 0.5 disabled, 1 pressed hull (pressed wins), B = `bSelectedMark ? 1 : 0`, A = 1 for enabled, `DISABLED_ALPHA` for `bDisabled` (a continuous dim only). Quantized to 8 bits as the vertex colour is |
+| `FSOLSolidButtonLook DecodeButtonTint(const FLinearColor& tint)` | The inverse the material implements: round trip within 1/255 for every field the tint carries (`Edge`, `Led` = `Underline` = `Edge`; 46c amendment: pressed hull when G >= `TINT_PRESSED_G_MIN` 0.75, disabled when `TINT_DISABLED_G_MIN` 0.25 <= G < 0.75, mark when B >= `TINT_MARK_B_MIN` 0.5; A is ignored); `Lift`, `Trace` and `Glow` are not carried and read 0 |
+
+**46c amendment (why G is three-level).** Slate fades multiply the tint's alpha by the inherited opacity, so an alpha
+threshold would read a fading panel as disabled. The disabled flag therefore moves to G (the 0.5 code, decoded with
+wide bands that survive 8-bit and sRGB rounding), and A stays only as the continuous dim factor.
+
+**46c amendment (vertex packing).** The encoded tint above is the logical code; the brush carries it packed into
+[`TINT_VERTEX_FLOOR`, 1] (`SOLSolidStyle::PackVertexTint`, `BrushTint`) because Slate multiplies the material colour by
+the tint (section 4.3 amendment); the material unpacks, then applies `DecodeButtonTint`'s thresholds.
 
 **46a review notes for 46c (tint).** Slate multiplies the brush tint by the widget's inherited colour and opacity
 (`SButton` paints tint x `GetColorAndOpacityTint()` x background colour), so the encoding holds only for a white brush
@@ -406,6 +541,33 @@ constants); the layout sizes stay where still used.
   stack button, tab, small button, slider groove, knob, toggle slot, puck), defaults read from `SOLConstants.h`.
 - `Docs/Art/menu-style/README.md` gets a section listing the sources, the tool settings and how to regenerate.
 
+### 10.1 46c amendment: `M_SOLSolidHull` parameters and instances
+
+Built by `Tools/UI/create_solid_menu_materials.py` (headless; an MD5 tag of each asset's full spec makes an unchanged
+run write no `.uasset`; a changed spec rebuilds in place; `-SOLRebuild` forces it; `-AllowCommandletRendering` gives the
+commandlet the D3D12 RHI so the HLSL is really compiled, checked 2026-11-04: no errors, 3 samplers, 10 UV scalars).
+Names are `SOL::SolidMenuMaterialParams`, defaults `SOL::SolidMenu`, paths `SOL::Paths` (`SOLID_HULL_MATERIAL`,
+`SOLID_MI_*`, `SOLID_STYLE_MATERIALS` in `ESOLSolidStyle` order). Lengths are UMG units.
+
+| Group | Parameters |
+|---|---|
+| Pushed by the subsystem (on change only) | `EffectsStrength` (sanitized `HudEffectsStrength`), `DpiScale` |
+| Shape (`FSOLSolidHull`, clamped in the material as `ClampHull`) | `ChamferTL`, `ChamferTR`, `ChamferBR`, `ChamferBL`, `TitleStepWidth`, `TitleStepHeight`, `NotchY` (< 0 none), `NotchDepth`, `NotchHeight`, `ChinWidth`, `ChinHeight`, `Recess` (1 sunken), `InsetPx` (room for the shadow), `MarkShift` (puck: narrower by this fraction, right when the mark is set) |
+| Look | `ShadowPx`, `ShadowOpacity`, `GrainAmount`, `GrainTilePx`, `BevelPx`, `BevelAmount`, `EdgePx`, `EdgeHighlight`, `GlowPx`, `LedX` (< 0 none, large = centred), `LedRadius`, `UnderlineStart`, `UnderlineEnd` (from the right), `UnderlineBottom` (< 0 none), `UnderlinePx`, `DisabledCueStyle` (0 hatch, 1 slot), `CueBandPx`, `CuePeriodPx` |
+| Colours (linear, from the section 5.1 palette) | `BaseColor`, `LiftedColor`, `PressedColor`, `DisabledColor`, `EdgeColor`, `ShadowColor`, `LedOffColor`, `AccentColor` (amber), `MarkColor` (cyan), `CueColor` |
+| Textures | `GrainTexture` (`T_SOLSolidBrushed`), `CueMask` (`T_SOLSolidHazard`) |
+| Constants (not parameters) | `TINT_VERTEX_FLOOR`, the `TINT_*` decode thresholds, `HULL_MAX_CHAMFER_FRACTION`, `HULL_MAX_FEATURE_FRACTION`, `LIGHT_DIR_X / Y`, `GLOW_GAIN`, `CUE_MASK_PERIODS_X`, `CUE_LIP` |
+
+| Instance | Shape and look (starting values, `SOL::SolidMenu`) |
+|---|---|
+| `MI_SOLSolidPanel` | Panel chamfers 28 / 12 / 28 / 12, inset 8, drop shadow, grain, `HULL_COLOR`; no LED or underline |
+| `MI_SOLSolidRecess` | Recess 8 / 4 / 8 / 4, flat `BASE_COLOR`, no grain or shadow |
+| `MI_SOLSolidStackButton`, `MI_SOLSolidTab` | Cut 10 top-left, point 14 / 14 right, LED at 16, underline 28 to 18 from the right, 5 up; `RAISED_COLOR` lifting to `RAISED_LIFTED_COLOR` |
+| `MI_SOLSolidSmallButton` | Cut 6 top-left, no point, LED at 10, underline 18 to 8, 4 up |
+| `MI_SOLSolidSliderGroove`, `MI_SOLSolidToggleSlot` | Recess, chamfers 2 / 4, `BASE_COLOR` |
+| `MI_SOLSolidKnob` | Octagon (chamfers 5), centred LED |
+| `MI_SOLSolidPuck` | Chamfers 3, half the slot wide (`PUCK_TRAVEL_FRACTION`), right and cyan-lit when checked (the tint's mark) |
+
 ## 11. Persistence
 
 None (D5, D16). No `USaveGame` field, no `UGameUserSettings` value and no config layout changes; `SAVE_VERSION` stays 11
@@ -463,6 +625,80 @@ and `ProjectVersion` is not used. Design (built in 46d):
   Settings open, each at strength 1, three runs, `stat dumpave` and `ProfileGPU` medians, against a baseline captured
   before 46c at the same screens (the SDD 42 section 11 method, with the median fix from the TECH_DEBT item).
 - No claim without a measurement; the numbers go into an SDD amendment.
+- **46c amendment (review).** *Allocation:* the one per-frame allocation in project code is the trace layer's line
+  points: `FSlateDrawElement::MakeLines` takes them by value and the draw element owns them, so each drawn line (glow,
+  core, ring: at most three per trace) gets one exact-size array, moved in without a further copy; the ring's octagon is
+  computed once. *ALU:* the compiled `M_SOLSolidHull` pixel shader is about 307 instructions
+  (`MaterialEditingLibrary.get_statistics`), not "a few dozen": the per-pixel `ClampHull` mirror, the SDF and the
+  layers. Both are TECH_DEBT items, to act on if the 46h panel profiling shows the cost.
+
+### 13.1 46c amendment: profiling baseline
+
+**Harness.** `-SOLSmokeSolidMenuProfile` (`SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE`, `FSOLSolidMenuProfileSmoke` in
+`Menu/SOLSolidMenuProfileSmoke.h`, run by `USOLMenuSubsystem` once per frame) is a stand-alone flag; it forces the
+main menu like `-SOLMenuSmoke` and uses the smoke settings slot (cleared at boot, so `HudEffectsStrength` is the default
+1; checked, and logged in every line), never the player's slot. The ProfileGPU / `stat dumpave` capture of SDD 42
+section 11 now lives in a shared `FSOLUiProfileCapture` (`UI/SOLUiProfileCapture.h`), used by both
+`-SOLSmokeHoloMenuProfile` and this smoke (the holo smoke rechecked after the move: 12/12 checks, all five passes PASS).
+
+**Method (machine-independent).** A standalone `-game` process (the Development editor binary, uncooked, real RHI),
+windowed, started at 1920x1080; the smoke sets each view size itself with `r.SetRes <w>x<h>w` and waits until the
+viewport has that size for 10 frames. The sim date is pinned to JD 2461348.5 (the other profiling smokes' date) so the
+live view behind the menus is the same every run. The mouse cursor is parked in the view's top-right corner at each
+pass (no button hovered). Four passes: **P0** the main menu with Settings open at 1920x1080, **P1** the same at
+1280x720, then Play and Esc: **P2** the pause menu (in flight) with its Settings tab at 1280x720, **P3** the same at
+1920x1080. Each pass settles 1.5 s (longer than every open animation of section 7), takes a window screenshot, then
+runs three `ProfileGPU` frames (`r.ProfileGPU.ShowUI 0`; the median of the game window's `SlateUI` pass inclusive time
+is `gpu_ui`) and one 240-frame `stat dumpave -ms=0` window each of `Draw Window And Children Time` (the whole Slate
+paint on the game thread, `cpu_slate`, the CPU budget's measure) and `Game UI Paint` (`cpu_gameui`, reference only; it
+is measured in its own window, so it can read above `cpu_slate`). The pass's screen is checked on every capture frame.
+Each pass logs one line: `SolidMenuProfile RESULT P<n> PASS|FAIL|NOBASE screen=.. view=.. cpu_slate=.. cpu_gameui=..
+gpu_ui=.. gpu_slate=.. gpu_solid=.. gpu_frame=.. ui_draws=.. ... dcpu=.. dgpu=..` (`gpu_solid` sums the Slate
+material draws whose material name contains `SOLSolid`, zero before 46c), then a `SUMMARY` line; then it quits (a
+180 s watchdog quits a stuck run). FAIL also when the capture is invalid (`valid=no`: not `-game`, a view size not
+reached, the screen not shown on a capture frame, strength not 1, a number not read).
+
+**Baseline (today's flat look).** Measured 2026-11-04 at `816da1a` plus the uncommitted 46a review and 46c step 0
+files (no rendering change), UE 5.8.3, D3D12 SM6, i9-9960X, RTX 2080 Ti, VSync off, scalability 3, frames 4.5 to
+5.4 ms (no cap). Three runs back to back, all 9 checks passed and every capture frame was on its screen in each run.
+Medians of the three runs (ms; the three values in brackets):
+
+| Pass | Screen | View | **CPU Slate paint** | **GPU Slate UI pass** | Game UI Paint | UI draws |
+|---|---|---|---|---|---|---|
+| P0 | Main menu, Settings | 1920x1080 | **0.423** (0.423 / 0.433 / 0.423) | **0.046** (0.046 / 0.048 / 0.039) | 0.360 | 14-15 |
+| P1 | Main menu, Settings | 1280x720 | **0.444** (0.449 / 0.444 / 0.412) | **0.027** (0.027 / 0.025 / 0.028) | 0.369 | 14-15 |
+| P2 | Pause menu, Settings | 1280x720 | **0.430** (0.407 / 0.430 / 0.440) | **0.037** (0.037 / 0.037 / 0.038) | 0.359 | 15-16 |
+| P3 | Pause menu, Settings | 1920x1080 | **0.429** (0.429 / 0.418 / 0.467) | **0.075** (0.063 / 0.075 / 0.075) | 0.341 | 16 |
+
+Spread between runs: CPU up to 0.049 ms (P3), GPU up to 0.012 ms (P3). Today's menus are cheap on the GPU (UMG
+boxes and text); the CPU side is the Slate paint of the widget tree. The medians are stored in
+`SOLSolidMenuProfileSmoke.cpp` (`PROFILE_BASELINE_CPU_MS` = 0.423, 0.444, 0.430, 0.429; `PROFILE_BASELINE_GPU_MS` =
+0.046, 0.027, 0.037, 0.075), so every later line carries `dcpu` / `dgpu` against them and a verdict against the Q17
+budget (`dcpu` < 0.1 ms and `dgpu` < 0.3 ms). A check run against the stored values logged PASS for all four passes
+(`dcpu` -0.035 to +0.022, `dgpu` -0.012 to +0.002).
+
+**46c check (restyled buttons and font, panels still flat).** 2026-11-05, three runs after 46c steps 3-5 (the solid
+buttons, Rajdhani and the linear-space hull material; the hull panels arrive in 46d), every run 4/4 PASS and 9/9 checks.
+Medians of the three runs' deltas against the baseline (ms): P0 `dcpu` +0.015 / `dgpu` +0.005, P1 -0.014 / +0.004,
+P2 -0.008 / +0.002, P3 -0.013 / -0.010; `gpu_solid` (the hull draws) 0.000-0.006. All well inside the Q17 budget
+(0.1 / 0.3); the CPU deltas are within the run-to-run spread.
+
+**46c review re-check.** 2026-11-05, three runs after the review fixes (written-look compare, one frame read per
+screen tick, the trace layer's precomputed ring, the sRGB-scaled dither), 9/9 checks each run. Medians of `dcpu` /
+`dgpu` (ms): P0 +0.033 / +0.006, P1 -0.014 / +0.004, P2 -0.017 / +0.002, P3 -0.007 / -0.010; `gpu_solid`
+0.002-0.007. Two single-run FAILs (P1 +0.134 in run 2, P0 +0.180 in run 3) did not repeat in the other runs: noise, as
+the single-run TECH_DEBT item describes.
+
+**Comparing later (46i).** Close the editor, build, then run three times and take, per pass, the median of `dcpu` and
+of `dgpu` over the three `RESULT` lines (a single run's PASS / FAIL is advisory, the run-to-run spread above is up to
+half the CPU budget):
+
+```
+"C:\Program Files\Epic Games\UE_5.8\Engine\Binaries\Win64\UnrealEditor.exe" "D:\Development\UnrealProjects\SOLTest\SOLTest.uproject" -game -windowed -ResX=1920 -ResY=1080 -SOLSmokeSolidMenuProfile -nosplash -abslog=<log path>
+```
+
+The numbers are machine-specific: on another machine, re-measure the baseline at the 46c parent commit (a worktree)
+and replace the constants.
 
 ## 14. Verification
 
@@ -500,7 +736,7 @@ and `ProjectVersion` is not used. Design (built in 46d):
 | Q6 | Controls / Info / About | **Keep today's entries** (main menu: Controls, About; pause: Controls, Info, About); each page's sections become tabs in the shell |
 | Q7 | Demo page | **No tab column:** presets on top, the 6 sections as recessed groups in one scroll, warnings and footer at the bottom |
 | Q8 | Settings tabs | **Settings always opens on the first tab** (Graphics), no last-tab memory; one shared footer under every tab; Reset keys at the top of Key bindings |
-| Q9 | Selected look | **Selected tab / page = cyan underline + LED; amber for hover and keyboard focus only** |
+| Q9 | Selected look | **Selected tab / page = cyan underline + LED; amber for hover and keyboard focus only**. **46c amendment (user, 2026-11-04):** selected is orthogonal to hover / focus / press: a selected button that is hovered or focused shows the full amber hover look plus the cyan underline and LED (`bSelected` flag on the evaluate functions) |
 | Q10 | Version / credits | **Version line `0.1.YYMM.<number of commits in the repo>`** (e.g. `0.1.2611.412`), **generated at build time** (section 11.1), no hardcoded value; the `ProjectVersion` alternative is dropped. Plus studio and engine in the chin recess, and the font licence credit ("Rajdhani, SIL OFL 1.1") in About |
 | Q11 | Sounds | **Reuse the #42 cues** (`USOLHoloMenuSubsystem::PlayCue`); no new assets |
 | Q12 | Text colours | **Body #A4AFB8; titles and the hovered label #DCE3E8;** values and keys in cyan |

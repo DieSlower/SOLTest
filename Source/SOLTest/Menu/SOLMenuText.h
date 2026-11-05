@@ -61,7 +61,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_MOUSE_SENSITIVITY = TEXT("Mouse sensitivity");
     inline constexpr const TCHAR* SETTINGS_INVERT_Y = TEXT("Invert mouse Y");
     inline constexpr const TCHAR* SETTINGS_HUD_SCALE = TEXT("HUD scale");
-    inline constexpr const TCHAR* SETTINGS_HUD_EFFECTS = TEXT("HUD hologram effects");
+    inline constexpr const TCHAR* SETTINGS_HUD_EFFECTS = TEXT("HUD and menu effects");
     inline constexpr const TCHAR* SETTINGS_HOLO_MENU_EFFECTS = TEXT("Hologram menu effects");
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
@@ -466,13 +466,16 @@ namespace SOLMenuText
             "and a line from each body and waypoint to that plane (orange when it lies below it)."),
         TEXT("The flight HUD is a hologram: thin glowing blue lines and text on soft, borderless dark panels. Now "
             "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
-            "range rings pulse like sonar; the HUD hologram effects slider in Settings sets how strong those HUD "
-            "effects are (0 turns them off). The date and anchor (top left), speed and G (bottom left), target (top "
-            "right) and info (top right) blocks are hologram cards: glowing corner marks on a faint dark tint with "
+            "range rings pulse like sonar; the HUD and menu effects slider in Settings sets how strong those HUD "
+            "effects are (0 turns them off), and it also scales the animations of the full-screen main and pause "
+            "menus (at 0 they show at once, still fully usable). The date and anchor (top left), speed and G "
+            "(bottom left), target (top right) and info (top right) blocks are hologram cards: glowing corner marks "
+            "on a faint dark tint with "
             "a slow scanline. The date and speed cards are always there, the target card draws in when you select "
             "a target and fades out when you clear it (switching to another target only changes its text), and "
-            "the info card draws in and fades out. The Hologram menu effects slider, not the HUD one, sets how "
-            "strong the cards, the menus and the mouse pointer look (0: plain flat panels, fully usable). The "
+            "the info card draws in and fades out. The Hologram menu effects slider sets how strong the cards, "
+            "the in-flight hologram menus and the mouse pointer look (0: plain flat panels, fully usable); the "
+            "full-screen main and pause menus follow the HUD and menu effects slider. The "
             "radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
             "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
             "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "

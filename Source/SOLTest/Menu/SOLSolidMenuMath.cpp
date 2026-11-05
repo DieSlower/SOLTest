@@ -12,9 +12,6 @@ namespace
 {
     constexpr float SOLIDMATH_INV_SQRT2 = 0.70710678118654752f;    // Unit normal component of a 45-degree line
     constexpr float SOLIDMATH_8BIT_STEPS = 255.0f;                  // Vertex colour channel steps
-    constexpr float SOLIDMATH_FLAG_THRESHOLD = 0.5f;                // A tint flag channel at or above this is on
-    constexpr float SOLIDMATH_DISABLED_THRESHOLD =                  // A tint alpha below this is disabled (the
-        0.5f * (1.0f + SOL::SolidMenu::DISABLED_ALPHA);             // midpoint of enabled 1 and DISABLED_ALPHA)
 
     static_assert(SOL::Settings::HUD_EFFECTS_MIN == SOL::Settings::HOLO_MENU_EFFECTS_MIN
         && SOL::Settings::HUD_EFFECTS_MAX == SOL::Settings::HOLO_MENU_EFFECTS_MAX,
@@ -234,7 +231,7 @@ float SOLSolidMenu::HullDistance(const FVector2f p, const FVector2f size, const 
 //////////////////////////////////////////////////////////////////////////
 // The button's look from its previous state: the press linger, then the ramp from that state's settled look
 FSOLSolidButtonLook SOLSolidMenu::EvaluateButton(const ESOLSolidButtonState state,
-    const ESOLSolidButtonState previous, const double sinceChangeS, const float s)
+    const ESOLSolidButtonState previous, const double sinceChangeS, const float s, const bool bSelected)
 {
     using namespace SOL::SolidMenu;
     const double elapsedS = SolidMathElapsed(sinceChangeS);
@@ -242,16 +239,18 @@ FSOLSolidButtonLook SOLSolidMenu::EvaluateButton(const ESOLSolidButtonState stat
         && state != ESOLSolidButtonState::Disabled;
     if (bLeavingPress && elapsedS < PRESSED_LINGER_S)
     {
-        return EvaluateButtonFrom(ESOLSolidButtonState::Pressed, FSOLSolidButtonLook(), 0.0, s);
+        // The linger shows the pressed hull; the mark follows the new state
+        return EvaluateButtonFrom(ESOLSolidButtonState::Pressed, FSOLSolidButtonLook(), 0.0, s,
+            bSelected || state == ESOLSolidButtonState::Selected);
     }
     const double rampS = bLeavingPress ? elapsedS - PRESSED_LINGER_S : elapsedS;
-    return EvaluateButtonFrom(state, SolidMathSettled(previous), rampS, s);
+    return EvaluateButtonFrom(state, SolidMathSettled(previous), rampS, s, bSelected);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // The button's look from the amounts at the change: Disabled all 0, Pressed at once, else a linear ramp to the state
 FSOLSolidButtonLook SOLSolidMenu::EvaluateButtonFrom(const ESOLSolidButtonState state,
-    const FSOLSolidButtonLook& atChange, const double sinceChangeS, const float s)
+    const FSOLSolidButtonLook& atChange, const double sinceChangeS, const float s, const bool bSelected)
 {
     FSOLSolidButtonLook look;
     if (state == ESOLSolidButtonState::Disabled)
@@ -273,7 +272,7 @@ FSOLSolidButtonLook SOLSolidMenu::EvaluateButtonFrom(const ESOLSolidButtonState 
     look.Trace = FMath::Lerp(SolidMathUnit(atChange.Trace), to.Trace, alpha);
     look.Glow = strength * look.Edge;
     look.bPressedHull = state == ESOLSolidButtonState::Pressed;
-    look.bSelectedMark = state == ESOLSolidButtonState::Selected;
+    look.bSelectedMark = bSelected || state == ESOLSolidButtonState::Selected;
     return look;
 }
 
@@ -285,11 +284,13 @@ float SOLSolidMenu::LiftOffset(const FSOLSolidButtonLook& look)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// The 8-bit brush tint of a look: R edge, G pressed hull, B selected mark, A enabled or DISABLED_ALPHA
+// The 8-bit brush tint of a look: R edge, G three-level code, B selected mark, A enabled or DISABLED_ALPHA
 FLinearColor SOLSolidMenu::EncodeButtonTint(const FSOLSolidButtonLook& look)
 {
-    return FLinearColor(SolidMathQuantize(look.Edge), look.bPressedHull ? 1.0f : 0.0f, look.bSelectedMark ? 1.0f : 0.0f,
-        look.bDisabled ? SolidMathQuantize(SOL::SolidMenu::DISABLED_ALPHA) : 1.0f);
+    using namespace SOL::SolidMenu;
+    const float code = look.bPressedHull ? 1.0f : (look.bDisabled ? TINT_DISABLED_CODE : 0.0f);
+    return FLinearColor(SolidMathQuantize(look.Edge), SolidMathQuantize(code), look.bSelectedMark ? 1.0f : 0.0f,
+        look.bDisabled ? SolidMathQuantize(DISABLED_ALPHA) : 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -300,9 +301,9 @@ FSOLSolidButtonLook SOLSolidMenu::DecodeButtonTint(const FLinearColor& tint)
     look.Edge = SolidMathQuantize(tint.R);
     look.Led = look.Edge;
     look.Underline = look.Edge;
-    look.bPressedHull = tint.G >= SOLIDMATH_FLAG_THRESHOLD;
-    look.bSelectedMark = tint.B >= SOLIDMATH_FLAG_THRESHOLD;
-    look.bDisabled = tint.A < SOLIDMATH_DISABLED_THRESHOLD;
+    look.bPressedHull = tint.G >= SOL::SolidMenu::TINT_PRESSED_G_MIN;
+    look.bDisabled = !look.bPressedHull && tint.G >= SOL::SolidMenu::TINT_DISABLED_G_MIN;
+    look.bSelectedMark = tint.B >= SOL::SolidMenu::TINT_MARK_B_MIN;
     return look;
 }
 

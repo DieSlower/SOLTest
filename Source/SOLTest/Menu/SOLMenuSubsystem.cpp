@@ -32,6 +32,7 @@ namespace
 {
     constexpr int32 MENU_EVENT_QUEUE_RESERVE = 8;     // Requests that can wait for one frame without growing the queue
     constexpr float MENU_SMOKE_STEP_SECONDS = 0.02f;  // -SOLMenuSmoke script step interval
+    constexpr float MENU_SMOKE_EVERY_FRAME_SECONDS = 0.0001f; // Timer rate below any frame time: once per frame
     const TCHAR* const MENU_SMOKE_DEFAULT_SCENARIO = TEXT("all");
     const TCHAR* const MENU_SWITCH_VALUE_SEPARATOR = TEXT("=");
 
@@ -94,6 +95,8 @@ void USOLMenuSubsystem::Deinitialize()
         world->GetTimerManager().ClearTimer(mProcessTimer);
         world->GetTimerManager().ClearTimer(mShowTimer);
         world->GetTimerManager().ClearTimer(mSmokeTimer);
+        world->GetTimerManager().ClearTimer(mSolidProfileTimer);
+        world->GetTimerManager().ClearTimer(mSolidSmokeTimer);
 
         // The settings outlive the world (game instance): the mix pushed at begin play goes with the world
         if (Settings != nullptr)
@@ -115,6 +118,8 @@ void USOLMenuSubsystem::Deinitialize()
     Jump = nullptr;
     Npcs = nullptr;
     mSmoke.Reset();
+    mSolidProfileSmoke.Reset();
+    mSolidSmoke.Reset();
     mQueuedEvents.Empty();
     mOnStateChanged.Clear();
     Super::Deinitialize();
@@ -148,6 +153,30 @@ void USOLMenuSubsystem::OnWorldBeginPlay(UWorld& world)
         world.GetTimerManager().SetTimer(mSmokeTimer, this, &USOLMenuSubsystem::StepSmoke, MENU_SMOKE_STEP_SECONDS,
             true);
     }
+
+    // Verification hook: the solid menu cost capture, one script step per frame (SDD 46 section 13)
+    if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE))
+    {
+        mSolidProfileSmoke = MakeUnique<FSOLSolidMenuProfileSmoke>();
+        mSolidProfileSmoke->Start(*this);
+        FTimerManagerTimerParameters everyFrame;
+        everyFrame.bLoop = true;
+        everyFrame.bMaxOncePerFrame = true;
+        world.GetTimerManager().SetTimer(mSolidProfileTimer, this, &USOLMenuSubsystem::StepSolidProfileSmoke,
+            MENU_SMOKE_EVERY_FRAME_SECONDS, everyFrame);
+    }
+
+    // Verification hook: the solid menu kit script, one step per frame (SDD 46 section 14)
+    if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU))
+    {
+        mSolidSmoke = MakeUnique<FSOLSolidMenuSmoke>();
+        mSolidSmoke->Start(*this);
+        FTimerManagerTimerParameters everyFrame;
+        everyFrame.bLoop = true;
+        everyFrame.bMaxOncePerFrame = true;
+        world.GetTimerManager().SetTimer(mSolidSmokeTimer, this, &USOLMenuSubsystem::StepSolidSmoke,
+            MENU_SMOKE_EVERY_FRAME_SECONDS, everyFrame);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -168,8 +197,8 @@ bool USOLMenuSubsystem::DoesSupportWorldType(const EWorldType::Type worldType) c
 // Returns true when the game starts in the main menu
 bool USOLMenuSubsystem::ShouldStartInMenu()
 {
-    // -SOLNoMenu wins, then -SOLMenu / -SOLMenuSmoke; any other -SOL* switch is a verification or start flag that has
-    // always started straight in flight
+    // -SOLNoMenu wins, then -SOLMenu / -SOLMenuSmoke / -SOLSmokeSolidMenuProfile / -SOLSmokeSolidMenu; any other -SOL*
+    // switch is a verification or start flag that has always started straight in flight
     TArray<FString> tokens;
     TArray<FString> switches;
     FCommandLine::Parse(FCommandLine::Get(), tokens, switches);
@@ -188,7 +217,9 @@ bool USOLMenuSubsystem::ShouldStartInMenu()
             return false;
         }
         if (name.Equals(SOL::CommandLine::MENU, ESearchCase::IgnoreCase)
-            || name.Equals(SOL::CommandLine::MENU_SMOKE_NAME, ESearchCase::IgnoreCase))
+            || name.Equals(SOL::CommandLine::MENU_SMOKE_NAME, ESearchCase::IgnoreCase)
+            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE, ESearchCase::IgnoreCase)
+            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU, ESearchCase::IgnoreCase))
         {
             bForceMenu = true;
         }
@@ -575,5 +606,37 @@ void USOLMenuSubsystem::StepSmoke()
     {
         world->GetTimerManager().ClearTimer(mSmokeTimer);
         mSmoke.Reset();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one frame of the solid menu profiling smoke
+void USOLMenuSubsystem::StepSolidProfileSmoke()
+{
+    UWorld* world = GetWorld();
+    if (!mSolidProfileSmoke.IsValid() || world == nullptr)
+    {
+        return;
+    }
+    if (mSolidProfileSmoke->Update(*this))
+    {
+        world->GetTimerManager().ClearTimer(mSolidProfileTimer);
+        mSolidProfileSmoke.Reset();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one frame of the solid menu kit smoke
+void USOLMenuSubsystem::StepSolidSmoke()
+{
+    UWorld* world = GetWorld();
+    if (!mSolidSmoke.IsValid() || world == nullptr)
+    {
+        return;
+    }
+    if (mSolidSmoke->Update(*this))
+    {
+        world->GetTimerManager().ClearTimer(mSolidSmokeTimer);
+        mSolidSmoke.Reset();
     }
 }

@@ -26,9 +26,7 @@
 #include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
 #include "Kismet/KismetSystemLibrary.h"
-#include "Misc/OutputDeviceRedirector.h"
 #include "Misc/Paths.h"
-#include "Misc/ScopeLock.h"
 #include "UnrealClient.h"
 
 namespace
@@ -59,13 +57,6 @@ namespace
     };
 
     constexpr int32 PROFILE_PASS_COUNT = 5;
-    constexpr int32 PROFILE_CPU_ROOTS = 3;
-    constexpr int32 PROFILE_GPU_CAPTURES = 3;                   // ProfileGPU frames per pass; the median is reported
-    constexpr int32 PROFILE_DUMP_FRAMES = 240;                  // stat dumpave window (matches the commands)
-    constexpr int32 PROFILE_DUMP_TAIL_FRAMES = 30;              // Frames left for the dump to print
-    constexpr int32 PROFILE_DUMP_TIMEOUT_FRAMES = 240;          // ... and at most this many more
-    constexpr int32 PROFILE_GPU_GAP_FRAMES = 20;                // Frames between two ProfileGPU commands
-    constexpr int32 PROFILE_GPU_TAIL_FRAMES = 20;
     constexpr int32 PROFILE_SHOT_FRAMES = 15;                   // Frames after the screenshot request
     constexpr int32 PROFILE_MIN_FRAMES = 5;
     constexpr double PROFILE_SETUP_S = 3.0;
@@ -75,7 +66,6 @@ namespace
     constexpr double PROFILE_MAP_SETTLE_S = 2.0;                // The map camera's move
     constexpr double PROFILE_MAP_TIMEOUT_S = 5.0;
     constexpr double PROFILE_SETTLE_S = 1.5;                    // A pass waits this long after its menu opened
-    constexpr double PROFILE_GPU_TIMEOUT_S = 10.0;
     constexpr double PROFILE_QUIT_S = 1.0;
     constexpr double PROFILE_BUDGET_MS = 0.1;                   // SDD 42 D14: extra CPU and extra GPU per pass
     // Wait after a menu or card (re)opens before a capture starts: the open animation, plus a margin (real seconds)
@@ -102,35 +92,11 @@ namespace
     constexpr double PROFILE_BASELINE_CPU_MS[PROFILE_PASS_COUNT] = { 0.2365, 0.285, 0.4015, 0.4275, 0.927 };
     constexpr double PROFILE_BASELINE_GPU_MS[PROFILE_PASS_COUNT] = { 0.0785, 0.1075, 0.114, 0.127, 0.0785 };
 
-    // The game-thread stats, one stat dumpave window each, and the token that finds their lines in the dump
-    const TCHAR* const PROFILE_CPU_COMMANDS[PROFILE_CPU_ROOTS] = {
-        TEXT("stat dumpave -num=240 -ms=0 -root=STAT_HudTime"),
-        TEXT("stat dumpave -num=240 -ms=0 -root=STAT_SlateDrawWindowTime"),
-        TEXT("stat dumpave -num=240 -ms=0 -root=STAT_ViewportPaintTime") };
-    const TCHAR* const PROFILE_CPU_TOKENS[PROFILE_CPU_ROOTS] = {
-        TEXT(" - STAT_HudTime - "), TEXT(" - STAT_SlateDrawWindowTime - "), TEXT(" - STAT_ViewportPaintTime - ") };
-    const TCHAR* const PROFILE_GPU_CMD = TEXT("ProfileGPU");
-    // The ProfileGPU setup, run once at the start: the visualizer window would add its own Slate pass to the next
-    // profiles (the log gets the table either way), and ParseGpuRow reads the unicode table with its stat, percent,
-    // exclusive and inclusive columns and every event (the engine defaults, pinned here)
-    constexpr int32 PROFILE_GPU_SETUP_COUNT = 9;
-    const TCHAR* const PROFILE_GPU_SETUP_CMDS[PROFILE_GPU_SETUP_COUNT] = {
-        TEXT("r.ProfileGPU.ShowUI 0"),
-        TEXT("r.ProfileGPU.TableFormatting 1"),
-        TEXT("r.ProfileGPU.UnicodeOutput 1"),
-        TEXT("r.ProfileGPU.ShowStats 1"),
-        TEXT("r.ProfileGPU.ShowPercentColumn 1"),
-        TEXT("r.ProfileGPU.ShowInclusive 1"),
-        TEXT("r.ProfileGPU.ShowExclusive 1"),
-        TEXT("r.ProfileGPU.ThresholdPercent 0"),
-        TEXT("r.ProfileGPU.Root *") };
-    // Run at the end: the visualizer back on for normal use (the engine default)
-    const TCHAR* const PROFILE_GPU_UI_RESTORE_CMD = TEXT("r.ProfileGPU.ShowUI 1");
-
-    // The ProfileGPU table's box characters: the column rule, the cell rule and the bottom-left corner
-    constexpr TCHAR PROFILE_BOX_COLUMN = 0x2503;
-    constexpr TCHAR PROFILE_BOX_CELL = 0x2502;
-    constexpr TCHAR PROFILE_BOX_END = 0x2517;
+    // The game-thread stats, one stat dumpave window each: HUD Time, Draw Window And Children Time, Game UI Paint
+    const TCHAR* const PROFILE_CPU_ROOT_STATS[] = {
+        TEXT("STAT_HudTime"), TEXT("STAT_SlateDrawWindowTime"), TEXT("STAT_ViewportPaintTime") };
+    // The HUD shape draws summed into gpu_shapes ("Slate Material: MID_M_SOLHudShape*")
+    const TCHAR* const PROFILE_SHAPE_MATERIAL_TOKEN = TEXT("MID_M_SOLHudShape");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the pass a step captures, or INDEX_NONE
@@ -152,36 +118,13 @@ namespace
             return INDEX_NONE;
         }
     }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the index of the median of the captures' UI times (the lower middle for an even count), or INDEX_NONE
-    int32 MedianUiIndex(const TArray<double>& uiMs)
-    {
-        TArray<int32> order;
-        for (int32 index = 0; index < uiMs.Num(); ++index)
-        {
-            if (uiMs[index] >= 0.0)
-            {
-                order.Add(index);
-            }
-        }
-        if (order.IsEmpty())
-        {
-            return INDEX_NONE;
-        }
-        order.Sort([&uiMs](const int32 a, const int32 b) { return uiMs[a] < uiMs[b]; });
-        return order[(order.Num() - 1) / 2];
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Stops listening to the log
-FSOLHoloMenuProfileSmoke::~FSOLHoloMenuProfileSmoke()
+// Sets up the capture with the pass's root stats
+FSOLHoloMenuProfileSmoke::FSOLHoloMenuProfileSmoke()
+    : mCapture(PROFILE_CPU_ROOT_STATS, PROFILE_SHAPE_MATERIAL_TOKEN)
 {
-    if (mIsListening && GLog != nullptr)
-    {
-        GLog->RemoveOutputDevice(this);
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -195,7 +138,6 @@ void FSOLHoloMenuProfileSmoke::Start(ASOLShipPawn& pawn)
     mShips = world->GetSubsystem<USOLShipSubsystem>();
     mTargeting = world->GetSubsystem<USOLTargetingSubsystem>();
     pawn.SetFlightCursorScripted(true);
-    mGpuCaptures.Reserve(PROFILE_PASS_COUNT * PROFILE_GPU_CAPTURES);
 
     // The captures need a standalone -game process: in the editor the editor's own work pollutes the numbers
     if (GIsEditor)
@@ -203,18 +145,10 @@ void FSOLHoloMenuProfileSmoke::Start(ASOLShipPawn& pawn)
         UE_LOG(LogSOL, Warning, TEXT("HoloMenuProfile: -%s needs -game (standalone); the numbers are not comparable"),
             SOL::CommandLine::SMOKE_HOLO_MENU_PROFILE);
     }
-    if (GLog != nullptr)
-    {
-        GLog->AddOutputDevice(this);
-        mIsListening = true;
-    }
-    for (const TCHAR* command : PROFILE_GPU_SETUP_CMDS)
-    {
-        RunCommand(command, world);
-    }
+    mCapture.Start(world);
     UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile: scripted menu cost capture starting (%d passes, %d ProfileGPU frames "
-        "and %d stat dumpave windows of %d frames each)"), PROFILE_PASS_COUNT, PROFILE_GPU_CAPTURES, PROFILE_CPU_ROOTS,
-        PROFILE_DUMP_FRAMES);
+        "and %d stat dumpave windows of %d frames each)"), PROFILE_PASS_COUNT, FSOLUiProfileCapture::GPU_CAPTURES,
+        static_cast<int32>(UE_ARRAY_COUNT(PROFILE_CPU_ROOT_STATS)), FSOLUiProfileCapture::DUMP_FRAMES);
     mStep = 0;
     EnterStep(mStep, pawn);
 }
@@ -279,19 +213,9 @@ void FSOLHoloMenuProfileSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
         mPhase = EPassPhase::Settle;
         mPhaseTimeS = 0.0;
         mPhaseFrames = 0;
-        mCpuIndex = 0;
-        mGpuRequested = 0;
-        mGpuLastFrame = 0;
-        mCpuStartFrame = INDEX_NONE;
         mCardRefreshAtS = -1.0;
         mMenuFrames = 0;
         mMenuOpenFrames = 0;
-        mWindowTimeS = 0.0;
-        mWindowFrames = 0;
-        for (double& value : mCpuMs)
-        {
-            value = -1.0;
-        }
         UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile: pass P%d %s starting"), PassOfStep(current),
             PROFILE_PASS_NAMES[PassOfStep(current)]);
         return;
@@ -510,13 +434,8 @@ void FSOLHoloMenuProfileSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile SUMMARY %d passes: %d PASS, %d FAIL, %d NOBASE; %d/%d checks "
             "passed"), PROFILE_PASS_COUNT, PROFILE_PASS_COUNT - mPassesFailed - mPassesNoBase, mPassesFailed,
             mPassesNoBase, mChecksPassed, mChecksRun);
-        RunCommand(PROFILE_GPU_UI_RESTORE_CMD, world);
+        mCapture.Stop(world);
         pawn.SetFlightCursorScripted(false);
-        if (mIsListening && GLog != nullptr)
-        {
-            GLog->RemoveOutputDevice(this);
-            mIsListening = false;
-        }
         UKismetSystemLibrary::QuitGame(world, nullptr, EQuitPreference::Quit, false);
         break;
     default:
@@ -531,7 +450,7 @@ bool FSOLHoloMenuProfileSmoke::TickPass(const int32 pass, ASOLShipPawn& pawn, co
     UWorld* world = pawn.GetWorld();
     mPhaseTimeS += realDeltaSeconds;
     ++mPhaseFrames;
-    if (mPhase == EPassPhase::Gpu || mPhase == EPassPhase::Cpu)
+    if (mPhase == EPassPhase::Capture && mCapture.IsCapturing())
     {
         ++mMenuFrames;
         mMenuOpenFrames += IsPassMenuOpen(pass, pawn) ? 1 : 0;
@@ -555,88 +474,27 @@ bool FSOLHoloMenuProfileSmoke::TickPass(const int32 pass, ASOLShipPawn& pawn, co
     case EPassPhase::Shot:
         if (mPhaseFrames >= PROFILE_SHOT_FRAMES)
         {
-            FScopeLock lock(&mLogLock);
-            mGpuFirst = mGpuCaptures.Num();
-            nextPhase(EPassPhase::Gpu);
+            mCapture.BeginPass();
+            nextPhase(EPassPhase::Capture);
         }
         return false;
-    case EPassPhase::Gpu:
+    case EPassPhase::Capture:
     {
-        // One ProfileGPU at least a gap apart, each after a card refresh and its open time; then wait for their tables
-        // (printed later, on another thread)
-        const bool bGapDone = mGpuRequested == 0 || mPhaseFrames - mGpuLastFrame >= PROFILE_GPU_GAP_FRAMES;
-        if (mGpuRequested < PROFILE_GPU_CAPTURES && bGapDone && RefreshAndWait())
-        {
-            RunCommand(PROFILE_GPU_CMD, world);
-            ++mGpuRequested;
-            mGpuLastFrame = mPhaseFrames;
-            mCardRefreshAtS = -1.0;
-        }
-        int32 received = 0;
-        {
-            FScopeLock lock(&mLogLock);
-            received = mGpuCaptures.Num() - mGpuFirst;
-        }
-        const bool bAllSent = mGpuRequested == PROFILE_GPU_CAPTURES
-            && mPhaseFrames - mGpuLastFrame >= PROFILE_GPU_TAIL_FRAMES;
-        if (bAllSent && (received >= PROFILE_GPU_CAPTURES || mPhaseTimeS >= PROFILE_GPU_TIMEOUT_S))
-        {
-            nextPhase(EPassPhase::Cpu);
-        }
-        return false;
-    }
-    case EPassPhase::Cpu:
-    {
-        // One stat dumpave window per root stat, back to back, each after a card refresh and its open time; its lines
-        // arrive after the window, on the stats thread
-        if (mCpuStartFrame == INDEX_NONE)
+        // Every capture (each ProfileGPU frame and each stat dumpave window) after a card refresh and its open time
+        const auto canStart = [this]()
         {
             if (!RefreshAndWait())
             {
                 return false;
             }
-            {
-                FScopeLock lock(&mLogLock);
-                mCpuToken = PROFILE_CPU_TOKENS[mCpuIndex];
-                mCpuReadMs = -1.0;
-                mIsCpuArmed = true;
-                mIsCpuReading = false;
-            }
-            RunCommand(PROFILE_CPU_COMMANDS[mCpuIndex], world);
-            mCpuStartFrame = mPhaseFrames;
-            return false;
-        }
-        const int32 windowFrames = mPhaseFrames - mCpuStartFrame;
-        if (windowFrames <= PROFILE_DUMP_FRAMES)
-        {
-            mWindowTimeS += realDeltaSeconds;
-            ++mWindowFrames;
-        }
-        bool bRead = false;
-        double readMs = -1.0;
-        {
-            FScopeLock lock(&mLogLock);
-            bRead = mIsCpuReading && mCpuReadMs >= 0.0;
-            readMs = mCpuReadMs;
-        }
-        const int32 doneFrames = PROFILE_DUMP_FRAMES + PROFILE_DUMP_TAIL_FRAMES;
-        if ((windowFrames >= doneFrames && bRead) || windowFrames >= doneFrames + PROFILE_DUMP_TIMEOUT_FRAMES)
-        {
-            mCpuMs[mCpuIndex] = readMs;
-            {
-                FScopeLock lock(&mLogLock);
-                mIsCpuArmed = false;
-                mIsCpuReading = false;
-            }
-            ++mCpuIndex;
-            mCpuStartFrame = INDEX_NONE;
             mCardRefreshAtS = -1.0;
-            if (mCpuIndex >= PROFILE_CPU_ROOTS)
-            {
-                LogPassResult(pass, pawn);
-                nextPhase(EPassPhase::Done);
-                return true;
-            }
+            return true;
+        };
+        if (mCapture.TickPass(world, realDeltaSeconds, canStart))
+        {
+            LogPassResult(pass, pawn);
+            nextPhase(EPassPhase::Done);
+            return true;
         }
         return false;
     }
@@ -729,28 +587,13 @@ bool FSOLHoloMenuProfileSmoke::PlaceShipAtStart(UWorld* world) const
 void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPawn& pawn)
 {
     // The median ProfileGPU frame of this pass, by the game window's UI pass time
-    TArray<FGpuCapture> captures;
-    {
-        FScopeLock lock(&mLogLock);
-        for (int32 index = mGpuFirst; index < mGpuCaptures.Num(); ++index)
-        {
-            captures.Add(mGpuCaptures[index]);
-        }
-    }
-    TArray<double> uiMs;
-    FString uiAll;
-    for (const FGpuCapture& capture : captures)
-    {
-        uiMs.Add(capture.UiMs);
-        uiAll += FString::Printf(TEXT("%s%.3f"), uiAll.IsEmpty() ? TEXT("") : TEXT("/"), capture.UiMs);
-    }
-    const int32 median = MedianUiIndex(uiMs);
-    const FGpuCapture gpu = median != INDEX_NONE ? captures[median] : FGpuCapture();
+    const FSOLUiProfileCapture::FPassResult& result = mCapture.GetResult();
+    const FSOLUiProfileCapture::FGpuCapture& gpu = result.Gpu;
 
     // The game-thread total: the HUD's DrawHUD plus the whole Slate paint (Game UI Paint is inside the latter)
-    const double cpuHud = mCpuMs[0];
-    const double cpuSlate = mCpuMs[1];
-    const double cpuGameUi = mCpuMs[2];
+    const double cpuHud = result.CpuMs[0];
+    const double cpuSlate = result.CpuMs[1];
+    const double cpuGameUi = result.CpuMs[2];
     const double cpuTotal = cpuHud >= 0.0 && cpuSlate >= 0.0 ? cpuHud + cpuSlate : -1.0;
     const bool bCards = pass > 0;
     const bool bTarget = mBody.IsValid() && mTargeting->GetSelectedIndex() == mBody.Index;
@@ -779,13 +622,13 @@ void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPaw
         : deltaCpu < PROFILE_BUDGET_MS && deltaGpu < PROFILE_BUDGET_MS ? TEXT("PASS") : TEXT("FAIL");
     mPassesFailed += FCString::Strcmp(verdict, TEXT("FAIL")) == 0 ? 1 : 0;
     mPassesNoBase += FCString::Strcmp(verdict, TEXT("NOBASE")) == 0 ? 1 : 0;
-    const double frameMs = mWindowFrames > 0 ? 1000.0 * mWindowTimeS / mWindowFrames : 0.0;
+    const double frameMs = result.FrameMs;
     UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile RESULT P%d %s pass=%s cpu_hud=%.3f cpu_slate=%.3f cpu_gameui=%.3f "
         "cpu_total=%.3f gpu_ui=%.3f gpu_slate=%.3f gpu_shapes=%.3f gpu_frame=%.3f ui_draws=%d gpu_ui_all=%s "
         "frame_ms=%.2f view=%dx%d vsync=%s scalability=%d editor=%s valid=%s jd=%.5f body=%s menu_frames=%d/%d "
         "target=%s info_lines=%d base_cpu=%.3f base_gpu=%.3f dcpu=%+.3f dgpu=%+.3f budget=%.3f map=%s"), pass,
-        verdict, PROFILE_PASS_NAMES[pass], cpuHud, cpuSlate, cpuGameUi, cpuTotal, gpu.UiMs, gpu.SlateMs, gpu.ShapesMs,
-        gpu.FrameMs, gpu.UiDraws, *uiAll, frameMs, width, height, bVSync ? TEXT("on") : TEXT("off"), scalability,
+        verdict, PROFILE_PASS_NAMES[pass], cpuHud, cpuSlate, cpuGameUi, cpuTotal, gpu.UiMs, gpu.SlateMs, gpu.MaterialMs,
+        gpu.FrameMs, gpu.UiDraws, *result.GpuUiAll, frameMs, width, height, bVSync ? TEXT("on") : TEXT("off"), scalability,
         GIsEditor ? TEXT("yes") : TEXT("no"), bValid ? TEXT("yes") : TEXT("no"), PROFILE_SIM_JD,
         mIsBodyFound ? PROFILE_BODY_NAME : TEXT("MISSING"), mMenuOpenFrames, mMenuFrames, bTarget ? TEXT("yes")
         : TEXT("no"), infoLines, baseCpu, baseGpu, deltaCpu, deltaGpu, PROFILE_BUDGET_MS, pawn.IsMapOpen()
@@ -899,16 +742,6 @@ void FSOLHoloMenuProfileSmoke::SlateKey(const FKey& key)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Runs a console command in the game world
-void FSOLHoloMenuProfileSmoke::RunCommand(const TCHAR* command, UWorld* world)
-{
-    if (GEngine != nullptr)
-    {
-        GEngine->Exec(world, command);
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Requests a window screenshot with the UI to the screenshot folder (Saved/Screenshots/<platform>)
 void FSOLHoloMenuProfileSmoke::TakeUiShot(const TCHAR* name)
 {
@@ -926,90 +759,4 @@ void FSOLHoloMenuProfileSmoke::Check(const TCHAR* label, const bool bPassed, con
     mChecksPassed += bPassed ? 1 : 0;
     UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile CHECK %-16s %s: %s"), label, bPassed ? TEXT("PASS") : TEXT("FAIL"),
         *detail);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Reads the stat dump and GPU profile lines this script asked for (any thread)
-void FSOLHoloMenuProfileSmoke::Serialize(const TCHAR* text, ELogVerbosity::Type verbosity, const FName& category)
-{
-    static const FName LOG_STATS(TEXT("LogStats"));
-    static const FName LOG_RHI(TEXT("LogRHI"));
-    if (text == nullptr || (category != LOG_STATS && category != LOG_RHI))
-    {
-        return;
-    }
-    FScopeLock lock(&mLogLock);
-    if (category == LOG_STATS)
-    {
-        // "---- 240 frames, average ----", then "  0.123ms (   1)  -  <name> - <stat> - <group> - <category>" lines
-        if (mIsCpuArmed && FCString::Strstr(text, TEXT("frames, average")) != nullptr)
-        {
-            mIsCpuArmed = false;
-            mIsCpuReading = true;
-            mCpuReadMs = -1.0;
-        }
-        else if (mIsCpuReading && !mCpuToken.IsEmpty() && FCString::Strstr(text, *mCpuToken) != nullptr)
-        {
-            mCpuReadMs = FMath::Max(mCpuReadMs, 0.0) + FCString::Atod(text);
-        }
-        return;
-    }
-
-    // ProfileGPU: "GPU Profile for Frame N - Graphics pipeline 0 - GPU 0", the table rows, then the bottom rule
-    if (FCString::Strstr(text, TEXT("GPU Profile for Frame")) != nullptr)
-    {
-        mIsGpuReading = FCString::Strstr(text, TEXT("Graphics pipeline")) != nullptr;
-        mGpuReading = FGpuCapture();
-    }
-    else if (mIsGpuReading && FCString::Strchr(text, PROFILE_BOX_END) != nullptr)
-    {
-        mGpuCaptures.Add(mGpuReading);
-        mIsGpuReading = false;
-    }
-    else if (mIsGpuReading && FCString::Strchr(text, PROFILE_BOX_COLUMN) != nullptr)
-    {
-        ParseGpuRow(text);
-    }
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Parses one ProfileGPU table row into the capture being read (called with the lock held)
-void FSOLHoloMenuProfileSmoke::ParseGpuRow(const TCHAR* text)
-{
-    // "| exclusive cells | inclusive cells | event name |": the inclusive cells are draws, dispatches, primitives,
-    // vertices, percent and the time ("0.115 ms")
-    const TCHAR columnRule[] = { PROFILE_BOX_COLUMN, 0 };
-    const TCHAR cellRule[] = { PROFILE_BOX_CELL, 0 };
-    TArray<FString> columns;
-    FString(text).ParseIntoArray(columns, columnRule, false);
-    if (columns.Num() < 4)
-    {
-        return;
-    }
-    TArray<FString> cells;
-    columns[2].ParseIntoArray(cells, cellRule, false);
-    if (cells.Num() < 6)
-    {
-        return;
-    }
-    const FString name = columns[3].TrimStartAndEnd();
-    const double timeMs = FCString::Atod(*cells.Last().TrimStart());
-    const int32 draws = FCString::Atoi(*cells[0].TrimStart());
-    if (name == TEXT("<root>"))
-    {
-        mGpuReading.FrameMs = timeMs;
-    }
-    else if (name.StartsWith(TEXT("SlateUI Title = ")) && !name.Contains(TEXT("Visualizer")) && mGpuReading.UiMs < 0.0)
-    {
-        mGpuReading.UiMs = timeMs;
-        mGpuReading.UiDraws = draws;
-    }
-    else if (name == TEXT("RenderGraphExecute - Slate") && mGpuReading.SlateMs < 0.0)
-    {
-        mGpuReading.SlateMs = timeMs;
-    }
-    else if (name.StartsWith(TEXT("Slate Material: MID_M_SOLHudShape")))
-    {
-        mGpuReading.ShapesMs += timeMs;
-    }
 }

@@ -12,6 +12,8 @@
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 
@@ -81,11 +83,11 @@ void USOLMainMenuWidget::NativeOnInitialized()
     UVerticalBox* column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
     columnPanel->SetContent(column);
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::GAME_TITLE, TITLE_FONT_SIZE,
-        TEXT_COLOR, true));
+        SOLSolidStyle::BrightTextColor(), true));
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::GAME_TAGLINE, SUBTITLE_FONT_SIZE,
-        TEXT_COLOR));
+        SOLSolidStyle::TextColor()));
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::STUDIO_NAME, SMALL_FONT_SIZE,
-        ACCENT_COLOR, true))->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, PANEL_PADDING));
+        SOLSolidStyle::ValueColor(), true))->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, PANEL_PADDING));
     const TCHAR* entryLabels[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
         SOLMenuText::CONTROLS, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
     static_assert(UE_ARRAY_COUNT(entryLabels) == static_cast<int32>(EEntry::Count), "one label per entry");
@@ -93,14 +95,14 @@ void USOLMainMenuWidget::NativeOnInitialized()
     for (int32 entry = 0; entry < static_cast<int32>(EEntry::Count); ++entry)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, entryLabels[entry], entry, BUTTON_FONT_SIZE);
+        button->Setup(*WidgetTree, entryLabels[entry], entry, BUTTON_FONT_SIZE, ESOLSolidButtonVariant::Stack);
         button->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleEntryClicked);
         column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, button, 0.0f, BUTTON_HEIGHT))->SetPadding(
             FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
         EntryButtons.Add(button);
     }
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::MAIN_MENU_HINT, SMALL_FONT_SIZE,
-        DIM_TEXT_COLOR, false, true))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, 0.0f));
+        SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, 0.0f));
 
     // Page panel beside the column: one switcher child per page (index = ESOLMainMenuPage)
     PagePanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PagePanel"));
@@ -115,7 +117,7 @@ void USOLMainMenuWidget::NativeOnInitialized()
     // Start-location picker: one row button per registry body (index = body index)
     UVerticalBox* startPage = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::START_LOCATION_TITLE);
     startPage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::START_LOCATION_BODY,
-        BODY_FONT_SIZE, DIM_TEXT_COLOR, false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
     UScrollBox* bodyList = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
     startPage->AddChildToVerticalBox(bodyList)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     BodyButtons.Reset();
@@ -123,7 +125,8 @@ void USOLMainMenuWidget::NativeOnInitialized()
     for (int32 body = 0; body < bodyCount; ++body)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, registry->GetRegistry().GetName(body).ToString(), body, BODY_FONT_SIZE);
+        button->Setup(*WidgetTree, registry->GetRegistry().GetName(body).ToString(), body, BODY_FONT_SIZE,
+            ESOLSolidButtonVariant::Small);
         button->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleBodyClicked);
         Cast<UScrollBoxSlot>(bodyList->AddChild(MainMenuSized(*WidgetTree, button, 0.0f, LIST_BUTTON_HEIGHT)))
             ->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, ROW_GAP));
@@ -199,6 +202,13 @@ void USOLMainMenuWidget::RefreshStartBody()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the column's entry button at an index, or null
+USOLMenuButton* USOLMainMenuWidget::GetEntryButton(const int32 index) const
+{
+    return EntryButtons.IsValidIndex(index) ? EntryButtons[index].Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Gives keyboard focus to the Play button
 void USOLMainMenuWidget::FocusDefault()
 {
@@ -213,15 +223,16 @@ void USOLMainMenuWidget::FocusDefault()
 void USOLMainMenuWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : EntryButtons)
     {
-        button->RefreshHighlight();
+        button->RefreshHighlightAt(frame.NowS, frame.Strength);
     }
     if (mPage == ESOLMainMenuPage::StartLocation)
     {
         for (USOLMenuButton* button : BodyButtons)
         {
-            button->RefreshHighlight();
+            button->RefreshHighlightAt(frame.NowS, frame.Strength);
         }
     }
 }

@@ -7,6 +7,8 @@
 
 #include "Menu/SOLMenuSmoke.h"
 #include "Menu/SOLMenuState.h"
+#include "Menu/SOLSolidMenuProfileSmoke.h"
+#include "Menu/SOLSolidMenuSmoke.h"
 
 #include "CoreMinimal.h"
 #include "Subsystems/WorldSubsystem.h"
@@ -52,7 +54,8 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FSOLOnMenuStateChanged, const SOLMenuState:
  *
  * Verification runs: any -SOL* switch other than the menu ones starts straight in flight (ShouldStartInMenu) so the
  * existing smoke scripts are unchanged; -SOLMenu forces the menu, -SOLNoMenu skips it, -SOLMenuSmoke=<all|screens|flow>
- * runs FSOLMenuSmoke.
+ * runs FSOLMenuSmoke; -SOLSmokeSolidMenuProfile and -SOLSmokeSolidMenu (both also start in the menu) run
+ * FSOLSolidMenuProfileSmoke and FSOLSolidMenuSmoke.
  */
 UCLASS()
 class SOLTEST_API USOLMenuSubsystem : public UWorldSubsystem
@@ -175,6 +178,12 @@ private:
     // Runs one step of the menu smoke script
     void StepSmoke();
 
+    // Runs one frame of the solid menu profiling smoke
+    void StepSolidProfileSmoke();
+
+    // Runs one frame of the solid menu kit smoke
+    void StepSolidSmoke();
+
     // Ends the settings visit of both menus' Settings pages (a menu opened or closed)
     void EndSettingsVisit();
 
@@ -209,9 +218,13 @@ private:
     TArray<SOLMenuState::EMenuEvent> mQueuedEvents;    // Requests waiting for the next frame (reserved once)
     FSOLOnMenuStateChanged mOnStateChanged;            // Listeners after each state change
     TUniquePtr<FSOLMenuSmoke> mSmoke;                  // Verification-only menu script (-SOLMenuSmoke)
+    TUniquePtr<FSOLSolidMenuProfileSmoke> mSolidProfileSmoke; // Verification-only cost capture (SDD 46 section 13)
+    TUniquePtr<FSOLSolidMenuSmoke> mSolidSmoke;        // Verification-only solid kit script (SDD 46 section 14)
     FTimerHandle mProcessTimer;                        // Next-frame processing of the queued events
     FTimerHandle mShowTimer;                           // First showing of the main menu
     FTimerHandle mSmokeTimer;                          // Menu smoke script steps
+    FTimerHandle mSolidProfileTimer;                   // Solid menu profiling smoke, once per frame
+    FTimerHandle mSolidSmokeTimer;                     // Solid menu kit smoke, once per frame
     double mLastSmokeStepSeconds = 0.0;                // Real time of the last smoke step
     int32 mStartBodyIndex = INDEX_NONE;                // Body the ship starts above
     int32 mPlayCount = 0;                              // Ship spawns through Play
