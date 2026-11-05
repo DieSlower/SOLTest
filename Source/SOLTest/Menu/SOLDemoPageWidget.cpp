@@ -107,7 +107,7 @@ void USOLDemoPageWidget::NativeOnInitialized()
     UVerticalBox* page = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::DEMO_TITLE);
     WidgetTree->RootWidget = page;
     HintText = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_HINT, SMALL_FONT_SIZE,
-        SOLSolidStyle::TextColor(), false, true);
+        SOLSolidStyle::DimTextColor(), false, true);
     page->AddChildToVerticalBox(HintText)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     const int32 rowCount = SOLMenuState::DemoRowCount();
     const int32 actionBase = rowCount * DEMO_STEP_BUTTONS_PER_ROW;
@@ -331,7 +331,7 @@ void USOLDemoPageWidget::RefreshTexts()
     {
         WarningsText->SetText(FText::FromString(warnings.IsEmpty() ? FString(SOLMenuText::DEMO_NO_WARNINGS)
             : FString::Join(warnings, TEXT(" "))));
-        WarningsText->SetColorAndOpacity(FSlateColor(warnings.IsEmpty() ? SOLSolidStyle::TextColor()
+        WarningsText->SetColorAndOpacity(FSlateColor(warnings.IsEmpty() ? SOLSolidStyle::DimTextColor()
             : SOLSolidStyle::WarningColor()));
     }
 }

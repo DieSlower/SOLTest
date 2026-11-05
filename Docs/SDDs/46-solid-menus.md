@@ -173,7 +173,8 @@ per-screen changes are in section 6.
 - **Cost.** One Custom node: the hull clamp of section 8.1 runs per pixel (a shared material cannot pre-clamp for one
   width), then the SDF and the shading, roughly 100-150 ALU (an estimate: Slate shaders have no representative
   instruction count in the material statistics; measured in the 46h profile against the Q17 budget), one texture
-  sample (grain) on raised hulls, none on recesses, and a second (the hatch) only on a disabled hull. That is above
+  sample (grain) on raised hulls, none on recesses, and a second (the hatch mask) only on a disabled hull with the hatch
+  cue (style 0; the committed slot cue, style 1, samples nothing). That is above
   section 13's "a few dozen ALU"; the 46h profile decides whether the clamp moves to the CPU for the unique panels.
 - **No pulse in the hull material:** the idle pulse only drives the trace layer, so no hull MID changes per frame; the
   unique panel MIDs exist only for their shape (step, chin, notches), written once per `SetHull`. Rivets and the vent
@@ -238,9 +239,9 @@ close animation is waited for).
   material from that style's instance.
 - **Textures the kit loads (review fix).** `USOLSolidMenuSubsystem` loads only the textures the kit draws itself,
   `T_SOLSolidRivet` and `T_SOLSolidVent` (`ESOLSolidTexture`). `M_SOLSolidHull` references `T_SOLSolidBrushed` (grain)
-  and `T_SOLSolidHazard` (the cue mask) as its own texture parameters, so they load with it. `T_SOLSolidNoise` is
-  imported (46b) but nothing samples it (the hull dithers with a hash): its load was removed; the asset and
-  `SOL::Paths::SOLID_TEX_NOISE` stay for the import script until a part uses it or the user drops it.
+  and `T_SOLSolidHazard` (the cue mask) as its own texture parameters, so they load with it. **46c follow-up
+  (user, 2026-11-05):** `T_SOLSolidNoise` (imported in 46b, never sampled: the hull dithers with a hash) was deleted
+  with its source PNG, its `generate_textures.py` step, its import entry and `SOL::Paths::SOLID_TEX_NOISE`.
 - **Dither (review fix).** The hull's dither is now +-0.5 / 255 of the sRGB output (scaled in linear by
   `2.2 x c^0.545`); the flat +-0.5 / 255 in linear was about +-2 output levels on the dark hull colours.
 - **Font and text colours.** `SOLMenuContent::MakeText` uses F_SOLMenu: bold text the Bold face, other text Medium;
@@ -248,8 +249,11 @@ close animation is waited for).
   section 9's roles (heading 26, section 20, body 18, small 15; a `static_assert` ties them to `SOL::SolidMenu`).
   The old colours map to the solid palette: body text `TEXT_COLOR`, titles and page headings `TEXT_BRIGHT_COLOR`,
   the old accent (values, keys, section headings, the studio name) `CYAN_COLOR`, warnings `WARNING_COLOR`; the old dim
-  tier (hints, the start-location and Demo help lines, the dirty text at rest) has no palette entry and uses
-  `TEXT_COLOR` (open for the user: a dim text colour could be added). `BUTTON_NORMAL`, `BUTTON_PRESSED_TINT`,
+  tier (hints, the start-location and Demo help lines, the dirty text at rest) used `TEXT_COLOR` until the **46c
+  follow-up (user, 2026-11-05)** added `TEXT_DIM_COLOR` #7F8A93 (`SOLSolidStyle::DimTextColor`, section 5.1); it now
+  draws the main menu hint and the start-location help line, the pause hint, the Settings hint and the dirty text at
+  rest, the Demo hint and its "no warnings" line, and the About copyright line. The Info page's row labels stay
+  `TEXT_COLOR` (they are content, not hints). `BUTTON_NORMAL`, `BUTTON_PRESSED_TINT`,
   `BUTTON_FOCUSED`, `BUTTON_SELECTED`, `BUTTON_CORNER_RADIUS`, `DIM_TEXT_COLOR`, `ACCENT_COLOR` and `WARNING_COLOR` were
   removed from `SOL::MenuStyle`; `TEXT_COLOR` stays for the NPC stats overlay, `PANEL_BACKGROUND` and `SCREEN_DIM`
   until the 46d / 46g panels. Settings sliders keep the UMG slider until 46e (bar `RAISED_COLOR`, handle cyan).
@@ -287,6 +291,7 @@ close animation is waited for).
 | Rivet | #6A737C | Rivets |
 | Text | **#A4AFB8** (D10) | Body text and button labels at rest (Q12) |
 | Bright text | #DCE3E8 | Titles, headings and the hovered / focused label (Q12) |
+| Dim text (46c follow-up, user 2026-11-05) | #7F8A93 | Hints and secondary lines (key hints, help lines, the dirty text at rest, the copyright line). `TEXT_DIM_COLOR`. Contrast about 3.3:1 on the panel hull, 4.2:1 on the recess: below body text's 5.15:1 by design, above the 3:1 non-text floor; only for short secondary lines, never body copy |
 | Cyan trace | **#28D2F0** (D10) | **Every** cyan of the solid menus (Q13): circuit traces, ring terminals, lit LEDs at rest, slider fill, the selected underline, values and keys |
 | Amber hover / selected | **#FFA628** (D10) | Hover / keyboard-focus only (Q9): edge, LED, underline and trace. The selected state is cyan, not amber |
 | Warning | **#E5533D** (Q14) | Red-orange, so a warning never reads as hover: key conflicts, the dirty indicator, Demo warnings (replaces today's orange `WARNING_COLOR`) |
@@ -326,12 +331,15 @@ brushed tile is a neutral grey tinted in the material.
 - **Where.** The disabled look is decoded from the brush tint's G code (`TINT_DISABLED_CODE`) by `M_SOLSolidHull`, so
   every hull style has it: the button variants, the slider groove and knob, the toggle slot and puck. A disabled hull
   ignores the hover amount (no lift, edge, LED, underline, glow or trace).
-- **Cue, a material parameter (`DisabledCueStyle`) with two options; the choice is open for the user.** (a) **Hatched
-  stripe** (default, `SOL::SolidMenu::DISABLED_CUE_STYLE` 0): a band `CUE_BAND_PX` tall above the bottom edge, inside
+- **Cue, a material parameter (`DisabledCueStyle`) with two options. 46c follow-up: the user chose (b), the dark slotted
+  recess (2026-11-05); it is the committed default (`SOL::SolidMenu::DISABLED_CUE_STYLE` 1).** The constant is not read
+  by C++: `create_solid_menu_materials.py` bakes it into `M_SOLSolidHull` as the parameter default, and
+  `SOLTest.SolidMenuKit.Subsystem.WorldLoadsAndPushes` checks that every style material carries it. (a) **Hatched
+  stripe** (style 0, kept as an option): a band `CUE_BAND_PX` tall above the bottom edge, inside
   the hull, hatched with 45-degree stripes in `DISABLED_CUE_COLOR` #3C3C3A, using `T_SOLSolidHazard` as the mask
   (one stripe period every `CUE_PERIOD_PX`; no new texture). (b) **Dark slotted recess** (1): the same band as a dark
-  slot (`SHADOW_COLOR`) with a faint lit lower lip (`CUE_LIP`). Both are in the shared material; switching is one
-  constant and a re-run of the material script.
+  slot (`SHADOW_COLOR`) with a faint lit lower lip (`CUE_LIP`), the default. Both are in the shared material; switching
+  is one constant and a re-run of the material script.
 - **Buttons (`USOLMenuButton::SetSolidDisabled`)** never call `SetIsEnabled(false)` (Slate's disabled effect would
   multiply the hull and label alpha by 0.45 on top of `DISABLED_ALPHA`): the button turns hit-test invisible, refuses
   hover focus and swallows clicks, and its owner moves keyboard focus off it.
@@ -508,7 +516,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760, `TAB_COLUMN_WIDTH` 200, `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160 | Existing `SOL::MenuStyle` sizes stay unless listed |
 | Font sizes | Title 56, heading 26, section 20, button 20, body 18, small 15 | Body +2 for Rajdhani's narrower face; checked at 1000x800 |
 | Letter spacing | Titles 400, stack labels 260, small caps 200 | From the board's tracking (README), applied as `FSlateFontInfo::LetterSpacing` |
-| `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD`, `SOLID_TEX_NOISE` under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
+| `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD` (46c follow-up: `SOLID_TEX_NOISE` removed) under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
 
 The old `SOL::MenuStyle` colour constants that the restyle no longer uses are removed in the same change (no dead
 constants); the layout sizes stay where still used.
@@ -521,12 +529,11 @@ constants); the layout sizes stay where still used.
 | Rivet | VectorCraft (octagon + bevel) then PhotoCraft shading | `textures/rivet-32.png` | `T_SOLSolidRivet` | 32, alpha |
 | Vent slot strip | VectorCraft | `textures/vent-strip-128x16.png` | `T_SOLSolidVent` | Tiles along X |
 | Hazard stripe | VectorCraft | `textures/hazard-128x16.png` | `T_SOLSolidHazard` | Tiles along X, colours from the palette in the material (stripe mask only) |
-| Dither / blue noise | PhotoCraft or MaterialCraft | `textures/noise-64.png` | `T_SOLSolidNoise` | 64, tiling, anti-banding |
 | Rajdhani TTFs + OFL | Google Fonts (download) | `../fonts/rajdhani/` | `Fonts/FF_Rajdhani_*`, `Fonts/F_SOLMenu` | 4 weights |
 | `M_SOLSolidHull` + instances | Python (`unreal.MaterialEditingLibrary`), HLSL Custom node mirroring section 8.1 | - | `/Game/SOL/UI/Solid/` | UI domain |
 
 - The hull, chamfers, notches, recess bevel, edges, LEDs and underline are **procedural** in the material (D8); only the
-  grain, rivet, vents, hazard mask and noise are textures. MaterialCraft may also produce the grain if its export works
+  grain, rivet, vents and hazard mask are textures. MaterialCraft may also produce the grain if its export works
   with a write root; the PhotoCraft tile is the fallback (it already exists as the kept sample
   `Docs/Images/menu-style-samples/brushed-tile-gray-512.png`).
 - **Tool notes (D9):** VectorCraft exports need **absolute paths**; PhotoCraft must be started with
@@ -553,7 +560,7 @@ Names are `SOL::SolidMenuMaterialParams`, defaults `SOL::SolidMenu`, paths `SOL:
 |---|---|
 | Pushed by the subsystem (on change only) | `EffectsStrength` (sanitized `HudEffectsStrength`), `DpiScale` |
 | Shape (`FSOLSolidHull`, clamped in the material as `ClampHull`) | `ChamferTL`, `ChamferTR`, `ChamferBR`, `ChamferBL`, `TitleStepWidth`, `TitleStepHeight`, `NotchY` (< 0 none), `NotchDepth`, `NotchHeight`, `ChinWidth`, `ChinHeight`, `Recess` (1 sunken), `InsetPx` (room for the shadow), `MarkShift` (puck: narrower by this fraction, right when the mark is set) |
-| Look | `ShadowPx`, `ShadowOpacity`, `GrainAmount`, `GrainTilePx`, `BevelPx`, `BevelAmount`, `EdgePx`, `EdgeHighlight`, `GlowPx`, `LedX` (< 0 none, large = centred), `LedRadius`, `UnderlineStart`, `UnderlineEnd` (from the right), `UnderlineBottom` (< 0 none), `UnderlinePx`, `DisabledCueStyle` (0 hatch, 1 slot), `CueBandPx`, `CuePeriodPx` |
+| Look | `ShadowPx`, `ShadowOpacity`, `GrainAmount`, `GrainTilePx`, `BevelPx`, `BevelAmount`, `EdgePx`, `EdgeHighlight`, `GlowPx`, `LedX` (< 0 none, large = centred), `LedRadius`, `UnderlineStart`, `UnderlineEnd` (from the right), `UnderlineBottom` (< 0 none), `UnderlinePx`, `DisabledCueStyle` (0 hatch, 1 slot, default 1), `CueBandPx`, `CuePeriodPx` |
 | Colours (linear, from the section 5.1 palette) | `BaseColor`, `LiftedColor`, `PressedColor`, `DisabledColor`, `EdgeColor`, `ShadowColor`, `LedOffColor`, `AccentColor` (amber), `MarkColor` (cyan), `CueColor` |
 | Textures | `GrainTexture` (`T_SOLSolidBrushed`), `CueMask` (`T_SOLSolidHazard`) |
 | Constants (not parameters) | `TINT_VERTEX_FLOOR`, the `TINT_*` decode thresholds, `HULL_MAX_CHAMFER_FRACTION`, `HULL_MAX_FEATURE_FRACTION`, `LIGHT_DIR_X / Y`, `GLOW_GAIN`, `CUE_MASK_PERIODS_X`, `CUE_LIP` |

@@ -2,7 +2,7 @@
 # Copyright © 2026 Acid Rain Studios LLC
 #
 # Imports the solid menu textures and the Rajdhani font (SDD 46 section 10, part 46b), headless and idempotent:
-#   Docs/Art/menu-style/textures/*.png      -> SOL::Paths SOLID_TEX_BRUSHED / RIVET / VENT / HAZARD / NOISE
+#   Docs/Art/menu-style/textures/*.png      -> SOL::Paths SOLID_TEX_BRUSHED / RIVET / VENT / HAZARD
 #   Docs/Art/fonts/rajdhani/Rajdhani-*.ttf  -> /Game/SOL/UI/Solid/Fonts/FF_Rajdhani_<Weight> (UFontFace)
 #                                           -> SOL::Paths SOLID_MENU_FONT (F_SOLMenu, a composite UFont with the four
 #                                              weights as typefaces named Regular, Medium, SemiBold, Bold)
@@ -38,7 +38,6 @@ TEXTURES = [
     ("SOLID_TEX_RIVET", "rivet-32.png", unreal.TextureCompressionSettings.TC_EDITOR_ICON, True),
     ("SOLID_TEX_VENT", "vent-strip-128x16.png", unreal.TextureCompressionSettings.TC_MASKS, False),
     ("SOLID_TEX_HAZARD", "hazard-128x16.png", unreal.TextureCompressionSettings.TC_MASKS, False),
-    ("SOLID_TEX_NOISE", "noise-64.png", unreal.TextureCompressionSettings.TC_MASKS, False),
 ]
 SETTINGS_VERSION = "v1"  # bump to force a re-import when the import settings above change
 

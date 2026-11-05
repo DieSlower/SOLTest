@@ -102,7 +102,7 @@ void USOLMainMenuWidget::NativeOnInitialized()
         EntryButtons.Add(button);
     }
     column->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::MAIN_MENU_HINT, SMALL_FONT_SIZE,
-        SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, 0.0f));
+        SOLSolidStyle::DimTextColor(), false, true))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, 0.0f));
 
     // Page panel beside the column: one switcher child per page (index = ESOLMainMenuPage)
     PagePanel = WidgetTree->ConstructWidget<UBorder>(UBorder::StaticClass(), TEXT("PagePanel"));
@@ -117,7 +117,7 @@ void USOLMainMenuWidget::NativeOnInitialized()
     // Start-location picker: one row button per registry body (index = body index)
     UVerticalBox* startPage = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::START_LOCATION_TITLE);
     startPage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::START_LOCATION_BODY,
-        BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        BODY_FONT_SIZE, SOLSolidStyle::DimTextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
     UScrollBox* bodyList = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
     startPage->AddChildToVerticalBox(bodyList)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     BodyButtons.Reset();

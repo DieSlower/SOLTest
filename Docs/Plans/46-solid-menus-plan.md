@@ -133,6 +133,11 @@ Answers: Q1 (`HudEffectsStrength`), Q2, Q12, Q13, Q14 (palette), Q16, Q17 (budge
    clearly different from normal and hover (desaturated hull without grain or edge highlight, LED off, no hover, the
    disabled cue, `DISABLED_TEXT_COLOR` label; SDD 5.3.1), `USOLMenuButton::SetSolidDisabled` without Slate's disabled
    dim, the factories' disabled brushes, checked by the kit tests and the smoke board.
+8. [x] **46c follow-ups (user decisions, 2026-11-05).** Disabled cue = (b) the dark slotted recess, committed as the
+   default (`DISABLED_CUE_STYLE` 1, baked by the material script, pinned by a kit test); `TEXT_DIM_COLOR` #7F8A93 and
+   `SOLSolidStyle::DimTextColor` for the old dim tier (hints, help lines, dirty text at rest, Demo "no warnings", the
+   copyright line); `T_SOLSolidNoise` deleted (asset, PNG, generator step, import entry, path constant); the
+   cue-compare scratch image deleted; selected + hover kept as built. Commit `Issue #46: Part 46c - follow-ups`.
 
 ### 46d: main menu and start-location page (opus, high)
 

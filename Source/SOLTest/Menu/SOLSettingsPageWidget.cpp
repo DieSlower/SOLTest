@@ -280,7 +280,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     UVerticalBox* page = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::SETTINGS_TITLE);
     WidgetTree->RootWidget = page;
     page->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::SETTINGS_HINT, SMALL_FONT_SIZE,
-        SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
+        SOLSolidStyle::DimTextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
     UScrollBox* scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
     Scroll = scroll;
     page->AddChildToVerticalBox(scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
@@ -433,7 +433,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     // Footer: dirty indicator, Revert and Apply; the status line under it
     UHorizontalBox* footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(footer)->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, 0.0f));
-    DirtyText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+    DirtyText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false,
         true);
     SettingsAddToRow(*footer, DirtyText, true)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     SettingsAddToRow(*footer, makeActionButton(SOLMenuText::SETTINGS_REVERT, EAction::Revert, SETTINGS_ACTION_WIDTH),
@@ -802,7 +802,7 @@ void USOLSettingsPageWidget::RefreshTexts()
     const bool bDirty = Settings->IsDirty();
     DirtyText->SetText(FText::FromString(bDirty ? SOLMenuText::SETTINGS_STATUS_DIRTY
         : SOLMenuText::SETTINGS_STATUS_CLEAN));
-    DirtyText->SetColorAndOpacity(FSlateColor(bDirty ? SOLSolidStyle::WarningColor() : SOLSolidStyle::TextColor()));
+    DirtyText->SetColorAndOpacity(FSlateColor(bDirty ? SOLSolidStyle::WarningColor() : SOLSolidStyle::DimTextColor()));
     StatusText->SetText(FText::FromString(mStatusMessage));
 }
 

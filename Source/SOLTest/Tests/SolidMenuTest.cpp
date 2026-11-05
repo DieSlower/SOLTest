@@ -1995,6 +1995,7 @@ bool FSOLSolidMenuPaletteHexTest::RunTest(const FString& /*parameters*/)
     SolidMenuTestExpectHex(*this, TEXT("RIVET_COLOR"), RIVET_COLOR, 0x6A737C);
     SolidMenuTestExpectHex(*this, TEXT("TEXT_COLOR"), TEXT_COLOR, 0xA4AFB8);
     SolidMenuTestExpectHex(*this, TEXT("TEXT_BRIGHT_COLOR"), TEXT_BRIGHT_COLOR, 0xDCE3E8);
+    SolidMenuTestExpectHex(*this, TEXT("TEXT_DIM_COLOR"), TEXT_DIM_COLOR, 0x7F8A93);
     SolidMenuTestExpectHex(*this, TEXT("CYAN_COLOR"), CYAN_COLOR, 0x28D2F0);
     SolidMenuTestExpectHex(*this, TEXT("AMBER_COLOR"), AMBER_COLOR, 0xFFA628);
     SolidMenuTestExpectHex(*this, TEXT("WARNING_COLOR"), WARNING_COLOR, 0xE5533D);
@@ -2030,6 +2031,14 @@ bool FSOLSolidMenuPaletteDisabledTest::RunTest(const FString& /*parameters*/)
         SolidMenuTestLuma(DISABLED_TEXT_COLOR) < SolidMenuTestLuma(TEXT_COLOR));
     TestTrue(TEXT("DISABLED_TEXT_COLOR is brighter than DISABLED_HULL_COLOR"),
         SolidMenuTestLuma(DISABLED_TEXT_COLOR) > SolidMenuTestLuma(DISABLED_HULL_COLOR));
+
+    // The text tiers stay ordered: disabled below dim (hints) below body below bright
+    TestTrue(TEXT("DISABLED_TEXT_COLOR is darker than TEXT_DIM_COLOR"),
+        SolidMenuTestLuma(DISABLED_TEXT_COLOR) < SolidMenuTestLuma(TEXT_DIM_COLOR));
+    TestTrue(TEXT("TEXT_DIM_COLOR is darker than TEXT_COLOR"),
+        SolidMenuTestLuma(TEXT_DIM_COLOR) < SolidMenuTestLuma(TEXT_COLOR));
+    TestTrue(TEXT("TEXT_COLOR is darker than TEXT_BRIGHT_COLOR"),
+        SolidMenuTestLuma(TEXT_COLOR) < SolidMenuTestLuma(TEXT_BRIGHT_COLOR));
 
     TestFalse(TEXT("DISABLED_CUE_COLOR differs from AMBER_COLOR"),
         SolidMenuTestSameRgb(DISABLED_CUE_COLOR, AMBER_COLOR));

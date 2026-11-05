@@ -1241,6 +1241,7 @@ namespace SOL
         inline const FColor RIVET_COLOR(0x6A, 0x73, 0x7C);
         inline const FColor TEXT_COLOR(0xA4, 0xAF, 0xB8);
         inline const FColor TEXT_BRIGHT_COLOR(0xDC, 0xE3, 0xE8);
+        inline const FColor TEXT_DIM_COLOR(0x7F, 0x8A, 0x93);     // Hints and secondary lines (46c follow-up)
         inline const FColor CYAN_COLOR(0x28, 0xD2, 0xF0);
         inline const FColor AMBER_COLOR(0xFF, 0xA6, 0x28);
         inline const FColor WARNING_COLOR(0xE5, 0x53, 0x3D);
@@ -1297,8 +1298,10 @@ namespace SOL
         inline constexpr float CUE_PERIOD_PX = 8.0f;              // ... hatch period ((a), T_SOLSolidHazard as the mask)
         inline constexpr float CUE_MASK_PERIODS_X = 8.0f;         // Stripe periods across the T_SOLSolidHazard tile
         inline constexpr float CUE_LIP = 0.35f;                   // ... slot lower lip brightness ((b))
-        inline constexpr float DISABLED_CUE_STYLE = 0.0f;         // Disabled cue: 0 hatched stripe (a), 1 dark slotted
-                                                                  // recess (b); open for the user (46c)
+        inline constexpr float DISABLED_CUE_STYLE = 1.0f;         // Disabled cue: 1 dark slotted recess (b, the user's
+                                                                  // choice), 0 hatched stripe (a). C++ never pushes it:
+                                                                  // create_solid_menu_materials.py bakes it as the
+                                                                  // DisabledCueStyle default (a kit test pins the asset)
 
         // Style instance geometry (SDD 46 section 5.2; 46c starting values)
         inline constexpr float BUTTON_LED_X_PX = 16.0f;           // Stack / tab: LED centre from the hull's left edge
@@ -1636,7 +1639,6 @@ namespace SOL
         inline constexpr const TCHAR* SOLID_TEX_RIVET = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidRivet");
         inline constexpr const TCHAR* SOLID_TEX_VENT = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidVent");
         inline constexpr const TCHAR* SOLID_TEX_HAZARD = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidHazard");
-        inline constexpr const TCHAR* SOLID_TEX_NOISE = TEXT("/Game/SOL/UI/Solid/Textures/T_SOLSolidNoise");
 
         // Hull material style instances (SDD 46 section 10), created by Tools/UI/create_solid_menu_materials.py; in the
         // order of ESOLSolidStyle (SOLID_STYLE_MATERIALS)

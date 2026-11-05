@@ -101,7 +101,7 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_BODY, BODY_FONT_SIZE,
         SOLSolidStyle::TextColor(), false, true))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_HINT, SMALL_FONT_SIZE,
-        SOLSolidStyle::TextColor(), false, true));
+        SOLSolidStyle::DimTextColor(), false, true));
     PageSwitcher->AddChild(resumePage);
     PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
     PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree, InfoKeyTexts));

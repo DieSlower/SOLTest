@@ -188,6 +188,13 @@ FLinearColor SOLSolidStyle::TextColor()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the dimmer text colour of hints and secondary lines
+FLinearColor SOLSolidStyle::DimTextColor()
+{
+    return Linear(SOL::SolidMenu::TEXT_DIM_COLOR);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the title and heading text colour
 FLinearColor SOLSolidStyle::BrightTextColor()
 {

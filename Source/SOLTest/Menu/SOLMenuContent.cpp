@@ -367,7 +367,7 @@ UWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
         true));
     page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true))
         ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+    page->AddChildToVerticalBox(MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false,
         true));
     return page;
 }

@@ -63,13 +63,7 @@ def hazard(width=128, height=16):
     return (((xs + ys) % 16) < 8).astype(float)
 
 
-# Anti-banding noise: uniform per-pixel noise, tiles trivially
-def noise(size=64):
-    return RNG.uniform(0, 1, (size, size))
-
-
 save("brushed-gray-512.png", brushed(), "L")
 save("rivet-32.png", rivet(), "RGBA")
 save("vent-strip-128x16.png", vent(), "L")
 save("hazard-128x16.png", hazard(), "L")
-save("noise-64.png", noise(), "L")

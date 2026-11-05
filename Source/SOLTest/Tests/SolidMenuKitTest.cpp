@@ -1670,6 +1670,15 @@ bool FSOLSolidKitWorldSubsystemTest::RunTest(const FString& /*parameters*/)
         materials.Add(material);
     }
 
+    // The disabled cue style is baked into the material by create_solid_menu_materials.py from
+    // SOL::SolidMenu::DISABLED_CUE_STYLE (C++ never pushes it): every style's material carries the constant
+    for (int32 i = 0; i < materials.Num(); ++i)
+    {
+        TestEqual(FString::Printf(TEXT("style %d: disabled cue style is the constant"), i),
+            SolidKitTestScalar(materials[i], DISABLED_CUE_STYLE), SOL::SolidMenu::DISABLED_CUE_STYLE,
+            SOLIDKITTEST_TOLERANCE);
+    }
+
     // A push reaches every shared material, once per change
     subsystem->PushParams(1.5f, 2.0f);
     const int32 pushes = subsystem->GetParamPushCount();
