@@ -82,7 +82,7 @@ Picked up as tickets when scheduled; each needs grill-me first.
 - `damage-and-death.md`: damage system (G-LOC death, planet-impact G)
 - `predicted-path.md`: ballistic path under gravity (P key now toggles the route overlay)
 - `cockpit-3d-screens.md`: HUD on in-world cockpit screens
-- `vr-performance-gate.md`: perf smoke at the VR-equivalent resolution (4032x2240, 90 fps / 11.1 ms), see `Docs/Research/VR_PERFORMANCE_TARGETS.md`
+- `vr-performance-gate.md`: perf smoke at the Varjo XR-4 resolution, one eye 3840x3744 and two eyes 7680x3744, 90 Hz / 11.1 ms (p99 <= 10 / 9.5 ms), see `Docs/Research/VR_PERFORMANCE_TARGETS.md`
 - `supercruise-travel.md`, `planetary-perturbations.md`, `surface-landing.md`, `star-diffraction-spikes.md`,
   `accurate-pole-directions.md`, `asteroid-ring-collision.md`
 

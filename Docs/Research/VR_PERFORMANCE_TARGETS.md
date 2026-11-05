@@ -2,6 +2,9 @@
 
 # VR performance targets (stay-above numbers for a game that will not be tested on a headset)
 
+**Project decision (2026-11-04): the stay-above target is the Varjo XR-4, see section 5a. The Index-tier figures
+(section 5b) are secondary.**
+
 Research date: 2026-11-04. Purpose: SOLTest has no VR support and the developer has no headset, but the game should hold
 frame rates that a VR player would need, so that a future VR port (or just a very high-fps flat player) is not blocked by
 performance. This file derives a "stay above" target and how to check it on a flat monitor.
@@ -29,6 +32,7 @@ the user's supersampling slider). Pixels are millions, both eyes, for the panel 
 | HTC Vive XR Elite | 1920x1920 | 7.37 | not found | - | 90 | Standalone or PC streaming |
 | HP Reverb G2 | 2160x2160 | 9.33 | not found | - | 90 | WMR, reprojection handled by the WMR runtime |
 | PlayStation VR2 | 2000x2040 | 8.16 | varies; many titles far below panel, foveated (eye tracking) | - | 90 / 120 | Console, fixed hardware; analysis of shipped games shows wide variation |
+| **Varjo XR-4 series** (XR-4, Focal, Secure) | **3840x3744** | **28.75** | not published by Varjo (see section 5a) | - | 75 / 90 (Varjo Base setting) | **The project floor.** One mini-LED panel per eye |
 | Pimax Crystal | 2880x2880 | 16.59 | not found | - | 72 / 90 / 120, up to 144-160 in beta | High-end PC reference |
 | Apple Vision Pro | about 3660x3200 (iFixit-based estimate, unverified) | about 23 (Apple, both eyes) | not applicable (foveated, visionOS compositor) | - | 90 (normal), 96 (24 fps video), 100 (anti-flicker mode) | High-end reference, not a PC-VR target |
 
@@ -89,6 +93,9 @@ Reference flat load: 1080p60 = 2.07 Mpx x 60 = 124 Mpx/s. 1440p60 = 3.69 Mpx x 6
 | Reverb G2 panel 9.33 Mpx @ 90 | 9.33 | 840 | 6.8 | 3.8 |
 | PSVR2 panel 8.16 Mpx @ 90 / 120 | 8.16 | 734 / 979 | 5.9 / 7.9 | 3.3 / 4.4 |
 | Vive Pro 2 panel 11.99 Mpx @ 90 / 120 | 11.99 | 1079 / 1439 | 8.7 / 11.6 | 4.9 / 6.5 |
+| **Varjo XR-4, ONE eye 14.38 Mpx @ 90** | 14.38 | 1294 | 10.4 | 5.9 |
+| **Varjo XR-4, TWO eyes 28.75 Mpx @ 90** | 28.75 | 2588 | 20.8 | 11.7 |
+| Varjo XR-4, one eye / two eyes @ 75 (MR mode) | 14.38 / 28.75 | 1078 / 2157 | 8.7 / 17.3 | 4.9 / 9.8 |
 | Pimax Crystal panel 16.59 Mpx @ 90 / 120 | 16.59 | 1493 / 1991 | 12.0 / 16.0 | 6.8 / 9.0 |
 
 Pixel count is a floor, not the whole cost: VR renders two views (culling and draw submission double unless instanced
@@ -96,7 +103,54 @@ stereo shares them), has no TAA-style temporal reuse (see section 6), and the ru
 
 ## 5. Recommended "stay above" target
 
-**PC-VR tier (the target to hold on the developer's flat monitor):**
+### 5a. THE target: Varjo XR-4 (project decision, 2026-11-04)
+
+The user decided the project's VR performance floor is the Varjo XR-4 resolution and frame rate, tested both as one eye
+and as two eyes (the published resolution is per eye).
+
+**Spec (all editions share it; Focal adds autofocus passthrough, Secure is the TAA-compliant radio-free variant; no
+"Enterprise" edition was found on Varjo's pages):**
+
+- Panel: 3840 x 3744 **per eye** (14.38 Mpx per eye, 28.75 Mpx both), dual mini-LED, 120 x 105 degree FOV, 51 PPD peak
+  at the centre ([Varjo product page](https://varjo.com/products/xr-4), [Varjo resolution article](https://support.varjo.com/hc/en-us/resolution)).
+  Road to VR's "14.4MP" figure for the Focal Edition matches 3840 x 3744 as a per-eye count
+  ([Road to VR](https://roadtovr.com/varjo-xr-4-announcement-specs-price-release-date/)).
+- No separate focus-area or peripheral panel: the XR-4 is one panel per eye. (A reseller page and one review describe a
+  1920x1920 "focus" plus 2880x2720 peripheral layout, which is the older XR-3 design; Varjo's own pages contradict it, so
+  it is ignored.) The "foveated focus area" in Varjo Base is a rendering/passthrough region driven by 200 Hz eye
+  tracking, not a second display.
+- Refresh: **90 Hz** (maximum 90 fps, "recommended for VR content") or **75 Hz** (larger foveated focus area, "recommended
+  for mixed reality") selectable in Varjo Base 4.3 or later
+  ([refresh rate](https://support.varjo.com/hc/en-us/refresh-rate), [frame rate](https://support.varjo.com/hc/en-us/frame-rate)).
+  Some third-party listings mention 120 Hz experimental (community wiki only, unverified); not used.
+- Render resolution that Varjo Base / SteamVR recommends: **not published**. Varjo's system-requirements page says only that
+  the best-performance desktop tier renders at "native XR-4 Series resolution"
+  ([system requirements](https://support.varjo.com/hc/en-us/xr-4-series-system-requirements)); its recommended GPUs are
+  RTX 5090 / RTX PRO 6000 Blackwell (best) and RTX 3090 / 4080 / 5070 Ti (minimum). **Unsourced here:** any
+  supersampling multiplier; the target therefore uses the panel resolution as the render resolution (a lower bound, since
+  runtimes usually render above panel size; see section 1).
+
+**Derived numbers (my arithmetic):**
+
+| | Pixels per frame | Mpx/s at 90 Hz | x 1440p60 | Budget at 90 Hz | Budget at 75 Hz |
+|---|---|---|---|---|---|
+| ONE eye, 3840 x 3744 | 14.38 Mpx | 1294 | 5.9 | 11.11 ms | 13.33 ms |
+| TWO eyes, 7680 x 3744 | 28.75 Mpx | 2588 | 11.7 (3.2x the Index figure below) | 11.11 ms | 13.33 ms |
+
+**Test configurations (both required; the 90 Hz budget is the pass line, 75 Hz is not a target):**
+
+| Config | Window / render size | Pixels | Pass criterion |
+|---|---|---|---|
+| `1eye` | 3840 x 3744 | 14.38 Mpx | p99 frame, Game thread and GPU each <= 10.0 ms (90% of 11.11 ms) |
+| `2eyes` | 7680 x 3744 (side-by-side) | 28.75 Mpx | p99 frame, Game thread and GPU each <= 9.5 ms (10.0 ms minus about 5% for the second view's culling and draws that a single wide flat frame does not pay; rule of thumb, calibrate if a headset appears) |
+
+`1eye` isolates per-pixel cost (what a single Varjo eye image costs). `2eyes` is the real pixel load and the harder test;
+it is the one that decides pass or fail for the project, while `1eye` helps attribute a miss (pixel-bound if `1eye`
+passes by a wide margin and `2eyes` fails on GPU only, CPU-bound if Game is over budget in both). The 7680 width is
+within the 8192 texture-size limit of common GPUs but needs enough VRAM for the 28.75 Mpx G-buffer; if a card cannot
+allocate it, report that instead of lowering the size.
+
+### 5b. Secondary: PC-VR Index tier (kept for reference)
 
 - Resolution: 2 x 2016 x 2240 (Index at SteamVR 100%, 9.0 Mpx total), also within about 1% of Quest 3 panel size
   (9.1 Mpx) and Reverb G2 (9.3 Mpx).
@@ -116,7 +170,11 @@ standalone port is a separate project, not something this gate covers.
 
 Nothing here replaces testing on hardware, but pixel throughput and frame time are measurable on a monitor.
 
-1. **Render at the equivalent resolution.** A side-by-side flat window of 4032 x 2240 equals 2 x 2016 x 2240. Run the
+0. **Primary (Varjo XR-4) runs.** Run each profile smoke twice: `-ResX=3840 -ResY=3744` (`1eye`) and
+   `-ResX=7680 -ResY=3744` (`2eyes`), `r.ScreenPercentage 100`, a real RHI (no `-NullRHI`), packaged or `-game`. Record
+   p99 frame, Game and GPU times per scene and compare to the section 5a criteria. The Index-equivalent steps below are the
+   secondary check.
+1. **Render at the equivalent resolution.** A side-by-side flat window of 4032 x 2240 equals 2 x 2016 x 2240 (Index tier). Run the
    game windowed or fullscreen at that size, e.g. `UnrealEditor-Cmd` / packaged exe with `-ResX=4032 -ResY=2240`
    (or `r.SetRes 4032x2240`) and `r.ScreenPercentage 100` (flat mode, so the cvar is fine; in a real VR session Epic says
    to use `vr.PixelDensity` instead). A cheaper first pass is 100% on a 4K display (3840x2160, 8.3 Mpx, about 92% of the target).
@@ -142,7 +200,14 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
 
 - Current budgets (#42 holo menu: 0.1 ms; #46 solid menu: 0.1 ms CPU and 0.3 ms GPU) were set against a flat frame.
   Against 11.11 ms those are 0.9% CPU and 2.7% GPU of a 90 Hz frame (3.6% at 120 Hz), which is acceptable on its own.
-- GPU cost of full-screen UI scales with pixels. If the 0.3 ms was measured at 1440p (3.69 Mpx), the same material
+- **Rescaled menu/HUD GPU budgets for the Varjo XR-4 target.** The resolution the #42/#46 budgets were measured at is
+  not recorded in this note (assumed 1440p, 3.69 Mpx; verify). If the cost is fill-bound it scales with pixel count:
+  0.3 ms x (14.38 / 3.69) = about 1.2 ms in `1eye`, and x (28.75 / 3.69) = about 2.4 ms in `2eyes` (10.8% / 21% of the
+  11.11 ms frame, which is too much for a menu). Provisional ceilings until re-measured: solid menu (#46) <= 1.2 ms GPU
+  at `1eye` and <= 2.4 ms at `2eyes`; holo menu (#42) scaled the same way from its own flat figure. CPU stays 0.1 ms. The
+  re-measurement at 3840x3744 and 7680x3744 replaces these; if the measured cost exceeds the ceilings, the UI moves to a
+  stereo layer or a low-resolution world-space quad (below).
+- (Older Index-tier reasoning.) GPU cost of full-screen UI scales with pixels. If the 0.3 ms was measured at 1440p (3.69 Mpx), the same material
   fill-bound at 9.03 Mpx is about 0.3 x 2.45 = 0.73 ms, and about 1.5 ms if the UI is drawn once per eye (2 views). Re-measure the UI smokes at
   4032x2240 before claiming the budget holds; if it does not, the UI becomes a stereo layer or a small world-space quad
   rendered to its own low-resolution target once per frame (and not per eye), so its cost is decoupled from the headset pixel count.
@@ -151,6 +216,13 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
 
 ## 8. Sources
 
+- Varjo XR-4 product page (3840 x 3744 per eye, 120 x 105 FOV, 51 PPD, editions): <https://varjo.com/products/xr-4>
+- Varjo support, resolution in VR/XR: <https://support.varjo.com/hc/en-us/resolution>
+- Varjo support, refresh rate (75 / 90 Hz): <https://support.varjo.com/hc/en-us/refresh-rate>
+- Varjo support, frame rate (aim for 90 fps): <https://support.varjo.com/hc/en-us/frame-rate>
+- Varjo support, XR-4 system requirements (GPUs, native resolution): <https://support.varjo.com/hc/en-us/xr-4-series-system-requirements>
+- Varjo blog, XR-4 series refresh (Focal / Secure, no Enterprise edition mentioned): <https://varjo.com/blog/why-were-refreshing-the-xr-4-series-for-mission-critical-training>
+- Road to VR, XR-4 announcement (14.4 MP, 90 Hz, 51 PPD): <https://roadtovr.com/varjo-xr-4-announcement-specs-price-release-date/>
 - Meta Quest comparison pages (panel 2064x2208 for Quest 3, 72/90/120 Hz): <https://www.meta.com/gb/quest/compare/>
 - Mixed News, Quest 3 display details: <https://mixed-news.com/en/new-details-about-the-meta-quest-3-display/>
 - UploadVR, Quest 3 resolution confirmed: <https://uploadvr.com/quest-3-resolution-confirmed-best-buy/>
