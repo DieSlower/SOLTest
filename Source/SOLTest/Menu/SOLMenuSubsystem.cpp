@@ -8,6 +8,7 @@
 #include "Game/SOLGameMode.h"
 #include "Map/SOLJumpSubsystem.h"
 #include "Menu/SOLMainMenuWidget.h"
+#include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuSmoke.h"
 #include "Menu/SOLPauseMenuWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
@@ -558,7 +559,10 @@ void USOLMenuSubsystem::RefreshWidgets()
 
     // A menu takes the keyboard and shows the cursor; the game viewport gets no input meanwhile
     FInputModeUIOnly inputMode;
-    inputMode.SetWidgetToFocus(shown->TakeWidget());
+    // The default button is the widget to focus: with the menu root, the deferred focus change lands after
+    // FocusDefault and leaves no entry lit (SDD 6.2)
+    USOLMenuButton* defaultButton = bMainMenu ? MainMenu->GetDefaultButton() : PauseMenu->GetDefaultButton();
+    inputMode.SetWidgetToFocus(defaultButton != nullptr ? defaultButton->TakeWidget() : shown->TakeWidget());
     inputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
     playerController->SetInputMode(inputMode);
     playerController->bShowMouseCursor = SOLMenuState::ShouldShowCursor(mState);

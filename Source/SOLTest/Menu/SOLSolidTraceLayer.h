@@ -33,12 +33,16 @@ struct FSOLSolidTrace
  * the layer every frame like its other widgets, at strength 0 too, the content then being unchanged). Each line
  * element owns its points (FSlateDrawElement::MakeLines takes them by value), so a paint makes one exact-size array
  * per line it draws (glow, core and ring: at most three per trace), moved into the draw list without a further copy.
+ * (46d) It also draws the stack LEDs' power-up blink (amber dots at the LED centres it is given, the lit ones a bit
+ * mask, SOLSolidMenu::PowerUpLedLit) and the idle pulse dot travelling along the longest static trace once the
+ * traces are fully lit (SOLSolidMenu::PulseDotFraction / PulseDotAlpha): one more line array per dot drawn.
  */
 class SOLTEST_API SSOLSolidTraceLayer : public SLeafWidget
 {
 public:
 
     static constexpr int32 MAX_TRACES = 8;
+    static constexpr int32 MAX_LEDS = 8;                        // Stack LEDs the power-up blink can light
     static constexpr int32 RING_SEGMENTS = 8;                   // A ring terminal is an octagon
     static constexpr int32 RING_POINTS = RING_SEGMENTS + 1;     // Closed: the first point repeated
 
@@ -66,6 +70,25 @@ public:
 
     // Hides the hover trace
     void ClearHoverTrace();
+
+    // Sets the stack LEDs' centres for the power-up blink (copied; at most MAX_LEDS, the rest ignored)
+    void SetLeds(TConstArrayView<FVector2f> centres);
+
+    // Sets which LEDs the power-up blink lights (bit i: LED i; 0 none), repainting only on a change
+    void SetLitLeds(uint32 mask);
+
+    // Sets the idle pulse dot: its place along the longest trace, [0, 1], and its alpha (0 hides it and ignores the
+    // place, so a hidden dot never repaints)
+    void SetPulseDot(float fraction, float alpha);
+
+    // Returns the LEDs the power-up blink lights (verification)
+    uint32 GetLitLeds() const { return mLitLeds; }
+
+    // Returns the idle pulse dot's alpha (0: hidden; verification)
+    float GetPulseDotAlpha() const { return mDotAlpha; }
+
+    // Returns the index of the longest static trace (the pulse dot's), or INDEX_NONE without traces
+    int32 GetLongestTrace() const { return mLongestTrace; }
 
     // Returns how many static traces are set
     int32 GetTraceCount() const { return mTraceCount; }
@@ -99,7 +122,13 @@ private:
     FSOLSolidTrace mTraces[MAX_TRACES];
     FSOLSolidTrace mHoverTrace;
     FVector2f mRingOffsets[RING_POINTS];        // LED_RADIUS_PX octagon around a trace's first point
+    FVector2f mLeds[MAX_LEDS];                  // Stack LED centres (layer local)
     int32 mTraceCount = 0;
+    int32 mLedCount = 0;
+    int32 mLongestTrace = INDEX_NONE;           // The pulse dot's trace
+    uint32 mLitLeds = 0;                        // Power-up blink: bit i lights mLeds[i]
+    float mDotFraction = 0.0f;                  // Pulse dot: place along the longest trace
+    float mDotAlpha = 0.0f;                     // ... and alpha (0: hidden)
     float mPower = 1.0f;
     float mPulse = 1.0f;
     float mStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;

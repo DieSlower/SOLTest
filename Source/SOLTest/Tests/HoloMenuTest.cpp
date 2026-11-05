@@ -2448,4 +2448,111 @@ bool FSOLHoloMenuExtremeInputsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// --- Duration forms of the anim functions (SDD 46 section 4.5, 46d) ---
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHoloMenuAnimDurationInstantTest, "SOLTest.HoloMenu.AnimDurationInstant",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// An open duration of 0, negative or NaN opens at once (progress 1, Advance to Open); a close duration of 0, negative
+// or NaN closes at once (progress 0, Advance to Closed); the other duration still times the other phase
+bool FSOLHoloMenuAnimDurationInstantTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHoloMenu;
+    const double timed = 0.4;
+    const double instant[] = { 0.0, -0.25, HOLOMENUTEST_NAN_D };
+    const TCHAR* names[] = { TEXT("0"), TEXT("negative"), TEXT("NaN") };
+    for (int32 i = 0; i < static_cast<int32>(UE_ARRAY_COUNT(instant)); ++i)
+    {
+        // Instant open, timed close
+        FSOLHoloMenuAnim anim;
+        const double t0 = 10.0;
+        TestTrue(FString::Printf(TEXT("openS %s: BeginOpen returns true"), names[i]),
+            BeginOpen(anim, t0, 1.0f, instant[i], timed));
+        TestEqual(FString::Printf(TEXT("openS %s: progress 1 at the start"), names[i]),
+            Progress(anim, t0, 1.0f, instant[i], timed), 1.0f, HOLOMENUTEST_TOLERANCE);
+        Advance(anim, t0, 1.0f, instant[i], timed);
+        TestTrue(FString::Printf(TEXT("openS %s: Open after one Advance"), names[i]),
+            anim.Phase == ESOLHoloMenuPhase::Open);
+        const double t1 = 20.0;
+        TestTrue(FString::Printf(TEXT("openS %s: BeginClose returns true"), names[i]),
+            BeginClose(anim, t1, 1.0f, instant[i], timed));
+        TestEqual(FString::Printf(TEXT("openS %s: the timed close is half way at closeS / 2"), names[i]),
+            Progress(anim, t1 + 0.5 * timed, 1.0f, instant[i], timed), 0.5f, HOLOMENUTEST_PROGRESS_TOLERANCE);
+
+        // Timed open, instant close
+        FSOLHoloMenuAnim other;
+        TestTrue(FString::Printf(TEXT("closeS %s: BeginOpen returns true"), names[i]),
+            BeginOpen(other, t0, 1.0f, timed, instant[i]));
+        TestEqual(FString::Printf(TEXT("closeS %s: the timed open is half way at openS / 2"), names[i]),
+            Progress(other, t0 + 0.5 * timed, 1.0f, timed, instant[i]), 0.5f, HOLOMENUTEST_PROGRESS_TOLERANCE);
+        Advance(other, t0 + timed + HOLOMENUTEST_TIME_EPS_S, 1.0f, timed, instant[i]);
+        TestTrue(FString::Printf(TEXT("closeS %s: Open after openS"), names[i]),
+            other.Phase == ESOLHoloMenuPhase::Open);
+        TestTrue(FString::Printf(TEXT("closeS %s: BeginClose returns true"), names[i]),
+            BeginClose(other, t1, 1.0f, timed, instant[i]));
+        TestEqual(FString::Printf(TEXT("closeS %s: progress 0 at the start"), names[i]),
+            Progress(other, t1, 1.0f, timed, instant[i]), 0.0f, HOLOMENUTEST_TOLERANCE);
+        Advance(other, t1, 1.0f, timed, instant[i]);
+        TestTrue(FString::Printf(TEXT("closeS %s: Closed after one Advance"), names[i]),
+            other.Phase == ESOLHoloMenuPhase::Closed);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHoloMenuAnimDurationDefaultTest, "SOLTest.HoloMenu.AnimDurationDefault",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The three-argument forms are the duration forms at OPEN_S and CLOSE_S: the same return values, phases and progress
+// through an open, a reversal mid-close and a close, at strength 1 and 0
+bool FSOLHoloMenuAnimDurationDefaultTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHoloMenu;
+    const double openS = static_cast<double>(SOL::HoloMenu::OPEN_S);
+    const double closeS = static_cast<double>(SOL::HoloMenu::CLOSE_S);
+    const float strengths[] = { 1.0f, 0.0f };
+    for (const float s : strengths)
+    {
+        FSOLHoloMenuAnim a;
+        FSOLHoloMenuAnim b;
+        // Compares the two anims' phases and progress at a time
+        const auto same = [&](const TCHAR* what, const double nowS)
+        {
+            TestTrue(FString::Printf(TEXT("s %.0f, %s: same phase"), s, what), a.Phase == b.Phase);
+            TestEqual(FString::Printf(TEXT("s %.0f, %s: same progress"), s, what), Progress(a, nowS, s),
+                Progress(b, nowS, s, openS, closeS), HOLOMENUTEST_TOLERANCE);
+        };
+
+        // Open, half way, then finished
+        const double t0 = 5.0;
+        TestEqual(TEXT("BeginOpen returns the same"), BeginOpen(a, t0, s), BeginOpen(b, t0, s, openS, closeS));
+        same(TEXT("open start"), t0);
+        same(TEXT("open mid"), t0 + 0.5 * openS);
+        Advance(a, t0 + openS + HOLOMENUTEST_TIME_EPS_S, s);
+        Advance(b, t0 + openS + HOLOMENUTEST_TIME_EPS_S, s, openS, closeS);
+        same(TEXT("open end"), t0 + openS + HOLOMENUTEST_TIME_EPS_S);
+
+        // Close, reopened mid-way (the reversal starts from the close's progress), then closed for good
+        const double t1 = 10.0;
+        TestEqual(TEXT("BeginClose returns the same"), BeginClose(a, t1, s), BeginClose(b, t1, s, openS, closeS));
+        same(TEXT("close mid"), t1 + 0.5 * closeS);
+        const double t2 = t1 + 0.5 * closeS;
+        TestEqual(TEXT("BeginOpen mid-close returns the same"), BeginOpen(a, t2, s),
+            BeginOpen(b, t2, s, openS, closeS));
+        same(TEXT("reversal start"), t2);
+        same(TEXT("reversal mid"), t2 + 0.25 * openS);
+        const double t3 = 20.0;
+        Advance(a, t3, s);
+        Advance(b, t3, s, openS, closeS);
+        TestEqual(TEXT("BeginClose again returns the same"), BeginClose(a, t3, s), BeginClose(b, t3, s, openS, closeS));
+        Advance(a, t3 + closeS + HOLOMENUTEST_TIME_EPS_S, s);
+        Advance(b, t3 + closeS + HOLOMENUTEST_TIME_EPS_S, s, openS, closeS);
+        same(TEXT("close end"), t3 + closeS + HOLOMENUTEST_TIME_EPS_S);
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -181,6 +181,10 @@ Right Shift+O cycles to the next profile and the HUD shows an OVERLAYS: PROFILE 
 
 Settings: the Space dust option under Graphics.
 
+![Solid main menu](Docs/Images/46-main-menu-solid.png)
+
+The solid main menu (issue #46, part 46d): hull column with the start-location button, hazard stripe and the version recess.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -188,11 +192,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 82.5 h |
-| Time spent answering questions | 7.6 h |
-| Tokens | 4,456.2M |
-| Notional API price | $1,748 |
-| Subagents dispatched | 367 |
+| Work time (wall-clock) | 84.2 h |
+| Time spent answering questions | 7.7 h |
+| Tokens | 4,543.5M |
+| Notional API price | $1,785 |
+| Subagents dispatched | 371 |
 <!-- METRICS:END -->
 
 ## Documentation map

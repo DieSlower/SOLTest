@@ -134,7 +134,7 @@ Answers: Q1 (`HudEffectsStrength`), Q2, Q12, Q13, Q14 (palette), Q16, Q17 (budge
    disabled cue, `DISABLED_TEXT_COLOR` label; SDD 5.3.1), `USOLMenuButton::SetSolidDisabled` without Slate's disabled
    dim, the factories' disabled brushes, checked by the kit tests and the smoke board.
 8. [x] **46c follow-ups (user decisions, 2026-11-05).** Disabled cue = (b) the dark slotted recess, committed as the
-   default (`DISABLED_CUE_STYLE` 1, baked by the material script, pinned by a kit test); `TEXT_DIM_COLOR` #7F8A93 and
+   default (`DISABLED_CUE_STYLE` 1, baked by the material script, pinned by a kit test); `TEXT_DIM_COLOR` #8A949D and
    `SOLSolidStyle::DimTextColor` for the old dim tier (hints, help lines, dirty text at rest, Demo "no warnings", the
    copyright line); `T_SOLSolidNoise` deleted (asset, PNG, generator step, import entry, path constant); the
    cue-compare scratch image deleted; selected + hover kept as built. Commit `Issue #46: Part 46c - follow-ups`.
@@ -143,13 +143,40 @@ Answers: Q1 (`HudEffectsStrength`), Q2, Q12, Q13, Q14 (palette), Q16, Q17 (budge
 
 Answers: Q5 (shell right of the stack), Q9, Q10, Q15. Depends on 46c.
 
-1. [ ] `USOLMainMenuWidget`: hull panel column (title step, tagline, stack buttons, hazard stripe under Quit, hint, the
+1. [x] `USOLMainMenuWidget`: hull panel column (title step, tagline, stack buttons, hazard stripe under Quit, hint, the
    version / credits recess per Q10), traces and the hovered entry's trace (Q15), the page shell (SDD 6.1) placed to the
-   right of the stack (Q5) with Back, panel-open / power-up / pulse.
-2. [ ] Start-location page in the shell (recess list, solid scroll bar, selected row: cyan underline + LED, Q9).
-3. [ ] The build-time version line (Q10, SDD 11.1): `SOLTest.Build.cs` writes `Intermediate/Generated/SOLBuildVersion.generated.h` from `git rev-list --count HEAD` and the build month / year, only when the content changes, fallback commit count 0 with one warning; a pure format helper (`0.1.YYMM.<count>`) with a unit test; the chin recess shows the line plus studio and engine. Not committed (Intermediate).
-4. [ ] Smoke steps 1-3 of SDD 14 for the main menu; screenshots looked at; `-SOLMenuSmoke=all` no new failures.
-5. [ ] Review; fixes; suite. Commit `Issue #46: Part 46d - solid main menu`.
+   right of the stack (Q5) with Back, panel-open / power-up / pulse. **Done** (SDD 6.2): fixed-height column
+   (`PAGE_HEIGHT` 760 -> 800), traces from the layout constants, hover traces rebound in `NativeConstruct`, the shell
+   narrowing to the room right of the column (fits 1000x800), Back = Esc through `ClosePage`, `SOLSolidMenu::
+   BeginPanelOpen` / `BeginPanelClose` / `PanelProgress` / `AdvancePanel` on the #42 phases (duration-parameter forms
+   of `SOLHoloMenu`'s functions; TDD: 12 `SOLTest.SolidMenu.PanelAnim.*` tests, red 12/12 on stubs, then green),
+   `ESOLSolidTexture::Hazard` for the stripe; About credits gain "Menu font: Rajdhani, SIL OFL 1.1".
+2. [x] Start-location page in the shell (recess list, solid scroll bar, selected row: cyan underline + LED, Q9).
+3. [x] The build-time version line (Q10, SDD 11.1): `SOLTest.Build.cs` writes `Intermediate/Generated/SOLBuildVersion.generated.h` from `git rev-list --count HEAD` and the build month / year, only when the content changes, fallback commit count 0 with one warning; a pure format helper (`0.1.YYMM.<count>`) with a unit test; the chin recess shows the line plus studio and engine. Not committed (Intermediate). **Done** (SDD 11.2): `Menu/SOLBuildVersion`, 14 `SOLTest.BuildVersion.*` tests (red 13/14 on stubs, the 14th checks the test's own helper), the git reflog as a UBT external dependency.
+4. [x] Smoke steps 1-3 of SDD 14 for the main menu; screenshots looked at; `-SOLMenuSmoke=all` no new failures.
+   **Done:** `-SOLSmokeSolidMenu` 36/36 (was 13), screenshots at 1280x720 and 1000x800 looked at and deleted;
+   `-SOLSmokeHud` 24/24, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHoloMenu` 86/86, `-SOLMenuSmoke=all` 44 passed / 6 failed
+   with the game window focused (the TECH_DEBT stale free-cursor checks: Play, Play again, Play a third time, Esc,
+   Ctrl+F1, and thrust at Mars; no new failure). Profile medians (SDD 13.1 46d check): P0 +0.044 / +0.047, P1 +0.049 /
+   +0.028, P2 -0.020 / +0.001, P3 +0.018 / +0.003 ms, all inside the budget.
+5. [x] Review; fixes; suite. Commit `Issue #46: Part 46d - solid main menu` (left to the main session).
+   **Final user decisions applied (2026-11-05):** `TEXT_DIM_COLOR` #8A949D, version-line credit "ARS LLC", keyboard focus
+   on Play after every menu show (TECH_DEBT item removed), screenshot `46-main-menu-solid.png` in the README gallery.
+   **Review fixes done** (SDD 6.2, 11.2, 13.1): the power-up LED blink (drawn by the column's trace layer in stack
+   order, ending off; an interpretation of SDD 7 recorded in SDD 6.2) and the idle pulse dot on the longest trace; a
+   reshow snaps the shell closed (a page left open at Play no longer animates shut on the return); a button given a
+   new trace layer pushes its current hover trace; the version header never fails the build (`__has_include` with a
+   `__DATE__` YYMM fallback, the folder created first, a locked per-process cache, temp file + move, git's stderr in
+   the warning, `.git` looked for upward); the trace bends named; the hint-above-traces check; header comments on the
+   `SOLHoloMenu` duration overloads; three TECH_DEBT items (VR floor extrapolated, recess overdraw, the input mode's
+   deferred focus leaving no entry focused after a menu show). Tests: +7 (`SOLTest.HoloMenu.AnimDurationInstant`,
+   `.AnimDurationDefault`, `SOLTest.BuildVersion.Line.Exact`, `SOLTest.SolidMenu.PowerUp.LedBlinkOrder`,
+   `.LedBlinkNone`, `.Running`, `SOLTest.SolidMenu.Pulse.Dot`); full suite 1443/1443. Smokes: `-SOLSmokeSolidMenu`
+   42/42 (was 36; new `a-hint-clear`, `a-led-blink`, `a-pulse-dot`, `s-main-s0-lights`, `t-return-shell-closed`,
+   `t-return-play-trace`), `-SOLSmokeHud` 24/24, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHoloMenu` 86/86,
+   `-SOLMenuSmoke=all` 44/6 run without focusing the window (the same six stale-cursor TECH_DEBT failures, no new one).
+   Profile medians (three runs at 1920x1080): P0 +0.042 / +0.046, P1 +0.025 / +0.030, P2 -0.025 / +0.002, P3 -0.024 /
+   -0.007 ms. README shot `Docs/Images/46-main-menu-solid.png` (1920x1080, strength 1, no page).
 
 ### 46e: Settings shell with the tab column (opus, high)
 
@@ -224,3 +251,8 @@ Depends on 46d-46g.
   budget 0.1 ms CPU / 0.3 ms GPU). The plan has no remaining gate; parts follow their dependencies.
 - 2026-11-05: 46c done (review fixes, tests, smokes, profile; plan step 6). Next: 46d (main menu and start-location
   page).
+- 2026-11-05: 46d steps 1-4 built and verified (SDD 6.2, 11.2, 13.1 46d check); full suite 1436/1436. Next: the 46d
+  review (step 5), then the commit.
+- 2026-11-05: 46d committed with the user's final decisions (dim text #8A949D, "ARS LLC", focus on Play). Next: 46e.
+- 2026-11-05: 46d review fixes applied and verified (plan step 5; suite 1443/1443, solid smoke 42/42, profile in
+  budget). Next: the main session's commit of 46d, then 46e.

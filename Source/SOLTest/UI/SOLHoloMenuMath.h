@@ -109,6 +109,22 @@ namespace SOLHoloMenu
     // Moves Opening at progress 1 to Open and Closing at progress 0 to Closed; idempotent
     SOLTEST_API void Advance(FSOLHoloMenuAnim& anim, double nowS, float s);
 
+    // The four below are the four above with the open and close durations given (seconds; a duration <= 0 or NaN is
+    // instant), for other menus on the same phases (the solid panels, SDD 46 section 4.5); the forms above pass
+    // OPEN_S and CLOSE_S
+
+    // Progress with the given open / close durations
+    SOLTEST_API float Progress(const FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // BeginOpen with the given open / close durations (a reversal starts from Progress at them)
+    SOLTEST_API bool BeginOpen(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // BeginClose with the given open / close durations (it starts from Progress at them)
+    SOLTEST_API bool BeginClose(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // Advance with the given open / close durations
+    SOLTEST_API void Advance(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
     // Sets the hovered item; true only when it changed to a real item (not INDEX_NONE)
     SOLTEST_API bool SetHovered(FSOLHoloMenuAnim& anim, int32 item, double nowS);
 

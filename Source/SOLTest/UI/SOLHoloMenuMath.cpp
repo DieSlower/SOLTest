@@ -352,20 +352,27 @@ float SOLHoloMenu::GlowScale(const float s)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Current progress of the anim: fixed in Closed / Open, moving from the phase start at the open / close rate
+// Current progress of the anim at the hologram menus' open / close rate
 float SOLHoloMenu::Progress(const FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    using namespace SOL::HoloMenu;
+    return Progress(anim, nowS, s, SOL::HoloMenu::OPEN_S, SOL::HoloMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Current progress of the anim: fixed in Closed / Open, moving from the phase start at the given open / close rate
+float SOLHoloMenu::Progress(const FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
     const bool bInstant = HoloMathStrength(s) <= 0.0f;
     const double elapsedS = FMath::Max(nowS - anim.PhaseStartS, 0.0);
     switch (anim.Phase)
     {
     case ESOLHoloMenuPhase::Opening:
-        return bInstant ? 1.0f : static_cast<float>(FMath::Clamp(
-            static_cast<double>(anim.PhaseStartProgress) + elapsedS / OPEN_S, 0.0, 1.0));
+        return bInstant || !(openS > 0.0) ? 1.0f : static_cast<float>(FMath::Clamp(
+            static_cast<double>(anim.PhaseStartProgress) + elapsedS / openS, 0.0, 1.0));
     case ESOLHoloMenuPhase::Closing:
-        return bInstant ? 0.0f : static_cast<float>(FMath::Clamp(
-            static_cast<double>(anim.PhaseStartProgress) - elapsedS / CLOSE_S, 0.0, 1.0));
+        return bInstant || !(closeS > 0.0) ? 0.0f : static_cast<float>(FMath::Clamp(
+            static_cast<double>(anim.PhaseStartProgress) - elapsedS / closeS, 0.0, 1.0));
     case ESOLHoloMenuPhase::Open:
         return 1.0f;
     case ESOLHoloMenuPhase::Closed:
@@ -375,8 +382,16 @@ float SOLHoloMenu::Progress(const FSOLHoloMenuAnim& anim, const double nowS, con
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Starts an open from Closed (at 0) or Closing (from the current progress), clearing the hover
+// Starts an open at the hologram menus' rates
 bool SOLHoloMenu::BeginOpen(FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    return BeginOpen(anim, nowS, s, SOL::HoloMenu::OPEN_S, SOL::HoloMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts an open from Closed (at 0) or Closing (from the current progress), clearing the hover
+bool SOLHoloMenu::BeginOpen(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
 {
     if (anim.Phase != ESOLHoloMenuPhase::Closed && anim.Phase != ESOLHoloMenuPhase::Closing)
     {
@@ -390,7 +405,8 @@ bool SOLHoloMenu::BeginOpen(FSOLHoloMenuAnim& anim, const double nowS, const flo
         anim.PhaseStartProgress = 1.0f;
         return true;
     }
-    anim.PhaseStartProgress = anim.Phase == ESOLHoloMenuPhase::Closed ? 0.0f : Progress(anim, nowS, s);
+    anim.PhaseStartProgress = anim.Phase == ESOLHoloMenuPhase::Closed ? 0.0f
+        : Progress(anim, nowS, s, openS, closeS);
     anim.Phase = ESOLHoloMenuPhase::Opening;
     anim.PhaseStartS = nowS;
     anim.HoverStartS = nowS;
@@ -398,8 +414,16 @@ bool SOLHoloMenu::BeginOpen(FSOLHoloMenuAnim& anim, const double nowS, const flo
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Starts a close from Opening / Open at the current progress, clearing the hover
+// Starts a close at the hologram menus' rates
 bool SOLHoloMenu::BeginClose(FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    return BeginClose(anim, nowS, s, SOL::HoloMenu::OPEN_S, SOL::HoloMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a close from Opening / Open at the current progress, clearing the hover
+bool SOLHoloMenu::BeginClose(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
 {
     if (anim.Phase != ESOLHoloMenuPhase::Opening && anim.Phase != ESOLHoloMenuPhase::Open)
     {
@@ -413,7 +437,7 @@ bool SOLHoloMenu::BeginClose(FSOLHoloMenuAnim& anim, const double nowS, const fl
         anim.PhaseStartProgress = 0.0f;
         return true;
     }
-    anim.PhaseStartProgress = Progress(anim, nowS, s);
+    anim.PhaseStartProgress = Progress(anim, nowS, s, openS, closeS);
     anim.Phase = ESOLHoloMenuPhase::Closing;
     anim.PhaseStartS = nowS;
     anim.HoverStartS = nowS;
@@ -421,16 +445,24 @@ bool SOLHoloMenu::BeginClose(FSOLHoloMenuAnim& anim, const double nowS, const fl
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Finishes an open or a close whose progress has reached its end
+// Finishes an open or a close at the hologram menus' rates
 void SOLHoloMenu::Advance(FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    if (anim.Phase == ESOLHoloMenuPhase::Opening && Progress(anim, nowS, s) >= 1.0f)
+    Advance(anim, nowS, s, SOL::HoloMenu::OPEN_S, SOL::HoloMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Finishes an open or a close whose progress has reached its end
+void SOLHoloMenu::Advance(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
+    if (anim.Phase == ESOLHoloMenuPhase::Opening && Progress(anim, nowS, s, openS, closeS) >= 1.0f)
     {
         anim.Phase = ESOLHoloMenuPhase::Open;
         anim.PhaseStartS = nowS;
         anim.PhaseStartProgress = 1.0f;
     }
-    else if (anim.Phase == ESOLHoloMenuPhase::Closing && Progress(anim, nowS, s) <= 0.0f)
+    else if (anim.Phase == ESOLHoloMenuPhase::Closing && Progress(anim, nowS, s, openS, closeS) <= 0.0f)
     {
         anim.Phase = ESOLHoloMenuPhase::Closed;
         anim.PhaseStartS = nowS;

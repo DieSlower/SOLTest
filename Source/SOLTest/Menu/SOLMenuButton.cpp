@@ -232,15 +232,21 @@ void USOLMenuButton::SetSolidDisabled(const bool bDisabled)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the trace layer and polyline the hover extends (Stack and Tab only)
+// Sets the trace layer and polyline the hover extends (Stack and Tab only); a new layer (the panel was rebuilt, as
+// after a return from flight) gets the current look's trace at once, since a settled refresh writes nothing
 void USOLMenuButton::SetHoverTrace(const TSharedPtr<SSOLSolidTraceLayer>& layer, const FSOLSolidTrace& trace)
 {
     if (!SOLSolidStyle::HasHoverTrace(mVariant))
     {
         return;
     }
+    const bool bNewLayer = mTraceLayer.Pin() != layer;
     mTraceLayer = layer;
     mHoverTrace = trace;
+    if (bNewLayer && mHasApplied)
+    {
+        UpdateHoverTrace(mAppliedLook);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

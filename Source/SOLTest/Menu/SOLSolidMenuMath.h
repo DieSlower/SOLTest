@@ -7,6 +7,8 @@
 
 #include "CoreMinimal.h"
 
+struct FSOLHoloMenuAnim;
+
 // One hull's shape in the widget's local space (origin top-left, x right, y down, the rect [0, w] x [0, h]); UMG units
 // (SDD 46 sections 5.2 and 8.1). The title step raises the top edge left of TitleStepWidth by TitleStepHeight over the
 // rest (a 45-degree flank), the chin lowers the bottom edge left of ChinWidth by ChinHeight (the same flank), and the
@@ -125,6 +127,21 @@ namespace SOLSolidMenu
     // s = 0 and for a non-finite nowS
     SOLTEST_API float IdlePulse(double nowS, float s);
 
+    // (46d) Whether the index-th of count stack LEDs is lit by the power-up's blink: from TRACE_POWER_DELAY_S +
+    // TRACE_POWER_S x index / count for LED_BLINK_S (stack order, ending off); never at s = 0 or for an index outside
+    // [0, count)
+    SOLTEST_API bool PowerUpLedLit(int32 index, int32 count, double sinceOpenS, float s);
+
+    // (46d) Whether the power-up (traces and LED blinks) is still running sinceOpenS after the open; false at s = 0
+    SOLTEST_API bool IsPowerUpRunning(double sinceOpenS, float s);
+
+    // (46d) The idle pulse dot's place along the longest trace: the phase of nowS in IDLE_PULSE_PERIOD_S, [0, 1);
+    // 0 for a non-finite nowS
+    SOLTEST_API float PulseDotFraction(double nowS);
+
+    // (46d) The idle pulse dot's alpha: PULSE_DOT_ALPHA x s (s capped at 2), at most 1; 0 at s = 0 (no dot)
+    SOLTEST_API float PulseDotAlpha(float s);
+
     // The first fraction (clamped to [0, 1]) of a polyline's length: its whole segments, then the partial last one;
     // returns the points written (at least 2, or 0 for a fraction <= 0 or NaN, fewer than 2 points, no length or an
     // outCapacity below 2); never writes past outCapacity
@@ -134,4 +151,22 @@ namespace SOLSolidMenu
     // The pause dim's alpha: PAUSE_DIM_ALPHA x SOLHoloMenu::FillFade(progress); PAUSE_DIM_ALPHA at once at s = 0 (the
     // dim is not an effect), so the caller hides the dim once the panel is Closed
     SOLTEST_API float DimAlpha(float progress, float s);
+
+    // --- Panel open / close state (46d, SDD 4.5 and 4.6): the #42 FSOLHoloMenuAnim phases with the solid timings ---
+
+    // The panel's open progress: Closed 0, Open 1, Opening / Closing from PhaseStartProgress at the PANEL_OPEN_S /
+    // CLOSE_S rate (a time before the phase start reads the start progress); at s <= 0 or a NaN nowS Opening reads 1
+    // and Closing 0
+    SOLTEST_API float PanelProgress(const FSOLHoloMenuAnim& anim, double nowS, float s);
+
+    // Starts an open (from 0 when Closed, from the current progress when Closing, so a reopen never pops); true when
+    // it did, false (no change) when Opening or Open
+    SOLTEST_API bool BeginPanelOpen(FSOLHoloMenuAnim& anim, double nowS, float s);
+
+    // Starts a close from the current progress when Opening / Open; true when it did, false (no change) otherwise
+    SOLTEST_API bool BeginPanelClose(FSOLHoloMenuAnim& anim, double nowS, float s);
+
+    // Moves a finished Opening to Open and a finished Closing to Closed (PanelProgress at nowS); idempotent, leaves
+    // every other state alone
+    SOLTEST_API void AdvancePanel(FSOLHoloMenuAnim& anim, double nowS, float s);
 }

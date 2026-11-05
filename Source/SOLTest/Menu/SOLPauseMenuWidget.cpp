@@ -196,10 +196,18 @@ USOLMenuButton* USOLPauseMenuWidget::GetTabButton(const SOLMenuState::EMenuTab t
 // Gives keyboard focus to the selected tab's button
 void USOLPauseMenuWidget::FocusDefault()
 {
-    if (TabButtons.IsValidIndex(static_cast<int32>(mTab)))
+    if (USOLMenuButton* tab = GetDefaultButton())
     {
-        TabButtons[static_cast<int32>(mTab)]->SetKeyboardFocus();
+        tab->SetKeyboardFocus();
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the selected tab's button (null before the widget tree is built)
+USOLMenuButton* USOLPauseMenuWidget::GetDefaultButton() const
+{
+    const int32 tab = static_cast<int32>(mTab);
+    return TabButtons.IsValidIndex(tab) ? TabButtons[tab].Get() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////

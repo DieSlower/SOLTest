@@ -115,7 +115,7 @@ public:
     int32 GetIndex() const { return mIndex; }
 
     // Sets the panel trace layer and the polyline (layer local units) the hover extends; Stack and Tab only (Q15),
-    // ignored for Small
+    // ignored for Small. A new layer gets the current look's trace at once (a settled button writes nothing later)
     void SetHoverTrace(const TSharedPtr<SSOLSolidTraceLayer>& layer, const FSOLSolidTrace& trace);
 
     // Advances the look for keyboard focus, press, selection and disabled at nowS (real application seconds) and the

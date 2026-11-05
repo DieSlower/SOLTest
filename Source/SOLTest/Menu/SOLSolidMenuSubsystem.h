@@ -20,11 +20,13 @@ class USOLSettingsSubsystem;
 class UTexture2D;
 
 // The solid menu textures the kit draws itself (SDD 46 section 10), in the order USOLSolidMenuSubsystem loads them;
-// the grain (T_SOLSolidBrushed) and the hazard cue mask are sampled by M_SOLSolidHull, which references them itself
+// the grain (T_SOLSolidBrushed) is sampled by M_SOLSolidHull, which references it (and the hazard as its cue mask)
+// itself
 enum class ESOLSolidTexture : uint8
 {
     Rivet,      // USOLSolidPanel's corner rivets
     Vent,       // USOLSolidPanel's top-right vent strip
+    Hazard,     // The main menu's hazard stripe under Quit (46d): the stripe mask, tinted from the palette
     Count,
 };
 

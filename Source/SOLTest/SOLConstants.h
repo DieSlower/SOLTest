@@ -1173,13 +1173,11 @@ namespace SOL
         inline constexpr int32 BODY_FONT_SIZE = 18;
         inline constexpr int32 SMALL_FONT_SIZE = 15;
         inline constexpr float SCREEN_MARGIN = 80.0f;            // Main menu column inset from the screen's left edge
-        inline constexpr float COLUMN_WIDTH = 340.0f;            // Main menu button column
+        inline constexpr float COLUMN_WIDTH = 340.0f;            // Pause menu Quit choices
         inline constexpr float BUTTON_HEIGHT = 52.0f;
         inline constexpr float BUTTON_GAP = 10.0f;
         inline constexpr float PANEL_PADDING = 28.0f;
-        inline constexpr float PANEL_GAP = 24.0f;                // Between the main menu column and its page panel
-        inline constexpr float PAGE_WIDTH = 760.0f;              // Main menu page panel
-        inline constexpr float PAGE_HEIGHT = 760.0f;
+        inline constexpr float PANEL_GAP = 24.0f;                // Between the main menu column and its page shell
         inline constexpr float PAUSE_WIDTH = 1080.0f;            // Pause menu panel
         inline constexpr float PAUSE_HEIGHT = 780.0f;
         inline constexpr float TAB_HEIGHT = 46.0f;
@@ -1191,7 +1189,7 @@ namespace SOL
         inline constexpr float BUTTON_PADDING_X = 18.0f;         // Inside a menu button, around its label
         inline constexpr float BUTTON_PADDING_Y = 4.0f;         // (SDD 46c: 8 clipped Rajdhani in 34-unit rows)
         inline const FLinearColor SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.45f);        // Behind the pause menu
-        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);  // Until the 46d / 46g hull panels
+        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);  // Pause panel, until 46g
         inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);          // NPC stats overlay (the menus use the
                                                                                  // SOL::SolidMenu palette)
 
@@ -1241,7 +1239,7 @@ namespace SOL
         inline const FColor RIVET_COLOR(0x6A, 0x73, 0x7C);
         inline const FColor TEXT_COLOR(0xA4, 0xAF, 0xB8);
         inline const FColor TEXT_BRIGHT_COLOR(0xDC, 0xE3, 0xE8);
-        inline const FColor TEXT_DIM_COLOR(0x7F, 0x8A, 0x93);     // Hints and secondary lines (46c follow-up)
+        inline const FColor TEXT_DIM_COLOR(0x8A, 0x94, 0x9D);     // Hints and secondary lines (46c follow-up)
         inline const FColor CYAN_COLOR(0x28, 0xD2, 0xF0);
         inline const FColor AMBER_COLOR(0xFF, 0xA6, 0x28);
         inline const FColor WARNING_COLOR(0xE5, 0x53, 0x3D);
@@ -1257,8 +1255,12 @@ namespace SOL
         inline constexpr float PAUSE_DIM_ALPHA = 0.55f;           // Dim of the live flight view behind the pause panel
         inline constexpr float TRACE_POWER_DELAY_S = 0.15f;       // Circuit traces light this long after the open
         inline constexpr float TRACE_POWER_S = 0.35f;             // ... along their length over this
+        inline constexpr float LED_BLINK_S = 0.1f;                // ... while each stack LED blinks on this long, in
+                                                                  // stack order over TRACE_POWER_S (46d)
         inline constexpr float IDLE_PULSE_PERIOD_S = 4.0f;        // Trace brightness swing: period (a sine)
         inline constexpr float IDLE_PULSE_DEPTH = 0.15f;          // ... and depth per unit of strength (capped at 2)
+        inline constexpr float PULSE_DOT_ALPHA = 0.35f;           // Idle pulse dot on the longest trace: alpha per
+                                                                  // unit of strength (one pass per period, 46d)
         inline constexpr float CLOSE_S = 0.15f;                   // Pause slide-out and page shell close
 
         // Hull shape (SDD 46 sections 5.2 and 8.1)
@@ -1354,11 +1356,47 @@ namespace SOL
 
         // Layout (SDD 46 section 9); the existing SOL::MenuStyle sizes stay unless listed here
         inline constexpr float COLUMN_WIDTH = 380.0f;             // Main menu hull column
-        inline constexpr float PAGE_WIDTH = 1040.0f;              // Page shell (SDD 46 section 6.1)
-        inline constexpr float PAGE_HEIGHT = 760.0f;
+        inline constexpr float PAGE_WIDTH = 1040.0f;              // Page shell (SDD 46 section 6.1); narrower when the
+                                                                  // view is (it takes the room right of the column)
+        inline constexpr float PAGE_HEIGHT = 800.0f;              // (46d: 760 left no room for the column's traces)
         inline constexpr float TAB_COLUMN_WIDTH = 200.0f;         // The shell's vertical tab column
         inline constexpr float PAUSE_PANEL_WIDTH = 420.0f;        // Pause side panel
         inline constexpr float BACK_BUTTON_WIDTH = 160.0f;        // The shell's Back button
+
+        // Main menu column (46d, SDD 46 section 6): a fixed-height hull, so its traces sit at known places. Lengths
+        // are from the panel widget's edge (the hull itself is PANEL_INSET_PX inside it) unless named for the hull
+        inline constexpr float COLUMN_HEIGHT = PAGE_HEIGHT;       // Level with the page shell
+        inline constexpr float COLUMN_PADDING = 28.0f;            // Hull edge to the content
+        inline constexpr float COLUMN_TITLE_HEIGHT = 76.0f;       // "SOLTest" row
+        inline constexpr float COLUMN_TAGLINE_HEIGHT = 28.0f;     // Tagline row under it
+        inline constexpr float COLUMN_STACK_GAP = 20.0f;          // Tagline to the first entry
+        inline constexpr float COLUMN_HINT_GAP = 14.0f;           // Hazard stripe to the key hint
+        inline constexpr float COLUMN_TITLE_STEP_WIDTH = 290.0f;  // Hull: the stepped top edge carrying the title
+        inline constexpr float COLUMN_TITLE_STEP_HEIGHT = 12.0f;
+        inline constexpr float COLUMN_CHIN_WIDTH = 300.0f;        // Hull: the chin carrying the version recess
+        inline constexpr float COLUMN_CHIN_HEIGHT = 14.0f;
+        inline constexpr float COLUMN_TRACE_GAP = 16.0f;          // Lower-edge traces: above the version recess, and
+                                                                  // their two rows this far apart (45-degree bends)
+        inline constexpr float COLUMN_TRACE_DROP_BENDS = 3.0f;    // The long trace drops from row A to row B this many
+                                                                  // gaps left of the middle (one gap down, one across)
+        inline constexpr float COLUMN_TRACE_END_BENDS = 3.0f;     // ... and ends this many gaps short of the right end
+        inline constexpr float COLUMN_TRACE_SHORT_BENDS = 5.0f;   // The row B trace ends this many gaps left of the
+                                                                  // middle
+        inline constexpr float COLUMN_HINT_CLEARANCE_PX = 3.0f;   // The wrapped key hint ends at least this far above
+                                                                  // trace row A (a ring terminal's radius; smoke)
+        inline constexpr float HAZARD_HEIGHT_PX = 10.0f;          // Hazard stripe under Quit
+        inline constexpr float HAZARD_TILE_WIDTH_PX = 80.0f;      // ... one T_SOLSolidHazard tile (128 x 16) at it
+        inline constexpr float VERSION_RECESS_HEIGHT = 58.0f;     // Chin recess holding the version line (2 lines)
+        inline constexpr float VERSION_RECESS_PADDING = 8.0f;
+
+        // Page shell (46d, SDD 46 section 6.1)
+        inline constexpr float SHELL_PADDING = 28.0f;             // Hull edge to the content recess
+        inline constexpr float SHELL_RECESS_PADDING = 20.0f;      // Content recess edge to the page
+        inline constexpr float SHELL_BACK_GAP = 12.0f;            // Content recess to the Back recess
+        inline constexpr float SHELL_BACK_RECESS_PADDING = 6.0f;  // Back recess edge to the Back button
+        inline constexpr float SHELL_NOTCH_DEPTH = 6.0f;          // Hull: a notch in each side, centred
+        inline constexpr float SHELL_NOTCH_HEIGHT = 72.0f;
+        inline constexpr float LIST_RECESS_PADDING = 10.0f;       // Start-location list recess edge to its rows
     }
     static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
         && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE

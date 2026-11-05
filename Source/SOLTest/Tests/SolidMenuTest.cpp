@@ -391,6 +391,66 @@ namespace
         const FLinearColor linear = FLinearColor::FromSRGBColor(c);
         return 0.2126f * linear.R + 0.7152f * linear.G + 0.0722f * linear.B;
     }
+
+    // Panel anim (46d): a start time where t0 + any float duration (and its halves) is exact in double, so the
+    // phase end times land exactly on progress 1 / 0
+    constexpr double SOLIDMENUTEST_PANEL_T0_S = 10.0;
+    constexpr float SOLIDMENUTEST_REVERSAL_TOLERANCE = 1.0e-5f;    // A reversal never pops (contract)
+    constexpr double SOLIDMENUTEST_PAST_END_S = 1.0e-3;           // Past a phase's end time, for reversed phases
+
+    constexpr ESOLHoloMenuPhase SOLIDMENUTEST_PHASES[] = {
+        ESOLHoloMenuPhase::Closed, ESOLHoloMenuPhase::Opening, ESOLHoloMenuPhase::Open, ESOLHoloMenuPhase::Closing };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a phase's name for messages
+    const TCHAR* SolidMenuTestPhaseName(const ESOLHoloMenuPhase phase)
+    {
+        switch (phase)
+        {
+        case ESOLHoloMenuPhase::Closed:
+            return TEXT("Closed");
+        case ESOLHoloMenuPhase::Opening:
+            return TEXT("Opening");
+        case ESOLHoloMenuPhase::Open:
+            return TEXT("Open");
+        case ESOLHoloMenuPhase::Closing:
+            return TEXT("Closing");
+        default:
+            return TEXT("?");
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a panel anim state in a phase that started at startS with startProgress
+    FSOLHoloMenuAnim SolidMenuTestPanelAnim(const ESOLHoloMenuPhase phase, const double startS,
+        const float startProgress)
+    {
+        FSOLHoloMenuAnim anim;
+        anim.Phase = phase;
+        anim.PhaseStartS = startS;
+        anim.PhaseStartProgress = startProgress;
+        return anim;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks two panel anim states have the same phase, phase start time and phase start progress (exactly)
+    void SolidMenuTestPanelAnimEqual(FAutomationTestBase& test, const FString& label, const FSOLHoloMenuAnim& actual,
+        const FSOLHoloMenuAnim& expected)
+    {
+        test.TestEqual(label + TEXT(" Phase"), FString(SolidMenuTestPhaseName(actual.Phase)),
+            FString(SolidMenuTestPhaseName(expected.Phase)));
+        test.TestTrue(label + TEXT(" PhaseStartS unchanged"), actual.PhaseStartS == expected.PhaseStartS);
+        test.TestTrue(label + TEXT(" PhaseStartProgress unchanged"),
+            actual.PhaseStartProgress == expected.PhaseStartProgress);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks a panel anim state is in the expected phase
+    void SolidMenuTestPanelPhase(FAutomationTestBase& test, const FString& label, const FSOLHoloMenuAnim& anim,
+        const ESOLHoloMenuPhase expected)
+    {
+        test.TestEqual(label, FString(SolidMenuTestPhaseName(anim.Phase)), FString(SolidMenuTestPhaseName(expected)));
+    }
 }
 
 // ---------------------------------------------------------------------------------------------------------------------
@@ -1995,7 +2055,7 @@ bool FSOLSolidMenuPaletteHexTest::RunTest(const FString& /*parameters*/)
     SolidMenuTestExpectHex(*this, TEXT("RIVET_COLOR"), RIVET_COLOR, 0x6A737C);
     SolidMenuTestExpectHex(*this, TEXT("TEXT_COLOR"), TEXT_COLOR, 0xA4AFB8);
     SolidMenuTestExpectHex(*this, TEXT("TEXT_BRIGHT_COLOR"), TEXT_BRIGHT_COLOR, 0xDCE3E8);
-    SolidMenuTestExpectHex(*this, TEXT("TEXT_DIM_COLOR"), TEXT_DIM_COLOR, 0x7F8A93);
+    SolidMenuTestExpectHex(*this, TEXT("TEXT_DIM_COLOR"), TEXT_DIM_COLOR, 0x8A949D);
     SolidMenuTestExpectHex(*this, TEXT("CYAN_COLOR"), CYAN_COLOR, 0x28D2F0);
     SolidMenuTestExpectHex(*this, TEXT("AMBER_COLOR"), AMBER_COLOR, 0xFFA628);
     SolidMenuTestExpectHex(*this, TEXT("WARNING_COLOR"), WARNING_COLOR, 0xE5533D);
@@ -2463,6 +2523,690 @@ bool FSOLSolidMenuPulseLargeTimeTest::RunTest(const FString& /*parameters*/)
     const float value = SOLSolidMenu::IdlePulse(1.0e9, 1.0f);
     TestTrue(TEXT("finite and in range at 1e9 s"), FMath::IsFinite(value) && value >= 1.0f - depth - 1.0e-3f
         && value <= 1.0f + depth + 1.0e-3f);
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Panel anim (46d): the solid panels' open / close state on the #42 FSOLHoloMenuAnim, with PANEL_OPEN_S / CLOSE_S
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimEndPhasesTest, "SOLTest.SolidMenu.PanelAnim.ClosedZeroOpenOne",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Closed reads 0 and Open reads 1 at any time and strength, whatever the phase start fields hold
+bool FSOLSolidMenuPanelAnimEndPhasesTest::RunTest(const FString& /*parameters*/)
+{
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const double times[] = { 0.0, t0 - 1.0, t0, t0 + 0.1, t0 + 100.0, SOLIDMENUTEST_NAN_D };
+    const float strengths[] = { 0.0f, 0.5f, 1.0f, 2.0f, SOLIDMENUTEST_NAN };
+    const FSOLHoloMenuAnim closed = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, t0, 0.4f);
+    const FSOLHoloMenuAnim open = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, t0, 0.6f);
+    for (const double t : times)
+    {
+        for (const float s : strengths)
+        {
+            TestEqual(FString::Printf(TEXT("Closed at %f strength %f"), t, s),
+                SOLSolidMenu::PanelProgress(closed, t, s), 0.0f, SOLIDMENUTEST_TOLERANCE);
+            TestEqual(FString::Printf(TEXT("Open at %f strength %f"), t, s),
+                SOLSolidMenu::PanelProgress(open, t, s), 1.0f, SOLIDMENUTEST_TOLERANCE);
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimOpenTest, "SOLTest.SolidMenu.PanelAnim.OpenTakesPanelOpenS",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// From Closed an open starts at progress 0, is half way at half PANEL_OPEN_S, 1 at PANEL_OPEN_S, then Advance makes it
+// Open
+bool FSOLSolidMenuPanelAnimOpenTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    TestEqual(TEXT("Closed reads 0"), SOLSolidMenu::PanelProgress(anim, t0, 1.0f), 0.0f, tol);
+    TestTrue(TEXT("BeginPanelOpen from Closed starts an open"), SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Opening after BeginPanelOpen"), anim, ESOLHoloMenuPhase::Opening);
+    TestTrue(TEXT("the phase starts now"), anim.PhaseStartS == t0);
+    TestEqual(TEXT("the phase starts at progress 0"), anim.PhaseStartProgress, 0.0f, tol);
+
+    // Linear over PANEL_OPEN_S
+    TestEqual(TEXT("0 at the start"), SOLSolidMenu::PanelProgress(anim, t0, 1.0f), 0.0f, tol);
+    TestEqual(TEXT("a quarter at a quarter of PANEL_OPEN_S"),
+        SOLSolidMenu::PanelProgress(anim, t0 + 0.25 * open, 1.0f), 0.25f, tol);
+    TestEqual(TEXT("half way at half PANEL_OPEN_S"), SOLSolidMenu::PanelProgress(anim, t0 + 0.5 * open, 1.0f), 0.5f,
+        tol);
+    TestEqual(TEXT("1 at PANEL_OPEN_S"), SOLSolidMenu::PanelProgress(anim, t0 + open, 1.0f), 1.0f, tol);
+    TestEqual(TEXT("still 1 past PANEL_OPEN_S"), SOLSolidMenu::PanelProgress(anim, t0 + 3.0 * open, 1.0f), 1.0f, tol);
+
+    // Advance only finishes the open once progress reaches 1
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Opening half way"), anim, ESOLHoloMenuPhase::Opening);
+    SOLSolidMenu::AdvancePanel(anim, t0 + open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Open once progress reaches 1"), anim, ESOLHoloMenuPhase::Open);
+    TestEqual(TEXT("Open reads 1 afterwards"), SOLSolidMenu::PanelProgress(anim, t0 + 10.0 * open, 1.0f), 1.0f, tol);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimCloseTest, "SOLTest.SolidMenu.PanelAnim.CloseTakesCloseS",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// From Open a close starts at progress 1, is half way at half CLOSE_S, 0 at CLOSE_S, then Advance makes it Closed
+bool FSOLSolidMenuPanelAnimCloseTest::RunTest(const FString& /*parameters*/)
+{
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, 0.0, 1.0f);
+    TestTrue(TEXT("BeginPanelClose from Open starts a close"), SOLSolidMenu::BeginPanelClose(anim, t0, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Closing after BeginPanelClose"), anim, ESOLHoloMenuPhase::Closing);
+    TestTrue(TEXT("the phase starts now"), anim.PhaseStartS == t0);
+    TestEqual(TEXT("the phase starts at progress 1"), anim.PhaseStartProgress, 1.0f, tol);
+
+    // Linear over CLOSE_S
+    TestEqual(TEXT("1 at the start"), SOLSolidMenu::PanelProgress(anim, t0, 1.0f), 1.0f, tol);
+    TestEqual(TEXT("three quarters at a quarter of CLOSE_S"),
+        SOLSolidMenu::PanelProgress(anim, t0 + 0.25 * close, 1.0f), 0.75f, tol);
+    TestEqual(TEXT("half way at half CLOSE_S"), SOLSolidMenu::PanelProgress(anim, t0 + 0.5 * close, 1.0f), 0.5f, tol);
+    TestEqual(TEXT("0 at CLOSE_S"), SOLSolidMenu::PanelProgress(anim, t0 + close, 1.0f), 0.0f, tol);
+    TestEqual(TEXT("still 0 past CLOSE_S"), SOLSolidMenu::PanelProgress(anim, t0 + 3.0 * close, 1.0f), 0.0f, tol);
+
+    // Advance only finishes the close once progress reaches 0
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Closing half way"), anim, ESOLHoloMenuPhase::Closing);
+    SOLSolidMenu::AdvancePanel(anim, t0 + close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Closed once progress reaches 0"), anim, ESOLHoloMenuPhase::Closed);
+    TestEqual(TEXT("Closed reads 0 afterwards"), SOLSolidMenu::PanelProgress(anim, t0 + 10.0 * close, 1.0f), 0.0f,
+        tol);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimReopenTest, "SOLTest.SolidMenu.PanelAnim.ReopenDuringClose",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Opening during a close reverses from the current progress (no pop) and runs on at the PANEL_OPEN_S rate
+bool FSOLSolidMenuPanelAnimReopenTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, 0.0, 1.0f);
+    TestTrue(TEXT("close starts"), SOLSolidMenu::BeginPanelClose(anim, t0, 1.0f));
+    const double t1 = t0 + 0.4 * close;
+    const float before = SOLSolidMenu::PanelProgress(anim, t1, 1.0f);
+    TestEqual(TEXT("0.6 after 40% of CLOSE_S"), before, 0.6f, tol);
+
+    TestTrue(TEXT("BeginPanelOpen during a close starts an open"), SOLSolidMenu::BeginPanelOpen(anim, t1, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Opening after the reversal"), anim, ESOLHoloMenuPhase::Opening);
+    TestEqual(TEXT("no pop at the reversal"), SOLSolidMenu::PanelProgress(anim, t1, 1.0f), before,
+        SOLIDMENUTEST_REVERSAL_TOLERANCE);
+    TestEqual(TEXT("the open starts from the current progress"), anim.PhaseStartProgress, before,
+        SOLIDMENUTEST_REVERSAL_TOLERANCE);
+    TestEqual(TEXT("runs on at the PANEL_OPEN_S rate"), SOLSolidMenu::PanelProgress(anim, t1 + 0.2 * open, 1.0f),
+        before + 0.2f, tol);
+
+    // Only the remaining fraction of PANEL_OPEN_S is left
+    SOLSolidMenu::AdvancePanel(anim, t1 + 0.2 * open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Opening mid way"), anim, ESOLHoloMenuPhase::Opening);
+    const double tEnd = t1 + (1.0 - static_cast<double>(before)) * open;
+    TestEqual(TEXT("1 after the remaining fraction"), SOLSolidMenu::PanelProgress(anim, tEnd, 1.0f), 1.0f, tol);
+    SOLSolidMenu::AdvancePanel(anim, tEnd + SOLIDMENUTEST_PAST_END_S, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Open after the reversed open"), anim, ESOLHoloMenuPhase::Open);
+
+    // A reversal at any point of a close never pops
+    FSOLSolidMenuSweepLog log;
+    for (int32 step = 1; step < 20; ++step)
+    {
+        const double at = t0 + close * static_cast<double>(step) / 20.0;
+        FSOLHoloMenuAnim sweep = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, 0.0, 1.0f);
+        SOLSolidMenu::BeginPanelClose(sweep, t0, 1.0f);
+        const float pre = SOLSolidMenu::PanelProgress(sweep, at, 1.0f);
+        const bool bStarted = SOLSolidMenu::BeginPanelOpen(sweep, at, 1.0f);
+        const float post = SOLSolidMenu::PanelProgress(sweep, at, 1.0f);
+        if (!bStarted || sweep.Phase != ESOLHoloMenuPhase::Opening
+            || !FMath::IsNearlyEqual(pre, post, SOLIDMENUTEST_REVERSAL_TOLERANCE))
+        {
+            log.Fail(FString::Printf(TEXT("step %d: started %d phase %s, %f before, %f after"), step,
+                bStarted ? 1 : 0, SolidMenuTestPhaseName(sweep.Phase), pre, post));
+        }
+    }
+    log.Report(*this, TEXT("reopen at any point of a close keeps the progress"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimCloseEarlyTest, "SOLTest.SolidMenu.PanelAnim.CloseDuringOpen",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Closing during an open reverses from the current progress (no pop) and runs on at the CLOSE_S rate
+bool FSOLSolidMenuPanelAnimCloseEarlyTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    TestTrue(TEXT("open starts"), SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f));
+    const double t1 = t0 + 0.3 * open;
+    const float before = SOLSolidMenu::PanelProgress(anim, t1, 1.0f);
+    TestEqual(TEXT("0.3 after 30% of PANEL_OPEN_S"), before, 0.3f, tol);
+
+    TestTrue(TEXT("BeginPanelClose during an open starts a close"), SOLSolidMenu::BeginPanelClose(anim, t1, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Closing after the reversal"), anim, ESOLHoloMenuPhase::Closing);
+    TestEqual(TEXT("no pop at the reversal"), SOLSolidMenu::PanelProgress(anim, t1, 1.0f), before,
+        SOLIDMENUTEST_REVERSAL_TOLERANCE);
+    TestEqual(TEXT("the close starts from the current progress"), anim.PhaseStartProgress, before,
+        SOLIDMENUTEST_REVERSAL_TOLERANCE);
+    TestEqual(TEXT("runs on at the CLOSE_S rate"), SOLSolidMenu::PanelProgress(anim, t1 + 0.1 * close, 1.0f),
+        before - 0.1f, tol);
+
+    // Only the remaining fraction of CLOSE_S is left
+    SOLSolidMenu::AdvancePanel(anim, t1 + 0.1 * close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Closing mid way"), anim, ESOLHoloMenuPhase::Closing);
+    const double tEnd = t1 + static_cast<double>(before) * close;
+    TestEqual(TEXT("0 after the remaining fraction"), SOLSolidMenu::PanelProgress(anim, tEnd, 1.0f), 0.0f, tol);
+    SOLSolidMenu::AdvancePanel(anim, tEnd + SOLIDMENUTEST_PAST_END_S, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Closed after the reversed close"), anim, ESOLHoloMenuPhase::Closed);
+
+    // A reversal at any point of an open never pops, nor does reopening that close
+    FSOLSolidMenuSweepLog log;
+    for (int32 step = 1; step < 20; ++step)
+    {
+        const double at = t0 + open * static_cast<double>(step) / 20.0;
+        const double again = at + 0.25 * close;
+        FSOLHoloMenuAnim sweep = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+        SOLSolidMenu::BeginPanelOpen(sweep, t0, 1.0f);
+        const float pre = SOLSolidMenu::PanelProgress(sweep, at, 1.0f);
+        const bool bClosed = SOLSolidMenu::BeginPanelClose(sweep, at, 1.0f);
+        const float post = SOLSolidMenu::PanelProgress(sweep, at, 1.0f);
+        const float preAgain = SOLSolidMenu::PanelProgress(sweep, again, 1.0f);
+        const bool bReopened = SOLSolidMenu::BeginPanelOpen(sweep, again, 1.0f);
+        const float postAgain = SOLSolidMenu::PanelProgress(sweep, again, 1.0f);
+        if (!bClosed || !bReopened || sweep.Phase != ESOLHoloMenuPhase::Opening
+            || !FMath::IsNearlyEqual(pre, post, SOLIDMENUTEST_REVERSAL_TOLERANCE)
+            || !FMath::IsNearlyEqual(preAgain, postAgain, SOLIDMENUTEST_REVERSAL_TOLERANCE))
+        {
+            log.Fail(FString::Printf(TEXT("step %d: close %d reopen %d phase %s, %f -> %f, %f -> %f"), step,
+                bClosed ? 1 : 0, bReopened ? 1 : 0, SolidMenuTestPhaseName(sweep.Phase), pre, post, preAgain,
+                postAgain));
+        }
+    }
+    log.Report(*this, TEXT("close at any point of an open, then reopen, keeps the progress"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimStrengthZeroTest,
+    "SOLTest.SolidMenu.PanelAnim.StrengthZeroInstant",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// At strength 0 (and negative or NaN, sanitized to 0) an open reads 1 at once and a close 0 at once, and Advance
+// finishes either on the same nowS
+bool FSOLSolidMenuPanelAnimStrengthZeroTest::RunTest(const FString& /*parameters*/)
+{
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    const float zeros[] = { 0.0f, -1.0f, SOLIDMENUTEST_NAN };
+    for (const float s : zeros)
+    {
+        const FString at = FString::Printf(TEXT("strength %f"), s);
+
+        // Open, instantly
+        FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+        TestTrue(at + TEXT(": open starts"), SOLSolidMenu::BeginPanelOpen(anim, t0, s));
+        TestEqual(at + TEXT(": Opening reads 1 at once"), SOLSolidMenu::PanelProgress(anim, t0, s), 1.0f, tol);
+        SOLSolidMenu::AdvancePanel(anim, t0, s);
+        SolidMenuTestPanelPhase(*this, at + TEXT(": Open on the same nowS"), anim, ESOLHoloMenuPhase::Open);
+
+        // Close, instantly
+        TestTrue(at + TEXT(": close starts"), SOLSolidMenu::BeginPanelClose(anim, t0, s));
+        TestEqual(at + TEXT(": Closing reads 0 at once"), SOLSolidMenu::PanelProgress(anim, t0, s), 0.0f, tol);
+        SOLSolidMenu::AdvancePanel(anim, t0, s);
+        SolidMenuTestPanelPhase(*this, at + TEXT(": Closed on the same nowS"), anim, ESOLHoloMenuPhase::Closed);
+
+        // Mid-phase states read their end values too
+        const FSOLHoloMenuAnim opening = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.2f);
+        const FSOLHoloMenuAnim closing = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 0.8f);
+        TestEqual(at + TEXT(": a mid open reads 1"), SOLSolidMenu::PanelProgress(opening, t0 + 0.01, s), 1.0f, tol);
+        TestEqual(at + TEXT(": a mid close reads 0"), SOLSolidMenu::PanelProgress(closing, t0 + 0.01, s), 0.0f, tol);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimStrengthTwoTest,
+    "SOLTest.SolidMenu.PanelAnim.StrengthKeepsDurations",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Any strength above 0 (2, and 5 sanitized to 2, and 0.5) runs the same PANEL_OPEN_S / CLOSE_S timing as strength 1
+bool FSOLSolidMenuPanelAnimStrengthTwoTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    const float strengths[] = { 0.5f, 2.0f, 5.0f };
+    const double fractions[] = { 0.0, 0.25, 0.5, 0.75, 1.0, 1.5 };
+    const FSOLHoloMenuAnim opening = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.0f);
+    const FSOLHoloMenuAnim closing = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 1.0f);
+
+    FSOLSolidMenuSweepLog log;
+    for (const float s : strengths)
+    {
+        for (const double f : fractions)
+        {
+            const float expectedOpen = FMath::Clamp(static_cast<float>(f), 0.0f, 1.0f);
+            const float expectedClose = 1.0f - expectedOpen;
+            const float valueOpen = SOLSolidMenu::PanelProgress(opening, t0 + f * open, s);
+            const float valueClose = SOLSolidMenu::PanelProgress(closing, t0 + f * close, s);
+            const float oneOpen = SOLSolidMenu::PanelProgress(opening, t0 + f * open, 1.0f);
+            const float oneClose = SOLSolidMenu::PanelProgress(closing, t0 + f * close, 1.0f);
+            if (!FMath::IsNearlyEqual(valueOpen, expectedOpen, tol) || !FMath::IsNearlyEqual(valueOpen, oneOpen, tol)
+                || !FMath::IsNearlyEqual(valueClose, expectedClose, tol)
+                || !FMath::IsNearlyEqual(valueClose, oneClose, tol))
+            {
+                log.Fail(FString::Printf(TEXT("strength %f fraction %f: open %f (s1 %f), close %f (s1 %f)"), s, f,
+                    valueOpen, oneOpen, valueClose, oneClose));
+            }
+        }
+
+        // Advance finishes at the same end times
+        FSOLHoloMenuAnim anim = opening;
+        SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * open, s);
+        SolidMenuTestPanelPhase(*this, FString::Printf(TEXT("strength %f: still Opening half way"), s), anim,
+            ESOLHoloMenuPhase::Opening);
+        SOLSolidMenu::AdvancePanel(anim, t0 + open, s);
+        SolidMenuTestPanelPhase(*this, FString::Printf(TEXT("strength %f: Open at PANEL_OPEN_S"), s), anim,
+            ESOLHoloMenuPhase::Open);
+        anim = closing;
+        SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * close, s);
+        SolidMenuTestPanelPhase(*this, FString::Printf(TEXT("strength %f: still Closing half way"), s), anim,
+            ESOLHoloMenuPhase::Closing);
+        SOLSolidMenu::AdvancePanel(anim, t0 + close, s);
+        SolidMenuTestPanelPhase(*this, FString::Printf(TEXT("strength %f: Closed at CLOSE_S"), s), anim,
+            ESOLHoloMenuPhase::Closed);
+    }
+    log.Report(*this, TEXT("strengths above 0 keep the strength 1 timing"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimNaNTimeTest, "SOLTest.SolidMenu.PanelAnim.NaNTime",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A NaN nowS reads the phase's end value (Opening 1, Closing 0), so Advance at a NaN time finishes the phase
+bool FSOLSolidMenuPanelAnimNaNTimeTest::RunTest(const FString& /*parameters*/)
+{
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    const float strengths[] = { 1.0f, 2.0f };
+    for (const float s : strengths)
+    {
+        const FString at = FString::Printf(TEXT("strength %f"), s);
+        FSOLHoloMenuAnim opening = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.3f);
+        FSOLHoloMenuAnim closing = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 0.7f);
+        TestEqual(at + TEXT(": Opening at NaN reads 1"), SOLSolidMenu::PanelProgress(opening, SOLIDMENUTEST_NAN_D, s),
+            1.0f, tol);
+        TestEqual(at + TEXT(": Closing at NaN reads 0"), SOLSolidMenu::PanelProgress(closing, SOLIDMENUTEST_NAN_D, s),
+            0.0f, tol);
+
+        SOLSolidMenu::AdvancePanel(opening, SOLIDMENUTEST_NAN_D, s);
+        SolidMenuTestPanelPhase(*this, at + TEXT(": Advance at NaN finishes an open"), opening,
+            ESOLHoloMenuPhase::Open);
+        SOLSolidMenu::AdvancePanel(closing, SOLIDMENUTEST_NAN_D, s);
+        SolidMenuTestPanelPhase(*this, at + TEXT(": Advance at NaN finishes a close"), closing,
+            ESOLHoloMenuPhase::Closed);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimEarlyTimeTest,
+    "SOLTest.SolidMenu.PanelAnim.TimeBeforeStartClamps",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A nowS before PhaseStartS never reads outside [0, 1]; an open from 0 still reads 0 and a close from 1 still reads 1
+bool FSOLSolidMenuPanelAnimEarlyTimeTest::RunTest(const FString& /*parameters*/)
+{
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    const double earlier[] = { t0 - 1.0e-3, t0 - 0.05, t0 - 1.0, t0 - 1000.0, -SOLIDMENUTEST_INF_D };
+    const float starts[] = { 0.0f, 0.25f, 0.5f, 1.0f };
+    const float strengths[] = { 1.0f, 2.0f };
+
+    FSOLSolidMenuSweepLog log;
+    for (const double t : earlier)
+    {
+        for (const float startProgress : starts)
+        {
+            for (const float s : strengths)
+            {
+                const FSOLHoloMenuAnim opening = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, startProgress);
+                const FSOLHoloMenuAnim closing = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, startProgress);
+                const float valueOpen = SOLSolidMenu::PanelProgress(opening, t, s);
+                const float valueClose = SOLSolidMenu::PanelProgress(closing, t, s);
+                if (!(valueOpen >= 0.0f && valueOpen <= 1.0f) || !(valueClose >= 0.0f && valueClose <= 1.0f))
+                {
+                    log.Fail(FString::Printf(TEXT("t %f start %f strength %f: opening %f, closing %f"), t,
+                        startProgress, s, valueOpen, valueClose));
+                }
+            }
+        }
+    }
+    log.Report(*this, TEXT("time before the phase start stays in [0, 1]"));
+
+    const FSOLHoloMenuAnim openFromZero = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.0f);
+    const FSOLHoloMenuAnim closeFromOne = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 1.0f);
+    TestEqual(TEXT("an open from 0 reads 0 before its start"),
+        SOLSolidMenu::PanelProgress(openFromZero, t0 - 1.0, 1.0f), 0.0f, tol);
+    TestEqual(TEXT("a close from 1 reads 1 before its start"),
+        SOLSolidMenu::PanelProgress(closeFromOne, t0 - 1.0, 1.0f), 1.0f, tol);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimBeginTest, "SOLTest.SolidMenu.PanelAnim.BeginReturnValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// BeginPanelOpen is true from Closed / Closing and false (no change) from Opening / Open; BeginPanelClose is true from
+// Opening / Open and false (no change) from Closed / Closing, at any strength
+bool FSOLSolidMenuPanelAnimBeginTest::RunTest(const FString& /*parameters*/)
+{
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const double start = t0 - 0.05;
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    for (const ESOLHoloMenuPhase phase : SOLIDMENUTEST_PHASES)
+    {
+        // A state part way through its phase (the end phases at their end value)
+        const float startProgress = phase == ESOLHoloMenuPhase::Closed ? 0.0f
+            : (phase == ESOLHoloMenuPhase::Open ? 1.0f : 0.5f);
+        const FSOLHoloMenuAnim original = SolidMenuTestPanelAnim(phase, start, startProgress);
+        const bool bOpenStarts = phase == ESOLHoloMenuPhase::Closed || phase == ESOLHoloMenuPhase::Closing;
+        const bool bCloseStarts = phase == ESOLHoloMenuPhase::Opening || phase == ESOLHoloMenuPhase::Open;
+
+        for (const float s : strengths)
+        {
+            const FString at = FString::Printf(TEXT("from %s at strength %f"), SolidMenuTestPhaseName(phase), s);
+
+            // Open
+            FSOLHoloMenuAnim anim = original;
+            const bool bOpened = SOLSolidMenu::BeginPanelOpen(anim, t0, s);
+            TestTrue(at + (bOpenStarts ? TEXT(": BeginPanelOpen returns true")
+                : TEXT(": BeginPanelOpen returns false")), bOpened == bOpenStarts);
+            if (bOpenStarts)
+            {
+                SolidMenuTestPanelPhase(*this, at + TEXT(": Opening after BeginPanelOpen"), anim,
+                    ESOLHoloMenuPhase::Opening);
+                TestFalse(at + TEXT(": a second BeginPanelOpen does not start again"),
+                    SOLSolidMenu::BeginPanelOpen(anim, t0, s));
+            }
+            else
+            {
+                SolidMenuTestPanelAnimEqual(*this, at + TEXT(": BeginPanelOpen left the state"), anim, original);
+            }
+
+            // Close
+            anim = original;
+            const bool bClosed = SOLSolidMenu::BeginPanelClose(anim, t0, s);
+            TestTrue(at + (bCloseStarts ? TEXT(": BeginPanelClose returns true")
+                : TEXT(": BeginPanelClose returns false")), bClosed == bCloseStarts);
+            if (bCloseStarts)
+            {
+                SolidMenuTestPanelPhase(*this, at + TEXT(": Closing after BeginPanelClose"), anim,
+                    ESOLHoloMenuPhase::Closing);
+                TestFalse(at + TEXT(": a second BeginPanelClose does not start again"),
+                    SOLSolidMenu::BeginPanelClose(anim, t0, s));
+            }
+            else
+            {
+                SolidMenuTestPanelAnimEqual(*this, at + TEXT(": BeginPanelClose left the state"), anim, original);
+            }
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimAdvanceTest, "SOLTest.SolidMenu.PanelAnim.AdvanceIdempotent",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// AdvancePanel finishes only a completed Opening / Closing, is idempotent, and leaves every other state alone
+bool FSOLSolidMenuPanelAnimAdvanceTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+
+    // A finished open becomes Open, and further Advances change nothing
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.0f);
+    SOLSolidMenu::AdvancePanel(anim, t0 + open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("finished open"), anim, ESOLHoloMenuPhase::Open);
+    FSOLHoloMenuAnim settled = anim;
+    SOLSolidMenu::AdvancePanel(anim, t0 + open, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("Advance again on the same nowS (open)"), anim, settled);
+    SOLSolidMenu::AdvancePanel(anim, t0 + 5.0 * open, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("Advance again later (open)"), anim, settled);
+
+    // A finished close becomes Closed, and further Advances change nothing
+    anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 1.0f);
+    SOLSolidMenu::AdvancePanel(anim, t0 + close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("finished close"), anim, ESOLHoloMenuPhase::Closed);
+    settled = anim;
+    SOLSolidMenu::AdvancePanel(anim, t0 + close, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("Advance again on the same nowS (close)"), anim, settled);
+    SOLSolidMenu::AdvancePanel(anim, t0 + 5.0 * close, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("Advance again later (close)"), anim, settled);
+
+    // An unfinished open or close is left alone
+    const FSOLHoloMenuAnim midOpen = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Opening, t0, 0.0f);
+    anim = midOpen;
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * open, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("an open half way"), anim, midOpen);
+    const FSOLHoloMenuAnim midClose = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closing, t0, 1.0f);
+    anim = midClose;
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.5 * close, 1.0f);
+    SolidMenuTestPanelAnimEqual(*this, TEXT("a close half way"), anim, midClose);
+
+    // Closed and Open are never touched, at any time or strength
+    const double times[] = { 0.0, t0, t0 + 100.0, SOLIDMENUTEST_NAN_D };
+    const float strengths[] = { 0.0f, 1.0f, 2.0f };
+    const FSOLHoloMenuAnim ends[] = {
+        SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, t0, 0.0f),
+        SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, t0, 1.0f) };
+    for (const FSOLHoloMenuAnim& end : ends)
+    {
+        for (const double t : times)
+        {
+            for (const float s : strengths)
+            {
+                anim = end;
+                SOLSolidMenu::AdvancePanel(anim, t, s);
+                SolidMenuTestPanelAnimEqual(*this, FString::Printf(TEXT("%s at %f strength %f"),
+                    SolidMenuTestPhaseName(end.Phase), t, s), anim, end);
+            }
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimMonotonicTest, "SOLTest.SolidMenu.PanelAnim.MonotonicSampled",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Sampled frame by frame (Advance each frame) an open never goes down and a close never goes up, both stay in [0, 1]
+// and end in Open / Closed
+bool FSOLSolidMenuPanelAnimMonotonicTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    const int32 steps = 200;
+
+    // Open from Closed over 1.5 x PANEL_OPEN_S
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f);
+    FSOLSolidMenuSweepLog openLog;
+    float last = SOLSolidMenu::PanelProgress(anim, t0, 1.0f);
+    for (int32 step = 1; step <= steps; ++step)
+    {
+        const double t = t0 + 1.5 * open * static_cast<double>(step) / static_cast<double>(steps);
+        SOLSolidMenu::AdvancePanel(anim, t, 1.0f);
+        const float value = SOLSolidMenu::PanelProgress(anim, t, 1.0f);
+        if (value < last - tol || value < 0.0f || value > 1.0f)
+        {
+            openLog.Fail(FString::Printf(TEXT("t %f: %f (previous %f)"), t, value, last));
+        }
+        last = value;
+    }
+    openLog.Report(*this, TEXT("open is non-decreasing in [0, 1]"));
+    SolidMenuTestPanelPhase(*this, TEXT("Open at the end of the sampled open"), anim, ESOLHoloMenuPhase::Open);
+    TestEqual(TEXT("1 at the end of the sampled open"), last, 1.0f, tol);
+
+    // Close from Open over 1.5 x CLOSE_S
+    const double t1 = t0 + 2.0 * open;
+    SOLSolidMenu::BeginPanelClose(anim, t1, 1.0f);
+    FSOLSolidMenuSweepLog closeLog;
+    last = SOLSolidMenu::PanelProgress(anim, t1, 1.0f);
+    for (int32 step = 1; step <= steps; ++step)
+    {
+        const double t = t1 + 1.5 * close * static_cast<double>(step) / static_cast<double>(steps);
+        SOLSolidMenu::AdvancePanel(anim, t, 1.0f);
+        const float value = SOLSolidMenu::PanelProgress(anim, t, 1.0f);
+        if (value > last + tol || value < 0.0f || value > 1.0f)
+        {
+            closeLog.Fail(FString::Printf(TEXT("t %f: %f (previous %f)"), t, value, last));
+        }
+        last = value;
+    }
+    closeLog.Report(*this, TEXT("close is non-increasing in [0, 1]"));
+    SolidMenuTestPanelPhase(*this, TEXT("Closed at the end of the sampled close"), anim, ESOLHoloMenuPhase::Closed);
+    TestEqual(TEXT("0 at the end of the sampled close"), last, 0.0f, tol);
+    return true;
+}
+
+// --- Power-up LED blink and idle pulse dot (46d, SDD 46 section 7) ---
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuLedBlinkOrderTest, "SOLTest.SolidMenu.PowerUp.LedBlinkOrder",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// LED i of n lights from TRACE_POWER_DELAY_S + TRACE_POWER_S x i / n for LED_BLINK_S, then is off; never before the
+// delay and never after the power-up
+bool FSOLSolidMenuLedBlinkOrderTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const int32 count = 7;
+    const double eps = 1.0e-4;
+    for (int32 index = 0; index < count; ++index)
+    {
+        const double onS = TRACE_POWER_DELAY_S + static_cast<double>(TRACE_POWER_S) * index / count;
+        TestFalse(FString::Printf(TEXT("LED %d off just before its turn"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, onS - eps, 1.0f));
+        TestTrue(FString::Printf(TEXT("LED %d lit at its turn"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, onS + eps, 1.0f));
+        TestTrue(FString::Printf(TEXT("LED %d lit just before its blink ends"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, onS + LED_BLINK_S - eps, 1.0f));
+        TestFalse(FString::Printf(TEXT("LED %d off after its blink"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, onS + LED_BLINK_S + eps, 1.0f));
+        TestTrue(FString::Printf(TEXT("LED %d lit at strength 2 too"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, onS + eps, 2.0f));
+    }
+    const double endS = static_cast<double>(TRACE_POWER_DELAY_S) + TRACE_POWER_S + LED_BLINK_S;
+    for (int32 index = 0; index < count; ++index)
+    {
+        TestFalse(FString::Printf(TEXT("LED %d off at the open"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, 0.0, 1.0f));
+        TestFalse(FString::Printf(TEXT("LED %d off after the power-up"), index),
+            SOLSolidMenu::PowerUpLedLit(index, count, endS + eps, 1.0f));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuLedBlinkNoneTest, "SOLTest.SolidMenu.PowerUp.LedBlinkNone",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// No blink at strength 0 (negative and NaN read 0), for an index outside [0, count) or a count <= 0; a NaN or
+// negative elapsed time reads 0 (before the delay)
+bool FSOLSolidMenuLedBlinkNoneTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const double midS = TRACE_POWER_DELAY_S + 0.01;     // LED 0 of any count is lit here at strength 1
+    TestTrue(TEXT("LED 0 lit just after the delay"), SOLSolidMenu::PowerUpLedLit(0, 7, midS, 1.0f));
+    const float zeros[] = { 0.0f, -1.0f, SOLIDMENUTEST_NAN };
+    for (const float s : zeros)
+    {
+        TestFalse(FString::Printf(TEXT("strength %f: no blink"), s), SOLSolidMenu::PowerUpLedLit(0, 7, midS, s));
+        TestFalse(FString::Printf(TEXT("strength %f: the power-up is not running"), s),
+            SOLSolidMenu::IsPowerUpRunning(0.0, s));
+    }
+    TestFalse(TEXT("index -1"), SOLSolidMenu::PowerUpLedLit(-1, 7, midS, 1.0f));
+    TestFalse(TEXT("index = count"), SOLSolidMenu::PowerUpLedLit(7, 7, midS, 1.0f));
+    TestFalse(TEXT("count 0"), SOLSolidMenu::PowerUpLedLit(0, 0, midS, 1.0f));
+    TestFalse(TEXT("count -3"), SOLSolidMenu::PowerUpLedLit(0, -3, midS, 1.0f));
+    TestFalse(TEXT("NaN elapsed reads 0"), SOLSolidMenu::PowerUpLedLit(0, 7, SOLIDMENUTEST_NAN_D, 1.0f));
+    TestFalse(TEXT("negative elapsed reads 0"), SOLSolidMenu::PowerUpLedLit(0, 7, -5.0, 1.0f));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPowerUpRunningTest, "SOLTest.SolidMenu.PowerUp.Running",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The power-up runs from the open until TRACE_POWER_DELAY_S + TRACE_POWER_S + LED_BLINK_S (the last LED's blink
+// ends before that), then stops
+bool FSOLSolidMenuPowerUpRunningTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const double endS = static_cast<double>(TRACE_POWER_DELAY_S) + TRACE_POWER_S + LED_BLINK_S;
+    TestTrue(TEXT("running at the open"), SOLSolidMenu::IsPowerUpRunning(0.0, 1.0f));
+    TestTrue(TEXT("running just before the end"), SOLSolidMenu::IsPowerUpRunning(endS - 1.0e-4, 1.0f));
+    TestFalse(TEXT("stopped at the end"), SOLSolidMenu::IsPowerUpRunning(endS + 1.0e-4, 1.0f));
+    TestFalse(TEXT("stopped long after"), SOLSolidMenu::IsPowerUpRunning(100.0, 1.0f));
+    TestTrue(TEXT("a NaN elapsed time reads 0 (running)"), SOLSolidMenu::IsPowerUpRunning(SOLIDMENUTEST_NAN_D, 1.0f));
+
+    // Every LED's blink ends while the power-up still runs
+    const int32 count = 7;
+    const double lastOffS = TRACE_POWER_DELAY_S + static_cast<double>(TRACE_POWER_S) * (count - 1) / count
+        + LED_BLINK_S;
+    TestTrue(TEXT("the last LED goes off before the end"), lastOffS <= endS);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPulseDotTest, "SOLTest.SolidMenu.Pulse.Dot",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The dot's place is the phase of IDLE_PULSE_PERIOD_S in [0, 1) (0 for a non-finite time); its alpha is
+// PULSE_DOT_ALPHA x s with s capped at 2, at most 1, and exactly 0 at strength 0 (negative, NaN)
+bool FSOLSolidMenuPulseDotTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const double period = IDLE_PULSE_PERIOD_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+    TestEqual(TEXT("0 at t 0"), SOLSolidMenu::PulseDotFraction(0.0), 0.0f, tol);
+    TestEqual(TEXT("a quarter at a quarter period"), SOLSolidMenu::PulseDotFraction(0.25 * period), 0.25f, tol);
+    TestEqual(TEXT("three quarters, three periods on"), SOLSolidMenu::PulseDotFraction(3.75 * period), 0.75f, tol);
+    TestEqual(TEXT("late in a session"), SOLSolidMenu::PulseDotFraction(250000.0 * period + 0.5 * period), 0.5f,
+        tol);
+    TestEqual(TEXT("NaN time"), SOLSolidMenu::PulseDotFraction(SOLIDMENUTEST_NAN_D), 0.0f, tol);
+    TestEqual(TEXT("infinite time"), SOLSolidMenu::PulseDotFraction(SOLIDMENUTEST_INF_D), 0.0f, tol);
+    FSOLSolidMenuSweepLog log;
+    for (int32 step = -50; step < 100; ++step)
+    {
+        const float value = SOLSolidMenu::PulseDotFraction(0.173 * static_cast<double>(step));
+        if (!(value >= 0.0f && value < 1.0f))
+        {
+            log.Fail(FString::Printf(TEXT("step %d: %f"), step, value));
+        }
+    }
+    log.Report(*this, TEXT("the place stays in [0, 1)"));
+
+    TestEqual(TEXT("alpha at strength 1"), SOLSolidMenu::PulseDotAlpha(1.0f), PULSE_DOT_ALPHA, tol);
+    TestEqual(TEXT("alpha at strength 2 doubled (or 1)"), SOLSolidMenu::PulseDotAlpha(2.0f),
+        FMath::Min(2.0f * PULSE_DOT_ALPHA, 1.0f), tol);
+    TestEqual(TEXT("alpha capped at strength 2"), SOLSolidMenu::PulseDotAlpha(5.0f),
+        FMath::Min(2.0f * PULSE_DOT_ALPHA, 1.0f), tol);
+    const float zeros[] = { 0.0f, -1.0f, SOLIDMENUTEST_NAN };
+    for (const float s : zeros)
+    {
+        TestTrue(FString::Printf(TEXT("strength %f: no dot"), s), SOLSolidMenu::PulseDotAlpha(s) == 0.0f);
+    }
     return true;
 }
 

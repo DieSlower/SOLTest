@@ -21,7 +21,8 @@
 namespace
 {
     // The kit's texture paths, in ESOLSolidTexture order
-    const TCHAR* const SOLID_TEXTURE_PATHS[] = { SOL::Paths::SOLID_TEX_RIVET, SOL::Paths::SOLID_TEX_VENT };
+    const TCHAR* const SOLID_TEXTURE_PATHS[] = { SOL::Paths::SOLID_TEX_RIVET, SOL::Paths::SOLID_TEX_VENT,
+        SOL::Paths::SOLID_TEX_HAZARD };
     static_assert(UE_ARRAY_COUNT(SOLID_TEXTURE_PATHS) == static_cast<int32>(ESOLSolidTexture::Count),
         "one path per ESOLSolidTexture");
 

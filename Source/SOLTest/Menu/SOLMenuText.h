@@ -15,6 +15,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* GAME_TITLE = TEXT("SOLTest");
     inline constexpr const TCHAR* GAME_TAGLINE = TEXT("The solar system at true scale");
     inline constexpr const TCHAR* STUDIO_NAME = TEXT("ACID RAIN STUDIOS LLC");
+    inline constexpr const TCHAR* STUDIO_NAME_SHORT = TEXT("ARS LLC"); // The studio credit in the main menu version line
     inline constexpr const TCHAR* PAUSED_TITLE = TEXT("PAUSED");
 
     // Main menu entries
@@ -25,6 +26,13 @@ namespace SOLMenuText
     inline constexpr const TCHAR* ABOUT = TEXT("About");
     inline constexpr const TCHAR* QUIT = TEXT("Quit");
     inline constexpr const TCHAR* MAIN_MENU_HINT = TEXT("Enter: select    Tab / arrows: move    Esc: close page");
+    // The main menu's chin recess (SDD 46 section 11.1, Q10): {0} the build version (SOLBuildVersion), {1} STUDIO_NAME_SHORT,
+    // {2} the engine version; the second form when the engine version is unknown
+    inline constexpr const TCHAR* MAIN_MENU_VERSION_FORMAT = TEXT("v{0}  ·  {1}  ·  UE {2}");
+    inline constexpr const TCHAR* MAIN_MENU_VERSION_NO_ENGINE_FORMAT = TEXT("v{0}  ·  {1}");
+
+    // The page shell (SDD 46 section 6.1): its Back button closes the page, as Esc does
+    inline constexpr const TCHAR* PAGE_BACK = TEXT("Back");
 
     // Pause menu tabs and pages
     inline constexpr const TCHAR* RESUME = TEXT("Resume");
@@ -589,5 +597,6 @@ namespace SOLMenuText
     inline constexpr const TCHAR* ABOUT_ENGINE_FORMAT = TEXT("Built with Unreal Engine {0}");
     inline constexpr const TCHAR* ABOUT_CREDITS_TITLE = TEXT("Credits");
     inline constexpr const TCHAR* ABOUT_CREDITS = TEXT("Design and development: Acid Rain Studios LLC. ")
-        TEXT("Orbital elements: NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0).");
+        TEXT("Orbital elements: NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0). ")
+        TEXT("Menu font: Rajdhani, SIL OFL 1.1.");
 }

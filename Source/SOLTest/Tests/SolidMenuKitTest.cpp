@@ -96,8 +96,10 @@ namespace
         ESOLMenuTextRole::Title, ESOLMenuTextRole::Heading, ESOLMenuTextRole::Section, ESOLMenuTextRole::Button,
         ESOLMenuTextRole::Body, ESOLMenuTextRole::Small };
 
-    // The textures the kit draws itself (the hull material references its grain and cue mask on its own)
-    constexpr ESOLSolidTexture SOLIDKITTEST_TEXTURES[] = { ESOLSolidTexture::Rivet, ESOLSolidTexture::Vent };
+    // The textures the kit draws itself (the hull material references its grain on its own; the hazard mask is also
+    // the main menu's stripe, 46d)
+    constexpr ESOLSolidTexture SOLIDKITTEST_TEXTURES[] = { ESOLSolidTexture::Rivet, ESOLSolidTexture::Vent,
+        ESOLSolidTexture::Hazard };
 
     // Counts failures of a sweep and keeps the first one's description (avoids flooding the log)
     struct FSOLSolidKitSweepLog

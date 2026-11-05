@@ -250,7 +250,7 @@ close animation is waited for).
   The old colours map to the solid palette: body text `TEXT_COLOR`, titles and page headings `TEXT_BRIGHT_COLOR`,
   the old accent (values, keys, section headings, the studio name) `CYAN_COLOR`, warnings `WARNING_COLOR`; the old dim
   tier (hints, the start-location and Demo help lines, the dirty text at rest) used `TEXT_COLOR` until the **46c
-  follow-up (user, 2026-11-05)** added `TEXT_DIM_COLOR` #7F8A93 (`SOLSolidStyle::DimTextColor`, section 5.1); it now
+  follow-up (user, 2026-11-05)** added `TEXT_DIM_COLOR` #8A949D (`SOLSolidStyle::DimTextColor`, section 5.1); it now
   draws the main menu hint and the start-location help line, the pause hint, the Settings hint and the dirty text at
   rest, the Demo hint and its "no warnings" line, and the About copyright line. The Info page's row labels stay
   `TEXT_COLOR` (they are content, not hints). `BUTTON_NORMAL`, `BUTTON_PRESSED_TINT`,
@@ -291,7 +291,7 @@ close animation is waited for).
 | Rivet | #6A737C | Rivets |
 | Text | **#A4AFB8** (D10) | Body text and button labels at rest (Q12) |
 | Bright text | #DCE3E8 | Titles, headings and the hovered / focused label (Q12) |
-| Dim text (46c follow-up, user 2026-11-05) | #7F8A93 | Hints and secondary lines (key hints, help lines, the dirty text at rest, the copyright line). `TEXT_DIM_COLOR`. Contrast about 3.3:1 on the panel hull, 4.2:1 on the recess: below body text's 5.15:1 by design, above the 3:1 non-text floor; only for short secondary lines, never body copy |
+| Dim text (46c follow-up, user 2026-11-05) | #8A949D | Hints and secondary lines (key hints, help lines, the dirty text at rest, the copyright line). `TEXT_DIM_COLOR`. Contrast about 3.8:1 on the panel hull, 4.8:1 on the recess: below body text's 5.15:1 by design, above the 3:1 non-text floor; only for short secondary lines, never body copy |
 | Cyan trace | **#28D2F0** (D10) | **Every** cyan of the solid menus (Q13): circuit traces, ring terminals, lit LEDs at rest, slider fill, the selected underline, values and keys |
 | Amber hover / selected | **#FFA628** (D10) | Hover / keyboard-focus only (Q9): edge, LED, underline and trace. The selected state is cyan, not amber |
 | Warning | **#E5533D** (Q14) | Red-orange, so a warning never reads as hover: key conflicts, the dirty indicator, Demo warnings (replaces today's orange `WARNING_COLOR`) |
@@ -372,6 +372,90 @@ button + the footer row when the page has one), used by every page of both menus
 does on that page today (close the page; on the pause menu Esc with no page open still resumes, Q4); it is a new button but no new input path (D6).
 Proposed size: 1040 x 760 (the tab column 200 wide), so a Settings row keeps its 250 label column, a slider and the 80
 value column; the main menu's column + gap + shell then spans about 1540 of 1920 units.
+
+### 6.2 46d amendment: the main menu and the page shell as built
+
+- **Column** (`USOLMainMenuWidget::BuildColumn`): a `USOLSolidPanel` (Panel style, its own material) `COLUMN_WIDTH` 380
+  x `COLUMN_HEIGHT` (= `PAGE_HEIGHT`) with the panel chamfers, a title step (`COLUMN_TITLE_STEP_WIDTH` 290 x
+  `COLUMN_TITLE_STEP_HEIGHT` 12), a chin (`COLUMN_CHIN_WIDTH` 300 x `COLUMN_CHIN_HEIGHT` 14), rivets and vents. Every
+  row has a fixed height (`COLUMN_TITLE_HEIGHT` 76, `COLUMN_TAGLINE_HEIGHT` 28, `COLUMN_STACK_GAP` 20, the stack at
+  `BUTTON_HEIGHT` 52 + `BUTTON_GAP` 10, `HAZARD_HEIGHT_PX` 10, the hint after `COLUMN_HINT_GAP` 14, the version
+  recess `VERSION_RECESS_HEIGHT` 58 at the bottom), so the traces are computed once from the constants: each entry's
+  hover trace runs from the button's right end (the point) to the hull's right edge (`COLUMN_WIDTH - PANEL_INSET_PX`),
+  and three static traces with ring terminals run in two rows (`COLUMN_TRACE_GAP` 16 apart, 45-degree bends) above the
+  version recess. The studio name is no longer a line of its own under the tagline: it is in the version line.
+- **Menu focus (user decision 2026-11-05).** After the main menu shows (first show and every return from flight)
+  the keyboard focus lands on Play: `USOLMenuSubsystem::RefreshWidgets` passes `GetDefaultButton()` (Play; the pause
+  menu's selected tab) as the input mode's `WidgetToFocus` instead of the menu root, whose deferred focus change used
+  to land after `FocusDefault` and leave no entry focused. Play therefore shows lit amber at rest whenever the menu
+  shows (accepted). The `-SOLSmokeSolidMenu` check `t-return-play-trace` asserts Play focused on the first frame back
+  and a settle later.
+- **Title.** "SOLTest" uses the title size (56, Bold) **without** the section 9 title letter spacing (400): with it the
+  word is about 450 units wide and does not fit the 380 column; as in 46c it draws untracked.
+- **Hazard stripe:** `T_SOLSolidHazard` (now loaded by the subsystem, `ESOLSolidTexture::Hazard`) as a horizontally
+  tiled image brush (`HAZARD_TILE_WIDTH_PX` 80 x 10) tinted `AMBER_COLOR`; the mask's black stays black; a flat amber bar
+  when the texture is missing.
+- **Version recess:** bottom-left in the chin (a Recess panel from the content's left edge to the chin's flank), the
+  line `SOLBuildVersion::FormatVersionLine(CurrentVersion(), engine version)` in `DimTextColor` at the small size,
+  auto-wrapped: at 380 units the line takes two lines (`v0.1.2611.135 · ARS LLC · UE 5.8.3`; with the short credit `SOLMenuText::STUDIO_NAME_SHORT` "ARS LLC", user 2026-11-05, the line takes two lines, breaking before "UE 5.8.3" because the format joins "UE" and the version with a no-break space; the About page keeps the full `STUDIO_NAME`). The
+  separator is the middle dot (U+00B7), which Rajdhani draws (checked on the screenshots).
+- **Page shell** (`BuildShell`): a Panel hull with its own material (the panel chamfers and a notch in each side,
+  `SHELL_NOTCH_DEPTH` 6 x `SHELL_NOTCH_HEIGHT` 72 at half height), rivets and vents; inside (`SHELL_PADDING` 28) the
+  content recess (`SHELL_RECESS_PADDING` 20) with the page switcher and, under it after `SHELL_BACK_GAP` 12, a
+  bottom-right recess (`SHELL_BACK_RECESS_PADDING` 6) with **Back** (Small variant, `BACK_BUTTON_WIDTH` 160 x
+  `SETTINGS_ROW_HEIGHT` 34, `SOLMenuText::PAGE_BACK`). Back and Esc both call `ClosePage` (the page closes, the focus goes
+  to Play); no new input path. No tab column and no traces on the shell in 46d.
+- **Layout values changed.** `PAGE_HEIGHT` 760 -> **800** (the column, level with the shell, had no room for its traces
+  between the hint and the version recess at 760). The shell sits in a Fill slot of the row with a `PAGE_WIDTH` x
+  `PAGE_HEIGHT` size box, so it is 1040 wide where the view has room and **narrows** to the room right of the column
+  where it does not: at 1000x800 (DPI scale 0.74, 1350 units across) it is about 787 units wide and everything fits
+  (smoke `h-fit-*`); at 1280x720 and wider it is the full 1040. `SOL::MenuStyle::PAGE_WIDTH` / `PAGE_HEIGHT` (the flat
+  page panel) were removed; `PANEL_BACKGROUND` stays for the pause panel until 46g.
+- **Start-location page:** the body text, then the rows (Small buttons) in a recess list (`LIST_RECESS_PADDING` 10)
+  with `SOLSolidStyle::MakeScrollBarStyle` and `SCROLL_BAR_THICKNESS`; the start body's row is selected (`SetSelected`,
+  the cyan underline and LED), kept in sync by `RefreshStartBody`.
+- **Animations.** The column's `FSOLHoloMenuAnim` opens through `SOLSolidMenu::BeginPanelOpen` /
+  `PanelProgress` / `AdvancePanel` (the new duration-parameter forms of the #42 `SOLHoloMenu` phase functions at
+  `PANEL_OPEN_S` / `CLOSE_S`; the #42 forms forward with `OPEN_S` / `CLOSE_S`, unchanged) each time the menu is added to
+  the viewport (`NativeConstruct`, which also binds the entries' hover traces to the rebuilt trace layer), with
+  `ApplyOpenLook` (fade, `PANEL_SLIDE_PX` slide from the left); `TracePower` runs from the open's start (dark until
+  `TRACE_POWER_DELAY_S`, lit at 0.5 s), `IdlePulse` while shown. The shell opens with a page (`BeginPanelOpen`, from the
+  left too) and on `ShowPage(None)` the page state is None and the focus is back at once while the shell closes over
+  `CLOSE_S` hit-test invisible with the old page still drawn, then hides and drops to the empty switcher child; a reopen
+  during the close reverses. At strength 0 everything is at its end on the same frame. Nothing runs while the menu is
+  not in the viewport (no tick).
+- **Power-up LED blink (review fix; an interpretation of section 7's "the LEDs blink on in stack order", open to the
+  user).** At rest a stack button's LED is off (section 5.3), and the hull material ties the LED to the amber edge (the
+  tint's R), so the blink is drawn by the column's trace layer, not the buttons: during the trace power-up each entry's
+  LED (`BUTTON_LED_X_PX` from the button's left, its vertical centre) shows as a filled amber dot of `LED_RADIUS_PX`
+  from `TRACE_POWER_DELAY_S + TRACE_POWER_S x i / 7` for `LED_BLINK_S` 0.1 s, top to bottom, and **ends off**
+  (`SOLSolidMenu::PowerUpLedLit`). An entry whose own LED already shows (hovered or focused, pressed, selected,
+  disabled) is skipped. At strength 0 there is no blink; once `IsPowerUpRunning` is false the widget stops computing
+  it (no per-frame work, the mask stays 0, no repaint).
+- **Idle pulse dot (review fix).** A faint cyan dot (`LED_RADIUS_PX`, alpha `PULSE_DOT_ALPHA` 0.35 x s, at most 1,
+  times the pulse's core alpha) travels along the longest static trace (the first, found once in `SetTraces`) over
+  each `IDLE_PULSE_PERIOD_S`, start to end (`PulseDotFraction`, `PulseDotAlpha`), drawn only once the traces are fully
+  lit. One more exact-size line array per paint while it shows; at strength 0 its alpha is 0, the layer ignores the
+  place and never repaints for it.
+- **Reshow (review fix).** `PlayShowAnimation` (each add to the viewport) snaps the shell closed whenever it is not
+  Closed or a page is set: a page left open at Play ends its Settings visit, the page is None, the shell is hidden at
+  once (no close animation on the return to the main menu) and the selection marks are cleared. A button given a new
+  trace layer (the panel rebuilt on the return) pushes its current look's hover trace at once, since a settled button
+  writes nothing on later refreshes, so the focused Play keeps its trace.
+- **Smoke (SDD 14 steps 1-3 for the main menu).** `-SOLSmokeSolidMenu` grew from 13 to 36 checks: the column panel
+  (own material, 7 stack buttons, 3 traces), the version line (equal to `FormatVersionLine(CurrentVersion(), engine)`,
+  shape `0.1.DDDD.D+`), the first open finished, the replayed open (Opening with dark traces, the power-up mid-way,
+  monotonic, Open), the hover and Down hover traces, each page opened by its entry's click handler and closed by Back
+  (Enter on the focused Back) or Esc alternately (page None and the focus on Play at once, the shell closing
+  input-transparent, then hidden), a reopen during a close (no pop), strength 0 (column, shell and hover at once) and 2
+  (glow 2), and the view at 1000x800 with Settings and Start location (column and shell inside the view). The
+  screenshots at 1280x720 and 1000x800 were looked at: no clipped text; the shell is 1040 wide at 1280x720 and about 787
+  at 1000x800. The review fixes added `a-hint-clear` (the wrapped key hint ends at least `COLUMN_HINT_CLEARANCE_PX`
+  above trace row A, from the laid-out geometry), `a-led-blink` (every entry whose own LED is dark blinked, no other,
+  and the blink ended off), `a-pulse-dot` (the dot on trace 0 at `PulseDotAlpha(1)`), `s-main-s0-lights` (no blink, no
+  dot at strength 0) and the return from flight (`PlayReturn`: Play focused and settled with About open, Play, Esc,
+  Quit to menu): `t-return-shell-closed` (page None, Closed, hidden, no selection on the first frame back) and
+  `t-return-play-trace` (Play focused with its hover trace drawn, on the first frame back and a settle later).
 
 ## 7. Animations and the effects strength (D5)
 
@@ -513,7 +597,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | `TRACE_CORE_WIDTH_PX` / `TRACE_GLOW_WIDTH_PX` / `TRACE_GLOW_ALPHA` | 1.5 / 6 / 0.25 | |
 | `LED_RADIUS_PX` / `UNDERLINE_PX` / `EDGE_PX` | 3 / 2 / 1.5 | |
 | `DISABLED_ALPHA` | 0.4 | |
-| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760, `TAB_COLUMN_WIDTH` 200, `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160 | Existing `SOL::MenuStyle` sizes stay unless listed |
+| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200, `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
 | Font sizes | Title 56, heading 26, section 20, button 20, body 18, small 15 | Body +2 for Rajdhani's narrower face; checked at 1000x800 |
 | Letter spacing | Titles 400, stack labels 260, small caps 200 | From the board's tracking (README), applied as `FSlateFontInfo::LetterSpacing` |
 | `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD` (46c follow-up: `SOLID_TEX_NOISE` removed) under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
@@ -596,6 +680,44 @@ and `ProjectVersion` is not used. Design (built in 46d):
   fails on it. The generated header is a build artefact (Intermediate), never committed.
 - `SOLConstants.h` (or `SOLMenuText.h`) formats the line from the macros; the format helper is a pure function so a test
   covers the zero padding and the field order. The check is a unit test plus the smoke screenshot of the main menu.
+
+### 11.2 46d amendment: the version line as built
+
+- **Generated header.** `SOLTest.Build.cs` (`WriteBuildVersionHeader`) runs `git rev-list --count HEAD` in the project
+  directory (`System.Diagnostics.Process`, no shell, 5 s timeout, output read asynchronously) and writes
+  `<project>/Intermediate/Generated/SOLBuildVersion.generated.h` with two macros, `SOL_BUILD_YYMM` (an int literal, the
+  build's local year and month) and `SOL_BUILD_COMMIT_COUNT`, only when the text differs; the folder is a private
+  include path and only `Menu/SOLBuildVersion.cpp` includes the header. Git missing, failing, timing out or printing
+  no number gives a count of 0 and one `Logger.LogWarning`; the build never fails on it. `SOL_BUILD_VERSION_STRING` is
+  not generated: the format lives in C++ (`SOLBuildVersion::FormatVersion`, `SOLMenuText::MAIN_MENU_VERSION_FORMAT`), so
+  the tests cover it. The `.generated.h` name does not clash with UHT (UHT only generates one for a header with
+  reflection markup, and `SOLBuildVersion.h` has none); kept, but it **would clash** if `SOLBuildVersion.h` ever gained
+  a reflected type (UHT would then write its own `SOLBuildVersion.generated.h`): rename the generated header first.
+- **Never fails the build (review fix).** `SOLBuildVersion.cpp` includes the header under
+  `#if __has_include("SOLBuildVersion.generated.h")`; without it `BuildYYMM` is the compile date's (`__DATE__`, parsed
+  at compile time through `MakeYYMM`, so `SOLTest.BuildVersion.Build.ValuesInRange` still passes) and the count 0. The
+  rules create `Intermediate/Generated` before writing (also when the write then fails) and add it as an include path
+  only when it exists. The content is computed once per UBT process and project under a static lock (git runs once),
+  written to `<header>.<pid>.tmp` and moved over the header (`File.Move(..., overwrite: true)`, .NET 10 in UE 5.8), so a
+  concurrent build never reads half a header; git's first stderr line goes into the single warning; the project folder
+  is `Target.ProjectFile`'s (the module folder's grandparent without one), and `.git` is looked for there and upward.
+- **Rebuild cost.** Every commit, checkout or reset touches the reflog, so it invalidates the makefile (the rules run
+  again, git runs once) and, when the count changed, rewrites the header, which recompiles the unity blob holding
+  `SOLBuildVersion.cpp` (a few seconds); a build with no commit in between recompiles nothing.
+- **`SOLBuildVersion`** (`Menu/SOLBuildVersion.h/.cpp`, pure): `MakeYYMM`, `FormatVersion` (`0.1.` + YYMM clamped to
+  [0, 9999] in four digits + `.` + the count, never negative), `BuildYYMM` / `BuildCommitCount` (the macros),
+  `CurrentVersion`, `FormatVersionLine(version, engineVersion)` = `v<version>  ·  <STUDIO_NAME>  ·  UE <engine>` (the
+  `MAIN_MENU_VERSION_NO_ENGINE_FORMAT` form without the engine part when it is empty). Tests: `SOLTest.BuildVersion.*`.
+- **UBT invalidation (checked in the UE 5.8 UBT source).** UBT caches the target makefile and does not run the module
+  rules again while it is valid, so a new commit alone would not refresh the count. `ModuleRules.ExternalDependencies`
+  ("external files which invalidate the makefile if modified", `Configuration/Rules/ModuleRules.cs`) are added to the
+  makefile (`UEBuildTarget.cs`), and `TargetMakefile.IsValidForSourceFiles` drops the makefile when one was deleted or
+  is newer than the makefile. The rules add the git HEAD reflog (`.git/logs/HEAD`; in a worktree `.git` is a file whose
+  `gitdir:` line names the git directory), which a commit, checkout, reset or pull appends to. Verified: touching the
+  reflog made the next build log "Invalidating makefile for SOLTestEditor (HEAD modified)", re-run the rules and leave
+  the unchanged header untouched (same timestamp, nothing recompiled); a build with no change between does not re-run
+  them. Limits: a new month without a commit keeps the old YYMM until the next commit (or any other makefile
+  invalidation); the header is a build artefact under `Intermediate`, never committed.
 
 ## 12. Documentation, in-game text and screenshots (same change as the code)
 
@@ -695,6 +817,29 @@ screen tick, the trace layer's precomputed ring, the sRGB-scaled dither), 9/9 ch
 `dgpu` (ms): P0 +0.033 / +0.006, P1 -0.014 / +0.004, P2 -0.017 / +0.002, P3 -0.007 / -0.010; `gpu_solid`
 0.002-0.007. Two single-run FAILs (P1 +0.134 in run 2, P0 +0.180 in run 3) did not repeat in the other runs: noise, as
 the single-run TECH_DEBT item describes.
+
+**46d check (the main menu's hull column and page shell).** 2026-11-05, three runs after 46d (P0 / P1 now draw the
+column, the shell, their recesses and the version recess on the hull material; P2 / P3, the pause menu, are unchanged
+until 46g), 9/9 checks each run. Medians of `dcpu` / `dgpu` (ms; the three values in brackets): P0 **+0.044**
+(+0.039 / +0.106 / +0.044) / **+0.047** (+0.057 / +0.047 / +0.046), P1 **+0.049** (+0.044 / +0.202 / +0.049) /
+**+0.028** (+0.028 / +0.027 / +0.029), P2 -0.020 / +0.001, P3 +0.018 / +0.003. `gpu_solid` (the hull draws) 0.084-0.095
+at 1920x1080 and 0.048-0.050 at 1280x720 on the main menu passes (0.002-0.003 on the pause passes); UI draws 28 (base
+14-15). All medians inside the Q17 budget; the main menu now uses about half of the CPU budget (more widgets: two
+unique-material panels, four recesses, the trace layers) and a sixth of the GPU budget, so the per-pixel `ClampHull`
+TECH_DEBT item is not forced by 46d. Run 2's P0 / P1 FAILs (+0.106, +0.202) did not repeat: run-to-run noise (the
+single-run TECH_DEBT item). The profile flag has fixed passes (1920x1080 and 1280x720, `PROFILE_VIEW_LARGE` /
+`_SMALL`); it does not take its view size from `-ResX` / `-ResY`, so no number at the Varjo XR-4 per-eye size
+(3840x3744) was taken.
+
+**46d check after the review fixes (power-up LED blink, idle pulse dot, reshow snap).** 2026-11-05, three runs, 9/9
+checks and 4/4 PASS each. Medians of `dcpu` / `dgpu` (ms; the three values in brackets): P0 **+0.042** (+0.042 / +0.042
+/ +0.026) / **+0.046** (+0.044 / +0.046 / +0.046), P1 **+0.025** (+0.068 / +0.025 / +0.009) / **+0.030** (+0.029 /
++0.030 / +0.030), P2 -0.025 / +0.002, P3 -0.024 / -0.007. `gpu_solid` 0.081-0.084 at 1920x1080 and 0.051-0.052 at
+1280x720; UI draws 28. The first build drew the dots as a 3 px thick line, a draw batch of its own (UI draws 29): its
+three runs read P0 +0.136 and P1 +0.174 median `dcpu`, over the budget (an A/B without the dot read 28 draws and
++0.084 / +0.027, +0.128 / +0.021 on two runs, so the noise is large but the extra batch was real); drawn at the core
+width as two concentric octagons the dots batch with the core lines and the medians are back at the earlier 46d
+numbers. The VR floor is still only extrapolated (TECH_DEBT).
 
 **Comparing later (46i).** Close the editor, build, then run three times and take, per pass, the median of `dcpu` and
 of `dgpu` over the three `RESULT` lines (a single run's PASS / FAIL is advisory, the run-to-run spread above is up to

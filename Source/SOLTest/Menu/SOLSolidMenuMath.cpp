@@ -350,6 +350,51 @@ float SOLSolidMenu::IdlePulse(const double nowS, const float s)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Whether a stack LED is in its power-up blink: each one lights in stack order across the trace power-up
+bool SOLSolidMenu::PowerUpLedLit(const int32 index, const int32 count, const double sinceOpenS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    if (SolidMathStrength(s) <= 0.0f || count <= 0 || index < 0 || index >= count)
+    {
+        return false;
+    }
+    const double onS = TRACE_POWER_DELAY_S + static_cast<double>(TRACE_POWER_S) * index / count;
+    const double elapsedS = SolidMathElapsed(sinceOpenS);
+    return elapsedS >= onS && elapsedS < onS + LED_BLINK_S;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Whether the traces or a stack LED blink are still moving (the last LED goes off after the traces are lit)
+bool SOLSolidMenu::IsPowerUpRunning(const double sinceOpenS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    const double endS = static_cast<double>(TRACE_POWER_DELAY_S) + TRACE_POWER_S + LED_BLINK_S;
+    return SolidMathStrength(s) > 0.0f && SolidMathElapsed(sinceOpenS) < endS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The pulse dot's place along the longest trace: the phase of the pulse period (taken in double, exact late on)
+float SOLSolidMenu::PulseDotFraction(const double nowS)
+{
+    using namespace SOL::SolidMenu;
+    if (!FMath::IsFinite(nowS))
+    {
+        return 0.0f;
+    }
+    const double period = IDLE_PULSE_PERIOD_S;
+    const double phase = FMath::Fmod(nowS, period) / period;
+    const float fraction = static_cast<float>(phase < 0.0 ? phase + 1.0 : phase);
+    return fraction < 1.0f ? fraction : 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The pulse dot's alpha: PULSE_DOT_ALPHA per unit of strength, at most 1, none at strength 0
+float SOLSolidMenu::PulseDotAlpha(const float s)
+{
+    return FMath::Min(SOL::SolidMenu::PULSE_DOT_ALPHA * SolidMathStrength(s), 1.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // The first fraction of a polyline's length into out, never past outCapacity
 int32 SOLSolidMenu::TracePolyline(const FVector2f* points, const int32 count, const float fraction, FVector2f* out,
     const int32 outCapacity)
@@ -396,4 +441,53 @@ float SOLSolidMenu::DimAlpha(const float progress, const float s)
 {
     using namespace SOL::SolidMenu;
     return SolidMathStrength(s) <= 0.0f ? PAUSE_DIM_ALPHA : PAUSE_DIM_ALPHA * SOLHoloMenu::FillFade(progress);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The panel's open progress: the #42 phases at the solid open / close rates, a NaN time reading the phase's end
+float SOLSolidMenu::PanelProgress(const FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    if (FMath::IsNaN(nowS))
+    {
+        return anim.Phase == ESOLHoloMenuPhase::Opening || anim.Phase == ESOLHoloMenuPhase::Open ? 1.0f : 0.0f;
+    }
+    return SOLHoloMenu::Progress(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel open (from 0 or from the current progress of a close)
+bool SOLSolidMenu::BeginPanelOpen(FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    return SOLHoloMenu::BeginOpen(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel close from the current progress
+bool SOLSolidMenu::BeginPanelClose(FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    return SOLHoloMenu::BeginClose(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Finishes a panel open or close that has reached its end (at once for a NaN time, which reads the end)
+void SOLSolidMenu::AdvancePanel(FSOLHoloMenuAnim& anim, const double nowS, const float s)
+{
+    using namespace SOL::SolidMenu;
+    if (!FMath::IsNaN(nowS))
+    {
+        SOLHoloMenu::Advance(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+    }
+    else if (anim.Phase == ESOLHoloMenuPhase::Opening)
+    {
+        anim.Phase = ESOLHoloMenuPhase::Open;
+        anim.PhaseStartProgress = 1.0f;
+    }
+    else if (anim.Phase == ESOLHoloMenuPhase::Closing)
+    {
+        anim.Phase = ESOLHoloMenuPhase::Closed;
+        anim.PhaseStartProgress = 0.0f;
+    }
 }

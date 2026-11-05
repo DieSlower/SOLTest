@@ -57,7 +57,7 @@ The colours are from the research doc (round 2 values; dim text was raised from 
 | Edge | #8C969F | Edge highlight / outline |
 | Shadow | #121416 | Deep shadow |
 | Text | #DCE3E8 | Main text (8.9:1 on panel) |
-| Dim text | #A4AFB8 | Secondary text (5.15:1 on panel); in game this is the body text `TEXT_COLOR`, and hints use the dimmer `TEXT_DIM_COLOR` #7F8A93 (SDD 46 section 5.1) |
+| Dim text | #A4AFB8 | Secondary text (5.15:1 on panel); in game this is the body text `TEXT_COLOR`, and hints use the dimmer `TEXT_DIM_COLOR` #8A949D (SDD 46 section 5.1) |
 | Accent | #46D2E6 | HUD cyan: traces, LEDs, values, hover |
 | Warning | #F2A93B | Amber LED, hazard stripe |
 

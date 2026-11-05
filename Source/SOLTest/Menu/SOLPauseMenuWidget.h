@@ -41,6 +41,9 @@ public:
     // Gives keyboard focus to the selected tab's button
     void FocusDefault();
 
+    // Returns the selected tab's button, the widget the input mode focuses when the menu shows
+    USOLMenuButton* GetDefaultButton() const;
+
     // Returns the Settings tab's page
     USOLSettingsPageWidget* GetSettingsPage() const { return SettingsPage; }
 
