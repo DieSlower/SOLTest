@@ -13,6 +13,7 @@
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
 #include "Menu/SOLSolidStyle.h"
@@ -41,6 +42,11 @@ namespace
     // How far the side panel slides: its width plus the screen margin it sits in from, so it starts wholly past the
     // left screen edge (PauseSlideX adds PAUSE_SLIDE_MARGIN_PX)
     constexpr float PAUSE_MENU_SLIDE_WIDTH = SOL::SolidMenu::PAUSE_PANEL_WIDTH + SOL::MenuStyle::SCREEN_MARGIN;
+
+    // The side panel slides in over PAUSE_SLIDE_S and out over CLOSE_S (SDD 46 section 7); every phase call on
+    // mPanelAnim passes this pair (the page shell keeps PANEL_OPEN_S / CLOSE_S)
+    constexpr double PAUSE_MENU_OPEN_S = SOL::SolidMenu::PAUSE_SLIDE_S;
+    constexpr double PAUSE_MENU_CLOSE_S = SOL::SolidMenu::CLOSE_S;
 
     // The side panel's detail area: the paused text, or the Quit prompt and choices (switcher indices)
     constexpr int32 PAUSE_MENU_DETAIL_TEXT = 0;
@@ -160,6 +166,10 @@ void USOLPauseMenuWidget::BuildSidePanel(UHorizontalBox& row)
             ->SetPadding(FMargin(0.0f, BUTTON_GAP, 0.0f, 0.0f));
         QuitButtons.Add(button);
     }
+
+    // The hazard stripe under Quit to desktop, as under the main menu's Quit (SDD 46 section 5.2)
+    quitChoices->AddChildToVerticalBox(SOLMenuContent::MakeHazardStripe(*WidgetTree,
+        USOLSolidMenuSubsystem::Get(this), TEXT("HazardStripe")));
     DetailSwitcher->AddChild(quitChoices);
     column->AddChildToVerticalBox(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()))->SetSize(
         FSlateChildSize(ESlateSizeRule::Fill));
@@ -222,7 +232,8 @@ void USOLPauseMenuWidget::PlayOpen()
 
     // A reopen during the slide-out reverses it from where it is (SDD 46 section 4.6): the traces stay lit, the
     // LEDs do not blink again and the stack keeps its scroll
-    if (SOLMenuContent::BeginPanelOpenWithCue(*this, mPanelAnim, frame.NowS, frame.Strength))
+    if (SOLMenuContent::BeginPanelOpenWithCue(*this, mPanelAnim, frame.NowS, frame.Strength,
+        PAUSE_MENU_OPEN_S, PAUSE_MENU_CLOSE_S))
     {
         mPanelOpenS = frame.NowS;
         mIsPowerUpRunning = true;
@@ -230,7 +241,7 @@ void USOLPauseMenuWidget::PlayOpen()
     }
 
     // The first frame already shows the start of the slide and dark traces (no frame of the old look)
-    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength);
+    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_OPEN_S, PAUSE_MENU_CLOSE_S);
     ApplyPanelLook(SOLSolidMenu::EvaluatePausePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_SLIDE_WIDTH));
     TickPanelLights(frame.NowS, frame.Strength);
     if (mShellAnim.Phase != ESOLHoloMenuPhase::Closed)
@@ -246,13 +257,13 @@ void USOLPauseMenuWidget::BeginClose()
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     mIsClosing = true;
     SetVisibility(ESlateVisibility::HitTestInvisible);
-    SOLSolidMenu::BeginPanelClose(mPanelAnim, frame.NowS, frame.Strength);
+    SOLSolidMenu::BeginPanelClose(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_OPEN_S, PAUSE_MENU_CLOSE_S);
     if (ShellPanel != nullptr && mShellAnim.Phase != ESOLHoloMenuPhase::Closed)
     {
         ShellPanel->SetVisibility(ESlateVisibility::HitTestInvisible);
         SOLSolidMenu::BeginPanelClose(mShellAnim, frame.NowS, frame.Strength);
     }
-    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength);
+    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_OPEN_S, PAUSE_MENU_CLOSE_S);
     ApplyPanelLook(SOLSolidMenu::EvaluatePausePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_SLIDE_WIDTH));
     if (mShellAnim.Phase != ESOLHoloMenuPhase::Closed)
     {
@@ -338,11 +349,11 @@ void USOLPauseMenuWidget::ShowTab(const EMenuTab tab)
         DetailSwitcher->SetActiveWidgetIndex(tab == EMenuTab::Quit ? PAUSE_MENU_DETAIL_QUIT : PAUSE_MENU_DETAIL_TEXT);
     }
 
-    // The tab whose content shows reads as selected: a page tab, or Quit with its choices (Resume shows nothing)
-    const bool bMarked = SOLMenuState::IsPageTab(tab) || tab == EMenuTab::Quit;
+    // The selected tab reads as selected, Resume included (user, 2026-11-06, Q9: the cyan underline and LED mark like
+    // every other selected item)
     for (USOLMenuButton* button : TabButtons)
     {
-        button->SetSelected(bMarked && button->GetIndex() == static_cast<int32>(tab));
+        button->SetSelected(button->GetIndex() == static_cast<int32>(tab));
     }
     if (PageSwitcher == nullptr || ShellPanel == nullptr)
     {
@@ -517,21 +528,21 @@ void USOLPauseMenuWidget::NativeTick(const FGeometry& geometry, const float delt
         && SettingsPage->IsHoverOnFocuslessControl();
     for (USOLMenuButton* button : TabButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        button->RefreshHighlightAt(frame, bHoverElsewhere);
     }
     for (USOLMenuButton* button : QuitButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        button->RefreshHighlightAt(frame, bHoverElsewhere);
     }
     const bool bShellShown = mShellAnim.Phase != ESOLHoloMenuPhase::Closed;
     if (bShellShown && BackButton != nullptr)
     {
-        BackButton->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        BackButton->RefreshHighlightAt(frame, bHoverElsewhere);
     }
 
     // The side panel: slide and dim, the stack's scroll (it moves the tabs' hover traces and LEDs with it), the
     // lower-edge traces for its height, the power-up and pulse
-    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength);
+    SOLSolidMenu::AdvancePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_OPEN_S, PAUSE_MENU_CLOSE_S);
     ApplyPanelLook(SOLSolidMenu::EvaluatePausePanel(mPanelAnim, frame.NowS, frame.Strength, PAUSE_MENU_SLIDE_WIDTH));
     if (SidePanel != nullptr)
     {

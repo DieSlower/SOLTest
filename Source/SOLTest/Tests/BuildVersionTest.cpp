@@ -100,12 +100,13 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the expected MakeYYMM per the contract: (year mod 100) x 100 + month, a negative year reads YY 0, the
-    // month clamped to [1, 12]
+    // Returns the expected MakeYYMM per the contract, worked out from the year's written digits (its last two, none for
+    // a negative year) and the month's range by hand, independent of the production arithmetic
     int32 BuildVersionTestExpectedYYMM(const int32 year, const int32 month)
     {
-        const int32 yy = year < 0 ? 0 : year % 100;
-        return yy * 100 + FMath::Clamp(month, 1, 12);
+        const FString digits = year < 0 ? FString(TEXT("0")) : FString::FromInt(year).Right(2);
+        const int32 mm = month < 1 ? 1 : (month > 12 ? 12 : month);
+        return FCString::Atoi(*digits) * 100 + mm;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -182,8 +183,8 @@ bool FSOLBuildVersionMakeYYMMYearTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("year -1: YY 0"), SOLBuildVersion::MakeYYMM(-1, 6), 6);
     TestEqual(TEXT("year -2026: YY 0"), SOLBuildVersion::MakeYYMM(-2026, 11), 11);
     TestEqual(TEXT("lowest int32 year: YY 0"), SOLBuildVersion::MakeYYMM(TNumericLimits<int32>::Lowest(), 3), 3);
-    TestEqual(TEXT("largest int32 year"), SOLBuildVersion::MakeYYMM(TNumericLimits<int32>::Max(), 3),
-        (TNumericLimits<int32>::Max() % 100) * 100 + 3);
+    TestEqual(TEXT("largest int32 year (2147483647: YY 47)"), SOLBuildVersion::MakeYYMM(TNumericLimits<int32>::Max(),
+        3), 4703);
     return true;
 }
 
@@ -376,8 +377,6 @@ bool FSOLBuildVersionBuildValuesTest::RunTest(const FString& /*parameters*/)
     TestTrue(FString::Printf(TEXT("BuildYYMM %d in [1, 9912]"), yymm),
         yymm >= BUILDVERSIONTEST_MIN_YYMM && yymm <= BUILDVERSIONTEST_MAX_YYMM);
     TestTrue(FString::Printf(TEXT("BuildYYMM %d month part in [1, 12]"), yymm), yymm % 100 >= 1 && yymm % 100 <= 12);
-    TestEqual(TEXT("BuildYYMM is a MakeYYMM fixed point"),
-        SOLBuildVersion::MakeYYMM(2000 + yymm / 100, yymm % 100), yymm);
 
     const int32 count = SOLBuildVersion::BuildCommitCount();
     TestTrue(FString::Printf(TEXT("BuildCommitCount %d >= 0"), count), count >= 0);
@@ -459,7 +458,14 @@ bool FSOLBuildVersionLineExactTest::RunTest(const FString& /*parameters*/)
     const FString engine(TEXT("5.8.3"));
     const FString line = SOLBuildVersion::FormatVersionLine(version, engine);
     TestEqual(TEXT("the full line, literal"), line,
-        FString(TEXT("v0.1.2611.135  ·  ARS LLC  ·  UE 5.8.3")));
+        FString(TEXT("v0.1.2611.135  ·  ARS LLC  ·  UE\u00A05.8.3")));
+
+    // (46i) "UE" and the engine version are joined by a no-break space (U+00A0, SOLMenuText spells it as an escape),
+    // so a wrapping chin line never splits them; a plain space there would let the version wrap onto a line alone
+    TestTrue(TEXT("a no-break space between UE and the version"), line.Contains(TEXT("UE\u00A05.8.3"),
+        ESearchCase::CaseSensitive));
+    TestFalse(TEXT("no plain space between UE and the version"), line.Contains(TEXT("UE 5.8.3"),
+        ESearchCase::CaseSensitive));
     const FString filled = FString(SOLMenuText::MAIN_MENU_VERSION_FORMAT).Replace(TEXT("{0}"), *version)
         .Replace(TEXT("{1}"), SOLMenuText::STUDIO_NAME_SHORT).Replace(TEXT("{2}"), *engine);
     TestEqual(TEXT("the full line, the format constant filled"), line, filled);

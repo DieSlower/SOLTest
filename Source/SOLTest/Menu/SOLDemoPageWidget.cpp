@@ -48,7 +48,7 @@ namespace
     }
 
     // Rows of each section (SOLMenuText::DEMO_SECTION_TITLES order), each list ended by DEMO_SECTION_END
-    const int32 DEMO_SECTION_ROWS[] =
+    constexpr int32 DEMO_SECTION_ROWS[] =
     {
         DemoOptionRow(EDemoOption::NpcCount), DemoOptionRow(EDemoOption::LaneFraction),
         DemoExtraRowIndex(SOLMenuState::EDemoExtraRow::Seed), DEMO_SECTION_END,
@@ -67,22 +67,27 @@ namespace
         DemoOptionRow(EDemoOption::RampSettleS), DemoOptionRow(EDemoOption::RampMeasureS), DEMO_SECTION_END,
     };
 
-    //////////////////////////////////////////////////////////////////////////
-    // Wraps a widget in a box of a fixed width (0 = free) and height (0 = free)
-    USizeBox* DemoSized(UWidgetTree& tree, UWidget* content, const float width, const float height)
+    // Returns how many sections DEMO_SECTION_ROWS gives a title to: one past the section index of its last row (the
+    // build reads DEMO_SECTION_TITLES at that index, so it must not reach past the titles)
+    constexpr int32 DemoSectionsUsed()
     {
-        USizeBox* box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
-        if (width > 0.0f)
+        int32 ends = 0;
+        int32 used = 0;
+        for (const int32 row : DEMO_SECTION_ROWS)
         {
-            box->SetWidthOverride(width);
+            if (row == DEMO_SECTION_END)
+            {
+                ++ends;
+            }
+            else
+            {
+                used = ends + 1;
+            }
         }
-        if (height > 0.0f)
-        {
-            box->SetHeightOverride(height);
-        }
-        box->SetContent(content);
-        return box;
+        return used;
     }
+    static_assert(DemoSectionsUsed() == UE_ARRAY_COUNT(SOLMenuText::DEMO_SECTION_TITLES),
+        "one title per Demo section, and no row past the last title");
 
     //////////////////////////////////////////////////////////////////////////
     // Adds a widget to a row, filling the remaining width when bFill, vertically centred
@@ -144,8 +149,8 @@ void USOLDemoPageWidget::NativeOnInitialized()
     UHorizontalBox* presets = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     presetGroup->AddChildToVerticalBox(presets);
     addGroup(presetGroup);
-    USizeBox* presetLabel = DemoSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_PRESETS,
-        BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH, 0.0f);
+    USizeBox* presetLabel = SOLMenuContent::MakeSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree,
+        SOLMenuText::DEMO_PRESETS, BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH, 0.0f);
     DemoAddToRow(*presets, presetLabel, false)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_PRESET_LABELS)
         == static_cast<int32>(SOLMenuState::EDemoPreset::Count), "one label per preset");
@@ -153,8 +158,8 @@ void USOLDemoPageWidget::NativeOnInitialized()
     {
         USOLMenuButton* button = makeAction(SOLMenuText::DEMO_PRESET_LABELS[preset],
             static_cast<EAction>(static_cast<int32>(EAction::PresetShowcase) + preset));
-        DemoAddToRow(*presets, DemoSized(*WidgetTree, button, 0.0f, SETTINGS_ROW_HEIGHT), true)->SetPadding(
-            FMargin(preset == 0 ? 0.0f : BUTTON_GAP, 0.0f, 0.0f, 0.0f));
+        DemoAddToRow(*presets, SOLMenuContent::MakeSized(*WidgetTree, button, 0.0f, SETTINGS_ROW_HEIGHT), true)
+            ->SetPadding(FMargin(preset == 0 ? 0.0f : BUTTON_GAP, 0.0f, 0.0f, 0.0f));
     }
 
     // Option rows by section, each section a recessed group: label, '<', value, '>'
@@ -162,7 +167,6 @@ void USOLDemoPageWidget::NativeOnInitialized()
     static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_ROW_LABELS)
         == static_cast<int32>(EDemoOption::Count) + static_cast<int32>(SOLMenuState::EDemoExtraRow::Count),
         "one label per Demo row");
-    static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_SECTION_TITLES) == 6, "one title per Demo section");
     ValueTexts.SetNum(rowCount);
     int32 section = 0;
     bool bSectionStart = true;
@@ -188,7 +192,7 @@ void USOLDemoPageWidget::NativeOnInitialized()
             bSectionStart = false;
         }
         UHorizontalBox* rowBox = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-        DemoAddToRow(*rowBox, DemoSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree,
+        DemoAddToRow(*rowBox, SOLMenuContent::MakeSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree,
             SOLMenuText::DEMO_ROW_LABELS[row], BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH,
             0.0f), false)
             ->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
@@ -208,10 +212,11 @@ void USOLDemoPageWidget::NativeOnInitialized()
                 ValueTexts[row] = value;
                 DemoAddToRow(*rowBox, value, true);
             }
-            DemoAddToRow(*rowBox, DemoSized(*WidgetTree, button, SETTINGS_STEP_BUTTON_WIDTH, 0.0f), false);
+            DemoAddToRow(*rowBox, SOLMenuContent::MakeSized(*WidgetTree, button, SETTINGS_STEP_BUTTON_WIDTH, 0.0f),
+                false);
         }
-        group->AddChildToVerticalBox(DemoSized(*WidgetTree, rowBox, 0.0f, SETTINGS_ROW_HEIGHT))->SetPadding(
-            FMargin(0.0f, 0.0f, 0.0f, ROW_GAP));
+        group->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, rowBox, 0.0f, SETTINGS_ROW_HEIGHT))
+            ->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP));
     }
 
     if (group != nullptr)
@@ -225,14 +230,15 @@ void USOLDemoPageWidget::NativeOnInitialized()
     page->AddChildToVerticalBox(WarningsText)->SetPadding(FMargin(0.0f, ROW_GAP * 2.0f, 0.0f, ROW_GAP * 2.0f));
     UHorizontalBox* footer = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(footer);
-    DemoAddToRow(*footer, DemoSized(*WidgetTree, makeAction(SOLMenuText::DEMO_RESET, EAction::Reset),
+    DemoAddToRow(*footer, SOLMenuContent::MakeSized(*WidgetTree, makeAction(SOLMenuText::DEMO_RESET, EAction::Reset),
         DEMO_ACTION_WIDTH, SETTINGS_ROW_HEIGHT), false);
     DemoAddToRow(*footer, WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass()), true);
     StopButton = makeAction(SOLMenuText::DEMO_STOP, EAction::Stop);
-    DemoAddToRow(*footer, DemoSized(*WidgetTree, StopButton, DEMO_ACTION_WIDTH, SETTINGS_ROW_HEIGHT), false)
-        ->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
+    DemoAddToRow(*footer, SOLMenuContent::MakeSized(*WidgetTree, StopButton, DEMO_ACTION_WIDTH, SETTINGS_ROW_HEIGHT),
+        false)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
     StartButton = makeAction(SOLMenuText::DEMO_START, EAction::Start);
-    DemoAddToRow(*footer, DemoSized(*WidgetTree, StartButton, DEMO_ACTION_WIDTH, SETTINGS_ROW_HEIGHT), false);
+    DemoAddToRow(*footer, SOLMenuContent::MakeSized(*WidgetTree, StartButton, DEMO_ACTION_WIDTH, SETTINGS_ROW_HEIGHT),
+        false);
     SetInFlight(false);
     RefreshTexts();
 }
@@ -342,7 +348,7 @@ void USOLDemoPageWidget::NativeTick(const FGeometry& geometry, const float delta
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame);
     }
 }
 

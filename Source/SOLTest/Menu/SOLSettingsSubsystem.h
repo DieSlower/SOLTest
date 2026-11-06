@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Menu/SOLEngineSettingsSnapshot.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLSettingsModel.h"
 
@@ -36,7 +37,8 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnKeyBindingsChanged);
  * Persistence follows the project standard: the save slot is read once here at boot; Apply and the setters only change
  * memory; EndVisit (the Settings page or the menu closing) reverts what was not applied and writes once, with an async
  * USaveGame write only if an Apply changed something since the last write (CommitIfDirty) and one
- * UGameUserSettings::SaveSettings only if the engine settings changed. A failed async write is owed again; Deinitialize
+ * UGameUserSettings::SaveSettings only if the engine settings changed (never during a smoke run, which gives the boot
+ * values back at shutdown). A failed async write is owed again; Deinitialize
  * (shutdown) writes synchronously if a write is still owed or an async one has not reported back. At boot only the vsync
  * and quality preset the player chose on the page are pushed to the engine (SOLSettingsRules::DecideBootGraphics), so
  * an engine "custom" scalability mix is never overwritten. Resolution and window mode live in GameUserSettings.ini,
@@ -44,7 +46,9 @@ DECLARE_MULTICAST_DELEGATE(FSOLOnKeyBindingsChanged);
  *
  * Key rebinding stores overrides in the same save (not Enhanced Input user settings: the ship's mapping context is a
  * transient object the pawn builds in C++, see SDD 8 Amendment 2). -SOLMenuSmoke runs use their own slot, deleted at
- * start, so a verification run never touches the player's settings file.
+ * start, so a verification run never touches the player's settings file; they also copy the engine's GameUserSettings
+ * at boot (FSOLEngineSettingsSnapshot) and write them back in Deinitialize, after the engine's own exit write, so the
+ * run's window sizes never reach the player's GameUserSettings.ini (SDD 46 section 14, part 46i).
  */
 UCLASS()
 class SOLTEST_API USOLSettingsSubsystem : public UGameInstanceSubsystem
@@ -56,7 +60,8 @@ public:
     // Picks the save slot, loads it once, resolves the keys and loads the sound classes
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
-    // Writes synchronously if a write is still owed or in flight (shutdown), then lets go of everything
+    // Writes synchronously if a write is still owed or in flight (shutdown; a smoke run gives the engine's
+    // GameUserSettings back), then lets go of everything
     virtual void Deinitialize() override;
 
     // Returns the settings subsystem of an object's game instance, or nullptr
@@ -222,6 +227,9 @@ private:
     // Reads the applied resolution and window mode from GameUserSettings
     void SeedEngineGraphics();
 
+    // A smoke run: writes the engine's GameUserSettings back as they were at boot (not applied) and saves them once
+    void RestoreEngineSettingsAfterSmoke();
+
     // Pushes the chosen applied values (vsync, quality preset, resolution and window mode) into GameUserSettings,
     // applying only what differs from the engine; returns true if anything changed
     bool PushEngineGraphics(bool bVsync, bool bQuality, bool bResolution);
@@ -263,6 +271,8 @@ private:
     int32 mPendingWindowMode = 0;
     TWeakObjectPtr<UWorld> mAudioWorld;                 // World whose audio device has the volume mix
     TSharedRef<float, ESPMode::ThreadSafe> mProbedEffectsVolume = MakeShared<float, ESPMode::ThreadSafe>(-1.0f);
+    FSOLEngineSettingsSnapshot mSmokeEngineSettings;    // A smoke game run: the engine's GameUserSettings at boot
+                                                        // (else empty; also blocks mid-run GameUserSettings writes)
     FString mSlotName;                                  // Save slot in use
     FSOLOnKeyBindingsChanged mOnKeyBindingsChanged;
     int32 mSaveRequestCount = 0;

@@ -155,6 +155,46 @@ bool FSOLSolidMenuProfilePercentileTest::RunTest(const FString& /*parameters*/)
         SOLIDPROFILETEST_TOLERANCE);
     TArray<double> single = { 7.5 };
     TestEqual(TEXT("one value"), SOLSolidMenuProfile::Percentile(single, 0.99), 7.5, SOLIDPROFILETEST_TOLERANCE);
+
+    // (46i) Fractions whose product with 100 rounds up in double (0.07 x 100 = 7.000000000000001, likewise 0.14 and
+    // 0.28) still give their exact rank
+    TestEqual(TEXT("p7 of 1..100"), SOLSolidMenuProfile::Percentile(hundred, 0.07), 7.0, SOLIDPROFILETEST_TOLERANCE);
+    TestEqual(TEXT("p14 of 1..100"), SOLSolidMenuProfile::Percentile(hundred, 0.14), 14.0, SOLIDPROFILETEST_TOLERANCE);
+    TestEqual(TEXT("p28 of 1..100"), SOLSolidMenuProfile::Percentile(hundred, 0.28), 28.0, SOLIDPROFILETEST_TOLERANCE);
+    TestEqual(TEXT("p7.5 of 1..100 rounds up to the 8th"), SOLSolidMenuProfile::Percentile(hundred, 0.075), 8.0,
+        SOLIDPROFILETEST_TOLERANCE);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuProfileFrameLineTest, "SOLTest.SolidMenuProfile.VrFrameLine",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i) The p99 frame, game thread and GPU times meet a VR floor's line (10.0 ms one eye, 9.5 ms two eyes) only when
+// each is positive, finite and at or under it; a floor that does not apply has no line
+bool FSOLSolidMenuProfileFrameLineTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSolidMenuProfile::MeetsVrFrameLine;
+    const SOLSolidMenuProfile::FVrFloor oneEye = SOLSolidMenuProfile::VrFloorForView(3840, 3744);
+    const SOLSolidMenuProfile::FVrFloor twoEyes = SOLSolidMenuProfile::VrFloorForView(7680, 3744);
+    const SOLSolidMenuProfile::FVrFloor none = SOLSolidMenuProfile::VrFloorForView(0, 0);
+    TestTrue(TEXT("all under one eye's line"), MeetsVrFrameLine(8.0, 5.0, 7.0, oneEye));
+    TestTrue(TEXT("all exactly at one eye's 10.0"), MeetsVrFrameLine(10.0, 10.0, 10.0, oneEye));
+    TestFalse(TEXT("the frame just over 10.0"), MeetsVrFrameLine(10.01, 5.0, 7.0, oneEye));
+    TestFalse(TEXT("the game thread just over 10.0"), MeetsVrFrameLine(8.0, 10.01, 7.0, oneEye));
+    TestFalse(TEXT("the GPU just over 10.0"), MeetsVrFrameLine(8.0, 5.0, 10.01, oneEye));
+    TestTrue(TEXT("all at two eyes' 9.5"), MeetsVrFrameLine(9.5, 9.5, 9.5, twoEyes));
+    TestFalse(TEXT("9.8 ms meets one eye, not two"), MeetsVrFrameLine(9.8, 5.0, 7.0, twoEyes));
+    TestTrue(TEXT("9.8 ms meets one eye"), MeetsVrFrameLine(9.8, 5.0, 7.0, oneEye));
+    TestFalse(TEXT("no floor, no line"), MeetsVrFrameLine(1.0, 1.0, 1.0, none));
+
+    // Not read (0 or -1), NaN and infinity never meet the line, in any of the three places
+    const double bad[] = { 0.0, -1.0, SOLIDPROFILETEST_NAN, SOLIDPROFILETEST_INF, -SOLIDPROFILETEST_INF };
+    for (const double value : bad)
+    {
+        TestFalse(FString::Printf(TEXT("frame %f"), value), MeetsVrFrameLine(value, 5.0, 7.0, oneEye));
+        TestFalse(FString::Printf(TEXT("game %f"), value), MeetsVrFrameLine(8.0, value, 7.0, oneEye));
+        TestFalse(FString::Printf(TEXT("GPU %f"), value), MeetsVrFrameLine(8.0, 5.0, value, oneEye));
+    }
     return true;
 }
 

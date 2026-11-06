@@ -117,12 +117,19 @@ namespace SOLSolidStyle
     // Returns a palette colour (sRGB, SOL::SolidMenu) in linear space (FLinearColor::FromSRGBColor, SDD 46 section 5.1)
     SOLTEST_API FLinearColor Linear(const FColor& srgb);
 
-    // The solid text colours (linear; SDD 46 section 5.1, Q12-Q14): body text, the dimmer hints and secondary lines,
-    // titles and headings, values / keys / section headings in cyan, warnings
+    // The solid text colours (linear; SDD 46 section 5.1, Q12-Q14). Returns the body text colour (TEXT_COLOR)
     SOLTEST_API FLinearColor TextColor();
+
+    // Returns the dimmer colour of hints and secondary lines (TEXT_DIM_COLOR)
     SOLTEST_API FLinearColor DimTextColor();
+
+    // Returns the colour of titles and headings (TEXT_BRIGHT_COLOR)
     SOLTEST_API FLinearColor BrightTextColor();
+
+    // Returns the cyan of values, keys and section headings (CYAN_COLOR)
     SOLTEST_API FLinearColor ValueColor();
+
+    // Returns the colour of warnings (WARNING_COLOR)
     SOLTEST_API FLinearColor WarningColor();
 
     // Returns a button label's colour for its look (Q12): DISABLED_TEXT_COLOR when bDisabled, else TEXT_COLOR blended

@@ -240,7 +240,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateIsTabChangeTest, "SOLTest.MenuStat
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Selecting a different tab while a menu shows is a change; re-selecting the selected tab, or any tab while Playing, is not
+// Selecting a different tab while a menu shows is a change; re-selecting the selected tab, or any tab while Playing,
+// is not
 bool FSOLMenuStateIsTabChangeTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLMenuState;
@@ -253,6 +254,27 @@ bool FSOLMenuStateIsTabChangeTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Paused: Info to Settings is a change"), IsTabChange(info, EMenuTab::Settings));
     const FMenuState playing = MenuStateTestPlaying();
     TestFalse(TEXT("Playing: no change"), IsTabChange(playing, EMenuTab::Controls));
+
+    // (46i) The main menu: a different tab is a change, its selected tab again is not
+    const FMenuState mainMenu = Initial();
+    const EMenuTab other = mainMenu.Tab == EMenuTab::About ? EMenuTab::Controls : EMenuTab::About;
+    TestTrue(TEXT("MainMenu: a different tab is a change"), IsTabChange(mainMenu, other));
+    TestFalse(TEXT("MainMenu: the selected tab again is a no-op"), IsTabChange(mainMenu, mainMenu.Tab));
+    TestFalse(TEXT("MainMenu: About again is a no-op"),
+        IsTabChange(SelectTab(mainMenu, EMenuTab::About), EMenuTab::About));
+    TestTrue(TEXT("MainMenu: Quit is a valid change"), IsTabChange(SelectTab(mainMenu, EMenuTab::About),
+        EMenuTab::Quit));
+
+    // (46i, SDD 46 section 6.5) Count (the first value past Quit) and anything past it change nothing in any mode
+    TestEqual(TEXT("Count follows Quit"), static_cast<int32>(EMenuTab::Count), static_cast<int32>(EMenuTab::Quit) + 1);
+    const EMenuTab badTabs[] = { EMenuTab::Count, static_cast<EMenuTab>(99), static_cast<EMenuTab>(255) };
+    for (const EMenuTab bad : badTabs)
+    {
+        const int32 value = static_cast<int32>(bad);
+        TestFalse(FString::Printf(TEXT("Paused: tab %d is no change"), value), IsTabChange(info, bad));
+        TestFalse(FString::Printf(TEXT("MainMenu: tab %d is no change"), value), IsTabChange(mainMenu, bad));
+        TestFalse(FString::Printf(TEXT("Playing: tab %d is no change"), value), IsTabChange(playing, bad));
+    }
     return true;
 }
 

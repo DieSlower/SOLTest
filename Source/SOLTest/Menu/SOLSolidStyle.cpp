@@ -16,8 +16,6 @@
 namespace
 {
     constexpr float SOLID_STYLE_BUTTON_BRUSH_WIDTH = 240.0f;   // Button brushes stretch; a nominal image width
-    constexpr float SOLID_STYLE_SCROLL_HOVER_BRIGHTEN = 0.3f;  // Scroll thumb: hovered blends this far to white
-    constexpr float SOLID_STYLE_SCROLL_DRAG_BRIGHTEN = 0.5f;   // ... dragged this far
 
     //////////////////////////////////////////////////////////////////////////
     // Returns a channel NaN-safe and clamped to [0, 1] (NaN reads 0, infinities their bound)
@@ -427,9 +425,9 @@ FScrollBarStyle SOLSolidStyle::MakeScrollBarStyle(const USOLSolidMenuSubsystem* 
     style.SetHorizontalBottomSlotImage(FSlateNoResource());
     style.SetNormalThumbImage(FSlateColorBrush(cyan));
     style.SetHoveredThumbImage(FSlateColorBrush(FMath::Lerp(cyan, FLinearColor::White,
-        SOLID_STYLE_SCROLL_HOVER_BRIGHTEN)));
+        SOL::SolidMenu::SCROLL_THUMB_HOVER_BRIGHTEN)));
     style.SetDraggedThumbImage(FSlateColorBrush(FMath::Lerp(cyan, FLinearColor::White,
-        SOLID_STYLE_SCROLL_DRAG_BRIGHTEN)));
+        SOL::SolidMenu::SCROLL_THUMB_DRAG_BRIGHTEN)));
     style.SetThickness(SCROLL_BAR_THICKNESS);
     return style;
 }

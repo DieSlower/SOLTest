@@ -114,10 +114,11 @@ SOLMenuState::FMenuState SOLMenuState::SelectTab(const FMenuState& state, EMenuT
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether selecting a tab changes anything
+// Returns whether selecting a tab changes anything: a different, valid tab while a menu shows
 bool SOLMenuState::IsTabChange(const FMenuState& state, const EMenuTab tab)
 {
-    return state.Mode != EMenuMode::Playing && state.Tab != tab;
+    const bool bValid = static_cast<uint8>(tab) < static_cast<uint8>(EMenuTab::Count);
+    return bValid && state.Mode != EMenuMode::Playing && state.Tab != tab;
 }
 
 //////////////////////////////////////////////////////////////////////////

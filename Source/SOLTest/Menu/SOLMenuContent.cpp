@@ -30,6 +30,7 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Image.h"
 #include "Components/ScrollBox.h"
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
@@ -38,6 +39,7 @@
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WidgetSwitcher.h"
 #include "Engine/GameInstance.h"
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "Misc/EngineVersion.h"
@@ -46,27 +48,21 @@
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
-    // Adds a section heading to a box, with space above it
-    void MenuContentAddSection(UWidgetTree& tree, UPanelWidget& box, const FString& heading)
+    // Adds a section heading to a scroll box, with space above it
+    void MenuContentAddSection(UWidgetTree& tree, UScrollBox& scroll, const FString& heading)
     {
         using namespace SOL::MenuStyle;
         UTextBlock* text = SOLMenuContent::MakeText(tree, heading, SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(),
             true);
-        if (UVerticalBox* vertical = Cast<UVerticalBox>(&box))
-        {
-            vertical->AddChildToVerticalBox(text)->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP));
-        }
-        else if (UScrollBox* scroll = Cast<UScrollBox>(&box))
-        {
-            Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f,
-                ROW_GAP));
-        }
+        Cast<UScrollBoxSlot>(scroll.AddChild(text))->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP));
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Creates a two-column row: a fixed-width left cell and a wrapping right cell (outLeft gets the left text block)
-    UHorizontalBox* MenuContentMakeRow(UWidgetTree& tree, const FString& left, const FString& right,
-        const float leftWidth, const FLinearColor& leftColor, UTextBlock** outLeft = nullptr)
+    // Creates a two-column row: a fixed-width left cell and a wrapping right cell, and registers it with the page for
+    // the column fit and the fit checks (outLeft gets the left text block)
+    UHorizontalBox* MenuContentMakeRow(UWidgetTree& tree, USOLReadOnlyPageWidget& page, const int32 tab,
+        const FString& left, const FString& right, const float leftWidth, const FLinearColor& leftColor,
+        UTextBlock** outLeft = nullptr)
     {
         using namespace SOL::MenuStyle;
         UHorizontalBox* row = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -79,9 +75,10 @@ namespace
             *outLeft = leftText;
         }
         row->AddChildToHorizontalBox(leftBox)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
-        UHorizontalBoxSlot* rightSlot = row->AddChildToHorizontalBox(SOLMenuContent::MakeText(tree, right,
-            BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true));
-        rightSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        UTextBlock* rightText = SOLMenuContent::MakeText(tree, right, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+            true);
+        row->AddChildToHorizontalBox(rightText)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        page.RegisterColumnText(leftText, leftBox, rightText, tab, leftWidth);
         return row;
     }
 
@@ -105,6 +102,34 @@ namespace
     {
         return FString::Format(format, { SOLInfoText::FormatPercentOrValue(value) });
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the hazard stripe's brush: T_SOLSolidHazard (a stripe mask) tiled along X in amber, the mask's black
+    // left black; a flat amber bar when the texture is missing (the palette colour, never the texture's)
+    FSlateBrush MenuContentHazardBrush(const USOLSolidMenuSubsystem* solid)
+    {
+        using namespace SOL::SolidMenu;
+        FSlateBrush brush;
+        UTexture2D* texture = solid != nullptr ? solid->GetTexture(ESOLSolidTexture::Hazard) : nullptr;
+        if (texture != nullptr)
+        {
+            brush.SetResourceObject(texture);
+            brush.Tiling = ESlateBrushTileType::Horizontal;
+        }
+        brush.DrawAs = ESlateBrushDrawType::Image;
+        brush.SetImageSize(FVector2f(HAZARD_TILE_WIDTH_PX, HAZARD_HEIGHT_PX));
+        brush.TintColor = FSlateColor(SOLSolidStyle::Linear(AMBER_COLOR));
+        return brush;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Creates the hazard stripe (SDD 46 section 5.2): the amber stripe image, HAZARD_HEIGHT_PX tall, full width
+USizeBox* SOLMenuContent::MakeHazardStripe(UWidgetTree& tree, const USOLSolidMenuSubsystem* solid, const FName name)
+{
+    UImage* hazard = tree.ConstructWidget<UImage>(UImage::StaticClass(), name);
+    hazard->SetBrush(MenuContentHazardBrush(solid));
+    return MakeSized(tree, hazard, 0.0f, SOL::SolidMenu::HAZARD_HEIGHT_PX);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -253,8 +278,16 @@ void SOLMenuContent::BindStackLights(const TSharedPtr<SSOLSolidTraceLayer>& laye
 bool SOLMenuContent::BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, const double nowS,
     const float s)
 {
+    return BeginPanelOpenWithCue(context, anim, nowS, s, SOL::SolidMenu::PANEL_OPEN_S, SOL::SolidMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel's open at an open / close duration and plays the open cue only when it opens from Closed
+bool SOLMenuContent::BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, const double nowS,
+    const float s, const double openS, const double closeS)
+{
     const bool bWasClosed = anim.Phase == ESOLHoloMenuPhase::Closed;
-    if (!SOLSolidMenu::BeginPanelOpen(anim, nowS, s) || !bWasClosed)
+    if (!SOLSolidMenu::BeginPanelOpen(anim, nowS, s, openS, closeS) || !bWasClosed)
     {
         return false;
     }
@@ -402,7 +435,7 @@ void SOLMenuContent::FillReadOnlyTabs(USOLReadOnlyPageWidget& page, UWidgetTree&
 void SOLMenuContent::FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
 {
     using namespace SOL::MenuStyle;
-    page.KeyCells.Reset(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS));
+    page.ResetKeyCells(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS));
     const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
     int32 lastTab = INDEX_NONE;
     for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS)); ++index)
@@ -416,10 +449,10 @@ void SOLMenuContent::FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree&
             MenuContentAddSection(tree, scroll, row.Area);
         }
         UTextBlock* keyCell = nullptr;
-        MenuContentAddRow(scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings, defaultKeys),
-            FormatControlAction(row.Action), KEY_COLUMN_WIDTH, SOLSolidStyle::ValueColor(), &keyCell));
-        page.KeyCells.Add(keyCell);
-        page.RegisterColumnText(keyCell, tab, KEY_COLUMN_WIDTH);
+        MenuContentAddRow(scroll, MenuContentMakeRow(tree, page, tab, FormatBindings(row.Bindings, defaultKeys),
+            FormatControlAction(row.Action), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Controls, 0.0f),
+            SOLSolidStyle::ValueColor(), &keyCell));
+        page.AddKeyCell(keyCell);
     }
 }
 
@@ -447,19 +480,18 @@ void SOLMenuContent::FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tre
     using namespace SOLMenuText;
     const FSOLFlightParams flight;
     const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
-    page.KeyTexts.Reset(UE_ARRAY_COUNT(INFO_PROSE) + 1);
+    page.ResetKeyTexts(UE_ARRAY_COUNT(INFO_PROSE) + 1);
 
     // Flight, from the speed-cap constants and the default flight parameters the player's ship uses; addLine adds a
     // label / value row to the current tab and returns the label's text block
-    int32 tab = 0;
+    int32 tab = static_cast<int32>(ESOLInfoTab::Flight);
     UScrollBox* scroll = &page.GetFillScroll(tab);
     MenuContentAddSection(tree, *scroll, INFO_FLIGHT);
     const auto addLine = [&tree, &page, &scroll, &tab](const FString& label, const FString& value)
     {
         UTextBlock* labelText = nullptr;
-        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH,
-            SOLSolidStyle::TextColor(), &labelText));
-        page.RegisterColumnText(labelText, tab, LABEL_COLUMN_WIDTH);
+        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, page, tab, label, value,
+            SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Info, 0.0f), SOLSolidStyle::TextColor(), &labelText));
         return labelText;
     };
     addLine(INFO_SPEED_CAP_RANGE, FString::Format(INFO_RANGE_FORMAT, { SOLInfoText::FormatSpeed(SOL::MIN_SPEED_CAP_MPS),
@@ -492,7 +524,8 @@ void SOLMenuContent::FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tre
     addLine(INFO_SHIP_RADIUS, MenuContentWithUnit(INFO_METERS_FORMAT, flight.ShipRadiusM));
 
     // Time and travel: the warp ladder, the jump and surface-lock ranges
-    scroll = &page.GetFillScroll(++tab);
+    tab = static_cast<int32>(ESOLInfoTab::Time);
+    scroll = &page.GetFillScroll(tab);
     MenuContentAddSection(tree, *scroll, INFO_TIME);
     TArray<FString> warpSteps;
     for (const double factor : FSOLSimClock::WarpFactors())
@@ -503,12 +536,13 @@ void SOLMenuContent::FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tre
     addLine(INFO_JUMP_DURATION, MenuContentWithUnit(INFO_SECONDS_FORMAT, SOL::WARP_DURATION_S));
     addLine(INFO_SURFACE_LOCK_AUTO, MenuContentWithUnit(INFO_KM_FORMAT, SOL::SURFACE_LOCK_AUTO_RANGE_M
         / SOL::METERS_PER_KM));
-    page.KeyTexts.Add(addLine(SOLInfoText::FormatSurfaceLockManualLabel(defaultKeys), FString::Format(
+    page.AddKeyText(addLine(SOLInfoText::FormatSurfaceLockManualLabel(defaultKeys), FString::Format(
         INFO_MANUAL_RANGE_FORMAT, { SOLInfoText::FormatPercentOrValue(SOL::SURFACE_LOCK_MANUAL_RANGE_MIN_M
         / SOL::METERS_PER_KM) })));
 
     // Combat, through the tested formatter
-    scroll = &page.GetFillScroll(++tab);
+    tab = static_cast<int32>(ESOLInfoTab::Combat);
+    scroll = &page.GetFillScroll(tab);
     MenuContentAddSection(tree, *scroll, INFO_COMBAT);
     for (const SOLInfoText::FInfoLine& line : SOLInfoText::BuildCombatLines(SOL::COMBAT_MUZZLE_SPEED_MPS,
         SOL::COMBAT_BOLT_DAMAGE, SOL::COMBAT_FIRE_RATE_PER_S, SOL::COMBAT_TARGET_SHIELD, SOL::COMBAT_TARGET_HEALTH,
@@ -518,13 +552,14 @@ void SOLMenuContent::FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tre
     }
 
     // Prose on how the mechanics behave (the keys it names follow rebinds, through RefreshInfoPage)
-    scroll = &page.GetFillScroll(++tab);
+    tab = static_cast<int32>(ESOLInfoTab::HowItWorks);
+    scroll = &page.GetFillScroll(tab);
     MenuContentAddSection(tree, *scroll, INFO_HOW_IT_WORKS);
     for (const FString& paragraph : SOLInfoText::BuildProse(defaultKeys))
     {
         UTextBlock* text = MakeText(tree, paragraph, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true);
         Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
-        page.KeyTexts.Add(text);
+        page.AddKeyText(text);
     }
 }
 
@@ -553,7 +588,7 @@ void SOLMenuContent::FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tr
     using namespace SOL::MenuStyle;
     using namespace SOLMenuText;
     const float gap = ROW_GAP * 3.0f;
-    UScrollBox& game = page.GetFillScroll(0);
+    UScrollBox& game = page.GetFillScroll(static_cast<int32>(ESOLAboutTab::Game));
     MenuContentAddText(game, MakeText(tree, GAME_TITLE, TITLE_FONT_SIZE, SOLSolidStyle::BrightTextColor(), true), 0.0f);
     MenuContentAddText(game, MakeText(tree, STUDIO_NAME, SUBTITLE_FONT_SIZE, SOLSolidStyle::ValueColor(), true), gap);
     MenuContentAddText(game, MakeText(tree, ABOUT_DESCRIPTION, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
@@ -563,7 +598,7 @@ void SOLMenuContent::FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tr
         gap);
     MenuContentAddText(game, MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false,
         true), 0.0f);
-    UScrollBox& credits = page.GetFillScroll(1);
+    UScrollBox& credits = page.GetFillScroll(static_cast<int32>(ESOLAboutTab::Credits));
     MenuContentAddSection(tree, credits, ABOUT_CREDITS_TITLE);
     MenuContentAddText(credits, MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
         true), gap);

@@ -15,7 +15,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* GAME_TITLE = TEXT("SOLTest");
     inline constexpr const TCHAR* GAME_TAGLINE = TEXT("The solar system at true scale");
     inline constexpr const TCHAR* STUDIO_NAME = TEXT("ACID RAIN STUDIOS LLC");
-    inline constexpr const TCHAR* STUDIO_NAME_SHORT = TEXT("ARS LLC"); // The studio credit in the main menu version line
+    inline constexpr const TCHAR* STUDIO_NAME_SHORT = TEXT("ARS LLC"); // The studio credit in the main menu version
+                                                                         // line
     inline constexpr const TCHAR* PAUSED_TITLE = TEXT("PAUSED");
 
     // Main menu entries
@@ -26,9 +27,10 @@ namespace SOLMenuText
     inline constexpr const TCHAR* ABOUT = TEXT("About");
     inline constexpr const TCHAR* QUIT = TEXT("Quit");
     inline constexpr const TCHAR* MAIN_MENU_HINT = TEXT("Enter: select    Tab / arrows: move    Esc: close page");
-    // The main menu's chin recess (SDD 46 section 11.1, Q10): {0} the build version (SOLBuildVersion), {1} STUDIO_NAME_SHORT,
-    // {2} the engine version; the second form when the engine version is unknown
-    inline constexpr const TCHAR* MAIN_MENU_VERSION_FORMAT = TEXT("v{0}  ·  {1}  ·  UE {2}");
+    // The main menu's chin recess (SDD 46 section 11.1, Q10): {0} the build version (SOLBuildVersion), {1}
+    // STUDIO_NAME_SHORT, {2} the engine version; the second form when the engine version is unknown. "UE" and the
+    // engine version are joined by a no-break space (the \u00A0 escape), so a wrapping line never splits them
+    inline constexpr const TCHAR* MAIN_MENU_VERSION_FORMAT = TEXT("v{0}  ·  {1}  ·  UE\u00A0{2}");
     inline constexpr const TCHAR* MAIN_MENU_VERSION_NO_ENGINE_FORMAT = TEXT("v{0}  ·  {1}");
 
     // The page shell (SDD 46 section 6.1): its Back button closes the page, as Esc does
@@ -42,7 +44,7 @@ namespace SOLMenuText
         "coasts and the planets keep moving. Flight controls are suspended until you resume.");
     inline constexpr const TCHAR* PAUSED_HINT = TEXT("Esc: close page / resume    Tab / arrows: move    Enter: select");
     inline constexpr const TCHAR* QUIT_PROMPT = TEXT("Leave this flight?");
-    inline constexpr const TCHAR* QUIT_TO_MENU = TEXT("Quit to main menu");
+    inline constexpr const TCHAR* QUIT_TO_MENU = TEXT("Quit to menu");
     inline constexpr const TCHAR* QUIT_TO_DESKTOP = TEXT("Quit to desktop");
 
     // Start-location page
@@ -481,15 +483,15 @@ namespace SOLMenuText
         TEXT("The flight HUD is a hologram: thin glowing blue lines and text on soft, borderless dark panels. Now "
             "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
             "range rings pulse like sonar; the HUD and menu effects slider in Settings sets how strong those HUD "
-            "effects are (0 turns them off), and it also scales the animations of the full-screen main and pause "
-            "menus (at 0 they show at once, still fully usable). The date and anchor (top left), speed and G "
-            "(bottom left), target (top right) and info (top right) blocks are hologram cards: glowing corner marks "
-            "on a faint dark tint with "
+            "effects are (0 turns them off), and it also scales the animations of the main menu and the pause "
+            "menu's side panel (at 0 they show at once, still fully usable). The date and anchor (top left), "
+            "speed and G (bottom left), target (top right) and info (top right) blocks are hologram cards: glowing "
+            "corner marks on a faint dark tint with "
             "a slow scanline. The date and speed cards are always there, the target card draws in when you select "
             "a target and fades out when you clear it (switching to another target only changes its text), and "
             "the info card draws in and fades out. The Hologram menu effects slider sets how strong the cards, "
             "the in-flight hologram menus and the mouse pointer look (0: plain flat panels, fully usable); the "
-            "full-screen main and pause menus follow the HUD and menu effects slider. The "
+            "main menu and the pause side panel follow the HUD and menu effects slider. The "
             "radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
             "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
             "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "
@@ -599,11 +601,13 @@ namespace SOLMenuText
     inline constexpr const TCHAR* ABOUT_TITLE = TEXT("About");
     inline constexpr const TCHAR* ABOUT_DESCRIPTION = TEXT("A space flight simulation of the solar system at 1:1 "
         "scale, with real orbits, time warp, a jump map and ship combat.");
-    inline constexpr const TCHAR* ABOUT_COPYRIGHT = TEXT("Copyright © 2026 Acid Rain Studios LLC. All rights reserved.");
+    inline constexpr const TCHAR* ABOUT_COPYRIGHT =
+        TEXT("Copyright © 2026 Acid Rain Studios LLC. All rights reserved.");
     inline constexpr const TCHAR* ABOUT_ENGINE_FORMAT = TEXT("Built with Unreal Engine {0}");
     inline constexpr const TCHAR* ABOUT_TAB_GAME = TEXT("Game");   // The About page's first tab (46f)
     inline constexpr const TCHAR* ABOUT_CREDITS_TITLE = TEXT("Credits");
     inline constexpr const TCHAR* ABOUT_CREDITS = TEXT("Design and development: Acid Rain Studios LLC. ")
         TEXT("Orbital elements: NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0). ")
-        TEXT("Menu font: Rajdhani, SIL OFL 1.1.");
+        TEXT("Menu font: Rajdhani, SIL OFL 1.1. ")
+        TEXT("Copyright (c) 2014, Indian Type Foundry (info@indiantypefoundry.com).");
 }

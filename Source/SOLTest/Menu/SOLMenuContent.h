@@ -18,6 +18,7 @@ class USizeBox;
 class USOLMenuButton;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
+class USOLSolidMenuSubsystem;
 class USOLSolidPanel;
 class UTextBlock;
 class UVerticalBox;
@@ -42,6 +43,10 @@ namespace SOLMenuContent
 
     // (46g) Wraps a widget in a fixed-size box (0 leaves that axis free)
     SOLTEST_API USizeBox* MakeSized(UWidgetTree& tree, UWidget* content, float width, float height);
+
+    // (46i) Creates the hazard stripe under a Quit button (SDD 46 section 5.2: the main menu's Quit, the pause menu's
+    // Quit to desktop): T_SOLSolidHazard tiled in amber (a flat amber bar without the texture), HAZARD_HEIGHT_PX tall
+    SOLTEST_API USizeBox* MakeHazardStripe(UWidgetTree& tree, const USOLSolidMenuSubsystem* solid, FName name);
 
     // (46g) Builds the page shell (SDD 46 sections 6.1 and 6.2): a Panel hull with its own material (the panel
     // chamfers, a notch in each side at half PAGE_HEIGHT), rivets and vents; inside, the content recess holding the
@@ -78,6 +83,10 @@ namespace SOLMenuContent
     // Closed: a reopen during a close reverses it from where it is, silently (SDD 46 section 4.6). Returns whether it
     // opened from Closed (the caller restarts what a fresh open restarts)
     SOLTEST_API bool BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, double nowS, float s);
+
+    // (46i) BeginPanelOpenWithCue at an explicit open / close duration (the pause side panel's PAUSE_SLIDE_S / CLOSE_S)
+    SOLTEST_API bool BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, double nowS, float s,
+        double openS, double closeS);
 
     // Creates a vertical page with a heading, ready for rows
     SOLTEST_API UVerticalBox* MakePage(UWidgetTree& tree, const TCHAR* title);

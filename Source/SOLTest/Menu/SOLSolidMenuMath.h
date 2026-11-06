@@ -180,10 +180,24 @@ namespace SOLSolidMenu
     // every other state alone
     SOLTEST_API void AdvancePanel(FSOLHoloMenuAnim& anim, double nowS, float s);
 
-    // (46g, SDD 4.6) The pause side panel's look at a frame: Progress = PanelProgress; SlideX = PauseSlideX(Progress,
-    // panelWidth); DimAlpha = DimAlpha(Progress, s), but 0 when Closed, and 0 when Closing at s <= 0 (a close at
-    // strength 0 is instant); bShown unless Closed; bInteractive only while Opening or Open (a closing panel takes no
-    // input: the input is already back, section 4.6)
+    // (46i) The four panel phase functions above at an explicit open / close duration (the forms above pass
+    // PANEL_OPEN_S / CLOSE_S, the pause side panel PAUSE_SLIDE_S / CLOSE_S); every call on one anim passes the same
+    // pair
+    SOLTEST_API float PanelProgress(const FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // Starts an open at an explicit open / close duration (see BeginPanelOpen)
+    SOLTEST_API bool BeginPanelOpen(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // Starts a close at an explicit open / close duration (see BeginPanelClose)
+    SOLTEST_API bool BeginPanelClose(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // Finishes an open or close at an explicit open / close duration (see AdvancePanel)
+    SOLTEST_API void AdvancePanel(FSOLHoloMenuAnim& anim, double nowS, float s, double openS, double closeS);
+
+    // (46g, SDD 4.6) The pause side panel's look at a frame: Progress = PanelProgress at PAUSE_SLIDE_S / CLOSE_S;
+    // SlideX = PauseSlideX(Progress, panelWidth); DimAlpha = DimAlpha(Progress, s), but 0 when Closed, and 0 when
+    // Closing at s <= 0 (a close at strength 0 is instant); bShown unless Closed; bInteractive only while Opening or
+    // Open (a closing panel takes no input: the input is already back, section 4.6)
     SOLTEST_API FSOLPausePanelLook EvaluatePausePanel(const FSOLHoloMenuAnim& anim, double nowS, float s,
         float panelWidth);
 }

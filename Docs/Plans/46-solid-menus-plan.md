@@ -274,10 +274,15 @@ Depends on 46d-46g.
 
 ### 46i: final adversarial review (opus, xhigh, report only; fixes by sonnet or opus by size)
 
-1. [ ] Fresh reviewer over all #46 changes: performance (SDD 13), style guide, the SDD against the code (every decision
+1. [x] Fresh reviewer over all #46 changes: performance (SDD 13), style guide, the SDD against the code (every decision
    D1-D16 and every answered question), TECH_DEBT items not re-reported.
-2. [ ] Fixes; re-check against the SDD; full suite and the smokes of 46h. Leftovers into `Docs/TECH_DEBT.md`.
-3. [ ] Commit `Issue #46: Part 46i - final review fixes`.
+2. [x] Fixes; re-check against the SDD; full suite and the smokes of 46h. Leftovers into `Docs/TECH_DEBT.md`.
+3. [x] Commit `Issue #46: Part 46i - final review fixes`.
+4. **Done (SDD 6.7):** suite 1537/1537, `-SOLSmokeSolidMenu` 192/192, holo 86/86, overlay 34/34, hud 24/24,
+   `-SOLMenuSmoke=all` 47 / 3 (the TECH_DEBT stale cursor and thrust checks); profile, three default runs 4/4 PASS
+   each, medians `dcpu` / `dgpu` P0 +0.076 / +0.063, P1 +0.015 / +0.033, P2 +0.090 / +0.038, P3 +0.028 / +0.064;
+   `GameUserSettings.ini` byte for byte unchanged after every run. Leftovers in TECH_DEBT (T15, T16, S10, S11, the
+   wide key-row labels, the off-screen wrap, the "²" glyph, W12, K3, K7).
 
 ### 46j: docs sync, in-game text and README screenshots (sonnet, medium)
 
@@ -290,6 +295,14 @@ Depends on 46d-46g.
    (window screenshots).
 4. [ ] `STATUS.md` #46 Done; `Tools\UpdateMetrics.bat`. Commit `Issue #46: Part 46j - docs, in-game text and
    screenshots`.
+5. [ ] From the 46i review (C8, C9, C15): (C8) `GAME_MECHANICS.md` has no `SOL::SolidMenu` tunables table (SDD 12;
+   only constants scattered through the section 8 and 8.1 rows), and does not say that Controls, Info and About are
+   tab pages (open on the first tab, a re-click is a no-op) or list the main menu's cues; (C9) four wrong or
+   incomplete statements there: the Ctrl+O row's "the Overlays list in Settings keeps its plain look" (false since
+   46e), key conflicts "turn orange" (now `WARNING_COLOR` #E5533D, Q14), section 8.1's "sliders and toggles get the
+   amber edge and underline" (the groove, knob, slot and puck have no underline), and the 8.1 HUD row omits the pause
+   slide and dim and the shell close; (C15) `ARCHITECTURE.md`'s main menu line omits Demo from the column, and its
+   `-SOLSmokeSolidMenu` lines describe only the 46c-46f steps (no 46g pause, 46h or 46i steps).
 
 ## Progress notes
 
@@ -350,3 +363,21 @@ Depends on 46d-46g.
 - 2026-11-06: 46h done after the reboot (SDD 13.2): the view run's verdict judges only the menu's share, the whole
   frame is logged against the XR-4 line and the 4K proxy (informational); every screen PASS; the proxy is missed
   (scene-bound, project-level VR work). Next: 46i.
+- **46i resume state (2026-11-06; superseded by the note below).** Review done by five fresh opus reviewers (kit source K1-K8, widgets
+  W1-W13, smokes S1-S13, kit tests T1-T17, SDD conformance C1-C15; no code High except W1 Info label column and S1
+  GameUserSettings). Fix order: (1) code-quality fixer (pause slide on `PAUSE_SLIDE_S`, dead constants, button refresh
+  cost, pause hazard stripe, font copyright line, `FColumnText` weak pointer, style); (2) layout / GameUserSettings /
+  smoke fixer (pause shell at 1000x800, Info and Key bindings widths, smoke settings snapshot and restore, pause fit
+  checks); (3) test writer (T1-T13, W5, W7, W10, W11, S8, S9); (4) regression runs and three profile runs; (5) docs,
+  metrics, commit. User decisions open: C1 (LED blink amber vs cyan), C2 (Resume tab mark), C3 (four 46g choices).
+  Steps (1) and (2) done in the working tree (uncommitted): solid smoke 185/185, suite 1515/1515, the user's
+  GameUserSettings.ini byte-identical after every smoke run. New open points for the user: `PAUSE_PANEL_WIDTH` 420 to
+  380 (the fit fix; the old "Quit to main menu" label touched its LED dot, now "Quit to menu"), the Key bindings rows at
+  1000x800 (key text slot 24.9 units). Next: step (3).
+- 2026-11-06: 46i done (SDD 6.7). Review fixes R1-R7 (the smoke settings snapshot and no mid-run GameUserSettings
+  write, the disabled button's focus hand-off, the frame's focus read once per tick, hidden Settings tabs not
+  refreshed, the pause slide on `PAUSE_SLIDE_S`, the hazard stripe under Quit to desktop, `EMenuTab::Count`, the
+  smooth core pulse) and the user's decisions (B1 cyan power-up LED blink, B2 the selected Resume tab marked, B3
+  "Quit to menu" with the panel at 380, B4 narrow Key bindings and Gameplay rows at 1000x800: key text 122.9 units,
+  sliders 164.9). Suite 1537/1537, solid smoke 192/192; the reviewer's docs findings C8, C9 and C15 moved to 46j
+  step 5. Next: 46j.

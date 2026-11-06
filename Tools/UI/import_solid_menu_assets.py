@@ -3,7 +3,7 @@
 #
 # Imports the solid menu textures and the Rajdhani font (SDD 46 section 10, part 46b), headless and idempotent:
 #   Docs/Art/menu-style/textures/*.png      -> SOL::Paths SOLID_TEX_BRUSHED / RIVET / VENT / HAZARD
-#   Docs/Art/fonts/rajdhani/Rajdhani-*.ttf  -> /Game/SOL/UI/Solid/Fonts/FF_Rajdhani_<Weight> (UFontFace)
+#   Docs/Art/fonts/rajdhani/Rajdhani-*.ttf  -> <SOLID_MENU_FONT's folder>/FF_Rajdhani_<Weight> (UFontFace)
 #                                           -> SOL::Paths SOLID_MENU_FONT (F_SOLMenu, a composite UFont with the four
 #                                              weights as typefaces named Regular, Medium, SemiBold, Bold)
 # Every asset path is read from Source/SOLTest/SOLConstants.h (the SOLID_* entries of SOL::Paths), so the script cannot
@@ -23,7 +23,6 @@ import unreal
 HASH_TAG = "SOLSourceMD5"
 DONE_MARKER = "DONE"
 FONT_WEIGHTS = ["Regular", "Medium", "SemiBold", "Bold"]
-FONT_FACE_DIR = "/Game/SOL/UI/Solid/Fonts"
 
 EAL = unreal.EditorAssetLibrary
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -128,12 +127,18 @@ def import_textures():
         log("%s imported (%s)" % (name, compression.name))
 
 
+# Returns the folder of the font face assets: the composite font's (SOL::Paths SOLID_MENU_FONT) folder
+def font_face_dir():
+    return split_path(path_constant("SOLID_MENU_FONT"))[0]
+
+
 # Imports the font face assets that changed and returns (package path, md5) by weight
 def import_font_faces():
     faces = {}
+    face_dir = font_face_dir()
     for weight in FONT_WEIGHTS:
         source = require(os.path.join(FONT_DIR, "Rajdhani-%s.ttf" % weight))
-        package_path = "%s/FF_Rajdhani_%s" % (FONT_FACE_DIR, weight)
+        package_path = "%s/FF_Rajdhani_%s" % (face_dir, weight)
         md5 = file_md5(source)
         faces[weight] = (package_path, md5)
         if is_current(package_path, md5):

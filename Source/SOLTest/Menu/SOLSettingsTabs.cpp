@@ -142,3 +142,46 @@ float SOLSettingsTabs::LabelColumnWidth(const ESOLSettingsTab tab)
         return SOL::MenuStyle::SETTINGS_LABEL_WIDTH;
     }
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Whether a tab's rows narrow in a row of rowWidth units: Key bindings short of key text room, Gameplay short of
+// slider room; a row not laid out yet (not a positive number) stays wide
+bool SOLSettingsTabs::IsNarrowLayout(const ESOLSettingsTab tab, const float rowWidth)
+{
+    using namespace SOL::MenuStyle;
+    if (!(rowWidth > 0.0f))
+    {
+        return false;
+    }
+    const float wideControls = LabelColumnWidth(tab) + BUTTON_GAP;
+    switch (tab)
+    {
+    case ESOLSettingsTab::KeyBindings:
+        return rowWidth - wideControls - SETTINGS_REBIND_WIDTH < SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH;
+    case ESOLSettingsTab::Gameplay:
+        return rowWidth - wideControls - SETTINGS_VALUE_WIDTH < SOL::SolidMenu::SETTINGS_SLIDER_MIN_WIDTH;
+    default:
+        return false;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The width of a tab's label column in a row of rowWidth units: the tab's narrow column when it narrows, else its wide
+// one
+float SOLSettingsTabs::LabelColumnWidth(const ESOLSettingsTab tab, const float rowWidth)
+{
+    if (!IsNarrowLayout(tab, rowWidth))
+    {
+        return LabelColumnWidth(tab);
+    }
+    return tab == ESOLSettingsTab::KeyBindings ? SOL::SolidMenu::SETTINGS_KEYS_NARROW_LABEL_WIDTH
+        : SOL::SolidMenu::SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The width of a Rebind button in a row of rowWidth units: narrower when Key bindings narrows
+float SOLSettingsTabs::RebindWidth(const float rowWidth)
+{
+    return IsNarrowLayout(ESOLSettingsTab::KeyBindings, rowWidth) ? SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH
+        : SOL::MenuStyle::SETTINGS_REBIND_WIDTH;
+}

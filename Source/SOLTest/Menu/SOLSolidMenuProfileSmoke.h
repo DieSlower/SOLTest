@@ -70,6 +70,10 @@ namespace SOLSolidMenuProfile
     // Returns whether a p99 frame time meets the 4K proxy: positive, finite and at or under VR_PROXY_FRAME_P99_MS
     SOLTEST_API bool MeetsVrProxy(double frameP99Ms);
 
+    // (46i) Returns whether the p99 frame, game thread and GPU times meet a VR floor's line (`vr_frame=`): each
+    // positive, finite and at or under floor.LineMs (a floor that does not apply has no line, so nothing meets it)
+    SOLTEST_API bool MeetsVrFrameLine(double frameP99Ms, double gameP99Ms, double gpuP99Ms, const FVrFloor& floor);
+
     // Returns the nearest-rank percentile of the values (fraction clamped to [0, 1], NaN reads 1), sorting them in
     // place; -1 when there are none
     SOLTEST_API double Percentile(TArray<double>& values, double fraction);
@@ -224,6 +228,7 @@ private:
     int32 mScreenFrames = 0;
     int32 mPassesFailed = 0;
     int32 mPassesNoBase = 0;
+    int32 mPassesLogged = 0;                                // Passes with a RESULT line (an abort fails the rest)
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
     EPassPhase mPhase = EPassPhase::Settle;

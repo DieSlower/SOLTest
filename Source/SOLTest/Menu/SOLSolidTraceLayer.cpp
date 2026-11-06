@@ -232,7 +232,7 @@ bool SSOLSolidTraceLayer::IsShowingHoverTrace(const FSOLSolidTrace& trace) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the glow pass alpha: TRACE_GLOW_ALPHA x min(s, 2) x pulse in [0, 1], 0 at s <= 0
+// Returns the glow pass alpha: TRACE_GLOW_ALPHA x min(s, HUD_EFFECTS_MAX) x pulse in [0, 1], 0 at s <= 0
 float SSOLSolidTraceLayer::GlowPassAlpha(const float strength, const float pulse)
 {
     if (FMath::IsNaN(strength) || strength <= 0.0f)
@@ -240,14 +240,25 @@ float SSOLSolidTraceLayer::GlowPassAlpha(const float strength, const float pulse
         return 0.0f;
     }
     const float factor = FMath::IsFinite(pulse) ? pulse : 1.0f;
-    return FMath::Clamp(SOL::SolidMenu::TRACE_GLOW_ALPHA * FMath::Min(strength, 2.0f) * factor, 0.0f, 1.0f);
+    return FMath::Clamp(SOL::SolidMenu::TRACE_GLOW_ALPHA * FMath::Min(strength, SOL::Settings::HUD_EFFECTS_MAX)
+        * factor, 0.0f, 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the core pass alpha: the pulse clamped to [0, 1] (non-finite reads 1)
-float SSOLSolidTraceLayer::CorePassAlpha(const float pulse)
+// Returns the core pass alpha: (1 + pulse - IDLE_PULSE_DEPTH x s) / 2 at a strength above 0, the pulse itself at 0,
+// clamped to [0, 1] (non-finite reads 1)
+float SSOLSolidTraceLayer::CorePassAlpha(const float pulse, const float strength)
 {
-    return FMath::IsFinite(pulse) ? FMath::Clamp(pulse, 0.0f, 1.0f) : 1.0f;
+    if (!FMath::IsFinite(pulse))
+    {
+        return 1.0f;
+    }
+    if (FMath::IsNaN(strength) || strength <= 0.0f)
+    {
+        return FMath::Clamp(pulse, 0.0f, 1.0f);
+    }
+    const float s = FMath::Min(strength, SOL::Settings::HUD_EFFECTS_MAX);
+    return FMath::Clamp(0.5f * (1.0f + pulse - SOL::SolidMenu::IDLE_PULSE_DEPTH * s), 0.0f, 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -315,7 +326,7 @@ int32 SSOLSolidTraceLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
     };
 
     const FLinearColor cyan = SOLSolidStyle::Linear(CYAN_COLOR);
-    const float coreAlpha = CorePassAlpha(mPulse);
+    const float coreAlpha = CorePassAlpha(mPulse, mStrength);
     const float glowAlpha = GlowPassAlpha(mStrength, mPulse);
     for (int32 index = 0; index < mTraceCount; ++index)
     {
@@ -355,12 +366,13 @@ int32 SSOLSolidTraceLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
         drawTrace(shifted, mHoverAmount, amber, 1.0f, GlowPassAlpha(mStrength, 1.0f));
     }
 
-    // The power-up blink: each lit stack LED in view as an amber dot, shifted with the stack's scroll
+    // The power-up blink: each lit stack LED in view as a cyan dot (user, 2026-11-06: amber stays for hover and
+    // focus), shifted with the stack's scroll
     for (int32 index = 0; index < mLedCount; ++index)
     {
         if ((mLitLeds & (1u << index)) != 0 && IsStackLineShown(mLeds[index].Y))
         {
-            drawDot(mLeds[index] - FVector2f(0.0f, mScrollOffset), amber, 1.0f);
+            drawDot(mLeds[index] - FVector2f(0.0f, mScrollOffset), cyan, 1.0f);
         }
     }
     if (bClipToBand)

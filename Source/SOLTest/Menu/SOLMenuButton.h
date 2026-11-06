@@ -14,6 +14,7 @@
 
 #include "SOLMenuButton.generated.h"
 
+struct FSOLSolidMenuFrame;
 class UTextBlock;
 class UWidgetTree;
 
@@ -73,14 +74,17 @@ private:
  * rebind key, or while it is solid-disabled, and only on a real mouse move: a list scrolled under a still cursor does
  * not take the focus, USOLSolidMenuSubsystem::HasRealMouseMoveThisFrame), so the mouse and the keyboard share one
  * highlight. The owning menu reads
- * the frame once per tick (USOLSolidMenuSubsystem::BeginFrame) and calls RefreshHighlightAt on each of its buttons: it
- * resolves the state (disabled, pressed, focused) and the orthogonal selected flag, advances the FSOLSolidButtonAnim
- * and, only when the look differs on screen from the one last written, sets the background colour to the look's brush
- * tint (SOLSolidStyle::BrushTint; the flat colour without the hull material), the render-transform lift and the label
- * colour (SOLSolidStyle::LabelColor), and feeds its hover trace (Stack and Tab, Q15). A settled button costs a state
- * compare per tick. Disabled art (SetSolidDisabled) never uses SetIsEnabled(false): Slate's disabled effect would
- * multiply the hull and the label alpha by 0.45 on top of the tint's DISABLED_ALPHA; the button instead becomes
- * hit-test invisible and not focusable, refuses hover focus and swallows clicks. (46g, Q11) The #42 cues: the hover cue
+ * the frame once per tick (USOLSolidMenuSubsystem::BeginFrame: the time, strength and keyboard-focused widget) and
+ * calls RefreshHighlightAt on each of its buttons: it resolves the state (disabled, pressed, focused: its widget
+ * compared with the frame's focus) and the orthogonal selected flag, advances the FSOLSolidButtonAnim and, only when
+ * the look differs on screen from the one last written, sets the background colour to the look's brush tint
+ * (SOLSolidStyle::BrushTint; the flat colour without the hull material), the render-transform lift and the label
+ * colour (SOLSolidStyle::LabelColor), and feeds its hover trace (Stack and Tab, Q15). A settled button costs a pointer
+ * compare, a press read and a state compare per refresh (no Slate focus query); an owner may skip a button that
+ * IsAtRest while it is hidden. Disabled art (SetSolidDisabled) never uses SetIsEnabled(false): Slate's disabled
+ * effect would multiply the hull and the label alpha by 0.45 on top of the tint's DISABLED_ALPHA; the button instead
+ * becomes hit-test invisible and not focusable, refuses hover focus and swallows clicks, and gives up the keyboard
+ * focus. (46g, Q11) The #42 cues: the hover cue
  * when the button gains the keyboard focus (RefreshHighlightAt; not on a press's release), the select cue on a click
  * (USOLSolidMenuSubsystem::PlayCue).
  */
@@ -112,8 +116,8 @@ public:
 
     // Gives or removes the disabled art (desaturated hull, no grain or edge highlight, LED off, no hover, the disabled
     // cue, DISABLED_TEXT_COLOR label) and blocks its input without Slate's disabled effect: hit-test invisible and not
-    // focusable (keyboard navigation skips it) until enabled again, when its focusability is restored; a disabled
-    // button that has keyboard focus keeps it until the owner moves it
+    // focusable (keyboard navigation skips it) until enabled again, when its focusability is restored; a button that
+    // has the keyboard focus when disabled hands it to the nearest focusable user widget that owns it (or clears it)
     void SetSolidDisabled(bool bDisabled);
 
     // Returns whether the button has the disabled art and blocks input
@@ -136,6 +140,10 @@ public:
     // the hover cue when the keyboard focus has arrived since the last call (not while solid-disabled)
     void RefreshHighlightAt(double nowS, float s, bool bHoverElsewhere = false);
 
+    // (46i) RefreshHighlightAt at the frame's time and strength, the focus read from the frame's keyboard-focused
+    // widget (one Slate query per screen tick, not one per button); the form every menu screen uses
+    void RefreshHighlightAt(const FSOLSolidMenuFrame& frame, bool bHoverElsewhere = false);
+
     // RefreshHighlightAt with the state given instead of resolved from the button's focus and press, and no cue
     // (verification: drives hover and press headless, where no Slate widget has focus or a press)
     void RefreshHighlightFor(ESOLSolidButtonState state, double nowS, float s);
@@ -143,6 +151,11 @@ public:
     // Returns whether the button had the keyboard focus at its last RefreshHighlightAt (a scrolling stack follows it
     // without querying the focus again)
     bool WasFocusedAtRefresh() const { return mIsFocusedAtRefresh; }
+
+    // (46i) Returns whether the last refresh left the button at rest: refreshed at least once, settled (no ramp or
+    // linger running), not focused, and Normal or Disabled. An owner may stop refreshing a hidden button at rest (it
+    // shows no stale hover or focus look) and must refresh it again when it is shown
+    bool IsAtRest() const;
 
     // Returns the look of the last refresh (verification: the smoke compares it with SOLSolidMenu::EvaluateButton)
     const FSOLSolidButtonLook& GetAppliedLook() const { return mAppliedLook; }
@@ -183,6 +196,9 @@ private:
 
     // Feeds the panel's trace layer this button's hover trace (Stack and Tab only)
     void UpdateHoverTrace(const FSOLSolidButtonLook& look);
+
+    // Both RefreshHighlightAt forms with the focus already read: plays the hover cue when it arrived, then refreshes
+    void RefreshHighlightFocused(bool bFocused, double nowS, float s, bool bHoverElsewhere);
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> Label;

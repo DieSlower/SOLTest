@@ -135,46 +135,73 @@ public class SOLTest : ModuleRules
     }
 
     // Returns `git rev-list --count HEAD` run in the project directory, or 0 (one warning, with git's first error
-    // line) when git fails
+    // line) when git fails; in a shallow clone the count is only the clone's depth, so it is kept with the same kind
+    // of warning
     private int ReadCommitCount(string projectDir)
     {
+        int count;
         try
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo("git", "rev-list --count HEAD")
+            string output = RunGit(projectDir, "rev-list --count HEAD");
+            if (!int.TryParse(output.Trim(), out count) || count < 0)
             {
-                WorkingDirectory = projectDir,
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-            };
-            using (Process git = Process.Start(startInfo))
-            {
-                if (git == null)
-                {
-                    throw new InvalidOperationException("git did not start");
-                }
-                // Read asynchronously so a full pipe can never block the wait
-                Task<string> output = git.StandardOutput.ReadToEndAsync();
-                Task<string> error = git.StandardError.ReadToEndAsync();
-                if (!git.WaitForExit(GIT_TIMEOUT_MS))
-                {
-                    git.Kill();
-                    throw new TimeoutException("git rev-list timed out");
-                }
-                int count;
-                if (git.ExitCode != 0 || !int.TryParse(output.Result.Trim(), out count) || count < 0)
-                {
-                    throw new InvalidOperationException("git rev-list exited with " + git.ExitCode + ": "
-                        + FirstLine(error.Result));
-                }
-                return count;
+                throw new InvalidOperationException("git rev-list printed no count: " + FirstLine(output));
             }
         }
         catch (Exception exception)
         {
             Logger.LogWarning("SOLTest: build version commit count is 0 ({Message})", exception.Message);
             return 0;
+        }
+
+        // A shallow clone (CI checkouts) counts only the fetched commits; an older git that cannot say is not warned
+        try
+        {
+            if (RunGit(projectDir, "rev-parse --is-shallow-repository").Trim() == "true")
+            {
+                Logger.LogWarning("SOLTest: build version commit count is {Count} (a shallow clone: the count is its "
+                    + "depth, not the full history)", count);
+            }
+        }
+        catch (Exception)
+        {
+            // No answer (an older git): the count stands without a warning
+        }
+        return count;
+    }
+
+    // Runs git with arguments in the project directory and returns its output; throws when it does not start, times
+    // out or exits with an error (the message carries git's first error line)
+    private static string RunGit(string projectDir, string arguments)
+    {
+        ProcessStartInfo startInfo = new ProcessStartInfo("git", arguments)
+        {
+            WorkingDirectory = projectDir,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        using (Process git = Process.Start(startInfo))
+        {
+            if (git == null)
+            {
+                throw new InvalidOperationException("git did not start");
+            }
+            // Read asynchronously so a full pipe can never block the wait
+            Task<string> output = git.StandardOutput.ReadToEndAsync();
+            Task<string> error = git.StandardError.ReadToEndAsync();
+            if (!git.WaitForExit(GIT_TIMEOUT_MS))
+            {
+                git.Kill();
+                throw new TimeoutException("git " + arguments + " timed out");
+            }
+            if (git.ExitCode != 0)
+            {
+                throw new InvalidOperationException("git " + arguments + " exited with " + git.ExitCode + ": "
+                    + FirstLine(error.Result));
+            }
+            return output.Result;
         }
     }
 

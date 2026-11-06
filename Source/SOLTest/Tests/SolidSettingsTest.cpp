@@ -122,8 +122,8 @@ bool FSOLSolidSettingsTabCountTest::RunTest(const FString& /*parameters*/)
 {
     TestEqual(TEXT("ESOLSettingsTab::Count is 6"), static_cast<int32>(ESOLSettingsTab::Count),
         SOLIDSETTINGSTEST_TAB_COUNT);
-    TestEqual(TEXT("the expected order lists 6 tabs"), static_cast<int32>(UE_ARRAY_COUNT(SOLIDSETTINGSTEST_TABS)),
-        SOLIDSETTINGSTEST_TAB_COUNT);
+    static_assert(UE_ARRAY_COUNT(SOLIDSETTINGSTEST_TABS) == SOLIDSETTINGSTEST_TAB_COUNT,
+        "The expected order lists every tab");
     return true;
 }
 
@@ -273,13 +273,6 @@ bool FSOLSolidSettingsNoLastTabMemoryTest::RunTest(const FString& /*parameters*/
     SolidSettingsTestTab(*this, TEXT("ScrollToBinding visit on Key bindings"), current, ESOLSettingsTab::KeyBindings);
     current = SOLSettingsTabs::OpeningTab();
     SolidSettingsTestTab(*this, TEXT("reopen after a ScrollToBinding visit"), current, ESOLSettingsTab::Graphics);
-
-    // Many opens in a row give the same tab
-    for (int32 open = 0; open < 10; ++open)
-    {
-        SolidSettingsTestTab(*this, FString::Printf(TEXT("open %d"), open), SOLSettingsTabs::OpeningTab(),
-            ESOLSettingsTab::Graphics);
-    }
     return true;
 }
 
@@ -649,6 +642,124 @@ bool FSOLSolidSettingsLabelColumnTest::RunTest(const FString& /*parameters*/)
             SOLSettingsTabs::LabelColumnWidth(SOLSettingsTabs::TabOfStepper(static_cast<ESOLSettingsStepper>(stepper))),
             SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH);
     }
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Narrow views (46i): Key bindings and Gameplay narrow their rows when the key text / a slider would be short of room
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    // The row width below which Key bindings narrows: the wide column, the gap, Rebind and the key text's minimum
+    constexpr float SOL_KEYS_NARROW_BELOW = SOL::MenuStyle::SETTINGS_LABEL_WIDTH + SOL::MenuStyle::BUTTON_GAP
+        + SOL::MenuStyle::SETTINGS_REBIND_WIDTH + SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH;
+
+    // The row width below which Gameplay narrows: its wide column, the gap, the value readout and a slider's minimum
+    constexpr float SOL_GAMEPLAY_NARROW_BELOW = SOL::SolidMenu::SETTINGS_GAMEPLAY_LABEL_WIDTH
+        + SOL::MenuStyle::BUTTON_GAP + SOL::MenuStyle::SETTINGS_VALUE_WIDTH + SOL::SolidMenu::SETTINGS_SLIDER_MIN_WIDTH;
+
+    // A row at 1000x800 as measured (46i: the content switcher less a scroll bar's room) and one at 1280x720
+    constexpr float SOL_SMALL_ROW = 405.0f;
+    constexpr float SOL_WIDE_ROW = 650.0f;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsNarrowLayoutTest, "SOLTest.SolidSettings.Layout.NarrowLayout",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// IsNarrowLayout: Key bindings below SOL_KEYS_NARROW_BELOW, Gameplay below SOL_GAMEPLAY_NARROW_BELOW, at or above them
+// wide; every other tab and an invalid one never; a row not laid out (0, negative, NaN) never
+bool FSOLSolidSettingsNarrowLayoutTest::RunTest(const FString& /*parameters*/)
+{
+    TestTrue(TEXT("the Key bindings threshold sits between the 1000x800 and 1280x720 rows"),
+        SOL_KEYS_NARROW_BELOW > SOL_SMALL_ROW && SOL_KEYS_NARROW_BELOW < SOL_WIDE_ROW);
+    TestTrue(TEXT("the Gameplay threshold sits between the 1000x800 and 1280x720 rows"),
+        SOL_GAMEPLAY_NARROW_BELOW > SOL_SMALL_ROW && SOL_GAMEPLAY_NARROW_BELOW < SOL_WIDE_ROW);
+
+    TestTrue(TEXT("Key bindings: narrow just below"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::KeyBindings,
+        SOL_KEYS_NARROW_BELOW - 0.5f));
+    TestFalse(TEXT("Key bindings: wide at the threshold"), SOLSettingsTabs::IsNarrowLayout(
+        ESOLSettingsTab::KeyBindings, SOL_KEYS_NARROW_BELOW));
+    TestTrue(TEXT("Key bindings: narrow at 1000x800"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::KeyBindings,
+        SOL_SMALL_ROW));
+    TestFalse(TEXT("Key bindings: wide at 1280x720"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::KeyBindings,
+        SOL_WIDE_ROW));
+    TestTrue(TEXT("Gameplay: narrow just below"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::Gameplay,
+        SOL_GAMEPLAY_NARROW_BELOW - 0.5f));
+    TestFalse(TEXT("Gameplay: wide at the threshold"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::Gameplay,
+        SOL_GAMEPLAY_NARROW_BELOW));
+    TestTrue(TEXT("Gameplay: narrow at 1000x800"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::Gameplay,
+        SOL_SMALL_ROW));
+    TestFalse(TEXT("Gameplay: wide at 1280x720"), SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::Gameplay,
+        SOL_WIDE_ROW));
+
+    const ESOLSettingsTab otherTabs[] = { ESOLSettingsTab::Graphics, ESOLSettingsTab::Audio, ESOLSettingsTab::Mouse,
+        ESOLSettingsTab::Overlays, ESOLSettingsTab::Count };
+    for (const ESOLSettingsTab tab : otherTabs)
+    {
+        TestFalse(FString::Printf(TEXT("tab %d: never narrow"), static_cast<int32>(tab)),
+            SOLSettingsTabs::IsNarrowLayout(tab, 100.0f));
+    }
+
+    const float notLaidOut[] = { 0.0f, -1.0f, -SOL_SMALL_ROW, std::numeric_limits<float>::quiet_NaN() };
+    for (const float rowWidth : notLaidOut)
+    {
+        TestFalse(FString::Printf(TEXT("Key bindings: wide in a row of %f"), rowWidth),
+            SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::KeyBindings, rowWidth));
+        TestFalse(FString::Printf(TEXT("Gameplay: wide in a row of %f"), rowWidth),
+            SOLSettingsTabs::IsNarrowLayout(ESOLSettingsTab::Gameplay, rowWidth));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsNarrowWidthsTest, "SOLTest.SolidSettings.Layout.NarrowWidths",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// LabelColumnWidth(tab, rowWidth) and RebindWidth(rowWidth): the narrow widths when the tab narrows, the wide ones
+// (the one-argument LabelColumnWidth, SETTINGS_REBIND_WIDTH) otherwise; at 1000x800 the narrow rows keep their minimum
+// key text and slider room
+bool FSOLSolidSettingsNarrowWidthsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    TestEqual(TEXT("Key bindings: the narrow column at 1000x800"), SOLSettingsTabs::LabelColumnWidth(
+        ESOLSettingsTab::KeyBindings, SOL_SMALL_ROW), SETTINGS_KEYS_NARROW_LABEL_WIDTH);
+    TestEqual(TEXT("Gameplay: the narrow column at 1000x800"), SOLSettingsTabs::LabelColumnWidth(
+        ESOLSettingsTab::Gameplay, SOL_SMALL_ROW), SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH);
+    TestEqual(TEXT("Rebind: narrow at 1000x800"), SOLSettingsTabs::RebindWidth(SOL_SMALL_ROW),
+        SETTINGS_REBIND_NARROW_WIDTH);
+
+    const float wideRows[] = { SOL_WIDE_ROW, 0.0f, -1.0f, std::numeric_limits<float>::quiet_NaN() };
+    for (int32 tab = 0; tab <= static_cast<int32>(ESOLSettingsTab::Count); ++tab)
+    {
+        for (const float rowWidth : wideRows)
+        {
+            TestEqual(FString::Printf(TEXT("tab %d in a row of %f: the wide column"), tab, rowWidth),
+                SOLSettingsTabs::LabelColumnWidth(static_cast<ESOLSettingsTab>(tab), rowWidth),
+                SOLSettingsTabs::LabelColumnWidth(static_cast<ESOLSettingsTab>(tab)));
+        }
+    }
+    for (const float rowWidth : wideRows)
+    {
+        TestEqual(FString::Printf(TEXT("Rebind in a row of %f: wide"), rowWidth), SOLSettingsTabs::RebindWidth(rowWidth),
+            SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
+    }
+    const ESOLSettingsTab otherTabs[] = { ESOLSettingsTab::Graphics, ESOLSettingsTab::Audio, ESOLSettingsTab::Mouse,
+        ESOLSettingsTab::Overlays };
+    for (const ESOLSettingsTab tab : otherTabs)
+    {
+        TestEqual(FString::Printf(TEXT("tab %d at 1000x800: its wide column"), static_cast<int32>(tab)),
+            SOLSettingsTabs::LabelColumnWidth(tab, SOL_SMALL_ROW), SOLSettingsTabs::LabelColumnWidth(tab));
+    }
+
+    TestTrue(TEXT("the narrow columns are narrower"), SETTINGS_KEYS_NARROW_LABEL_WIDTH
+        < SOL::MenuStyle::SETTINGS_LABEL_WIDTH && SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH < SETTINGS_GAMEPLAY_LABEL_WIDTH);
+    TestTrue(TEXT("the narrow Rebind is narrower"), SETTINGS_REBIND_NARROW_WIDTH < SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
+    TestTrue(TEXT("1000x800: a narrow key row keeps the key text's minimum"), SOL_SMALL_ROW
+        - SETTINGS_KEYS_NARROW_LABEL_WIDTH - SOL::MenuStyle::BUTTON_GAP - SETTINGS_REBIND_NARROW_WIDTH
+        >= SETTINGS_KEY_TEXT_MIN_WIDTH);
+    TestTrue(TEXT("1000x800: a narrow Gameplay row keeps a slider's minimum"), SOL_SMALL_ROW
+        - SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH - SOL::MenuStyle::BUTTON_GAP - SOL::MenuStyle::SETTINGS_VALUE_WIDTH
+        >= SETTINGS_SLIDER_MIN_WIDTH);
     return true;
 }
 

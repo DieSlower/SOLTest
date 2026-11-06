@@ -27,7 +27,8 @@ namespace SOLMenuState
         Settings,
         Demo,
         About,
-        Quit
+        Quit,
+        Count       // Not a tab: the number of tabs (the valid range ends before it)
     };
 
     enum class EMenuEvent : uint8
@@ -56,8 +57,9 @@ namespace SOLMenuState
     // Returns the state with the tab selected (only while a menu is showing)
     SOLTEST_API FMenuState SelectTab(const FMenuState& state, EMenuTab tab);
 
-    // Returns whether selecting tab changes anything: true while a menu shows and tab is not the selected one (a re-click
-    // on the selected pause-menu tab is a no-op, it must not reset the page's tab or scroll)
+    // Returns whether selecting tab changes anything: true while a menu shows and tab is a valid tab (Resume to Quit)
+    // other than the selected one (a re-click on the selected pause-menu tab is a no-op, it must not reset the page's
+    // tab or scroll; a value past Quit changes nothing, SDD 46 section 6.5)
     SOLTEST_API bool IsTabChange(const FMenuState& state, EMenuTab tab);
 
     // (SDD 46 Q4, part 46g) Returns whether a pause-menu tab opens a page in the shell beside the side panel: Controls,

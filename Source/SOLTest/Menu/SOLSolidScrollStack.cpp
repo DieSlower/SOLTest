@@ -14,7 +14,6 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/ScrollBox.h"
-#include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"

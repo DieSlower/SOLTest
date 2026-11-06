@@ -15,8 +15,9 @@
 
 // Tests for the issue #46 solid menu pure logic (Docs/SDDs/46-solid-menus.md section 8, constants section 9, palette
 // section 5.1; the 46c selected flag and three-level tint G code are user decisions of 2026-11-04), written
-// against the Menu/SOLSolidMenuMath.h contract before the production code existed. Every number comes from
-// SOL::SolidMenu, never a literal. Hull points are in the widget's local space: origin top-left, x right, y down,
+// against the Menu/SOLSolidMenuMath.h contract before the production code existed. The numbers come from
+// SOL::SolidMenu, or (46i) are worked out by hand from the SDD's rules with a static_assert on the constants they
+// assume. Hull points are in the widget's local space: origin top-left, x right, y down,
 // the rect spans [0, size.X] x [0, size.Y]
 namespace
 {
@@ -672,6 +673,23 @@ bool FSOLSolidMenuHullClampFeaturesTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("notch Y inside the rect (or the notch removed)"),
         clamped.NotchY < 0.0f || clamped.NotchY <= size.Y);
 
+    // (46i) The exact clamp on 400 x 300, worked out by hand from the SDD 8.1 rules: the chamfers 28 / 12 / 28 / 12 fit
+    // (pairs 40 against 180 and 135); the step height min(0.25 x 300, 400 - 28 - 12) = 75 and its width at most
+    // 400 - 12 - 75 = 313; the chin height 75 and its width at most 400 - 28 - 75 = 297; the notch spans
+    // [max(28, 75 + 12), min(300 - 12, 300 - 75 - 28)] = [87, 197], so it is 110 tall, centred at 142, and
+    // min(110 / 2, 0.25 x 400) = 55 deep
+    static_assert(SOL::SolidMenu::HULL_MAX_FEATURE_FRACTION == 0.25f, "The pinned clamp below is worked out at 0.25");
+    FSOLSolidHull pinned = SolidMenuTestReferenceHull();
+    pinned.TitleStepWidth = 313.0f;
+    pinned.TitleStepHeight = 75.0f;
+    pinned.NotchY = 142.0f;
+    pinned.NotchDepth = 55.0f;
+    pinned.NotchHeight = 110.0f;
+    pinned.ChinWidth = 297.0f;
+    pinned.ChinHeight = 75.0f;
+    SolidMenuTestHullEqual(*this, TEXT("oversized features on 400 x 300"), clamped, pinned,
+        SOLIDMENUTEST_SDF_TOLERANCE);
+
     SolidMenuTestHullEqual(*this, TEXT("clamping twice"), SOLSolidMenu::ClampHull(clamped, size), clamped,
         SOLIDMENUTEST_SDF_TOLERANCE);
 
@@ -948,14 +966,17 @@ bool FSOLSolidMenuHullClampSweepTest::RunTest(const FString& /*parameters*/)
                 const FString at = FString::Printf(TEXT("size (%f, %f) chamfer %f feature %f"), size.X, size.Y,
                     chamfer, feature);
 
-                // Step and chin: present with both values or removed whole, flanks clear of the chamfers
+                // Step and chin: present with both values or removed whole, flanks clear of the chamfers, heights
+                // at most HULL_MAX_FEATURE_FRACTION of the height
+                const float maxHeight = SOL::SolidMenu::HULL_MAX_FEATURE_FRACTION * size.Y + tol;
                 const bool bStep = c.TitleStepWidth > 0.0f && c.TitleStepHeight > 0.0f;
                 const bool bStepOk = bStep ? c.TitleStepWidth >= c.ChamferTL - tol
                     && c.TitleStepWidth + c.TitleStepHeight <= size.X - c.ChamferTR + tol
+                    && c.TitleStepHeight <= maxHeight
                     : c.TitleStepWidth == 0.0f && c.TitleStepHeight == 0.0f;
                 const bool bChin = c.ChinWidth > 0.0f && c.ChinHeight > 0.0f;
                 const bool bChinOk = bChin ? c.ChinWidth >= c.ChamferBL - tol
-                    && c.ChinWidth + c.ChinHeight <= size.X - c.ChamferBR + tol
+                    && c.ChinWidth + c.ChinHeight <= size.X - c.ChamferBR + tol && c.ChinHeight <= maxHeight
                     : c.ChinWidth == 0.0f && c.ChinHeight == 0.0f;
 
                 // Notch: inside the shared straight part, at most half as deep as tall, or removed
@@ -988,6 +1009,35 @@ bool FSOLSolidMenuHullClampSweepTest::RunTest(const FString& /*parameters*/)
         }
     }
     log.Report(*this, TEXT("clamped features clear of the chamfers and idempotent"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuHullDistanceInvalidTest, "SOLTest.SolidMenu.Hull.DistanceInvalidInputs",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i, SDD 8.1) HullDistance returns FLT_MAX for a size with a component <= 0 or non-finite, and for a non-finite point
+bool FSOLSolidMenuHullDistanceInvalidTest::RunTest(const FString& /*parameters*/)
+{
+    const FSOLSolidHull hull = SolidMenuTestReferenceHull();
+    const FVector2f centre(0.5f * SOLIDMENUTEST_W, 0.5f * SOLIDMENUTEST_H);
+    const FVector2f badSizes[] = {
+        FVector2f(0.0f, SOLIDMENUTEST_H), FVector2f(SOLIDMENUTEST_W, -1.0f), FVector2f(SOLIDMENUTEST_NAN, SOLIDMENUTEST_H),
+        FVector2f(SOLIDMENUTEST_W, SOLIDMENUTEST_INF) };
+    for (const FVector2f& size : badSizes)
+    {
+        TestTrue(FString::Printf(TEXT("size (%f, %f) reads FLT_MAX"), size.X, size.Y),
+            SOLSolidMenu::HullDistance(centre, size, hull) == TNumericLimits<float>::Max());
+    }
+    const FVector2f badPoints[] = {
+        FVector2f(SOLIDMENUTEST_NAN, 10.0f), FVector2f(10.0f, SOLIDMENUTEST_NAN), FVector2f(SOLIDMENUTEST_INF, 10.0f),
+        FVector2f(10.0f, -SOLIDMENUTEST_INF) };
+    for (const FVector2f& point : badPoints)
+    {
+        TestTrue(FString::Printf(TEXT("point (%f, %f) reads FLT_MAX"), point.X, point.Y),
+            SOLSolidMenu::HullDistance(point, SolidMenuTestSize(), hull) == TNumericLimits<float>::Max());
+    }
+    TestEqual(TEXT("a valid point and size still reads its distance"),
+        SOLSolidMenu::HullDistance(centre, SolidMenuTestSize(), hull), -150.0f, SOLIDMENUTEST_SDF_TOLERANCE);
     return true;
 }
 
@@ -1183,41 +1233,6 @@ bool FSOLSolidMenuButtonLingerTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedTest, "SOLTest.SolidMenu.Button.SelectedMark",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-// Selected: the cyan selected mark, no lift, no amber edge or trace, not the pressed hull
-bool FSOLSolidMenuButtonSelectedTest::RunTest(const FString& /*parameters*/)
-{
-    using SOLSolidMenu::EvaluateButton;
-    const ESOLSolidButtonState selected = ESOLSolidButtonState::Selected;
-    const float strengths[] = { 0.0f, 1.0f, 2.0f };
-    for (const float s : strengths)
-    {
-        const FString label = FString::Printf(TEXT("strength %f"), s);
-        const FSOLSolidButtonLook atOnce = EvaluateButton(selected, ESOLSolidButtonState::Normal, 0.0, s);
-        TestTrue(label + TEXT(" mark at once"), atOnce.bSelectedMark);
-        TestEqual(label + TEXT(" no lift at once"), atOnce.Lift, 0.0f, SOLIDMENUTEST_TOLERANCE);
-
-        const FSOLSolidButtonLook rest = EvaluateButton(selected, ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S,
-            s);
-        TestTrue(label + TEXT(" mark settled"), rest.bSelectedMark);
-        TestFalse(label + TEXT(" not the pressed hull"), rest.bPressedHull);
-        TestEqual(label + TEXT(" no lift"), rest.Lift, 0.0f, SOLIDMENUTEST_TOLERANCE);
-        TestEqual(label + TEXT(" no amber edge"), rest.Edge, 0.0f, SOLIDMENUTEST_TOLERANCE);
-        TestEqual(label + TEXT(" no amber trace"), rest.Trace, 0.0f, SOLIDMENUTEST_TOLERANCE);
-
-        TestTrue(label + TEXT(" settled from Hovered: mark"),
-            EvaluateButton(selected, ESOLSolidButtonState::Hovered, SOLIDMENUTEST_SETTLED_S, s).bSelectedMark);
-        TestEqual(label + TEXT(" settled from Hovered: no lift"),
-            EvaluateButton(selected, ESOLSolidButtonState::Hovered, SOLIDMENUTEST_SETTLED_S, s).Lift, 0.0f,
-            SOLIDMENUTEST_TOLERANCE);
-    }
-    TestFalse(TEXT("Normal has no mark"),
-        EvaluateButton(ESOLSolidButtonState::Normal, selected, SOLIDMENUTEST_SETTLED_S, 1.0f).bSelectedMark);
-    return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonDisabledTest, "SOLTest.SolidMenu.Button.DisabledZeros",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -1392,14 +1407,38 @@ bool FSOLSolidMenuButtonFromTest::RunTest(const FString& /*parameters*/)
     SolidMenuTestExpectLookAll(*this, TEXT("leaving at strength 0: instant"),
         EvaluateButtonFrom(normal, atLeave, 0.0, 0.0f), 0.0f);
 
-    // Settled looks match the state-based form
-    const ESOLSolidButtonState states[] = { normal, hovered, ESOLSolidButtonState::Pressed,
-        ESOLSolidButtonState::Selected, ESOLSolidButtonState::Disabled };
-    for (const ESOLSolidButtonState state : states)
+    // Settled at strength 2, whatever the look at the change: each state's own look (SDD 8.2), written out
+    struct FSettled
     {
-        SolidMenuTestLookEqual(*this, FString::Printf(TEXT("state %d settled"), static_cast<int32>(state)),
-            EvaluateButtonFrom(state, atLeave, SOLIDMENUTEST_SETTLED_S, 2.0f),
-            SOLSolidMenu::EvaluateButton(state, normal, SOLIDMENUTEST_SETTLED_S, 2.0f));
+        ESOLSolidButtonState State;
+        float Lift;
+        float Lit;          // Edge, Led, Underline and Trace
+        float Glow;         // s x Edge
+        bool bPressedHull;
+        bool bSelectedMark;
+        bool bDisabled;
+    };
+    const FSettled settled[] = {
+        { normal, 0.0f, 0.0f, 0.0f, false, false, false },
+        { hovered, 1.0f, 1.0f, 2.0f, false, false, false },
+        { ESOLSolidButtonState::Pressed, 0.0f, 1.0f, 2.0f, true, false, false },
+        { ESOLSolidButtonState::Selected, 0.0f, 0.0f, 0.0f, false, true, false },
+        { ESOLSolidButtonState::Disabled, 0.0f, 0.0f, 0.0f, false, false, true },
+    };
+    for (const FSettled& entry : settled)
+    {
+        FSOLSolidButtonLook expected;
+        expected.Lift = entry.Lift;
+        expected.Edge = entry.Lit;
+        expected.Led = entry.Lit;
+        expected.Underline = entry.Lit;
+        expected.Trace = entry.Lit;
+        expected.Glow = entry.Glow;
+        expected.bPressedHull = entry.bPressedHull;
+        expected.bSelectedMark = entry.bSelectedMark;
+        expected.bDisabled = entry.bDisabled;
+        SolidMenuTestLookEqual(*this, FString::Printf(TEXT("state %d settled"), static_cast<int32>(entry.State)),
+            EvaluateButtonFrom(entry.State, atLeave, SOLIDMENUTEST_SETTLED_S, 2.0f), expected);
     }
     const FSOLSolidButtonLook press = EvaluateButtonFrom(ESOLSolidButtonState::Pressed, atLeave, 0.0, 1.0f);
     TestTrue(TEXT("Pressed at once: the pressed hull"), press.bPressedHull);
@@ -1614,6 +1653,12 @@ bool FSOLSolidMenuButtonSelectedStateTest::RunTest(const FString& /*parameters*/
         }
     }
     log.Report(*this, TEXT("Selected is Normal plus the mark"));
+
+    // (46i: merged from Button.SelectedMark) Normal after Selected has no mark, and a settled Selected is all 0
+    TestFalse(TEXT("Normal after Selected has no mark"), SOLSolidMenu::EvaluateButton(normal, selected,
+        SOLIDMENUTEST_SETTLED_S, 1.0f).bSelectedMark);
+    SolidMenuTestExpectLookAll(*this, TEXT("Selected settled"), SOLSolidMenu::EvaluateButton(selected, normal,
+        SOLIDMENUTEST_SETTLED_S, 1.0f), 0.0f);
     return true;
 }
 
@@ -1659,8 +1704,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuButtonSelectedDefaultTest,
     "SOLTest.SolidMenu.Button.SelectedFlagDefaultsOff",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Calls without the flag equal calls with bSelected false, in both forms: hover alone is amber with no mark, Selected
-// alone is the mark with no lift and no amber
+// Calls without the flag equal calls with bSelected false, in both forms: hover alone is amber with no mark, a press
+// alone has no mark (Selected alone is Button.SelectedStateIgnoresFlag)
 bool FSOLSolidMenuButtonSelectedDefaultTest::RunTest(const FString& /*parameters*/)
 {
     const double ramp = SOL::SolidMenu::HOVER_RAMP_S;
@@ -1704,10 +1749,6 @@ bool FSOLSolidMenuButtonSelectedDefaultTest::RunTest(const FString& /*parameters
     const FSOLSolidButtonLook press = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Pressed,
         ESOLSolidButtonState::Normal, 0.0, 1.0f);
     TestFalse(TEXT("press alone: no mark"), press.bSelectedMark);
-    const FSOLSolidButtonLook selectedAlone = SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Selected,
-        ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f);
-    TestTrue(TEXT("Selected alone: the mark"), selectedAlone.bSelectedMark);
-    SolidMenuTestExpectLookAll(*this, TEXT("Selected alone"), selectedAlone, 0.0f);
     return true;
 }
 
@@ -1758,7 +1799,7 @@ bool FSOLSolidMenuTintEncodeTest::RunTest(const FString& /*parameters*/)
     look.bDisabled = true;
     tint = SOLSolidMenu::EncodeButtonTint(look);
     TestEqual(TEXT("disabled: R 0"), tint.R, 0.0f);
-    TestEqual(TEXT("disabled: G the 0.5 disabled code"), tint.G, 0.5f, tol);
+    TestEqual(TEXT("disabled: G the disabled code"), tint.G, SOL::SolidMenu::TINT_DISABLED_CODE, tol);
     TestEqual(TEXT("disabled: B 0"), tint.B, 0.0f);
     TestEqual(TEXT("disabled: A DISABLED_ALPHA"), tint.A, SOL::SolidMenu::DISABLED_ALPHA, tol);
 
@@ -1814,7 +1855,7 @@ bool FSOLSolidMenuTintQuantizedTest::RunTest(const FString& /*parameters*/)
         const FLinearColor tint = SOLSolidMenu::EncodeButtonTint(look);
         const bool bGrid = SolidMenuTestOn8BitGrid(tint.R) && SolidMenuTestOn8BitGrid(tint.G)
             && SolidMenuTestOn8BitGrid(tint.B) && SolidMenuTestOn8BitGrid(tint.A);
-        const float code = look.bPressedHull ? 1.0f : (look.bDisabled ? 0.5f : 0.0f);
+        const float code = look.bPressedHull ? 1.0f : (look.bDisabled ? SOL::SolidMenu::TINT_DISABLED_CODE : 0.0f);
         const bool bClose = FMath::Abs(tint.R - look.Edge) <= SOLIDMENUTEST_QUANT_TOLERANCE
             && FMath::Abs(tint.G - code) <= SOLIDMENUTEST_QUANT_TOLERANCE;
         if (!bGrid || !bClose)
@@ -1880,15 +1921,7 @@ bool FSOLSolidMenuTintRoundTripTest::RunTest(const FString& /*parameters*/)
             }
         }
     }
-    log.Report(*this, TEXT("tint round trip"));
-
-    // The disabled look decodes disabled only, even when the caller passed the selected flag
-    const FSOLSolidButtonLook disabledBack = SOLSolidMenu::DecodeButtonTint(SOLSolidMenu::EncodeButtonTint(
-        SOLSolidMenu::EvaluateButton(ESOLSolidButtonState::Disabled, ESOLSolidButtonState::Hovered,
-            SOLIDMENUTEST_SETTLED_S, 1.0f, true)));
-    TestTrue(TEXT("disabled decodes disabled"), disabledBack.bDisabled);
-    TestFalse(TEXT("disabled decodes no mark"), disabledBack.bSelectedMark);
-    TestFalse(TEXT("disabled decodes no pressed hull"), disabledBack.bPressedHull);
+    log.Report(*this, TEXT("tint round trip (the disabled look with the selected flag decodes disabled only)"));
     return true;
 }
 
@@ -1917,21 +1950,23 @@ bool FSOLSolidMenuTintDecodeTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("G 0 is enabled"), b.bDisabled);
     TestTrue(TEXT("B 1 is the mark"), b.bSelectedMark);
 
+    using namespace SOL::SolidMenu;
     const FSOLSolidButtonLook c = SOLSolidMenu::DecodeButtonTint(
-        FLinearColor(0.0f, 0.5f, 0.0f, SOL::SolidMenu::DISABLED_ALPHA));
-    TestTrue(TEXT("G 0.5 is disabled"), c.bDisabled);
-    TestFalse(TEXT("G 0.5 is no pressed hull"), c.bPressedHull);
-    TestFalse(TEXT("G 0.5 with B 0 is no mark"), c.bSelectedMark);
+        FLinearColor(0.0f, TINT_DISABLED_CODE, 0.0f, DISABLED_ALPHA));
+    TestTrue(TEXT("G the disabled code is disabled"), c.bDisabled);
+    TestFalse(TEXT("G the disabled code is no pressed hull"), c.bPressedHull);
+    TestFalse(TEXT("G the disabled code with B 0 is no mark"), c.bSelectedMark);
 
     // Alpha does not decide the disabled flag
-    TestTrue(TEXT("G 0.5 at A 1 is still disabled"),
-        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.5f, 0.0f, 1.0f)).bDisabled);
+    TestTrue(TEXT("G the disabled code at A 1 is still disabled"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, TINT_DISABLED_CODE, 0.0f, 1.0f)).bDisabled);
     TestFalse(TEXT("G 0 at A 0.3 (a fade) is enabled"),
         SOLSolidMenu::DecodeButtonTint(FLinearColor(0.4f, 0.0f, 0.0f, 0.3f)).bDisabled);
     TestFalse(TEXT("G 0 at A DISABLED_ALPHA is enabled"),
-        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.0f, SOL::SolidMenu::DISABLED_ALPHA)).bDisabled);
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.0f, DISABLED_ALPHA)).bDisabled);
 
-    // The G and B thresholds
+    // The G and B thresholds, either side of each (an epsilon well inside one 8-bit level)
+    const float eps = 1.0e-3f;
     struct FSample
     {
         float G;
@@ -1939,8 +1974,9 @@ bool FSOLSolidMenuTintDecodeTest::RunTest(const FString& /*parameters*/)
         bool bDisabled;
     };
     const FSample samples[] = {
-        { 0.24f, false, false }, { 0.25f, false, true }, { 0.5f, false, true }, { 0.74f, false, true },
-        { 0.75f, true, false }, { 0.9f, true, false } };
+        { 0.0f, false, false }, { TINT_DISABLED_G_MIN - eps, false, false }, { TINT_DISABLED_G_MIN, false, true },
+        { TINT_DISABLED_CODE, false, true }, { TINT_PRESSED_G_MIN - eps, false, true },
+        { TINT_PRESSED_G_MIN, true, false }, { 1.0f, true, false } };
     for (const FSample& sample : samples)
     {
         const FSOLSolidButtonLook look = SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, sample.G, 0.0f, 1.0f));
@@ -1948,19 +1984,19 @@ bool FSOLSolidMenuTintDecodeTest::RunTest(const FString& /*parameters*/)
             look.bPressedHull == sample.bPressed);
         TestTrue(FString::Printf(TEXT("G %f disabled as expected"), sample.G), look.bDisabled == sample.bDisabled);
     }
-    TestTrue(TEXT("B 0.5 is the mark"),
-        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.5f, 1.0f)).bSelectedMark);
-    TestFalse(TEXT("B 0.49 is no mark"),
-        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, 0.49f, 1.0f)).bSelectedMark);
+    TestTrue(TEXT("B at TINT_MARK_B_MIN is the mark"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, TINT_MARK_B_MIN, 1.0f)).bSelectedMark);
+    TestFalse(TEXT("B just below TINT_MARK_B_MIN is no mark"),
+        SOLSolidMenu::DecodeButtonTint(FLinearColor(0.0f, 0.0f, TINT_MARK_B_MIN - eps, 1.0f)).bSelectedMark);
     return true;
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuTintDisabledTest, "SOLTest.SolidMenu.Tint.DisabledCode",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// A disabled button's tint has G = 0.5 (the disabled code) and A = DISABLED_ALPHA (a continuous dim), both 8-bit
-// quantized, R and B 0 even when the caller passed bSelected, and decodes disabled with no mark and no pressed hull;
-// an enabled one has A 1 and G 0
+// A disabled button's tint has G = TINT_DISABLED_CODE and A = DISABLED_ALPHA (a continuous dim), both 8-bit
+// quantized, R and B 0 even when the caller passed bSelected (its decode is in Tint.RoundTrip, an enabled tint's A and
+// G in Tint.Encode)
 bool FSOLSolidMenuTintDisabledTest::RunTest(const FString& /*parameters*/)
 {
     const bool flags[] = { false, true };
@@ -1975,25 +2011,16 @@ bool FSOLSolidMenuTintDisabledTest::RunTest(const FString& /*parameters*/)
                 SOLIDMENUTEST_SETTLED_S, 1.0f, bFlag);
             TestTrue(label + TEXT(": the disabled look is flagged"), disabled.bDisabled);
             const FLinearColor tint = SOLSolidMenu::EncodeButtonTint(disabled);
-            TestEqual(label + TEXT(": disabled G"), tint.G, 0.5f, SOLIDMENUTEST_QUANT_TOLERANCE);
+            TestEqual(label + TEXT(": disabled G"), tint.G, SOL::SolidMenu::TINT_DISABLED_CODE,
+                SOLIDMENUTEST_QUANT_TOLERANCE);
             TestTrue(label + TEXT(": disabled G on the 8-bit grid"), SolidMenuTestOn8BitGrid(tint.G));
             TestEqual(label + TEXT(": disabled A"), tint.A, SOL::SolidMenu::DISABLED_ALPHA,
                 SOLIDMENUTEST_QUANT_TOLERANCE);
             TestTrue(label + TEXT(": disabled A on the 8-bit grid"), SolidMenuTestOn8BitGrid(tint.A));
             TestEqual(label + TEXT(": disabled R"), tint.R, 0.0f);
             TestEqual(label + TEXT(": disabled B"), tint.B, 0.0f);
-
-            const FSOLSolidButtonLook back = SOLSolidMenu::DecodeButtonTint(tint);
-            TestTrue(label + TEXT(": decodes disabled"), back.bDisabled);
-            TestFalse(label + TEXT(": decodes no mark"), back.bSelectedMark);
-            TestFalse(label + TEXT(": decodes no pressed hull"), back.bPressedHull);
         }
     }
-
-    const FLinearColor normal = SOLSolidMenu::EncodeButtonTint(SOLSolidMenu::EvaluateButton(
-        ESOLSolidButtonState::Normal, ESOLSolidButtonState::Normal, SOLIDMENUTEST_SETTLED_S, 1.0f));
-    TestEqual(TEXT("normal A"), normal.A, 1.0f);
-    TestEqual(TEXT("normal G"), normal.G, 0.0f);
     return true;
 }
 
@@ -2365,6 +2392,61 @@ bool FSOLSolidMenuPolylineZeroTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("a null path returns 0"),
         SOLSolidMenu::TracePolyline(nullptr, 0, 1.0f, out, SOLIDMENUTEST_OUT_SIZE), 0);
     TestEqual(TEXT("too few points write nothing"), SolidMenuTestSentinelsFrom(out, 0), SOLIDMENUTEST_OUT_SIZE);
+
+    // (46i) A NaN fraction reads as none, a null output buffer and a path with no length return 0
+    SolidMenuTestFillSentinel(out);
+    TestEqual(TEXT("a NaN fraction returns 0"),
+        SOLSolidMenu::TracePolyline(path, 3, SOLIDMENUTEST_NAN, out, SOLIDMENUTEST_OUT_SIZE), 0);
+    TestEqual(TEXT("a null output buffer returns 0"), SOLSolidMenu::TracePolyline(path, 3, 1.0f, nullptr, 8), 0);
+    const FVector2f still[] = { FVector2f(5.0f, 5.0f), FVector2f(5.0f, 5.0f), FVector2f(5.0f, 5.0f) };
+    TestEqual(TEXT("a path with no length returns 0"),
+        SOLSolidMenu::TracePolyline(still, 3, 1.0f, out, SOLIDMENUTEST_OUT_SIZE), 0);
+    TestEqual(TEXT("NaN and no length write nothing"), SolidMenuTestSentinelsFrom(out, 0), SOLIDMENUTEST_OUT_SIZE);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPolylineZeroSegmentTest, "SOLTest.SolidMenu.Trace.PolylineZeroSegment",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i) A zero-length segment inside a path (a repeated point) adds no length and no NaN: a path (0, 0) - (10, 0) -
+// (10, 0) - (10, 10), 20 long, cut at 0.5 ends at (10, 0) and at 0.75 at (10, 5), every written point finite
+bool FSOLSolidMenuPolylineZeroSegmentTest::RunTest(const FString& /*parameters*/)
+{
+    const FVector2f path[] = {
+        FVector2f(0.0f, 0.0f), FVector2f(10.0f, 0.0f), FVector2f(10.0f, 0.0f), FVector2f(10.0f, 10.0f) };
+    struct FCut
+    {
+        float Fraction;
+        FVector2f End;
+        float Length;
+    };
+    const FCut cuts[] = {
+        { 0.25f, FVector2f(5.0f, 0.0f), 5.0f },
+        { 0.5f, FVector2f(10.0f, 0.0f), 10.0f },
+        { 0.75f, FVector2f(10.0f, 5.0f), 15.0f },
+        { 1.0f, FVector2f(10.0f, 10.0f), 20.0f },
+    };
+    FVector2f out[SOLIDMENUTEST_OUT_SIZE];
+    for (const FCut& cut : cuts)
+    {
+        SolidMenuTestFillSentinel(out);
+        const int32 count = SOLSolidMenu::TracePolyline(path, 4, cut.Fraction, out, SOLIDMENUTEST_OUT_SIZE);
+        const FString label = FString::Printf(TEXT("fraction %f"), cut.Fraction);
+        if (!TestTrue(label + TEXT(": a drawable line of at most 4 points"), count >= 2 && count <= 4))
+        {
+            continue;
+        }
+        bool bFinite = true;
+        for (int32 index = 0; index < count; ++index)
+        {
+            bFinite = bFinite && FMath::IsFinite(out[index].X) && FMath::IsFinite(out[index].Y);
+        }
+        TestTrue(label + TEXT(": every point finite"), bFinite);
+        SolidMenuTestPointEqual(*this, label + TEXT(": the start"), out[0], path[0]);
+        SolidMenuTestPointEqual(*this, label + TEXT(": the end"), out[count - 1], cut.End);
+        TestEqual(label + TEXT(": the length"), SolidMenuTestPolylineLength(out, count), cut.Length,
+            SOLIDMENUTEST_PX_TOLERANCE);
+    }
     return true;
 }
 
@@ -3083,6 +3165,112 @@ bool FSOLSolidMenuPanelAnimMonotonicTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimBoundaryTest, "SOLTest.SolidMenu.PanelAnim.ReverseAtBoundaries",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i) Reversals at a phase's boundaries: on the same nowS as the start (an open reversed at once closes from 0, a
+// close reversed at once opens from 1), and at the phase's end before AdvancePanel ran (Opening at 1 closes from 1,
+// Closing at 0 opens from 0), each then running its full duration
+bool FSOLSolidMenuPanelAnimBoundaryTest::RunTest(const FString& /*parameters*/)
+{
+    const double open = SOL::SolidMenu::PANEL_OPEN_S;
+    const double close = SOL::SolidMenu::CLOSE_S;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    // An open reversed on its start time: a close from 0, finished on the same nowS
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f);
+    TestTrue(TEXT("a close on the open's start time starts"), SOLSolidMenu::BeginPanelClose(anim, t0, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Closing after the instant reversal"), anim, ESOLHoloMenuPhase::Closing);
+    TestEqual(TEXT("the close starts from 0"), anim.PhaseStartProgress, 0.0f, tol);
+    TestEqual(TEXT("0 on the same nowS"), SOLSolidMenu::PanelProgress(anim, t0, 1.0f), 0.0f, tol);
+    SOLSolidMenu::AdvancePanel(anim, t0, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Closed on the same nowS"), anim, ESOLHoloMenuPhase::Closed);
+
+    // A close reversed on its start time: an open from 1, finished on the same nowS
+    anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, 0.0, 1.0f);
+    SOLSolidMenu::BeginPanelClose(anim, t0, 1.0f);
+    TestTrue(TEXT("an open on the close's start time starts"), SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f));
+    SolidMenuTestPanelPhase(*this, TEXT("Opening after the instant reversal"), anim, ESOLHoloMenuPhase::Opening);
+    TestEqual(TEXT("the open starts from 1"), anim.PhaseStartProgress, 1.0f, tol);
+    SOLSolidMenu::AdvancePanel(anim, t0, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Open on the same nowS"), anim, ESOLHoloMenuPhase::Open);
+
+    // An open at its end, not yet advanced: a second open is refused, a close runs from 1 over the whole CLOSE_S
+    anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f);
+    const double openEnd = t0 + open;
+    TestFalse(TEXT("an open at the open's end is refused"), SOLSolidMenu::BeginPanelOpen(anim, openEnd, 1.0f));
+    TestTrue(TEXT("a close at the open's end starts"), SOLSolidMenu::BeginPanelClose(anim, openEnd, 1.0f));
+    TestEqual(TEXT("the close starts from 1"), anim.PhaseStartProgress, 1.0f, tol);
+    TestEqual(TEXT("half closed half a CLOSE_S later"), SOLSolidMenu::PanelProgress(anim, openEnd + 0.5 * close, 1.0f),
+        0.5f, tol);
+    SOLSolidMenu::AdvancePanel(anim, openEnd + 0.5 * close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Closing half way"), anim, ESOLHoloMenuPhase::Closing);
+    SOLSolidMenu::AdvancePanel(anim, openEnd + close, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Closed a whole CLOSE_S later"), anim, ESOLHoloMenuPhase::Closed);
+
+    // A close at its end, not yet advanced: a second close is refused, an open runs from 0 over the whole PANEL_OPEN_S
+    anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Open, 0.0, 1.0f);
+    SOLSolidMenu::BeginPanelClose(anim, t0, 1.0f);
+    const double closeEnd = t0 + close;
+    TestFalse(TEXT("a close at the close's end is refused"), SOLSolidMenu::BeginPanelClose(anim, closeEnd, 1.0f));
+    TestTrue(TEXT("an open at the close's end starts"), SOLSolidMenu::BeginPanelOpen(anim, closeEnd, 1.0f));
+    TestEqual(TEXT("the open starts from 0"), anim.PhaseStartProgress, 0.0f, tol);
+    TestEqual(TEXT("half open half a PANEL_OPEN_S later"),
+        SOLSolidMenu::PanelProgress(anim, closeEnd + 0.5 * open, 1.0f), 0.5f, tol);
+    SOLSolidMenu::AdvancePanel(anim, closeEnd + 0.5 * open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("still Opening half way"), anim, ESOLHoloMenuPhase::Opening);
+    SOLSolidMenu::AdvancePanel(anim, closeEnd + open, 1.0f);
+    SolidMenuTestPanelPhase(*this, TEXT("Open a whole PANEL_OPEN_S later"), anim, ESOLHoloMenuPhase::Open);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuPanelAnimDurationTest, "SOLTest.SolidMenu.PanelAnim.DurationForms",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i) The explicit-duration forms with two distinct durations (open 0.5 s, close 0.125 s, exact in binary): an open
+// is 0.25 after 0.125 s, a close 0.5 after 0.0625 s, a reopen mid-close continues from there at the open rate, and
+// AdvancePanel finishes each at its own duration (so the open / close arguments are not swapped anywhere)
+bool FSOLSolidMenuPanelAnimDurationTest::RunTest(const FString& /*parameters*/)
+{
+    const double openS = 0.5;
+    const double closeS = 0.125;
+    const double t0 = SOLIDMENUTEST_PANEL_T0_S;
+    const float tol = SOLIDMENUTEST_TOLERANCE;
+
+    FSOLHoloMenuAnim anim = SolidMenuTestPanelAnim(ESOLHoloMenuPhase::Closed, 0.0, 0.0f);
+    TestTrue(TEXT("the open starts"), SOLSolidMenu::BeginPanelOpen(anim, t0, 1.0f, openS, closeS));
+    TestEqual(TEXT("0.25 after 0.125 s"), SOLSolidMenu::PanelProgress(anim, t0 + 0.125, 1.0f, openS, closeS), 0.25f,
+        tol);
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.375, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("still Opening after 0.375 s"), anim, ESOLHoloMenuPhase::Opening);
+    SOLSolidMenu::AdvancePanel(anim, t0 + 0.5, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("Open after 0.5 s"), anim, ESOLHoloMenuPhase::Open);
+
+    const double t1 = t0 + 1.0;
+    TestTrue(TEXT("the close starts"), SOLSolidMenu::BeginPanelClose(anim, t1, 1.0f, openS, closeS));
+    TestEqual(TEXT("0.5 after 0.0625 s"), SOLSolidMenu::PanelProgress(anim, t1 + 0.0625, 1.0f, openS, closeS), 0.5f,
+        tol);
+    TestTrue(TEXT("a reopen mid-close starts"), SOLSolidMenu::BeginPanelOpen(anim, t1 + 0.0625, 1.0f, openS, closeS));
+    TestEqual(TEXT("the reopen starts from 0.5"), anim.PhaseStartProgress, 0.5f, tol);
+    TestEqual(TEXT("0.75 another 0.125 s on"), SOLSolidMenu::PanelProgress(anim, t1 + 0.1875, 1.0f, openS, closeS),
+        0.75f, tol);
+    SOLSolidMenu::AdvancePanel(anim, t1 + 0.1875, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("still Opening at 0.75"), anim, ESOLHoloMenuPhase::Opening);
+    SOLSolidMenu::AdvancePanel(anim, t1 + 0.3125, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("Open 0.25 s after the reopen"), anim, ESOLHoloMenuPhase::Open);
+
+    const double t2 = t0 + 2.0;
+    SOLSolidMenu::BeginPanelClose(anim, t2, 1.0f, openS, closeS);
+    SOLSolidMenu::AdvancePanel(anim, t2 + 0.1, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("still Closing after 0.1 s"), anim, ESOLHoloMenuPhase::Closing);
+    SOLSolidMenu::AdvancePanel(anim, t2 + 0.125, 1.0f, openS, closeS);
+    SolidMenuTestPanelPhase(*this, TEXT("Closed after 0.125 s"), anim, ESOLHoloMenuPhase::Closed);
+    return true;
+}
+
 // --- Power-up LED blink and idle pulse dot (46d, SDD 46 section 7) ---
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidMenuLedBlinkOrderTest, "SOLTest.SolidMenu.PowerUp.LedBlinkOrder",
@@ -3161,11 +3349,21 @@ bool FSOLSolidMenuPowerUpRunningTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("stopped long after"), SOLSolidMenu::IsPowerUpRunning(100.0, 1.0f));
     TestTrue(TEXT("a NaN elapsed time reads 0 (running)"), SOLSolidMenu::IsPowerUpRunning(SOLIDMENUTEST_NAN_D, 1.0f));
 
-    // Every LED's blink ends while the power-up still runs
+    // Every LED's blink happens while the power-up still runs: wherever an LED of 7 is lit, the power-up is running
     const int32 count = 7;
-    const double lastOffS = TRACE_POWER_DELAY_S + static_cast<double>(TRACE_POWER_S) * (count - 1) / count
-        + LED_BLINK_S;
-    TestTrue(TEXT("the last LED goes off before the end"), lastOffS <= endS);
+    FSOLSolidMenuSweepLog log;
+    for (int32 step = 0; step <= 200; ++step)
+    {
+        const double t = endS * static_cast<double>(step) / 200.0;
+        for (int32 index = 0; index < count; ++index)
+        {
+            if (SOLSolidMenu::PowerUpLedLit(index, count, t, 1.0f) && !SOLSolidMenu::IsPowerUpRunning(t, 1.0f))
+            {
+                log.Fail(FString::Printf(TEXT("LED %d lit at %f after the power-up ended"), index, t));
+            }
+        }
+    }
+    log.Report(*this, TEXT("an LED blinks only while the power-up runs"));
     return true;
 }
 

@@ -25,7 +25,6 @@
 #include "Components/Border.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
-#include "Components/Image.h"
 #include "Components/ScrollBox.h"
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
@@ -34,7 +33,6 @@
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 #include "Components/WidgetSwitcher.h"
-#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Input/Events.h"
 #include "Misc/EngineVersion.h"
@@ -43,25 +41,6 @@ namespace
 {
     // Both panels slide in from the left (the column from the screen edge, the shell from the column)
     const FVector2f MAIN_MENU_SLIDE_DIRECTION(-1.0f, 0.0f);
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the hazard stripe's brush: T_SOLSolidHazard (a stripe mask) tiled along X in amber, the mask's black
-    // left black; a flat amber bar when the texture is missing (the palette colour, never the texture's)
-    FSlateBrush MainMenuHazardBrush(const USOLSolidMenuSubsystem* solid)
-    {
-        using namespace SOL::SolidMenu;
-        FSlateBrush brush;
-        UTexture2D* texture = solid != nullptr ? solid->GetTexture(ESOLSolidTexture::Hazard) : nullptr;
-        if (texture != nullptr)
-        {
-            brush.SetResourceObject(texture);
-            brush.Tiling = ESlateBrushTileType::Horizontal;
-        }
-        brush.DrawAs = ESlateBrushDrawType::Image;
-        brush.SetImageSize(FVector2f(HAZARD_TILE_WIDTH_PX, HAZARD_HEIGHT_PX));
-        brush.TintColor = FSlateColor(SOLSolidStyle::Linear(AMBER_COLOR));
-        return brush;
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -147,9 +126,7 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
         SOL::SolidMenu::COLUMN_WIDTH - PANEL_INSET_PX, mEntryTraces, mEntryLeds);
 
     // The hazard stripe under Quit, then the key hint
-    UImage* hazard = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("HazardStripe"));
-    hazard->SetBrush(MainMenuHazardBrush(solid));
-    column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, hazard, 0.0f, HAZARD_HEIGHT_PX));
+    column->AddChildToVerticalBox(SOLMenuContent::MakeHazardStripe(*WidgetTree, solid, TEXT("HazardStripe")));
     HintText = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::MAIN_MENU_HINT, SMALL_FONT_SIZE,
         SOLSolidStyle::DimTextColor(), false, true);
     column->AddChildToVerticalBox(HintText)->SetPadding(FMargin(0.0f, COLUMN_HINT_GAP, 0.0f, 0.0f));
@@ -511,18 +488,18 @@ void USOLMainMenuWidget::NativeTick(const FGeometry& geometry, const float delta
         && SettingsPage->IsHoverOnFocuslessControl();
     for (USOLMenuButton* button : EntryButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        button->RefreshHighlightAt(frame, bHoverElsewhere);
     }
     const bool bShellShown = mShellAnim.Phase != ESOLHoloMenuPhase::Closed;
     if (bShellShown && BackButton != nullptr)
     {
-        BackButton->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        BackButton->RefreshHighlightAt(frame, bHoverElsewhere);
     }
     if (bShellShown && GetShownPageIndex() == static_cast<int32>(ESOLMainMenuPage::StartLocation))
     {
         for (USOLMenuButton* button : BodyButtons)
         {
-            button->RefreshHighlightAt(frame.NowS, frame.Strength);
+            button->RefreshHighlightAt(frame);
         }
     }
 

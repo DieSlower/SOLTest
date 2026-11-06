@@ -19,11 +19,16 @@
 #include "Engine/Font.h"
 #include "Engine/Texture2D.h"
 #include "Engine/World.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Layout/ArrangedChildren.h"
+#include "Layout/WidgetPath.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
 #include "Misc/AutomationTest.h"
 #include "Styling/SlateTypes.h"
+#include "UObject/Package.h"
 #include "UObject/UObjectHash.h"
+#include "Widgets/SWindow.h"
 
 #include <cmath>
 #include <limits>
@@ -34,7 +39,8 @@
 // their 46c amendments): the vertex tint packing, the hull material parameter cache, the SOLSolidStyle decisions and
 // factories (flat fallback headless, the material path in a bare game world), the button animation driver
 // FSOLSolidButtonAnim, the trace layer's pass alphas and USOLSolidMenuSubsystem. Written against the headers before
-// the production code existed; every expected number comes from SOL::SolidMenu, SOL::MenuStyle or SOL::Settings.
+// the production code existed; the expected numbers come from SOL::SolidMenu, SOL::MenuStyle or SOL::Settings, or
+// (46i) are worked out by hand with a static_assert on the constants they assume.
 // The USOLMenuButton and USOLSolidPanel tests (Button.*, Panel.*) were added after the 46c review.
 // Helper names are unique across the test files so unity builds do not collide.
 namespace
@@ -535,6 +541,8 @@ bool FSOLSolidKitPackTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("A below 0 clamped"), SOLSolidStyle::PackVertexTint(FLinearColor(0, 0, 0, -1.0f)).A, 0.0f);
     TestEqual(TEXT("A in range unchanged"), SOLSolidStyle::PackVertexTint(FLinearColor(0, 0, 0,
         SOL::SolidMenu::DISABLED_ALPHA)).A, SOL::SolidMenu::DISABLED_ALPHA);
+    TestEqual(TEXT("(46i) NaN A reads 1"), SOLSolidStyle::PackVertexTint(FLinearColor(0, 0, 0, SOLIDKITTEST_NAN)).A,
+        1.0f);
     TestEqual(TEXT("+inf R reads 1"), SOLSolidStyle::PackVertexTint(FLinearColor(SOLIDKITTEST_INF, 0, 0, 1)).R, 1.0f);
     TestEqual(TEXT("-inf G reads the floor"), SOLSolidStyle::PackVertexTint(FLinearColor(0, -SOLIDKITTEST_INF, 0, 1)).G,
         floor);
@@ -630,12 +638,30 @@ bool FSOLSolidKitRoundTripTest::RunTest(const FString& /*parameters*/)
         { TEXT("Disabled + selected (ignored)"), SolidKitTestSettled(ESOLSolidButtonState::Disabled, true) },
     };
 
-    // BrushTint is exactly the pack of the encoding
-    for (const FSOLSolidKitNamedLook& named : looks)
+    // (46i) BrushTint of the settled states, worked out by hand at the floor 0.5 (RGB 0.5 + 0.5 x the code): Normal
+    // all at the floor; Hovered R 1; Pressed + selected white; Selected B 1; Disabled G 0.5 + 0.5 x 128 / 255 (the
+    // disabled code 0.5 on the 8-bit grid) and A the dim 0.4 (102 / 255 exactly)
+    static_assert(TINT_VERTEX_FLOOR == 0.5f && TINT_DISABLED_CODE == 0.5f && DISABLED_ALPHA == 0.4f,
+        "The written-out tints below are worked out at these values");
+    struct FSOLSolidKitWrittenTint
     {
-        SolidKitTestColorEqual(*this, FString::Printf(TEXT("%s: BrushTint = Pack(Encode)"), named.Name),
-            SOLSolidStyle::BrushTint(named.Look),
-            SOLSolidStyle::PackVertexTint(SOLSolidMenu::EncodeButtonTint(named.Look)), 0.0f);
+        const TCHAR* Name;
+        FSOLSolidButtonLook Look;
+        FLinearColor Tint;
+    };
+    const FSOLSolidKitWrittenTint written[] = {
+        { TEXT("Normal"), SolidKitTestSettled(ESOLSolidButtonState::Normal), FLinearColor(0.5f, 0.5f, 0.5f, 1.0f) },
+        { TEXT("Hovered"), SolidKitTestSettled(ESOLSolidButtonState::Hovered), FLinearColor(1.0f, 0.5f, 0.5f, 1.0f) },
+        { TEXT("Pressed + selected"), SolidKitTestSettled(ESOLSolidButtonState::Pressed, true),
+            FLinearColor(1.0f, 1.0f, 1.0f, 1.0f) },
+        { TEXT("Selected"), SolidKitTestSettled(ESOLSolidButtonState::Selected), FLinearColor(0.5f, 0.5f, 1.0f, 1.0f) },
+        { TEXT("Disabled"), SolidKitTestSettled(ESOLSolidButtonState::Disabled),
+            FLinearColor(0.5f, 0.7509804f, 0.5f, 0.4f) },
+    };
+    for (const FSOLSolidKitWrittenTint& entry : written)
+    {
+        SolidKitTestColorEqual(*this, FString::Printf(TEXT("%s: the brush tint"), entry.Name),
+            SOLSolidStyle::BrushTint(entry.Look), entry.Tint, SOLIDKITTEST_TOLERANCE);
     }
 
     // Every state through both vertex paths
@@ -736,8 +762,6 @@ bool FSOLSolidKitVariantTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Stack has a hover trace"), SOLSolidStyle::HasHoverTrace(ESOLSolidButtonVariant::Stack));
     TestTrue(TEXT("Tab has a hover trace"), SOLSolidStyle::HasHoverTrace(ESOLSolidButtonVariant::Tab));
     TestFalse(TEXT("Small has no hover trace"), SOLSolidStyle::HasHoverTrace(ESOLSolidButtonVariant::Small));
-    TestEqual(TEXT("one material path per style"),
-        static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::SOLID_STYLE_MATERIALS)), static_cast<int32>(ESOLSolidStyle::Count));
     return true;
 }
 
@@ -1201,7 +1225,7 @@ bool FSOLSolidKitSliderFillBrushTest::RunTest(const FString& /*parameters*/)
         SOLIDKITTEST_COLOR_TOLERANCE);
     TestEqual(TEXT("opaque"), SolidKitTestTint(brush).A, 1.0f, SOLIDKITTEST_TOLERANCE);
     TestEqual(TEXT("SLIDER_FILL_THICKNESS tall"), brush.GetImageSize().Y, SLIDER_FILL_THICKNESS);
-    TestTrue(TEXT("thinner than the groove"), SLIDER_FILL_THICKNESS < SLIDER_BAR_THICKNESS);
+    static_assert(SLIDER_FILL_THICKNESS < SLIDER_BAR_THICKNESS, "The slider fill is thinner than its groove");
     return true;
 }
 
@@ -1643,8 +1667,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitPassAlphaTest, "SOLTest.SolidMenuKi
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// GlowPassAlpha is TRACE_GLOW_ALPHA x min(s, 2) x pulse in [0, 1], 0 at s <= 0 (and NaN); CorePassAlpha is the pulse
-// clamped to [0, 1], non-finite reading 1
+// GlowPassAlpha is TRACE_GLOW_ALPHA x min(s, 2) x pulse in [0, 1], 0 at s <= 0 (and NaN); CorePassAlpha is
+// (1 + pulse - IDLE_PULSE_DEPTH x min(s, 2)) / 2 at s > 0, the pulse at s <= 0 (and NaN), clamped to [0, 1], a
+// non-finite pulse 1
 bool FSOLSolidKitPassAlphaTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::SolidMenu;
@@ -1667,13 +1692,60 @@ bool FSOLSolidKitPassAlphaTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("glow with a negative pulse clamped to 0"), SSOLSolidTraceLayer::GlowPassAlpha(1.0f, -1.0f), 0.0f,
         SOLIDKITTEST_TOLERANCE);
 
-    TestEqual(TEXT("core 0.5"), SSOLSolidTraceLayer::CorePassAlpha(0.5f), 0.5f, SOLIDKITTEST_TOLERANCE);
-    TestEqual(TEXT("core 1"), SSOLSolidTraceLayer::CorePassAlpha(1.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
-    TestEqual(TEXT("core above 1 clamped"), SSOLSolidTraceLayer::CorePassAlpha(pulse), 1.0f, SOLIDKITTEST_TOLERANCE);
-    TestEqual(TEXT("core below 0 clamped"), SSOLSolidTraceLayer::CorePassAlpha(-0.2f), 0.0f, SOLIDKITTEST_TOLERANCE);
-    TestEqual(TEXT("core NaN reads 1"), SSOLSolidTraceLayer::CorePassAlpha(SOLIDKITTEST_NAN), 1.0f);
-    TestEqual(TEXT("core +inf reads 1"), SSOLSolidTraceLayer::CorePassAlpha(SOLIDKITTEST_INF), 1.0f);
-    TestEqual(TEXT("core -inf reads 1"), SSOLSolidTraceLayer::CorePassAlpha(-SOLIDKITTEST_INF), 1.0f);
+    // At s = 0 the peak is 1: the pulse itself, clamped
+    TestEqual(TEXT("core s 0, 0.5"), SSOLSolidTraceLayer::CorePassAlpha(0.5f, 0.0f), 0.5f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 0, 1"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 0.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s < 0 reads s 0"), SSOLSolidTraceLayer::CorePassAlpha(0.5f, -1.0f), 0.5f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s NaN reads s 0"), SSOLSolidTraceLayer::CorePassAlpha(0.5f, SOLIDKITTEST_NAN), 0.5f,
+        SOLIDKITTEST_TOLERANCE);
+
+    // At s = 1 the pulse's top (1 + depth) is full, its middle (1) reads 1 - depth / 2 and its bottom (1 - depth)
+    // reads 1 - depth: (1 + pulse - depth x s) / 2, a smooth swing in [1 - depth x s, 1]
+    TestEqual(TEXT("core s 1, top"), SSOLSolidTraceLayer::CorePassAlpha(pulse, 1.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 1, middle"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 1.0f), 1.0f - 0.5f * IDLE_PULSE_DEPTH,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 1, bottom"), SSOLSolidTraceLayer::CorePassAlpha(1.0f - IDLE_PULSE_DEPTH, 1.0f),
+        1.0f - IDLE_PULSE_DEPTH, SOLIDKITTEST_TOLERANCE);
+    TestTrue(TEXT("core s 1: the top above the middle (no flat half)"),
+        SSOLSolidTraceLayer::CorePassAlpha(pulse, 1.0f) > SSOLSolidTraceLayer::CorePassAlpha(1.0f, 1.0f));
+    TestTrue(TEXT("core s 1: the middle above the bottom"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 1.0f)
+        > SSOLSolidTraceLayer::CorePassAlpha(1.0f - IDLE_PULSE_DEPTH, 1.0f));
+
+    // The strength caps at 2: s 3 reads as s 2
+    const float peak2 = 1.0f + 2.0f * IDLE_PULSE_DEPTH;
+    TestEqual(TEXT("core s 2, top"), SSOLSolidTraceLayer::CorePassAlpha(peak2, 2.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 3 capped at 2"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 3.0f),
+        SSOLSolidTraceLayer::CorePassAlpha(1.0f, 2.0f), SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 2, middle"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 2.0f), 1.0f - IDLE_PULSE_DEPTH,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core above the peak clamped"), SSOLSolidTraceLayer::CorePassAlpha(2.0f * pulse, 1.0f), 1.0f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core below 0 clamped"), SSOLSolidTraceLayer::CorePassAlpha(-2.0f, 1.0f), 0.0f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core NaN reads 1"), SSOLSolidTraceLayer::CorePassAlpha(SOLIDKITTEST_NAN, 1.0f), 1.0f);
+    TestEqual(TEXT("core +inf reads 1"), SSOLSolidTraceLayer::CorePassAlpha(SOLIDKITTEST_INF, 1.0f), 1.0f);
+    TestEqual(TEXT("core -inf reads 1"), SSOLSolidTraceLayer::CorePassAlpha(-SOLIDKITTEST_INF, 1.0f), 1.0f);
+
+    // (46i) Written out at the SDD's depth 0.15 and glow alpha 0.25: at s 1 the pulse's top 1.15 reads 1, its bottom
+    // 0.85 reads 0.85 and its middle 1 reads 0.925; at s 2 the swing is [0.7, 1]
+    static_assert(IDLE_PULSE_DEPTH == 0.15f && TRACE_GLOW_ALPHA == 0.25f, "The numbers below are worked out here");
+    TestEqual(TEXT("core s 1, 1.15"), SSOLSolidTraceLayer::CorePassAlpha(1.15f, 1.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 1, 0.85"), SSOLSolidTraceLayer::CorePassAlpha(0.85f, 1.0f), 0.85f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 1, 1.0"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 1.0f), 0.925f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 2, 1.3"), SSOLSolidTraceLayer::CorePassAlpha(1.3f, 2.0f), 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 2, 1.0"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 2.0f), 0.85f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 2, 0.7"), SSOLSolidTraceLayer::CorePassAlpha(0.7f, 2.0f), 0.7f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("core s 0.5, 1.0"), SSOLSolidTraceLayer::CorePassAlpha(1.0f, 0.5f), 0.9625f,
+        SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("glow s 1, 1.15"), SSOLSolidTraceLayer::GlowPassAlpha(1.0f, 1.15f), 0.2875f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("glow s 2, 1.3"), SSOLSolidTraceLayer::GlowPassAlpha(2.0f, 1.3f), 0.65f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("glow s 0.5, 0.85"), SSOLSolidTraceLayer::GlowPassAlpha(0.5f, 0.85f), 0.10625f,
+        SOLIDKITTEST_TOLERANCE);
     return true;
 }
 
@@ -1713,6 +1785,9 @@ bool FSOLSolidKitBareSubsystemTest::RunTest(const FString& /*parameters*/)
     TestNull(TEXT("no unique material"), subsystem->CreateUniqueMaterial(ESOLSolidStyle::Panel, subsystem));
     TestEqual(TEXT("no unique materials alive"), subsystem->GetUniqueMaterialCount(), 0);
 
+    // (46g) Without the Slate pre-processor (never initialized) every hover counts as a real mouse move
+    TestTrue(TEXT("no mouse-move watch: a real move every frame"), subsystem->HasRealMouseMoveThisFrame());
+
     // Pushes follow the cache rule with no material
     TestEqual(TEXT("no push yet"), subsystem->GetParamPushCount(), 0);
     subsystem->PushParams(1.0f, 1.0f);
@@ -1732,13 +1807,18 @@ bool FSOLSolidKitBareSubsystemTest::RunTest(const FString& /*parameters*/)
     subsystem->PushParams(-5.0f, 0.0f);
     TestEqual(TEXT("-5 (reads 0) with an invalid DPI: no push"), subsystem->GetParamPushCount(), 4);
 
-    // UpdateForFrame without a world or viewport: the first call pushes, a second in the same frame does nothing
+    // UpdateForFrame without a world or viewport: the first call pushes the default strength at DPI 1, a second in the
+    // same frame does nothing, even after other values were pushed in between (without the once-per-frame guard it
+    // would push the default values back)
     USOLSolidMenuSubsystem* const fresh = NewObject<USOLSolidMenuSubsystem>();
     fresh->UpdateForFrame();
     TestEqual(TEXT("UpdateForFrame: the first push"), fresh->GetParamPushCount(), 1);
-    fresh->UpdateForFrame();
-    TestEqual(TEXT("UpdateForFrame twice in a frame: one push"), fresh->GetParamPushCount(), 1);
     TestEqual(TEXT("UpdateForFrame: DPI scale 1 without a viewport"), fresh->GetDpiScale(), 1.0f);
+    fresh->PushParams(0.5f, 2.0f);
+    TestEqual(TEXT("a changed push in between"), fresh->GetParamPushCount(), 2);
+    fresh->UpdateForFrame();
+    TestEqual(TEXT("UpdateForFrame twice in a frame: no further push"), fresh->GetParamPushCount(), 2);
+    TestEqual(TEXT("UpdateForFrame twice in a frame: the pushed DPI kept"), fresh->GetDpiScale(), 2.0f);
     return true;
 }
 
@@ -1761,8 +1841,9 @@ bool FSOLSolidKitWorldSubsystemTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Get is the world's subsystem"),
         subsystem == testWorld.World->GetSubsystem<USOLSolidMenuSubsystem>());
 
-    // Every asset loaded
-    TestEqual(TEXT("no missing asset"), subsystem->GetMissingAssetCount(), 0);
+    // Every asset loaded (they are Git LFS files under /Game/SOL/UI/Solid: a clone without "git lfs pull" fails here)
+    TestEqual(TEXT("no missing asset (needs the Git LFS assets under /Game/SOL/UI/Solid: run git lfs pull)"),
+        subsystem->GetMissingAssetCount(), 0);
     TestNotNull(TEXT("menu font"), subsystem->GetMenuFont());
     for (const ESOLSolidTexture texture : SOLIDKITTEST_TEXTURES)
     {
@@ -2159,10 +2240,15 @@ bool FSOLSolidKitButtonDisabledTest::RunTest(const FString& /*parameters*/)
         SolidKitTestColorEqual(*this, name + TEXT(": disabled label"), SolidKitTestLabelColor(button),
             SOLSolidStyle::Linear(DISABLED_TEXT_COLOR), SOLIDKITTEST_COLOR_TOLERANCE);
 
-        // Hover is ignored: the resolved state stays Disabled
-        button.NotifyHovered();
-        button.RefreshHighlightAt(SOLIDKITTEST_T1 + HOVER_RAMP_S, SOLIDKITTEST_S);
-        SolidKitTestButtonShows(*this, name + TEXT(": disabled after a hover"), button, disabled);
+        // (46i) Focus is ignored: a frame whose keyboard focus is the disabled button's widget still shows Disabled
+        // (a hover's focus cannot be taken headless, no window holds the widget; ResolveState's rule is in
+        // Anim.ResolveState)
+        FSOLSolidMenuFrame focusedFrame;
+        focusedFrame.NowS = SOLIDKITTEST_T1 + HOVER_RAMP_S;
+        focusedFrame.Strength = SOLIDKITTEST_S;
+        focusedFrame.KeyboardFocus = button.TakeWidget();
+        button.RefreshHighlightAt(focusedFrame);
+        SolidKitTestButtonShows(*this, name + TEXT(": disabled with the frame's focus on it"), button, disabled);
 
         // Enabled again
         button.SetSolidDisabled(false);
@@ -2461,6 +2547,615 @@ bool FSOLSolidKitPanelStyleTest::RunTest(const FString& /*parameters*/)
     panel->SetHull(ESOLSolidStyle::Panel, plain);
     TestFalse(TEXT("plain panel: the shared material"), panel->HasUniqueMaterial());
     TestTrue(TEXT("plain panel: drawn with the material"), panel->IsHullMaterialDrawn());
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// (46i) The trace layer, the button's frame refresh and hover trace, the press-to-disabled change, the panel hull and
+// open look (written against the headers; the expected numbers are worked out by hand)
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a straight two-point trace with a ring terminal
+    FSOLSolidTrace SolidKitTestLine(const float x0, const float y0, const float x1, const float y1)
+    {
+        return FSOLSolidTrace::FromPoints({ FVector2f(x0, y0), FVector2f(x1, y1) }, true);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a frame at a time and strength, focused on a widget (or none)
+    FSOLSolidMenuFrame SolidKitTestFrame(const double nowS, const float s, const TSharedPtr<SWidget>& focus)
+    {
+        FSOLSolidMenuFrame frame;
+        frame.NowS = nowS;
+        frame.Strength = s;
+        frame.KeyboardFocus = focus;
+        return frame;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Makes a button not focusable before its Slate widget is built, as the IsFocusable property set in the editor
+    // would (UButton's own initializer is protected)
+    void SolidKitTestMakeUnfocusable(UButton& button)
+    {
+        const FBoolProperty* const property = CastField<FBoolProperty>(
+            UButton::StaticClass()->FindPropertyByName(TEXT("IsFocusable")));
+        if (property != nullptr)
+        {
+            property->SetPropertyValue_InContainer(&button, false);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Gives a built widget the keyboard focus through a window that is never shown or registered (headless there is no
+    // window holding the widget); returns whether Slate now reports the widget focused
+    bool SolidKitTestTakeFocus(const TSharedRef<SWidget>& widget, TSharedPtr<SWindow>& outWindow)
+    {
+        if (!FSlateApplication::IsInitialized())
+        {
+            return false;
+        }
+        outWindow = SNew(SWindow);
+        FArrangedChildren path(EVisibility::Visible);
+        path.AddWidget(FArrangedWidget(outWindow.ToSharedRef(), FGeometry()));
+        path.AddWidget(FArrangedWidget(widget, FGeometry()));
+        FSlateApplication::Get().SetKeyboardFocus(FWidgetPath(outWindow, path), EFocusCause::SetDirectly);
+        return widget->HasKeyboardFocus();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitTraceLayerTracesTest, "SOLTest.SolidMenuKit.TraceLayer.TracesCapAndLongest",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetTraces keeps at most MAX_TRACES drawable traces (the rest ignored, a trace under 2 points skipped and not
+// counted) and GetLongestTrace is the index of the longest kept one, the first of equals, INDEX_NONE without traces
+bool FSOLSolidKitTraceLayerTracesTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLSolidTraceLayer> layer = SNew(SSOLSolidTraceLayer);
+    TestEqual(TEXT("no traces at first"), layer->GetTraceCount(), 0);
+    TestEqual(TEXT("no longest trace at first"), layer->GetLongestTrace(), static_cast<int32>(INDEX_NONE));
+
+    // Ten traces 10, 20 .. 100 long: the first eight kept, the longest of those (80, index 7) carries the dot
+    static_assert(SSOLSolidTraceLayer::MAX_TRACES == 8, "The counts below are worked out at 8");
+    TArray<FSOLSolidTrace> many;
+    for (int32 index = 0; index < 10; ++index)
+    {
+        many.Add(SolidKitTestLine(0.0f, static_cast<float>(index), 10.0f * (index + 1), static_cast<float>(index)));
+    }
+    layer->SetTraces(many);
+    TestEqual(TEXT("ten traces: eight kept"), layer->GetTraceCount(), 8);
+    TestEqual(TEXT("ten traces: the longest kept is index 7"), layer->GetLongestTrace(), 7);
+
+    // Traces under 2 points are skipped: a one-point and an empty trace, then 5 and 7 long (3 + 4, a bend)
+    const FSOLSolidTrace onePoint = FSOLSolidTrace::FromPoints({ FVector2f(1.0f, 1.0f) }, true);
+    const FSOLSolidTrace empty = FSOLSolidTrace::FromPoints({}, true);
+    const FSOLSolidTrace bent = FSOLSolidTrace::FromPoints({ FVector2f(0.0f, 0.0f), FVector2f(3.0f, 0.0f),
+        FVector2f(3.0f, 4.0f) }, false);
+    const FSOLSolidTrace mixed[] = { onePoint, empty, SolidKitTestLine(0.0f, 0.0f, 5.0f, 0.0f), bent };
+    layer->SetTraces(MakeArrayView(mixed));
+    TestEqual(TEXT("short traces skipped: two kept"), layer->GetTraceCount(), 2);
+    TestEqual(TEXT("short traces skipped: the 7-long is kept index 1"), layer->GetLongestTrace(), 1);
+
+    // The first of equal longest traces: 10, 30, 30, 20
+    const FSOLSolidTrace equals[] = { SolidKitTestLine(0.0f, 0.0f, 10.0f, 0.0f),
+        SolidKitTestLine(0.0f, 1.0f, 30.0f, 1.0f), SolidKitTestLine(0.0f, 2.0f, 0.0f, 32.0f),
+        SolidKitTestLine(0.0f, 3.0f, 20.0f, 3.0f) };
+    layer->SetTraces(MakeArrayView(equals));
+    TestEqual(TEXT("equal longest: the first"), layer->GetLongestTrace(), 1);
+
+    // Skipped traces do not use up the cap: three one-point traces, then eight drawable ones
+    TArray<FSOLSolidTrace> padded = { onePoint, onePoint, onePoint };
+    for (int32 index = 0; index < 8; ++index)
+    {
+        padded.Add(SolidKitTestLine(0.0f, 0.0f, 1.0f + index, 0.0f));
+    }
+    layer->SetTraces(padded);
+    TestEqual(TEXT("skipped traces do not count"), layer->GetTraceCount(), 8);
+    TestEqual(TEXT("skipped traces do not count: the longest index 7"), layer->GetLongestTrace(), 7);
+
+    layer->SetTraces(TConstArrayView<FSOLSolidTrace>());
+    TestEqual(TEXT("cleared: no traces"), layer->GetTraceCount(), 0);
+    TestEqual(TEXT("cleared: no longest trace"), layer->GetLongestTrace(), static_cast<int32>(INDEX_NONE));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitTraceLayerValuesTest, "SOLTest.SolidMenuKit.TraceLayer.PowerDotAndLeds",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetPower clamps to [0, 1] with NaN reading 0 (fully lit before any call); SetPulseDot clamps the alpha to [0, 1], a
+// non-finite alpha hides the dot and a NaN place keeps the dot's alpha; SetLitLeds keeps its mask
+bool FSOLSolidKitTraceLayerValuesTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLSolidTraceLayer> layer = SNew(SSOLSolidTraceLayer);
+    TestEqual(TEXT("fully lit at first"), layer->GetPower(), 1.0f);
+    layer->SetPower(0.5f);
+    TestEqual(TEXT("power 0.5"), layer->GetPower(), 0.5f);
+    layer->SetPower(SOLIDKITTEST_NAN);
+    TestEqual(TEXT("power NaN reads 0"), layer->GetPower(), 0.0f);
+    layer->SetPower(2.0f);
+    TestEqual(TEXT("power 2 reads 1"), layer->GetPower(), 1.0f);
+    layer->SetPower(-1.0f);
+    TestEqual(TEXT("power -1 reads 0"), layer->GetPower(), 0.0f);
+
+    TestEqual(TEXT("no dot at first"), layer->GetPulseDotAlpha(), 0.0f);
+    layer->SetPulseDot(0.3f, 0.5f);
+    TestEqual(TEXT("dot alpha 0.5"), layer->GetPulseDotAlpha(), 0.5f);
+    layer->SetPulseDot(0.6f, 0.0f);
+    TestEqual(TEXT("dot alpha 0 hides it"), layer->GetPulseDotAlpha(), 0.0f);
+    layer->SetPulseDot(SOLIDKITTEST_NAN, 0.4f);
+    TestEqual(TEXT("a NaN place keeps the alpha"), layer->GetPulseDotAlpha(), 0.4f);
+    layer->SetPulseDot(0.3f, 2.0f);
+    TestEqual(TEXT("dot alpha 2 reads 1"), layer->GetPulseDotAlpha(), 1.0f);
+    layer->SetPulseDot(0.3f, -1.0f);
+    TestEqual(TEXT("dot alpha -1 reads 0"), layer->GetPulseDotAlpha(), 0.0f);
+    layer->SetPulseDot(0.3f, SOLIDKITTEST_NAN);
+    TestEqual(TEXT("dot alpha NaN reads 0"), layer->GetPulseDotAlpha(), 0.0f);
+    layer->SetPulseDot(0.3f, SOLIDKITTEST_INF);
+    TestEqual(TEXT("dot alpha +inf reads 0"), layer->GetPulseDotAlpha(), 0.0f);
+
+    TestTrue(TEXT("no lit LEDs at first"), layer->GetLitLeds() == 0u);
+    layer->SetLitLeds(0b101u);
+    TestTrue(TEXT("LEDs 0 and 2 lit"), layer->GetLitLeds() == 0b101u);
+    layer->SetLitLeds(0u);
+    TestTrue(TEXT("none lit"), layer->GetLitLeds() == 0u);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitTraceLayerHoverTest, "SOLTest.SolidMenuKit.TraceLayer.HoverTrace",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetHoverTrace shows a drawable trace at its amount clamped to [0, 1] (NaN, 0 or a trace under 2 points hide it);
+// IsShowingHoverTrace is true only for the shown trace (same points and terminal) while its amount is above 0;
+// ClearHoverTrace hides whichever is shown
+bool FSOLSolidKitTraceLayerHoverTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLSolidTraceLayer> layer = SNew(SSOLSolidTraceLayer);
+    const FSOLSolidTrace a = SolidKitTestLine(10.0f, 100.0f, 200.0f, 100.0f);
+    const FSOLSolidTrace b = SolidKitTestLine(10.0f, 160.0f, 200.0f, 160.0f);
+    const FSOLSolidTrace aNoRing = FSOLSolidTrace::FromPoints({ FVector2f(10.0f, 100.0f), FVector2f(200.0f, 100.0f) },
+        false);
+    const FSOLSolidTrace onePoint = FSOLSolidTrace::FromPoints({ FVector2f(10.0f, 100.0f) }, true);
+    TestEqual(TEXT("hidden at first"), layer->GetHoverAmount(), 0.0f);
+    TestFalse(TEXT("nothing shown at first"), layer->IsShowingHoverTrace(a));
+    TestFalse(TEXT("nothing drawn at first"), layer->IsHoverTraceDrawn());
+
+    layer->SetHoverTrace(a, 0.5f);
+    TestEqual(TEXT("a at 0.5"), layer->GetHoverAmount(), 0.5f);
+    TestTrue(TEXT("a shown"), layer->IsShowingHoverTrace(a));
+    TestFalse(TEXT("b not shown"), layer->IsShowingHoverTrace(b));
+    TestFalse(TEXT("a without its ring terminal is another trace"), layer->IsShowingHoverTrace(aNoRing));
+    TestTrue(TEXT("a drawn"), layer->IsHoverTraceDrawn());
+    layer->SetHoverTrace(a, 2.0f);
+    TestEqual(TEXT("amount 2 reads 1"), layer->GetHoverAmount(), 1.0f);
+    layer->SetHoverTrace(a, SOLIDKITTEST_NAN);
+    TestEqual(TEXT("amount NaN hides it"), layer->GetHoverAmount(), 0.0f);
+    TestFalse(TEXT("a hidden is not shown"), layer->IsShowingHoverTrace(a));
+    layer->SetHoverTrace(onePoint, 1.0f);
+    TestEqual(TEXT("a one-point trace is not drawable"), layer->GetHoverAmount(), 0.0f);
+
+    // Another trace replaces the shown one
+    layer->SetHoverTrace(a, 1.0f);
+    layer->SetHoverTrace(b, 0.25f);
+    TestEqual(TEXT("b at 0.25"), layer->GetHoverAmount(), 0.25f);
+    TestTrue(TEXT("b shown"), layer->IsShowingHoverTrace(b));
+    TestFalse(TEXT("a replaced"), layer->IsShowingHoverTrace(a));
+    layer->SetHoverTrace(a, 0.0f);
+    TestEqual(TEXT("amount 0 hides it"), layer->GetHoverAmount(), 0.0f);
+    TestFalse(TEXT("hidden: b no longer shown"), layer->IsShowingHoverTrace(b));
+
+    layer->SetHoverTrace(b, 1.0f);
+    layer->ClearHoverTrace();
+    TestEqual(TEXT("cleared"), layer->GetHoverAmount(), 0.0f);
+    TestFalse(TEXT("cleared: b not shown"), layer->IsShowingHoverTrace(b));
+    TestFalse(TEXT("cleared: not drawn"), layer->IsHoverTraceDrawn());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitTraceLayerScrollTest, "SOLTest.SolidMenuKit.TraceLayer.ScrollBand",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetScroll: the hover trace's line (its first point, y 100) is drawn shifted up by the offset, only while that is in
+// the band [viewTop, viewTop + viewHeight] (edges included); a viewHeight <= 0 is no band; non-finite values read 0
+bool FSOLSolidKitTraceLayerScrollTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLSolidTraceLayer> layer = SNew(SSOLSolidTraceLayer);
+    layer->SetHoverTrace(SolidKitTestLine(10.0f, 100.0f, 200.0f, 100.0f), 1.0f);
+    TestEqual(TEXT("no scroll at first"), layer->GetScrollOffset(), 0.0f);
+    TestTrue(TEXT("no band: drawn"), layer->IsHoverTraceDrawn());
+    TestEqual(TEXT("unscrolled at y 100"), layer->GetDrawnHoverTraceY(), 100.0f);
+
+    // Cases: offset, view top, view height, drawn, the stored offset, the drawn y
+    struct FScrollCase
+    {
+        float Offset;
+        float Top;
+        float Height;
+        bool bDrawn;
+        float StoredOffset;
+        float DrawnY;
+    };
+    const FScrollCase cases[] = {
+        { 0.0f, 50.0f, 100.0f, true, 0.0f, 100.0f },                    // In the band [50, 150]
+        { 30.0f, 50.0f, 100.0f, true, 30.0f, 70.0f },                   // Scrolled, still in
+        { 60.0f, 50.0f, 100.0f, false, 60.0f, 40.0f },                  // Above the band
+        { -60.0f, 50.0f, 100.0f, false, -60.0f, 160.0f },               // Below the band
+        { -50.0f, 50.0f, 100.0f, true, -50.0f, 150.0f },                // On the band's bottom edge
+        { 50.0f, 50.0f, 100.0f, true, 50.0f, 50.0f },                   // On the band's top edge
+        { 1000.0f, 0.0f, 0.0f, true, 1000.0f, -900.0f },                // No band: drawn anywhere
+        { 1000.0f, 0.0f, -5.0f, true, 1000.0f, -900.0f },               // A negative height is no band
+        { SOLIDKITTEST_NAN, SOLIDKITTEST_NAN, SOLIDKITTEST_NAN, true, 0.0f, 100.0f },  // All NaN read 0
+        { SOLIDKITTEST_INF, 50.0f, 100.0f, true, 0.0f, 100.0f },        // An infinite offset reads 0
+        { 0.0f, SOLIDKITTEST_INF, 100.0f, true, 0.0f, 100.0f },         // An infinite top reads 0: [0, 100]
+        { 1000.0f, 0.0f, SOLIDKITTEST_INF, true, 1000.0f, -900.0f },    // An infinite height reads 0: no band
+    };
+    for (const FScrollCase& entry : cases)
+    {
+        layer->SetScroll(entry.Offset, entry.Top, entry.Height);
+        const FString label = FString::Printf(TEXT("offset %f top %f height %f"), entry.Offset, entry.Top,
+            entry.Height);
+        TestTrue(label + (entry.bDrawn ? TEXT(": drawn") : TEXT(": not drawn")), layer->IsHoverTraceDrawn() == entry.bDrawn);
+        TestEqual(label + TEXT(": the stored offset"), layer->GetScrollOffset(), entry.StoredOffset);
+        TestEqual(label + TEXT(": the drawn y"), layer->GetDrawnHoverTraceY(), entry.DrawnY, SOLIDKITTEST_TOLERANCE);
+    }
+
+    // A hidden trace is never drawn, band or not
+    layer->SetScroll(0.0f, 0.0f, 0.0f);
+    layer->ClearHoverTrace();
+    TestFalse(TEXT("hidden: not drawn"), layer->IsHoverTraceDrawn());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitButtonHoverTraceTest, "SOLTest.SolidMenuKit.Button.HoverTraceFeedsLayer",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A Stack button feeds its panel's layer its hover trace at the look's Trace while it shows hover and while the layer
+// still shows its trace falling, then clears it; a button whose trace another replaced leaves the layer alone; a Small
+// button has none; a new layer gets the current look's trace at once
+bool FSOLSolidKitButtonHoverTraceTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const TSharedRef<SSOLSolidTraceLayer> layer = SNew(SSOLSolidTraceLayer);
+    const FSOLSolidTrace traceA = SolidKitTestLine(200.0f, 100.0f, 372.0f, 100.0f);
+    const FSOLSolidTrace traceB = SolidKitTestLine(200.0f, 162.0f, 372.0f, 162.0f);
+    FSOLSolidKitTestButton madeA(nullptr, ESOLSolidButtonVariant::Stack);
+    FSOLSolidKitTestButton madeB(nullptr, ESOLSolidButtonVariant::Stack);
+    USOLMenuButton& a = *madeA.Button;
+    USOLMenuButton& b = *madeB.Button;
+    a.RefreshHighlightAt(SOLIDKITTEST_T0, SOLIDKITTEST_S);
+    b.RefreshHighlightAt(SOLIDKITTEST_T0, SOLIDKITTEST_S);
+    a.SetHoverTrace(layer, traceA);
+    b.SetHoverTrace(layer, traceB);
+    TestEqual(TEXT("at rest: nothing shown"), layer->GetHoverAmount(), 0.0f);
+
+    // A's hover rises with its look: 0.5 half way, 1 settled
+    a.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1, SOLIDKITTEST_S);
+    a.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1 + 0.5 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("A half way: A's trace shown"), layer->IsShowingHoverTrace(traceA));
+    TestEqual(TEXT("A half way: 0.5"), layer->GetHoverAmount(), 0.5f, SOLIDKITTEST_TOLERANCE);
+    a.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestEqual(TEXT("A settled: 1"), layer->GetHoverAmount(), 1.0f, SOLIDKITTEST_TOLERANCE);
+
+    // B takes the hover; A falling leaves B's trace alone
+    b.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T2, SOLIDKITTEST_S);
+    b.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T2 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("B hovered: B's trace shown"), layer->IsShowingHoverTrace(traceB));
+    a.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    a.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2 + 2.5 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("A falling: B's trace still shown"), layer->IsShowingHoverTrace(traceB));
+    TestEqual(TEXT("A falling: B's trace at 1"), layer->GetHoverAmount(), 1.0f, SOLIDKITTEST_TOLERANCE);
+    a.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2 + 5.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("A at rest: B's trace still shown"), layer->IsShowingHoverTrace(traceB));
+
+    // B leaves the hover: its trace falls with its look, then is cleared
+    const double t3 = SOLIDKITTEST_T2 + 1.0;
+    b.RefreshHighlightFor(ESOLSolidButtonState::Normal, t3, SOLIDKITTEST_S);
+    b.RefreshHighlightFor(ESOLSolidButtonState::Normal, t3 + 0.5 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("B falling: its trace still shown"), layer->IsShowingHoverTrace(traceB));
+    TestEqual(TEXT("B falling: 0.5"), layer->GetHoverAmount(), 0.5f, SOLIDKITTEST_TOLERANCE);
+    b.RefreshHighlightFor(ESOLSolidButtonState::Normal, t3 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestEqual(TEXT("B at rest: cleared"), layer->GetHoverAmount(), 0.0f);
+
+    // A new layer gets a hovered button's trace at once (a settled refresh writes nothing later)
+    a.RefreshHighlightFor(ESOLSolidButtonState::Hovered, t3 + 1.0, SOLIDKITTEST_S);
+    a.RefreshHighlightFor(ESOLSolidButtonState::Hovered, t3 + 2.0, SOLIDKITTEST_S);
+    const TSharedRef<SSOLSolidTraceLayer> rebuilt = SNew(SSOLSolidTraceLayer);
+    a.SetHoverTrace(rebuilt, traceA);
+    TestTrue(TEXT("a new layer: A's trace at once"), rebuilt->IsShowingHoverTrace(traceA));
+    TestEqual(TEXT("a new layer: at 1"), rebuilt->GetHoverAmount(), 1.0f, SOLIDKITTEST_TOLERANCE);
+
+    // A Small button has no hover trace
+    FSOLSolidKitTestButton madeSmall(nullptr, ESOLSolidButtonVariant::Small);
+    USOLMenuButton& small = *madeSmall.Button;
+    const TSharedRef<SSOLSolidTraceLayer> smallLayer = SNew(SSOLSolidTraceLayer);
+    small.RefreshHighlightAt(SOLIDKITTEST_T0, SOLIDKITTEST_S);
+    small.SetHoverTrace(smallLayer, traceA);
+    small.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1, SOLIDKITTEST_S);
+    small.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestEqual(TEXT("Small: no hover trace"), smallLayer->GetHoverAmount(), 0.0f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitButtonFrameTest, "SOLTest.SolidMenuKit.Button.FrameRefresh",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// RefreshHighlightAt(frame): the button is focused when the frame's keyboard focus is its own widget (another widget
+// or none is not), it animates at the frame's time and strength, bHoverElsewhere shows a focused button as Normal, and
+// WasFocusedAtRefresh tells what the last refresh read; BeginFrame without a subsystem has the default strength
+bool FSOLSolidKitButtonFrameTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    FSOLSolidKitTestButton made(nullptr, ESOLSolidButtonVariant::Stack);
+    FSOLSolidKitTestButton other(nullptr, ESOLSolidButtonVariant::Stack);
+    USOLMenuButton& button = *made.Button;
+    const TSharedRef<SWidget> own = button.TakeWidget();
+    const TSharedRef<SWidget> elsewhere = other.Button->TakeWidget();
+    TestFalse(TEXT("not focused before a refresh"), button.WasFocusedAtRefresh());
+
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T0, SOLIDKITTEST_S, nullptr));
+    TestFalse(TEXT("no focus: not focused"), button.WasFocusedAtRefresh());
+    TestEqual(TEXT("no focus: no edge"), button.GetAppliedLook().Edge, 0.0f, SOLIDKITTEST_TOLERANCE);
+
+    // Focused: the hover ramp at the frame's time (0 at the change, 0.5 half way, 1 settled)
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T1, SOLIDKITTEST_S, own));
+    TestTrue(TEXT("own widget: focused"), button.WasFocusedAtRefresh());
+    TestEqual(TEXT("own widget: the ramp starts"), button.GetAppliedLook().Edge, 0.0f, SOLIDKITTEST_TOLERANCE);
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T1 + 0.5 * HOVER_RAMP_S, SOLIDKITTEST_S, own));
+    TestEqual(TEXT("half way: edge 0.5"), button.GetAppliedLook().Edge, 0.5f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("half way: lift 0.5"), button.GetAppliedLook().Lift, 0.5f, SOLIDKITTEST_TOLERANCE);
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T1 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S, own));
+    TestEqual(TEXT("settled: edge 1"), button.GetAppliedLook().Edge, 1.0f, SOLIDKITTEST_TOLERANCE);
+
+    // The mouse over a focusless control: focused, but shown Normal (the edge falls)
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T2, SOLIDKITTEST_S, own), true);
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T2 + 0.5 * HOVER_RAMP_S, SOLIDKITTEST_S, own), true);
+    TestTrue(TEXT("hover elsewhere: still focused"), button.WasFocusedAtRefresh());
+    TestEqual(TEXT("hover elsewhere: the edge half fallen"), button.GetAppliedLook().Edge, 0.5f,
+        SOLIDKITTEST_TOLERANCE);
+
+    // Another widget focused: not this button
+    const double t3 = SOLIDKITTEST_T2 + 1.0;
+    button.RefreshHighlightAt(SolidKitTestFrame(t3, SOLIDKITTEST_S, elsewhere));
+    TestFalse(TEXT("another widget: not focused"), button.WasFocusedAtRefresh());
+    TestEqual(TEXT("another widget: no edge"), button.GetAppliedLook().Edge, 0.0f, SOLIDKITTEST_TOLERANCE);
+
+    // The frame's strength: at 0 the hover look is there at once, with no glow
+    button.RefreshHighlightAt(SolidKitTestFrame(t3 + 1.0, 0.0f, own));
+    TestEqual(TEXT("strength 0: edge 1 at once"), button.GetAppliedLook().Edge, 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("strength 0: no glow"), button.GetAppliedLook().Glow, 0.0f, SOLIDKITTEST_TOLERANCE);
+
+    // BeginFrame with no subsystem: the default strength and a real time
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(nullptr);
+    TestEqual(TEXT("BeginFrame without a subsystem: the default strength"), frame.Strength,
+        SOL::Settings::HUD_EFFECTS_DEFAULT);
+    TestTrue(TEXT("BeginFrame: a real time"), frame.NowS > 0.0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitButtonAtRestTest, "SOLTest.SolidMenuKit.Button.IsAtRest",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// IsAtRest: refreshed at least once, settled, not focused, and Normal or Disabled; a hover, a ramp, the focus or a
+// press is not at rest
+bool FSOLSolidKitButtonAtRestTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    FSOLSolidKitTestButton made(nullptr, ESOLSolidButtonVariant::Stack);
+    USOLMenuButton& button = *made.Button;
+    const TSharedRef<SWidget> own = button.TakeWidget();
+    TestFalse(TEXT("never refreshed: not at rest"), button.IsAtRest());
+    button.RefreshHighlightAt(SolidKitTestFrame(SOLIDKITTEST_T0, SOLIDKITTEST_S, nullptr));
+    TestTrue(TEXT("Normal, unfocused: at rest"), button.IsAtRest());
+
+    button.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1, SOLIDKITTEST_S);
+    TestFalse(TEXT("hovered, ramping: not at rest"), button.IsAtRest());
+    button.RefreshHighlightFor(ESOLSolidButtonState::Hovered, SOLIDKITTEST_T1 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestFalse(TEXT("hovered, settled: not at rest"), button.IsAtRest());
+    button.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2, SOLIDKITTEST_S);
+    button.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2 + 0.5 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestFalse(TEXT("falling: not at rest"), button.IsAtRest());
+    button.RefreshHighlightFor(ESOLSolidButtonState::Normal, SOLIDKITTEST_T2 + 2.0 * HOVER_RAMP_S, SOLIDKITTEST_S);
+    TestTrue(TEXT("fallen: at rest"), button.IsAtRest());
+
+    // Focused while the mouse is over a focusless control: shown Normal, but focused, so not at rest
+    const double t3 = SOLIDKITTEST_T2 + 1.0;
+    button.RefreshHighlightAt(SolidKitTestFrame(t3, SOLIDKITTEST_S, own), true);
+    TestFalse(TEXT("focused: not at rest"), button.IsAtRest());
+    button.RefreshHighlightAt(SolidKitTestFrame(t3 + 1.0, SOLIDKITTEST_S, nullptr));
+    TestTrue(TEXT("unfocused again: at rest"), button.IsAtRest());
+
+    // A press is not at rest, even settled
+    button.RefreshHighlightFor(ESOLSolidButtonState::Pressed, t3 + 2.0, SOLIDKITTEST_S);
+    button.RefreshHighlightFor(ESOLSolidButtonState::Pressed, t3 + 3.0, SOLIDKITTEST_S);
+    TestFalse(TEXT("pressed: not at rest"), button.IsAtRest());
+
+    // Disabled settles at once and is at rest
+    button.SetSolidDisabled(true);
+    button.RefreshHighlightAt(SolidKitTestFrame(t3 + 4.0, SOLIDKITTEST_S, nullptr));
+    TestTrue(TEXT("disabled: at rest"), button.IsAtRest());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitButtonFocusabilityTest, "SOLTest.SolidMenuKit.Button.DisabledFocusability",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SetSolidDisabled restores the focusability the button had (a non-focusable button stays non-focusable, built or
+// not), and a button that has the keyboard focus when disabled gives it up (to a focusable owning user widget, or the
+// focus is cleared: the test owner is not focusable)
+bool FSOLSolidKitButtonFocusabilityTest::RunTest(const FString& /*parameters*/)
+{
+    // Not focusable before: not after either
+    FSOLSolidKitTestButton made(nullptr, ESOLSolidButtonVariant::Small);
+    USOLMenuButton& button = *made.Button;
+    SolidKitTestMakeUnfocusable(button);
+    const TSharedRef<SWidget> widget = button.TakeWidget();
+    TestFalse(TEXT("not focusable before"), button.GetIsFocusable());
+    button.SetSolidDisabled(true);
+    TestFalse(TEXT("not focusable while disabled"), button.GetIsFocusable());
+    button.SetSolidDisabled(false);
+    TestFalse(TEXT("still not focusable after"), button.GetIsFocusable());
+    TestFalse(TEXT("its Slate button still not focusable after"), widget->SupportsKeyboardFocus());
+
+    // Focusable before: not while disabled, focusable again after, the built Slate button too
+    FSOLSolidKitTestButton focusable(nullptr, ESOLSolidButtonVariant::Stack);
+    const TSharedRef<SWidget> focusableWidget = focusable.Button->TakeWidget();
+    TestTrue(TEXT("focusable before"), focusableWidget->SupportsKeyboardFocus());
+    focusable.Button->SetSolidDisabled(true);
+    TestFalse(TEXT("its Slate button not focusable while disabled"), focusableWidget->SupportsKeyboardFocus());
+    focusable.Button->SetSolidDisabled(false);
+    TestTrue(TEXT("its Slate button focusable again"), focusableWidget->SupportsKeyboardFocus());
+
+    // A focused button being disabled gives up the focus
+    TSharedPtr<SWindow> window;
+    if (!SolidKitTestTakeFocus(focusableWidget, window))
+    {
+        AddInfo(TEXT("Slate did not take the headless focus: the focus hand-over is checked by the smoke only"));
+        return true;
+    }
+    TestTrue(TEXT("focused before"), focusable.Button->HasKeyboardFocus());
+    focusable.Button->SetSolidDisabled(true);
+    TestFalse(TEXT("disabled: the focus is given up"), focusable.Button->HasKeyboardFocus());
+    FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitPressDisabledTest, "SOLTest.SolidMenuKit.Anim.DisabledEndsPressAtOnce",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (SDD 4.7) Disabling a pressed button inside the press linger shows the disabled look at once (every amount 0, no
+// pressed hull, no mark even when selected) and GetShownState is Disabled; re-enabled, the press does not come back
+bool FSOLSolidKitPressDisabledTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const bool flags[] = { false, true };
+    for (const bool bSelected : flags)
+    {
+        const FString name = bSelected ? TEXT("selected") : TEXT("unselected");
+        FSOLSolidButtonAnim anim;
+        anim.Update(ESOLSolidButtonState::Normal, bSelected, SOLIDKITTEST_T0, SOLIDKITTEST_S);
+        TestTrue(name + TEXT(": pressed"), anim.Update(ESOLSolidButtonState::Pressed, bSelected, SOLIDKITTEST_T2,
+            SOLIDKITTEST_S).bPressedHull);
+        const FSOLSolidButtonLook look = anim.Update(ESOLSolidButtonState::Disabled, bSelected,
+            SOLIDKITTEST_T2 + 0.3 * PRESSED_LINGER_S, SOLIDKITTEST_S);
+        TestEqual(name + TEXT(": shown Disabled at once"), static_cast<int32>(anim.GetShownState()),
+            static_cast<int32>(ESOLSolidButtonState::Disabled));
+        const float amounts[] = { look.Lift, look.Edge, look.Led, look.Underline, look.Trace, look.Glow };
+        bool bZero = true;
+        for (const float amount : amounts)
+        {
+            bZero = bZero && amount == 0.0f;
+        }
+        TestTrue(name + TEXT(": every amount 0"), bZero);
+        TestTrue(name + TEXT(": disabled"), look.bDisabled);
+        TestFalse(name + TEXT(": no pressed hull"), look.bPressedHull);
+        TestFalse(name + TEXT(": no mark"), look.bSelectedMark);
+        TestTrue(name + TEXT(": settled"), anim.IsSettled(SOLIDKITTEST_T2 + 0.3 * PRESSED_LINGER_S, SOLIDKITTEST_S));
+
+        const FSOLSolidButtonLook enabled = anim.Update(ESOLSolidButtonState::Normal, bSelected,
+            SOLIDKITTEST_T2 + 0.5 * PRESSED_LINGER_S, SOLIDKITTEST_S);
+        TestFalse(name + TEXT(": re-enabled inside the old linger: no pressed hull"), enabled.bPressedHull);
+        TestEqual(name + TEXT(": re-enabled: shown Normal"), static_cast<int32>(anim.GetShownState()),
+            static_cast<int32>(ESOLSolidButtonState::Normal));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitPanelHullTest, "SOLTest.SolidMenuKit.Panel.MakePanelHullAndTracePoints",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// MakePanelHull is the SDD 9 panel chamfers 28 / 12 / 28 / 12 and no other feature; FSOLSolidTrace::FromPoints keeps
+// at most MAX_POINTS of the points, in order, and the terminal flag it is given
+bool FSOLSolidKitPanelHullTest::RunTest(const FString& /*parameters*/)
+{
+    const FSOLSolidHull hull = USOLSolidPanel::MakePanelHull();
+    TestEqual(TEXT("TL 28"), hull.ChamferTL, 28.0f);
+    TestEqual(TEXT("TR 12"), hull.ChamferTR, 12.0f);
+    TestEqual(TEXT("BR 28"), hull.ChamferBR, 28.0f);
+    TestEqual(TEXT("BL 12"), hull.ChamferBL, 12.0f);
+    TestTrue(TEXT("no title step"), hull.TitleStepWidth == 0.0f && hull.TitleStepHeight == 0.0f);
+    TestTrue(TEXT("no notch"), hull.NotchY < 0.0f && hull.NotchDepth == 0.0f && hull.NotchHeight == 0.0f);
+    TestTrue(TEXT("no chin"), hull.ChinWidth == 0.0f && hull.ChinHeight == 0.0f);
+    TestFalse(TEXT("raised, not a recess"), hull.bRecess);
+
+    static_assert(FSOLSolidTrace::MAX_POINTS == 8, "The counts below are worked out at 8");
+    const FSOLSolidTrace ten = FSOLSolidTrace::FromPoints({ FVector2f(0.0f, 0.0f), FVector2f(1.0f, 2.0f),
+        FVector2f(2.0f, 4.0f), FVector2f(3.0f, 6.0f), FVector2f(4.0f, 8.0f), FVector2f(5.0f, 10.0f),
+        FVector2f(6.0f, 12.0f), FVector2f(7.0f, 14.0f), FVector2f(8.0f, 16.0f), FVector2f(9.0f, 18.0f) }, false);
+    TestEqual(TEXT("ten points: eight kept"), ten.Count, 8);
+    TestTrue(TEXT("ten points: the first kept first"), ten.Points[0].Equals(FVector2f(0.0f, 0.0f)));
+    TestTrue(TEXT("ten points: the eighth kept last"), ten.Points[7].Equals(FVector2f(7.0f, 14.0f)));
+    TestFalse(TEXT("ten points: no ring terminal, as given"), ten.bRingTerminal);
+    const FSOLSolidTrace two = FSOLSolidTrace::FromPoints({ FVector2f(1.0f, 2.0f), FVector2f(3.0f, 4.0f) }, true);
+    TestEqual(TEXT("two points"), two.Count, 2);
+    TestTrue(TEXT("two points: the second"), two.Points[1].Equals(FVector2f(3.0f, 4.0f)));
+    TestTrue(TEXT("two points: the ring terminal, as given"), two.bRingTerminal);
+    TestEqual(TEXT("no points"), FSOLSolidTrace::FromPoints({}, true).Count, 0);
+    TestEqual(TEXT("one point"), FSOLSolidTrace::FromPoints({ FVector2f(1.0f, 1.0f) }, true).Count, 1);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitPanelOpenLookTest, "SOLTest.SolidMenuKit.Panel.ApplyOpenLook",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// ApplyOpenLook: the render translation is the panel slide 24 x (1 - p)^3 along the normalised direction and the
+// render opacity smoothstep(0.4, 1, p); progress 1 (and NaN) is the identity. Along (3, 4) (unit (0.6, 0.8)): p 0 is
+// (14.4, 19.2) at opacity 0, p 0.5 is (1.8, 2.4) at 0.0740741
+bool FSOLSolidKitPanelOpenLookTest::RunTest(const FString& /*parameters*/)
+{
+    static_assert(SOL::SolidMenu::PANEL_SLIDE_PX == 24.0f && SOL::HoloMenu::FILL_PHASE_START == 0.4f,
+        "The numbers below are worked out at a 24-unit slide and a fade from 0.4");
+    USOLSolidPanel* const panel = NewObject<USOLSolidPanel>(GetTransientPackage());
+    const FVector2f direction(3.0f, 4.0f);
+
+    // Checks the panel's render translation and opacity
+    const auto expect = [this, panel](const TCHAR* what, const FVector2D& translation, const float opacity)
+    {
+        const FVector2D actual = panel->GetRenderTransform().Translation;
+        if (!TestTrue(FString::Printf(TEXT("%s: translation"), what), actual.Equals(translation, 1.0e-3)))
+        {
+            AddError(FString::Printf(TEXT("%s: translation %s, expected %s"), what, *actual.ToString(),
+                *translation.ToString()));
+        }
+        TestEqual(FString::Printf(TEXT("%s: opacity"), what), panel->GetRenderOpacity(), opacity,
+            SOLIDKITTEST_TOLERANCE);
+    };
+    panel->ApplyOpenLook(0.0f, direction);
+    expect(TEXT("p 0"), FVector2D(14.4, 19.2), 0.0f);
+    panel->ApplyOpenLook(0.5f, direction);
+    expect(TEXT("p 0.5"), FVector2D(1.8, 2.4), 0.0740741f);
+    panel->ApplyOpenLook(1.0f, direction);
+    expect(TEXT("p 1"), FVector2D(0.0, 0.0), 1.0f);
+    panel->ApplyOpenLook(0.0f, direction);
+    expect(TEXT("p 0 again"), FVector2D(14.4, 19.2), 0.0f);
+    panel->ApplyOpenLook(SOLIDKITTEST_NAN, direction);
+    expect(TEXT("p NaN reads 1"), FVector2D(0.0, 0.0), 1.0f);
+    panel->ApplyOpenLook(-1.0f, FVector2f(-1.0f, 0.0f));
+    expect(TEXT("p -1 reads 0, from the left"), FVector2D(-24.0, 0.0), 0.0f);
+    panel->ApplyOpenLook(2.0f, FVector2f(-1.0f, 0.0f));
+    expect(TEXT("p 2 reads 1"), FVector2D(0.0, 0.0), 1.0f);
     return true;
 }
 

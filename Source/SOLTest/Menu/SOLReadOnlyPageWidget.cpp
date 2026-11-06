@@ -135,10 +135,45 @@ float USOLReadOnlyPageWidget::GetTabScrollOffset(const int32 tab) const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds a left-column text for the fit check
-void USOLReadOnlyPageWidget::RegisterColumnText(const UTextBlock* text, const int32 tab, const float width)
+// Adds a two-column row (its left text, box and right cell) for the column fit and the fit checks
+void USOLReadOnlyPageWidget::RegisterColumnText(UTextBlock* text, USizeBox* box, UTextBlock* value, const int32 tab,
+    const float width)
 {
-    ColumnTexts.Add({ text, tab, width });
+    FSOLReadOnlyColumnText& column = ColumnTexts.AddDefaulted_GetRef();
+    column.Text = text;
+    column.Box = box;
+    column.Value = value;
+    column.Tab = tab;
+    column.Width = width;
+    mLeftColumnWidth = width;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the left column's width for the rows' laid-out width, only on a change
+void USOLReadOnlyPageWidget::FitLeftColumn()
+{
+    // The rows are as wide as the content switcher less a scroll bar's room (taken as shown, so every tab gets the
+    // same column); before the first layout the switcher has no size and the full column stays
+    if (TabSwitcher == nullptr || ColumnTexts.IsEmpty())
+    {
+        return;
+    }
+    const float rowWidth = TabSwitcher->GetCachedGeometry().GetLocalSize().X - SOL::SolidMenu::SCROLL_BAR_THICKNESS
+        - SOL::MenuStyle::BUTTON_GAP;
+    const float width = SOLPageTabs::LeftColumnWidth(mPage, rowWidth);
+    if (width == mLeftColumnWidth)
+    {
+        return;
+    }
+    mLeftColumnWidth = width;
+    for (FSOLReadOnlyColumnText& column : ColumnTexts)
+    {
+        column.Width = width;
+        if (column.Box != nullptr)
+        {
+            column.Box->SetWidthOverride(width);
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -150,11 +185,12 @@ void USOLReadOnlyPageWidget::NativeConstruct()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Refreshes the rail's highlights and its trace layer's strength
+// Refreshes the rail's highlights and its trace layer's strength, and fits the left column to the rows
 void USOLReadOnlyPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
     Rail.Tick(USOLSolidMenuSubsystem::BeginFrame(this), false);
+    FitLeftColumn();
 }
 
 //////////////////////////////////////////////////////////////////////////

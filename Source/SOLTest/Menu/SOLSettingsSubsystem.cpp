@@ -44,7 +44,8 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
     Super::Initialize(collection);
 
     // A menu smoke run writes its own slot, cleared first, so it starts from the defaults and never touches the
-    // player's
+    // player's; it also copies the engine's GameUserSettings as it found them, given back at shutdown (its window
+    // resizes are stored as the confirmed resolution, which the engine writes at exit)
     mSlotName = SOL::Settings::SAVE_SLOT;
     if (FCString::Strifind(FCommandLine::Get(), SOL::CommandLine::MENU_SMOKE_NAME) != nullptr
         || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY)
@@ -58,6 +59,12 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
     {
         mSlotName = SOL::Settings::SMOKE_SAVE_SLOT;
         UGameplayStatics::DeleteGameInSlot(mSlotName, SOL::Settings::SAVE_USER_INDEX);
+        // Only a game run (-game, packaged) is guarded: in the editor the GameUserSettings are the editor's own
+        const UGameUserSettings* engineSettings = !GIsEditor ? SettingsGetEngineSettings() : nullptr;
+        if (engineSettings != nullptr)
+        {
+            mSmokeEngineSettings = FSOLEngineSettingsSnapshot::Capture(*engineSettings);
+        }
     }
     SaveObject = NewObject<USOLSettingsSave>(this);
     SeedEngineGraphics();
@@ -75,7 +82,8 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes synchronously if a write is still owed or in flight (shutdown), then lets go of everything
+// Writes synchronously if a write is still owed or in flight (shutdown; a smoke run gives the engine's GameUserSettings
+// back), then lets go of everything
 void USOLSettingsSubsystem::Deinitialize()
 {
     // Unapplied changes are dropped; an applied but unwritten change, a failed write or an async write that has not
@@ -91,6 +99,10 @@ void USOLSettingsSubsystem::Deinitialize()
         mIsSaveOwed = false;
         mSaveWritesInFlight = 0;
     }
+    if (mSmokeEngineSettings.IsCaptured())
+    {
+        RestoreEngineSettingsAfterSmoke();
+    }
     if (mIsEngineSettingsSaveOwed)
     {
         if (UGameUserSettings* engineSettings = SettingsGetEngineSettings())
@@ -102,6 +114,31 @@ void USOLSettingsSubsystem::Deinitialize()
     mOnKeyBindingsChanged.Clear();
     mAudioWorld.Reset();
     Super::Deinitialize();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// A smoke run: writes the engine's GameUserSettings back as they were at boot (not applied) and saves them once
+void USOLSettingsSubsystem::RestoreEngineSettingsAfterSmoke()
+{
+    // This runs in the game instance's shutdown, after UGameEngine::PreExit wrote the run's values, so this write
+    // is the last and leaves GameUserSettings.ini as the run found it
+    UGameUserSettings* engineSettings = SettingsGetEngineSettings();
+    if (engineSettings == nullptr)
+    {
+        return;
+    }
+    // Written only if something was given back: otherwise the exit write already holds the boot values
+    const int32 restored = mSmokeEngineSettings.RestoreTo(*engineSettings);
+    const bool bQualityRestored = mSmokeEngineSettings.RestoreQualityLevels();
+    const bool bSave = restored > 0 || bQualityRestored;
+    if (bSave)
+    {
+        engineSettings->SaveSettings();
+    }
+    mIsEngineSettingsSaveOwed = false;
+    UE_LOG(LogSOL, Log, TEXT("Settings %s: smoke run: %d of %d GameUserSettings values given back%s%s"),
+        *GetName(), restored, mSmokeEngineSettings.Values.Num(), bQualityRestored ? TEXT(" with the scalability levels")
+        : TEXT(""), bSave ? TEXT(", saved") : TEXT(", nothing to save"));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -407,12 +444,19 @@ void USOLSettingsSubsystem::FlushSave()
         UE_LOG(LogSOL, Log, TEXT("Settings %s: writing slot %s (write %d)"), *GetName(), *mSlotName,
             mSaveRequestCount);
     }
+    // A smoke run never writes the player's GameUserSettings.ini mid-run (a Quality Apply would): the values stay in
+    // memory and the shutdown gives the boot values back
     if (mIsEngineSettingsSaveOwed)
     {
-        if (UGameUserSettings* engineSettings = SettingsGetEngineSettings())
+        UGameUserSettings* engineSettings = SettingsGetEngineSettings();
+        if (engineSettings != nullptr && !mSmokeEngineSettings.IsCaptured())
         {
             engineSettings->SaveSettings();
             ++mEngineSettingsWriteCount;
+        }
+        else if (engineSettings != nullptr)
+        {
+            UE_LOG(LogSOL, Log, TEXT("Settings %s: smoke run: GameUserSettings write skipped"), *GetName());
         }
         mIsEngineSettingsSaveOwed = false;
     }

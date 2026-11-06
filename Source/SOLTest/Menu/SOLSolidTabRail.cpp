@@ -103,11 +103,11 @@ void FSOLSolidTabRail::Tick(const FSOLSolidMenuFrame& frame, const bool bHoverEl
     if (frame.Strength != Strength && Panel != nullptr && Panel->GetTraceLayer().IsValid())
     {
         Strength = frame.Strength;
-        Panel->SetTraceLook(1.0f, 0.0f, frame.Strength);
+        Panel->SetTraceLook(1.0f, 1.0f, frame.Strength);
     }
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
+        button->RefreshHighlightAt(frame, bHoverElsewhere);
     }
     Stack.Tick(Panel != nullptr ? Panel->GetTraceLayer() : nullptr, Buttons);
 }

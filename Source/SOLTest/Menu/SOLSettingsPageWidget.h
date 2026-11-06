@@ -75,7 +75,9 @@ enum class ESOLSettingsStepper : uint8
  * scroll box (USOLSolidSlider sliders with the cyan fill, SOLSolidStyle toggles and Small buttons: amber edge and
  * underline on hover, no trace); the footer stays under the content on every tab. RefreshFromSettings shows the first
  * tab (Graphics) with every tab scrolled to its top every time the page opens (no last-tab or scroll memory, Q8);
- * ScrollToBinding first shows the Key bindings tab. One highlight (46e follow-up): while the mouse is over a slider, a
+ * ScrollToBinding first shows the Key bindings tab. Narrow views (46i, 1000x800): the Key bindings and Gameplay tabs
+ * narrow their label column (the labels wrap, a wrapped label grows its row) and Key bindings its Rebind buttons, so the
+ * key names and the sliders keep their room (FitNarrowRows); wide views keep the wide columns. One highlight (46e follow-up): while the mouse is over a slider, a
  * toggle or an embedded Overlay row (controls that take no focus on hover) and the last input was a real mouse move,
  * the focused button shows no hover look (the owning menus pass the same rule to their own buttons); a key press gives
  * the focus its highlight back until the mouse moves again (last input wins). Every control only calls
@@ -163,6 +165,34 @@ public:
     // Returns a row's label and its tab, or null for an invalid index (verification)
     const UTextBlock* GetRowLabel(int32 index, ESOLSettingsTab& outTab) const;
 
+    // (46i) Returns a row's label column box and its row box (RowLabels order), or null for an invalid index
+    // (verification: the applied column width, a wrapped label inside its row)
+    const USizeBox* GetRowLabelBox(int32 index) const
+    {
+        return RowLabelBoxes.IsValidIndex(index) ? RowLabelBoxes[index].Get() : nullptr;
+    }
+    const USizeBox* GetRowBox(int32 index) const
+    {
+        return RowBoxes.IsValidIndex(index) ? RowBoxes[index].Get() : nullptr;
+    }
+
+    // (46i) Returns a key row's Rebind box (its width) and button, or null for an invalid binding (verification)
+    const USizeBox* GetRebindBox(int32 binding) const
+    {
+        return RebindBoxes.IsValidIndex(binding) ? RebindBoxes[binding].Get() : nullptr;
+    }
+    const USOLMenuButton* GetRebindButton(int32 binding) const;
+
+    // (46i) Returns whether a tab's rows have the narrow layout as last fitted (SOLSettingsTabs::IsNarrowLayout)
+    bool IsNarrowLayout(ESOLSettingsTab tab) const
+    {
+        return SOLSettingsTabs::IsValidTab(tab) && mIsNarrowTab[static_cast<int32>(tab)];
+    }
+
+    // (46i) Returns the row width (local units) the rows were last fitted to: the content switcher's width less a
+    // scroll bar's room; 0 before the first layout (verification)
+    float GetFitRowWidth() const { return mFitRowWidth; }
+
     // The page was hidden: stops listening and ends the settings visit
     void NotifyHidden();
 
@@ -202,6 +232,12 @@ public:
     // Returns a key row's text (verification)
     FString GetKeyRowText(int32 binding) const;
 
+    // Returns a key row's key text widget, or null for an invalid binding (verification: its slot against its text)
+    const UTextBlock* GetKeyTextWidget(int32 binding) const
+    {
+        return KeyTexts.IsValidIndex(binding) ? KeyTexts[binding].Get() : nullptr;
+    }
+
     // Returns the embedded Overlay Menu list, or null (verification)
     USOLOverlayMenuWidget* GetOverlayList() const { return OverlayList; }
 
@@ -222,7 +258,7 @@ protected:
     // Stops listening and unregisters the rebind key capture
     virtual void NativeDestruct() override;
 
-    // Refreshes the button highlights (focus follows the keyboard and the mouse)
+    // Refreshes the button highlights (focus follows the keyboard and the mouse) and fits the narrow rows (46i)
     virtual void NativeTick(const FGeometry& geometry, float deltaSeconds) override;
 
 private:
@@ -242,8 +278,21 @@ private:
     // the control(s)
     UHorizontalBox* MakeRow(ESOLSettingsTab tab, const FString& label);
 
+    // Adds a row made by MakeRow to its tab's scroll box in a box SETTINGS_ROW_HEIGHT tall, with the row gap below it
+    // (the scroll bar keeps its own gap, so a tab without a bar gives its rows the full width)
+    void AddRow(ESOLSettingsTab tab, UHorizontalBox* row);
+
+    // (46i) Fits the Key bindings and Gameplay rows to the rows' laid-out width (SOLSettingsTabs::IsNarrowLayout),
+    // only when a tab's narrow state changes: the label column's width, the labels' wrap, the row boxes' height (fixed
+    // when wide, at least SETTINGS_ROW_HEIGHT when narrow so a wrapped label grows its row) and the Rebind boxes' width
+    void FitNarrowRows();
+
     // Re-reads every control from the settings subsystem (the tab is left as it is)
     void RefreshControls();
+
+    // Refreshes the highlights of the shown tab's buttons, the footer's and any hidden button not yet at rest
+    // (USOLMenuButton::IsAtRest): the 38 Rebind buttons cost nothing while another tab shows
+    void RefreshButtons(const FSOLSolidMenuFrame& frame);
 
     // A tab button was clicked (index = the tab's column position)
     void HandleTabClicked(int32 index);
@@ -350,6 +399,15 @@ private:
     TArray<TObjectPtr<UTextBlock>> RowLabels;               // Every row's label, in build order (verification)
 
     UPROPERTY(Transient)
+    TArray<TObjectPtr<USizeBox>> RowLabelBoxes;             // Each RowLabels entry's column box (46i)
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<USizeBox>> RowBoxes;                  // Each RowLabels entry's row box, its height (46i)
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<USizeBox>> RebindBoxes;               // Each key row's Rebind box, in binding order (46i)
+
+    UPROPERTY(Transient)
     FSOLSolidTabRail Rail;                                  // The tab column (46f: the shared kit piece)
 
     UPROPERTY(Transient)
@@ -378,7 +436,10 @@ private:
     FKey mSwallowedRelease;                         // Release of the captured key, still to be swallowed
     int32 mListeningBinding = INDEX_NONE;           // Binding waiting for its new key
     TArray<ESOLSettingsTab> mRowLabelTabs;          // The tab of each RowLabels entry
+    TArray<ESOLSettingsTab> mButtonTabs;            // The tab of each Buttons entry (Count: the footer, every tab)
     bool mIsHoverElsewhere = false;                 // Last tick: the mouse over a focusless control (one highlight)
     bool mIsMouseLastInput = true;                  // The last input was a real mouse move or press, not a key
+    bool mIsNarrowTab[static_cast<int32>(ESOLSettingsTab::Count)] = {};    // Each tab's narrow layout, as fitted
+    float mFitRowWidth = 0.0f;                      // The row width last fitted to (0 before the first layout)
     ESOLSettingsTab mTab = ESOLSettingsTab::Graphics;   // The tab showing
 };

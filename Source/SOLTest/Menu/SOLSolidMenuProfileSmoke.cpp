@@ -52,6 +52,7 @@ namespace
     constexpr double PROFILE_WATCHDOG_PASS_S = 45.0;
     constexpr double PROFILE_WATCHDOG_VIEW_PASS_S = 180.0;      // ... a view run pass (two eyes: 50-130 ms frames)
     constexpr double PROFILE_P99 = 0.99;
+    constexpr double PROFILE_RANK_EPSILON = 1.0e-9;             // Percentile: a rank's rounding slack (far below 1)
     constexpr float PROFILE_STRENGTH = 1.0f;                    // The effects strength the numbers are taken at
     constexpr float PROFILE_STRENGTH_TOLERANCE = 1.0e-3f;
 
@@ -87,7 +88,8 @@ namespace
     // The solid menu material draws summed into gpu_solid (M_SOLSolidHull, its instances and MIDs; none before 46c)
     const TCHAR* const PROFILE_SOLID_MATERIAL_TOKEN = TEXT("SOLSolid");
 
-    // One screen of a run: its name, menu, main menu page or pause tab, and Settings tab (Count: the opening tab)
+    // One screen of a run: its name, menu, main menu page or pause tab, and Settings tab (Count: the opening tab); a
+    // main-menu screen's PauseTab is Resume, never read (the pass reads it only for the pause menu)
     struct FProfileScreen
     {
         const TCHAR* Name;
@@ -114,6 +116,14 @@ namespace
             ESOLSettingsTab::Count },
         { TEXT("pause-info"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Info, ESOLSettingsTab::Count },
     };
+
+    // 46i: the checks a whole run logs (Finish fails a run that logged another number: a skipped check). Default: the
+    // setup's two, three views, two screens, Play and Esc; a view run: the setup's two, its view, Play, Esc and one
+    // per screen
+    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 9;
+    constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 14;
+    static_assert(PROFILE_EXPECTED_CHECKS_VIEW == 5 + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
+        "a view run checks the setup (2), its view, Play, Esc and each screen");
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -165,6 +175,19 @@ bool SOLSolidMenuProfile::MeetsVrProxy(const double frameP99Ms)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether the p99 frame, game thread and GPU times are each positive, finite and at or under the floor's line
+bool SOLSolidMenuProfile::MeetsVrFrameLine(const double frameP99Ms, const double gameP99Ms, const double gpuP99Ms,
+    const FVrFloor& floor)
+{
+    // One time against the line
+    const auto meets = [&floor](const double ms)
+    {
+        return FMath::IsFinite(ms) && ms > 0.0 && ms <= floor.LineMs;
+    };
+    return floor.bApplies && meets(frameP99Ms) && meets(gameP99Ms) && meets(gpuP99Ms);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the nearest-rank percentile of the values (fraction clamped to [0, 1], NaN reads 1), sorting them in place
 double SOLSolidMenuProfile::Percentile(TArray<double>& values, const double fraction)
 {
@@ -174,7 +197,10 @@ double SOLSolidMenuProfile::Percentile(TArray<double>& values, const double frac
     }
     values.Sort();
     const double clamped = FMath::IsNaN(fraction) ? 1.0 : FMath::Clamp(fraction, 0.0, 1.0);
-    const int32 rank = FMath::CeilToInt32(clamped * values.Num());
+
+    // The rank is ceil(fraction x N); the product's rounding error (0.07 x 100 = 7.000000000000001) must not push an
+    // exact rank to the next one
+    const int32 rank = FMath::CeilToInt32(clamped * values.Num() - PROFILE_RANK_EPSILON);
     return values[FMath::Clamp(rank - 1, 0, values.Num() - 1)];
 }
 
@@ -239,7 +265,10 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
     {
         UE_LOG(LogSOL, Error, TEXT("SolidMenuProfile: %s at step %d after %.1f s; aborting"), mController.IsValid()
             ? TEXT("watchdog") : TEXT("no player controller"), mStep, mRunTimeS);
-        mPassesFailed += FMath::Max(0, mPasses.Num() - (mPassesFailed + mPassesNoBase));
+        Check(TEXT("z-watchdog"), false, FString::Printf(TEXT("%s at step %d after %.1f s, %d of %d passes logged"),
+            mController.IsValid() ? TEXT("stuck") : TEXT("no player controller"), mStep, mRunTimeS, mPassesLogged,
+            mPasses.Num()));
+        mPassesFailed += FMath::Max(0, mPasses.Num() - mPassesLogged);
         Finish(menu);
         return true;
     }
@@ -469,9 +498,9 @@ bool FSOLSolidMenuProfileSmoke::TickStep(const int32 step, USOLMenuSubsystem& me
     }
     case EStepKind::Quit:
         return mStepTimeS >= PROFILE_QUIT_S;
-    default:
-        return mStepTimeS >= PROFILE_STEP_S;
     }
+    checkNoEntry();     // Every step kind returns above
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -489,9 +518,9 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
         const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
         mStrength = settings != nullptr ? settings->GetSavedValues().HudEffectsStrength : -1.0f;
         Check(TEXT("a-main-menu"), mode == SOLMenuState::EMenuMode::MainMenu && menu.GetMainMenu() != nullptr
-            && mIsDatePinned, FString::Printf(TEXT("main menu %s, date %s, view %dx%d"), mode
-            == SOLMenuState::EMenuMode::MainMenu ? TEXT("shown") : TEXT("NOT SHOWN"), mIsDatePinned ? TEXT("pinned")
-            : TEXT("NOT PINNED"), size.X, size.Y));
+            && menu.GetMainMenu()->IsInViewport() && mIsDatePinned, FString::Printf(
+            TEXT("main menu %s, date %s, view %dx%d"), mode == SOLMenuState::EMenuMode::MainMenu ? TEXT("shown")
+            : TEXT("NOT SHOWN"), mIsDatePinned ? TEXT("pinned") : TEXT("NOT PINNED"), size.X, size.Y));
         Check(TEXT("b-strength"), FMath::IsNearlyEqual(mStrength, PROFILE_STRENGTH, PROFILE_STRENGTH_TOLERANCE),
             FString::Printf(TEXT("HUD effects strength %.2f (want %.2f)"), mStrength, PROFILE_STRENGTH));
         break;
@@ -727,8 +756,7 @@ void FSOLSolidMenuProfileSmoke::LogPassResult(const int32 pass)
 
     // Whole frame, informational only (project-level VR work, not the menu's verdict): the p99 frame, game thread and
     // GPU against the XR-4 line, and at 3840x2160 the p99 frame against the 4K / 100 Hz proxy
-    const bool bVrFrame = frameP99Ms <= floor.LineMs && gameP99Ms <= floor.LineMs && gpuP99Ms > 0.0
-        && gpuP99Ms <= floor.LineMs;
+    const bool bVrFrame = SOLSolidMenuProfile::MeetsVrFrameLine(frameP99Ms, gameP99Ms, gpuP99Ms, floor);
     const bool bProxyView = bViewRun && SOLSolidMenuProfile::IsVrProxyView(spec.View.X, spec.View.Y);
     const TCHAR* proxy = !bProxyView ? TEXT("n/a") : SOLSolidMenuProfile::MeetsVrProxy(frameP99Ms) ? TEXT("PASS")
         : TEXT("MISS");
@@ -736,6 +764,7 @@ void FSOLSolidMenuProfileSmoke::LogPassResult(const int32 pass)
         : TEXT("FAIL");
     mPassesFailed += FCString::Strcmp(verdict, TEXT("FAIL")) == 0 ? 1 : 0;
     mPassesNoBase += FCString::Strcmp(verdict, TEXT("NOBASE")) == 0 ? 1 : 0;
+    ++mPassesLogged;
     const FString costs = FString::Printf(TEXT("screen=%s view=%dx%d cpu_slate=%.3f cpu_gameui=%.3f gpu_ui=%.3f "
         "gpu_slate=%.3f gpu_solid=%.3f gpu_frame=%.3f ui_draws=%d gpu_ui_all=%s frame_ms=%.2f"), spec.Screen, size.X,
         size.Y, cpuSlate, cpuGameUi, gpu.UiMs, gpu.SlateMs, gpu.MaterialMs, gpu.FrameMs, gpu.UiDraws,
@@ -763,6 +792,15 @@ void FSOLSolidMenuProfileSmoke::Finish(USOLMenuSubsystem& menu)
         return;
     }
     mIsFinished = true;
+
+    // A run that logged another number of checks than a whole run does skipped (or doubled) one: a failure
+    const int32 expected = mRunView == FIntPoint::ZeroValue ? PROFILE_EXPECTED_CHECKS_DEFAULT
+        : PROFILE_EXPECTED_CHECKS_VIEW;
+    if (mChecksRun != expected)
+    {
+        Check(TEXT("z-check-count"), false, FString::Printf(TEXT("%d checks run, a whole run logs %d"), mChecksRun,
+            expected));
+    }
     UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile SUMMARY %d passes: %d PASS, %d FAIL, %d NOBASE; %d/%d checks passed"),
         mPasses.Num(), FMath::Max(0, mPasses.Num() - mPassesFailed - mPassesNoBase), mPassesFailed, mPassesNoBase,
         mChecksPassed, mChecksRun);

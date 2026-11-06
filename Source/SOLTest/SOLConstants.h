@@ -1173,23 +1173,22 @@ namespace SOL
         inline constexpr int32 BODY_FONT_SIZE = 18;
         inline constexpr int32 SMALL_FONT_SIZE = 15;
         inline constexpr float SCREEN_MARGIN = 80.0f;            // Main menu column inset from the screen's left edge
-        inline constexpr float COLUMN_WIDTH = 340.0f;            // Pause menu Quit choices
         inline constexpr float BUTTON_HEIGHT = 52.0f;
         inline constexpr float BUTTON_GAP = 10.0f;
         inline constexpr float PANEL_PADDING = 28.0f;
-        inline constexpr float PANEL_GAP = 24.0f;                // Between the main menu column and its page shell
-        inline constexpr float PAUSE_WIDTH = 1080.0f;            // Pause menu panel
-        inline constexpr float PAUSE_HEIGHT = 780.0f;
+        inline constexpr float PANEL_GAP = 24.0f;                // Between a menu panel (main column, pause side
+                                                                 // panel) and its page shell
         inline constexpr float TAB_HEIGHT = 46.0f;
-        inline constexpr float TAB_GAP = 8.0f;
         inline constexpr float ROW_GAP = 4.0f;
         inline constexpr float KEY_COLUMN_WIDTH = 230.0f;        // Controls page key column
         inline constexpr float LABEL_COLUMN_WIDTH = 400.0f;      // Info page label column
+        inline constexpr float LABEL_COLUMN_NARROW_WIDTH = 200.0f;   // ... in a narrow row (46i: 1000x800), labels
+                                                                     // wrapping (SOLPageTabs::LeftColumnWidth)
+        inline constexpr float VALUE_COLUMN_MIN_WIDTH = 220.0f;  // ... the full one only while the Info value column
+                                                                 // right of it keeps this much room
         inline constexpr float LIST_BUTTON_HEIGHT = 38.0f;       // Start-location rows
         inline constexpr float BUTTON_PADDING_X = 18.0f;         // Inside a menu button, around its label
         inline constexpr float BUTTON_PADDING_Y = 4.0f;         // (SDD 46c: 8 clipped Rajdhani in 34-unit rows)
-        inline const FLinearColor SCREEN_DIM(0.0f, 0.0f, 0.0f, 0.45f);        // Behind the pause menu
-        inline const FLinearColor PANEL_BACKGROUND(0.01f, 0.02f, 0.04f, 0.82f);  // Pause panel, until 46g
         inline const FLinearColor TEXT_COLOR(0.88f, 0.93f, 1.0f, 1.0f);          // NPC stats overlay (the menus use the
                                                                                  // SOL::SolidMenu palette)
 
@@ -1226,6 +1225,8 @@ namespace SOL
         inline constexpr float TINT_PRESSED_G_MIN = 0.75f;        // Decode: G at or above this is the pressed hull
         inline constexpr float TINT_DISABLED_G_MIN = 0.25f;       // ... G from this up to TINT_PRESSED_G_MIN is disabled
         inline constexpr float TINT_MARK_B_MIN = 0.5f;            // ... B at or above this is the selected mark
+        inline constexpr float TINT_HALF_LEVEL = 0.5f / 255.0f;   // Half an 8-bit tint level: tints this close or
+                                                                  // closer encode the same (one look on screen)
 
         // Palette (SDD 46 section 5.1), sRGB; the three DISABLED_ colours are 46c starting values
         inline const FColor BASE_COLOR(0x24, 0x28, 0x2C);
@@ -1331,6 +1332,8 @@ namespace SOL
         inline constexpr float TOGGLE_WIDTH = 52.0f;
         inline constexpr float TOGGLE_HEIGHT = 26.0f;
         inline constexpr float SCROLL_BAR_THICKNESS = 8.0f;
+        inline constexpr float SCROLL_THUMB_HOVER_BRIGHTEN = 0.3f; // Scroll thumb: hovered blends this far to white
+        inline constexpr float SCROLL_THUMB_DRAG_BRIGHTEN = 0.5f; // ... dragged this far
         inline constexpr float SCROLL_FIT_TOLERANCE_PX = 0.5f;    // Scrolling rails (D17, 46g): content this much
                                                                   // taller than its view still fits (layout rounding)
         inline constexpr int32 STACK_MAX_VISIBLE_ENTRIES = 7;     // Main-menu and pause stacks: the view holds this
@@ -1367,7 +1370,9 @@ namespace SOL
         inline constexpr float PAGE_HEIGHT = 800.0f;              // (46d: 760 left no room for the column's traces)
         inline constexpr float TAB_COLUMN_WIDTH = 220.0f;         // The shell's vertical tab column (46e: 200 did not
                                                                   // fit "Key bindings")
-        inline constexpr float PAUSE_PANEL_WIDTH = 420.0f;        // Pause side panel
+        inline constexpr float PAUSE_PANEL_WIDTH = COLUMN_WIDTH;  // Pause side panel (46i: the main menu column's
+                                                                  // width, so its shell has the main menu's room; 420
+                                                                  // clipped the Window mode value at 1000x800)
         inline constexpr float BACK_BUTTON_WIDTH = 160.0f;        // The shell's Back button
 
         // Main menu column (46d, SDD 46 section 6): a fixed-height hull, so its traces sit at known places. Lengths
@@ -1391,7 +1396,7 @@ namespace SOL
                                                                   // middle
         inline constexpr float COLUMN_HINT_CLEARANCE_PX = 3.0f;   // The wrapped key hint ends at least this far above
                                                                   // trace row A (a ring terminal's radius; smoke)
-        inline constexpr float HAZARD_HEIGHT_PX = 10.0f;          // Hazard stripe under Quit
+        inline constexpr float HAZARD_HEIGHT_PX = 10.0f;          // Hazard stripe under Quit (and Quit to desktop)
         inline constexpr float HAZARD_TILE_WIDTH_PX = 80.0f;      // ... one T_SOLSolidHazard tile (128 x 16) at it
         inline constexpr float VERSION_RECESS_HEIGHT = 58.0f;     // Chin recess holding the version line (2 lines)
         inline constexpr float VERSION_RECESS_PADDING = 8.0f;
@@ -1419,6 +1424,17 @@ namespace SOL
         // 266 units as drawn at 1000x800, past the shared column and its gap
         inline constexpr float SETTINGS_GRAPHICS_LABEL_WIDTH = 134.0f;
         inline constexpr float SETTINGS_GAMEPLAY_LABEL_WIDTH = 264.0f;
+        // Narrow views (46i, SOLSettingsTabs::IsNarrowLayout): Key bindings narrows its label column and its Rebind
+        // buttons when the key text would keep less than SETTINGS_KEY_TEXT_MIN_WIDTH (a row under 500 units), Gameplay
+        // narrows its label column when a slider would keep less than SETTINGS_SLIDER_MIN_WIDTH (a row under 514); the
+        // narrow labels wrap. At 1000x800 a row is about 405 units: the key text keeps 123 ("Backspace" is 104), a
+        // slider 165; wide views (1280x720 is about 658) keep the wide columns. The narrow Rebind holds the button's
+        // desired width (its "Rebind" label and BUTTON_PADDING_X a side: 103.1 at 1000x800)
+        inline constexpr float SETTINGS_KEY_TEXT_MIN_WIDTH = 120.0f;      // Key text room a key row keeps
+        inline constexpr float SETTINGS_SLIDER_MIN_WIDTH = 160.0f;        // Slider room a Gameplay row keeps
+        inline constexpr float SETTINGS_KEYS_NARROW_LABEL_WIDTH = 168.0f; // Key bindings' label column, narrow
+        inline constexpr float SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH = 150.0f; // Gameplay's label column, narrow
+        inline constexpr float SETTINGS_REBIND_NARROW_WIDTH = 104.0f;     // A Rebind button, narrow
     }
     static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
         && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE
@@ -1426,6 +1442,13 @@ namespace SOL
         && MenuStyle::BUTTON_FONT_SIZE == SolidMenu::FONT_BUTTON_SIZE
         && MenuStyle::BODY_FONT_SIZE == SolidMenu::FONT_BODY_SIZE
         && MenuStyle::SMALL_FONT_SIZE == SolidMenu::FONT_SMALL_SIZE, "menu font sizes are the SDD 46 section 9 roles'");
+
+    // The build version line (SDD 46 section 11.1, SOLBuildVersion): MAJOR.MINOR.YYMM.<commit count>
+    namespace BuildVersion
+    {
+        inline constexpr int32 MAJOR = 0;                         // Fixed parts of the version, set by hand
+        inline constexpr int32 MINOR = 1;
+    }
 
     // Settings (SDD 8, 8d): the USOLSettingsSave slot, its schema version and the slider steps
     namespace Settings

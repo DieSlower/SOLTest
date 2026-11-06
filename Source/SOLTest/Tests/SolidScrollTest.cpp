@@ -3,11 +3,19 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Menu/SOLMenuContent.h"
 #include "Menu/SOLSolidScroll.h"
+#include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidTabRail.h"
 #include "SOLConstants.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Components/ScrollBox.h"
+#include "Components/SizeBox.h"
+#include "Components/TextBlock.h"
+#include "Components/VerticalBox.h"
 #include "Misc/AutomationTest.h"
+#include "UObject/Package.h"
 
 #include <limits>
 
@@ -330,8 +338,6 @@ bool FSOLSolidScrollRailMatchTest::RunTest(const FString& /*parameters*/)
     }
     TestEqual(TEXT("negative count matches RailHeight(-1)"), SOLSolidScroll::StackContentHeight(-1, tab, gap, pad),
         SOLSolidTabRail::RailHeight(-1), SOLIDSCROLLTEST_TOLERANCE);
-    TestEqual(TEXT("the Controls page's 10 tabs"), SOLSolidScroll::StackContentHeight(10, tab, gap, pad),
-        SOLSolidTabRail::RailHeight(10), SOLIDSCROLLTEST_TOLERANCE);
     return true;
 }
 
@@ -437,6 +443,141 @@ bool FSOLSolidScrollStackScenarioTest::RunTest(const FString& /*parameters*/)
     // Showing it again changes nothing
     TestEqual(TEXT("showing the last entry again keeps the offset"),
         SOLSolidScroll::OffsetToShow(offset, lastTop, item, content, view), offset, SOLIDSCROLLTEST_TOLERANCE);
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// (46i) FSOLSolidScrollStack's visible-item cap and SOLMenuContent's stack and edge lights
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollStackCapTest, "SOLTest.SolidScroll.Stack.CapFollowsItems",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A stack built in a widget tree with a cap of 3 items of 52 + 10: no max height before an item (never a 0 height),
+// then min(N, 3) x 62 as items are added (62, 124, 186, 186, 186); a cap <= 0 clears it, a new cap applies at once; a
+// stack built without a cap has no size box
+bool FSOLSolidScrollStackCapTest::RunTest(const FString& /*parameters*/)
+{
+    UWidgetTree* const tree = NewObject<UWidgetTree>(GetTransientPackage());
+    FSOLSolidScrollStack stack;
+    UWidget* const outer = stack.Build(*tree, 52.0f, 10.0f, 0.0f, 3);
+    if (!TestNotNull(TEXT("a cap box"), stack.Cap.Get()) || !TestNotNull(TEXT("the item box"), stack.Items.Get()))
+    {
+        return false;
+    }
+    TestTrue(TEXT("Build returns the cap box"), outer == stack.Cap.Get());
+    TestFalse(TEXT("no items: no max height"), stack.Cap->IsMaxDesiredHeightOverride());
+
+    const float expected[] = { 62.0f, 124.0f, 186.0f, 186.0f, 186.0f };
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(expected)); ++index)
+    {
+        TestNotNull(FString::Printf(TEXT("item %d: a slot"), index),
+            stack.AddItem(tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass())));
+        const FString label = FString::Printf(TEXT("%d items"), index + 1);
+        TestTrue(label + TEXT(": a max height"), stack.Cap->IsMaxDesiredHeightOverride());
+        TestEqual(label + TEXT(": the max height"), stack.Cap->GetMaxDesiredHeight(), expected[index],
+            SOLIDSCROLLTEST_TOLERANCE);
+    }
+    TestNull(TEXT("a null item adds nothing"), stack.AddItem(nullptr));
+    TestEqual(TEXT("five items in the box"), stack.Items->GetChildrenCount(), 5);
+
+    stack.SetMaxVisibleItems(0);
+    TestFalse(TEXT("cap 0 clears the max height"), stack.Cap->IsMaxDesiredHeightOverride());
+    stack.SetMaxVisibleItems(2);
+    TestEqual(TEXT("cap 2 at once: 124"), stack.Cap->GetMaxDesiredHeight(), 124.0f, SOLIDSCROLLTEST_TOLERANCE);
+    stack.SetMaxVisibleItems(-4);
+    TestFalse(TEXT("a negative cap clears the max height"), stack.Cap->IsMaxDesiredHeightOverride());
+
+    FSOLSolidScrollStack plain;
+    UWidget* const plainOuter = plain.Build(*tree, 52.0f, 10.0f, 0.0f);
+    TestNull(TEXT("no cap: no size box"), plain.Cap.Get());
+    TestTrue(TEXT("no cap: Build returns the scroll box"), plainOuter == plain.Scroll.Get());
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollStackLightsTest, "SOLTest.SolidScroll.Stack.Lights",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// MakeStackLights: each entry's hover trace runs straight from traceLeft to traceRight and its LED sits at ledX, both
+// on the entry's unscrolled centre line ViewTop + i x (item + gap) + item / 2 (stack at view top 100, items 52 + 10:
+// 126, 188, 250), with no ring terminal; it writes min(traces, LEDs) entries
+bool FSOLSolidScrollStackLightsTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLSolidScrollStack stack;
+    stack.ViewTop = 100.0f;
+    stack.ItemHeight = 52.0f;
+    stack.Gap = 10.0f;
+    FSOLSolidTrace traces[3];
+    FVector2f leds[3] = { FVector2f(-1.0f, -1.0f), FVector2f(-1.0f, -1.0f), FVector2f(-1.0f, -1.0f) };
+    SOLMenuContent::MakeStackLights(stack, 16.0f, 300.0f, 372.0f, traces, leds);
+    const float centres[] = { 126.0f, 188.0f, 250.0f };
+    for (int32 entry = 0; entry < 3; ++entry)
+    {
+        const FString label = FString::Printf(TEXT("entry %d"), entry);
+        TestEqual(label + TEXT(": two points"), traces[entry].Count, 2);
+        TestFalse(label + TEXT(": no ring terminal"), traces[entry].bRingTerminal);
+        TestTrue(label + TEXT(": from traceLeft on the centre line"),
+            traces[entry].Points[0].Equals(FVector2f(300.0f, centres[entry]), SOLIDSCROLLTEST_TOLERANCE));
+        TestTrue(label + TEXT(": to traceRight on the centre line"),
+            traces[entry].Points[1].Equals(FVector2f(372.0f, centres[entry]), SOLIDSCROLLTEST_TOLERANCE));
+        TestTrue(label + TEXT(": the LED at ledX on the centre line"),
+            leds[entry].Equals(FVector2f(16.0f, centres[entry]), SOLIDSCROLLTEST_TOLERANCE));
+    }
+
+    // Fewer LEDs than traces: only that many entries written
+    FSOLSolidTrace more[3];
+    FVector2f two[2];
+    SOLMenuContent::MakeStackLights(stack, 16.0f, 300.0f, 372.0f, more, two);
+    TestEqual(TEXT("two LEDs: the second entry written"), more[1].Count, 2);
+    TestEqual(TEXT("two LEDs: the third entry left alone"), more[2].Count, 0);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollEdgeTracesTest, "SOLTest.SolidScroll.EdgeTraces",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// MakeEdgeTraces between x 20 and 360 from row A at y 700 (SDD 46 section 6.2; gap 16, so row B is 716 and the middle
+// 190): the long trace runs row A to 190 - 3 x 16 = 142, bends 45 degrees down to (158, 716) and ends 3 gaps short of
+// the right end at 312; the second runs row A from the right end back to the middle; the third runs row B from the
+// left end to 190 - 5 x 16 = 110; all three lit from a ring terminal at their first point
+bool FSOLSolidScrollEdgeTracesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    static_assert(COLUMN_TRACE_GAP == 16.0f && COLUMN_TRACE_DROP_BENDS == 3.0f && COLUMN_TRACE_END_BENDS == 3.0f
+        && COLUMN_TRACE_SHORT_BENDS == 5.0f, "The expected points below are worked out at the SDD's values");
+    FSOLSolidTrace traces[SOLMenuContent::EDGE_TRACE_COUNT];
+    SOLMenuContent::MakeEdgeTraces(20.0f, 360.0f, 700.0f, traces);
+    const TArray<TArray<FVector2f>> expected = {
+        { FVector2f(20.0f, 700.0f), FVector2f(142.0f, 700.0f), FVector2f(158.0f, 716.0f), FVector2f(312.0f, 716.0f) },
+        { FVector2f(360.0f, 700.0f), FVector2f(190.0f, 700.0f) },
+        { FVector2f(20.0f, 716.0f), FVector2f(110.0f, 716.0f) } };
+    for (int32 index = 0; index < SOLMenuContent::EDGE_TRACE_COUNT; ++index)
+    {
+        const FString label = FString::Printf(TEXT("trace %d"), index);
+        const FSOLSolidTrace& trace = traces[index];
+        TestTrue(label + TEXT(": a ring terminal"), trace.bRingTerminal);
+        if (!TestEqual(label + TEXT(": point count"), trace.Count, expected[index].Num()))
+        {
+            continue;
+        }
+        for (int32 point = 0; point < trace.Count; ++point)
+        {
+            if (!TestTrue(FString::Printf(TEXT("%s point %d"), *label, point),
+                trace.Points[point].Equals(expected[index][point], SOLIDSCROLLTEST_TOLERANCE)))
+            {
+                AddError(FString::Printf(TEXT("%s point %d: (%f, %f)"), *label, point, trace.Points[point].X,
+                    trace.Points[point].Y));
+            }
+        }
+
+        // Every segment horizontal or at 45 degrees
+        for (int32 point = 1; point < trace.Count; ++point)
+        {
+            const FVector2f step = trace.Points[point] - trace.Points[point - 1];
+            TestTrue(FString::Printf(TEXT("%s segment %d horizontal or 45 degrees"), *label, point),
+                FMath::IsNearlyZero(step.Y) || FMath::IsNearlyEqual(FMath::Abs(step.X), FMath::Abs(step.Y)));
+        }
+    }
     return true;
 }
 

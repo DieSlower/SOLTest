@@ -15,6 +15,7 @@
 
 enum class ESOLHoloCue : uint8;
 class FSOLSolidMenuMouseMoves;
+class SWidget;
 class UFont;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -28,7 +29,8 @@ enum class ESOLSolidTexture : uint8
 {
     Rivet,      // USOLSolidPanel's corner rivets
     Vent,       // USOLSolidPanel's top-right vent strip
-    Hazard,     // The main menu's hazard stripe under Quit (46d): the stripe mask, tinted from the palette
+    Hazard,     // The hazard stripe under the main menu's Quit (46d) and the pause menu's Quit to desktop (46i): the
+                // stripe mask, tinted from the palette
     Count,
 };
 
@@ -66,12 +68,15 @@ private:
     bool mHasPushed = false;
 };
 
-// The time and effects strength a solid screen animates its widgets at during one tick (USOLSolidMenuSubsystem::
-// BeginFrame), read once per screen tick and handed to every button (USOLMenuButton::RefreshHighlightAt)
+// The time, effects strength and keyboard focus a solid screen animates its widgets at during one tick
+// (USOLSolidMenuSubsystem::BeginFrame), read once per screen tick and handed to every button
+// (USOLMenuButton::RefreshHighlightAt), so a button compares its widget with the focus instead of querying Slate
 struct FSOLSolidMenuFrame
 {
     double NowS = 0.0;                                      // Real application seconds (FPlatformTime::Seconds)
     float Strength = SOL::Settings::HUD_EFFECTS_DEFAULT;    // Sanitized HudEffectsStrength
+    TSharedPtr<SWidget> KeyboardFocus;                      // The keyboard user's focused widget (null: none, or
+                                                            // no Slate application)
 };
 
 /**
@@ -99,7 +104,8 @@ public:
     static USOLSolidMenuSubsystem* Get(const UObject* worldContext);
 
     // Runs the context's subsystem's UpdateForFrame and returns the frame a solid screen animates at this tick: the
-    // real application time and the live strength (HUD_EFFECTS_DEFAULT without a subsystem); one call per screen tick
+    // real application time, the live strength (HUD_EFFECTS_DEFAULT without a subsystem) and the keyboard focus; one
+    // call per screen tick
     static FSOLSolidMenuFrame BeginFrame(const UObject* worldContext);
 
     // (46g, SDD 46 Q11) Plays one of the #42 menu cues through the context world's USOLHoloMenuSubsystem (its rate gate

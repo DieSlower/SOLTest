@@ -42,7 +42,8 @@ class UWidgetSwitcher;
  * which calls ShowTab back with the state's tab. Showing the Controls or Info tab rewrites its key texts from the
  * ship's live mapping (so rebinds show); showing the Settings tab refreshes it and leaving it ends the settings visit
  * (8d). Animations at the HUD effects strength (SDD 46 sections 4.6 and 7, SOLSolidMenu::EvaluatePausePanel): PlayOpen
- * slides the side panel in from past the left edge (render translation only) while the dim fades up, then its traces
+ * slides the side panel in from past the left edge over PAUSE_SLIDE_S (render translation only) while the dim fades
+ * up, then its traces
  * power up and pulse; BeginClose gives the input back at once (the whole widget hit-test invisible) and slides it out
  * over CLOSE_S, the shell closing with it, then the widget removes itself from the viewport in its tick; a PlayOpen
  * during the close reverses it. The shell opens and closes like the main menu's. At strength 0 every change is instant.
@@ -173,7 +174,7 @@ protected:
 
 private:
 
-    static constexpr int32 TAB_COUNT = static_cast<int32>(SOLMenuState::EMenuTab::Quit) + 1;
+    static constexpr int32 TAB_COUNT = static_cast<int32>(SOLMenuState::EMenuTab::Count);
 
     // Quit choice buttons (their indices)
     enum class EQuitChoice : uint8

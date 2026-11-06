@@ -10,6 +10,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 // Tests for the issue #46 Part 46f tab columns of the read-only pages (Docs/SDDs/46-solid-menus.md sections 6.3 and
@@ -29,6 +31,7 @@
 //       FString TabLabel(ESOLReadOnlyPage page, int32 tab);  // empty for an invalid page / tab
 //       int32 SelectTab(int32 current, int32 requested, int32 count);
 //       int32 ControlsTabOfRow(int32 row);                   // INDEX_NONE outside SOLMenuText::CONTROL_ROWS
+//       float LeftColumnWidth(ESOLReadOnlyPage page, float rowWidth);   // (46i, written after the code)
 //   }
 //
 //   namespace SOLSolidTabRail
@@ -160,10 +163,6 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesOpeningTabTest, "SOLTest.SolidPag
 bool FSOLSolidPagesOpeningTabTest::RunTest(const FString& /*parameters*/)
 {
     TestEqual(TEXT("OpeningTab is 0"), SOLPageTabs::OpeningTab(), 0);
-    for (int32 open = 0; open < 10; ++open)
-    {
-        TestEqual(FString::Printf(TEXT("open %d"), open), SOLPageTabs::OpeningTab(), 0);
-    }
     for (const ESOLReadOnlyPage page : SOLIDPAGESTEST_PAGES)
     {
         TestTrue(FString::Printf(TEXT("%s's opening tab is one of its tabs"), SolidPagesTestName(page)),
@@ -593,6 +592,35 @@ bool FSOLSolidPagesRailHeightTest::RunTest(const FString& /*parameters*/)
         TestTrue(FString::Printf(TEXT("%s's last trace inside its rail"), SolidPagesTestName(page)),
             last.Points[0].Y < SOLSolidTabRail::RailHeight(count));
     }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesLeftColumnTest, "SOLTest.SolidPages.LeftColumn.Width",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (46i) The left column: Controls keeps KEY_COLUMN_WIDTH at every row width; Info keeps LABEL_COLUMN_WIDTH while the
+// value column keeps VALUE_COLUMN_MIN_WIDTH after the gap and narrows to LABEL_COLUMN_NARROW_WIDTH below that (the
+// 1000x800 rows), the full column for a row not laid out yet (0, negative, NaN, infinite); About has none
+bool FSOLSolidPagesLeftColumnTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::MenuStyle;
+    const float threshold = LABEL_COLUMN_WIDTH + BUTTON_GAP + VALUE_COLUMN_MIN_WIDTH;
+    const float rows[] = { 0.0f, -50.0f, 200.0f, 423.0f, threshold - 1.0f, threshold, 676.0f, 2000.0f,
+        std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity() };
+    for (const float row : rows)
+    {
+        TestEqual(FString::Printf(TEXT("Controls at %.0f"), row),
+            SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Controls, row), KEY_COLUMN_WIDTH, SOLIDPAGESTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("About at %.0f"), row), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::About,
+            row), 0.0f, SOLIDPAGESTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("Count at %.0f"), row), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Count,
+            row), 0.0f, SOLIDPAGESTEST_TOLERANCE);
+        const bool bNarrow = row > 0.0f && row < threshold;
+        TestEqual(FString::Printf(TEXT("Info at %.0f"), row), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Info, row),
+            bNarrow ? LABEL_COLUMN_NARROW_WIDTH : LABEL_COLUMN_WIDTH, SOLIDPAGESTEST_TOLERANCE);
+    }
+
+    TestTrue(TEXT("the narrow column is narrower"), LABEL_COLUMN_NARROW_WIDTH < LABEL_COLUMN_WIDTH);
     return true;
 }
 

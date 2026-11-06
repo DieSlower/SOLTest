@@ -64,12 +64,12 @@ Regular / Bold), a pale-blue accent (`ACCENT_COLOR`) and an orange warning colou
 | **Text and page helpers** | `SOLMenuContent::MakeText`, `MakePage`, `Menu/SOLMenuContent.h/.cpp` | Every text block of every page is made here (font, size, colour, wrap); `MakePage` is a `UVerticalBox` with a heading. |
 | **Main menu** | `USOLMainMenuWidget`, `Menu/SOLMainMenuWidget.cpp` | Transparent root, inset `SCREEN_MARGIN` 80 from the left, vertically centred. Left **column panel** (`COLUMN_WIDTH` 340): title `GAME_TITLE` "SOLTest" (56, bold), tagline, studio name (accent), 7 entry buttons (Play, Demo, Start: <body>, Controls, Settings, About, Quit; `BUTTON_HEIGHT` 52, gap 10), the key hint. **Page panel** beside it (`PAGE_WIDTH` x `PAGE_HEIGHT` 760 x 760, hidden when no page) with a `UWidgetSwitcher`: none, Start location, Controls, Settings, About, Demo (`ESOLMainMenuPage`). A page entry toggles its page; Esc closes the page. Over the live solar system (`ASOLMenuCameraPawn`). |
 | **Start-location page** | in `USOLMainMenuWidget` | `MakePage` + body text + a `UScrollBox` with one `USOLMenuButton` per registry body (`LIST_BUTTON_HEIGHT` 38); the start body is the selected button. |
-| **Pause menu** | `USOLPauseMenuWidget`, `Menu/SOLPauseMenuWidget.cpp` | Full-screen `SCREEN_DIM` (black, alpha 0.45) root, centred panel `PAUSE_WIDTH` x `PAUSE_HEIGHT` 1080 x 780: "PAUSED" heading, a **horizontal tab bar** of 7 equal buttons (Resume, Controls, Info, Settings, Demo, About, Quit; `TAB_HEIGHT` 46), and a switcher with one page per tab: Resume (`PAUSED_BODY`: the simulation keeps running; `PAUSED_HINT`), Controls, Info, Settings, Demo (in-flight mode), About, Quit (prompt + Quit to main menu / Quit to desktop). Esc resumes. **The simulation keeps running** (SDD 8 decision 3; `-SOLMenuSmoke` check "sim keeps running while paused"; `GAME_MECHANICS.md` section 8). |
+| **Pause menu** | `USOLPauseMenuWidget`, `Menu/SOLPauseMenuWidget.cpp` | Full-screen `SCREEN_DIM` (black, alpha 0.45) root, centred panel `PAUSE_WIDTH` x `PAUSE_HEIGHT` 1080 x 780: "PAUSED" heading, a **horizontal tab bar** of 7 equal buttons (Resume, Controls, Info, Settings, Demo, About, Quit; `TAB_HEIGHT` 46), and a switcher with one page per tab: Resume (`PAUSED_BODY`: the simulation keeps running; `PAUSED_HINT`), Controls, Info, Settings, Demo (in-flight mode), About, Quit (prompt + Quit to menu / Quit to desktop; the first was labelled "Quit to main menu" until 46i). Esc resumes. **The simulation keeps running** (SDD 8 decision 3; `-SOLMenuSmoke` check "sim keeps running while paused"; `GAME_MECHANICS.md` section 8). |
 | **Settings page** | `USOLSettingsPageWidget`, `Menu/SOLSettingsPageWidget.cpp` (shared by both menus) | `MakePage` "Settings" + hint, then **one scroll box with six sections**: Graphics (Resolution, Window mode, Quality steppers; VSync, Space dust checkboxes), Audio (Master, Effects, Music sliders), Mouse (sensitivity slider, invert Y), Gameplay (HUD scale, HUD hologram effects, Hologram menu effects sliders; Show HUD, Assist at launch, Mouse steering at start checkboxes; Chase Down safety margin slider), Overlays (the embedded `USOLOverlayMenuWidget`, `SetEmbedded(true)`), Key bindings (Reset keys, then 38 rows: label, key text, Rebind button). Footer: dirty text, Revert, Apply; status line under it. Steppers are two small `USOLMenuButton`s around a value text; sliders are default `USlider`s (bar `BUTTON_SELECTED`, handle accent); checkboxes are default `UCheckBox`es. `ScrollToBinding` scrolls to a key row (rebind flow, smoke). |
 | **Embedded Overlay list** | `USOLOverlayMenuWidget` in embedded mode, `UI/SOLOverlayMenuWidget.cpp` | No hologram frame (SDD 42 D17); embedded mode strips the root inset and the panel backing; title collapsed; profile tabs and rows as text blocks with their own highlight fills. |
 | **Demo page** | `USOLDemoPageWidget`, `Menu/SOLDemoPageWidget.cpp` (shared) | `MakePage` "Scale demo" + hint, a presets row (Showcase, Benchmark, Ramp), a scroll of stepper rows under 6 section headings (`DEMO_SECTION_TITLES`), warnings text, footer Reset + Start demo (main menu) or Stop NPCs + Apply (pause). |
 | **Controls page** | `SOLMenuContent::BuildControlsPage` | One scroll of `CONTROL_ROWS` (86 rows) grouped by area (Flight, Targeting, Map, Overlays, Time, HUD, Combat, Routes, Menu, Demo), key column `KEY_COLUMN_WIDTH` 230; key cells refreshed from the live keys when shown. |
-| **Info page** (pause only) | `SOLMenuContent::BuildInfoPage` | Flight, Time and travel, Combat (label / value rows, `LABEL_COLUMN_WIDTH` 400, values from the constants), How it works (prose with live key names). |
+| **Info page** (pause only) | `SOLMenuContent::BuildInfoPage` | Flight, Time and travel, Combat (label / value rows, `LABEL_COLUMN_WIDTH` 400 (200 in narrow rows since 46i, section 6.7), values from the constants), How it works (prose with live key names). |
 | **About page** | `SOLMenuContent::BuildAboutPage` | Two tabs (Q6, user-confirmed 2026-11-05): Game (description, copyright, engine version `ABOUT_ENGINE_FORMAT`) and Credits. There is **no game version string** anywhere in the code or `Config/DefaultGame.ini` (Q10 adds a generated one). |
 | **Flow** | `USOLMenuSubsystem`, `SOLMenuState` | Unchanged by #46: state machine, queued requests, input mode, cursor, settings visits, Demo options. |
 | **Shared #42 code** | `UI/SOLHoloMenuMath.h` (`FSOLHoloMenuAnim`, `SOLHoloMenu::BeginOpen / BeginClose / Advance / SetHovered / Evaluate / OpenProgress / GlowScale`), `USOLHoloMenuSubsystem` (`PlayCue`, `FSOLHoloMenuParamCache::SanitizeStrength`), `USOLHologramCursorSubsystem` | Built renderer-free for #46 to reuse (SDD 42 D12). The cursor already follows `HoloMenuEffects` (SDD 42 D19) and stays as it is. |
@@ -343,7 +343,10 @@ brushed tile is a neutral grey tinted in the material.
   is one constant and a re-run of the material script.
 - **Buttons (`USOLMenuButton::SetSolidDisabled`)** never call `SetIsEnabled(false)` (Slate's disabled effect would
   multiply the hull and label alpha by 0.45 on top of `DISABLED_ALPHA`): the button turns hit-test invisible, refuses
-  hover focus and swallows clicks, and its owner moves keyboard focus off it.
+  hover focus and swallows clicks, and its owner moves keyboard focus off it. (46i) A button that has the keyboard
+  focus when it is disabled hands it on itself: the file-local `MenuButtonFocusOwner` (`Menu/SOLMenuButton.cpp`) gives
+  it to the nearest focusable user widget that owns the button, or clears it, so a disabled button never keeps the
+  focus while its owner has not moved it yet.
 - **Sliders and toggles** are disabled with Slate's own `SetIsEnabled(false)` (it blocks input, drag and navigation)
   and show disabled brushes: `MakeSliderStyle` fills `DisabledBarImage` / `DisabledThumbImage`, and a toggle (whose
   `FCheckBoxStyle` has no disabled images) gets `MakeCheckBoxStyle(subsystem, true)` from its owner; those brushes
@@ -633,13 +636,16 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
 ### 6.6 46g amendment: the pause side panel and scrolling rails as built
 
 - **Side panel (D15, Q3, Q4).** `USOLPauseMenuWidget` is a left side panel (`USOLSolidPanel` hull `PAUSE_PANEL_WIDTH`
-  420 wide, full height minus `SCREEN_MARGIN`, "PAUSED" on the stepped top edge) over the live view, only dimmed
+  420 wide, 380 since 46i (section 6.7), full height minus `SCREEN_MARGIN`, "PAUSED" on the stepped top edge) over the
+  live view, only dimmed
   (`PAUSE_DIM_ALPHA` 0.55; the simulation keeps running, `PAUSED_BODY` and its smoke check unchanged). The 7 tabs are
   stack buttons with hover traces and power-up LEDs; under them a switcher shows the paused text and key hint, or with
   Quit selected the Quit prompt and its two choices (Q4). The page tabs (`SOLMenuState::IsPageTab`: Controls, Info,
   Settings, Demo, About) open their page in the main menu's page shell right of the panel, with a Back button.
 - **Slide and close (section 4.6).** `PlayOpen` slides the panel in over `PAUSE_SLIDE_S` 0.25 s from the panel width
-  plus `SCREEN_MARGIN` (500 units) past the left edge; `BeginClose` makes the widget hit-test invisible at once (the
+  plus `SCREEN_MARGIN` plus `PAUSE_SLIDE_MARGIN_PX` 16 past its place (`PauseSlideX`: 516 units with the 420-unit panel,
+  given here as 500 before 46i; 476 since 46i), so it starts wholly past the left edge; `BeginClose` makes the widget
+  hit-test invisible at once (the
   input is back on the first frame in flight) and slides it out over `CLOSE_S` 0.15 s with the shell, then the widget
   leaves the viewport in its tick. A re-pause during the slide-out reverses it from where it is: the power-up, the LED
   blink and the stack's scroll are reset (and the open cue played) only when the panel was Closed. At strength 0
@@ -696,10 +702,119 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
   `v-resume-input`'s skipped-frame failure and the Quit-to-menu viewport assert; the shared helpers in
   `SOLMenuContent`; lines over 120 columns wrapped.
 - **The implementer's choices, for the user to confirm.** Resume no longer shows the selected mark (the opening tab is
-  focused, not marked); the slide distance is the panel width plus `SCREEN_MARGIN` (500 units); the hover cue plays
-  with the open cue when a menu focuses its default button on open; a scrolling rail's bar sits in the hover-trace gap
-  with the trace drawn over it; a re-pause during the slide-out plays no open cue (it reverses, it does not open from
-  Closed).
+  focused, not marked); the slide distance is the panel width plus `SCREEN_MARGIN` and `PAUSE_SLIDE_MARGIN_PX` (516
+  units then, 476 since 46i); the hover cue plays with the open cue when a menu focuses its default button on open; a
+  scrolling rail's bar sits in the hover-trace gap with the trace drawn over it; a re-pause during the slide-out plays
+  no open cue (it reverses, it does not open from Closed).
+
+### 6.7 46i amendment: final review fixes
+
+- **Pause side panel width (confirmed by the user, 2026-11-06).** `PAUSE_PANEL_WIDTH` is `COLUMN_WIDTH` 380 (was 420), so the
+  pause shell has the main menu shell's room at every view size and every main-menu fit check holds in the pause menu.
+  At 1000x800 (a 1350 x 1080-unit view) both shells are 786 units and the Graphics stepper value slot is 190.9 units,
+  wide enough for the widest value "Borderless window" (186.4; at 420 the slot was 150.9 and the value was clipped
+  to "orderless windo", the 46h TECH_DEBT entry, now removed). Any panel wider than about 384 clips it again. The slide
+  follows the width: 380 + `SCREEN_MARGIN` 80 + `PAUSE_SLIDE_MARGIN_PX` 16 = 476 units, so the panel still starts and
+  ends wholly past the left edge. At 380 the panel's own content fits (PAUSED on the stepped edge, the seven tab
+  labels, the Quit prompt and both choices with the hazard stripe). The old label "Quit to main menu" (about 274 units
+  with the stack letter spacing) filled its button's label box (about 271 units) and touched the LED dot; the user
+  chose the shorter label "Quit to menu" (`SOLMenuText::QUIT_TO_MENU`, user decision below) and kept the width 380.
+- **Info label column in narrow rows.** The pure `SOLPageTabs::LeftColumnWidth(page, rowWidth)`: Controls always
+  `KEY_COLUMN_WIDTH` 230; Info `LABEL_COLUMN_WIDTH` 400 while the value column beside it keeps
+  `VALUE_COLUMN_MIN_WIDTH` 220 after the `BUTTON_GAP`, else `LABEL_COLUMN_NARROW_WIDTH` 200 with the labels wrapping;
+  400 for a row not laid out yet; About none. `USOLReadOnlyPageWidget::FitLeftColumn` (in its tick) reads the content
+  switcher's laid-out width less a scroll bar's room and rewrites the label boxes only when the width changes (the
+  first frame of a page shown in a new view size still has the old column). Each row registers its left text, its box
+  and its right cell (`FSOLReadOnlyColumnText`). Measured: at 1000x800 the Info value cells are 194.9 to 212.9 units
+  (they were about 0 to 13 beside the 400 column), at 1280x720 the column stays 400 with 266-unit values (unchanged).
+  Controls at 1000x800: action cells 164.9 to 182.9 units.
+- **Smokes give GameUserSettings back.** Every menu smoke flag already chose the smoke save slot; it now also copies
+  the engine's `UGameUserSettings` at boot (`FSOLEngineSettingsSnapshot`, `Menu/SOLEngineSettingsSnapshot.h`: the
+  config text of every config property, 39 elements in UE 5.8, written with `ExportTextItem_Direct` because the
+  delta-less `ExportText_InContainer` writes nothing for a zero value, plus the engine's scalability levels) and in
+  `USOLSettingsSubsystem::Deinitialize` (the game instance's shutdown, after `UGameEngine::PreExit`'s unconditional
+  `SaveSettings`) writes it back without applying it and saves once. A windowed smoke's resizes are stored as the
+  confirmed resolution by `UGameEngine::OnViewportResized`, which is what overwrote the player's file before. Both
+  smoke runs of 46i left `Saved/Config/WindowsEditor/GameUserSettings.ini` byte for byte unchanged (4 values given
+  back each: the resolution and the confirmed resolution). The normal path is unchanged; no save schema, config layout
+  or version changed. The smoke's `ApplyStrength` now reverts every other pending value before its Apply.
+- **Review fixes, settings (R1-R5).** R1: while a smoke has the snapshot, `FlushSave` never calls the engine's
+  `SaveSettings` mid-run (a Quality Apply would have written the player's file; the log says "GameUserSettings write
+  skipped"); the values stay in memory and the shutdown gives the boot values back. R2-R5, the snapshot: the engine's
+  scalability levels are copied too and set back through `Scalability::SetQualityLevels` (SaveSettings writes the
+  engine's levels to `[ScalabilityGroups]`, not the settings object's); the copy is restored only into a settings
+  object of the captured class (a weak class pointer); `WindowPositions` is left to SaveSettings, which reloads it from
+  the config cache before it writes; nothing is saved when no value differed (`RestoreTo` counts the values it wrote
+  back). Tested in `SOLTest.SettingsSnapshot.*`.
+- **Review fixes, buttons and focus (R6, R7).** R6: a button disabled while it has the keyboard focus hands it to its
+  nearest focusable owning user widget (`MenuButtonFocusOwner`, section 5.3.1). R7: `FSOLSolidMenuFrame` carries the
+  keyboard-focused widget, read once per screen tick by `BeginFrame`, and `RefreshHighlightAt(frame, ...)` compares the
+  button's widget with it, so a settled button costs a pointer compare, a press read and a state compare (no Slate focus
+  query per button). Hidden tabs: the Settings page refreshes only the shown tab's buttons, the footer's and any hidden
+  button not `IsAtRest` (a ramp, press or focus still to play out), so the 38 Rebind buttons cost nothing while another
+  tab shows; a newly shown tab's buttons are refreshed at once.
+- **Review fixes, kit and pages.** The panel phase functions (`PanelProgress`, `BeginPanelOpen`, `BeginPanelClose`,
+  `AdvancePanel`, `BeginPanelOpenWithCue`) gain forms with an explicit open / close duration: the pause side panel
+  slides in over `PAUSE_SLIDE_S` and out over `CLOSE_S` (section 7; it used `PANEL_OPEN_S` before). The pause menu's
+  Quit to desktop gets the hazard stripe under it, as the main menu's Quit has (section 5.2;
+  `SOLMenuContent::MakeHazardStripe`, `HAZARD_HEIGHT_PX` 10). `EMenuTab::Count` ends the pause tabs, and
+  `IsTabChange` is true only for a valid tab other than the selected one (a value past Quit changes nothing); the
+  sized-box helper is shared (`SOLMenuContent::MakeSized`). The trace layer's core pass follows the pulse smoothly
+  (`CorePassAlpha`, section 7).
+- **User decisions (2026-11-06).** (B1) The stack LEDs' power-up blink is cyan (`CYAN_COLOR` #28D2F0, was amber);
+  amber stays for hover. (B2) The selected pause tab reads as selected, Resume included (the cyan underline and LED
+  mark, Q9). (B3) The pause menu's first Quit choice reads "Quit to menu" (was "Quit to main menu", which touched its
+  LED dot at 380), and `PAUSE_PANEL_WIDTH` stays 380. (B4) Key bindings at 1000x800, in both menus, narrow like the
+  Info page: see the next bullet; widescreen views are unchanged.
+- **Narrow Settings rows (B4).** The pure `SOLSettingsTabs::IsNarrowLayout(tab, rowWidth)`, the two-argument
+  `LabelColumnWidth(tab, rowWidth)` and `RebindWidth(rowWidth)` (the one-argument `LabelColumnWidth` is unchanged):
+  Key bindings narrows when its key text would keep less than `SETTINGS_KEY_TEXT_MIN_WIDTH` 120 beside the wide 250
+  column, the gap and the 120 Rebind (a row under 500 units), to a label column of `SETTINGS_KEYS_NARROW_LABEL_WIDTH`
+  168 and Rebind boxes of `SETTINGS_REBIND_NARROW_WIDTH` 104 (the button needs 103.1: "Rebind" and 18 padding a side;
+  96 clipped it); Gameplay narrows when a slider would keep less than `SETTINGS_SLIDER_MIN_WIDTH` 160 beside its 264
+  column and the value readout (a row under 514), to `SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH` 150 (the most that still
+  leaves a slider 160 at 1000x800); no other tab narrows, nor a row not laid out yet. Two narrow widths, not one: at
+  150 the long key labels would wrap to three lines, at 168 the Gameplay sliders would drop below 160.
+  `USOLSettingsPageWidget::FitNarrowRows` (each tick) reads the content switcher's width less a scroll bar's room (the
+  Info page's rule) and rewrites only on a change of a tab's narrow state: the column width, the labels' wrap, the row
+  boxes (a minimum height of `SETTINGS_ROW_HEIGHT` 34 when narrow, so a wrapped label grows its row, the fixed 34 when
+  wide) and the Rebind boxes (held to 34 tall, so one-line key rows keep their height). Measured at 1000x800 (layout
+  scale 0.740): rows 404.9 units; key text slot 122.9 (was 24.9), the widest key name "Backspace" 104.0, so every name
+  fits beside its Rebind; Gameplay sliders 164.9 (were 68.9); the widest wrapped word 121.6 (Key bindings) and 94.6
+  (Gameplay); the tallest wrapped key row 62.1 (two lines); on Gameplay 6 of 7 labels wrap, the tallest row 93.2 (three
+  lines, "Mouse steering at start"), so the tab scrolls. At 1280x720 the rows are 658.0 and both tabs stay wide. Seen
+  in the smoke: a key row scrolled out of view applies its wrap once it is painted (TECH_DEBT).
+- **Smoke.** `-SOLSmokeSolidMenu` 192/192 (was 177 at 46h; about 100 s): `CheckSettingsFit` takes the page, so the
+  pause menu's Settings is measured at 1000x800 (`h-pause-small-stepper-values`, `h-pause-small-labels`, and
+  `h-pause-small-values-in-shell`; the first would fail at 420, its slot 150.9) and measures each label against the
+  column actually applied (the widest word on a narrow tab); a rows sweep (`TickRowsSweep` / `CheckSweepTab`) shows
+  each Controls and Info tab with a left column in turn and checks every row's box width, the widest word of each cell
+  inside it and both cells inside the content and the shell (`h-controls-rows` and `h-pause-small-controls-rows` /
+  `-info-rows` at 1000x800, `v-controls-rows` / `v-info-rows` at 1280x720, with screenshots of the Info tabs). The
+  narrow rows (B4) are checked in both menus at 1000x800 (`h-small-gameplay-rows`, `h-small-gameplay-sliders`,
+  `h-small-keys-rows`, `h-small-keys-names`, `h-pause-small-keys-rows`, `h-pause-small-keys-names`: the narrow column,
+  each word and wrapped label inside its column and row, each key name inside its slot left of a Rebind box with
+  room for its button, with shots) and the wide layout at 1280x720 (`u-settings-wide`). `SOLID_SMOKE_EXPECTED_CHECKS`
+  192 (profile: 9 default, 14 a view run) makes a run that logs another number of checks fail (`z-check-count`); a
+  missing page or pause menu logs a FAIL instead of skipping; `f-s0-instant` reads only its own step; the
+  `small-settings` shot keeps the pending window mode (reverted by the next step); the comparison board's tab-row
+  traces use `TAB_HEIGHT` rows and the frame form of `RefreshHighlightAt`. The real-cursor stages bring the game
+  window to the front and retry a stage whose hover or capture did not take (at most `SOLID_SMOKE_CURSOR_RETRIES` 3,
+  each logged as a warning).
+- **Left as tech debt.** The Info page's "rad/s²" shows a missing-glyph box for "²" in the menu font. In wide views
+  two Key bindings labels ("Steer with the mouse (hold)" 276.3, "Open the map in Jump mode" 280.8) still run past their
+  260-unit column and gap (widescreen unchanged, per the user).
+- **Profile (SDD 13 budget: under 0.2 ms CPU, 0.3 ms GPU a screen).** Three default runs, 4/4 PASS and 9/9 checks
+  each; medians of `dcpu` / `dgpu` (ms): P0 main-settings 1920x1080 +0.076 / +0.063, P1 main-settings 1280x720 +0.015
+  / +0.033, P2 pause-settings 1280x720 +0.090 / +0.038, P3 pause-settings 1920x1080 +0.028 / +0.064 (the highest
+  single run P2 +0.169).
+- **Tests and regression.** `SOLTest.SettingsSnapshot.*` (`Tests/SettingsSnapshotTest.cpp`: RoundTrip, Coverage,
+  Empty, on a transient `UGameUserSettings`; written after the code, and it caught the zero-value export),
+  `SOLTest.SolidPages.LeftColumn.Width`, `SOLTest.SolidSettings.Layout.NarrowLayout` / `.NarrowWidths` (both sides of
+  each threshold, the other tabs, zero, negative and NaN widths, the room a narrow row keeps at 1000x800) and the
+  review's kit, page and pause tests; full suite 1537/1537. Holo 86/86, overlay 34/34, HUD 24/24, `-SOLMenuSmoke=all`
+  47 / 3 (the TECH_DEBT stale cursor and thrust checks). `Saved/Config/WindowsEditor/GameUserSettings.ini` was byte
+  for byte unchanged after every run.
 
 ## 7. Animations and the effects strength (D5)
 
@@ -719,6 +834,12 @@ Nothing animates while idle except the pulse, which is a few float ops per tick 
 layers' repaint; with `s = 0` the menus are static (no pulse, so nothing invalidates). (46c amendment: Slate still
 repaints the trace layers every frame at any strength, as it does every widget, since the menus are not under an
 invalidation panel; the layer's paint-only invalidation saves work only where it is cached. See section 13.)
+
+(46i amendment) The trace core line's alpha follows the pulse smoothly: `CorePassAlpha(pulse, s)` = (1 + pulse -
+`IDLE_PULSE_DEPTH` x s) / 2 with s = min(s, `HUD_EFFECTS_MAX`), so over the pulse's swing [1 - depth x s,
+1 + depth x s] the core swings in [1 - depth x s, 1] and reaches full brightness at the pulse's top instead of
+clipping flat for half the period; at s <= 0 it is the pulse itself (1, no pulse), clamped to [0, 1]. The glow pass
+keeps `TRACE_GLOW_ALPHA` x min(s, `HUD_EFFECTS_MAX`) x pulse.
 
 ## 8. Pure logic contracts (`Menu/SOLSolidMenuMath`, test-first)
 
@@ -841,7 +962,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | `TRACE_CORE_WIDTH_PX` / `TRACE_GLOW_WIDTH_PX` / `TRACE_GLOW_ALPHA` | 1.5 / 6 / 0.25 | |
 | `LED_RADIUS_PX` / `UNDERLINE_PX` / `EDGE_PX` | 3 / 2 / 1.5 | |
 | `DISABLED_ALPHA` | 0.4 | |
-| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200 (**220** since 46e, section 6.3), `SETTINGS_GRAPHICS_LABEL_WIDTH` 134 and `SETTINGS_GAMEPLAY_LABEL_WIDTH` 264 (46e follow-ups, section 6.4), `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
+| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200 (**220** since 46e, section 6.3), `SETTINGS_GRAPHICS_LABEL_WIDTH` 134 and `SETTINGS_GAMEPLAY_LABEL_WIDTH` 264 (46e follow-ups, section 6.4), `PAUSE_PANEL_WIDTH` 420 (**380** = `COLUMN_WIDTH` since 46i, section 6.7), `LABEL_COLUMN_NARROW_WIDTH` 200 and `VALUE_COLUMN_MIN_WIDTH` 220 (`SOL::MenuStyle`, 46i: the Info label column in narrow rows), `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
 | Font sizes | Title 56, heading 26, section 20, button 20, body 18, small 15 | Body +2 for Rajdhani's narrower face; checked at 1000x800 |
 | Letter spacing | Titles 400, stack labels 260, small caps 200 | From the board's tracking (README), applied as `FSlateFontInfo::LetterSpacing` |
 | `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD` (46c follow-up: `SOLID_TEX_NOISE` removed) under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
@@ -1033,8 +1154,10 @@ is measured in its own window, so it can read above `cpu_slate`). The pass's scr
 Each pass logs one line: `SolidMenuProfile RESULT P<n> PASS|FAIL|NOBASE screen=.. view=.. cpu_slate=.. cpu_gameui=..
 gpu_ui=.. gpu_slate=.. gpu_solid=.. gpu_frame=.. ui_draws=.. ... dcpu=.. dgpu=..` (`gpu_solid` sums the Slate
 material draws whose material name contains `SOLSolid`, zero before 46c), then a `SUMMARY` line; then it quits (a
-180 s watchdog quits a stuck run). FAIL also when the capture is invalid (`valid=no`: not `-game`, a view size not
-reached, the screen not shown on a capture frame, strength not 1, a number not read).
+watchdog of 60 s plus 45 s a pass, `PROFILE_WATCHDOG_BASE_S` / `PROFILE_WATCHDOG_PASS_S`, quits a stuck run; a view
+run allows 180 s a pass, section 13.2). FAIL also when the capture is invalid (`valid=no`: not `-game`, a view size not
+reached, the screen not shown on a capture frame, strength not 1, a number not read). Since 46i a run that logs another
+number of checks than a whole run (9 default, 14 a view run) also logs a `z-check-count` FAIL.
 
 **Baseline (today's flat look).** Measured 2026-11-04 at `816da1a` plus the uncommitted 46a review and 46c step 0
 files (no rendering change), UE 5.8.3, D3D12 SM6, i9-9960X, RTX 2080 Ti, VSync off, scalability 3, frames 4.5 to
@@ -1205,6 +1328,11 @@ whole frame misses both the 4K proxy and the XR-4 lines because of the scene beh
      back in the same frame; the slide-out after.
   6. Strength 0: no animation, hover still lifts and shows the amber edge, LED and underline; strength 2 screenshot.
   7. Pause behaviour (Q3): the live view is dimmed and the simulation keeps running (the existing "sim keeps running while paused" check stays).
+  8. (46i) Fit at 1000x800 in both menus and at 1280x720: the pause menu's Settings stepper values, labels and value
+     texts in their slots and the shell; every Controls and Info tab with a left column, each row's cells inside
+     their slots, the content and the shell (section 6.7); the Gameplay and Key bindings rows' room logged. A run
+     that logs another number of checks than a whole run fails, and every menu smoke leaves the player's
+     GameUserSettings.ini as it found it.
 - **Regression smokes:** `-SOLMenuSmoke=all` (no new failures beyond its known stale checks), `-SOLSmokeHoloMenu`
   (the embedded Overlay list check of step 11 is updated to the solid look), `-SOLSmokeOverlay`.
 - **PIE smoke** with unreal-mcp when the editor is open: screenshots looked at for each screen at strength 0, 1, 2.

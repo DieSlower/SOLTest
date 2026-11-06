@@ -61,21 +61,30 @@ namespace
     static_assert(UE_ARRAY_COUNT(BOARD_BUTTONS) == static_cast<int32>(ESOLSolidSmokeButton::Count),
         "one spec per board button");
 
+    // The rows in build order and their heights (the hover traces and the lower-edge trace are placed from them)
+    constexpr int32 BOARD_ROW_STACK = 0;
+    constexpr int32 BOARD_ROW_TAB_SELECTED = 1;
+    constexpr int32 BOARD_ROW_TAB = 2;
+    constexpr int32 BOARD_ROW_SMALL = 3;
+    constexpr int32 BOARD_ROW_SETTINGS = 4;
+    constexpr int32 BOARD_ROW_SLIDER = 5;
+    constexpr int32 BOARD_ROW_TOGGLE = 6;
+    constexpr int32 BOARD_ROW_COUNT = 7;
+    const float BOARD_ROW_HEIGHTS[] = { SOL::MenuStyle::BUTTON_HEIGHT, SOL::MenuStyle::TAB_HEIGHT,
+        SOL::MenuStyle::TAB_HEIGHT, SOL::MenuStyle::SETTINGS_ROW_HEIGHT, SOL::MenuStyle::SETTINGS_ROW_HEIGHT,
+        SOL::MenuStyle::SETTINGS_ROW_HEIGHT, SOL::MenuStyle::SETTINGS_ROW_HEIGHT };
+    static_assert(UE_ARRAY_COUNT(BOARD_ROW_HEIGHTS) == BOARD_ROW_COUNT, "one height per board row");
+
     //////////////////////////////////////////////////////////////////////////
-    // Wraps a widget in a size box (0 leaves that axis free)
-    USizeBox* BoardSized(UWidgetTree& tree, UWidget* content, const float width, const float height)
+    // Returns a row's top in board coordinates (BOARD_ROW_COUNT: below the last row and its gap)
+    float BoardRowTop(const int32 row)
     {
-        USizeBox* box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
-        if (width > 0.0f)
+        float top = BOARD_PADDING;
+        for (int32 index = 0; index < row && index < BOARD_ROW_COUNT; ++index)
         {
-            box->SetWidthOverride(width);
+            top += BOARD_ROW_HEIGHTS[index] + BOARD_ROW_GAP;
         }
-        if (height > 0.0f)
-        {
-            box->SetHeightOverride(height);
-        }
-        box->SetContent(content);
-        return box;
+        return top;
     }
 }
 
@@ -100,7 +109,8 @@ void USOLSolidMenuSmokeBoard::BindHoverTraces()
     const float end = BOARD_PADDING + BOARD_LABEL_WIDTH + 2.0f * BOARD_CELL_WIDTH + 2.0f * BOARD_CELL_GAP;
     const ESOLSolidSmokeButton traced[] = { ESOLSolidSmokeButton::StackOn, ESOLSolidSmokeButton::TabA,
         ESOLSolidSmokeButton::TabB };
-    const int32 rows[] = { 0, 1, 2 };
+    const int32 rows[] = { BOARD_ROW_STACK, BOARD_ROW_TAB_SELECTED, BOARD_ROW_TAB };
+    static_assert(UE_ARRAY_COUNT(traced) == UE_ARRAY_COUNT(rows), "one row per traced button");
     for (int32 i = 0; i < static_cast<int32>(UE_ARRAY_COUNT(traced)); ++i)
     {
         USOLMenuButton* button = GetButton(traced[i]);
@@ -108,8 +118,7 @@ void USOLSolidMenuSmokeBoard::BindHoverTraces()
         {
             continue;
         }
-        const float y = BOARD_PADDING + rows[i] * (SOL::MenuStyle::BUTTON_HEIGHT + BOARD_ROW_GAP)
-            + 0.5f * SOL::MenuStyle::BUTTON_HEIGHT;
+        const float y = BoardRowTop(rows[i]) + 0.5f * BOARD_ROW_HEIGHTS[rows[i]];
         FSOLSolidTrace trace;
         trace.Points[0] = FVector2f(right, y);
         trace.Points[1] = FVector2f(right + BOARD_CELL_GAP, y);
@@ -155,14 +164,15 @@ void USOLSolidMenuSmokeBoard::NativeOnInitialized()
     const auto addRow = [this, rows](const TCHAR* label, UWidget* enabled, UWidget* disabled, const float height)
     {
         UHorizontalBox* row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-        row->AddChildToHorizontalBox(BoardSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree, label,
-            BODY_FONT_SIZE, SOLSolidStyle::TextColor()), BOARD_LABEL_WIDTH, 0.0f))->SetVerticalAlignment(VAlign_Center);
+        UTextBlock* labelText = SOLMenuContent::MakeText(*WidgetTree, label, BODY_FONT_SIZE, SOLSolidStyle::TextColor());
+        row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, labelText, BOARD_LABEL_WIDTH, 0.0f))
+            ->SetVerticalAlignment(VAlign_Center);
         UWidget* cells[] = { enabled, disabled };
         for (UWidget* cell : cells)
         {
             UWidget* content = cell != nullptr ? cell : WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
-            row->AddChildToHorizontalBox(BoardSized(*WidgetTree, content, BOARD_CELL_WIDTH, height))->SetPadding(
-                FMargin(0.0f, 0.0f, BOARD_CELL_GAP, 0.0f));
+            row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, content, BOARD_CELL_WIDTH, height))
+                ->SetPadding(FMargin(0.0f, 0.0f, BOARD_CELL_GAP, 0.0f));
         }
         rows->AddChildToVerticalBox(row)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BOARD_ROW_GAP));
     };
@@ -188,14 +198,15 @@ void USOLSolidMenuSmokeBoard::NativeOnInitialized()
         const FLinearColor labelColor = bDisabled ? SOLSolidStyle::Linear(SOL::SolidMenu::DISABLED_TEXT_COLOR)
             : SOLSolidStyle::TextColor();
         const FLinearColor valueColor = bDisabled ? labelColor : SOLSolidStyle::ValueColor();
-        row->AddChildToHorizontalBox(BoardSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree, TEXT("Quality"),
-            BODY_FONT_SIZE, labelColor), BOARD_ROW_LABEL_WIDTH, 0.0f))->SetVerticalAlignment(VAlign_Center);
-        row->AddChildToHorizontalBox(BoardSized(*WidgetTree, prev, SETTINGS_STEP_BUTTON_WIDTH, 0.0f));
+        UTextBlock* label = SOLMenuContent::MakeText(*WidgetTree, TEXT("Quality"), BODY_FONT_SIZE, labelColor);
+        row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, label, BOARD_ROW_LABEL_WIDTH, 0.0f))
+            ->SetVerticalAlignment(VAlign_Center);
+        row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, prev, SETTINGS_STEP_BUTTON_WIDTH, 0.0f));
         UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, TEXT("High"), BODY_FONT_SIZE, valueColor);
         value->SetJustification(ETextJustify::Center);
-        row->AddChildToHorizontalBox(BoardSized(*WidgetTree, value, BOARD_ROW_VALUE_WIDTH, 0.0f))
+        row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, value, BOARD_ROW_VALUE_WIDTH, 0.0f))
             ->SetVerticalAlignment(VAlign_Center);
-        row->AddChildToHorizontalBox(BoardSized(*WidgetTree, next, SETTINGS_STEP_BUTTON_WIDTH, 0.0f));
+        row->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, next, SETTINGS_STEP_BUTTON_WIDTH, 0.0f));
         return row;
     };
 
@@ -217,23 +228,27 @@ void USOLSolidMenuSmokeBoard::NativeOnInitialized()
     }
 
     using EButton = ESOLSolidSmokeButton;
-    addRow(TEXT("Stack button"), GetButton(EButton::StackOn), GetButton(EButton::StackOff), BUTTON_HEIGHT);
-    addRow(TEXT("Tab (selected)"), GetButton(EButton::TabA), GetButton(EButton::TabOff), TAB_HEIGHT);
-    addRow(TEXT("Tab"), GetButton(EButton::TabB), nullptr, TAB_HEIGHT);
-    addRow(TEXT("Small button"), GetButton(EButton::SmallOn), GetButton(EButton::SmallOff), SETTINGS_ROW_HEIGHT);
+    addRow(TEXT("Stack button"), GetButton(EButton::StackOn), GetButton(EButton::StackOff),
+        BOARD_ROW_HEIGHTS[BOARD_ROW_STACK]);
+    addRow(TEXT("Tab (selected)"), GetButton(EButton::TabA), GetButton(EButton::TabOff),
+        BOARD_ROW_HEIGHTS[BOARD_ROW_TAB_SELECTED]);
+    addRow(TEXT("Tab"), GetButton(EButton::TabB), nullptr, BOARD_ROW_HEIGHTS[BOARD_ROW_TAB]);
+    addRow(TEXT("Small button"), GetButton(EButton::SmallOn), GetButton(EButton::SmallOff),
+        BOARD_ROW_HEIGHTS[BOARD_ROW_SMALL]);
     addRow(TEXT("Settings row"), makeSettingsRow(GetButton(EButton::RowOnPrev), GetButton(EButton::RowOnNext), false),
-        makeSettingsRow(GetButton(EButton::RowOffPrev), GetButton(EButton::RowOffNext), true), SETTINGS_ROW_HEIGHT);
-    addRow(TEXT("Slider"), Sliders[0], Sliders[1], SETTINGS_ROW_HEIGHT);
+        makeSettingsRow(GetButton(EButton::RowOffPrev), GetButton(EButton::RowOffNext), true),
+        BOARD_ROW_HEIGHTS[BOARD_ROW_SETTINGS]);
+    addRow(TEXT("Slider"), Sliders[0], Sliders[1], BOARD_ROW_HEIGHTS[BOARD_ROW_SLIDER]);
     UHorizontalBox* toggleCells[2];
     for (int32 i = 0; i < 2; ++i)
     {
         toggleCells[i] = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
         toggleCells[i]->AddChildToHorizontalBox(Toggles[i])->SetVerticalAlignment(VAlign_Center);
     }
-    addRow(TEXT("Toggle (on)"), toggleCells[0], toggleCells[1], SETTINGS_ROW_HEIGHT);
+    addRow(TEXT("Toggle (on)"), toggleCells[0], toggleCells[1], BOARD_ROW_HEIGHTS[BOARD_ROW_TOGGLE]);
 
-    // The static trace under the rows
-    const float traceY = BOARD_PADDING + 7.0f * BOARD_ROW_GAP + 3.0f * BUTTON_HEIGHT + 4.0f * SETTINGS_ROW_HEIGHT;
+    // The static trace under the rows (below the last row and its gap)
+    const float traceY = BoardRowTop(BOARD_ROW_COUNT);
     FSOLSolidTrace trace;
     trace.Points[0] = FVector2f(BOARD_PADDING, traceY);
     trace.Points[1] = FVector2f(BOARD_PADDING + BOARD_LABEL_WIDTH, traceY);
@@ -252,7 +267,7 @@ void USOLSolidMenuSmokeBoard::NativeTick(const FGeometry& geometry, const float 
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame);
     }
     if (Panel != nullptr)
     {

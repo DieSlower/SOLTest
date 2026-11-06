@@ -133,6 +133,8 @@ FSOLSolidMenuFrame USOLSolidMenuSubsystem::BeginFrame(const UObject* worldContex
 {
     FSOLSolidMenuFrame frame;
     frame.NowS = FPlatformTime::Seconds();
+    frame.KeyboardFocus = FSlateApplication::IsInitialized() ? FSlateApplication::Get().GetKeyboardFocusedWidget()
+        : nullptr;
     USOLSolidMenuSubsystem* subsystem = Get(worldContext);
     if (subsystem != nullptr)
     {

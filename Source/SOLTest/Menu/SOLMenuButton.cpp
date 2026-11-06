@@ -10,8 +10,10 @@
 #include "SOLConstants.h"
 #include "UI/SOLHoloMenuSubsystem.h"
 
+#include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
+#include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformTime.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Input/SButton.h"
@@ -49,6 +51,25 @@ namespace
         return FLinearColor(divide(a.R, b.R), divide(a.G, b.G), divide(a.B, b.B), divide(a.A, b.A));
     }
 
+    //////////////////////////////////////////////////////////////////////////
+    // Moves the keyboard focus from a button to the nearest focusable user widget that owns it, or clears it
+    void MenuButtonFocusOwner(const UWidget& button)
+    {
+        for (UUserWidget* owner = button.GetTypedOuter<UUserWidget>(); owner != nullptr;
+            owner = owner->GetTypedOuter<UUserWidget>())
+        {
+            if (owner->IsFocusable())
+            {
+                owner->SetKeyboardFocus();
+                return;
+            }
+        }
+        if (FSlateApplication::IsInitialized())
+        {
+            FSlateApplication::Get().ClearKeyboardFocus(EFocusCause::SetDirectly);
+        }
+    }
+
     // Reaches SButton::SetIsFocusable, which SButton declares protected (UButton has no runtime setter, only
     // InitIsFocusable for the next rebuild): a pointer to the member formed through a derived class is a pointer to
     // SButton's member and may be called on any SButton. Never instantiated
@@ -83,7 +104,7 @@ bool FSOLSolidButtonAnim::DiffersOnScreen(const FSOLSolidButtonLook& a, const FS
     // EncodeButtonTint is already quantized to 8 bits; half a level apart is a different level
     const FLinearColor ta = SOLSolidMenu::EncodeButtonTint(a);
     const FLinearColor tb = SOLSolidMenu::EncodeButtonTint(b);
-    const float halfLevel = 0.5f / 255.0f;
+    const float halfLevel = SOL::SolidMenu::TINT_HALF_LEVEL;
     if (FMath::Abs(ta.R - tb.R) > halfLevel || FMath::Abs(ta.G - tb.G) > halfLevel
         || FMath::Abs(ta.B - tb.B) > halfLevel || FMath::Abs(ta.A - tb.A) > halfLevel)
     {
@@ -235,6 +256,13 @@ void USOLMenuButton::SetSolidDisabled(const bool bDisabled)
         {
             FSOLMenuButtonFocusAccess::Apply(*MyButton, bFocusable);
         }
+
+        // A disabled button gives up the keyboard focus (SDD 46 section 5.3.1), to its owning screen so the menu
+        // keys still reach it
+        if (bDisabled && HasKeyboardFocus())
+        {
+            MenuButtonFocusOwner(*this);
+        }
     }
     mIsSolidDisabled = bDisabled;
     const ESlateVisibility visibility = GetVisibility();
@@ -281,10 +309,35 @@ void USOLMenuButton::SetLabel(const FString& label)
 // (disabled, pressed, focused unless the mouse hovers another control) at a time and strength
 void USOLMenuButton::RefreshHighlightAt(const double nowS, const float s, const bool bHoverElsewhere)
 {
+    RefreshHighlightFocused(HasKeyboardFocus(), nowS, s, bHoverElsewhere);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// RefreshHighlightAt at a frame: the focus is this button's widget being the frame's keyboard-focused widget (what
+// HasKeyboardFocus asks Slate, read once per screen tick)
+void USOLMenuButton::RefreshHighlightAt(const FSOLSolidMenuFrame& frame, const bool bHoverElsewhere)
+{
+    const SWidget* focused = frame.KeyboardFocus.Get();
+    const bool bFocused = focused != nullptr && GetCachedWidget().Get() == focused;
+    RefreshHighlightFocused(bFocused, frame.NowS, frame.Strength, bHoverElsewhere);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the last refresh left the button settled, unfocused and Normal or Disabled
+bool USOLMenuButton::IsAtRest() const
+{
+    return mHasApplied && mIsAppliedSettled && !mIsFocusedAtRefresh
+        && (mAppliedState == ESOLSolidButtonState::Normal || mAppliedState == ESOLSolidButtonState::Disabled);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Plays the hover cue when the focus arrived since the last refresh, then advances the look for the resolved state
+void USOLMenuButton::RefreshHighlightFocused(const bool bFocused, const double nowS, const float s,
+    const bool bHoverElsewhere)
+{
     // The hover cue (SDD 46 Q11) when the focus arrives (a hover takes it, as the keyboard does): an event, never per
     // frame, and never on a press's release or on the mouse leaving a focusless control (the focus stays put then);
     // the cue gate rate-limits a sweep across a list
-    const bool bFocused = HasKeyboardFocus();
     if (bFocused && !mIsFocusedAtRefresh && !mIsSolidDisabled)
     {
         USOLSolidMenuSubsystem::PlayCue(this, ESOLHoloCue::Hover, nowS);

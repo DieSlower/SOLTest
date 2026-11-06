@@ -2555,4 +2555,45 @@ bool FSOLHoloMenuAnimDurationDefaultTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHoloMenuAnimDurationDistinctTest, "SOLTest.HoloMenu.AnimDurationDistinct",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (46i) The duration forms with two distinct durations (open 0.5 s, close 0.125 s, exact in binary; OPEN_S equals
+// CLOSE_S, so AnimDurationDefault cannot tell them apart): Opening runs at the open rate and Closing at the close rate,
+// a reopen mid-close continues from the close's progress at the open rate, and Advance finishes each at its own end
+bool FSOLHoloMenuAnimDurationDistinctTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHoloMenu;
+    const double openS = 0.5;
+    const double closeS = 0.125;
+    const double t0 = 5.0;
+    FSOLHoloMenuAnim anim;
+    TestTrue(TEXT("the open starts"), BeginOpen(anim, t0, 1.0f, openS, closeS));
+    TestEqual(TEXT("0.25 after 0.125 s of the open"), Progress(anim, t0 + 0.125, 1.0f, openS, closeS), 0.25f,
+        HOLOMENUTEST_TOLERANCE);
+    Advance(anim, t0 + 0.375, 1.0f, openS, closeS);
+    TestTrue(TEXT("still Opening after 0.375 s"), anim.Phase == ESOLHoloMenuPhase::Opening);
+    Advance(anim, t0 + 0.5, 1.0f, openS, closeS);
+    TestTrue(TEXT("Open after 0.5 s"), anim.Phase == ESOLHoloMenuPhase::Open);
+
+    const double t1 = t0 + 1.0;
+    TestTrue(TEXT("the close starts"), BeginClose(anim, t1, 1.0f, openS, closeS));
+    TestEqual(TEXT("0.5 after 0.0625 s of the close"), Progress(anim, t1 + 0.0625, 1.0f, openS, closeS), 0.5f,
+        HOLOMENUTEST_TOLERANCE);
+    TestTrue(TEXT("a reopen mid-close starts"), BeginOpen(anim, t1 + 0.0625, 1.0f, openS, closeS));
+    TestEqual(TEXT("0.75 another 0.125 s on"), Progress(anim, t1 + 0.1875, 1.0f, openS, closeS), 0.75f,
+        HOLOMENUTEST_TOLERANCE);
+    Advance(anim, t1 + 0.3125, 1.0f, openS, closeS);
+    TestTrue(TEXT("Open 0.25 s after the reopen"), anim.Phase == ESOLHoloMenuPhase::Open);
+
+    const double t2 = t0 + 2.0;
+    BeginClose(anim, t2, 1.0f, openS, closeS);
+    Advance(anim, t2 + 0.1, 1.0f, openS, closeS);
+    TestTrue(TEXT("still Closing after 0.1 s"), anim.Phase == ESOLHoloMenuPhase::Closing);
+    Advance(anim, t2 + 0.125, 1.0f, openS, closeS);
+    TestTrue(TEXT("Closed after 0.125 s"), anim.Phase == ESOLHoloMenuPhase::Closed);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

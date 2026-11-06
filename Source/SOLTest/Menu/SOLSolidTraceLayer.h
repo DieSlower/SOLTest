@@ -48,7 +48,7 @@ struct FSOLSolidTrace
  * the layer every frame like its other widgets, at strength 0 too, the content then being unchanged). Each line
  * element owns its points (FSlateDrawElement::MakeLines takes them by value), so a paint makes one exact-size array
  * per line it draws (glow, core and ring: at most three per trace), moved into the draw list without a further copy.
- * (46d) It also draws the stack LEDs' power-up blink (amber dots at the LED centres it is given, the lit ones a bit
+ * (46d) It also draws the stack LEDs' power-up blink (cyan dots, 46i, at the LED centres it is given, the lit ones a bit
  * mask, SOLSolidMenu::PowerUpLedLit) and the idle pulse dot travelling along the longest static trace once the
  * traces are fully lit (SOLSolidMenu::PulseDotFraction / PulseDotAlpha): one more line array per dot drawn.
  * (46g) A scrolled stack under the layer (SetScroll): the hover trace and the LEDs are drawn shifted up by the scroll
@@ -136,12 +136,15 @@ public:
     // Returns whether the shown hover trace is this one (a button leaving hover clears only its own)
     bool IsShowingHoverTrace(const FSOLSolidTrace& trace) const;
 
-    // Returns the glow pass alpha for a strength and pulse: TRACE_GLOW_ALPHA x min(s, 2) x pulse, 0 at s <= 0, in
-    // [0, 1] (doubled at strength 2, section 7)
+    // Returns the glow pass alpha for a strength and pulse: TRACE_GLOW_ALPHA x min(s, HUD_EFFECTS_MAX) x pulse, 0 at
+    // s <= 0, in [0, 1] (doubled at strength 2, section 7)
     static float GlowPassAlpha(float strength, float pulse);
 
-    // Returns the core pass alpha for a pulse: the pulse clamped to [0, 1] (non-finite reads 1)
-    static float CorePassAlpha(float pulse);
+    // Returns the core pass alpha for a pulse at a strength s = min(s, HUD_EFFECTS_MAX) above 0: (1 + pulse -
+    // IDLE_PULSE_DEPTH x s) / 2, so over the pulse's swing [1 - depth x s, 1 + depth x s] the core line swings smoothly
+    // in [1 - depth x s, 1] and reaches 1 at the pulse's top (section 7); at s <= 0 (or NaN) the pulse itself; clamped
+    // to [0, 1]; a non-finite pulse reads 1
+    static float CorePassAlpha(float pulse, float strength);
 
     // Draws the glow and core passes of every lit trace and the hover trace
     virtual int32 OnPaint(const FPaintArgs& args, const FGeometry& allottedGeometry, const FSlateRect& cullingRect,

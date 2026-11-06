@@ -11,6 +11,7 @@
 #include "CoreMinimal.h"
 
 class APlayerController;
+class UWidget;
 class USOLMenuSubsystem;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
@@ -44,9 +45,13 @@ struct FSOLSolidTabRail;
  * 7: the side panel's slide-in and dim, each page in the shell with its fit and rail, Esc / Back closing a page, the
  * Quit choices, Esc resuming with the input back at once and the slide-out after, a re-pause reversing the slide-out,
  * the simulation running while paused, strength 0 instant, strength 2 with a page open (the glow doubled), and the
- * pause menu with Settings open at 1000x800 (the side panel and the shell inside the view); the #42 open, hover and select cues counted where a step
- * opens a panel, moves the focus, clicks or reverses a close, and a list scrolled under the resting real cursor keeping
- * the keyboard focus). Each step logs
+ * pause menu with Settings open at 1000x800 (the side panel and the shell inside the view); the #42 open, hover and
+ * select cues counted where a step opens a panel, moves the focus, clicks or reverses a close, and a list scrolled
+ * under the resting real cursor keeping the keyboard focus). 46i: the pause Settings page's stepper values, labels and
+ * value texts in their slots and the shell at 1000x800; the Gameplay and Key bindings tabs' room logged ("SolidMenu
+ * NOTE") at 1000x800 in both menus; the Controls and Info rows of every tab with a left column inside their cells and
+ * the shell at 1000x800 (main and pause) and 1280x720 (pause); a run that logs another number of checks than a whole
+ * run (SOLID_SMOKE_EXPECTED_CHECKS) fails. Each step logs
  * "SolidMenu CHECK <id> PASS|FAIL: ..." and takes a window screenshot
  * (Saved/Screenshots/<platform>/SolidMenu_<name>.png) to look at; then a "SolidMenu SUMMARY" line and the quit (a
  * watchdog quits a stuck run).
@@ -126,15 +131,38 @@ private:
     // label inside its slot
     void CheckDemoLayout(const TCHAR* id, USOLMenuSubsystem& menu);
 
-    // Checks the Settings stepper values against their slots and the row labels against their columns (46e follow-up)
-    void CheckSettingsFit(USOLMenuSubsystem& menu, const TCHAR* valuesLabel, const TCHAR* labelsLabel);
+    // Checks a Settings page's stepper values against their slots and its row labels against their columns (46e
+    // follow-up; 46i: the main menu's or the pause menu's page)
+    void CheckSettingsFit(USOLMenuSubsystem& menu, const USOLSettingsPageWidget* page, const TCHAR* valuesLabel,
+        const TCHAR* labelsLabel);
+
+    // (46i) Runs a rows sweep's stages over a read-only page: each tab with a left column shown in turn, painted, its
+    // rows read (CheckSweepTab) and the first shotTabs of them screenshotted (SolidMenu_<shotName>-<tab>.png); logs one
+    // "<id>-rows" check at the end and returns true then
+    bool TickRowsSweep(const TCHAR* id, USOLReadOnlyPageWidget* page, const UWidget* shell, const TCHAR* shotName,
+        int32 shotTabs);
+
+    // (46i) Reads the sweep's shown tab: each two-column row's left box at the page's column width, the widest word of
+    // each cell inside it, both cells inside the content and the shell (added to the sweep's verdict and detail)
+    void CheckSweepTab(const USOLReadOnlyPageWidget& page, const UWidget& shell);
+
+    // (46i) Checks a Settings page's narrow rows at 1000x800 on the shown tab (Key bindings when bKeys, else Gameplay):
+    // the tab narrow with its narrow column, each wrapped label inside its row; Key bindings: every key name inside its
+    // slot, the slot left of its Rebind button, the narrow Rebind box with room for its label ("<id>-names"); Gameplay:
+    // every slider at least SETTINGS_SLIDER_MIN_WIDTH wide ("<id>-sliders")
+    void CheckSettingsRoom(const TCHAR* id, const USOLSettingsPageWidget* page, bool bKeys);
+
+    // (46i) Checks a Settings page in a wide view keeps the wide layout: no tab narrow, every label column and Rebind
+    // box at its wide width
+    void CheckSettingsWide(const TCHAR* id, const USOLSettingsPageWidget* page);
 
     // Checks a real tab rail lays out without a scroll (46g, D17): a laid-out view, the tabs fitting it, the offset at
     // the top and the last tab inside the view
     void CheckRailFits(const TCHAR* id, FSOLSolidTabRail& rail);
 
-    // Sets the HUD effects strength and applies it (46g: the pause opens and closes after a mode change, which reverts
-    // a pending value; only the smoke settings slot is written)
+    // Drops every other pending value, then sets the HUD effects strength and applies it alone (46g: the pause opens
+    // and closes after a mode change, which reverts a pending value; 46i: so no pending resolution or window mode
+    // reaches the engine's GameUserSettings; only the smoke settings slot is written)
     void ApplyStrength(USOLMenuSubsystem& menu, float strength) const;
 
     // Runs the column scroll step's stages (46g, D17); returns true once done
@@ -169,6 +197,7 @@ private:
     int32 mPageIndex = 0;           // The page loop's page (SOLID_SMOKE_PAGES)
     int32 mSubStage = 0;            // A multi-stage step's stage
     double mSubStageS = 0.0;        // ... and when it began
+    int32 mCursorRetries = 0;       // 46i: real-cursor stages retried in this step (a window in front, a moved mouse)
     uint32 mSeenLeds = 0;           // The column's power-up LEDs seen lit during the replayed open
     bool mIsReturnClosed = false;   // Return from flight: the shell was Closed on the first frame back
     bool mIsReturnTraced = false;   // ... and Play focused with its hover trace drawn then
@@ -214,6 +243,14 @@ private:
     bool mIsReturnPauseGone = false;    // 46g: return from flight: the pause menu out of the viewport, Closed
     FString mReturnPauseDetail;         // ... and what was seen
     bool mIsResumeInputChecked = false; // 46g: the resume step read the frame after the first in flight
+    int32 mSweepTab = INDEX_NONE;   // 46i: a rows sweep's shown tab (INDEX_NONE before the first)
+    int32 mSweepFrame = 0;          // ... the step frame it was shown or read on
+    int32 mSweepShots = 0;          // ... tabs screenshotted so far
+    int32 mSweepRows = 0;           // ... rows read so far
+    bool mIsSweepRead = false;      // ... the shown tab was read
+    bool mIsSweepShot = false;      // ... and screenshotted (the next tab waits for the shot)
+    bool mIsSweepOk = true;         // ... every row read fits
+    FString mSweepDetail;           // ... what was read
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
     bool mIsFinished = false;

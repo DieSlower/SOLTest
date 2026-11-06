@@ -6,6 +6,7 @@
 #include "Menu/SOLBuildVersion.h"
 
 #include "Menu/SOLMenuText.h"
+#include "SOLConstants.h"
 
 // Written by SOLTest.Build.cs into Intermediate/Generated (SDD 46 section 11.1); included here only. Without it (the
 // rules could not write it) the build still compiles: the YYMM falls back to the compile date, the count to 0
@@ -49,11 +50,12 @@ int32 SOLBuildVersion::MakeYYMM(const int32 year, const int32 month)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// "0.1." + the clamped YYMM in four digits + "." + the commit count (never negative, never padded)
+// MAJOR.MINOR (SOL::BuildVersion, "0.1") + "." + the clamped YYMM in four digits + "." + the commit count (never
+// negative, never padded)
 FString SOLBuildVersion::FormatVersion(const int32 yymm, const int32 commitCount)
 {
-    return FString::Printf(TEXT("0.1.%04d.%d"), FMath::Clamp(yymm, 0, BUILD_VERSION_MAX_YYMM),
-        FMath::Max(commitCount, 0));
+    return FString::Printf(TEXT("%d.%d.%04d.%d"), SOL::BuildVersion::MAJOR, SOL::BuildVersion::MINOR,
+        FMath::Clamp(yymm, 0, BUILD_VERSION_MAX_YYMM), FMath::Max(commitCount, 0));
 }
 
 //////////////////////////////////////////////////////////////////////////

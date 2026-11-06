@@ -447,38 +447,66 @@ float SOLSolidMenu::DimAlpha(const float progress, const float s)
 // The panel's open progress: the #42 phases at the solid open / close rates, a NaN time reading the phase's end
 float SOLSolidMenu::PanelProgress(const FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    using namespace SOL::SolidMenu;
-    if (FMath::IsNaN(nowS))
-    {
-        return anim.Phase == ESOLHoloMenuPhase::Opening || anim.Phase == ESOLHoloMenuPhase::Open ? 1.0f : 0.0f;
-    }
-    return SOLHoloMenu::Progress(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+    return PanelProgress(anim, nowS, s, SOL::SolidMenu::PANEL_OPEN_S, SOL::SolidMenu::CLOSE_S);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Starts a panel open (from 0 or from the current progress of a close)
 bool SOLSolidMenu::BeginPanelOpen(FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    using namespace SOL::SolidMenu;
-    return SOLHoloMenu::BeginOpen(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+    return BeginPanelOpen(anim, nowS, s, SOL::SolidMenu::PANEL_OPEN_S, SOL::SolidMenu::CLOSE_S);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Starts a panel close from the current progress
 bool SOLSolidMenu::BeginPanelClose(FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    using namespace SOL::SolidMenu;
-    return SOLHoloMenu::BeginClose(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+    return BeginPanelClose(anim, nowS, s, SOL::SolidMenu::PANEL_OPEN_S, SOL::SolidMenu::CLOSE_S);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Finishes a panel open or close that has reached its end (at once for a NaN time, which reads the end)
 void SOLSolidMenu::AdvancePanel(FSOLHoloMenuAnim& anim, const double nowS, const float s)
 {
-    using namespace SOL::SolidMenu;
+    AdvancePanel(anim, nowS, s, SOL::SolidMenu::PANEL_OPEN_S, SOL::SolidMenu::CLOSE_S);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The panel's open progress at an open / close duration: the #42 phases, a NaN time reading the phase's end
+float SOLSolidMenu::PanelProgress(const FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
+    if (FMath::IsNaN(nowS))
+    {
+        return anim.Phase == ESOLHoloMenuPhase::Opening || anim.Phase == ESOLHoloMenuPhase::Open ? 1.0f : 0.0f;
+    }
+    return SOLHoloMenu::Progress(anim, nowS, s, openS, closeS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel open at an open / close duration
+bool SOLSolidMenu::BeginPanelOpen(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
+    return SOLHoloMenu::BeginOpen(anim, nowS, s, openS, closeS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel close at an open / close duration
+bool SOLSolidMenu::BeginPanelClose(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
+    return SOLHoloMenu::BeginClose(anim, nowS, s, openS, closeS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Finishes a panel open or close at an open / close duration (at once for a NaN time, which reads the end)
+void SOLSolidMenu::AdvancePanel(FSOLHoloMenuAnim& anim, const double nowS, const float s, const double openS,
+    const double closeS)
+{
     if (!FMath::IsNaN(nowS))
     {
-        SOLHoloMenu::Advance(anim, nowS, s, PANEL_OPEN_S, CLOSE_S);
+        SOLHoloMenu::Advance(anim, nowS, s, openS, closeS);
     }
     else if (anim.Phase == ESOLHoloMenuPhase::Opening)
     {
@@ -499,7 +527,7 @@ FSOLPausePanelLook SOLSolidMenu::EvaluatePausePanel(const FSOLHoloMenuAnim& anim
     const float panelWidth)
 {
     FSOLPausePanelLook look;
-    look.Progress = PanelProgress(anim, nowS, s);
+    look.Progress = PanelProgress(anim, nowS, s, SOL::SolidMenu::PAUSE_SLIDE_S, SOL::SolidMenu::CLOSE_S);
     look.SlideX = PauseSlideX(look.Progress, panelWidth);
     look.bShown = anim.Phase != ESOLHoloMenuPhase::Closed;
     look.bInteractive = anim.Phase == ESOLHoloMenuPhase::Opening || anim.Phase == ESOLHoloMenuPhase::Open;

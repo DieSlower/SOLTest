@@ -16,6 +16,24 @@ enum class ESOLReadOnlyPage : uint8
     Count,
 };
 
+// The Info page's tabs in order (SOLPageTabs' label table has one label per tab, checked at compile time)
+enum class ESOLInfoTab : int32
+{
+    Flight,
+    Time,
+    Combat,
+    HowItWorks,
+    Count,
+};
+
+// The About page's tabs in order (as ESOLInfoTab)
+enum class ESOLAboutTab : int32
+{
+    Game,
+    Credits,
+    Count,
+};
+
 /**
  * The tab logic of the Controls, Info and About pages (SDD 46 section 6.5, Q6, Q8), pure and widget-free. Controls: one
  * tab per area of SOLMenuText::CONTROL_ROWS, in table order (the rows of one area are contiguous; a new area starts a
@@ -38,10 +56,17 @@ namespace SOLPageTabs
     // [0, count), otherwise current when it is in [0, count), otherwise OpeningTab()
     SOLTEST_API int32 SelectTab(int32 current, int32 requested, int32 count);
 
-    // Whether a click on requested while current shows changes the tab: true only when requested is in [0, count) and is
-    // not current. A re-click on the shown tab is a no-op (nothing resets, no scroll reset); an invalid one changes nothing
+    // Whether a click on requested while current shows changes the tab: true only when requested is in [0, count) and
+    // is not current. A re-click on the shown tab is a no-op (nothing resets, no scroll reset); an invalid one changes
+    // nothing
     SOLTEST_API bool IsTabChange(int32 current, int32 requested, int32 count);
 
     // The Controls tab that shows a SOLMenuText::CONTROL_ROWS row; INDEX_NONE for a row outside the table
     SOLTEST_API int32 ControlsTabOfRow(int32 row);
+
+    // (46i) The width of a page's left column (the Controls key cells, the Info labels) in rows rowWidth units wide:
+    // Controls always KEY_COLUMN_WIDTH; Info LABEL_COLUMN_WIDTH while the value column right of it (after BUTTON_GAP)
+    // keeps VALUE_COLUMN_MIN_WIDTH, else LABEL_COLUMN_NARROW_WIDTH (its labels wrap), and LABEL_COLUMN_WIDTH for a row
+    // width that is not a positive finite number (not laid out yet); 0 for About and anything else (no left column)
+    SOLTEST_API float LeftColumnWidth(ESOLReadOnlyPage page, float rowWidth);
 }

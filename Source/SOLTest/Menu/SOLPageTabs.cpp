@@ -6,9 +6,19 @@
 #include "Menu/SOLPageTabs.h"
 
 #include "Menu/SOLMenuText.h"
+#include "SOLConstants.h"
 
 namespace
 {
+    // The Info and About tabs' labels, in tab order: their lengths are the pages' tab counts
+    const TCHAR* const PAGE_TABS_INFO_LABELS[] = { SOLMenuText::INFO_FLIGHT, SOLMenuText::INFO_TIME_TAB,
+        SOLMenuText::INFO_COMBAT, SOLMenuText::INFO_HOW_IT_WORKS };
+    const TCHAR* const PAGE_TABS_ABOUT_LABELS[] = { SOLMenuText::ABOUT_TAB_GAME, SOLMenuText::ABOUT_CREDITS_TITLE };
+    static_assert(UE_ARRAY_COUNT(PAGE_TABS_INFO_LABELS) == static_cast<int32>(ESOLInfoTab::Count),
+        "one label per Info tab (SOLMenuContent::FillInfoTabs fills each ESOLInfoTab)");
+    static_assert(UE_ARRAY_COUNT(PAGE_TABS_ABOUT_LABELS) == static_cast<int32>(ESOLAboutTab::Count),
+        "one label per About tab (SOLMenuContent::FillAboutTabs fills each ESOLAboutTab)");
+
     //////////////////////////////////////////////////////////////////////////
     // Counts the Controls tabs: one per run of rows with the same area
     int32 PageTabsControlsCount()
@@ -43,9 +53,9 @@ int32 SOLPageTabs::TabCount(const ESOLReadOnlyPage page)
     case ESOLReadOnlyPage::Controls:
         return PageTabsControlsCount();
     case ESOLReadOnlyPage::Info:
-        return 4;
+        return UE_ARRAY_COUNT(PAGE_TABS_INFO_LABELS);
     case ESOLReadOnlyPage::About:
-        return 2;
+        return UE_ARRAY_COUNT(PAGE_TABS_ABOUT_LABELS);
     default:
         return 0;
     }
@@ -80,13 +90,9 @@ FString SOLPageTabs::TabLabel(const ESOLReadOnlyPage page, const int32 tab)
         return FString();
     }
     case ESOLReadOnlyPage::Info:
-    {
-        const TCHAR* const labels[] = { SOLMenuText::INFO_FLIGHT, SOLMenuText::INFO_TIME_TAB, SOLMenuText::INFO_COMBAT,
-            SOLMenuText::INFO_HOW_IT_WORKS };
-        return labels[tab];
-    }
+        return PAGE_TABS_INFO_LABELS[tab];
     case ESOLReadOnlyPage::About:
-        return tab == 0 ? SOLMenuText::ABOUT_TAB_GAME : SOLMenuText::ABOUT_CREDITS_TITLE;
+        return PAGE_TABS_ABOUT_LABELS[tab];
     default:
         return FString();
     }
@@ -127,4 +133,23 @@ int32 SOLPageTabs::ControlsTabOfRow(const int32 row)
         }
     }
     return tab;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The width of a page's left column in a row of rowWidth units: Controls keeps its key column, Info narrows its label
+// column when the value column right of it would be short of room, About has none
+float SOLPageTabs::LeftColumnWidth(const ESOLReadOnlyPage page, const float rowWidth)
+{
+    using namespace SOL::MenuStyle;
+    switch (page)
+    {
+    case ESOLReadOnlyPage::Controls:
+        return KEY_COLUMN_WIDTH;
+    case ESOLReadOnlyPage::Info:
+        // A row not laid out yet (not a positive number) or one with room for the value column keeps the full column
+        return rowWidth > 0.0f && rowWidth < LABEL_COLUMN_WIDTH + BUTTON_GAP + VALUE_COLUMN_MIN_WIDTH
+            ? LABEL_COLUMN_NARROW_WIDTH : LABEL_COLUMN_WIDTH;
+    default:
+        return 0.0f;
+    }
 }
