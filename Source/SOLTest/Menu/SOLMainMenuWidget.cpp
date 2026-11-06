@@ -591,15 +591,19 @@ void USOLMainMenuWidget::NativeTick(const FGeometry& geometry, const float delta
     Super::NativeTick(geometry, deltaSeconds);
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
 
-    // The highlights: the column's entries always, the shell's Back and start-location rows only while it shows
+    // The highlights: the column's entries always, the shell's Back and start-location rows only while it shows; with
+    // Settings open, the mouse over one of its sliders, toggles or Overlay rows wins over a focused button here too
+    // (one highlight, 46e follow-up; read live, the page ticks after this widget)
+    const bool bHoverElsewhere = mPage == ESOLMainMenuPage::Settings && SettingsPage != nullptr
+        && SettingsPage->IsHoverOnFocuslessControl();
     for (USOLMenuButton* button : EntryButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
     }
     const bool bShellShown = mShellAnim.Phase != ESOLHoloMenuPhase::Closed;
     if (bShellShown && BackButton != nullptr)
     {
-        BackButton->RefreshHighlightAt(frame.NowS, frame.Strength);
+        BackButton->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
     }
     if (bShellShown && GetShownPageIndex() == static_cast<int32>(ESOLMainMenuPage::StartLocation))
     {

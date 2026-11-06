@@ -31,8 +31,11 @@ DECLARE_DELEGATE_OneParam(FSOLMenuButtonClicked, int32 /*index*/);
 struct SOLTEST_API FSOLSolidButtonAnim
 {
     // Returns the state a button shows from its flags: Disabled, else Pressed, else Hovered (mouse hover takes keyboard
-    // focus, so focus is the hover), else Normal; selection is not a state here (it is the orthogonal bSelected)
-    static ESOLSolidButtonState ResolveState(bool bDisabled, bool bPressed, bool bFocused);
+    // focus, so focus is the hover) unless bHoverElsewhere (the mouse is over another control that does not take the
+    // focus, a slider, toggle or list row: hover wins, so one highlight shows), else Normal; selection is not a state
+    // here (it is the orthogonal bSelected)
+    static ESOLSolidButtonState ResolveState(bool bDisabled, bool bPressed, bool bFocused,
+        bool bHoverElsewhere = false);
 
     // Returns whether two looks differ on screen: their 8-bit brush tints (SOLSolidStyle::BrushTint) or their lifts
     // (SOLSolidMenu::LiftOffset, by more than SOL::SolidMenu::LIFT_EPSILON_PX)
@@ -124,8 +127,9 @@ public:
 
     // Advances the look for keyboard focus, press, selection and disabled at nowS (real application seconds) and the
     // effects strength s (the owner's USOLSolidMenuSubsystem::BeginFrame), and writes it only when it differs on screen
-    // from the look last written (a state compare when settled)
-    void RefreshHighlightAt(double nowS, float s);
+    // from the look last written (a state compare when settled); bHoverElsewhere: the owner's mouse is over another
+    // control that keeps no focus (a slider, toggle or list row), so the focus shows no hover (ResolveState)
+    void RefreshHighlightAt(double nowS, float s, bool bHoverElsewhere = false);
 
     // RefreshHighlightAt with the state given instead of resolved from the button's focus and press (verification:
     // drives hover and press headless, where no Slate widget has focus or a press)

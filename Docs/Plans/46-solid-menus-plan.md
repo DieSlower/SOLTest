@@ -203,6 +203,18 @@ it).
    suggested ellipsis for the stepper values was tried and cut nothing (clipping kept). Open for the user: the slider
    fill, two amber highlights at once (focus kept on a clicked button while a slider is hovered), per-tab scroll memory,
    the narrow-view stepper values. For 46f: factor the tab rail into a kit piece for Controls / Info.
+5. [x] Follow-ups (the user's six decisions, SDD 6.4; commit `Issue #46: Part 46e - follow-ups`): "Overlays" label
+   and `TAB_COLUMN_WIDTH` 220 kept; per-tab label columns (`SETTINGS_GRAPHICS_LABEL_WIDTH` 134,
+   `SETTINGS_GAMEPLAY_LABEL_WIDTH` 264) and the scroll bar's gap moved onto the bar (stepper values fit at 1000x800:
+   186.4 drawn in a 190.9 slot); the cyan slider fill (`USOLSolidSlider` / `SSOLSolidSlider`,
+   `SOLSolidStyle::SliderFill` / `MakeSliderFillBrush`); hover wins over a button's focus (`ResolveState`'s
+   `bHoverElsewhere`, the page's `IsHoverOnFocuslessControl`, also passed by the main and pause menus; last input
+   wins: a key gives the focus back; the falling trace stub fixed); every tab back at its top on each open. Tests
+   `SolidMenuKit.Anim.ResolveState` (16 cases), `SolidMenuKit.Style.SliderFill`, `SolidMenuKit.Factory.SliderFillBrush`,
+   `SolidSettings.Layout.LabelColumnWidth`; `-SOLSmokeSolidMenu` 66/66 (was 55). Review (opus, xhigh) fixes: the main
+   and pause menus' buttons, last input wins, the fit checks measured at the drawn scale (they found "Chase Down
+   safety margin" running into its slider at 1000x800: the Gameplay column), the SDD section 7 heading, slider
+   null-style guard, fill brush default and repaint, null checks, smoke knob geometry from the style.
 
 ### 46f: Controls, Info, About and Demo in the shell (sonnet, medium)
 
@@ -272,3 +284,4 @@ Depends on 46d-46g.
   budget). Next: the main session's commit of 46d, then 46e.
 - 2026-11-05: 46e done (SDD 6.3, 13.1 46e check): tab logic test-first (16 tests), the tab column, the embedded list
   restyle, smoke step 4 (55/55), review fixes; full suite 1459/1459. Next: 46f.
+- 2026-11-05: 46e follow-ups done (SDD 6.4, 13.1 follow-up check; plan 46e step 5). Next: 46f.

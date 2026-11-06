@@ -63,12 +63,14 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the shown state from the button's flags: Disabled, else Pressed, else Hovered (focus), else Normal
-ESOLSolidButtonState FSOLSolidButtonAnim::ResolveState(const bool bDisabled, const bool bPressed, const bool bFocused)
+// Returns the shown state from the button's flags: Disabled, else Pressed, else Hovered (focus, unless the mouse
+// hovers another control), else Normal
+ESOLSolidButtonState FSOLSolidButtonAnim::ResolveState(const bool bDisabled, const bool bPressed, const bool bFocused,
+    const bool bHoverElsewhere)
 {
     return bDisabled ? ESOLSolidButtonState::Disabled
         : bPressed ? ESOLSolidButtonState::Pressed
-        : bFocused ? ESOLSolidButtonState::Hovered
+        : bFocused && !bHoverElsewhere ? ESOLSolidButtonState::Hovered
         : ESOLSolidButtonState::Normal;
 }
 
@@ -272,11 +274,12 @@ void USOLMenuButton::SetLabel(const FString& label)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Advances the look for the resolved state (disabled, pressed, focused) at a time and strength
-void USOLMenuButton::RefreshHighlightAt(const double nowS, const float s)
+// Advances the look for the resolved state (disabled, pressed, focused unless the mouse hovers another control) at a
+// time and strength
+void USOLMenuButton::RefreshHighlightAt(const double nowS, const float s, const bool bHoverElsewhere)
 {
-    RefreshHighlightFor(FSOLSolidButtonAnim::ResolveState(mIsSolidDisabled, IsPressed(), HasKeyboardFocus()), nowS,
-        s);
+    RefreshHighlightFor(FSOLSolidButtonAnim::ResolveState(mIsSolidDisabled, IsPressed(), HasKeyboardFocus(),
+        bHoverElsewhere), nowS, s);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -300,6 +303,9 @@ void USOLMenuButton::RefreshHighlightFor(const ESOLSolidButtonState state, const
     // Compared with what was last written, not with the last refresh: small steps add up to a visible change
     if (mHasApplied && !FSOLSolidButtonAnim::DiffersOnScreen(look, mWrittenLook))
     {
+        // The tint and lift stay; the hover trace still follows the look (its amount is not in the tint, so a fall's
+        // last steps would otherwise leave a stub of it drawn)
+        UpdateHoverTrace(look);
         return;
     }
     ApplyLook(look);

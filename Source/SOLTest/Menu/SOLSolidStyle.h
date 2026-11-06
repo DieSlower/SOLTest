@@ -60,6 +60,13 @@ enum class ESOLMenuTextRole : uint8
     Small,      // Hints, version line, status line
 };
 
+// A slider's cyan fill in the slider's horizontal frame (local units from its left edge; SOLSolidStyle::SliderFill)
+struct FSOLSliderFill
+{
+    float StartX = 0.0f;    // Left end: the bar's start plus the inset
+    float Width = 0.0f;     // Run to the knob's centre; 0 = no fill drawn
+};
+
 static_assert(static_cast<int32>(ESOLSolidStyle::Count) == UE_ARRAY_COUNT(SOL::Paths::SOLID_STYLE_MATERIALS),
     "ESOLSolidStyle needs one entry per SOL::Paths::SOLID_STYLE_MATERIALS row");
 
@@ -128,6 +135,16 @@ namespace SOLSolidStyle
     // alpha 1 (DISABLED_ALPHA for bDisabled)
     SOLTEST_API FLinearColor FlatColor(ESOLSolidStyle style, const FSOLSolidButtonLook& look);
 
+    // Returns a horizontal slider's cyan fill (SDD 46 section 5.2, 46e follow-up) with SSlider's own geometry: the bar
+    // runs from handleWidth / 2 to allottedWidth - handleWidth / 2 and the knob's centre sits at percent x
+    // (allottedWidth - handleWidth - indent) + indent / 2 + handleWidth / 2 (indent = handleWidth when bIndentHandle,
+    // else 0); the fill starts inset past the bar's start and runs to the knob's centre, never past the bar's end less
+    // the inset. percent is clamped to [0, 1] (NaN reads 0); a non-finite or non-positive size, or a negative inset
+    // (read as 0), gives no NaN (a handle wider than the slider reads as the slider's width); Width is never negative
+    // (0 at percent 0 without the indent: nothing is drawn while the knob sits on the bar's start)
+    SOLTEST_API FSOLSliderFill SliderFill(float allottedWidth, float handleWidth, bool bIndentHandle, float percent,
+        float inset);
+
     // --- Factories (game thread, once per widget) ---
 
     // Returns a hull brush of a style at an image size (UMG units) carrying a look in its tint (BrushTint); the
@@ -151,6 +168,11 @@ namespace SOLSolidStyle
     // look), the knob (normal, hovered lit, disabled), bar thickness SLIDER_BAR_THICKNESS. Slate dims a disabled
     // slider itself (alpha x 0.45 on material brushes), so the disabled brushes keep alpha 1
     SOLTEST_API FSliderStyle MakeSliderStyle(const USOLSolidMenuSubsystem* subsystem);
+
+    // Returns the slider fill brush (46e follow-up; USOLSolidSlider draws it between the groove and the knob): a flat
+    // CYAN_COLOR box, SLIDER_FILL_THICKNESS tall, the same with or without the hull materials (Slate dims it on a
+    // disabled slider)
+    SOLTEST_API FSlateBrush MakeSliderFillBrush();
 
     // Returns the toggle style (FCheckBoxStyle, CheckBox type): the toggle slot as the background images and the puck
     // as the check images (unchecked left, checked right with the cyan LED, hovered with the hover look); bDisabled

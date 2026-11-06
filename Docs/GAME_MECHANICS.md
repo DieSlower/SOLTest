@@ -267,9 +267,15 @@ Hologram menu tunables (`SOL::HoloMenu`, `SOLConstants.h`; the same for every me
 ### 8.1 Settings (8d)
 
 The page shows its six sections as tabs in a vertical column (issue #46, part 46e): Graphics, Audio, Mouse, Gameplay,
-Overlays and Key bindings, with Revert / Apply and the status line under every tab. It always opens on Graphics (no
-last-tab memory); a rebind or a jump to a key row shows the Key bindings tab. Hovering a tab extends a short circuit
-trace from it; the rows' buttons, sliders and toggles get the amber edge and underline only.
+Overlays and Key bindings, with Revert / Apply and the status line under every tab. It always opens on Graphics with
+every tab scrolled to its top (no last-tab or scroll memory); a rebind or a jump to a key row shows the Key bindings
+tab. Hovering a tab extends a short circuit trace from it; the rows' buttons, sliders and toggles get the amber edge
+and underline only. A slider's groove is filled in cyan up to its value. One control shows the amber hover at a time:
+the mouse over a slider, a toggle or an Overlay row takes it from a button that still has the keyboard focus (in the
+page, the main menu's column and the pause menu's tabs); the focus shows again once the mouse leaves, and at once on
+any key press (the last input wins). The label column is per tab: narrower on Graphics
+(`SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH` 134, so the stepper values fit at 1000x800), wider on Gameplay
+(`SETTINGS_GAMEPLAY_LABEL_WIDTH` 264, its longest label).
 
 | Setting | Range / default | Applies | Status |
 |---|---|---|---|

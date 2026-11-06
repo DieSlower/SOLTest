@@ -8,6 +8,7 @@
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsTabs.h"
 #include "Menu/SOLSolidStyle.h"
+#include "SOLConstants.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -589,6 +590,44 @@ bool FSOLSolidSettingsVariantTest::RunTest(const FString& /*parameters*/)
         static_cast<int32>(ESOLSolidButtonVariant::Small));
     TestTrue(TEXT("the tab column's hover extends a trace"), SOLSolidStyle::HasHoverTrace(tab));
     TestFalse(TEXT("a settings row's hover has no trace"), SOLSolidStyle::HasHoverTrace(row));
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Label column (46e follow-up): the Graphics tab's narrower column, Gameplay's wider one, the shared one elsewhere
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsLabelColumnTest, "SOLTest.SolidSettings.Layout.LabelColumnWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// LabelColumnWidth: SETTINGS_GRAPHICS_LABEL_WIDTH on Graphics, SETTINGS_GAMEPLAY_LABEL_WIDTH on Gameplay,
+// SETTINGS_LABEL_WIDTH on every other tab and an invalid one; every stepper sits under the narrower column (the
+// steppers' values are what needs the room)
+bool FSOLSolidSettingsLabelColumnTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("Graphics: the narrower column"), SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::Graphics),
+        SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH);
+    TestEqual(TEXT("Gameplay: the wider column"), SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::Gameplay),
+        SOL::SolidMenu::SETTINGS_GAMEPLAY_LABEL_WIDTH);
+    const ESOLSettingsTab sharedTabs[] = { ESOLSettingsTab::Audio, ESOLSettingsTab::Mouse, ESOLSettingsTab::Overlays,
+        ESOLSettingsTab::KeyBindings };
+    for (const ESOLSettingsTab tab : sharedTabs)
+    {
+        TestEqual(FString::Printf(TEXT("tab %d: the shared column"), static_cast<int32>(tab)),
+            SOLSettingsTabs::LabelColumnWidth(tab), SOL::MenuStyle::SETTINGS_LABEL_WIDTH);
+    }
+    TestEqual(TEXT("an invalid tab: the shared column"), SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::Count),
+        SOL::MenuStyle::SETTINGS_LABEL_WIDTH);
+    TestTrue(TEXT("Graphics' column is the narrower one"),
+        SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH < SOL::MenuStyle::SETTINGS_LABEL_WIDTH);
+    TestTrue(TEXT("Gameplay's column is the wider one"),
+        SOL::SolidMenu::SETTINGS_GAMEPLAY_LABEL_WIDTH > SOL::MenuStyle::SETTINGS_LABEL_WIDTH);
+    for (int32 stepper = 0; stepper < static_cast<int32>(ESOLSettingsStepper::Count); ++stepper)
+    {
+        TestEqual(FString::Printf(TEXT("stepper %d: under the narrower column"), stepper),
+            SOLSettingsTabs::LabelColumnWidth(SOLSettingsTabs::TabOfStepper(static_cast<ESOLSettingsStepper>(stepper))),
+            SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH);
+    }
     return true;
 }
 

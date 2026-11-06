@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Menu/SOLSettingsTabs.h"
 #include "UI/SOLUiProfileCapture.h"
 
 #include "CoreMinimal.h"
@@ -26,7 +27,8 @@ class USOLMenuSubsystem;
  * 240-frame `stat dumpave` window each of "Draw Window And Children Time" (the whole Slate paint) and "Game UI Paint".
  * It logs one line per pass, "SolidMenuProfile RESULT P<n> <PASS|FAIL|NOBASE> key=value ...", against the pre-46c
  * baseline in the .cpp (budget: under 0.1 ms extra CPU and 0.3 ms extra GPU per screen), then a "SolidMenuProfile
- * SUMMARY" line, and quits; a watchdog quits a run that is stuck.
+ * SUMMARY" line, and quits; a watchdog quits a run that is stuck. With -SOLSmokeSolidMenuProfileTab=<n> every pass
+ * shows that Settings tab (its ESOLSettingsTab position) instead of the opening one (46e follow-up: the slider fill).
  */
 class SOLTEST_API FSOLSolidMenuProfileSmoke
 {
@@ -109,6 +111,7 @@ private:
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
     EPassPhase mPhase = EPassPhase::Settle;
+    ESOLSettingsTab mProfileTab = ESOLSettingsTab::Count;   // The tab every pass shows (Count: the opening tab)
     bool mIsDatePinned = false;                             // Setup pinned the sim date
     bool mIsFinished = false;                               // SUMMARY logged and the quit requested
 };

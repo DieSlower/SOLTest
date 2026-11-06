@@ -254,6 +254,27 @@ FLinearColor SOLSolidStyle::FlatColor(const ESOLSolidStyle style, const FSOLSoli
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a horizontal slider's cyan fill: from the bar's start (plus the inset) to the knob's centre, in SSlider's
+// geometry
+FSOLSliderFill SOLSolidStyle::SliderFill(const float allottedWidth, const float handleWidth, const bool bIndentHandle,
+    const float percent, const float inset)
+{
+    // A size that is not finite and positive draws nothing (no NaN reaches the paint)
+    const float width = FMath::IsFinite(allottedWidth) ? FMath::Max(allottedWidth, 0.0f) : 0.0f;
+    const float handle = FMath::IsFinite(handleWidth) ? FMath::Clamp(handleWidth, 0.0f, width) : 0.0f;
+    const float pad = FMath::IsFinite(inset) ? FMath::Max(inset, 0.0f) : 0.0f;
+    const float indent = bIndentHandle ? handle : 0.0f;
+    const float halfHandle = 0.5f * handle;
+    const float centre = SolidStyleUnit(percent) * FMath::Max(width - handle - indent, 0.0f) + 0.5f * indent
+        + halfHandle;
+    FSOLSliderFill fill;
+    fill.StartX = halfHandle + pad;
+    const float endX = FMath::Min(centre, width - halfHandle - pad);
+    fill.Width = FMath::Max(endX - fill.StartX, 0.0f);
+    return fill;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns a hull brush of a style: the shared style material with the look's brush tint, or a flat colour brush
 FSlateBrush SOLSolidStyle::MakeHullBrush(const USOLSolidMenuSubsystem* subsystem, const ESOLSolidStyle style,
     const FVector2f& imageSize, const FSOLSolidButtonLook& look)
@@ -336,6 +357,16 @@ FSliderStyle SOLSolidStyle::MakeSliderStyle(const USOLSolidMenuSubsystem* subsys
     style.SetDisabledThumbImage(SolidStyleOpaqueBrush(subsystem, ESOLSolidStyle::Knob, knobSize, disabled));
     style.SetBarThickness(SLIDER_BAR_THICKNESS);
     return style;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the slider fill brush: a flat cyan box (no material, so no hull look to encode)
+FSlateBrush SOLSolidStyle::MakeSliderFillBrush()
+{
+    using namespace SOL::SolidMenu;
+    FSlateBrush brush = FSlateColorBrush(Linear(CYAN_COLOR));
+    brush.SetImageSize(FVector2f(SOLID_STYLE_BUTTON_BRUSH_WIDTH, SLIDER_FILL_THICKNESS));
+    return brush;
 }
 
 //////////////////////////////////////////////////////////////////////////

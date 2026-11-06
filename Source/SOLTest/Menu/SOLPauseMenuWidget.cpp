@@ -211,18 +211,21 @@ USOLMenuButton* USOLPauseMenuWidget::GetDefaultButton() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Refreshes the button highlights (focus follows the keyboard and the mouse)
+// Refreshes the button highlights (focus follows the keyboard and the mouse; on the Settings tab the mouse over one of
+// its sliders, toggles or Overlay rows wins over a focused button, one highlight, 46e follow-up)
 void USOLPauseMenuWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
+    const bool bHoverElsewhere = mTab == SOLMenuState::EMenuTab::Settings && SettingsPage != nullptr
+        && SettingsPage->IsHoverOnFocuslessControl();
     for (USOLMenuButton* button : TabButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
     }
     for (USOLMenuButton* button : QuitButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
     }
 }
 

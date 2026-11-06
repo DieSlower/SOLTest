@@ -9,6 +9,7 @@
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLPauseMenuWidget.h"
+#include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
@@ -21,6 +22,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 
@@ -144,6 +146,9 @@ void FSOLSolidMenuProfileSmoke::Start(USOLMenuSubsystem& menu)
 {
     mController = menu.GetPlayerController();
     mLastTimeS = FPlatformTime::Seconds();
+    int32 tabIndex = INDEX_NONE;
+    mProfileTab = FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE_TAB, tabIndex)
+        ? SOLSettingsTabs::TabFromIndex(tabIndex) : ESOLSettingsTab::Count;
 
     // The captures need a standalone -game process: in the editor the editor's own work pollutes the numbers
     if (GIsEditor)
@@ -219,8 +224,18 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         mPhaseFrames = 0;
         mCaptureFrames = 0;
         mScreenFrames = 0;
-        UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d starting"), pass, PROFILE_PASS_SCREENS[pass],
-            PROFILE_PASS_VIEWS[pass].X, PROFILE_PASS_VIEWS[pass].Y);
+        // The requested Settings tab (-SOLSmokeSolidMenuProfileTab), else the page's opening tab
+        USOLMainMenuWidget* main = menu.GetMainMenu();
+        USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        USOLSettingsPageWidget* page = PROFILE_PASS_IS_PAUSE[pass] ? (pause != nullptr ? pause->GetSettingsPage()
+            : nullptr) : (main != nullptr ? main->GetSettingsPage() : nullptr);
+        if (page != nullptr && SOLSettingsTabs::IsValidTab(mProfileTab))
+        {
+            page->SelectTab(mProfileTab);
+        }
+        UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d tab %d starting"), pass,
+            PROFILE_PASS_SCREENS[pass], PROFILE_PASS_VIEWS[pass].X, PROFILE_PASS_VIEWS[pass].Y,
+            page != nullptr ? static_cast<int32>(page->GetSelectedTab()) : -1);
         return;
     }
     const FIntPoint view = ViewOfStep(current);

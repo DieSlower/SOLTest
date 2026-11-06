@@ -1078,22 +1078,130 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitResolveTest, "SOLTest.SolidMenuKit.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// ResolveState: Disabled, else Pressed, else Hovered (focus is the hover), else Normal
+// ResolveState: Disabled, else Pressed, else Hovered (focus is the hover) unless the mouse hovers another control
+// (hover wins, 46e follow-up), else Normal; the three-flag form is the hover-elsewhere-false one
 bool FSOLSolidKitResolveTest::RunTest(const FString& /*parameters*/)
 {
-    for (int32 mask = 0; mask < 8; ++mask)
+    for (int32 mask = 0; mask < 16; ++mask)
     {
         const bool bDisabled = (mask & 1) != 0;
         const bool bPressed = (mask & 2) != 0;
         const bool bFocused = (mask & 4) != 0;
+        const bool bHoverElsewhere = (mask & 8) != 0;
         const ESOLSolidButtonState expected = bDisabled ? ESOLSolidButtonState::Disabled
             : bPressed ? ESOLSolidButtonState::Pressed
-            : bFocused ? ESOLSolidButtonState::Hovered
+            : bFocused && !bHoverElsewhere ? ESOLSolidButtonState::Hovered
             : ESOLSolidButtonState::Normal;
-        const ESOLSolidButtonState actual = FSOLSolidButtonAnim::ResolveState(bDisabled, bPressed, bFocused);
-        TestEqual(FString::Printf(TEXT("disabled %d pressed %d focused %d"), bDisabled ? 1 : 0, bPressed ? 1 : 0,
-            bFocused ? 1 : 0), static_cast<int32>(actual), static_cast<int32>(expected));
+        const ESOLSolidButtonState actual = FSOLSolidButtonAnim::ResolveState(bDisabled, bPressed, bFocused,
+            bHoverElsewhere);
+        const FString name = FString::Printf(TEXT("disabled %d pressed %d focused %d hover elsewhere %d"),
+            bDisabled ? 1 : 0, bPressed ? 1 : 0, bFocused ? 1 : 0, bHoverElsewhere ? 1 : 0);
+        TestEqual(name, static_cast<int32>(actual), static_cast<int32>(expected));
+        if (!bHoverElsewhere)
+        {
+            TestEqual(name + TEXT(": three-flag form"), static_cast<int32>(FSOLSolidButtonAnim::ResolveState(
+                bDisabled, bPressed, bFocused)), static_cast<int32>(expected));
+        }
     }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitSliderFillTest, "SOLTest.SolidMenuKit.Style.SliderFill",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SliderFill (46e follow-up), from its header: the fill starts the inset past the bar's start (handle / 2) and runs to
+// the knob's centre (percent x (width - handle - indent) + indent / 2 + handle / 2), never past the bar's end less
+// the inset; percent clamped (NaN 0); never negative or NaN
+bool FSOLSolidKitSliderFillTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float width = 200.0f;
+    constexpr float handle = 18.0f;
+    constexpr float inset = 2.0f;
+    constexpr float tolerance = 1.0e-3f;
+
+    // No indent (the solid sliders): nothing at 0, the bar's end less the inset at 1, the knob's centre between
+    const FSOLSliderFill zero = SOLSolidStyle::SliderFill(width, handle, false, 0.0f, inset);
+    TestEqual(TEXT("0%: start at the bar's start plus the inset"), zero.StartX, 0.5f * handle + inset, tolerance);
+    TestEqual(TEXT("0%: no fill"), zero.Width, 0.0f, tolerance);
+    const FSOLSliderFill full = SOLSolidStyle::SliderFill(width, handle, false, 1.0f, inset);
+    TestEqual(TEXT("100%: to the bar's end less the inset"), full.StartX + full.Width,
+        width - 0.5f * handle - inset, tolerance);
+    const float percents[] = { 0.1f, 0.25f, 0.5f, 0.75f, 0.9f };
+    for (const float percent : percents)
+    {
+        const FSOLSliderFill fill = SOLSolidStyle::SliderFill(width, handle, false, percent, inset);
+        const float centre = percent * (width - handle) + 0.5f * handle;
+        TestEqual(FString::Printf(TEXT("%.2f: ends at the knob's centre"), percent), fill.StartX + fill.Width,
+            centre, tolerance);
+        TestEqual(FString::Printf(TEXT("%.2f: proportional along the bar"), percent),
+            (fill.StartX + fill.Width - 0.5f * handle) / (width - handle), percent, tolerance);
+    }
+
+    // Monotonic in percent
+    float last = -1.0f;
+    bool bMonotonic = true;
+    for (int32 step = 0; step <= 100; ++step)
+    {
+        const float fillWidth = SOLSolidStyle::SliderFill(width, handle, false, step / 100.0f, inset).Width;
+        bMonotonic &= fillWidth >= last;
+        last = fillWidth;
+    }
+    TestTrue(TEXT("the fill never shrinks as the value grows"), bMonotonic);
+
+    // The indent: the knob's centre moves in by half a handle at each end
+    const FSOLSliderFill indented = SOLSolidStyle::SliderFill(width, handle, true, 0.5f, inset);
+    TestEqual(TEXT("indented 50%: ends at the knob's centre"), indented.StartX + indented.Width,
+        0.5f * (width - 2.0f * handle) + handle, tolerance);
+    const FSOLSliderFill indentedFull = SOLSolidStyle::SliderFill(width, handle, true, 1.0f, inset);
+    TestEqual(TEXT("indented 100%: ends a half handle short of the bar's end"),
+        indentedFull.StartX + indentedFull.Width, width - handle, tolerance);
+
+    // Clamping and bad input: percent outside [0, 1] or NaN, a negative inset, non-finite or tiny sizes
+    TestEqual(TEXT("percent below 0 reads 0"), SOLSolidStyle::SliderFill(width, handle, false, -0.5f, inset).Width,
+        0.0f, tolerance);
+    TestEqual(TEXT("percent above 1 reads 1"), SOLSolidStyle::SliderFill(width, handle, false, 1.5f, inset).Width,
+        full.Width, tolerance);
+    TestEqual(TEXT("NaN percent reads 0"), SOLSolidStyle::SliderFill(width, handle, false, SOLIDKITTEST_NAN,
+        inset).Width, 0.0f, tolerance);
+    const FSOLSliderFill noInset = SOLSolidStyle::SliderFill(width, handle, false, 1.0f, -3.0f);
+    TestEqual(TEXT("negative inset reads 0: start"), noInset.StartX, 0.5f * handle, tolerance);
+    TestEqual(TEXT("negative inset reads 0: end"), noInset.StartX + noInset.Width, width - 0.5f * handle,
+        tolerance);
+    const float badSizes[][2] = { { SOLIDKITTEST_NAN, handle }, { SOLIDKITTEST_INF, handle }, { -10.0f, handle },
+        { width, SOLIDKITTEST_NAN }, { width, SOLIDKITTEST_INF }, { 10.0f, handle }, { 0.0f, 0.0f } };
+    const float badPercents[] = { 0.0f, 0.5f, 1.0f };
+    for (const auto& size : badSizes)
+    {
+        for (const float percent : badPercents)
+        {
+            const FSOLSliderFill fill = SOLSolidStyle::SliderFill(size[0], size[1], false, percent, inset);
+            const FString name = FString::Printf(TEXT("width %f handle %f at %.1f"), size[0], size[1], percent);
+            TestTrue(name + TEXT(": finite"), FMath::IsFinite(fill.StartX) && FMath::IsFinite(fill.Width));
+            TestTrue(name + TEXT(": never negative"), fill.Width >= 0.0f);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitSliderFillBrushTest, "SOLTest.SolidMenuKit.Factory.SliderFillBrush",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// MakeSliderFillBrush (46e follow-up): a flat CYAN_COLOR box (no material), opaque, SLIDER_FILL_THICKNESS tall and
+// thinner than the groove
+bool FSOLSolidKitSliderFillBrushTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::SolidMenu;
+    const FSlateBrush brush = SOLSolidStyle::MakeSliderFillBrush();
+    TestFalse(TEXT("flat: no material"), SolidKitTestIsMaterialBrush(brush));
+    SolidKitTestRgbEqual(*this, TEXT("CYAN_COLOR"), SolidKitTestTint(brush), SolidKitTestColor(CYAN_COLOR),
+        SOLIDKITTEST_COLOR_TOLERANCE);
+    TestEqual(TEXT("opaque"), SolidKitTestTint(brush).A, 1.0f, SOLIDKITTEST_TOLERANCE);
+    TestEqual(TEXT("SLIDER_FILL_THICKNESS tall"), brush.GetImageSize().Y, SLIDER_FILL_THICKNESS);
+    TestTrue(TEXT("thinner than the groove"), SLIDER_FILL_THICKNESS < SLIDER_BAR_THICKNESS);
     return true;
 }
 

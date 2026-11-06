@@ -11,12 +11,14 @@
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsPageWidget.h"
+#include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Menu/SOLSettingsTabs.h"
 #include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSmokeBoard.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
+#include "Menu/SOLSolidSlider.h"
 #include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -24,15 +26,17 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Components/CheckBox.h"
-#include "Components/Slider.h"
+#include "Components/TextBlock.h"
 #include "Engine/Font.h"
 #include "Engine/World.h"
+#include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/PlatformTime.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/Paths.h"
+#include "Rendering/SlateRenderer.h"
 #include "UnrealClient.h"
 
 namespace
@@ -54,8 +58,10 @@ namespace
         SettingsTab,    // Each other tab clicked in turn (looped): its content shown, its hover trace, the footer kept
         SettingsRowHover,   // A stepper hovered: the amber edge and underline, no trace on the tab rail (Q15)
         SettingsControls,   // A slider, a toggle and a stepper changed (dirty), then Revert (clean, values back)
+        SettingsSliderFill, // 46e follow-up: the cyan fill at 0%, 100% and 50% and during a real mouse drag
+        SettingsHoverWins,  // 46e follow-up: the mouse over a slider or an Overlay row drops the focused tab's amber
         SettingsScroll, // From Graphics, ScrollToBinding: the Key bindings tab at once, the row in view after
-        SettingsReopen, // Esc, then Settings again: Graphics (no last-tab memory, Q8)
+        SettingsReopen, // Esc, then Settings again: Graphics (no last-tab memory, Q8), every tab at its top
         SettingsClose,  // Esc: the page closed for the steps after
         MainStrengthZero,   // Strength 0: the column's open and the shell instant, the hover look at once
         MainStrengthTwo,    // Strength 2: the hovered entry's glow doubled
@@ -67,7 +73,8 @@ namespace
         StrengthTwo,    // Strength 2: the glow doubled
         BoardRemove,    // Strength back to 1, the board removed
         ViewSmall,      // r.SetRes 1000x800 (windowed)
-        SmallSettings,  // Settings open at 1000x800: the column and the shell inside the view
+        SmallSettings,  // Settings open at 1000x800: the column and the shell inside the view, every stepper value
+                        // inside its slot (46e follow-up; the longest window mode shown for the screenshot)
         SmallStart,     // Start location open at 1000x800
         Quit,           // SUMMARY, quit
         Count,
@@ -120,6 +127,12 @@ namespace
     constexpr int32 SOLID_SMOKE_COLUMN_TRACES = 3;              // The column's lower-edge traces
     constexpr int32 SOLID_SMOKE_OVERLAY_HOVER_ROW = 1;          // The embedded Overlay list's row hovered for the shot
     constexpr float SOLID_SMOKE_SLIDER_DELTA = 0.25f;           // The Settings slider moves this far (then Revert)
+    constexpr float SOLID_SMOKE_FILL_TOLERANCE = 0.5f;          // A painted fill's width against its value (units)
+    constexpr float SOLID_SMOKE_FIT_TOLERANCE = 0.5f;           // A measured text against its slot (units)
+    constexpr float SOLID_SMOKE_DRAG_FROM = 0.25f;              // The drag: pressed this far along the bar...
+    constexpr float SOLID_SMOKE_DRAG_TO = 0.75f;                // ... and moved to this far
+    constexpr float SOLID_SMOKE_DRAG_TOLERANCE = 0.03f;         // The dragged value against the drag's end
+    constexpr int32 SOLID_SMOKE_PAINT_FRAMES = 3;               // Frames for a value change to be painted
 
     // Screenshot names of the Settings tabs, in ESOLSettingsTab order
     const TCHAR* const SOLID_SMOKE_TAB_NAMES[] = { TEXT("graphics"), TEXT("audio"), TEXT("mouse"), TEXT("gameplay"),
@@ -256,6 +269,118 @@ namespace
             FSlateApplication::Get().ProcessKeyUpEvent(event);
         }
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a mouse event at an absolute (desktop) point coming from another (the cursor delta a real move has), the
+    // left button held when bPressed
+    FPointerEvent SolidSmokeMouseEvent(const FVector2D& at, const FVector2D& from, const bool bPressed)
+    {
+        TSet<FKey> pressed;
+        if (bPressed)
+        {
+            pressed.Add(EKeys::LeftMouseButton);
+        }
+        return FPointerEvent(FSlateApplication::Get().GetUserIndexForMouse(), FSlateApplicationBase::CursorPointerIndex,
+            at, from, pressed, EKeys::LeftMouseButton, 0.0f, FModifierKeysState());
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Moves the OS cursor to an absolute point and sends Slate the mouse move there from the cursor's last place
+    // (bPressed: the left button held), as a real mouse would (Slate's own moves at the cursor then agree)
+    void SolidSmokeMouseMove(const FVector2D& at, const bool bPressed)
+    {
+        if (FSlateApplication::IsInitialized())
+        {
+            const FVector2D from = FSlateApplication::Get().GetCursorPos();
+            FSlateApplication::Get().SetCursorPos(at);
+            FSlateApplication::Get().ProcessMouseMoveEvent(SolidSmokeMouseEvent(at, from, bPressed));
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Sends Slate a left press (bDown) or release at an absolute point
+    void SolidSmokeMouseButton(const FVector2D& at, const bool bDown)
+    {
+        if (!FSlateApplication::IsInitialized())
+        {
+            return;
+        }
+        if (bDown)
+        {
+            FSlateApplication::Get().ProcessMouseButtonDownEvent(nullptr, SolidSmokeMouseEvent(at, at, true));
+        }
+        else
+        {
+            FSlateApplication::Get().ProcessMouseButtonUpEvent(SolidSmokeMouseEvent(at, at, false));
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a slider's knob width (its normal thumb image) and its indent (the knob's width when indented, else 0)
+    void SolidSmokeKnob(const USlider& slider, float& outKnob, float& outIndent)
+    {
+        outKnob = slider.GetWidgetStyle().NormalThumbImage.ImageSize.X;
+        outIndent = slider.HasIndentHandle() ? outKnob : 0.0f;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the absolute point a fraction along a slider's travel (the knob's centre at that value), on its centre
+    // line
+    FVector2D SolidSmokeSliderPoint(const USlider* slider, const float fraction)
+    {
+        if (slider == nullptr)
+        {
+            return FVector2D::ZeroVector;
+        }
+        float knob = 0.0f;
+        float indent = 0.0f;
+        SolidSmokeKnob(*slider, knob, indent);
+        const FGeometry& geometry = slider->GetCachedGeometry();
+        const FVector2f size = geometry.GetLocalSize();
+        const float x = 0.5f * (knob + indent) + fraction * (size.X - knob - indent);
+        return FVector2D(geometry.LocalToAbsolute(FVector2f(x, 0.5f * size.Y)));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a slider's last painted fill matches its value: from the bar's start plus the inset to the
+    // knob's centre (at most the bar's end less the inset), in the cyan fill brush; with a description
+    bool SolidSmokeFillMatches(const USOLSolidSlider* slider, FString& outDetail)
+    {
+        using namespace SOL::SolidMenu;
+        FSOLSliderFill fill;
+        float barLength = 0.0f;
+        if (slider == nullptr || !slider->GetPaintedFill(fill, barLength) || barLength <= 0.0f)
+        {
+            outDetail = TEXT("no painted fill");
+            return false;
+        }
+        float knob = 0.0f;
+        float indent = 0.0f;
+        SolidSmokeKnob(*slider, knob, indent);
+        const float barStart = 0.5f * knob;
+        const float percent = FMath::Clamp(slider->GetNormalizedValue(), 0.0f, 1.0f);
+        const float centre = barStart + 0.5f * indent + percent * (barLength - indent);
+        const float end = FMath::Min(centre, barStart + barLength - SLIDER_FILL_INSET_PX);
+        const float want = FMath::Max(end - (barStart + SLIDER_FILL_INSET_PX), 0.0f);
+        const bool bCyan = slider->GetFillBrush().TintColor.GetSpecifiedColor().Equals(SOLSolidStyle::ValueColor(),
+            SOLID_SMOKE_TOLERANCE);
+        outDetail = FString::Printf(TEXT("value %.3f: fill %.1f wide from %.1f (want %.1f) on a %.1f bar, cyan %d"),
+            percent, fill.Width, fill.StartX, want, barLength, bCyan ? 1 : 0);
+        return bCyan && FMath::Abs(fill.Width - want) <= SOLID_SMOKE_FILL_TOLERANCE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a text's width in a font as drawn at a layout scale (glyphs measured at that scale, as STextBlock does),
+    // in local units, or -1 without Slate's font measure or a usable scale
+    float SolidSmokeTextWidth(const FString& text, const FSlateFontInfo& font, const float scale)
+    {
+        if (!FSlateApplication::IsInitialized() || !(scale > 0.0f))
+        {
+            return -1.0f;
+        }
+        const TSharedRef<FSlateFontMeasure> measure = FSlateApplication::Get().GetRenderer()->GetFontMeasureService();
+        return static_cast<float>(measure->Measure(text, font, scale).X) / scale;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -334,6 +459,7 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
     USOLSolidMenuSmokeBoard* board = mBoard.Get();
     mSubStage = 0;
     mSubStageS = 0.0;
+    mSubStageFrames = 0;
     mSamples = 0;
     mFirstProgress = mFirstPower = mLastProgress = -1.0f;
     mIsMonotonic = true;
@@ -441,6 +567,32 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         }
         break;
     }
+    case ESolidSmokeStep::SettingsSliderFill:
+    {
+        // The Audio tab; Master volume to 0 (read once painted, then 100% and 50%, then the drag: TickStep)
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        ClickSettingsTab(page, ESOLSettingsTab::Audio);
+        mFillDetail.Reset();
+        mFillPassed = 0;
+        mFillRun = 0;
+        mDragDetail = TEXT("never dragged");
+        mIsDragOk = false;
+        if (page != nullptr)
+        {
+            page->SetSliderValue(ESOLSettingsSlider::MasterVolume, 0.0f);
+        }
+        break;
+    }
+    case ESolidSmokeStep::SettingsHoverWins:
+    {
+        // The Audio tab clicked (its button keeps the focus), then the real cursor over Master volume (TickStep)
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        ClickSettingsTab(page, ESOLSettingsTab::Audio);
+        mHoverDetail.Reset();
+        mIsSliderHoverOk = mIsOverlayHoverOk = true;
+        mIsKeyWinsOk = mIsColumnHoverOk = false;
+        break;
+    }
     case ESolidSmokeStep::SettingsScroll:
     {
         USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
@@ -454,6 +606,13 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         break;
     }
     case ESolidSmokeStep::SettingsReopen:
+    {
+        // The Key bindings tab is still scrolled from SettingsScroll: its offset before the close
+        const USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        mScrollBeforeReopen = page != nullptr ? page->GetTabScrollOffset(ESOLSettingsTab::KeyBindings) : -1.0f;
+        SolidSmokeKey(EKeys::Escape);
+        break;
+    }
     case ESolidSmokeStep::SettingsClose:
         SolidSmokeKey(EKeys::Escape);
         break;
@@ -542,8 +701,24 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         setView(SOLID_SMOKE_SMALL_VIEW);
         break;
     case ESolidSmokeStep::SmallSettings:
+    {
+        // The longest window mode name pending (not applied; the step's end reverts it), for the screenshot
         ClickEntry(menu, SOLID_SMOKE_SETTINGS_ENTRY);
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        const UTextBlock* mode = page != nullptr ? page->GetStepperValueText(ESOLSettingsStepper::WindowMode) : nullptr;
+        FString longest;
+        for (int32 index = 0; index < SOLSettingsRules::WINDOW_MODE_COUNT; ++index)
+        {
+            const FString name = SOLSettingsRules::WindowModeName(index);
+            longest = name.Len() > longest.Len() ? name : longest;
+        }
+        for (int32 tries = 0; mode != nullptr && tries < SOLSettingsRules::WINDOW_MODE_COUNT
+            && mode->GetText().ToString() != longest; ++tries)
+        {
+            page->Step(ESOLSettingsStepper::WindowMode, 1);
+        }
         break;
+    }
     case ESolidSmokeStep::SmallStart:
         ClickEntry(menu, SOLID_SMOKE_DOWN_ENTRY);
         break;
@@ -645,6 +820,10 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
         }
         return mStepTimeS >= SOLID_SMOKE_SETTLE_S;
     }
+    case ESolidSmokeStep::SettingsSliderFill:
+        return TickSliderFill(menu);
+    case ESolidSmokeStep::SettingsHoverWins:
+        return TickHoverWins(menu);
     case ESolidSmokeStep::SettingsReopen:
         // Stage 0: Esc sent, the shell closes; 1: Settings opened again, then a settle
         if (mSubStage == 0 && mStepTimeS >= SOLID_SMOKE_SETTLE_S)
@@ -958,6 +1137,8 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
     case ESolidSmokeStep::SettingsTab:
     case ESolidSmokeStep::SettingsRowHover:
     case ESolidSmokeStep::SettingsControls:
+    case ESolidSmokeStep::SettingsSliderFill:
+    case ESolidSmokeStep::SettingsHoverWins:
     case ESolidSmokeStep::SettingsScroll:
     case ESolidSmokeStep::SettingsReopen:
     case ESolidSmokeStep::SettingsClose:
@@ -1078,7 +1259,15 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         Check(bSettings ? TEXT("h-fit-settings") : TEXT("h-fit-start"), bColumn && bShell && mainMenu->GetPage()
             == (bSettings ? ESOLMainMenuPage::Settings : ESOLMainMenuPage::StartLocation), FString::Printf(
             TEXT("column %s, shell %s"), *columnDetail, *shellDetail));
+        if (bSettings)
+        {
+            CheckSettingsFit(menu, TEXT("h-small-stepper-values"), TEXT("h-small-labels"));
+        }
         TakeUiShot(bSettings ? TEXT("small-settings") : TEXT("small-start"));
+        if (USOLSettingsPageWidget* page = bSettings && mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr)
+        {
+            page->Revert();
+        }
         break;
     }
     default:
@@ -1296,16 +1485,21 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
             && solidToggles == static_cast<int32>(ESOLSettingsToggle::Count)
             && smallSteppers == 2 * static_cast<int32>(ESOLSettingsStepper::Count), FString::Printf(TEXT("%d solid "
             "sliders, %d solid toggles, %d Small stepper buttons"), solidSliders, solidToggles, smallSteppers));
+        CheckSettingsFit(menu, TEXT("u-stepper-values"), TEXT("u-labels"));
         TakeUiShot(TEXT("settings-graphics"));
         break;
     }
     case ESolidSmokeStep::SettingsTab:
     {
+        // On Overlays an embedded row is hovered too (for the screenshot): when the last input was the mouse, hover
+        // wins over the focused tab (46e follow-up) and its trace is dark; after a key the focus keeps it
         const ESOLSettingsTab tab = static_cast<ESOLSettingsTab>(mSettingsTab);
         const bool bTrace = page != nullptr && page->IsTabHoverTraceShown(tab);
-        Check(*FString::Printf(TEXT("u-tab-%s"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]), showsTab(tab) && bTrace
-            && footerShown(), FString::Printf(TEXT("%s, hover trace %d, footer %d"), *describeTabs(), bTrace ? 1 : 0,
-            footerShown() ? 1 : 0));
+        const bool bElsewhere = page != nullptr && page->IsHoverElsewhere();
+        const bool bTraceOk = bElsewhere ? !bTrace && tab == ESOLSettingsTab::Overlays : bTrace;
+        Check(*FString::Printf(TEXT("u-tab-%s"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]), showsTab(tab) && bTraceOk
+            && footerShown(), FString::Printf(TEXT("%s, hover trace %d (hover elsewhere %d), footer %d"),
+            *describeTabs(), bTrace ? 1 : 0, bElsewhere ? 1 : 0, footerShown() ? 1 : 0));
         if (tab == ESOLSettingsTab::Overlays)
         {
             // The embedded Overlay list in the solid look: the menu font, its row hovered (the screenshot shows it)
@@ -1372,6 +1566,24 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
             settings->IsDirty() ? 1 : 0, bBack ? 1 : 0, page->GetSelectedTab() == tabBefore ? 1 : 0));
         break;
     }
+    case ESolidSmokeStep::SettingsSliderFill:
+    {
+        // The fill at 0%, 100% and 50% and each Audio slider at its value; then the real drag; Revert afterwards
+        Check(TEXT("u-slider-fill"), mFillRun > 0 && mFillPassed == mFillRun, FString::Printf(TEXT("%d/%d fills "
+            "match their values:%s"), mFillPassed, mFillRun, *mFillDetail));
+        Check(TEXT("u-slider-fill-drag"), mIsDragOk, mDragDetail);
+        if (page != nullptr)
+        {
+            page->Revert();
+        }
+        break;
+    }
+    case ESolidSmokeStep::SettingsHoverWins:
+        Check(TEXT("u-hover-wins-slider"), mIsSliderHoverOk, mHoverDetail);
+        Check(TEXT("u-hover-wins-key"), mIsKeyWinsOk, mHoverDetail);
+        Check(TEXT("u-hover-wins-overlay"), mIsOverlayHoverOk, mHoverDetail);
+        Check(TEXT("u-hover-wins-column"), mIsColumnHoverOk, mHoverDetail);
+        break;
     case ESolidSmokeStep::SettingsScroll:
     {
         const int32 binding = SOLKeyBindings::BINDING_COUNT - 1;
@@ -1389,6 +1601,19 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
         const bool bOpen = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::Settings;
         Check(TEXT("u-reopen-first-tab"), bOpen && showsTab(SOLSettingsTabs::OpeningTab()), FString::Printf(TEXT("left "
             "on Key bindings, reopened: page open %d, %s"), bOpen ? 1 : 0, *describeTabs()));
+
+        // Every tab back at its top (46e follow-up), the Key bindings tab having been scrolled before the close
+        FString offsets;
+        bool bAllTop = page != nullptr;
+        for (int32 tab = 0; tab < static_cast<int32>(ESOLSettingsTab::Count); ++tab)
+        {
+            const float offset = page != nullptr ? page->GetTabScrollOffset(static_cast<ESOLSettingsTab>(tab)) : -1.0f;
+            bAllTop &= FMath::IsNearlyZero(offset, SOLID_SMOKE_TOLERANCE);
+            offsets += FString::Printf(TEXT(" %.1f"), offset);
+        }
+        Check(TEXT("u-reopen-scroll-top"), bAllTop && mScrollBeforeReopen > SOLID_SMOKE_FIT_TOLERANCE,
+            FString::Printf(TEXT("Key bindings offset %.1f before the close; offsets after the reopen%s"),
+            mScrollBeforeReopen, *offsets));
         break;
     }
     case ESolidSmokeStep::SettingsClose:
@@ -1401,4 +1626,350 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
     default:
         break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The slider fill step's stages (46e follow-up): Master volume at 0, 100% and 50%, each read and shot once painted,
+// with every Audio slider at 50%; then a real drag from SOLID_SMOKE_DRAG_FROM to SOLID_SMOKE_DRAG_TO along its bar
+bool FSOLSolidMenuSmoke::TickSliderFill(USOLMenuSubsystem& menu)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    const USOLSolidSlider* master = page != nullptr ? page->GetSlider(ESOLSettingsSlider::MasterVolume) : nullptr;
+    if (page == nullptr || master == nullptr)
+    {
+        return true;
+    }
+    if (mStepFrames - mSubStageFrames < SOLID_SMOKE_PAINT_FRAMES)
+    {
+        return false;
+    }
+    // Records one slider's fill against its value
+    const auto readFill = [this](const TCHAR* what, const USOLSolidSlider* slider)
+    {
+        FString detail;
+        const bool bOk = SolidSmokeFillMatches(slider, detail);
+        ++mFillRun;
+        mFillPassed += bOk ? 1 : 0;
+        mFillDetail += FString::Printf(TEXT(" [%s %s: %s]"), what, bOk ? TEXT("ok") : TEXT("WRONG"), *detail);
+    };
+    // Moves to the next stage, its paint frames counted from now
+    const auto nextStage = [this]()
+    {
+        ++mSubStage;
+        mSubStageFrames = mStepFrames;
+    };
+    switch (mSubStage)
+    {
+    case 0:
+        // Each value is read and shot on its own stage, the next value set on the stage after (the shot shows it)
+        readFill(TEXT("master 0%"), master);
+        TakeUiShot(TEXT("settings-slider-0"));
+        nextStage();
+        return false;
+    case 1:
+        page->SetSliderValue(ESOLSettingsSlider::MasterVolume, 1.0f);
+        nextStage();
+        return false;
+    case 2:
+        readFill(TEXT("master 100%"), master);
+        TakeUiShot(TEXT("settings-slider-100"));
+        nextStage();
+        return false;
+    case 3:
+        page->SetSliderValue(ESOLSettingsSlider::MasterVolume, 0.5f);
+        page->SetSliderValue(ESOLSettingsSlider::SfxVolume, 0.5f);
+        page->SetSliderValue(ESOLSettingsSlider::MusicVolume, 0.5f);
+        nextStage();
+        return false;
+    case 4:
+        readFill(TEXT("master 50%"), master);
+        readFill(TEXT("effects 50%"), page->GetSlider(ESOLSettingsSlider::SfxVolume));
+        readFill(TEXT("music 50%"), page->GetSlider(ESOLSettingsSlider::MusicVolume));
+        TakeUiShot(TEXT("settings-slider-fill"));
+        nextStage();
+        return false;
+    case 5:
+    {
+        // The drag: the real cursor onto the knob's place at SOLID_SMOKE_DRAG_FROM, pressed
+        const FVector2D from = SolidSmokeSliderPoint(master, SOLID_SMOKE_DRAG_FROM);
+        SolidSmokeMouseMove(from, false);
+        SolidSmokeMouseButton(from, true);
+        nextStage();
+        return false;
+    }
+    case 6:
+        // Held: moved to SOLID_SMOKE_DRAG_TO
+        SolidSmokeMouseMove(SolidSmokeSliderPoint(master, SOLID_SMOKE_DRAG_TO), true);
+        nextStage();
+        return false;
+    case 7:
+    {
+        // Still held: the fill follows the dragged value (shot while held)
+        FString detail;
+        const bool bFill = SolidSmokeFillMatches(master, detail);
+        const float value = master->GetNormalizedValue();
+        const bool bCaptured = master->HasMouseCapture();
+        mIsDragOk = bFill && bCaptured && FMath::IsNearlyEqual(value, SOLID_SMOKE_DRAG_TO, SOLID_SMOKE_DRAG_TOLERANCE);
+        mDragDetail = FString::Printf(TEXT("dragged %.2f -> %.2f: captured %d, value %.3f, %s"), SOLID_SMOKE_DRAG_FROM,
+            SOLID_SMOKE_DRAG_TO, bCaptured ? 1 : 0, value, *detail);
+        TakeUiShot(TEXT("settings-slider-drag"));
+        nextStage();
+        return false;
+    }
+    case 8:
+        // Released, the cursor parked off the controls
+        SolidSmokeMouseButton(SolidSmokeSliderPoint(master, SOLID_SMOKE_DRAG_TO), false);
+        ParkCursor();
+        nextStage();
+        return false;
+    default:
+        return true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The hover-wins step's stages (46e follow-up): the Audio tab focused and the real cursor over Master volume (the
+// tab's amber gone), then parked (back); the Overlays tab focused and an embedded row hovered (gone), then cleared
+bool FSOLSolidMenuSmoke::TickHoverWins(USOLMenuSubsystem& menu)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    USOLOverlayMenuWidget* list = page != nullptr ? page->GetOverlayList() : nullptr;
+    if (page == nullptr || list == nullptr)
+    {
+        mIsSliderHoverOk = mIsOverlayHoverOk = false;
+        mHoverDetail = TEXT("no Settings page or Overlay list");
+        return true;
+    }
+    if (mSubStage > 0 && mStepTimeS - mSubStageS < SOLID_SMOKE_SETTLE_S)
+    {
+        return false;
+    }
+    // Reads a tab button's state: focused, its settled look lit (amber, its rail trace drawn) or not (no rail trace),
+    // the page's hover-elsewhere as expected; logs it
+    const auto read = [this, page](const TCHAR* what, const ESOLSettingsTab tab, const bool bWantLit,
+        const bool bWantElsewhere)
+    {
+        const USOLMenuButton* button = page->GetTabButton(tab);
+        const bool bFocused = button != nullptr && button->HasKeyboardFocus();
+        const float edge = button != nullptr ? button->GetAppliedLook().Edge : -1.0f;
+        const bool bLit = edge > 0.5f;
+        const bool bTrace = page->IsAnyTabHoverTraceShown();
+        const bool bOk = bFocused && bLit == bWantLit && page->IsHoverElsewhere() == bWantElsewhere
+            && (bWantLit ? page->IsTabHoverTraceShown(tab) : edge <= SOLID_SMOKE_TOLERANCE && !bTrace);
+        mHoverDetail += FString::Printf(TEXT(" [%s: tab %d focused %d edge %.3f trace %d, hover elsewhere %d: %s]"),
+            what, static_cast<int32>(tab), bFocused ? 1 : 0, edge, bTrace ? 1 : 0, page->IsHoverElsewhere() ? 1 : 0,
+            bOk ? TEXT("ok") : TEXT("WRONG"));
+        return bOk;
+    };
+    // Reads the main menu's Settings entry: focused, lit or not as expected; logs it
+    const auto readEntry = [this, mainMenu](const TCHAR* what, const bool bWantLit)
+    {
+        const USOLMenuButton* entry = mainMenu->GetEntryButton(SOLID_SMOKE_SETTINGS_ENTRY);
+        const bool bFocused = entry != nullptr && entry->HasKeyboardFocus();
+        const float edge = entry != nullptr ? entry->GetAppliedLook().Edge : -1.0f;
+        const bool bOk = bFocused && (bWantLit ? edge > 0.5f : edge <= SOLID_SMOKE_TOLERANCE);
+        mHoverDetail += FString::Printf(TEXT(" [%s: Settings entry focused %d edge %.3f: %s]"), what,
+            bFocused ? 1 : 0, edge, bOk ? TEXT("ok") : TEXT("WRONG"));
+        return bOk;
+    };
+    // Moves to the next stage, its settle timed from now
+    const auto nextStage = [this]()
+    {
+        ++mSubStage;
+        mSubStageS = mStepTimeS;
+    };
+    const USOLSolidSlider* master = page->GetSlider(ESOLSettingsSlider::MasterVolume);
+    switch (mSubStage)
+    {
+    case 0:
+        // The Audio tab settled with the focus (lit), then the real cursor onto the slider
+        if (mStepTimeS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        mIsSliderHoverOk &= read(TEXT("audio focused"), ESOLSettingsTab::Audio, true, false);
+        SolidSmokeMouseMove(SolidSmokeSliderPoint(master, 0.5f), false);
+        nextStage();
+        return false;
+    case 1:
+        mIsSliderHoverOk &= master != nullptr && master->IsHovered();
+        mIsSliderHoverOk &= read(TEXT("slider hovered"), ESOLSettingsTab::Audio, false, true);
+        TakeUiShot(TEXT("settings-hover-wins"));
+        nextStage();
+        return false;
+    case 2:
+        // A key with the cursor still resting on the slider: the last input is the keyboard's
+        SolidSmokeKey(EKeys::LeftShift);
+        nextStage();
+        return false;
+    case 3:
+        mIsKeyWinsOk = master != nullptr && master->IsHovered();
+        mIsKeyWinsOk &= read(TEXT("key on a hovered slider"), ESOLSettingsTab::Audio, true, false);
+        SolidSmokeMouseMove(SolidSmokeSliderPoint(master, 0.55f), false);
+        nextStage();
+        return false;
+    case 4:
+        mIsKeyWinsOk &= read(TEXT("mouse moved again"), ESOLSettingsTab::Audio, false, true);
+        ParkCursor();
+        nextStage();
+        return false;
+    case 5:
+        mIsSliderHoverOk &= read(TEXT("cursor parked"), ESOLSettingsTab::Audio, true, false);
+        ClickSettingsTab(page, ESOLSettingsTab::Overlays);
+        nextStage();
+        return false;
+    case 6:
+        mIsOverlayHoverOk &= read(TEXT("overlays focused"), ESOLSettingsTab::Overlays, true, false);
+        list->SetEmbeddedHoverRow(SOLID_SMOKE_OVERLAY_HOVER_ROW);
+        nextStage();
+        return false;
+    case 7:
+        mIsOverlayHoverOk &= read(TEXT("overlay row hovered"), ESOLSettingsTab::Overlays, false, true);
+        list->SetEmbeddedHoverRow(INDEX_NONE);
+        nextStage();
+        return false;
+    case 8:
+    {
+        // The main menu's Settings entry focused (as a click on it leaves it), then an Overlay row hovered
+        mIsOverlayHoverOk &= read(TEXT("overlay row left"), ESOLSettingsTab::Overlays, true, false);
+        if (USOLMenuButton* entry = mainMenu->GetEntryButton(SOLID_SMOKE_SETTINGS_ENTRY))
+        {
+            entry->NotifyHovered();
+        }
+        nextStage();
+        return false;
+    }
+    case 9:
+        mIsColumnHoverOk = readEntry(TEXT("entry focused"), true);
+        list->SetEmbeddedHoverRow(SOLID_SMOKE_OVERLAY_HOVER_ROW);
+        nextStage();
+        return false;
+    case 10:
+        mIsColumnHoverOk &= readEntry(TEXT("entry, overlay row hovered"), false);
+        list->SetEmbeddedHoverRow(INDEX_NONE);
+        nextStage();
+        return false;
+    case 11:
+        mIsColumnHoverOk &= readEntry(TEXT("entry, overlay row left"), true);
+        return true;
+    default:
+        return true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Parks the cursor in the view's top-right corner, off every control, and tells Slate (a real move)
+void FSOLSolidMenuSmoke::ParkCursor() const
+{
+    const FIntPoint size = GetViewSize();
+    if (mController.IsValid() && size.X > SOLID_SMOKE_CURSOR_INSET_PX)
+    {
+        mController->SetMouseLocation(size.X - SOLID_SMOKE_CURSOR_INSET_PX, SOLID_SMOKE_CURSOR_INSET_PX);
+    }
+    if (FSlateApplication::IsInitialized())
+    {
+        SolidSmokeMouseMove(FSlateApplication::Get().GetCursorPos(), false);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks that every stepper value (each resolution choice, "1000 x 800", each window mode and quality name) fits its
+// value slot as laid out, and that no row label outside Key bindings runs past its column and gap
+void FSOLSolidMenuSmoke::CheckSettingsFit(USOLMenuSubsystem& menu, const TCHAR* valuesLabel, const TCHAR* labelsLabel)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+    if (page == nullptr || settings == nullptr)
+    {
+        Check(valuesLabel, false, TEXT("no Settings page or settings"));
+        Check(labelsLabel, false, TEXT("no Settings page or settings"));
+        return;
+    }
+
+    // Each stepper's possible values against its slot
+    TArray<FString> values[static_cast<int32>(ESOLSettingsStepper::Count)];
+    values[static_cast<int32>(ESOLSettingsStepper::Resolution)].Add(SOLSettingsRules::FormatResolution(
+        SOLID_SMOKE_SMALL_VIEW));
+    for (const FIntPoint& choice : settings->GetResolutionChoices())
+    {
+        values[static_cast<int32>(ESOLSettingsStepper::Resolution)].Add(SOLSettingsRules::FormatResolution(choice));
+    }
+    for (int32 index = 0; index < SOLSettingsRules::WINDOW_MODE_COUNT; ++index)
+    {
+        values[static_cast<int32>(ESOLSettingsStepper::WindowMode)].Add(SOLSettingsRules::WindowModeName(index));
+    }
+    for (int32 index = 0; index < SOLSettingsRules::QUALITY_PRESET_COUNT; ++index)
+    {
+        values[static_cast<int32>(ESOLSettingsStepper::Quality)].Add(SOLSettingsRules::QualityName(index));
+    }
+    // The page's layout scale (the text is measured as drawn at it), from the laid-out Resolution value
+    const UTextBlock* scaleText = page->GetStepperValueText(ESOLSettingsStepper::Resolution);
+    const float scale = scaleText != nullptr ? scaleText->GetCachedGeometry().GetAccumulatedLayoutTransform().GetScale()
+        : 0.0f;
+    bool bValuesFit = scale > 0.0f;
+    FString valueDetail = FString::Printf(TEXT("scale %.3f:"), scale);
+    for (int32 stepper = 0; stepper < static_cast<int32>(ESOLSettingsStepper::Count); ++stepper)
+    {
+        const UTextBlock* text = page->GetStepperValueText(static_cast<ESOLSettingsStepper>(stepper));
+        const float slot = text != nullptr ? text->GetCachedGeometry().GetLocalSize().X : 0.0f;
+        float widest = 0.0f;
+        bool bMeasured = text != nullptr;
+        FString widestText;
+        for (const FString& value : values[stepper])
+        {
+            const float width = text != nullptr ? SolidSmokeTextWidth(value, text->GetFont(), scale) : -1.0f;
+            bMeasured &= width >= 0.0f;
+            if (width > widest)
+            {
+                widest = width;
+                widestText = value;
+            }
+        }
+        const bool bFits = bMeasured && slot > 0.0f && widest <= slot + SOLID_SMOKE_FIT_TOLERANCE;
+        bValuesFit &= bFits;
+        valueDetail += FString::Printf(TEXT(" [stepper %d: widest \"%s\" %.1f in a %.1f slot%s]"), stepper,
+            *widestText, widest, slot, bFits ? TEXT("") : bMeasured ? TEXT(" CLIPPED") : TEXT(" NOT MEASURED"));
+    }
+    Check(valuesLabel, bValuesFit, valueDetail);
+
+    // Row labels: each ends before its row's control (the column plus the gap); Key bindings rows are known tech debt
+    // (logged, not checked)
+    bool bLabelsFit = true;
+    FString labelDetail;
+    float worstMargin = TNumericLimits<float>::Max();
+    FString worst;
+    for (int32 index = 0; index < page->GetRowLabelCount(); ++index)
+    {
+        ESOLSettingsTab tab = ESOLSettingsTab::Count;
+        const UTextBlock* label = page->GetRowLabel(index, tab);
+        const FString text = label != nullptr ? label->GetText().ToString() : FString();
+        const float width = label != nullptr ? SolidSmokeTextWidth(text, label->GetFont(), scale) : -1.0f;
+        const float room = SOLSettingsTabs::LabelColumnWidth(tab) + SOL::MenuStyle::BUTTON_GAP;
+        const bool bFits = width >= 0.0f && width <= room + SOLID_SMOKE_FIT_TOLERANCE;
+        if (tab == ESOLSettingsTab::KeyBindings)
+        {
+            if (!bFits)
+            {
+                labelDetail += FString::Printf(TEXT(" (key row \"%s\" %.1f over %.1f, TECH_DEBT)"), *text, width,
+                    room);
+            }
+            continue;
+        }
+        bLabelsFit &= bFits;
+        if (room - width < worstMargin)
+        {
+            worstMargin = room - width;
+            worst = FString::Printf(TEXT("\"%s\" %.1f of %.1f on tab %d"), *text, width, room,
+                static_cast<int32>(tab));
+        }
+        if (!bFits)
+        {
+            labelDetail += FString::Printf(TEXT(" [\"%s\" %.1f over %.1f]"), *text, width, room);
+        }
+    }
+    Check(labelsLabel, bLabelsFit && scale > 0.0f && page->GetRowLabelCount() > 0, FString::Printf(TEXT("%d labels at "
+        "scale %.3f, the tightest %s%s"), page->GetRowLabelCount(), scale, *worst, *labelDetail));
 }

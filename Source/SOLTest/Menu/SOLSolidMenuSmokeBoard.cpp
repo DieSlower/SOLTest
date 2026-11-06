@@ -10,6 +10,7 @@
 #include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
+#include "Menu/SOLSolidSlider.h"
 #include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 
@@ -19,7 +20,6 @@
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
 #include "Components/SizeBox.h"
-#include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -204,10 +204,8 @@ void USOLSolidMenuSmokeBoard::NativeOnInitialized()
     Toggles.Reset();
     for (int32 disabled = 0; disabled < 2; ++disabled)
     {
-        USlider* slider = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
-        slider->SetWidgetStyle(SOLSolidStyle::MakeSliderStyle(solid));
-        slider->SetSliderBarColor(FLinearColor::White);
-        slider->SetSliderHandleColor(FLinearColor::White);
+        USOLSolidSlider* slider = WidgetTree->ConstructWidget<USOLSolidSlider>(USOLSolidSlider::StaticClass());
+        slider->SetSolidStyle(solid);
         slider->SetValue(BOARD_SLIDER_VALUE);
         slider->SetIsEnabled(disabled == 0);
         Sliders.Add(slider);

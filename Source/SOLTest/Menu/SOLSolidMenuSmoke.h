@@ -28,13 +28,16 @@ class USOLSolidMenuSmokeBoard;
  * shell closing input-transparent, then hidden); a reopen during a close (no pop); Settings (46e, SDD 14 step 4: opens
  * on Graphics with six Tab buttons and the solid rows, each other tab shown with its hover trace and the footer kept,
  * the embedded Overlay list in the solid look, a stepper's hover without a trace, a slider / toggle / stepper change
- * then Revert, ScrollToBinding showing Key bindings with the row in view, a reopen back on Graphics); the main menu at
- * strength 0 (open and shell instant, the hover look at once) and 2 (glow doubled); the comparison board (USOLSolidMenuSmokeBoard:
- * every control type enabled and disabled side by side) with a selected tab hovered, then hover-only beside
- * selected-only; strength 0 (the hover look at once, no glow) and strength 2 (glow doubled); then the view at 1000x800
- * with Settings and Start location open (the column and the shell inside the view). Each step logs "SolidMenu CHECK
- * <id> PASS|FAIL: ..." and takes a window screenshot (Saved/Screenshots/<platform>/SolidMenu_<name>.png) to look at;
- * then a "SolidMenu SUMMARY" line and the quit (a watchdog quits a stuck run).
+ * then Revert, the 46e follow-ups (the slider fill at 0%, 100%, 50% and while dragged with the real mouse, hover wins
+ * over the focus on a slider and an Overlay row, the stepper values and row labels inside their slots),
+ * ScrollToBinding showing Key bindings with the row in view, a reopen back on Graphics with every tab at its top); the
+ * main menu at strength 0 (open and shell instant, the hover look at once) and 2 (glow doubled); the comparison board
+ * (USOLSolidMenuSmokeBoard: every control type enabled and disabled side by side) with a selected tab hovered, then
+ * hover-only beside selected-only; strength 0 (the hover look at once, no glow) and strength 2 (glow doubled); then the
+ * view at 1000x800 with Settings and Start location open (the column and the shell inside the view). Each step logs
+ * "SolidMenu CHECK <id> PASS|FAIL: ..." and takes a window screenshot
+ * (Saved/Screenshots/<platform>/SolidMenu_<name>.png) to look at; then a "SolidMenu SUMMARY" line and the quit (a
+ * watchdog quits a stuck run).
  */
 class SOLTEST_API FSOLSolidMenuSmoke
 {
@@ -85,6 +88,18 @@ private:
     // Runs the Settings steps' checks and screenshots (SDD 14 step 4)
     void ExitSettingsStep(int32 step, USOLMenuSubsystem& menu);
 
+    // Runs the slider fill step's stages (46e follow-up); returns true once done
+    bool TickSliderFill(USOLMenuSubsystem& menu);
+
+    // Runs the hover-wins step's stages (46e follow-up); returns true once done
+    bool TickHoverWins(USOLMenuSubsystem& menu);
+
+    // Parks the cursor in the view's top-right corner (off every control) with a real Slate mouse move
+    void ParkCursor() const;
+
+    // Checks the Settings stepper values against their slots and the row labels against their columns (46e follow-up)
+    void CheckSettingsFit(USOLMenuSubsystem& menu, const TCHAR* valuesLabel, const TCHAR* labelsLabel);
+
     TWeakObjectPtr<APlayerController> mController;
     TWeakObjectPtr<USOLSolidMenuSmokeBoard> mBoard;
     double mLastTimeS = 0.0;        // Real time of the last update
@@ -108,6 +123,18 @@ private:
     int32 mSettingsTab = 0;         // The Settings tab loop's tab (ESOLSettingsTab position)
     ESOLSettingsTab mScrollFromTab = ESOLSettingsTab::Count;    // ScrollToBinding: the tab before
     ESOLSettingsTab mScrollTabAtOnce = ESOLSettingsTab::Count;  // ... and right after the call
+    float mScrollBeforeReopen = -1.0f;  // The Key bindings tab's scroll offset before the reopen's close
+    int32 mSubStageFrames = 0;      // The step frame a multi-stage step's stage began on
+    int32 mFillRun = 0;             // Slider fills read, and those matching their values
+    int32 mFillPassed = 0;
+    FString mFillDetail;            // ... and what was read
+    bool mIsDragOk = false;         // The drag: the fill followed the dragged value
+    FString mDragDetail;
+    bool mIsSliderHoverOk = true;   // Hover wins: over a slider, and over an Overlay row
+    bool mIsOverlayHoverOk = true;
+    bool mIsKeyWinsOk = false;      // ... a key gives the focus back (last input wins)
+    bool mIsColumnHoverOk = false;  // ... the main menu's focused Settings entry drops its amber too
+    FString mHoverDetail;
     // Animation samples of the running step (SampleAnim)
     int32 mSamples = 0;
     float mFirstProgress = -1.0f;   // Progress and trace power on the first sample

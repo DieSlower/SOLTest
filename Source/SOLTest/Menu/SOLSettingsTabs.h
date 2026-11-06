@@ -64,4 +64,9 @@ namespace SOLSettingsTabs
     // The button variant of the settings rows' buttons: steppers, Rebind, Reset keys and the footer (Small: amber edge
     // and underline, no trace, Q15)
     SOLTEST_API ESOLSolidButtonVariant RowButtonVariant();
+
+    // The width of a tab's row label column (46e follow-up): SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH on Graphics
+    // (short labels; the steppers' values need the room at 1000x800), SETTINGS_GAMEPLAY_LABEL_WIDTH on Gameplay (its
+    // longest label), SOL::MenuStyle::SETTINGS_LABEL_WIDTH on every other tab, and on an invalid one
+    SOLTEST_API float LabelColumnWidth(ESOLSettingsTab tab);
 }

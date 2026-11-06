@@ -16,12 +16,13 @@
 
 class IInputProcessor;
 class UCheckBox;
+class UHorizontalBox;
 class UScrollBox;
-class USlider;
 class USOLMenuButton;
 class USOLOverlayMenuWidget;
 class USOLSettingsSubsystem;
 class USOLSolidPanel;
+class USOLSolidSlider;
 class UTextBlock;
 class UWidgetSwitcher;
 
@@ -69,9 +70,13 @@ enum class ESOLSettingsStepper : uint8
  * footer with the dirty indicator, a status line, Revert and Apply. The solid look (SDD 46 section 6.3): the six
  * sections are six tabs in a vertical tab column (a tab rail recess, Tab buttons whose hover extends a trace into the
  * rail; the shown tab carries the selected mark) left of a content recess showing the chosen tab's rows in its own
- * scroll box (SOLSolidStyle sliders, toggles and Small buttons: amber edge and underline on hover, no trace); the
- * footer stays under the content on every tab. RefreshFromSettings shows the first tab (Graphics) every time the page
- * opens (no last-tab memory, Q8); ScrollToBinding first shows the Key bindings tab. Every control only calls
+ * scroll box (USOLSolidSlider sliders with the cyan fill, SOLSolidStyle toggles and Small buttons: amber edge and
+ * underline on hover, no trace); the footer stays under the content on every tab. RefreshFromSettings shows the first
+ * tab (Graphics) with every tab scrolled to its top every time the page opens (no last-tab or scroll memory, Q8);
+ * ScrollToBinding first shows the Key bindings tab. One highlight (46e follow-up): while the mouse is over a slider, a
+ * toggle or an embedded Overlay row (controls that take no focus on hover) and the last input was a real mouse move,
+ * the focused button shows no hover look (the owning menus pass the same rule to their own buttons); a key press gives
+ * the focus its highlight back until the mouse moves again (last input wins). Every control only calls
  * USOLSettingsSubsystem, which previews audio, mouse and HUD values at once and applies the rest on Apply; the public
  * setters below are the same paths the controls use (the menu smoke script drives them).
  *
@@ -79,9 +84,10 @@ enum class ESOLSettingsStepper : uint8
  * key that cannot be bound is refused with a message. The key is taken by a Slate input pre-processor (registered while
  * the page is constructed) before any widget sees it, whatever has keyboard focus, and its release is swallowed too, so
  * it can never click a hovered or focused button or reach the menu; menu buttons do not take focus on hover meanwhile
- * (USOLSettingsSubsystem::IsKeyCaptureActive). A key another action already uses is bound anyway and both rows turn the warning colour. The owning menu
- * calls RefreshFromSettings when it shows the page and NotifyHidden when it leaves it (which ends the settings visit:
- * unapplied changes are reverted and the save is written once if an Apply changed something).
+ * (USOLSettingsSubsystem::IsKeyCaptureActive). A key another action already uses is bound anyway and both rows turn the
+ * warning colour. The owning menu calls RefreshFromSettings when it shows the page and NotifyHidden when it leaves it
+ * (which ends the settings visit: unapplied changes are reverted and the save is written once if an Apply changed
+ * something).
  */
 UCLASS()
 class SOLTEST_API USOLSettingsPageWidget : public UUserWidget
@@ -113,7 +119,7 @@ public:
     USOLMenuButton* GetApplyButton() const { return ApplyButton; }
 
     // Returns a slider or a checkbox, or null (verification)
-    const USlider* GetSlider(ESOLSettingsSlider slider) const;
+    const USOLSolidSlider* GetSlider(ESOLSettingsSlider slider) const;
     const UCheckBox* GetToggle(ESOLSettingsToggle toggle) const;
 
     // Returns whether the tab rail draws a tab's hover trace (verification)
@@ -124,6 +130,33 @@ public:
 
     // Returns whether a binding's key row lies inside the Key bindings tab's scroll box as last laid out (verification)
     bool IsBindingRowInView(int32 binding) const;
+
+    // Returns a tab's scroll offset (local units; 0 at the top), or -1 for an invalid tab (verification)
+    float GetTabScrollOffset(ESOLSettingsTab tab) const;
+
+    // Returns whether the last tick found the mouse over a slider, a toggle or an embedded Overlay row, so no focused
+    // button showed its hover look (verification)
+    bool IsHoverElsewhere() const { return mIsHoverElsewhere; }
+
+    // Returns whether hover wins over the keyboard focus now: the last input was a real mouse move (not a key) and
+    // the mouse is over a slider, a toggle or an embedded Overlay tab or row of the shown tab, controls that take no
+    // focus on hover (the owning menus pass it to their own buttons while the page shows)
+    bool IsHoverOnFocuslessControl() const;
+
+    // A real mouse move (a non-zero cursor delta) or a mouse press reached Slate: hover wins again
+    void NotifyMouseInput() { mIsMouseLastInput = true; }
+
+    // A key press reached Slate: the keyboard focus shows its highlight until the mouse moves again
+    void NotifyKeyInput() { mIsMouseLastInput = false; }
+
+    // Returns a stepper's value text, or null (verification)
+    const UTextBlock* GetStepperValueText(ESOLSettingsStepper stepper) const;
+
+    // Returns how many rows have a label (steppers, toggles, sliders and key rows, in build order) (verification)
+    int32 GetRowLabelCount() const { return RowLabels.Num(); }
+
+    // Returns a row's label and its tab, or null for an invalid index (verification)
+    const UTextBlock* GetRowLabel(int32 index, ESOLSettingsTab& outTab) const;
 
     // The page was hidden: stops listening and ends the settings visit
     void NotifyHidden();
@@ -199,6 +232,10 @@ private:
 
     // Builds the tab rail: one Tab button per tab and each tab's hover trace (rail local units)
     USOLSolidPanel* BuildTabRail();
+
+    // Creates a row of a tab with its label in the tab's label column (SOLSettingsTabs::LabelColumnWidth), ready for
+    // the control(s)
+    UHorizontalBox* MakeRow(ESOLSettingsTab tab, const FString& label);
 
     // Re-reads every control from the settings subsystem (the tab is left as it is)
     void RefreshControls();
@@ -284,7 +321,7 @@ private:
     void HandleRebindClicked(int32 binding);
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<USlider>> Sliders;
+    TArray<TObjectPtr<USOLSolidSlider>> Sliders;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLOverlayMenuWidget> OverlayList;          // The Overlay Menu's list, embedded (SDD 22)
@@ -303,6 +340,9 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> KeyTexts;
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTextBlock>> RowLabels;               // Every row's label, in build order (verification)
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<USOLMenuButton>> TabButtons;          // In ESOLSettingsTab order
@@ -336,6 +376,9 @@ private:
     FString mStatusMessage;                         // Last rebind or reset message (cleared by the next action)
     FKey mSwallowedRelease;                         // Release of the captured key, still to be swallowed
     int32 mListeningBinding = INDEX_NONE;           // Binding waiting for its new key
+    TArray<ESOLSettingsTab> mRowLabelTabs;          // The tab of each RowLabels entry
+    bool mIsHoverElsewhere = false;                 // Last tick: the mouse over a focusless control (one highlight)
+    bool mIsMouseLastInput = true;                  // The last input was a real mouse move or press, not a key
     FSOLSolidTrace mTabTraces[static_cast<int32>(ESOLSettingsTab::Count)];  // Each tab's hover trace (rail local)
     float mRailStrength = -1.0f;                    // Effects strength last pushed to the rail's trace layer
     ESOLSettingsTab mTab = ESOLSettingsTab::Graphics;   // The tab showing

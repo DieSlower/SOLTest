@@ -1324,6 +1324,8 @@ namespace SOL
         inline constexpr float PUCK_TRAVEL_FRACTION = 0.5f;       // The puck is this much narrower than its slot and
                                                                   // sits right when checked (the tint's mark)
         inline constexpr float SLIDER_BAR_THICKNESS = 8.0f;       // Style factory sizes
+        inline constexpr float SLIDER_FILL_THICKNESS = 4.0f;      // Slider fill: a cyan run inside the groove from
+        inline constexpr float SLIDER_FILL_INSET_PX = 2.0f;       // its start (this far in) to the knob (46e follow-up)
         inline constexpr float KNOB_WIDTH = 18.0f;
         inline constexpr float KNOB_HEIGHT = 26.0f;
         inline constexpr float TOGGLE_WIDTH = 52.0f;
@@ -1407,6 +1409,12 @@ namespace SOL
         inline constexpr int32 SETTINGS_TAB_LETTER_SPACING = 100; // Tab labels (the stack's 260 is too wide for them)
         inline constexpr float SETTINGS_BODY_GAP = 12.0f;         // Tab rail to the content recess
         inline constexpr float SETTINGS_CONTENT_PADDING = 10.0f;  // Content recess edge to the rows
+        // Per-tab label columns (46e follow-ups, SOLSettingsTabs::LabelColumnWidth; the other tabs keep
+        // SOL::MenuStyle::SETTINGS_LABEL_WIDTH). Graphics: its labels are short, so the stepper values fit at 1000x800
+        // ("Window mode" may run into the BUTTON_GAP after the column). Gameplay: "Chase Down safety margin" is about
+        // 266 units as drawn at 1000x800, past the shared column and its gap
+        inline constexpr float SETTINGS_GRAPHICS_LABEL_WIDTH = 134.0f;
+        inline constexpr float SETTINGS_GAMEPLAY_LABEL_WIDTH = 264.0f;
     }
     static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
         && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE
@@ -1532,6 +1540,9 @@ namespace SOL
         // with Settings open, at 1920x1080 and 1280x720, logged against the pre-46c baseline, then quit (SDD 46 section
         // 13; smoke settings slot; the run starts in the main menu)
         inline constexpr const TCHAR* SMOKE_SOLID_MENU_PROFILE = TEXT("SOLSmokeSolidMenuProfile");
+        // With -SOLSmokeSolidMenuProfile: every pass shows this Settings tab (its ESOLSettingsTab position, e.g. 3 =
+        // Gameplay with four sliders) instead of the opening tab (46e follow-up: the slider fill's cost)
+        inline constexpr const TCHAR* SMOKE_SOLID_MENU_PROFILE_TAB = TEXT("SOLSmokeSolidMenuProfileTab=");
         // The solid menu kit: assets and fallback, the restyled buttons' hover / focus / selected / disabled looks
         // against SOLSolidMenu::EvaluateButton, an enabled / disabled comparison board of every control type, strength
         // 0 and 2, screenshots, then quit (SDD 46 section 14; smoke settings slot; the run starts in the main menu)

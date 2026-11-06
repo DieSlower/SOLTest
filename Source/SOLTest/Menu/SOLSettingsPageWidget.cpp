@@ -14,6 +14,7 @@
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
+#include "Menu/SOLSolidSlider.h"
 #include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 #include "UI/SOLOverlayMenuWidget.h"
@@ -25,7 +26,6 @@
 #include "Components/ScrollBox.h"
 #include "Components/ScrollBoxSlot.h"
 #include "Components/SizeBox.h"
-#include "Components/Slider.h"
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
@@ -103,11 +103,26 @@ namespace
         {
         }
 
-        // A key press: the page's new key while it listens
+        // A key press: the page's new key while it listens; any key gives the focus its highlight back
         virtual bool HandleKeyDownEvent(FSlateApplication& /*slate*/, const FKeyEvent& keyEvent) override
         {
             USOLSettingsPageWidget* page = mPage.Get();
+            if (page != nullptr)
+            {
+                page->NotifyKeyInput();
+            }
             return page != nullptr && page->HandleCaptureDown(keyEvent.GetKey());
+        }
+
+        // A mouse move: a real one (the cursor moved; Slate's synthetic moves do not) lets hover win again
+        virtual bool HandleMouseMoveEvent(FSlateApplication& /*slate*/, const FPointerEvent& mouseEvent) override
+        {
+            USOLSettingsPageWidget* page = mPage.Get();
+            if (page != nullptr && !mouseEvent.GetCursorDelta().IsNearlyZero())
+            {
+                page->NotifyMouseInput();
+            }
+            return false;
         }
 
         // A key release: swallowed when it belongs to the captured press
@@ -117,10 +132,14 @@ namespace
             return page != nullptr && page->HandleCaptureUp(keyEvent.GetKey());
         }
 
-        // A mouse press: the page's new key while it listens
+        // A mouse press: the page's new key while it listens; a press is mouse input (hover wins again)
         virtual bool HandleMouseButtonDownEvent(FSlateApplication& /*slate*/, const FPointerEvent& mouseEvent) override
         {
             USOLSettingsPageWidget* page = mPage.Get();
+            if (page != nullptr)
+            {
+                page->NotifyMouseInput();
+            }
             return page != nullptr && page->HandleCaptureDown(mouseEvent.GetEffectingButton());
         }
 
@@ -210,21 +229,6 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Creates a settings row with its fixed-width label, ready for the control(s)
-    UHorizontalBox* SettingsMakeRow(UWidgetTree& tree, const FString& label)
-    {
-        using namespace SOL::MenuStyle;
-        UHorizontalBox* row = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-        USizeBox* labelBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
-        labelBox->SetWidthOverride(SETTINGS_LABEL_WIDTH);
-        labelBox->SetContent(SOLMenuContent::MakeText(tree, label, BODY_FONT_SIZE, SOLSolidStyle::TextColor()));
-        UHorizontalBoxSlot* labelSlot = row->AddChildToHorizontalBox(labelBox);
-        labelSlot->SetVerticalAlignment(VAlign_Center);
-        labelSlot->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
-        return row;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Adds a widget to a row, filling the remaining width when bFill, vertically centred
     UHorizontalBoxSlot* SettingsAddToRow(UHorizontalBox& row, UWidget* widget, const bool bFill)
     {
@@ -255,11 +259,12 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Adds a row (fixed height) to the scroll box with the row gap below it
+    // Adds a row (fixed height) to the scroll box with the row gap below it (the scroll bar keeps its own gap, so a
+    // tab without a bar gives its rows the full width)
     void SettingsAddRow(UWidgetTree& tree, UScrollBox& scroll, UHorizontalBox* row)
     {
         Cast<UScrollBoxSlot>(scroll.AddChild(SettingsSized(tree, row, 0.0f, SOL::MenuStyle::SETTINGS_ROW_HEIGHT)))
-            ->SetPadding(FMargin(0.0f, 0.0f, SOL::MenuStyle::BUTTON_GAP, SOL::MenuStyle::ROW_GAP));
+            ->SetPadding(FMargin(0.0f, 0.0f, 0.0f, SOL::MenuStyle::ROW_GAP));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -303,6 +308,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
 
     // The tab rail and the content recess; the content switcher has one scroll box per tab (index = ESOLSettingsTab)
     Buttons.Reset();
+    RowLabels.Reset();
+    mRowLabelTabs.Reset();
     UHorizontalBox* body = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(body)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     UHorizontalBoxSlot* railSlot = body->AddChildToHorizontalBox(SettingsSized(*WidgetTree, BuildTabRail(),
@@ -316,6 +323,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         UScrollBox* scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
         scroll->SetWidgetBarStyle(scrollBarStyle);
         scroll->SetScrollbarThickness(FVector2D(SOL::SolidMenu::SCROLL_BAR_THICKNESS));
+        scroll->SetScrollbarPadding(FMargin(BUTTON_GAP, 0.0f, 0.0f, 0.0f));
         TabSwitcher->AddChild(scroll);
         TabScrolls.Add(scroll);
     }
@@ -330,7 +338,8 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     // Adds a stepper row to its tab: '<' value '>' (button index = stepper * 2 + direction slot)
     const auto addStepper = [this, &scrollOf](const ESOLSettingsStepper stepper)
     {
-        UHorizontalBox* row = SettingsMakeRow(*WidgetTree, SETTINGS_STEPPER_LABELS[static_cast<int32>(stepper)]);
+        const ESOLSettingsTab tab = SOLSettingsTabs::TabOfStepper(stepper);
+        UHorizontalBox* row = MakeRow(tab, SETTINGS_STEPPER_LABELS[static_cast<int32>(stepper)]);
         const TCHAR* labels[] = { SOLMenuText::SETTINGS_STEP_BACK, SOLMenuText::SETTINGS_STEP_FORWARD };
         for (int32 side = 0; side < UE_ARRAY_COUNT(labels); ++side)
         {
@@ -352,36 +361,34 @@ void USOLSettingsPageWidget::NativeOnInitialized()
             }
             SettingsAddToRow(*row, SettingsSized(*WidgetTree, button, SETTINGS_STEP_BUTTON_WIDTH, 0.0f), false);
         }
-        SettingsAddRow(*WidgetTree, scrollOf(SOLSettingsTabs::TabOfStepper(stepper)), row);
+        SettingsAddRow(*WidgetTree, scrollOf(tab), row);
     };
 
     // Adds a toggle row to its tab (the solid slot and puck) and returns the checkbox
     const FCheckBoxStyle toggleStyle = SOLSolidStyle::MakeCheckBoxStyle(solid);
     const auto addToggle = [this, &scrollOf, &toggleStyle](const ESOLSettingsToggle toggle)
     {
-        UHorizontalBox* row = SettingsMakeRow(*WidgetTree, SETTINGS_TOGGLE_LABELS[static_cast<int32>(toggle)]);
+        const ESOLSettingsTab tab = SOLSettingsTabs::TabOfToggle(toggle);
+        UHorizontalBox* row = MakeRow(tab, SETTINGS_TOGGLE_LABELS[static_cast<int32>(toggle)]);
         UCheckBox* checkBox = WidgetTree->ConstructWidget<UCheckBox>(UCheckBox::StaticClass());
         checkBox->SetWidgetStyle(toggleStyle);
         Toggles[static_cast<int32>(toggle)] = checkBox;
         SettingsAddToRow(*row, checkBox, false);
-        SettingsAddRow(*WidgetTree, scrollOf(SOLSettingsTabs::TabOfToggle(toggle)), row);
+        SettingsAddRow(*WidgetTree, scrollOf(tab), row);
         return checkBox;
     };
 
-    // Adds a slider row to its tab (the solid groove and knob, and the value readout) and returns the slider; the
-    // style brushes carry the tints, so the bar and handle colours stay white
-    const FSliderStyle sliderStyle = SOLSolidStyle::MakeSliderStyle(solid);
-    const auto addSlider = [this, &scrollOf, &sliderStyle](const ESOLSettingsSlider slider)
+    // Adds a slider row to its tab (the solid groove, cyan fill and knob, and the value readout) and returns the slider
+    const auto addSlider = [this, &scrollOf, solid](const ESOLSettingsSlider slider)
     {
         const FSOLSliderSpec& spec = SETTINGS_SLIDERS[static_cast<int32>(slider)];
-        UHorizontalBox* row = SettingsMakeRow(*WidgetTree, spec.Label);
-        USlider* control = WidgetTree->ConstructWidget<USlider>(USlider::StaticClass());
+        const ESOLSettingsTab tab = SOLSettingsTabs::TabOfSlider(slider);
+        UHorizontalBox* row = MakeRow(tab, spec.Label);
+        USOLSolidSlider* control = WidgetTree->ConstructWidget<USOLSolidSlider>(USOLSolidSlider::StaticClass());
         control->SetMinValue(spec.Min);
         control->SetMaxValue(spec.Max);
         control->SetStepSize(spec.Step);
-        control->SetWidgetStyle(sliderStyle);
-        control->SetSliderBarColor(FLinearColor::White);
-        control->SetSliderHandleColor(FLinearColor::White);
+        control->SetSolidStyle(solid);
         Sliders[static_cast<int32>(slider)] = control;
         SettingsAddToRow(*row, control, true);
         UTextBlock* value = SOLMenuContent::MakeText(*WidgetTree, FString(), SOL::MenuStyle::BODY_FONT_SIZE,
@@ -389,7 +396,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         value->SetJustification(ETextJustify::Right);
         SliderValueTexts[static_cast<int32>(slider)] = value;
         SettingsAddToRow(*row, SettingsSized(*WidgetTree, value, SOL::MenuStyle::SETTINGS_VALUE_WIDTH, 0.0f), false);
-        SettingsAddRow(*WidgetTree, scrollOf(SOLSettingsTabs::TabOfSlider(slider)), row);
+        SettingsAddRow(*WidgetTree, scrollOf(tab), row);
         return control;
     };
     Toggles.SetNum(static_cast<int32>(ESOLSettingsToggle::Count));
@@ -468,7 +475,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     KeyTexts.Reset(SOLKeyBindings::BINDING_COUNT);
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
-        UHorizontalBox* row = SettingsMakeRow(*WidgetTree, SOLKeyBindings::GetDef(binding).Label);
+        UHorizontalBox* row = MakeRow(ESOLSettingsTab::KeyBindings, SOLKeyBindings::GetDef(binding).Label);
         UTextBlock* keyText = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE,
             SOLSolidStyle::ValueColor(), true);
         KeyTexts.Add(keyText);
@@ -540,11 +547,34 @@ USOLSolidPanel* USOLSettingsPageWidget::BuildTabRail()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// The page was shown: the opening tab (Q8, no last-tab memory), no hover left from the last visit (the list's hover,
-// and the rail's trace unless a tab still has the keyboard focus) and every control re-read
+// Creates a row of a tab: its label in the tab's label column, then room for the control(s)
+UHorizontalBox* USOLSettingsPageWidget::MakeRow(const ESOLSettingsTab tab, const FString& label)
+{
+    using namespace SOL::MenuStyle;
+    UHorizontalBox* row = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+    USizeBox* labelBox = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    labelBox->SetWidthOverride(SOLSettingsTabs::LabelColumnWidth(tab));
+    UTextBlock* text = SOLMenuContent::MakeText(*WidgetTree, label, BODY_FONT_SIZE, SOLSolidStyle::TextColor());
+    labelBox->SetContent(text);
+    RowLabels.Add(text);
+    mRowLabelTabs.Add(tab);
+    UHorizontalBoxSlot* labelSlot = row->AddChildToHorizontalBox(labelBox);
+    labelSlot->SetVerticalAlignment(VAlign_Center);
+    labelSlot->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
+    return row;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The page was shown: the opening tab (Q8, no last-tab memory) with every tab back at its top, no hover left from the
+// last visit (the list's hover, and the rail's trace unless a tab still has the keyboard focus) and every control
+// re-read
 void USOLSettingsPageWidget::RefreshFromSettings()
 {
     SelectTab(SOLSettingsTabs::OpeningTab());
+    for (UScrollBox* scroll : TabScrolls)
+    {
+        scroll->ScrollToStart();
+    }
     if (OverlayList != nullptr)
     {
         OverlayList->ClearEmbeddedHover();
@@ -603,7 +633,7 @@ USOLMenuButton* USOLSettingsPageWidget::GetStepperButton(const ESOLSettingsStepp
 
 //////////////////////////////////////////////////////////////////////////
 // Returns a slider, or null
-const USlider* USOLSettingsPageWidget::GetSlider(const ESOLSettingsSlider slider) const
+const USOLSolidSlider* USOLSettingsPageWidget::GetSlider(const ESOLSettingsSlider slider) const
 {
     const int32 index = static_cast<int32>(slider);
     return Sliders.IsValidIndex(index) ? Sliders[index].Get() : nullptr;
@@ -641,6 +671,62 @@ bool USOLSettingsPageWidget::IsBindingRowInView(const int32 binding) const
     const UScrollBox* scroll = TabScrolls.IsValidIndex(static_cast<int32>(ESOLSettingsTab::KeyBindings))
         ? TabScrolls[static_cast<int32>(ESOLSettingsTab::KeyBindings)].Get() : nullptr;
     return scroll != nullptr && KeyTexts.IsValidIndex(binding) && SettingsIsInside(*KeyTexts[binding], *scroll);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a tab's scroll offset, or -1 for an invalid tab
+float USOLSettingsPageWidget::GetTabScrollOffset(const ESOLSettingsTab tab) const
+{
+    const int32 index = static_cast<int32>(tab);
+    return TabScrolls.IsValidIndex(index) ? TabScrolls[index]->GetScrollOffset() : -1.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a stepper's value text, or null
+const UTextBlock* USOLSettingsPageWidget::GetStepperValueText(const ESOLSettingsStepper stepper) const
+{
+    const int32 index = static_cast<int32>(stepper);
+    return StepperValueTexts.IsValidIndex(index) ? StepperValueTexts[index].Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a row's label and its tab, or null for an invalid index
+const UTextBlock* USOLSettingsPageWidget::GetRowLabel(const int32 index, ESOLSettingsTab& outTab) const
+{
+    outTab = mRowLabelTabs.IsValidIndex(index) ? mRowLabelTabs[index] : ESOLSettingsTab::Count;
+    return RowLabels.IsValidIndex(index) ? RowLabels[index].Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether hover wins over the keyboard focus now: the last input was a real mouse move or press and the mouse
+// is over a slider, a toggle or an embedded Overlay tab or row of the shown tab (controls that take no keyboard focus
+// on hover, so a focused button would show a second highlight)
+bool USOLSettingsPageWidget::IsHoverOnFocuslessControl() const
+{
+    if (!mIsMouseLastInput)
+    {
+        return false;
+    }
+    for (int32 slider = 0; slider < Sliders.Num(); ++slider)
+    {
+        const USOLSolidSlider* control = Sliders[slider];
+        if (control != nullptr && SOLSettingsTabs::TabOfSlider(static_cast<ESOLSettingsSlider>(slider)) == mTab
+            && control->IsHovered())
+        {
+            return true;
+        }
+    }
+    for (int32 toggle = 0; toggle < Toggles.Num(); ++toggle)
+    {
+        const UCheckBox* control = Toggles[toggle];
+        if (control != nullptr && SOLSettingsTabs::TabOfToggle(static_cast<ESOLSettingsToggle>(toggle)) == mTab
+            && control->IsHovered())
+        {
+            return true;
+        }
+    }
+    return mTab == ESOLSettingsTab::Overlays && OverlayList != nullptr
+        && (OverlayList->GetEmbeddedHoverRow() != INDEX_NONE || OverlayList->GetHoveredTab() != INDEX_NONE);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1024,8 +1110,9 @@ void USOLSettingsPageWidget::SetStatus(const FString& message)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Refreshes the button highlights (focus follows the keyboard and the mouse) and gives the tab rail's trace layer the
-// effects strength when it changed
+// Refreshes the button highlights (focus follows the keyboard and the mouse; the mouse over a slider, toggle or
+// Overlay row wins over the focus, so one highlight shows) and gives the tab rail's trace layer the effects strength
+// when it changed
 void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
@@ -1035,13 +1122,14 @@ void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float d
         mRailStrength = frame.Strength;
         TabRail->SetTraceLook(1.0f, 0.0f, frame.Strength);
     }
+    mIsHoverElsewhere = IsHoverOnFocuslessControl();
     for (USOLMenuButton* button : TabButtons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame.NowS, frame.Strength, mIsHoverElsewhere);
     }
     for (USOLMenuButton* button : Buttons)
     {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength);
+        button->RefreshHighlightAt(frame.NowS, frame.Strength, mIsHoverElsewhere);
     }
 }
 

@@ -11,7 +11,7 @@
 #include "SOLSolidMenuSmokeBoard.generated.h"
 
 class UCheckBox;
-class USlider;
+class USOLSolidSlider;
 class USOLMenuButton;
 class USOLSolidPanel;
 
@@ -73,7 +73,7 @@ private:
     TArray<TObjectPtr<USOLMenuButton>> Buttons;     // One per ESOLSolidSmokeButton
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<USlider>> Sliders;            // Enabled, disabled
+    TArray<TObjectPtr<USOLSolidSlider>> Sliders;    // Enabled, disabled
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UCheckBox>> Toggles;          // Enabled, disabled

@@ -187,7 +187,7 @@ The solid main menu (issue #46, part 46d): hull column with the start-location b
 
 ![Solid Settings with the tab column](Docs/Images/46-settings-solid.png)
 
-The solid Settings page (issue #46, part 46e): the six sections as a vertical tab column beside the content recess, with the solid steppers and toggles and the shared Revert / Apply footer.
+The solid Settings page (issue #46, part 46e and its follow-ups), on its Gameplay tab: the six sections as a vertical tab column beside the content recess, the solid sliders with their cyan fill up to the value, the toggles and the shared Revert / Apply footer.
 
 ## Development effort
 
@@ -196,11 +196,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 85.3 h |
+| Work time (wall-clock) | 85.5 h |
 | Time spent answering questions | 7.7 h |
-| Tokens | 4,607.9M |
-| Notional API price | $1,808 |
-| Subagents dispatched | 374 |
+| Tokens | 4,687.4M |
+| Notional API price | $1,834 |
+| Subagents dispatched | 377 |
 <!-- METRICS:END -->
 
 ## Documentation map

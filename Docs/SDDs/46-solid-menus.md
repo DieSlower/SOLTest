@@ -507,13 +507,12 @@ value column; the main menu's column + gap + shell then spans about 1540 of 1920
   Review follow-up: `BeginRebind` shows the Key bindings tab, so a rebind started from code never listens on a
   hidden row. The
   standalone Ctrl+O menu is unchanged (`-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`).
-- **Narrow views (open, for the user).** At 1000x800 the shell narrows to about 787 units (6.2), and with the tab
-  column the content has about 425 units for a row: the 250 label column leaves about 77 units between a stepper's
-  buttons, so "1000 x 800" and "Borderless window" no longer fit. The value text is now clipped to its slot
-  (`ClipToBounds`; each of the three values then draws in its own batch, part of UI draws 28 -> 31; the review's
+- **Narrow views (resolved in the 46e follow-ups, section 6.4).** At 1000x800 the shell narrows to about 787 units
+  (6.2), and with the tab column the content had about 413 units for a row: the 250 label column left about 77 units
+  between a stepper's buttons, so "1000 x 800" and "Borderless window" no longer fit. The value text is clipped to its
+  slot (`ClipToBounds`; each of the three values then draws in its own batch, part of UI draws 28 -> 31; the review's
   `ETextOverflowPolicy::Ellipsis` was tried and cut nothing, the row box gives the text its full width) instead of
-  drawing over the buttons. Choices that would fix it (shrink the label column at narrow
-  views, give the shell more room, wrap or abbreviate values) are a layout decision left to the user.
+  drawing over the buttons, as a guard; the user chose a narrower label column (section 6.4).
 - **Smoke (SDD 14 step 4).** `-SOLSmokeSolidMenu` grew from 42 to 55 checks: `u-settings-first-tab` (six solid Tab
   buttons, Graphics shown and the only one selected, the footer laid out), `u-settings-solid-rows` (8 sliders and 6
   toggles on the solid styles, 6 Small stepper buttons), `u-tab-audio` ... `u-tab-keys` (each tab clicked as the mouse
@@ -522,6 +521,69 @@ value column; the main menu's column + gap + shell then spans about 1540 of 1920
   drawn on the rail), `u-controls-revert` (a slider, a toggle and a stepper make the page dirty; Revert restores them,
   the tab kept), `u-scroll-binding` (from Graphics, Key bindings at once, the last binding's row inside the scroll box
   after a settle), `u-reopen-first-tab` (left on Key bindings, Esc, Settings again: Graphics), `u-settings-closed`.
+- **Left for the user (answered 2026-11-05, section 6.4):** the slider fill, two amber highlights at once, per-tab
+  scroll memory and the narrow-view stepper values; the short "Overlays" tab label with its dim hint line and
+  `TAB_COLUMN_WIDTH` 220 were kept as built.
+
+### 6.4 46e follow-ups (the user's decisions of 2026-11-05)
+
+Six items left open by 46e were decided by the user: (1) the short "Overlays" tab label and its dim hint line stay;
+(2) `TAB_COLUMN_WIDTH` stays 220; (3) a narrower label column so the stepper values fit at 1000x800; (4) the cyan
+slider fill of section 5.2; (5) one highlight: the mouse over another control wins over a button's keyboard focus;
+(6) every Settings tab back at its top on every open. As built:
+
+- **Narrow views (3).** Measured in Rajdhani Medium 18 (the body text) as drawn (glyphs at the layout scale, 0.740 at
+  1000x800, 0.666 at 1280x720): the Graphics labels are at most about 139 units ("Window mode"), the longest stepper
+  value about 186 ("Borderless window"), but the other tabs' labels need up to about 266 ("Chase Down safety margin",
+  which already ran 6 units into its slider at 1000x800 with the shared 250 column). One narrower column for every tab
+  would cut those, so the label column is per tab (`SOLSettingsTabs::LabelColumnWidth`): Graphics, the tab with the
+  steppers, `SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH` **134**; Gameplay `SETTINGS_GAMEPLAY_LABEL_WIDTH` **264**;
+  every other tab keeps `SETTINGS_LABEL_WIDTH` 250 (the Demo page too). A label may run into the 10-unit gap after its
+  column, never into its control. The 413-unit row at 1000x800 was still too short (139 + 10 + two 44 buttons + 186 =
+  423), so the 10-unit gap that each row kept on its right for the scroll bar moved onto the scroll bar itself
+  (`UScrollBox::SetScrollbarPadding`, left `BUTTON_GAP`): a tab whose bar is hidden (every tab but Key bindings)
+  gives its rows the full width. At 1000x800 the value slot is now 190.9 units (186.4 drawn) and "Window mode" ends
+  4.9 units before its '<' button; at 1280x720 and 1920x1080 (the same 1040-unit shell) the slot is 444 and the
+  stepper buttons sit further apart. The smoke measures every value and label with Slate's font measure at the
+  layout scale against its laid-out slot or its column plus the gap (`u-stepper-values`, `h-small-stepper-values`,
+  `u-labels`, `h-small-labels`). Two key rows still run past their column (known debt).
+- **Slider fill (4).** `USOLSolidSlider` (`Menu/SOLSolidSlider.h/.cpp`) is a `USlider` whose Slate widget,
+  `SSOLSolidSlider`, paints SSlider's horizontal geometry with one more box between the groove and the knob: the fill,
+  from the groove's start plus `SLIDER_FILL_INSET_PX` 2 to the knob's centre (`SOLSolidStyle::SliderFill`, pure and
+  tested), `SLIDER_FILL_THICKNESS` 4 units tall and centred in the 8-unit groove, in a flat `CYAN_COLOR` brush
+  (`SOLSolidStyle::MakeSliderFillBrush`; Slate's disabled effect dims it on a disabled slider). The knob covers the
+  fill's end, so the visible run ends at the knob; at 0% nothing is drawn. The fill reads the same normalized value as
+  the knob, so it follows a drag, a key step and `SetValue` alike. `USOLSolidSlider::SetSolidStyle` gives the groove
+  and knob style, white bar and handle colours and the fill brush; the Settings page (all eight sliders, including the
+  HUD and menu effects sliders of Gameplay) and the smoke board use it. A vertical slider would paint without a fill
+  (none exists).
+- **One highlight (5).** `FSOLSolidButtonAnim::ResolveState` gained `bHoverElsewhere`: a focused button resolves to
+  Normal (its rest look, the selected mark kept) while the mouse is over another control that takes no keyboard focus
+  on hover. The Settings page computes it (`IsHoverOnFocuslessControl`: a slider or toggle of the shown tab under the
+  mouse, or an embedded Overlay tab or row) and passes it to every tab and row button's `RefreshHighlightAt`; the
+  main menu (its column entries and Back, while Settings is the open page) and the pause menu (its tabs and Quit
+  choices, on the Settings tab) read the same function live and pass it to their own buttons, so a clicked Settings
+  entry or pause tab drops its amber too. Last input wins (review fix): hover wins only while the last input was a
+  real mouse move or press (the page's input pre-processor: a move with a non-zero cursor delta, Slate's synthetic
+  moves have none); any key press gives the focus its highlight back until the mouse moves again, so keyboard use
+  with the cursor resting on a slider still shows the focus. The hovered tab's rail trace falls with the look. Found on the way: a button whose look settled without a visible
+  tint change left the last step of its falling trace drawn (a stub at the tab's tip); `RefreshHighlightFor` now feeds
+  the trace on every unsettled refresh.
+- **Scroll position (6).** `RefreshFromSettings` (every show of the page, both menus) calls `ScrollToStart` on every
+  tab's scroll box next to the opening tab of Q8.
+- **Smoke.** `-SOLSmokeSolidMenu` grew from 55 to 66 checks: `u-stepper-values` / `u-labels` (1280x720) and
+  `h-small-stepper-values` / `h-small-labels` (1000x800, the longest window mode pending for the screenshot, then
+  reverted), `u-slider-fill` (Master volume read at 0%, 100% and 50% and the other Audio sliders at 50%: each painted
+  fill's width against its value within 0.5 units, the cyan brush), `u-slider-fill-drag` (a real Slate mouse drag from
+  25% to 75% of the bar: captured, the value 0.75, the fill following it), `u-hover-wins-slider`, `-key`, `-overlay`
+  and `-column` (the Audio tab focused and lit with its trace, the real cursor over Master volume: the tab unlit with
+  no rail trace; a key with the cursor still there: lit again; a real move: unlit; the cursor parked: lit; the same
+  with the Overlays tab and an embedded row; the main menu's focused Settings entry unlit while a row is hovered),
+  `u-reopen-scroll-top` (Key bindings scrolled to its last row, Esc, Settings again: every tab at offset 0).
+  `u-tab-overlays` expects the Overlays tab's trace dark when hover wins there (the smoke hovers an embedded row for
+  the screenshot) and drawn otherwise. The pause menu path is the same function, not driven by this smoke.
+- **Profile.** `-SOLSmokeSolidMenuProfileTab=<n>` makes every profile pass show one Settings tab; the slider fill was
+  measured on Gameplay (four sliders), section 13.1.
 
 ## 7. Animations and the effects strength (D5)
 
@@ -663,7 +725,7 @@ NaN). The test author gets sections 8 and 9 only, not the implementation.
 | `TRACE_CORE_WIDTH_PX` / `TRACE_GLOW_WIDTH_PX` / `TRACE_GLOW_ALPHA` | 1.5 / 6 / 0.25 | |
 | `LED_RADIUS_PX` / `UNDERLINE_PX` / `EDGE_PX` | 3 / 2 / 1.5 | |
 | `DISABLED_ALPHA` | 0.4 | |
-| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200 (**220** since 46e, section 6.3), `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
+| Layout | `COLUMN_WIDTH` 380, `PAGE_WIDTH` 1040, `PAGE_HEIGHT` 760 (**800** since 46d, section 6.2), `TAB_COLUMN_WIDTH` 200 (**220** since 46e, section 6.3), `SETTINGS_GRAPHICS_LABEL_WIDTH` 134 and `SETTINGS_GAMEPLAY_LABEL_WIDTH` 264 (46e follow-ups, section 6.4), `PAUSE_PANEL_WIDTH` 420, `BACK_BUTTON_WIDTH` 160; 46d adds the column and shell layout constants of section 6.2 | Existing `SOL::MenuStyle` sizes stay unless listed |
 | Font sizes | Title 56, heading 26, section 20, button 20, body 18, small 15 | Body +2 for Rajdhani's narrower face; checked at 1000x800 |
 | Letter spacing | Titles 400, stack labels 260, small caps 200 | From the board's tracking (README), applied as `FSlateFontInfo::LetterSpacing` |
 | `SOL::Paths` | `SOLID_MENU_FONT` `/Game/SOL/UI/Solid/Fonts/F_SOLMenu`, `SOLID_HULL_MATERIAL` `/Game/SOL/UI/Solid/M_SOLSolidHull`, `SOLID_TEX_BRUSHED`, `SOLID_TEX_RIVET`, `SOLID_TEX_VENT`, `SOLID_TEX_HAZARD` (46c follow-up: `SOLID_TEX_NOISE` removed) under `/Game/SOL/UI/Solid/Textures/` | The scripts read these names (section 10) |
@@ -916,6 +978,19 @@ brackets): P0 **+0.021** (+0.021 / +0.033 / +0.020) / **+0.058** (+0.060 / +0.05
 0.054-0.056 at 1280x720 on the main menu passes, 0.010-0.017 on the pause passes; UI draws 31 on the main menu (28 in
 46d) and 19 on the pause menu (15-16 before). All inside the Q17 budget. The profile flag still has fixed passes, so no
 number at the VR floor sizes was taken (46h, TECH_DEBT).
+
+**46e follow-up check (the slider fill).** 2026-11-06, one session, `-SOLSmokeSolidMenuProfileTab=3` (every pass on
+the Gameplay tab: four filled sliders and three toggles), three runs with the fill and three with the fill's draw
+disabled in a temporary build (A/B, so the machine's drift between sessions cancels). Medians of `cpu_slate` /
+`gpu_ui` (ms) with / without the fill: P0 0.488 / 0.109 against 0.435 / 0.108, P1 0.442 / 0.062 against 0.441 /
+0.062, P2 0.428 / 0.048 against 0.405 / 0.049, P3 0.430 / 0.092 against 0.417 / 0.091: the fill costs **+0.001 to
++0.053 ms CPU** (P0's +0.053 is inside the run-to-run spread; the same content at 1280x720, P1, reads +0.001) and
+**0.000-0.001 ms GPU**, and one UI draw (28 against 27 on the main menu, 17 against 16 on the pause menu: the fill
+boxes of every slider share one batch). Against the pre-46c baseline the Gameplay tab with the fill reads P0
+**+0.065** / **+0.063**, P1 **-0.002** / **+0.035**, P2 **-0.002** / **+0.011**, P3 **+0.001** / **+0.017**, inside
+the Q17 budget. The default (Graphics) passes after the follow-ups read P0 +0.040 / +0.060, P1 +0.034 / +0.035 in
+the same session (no slider on that tab; the drift since the 46e check). The fill is a flat colour box (the plain
+Slate shader, not the hull material), so at the VR floor it adds a few thousand pixels of a trivial shader per slider.
 
 **Comparing later (46i).** Close the editor, build, then run three times and take, per pass, the median of `dcpu` and
 of `dgpu` over the three `RESULT` lines (a single run's PASS / FAIL is advisory, the run-to-run spread above is up to

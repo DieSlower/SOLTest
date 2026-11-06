@@ -9,6 +9,7 @@
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSolidStyle.h"
+#include "SOLConstants.h"
 
 namespace
 {
@@ -117,4 +118,20 @@ ESOLSolidButtonVariant SOLSettingsTabs::TabButtonVariant()
 ESOLSolidButtonVariant SOLSettingsTabs::RowButtonVariant()
 {
     return ESOLSolidButtonVariant::Small;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The width of a tab's row label column: narrower on Graphics (the steppers' values), wider on Gameplay (its longest
+// label), the shared one elsewhere
+float SOLSettingsTabs::LabelColumnWidth(const ESOLSettingsTab tab)
+{
+    switch (tab)
+    {
+    case ESOLSettingsTab::Graphics:
+        return SOL::SolidMenu::SETTINGS_GRAPHICS_LABEL_WIDTH;
+    case ESOLSettingsTab::Gameplay:
+        return SOL::SolidMenu::SETTINGS_GAMEPLAY_LABEL_WIDTH;
+    default:
+        return SOL::MenuStyle::SETTINGS_LABEL_WIDTH;
+    }
 }

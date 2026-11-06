@@ -10,23 +10,23 @@ Last updated: 2026-11-05. Tracking since 2026-09-27 (13 sessions).
 
 | Metric | Value |
 |---|---|
-| Work time (wall-clock, agent running; parallel agents do not add up) | 85.3 h |
+| Work time (wall-clock, agent running; parallel agents do not add up) | 85.5 h |
 | Human answer time (waiting on the user's replies) | 7.7 h |
-| Agent time (sum of every subagent's run time; parallel agents add up) | 527.6 h |
-| Tokens, all | 4,607.9M |
-| of which new input / cache writes / cache reads / output | 0.0M / 139.8M / 4,452.9M / 15.1M |
-| Notional API price (list rates, see Method) | $1,808 |
-| Subagents dispatched | 374 |
+| Agent time (sum of every subagent's run time; parallel agents add up) | 529.3 h |
+| Tokens, all | 4,687.4M |
+| of which new input / cache writes / cache reads / output | 0.0M / 140.7M / 4,531.1M / 15.4M |
+| Notional API price (list rates, see Method) | $1,834 |
+| Subagents dispatched | 377 |
 
 ## By model
 
 | Model | New input | Cache writes | Cache reads | Output | Notional price |
 |---|---:|---:|---:|---:|---:|
-| claude-opus-5-5 | 0.0M | 101.1M | 3,334.5M | 11.7M | $1,407 |
+| claude-opus-5-5 | 0.0M | 101.8M | 3,410.5M | 12.0M | $1,431 |
 | claude-sonnet-5 | 0.0M | 15.3M | 803.4M | 2.1M | $241 |
-| claude-sonnet-5-5 | 0.0M | 23.4M | 315.0M | 1.3M | $160 |
+| claude-sonnet-5-5 | 0.0M | 23.5M | 317.2M | 1.3M | $162 |
 | claude-haiku-5-5 | 0.0M | 0.0M | 0.0M | 0.0M | $0.01 |
-| **Total** | 0.0M | 139.8M | 4,452.9M | 15.1M | **$1,808** |
+| **Total** | 0.0M | 140.7M | 4,531.1M | 15.4M | **$1,834** |
 
 ## Subagents by type, model and effort
 
@@ -35,15 +35,15 @@ Effort is the level the agent's messages actually ran at (`default` = none recor
 | Agent type | Model | Effort | Agents | Tokens | Agent time | Notional price |
 |---|---|---|---:|---:|---:|---:|
 | general-purpose | claude-opus-5-5 | medium | 206 | 1,936.8M | 435.6 h | $753 |
-| general-purpose | claude-opus-5-5 | high | 72 | 1,041.8M | 46.2 h | $424 |
-| general-purpose | claude-opus-5-5 | xhigh | 29 | 349.5M | 27.6 h | $186 |
+| general-purpose | claude-opus-5-5 | high | 73 | 1,107.9M | 47.4 h | $444 |
+| general-purpose | claude-opus-5-5 | xhigh | 30 | 360.4M | 27.9 h | $191 |
 | claude | claude-opus-5-5 | medium | 5 | 119.3M | 9.4 h | $43.48 |
-| general-purpose | claude-sonnet-5-5 | medium | 47 | 66.6M | 7.0 h | $31.45 |
+| general-purpose | claude-sonnet-5-5 | medium | 48 | 68.0M | 7.1 h | $31.99 |
 | general-purpose | claude-sonnet-5 | high | 9 | 40.0M | 1.8 h | $13.20 |
 | general-purpose | claude-sonnet-5-5 | low | 4 | 1.2M | 0.1 h | $0.85 |
 | Explore | claude-sonnet-5-5 | medium | 1 | 0.2M | 0.0 h | $0.14 |
 | general-purpose | claude-haiku-5-5 | medium | 1 | 0.0M | 0.0 h | $0.01 |
-| **Total** | | | **374** | **3,555.4M** | **527.6 h** | **$1,453** |
+| **Total** | | | **377** | **3,633.9M** | **529.3 h** | **$1,478** |
 
 ## Main contexts by model and effort
 
@@ -52,8 +52,8 @@ The interactive sessions (not counted as agents).
 | Model | Effort | Tokens | Notional price |
 |---|---|---:|---:|
 | claude-sonnet-5 | high | 780.8M | $227 |
-| claude-sonnet-5-5 | medium | 271.6M | $128 |
-| **Total** | | **1,052.5M** | **$355** |
+| claude-sonnet-5-5 | medium | 272.7M | $129 |
+| **Total** | | **1,053.5M** | **$356** |
 
 ## Method and caveats
 
