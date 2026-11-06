@@ -38,6 +38,10 @@ namespace SOLPageTabs
     // [0, count), otherwise current when it is in [0, count), otherwise OpeningTab()
     SOLTEST_API int32 SelectTab(int32 current, int32 requested, int32 count);
 
+    // Whether a click on requested while current shows changes the tab: true only when requested is in [0, count) and is
+    // not current. A re-click on the shown tab is a no-op (nothing resets, no scroll reset); an invalid one changes nothing
+    SOLTEST_API bool IsTabChange(int32 current, int32 requested, int32 count);
+
     // The Controls tab that shows a SOLMenuText::CONTROL_ROWS row; INDEX_NONE for a row outside the table
     SOLTEST_API int32 ControlsTabOfRow(int32 row);
 }

@@ -160,5 +160,9 @@ void USOLReadOnlyPageWidget::NativeTick(const FGeometry& geometry, const float d
 // A tab button was clicked
 void USOLReadOnlyPageWidget::HandleTabClicked(const int32 index)
 {
-    SelectTab(index);
+    // A re-click on the shown tab is a no-op (no scroll reset)
+    if (SOLPageTabs::IsTabChange(mTab, index, Rail.Buttons.Num()))
+    {
+        SelectTab(index);
+    }
 }

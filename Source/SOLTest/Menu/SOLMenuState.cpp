@@ -114,6 +114,13 @@ SOLMenuState::FMenuState SOLMenuState::SelectTab(const FMenuState& state, EMenuT
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether selecting a tab changes anything
+bool SOLMenuState::IsTabChange(const FMenuState& state, const EMenuTab tab)
+{
+    return state.Mode != EMenuMode::Playing && state.Tab != tab;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns whether flight input is suspended
 bool SOLMenuState::SuspendsFlightInput(const FMenuState& state)
 {

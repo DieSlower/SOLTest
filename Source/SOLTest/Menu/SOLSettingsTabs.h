@@ -54,6 +54,10 @@ namespace SOLSettingsTabs
     // valid, otherwise OpeningTab()
     SOLTEST_API ESOLSettingsTab SelectTab(ESOLSettingsTab current, ESOLSettingsTab requested);
 
+    // Whether a click on requested while current shows changes the tab: true only when requested is valid and is not
+    // current (a re-click on the shown tab is a no-op)
+    SOLTEST_API bool IsTabChange(ESOLSettingsTab current, ESOLSettingsTab requested);
+
     // The tab ScrollToBinding shows before it scrolls: KeyBindings for a binding in [0, SOLKeyBindings::BINDING_COUNT);
     // for any other binding the tab stays (current when valid, otherwise OpeningTab())
     SOLTEST_API ESOLSettingsTab TabForBinding(ESOLSettingsTab current, int32 binding);

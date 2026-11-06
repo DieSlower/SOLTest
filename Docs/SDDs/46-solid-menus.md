@@ -619,6 +619,15 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
   0.406 / 0.382 / 0.421 and 0.091 / 0.082 / 0.080. The profile covers the Settings screens only; the new pages add no
   per-frame work beyond the rail tick.
 - **Review findings and fixes:** see plan 46f step 5 (no High finding; fixes applied, the rest in TECH_DEBT or left for the user).
+- **Tab re-click is a no-op (user decision, after 46f).** Clicking the already-selected tab does nothing and resets
+  nothing: not the page's tab, not its scroll. Pure logic: `SOLPageTabs::IsTabChange(current, requested, count)`,
+  `SOLSettingsTabs::IsTabChange(current, requested)` and `SOLMenuState::IsTabChange(state, tab)` (true only for a
+  different, valid tab while a menu shows). `USOLReadOnlyPageWidget` and `USOLSettingsPageWidget` skip a re-click in
+  `HandleTabClicked`, and `USOLMenuSubsystem::SelectTab` returns early on the selected pause-menu tab (it used to call
+  `ShowTab` again, which re-ran `ShowOpening` / `RefreshFromSettings` and snapped the page back to its first tab and
+  top). Opening a page (the main menu entry, the pause menu opening) still resets to the first tab (Q8). `SelectTab`'s own
+  contract is unchanged, so its tests stand. Checks: `p-controls` / `p-about` / `i-info` / `h-controls`
+  `-tab-reclick` and `u-tab-*-reclick` in `-SOLSmokeSolidMenu` (92/92).
 
 ## 7. Animations and the effects strength (D5)
 

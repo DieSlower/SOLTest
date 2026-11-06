@@ -1596,6 +1596,21 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
                 "font %s, hovered row %d"), list != nullptr ? TEXT("embedded") : TEXT("MISSING"), font != nullptr
                 ? *font->GetName() : TEXT("none"), list != nullptr ? list->GetEmbeddedHoverRow() : -2));
         }
+
+        // A re-click on the shown tab is a no-op: the same tab stays shown with its scroll offset
+        if (page != nullptr)
+        {
+            USOLMenuButton* tabButton = page->GetTabButton(tab);
+            const float offsetBefore = page->GetTabScrollOffset(tab);
+            if (tabButton != nullptr)
+            {
+                tabButton->OnMenuClicked.ExecuteIfBound(tabButton->GetIndex());
+            }
+            Check(*FString::Printf(TEXT("u-tab-%s-reclick"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]),
+                tabButton != nullptr && showsTab(tab) && page->GetTabScrollOffset(tab) == offsetBefore,
+                FString::Printf(TEXT("%s, scroll %.1f -> %.1f"), *describeTabs(), offsetBefore,
+                page->GetTabScrollOffset(tab)));
+        }
         TakeUiShot(*FString::Printf(TEXT("settings-%s"), SOLID_SMOKE_TAB_NAMES[mSettingsTab]));
         if (mSettingsTab + 1 < static_cast<int32>(ESOLSettingsTab::Count))
         {
@@ -2054,6 +2069,18 @@ void FSOLSolidMenuSmoke::CheckReadOnlyPage(const TCHAR* id, USOLReadOnlyPageWidg
             switchDetail += FString::Printf(TEXT(" [tab %d: selected %d, content %d, marks %d]"), tab,
                 page->GetSelectedTab(), page->GetShownContentIndex(), marks);
         }
+    }
+
+    // A re-click on the shown (last) tab is a no-op: the same tab and content stay, its scroll offset is kept
+    USOLMenuButton* lastButton = count > 0 ? page->GetTabButton(count - 1) : nullptr;
+    if (lastButton != nullptr)
+    {
+        const float offsetBefore = page->GetTabScrollOffset(count - 1);
+        lastButton->OnMenuClicked.ExecuteIfBound(lastButton->GetIndex());
+        Check(*FString::Printf(TEXT("%s-tab-reclick"), id), page->GetSelectedTab() == count - 1
+            && page->GetShownContentIndex() == count - 1 && page->GetTabScrollOffset(count - 1) == offsetBefore,
+            FString::Printf(TEXT("tab %d re-clicked: selected %d, content %d, scroll %.1f -> %.1f"), count - 1,
+            page->GetSelectedTab(), page->GetShownContentIndex(), offsetBefore, page->GetTabScrollOffset(count - 1)));
     }
     if (page->GetPageKind() == ESOLReadOnlyPage::Controls)
     {

@@ -99,6 +99,13 @@ ESOLSettingsTab SOLSettingsTabs::SelectTab(const ESOLSettingsTab current, const 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Whether a click changes the tab (a re-click on the shown tab does not)
+bool SOLSettingsTabs::IsTabChange(const ESOLSettingsTab current, const ESOLSettingsTab requested)
+{
+    return IsValidTab(requested) && requested != current;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // The tab ScrollToBinding shows: Key bindings for a valid binding, else the tab stays
 ESOLSettingsTab SOLSettingsTabs::TabForBinding(const ESOLSettingsTab current, const int32 binding)
 {

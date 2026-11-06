@@ -347,6 +347,27 @@ bool FSOLSolidSettingsSelectInvalidTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsIsTabChangeTest, "SOLTest.SolidSettings.Select.IsTabChange",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A click changes the tab only when it names a different valid tab: a re-click on the shown tab is a no-op, an invalid
+// request changes nothing
+bool FSOLSolidSettingsIsTabChangeTest::RunTest(const FString& /*parameters*/)
+{
+    for (const ESOLSettingsTab current : SOLIDSETTINGSTEST_TABS)
+    {
+        for (const ESOLSettingsTab requested : SOLIDSETTINGSTEST_TABS)
+        {
+            TestEqual(FString::Printf(TEXT("IsTabChange(%s, %s)"), SolidSettingsTestName(current),
+                SolidSettingsTestName(requested)), SOLSettingsTabs::IsTabChange(current, requested),
+                requested != current);
+        }
+        TestFalse(TEXT("IsTabChange to Count"), SOLSettingsTabs::IsTabChange(current, ESOLSettingsTab::Count));
+        TestFalse(TEXT("IsTabChange to a bad tab"), SOLSettingsTabs::IsTabChange(current, SolidSettingsTestBadTab()));
+    }
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // ScrollToBinding switches to Key bindings first
 // ---------------------------------------------------------------------------------------------------------------------

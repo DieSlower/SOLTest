@@ -236,6 +236,27 @@ bool FSOLMenuStateSelectTabTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateIsTabChangeTest, "SOLTest.MenuState.IsTabChange",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Selecting a different tab while a menu shows is a change; re-selecting the selected tab, or any tab while Playing, is not
+bool FSOLMenuStateIsTabChangeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLMenuState;
+    const FMenuState paused = MenuStateTestPaused();
+    const FMenuState info = SelectTab(paused, EMenuTab::Info);
+    TestTrue(TEXT("Paused: a different tab is a change"), IsTabChange(info, EMenuTab::Controls));
+    TestFalse(TEXT("Paused: the selected tab again is a no-op"), IsTabChange(info, EMenuTab::Info));
+    const FMenuState settings = SelectTab(paused, EMenuTab::Settings);
+    TestFalse(TEXT("Paused: Settings again is a no-op"), IsTabChange(settings, EMenuTab::Settings));
+    TestTrue(TEXT("Paused: Info to Settings is a change"), IsTabChange(info, EMenuTab::Settings));
+    const FMenuState playing = MenuStateTestPlaying();
+    TestFalse(TEXT("Playing: no change"), IsTabChange(playing, EMenuTab::Controls));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateInputAndCursorTest, "SOLTest.MenuState.InputAndCursor",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

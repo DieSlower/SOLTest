@@ -1086,7 +1086,12 @@ void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float d
 // A tab button was clicked (index = the tab's column position)
 void USOLSettingsPageWidget::HandleTabClicked(const int32 index)
 {
-    SelectTab(SOLSettingsTabs::TabFromIndex(index));
+    // A re-click on the shown tab is a no-op (no scroll reset)
+    const ESOLSettingsTab tab = SOLSettingsTabs::TabFromIndex(index);
+    if (SOLSettingsTabs::IsTabChange(mTab, tab))
+    {
+        SelectTab(tab);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

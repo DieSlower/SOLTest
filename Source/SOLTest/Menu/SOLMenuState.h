@@ -56,6 +56,10 @@ namespace SOLMenuState
     // Returns the state with the tab selected (only while a menu is showing)
     SOLTEST_API FMenuState SelectTab(const FMenuState& state, EMenuTab tab);
 
+    // Returns whether selecting tab changes anything: true while a menu shows and tab is not the selected one (a re-click
+    // on the selected pause-menu tab is a no-op, it must not reset the page's tab or scroll)
+    SOLTEST_API bool IsTabChange(const FMenuState& state, EMenuTab tab);
+
     // Returns whether ship flight input must be suspended
     SOLTEST_API bool SuspendsFlightInput(const FMenuState& state);
 

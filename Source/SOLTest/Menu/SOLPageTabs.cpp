@@ -104,6 +104,13 @@ int32 SOLPageTabs::SelectTab(const int32 current, const int32 requested, const i
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Whether a click changes the tab (a re-click on the shown tab does not)
+bool SOLPageTabs::IsTabChange(const int32 current, const int32 requested, const int32 count)
+{
+    return requested >= 0 && requested < count && requested != current;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // The Controls tab that shows a CONTROL_ROWS row
 int32 SOLPageTabs::ControlsTabOfRow(const int32 row)
 {

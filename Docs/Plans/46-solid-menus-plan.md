@@ -293,3 +293,5 @@ Depends on 46d-46g.
   restyle, smoke step 4 (55/55), review fixes; full suite 1459/1459. Next: 46f.
 - 2026-11-05: 46e follow-ups done (SDD 6.4, 13.1 follow-up check; plan 46e step 5). Next: 46f.
 - 2026-11-05: 46f built and verified (SDD 6.5); next: the review fixes and the commit, then 46g.
+- 2026-11-05: 46f follow-up: a re-click on the selected tab is a no-op in the pause menu, Controls, Info, About and Settings
+  (SDD 6.5, `IsTabChange`); suite 1479/1479, solid smoke 92/92, holo 86/86, overlay 34/34. Next: 46g.

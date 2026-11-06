@@ -315,6 +315,11 @@ void USOLMenuSubsystem::SelectTab(const SOLMenuState::EMenuTab tab)
         RequestResume();
         return;
     }
+    // A re-click on the selected tab is a no-op: the page keeps its tab and scroll
+    if (!SOLMenuState::IsTabChange(mState, tab))
+    {
+        return;
+    }
     mState = SOLMenuState::SelectTab(mState, tab);
     if (PauseMenu != nullptr)
     {

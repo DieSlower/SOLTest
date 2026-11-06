@@ -391,6 +391,35 @@ bool FSOLSolidPagesSelectInvalidTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesIsTabChangeTest, "SOLTest.SolidPages.Select.IsTabChange",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A click changes the tab only when it names a different tab in range: a re-click on the shown tab is a no-op (the page
+// keeps its scroll), and an out-of-range request changes nothing either
+bool FSOLSolidPagesIsTabChangeTest::RunTest(const FString& /*parameters*/)
+{
+    for (const ESOLReadOnlyPage page : SOLIDPAGESTEST_PAGES)
+    {
+        const int32 count = SOLPageTabs::TabCount(page);
+        for (int32 current = 0; current < count; ++current)
+        {
+            for (int32 requested = 0; requested < count; ++requested)
+            {
+                TestEqual(FString::Printf(TEXT("%s IsTabChange(%d, %d, %d)"), SolidPagesTestName(page), current,
+                    requested, count), SOLPageTabs::IsTabChange(current, requested, count), requested != current);
+            }
+            const int32 badTabs[] = { -1, count, INDEX_NONE, MAX_int32, MIN_int32 };
+            for (const int32 requested : badTabs)
+            {
+                TestFalse(FString::Printf(TEXT("%s IsTabChange(%d, bad %d, %d)"), SolidPagesTestName(page), current,
+                    requested, count), SOLPageTabs::IsTabChange(current, requested, count));
+            }
+        }
+    }
+    TestFalse(TEXT("IsTabChange with no tabs"), SOLPageTabs::IsTabChange(0, 0, 0));
+    return true;
+}
+
 // ---------------------------------------------------------------------------------------------------------------------
 // Controls row to tab
 // ---------------------------------------------------------------------------------------------------------------------
