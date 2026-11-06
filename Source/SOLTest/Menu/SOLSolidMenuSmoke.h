@@ -36,13 +36,15 @@ struct FSOLSolidTabRail;
  * main menu at strength 0 (open and shell instant, the hover look at once) and 2 (glow doubled); the comparison board
  * (USOLSolidMenuSmokeBoard: every control type enabled and disabled side by side) with a selected tab hovered, then
  * hover-only beside selected-only; strength 0 (the hover look at once, no glow) and strength 2 (glow doubled); then the
- * view at 1000x800 with Settings and Start location open (the column and the shell inside the view); then (46g) back at
+ * view at 1000x800 with Settings, Start location, Controls, Demo and About open (the column and the shell inside the
+ * view, the About page's rows and rail inside the shell); then (46g) back at
  * 1280x720: the Controls, About and Settings pages' fit and rails (no scroll), the column capped at 4 entries scrolling
  * (D17: the focused entry scrolled into view, its hover trace drawn at the scrolled y, none out of view), a Controls
  * page put on the viewport 300 units tall (its rail scrolls), then flight and the solid pause menu (SDD 14 steps 5 and
  * 7: the side panel's slide-in and dim, each page in the shell with its fit and rail, Esc / Back closing a page, the
  * Quit choices, Esc resuming with the input back at once and the slide-out after, a re-pause reversing the slide-out,
- * the simulation running while paused, strength 0 instant; the #42 open, hover and select cues counted where a step
+ * the simulation running while paused, strength 0 instant, strength 2 with a page open (the glow doubled), and the
+ * pause menu with Settings open at 1000x800 (the side panel and the shell inside the view); the #42 open, hover and select cues counted where a step
  * opens a panel, moves the focus, clicks or reverses a close, and a list scrolled under the resting real cursor keeping
  * the keyboard focus). Each step logs
  * "SolidMenu CHECK <id> PASS|FAIL: ..." and takes a window screenshot

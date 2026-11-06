@@ -92,7 +92,8 @@ namespace
         SmallStart,     // Start location open at 1000x800
         SmallControls,  // 46f: Controls open at 1000x800: tabs, the rows and columns inside the shell
         SmallDemo,      // 46f: Demo open at 1000x800: the groups, labels and values inside their slots
-        ViewBack,       // 46g: the Demo page closed, r.SetRes 1280x720 again
+        SmallAbout,     // About open at 1000x800: the column and the shell inside the view, the rows and rail too
+        ViewBack,       // 46g: the About page closed, r.SetRes 1280x720 again
         MainFit,        // 46g: Controls, About and Settings opened in turn (looped), read once the shell has
                         // settled: the read-only pages' fit at 1280x720, every rail laid out without a scroll (D17)
         MainScroll,     // 46g (D17): the column capped at 4 entries scrolls; Down to Quit scrolls it whole into
@@ -112,7 +113,11 @@ namespace
         PauseReverse,   // ... paused again, Esc, and a re-pause mid slide-out reverses it (no pop)
         PauseStrengthZero,  // ... strength 0 (applied to the smoke slot): the resume, the pause and a page open
                         // and close at once; strength 1 applied back
-        Quit,           // SUMMARY, quit
+        PauseStrengthTwo,   // ... paused, strength 2 applied with the Settings tab open: the panel and shell shown,
+                        // the tab's glow read; strength 1 applied back
+        PauseSmall,     // ... paused with Settings open, r.SetRes 1000x800: the side panel and the shell inside the
+                        // view
+        Quit,         // SUMMARY, quit
         Count,
     };
 
@@ -174,7 +179,7 @@ namespace
     constexpr double SOLID_SMOKE_SETUP_S = 3.0;                 // The main menu's first frames (and shader loads)
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
-    constexpr double SOLID_SMOKE_WATCHDOG_S = 240.0;
+    constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
     constexpr double SOLID_SMOKE_PAUSE_S = 0.5;                 // ... this long paused, then Quit to menu
@@ -866,6 +871,9 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
     case ESolidSmokeStep::SmallDemo:
         ClickEntry(menu, SOLID_SMOKE_HOVER_ENTRY);
         break;
+    case ESolidSmokeStep::SmallAbout:
+        ClickEntry(menu, SOLID_SMOKE_ABOUT_ENTRY);
+        break;
     case ESolidSmokeStep::ViewBack:
         if (mainMenu != nullptr)
         {
@@ -980,6 +988,18 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         // Applied, not pending: the resume and the pause change the mode, which reverts a pending value
         ApplyStrength(menu, 0.0f);
         break;
+    case ESolidSmokeStep::PauseStrengthTwo:
+    {
+        // Applied, not pending (as at strength 0), then the Settings tab clicked as the mouse would
+        ApplyStrength(menu, 2.0f);
+        ParkCursor();
+        USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        SolidSmokeClick(pause != nullptr ? pause->GetTabButton(SOLMenuState::EMenuTab::Settings) : nullptr);
+        break;
+    }
+    case ESolidSmokeStep::PauseSmall:
+        setView(SOLID_SMOKE_SMALL_VIEW);
+        break;
     case ESolidSmokeStep::Quit:
         SetStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
         Finish(menu);
@@ -1001,11 +1021,17 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
     case ESolidSmokeStep::View:
     case ESolidSmokeStep::ViewSmall:
     case ESolidSmokeStep::ViewBack:
+    case ESolidSmokeStep::PauseSmall:
     {
-        const FIntPoint want = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::ViewSmall
-            ? SOLID_SMOKE_SMALL_VIEW : SOLID_SMOKE_VIEW;
+        const bool bSmall = static_cast<ESolidSmokeStep>(step) != ESolidSmokeStep::View
+            && static_cast<ESolidSmokeStep>(step) != ESolidSmokeStep::ViewBack;
+        const FIntPoint want = bSmall ? SOLID_SMOKE_SMALL_VIEW : SOLID_SMOKE_VIEW;
         mViewFrames = GetViewSize() == want ? mViewFrames + 1 : 0;
-        return mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
+
+        // The pause step also lets the open page settle in the new size before it is read
+        const bool bSettled = static_cast<ESolidSmokeStep>(step) != ESolidSmokeStep::PauseSmall
+            || mStepTimeS >= SOLID_SMOKE_SETTLE_S;
+        return (mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES && bSettled) || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
     }
     case ESolidSmokeStep::MainOpen:
         if (mainMenu != nullptr)
@@ -1641,6 +1667,29 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         TakeUiShot(bControls ? TEXT("small-controls") : TEXT("small-demo"));
         break;
     }
+    case ESolidSmokeStep::SmallAbout:
+    {
+        // About at 1000x800: the column and the shell inside the view, the page's rows and rail inside the shell
+        FString columnDetail;
+        FString shellDetail;
+        FString pageDetail;
+        USOLReadOnlyPageWidget* about = mainMenu != nullptr ? mainMenu->GetAboutPage() : nullptr;
+        const bool bColumn = mainMenu != nullptr && SolidSmokeInside(mainMenu->GetColumnPanel(), mainMenu,
+            columnDetail);
+        const bool bShell = mainMenu != nullptr && SolidSmokeInside(mainMenu->GetShellPanel(), mainMenu,
+            shellDetail);
+        const bool bPage = about != nullptr && mainMenu != nullptr && SolidSmokeInside(about,
+            mainMenu->GetShellPanel(), pageDetail);
+        Check(TEXT("h-fit-about"), bColumn && bShell && bPage && mainMenu->GetPage() == ESOLMainMenuPage::About,
+            FString::Printf(TEXT("column %s, shell %s, page %s"), *columnDetail, *shellDetail, *pageDetail));
+        if (about != nullptr)
+        {
+            CheckReadOnlyPage(TEXT("h-about"), about);
+            CheckRailFits(TEXT("h-about-rail"), about->GetRail());
+        }
+        TakeUiShot(TEXT("small-about"));
+        break;
+    }
     case ESolidSmokeStep::SmallSettings:
     case ESolidSmokeStep::SmallStart:
     {
@@ -1863,6 +1912,47 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             pause->AreQuitChoicesShown() ? 1 : 0, *toMenu, *toDesktop, bNoPage ? 1 : 0, quitTab != nullptr
             && quitTab->IsSelected() ? 1 : 0));
         TakeUiShot(TEXT("pause-quit"));
+        break;
+    }
+    case ESolidSmokeStep::PauseStrengthTwo:
+    case ESolidSmokeStep::PauseSmall:
+    {
+        // Paused with the Settings page open in the shell: the side panel and the shell shown, the shell open (the
+        // pause menu fills the view, so it is the outer rect); at strength 2 the Settings tab's glow is read too
+        const bool bSmall = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::PauseSmall;
+        const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        const USOLSolidPanel* shell = pause != nullptr ? pause->GetShellPanel() : nullptr;
+        const USOLMenuButton* tab = pause != nullptr ? pause->GetTabButton(SOLMenuState::EMenuTab::Settings) : nullptr;
+        const FSOLSolidButtonLook look = tab != nullptr ? tab->GetAppliedLook() : FSOLSolidButtonLook();
+        const bool bOpen = pause != nullptr && shell != nullptr
+            && menu.GetState().Mode == SOLMenuState::EMenuMode::Paused
+            && menu.GetState().Tab == SOLMenuState::EMenuTab::Settings
+            && pause->GetShownPageIndex() == static_cast<int32>(SOLMenuState::EMenuTab::Settings)
+            && pause->GetPanelAnim().Phase == ESOLHoloMenuPhase::Open
+            && pause->GetShellAnim().Phase == ESOLHoloMenuPhase::Open
+            && shell->GetVisibility() == ESlateVisibility::Visible && pause->IsInViewport();
+        FString sideDetail;
+        FString shellDetail;
+        const bool bSide = pause != nullptr && SolidSmokeInside(pause->GetSidePanel(), pause, sideDetail);
+        const bool bShell = pause != nullptr && SolidSmokeInside(shell, pause, shellDetail);
+        if (bSmall)
+        {
+            const FIntPoint size = GetViewSize();
+            Check(TEXT("h-pause-small"), bOpen && bSide && bShell && size == SOLID_SMOKE_SMALL_VIEW, FString::Printf(
+                TEXT("view %dx%d, paused with Settings open %d, side panel %s, shell %s"), size.X, size.Y,
+                bOpen ? 1 : 0, *sideDetail, *shellDetail));
+            TakeUiShot(TEXT("pause-small"));
+        }
+        else
+        {
+            Check(TEXT("v-pause-s2"), FMath::IsNearlyEqual(s, 2.0f) && bOpen && bSide && bShell, FString::Printf(
+                TEXT("strength %.2f: Settings open %d, side panel %s, shell %s, Settings tab %s"), s, bOpen ? 1 : 0,
+                *sideDetail, *shellDetail, *SolidSmokeDescribe(look)));
+            TakeUiShot(TEXT("pause-s2"));
+
+            // Strength 1 applied back (applied, not pending: see PauseStrengthZero)
+            ApplyStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
+        }
         break;
     }
     default:

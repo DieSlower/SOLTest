@@ -253,12 +253,24 @@ Answers: Q3 (dim only), Q4, Q11 (reuse #42 cues). Depends on 46c, 46e, 46f.
 
 Depends on 46d-46g.
 
-1. [ ] `-SOLSmokeSolidMenu` complete (every step of SDD 14 at 1280x720 and 1000x800, strength 0 / 1 / 2).
-2. [ ] `-SOLSmokeSolidMenuProfile`: three runs, medians against the 46c baseline, verdicts against the Q17 budget (under 0.1 ms CPU and 0.3 ms GPU extra per screen);
+1. [x] `-SOLSmokeSolidMenu` complete (every step of SDD 14 at 1280x720 and 1000x800, strength 0 / 1 / 2).
+2. [x] `-SOLSmokeSolidMenuProfile`: three runs, medians against the 46c baseline, verdicts against the Q17 budget (under 0.2 ms CPU, moved from 0.1 ms by the user on 2026-11-06, and 0.3 ms GPU extra per screen);
    numbers into an SDD amendment (SDD 13).
-3. [ ] Regression: `-SOLMenuSmoke=all` (no new failures beyond TECH_DEBT), `-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`;
+3. [x] Regression: `-SOLMenuSmoke=all` (no new failures beyond TECH_DEBT), `-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`;
    PIE smoke with unreal-mcp if the editor is open (screenshots at strength 0, 1, 2).
-4. [ ] Fix what fails; suite. Commit `Issue #46: Part 46h - solid menu smoke and profile`.
+4. [x] Fix what fails; suite. Commit `Issue #46: Part 46h - solid menu profile, VR floor and budget`.
+
+**46h change (user decision, 2026-11-06).** Resume notes:
+- (Resolved: the machine was rebooted after the hung GPU driver. The two-eye run was not re-run in 46h: it must never be killed mid-run.)
+- The profile smoke's view-run verdict judges ONLY the menu's own share (CPU delta vs baseline <= 0.2 ms, menu GPU within the provisional VR ceilings 1.2 ms one eye / 2.4 ms two eyes), not the whole-frame VR floor. The whole-frame check uses the 4K / 100 Hz proxy (3840x2160, frame p99 <= 10.0 ms) and is project-level VR work, not a menu failure (`Docs/Research/VR_PERFORMANCE_TARGETS.md`, "Proxy on this machine"). XR-4 measurements already taken stay as informational.
+- Non-Settings pages (Demo, Key bindings, etc.) are judged against the Settings baseline: re-measure with 3 runs and flag only if still over 0.2 ms CPU.
+
+5. **Done (SDD 13.2):** suite 1511/1511 (5 `SOLTest.SolidMenuProfile.*` tests), `-SOLSmokeSolidMenu` 177/177, holo
+   86/86, overlay 34/34, hud 24/24, `-SOLMenuSmoke=all` 44 / 6 (the TECH_DEBT stale cursor and thrust checks). Profile:
+   three default runs 4/4 PASS each (median `dcpu` +0.044 to +0.063, `dgpu` +0.034 to +0.062); the 4K proxy run and two
+   one-eye runs 9/9 PASS on the menu share (menu GPU 0.08-0.90 ms, Demo median `dcpu` +0.131, Key bindings +0.092);
+   the whole frame misses the 4K / 100 Hz proxy (p99 16.0-17.7 ms) and the XR-4 lines, project-level VR work. The
+   two-eye run was skipped (driver hang risk); its first-run P0-P2 stay recorded.
 
 ### 46i: final adversarial review (opus, xhigh, report only; fixes by sonnet or opus by size)
 
@@ -303,3 +315,38 @@ Depends on 46d-46g.
 - 2026-11-06: 46g done (SDD 6.6): the pause side panel, the close flow, the #42 cues and the scrolling rails
   (D17, the duplicate D15 label fixed); review fixes applied; the CPU profile has no margin left (user
   decision). Next: 46h.
+- 2026-11-06: the user moved the Q17 CPU budget from 0.1 ms to 0.2 ms (GPU 0.3 ms and #42 unchanged; frame about
+  5.9-6.3 ms, 160-170 fps, with a solid menu open, i9-9960X / RTX 2080 Ti). 46h in progress, PAUSED on a hung GPU
+  driver (see the resume state below).
+- **46h resume state (2026-11-06, before the reboot; superseded by the note below).** Done: `-SOLSmokeSolidMenuProfile` view runs (with
+  `-ResX` / `-ResY` other than 1920x1080: nine screens at that size, the game window's size limits lifted past the
+  desktop, a 240-frame plain window per pass giving `frame_p99` / `game_p99` / `gpu_p99`, the VR floor verdict
+  `vr=`); the verdict maths in `SOLSolidMenuProfile` (`IsWithinBudget`, `VrFloorForView`, `Percentile`) with
+  `Tests/SolidMenuProfileTest.cpp` (3 tests, not yet run); the CPU budget 0.2 in code, SDD 46 (section 13 budget, Q17)
+  and this plan; `-SOLSmokeSolidMenu` gains `SmallAbout`, `PauseStrengthTwo` and `PauseSmall` (built, not yet run);
+  TECH_DEBT: the VR-extrapolation item deleted, the trace-layer item says why no cheap fix exists (both 5.8
+  `MakeLines` overloads take a `TArray` by value). Measured: the one-eye run (3840x3744, the real size, 14/14 checks)
+  and P0-P2 of the two-eye run (7680x3744, the real size). Not compiled yet: the view-run watchdog
+  (`PROFILE_WATCHDOG_VIEW_PASS_S` 180 s; the old 45 s a pass is too short for two eyes, 60-110 s a pass). **Blocker:**
+  killing the two-eye run left `UnrealEditor.exe` (and `LiveCodingConsole.exe`) unkillable and the GPU driver hung
+  (`nvidia-smi` and a new D3D12 init hang), so the DLL cannot be relinked; needs a reboot or a driver reset. Next,
+  in order: build; run the full suite; the two-eye run (all nine passes); three default runs; `-SOLSmokeSolidMenu`,
+  holo, overlay, hud, `-SOLMenuSmoke=all`; then SDD 46 section 13.2 (numbers below), the TECH_DEBT hull / recess /
+  CPU items, `VR_PERFORMANCE_TARGETS.md` section 7, STATUS, tick 46h, UpdateMetrics, commit and push.
+  One-eye numbers (ms; one run): `cpu_slate` / `dcpu` against the 1920x1080 baseline of the menu / `gpu_ui` /
+  `gpu_solid` / plain frame / p99 frame, game, GPU: main 0.278 / -0.145 / 0.204 / 0.192 / 22.5 / 24.9, 4.8, 24.3;
+  main-settings 0.515 / +0.092 / 0.646 / 0.635 / 24.9 / 29.9, 5.4, 29.4; main-keys 0.536 / +0.113 / 0.658 / 0.639 /
+  27.2 / 29.7, 5.5, 29.3; main-controls 0.495 / +0.072 / 0.690 / 0.677 / 23.4 / 28.1, 11.0, 25.5; main-about 0.478 /
+  +0.055 / 0.666 / 0.651 / 28.4 / 31.2, 10.8, 29.7; main-demo 0.659 / +0.236 / 0.646 / 0.624 / 23.4 / 26.6, 10.1, 24.7;
+  pause 0.332 / -0.097 / 0.465 / 0.194 / 24.2 / 27.7, 10.9, 25.4; pause-settings 0.581 / +0.152 / 0.872 / 0.592 /
+  24.8 / 29.0, 9.8, 25.8; pause-info 0.538 / +0.109 / 0.903 / 0.625 / 24.5 / 29.1, 10.8, 25.5. Two eyes (P0-P2):
+  main 0.321 / -0.102 / 0.205 / 0.197 / 61.8 / 131, 7.3, 103; main-settings 0.541 / +0.118 / 1.103 / 1.085 / 58.7 /
+  122, 6.0, 57.6; main-keys 0.800 / +0.377 / 1.115 / 1.096 / 53.5 / 64.2, 14.6, 55.6. Reading so far: the menus'
+  own GPU (0.2-0.9 ms one eye, 0.2-1.1 ms two eyes) is under the VR doc's provisional ceilings (1.2 / 2.4 ms), so no
+  hull or recess optimisation is forced; the VR floor fails on every pass because the scene behind the menus costs
+  22-28 ms (one eye) and 50-60 ms (two eyes) of GPU on the RTX 2080 Ti (below Varjo's minimum RTX 3090 class), not
+  because of the menus; Demo (one eye) and Key bindings (two eyes, one run) read over 0.2 ms CPU against the
+  main-settings baseline (no flat baseline exists for those pages).
+- 2026-11-06: 46h done after the reboot (SDD 13.2): the view run's verdict judges only the menu's share, the whole
+  frame is logged against the XR-4 line and the 4K proxy (informational); every screen PASS; the proxy is missed
+  (scene-bound, project-level VR work). Next: 46i.

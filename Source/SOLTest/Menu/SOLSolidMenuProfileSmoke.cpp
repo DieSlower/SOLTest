@@ -16,7 +16,9 @@
 #include "SOLTest.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
+#include "DynamicRHI.h"
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/GameUserSettings.h"
 #include "GameFramework/PlayerController.h"
@@ -24,34 +26,19 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Paths.h"
+#include "RenderTimer.h"
 #include "UnrealClient.h"
+#include "Widgets/SWindow.h"
 
 namespace
 {
-    // The script's steps, in order
-    enum class EProfileStep : int32
-    {
-        Setup,              // The main menu shows; the sim date pinned, the effects strength read
-        ViewLarge,          // r.SetRes to 1920x1080 (windowed), until the view has that size
-        MainSettings,       // The main menu's Settings page opens
-        Pass0,              // P0: main menu, Settings, 1920x1080
-        ViewSmall,          // r.SetRes to 1280x720
-        Pass1,              // P1: main menu, Settings, 1280x720
-        Play,               // The page closed, Play: the ship spawns and flight settles
-        Pause,              // Esc: the pause menu
-        PauseSettings,      // Its Settings tab
-        Pass2,              // P2: pause menu, Settings, 1280x720
-        ViewLargeAgain,     // r.SetRes to 1920x1080
-        Pass3,              // P3: pause menu, Settings, 1920x1080
-        Quit,               // The SUMMARY line, then quit
-        Count,              // Number of steps
-    };
-
-    constexpr int32 PROFILE_PASS_COUNT = 4;
     constexpr int32 PROFILE_SHOT_FRAMES = 15;                   // Frames after the screenshot request
     constexpr int32 PROFILE_MIN_FRAMES = 5;                     // Every step lasts at least this many frames
     constexpr int32 PROFILE_VIEW_STABLE_FRAMES = 10;            // Frames in a row at the requested view size
     constexpr int32 PROFILE_CURSOR_INSET_PX = 8;                // The parked cursor, this far in from the top right
+    constexpr int32 PROFILE_FRAME_SKIP = 5;                     // Frames after the stat dumps before the samples
+    constexpr int32 PROFILE_FRAME_SAMPLES = 240;                // Plain frames per pass for the p99 times
+    constexpr float PROFILE_MAX_WINDOW_PX = 16384.0f;           // The view run's lifted window size limit
     constexpr double PROFILE_SETUP_S = 3.0;                     // The main menu's first frames (and shader loads)
     constexpr double PROFILE_SETUP_TIMEOUT_S = 30.0;
     constexpr double PROFILE_STEP_S = 0.5;                      // A state change step lasts at least this once done
@@ -61,9 +48,10 @@ namespace
     constexpr double PROFILE_FLIGHT_TIMEOUT_S = 20.0;
     constexpr double PROFILE_SETTLE_S = 1.5;                    // A pass waits this long on its screen first
     constexpr double PROFILE_QUIT_S = 1.0;
-    constexpr double PROFILE_WATCHDOG_S = 180.0;                // A run still going after this is stuck: it quits
-    constexpr double PROFILE_BUDGET_CPU_MS = 0.1;               // SDD 46 Q17: extra Slate paint CPU per screen
-    constexpr double PROFILE_BUDGET_GPU_MS = 0.3;               // ... and extra GPU in the Slate UI pass
+    constexpr double PROFILE_WATCHDOG_BASE_S = 60.0;            // The watchdog: this plus PROFILE_WATCHDOG_PASS_S a pass
+    constexpr double PROFILE_WATCHDOG_PASS_S = 45.0;
+    constexpr double PROFILE_WATCHDOG_VIEW_PASS_S = 180.0;      // ... a view run pass (two eyes: 50-130 ms frames)
+    constexpr double PROFILE_P99 = 0.99;
     constexpr float PROFILE_STRENGTH = 1.0f;                    // The effects strength the numbers are taken at
     constexpr float PROFILE_STRENGTH_TOLERANCE = 1.0e-3f;
 
@@ -75,21 +63,23 @@ namespace
     // UTC), so the main menu's view of Earth and the flight under the pause menu are the same every run
     constexpr double PROFILE_SIM_JD = 2461348.5;
 
-    // The view sizes, and the pass names in the log line
+    // The default run's view sizes; -ResX / -ResY at the large one keep the default run
     const FIntPoint PROFILE_VIEW_LARGE(1920, 1080);
     const FIntPoint PROFILE_VIEW_SMALL(1280, 720);
-    const FIntPoint PROFILE_PASS_VIEWS[PROFILE_PASS_COUNT] = {
-        PROFILE_VIEW_LARGE, PROFILE_VIEW_SMALL, PROFILE_VIEW_SMALL, PROFILE_VIEW_LARGE };
-    const TCHAR* const PROFILE_PASS_SCREENS[PROFILE_PASS_COUNT] = {
-        TEXT("main-settings"), TEXT("main-settings"), TEXT("pause-settings"), TEXT("pause-settings") };
-    constexpr bool PROFILE_PASS_IS_PAUSE[PROFILE_PASS_COUNT] = { false, false, true, true };
 
     // Pre-46c baseline (SDD 46 section 13, 46c amendment): cpu_slate (Draw Window And Children Time) and gpu_ui (the
     // game window's SlateUI pass), ms, the medians of three runs at 816da1a plus the uncommitted 46a review and 46c
     // step 0 files (today's flat look, no rendering change), on an i9-9960X / RTX 2080 Ti with the Development editor
-    // binary in -game, 2026-11-04. Zero means no baseline: the verdict is NOBASE
-    constexpr double PROFILE_BASELINE_CPU_MS[PROFILE_PASS_COUNT] = { 0.423, 0.444, 0.430, 0.429 };
-    constexpr double PROFILE_BASELINE_GPU_MS[PROFILE_PASS_COUNT] = { 0.046, 0.027, 0.037, 0.075 };
+    // binary in -game, 2026-11-04: main menu with Settings at 1920x1080 and 1280x720, pause menu with Settings at
+    // 1280x720 and 1920x1080
+    constexpr double PROFILE_BASE_MAIN_LARGE_CPU_MS = 0.423;
+    constexpr double PROFILE_BASE_MAIN_SMALL_CPU_MS = 0.444;
+    constexpr double PROFILE_BASE_PAUSE_SMALL_CPU_MS = 0.430;
+    constexpr double PROFILE_BASE_PAUSE_LARGE_CPU_MS = 0.429;
+    constexpr double PROFILE_BASE_MAIN_LARGE_GPU_MS = 0.046;
+    constexpr double PROFILE_BASE_MAIN_SMALL_GPU_MS = 0.027;
+    constexpr double PROFILE_BASE_PAUSE_SMALL_GPU_MS = 0.037;
+    constexpr double PROFILE_BASE_PAUSE_LARGE_GPU_MS = 0.075;
 
     // The game-thread Slate stats, one stat dumpave window each: Draw Window And Children Time (the whole Slate paint)
     // and Game UI Paint (inside it, for reference)
@@ -97,40 +87,95 @@ namespace
     // The solid menu material draws summed into gpu_solid (M_SOLSolidHull, its instances and MIDs; none before 46c)
     const TCHAR* const PROFILE_SOLID_MATERIAL_TOKEN = TEXT("SOLSolid");
 
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the pass a step captures, or INDEX_NONE
-    int32 PassOfStep(const EProfileStep step)
+    // One screen of a run: its name, menu, main menu page or pause tab, and Settings tab (Count: the opening tab)
+    struct FProfileScreen
     {
-        switch (step)
-        {
-        case EProfileStep::Pass0:
-            return 0;
-        case EProfileStep::Pass1:
-            return 1;
-        case EProfileStep::Pass2:
-            return 2;
-        case EProfileStep::Pass3:
-            return 3;
-        default:
-            return INDEX_NONE;
-        }
-    }
+        const TCHAR* Name;
+        bool bPause;
+        ESOLMainMenuPage MainPage;
+        SOLMenuState::EMenuTab PauseTab;
+        ESOLSettingsTab SettingsTab;
+    };
 
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the view size a resize step asks for, or zero for any other step
-    FIntPoint ViewOfStep(const EProfileStep step)
+    // The view run's screens (46h): the main menu alone and with each page that nests recesses, then the pause menu
+    // alone, with Settings and with Info; the main menu's first (Play comes between)
+    const FProfileScreen PROFILE_VIEW_SCREENS[] = {
+        { TEXT("main"), false, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
+        { TEXT("main-settings"), false, ESOLMainMenuPage::Settings, SOLMenuState::EMenuTab::Resume,
+            ESOLSettingsTab::Count },
+        { TEXT("main-keys"), false, ESOLMainMenuPage::Settings, SOLMenuState::EMenuTab::Resume,
+            ESOLSettingsTab::KeyBindings },
+        { TEXT("main-controls"), false, ESOLMainMenuPage::Controls, SOLMenuState::EMenuTab::Resume,
+            ESOLSettingsTab::Count },
+        { TEXT("main-about"), false, ESOLMainMenuPage::About, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
+        { TEXT("main-demo"), false, ESOLMainMenuPage::Demo, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
+        { TEXT("pause"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
+        { TEXT("pause-settings"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Settings,
+            ESOLSettingsTab::Count },
+        { TEXT("pause-info"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Info, ESOLSettingsTab::Count },
+    };
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a pass's extra cost is inside the budget: under BUDGET_CPU_MS CPU and BUDGET_GPU_MS GPU
+bool SOLSolidMenuProfile::IsWithinBudget(const double deltaCpuMs, const double deltaGpuMs)
+{
+    return FMath::IsFinite(deltaCpuMs) && FMath::IsFinite(deltaGpuMs) && deltaCpuMs < BUDGET_CPU_MS
+        && deltaGpuMs < BUDGET_GPU_MS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the VR floor of a view size: two eyes above one eye's pixels, else one eye; none without pixels
+SOLSolidMenuProfile::FVrFloor SOLSolidMenuProfile::VrFloorForView(const int32 width, const int32 height)
+{
+    FVrFloor floor;
+    if (width <= 0 || height <= 0)
     {
-        switch (step)
-        {
-        case EProfileStep::ViewLarge:
-        case EProfileStep::ViewLargeAgain:
-            return PROFILE_VIEW_LARGE;
-        case EProfileStep::ViewSmall:
-            return PROFILE_VIEW_SMALL;
-        default:
-            return FIntPoint::ZeroValue;
-        }
+        return floor;
     }
+    const int64 pixels = static_cast<int64>(width) * height;
+    floor.bApplies = true;
+    floor.bTwoEyes = pixels > static_cast<int64>(VR_EYE_WIDTH) * VR_EYE_HEIGHT;
+    floor.LineMs = floor.bTwoEyes ? VR_TWO_EYES_LINE_MS : VR_ONE_EYE_LINE_MS;
+    floor.UiGpuMs = floor.bTwoEyes ? VR_TWO_EYES_UI_GPU_MS : VR_ONE_EYE_UI_GPU_MS;
+    return floor;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a view run pass's menu share is inside the VR floor: CPU delta and the menu's GPU under their lines
+bool SOLSolidMenuProfile::IsMenuShareWithinVrFloor(const double deltaCpuMs, const double uiGpuMs,
+    const FVrFloor& floor)
+{
+    return floor.bApplies && FMath::IsFinite(deltaCpuMs) && FMath::IsFinite(uiGpuMs) && deltaCpuMs < BUDGET_CPU_MS
+        && uiGpuMs < floor.UiGpuMs;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a view is the 4K proxy's size
+bool SOLSolidMenuProfile::IsVrProxyView(const int32 width, const int32 height)
+{
+    return width == VR_PROXY_WIDTH && height == VR_PROXY_HEIGHT;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a p99 frame time meets the 4K proxy: positive, finite and at or under the line
+bool SOLSolidMenuProfile::MeetsVrProxy(const double frameP99Ms)
+{
+    return FMath::IsFinite(frameP99Ms) && frameP99Ms > 0.0 && frameP99Ms <= VR_PROXY_FRAME_P99_MS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the nearest-rank percentile of the values (fraction clamped to [0, 1], NaN reads 1), sorting them in place
+double SOLSolidMenuProfile::Percentile(TArray<double>& values, const double fraction)
+{
+    if (values.IsEmpty())
+    {
+        return -1.0;
+    }
+    values.Sort();
+    const double clamped = FMath::IsNaN(fraction) ? 1.0 : FMath::Clamp(fraction, 0.0, 1.0);
+    const int32 rank = FMath::CeilToInt32(clamped * values.Num());
+    return values[FMath::Clamp(rank - 1, 0, values.Num() - 1)];
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -138,6 +183,9 @@ namespace
 FSOLSolidMenuProfileSmoke::FSOLSolidMenuProfileSmoke()
     : mCapture(PROFILE_CPU_ROOT_STATS, PROFILE_SOLID_MATERIAL_TOKEN)
 {
+    mFrameMs.Reserve(PROFILE_FRAME_SAMPLES);
+    mGameMs.Reserve(PROFILE_FRAME_SAMPLES);
+    mGpuMs.Reserve(PROFILE_FRAME_SAMPLES);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -149,6 +197,9 @@ void FSOLSolidMenuProfileSmoke::Start(USOLMenuSubsystem& menu)
     int32 tabIndex = INDEX_NONE;
     mProfileTab = FParse::Value(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE_TAB, tabIndex)
         ? SOLSettingsTabs::TabFromIndex(tabIndex) : ESOLSettingsTab::Count;
+    BuildScript();
+    mWatchdogS = PROFILE_WATCHDOG_BASE_S + (mRunView == FIntPoint::ZeroValue ? PROFILE_WATCHDOG_PASS_S
+        : PROFILE_WATCHDOG_VIEW_PASS_S) * mPasses.Num();
 
     // The captures need a standalone -game process: in the editor the editor's own work pollutes the numbers
     if (GIsEditor)
@@ -157,9 +208,11 @@ void FSOLSolidMenuProfileSmoke::Start(USOLMenuSubsystem& menu)
             SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE);
     }
     mCapture.Start(menu.GetWorld());
-    UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: scripted menu cost capture starting (%d passes, %d ProfileGPU frames "
-        "and %d stat dumpave windows of %d frames each)"), PROFILE_PASS_COUNT, FSOLUiProfileCapture::GPU_CAPTURES,
-        static_cast<int32>(UE_ARRAY_COUNT(PROFILE_CPU_ROOT_STATS)), FSOLUiProfileCapture::DUMP_FRAMES);
+    UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: scripted menu cost capture starting (%s run %dx%d, %d passes, %d "
+        "ProfileGPU frames, %d stat dumpave windows of %d frames and %d plain frames each)"), mRunView
+        == FIntPoint::ZeroValue ? TEXT("default") : TEXT("view"), mRunView.X, mRunView.Y, mPasses.Num(),
+        FSOLUiProfileCapture::GPU_CAPTURES, static_cast<int32>(UE_ARRAY_COUNT(PROFILE_CPU_ROOT_STATS)),
+        FSOLUiProfileCapture::DUMP_FRAMES, PROFILE_FRAME_SAMPLES);
     mStep = 0;
     EnterStep(mStep, menu);
 }
@@ -168,7 +221,7 @@ void FSOLSolidMenuProfileSmoke::Start(USOLMenuSubsystem& menu)
 // Runs one frame of the script; returns true once it has finished (and requested the quit)
 bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
 {
-    if (mIsFinished || mStep >= static_cast<int32>(EProfileStep::Count))
+    if (mIsFinished || mStep >= mSteps.Num())
     {
         return true;
     }
@@ -182,11 +235,11 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
     }
 
     // A stuck run (a screen that never opens, a dump that never prints) still ends, with every pass left FAIL
-    if (mRunTimeS >= PROFILE_WATCHDOG_S || !mController.IsValid())
+    if (mRunTimeS >= mWatchdogS || !mController.IsValid())
     {
         UE_LOG(LogSOL, Error, TEXT("SolidMenuProfile: %s at step %d after %.1f s; aborting"), mController.IsValid()
             ? TEXT("watchdog") : TEXT("no player controller"), mStep, mRunTimeS);
-        mPassesFailed += FMath::Max(0, PROFILE_PASS_COUNT - (mPassesFailed + mPassesNoBase));
+        mPassesFailed += FMath::Max(0, mPasses.Num() - (mPassesFailed + mPassesNoBase));
         Finish(menu);
         return true;
     }
@@ -201,7 +254,7 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
     ++mStep;
     mStepTimeS = 0.0;
     mStepFrames = 0;
-    if (mIsFinished || mStep >= static_cast<int32>(EProfileStep::Count))
+    if (mIsFinished || mStep >= mSteps.Num())
     {
         return true;
     }
@@ -210,45 +263,105 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Builds the run's passes and steps: the default four, or the view run's nine at the -ResX / -ResY size
+void FSOLSolidMenuProfileSmoke::BuildScript()
+{
+    int32 resX = 0;
+    int32 resY = 0;
+    const bool bRes = FParse::Value(FCommandLine::Get(), TEXT("ResX="), resX)
+        && FParse::Value(FCommandLine::Get(), TEXT("ResY="), resY) && resX > 0 && resY > 0;
+    mRunView = bRes && FIntPoint(resX, resY) != PROFILE_VIEW_LARGE ? FIntPoint(resX, resY) : FIntPoint::ZeroValue;
+    mPasses.Reset();
+    mSteps.Reset();
+
+    // Appends one step
+    const auto addStep = [this](const EStepKind kind, const int32 pass, const FIntPoint view)
+    {
+        FStep step;
+        step.Kind = kind;
+        step.Pass = pass;
+        step.View = view;
+        mSteps.Add(step);
+    };
+    // Appends one pass and returns its index
+    const auto addPass = [this](const TCHAR* name, const bool bPause, const ESOLMainMenuPage mainPage,
+        const SOLMenuState::EMenuTab pauseTab, const ESOLSettingsTab settingsTab, const FIntPoint view,
+        const double baseCpuMs, const double baseGpuMs)
+    {
+        FPass pass;
+        pass.Screen = name;
+        pass.bPause = bPause;
+        pass.MainPage = mainPage;
+        pass.PauseTab = pauseTab;
+        pass.SettingsTab = settingsTab;
+        pass.View = view;
+        pass.BaseCpuMs = baseCpuMs;
+        pass.BaseGpuMs = baseGpuMs;
+        return mPasses.Add(pass);
+    };
+    addStep(EStepKind::Setup, INDEX_NONE, FIntPoint::ZeroValue);
+
+    // The default run: Settings in both menus at both sizes, against the per-pass baseline
+    if (mRunView == FIntPoint::ZeroValue)
+    {
+        const ESOLMainMenuPage settings = ESOLMainMenuPage::Settings;
+        const SOLMenuState::EMenuTab resume = SOLMenuState::EMenuTab::Resume;
+        const SOLMenuState::EMenuTab pauseSettings = SOLMenuState::EMenuTab::Settings;
+        const int32 p0 = addPass(TEXT("main-settings"), false, settings, resume, ESOLSettingsTab::Count,
+            PROFILE_VIEW_LARGE, PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p1 = addPass(TEXT("main-settings"), false, settings, resume, ESOLSettingsTab::Count,
+            PROFILE_VIEW_SMALL, PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const int32 p2 = addPass(TEXT("pause-settings"), true, ESOLMainMenuPage::None, pauseSettings,
+            ESOLSettingsTab::Count, PROFILE_VIEW_SMALL, PROFILE_BASE_PAUSE_SMALL_CPU_MS,
+            PROFILE_BASE_PAUSE_SMALL_GPU_MS);
+        const int32 p3 = addPass(TEXT("pause-settings"), true, ESOLMainMenuPage::None, pauseSettings,
+            ESOLSettingsTab::Count, PROFILE_VIEW_LARGE, PROFILE_BASE_PAUSE_LARGE_CPU_MS,
+            PROFILE_BASE_PAUSE_LARGE_GPU_MS);
+        addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
+        addStep(EStepKind::Screen, p0, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p0, FIntPoint::ZeroValue);
+        addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_SMALL);
+        addStep(EStepKind::Pass, p1, FIntPoint::ZeroValue);
+        addStep(EStepKind::Play, INDEX_NONE, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pause, INDEX_NONE, FIntPoint::ZeroValue);
+        addStep(EStepKind::Screen, p2, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p2, FIntPoint::ZeroValue);
+        addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
+        addStep(EStepKind::Pass, p3, FIntPoint::ZeroValue);
+        addStep(EStepKind::Quit, INDEX_NONE, FIntPoint::ZeroValue);
+        return;
+    }
+
+    // The view run: every screen at the one size; the CPU against its menu's 1920x1080 baseline (the Slate paint
+    // does not scale with pixels), no GPU baseline at this size (the menu's GPU is judged against the VR floor)
+    addStep(EStepKind::View, INDEX_NONE, mRunView);
+    bool bPaused = false;
+    for (const FProfileScreen& screen : PROFILE_VIEW_SCREENS)
+    {
+        if (screen.bPause && !bPaused)
+        {
+            addStep(EStepKind::Play, INDEX_NONE, FIntPoint::ZeroValue);
+            addStep(EStepKind::Pause, INDEX_NONE, FIntPoint::ZeroValue);
+            bPaused = true;
+        }
+        const int32 pass = addPass(screen.Name, screen.bPause, screen.MainPage, screen.PauseTab, screen.SettingsTab,
+            mRunView, screen.bPause ? PROFILE_BASE_PAUSE_LARGE_CPU_MS : PROFILE_BASE_MAIN_LARGE_CPU_MS, 0.0);
+        addStep(EStepKind::Screen, pass, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, pass, FIntPoint::ZeroValue);
+    }
+    addStep(EStepKind::Quit, INDEX_NONE, FIntPoint::ZeroValue);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Runs the step's action at its start
 void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
 {
     UWorld* world = menu.GetWorld();
-    const EProfileStep current = static_cast<EProfileStep>(step);
-    const int32 pass = PassOfStep(current);
-    if (pass != INDEX_NONE)
-    {
-        // A pass starts from a clean slate
-        mPhase = EPassPhase::Settle;
-        mPhaseTimeS = 0.0;
-        mPhaseFrames = 0;
-        mCaptureFrames = 0;
-        mScreenFrames = 0;
-        // The requested Settings tab (-SOLSmokeSolidMenuProfileTab), else the page's opening tab
-        USOLMainMenuWidget* main = menu.GetMainMenu();
-        USOLPauseMenuWidget* pause = menu.GetPauseMenu();
-        USOLSettingsPageWidget* page = PROFILE_PASS_IS_PAUSE[pass] ? (pause != nullptr ? pause->GetSettingsPage()
-            : nullptr) : (main != nullptr ? main->GetSettingsPage() : nullptr);
-        if (page != nullptr && SOLSettingsTabs::IsValidTab(mProfileTab))
-        {
-            page->SelectTab(mProfileTab);
-        }
-        UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d tab %d starting"), pass,
-            PROFILE_PASS_SCREENS[pass], PROFILE_PASS_VIEWS[pass].X, PROFILE_PASS_VIEWS[pass].Y,
-            page != nullptr ? static_cast<int32>(page->GetSelectedTab()) : -1);
-        return;
-    }
-    const FIntPoint view = ViewOfStep(current);
-    if (view != FIntPoint::ZeroValue)
-    {
-        mViewFrames = 0;
-        FSOLUiProfileCapture::RunCommand(*FString::Printf(TEXT("r.SetRes %dx%dw"), view.X, view.Y), world);
-        return;
-    }
+    const FStep& current = mSteps[step];
     USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
-    switch (current)
+    switch (current.Kind)
     {
-    case EProfileStep::Setup:
+    case EStepKind::Setup:
     {
         // The pinned date (the main menu's camera follows the start body to it)
         USOLSimClockSubsystem* clock = world->GetSubsystem<USOLSimClockSubsystem>();
@@ -261,24 +374,58 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
             mIsDatePinned ? TEXT("") : TEXT(" FAILED (no sim clock)"));
         break;
     }
-    case EProfileStep::MainSettings:
-        if (mainMenu != nullptr)
+    case EStepKind::View:
+        mViewFrames = 0;
+        if (mRunView != FIntPoint::ZeroValue)
         {
-            mainMenu->ShowPage(ESOLMainMenuPage::Settings);
+            LiftWindowSizeLimits();
+        }
+        FSOLUiProfileCapture::RunCommand(*FString::Printf(TEXT("r.SetRes %dx%dw"), current.View.X, current.View.Y),
+            world);
+        break;
+    case EStepKind::Screen:
+    {
+        // The pass's page (main menu) or tab (pause menu), unless it already shows
+        const FPass& pass = mPasses[current.Pass];
+        if (!pass.bPause && mainMenu != nullptr && mainMenu->GetPage() != pass.MainPage)
+        {
+            mainMenu->ShowPage(pass.MainPage);
+        }
+        if (pass.bPause && menu.GetState().Tab != pass.PauseTab)
+        {
+            menu.SelectTab(pass.PauseTab);
         }
         break;
-    case EProfileStep::Play:
+    }
+    case EStepKind::Pass:
+    {
+        // A pass starts from a clean slate, on its Settings tab (the pass's, -SOLSmokeSolidMenuProfileTab, else the
+        // page's opening tab)
+        mPhase = EPassPhase::Settle;
+        mPhaseTimeS = 0.0;
+        mPhaseFrames = 0;
+        mCaptureFrames = 0;
+        mScreenFrames = 0;
+        const FPass& pass = mPasses[current.Pass];
+        USOLSettingsPageWidget* page = GetPassSettingsPage(current.Pass, menu);
+        const ESOLSettingsTab tab = SOLSettingsTabs::IsValidTab(pass.SettingsTab) ? pass.SettingsTab : mProfileTab;
+        if (page != nullptr && SOLSettingsTabs::IsValidTab(tab))
+        {
+            page->SelectTab(tab);
+        }
+        UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d tab %d starting"), current.Pass, pass.Screen,
+            pass.View.X, pass.View.Y, page != nullptr ? static_cast<int32>(page->GetSelectedTab()) : -1);
+        break;
+    }
+    case EStepKind::Play:
         if (mainMenu != nullptr)
         {
             mainMenu->ShowPage(ESOLMainMenuPage::None);
         }
         menu.RequestPlay();
         break;
-    case EProfileStep::Pause:
+    case EStepKind::Pause:
         menu.RequestEscape();
-        break;
-    case EProfileStep::PauseSettings:
-        menu.SelectTab(SOLMenuState::EMenuTab::Settings);
         break;
     default:
         break;
@@ -289,45 +436,38 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
 // Runs the step's per-frame work; returns true once the step is done
 bool FSOLSolidMenuProfileSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu, const float realDeltaSeconds)
 {
-    const EProfileStep current = static_cast<EProfileStep>(step);
-    const int32 pass = PassOfStep(current);
-    if (pass != INDEX_NONE)
-    {
-        return TickPass(pass, menu, realDeltaSeconds);
-    }
-    const FIntPoint view = ViewOfStep(current);
-    if (view != FIntPoint::ZeroValue)
-    {
-        mViewFrames = GetViewSize() == view ? mViewFrames + 1 : 0;
-        return (mViewFrames >= PROFILE_VIEW_STABLE_FRAMES && mStepTimeS >= PROFILE_STEP_S)
-            || mStepTimeS >= PROFILE_VIEW_TIMEOUT_S;
-    }
+    const FStep& current = mSteps[step];
     const SOLMenuState::EMenuMode mode = menu.GetState().Mode;
-    switch (current)
+    switch (current.Kind)
     {
-    case EProfileStep::Setup:
+    case EStepKind::Setup:
     {
         const bool bShown = mode == SOLMenuState::EMenuMode::MainMenu && menu.GetMainMenu() != nullptr
             && menu.GetMainMenu()->IsInViewport();
         return (bShown && mStepTimeS >= PROFILE_SETUP_S) || mStepTimeS >= PROFILE_SETUP_TIMEOUT_S;
     }
-    case EProfileStep::MainSettings:
-        return (IsMainSettingsShown(menu) && mStepTimeS >= PROFILE_STEP_S) || mStepTimeS >= PROFILE_STEP_TIMEOUT_S;
-    case EProfileStep::Play:
+    case EStepKind::View:
+        mViewFrames = GetViewSize() == current.View ? mViewFrames + 1 : 0;
+        return (mViewFrames >= PROFILE_VIEW_STABLE_FRAMES && mStepTimeS >= PROFILE_STEP_S)
+            || mStepTimeS >= PROFILE_VIEW_TIMEOUT_S;
+    case EStepKind::Screen:
+        return (IsPassMenuShown(current.Pass, menu) && mStepTimeS >= PROFILE_STEP_S)
+            || mStepTimeS >= PROFILE_STEP_TIMEOUT_S;
+    case EStepKind::Pass:
+        return TickPass(current.Pass, menu, realDeltaSeconds);
+    case EStepKind::Play:
     {
         const bool bFlying = mode == SOLMenuState::EMenuMode::Playing && Cast<ASOLShipPawn>(mController->GetPawn())
             != nullptr;
         return (bFlying && mStepTimeS >= PROFILE_FLIGHT_SETTLE_S) || mStepTimeS >= PROFILE_FLIGHT_TIMEOUT_S;
     }
-    case EProfileStep::Pause:
+    case EStepKind::Pause:
     {
         const bool bPaused = mode == SOLMenuState::EMenuMode::Paused && menu.GetPauseMenu() != nullptr
             && menu.GetPauseMenu()->IsInViewport();
         return (bPaused && mStepTimeS >= PROFILE_STEP_S) || mStepTimeS >= PROFILE_STEP_TIMEOUT_S;
     }
-    case EProfileStep::PauseSettings:
-        return (IsPauseSettingsShown(menu) && mStepTimeS >= PROFILE_STEP_S) || mStepTimeS >= PROFILE_STEP_TIMEOUT_S;
-    case EProfileStep::Quit:
+    case EStepKind::Quit:
         return mStepTimeS >= PROFILE_QUIT_S;
     default:
         return mStepTimeS >= PROFILE_STEP_S;
@@ -338,19 +478,12 @@ bool FSOLSolidMenuProfileSmoke::TickStep(const int32 step, USOLMenuSubsystem& me
 // Runs the step's checks at its end
 void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
 {
-    const EProfileStep current = static_cast<EProfileStep>(step);
-    const FIntPoint view = ViewOfStep(current);
+    const FStep& current = mSteps[step];
     const FIntPoint size = GetViewSize();
-    if (view != FIntPoint::ZeroValue)
-    {
-        Check(view == PROFILE_VIEW_SMALL ? TEXT("view-1280x720") : TEXT("view-1920x1080"), size == view,
-            FString::Printf(TEXT("r.SetRes %dx%d: view %dx%d"), view.X, view.Y, size.X, size.Y));
-        return;
-    }
     const SOLMenuState::EMenuMode mode = menu.GetState().Mode;
-    switch (current)
+    switch (current.Kind)
     {
-    case EProfileStep::Setup:
+    case EStepKind::Setup:
     {
         // The settings in use: the smoke slot, cleared at boot, so the default strength
         const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
@@ -363,24 +496,27 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
             FString::Printf(TEXT("HUD effects strength %.2f (want %.2f)"), mStrength, PROFILE_STRENGTH));
         break;
     }
-    case EProfileStep::MainSettings:
-        Check(TEXT("c-main-settings"), IsMainSettingsShown(menu), FString::Printf(TEXT("main menu Settings page %s"),
-            IsMainSettingsShown(menu) ? TEXT("open") : TEXT("NOT OPEN")));
+    case EStepKind::View:
+        Check(*FString::Printf(TEXT("view-%dx%d"), current.View.X, current.View.Y), size == current.View,
+            FString::Printf(TEXT("r.SetRes %dx%d: view %dx%d"), current.View.X, current.View.Y, size.X, size.Y));
         break;
-    case EProfileStep::Play:
+    case EStepKind::Screen:
+    {
+        const bool bShown = IsPassMenuShown(current.Pass, menu);
+        Check(*FString::Printf(TEXT("screen-%s"), mPasses[current.Pass].Screen), bShown,
+            FString::Printf(TEXT("%s %s"), mPasses[current.Pass].Screen, bShown ? TEXT("shown") : TEXT("NOT SHOWN")));
+        break;
+    }
+    case EStepKind::Play:
         Check(TEXT("d-flight"), mode == SOLMenuState::EMenuMode::Playing && Cast<ASOLShipPawn>(mController->GetPawn())
             != nullptr, FString::Printf(TEXT("Play: %s"), mode == SOLMenuState::EMenuMode::Playing ? TEXT("flying")
             : TEXT("NOT FLYING")));
         break;
-    case EProfileStep::Pause:
+    case EStepKind::Pause:
         Check(TEXT("e-pause"), mode == SOLMenuState::EMenuMode::Paused, FString::Printf(TEXT("Esc: %s"), mode
             == SOLMenuState::EMenuMode::Paused ? TEXT("paused") : TEXT("NOT PAUSED")));
         break;
-    case EProfileStep::PauseSettings:
-        Check(TEXT("f-pause-settings"), IsPauseSettingsShown(menu), FString::Printf(TEXT("pause menu Settings tab %s"),
-            IsPauseSettingsShown(menu) ? TEXT("open") : TEXT("NOT OPEN")));
-        break;
-    case EProfileStep::Quit:
+    case EStepKind::Quit:
         Finish(menu);
         break;
     default:
@@ -394,7 +530,7 @@ bool FSOLSolidMenuProfileSmoke::TickPass(const int32 pass, USOLMenuSubsystem& me
 {
     mPhaseTimeS += realDeltaSeconds;
     ++mPhaseFrames;
-    if (mPhase == EPassPhase::Capture && mCapture.IsCapturing())
+    if ((mPhase == EPassPhase::Capture && mCapture.IsCapturing()) || mPhase == EPassPhase::Frames)
     {
         ++mCaptureFrames;
         mScreenFrames += IsPassScreenShown(pass, menu) ? 1 : 0;
@@ -436,41 +572,75 @@ bool FSOLSolidMenuProfileSmoke::TickPass(const int32 pass, USOLMenuSubsystem& me
         };
         if (mCapture.TickPass(menu.GetWorld(), realDeltaSeconds, canStart))
         {
-            LogPassResult(pass, menu);
+            mFrameMs.Reset();
+            mGameMs.Reset();
+            mGpuMs.Reset();
+            nextPhase(EPassPhase::Frames);
+        }
+        return false;
+    }
+    case EPassPhase::Frames:
+        // Plain frames (no capture command running) after a few to let the last dump's hitch pass: this frame's
+        // real time, the last game thread and GPU frame times
+        if (mPhaseFrames > PROFILE_FRAME_SKIP)
+        {
+            mFrameMs.Add(1000.0 * realDeltaSeconds);
+            mGameMs.Add(FPlatformTime::ToMilliseconds64(GGameThreadTime));
+            mGpuMs.Add(FPlatformTime::ToMilliseconds64(RHIGetGPUFrameCycles()));
+        }
+        if (mFrameMs.Num() >= PROFILE_FRAME_SAMPLES)
+        {
+            LogPassResult(pass);
             nextPhase(EPassPhase::Done);
             return true;
         }
         return false;
-    }
     default:
         return true;
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the pass's screen is shown: its menu with Settings open, at its view size
+// Returns the Settings page a pass shows, or null when it shows none
+USOLSettingsPageWidget* FSOLSolidMenuProfileSmoke::GetPassSettingsPage(const int32 pass,
+    const USOLMenuSubsystem& menu) const
+{
+    const FPass& spec = mPasses[pass];
+    if (spec.bPause)
+    {
+        return spec.PauseTab == SOLMenuState::EMenuTab::Settings && menu.GetPauseMenu() != nullptr
+            ? menu.GetPauseMenu()->GetSettingsPage() : nullptr;
+    }
+    return spec.MainPage == ESOLMainMenuPage::Settings && menu.GetMainMenu() != nullptr
+        ? menu.GetMainMenu()->GetSettingsPage() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the pass's menu shows its page or tab (and Settings tab), whatever the view size
+bool FSOLSolidMenuProfileSmoke::IsPassMenuShown(const int32 pass, const USOLMenuSubsystem& menu) const
+{
+    const FPass& spec = mPasses[pass];
+    const SOLMenuState::FMenuState& state = menu.GetState();
+    if (spec.bPause)
+    {
+        const USOLPauseMenuWidget* pauseMenu = menu.GetPauseMenu();
+        return state.Mode == SOLMenuState::EMenuMode::Paused && pauseMenu != nullptr && pauseMenu->IsInViewport()
+            && state.Tab == spec.PauseTab;
+    }
+    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    return state.Mode == SOLMenuState::EMenuMode::MainMenu && mainMenu != nullptr && mainMenu->IsInViewport()
+        && mainMenu->GetPage() == spec.MainPage;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the pass's screen is shown: its menu, page and tab, at its view size
 bool FSOLSolidMenuProfileSmoke::IsPassScreenShown(const int32 pass, const USOLMenuSubsystem& menu) const
 {
-    const bool bMenu = PROFILE_PASS_IS_PAUSE[pass] ? IsPauseSettingsShown(menu) : IsMainSettingsShown(menu);
-    return bMenu && GetViewSize() == PROFILE_PASS_VIEWS[pass];
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns whether the main menu shows with its Settings page open
-bool FSOLSolidMenuProfileSmoke::IsMainSettingsShown(const USOLMenuSubsystem& menu)
-{
-    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
-    return menu.GetState().Mode == SOLMenuState::EMenuMode::MainMenu && mainMenu != nullptr
-        && mainMenu->IsInViewport() && mainMenu->GetPage() == ESOLMainMenuPage::Settings;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns whether the pause menu shows with its Settings tab open
-bool FSOLSolidMenuProfileSmoke::IsPauseSettingsShown(const USOLMenuSubsystem& menu)
-{
-    const USOLPauseMenuWidget* pauseMenu = menu.GetPauseMenu();
-    return menu.GetState().Mode == SOLMenuState::EMenuMode::Paused && pauseMenu != nullptr
-        && pauseMenu->IsInViewport() && menu.GetState().Tab == SOLMenuState::EMenuTab::Settings;
+    const FPass& spec = mPasses[pass];
+    const USOLSettingsPageWidget* page = GetPassSettingsPage(pass, menu);
+    const bool bTab = !SOLSettingsTabs::IsValidTab(spec.SettingsTab)
+        || (page != nullptr && page->GetSelectedTab() == spec.SettingsTab);
+    return IsPassMenuShown(pass, menu) && bTab && GetViewSize() == spec.View;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -486,6 +656,19 @@ FIntPoint FSOLSolidMenuProfileSmoke::GetViewSize() const
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Lets the game window grow past the desktop (the view run's sizes are larger than any monitor here)
+void FSOLSolidMenuProfileSmoke::LiftWindowSizeLimits()
+{
+    const TSharedPtr<SWindow> window = GEngine != nullptr && GEngine->GameViewport != nullptr
+        ? GEngine->GameViewport->GetWindow() : nullptr;
+    if (window.IsValid())
+    {
+        window->SetSizeLimits(FWindowSizeLimits().SetMaxWidth(PROFILE_MAX_WINDOW_PX)
+            .SetMaxHeight(PROFILE_MAX_WINDOW_PX));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Moves the mouse cursor to the view's top-right corner, clear of every menu, so no button is hovered
 void FSOLSolidMenuProfileSmoke::ParkCursor() const
 {
@@ -497,9 +680,10 @@ void FSOLSolidMenuProfileSmoke::ParkCursor() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Logs the pass's result line with its verdict against the baseline
-void FSOLSolidMenuProfileSmoke::LogPassResult(const int32 pass, const USOLMenuSubsystem& menu)
+// Logs the pass's result line with its verdict against the baseline (and the VR floor in a view run)
+void FSOLSolidMenuProfileSmoke::LogPassResult(const int32 pass)
 {
+    const FPass& spec = mPasses[pass];
     const FSOLUiProfileCapture::FPassResult& result = mCapture.GetResult();
     const FSOLUiProfileCapture::FGpuCapture& gpu = result.Gpu;
     const double cpuSlate = result.CpuMs[0];
@@ -507,33 +691,67 @@ void FSOLSolidMenuProfileSmoke::LogPassResult(const int32 pass, const USOLMenuSu
     const FIntPoint size = GetViewSize();
     const bool bStrength = FMath::IsNearlyEqual(mStrength, PROFILE_STRENGTH, PROFILE_STRENGTH_TOLERANCE);
 
+    // The plain frames: the mean frame and GPU times, then the p99 of the frame, the game thread and the GPU (the
+    // percentile sorts its array, so the means are taken first)
+    double frameSumMs = 0.0;
+    double gpuSumMs = 0.0;
+    for (int32 index = 0; index < mFrameMs.Num(); ++index)
+    {
+        frameSumMs += mFrameMs[index];
+        gpuSumMs += mGpuMs[index];
+    }
+    const double frameMeanMs = mFrameMs.IsEmpty() ? -1.0 : frameSumMs / mFrameMs.Num();
+    const double gpuMeanMs = mGpuMs.IsEmpty() ? -1.0 : gpuSumMs / mGpuMs.Num();
+    const double frameP99Ms = SOLSolidMenuProfile::Percentile(mFrameMs, PROFILE_P99);
+    const double gameP99Ms = SOLSolidMenuProfile::Percentile(mGameMs, PROFILE_P99);
+    const double gpuP99Ms = SOLSolidMenuProfile::Percentile(mGpuMs, PROFILE_P99);
+
     // Valid only in the baseline's conditions: a standalone game, the pinned date and strength 1, the pass's screen at
     // its view size on every capture frame, every number read
-    const bool bValid = !GIsEditor && mIsDatePinned && bStrength && size == PROFILE_PASS_VIEWS[pass] && cpuSlate >= 0.0
-        && gpu.UiMs >= 0.0 && mCaptureFrames > 0 && mScreenFrames == mCaptureFrames;
+    const bool bValid = !GIsEditor && mIsDatePinned && bStrength && size == spec.View && cpuSlate >= 0.0
+        && gpu.UiMs >= 0.0 && mCaptureFrames > 0 && mScreenFrames == mCaptureFrames && frameP99Ms > 0.0;
     const UGameUserSettings* userSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr;
     const bool bVSync = userSettings != nullptr && userSettings->IsVSyncEnabled();
     const int32 scalability = userSettings != nullptr ? userSettings->GetOverallScalabilityLevel() : INDEX_NONE;
 
-    // The verdict against the pre-46c baseline (budget: under 0.1 ms extra CPU and 0.3 ms extra GPU)
-    const double baseCpu = PROFILE_BASELINE_CPU_MS[pass];
-    const double baseGpu = PROFILE_BASELINE_GPU_MS[pass];
-    const bool bHasBase = baseCpu > 0.0 && baseGpu > 0.0;
-    const double deltaCpu = bHasBase ? cpuSlate - baseCpu : 0.0;
-    const double deltaGpu = bHasBase ? gpu.UiMs - baseGpu : 0.0;
-    const TCHAR* verdict = !bValid ? TEXT("FAIL") : !bHasBase ? TEXT("NOBASE")
-        : deltaCpu < PROFILE_BUDGET_CPU_MS && deltaGpu < PROFILE_BUDGET_GPU_MS ? TEXT("PASS") : TEXT("FAIL");
+    // The budget: the default run against the pre-46c baseline per pass (Q17); the view run judges only the menu's
+    // share (user, 2026-11-06): the CPU against its menu's baseline and the menu's whole GPU (no baseline at this
+    // size) against the VR floor's ceiling
+    const bool bViewRun = mRunView != FIntPoint::ZeroValue;
+    const bool bHasBase = spec.BaseCpuMs > 0.0 && (bViewRun || spec.BaseGpuMs > 0.0);
+    const double deltaCpu = bHasBase ? cpuSlate - spec.BaseCpuMs : 0.0;
+    const double deltaGpu = bHasBase ? gpu.UiMs - spec.BaseGpuMs : 0.0;
+    const SOLSolidMenuProfile::FVrFloor floor = SOLSolidMenuProfile::VrFloorForView(spec.View.X, spec.View.Y);
+    const bool bBudget = bViewRun ? SOLSolidMenuProfile::IsMenuShareWithinVrFloor(deltaCpu, gpu.UiMs, floor)
+        : SOLSolidMenuProfile::IsWithinBudget(deltaCpu, deltaGpu);
+
+    // Whole frame, informational only (project-level VR work, not the menu's verdict): the p99 frame, game thread and
+    // GPU against the XR-4 line, and at 3840x2160 the p99 frame against the 4K / 100 Hz proxy
+    const bool bVrFrame = frameP99Ms <= floor.LineMs && gameP99Ms <= floor.LineMs && gpuP99Ms > 0.0
+        && gpuP99Ms <= floor.LineMs;
+    const bool bProxyView = bViewRun && SOLSolidMenuProfile::IsVrProxyView(spec.View.X, spec.View.Y);
+    const TCHAR* proxy = !bProxyView ? TEXT("n/a") : SOLSolidMenuProfile::MeetsVrProxy(frameP99Ms) ? TEXT("PASS")
+        : TEXT("MISS");
+    const TCHAR* verdict = !bValid ? TEXT("FAIL") : !bHasBase ? TEXT("NOBASE") : bBudget ? TEXT("PASS")
+        : TEXT("FAIL");
     mPassesFailed += FCString::Strcmp(verdict, TEXT("FAIL")) == 0 ? 1 : 0;
     mPassesNoBase += FCString::Strcmp(verdict, TEXT("NOBASE")) == 0 ? 1 : 0;
-    UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile RESULT P%d %s screen=%s view=%dx%d cpu_slate=%.3f cpu_gameui=%.3f "
-        "gpu_ui=%.3f gpu_slate=%.3f gpu_solid=%.3f gpu_frame=%.3f ui_draws=%d gpu_ui_all=%s frame_ms=%.2f "
-        "strength=%.2f vsync=%s scalability=%d editor=%s valid=%s jd=%.5f screen_frames=%d/%d base_cpu=%.3f "
-        "base_gpu=%.3f dcpu=%+.3f dgpu=%+.3f budget_cpu=%.3f budget_gpu=%.3f"), pass, verdict,
-        PROFILE_PASS_SCREENS[pass], size.X, size.Y, cpuSlate, cpuGameUi, gpu.UiMs, gpu.SlateMs, gpu.MaterialMs,
-        gpu.FrameMs, gpu.UiDraws, *result.GpuUiAll, result.FrameMs, mStrength, bVSync ? TEXT("on") : TEXT("off"),
-        scalability, GIsEditor ? TEXT("yes") : TEXT("no"), bValid ? TEXT("yes") : TEXT("no"), PROFILE_SIM_JD,
-        mScreenFrames, mCaptureFrames, baseCpu, baseGpu, deltaCpu, deltaGpu, PROFILE_BUDGET_CPU_MS,
-        PROFILE_BUDGET_GPU_MS);
+    const FString costs = FString::Printf(TEXT("screen=%s view=%dx%d cpu_slate=%.3f cpu_gameui=%.3f gpu_ui=%.3f "
+        "gpu_slate=%.3f gpu_solid=%.3f gpu_frame=%.3f ui_draws=%d gpu_ui_all=%s frame_ms=%.2f"), spec.Screen, size.X,
+        size.Y, cpuSlate, cpuGameUi, gpu.UiMs, gpu.SlateMs, gpu.MaterialMs, gpu.FrameMs, gpu.UiDraws,
+        *result.GpuUiAll, result.FrameMs);
+    const FString frames = FString::Printf(TEXT("plain_frame_ms=%.2f plain_gpu_ms=%.2f frame_p99=%.2f game_p99=%.2f "
+        "gpu_p99=%.2f vr_frame=%s vr_eyes=%d vr_line=%.1f vr_ui_gpu=%.1f proxy=%s proxy_line=%.1f"), frameMeanMs,
+        gpuMeanMs, frameP99Ms, gameP99Ms, gpuP99Ms, !bViewRun ? TEXT("n/a") : bVrFrame ? TEXT("PASS") : TEXT("MISS"),
+        floor.bTwoEyes ? 2 : 1, floor.LineMs, floor.UiGpuMs, proxy, SOLSolidMenuProfile::VR_PROXY_FRAME_P99_MS);
+    const FString conditions = FString::Printf(TEXT("strength=%.2f vsync=%s scalability=%d editor=%s valid=%s "
+        "jd=%.5f screen_frames=%d/%d base_cpu=%.3f base_gpu=%.3f dcpu=%+.3f dgpu=%+.3f budget=%s budget_cpu=%.3f "
+        "budget_gpu=%.3f"), mStrength, bVSync ? TEXT("on") : TEXT("off"), scalability, GIsEditor ? TEXT("yes")
+        : TEXT("no"), bValid ? TEXT("yes") : TEXT("no"), PROFILE_SIM_JD, mScreenFrames, mCaptureFrames,
+        spec.BaseCpuMs, spec.BaseGpuMs, deltaCpu, deltaGpu, bBudget ? TEXT("PASS") : TEXT("FAIL"),
+        SOLSolidMenuProfile::BUDGET_CPU_MS, bViewRun ? floor.UiGpuMs : SOLSolidMenuProfile::BUDGET_GPU_MS);
+    UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile RESULT P%d %s %s %s %s"), pass, verdict, *costs, *frames,
+        *conditions);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -546,8 +764,8 @@ void FSOLSolidMenuProfileSmoke::Finish(USOLMenuSubsystem& menu)
     }
     mIsFinished = true;
     UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile SUMMARY %d passes: %d PASS, %d FAIL, %d NOBASE; %d/%d checks passed"),
-        PROFILE_PASS_COUNT, FMath::Max(0, PROFILE_PASS_COUNT - mPassesFailed - mPassesNoBase), mPassesFailed,
-        mPassesNoBase, mChecksPassed, mChecksRun);
+        mPasses.Num(), FMath::Max(0, mPasses.Num() - mPassesFailed - mPassesNoBase), mPassesFailed, mPassesNoBase,
+        mChecksPassed, mChecksRun);
     mCapture.Stop(menu.GetWorld());
     UKismetSystemLibrary::QuitGame(menu.GetWorld(), nullptr, EQuitPreference::Quit, false);
 }

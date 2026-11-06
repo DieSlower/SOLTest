@@ -35,3 +35,7 @@ two. The Index tier (4032 x 2240, 9.0 Mpx) stays as a secondary reference.
 - Which scenes: orbit at a planet, dense Mass fields, map open.
 - Varjo publishes no recommended render resolution, so the panel resolution is used; add a supersampling multiplier if
   one is ever sourced.
+
+## Proxy on this machine (user decision, 2026-11-06)
+
+The RTX 2080 Ti is below Varjo's minimum, so the real XR-4 resolutions (3840x3744 per eye, 7680x3744 two eyes) cannot pass here (scene alone 22-28 ms GPU at one eye). Stand-in rule: VR-ready if the game runs at 4K (3840x2160) at 100 Hz or better (frame p99 <= 10.0 ms) on this machine; XR-4 optimisation happens later on a different card. The menu profile smoke judges only the menus' own share (CPU delta <= 0.2 ms, GPU within 1.2 / 2.4 ms); the whole-frame check is this gate's job. First reading (issue #46 part 46h, SDD 46 section 13.2): with a solid menu open at 4K the p99 frame is 16.0-17.7 ms (about 60 fps, GPU-bound by the scene), so the proxy is not met yet.

@@ -985,8 +985,11 @@ and `ProjectVersion` is not used. Design (built in 46d):
 
 ## 13. Performance
 
-- **Budget (Q17):** per screen, against today's look, under 0.1 ms extra CPU on the game thread's Slate paint and under
+- **Budget (Q17):** per screen, against today's look, under 0.2 ms extra CPU on the game thread's Slate paint and under
   0.3 ms extra GPU in the Slate UI pass, at 1920x1080 and 1280x720, measured by a profiling smoke with three-run medians.
+  **The CPU budget was 0.1 ms until the user moved it to 0.2 ms on 2026-11-06** (after 46g's medians ran over it, section
+  6.6): the whole frame with a solid menu open is about 5.9-6.3 ms (160-170 fps) on the i9-9960X / RTX 2080 Ti (measured
+  2026-11-06), so 0.2 ms is about 3% of it. The GPU budget stays 0.3 ms and the #42 hologram budget is unchanged.
 - **Event-driven:** no per-frame allocation in project code; MIDs are created once (a handful); the shared button MIDs
   never change per frame (state in the vertex colour); strength pushed only on change; `RefreshHighlight` stays a
   state compare and only animates during a 0.12 s ramp; the idle pulse updates a few scalars per tick on the visible
@@ -1004,6 +1007,8 @@ and `ProjectVersion` is not used. Design (built in 46d):
   computed once. *ALU:* the compiled `M_SOLSolidHull` pixel shader is about 307 instructions
   (`MaterialEditingLibrary.get_statistics`), not "a few dozen": the per-pixel `ClampHull` mirror, the SDF and the
   layers. Both are TECH_DEBT items, to act on if the 46h panel profiling shows the cost.
+
+- **46h amendment: VR verdict scope (user decision, 2026-11-06).** The RTX 2080 Ti is below Varjo's minimum, so the real XR-4 resolutions cannot pass here (scene alone 22-28 ms GPU at one eye). The profile smoke's view-run verdict judges only the menu's own share: CPU delta vs baseline <= 0.2 ms and menu GPU within the provisional VR ceilings 1.2 ms (one eye) / 2.4 ms (two eyes). The whole-frame check uses the proxy "4K (3840x2160) at 100 Hz or better, frame p99 <= 10.0 ms" and is recorded as project-level VR work, not a menu failure; XR-4 numbers already taken stay informational. Non-Settings pages (Demo, Key bindings, etc.) are judged against the Settings baseline, re-measured with 3 runs, flagged only if still over 0.2 ms CPU.
 
 ### 13.1 46c amendment: profiling baseline
 
@@ -1047,7 +1052,7 @@ Spread between runs: CPU up to 0.049 ms (P3), GPU up to 0.012 ms (P3). Today's m
 boxes and text); the CPU side is the Slate paint of the widget tree. The medians are stored in
 `SOLSolidMenuProfileSmoke.cpp` (`PROFILE_BASELINE_CPU_MS` = 0.423, 0.444, 0.430, 0.429; `PROFILE_BASELINE_GPU_MS` =
 0.046, 0.027, 0.037, 0.075), so every later line carries `dcpu` / `dgpu` against them and a verdict against the Q17
-budget (`dcpu` < 0.1 ms and `dgpu` < 0.3 ms). A check run against the stored values logged PASS for all four passes
+budget (`dcpu` < 0.1 ms and `dgpu` < 0.3 ms at the time; 0.2 ms CPU since 2026-11-06). A check run against the stored values logged PASS for all four passes
 (`dcpu` -0.035 to +0.022, `dgpu` -0.012 to +0.002).
 
 **46c check (restyled buttons and font, panels still flat).** 2026-11-05, three runs after 46c steps 3-5 (the solid
@@ -1121,6 +1126,66 @@ half the CPU budget):
 The numbers are machine-specific: on another machine, re-measure the baseline at the 46c parent commit (a worktree)
 and replace the constants.
 
+### 13.2 46h amendment: the profile at 1920x1080, the 4K proxy and the VR floor
+
+**View runs.** `-SOLSmokeSolidMenuProfile` with `-ResX` / `-ResY` other than 1920x1080 is a view run: nine passes at
+that size (the game window's size limits lifted past the desktop): `main`, `main-settings`, `main-keys` (Settings on
+Key bindings), `main-controls`, `main-about`, `main-demo`, then Play and Esc: `pause`, `pause-settings`, `pause-info`.
+After the stat dumps each pass samples 240 plain frames for the p99 of the frame (`frame_p99`), the game thread
+(`game_p99`) and the GPU (`gpu_p99`). Per the user's decision of 2026-11-06 the verdict judges only the menu's share
+(`SOLSolidMenuProfile::IsMenuShareWithinVrFloor`): `dcpu` against the 1920x1080 Settings baseline of its menu (0.423
+main, 0.429 pause; the Slate paint does not scale with pixels, and the non-Settings pages have no flat baseline of
+their own) under 0.2 ms, and the menu's whole `gpu_ui` under the provisional VR ceiling (1.2 ms one eye, 2.4 ms two
+eyes, `VrFloorForView`). The whole frame is logged, informational only: `vr_frame=PASS|MISS` against the XR-4 line
+(10.0 ms one eye, 9.5 ms two eyes, all three p99 times) and, at 3840x2160, `proxy=PASS|MISS` against the stand-in
+rule "4K at 100 Hz or better, `frame_p99` <= 10.0 ms" (`IsVrProxyView`, `MeetsVrProxy`;
+`Docs/Research/VR_PERFORMANCE_TARGETS.md` section 7a). A miss there is project-level VR work, not a menu failure.
+The view-run watchdog is 180 s a pass (`PROFILE_WATCHDOG_VIEW_PASS_S`). Tests: `SOLTest.SolidMenuProfile.*` (Budget,
+VrFloor, MenuShare, Proxy, Percentile; `Tests/SolidMenuProfileTest.cpp`).
+
+**Default runs (1920x1080 and 1280x720, against the pre-46c baseline).** 2026-11-06, after the 46h build, three runs,
+every run 4/4 PASS and 9/9 checks. Medians (ms; the three values in brackets): P0 main-settings 1920x1080 `dcpu`
+**+0.063** (+0.059 / +0.063 / +0.068) / `dgpu` **+0.058** (`gpu_ui` 0.104 all three), P1 1280x720 **+0.044** (+0.072 /
++0.017 / +0.044) / **+0.034**, P2 pause-settings 1280x720 **+0.059** (+0.044 / +0.068 / +0.059) / **+0.038**, P3
+1920x1080 **+0.057** (+0.075 / +0.057 / +0.041) / **+0.062**. `gpu_solid` 0.097 / 0.055 / 0.039 / 0.071; UI draws 32
+on the main menu and 31 on the pause menu; the plain frame 4.1-5.2 ms. All inside the Q17 budget (0.2 ms CPU, 0.3 ms
+GPU); against 46g's medians (+0.10 to +0.16 ms CPU, section 6.6) the CPU deltas are lower in this session, inside the
+run-to-run spread, with no code change to the menus in 46h.
+
+**4K proxy (3840x2160), one run.** 9/9 PASS (menu share), 14/14 checks. `cpu_slate` / `dcpu` / `gpu_ui` /
+`gpu_solid`, then `frame_p99` / `game_p99` / `gpu_p99` (ms): main 0.259 / -0.164 / 0.083 / 0.076, 16.02 / 5.10 /
+15.24; main-settings 0.493 / +0.070 / 0.377 / 0.367, 16.04 / 5.34 / 15.65; main-keys 0.580 / +0.157 / 0.385 / 0.372,
+16.09 / 5.07 / 15.69; main-controls 0.482 / +0.059 / 0.401 / 0.386, 16.42 / 4.81 / 16.20; main-about 0.372 / -0.051 /
+0.384 / 0.376, 16.02 / 4.56 / 15.79; main-demo 0.548 / +0.125 / 0.372 / 0.362, 16.73 / 5.30 / 16.53; pause 0.266 /
+-0.163 / 0.223 / 0.059, 17.00 / 4.64 / 16.68; pause-settings 0.487 / +0.058 / 0.517 / 0.346, 17.70 / 5.16 / 17.25;
+pause-info 0.471 / +0.042 / 0.539 / 0.360, 17.27 / 6.45 / 16.92. VSync off, scalability 3. **The proxy misses on
+every pass (`frame_p99` 16.0-17.7 ms, about 60 fps, against 10.0 ms)**: the frame is GPU-bound (plain GPU 14.0-15.7 ms
+mean) by the scene behind the menus; the menus' own GPU is 0.08-0.54 ms of it. Recorded as project-level VR work
+(the ToDo `vr-performance-gate.md`), not a menu failure.
+
+**One XR-4 eye (3840x3744), runs 2 and 3 (run 1 was before the reboot, its numbers are in the plan's progress
+notes).** Both 9/9 PASS (menu share), 14/14 checks. `dcpu` (run 2 / run 3), `gpu_ui` (run 3), `frame_p99` (run 3):
+main -0.152 / -0.151, 0.205, 27.98; main-settings +0.076 / +0.074, 0.666, 32.62; main-keys +0.092 / +0.089, 0.661,
+28.56; main-controls +0.065 / +0.061, 0.698, 32.38; main-about -0.014 / -0.025, 0.667, 29.01; main-demo +0.132 /
++0.131, 0.646, 32.20; pause -0.147 / -0.152, 0.466, 29.19; pause-settings +0.067 / +0.066, 0.883, 29.42; pause-info
++0.014 / +0.021, 0.902, 29.67. The menus' GPU is 0.21-0.90 ms, under the 1.2 ms ceiling; `vr_frame` misses on every
+pass (p99 frame 27-33 ms, GPU 27-32 ms, game thread 4.4-6.7 ms), informational.
+
+**Two XR-4 eyes (7680x3744): not re-run.** Its passes take 60-110 s each at 50-130 ms frames, and killing the first run
+mid-pass hung the GPU driver (a reboot was needed), so it was skipped in 46h. Run 1's P0-P2 stay as recorded
+(informational): main `dcpu` -0.102, `gpu_ui` 0.205; main-settings +0.118, 1.103; main-keys +0.377, 1.115; menu GPU
+under the 2.4 ms ceiling; frame p99 64-131 ms.
+
+**Non-Settings pages against the Settings baseline (user decision, 2026-11-06).** Three runs at the 46h build (4K,
+one eye run 2, one eye run 3): `main-demo` `dcpu` +0.125 / +0.132 / +0.131 (median **+0.131**), `main-keys` +0.157 /
++0.092 / +0.089 (median **+0.092**). Both under 0.2 ms, so neither is flagged. Run 1's Demo +0.236 (one eye) and
+the two-eye Key bindings +0.377 (one run, two eyes' larger frame) did not repeat.
+
+**Reading.** The menus stay inside the Q17 budget at 1920x1080 and 1280x720, and inside the VR floor's menu share
+at 4K and one XR-4 eye. The hull shader (about 307 instructions per pixel) and the recess overdraw cost 0.6-0.9 ms of
+GPU at one eye, under the 1.2 ms ceiling, so neither TECH_DEBT optimisation is forced by 46h (both stay listed). The
+whole frame misses both the 4K proxy and the XR-4 lines because of the scene behind the menus on the RTX 2080 Ti.
+
 ## 14. Verification
 
 - **Unit tests:** section 8 (`SOLTest.SolidMenu.*`), written from the contracts by a separate opus subagent, red on
@@ -1166,7 +1231,7 @@ and replace the constants.
 | Q14 | Warning colour | **Red-orange #E5533D** |
 | Q15 | Hover trace | **Trace only on the main stack, the pause stack and the tab column;** settings rows get an amber edge and underline only (as do the other small buttons: Rebind, footer, start-location rows, Back) |
 | Q16 | Starting values | **Section 9 starting values approved** as the tuning start; final values shown at the hand check |
-| Q17 | Performance budget | **Under 0.1 ms extra CPU and 0.3 ms extra GPU per screen** (against today's look, 1920x1080 and 1280x720), three-run medians |
+| Q17 | Performance budget | **Under 0.2 ms extra CPU and 0.3 ms extra GPU per screen** (against today's look, 1920x1080 and 1280x720), three-run medians. **Amended by the user on 2026-11-06:** the CPU budget was 0.1 ms (frame about 5.9-6.3 ms with a solid menu open) |
 
 No question remains open and no part is gated on the user any more.
 

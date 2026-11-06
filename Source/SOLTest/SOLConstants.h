@@ -1542,7 +1542,10 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_HOLO_MENU = TEXT("SOLSmokeHoloMenu");
         // In -game: cost captures (ProfileGPU, stat dumpave of the Slate paint) of the main menu and the pause menu, each
         // with Settings open, at 1920x1080 and 1280x720, logged against the pre-46c baseline, then quit (SDD 46 section
-        // 13; smoke settings slot; the run starts in the main menu)
+        // 13; smoke settings slot; the run starts in the main menu). With -ResX / -ResY other than 1920x1080 (46h, the
+        // Varjo XR-4 sizes 3840x3744 or 7680x3744, or the 4K proxy 3840x2160) it is a view run instead: nine screens at
+        // that size, the menu's share judged against the VR floor of Docs/Research/VR_PERFORMANCE_TARGETS.md and the
+        // whole frame's p99 logged against the XR-4 line and the 4K / 100 Hz proxy (informational)
         inline constexpr const TCHAR* SMOKE_SOLID_MENU_PROFILE = TEXT("SOLSmokeSolidMenuProfile");
         // With -SOLSmokeSolidMenuProfile: every pass shows this Settings tab (its ESOLSettingsTab position, e.g. 3 =
         // Gameplay with four sliders) instead of the opening tab (46e follow-up: the slider fill's cost)

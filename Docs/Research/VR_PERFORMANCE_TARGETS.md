@@ -198,13 +198,14 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
 
 ## 7. What this implies for menu and HUD budgets
 
-- Current budgets (#42 holo menu: 0.1 ms; #46 solid menu: 0.1 ms CPU and 0.3 ms GPU) were set against a flat frame.
-  Against 11.11 ms those are 0.9% CPU and 2.7% GPU of a 90 Hz frame (3.6% at 120 Hz), which is acceptable on its own.
+- Current budgets (#42 holo menu: 0.1 ms; #46 solid menu: 0.2 ms CPU since 2026-11-06, was 0.1 ms, and 0.3 ms GPU)
+  were set against a flat frame. Against 11.11 ms those are 1.8% CPU and 2.7% GPU of a 90 Hz frame (3.6% at 120 Hz),
+  which is acceptable on its own.
 - **Rescaled menu/HUD GPU budgets for the Varjo XR-4 target.** The resolution the #42/#46 budgets were measured at is
   not recorded in this note (assumed 1440p, 3.69 Mpx; verify). If the cost is fill-bound it scales with pixel count:
   0.3 ms x (14.38 / 3.69) = about 1.2 ms in `1eye`, and x (28.75 / 3.69) = about 2.4 ms in `2eyes` (10.8% / 21% of the
   11.11 ms frame, which is too much for a menu). Provisional ceilings until re-measured: solid menu (#46) <= 1.2 ms GPU
-  at `1eye` and <= 2.4 ms at `2eyes`; holo menu (#42) scaled the same way from its own flat figure. CPU stays 0.1 ms. The
+  at `1eye` and <= 2.4 ms at `2eyes`; holo menu (#42) scaled the same way from its own flat figure. CPU stays at the flat budget. The
   re-measurement at 3840x3744 and 7680x3744 replaces these; if the measured cost exceeds the ceilings, the UI moves to a
   stereo layer or a low-resolution world-space quad (below).
 - (Older Index-tier reasoning.) GPU cost of full-screen UI scales with pixels. If the 0.3 ms was measured at 1440p (3.69 Mpx), the same material
@@ -213,6 +214,24 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
   rendered to its own low-resolution target once per frame (and not per eye), so its cost is decoupled from the headset pixel count.
 - CPU cost does not scale with resolution but does double with two views if the UI is drawn twice, so 0.1 ms stays 0.1 ms
   only for a layer/quad approach.
+- **Measured (#46 part 46h, 2026-11-06, RTX 2080 Ti; SDD 46 section 13.2).** The #46 budget is now 0.2 ms CPU (moved
+  by the user from 0.1 ms on 2026-11-06) and 0.3 ms GPU, and it was measured at 1920x1080 and 1280x720 (not 1440p as
+  assumed above); the provisional ceilings stay 1.2 / 2.4 ms as set. The solid menus' own GPU (the game window's Slate
+  UI pass) is 0.08-0.54 ms at 4K (3840x2160), 0.21-0.90 ms at one XR-4 eye (3840x3744) and 0.21-1.12 ms at two eyes
+  (7680x3744, three screens of one run), all under the ceilings, so the stereo-layer / quad fallback is not needed for
+  the menus. Their CPU extra is +0.01 to +0.16 ms against the flat baseline at every size, under 0.2 ms.
+- **The whole frame does not reach either line here.** At 4K the p99 frame is 16.0-17.7 ms with a menu open, and at
+  one XR-4 eye 27-33 ms, GPU-bound by the scene behind the menus (the game thread is 4.4-6.7 ms). That is project-level
+  VR work (section 7a, `Docs/ToDo/vr-performance-gate.md`), not a menu cost.
+
+### 7a. Proxy on this machine (user decision, 2026-11-06)
+
+The development GPU (RTX 2080 Ti) is below Varjo's minimum, so the real XR-4 resolutions (3840x3744 per eye, 7680x3744
+two eyes) cannot pass here: the scene alone costs about 25-32 ms of GPU at one eye (p99, with a menu open). Stand-in
+rule: the game counts as VR-ready if it runs at 4K (3840x2160) at 100 Hz or better (frame p99 <= 10.0 ms) on this
+machine. Optimisation for real XR-4 hardware happens later, on a different card. XR-4 one-eye and two-eye measurements
+already taken stay recorded as informational. `-SOLSmokeSolidMenuProfile -ResX=3840 -ResY=2160` logs `proxy=PASS|MISS`
+per pass; on 2026-11-06 it read MISS on all nine screens (p99 frame 16.0-17.7 ms, about 60 fps).
 
 ## 8. Sources
 
