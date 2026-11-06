@@ -97,6 +97,7 @@ void USOLReadOnlyPageWidget::ShowOpening()
     {
         scroll->ScrollToStart();
     }
+    Rail.ScrollToTop();
     Rail.ClearStaleHover();
 }
 

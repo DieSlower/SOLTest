@@ -113,6 +113,9 @@ public:
     // Returns a tab's button in the tab column, or null (verification)
     USOLMenuButton* GetTabButton(ESOLSettingsTab tab) const;
 
+    // Returns the tab rail (its scroll state and ScrollToEnd; verification)
+    FSOLSolidTabRail& GetRail() { return Rail; }
+
     // Returns a stepper's back (side 0) or forward (side 1) button, or null (verification)
     USOLMenuButton* GetStepperButton(ESOLSettingsStepper stepper, int32 side) const;
 

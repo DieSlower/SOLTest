@@ -62,6 +62,9 @@ public:
     bool IsTabHoverTraceShown(int32 tab) const { return Rail.IsTraceShown(tab); }
     bool IsAnyTabHoverTraceShown() const { return Rail.IsAnyTraceShown(); }
 
+    // Returns the tab rail (its scroll state and ScrollToEnd; verification)
+    FSOLSolidTabRail& GetRail() { return Rail; }
+
     // Returns a tab's scroll box, or null (verification)
     UScrollBox* GetTabScroll(int32 tab) const;
 

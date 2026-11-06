@@ -328,6 +328,22 @@ void USOLMenuSubsystem::SelectTab(const SOLMenuState::EMenuTab tab)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Closes the pause menu's open page at once: the Resume tab, still paused, with the focus on Resume
+void USOLMenuSubsystem::ClosePausePage()
+{
+    if (!SOLMenuState::EscapeClosesPage(mState))
+    {
+        return;
+    }
+    mState = SOLMenuState::ClosePage(mState);
+    if (PauseMenu != nullptr)
+    {
+        PauseMenu->ShowTab(mState.Tab);
+        PauseMenu->FocusDefault();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Records that the jump map opened or closed
 void USOLMenuSubsystem::NotifyMapOpen(const bool bOpen)
 {
@@ -538,9 +554,19 @@ void USOLMenuSubsystem::RefreshWidgets()
     {
         MainMenu->RemoveFromParent();
     }
-    if (PauseMenu != nullptr && !bPaused)
+
+    // The pause menu slides out after a resume (the input goes back to the pawn in this same frame, from the state
+    // broadcast; SDD 46 section 4.6) and leaves the viewport itself; Quit to menu closes it at once
+    if (PauseMenu != nullptr && !bPaused && PauseMenu->IsInViewport())
     {
-        PauseMenu->RemoveFromParent();
+        if (bMainMenu)
+        {
+            PauseMenu->SnapClosed();
+        }
+        else
+        {
+            PauseMenu->BeginClose();
+        }
     }
     UUserWidget* shown = bMainMenu ? static_cast<UUserWidget*>(MainMenu) : (bPaused ? PauseMenu : nullptr);
     if (shown == nullptr)
@@ -559,6 +585,9 @@ void USOLMenuSubsystem::RefreshWidgets()
     }
     else
     {
+        // Each pause opens the side panel (a pause during the slide-out reverses it; the widget is still in the
+        // viewport then, so it is not added again)
+        PauseMenu->PlayOpen();
         PauseMenu->ShowTab(mState.Tab);
     }
 

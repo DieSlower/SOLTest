@@ -121,6 +121,42 @@ bool SOLMenuState::IsTabChange(const FMenuState& state, const EMenuTab tab)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether a pause-menu tab opens a page in the shell
+bool SOLMenuState::IsPageTab(const EMenuTab tab)
+{
+    switch (tab)
+    {
+    case EMenuTab::Controls:
+    case EMenuTab::Info:
+    case EMenuTab::Settings:
+    case EMenuTab::Demo:
+    case EMenuTab::About:
+        return true;
+    default:
+        return false;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether Esc closes the open page instead of resuming
+bool SOLMenuState::EscapeClosesPage(const FMenuState& state)
+{
+    return state.Mode == EMenuMode::Paused && IsPageTab(state.Tab);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the state with the pause menu's page closed (the Resume tab, still paused)
+SOLMenuState::FMenuState SOLMenuState::ClosePage(const FMenuState& state)
+{
+    FMenuState result = state;
+    if (EscapeClosesPage(state))
+    {
+        result.Tab = EMenuTab::Resume;
+    }
+    return result;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns whether flight input is suspended
 bool SOLMenuState::SuspendsFlightInput(const FMenuState& state)
 {

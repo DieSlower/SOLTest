@@ -45,59 +45,6 @@ namespace
     const FVector2f MAIN_MENU_SLIDE_DIRECTION(-1.0f, 0.0f);
 
     //////////////////////////////////////////////////////////////////////////
-    // Wraps a widget in a fixed-size box (0 leaves that axis free)
-    USizeBox* MainMenuSized(UWidgetTree& tree, UWidget* content, const float width, const float height)
-    {
-        USizeBox* box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
-        if (width > 0.0f)
-        {
-            box->SetWidthOverride(width);
-        }
-        if (height > 0.0f)
-        {
-            box->SetHeightOverride(height);
-        }
-        box->SetContent(content);
-        return box;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the hull panels' corner chamfers (SDD 46 section 5.2) with no other feature
-    FSOLSolidHull MainMenuPanelHull()
-    {
-        using namespace SOL::SolidMenu;
-        FSOLSolidHull hull;
-        hull.ChamferTL = PANEL_CHAMFER_TL;
-        hull.ChamferTR = PANEL_CHAMFER_TR;
-        hull.ChamferBR = PANEL_CHAMFER_BR;
-        hull.ChamferBL = PANEL_CHAMFER_BL;
-        return hull;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns a recess panel (flat sunken fill) around a widget with a padding
-    USOLSolidPanel* MainMenuRecess(UWidgetTree& tree, UWidget* content, const float padding)
-    {
-        return USOLSolidPanel::MakeRecess(tree, content, padding);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns a trace through up to FSOLSolidTrace::MAX_POINTS points (column local UMG units)
-    FSOLSolidTrace MainMenuTrace(std::initializer_list<FVector2f> points, const bool bRingTerminal)
-    {
-        FSOLSolidTrace trace;
-        for (const FVector2f& point : points)
-        {
-            if (trace.Count < FSOLSolidTrace::MAX_POINTS)
-            {
-                trace.Points[trace.Count++] = point;
-            }
-        }
-        trace.bRingTerminal = bRingTerminal;
-        return trace;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Returns the hazard stripe's brush: T_SOLSolidHazard (a stripe mask) tiled along X in amber, the mask's black
     // left black; a flat amber bar when the texture is missing (the palette colour, never the texture's)
     FSlateBrush MainMenuHazardBrush(const USOLSolidMenuSubsystem* solid)
@@ -154,7 +101,7 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
 
     // The hull: chamfers, the title step, the chin; rivets and vents
     ColumnPanel = WidgetTree->ConstructWidget<USOLSolidPanel>(USOLSolidPanel::StaticClass(), TEXT("ColumnPanel"));
-    FSOLSolidHull hull = MainMenuPanelHull();
+    FSOLSolidHull hull = USOLSolidPanel::MakePanelHull();
     hull.TitleStepWidth = COLUMN_TITLE_STEP_WIDTH;
     hull.TitleStepHeight = COLUMN_TITLE_STEP_HEIGHT;
     hull.ChinWidth = COLUMN_CHIN_WIDTH;
@@ -163,46 +110,46 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
     const float inset = PANEL_INSET_PX + COLUMN_PADDING;
     ColumnPanel->SetContentPadding(FMargin(inset, inset, inset, PANEL_INSET_PX + VERSION_RECESS_PADDING));
     ColumnPanel->SetDecor(true, true);
-    row.AddChildToHorizontalBox(MainMenuSized(*WidgetTree, ColumnPanel, SOL::SolidMenu::COLUMN_WIDTH, COLUMN_HEIGHT))
-        ->SetVerticalAlignment(VAlign_Center);
+    row.AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, ColumnPanel, SOL::SolidMenu::COLUMN_WIDTH,
+        COLUMN_HEIGHT))->SetVerticalAlignment(VAlign_Center);
     UVerticalBox* column = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
     ColumnPanel->SetContent(column);
 
     // Title (on the stepped top edge) and tagline
     UTextBlock* title = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::GAME_TITLE, TITLE_FONT_SIZE,
         SOLSolidStyle::BrightTextColor(), true);
-    column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, title, 0.0f, COLUMN_TITLE_HEIGHT));
+    column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, title, 0.0f, COLUMN_TITLE_HEIGHT));
     UTextBlock* tagline = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::GAME_TAGLINE, SUBTITLE_FONT_SIZE,
         SOLSolidStyle::TextColor());
-    column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, tagline, 0.0f, COLUMN_TAGLINE_HEIGHT));
-    column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, WidgetTree->ConstructWidget<USpacer>(
+    column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, tagline, 0.0f, COLUMN_TAGLINE_HEIGHT));
+    column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, WidgetTree->ConstructWidget<USpacer>(
         USpacer::StaticClass()), 0.0f, COLUMN_STACK_GAP));
 
-    // The stack; each entry's hover trace runs from its right end (the point) to the hull's right edge
+    // The stack, scrolling past STACK_MAX_VISIBLE_ENTRIES (its view starts at stackTop, column local); each entry's
+    // hover trace runs from its right end (the point) to the hull's right edge
     const TCHAR* entryLabels[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
         SOLMenuText::CONTROLS, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
     static_assert(UE_ARRAY_COUNT(entryLabels) == static_cast<int32>(EEntry::Count), "one label per entry");
     const float stackTop = inset + COLUMN_TITLE_HEIGHT + COLUMN_TAGLINE_HEIGHT + COLUMN_STACK_GAP;
+    column->AddChildToVerticalBox(EntryStack.Build(*WidgetTree, BUTTON_HEIGHT, BUTTON_GAP, stackTop,
+        STACK_MAX_VISIBLE_ENTRIES));
     const float buttonRight = SOL::SolidMenu::COLUMN_WIDTH - inset;
-    const float hullRight = SOL::SolidMenu::COLUMN_WIDTH - PANEL_INSET_PX;
     EntryButtons.Reset();
     for (int32 entry = 0; entry < static_cast<int32>(EEntry::Count); ++entry)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
         button->Setup(*WidgetTree, entryLabels[entry], entry, BUTTON_FONT_SIZE, ESOLSolidButtonVariant::Stack);
         button->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleEntryClicked);
-        column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, button, 0.0f, BUTTON_HEIGHT))->SetPadding(
-            FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        EntryStack.AddItem(SOLMenuContent::MakeSized(*WidgetTree, button, 0.0f, BUTTON_HEIGHT));
         EntryButtons.Add(button);
-        const float y = stackTop + entry * (BUTTON_HEIGHT + BUTTON_GAP) + 0.5f * BUTTON_HEIGHT;
-        mEntryTraces[entry] = MainMenuTrace({ FVector2f(buttonRight, y), FVector2f(hullRight, y) }, false);
-        mEntryLeds[entry] = FVector2f(inset + BUTTON_LED_X_PX, y);
     }
+    SOLMenuContent::MakeStackLights(EntryStack, inset + BUTTON_LED_X_PX, buttonRight,
+        SOL::SolidMenu::COLUMN_WIDTH - PANEL_INSET_PX, mEntryTraces, mEntryLeds);
 
     // The hazard stripe under Quit, then the key hint
     UImage* hazard = WidgetTree->ConstructWidget<UImage>(UImage::StaticClass(), TEXT("HazardStripe"));
     hazard->SetBrush(MainMenuHazardBrush(solid));
-    column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, hazard, 0.0f, HAZARD_HEIGHT_PX));
+    column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree, hazard, 0.0f, HAZARD_HEIGHT_PX));
     HintText = SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::MAIN_MENU_HINT, SMALL_FONT_SIZE,
         SOLSolidStyle::DimTextColor(), false, true);
     column->AddChildToVerticalBox(HintText)->SetPadding(FMargin(0.0f, COLUMN_HINT_GAP, 0.0f, 0.0f));
@@ -214,8 +161,9 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
         SOLBuildVersion::CurrentVersion(), FEngineVersion::Current().ToString(EVersionComponent::Patch)),
         SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false, true);
     const float recessWidth = PANEL_INSET_PX + COLUMN_CHIN_WIDTH - inset;
-    UVerticalBoxSlot* recessSlot = column->AddChildToVerticalBox(MainMenuSized(*WidgetTree, MainMenuRecess(*WidgetTree,
-        VersionText, VERSION_RECESS_PADDING), recessWidth, VERSION_RECESS_HEIGHT));
+    UVerticalBoxSlot* recessSlot = column->AddChildToVerticalBox(SOLMenuContent::MakeSized(*WidgetTree,
+        USOLSolidPanel::MakeRecess(*WidgetTree, VersionText, VERSION_RECESS_PADDING), recessWidth,
+        VERSION_RECESS_HEIGHT));
     recessSlot->SetHorizontalAlignment(HAlign_Left);
 
     // Circuit traces along the lower edge, above the recess: two rows, lit from their ring terminals
@@ -223,44 +171,17 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
         - COLUMN_TRACE_GAP;
     const float rowA = rowB - COLUMN_TRACE_GAP;
     mTraceRowA = rowA;
-    const float left = inset + LED_RADIUS_PX * 2.0f;
-    const float right = buttonRight - LED_RADIUS_PX * 2.0f;
-    const float mid = 0.5f * (left + right);
-    const float bend = COLUMN_TRACE_GAP;    // The bends are 45 degrees: one row apart over one gap
-    const float dropX = mid - COLUMN_TRACE_DROP_BENDS * bend;
-    const FSOLSolidTrace traces[] = {
-        MainMenuTrace({ FVector2f(left, rowA), FVector2f(dropX, rowA), FVector2f(dropX + bend, rowB),
-            FVector2f(right - COLUMN_TRACE_END_BENDS * bend, rowB) }, true),
-        MainMenuTrace({ FVector2f(right, rowA), FVector2f(mid, rowA) }, true),
-        MainMenuTrace({ FVector2f(left, rowB), FVector2f(mid - COLUMN_TRACE_SHORT_BENDS * bend, rowB) }, true),
-    };
+    FSOLSolidTrace traces[SOLMenuContent::EDGE_TRACE_COUNT];
+    SOLMenuContent::MakeEdgeTraces(inset + LED_RADIUS_PX * 2.0f, buttonRight - LED_RADIUS_PX * 2.0f, rowA, traces);
     ColumnPanel->SetTraces(traces);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the page shell: the hull with side notches, the content recess holding one switcher child per page (index =
-// ESOLMainMenuPage) and the Back button in a bottom-right recess
+// Builds the page shell (SOLMenuContent::BuildPageShell) with one switcher child per page (index = ESOLMainMenuPage)
+// and binds its Back button
 void USOLMainMenuWidget::BuildShell(UHorizontalBox& row)
 {
-    using namespace SOL::MenuStyle;
-    using namespace SOL::SolidMenu;
-    ShellPanel = WidgetTree->ConstructWidget<USOLSolidPanel>(USOLSolidPanel::StaticClass(), TEXT("ShellPanel"));
-    FSOLSolidHull hull = MainMenuPanelHull();
-    hull.NotchY = 0.5f * PAGE_HEIGHT;
-    hull.NotchDepth = SHELL_NOTCH_DEPTH;
-    hull.NotchHeight = SHELL_NOTCH_HEIGHT;
-    ShellPanel->SetHull(ESOLSolidStyle::Panel, hull);
-    ShellPanel->SetContentPadding(FMargin(PANEL_INSET_PX + SHELL_PADDING));
-    ShellPanel->SetDecor(true, true);
-    UHorizontalBoxSlot* shellSlot = row.AddChildToHorizontalBox(MainMenuSized(*WidgetTree, ShellPanel,
-        SOL::SolidMenu::PAGE_WIDTH, SOL::SolidMenu::PAGE_HEIGHT));
-    shellSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-    shellSlot->SetVerticalAlignment(VAlign_Center);
-    shellSlot->SetPadding(FMargin(PANEL_GAP, 0.0f, 0.0f, 0.0f));
-    UVerticalBox* shell = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-    ShellPanel->SetContent(shell);
-
-    // The content recess with the pages
+    // The pages, one switcher child per page (index = ESOLMainMenuPage; the empty one for None)
     PageSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>(UWidgetSwitcher::StaticClass());
     PageSwitcher->AddChild(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()));
     PageSwitcher->AddChild(BuildStartLocationPage());
@@ -273,17 +194,17 @@ void USOLMainMenuWidget::BuildShell(UHorizontalBox& row)
     PageSwitcher->AddChild(AboutPage);
     DemoPage = WidgetTree->ConstructWidget<USOLDemoPageWidget>(USOLDemoPageWidget::StaticClass());
     PageSwitcher->AddChild(DemoPage);
-    shell->AddChildToVerticalBox(MainMenuRecess(*WidgetTree, PageSwitcher, SHELL_RECESS_PADDING))->SetSize(
-        FSlateChildSize(ESlateSizeRule::Fill));
 
-    // Back, bottom right: the same close as Esc
-    BackButton = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-    BackButton->Setup(*WidgetTree, SOLMenuText::PAGE_BACK, 0, BODY_FONT_SIZE, ESOLSolidButtonVariant::Small);
+    // The shell right of the column, PANEL_GAP apart; Back is the same close as Esc
+    USOLMenuButton* back = nullptr;
+    ShellPanel = SOLMenuContent::BuildPageShell(*WidgetTree, PageSwitcher, back);
+    BackButton = back;
     BackButton->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleBackClicked);
-    UVerticalBoxSlot* backSlot = shell->AddChildToVerticalBox(MainMenuRecess(*WidgetTree, MainMenuSized(*WidgetTree,
-        BackButton, BACK_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT), SHELL_BACK_RECESS_PADDING));
-    backSlot->SetHorizontalAlignment(HAlign_Right);
-    backSlot->SetPadding(FMargin(0.0f, SHELL_BACK_GAP, 0.0f, 0.0f));
+    UHorizontalBoxSlot* shellSlot = row.AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, ShellPanel,
+        SOL::SolidMenu::PAGE_WIDTH, SOL::SolidMenu::PAGE_HEIGHT));
+    shellSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    shellSlot->SetVerticalAlignment(VAlign_Center);
+    shellSlot->SetPadding(FMargin(SOL::MenuStyle::PANEL_GAP, 0.0f, 0.0f, 0.0f));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -302,8 +223,8 @@ UWidget* USOLMainMenuWidget::BuildStartLocationPage()
     UScrollBox* bodyList = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
     bodyList->SetWidgetBarStyle(SOLSolidStyle::MakeScrollBarStyle(solid));
     bodyList->SetScrollbarThickness(FVector2D(SOL::SolidMenu::SCROLL_BAR_THICKNESS));
-    page->AddChildToVerticalBox(MainMenuRecess(*WidgetTree, bodyList, SOL::SolidMenu::LIST_RECESS_PADDING))->SetSize(
-        FSlateChildSize(ESlateSizeRule::Fill));
+    page->AddChildToVerticalBox(USOLSolidPanel::MakeRecess(*WidgetTree, bodyList,
+        SOL::SolidMenu::LIST_RECESS_PADDING))->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
     BodyButtons.Reset();
     const int32 bodyCount = registry != nullptr ? registry->GetRegistry().Num() : 0;
     for (int32 body = 0; body < bodyCount; ++body)
@@ -312,8 +233,8 @@ UWidget* USOLMainMenuWidget::BuildStartLocationPage()
         button->Setup(*WidgetTree, registry->GetRegistry().GetName(body).ToString(), body, BODY_FONT_SIZE,
             ESOLSolidButtonVariant::Small);
         button->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleBodyClicked);
-        Cast<UScrollBoxSlot>(bodyList->AddChild(MainMenuSized(*WidgetTree, button, 0.0f, LIST_BUTTON_HEIGHT)))
-            ->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, ROW_GAP));
+        Cast<UScrollBoxSlot>(bodyList->AddChild(SOLMenuContent::MakeSized(*WidgetTree, button, 0.0f,
+            LIST_BUTTON_HEIGHT)))->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, ROW_GAP));
         BodyButtons.Add(button);
     }
     return page;
@@ -325,15 +246,8 @@ UWidget* USOLMainMenuWidget::BuildStartLocationPage()
 void USOLMainMenuWidget::NativeConstruct()
 {
     Super::NativeConstruct();
-    const TSharedPtr<SSOLSolidTraceLayer> layer = ColumnPanel != nullptr ? ColumnPanel->GetTraceLayer() : nullptr;
-    for (int32 entry = 0; entry < EntryButtons.Num(); ++entry)
-    {
-        EntryButtons[entry]->SetHoverTrace(layer, mEntryTraces[entry]);
-    }
-    if (layer.IsValid())
-    {
-        layer->SetLeds(mEntryLeds);
-    }
+    SOLMenuContent::BindStackLights(ColumnPanel != nullptr ? ColumnPanel->GetTraceLayer() : nullptr, EntryButtons,
+        mEntryTraces, mEntryLeds, EntryStack);
     PlayShowAnimation();
 }
 
@@ -343,11 +257,12 @@ void USOLMainMenuWidget::PlayShowAnimation()
 {
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
     mColumnAnim = FSOLHoloMenuAnim();
-    SOLSolidMenu::BeginPanelOpen(mColumnAnim, frame.NowS, frame.Strength);
+    SOLMenuContent::BeginPanelOpenWithCue(*this, mColumnAnim, frame.NowS, frame.Strength);
     mColumnOpenS = frame.NowS;
     mColumnProgress = SOLSolidMenu::PanelProgress(mColumnAnim, frame.NowS, frame.Strength);
     mColumnTracePower = SOLSolidMenu::TracePower(0.0, frame.Strength);
     mIsPowerUpRunning = true;
+    EntryStack.ScrollToTop();
     if (ColumnPanel != nullptr)
     {
         // The first frame already shows the start of the open (no frame of the old look)
@@ -384,37 +299,19 @@ void USOLMainMenuWidget::SnapShellClosed(const double nowS, const float s)
 void USOLMainMenuWidget::TickColumnLights(const double nowS, const float s)
 {
     const TSharedPtr<SSOLSolidTraceLayer> layer = ColumnPanel != nullptr ? ColumnPanel->GetTraceLayer() : nullptr;
-    if (!layer.IsValid())
+    if (layer.IsValid())
     {
-        return;
+        mIsPowerUpRunning = SOLMenuContent::TickStackLights(*layer, EntryButtons, nowS - mColumnOpenS, nowS, s,
+            mIsPowerUpRunning);
     }
-
-    // The blink: each entry's LED in stack order; one whose own LED already shows (hover, press, mark) is left alone
-    if (mIsPowerUpRunning)
-    {
-        const double sinceOpenS = nowS - mColumnOpenS;
-        uint32 mask = 0;
-        for (int32 entry = 0; entry < EntryButtons.Num() && entry < SSOLSolidTraceLayer::MAX_LEDS; ++entry)
-        {
-            const FSOLSolidButtonLook& look = EntryButtons[entry]->GetAppliedLook();
-            const bool bOwnLed = look.Led > 0.0f || look.bSelectedMark || look.bDisabled;
-            if (!bOwnLed && SOLSolidMenu::PowerUpLedLit(entry, EntryButtons.Num(), sinceOpenS, s))
-            {
-                mask |= 1u << entry;
-            }
-        }
-        layer->SetLitLeds(mask);
-        mIsPowerUpRunning = SOLSolidMenu::IsPowerUpRunning(sinceOpenS, s);
-    }
-    layer->SetPulseDot(SOLSolidMenu::PulseDotFraction(nowS), SOLSolidMenu::PulseDotAlpha(s));
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Shows a page in the shell beside the column (None closes the shell, which animates out after the input is back)
 void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
 {
-    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Settings, About and Demo
-    // re-read their state when shown (the tab pages open on their first tab)
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Settings, About and
+    // Demo re-read their state when shown (the tab pages open on their first tab)
     if (mPage == ESOLMainMenuPage::Settings && page != ESOLMainMenuPage::Settings && SettingsPage != nullptr)
     {
         SettingsPage->NotifyHidden();
@@ -450,7 +347,7 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
     {
         PageSwitcher->SetActiveWidgetIndex(static_cast<int32>(page));
         ShellPanel->SetVisibility(ESlateVisibility::Visible);
-        SOLSolidMenu::BeginPanelOpen(mShellAnim, frame.NowS, frame.Strength);
+        SOLMenuContent::BeginPanelOpenWithCue(*this, mShellAnim, frame.NowS, frame.Strength);
     }
     else if (bWasOpen)
     {
@@ -521,6 +418,13 @@ USOLMenuButton* USOLMainMenuWidget::GetEntryButton(const int32 index) const
 USOLMenuButton* USOLMainMenuWidget::GetBodyButton(const int32 index) const
 {
     return BodyButtons.IsValidIndex(index) ? BodyButtons[index].Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Re-applies the stack's visible-entry cap (verification)
+void USOLMainMenuWidget::SetStackMaxVisibleEntriesForVerification(const int32 maxVisibleEntries)
+{
+    EntryStack.SetMaxVisibleItems(maxVisibleEntries);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -622,9 +526,11 @@ void USOLMainMenuWidget::NativeTick(const FGeometry& geometry, const float delta
         }
     }
 
-    // The column: open look, then its traces' power-up (from the open's start) and pulse
+    // The column: open look, then its traces' power-up (from the open's start) and pulse; the stack's scroll follows
+    // the focused entry and moves the entries' hover traces and LEDs with it
     if (ColumnPanel != nullptr)
     {
+        EntryStack.Tick(ColumnPanel->GetTraceLayer(), EntryButtons);
         SOLSolidMenu::AdvancePanel(mColumnAnim, frame.NowS, frame.Strength);
         mColumnProgress = SOLSolidMenu::PanelProgress(mColumnAnim, frame.NowS, frame.Strength);
         ColumnPanel->ApplyOpenLook(mColumnProgress, MAIN_MENU_SLIDE_DIRECTION);

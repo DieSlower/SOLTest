@@ -7,6 +7,7 @@
 
 #include "Menu/SOLSettingsSubsystem.h"
 #include "SOLTest.h"
+#include "UI/SOLHoloMenuSubsystem.h"
 
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
@@ -14,6 +15,8 @@
 #include "Engine/Texture2D.h"
 #include "Engine/UserInterfaceSettings.h"
 #include "Engine/World.h"
+#include "Framework/Application/IInputProcessor.h"
+#include "Framework/Application/SlateApplication.h"
 #include "HAL/PlatformTime.h"
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Materials/MaterialInterface.h"
@@ -40,6 +43,46 @@ namespace
         return asset;
     }
 }
+
+// Notes the frame of the last real mouse move: Slate calls its pre-processors for OS (and scripted) moves only, never
+// for the cursor moves it synthesizes when widgets move under a still cursor. Consumes nothing
+class FSOLSolidMenuMouseMoves : public IInputProcessor
+{
+public:
+
+    //////////////////////////////////////////////////////////////////////////
+    // Nothing to do per frame
+    virtual void Tick(const float /*deltaTime*/, FSlateApplication& /*slateApp*/,
+        TSharedRef<ICursor> /*cursor*/) override
+    {
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // A real mouse move: notes this frame and lets the move through
+    virtual bool HandleMouseMoveEvent(FSlateApplication& /*slateApp*/, const FPointerEvent& /*mouseEvent*/) override
+    {
+        mLastMoveFrame = GFrameCounter;
+        return false;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Names the pre-processor for Slate's debug output
+    virtual const TCHAR* GetDebugName() const override
+    {
+        return TEXT("SOLSolidMenuMouseMoves");
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the GFrameCounter of the last real mouse move (MAX_uint64 before one)
+    uint64 GetLastMoveFrame() const
+    {
+        return mLastMoveFrame;
+    }
+
+private:
+
+    uint64 mLastMoveFrame = MAX_uint64;
+};
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the strength NaN-safe and clamped to the HUD effects range
@@ -100,11 +143,33 @@ FSOLSolidMenuFrame USOLSolidMenuSubsystem::BeginFrame(const UObject* worldContex
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Loads the assets once and creates the shared style materials
+// Plays a #42 menu cue through the context world's hologram menu subsystem (its rate gate decides)
+void USOLSolidMenuSubsystem::PlayCue(const UObject* worldContext, const ESOLHoloCue cue, const double nowS)
+{
+    if (worldContext == nullptr || GEngine == nullptr)
+    {
+        return;
+    }
+    const UWorld* world = GEngine->GetWorldFromContextObject(worldContext, EGetWorldErrorMode::ReturnNull);
+    if (USOLHoloMenuSubsystem* holo = world != nullptr ? world->GetSubsystem<USOLHoloMenuSubsystem>() : nullptr)
+    {
+        holo->PlayCue(cue, nowS);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Loads the assets once, creates the shared style materials and registers the mouse-move watch
 void USOLSolidMenuSubsystem::Initialize(FSubsystemCollectionBase& collection)
 {
     Super::Initialize(collection);
     LoadAssets();
+
+    // The real-mouse-move watch for the buttons' hover focus (none without Slate: hover then always takes the focus)
+    if (FSlateApplication::IsInitialized())
+    {
+        mMouseMoves = MakeShared<FSOLSolidMenuMouseMoves>();
+        FSlateApplication::Get().RegisterInputPreProcessor(mMouseMoves);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -116,10 +181,15 @@ void USOLSolidMenuSubsystem::OnWorldBeginPlay(UWorld& world)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Drops the unique material list and the settings (the UPROPERTY assets go with the subsystem; the panels' brushes
-// reference their materials and textures themselves)
+// Unregisters the mouse-move watch and drops the unique material list and the settings (the UPROPERTY assets go with
+// the subsystem; the panels' brushes reference their materials and textures themselves)
 void USOLSolidMenuSubsystem::Deinitialize()
 {
+    if (mMouseMoves.IsValid() && FSlateApplication::IsInitialized())
+    {
+        FSlateApplication::Get().UnregisterInputPreProcessor(mMouseMoves);
+    }
+    mMouseMoves.Reset();
     mUniqueMaterials.Reset();
     mSettings.Reset();
     Super::Deinitialize();
@@ -252,6 +322,13 @@ int32 USOLSolidMenuSubsystem::GetUniqueMaterialCount() const
         count += material.IsValid() ? 1 : 0;
     }
     return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a real mouse move arrived this frame (true without the pre-processor)
+bool USOLSolidMenuSubsystem::HasRealMouseMoveThisFrame() const
+{
+    return !mMouseMoves.IsValid() || mMouseMoves->GetLastMoveFrame() == GFrameCounter;
 }
 
 //////////////////////////////////////////////////////////////////////////

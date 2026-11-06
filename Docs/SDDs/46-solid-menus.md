@@ -41,9 +41,9 @@ schema change.
 | D12 | **Main menu layout (2026-11-04):** a left button stack on a hull panel, the title on top, version / credits in a small bottom-left recess. |
 | D13 | **Settings layout (2026-11-04):** a large hull panel with a vertical tab column on the left and the content on the right. |
 | D14 | **Controls / Info / About (2026-11-04)** reuse the same shell as Settings, with read-only content. |
-| D15 | **Scrolling rails (user, 2026-11-05):** if a tab rail (Settings / Controls / Info / About / pause) or the main-menu button stack has more entries than fit, it scrolls up and down. 46g must implement it for the shared `FSOLSolidTabRail` and the main-menu column, with tests and smoke checks, and check the pause Controls panel's 10 tabs fit or scroll. |
 | D15 | **Pause (2026-11-04):** a slide-in side panel on the **left** over a dimmed, frozen flight view (Q3: only the live view is dimmed, the simulation keeps running as today). |
 | D16 | **No schema change (2026-11-04):** no saved setting is added or changed; `SOL::Settings::SAVE_VERSION` stays **11** and `KEY_BINDING_LAYOUT_VERSION` stays **10** (both verified in `SOLConstants.h` at `8382434`). |
+| D17 | **Scrolling rails (user, 2026-11-05):** if a tab rail (Settings / Controls / Info / About / pause) or the main-menu button stack has more entries than fit, it scrolls up and down. 46g must implement it for the shared `FSOLSolidTabRail` and the main-menu column, with tests and smoke checks, and check the pause Controls panel's 10 tabs fit or scroll. |
 
 The layout boards the user picked from (`layout-1-main-menu.png` option A, `layout-2-settings.png` option A,
 `layout-3-info.png` option A, `layout-4-pause.png` option A, all samples now deleted) used placeholder entries ("NEW
@@ -629,6 +629,77 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
   top). Opening a page (the main menu entry, the pause menu opening) still resets to the first tab (Q8). `SelectTab`'s own
   contract is unchanged, so its tests stand. Checks: `p-controls` / `p-about` / `i-info` / `h-controls`
   `-tab-reclick` and `u-tab-*-reclick` in `-SOLSmokeSolidMenu` (92/92).
+
+### 6.6 46g amendment: the pause side panel and scrolling rails as built
+
+- **Side panel (D15, Q3, Q4).** `USOLPauseMenuWidget` is a left side panel (`USOLSolidPanel` hull `PAUSE_PANEL_WIDTH`
+  420 wide, full height minus `SCREEN_MARGIN`, "PAUSED" on the stepped top edge) over the live view, only dimmed
+  (`PAUSE_DIM_ALPHA` 0.55; the simulation keeps running, `PAUSED_BODY` and its smoke check unchanged). The 7 tabs are
+  stack buttons with hover traces and power-up LEDs; under them a switcher shows the paused text and key hint, or with
+  Quit selected the Quit prompt and its two choices (Q4). The page tabs (`SOLMenuState::IsPageTab`: Controls, Info,
+  Settings, Demo, About) open their page in the main menu's page shell right of the panel, with a Back button.
+- **Slide and close (section 4.6).** `PlayOpen` slides the panel in over `PAUSE_SLIDE_S` 0.25 s from the panel width
+  plus `SCREEN_MARGIN` (500 units) past the left edge; `BeginClose` makes the widget hit-test invisible at once (the
+  input is back on the first frame in flight) and slides it out over `CLOSE_S` 0.15 s with the shell, then the widget
+  leaves the viewport in its tick. A re-pause during the slide-out reverses it from where it is: the power-up, the LED
+  blink and the stack's scroll are reset (and the open cue played) only when the panel was Closed. At strength 0
+  everything is instant.
+- **Pause close flow (Q4).** Pure `SOLMenuState::EscapeClosesPage` (paused with a page tab selected) and
+  `SOLMenuState::ClosePage` (to the Resume tab, still paused); `USOLMenuSubsystem::ClosePausePage` applies it at once
+  for Esc, Ctrl+F1 and Back on a page and focuses Resume. Esc with no page resumes, as before; `Apply`'s Esc contract
+  is unchanged. The hint reads `PAUSED_HINT` "Esc: close page / resume", and the Controls page's Menu / Escape row says
+  the same.
+- **Cues (Q11).** The #42 cues through `USOLSolidMenuSubsystem::PlayCue`, no new asset: `USOLMenuButton` plays Hover
+  when it gains the keyboard focus (not when solid-disabled) and Select on a click; `SOLMenuContent::BeginPanelOpenWithCue`
+  plays Open only for an open from Closed. A hover takes the focus only on a real mouse move
+  (`HasRealMouseMoveThisFrame`, from a pass-through Slate input pre-processor), so a list scrolled under a still cursor
+  does not take the keyboard's focus.
+- **Scrolling rails (D17).** Pure maths in `SOLSolidScroll` (`Menu/SOLSolidScroll.h/.cpp`: `NeedsScroll`, `MaxOffset`,
+  `ClampOffset`, `OffsetToShow`, `StackItemTop`, `StackContentHeight`, `StackViewHeight`, `IsLineInView`) and the kit
+  piece `FSOLSolidScrollStack` (`Menu/SOLSolidScrollStack.h/.cpp`): a `UScrollBox` with the solid bar around a vertical
+  box of equal items, optionally in a size box capped at a number of items (the cap is stored and applied as items are
+  added, never a 0 height). While the items fit (within `SCROLL_FIT_TOLERANCE_PX` 0.5) the bar is collapsed, nothing
+  clips and the trace layer gets no view band; once they do not, the bar shows, the box clips, a newly focused item
+  scrolls whole into view and the trace layer (`SSOLSolidTraceLayer::SetScroll`, pushed only on a change, to a weakly
+  held layer) shifts the hover traces and LEDs with the scroll and clips them to the band. `FSOLSolidTabRail` uses it
+  (`Select` scrolls the selected tab into view); the main-menu column and the pause stack are capped at
+  `STACK_MAX_VISIBLE_ENTRIES` 7 (today's 7 entries fit). A scrolling rail's bar sits in the hover-trace gap, the trace
+  drawn over it.
+- **Fit at 1280x720.** No stack or rail scrolls: the pause Controls rail's 10 tabs take 560 units of a 562.5-unit view
+  (the TECH_DEBT estimate of 558 of 576 units is resolved). The scroll paths are smoke-checked on a column capped at 4
+  entries and on a Controls page put on the viewport 300 units tall.
+- **De-duplication.** The main and pause menus share `SOLMenuContent::MakeSized`, `MakeEdgeTraces` and
+  `BeginPanelOpenWithCue`. `SOLSolidScroll::VisibleRange` and `FSOLScrollWindow` (unused) were removed with their tests.
+- **Tests.** 27 new tests, written from the contract: `SOLTest.SolidScroll.*` (`Tests/SolidScrollTest.cpp`) and
+  `SOLTest.SolidPause.*` (`Tests/SolidPauseTest.cpp`); full suite 1506/1506.
+- **Smoke.** `-SOLSmokeSolidMenu` 169/169 (was 92): cue deltas (`a-open-cue`, `b-hover-cue`, `c-cue-click`,
+  `p-*-open-cue`, `r-reopen-no-cue`), the column and rail scroll steps, every rail laid out without a scroll, the pause
+  steps (`v-pause-stack` with `IsTabHoverTraceShown`, page close by Esc and Back, `v-resume` and `v-resume-input` (a
+  failure if its frame is skipped), the slide-out, the re-pause reversal, strength 0, Quit to menu with the pause menu
+  out of the viewport). Holo 86/86, overlay 34/34, hud 24/24, `-SOLMenuSmoke=all` 47 passed / 3 failed (the TECH_DEBT
+  stale checks; the review-fix run had 44 / 6, as the pre-46g logs of 2026-11-05, when the Play checks also see the
+  focused window's free cursor).
+- **Profile (three runs each at 1920x1080; `cpu_slate` / `gpu_ui` medians in ms; baseline 0.423-0.444 /
+  0.027-0.075).** An A/B in one session against `HEAD` (46f, the old flat pause), HEAD -> 46g: P0 main-settings
+  0.476 -> 0.582 / 0.105 -> 0.105, P1 0.495 -> 0.545 / 0.062 -> 0.061, P2 pause-settings 0.435 -> 0.558 /
+  0.047 -> 0.077, P3 0.421 -> 0.587 / 0.081 -> 0.140. The GPU stays well inside the 0.3 ms budget; the CPU extra over
+  the baseline is +0.10 to +0.16 ms in these medians (the review-fix run before: +0.12 / +0.10 / +0.05 / +0.11), so the
+  0.1 ms CPU budget is exceeded on most screens. The run-to-run noise is about 0.1 ms, but the A/B shows 46g itself
+  costs about +0.05-0.1 ms on the main menu and +0.12-0.17 ms on the pause menu. One cheap win was applied: a fitting
+  stack pushes no view band, so its trace layer pushes no clip zone (2 fewer UI draws per screen: 34 -> 32 and
+  33 -> 31). Open for the user (TECH_DEBT): no CPU margin is left; the next step is an Insights capture of the menu
+  tick and paint (scroll boxes, button refresh) in 46h.
+- **Review (opus, xhigh) and fixes.** All applied: the hover cue only on a focus gained and the hover focus only on a
+  real mouse move; cue smoke checks; `PlayOpen` resets only from Closed; the trace layer clips the hover traces and LEDs
+  to the scroll band; the stack's cap stored and applied lazily and its pushed layer a weak pointer; `Select` scrolls
+  into view; `VisibleRange` / `FSOLScrollWindow` deleted; `IsTabHoverTraceShown` in `v-pause-stack`;
+  `v-resume-input`'s skipped-frame failure and the Quit-to-menu viewport assert; the shared helpers in
+  `SOLMenuContent`; lines over 120 columns wrapped.
+- **The implementer's choices, for the user to confirm.** Resume no longer shows the selected mark (the opening tab is
+  focused, not marked); the slide distance is the panel width plus `SCREEN_MARGIN` (500 units); the hover cue plays
+  with the open cue when a menu focuses its default button on open; a scrolling rail's bar sits in the hover-trace gap
+  with the trace drawn over it; a re-pause during the slide-out plays no open cue (it reverses, it does not open from
+  Closed).
 
 ## 7. Animations and the effects strength (D5)
 

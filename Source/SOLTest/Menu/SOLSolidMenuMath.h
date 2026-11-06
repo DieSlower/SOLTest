@@ -53,6 +53,16 @@ struct FSOLSolidButtonLook
     bool bDisabled = false;         // Dimmed hull and label (the tint's alpha)
 };
 
+// The pause side panel's look at a frame (46g, SOLSolidMenu::EvaluatePausePanel)
+struct FSOLPausePanelLook
+{
+    float Progress = 0.0f;          // Open progress, [0, 1]
+    float SlideX = 0.0f;            // The side panel's x offset (never positive)
+    float DimAlpha = 0.0f;          // The live view's dim
+    bool bShown = false;            // On screen (anything but Closed)
+    bool bInteractive = false;      // Takes input (Opening or Open)
+};
+
 /**
  * Pure, renderer-free logic of the solid menus (SDD 46 section 8): the hull spec clamp and its SDF, the button look and
  * its brush-tint encoding, the panel and pause slides, the trace power-up, the idle pulse and trace polylines. `s` is
@@ -169,4 +179,11 @@ namespace SOLSolidMenu
     // Moves a finished Opening to Open and a finished Closing to Closed (PanelProgress at nowS); idempotent, leaves
     // every other state alone
     SOLTEST_API void AdvancePanel(FSOLHoloMenuAnim& anim, double nowS, float s);
+
+    // (46g, SDD 4.6) The pause side panel's look at a frame: Progress = PanelProgress; SlideX = PauseSlideX(Progress,
+    // panelWidth); DimAlpha = DimAlpha(Progress, s), but 0 when Closed, and 0 when Closing at s <= 0 (a close at
+    // strength 0 is instant); bShown unless Closed; bInteractive only while Opening or Open (a closing panel takes no
+    // input: the input is already back, section 4.6)
+    SOLTEST_API FSOLPausePanelLook EvaluatePausePanel(const FSOLHoloMenuAnim& anim, double nowS, float s,
+        float panelWidth);
 }

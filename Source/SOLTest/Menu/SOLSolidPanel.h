@@ -44,6 +44,10 @@ public:
     // padding on every side
     static USOLSolidPanel* MakeRecess(UWidgetTree& tree, UWidget* content, float padding);
 
+    // (46g) Returns the big hull panels' shape (main-menu column, page shell, pause side panel): the PANEL_CHAMFER_*
+    // corner chamfers and no other feature (each panel adds its own step, chin or notches)
+    static FSOLSolidHull MakePanelHull();
+
     // Sets the hull's style (Panel or Recess; others draw as given) and shape in UMG units; a step, chin or notch
     // makes the panel use its own material, written with the shape now (not per frame)
     void SetHull(ESOLSolidStyle style, const FSOLSolidHull& hull);

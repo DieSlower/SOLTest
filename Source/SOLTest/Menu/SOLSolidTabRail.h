@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Menu/SOLMenuButton.h"
+#include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidTraceLayer.h"
 
 #include "CoreMinimal.h"
@@ -13,6 +14,7 @@
 
 #include "SOLSolidTabRail.generated.h"
 
+class UScrollBox;
 class USizeBox;
 class USOLSolidPanel;
 struct FSOLSolidMenuFrame;
@@ -39,6 +41,9 @@ namespace SOLSolidTabRail
  * layer when its Slate widget exists (Bind, from NativeConstruct), shows the selected mark (Select), and ticks it
  * once per frame (Tick: the trace layer's effects strength when it changed, and each button's highlight). A plain
  * data holder for the page; it owns no Slate state of its own.
+ * (46g, D17) The tabs sit in a scrolling stack (FSOLSolidScrollStack) inside the recess padding: when more tabs than
+ * fit, the rail scrolls (the solid bar shows, the focused or newly selected tab scrolls whole into view, the hover
+ * traces move with the tabs); while they fit it lays out and draws exactly as before.
  */
 USTRUCT()
 struct SOLTEST_API FSOLSolidTabRail
@@ -52,11 +57,33 @@ struct SOLTEST_API FSOLSolidTabRail
     // Binds each button's hover trace to the rail's trace layer (the layer exists once the Slate widget is built)
     void Bind();
 
-    // Shows a tab as selected (the others not)
+    // Shows a tab as selected (the others not) and, on a scrolling rail, scrolls it whole into view
     void Select(int32 index);
 
-    // Pushes the effects strength to the trace layer when it changed and refreshes every button's highlight
+    // Pushes the effects strength to the trace layer when it changed, refreshes every button's highlight, then follows
+    // the focused tab with the scroll (the scroll pushed to the trace layer when it changed)
     void Tick(const FSOLSolidMenuFrame& frame, bool bHoverElsewhere);
+
+    // Scrolls the tabs to the top (each page's opening, with its first tab)
+    void ScrollToTop();
+
+    // Scrolls the tabs to the end (verification)
+    void ScrollToEnd();
+
+    // Returns the tabs' scroll box (verification)
+    UScrollBox* GetScrollBox() const { return Stack.Scroll; }
+
+    // Returns the tabs' scroll offset (0 = top; verification)
+    float GetScrollOffset() const { return Stack.GetScrollOffset(); }
+
+    // Returns the tabs' view height from the last layout (verification)
+    float GetViewHeight() const { return Stack.GetViewHeight(); }
+
+    // Returns the tabs' content height (verification)
+    float GetContentHeight() const { return Stack.GetContentHeight(); }
+
+    // Returns whether the tabs need scrolling at the last layout (verification)
+    bool NeedsScroll() const { return Stack.NeedsScroll(); }
 
     // Clears the hover trace left from the last visit, unless a tab still has the keyboard focus
     void ClearStaleHover();
@@ -75,6 +102,9 @@ struct SOLTEST_API FSOLSolidTabRail
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<USOLMenuButton>> Buttons;
+
+    UPROPERTY(Transient)
+    FSOLSolidScrollStack Stack;             // The tabs' scrolling stack (46g)
 
     TArray<FSOLSolidTrace> Traces;          // Each tab's hover trace (rail local)
     float Strength = -1.0f;                 // Effects strength last pushed to the trace layer

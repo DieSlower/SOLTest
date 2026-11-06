@@ -70,7 +70,9 @@ private:
  * Menu button (SDD 8, 8c; restyled by SDD 46 section 4.2): a UButton with a solid hull variant (stack, tab or small),
  * a text label and an index, whose clicks go to one native delegate so a menu can route a whole list of buttons
  * through one handler. Hovering it with the mouse gives it keyboard focus (except while a Settings page listens for a
- * rebind key, or while it is solid-disabled), so the mouse and the keyboard share one highlight. The owning menu reads
+ * rebind key, or while it is solid-disabled, and only on a real mouse move: a list scrolled under a still cursor does
+ * not take the focus, USOLSolidMenuSubsystem::HasRealMouseMoveThisFrame), so the mouse and the keyboard share one
+ * highlight. The owning menu reads
  * the frame once per tick (USOLSolidMenuSubsystem::BeginFrame) and calls RefreshHighlightAt on each of its buttons: it
  * resolves the state (disabled, pressed, focused) and the orthogonal selected flag, advances the FSOLSolidButtonAnim
  * and, only when the look differs on screen from the one last written, sets the background colour to the look's brush
@@ -78,7 +80,9 @@ private:
  * colour (SOLSolidStyle::LabelColor), and feeds its hover trace (Stack and Tab, Q15). A settled button costs a state
  * compare per tick. Disabled art (SetSolidDisabled) never uses SetIsEnabled(false): Slate's disabled effect would
  * multiply the hull and the label alpha by 0.45 on top of the tint's DISABLED_ALPHA; the button instead becomes
- * hit-test invisible and not focusable, refuses hover focus and swallows clicks.
+ * hit-test invisible and not focusable, refuses hover focus and swallows clicks. (46g, Q11) The #42 cues: the hover cue
+ * when the button gains the keyboard focus (RefreshHighlightAt; not on a press's release), the select cue on a click
+ * (USOLSolidMenuSubsystem::PlayCue).
  */
 UCLASS()
 class SOLTEST_API USOLMenuButton : public UButton
@@ -128,12 +132,17 @@ public:
     // Advances the look for keyboard focus, press, selection and disabled at nowS (real application seconds) and the
     // effects strength s (the owner's USOLSolidMenuSubsystem::BeginFrame), and writes it only when it differs on screen
     // from the look last written (a state compare when settled); bHoverElsewhere: the owner's mouse is over another
-    // control that keeps no focus (a slider, toggle or list row), so the focus shows no hover (ResolveState)
+    // control that keeps no focus (a slider, toggle or list row), so the focus shows no hover (ResolveState). Plays
+    // the hover cue when the keyboard focus has arrived since the last call (not while solid-disabled)
     void RefreshHighlightAt(double nowS, float s, bool bHoverElsewhere = false);
 
-    // RefreshHighlightAt with the state given instead of resolved from the button's focus and press (verification:
-    // drives hover and press headless, where no Slate widget has focus or a press)
+    // RefreshHighlightAt with the state given instead of resolved from the button's focus and press, and no cue
+    // (verification: drives hover and press headless, where no Slate widget has focus or a press)
     void RefreshHighlightFor(ESOLSolidButtonState state, double nowS, float s);
+
+    // Returns whether the button had the keyboard focus at its last RefreshHighlightAt (a scrolling stack follows it
+    // without querying the focus again)
+    bool WasFocusedAtRefresh() const { return mIsFocusedAtRefresh; }
 
     // Returns the look of the last refresh (verification: the smoke compares it with SOLSolidMenu::EvaluateButton)
     const FSOLSolidButtonLook& GetAppliedLook() const { return mAppliedLook; }
@@ -161,11 +170,11 @@ public:
 
 private:
 
-    // UButton click: forwards the index to OnMenuClicked (not while solid-disabled)
+    // UButton click: plays the select cue and forwards the index to OnMenuClicked (neither while solid-disabled)
     UFUNCTION()
     void HandleClicked();
 
-    // UButton hover: takes keyboard focus so the highlight follows the mouse
+    // UButton hover: takes keyboard focus so the highlight follows the mouse, only on a real mouse move
     UFUNCTION()
     void HandleHovered();
 
@@ -192,6 +201,7 @@ private:
     float mAppliedStrength = -1.0f;                    // Strength of the last refresh
     int32 mWriteCount = 0;                             // Slate writes since Setup (verification)
     bool mIsAppliedSettled = false;                    // The last refresh's look was the settled one
+    bool mIsFocusedAtRefresh = false;                  // Keyboard focus at the last RefreshHighlightAt (hover cue)
     bool mIsMaterialDrawn = false;
     bool mIsFocusableWhenEnabled = true;               // Focusability restored when the disabled art is removed
     int32 mIndex = INDEX_NONE;          // Index handed to OnMenuClicked

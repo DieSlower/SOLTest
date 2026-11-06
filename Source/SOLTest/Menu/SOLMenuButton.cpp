@@ -8,9 +8,11 @@
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "SOLConstants.h"
+#include "UI/SOLHoloMenuSubsystem.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/TextBlock.h"
+#include "HAL/PlatformTime.h"
 #include "Styling/SlateTypes.h"
 #include "Widgets/Input/SButton.h"
 
@@ -198,6 +200,7 @@ void USOLMenuButton::Setup(UWidgetTree& tree, const FString& label, const int32 
     OnHovered.AddUniqueDynamic(this, &USOLMenuButton::HandleHovered);
     mAnim = FSOLSolidButtonAnim();
     mHasApplied = false;
+    mIsFocusedAtRefresh = false;
     mWriteCount = 0;
     ApplyLook(FSOLSolidButtonLook());
 }
@@ -274,12 +277,21 @@ void USOLMenuButton::SetLabel(const FString& label)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Advances the look for the resolved state (disabled, pressed, focused unless the mouse hovers another control) at a
-// time and strength
+// Plays the hover cue when the button gains the keyboard focus, then advances the look for the resolved state
+// (disabled, pressed, focused unless the mouse hovers another control) at a time and strength
 void USOLMenuButton::RefreshHighlightAt(const double nowS, const float s, const bool bHoverElsewhere)
 {
-    RefreshHighlightFor(FSOLSolidButtonAnim::ResolveState(mIsSolidDisabled, IsPressed(), HasKeyboardFocus(),
-        bHoverElsewhere), nowS, s);
+    // The hover cue (SDD 46 Q11) when the focus arrives (a hover takes it, as the keyboard does): an event, never per
+    // frame, and never on a press's release or on the mouse leaving a focusless control (the focus stays put then);
+    // the cue gate rate-limits a sweep across a list
+    const bool bFocused = HasKeyboardFocus();
+    if (bFocused && !mIsFocusedAtRefresh && !mIsSolidDisabled)
+    {
+        USOLSolidMenuSubsystem::PlayCue(this, ESOLHoloCue::Hover, nowS);
+    }
+    mIsFocusedAtRefresh = bFocused;
+    RefreshHighlightFor(FSOLSolidButtonAnim::ResolveState(mIsSolidDisabled, IsPressed(), bFocused, bHoverElsewhere),
+        nowS, s);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -380,11 +392,12 @@ void USOLMenuButton::UpdateHoverTrace(const FSOLSolidButtonLook& look)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// UButton click: forwards the index to OnMenuClicked (not while solid-disabled)
+// UButton click: plays the select cue and forwards the index to OnMenuClicked (neither while solid-disabled)
 void USOLMenuButton::HandleClicked()
 {
     if (!mIsSolidDisabled)
     {
+        USOLSolidMenuSubsystem::PlayCue(this, ESOLHoloCue::Select, FPlatformTime::Seconds());
         OnMenuClicked.ExecuteIfBound(mIndex);
     }
 }
@@ -404,8 +417,15 @@ void USOLMenuButton::NotifyHovered()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// UButton hover: takes keyboard focus so the highlight follows the mouse (NotifyHovered)
+// UButton hover: takes keyboard focus so the highlight follows the mouse (NotifyHovered), only on a real mouse move
 void USOLMenuButton::HandleHovered()
 {
+    // Slate synthesizes a cursor move when the widgets move under a still cursor (a list scrolled by the keyboard):
+    // that enter is not the player's hover and must not take the focus from the keyboard
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(this);
+    if (solid != nullptr && !solid->HasRealMouseMoveThisFrame())
+    {
+        return;
+    }
     NotifyHovered();
 }

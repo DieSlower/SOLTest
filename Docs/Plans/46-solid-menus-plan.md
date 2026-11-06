@@ -237,14 +237,17 @@ Answers: Q6 (today's entries, sections as tabs), Q7 (Demo: no tab column). Depen
 
 Answers: Q3 (dim only), Q4, Q11 (reuse #42 cues). Depends on 46c, 46e, 46f.
 
-1. [ ] `USOLPauseMenuWidget`: the left side panel (PAUSED in the title step, the vertical stack, the hint), the slide-in
+1. [x] `USOLPauseMenuWidget`: the left side panel (PAUSED in the title step, the vertical stack, the hint), the slide-in
    and slide-out (input back at once, SDD 4.6), the dim of the live view (Q3: no behaviour change), the pages in the shell right of the side panel and Quit's choices inside the side panel (Q4).
-2. [ ] Q3 means the simulation keeps running: `PAUSED_BODY` and the "sim keeps running while paused" smoke check stay
+2. [x] Q3 means the simulation keeps running: `PAUSED_BODY` and the "sim keeps running while paused" smoke check stay
    as they are (verify they still pass).
-3. [ ] Cue wiring on all solid screens with the #42 cues through `PlayCue` (Q11); no new assets.
-4. [ ] Smoke steps 5 and 7; screenshots.
-5. [ ] Scrolling rails (user, 2026-11-05): if a tab rail (Settings/Controls/Info/About/pause) or the main-menu button stack has more entries than fit, it scrolls up and down. Implement for the shared `FSOLSolidTabRail` and the main-menu column, with tests and smoke checks, and check the pause Controls panel's 10 tabs fit/scroll.
-6. [ ] Review; fixes; suite. Commit `Issue #46: Part 46g - solid pause side panel`.
+3. [x] Cue wiring on all solid screens with the #42 cues through `PlayCue` (Q11); no new assets.
+4. [x] Smoke steps 5 and 7; screenshots.
+5. [x] Scrolling rails (user, 2026-11-05; SDD D17): if a tab rail (Settings/Controls/Info/About/pause) or the main-menu button stack has more entries than fit, it scrolls up and down. Implement for the shared `FSOLSolidTabRail` and the main-menu column, with tests and smoke checks, and check the pause Controls panel's 10 tabs fit/scroll.
+6. [x] Review; fixes; suite. Commit `Issue #46: Part 46g - solid pause side panel`.
+7. **Done (SDD 6.6):** suite 1506/1506 (27 new tests), `-SOLSmokeSolidMenu` 169/169, holo 86/86, overlay
+   34/34, hud 24/24, `-SOLMenuSmoke=all` 47 / 3 (TECH_DEBT stale checks). Review fixes all applied. The
+   profile is over the 0.1 ms CPU budget on most screens (A/B in SDD 6.6, TECH_DEBT); the GPU is in budget.
 
 ### 46h: smoke completion and profile (opus, high)
 
@@ -297,3 +300,6 @@ Depends on 46d-46g.
 - 2026-11-05: 46f follow-up: a re-click on the selected tab is a no-op in the pause menu, Controls, Info, About and Settings
   (SDD 6.5, `IsTabChange`); suite 1479/1479, solid smoke 92/92, holo 86/86, overlay 34/34. Next: 46g.
 - 2026-11-05: 46f done (8456579, 8150cc4); next 46g; main session paused for /compact.
+- 2026-11-06: 46g done (SDD 6.6): the pause side panel, the close flow, the #42 cues and the scrolling rails
+  (D17, the duplicate D15 label fixed); review fixes applied; the CPU profile has no margin left (user
+  decision). Next: 46h.

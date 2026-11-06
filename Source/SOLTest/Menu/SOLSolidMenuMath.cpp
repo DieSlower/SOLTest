@@ -491,3 +491,19 @@ void SOLSolidMenu::AdvancePanel(FSOLHoloMenuAnim& anim, const double nowS, const
         anim.PhaseStartProgress = 0.0f;
     }
 }
+
+//////////////////////////////////////////////////////////////////////////
+// The pause side panel's look at a frame: the composed open progress, slide and dim; input only while it opens or is
+// open (SDD 4.6)
+FSOLPausePanelLook SOLSolidMenu::EvaluatePausePanel(const FSOLHoloMenuAnim& anim, const double nowS, const float s,
+    const float panelWidth)
+{
+    FSOLPausePanelLook look;
+    look.Progress = PanelProgress(anim, nowS, s);
+    look.SlideX = PauseSlideX(look.Progress, panelWidth);
+    look.bShown = anim.Phase != ESOLHoloMenuPhase::Closed;
+    look.bInteractive = anim.Phase == ESOLHoloMenuPhase::Opening || anim.Phase == ESOLHoloMenuPhase::Open;
+    const bool bInstantClose = anim.Phase == ESOLHoloMenuPhase::Closing && !(s > 0.0f);
+    look.DimAlpha = look.bShown && !bInstantClose ? DimAlpha(look.Progress, s) : 0.0f;
+    return look;
+}

@@ -13,6 +13,8 @@
 
 #include "SOLSolidMenuSubsystem.generated.h"
 
+enum class ESOLHoloCue : uint8;
+class FSOLSolidMenuMouseMoves;
 class UFont;
 class UMaterialInstanceDynamic;
 class UMaterialInterface;
@@ -82,7 +84,9 @@ struct FSOLSolidMenuFrame
  * with a unique shape (main menu hull, page shell, pause side panel) get their own instance from CreateUniqueMaterial,
  * owned by the panel and kept current by the same pushes. Nothing ticks: each solid screen calls BeginFrame (which
  * runs UpdateForFrame) once from its tick; the first call in a frame does the work. A bare, never-initialized
- * subsystem (tests) has no assets and never crashes.
+ * subsystem (tests) has no assets and never crashes. (46g) It also registers a Slate input pre-processor that notes the
+ * frame of the last real mouse move (Slate's synthesized cursor moves never reach one), so a menu button takes the
+ * focus on a hover only when the mouse really moved (HasRealMouseMoveThisFrame).
  */
 UCLASS()
 class SOLTEST_API USOLSolidMenuSubsystem : public UWorldSubsystem
@@ -98,13 +102,18 @@ public:
     // real application time and the live strength (HUD_EFFECTS_DEFAULT without a subsystem); one call per screen tick
     static FSOLSolidMenuFrame BeginFrame(const UObject* worldContext);
 
-    // Loads the assets once and creates the shared style materials
+    // (46g, SDD 46 Q11) Plays one of the #42 menu cues through the context world's USOLHoloMenuSubsystem (its rate gate
+    // and SFX class; looked up on the event, nothing cached); nowS on BeginFrame's clock. Call on an event (a hover
+    // starting, a click, a panel opening), never per frame
+    static void PlayCue(const UObject* worldContext, ESOLHoloCue cue, double nowS);
+
+    // Loads the assets once, creates the shared style materials and registers the mouse-move watch
     virtual void Initialize(FSubsystemCollectionBase& collection) override;
 
     // Finds the settings subsystem (the strength source)
     virtual void OnWorldBeginPlay(UWorld& world) override;
 
-    // Drops the unique material list and the settings subsystem
+    // Unregisters the mouse-move watch and drops the unique material list and the settings subsystem
     virtual void Deinitialize() override;
 
     // Reads the live strength and the viewport DPI scale once per frame (later calls in the same frame do nothing) and
@@ -150,6 +159,10 @@ public:
     // Returns how many unique materials are alive and kept current
     int32 GetUniqueMaterialCount() const;
 
+    // Returns whether a real (not Slate-synthesized) mouse move arrived this frame; true without the pre-processor
+    // (no Slate application), so a hover then takes the focus as before
+    bool HasRealMouseMoveThisFrame() const;
+
 protected:
 
     // Game and PIE worlds only
@@ -179,6 +192,7 @@ private:
     TArray<TObjectPtr<UTexture2D>> Textures;                        // One per ESOLSolidTexture (null when missing)
 
     TArray<TWeakObjectPtr<UMaterialInstanceDynamic>> mUniqueMaterials;  // Owned by their panels; compacted on push
+    TSharedPtr<FSOLSolidMenuMouseMoves> mMouseMoves;                    // Slate pre-processor (registered while alive)
     TWeakObjectPtr<USOLSettingsSubsystem> mSettings;                    // Where HudEffectsStrength is read from
     FSOLSolidMenuParamCache mParamCache;
     uint64 mLastUpdateFrame = MAX_uint64;                               // GFrameCounter of the last UpdateForFrame

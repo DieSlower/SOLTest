@@ -60,6 +60,18 @@ namespace SOLMenuState
     // on the selected pause-menu tab is a no-op, it must not reset the page's tab or scroll)
     SOLTEST_API bool IsTabChange(const FMenuState& state, EMenuTab tab);
 
+    // (SDD 46 Q4, part 46g) Returns whether a pause-menu tab opens a page in the shell beside the side panel: Controls,
+    // Info, Settings, Demo and About; Resume and Quit (its choices show inside the side panel) and any out-of-range
+    // value do not
+    SOLTEST_API bool IsPageTab(EMenuTab tab);
+
+    // (Q4) Returns whether Esc (or Back) closes the open page instead of resuming: paused with a page tab selected
+    SOLTEST_API bool EscapeClosesPage(const FMenuState& state);
+
+    // (Q4) Returns the state with the pause menu's page closed: paused with a page tab selected goes to the Resume tab
+    // and stays paused; every other state is returned unchanged
+    SOLTEST_API FMenuState ClosePage(const FMenuState& state);
+
     // Returns whether ship flight input must be suspended
     SOLTEST_API bool SuspendsFlightInput(const FMenuState& state);
 

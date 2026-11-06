@@ -110,6 +110,11 @@ public:
     // Selects a pause-menu tab (Resume resumes; the others show their page)
     void SelectTab(SOLMenuState::EMenuTab tab);
 
+    // (SDD 46 Q4) Closes the pause menu's open page at once, as SelectTab is immediate (Esc or Back on a page): the
+    // state goes to the Resume tab, still paused (SOLMenuState::ClosePage), the pause menu shows it and Resume takes
+    // the focus; does nothing when no page is open (SOLMenuState::EscapeClosesPage)
+    void ClosePausePage();
+
     // Records that the jump map opened or closed (its own Esc closes it, so Esc does not pause meanwhile)
     void NotifyMapOpen(bool bOpen);
 

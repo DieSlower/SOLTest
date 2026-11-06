@@ -5,26 +5,79 @@
 
 #pragma once
 
+#include "Menu/SOLSolidTraceLayer.h"
+
 #include "CoreMinimal.h"
 #include "UObject/ObjectPtr.h"
 
 enum class ESOLReadOnlyPage : uint8;
+struct FSOLHoloMenuAnim;
+struct FSOLSolidScrollStack;
+class UObject;
+class USizeBox;
+class USOLMenuButton;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
+class USOLSolidPanel;
 class UTextBlock;
 class UVerticalBox;
 class UWorld;
 class UWidget;
+class UWidgetSwitcher;
 class UWidgetTree;
 
-// Builders for the menu pages the main and pause menus share (SDD 8, 8c/8d): Controls, Info, About and Settings. Each
-// builds its widgets once into the calling widget's tree; nothing here runs per frame (the Controls and Info pages'
-// key texts are refreshed when the page is shown).
+// Builders for the menu pages and the solid pieces the main and pause menus share (SDD 8, 8c/8d; SDD 46): Controls,
+// Info, About and Settings, the page shell, the hull panels' lower-edge traces, the stacks' hover traces, LEDs and
+// power-up lights and the panels' open with its cue. Each builder builds its widgets once into the calling widget's
+// tree; nothing here runs per frame except TickStackLights, which allocates nothing (the Controls and Info pages' key
+// texts are refreshed when the page is shown).
 namespace SOLMenuContent
 {
+    // The lower-edge circuit traces MakeEdgeTraces returns (SDD 46 section 6.2)
+    inline constexpr int32 EDGE_TRACE_COUNT = 3;
+
     // Creates a text block with the menu font, a size and a colour (wrapping when bWrap is set)
     SOLTEST_API UTextBlock* MakeText(UWidgetTree& tree, const FString& text, int32 fontSize, const FLinearColor& color,
         bool bBold = false, bool bWrap = false);
+
+    // (46g) Wraps a widget in a fixed-size box (0 leaves that axis free)
+    SOLTEST_API USizeBox* MakeSized(UWidgetTree& tree, UWidget* content, float width, float height);
+
+    // (46g) Builds the page shell (SDD 46 sections 6.1 and 6.2): a Panel hull with its own material (the panel
+    // chamfers, a notch in each side at half PAGE_HEIGHT), rivets and vents; inside, the content recess holding the
+    // page switcher (it fills the shell) and, under it, the Back button (Small, PAGE_BACK, index 0) in a bottom-right
+    // recess. The caller sizes and slots the shell and binds Back's click
+    SOLTEST_API USOLSolidPanel* BuildPageShell(UWidgetTree& tree, UWidgetSwitcher* pageSwitcher,
+        USOLMenuButton*& outBackButton);
+
+    // (46g) Returns a hull panel's lower-edge circuit traces between left and right (panel local): two rows,
+    // COLUMN_TRACE_GAP apart from rowA down, with 45-degree bends, each lit from its ring terminal (the main-menu
+    // column's three traces, SDD 46 section 6.2)
+    SOLTEST_API void MakeEdgeTraces(float left, float right, float rowA, FSOLSolidTrace (&outTraces)[EDGE_TRACE_COUNT]);
+
+    // (46g) Runs a stack's power-up LED blink on its panel's trace layer while bPowerUpRunning (stack order; an entry
+    // whose own LED already shows, hovered, pressed, selected or disabled, is skipped; SOLSolidMenu::PowerUpLedLit) and
+    // the idle pulse dot; returns whether the blink still runs (false once it ended, so the caller stops asking)
+    SOLTEST_API bool TickStackLights(SSOLSolidTraceLayer& layer, const TArray<TObjectPtr<USOLMenuButton>>& buttons,
+        double sinceOpenS, double nowS, float s, bool bPowerUpRunning);
+
+    // (46g) Returns each entry's hover trace (from traceLeft, the entry's right end, to traceRight, the hull's right
+    // edge) and LED centre (ledX) of a stack built in a hull panel (FSOLSolidScrollStack::Build; its ViewTop in the
+    // panel's local units), on each entry's unscrolled centre line (SOLSolidScroll::StackItemTop); one per slot
+    SOLTEST_API void MakeStackLights(const FSOLSolidScrollStack& stack, float ledX, float traceLeft, float traceRight,
+        TArrayView<FSOLSolidTrace> outTraces, TArrayView<FVector2f> outLeds);
+
+    // (46g) Binds a stack's buttons to their panel's (new) trace layer: each button's hover trace, the LED centres,
+    // and the stack's pushed scroll forgotten so the next tick pushes it to the layer (from the owner's
+    // NativeConstruct, when the panel's Slate widget, and so its layer, was rebuilt)
+    SOLTEST_API void BindStackLights(const TSharedPtr<SSOLSolidTraceLayer>& layer,
+        const TArray<TObjectPtr<USOLMenuButton>>& buttons, TConstArrayView<FSOLSolidTrace> traces,
+        TConstArrayView<FVector2f> leds, FSOLSolidScrollStack& stack);
+
+    // (46g) Starts a panel's open (SOLSolidMenu::BeginPanelOpen) and plays the open cue (Q11) only when it opens from
+    // Closed: a reopen during a close reverses it from where it is, silently (SDD 46 section 4.6). Returns whether it
+    // opened from Closed (the caller restarts what a fresh open restarts)
+    SOLTEST_API bool BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, double nowS, float s);
 
     // Creates a vertical page with a heading, ready for rows
     SOLTEST_API UVerticalBox* MakePage(UWidgetTree& tree, const TCHAR* title);

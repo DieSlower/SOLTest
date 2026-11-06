@@ -7,6 +7,7 @@
 
 #include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidScroll.h"
 #include "Menu/SOLSolidStyle.h"
 
 #include "Rendering/DrawElements.h"
@@ -194,6 +195,36 @@ void SSOLSolidTraceLayer::ClearHoverTrace()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns whether a stack line shows at the stack's scroll (always without a view band)
+bool SSOLSolidTraceLayer::IsStackLineShown(const float y) const
+{
+    return mViewHeight <= 0.0f || SOLSolidScroll::IsLineInView(y, mScrollOffset, mViewTop, mViewHeight);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the paint draws the hover trace (set, and its line in the view band)
+bool SSOLSolidTraceLayer::IsHoverTraceDrawn() const
+{
+    return mHoverAmount > 0.0f && IsStackLineShown(mHoverTrace.Points[0].Y);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the hover trace's and LEDs' stack scroll and view band (non-finite reads 0), repainting only on a change
+void SSOLSolidTraceLayer::SetScroll(const float offsetY, const float viewTop, const float viewHeight)
+{
+    const float offset = FMath::IsFinite(offsetY) ? offsetY : 0.0f;
+    const float top = FMath::IsFinite(viewTop) ? viewTop : 0.0f;
+    const float height = FMath::IsFinite(viewHeight) ? FMath::Max(viewHeight, 0.0f) : 0.0f;
+    if (offset != mScrollOffset || top != mViewTop || height != mViewHeight)
+    {
+        mScrollOffset = offset;
+        mViewTop = top;
+        mViewHeight = height;
+        Invalidate(EInvalidateWidgetReason::Paint);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns whether the shown hover trace is this one (a button leaving hover clears only its own)
 bool SSOLSolidTraceLayer::IsShowingHoverTrace(const FSOLSolidTrace& trace) const
 {
@@ -290,11 +321,6 @@ int32 SSOLSolidTraceLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
     {
         drawTrace(mTraces[index], mPower, cyan, coreAlpha, glowAlpha);
     }
-    const FLinearColor amber = SOLSolidStyle::Linear(AMBER_COLOR);
-    if (mHoverAmount > 0.0f)
-    {
-        drawTrace(mHoverTrace, mHoverAmount, amber, 1.0f, GlowPassAlpha(mStrength, 1.0f));
-    }
 
     // The idle pulse dot rides the longest trace once it is fully lit: the end point of its first fraction
     if (mDotAlpha > 0.0f && mPower >= 1.0f && mLongestTrace != INDEX_NONE
@@ -307,13 +333,39 @@ int32 SSOLSolidTraceLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
         drawDot(count >= 2 ? lit[count - 1] : trace.Points[0], cyan, mDotAlpha * coreAlpha);
     }
 
-    // The power-up blink: each lit stack LED as an amber dot
+    // The stack's hover trace and LEDs are clipped to its view band while one is set, as its items are (a half
+    // scrolled-out item's trace and LED end at the view's edge); the static traces above are not
+    const bool bClipToBand = mViewHeight > 0.0f;
+    if (bClipToBand)
+    {
+        const FGeometry band = allottedGeometry.MakeChild(FVector2f(allottedGeometry.GetLocalSize().X, mViewHeight),
+            FSlateLayoutTransform(FVector2f(0.0f, mViewTop)));
+        outDrawElements.PushClip(FSlateClippingZone(band));
+    }
+
+    // The hover trace, shifted with its stack's scroll (a copy on the stack, no heap)
+    const FLinearColor amber = SOLSolidStyle::Linear(AMBER_COLOR);
+    if (IsHoverTraceDrawn())
+    {
+        FSOLSolidTrace shifted = mHoverTrace;
+        for (int32 point = 0; point < shifted.Count && point < FSOLSolidTrace::MAX_POINTS; ++point)
+        {
+            shifted.Points[point].Y -= mScrollOffset;
+        }
+        drawTrace(shifted, mHoverAmount, amber, 1.0f, GlowPassAlpha(mStrength, 1.0f));
+    }
+
+    // The power-up blink: each lit stack LED in view as an amber dot, shifted with the stack's scroll
     for (int32 index = 0; index < mLedCount; ++index)
     {
-        if ((mLitLeds & (1u << index)) != 0)
+        if ((mLitLeds & (1u << index)) != 0 && IsStackLineShown(mLeds[index].Y))
         {
-            drawDot(mLeds[index], amber, 1.0f);
+            drawDot(mLeds[index] - FVector2f(0.0f, mScrollOffset), amber, 1.0f);
         }
+    }
+    if (bClipToBand)
+    {
+        outDrawElements.PopClip();
     }
     return layerId + 1;
 }

@@ -70,6 +70,19 @@ USOLSolidPanel* USOLSolidPanel::MakeRecess(UWidgetTree& tree, UWidget* content, 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the big hull panels' corner chamfers (SDD 46 section 5.2) with no other feature
+FSOLSolidHull USOLSolidPanel::MakePanelHull()
+{
+    using namespace SOL::SolidMenu;
+    FSOLSolidHull hull;
+    hull.ChamferTL = PANEL_CHAMFER_TL;
+    hull.ChamferTR = PANEL_CHAMFER_TR;
+    hull.ChamferBR = PANEL_CHAMFER_BR;
+    hull.ChamferBL = PANEL_CHAMFER_BL;
+    return hull;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Sets the hull's style and shape, writing a unique shape into the panel's own material once
 void USOLSolidPanel::SetHull(const ESOLSolidStyle style, const FSOLSolidHull& hull)
 {

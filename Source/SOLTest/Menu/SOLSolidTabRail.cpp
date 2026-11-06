@@ -11,7 +11,6 @@
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/SizeBox.h"
-#include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
 
 //////////////////////////////////////////////////////////////////////////
@@ -44,7 +43,8 @@ USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labe
 {
     using namespace SOL::MenuStyle;
     using namespace SOL::SolidMenu;
-    UVerticalBox* tabs = tree.ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+    // The tabs scroll inside the recess padding (the view's top is the padding in the trace layer's units)
+    UWidget* tabs = Stack.Build(tree, TAB_HEIGHT, BUTTON_GAP, SETTINGS_TAB_RAIL_PADDING);
     Panel = USOLSolidPanel::MakeRecess(tree, tabs, SETTINGS_TAB_RAIL_PADDING);
     const float tabWidth = TAB_COLUMN_WIDTH - 2.0f * SETTINGS_TAB_RAIL_PADDING - SETTINGS_TAB_TRACE_PX;
     Buttons.Reset(labels.Num());
@@ -61,9 +61,7 @@ USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labe
         box->SetWidthOverride(tabWidth);
         box->SetHeightOverride(TAB_HEIGHT);
         box->SetContent(button);
-        UVerticalBoxSlot* tabSlot = tabs->AddChildToVerticalBox(box);
-        tabSlot->SetHorizontalAlignment(HAlign_Left);
-        tabSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
+        Stack.AddItem(box)->SetHorizontalAlignment(HAlign_Left);
         Traces.Add(SOLSolidTabRail::TraceForTab(index));
     }
     USizeBox* column = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
@@ -83,20 +81,23 @@ void FSOLSolidTabRail::Bind()
         Buttons[index]->SetHoverTrace(layer, Traces[index]);
     }
     Strength = -1.0f;
+    Stack.ResetPushed();
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Shows a tab as selected
+// Shows a tab as selected and scrolls it whole into view (a scrolling rail; ScrollToBinding selects Key bindings)
 void FSOLSolidTabRail::Select(const int32 index)
 {
     for (int32 button = 0; button < Buttons.Num(); ++button)
     {
         Buttons[button]->SetSelected(button == index);
     }
+    Stack.ShowItem(index);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Pushes the effects strength when it changed and refreshes every button's highlight
+// Pushes the effects strength when it changed, refreshes every button's highlight, then runs the stack (it reads the
+// focus the refresh found)
 void FSOLSolidTabRail::Tick(const FSOLSolidMenuFrame& frame, const bool bHoverElsewhere)
 {
     if (frame.Strength != Strength && Panel != nullptr && Panel->GetTraceLayer().IsValid())
@@ -108,6 +109,21 @@ void FSOLSolidTabRail::Tick(const FSOLSolidMenuFrame& frame, const bool bHoverEl
     {
         button->RefreshHighlightAt(frame.NowS, frame.Strength, bHoverElsewhere);
     }
+    Stack.Tick(Panel != nullptr ? Panel->GetTraceLayer() : nullptr, Buttons);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Scrolls the tabs to the top
+void FSOLSolidTabRail::ScrollToTop()
+{
+    Stack.ScrollToTop();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Scrolls the tabs to the end
+void FSOLSolidTabRail::ScrollToEnd()
+{
+    Stack.ScrollToEnd();
 }
 
 //////////////////////////////////////////////////////////////////////////

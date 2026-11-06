@@ -1331,6 +1331,10 @@ namespace SOL
         inline constexpr float TOGGLE_WIDTH = 52.0f;
         inline constexpr float TOGGLE_HEIGHT = 26.0f;
         inline constexpr float SCROLL_BAR_THICKNESS = 8.0f;
+        inline constexpr float SCROLL_FIT_TOLERANCE_PX = 0.5f;    // Scrolling rails (D17, 46g): content this much
+                                                                  // taller than its view still fits (layout rounding)
+        inline constexpr int32 STACK_MAX_VISIBLE_ENTRIES = 7;     // Main-menu and pause stacks: the view holds this
+                                                                  // many entries, more scroll (today's 7 fit exactly)
         inline constexpr float RIVET_SIZE_PX = 10.0f;             // USOLSolidPanel decor (46c starting values): rivets
         inline constexpr float RIVET_INSET_PX = 16.0f;            // ... this far in from both edges of each corner
         inline constexpr float VENT_WIDTH_PX = 96.0f;             // ... the top-right vent strip

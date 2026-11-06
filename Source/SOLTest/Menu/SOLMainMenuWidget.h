@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidTraceLayer.h"
 #include "UI/SOLHoloMenuMath.h"
 
@@ -14,6 +15,7 @@
 #include "SOLMainMenuWidget.generated.h"
 
 class UHorizontalBox;
+class UScrollBox;
 class USOLMenuButton;
 class USOLDemoPageWidget;
 class USOLReadOnlyPageWidget;
@@ -48,7 +50,10 @@ enum class ESOLMainMenuPage : uint8
  * column hull's right edge (Q15). Animations at the HUD effects strength (SDD 46 section 7): the column opens (fade and
  * slide) each time the menu is added to the viewport, then its traces power up and pulse; the shell opens with a page
  * and closes over CLOSE_S after the input is already back (a reopen during the close reverses). Actions go to
- * USOLMenuSubsystem.
+ * USOLMenuSubsystem. (46g, D17) The stack scrolls when it has more entries than STACK_MAX_VISIBLE_ENTRIES
+ * (FSOLSolidScrollStack: the focused entry scrolls whole into view, its hover trace and LED move with it); with the 7
+ * entries of today it fits and lays out as before. (46g, Q11) The #42 open cue plays when the column opens and when the
+ * shell opens from closed (the buttons play the hover and select cues themselves).
  */
 UCLASS()
 class SOLTEST_API USOLMainMenuWidget : public UUserWidget
@@ -141,6 +146,19 @@ public:
 
     // Returns a start-location row (body index order), or null (verification)
     USOLMenuButton* GetBodyButton(int32 index) const;
+
+    // Re-applies the stack's visible-entry cap with this many entries (STACK_MAX_VISIBLE_ENTRIES by default; fewer
+    // forces scrolling; verification)
+    void SetStackMaxVisibleEntriesForVerification(int32 maxVisibleEntries);
+
+    // Returns the stack's scroll box (verification)
+    UScrollBox* GetStackScrollBox() const { return EntryStack.Scroll; }
+
+    // Returns whether the stack needs scrolling at the last layout (verification)
+    bool IsStackScrollNeeded() const { return EntryStack.NeedsScroll(); }
+
+    // Returns the stack's scroll offset (0 = top; verification)
+    float GetStackScrollOffset() const { return EntryStack.GetScrollOffset(); }
 
 protected:
 
@@ -243,6 +261,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;
+
+    UPROPERTY(Transient)
+    FSOLSolidScrollStack EntryStack;                    // The column's stack entries (scroll when they do not fit)
 
     FSOLSolidTrace mEntryTraces[static_cast<int32>(EEntry::Count)];  // Each entry's hover trace (column local)
     FVector2f mEntryLeds[static_cast<int32>(EEntry::Count)];         // Each entry's LED centre (column local)

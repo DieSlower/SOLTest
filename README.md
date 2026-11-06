@@ -193,6 +193,10 @@ The solid Settings page (issue #46, part 46e and its follow-ups), on its Gamepla
 
 The solid Controls page (issue #46, part 46f): each area of the controls is a tab in the vertical tab column, with the key and action rows in the content recess; Info and About use the same shell, and the Demo screen shows its option groups as recesses in one scroll.
 
+![Solid pause menu with the Controls page open](Docs/Images/46-pause-solid.png)
+
+The solid pause menu (issue #46, part 46g): the side panel slid in from the left over the dimmed, still-running flight, with the Controls page open in the shell beside it.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -200,11 +204,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 87.6 h |
+| Work time (wall-clock) | 90.4 h |
 | Time spent answering questions | 7.8 h |
-| Tokens | 4,734.1M |
-| Notional API price | $1,850 |
-| Subagents dispatched | 384 |
+| Tokens | 4,869.5M |
+| Notional API price | $1,909 |
+| Subagents dispatched | 392 |
 <!-- METRICS:END -->
 
 ## Documentation map

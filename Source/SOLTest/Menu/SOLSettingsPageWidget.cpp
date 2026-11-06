@@ -552,6 +552,7 @@ void USOLSettingsPageWidget::RefreshFromSettings()
     {
         scroll->ScrollToStart();
     }
+    Rail.ScrollToTop();
     if (OverlayList != nullptr)
     {
         OverlayList->ClearEmbeddedHover();

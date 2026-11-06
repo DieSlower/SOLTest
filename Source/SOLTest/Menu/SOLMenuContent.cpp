@@ -9,15 +9,22 @@
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLInfoText.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLPageTabs.h"
 #include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuMath.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidPanel.h"
+#include "Menu/SOLSolidScroll.h"
+#include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidStyle.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
+#include "UI/SOLHoloMenuMath.h"
+#include "UI/SOLHoloMenuSubsystem.h"
 #include "Universe/SOLSimClock.h"
 
 #include "Blueprint/WidgetTree.h"
@@ -29,6 +36,7 @@
 #include "Components/TextBlock.h"
 #include "Components/VerticalBox.h"
 #include "Components/VerticalBoxSlot.h"
+#include "Components/WidgetSwitcher.h"
 #include "Engine/GameInstance.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
@@ -112,6 +120,146 @@ UTextBlock* SOLMenuContent::MakeText(UWidgetTree& tree, const FString& text, con
     block->SetText(FText::FromString(text));
     block->SetAutoWrapText(bWrap);
     return block;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Wraps a widget in a fixed-size box (0 leaves that axis free)
+USizeBox* SOLMenuContent::MakeSized(UWidgetTree& tree, UWidget* content, const float width, const float height)
+{
+    USizeBox* box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    if (width > 0.0f)
+    {
+        box->SetWidthOverride(width);
+    }
+    if (height > 0.0f)
+    {
+        box->SetHeightOverride(height);
+    }
+    box->SetContent(content);
+    return box;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the page shell: the hull with side notches, the content recess with the page switcher and the Back recess
+USOLSolidPanel* SOLMenuContent::BuildPageShell(UWidgetTree& tree, UWidgetSwitcher* pageSwitcher,
+    USOLMenuButton*& outBackButton)
+{
+    using namespace SOL::MenuStyle;
+    using namespace SOL::SolidMenu;
+    USOLSolidPanel* shellPanel = tree.ConstructWidget<USOLSolidPanel>(USOLSolidPanel::StaticClass(),
+        TEXT("ShellPanel"));
+    FSOLSolidHull hull = USOLSolidPanel::MakePanelHull();
+    hull.NotchY = 0.5f * SOL::SolidMenu::PAGE_HEIGHT;
+    hull.NotchDepth = SHELL_NOTCH_DEPTH;
+    hull.NotchHeight = SHELL_NOTCH_HEIGHT;
+    shellPanel->SetHull(ESOLSolidStyle::Panel, hull);
+    shellPanel->SetContentPadding(FMargin(PANEL_INSET_PX + SHELL_PADDING));
+    shellPanel->SetDecor(true, true);
+    UVerticalBox* shell = tree.ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+    shellPanel->SetContent(shell);
+
+    // The content recess with the pages
+    shell->AddChildToVerticalBox(USOLSolidPanel::MakeRecess(tree, pageSwitcher, SHELL_RECESS_PADDING))->SetSize(
+        FSlateChildSize(ESlateSizeRule::Fill));
+
+    // Back, bottom right (the owner binds it to the same close as Esc)
+    outBackButton = tree.ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
+    outBackButton->Setup(tree, SOLMenuText::PAGE_BACK, 0, BODY_FONT_SIZE, ESOLSolidButtonVariant::Small);
+    UVerticalBoxSlot* backSlot = shell->AddChildToVerticalBox(USOLSolidPanel::MakeRecess(tree, MakeSized(tree,
+        outBackButton, BACK_BUTTON_WIDTH, SETTINGS_ROW_HEIGHT), SHELL_BACK_RECESS_PADDING));
+    backSlot->SetHorizontalAlignment(HAlign_Right);
+    backSlot->SetPadding(FMargin(0.0f, SHELL_BACK_GAP, 0.0f, 0.0f));
+    return shellPanel;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lower-edge traces: a long one dropping from row A to row B, a short one on row A from the right, one on
+// row B from the left
+void SOLMenuContent::MakeEdgeTraces(const float left, const float right, const float rowA,
+    FSOLSolidTrace (&outTraces)[EDGE_TRACE_COUNT])
+{
+    using namespace SOL::SolidMenu;
+    const float bend = COLUMN_TRACE_GAP;    // The bends are 45 degrees: one row apart over one gap
+    const float rowB = rowA + bend;
+    const float mid = 0.5f * (left + right);
+    const float dropX = mid - COLUMN_TRACE_DROP_BENDS * bend;
+    outTraces[0] = FSOLSolidTrace::FromPoints({ FVector2f(left, rowA), FVector2f(dropX, rowA),
+        FVector2f(dropX + bend, rowB), FVector2f(right - COLUMN_TRACE_END_BENDS * bend, rowB) }, true);
+    outTraces[1] = FSOLSolidTrace::FromPoints({ FVector2f(right, rowA), FVector2f(mid, rowA) }, true);
+    outTraces[2] = FSOLSolidTrace::FromPoints({ FVector2f(left, rowB),
+        FVector2f(mid - COLUMN_TRACE_SHORT_BENDS * bend, rowB) }, true);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs a stack's power-up LED blink (until it ends) and the idle pulse dot on its panel's trace layer
+bool SOLMenuContent::TickStackLights(SSOLSolidTraceLayer& layer, const TArray<TObjectPtr<USOLMenuButton>>& buttons,
+    const double sinceOpenS, const double nowS, const float s, const bool bPowerUpRunning)
+{
+    // The blink: each entry's LED in stack order; one whose own LED already shows (hover, press, mark) is left alone
+    bool bStillRunning = false;
+    if (bPowerUpRunning)
+    {
+        uint32 mask = 0;
+        for (int32 entry = 0; entry < buttons.Num() && entry < SSOLSolidTraceLayer::MAX_LEDS; ++entry)
+        {
+            const FSOLSolidButtonLook& look = buttons[entry]->GetAppliedLook();
+            const bool bOwnLed = look.Led > 0.0f || look.bSelectedMark || look.bDisabled;
+            if (!bOwnLed && SOLSolidMenu::PowerUpLedLit(entry, buttons.Num(), sinceOpenS, s))
+            {
+                mask |= 1u << entry;
+            }
+        }
+        layer.SetLitLeds(mask);
+        bStillRunning = SOLSolidMenu::IsPowerUpRunning(sinceOpenS, s);
+    }
+    layer.SetPulseDot(SOLSolidMenu::PulseDotFraction(nowS), SOLSolidMenu::PulseDotAlpha(s));
+    return bStillRunning;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a stack's per-entry hover traces and LED centres on the entries' unscrolled centre lines
+void SOLMenuContent::MakeStackLights(const FSOLSolidScrollStack& stack, const float ledX, const float traceLeft,
+    const float traceRight, TArrayView<FSOLSolidTrace> outTraces, TArrayView<FVector2f> outLeds)
+{
+    const int32 count = FMath::Min(outTraces.Num(), outLeds.Num());
+    for (int32 entry = 0; entry < count; ++entry)
+    {
+        const float y = stack.ViewTop + SOLSolidScroll::StackItemTop(entry, stack.ItemHeight, stack.Gap, 0.0f)
+            + 0.5f * stack.ItemHeight;
+        outTraces[entry] = FSOLSolidTrace::FromPoints({ FVector2f(traceLeft, y), FVector2f(traceRight, y) }, false);
+        outLeds[entry] = FVector2f(ledX, y);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Binds a stack's hover traces and LEDs to its panel's trace layer and makes the stack push its scroll again
+void SOLMenuContent::BindStackLights(const TSharedPtr<SSOLSolidTraceLayer>& layer,
+    const TArray<TObjectPtr<USOLMenuButton>>& buttons, TConstArrayView<FSOLSolidTrace> traces,
+    TConstArrayView<FVector2f> leds, FSOLSolidScrollStack& stack)
+{
+    for (int32 entry = 0; entry < buttons.Num() && entry < traces.Num(); ++entry)
+    {
+        buttons[entry]->SetHoverTrace(layer, traces[entry]);
+    }
+    if (layer.IsValid())
+    {
+        layer->SetLeds(leds);
+    }
+    stack.ResetPushed();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Starts a panel's open and plays the open cue only when it opens from Closed
+bool SOLMenuContent::BeginPanelOpenWithCue(const UObject& context, FSOLHoloMenuAnim& anim, const double nowS,
+    const float s)
+{
+    const bool bWasClosed = anim.Phase == ESOLHoloMenuPhase::Closed;
+    if (!SOLSolidMenu::BeginPanelOpen(anim, nowS, s) || !bWasClosed)
+    {
+        return false;
+    }
+    USOLSolidMenuSubsystem::PlayCue(&context, ESOLHoloCue::Open, nowS);
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////

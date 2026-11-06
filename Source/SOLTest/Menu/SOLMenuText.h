@@ -40,7 +40,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* QUIT_TAB = TEXT("Quit");
     inline constexpr const TCHAR* PAUSED_BODY = TEXT("The simulation keeps running while this menu is open: your ship "
         "coasts and the planets keep moving. Flight controls are suspended until you resume.");
-    inline constexpr const TCHAR* PAUSED_HINT = TEXT("Esc: resume    Tab / arrows: move    Enter: select");
+    inline constexpr const TCHAR* PAUSED_HINT = TEXT("Esc: close page / resume    Tab / arrows: move    Enter: select");
     inline constexpr const TCHAR* QUIT_PROMPT = TEXT("Leave this flight?");
     inline constexpr const TCHAR* QUIT_TO_MENU = TEXT("Quit to main menu");
     inline constexpr const TCHAR* QUIT_TO_DESKTOP = TEXT("Quit to desktop");
@@ -320,7 +320,8 @@ namespace SOLMenuText
         { TEXT("Routes"), TEXT("@Resume"), TEXT("Resume a paused route (in flight and on the map)") },
         { TEXT("Routes"), TEXT("@ToggleRouteOverlay"),
             TEXT("Show or hide routes in flight (the map always shows them)") },
-        { TEXT("Menu"), TEXT("Escape"), TEXT("Stop a Chase Down; else pause menu (in flight) / resume") },
+        { TEXT("Menu"), TEXT("Escape"),
+            TEXT("Stop a Chase Down; else pause menu (in flight) / close the open page, else resume") },
         { TEXT("Menu"), TEXT("LeftControl+F1"),
             TEXT("Same as Esc (temporary: Esc stops Play-In-Editor before the game sees it)") },
         { TEXT("Demo"), TEXT("LeftControl+F2"), TEXT("Show or hide the NPC stats overlay") },

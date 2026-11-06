@@ -19,6 +19,21 @@ struct FSOLSolidTrace
     FVector2f Points[MAX_POINTS];
     int32 Count = 0;                // Points used, 0 or 2..MAX_POINTS
     bool bRingTerminal = true;
+
+    // (46g) Returns a trace through up to MAX_POINTS of the given points (the rest ignored), in the layer's local units
+    static FSOLSolidTrace FromPoints(std::initializer_list<FVector2f> points, const bool bRingTerminal)
+    {
+        FSOLSolidTrace trace;
+        for (const FVector2f& point : points)
+        {
+            if (trace.Count < MAX_POINTS)
+            {
+                trace.Points[trace.Count++] = point;
+            }
+        }
+        trace.bRingTerminal = bRingTerminal;
+        return trace;
+    }
 };
 
 /**
@@ -36,6 +51,10 @@ struct FSOLSolidTrace
  * (46d) It also draws the stack LEDs' power-up blink (amber dots at the LED centres it is given, the lit ones a bit
  * mask, SOLSolidMenu::PowerUpLedLit) and the idle pulse dot travelling along the longest static trace once the
  * traces are fully lit (SOLSolidMenu::PulseDotFraction / PulseDotAlpha): one more line array per dot drawn.
+ * (46g) A scrolled stack under the layer (SetScroll): the hover trace and the LEDs are drawn shifted up by the scroll
+ * offset, skipped when their line is outside the view band (SOLSolidScroll::IsLineInView) and clipped to the band
+ * (a pushed clipping zone, so a half-hidden item's trace and LED end at the view's edge); the static traces are
+ * neither scrolled nor clipped.
  */
 class SOLTEST_API SSOLSolidTraceLayer : public SLeafWidget
 {
@@ -81,6 +100,21 @@ public:
     // place, so a hidden dot never repaints)
     void SetPulseDot(float fraction, float alpha);
 
+    // Sets the scroll of the stack the hover trace and the LEDs belong to: they draw shifted up by offsetY, only when
+    // their line is in the view band [viewTop, viewTop + viewHeight] (layer local), and clipped to that band; a
+    // viewHeight <= 0 is no band (everything drawn, unclipped). Non-finite values read 0. Repaints only on a change
+    void SetScroll(float offsetY, float viewTop, float viewHeight);
+
+    // Returns the scroll offset last set (verification)
+    float GetScrollOffset() const { return mScrollOffset; }
+
+    // Returns whether the paint draws the hover trace: it is set with an amount above 0 and its line is in the view
+    // band at the scroll (verification)
+    bool IsHoverTraceDrawn() const;
+
+    // Returns the y the hover trace's line is drawn at: its first point shifted up by the scroll (verification)
+    float GetDrawnHoverTraceY() const { return mHoverTrace.Points[0].Y - mScrollOffset; }
+
     // Returns the LEDs the power-up blink lights (verification)
     uint32 GetLitLeds() const { return mLitLeds; }
 
@@ -119,6 +153,10 @@ public:
 
 private:
 
+    // Returns whether a stack line (the hover trace's first point, an LED) shows at the stack's scroll: always without
+    // a view band
+    bool IsStackLineShown(float y) const;
+
     FSOLSolidTrace mTraces[MAX_TRACES];
     FSOLSolidTrace mHoverTrace;
     FVector2f mRingOffsets[RING_POINTS];        // LED_RADIUS_PX octagon around a trace's first point
@@ -133,4 +171,7 @@ private:
     float mPulse = 1.0f;
     float mStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
     float mHoverAmount = 0.0f;
+    float mScrollOffset = 0.0f;                 // The hover trace's and LEDs' stack scroll (SetScroll)
+    float mViewTop = 0.0f;                      // ... its view band's top (layer local)
+    float mViewHeight = 0.0f;                   // ... and height (<= 0: no band)
 };
