@@ -243,7 +243,8 @@ Answers: Q3 (dim only), Q4, Q11 (reuse #42 cues). Depends on 46c, 46e, 46f.
    as they are (verify they still pass).
 3. [ ] Cue wiring on all solid screens with the #42 cues through `PlayCue` (Q11); no new assets.
 4. [ ] Smoke steps 5 and 7; screenshots.
-5. [ ] Review; fixes; suite. Commit `Issue #46: Part 46g - solid pause side panel`.
+5. [ ] Scrolling rails (user, 2026-11-05): if a tab rail (Settings/Controls/Info/About/pause) or the main-menu button stack has more entries than fit, it scrolls up and down. Implement for the shared `FSOLSolidTabRail` and the main-menu column, with tests and smoke checks, and check the pause Controls panel's 10 tabs fit/scroll.
+6. [ ] Review; fixes; suite. Commit `Issue #46: Part 46g - solid pause side panel`.
 
 ### 46h: smoke completion and profile (opus, high)
 
@@ -295,3 +296,4 @@ Depends on 46d-46g.
 - 2026-11-05: 46f built and verified (SDD 6.5); next: the review fixes and the commit, then 46g.
 - 2026-11-05: 46f follow-up: a re-click on the selected tab is a no-op in the pause menu, Controls, Info, About and Settings
   (SDD 6.5, `IsTabChange`); suite 1479/1479, solid smoke 92/92, holo 86/86, overlay 34/34. Next: 46g.
+- 2026-11-05: 46f done (8456579, 8150cc4); next 46g; main session paused for /compact.
