@@ -10,6 +10,7 @@
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
+#include "Menu/SOLSolidPanel.h"
 #include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 
@@ -124,9 +125,25 @@ void USOLDemoPageWidget::NativeOnInitialized()
         return button;
     };
 
+    // One scroll box holds every group in its own recess (46f, Q7: no tab column); the presets are the first group
+    Scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
+    Scroll->SetWidgetBarStyle(SOLSolidStyle::MakeScrollBarStyle(USOLSolidMenuSubsystem::Get(this)));
+    Scroll->SetScrollbarThickness(FVector2D(SOL::SolidMenu::SCROLL_BAR_THICKNESS));
+    Scroll->SetScrollbarPadding(FMargin(BUTTON_GAP, 0.0f, 0.0f, 0.0f));
+    page->AddChildToVerticalBox(Scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+
+    // Wraps a group's box in a recess and adds it to the scroll with a gap below
+    const auto addGroup = [this](UVerticalBox* group)
+    {
+        Cast<UScrollBoxSlot>(Scroll->AddChild(USOLSolidPanel::MakeRecess(*WidgetTree, group,
+            SOL::SolidMenu::SETTINGS_CONTENT_PADDING)))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
+    };
+
     // Presets row
+    UVerticalBox* presetGroup = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
     UHorizontalBox* presets = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
-    page->AddChildToVerticalBox(presets)->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
+    presetGroup->AddChildToVerticalBox(presets);
+    addGroup(presetGroup);
     USizeBox* presetLabel = DemoSized(*WidgetTree, SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::DEMO_PRESETS,
         BODY_FONT_SIZE, SOLSolidStyle::TextColor()), SETTINGS_LABEL_WIDTH, 0.0f);
     DemoAddToRow(*presets, presetLabel, false)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
@@ -140,12 +157,12 @@ void USOLDemoPageWidget::NativeOnInitialized()
             FMargin(preset == 0 ? 0.0f : BUTTON_GAP, 0.0f, 0.0f, 0.0f));
     }
 
-    // Option rows by section: label, '<', value, '>'
-    UScrollBox* scroll = WidgetTree->ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
-    page->AddChildToVerticalBox(scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+    // Option rows by section, each section a recessed group: label, '<', value, '>'
+    UVerticalBox* group = nullptr;
     static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_ROW_LABELS)
         == static_cast<int32>(EDemoOption::Count) + static_cast<int32>(SOLMenuState::EDemoExtraRow::Count),
         "one label per Demo row");
+    static_assert(UE_ARRAY_COUNT(SOLMenuText::DEMO_SECTION_TITLES) == 6, "one title per Demo section");
     ValueTexts.SetNum(rowCount);
     int32 section = 0;
     bool bSectionStart = true;
@@ -155,13 +172,19 @@ void USOLDemoPageWidget::NativeOnInitialized()
         {
             ++section;
             bSectionStart = true;
+            if (group != nullptr)
+            {
+                addGroup(group);
+                group = nullptr;
+            }
             continue;
         }
-        if (bSectionStart && section < UE_ARRAY_COUNT(SOLMenuText::DEMO_SECTION_TITLES))
+        if (bSectionStart && group == nullptr)
         {
-            Cast<UScrollBoxSlot>(scroll->AddChild(SOLMenuContent::MakeText(*WidgetTree,
-                SOLMenuText::DEMO_SECTION_TITLES[section], SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(), true)))
-                ->SetPadding(FMargin(0.0f, PANEL_PADDING * 0.5f, 0.0f, ROW_GAP * 2.0f));
+            group = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+            group->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree,
+                SOLMenuText::DEMO_SECTION_TITLES[section], SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(), true))
+                ->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
             bSectionStart = false;
         }
         UHorizontalBox* rowBox = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
@@ -187,8 +210,13 @@ void USOLDemoPageWidget::NativeOnInitialized()
             }
             DemoAddToRow(*rowBox, DemoSized(*WidgetTree, button, SETTINGS_STEP_BUTTON_WIDTH, 0.0f), false);
         }
-        Cast<UScrollBoxSlot>(scroll->AddChild(DemoSized(*WidgetTree, rowBox, 0.0f, SETTINGS_ROW_HEIGHT)))->SetPadding(
-            FMargin(0.0f, 0.0f, BUTTON_GAP, ROW_GAP));
+        group->AddChildToVerticalBox(DemoSized(*WidgetTree, rowBox, 0.0f, SETTINGS_ROW_HEIGHT))->SetPadding(
+            FMargin(0.0f, 0.0f, 0.0f, ROW_GAP));
+    }
+
+    if (group != nullptr)
+    {
+        addGroup(group);    // A section list without its end marker still shows its last group
     }
 
     // Warnings, then the footer: Reset, Stop NPCs (in flight only) and Start demo / Apply
@@ -232,6 +260,11 @@ void USOLDemoPageWidget::SetInFlight(const bool bInFlight)
 // Re-reads every value from the menu subsystem (the page was shown)
 void USOLDemoPageWidget::RefreshFromMenu()
 {
+    // Opens at the top every time (46f, no scroll memory)
+    if (Scroll != nullptr)
+    {
+        Scroll->ScrollToStart();
+    }
     RefreshTexts();
 }
 
@@ -278,6 +311,20 @@ FString USOLDemoPageWidget::GetValueText(const int32 row) const
 {
     return ValueTexts.IsValidIndex(row) && ValueTexts[row] != nullptr ? ValueTexts[row]->GetText().ToString()
         : FString();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the scroll box's offset (verification), or -1 before it exists
+float USOLDemoPageWidget::GetScrollOffset() const
+{
+    return Scroll != nullptr ? Scroll->GetScrollOffset() : -1.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a row's value text block (verification)
+const UTextBlock* USOLDemoPageWidget::GetValueTextWidget(const int32 row) const
+{
+    return ValueTexts.IsValidIndex(row) ? ValueTexts[row].Get() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////

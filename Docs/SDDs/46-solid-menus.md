@@ -585,6 +585,41 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
 - **Profile.** `-SOLSmokeSolidMenuProfileTab=<n>` makes every profile pass show one Settings tab; the slider fill was
   measured on Gameplay (four sliders), section 13.1.
 
+### 6.5 46f amendment: Controls, Info, About and Demo as built
+
+- **The tab rail is a kit piece.** `FSOLSolidTabRail` (USTRUCT, `Menu/SOLSolidTabRail.h/.cpp`) was promoted out of
+  `USOLSettingsPageWidget`: `Build`, `Bind`, `Select`, `Tick`, `ClearStaleHover`, `IsTraceShown`, and the pure
+  `SOLSolidTabRail::TraceForTab` and `RailHeight`. Settings uses it with unchanged behavior.
+- **Read-only pages (Q6).** `USOLReadOnlyPageWidget` (`Menu/SOLReadOnlyPageWidget.h/.cpp`) hosts Controls, Info and
+  About: the rail beside a content recess with one scroll box per tab in a switcher. `SOLMenuContent::BuildControlsPage` /
+  `BuildInfoPage` / `BuildAboutPage` return it and `FillControlsTabs` / `FillInfoTabs` / `FillAboutTabs` fill it from
+  today's entries. The pure `SOLPageTabs` (`Menu/SOLPageTabs.h/.cpp`, `ESOLReadOnlyPage`) decides the tabs: **Controls**
+  one tab per contiguous area of `SOLMenuText::CONTROL_ROWS` (10: Flight, Targeting, Combat, Time, Overlays, HUD, Map,
+  Routes, Menu, Demo); **Info** Flight, Time, Combat, How it works (the tab label is `INFO_TIME_TAB` "Time" because
+  "Time and travel" was clipped in the 190-unit tab, the heading in the content stays "Time and travel"); **About**
+  Game (`ABOUT_TAB_GAME`: title, studio, description, engine version, copyright) and Credits.
+- **Behavior.** Each page opens on its first tab with every tab scrolled to its top on `ShowOpening` (called by the main
+  and pause menus when the page shows; Q8). The hover trace is only on the tab column (rows are plain text). Keys in
+  Controls and Info still refresh from the live keys (`RefreshControlsPage` / `RefreshInfoPage`, unchanged).
+- **Demo (Q7).** No tab column: the presets and each of the option sections are recess groups
+  (`USOLSolidPanel::MakeRecess`, `SETTINGS_CONTENT_PADDING`) in one scroll box with the solid scroll bar style,
+  warnings in the warning colour, footer unchanged; `RefreshFromMenu` scrolls back to the top.
+- **No new constants, no schema change.** The Settings key-row label overflow in TECH_DEBT is in the Settings page and
+  was not touched.
+- **Tests.** 14 new `SOLTest.SolidPages.*` tests (`Tests/SolidPageTabsTest.cpp`, written by a separate agent from the
+  contract); full suite 1476/1476.
+- **Smoke.** `-SOLSmokeSolidMenu` 83/83 (was 66): `p-controls-tabs` / `-fit` / `-tab-switch`, `p-about-*`,
+  `p-demo-layout`, `r-about-first-tab`, `i-info-*` (an Info page put on the viewport, the main menu has none),
+  `h-fit-controls`, `h-controls-*`, `h-fit-demo`, `h-demo-layout` at 1000x800. The 1280x720 Controls / About fit is
+  not read: a page sliding in leaves its children's cached geometry stale, so the same page is measured at 1000x800 with
+  the shell already open (TECH_DEBT). Holo 86/86, overlay 34/34, hud 24/24, `-SOLMenuSmoke=all` 47 passed / 3 failed
+  (the same TECH_DEBT stale checks: thrust, Esc, Ctrl+F1 resume).
+- **Profile.** Three runs at 1920x1080, all PASS against the baseline (`cpu_slate` / `gpu_ui`, ms): P0 0.448 / 0.437 /
+  0.452 and 0.104 / 0.105 / 0.107, P1 0.470 / 0.419 / 0.479 and 0.062 x3, P2 0.378 / 0.391 / 0.373 and 0.046-0.047, P3
+  0.406 / 0.382 / 0.421 and 0.091 / 0.082 / 0.080. The profile covers the Settings screens only; the new pages add no
+  per-frame work beyond the rail tick.
+- **Review findings and fixes:** see plan 46f step 5 (no High finding; fixes applied, the rest in TECH_DEBT or left for the user).
+
 ## 7. Animations and the effects strength (D5)
 
 `s` is the sanitized `HudEffectsStrength` (Q1, 0-2, default 1). The behaviour at 0 and 2 is the same rule as #42
@@ -992,6 +1027,8 @@ the Q17 budget. The default (Graphics) passes after the follow-ups read P0 +0.04
 the same session (no slider on that tab; the drift since the 46e check). The fill is a flat colour box (the plain
 Slate shader, not the hull material), so at the VR floor it adds a few thousand pixels of a trivial shader per slider.
 
+**46f check (Controls, Info, About and Demo).** 2026-11-05, three runs at 1920x1080 after 46f, all PASS: see section 6.5 for the medians per pass. The new pages are not profiled (the profile shows Settings screens), and add no per-frame work beyond the rail tick.
+
 **Comparing later (46i).** Close the editor, build, then run three times and take, per pass, the median of `dcpu` and
 of `dgpu` over the three `RESULT` lines (a single run's PASS / FAIL is advisory, the run-to-run spread above is up to
 half the CPU budget):
@@ -1017,6 +1054,7 @@ and replace the constants.
   3. Each main-menu page in the shell (Start location, Controls, Settings, About, Demo); Back and Esc both close.
   4. Settings: opens on Graphics (no last-tab memory, Q8), each tab shows its section; a slider drag, a toggle, a stepper; Apply / Revert unchanged (the settings
      smoke checks still pass); a rebind switches to Key bindings and scrolls to the row.
+  3a. (46f) Controls, Info, About and Demo: tab counts and fit, a tab switch, the first tab on reopen, the Demo layout (section 6.5).
   5. Pause: Esc slides the side panel in from the left; Resume, each page, Quit's two choices; Esc resumes with input
      back in the same frame; the slide-out after.
   6. Strength 0: no animation, hover still lifts and shows the amber edge, LED and underline; strength 2 screenshot.

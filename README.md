@@ -189,6 +189,10 @@ The solid main menu (issue #46, part 46d): hull column with the start-location b
 
 The solid Settings page (issue #46, part 46e and its follow-ups), on its Gameplay tab: the six sections as a vertical tab column beside the content recess, the solid sliders with their cyan fill up to the value, the toggles and the shared Revert / Apply footer.
 
+![Solid Controls page with the tab column](Docs/Images/46-controls-solid.png)
+
+The solid Controls page (issue #46, part 46f): each area of the controls is a tab in the vertical tab column, with the key and action rows in the content recess; Info and About use the same shell, and the Demo screen shows its option groups as recesses in one scroll.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -196,11 +200,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 85.5 h |
+| Work time (wall-clock) | 87.4 h |
 | Time spent answering questions | 7.7 h |
-| Tokens | 4,687.4M |
-| Notional API price | $1,834 |
-| Subagents dispatched | 377 |
+| Tokens | 4,727.4M |
+| Notional API price | $1,848 |
+| Subagents dispatched | 382 |
 <!-- METRICS:END -->
 
 ## Documentation map

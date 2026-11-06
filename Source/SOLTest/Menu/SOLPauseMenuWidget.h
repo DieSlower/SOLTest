@@ -13,6 +13,7 @@
 #include "SOLPauseMenuWidget.generated.h"
 
 class USOLDemoPageWidget;
+class USOLReadOnlyPageWidget;
 class USOLMenuButton;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
@@ -103,6 +104,15 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLDemoPageWidget> DemoPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> ControlsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> InfoPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> AboutPage;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;

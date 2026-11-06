@@ -330,6 +330,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* INFO_TITLE = TEXT("Info");
     inline constexpr const TCHAR* INFO_FLIGHT = TEXT("Flight");
     inline constexpr const TCHAR* INFO_TIME = TEXT("Time and travel");
+    // The Info page's tab for INFO_TIME (that heading is too wide for a tab)
+    inline constexpr const TCHAR* INFO_TIME_TAB = TEXT("Time");
     inline constexpr const TCHAR* INFO_COMBAT = TEXT("Combat");
     inline constexpr const TCHAR* INFO_HOW_IT_WORKS = TEXT("How it works");
 
@@ -598,6 +600,7 @@ namespace SOLMenuText
         "scale, with real orbits, time warp, a jump map and ship combat.");
     inline constexpr const TCHAR* ABOUT_COPYRIGHT = TEXT("Copyright © 2026 Acid Rain Studios LLC. All rights reserved.");
     inline constexpr const TCHAR* ABOUT_ENGINE_FORMAT = TEXT("Built with Unreal Engine {0}");
+    inline constexpr const TCHAR* ABOUT_TAB_GAME = TEXT("Game");   // The About page's first tab (46f)
     inline constexpr const TCHAR* ABOUT_CREDITS_TITLE = TEXT("Credits");
     inline constexpr const TCHAR* ABOUT_CREDITS = TEXT("Design and development: Acid Rain Studios LLC. ")
         TEXT("Orbital elements: NASA JPL. Star catalogue: AT-HYG (CC BY-SA 4.0). ")

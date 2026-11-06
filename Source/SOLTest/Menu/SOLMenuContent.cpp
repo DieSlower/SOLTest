@@ -10,6 +10,8 @@
 #include "Menu/SOLInfoText.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLPageTabs.h"
+#include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
@@ -83,12 +85,10 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Wraps a page body in a scroll box under the page heading and returns the scroll box
-    UScrollBox* MenuContentAddScroll(UWidgetTree& tree, UVerticalBox& page)
+    // Adds a text block to a scroll box with a gap below it
+    void MenuContentAddText(UScrollBox& scroll, UTextBlock* text, const float gapBelow)
     {
-        UScrollBox* scroll = tree.ConstructWidget<UScrollBox>(UScrollBox::StaticClass());
-        page.AddChildToVerticalBox(scroll)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-        return scroll;
+        Cast<UScrollBoxSlot>(scroll.AddChild(text))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, gapBelow));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -199,31 +199,80 @@ FString SOLMenuContent::FormatControlAction(const TCHAR* action)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the Controls page (every binding grouped by area, in a scroll box) and hands back its key cells
-UWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyCells)
+// Builds the Controls page (the tab page; every binding grouped by area, one tab per area)
+USOLReadOnlyPageWidget* SOLMenuContent::BuildControlsPage(UWidgetTree& tree)
+{
+    return BuildReadOnlyPage(tree, ESOLReadOnlyPage::Controls);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the Info page (the tab page; flight, time, combat and prose)
+USOLReadOnlyPageWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree)
+{
+    return BuildReadOnlyPage(tree, ESOLReadOnlyPage::Info);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the About page (the tab page; the game and the credits)
+USOLReadOnlyPageWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
+{
+    return BuildReadOnlyPage(tree, ESOLReadOnlyPage::About);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds a read-only tab page of a kind
+USOLReadOnlyPageWidget* SOLMenuContent::BuildReadOnlyPage(UWidgetTree& tree, const ESOLReadOnlyPage kind)
+{
+    USOLReadOnlyPageWidget* page = tree.ConstructWidget<USOLReadOnlyPageWidget>(USOLReadOnlyPageWidget::StaticClass());
+    page->Setup(kind);
+    return page;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills a read-only page's tabs from today's entries
+void SOLMenuContent::FillReadOnlyTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
+{
+    switch (page.GetPageKind())
+    {
+    case ESOLReadOnlyPage::Controls:
+        FillControlsTabs(page, tree);
+        break;
+    case ESOLReadOnlyPage::Info:
+        FillInfoTabs(page, tree);
+        break;
+    case ESOLReadOnlyPage::About:
+        FillAboutTabs(page, tree);
+        break;
+    default:
+        break;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the Controls tabs: one per area, in table order (rows of one area are contiguous); the key cells start from
+// the defaults and are rewritten from the live keys whenever the page is shown
+void SOLMenuContent::FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
 {
     using namespace SOL::MenuStyle;
-    UVerticalBox* page = MakePage(tree, SOLMenuText::CONTROLS_TITLE);
-    UScrollBox* scroll = MenuContentAddScroll(tree, *page);
-
-    // One section per area, in table order (rows of one area are contiguous); the key cells start from the defaults
-    // and are rewritten from the live keys whenever the page is shown
-    outKeyCells.Reset(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS));
+    page.KeyCells.Reset(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS));
     const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
-    const TCHAR* currentArea = nullptr;
-    for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+    int32 lastTab = INDEX_NONE;
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS)); ++index)
     {
-        if (currentArea == nullptr || FCString::Strcmp(currentArea, row.Area) != 0)
+        const SOLMenuText::FControlRow& row = SOLMenuText::CONTROL_ROWS[index];
+        const int32 tab = SOLPageTabs::ControlsTabOfRow(index);
+        UScrollBox& scroll = page.GetFillScroll(tab);
+        if (tab != lastTab)
         {
-            currentArea = row.Area;
-            MenuContentAddSection(tree, *scroll, currentArea);
+            lastTab = tab;
+            MenuContentAddSection(tree, scroll, row.Area);
         }
         UTextBlock* keyCell = nullptr;
-        MenuContentAddRow(*scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings, defaultKeys),
+        MenuContentAddRow(scroll, MenuContentMakeRow(tree, FormatBindings(row.Bindings, defaultKeys),
             FormatControlAction(row.Action), KEY_COLUMN_WIDTH, SOLSolidStyle::ValueColor(), &keyCell));
-        outKeyCells.Add(keyCell);
+        page.KeyCells.Add(keyCell);
+        page.RegisterColumnText(keyCell, tab, KEY_COLUMN_WIDTH);
     }
-    return page;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -243,25 +292,26 @@ void SOLMenuContent::RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& k
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the Info page (flight, time and combat values generated from the real constants, plus prose)
-UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyTexts)
+// Fills the Info tabs (flight, time and combat values generated from the real constants, plus prose)
+void SOLMenuContent::FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
 {
     using namespace SOL::MenuStyle;
     using namespace SOLMenuText;
-    UVerticalBox* page = MakePage(tree, INFO_TITLE);
-    UScrollBox* scroll = MenuContentAddScroll(tree, *page);
     const FSOLFlightParams flight;
     const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
-    outKeyTexts.Reset(UE_ARRAY_COUNT(INFO_PROSE) + 1);
+    page.KeyTexts.Reset(UE_ARRAY_COUNT(INFO_PROSE) + 1);
 
-    // Flight, from the speed-cap constants and the default flight parameters the player's ship uses
+    // Flight, from the speed-cap constants and the default flight parameters the player's ship uses; addLine adds a
+    // label / value row to the current tab and returns the label's text block
+    int32 tab = 0;
+    UScrollBox* scroll = &page.GetFillScroll(tab);
     MenuContentAddSection(tree, *scroll, INFO_FLIGHT);
-    // Adds a label / value row and returns the label's text block
-    const auto addLine = [&tree, scroll](const FString& label, const FString& value)
+    const auto addLine = [&tree, &page, &scroll, &tab](const FString& label, const FString& value)
     {
         UTextBlock* labelText = nullptr;
         MenuContentAddRow(*scroll, MenuContentMakeRow(tree, label, value, LABEL_COLUMN_WIDTH,
             SOLSolidStyle::TextColor(), &labelText));
+        page.RegisterColumnText(labelText, tab, LABEL_COLUMN_WIDTH);
         return labelText;
     };
     addLine(INFO_SPEED_CAP_RANGE, FString::Format(INFO_RANGE_FORMAT, { SOLInfoText::FormatSpeed(SOL::MIN_SPEED_CAP_MPS),
@@ -294,6 +344,7 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
     addLine(INFO_SHIP_RADIUS, MenuContentWithUnit(INFO_METERS_FORMAT, flight.ShipRadiusM));
 
     // Time and travel: the warp ladder, the jump and surface-lock ranges
+    scroll = &page.GetFillScroll(++tab);
     MenuContentAddSection(tree, *scroll, INFO_TIME);
     TArray<FString> warpSteps;
     for (const double factor : FSOLSimClock::WarpFactors())
@@ -304,11 +355,12 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
     addLine(INFO_JUMP_DURATION, MenuContentWithUnit(INFO_SECONDS_FORMAT, SOL::WARP_DURATION_S));
     addLine(INFO_SURFACE_LOCK_AUTO, MenuContentWithUnit(INFO_KM_FORMAT, SOL::SURFACE_LOCK_AUTO_RANGE_M
         / SOL::METERS_PER_KM));
-    outKeyTexts.Add(addLine(SOLInfoText::FormatSurfaceLockManualLabel(defaultKeys), FString::Format(
+    page.KeyTexts.Add(addLine(SOLInfoText::FormatSurfaceLockManualLabel(defaultKeys), FString::Format(
         INFO_MANUAL_RANGE_FORMAT, { SOLInfoText::FormatPercentOrValue(SOL::SURFACE_LOCK_MANUAL_RANGE_MIN_M
         / SOL::METERS_PER_KM) })));
 
     // Combat, through the tested formatter
+    scroll = &page.GetFillScroll(++tab);
     MenuContentAddSection(tree, *scroll, INFO_COMBAT);
     for (const SOLInfoText::FInfoLine& line : SOLInfoText::BuildCombatLines(SOL::COMBAT_MUZZLE_SPEED_MPS,
         SOL::COMBAT_BOLT_DAMAGE, SOL::COMBAT_FIRE_RATE_PER_S, SOL::COMBAT_TARGET_SHIELD, SOL::COMBAT_TARGET_HEALTH,
@@ -318,21 +370,21 @@ UWidget* SOLMenuContent::BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTex
     }
 
     // Prose on how the mechanics behave (the keys it names follow rebinds, through RefreshInfoPage)
+    scroll = &page.GetFillScroll(++tab);
     MenuContentAddSection(tree, *scroll, INFO_HOW_IT_WORKS);
     for (const FString& paragraph : SOLInfoText::BuildProse(defaultKeys))
     {
         UTextBlock* text = MakeText(tree, paragraph, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true);
         Cast<UScrollBoxSlot>(scroll->AddChild(text))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f));
-        outKeyTexts.Add(text);
+        page.KeyTexts.Add(text);
     }
-    return page;
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Rewrites the Info page's key-naming texts from the live keys
 void SOLMenuContent::RefreshInfoPage(const TArray<TObjectPtr<UTextBlock>>& keyTexts, const TArray<FString>& liveKeys)
 {
-    // Same order as BuildInfoPage: the manual surface-lock label, then the prose paragraphs
+    // Same order as FillInfoTabs: the manual surface-lock label, then the prose paragraphs
     const TArray<FString> prose = SOLInfoText::BuildProse(liveKeys);
     for (int32 index = 0; index < keyTexts.Num(); ++index)
     {
@@ -347,29 +399,26 @@ void SOLMenuContent::RefreshInfoPage(const TArray<TObjectPtr<UTextBlock>>& keyTe
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the About page (game, studio, engine version, credits)
-UWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
+// Fills the About tabs: the game (title, studio, description, engine version, copyright) and the credits
+void SOLMenuContent::FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
 {
     using namespace SOL::MenuStyle;
     using namespace SOLMenuText;
-    UVerticalBox* page = MakePage(tree, ABOUT_TITLE);
-    const FMargin gap(0.0f, 0.0f, 0.0f, ROW_GAP * 3.0f);
-    page->AddChildToVerticalBox(MakeText(tree, GAME_TITLE, TITLE_FONT_SIZE, SOLSolidStyle::BrightTextColor(), true));
-    page->AddChildToVerticalBox(MakeText(tree, STUDIO_NAME, SUBTITLE_FONT_SIZE, SOLSolidStyle::ValueColor(), true))
-        ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_DESCRIPTION, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
-        true))
-        ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, FString::Format(ABOUT_ENGINE_FORMAT,
-        { FEngineVersion::Current().ToString(EVersionComponent::Patch) }), BODY_FONT_SIZE, SOLSolidStyle::TextColor()))
-        ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS_TITLE, SECTION_FONT_SIZE, SOLSolidStyle::ValueColor(),
-        true));
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false, true))
-        ->SetPadding(gap);
-    page->AddChildToVerticalBox(MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false,
-        true));
-    return page;
+    const float gap = ROW_GAP * 3.0f;
+    UScrollBox& game = page.GetFillScroll(0);
+    MenuContentAddText(game, MakeText(tree, GAME_TITLE, TITLE_FONT_SIZE, SOLSolidStyle::BrightTextColor(), true), 0.0f);
+    MenuContentAddText(game, MakeText(tree, STUDIO_NAME, SUBTITLE_FONT_SIZE, SOLSolidStyle::ValueColor(), true), gap);
+    MenuContentAddText(game, MakeText(tree, ABOUT_DESCRIPTION, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+        true), gap);
+    MenuContentAddText(game, MakeText(tree, FString::Format(ABOUT_ENGINE_FORMAT,
+        { FEngineVersion::Current().ToString(EVersionComponent::Patch) }), BODY_FONT_SIZE, SOLSolidStyle::TextColor()),
+        gap);
+    MenuContentAddText(game, MakeText(tree, ABOUT_COPYRIGHT, SMALL_FONT_SIZE, SOLSolidStyle::DimTextColor(), false,
+        true), 0.0f);
+    UScrollBox& credits = page.GetFillScroll(1);
+    MenuContentAddSection(tree, credits, ABOUT_CREDITS_TITLE);
+    MenuContentAddText(credits, MakeText(tree, ABOUT_CREDITS, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+        true), gap);
 }
 
 //////////////////////////////////////////////////////////////////////////

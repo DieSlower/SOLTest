@@ -12,6 +12,7 @@
 
 class APlayerController;
 class USOLMenuSubsystem;
+class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
 class USOLSolidMenuSmokeBoard;
 
@@ -97,11 +98,22 @@ private:
     // Parks the cursor in the view's top-right corner (off every control) with a real Slate mouse move
     void ParkCursor() const;
 
+    // Checks a Controls / Info / About tab page (46f, SDD 14 step 3): the first tab shown, the tab count and selected
+    // mark, the shown tab's rows inside the content, every left-column text fitting its column, no hover trace, then
+    // every tab switched to (the last stays shown, except on Controls: back on the first for its screenshots); id is
+    // the check id prefix, bMeasureFit reads the layout (false while the page slides in)
+    void CheckReadOnlyPage(const TCHAR* id, USOLReadOnlyPageWidget* page, bool bMeasureFit);
+
+    // Checks the Demo page layout (46f, Q7): opened at the top, one scroll with the groups, every value text and
+    // label inside its slot
+    void CheckDemoLayout(const TCHAR* id, USOLMenuSubsystem& menu);
+
     // Checks the Settings stepper values against their slots and the row labels against their columns (46e follow-up)
     void CheckSettingsFit(USOLMenuSubsystem& menu, const TCHAR* valuesLabel, const TCHAR* labelsLabel);
 
     TWeakObjectPtr<APlayerController> mController;
     TWeakObjectPtr<USOLSolidMenuSmokeBoard> mBoard;
+    TWeakObjectPtr<USOLReadOnlyPageWidget> mInfoPage;   // The Info page the InfoPage step puts on the viewport
     double mLastTimeS = 0.0;        // Real time of the last update
     double mRunTimeS = 0.0;         // Real time since Start (the watchdog)
     double mStepTimeS = 0.0;

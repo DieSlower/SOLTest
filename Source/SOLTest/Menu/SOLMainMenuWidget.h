@@ -16,6 +16,7 @@
 class UHorizontalBox;
 class USOLMenuButton;
 class USOLDemoPageWidget;
+class USOLReadOnlyPageWidget;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
 class USOLSolidPanel;
@@ -76,6 +77,10 @@ public:
 
     // Returns the Demo page
     USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
+
+    // Returns the Controls and About pages (verification)
+    USOLReadOnlyPageWidget* GetControlsPage() const { return ControlsPage; }
+    USOLReadOnlyPageWidget* GetAboutPage() const { return AboutPage; }
 
     // Returns how many entry buttons the column has
     int32 GetEntryButtonCount() const { return EntryButtons.Num(); }
@@ -226,6 +231,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLDemoPageWidget> DemoPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> ControlsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> AboutPage;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;

@@ -56,6 +56,13 @@ public:
     // Returns the warnings text (verification)
     FString GetWarningsText() const;
 
+    // Returns the scroll box holding the groups, and its offset (verification)
+    const UScrollBox* GetScroll() const { return Scroll; }
+    float GetScrollOffset() const;
+
+    // Returns a row's value text block (verification)
+    const UTextBlock* GetValueTextWidget(int32 row) const;
+
 protected:
 
     // Builds the widget tree (no widget blueprint)
@@ -89,6 +96,9 @@ private:
 
     // A preset or footer button was clicked (index = stepper button count + EAction)
     void HandleActionClicked(int32 index);
+
+    UPROPERTY(Transient)
+    TObjectPtr<UScrollBox> Scroll;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> ValueTexts;

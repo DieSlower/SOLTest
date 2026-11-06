@@ -312,8 +312,7 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     mRowLabelTabs.Reset();
     UHorizontalBox* body = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     page->AddChildToVerticalBox(body)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
-    UHorizontalBoxSlot* railSlot = body->AddChildToHorizontalBox(SettingsSized(*WidgetTree, BuildTabRail(),
-        SOL::SolidMenu::TAB_COLUMN_WIDTH, 0.0f));
+    UHorizontalBoxSlot* railSlot = body->AddChildToHorizontalBox(BuildTabRail());
     railSlot->SetPadding(FMargin(0.0f, 0.0f, SOL::SolidMenu::SETTINGS_BODY_GAP, 0.0f));
     TabSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>(UWidgetSwitcher::StaticClass());
     TabScrolls.Reset(static_cast<int32>(ESOLSettingsTab::Count));
@@ -510,40 +509,18 @@ void USOLSettingsPageWidget::NativeOnInitialized()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the tab rail: a recess holding one Tab button per tab (index = column position), top-aligned, each leaving
-// SETTINGS_TAB_TRACE_PX on its right for its hover trace, which runs from the tab's right end to the rail's edge
-USOLSolidPanel* USOLSettingsPageWidget::BuildTabRail()
+// Builds the tab rail (the shared FSOLSolidTabRail kit piece): one Tab button per tab, index = column position
+USizeBox* USOLSettingsPageWidget::BuildTabRail()
 {
-    using namespace SOL::MenuStyle;
-    using namespace SOL::SolidMenu;
-    UVerticalBox* tabs = WidgetTree->ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
-    TabRail = USOLSolidPanel::MakeRecess(*WidgetTree, tabs, SETTINGS_TAB_RAIL_PADDING);
-    const float tabWidth = TAB_COLUMN_WIDTH - 2.0f * SETTINGS_TAB_RAIL_PADDING - SETTINGS_TAB_TRACE_PX;
-    const float traceStart = SETTINGS_TAB_RAIL_PADDING + tabWidth;
-    const float traceEnd = TAB_COLUMN_WIDTH - SETTINGS_TAB_TRACE_END_PX;
-    TabButtons.Reset(static_cast<int32>(ESOLSettingsTab::Count));
+    TArray<FString> labels;
+    labels.Reserve(static_cast<int32>(ESOLSettingsTab::Count));
     for (int32 index = 0; index < static_cast<int32>(ESOLSettingsTab::Count); ++index)
     {
-        USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, SOLSettingsTabs::TabLabel(SOLSettingsTabs::TabFromIndex(index)), index,
-            TAB_FONT_SIZE, SOLSettingsTabs::TabButtonVariant());
-        button->SetLabelLetterSpacing(SETTINGS_TAB_LETTER_SPACING);
-        button->OnMenuClicked.BindUObject(this, &USOLSettingsPageWidget::HandleTabClicked);
-        TabButtons.Add(button);
-        UVerticalBoxSlot* tabSlot = tabs->AddChildToVerticalBox(SettingsSized(*WidgetTree, button, tabWidth,
-            TAB_HEIGHT));
-        tabSlot->SetHorizontalAlignment(HAlign_Left);
-        tabSlot->SetPadding(FMargin(0.0f, 0.0f, 0.0f, BUTTON_GAP));
-
-        // The hover trace: a straight run from the tab's point to the rail's edge, at the tab's centre line
-        const float y = SETTINGS_TAB_RAIL_PADDING + index * (TAB_HEIGHT + BUTTON_GAP) + 0.5f * TAB_HEIGHT;
-        FSOLSolidTrace& trace = mTabTraces[index];
-        trace.Points[0] = FVector2f(traceStart, y);
-        trace.Points[1] = FVector2f(traceEnd, y);
-        trace.Count = 2;
-        trace.bRingTerminal = false;
+        labels.Add(SOLSettingsTabs::TabLabel(SOLSettingsTabs::TabFromIndex(index)));
     }
-    return TabRail;
+    FSOLMenuButtonClicked onClicked;
+    onClicked.BindUObject(this, &USOLSettingsPageWidget::HandleTabClicked);
+    return Rail.Build(*WidgetTree, labels, onClicked);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -579,15 +556,7 @@ void USOLSettingsPageWidget::RefreshFromSettings()
     {
         OverlayList->ClearEmbeddedHover();
     }
-    const TSharedPtr<SSOLSolidTraceLayer> layer = TabRail != nullptr ? TabRail->GetTraceLayer() : nullptr;
-    const bool bTabFocused = TabButtons.ContainsByPredicate([](const USOLMenuButton* button)
-    {
-        return button != nullptr && button->HasKeyboardFocus();
-    });
-    if (layer.IsValid() && !bTabFocused)
-    {
-        layer->ClearHoverTrace();
-    }
+    Rail.ClearStaleHover();
     RefreshControls();
 }
 
@@ -601,10 +570,7 @@ void USOLSettingsPageWidget::SelectTab(const ESOLSettingsTab tab)
     {
         TabSwitcher->SetActiveWidgetIndex(index);
     }
-    for (int32 button = 0; button < TabButtons.Num(); ++button)
-    {
-        TabButtons[button]->SetSelected(button == index);
-    }
+    Rail.Select(index);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -618,8 +584,7 @@ int32 USOLSettingsPageWidget::GetShownContentIndex() const
 // Returns a tab's button in the tab column, or null
 USOLMenuButton* USOLSettingsPageWidget::GetTabButton(const ESOLSettingsTab tab) const
 {
-    const int32 index = static_cast<int32>(tab);
-    return TabButtons.IsValidIndex(index) ? TabButtons[index].Get() : nullptr;
+    return Rail.GetButton(static_cast<int32>(tab));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -651,17 +616,14 @@ const UCheckBox* USOLSettingsPageWidget::GetToggle(const ESOLSettingsToggle togg
 // Returns whether the tab rail draws a tab's hover trace
 bool USOLSettingsPageWidget::IsTabHoverTraceShown(const ESOLSettingsTab tab) const
 {
-    const TSharedPtr<SSOLSolidTraceLayer> layer = TabRail != nullptr ? TabRail->GetTraceLayer() : nullptr;
-    return layer.IsValid() && SOLSettingsTabs::IsValidTab(tab)
-        && layer->IsShowingHoverTrace(mTabTraces[static_cast<int32>(tab)]) && layer->GetHoverAmount() > 0.5f;
+    return SOLSettingsTabs::IsValidTab(tab) && Rail.IsTraceShown(static_cast<int32>(tab));
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Returns whether the tab rail draws any hover trace
 bool USOLSettingsPageWidget::IsAnyTabHoverTraceShown() const
 {
-    const TSharedPtr<SSOLSolidTraceLayer> layer = TabRail != nullptr ? TabRail->GetTraceLayer() : nullptr;
-    return layer.IsValid() && layer->GetHoverAmount() > 0.0f;
+    return Rail.IsAnyTraceShown();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -764,12 +726,7 @@ void USOLSettingsPageWidget::NativeConstruct()
         mInputProcessor = MakeShared<FSOLRebindInputProcessor>(*this);
         FSlateApplication::Get().RegisterInputPreProcessor(mInputProcessor);
     }
-    const TSharedPtr<SSOLSolidTraceLayer> layer = TabRail != nullptr ? TabRail->GetTraceLayer() : nullptr;
-    for (int32 tab = 0; tab < TabButtons.Num(); ++tab)
-    {
-        TabButtons[tab]->SetHoverTrace(layer, mTabTraces[tab]);
-    }
-    mRailStrength = -1.0f;
+    Rail.Bind();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1117,16 +1074,8 @@ void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float d
 {
     Super::NativeTick(geometry, deltaSeconds);
     const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
-    if (frame.Strength != mRailStrength && TabRail != nullptr && TabRail->GetTraceLayer().IsValid())
-    {
-        mRailStrength = frame.Strength;
-        TabRail->SetTraceLook(1.0f, 0.0f, frame.Strength);
-    }
     mIsHoverElsewhere = IsHoverOnFocuslessControl();
-    for (USOLMenuButton* button : TabButtons)
-    {
-        button->RefreshHighlightAt(frame.NowS, frame.Strength, mIsHoverElsewhere);
-    }
+    Rail.Tick(frame, mIsHoverElsewhere);
     for (USOLMenuButton* button : Buttons)
     {
         button->RefreshHighlightAt(frame.NowS, frame.Strength, mIsHoverElsewhere);

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Menu/SOLSettingsTabs.h"
+#include "Menu/SOLSolidTabRail.h"
 #include "Menu/SOLSolidTraceLayer.h"
 
 #include "Blueprint/UserWidget.h"
@@ -18,6 +19,7 @@ class IInputProcessor;
 class UCheckBox;
 class UHorizontalBox;
 class UScrollBox;
+class USizeBox;
 class USOLMenuButton;
 class USOLOverlayMenuWidget;
 class USOLSettingsSubsystem;
@@ -230,8 +232,8 @@ private:
         ResetKeys,
     };
 
-    // Builds the tab rail: one Tab button per tab and each tab's hover trace (rail local units)
-    USOLSolidPanel* BuildTabRail();
+    // Builds the tab rail (the shared FSOLSolidTabRail): one Tab button per tab; returns the column widget
+    USizeBox* BuildTabRail();
 
     // Creates a row of a tab with its label in the tab's label column (SOLSettingsTabs::LabelColumnWidth), ready for
     // the control(s)
@@ -345,17 +347,13 @@ private:
     TArray<TObjectPtr<UTextBlock>> RowLabels;               // Every row's label, in build order (verification)
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<USOLMenuButton>> TabButtons;          // In ESOLSettingsTab order
+    FSOLSolidTabRail Rail;                                  // The tab column (46f: the shared kit piece)
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UScrollBox>> TabScrolls;              // Each tab's rows, in ESOLSettingsTab order
 
     UPROPERTY(Transient)
     TObjectPtr<UWidgetSwitcher> TabSwitcher;                // Shows the selected tab's scroll box
-
-    UPROPERTY(Transient)
-    TObjectPtr<USOLSolidPanel> TabRail;                     // The tab column's recess; its trace layer draws the
-                                                            // hovered tab's trace
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuButton> RevertButton;
@@ -379,7 +377,5 @@ private:
     TArray<ESOLSettingsTab> mRowLabelTabs;          // The tab of each RowLabels entry
     bool mIsHoverElsewhere = false;                 // Last tick: the mouse over a focusless control (one highlight)
     bool mIsMouseLastInput = true;                  // The last input was a real mouse move or press, not a key
-    FSOLSolidTrace mTabTraces[static_cast<int32>(ESOLSettingsTab::Count)];  // Each tab's hover trace (rail local)
-    float mRailStrength = -1.0f;                    // Effects strength last pushed to the rail's trace layer
     ESOLSettingsTab mTab = ESOLSettingsTab::Graphics;   // The tab showing
 };

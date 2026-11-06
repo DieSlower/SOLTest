@@ -220,11 +220,18 @@ it).
 
 Answers: Q6 (today's entries, sections as tabs), Q7 (Demo: no tab column). Depends on 46e (the shell with a tab column).
 
-1. [ ] `SOLMenuContent::BuildControlsPage`, `BuildInfoPage`, `BuildAboutPage` in the shell (Q6: today's entries, each page's sections as tabs; read-only
+1. [x] `SOLMenuContent::BuildControlsPage`, `BuildInfoPage`, `BuildAboutPage` in the shell (Q6: today's entries, each page's sections as tabs; read-only
    recesses, key / value columns, headings); the live-key refresh unchanged.
-2. [ ] `USOLDemoPageWidget` in the shell, no tab column (Q7: presets, recessed sections, warnings in #E5533D, footer).
-3. [ ] Smoke step 3 for these pages in both menus; screenshots.
-4. [ ] Review; fixes; suite. Commit `Issue #46: Part 46f - solid Controls, Info, About and Demo pages`.
+   **Done** (SDD 6.5): the tab rail was promoted into the kit first (`FSOLSolidTabRail`, Settings unchanged), then
+   `USOLReadOnlyPageWidget` and the pure `SOLPageTabs` (14 `SOLTest.SolidPages.*` tests by a separate agent from the
+   contract); Controls 10 tabs, Info 4, About 2.
+2. [x] `USOLDemoPageWidget` in the shell, no tab column (Q7: presets, recessed sections, warnings in #E5533D, footer).
+   **Done:** recess groups in one scroll box with the solid scroll bar style, scrolled to the top by `RefreshFromMenu`.
+3. [x] Smoke step 3 for these pages in both menus; screenshots. **Done:** `-SOLSmokeSolidMenu` 83/83 (was 66), holo
+   86/86, overlay 34/34, hud 24/24, `-SOLMenuSmoke=all` 47 passed / 3 failed (the TECH_DEBT stale checks); full suite
+   1476/1476; profile PASS in three runs (SDD 6.5).
+4. [x] Review; fixes; suite; commit `Issue #46: Part 46f - solid Controls, Info, About and Demo`.
+5. **Review (opus, xhigh) and fixes:** no High finding. Fixed: `GetFillScroll` bounds check, Demo grouping guards (title count static_assert, last group added after the loop), stale and wrong comments, long lines and separators, the Info smoke page removed in `Finish`. Recorded in TECH_DEBT: the pause menu's 10 Controls tabs may not fit the flat pause panel (estimated 558 of 576 units, measure in 46g), recess overdraw now also on these pages (profile in 46h). Left for the user: About's two tabs (the SDD table said "no tab column"; Q6 asks for sections as tabs), clicking the already-selected pause tab resets Controls / Info to the first tab (as Settings does), the review's low items (raw `UTextBlock*` in `FColumnText`, duplicate key arrays, kit names for the `SETTINGS_TAB_*` constants).
 
 ### 46g: pause side panel (opus, high)
 
@@ -285,3 +292,4 @@ Depends on 46d-46g.
 - 2026-11-05: 46e done (SDD 6.3, 13.1 46e check): tab logic test-first (16 tests), the tab column, the embedded list
   restyle, smoke step 4 (55/55), review fixes; full suite 1459/1459. Next: 46f.
 - 2026-11-05: 46e follow-ups done (SDD 6.4, 13.1 follow-up check; plan 46e step 5). Next: 46f.
+- 2026-11-05: 46f built and verified (SDD 6.5); next: the review fixes and the commit, then 46g.

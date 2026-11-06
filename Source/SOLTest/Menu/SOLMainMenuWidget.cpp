@@ -10,6 +10,7 @@
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
+#include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
@@ -263,10 +264,13 @@ void USOLMainMenuWidget::BuildShell(UHorizontalBox& row)
     PageSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>(UWidgetSwitcher::StaticClass());
     PageSwitcher->AddChild(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()));
     PageSwitcher->AddChild(BuildStartLocationPage());
-    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
+    ControlsPage = SOLMenuContent::BuildControlsPage(*WidgetTree);
+    ControlsKeyCells = ControlsPage->GetKeyCells();
+    PageSwitcher->AddChild(ControlsPage);
     SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
     PageSwitcher->AddChild(SettingsPage);
-    PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
+    AboutPage = SOLMenuContent::BuildAboutPage(*WidgetTree);
+    PageSwitcher->AddChild(AboutPage);
     DemoPage = WidgetTree->ConstructWidget<USOLDemoPageWidget>(USOLDemoPageWidget::StaticClass());
     PageSwitcher->AddChild(DemoPage);
     shell->AddChildToVerticalBox(MainMenuRecess(*WidgetTree, PageSwitcher, SHELL_RECESS_PADDING))->SetSize(
@@ -409,8 +413,8 @@ void USOLMainMenuWidget::TickColumnLights(const double nowS, const float s)
 // Shows a page in the shell beside the column (None closes the shell, which animates out after the input is back)
 void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
 {
-    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls and Settings re-read
-    // their state when shown
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Settings, About and Demo
+    // re-read their state when shown (the tab pages open on their first tab)
     if (mPage == ESOLMainMenuPage::Settings && page != ESOLMainMenuPage::Settings && SettingsPage != nullptr)
     {
         SettingsPage->NotifyHidden();
@@ -423,9 +427,14 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
     {
         DemoPage->RefreshFromMenu();
     }
-    if (page == ESOLMainMenuPage::Controls)
+    if (page == ESOLMainMenuPage::Controls && ControlsPage != nullptr)
     {
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+        ControlsPage->ShowOpening();
+    }
+    if (page == ESOLMainMenuPage::About && AboutPage != nullptr)
+    {
+        AboutPage->ShowOpening();
     }
     const bool bWasOpen = mPage != ESOLMainMenuPage::None;
     mPage = page;

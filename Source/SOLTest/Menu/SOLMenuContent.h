@@ -8,6 +8,8 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectPtr.h"
 
+enum class ESOLReadOnlyPage : uint8;
+class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
 class UTextBlock;
 class UVerticalBox;
@@ -46,24 +48,36 @@ namespace SOLMenuContent
     // '{SpeedCapNotches}' (SOLFlight::SpeedCapStepsPerDecade, e.g. "10") filled in
     SOLTEST_API FString FormatControlAction(const TCHAR* action);
 
-    // Builds the Controls page (every binding grouped by area, in a scroll box); outKeyCells gets one key text block
-    // per SOLMenuText::CONTROL_ROWS row, for RefreshControlsPage
-    SOLTEST_API UWidget* BuildControlsPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyCells);
+    // Builds the Controls page (a tab page, SDD 46 section 6.5: one tab per area, every binding in key / action rows);
+    // its key cells (USOLReadOnlyPageWidget::GetKeyCells) are one text block per SOLMenuText::CONTROL_ROWS row, for
+    // RefreshControlsPage
+    SOLTEST_API USOLReadOnlyPageWidget* BuildControlsPage(UWidgetTree& tree);
 
     // Rewrites the Controls page's key cells from the live keys (called when the page is shown)
     SOLTEST_API void RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& keyCells,
         const TArray<FString>& liveKeys);
 
-    // Builds the Info page (flight, time and combat values generated from the real constants, plus prose);
-    // outKeyTexts gets the text blocks that name a key (the manual surface-lock label, then each prose paragraph), for
-    // RefreshInfoPage
-    SOLTEST_API UWidget* BuildInfoPage(UWidgetTree& tree, TArray<TObjectPtr<UTextBlock>>& outKeyTexts);
+    // Builds the Info page (a tab page: flight, time and combat values generated from the real constants, plus
+    // prose); its key texts (USOLReadOnlyPageWidget::GetKeyTexts) are the text blocks that name a key (the manual
+    // surface-lock label, then each prose paragraph), for RefreshInfoPage
+    SOLTEST_API USOLReadOnlyPageWidget* BuildInfoPage(UWidgetTree& tree);
 
     // Rewrites the Info page's key-naming texts from the live keys (called when the page is shown)
     SOLTEST_API void RefreshInfoPage(const TArray<TObjectPtr<UTextBlock>>& keyTexts, const TArray<FString>& liveKeys);
 
-    // Builds the About page (game, studio, engine version, credits)
-    SOLTEST_API UWidget* BuildAboutPage(UWidgetTree& tree);
+    // Builds the About page (a tab page: the game with the engine version, and the credits)
+    SOLTEST_API USOLReadOnlyPageWidget* BuildAboutPage(UWidgetTree& tree);
+
+    // Builds a read-only tab page of a kind and fills its tabs
+    SOLTEST_API USOLReadOnlyPageWidget* BuildReadOnlyPage(UWidgetTree& tree, ESOLReadOnlyPage kind);
+
+    // Fills a read-only page's tabs (called by USOLReadOnlyPageWidget::Setup once its scroll boxes exist)
+    SOLTEST_API void FillReadOnlyTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
+
+    // The per-page fillers FillReadOnlyTabs calls
+    SOLTEST_API void FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
+    SOLTEST_API void FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
+    SOLTEST_API void FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
 
     // Builds the Settings page (USOLSettingsPageWidget, a child user widget in the tree)
     SOLTEST_API USOLSettingsPageWidget* BuildSettingsPage(UWidgetTree& tree);

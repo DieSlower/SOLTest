@@ -9,6 +9,7 @@
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
+#include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsPageWidget.h"
@@ -103,14 +104,19 @@ void USOLPauseMenuWidget::NativeOnInitialized()
     resumePage->AddChildToVerticalBox(SOLMenuContent::MakeText(*WidgetTree, SOLMenuText::PAUSED_HINT, SMALL_FONT_SIZE,
         SOLSolidStyle::DimTextColor(), false, true));
     PageSwitcher->AddChild(resumePage);
-    PageSwitcher->AddChild(SOLMenuContent::BuildControlsPage(*WidgetTree, ControlsKeyCells));
-    PageSwitcher->AddChild(SOLMenuContent::BuildInfoPage(*WidgetTree, InfoKeyTexts));
+    ControlsPage = SOLMenuContent::BuildControlsPage(*WidgetTree);
+    ControlsKeyCells = ControlsPage->GetKeyCells();
+    PageSwitcher->AddChild(ControlsPage);
+    InfoPage = SOLMenuContent::BuildInfoPage(*WidgetTree);
+    InfoKeyTexts = InfoPage->GetKeyTexts();
+    PageSwitcher->AddChild(InfoPage);
     SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
     PageSwitcher->AddChild(SettingsPage);
     DemoPage = WidgetTree->ConstructWidget<USOLDemoPageWidget>(USOLDemoPageWidget::StaticClass());
     DemoPage->SetInFlight(true);
     PageSwitcher->AddChild(DemoPage);
-    PageSwitcher->AddChild(SOLMenuContent::BuildAboutPage(*WidgetTree));
+    AboutPage = SOLMenuContent::BuildAboutPage(*WidgetTree);
+    PageSwitcher->AddChild(AboutPage);
 
     // Quit page: a prompt and the two ways out
     UVerticalBox* quitPage = SOLMenuContent::MakePage(*WidgetTree, SOLMenuText::QUIT_PROMPT);
@@ -136,8 +142,8 @@ void USOLPauseMenuWidget::NativeOnInitialized()
 // Shows a tab's page and marks its tab button selected
 void USOLPauseMenuWidget::ShowTab(const SOLMenuState::EMenuTab tab)
 {
-    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls and Settings re-read
-    // their state when shown
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Info, About, Demo and
+    // Settings re-read their state when shown (the tab pages open on their first tab)
     if (mTab == SOLMenuState::EMenuTab::Settings && tab != SOLMenuState::EMenuTab::Settings && SettingsPage != nullptr)
     {
         SettingsPage->NotifyHidden();
@@ -146,17 +152,23 @@ void USOLPauseMenuWidget::ShowTab(const SOLMenuState::EMenuTab tab)
     {
         SettingsPage->RefreshFromSettings();
     }
-    if (tab == SOLMenuState::EMenuTab::Controls)
+    if (tab == SOLMenuState::EMenuTab::Controls && ControlsPage != nullptr)
     {
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+        ControlsPage->ShowOpening();
+    }
+    if (tab == SOLMenuState::EMenuTab::About && AboutPage != nullptr)
+    {
+        AboutPage->ShowOpening();
     }
     if (tab == SOLMenuState::EMenuTab::Demo && DemoPage != nullptr)
     {
         DemoPage->RefreshFromMenu();
     }
-    if (tab == SOLMenuState::EMenuTab::Info)
+    if (tab == SOLMenuState::EMenuTab::Info && InfoPage != nullptr)
     {
         SOLMenuContent::RefreshInfoPage(InfoKeyTexts, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+        InfoPage->ShowOpening();
     }
     mTab = tab;
     if (PageSwitcher != nullptr)

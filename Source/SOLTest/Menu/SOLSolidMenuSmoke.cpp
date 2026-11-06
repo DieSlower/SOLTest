@@ -8,7 +8,10 @@
 #include "Menu/SOLBuildVersion.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuButton.h"
+#include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLMenuState.h"
+#include "Menu/SOLPageTabs.h"
+#include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsRules.h"
@@ -26,6 +29,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Components/CheckBox.h"
+#include "Components/ScrollBox.h"
 #include "Components/TextBlock.h"
 #include "Engine/Font.h"
 #include "Engine/World.h"
@@ -72,10 +76,14 @@ namespace
         StrengthZeroShot,
         StrengthTwo,    // Strength 2: the glow doubled
         BoardRemove,    // Strength back to 1, the board removed
+        InfoPage,       // 46f: an Info page on the viewport (the main menu has none): tabs, fit, key texts
+        InfoShot,       // ... settled on its last tab (the prose) for the screenshot
         ViewSmall,      // r.SetRes 1000x800 (windowed)
         SmallSettings,  // Settings open at 1000x800: the column and the shell inside the view, every stepper value
                         // inside its slot (46e follow-up; the longest window mode shown for the screenshot)
         SmallStart,     // Start location open at 1000x800
+        SmallControls,  // 46f: Controls open at 1000x800: tabs, the rows and columns inside the shell
+        SmallDemo,      // 46f: Demo open at 1000x800: the groups, labels and values inside their slots
         Quit,           // SUMMARY, quit
         Count,
     };
@@ -123,6 +131,7 @@ namespace
     constexpr int32 SOLID_SMOKE_DOWN_ENTRY = 2;
     constexpr int32 SOLID_SMOKE_STRENGTH_ENTRY = 3;             // Hovered at strength 0 and 2
     constexpr int32 SOLID_SMOKE_SETTINGS_ENTRY = 4;
+    constexpr int32 SOLID_SMOKE_CONTROLS_ENTRY = 3;
     constexpr int32 SOLID_SMOKE_ABOUT_ENTRY = 5;
     constexpr int32 SOLID_SMOKE_COLUMN_TRACES = 3;              // The column's lower-edge traces
     constexpr int32 SOLID_SMOKE_OVERLAY_HOVER_ROW = 1;          // The embedded Overlay list's row hovered for the shot
@@ -722,6 +731,25 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
     case ESolidSmokeStep::SmallStart:
         ClickEntry(menu, SOLID_SMOKE_DOWN_ENTRY);
         break;
+    case ESolidSmokeStep::SmallControls:
+        ClickEntry(menu, SOLID_SMOKE_CONTROLS_ENTRY);
+        break;
+    case ESolidSmokeStep::SmallDemo:
+        ClickEntry(menu, SOLID_SMOKE_HOVER_ENTRY);
+        break;
+    case ESolidSmokeStep::InfoPage:
+    {
+        // The main menu has no Info page, so one is built and shown full view over it for its checks
+        USOLReadOnlyPageWidget* info = CreateWidget<USOLReadOnlyPageWidget>(mController.Get(),
+            USOLReadOnlyPageWidget::StaticClass());
+        if (info != nullptr)
+        {
+            info->Setup(ESOLReadOnlyPage::Info);
+            info->AddToViewport(SOLID_SMOKE_BOARD_Z);
+            mInfoPage = info;
+        }
+        break;
+    }
     case ESolidSmokeStep::Quit:
         SetStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
         Finish(menu);
@@ -1086,6 +1114,18 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
                 "(row %d, start body %d), mark %d"), rows, small, selected, selectedIndex, menu.GetStartBodyIndex(),
                 selectedRow != nullptr && selectedRow->GetAppliedLook().bSelectedMark ? 1 : 0));
         }
+        if (page.Page == ESOLMainMenuPage::Controls && mainMenu != nullptr)
+        {
+            CheckReadOnlyPage(TEXT("p-controls"), mainMenu->GetControlsPage(), false);
+        }
+        else if (page.Page == ESOLMainMenuPage::About && mainMenu != nullptr)
+        {
+            CheckReadOnlyPage(TEXT("p-about"), mainMenu->GetAboutPage(), false);
+        }
+        else if (page.Page == ESOLMainMenuPage::Demo)
+        {
+            CheckDemoLayout(TEXT("p-demo"), menu);
+        }
         TakeUiShot(*FString::Printf(TEXT("page-%s"), page.Name));
         break;
     }
@@ -1112,6 +1152,11 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
     {
         const bool bOpen = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::About
             && mainMenu->GetShellAnim().Phase == ESOLHoloMenuPhase::Open;
+        const USOLReadOnlyPageWidget* about = mainMenu != nullptr ? mainMenu->GetAboutPage() : nullptr;
+        Check(TEXT("r-about-first-tab"), about != nullptr && about->GetSelectedTab() == SOLPageTabs::OpeningTab()
+            && about->GetShownContentIndex() == SOLPageTabs::OpeningTab(), FString::Printf(TEXT("About reopened on "
+            "tab %d (content %d) after it was left on its last tab"), about != nullptr ? about->GetSelectedTab() : -1,
+            about != nullptr ? about->GetShownContentIndex() : -1));
         Check(TEXT("r-reopen-reverses"), mPreProgress > 0.0f && mPreProgress < 1.0f && FMath::IsNearlyEqual(
             mPreProgress, mPostProgress, SOLID_SMOKE_REVERSAL_TOLERANCE) && bOpen, FString::Printf(TEXT("closing at "
             "%.3f, reopened at %.3f, then Open on About %d"), mPreProgress, mPostProgress, bOpen ? 1 : 0));
@@ -1245,6 +1290,42 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             size.Y));
         break;
     }
+    case ESolidSmokeStep::InfoPage:
+    {
+        CheckReadOnlyPage(TEXT("i-info"), mInfoPage.Get(), true);
+        break;
+    }
+    case ESolidSmokeStep::InfoShot:
+        TakeUiShot(TEXT("info"));
+        break;
+    case ESolidSmokeStep::SmallControls:
+    case ESolidSmokeStep::SmallDemo:
+    {
+        const bool bControls = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::SmallControls;
+        if (mInfoPage.IsValid())
+        {
+            mInfoPage->RemoveFromParent();
+        }
+        FString columnDetail;
+        FString shellDetail;
+        const bool bColumn = mainMenu != nullptr && SolidSmokeInside(mainMenu->GetColumnPanel(), mainMenu,
+            columnDetail);
+        const bool bShell = mainMenu != nullptr && SolidSmokeInside(mainMenu->GetShellPanel(), mainMenu,
+            shellDetail);
+        Check(bControls ? TEXT("h-fit-controls") : TEXT("h-fit-demo"), bColumn && bShell && mainMenu->GetPage()
+            == (bControls ? ESOLMainMenuPage::Controls : ESOLMainMenuPage::Demo), FString::Printf(
+            TEXT("column %s, shell %s"), *columnDetail, *shellDetail));
+        if (bControls)
+        {
+            CheckReadOnlyPage(TEXT("h-controls"), mainMenu != nullptr ? mainMenu->GetControlsPage() : nullptr, true);
+        }
+        else
+        {
+            CheckDemoLayout(TEXT("h-demo"), menu);
+        }
+        TakeUiShot(bControls ? TEXT("small-controls") : TEXT("small-demo"));
+        break;
+    }
     case ESolidSmokeStep::SmallSettings:
     case ESolidSmokeStep::SmallStart:
     {
@@ -1310,6 +1391,10 @@ void FSOLSolidMenuSmoke::Finish(USOLMenuSubsystem& menu)
         return;
     }
     mIsFinished = true;
+    if (mInfoPage.IsValid())
+    {
+        mInfoPage->RemoveFromParent();
+    }
     if (USOLSolidMenuSmokeBoard* board = mBoard.Get())
     {
         board->RemoveFromParent();
@@ -1872,6 +1957,156 @@ void FSOLSolidMenuSmoke::ParkCursor() const
     {
         SolidSmokeMouseMove(FSlateApplication::Get().GetCursorPos(), false);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks a Controls / Info / About tab page: tabs, selected mark, fit, then every tab switched to
+void FSOLSolidMenuSmoke::CheckReadOnlyPage(const TCHAR* id, USOLReadOnlyPageWidget* page, const bool bMeasureFit)
+{
+    if (page == nullptr)
+    {
+        Check(*FString::Printf(TEXT("%s-tabs"), id), false, TEXT("no page"));
+        return;
+    }
+    const int32 count = page->GetTabCount();
+    int32 selectedMarks = 0;
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        selectedMarks += page->GetTabButton(tab) != nullptr && page->GetTabButton(tab)->IsSelected() ? 1 : 0;
+    }
+    Check(*FString::Printf(TEXT("%s-tabs"), id), count == SOLPageTabs::TabCount(page->GetPageKind()) && count > 0
+        && page->GetSelectedTab() == SOLPageTabs::OpeningTab() && page->GetShownContentIndex()
+        == SOLPageTabs::OpeningTab() && selectedMarks == 1 && page->GetTabButton(SOLPageTabs::OpeningTab())->IsSelected()
+        && !page->IsAnyTabHoverTraceShown(), FString::Printf(TEXT("%d tabs (want %d), shown %d, content %d, %d "
+        "selected mark(s), hover trace %d"), count, SOLPageTabs::TabCount(page->GetPageKind()),
+        page->GetSelectedTab(), page->GetShownContentIndex(), selectedMarks, page->IsAnyTabHoverTraceShown() ? 1 : 0));
+
+    // Every left-column text: its longest word inside its column (measured at the page's layout scale), and the shown
+    // tab's texts inside the content horizontally
+    const float scale = page->GetCachedGeometry().GetAccumulatedLayoutTransform().GetScale();
+    const UScrollBox* scroll = page->GetTabScroll(page->GetSelectedTab());
+    const FGeometry scrollGeometry = scroll != nullptr ? scroll->GetCachedGeometry() : FGeometry();
+    const double scrollMin = scrollGeometry.GetAbsolutePosition().X;
+    const double scrollMax = scrollMin + scrollGeometry.GetAbsoluteSize().X;
+    bool bFits = scale > 0.0f && scrollMax > scrollMin;
+    int32 shown = 0;
+    FString detail;
+    for (const USOLReadOnlyPageWidget::FColumnText& column : page->GetColumnTexts())
+    {
+        TArray<FString> words;
+        column.Text->GetText().ToString().ParseIntoArray(words, TEXT(" "));
+        for (const FString& word : words)
+        {
+            const float width = SolidSmokeTextWidth(word, column.Text->GetFont(), scale);
+            if (!(width >= 0.0f && width <= column.Width + SOLID_SMOKE_FIT_TOLERANCE))
+            {
+                bFits = false;
+                detail += FString::Printf(TEXT(" [\"%s\" %.1f over %.1f]"), *word, width, column.Width);
+            }
+        }
+        if (column.Tab == page->GetSelectedTab())
+        {
+            ++shown;
+            const FGeometry& geometry = column.Text->GetCachedGeometry();
+            const double left = geometry.GetAbsolutePosition().X;
+            const double right = left + geometry.GetAbsoluteSize().X;
+            if (!(geometry.GetAbsoluteSize().X > 0.0 && left >= scrollMin - SOLID_SMOKE_FIT_TOLERANCE_PX
+                && right <= scrollMax + SOLID_SMOKE_FIT_TOLERANCE_PX))
+            {
+                bFits = false;
+                detail += FString::Printf(TEXT(" [shown text \"%s\" %.0f-%.0f outside %.0f-%.0f]"),
+                    *column.Text->GetText().ToString().Left(24), left, right, scrollMin, scrollMax);
+            }
+        }
+    }
+    if (!bMeasureFit)
+    {
+        // A page opened from closed slides in: its children's cached geometry lags the slide, so the layout is not
+        // read here (the same page is read at 1000x800 with the shell already open)
+        bFits = true;
+        shown = 1;
+    }
+    Check(*FString::Printf(TEXT("%s-fit"), id), bFits && (page->GetColumnTexts().Num() == 0 || shown > 0),
+        FString::Printf(TEXT("%d column texts (%d on the shown tab) at scale %.3f%s"), page->GetColumnTexts().Num(),
+        shown, scale, *detail));
+
+    // Every tab switched to as a click does; the last stays shown (the reopen check reads the first again)
+    bool bSwitched = true;
+    FString switchDetail;
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        USOLMenuButton* button = page->GetTabButton(tab);
+        if (button == nullptr)
+        {
+            bSwitched = false;
+            continue;
+        }
+        button->OnMenuClicked.ExecuteIfBound(button->GetIndex());
+        int32 marks = 0;
+        for (int32 other = 0; other < count; ++other)
+        {
+            marks += page->GetTabButton(other)->IsSelected() ? 1 : 0;
+        }
+        if (page->GetSelectedTab() != tab || page->GetShownContentIndex() != tab || marks != 1
+            || !button->IsSelected())
+        {
+            bSwitched = false;
+            switchDetail += FString::Printf(TEXT(" [tab %d: selected %d, content %d, marks %d]"), tab,
+                page->GetSelectedTab(), page->GetShownContentIndex(), marks);
+        }
+    }
+    if (page->GetPageKind() == ESOLReadOnlyPage::Controls)
+    {
+        page->SelectTab(SOLPageTabs::OpeningTab());     // The Controls screenshots show the first tab
+    }
+    Check(*FString::Printf(TEXT("%s-tab-switch"), id), bSwitched, FString::Printf(TEXT("%d tabs clicked in turn%s"),
+        count, *switchDetail));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks the Demo page layout
+void FSOLSolidMenuSmoke::CheckDemoLayout(const TCHAR* id, USOLMenuSubsystem& menu)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLDemoPageWidget* page = mainMenu != nullptr ? mainMenu->GetDemoPage() : nullptr;
+    const UScrollBox* scroll = page != nullptr ? page->GetScroll() : nullptr;
+    if (page == nullptr || scroll == nullptr)
+    {
+        Check(*FString::Printf(TEXT("%s-layout"), id), false, TEXT("no Demo page or scroll"));
+        return;
+    }
+    const float scale = page->GetCachedGeometry().GetAccumulatedLayoutTransform().GetScale();
+    const FGeometry scrollGeometry = scroll->GetCachedGeometry();
+    const double scrollMin = scrollGeometry.GetAbsolutePosition().X;
+    const double scrollMax = scrollMin + scrollGeometry.GetAbsoluteSize().X;
+    bool bFits = scale > 0.0f && scrollMax > scrollMin && page->GetScrollOffset() == 0.0f;
+    FString detail;
+    const int32 rows = SOLMenuState::DemoRowCount();
+    for (int32 row = 0; row < rows; ++row)
+    {
+        const UTextBlock* value = page->GetValueTextWidget(row);
+        if (value == nullptr)
+        {
+            bFits = false;
+            continue;
+        }
+        const FGeometry& geometry = value->GetCachedGeometry();
+        const float width = SolidSmokeTextWidth(value->GetText().ToString(), value->GetFont(), scale);
+        const double left = geometry.GetAbsolutePosition().X;
+        const double right = left + geometry.GetAbsoluteSize().X;
+        const bool bInside = left >= scrollMin - SOLID_SMOKE_FIT_TOLERANCE_PX
+            && right <= scrollMax + SOLID_SMOKE_FIT_TOLERANCE_PX;
+        const bool bRoom = width >= 0.0f && width <= geometry.GetLocalSize().X + SOLID_SMOKE_FIT_TOLERANCE;
+        // A row below the fold has no laid-out slot yet; only rows with a size are judged
+        if (geometry.GetAbsoluteSize().X > 0.0 && (!bInside || !bRoom))
+        {
+            bFits = false;
+            detail += FString::Printf(TEXT(" [row %d \"%s\" %.1f of %.1f, inside %d]"), row,
+                *value->GetText().ToString(), width, geometry.GetLocalSize().X, bInside ? 1 : 0);
+        }
+    }
+    Check(*FString::Printf(TEXT("%s-layout"), id), bFits, FString::Printf(TEXT("scroll offset %.1f, %d value texts "
+        "at scale %.3f%s"), page->GetScrollOffset(), rows, scale, *detail));
 }
 
 //////////////////////////////////////////////////////////////////////////
