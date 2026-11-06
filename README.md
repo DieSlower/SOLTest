@@ -183,7 +183,7 @@ Settings: the Space dust option under Graphics.
 
 ![Solid main menu](Docs/Images/46-main-menu-solid.png)
 
-The solid main menu (issue #46, part 46d): hull column with the start-location button, hazard stripe and the version recess.
+The solid main menu (issue #46): the hull column with Play focused (amber, its trace lit), Demo, the start-location button, Controls, Settings, About and Quit, the hazard stripe, the key hints, the circuit traces and the build-time version recess.
 
 ![Solid Settings with the tab column](Docs/Images/46-settings-solid.png)
 
@@ -191,11 +191,15 @@ The solid Settings page (issue #46, part 46e and its follow-ups), on its Gamepla
 
 ![Solid Controls page with the tab column](Docs/Images/46-controls-solid.png)
 
-The solid Controls page (issue #46, part 46f): each area of the controls is a tab in the vertical tab column, with the key and action rows in the content recess; Info and About use the same shell, and the Demo screen shows its option groups as recesses in one scroll.
+The solid Controls page (issue #46, part 46f): each area of the controls is a tab in the vertical tab column, with the key and action rows in the content recess; Info and About use the same shell.
+
+![Solid Scale demo page](Docs/Images/46-demo-solid.png)
+
+The solid Scale demo page (issue #46, part 46f): the presets row and the option groups (Population, Battles and the rest) as recesses in one scroll, with the warnings line, Reset and Start demo.
 
 ![Solid pause menu with the Controls page open](Docs/Images/46-pause-solid.png)
 
-The solid pause menu (issue #46, part 46g): the side panel slid in from the left over the dimmed, still-running flight, with the Controls page open in the shell beside it.
+The solid pause menu (issue #46, parts 46g-46i): the side panel slid in from the left over the dimmed, still-running flight (Resume, Controls, Info, Settings, Demo, About, Quit, the note that the simulation keeps running and the key hints), with the Controls page open in the shell beside it.
 
 ## Development effort
 
@@ -204,11 +208,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 94.3 h |
+| Work time (wall-clock) | 95.0 h |
 | Time spent answering questions | 8.0 h |
-| Tokens | 5,192.9M |
-| Notional API price | $2,029 |
-| Subagents dispatched | 411 |
+| Tokens | 5,226.2M |
+| Notional API price | $2,045 |
+| Subagents dispatched | 416 |
 <!-- METRICS:END -->
 
 ## Documentation map

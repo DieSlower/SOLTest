@@ -58,14 +58,16 @@ The colours are from the research doc (round 2 values; dim text was raised from 
 | Shadow | #121416 | Deep shadow |
 | Text | #DCE3E8 | Main text (8.9:1 on panel) |
 | Dim text | #A4AFB8 | Secondary text (5.15:1 on panel); in game this is the body text `TEXT_COLOR`, and hints use the dimmer `TEXT_DIM_COLOR` #8A949D (SDD 46 section 5.1) |
-| Accent | #46D2E6 | HUD cyan: traces, LEDs, values, hover |
-| Warning | #F2A93B | Amber LED, hazard stripe |
+| Accent | #46D2E6 | HUD cyan: traces, LEDs, values, hover (in game `CYAN_COLOR` #28D2F0) |
+| Warning | #F2A93B | Amber LED, hazard stripe (in game `AMBER_COLOR` #FFA628 for the hover, and `WARNING_COLOR` #E5533D for conflicts and warnings) |
+
+The board's values are the style reference. The shipped palette is `SOL::SolidMenu` in `Source/SOLTest/SOLConstants.h` (SDD 46 section 5.1), which differs in a few shades after the in-engine tuning.
 
 The board also uses a few in-between shades: board background #1D2124, pylon #2E3338, hover hull #58626B, knob #5A626B, pressed hull #1C2024, LED on #7FE6F4, vent/LED-off black #0B0D0F, rivet #6A737C.
 
 ## Fonts
 
-All type is **Bahnschrift**, a Windows system DIN-family variable font, used as a **stand-in**. The final menu font is **Rajdhani or a similar free OFL techno sans**, bundled with the project (see the #46 grill notes). Tracking: titles 380-450, menu labels 260, small caps 150-300. When the final font is chosen, change the font on the type layers. Sizes and tracking may need small adjustments, because Rajdhani is narrower than Bahnschrift.
+All type on these board files is **Bahnschrift**, a Windows system DIN-family variable font, used as a **stand-in**. The shipped menu font is **Rajdhani** (SIL OFL 1.1), bundled with the project as `F_SOLMenu` (see below and the #46 grill notes). Tracking: titles 380-450, menu labels 260, small caps 150-300. To match the game, change the font on the type layers to Rajdhani. Sizes and tracking may need small adjustments, because Rajdhani is narrower than Bahnschrift.
 
 ## Reusing for a new menu
 
@@ -73,13 +75,13 @@ All type is **Bahnschrift**, a Windows system DIN-family variable font, used as 
 2. Copy a **Button** subgroup, **Slider** or **Toggle on/off** group for each control. The layer styles come with them. For a new button state, duplicate a state subgroup and change only the hull fill, LED and glow.
 3. Use the AI's **2 Components** artboard as the clean vector reference for 9-slice brushes. Export a piece with File > Export Selection (or `vectorcraft-cli convert`) to SVG or PNG. Keep the chamfers in the corner slices: a mid-edge notch cannot stretch in a 9-slice (see the shape vocabulary table in the research doc).
 4. Pick colours only from the **SOL solid menu** swatch group or the hidden palette group, so new screens stay on the palette.
-5. Final in-game art is a UMG material or 9-slice texture (not decided yet). These files are the style reference and the source for those textures.
+5. The in-game art is a hull material (`M_SOLSolidHull`, a signed-distance shape with its style instances) plus the generated textures below, not 9-slice images. These files are the style reference.
 
 ## Limitations
 
 - **.ai format:** the file is a PDF-compatible .ai written by VectorCraft. VectorCraft reopens it fully editable (artboards, layers, swatches). Adobe Illustrator opens it as PDF content: vectors and text come through, but the layers are stored only as PDF optional-content groups and may not come back as Illustrator layers. VectorCraft cannot write an Illustrator-native .ai (with AIPrivateData).
 - **PSD:** made by PhotoCraft. Layer styles, group masks and live type are standard PSD features, but the file has not been checked in Adobe Photoshop. If Bahnschrift is missing, type layers show a font substitution warning.
-- The effects are still images. Motion (rollover lift, trace pulse, panel slide-in) is described in the board's MOTION text and the research doc.
+- The effects are still images. Motion (rollover lift, trace power-up and pulse, panel slide-in) is built in the game (`SOL::SolidMenu`, SDD 46 and `Docs/GAME_MECHANICS.md` section 8.2) and is described on the board's MOTION text and in the research doc.
 
 ## Solid menu asset sources (SDD 46, part 46b)
 

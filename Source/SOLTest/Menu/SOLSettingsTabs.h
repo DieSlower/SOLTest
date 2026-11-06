@@ -74,10 +74,10 @@ namespace SOLSettingsTabs
     // longest label), SOL::MenuStyle::SETTINGS_LABEL_WIDTH on every other tab, and on an invalid one
     SOLTEST_API float LabelColumnWidth(ESOLSettingsTab tab);
 
-    // (46i) Whether a tab's rows take the narrow layout in a row of rowWidth local units: Key bindings when the key text
-    // would keep less than SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH beside the wide column and Rebind, Gameplay when
-    // a slider would keep less than SETTINGS_SLIDER_MIN_WIDTH beside the wide column and the value readout; never
-    // another tab, and never a row not laid out yet (rowWidth not a positive number)
+    // (46i) Whether a tab's rows take the narrow layout in a row of rowWidth local units: Key bindings when the key
+    // text would keep less than SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH beside the wide column and Rebind,
+    // Gameplay when a slider would keep less than SETTINGS_SLIDER_MIN_WIDTH beside the wide column and the value
+    // readout; never another tab, and never a row not laid out yet (rowWidth not a positive number)
     SOLTEST_API bool IsNarrowLayout(ESOLSettingsTab tab, float rowWidth);
 
     // (46i) The width of a tab's label column in a row of rowWidth units: SETTINGS_KEYS_NARROW_LABEL_WIDTH /
@@ -85,6 +85,6 @@ namespace SOLSettingsTabs
     SOLTEST_API float LabelColumnWidth(ESOLSettingsTab tab, float rowWidth);
 
     // (46i) The width of a Rebind button in a row of rowWidth units: SETTINGS_REBIND_NARROW_WIDTH when Key bindings is
-    // narrow, otherwise SOL::MenuStyle::SETTINGS_REBIND_WIDTH
+    // narrow (the page applies it as a minimum), otherwise SOL::MenuStyle::SETTINGS_REBIND_WIDTH
     SOLTEST_API float RebindWidth(float rowWidth);
 }

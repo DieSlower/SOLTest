@@ -651,13 +651,12 @@ bool FSOLSolidSettingsLabelColumnTest::RunTest(const FString& /*parameters*/)
 
 namespace
 {
-    // The row width below which Key bindings narrows: the wide column, the gap, Rebind and the key text's minimum
-    constexpr float SOL_KEYS_NARROW_BELOW = SOL::MenuStyle::SETTINGS_LABEL_WIDTH + SOL::MenuStyle::BUTTON_GAP
-        + SOL::MenuStyle::SETTINGS_REBIND_WIDTH + SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH;
+    // The row width below which Key bindings narrows (SDD 46, B4: 250 column, 10 gap, 120 Rebind, 120 key text),
+    // pinned as the SDD states it so a wrong formula in the code fails
+    constexpr float SOL_KEYS_NARROW_BELOW = 500.0f;
 
-    // The row width below which Gameplay narrows: its wide column, the gap, the value readout and a slider's minimum
-    constexpr float SOL_GAMEPLAY_NARROW_BELOW = SOL::SolidMenu::SETTINGS_GAMEPLAY_LABEL_WIDTH
-        + SOL::MenuStyle::BUTTON_GAP + SOL::MenuStyle::SETTINGS_VALUE_WIDTH + SOL::SolidMenu::SETTINGS_SLIDER_MIN_WIDTH;
+    // The row width below which Gameplay narrows (SDD 46, B4: 264 column, 10 gap, 80 value readout, 160 slider)
+    constexpr float SOL_GAMEPLAY_NARROW_BELOW = 514.0f;
 
     // A row at 1000x800 as measured (46i: the content switcher less a scroll bar's room) and one at 1280x720
     constexpr float SOL_SMALL_ROW = 405.0f;
@@ -740,8 +739,8 @@ bool FSOLSolidSettingsNarrowWidthsTest::RunTest(const FString& /*parameters*/)
     }
     for (const float rowWidth : wideRows)
     {
-        TestEqual(FString::Printf(TEXT("Rebind in a row of %f: wide"), rowWidth), SOLSettingsTabs::RebindWidth(rowWidth),
-            SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
+        TestEqual(FString::Printf(TEXT("Rebind in a row of %f: wide"), rowWidth),
+            SOLSettingsTabs::RebindWidth(rowWidth), SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
     }
     const ESOLSettingsTab otherTabs[] = { ESOLSettingsTab::Graphics, ESOLSettingsTab::Audio, ESOLSettingsTab::Mouse,
         ESOLSettingsTab::Overlays };
@@ -753,7 +752,8 @@ bool FSOLSolidSettingsNarrowWidthsTest::RunTest(const FString& /*parameters*/)
 
     TestTrue(TEXT("the narrow columns are narrower"), SETTINGS_KEYS_NARROW_LABEL_WIDTH
         < SOL::MenuStyle::SETTINGS_LABEL_WIDTH && SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH < SETTINGS_GAMEPLAY_LABEL_WIDTH);
-    TestTrue(TEXT("the narrow Rebind is narrower"), SETTINGS_REBIND_NARROW_WIDTH < SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
+    TestTrue(TEXT("the narrow Rebind is narrower"),
+        SETTINGS_REBIND_NARROW_WIDTH < SOL::MenuStyle::SETTINGS_REBIND_WIDTH);
     TestTrue(TEXT("1000x800: a narrow key row keeps the key text's minimum"), SOL_SMALL_ROW
         - SETTINGS_KEYS_NARROW_LABEL_WIDTH - SOL::MenuStyle::BUTTON_GAP - SETTINGS_REBIND_NARROW_WIDTH
         >= SETTINGS_KEY_TEXT_MIN_WIDTH);

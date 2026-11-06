@@ -286,16 +286,17 @@ Depends on 46d-46g.
 
 ### 46j: docs sync, in-game text and README screenshots (sonnet, medium)
 
-1. [ ] `GAME_MECHANICS.md` (section 8, 8.1 HUD effects slider row per Q1, the `SOL::SolidMenu` tunables table) and the
+1. [x] `GAME_MECHANICS.md` (section 8, 8.1 HUD effects slider row per Q1, the `SOL::SolidMenu` tunables table) and the
    in-game texts in `SOLMenuText.h` (slider label and description, Back label, version line and font credit, `PAUSED_BODY` unchanged per Q3), audited
    against the code.
-2. [ ] `ARCHITECTURE.md` (new types, smoke flags), `TECH_DEBT.md` (cook paths gain `/Game/SOL/UI/Solid`),
+2. [x] `ARCHITECTURE.md` (new types, smoke flags), `TECH_DEBT.md` (cook paths gain `/Game/SOL/UI/Solid`),
    `Docs/Art/menu-style/README.md` final.
-3. [ ] README gallery: `46-main-menu-solid.png`, `46-settings-solid.png`, `46-pause-solid.png` in `Docs/Images/`
-   (window screenshots).
-4. [ ] `STATUS.md` #46 Done; `Tools\UpdateMetrics.bat`. Commit `Issue #46: Part 46j - docs, in-game text and
+3. [x] README gallery: `46-main-menu-solid.png`, `46-settings-solid.png`, `46-pause-solid.png` in `Docs/Images/`
+   (window screenshots; recaptured at 1280x720 from the 46j smoke run, plus `46-controls-solid.png` and the new
+   `46-demo-solid.png`).
+4. [x] `STATUS.md` #46 Done; `Tools\UpdateMetrics.bat`. Commit `Issue #46: Part 46j - docs, in-game text and
    screenshots`.
-5. [ ] From the 46i review (C8, C9, C15): (C8) `GAME_MECHANICS.md` has no `SOL::SolidMenu` tunables table (SDD 12;
+5. [x] From the 46i review (C8, C9, C15): (C8) `GAME_MECHANICS.md` has no `SOL::SolidMenu` tunables table (SDD 12;
    only constants scattered through the section 8 and 8.1 rows), and does not say that Controls, Info and About are
    tab pages (open on the first tab, a re-click is a no-op) or list the main menu's cues; (C9) four wrong or
    incomplete statements there: the Ctrl+O row's "the Overlays list in Settings keeps its plain look" (false since
@@ -381,3 +382,9 @@ Depends on 46d-46g.
   "Quit to menu" with the panel at 380, B4 narrow Key bindings and Gameplay rows at 1000x800: key text 122.9 units,
   sliders 164.9). Suite 1537/1537, solid smoke 192/192; the reviewer's docs findings C8, C9 and C15 moved to 46j
   step 5. Next: 46j.
+- 2026-11-06: 46j docs sync done (C8, C9, C15). Steps 3 (README screenshots) and 4 (STATUS metrics, commit) are the caller's.
+- 2026-11-06: 46j done. The B4 review's fixes (M1 the wrapped-label height check, M2 `j-settings-wide` for the
+  narrow-to-wide path, the narrow Rebind box as a minimum width, L-items; L4, L6 and the rest of L8 in TECH_DEBT):
+  suite 1537/1537, `-SOLSmokeSolidMenu` 193/193, `GameUserSettings.ini` unchanged. Esc on the main menu with no page
+  open does nothing (checked in code) and `GAME_MECHANICS.md` says so. README gallery recaptured at 1280x720 (main
+  menu, Settings, Controls, Demo, pause).

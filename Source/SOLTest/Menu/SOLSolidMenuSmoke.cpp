@@ -196,7 +196,7 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 192;          // 46i: the checks a whole run logs (Finish fails a run
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 193;          // 46j: the checks a whole run logs (Finish fails a run
                                                                 // that logged another number: a skipped check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
@@ -1914,12 +1914,18 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         }
         else if (settings != nullptr)
         {
+            // Back at 1280x720 after the 1000x800 views: the narrow rows are wide again (46i, narrow to wide)
             CheckRailFits(TEXT("j-settings-rail"), settings->GetRail());
+            CheckSettingsWide(TEXT("j-settings-wide"), settings);
         }
         else
         {
-            // A missing page fails its rail check instead of skipping it
+            // A missing page fails its rail check (and Settings its wide check) instead of skipping it
             Check(*FString::Printf(TEXT("j-%s-rail"), fit.Name), false, TEXT("no page"));
+            if (fit.Page == ESOLMainMenuPage::Settings)
+            {
+                Check(TEXT("j-settings-wide"), false, TEXT("no Settings page"));
+            }
         }
         TakeUiShot(*FString::Printf(TEXT("fit-%s"), fit.Name));
         if (++mFitIndex < SOLID_SMOKE_FIT_PAGE_COUNT)
@@ -3870,10 +3876,11 @@ void FSOLSolidMenuSmoke::CheckSweepTab(const USOLReadOnlyPageWidget& page, const
 
 //////////////////////////////////////////////////////////////////////////
 // Checks a Settings page's narrow rows at 1000x800 on the shown tab (46i): "<id>-rows" the tab narrow, each label's
-// column at the narrow width, its widest word inside it and the wrapped label inside its row box; Key bindings: every
-// key name inside its slot, the slot left of its Rebind button and the narrow Rebind box with room for the button's
-// label ("<id>-names"); "<id>-sliders" every Gameplay slider at least SETTINGS_SLIDER_MIN_WIDTH wide. The widgets are read freshly
-// arranged from the page (a row scrolled out of view is culled from the paint, so its cached geometry is stale)
+// column at the narrow width, its widest word inside it and the wrapped label (its desired height) inside its row box;
+// Key bindings: every key name inside its slot, every slot at least SETTINGS_KEY_TEXT_MIN_WIDTH, the slot left of its
+// Rebind button and the narrow Rebind box (a minimum width) with room for the button's label ("<id>-names");
+// "<id>-sliders" every Gameplay slider at least SETTINGS_SLIDER_MIN_WIDTH wide. The widgets are read freshly arranged
+// from the page (a row scrolled out of view is culled from the paint, so its cached geometry is stale)
 void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPageWidget* page, const bool bKeys)
 {
     const ESOLSettingsTab tab = bKeys ? ESOLSettingsTab::KeyBindings : ESOLSettingsTab::Gameplay;
@@ -3931,11 +3938,18 @@ void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPa
         const bool bColumn = labelBox != nullptr && labelBox->GetWidthOverride() == column;
         const bool bWord = word >= 0.0f && word <= column + SOLID_SMOKE_FIT_TOLERANCE;
         const bool bInside = inside(label, rowBox);
-        if (!(bColumn && bWord && bInside))
+
+        // The label's own (wrapped) height against its row: Slate clamps the arranged label to its centred slot, so
+        // only the desired height shows a row box that did not grow
+        const float labelHeight = static_cast<float>(label->GetDesiredSize().Y);
+        const bool bTall = rowBox != nullptr && labelHeight > 0.0f
+            && labelHeight <= rowHeight + SOLID_SMOKE_FIT_TOLERANCE;
+        if (!(bColumn && bWord && bInside && bTall))
         {
             bRows = false;
-            rowsDetail += FString::Printf(TEXT(" [\"%s\": column %.1f, widest word %.1f, inside its row %d]"),
-                *text.Left(32), labelBox != nullptr ? labelBox->GetWidthOverride() : -1.0f, word, bInside ? 1 : 0);
+            rowsDetail += FString::Printf(TEXT(" [\"%s\": column %.1f, widest word %.1f, inside its row %d, label %.1f "
+                "tall in a %.1f row]"), *text.Left(32), labelBox != nullptr ? labelBox->GetWidthOverride() : -1.0f,
+                word, bInside ? 1 : 0, labelHeight, rowHeight);
         }
     }
     bRows &= rows > 0;
@@ -3989,7 +4003,7 @@ void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPa
         const float slot = slotGeometry.GetLocalSize().X;
         const double slotRight = slotGeometry.GetAbsolutePosition().X + slotGeometry.GetAbsoluteSize().X;
         const double rebindLeft = rebindGeometry.GetAbsolutePosition().X;
-        const float rebindWidth = rebindBox->GetWidthOverride();
+        const float rebindWidth = rebindGeometry.GetLocalSize().X;
         const float rebindDesired = static_cast<float>(rebind->GetDesiredSize().X);
         narrowestSlot = FMath::Min(narrowestSlot, slot);
         widestRebind = FMath::Max(widestRebind, rebindDesired);
@@ -3998,25 +4012,33 @@ void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPa
             widest = width;
             widestName = name;
         }
-        const bool bFits = width >= 0.0f && slot > 0.0f && width <= slot + SOLID_SMOKE_FIT_TOLERANCE
-            && slotRight <= rebindLeft + SOLID_SMOKE_FIT_TOLERANCE_PX
-            && rebindWidth == SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH && rebindDesired > 0.0f
+
+        // The narrow box: a minimum of SETTINGS_REBIND_NARROW_WIDTH (no fixed width), the button laid out at least
+        // that wide and at least its own desired width
+        const bool bNarrowBox = !rebindBox->IsWidthOverride() && rebindBox->IsMinDesiredWidthOverride()
+            && rebindBox->GetMinDesiredWidth() == SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH
+            && rebindWidth >= SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH - SOLID_SMOKE_FIT_TOLERANCE;
+        const bool bFits = width >= 0.0f && slot >= SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH
+            - SOLID_SMOKE_FIT_TOLERANCE && width <= slot + SOLID_SMOKE_FIT_TOLERANCE
+            && slotRight <= rebindLeft + SOLID_SMOKE_FIT_TOLERANCE_PX && bNarrowBox && rebindDesired > 0.0f
             && rebindDesired <= rebindWidth + SOLID_SMOKE_FIT_TOLERANCE;
         if (!bFits)
         {
             bKeysFit = false;
-            keysDetail += FString::Printf(TEXT(" [\"%s\" %.1f in a %.1f slot ending %.1f, Rebind at %.1f, box %.1f, "
-                "button %.1f]"), *name, width, slot, slotRight, rebindLeft, rebindWidth, rebindDesired);
+            keysDetail += FString::Printf(TEXT(" [\"%s\" %.1f in a %.1f slot ending %.1f, Rebind at %.1f, box %.1f "
+                "(narrow %d), button %.1f]"), *name, width, slot, slotRight, rebindLeft, rebindWidth,
+                bNarrowBox ? 1 : 0, rebindDesired);
         }
     }
-    Check(*roomId, bKeysFit, FString::Printf(TEXT("%d key rows: the narrowest slot %.1f, the widest key \"%s\" %.1f, "
-        "Rebind boxes %.0f (button %.1f wide)%s"), SOLKeyBindings::BINDING_COUNT, narrowestSlot, *widestName, widest,
+    Check(*roomId, bKeysFit, FString::Printf(TEXT("%d key rows: the narrowest slot %.1f (at least %.0f), the widest "
+        "key \"%s\" %.1f, Rebind boxes at least %.0f (button %.1f wide)%s"), SOLKeyBindings::BINDING_COUNT,
+        narrowestSlot, SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH, *widestName, widest,
         SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH, widestRebind, *keysDetail));
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Checks a Settings page in a wide view keeps the wide layout (46i): no tab narrow, each label column, row box and
-// Rebind box at its wide size
+// Checks a Settings page in a wide view keeps (or is back in) the wide layout (46i): no tab narrow, each label column,
+// row box and Rebind box at its wide size with no narrow override left (u-settings-wide, j-settings-wide)
 void FSOLSolidMenuSmoke::CheckSettingsWide(const TCHAR* id, const USOLSettingsPageWidget* page)
 {
     if (page == nullptr)
@@ -4036,15 +4058,20 @@ void FSOLSolidMenuSmoke::CheckSettingsWide(const TCHAR* id, const USOLSettingsPa
         const UTextBlock* label = page->GetRowLabel(index, tab);
         const USizeBox* labelBox = page->GetRowLabelBox(index);
         const USizeBox* rowBox = page->GetRowBox(index);
+        // GetHeightOverride keeps its value after ClearHeightOverride, so the override flags are read too: a row left
+        // narrow (a minimum height, no fixed one) counts as off
         offColumns += label == nullptr || labelBox == nullptr || rowBox == nullptr || label->GetAutoWrapText()
-            || labelBox->GetWidthOverride() != SOLSettingsTabs::LabelColumnWidth(tab)
+            || labelBox->GetWidthOverride() != SOLSettingsTabs::LabelColumnWidth(tab) || !rowBox->IsHeightOverride()
+            || rowBox->IsMinDesiredHeightOverride()
             || rowBox->GetHeightOverride() != SOL::MenuStyle::SETTINGS_ROW_HEIGHT ? 1 : 0;
     }
     int32 offRebinds = 0;
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
+        // A wide box: the fixed SETTINGS_REBIND_WIDTH, none of the narrow minimum width or fixed height left over
         const USizeBox* rebindBox = page->GetRebindBox(binding);
-        offRebinds += rebindBox == nullptr || rebindBox->GetWidthOverride() != SOL::MenuStyle::SETTINGS_REBIND_WIDTH
+        offRebinds += rebindBox == nullptr || !rebindBox->IsWidthOverride() || rebindBox->IsMinDesiredWidthOverride()
+            || rebindBox->IsHeightOverride() || rebindBox->GetWidthOverride() != SOL::MenuStyle::SETTINGS_REBIND_WIDTH
             ? 1 : 0;
     }
     Check(id, bWide && offColumns == 0 && offRebinds == 0 && page->GetRowLabelCount() > 0, FString::Printf(

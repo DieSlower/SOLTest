@@ -493,6 +493,10 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     StatusText = SOLMenuContent::MakeText(*WidgetTree, FString(), SMALL_FONT_SIZE, SOLSolidStyle::ValueColor(), false,
         true);
     page->AddChildToVerticalBox(StatusText)->SetPadding(FMargin(0.0f, ROW_GAP * 2.0f, 0.0f, 0.0f));
+
+    // FitNarrowRows walks these in step: every labelled row has its column box, its row box and its tab
+    check(RowLabelBoxes.Num() == RowLabels.Num() && RowBoxes.Num() == RowLabels.Num()
+        && mRowLabelTabs.Num() == RowLabels.Num());
     RefreshFromSettings();
 }
 
@@ -552,8 +556,8 @@ void USOLSettingsPageWidget::FitNarrowRows()
     {
         return;
     }
-    mFitRowWidth = TabSwitcher->GetCachedGeometry().GetLocalSize().X - SOL::SolidMenu::SCROLL_BAR_THICKNESS
-        - SOL::MenuStyle::BUTTON_GAP;
+    mFitRowWidth = FMath::Max(0.0f, static_cast<float>(TabSwitcher->GetCachedGeometry().GetLocalSize().X)
+        - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP);
     const ESOLSettingsTab narrowable[] = { ESOLSettingsTab::Gameplay, ESOLSettingsTab::KeyBindings };
     for (const ESOLSettingsTab tab : narrowable)
     {
@@ -588,19 +592,24 @@ void USOLSettingsPageWidget::FitNarrowRows()
             }
         }
         // The Rebind boxes: narrower, and held to the row height (a fixed row clamps the button to it; a growing one
-        // would take the button's taller desired height, so every one-line key row would grow)
+        // would take the button's taller desired height, so every one-line key row would grow). Narrow, the width is a
+        // minimum, not an override, so the box never cuts "Rebind": it takes the button's own desired width (its label
+        // and padding, which do not depend on the row) when that is wider
         if (tab == ESOLSettingsTab::KeyBindings)
         {
             const float rebindWidth = SOLSettingsTabs::RebindWidth(mFitRowWidth);
             for (USizeBox* rebindBox : RebindBoxes)
             {
-                rebindBox->SetWidthOverride(rebindWidth);
                 if (bNarrow)
                 {
+                    rebindBox->ClearWidthOverride();
+                    rebindBox->SetMinDesiredWidth(rebindWidth);
                     rebindBox->SetHeightOverride(SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
                 }
                 else
                 {
+                    rebindBox->ClearMinDesiredWidth();
+                    rebindBox->SetWidthOverride(rebindWidth);
                     rebindBox->ClearHeightOverride();
                 }
             }

@@ -76,11 +76,12 @@ enum class ESOLSettingsStepper : uint8
  * underline on hover, no trace); the footer stays under the content on every tab. RefreshFromSettings shows the first
  * tab (Graphics) with every tab scrolled to its top every time the page opens (no last-tab or scroll memory, Q8);
  * ScrollToBinding first shows the Key bindings tab. Narrow views (46i, 1000x800): the Key bindings and Gameplay tabs
- * narrow their label column (the labels wrap, a wrapped label grows its row) and Key bindings its Rebind buttons, so the
- * key names and the sliders keep their room (FitNarrowRows); wide views keep the wide columns. One highlight (46e follow-up): while the mouse is over a slider, a
- * toggle or an embedded Overlay row (controls that take no focus on hover) and the last input was a real mouse move,
- * the focused button shows no hover look (the owning menus pass the same rule to their own buttons); a key press gives
- * the focus its highlight back until the mouse moves again (last input wins). Every control only calls
+ * narrow their label column (the labels wrap, a wrapped label grows its row) and Key bindings its Rebind buttons, so
+ * the key names and the sliders keep their room (FitNarrowRows); wide views keep the wide columns. One highlight (46e
+ * follow-up): while the mouse is over a slider, a toggle or an embedded Overlay row (controls that take no focus on
+ * hover) and the last input was a real mouse move, the focused button shows no hover look (the owning menus pass the
+ * same rule to their own buttons); a key press gives the focus its highlight back until the mouse moves again (last
+ * input wins). Every control only calls
  * USOLSettingsSubsystem, which previews audio, mouse and HUD values at once and applies the rest on Apply; the public
  * setters below are the same paths the controls use (the menu smoke script drives them).
  *
@@ -165,22 +166,27 @@ public:
     // Returns a row's label and its tab, or null for an invalid index (verification)
     const UTextBlock* GetRowLabel(int32 index, ESOLSettingsTab& outTab) const;
 
-    // (46i) Returns a row's label column box and its row box (RowLabels order), or null for an invalid index
-    // (verification: the applied column width, a wrapped label inside its row)
+    // (46i) Returns a row's label column box (RowLabels order), or null for an invalid index (verification: the
+    // applied column width)
     const USizeBox* GetRowLabelBox(int32 index) const
     {
         return RowLabelBoxes.IsValidIndex(index) ? RowLabelBoxes[index].Get() : nullptr;
     }
+
+    // (46i) Returns a row's row box (RowLabels order), or null for an invalid index (verification: a wrapped label
+    // inside its row, the fixed or growing height)
     const USizeBox* GetRowBox(int32 index) const
     {
         return RowBoxes.IsValidIndex(index) ? RowBoxes[index].Get() : nullptr;
     }
 
-    // (46i) Returns a key row's Rebind box (its width) and button, or null for an invalid binding (verification)
+    // (46i) Returns a key row's Rebind box (its width), or null for an invalid binding (verification)
     const USizeBox* GetRebindBox(int32 binding) const
     {
         return RebindBoxes.IsValidIndex(binding) ? RebindBoxes[binding].Get() : nullptr;
     }
+
+    // (46i) Returns a key row's Rebind button (its desired width), or null for an invalid binding (verification)
     const USOLMenuButton* GetRebindButton(int32 binding) const;
 
     // (46i) Returns whether a tab's rows have the narrow layout as last fitted (SOLSettingsTabs::IsNarrowLayout)
@@ -285,6 +291,7 @@ private:
     // (46i) Fits the Key bindings and Gameplay rows to the rows' laid-out width (SOLSettingsTabs::IsNarrowLayout),
     // only when a tab's narrow state changes: the label column's width, the labels' wrap, the row boxes' height (fixed
     // when wide, at least SETTINGS_ROW_HEIGHT when narrow so a wrapped label grows its row) and the Rebind boxes' width
+    // (fixed when wide, a minimum when narrow so the button's label is never cut)
     void FitNarrowRows();
 
     // Re-reads every control from the settings subsystem (the tab is left as it is)

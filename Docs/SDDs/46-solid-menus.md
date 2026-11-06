@@ -9,7 +9,7 @@ SDD 42 D12, D17). Plan: [`Docs/Plans/46-solid-menus-plan.md`](../Plans/46-solid-
 [`Docs/Research/SOLID_MENU_STYLE_REFERENCES.md`](../Research/SOLID_MENU_STYLE_REFERENCES.md). Editable style
 sources: [`Docs/Art/menu-style/README.md`](../Art/menu-style/README.md).
 
-Status: **drafted 2026-11-04 from the resolved grill-me decisions; all 17 open questions (section 15) answered by the
+Status: **Done (2026-11-06; parts 46a-46j built, reviewed and documented).** Originally **drafted 2026-11-04 from the resolved grill-me decisions; all 17 open questions (section 15) answered by the
 user on 2026-11-04 and folded into the text below.** Checked against the code at HEAD `8382434`. Items marked
 **(proposed)** are starting values or design details that no decision fixes; they were approved as the tuning start in
 Q16 (final values are shown at the hand check).
@@ -771,7 +771,7 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
   Key bindings narrows when its key text would keep less than `SETTINGS_KEY_TEXT_MIN_WIDTH` 120 beside the wide 250
   column, the gap and the 120 Rebind (a row under 500 units), to a label column of `SETTINGS_KEYS_NARROW_LABEL_WIDTH`
   168 and Rebind boxes of `SETTINGS_REBIND_NARROW_WIDTH` 104 (the button needs 103.1: "Rebind" and 18 padding a side;
-  96 clipped it); Gameplay narrows when a slider would keep less than `SETTINGS_SLIDER_MIN_WIDTH` 160 beside its 264
+  96 clipped it; since 46j a minimum width, so a box takes the button's desired width if that is ever wider); Gameplay narrows when a slider would keep less than `SETTINGS_SLIDER_MIN_WIDTH` 160 beside its 264
   column and the value readout (a row under 514), to `SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH` 150 (the most that still
   leaves a slider 160 at 1000x800); no other tab narrows, nor a row not laid out yet. Two narrow widths, not one: at
   150 the long key labels would wrap to three lines, at 168 the Gameplay sliders would drop below 160.
@@ -784,7 +784,8 @@ slider fill of section 5.2; (5) one highlight: the mouse over another control wi
   (Gameplay); the tallest wrapped key row 62.1 (two lines); on Gameplay 6 of 7 labels wrap, the tallest row 93.2 (three
   lines, "Mouse steering at start"), so the tab scrolls. At 1280x720 the rows are 658.0 and both tabs stay wide. Seen
   in the smoke: a key row scrolled out of view applies its wrap once it is painted (TECH_DEBT).
-- **Smoke.** `-SOLSmokeSolidMenu` 192/192 (was 177 at 46h; about 100 s): `CheckSettingsFit` takes the page, so the
+- **Smoke.** `-SOLSmokeSolidMenu` 192/192 (was 177 at 46h; about 100 s; 193/193 since the 46j review fixes, which add
+  `j-settings-wide`, the narrow rows back to wide at 1280x720, and make the row and Rebind checks able to fail): `CheckSettingsFit` takes the page, so the
   pause menu's Settings is measured at 1000x800 (`h-pause-small-stepper-values`, `h-pause-small-labels`, and
   `h-pause-small-values-in-shell`; the first would fail at 420, its slot 150.9) and measures each label against the
   column actually applied (the widest word on a narrow tab); a rows sweep (`TickRowsSweep` / `CheckSweepTab`) shows

@@ -152,8 +152,8 @@ private:
     // every slider at least SETTINGS_SLIDER_MIN_WIDTH wide ("<id>-sliders")
     void CheckSettingsRoom(const TCHAR* id, const USOLSettingsPageWidget* page, bool bKeys);
 
-    // (46i) Checks a Settings page in a wide view keeps the wide layout: no tab narrow, every label column and Rebind
-    // box at its wide width
+    // (46i) Checks a Settings page in a wide view keeps (or is back in) the wide layout: no tab narrow, every label
+    // column, row box and Rebind box at its wide size with no narrow override left
     void CheckSettingsWide(const TCHAR* id, const USOLSettingsPageWidget* page);
 
     // Checks a real tab rail lays out without a scroll (46g, D17): a laid-out view, the tabs fitting it, the offset at
