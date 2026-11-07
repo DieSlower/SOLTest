@@ -45,14 +45,14 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Issue | What | Notes |
 |---|---|---|
-| - | (none) | - |
+| #33 | Player documentation: a Help page (main and pause menus) with a live keyboard and mouse diagram tinted by area and a HUD glossary drawn with the HUD's own shape code; key caps on the Controls page; a generated `Docs/PLAYER_GUIDE.md` (`-SOLWritePlayerGuide`) with a stale check; no schema or key-layout change | **Design done (2026-11-06):** grill-me Q1-Q11 answered, SDD 33 and plan written (parts 33a-33h). **Gated:** open questions O1-O13 (SDD 33 section 18) wait for the user; no part started |
 
 ## To do (ordered)
 
 | Order | Issue | What | Size | Depends on |
 |---|---|---|---|---|
 | 1c | #42 | **Done.** Hologram in-flight menus: radial menu, Ctrl+O Overlay Menu with profile tabs, F3 speed panel, target/info cards (the HUD itself unchanged; full screens are #46). Glow-line outline frames on the HUD renderer, faint backdrop tint, open/close draw-in, hover glow and flicker, idle sweep and jitter, open/hover/select cues, a separate hologram-menu effects slider. SDD 42 and plan done, every question answered (2026-11-03). Parts built: (hologram menu maths, profiling baseline), 42b (settings schema 11, `HoloMenuEffects`, Settings > Gameplay slider, the hologram cursor follows it), 42c (frame kit, menu layer, menu subsystem), 42d (radial), 42e (Overlay Menu), 42f (speed panel), 42g (the four frameless cards and the map list menu) and 42h (cue assets) done; 42i (final profile within budget, docs and in-game text audit, README screenshots, final review) done. Q13 (no hover glow on a disabled radial sector) and Q16 (text glow kept at strength 0) answered 2026-11-04; Q14 and Q15 likewise | M-L | #22 |
-| 2 | #33 | Player documentation: controls with keyboard pictures and a GUI glossary | M | #22 |
+| 2 | #33 | **In progress** (see above): player documentation, controls with keyboard pictures and a GUI glossary | M | #22, #46 |
 | 3b | #36 | Radar manual zoom floor of 1 km or 10 km without a target (today 10,000 km unless a target is selected) | S | none |
 | 3b2 | #37 | Lower the HUD hologram glow again and add a Settings glow slider (0-200%) | S-M | none |
 | 3b3 | #38 | NPC lanes drawn as one animated hologram line per lane, with an overlay-menu toggle | M | #22 |
