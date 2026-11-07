@@ -114,6 +114,26 @@ struct FSOLKeyCapLayout
     }
 };
 
+// The part of a Mouse cap's glyph drawn lit (33b)
+enum class ESOLMouseGlyphPart : uint8
+{
+    None,
+    Body,           // The whole mouse (Move)
+    LeftButton,
+    RightButton,
+    Wheel,          // The wheel slot (the wheel and the middle button)
+};
+
+// A Mouse cap's glyph (33b): the body, the two buttons across its top, the wheel slot between them, and the part lit
+struct FSOLMouseGlyph
+{
+    FBox2f Body = FBox2f(ForceInit);
+    FBox2f LeftButton = FBox2f(ForceInit);
+    FBox2f RightButton = FBox2f(ForceInit);
+    FBox2f Wheel = FBox2f(ForceInit);
+    ESOLMouseGlyphPart Lit = ESOLMouseGlyphPart::None;
+};
+
 /**
  * Pure logic of the key caps (SDD 33 section 6), test-first: parses a SOLMenuText::CONTROL_ROWS bindings cell (or one
  * binding) against the live keys (indexed by SOLKeyBindings::EBinding) into alternatives of chords of caps, gives a
@@ -159,4 +179,32 @@ namespace SOLKeyCaps
     // is not a positive finite number lays everything out on one line. Returns out.Height (0 for an empty model)
     SOLTEST_API float LayoutRow(const FSOLKeyCapModel& model, TConstArrayView<float> capWidths,
         const FSOLKeyCapMetrics& metrics, float availableWidth, FSOLKeyCapLayout& out);
+
+    // (33b) Returns the legend drawn on a cap: empty for the left, right and middle mouse buttons (the glyph alone),
+    // SOLMenuText::KEYCAP_MOVE_LEGEND for a mouse-move cap (its Label stays "Mouse"), else the cap's Label
+    SOLTEST_API FStringView DrawnLegend(const FSOLKeyCap& cap);
+
+    // (33b) Returns a cap's content width from its drawn legend's measured width: a Mouse cap's glyph
+    // (KEYCAP_MOUSE_GLYPH_WIDTH) plus KEYCAP_GAP and the legend when the legend is wider than 0, else the legend; a
+    // negative or NaN legend width reads as 0 (DrawnCapWidth makes the cap's width from it)
+    SOLTEST_API float ContentWidth(const FSOLKeyCap& cap, float legendWidth);
+
+    // (33b) Returns where a cap's content may start from its left edge: KEYCAP_LED_ROOM on a bound cap (past the Small
+    // hull's LED), KEYCAP_PADDING on an unbound (recess) cap
+    SOLTEST_API float ContentLeft(const FSOLKeyCap& cap);
+
+    // (33b) Returns a cap's drawn width from its drawn legend's measured width: ContentLeft, the content (ContentWidth)
+    // and KEYCAP_PADDING on the right, at least KEYCAP_MIN_WIDTH x WidthUnits (CapWidth of the content widened by
+    // ContentLeft - KEYCAP_PADDING)
+    SOLTEST_API float DrawnCapWidth(const FSOLKeyCap& cap, float legendWidth);
+
+    // (33b) Returns the glyph part a mouse button lights: Left and Right their buttons, Middle and Wheel the wheel
+    // slot, Move the body, None none
+    SOLTEST_API ESOLMouseGlyphPart GlyphPartOf(ESOLMouseButton button);
+
+    // (33b) Returns the mouse glyph in a box at topLeft of size (menu units): the body the box, the buttons its top
+    // KEYCAP_MOUSE_BUTTON_FRACTION split at the centre, the wheel slot centred (KEYCAP_MOUSE_WHEEL_* fractions), the
+    // part GlyphPartOf(button) lit. A size component that is not a positive finite number collapses every box to the
+    // point topLeft
+    SOLTEST_API FSOLMouseGlyph MouseGlyph(const FVector2f& topLeft, const FVector2f& size, ESOLMouseButton button);
 }

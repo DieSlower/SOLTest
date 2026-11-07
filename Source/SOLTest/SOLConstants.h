@@ -1465,6 +1465,28 @@ namespace SOL
         inline constexpr float KEYCAP_SPACE_UNITS = 4.0f;         // Space bar width in key units (a cap in a row)
         inline constexpr float KEYCAP_WIDE_UNITS = 2.0f;          // Other wide caps (Backspace, Tab, Enter, Shift,
                                                                   // Ctrl, Alt, Caps) in key units, in a row
+        // The mouse glyph on a Mouse cap (33b): its box, the buttons' share of its height from the top, and the wheel
+        // slot (its width as a share of the glyph's, its top and bottom as shares of the height from the top)
+        inline constexpr float KEYCAP_MOUSE_GLYPH_WIDTH = 12.0f;
+        inline constexpr float KEYCAP_MOUSE_GLYPH_HEIGHT = 18.0f;
+        inline constexpr float KEYCAP_MOUSE_BUTTON_FRACTION = 0.42f;
+        inline constexpr float KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION = 0.22f;
+        inline constexpr float KEYCAP_MOUSE_WHEEL_TOP_FRACTION = 0.10f;
+        inline constexpr float KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION = 0.34f;
+        inline constexpr float KEYCAP_MOUSE_LINE_PX = 1.0f;       // The glyph's outline and button divider (pixels)
+        // A bound cap's content starts this far from its left edge, past the Small button hull's unlit LED: the hull
+        // material scales its LED with the DPI, so the LED always ends SolidMenu::SMALL_BUTTON_LED_X_PX +
+        // LED_RADIUS_PX = 13 units from the edge, and the room leaves KEYCAP_LED_GAP clear after it at every scale;
+        // the right keeps KEYCAP_PADDING. An unbound (recess) cap has no LED and keeps the padding
+        // (SOLKeyCaps::ContentLeft)
+        inline constexpr float KEYCAP_LED_GAP = 7.0f;
+        inline constexpr float KEYCAP_LED_ROOM = SolidMenu::SMALL_BUTTON_LED_X_PX + SolidMenu::LED_RADIUS_PX
+            + KEYCAP_LED_GAP;
+        static_assert(KEYCAP_MOUSE_WHEEL_TOP_FRACTION > 0.0f
+            && KEYCAP_MOUSE_WHEEL_TOP_FRACTION < KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION
+            && KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION <= KEYCAP_MOUSE_BUTTON_FRACTION && KEYCAP_MOUSE_BUTTON_FRACTION < 1.0f
+            && KEYCAP_MOUSE_GLYPH_HEIGHT < KEYCAP_HEIGHT && KEYCAP_MOUSE_GLYPH_WIDTH + 2.0f * KEYCAP_PADDING
+            <= KEYCAP_MIN_WIDTH, "the mouse glyph's parts nest and the glyph fits the smallest cap");
 
         // Keyboard diagram (section 7; D30: settled by the 33c smoke)
         inline constexpr float DIAGRAM_MIN_UNIT = 20.0f;          // Key unit clamp

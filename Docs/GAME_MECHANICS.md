@@ -280,7 +280,10 @@ menus) Key bindings narrows its label column to `SETTINGS_KEYS_NARROW_LABEL_WIDT
 `SETTINGS_REBIND_NARROW_WIDTH` 104 when the key text would keep less than `SETTINGS_KEY_TEXT_MIN_WIDTH` 120 (a row
 under 500 units), and Gameplay narrows its column to `SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH` 150 when a slider would
 keep less than `SETTINGS_SLIDER_MIN_WIDTH` 160 (a row under 514); the narrow labels wrap and their rows grow. Wide
-views (1280x720 and up) keep the wide columns.
+views (1280x720 and up) keep the wide columns. The key rows show the pending key as drawn key caps (issue #33 part 33b, the same caps as the
+Controls page): the cell wraps the caps in what the row leaves beside the label and Rebind, at most
+`SOL::Help::SETTINGS_KEYCAP_CELL_WIDTH` 200 (about 123 at 1000x800, where the three O chords wrap onto two lines);
+while a rebind waits, "Press a key..." replaces the caps, and a conflicting key's legends turn the warning colour.
 
 | Setting | Range / default | Applies | Status |
 |---|---|---|---|

@@ -240,6 +240,11 @@ namespace SOLMenuText
     // Controls page
     inline constexpr const TCHAR* CONTROLS_TITLE = TEXT("Controls");
     inline constexpr const TCHAR* BINDING_ALTERNATIVE_SEPARATOR = TEXT(" / ");
+    // Key caps (SDD 33 section 6): the "+" drawn between a chord's caps, the " / " between alternatives (drawn
+    // trimmed: the cap row's gaps space it) and the mouse-move cap's drawn legend (its text form stays "Mouse")
+    inline constexpr const TCHAR* KEYCAP_CHORD_PLUS = TEXT("+");
+    inline constexpr const TCHAR* KEYCAP_ALTERNATIVE_SLASH = TEXT("/");
+    inline constexpr const TCHAR* KEYCAP_MOVE_LEGEND = TEXT("Move");
 
     // One Controls row: its area heading, the bindings and what it does. '|' separates alternatives; an alternative
     // starting with '@' is a rebindable action's id (SOLKeyBindings) and shows that action's current key, any other

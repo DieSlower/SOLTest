@@ -5,6 +5,7 @@
 
 #include "Menu/SOLReadOnlyPageWidget.h"
 
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
@@ -149,6 +150,19 @@ void USOLReadOnlyPageWidget::RegisterColumnText(UTextBlock* text, USizeBox* box,
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Adds a two-column row whose left cell is key caps, wrapping in the column's width
+void USOLReadOnlyPageWidget::RegisterColumnCaps(USOLKeyCapRow* caps, USizeBox* box, UTextBlock* value, const int32 tab,
+    const float width)
+{
+    RegisterColumnText(nullptr, box, value, tab, width);
+    ColumnTexts.Last().Caps = caps;
+    if (caps != nullptr)
+    {
+        caps->SetWrapWidth(width);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Sets the left column's width for the rows' laid-out width, only on a change
 void USOLReadOnlyPageWidget::FitLeftColumn()
 {
@@ -172,6 +186,10 @@ void USOLReadOnlyPageWidget::FitLeftColumn()
         if (column.Box != nullptr)
         {
             column.Box->SetWidthOverride(width);
+        }
+        if (column.Caps != nullptr)
+        {
+            column.Caps->SetWrapWidth(width);
         }
     }
 }

@@ -53,26 +53,37 @@ Builds on: D17 (ten area colours), D18 (+N badge), D19 (numpad, Other keys, lock
 
 Builds on: D20. Depends on 33a. SDD section 6. **Scope grew (D20): the Settings > Key bindings rows get caps too.**
 
-1. [ ] `Menu/SOLKeyCapRow` (`SSOLKeyCapRow` leaf, `USOLKeyCapRow` wrapper): the hull Small brush per cap, legends in
+1. [x] `Menu/SOLKeyCapRow` (`SSOLKeyCapRow` leaf, `USOLKeyCapRow` wrapper): the hull Small brush per cap, legends in
    the menu font, the mouse glyph, alternatives and chords, wrapping from `SOLKeyCaps::LayoutRow`, text measured once
    per content change.
-2. [ ] `FillControlsTabs` / `RefreshControlsPage` use it (the 230-unit column kept); the `GetKeyCells` verification
+2. [x] `FillControlsTabs` / `RefreshControlsPage` use it (the 230-unit column kept); the `GetKeyCells` verification
    getter adapted. The mouse-move cap's drawn legend reads Move per SDD section 6 while `KeyDisplayName` stays Mouse.
-3. [ ] **Settings > Key bindings rows (D20):** the key cell of each row becomes a `USOLKeyCapRow` (a bounded cell,
+3. [x] **Settings > Key bindings rows (D20):** the key cell of each row becomes a `USOLKeyCapRow` (a bounded cell,
    `SETTINGS_KEYCAP_CELL_WIDTH`); **the Rebind button stays** and the rebind waiting text replaces the caps in the same
    cell while waiting; the 46i narrow-row layout is kept, so caps and button fit at **1000x800** (and 1280x720); the
    existing Settings row layout tests and the `GetKeyCells`-style verification getters are re-validated and extended.
-4. [ ] `-SOLSmokeSolidMenu`: the rows sweep checks each Controls cap row and each Settings key-binding cap row and its
+4. [x] `-SOLSmokeSolidMenu`: the rows sweep checks each Controls cap row and each Settings key-binding cap row and its
    button inside its cell at 1000x800 and 1280x720; expected check count updated; screenshots looked at, then deleted
    unless kept for the README.
-5. [ ] Profile `main-controls` / `pause-controls` and `main-settings-keys` / `pause-settings-keys` three runs against
+5. [x] Profile `main-controls` / `pause-controls` and `main-settings-keys` / `pause-settings-keys` three runs against
    the 33a baselines (under 0.2 ms CPU / 0.3 ms GPU).
-6. [ ] Review (fresh opus/xhigh); fixes; full suite; commit
-   `Issue #33: Part 33b - key caps on the Controls page and Settings key rows`; push.
+6. [x] Review (fresh opus/xhigh); fixes; full suite; commit
+   `Issue #33: Part 33b - key cap widget and Controls restyle`; push.
+
+   **Done (SDD 20, 14.2):** tests first (separate opus/high author: `KeyCapRowTest.cpp`, `KeyCapsTest.cpp` glyph /
+   legend cases, `SolidSettingsTest` `KeyCellWidth`), red on stubs, green; the caps' legends sit right of the Small
+   hull's LED (`KEYCAP_LED_ROOM`, screenshot tuning); `-SOLSmokeSolidMenu` 193 -> 197 checks (`u-keycaps`, `v-keycaps`
+   in a new `PauseKeys` step, `h-small-keycaps`, `h-pause-small-keycaps`; the Controls fit and rows sweep read the cap
+   rows, painted whole); review: 0 High, 2 Medium, 7 Low, all fixed (the key rows now grow from their minimum height so
+   a wrapped rebound chord stays in its row; paint verification; the LED rule pure and tested; measure / layout /
+   reshape split; reshape after a Slate invalidate-all) except the single over-wide rebound cap at 1000x800 and the
+   bindable-key sweep (TECH_DEBT). At 1000x800 the three O chords (Alt+O, Ctrl+O, RShift+O) wrap onto two lines.
 
 ### 33c: the keyboard diagram (opus/high)
 
-Builds on: D17, D18, D19, D23. Depends on 33b. SDD section 7.
+Builds on: D17, D18, D19, D23, **D32** (O14 answered, option A: Left Ctrl, Left Alt and Right Shift, used only in
+chords, get a modifier marker: not dimmed, not counted in "+N", a small modifier mark, and the hover strip lists the
+chords they start; `SOLKeyDiagram` and its tests change for it). Depends on 33b. SDD section 7.
 
 1. [ ] `Menu/SOLKeyboardDiagram` (`SSOLKeyboardDiagram` leaf, `USOLKeyboardDiagram`): caps (**numpad included**, the
    larger layout, D19), area fills and bars in the **ten area colours** (D17), short labels, the **"+N" badges** (D18),
@@ -193,3 +204,6 @@ Builds on: D25.
   prove every entry reachable). The colour samples (`Docs/Images/33-samples/`) were deleted. 33a started.
 - 2026-11-07: 33a done (SDD section 20): pure logic, tables and tests, profile baselines (SDD 14.1), review fixes.
   Open for the user before 33c: O14 (how the diagram shows chord modifier keys). Next: 33b.
+- 2026-11-07: O14 answered by the user: option A, the modifier marker (SDD D32), built in 33c.
+- 2026-11-07: 33b done (SDD sections 14.2 and 20): the key cap widget on the Controls page and the Settings key rows.
+  Next: 33c (the keyboard diagram, with D32).

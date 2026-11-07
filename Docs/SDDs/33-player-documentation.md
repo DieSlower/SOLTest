@@ -7,8 +7,8 @@ on SDD 8 (menus, Controls / Info / About, key rebinding), SDD 21 (the hologram H
 interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu kit, the page shell, the tab pages,
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
-Status: **33a done (2026-11-07): pure logic, tables and tests (section 20); 33b next; open question O14 (section
-18).** Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
+Controls page and the Settings key rows (section 20); 33c next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -58,6 +58,7 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D29 | **Menu area colour (2026-11-07):** the Menu area is **teal-white #9FD6D0**, not the proposed steel grey #8E9BAA (the user picked it from the sample render). |
 | D30 | **Diagram fit (2026-11-07):** approved as proposed: `DIAGRAM_MIN_UNIT` **20**, the mouse moves **below the keyboard** when narrow, `DIAGRAM_MOUSE_BELOW_UNIT` **24**; the final values are settled by the 33c smoke at 1280x720 and 1000x800. |
 | D31 | **Scrolling stacks (2026-11-07):** acceptable with Quit and About below the fold; the smoke must prove **every entry reachable** (scroll and click) at both sizes. |
+| D32 | **Chord modifier keys on the diagram (O14, 2026-11-07), option A:** a modifier key used only in chords (Left Ctrl, Left Alt, Right Shift) gets a **modifier marker**: the key is **not dimmed**, it is **not counted in "+N"**, it carries a **small modifier mark**, and the **hover strip lists the chords it starts** (e.g. Ctrl+F1, Ctrl+RMB, Ctrl+O). Built in 33c (`SOLKeyDiagram` / the diagram widget); 33a's model leaves them free until then. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -162,11 +163,14 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
 ## 6. Key caps (D3, D9)
 
 - **Look (proposed, from the solid kit).** A cap is one hull box in the **Small** button style (`SOLSolidStyle`,
-  normal state, the shared MID: no new material, D12), `KEYCAP_HEIGHT` 30 units, `KEYCAP_CHAMFER` 3, the legend in
+  normal state, the shared MID: no new material, D12; as built the cap takes the Small hull's own 6-unit cut and LED,
+  `KEYCAP_CHAMFER` is unused, and a bound cap's content starts right of the LED at `KEYCAP_LED_ROOM`, 33b screenshot
+  tuning), `KEYCAP_HEIGHT` 30 units, `KEYCAP_CHAMFER` 3, the legend in
   Rajdhani SemiBold `KEYCAP_FONT_SIZE` 15 in the text colour (#DCE3E8), `KEYCAP_PADDING` 8 a side,
   `KEYCAP_MIN_WIDTH` 30. **Wide caps:** Space (`KEYCAP_SPACE_UNITS` 4 x a unit), Backspace, Tab, Enter, Shift, Ctrl,
   Alt, Caps (by the key's layout width, or 2 units for a cap in a row). **Mouse buttons** (LMB, RMB, MMB, wheel, Mouse
-  move) draw a small mouse glyph (body outline, two buttons and a wheel slot as `MakeLines` and boxes) with the used
+  move) draw a small mouse glyph (body outline, two buttons and a wheel slot; as built all flat boxes, no `MakeLines`,
+  so a paint allocates no point array; `SOLKeyCaps::MouseGlyph`) with the used
   part lit in cyan (#28D2F0), plus a legend for the wheel ("Wheel") and the move ("Move"). **Unbound:** a recess-style
   cap with "Unbound" in the dim text colour.
 - **Chords and alternatives.** A chord draws its caps joined by a small "+"; alternatives are separated by " / " in
@@ -412,7 +416,9 @@ same headers. One file per topic:
 | `GLOSSARY_MAX_SHAPES` | 128 | One symbol view's batch |
 | `MAX_PRIMS_PER_SYMBOL` | 32 | `FSOLHudSymbolPrims` capacity |
 | Area colours | Flight #28D2F0, Targeting #F2C94C, Combat #E5533D, Time #9B7BFF, Overlays #4CD07D, HUD #5B8CFF, Map #FF8FB1, Routes #D98A5B, Menu #9FD6D0 (D29), Demo #E8EEF2 (section 7, ten, D17) | `SOL::Help::AREA_COLORS` |
-| `SETTINGS_KEYCAP_CELL_WIDTH` | about 200 units (tuned at 1000x800) | The Settings key cell bound (D20) |
+| `SETTINGS_KEYCAP_CELL_WIDTH` | 200 units (the cell is `SOLSettingsTabs::KeyCellWidth`: what the row leaves, about 123 at 1000x800, at most 200) | The Settings key cell bound (D20) |
+| `KEYCAP_MOUSE_GLYPH_WIDTH` / `_HEIGHT`, `KEYCAP_MOUSE_BUTTON_FRACTION`, `KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION` / `_TOP_FRACTION` / `_BOTTOM_FRACTION`, `KEYCAP_MOUSE_LINE_PX` | 12 / 18 units, 0.42, 0.22 / 0.10 / 0.34, 1 px (33b) | The mouse glyph on a Mouse cap |
+| `KEYCAP_LED_GAP` / `KEYCAP_LED_ROOM` | 7 / 20 units (the Small hull's LED ends 13 units in at every scale, the material scales it with the DPI) (33b) | A bound cap's content start (`SOLKeyCaps::ContentLeft`) |
 | `SOL::Paths::PLAYER_GUIDE_FILE` / `PLAYER_GUIDE_IMAGE_DIR` | `Docs/PLAYER_GUIDE.md` / `Docs/Images/` | Generator output |
 
 ## 12. Animations and the effects strength (D14)
@@ -483,6 +489,29 @@ For reference, the same runs' P0-P3 medians against the pre-46c baseline: P0 `dc
 +0.041 / +0.033, P2 +0.031 / +0.038, P3 +0.042 / +0.059 (all PASS). The CPU spread between runs is up to 0.14 ms on the
 Key bindings passes (the TECH_DEBT single-run item), so 33b compares three-run medians, not single runs.
 
+### 14.2 33b amendment: the key cap restyle against the baselines (2026-11-07)
+
+Three runs of the default `-SOLSmokeSolidMenuProfile` (1920x1080 window, the same machine and settings as 14.1) on
+the final 33b code (after the review fixes); every run 12 PASS, 13/13 checks, `GameUserSettings.ini` unchanged.
+Medians, ms, and the extra against the 33a baselines (budget under 0.2 CPU / 0.3 GPU):
+
+| Pass | Screen | View | `cpu_slate` (runs) | extra | `gpu_ui` (runs) | extra |
+|---|---|---|---|---|---|---|
+| P4 | main-settings-keys | 1920x1080 | **0.613** (0.679, 0.613, 0.584) | +0.013 | **0.111** (0.111, 0.113, 0.101) | +0.003 |
+| P7 | main-settings-keys | 1280x720 | **0.627** (0.648, 0.627, 0.560) | +0.075 | **0.065** (0.066, 0.065, 0.065) | +0.003 |
+| P8 | pause-settings-keys | 1280x720 | **0.568** (0.607, 0.568, 0.554) | +0.000 | **0.080** (0.080 x3) | +0.002 |
+| P11 | pause-settings-keys | 1920x1080 | **0.594** (0.662, 0.594, 0.581) | -0.041 | **0.142** (0.142, 0.137, 0.144) | +0.003 |
+| P5 | main-controls | 1920x1080 | **0.526** (0.529, 0.526, 0.455) | +0.051 | **0.115** (0.117, 0.115, 0.111) | +0.003 |
+| P6 | main-controls | 1280x720 | **0.521** (0.521, 0.534, 0.474) | +0.050 | **0.069** (0.069 x3) | +0.003 |
+| P9 | pause-controls | 1280x720 | **0.532** (0.544, 0.532, 0.503) | +0.050 | **0.082** (0.083, 0.081, 0.082) | +0.001 |
+| P10 | pause-controls | 1920x1080 | **0.507** (0.542, 0.507, 0.470) | -0.001 | **0.139** (0.140, 0.139, 0.138) | +0.002 |
+
+The worst extra is +0.075 ms CPU and +0.003 ms GPU, inside the budget; the CPU spread between runs (up to 0.10 ms
+here) is the known single-run noise. Three runs before the review fixes gave the same picture (CPU extras -0.055 to
++0.038, GPU +0.000 to +0.004). **VR floor (review item 11), menu-share verdict:** the caps add at most 0.003 ms of
+Slate UI GPU at 1920x1080, a few hundredths of a millisecond if scaled by pixel count to one XR-4 eye (3840x3744),
+far under the 1.2 ms one-eye menu share; the view runs themselves (4K and one eye, D21) are 33f's.
+
 ## 15. Documentation and in-game text (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 (the Help entry and tab, what the page shows), a pointer from section 1 to
@@ -533,7 +562,7 @@ Key bindings passes (the TECH_DEBT single-run item), so 33b compares three-run m
 
 ## 18. Open questions
 
-**One open (O14, below); none before 2026-11-07.** O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
+**None open.** O14 (below) was answered on 2026-11-07 (D32). O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
 they touch were updated. Mapping:
 
 | # | Answer (summary) | Recorded as | Sections updated |
@@ -551,7 +580,7 @@ they touch were updated. Mapping:
 | O11, O13 | Starting values and the ~45-row glossary list approved, reviewed again in the 33d review | D26 | 2, 8.4 |
 | O12 | A stale guide fails a test | D27 | 9, 10 |
 
-**O14 (open, found by the 33a review, 2026-11-07; needed before 33c draws the diagram):** a chord's modifier key gets no assignment in `SOLKeyDiagram`, so Left Ctrl, Left Alt and Right Shift (used only in Ctrl+F1 / Ctrl+F2, Ctrl+RMB, Alt+O, Ctrl+O and RShift+O) would be drawn as free, dimmed keys, although section 7 says every key named by a `CONTROL_ROWS` cell is assigned. Options: (a) a modifier marker (not dimmed, not counted in "+N", the detail strip lists the chords it starts) - recommended; (b) assign the chord to the modifier too (it takes an area tint and counts in "+N"); (c) keep them free (as built). Not decided; 33a leaves the code as built (c).
+**O14 (found by the 33a review, 2026-11-07; answered the same day: option (a), recorded as D32, built in 33c):** a chord's modifier key gets no assignment in `SOLKeyDiagram`, so Left Ctrl, Left Alt and Right Shift (used only in Ctrl+F1 / Ctrl+F2, Ctrl+RMB, Alt+O, Ctrl+O and RShift+O) would be drawn as free, dimmed keys, although section 7 says every key named by a `CONTROL_ROWS` cell is assigned. Options: (a) a modifier marker (not dimmed, not counted in "+N", the detail strip lists the chords it starts) - recommended; (b) assign the chord to the modifier too (it takes an area tint and counts in "+N"); (c) keep them free (as built). **Answer: (a)**, the modifier marker (D32): not dimmed, not counted in "+N", a small modifier mark, the hover strip lists the chords it starts. 33a's code is still (c); 33c builds (a).
 
 ## 19. Out of scope
 
@@ -581,4 +610,32 @@ Deviations from the plan: of the HUD symbols only the ones with an existing buil
 card and the like); the radar symbols (RadarScope, RadarContactAbove / Below, RadarSelected) have no builder outside
 `ASOLFlightHud::DrawRadar`, so they move with the HUD's inline geometry in 33d-i (D5: no second copy), with the "every
 glossary symbol builds" test. The Autopilot and Route glossary samples stay literal (the HUD builds those lines from
-inline literals; tracked in `Docs/TECH_DEBT.md`). The modifier-key question O14 is open.
+inline literals; tracked in `Docs/TECH_DEBT.md`). The modifier-key question O14 was open at the 33a commit; it was
+answered the same day (D32).
+
+**33b (2026-11-07, commit `Issue #33: Part 33b - key cap widget and Controls restyle`).** `Menu/SOLKeyCapRow`
+(`SSOLKeyCapRow` leaf, `USOLKeyCapRow` wrapper): caps as Small hull boxes (an unbound cap the recess), Rajdhani
+SemiBold legends kept as shaped text (shaped once per content, font or paint-scale change and after a Slate
+invalidate-all; measured at scale 1 once per caps or style change; a wrap-width change only re-lays out), the mouse
+glyph from flat boxes (lines one pixel at any scale), the Move cap drawn "Move" (its text form stays "Mouse"), "+" and
+"/" joints in the dim colour; no tick, no paint allocation; the wrapper keeps the state (headless tests) and skips an
+unchanged cell. New pure pieces: `SOLKeyCaps::DrawnLegend`, `ContentWidth`, `ContentLeft`, `DrawnCapWidth`,
+`GlyphPartOf`, `MouseGlyph`; `SOLSettingsTabs::KeyCellWidth`. The Controls page key cells are cap rows in the
+230-unit column (`USOLReadOnlyPageWidget::RegisterColumnCaps`, `GetKeyCells` now returns the cap rows); the Settings
+> Key bindings key cells are cap rows wrapping in `KeyCellWidth` (200 wide, about 123 at 1000x800), the Rebind button
+kept, the rebind prompt replacing the caps while it waits, a conflicting row's legends in the warning colour. Since a
+rebound chord (Shift or RShift with a wide key) can wrap, the Key bindings rows now grow from `SETTINGS_ROW_HEIGHT`
+in the wide layout too, the Rebind boxes held to that height (46i's fixed wide rows changed for this tab only). Tests
+(separate opus/high author, red on stubs, then green): `KeyCapRowTest.cpp` (7), `KeyCapsTest.cpp` (glyph, legend,
+content width, `DrawnCapWidth` added after the review), `SolidSettingsTest` `KeyCellWidth`; suite 1627, 0 failures.
+`-SOLSmokeSolidMenu` 197/197 (was 193: `u-keycaps`, `v-keycaps` in a new `PauseKeys` step, `h-small-keycaps`,
+`h-pause-small-keycaps`; the Controls fit and rows sweep read the cap rows and need them painted whole),
+`-SOLSmokeHoloMenu` 86/86, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24, the player's `GameUserSettings.ini`
+byte-identical; profile in 14.2.
+
+Deviations and notes: the legend sits right of the Small hull's unlit LED (`KEYCAP_LED_ROOM`, found in the first
+screenshots, where the LED overlapped narrow legends); at 1000x800 the three O chords (Alt+O, Ctrl+O, RShift+O) wrap
+onto two lines inside their cell (the SDD sizes make a modifier chord about 137 units against 123); a rebound single
+cap wider than the 1000x800 cell (e.g. "NumPadEight") still runs toward Rebind, and the smoke reads the default keys
+only (`Docs/TECH_DEBT.md`). The adversarial review (opus, xhigh) found no High item; its 2 Medium and 7 Low findings
+were fixed but those two.

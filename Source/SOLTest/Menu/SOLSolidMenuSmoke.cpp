@@ -6,6 +6,7 @@
 #include "Menu/SOLSolidMenuSmoke.h"
 
 #include "Menu/SOLBuildVersion.h"
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLDemoPageWidget.h"
@@ -125,6 +126,8 @@ namespace
                         // and close at once; strength 1 applied back
         PauseStrengthTwo,   // ... paused, strength 2 applied with the Settings tab open: the panel and shell shown,
                         // the tab's glow read; strength 1 applied back
+        PauseKeys,      // ... 33b: the Key bindings tab at 1280x720: every key cap cell inside its row beside its
+                        // Rebind button, a shot (PauseSmall shows Graphics again)
         PauseSmall,     // ... paused with Settings open, r.SetRes 1000x800: the side panel and the shell inside the
                         // view; 46i: every stepper value inside its slot and the shell, the labels in their columns
         PauseSmallKeys, // ... 46i: the Key bindings tab: its narrow rows, each key name beside a narrow Rebind, a shot
@@ -196,7 +199,7 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 193;          // 46j: the checks a whole run logs (Finish fails a run
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 197;          // 33b: the checks a whole run logs (Finish fails a run
                                                                 // that logged another number: a skipped check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
@@ -1090,9 +1093,20 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         SolidSmokeClick(pause != nullptr ? pause->GetTabButton(SOLMenuState::EMenuTab::Settings) : nullptr);
         break;
     }
+    case ESolidSmokeStep::PauseKeys:
+    {
+        const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        ClickSettingsTab(pause != nullptr ? pause->GetSettingsPage() : nullptr, ESOLSettingsTab::KeyBindings);
+        break;
+    }
     case ESolidSmokeStep::PauseSmall:
+    {
+        // Graphics again after PauseKeys (its stepper values are read at 1000x800), then the small view
+        const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        ClickSettingsTab(pause != nullptr ? pause->GetSettingsPage() : nullptr, ESOLSettingsTab::Graphics);
         setView(SOLID_SMOKE_SMALL_VIEW);
         break;
+    }
     case ESolidSmokeStep::PauseSmallKeys:
     {
         const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
@@ -1871,6 +1885,10 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         const bool bKeys = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::SmallKeys;
         CheckSettingsRoom(bKeys ? TEXT("h-small-keys") : TEXT("h-small-gameplay"), mainMenu != nullptr
             ? mainMenu->GetSettingsPage() : nullptr, bKeys);
+        if (bKeys)
+        {
+            CheckSettingsKeyCaps(TEXT("h-small-keycaps"), mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr);
+        }
         TakeUiShot(bKeys ? TEXT("small-keys") : TEXT("small-gameplay"));
         break;
     }
@@ -1878,6 +1896,7 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
     {
         const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
         CheckSettingsRoom(TEXT("h-pause-small-keys"), pause != nullptr ? pause->GetSettingsPage() : nullptr, true);
+        CheckSettingsKeyCaps(TEXT("h-pause-small-keycaps"), pause != nullptr ? pause->GetSettingsPage() : nullptr);
         TakeUiShot(TEXT("pause-small-keys"));
         break;
     }
@@ -2164,6 +2183,14 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             // Strength 1 applied back (applied, not pending: see PauseStrengthZero)
             ApplyStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
         }
+        break;
+    }
+    case ESolidSmokeStep::PauseKeys:
+    {
+        // 33b: the key cap cells at 1280x720 (PauseSmall shows Graphics again once the shot is taken)
+        const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        CheckSettingsKeyCaps(TEXT("v-keycaps"), pause != nullptr ? pause->GetSettingsPage() : nullptr);
+        TakeUiShot(TEXT("pause-keys"));
         break;
     }
     default:
@@ -2540,6 +2567,7 @@ void FSOLSolidMenuSmoke::ExitSettingsStep(const int32 step, USOLMenuSubsystem& m
             && footerShown(), FString::Printf(TEXT("from tab %d, tab at once %d, %s, last binding's row in view %d, "
             "footer %d"), static_cast<int32>(mScrollFromTab), static_cast<int32>(mScrollTabAtOnce), *describeTabs(),
             bInView ? 1 : 0, footerShown() ? 1 : 0));
+        CheckSettingsKeyCaps(TEXT("u-keycaps"), page);
         TakeUiShot(TEXT("settings-keys-scrolled"));
         break;
     }
@@ -2905,29 +2933,52 @@ void FSOLSolidMenuSmoke::CheckReadOnlyPage(const TCHAR* id, USOLReadOnlyPageWidg
     FString detail;
     for (const USOLReadOnlyPageWidget::FColumnText& column : page->GetColumnTexts())
     {
-        TArray<FString> words;
-        column.Text->GetText().ToString().ParseIntoArray(words, TEXT(" "));
-        for (const FString& word : words)
+        // A key cap cell (33b): its laid-out caps inside its column; a text: each word inside it
+        const UWidget* left = column.Caps != nullptr ? static_cast<const UWidget*>(column.Caps.Get())
+            : column.Text.Get();
+        const FString leftText = column.Caps != nullptr ? column.Caps->GetText()
+            : column.Text != nullptr ? column.Text->GetText().ToString() : FString();
+        if (left == nullptr)
         {
-            const float width = SolidSmokeTextWidth(word, column.Text->GetFont(), scale);
-            if (!(width >= 0.0f && width <= column.Width + SOLID_SMOKE_FIT_TOLERANCE))
+            bFits = false;
+            detail += TEXT(" [a row without its left cell]");
+            continue;
+        }
+        if (column.Caps != nullptr)
+        {
+            const float width = column.Caps->GetLaidOutWidth();
+            if (!(width > 0.0f && width <= column.Width + SOLID_SMOKE_FIT_TOLERANCE))
             {
                 bFits = false;
-                detail += FString::Printf(TEXT(" [\"%s\" %.1f over %.1f]"), *word, width, column.Width);
+                detail += FString::Printf(TEXT(" [caps \"%s\" %.1f over %.1f]"), *leftText, width, column.Width);
+            }
+        }
+        else
+        {
+            TArray<FString> words;
+            leftText.ParseIntoArray(words, TEXT(" "));
+            for (const FString& word : words)
+            {
+                const float width = SolidSmokeTextWidth(word, column.Text->GetFont(), scale);
+                if (!(width >= 0.0f && width <= column.Width + SOLID_SMOKE_FIT_TOLERANCE))
+                {
+                    bFits = false;
+                    detail += FString::Printf(TEXT(" [\"%s\" %.1f over %.1f]"), *word, width, column.Width);
+                }
             }
         }
         if (column.Tab == page->GetSelectedTab())
         {
             ++shown;
-            const FGeometry geometry = SolidSmokeArrangedGeometry(column.Text, scroll);
-            const double left = geometry.GetAbsolutePosition().X;
-            const double right = left + geometry.GetAbsoluteSize().X;
-            if (!(geometry.GetAbsoluteSize().X > 0.0 && left >= scrollMin - SOLID_SMOKE_FIT_TOLERANCE_PX
+            const FGeometry geometry = SolidSmokeArrangedGeometry(left, scroll);
+            const double leftX = geometry.GetAbsolutePosition().X;
+            const double right = leftX + geometry.GetAbsoluteSize().X;
+            if (!(geometry.GetAbsoluteSize().X > 0.0 && leftX >= scrollMin - SOLID_SMOKE_FIT_TOLERANCE_PX
                 && right <= scrollMax + SOLID_SMOKE_FIT_TOLERANCE_PX))
             {
                 bFits = false;
                 detail += FString::Printf(TEXT(" [shown text \"%s\" %.0f-%.0f outside %.0f-%.0f]"),
-                    *column.Text->GetText().ToString().Left(24), left, right, scrollMin, scrollMax);
+                    *leftText.Left(24), leftX, right, scrollMin, scrollMax);
             }
         }
     }
@@ -3817,6 +3868,8 @@ void FSOLSolidMenuSmoke::CheckSweepTab(const USOLReadOnlyPageWidget& page, const
 
     // Every row of the tab: its cells' widths and places, the widest words against them
     int32 rows = 0;
+    int32 capRows = 0;
+    int32 paintedCapRows = 0;
     float narrowestValue = TNumericLimits<float>::Max();
     float tightestRoom = TNumericLimits<float>::Max();
     FString tightest;
@@ -3828,7 +3881,8 @@ void FSOLSolidMenuSmoke::CheckSweepTab(const USOLReadOnlyPageWidget& page, const
             continue;
         }
         ++rows;
-        if (column.Text == nullptr || column.Box == nullptr || column.Value == nullptr || scroll == nullptr)
+        if ((column.Text == nullptr && column.Caps == nullptr) || column.Box == nullptr || column.Value == nullptr
+            || scroll == nullptr)
         {
             bTabOk = false;
             failures += TEXT(" [a row without its widgets]");
@@ -3840,7 +3894,17 @@ void FSOLSolidMenuSmoke::CheckSweepTab(const USOLReadOnlyPageWidget& page, const
         const float valueWidth = value.GetLocalSize().X;
         FString labelWord;
         FString valueWord;
-        const float labelWidest = widestWord(*column.Text, labelWord);
+        // A key cap cell (33b): its laid-out caps as the "word", every legend measured; a cap row the last paint drew
+        // whole (hull material, every legend shaped) is counted (rows below the fold are not painted)
+        const bool bCaps = column.Caps != nullptr;
+        if (bCaps)
+        {
+            labelWord = column.Caps->GetText();
+            capRows += 1;
+            paintedCapRows += column.Caps->WasPaintedWhole() ? 1 : 0;
+        }
+        const float labelWidest = bCaps ? column.Caps->GetLaidOutWidth() : widestWord(*column.Text, labelWord);
+        const bool bCapsTall = !bCaps || column.Caps->AreLegendsMeasured();
         const float valueWidest = widestWord(*column.Value, valueWord);
         const double boxLeft = box.GetAbsolutePosition().X;
         const double boxRight = boxLeft + box.GetAbsoluteSize().X;
@@ -3858,20 +3922,22 @@ void FSOLSolidMenuSmoke::CheckSweepTab(const USOLReadOnlyPageWidget& page, const
             tightestRoom = valueWidth - valueWidest;
             tightest = FString::Printf(TEXT("\"%s\" %.1f in %.1f"), *valueWord, valueWidest, valueWidth);
         }
-        if (!(bBox && bLabel && bValue && bInside))
+        if (!(bBox && bLabel && bValue && bInside && bCapsTall))
         {
             bTabOk = false;
-            failures += FString::Printf(TEXT(" [\"%s\": box %.1f (want %.1f), label word \"%s\" %.1f, value word "
-                "\"%s\" %.1f in %.1f, cells %.0f-%.0f / %.0f-%.0f in content %.0f-%.0f and shell %.0f-%.0f]"),
-                *column.Text->GetText().ToString().Left(24), boxWidth, column.Width, *labelWord, labelWidest,
+            failures += FString::Printf(TEXT(" [\"%s\": box %.1f (want %.1f), label word \"%s\" %.1f (caps tall %d), "
+                "value word \"%s\" %.1f in %.1f, cells %.0f-%.0f / %.0f-%.0f in content %.0f-%.0f and shell "
+                "%.0f-%.0f]"), *(bCaps ? column.Caps->GetText() : column.Text->GetText().ToString()).Left(24), boxWidth,
+                column.Width, *labelWord, labelWidest, bCapsTall ? 1 : 0,
                 *valueWord, valueWidest, valueWidth, boxLeft, boxRight, valueLeft, valueRight, scrollMin, scrollMax,
                 shellMin, shellMax);
         }
     }
     mSweepRows += rows;
-    mIsSweepOk &= bTabOk && rows > 0;
-    mSweepDetail += FString::Printf(TEXT(" [tab %d: %d rows, value cells from %.1f, tightest %s%s]"), mSweepTab, rows,
-        rows > 0 ? narrowestValue : 0.0f, *tightest, *failures);
+    mIsSweepOk &= bTabOk && rows > 0 && (capRows == 0 || paintedCapRows > 0);
+    mSweepDetail += FString::Printf(TEXT(" [tab %d: %d rows (%d of %d cap rows painted whole), value cells from %.1f, "
+        "tightest %s%s]"), mSweepTab, rows, paintedCapRows, capRows, rows > 0 ? narrowestValue : 0.0f, *tightest,
+        *failures);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -3987,18 +4053,19 @@ void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPa
     FString keysDetail;
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
-        const UTextBlock* text = page->GetKeyTextWidget(binding);
+        const USOLKeyCapRow* cell = page->GetKeyCell(binding);
         const USizeBox* rebindBox = page->GetRebindBox(binding);
         const USOLMenuButton* rebind = page->GetRebindButton(binding);
-        if (text == nullptr || rebindBox == nullptr || rebind == nullptr)
+        if (cell == nullptr || rebindBox == nullptr || rebind == nullptr)
         {
             bKeysFit = false;
             keysDetail += FString::Printf(TEXT(" [binding %d: missing widget]"), binding);
             continue;
         }
-        const FString name = text->GetText().ToString();
-        const float width = SolidSmokeTextWidth(name, text->GetFont(), scale);
-        const FGeometry slotGeometry = SolidSmokeArrangedGeometry(text, page);
+        // The key's caps (33b): their laid-out width against the cell's slot
+        const FString name = cell->GetText();
+        const float width = cell->GetLaidOutWidth();
+        const FGeometry slotGeometry = SolidSmokeArrangedGeometry(cell, page);
         const FGeometry rebindGeometry = SolidSmokeArrangedGeometry(rebind, page);
         const float slot = slotGeometry.GetLocalSize().X;
         const double slotRight = slotGeometry.GetAbsolutePosition().X + slotGeometry.GetAbsoluteSize().X;
@@ -4059,24 +4126,112 @@ void FSOLSolidMenuSmoke::CheckSettingsWide(const TCHAR* id, const USOLSettingsPa
         const USizeBox* labelBox = page->GetRowLabelBox(index);
         const USizeBox* rowBox = page->GetRowBox(index);
         // GetHeightOverride keeps its value after ClearHeightOverride, so the override flags are read too: a row left
-        // narrow (a minimum height, no fixed one) counts as off
-        offColumns += label == nullptr || labelBox == nullptr || rowBox == nullptr || label->GetAutoWrapText()
-            || labelBox->GetWidthOverride() != SOLSettingsTabs::LabelColumnWidth(tab) || !rowBox->IsHeightOverride()
-            || rowBox->IsMinDesiredHeightOverride()
-            || rowBox->GetHeightOverride() != SOL::MenuStyle::SETTINGS_ROW_HEIGHT ? 1 : 0;
+        // narrow (a minimum height, no fixed one) counts as off; a Key bindings row (33b) always grows from the
+        // minimum height and has no fixed one
+        const bool bGrows = tab == ESOLSettingsTab::KeyBindings;
+        const float rowHeight = SOL::MenuStyle::SETTINGS_ROW_HEIGHT;
+        const bool bHeight = rowBox != nullptr && (bGrows ? !rowBox->IsHeightOverride()
+            && rowBox->IsMinDesiredHeightOverride() && rowBox->GetMinDesiredHeight() == rowHeight
+            : rowBox->IsHeightOverride() && !rowBox->IsMinDesiredHeightOverride()
+            && rowBox->GetHeightOverride() == rowHeight);
+        offColumns += label == nullptr || labelBox == nullptr || !bHeight || label->GetAutoWrapText()
+            || labelBox->GetWidthOverride() != SOLSettingsTabs::LabelColumnWidth(tab) ? 1 : 0;
     }
     int32 offRebinds = 0;
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
-        // A wide box: the fixed SETTINGS_REBIND_WIDTH, none of the narrow minimum width or fixed height left over
+        // A wide box: the fixed SETTINGS_REBIND_WIDTH, none of the narrow minimum width left over, held to the row
+        // height (33b: in both states)
         const USizeBox* rebindBox = page->GetRebindBox(binding);
         offRebinds += rebindBox == nullptr || !rebindBox->IsWidthOverride() || rebindBox->IsMinDesiredWidthOverride()
-            || rebindBox->IsHeightOverride() || rebindBox->GetWidthOverride() != SOL::MenuStyle::SETTINGS_REBIND_WIDTH
-            ? 1 : 0;
+            || !rebindBox->IsHeightOverride() || rebindBox->GetHeightOverride() != SOL::MenuStyle::SETTINGS_ROW_HEIGHT
+            || rebindBox->GetWidthOverride() != SOL::MenuStyle::SETTINGS_REBIND_WIDTH ? 1 : 0;
     }
     Check(id, bWide && offColumns == 0 && offRebinds == 0 && page->GetRowLabelCount() > 0, FString::Printf(
         TEXT("row %.1f: narrow Gameplay %d, Key bindings %d; %d of %d rows off their wide column or height, %d of %d "
         "Rebind boxes off %.0f"), page->GetFitRowWidth(), page->IsNarrowLayout(ESOLSettingsTab::Gameplay) ? 1 : 0,
         page->IsNarrowLayout(ESOLSettingsTab::KeyBindings) ? 1 : 0, offColumns, page->GetRowLabelCount(), offRebinds,
         SOLKeyBindings::BINDING_COUNT, SOL::MenuStyle::SETTINGS_REBIND_WIDTH));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks the shown Key bindings tab's key cap cells (33b, D20): each cell's wrap width the fitted row's KeyCellWidth,
+// its caps laid out inside that width and its slot, no taller than its row, left of its Rebind button, and the button
+// inside the row. The widgets are read freshly arranged from the page (a row out of view is culled from the paint)
+void FSOLSolidMenuSmoke::CheckSettingsKeyCaps(const TCHAR* id, const USOLSettingsPageWidget* page)
+{
+    if (page == nullptr)
+    {
+        Check(id, false, TEXT("no Settings page"));
+        return;
+    }
+    const float wrap = SOLSettingsTabs::KeyCellWidth(page->GetFitRowWidth());
+    bool bOk = page->GetSelectedTab() == ESOLSettingsTab::KeyBindings && page->GetFitRowWidth() > 0.0f
+        && page->GetKeyCellWidth() == wrap;
+    int32 rows = 0;
+    int32 wrapped = 0;
+    int32 painted = 0;
+    float widest = 0.0f;
+    FString widestName;
+    FString detail;
+    for (int32 index = 0; index < page->GetRowLabelCount(); ++index)
+    {
+        ESOLSettingsTab labelTab = ESOLSettingsTab::Count;
+        if (page->GetRowLabel(index, labelTab) == nullptr || labelTab != ESOLSettingsTab::KeyBindings)
+        {
+            continue;
+        }
+
+        // The key rows are the tab's labelled rows in binding order
+        const int32 binding = rows++;
+        const USOLKeyCapRow* cell = page->GetKeyCell(binding);
+        const USOLMenuButton* rebind = page->GetRebindButton(binding);
+        const USizeBox* rowBox = page->GetRowBox(index);
+        if (cell == nullptr || rebind == nullptr || rowBox == nullptr)
+        {
+            bOk = false;
+            detail += FString::Printf(TEXT(" [binding %d: missing widget]"), binding);
+            continue;
+        }
+        const FGeometry slot = SolidSmokeArrangedGeometry(cell, page);
+        const FGeometry button = SolidSmokeArrangedGeometry(rebind, page);
+        const FGeometry row = SolidSmokeArrangedGeometry(rowBox, page);
+        const float width = cell->GetLaidOutWidth();
+        const float height = cell->GetLaidOutHeight();
+        const double slotRight = slot.GetAbsolutePosition().X + slot.GetAbsoluteSize().X;
+        const double buttonLeft = button.GetAbsolutePosition().X;
+        const double buttonRight = buttonLeft + button.GetAbsoluteSize().X;
+        const double rowLeft = row.GetAbsolutePosition().X;
+        const double rowRight = rowLeft + row.GetAbsoluteSize().X;
+        const double tolPx = SOLID_SMOKE_FIT_TOLERANCE_PX;
+        wrapped += cell->GetLaidOutLines() > 1 ? 1 : 0;
+        if (width > widest)
+        {
+            widest = width;
+            widestName = cell->GetText();
+        }
+        // A row in view was painted: its caps drawn whole (hull material, every legend shaped at the paint scale)
+        const bool bInView = page->IsBindingRowInView(binding);
+        const bool bPainted = !bInView || cell->WasPaintedWhole();
+        painted += bInView && bPainted ? 1 : 0;
+        const bool bFits = !cell->IsShowingMessage() && cell->GetModel().Caps.Num() > 0 && cell->AreLegendsMeasured()
+            && bPainted && width > 0.0f
+            && width <= wrap + SOLID_SMOKE_FIT_TOLERANCE && width <= slot.GetLocalSize().X + SOLID_SMOKE_FIT_TOLERANCE
+            && cell->GetWrapWidth() == wrap && height > 0.0f
+            && height <= row.GetLocalSize().Y + SOLID_SMOKE_FIT_TOLERANCE && slotRight <= buttonLeft + tolPx
+            && buttonLeft >= rowLeft - tolPx && buttonRight <= rowRight + tolPx;
+        if (!bFits)
+        {
+            bOk = false;
+            detail += FString::Printf(TEXT(" [\"%s\": caps %.1f x %.1f (wrap %.1f), slot %.1f ending %.1f, Rebind "
+                "%.1f-%.1f in row %.1f-%.1f, %.1f tall, in view %d painted %d]"), *cell->GetText(), width, height,
+                cell->GetWrapWidth(), slot.GetLocalSize().X, slotRight, buttonLeft, buttonRight, rowLeft, rowRight,
+                row.GetLocalSize().Y, bInView ? 1 : 0, bPainted ? 1 : 0);
+        }
+    }
+    bOk &= rows == SOLKeyBindings::BINDING_COUNT && painted > 0;
+    Check(id, bOk, FString::Printf(TEXT("tab %d, row %.1f, cell wrap %.1f (want %.1f), %d key rows (want %d, %d in view "
+        "painted whole), widest caps \"%s\" %.1f, %d wrapped%s"), static_cast<int32>(page->GetSelectedTab()),
+        page->GetFitRowWidth(), page->GetKeyCellWidth(), wrap, rows, SOLKeyBindings::BINDING_COUNT, painted, *widestName,
+        widest, wrapped, *detail));
 }

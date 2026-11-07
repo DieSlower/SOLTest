@@ -15,6 +15,7 @@ struct FSOLHoloMenuAnim;
 struct FSOLSolidScrollStack;
 class UObject;
 class USizeBox;
+class USOLKeyCapRow;
 class USOLMenuButton;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
@@ -111,12 +112,14 @@ namespace SOLMenuContent
     SOLTEST_API FString FormatControlAction(const TCHAR* action);
 
     // Builds the Controls page (a tab page, SDD 46 section 6.5: one tab per area, every binding in key / action rows);
-    // its key cells (USOLReadOnlyPageWidget::GetKeyCells) are one text block per SOLMenuText::CONTROL_ROWS row, for
-    // RefreshControlsPage
+    // its key cells (USOLReadOnlyPageWidget::GetKeyCells) are one key cap row per SOLMenuText::CONTROL_ROWS row (33b),
+    // for RefreshControlsPage
     SOLTEST_API USOLReadOnlyPageWidget* BuildControlsPage(UWidgetTree& tree);
 
-    // Rewrites the Controls page's key cells from the live keys (called when the page is shown)
-    SOLTEST_API void RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& keyCells,
+    // Shows the live keys' caps in the Controls page's key cells, cell i the CONTROL_ROWS row i's bindings (called when
+    // the page is shown; a null cell is skipped, cells past the rows are left as they are; an unchanged cell is not
+    // re-measured)
+    SOLTEST_API void RefreshControlsPage(const TArray<TObjectPtr<USOLKeyCapRow>>& keyCells,
         const TArray<FString>& liveKeys);
 
     // Builds the Info page (a tab page: flight, time and combat values generated from the real constants, plus

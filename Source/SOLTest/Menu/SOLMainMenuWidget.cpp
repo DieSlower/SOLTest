@@ -8,6 +8,7 @@
 #include "Menu/SOLBuildVersion.h"
 #include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLReadOnlyPageWidget.h"

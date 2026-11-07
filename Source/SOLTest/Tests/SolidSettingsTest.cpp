@@ -763,4 +763,74 @@ bool FSOLSolidSettingsNarrowWidthsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Key cap cell (issue #33 Part 33b, SDD 33 D20): the room a Key bindings row leaves its key caps, bounded
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    constexpr float SOLIDSETTINGSTEST_TOLERANCE = 1.0e-3f;              // Layout comparisons (menu units)
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the key cap cell the contract formula gives a row: what the label column, the gap and Rebind leave,
+    // clamped to [0, SETTINGS_KEYCAP_CELL_WIDTH]
+    float SolidSettingsTestKeyCell(const float rowWidth)
+    {
+        const float room = rowWidth - SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::KeyBindings, rowWidth)
+            - SOL::MenuStyle::BUTTON_GAP - SOLSettingsTabs::RebindWidth(rowWidth);
+        return FMath::Clamp(room, 0.0f, SOL::Help::SETTINGS_KEYCAP_CELL_WIDTH);
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsKeyCellWidthTest, "SOLTest.SolidSettings.Layout.KeyCellWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// KeyCellWidth: the row less the label column, the gap and Rebind, clamped to [0, SETTINGS_KEYCAP_CELL_WIDTH]; the
+// bound for a row not laid out; at 1000x800 the cell keeps the key text's minimum and a space bar cap; the row's
+// pieces never overrun a laid-out row
+bool FSOLSolidSettingsKeyCellWidthTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+
+    // The pinned rows (1000x800 narrow: 405 - 168 - 10 - 104; 1280x720 wide: 650 - 250 - 10 - 120 = 270, clamped)
+    TestEqual(TEXT("1000x800: the cell"), SOLSettingsTabs::KeyCellWidth(SOL_SMALL_ROW), 123.0f,
+        SOLIDSETTINGSTEST_TOLERANCE);
+    TestEqual(TEXT("1280x720: the cell, at the bound"), SOLSettingsTabs::KeyCellWidth(SOL_WIDE_ROW),
+        SETTINGS_KEYCAP_CELL_WIDTH, SOLIDSETTINGSTEST_TOLERANCE);
+    TestTrue(TEXT("1000x800: the cell keeps the key text's minimum"),
+        SOLSettingsTabs::KeyCellWidth(SOL_SMALL_ROW) >= SOL::SolidMenu::SETTINGS_KEY_TEXT_MIN_WIDTH);
+    TestTrue(TEXT("1000x800: a space bar cap fits without a wrap"),
+        SOLSettingsTabs::KeyCellWidth(SOL_SMALL_ROW) >= KEYCAP_SPACE_UNITS * KEYCAP_MIN_WIDTH);
+
+    // A row not laid out yet: the bound
+    const float notLaidOut[] = { 0.0f, -1.0f, -SOL_SMALL_ROW, std::numeric_limits<float>::quiet_NaN() };
+    for (const float rowWidth : notLaidOut)
+    {
+        TestEqual(FString::Printf(TEXT("a row of %f: the bound"), rowWidth), SOLSettingsTabs::KeyCellWidth(rowWidth),
+            SETTINGS_KEYCAP_CELL_WIDTH, SOLIDSETTINGSTEST_TOLERANCE);
+    }
+
+    // A tiny row leaves no room
+    TestEqual(TEXT("a row of 100: no room"), SOLSettingsTabs::KeyCellWidth(100.0f), 0.0f,
+        SOLIDSETTINGSTEST_TOLERANCE);
+
+    // A sweep of laid-out rows: the formula, inside the bounds, and never past the row
+    for (float rowWidth = 300.0f; rowWidth <= 1200.0f; rowWidth += 12.5f)
+    {
+        const float cell = SOLSettingsTabs::KeyCellWidth(rowWidth);
+        TestEqual(FString::Printf(TEXT("a row of %.1f: the formula"), rowWidth), cell,
+            SolidSettingsTestKeyCell(rowWidth), SOLIDSETTINGSTEST_TOLERANCE);
+        TestTrue(FString::Printf(TEXT("a row of %.1f: inside [0, bound]"), rowWidth), cell >= 0.0f
+            && cell <= SETTINGS_KEYCAP_CELL_WIDTH + SOLIDSETTINGSTEST_TOLERANCE);
+        if (cell > 0.0f)
+        {
+            const float used = SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::KeyBindings, rowWidth)
+                + SOL::MenuStyle::BUTTON_GAP + cell + SOLSettingsTabs::RebindWidth(rowWidth);
+            TestTrue(FString::Printf(TEXT("a row of %.1f: label, gap, cell and Rebind fit (%.1f)"), rowWidth, used),
+                used <= rowWidth + SOLIDSETTINGSTEST_TOLERANCE);
+        }
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

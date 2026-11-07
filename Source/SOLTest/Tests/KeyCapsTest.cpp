@@ -919,4 +919,482 @@ bool FSOLKeyCapsColumnTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// ---------------------------------------------------------------------------------------------------------------------
+// Part 33b: the drawn legend, the content width and the mouse glyph of a cap (SDD 33 section 6), written against the
+// header contract before the production code existed
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    constexpr float KEYCAPSTEST_INFINITY = std::numeric_limits<float>::infinity();
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a hand-built cap (independent of ParseCell)
+    FSOLKeyCap KeyCapsTestCap(const TCHAR* keyName, const TCHAR* label, const ESOLKeyCapShape shape,
+        const ESOLMouseButton mouse)
+    {
+        FSOLKeyCap cap;
+        cap.KeyName = keyName;
+        cap.Label = label;
+        cap.Shape = shape;
+        cap.Mouse = mouse;
+        return cap;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the single cap a one-key cell parses to, failing the test (and returning an unbound cap) otherwise
+    FSOLKeyCap KeyCapsTestParseOne(FAutomationTestBase& test, const TCHAR* cell)
+    {
+        FSOLKeyCapModel model;
+        SOLKeyCaps::ParseCell(cell, SOLKeyBindings::DefaultKeys(), model);
+        if (!test.TestEqual(FString::Printf(TEXT("'%s' parses to one cap"), cell), model.Caps.Num(), 1))
+        {
+            FSOLKeyCap unbound;
+            unbound.bUnbound = true;
+            return unbound;
+        }
+        return model.Caps[0];
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a mouse part's name for assertion messages
+    const TCHAR* KeyCapsTestPartName(const ESOLMouseGlyphPart part)
+    {
+        switch (part)
+        {
+        case ESOLMouseGlyphPart::None:
+            return TEXT("None");
+        case ESOLMouseGlyphPart::Body:
+            return TEXT("Body");
+        case ESOLMouseGlyphPart::LeftButton:
+            return TEXT("LeftButton");
+        case ESOLMouseGlyphPart::RightButton:
+            return TEXT("RightButton");
+        case ESOLMouseGlyphPart::Wheel:
+            return TEXT("Wheel");
+        default:
+            return TEXT("<invalid>");
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts a lit part equals the expected one, naming both in the message
+    void KeyCapsTestCheckPart(FAutomationTestBase& test, const FString& what, const ESOLMouseGlyphPart actual,
+        const ESOLMouseGlyphPart expected)
+    {
+        test.TestEqual(FString::Printf(TEXT("%s (got %s, want %s)"), *what, KeyCapsTestPartName(actual),
+            KeyCapsTestPartName(expected)), static_cast<int32>(actual), static_cast<int32>(expected));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts a box's corners (with the layout tolerance)
+    void KeyCapsTestCheckBox(FAutomationTestBase& test, const FString& what, const FBox2f& box, const FVector2f& min,
+        const FVector2f& max)
+    {
+        test.TestEqual(what + TEXT(": min x"), box.Min.X, min.X, KEYCAPSTEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": min y"), box.Min.Y, min.Y, KEYCAPSTEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": max x"), box.Max.X, max.X, KEYCAPSTEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": max y"), box.Max.Y, max.Y, KEYCAPSTEST_TOLERANCE);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether inner lies inside outer (with the layout tolerance)
+    bool KeyCapsTestInside(const FBox2f& inner, const FBox2f& outer)
+    {
+        return inner.Min.X >= outer.Min.X - KEYCAPSTEST_TOLERANCE && inner.Min.Y >= outer.Min.Y - KEYCAPSTEST_TOLERANCE
+            && inner.Max.X <= outer.Max.X + KEYCAPSTEST_TOLERANCE && inner.Max.Y <= outer.Max.Y + KEYCAPSTEST_TOLERANCE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts a glyph's boxes are those of the contract formula for a valid topLeft and size
+    void KeyCapsTestCheckGlyph(FAutomationTestBase& test, const FString& what, const FSOLMouseGlyph& glyph,
+        const FVector2f& topLeft, const FVector2f& size)
+    {
+        using namespace SOL::Help;
+        const float w = size.X;
+        const float h = size.Y;
+        const float cx = topLeft.X + 0.5f * w;
+        const float buttonBottom = topLeft.Y + h * KEYCAP_MOUSE_BUTTON_FRACTION;
+        const float wheelHalf = 0.5f * w * KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION;
+        KeyCapsTestCheckBox(test, what + TEXT(" body"), glyph.Body, topLeft, topLeft + size);
+        KeyCapsTestCheckBox(test, what + TEXT(" left button"), glyph.LeftButton, topLeft,
+            FVector2f(cx, buttonBottom));
+        KeyCapsTestCheckBox(test, what + TEXT(" right button"), glyph.RightButton, FVector2f(cx, topLeft.Y),
+            FVector2f(topLeft.X + w, buttonBottom));
+        KeyCapsTestCheckBox(test, what + TEXT(" wheel"), glyph.Wheel,
+            FVector2f(cx - wheelHalf, topLeft.Y + h * KEYCAP_MOUSE_WHEEL_TOP_FRACTION),
+            FVector2f(cx + wheelHalf, topLeft.Y + h * KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts every box of a glyph is the point topLeft (the degenerate glyph of a bad size)
+    void KeyCapsTestCheckPointGlyph(FAutomationTestBase& test, const FString& what, const FSOLMouseGlyph& glyph,
+        const FVector2f& topLeft)
+    {
+        KeyCapsTestCheckBox(test, what + TEXT(" body"), glyph.Body, topLeft, topLeft);
+        KeyCapsTestCheckBox(test, what + TEXT(" left button"), glyph.LeftButton, topLeft, topLeft);
+        KeyCapsTestCheckBox(test, what + TEXT(" right button"), glyph.RightButton, topLeft, topLeft);
+        KeyCapsTestCheckBox(test, what + TEXT(" wheel"), glyph.Wheel, topLeft, topLeft);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts box b is box a moved by offset
+    void KeyCapsTestCheckMoved(FAutomationTestBase& test, const FString& what, const FBox2f& a, const FBox2f& b,
+        const FVector2f& offset)
+    {
+        KeyCapsTestCheckBox(test, what, b, a.Min + offset, a.Max + offset);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts box b is box a scaled by factor about origin
+    void KeyCapsTestCheckScaled(FAutomationTestBase& test, const FString& what, const FBox2f& a, const FBox2f& b,
+        const FVector2f& origin, const float factor)
+    {
+        KeyCapsTestCheckBox(test, what, b, origin + (a.Min - origin) * factor, origin + (a.Max - origin) * factor);
+    }
+
+    // Every mouse part a cap can light, for the sweeps
+    constexpr ESOLMouseButton KEYCAPSTEST_BUTTONS[] = { ESOLMouseButton::None, ESOLMouseButton::Left,
+        ESOLMouseButton::Right, ESOLMouseButton::Middle, ESOLMouseButton::Wheel, ESOLMouseButton::Move };
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsMouseGlyphConstantsTest, "SOLTest.KeyCaps.MouseGlyphConstants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The mouse glyph constants fit a cap and stack sensibly: the wheel inside the buttons' band, the glyph inside a
+// minimum-width cap's padding and under the cap's height; the Move legend reads "Move"
+bool FSOLKeyCapsMouseGlyphConstantsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    TestTrue(TEXT("the wheel starts below the glyph top"), KEYCAP_MOUSE_WHEEL_TOP_FRACTION > 0.0f);
+    TestTrue(TEXT("the wheel ends below its top"), KEYCAP_MOUSE_WHEEL_TOP_FRACTION < KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION);
+    TestTrue(TEXT("the wheel ends within the buttons' band"),
+        KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION <= KEYCAP_MOUSE_BUTTON_FRACTION);
+    TestTrue(TEXT("the buttons leave a body below them"), KEYCAP_MOUSE_BUTTON_FRACTION < 1.0f);
+    TestTrue(TEXT("the wheel is narrower than the glyph"),
+        KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION > 0.0f && KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION < 1.0f);
+    TestTrue(TEXT("the glyph has a size"), KEYCAP_MOUSE_GLYPH_WIDTH > 0.0f && KEYCAP_MOUSE_GLYPH_HEIGHT > 0.0f);
+    TestTrue(TEXT("the glyph is shorter than a cap"), KEYCAP_MOUSE_GLYPH_HEIGHT < KEYCAP_HEIGHT);
+    TestTrue(TEXT("the glyph and its padding fit a minimum-width cap"),
+        KEYCAP_MOUSE_GLYPH_WIDTH + 2.0f * KEYCAP_PADDING <= KEYCAP_MIN_WIDTH);
+    TestEqual(TEXT("the Move legend"), FString(SOLMenuText::KEYCAP_MOVE_LEGEND), FString(TEXT("Move")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsDrawnLegendTest, "SOLTest.KeyCaps.DrawnLegend",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The drawn legend: none on a mouse button cap (glyph only), "Move" on a mouse-move cap (its Label and text form
+// unchanged), the Label on Wheel, unbound, normal and wide caps
+bool FSOLKeyCapsDrawnLegendTest::RunTest(const FString& /*parameters*/)
+{
+    // Mouse buttons draw the glyph only
+    const TCHAR* buttons[] = { TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton") };
+    for (const TCHAR* cell : buttons)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestTrue(FString::Printf(TEXT("'%s': no drawn legend"), cell), SOLKeyCaps::DrawnLegend(cap).IsEmpty());
+        TestFalse(FString::Printf(TEXT("'%s': its Label is kept for the text form"), cell), cap.Label.IsEmpty());
+    }
+
+    // Mouse movement draws "Move"; its Label and the text form stay as they were
+    const TCHAR* moves[] = { TEXT("Mouse2D"), TEXT("MouseX"), TEXT("MouseY") };
+    for (const TCHAR* cell : moves)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestEqual(FString::Printf(TEXT("'%s': drawn legend is Move"), cell), FString(SOLKeyCaps::DrawnLegend(cap)),
+            FString(SOLMenuText::KEYCAP_MOVE_LEGEND));
+        TestEqual(FString::Printf(TEXT("'%s': Label unchanged"), cell), cap.Label,
+            SOLBindingLabel::KeyDisplayName(cell));
+    }
+    FSOLKeyCapModel model;
+    SOLKeyCaps::ParseCell(TEXT("Mouse2D"), SOLKeyBindings::DefaultKeys(), model);
+    TestEqual(TEXT("Mouse2D: the text form is unchanged"), SOLKeyCaps::ModelText(model),
+        SOLMenuContent::FormatBindings(TEXT("Mouse2D"), SOLKeyBindings::DefaultKeys()));
+
+    // Wheel, keyboard and unbound caps draw their Label
+    const TCHAR* labelled[] = { TEXT("MouseWheelAxis"), TEXT("MouseScrollUp"), TEXT("MouseScrollDown"),
+        TEXT("SpaceBar"), TEXT("K"), TEXT("LeftShift"), TEXT("F1"), TEXT("@NoSuchAction") };
+    for (const TCHAR* cell : labelled)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestEqual(FString::Printf(TEXT("'%s': drawn legend is the Label"), cell),
+            FString(SOLKeyCaps::DrawnLegend(cap)), cap.Label);
+        TestFalse(FString::Printf(TEXT("'%s': drawn legend not empty"), cell), SOLKeyCaps::DrawnLegend(cap).IsEmpty());
+    }
+    const FSOLKeyCap unbound = KeyCapsTestParseOne(*this, TEXT("@NoSuchAction"));
+    TestEqual(TEXT("unbound: draws Unbound"), FString(SOLKeyCaps::DrawnLegend(unbound)),
+        SOLBindingLabel::KeyDisplayName(FString()));
+
+    // Hand-built caps
+    const FSOLKeyCap left = KeyCapsTestCap(TEXT("LeftMouseButton"), TEXT("LMB"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Left);
+    const FSOLKeyCap right = KeyCapsTestCap(TEXT("RightMouseButton"), TEXT("RMB"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Right);
+    const FSOLKeyCap middle = KeyCapsTestCap(TEXT("MiddleMouseButton"), TEXT("MMB"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Middle);
+    const FSOLKeyCap move = KeyCapsTestCap(TEXT("Mouse2D"), TEXT("Mouse"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Move);
+    const FSOLKeyCap wheel = KeyCapsTestCap(TEXT("MouseScrollUp"), TEXT("Wheel Up"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Wheel);
+    const FSOLKeyCap normal = KeyCapsTestCap(TEXT("Escape"), TEXT("Esc"), ESOLKeyCapShape::Normal,
+        ESOLMouseButton::None);
+    const FSOLKeyCap wide = KeyCapsTestCap(TEXT("LeftShift"), TEXT("Shift"), ESOLKeyCapShape::Wide,
+        ESOLMouseButton::None);
+    TestTrue(TEXT("hand-built left button: glyph only"), SOLKeyCaps::DrawnLegend(left).IsEmpty());
+    TestTrue(TEXT("hand-built right button: glyph only"), SOLKeyCaps::DrawnLegend(right).IsEmpty());
+    TestTrue(TEXT("hand-built middle button: glyph only"), SOLKeyCaps::DrawnLegend(middle).IsEmpty());
+    TestEqual(TEXT("hand-built move: Move"), FString(SOLKeyCaps::DrawnLegend(move)),
+        FString(SOLMenuText::KEYCAP_MOVE_LEGEND));
+    TestEqual(TEXT("hand-built wheel: its Label"), FString(SOLKeyCaps::DrawnLegend(wheel)), FString(TEXT("Wheel Up")));
+    TestEqual(TEXT("hand-built normal: its Label"), FString(SOLKeyCaps::DrawnLegend(normal)), FString(TEXT("Esc")));
+    TestEqual(TEXT("hand-built wide: its Label"), FString(SOLKeyCaps::DrawnLegend(wide)), FString(TEXT("Shift")));
+
+    // Every Controls cell at the defaults: only the mouse button caps draw no legend
+    for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+    {
+        SOLKeyCaps::ParseCell(row.Bindings, SOLKeyBindings::DefaultKeys(), model);
+        for (int32 cap = 0; cap < model.Caps.Num(); ++cap)
+        {
+            const FSOLKeyCap& keyCap = model.Caps[cap];
+            const bool bButton = keyCap.Mouse == ESOLMouseButton::Left || keyCap.Mouse == ESOLMouseButton::Right
+                || keyCap.Mouse == ESOLMouseButton::Middle;
+            TestTrue(FString::Printf(TEXT("'%s' cap %d (%s): %s"), row.Bindings, cap, *keyCap.KeyName,
+                bButton ? TEXT("glyph only") : TEXT("a drawn legend")),
+                SOLKeyCaps::DrawnLegend(keyCap).IsEmpty() == bButton);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsContentWidthTest, "SOLTest.KeyCaps.ContentWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A Mouse cap's content is the glyph, plus a gap and its legend when it has one; any other cap's is its legend; a
+// negative or NaN legend reads 0; a glyph-only cap is the minimum cap width
+bool FSOLKeyCapsContentWidthTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+
+    // Mouse caps (parsed)
+    const TCHAR* mouseCells[] = { TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton"),
+        TEXT("Mouse2D"), TEXT("MouseWheelAxis") };
+    for (const TCHAR* cell : mouseCells)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestTrue(FString::Printf(TEXT("'%s' is a Mouse cap"), cell), cap.Shape == ESOLKeyCapShape::Mouse);
+        TestEqual(FString::Printf(TEXT("'%s': no legend is the glyph"), cell), SOLKeyCaps::ContentWidth(cap, 0.0f),
+            KEYCAP_MOUSE_GLYPH_WIDTH, KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': a negative legend reads 0"), cell),
+            SOLKeyCaps::ContentWidth(cap, -20.0f), KEYCAP_MOUSE_GLYPH_WIDTH, KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': a NaN legend reads 0"), cell),
+            SOLKeyCaps::ContentWidth(cap, KEYCAPSTEST_NAN), KEYCAP_MOUSE_GLYPH_WIDTH, KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': glyph, gap and legend"), cell), SOLKeyCaps::ContentWidth(cap, 33.0f),
+            KEYCAP_MOUSE_GLYPH_WIDTH + KEYCAP_GAP + 33.0f, KEYCAPSTEST_TOLERANCE);
+    }
+
+    // A glyph-only cap fits the minimum cap width
+    const TCHAR* buttonCells[] = { TEXT("LeftMouseButton"), TEXT("RightMouseButton"), TEXT("MiddleMouseButton") };
+    for (const TCHAR* cell : buttonCells)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestEqual(FString::Printf(TEXT("'%s': drawn at the minimum width"), cell),
+            SOLKeyCaps::CapWidth(cap, SOLKeyCaps::ContentWidth(cap, 0.0f)), KEYCAP_MIN_WIDTH, KEYCAPSTEST_TOLERANCE);
+    }
+
+    // A Move cap with a legend: glyph, gap, legend and the padding a side
+    const FSOLKeyCap move = KeyCapsTestParseOne(*this, TEXT("Mouse2D"));
+    const float moveLegend = KEYCAPSTEST_CHAR_WIDTH * FString(SOLMenuText::KEYCAP_MOVE_LEGEND).Len();
+    TestEqual(TEXT("Mouse2D with Move: the drawn width"), SOLKeyCaps::CapWidth(move, SOLKeyCaps::ContentWidth(move,
+        moveLegend)), FMath::Max(KEYCAP_MIN_WIDTH, KEYCAP_MOUSE_GLYPH_WIDTH + KEYCAP_GAP + moveLegend
+        + 2.0f * KEYCAP_PADDING), KEYCAPSTEST_TOLERANCE);
+
+    // Other caps: the legend alone
+    const TCHAR* otherCells[] = { TEXT("K"), TEXT("SpaceBar"), TEXT("LeftShift"), TEXT("@NoSuchAction") };
+    for (const TCHAR* cell : otherCells)
+    {
+        const FSOLKeyCap cap = KeyCapsTestParseOne(*this, cell);
+        TestTrue(FString::Printf(TEXT("'%s' is not a Mouse cap"), cell), cap.Shape != ESOLKeyCapShape::Mouse);
+        TestEqual(FString::Printf(TEXT("'%s': the legend"), cell), SOLKeyCaps::ContentWidth(cap, 25.0f), 25.0f,
+            KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': no legend is 0"), cell), SOLKeyCaps::ContentWidth(cap, 0.0f), 0.0f,
+            KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': a negative legend reads 0"), cell),
+            SOLKeyCaps::ContentWidth(cap, -7.0f), 0.0f, KEYCAPSTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("'%s': a NaN legend reads 0"), cell),
+            SOLKeyCaps::ContentWidth(cap, KEYCAPSTEST_NAN), 0.0f, KEYCAPSTEST_TOLERANCE);
+    }
+
+    // Hand-built caps follow the shape
+    const FSOLKeyCap mouse = KeyCapsTestCap(TEXT("RightMouseButton"), TEXT("RMB"), ESOLKeyCapShape::Mouse,
+        ESOLMouseButton::Right);
+    const FSOLKeyCap normal = KeyCapsTestCap(TEXT("K"), TEXT("K"), ESOLKeyCapShape::Normal, ESOLMouseButton::None);
+    TestEqual(TEXT("hand-built Mouse cap"), SOLKeyCaps::ContentWidth(mouse, 10.0f),
+        KEYCAP_MOUSE_GLYPH_WIDTH + KEYCAP_GAP + 10.0f, KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("hand-built normal cap"), SOLKeyCaps::ContentWidth(normal, 10.0f), 10.0f, KEYCAPSTEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsGlyphPartOfTest, "SOLTest.KeyCaps.GlyphPartOf",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Each mouse part a cap lights maps to the glyph part drawn lit: the buttons to their halves, the middle button and
+// the wheel to the wheel, movement to the whole body, no part to none
+bool FSOLKeyCapsGlyphPartOfTest::RunTest(const FString& /*parameters*/)
+{
+    struct FKeyCapsTestPartCase
+    {
+        ESOLMouseButton Button;
+        ESOLMouseGlyphPart Part;
+        const TCHAR* Name;
+    };
+    const FKeyCapsTestPartCase cases[] = {
+        { ESOLMouseButton::Left, ESOLMouseGlyphPart::LeftButton, TEXT("Left") },
+        { ESOLMouseButton::Right, ESOLMouseGlyphPart::RightButton, TEXT("Right") },
+        { ESOLMouseButton::Middle, ESOLMouseGlyphPart::Wheel, TEXT("Middle") },
+        { ESOLMouseButton::Wheel, ESOLMouseGlyphPart::Wheel, TEXT("Wheel") },
+        { ESOLMouseButton::Move, ESOLMouseGlyphPart::Body, TEXT("Move") },
+        { ESOLMouseButton::None, ESOLMouseGlyphPart::None, TEXT("None") },
+    };
+    for (const FKeyCapsTestPartCase& entry : cases)
+    {
+        KeyCapsTestCheckPart(*this, FString::Printf(TEXT("GlyphPartOf(%s)"), entry.Name),
+            SOLKeyCaps::GlyphPartOf(entry.Button), entry.Part);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsMouseGlyphTest, "SOLTest.KeyCaps.MouseGlyph",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The mouse glyph's boxes: the body fills the box, the two buttons split its top band at the centre, the wheel sits
+// centred in that band; the boxes move with topLeft and scale with size; a bad size gives point boxes at topLeft;
+// the lit part is always GlyphPartOf(button)
+bool FSOLKeyCapsMouseGlyphTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    const FVector2f topLeft(100.0f, 50.0f);
+    const FVector2f size(KEYCAP_MOUSE_GLYPH_WIDTH, KEYCAP_MOUSE_GLYPH_HEIGHT);
+
+    // The formula, at the glyph size and at another one
+    const FSOLMouseGlyph glyph = SOLKeyCaps::MouseGlyph(topLeft, size, ESOLMouseButton::Left);
+    KeyCapsTestCheckGlyph(*this, TEXT("glyph"), glyph, topLeft, size);
+    const FVector2f otherSize(40.0f, 64.0f);
+    KeyCapsTestCheckGlyph(*this, TEXT("40x64 glyph"), SOLKeyCaps::MouseGlyph(topLeft, otherSize,
+        ESOLMouseButton::None), topLeft, otherSize);
+
+    // The lit part follows the button
+    for (const ESOLMouseButton button : KEYCAPSTEST_BUTTONS)
+    {
+        KeyCapsTestCheckPart(*this, FString::Printf(TEXT("button %d lights its part"), static_cast<int32>(button)),
+            SOLKeyCaps::MouseGlyph(topLeft, size, button).Lit, SOLKeyCaps::GlyphPartOf(button));
+    }
+
+    // Shape properties
+    const float cx = topLeft.X + 0.5f * size.X;
+    TestTrue(TEXT("left button inside the body"), KeyCapsTestInside(glyph.LeftButton, glyph.Body));
+    TestTrue(TEXT("right button inside the body"), KeyCapsTestInside(glyph.RightButton, glyph.Body));
+    TestTrue(TEXT("wheel inside the body"), KeyCapsTestInside(glyph.Wheel, glyph.Body));
+    TestEqual(TEXT("left button ends at the centre"), glyph.LeftButton.Max.X, cx, KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("right button starts at the centre"), glyph.RightButton.Min.X, cx, KEYCAPSTEST_TOLERANCE);
+    TestTrue(TEXT("the buttons do not overlap"), glyph.LeftButton.Max.X <= glyph.RightButton.Min.X
+        + KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("the buttons share a top"), glyph.LeftButton.Min.Y, glyph.RightButton.Min.Y, KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("the buttons share a bottom"), glyph.LeftButton.Max.Y, glyph.RightButton.Max.Y,
+        KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("the buttons are as wide"), glyph.LeftButton.Max.X - glyph.LeftButton.Min.X,
+        glyph.RightButton.Max.X - glyph.RightButton.Min.X, KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("the wheel is centred"), 0.5f * (glyph.Wheel.Min.X + glyph.Wheel.Max.X), cx, KEYCAPSTEST_TOLERANCE);
+    TestTrue(TEXT("the wheel has a size"), glyph.Wheel.Max.X > glyph.Wheel.Min.X && glyph.Wheel.Max.Y
+        > glyph.Wheel.Min.Y);
+    TestTrue(TEXT("the wheel lies within the buttons' height"), glyph.Wheel.Min.Y >= glyph.LeftButton.Min.Y
+        - KEYCAPSTEST_TOLERANCE && glyph.Wheel.Max.Y <= glyph.LeftButton.Max.Y + KEYCAPSTEST_TOLERANCE);
+    TestTrue(TEXT("the buttons end above the body's bottom"), glyph.LeftButton.Max.Y < glyph.Body.Max.Y);
+
+    // Moving topLeft moves every box
+    const FVector2f origin(0.0f, 0.0f);
+    const FVector2f offset(37.5f, -12.25f);
+    const FSOLMouseGlyph atOrigin = SOLKeyCaps::MouseGlyph(origin, size, ESOLMouseButton::Right);
+    const FSOLMouseGlyph moved = SOLKeyCaps::MouseGlyph(origin + offset, size, ESOLMouseButton::Right);
+    KeyCapsTestCheckMoved(*this, TEXT("moved body"), atOrigin.Body, moved.Body, offset);
+    KeyCapsTestCheckMoved(*this, TEXT("moved left button"), atOrigin.LeftButton, moved.LeftButton, offset);
+    KeyCapsTestCheckMoved(*this, TEXT("moved right button"), atOrigin.RightButton, moved.RightButton, offset);
+    KeyCapsTestCheckMoved(*this, TEXT("moved wheel"), atOrigin.Wheel, moved.Wheel, offset);
+
+    // Scaling size scales every box about topLeft
+    const float factor = 2.5f;
+    const FSOLMouseGlyph scaled = SOLKeyCaps::MouseGlyph(topLeft, size * factor, ESOLMouseButton::Middle);
+    KeyCapsTestCheckScaled(*this, TEXT("scaled body"), glyph.Body, scaled.Body, topLeft, factor);
+    KeyCapsTestCheckScaled(*this, TEXT("scaled left button"), glyph.LeftButton, scaled.LeftButton, topLeft, factor);
+    KeyCapsTestCheckScaled(*this, TEXT("scaled right button"), glyph.RightButton, scaled.RightButton, topLeft, factor);
+    KeyCapsTestCheckScaled(*this, TEXT("scaled wheel"), glyph.Wheel, scaled.Wheel, topLeft, factor);
+
+    // A size that is not a positive finite number gives point boxes at topLeft, still lighting the part
+    const FVector2f badSizes[] = { FVector2f(0.0f, 18.0f), FVector2f(12.0f, 0.0f), FVector2f(-12.0f, 18.0f),
+        FVector2f(12.0f, -1.0f), FVector2f(KEYCAPSTEST_NAN, 18.0f), FVector2f(12.0f, KEYCAPSTEST_NAN),
+        FVector2f(KEYCAPSTEST_INFINITY, 18.0f), FVector2f(12.0f, KEYCAPSTEST_INFINITY), FVector2f(0.0f, 0.0f) };
+    for (const FVector2f& badSize : badSizes)
+    {
+        const FString what = FString::Printf(TEXT("size (%f, %f)"), badSize.X, badSize.Y);
+        const FSOLMouseGlyph bad = SOLKeyCaps::MouseGlyph(topLeft, badSize, ESOLMouseButton::Right);
+        KeyCapsTestCheckPointGlyph(*this, what, bad, topLeft);
+        KeyCapsTestCheckPart(*this, what + TEXT(": still lit"), bad.Lit, ESOLMouseGlyphPart::RightButton);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsDrawnCapWidthTest, "SOLTest.KeyCaps.DrawnCapWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33b review) A bound cap's content starts past the Small hull's LED (KEYCAP_LED_ROOM, the LED's 13 units plus the
+// gap), an unbound cap's after the padding; the drawn width is that room, the content and the right padding, at least
+// the cap's minimum width
+bool FSOLKeyCapsDrawnCapWidthTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    TestEqual(TEXT("the LED room clears the LED by the gap"), KEYCAP_LED_ROOM, SOL::SolidMenu::SMALL_BUTTON_LED_X_PX
+        + SOL::SolidMenu::LED_RADIUS_PX + KEYCAP_LED_GAP, KEYCAPSTEST_TOLERANCE);
+    TestTrue(TEXT("the LED room is wider than the padding"), KEYCAP_LED_ROOM > KEYCAP_PADDING);
+
+    const FSOLKeyCap letter = KeyCapsTestParseOne(*this, TEXT("M"));
+    TestEqual(TEXT("a bound cap starts past the LED"), SOLKeyCaps::ContentLeft(letter), KEYCAP_LED_ROOM,
+        KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("a bound letter: room, legend and padding"), SOLKeyCaps::DrawnCapWidth(letter, 12.0f),
+        FMath::Max(KEYCAP_LED_ROOM + 12.0f + KEYCAP_PADDING, KEYCAP_MIN_WIDTH), KEYCAPSTEST_TOLERANCE);
+    TestEqual(TEXT("a bound cap without a legend keeps the minimum"), SOLKeyCaps::DrawnCapWidth(letter, 0.0f),
+        FMath::Max(KEYCAP_LED_ROOM + KEYCAP_PADDING, KEYCAP_MIN_WIDTH), KEYCAPSTEST_TOLERANCE);
+
+    const FSOLKeyCap space = KeyCapsTestParseOne(*this, TEXT("SpaceBar"));
+    TestEqual(TEXT("the space bar keeps its wide minimum"), SOLKeyCaps::DrawnCapWidth(space, 40.0f),
+        KEYCAP_SPACE_UNITS * KEYCAP_MIN_WIDTH, KEYCAPSTEST_TOLERANCE);
+
+    const FSOLKeyCap mouse = KeyCapsTestParseOne(*this, TEXT("Mouse2D"));
+    TestEqual(TEXT("a Move cap: room, glyph, gap, legend and padding"), SOLKeyCaps::DrawnCapWidth(mouse, 30.0f),
+        KEYCAP_LED_ROOM + KEYCAP_MOUSE_GLYPH_WIDTH + KEYCAP_GAP + 30.0f + KEYCAP_PADDING, KEYCAPSTEST_TOLERANCE);
+
+    FSOLKeyCapModel unbound;
+    SOLKeyCaps::ParseCell(TEXT(""), SOLKeyBindings::DefaultKeys(), unbound);
+    if (TestEqual(TEXT("an empty cell is one cap"), unbound.Caps.Num(), 1))
+    {
+        const FSOLKeyCap& cap = unbound.Caps[0];
+        TestTrue(TEXT("the cap is unbound"), cap.bUnbound);
+        TestEqual(TEXT("an unbound cap starts after the padding"), SOLKeyCaps::ContentLeft(cap), KEYCAP_PADDING,
+            KEYCAPSTEST_TOLERANCE);
+        TestEqual(TEXT("an unbound cap is CapWidth of its legend"), SOLKeyCaps::DrawnCapWidth(cap, 50.0f),
+            SOLKeyCaps::CapWidth(cap, 50.0f), KEYCAPSTEST_TOLERANCE);
+    }
+    return true;
+}
+
 #endif

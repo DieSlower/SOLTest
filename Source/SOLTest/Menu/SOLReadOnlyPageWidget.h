@@ -14,21 +14,25 @@
 #include "SOLReadOnlyPageWidget.generated.h"
 
 class UScrollBox;
+class USOLKeyCapRow;
 class USizeBox;
 class UTextBlock;
 class UWidgetSwitcher;
 
-// A read-only page's two-column row: its left-column text (the Controls key cells, the Info labels) in its box, the
-// right cell beside it (the action, the value), its tab and the left column's current width (46i: the Info labels'
-// column narrows in narrow rows, SOLPageTabs::LeftColumnWidth); the fit checks read them (verification: none may run
-// past its column); the widgets are reflected references
+// A read-only page's two-column row: its left-column text (the Info labels) or key caps (the Controls key cells,
+// 33b) in its box, the right cell beside it (the action, the value), its tab and the left column's current width (46i:
+// the Info labels' column narrows in narrow rows, SOLPageTabs::LeftColumnWidth); the fit checks read them
+// (verification: none may run past its column); the widgets are reflected references
 USTRUCT()
 struct FSOLReadOnlyColumnText
 {
     GENERATED_BODY()
 
     UPROPERTY(Transient)
-    TObjectPtr<UTextBlock> Text;
+    TObjectPtr<UTextBlock> Text;                    // Null on a key cap row
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLKeyCapRow> Caps;                 // A Controls row's key caps (33b), else null
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> Value;
@@ -100,8 +104,9 @@ public:
     // Returns a tab's scroll offset (0 at the top), or -1 for an invalid tab (verification)
     float GetTabScrollOffset(int32 tab) const;
 
-    // The Controls page's key cells, one per SOLMenuText::CONTROL_ROWS row (for SOLMenuContent::RefreshControlsPage)
-    const TArray<TObjectPtr<UTextBlock>>& GetKeyCells() const { return KeyCells; }
+    // The Controls page's key cap cells, one per SOLMenuText::CONTROL_ROWS row (for
+    // SOLMenuContent::RefreshControlsPage)
+    const TArray<TObjectPtr<USOLKeyCapRow>>& GetKeyCells() const { return KeyCells; }
 
     // The Info page's key-naming texts (for SOLMenuContent::RefreshInfoPage)
     const TArray<TObjectPtr<UTextBlock>>& GetKeyTexts() const { return KeyTexts; }
@@ -110,7 +115,7 @@ public:
     void ResetKeyCells(int32 count) { KeyCells.Reset(count); }
 
     // Adds a key cell (called by SOLMenuContent while it fills the Controls tabs)
-    void AddKeyCell(UTextBlock* cell) { KeyCells.Add(cell); }
+    void AddKeyCell(USOLKeyCapRow* cell) { KeyCells.Add(cell); }
 
     // Empties the key-naming texts and reserves room for count (called by SOLMenuContent before it fills Info)
     void ResetKeyTexts(int32 count) { KeyTexts.Reset(count); }
@@ -126,6 +131,10 @@ public:
     // Adds a two-column row: its left text in its box (width wide) and its right cell (called by SOLMenuContent while
     // it fills a tab)
     void RegisterColumnText(UTextBlock* text, USizeBox* box, UTextBlock* value, int32 tab, float width);
+
+    // (33b) Adds a two-column row whose left cell is key caps (wrapping in the column's width) in its box, and its
+    // right cell (called by SOLMenuContent while it fills the Controls tabs)
+    void RegisterColumnCaps(USOLKeyCapRow* caps, USizeBox* box, UTextBlock* value, int32 tab, float width);
 
     // Returns the left column's current width (SOLPageTabs::LeftColumnWidth for the last laid-out rows; 0 without
     // two-column rows)
@@ -164,7 +173,7 @@ private:
     TObjectPtr<UWidgetSwitcher> TabSwitcher;        // Shows the selected tab's scroll box
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<UTextBlock>> KeyCells;        // SOLMenuContent fills these two (Controls, Info)
+    TArray<TObjectPtr<USOLKeyCapRow>> KeyCells;     // SOLMenuContent fills these two (Controls, Info)
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> KeyTexts;

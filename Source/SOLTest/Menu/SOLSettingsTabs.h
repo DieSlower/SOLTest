@@ -87,4 +87,9 @@ namespace SOLSettingsTabs
     // (46i) The width of a Rebind button in a row of rowWidth units: SETTINGS_REBIND_NARROW_WIDTH when Key bindings is
     // narrow (the page applies it as a minimum), otherwise SOL::MenuStyle::SETTINGS_REBIND_WIDTH
     SOLTEST_API float RebindWidth(float rowWidth);
+
+    // (33b, D20) The width of a Key bindings row's key cap cell in a row of rowWidth units: what the row leaves beside
+    // its label column, BUTTON_GAP and its Rebind width, clamped to [0, SOL::Help::SETTINGS_KEYCAP_CELL_WIDTH]; a row
+    // not laid out yet (rowWidth not a positive number) gives SETTINGS_KEYCAP_CELL_WIDTH
+    SOLTEST_API float KeyCellWidth(float rowWidth);
 }

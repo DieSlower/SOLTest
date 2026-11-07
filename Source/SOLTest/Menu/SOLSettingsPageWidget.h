@@ -20,6 +20,7 @@ class UCheckBox;
 class UHorizontalBox;
 class UScrollBox;
 class USizeBox;
+class USOLKeyCapRow;
 class USOLMenuButton;
 class USOLOverlayMenuWidget;
 class USOLSettingsSubsystem;
@@ -67,9 +68,9 @@ enum class ESOLSettingsStepper : uint8
  * Settings page (SDD 8, 8d), shared by the main menu and the pause menu: a UMG widget tree built in C++ with graphics
  * (resolution, window mode and quality steppers, vsync), audio (master, effects and music volume sliders), mouse
  * (sensitivity slider, invert Y), gameplay (HUD scale, HUD hologram effects and hologram menu effects sliders, HUD
- * visible, flight assist at launch, the Chase Down safety margin slider) and key bindings
- * (one row per SOLKeyBindings action with its pending key and a Rebind button, and Reset keys to defaults), above a
- * footer with the dirty indicator, a status line, Revert and Apply. The solid look (SDD 46 section 6.3): the six
+ * visible, flight assist at launch, the Chase Down safety margin slider) and key bindings (one row per SOLKeyBindings
+ * action with its pending key as key caps (33b, D20) and a Rebind button, and Reset keys to defaults), above a footer
+ * with the dirty indicator, a status line, Revert and Apply. The solid look (SDD 46 section 6.3): the six
  * sections are six tabs in a vertical tab column (a tab rail recess, Tab buttons whose hover extends a trace into the
  * rail; the shown tab carries the selected mark) left of a content recess showing the chosen tab's rows in its own
  * scroll box (USOLSolidSlider sliders with the cyan fill, SOLSolidStyle toggles and Small buttons: amber edge and
@@ -238,11 +239,14 @@ public:
     // Returns a key row's text (verification)
     FString GetKeyRowText(int32 binding) const;
 
-    // Returns a key row's key text widget, or null for an invalid binding (verification: its slot against its text)
-    const UTextBlock* GetKeyTextWidget(int32 binding) const
+    // (33b) Returns a key row's key cap cell, or null for an invalid binding (verification: its caps against its slot)
+    const USOLKeyCapRow* GetKeyCell(int32 binding) const
     {
-        return KeyTexts.IsValidIndex(binding) ? KeyTexts[binding].Get() : nullptr;
+        return KeyCells.IsValidIndex(binding) ? KeyCells[binding].Get() : nullptr;
     }
+
+    // (33b) Returns the width the key cap cells wrap in as last fitted (SOLSettingsTabs::KeyCellWidth; verification)
+    float GetKeyCellWidth() const { return mKeyCellWidth; }
 
     // Returns the embedded Overlay Menu list, or null (verification)
     USOLOverlayMenuWidget* GetOverlayList() const { return OverlayList; }
@@ -400,7 +404,7 @@ private:
     TArray<TObjectPtr<USOLMenuButton>> Buttons;
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<UTextBlock>> KeyTexts;
+    TArray<TObjectPtr<USOLKeyCapRow>> KeyCells;             // Each key row's key caps, in binding order (33b)
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> RowLabels;               // Every row's label, in build order (verification)
@@ -448,5 +452,6 @@ private:
     bool mIsMouseLastInput = true;                  // The last input was a real mouse move or press, not a key
     bool mIsNarrowTab[static_cast<int32>(ESOLSettingsTab::Count)] = {};    // Each tab's narrow layout, as fitted
     float mFitRowWidth = 0.0f;                      // The row width last fitted to (0 before the first layout)
+    float mKeyCellWidth = -1.0f;                    // The key cap cells' wrap width last set (33b; -1 before)
     ESOLSettingsTab mTab = ESOLSettingsTab::Graphics;   // The tab showing
 };

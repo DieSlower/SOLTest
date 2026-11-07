@@ -185,3 +185,18 @@ float SOLSettingsTabs::RebindWidth(const float rowWidth)
     return IsNarrowLayout(ESOLSettingsTab::KeyBindings, rowWidth) ? SOL::SolidMenu::SETTINGS_REBIND_NARROW_WIDTH
         : SOL::MenuStyle::SETTINGS_REBIND_WIDTH;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// The width of a Key bindings row's key cap cell in a row of rowWidth units: the room beside the label column and the
+// Rebind button, at most SETTINGS_KEYCAP_CELL_WIDTH; a row not laid out yet gives the bound
+float SOLSettingsTabs::KeyCellWidth(const float rowWidth)
+{
+    const float bound = SOL::Help::SETTINGS_KEYCAP_CELL_WIDTH;
+    if (!(rowWidth > 0.0f))
+    {
+        return bound;
+    }
+    const float room = rowWidth - LabelColumnWidth(ESOLSettingsTab::KeyBindings, rowWidth) - SOL::MenuStyle::BUTTON_GAP
+        - RebindWidth(rowWidth);
+    return FMath::Clamp(room, 0.0f, bound);
+}

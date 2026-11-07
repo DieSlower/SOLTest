@@ -444,3 +444,95 @@ float SOLKeyCaps::LayoutRow(const FSOLKeyCapModel& model, const TConstArrayView<
     out.Height = out.LineCount > 0 ? out.LineCount * metrics.CapHeight + (out.LineCount - 1) * metrics.RowGap : 0.0f;
     return out.Height;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the legend drawn on a cap: none on the mouse buttons (the glyph shows them), "Move" on a mouse-move cap
+FStringView SOLKeyCaps::DrawnLegend(const FSOLKeyCap& cap)
+{
+    if (cap.Shape == ESOLKeyCapShape::Mouse)
+    {
+        switch (cap.Mouse)
+        {
+        case ESOLMouseButton::Left:
+        case ESOLMouseButton::Right:
+        case ESOLMouseButton::Middle:
+            return FStringView();
+        case ESOLMouseButton::Move:
+            return SOLMenuText::KEYCAP_MOVE_LEGEND;
+        default:
+            break;
+        }
+    }
+    return cap.Label;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a cap's content width: the legend, after the glyph and a gap on a Mouse cap
+float SOLKeyCaps::ContentWidth(const FSOLKeyCap& cap, const float legendWidth)
+{
+    const float legend = legendWidth > 0.0f ? legendWidth : 0.0f;
+    if (cap.Shape != ESOLKeyCapShape::Mouse)
+    {
+        return legend;
+    }
+    return SOL::Help::KEYCAP_MOUSE_GLYPH_WIDTH + (legend > 0.0f ? SOL::Help::KEYCAP_GAP + legend : 0.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns where a cap's content may start: past the Small hull's LED on a bound cap, the padding on a recess cap
+float SOLKeyCaps::ContentLeft(const FSOLKeyCap& cap)
+{
+    return cap.bUnbound ? SOL::Help::KEYCAP_PADDING : SOL::Help::KEYCAP_LED_ROOM;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a cap's drawn width: its content left of ContentLeft's room and the right padding, at least the minimum
+float SOLKeyCaps::DrawnCapWidth(const FSOLKeyCap& cap, const float legendWidth)
+{
+    return CapWidth(cap, ContentWidth(cap, legendWidth) + ContentLeft(cap) - SOL::Help::KEYCAP_PADDING);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the glyph part a mouse button lights
+ESOLMouseGlyphPart SOLKeyCaps::GlyphPartOf(const ESOLMouseButton button)
+{
+    switch (button)
+    {
+    case ESOLMouseButton::Left:
+        return ESOLMouseGlyphPart::LeftButton;
+    case ESOLMouseButton::Right:
+        return ESOLMouseGlyphPart::RightButton;
+    case ESOLMouseButton::Middle:
+    case ESOLMouseButton::Wheel:
+        return ESOLMouseGlyphPart::Wheel;
+    case ESOLMouseButton::Move:
+        return ESOLMouseGlyphPart::Body;
+    default:
+        return ESOLMouseGlyphPart::None;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the mouse glyph in a box: the body, the two buttons across its top, the wheel slot centred between them
+FSOLMouseGlyph SOLKeyCaps::MouseGlyph(const FVector2f& topLeft, const FVector2f& size, const ESOLMouseButton button)
+{
+    using namespace SOL::Help;
+    FSOLMouseGlyph glyph;
+    glyph.Lit = GlyphPartOf(button);
+    const bool bValid = FMath::IsFinite(size.X) && FMath::IsFinite(size.Y) && size.X > 0.0f && size.Y > 0.0f;
+    if (!bValid)
+    {
+        const FBox2f point(topLeft, topLeft);
+        glyph.Body = glyph.LeftButton = glyph.RightButton = glyph.Wheel = point;
+        return glyph;
+    }
+    const float centreX = topLeft.X + 0.5f * size.X;
+    const float buttonsBottom = topLeft.Y + size.Y * KEYCAP_MOUSE_BUTTON_FRACTION;
+    const float wheelHalf = 0.5f * size.X * KEYCAP_MOUSE_WHEEL_WIDTH_FRACTION;
+    glyph.Body = FBox2f(topLeft, topLeft + size);
+    glyph.LeftButton = FBox2f(topLeft, FVector2f(centreX, buttonsBottom));
+    glyph.RightButton = FBox2f(FVector2f(centreX, topLeft.Y), FVector2f(topLeft.X + size.X, buttonsBottom));
+    glyph.Wheel = FBox2f(FVector2f(centreX - wheelHalf, topLeft.Y + size.Y * KEYCAP_MOUSE_WHEEL_TOP_FRACTION),
+        FVector2f(centreX + wheelHalf, topLeft.Y + size.Y * KEYCAP_MOUSE_WHEEL_BOTTOM_FRACTION));
+    return glyph;
+}

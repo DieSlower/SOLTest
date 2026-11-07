@@ -156,6 +156,11 @@ private:
     // column, row box and Rebind box at its wide size with no narrow override left
     void CheckSettingsWide(const TCHAR* id, const USOLSettingsPageWidget* page);
 
+    // (33b, D20) Checks the shown Key bindings tab's key cap cells ("<id>"): each cell wraps in SOLSettingsTabs::
+    // KeyCellWidth of the fitted row (SETTINGS_KEYCAP_CELL_WIDTH when wide), its laid-out caps inside that width and its
+    // slot, as tall as its row at most, left of its Rebind button, and the button inside the row
+    void CheckSettingsKeyCaps(const TCHAR* id, const USOLSettingsPageWidget* page);
+
     // Checks a real tab rail lays out without a scroll (46g, D17): a laid-out view, the tabs fitting it, the offset at
     // the top and the last tab inside the view
     void CheckRailFits(const TCHAR* id, FSOLSolidTabRail& rail);

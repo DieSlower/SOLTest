@@ -16,6 +16,7 @@
 
 class UHorizontalBox;
 class UScrollBox;
+class USOLKeyCapRow;
 class USOLMenuButton;
 class USOLDemoPageWidget;
 class USOLReadOnlyPageWidget;
@@ -257,7 +258,7 @@ private:
     TObjectPtr<USOLReadOnlyPageWidget> AboutPage;
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;
+    TArray<TObjectPtr<USOLKeyCapRow>> ControlsKeyCells;
 
     UPROPERTY(Transient)
     TObjectPtr<USOLMenuSubsystem> Menu;

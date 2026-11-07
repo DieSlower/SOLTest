@@ -20,6 +20,7 @@ class UBorder;
 class UHorizontalBox;
 class USOLDemoPageWidget;
 class USOLReadOnlyPageWidget;
+class USOLKeyCapRow;
 class USOLMenuButton;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
@@ -251,7 +252,7 @@ private:
     TObjectPtr<USOLReadOnlyPageWidget> AboutPage;
 
     UPROPERTY(Transient)
-    TArray<TObjectPtr<UTextBlock>> ControlsKeyCells;
+    TArray<TObjectPtr<USOLKeyCapRow>> ControlsKeyCells;
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> InfoKeyTexts;

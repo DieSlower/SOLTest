@@ -7,6 +7,7 @@
 
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuText.h"
@@ -455,22 +456,24 @@ void USOLSettingsPageWidget::NativeOnInitialized()
     };
     Cast<UScrollBoxSlot>(keyScroll.AddChild(makeActionButton(SOLMenuText::SETTINGS_RESET_KEYS, EAction::ResetKeys,
         SETTINGS_RESET_KEYS_WIDTH, nullptr)))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, ROW_GAP * 2.0f));
-    KeyTexts.Reset(SOLKeyBindings::BINDING_COUNT);
+    KeyCells.Reset(SOLKeyBindings::BINDING_COUNT);
     RebindBoxes.Reset(SOLKeyBindings::BINDING_COUNT);
     for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
     {
         UHorizontalBox* row = MakeRow(ESOLSettingsTab::KeyBindings, SOLKeyBindings::GetDef(binding).Label);
-        UTextBlock* keyText = SOLMenuContent::MakeText(*WidgetTree, FString(), BODY_FONT_SIZE,
-            SOLSolidStyle::ValueColor(), true);
-        KeyTexts.Add(keyText);
-        SettingsAddToRow(*row, keyText, true);
+        // The key cell (33b, D20): the pending key's caps, wrapping in SOLSettingsTabs::KeyCellWidth (FitNarrowRows)
+        USOLKeyCapRow* keyCell = WidgetTree->ConstructWidget<USOLKeyCapRow>(USOLKeyCapRow::StaticClass());
+        keyCell->SetWrapWidth(SOLSettingsTabs::KeyCellWidth(0.0f));
+        KeyCells.Add(keyCell);
+        SettingsAddToRow(*row, keyCell, true);
         USOLMenuButton* rebind = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
         rebind->Setup(*WidgetTree, SOLMenuText::SETTINGS_REBIND, binding, SMALL_FONT_SIZE,
             SOLSettingsTabs::RowButtonVariant());
         rebind->OnMenuClicked.BindUObject(this, &USOLSettingsPageWidget::HandleRebindClicked);
         Buttons.Add(rebind);
         mButtonTabs.Add(ESOLSettingsTab::KeyBindings);
-        USizeBox* rebindBox = SOLMenuContent::MakeSized(*WidgetTree, rebind, SETTINGS_REBIND_WIDTH, 0.0f);
+        USizeBox* rebindBox = SOLMenuContent::MakeSized(*WidgetTree, rebind, SETTINGS_REBIND_WIDTH,
+            SETTINGS_ROW_HEIGHT);
         RebindBoxes.Add(rebindBox);
         SettingsAddToRow(*row, rebindBox, false);
         AddRow(ESOLSettingsTab::KeyBindings, row);
@@ -536,10 +539,17 @@ UHorizontalBox* USOLSettingsPageWidget::MakeRow(const ESOLSettingsTab tab, const
 
 //////////////////////////////////////////////////////////////////////////
 // Adds a row to its tab's scroll box in a fixed-height box, the row gap below it; the box is kept (RowBoxes, parallel
-// to RowLabels) so a narrow layout can let a wrapped label grow it
+// to RowLabels) so a narrow layout can let a wrapped label grow it. (33b) A Key bindings row always grows from its
+// minimum height instead, so a key's caps wrapped onto a second line (a rebound chord) stay inside their row
 void USOLSettingsPageWidget::AddRow(const ESOLSettingsTab tab, UHorizontalBox* row)
 {
-    USizeBox* rowBox = SOLMenuContent::MakeSized(*WidgetTree, row, 0.0f, SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
+    const bool bGrows = tab == ESOLSettingsTab::KeyBindings;
+    USizeBox* rowBox = SOLMenuContent::MakeSized(*WidgetTree, row, 0.0f, bGrows ? 0.0f
+        : SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
+    if (bGrows)
+    {
+        rowBox->SetMinDesiredHeight(SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
+    }
     RowBoxes.Add(rowBox);
     Cast<UScrollBoxSlot>(TabScrolls[static_cast<int32>(tab)]->AddChild(rowBox))->SetPadding(FMargin(0.0f, 0.0f, 0.0f,
         SOL::MenuStyle::ROW_GAP));
@@ -558,6 +568,18 @@ void USOLSettingsPageWidget::FitNarrowRows()
     }
     mFitRowWidth = FMath::Max(0.0f, static_cast<float>(TabSwitcher->GetCachedGeometry().GetLocalSize().X)
         - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP);
+
+    // (33b) The key cap cells wrap in what the row leaves beside the label column and the Rebind button (it follows
+    // the row width inside a layout too, so it is checked apart from the narrow state); set only on a change
+    const float keyCellWidth = SOLSettingsTabs::KeyCellWidth(mFitRowWidth);
+    if (keyCellWidth != mKeyCellWidth)
+    {
+        mKeyCellWidth = keyCellWidth;
+        for (USOLKeyCapRow* keyCell : KeyCells)
+        {
+            keyCell->SetWrapWidth(keyCellWidth);
+        }
+    }
     const ESOLSettingsTab narrowable[] = { ESOLSettingsTab::Gameplay, ESOLSettingsTab::KeyBindings };
     for (const ESOLSettingsTab tab : narrowable)
     {
@@ -580,7 +602,7 @@ void USOLSettingsPageWidget::FitNarrowRows()
             RowLabelBoxes[index]->SetWidthOverride(labelWidth);
             RowLabels[index]->SetAutoWrapText(bNarrow);
             USizeBox* rowBox = RowBoxes[index];
-            if (bNarrow)
+            if (bNarrow || tab == ESOLSettingsTab::KeyBindings)
             {
                 rowBox->ClearHeightOverride();
                 rowBox->SetMinDesiredHeight(SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
@@ -591,10 +613,10 @@ void USOLSettingsPageWidget::FitNarrowRows()
                 rowBox->SetHeightOverride(SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
             }
         }
-        // The Rebind boxes: narrower, and held to the row height (a fixed row clamps the button to it; a growing one
-        // would take the button's taller desired height, so every one-line key row would grow). Narrow, the width is a
-        // minimum, not an override, so the box never cuts "Rebind": it takes the button's own desired width (its label
-        // and padding, which do not depend on the row) when that is wider
+        // The Rebind boxes: narrower, and held to the row height in both states (the key rows grow from a minimum, 33b,
+        // and would otherwise take the button's taller desired height, so every one-line key row would grow). Narrow,
+        // the width is a minimum, not an override, so the box never cuts "Rebind": it takes the button's own desired
+        // width (its label and padding, which do not depend on the row) when that is wider
         if (tab == ESOLSettingsTab::KeyBindings)
         {
             const float rebindWidth = SOLSettingsTabs::RebindWidth(mFitRowWidth);
@@ -610,7 +632,7 @@ void USOLSettingsPageWidget::FitNarrowRows()
                 {
                     rebindBox->ClearMinDesiredWidth();
                     rebindBox->SetWidthOverride(rebindWidth);
-                    rebindBox->ClearHeightOverride();
+                    rebindBox->SetHeightOverride(SOL::MenuStyle::SETTINGS_ROW_HEIGHT);
                 }
             }
         }
@@ -740,7 +762,7 @@ bool USOLSettingsPageWidget::IsBindingRowInView(const int32 binding) const
 {
     const UScrollBox* scroll = TabScrolls.IsValidIndex(static_cast<int32>(ESOLSettingsTab::KeyBindings))
         ? TabScrolls[static_cast<int32>(ESOLSettingsTab::KeyBindings)].Get() : nullptr;
-    return scroll != nullptr && KeyTexts.IsValidIndex(binding) && SettingsIsInside(*KeyTexts[binding], *scroll);
+    return scroll != nullptr && KeyCells.IsValidIndex(binding) && SettingsIsInside(*KeyCells[binding], *scroll);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1102,9 +1124,9 @@ void USOLSettingsPageWidget::ScrollToBinding(const int32 binding)
 {
     SelectTab(SOLSettingsTabs::TabForBinding(mTab, binding));
     const int32 keyTab = static_cast<int32>(ESOLSettingsTab::KeyBindings);
-    if (mTab == ESOLSettingsTab::KeyBindings && TabScrolls.IsValidIndex(keyTab) && KeyTexts.IsValidIndex(binding))
+    if (mTab == ESOLSettingsTab::KeyBindings && TabScrolls.IsValidIndex(keyTab) && KeyCells.IsValidIndex(binding))
     {
-        TabScrolls[keyTab]->ScrollWidgetIntoView(KeyTexts[binding], false, EDescendantScrollDestination::Center);
+        TabScrolls[keyTab]->ScrollWidgetIntoView(KeyCells[binding], false, EDescendantScrollDestination::Center);
     }
 }
 
@@ -1119,7 +1141,7 @@ FString USOLSettingsPageWidget::GetStatusText() const
 // Returns a key row's text
 FString USOLSettingsPageWidget::GetKeyRowText(const int32 binding) const
 {
-    return KeyTexts.IsValidIndex(binding) ? KeyTexts[binding]->GetText().ToString() : FString();
+    return KeyCells.IsValidIndex(binding) ? KeyCells[binding]->GetText() : FString();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1146,16 +1168,20 @@ void USOLSettingsPageWidget::RefreshTexts()
         StepperValueTexts[stepper]->SetText(FText::FromString(stepperValues[stepper]));
     }
 
-    // Key rows: the pending key, the waiting prompt on the listening row, the warning colour on conflicting rows
+    // Key rows: the pending key's caps (re-measured only when they change), the waiting prompt in place of the caps on
+    // the listening row, the warning colour on the legends of conflicting rows
     const TArray<FString>& keys = Settings->GetPendingKeys();
-    for (int32 binding = 0; binding < KeyTexts.Num(); ++binding)
+    for (int32 binding = 0; binding < KeyCells.Num(); ++binding)
     {
-        const bool bListening = binding == mListeningBinding;
-        KeyTexts[binding]->SetText(FText::FromString(bListening ? FString(SOLMenuText::SETTINGS_KEY_WAITING)
-            : SOLKeyBindings::BindingDisplayName(binding, keys)));
-        KeyTexts[binding]->SetColorAndOpacity(FSlateColor(bListening ? SOLSolidStyle::TextColor()
-            : (SOLKeyBindings::HasConflict(keys, binding) ? SOLSolidStyle::WarningColor()
-            : SOLSolidStyle::ValueColor())));
+        USOLKeyCapRow& cell = *KeyCells[binding];
+        if (binding == mListeningBinding)
+        {
+            cell.SetMessage(SOLMenuText::SETTINGS_KEY_WAITING);
+            continue;
+        }
+        cell.SetBinding(binding, keys);
+        cell.SetLegendColor(SOLKeyBindings::HasConflict(keys, binding) ? SOLSolidStyle::WarningColor()
+            : SOLSolidStyle::TextColor());
     }
 
     // Dirty indicator and status line

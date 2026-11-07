@@ -8,6 +8,7 @@
 #include "Flight/SOLFlight.h"
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLInfoText.h"
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuText.h"
@@ -79,6 +80,30 @@ namespace
             true);
         row->AddChildToHorizontalBox(rightText)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
         page.RegisterColumnText(leftText, leftBox, rightText, tab, leftWidth);
+        return row;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33b) Creates a Controls row: the key caps of a bindings cell (at the given keys) in a fixed-width left cell,
+    // wrapping in it, and the wrapping action cell; registers it with the page (outCaps gets the cap row)
+    UHorizontalBox* MenuContentMakeCapRow(UWidgetTree& tree, USOLReadOnlyPageWidget& page, const int32 tab,
+        const TCHAR* bindings, const TArray<FString>& keys, const FString& right, const float leftWidth,
+        USOLKeyCapRow*& outCaps)
+    {
+        using namespace SOL::MenuStyle;
+        UHorizontalBox* row = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+        USizeBox* leftBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
+        leftBox->SetWidthOverride(leftWidth);
+        outCaps = tree.ConstructWidget<USOLKeyCapRow>(USOLKeyCapRow::StaticClass());
+        outCaps->SetCell(bindings, keys);
+        leftBox->SetContent(outCaps);
+        row->AddChildToHorizontalBox(leftBox)->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
+        UTextBlock* rightText = SOLMenuContent::MakeText(tree, right, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+            true);
+        UHorizontalBoxSlot* rightSlot = row->AddChildToHorizontalBox(rightText);
+        rightSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        rightSlot->SetVerticalAlignment(VAlign_Center);
+        page.RegisterColumnCaps(outCaps, leftBox, rightText, tab, leftWidth);
         return row;
     }
 
@@ -430,8 +455,8 @@ void SOLMenuContent::FillReadOnlyTabs(USOLReadOnlyPageWidget& page, UWidgetTree&
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Fills the Controls tabs: one per area, in table order (rows of one area are contiguous); the key cells start from
-// the defaults and are rewritten from the live keys whenever the page is shown
+// Fills the Controls tabs: one per area, in table order (rows of one area are contiguous); the key cap cells start from
+// the defaults and are refreshed from the live keys whenever the page is shown
 void SOLMenuContent::FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
 {
     using namespace SOL::MenuStyle;
@@ -448,17 +473,16 @@ void SOLMenuContent::FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree&
             lastTab = tab;
             MenuContentAddSection(tree, scroll, row.Area);
         }
-        UTextBlock* keyCell = nullptr;
-        MenuContentAddRow(scroll, MenuContentMakeRow(tree, page, tab, FormatBindings(row.Bindings, defaultKeys),
-            FormatControlAction(row.Action), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Controls, 0.0f),
-            SOLSolidStyle::ValueColor(), &keyCell));
+        USOLKeyCapRow* keyCell = nullptr;
+        MenuContentAddRow(scroll, MenuContentMakeCapRow(tree, page, tab, row.Bindings, defaultKeys,
+            FormatControlAction(row.Action), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Controls, 0.0f), keyCell));
         page.AddKeyCell(keyCell);
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Rewrites the Controls page's key cells from the live keys
-void SOLMenuContent::RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& keyCells,
+// Shows the live keys' caps in the Controls page's key cells
+void SOLMenuContent::RefreshControlsPage(const TArray<TObjectPtr<USOLKeyCapRow>>& keyCells,
     const TArray<FString>& liveKeys)
 {
     const int32 count = FMath::Min(keyCells.Num(), static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::CONTROL_ROWS)));
@@ -466,8 +490,7 @@ void SOLMenuContent::RefreshControlsPage(const TArray<TObjectPtr<UTextBlock>>& k
     {
         if (keyCells[row] != nullptr)
         {
-            keyCells[row]->SetText(FText::FromString(FormatBindings(SOLMenuText::CONTROL_ROWS[row].Bindings,
-                liveKeys)));
+            keyCells[row]->SetCell(SOLMenuText::CONTROL_ROWS[row].Bindings, liveKeys);
         }
     }
 }

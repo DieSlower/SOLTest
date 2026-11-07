@@ -7,6 +7,7 @@
 
 #include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -446,7 +447,7 @@ void USOLPauseMenuWidget::RefreshEdgeTraces()
 FString USOLPauseMenuWidget::GetControlsRowText(const int32 row) const
 {
     return ControlsKeyCells.IsValidIndex(row) && ControlsKeyCells[row] != nullptr
-        ? ControlsKeyCells[row]->GetText().ToString() : FString();
+        ? ControlsKeyCells[row]->GetText() : FString();
 }
 
 //////////////////////////////////////////////////////////////////////////
