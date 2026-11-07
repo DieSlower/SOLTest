@@ -76,6 +76,27 @@ namespace
     };
     static_assert(UE_ARRAY_COUNT(KEY_BINDING_DEFS) == SOLKeyBindings::BINDING_COUNT, "one definition per binding");
 
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether SOLMenuText::KEY_SHORT_LABELS has one row per binding, each naming its binding's id, in order
+    constexpr bool KeyBindingShortLabelsMatch()
+    {
+        if (UE_ARRAY_COUNT(SOLMenuText::KEY_SHORT_LABELS) != SOLKeyBindings::BINDING_COUNT)
+        {
+            return false;
+        }
+        for (int32 binding = 0; binding < SOLKeyBindings::BINDING_COUNT; ++binding)
+        {
+            if (!SOLMenuText::TextEquals(SOLMenuText::KEY_SHORT_LABELS[binding].BindingId,
+                KEY_BINDING_DEFS[binding].Id))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+    static_assert(KeyBindingShortLabelsMatch(),
+        "SOLMenuText::KEY_SHORT_LABELS: one row per binding, in EBinding order, each naming its binding's id");
+
     // Keys fixed to actions that are not rebindable: Esc pauses, the mouse steers, the wheel steps the speed cap, and
     // F1 / F2 are the Ctrl+F1 menu and Ctrl+F2 stats hotkeys (an action on F1 or F2 would fire with every hotkey press)
     const TCHAR* const KEY_BINDING_RESERVED[] =
@@ -164,7 +185,7 @@ const SOLKeyBindings::FBindingDef& SOLKeyBindings::GetDef(const int32 binding)
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the binding with this id, or INDEX_NONE
-int32 SOLKeyBindings::FindById(const FString& id)
+int32 SOLKeyBindings::FindById(const FStringView id)
 {
     for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
     {

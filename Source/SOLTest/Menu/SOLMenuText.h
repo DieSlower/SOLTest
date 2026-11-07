@@ -329,6 +329,342 @@ namespace SOLMenuText
         { TEXT("Demo"), TEXT("LeftControl+F2"), TEXT("Show or hide the NPC stats overlay") },
     };
 
+    // Help page (SDD 33 section 5): the menu entry and page title, the rail's two group captions (not clickable), the
+    // tabs' short rail labels and their full headings (SOLGlossary::ESOLHelpTab order: Keyboard, then the four glossary
+    // tabs)
+    inline constexpr const TCHAR* HELP = TEXT("Help");
+    inline constexpr const TCHAR* HELP_TITLE = TEXT("Help");
+    inline constexpr const TCHAR* HELP_CAPTION_KEYS = TEXT("KEYS");
+    inline constexpr const TCHAR* HELP_CAPTION_GLOSSARY = TEXT("HUD GLOSSARY");
+    inline constexpr const TCHAR* HELP_TAB_LABELS[] = { TEXT("Keyboard"), TEXT("Flight HUD"), TEXT("Targets"),
+        TEXT("Overlays"), TEXT("Map, menus") };
+    inline constexpr const TCHAR* HELP_TAB_HEADINGS[] = { TEXT("Keyboard"), TEXT("Flight HUD"),
+        TEXT("Targets and radar"), TEXT("Overlays and route"), TEXT("Menus and map") };
+
+    // The glossary tabs' full names, in tab order: FGlossaryEntry::Tab is one of these
+    inline constexpr const TCHAR* GLOSSARY_TABS[] = { TEXT("Flight HUD"), TEXT("Targets and radar"),
+        TEXT("Overlays and route"), TEXT("Menus and map") };
+
+    // Keyboard tab (SDD 33 section 7): the detail strip with no key hovered, the strip of bound keys off the diagram
+    // and a key's "+N" badge ({0} = the further actions on it)
+    inline constexpr const TCHAR* HELP_DETAIL_HINT = TEXT("Hover a key to see what it does");
+    inline constexpr const TCHAR* HELP_OTHER_KEYS = TEXT("Other keys");
+    inline constexpr const TCHAR* HELP_EXTRA_BADGE_FORMAT = TEXT("+{0}");
+
+    // Returns whether two table strings are equal (case-sensitive), at compile time: the static_asserts that tie a
+    // table's rows to their ids use it (KEY_SHORT_LABELS in SOLKeyBindings.cpp, the glossary coverage table in
+    // SOLGlossary.cpp)
+    constexpr bool TextEquals(const TCHAR* a, const TCHAR* b)
+    {
+        if (a == nullptr || b == nullptr)
+        {
+            return a == b;
+        }
+        while (*a != TEXT('\0') && *a == *b)
+        {
+            ++a;
+            ++b;
+        }
+        return *a == *b;
+    }
+
+    // A rebindable action's short label on its keyboard diagram key: the binding's id (SOLKeyBindings::FBindingDef
+    // Id) and the label, at most SOL::Help::SHORT_LABEL_MAX_CHARS characters
+    struct FKeyShortLabel
+    {
+        const TCHAR* BindingId;
+        const TCHAR* Label;
+    };
+
+    // One short label per rebindable action, in SOLKeyBindings::EBinding order (each row's id is checked against its
+    // binding at compile time in SOLKeyBindings.cpp)
+    inline constexpr FKeyShortLabel KEY_SHORT_LABELS[] =
+    {
+        { TEXT("ThrustForward"), TEXT("Fwd") },
+        { TEXT("ThrustBackward"), TEXT("Back") },
+        { TEXT("StrafeLeft"), TEXT("Left") },
+        { TEXT("StrafeRight"), TEXT("Right") },
+        { TEXT("ThrustUp"), TEXT("Up") },
+        { TEXT("ThrustDown"), TEXT("Down") },
+        { TEXT("RollLeft"), TEXT("Roll L") },
+        { TEXT("RollRight"), TEXT("Roll R") },
+        { TEXT("Boost"), TEXT("Boost") },
+        { TEXT("ToggleAssist"), TEXT("Assist") },
+        { TEXT("StopSpin"), TEXT("Stop") },
+        { TEXT("SteerHold"), TEXT("Steer") },
+        { TEXT("SteerToggle"), TEXT("Steer on") },
+        { TEXT("FreeLook"), TEXT("Look") },
+        { TEXT("RecenterStick"), TEXT("Center") },
+        { TEXT("SpeedPanel"), TEXT("Speed") },
+        { TEXT("SelectTarget"), TEXT("Target") },
+        { TEXT("NextTarget"), TEXT("Next") },
+        { TEXT("PreviousTarget"), TEXT("Prev") },
+        { TEXT("ClearTarget"), TEXT("Clear") },
+        { TEXT("MatchLock"), TEXT("Match") },
+        { TEXT("SurfaceLock"), TEXT("Lock") },
+        { TEXT("Fire"), TEXT("Fire") },
+        { TEXT("DropTarget"), TEXT("Drop") },
+        { TEXT("WarpDown"), TEXT("Warp -") },
+        { TEXT("WarpUp"), TEXT("Warp +") },
+        { TEXT("WarpReset"), TEXT("Warp 1x") },
+        { TEXT("OverlayMaster"), TEXT("Overlay") },
+        { TEXT("ToggleOrbitLines"), TEXT("Orbits") },
+        { TEXT("OverlayMenu"), TEXT("Ov menu") },
+        { TEXT("CycleOverlayProfile"), TEXT("Profile") },
+        { TEXT("RadarZoomIn"), TEXT("Radar -") },        // Its default key is '-'
+        { TEXT("RadarZoomOut"), TEXT("Radar +") },       // Its default key is '='
+        { TEXT("RadarAuto"), TEXT("Radar A") },
+        { TEXT("OpenMap"), TEXT("Map") },
+        { TEXT("OpenMapJump"), TEXT("Jump map") },
+        { TEXT("Resume"), TEXT("Resume") },
+        { TEXT("ToggleRouteOverlay"), TEXT("Routes") },
+    };
+
+    // The short label of a fixed (not rebindable) key of CONTROL_ROWS on the keyboard diagram, by engine key name (a
+    // '+' chord's last key carries it); at most SOL::Help::SHORT_LABEL_MAX_CHARS characters
+    struct FFixedKeyShortLabel
+    {
+        const TCHAR* KeyName;
+        const TCHAR* Label;
+    };
+
+    inline constexpr FFixedKeyShortLabel FIXED_KEY_SHORT_LABELS[] =
+    {
+        { TEXT("Mouse2D"), TEXT("Stick") },
+        { TEXT("MouseWheelAxis"), TEXT("Cap") },
+        { TEXT("J"), TEXT("Jump") },
+        { TEXT("M"), TEXT("Move") },
+        { TEXT("P"), TEXT("Patrol") },
+        { TEXT("RightMouseButton"), TEXT("Orbit") },
+        { TEXT("MiddleMouseButton"), TEXT("Pan") },
+        { TEXT("LeftMouseButton"), TEXT("Pick") },
+        { TEXT("LeftShift"), TEXT("Height") },
+        { TEXT("X"), TEXT("Clear") },
+        { TEXT("Enter"), TEXT("Go") },
+        { TEXT("Delete"), TEXT("Del rte") },
+        { TEXT("Escape"), TEXT("Menu") },
+        { TEXT("F1"), TEXT("Menu") },
+        { TEXT("F2"), TEXT("Stats") },
+    };
+
+    // Between the items of a glossary row's Symbols or Sample cell
+    inline constexpr TCHAR GLOSSARY_LIST_DELIMITER = TEXT('|');
+
+    // One HUD glossary row (SDD 33 section 8.2). Symbols is a '|' list of SOLHudSymbols ids (SOLHudSymbols::FromName,
+    // e.g. "SteerFree|SteerHeld|SteerLocked"), "" for none; Sample a '|' list of glow text samples, "" for none. In the
+    // Description and the Sample, '{<BindingId>}' is that action's live key and '{<Token>}' a constant or a HUD text
+    // built by the HUD's own formatter (SOLGlossary::FormatEntryText), so a sample cannot drift from the HUD. Which
+    // HUD lines, icon categories, cards, steer icons and flight modes each row explains is SOLGlossary's coverage
+    // table. Keep in sync with GAME_MECHANICS.md
+    struct FGlossaryEntry
+    {
+        const TCHAR* Tab;           // One of GLOSSARY_TABS
+        const TCHAR* Symbols;
+        const TCHAR* Sample;
+        const TCHAR* Name;          // Row heading (the coverage table in SOLGlossary.cpp names rows by it)
+        const TCHAR* Description;   // Body
+    };
+
+    // GLOSSARY_ENTRIES rows: see SDD 33 section 8.4. The coverage table (SOLGlossary.cpp) names its rows by Name and
+    // follows their order (checked at compile time): rename or reorder both together
+    inline constexpr FGlossaryEntry GLOSSARY_ENTRIES[] =
+    {
+        // ---- Flight HUD ----
+        { TEXT("Flight HUD"), TEXT("Reticle"), TEXT(""), TEXT("Reticle"),
+            TEXT("Where the ship's nose points: your guns fire along it. Target selection ({SelectTarget}) picks the "
+                "target nearest to it.") },
+        { TEXT("Flight HUD"), TEXT("Joystick|JoystickFreeLook"), TEXT(""), TEXT("Virtual joystick"),
+            TEXT("The mouse is a virtual joystick: the dot is the stick and the farther it sits from the centre, the "
+                "faster the ship turns. It recenters with {RecenterStick}. While you hold {FreeLook} to look around "
+                "the circles turn yellow, because the stick is frozen and the mouse moves the camera instead.") },
+        { TEXT("Flight HUD"), TEXT("SteerFree|SteerHeld|SteerLocked"), TEXT(""), TEXT("Mouse-steer icon"),
+            TEXT("Shows whether the mouse is steering. An open arrow means it is not (you have a free cursor). A "
+                "reticle means it steers while you hold {SteerHold}, and a reticle with a small tick means it is "
+                "locked on by {SteerToggle}. The icon is bright while the mouse is steering and dim otherwise.") },
+        { TEXT("Flight HUD"), TEXT("Prograde"), TEXT(""), TEXT("Prograde marker"),
+            TEXT("A green circle with three ticks (left, right and up) that sits where you are heading, measured "
+                "against the reference frame (the nearest body, or your locked target). Fly toward it to keep going "
+                "the way you are going. It shows only above {VelocityMarkerMinSpeed} m/s of relative speed.") },
+        { TEXT("Flight HUD"), TEXT("Retrograde"), TEXT(""), TEXT("Retrograde marker"),
+            TEXT("A red-orange circle with a cross that sits exactly opposite your direction of travel. Point your "
+                "nose at it and thrust to brake. Like the prograde marker it appears only once you are moving "
+                "relative to the reference frame.") },
+        { TEXT("Flight HUD"), TEXT(""), TEXT("{FlightModeManual}|{FlightModeAssisted}|{FlightModeAuto}"),
+            TEXT("Flight mode"),
+            TEXT("The label above the speed block names the flight mode. ASSISTED (blue) holds the velocity "
+                "your keys ask for, MANUAL (orange) fires the thrusters directly and keeps any spin until you hold "
+                "{StopSpin}, and AUTO (green) is the autopilot flying for you. Switch between the first two with "
+                "{ToggleAssist}. Boost ({Boost}) is shown next to the label while it is on.") },
+        { TEXT("Flight HUD"), TEXT("SpeedCapBar|Card"), TEXT(""), TEXT("Speed card"),
+            TEXT("The big number is your speed relative to the reference frame, with the frame's name under it ("
+                "[M LOCK] when it is locked to your target) and your speed against the Sun beneath. The cap line and "
+                "its bar show how much of your speed limit you use, orange when above it. Step the cap with the mouse "
+                "wheel or set it with {SpeedPanel}.") },
+        { TEXT("Flight HUD"), TEXT("GMeter"), TEXT(""), TEXT("G meter"),
+            TEXT("Shows the G force you feel and how much of your tolerance is left. Above {SustainedG} G the bar "
+                "drains, harder pulls drain it faster, and it refills below that. Manual flight warns when you pass "
+                "the limit, and at the combat limit of {CombatG} G the meter empties in seconds and you black out. "
+                "The small ticks on the bar are the Chase Down floor and resume marks.") },
+        { TEXT("Flight HUD"), TEXT("Card"), TEXT(""), TEXT("Date and anchor card"),
+            TEXT("Top left: the simulated date and the time-warp factor, the anchor (the body the world is centred "
+                "on) and the nearest body, and the surface-lock state. Surface-lock ({SurfaceLock}) keeps the ship "
+                "upright over the nearest body when you are close enough.") },
+        { TEXT("Flight HUD"), TEXT(""), HUD_STEER_HINT_FORMAT, TEXT("Key hints and notices"),
+            TEXT("The hint lines at the screen edge remind you which keys do what right now. The steer hint appears "
+                "until you first steer with the mouse, and a one-time notice appears after an update changed your "
+                "default controls. Rebind keys in Settings and the hints follow.") },
+        { TEXT("Flight HUD"), TEXT(""), TEXT("AUTOPILOT > MARS"), TEXT("Autopilot marker"),
+            TEXT("At the top centre while the autopilot flies you: its target, the time to arrive and the distance. "
+                "Any thrust, roll, steering or stop spin of yours, or {ToggleAssist}, takes control back in assisted "
+                "flight at once. A key you were already holding counts only after you let it go.") },
+        { TEXT("Flight HUD"), TEXT(""), TEXT("{ChaseBurstSample}|{ChaseCoolSample}|{ChaseBrakeSample}"),
+            TEXT("Chase Down line"),
+            TEXT("While a Chase Down runs, the autopilot marker becomes a chase marker with a second line naming "
+                "what the ship is doing: BURST, COOL or BRAKE, and the G it uses. It never lets the G meter fall "
+                "below your safety margin, {ChaseSafetyMarginDefault} percent by default (set it in Settings).") },
+        { TEXT("Flight HUD"), TEXT("WarpStreaks"), TEXT(""), TEXT("Jump warp streaks"),
+            TEXT("Streaks of light that rush past while a jump to a map destination plays. The jump takes a few "
+                "seconds, and you arrive at the destination's position at the end of it.") },
+
+        // ---- Targets and radar ----
+        { TEXT("Targets and radar"), TEXT("TargetBracket"), TEXT(""), TEXT("Target bracket and name"),
+            TEXT("A bracket drawn around the selected target with its name beside it. Select the target nearest the "
+                "reticle with {SelectTarget}, step farther or nearer with {NextTarget} and {PreviousTarget}, and clear "
+                "it with {ClearTarget}.") },
+        { TEXT("Targets and radar"), TEXT("TargetEdgeArrow"), TEXT(""), TEXT("Off-screen target arrow"),
+            TEXT("When the target is outside the view, an orange arrow near the screen edge points toward it. Turn "
+                "that way and the arrow becomes the bracket.") },
+        { TEXT("Targets and radar"), TEXT("Card"), TEXT(""), TEXT("Target card"),
+            TEXT("Top right: the target's name, its distance and its velocity relative to you. Lock the reference "
+                "frame to it with {MatchLock} to match its velocity, which makes closing in on it easy.") },
+        { TEXT("Targets and radar"), TEXT("RadarScope"), TEXT(""), TEXT("Radar scope"),
+            TEXT("A 3D scope at the bottom right. The disc is your ship's own plane with forward at the top, the "
+                "rings mark a quarter, half, three quarters and all of the range, and the pulse sweeping outward "
+                "is for show. The wedge is your camera's view. In AUTO the range is {RadarAutoFloor}, tightening to "
+                "{RadarAutoFloorTarget} when you select a target. {RadarZoomIn} and {RadarZoomOut} zoom by ten "
+                "(MANUAL) and {RadarAuto} returns to AUTO.") },
+        { TEXT("Targets and radar"), TEXT("RadarContactAbove"), TEXT(""), TEXT("Contact above the plane"),
+            TEXT("A blue dot on a solid stem: the object is above your ship's plane (or on it). The stem is its "
+                "height and the short tick at the foot is its position straight under it.") },
+        { TEXT("Targets and radar"), TEXT("RadarContactBelow"), TEXT(""), TEXT("Contact below the plane"),
+            TEXT("An orange hollow ring on a dashed stem: the object is below your ship's plane. Contacts behind you "
+                "are dimmer, and ones past the range are pulled onto the rim with their true direction.") },
+        { TEXT("Targets and radar"), TEXT("RadarSelected"), TEXT(""), TEXT("Selected target on the radar"),
+            TEXT("Your selected target is drawn larger with a highlight ring and its name beside it, so you can "
+                "find it among the other contacts.") },
+
+        // ---- Overlays and route ----
+        { TEXT("Overlays and route"), TEXT("IconStar"), TEXT(""), TEXT("Star icon"),
+            TEXT("A yellow ring crossed by rays marks a star. Overlay icons are hologram markers that show where "
+                "things are; switch them with {OverlayMaster} or choose kinds in the Overlay Menu ({OverlayMenu}).") },
+        { TEXT("Overlays and route"), TEXT("IconPlanet"), TEXT(""), TEXT("Planet icon"),
+            TEXT("A plain ring marks a planet. Point at it with the mouse free to open its action menu "
+                "and choose what to do with it.") },
+        { TEXT("Overlays and route"), TEXT("IconMoon"), TEXT(""), TEXT("Moon icon"),
+            TEXT("A smaller ring marks a moon, so it reads as a satellite of the planet it circles.") },
+        { TEXT("Overlays and route"), TEXT("IconDwarf"), TEXT(""), TEXT("Dwarf planet icon"),
+            TEXT("A diamond marks a dwarf planet such as Pluto or Ceres.") },
+        { TEXT("Overlays and route"), TEXT("IconAsteroid"), TEXT(""), TEXT("Asteroid icon"),
+            TEXT("A triangle marks one of the fifty largest named asteroids.") },
+        { TEXT("Overlays and route"), TEXT("IconRing"), TEXT(""), TEXT("Ring system icon"),
+            TEXT("An ellipse around a planet's icon marks its ring system. It shows only together with the planet "
+                "icons.") },
+        { TEXT("Overlays and route"), TEXT("IconShip"), TEXT(""), TEXT("NPC ship icon"),
+            TEXT("A green chevron marks a ship flown by the simulation. Only the nearest ones get an icon, and the "
+                "same ships can appear as radar contacts.") },
+        { TEXT("Overlays and route"), TEXT("IconTarget"), TEXT(""), TEXT("Practice target icon"),
+            TEXT("An orange square marks a practice target. Drop one ahead of you with {DropTarget} and shoot it "
+                "with {Fire}.") },
+        { TEXT("Overlays and route"), TEXT("IconEdgeArrow"), TEXT(""), TEXT("Off-screen icon arrows"),
+            TEXT("An icon that is outside the view becomes a small chevron just inside the screen edge, pointing "
+                "toward the object. Only the nearest few get one.") },
+        { TEXT("Overlays and route"), TEXT("IconPlanet"), TEXT(""), TEXT("Distance darkening"),
+            TEXT("With darkening on (a row of the Overlay Menu), far icons dim so near ones stand out. Icons also "
+                "fade as the object itself grows on screen: brightest while it is smaller than about "
+                "{IconFadeStartPx} pixels across and gone once it is big enough to see for itself.") },
+        { TEXT("Overlays and route"), TEXT("OrbitLine"), TEXT(""), TEXT("Orbit lines"),
+            TEXT("Lines that trace the orbits of planets, dwarf planets, moons and the largest asteroids. The "
+                "selected target's orbit is drawn in gold. Switch them with {ToggleOrbitLines}.") },
+        { TEXT("Overlays and route"), TEXT(""), TEXT("{OverlayProfileTagSample}"), TEXT("Overlay profile tag"),
+            TEXT("Shows for a moment which of the {OverlayProfileCount} overlay profiles is active whenever you cycle "
+                "profiles with {CycleOverlayProfile}. Each profile remembers its own overlay choices.") },
+        { TEXT("Overlays and route"), TEXT("RouteLeg|RouteLoopLeg"), TEXT(""), TEXT("Route legs"),
+            TEXT("Your planned route as glow lines with arrows that fade from dim at the start to bright at the "
+                "end. On a patrol loop the closing leg back to the first waypoint is dashed. Show or hide routes in "
+                "flight with {ToggleRouteOverlay}; the map always shows them.") },
+        { TEXT("Overlays and route"), TEXT("WaypointAbove|WaypointBelow"), TEXT(""), TEXT("Waypoints"),
+            TEXT("A route's stops. Like radar contacts, a stop above the ecliptic plane has a solid stem and one "
+                "below it a dashed stem, which tells you which side of the plane it is on.") },
+        { TEXT("Overlays and route"), TEXT(""), TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"),
+            TEXT("Route progress line"),
+            TEXT("Shows the kind of route (move or patrol), the leg you are flying and how far along it is, and the "
+                "time to the end. When a route is paused, {Resume} re-plans it from where you are and resumes.") },
+        { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Space dust"),
+            TEXT("Faint specks drifting around the ship. They are not objects: they only make your speed visible "
+                "when everything else is far away. Turn them off in Settings, Graphics.") },
+
+        // ---- Menus and map ----
+        { TEXT("Menus and map"), TEXT("RadialMenu"), TEXT(""), TEXT("Icon hover and radial menu"),
+            TEXT("Point at an overlay icon with the mouse free and it highlights, with its name and what you can do "
+                "to it. Press {Fire} on it, drag toward an action and release to choose it. Release in the centre, "
+                "or press Esc, to cancel. An action that cannot run says why.") },
+        { TEXT("Menus and map"), TEXT("Card"), TEXT(""), TEXT("Info card"),
+            TEXT("Choosing Info on an object opens its card at the top right for {InfoCardSeconds} seconds: name, "
+                "type, distance, details and its current status.") },
+        { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Overlay Menu"),
+            TEXT("A hologram checklist ({OverlayMenu}) with a tab for each of the {OverlayProfileCount} overlay "
+                "profiles. Choose which icons, orbit lines, radar ships and darkening each profile shows. Enable more "
+                "profiles and cycle them with {CycleOverlayProfile}.") },
+        { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Speed panel"),
+            TEXT("Opened with {SpeedPanel}: type your speed cap digit by digit, or pick a body from the list to set "
+                "the cap to its orbital speed. Changes apply to the ship at once.") },
+        { TEXT("Menus and map"), TEXT("HoloCursor"), TEXT(""), TEXT("Hologram mouse pointer"),
+            TEXT("The mouse pointer everywhere in the game is a small glowing hologram arrow instead of the "
+                "Windows arrow. Its jitter follows the Hologram menu effects slider in Settings.") },
+        { TEXT("Menus and map"), TEXT("MapBodyIcon"), TEXT(""), TEXT("Map body icons"),
+            TEXT("On the map each body is an icon with its name. Open the map with {OpenMap}, or in Jump mode with "
+                "{OpenMapJump}. Zoom with the mouse wheel and drag with the right button to turn the view.") },
+        { TEXT("Menus and map"), TEXT("MapPick"), TEXT(""), TEXT("Map destination pick"),
+            TEXT("Press on a body or on empty space, drag and release to place a destination. A disc shows the "
+                "direction and range, a guide line the height above or below the plane, and a marker the spot. "
+                "Hold Shift to set the height, then click to lock it. The hint line says what to do next.") },
+        { TEXT("Menus and map"), TEXT("MapGridStem"), TEXT(""), TEXT("Map grid and stems"),
+            TEXT("A flat grid in the plane of the planets, with a stem from each marked point down or up to it, so "
+                "you can read where something is above or below the plane.") },
+        { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Map action list"),
+            TEXT("Right-click a body on the map for its action menu: choose with Up and Down and Enter, or click, "
+                "and Esc closes it. The same actions as the icons' radial menu, as a list.") },
+    };
+
+    // The generated player guide, Docs/PLAYER_GUIDE.md (SDD 33 section 9, SOLPlayerGuide): its fixed text. In
+    // GUIDE_GENERATED_FORMAT {0} is the -SOLWritePlayerGuide flag and {1} the input hash; GUIDE_IMAGE_FORMAT is a
+    // markdown image ({0} alt text, {1} path); in GUIDE_LEGEND_ROW_FORMAT {0} is the area and {1} its colour (#RRGGBB)
+    inline constexpr const TCHAR* GUIDE_BANNER = TEXT("<!-- SOLTest / Copyright © 2026 Acid Rain Studios LLC -->");
+    inline constexpr const TCHAR* GUIDE_GENERATED_FORMAT =
+        TEXT("<!-- Generated by {0}, do not edit: run Tools\\WritePlayerGuide.bat (input hash {1}) -->");
+    inline constexpr const TCHAR* GUIDE_TITLE = TEXT("# SOLTest player guide");
+    inline constexpr const TCHAR* GUIDE_INTRO = TEXT("Every control of the game and every element of the flight HUD, "
+        "as the in-game Help page shows them (Esc, then Help). The keys are the default ones: rebind them in Settings, "
+        "Key bindings, and the game's own pages and hints follow.");
+    inline constexpr const TCHAR* GUIDE_CONTROLS_HEADING = TEXT("## Controls");
+    inline constexpr const TCHAR* GUIDE_CONTROLS_COLUMNS = TEXT("| Keys | Action |");
+    inline constexpr const TCHAR* GUIDE_KEYBOARD_HEADING = TEXT("### Keyboard");
+    inline constexpr const TCHAR* GUIDE_KEYBOARD_ALT = TEXT("The Help page's keyboard");
+    inline constexpr const TCHAR* GUIDE_KEYBOARD_HOVER_ALT = TEXT("The keyboard with a key hovered");
+    inline constexpr const TCHAR* GUIDE_LEGEND_INTRO = TEXT("Each key is tinted in the colour of the area its action "
+        "belongs to:");
+    inline constexpr const TCHAR* GUIDE_LEGEND_COLUMNS = TEXT("| Area | Colour |");
+    inline constexpr const TCHAR* GUIDE_LEGEND_ROW_FORMAT = TEXT("| {0} | {1} |");   // No backtick: FString::Format's
+                                                                                        // escape character
+    inline constexpr const TCHAR* GUIDE_GLOSSARY_HEADING = TEXT("## HUD glossary");
+    inline constexpr const TCHAR* GUIDE_GLOSSARY_COLUMNS = TEXT("| Name | Description |");
+    inline constexpr const TCHAR* GUIDE_TABLE_RULE = TEXT("|---|---|");
+    inline constexpr const TCHAR* GUIDE_SUBHEADING_PREFIX = TEXT("### ");     // An area's or a glossary tab's heading
+    inline constexpr const TCHAR* GUIDE_KEY_OPEN = TEXT("<kbd>");              // Around each key cap's legend
+    inline constexpr const TCHAR* GUIDE_KEY_CLOSE = TEXT("</kbd>");
+    inline constexpr TCHAR GUIDE_TABLE_ROW_FORMAT[] = TEXT("| %s | %s |");    // A two-column row (Printf: an array)
+    inline constexpr const TCHAR* GUIDE_IMAGE_FORMAT = TEXT("![{0}]({1})");
+
     // Info page headings
     inline constexpr const TCHAR* INFO_TITLE = TEXT("Info");
     inline constexpr const TCHAR* INFO_FLIGHT = TEXT("Flight");

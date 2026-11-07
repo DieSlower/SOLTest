@@ -318,6 +318,80 @@ int32 SOLOverlayIcons::AddEdgeArrow(FSOLHudShapeBatch& batch, const FVector2f& b
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the box a category's icon shapes span (the same factors AddIconShapes draws with)
+FBox2f SOLOverlayIcons::IconExtent(const EIconCategory category, const FVector2f& centerPx, const float radiusPx)
+{
+    if (!(radiusPx > 0.0f))
+    {
+        return FBox2f(ForceInit);
+    }
+    const float r = radiusPx;
+    FVector2f lower;
+    FVector2f upper;
+    switch (category)
+    {
+    case EIconCategory::Star:
+        upper = FVector2f(FMath::Max(1.0f, ICON_STAR_RAY) * r);
+        lower = -upper;
+        break;
+    case EIconCategory::Planet:
+        upper = FVector2f(r);
+        lower = -upper;
+        break;
+    case EIconCategory::Moon:
+        upper = FVector2f(ICON_MOON_RADIUS * r);
+        lower = -upper;
+        break;
+    case EIconCategory::Dwarf:
+        upper = FVector2f(ICON_DWARF_RADIUS * r);
+        lower = -upper;
+        break;
+    case EIconCategory::Asteroid:
+    {
+        const float a = ICON_ASTEROID_RADIUS * r;
+        lower = FVector2f(-0.866f * a, -a);
+        upper = FVector2f(0.866f * a, 0.5f * a);
+        break;
+    }
+    case EIconCategory::Ring:
+    {
+        const float width = SOL::Overlay::RING_ICON_SCALE * r;
+        upper = FVector2f(width, ICON_RING_FLATTEN * width);
+        lower = -upper;
+        break;
+    }
+    case EIconCategory::Ship:
+        upper = FVector2f(ICON_SHIP_RADIUS * r);
+        lower = -upper;
+        break;
+    case EIconCategory::Target:
+        upper = FVector2f(ICON_TARGET_HALF * r);
+        lower = -upper;
+        break;
+    default:
+        return FBox2f(ForceInit);
+    }
+    return FBox2f(centerPx + lower, centerPx + upper);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the box an edge arrow's chevron spans: its tip and the two ends of its spread at the base
+FBox2f SOLOverlayIcons::EdgeArrowExtent(const FVector2f& basePx, const FVector2f& direction, const float lengthPx)
+{
+    if (!(lengthPx > 0.0f) || direction.IsNearlyZero())
+    {
+        return FBox2f(ForceInit);
+    }
+    const FVector2f unit = direction.GetSafeNormal();
+    const FVector2f spread = FVector2f(-unit.Y, unit.X) * (EDGE_ARROW_SPREAD * lengthPx);
+    const FVector2f tip = basePx + unit * lengthPx;
+    FBox2f box(tip, tip);
+    box += basePx + spread;
+    box += basePx - spread;
+    return box;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Fills the cursor arrow's outline segments relative to the hot spot (the tip at the origin)
 void SOLHologramCursor::ArrowSegments(const float scale, FVector2f (&outStart)[SOL::Overlay::CURSOR_SEGMENTS],
     FVector2f (&outEnd)[SOL::Overlay::CURSOR_SEGMENTS])

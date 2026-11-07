@@ -276,8 +276,7 @@ int32 SOLHoloFrameBuild::BuildCard(const FBox2f& contentRect, const float uiScal
         return 0;
     }
     const float u = SOLHoloMenu::UiScale(uiScale);
-    const float panelPad = SOL::Hologram::HUD_PANEL_PADDING_PX * u;
-    const FBox2f cardRect = HoloBuildGrow(contentRect, panelPad, panelPad);
+    const FBox2f cardRect = CardRect(contentRect, uiScale);
     FSOLHoloShapeWriter writer{ out, CARD_MAX_SHAPES, FRAME_HALF_WIDTH_PX * u, SOLHoloFrameBuild::LinePad(s) };
 
     if (look.FillAlpha > 0.0f)
@@ -298,6 +297,14 @@ int32 SOLHoloFrameBuild::BuildCard(const FBox2f& contentRect, const float uiScal
             SOL::Hologram::HUD_PANEL_BACKING_FEATHER_PX * u, look.BackdropAlpha);
     }
     return out.ShapeCount;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the card rect: the content grown by HUD_PANEL_PADDING_PX x the UI scale on every side
+FBox2f SOLHoloFrameBuild::CardRect(const FBox2f& contentRect, const float uiScale)
+{
+    const float panelPad = SOL::Hologram::HUD_PANEL_PADDING_PX * SOLHoloMenu::UiScale(uiScale);
+    return HoloBuildGrow(contentRect, panelPad, panelPad);
 }
 
 //////////////////////////////////////////////////////////////////////////

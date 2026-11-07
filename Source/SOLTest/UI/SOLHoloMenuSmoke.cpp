@@ -183,17 +183,17 @@ namespace
 
     //////////////////////////////////////////////////////////////////////////
     // Returns a HUD card's name for the log
-    const TCHAR* HoloSmokeCardName(const ASOLFlightHud::ESOLHudCard card)
+    const TCHAR* HoloSmokeCardName(const ESOLHudCard card)
     {
         switch (card)
         {
-        case ASOLFlightHud::ESOLHudCard::Info:
+        case ESOLHudCard::Info:
             return TEXT("info");
-        case ASOLFlightHud::ESOLHudCard::Target:
+        case ESOLHudCard::Target:
             return TEXT("target");
-        case ASOLFlightHud::ESOLHudCard::Speed:
+        case ESOLHudCard::Speed:
             return TEXT("speed");
-        case ASOLFlightHud::ESOLHudCard::DateAnchor:
+        case ESOLHudCard::DateAnchor:
             return TEXT("date-and-anchor");
         default:
             return TEXT("?");
@@ -205,9 +205,9 @@ namespace
     int32 HoloSmokeCardsDrawn(const ASOLFlightHud& hud)
     {
         int32 cards = 0;
-        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        for (int32 card = 0; card < static_cast<int32>(ESOLHudCard::Count); ++card)
         {
-            cards += hud.GetLastCard(static_cast<ASOLFlightHud::ESOLHudCard>(card)).bDrawn ? 1 : 0;
+            cards += hud.GetLastCard(static_cast<ESOLHudCard>(card)).bDrawn ? 1 : 0;
         }
         return cards;
     }
@@ -1139,7 +1139,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         // The corner ticks caught about half-way through the draw-in (the last HUD frame), with a screenshot
         if (hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_OPEN_S)
         {
-            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ESOLHudCard::Info);
             mMidOpenFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
             mCardMidTicks = info.Ticks;
             TakeUiShot(TEXT("InfoCardMidOpen"));
@@ -1159,7 +1159,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         if (mSubStep == 1 && hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= mSubStepS
             + HOLOSMOKE_MID_OPEN_S)
         {
-            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ESOLHudCard::Target);
             mMidOpenFraction = target.bDrawn ? target.Look.FrameFraction : 0.0f;
             mCardMidTicks = target.Ticks;
             TakeUiShot(TEXT("TargetCardMidOpen"));
@@ -1172,7 +1172,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         // Every HUD frame after R: the card drawn, whole and filled (no draw-in replay), for longer than an open
         if (hud != nullptr)
         {
-            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ESOLHudCard::Target);
             mIsCycleAlwaysDrawn = mIsCycleAlwaysDrawn && target.bDrawn;
             mCycleMinFraction = FMath::Min(mCycleMinFraction, target.bDrawn ? target.Look.FrameFraction : 0.0f);
             mCycleMinFill = FMath::Min(mCycleMinFill, target.bDrawn ? target.Look.FillAlpha : 0.0f);
@@ -1185,8 +1185,8 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         // Both cards caught half-way through their close, drawn from the cache after the target and Info went away
         if (hud != nullptr && mMidCloseFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_CLOSE_S)
         {
-            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
-            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ESOLHudCard::Info);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ESOLHudCard::Target);
             const USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>();
             mMidCloseFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
             mMidClosePhase = hud->GetInfoCardAnim().Phase;
@@ -1205,8 +1205,8 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         // The first drawn frame after the opens; the screenshot; then both cleared and, a frame later, gone at once
         if (hud != nullptr && mFirstFlatFraction < 0.0f)
         {
-            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
-            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
+            const ASOLFlightHud::FSOLHudCardStats& info = hud->GetLastCard(ESOLHudCard::Info);
+            const ASOLFlightHud::FSOLHudCardStats& target = hud->GetLastCard(ESOLHudCard::Target);
             if (info.bDrawn || target.bDrawn)
             {
                 mFirstFlatFraction = info.bDrawn ? info.Look.FrameFraction : 0.0f;
@@ -1219,10 +1219,10 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
             // The checks of the open look read this frame's cards in ExitStep, so they are copied before the clear
             if (hud != nullptr)
             {
-                mFlatCardStats[0] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info);
-                mFlatCardStats[1] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target);
-                mFlatCardStats[2] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Speed);
-                mFlatCardStats[3] = hud->GetLastCard(ASOLFlightHud::ESOLHudCard::DateAnchor);
+                mFlatCardStats[0] = hud->GetLastCard(ESOLHudCard::Info);
+                mFlatCardStats[1] = hud->GetLastCard(ESOLHudCard::Target);
+                mFlatCardStats[2] = hud->GetLastCard(ESOLHudCard::Speed);
+                mFlatCardStats[3] = hud->GetLastCard(ESOLHudCard::DateAnchor);
                 mFlatInfoLines = hud->GetLastInfoCardLineCount();
                 mFlatMenuTexts = hud->GetLastMenuPaintedTextCount();
             }
@@ -1237,8 +1237,8 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
         if (mSubStep == 1)
         {
             // The frame after the clear: at strength 0 the close is instant (nothing drawn of either card)
-            mIsFlatClosedAtOnce = hud != nullptr && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn
-                && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target).bDrawn
+            mIsFlatClosedAtOnce = hud != nullptr && !hud->GetLastCard(ESOLHudCard::Info).bDrawn
+                && !hud->GetLastCard(ESOLHudCard::Target).bDrawn
                 && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
                 && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Closed;
             mSubStep = 2;
@@ -1426,8 +1426,8 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         const uint64 stamp = hud != nullptr ? hud->GetMenuLayerBatchFrame() : 0;
         const int32 cards = hud != nullptr ? HoloSmokeCardsDrawn(*hud) : 0;
         const bool bIsCardsOnly = hud != nullptr && cards >= 2 && hud->GetLastMenuBackingCount() == cards
-            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Speed).bOnMenuLayer
-            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::DateAnchor).bOnMenuLayer
+            && hud->GetLastCard(ESOLHudCard::Speed).bOnMenuLayer
+            && hud->GetLastCard(ESOLHudCard::DateAnchor).bOnMenuLayer
             && hud->GetLastMenuPaintedShapeCount() > 0;
         Check(TEXT("a-menu-layer"), hud != nullptr && hud->HasMenuLayer() && hud->GetMenuLayerMaterial() == menuMaterial
             && bIsCardsOnly && stamp != 0, FString::Printf(TEXT("menu layer %s, material %s, %d shapes, %d backings "
@@ -2103,17 +2103,17 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         const float strength = HOLOSMOKE_CURSOR_STRENGTH;
         const float tint = SOLHoloMenu::BackdropAlpha(strength, 1.0f);
         const float contentPad = SOLHoloFrameBuild::LinePad(strength);
-        const ASOLFlightHud::ESOLHudCard cards[] = { ASOLFlightHud::ESOLHudCard::Speed,
-            ASOLFlightHud::ESOLHudCard::DateAnchor };
+        const ESOLHudCard cards[] = { ESOLHudCard::Speed,
+            ESOLHudCard::DateAnchor };
         int32 passed = 0;
         FString detail;
-        for (const ASOLFlightHud::ESOLHudCard card : cards)
+        for (const ESOLHudCard card : cards)
         {
             const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(card)
                 : ASOLFlightHud::FSOLHudCardStats();
             const int32 hudPanels = hud != nullptr ? hud->CountHudBackingsOverlapping(stats.Rect) : -1;
             const bool bHasContent = stats.ContentTexts > 0 && stats.ContentPadPx == contentPad
-                && (card != ASOLFlightHud::ESOLHudCard::Speed || stats.ContentShapes > 0);
+                && (card != ESOLHudCard::Speed || stats.ContentShapes > 0);
             passed += HoloSmokeIsCardFrameless(stats) && stats.Sweeps == 1 && stats.Strength == strength
                 && FMath::IsNearlyEqual(stats.BackingAlpha, tint) && stats.Look.FrameFraction == 1.0f
                 && hudPanels == 0 && bHasContent ? 1 : 0;
@@ -2127,7 +2127,7 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     case EHoloStep::CardInfoPrep:
     {
         const bool bIsClosed = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
-            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
+            && !hud->GetLastCard(ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
         Check(TEXT("c-info-prep"), bIsClosed && !mInteraction->GetInfoObject().IsValid(), FString::Printf(TEXT("Info "
             "cleared: card %s"), bIsClosed ? TEXT("closed, nothing drawn") : TEXT("STILL DRAWN")));
         break;
@@ -2137,7 +2137,7 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         // The open cue at Info, the ticks caught mid draw-in, then Open, frameless, with its lines on the menu layer
         const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
         const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr
-            ? hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info) : ASOLFlightHud::FSOLHudCardStats();
+            ? hud->GetLastCard(ESOLHudCard::Info) : ASOLFlightHud::FSOLHudCardStats();
         const bool bIsOpen = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Open;
         const int32 lines = hud != nullptr ? hud->GetLastInfoCardLineCount() : 0;
         Check(TEXT("c-info-open"), mIsCardExecuted && opens == 1 && bIsOpen && HoloSmokeIsCardFrameless(stats)
@@ -2155,7 +2155,7 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
         const double phaseStartS = hud != nullptr ? hud->GetInfoCardAnim().PhaseStartS : -2.0;
         const bool bIsOpen = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Open
-            && hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).Look.FrameFraction == 1.0f;
+            && hud->GetLastCard(ESOLHudCard::Info).Look.FrameFraction == 1.0f;
         Check(TEXT("c-info-again"), mIsCardExecuted && opens == 0 && bIsOpen && phaseStartS == mCardPhaseStartS,
             FString::Printf(TEXT("Info again on the same object: %d open cue requests, %s, phase start %s"), opens,
                 bIsOpen ? TEXT("still Open and whole") : TEXT("NOT open"), phaseStartS == mCardPhaseStartS
@@ -2167,7 +2167,7 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         // Target: the target card draws in (no cue), frameless; the corner ticks caught mid draw-in
         const int32 opens = holoMenu->GetCueRequestCount(ESOLHoloCue::Open) - mOpenRequestsBefore;
         const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr
-            ? hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target) : ASOLFlightHud::FSOLHudCardStats();
+            ? hud->GetLastCard(ESOLHudCard::Target) : ASOLFlightHud::FSOLHudCardStats();
         const bool bIsOpen = hud != nullptr && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Open;
         Check(TEXT("c-target-open"), mIsCardExecuted && opens == 0 && bIsOpen && HoloSmokeIsCardFrameless(stats)
             && stats.Look.FillAlpha == 1.0f, FString::Printf(TEXT("Target on body %d %s: %d open cue requests, phase "
@@ -2201,16 +2201,16 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         // All four cards at once: each frameless on the menu layer, one backing each and no other menu backing
         int32 frameless = 0;
         FString detail;
-        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        for (int32 card = 0; card < static_cast<int32>(ESOLHudCard::Count); ++card)
         {
-            const ASOLFlightHud::ESOLHudCard id = static_cast<ASOLFlightHud::ESOLHudCard>(card);
+            const ESOLHudCard id = static_cast<ESOLHudCard>(card);
             const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(id)
                 : ASOLFlightHud::FSOLHudCardStats();
             frameless += HoloSmokeIsCardFrameless(stats) ? 1 : 0;
             detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(id), *HoloSmokeCardText(stats));
         }
         const int32 backings = hud != nullptr ? hud->GetLastMenuBackingCount() : -1;
-        Check(TEXT("c-cards-four"), frameless == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)
+        Check(TEXT("c-cards-four"), frameless == static_cast<int32>(ESOLHudCard::Count)
             && backings == frameless, FString::Printf(TEXT("%d frameless cards, %d menu layer backings: %s"),
                 frameless, backings, *detail));
         break;
@@ -2220,9 +2220,9 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         // Both closed from their cache (frameless, mid-way) after the target and Info went away; then nothing, and
         // "TARGET none" back on the HUD layer with its own panel where the target card was
         const bool bIsInfoClosed = hud != nullptr && hud->GetInfoCardAnim().Phase == ESOLHoloMenuPhase::Closed
-            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
+            && !hud->GetLastCard(ESOLHudCard::Info).bDrawn && hud->GetLastInfoCardLineCount() == 0;
         const bool bIsTargetClosed = hud != nullptr && hud->GetTargetCardAnim().Phase == ESOLHoloMenuPhase::Closed
-            && !hud->GetLastCard(ASOLFlightHud::ESOLHudCard::Target).bDrawn;
+            && !hud->GetLastCard(ESOLHudCard::Target).bDrawn;
         const int32 nonePanels = hud != nullptr ? hud->CountHudBackingsOverlapping(mCardTargetRect) : -1;
         constexpr int32 ticks = SOL::HoloMenu::CARD_TICK_SEGMENTS;
         Check(TEXT("c-cards-close"), !mIsMidCloseOpen && mMidClosePhase == ESOLHoloMenuPhase::Closing
@@ -2249,19 +2249,19 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
                 mFirstFlatFill, mCardTargetMidFraction, opens));
         int32 flat = 0;
         FString detail;
-        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        for (int32 card = 0; card < static_cast<int32>(ESOLHudCard::Count); ++card)
         {
             // The always-on cards' content lines (bars, steer icon, G meter) go flat with the ticks (D18)
             const ASOLFlightHud::FSOLHudCardStats& stats = mFlatCardStats[card];
-            const bool bIsAlwaysOn = card == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Speed)
-                || card == static_cast<int32>(ASOLFlightHud::ESOLHudCard::DateAnchor);
+            const bool bIsAlwaysOn = card == static_cast<int32>(ESOLHudCard::Speed)
+                || card == static_cast<int32>(ESOLHudCard::DateAnchor);
             flat += HoloSmokeIsCardFrameless(stats) && stats.Strength == 0.0f && stats.Sweeps == 0
                 && stats.BackingAlpha == FLAT_PANEL_ALPHA && stats.TickPadPx == FRAME_FLAT_PAD_PX
                 && (!bIsAlwaysOn || stats.ContentPadPx == FRAME_FLAT_PAD_PX) ? 1 : 0;
-            detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(static_cast<ASOLFlightHud::ESOLHudCard>(
+            detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(static_cast<ESOLHudCard>(
                 card)), *HoloSmokeCardText(stats));
         }
-        Check(TEXT("c-strength0-flat"), flat == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)
+        Check(TEXT("c-strength0-flat"), flat == static_cast<int32>(ESOLHudCard::Count)
             && mFlatInfoLines >= 3 && mFlatMenuTexts > 0 && mIsFlatClosedAtOnce, FString::Printf(TEXT("%d flat "
                 "cards, %d info lines, %d menu layer texts painted, cleared: %s; %s"), flat, mFlatInfoLines,
                 mFlatMenuTexts, mIsFlatClosedAtOnce ? TEXT("both gone at once") : TEXT("STILL DRAWN"), *detail));
@@ -2271,20 +2271,20 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     {
         int32 strong = 0;
         FString detail;
-        for (int32 card = 0; card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count); ++card)
+        for (int32 card = 0; card < static_cast<int32>(ESOLHudCard::Count); ++card)
         {
-            const ASOLFlightHud::ESOLHudCard id = static_cast<ASOLFlightHud::ESOLHudCard>(card);
+            const ESOLHudCard id = static_cast<ESOLHudCard>(card);
             const ASOLFlightHud::FSOLHudCardStats stats = hud != nullptr ? hud->GetLastCard(id)
                 : ASOLFlightHud::FSOLHudCardStats();
-            const bool bIsAlwaysOn = id == ASOLFlightHud::ESOLHudCard::Speed
-                || id == ASOLFlightHud::ESOLHudCard::DateAnchor;
+            const bool bIsAlwaysOn = id == ESOLHudCard::Speed
+                || id == ESOLHudCard::DateAnchor;
             strong += HoloSmokeIsCardFrameless(stats) && stats.Strength == SOL::Settings::HOLO_MENU_EFFECTS_MAX
                 && stats.Sweeps == 1 && stats.TickPadPx == SOL::Hologram::HUD_GLOW_PAD_PX
                 && (!bIsAlwaysOn || stats.ContentPadPx == SOL::Hologram::HUD_GLOW_PAD_PX)
                 && FMath::IsNearlyEqual(stats.BackingAlpha, 2.0f * BACKDROP_ALPHA_PER_UNIT) ? 1 : 0;
             detail += FString::Printf(TEXT("%s: %s; "), HoloSmokeCardName(id), *HoloSmokeCardText(stats));
         }
-        Check(TEXT("c-strength2"), mIsCardExecuted && strong == static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count),
+        Check(TEXT("c-strength2"), mIsCardExecuted && strong == static_cast<int32>(ESOLHudCard::Count),
             FString::Printf(TEXT("%d cards with the strength-2 look: %s"), strong, *detail));
         if (USOLTargetingSubsystem* targeting = pawn.GetWorld()->GetSubsystem<USOLTargetingSubsystem>())
         {

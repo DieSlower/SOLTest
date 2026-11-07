@@ -83,6 +83,14 @@ namespace SOLOverlayIcons
     // returns the shapes added (2, or 0 for a zero direction, a non-positive length or a full batch)
     SOLTEST_API int32 AddEdgeArrow(FSOLHudShapeBatch& batch, const FVector2f& basePx, const FVector2f& direction,
         float lengthPx, const FLinearColor& color, float intensity, float padPx);
+
+    // Returns the box AddIconShapes' shapes span at a centre and radius (line width and glow pad excluded); an empty
+    // box (FBox2f(ForceInit)) for Count or a non-positive radius
+    SOLTEST_API FBox2f IconExtent(EIconCategory category, const FVector2f& centerPx, float radiusPx);
+
+    // Returns the box AddEdgeArrow's chevron spans (line width and glow pad excluded); an empty box for a zero
+    // direction or a non-positive length
+    SOLTEST_API FBox2f EdgeArrowExtent(const FVector2f& basePx, const FVector2f& direction, float lengthPx);
 }
 
 // The hologram mouse pointer's geometry (SDD 22 section 2.5): an arrow outline whose tip is the hot spot

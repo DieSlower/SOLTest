@@ -16,6 +16,7 @@
 #include "UI/SOLHoloFrameBuild.h"
 #include "UI/SOLHoloRadial.h"
 #include "UI/SOLHudFormat.h"
+#include "UI/SOLHudLines.h"
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudTextList.h"
 #include "UI/SOLOverlayIconLayer.h"
@@ -234,17 +235,7 @@ public:
     // Returns the backings the menu layer's last paint drew (verification)
     int32 GetLastMenuPaintedBackingCount() const;
 
-    // The four frameless hologram cards (SDD 42 D15), all drawn on the menu layer
-    enum class ESOLHudCard : uint8
-    {
-        Info,           // The info card of the object Info was chosen for (top right)
-        Target,         // The selected target's readout (top right)
-        Speed,          // The speed block and the G meter above it (bottom left)
-        DateAnchor,     // The sim date and warp, anchor, nearest body and surface lock (top left)
-        Count
-    };
-
-    // What one card drew last frame (verification)
+    // What one card (ESOLHudCard, UI/SOLHudLines.h) drew last frame (verification)
     struct FSOLHudCardStats
     {
         bool bDrawn = false;                    // Built and drawn this frame
@@ -357,59 +348,6 @@ private:
     // Draws a circle (or an ellipse when squashY < 1) as line segments
     void DrawCircle(const FVector2D& center, float radiusPx, const FLinearColor& color, int32 segments, float squashY,
         float thickness);
-
-    // One text line of the HUD, each with its own cached FText
-    enum class ESOLHudLine : uint8
-    {
-        DateWarp,
-        Anchor,
-        Nearest,
-        SurfaceLock,
-        Hints,
-        MapPickHints,
-        Speed,
-        Frame,
-        AbsoluteSpeed,
-        Cap,
-        Assist,
-        ControlsNotice,
-        OverlayProfileTag,
-        GMeter,
-        GWarning,
-        Autopilot,
-        AutopilotHint,
-        AutopilotCancel,
-        ChaseActivity,
-        Route,
-        TargetName,
-        TargetDistance,
-        TargetRelative,
-        TargetLabel,
-        RadarSelected,
-        RadarRange,
-        SteerHint,
-        InfoTitle,
-        InfoType,
-        InfoDistance,
-        InfoDetail,
-        InfoStatus,
-        InteractHint,
-        RadialTitle,
-        RadialReason,
-        RadialItem0,
-        RadialItem1,
-        RadialItem2,
-        RadialItem3,
-        RadialItem4,
-        RadialItem5,
-        RadialItem6,
-        RadialItem7,
-        RadialItem8,
-        RadialItem9,
-        Count
-    };
-    static_assert(static_cast<int32>(ESOLHudLine::RadialItem9) - static_cast<int32>(ESOLHudLine::RadialItem0) + 1
-        == SOL::Interact::MAX_ACTIONS, "One radial label line per action");
 
     // The last text drawn on one line, the FText built from it and its unscaled measured size (all rebuilt only when
     // the text or font changes)

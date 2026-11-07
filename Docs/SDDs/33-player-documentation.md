@@ -7,7 +7,8 @@ on SDD 8 (menus, Controls / Info / About, key rebinding), SDD 21 (the hologram H
 interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu kit, the page shell, the tab pages,
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
-Status: **Design final, ready to build 33a (2026-11-06).** Drafted from the resolved grill-me decisions (user,
+Status: **33a done (2026-11-07): pure logic, tables and tests (section 20); 33b next; open question O14 (section
+18).** Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -54,6 +55,9 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D26 | **Starting values (O11, O13):** every **(proposed)** value and wording (sizes, colours, short labels) and the **~45-row glossary list** of section 8.4 are **approved as the tuning start**; reviewed again in the **33d review** and at the hand check. |
 | D27 | **Stale guide (O12):** a stale `Docs/PLAYER_GUIDE.md` **fails a test** (`SOLTest.PlayerGuide.UpToDate`), with the fix command in its message. |
 | D28 | **Open questions:** none remain (section 18). |
+| D29 | **Menu area colour (2026-11-07):** the Menu area is **teal-white #9FD6D0**, not the proposed steel grey #8E9BAA (the user picked it from the sample render). |
+| D30 | **Diagram fit (2026-11-07):** approved as proposed: `DIAGRAM_MIN_UNIT` **20**, the mouse moves **below the keyboard** when narrow, `DIAGRAM_MOUSE_BELOW_UNIT` **24**; the final values are settled by the 33c smoke at 1280x720 and 1000x800. |
+| D31 | **Scrolling stacks (2026-11-07):** acceptable with Quit and About below the fold; the smoke must prove **every entry reachable** (scroll and click) at both sizes. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -69,7 +73,7 @@ no longer matches the game. Everything is generated from the tables the game alr
 | HUD text lines | `ASOLFlightHud::ESOLHudLine` (**private**, 46 values, `Count`) | The "HUD text id" list of D6. It must become visible to tests (section 4.2). |
 | Overlay icon categories | `SOLOverlayIcons::EIconCategory` (Star, Planet, Moon, Dwarf, Asteroid, Ring, Ship, Target) | One icon shape and colour each. |
 | Shape renderer | `SSOLHudShapeLayer`, `FSOLHudShapeBatch`, `M_SOLHudShape` (`SOL::Paths::HUD_SHAPE_MATERIAL`) | A leaf that paints one batch as one custom-vertex draw; **it only paints a batch stamped this frame or the previous one**, so a static picture needs a retain mode (section 8.3). Material parameters `EffectsStrength`, `Composite`, `ViewWidthPx`, `ViewHeightPx`. |
-| Profile smoke | `-SOLSmokeSolidMenuProfile` (`FSOLSolidMenuProfileSmoke`) | Default run P0-P3 (Settings) at 1920x1080 / 1280x720 against the pre-46c baseline; view runs (`-ResX` / `-ResY`) with nine screens and the menu-share verdict (`dcpu` <= 0.2 ms against its menu's Settings baseline, `gpu_ui` <= 1.2 ms one eye / 2.4 ms two eyes). |
+| Profile smoke | `-SOLSmokeSolidMenuProfile` (`FSOLSolidMenuProfileSmoke`) | Default run P0-P3 (Settings) at 1920x1080 / 1280x720 against the pre-46c baseline (33a adds P4-P11, section 14.1); view runs (`-ResX` / `-ResY`) with nine screens and the menu-share verdict (`dcpu` <= 0.2 ms against its menu's Settings baseline, `gpu_ui` <= 1.2 ms one eye / 2.4 ms two eyes). |
 
 **Tech debt to respect, not re-report** (`Docs/TECH_DEBT.md`): the hand-written prose and action texts in
 `SOLMenuText.h` (`CONTROL_ROWS`, `INFO_PROSE`; this ticket adds the glossary text to the same rule); Rajdhani has no
@@ -212,8 +216,9 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
   colour. **Area palette (D17: ten distinct colours, values proposed, picked to stay apart from each other and from the amber
   hover and readable on gunmetal)**, as `SOL::Help::AREA_COLORS`, one constant per area: Flight #28D2F0 (the kit cyan),
   Targeting #F2C94C, Combat #E5533D (the kit warning red-orange), Time #9B7BFF, Overlays #4CD07D, HUD #5B8CFF, Map
-  #FF8FB1, **Routes #D98A5B (copper)**, **Menu #8E9BAA (steel grey)**, **Demo #E8EEF2 (near-white)**. Routes and Demo
-  are the mock-up's picks the user chose; Menu is new (the mock-up's neutral #A4AFB8 sat too close to Demo). The test
+  #FF8FB1, **Routes #D98A5B (copper)**, **Menu #9FD6D0 (teal-white, D29)**, **Demo #E8EEF2 (near-white)**. Routes and
+  Demo are the mock-up's picks the user chose; Menu is the user's pick from the 2026-11-07 sample render (D29; the
+  proposed steel grey #8E9BAA and the mock-up's neutral #A4AFB8 were not taken). The test
   requires the ten colours to be pairwise distinct (a minimum colour distance, set in the test spec), and the final
   values are looked at on the real caps at the hand check (D26).
 - **Several actions on one key (D18).** A key with more than one assignment (O x4 with chords, M, X, P, J, LMB, RMB,
@@ -246,8 +251,11 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
 
 `SOLHudSymbols::Build(ESOLHudSymbol symbol, FVector2f centre, float scale, FSOLHudSymbolPrims& out)` writes the
 symbol's primitives into a fixed-capacity buffer (`MAX_PRIMS_PER_SYMBOL` 32, proposed): each a kind (line, ring, arc,
-box, dot, dashed line, ellipse, sample text), its points and sizes in pixels at that scale, a palette role (Primary,
-Secondary, Good, Hostile, FreeLook, Dim) and an intensity. Two replays:
+box, dot, dashed line, ellipse, sample text), its points and sizes in pixels at that scale (a dashed line keeps its dash
+and its gap, `DashPx` / `GapPx`, as the HUD's Canvas fallback draws both), a palette role (Primary, Secondary, Good,
+Hostile, FreeLook) and an intensity. There is no Dim role: a dim element is any role at intensity
+`SOL::HudPalette::DIM_INTENSITY`, as the HUD draws it (33a review). The buffer is about 2.5 KB, so callers hold one and
+`Reset()` it; `Bounds` and `AddToBatch` take a caller's scratch (the prims, the card's frame output). Two replays:
 
 - **HUD:** `ASOLFlightHud` replays the primitives through `GlowLine` / `GlowRing` / `GlowBox` / `GlowDashedLine` /
   `GlowEllipse` / `GlowDot`, so the shape renderer and the Canvas fallback both draw them as today. The draw methods
@@ -318,7 +326,7 @@ written and fails the completeness test; no "²" (TECH_DEBT).
 
 ## 9. The player guide (D8)
 
-- **Flag:** `-SOLWritePlayerGuide` (`SOL::Smoke::WRITE_PLAYER_GUIDE` in `SOLConstants.h`; editor and development
+- **Flag:** `-SOLWritePlayerGuide` (`SOL::CommandLine::WRITE_PLAYER_GUIDE` in `SOLConstants.h`; editor and development
   builds only, `!UE_BUILD_SHIPPING`), run with `-game -windowed -ResX=1920 -ResY=1080` by a new
   `Tools/WritePlayerGuide.bat` / `.ps1` (the `RunTests` pattern: refuses while the editor has the project open). It
   uses the smoke settings slot, so the keys are the defaults (D8), and the 46i settings snapshot, so the player's
@@ -336,7 +344,8 @@ written and fails the completeness test; no "²" (TECH_DEBT).
   hash, an intro, then **Controls** (one table per area: keys as `<kbd>` tags, chords as `<kbd>Shift</kbd>+<kbd>M</kbd>`,
   the action text from `FormatControlAction`), the keyboard image, the area legend, then the **HUD glossary** (per tab
   the screenshot and a table of name and description). Nothing in it is hand-written.
-- **Staleness (D27):** `SOLTest.PlayerGuide.UpToDate` is a **failing automation test**: it loads
+- **Staleness (D27):** `SOLTest.PlayerGuide.UpToDate` (written in 33e, with the writer) is a **failing automation
+  test**: it loads
   `Docs/PLAYER_GUIDE.md` and compares it with `BuildMarkdown(DefaultKeys())`; a mismatch fails with "run
   Tools\WritePlayerGuide.bat" (the suite is red until the guide is regenerated, which needs a game run). The images are regenerated with the text; a change only to drawing code
   is not detected by the check (risk R5).
@@ -379,7 +388,7 @@ same headers. One file per topic:
   `GLOSSARY_MAX_SHAPES`.
 - `PlayerGuideTest.cpp` (`SOLTest.PlayerGuide.*`): `BuildMarkdown` is deterministic, contains every `CONTROL_ROWS`
   action and every glossary entry name, every binding's default key in `<kbd>`, the banner and the generated-file line,
-  no `{` token left; `IsGuideCurrent` ignores CRLF / LF differences and a trailing newline; `UpToDate` (D27, a failing test with the fix command in its message).
+  no `{` token left; `IsGuideCurrent` ignores CRLF / LF differences and a trailing newline; `UpToDate` (D27, a failing test with the fix command in its message) is written in 33e, not 33a (the guide file exists only once the writer has run).
 - **Existing tests to re-validate:** `SolidPageTabsTest` (Help tabs, `LeftColumnWidth(Help)`), `SOLMenuStateTest` (the
   Help pause tab: `IsPageTab`, `IsTabChange`, `EscapeClosesPage`, the tab order), `SOLKeyBindingsTest`,
   `SOLBindingLabelTest`, `HudShapesTest`, `OverlayIconsTest`, `RadarLayoutTest`, `SolidMenuKitTest` (the rail captions),
@@ -394,15 +403,15 @@ same headers. One file per topic:
 | `KEYCAP_HEIGHT` / `KEYCAP_CHAMFER` / `KEYCAP_PADDING` / `KEYCAP_MIN_WIDTH` | 30 / 3 / 8 / 30 units | Cap size |
 | `KEYCAP_FONT_SIZE` / `KEYCAP_LABEL_FONT_SIZE` | 15 / 11 | Legend, short label |
 | `KEYCAP_GAP` / `KEYCAP_ROW_GAP` | 4 / 4 units | Between caps / wrapped lines |
-| `DIAGRAM_MIN_UNIT` / `DIAGRAM_MAX_UNIT` | 20 / 46 units | Key unit clamp (24 would not fit the numpad layout at 1000x800) |
-| `DIAGRAM_MOUSE_BELOW_UNIT` | 24 units | Below this key unit the mouse sits under the keyboard |
+| `DIAGRAM_MIN_UNIT` / `DIAGRAM_MAX_UNIT` | 20 / 46 units | Key unit clamp (24 would not fit the numpad layout at 1000x800); approved D30, settled by the 33c smoke |
+| `DIAGRAM_MOUSE_BELOW_UNIT` | 24 units | Below this key unit the mouse sits under the keyboard; approved D30, settled by the 33c smoke |
 | `DIAGRAM_TINT_ALPHA` / `DIAGRAM_FREE_ALPHA` | 0.28 / 0.45 | Area fill, a free key |
 | `DIAGRAM_DETAIL_LINES` | 6 | Detail strip height in lines |
 | `SHORT_LABEL_MAX_CHARS` | 8 | Short label length |
 | `GLOSSARY_SYMBOL_BOX` / `GLOSSARY_SYMBOL_BOX_NARROW` | 96 / 64 units | Symbol recess |
 | `GLOSSARY_MAX_SHAPES` | 128 | One symbol view's batch |
 | `MAX_PRIMS_PER_SYMBOL` | 32 | `FSOLHudSymbolPrims` capacity |
-| Area colours | section 7 (ten, D17) | `SOL::Help::AREA_COLORS` |
+| Area colours | Flight #28D2F0, Targeting #F2C94C, Combat #E5533D, Time #9B7BFF, Overlays #4CD07D, HUD #5B8CFF, Map #FF8FB1, Routes #D98A5B, Menu #9FD6D0 (D29), Demo #E8EEF2 (section 7, ten, D17) | `SOL::Help::AREA_COLORS` |
 | `SETTINGS_KEYCAP_CELL_WIDTH` | about 200 units (tuned at 1000x800) | The Settings key cell bound (D20) |
 | `SOL::Paths::PLAYER_GUIDE_FILE` / `PLAYER_GUIDE_IMAGE_DIR` | `Docs/PLAYER_GUIDE.md` / `Docs/Images/` | Generator output |
 
@@ -428,7 +437,7 @@ part that finds it needs one stops and reports back.
 - **Profile passes (33f):** `-SOLSmokeSolidMenuProfile` gains `main-controls`, `pause-controls`, `main-help-keys`,
   `main-help-glossary` (the Flight HUD tab, the most symbols) and `pause-help-keys` in the default run and in the view
   runs, and the Settings Key bindings view (`main-settings-keys`, `pause-settings-keys`, D20) against its pre-cap
-  baseline.
+  baseline. Also profile the Overlays and route glossary tab (16 rows, the most symbol views).
 - **Event-driven (D13):** no allocation in a paint or tick (the cap model, diagram model, prims and batches are
   reserved once); the diagram rebuilds on show and on a rebind only; a symbol view rebuilds on a size or strength
   change only; strength pushed into the shared MID only on change; nothing ticks while the page is hidden.
@@ -443,6 +452,36 @@ part that finds it needs one stops and reports back.
   (7680x3744) is skipped** (it hung the GPU driver in 46h, D21); the two-eye budget is not measured and the SDD records
   that. The whole frame stays informational (scene-bound, project-level VR work, SDD 46 13.2).
 - No cost claim without a measurement; the numbers go into an amendment of this SDD.
+
+### 14.1 33a amendment: the pre-restyle baselines (2026-11-07)
+
+The default run of `-SOLSmokeSolidMenuProfile` grew from four passes to twelve: P0-P3 unchanged (Settings, against
+the pre-46c baseline), then P4 `main-settings-keys` and P5 `main-controls` at 1920x1080, P6 `main-controls` and P7
+`main-settings-keys` at 1280x720, Play and Esc, P8 `pause-settings-keys` and P9 `pause-controls` at 1280x720, P10
+`pause-controls` and P11 `pause-settings-keys` at 1920x1080 (each Settings pass before its Key bindings pass on the
+same page; a Settings pass with no tab of its own now selects the opening tab explicitly). The run's checks went from 9
+to 13 (four more screen checks). Three runs, `-game -windowed -ResX=1920 -ResY=1080 -SOLSmokeSolidMenuProfile`, the
+Development editor binary, i9-9960X / RTX 2080 Ti, vsync off, scalability 3, strength 1, the 33a working tree
+(no page restyled: the Controls key cells are text, the Settings key rows unchanged). Every run 13/13 checks, P0-P3
+PASS, P4-P11 NOBASE (no baseline yet). Medians of `cpu_slate` (Draw Window And Children Time) and `gpu_ui` (the game
+window's SlateUI pass), ms, now the constants `PROFILE_BASE_MAIN_KEYS_*` / `PAUSE_KEYS_*` / `MAIN_CONTROLS_*` /
+`PAUSE_CONTROLS_*` in `SOLSolidMenuProfileSmoke.cpp`, which 33b's runs are judged against (under 0.2 ms CPU / 0.3 ms
+GPU extra):
+
+| Pass | Screen | View | `cpu_slate` (runs) | `gpu_ui` (runs) |
+|---|---|---|---|---|
+| P4 | main-settings-keys | 1920x1080 | **0.600** (0.559, 0.600, 0.700) | **0.108** (0.108, 0.108, 0.109) |
+| P7 | main-settings-keys | 1280x720 | **0.552** (0.535, 0.552, 0.664) | **0.062** (0.062 x3) |
+| P8 | pause-settings-keys | 1280x720 | **0.568** (0.564, 0.568, 0.613) | **0.078** (0.076, 0.079, 0.078) |
+| P11 | pause-settings-keys | 1920x1080 | **0.635** (0.635, 0.575, 0.636) | **0.139** (0.134, 0.144, 0.139) |
+| P5 | main-controls | 1920x1080 | **0.475** (0.475, 0.472, 0.523) | **0.112** (0.112, 0.110, 0.112) |
+| P6 | main-controls | 1280x720 | **0.471** (0.451, 0.471, 0.485) | **0.066** (0.066, 0.067, 0.065) |
+| P9 | pause-controls | 1280x720 | **0.482** (0.477, 0.496, 0.482) | **0.081** (0.081, 0.083, 0.079) |
+| P10 | pause-controls | 1920x1080 | **0.508** (0.562, 0.478, 0.508) | **0.137** (0.137, 0.145, 0.136) |
+
+For reference, the same runs' P0-P3 medians against the pre-46c baseline: P0 `dcpu` +0.070 / `dgpu` +0.058, P1
++0.041 / +0.033, P2 +0.031 / +0.038, P3 +0.042 / +0.059 (all PASS). The CPU spread between runs is up to 0.14 ms on the
+Key bindings passes (the TECH_DEBT single-run item), so 33b compares three-run medians, not single runs.
 
 ## 15. Documentation and in-game text (same change as the code)
 
@@ -494,7 +533,7 @@ part that finds it needs one stops and reports back.
 
 ## 18. Open questions
 
-**None open (2026-11-06).** O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
+**One open (O14, below); none before 2026-11-07.** O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
 they touch were updated. Mapping:
 
 | # | Answer (summary) | Recorded as | Sections updated |
@@ -512,9 +551,34 @@ they touch were updated. Mapping:
 | O11, O13 | Starting values and the ~45-row glossary list approved, reviewed again in the 33d review | D26 | 2, 8.4 |
 | O12 | A stale guide fails a test | D27 | 9, 10 |
 
+**O14 (open, found by the 33a review, 2026-11-07; needed before 33c draws the diagram):** a chord's modifier key gets no assignment in `SOLKeyDiagram`, so Left Ctrl, Left Alt and Right Shift (used only in Ctrl+F1 / Ctrl+F2, Ctrl+RMB, Alt+O, Ctrl+O and RShift+O) would be drawn as free, dimmed keys, although section 7 says every key named by a `CONTROL_ROWS` cell is assigned. Options: (a) a modifier marker (not dimmed, not counted in "+N", the detail strip lists the chords it starts) - recommended; (b) assign the chord to the modifier too (it takes an area tint and counts in "+N"); (c) keep them free (as built). Not decided; 33a leaves the code as built (c).
+
 ## 19. Out of scope
 
 A new key binding or a help hotkey (D10); any save, settings or key-layout change (D11); gamepad glyphs and a
 gamepad layout; localisation; rebinding from the diagram (Settings stays the place to rebind); non-US keyboard layouts
 (the legends are the engine key names); caps in the Info prose and the HUD hints (the Settings key rows get caps, D20); an in-world or
 cockpit help display; the cook-paths tech debt.
+
+## 20. As built
+
+**33a (2026-11-07, commit `Issue #33: Part 33a - pure logic, tables and tests`).** Pure, widget-free, nothing drawn yet:
+`Menu/SOLKeyCaps`, `SOLKeyboardLayout` (with the numpad), `SOLKeyDiagram` (ten area colours, `+N` count, lock flag,
+unbound and off-layout keys), `SOLGlossary` (Help tabs, entries, the token formatter, coverage tables keyed by entry
+name with a compile-time order check), `SOLPlayerGuide` (deterministic markdown, `IsGuideCurrent`); `UI/SOLHudSymbols`
+(the enum, the fixed-capacity prims with `DashPx` / `GapPx` and an `Intensity` instead of a Dim role, `AddToBatch` with
+an optional caller card scratch, `Bounds` with a caller scratch); `UI/SOLHudLines.h` (`ESOLHudLine` and `ESOLHudCard`
+moved out of `ASOLFlightHud`, values unchanged; `ESOLSteerIcon` and `ESOLFlightMode` gained `Count`); the `SOL::Help`
+constants; the `SOLMenuText` tables (`KEY_SHORT_LABELS` as `{BindingId, Label}` pairs checked against the binding table,
+`FIXED_KEY_SHORT_LABELS`, `GLOSSARY_TABS`, `GLOSSARY_ENTRIES`, the `GUIDE_*` text); glossary samples token-formatted
+from the HUD's own formats and constants (`SOLTest.Glossary.SamplesFromHud`); `SOLKeyBindings::FindById(FStringView)`
+shared by the parsers; `SOLBindingLabel::AssignKeyDisplayName`; `SOLOverlayIcons::IconExtent` / `EdgeArrowExtent`,
+`SOLHoloFrameBuild::CardRect`; the `-SOLWritePlayerGuide` flag constant and guide paths (the writer is 33e). The HUD is
+behaviour-identical (`-SOLSmokeHud` 24/24). Full suite 1613, 0 failures; `-SOLSmokeSolidMenu` 193/193,
+`-SOLSmokeHoloMenu` 86/86, `-SOLSmokeOverlay` 34/34; profile baselines in section 14.1.
+
+Deviations from the plan: of the HUD symbols only the ones with an existing builder are built (icons, edge arrows,
+card and the like); the radar symbols (RadarScope, RadarContactAbove / Below, RadarSelected) have no builder outside
+`ASOLFlightHud::DrawRadar`, so they move with the HUD's inline geometry in 33d-i (D5: no second copy), with the "every
+glossary symbol builds" test. The Autopilot and Route glossary samples stay literal (the HUD builds those lines from
+inline literals; tracked in `Docs/TECH_DEBT.md`). The modifier-key question O14 is open.

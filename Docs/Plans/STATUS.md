@@ -45,7 +45,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Issue | What | Notes |
 |---|---|---|
-| #33 | Player documentation: a Help page (main and pause menus) with a live keyboard and mouse diagram tinted by area and a HUD glossary drawn with the HUD's own shape code; key caps on the Controls page; a generated `Docs/PLAYER_GUIDE.md` (`-SOLWritePlayerGuide`) with a stale check; no schema or key-layout change | **Design final, ready to build 33a (2026-11-06):** grill-me Q1-Q11 and open questions O1-O13 answered (SDD 33 D16-D28), SDD 33 and plan written (parts 33a-33h); scope now includes caps on the Settings key rows; no part started |
+| #33 | Player documentation: a Help page (main and pause menus) with a live keyboard and mouse diagram tinted by area and a HUD glossary drawn with the HUD's own shape code; key caps on the Controls page; a generated `Docs/PLAYER_GUIDE.md` (`-SOLWritePlayerGuide`) with a stale check; no schema or key-layout change | **33a done (2026-11-07):** pure logic, tables and tests (key caps, keyboard layout and diagram model, glossary, player guide text, HUD symbol builder), profile baselines for Controls and Settings Key bindings, suite 1613; **33b next** (key caps on the Controls page and Settings key rows); open question O14 (chord modifier keys on the diagram) to answer before 33c. Design: SDD 33 D1-D31, parts 33a-33h |
 
 ## To do (ordered)
 

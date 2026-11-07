@@ -82,6 +82,26 @@ namespace
     constexpr double PROFILE_BASE_PAUSE_SMALL_GPU_MS = 0.037;
     constexpr double PROFILE_BASE_PAUSE_LARGE_GPU_MS = 0.075;
 
+    // 33a baseline (SDD 33 section 14 amendment): the same two numbers for the Settings Key bindings tab and the
+    // Controls page before their key cap restyle (33b), the medians of three default runs at the 33a tree (no page
+    // restyled yet), same machine, Development editor binary in -game, 2026-11-07
+    constexpr double PROFILE_BASE_MAIN_KEYS_LARGE_CPU_MS = 0.600;
+    constexpr double PROFILE_BASE_MAIN_KEYS_SMALL_CPU_MS = 0.552;
+    constexpr double PROFILE_BASE_PAUSE_KEYS_SMALL_CPU_MS = 0.568;
+    constexpr double PROFILE_BASE_PAUSE_KEYS_LARGE_CPU_MS = 0.635;
+    constexpr double PROFILE_BASE_MAIN_KEYS_LARGE_GPU_MS = 0.108;
+    constexpr double PROFILE_BASE_MAIN_KEYS_SMALL_GPU_MS = 0.062;
+    constexpr double PROFILE_BASE_PAUSE_KEYS_SMALL_GPU_MS = 0.078;
+    constexpr double PROFILE_BASE_PAUSE_KEYS_LARGE_GPU_MS = 0.139;
+    constexpr double PROFILE_BASE_MAIN_CONTROLS_LARGE_CPU_MS = 0.475;
+    constexpr double PROFILE_BASE_MAIN_CONTROLS_SMALL_CPU_MS = 0.471;
+    constexpr double PROFILE_BASE_PAUSE_CONTROLS_SMALL_CPU_MS = 0.482;
+    constexpr double PROFILE_BASE_PAUSE_CONTROLS_LARGE_CPU_MS = 0.508;
+    constexpr double PROFILE_BASE_MAIN_CONTROLS_LARGE_GPU_MS = 0.112;
+    constexpr double PROFILE_BASE_MAIN_CONTROLS_SMALL_GPU_MS = 0.066;
+    constexpr double PROFILE_BASE_PAUSE_CONTROLS_SMALL_GPU_MS = 0.081;
+    constexpr double PROFILE_BASE_PAUSE_CONTROLS_LARGE_GPU_MS = 0.137;
+
     // The game-thread Slate stats, one stat dumpave window each: Draw Window And Children Time (the whole Slate paint)
     // and Game UI Paint (inside it, for reference)
     const TCHAR* const PROFILE_CPU_ROOT_STATS[] = { TEXT("STAT_SlateDrawWindowTime"), TEXT("STAT_ViewportPaintTime") };
@@ -118,11 +138,19 @@ namespace
     };
 
     // 46i: the checks a whole run logs (Finish fails a run that logged another number: a skipped check). Default: the
-    // setup's two, three views, two screens, Play and Esc; a view run: the setup's two, its view, Play, Esc and one
-    // per screen
-    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 9;
+    // setup's two, three views, six screens (33a: was two), Play and Esc; a view run: the setup's two, its view, Play,
+    // Esc and one per screen
+    constexpr int32 PROFILE_SETUP_CHECKS = 2;                   // The main menu and the strength
+    constexpr int32 PROFILE_PLAY_PAUSE_CHECKS = 2;              // Play (in flight) and Esc (paused)
+    constexpr int32 PROFILE_DEFAULT_VIEW_CHECKS = 3;            // The default run's View steps (1920, 1280, 1920)
+    constexpr int32 PROFILE_DEFAULT_SCREEN_CHECKS = 6;          // Its Screen steps (P0, P5, P1; P2, P9, P3)
+    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 13;
     constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 14;
-    static_assert(PROFILE_EXPECTED_CHECKS_VIEW == 5 + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
+    static_assert(PROFILE_EXPECTED_CHECKS_DEFAULT == PROFILE_SETUP_CHECKS + PROFILE_DEFAULT_VIEW_CHECKS
+        + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS,
+        "a default run checks the setup (2), three views, six screens, Play and Esc");
+    static_assert(PROFILE_EXPECTED_CHECKS_VIEW == PROFILE_SETUP_CHECKS + 1 + PROFILE_PLAY_PAUSE_CHECKS
+        + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
         "a view run checks the setup (2), its view, Play, Esc and each screen");
 }
 
@@ -292,7 +320,7 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the run's passes and steps: the default four, or the view run's nine at the -ResX / -ResY size
+// Builds the run's passes and steps: the default twelve, or the view run's nine at the -ResX / -ResY size
 void FSOLSolidMenuProfileSmoke::BuildScript()
 {
     int32 resX = 0;
@@ -330,33 +358,71 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
     };
     addStep(EStepKind::Setup, INDEX_NONE, FIntPoint::ZeroValue);
 
-    // The default run: Settings in both menus at both sizes, against the per-pass baseline
+    // The default run: Settings in both menus at both sizes, against the per-pass baseline (P0-P3), then (33a) the
+    // Settings Key bindings tab and the Controls page in both menus at both sizes (P4-P11), against the 33a baselines
+    // taken before their key cap restyle
     if (mRunView == FIntPoint::ZeroValue)
     {
         const ESOLMainMenuPage settings = ESOLMainMenuPage::Settings;
+        const ESOLMainMenuPage controls = ESOLMainMenuPage::Controls;
+        const ESOLMainMenuPage noPage = ESOLMainMenuPage::None;
+        const ESOLSettingsTab opening = ESOLSettingsTab::Count;
+        const ESOLSettingsTab keys = ESOLSettingsTab::KeyBindings;
         const SOLMenuState::EMenuTab resume = SOLMenuState::EMenuTab::Resume;
         const SOLMenuState::EMenuTab pauseSettings = SOLMenuState::EMenuTab::Settings;
-        const int32 p0 = addPass(TEXT("main-settings"), false, settings, resume, ESOLSettingsTab::Count,
-            PROFILE_VIEW_LARGE, PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
-        const int32 p1 = addPass(TEXT("main-settings"), false, settings, resume, ESOLSettingsTab::Count,
-            PROFILE_VIEW_SMALL, PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
-        const int32 p2 = addPass(TEXT("pause-settings"), true, ESOLMainMenuPage::None, pauseSettings,
-            ESOLSettingsTab::Count, PROFILE_VIEW_SMALL, PROFILE_BASE_PAUSE_SMALL_CPU_MS,
-            PROFILE_BASE_PAUSE_SMALL_GPU_MS);
-        const int32 p3 = addPass(TEXT("pause-settings"), true, ESOLMainMenuPage::None, pauseSettings,
-            ESOLSettingsTab::Count, PROFILE_VIEW_LARGE, PROFILE_BASE_PAUSE_LARGE_CPU_MS,
-            PROFILE_BASE_PAUSE_LARGE_GPU_MS);
+        const SOLMenuState::EMenuTab pauseControls = SOLMenuState::EMenuTab::Controls;
+        const int32 p0 = addPass(TEXT("main-settings"), false, settings, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p1 = addPass(TEXT("main-settings"), false, settings, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const int32 p2 = addPass(TEXT("pause-settings"), true, noPage, pauseSettings, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_PAUSE_SMALL_CPU_MS, PROFILE_BASE_PAUSE_SMALL_GPU_MS);
+        const int32 p3 = addPass(TEXT("pause-settings"), true, noPage, pauseSettings, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_PAUSE_LARGE_CPU_MS, PROFILE_BASE_PAUSE_LARGE_GPU_MS);
+        const int32 p4 = addPass(TEXT("main-settings-keys"), false, settings, resume, keys, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_KEYS_LARGE_CPU_MS, PROFILE_BASE_MAIN_KEYS_LARGE_GPU_MS);
+        const int32 p5 = addPass(TEXT("main-controls"), false, controls, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_CONTROLS_LARGE_CPU_MS, PROFILE_BASE_MAIN_CONTROLS_LARGE_GPU_MS);
+        const int32 p6 = addPass(TEXT("main-controls"), false, controls, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_CONTROLS_SMALL_CPU_MS, PROFILE_BASE_MAIN_CONTROLS_SMALL_GPU_MS);
+        const int32 p7 = addPass(TEXT("main-settings-keys"), false, settings, resume, keys, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_KEYS_SMALL_CPU_MS, PROFILE_BASE_MAIN_KEYS_SMALL_GPU_MS);
+        const int32 p8 = addPass(TEXT("pause-settings-keys"), true, noPage, pauseSettings, keys, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_PAUSE_KEYS_SMALL_CPU_MS, PROFILE_BASE_PAUSE_KEYS_SMALL_GPU_MS);
+        const int32 p9 = addPass(TEXT("pause-controls"), true, noPage, pauseControls, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_PAUSE_CONTROLS_SMALL_CPU_MS, PROFILE_BASE_PAUSE_CONTROLS_SMALL_GPU_MS);
+        const int32 p10 = addPass(TEXT("pause-controls"), true, noPage, pauseControls, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_PAUSE_CONTROLS_LARGE_CPU_MS, PROFILE_BASE_PAUSE_CONTROLS_LARGE_GPU_MS);
+        const int32 p11 = addPass(TEXT("pause-settings-keys"), true, noPage, pauseSettings, keys, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_PAUSE_KEYS_LARGE_CPU_MS, PROFILE_BASE_PAUSE_KEYS_LARGE_GPU_MS);
+
+        // The main menu at 1920x1080 (Settings, its Key bindings tab, Controls), then at 1280x720 the other way round
+        // (each Settings pass before its Key bindings pass: a Pass step selects its tab, the page opens on Graphics)
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
         addStep(EStepKind::Screen, p0, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p0, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p4, FIntPoint::ZeroValue);
+        addStep(EStepKind::Screen, p5, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p5, FIntPoint::ZeroValue);
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_SMALL);
+        addStep(EStepKind::Pass, p6, FIntPoint::ZeroValue);
+        addStep(EStepKind::Screen, p1, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p1, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p7, FIntPoint::ZeroValue);
+
+        // The pause menu (in flight) at 1280x720, then at 1920x1080 the other way round
         addStep(EStepKind::Play, INDEX_NONE, FIntPoint::ZeroValue);
         addStep(EStepKind::Pause, INDEX_NONE, FIntPoint::ZeroValue);
         addStep(EStepKind::Screen, p2, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p2, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p8, FIntPoint::ZeroValue);
+        addStep(EStepKind::Screen, p9, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p9, FIntPoint::ZeroValue);
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
+        addStep(EStepKind::Pass, p10, FIntPoint::ZeroValue);
+        addStep(EStepKind::Screen, p3, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p3, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p11, FIntPoint::ZeroValue);
         addStep(EStepKind::Quit, INDEX_NONE, FIntPoint::ZeroValue);
         return;
     }
@@ -429,7 +495,7 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
     case EStepKind::Pass:
     {
         // A pass starts from a clean slate, on its Settings tab (the pass's, -SOLSmokeSolidMenuProfileTab, else the
-        // page's opening tab)
+        // page's opening tab, selected again since a Key bindings pass may have come before on the same page)
         mPhase = EPassPhase::Settle;
         mPhaseTimeS = 0.0;
         mPhaseFrames = 0;
@@ -437,7 +503,8 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         mScreenFrames = 0;
         const FPass& pass = mPasses[current.Pass];
         USOLSettingsPageWidget* page = GetPassSettingsPage(current.Pass, menu);
-        const ESOLSettingsTab tab = SOLSettingsTabs::IsValidTab(pass.SettingsTab) ? pass.SettingsTab : mProfileTab;
+        const ESOLSettingsTab tab = SOLSettingsTabs::IsValidTab(pass.SettingsTab) ? pass.SettingsTab
+            : SOLSettingsTabs::IsValidTab(mProfileTab) ? mProfileTab : SOLSettingsTabs::OpeningTab();
         if (page != nullptr && SOLSettingsTabs::IsValidTab(tab))
         {
             page->SelectTab(tab);

@@ -631,6 +631,54 @@ bool FSOLOverlayIconsEdgeArrowTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLOverlayIconsExtentTest, "SOLTest.OverlayIcons.ShapeExtents",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// IconExtent / EdgeArrowExtent are the box the drawn shapes span: inside the shapes' quads, and the quads within a line
+// width of it (no glow pad); empty for invalid input
+bool FSOLOverlayIconsExtentTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLOverlayIcons;
+    const FVector2f center(300.0f, 200.0f);
+    const float radius = 10.0f;
+    const float slack = 2.0f * SOL::Hologram::HUD_LINE_HALF_WIDTH_PX + 1.0e-3f;
+    FSOLHudShapeBatch batch;
+    batch.Initialize(16);
+
+    // Compares an extent with the vertex box of the shapes just added
+    const auto checkExtent = [this, &batch, slack](const FBox2f& extent, const FString& what)
+    {
+        FBox2f quads(ForceInit);
+        for (const FSlateVertex& vertex : batch.GetVertices())
+        {
+            quads += FVector2f(vertex.Position.X, vertex.Position.Y);
+        }
+        TestTrue(what + TEXT(": valid"), extent.bIsValid != 0 && quads.bIsValid != 0);
+        TestTrue(what + TEXT(": inside the quads"), quads.IsInsideOrOn(extent.Min) && quads.IsInsideOrOn(extent.Max));
+        TestTrue(what + TEXT(": the quads within a line width"), extent.ExpandBy(slack).IsInsideOrOn(quads.Min)
+            && extent.ExpandBy(slack).IsInsideOrOn(quads.Max));
+    };
+    for (int32 category = 0; category < static_cast<int32>(EIconCategory::Count); ++category)
+    {
+        const EIconCategory value = static_cast<EIconCategory>(category);
+        batch.Reset();
+        AddIconShapes(batch, value, center, radius, FLinearColor::White, 1.0f, 0.0f);
+        checkExtent(IconExtent(value, center, radius), FString::Printf(TEXT("icon %d"), category));
+    }
+    batch.Reset();
+    AddEdgeArrow(batch, center, FVector2f(0.6f, 0.8f), 12.0f, FLinearColor::White, 1.0f, 0.0f);
+    checkExtent(EdgeArrowExtent(center, FVector2f(0.6f, 0.8f), 12.0f), TEXT("edge arrow"));
+
+    TestFalse(TEXT("Count has no extent"), IconExtent(EIconCategory::Count, center, radius).bIsValid != 0);
+    TestFalse(TEXT("zero radius has no extent"), IconExtent(EIconCategory::Planet, center, 0.0f).bIsValid != 0);
+    TestFalse(TEXT("zero direction has no extent"),
+        EdgeArrowExtent(center, FVector2f::ZeroVector, 12.0f).bIsValid != 0);
+    TestFalse(TEXT("zero length has no extent"), EdgeArrowExtent(center, FVector2f(1.0f, 0.0f), 0.0f).bIsValid != 0);
+    return true;
+}
+
 // --- Hologram cursor ---
 
 //////////////////////////////////////////////////////////////////////////

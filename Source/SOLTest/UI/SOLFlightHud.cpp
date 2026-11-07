@@ -76,9 +76,9 @@ namespace
     constexpr float HUD_EDGE_ARROW_LENGTH_PX = 14.0f;
     constexpr float HUD_EDGE_ARROW_WIDTH_PX = 9.0f;
 
-    // Prograde/retrograde markers: circle radius, shown above this relative speed
+    // Prograde/retrograde markers: circle radius (shown above SOL::Hologram::HUD_VELOCITY_MARKER_MIN_MPS of relative
+    // speed)
     constexpr float HUD_VELOCITY_MARKER_RADIUS_PX = 9.0f;
-    constexpr double HUD_VELOCITY_MARKER_MIN_MPS = 0.1;
     constexpr double HUD_DIRECTION_PROJECT_CM = 1.0e6;   // Any distance works for a pure direction
 
     // Projection: points closer than this in front of the camera (cm) are clipped
@@ -122,7 +122,7 @@ namespace
     const FLinearColor& HUD_GOOD = SOL::HudPalette::GOOD;             // Prograde marker
     const FLinearColor& HUD_HOSTILE = SOL::HudPalette::HOSTILE;       // Retrograde marker
     const FLinearColor& HUD_BAD = SOL::HudPalette::BAD;               // G critical / blackout / lethal (SDD 18)
-    constexpr float HUD_DIM = 0.55f;                                    // Secondary lines (axes, ticks, stalks)
+    constexpr float HUD_DIM = SOL::HudPalette::DIM_INTENSITY;           // Secondary lines (axes, ticks, stalks)
     constexpr float HUD_FAINT = 0.18f;                                  // The joystick circles
     constexpr float HUD_BRACKET_INTENSITY = 0.6f;                       // Target bracket and edge arrow (corners add)
     constexpr float HUD_STICK_DOT_INTENSITY = 0.6f;                     // The stick dot (a filled glow blob)
@@ -2476,7 +2476,7 @@ void ASOLFlightHud::DrawInfoCard()
 void ASOLFlightHud::DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipState& state)
 {
     const FVector3d relativeVelocity = state.VelocityMps - Ships->GetReferenceVelocityMps();
-    if (relativeVelocity.Size() < HUD_VELOCITY_MARKER_MIN_MPS)
+    if (relativeVelocity.Size() < SOL::Hologram::HUD_VELOCITY_MARKER_MIN_MPS)
     {
         return;
     }

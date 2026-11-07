@@ -158,6 +158,9 @@ namespace SOLHoloFrameBuild
     SOLTEST_API int32 BuildCard(const FBox2f& contentRect, float uiScale, const FSOLHoloMenuLook& look, float s,
         FSOLHoloFrameOutput& out);
 
+    // Returns the rect BuildCard draws its card in: the content grown by HUD_PANEL_PADDING_PX x the UI scale a side
+    SOLTEST_API FBox2f CardRect(const FBox2f& contentRect, float uiScale);
+
     // Adds an output's shapes to a batch in order (no reset); returns how many the batch took
     SOLTEST_API int32 AppendToBatch(const FSOLHoloFrameOutput& in, FSOLHudShapeBatch& batch);
 

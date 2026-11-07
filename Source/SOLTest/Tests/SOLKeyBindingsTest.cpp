@@ -1189,4 +1189,29 @@ bool FSOLKeyBindingsLayoutVersionTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsEveryBindingRowTest, "SOLTest.KeyBindings.EveryBindingHasControlRow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every binding id appears as an '@<id>' alternative in some Controls row, so every binding has a row and a key cap
+// (SDD 33 D15)
+bool FSOLKeyBindingsEveryBindingRowTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    for (int32 binding = 0; binding < BINDING_COUNT; ++binding)
+    {
+        const FString alternativeId = FString::Printf(TEXT("%c%s"), SOLMenuText::BINDING_ID_PREFIX, GetDef(binding).Id);
+        bool bFound = false;
+        for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+        {
+            TArray<FString> alternatives;
+            FString(row.Bindings).ParseIntoArray(alternatives, SOLMenuText::BINDING_ALTERNATIVE_DELIMITER);
+            bFound |= alternatives.Contains(alternativeId);
+        }
+        TestTrue(FString::Printf(TEXT("%s has a Controls row"), *alternativeId), bFound);
+    }
+    return true;
+}
+
 #endif

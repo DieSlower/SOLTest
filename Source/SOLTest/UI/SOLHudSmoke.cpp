@@ -483,10 +483,10 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
             const int32 texts = mHud.IsValid() ? mHud->GetLastPaintedTextCount() + mHud->GetLastMenuPaintedTextCount()
                 : 0;
             int32 cards = 0;
-            for (int32 card = 0; mHud.IsValid() && card < static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count);
+            for (int32 card = 0; mHud.IsValid() && card < static_cast<int32>(ESOLHudCard::Count);
                 ++card)
             {
-                cards += mHud->GetLastCard(static_cast<ASOLFlightHud::ESOLHudCard>(card)).bDrawn ? 1 : 0;
+                cards += mHud->GetLastCard(static_cast<ESOLHudCard>(card)).bDrawn ? 1 : 0;
             }
             const int32 panels = mHud.IsValid() ? mHud->GetLastPanelCount() + cards : 0;
             const int32 backings = mHud.IsValid()

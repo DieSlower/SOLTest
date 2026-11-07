@@ -34,12 +34,30 @@ namespace
 // Maps an engine key name to display text
 FString SOLBindingLabel::KeyDisplayName(const FString& keyName)
 {
+    FString label;
+    AssignKeyDisplayName(keyName, label);
+    return label;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes an engine key name's display text into a string, keeping its buffer
+void SOLBindingLabel::AssignKeyDisplayName(const FString& keyName, FString& out)
+{
+    out.Reset();
     if (keyName.IsEmpty())
     {
-        return SOLMenuText::KEY_UNBOUND;
+        out.Append(SOLMenuText::KEY_UNBOUND);
+        return;
     }
     const TCHAR* special = SpecialDisplayName(keyName);
-    return special != nullptr ? FString(special) : keyName;
+    if (special != nullptr)
+    {
+        out.Append(special);
+    }
+    else
+    {
+        out.Append(keyName);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

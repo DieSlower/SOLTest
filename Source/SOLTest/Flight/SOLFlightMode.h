@@ -17,6 +17,7 @@ enum class ESOLFlightMode : uint8
     Manual,
     Assisted,
     Auto,
+    Count,      // The number of modes (not a mode)
 };
 
 // The HUD's mouse-steer state icon
@@ -25,6 +26,7 @@ enum class ESOLSteerIcon : uint8
     Free,
     Held,
     Locked,
+    Count,      // The number of icons (not an icon)
 };
 
 // The player's flight mode and the auto input latch

@@ -939,6 +939,10 @@ namespace SOL
         // same strength slider when on
         inline constexpr double HUD_GRAIN_AMOUNT = 0.10;
         inline constexpr double HUD_SCANLINE_AMOUNT = 0.05;
+
+        // Prograde / retrograde markers show only above this speed relative to the reference frame (the flight HUD and
+        // the Help glossary's {VelocityMarkerMinSpeed})
+        inline constexpr double HUD_VELOCITY_MARKER_MIN_MPS = 0.1;
     }
 
     // The original Limit Theory HUD palette (LimitTheory-Original resource/script/Colors.lts; SDD 19 Amendment 3). The
@@ -951,6 +955,8 @@ namespace SOL
         inline const FLinearColor BAD(1.0f, 0.1f, 0.1f, 1.0f);          // LT Bad (red)
         inline const FLinearColor HOSTILE(1.0f, 0.1f, 0.01f, 1.0f);     // LT Hostile (red-orange)
         inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
+        inline constexpr float DIM_INTENSITY = 0.55f;                   // The HUD's dim tone: secondary lines (axes,
+                                                                        // ticks, stalks)
     }
 
     // A fixed gap of a hologram menu frame line (SDD 42 section 6.3): its start as a fraction of the line's length and
@@ -1443,6 +1449,65 @@ namespace SOL
         && MenuStyle::BODY_FONT_SIZE == SolidMenu::FONT_BODY_SIZE
         && MenuStyle::SMALL_FONT_SIZE == SolidMenu::FONT_SMALL_SIZE, "menu font sizes are the SDD 46 section 9 roles'");
 
+    // The Help page (SDD 33 section 11): key caps, the keyboard diagram, the HUD glossary. Starting values approved for
+    // tuning (D26), sizes in menu units
+    namespace Help
+    {
+        // Key caps (section 6)
+        inline constexpr float KEYCAP_HEIGHT = 30.0f;             // One cap's height
+        inline constexpr float KEYCAP_CHAMFER = 3.0f;             // Its hull corner chamfer
+        inline constexpr float KEYCAP_PADDING = 8.0f;             // Legend to the cap edge, a side
+        inline constexpr float KEYCAP_MIN_WIDTH = 30.0f;          // The narrowest cap
+        inline constexpr int32 KEYCAP_FONT_SIZE = 15;             // Legend (Rajdhani SemiBold)
+        inline constexpr int32 KEYCAP_LABEL_FONT_SIZE = 11;       // Short action label on a diagram key
+        inline constexpr float KEYCAP_GAP = 4.0f;                 // Between caps (and around "+" and " / ")
+        inline constexpr float KEYCAP_ROW_GAP = 4.0f;             // Between wrapped lines of a cap row
+        inline constexpr float KEYCAP_SPACE_UNITS = 4.0f;         // Space bar width in key units (a cap in a row)
+        inline constexpr float KEYCAP_WIDE_UNITS = 2.0f;          // Other wide caps (Backspace, Tab, Enter, Shift,
+                                                                  // Ctrl, Alt, Caps) in key units, in a row
+
+        // Keyboard diagram (section 7; D30: settled by the 33c smoke)
+        inline constexpr float DIAGRAM_MIN_UNIT = 20.0f;          // Key unit clamp
+        inline constexpr float DIAGRAM_MAX_UNIT = 46.0f;
+        inline constexpr float DIAGRAM_MOUSE_BELOW_UNIT = 24.0f;  // Below this key unit the mouse sits under the keys
+        inline constexpr float DIAGRAM_TINT_ALPHA = 0.28f;        // Area-colour fill over an assigned key's face
+        inline constexpr float DIAGRAM_FREE_ALPHA = 0.45f;        // A key with no assignment is drawn at this alpha
+        inline constexpr int32 DIAGRAM_DETAIL_LINES = 6;          // Detail strip height in lines
+        inline constexpr int32 SHORT_LABEL_MAX_CHARS = 8;         // KEY_SHORT_LABELS / FIXED_KEY_SHORT_LABELS length
+
+        // HUD glossary (section 8)
+        inline constexpr float GLOSSARY_SYMBOL_BOX = 96.0f;       // Symbol recess, square
+        inline constexpr float GLOSSARY_SYMBOL_BOX_NARROW = 64.0f; // ... at 1000x800
+        inline constexpr int32 GLOSSARY_MAX_SHAPES = 128;         // One symbol view's shape batch
+        inline constexpr int32 GLOSSARY_MAX_SYMBOLS_PER_ENTRY = 6; // Symbol ids one GLOSSARY_ENTRIES row may list
+        inline constexpr int32 MAX_PRIMS_PER_SYMBOL = 32;         // FSOLHudSymbolPrims capacity
+        inline constexpr float GLOSSARY_CARD_HALF_WIDTH_PX = 24.0f; // The Card symbol's content rect, half size in px
+        inline constexpr float GLOSSARY_CARD_HALF_HEIGHT_PX = 14.0f; // at UI scale 1 (the card adds its padding)
+        inline constexpr double GLOSSARY_SAMPLE_CHASE_BURST_G = 6.8; // The Chase Down line sample's burst G (a plan's
+                                                                     // burst varies between the sustained and max G)
+        inline constexpr int32 GLOSSARY_SAMPLE_OVERLAY_PROFILE = 2; // The overlay profile tag sample's number (1-based)
+
+        // Settings > Key bindings: the key cell's width bound (D20, tuned at 1000x800)
+        inline constexpr float SETTINGS_KEYCAP_CELL_WIDTH = 200.0f;
+
+        // Area colours (D17, D29), sRGB, in ESOLControlArea order: Flight, Targeting, Combat, Time, Overlays, HUD, Map,
+        // Routes, Menu, Demo (the ten areas of SOLMenuText::CONTROL_ROWS)
+        inline constexpr int32 AREA_COUNT = 10;
+        inline constexpr FColor AREA_COLORS[] = {
+            FColor(0x28, 0xD2, 0xF0),   // Flight (the kit cyan)
+            FColor(0xF2, 0xC9, 0x4C),   // Targeting
+            FColor(0xE5, 0x53, 0x3D),   // Combat (the kit warning red-orange)
+            FColor(0x9B, 0x7B, 0xFF),   // Time
+            FColor(0x4C, 0xD0, 0x7D),   // Overlays
+            FColor(0x5B, 0x8C, 0xFF),   // HUD
+            FColor(0xFF, 0x8F, 0xB1),   // Map
+            FColor(0xD9, 0x8A, 0x5B),   // Routes (copper)
+            FColor(0x9F, 0xD6, 0xD0),   // Menu (teal-white, D29)
+            FColor(0xE8, 0xEE, 0xF2),   // Demo (near-white)
+        };
+        static_assert(UE_ARRAY_COUNT(AREA_COLORS) == AREA_COUNT, "one colour per Controls area");
+    }
+
     // The build version line (SDD 46 section 11.1, SOLBuildVersion): MAJOR.MINOR.YYMM.<commit count>
     namespace BuildVersion
     {
@@ -1525,6 +1590,9 @@ namespace SOL
         inline constexpr const TCHAR* RING_START_KM = TEXT("SOLRingStartKm=");  // Ship spawns IN the start body's ring
                                                                                   // plane at this radius from its centre
         inline constexpr const TCHAR* RING_HEIGHT_KM = TEXT("SOLRingHeightKm="); // ...and this far above that plane
+        inline constexpr const TCHAR* WRITE_PLAYER_GUIDE = TEXT("SOLWritePlayerGuide"); // Write Docs/PLAYER_GUIDE.md
+                                                                                         // and its images (SDD 33,
+                                                                                         // its writer lands in 33e)
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
         inline constexpr const TCHAR* SMOKE_CONSOLE = TEXT("SOLSmokeConsole="); // Console commands ('|'-separated) run
                                                                                   // just before the -SOLSmokeShot screenshot
@@ -1743,6 +1811,18 @@ namespace SOL
         inline constexpr const TCHAR* SOLID_STYLE_MATERIALS[] = {
             SOLID_MI_PANEL, SOLID_MI_RECESS, SOLID_MI_STACK_BUTTON, SOLID_MI_TAB, SOLID_MI_SMALL_BUTTON,
             SOLID_MI_SLIDER_GROOVE, SOLID_MI_KNOB, SOLID_MI_TOGGLE_SLOT, SOLID_MI_PUCK };
+
+        // The generated player guide (SDD 33 section 9), relative to FPaths::ProjectDir(): written by
+        // -SOLWritePlayerGuide, compared by SOLTest.PlayerGuide.UpToDate
+        inline constexpr const TCHAR* PLAYER_GUIDE_FILE = TEXT("Docs/PLAYER_GUIDE.md");
+        // ... and its screenshots (D24: one per Help tab, plus the Keyboard tab with a key hovered), in that folder
+        inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_DIR = TEXT("Docs/Images/");
+        inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_KEYBOARD = TEXT("33-help-keyboard.png");
+        inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER = TEXT("33-help-keyboard-hover.png");
+        // The glossary tabs' images, in SOLMenuText::GLOSSARY_TABS order
+        inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_GLOSSARY[] = { TEXT("33-help-glossary-flight-hud.png"),
+            TEXT("33-help-glossary-targets-radar.png"), TEXT("33-help-glossary-overlays-route.png"),
+            TEXT("33-help-glossary-menus-map.png") };
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's

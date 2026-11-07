@@ -2438,4 +2438,24 @@ bool FSOLHoloMenuKitLinePadTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHoloKitCardRectTest, "SOLTest.HoloMenuKit.CardRect",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// CardRect is the content grown by HUD_PANEL_PADDING_PX x the UI scale, the rect BuildCard's fill covers
+bool FSOLHoloKitCardRectTest::RunTest(const FString& /*parameters*/)
+{
+    const FBox2f content = HoloKitRect(100.0f, 40.0f, 180.0f, 70.0f);
+    const float scales[] = { 0.5f, 1.0f, 2.0f, HOLOKITTEST_NAN };
+    for (const float uiScale : scales)
+    {
+        const FBox2f expected = HoloKitCardRect(content, uiScale);
+        const FBox2f actual = SOLHoloFrameBuild::CardRect(content, uiScale);
+        TestTrue(FString::Printf(TEXT("uiScale %.2f: min"), uiScale), actual.Min.Equals(expected.Min, 1.0e-4f));
+        TestTrue(FString::Printf(TEXT("uiScale %.2f: max"), uiScale), actual.Max.Equals(expected.Max, 1.0e-4f));
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

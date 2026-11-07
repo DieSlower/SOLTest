@@ -13,6 +13,9 @@ namespace SOLBindingLabel
     // Returns the display text for an engine key name ("Unbound" for an empty name)
     SOLTEST_API FString KeyDisplayName(const FString& keyName);
 
+    // Writes KeyDisplayName(keyName) into out, reusing out's buffer (no allocation once it is large enough)
+    SOLTEST_API void AssignKeyDisplayName(const FString& keyName, FString& out);
+
     // Returns the display names joined with "+" ("Unbound" for an empty list)
     SOLTEST_API FString JoinChord(const TArray<FString>& keyNames);
 

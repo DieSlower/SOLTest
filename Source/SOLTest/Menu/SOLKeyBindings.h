@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Containers/StringView.h"
 #include "CoreMinimal.h"
 
 // Pure-logic key rebinding (SDD 8, 8d): the table of rebindable ship actions with their default keys, the per-action
@@ -93,8 +94,8 @@ namespace SOLKeyBindings
     // Returns a binding's definition (index clamped into range)
     SOLTEST_API const FBindingDef& GetDef(int32 binding);
 
-    // Returns the binding with this id (case-insensitive), or INDEX_NONE
-    SOLTEST_API int32 FindById(const FString& id);
+    // Returns the binding with this id (case-insensitive), or INDEX_NONE; no allocation (a view into a cell will do)
+    SOLTEST_API int32 FindById(FStringView id);
 
     // Returns whether a key is fixed to an action that cannot be rebound (Escape pause, mouse look and wheel, the F1 /
     // F2 of the Ctrl hotkeys), so no rebindable action may take it

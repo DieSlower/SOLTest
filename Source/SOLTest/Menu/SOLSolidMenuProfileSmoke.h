@@ -84,24 +84,27 @@ namespace SOLSolidMenuProfile
  * standalone -game run, for the solid restyle's before / after comparison. The run starts in the main menu
  * (USOLMenuSubsystem::ShouldStartInMenu) on the smoke settings slot (HUD effects strength 1, the default, checked),
  * with the sim date pinned (PROFILE_SIM_JD in the .cpp) so the live view behind the menus is the same every run. The
- * default run has four passes, each at a view size set with `r.SetRes` (windowed) and checked: P0 the main menu with
+ * default run has twelve passes, each at a view size set with `r.SetRes` (windowed) and checked: P0 the main menu with
  * Settings open at 1920x1080, P1 the same at 1280x720, then Play and Esc: P2 the pause menu (in flight) with Settings
- * open at 1280x720, P3 the same at 1920x1080, each against the pre-46c baseline in the .cpp. With -ResX / -ResY other
- * than 1920x1080 it is a view run (46h, the VR floor): nine passes at that size (the game window's size limits lifted
- * so it may be larger than the desktop): the main menu alone, with Settings, Settings on Key bindings, Controls, About
- * and Demo, then the pause menu alone, with Settings and with Info; the verdict judges only the menu's share (user,
- * 2026-11-06): the CPU against the 1920x1080 baseline of its menu and the menu's GPU against the VR floor's ceiling.
- * The p99 frame, game thread and GPU are logged against the XR-4 line (`vr_frame=`, informational) and, at 3840x2160,
- * the p99 frame against the 4K / 100 Hz proxy (`proxy=`, informational: project-level VR work). Each pass
- * parks the mouse cursor in the view's top-right corner (no button hovered), waits for its screen to settle (longer
- * than every panel and trace animation of SDD 7), takes a window screenshot
+ * open at 1280x720, P3 the same at 1920x1080, each against the pre-46c baseline in the .cpp; then (33a) the Settings
+ * Key bindings tab and the Controls page of each menu at both sizes (P4 main-settings-keys and P5 main-controls at
+ * 1920x1080, P6 main-controls and P7 main-settings-keys at 1280x720, P8 pause-settings-keys and P9 pause-controls at
+ * 1280x720, P10 pause-controls and P11 pause-settings-keys at 1920x1080), against the 33a baseline taken before their
+ * key cap restyle. With -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): nine passes at that
+ * size (the game window's size limits lifted so it may be larger than the desktop): the main menu alone, with Settings,
+ * Settings on Key bindings, Controls, About and Demo, then the pause menu alone, with Settings and with Info; the
+ * verdict judges only the menu's share (user, 2026-11-06): the CPU against the 1920x1080 baseline of its menu and the
+ * menu's GPU against the VR floor's ceiling. The p99 frame, game thread and GPU are logged against the XR-4 line
+ * (`vr_frame=`, informational) and, at 3840x2160, the p99 frame against the 4K / 100 Hz proxy (`proxy=`, informational:
+ * project-level VR work). Each pass parks the mouse cursor in the view's top-right corner (no button hovered), waits
+ * for its screen to settle (longer than every panel and trace animation of SDD 7), takes a window screenshot
  * (Saved/Screenshots/WindowsEditor/SolidMenuProfile_P<n>.png from the editor binary), then the shared
  * FSOLUiProfileCapture runs three ProfileGPU frames (the median of the game window's SlateUI pass is used) and one
  * 240-frame `stat dumpave` window each of "Draw Window And Children Time" (the whole Slate paint) and "Game UI Paint",
  * then PROFILE_FRAME_SAMPLES plain frames give the p99 of the frame, the game thread and the GPU. It logs one line per
  * pass, "SolidMenuProfile RESULT P<n> <PASS|FAIL|NOBASE> key=value ...", then a "SolidMenuProfile SUMMARY" line, and
- * quits; a watchdog quits a run that is stuck. With -SOLSmokeSolidMenuProfileTab=<n> every Settings pass shows that
- * tab (its ESOLSettingsTab position) instead of its own (46e follow-up: the slider fill).
+ * quits; a watchdog quits a run that is stuck. With -SOLSmokeSolidMenuProfileTab=<n> every Settings pass shows that tab
+ * (its ESOLSettingsTab position) instead of its own (46e follow-up: the slider fill).
  */
 class SOLTEST_API FSOLSolidMenuProfileSmoke
 {
@@ -161,7 +164,7 @@ private:
         Done,
     };
 
-    // Builds the run's passes and steps: the default four, or the view run's nine at the -ResX / -ResY size
+    // Builds the run's passes and steps: the default twelve, or the view run's nine at the -ResX / -ResY size
     void BuildScript();
 
     // Runs the step's action at its start

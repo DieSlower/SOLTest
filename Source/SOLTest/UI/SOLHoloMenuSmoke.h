@@ -293,7 +293,7 @@ private:
     float mCycleMinFraction = -1.0f;                        // smallest draw-in and fill seen while the step ran and
     float mCycleMinFill = -1.0f;                            // whether it was drawn on every HUD frame of the step
     bool mIsCycleAlwaysDrawn = false;
-    ASOLFlightHud::FSOLHudCardStats mFlatCardStats[static_cast<int32>(ASOLFlightHud::ESOLHudCard::Count)];  // At
+    ASOLFlightHud::FSOLHudCardStats mFlatCardStats[static_cast<int32>(ESOLHudCard::Count)];  // At
     int32 mFlatInfoLines = 0;                               // strength 0: the four cards, the info lines and the menu
     int32 mFlatMenuTexts = 0;                               // layer's painted texts before the clear
     int32 mListTargetRow = INDEX_NONE;                      // List menu steps: the Target row, the first hovered row,
