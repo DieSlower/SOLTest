@@ -45,7 +45,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 
 | Issue | What | Notes |
 |---|---|---|
-| #33 | Player documentation: a Help page (main and pause menus) with a live keyboard and mouse diagram tinted by area and a HUD glossary drawn with the HUD's own shape code; key caps on the Controls page; a generated `Docs/PLAYER_GUIDE.md` (`-SOLWritePlayerGuide`) with a stale check; no schema or key-layout change | **Design done (2026-11-06):** grill-me Q1-Q11 answered, SDD 33 and plan written (parts 33a-33h). **Gated:** open questions O1-O13 (SDD 33 section 18) wait for the user; no part started |
+| #33 | Player documentation: a Help page (main and pause menus) with a live keyboard and mouse diagram tinted by area and a HUD glossary drawn with the HUD's own shape code; key caps on the Controls page; a generated `Docs/PLAYER_GUIDE.md` (`-SOLWritePlayerGuide`) with a stale check; no schema or key-layout change | **Design final, ready to build 33a (2026-11-06):** grill-me Q1-Q11 and open questions O1-O13 answered (SDD 33 D16-D28), SDD 33 and plan written (parts 33a-33h); scope now includes caps on the Settings key rows; no part started |
 
 ## To do (ordered)
 
