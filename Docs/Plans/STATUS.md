@@ -61,6 +61,7 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
 | 3d | #44 | Space dust look: subtler, debris-like particles (user feedback on #43: too coarse, uniform lines or spheres); needs grill-me | S-M | #43 |
 | 3e | #45 | Key rebinding conflict prevention: Settings warns and refuses a binding that conflicts with another bound key (also covers the RShift+O cycle key case in TECH_DEBT); needs grill-me | S-M | none |
+| 3f | #47 | Review all ship movement control bindings (move Thrust down off Left Ctrl, which is also the Ctrl+F1 / Ctrl+O / Ctrl+RMB / Ctrl+F2 modifier): decide a coherent default layout for thrust, strafe, roll, pitch/yaw, throttle, boost, free look, recenter and steer toggle; needs grill-me first, follows #33; bumping `KEY_BINDING_LAYOUT_VERSION` (10) with migration needs explicit user approval; then update Controls/Info text, GAME_MECHANICS.md, Help keyboard diagram, glossary and PLAYER_GUIDE.md | M | #33 |
 | 4 | #23 | Orbit line quality (noise where a line enters a planet) | S-M | none |
 | 5 | #27 | Ship jitters slightly at rest | M | #18 |
 | 6 | #26 | Anti-aliasing evaluation (TSR vs alternatives), report then change | M | none |
