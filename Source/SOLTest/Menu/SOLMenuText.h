@@ -606,17 +606,17 @@ namespace SOLMenuText
             TEXT("With darkening on (a row of the Overlay Menu), far icons dim so near ones stand out. Icons also "
                 "fade as the object itself grows on screen: brightest while it is smaller than about "
                 "{IconFadeStartPx} pixels across and gone once it is big enough to see for itself.") },
-        { TEXT("Overlays and route"), TEXT("OrbitLine"), TEXT(""), TEXT("Orbit lines"),
+        { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Orbit lines"),
             TEXT("Lines that trace the orbits of planets, dwarf planets, moons and the largest asteroids. The "
                 "selected target's orbit is drawn in gold. Switch them with {ToggleOrbitLines}.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT("{OverlayProfileTagSample}"), TEXT("Overlay profile tag"),
             TEXT("Shows for a moment which of the {OverlayProfileCount} overlay profiles is active whenever you cycle "
                 "profiles with {CycleOverlayProfile}. Each profile remembers its own overlay choices.") },
-        { TEXT("Overlays and route"), TEXT("RouteLeg|RouteLoopLeg"), TEXT(""), TEXT("Route legs"),
+        { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Route legs"),
             TEXT("Your planned route as glow lines with arrows that fade from dim at the start to bright at the "
                 "end. On a patrol loop the closing leg back to the first waypoint is dashed. Show or hide routes in "
                 "flight with {ToggleRouteOverlay}; the map always shows them.") },
-        { TEXT("Overlays and route"), TEXT("WaypointAbove|WaypointBelow"), TEXT(""), TEXT("Waypoints"),
+        { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Waypoints"),
             TEXT("A route's stops. Like radar contacts, a stop above the ecliptic plane has a solid stem and one "
                 "below it a dashed stem, which tells you which side of the plane it is on.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"),
@@ -648,11 +648,11 @@ namespace SOLMenuText
         { TEXT("Menus and map"), TEXT("MapBodyIcon"), TEXT(""), TEXT("Map body icons"),
             TEXT("On the map each body is an icon with its name. Open the map with {OpenMap}, or in Jump mode with "
                 "{OpenMapJump}. Zoom with the mouse wheel and drag with the right button to turn the view.") },
-        { TEXT("Menus and map"), TEXT("MapPick"), TEXT(""), TEXT("Map destination pick"),
+        { TEXT("Menus and map"), TEXT(""), TEXT(""), TEXT("Map destination pick"),
             TEXT("Press on a body or on empty space, drag and release to place a destination. A disc shows the "
                 "direction and range, a guide line the height above or below the plane, and a marker the spot. "
                 "Hold Shift to set the height, then click to lock it. The hint line says what to do next.") },
-        { TEXT("Menus and map"), TEXT("MapGridStem"), TEXT(""), TEXT("Map grid and stems"),
+        { TEXT("Menus and map"), TEXT(""), TEXT(""), TEXT("Map grid and stems"),
             TEXT("A flat grid in the plane of the planets, with a stem from each marked point down or up to it, so "
                 "you can read where something is above or below the plane.") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Map action list"),

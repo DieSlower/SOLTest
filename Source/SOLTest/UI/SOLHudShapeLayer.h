@@ -74,8 +74,25 @@ public:
     // Returns the number of panel backings drawn by the last paint (verification)
     int32 GetLastPaintedBackingCount() const { return mLastPaintedBackingCount; }
 
-    // Stamps the batch as this frame's (call after filling it)
+    // Stamps the batch as this frame's (call after filling it; unused in retain mode)
     void MarkBatchFrame(uint64 frameNumber) { mBatchFrame = frameNumber; }
+
+    // Sets retain mode (default off): on, the batch, backings and texts are painted every paint until the owner resets
+    // them (a still picture, SDD 33 section 8.3) and the widget stops being volatile; off restores the per-frame HUD
+    // behaviour
+    void SetRetainBatch(bool bRetain);
+
+    // Returns whether the layer is in retain mode
+    bool IsRetainBatch() const { return mIsRetainBatch; }
+
+    // Retain mode: tells the layer the owner refilled the batch, so its cached paint is invalidated
+    void MarkBatchChanged();
+
+    // Returns whether a batch is painted: always in retain mode, else only when stamped this frame or the last
+    static bool ShouldPaintBatch(bool bRetain, uint64 batchFrame, uint64 frameCounter)
+    {
+        return bRetain || frameCounter <= batchFrame + 1;
+    }
 
     // Returns the number of shapes drawn by the last paint (verification)
     int32 GetLastPaintedShapeCount() const { return mLastPaintedShapeCount; }
@@ -142,6 +159,7 @@ private:
     mutable FSlateBrush mBackingBrush;                  // White rounded box tinted per layer; its corner radius is set
                                                         // per layer in OnPaint (Slate copies it into each element)
     bool mIsTextGlow = true;                            // Glow-text style (false: plain text over the shadow)
+    bool mIsRetainBatch = false;                        // Retain mode: paint the batch every paint (still picture)
     mutable int32 mLastPaintedTextCount = 0;            // Text lines drawn by the last paint
     mutable int32 mLastPaintedBackingCount = 0;         // Panel backings drawn by the last paint
     FSlateBrush mBrush;                                 // Brush wrapping the shape material

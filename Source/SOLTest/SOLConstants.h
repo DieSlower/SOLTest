@@ -957,6 +957,96 @@ namespace SOL
         inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
         inline constexpr float DIM_INTENSITY = 0.55f;                   // The HUD's dim tone: secondary lines (axes,
                                                                         // ticks, stalks)
+        inline const FLinearColor WARP_STREAK(0.8f, 0.9f, 1.0f, 1.0f);  // The jump warp's radial streaks
+    }
+
+    // Flight HUD symbol geometry (SDD 33 section 8.1, part 33d-i), shared by the HUD and the Help glossary through
+    // SOLHudSymbols' builders: sizes in px at a 720 px canvas (x the UI scale), intensities are glow factors, the
+    // CANVAS_LINE_* widths are the Canvas fallback's line widths (glow lines up to 2 px are LT's 1 px line)
+    namespace HudGeometry
+    {
+        // Reticle and virtual joystick
+        inline constexpr float RETICLE_GAP_PX = 6.0f;
+        inline constexpr float RETICLE_ARM_PX = 12.0f;
+        inline constexpr float RETICLE_DOT_RADIUS_PX = 1.0f;          // The glow dot ring (shape renderer only)
+        inline constexpr float RETICLE_DOT_INTENSITY = 0.5f;          // Dimmer than the arms: the centre stays readable
+        inline constexpr float RETICLE_CANVAS_DOT_PX = 2.0f;          // The Canvas fallback's dot square (not scaled)
+        inline constexpr int32 CIRCLE_SEGMENTS = 48;                  // Canvas fallback circle segments
+        inline constexpr float STICK_DOT_PX = 6.0f;
+        inline constexpr float STICK_DOT_INTENSITY = 0.6f;            // The stick dot (a filled glow blob)
+        inline constexpr float FAINT_INTENSITY = 0.18f;               // The joystick circles
+
+        // Canvas fallback line widths
+        inline constexpr float CANVAS_LINE_THIN_PX = 1.0f;
+        inline constexpr float CANVAS_LINE_PX = 1.5f;
+        inline constexpr float CANVAS_LINE_THICK_PX = 2.0f;
+
+        // Target bracket and off-screen edge arrow
+        inline constexpr float BRACKET_MIN_HALF_PX = 14.0f;
+        inline constexpr float BRACKET_MAX_HALF_PX = 160.0f;
+        inline constexpr float BRACKET_CORNER_FRACTION = 0.4f;        // A corner leg's length, of the half size
+        inline constexpr float BRACKET_INTENSITY = 0.6f;              // Bracket and edge arrow (corners add up)
+        inline constexpr float EDGE_ARROW_LENGTH_PX = 14.0f;
+        inline constexpr float EDGE_ARROW_WIDTH_PX = 9.0f;
+
+        // Prograde / retrograde markers: circle radius, Canvas segments, tick ends and cross arms (of the radius)
+        inline constexpr float VELOCITY_MARKER_RADIUS_PX = 9.0f;
+        inline constexpr int32 VELOCITY_MARKER_SEGMENTS = 16;
+        inline constexpr float PROGRADE_TICK_END_FRACTION = 2.0f;
+        inline constexpr float RETROGRADE_ARM_FRACTION = 0.7f;
+
+        // Radar scope: radius, vertical squash of the tilted disc, stalk length per unit height, blips, range rings
+        // (fractions of the range), the outer ring's glow factor, axis / cone intensities, ticks, the ship chevron
+        // (its rise, of its half width), contact foot ticks, the selected target's highlight ring, contact glows
+        inline constexpr float RADAR_RADIUS_PX = 105.0f;
+        inline constexpr float RADAR_TILT = 0.5f;
+        inline constexpr float RADAR_STALK_SCALE = 0.6f;
+        inline constexpr float RADAR_BLIP_PX = 4.0f;
+        inline constexpr float RADAR_SELECTED_BLIP_PX = 7.0f;
+        inline constexpr float RADAR_RINGS[] = { 0.25f, 0.5f, 0.75f, 1.0f };
+        inline constexpr float RADAR_OUTER_RING_GAIN = 1.3f;
+        inline constexpr float RADAR_AXIS_INTENSITY = 0.12f;
+        inline constexpr float RADAR_CONE_INTENSITY = 0.2f;
+        inline constexpr float RADAR_TICK_PX = 5.0f;
+        inline constexpr float RADAR_HEADING_TICK_PX = 9.0f;
+        inline constexpr float RADAR_CHEVRON_PX = 5.0f;
+        inline constexpr float RADAR_CHEVRON_RISE_FRACTION = 0.6f;
+        inline constexpr float RADAR_CHEVRON_INTENSITY = 0.6f;
+        inline constexpr float RADAR_FOOT_HALF_PX = 2.5f;
+        inline constexpr float RADAR_FOOT_INTENSITY = 0.35f;
+        inline constexpr float RADAR_HIGHLIGHT_GAP_PX = 3.0f;
+        inline constexpr float RADAR_BLIP_INTENSITY = 0.6f;
+        inline constexpr float RADAR_STEM_INTENSITY = 0.45f;
+        inline constexpr int32 RADAR_CANVAS_SEGMENTS = 12;            // Canvas fallback: segments of a blip ring
+
+        // Fill bars (speed cap, G meter) and the Chase Down ticks
+        inline constexpr float SPEED_BAR_WIDTH_PX = 240.0f;
+        inline constexpr float SPEED_BAR_HEIGHT_PX = 8.0f;
+        inline constexpr float BAR_TRACK_INTENSITY = 0.1f;            // A glow bar's empty track
+        inline constexpr float BAR_FILL_INTENSITY = 0.45f;            // A glow bar's filled part
+        inline constexpr float CHASE_TICK_OVERHANG_PX = 2.0f;         // The floor tick extends past the bar
+
+        // Mouse-steer icon (SDD 19): radius, Canvas segments, the unscaled centre dot, the Free arrow (tip offset,
+        // height and side, of the radius) and the Locked tick (offset and size, of the radius)
+        inline constexpr float STEER_ICON_RADIUS_PX = 6.0f;
+        inline constexpr int32 STEER_ICON_SEGMENTS = 16;
+        inline constexpr float STEER_DOT_PX = 2.0f;
+        inline constexpr float STEER_ARROW_TIP_X_FRACTION = 0.6f;
+        inline constexpr float STEER_ARROW_HEIGHT_FRACTION = 2.0f;
+        inline constexpr float STEER_ARROW_SIDE_FRACTION = 1.4f;
+        inline constexpr float STEER_LOCK_OFFSET_FRACTION = 0.5f;
+        inline constexpr float STEER_LOCK_TICK_FRACTION = 0.7f;
+
+        // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
+        // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION,
+        // brightening from the base brightness by the phase one and thickening up to 1 + WARP_STREAK_EXTRA_THICKNESS_PX
+        inline constexpr double WARP_STREAK_START_FRACTION = 0.06;
+        inline constexpr double WARP_STREAK_TRAVEL_FRACTION = 1.1;
+        inline constexpr double WARP_STREAK_MIN_LENGTH_FRACTION = 0.04;
+        inline constexpr double WARP_STREAK_MAX_LENGTH_FRACTION = 0.45;
+        inline constexpr double WARP_STREAK_BASE_BRIGHTNESS = 0.25;
+        inline constexpr double WARP_STREAK_PHASE_BRIGHTNESS = 0.75;
+        inline constexpr float WARP_STREAK_EXTRA_THICKNESS_PX = 2.0f;
     }
 
     // A fixed gap of a hologram menu frame line (SDD 42 section 6.3): its start as a fraction of the line's length and
@@ -1547,6 +1637,28 @@ namespace SOL
         inline constexpr double GLOSSARY_SAMPLE_CHASE_BURST_G = 6.8; // The Chase Down line sample's burst G (a plan's
                                                                      // burst varies between the sustained and max G)
         inline constexpr int32 GLOSSARY_SAMPLE_OVERLAY_PROFILE = 2; // The overlay profile tag sample's number (1-based)
+        // The glossary's HUD symbol parameters (part 33d-i), at UI scale 1 (Build multiplies them by its scale): the
+        // stick's offset (fractions of the joystick radius), the bracket's half size, the radar's sonar time and view
+        // cone, a contact's stem, the bars' fills and Chase Down ticks, the warp streaks, the radial menu's sectors
+        // (one highlighted, one disabled), the list frame's half size; no feature below GLOSSARY_MIN_FEATURE_PX (D42)
+        inline constexpr float GLOSSARY_STICK_OFFSET_X = 0.5f;
+        inline constexpr float GLOSSARY_STICK_OFFSET_Y = 0.25f;
+        inline constexpr float GLOSSARY_BRACKET_HALF_PX = 28.0f;
+        inline constexpr double GLOSSARY_RADAR_TIME_S = 0.0;
+        inline constexpr double GLOSSARY_RADAR_CONE_HALF_RAD = 0.25 * UE_DOUBLE_PI;
+        inline constexpr float GLOSSARY_RADAR_STEM_PX = 24.0f;
+        inline constexpr double GLOSSARY_BAR_FILL = 0.7;
+        inline constexpr double GLOSSARY_G_FILL = 0.6;
+        inline constexpr double GLOSSARY_CHASE_FLOOR = 0.3;
+        inline constexpr double GLOSSARY_CHASE_RESUME = 0.5;
+        inline constexpr int32 GLOSSARY_WARP_STREAKS = 12;
+        inline constexpr float GLOSSARY_WARP_HALF_DIAGONAL_PX = 32.0f;
+        inline constexpr int32 GLOSSARY_RADIAL_SECTORS = 4;
+        inline constexpr int32 GLOSSARY_RADIAL_DISABLED_SECTOR = 2;
+        inline constexpr float GLOSSARY_FRAME_HALF_WIDTH_PX = 40.0f;
+        inline constexpr float GLOSSARY_FRAME_HALF_HEIGHT_PX = 28.0f;
+        inline constexpr float GLOSSARY_MIN_FEATURE_PX = 2.0f;    // Smallest radius / size / dash a glossary symbol
+                                                                  // draws (lines, text and cards exempt)
 
         // Settings > Key bindings: the key cell's width bound (D20, tuned at 1000x800)
         inline constexpr float SETTINGS_KEYCAP_CELL_WIDTH = 200.0f;

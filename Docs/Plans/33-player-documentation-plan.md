@@ -160,17 +160,24 @@ SDD section 7.
 
 Needs: none beyond 33a. SDD section 8.1, risk R1.
 
-1. [ ] Before screenshots with `-SOLSmokeHud` (both renderers) at 1280x720 and 1000x800.
-2. [ ] Move the inline geometry (reticle, joystick, steer icons, prograde / retrograde, target bracket and edge arrow,
+1. [x] Before screenshots with `-SOLSmokeHud` (both renderers) at 1280x720 and 1000x800.
+2. [x] Move the inline geometry (reticle, joystick, steer icons, prograde / retrograde, target bracket and edge arrow,
    radar contact marks, G meter marks, route and waypoint marks if inline) into `SOLHudSymbols`; the HUD replays the
    prims through `GlowLine` / `GlowRing` / `GlowBox` / `GlowDashedLine` / `GlowEllipse` / `GlowDot`. No visible change.
-3. [ ] `HudSymbolsTest` geometry cases (added by the 33a test author, extended by a separate opus/high test agent for
+3. [x] `HudSymbolsTest` geometry cases (added by the 33a test author, extended by a separate opus/high test agent for
    the moved symbols); `HudShapesTest`, `OverlayIconsTest`, `RadarLayoutTest` re-validated. Add the test that every
    symbol a `GLOSSARY_ENTRIES` row names builds at least one primitive (33a builds only the icons, the edge arrow and
    the card; the radar symbols wait for this part, their geometry being inline in `ASOLFlightHud::DrawRadar`).
-4. [ ] After screenshots compared with the before set; `-SOLSmokeHud`, `-SOLSmokeOverlay`, `-SOLSmokeHoloMenu` green;
+4. [x] After screenshots compared with the before set; `-SOLSmokeHud`, `-SOLSmokeOverlay`, `-SOLSmokeHoloMenu` green;
    `-SOLSmokeHoloMenuProfile` P0 within its budget.
-5. [ ] Review; fixes; full suite; commit `Issue #33: Part 33d-i - shared HUD symbol builder`; push.
+5. [x] Review; fixes; full suite; commit `Issue #33: Part 33d-i - shared HUD symbol builder`; push.
+
+   **Done (2026-11-08, SDD 20):** user decisions D39-D42 (map rows description-only with screenshot crops later in
+   33e-ii, the bright planet icon only, the joystick radius parameter, the 2 px glossary feature floor). Screens per
+   D37: 1280x720 and 1920x1080 instead of 1000x800. Contract by a separate agent, tests first by a separate author (red
+   on stubs), builders and retain mode, the HUD through `ReplaySymbolPrims`; a temporary same-frame A/B recorder showed
+   the glow-shape renderer identical and the Canvas fallback within one float ulp; before / after screenshots at the
+   noise floor; P0 cost unchanged; review fixes; full suite 1683 / 0.
 
 ### 33d-ii: the Help page and its glossary (opus/high)
 
@@ -187,8 +194,9 @@ Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
    `SolidPageTabsTest` re-validated and extended (separate test agent for the new contract).
 4. [ ] `-SOLSmokeSolidMenu` Help steps (SDD section 16) in both menus and both sizes, including every stack entry
    reachable by scroll and click with 8 entries; `-SOLMenuSmoke=all` no new failure; strength 0 / 2 shots looked at.
-5. [ ] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row needs a
-   second brightness of IconPlanet: the table has no field for it yet.
+5. [ ] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row shows the
+   bright IconPlanet only (D40, no second brightness). Symbols are shrunk to fit with the 2 px feature floor (D42,
+   applied by `SOLHudSymbols::Build` since 33d-i). The five map rows stay description-only until 33e-ii (D39).
 6. [ ] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page with keyboard and HUD glossary`; push.
 
 ### 33e: the player guide flag and `Docs/PLAYER_GUIDE.md` (opus/high)
@@ -208,6 +216,26 @@ Builds on: D24, D27. Depends on 33d-ii. SDD section 9.
 3. [ ] Run it twice: the second run leaves `Docs/PLAYER_GUIDE.md` byte for byte the same; `SOLTest.PlayerGuide.UpToDate`
    (a failing test, D27) green; the player's `GameUserSettings.ini` unchanged.
 4. [ ] Review (fresh opus/xhigh); fixes; full suite; commit `Issue #33: Part 33e - generated player guide`; push.
+
+### 33e-ii: screenshot crops for the map glossary rows (D39; opus/high; grill-me the open points first)
+
+Builds on: D39. Depends on 33d-ii (the rows) and 33e (the shot-taking writer). Until this part the five rows (orbit
+lines, route legs, waypoints, map destination pick, map grid) are description-only.
+
+1. [ ] A capture step (a `-SOLWritePlayerGuide` sub-step or its own smoke flag) that opens the map in a pinned scene
+   (fixed date and view, a planned route with a loop, a pick in progress, orbit lines on), renders the real overlays
+   and saves one crop per row at fixed rects (2x the Help box so it stays sharp at 1920x1080 and 3840x2160).
+2. [ ] In-game display: the crops as imported `UTexture2D` assets under `Content/SOL/UI/Glossary/` (paths in
+   `SOLConstants.h`), drawn in the row's symbol box by an image brush; a row field or a small id -> texture table.
+3. [ ] The same crops in `Docs/PLAYER_GUIDE.md` (copied next to the other guide images).
+4. [ ] Tests: every description-only map row has a crop asset; the capture is deterministic enough to re-run.
+
+Feasibility and cost (estimate, 2026-11-08): the screenshot path exists (`FScreenshotRequest` with UI, the smokes and
+the 33e writer use it), so capture is about a day. Showing PNGs in game needs them imported as assets to be cooked
+(re-run the capture and re-import when the map look changes, or the crops go stale; a test can only check that they
+exist, not that they match). Runtime cost is a few small textures (about 0.25 MB each at 256x256 RGBA, less
+compressed) and one image draw per row. Open points for the grill: crop size, whether the guide uses the same files,
+and how a stale crop is noticed.
 
 ### 33f: smoke and profile, VR floor (opus/high)
 

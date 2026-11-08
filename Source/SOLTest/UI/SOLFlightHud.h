@@ -18,6 +18,7 @@
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudLines.h"
 #include "UI/SOLHudShapeBatch.h"
+#include "UI/SOLHudSymbols.h"
 #include "UI/SOLHudTextList.h"
 #include "UI/SOLOverlayIconLayer.h"
 #include "UI/SOLRadarLayout.h"
@@ -335,8 +336,13 @@ private:
     // Draws a filled glow dot (shape renderer) or a Canvas square of the same size
     void GlowDot(const FVector2D& center, float radiusPx, const FLinearColor& color, float intensity);
 
-    // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
-    void DrawBar(float x, float y, double fill01, const FLinearColor& color);
+    // Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) in a palette role and an end tick
+    void DrawBar(float x, float y, double fill01, ESOLHudPaletteRole fillRole);
+
+    // Replays symbol primitives in the HUD palette through the Glow* helpers and MenuArc in order (ShapeOnly ones only
+    // with the shape renderer; a primitive's PadPx > 0 replaces the Glow* pad); returns the primitives drawn (an Arc
+    // counts only when MenuArc took it)
+    int32 ReplaySymbolPrims(const FSOLHudSymbolPrims& prims);
 
     // Queues a hologram panel (glow shape and dark backing) around a content rectangle (shape renderer only); the
     // backing's darkness is scaled by backingOpacity (0-1), for a panel that fades out
@@ -613,6 +619,8 @@ private:
     int32 mContentShapeStart = 0;                   // shape and text counts when it began
     int32 mContentTextStart = 0;
     float mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;   // Glow pad of the Glow* helpers (LinePad on card content)
+    FSOLHudSymbolPrims mSymbolScratch;              // One HUD element's symbol primitives, reset before each build
+                                                    // (about 2.8 KB: a member, never a local)
     FSOLHoloFrameOutput mCardOutput;                // One card's build, reused (8 KB: a member, never a local)
     FSOLHudCardStats mCardStats[static_cast<int32>(ESOLHudCard::Count)];   // What each card drew this frame
     double mCardNowS = 0.0;                         // Real time and hologram menu strength the cards use this frame

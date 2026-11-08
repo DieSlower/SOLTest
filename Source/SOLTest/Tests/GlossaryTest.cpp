@@ -10,6 +10,7 @@
 #include "SOLConstants.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudLines.h"
+#include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudSymbols.h"
 #include "UI/SOLOverlayIcons.h"
 
@@ -21,6 +22,8 @@
 // 10, D6, D7, D22, D26), written against the header contract (Menu/SOLGlossary.h) and the SOLMenuText tables before
 // the production code existed: the five Help tabs, the GLOSSARY_ENTRIES rows resolved, the description formatter and
 // the completeness of the coverage table (every HUD line, icon category, card, steer icon and flight mode explained).
+// Part 33d-i: every symbol a row names builds a sane picture at the glossary scale, no feature below the glossary
+// floor (D42); the five map rows are description-only (D39) and Distance darkening shows IconPlanet alone (D40).
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -651,6 +654,356 @@ bool FSOLGlossarySamplesTest::RunTest(const FString& /*parameters*/)
         SOLGlossary::FormatEntryText(SOLMenuText::GLOSSARY_ENTRIES[tagRow].Description, keys, out);
         TestTrue(FString::Printf(TEXT("'%s' names MAX_PROFILES profiles"), *out),
             out.Contains(FString::Printf(TEXT("%d overlay profiles"), SOL::Overlay::MAX_PROFILES)));
+    }
+    return true;
+}
+
+namespace
+{
+    constexpr float GLOSSARYTEST_TOLERANCE = 1.0e-3f;           // Pixel comparisons
+    constexpr float GLOSSARYTEST_PAD_PX = 2.0f;                 // The glow pad of the replays
+    constexpr float GLOSSARYTEST_BUILD_SCALES[] = { 1.0f, 1.5f };   // UI 1 (720 px) and the 1080 px HUD scale
+    constexpr float GLOSSARYTEST_FLOOR_SCALES[] = { 0.05f, 0.25f, 1.0f, 1.5f };  // Down to a tiny shrink-to-fit
+
+    // The rows the user left description-only (D39): their pictures come later as screenshot crops
+    const TCHAR* const GLOSSARYTEST_PICTURELESS_ROWS[] = { TEXT("Orbit lines"), TEXT("Route legs"), TEXT("Waypoints"),
+        TEXT("Map destination pick"), TEXT("Map grid and stems") };
+
+    // The symbols of those rows (ids kept in ESOLHudSymbol, no builder required)
+    constexpr ESOLHudSymbol GLOSSARYTEST_PICTURELESS_SYMBOLS[] = { ESOLHudSymbol::OrbitLine, ESOLHudSymbol::RouteLeg,
+        ESOLHudSymbol::RouteLoopLeg, ESOLHudSymbol::WaypointAbove, ESOLHudSymbol::WaypointBelow,
+        ESOLHudSymbol::MapPick, ESOLHudSymbol::MapGridStem };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the box a primitive's own points and sizes span (see ESOLHudPrimKind; glow pad and line width excluded)
+    FBox2f GlossaryTestPrimExtent(const FSOLHudSymbolPrim& prim)
+    {
+        const FVector2f radius(prim.RadiusPx, prim.RadiusPx);
+        switch (prim.Kind)
+        {
+        case ESOLHudPrimKind::Line:
+        case ESOLHudPrimKind::DashedLine:
+        case ESOLHudPrimKind::Card:
+        case ESOLHudPrimKind::Frame:
+            return FBox2f(FVector2f::Min(prim.A, prim.B), FVector2f::Max(prim.A, prim.B));
+        case ESOLHudPrimKind::Ring:
+        case ESOLHudPrimKind::Arc:
+        case ESOLHudPrimKind::Dot:
+        case ESOLHudPrimKind::Icon:
+            return FBox2f(prim.A - radius, prim.A + radius);
+        case ESOLHudPrimKind::Ellipse:
+            return FBox2f(prim.A - FVector2f(prim.RadiusPx, prim.RadiusYPx),
+                prim.A + FVector2f(prim.RadiusPx, prim.RadiusYPx));
+        case ESOLHudPrimKind::Box:
+            return FBox2f(FVector2f::Min(prim.A, prim.A + prim.B), FVector2f::Max(prim.A, prim.A + prim.B));
+        case ESOLHudPrimKind::Panel:
+            return FBox2f(prim.A - prim.B, prim.A + prim.B);
+        case ESOLHudPrimKind::EdgeArrow:
+        {
+            const FVector2f tip = prim.A + prim.B * prim.RadiusPx;
+            return FBox2f(FVector2f::Min(prim.A, tip), FVector2f::Max(prim.A, tip));
+        }
+        default:
+            return FBox2f(prim.A, prim.A);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns why a primitive breaks the glossary floor (D42), "" when it keeps it: Dot / Ring / Arc / Icon /
+    // EdgeArrow radius (length), both Ellipse radii, a Box's size, a Panel's half size (floor / 2), a dashed line's
+    // dash and gap; lines (their half widths too), text, cards and frames are exempt
+    FString GlossaryTestFloorBreach(const FSOLHudSymbolPrim& prim)
+    {
+        const float floorPx = SOL::Help::GLOSSARY_MIN_FEATURE_PX - GLOSSARYTEST_TOLERANCE;
+        switch (prim.Kind)
+        {
+        case ESOLHudPrimKind::Dot:
+        case ESOLHudPrimKind::Ring:
+        case ESOLHudPrimKind::Arc:
+        case ESOLHudPrimKind::Icon:
+        case ESOLHudPrimKind::EdgeArrow:
+            return prim.RadiusPx >= floorPx ? FString() : FString::Printf(TEXT("radius %.3f"), prim.RadiusPx);
+        case ESOLHudPrimKind::Ellipse:
+            return prim.RadiusPx >= floorPx && prim.RadiusYPx >= floorPx ? FString()
+                : FString::Printf(TEXT("radii %.3f x %.3f"), prim.RadiusPx, prim.RadiusYPx);
+        case ESOLHudPrimKind::Box:
+            return prim.B.X >= floorPx && prim.B.Y >= floorPx ? FString()
+                : FString::Printf(TEXT("box %.3f x %.3f"), prim.B.X, prim.B.Y);
+        case ESOLHudPrimKind::Panel:
+            return prim.B.X >= 0.5f * floorPx && prim.B.Y >= 0.5f * floorPx ? FString()
+                : FString::Printf(TEXT("panel half size %.3f x %.3f"), prim.B.X, prim.B.Y);
+        case ESOLHudPrimKind::DashedLine:
+            return prim.DashPx >= floorPx && prim.GapPx >= floorPx ? FString()
+                : FString::Printf(TEXT("dash %.3f gap %.3f"), prim.DashPx, prim.GapPx);
+        default:
+            return FString();
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two primitives are the same in every field (points and sizes within the pixel tolerance)
+    bool GlossaryTestSamePrim(const FSOLHudSymbolPrim& a, const FSOLHudSymbolPrim& b)
+    {
+        const float tolerance = GLOSSARYTEST_TOLERANCE;
+        const float fine = 1.0e-6f;
+        return a.Kind == b.Kind && a.Role == b.Role && a.Path == b.Path && a.Category == b.Category
+            && a.Segments == b.Segments && a.A.Equals(b.A, tolerance) && a.B.Equals(b.B, tolerance)
+            && FMath::IsNearlyEqual(a.RadiusPx, b.RadiusPx, tolerance)
+            && FMath::IsNearlyEqual(a.RadiusYPx, b.RadiusYPx, tolerance)
+            && FMath::IsNearlyEqual(a.HalfWidthPx, b.HalfWidthPx, tolerance)
+            && FMath::IsNearlyEqual(a.MidAngleRad, b.MidAngleRad, fine)
+            && FMath::IsNearlyEqual(a.HalfApertureRad, b.HalfApertureRad, fine)
+            && FMath::IsNearlyEqual(a.DashPx, b.DashPx, tolerance) && FMath::IsNearlyEqual(a.GapPx, b.GapPx, tolerance)
+            && FMath::IsNearlyEqual(a.Fill, b.Fill, fine) && FMath::IsNearlyEqual(a.Intensity, b.Intensity, fine)
+            && FMath::IsNearlyEqual(a.UiScale, b.UiScale, fine)
+            && FMath::IsNearlyEqual(a.ThicknessPx, b.ThicknessPx, tolerance)
+            && FMath::IsNearlyEqual(a.SquashY, b.SquashY, fine) && FMath::IsNearlyEqual(a.PadPx, b.PadPx, tolerance);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns every symbol the GLOSSARY_ENTRIES rows name, once each, in first-named order (ids that do not resolve
+    // are left out; EntriesResolve reports them)
+    TArray<ESOLHudSymbol> GlossaryTestNamedSymbols()
+    {
+        TArray<ESOLHudSymbol> symbols;
+        for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+        {
+            for (const FString& id : GlossaryTestSymbolIds(SOLMenuText::GLOSSARY_ENTRIES[index].Symbols))
+            {
+                ESOLHudSymbol symbol = ESOLHudSymbol::Count;
+                if (SOLHudSymbols::FromName(id, symbol))
+                {
+                    symbols.AddUnique(symbol);
+                }
+            }
+        }
+        return symbols;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryEverySymbolBuildsTest, "SOLTest.Glossary.EverySymbolBuilds",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every symbol a row names resolves and builds at the glossary's zero centre at UI scales 1 and 1.5: at least one
+// primitive, none dropped; finite non-empty bounds that hold the origin and every primitive and stay within the
+// HUD's own height at that scale; a replay into a glossary view's batch that adds shapes and drops none
+bool FSOLGlossaryEverySymbolBuildsTest::RunTest(const FString& /*parameters*/)
+{
+    const FSOLHudSymbolPalette palette = SOLHudSymbols::HudPalette();
+    FSOLHudShapeBatch batch;
+    batch.Initialize(SOL::Help::GLOSSARY_MAX_SHAPES);
+    FSOLHudSymbolPrims prims;
+    FSOLHudSymbolPrims scratch;
+    int32 checked = 0;
+    for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        for (const FString& id : GlossaryTestSymbolIds(row.Symbols))
+        {
+            ESOLHudSymbol symbol = ESOLHudSymbol::Count;
+            if (!TestTrue(FString::Printf(TEXT("entry %d '%s': '%s' is a symbol"), index, row.Name, *id),
+                SOLHudSymbols::FromName(id, symbol)))
+            {
+                continue;
+            }
+            for (const float scale : GLOSSARYTEST_BUILD_SCALES)
+            {
+                ++checked;
+                const FString what = FString::Printf(TEXT("entry %d '%s': %s at %.2f"), index, row.Name, *id, scale);
+                const int32 count = SOLHudSymbols::Build(symbol, FVector2f::ZeroVector, scale, prims);
+                TestTrue(what + TEXT(": builds"), count >= 1);
+                TestTrue(what + TEXT(": at most the capacity"), count <= SOL::Help::MAX_PRIMS_PER_SYMBOL);
+                TestEqual(what + TEXT(": nothing dropped"), prims.DroppedCount, 0);
+
+                // Sane bounds around the centre
+                const FBox2f bounds = SOLHudSymbols::Bounds(symbol, scale, scratch);
+                const bool bFinite = bounds.bIsValid != 0 && FMath::IsFinite(bounds.Min.X)
+                    && FMath::IsFinite(bounds.Min.Y) && FMath::IsFinite(bounds.Max.X) && FMath::IsFinite(bounds.Max.Y);
+                TestTrue(what + TEXT(": finite bounds"), bFinite);
+                if (!bFinite)
+                {
+                    continue;
+                }
+                TestTrue(what + TEXT(": bounds have an area"), bounds.GetSize().X > 0.0f && bounds.GetSize().Y > 0.0f);
+                TestTrue(what + TEXT(": bounds hold the centre"), bounds.Min.X <= 0.0f && bounds.Min.Y <= 0.0f
+                    && bounds.Max.X >= 0.0f && bounds.Max.Y >= 0.0f);
+                const float limit = SOL::Hologram::HUD_REFERENCE_HEIGHT_PX * scale;
+                TestTrue(FString::Printf(TEXT("%s: within the HUD's height (%.1f .. %.1f, %.1f .. %.1f; %.1f)"), *what,
+                    bounds.Min.X, bounds.Max.X, bounds.Min.Y, bounds.Max.Y, limit), -bounds.Min.X <= limit
+                    && bounds.Max.X <= limit && -bounds.Min.Y <= limit && bounds.Max.Y <= limit);
+                const float tolerance = GLOSSARYTEST_TOLERANCE * 10.0f * FMath::Max(1.0f, scale);
+                for (int32 prim = 0; prim < count; ++prim)
+                {
+                    const FBox2f extent = GlossaryTestPrimExtent(prims.Prims[prim]);
+                    TestTrue(FString::Printf(TEXT("%s: prim %d inside the bounds"), *what, prim),
+                        extent.Min.X >= bounds.Min.X - tolerance && extent.Min.Y >= bounds.Min.Y - tolerance
+                        && extent.Max.X <= bounds.Max.X + tolerance && extent.Max.Y <= bounds.Max.Y + tolerance);
+                }
+
+                // The glossary view's batch takes it whole
+                batch.Reset();
+                const int32 added = SOLHudSymbols::AddToBatch(prims, batch, palette, GLOSSARYTEST_PAD_PX);
+                TestTrue(what + TEXT(": adds shapes"), added > 0);
+                TestEqual(what + TEXT(": no shape dropped"), batch.GetDroppedCount(), 0);
+            }
+        }
+    }
+    TestTrue(TEXT("the table names symbols"), checked > 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryDescriptionOnlyTest, "SOLTest.Glossary.DescriptionOnlyRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The five map rows name no symbol (D39) and no row names their symbols; Distance darkening shows IconPlanet alone,
+// at one brightness (D40)
+bool FSOLGlossaryDescriptionOnlyTest::RunTest(const FString& /*parameters*/)
+{
+    for (const TCHAR* name : GLOSSARYTEST_PICTURELESS_ROWS)
+    {
+        const int32 index = GlossaryTestEntryNamed(name);
+        if (!TestTrue(FString::Printf(TEXT("row '%s' exists"), name), index != INDEX_NONE))
+        {
+            continue;
+        }
+        TestEqual(FString::Printf(TEXT("row '%s' names no symbol"), name),
+            FString(SOLMenuText::GLOSSARY_ENTRIES[index].Symbols), FString());
+        FSOLGlossaryEntry entry;
+        TestTrue(FString::Printf(TEXT("row '%s' resolves"), name), SOLGlossary::ResolveEntry(index, entry));
+        TestEqual(FString::Printf(TEXT("row '%s' has no symbol slot"), name), entry.SymbolCount, 0);
+        TestFalse(FString::Printf(TEXT("row '%s' keeps its description"), name),
+            FString(SOLMenuText::GLOSSARY_ENTRIES[index].Description).IsEmpty());
+    }
+
+    // No row names a pictureless symbol; their ids still resolve
+    for (const ESOLHudSymbol symbol : GLOSSARYTEST_PICTURELESS_SYMBOLS)
+    {
+        const FString id = SOLHudSymbols::ToName(symbol);
+        TestTrue(FString::Printf(TEXT("'%s' still resolves"), *id), SOLGlossary::ResolveSymbol(id).IsSet());
+        for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+        {
+            TestFalse(FString::Printf(TEXT("entry %d '%s' does not name '%s'"), index,
+                SOLMenuText::GLOSSARY_ENTRIES[index].Name, *id),
+                GlossaryTestSymbolIds(SOLMenuText::GLOSSARY_ENTRIES[index].Symbols).Contains(id));
+        }
+    }
+
+    // Distance darkening: the planet icon, once
+    const int32 darkening = GlossaryTestEntryNamed(TEXT("Distance darkening"));
+    if (TestTrue(TEXT("the Distance darkening row exists"), darkening != INDEX_NONE))
+    {
+        TestEqual(TEXT("Distance darkening names IconPlanet only"),
+            FString(SOLMenuText::GLOSSARY_ENTRIES[darkening].Symbols),
+            FString(SOLHudSymbols::ToName(ESOLHudSymbol::IconPlanet)));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryMinFeatureTest, "SOLTest.Glossary.MinFeatureFloor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Build raises every feature of every named symbol to at least GLOSSARY_MIN_FEATURE_PX at any positive scale (D42),
+// and the bounds still hold the raised primitives; where the HUD builder is already above the floor Build is that
+// builder unchanged, and lines are never touched by the floor
+bool FSOLGlossaryMinFeatureTest::RunTest(const FString& /*parameters*/)
+{
+    TestTrue(TEXT("a positive floor"), SOL::Help::GLOSSARY_MIN_FEATURE_PX > 0.0f);
+    FSOLHudSymbolPrims prims;
+    FSOLHudSymbolPrims scratch;
+    const TArray<ESOLHudSymbol> symbols = GlossaryTestNamedSymbols();
+    TestTrue(TEXT("the table names symbols"), symbols.Num() > 0);
+    for (const ESOLHudSymbol symbol : symbols)
+    {
+        for (const float scale : GLOSSARYTEST_FLOOR_SCALES)
+        {
+            const FString what = FString::Printf(TEXT("%s at %.2f"), SOLHudSymbols::ToName(symbol), scale);
+            const int32 count = SOLHudSymbols::Build(symbol, FVector2f::ZeroVector, scale, prims);
+            TestTrue(what + TEXT(": builds"), count >= 1);
+            const FBox2f bounds = SOLHudSymbols::Bounds(symbol, scale, scratch);
+            TestTrue(what + TEXT(": bounds"), bounds.bIsValid != 0);
+            const float tolerance = GLOSSARYTEST_TOLERANCE * 10.0f * FMath::Max(1.0f, scale);
+            for (int32 prim = 0; prim < count; ++prim)
+            {
+                const FString breach = GlossaryTestFloorBreach(prims.Prims[prim]);
+                TestTrue(FString::Printf(TEXT("%s: prim %d at the floor (%s)"), *what, prim, *breach),
+                    breach.IsEmpty());
+                const FBox2f extent = GlossaryTestPrimExtent(prims.Prims[prim]);
+                TestTrue(FString::Printf(TEXT("%s: prim %d inside the bounds"), *what, prim), bounds.bIsValid != 0
+                    && extent.Min.X >= bounds.Min.X - tolerance && extent.Min.Y >= bounds.Min.Y - tolerance
+                    && extent.Max.X <= bounds.Max.X + tolerance && extent.Max.Y <= bounds.Max.Y + tolerance);
+            }
+        }
+    }
+
+    // Above the floor, Build is the HUD builder unchanged (prograde and the bracket at the HUD's scale 1, the
+    // reticle at 2 where its dot ring reaches the floor)
+    const FVector2f centre(400.25f, 300.5f);
+    FSOLHudSymbolPrims reference;
+    SOLHudSymbols::AppendPrograde(FVector2D(centre), 1.0f, reference);
+    SOLHudSymbols::Build(ESOLHudSymbol::Prograde, centre, 1.0f, prims);
+    if (TestEqual(TEXT("prograde at 1: the builder's count"), prims.Count, reference.Count))
+    {
+        for (int32 prim = 0; prim < prims.Count; ++prim)
+        {
+            TestTrue(FString::Printf(TEXT("prograde at 1: prim %d unchanged"), prim),
+                GlossaryTestSamePrim(prims.Prims[prim], reference.Prims[prim]));
+        }
+    }
+    reference.Reset();
+    SOLHudSymbols::AppendTargetBracket(FVector2D(centre), static_cast<float>(SOL::Help::GLOSSARY_BRACKET_HALF_PX),
+        reference);
+    SOLHudSymbols::Build(ESOLHudSymbol::TargetBracket, centre, 1.0f, prims);
+    if (TestEqual(TEXT("bracket at 1: the builder's count"), prims.Count, reference.Count))
+    {
+        for (int32 prim = 0; prim < prims.Count; ++prim)
+        {
+            TestTrue(FString::Printf(TEXT("bracket at 1: prim %d unchanged"), prim),
+                GlossaryTestSamePrim(prims.Prims[prim], reference.Prims[prim]));
+        }
+    }
+    const float reticleScale = static_cast<float>(SOL::Help::GLOSSARY_MIN_FEATURE_PX
+        / SOL::HudGeometry::RETICLE_DOT_RADIUS_PX);
+    reference.Reset();
+    SOLHudSymbols::AppendReticle(FVector2D(centre), reticleScale, reference);
+    SOLHudSymbols::Build(ESOLHudSymbol::Reticle, centre, reticleScale, prims);
+    if (TestEqual(TEXT("reticle at its floor scale: the builder's count"), prims.Count, reference.Count))
+    {
+        for (int32 prim = 0; prim < prims.Count; ++prim)
+        {
+            TestTrue(FString::Printf(TEXT("reticle at its floor scale: prim %d unchanged"), prim),
+                GlossaryTestSamePrim(prims.Prims[prim], reference.Prims[prim]));
+        }
+    }
+
+    // Below it (the reticle at 1: a 1 px dot ring) only the small feature is raised; the lines stay the builder's
+    reference.Reset();
+    SOLHudSymbols::AppendReticle(FVector2D(centre), 1.0f, reference);
+    SOLHudSymbols::Build(ESOLHudSymbol::Reticle, centre, 1.0f, prims);
+    if (TestEqual(TEXT("reticle at 1: the builder's count"), prims.Count, reference.Count))
+    {
+        for (int32 prim = 0; prim < prims.Count; ++prim)
+        {
+            const FSOLHudSymbolPrim& built = prims.Prims[prim];
+            const FSOLHudSymbolPrim& hud = reference.Prims[prim];
+            const FString what = FString::Printf(TEXT("reticle at 1: prim %d"), prim);
+            if (hud.Kind == ESOLHudPrimKind::Line)
+            {
+                TestTrue(what + TEXT(": a line, unchanged"), GlossaryTestSamePrim(built, hud));
+            }
+            else
+            {
+                TestTrue(what + TEXT(": same kind"), built.Kind == hud.Kind);
+                TestTrue(what + TEXT(": same centre"), built.A.Equals(hud.A, GLOSSARYTEST_TOLERANCE));
+                TestTrue(what + TEXT(": raised to the floor"),
+                    built.RadiusPx >= SOL::Help::GLOSSARY_MIN_FEATURE_PX - GLOSSARYTEST_TOLERANCE);
+            }
+        }
     }
     return true;
 }

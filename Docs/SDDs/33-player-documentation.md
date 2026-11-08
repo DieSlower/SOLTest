@@ -65,6 +65,10 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D36 | **Hover strip (user, 2026-11-07):** sized **once per width and model** for the busiest key's wrapped rows (at most `DIAGRAM_DETAIL_LINES` 24; 8 at the defaults, Left Ctrl), so its height never changes while hovering; the hovered key's **cap is on its own row** (`DIAGRAM_DETAIL_CAP_HEIGHT` 30) **above the lines**, which use the full strip width; not padded to a worst case. |
 | D37 | **Wide screens only (user, 2026-11-07, final):** outside VR every screen is wide and at least 1280x720; the diagram targets are **1280x720, 1920x1080 and 3840x2160** only (658 units of shell content at all three, DPI-scaled). Nothing is added or tuned for smaller windows (no 1000x800 diagram step, screenshots or constants; older tickets' 1000x800 checks stay). The 4K profile belongs to 33f. |
 | D38 | **Legend room (user, 2026-11-08, after the 33c screenshots):** at font 11 nine one-unit legends clipped to 2-3 letters (Esc, ScrL, Pause, Home, PgUp, PgDn, Del, Num, numpad Enter) and the wheel showed none; font 10 fixed only four. The user chose **both**: the diagram's caps (keys and Other keys caps) **drop the LED** (a Small hull material of the diagram's own with `LedX` < 0, made once per widget), so a one-unit key's legend gets about 37 of its 44 units; and **only the legends that still do not fit** at the paint scale use an abbreviation from one table, `SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS` (at most `DIAGRAM_ABBREVIATION_MAX_CHARS` 4 characters, shorter than the layout legend, tested): numpad Enter "Ent" (the main Enter keeps "Enter"), the wheel "W", Pause "Paus" (needed at 1920x1080 only). The hover strip keeps the 33b cap (with its LED) and the full key names; the Controls and Settings caps are unchanged. |
+| D39 | **Map rows without shape code (user, 2026-11-08, 33d-i contract U1):** orbit lines (a 3D mesh with a material) and the route legs, waypoints, map destination pick and map grid (Canvas lines and triangles in the `Map/` overlays) have no 2D shape code to share, so under D5 they cannot be drawn by `SOLHudSymbols`. Their five `GLOSSARY_ENTRIES` rows become **description-only now** (`Symbols` ""; the every-symbol-builds test covers the rows that name a symbol; the enum ids stay, without a builder), and their pictures are to be **screenshot crops of the real game** (static images) shown in the Help page and the player guide, built in a later sub-step (plan 33d-ii / 33e). Porting those overlays to the shape renderer is a ToDo (`Docs/ToDo/map-overlays-shape-renderer.md`). |
+| D40 | **Distance darkening (user, 2026-11-08, U2):** the row shows the **bright** `IconPlanet` only; no second brightness, no `IconPlanetFar` (the 33a review note is dropped). |
+| D41 | **Joystick builder radius (2026-11-08, U3 while pending):** the joystick builder takes an optional radius defaulting to the HUD's own size (the HUD unchanged); the glossary size itself is D42. |
+| D42 | **Glossary symbol size and the feature floor (user, 2026-11-08, U3 answered after a mock-up):** symbols are drawn at full HUD size shrunk to fit the box (section 8.3 as written), the joystick included, **but no feature is ever drawn smaller than `SOL::Help::GLOSSARY_MIN_FEATURE_PX` (2 px)**: after scaling, `SOLHudSymbols::Build` (the glossary entry point, and so `Bounds`) clamps dot, ring, arc, ellipse, icon and edge-arrow radii, box and panel sizes and dash / gap lengths up to the floor; line widths, text and cards are unchanged. The per-element builders the HUD calls are never clamped, so the HUD is unchanged. Tested over every glossary symbol. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -274,7 +278,7 @@ symbol's primitives into a fixed-capacity buffer (`MAX_PRIMS_PER_SYMBOL` 32, pro
 box, dot, dashed line, ellipse, sample text), its points and sizes in pixels at that scale (a dashed line keeps its dash
 and its gap, `DashPx` / `GapPx`, as the HUD's Canvas fallback draws both), a palette role (Primary, Secondary, Good,
 Hostile, FreeLook) and an intensity. There is no Dim role: a dim element is any role at intensity
-`SOL::HudPalette::DIM_INTENSITY`, as the HUD draws it (33a review). The buffer is about 2.5 KB, so callers hold one and
+`SOL::HudPalette::DIM_INTENSITY`, as the HUD draws it (33a review). The buffer is about 2.8 KB (88 B a primitive, `static_assert` at most 3 KB; 33d-i), so callers hold one and
 `Reset()` it; `Bounds` and `AddToBatch` take a caller's scratch (the prims, the card's frame output). Two replays:
 
 - **HUD:** `ASOLFlightHud` replays the primitives through `GlowLine` / `GlowRing` / `GlowBox` / `GlowDashedLine` /
@@ -330,8 +334,8 @@ panels sits behind each symbol so the additive glow reads as on the HUD.
 |---|---|
 | Flight HUD | Reticle (Reticle) · Virtual joystick, yellow in free-look (Joystick, JoystickFreeLook) · Mouse-steer icon (SteerFree, SteerHeld, SteerLocked) · Prograde marker (Prograde) · Retrograde marker (Retrograde) · Flight mode MANUAL / ASSISTED / AUTO (sample; `Assist`, every `ESOLFlightMode`) · Speed card: relative and absolute speed, frame, cap and its bar, boost (SpeedCapBar, Card; `Speed`, `Frame`, `AbsoluteSpeed`, `Cap`, `ESOLHudCard::Speed`) · G meter, its floor and resume marks, the G warning (GMeter; `GMeter`, `GWarning`) · Date and anchor card (Card; `DateWarp`, `Anchor`, `Nearest`, `SurfaceLock`, `ESOLHudCard::DateAnchor`) · Key hints, the steer hint and the controls-changed notice (sample; `Hints`, `SteerHint`, `ControlsNotice`) · Autopilot marker (sample; `Autopilot`, `AutopilotHint`, `AutopilotCancel`) · Chase Down line (sample; `ChaseActivity`) · Jump warp streaks (WarpStreaks) |
 | Targets and radar | Target bracket and name (TargetBracket; `TargetLabel`) · Off-screen target arrow (TargetEdgeArrow) · Target card (Card; `TargetName`, `TargetDistance`, `TargetRelative`, `ESOLHudCard::Target`) · Radar scope: ship plane, range rings and sonar pulse, view cone, AUTO / MANUAL range (RadarScope; `RadarRange`) · Contact above the plane (RadarContactAbove) · Contact below the plane (RadarContactBelow) · Selected target on the radar (RadarSelected; `RadarSelected`) |
-| Overlays and route | One row per icon category: star, planet, moon, dwarf planet, asteroid, ring system, NPC ship, practice target (IconStar ... IconTarget; every `EIconCategory`) · Off-screen icon arrows (IconEdgeArrow) · Distance darkening (IconPlanet at two brightnesses) · Orbit lines, the target's in gold (OrbitLine) · Overlay profile tag (sample; `OverlayProfileTag`) · Route legs and arrows, a loop's dashed leg (RouteLeg, RouteLoopLeg) · Waypoints above / below the plane (WaypointAbove, WaypointBelow) · Route progress line (sample; `Route`) · Space dust (no symbol: a description only) |
-| Menus and map | Icon hover and the radial action menu (RadialMenu; `RadialTitle`, `RadialReason`, `RadialItem0`-`9`, `InteractHint`) · Info card (Card; `InfoTitle`, `InfoType`, `InfoDistance`, `InfoDetail`, `InfoStatus`, `ESOLHudCard::Info`) · Overlay Menu (ListFrame) · Speed panel (ListFrame) · Hologram mouse pointer (HoloCursor) · Map body icons and labels (MapBodyIcon) · Map destination pick: disc, height guide, marker, its hint line (MapPick; `MapPickHints`) · Map grid and stems (MapGridStem) · Map action list (ListFrame) |
+| Overlays and route | One row per icon category: star, planet, moon, dwarf planet, asteroid, ring system, NPC ship, practice target (IconStar ... IconTarget; every `EIconCategory`) · Off-screen icon arrows (IconEdgeArrow) · Distance darkening (IconPlanet, bright only, D40) · Orbit lines, the target's in gold (description only, a crop later, D39) · Overlay profile tag (sample; `OverlayProfileTag`) · Route legs and arrows, a loop's dashed leg (description only, D39) · Waypoints above / below the plane (description only, D39) · Route progress line (sample; `Route`) · Space dust (no symbol: a description only) |
+| Menus and map | Icon hover and the radial action menu (RadialMenu; `RadialTitle`, `RadialReason`, `RadialItem0`-`9`, `InteractHint`) · Info card (Card; `InfoTitle`, `InfoType`, `InfoDistance`, `InfoDetail`, `InfoStatus`, `ESOLHudCard::Info`) · Overlay Menu (ListFrame) · Speed panel (ListFrame) · Hologram mouse pointer (HoloCursor) · Map body icons and labels (MapBodyIcon) · Map destination pick: disc, height guide, marker, its hint line (description only, D39; `MapPickHints`) · Map grid and stems (description only, D39) · Map action list (ListFrame) |
 
 Descriptions are written in 33a from `GAME_MECHANICS.md` and the Info prose, kept short (two or three sentences),
 using tokens for numbers and keys.
@@ -712,3 +716,39 @@ headless test assertions) except the Other keys / Unbound overflow and the unmea
 (`Docs/TECH_DEBT.md`) and the view-run diagram passes (the 33f plan). Real-cursor hovers flaked once in a run
 before the fixes (the known `-SOLSmokeSolidMenu` real-cursor item) and passed in the final run.
 
+**33d-i (2026-11-08, commit `Issue #33: Part 33d-i - shared HUD symbol builder`).** The flight HUD's inline symbol
+geometry moved into `UI/SOLHudSymbols` as per-element builders the HUD calls (D5): `AppendReticle`, `AppendJoystick`,
+`AppendSteerIcon`, `AppendPrograde` / `AppendRetrograde`, `AppendTargetBracket`, `AppendTargetEdgeArrow`,
+`AppendRadarScope` (`FSOLRadarScopeParams`), `AppendRadarContact`, `AppendBar`, `AppendChaseTicks`, `AppendWarpStreak`,
+`AppendRadialSector`, with `LineHalfWidthPx` / `RadarBlipPx`; the prims gained `ThicknessPx`, `Segments`, `SquashY`,
+`PadPx` and `Path` (`ESOLHudPrimPath::ShapeOnly` for the reticle ring and bar tracks), the `Frame` kind (list frames
+through `SOLHoloFrameBuild::BuildFrame`) and the Bad and WarpStreak roles; 51 file-local HUD constants became
+`SOL::HudGeometry` (values unchanged) and the glossary's sample parameters `SOL::Help::GLOSSARY_*`. `ASOLFlightHud`
+holds one prims scratch, resets it before each builder and replays through `ReplaySymbolPrims` (the same `Glow*` /
+`MenuArc` calls in the same order; colours from one `HudPalette()`, the line width from `LineHalfWidthPx`). `Build`
+covers every symbol a glossary row names (the hologram cursor through `SOLHologramCursor::ArrowSegments`, map body
+icons as an Icon prim) and applies the D42 floor; the D39 ids build nothing. `SSOLHudShapeLayer` retain mode
+(`SetRetainBatch`, `IsRetainBatch`, `MarkBatchChanged`, the pure `ShouldPaintBatch`); the HUD keeps the per-frame mode.
+`GLOSSARY_ENTRIES`: the five map rows description-only (D39), Distance darkening the bright planet icon only (D40).
+
+Proof the HUD did not change (R1): a temporary A/B recorder (removed before the commit) ran the old inline code and
+the builders in the same frame and compared every `Glow*` / `MenuArc` call bit for bit under `-SOLSmokeHud`, `-Jump`,
+`-Chase`, `-HoloMenu`, `-Interact`, `-Overlay` and a synthetic sweep (the off-screen arrow, the Free and Locked steer
+icons): the glow-shape renderer identical; the Canvas fallback (`sol.HudRenderer 0`) differs only by one float ulp in
+a few centres and end points (ring centres up to 5.9e-5 px, dashed stem ends, an ellipse centre 2.4e-5 px, one dot
+rect corner 6.1e-5 px), accepted as invisible. Before / after screenshots of the pinned `-SOLSmokeHoloMenuProfile`
+scene at 1280x720 and 1920x1080 differ at the run-to-run noise floor only (the radar pulse, dust and stars), and the
+`-SOLSmokeHud` shots at both sizes (both renderers) show the same HUD. HUD cost, `-SOLSmokeHoloMenuProfile` P0 at
+1280x720, three-run medians: before `cpu_hud` 0.126 / `cpu_total` 0.256 / `gpu_ui` 0.080 ms; after the refactor
+0.125 / 0.263 / 0.080; after the review fixes 0.125 / 0.259 / 0.079 (runs 0.122-0.129 `cpu_hud`), within the run-to-run spread. Tests (separate opus/high author from the contract, red on stubs: HudSymbols
+22 / 28, Glossary 2 / 18, then green): `HudSymbolsTest` (28 + `GoldenValues` with literal pre-refactor numbers),
+`GlossaryTest` (`EverySymbolBuilds`, `DescriptionOnlyRows`, `MinFeatureFloor`), the new `HudShapeLayerTest` (2);
+full suite 1683, 0 failures. `-SOLSmokeHud` 24/24 (1280x720 and 1920x1080), `-SOLSmokeOverlay` 34/34, `-SOLSmokeHoloMenu` 86/86, `-SOLSmokeSolidMenu` 212/212, `-SOLSmokeHoloMenuProfile` 12/12; the player's `GameUserSettings.ini` byte-identical.
+
+Deviations and notes: `AppendJoystick` takes the radius as a required argument (the HUD passes its own
+`JOYSTICK_RADIUS_FRACTION` x min(viewport width, height), the glossary the HUD size at 1080 px), not an optional one as
+D41 worded it. The retain mode and the glossary scale are used from 33d-ii. The reticle ring carries `PadPx` 32 (the
+HUD's pad), so a glossary replay draws it with that pad too. The adversarial review (opus, xhigh) found no must-fix
+item; its 3 should-fix (a second copy of the line-width rule and of the role colours, no golden values for the moved
+constants) and 7 nits were fixed; the optional warp-streak batching (160 small replays a frame, about 1-2 us) was not
+done. `-SOLSmokeJump` `g3-orientation-rebase` fails in some runs before and after this part (`Docs/TECH_DEBT.md`).

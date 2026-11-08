@@ -49,3 +49,5 @@ archive.
   (prolonged G drain, impacts), deferred from issue #18.
 - [`vr-performance-gate.md`](vr-performance-gate.md) — perf smoke at the VR-equivalent
   resolution to keep VR-capable frame rates without a headset.
+- [`map-overlays-shape-renderer.md`](map-overlays-shape-renderer.md) — the map's route, waypoint, pick and grid
+  overlays on the HUD glow-shape renderer, so the Help glossary can draw them (issue #33, D39).

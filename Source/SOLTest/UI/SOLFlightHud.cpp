@@ -59,87 +59,41 @@ namespace
     constexpr float HUD_LINE_MEDIUM_PX = 20.0f;
     constexpr float HUD_LINE_SMALL_PX = 16.0f;
     constexpr float HUD_TARGET_PANEL_WIDTH_PX = 250.0f;
-    constexpr float HUD_SPEED_BAR_WIDTH_PX = 240.0f;
-    constexpr float HUD_SPEED_BAR_HEIGHT_PX = 8.0f;
 
-    // Reticle and virtual joystick
-    constexpr float HUD_RETICLE_GAP_PX = 6.0f;
-    constexpr float HUD_RETICLE_ARM_PX = 12.0f;
-    constexpr int32 HUD_CIRCLE_SEGMENTS = 48;
-    constexpr float HUD_STICK_DOT_PX = 6.0f;
-
-    // Target bracket and edge arrow
-    constexpr float HUD_BRACKET_MIN_HALF_PX = 14.0f;
-    constexpr float HUD_BRACKET_MAX_HALF_PX = 160.0f;
-    constexpr float HUD_BRACKET_CORNER_FRACTION = 0.4f;
+    // The symbols' own geometry (reticle, joystick, bracket, markers, radar, bars, streaks) is SOL::HudGeometry, built
+    // by SOLHudSymbols. The target edge arrow keeps this margin from the screen edge (and a target this far in)
     constexpr float HUD_EDGE_ARROW_MARGIN_PX = 40.0f;
-    constexpr float HUD_EDGE_ARROW_LENGTH_PX = 14.0f;
-    constexpr float HUD_EDGE_ARROW_WIDTH_PX = 9.0f;
 
-    // Prograde/retrograde markers: circle radius (shown above SOL::Hologram::HUD_VELOCITY_MARKER_MIN_MPS of relative
-    // speed)
-    constexpr float HUD_VELOCITY_MARKER_RADIUS_PX = 9.0f;
+    // Prograde/retrograde markers (shown above SOL::Hologram::HUD_VELOCITY_MARKER_MIN_MPS of relative speed): the
+    // projection distance of the velocity direction
     constexpr double HUD_DIRECTION_PROJECT_CM = 1.0e6;   // Any distance works for a pure direction
 
     // Projection: points closer than this in front of the camera (cm) are clipped
     constexpr double HUD_NEAR_PLANE_CM = 10.0;
 
-    // Radar scope (bottom right): radius, vertical squash of the tilted disc, stalk length per unit height
-    constexpr float HUD_RADAR_RADIUS_PX = 105.0f;
-    constexpr float HUD_RADAR_TILT = 0.5f;
-    constexpr float HUD_RADAR_STALK_SCALE = 0.6f;
-    constexpr float HUD_RADAR_BLIP_PX = 4.0f;
-    constexpr float HUD_RADAR_SELECTED_BLIP_PX = 7.0f;
-    // Hologram radar (SDD 21 phase C): range rings (fractions of the range; the 1% collapse zone sits inside the
-    // first), the outer ring's glow factor, the axis and cone intensities, the ring ticks, the ship chevron, the contact foot
-    // tick and the selected target's highlight ring
-    constexpr float HUD_RADAR_RINGS[] = { 0.25f, 0.5f, 0.75f, 1.0f };
-    constexpr float HUD_RADAR_OUTER_RING_GAIN = 1.3f;
-    constexpr float HUD_RADAR_AXIS_INTENSITY = 0.12f;
-    constexpr float HUD_RADAR_CONE_INTENSITY = 0.2f;
-    constexpr float HUD_RADAR_TICK_PX = 5.0f;
-    constexpr float HUD_RADAR_HEADING_TICK_PX = 9.0f;
-    constexpr float HUD_RADAR_CHEVRON_PX = 5.0f;
-    constexpr float HUD_RADAR_CHEVRON_INTENSITY = 0.6f; // The ship chevron (the cone and axes also meet there)
-    constexpr float HUD_RADAR_FOOT_HALF_PX = 2.5f;
-    constexpr float HUD_RADAR_FOOT_INTENSITY = 0.35f;
+    // Hologram radar (SDD 21 phase C): the dimming of a contact behind the camera or beyond the range, the blip merge
+    // distance and the view cone's cut-off
     constexpr float HUD_RADAR_BEHIND_INTENSITY = 0.7f;
-    constexpr float HUD_RADAR_HIGHLIGHT_GAP_PX = 3.0f;
-    constexpr float HUD_RADAR_BLIP_INTENSITY = 0.6f;    // A blip (dot or ring); overlapping glows add up, so the
-    constexpr float HUD_RADAR_STEM_INTENSITY = 0.45f;   // contact shapes stay dim (36 contacts crowd the rim at 1 km)
     constexpr float HUD_RADAR_BEYOND_INTENSITY = 0.45f; // A contact beyond the range (pulled onto the rim) is dimmer
     constexpr float HUD_RADAR_MERGE_PX = 14.0f;         // A blip this close to a drawn one is skipped (stacked moons)
     constexpr double HUD_RADAR_CONE_MIN_LATERAL = 0.1;  // View cone hidden when the camera looks this near ship-up/down
 
     // The glow dashed line's dash fraction (SOL::Hologram::HUD_DASH_FRACTION 0.5) assumes equal dashes and gaps
     static_assert(SOLRadar::StemDashPx == SOLRadar::StemGapPx, "Dashed stems: the glow shape assumes dash == gap");
-    constexpr int32 HUD_RADAR_CANVAS_SEGMENTS = 12;     // Canvas fallback: segments of a blip ring
 
     // LT palette (SDD 21 phase B). A tone is a palette colour and an intensity: glow shapes scale their glow by it,
     // Canvas lines (which ignore alpha) their RGB, and text lines take a dim tone as alpha (HudDimText)
     const FLinearColor& HUD_PRIMARY = SOL::HudPalette::PRIMARY;
     const FLinearColor& HUD_SECONDARY = SOL::HudPalette::SECONDARY;   // Warnings, the target, the locked frame
-    const FLinearColor& HUD_GOOD = SOL::HudPalette::GOOD;             // Prograde marker
-    const FLinearColor& HUD_HOSTILE = SOL::HudPalette::HOSTILE;       // Retrograde marker
     const FLinearColor& HUD_BAD = SOL::HudPalette::BAD;               // G critical / blackout / lethal (SDD 18)
-    constexpr float HUD_DIM = SOL::HudPalette::DIM_INTENSITY;           // Secondary lines (axes, ticks, stalks)
-    constexpr float HUD_FAINT = 0.18f;                                  // The joystick circles
-    constexpr float HUD_BRACKET_INTENSITY = 0.6f;                       // Target bracket and edge arrow (corners add)
-    constexpr float HUD_STICK_DOT_INTENSITY = 0.6f;                     // The stick dot (a filled glow blob)
     constexpr float HUD_TEXT_DIM_ALPHA = 0.7f;                          // Dim text lines (hints, absolute speed)
-    constexpr float HUD_BAR_TRACK_INTENSITY = 0.1f;                     // A glow bar's empty track
-    constexpr float HUD_BAR_FILL_INTENSITY = 0.45f;                     // A glow bar's filled part
     constexpr float HUD_PANEL_GAP_PX = 8.0f;                            // Info panel to the key hints below it
-    constexpr int32 HUD_VELOCITY_MARKER_SEGMENTS = 16;                  // Canvas fallback circle segments
     const FLinearColor HUD_BAR_BACK_COLOR(0.0f, 0.0f, 0.0f, 0.45f);
     constexpr float HUD_G_BLOCK_GAP_PX = 8.0f;                              // Gap between the G meter and speed block
     constexpr float HUD_G_WARNING_Y_FRACTION = 0.62f;                       // G warning: this far down the screen
-    constexpr float HUD_CHASE_TICK_OVERHANG_PX = 2.0f;                      // Chase floor tick extends past the bar
     constexpr float HUD_AUTOPILOT_TOP_PX = 64.0f;                           // Autopilot marker below the top edge
     constexpr float HUD_ROUTE_HINT_GAP_PX = 2.0f;                           // Route marker gap below the key hints
-    constexpr float HUD_STEER_ICON_RADIUS_PX = 6.0f;                        // Mouse-steer icon radius (SDD 19)
     constexpr float HUD_STEER_ICON_GAP_PX = 10.0f;                          // Gap between the mode line and the icon
-    constexpr int32 HUD_STEER_ICON_SEGMENTS = 16;
     constexpr double HUD_CONTROLS_NOTICE_S = 15.0;                          // One-time controls notice duration
     constexpr float HUD_CONTROLS_NOTICE_Y_FRACTION = 0.2f;                  // Controls notice: this far down
     constexpr float HUD_PROFILE_TAG_GAP_PX = 6.0f;      // Overlay profile tag (SDD 34): its panel this far below the
@@ -151,22 +105,13 @@ namespace
                                                         // feathered over twice that (a soft stadium, issue #31)
     constexpr float HUD_STEER_HINT_Y_FRACTION = 0.8f;   // "Hold Space to steer": this far down the screen (issue #31)
 
-    // Jump warp streaks: each travels from WARP_STREAK_START_FRACTION to past the corner (fractions of the half
-    // diagonal) once per cycle, accelerating (squared phase), lengthening up to WARP_STREAK_MAX_LENGTH_FRACTION and
-    // thickening up to 1 + WARP_STREAK_EXTRA_THICKNESS_PX; cycle rates vary per streak; fixed seed for a stable pattern
-    constexpr double WARP_STREAK_START_FRACTION = 0.06;
-    constexpr double WARP_STREAK_TRAVEL_FRACTION = 1.1;
-    constexpr double WARP_STREAK_MIN_LENGTH_FRACTION = 0.04;
-    constexpr double WARP_STREAK_MAX_LENGTH_FRACTION = 0.45;
+    // Jump warp streaks (their geometry is SOL::HudGeometry::WARP_STREAK_*): cycle rates vary per streak; fixed seed
+    // for a stable pattern
     constexpr double WARP_STREAK_MIN_CYCLES_PER_S = 0.9;
     constexpr double WARP_STREAK_MAX_CYCLES_PER_S = 1.8;
-    constexpr float WARP_STREAK_EXTRA_THICKNESS_PX = 2.0f;
     constexpr int32 WARP_STREAK_SEED = 2026;
-    const FLinearColor WARP_STREAK_COLOR(0.8f, 0.9f, 1.0f, 1.0f);
 
-    // Shape renderer (SDD 21): the reticle's glow dot radius, its layer under the menus and the F3 panel
-    constexpr float HUD_RETICLE_DOT_RADIUS_PX = 1.0f;
-    constexpr float HUD_RETICLE_DOT_INTENSITY = 0.5f;          // Dimmer than the arms: the centre stays readable
+    // Shape renderer (SDD 21): its layer under the menus and the F3 panel
     constexpr int32 HUD_SHAPE_LAYER_Z_ORDER = 0;
     constexpr int32 HUD_MENU_LAYER_Z_ORDER = 1;                 // The menu layer: above the HUD layer, below the menus
 
@@ -222,6 +167,23 @@ namespace
         }
         SOLHoloMenu::Advance(anim, nowS, s);
         return bOpened;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the HUD's symbol palette (SOLHudSymbols::HudPalette, built once)
+    const FSOLHudSymbolPalette& HudSymbolPalette()
+    {
+        static const FSOLHudSymbolPalette palette = SOLHudSymbols::HudPalette();
+        return palette;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a palette role's HUD colour (Primary for a role past the palette)
+    const FLinearColor& HudRoleColor(const ESOLHudPaletteRole role)
+    {
+        const int32 index = static_cast<int32>(role);
+        return HudSymbolPalette().Colors[index < static_cast<int32>(ESOLHudPaletteRole::Count) ? index
+            : static_cast<int32>(ESOLHudPaletteRole::Primary)];
     }
 }
 
@@ -855,7 +817,7 @@ void ASOLFlightHud::GlowLine(const FVector2D& a, const FVector2D& b, const FLine
     if (mBatch != nullptr)
     {
         // Canvas widths up to 2 px become LT's 1 px glow line; thicker ones keep their extra width in the core
-        const float halfWidth = FMath::Max(SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, 0.5f * (thickness - 1.0f));
+        const float halfWidth = SOLHudSymbols::LineHalfWidthPx(thickness);
         mBatch->AddLine(FVector2f(a), FVector2f(b), halfWidth, color, intensity, mGlowPadPx);
         return;
     }
@@ -911,7 +873,7 @@ void ASOLFlightHud::GlowEllipse(const FVector2D& center, const float radiusXPx, 
             color, intensity, mGlowPadPx);
         return;
     }
-    DrawCircle(center, radiusXPx, HudScaled(color, intensity), HUD_CIRCLE_SEGMENTS, squashY, 1.0f);
+    DrawCircle(center, radiusXPx, HudScaled(color, intensity), SOL::HudGeometry::CIRCLE_SEGMENTS, squashY, 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -953,22 +915,76 @@ void ASOLFlightHud::GlowDot(const FVector2D& center, const float radiusPx, const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Draws a fill bar: a faint track, the filled part (clamped to [0, 1]) and an end tick
-void ASOLFlightHud::DrawBar(const float x, const float y, const double fill01, const FLinearColor& color)
+// Draws a fill bar: a faint track (the Canvas fallback a dark back instead), the filled part (clamped to [0, 1]) in a
+// palette role and an end tick
+void ASOLFlightHud::DrawBar(const float x, const float y, const double fill01, const ESOLHudPaletteRole fillRole)
 {
-    const float width = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
-    const float height = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
-    const float filled = width * static_cast<float>(FMath::Clamp(fill01, 0.0, 1.0));
-    if (mBatch != nullptr)
+    if (mBatch == nullptr)
     {
-        GlowBox(x, y, width, height, HUD_PRIMARY, HUD_BAR_TRACK_INTENSITY);
+        DrawRect(HUD_BAR_BACK_COLOR, x, y, SOL::HudGeometry::SPEED_BAR_WIDTH_PX * mUiScale,
+            SOL::HudGeometry::SPEED_BAR_HEIGHT_PX * mUiScale);
     }
-    else
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendBar(x, y, fill01, fillRole, mUiScale, mSymbolScratch);
+    ReplaySymbolPrims(mSymbolScratch);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Replays symbol primitives through the Glow* helpers and MenuArc in order (ShapeOnly ones only with the shape
+// renderer); returns the primitives drawn (an Arc counts only when MenuArc took it)
+int32 ASOLFlightHud::ReplaySymbolPrims(const FSOLHudSymbolPrims& prims)
+{
+    // Every HUD builder call fits the capacity (SOL::Help::MAX_PRIMS_PER_SYMBOL); a drop is a builder bug
+    ensure(prims.DroppedCount == 0);
+    int32 drawn = 0;
+    for (int32 index = 0; index < prims.Count; ++index)
     {
-        DrawRect(HUD_BAR_BACK_COLOR, x, y, width, height);
+        const FSOLHudSymbolPrim& prim = prims.Prims[index];
+        if (prim.Path == ESOLHudPrimPath::ShapeOnly && mBatch == nullptr)
+        {
+            continue;
+        }
+        const FLinearColor& color = HudRoleColor(prim.Role);
+
+        // A primitive's own pad replaces the Glow* helpers' pad for this primitive (MenuArc takes PadPx itself)
+        TGuardValue<float> padGuard(mGlowPadPx,
+            prim.Kind != ESOLHudPrimKind::Arc && prim.PadPx > 0.0f ? prim.PadPx : mGlowPadPx);
+        switch (prim.Kind)
+        {
+        case ESOLHudPrimKind::Line:
+            GlowLine(FVector2D(prim.A), FVector2D(prim.B), color, prim.Intensity, prim.ThicknessPx);
+            break;
+        case ESOLHudPrimKind::Ring:
+            GlowRing(FVector2D(prim.A), prim.RadiusPx, color, prim.Intensity, prim.ThicknessPx, prim.Segments);
+            break;
+        case ESOLHudPrimKind::Box:
+            GlowBox(prim.A.X, prim.A.Y, prim.B.X, prim.B.Y, color, prim.Intensity);
+            break;
+        case ESOLHudPrimKind::Ellipse:
+            GlowEllipse(FVector2D(prim.A), prim.RadiusPx, prim.SquashY, color, prim.Intensity);
+            break;
+        case ESOLHudPrimKind::DashedLine:
+            GlowDashedLine(FVector2D(prim.A), FVector2D(prim.B), prim.DashPx, prim.GapPx, color, prim.Intensity);
+            break;
+        case ESOLHudPrimKind::Dot:
+            GlowDot(FVector2D(prim.A), prim.RadiusPx, color, prim.Intensity);
+            break;
+        case ESOLHudPrimKind::Arc:
+            if (!MenuArc(prim.A, prim.RadiusPx, prim.HalfWidthPx, prim.MidAngleRad, prim.HalfApertureRad, color,
+                prim.Intensity, prim.PadPx))
+            {
+                continue;
+            }
+            break;
+        default:
+            // Panels, icons, cards, frames and text come from the glossary's Build, never from a HUD builder
+            ensureMsgf(false, TEXT("ReplaySymbolPrims: primitive kind %d is not a HUD primitive"),
+                static_cast<int32>(prim.Kind));
+            continue;
+        }
+        ++drawn;
     }
-    GlowBox(x, y, filled, height, color, HUD_BAR_FILL_INTENSITY);
-    GlowLine(FVector2D(x + width, y), FVector2D(x + width, y + height), HUD_PRIMARY, HUD_DIM, 1.0f);
+    return drawn;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1259,15 +1275,10 @@ int32 ASOLFlightHud::DrawWarpStreaks(const double intensity, const double elapse
     for (const FSOLWarpStreak& streak : mWarpStreaks)
     {
         const double phase = FMath::Frac(streak.PhaseOffset + elapsedS * streak.CyclesPerSecond);
-        const double innerPx = halfDiagonalPx * (WARP_STREAK_START_FRACTION
-            + WARP_STREAK_TRAVEL_FRACTION * phase * phase);
-        const double lengthPx = halfDiagonalPx * intensity * FMath::Lerp(WARP_STREAK_MIN_LENGTH_FRACTION,
-            WARP_STREAK_MAX_LENGTH_FRACTION, phase);
-        const FVector2D start = center + streak.Direction * innerPx;
-        const FVector2D end = center + streak.Direction * (innerPx + lengthPx);
-        const float brightness = static_cast<float>(intensity * (0.25 + 0.75 * phase));
-        GlowLine(start, end, WARP_STREAK_COLOR, brightness, (1.0f + WARP_STREAK_EXTRA_THICKNESS_PX
-            * static_cast<float>(phase)) * mUiScale);
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendWarpStreak(center, streak.Direction, phase, intensity, halfDiagonalPx, mUiScale,
+            mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
         ++drawn;
     }
     return drawn;
@@ -1425,19 +1436,16 @@ void ASOLFlightHud::DrawOverlayProfileTag(const double realTimeS)
 // Draws the center reticle: four arms and a dimmer centre dot in LT Primary (glow shapes, or Canvas lines)
 void ASOLFlightHud::DrawReticle(const FVector2D& center)
 {
-    const float gap = HUD_RETICLE_GAP_PX * mUiScale;
-    const float arm = gap + HUD_RETICLE_ARM_PX * mUiScale;
-    GlowLine(FVector2D(center.X - arm, center.Y), FVector2D(center.X - gap, center.Y), HUD_PRIMARY, 1.0f, 1.5f);
-    GlowLine(FVector2D(center.X + gap, center.Y), FVector2D(center.X + arm, center.Y), HUD_PRIMARY, 1.0f, 1.5f);
-    GlowLine(FVector2D(center.X, center.Y - arm), FVector2D(center.X, center.Y - gap), HUD_PRIMARY, 1.0f, 1.5f);
-    GlowLine(FVector2D(center.X, center.Y + gap), FVector2D(center.X, center.Y + arm), HUD_PRIMARY, 1.0f, 1.5f);
-    if (mBatch != nullptr)
+    // The dot ring carries the HUD glow pad itself (its PadPx), so the replay's pad does not matter here
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendReticle(center, mUiScale, mSymbolScratch);
+    ReplaySymbolPrims(mSymbolScratch);
+    if (mBatch == nullptr)
     {
-        mBatch->AddRing(FVector2f(center), HUD_RETICLE_DOT_RADIUS_PX * mUiScale, SOL::Hologram::HUD_LINE_HALF_WIDTH_PX,
-            HUD_PRIMARY, HUD_RETICLE_DOT_INTENSITY, SOL::Hologram::HUD_GLOW_PAD_PX);
-        return;
+        // The Canvas fallback's centre dot (the glow dot ring is shape renderer only)
+        const float dot = SOL::HudGeometry::RETICLE_CANVAS_DOT_PX;
+        DrawRect(HUD_PRIMARY, center.X - 0.5f * dot, center.Y - 0.5f * dot, dot, dot);
     }
-    DrawRect(HUD_PRIMARY, center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1445,24 +1453,14 @@ void ASOLFlightHud::DrawReticle(const FVector2D& center)
 // hint until the player first steers this session
 void ASOLFlightHud::DrawJoystick(const FVector2D& center, const FSOLHudPilotSnapshot& pilot)
 {
-    // Yellow while Alt free-look is held (the mouse orbits the camera, not the stick; issue #31)
-    const FLinearColor color = SOLHudFormat::PilotCircleColor(pilot.bIsFreeLooking);
-    mLastJoystickColor = color;
-    const float radius = static_cast<float>(pilot.StickRadiusPx);
-    GlowRing(center, radius, color, HUD_FAINT, 1.0f, HUD_CIRCLE_SEGMENTS);
-    GlowRing(center, radius * static_cast<float>(SOL::JOYSTICK_DEAD_ZONE), color, HUD_FAINT, 1.0f,
-        HUD_CIRCLE_SEGMENTS / 2);
-
-    // The stick offset is X right, Y up; the screen's Y grows downward
-    const FVector2d& offset = pilot.StickOffsetPx;
-    const FVector2D stick(center.X + offset.X, center.Y - offset.Y);
-    const float intensity = (pilot.bIsFreeLooking || !pilot.bIsSteering ? HUD_DIM : 1.0f) * HUD_STICK_DOT_INTENSITY;
-    if (offset.Size() > radius * SOL::JOYSTICK_DEAD_ZONE)
-    {
-        GlowLine(center, stick, color, HUD_DIM, 1.0f);
-    }
-    const float dot = HUD_STICK_DOT_PX * mUiScale;
-    GlowBox(stick.X - dot * 0.5f, stick.Y - dot * 0.5f, dot, dot, color, intensity);
+    // Yellow while Alt free-look is held (the mouse orbits the camera, not the stick; issue #31): the builder picks the
+    // role, and the circle (its first primitive) is the colour recorded for verification
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendJoystick(center, static_cast<float>(pilot.StickRadiusPx), pilot.StickOffsetPx,
+        pilot.bIsFreeLooking, pilot.bIsSteering, mUiScale, mSymbolScratch);
+    mLastJoystickColor = mSymbolScratch.Count > 0 ? HudRoleColor(mSymbolScratch.Prims[0].Role)
+        : FLinearColor::Transparent;
+    ReplaySymbolPrims(mSymbolScratch);
 
     // Until the player first steers this session, a hint names the steer-hold key (issue #31)
     if (pilot.bShowSteerHint)
@@ -1596,7 +1594,7 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
 {
     const float x = HUD_MARGIN_PX * mUiScale;
     const float blockHeight = (HUD_LINE_LARGE_PX + 2.0f * HUD_LINE_SMALL_PX + HUD_LINE_MEDIUM_PX
-        + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
+        + SOL::HudGeometry::SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
     float y = Canvas->ClipY - HUD_MARGIN_PX * mUiScale - blockHeight;
     const double relativeSpeedMps = (state.VelocityMps - Ships->GetReferenceVelocityMps()).Size();
 
@@ -1636,10 +1634,10 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
 
     // Fill bar of the relative speed against the cap (Secondary above the cap, e.g. while boosting)
     const double fill = control.SpeedCapMps > 0.0 ? relativeSpeedMps / control.SpeedCapMps : 0.0;
-    DrawBar(x, y, fill, fill > 1.0 ? HUD_SECONDARY : HUD_PRIMARY);
-    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale,
-        y + HUD_SPEED_BAR_HEIGHT_PX * mUiScale));
-    y += (HUD_SPEED_BAR_HEIGHT_PX + 6.0f) * mUiScale;
+    DrawBar(x, y, fill, fill > 1.0 ? ESOLHudPaletteRole::Secondary : ESOLHudPaletteRole::Primary);
+    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + SOL::HudGeometry::SPEED_BAR_WIDTH_PX * mUiScale,
+        y + SOL::HudGeometry::SPEED_BAR_HEIGHT_PX * mUiScale));
+    y += (SOL::HudGeometry::SPEED_BAR_HEIGHT_PX + 6.0f) * mUiScale;
 
     // Flight mode label in its color (SDD 19 section 3.7) and boost, then the mouse-steer icon to their right
     const ESOLFlightMode mode = Ships->GetFlightMode();
@@ -1652,11 +1650,11 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     if (HasFreshPilot())
     {
         const FSOLHudPilotSnapshot& pilot = HudEvents->GetBus().GetPilot();
-        const FVector2D iconCenter(modeRect.Max.X + (HUD_STEER_ICON_GAP_PX + HUD_STEER_ICON_RADIUS_PX) * mUiScale,
-            0.5 * (modeRect.Min.Y + modeRect.Max.Y));
+        const float iconRadius = SOL::HudGeometry::STEER_ICON_RADIUS_PX * mUiScale;
+        const FVector2D iconCenter(modeRect.Max.X + (HUD_STEER_ICON_GAP_PX + SOL::HudGeometry::STEER_ICON_RADIUS_PX)
+            * mUiScale, 0.5 * (modeRect.Min.Y + modeRect.Max.Y));
         DrawSteerIcon(iconCenter, pilot.SteerIcon, pilot.bIsSteering);
-        mLeftBlockRect += FBox2D(iconCenter - FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale),
-            iconCenter + FVector2D(HUD_STEER_ICON_RADIUS_PX * mUiScale));
+        mLeftBlockRect += FBox2D(iconCenter - FVector2D(iconRadius), iconCenter + FVector2D(iconRadius));
     }
     if (bIsCardContent)
     {
@@ -1668,29 +1666,9 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
 // Draws the mouse-steer icon: an open cursor arrow (Free), a reticle (Held) or a reticle with a lock tick (Locked)
 void ASOLFlightHud::DrawSteerIcon(const FVector2D& center, const ESOLSteerIcon icon, const bool bSteering)
 {
-    const float radius = HUD_STEER_ICON_RADIUS_PX * mUiScale;
-    const float intensity = bSteering ? 1.0f : HUD_DIM;
-    if (icon == ESOLSteerIcon::Free)
-    {
-        // Cursor arrow: a tip at the top left, a vertical edge and a slanted edge closed by a short base
-        const FVector2D tip(center.X - radius * 0.6f, center.Y - radius);
-        const FVector2D bottom(tip.X, tip.Y + radius * 2.0f);
-        const FVector2D side(tip.X + radius * 1.4f, tip.Y + radius * 1.4f);
-        GlowLine(tip, bottom, HUD_PRIMARY, intensity, 1.5f);
-        GlowLine(tip, side, HUD_PRIMARY, intensity, 1.5f);
-        GlowLine(bottom, side, HUD_PRIMARY, intensity, 1.5f);
-        return;
-    }
-
-    // Held and Locked: a reticle (circle, centre dot)
-    GlowRing(center, radius, HUD_PRIMARY, intensity, 1.5f, HUD_STEER_ICON_SEGMENTS);
-    GlowBox(center.X - 1.0f, center.Y - 1.0f, 2.0f, 2.0f, HUD_PRIMARY, intensity * HUD_STICK_DOT_INTENSITY);
-    if (icon == ESOLSteerIcon::Locked)
-    {
-        // Lock tick: a small filled square on the lower right of the ring
-        const float tick = radius * 0.7f;
-        GlowBox(center.X + radius * 0.5f, center.Y + radius * 0.5f, tick, tick, HUD_PRIMARY, intensity);
-    }
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendSteerIcon(center, icon, bSteering, mUiScale, mSymbolScratch);
+    ReplaySymbolPrims(mSymbolScratch);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1708,12 +1686,13 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     // G meter: the G-load and a bar of the tolerance left, above the speed block (bottom left)
     const float x = HUD_MARGIN_PX * mUiScale;
     const float speedBlockHeight = (HUD_LINE_LARGE_PX + 2.0f * HUD_LINE_SMALL_PX + HUD_LINE_MEDIUM_PX
-        + HUD_SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
-    const float barHeight = HUD_SPEED_BAR_HEIGHT_PX * mUiScale;
+        + SOL::HudGeometry::SPEED_BAR_HEIGHT_PX + 6.0f + HUD_LINE_SMALL_PX) * mUiScale;
+    const float barHeight = SOL::HudGeometry::SPEED_BAR_HEIGHT_PX * mUiScale;
     float y = Canvas->ClipY - HUD_MARGIN_PX * mUiScale - speedBlockHeight - HUD_G_BLOCK_GAP_PX * mUiScale
         - barHeight - HUD_LINE_SMALL_PX * mUiScale;
-    const FLinearColor& meterColor = bAlarm ? HUD_BAD
-        : (warning == ESOLGWarning::OverSustained ? HUD_SECONDARY : HUD_PRIMARY);
+    const ESOLHudPaletteRole meterRole = bAlarm ? ESOLHudPaletteRole::Bad
+        : (warning == ESOLGWarning::OverSustained ? ESOLHudPaletteRole::Secondary : ESOLHudPaletteRole::Primary);
+    const FLinearColor& meterColor = HudRoleColor(meterRole);
 
     // The G meter is part of the speed card's content (SDD 42 D15), on the menu layer; the warning stays HUD
     const bool bIsCardContent = BeginCardContent(ESOLHudCard::Speed);
@@ -1721,23 +1700,20 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
     mText.Appendf(TEXT("G %.1f   tolerance %.0f%%"), gLoad, meter.Meter * HUD_PERCENT);
     mLeftBlockRect += DrawBuffer(ESOLHudLine::GMeter, meterColor, x, y, ESOLHudFont::Small);
     y += HUD_LINE_SMALL_PX * mUiScale;
-    DrawBar(x, y, meter.Meter, meterColor);
+    DrawBar(x, y, meter.Meter, meterRole);
     const FSOLChaseStatus chase = Ships->GetChaseStatus();
     if (chase.bActive)
     {
         // Chase Down: a floor tick at the safety margin and a fainter resume tick while cooling toward a reachable
         // resume meter (SDD 32 section 3.9)
-        const float barWidth = HUD_SPEED_BAR_WIDTH_PX * mUiScale;
-        const float floorX = x + barWidth * static_cast<float>(FMath::Clamp(chase.FloorMeter, 0.0, 1.0));
-        GlowLine(FVector2D(floorX, y - HUD_CHASE_TICK_OVERHANG_PX * mUiScale),
-            FVector2D(floorX, y + barHeight + HUD_CHASE_TICK_OVERHANG_PX * mUiScale), HUD_SECONDARY, 1.0f, 2.0f);
-        if (chase.bCooling && SOLHudFormat::IsChaseResumeShown(chase.ResumeMeter))
-        {
-            const float resumeX = x + barWidth * static_cast<float>(FMath::Clamp(chase.ResumeMeter, 0.0, 1.0));
-            GlowLine(FVector2D(resumeX, y), FVector2D(resumeX, y + barHeight), HUD_SECONDARY, HUD_DIM, 1.0f);
-        }
+        const bool bShowResume = chase.bCooling && SOLHudFormat::IsChaseResumeShown(chase.ResumeMeter);
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendChaseTicks(x, y, chase.FloorMeter, bShowResume, chase.ResumeMeter, mUiScale,
+            mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
     }
-    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + HUD_SPEED_BAR_WIDTH_PX * mUiScale, y + barHeight));
+    mLeftBlockRect += FBox2D(FVector2D(x, y), FVector2D(x + SOL::HudGeometry::SPEED_BAR_WIDTH_PX * mUiScale,
+        y + barHeight));
     if (bIsCardContent)
     {
         EndCardContent();
@@ -2043,16 +2019,10 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
     {
         // Corner bracket sized to the target's apparent radius, with its name and distance beneath
         const float half = FMath::Clamp(static_cast<float>(view.FocalPx * radiusCm / local.X),
-            HUD_BRACKET_MIN_HALF_PX * mUiScale, HUD_BRACKET_MAX_HALF_PX * mUiScale);
-        const float corner = half * HUD_BRACKET_CORNER_FRACTION;
-        for (int32 cornerIndex = 0; cornerIndex < 4; ++cornerIndex)
-        {
-            const float sx = (cornerIndex & 1) ? 1.0f : -1.0f;
-            const float sy = (cornerIndex & 2) ? 1.0f : -1.0f;
-            const FVector2D tip(screen.X + sx * half, screen.Y + sy * half);
-            GlowLine(tip, FVector2D(tip.X - sx * corner, tip.Y), HUD_SECONDARY, HUD_BRACKET_INTENSITY, 1.5f);
-            GlowLine(tip, FVector2D(tip.X, tip.Y - sy * corner), HUD_SECONDARY, HUD_BRACKET_INTENSITY, 1.5f);
-        }
+            SOL::HudGeometry::BRACKET_MIN_HALF_PX * mUiScale, SOL::HudGeometry::BRACKET_MAX_HALF_PX * mUiScale);
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendTargetBracket(screen, half, mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
         mText.Reset();
         target->Name.AppendString(mText);
         mText.Append(TEXT("  "));
@@ -2076,16 +2046,12 @@ void ASOLFlightHud::DrawTarget(const FSOLHudView& view, const FSOLShipState& sta
         FMath::Abs(direction.Y) > UE_KINDA_SMALL_NUMBER ? halfHeight / FMath::Abs(direction.Y)
         : TNumericLimits<double>::Max());
     const FVector2D anchor = view.Center + direction * reach;
-    const FVector2D perpendicular(-direction.Y, direction.X);
-    const FVector2D tip = anchor + direction * (HUD_EDGE_ARROW_LENGTH_PX * mUiScale);
-    const FVector2D left = anchor + perpendicular * (HUD_EDGE_ARROW_WIDTH_PX * mUiScale);
-    const FVector2D right = anchor - perpendicular * (HUD_EDGE_ARROW_WIDTH_PX * mUiScale);
-    GlowLine(tip, left, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
-    GlowLine(tip, right, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
-    GlowLine(left, right, HUD_SECONDARY, HUD_BRACKET_INTENSITY, 2.0f);
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendTargetEdgeArrow(anchor, direction, mUiScale, mSymbolScratch);
+    ReplaySymbolPrims(mSymbolScratch);
     mText.Reset();
     target->Name.AppendString(mText);
-    const FVector2D label = anchor - direction * (3.0f * HUD_EDGE_ARROW_LENGTH_PX * mUiScale);
+    const FVector2D label = anchor - direction * (3.0f * SOL::HudGeometry::EDGE_ARROW_LENGTH_PX * mUiScale);
     DrawBuffer(ESOLHudLine::TargetLabel, HUD_SECONDARY, label.X - 20.0f * mUiScale, label.Y - 8.0f * mUiScale,
         ESOLHudFont::Small);
 }
@@ -2287,16 +2253,13 @@ void ASOLFlightHud::DrawRadialMenu(const FSOLHoloMenuLook& look, const float s)
         return;
     }
     const FVector2f center(radial.CenterPx);
-    const float innerPx = SOL::Interact::RADIAL_INNER_PX * mUiScale;
-    const float outerPx = SOL::Interact::RADIAL_OUTER_PX * mUiScale;
     const float labelPx = SOL::Interact::RADIAL_LABEL_PX * mUiScale;
     const float halfAperture = count == 1 ? UE_PI
         : UE_PI / static_cast<float>(count) - 0.5f * SOL::Interact::RADIAL_SECTOR_GAP_RAD;
 
     // Sectors (LT's radial panel): thin arcs on the inner and outer rim with a gap between neighbours, grown from each
     // sector's middle while the menu draws in; the highlighted one in Secondary, brighter, glowing on hover and filled
-    // (a faint wide arc), a disabled one dim
-    const float edgePx = SOL::Interact::RADIAL_EDGE_HALF_WIDTH_PX;
+    // (a faint wide arc), a disabled one dim (SOLHudSymbols::AppendRadialSector)
     for (int32 index = 0; mBatch != nullptr && index < count; ++index)
     {
         const bool bHighlighted = index == radial.Highlighted;
@@ -2307,15 +2270,12 @@ void ASOLFlightHud::DrawRadialMenu(const FSOLHoloMenuLook& look, const float s)
             continue;
         }
         const float midAngle = static_cast<float>(SOLRadialMenu::SectorMidAngleRad(index, count));
-        if (sector.FillIntensity > 0.0f)
-        {
-            MenuArc(center, 0.5f * (innerPx + outerPx), 0.5f * (outerPx - innerPx), midAngle, sector.HalfApertureRad,
-                sector.Color, sector.FillIntensity, sector.PadPx);
-        }
-        MenuArc(center, innerPx, edgePx, midAngle, sector.HalfApertureRad, sector.Color, sector.EdgeIntensity,
-            sector.PadPx);
-        if (MenuArc(center, outerPx, edgePx, midAngle, sector.HalfApertureRad, sector.Color, sector.EdgeIntensity,
-            sector.PadPx))
+
+        // A sector counts when every arc of it was taken (the batch only fills up)
+        mSymbolScratch.Reset();
+        const int32 built = SOLHudSymbols::AppendRadialSector(center, mUiScale, midAngle, sector, bHighlighted,
+            mSymbolScratch);
+        if (ReplaySymbolPrims(mSymbolScratch) == built)
         {
             ++mLastRadialSectorCount;
         }
@@ -2483,30 +2443,23 @@ void ASOLFlightHud::DrawVelocityMarkers(const FSOLHudView& view, const FSOLShipS
 
     // The Unreal-handed universe frame has Unreal's axes, so the velocity direction is a render-space direction
     const FVector local = view.Rotation.UnrotateVector(relativeVelocity.GetUnsafeNormal() * HUD_DIRECTION_PROJECT_CM);
-    const float radius = HUD_VELOCITY_MARKER_RADIUS_PX * mUiScale;
+    const float radius = SOL::HudGeometry::VELOCITY_MARKER_RADIUS_PX * mUiScale;
     FVector2D screen;
 
     // Prograde (LT Good): a circle with three ticks (left, right, up)
     if (ProjectLocal(view, local, screen) && IsOnScreen(screen, radius))
     {
-        GlowRing(screen, radius, HUD_GOOD, 1.0f, 1.5f, HUD_VELOCITY_MARKER_SEGMENTS);
-        GlowLine(FVector2D(screen.X - radius, screen.Y), FVector2D(screen.X - 2.0f * radius, screen.Y), HUD_GOOD,
-            1.0f, 1.5f);
-        GlowLine(FVector2D(screen.X + radius, screen.Y), FVector2D(screen.X + 2.0f * radius, screen.Y), HUD_GOOD,
-            1.0f, 1.5f);
-        GlowLine(FVector2D(screen.X, screen.Y - radius), FVector2D(screen.X, screen.Y - 2.0f * radius), HUD_GOOD,
-            1.0f, 1.5f);
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendPrograde(screen, mUiScale, mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
     }
 
     // Retrograde (LT Hostile): a circle with a cross
     if (ProjectLocal(view, -local, screen) && IsOnScreen(screen, radius))
     {
-        const float arm = radius * 0.7f;
-        GlowRing(screen, radius, HUD_HOSTILE, 1.0f, 1.5f, HUD_VELOCITY_MARKER_SEGMENTS);
-        GlowLine(FVector2D(screen.X - arm, screen.Y - arm), FVector2D(screen.X + arm, screen.Y + arm), HUD_HOSTILE,
-            1.0f, 1.5f);
-        GlowLine(FVector2D(screen.X - arm, screen.Y + arm), FVector2D(screen.X + arm, screen.Y - arm), HUD_HOSTILE,
-            1.0f, 1.5f);
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendRetrograde(screen, mUiScale, mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
     }
 }
 
@@ -2561,10 +2514,11 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
 
     // Scope layout: the plane is an ellipse (the tilted disc); below it the longest downward stem (plus half a
     // selected blip) is reserved so no blip reaches the range label or the screen edge
-    const float radius = HUD_RADAR_RADIUS_PX * mUiScale;
+    const float radius = SOL::HudGeometry::RADAR_RADIUS_PX * mUiScale;
     const float labelHeight = HUD_LINE_SMALL_PX * mUiScale;
-    const float squashedRadius = radius * HUD_RADAR_TILT;
-    const float stalkReserve = radius * HUD_RADAR_STALK_SCALE + 0.5f * HUD_RADAR_SELECTED_BLIP_PX * mUiScale;
+    const float squashedRadius = radius * SOL::HudGeometry::RADAR_TILT;
+    const float stalkReserve = radius * SOL::HudGeometry::RADAR_STALK_SCALE
+        + 0.5f * SOLHudSymbols::RadarBlipPx(true, mUiScale);
     const float rightEdge = Canvas->ClipX - HUD_MARGIN_PX * mUiScale;
     const FVector2D center(rightEdge - radius,
         Canvas->ClipY - HUD_MARGIN_PX * mUiScale - labelHeight - stalkReserve - squashedRadius);
@@ -2575,58 +2529,27 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
             2.0f * squashedRadius);
     }
 
-    // Range rings with LT's sonar pulse travelling outward (strength = the HUD effects slider), the outer ring brighter
-    const double timeS = GetWorld()->GetRealTimeSeconds();
-    const double strength = FMath::Max(mShapeStrength, 0.0f);
-    for (const float ring : HUD_RADAR_RINGS)
-    {
-        const float gain = ring >= 1.0f ? HUD_RADAR_OUTER_RING_GAIN : 1.0f;
-        GlowEllipse(center, radius * ring, HUD_RADAR_TILT, HUD_PRIMARY,
-            gain * static_cast<float>(SOLRadar::SonarRingIntensity(ring, timeS, strength)));
-    }
-
-    // Fore-aft and side axes, the side and aft ticks outside the ring and the longer heading tick ahead
-    GlowLine(SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(-1.0, 0.0)),
-        SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(1.0, 0.0)), HUD_PRIMARY,
-        HUD_RADAR_AXIS_INTENSITY, 1.0f);
-    GlowLine(SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(0.0, -1.0)),
-        SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, FVector2D(0.0, 1.0)), HUD_PRIMARY,
-        HUD_RADAR_AXIS_INTENSITY, 1.0f);
-    const float tick = HUD_RADAR_TICK_PX * mUiScale;
-    GlowLine(FVector2D(center.X - radius - tick, center.Y), FVector2D(center.X - radius, center.Y), HUD_PRIMARY,
-        HUD_DIM, 1.0f);
-    GlowLine(FVector2D(center.X + radius, center.Y), FVector2D(center.X + radius + tick, center.Y), HUD_PRIMARY,
-        HUD_DIM, 1.0f);
-    GlowLine(FVector2D(center.X, center.Y + squashedRadius), FVector2D(center.X, center.Y + squashedRadius + tick),
-        HUD_PRIMARY, HUD_DIM, 1.0f);
-    GlowLine(FVector2D(center.X, center.Y - squashedRadius - HUD_RADAR_HEADING_TICK_PX * mUiScale),
-        FVector2D(center.X, center.Y - squashedRadius), HUD_PRIMARY, 1.0f, 1.5f);
-
-    // View cone: the camera's horizontal field of view around its heading on the plane (free look turns it)
+    // The scope: range rings with LT's sonar pulse travelling outward (strength = the HUD effects slider), the axes
+    // and ticks, the view cone (the camera's horizontal field of view around its heading on the plane; free look
+    // turns it) and the ship chevron
+    FSOLRadarScopeParams scope;
+    scope.Center = center;
+    scope.UiScale = mUiScale;
+    scope.TimeS = GetWorld()->GetRealTimeSeconds();
+    scope.Strength = FMath::Max(mShapeStrength, 0.0f);
     if (view != nullptr)
     {
         const FVector3d cameraForward = SOLRadar::ToShipFrame(FVector3d(view->Rotation.GetForwardVector()),
             FVector3d::ZeroVector, state.Orientation);
-        const double heading = SOLRadar::ShipAzimuth(cameraForward);
-        const double halfFov = FMath::Atan2(0.5 * Canvas->ClipX, FMath::Max(view->FocalPx, 1.0));
-        const bool bHasHeading = FVector2D(cameraForward.X, cameraForward.Y).Length() >= HUD_RADAR_CONE_MIN_LATERAL;
-        for (const double side : { -1.0, 1.0 })
-        {
-            if (!bHasHeading)
-            {
-                break;   // Looking almost straight up or down the plane: the heading is undefined
-            }
-            GlowLine(center, SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT,
-                SOLRadar::AzimuthToScope(heading + side * halfFov)), HUD_PRIMARY, HUD_RADAR_CONE_INTENSITY, 1.0f);
-        }
-    }
+        scope.ConeHeadingRad = SOLRadar::ShipAzimuth(cameraForward);
+        scope.ConeHalfFovRad = FMath::Atan2(0.5 * Canvas->ClipX, FMath::Max(view->FocalPx, 1.0));
 
-    // The ship: a small chevron at the centre pointing forward
-    const float chevron = HUD_RADAR_CHEVRON_PX * mUiScale;
-    GlowLine(FVector2D(center.X - chevron, center.Y + 0.6f * chevron), FVector2D(center.X, center.Y - 0.6f * chevron),
-        HUD_PRIMARY, HUD_RADAR_CHEVRON_INTENSITY, 1.0f);
-    GlowLine(FVector2D(center.X, center.Y - 0.6f * chevron), FVector2D(center.X + chevron, center.Y + 0.6f * chevron),
-        HUD_PRIMARY, HUD_RADAR_CHEVRON_INTENSITY, 1.0f);
+        // Looking almost straight up or down the plane: the heading is undefined, no cone
+        scope.bHasCone = FVector2D(cameraForward.X, cameraForward.Y).Length() >= HUD_RADAR_CONE_MIN_LATERAL;
+    }
+    mSymbolScratch.Reset();
+    SOLHudSymbols::AppendRadarScope(scope, mSymbolScratch);
+    ReplaySymbolPrims(mSymbolScratch);
 
     // Contacts within the budget (the selected one first, then the nearest): a foot tick on the plane, a stem to the
     // contact's height and a blip; above the plane solid and filled in Primary, below dashed and hollow in Secondary
@@ -2634,9 +2557,6 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
     SOLRadar::SelectContacts(mRadarContacts, mRadarContacts.Num(), mRadarOrder);
     mLastRadarAboveCount = 0;
     mLastRadarBelowCount = 0;
-    const float footHalf = HUD_RADAR_FOOT_HALF_PX * mUiScale;
-    const double dashPx = SOLRadar::StemDashPx * mUiScale;
-    const double gapPx = SOLRadar::StemGapPx * mUiScale;
     UFont* small = GetHudFont(ESOLHudFont::Small);
     FVector2D drawnTops[SOLRadar::MaxDrawnContacts];
     int32 drawnCount = 0;
@@ -2655,8 +2575,10 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
         const bool bBeyond = contact.RelativePositionM.SquaredLength() > rangeM * rangeM;
         const float intensity = style.bLarge ? 1.0f
             : ((point.bBehind ? HUD_RADAR_BEHIND_INTENSITY : 1.0f) * (bBeyond ? HUD_RADAR_BEYOND_INTENSITY : 1.0f));
-        const FVector2D foot = SOLRadar::ScopeToScreen(center, radius, HUD_RADAR_TILT, point.ScreenOffsetUnit);
-        const FVector2D top = SOLRadar::StemTop(foot, point.HeightStalkUnit, radius, HUD_RADAR_STALK_SCALE);
+        const FVector2D foot = SOLRadar::ScopeToScreen(center, radius, SOL::HudGeometry::RADAR_TILT,
+            point.ScreenOffsetUnit);
+        const FVector2D top = SOLRadar::StemTop(foot, point.HeightStalkUnit, radius,
+            SOL::HudGeometry::RADAR_STALK_SCALE);
 
         // A blip on top of one already drawn (moons stacked on their planet) is skipped; the selected one comes first
         if (SOLRadar::IsCrowded(TConstArrayView<FVector2D>(drawnTops, drawnCount), top, mergePx))
@@ -2666,34 +2588,13 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
         drawnTops[drawnCount++] = top;
 
         ++(bAbove ? mLastRadarAboveCount : mLastRadarBelowCount);
-        GlowLine(FVector2D(foot.X - footHalf, foot.Y), FVector2D(foot.X + footHalf, foot.Y), color,
-            HUD_RADAR_FOOT_INTENSITY * intensity, 1.0f);
-        if (style.bDashedStem)
-        {
-            // Dashes from the plane down to the blip
-            GlowDashedLine(foot, top, dashPx, gapPx, color, HUD_RADAR_STEM_INTENSITY * intensity);
-        }
-        else
-        {
-            GlowLine(foot, top, color, HUD_RADAR_STEM_INTENSITY * intensity, 1.0f);
-        }
-
-        const float blip = (style.bLarge ? HUD_RADAR_SELECTED_BLIP_PX : HUD_RADAR_BLIP_PX) * mUiScale;
-        const float blipRing = style.bHollowBlip ? blip : 0.5f * blip;   // The blip's outer radius
-        if (style.bHollowBlip)
-        {
-            // A ring as wide as the blip is tall, so its hollow centre survives the glow at 720p
-            GlowRing(top, blipRing, color, HUD_RADAR_BLIP_INTENSITY * intensity, 1.0f, HUD_RADAR_CANVAS_SEGMENTS);
-        }
-        else
-        {
-            GlowDot(top, 0.5f * blip, color, HUD_RADAR_BLIP_INTENSITY * intensity);
-        }
+        mSymbolScratch.Reset();
+        SOLHudSymbols::AppendRadarContact(foot, top, style, intensity, mUiScale, mSymbolScratch);
+        ReplaySymbolPrims(mSymbolScratch);
         if (style.bLarge)
         {
-            // Highlight ring and the name to the right of the blip, flipped to its left at the screen edge
-            GlowRing(top, blipRing + HUD_RADAR_HIGHLIGHT_GAP_PX * mUiScale, color, HUD_RADAR_STEM_INTENSITY, 1.0f,
-                HUD_RADAR_CANVAS_SEGMENTS);
+            // The name to the right of the blip, flipped to its left at the screen edge
+            const float blip = SOLHudSymbols::RadarBlipPx(true, mUiScale);
             mText.Reset();
             point.Name.AppendString(mText);
             float labelWidth = 0.0f;

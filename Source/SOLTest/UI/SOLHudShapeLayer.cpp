@@ -126,6 +126,21 @@ void SSOLHudShapeLayer::ResetFrame()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sets retain mode: a retained picture may be cached by an invalidation root (not volatile), the HUD's is volatile
+void SSOLHudShapeLayer::SetRetainBatch(const bool bRetain)
+{
+    mIsRetainBatch = bRetain;
+    ForceVolatile(!bRetain);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Retain mode: the owner refilled the batch, so the widget's cached paint is invalidated
+void SSOLHudShapeLayer::MarkBatchChanged()
+{
+    Invalidate(EInvalidateWidgetReason::Paint);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Adds a soft dark backing under a hologram panel (its darkness scaled by opacity, in a colour's RGB); false when the
 // buffer is full
 bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx, const float opacity,
@@ -160,8 +175,9 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
     mLastPaintedTextCount = 0;
     mLastPaintedBackingCount = 0;
 
-    // Only what the HUD filled this frame or the last (Slate may paint before or after DrawHUD in a frame)
-    if (GFrameCounter > mBatchFrame + 1 || !FSlateApplication::IsInitialized())
+    // Only what the HUD filled this frame or the last (Slate may paint before or after DrawHUD in a frame); a retained
+    // picture every paint
+    if (!ShouldPaintBatch(mIsRetainBatch, mBatchFrame, GFrameCounter) || !FSlateApplication::IsInitialized())
     {
         return layerId;
     }
