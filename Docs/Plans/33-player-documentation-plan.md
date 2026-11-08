@@ -238,13 +238,20 @@ Builds on: D24, D27. Depends on 33d-ii. SDD section 9.
    line's `Tools\WritePlayerGuide.bat` read true once the Help page (33d-ii) and the tool (this part) exist; adjust
    them if not. `SOLTest.PlayerGuide.UpToDate` is written in this part (moved from 33a). The writer saves with
    `EEncodingOptions::ForceUTF8WithoutBOM` (the © banner would otherwise make UTF-16).
-1. [ ] `SOL::CommandLine::WRITE_PLAYER_GUIDE` (exists), `SOL::Paths::PLAYER_GUIDE_FILE` / `PLAYER_GUIDE_IMAGE_DIR` (exist);
+1. [x] `SOL::CommandLine::WRITE_PLAYER_GUIDE` (exists), `SOL::Paths::PLAYER_GUIDE_FILE` / `PLAYER_GUIDE_IMAGE_DIR` (exist);
    `Menu/SOLPlayerGuideWriter` (non-shipping): open Help, one shot per tab plus the hover shot, write the markdown,
    move the images, log and quit (non-zero on failure).
-2. [ ] `Tools/WritePlayerGuide.bat` / `.ps1` (refuses while the editor has the project open).
-3. [ ] Run it twice: the second run leaves `Docs/PLAYER_GUIDE.md` byte for byte the same; `SOLTest.PlayerGuide.UpToDate`
+2. [x] `Tools/WritePlayerGuide.bat` / `.ps1` (refuses while the editor has the project open).
+3. [x] Run it twice: the second run leaves `Docs/PLAYER_GUIDE.md` byte for byte the same; `SOLTest.PlayerGuide.UpToDate`
    (a failing test, D27) green; the player's `GameUserSettings.ini` unchanged.
-4. [ ] Review (fresh opus/xhigh); fixes; full suite; commit `Issue #33: Part 33e - generated player guide`; push.
+4. [x] Review (fresh opus/xhigh); fixes; full suite; commit `Issue #33: Part 33e - generated player guide`; push.
+
+   **Done (2026-11-08, SDD 20):** tests first by a separate opus/high author from the contract (8 new
+   `SOLTest.PlayerGuide` cases, red on stubs 8 of 17), then green; `Menu/SOLPlayerGuideWriter`, the tool (a 28 s run,
+   the guide byte-identical on every re-run, `GameUserSettings.ini` unchanged), `UpToDate` green and red after a
+   changed byte; the review (1 must-fix: `.gitattributes` keeps the guide LF; 7 should-fix; nits) fixed. Open for the
+   user: the Keyboard image shows the diagram only down to the fold (the bottom row, space bar and mouse are below it)
+   and every glossary image shows the first rows of its tab only (one window shot per tab, as section 9 says).
 
 ### 33e-ii: screenshot crops for the map glossary rows (D39; opus/high; grill-me the open points first)
 
@@ -343,3 +350,6 @@ Builds on: D25.
   text-sample boxes at the HUD's size, floor 1.0). Full suite 1718 / 0, all smokes green, the Help passes inside the
   budget. Note: the 1280x720 `-samples` shots land above the sample row (the scroll offset logged is right; the shot
   aid only, the 1080 shots and the 720 Overlays end shot show the samples, and the 720 checks pass). Next: 33e.
+- 2026-11-08: 33e done (SDD 20): `-SOLWritePlayerGuide` and `Tools\WritePlayerGuide.bat` write the generated
+  `Docs/PLAYER_GUIDE.md` and its six images (about 0.8 MB each after the lossless recompression);
+  `SOLTest.PlayerGuide.UpToDate` and `ImagesExist`. Next: 33e-ii (grill-me first) or 33f.

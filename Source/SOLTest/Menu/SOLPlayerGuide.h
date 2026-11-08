@@ -5,13 +5,24 @@
 
 #pragma once
 
+#include "Menu/SOLGlossary.h"
+
 #include "CoreMinimal.h"
+
+// One screenshot the guide shows (SDD 33 section 9, D24): the Help tab shown, whether a key is hovered (the Keyboard
+// tab's hover strip), and the image's file name in SOL::Paths::PLAYER_GUIDE_IMAGE_DIR
+struct FSOLPlayerGuideShot
+{
+    ESOLHelpTab Tab = ESOLHelpTab::Keyboard;
+    bool bHover = false;
+    const TCHAR* FileName = nullptr;
+};
 
 /**
  * The generated player guide (SDD 33 section 9, D8, D24, D27), pure and test-first: the whole Docs/PLAYER_GUIDE.md
  * text from SOLMenuText::CONTROL_ROWS and GLOSSARY_ENTRIES at a key array (the guide uses
- * SOLKeyBindings::DefaultKeys()), and the staleness check SOLTest.PlayerGuide.UpToDate runs. -SOLWritePlayerGuide
- * writes it (part 33e).
+ * SOLKeyBindings::DefaultKeys()), the staleness check SOLTest.PlayerGuide.UpToDate runs, and the pieces the
+ * -SOLWritePlayerGuide run (FSOLPlayerGuideWriter, 33e) uses: the flag test, the shot list, the paths and the writer.
  */
 namespace SOLPlayerGuide
 {
@@ -31,4 +42,29 @@ namespace SOLPlayerGuide
 
     // Returns the guide file's full path: FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_FILE
     SOLTEST_API FString GuideFilePath();
+
+    // Returns whether a command line asks for the guide run: the switch -SOLWritePlayerGuide (or /SOLWritePlayerGuide)
+    // as a whole token, case ignored (FParse::Param), so -SOLWritePlayerGuideX or SOLWritePlayerGuide=1 do not
+    SOLTEST_API bool IsWriteRequested(const TCHAR* commandLine);
+
+    // Returns the guide's screenshots in the order the run takes them: the Keyboard tab, the Keyboard tab with a key
+    // hovered, then each glossary tab in SOLMenuText::GLOSSARY_TABS order (file names from SOL::Paths)
+    SOLTEST_API TConstArrayView<FSOLPlayerGuideShot> Shots();
+
+    // Returns an image's full path in the repository: FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + name
+    SOLTEST_API FString ImagePath(const TCHAR* fileName);
+
+    // Returns where the run captures an image before it moves it into place: the full path of
+    // SOL::Paths::PLAYER_GUIDE_CAPTURE_PREFIX + name in FPaths::ScreenShotDir()
+    SOLTEST_API FString CapturePath(const TCHAR* fileName);
+
+    // Fills the target of every markdown image ("![alt](target)") of a text, in order (emptied first)
+    SOLTEST_API void ReferencedImages(const FString& markdown, TArray<FString>& outTargets);
+
+    // Writes a text to a file as UTF-8 without a byte order mark, its characters as given (no line ending change),
+    // replacing the file and making its folder; returns whether it was written
+    SOLTEST_API bool WriteGuideFile(const FString& path, const FString& text);
+
+    // Returns the message a stale or missing guide fails with: it names Tools\WritePlayerGuide.bat (D27)
+    SOLTEST_API FString StaleMessage();
 }

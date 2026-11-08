@@ -8,7 +8,7 @@ interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
-Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii built, not committed yet (2026-11-08, section 20): the Help page and its HUD glossary, two layout questions open with the user (section 18); 33e next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-ii (grill-me first) or 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -922,3 +922,59 @@ rule C's shrink, contract C4 updated by the test author) and 3 should-fix (the b
 resized view built once for its old box, the post-fit below the floor), all fixed; nits fixed (stale comments, one
 split helper for `SamplePartCount` and `LayoutSample`, a named smoke end stage). Not built: a smoke rebind of a key named
 in a sample (the pending-size path is covered by reasoning only); other resolutions (900p, 1440p, 4K, one-eye) are 33f.
+
+**Reading of D44 as built in 33d-iii (recorded in 33e):** `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0 x pixels per unit is a
+floor, not a target: a wide sample is first drawn unwrapped at the HUD's own size, then wrapped at spaces at that
+size, and only shrinks (never below the floor) when a single part still does not fit; so the HUD-size wrap comes
+before any shrink.
+
+**33e (2026-11-08, commit `Issue #33: Part 33e - generated player guide`).** The generated player guide (section 9).
+Tests first by a separate opus/high author from a contract (no production code shown): eight new cases in
+`PlayerGuideTest.cpp` (`WriteFlag`, `Shots`, `Paths`, `ReferencedImages`, `WriteFile`, `StaleMessage`, `UpToDate`,
+`ImagesExist`); red on stubs (8 of 17 in `SOLTest.PlayerGuide`), then green.
+
+As built:
+- **Pure pieces** (`SOLPlayerGuide`): `IsWriteRequested` (FParse::Param on a given command line), `Shots()` (the
+  Keyboard tab, the Keyboard tab with O hovered, then each glossary tab; `FSOLPlayerGuideShot`), `ImagePath`,
+  `CapturePath` (`SOL::Paths::PLAYER_GUIDE_CAPTURE_PREFIX` in the screenshot folder), `ReferencedImages`,
+  `WriteGuideFile` (`ForceUTF8WithoutBOM`, the text as given, the folder made) and `StaleMessage`
+  (`SOLMenuText::GUIDE_STALE_MESSAGE`, which names `Tools\WritePlayerGuide.bat`).
+- **The run** (`Menu/SOLPlayerGuideWriter`, `FSOLPlayerGuideWriter`, `!UE_BUILD_SHIPPING`, started by
+  `USOLMenuSubsystem` on a once-per-frame timer; the flag forces the main menu and the smoke settings slot with the
+  46i engine settings snapshot): lifts the window size limit and sets `r.SetRes 1920x1080w` (a windowed game is
+  otherwise clamped to a 1080p desktop's work area), waits for the main menu at 1920x1080, the default keys and no
+  shader still compiling, clicks Help, and for each shot selects the tab, sets or clears the hovered key, parks the
+  cursor, checks tab and hover, and requests a window screenshot with the UI. Once every capture is on disk and no
+  longer growing it copies them next to their images (`.new`), writes the guide, then renames the copies over the
+  images, so a failure before that swap keeps the old guide and images. It logs `PlayerGuide WROTE` / `DONE` or
+  `PlayerGuide FAIL` and quits through `FPlatformMisc::RequestExitWithStatus` (1 on a failure); a 120 s watchdog.
+- **The tool** (`Tools/WritePlayerGuide.bat` / `.ps1`, the `RunTests` pattern): refuses while the editor has the
+  project open, runs `UnrealEditor.exe SOLTest.uproject -game -windowed -ResX=1920 -ResY=1080 -SOLWritePlayerGuide`
+  with plain arguments (no `-ExecCmds`), judges the run by its log lines and exit code, then recompresses the PNGs
+  losslessly with Pillow when it is installed (RGB, the alpha being opaque; about 30% smaller).
+- **Repository:** `.gitattributes` keeps `Docs/PLAYER_GUIDE.md` LF (`text eol=lf`), since `UpToDate` also rejects a CR
+  byte; the README links the guide (Documentation map) and lists the tool; `GUIDE_INTRO` ("Esc, then Help") and the
+  generated line ("run Tools\WritePlayerGuide.bat") were checked and are true as written.
+
+Verification: the tool runs in about 28 s (the game part 12 s); every re-run leaves `Docs/PLAYER_GUIDE.md`
+byte-identical (15,357 bytes: 15 tables, 69 `<kbd>` keys, 6 images; GitHub's renderer shows the 1 + 2 + 15 headings,
+118 table rows and the `<kbd>` tags); the player's `GameUserSettings.ini` is unchanged (md5 `cbcf9b65...2dc5`). The
+six 1920x1080 images were looked at (readable, nothing overflows): about 0.78-0.83 MB each, 4.9 MB together.
+`SOLTest.PlayerGuide.UpToDate` is green, and red with the fix command after one changed byte (restored).
+Full suite 1726 / 0 after the review fixes; all smokes green: `-SOLSmokeSolidMenu` 259/259 (191 s), `-SOLSmokeSolidMenuProfile`
+23/23 (22 passes PASS), `-SOLSmokeHoloMenu` 86/86, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24 at 1280x720 and
+1920x1080 (the 1080 run changes `GameUserSettings.ini`, restored from the copy, as before), `-SOLSmokeHoloMenuProfile`
+12/12.
+
+Deviations and notes: the writer quits through `RequestExitWithStatus` rather than `QuitGame` (no controller needed,
+and an exit code); the images are staged rather than moved (all or nothing). The parked hologram cursor shows as a
+small arrow in the top-right corner of each image. The adversarial review (fresh opus, xhigh) found 1 must-fix (a CRLF
+checkout would fail `UpToDate` forever: `.gitattributes`) and 7 should-fix (half-written outputs on a failed move, the
+hover not checked, no exit code and a controller-dependent quit, the 1080p work-area clamp, the Pillow check throwing
+under PowerShell 5.1, a stale capture accepted after a failed delete, no wait for shader compiling), all fixed, and
+nits (ARCHITECTURE wording, comments, the settings flag check, the duplicated smoke helpers added to the existing
+`Docs/TECH_DEBT.md` item, a PNG signature check so a Git LFS pointer file fails `ImagesExist`, the ps1 `$Matches` use
+and the in-place save), all fixed. **Open for the user:** the Keyboard image shows the diagram down to the tab's fold
+only (the bottom letter row, the space bar row and the mouse are below it), and each glossary image shows the first
+rows of its tab (one window shot per tab, section 9); a scrolled second shot or a diagram-only capture would be a
+layout decision.

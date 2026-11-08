@@ -1809,8 +1809,8 @@ namespace SOL
                                                                                   // plane at this radius from its centre
         inline constexpr const TCHAR* RING_HEIGHT_KM = TEXT("SOLRingHeightKm="); // ...and this far above that plane
         inline constexpr const TCHAR* WRITE_PLAYER_GUIDE = TEXT("SOLWritePlayerGuide"); // Write Docs/PLAYER_GUIDE.md
-                                                                                         // and its images (SDD 33,
-                                                                                         // its writer lands in 33e)
+                                                                                         // and its images, then quit
+                                                                                         // (SDD 33 section 9)
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
         inline constexpr const TCHAR* SMOKE_CONSOLE = TEXT("SOLSmokeConsole="); // Console commands ('|'-separated) run
                                                                                   // just before the -SOLSmokeShot screenshot
@@ -2041,6 +2041,9 @@ namespace SOL
         inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_GLOSSARY[] = { TEXT("33-help-glossary-flight-hud.png"),
             TEXT("33-help-glossary-targets-radar.png"), TEXT("33-help-glossary-overlays-route.png"),
             TEXT("33-help-glossary-menus-map.png") };
+        // Before an image's name where the -SOLWritePlayerGuide run captures it (FPaths::ScreenShotDir()), until the
+        // run has every shot and moves them into PLAYER_GUIDE_IMAGE_DIR
+        inline constexpr const TCHAR* PLAYER_GUIDE_CAPTURE_PREFIX = TEXT("PlayerGuide_");
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's

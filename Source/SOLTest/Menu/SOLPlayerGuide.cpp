@@ -12,7 +12,10 @@
 #include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
 
+#include "HAL/FileManager.h"
 #include "Misc/Crc.h"
+#include "Misc/FileHelper.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
 
 static_assert(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY) == UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_TABS),
@@ -30,6 +33,12 @@ namespace
     constexpr const TCHAR* GUIDE_FLAG_PREFIX = TEXT("-");           // Before the command-line flag's name
     constexpr TCHAR GUIDE_HEX_COLOR_FORMAT[] = TEXT("#%02X%02X%02X"); // A colour as "#RRGGBB" (Printf: an array)
     constexpr TCHAR GUIDE_HASH_FORMAT[] = TEXT("%08X");             // The input hash as 8 hex digits
+    constexpr const TCHAR* GUIDE_IMAGE_OPEN = TEXT("![");           // A markdown image: "![alt](target)"
+    constexpr int32 GUIDE_IMAGE_OPEN_LEN = 2;
+    constexpr const TCHAR* GUIDE_IMAGE_MIDDLE = TEXT("](");
+    constexpr int32 GUIDE_IMAGE_MIDDLE_LEN = 2;
+    constexpr TCHAR GUIDE_IMAGE_CLOSE = TEXT(')');
+    constexpr int32 GUIDE_FIXED_SHOTS = 2;                          // The Keyboard tab's shots: plain and hovered
 
     //////////////////////////////////////////////////////////////////////////
     // Appends a line and its '\n'
@@ -272,4 +281,104 @@ bool SOLPlayerGuide::IsGuideCurrent(const FString& fileText, const FString& gene
 FString SOLPlayerGuide::GuideFilePath()
 {
     return FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_FILE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a command line holds the -SOLWritePlayerGuide switch as a whole token
+bool SOLPlayerGuide::IsWriteRequested(const TCHAR* commandLine)
+{
+    return commandLine != nullptr && FParse::Param(commandLine, SOL::CommandLine::WRITE_PLAYER_GUIDE);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the guide's screenshots in shot order: the Keyboard tab, its hover shot, then each glossary tab
+TConstArrayView<FSOLPlayerGuideShot> SOLPlayerGuide::Shots()
+{
+    static const FSOLPlayerGuideShot SHOTS[] = {
+        { ESOLHelpTab::Keyboard, false, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD },
+        { ESOLHelpTab::Keyboard, true, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER },
+        { ESOLHelpTab::FlightHud, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[0] },
+        { ESOLHelpTab::TargetsRadar, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[1] },
+        { ESOLHelpTab::OverlaysRoute, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[2] },
+        { ESOLHelpTab::MenusMap, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[3] },
+    };
+    static_assert(UE_ARRAY_COUNT(SHOTS) == GUIDE_FIXED_SHOTS + UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY),
+        "one shot per glossary tab after the two Keyboard shots");
+    return SHOTS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an image's full path in the repository's image folder
+FString SOLPlayerGuide::ImagePath(const TCHAR* fileName)
+{
+    return FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + fileName;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an image's capture path in the screenshot folder (full)
+FString SOLPlayerGuide::CapturePath(const TCHAR* fileName)
+{
+    return FPaths::ConvertRelativePathToFull(FPaths::ScreenShotDir()
+        / (FString(SOL::Paths::PLAYER_GUIDE_CAPTURE_PREFIX) + fileName));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the target of every "![alt](target)" of a text, in order
+void SOLPlayerGuide::ReferencedImages(const FString& markdown, TArray<FString>& outTargets)
+{
+    outTargets.Reset();
+    const int32 length = markdown.Len();
+    int32 from = 0;
+    while (from < length)
+    {
+        // The next "![", its "](" and the closing ')' (each search starts inside the text: no start clamp)
+        const int32 open = markdown.Find(GUIDE_IMAGE_OPEN, ESearchCase::CaseSensitive, ESearchDir::FromStart, from);
+        if (open == INDEX_NONE)
+        {
+            return;
+        }
+        const int32 altEnd = open + GUIDE_IMAGE_OPEN_LEN < length ? markdown.Find(GUIDE_IMAGE_MIDDLE,
+            ESearchCase::CaseSensitive, ESearchDir::FromStart, open + GUIDE_IMAGE_OPEN_LEN) : INDEX_NONE;
+        if (altEnd == INDEX_NONE)
+        {
+            return;
+        }
+        const int32 targetStart = altEnd + GUIDE_IMAGE_MIDDLE_LEN;
+        int32 close = INDEX_NONE;
+        for (int32 index = targetStart; index < length; ++index)
+        {
+            if (markdown[index] == GUIDE_IMAGE_CLOSE)
+            {
+                close = index;
+                break;
+            }
+        }
+        if (close == INDEX_NONE)
+        {
+            return;
+        }
+        outTargets.Add(markdown.Mid(targetStart, close - targetStart));
+        from = close + 1;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes a text as UTF-8 without a BOM (the folder made, the file replaced); returns whether it was written
+bool SOLPlayerGuide::WriteGuideFile(const FString& path, const FString& text)
+{
+    IFileManager& files = IFileManager::Get();
+    const FString folder = FPaths::GetPath(path);
+    if (!folder.IsEmpty() && !files.DirectoryExists(*folder) && !files.MakeDirectory(*folder, true))
+    {
+        return false;
+    }
+    return FFileHelper::SaveStringToFile(text, *path, FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM, &files,
+        FILEWRITE_None);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the stale-guide message (the fix command in it)
+FString SOLPlayerGuide::StaleMessage()
+{
+    return SOLMenuText::GUIDE_STALE_MESSAGE;
 }

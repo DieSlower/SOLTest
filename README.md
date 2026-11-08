@@ -116,6 +116,7 @@ Committed assets in `Content/` mean a fresh clone already runs. The scripts unde
 | `Tools/Map/create_hologram_assets.py` | Map hologram materials |
 | `Tools/Npc/create_npc_assets.py` | NPC point and hull renderer assets |
 | `Tools/UI/create_hud_shape_material.py` | HUD glow-shape material |
+| `Tools/WritePlayerGuide.bat` | `Docs/PLAYER_GUIDE.md` and its Help screenshots (a 1920x1080 game run, editor closed) |
 
 Asset paths are centralised in `Source/SOLTest/SOLConstants.h`.
 
@@ -208,16 +209,17 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 103.2 h |
+| Work time (wall-clock) | 104.8 h |
 | Time spent answering questions | 8.6 h |
-| Tokens | 5,868.3M |
-| Notional API price | $2,329 |
-| Subagents dispatched | 472 |
+| Tokens | 5,901.3M |
+| Notional API price | $2,345 |
+| Subagents dispatched | 475 |
 <!-- METRICS:END -->
 
 ## Documentation map
 
 - [CLAUDE.md](CLAUDE.md): workflow rules, build commands and known hands-on checks.
+- [Docs/PLAYER_GUIDE.md](Docs/PLAYER_GUIDE.md): player guide: every control and HUD element, with the Help page's screenshots (generated).
 - [Docs/TECH_DEBT.md](Docs/TECH_DEBT.md): known tech debt in existing code (imperfections and deferred cleanups).
 - [Docs/ARCHITECTURE.md](Docs/ARCHITECTURE.md): modules, update order, coordinate frames, command-line flags.
 - [Docs/GAME_MECHANICS.md](Docs/GAME_MECHANICS.md): every control, mechanic and tunable.

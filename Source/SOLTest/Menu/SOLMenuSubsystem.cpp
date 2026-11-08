@@ -11,6 +11,7 @@
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLMenuSmoke.h"
 #include "Menu/SOLPauseMenuWidget.h"
+#include "Menu/SOLPlayerGuide.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcSubsystem.h"
@@ -98,6 +99,7 @@ void USOLMenuSubsystem::Deinitialize()
         world->GetTimerManager().ClearTimer(mSmokeTimer);
         world->GetTimerManager().ClearTimer(mSolidProfileTimer);
         world->GetTimerManager().ClearTimer(mSolidSmokeTimer);
+        world->GetTimerManager().ClearTimer(mGuideWriterTimer);
 
         // The settings outlive the world (game instance): the mix pushed at begin play goes with the world
         if (Settings != nullptr)
@@ -121,6 +123,7 @@ void USOLMenuSubsystem::Deinitialize()
     mSmoke.Reset();
     mSolidProfileSmoke.Reset();
     mSolidSmoke.Reset();
+    mGuideWriter.Reset();
     mQueuedEvents.Empty();
     mOnStateChanged.Clear();
     Super::Deinitialize();
@@ -178,6 +181,20 @@ void USOLMenuSubsystem::OnWorldBeginPlay(UWorld& world)
         world.GetTimerManager().SetTimer(mSolidSmokeTimer, this, &USOLMenuSubsystem::StepSolidSmoke,
             MENU_SMOKE_EVERY_FRAME_SECONDS, everyFrame);
     }
+
+#if !UE_BUILD_SHIPPING
+    // The player guide run (SDD 33 section 9): Help's shots and Docs/PLAYER_GUIDE.md, one step per frame, then quit
+    if (SOLPlayerGuide::IsWriteRequested(FCommandLine::Get()))
+    {
+        mGuideWriter = MakeUnique<FSOLPlayerGuideWriter>();
+        mGuideWriter->Start(*this);
+        FTimerManagerTimerParameters everyFrame;
+        everyFrame.bLoop = true;
+        everyFrame.bMaxOncePerFrame = true;
+        world.GetTimerManager().SetTimer(mGuideWriterTimer, this, &USOLMenuSubsystem::StepGuideWriter,
+            MENU_SMOKE_EVERY_FRAME_SECONDS, everyFrame);
+    }
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -198,7 +215,8 @@ bool USOLMenuSubsystem::DoesSupportWorldType(const EWorldType::Type worldType) c
 // Returns true when the game starts in the main menu
 bool USOLMenuSubsystem::ShouldStartInMenu()
 {
-    // -SOLNoMenu wins, then -SOLMenu / -SOLMenuSmoke / -SOLSmokeSolidMenuProfile / -SOLSmokeSolidMenu; any other -SOL*
+    // -SOLNoMenu wins, then -SOLMenu / -SOLMenuSmoke / -SOLSmokeSolidMenuProfile / -SOLSmokeSolidMenu /
+    // -SOLWritePlayerGuide; any other -SOL*
     // switch is a verification or start flag that has always started straight in flight
     TArray<FString> tokens;
     TArray<FString> switches;
@@ -220,7 +238,8 @@ bool USOLMenuSubsystem::ShouldStartInMenu()
         if (name.Equals(SOL::CommandLine::MENU, ESearchCase::IgnoreCase)
             || name.Equals(SOL::CommandLine::MENU_SMOKE_NAME, ESearchCase::IgnoreCase)
             || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE, ESearchCase::IgnoreCase)
-            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU, ESearchCase::IgnoreCase))
+            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU, ESearchCase::IgnoreCase)
+            || name.Equals(SOL::CommandLine::WRITE_PLAYER_GUIDE, ESearchCase::IgnoreCase))
         {
             bForceMenu = true;
         }
@@ -661,6 +680,24 @@ void USOLMenuSubsystem::StepSolidProfileSmoke()
         world->GetTimerManager().ClearTimer(mSolidProfileTimer);
         mSolidProfileSmoke.Reset();
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one frame of the -SOLWritePlayerGuide run (non-shipping; the timer is never set otherwise)
+void USOLMenuSubsystem::StepGuideWriter()
+{
+#if !UE_BUILD_SHIPPING
+    UWorld* world = GetWorld();
+    if (!mGuideWriter.IsValid() || world == nullptr)
+    {
+        return;
+    }
+    if (mGuideWriter->Update(*this))
+    {
+        world->GetTimerManager().ClearTimer(mGuideWriterTimer);
+        mGuideWriter.Reset();
+    }
+#endif
 }
 
 //////////////////////////////////////////////////////////////////////////
