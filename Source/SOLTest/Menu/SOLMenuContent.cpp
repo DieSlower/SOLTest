@@ -7,7 +7,10 @@
 
 #include "Flight/SOLFlight.h"
 #include "Menu/SOLBindingLabel.h"
+#include "Menu/SOLGlossary.h"
+#include "Menu/SOLHudSymbolView.h"
 #include "Menu/SOLInfoText.h"
+#include "Menu/SOLKeyboardDiagram.h"
 #include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuButton.h"
@@ -145,6 +148,66 @@ namespace
         brush.SetImageSize(FVector2f(HAZARD_TILE_WIDTH_PX, HAZARD_HEIGHT_PX));
         brush.TintColor = FSlateColor(SOLSolidStyle::Linear(AMBER_COLOR));
         return brush;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33d-ii) Adds a HUD glossary row to a Help tab and registers it with the page: the symbol box (a recess holding
+    // a symbol view for a row with symbols or a text sample; an empty column for a row without art, rule (c)), then
+    // the name and the wrapping description at the given keys (text is a reused scratch)
+    void MenuContentAddHelpRow(UWidgetTree& tree, USOLReadOnlyPageWidget& page, UScrollBox& scroll, const int32 tab,
+        const int32 entry, const TArray<FString>& keys, FString& text)
+    {
+        using namespace SOL::MenuStyle;
+        using namespace SOL::Help;
+        const SOLMenuText::FGlossaryEntry& source = SOLMenuText::GLOSSARY_ENTRIES[entry];
+        FSOLHelpGlossaryRow row;
+        row.Entry = entry;
+        row.Tab = tab;
+
+        // The symbol column: the box is square with art, a bare column of its width without
+        UHorizontalBox* line = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+        row.Box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
+        row.Box->SetWidthOverride(GLOSSARY_SYMBOL_BOX);
+        const ESOLGlossaryArt art = SOLGlossary::EntryArt(entry);
+        if (art != ESOLGlossaryArt::None)
+        {
+            row.Box->SetHeightOverride(GLOSSARY_SYMBOL_BOX);
+            row.View = tree.ConstructWidget<USOLHudSymbolView>(USOLHudSymbolView::StaticClass());
+            if (art == ESOLGlossaryArt::Symbols)
+            {
+                FSOLGlossaryEntry resolved;
+                SOLGlossary::ResolveEntry(entry, resolved);
+                row.View->SetSymbols(resolved.Symbols, resolved.SymbolCount);
+            }
+            else
+            {
+                SOLGlossary::FormatEntryText(source.Sample, keys, text);
+                row.View->SetSample(text, entry);
+                row.LastSample = text;
+            }
+            row.Box->SetContent(USOLSolidPanel::MakeRecess(tree, row.View, GLOSSARY_SYMBOL_RECESS_PADDING));
+        }
+        UHorizontalBoxSlot* boxSlot = line->AddChildToHorizontalBox(row.Box);
+        boxSlot->SetPadding(FMargin(0.0f, 0.0f, BUTTON_GAP, 0.0f));
+        boxSlot->SetVerticalAlignment(VAlign_Top);
+
+        // The name (SemiBold, the heading colour) over the wrapping description
+        UVerticalBox* texts = tree.ConstructWidget<UVerticalBox>(UVerticalBox::StaticClass());
+        row.Name = SOLMenuContent::MakeText(tree, source.Name, BODY_FONT_SIZE, SOLSolidStyle::BrightTextColor(), false,
+            true);
+        row.Name->SetFont(SOLSolidStyle::MenuFont(USOLSolidMenuSubsystem::Get(&tree), ESOLMenuFontWeight::SemiBold,
+            BODY_FONT_SIZE));
+        texts->AddChildToVerticalBox(row.Name);
+        SOLGlossary::FormatEntryText(source.Description, keys, text);
+        row.Description = SOLMenuContent::MakeText(tree, text, BODY_FONT_SIZE, SOLSolidStyle::TextColor(), false,
+            true);
+        row.LastDescription = text;
+        texts->AddChildToVerticalBox(row.Description);
+        UHorizontalBoxSlot* textSlot = line->AddChildToHorizontalBox(texts);
+        textSlot->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
+        textSlot->SetVerticalAlignment(VAlign_Top);
+        Cast<UScrollBoxSlot>(scroll.AddChild(line))->SetPadding(FMargin(0.0f, 0.0f, 0.0f, GLOSSARY_ROW_GAP));
+        page.AddGlossaryRow(row);
     }
 }
 
@@ -426,6 +489,13 @@ USOLReadOnlyPageWidget* SOLMenuContent::BuildAboutPage(UWidgetTree& tree)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Builds the Help page
+USOLReadOnlyPageWidget* SOLMenuContent::BuildHelpPage(UWidgetTree& tree)
+{
+    return BuildReadOnlyPage(tree, ESOLReadOnlyPage::Help);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Builds a read-only tab page of a kind
 USOLReadOnlyPageWidget* SOLMenuContent::BuildReadOnlyPage(UWidgetTree& tree, const ESOLReadOnlyPage kind)
 {
@@ -448,6 +518,9 @@ void SOLMenuContent::FillReadOnlyTabs(USOLReadOnlyPageWidget& page, UWidgetTree&
         break;
     case ESOLReadOnlyPage::About:
         FillAboutTabs(page, tree);
+        break;
+    case ESOLReadOnlyPage::Help:
+        FillHelpTabs(page, tree);
         break;
     default:
         break;
@@ -632,4 +705,78 @@ void SOLMenuContent::FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tr
 USOLSettingsPageWidget* SOLMenuContent::BuildSettingsPage(UWidgetTree& tree)
 {
     return tree.ConstructWidget<USOLSettingsPageWidget>(USOLSettingsPageWidget::StaticClass());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills the Help tabs (SDD 33 sections 5, 7 and 8): the Keyboard tab's heading, live diagram and pointer to Controls,
+// then each glossary tab's heading and rows (symbol box, name, description), all at the default keys until the first
+// RefreshHelpPage
+void SOLMenuContent::FillHelpTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree)
+{
+    using namespace SOL::MenuStyle;
+    const TArray<FString> defaultKeys = SOLKeyBindings::DefaultKeys();
+
+    // Keyboard: the diagram the page owns, then the line pointing to the Controls page
+    UScrollBox& keys = page.GetFillScroll(static_cast<int32>(ESOLHelpTab::Keyboard));
+    MenuContentAddSection(tree, keys, SOLGlossary::TabHeading(ESOLHelpTab::Keyboard));
+    USOLKeyboardDiagram* diagram = tree.ConstructWidget<USOLKeyboardDiagram>(USOLKeyboardDiagram::StaticClass());
+    diagram->SetKeys(defaultKeys);
+    keys.AddChild(diagram);
+    page.SetDiagram(diagram, SOL::Help::DIAGRAM_START_LAYOUT_WIDTH);
+    UTextBlock* hint = MakeText(tree, SOLMenuText::HELP_KEYBOARD_CONTROLS, BODY_FONT_SIZE,
+        SOLSolidStyle::DimTextColor(), false, true);
+    Cast<UScrollBoxSlot>(keys.AddChild(hint))->SetPadding(FMargin(0.0f, ROW_GAP * 3.0f, 0.0f, 0.0f));
+    page.SetKeyboardHint(hint);
+
+    // The glossary tabs: one row per GLOSSARY_ENTRIES row of the tab (one index scratch reused)
+    page.ResetGlossaryRows(SOLGlossary::EntryCount());
+    TArray<int32> entries;
+    FString text;
+    for (int32 tab = static_cast<int32>(ESOLHelpTab::FlightHud); tab < SOLGlossary::TabCount(); ++tab)
+    {
+        UScrollBox& scroll = page.GetFillScroll(tab);
+        MenuContentAddSection(tree, scroll, SOLGlossary::TabHeading(static_cast<ESOLHelpTab>(tab)));
+        SOLGlossary::EntriesOfTab(static_cast<ESOLHelpTab>(tab), entries);
+        for (const int32 entry : entries)
+        {
+            MenuContentAddHelpRow(tree, page, scroll, tab, entry, defaultKeys, text);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Refreshes the Help page from the live keys: the diagram's keys (it skips an unchanged set), then each glossary
+// row's description and sample, each written only when its formatted text changed
+void SOLMenuContent::RefreshHelpPage(USOLReadOnlyPageWidget& page, const TArray<FString>& liveKeys)
+{
+    if (USOLKeyboardDiagram* diagram = page.GetDiagram())
+    {
+        diagram->SetKeys(liveKeys);
+    }
+    FString text;
+    for (FSOLHelpGlossaryRow& row : page.GetGlossaryRowsForRefresh())
+    {
+        // The description at the live keys, written only when it changed; a sample row's view gets its new sample
+        // (it rebuilds at its next update) only when the formatted sample changed
+        if (row.Entry < 0 || row.Entry >= SOLGlossary::EntryCount())
+        {
+            continue;
+        }
+        const SOLMenuText::FGlossaryEntry& source = SOLMenuText::GLOSSARY_ENTRIES[row.Entry];
+        SOLGlossary::FormatEntryText(source.Description, liveKeys, text);
+        if (text != row.LastDescription && row.Description != nullptr)
+        {
+            row.Description->SetText(FText::FromString(text));
+            row.LastDescription = text;
+        }
+        if (row.View != nullptr && row.View->IsSample())
+        {
+            SOLGlossary::FormatEntryText(source.Sample, liveKeys, text);
+            if (text != row.LastSample)
+            {
+                row.View->SetSample(text, row.Entry);
+                row.LastSample = text;
+            }
+        }
+    }
 }

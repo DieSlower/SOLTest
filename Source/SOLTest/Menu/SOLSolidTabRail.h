@@ -16,12 +16,13 @@
 
 class UScrollBox;
 class USizeBox;
+class UTextBlock;
 class USOLSolidPanel;
 struct FSOLSolidMenuFrame;
 class UWidgetTree;
 
 /**
- * Pure geometry of the tab rail (SDD 46 section 6.3, shared by Settings, Controls, Info and About), widget-free.
+ * Pure geometry of the tab rail (SDD 46 section 6.3, shared by Settings, Controls, Info, About and Help), widget-free.
  */
 namespace SOLSolidTabRail
 {
@@ -32,6 +33,25 @@ namespace SOLSolidTabRail
 
     // The height a rail of this many tabs needs: the rail padding on both sides plus each tab's height and gap
     SOLTEST_API float RailHeight(int32 tabCount);
+
+    // (33d-ii, SDD 33 D22) The rail with group captions: captioned[i] says a caption row (TAB_RAIL_CAPTION_HEIGHT,
+    // then BUTTON_GAP) sits above tab i; an index outside the view reads false. With an empty view or no true flag
+    // each function equals its caption-less form
+
+    // A tab's top in rail local units: the padding, one tab step per tab above it and one caption step per caption
+    // row up to and including its own (a negative index reads 0)
+    SOLTEST_API float TabTop(int32 index, TConstArrayView<bool> captioned);
+
+    // The top of the caption row above a tab (one caption step above the tab); -1 when the tab has none, including an
+    // index outside the view
+    SOLTEST_API float CaptionTop(int32 index, TConstArrayView<bool> captioned);
+
+    // The height a rail of this many tabs with these caption rows needs (a negative count reads 0)
+    SOLTEST_API float RailHeight(int32 tabCount, TConstArrayView<bool> captioned);
+
+    // A tab's hover trace (as TraceForTab(index)) at its captioned centre line, TabTop(index, captioned) plus half
+    // TAB_HEIGHT
+    SOLTEST_API FSOLSolidTrace TraceForTab(int32 index, TConstArrayView<bool> captioned);
 }
 
 /**
@@ -51,8 +71,11 @@ struct SOLTEST_API FSOLSolidTabRail
     GENERATED_BODY()
 
     // Builds the rail for a list of tab labels (button index = position) and returns the column widget (the recess
-    // in a box TAB_COLUMN_WIDTH wide); every button reports a click through onClicked
-    USizeBox* Build(UWidgetTree& tree, const TArray<FString>& labels, const FSOLMenuButtonClicked& onClicked);
+    // in a box TAB_COLUMN_WIDTH wide); every button reports a click through onClicked. (33d-ii, SDD 33 D22) A
+    // non-empty captions[i] draws a non-clickable group caption row above tab i (no captions: the rail lays out
+    // exactly as before)
+    USizeBox* Build(UWidgetTree& tree, const TArray<FString>& labels, const FSOLMenuButtonClicked& onClicked,
+        const TArray<FString>& captions = TArray<FString>());
 
     // Binds each button's hover trace to the rail's trace layer (the layer exists once the Slate widget is built)
     void Bind();
@@ -97,6 +120,18 @@ struct SOLTEST_API FSOLSolidTabRail
     // Returns whether the rail draws any hover trace
     bool IsAnyTraceShown() const;
 
+    // (33d-ii) Returns the number of group captions (verification)
+    int32 GetCaptionCount() const { return Captions.Num(); }
+
+    // (33d-ii) Returns a group caption's text block, or null (verification)
+    UTextBlock* GetCaption(int32 index) const;
+
+    // (33d-ii) Returns the tab a group caption sits above, or INDEX_NONE (verification)
+    int32 GetCaptionTab(int32 index) const
+    {
+        return CaptionTabs.IsValidIndex(index) ? CaptionTabs[index] : INDEX_NONE;
+    }
+
     UPROPERTY(Transient)
     TObjectPtr<USOLSolidPanel> Panel;       // The rail recess; its trace layer draws the hovered tab's trace
 
@@ -106,6 +141,11 @@ struct SOLTEST_API FSOLSolidTabRail
     UPROPERTY(Transient)
     FSOLSolidScrollStack Stack;             // The tabs' scrolling stack (46g)
 
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTextBlock>> Captions; // (33d-ii) The group captions, top to bottom
+
+    TArray<int32> CaptionTabs;              // The tab each caption sits above
+    TArray<bool> Captioned;                 // Per tab: a caption row sits above it (empty without captions)
     TArray<FSOLSolidTrace> Traces;          // Each tab's hover trace (rail local)
     float Strength = -1.0f;                 // Effects strength last pushed to the trace layer
 };

@@ -5,6 +5,7 @@
 
 #include "Menu/SOLMenuState.h"
 
+#include "Menu/SOLMenuText.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "SOLConstants.h"
 
@@ -359,6 +360,180 @@ bool FSOLMenuStateDeterminismTest::RunTest(const FString& /*parameters*/)
     // Sequence: Play, map open, Esc (consumed), map closed, Esc (pause), Resume, Esc (pause), Quit -> main menu
     TestTrue(TEXT("Sequence ends in MainMenu"), runA.Mode == EMenuMode::MainMenu);
     TestFalse(TEXT("Sequence ends with the map closed"), runA.bMapOpen);
+    return true;
+}
+
+// Help page entry lists (issue #33 Part 33d-ii, SDD 33 D10 / D16), written against the 33d-ii contract before the
+// production code existed:
+//
+//   enum class EMenuTab : uint8 { Resume, Controls, Help, Info, Settings, Demo, About, Quit, Count };
+//   enum class EMainMenuEntry : uint8 { Play, Demo, StartLocation, Controls, Help, Settings, About, Quit, Count };
+//   const TCHAR* MainMenuEntryLabel(EMainMenuEntry entry);   // "" (never null) for Count and past it
+//   const TCHAR* PauseTabLabel(EMenuTab tab);                // "" (never null) for Count and past it
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateTabOrderTest, "SOLTest.MenuState.TabOrder",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (D16) The pause tabs are Resume, Controls, Help, Info, Settings, Demo, About, Quit (0 to 7), Count 8; the page tabs
+// are exactly Controls, Help, Info, Settings, Demo and About
+bool FSOLMenuStateTabOrderTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLMenuState;
+    const EMenuTab order[] = { EMenuTab::Resume, EMenuTab::Controls, EMenuTab::Help, EMenuTab::Info,
+        EMenuTab::Settings, EMenuTab::Demo, EMenuTab::About, EMenuTab::Quit };
+    TestEqual(TEXT("eight pause tabs"), static_cast<int32>(EMenuTab::Count), static_cast<int32>(UE_ARRAY_COUNT(order)));
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(order)); ++index)
+    {
+        TestEqual(FString::Printf(TEXT("pause tab %d position"), index), static_cast<int32>(order[index]), index);
+    }
+    TestEqual(TEXT("Help follows Controls"), static_cast<int32>(EMenuTab::Help),
+        static_cast<int32>(EMenuTab::Controls) + 1);
+    TestEqual(TEXT("Info follows Help"), static_cast<int32>(EMenuTab::Info), static_cast<int32>(EMenuTab::Help) + 1);
+
+    // The page tabs (independent list)
+    const EMenuTab pages[] = { EMenuTab::Controls, EMenuTab::Help, EMenuTab::Info, EMenuTab::Settings, EMenuTab::Demo,
+        EMenuTab::About };
+    for (const EMenuTab tab : order)
+    {
+        bool bExpected = false;
+        for (const EMenuTab page : pages)
+        {
+            bExpected |= page == tab;
+        }
+        TestTrue(FString::Printf(TEXT("IsPageTab(%d) is %d"), static_cast<int32>(tab), bExpected ? 1 : 0),
+            IsPageTab(tab) == bExpected);
+    }
+    TestTrue(TEXT("IsPageTab(Help)"), IsPageTab(EMenuTab::Help));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateEntryListsTest, "SOLTest.MenuState.EntryLists",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (D16) The main stack is Play, Demo, Start, Controls, Help, Settings, About, Quit and the pause stack Resume,
+// Controls, Help, Info, Settings, Demo, About, Quit, with the SOLMenuText labels; both have 8 entries (more than the
+// visible cap, so they scroll), Help right after Controls; Count and past it label as "" (never null)
+bool FSOLMenuStateEntryListsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLMenuState;
+
+    // Main menu: order and labels
+    const EMainMenuEntry mainOrder[] = { EMainMenuEntry::Play, EMainMenuEntry::Demo, EMainMenuEntry::StartLocation,
+        EMainMenuEntry::Controls, EMainMenuEntry::Help, EMainMenuEntry::Settings, EMainMenuEntry::About,
+        EMainMenuEntry::Quit };
+    const TCHAR* const mainLabels[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
+        SOLMenuText::CONTROLS, SOLMenuText::HELP, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
+    static_assert(UE_ARRAY_COUNT(mainOrder) == UE_ARRAY_COUNT(mainLabels), "one label per main entry");
+    const int32 mainCount = static_cast<int32>(UE_ARRAY_COUNT(mainOrder));
+    TestEqual(TEXT("eight main entries"), static_cast<int32>(EMainMenuEntry::Count), mainCount);
+    for (int32 index = 0; index < mainCount; ++index)
+    {
+        TestEqual(FString::Printf(TEXT("main entry %d position"), index), static_cast<int32>(mainOrder[index]), index);
+        const TCHAR* label = MainMenuEntryLabel(mainOrder[index]);
+        if (TestNotNull(FString::Printf(TEXT("main entry %d label not null"), index), label))
+        {
+            TestEqual(FString::Printf(TEXT("main entry %d label"), index), FString(label), FString(mainLabels[index]));
+        }
+    }
+    TestEqual(TEXT("Start is the unformatted START_LOCATION_FORMAT"),
+        FString(MainMenuEntryLabel(EMainMenuEntry::StartLocation)), FString(TEXT("Start: {0}")));
+    TestEqual(TEXT("main Help label is \"Help\""), FString(MainMenuEntryLabel(EMainMenuEntry::Help)),
+        FString(TEXT("Help")));
+    TestEqual(TEXT("main Help follows Controls"), static_cast<int32>(EMainMenuEntry::Help),
+        static_cast<int32>(EMainMenuEntry::Controls) + 1);
+
+    // Pause menu: order and labels
+    const EMenuTab pauseOrder[] = { EMenuTab::Resume, EMenuTab::Controls, EMenuTab::Help, EMenuTab::Info,
+        EMenuTab::Settings, EMenuTab::Demo, EMenuTab::About, EMenuTab::Quit };
+    const TCHAR* const pauseLabels[] = { SOLMenuText::RESUME, SOLMenuText::CONTROLS, SOLMenuText::HELP,
+        SOLMenuText::INFO, SOLMenuText::SETTINGS, SOLMenuText::DEMO, SOLMenuText::ABOUT, SOLMenuText::QUIT_TAB };
+    static_assert(UE_ARRAY_COUNT(pauseOrder) == UE_ARRAY_COUNT(pauseLabels), "one label per pause tab");
+    const int32 pauseCount = static_cast<int32>(UE_ARRAY_COUNT(pauseOrder));
+    TestEqual(TEXT("eight pause tabs"), static_cast<int32>(EMenuTab::Count), pauseCount);
+    for (int32 index = 0; index < pauseCount; ++index)
+    {
+        const TCHAR* label = PauseTabLabel(pauseOrder[index]);
+        if (TestNotNull(FString::Printf(TEXT("pause tab %d label not null"), index), label))
+        {
+            TestEqual(FString::Printf(TEXT("pause tab %d label"), index), FString(label), FString(pauseLabels[index]));
+        }
+    }
+    TestEqual(TEXT("pause Help label is \"Help\""), FString(PauseTabLabel(EMenuTab::Help)), FString(TEXT("Help")));
+
+    // Both stacks are longer than the visible cap (they scroll)
+    TestTrue(TEXT("main stack exceeds STACK_MAX_VISIBLE_ENTRIES"),
+        mainCount > SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES);
+    TestTrue(TEXT("pause stack exceeds STACK_MAX_VISIBLE_ENTRIES"),
+        pauseCount > SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES);
+
+    // Count and past it: "" (never null)
+    const EMainMenuEntry badEntries[] = { EMainMenuEntry::Count, static_cast<EMainMenuEntry>(99),
+        static_cast<EMainMenuEntry>(255) };
+    for (const EMainMenuEntry bad : badEntries)
+    {
+        const TCHAR* label = MainMenuEntryLabel(bad);
+        if (TestNotNull(FString::Printf(TEXT("main entry %d label not null"), static_cast<int32>(bad)), label))
+        {
+            TestTrue(FString::Printf(TEXT("main entry %d label empty"), static_cast<int32>(bad)), label[0] == 0);
+        }
+    }
+    const EMenuTab badTabs[] = { EMenuTab::Count, static_cast<EMenuTab>(99), static_cast<EMenuTab>(255) };
+    for (const EMenuTab bad : badTabs)
+    {
+        const TCHAR* label = PauseTabLabel(bad);
+        if (TestNotNull(FString::Printf(TEXT("pause tab %d label not null"), static_cast<int32>(bad)), label))
+        {
+            TestTrue(FString::Printf(TEXT("pause tab %d label empty"), static_cast<int32>(bad)), label[0] == 0);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLMenuStateHelpEscapeTest, "SOLTest.MenuState.HelpEscape",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (D16) Esc on the pause menu's Help page closes the page (back to Resume, still paused) and a further Esc resumes,
+// as on Controls; re-selecting Help is no change; selection while Playing is ignored
+bool FSOLMenuStateHelpEscapeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLMenuState;
+    const EMenuTab pageTabs[] = { EMenuTab::Help, EMenuTab::Controls };
+    for (const EMenuTab tab : pageTabs)
+    {
+        const int32 value = static_cast<int32>(tab);
+        const FMenuState onPage = SelectTab(MenuStateTestPaused(), tab);
+        TestTrue(FString::Printf(TEXT("tab %d selected while paused"), value), onPage.Tab == tab);
+        TestTrue(FString::Printf(TEXT("tab %d: Esc closes the page"), value), EscapeClosesPage(onPage));
+        TestFalse(FString::Printf(TEXT("tab %d: re-selecting is no change"), value), IsTabChange(onPage, tab));
+
+        // First Esc: the page closes, the pause menu stays on Resume
+        const FMenuState closed = ClosePage(onPage);
+        TestTrue(FString::Printf(TEXT("tab %d: still paused after closing"), value), closed.Mode == EMenuMode::Paused);
+        TestTrue(FString::Printf(TEXT("tab %d: back on Resume"), value), closed.Tab == EMenuTab::Resume);
+        TestFalse(FString::Printf(TEXT("tab %d: Resume does not take Esc"), value), EscapeClosesPage(closed));
+
+        // Second Esc: resumes
+        TestTrue(FString::Printf(TEXT("tab %d: a second Esc resumes"), value),
+            Apply(closed, EMenuEvent::EscapePressed).Mode == EMenuMode::Playing);
+    }
+
+    // Help from another page is a change; selection while Playing leaves the tab unchanged
+    const FMenuState controls = SelectTab(MenuStateTestPaused(), EMenuTab::Controls);
+    TestTrue(TEXT("Controls to Help is a change"), IsTabChange(controls, EMenuTab::Help));
+    const FMenuState playing = MenuStateTestPlaying();
+    TestTrue(TEXT("Playing: Help selection ignored"), MenuStateTestEqual(SelectTab(playing, EMenuTab::Help), playing));
+    TestFalse(TEXT("Playing: Help is no change"), IsTabChange(playing, EMenuTab::Help));
+
+    // The main menu selects Help like any tab
+    const FMenuState mainHelp = SelectTab(Initial(), EMenuTab::Help);
+    TestTrue(TEXT("MainMenu: Help selected"), mainHelp.Tab == EMenuTab::Help);
+    TestTrue(TEXT("MainMenu: mode unchanged"), mainHelp.Mode == EMenuMode::MainMenu);
     return true;
 }
 

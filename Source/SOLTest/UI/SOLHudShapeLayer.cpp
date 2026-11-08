@@ -31,9 +31,14 @@ void SSOLHudShapeLayer::Construct(const FArguments& args)
     ForceVolatile(true);
     const int32 maxShapes = FMath::Max(args._MaxShapes, 0);
     mBatch.Initialize(maxShapes);
-    mTexts.Initialize(SOL::Hologram::HUD_MAX_TEXTS);
-    mBackings.Reserve(SOL::Hologram::HUD_MAX_PANELS);
-    mPaintVertices.Reserve(maxShapes * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
+    mTexts.Initialize(FMath::Max(args._MaxTexts, 0));
+    mMaxBackings = FMath::Max(args._MaxBackings, 0);
+    mBackings.Reserve(mMaxBackings);
+    mPaintScratch = args._PaintScratch;
+    if (mPaintScratch == nullptr)
+    {
+        mPaintVertices.Reserve(maxShapes * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
+    }
 
     InitBackingBrush(mBackingBrush);
 }
@@ -146,7 +151,7 @@ void SSOLHudShapeLayer::MarkBatchChanged()
 bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, const float featherPx, const float opacity,
     const FLinearColor& color)
 {
-    if (!rect.bIsValid || mBackings.Num() >= SOL::Hologram::HUD_MAX_PANELS)
+    if (!rect.bIsValid || mBackings.Num() >= mMaxBackings)
     {
         return false;
     }
@@ -182,6 +187,7 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
         return layerId;
     }
     const float inverseScale = allottedGeometry.Scale > 0.0f ? 1.0f / allottedGeometry.Scale : 1.0f;
+    mLastPaintOrigin = allottedGeometry.GetAccumulatedRenderTransform().TransformPoint(FVector2f::ZeroVector);
 
     // Dark backings under the panels (alpha-blended), so text stays readable over a bright planet: each is a stack of
     // rounded boxes inset step by step, so it fades in from its edge and never shows a box outline (issue #31)
@@ -193,7 +199,8 @@ int32 SSOLHudShapeLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& al
     mLastPaintedBackingCount = mBackings.Num();
 
     // Shapes: canvas pixels -> widget local units -> window space, one custom-vertex element
-    if (PaintBatch(allottedGeometry, outDrawElements, layerId + 1, mBatch, mBrush, mResourceHandle, mPaintVertices,
+    TArray<FSlateVertex>& paintVertices = mPaintScratch != nullptr ? *mPaintScratch : mPaintVertices;
+    if (PaintBatch(allottedGeometry, outDrawElements, layerId + 1, mBatch, mBrush, mResourceHandle, paintVertices,
         inverseScale))
     {
         mLastPaintedShapeCount = mBatch.GetShapeCount();

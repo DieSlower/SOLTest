@@ -5,6 +5,7 @@
 
 #include "Menu/SOLPageTabs.h"
 
+#include "Menu/SOLGlossary.h"
 #include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
 
@@ -18,6 +19,8 @@ namespace
         "one label per Info tab (SOLMenuContent::FillInfoTabs fills each ESOLInfoTab)");
     static_assert(UE_ARRAY_COUNT(PAGE_TABS_ABOUT_LABELS) == static_cast<int32>(ESOLAboutTab::Count),
         "one label per About tab (SOLMenuContent::FillAboutTabs fills each ESOLAboutTab)");
+    static_assert(static_cast<int32>(ESOLHelpTab::Count) == 5,
+        "the Help page's tabs are SOLGlossary's (TabCount, TabLabel and TabCaption route Help through it)");
 
     //////////////////////////////////////////////////////////////////////////
     // Counts the Controls tabs: one per run of rows with the same area
@@ -56,6 +59,8 @@ int32 SOLPageTabs::TabCount(const ESOLReadOnlyPage page)
         return UE_ARRAY_COUNT(PAGE_TABS_INFO_LABELS);
     case ESOLReadOnlyPage::About:
         return UE_ARRAY_COUNT(PAGE_TABS_ABOUT_LABELS);
+    case ESOLReadOnlyPage::Help:
+        return SOLGlossary::TabCount();
     default:
         return 0;
     }
@@ -93,9 +98,22 @@ FString SOLPageTabs::TabLabel(const ESOLReadOnlyPage page, const int32 tab)
         return PAGE_TABS_INFO_LABELS[tab];
     case ESOLReadOnlyPage::About:
         return PAGE_TABS_ABOUT_LABELS[tab];
+    case ESOLReadOnlyPage::Help:
+        return SOLGlossary::TabLabel(static_cast<ESOLHelpTab>(tab));
     default:
         return FString();
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// A tab's group caption: only the Help page has captions (SOLGlossary's)
+FString SOLPageTabs::TabCaption(const ESOLReadOnlyPage page, const int32 tab)
+{
+    if (page != ESOLReadOnlyPage::Help || tab < 0 || tab >= TabCount(page))
+    {
+        return FString();
+    }
+    return SOLGlossary::TabCaption(static_cast<ESOLHelpTab>(tab));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -137,7 +155,7 @@ int32 SOLPageTabs::ControlsTabOfRow(const int32 row)
 
 //////////////////////////////////////////////////////////////////////////
 // The width of a page's left column in a row of rowWidth units: Controls keeps its key column, Info narrows its label
-// column when the value column right of it would be short of room, About has none
+// column when the value column right of it would be short of room, Help keeps its symbol column, About has none
 float SOLPageTabs::LeftColumnWidth(const ESOLReadOnlyPage page, const float rowWidth)
 {
     using namespace SOL::MenuStyle;
@@ -149,6 +167,9 @@ float SOLPageTabs::LeftColumnWidth(const ESOLReadOnlyPage page, const float rowW
         // A row not laid out yet (not a positive number) or one with room for the value column keeps the full column
         return rowWidth > 0.0f && rowWidth < LABEL_COLUMN_WIDTH + BUTTON_GAP + VALUE_COLUMN_MIN_WIDTH
             ? LABEL_COLUMN_NARROW_WIDTH : LABEL_COLUMN_WIDTH;
+    case ESOLReadOnlyPage::Help:
+        // The glossary's symbol column at every width (SDD 33 D37: no narrow variant)
+        return SOL::Help::GLOSSARY_SYMBOL_BOX;
     default:
         return 0.0f;
     }

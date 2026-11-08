@@ -153,6 +153,13 @@ public:
     // Returns the menu font F_SOLMenu, or null when it is missing (the kit then uses the engine default font)
     UFont* GetMenuFont() const { return MenuFont; }
 
+    // (33d-ii) Returns the one shared M_SOLHudShape material every Help glossary symbol view draws with (Composite 1,
+    // the sanitized strength and the views' pixel size pushed with the solid materials), or null when it is missing
+    UMaterialInstanceDynamic* GetHudShapeMaterial() const { return HudShapeMaterial; }
+
+    // (33d-ii) Returns how many parameter pushes reached the shared HUD shape material (verification)
+    int32 GetHudShapeMaterialPushCount() const { return mHudShapePushCount; }
+
     // Returns a style texture, or null when it is missing
     UTexture2D* GetTexture(ESOLSolidTexture texture) const;
 
@@ -185,6 +192,9 @@ private:
     // Writes the cached strength and DPI scale into one material
     void WriteParams(UMaterialInstanceDynamic& material) const;
 
+    // (33d-ii) Writes the cached strength and the glossary views' pixel size into the shared HUD shape material
+    void WriteHudShapeParams();
+
     UPROPERTY(Transient)
     TObjectPtr<UFont> MenuFont;
 
@@ -197,11 +207,15 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> Textures;                        // One per ESOLSolidTexture (null when missing)
 
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> HudShapeMaterial;          // (33d-ii) The glossary views' M_SOLHudShape
+
     TArray<TWeakObjectPtr<UMaterialInstanceDynamic>> mUniqueMaterials;  // Owned by their panels; compacted on push
     TSharedPtr<FSOLSolidMenuMouseMoves> mMouseMoves;                    // Slate pre-processor (registered while alive)
     TWeakObjectPtr<USOLSettingsSubsystem> mSettings;                    // Where HudEffectsStrength is read from
     FSOLSolidMenuParamCache mParamCache;
     uint64 mLastUpdateFrame = MAX_uint64;                               // GFrameCounter of the last UpdateForFrame
     int32 mMissingAssetCount = 0;
+    int32 mHudShapePushCount = 0;                                       // Pushes that reached HudShapeMaterial
     bool mIsLoaded = false;
 };

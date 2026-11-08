@@ -13,6 +13,7 @@ enum class ESOLReadOnlyPage : uint8
     Controls,
     Info,
     About,
+    Help,       // (33d-ii) SDD 33 D22: the Keys group and the HUD glossary
     Count,
 };
 
@@ -39,7 +40,8 @@ enum class ESOLAboutTab : int32
  * tab per area of SOLMenuText::CONTROL_ROWS, in table order (the rows of one area are contiguous; a new area starts a
  * new tab). Info: SOLMenuText::INFO_FLIGHT, INFO_TIME_TAB (the heading
  * "Time and travel" is too wide for a tab), INFO_COMBAT, INFO_HOW_IT_WORKS. About: SOLMenuText::ABOUT_TAB_GAME
- * and SOLMenuText::ABOUT_CREDITS_TITLE. Each page opens on its first tab every time (no last-tab memory).
+ * and SOLMenuText::ABOUT_CREDITS_TITLE. Help (33d-ii): the SOLGlossary tabs (ESOLHelpTab). Each page opens on its
+ * first tab every time (no last-tab memory).
  */
 namespace SOLPageTabs
 {
@@ -51,6 +53,10 @@ namespace SOLPageTabs
 
     // A tab's label; an empty string (never null text) for an invalid page or a tab outside [0, TabCount)
     SOLTEST_API FString TabLabel(ESOLReadOnlyPage page, int32 tab);
+
+    // (33d-ii) The group caption drawn above a tab in the rail (Help: SOLGlossary::TabCaption); empty for every other
+    // page, an invalid page and a tab outside [0, TabCount)
+    SOLTEST_API FString TabCaption(ESOLReadOnlyPage page, int32 tab);
 
     // The tab that shows after a click on requested while current shows, with count tabs: requested when it is in
     // [0, count), otherwise current when it is in [0, count), otherwise OpeningTab()
@@ -67,6 +73,7 @@ namespace SOLPageTabs
     // (46i) The width of a page's left column (the Controls key cells, the Info labels) in rows rowWidth units wide:
     // Controls always KEY_COLUMN_WIDTH; Info LABEL_COLUMN_WIDTH while the value column right of it (after BUTTON_GAP)
     // keeps VALUE_COLUMN_MIN_WIDTH, else LABEL_COLUMN_NARROW_WIDTH (its labels wrap), and LABEL_COLUMN_WIDTH for a row
-    // width that is not a positive finite number (not laid out yet); 0 for About and anything else (no left column)
+    // width that is not a positive finite number (not laid out yet); Help always GLOSSARY_SYMBOL_BOX (SDD 33 D37, the
+    // glossary's symbol column); 0 for About and anything else (no left column)
     SOLTEST_API float LeftColumnWidth(ESOLReadOnlyPage page, float rowWidth);
 }

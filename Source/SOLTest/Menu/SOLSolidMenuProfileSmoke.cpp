@@ -5,6 +5,8 @@
 
 #include "Menu/SOLSolidMenuProfileSmoke.h"
 
+#include "Menu/SOLGlossary.h"
+#include "Menu/SOLHudSymbolView.h"
 #include "Menu/SOLKeyDiagram.h"
 #include "Menu/SOLKeyboardDiagram.h"
 #include "Menu/SOLKeyboardDiagramSmokePage.h"
@@ -151,11 +153,13 @@ namespace
     constexpr int32 PROFILE_DEFAULT_VIEW_CHECKS = 3;            // The default run's View steps (1920, 1280, 1920)
     constexpr int32 PROFILE_DEFAULT_SCREEN_CHECKS = 6;          // Its Screen steps (P0, P5, P1; P2, P9, P3)
     constexpr int32 PROFILE_DEFAULT_DIAGRAM_CHECKS = 4;         // 33c: its diagram passes (P12-P15), one check each
-    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 17;
+    constexpr int32 PROFILE_DEFAULT_HELP_CHECKS = 6;            // 33d-ii: its Help passes (P16-P21), one check each
+    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 23;
     constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 14;
     static_assert(PROFILE_EXPECTED_CHECKS_DEFAULT == PROFILE_SETUP_CHECKS + PROFILE_DEFAULT_VIEW_CHECKS
-        + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS + PROFILE_DEFAULT_DIAGRAM_CHECKS,
-        "a default run checks the setup (2), three views, six screens, Play and Esc, and four diagram passes");
+        + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS + PROFILE_DEFAULT_DIAGRAM_CHECKS
+        + PROFILE_DEFAULT_HELP_CHECKS, "a default run checks the setup (2), three views, six screens, Play and Esc, "
+        "four diagram passes and six Help passes");
     constexpr int32 PROFILE_DIAGRAM_Z = SOL::MenuStyle::Z_ORDER + 10;   // 33c: the diagram test page over the menu
     static_assert(PROFILE_EXPECTED_CHECKS_VIEW == PROFILE_SETUP_CHECKS + 1 + PROFILE_PLAY_PAUSE_CHECKS
         + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
@@ -422,6 +426,30 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
             mPasses[pass].bDiagramHover = pass == p13 || pass == p15;
         }
 
+        // 33d-ii: the main menu's Help page on its Keyboard, Flight HUD and Overlays tabs at both sizes, against the
+        // main menu's Settings baseline (the 46h rule; P5 / P6 main-controls being the closest page without the
+        // glossary)
+        const ESOLMainMenuPage help = ESOLMainMenuPage::Help;
+        const int32 p16 = addPass(TEXT("main-help-keys"), false, help, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p17 = addPass(TEXT("main-help-flight"), false, help, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p18 = addPass(TEXT("main-help-overlays"), false, help, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p19 = addPass(TEXT("main-help-keys"), false, help, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const int32 p20 = addPass(TEXT("main-help-flight"), false, help, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const int32 p21 = addPass(TEXT("main-help-overlays"), false, help, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const ESOLHelpTab helpTabs[] = { ESOLHelpTab::Keyboard, ESOLHelpTab::FlightHud, ESOLHelpTab::OverlaysRoute };
+        for (int32 index = 0; index < UE_ARRAY_COUNT(helpTabs); ++index)
+        {
+            mPasses[p16 + index].HelpTab = static_cast<int32>(helpTabs[index]);
+            mPasses[p19 + index].HelpTab = static_cast<int32>(helpTabs[index]);
+        }
+        check(p17 == p16 + 1 && p18 == p16 + 2 && p20 == p19 + 1 && p21 == p19 + 2);
+
         // The main menu at 1920x1080 (Settings, its Key bindings tab, Controls), then at 1280x720 the other way round
         // (each Settings pass before its Key bindings pass: a Pass step selects its tab, the page opens on Graphics)
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
@@ -432,10 +460,16 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
         addStep(EStepKind::Pass, p5, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p12, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p13, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p16, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p17, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p18, FIntPoint::ZeroValue);
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_SMALL);
         addStep(EStepKind::Pass, p6, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p14, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p15, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p19, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p20, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p21, FIntPoint::ZeroValue);
         addStep(EStepKind::Screen, p1, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p1, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p7, FIntPoint::ZeroValue);
@@ -532,6 +566,18 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         mCaptureFrames = 0;
         mScreenFrames = 0;
         const FPass& pass = mPasses[current.Pass];
+
+        // 33d-ii: a main menu pass shows its page when another shows (the Help passes come between the Controls
+        // passes), and a Help pass its tab (the page opens on its Keyboard tab)
+        if (!pass.bPause && mainMenu != nullptr && mainMenu->GetPage() != pass.MainPage)
+        {
+            mainMenu->ShowPage(pass.MainPage);
+        }
+        USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+        if (pass.HelpTab != INDEX_NONE && help != nullptr)
+        {
+            help->SelectTab(pass.HelpTab);
+        }
         USOLSettingsPageWidget* page = GetPassSettingsPage(current.Pass, menu);
         const ESOLSettingsTab tab = SOLSettingsTabs::IsValidTab(pass.SettingsTab) ? pass.SettingsTab
             : SOLSettingsTabs::IsValidTab(mProfileTab) ? mProfileTab : SOLSettingsTabs::OpeningTab();
@@ -543,6 +589,7 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         {
             ShowDiagramPage(current.Pass, menu);
         }
+
         UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d tab %d starting"), current.Pass, pass.Screen,
             pass.View.X, pass.View.Y, page != nullptr ? static_cast<int32>(page->GetSelectedTab()) : -1);
         break;
@@ -669,6 +716,25 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
                 ? diagram->GetHoveredKey() : INDEX_NONE, pass.bDiagramHover ? mDiagramKey : INDEX_NONE));
             HideDiagramPage();
         }
+
+        // 33d-ii: a Help pass checks its page on its tab: the Keyboard tab's diagram painted whole, a glossary tab's
+        // views all built and some painted
+        if (pass.HelpTab != INDEX_NONE)
+        {
+            int32 views = 0;
+            int32 built = 0;
+            int32 painted = 0;
+            const bool bShown = IsPassHelpShown(current.Pass, menu, views, built, painted);
+            const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+            const USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+            const USOLKeyboardDiagram* diagram = help != nullptr ? help->GetDiagram() : nullptr;
+            const bool bKeys = pass.HelpTab == static_cast<int32>(ESOLHelpTab::Keyboard);
+            const bool bArt = bKeys ? diagram != nullptr && diagram->WasPaintedWhole() : views > 0 && painted > 0;
+            Check(*FString::Printf(TEXT("help-P%d"), current.Pass), bShown && bArt, FString::Printf(TEXT("%s %dx%d: "
+                "Help on tab %d %s, %d/%d views built, %d painted, diagram painted whole %d"), pass.Screen,
+                pass.View.X, pass.View.Y, pass.HelpTab, bShown ? TEXT("shown") : TEXT("NOT SHOWN"), built, views,
+                painted, diagram != nullptr && diagram->WasPaintedWhole() ? 1 : 0));
+        }
         break;
     }
     case EStepKind::Quit:
@@ -697,6 +763,9 @@ bool FSOLSolidMenuProfileSmoke::TickPass(const int32 pass, USOLMenuSubsystem& me
         mPhaseTimeS = 0.0;
         mPhaseFrames = 0;
     };
+    int32 helpViews = 0;
+    int32 helpBuilt = 0;
+    int32 helpPainted = 0;
     switch (mPhase)
     {
     case EPassPhase::Settle:
@@ -704,7 +773,9 @@ bool FSOLSolidMenuProfileSmoke::TickPass(const int32 pass, USOLMenuSubsystem& me
         {
             ParkCursor();
         }
-        if (mPhaseTimeS >= PROFILE_SETTLE_S)
+        // 33d-ii: a Help pass also waits until every view of its tab is built (event-driven, so once settled)
+        if (mPhaseTimeS >= PROFILE_SETTLE_S && (IsPassHelpShown(pass, menu, helpViews, helpBuilt, helpPainted)
+            || mPhaseTimeS >= PROFILE_STEP_TIMEOUT_S))
         {
             TakeUiShot(*FString::Printf(TEXT("P%d"), pass));
             nextPhase(EPassPhase::Shot);
@@ -795,7 +866,11 @@ bool FSOLSolidMenuProfileSmoke::IsPassScreenShown(const int32 pass, const USOLMe
     const USOLSettingsPageWidget* page = GetPassSettingsPage(pass, menu);
     const bool bTab = !SOLSettingsTabs::IsValidTab(spec.SettingsTab)
         || (page != nullptr && page->GetSelectedTab() == spec.SettingsTab);
-    return IsPassMenuShown(pass, menu) && bTab && GetViewSize() == spec.View && IsPassDiagramShown(pass);
+    int32 helpViews = 0;
+    int32 helpBuilt = 0;
+    int32 helpPainted = 0;
+    return IsPassMenuShown(pass, menu) && bTab && GetViewSize() == spec.View && IsPassDiagramShown(pass)
+        && IsPassHelpShown(pass, menu, helpViews, helpBuilt, helpPainted);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -853,6 +928,35 @@ void FSOLSolidMenuProfileSmoke::HideDiagramPage()
         page->RemoveFromParent();
     }
     mDiagramPage.Reset();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built (true without a Help tab)
+bool FSOLSolidMenuProfileSmoke::IsPassHelpShown(const int32 pass, const USOLMenuSubsystem& menu, int32& outViews,
+    int32& outBuilt, int32& outPainted) const
+{
+    outViews = outBuilt = outPainted = 0;
+    const FPass& spec = mPasses[pass];
+    if (spec.HelpTab == INDEX_NONE)
+    {
+        return true;
+    }
+    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+    if (help == nullptr || mainMenu->GetPage() != ESOLMainMenuPage::Help || help->GetSelectedTab() != spec.HelpTab)
+    {
+        return false;
+    }
+    for (const FSOLHelpGlossaryRow& row : help->GetGlossaryRows())
+    {
+        if (row.Tab == spec.HelpTab && row.View != nullptr)
+        {
+            ++outViews;
+            outBuilt += row.View->GetBuildCount() > 0 ? 1 : 0;
+            outPainted += row.View->GetPaintedShapeCount() + row.View->GetPaintedTextCount() > 0 ? 1 : 0;
+        }
+    }
+    return outBuilt == outViews;
 }
 
 //////////////////////////////////////////////////////////////////////////

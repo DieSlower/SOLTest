@@ -1512,6 +1512,11 @@ namespace SOL
         inline constexpr float SETTINGS_TAB_TRACE_PX = 14.0f;     // Room right of the tabs for the hovered tab's trace
         inline constexpr float SETTINGS_TAB_TRACE_END_PX = 4.0f;  // ... which ends this far inside the rail's edge
         inline constexpr int32 SETTINGS_TAB_LETTER_SPACING = 100; // Tab labels (the stack's 260 is too wide for them)
+        // (33d-ii, SDD 33 D22 / D7) A group caption row above a tab in the rail (the Help page's "KEYS" and "HUD
+        // GLOSSARY"): its height (BUTTON_GAP follows it), font size (SemiBold, DimTextColor) and letter spacing
+        inline constexpr float TAB_RAIL_CAPTION_HEIGHT = 24.0f;
+        inline constexpr int32 TAB_RAIL_CAPTION_FONT_SIZE = MenuStyle::SMALL_FONT_SIZE;
+        inline constexpr int32 TAB_RAIL_CAPTION_LETTER_SPACING = 200;
         inline constexpr float SETTINGS_BODY_GAP = 12.0f;         // Tab rail to the content recess
         inline constexpr float SETTINGS_CONTENT_PADDING = 10.0f;  // Content recess edge to the rows
         // Per-tab label columns (46e follow-ups, SOLSettingsTabs::LabelColumnWidth; the other tabs keep
@@ -1624,12 +1629,38 @@ namespace SOL
         inline constexpr float DIAGRAM_DETAIL_KEYS_MAX_FRACTION = 0.35f; // The detail keys column's widest share
         inline constexpr float DIAGRAM_WIDTH_TOLERANCE = 0.5f;    // A layout width change smaller than this keeps the
                                                                   // laid-out panel (menu units)
+        // (33d-ii) The Help page's Keyboard diagram's layout width at fill (menu units): the shell's content row width
+        // at the D37 screens (1280x720 and 1920x1080), so the diagram paints on the page's first frame; the page's
+        // FitDiagram corrects it once laid out when the rows are another width
+        inline constexpr float DIAGRAM_START_LAYOUT_WIDTH = 658.0f;
         inline constexpr int32 SHORT_LABEL_MAX_CHARS = 8;        // KEY_SHORT_LABELS / FIXED_KEY_SHORT_LABELS length
 
         // HUD glossary (section 8)
         inline constexpr float GLOSSARY_SYMBOL_BOX = 96.0f;       // Symbol recess, square
-        inline constexpr float GLOSSARY_SYMBOL_BOX_NARROW = 64.0f; // ... at 1000x800
-        inline constexpr int32 GLOSSARY_MAX_SHAPES = 128;         // One symbol view's shape batch
+        inline constexpr int32 GLOSSARY_MAX_SHAPES = 128;         // One symbol view's shape batch, at most
+        // (33d-ii) A symbol view's batch is sized at its first build to the shapes its symbols make (a dry build) plus
+        // this headroom (a size change may add a dash or two), capped at GLOSSARY_MAX_SHAPES
+        inline constexpr int32 GLOSSARY_SHAPE_HEADROOM = 8;
+        // (33d-ii) The symbol view (D26 starting values): the HUD's UI scale for a 1080 px canvas, in menu units (D5:
+        // x pixels per unit), the recess padding around the view, the view's edge to its art area, the text sample's
+        // smallest scale (D3, in menu units), the sample lines a view holds and the gap between glossary rows. The
+        // glow pad is the HUD's HUD_GLOW_PAD_PX in pixels, unscaled (D6: M_SOLHudShape fades its halo over a fixed
+        // pixel pad)
+        inline constexpr float GLOSSARY_SYMBOL_UI_SCALE = 1.5f;
+        static_assert(GLOSSARY_SYMBOL_UI_SCALE == 1080.0f / Hologram::HUD_REFERENCE_HEIGHT_PX,
+            "GLOSSARY_SYMBOL_UI_SCALE is the HUD's UI scale for a 1080 px canvas");
+        static_assert(GLOSSARY_SYMBOL_UI_SCALE >= 1.0f && GLOSSARY_SYMBOL_UI_SCALE <= Hologram::HUD_MAX_UI_SCALE,
+            "GLOSSARY_SYMBOL_UI_SCALE lies in the HUD's UI scale range");
+        inline constexpr float GLOSSARY_SYMBOL_RECESS_PADDING = 4.0f;
+        // A symbol view's laid-out side (units): the box less the recess padding on both sides. The shared HUD shape
+        // material's view size, and the size a view not laid out yet is built at (so a newly shown tab paints at once)
+        inline constexpr float GLOSSARY_VIEW_SIZE = GLOSSARY_SYMBOL_BOX - 2.0f * GLOSSARY_SYMBOL_RECESS_PADDING;
+        inline constexpr float GLOSSARY_SYMBOL_PADDING = 4.0f;
+        inline constexpr float GLOSSARY_SAMPLE_MIN_UI_SCALE = 0.75f;
+        inline constexpr int32 GLOSSARY_MAX_SAMPLE_LINES = 8;
+        // A sample's layout passes (laid out at unit scale, then measured again at the scale found until it holds)
+        inline constexpr int32 GLOSSARY_SAMPLE_MEASURE_PASSES = 3;
+        inline constexpr float GLOSSARY_ROW_GAP = 12.0f;
         inline constexpr int32 GLOSSARY_MAX_SYMBOLS_PER_ENTRY = 6; // Symbol ids one GLOSSARY_ENTRIES row may list
         inline constexpr int32 MAX_PRIMS_PER_SYMBOL = 32;         // FSOLHudSymbolPrims capacity
         inline constexpr float GLOSSARY_CARD_HALF_WIDTH_PX = 24.0f; // The Card symbol's content rect, half size in px

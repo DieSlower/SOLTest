@@ -4,6 +4,7 @@
 */
 
 #include "Menu/SOLMenuContent.h"
+#include "Menu/SOLMenuState.h"
 #include "Menu/SOLSolidScroll.h"
 #include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidTabRail.h"
@@ -443,6 +444,84 @@ bool FSOLSolidScrollStackScenarioTest::RunTest(const FString& /*parameters*/)
     // Showing it again changes nothing
     TestEqual(TEXT("showing the last entry again keeps the offset"),
         SOLSolidScroll::OffsetToShow(offset, lastTop, item, content, view), offset, SOLIDSCROLLTEST_TOLERANCE);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollEightEntryScenarioTest, "SOLTest.SolidScroll.Scenario.EightEntryStack",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (Issue #33 Part 33d-ii, SDD 33 D16 / D31) The main and pause stacks with Help hold 8 entries of BUTTON_HEIGHT, a
+// BUTTON_GAP after each, no padding, in a view capped at STACK_MAX_VISIBLE_ENTRIES x (BUTTON_HEIGHT + BUTTON_GAP): the
+// stack scrolls, and from the top or from the end every entry can be scrolled whole into view (Quit / About below the
+// fold are reachable)
+bool FSOLSolidScrollEightEntryScenarioTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 mainCount = static_cast<int32>(SOLMenuState::EMainMenuEntry::Count);
+    const int32 pauseCount = static_cast<int32>(SOLMenuState::EMenuTab::Count);
+    TestEqual(TEXT("the main stack has 8 entries"), mainCount, 8);
+    TestEqual(TEXT("the pause stack has 8 entries"), pauseCount, 8);
+
+    const float item = SOL::MenuStyle::BUTTON_HEIGHT;
+    const float gap = SOL::MenuStyle::BUTTON_GAP;
+    const float pad = 0.0f;
+    const float cap = SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES * (item + gap);
+    const int32 counts[] = { mainCount, pauseCount };
+    for (const int32 count : counts)
+    {
+        const float content = SOLSolidScroll::StackContentHeight(count, item, gap, pad);
+        const float view = SOLSolidScroll::StackViewHeight(content, cap);
+        const float maxOffset = SOLSolidScroll::MaxOffset(content, view);
+        TestEqual(FString::Printf(TEXT("%d entries: content is count x (item + gap)"), count), content,
+            count * (item + gap), SOLIDSCROLLTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("%d entries: the view is the cap"), count), view, cap,
+            SOLIDSCROLLTEST_TOLERANCE);
+        TestTrue(FString::Printf(TEXT("%d entries need scrolling"), count), SOLSolidScroll::NeedsScroll(content, view));
+        TestEqual(FString::Printf(TEXT("%d entries: max offset is content - view"), count), maxOffset, content - view,
+            SOLIDSCROLLTEST_TOLERANCE);
+
+        // From the top and from the end, every entry scrolls whole into view within the range
+        const float starts[] = { 0.0f, maxOffset };
+        for (const float start : starts)
+        {
+            for (int32 entry = 0; entry < count; ++entry)
+            {
+                const float top = SOLSolidScroll::StackItemTop(entry, item, gap, pad);
+                TestEqual(FString::Printf(TEXT("entry %d top"), entry), top, entry * (item + gap),
+                    SOLIDSCROLLTEST_TOLERANCE);
+                const float shown = SOLSolidScroll::OffsetToShow(start, top, item, content, view);
+                TestTrue(FString::Printf(TEXT("from %.0f entry %d: offset %f in [0, %f]"), start, entry, shown,
+                    maxOffset), shown >= -SOLIDSCROLLTEST_TOLERANCE && shown <= maxOffset + SOLIDSCROLLTEST_TOLERANCE);
+                TestTrue(FString::Printf(TEXT("from %.0f entry %d whole in view at %f"), start, entry, shown),
+                    top >= shown - SOLIDSCROLLTEST_TOLERANCE &&
+                    top + item <= shown + view + SOLIDSCROLLTEST_TOLERANCE);
+            }
+        }
+
+        // From the top: the first seven need no scroll, the eighth (Quit) needs its bottom on the view's bottom
+        for (int32 entry = 0; entry < count - 1; ++entry)
+        {
+            TestEqual(FString::Printf(TEXT("from 0 entry %d needs offset 0"), entry), SOLSolidScroll::OffsetToShow(
+                0.0f, SOLSolidScroll::StackItemTop(entry, item, gap, pad), item, content, view), 0.0f,
+                SOLIDSCROLLTEST_TOLERANCE);
+        }
+        const float lastTop = SOLSolidScroll::StackItemTop(count - 1, item, gap, pad);
+        TestEqual(TEXT("from 0 the last entry needs its bottom on the view's bottom"),
+            SOLSolidScroll::OffsetToShow(0.0f, lastTop, item, content, view), lastTop + item - view,
+            SOLIDSCROLLTEST_TOLERANCE);
+
+        // From the end: the first entry needs the top
+        TestEqual(TEXT("from the end the first entry needs offset 0"), SOLSolidScroll::OffsetToShow(maxOffset,
+            SOLSolidScroll::StackItemTop(0, item, gap, pad), item, content, view), 0.0f, SOLIDSCROLLTEST_TOLERANCE);
+    }
+
+    // Today's numbers: content 496, view 434, max offset 62, the last entry needs 52 from the top
+    const float content = SOLSolidScroll::StackContentHeight(8, item, gap, pad);
+    const float view = SOLSolidScroll::StackViewHeight(content, cap);
+    TestEqual(TEXT("content is 496"), content, 496.0f, SOLIDSCROLLTEST_TOLERANCE);
+    TestEqual(TEXT("view is 434"), view, 434.0f, SOLIDSCROLLTEST_TOLERANCE);
+    TestEqual(TEXT("max offset is 62"), SOLSolidScroll::MaxOffset(content, view), 62.0f, SOLIDSCROLLTEST_TOLERANCE);
+    TestEqual(TEXT("Quit needs 52 from the top"), SOLSolidScroll::OffsetToShow(0.0f,
+        SOLSolidScroll::StackItemTop(7, item, gap, pad), item, content, view), 52.0f, SOLIDSCROLLTEST_TOLERANCE);
     return true;
 }
 

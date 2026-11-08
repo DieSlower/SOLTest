@@ -358,6 +358,10 @@ namespace SOLMenuText
     inline constexpr const TCHAR* HELP_UNBOUND = TEXT("Unbound");              // The line of actions without a key
     inline constexpr const TCHAR* HELP_UNBOUND_SEPARATOR = TEXT(", ");        // Between its action names
 
+    // (33d-ii) The Keyboard tab's line under the diagram, pointing to the Controls page
+    inline constexpr const TCHAR* HELP_KEYBOARD_CONTROLS =
+        TEXT("The Controls page lists every control in full, with all of its keys.");
+
     // Returns whether two table strings are equal (case-sensitive), at compile time: the static_asserts that tie a
     // table's rows to their ids use it (KEY_SHORT_LABELS in SOLKeyBindings.cpp, the glossary coverage table in
     // SOLGlossary.cpp)
@@ -851,11 +855,8 @@ namespace SOLMenuText
             "a target and fades out when you clear it (switching to another target only changes its text), and "
             "the info card draws in and fades out. The Hologram menu effects slider sets how strong the cards, "
             "the in-flight hologram menus and the mouse pointer look (0: plain flat panels, fully usable); the "
-            "main menu and the pause side panel follow the HUD and menu effects slider. The "
-            "radar (bottom right) is drawn on your ship's own horizontal plane, ahead at the top, "
-            "with the camera's view cone: contacts above the plane are blue with a solid line down to it, contacts "
-            "below are orange with a dashed line up to it and a hollow mark, and the selected target is larger, "
-            "ringed and named. While you hold {FreeLook} the joystick circles turn yellow."),
+            "main menu and the pause side panel follow the HUD and menu effects slider. What each part of the HUD "
+            "shows is explained in Help, HUD glossary."),
         TEXT("Bolts fly as real projectiles with your ship's velocity added. Targets have a shield that absorbs hits "
             "first and regenerates once they go a while without being hit."),
         TEXT("Jupiter, Saturn, Uranus and Neptune have banded cloud decks that turn with the planet, while each band "

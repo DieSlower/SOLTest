@@ -23,12 +23,27 @@ namespace SOLMenuState
     {
         Resume,
         Controls,
+        Help,       // (33d-ii, SDD 33 D16) right after Controls
         Info,
         Settings,
         Demo,
         About,
         Quit,
         Count       // Not a tab: the number of tabs (the valid range ends before it)
+    };
+
+    // (33d-ii, SDD 33 D16) The main menu's entry stack, top to bottom (the button index of each entry)
+    enum class EMainMenuEntry : uint8
+    {
+        Play,
+        Demo,
+        StartLocation,
+        Controls,
+        Help,
+        Settings,
+        About,
+        Quit,
+        Count       // Not an entry: the number of entries
     };
 
     enum class EMenuEvent : uint8
@@ -63,9 +78,16 @@ namespace SOLMenuState
     SOLTEST_API bool IsTabChange(const FMenuState& state, EMenuTab tab);
 
     // (SDD 46 Q4, part 46g) Returns whether a pause-menu tab opens a page in the shell beside the side panel: Controls,
-    // Info, Settings, Demo and About; Resume and Quit (its choices show inside the side panel) and any out-of-range
-    // value do not
+    // Help, Info, Settings, Demo and About; Resume and Quit (its choices show inside the side panel) and any
+    // out-of-range value do not
     SOLTEST_API bool IsPageTab(EMenuTab tab);
+
+    // (33d-ii) Returns a main-menu entry's label (SOLMenuText; StartLocation the unformatted START_LOCATION_FORMAT);
+    // "" (never null) for Count and any value past it
+    SOLTEST_API const TCHAR* MainMenuEntryLabel(EMainMenuEntry entry);
+
+    // (33d-ii) Returns a pause-menu tab's label (SOLMenuText); "" (never null) for Count and any value past it
+    SOLTEST_API const TCHAR* PauseTabLabel(EMenuTab tab);
 
     // (Q4) Returns whether Esc (or Back) closes the open page instead of resuming: paused with a page tab selected
     SOLTEST_API bool EscapeClosesPage(const FMenuState& state);

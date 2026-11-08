@@ -13,7 +13,9 @@
 
 #include "Containers/StringView.h"
 #include "CoreMinimal.h"
+#include "Math/Box2D.h"
 #include "Misc/Optional.h"
+#include "Templates/Function.h"
 
 // The Help page's tabs in rail order (SDD 33 section 5, D22): the Keys group, then the four HUD glossary tabs (the
 // index into SOLMenuText::HELP_TAB_LABELS and HELP_TAB_HEADINGS)
@@ -63,6 +65,43 @@ struct FSOLGlossaryEntry
             symbol = ESOLHudSymbol::Count;
         }
     }
+};
+
+// (33d-ii) What a glossary row's symbol box shows: its HUD symbols, its text sample, or nothing (no box)
+enum class ESOLGlossaryArt : uint8
+{
+    Symbols,
+    Sample,
+    None,
+};
+
+// (33d-ii) The near-square grid of equal cells several symbols of one row share in its box
+struct FSOLGlossaryCellGrid
+{
+    int32 Columns = 0;
+    int32 Rows = 0;
+};
+
+// (33d-ii) One line of a laid-out text sample: its text and its top-left in the area (pixels)
+struct FSOLGlossarySampleLine
+{
+    FString Text;
+    FVector2f Position = FVector2f::ZeroVector;
+};
+
+// (33d-ii) A text sample laid out in a symbol box: its lines and the scale they are drawn at (0: nothing to draw)
+struct FSOLGlossarySampleLayout
+{
+    TArray<FSOLGlossarySampleLine> Lines;
+    float Scale = 0.0f;
+};
+
+// (33d-ii) What a symbol view was last built for: its pixel size and the sanitized effects strength
+struct FSOLGlossaryViewStamp
+{
+    FIntPoint SizePx = FIntPoint::ZeroValue;
+    float Strength = -1.0f;
+    bool bBuilt = false;
 };
 
 /**
@@ -128,4 +167,47 @@ namespace SOLGlossary
 
     // IsCovered for a flight mode
     SOLTEST_API bool IsCovered(ESOLFlightMode mode);
+
+    // ---- (33d-ii) The symbol box's layout and the symbol view's rebuild rule ----
+
+    // Returns what a GLOSSARY_ENTRIES row's box shows: Symbols when it names symbols, else Sample when it has a
+    // sample, else None (also for an index outside the table)
+    SOLTEST_API ESOLGlossaryArt EntryArt(int32 index);
+
+    // Returns the grid count symbols share: Columns = ceil(sqrt(count)), Rows = ceil(count / Columns); {0, 0} for
+    // count <= 0
+    SOLTEST_API FSOLGlossaryCellGrid CellGrid(int32 count);
+
+    // Returns cell's rect of count equal cells filling area row-major, a short last row centred; an invalid box for
+    // a cell outside [0, count), count <= 0 or an invalid or empty area
+    SOLTEST_API FBox2f CellRect(int32 cell, int32 count, const FBox2f& area);
+
+    // Returns the scale that shrinks a symbol (bounds at maxScale given) to fit the cell, never enlarging; 0 for a
+    // maxScale or cell axis that is not a positive finite number, or invalid bounds
+    SOLTEST_API float SymbolFitScale(const FBox2f& boundsAtMaxScale, const FVector2f& cellSizePx, float maxScale);
+
+    // Returns the point to build a symbol at so its bounds (relative to its centre, at the drawn scale) are centred
+    // in the cell (the cell centre for invalid bounds)
+    SOLTEST_API FVector2f SymbolCentre(const FBox2f& boundsAtScale, const FBox2f& cell);
+
+    // Lays a text sample's '|' parts out as lines centred in an area, shrunk to fit down to minScale, then wrapped at
+    // spaces (out reset first, its capacity kept; nothing to draw for no part or an invalid area or scale)
+    SOLTEST_API void LayoutSample(FStringView sample, const FVector2f& areaPx, float maxScale, float minScale,
+        float lineHeightAtUnit, TFunctionRef<float(FStringView)> measureAtUnit, FSOLGlossarySampleLayout& out);
+
+    // Returns a view's size in pixels (rounded half away from zero); (0, 0) for a non-finite input, a scale <= 0 or a
+    // local axis <= 0
+    SOLTEST_API FIntPoint ViewPixelSize(const FVector2f& localSize, float layoutScale);
+
+    // Returns whether a view laid out at sizePx must rebuild its batch: never before it is laid out (an axis <= 0),
+    // else when not yet built or its pixel size or sanitized strength changed
+    SOLTEST_API bool ViewNeedsRebuild(const FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, float strength);
+
+    // Records a build at sizePx and strength (sanitized) in the stamp
+    SOLTEST_API void MarkViewBuilt(FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, float strength);
+
+    // Returns the HUD palette role a laid-out sample line of a GLOSSARY_ENTRIES row is drawn in (D2): in a row that
+    // explains flight modes, a line that is a mode's HUD label takes that mode's colour (MANUAL Secondary, ASSISTED
+    // Primary, AUTO Good); every other line, and any line of another row or an index outside the table, Primary
+    SOLTEST_API ESOLHudPaletteRole SampleLineRole(int32 index, FStringView line);
 }

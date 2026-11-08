@@ -183,21 +183,30 @@ Needs: none beyond 33a. SDD section 8.1, risk R1.
 
 Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
 
-1. [ ] `SSOLHudShapeLayer` retain mode; `Menu/SOLHudSymbolView`; the shared `M_SOLHudShape` MID in
+1. [x] `SSOLHudShapeLayer` retain mode; `Menu/SOLHudSymbolView`; the shared `M_SOLHudShape` MID in
    `USOLSolidMenuSubsystem` (strength pushed on change). The view holds its `FSOLHudSymbolPrims` and an
    `FSOLHoloFrameOutput` as members and passes them as the `Bounds` / `AddToBatch` scratches.
-2. [ ] `ESOLReadOnlyPage::Help` in `SOLPageTabs` (short tab labels, full names as headings, `LeftColumnWidth`, the
+2. [x] `ESOLReadOnlyPage::Help` in `SOLPageTabs` (short tab labels, full names as headings, `LeftColumnWidth`, the
    tab column stays 220, D22); the group captions KEYS and HUD GLOSSARY in `FSOLSolidTabRail` (D22);
    `SOLMenuContent::BuildHelpPage` / `FillHelpTabs` / `RefreshHelpPage`.
-3. [ ] The Help entry and pause tab (`EEntry::Help`, `ESOLMainMenuPage::Help`, `EMenuTab::Help`, `IsPageTab`) right
+3. [x] The Help entry and pause tab (`EEntry::Help`, `ESOLMainMenuPage::Help`, `EMenuTab::Help`, `IsPageTab`) right
    after Controls; `STACK_MAX_VISIBLE_ENTRIES` stays 7 and the stacks scroll (D16); `SOLMenuStateTest` and
    `SolidPageTabsTest` re-validated and extended (separate test agent for the new contract).
-4. [ ] `-SOLSmokeSolidMenu` Help steps (SDD section 16) in both menus and both sizes, including every stack entry
+4. [x] `-SOLSmokeSolidMenu` Help steps (SDD section 16) in both menus and both sizes, including every stack entry
    reachable by scroll and click with 8 entries; `-SOLMenuSmoke=all` no new failure; strength 0 / 2 shots looked at.
-5. [ ] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row shows the
+5. [x] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row shows the
    bright IconPlanet only (D40, no second brightness). Symbols are shrunk to fit with the 2 px feature floor (D42,
    applied by `SOLHudSymbols::Build` since 33d-i). The five map rows stay description-only until 33e-ii (D39).
-6. [ ] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page with keyboard and HUD glossary`; push.
+6. [ ] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page and glossary`; push.
+
+   **Built (2026-11-08, SDD 20, not committed yet):** tests first by a separate opus/high author from the contract (red
+   on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, Glossary.Layout 13/14; EightEntryStack already green),
+   then green; the Help page, its glossary views and the 8-entry stacks; full suite 1714 / 0; `-SOLSmokeSolidMenu`
+   257 / 257; the profile passes P16-P21 (SDD 14.4); the fresh opus/xhigh review had 1 must-fix (these docs) and 6
+   should-fix, all fixed. Item 5 (the starting values) is built and reported as the D26 starting values; the two layout
+   questions below stay open with the user (step 6, the commit, is still to do).
+   Open layout questions (SDD 18, not decided): (1) the Keyboard tab's hover strip sits below the fold at 1280x720 and
+   1920x1080; (2) long text samples, e.g. the route progress line, are barely readable at 1280x720.
 
 ### 33e: the player guide flag and `Docs/PLAYER_GUIDE.md` (opus/high)
 
@@ -296,3 +305,17 @@ Builds on: D25.
 - 2026-11-07: O14 answered by the user: option A, the modifier marker (SDD D32), built in 33c.
 - 2026-11-07: 33b done (SDD sections 14.2 and 20): the key cap widget on the Controls page and the Settings key rows.
   Next: 33c (the keyboard diagram, with D32).
+- 2026-11-08: 33d-i done (SDD 20): the HUD draws its symbols through the shared `SOLHudSymbols` builders, retain mode
+  on the shape layer, full suite 1683 / 0.
+- 2026-11-08: 33d-ii built, not committed (SDD 20 and 14.4): `ESOLReadOnlyPage::Help` with the rail captions
+  (`TAB_RAIL_CAPTION_HEIGHT` 24), `FSOLSolidScrollStack::SetButtonTops`, `EMenuTab::Help` and `EMainMenuEntry`, the
+  8-entry stacks that scroll (`STACK_MAX_VISIBLE_ENTRIES` stays 7), `Menu/SOLHudSymbolView` with one shared
+  `M_SOLHudShape` MID in the subsystem, the P5 glossary layout in `SOLGlossary`, the Info HUD paragraph shortened
+  (D25). Tests first (separate author); full suite 1714 / 0; `-SOLSmokeSolidMenu` 257 / 257 (was 212);
+  `-SOLSmokeSolidMenuProfile` 23 / 23 checks (P16-P21 inside the 0.2 / 0.3 ms budget); `-SOLSmokeHoloMenu` 86/86,
+  `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24, `-SOLMenuSmoke=all` 44/6 (the known Play "cursor 1" focus failures,
+  `Docs/TECH_DEBT.md`). Review fixes done. **Open with the user (SDD 18):** the Keyboard tab's hover strip below the
+  fold, and long text samples barely readable at 1280x720. Carry-overs to 33f: the draw count (about 50-64 per
+  glossary tab), the first-Esc one-off build cost of the pause Help page, `main-help-overlays` and `pause-help`
+  passes in the 4K / one-eye view runs, and the 33c diagram test-page passes and smoke step may be retired. Next: commit 33d-ii,
+  then 33e.

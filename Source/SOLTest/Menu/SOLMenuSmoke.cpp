@@ -204,6 +204,9 @@ void FSOLMenuSmoke::EnterPhase(const EPhase phase, USOLMenuSubsystem& menu)
     case EPhase::TabControls:
         menu.SelectTab(SOLMenuState::EMenuTab::Controls);
         break;
+    case EPhase::TabHelp:
+        menu.SelectTab(SOLMenuState::EMenuTab::Help);
+        break;
     case EPhase::TabInfo:
         menu.SelectTab(SOLMenuState::EMenuTab::Info);
         break;
@@ -477,6 +480,8 @@ const TCHAR* FSOLMenuSmoke::GetPhaseShot(const EPhase phase)
         return TEXT("06_Pause_Resume");
     case EPhase::TabControls:
         return TEXT("07_Pause_Controls");
+    case EPhase::TabHelp:
+        return TEXT("07b_Pause_Help");
     case EPhase::TabInfo:
         return TEXT("08_Pause_Info");
     case EPhase::TabSettings:

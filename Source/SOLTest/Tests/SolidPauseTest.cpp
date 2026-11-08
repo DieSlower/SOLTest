@@ -82,6 +82,7 @@ namespace
     const FSolidPauseTestTab SOLIDPAUSETEST_TABS[] = {
         { SOLMenuState::EMenuTab::Resume, TEXT("Resume"), false },
         { SOLMenuState::EMenuTab::Controls, TEXT("Controls"), true },
+        { SOLMenuState::EMenuTab::Help, TEXT("Help"), true },          // (33d-ii, D16) right after Controls
         { SOLMenuState::EMenuTab::Info, TEXT("Info"), true },
         { SOLMenuState::EMenuTab::Settings, TEXT("Settings"), true },
         { SOLMenuState::EMenuTab::Demo, TEXT("Demo"), true },

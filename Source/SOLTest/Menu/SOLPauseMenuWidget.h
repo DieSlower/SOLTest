@@ -32,7 +32,7 @@ class UWidgetSwitcher;
  * Esc pause menu (SDD 8, 8c; solid restyle SDD 46 section 6, part 46g), a UMG widget tree built entirely in C++: over
  * the live, still-running flight (only dimmed, Q3) a side panel on the left (USOLSolidPanel hull PAUSE_PANEL_WIDTH
  * wide, full height minus SCREEN_MARGIN, "PAUSED" on its stepped top edge, rivets, vents and circuit traces along its
- * lower edge) with the tabs (Resume, Controls, Info, Settings, Demo, About, Quit; button index =
+ * lower edge) with the tabs (Resume, Controls, Help, Info, Settings, Demo, About, Quit; button index =
  * SOLMenuState::EMenuTab) as stack buttons in a scrolling stack (FSOLSolidScrollStack, STACK_MAX_VISIBLE_ENTRIES,
  * D17), each with a hover trace to the hull's right edge and an LED for the power-up blink; under the stack the
  * paused text and key hint, or with Quit selected the Quit prompt and its two choices (to main menu, to desktop; Q4).
@@ -89,8 +89,9 @@ public:
     // Returns the Demo tab's page
     USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
 
-    // Returns the Controls, Info and About pages (verification)
+    // Returns the Controls, Help, Info and About pages (verification)
     USOLReadOnlyPageWidget* GetControlsPage() const { return ControlsPage; }
+    USOLReadOnlyPageWidget* GetHelpPage() const { return HelpPage; }
     USOLReadOnlyPageWidget* GetInfoPage() const { return InfoPage; }
     USOLReadOnlyPageWidget* GetAboutPage() const { return AboutPage; }
 
@@ -244,6 +245,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLReadOnlyPageWidget> ControlsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> HelpPage;        // (33d-ii) The Help page (SDD 33 D16, D22)
 
     UPROPERTY(Transient)
     TObjectPtr<USOLReadOnlyPageWidget> InfoPage;

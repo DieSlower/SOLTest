@@ -8,6 +8,7 @@
 #include "Menu/SOLInfoText.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSolidMenuMath.h"
 #include "Npc/SOLNpcStatsText.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLRadarLayout.h"
@@ -572,4 +573,307 @@ bool SOLGlossary::IsCovered(const ESOLSteerIcon icon)
 bool SOLGlossary::IsCovered(const ESOLFlightMode mode)
 {
     return IsCovered(ESOLGlossaryCoverage::FlightMode, static_cast<int32>(mode));
+}
+
+// ---- (33d-ii) The symbol box's layout and the symbol view's rebuild rule ----
+
+namespace
+{
+    // The most '|' parts and wrapped words one sample is split into without a heap allocation (a sample is a few
+    // short HUD lines; more still works, on the heap)
+    constexpr int32 GLOSSARY_SAMPLE_INLINE_PARTS = 8;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a table cell holds any text (null reads empty)
+    bool GlossaryHasText(const TCHAR* text)
+    {
+        return text != nullptr && text[0] != TEXT('\0');
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a value is a positive finite number
+    bool GlossaryIsPositiveFinite(const float value)
+    {
+        return FMath::IsFinite(value) && value > 0.0f;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Adds a part's lines to out, wrapped greedily at runs of spaces so each line's measure x scale stays within
+    // width where it can (a single word wider than width stays whole on its own line); the run where a line ends is
+    // dropped
+    void GlossaryWrapPart(const FStringView part, const float width, const float scale,
+        const TFunctionRef<float(FStringView)> measureAtUnit, TArray<FStringView,
+        TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>>& outLines)
+    {
+        const int32 length = part.Len();
+        int32 lineStart = 0;
+        int32 lineEnd = 0;
+        int32 at = 0;
+        bool bLineOpen = false;
+        while (at < length)
+        {
+            // The next word and the run of spaces before it
+            int32 wordStart = at;
+            while (wordStart < length && part[wordStart] == TEXT(' '))
+            {
+                ++wordStart;
+            }
+            if (wordStart >= length)
+            {
+                break;
+            }
+            int32 wordEnd = wordStart;
+            while (wordEnd < length && part[wordEnd] != TEXT(' '))
+            {
+                ++wordEnd;
+            }
+            at = wordEnd;
+
+            // A line starts with a word; the next word joins it (with its run) while the line still fits
+            if (!bLineOpen)
+            {
+                lineStart = wordStart;
+                lineEnd = wordEnd;
+                bLineOpen = true;
+            }
+            else if (measureAtUnit(part.Mid(lineStart, wordEnd - lineStart)) * scale <= width)
+            {
+                lineEnd = wordEnd;
+            }
+            else
+            {
+                outLines.Add(part.Mid(lineStart, lineEnd - lineStart));
+                lineStart = wordStart;
+                lineEnd = wordEnd;
+            }
+        }
+        if (bLineOpen)
+        {
+            outLines.Add(part.Mid(lineStart, lineEnd - lineStart));
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns what a row's box shows: its symbols, else its sample, else nothing
+ESOLGlossaryArt SOLGlossary::EntryArt(const int32 index)
+{
+    if (index < 0 || index >= EntryCount())
+    {
+        return ESOLGlossaryArt::None;
+    }
+    const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+    if (GlossaryHasText(row.Symbols))
+    {
+        return ESOLGlossaryArt::Symbols;
+    }
+    return GlossaryHasText(row.Sample) ? ESOLGlossaryArt::Sample : ESOLGlossaryArt::None;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the near-square grid count symbols share (the smallest column count whose square holds them)
+FSOLGlossaryCellGrid SOLGlossary::CellGrid(const int32 count)
+{
+    FSOLGlossaryCellGrid grid;
+    if (count <= 0)
+    {
+        return grid;
+    }
+    grid.Columns = 1;
+    while (static_cast<int64>(grid.Columns) * grid.Columns < count)
+    {
+        ++grid.Columns;
+    }
+    grid.Rows = (count + grid.Columns - 1) / grid.Columns;
+    return grid;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a cell's rect: equal cells row-major, a short last row centred under the full rows
+FBox2f SOLGlossary::CellRect(const int32 cell, const int32 count, const FBox2f& area)
+{
+    const FVector2f size = area.GetSize();
+    if (count <= 0 || cell < 0 || cell >= count || !area.bIsValid || !GlossaryIsPositiveFinite(size.X)
+        || !GlossaryIsPositiveFinite(size.Y))
+    {
+        return FBox2f(ForceInit);
+    }
+    const FSOLGlossaryCellGrid grid = CellGrid(count);
+    const float cellWidth = size.X / grid.Columns;
+    const float cellHeight = size.Y / grid.Rows;
+    const int32 row = cell / grid.Columns;
+    const int32 column = cell % grid.Columns;
+
+    // The last row's cells (k of Columns) sit centred: shifted by half the room the missing cells leave
+    const int32 lastRowCells = count - (grid.Rows - 1) * grid.Columns;
+    const float offset = row == grid.Rows - 1 && lastRowCells < grid.Columns
+        ? (grid.Columns - lastRowCells) * cellWidth * 0.5f : 0.0f;
+    const FVector2f min(area.Min.X + offset + column * cellWidth, area.Min.Y + row * cellHeight);
+    return FBox2f(min, min + FVector2f(cellWidth, cellHeight));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the scale that shrinks a symbol to fit its cell, never enlarging (0 for an invalid input)
+float SOLGlossary::SymbolFitScale(const FBox2f& boundsAtMaxScale, const FVector2f& cellSizePx, const float maxScale)
+{
+    if (!GlossaryIsPositiveFinite(maxScale) || !GlossaryIsPositiveFinite(cellSizePx.X)
+        || !GlossaryIsPositiveFinite(cellSizePx.Y) || !boundsAtMaxScale.bIsValid)
+    {
+        return 0.0f;
+    }
+    const FVector2f size = boundsAtMaxScale.GetSize();
+    float factor = 1.0f;
+    if (size.X > 0.0f)
+    {
+        factor = FMath::Min(factor, cellSizePx.X / size.X);
+    }
+    if (size.Y > 0.0f)
+    {
+        factor = FMath::Min(factor, cellSizePx.Y / size.Y);
+    }
+    return maxScale * factor;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the point to build a symbol at so its bounds are centred in the cell
+FVector2f SOLGlossary::SymbolCentre(const FBox2f& boundsAtScale, const FBox2f& cell)
+{
+    const FVector2f cellCentre = cell.GetCenter();
+    return boundsAtScale.bIsValid ? cellCentre - boundsAtScale.GetCenter() : cellCentre;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Lays a sample's '|' parts out as lines centred in the area: shrunk to fit down to minScale, then wrapped at spaces
+void SOLGlossary::LayoutSample(const FStringView sample, const FVector2f& areaPx, const float maxScale,
+    const float minScale, const float lineHeightAtUnit, const TFunctionRef<float(FStringView)> measureAtUnit,
+    FSOLGlossarySampleLayout& out)
+{
+    out.Lines.Reset();
+    out.Scale = 0.0f;
+    if (!GlossaryIsPositiveFinite(areaPx.X) || !GlossaryIsPositiveFinite(areaPx.Y)
+        || !GlossaryIsPositiveFinite(maxScale) || !GlossaryIsPositiveFinite(lineHeightAtUnit))
+    {
+        return;
+    }
+
+    // The parts: split on the delimiter, each trimmed, the empty ones dropped
+    TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>> parts;
+    int32 partStart = 0;
+    for (int32 at = 0; at <= sample.Len(); ++at)
+    {
+        if (at == sample.Len() || sample[at] == SOLMenuText::GLOSSARY_LIST_DELIMITER)
+        {
+            const FStringView part = sample.Mid(partStart, at - partStart).TrimStartAndEnd();
+            if (!part.IsEmpty())
+            {
+                parts.Add(part);
+            }
+            partStart = at + 1;
+        }
+    }
+    if (parts.IsEmpty())
+    {
+        return;
+    }
+
+    // The scale that fits every part on its own line, never above maxScale
+    const float floorScale = GlossaryIsPositiveFinite(minScale) && minScale <= maxScale ? minScale : maxScale;
+    float widest = 0.0f;
+    for (const FStringView part : parts)
+    {
+        widest = FMath::Max(widest, measureAtUnit(part));
+    }
+    float scale = FMath::Min(maxScale, areaPx.Y / (parts.Num() * lineHeightAtUnit));
+    if (widest > 0.0f)
+    {
+        scale = FMath::Min(scale, areaPx.X / widest);
+    }
+
+    // Too small: draw at the floor and wrap each part that is still too wide
+    TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>> lines;
+    if (scale >= floorScale)
+    {
+        lines = parts;
+    }
+    else
+    {
+        scale = floorScale;
+        for (const FStringView part : parts)
+        {
+            if (measureAtUnit(part) * scale > areaPx.X)
+            {
+                GlossaryWrapPart(part, areaPx.X, scale, measureAtUnit, lines);
+            }
+            else
+            {
+                lines.Add(part);
+            }
+        }
+    }
+
+    // Each line centred across, the block centred down (either may be negative: the view clips)
+    out.Scale = scale;
+    const float lineHeight = lineHeightAtUnit * scale;
+    const float top = (areaPx.Y - lines.Num() * lineHeight) * 0.5f;
+    out.Lines.Reserve(lines.Num());
+    for (int32 index = 0; index < lines.Num(); ++index)
+    {
+        FSOLGlossarySampleLine& line = out.Lines.AddDefaulted_GetRef();
+        line.Text = FString(lines[index]);
+        line.Position = FVector2f((areaPx.X - measureAtUnit(lines[index]) * scale) * 0.5f, top + index * lineHeight);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a view's size in pixels ((0, 0) for an invalid input)
+FIntPoint SOLGlossary::ViewPixelSize(const FVector2f& localSize, const float layoutScale)
+{
+    if (!GlossaryIsPositiveFinite(layoutScale) || !GlossaryIsPositiveFinite(localSize.X)
+        || !GlossaryIsPositiveFinite(localSize.Y))
+    {
+        return FIntPoint::ZeroValue;
+    }
+    return FIntPoint(FMath::RoundToInt(localSize.X * layoutScale), FMath::RoundToInt(localSize.Y * layoutScale));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a view must rebuild: laid out, and not built or built for another size or strength
+bool SOLGlossary::ViewNeedsRebuild(const FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, const float strength)
+{
+    if (sizePx.X <= 0 || sizePx.Y <= 0)
+    {
+        return false;
+    }
+    return !stamp.bBuilt || sizePx != stamp.SizePx
+        || SOLSolidMenu::SanitizeStrength(strength) != stamp.Strength;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Records a build at a size and (sanitized) strength
+void SOLGlossary::MarkViewBuilt(FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, const float strength)
+{
+    stamp.bBuilt = true;
+    stamp.SizePx = sizePx;
+    stamp.Strength = SOLSolidMenu::SanitizeStrength(strength);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a sample line's palette role: a flight mode's HUD label in a row that explains that mode takes the mode's
+// colour role (SOLHudFormat::FlightModeRole, as the HUD draws it), every other line Primary
+ESOLHudPaletteRole SOLGlossary::SampleLineRole(const int32 index, const FStringView line)
+{
+    // The flight modes the row covers: the one whose HUD label the line is, exactly
+    for (const FSOLGlossaryCoverageItem& item : EntryCoverage(index))
+    {
+        if (item.Kind != ESOLGlossaryCoverage::FlightMode)
+        {
+            continue;
+        }
+        const ESOLFlightMode mode = static_cast<ESOLFlightMode>(item.Value);
+        if (line.Equals(FStringView(SOLHudFormat::FlightModeLabel(mode)), ESearchCase::CaseSensitive))
+        {
+            return SOLHudFormat::FlightModeRole(mode);
+        }
+    }
+    return ESOLHudPaletteRole::Primary;
 }

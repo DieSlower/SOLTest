@@ -8,6 +8,7 @@
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
+#include "UI/SOLHudSymbols.h"
 
 namespace
 {
@@ -290,16 +291,16 @@ FLinearColor SOLHudFormat::PilotCircleColor(const bool bIsFreeLooking)
 
 namespace
 {
-    // Flight mode label colors from the original Limit Theory palette (SDD 19 Amendment 3), in ESOLFlightMode order:
-    // MANUAL LT Secondary (orange), ASSISTED LT Primary (blue-cyan), AUTO LT Good (green)
-    const FLinearColor HUD_FLIGHT_MODE_COLORS[] =
+    // Flight mode label palette roles from the original Limit Theory palette (SDD 19 Amendment 3), in ESOLFlightMode
+    // order: MANUAL LT Secondary (orange), ASSISTED LT Primary (blue-cyan), AUTO LT Good (green)
+    const ESOLHudPaletteRole HUD_FLIGHT_MODE_ROLES[] =
     {
-        SOL::HudPalette::SECONDARY,
-        SOL::HudPalette::PRIMARY,
-        SOL::HudPalette::GOOD,
+        ESOLHudPaletteRole::Secondary,
+        ESOLHudPaletteRole::Primary,
+        ESOLHudPaletteRole::Good,
     };
-    static_assert(UE_ARRAY_COUNT(HUD_FLIGHT_MODE_COLORS) == UE_ARRAY_COUNT(SOLMenuText::HUD_FLIGHT_MODE_LABELS),
-        "one color per flight mode label");
+    static_assert(UE_ARRAY_COUNT(HUD_FLIGHT_MODE_ROLES) == UE_ARRAY_COUNT(SOLMenuText::HUD_FLIGHT_MODE_LABELS),
+        "one palette role per flight mode label");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns a flight mode's index into the label and color tables (clamped into range)
@@ -318,8 +319,15 @@ const TCHAR* SOLHudFormat::FlightModeLabel(const ESOLFlightMode mode)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the flight mode label's color
+// Returns the flight mode label's color: the HUD palette's colour of the mode's role
 FLinearColor SOLHudFormat::FlightModeColor(const ESOLFlightMode mode)
 {
-    return HUD_FLIGHT_MODE_COLORS[HudFlightModeIndex(mode)];
+    return SOLHudSymbols::HudPalette().Colors[static_cast<int32>(FlightModeRole(mode))];
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD palette role of a flight mode's label
+ESOLHudPaletteRole SOLHudFormat::FlightModeRole(const ESOLFlightMode mode)
+{
+    return HUD_FLIGHT_MODE_ROLES[HudFlightModeIndex(mode)];
 }

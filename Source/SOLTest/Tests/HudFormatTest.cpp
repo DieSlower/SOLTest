@@ -12,6 +12,7 @@
 
 #include "SOLConstants.h"
 #include "Tests/SOLTestHelpers.h"
+#include "UI/SOLHudSymbols.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -477,6 +478,35 @@ bool FSOLHudFormatFlightModeLabelsTest::RunTest(const FString& /*parameters*/)
     HudFormatExpectModeLabel(*this, ESOLFlightMode::Manual, TEXT("MANUAL"));
     HudFormatExpectModeLabel(*this, ESOLFlightMode::Assisted, TEXT("ASSISTED"));
     HudFormatExpectModeLabel(*this, ESOLFlightMode::Auto, TEXT("AUTO"));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatFlightModeRolesTest, "SOLTest.HudFormat.FlightModeRoles",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Each mode's palette role is the Limit Theory one (Manual Secondary, Assisted Primary, Auto Good), and the
+// label colour is the HUD palette's colour of that role, so the HUD and the Help glossary share one source
+bool FSOLHudFormatFlightModeRolesTest::RunTest(const FString& /*parameters*/)
+{
+    const struct
+    {
+        ESOLFlightMode Mode;
+        ESOLHudPaletteRole Role;
+    } cases[] = {
+        { ESOLFlightMode::Manual, ESOLHudPaletteRole::Secondary },
+        { ESOLFlightMode::Assisted, ESOLHudPaletteRole::Primary },
+        { ESOLFlightMode::Auto, ESOLHudPaletteRole::Good },
+    };
+    const FSOLHudSymbolPalette palette = SOLHudSymbols::HudPalette();
+    for (const auto& item : cases)
+    {
+        const FString label = SOLHudFormat::FlightModeLabel(item.Mode);
+        TestEqual(label + TEXT(": role"), static_cast<int32>(SOLHudFormat::FlightModeRole(item.Mode)),
+            static_cast<int32>(item.Role));
+        TestTrue(label + TEXT(": colour is the role's palette colour"), SOLHudFormat::FlightModeColor(item.Mode)
+            .Equals(palette.Colors[static_cast<int32>(item.Role)], 1e-6f));
+    }
     return true;
 }
 

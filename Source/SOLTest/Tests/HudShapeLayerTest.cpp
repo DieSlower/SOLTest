@@ -100,4 +100,73 @@ bool FSOLHudShapeLayerRetainTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapeLayerCapacityTest, "SOLTest.HudShapeLayer.Capacities",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii, test-after) The text and backing capacities default to the HUD's; a glossary view's smaller ones (MaxTexts,
+// MaxBackings) bound what the layer queues, the rest dropped; a negative capacity reads 0
+bool FSOLHudShapeLayerCapacityTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLHudShapeLayer> hud = SNew(SSOLHudShapeLayer);
+    TestEqual(TEXT("default texts: the HUD's"), hud->GetTexts().GetMaxItems(), SOL::Hologram::HUD_MAX_TEXTS);
+    TestEqual(TEXT("default backings: the HUD's"), hud->GetMaxBackings(), SOL::Hologram::HUD_MAX_PANELS);
+    TestEqual(TEXT("default shapes: the HUD's"), hud->GetBatch().GetMaxShapes(), SOL::Hologram::HUD_MAX_SHAPES);
+
+    // A glossary-sized layer: two lines and one backing
+    const TSharedRef<SSOLHudShapeLayer> view = SNew(SSOLHudShapeLayer).MaxShapes(HUDSHAPELAYERTEST_MAX_SHAPES)
+        .MaxTexts(2).MaxBackings(1);
+    TestEqual(TEXT("asked texts"), view->GetTexts().GetMaxItems(), 2);
+    TestEqual(TEXT("asked backings"), view->GetMaxBackings(), 1);
+    const FBox2f backing(FVector2f(0.0f, 0.0f), FVector2f(88.0f, 88.0f));
+    TestTrue(TEXT("the one backing fits"), view->AddBacking(backing, 6.0f, 8.0f));
+    TestFalse(TEXT("a second backing is refused"), view->AddBacking(backing, 6.0f, 8.0f));
+    TestEqual(TEXT("one backing queued"), view->GetBackingCount(), 1);
+    const FText line = FText::FromString(TEXT("AUTO"));
+    for (int32 index = 0; index < 3; ++index)
+    {
+        view->GetTexts().Add(line, FVector2f(0.0f, 10.0f * index), 1.0f, SOL::HudPalette::PRIMARY,
+            ESOLHudFont::Medium);
+    }
+    TestEqual(TEXT("two lines kept"), view->GetTexts().GetItems().Num(), 2);
+    TestEqual(TEXT("the third dropped"), view->GetTexts().GetDroppedCount(), 1);
+    view->ResetFrame();
+    TestTrue(TEXT("after a reset the backing fits again"), view->AddBacking(backing, 6.0f, 8.0f));
+
+    // Negative capacities read 0: nothing is queued
+    const TSharedRef<SSOLHudShapeLayer> none = SNew(SSOLHudShapeLayer).MaxTexts(-4).MaxBackings(-1);
+    TestEqual(TEXT("negative texts read 0"), none->GetTexts().GetMaxItems(), 0);
+    TestEqual(TEXT("negative backings read 0"), none->GetMaxBackings(), 0);
+    TestFalse(TEXT("no backing fits"), none->AddBacking(backing, 6.0f, 8.0f));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapeLayerPaintScratchTest, "SOLTest.HudShapeLayer.SharedPaintScratch",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii, test-after) A layer reserves its own paint buffer for MaxShapes quads (the HUD's way); with a shared
+// PaintScratch it reserves none and leaves the shared buffer as the owner sized it; a MaxShapes(0) layer holds no
+// batch until its owner sizes it; nothing is painted yet, so the last paint origin reads (0, 0)
+bool FSOLHudShapeLayerPaintScratchTest::RunTest(const FString& /*parameters*/)
+{
+    const TSharedRef<SSOLHudShapeLayer> own = SNew(SSOLHudShapeLayer).MaxShapes(HUDSHAPELAYERTEST_MAX_SHAPES);
+    TestTrue(TEXT("own paint buffer reserved"), own->GetOwnPaintVertexCapacity()
+        >= HUDSHAPELAYERTEST_MAX_SHAPES * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
+    TestTrue(TEXT("no paint yet: origin (0, 0)"), own->GetLastPaintOrigin() == FVector2f::ZeroVector);
+
+    TArray<FSlateVertex> shared;
+    shared.Reserve(HUDSHAPELAYERTEST_MAX_SHAPES * SOL::Hologram::HUD_VERTICES_PER_SHAPE);
+    const int32 sharedCapacity = shared.Max();
+    const TSharedRef<SSOLHudShapeLayer> lean = SNew(SSOLHudShapeLayer).MaxShapes(0).PaintScratch(&shared);
+    TestEqual(TEXT("shared scratch: no own paint buffer"), lean->GetOwnPaintVertexCapacity(), 0);
+    TestEqual(TEXT("shared scratch untouched"), shared.Max(), sharedCapacity);
+    TestEqual(TEXT("no batch until sized"), lean->GetBatch().GetMaxShapes(), 0);
+    lean->GetBatch().Initialize(3);
+    TestEqual(TEXT("sized by its owner"), lean->GetBatch().GetMaxShapes(), 3);
+    return true;
+}
+
 #endif

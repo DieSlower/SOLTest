@@ -5,9 +5,11 @@
 
 #include "Menu/SOLReadOnlyPageWidget.h"
 
+#include "Menu/SOLKeyboardDiagram.h"
 #include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
 #include "Menu/SOLSolidStyle.h"
@@ -34,6 +36,8 @@ namespace
             return SOLMenuText::CONTROLS_TITLE;
         case ESOLReadOnlyPage::Info:
             return SOLMenuText::INFO_TITLE;
+        case ESOLReadOnlyPage::Help:
+            return SOLMenuText::HELP_TITLE;
         default:
             return SOLMenuText::ABOUT_TITLE;
         }
@@ -51,23 +55,31 @@ void USOLReadOnlyPageWidget::Setup(const ESOLReadOnlyPage page)
         return;
     }
     mPage = page;
+    if (page == ESOLReadOnlyPage::Help)
+    {
+        mSymbolScratch = MakeUnique<FSOLHudSymbolScratch>();
+    }
     const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(this);
     UVerticalBox* root = SOLMenuContent::MakePage(*WidgetTree, ReadOnlyPageTitle(page));
     WidgetTree->RootWidget = root;
     UHorizontalBox* body = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
     root->AddChildToVerticalBox(body)->SetSize(FSlateChildSize(ESlateSizeRule::Fill));
 
-    // The tab rail
+    // The tab rail, with its group captions (33d-ii: only Help has any; the other pages pass none and lay out as
+    // before)
     TArray<FString> labels;
+    TArray<FString> captions;
     const int32 tabCount = SOLPageTabs::TabCount(page);
     labels.Reserve(tabCount);
+    captions.Reserve(tabCount);
     for (int32 tab = 0; tab < tabCount; ++tab)
     {
         labels.Add(SOLPageTabs::TabLabel(page, tab));
+        captions.Add(SOLPageTabs::TabCaption(page, tab));
     }
     FSOLMenuButtonClicked onClicked;
     onClicked.BindUObject(this, &USOLReadOnlyPageWidget::HandleTabClicked);
-    body->AddChildToHorizontalBox(Rail.Build(*WidgetTree, labels, onClicked))->SetPadding(
+    body->AddChildToHorizontalBox(Rail.Build(*WidgetTree, labels, onClicked, captions))->SetPadding(
         FMargin(0.0f, 0.0f, SOL::SolidMenu::SETTINGS_BODY_GAP, 0.0f));
 
     // The content recess: one scroll box per tab in a switcher
@@ -100,6 +112,10 @@ void USOLReadOnlyPageWidget::ShowOpening()
     }
     Rail.ScrollToTop();
     Rail.ClearStaleHover();
+    if (Diagram != nullptr)
+    {
+        Diagram->SetHoveredKey(INDEX_NONE);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -163,18 +179,40 @@ void USOLReadOnlyPageWidget::RegisterColumnCaps(USOLKeyCapRow* caps, USizeBox* b
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the number of glossary rows of a tab
+int32 USOLReadOnlyPageWidget::GetGlossaryRowCount(const int32 tab) const
+{
+    int32 count = 0;
+    for (const FSOLHelpGlossaryRow& row : GlossaryRows)
+    {
+        count += row.Tab == tab ? 1 : 0;
+    }
+    return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the rows' laid-out width: the content switcher's less a scroll bar's room, 0 before the first layout
+float USOLReadOnlyPageWidget::GetContentRowWidth() const
+{
+    if (TabSwitcher == nullptr)
+    {
+        return 0.0f;
+    }
+    const float switcherWidth = TabSwitcher->GetCachedGeometry().GetLocalSize().X;
+    return switcherWidth > 0.0f ? switcherWidth - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP
+        : 0.0f;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Sets the left column's width for the rows' laid-out width, only on a change
 void USOLReadOnlyPageWidget::FitLeftColumn()
 {
-    // The rows are as wide as the content switcher less a scroll bar's room (taken as shown, so every tab gets the
-    // same column); before the first layout the switcher has no size and the full column stays
+    // Before the first layout the switcher has no size and the full column stays (LeftColumnWidth at 0)
     if (TabSwitcher == nullptr || ColumnTexts.IsEmpty())
     {
         return;
     }
-    const float rowWidth = TabSwitcher->GetCachedGeometry().GetLocalSize().X - SOL::SolidMenu::SCROLL_BAR_THICKNESS
-        - SOL::MenuStyle::BUTTON_GAP;
-    const float width = SOLPageTabs::LeftColumnWidth(mPage, rowWidth);
+    const float width = SOLPageTabs::LeftColumnWidth(mPage, GetContentRowWidth());
     if (width == mLeftColumnWidth)
     {
         return;
@@ -195,20 +233,101 @@ void USOLReadOnlyPageWidget::FitLeftColumn()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Binds the rail's hover traces to its trace layer
+// (33d-ii) Sets the Keyboard tab's diagram and lays it out at its starting width, the width FitDiagram compares with
+void USOLReadOnlyPageWidget::SetDiagram(USOLKeyboardDiagram* diagram, const float startLayoutWidth)
+{
+    Diagram = diagram;
+    mDiagramWidth = 0.0f;
+    if (Diagram != nullptr && startLayoutWidth > 0.0f)
+    {
+        Diagram->SetLayoutWidth(startLayoutWidth);
+        mDiagramWidth = startLayoutWidth;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Lays the diagram out in the rows' width, only when it changed by more than the tolerance
+void USOLReadOnlyPageWidget::FitDiagram()
+{
+    if (Diagram == nullptr)
+    {
+        return;
+    }
+    const float width = GetContentRowWidth();
+    if (width > 0.0f && FMath::Abs(width - mDiagramWidth) > SOL::Help::DIAGRAM_WIDTH_TOLERANCE)
+    {
+        mDiagramWidth = width;
+        Diagram->SetLayoutWidth(width);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Lets the shown glossary tab's symbol views rebuild when their size (at the page's current layout scale)
+// or the strength changed
+void USOLReadOnlyPageWidget::UpdateShownSymbolViews(const float strength, const float layoutScale)
+{
+    if (!mSymbolScratch.IsValid())
+    {
+        return;
+    }
+    for (const FSOLHelpGlossaryRow& row : GlossaryRows)
+    {
+        if (row.Tab == mTab && row.View != nullptr)
+        {
+            row.View->UpdateBatch(strength, *mSymbolScratch, layoutScale);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Refreshes the Help page from the live keys
+void USOLReadOnlyPageWidget::HandleKeyBindingsChanged()
+{
+    ++mBindingsChangedCount;
+    SOLMenuContent::RefreshHelpPage(*this, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Binds the rail's hover traces to its trace layer, and (Help) the key bindings changed event
 void USOLReadOnlyPageWidget::NativeConstruct()
 {
     Super::NativeConstruct();
     Rail.Bind();
+    USOLSettingsSubsystem* settings = mPage == ESOLReadOnlyPage::Help ? USOLSettingsSubsystem::Get(this) : nullptr;
+    if (settings != nullptr && !mBindingsHandle.IsValid())
+    {
+        mBindingsHandle = settings->OnKeyBindingsChanged().AddUObject(this,
+            &USOLReadOnlyPageWidget::HandleKeyBindingsChanged);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Refreshes the rail's highlights and its trace layer's strength, and fits the left column to the rows
+// (33d-ii) Unbinds the key bindings changed event
+void USOLReadOnlyPageWidget::NativeDestruct()
+{
+    USOLSettingsSubsystem* settings = mBindingsHandle.IsValid() ? USOLSettingsSubsystem::Get(this) : nullptr;
+    if (settings != nullptr)
+    {
+        settings->OnKeyBindingsChanged().Remove(mBindingsHandle);
+    }
+    mBindingsHandle.Reset();
+    Super::NativeDestruct();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Refreshes the rail's highlights and its trace layer's strength, fits the left column to the rows and (Help) the
+// diagram to their width, and lets the shown glossary tab's views rebuild on a size or strength change
 void USOLReadOnlyPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
-    Rail.Tick(USOLSolidMenuSubsystem::BeginFrame(this), false);
+    const FSOLSolidMenuFrame frame = USOLSolidMenuSubsystem::BeginFrame(this);
+    Rail.Tick(frame, false);
     FitLeftColumn();
+    if (mPage == ESOLReadOnlyPage::Help)
+    {
+        FitDiagram();
+        UpdateShownSymbolViews(frame.Strength, geometry.Scale);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

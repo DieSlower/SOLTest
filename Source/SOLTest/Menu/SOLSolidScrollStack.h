@@ -48,13 +48,19 @@ struct SOLTEST_API FSOLSolidScrollStack
     // no cap)
     void SetMaxVisibleItems(int32 maxVisibleItems);
 
-    // Follows the keyboard focus among the buttons (item index = button index; each button's focus at its last
-    // refresh, so refresh them first) and pushes the scroll offset and view band (0 tall while the items fit) to the
-    // trace layer when they changed; shows the bar and clips only while the items need scrolling
+    // (33d-ii) Gives each button its own top in the content (local units, padding excluded) when the items are not
+    // all buttons of the item height (the tab rail's group captions); an empty view: button i is item i at
+    // SOLSolidScroll::StackItemTop, as before
+    void SetButtonTops(TConstArrayView<float> topsContentLocal);
+
+    // Follows the keyboard focus among the buttons (item index = button index unless SetButtonTops gave the buttons'
+    // tops; each button's focus at its last refresh, so refresh them first) and pushes the scroll offset and view band
+    // (0 tall while the items fit) to the trace layer when they changed; shows the bar and clips only while the items
+    // need scrolling
     void Tick(const TSharedPtr<SSOLSolidTraceLayer>& layer, const TArray<TObjectPtr<USOLMenuButton>>& buttons);
 
-    // Scrolls so an item shows whole, moving as little as possible (SOLSolidScroll::OffsetToShow); nothing before the
-    // first layout or while the items fit
+    // Scrolls so a button's item shows whole, moving as little as possible (SOLSolidScroll::OffsetToShow); nothing
+    // before the first layout or while the items fit
     void ShowItem(int32 index);
 
     // Forgets what was pushed and the focused item (a rebuilt trace layer gets everything again on the next tick)
@@ -78,6 +84,9 @@ struct SOLTEST_API FSOLSolidScrollStack
     // Returns whether the items need scrolling at the last layout (SOLSolidScroll::NeedsScroll)
     bool NeedsScroll() const;
 
+    // Returns a button's top in the content (its SetButtonTops top, else SOLSolidScroll::StackItemTop)
+    float ButtonTop(int32 index) const;
+
     UPROPERTY(Transient)
     TObjectPtr<UScrollBox> Scroll;
 
@@ -87,6 +96,7 @@ struct SOLTEST_API FSOLSolidScrollStack
     UPROPERTY(Transient)
     TObjectPtr<USizeBox> Cap;               // Caps the view height (null without a cap)
 
+    TArray<float> ButtonTops;               // (33d-ii) Each button's top in the content (empty: StackItemTop)
     float ItemHeight = 0.0f;
     float Gap = 0.0f;
     float ViewTop = 0.0f;                   // The view's top in the trace layer's local units

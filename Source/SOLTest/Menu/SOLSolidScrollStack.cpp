@@ -92,6 +92,22 @@ void FSOLSolidScrollStack::SetMaxVisibleItems(const int32 maxVisibleItems)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Gives each button its own top in the content (empty: button i is item i)
+void FSOLSolidScrollStack::SetButtonTops(const TConstArrayView<float> topsContentLocal)
+{
+    ButtonTops.Reset(topsContentLocal.Num());
+    ButtonTops.Append(topsContentLocal.GetData(), topsContentLocal.Num());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a button's top in the content: its own top when given, else the equal items' top
+float FSOLSolidScrollStack::ButtonTop(const int32 index) const
+{
+    return ButtonTops.IsValidIndex(index) ? ButtonTops[index]
+        : SOLSolidScroll::StackItemTop(index, ItemHeight, Gap, 0.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Follows the keyboard focus, keeps the bar and the clipping to the need to scroll and pushes a changed scroll to the
 // trace layer
 void FSOLSolidScrollStack::Tick(const TSharedPtr<SSOLSolidTraceLayer>& layer,
@@ -139,7 +155,7 @@ void FSOLSolidScrollStack::Tick(const TSharedPtr<SSOLSolidTraceLayer>& layer,
         {
             FocusedIndex = focused;
             const float target = focused == INDEX_NONE ? offset : SOLSolidScroll::OffsetToShow(offset,
-                SOLSolidScroll::StackItemTop(focused, ItemHeight, Gap, 0.0f), ItemHeight, contentHeight, viewHeight);
+                ButtonTop(focused), ItemHeight, contentHeight, viewHeight);
             if (target != offset)
             {
                 Scroll->SetScrollOffset(target);
@@ -168,18 +184,20 @@ void FSOLSolidScrollStack::Tick(const TSharedPtr<SSOLSolidTraceLayer>& layer,
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Scrolls so an item shows whole with the least move (laid out and scrolling only)
+// Scrolls so a button's item shows whole with the least move (laid out and scrolling only)
 void FSOLSolidScrollStack::ShowItem(const int32 index)
 {
     const float viewHeight = GetViewHeight();
-    if (Scroll == nullptr || Items == nullptr || index < 0 || index >= Items->GetChildrenCount() || viewHeight <= 0.0f
+    const int32 buttonCount = Items != nullptr ? (ButtonTops.IsEmpty() ? Items->GetChildrenCount() : ButtonTops.Num())
+        : 0;
+    if (Scroll == nullptr || Items == nullptr || index < 0 || index >= buttonCount || viewHeight <= 0.0f
         || !NeedsScroll())
     {
         return;
     }
     const float offset = Scroll->GetScrollOffset();
-    const float target = SOLSolidScroll::OffsetToShow(offset, SOLSolidScroll::StackItemTop(index, ItemHeight, Gap,
-        0.0f), ItemHeight, GetContentHeight(), viewHeight);
+    const float target = SOLSolidScroll::OffsetToShow(offset, ButtonTop(index), ItemHeight, GetContentHeight(),
+        viewHeight);
     if (target != offset)
     {
         Scroll->SetScrollOffset(target);

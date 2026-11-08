@@ -94,7 +94,10 @@ namespace SOLSolidMenuProfile
  * key cap restyle; then (33c) the keyboard diagram test page (USOLKeyboardDiagramSmokePage) over the main menu's
  * Controls page, laid out in its content width, without and with its busiest key hovered: P12 main-diagram and P13
  * main-diagram-hover at 1920x1080 (after P5), P14 and P15 the same at 1280x720 (after P6), against the main menu's
- * Settings baseline (the 46h rule), the same run's main-controls pass being the screen without the page. With
+ * Settings baseline (the 46h rule), the same run's main-controls pass being the screen without the page; then (33d-ii)
+ * the main menu's Help page on its Keyboard, Flight HUD and Overlays tabs: P16 main-help-keys, P17 main-help-flight and
+ * P18 main-help-overlays at 1920x1080 (after P13), P19-P21 the same at 1280x720 (after P15), against the main menu's
+ * Settings baseline (each settles until every view of its tab is built, one check each). With
  * -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): nine passes at that size (the game
  * window's size limits lifted so it may be larger than the desktop): the main menu alone, with Settings, Settings on
  * Key bindings, Controls, About and Demo, then the pause menu alone, with Settings and with Info; the
@@ -159,6 +162,7 @@ private:
         double BaseGpuMs = 0.0;
         bool bDiagram = false;                              // 33c: the keyboard diagram test page over the screen
         bool bDiagramHover = false;                         // ... with its busiest key hovered (the fullest strip)
+        int32 HelpTab = INDEX_NONE;                         // 33d-ii: the main menu's Help page on this ESOLHelpTab
     };
 
     // Where a capture pass is
@@ -213,6 +217,11 @@ private:
 
     // (33c) Takes the diagram test page off the viewport (nothing when none shows)
     void HideDiagramPage();
+
+    // (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built, and the views and
+    // those painted (true for a pass without a Help tab)
+    bool IsPassHelpShown(int32 pass, const USOLMenuSubsystem& menu, int32& outViews, int32& outBuilt,
+        int32& outPainted) const;
 
     // (33c) Returns whether the pass's diagram test page shows as the pass asks (true for a pass without one)
     bool IsPassDiagramShown(int32 pass) const;

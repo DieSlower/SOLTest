@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Menu/SOLMenuState.h"
 #include "Menu/SOLSolidScrollStack.h"
 #include "Menu/SOLSolidTraceLayer.h"
 #include "UI/SOLHoloMenuMath.h"
@@ -32,29 +33,31 @@ enum class ESOLMainMenuPage : uint8
     None,
     StartLocation,
     Controls,
+    Help,           // (33d-ii, SDD 33 D16) after Controls
     Settings,
     About,
     Demo,
 };
 
 /**
- * Main menu (SDD 8, 8c; solid restyle SDD 46 section 6, part 46d), a UMG widget tree built entirely in C++: a left
- * hull column (USOLSolidPanel with a title step, a chin, rivets, vents and circuit traces along its lower edge) with
- * the title and tagline, the Play, Demo (SDD 11 Part 10e), Start location, Controls, Settings, About and Quit stack
- * buttons, the hazard stripe under Quit, the key hint and the chin recess with the build version line
- * (SOLBuildVersion), over the live solar system; and the page shell to its right (SDD 46 section 6.1: a hull panel,
- * the content recess with the page, a Back button in a bottom-right recess) for the start-location picker (every
- * registry body in a recess list; the start body, the one Play uses as -SOLStart does, is the selected row), Controls
- * (keys from the applied settings, so rebinds show), Settings (8d; leaving the page ends the settings visit), About and
- * Demo. Mouse and keyboard: hover or Tab / arrows move the highlight, Enter / Space or a click activates, Esc or Back
- * closes the open page (one code path). The hovered or focused entry's circuit trace extends from its right end to the
- * column hull's right edge (Q15). Animations at the HUD effects strength (SDD 46 section 7): the column opens (fade and
- * slide) each time the menu is added to the viewport, then its traces power up and pulse; the shell opens with a page
- * and closes over CLOSE_S after the input is already back (a reopen during the close reverses). Actions go to
- * USOLMenuSubsystem. (46g, D17) The stack scrolls when it has more entries than STACK_MAX_VISIBLE_ENTRIES
- * (FSOLSolidScrollStack: the focused entry scrolls whole into view, its hover trace and LED move with it); with the 7
- * entries of today it fits and lays out as before. (46g, Q11) The #42 open cue plays when the column opens and when the
- * shell opens from closed (the buttons play the hover and select cues themselves).
+ * Main menu (SDD 8, 8c; solid restyle SDD 46 section 6, part 46d), a UMG widget tree built entirely in C++: a left hull
+ * column (USOLSolidPanel with a title step, a chin, rivets, vents and circuit traces along its lower edge) with the
+ * title and tagline, the Play, Demo (SDD 11 Part 10e), Start location, Controls, Help (33d-ii), Settings, About and
+ * Quit stack buttons (SOLMenuState::EMainMenuEntry), the hazard stripe under Quit, the key hint and the chin recess
+ * with the build version line (SOLBuildVersion), over the live solar system; and the page shell to its right (SDD 46
+ * section 6.1: a hull panel, the content recess with the page, a Back button in a bottom-right recess) for the
+ * start-location picker (every registry body in a recess list; the start body, the one Play uses as -SOLStart does, is
+ * the selected row), Controls (keys from the applied settings, so rebinds show), Help (the keyboard diagram and the HUD
+ * glossary, SDD 33), Settings (8d; leaving the page ends the settings visit), About and Demo. Mouse and keyboard: hover
+ * or Tab / arrows move the highlight, Enter / Space or a click activates, Esc or Back closes the open page (one code
+ * path). The hovered or focused entry's circuit trace extends from its right end to the column hull's right edge (Q15).
+ * Animations at the HUD effects strength (SDD 46 section 7): the column opens (fade and slide) each time the menu is
+ * added to the viewport, then its traces power up and pulse; the shell opens with a page and closes over CLOSE_S after
+ * the input is already back (a reopen during the close reverses). Actions go to USOLMenuSubsystem. (46g, D17) The stack
+ * scrolls when it has more entries than STACK_MAX_VISIBLE_ENTRIES (FSOLSolidScrollStack: the focused entry scrolls
+ * whole into view, its hover trace and LED move with it); with the 8 entries of 33d-ii it scrolls (Quit below the fold,
+ * SDD 33 D31). (46g, Q11) The #42 open cue plays when the column opens and when the shell opens from closed (the
+ * buttons play the hover and select cues themselves).
  */
 UCLASS()
 class SOLTEST_API USOLMainMenuWidget : public UUserWidget
@@ -84,8 +87,9 @@ public:
     // Returns the Demo page
     USOLDemoPageWidget* GetDemoPage() const { return DemoPage; }
 
-    // Returns the Controls and About pages (verification)
+    // Returns the Controls, Help and About pages (verification)
     USOLReadOnlyPageWidget* GetControlsPage() const { return ControlsPage; }
+    USOLReadOnlyPageWidget* GetHelpPage() const { return HelpPage; }
     USOLReadOnlyPageWidget* GetAboutPage() const { return AboutPage; }
 
     // Returns how many entry buttons the column has
@@ -179,18 +183,8 @@ protected:
 
 private:
 
-    // Column entries, in order (also the entry buttons' indices)
-    enum class EEntry : uint8
-    {
-        Play,
-        Demo,
-        StartLocation,
-        Controls,
-        Settings,
-        About,
-        Quit,
-        Count,
-    };
+    // Column entries, in order (also the entry buttons' indices; 33d-ii: the public SOLMenuState::EMainMenuEntry)
+    using EEntry = SOLMenuState::EMainMenuEntry;
 
     // A column button was clicked
     void HandleEntryClicked(int32 entry);
@@ -253,6 +247,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLReadOnlyPageWidget> ControlsPage;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLReadOnlyPageWidget> HelpPage;        // (33d-ii) The Help page (SDD 33 D16, D22)
 
     UPROPERTY(Transient)
     TObjectPtr<USOLReadOnlyPageWidget> AboutPage;

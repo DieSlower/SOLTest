@@ -73,6 +73,7 @@ private:
         Thrust,
         Pause,
         TabControls,
+        TabHelp,        // 33d-ii: the Help tab selected once in the pause walk
         TabInfo,
         TabSettings,
         RebindCapture,

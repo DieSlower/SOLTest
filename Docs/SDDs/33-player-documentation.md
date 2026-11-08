@@ -8,7 +8,7 @@ interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
-Controls page and the Settings key rows (section 20); 33c next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii built, not committed yet (2026-11-08, section 20): the Help page and its HUD glossary, two layout questions open with the user (section 18); 33e next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -163,8 +163,8 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
 
 - **Glossary rows.** A symbol recess (`GLOSSARY_SYMBOL_BOX` 96 units square, proposed) holding a `USOLHudSymbolView`,
   then the entry's name (heading colour, SemiBold) and its description (body colour, wrapping), like the Info rows.
-  At 1000x800 the description wraps under a narrower column (the 46i `LeftColumnWidth` rule; the symbol box may drop to
-  `GLOSSARY_SYMBOL_BOX_NARROW` 64, proposed).
+  The page is for wide screens only (D37): `LeftColumnWidth(Help, any width)` is `GLOSSARY_SYMBOL_BOX`, with no
+  narrow variant.
 - **Live keys.** Key names in the glossary text and the diagram come from `ResolveLiveKeys` (the ship's mapping in
   flight, the applied settings in the main menu), as Controls and Info do. They are refreshed when the page shows and,
   while it shows, on `USOLSettingsSubsystem::OnKeyBindingsChanged` (bound in `NativeConstruct`, unbound in
@@ -438,7 +438,15 @@ same headers. One file per topic:
 | `DIAGRAM_TINT_ALPHA` / `DIAGRAM_FREE_ALPHA` | 0.28 / 0.45 | Area fill, a free key |
 | `DIAGRAM_DETAIL_LINES` | 24 (33c; was 6) | D36: the cap on the hover strip's lines (the strip is sized for the busiest key, 8 at the defaults) |
 | `SHORT_LABEL_MAX_CHARS` | 8 | Short label length |
-| `GLOSSARY_SYMBOL_BOX` / `GLOSSARY_SYMBOL_BOX_NARROW` | 96 / 64 units | Symbol recess |
+| `GLOSSARY_SYMBOL_BOX` | 96 units | Symbol recess, square (the narrow 64 variant was dropped, D37) |
+| `TAB_RAIL_CAPTION_HEIGHT` / `TAB_RAIL_CAPTION_FONT_SIZE` / `TAB_RAIL_CAPTION_LETTER_SPACING` | 24 units / `MenuStyle::SMALL_FONT_SIZE` (15, SemiBold, dim) / 200 (33d-ii) | A group caption row in the tab rail (D22), `BUTTON_GAP` follows it |
+| `DIAGRAM_START_LAYOUT_WIDTH` | 658 units (33d-ii) | The Help page's diagram layout width before the page is laid out (the shell's content width at the D37 screens), so it paints on the first frame |
+| `GLOSSARY_SYMBOL_UI_SCALE` | 1.5 (33d-ii, a `static_assert` ties it to 1080 / `HUD_REFERENCE_HEIGHT_PX`) | The HUD's UI scale for a 1080 px canvas, in pixels per menu unit (D5) |
+| `GLOSSARY_SYMBOL_RECESS_PADDING` / `GLOSSARY_VIEW_SIZE` | 4 / 88 units (box less 2 x padding) | Recess padding, and the laid-out side of a symbol view (also the shared material's view size and the size an unarranged view builds at) |
+| `GLOSSARY_SYMBOL_PADDING` / `GLOSSARY_ROW_GAP` | 4 / 12 units | The view's edge to its art area, the gap between glossary rows |
+| `GLOSSARY_SAMPLE_MIN_UI_SCALE` / `GLOSSARY_MAX_SAMPLE_LINES` / `GLOSSARY_SAMPLE_MEASURE_PASSES` | 0.75 / 8 / 3 | A text sample's smallest scale (menu units), the lines a view holds, the layout passes (laid out at unit scale, measured again at the scale found until it holds) |
+| `GLOSSARY_SHAPE_HEADROOM` | 8 shapes | A view's batch is sized lazily at its first build to its symbols' shapes plus this, capped at `GLOSSARY_MAX_SHAPES` |
+| `GLOSSARY_MAX_SYMBOLS_PER_ENTRY` | 6 | Symbol ids one `GLOSSARY_ENTRIES` row may list |
 | `GLOSSARY_MAX_SHAPES` | 128 | One symbol view's batch |
 | `MAX_PRIMS_PER_SYMBOL` | 32 | `FSOLHudSymbolPrims` capacity |
 | Area colours | Flight #28D2F0, Targeting #F2C94C, Combat #E5533D, Time #9B7BFF, Overlays #4CD07D, HUD #5B8CFF, Map #FF8FB1, Routes #D98A5B, Menu #9FD6D0 (D29), Demo #E8EEF2 (section 7, ten, D17) | `SOL::Help::AREA_COLORS` |
@@ -565,6 +573,35 @@ the test page adds its own hull panel and sits over the Controls page, which the
 pixel count to one XR-4 eye (3840x3744, about 6.9 times the pixels) that is about 0.27 ms, inside the 1.2 ms one-eye
 menu share; the view runs themselves (4K and one eye, D21) are 33f's, with the Help pages.
 
+### 14.4 33d-ii amendment: the Help page profile (2026-11-08)
+
+`-SOLSmokeSolidMenuProfile`'s default run gained six passes (23 checks): P16 `main-help-keys`, P17 `main-help-flight`
+and P18 `main-help-overlays` at 1920x1080, P19-P21 the same at 1280x720, each judged against the main Settings
+baseline (0.423 / 0.046 ms at 1080 and 0.444 / 0.027 at 720; budget under 0.2 ms CPU / 0.3 ms GPU extra). The Keyboard
+tab carries the live diagram, Flight HUD has the most symbol views, Overlays and route the most rows. A pass also shows
+its own main-menu page when another is showing. Three-run medians of the pre-review code, ms, `cpu_slate` / `gpu_ui`
+(extra against the Settings baseline in brackets):
+
+| Pass | Screen | View | `cpu_slate` | `gpu_ui` |
+|---|---|---|---|---|
+| P16 | main-help-keys | 1920x1080 | **0.507** (+0.084) | **0.128** (+0.082) |
+| P17 | main-help-flight | 1920x1080 | **0.465** (+0.042) | **0.147** (+0.101) |
+| P18 | main-help-overlays | 1920x1080 | **0.498** (+0.075) | **0.144** (+0.098) |
+| P19 | main-help-keys | 1280x720 | **0.509** (+0.065) | **0.072** (+0.045) |
+| P20 | main-help-flight | 1280x720 | **0.511** (+0.067) | **0.090** (+0.063) |
+| P21 | main-help-overlays | 1280x720 | **0.501** (+0.057) | **0.087** (+0.060) |
+
+For comparison main-controls was P5 0.498 / 0.113 (1080) and P6 0.490 / 0.069 (720). A single run on the final
+(post-review-fix) code gave P16 0.483 / 0.127, P17 0.475 / 0.146, P18 0.486 / 0.143, P19 0.479 / 0.074, P20 0.506 /
+0.092, P21 0.492 / 0.088, the same within noise. All six are inside the budget. **Draws:** each symbol view clips to
+its box, so Slate does not batch across views: about 4 draws per view and about 50-64 per glossary tab, against the
+section 8.3 estimate of 8-14. That is inside the budget but a finding for 33f (and, with the per-paint vertex copy,
+`Docs/TECH_DEBT.md`). **Memory:** the shared paint-vertex scratch is allocated lazily: 3.75 MB at menu build before the
+review fix, now 0 until Help opens, about 103 KB per page when every tab was visited and 253 KB worst case for both
+pages (the batches are sized to their symbols plus `GLOSSARY_SHAPE_HEADROOM`). **VR floor (item 11):** not extrapolated
+here; the Help passes join the 4K and one-eye view runs in 33f (`main-help-overlays` and a pause Help pass), and the
+first Esc's one-off build of the pause Help page is unmeasured (33f).
+
 ## 15. Documentation and in-game text (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 (the Help entry and tab, what the page shows), a pointer from section 1 to
@@ -615,7 +652,19 @@ menu share; the view runs themselves (4K and one eye, D21) are 33f's, with the H
 
 ## 18. Open questions
 
-**None open.** O14 (below) was answered on 2026-11-07 (D32). O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
+**Two layout questions are open with the user (found while building 33d-ii, 2026-11-08; not decided, no code change
+for them yet):**
+
+- **O15. The Keyboard tab's hover strip below the fold.** The Help page's Keyboard tab holds the diagram and its fixed
+  hover strip (D36) under the heading; at 1280x720 and at 1920x1080 the strip sits below the fold of the tab's scroll
+  box, so a hovered key's detail is out of sight unless the player scrolls. Options for the user: a shorter diagram or
+  strip, pinning the strip, or leaving it as is (D31 accepts scrolling for the stacks only).
+- **O16. Long glossary text samples are barely readable at 1280x720.** A sample is shrunk to fit the 88-unit view down
+  to `GLOSSARY_SAMPLE_MIN_UI_SCALE` 0.75 and wrapped, so a long line such as the route progress line is small and
+  hard to read at 1280x720. Options for the user: a larger minimum scale, a wider symbol box for samples, or showing
+  the text sample in the description column instead.
+
+O14 (below) was answered on 2026-11-07 (D32). O1-O13 were answered by the user and are recorded as decisions in section 2; the sections
 they touch were updated. Mapping:
 
 | # | Answer (summary) | Recorded as | Sections updated |
@@ -752,3 +801,64 @@ HUD's pad), so a glossary replay draws it with that pad too. The adversarial rev
 item; its 3 should-fix (a second copy of the line-width rule and of the role colours, no golden values for the moved
 constants) and 7 nits were fixed; the optional warp-streak batching (160 small replays a frame, about 1-2 us) was not
 done. `-SOLSmokeJump` `g3-orientation-rebase` fails in some runs before and after this part (`Docs/TECH_DEBT.md`).
+
+**33d-ii (2026-11-08, built, not committed yet; commit `Issue #33: Part 33d-ii - Help page and glossary`).** The Help
+page and its HUD glossary, in both menus. Tests first, by a separate opus/high author from the contract (no production
+code shown): `SolidPageTabsTest` (Help, captions, the rail with captions; `Tabs.Count` 3 to 4), `SOLMenuStateTest`
+(`TabOrder`, `EntryLists`, `HelpEscape`), `SolidPauseTest`, `SolidScrollTest` (`EightEntryStack`) and the new
+`GlossaryLayoutTest` (14). Red on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, Glossary.Layout 13/14
+(`EightEntryStack` was already green, the 8-entry stack needs no new function), then green.
+
+As built:
+- **Pure logic.** `ESOLReadOnlyPage::Help`, `SOLPageTabs::TabCaption`, `LeftColumnWidth(Help)` = `GLOSSARY_SYMBOL_BOX`;
+  `SOLMenuState` `EMenuTab::Help` after Controls, `EMainMenuEntry` public, `MainMenuEntryLabel` / `PauseTabLabel`;
+  `SOLGlossary` P5 layout (art kinds: 33 symbol, 6 sample, 6 none of the 45 rows; the symbol grid, the fit scale, the
+  sample layout, the rebuild rule, `SampleLineRole`); `SOLHudFormat::FlightModeRole` (one source for the flight-mode
+  colours, review S4); `SOLSolidMenu::SanitizeStrength`.
+- **Rail and stacks.** `FSOLSolidTabRail` draws group captions (`TabTop`, `CaptionTop`, `RailHeight`, `TraceForTab`
+  with caption flags; `TAB_RAIL_CAPTION_HEIGHT` 24, font 15 SemiBold dim, letter spacing 200); the tab column stays 220;
+  `FSOLSolidScrollStack::SetButtonTops`. The Help entry and the pause Help tab are in the two 8-entry scrolling stacks
+  (`STACK_MAX_VISIBLE_ENTRIES` stays 7, D16).
+- **The page.** `USOLReadOnlyPageWidget` hosts Help: the Keyboard tab holds the live `USOLKeyboardDiagram`
+  (`DIAGRAM_START_LAYOUT_WIDTH` 658 so it lays out on the first frame) and `HELP_KEYBOARD_CONTROLS`; the glossary rows
+  are built before a tab's first paint; `OnKeyBindingsChanged` is bound in `NativeConstruct` and unbound in
+  `NativeDestruct`.
+- **Symbol views.** New `Menu/SOLHudSymbolView` (`USOLHudSymbolView` and `FSOLHudSymbolScratch`): a retained
+  `SSOLHudShapeLayer`, one scratch per page, the glow pad `HUD_GLOW_PAD_PX` unscaled (review S1), batches sized lazily
+  to their symbols plus `GLOSSARY_SHAPE_HEADROOM` 8, one shared paint-vertex scratch. `SSOLHudShapeLayer` gained
+  `MaxTexts` / `MaxBackings` / `PaintScratch` arguments and `GetLastPaintOrigin` (the HUD is unchanged).
+  `USOLSolidMenuSubsystem` owns the shared `M_SOLHudShape` MID (`Composite` 1, strength and view size pushed on a
+  change).
+- **Constants.** `GLOSSARY_SYMBOL_BOX_NARROW` and `GLOSSARY_GLOW_PAD_PX` deleted; the new ones are in section 11.
+- **Info page.** The HUD paragraph (`INFO_PROSE`) is shortened (D25, D1-B): it keeps the two effects sliders and the
+  HUD / card facts no glossary row states, and ends "What each part of the HUD shows is explained in Help, HUD
+  glossary."
+
+D26 starting values (reported to the user, tune from screenshots): the several-symbols grid with a short last row
+centred; samples in the Medium HUD font down to scale 0.75, wrapped; Flight mode words in their HUD colours;
+description-only rows (the five map rows, D39, and Space dust) leave the symbol column empty; the symbol scale cap is
+1.5 x pixels per unit.
+
+Verification: full suite 1714 / 0. `-SOLSmokeSolidMenu` 257 / 257 (was 212): new steps `HelpMain`, `MainReach`,
+`ViewLarge`, `HelpLarge`, `MainReachLarge`, `ViewBackLarge`, `HelpPause`, `PauseReach`, `HelpPauseEsc`,
+`PauseViewLarge`, `HelpPauseLarge`, `PauseReachLarge` and `w-help-reopen`, covering 0 blank views on the first frame,
+the diagram width 658 from frame 1, the scroll repaint origin within 0.5 px, every stack entry reachable by scroll and
+click at both sizes, and Esc closing the page then resuming in the pause menu (the main entry indices now come from
+`EMainMenuEntry`). `-SOLSmokeSolidMenuProfile` 23 / 23 checks (passes P16-P21, section 14.4). `-SOLSmokeHoloMenu`
+86/86, `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24 at 1280x720 and 1920x1080, `-SOLSmokeHoloMenuProfile` 12/12 (P0
+flight at 1280x720: `cpu_hud` 0.122, `cpu_total` 0.249, `gpu_ui` 0.081). `-SOLMenuSmoke=all` 44 / 6: the 3 known plus the
+Play / Play again / Play a third time "cursor 1" failures, which depend on window focus, predate this part (the same
+44/6 was logged on 2026-11-04), are already in `Docs/TECH_DEBT.md`, and the Play phases click no entry. The player's
+`GameUserSettings.ini` is byte-identical.
+
+Deviations and notes: the Help page lives in `USOLReadOnlyPageWidget` rather than new `SOLMenuContent::BuildHelpPage`
+functions; the per-view clip means about 4 draws per view (50-64 per glossary tab) against the section 8.3 estimate
+(section 14.4); the shared paint scratch is lazily sized (0 until Help opens). The adversarial review (fresh opus,
+xhigh) found 1 must-fix (these docs) and 6 should-fix and nits, all fixed: S1 the glow pad unscaled, S2 the memory
+(lazy scratch), S3 the paint-allocation claim corrected and moved to `Docs/TECH_DEBT.md` (`MakeCustomVerts` copies the
+vertices on every paint), S4 one flight-mode role source, S5 the diagram start width, S6 the paint origin checked after
+a scroll; nits: `FStringView` measure, `HitTestInvisible` views, renames, line lengths, a smoke helper merged, loop
+comments, pure-header layering, the `w-help-reopen` check. **Open:** the two layout questions O15 (Keyboard tab hover
+strip below the fold) and O16 (long text samples barely readable at 1280x720), section 18. **33f carry-overs:** the draw
+count, the first-Esc one-off build cost of the pause Help page (unmeasured), `main-help-overlays` and pause Help passes
+in the 4K / one-eye view runs, and the 33c diagram test-page passes and smoke step may be retired.

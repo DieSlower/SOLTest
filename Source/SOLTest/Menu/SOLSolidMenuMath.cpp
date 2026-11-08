@@ -108,6 +108,13 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the effects strength NaN-safe and clamped to the HUD effects range
+float SOLSolidMenu::SanitizeStrength(const float s)
+{
+    return SolidMathStrength(s);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // The hull made valid for a size: lengths sanitized, chamfers scaled together, step, chin and notches clamped clear
 FSOLSolidHull SOLSolidMenu::ClampHull(const FSOLSolidHull& hull, const FVector2f size)
 {

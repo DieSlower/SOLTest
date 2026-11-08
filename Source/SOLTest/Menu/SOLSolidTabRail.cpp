@@ -7,11 +7,29 @@
 
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidPanel.h"
+#include "Menu/SOLSolidStyle.h"
 #include "SOLConstants.h"
 
 #include "Blueprint/WidgetTree.h"
 #include "Components/SizeBox.h"
+#include "Components/TextBlock.h"
 #include "Components/VerticalBoxSlot.h"
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Counts the caption rows above the first count tabs (flags past the view read false)
+    int32 RailCaptionsUpTo(const int32 count, const TConstArrayView<bool> captioned)
+    {
+        int32 captions = 0;
+        const int32 end = FMath::Min(count, captioned.Num());
+        for (int32 index = 0; index < end; ++index)
+        {
+            captions += captioned[index] ? 1 : 0;
+        }
+        return captions;
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////
 // A tab's hover trace in rail local units
@@ -37,9 +55,53 @@ float SOLSolidTabRail::RailHeight(const int32 tabCount)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the rail: a recess holding one Tab button per label, each leaving SETTINGS_TAB_TRACE_PX on its right
+// A tab's top with caption rows: the padding, a tab step per tab above it, a caption step per caption row up to and
+// including its own
+float SOLSolidTabRail::TabTop(const int32 index, const TConstArrayView<bool> captioned)
+{
+    using namespace SOL::MenuStyle;
+    using namespace SOL::SolidMenu;
+    const int32 tab = FMath::Max(index, 0);
+    return SETTINGS_TAB_RAIL_PADDING + tab * (TAB_HEIGHT + BUTTON_GAP)
+        + RailCaptionsUpTo(tab + 1, captioned) * (TAB_RAIL_CAPTION_HEIGHT + BUTTON_GAP);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The top of a tab's caption row (one caption step above the tab), -1 without one
+float SOLSolidTabRail::CaptionTop(const int32 index, const TConstArrayView<bool> captioned)
+{
+    if (!captioned.IsValidIndex(index) || !captioned[index])
+    {
+        return -1.0f;
+    }
+    return TabTop(index, captioned) - (SOL::SolidMenu::TAB_RAIL_CAPTION_HEIGHT + SOL::MenuStyle::BUTTON_GAP);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The height of a rail with caption rows
+float SOLSolidTabRail::RailHeight(const int32 tabCount, const TConstArrayView<bool> captioned)
+{
+    const int32 count = FMath::Max(tabCount, 0);
+    return RailHeight(count) + RailCaptionsUpTo(count, captioned)
+        * (SOL::SolidMenu::TAB_RAIL_CAPTION_HEIGHT + SOL::MenuStyle::BUTTON_GAP);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// A tab's hover trace at its captioned centre line
+FSOLSolidTrace SOLSolidTabRail::TraceForTab(const int32 index, const TConstArrayView<bool> captioned)
+{
+    FSOLSolidTrace trace = TraceForTab(index);
+    const float y = TabTop(index, captioned) + 0.5f * SOL::MenuStyle::TAB_HEIGHT;
+    trace.Points[0].Y = y;
+    trace.Points[1].Y = y;
+    return trace;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the rail: a recess holding one Tab button per label, each leaving SETTINGS_TAB_TRACE_PX on its right, and a
+// group caption row above each tab with a caption
 USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labels,
-    const FSOLMenuButtonClicked& onClicked)
+    const FSOLMenuButtonClicked& onClicked, const TArray<FString>& captions)
 {
     using namespace SOL::MenuStyle;
     using namespace SOL::SolidMenu;
@@ -50,8 +112,50 @@ USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labe
     Buttons.Reset(labels.Num());
     Traces.Reset();
     Traces.Reserve(labels.Num());
+    Captions.Reset();
+    CaptionTabs.Reset();
+
+    // Which tabs have a caption row above them (none: an empty flag list, the caption-less layout)
+    Captioned.Reset();
+    bool bAnyCaption = false;
     for (int32 index = 0; index < labels.Num(); ++index)
     {
+        bAnyCaption |= captions.IsValidIndex(index) && !captions[index].IsEmpty();
+    }
+    if (bAnyCaption)
+    {
+        Captioned.Reserve(labels.Num());
+        for (int32 index = 0; index < labels.Num(); ++index)
+        {
+            Captioned.Add(captions.IsValidIndex(index) && !captions[index].IsEmpty());
+        }
+    }
+    for (int32 index = 0; index < labels.Num(); ++index)
+    {
+        // A group caption row above the tab: plain text (not focusable, never clicked) left-aligned with the tabs,
+        // TAB_RAIL_CAPTION_HEIGHT tall with the stack's gap after it (SDD 33 D7)
+        if (Captioned.IsValidIndex(index) && Captioned[index])
+        {
+            UTextBlock* caption = tree.ConstructWidget<UTextBlock>(UTextBlock::StaticClass());
+            FSlateFontInfo font = SOLSolidStyle::MenuFont(USOLSolidMenuSubsystem::Get(&tree),
+                ESOLMenuFontWeight::SemiBold, TAB_RAIL_CAPTION_FONT_SIZE);
+            font.LetterSpacing = TAB_RAIL_CAPTION_LETTER_SPACING;
+            caption->SetFont(font);
+            caption->SetColorAndOpacity(FSlateColor(SOLSolidStyle::DimTextColor()));
+            caption->SetText(FText::FromString(captions[index]));
+            caption->SetVisibility(ESlateVisibility::HitTestInvisible);
+            USizeBox* captionBox = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
+            captionBox->SetWidthOverride(tabWidth);
+            captionBox->SetHeightOverride(TAB_RAIL_CAPTION_HEIGHT);
+            captionBox->SetVisibility(ESlateVisibility::HitTestInvisible);
+            captionBox->SetContent(caption);
+            if (UVerticalBoxSlot* captionSlot = Stack.AddItem(captionBox))
+            {
+                captionSlot->SetHorizontalAlignment(HAlign_Left);
+            }
+            Captions.Add(caption);
+            CaptionTabs.Add(index);
+        }
         USOLMenuButton* button = tree.ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
         button->Setup(tree, labels[index], index, TAB_FONT_SIZE, ESOLSolidButtonVariant::Tab);
         button->SetLabelLetterSpacing(SETTINGS_TAB_LETTER_SPACING);
@@ -62,7 +166,24 @@ USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labe
         box->SetHeightOverride(TAB_HEIGHT);
         box->SetContent(button);
         Stack.AddItem(box)->SetHorizontalAlignment(HAlign_Left);
-        Traces.Add(SOLSolidTabRail::TraceForTab(index));
+        Traces.Add(SOLSolidTabRail::TraceForTab(index, Captioned));
+    }
+
+    // With captions the stack's items are not the buttons: each button's top, content local (the rail padding is
+    // outside the stack), for its focus follow and ShowItem
+    if (bAnyCaption)
+    {
+        TArray<float, TInlineAllocator<16>> tops;
+        tops.Reserve(labels.Num());
+        for (int32 index = 0; index < labels.Num(); ++index)
+        {
+            tops.Add(SOLSolidTabRail::TabTop(index, Captioned) - SETTINGS_TAB_RAIL_PADDING);
+        }
+        Stack.SetButtonTops(tops);
+    }
+    else
+    {
+        Stack.SetButtonTops(TConstArrayView<float>());
     }
     USizeBox* column = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
     column->SetWidthOverride(TAB_COLUMN_WIDTH);
@@ -155,6 +276,13 @@ bool FSOLSolidTabRail::IsTraceShown(const int32 index) const
     const TSharedPtr<SSOLSolidTraceLayer> layer = Panel != nullptr ? Panel->GetTraceLayer() : nullptr;
     return layer.IsValid() && Traces.IsValidIndex(index) && layer->IsShowingHoverTrace(Traces[index])
         && layer->GetHoverAmount() > 0.5f;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a group caption's text block, or null
+UTextBlock* FSOLSolidTabRail::GetCaption(const int32 index) const
+{
+    return Captions.IsValidIndex(index) ? Captions[index].Get() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////

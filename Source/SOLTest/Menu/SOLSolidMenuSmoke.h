@@ -56,7 +56,12 @@ struct FSOLSolidTabRail;
  * (USOLKeyboardDiagramSmokePage) in the shell's content width at 1280x720 (D37: no 1000x800 step): its fit (stacked,
  * D34), legends clipped (D35), paint and assignment count, the real cursor over the busiest and the six modifier keys
  * (the panel fixed while hovering, D36), every key's strip rows against the strip's line budget, and Fire rebound to
- * K and back through the settings subsystem (the live rebuild); a run that logs another number of checks
+ * K and back through the settings subsystem (the live rebuild). 33d-ii: the Help page in both menus at 1280x720 and
+ * 1920x1080 (its rail captions and traces, the Keyboard tab's diagram and pointer line, every glossary tab's rows with
+ * their symbol views built and painted, also on the first frame after a tab switch, Overlays scrolled to its end,
+ * no rebuild while idle and strength 0 rebuilding only the shown tab), every entry of both 8-entry stacks reached by
+ * focus, hit test and synthesized Slate clicks, and Esc closing the pause Help page before a second Esc resumes; a
+ * run that logs another number of checks
  * than a whole run (SOLID_SMOKE_EXPECTED_CHECKS) fails. Each step logs
  * "SolidMenu CHECK <id> PASS|FAIL: ..." and takes a window screenshot
  * (Saved/Screenshots/<platform>/SolidMenu_<name>.png) to look at; then a "SolidMenu SUMMARY" line and the quit (a
@@ -208,6 +213,42 @@ private:
     // or after the restore ("<id>-restore": Fire back on LMB, K free, the default assignment count)
     void CheckDiagramRebind(const TCHAR* id, bool bRestored);
 
+    // (33d-ii) Runs a Help page step's stages (SDD 33 section 16, contract S1) on the main menu's or the pause menu's
+    // Help page at the current view: opened, its rail (captions, traces), the Keyboard tab, each glossary tab's rows
+    // (art per row, the views built and painted, also on the first painted frame after the switch), a screenshot per
+    // tab (SolidMenu_help-<menu>-<size>-<tab>.png); the 1280x720 main run also scrolls Overlays to its end and checks
+    // the event-driven rebuild (idle frames, strength 0), then closes and reopens Help (no view rebuilt, the views'
+    // batch memory logged); returns true once done
+    bool TickHelp(USOLMenuSubsystem& menu, bool bPause, bool bLarge);
+
+    // (33d-ii) Watches the main menu's Help page until its first open (any step): the Keyboard diagram's layout width
+    // and keys painted whole on the frames after it was first shown (mHelpFirstOpen*, read by w-help-keys)
+    void ObserveHelpFirstOpen(USOLMenuSubsystem& menu);
+
+    // (33d-ii) Checks the Help page's rail ("<id>"): five tabs, the KEYS and HUD GLOSSARY captions above tabs 0 and 1
+    // at their SOLSolidTabRail tops, no caption over a tab, the rail TAB_COLUMN_WIDTH wide, the captions not focusable
+    void CheckHelpCaptions(const TCHAR* id, USOLReadOnlyPageWidget& page);
+
+    // (33d-ii) Reads the Keyboard tab: the diagram at the live keys painted whole in the rows' width, the pointer line
+    // under it, both inside the shell horizontally; returns whether all hold, with a description
+    bool ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell, FString& outDetail);
+
+    // (33d-ii) Reads the shown glossary tab: its rows (EntriesOfTab, art per EntryArt), each view built at its pixel
+    // size and painted (in view: also on the first painted frame, mHelpFirstPainted), the boxes GLOSSARY_SYMBOL_BOX,
+    // the texts right of the box and inside the shell, no rows overlapping; bFirstBuild: every view built exactly once
+    bool ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell, int32 tab,
+        bool bFirstBuild, FString& outDetail);
+
+    // (33d-ii) Runs a stack reach step's stages (contract S1): every main menu entry or pause tab focused in turn
+    // (scrolled whole into the view, a Slate hit test at its centre finds it), then some clicked by synthesized Slate
+    // mouse events (main: Help and About open their pages, closed again; pause: Help opens, Quit shows its choices,
+    // then Help (720) or Settings (1080) shown again for the next step); one check "<id>"; returns true once done
+    bool TickReach(USOLMenuSubsystem& menu, const TCHAR* id, bool bPause, bool bLarge);
+
+    // (33d-ii) Runs the pause Help Esc step's stages: Esc closes Help (paused on Resume, the shell closing), a second
+    // Esc resumes (Playing, the input back), then a re-pause for the steps after; returns true once done
+    bool TickHelpPauseEsc(USOLMenuSubsystem& menu);
+
     TWeakObjectPtr<APlayerController> mController;
     TWeakObjectPtr<USOLSolidMenuSmokeBoard> mBoard;
     TWeakObjectPtr<USOLReadOnlyPageWidget> mRailPage;   // The Controls page the RailScroll step puts on the viewport
@@ -284,6 +325,22 @@ private:
     bool mIsSweepShot = false;      // ... and screenshotted (the next tab waits for the shot)
     bool mIsSweepOk = true;         // ... every row read fits
     FString mSweepDetail;           // ... what was read
+    int32 mHelpTab = 0;             // 33d-ii: the Help step's glossary tab being read
+    bool mIsHelpFirstRead = false;  // ... its views' paint on the first frame after the switch was read
+    bool mIsHelpOk = true;          // ... the pause runs' one verdict over every tab
+    bool mIsHelpTraceOk = false;    // ... the tab 1 trace read
+    FString mHelpDetail;            // ... what was read
+    TArray<int32> mHelpFirstPainted;    // ... per glossary row: shapes and texts painted on that first frame
+    TArray<int32> mHelpBuilds;          // ... per glossary row: the build count read before the idle / scroll
+    bool mIsHelpClosed = false;         // ... the reopen: Help was closed before it was opened again
+    int32 mHelpFirstOpenState = 0;      // 33d-ii: the main menu's Help page: 0 not shown yet, 1 shown, 2 read
+    int32 mHelpFirstOpenFrames = 0;     // ... frames read after it was first shown
+    float mHelpFirstOpenWidth = -1.0f;  // ... the diagram's layout width on the first of them
+    int32 mHelpFirstOpenKeys = -1;      // ... the keys it painted whole then (0: not painted whole)
+    FString mHelpFirstOpenLog;          // ... each frame's width and keys (frame by frame)
+    int32 mReachIndex = 0;          // 33d-ii: a reach step's entry or click being driven
+    bool mIsReachOk = true;         // ... its verdict and what was read
+    FString mReachDetail;
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
     bool mIsFinished = false;

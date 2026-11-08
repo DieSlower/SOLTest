@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Menu/SOLGlossary.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLPageTabs.h"
 #include "Menu/SOLSolidTabRail.h"
@@ -39,16 +40,32 @@
 //       FSOLSolidTrace TraceForTab(int32 index);             // two points, no ring terminal, negative = tab 0
 //       float RailHeight(int32 tabCount);                    // padding both sides + each tab's height and gap
 //   }
+//
+// (Issue #33 Part 33d-ii, SDD 33 D22 / D37, written against the 33d-ii contract before the code) The Help page is the
+// fourth read-only page, and the rail can draw non-clickable group captions above some tabs:
+//
+//   enum class ESOLReadOnlyPage : uint8 { Controls, Info, About, Help, Count };
+//   FString SOLPageTabs::TabCaption(ESOLReadOnlyPage page, int32 tab);  // Help: SOLGlossary::TabCaption, else ""
+//   LeftColumnWidth(Help, any width) == SOL::Help::GLOSSARY_SYMBOL_BOX
+//
+//   float SOLSolidTabRail::TabTop(int32 index, TConstArrayView<bool> captioned);
+//   float SOLSolidTabRail::CaptionTop(int32 index, TConstArrayView<bool> captioned);   // -1 when no caption
+//   float SOLSolidTabRail::RailHeight(int32 tabCount, TConstArrayView<bool> captioned);
+//   FSOLSolidTrace SOLSolidTabRail::TraceForTab(int32 index, TConstArrayView<bool> captioned);
 namespace
 {
     constexpr int32 SOLIDPAGESTEST_INFO_TABS = 4;               // Flight, Time and travel, Combat, How it works
     constexpr int32 SOLIDPAGESTEST_ABOUT_TABS = 2;              // Game, Credits
+    constexpr int32 SOLIDPAGESTEST_HELP_TABS = 5;               // Keyboard, Flight HUD, Targets, Overlays, Map, menus
     constexpr uint8 SOLIDPAGESTEST_BAD_PAGE = 200;              // A page value well past Count
     constexpr float SOLIDPAGESTEST_TOLERANCE = 1.0e-3f;         // Geometry comparisons (rail local units)
 
-    // The three pages with a tab column
+    // The four pages with a tab column
     constexpr ESOLReadOnlyPage SOLIDPAGESTEST_PAGES[] = { ESOLReadOnlyPage::Controls, ESOLReadOnlyPage::Info,
-        ESOLReadOnlyPage::About };
+        ESOLReadOnlyPage::About, ESOLReadOnlyPage::Help };
+
+    // The Help rail's caption flags (a caption above Keyboard and above Flight HUD, D22)
+    constexpr bool SOLIDPAGESTEST_HELP_CAPTIONED[] = { true, true, false, false, false };
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the number of rows in SOLMenuText::CONTROL_ROWS
@@ -115,6 +132,8 @@ namespace
             return TEXT("Info");
         case ESOLReadOnlyPage::About:
             return TEXT("About");
+        case ESOLReadOnlyPage::Help:
+            return TEXT("Help");
         default:
             return TEXT("<invalid>");
         }
@@ -139,6 +158,8 @@ namespace
             return SOLIDPAGESTEST_INFO_TABS;
         case ESOLReadOnlyPage::About:
             return SOLIDPAGESTEST_ABOUT_TABS;
+        case ESOLReadOnlyPage::Help:
+            return static_cast<int32>(ESOLHelpTab::Count);
         default:
             return 0;
         }
@@ -149,6 +170,50 @@ namespace
     float SolidPagesTestTabStep()
     {
         return SOL::MenuStyle::TAB_HEIGHT + SOL::MenuStyle::BUTTON_GAP;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the height a caption row adds above its tab: the caption and the gap after it
+    float SolidPagesTestCaptionStep()
+    {
+        return SOL::SolidMenu::TAB_RAIL_CAPTION_HEIGHT + SOL::MenuStyle::BUTTON_GAP;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a caption sits above tab index (false outside the view)
+    bool SolidPagesTestCaptioned(const int32 index, const TConstArrayView<bool> captioned)
+    {
+        return index >= 0 && index < captioned.Num() && captioned[index];
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the number of caption flags set among the first count entries of the view (count clamped to the view)
+    int32 SolidPagesTestFlagsBefore(const int32 count, const TConstArrayView<bool> captioned)
+    {
+        int32 flags = 0;
+        for (int32 i = 0; i < FMath::Min(count, captioned.Num()); ++i)
+        {
+            flags += captioned[i] ? 1 : 0;
+        }
+        return flags;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the expected top of a non-negative tab index: padding, the tabs above it, the caption rows up to and
+    // including its own (independent of production)
+    float SolidPagesTestExpectedTabTop(const int32 index, const TConstArrayView<bool> captioned)
+    {
+        return SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING + index * SolidPagesTestTabStep() +
+            SolidPagesTestFlagsBefore(index + 1, captioned) * SolidPagesTestCaptionStep();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the expected rail height of tabCount tabs (a negative count reads 0)
+    float SolidPagesTestExpectedRailHeight(const int32 tabCount, const TConstArrayView<bool> captioned)
+    {
+        const int32 count = FMath::Max(tabCount, 0);
+        return 2.0f * SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING + count * SolidPagesTestTabStep() +
+            SolidPagesTestFlagsBefore(count, captioned) * SolidPagesTestCaptionStep();
     }
 }
 
@@ -174,10 +239,17 @@ bool FSOLSolidPagesOpeningTabTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesTabCountTest, "SOLTest.SolidPages.Tabs.Count",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Controls: one tab per area run of CONTROL_ROWS; Info: 4; About: 2; Count and past it: 0
+// Controls: one tab per area run of CONTROL_ROWS; Info: 4; About: 2; Help: the Help tab list (5); Count and past it: 0
 bool FSOLSolidPagesTabCountTest::RunTest(const FString& /*parameters*/)
 {
-    TestEqual(TEXT("ESOLReadOnlyPage::Count is 3"), static_cast<int32>(ESOLReadOnlyPage::Count), 3);
+    // (33d-ii) Help is appended before Count, so Count is 4
+    TestEqual(TEXT("ESOLReadOnlyPage::Count is 4"), static_cast<int32>(ESOLReadOnlyPage::Count), 4);
+    TestEqual(TEXT("Help follows About"), static_cast<int32>(ESOLReadOnlyPage::Help),
+        static_cast<int32>(ESOLReadOnlyPage::About) + 1);
+    TestEqual(TEXT("TabCount(Help) is SOLGlossary::TabCount()"), SOLPageTabs::TabCount(ESOLReadOnlyPage::Help),
+        SOLGlossary::TabCount());
+    TestEqual(TEXT("TabCount(Help) is 5 (today's data)"), SOLPageTabs::TabCount(ESOLReadOnlyPage::Help),
+        SOLIDPAGESTEST_HELP_TABS);
     TestTrue(TEXT("CONTROL_ROWS is not empty"), SolidPagesTestRowCount() > 0);
     TestTrue(TEXT("Controls has more than one area"), SolidPagesTestControlsTabCount() > 1);
     for (const ESOLReadOnlyPage page : SOLIDPAGESTEST_PAGES)
@@ -308,6 +380,103 @@ bool FSOLSolidPagesAboutLabelsTest::RunTest(const FString& /*parameters*/)
         FString(SOLMenuText::ABOUT_TAB_GAME));
     TestEqual(TEXT("About tab 1 label"), SOLPageTabs::TabLabel(ESOLReadOnlyPage::About, 1),
         FString(SOLMenuText::ABOUT_CREDITS_TITLE));
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesHelpLabelsTest, "SOLTest.SolidPages.Labels.Help",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (33d-ii, D22) The Help tabs are SOLMenuText::HELP_TAB_LABELS in order (Keyboard, Flight HUD, Targets, Overlays,
+// Map, menus); every out-of-range tab has an empty label
+bool FSOLSolidPagesHelpLabelsTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 tableCount = static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::HELP_TAB_LABELS));
+    TestEqual(TEXT("one Help tab per HELP_TAB_LABELS entry"), SOLPageTabs::TabCount(ESOLReadOnlyPage::Help),
+        tableCount);
+    for (int32 tab = 0; tab < tableCount; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help tab %d label"), tab), SOLPageTabs::TabLabel(ESOLReadOnlyPage::Help, tab),
+            FString(SOLMenuText::HELP_TAB_LABELS[tab]));
+    }
+
+    // Today's labels, as a cross-check of the table
+    const TCHAR* const expected[] = { TEXT("Keyboard"), TEXT("Flight HUD"), TEXT("Targets"), TEXT("Overlays"),
+        TEXT("Map, menus") };
+    static_assert(UE_ARRAY_COUNT(expected) == SOLIDPAGESTEST_HELP_TABS, "one label per Help tab");
+    for (int32 tab = 0; tab < SOLIDPAGESTEST_HELP_TABS; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help tab %d is \"%s\""), tab, expected[tab]),
+            SOLPageTabs::TabLabel(ESOLReadOnlyPage::Help, tab), FString(expected[tab]));
+    }
+
+    const int32 badTabs[] = { -1, tableCount, tableCount + 1, INDEX_NONE, MIN_int32, MAX_int32 };
+    for (const int32 tab : badTabs)
+    {
+        TestTrue(FString::Printf(TEXT("Help tab %d: empty label"), tab),
+            SOLPageTabs::TabLabel(ESOLReadOnlyPage::Help, tab).IsEmpty());
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesCaptionsTest, "SOLTest.SolidPages.Captions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (33d-ii, D22) Only the Help page has group captions: KEYS above Keyboard, HUD GLOSSARY above Flight HUD, none above
+// the other tabs; every tab of Controls, Info and About, every invalid page and an out-of-range Help tab have none
+bool FSOLSolidPagesCaptionsTest::RunTest(const FString& /*parameters*/)
+{
+    // Help: the SOLMenuText captions on tabs 0 and 1, empty on the rest
+    TestEqual(TEXT("Help tab 0 caption is HELP_CAPTION_KEYS"), SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, 0),
+        FString(SOLMenuText::HELP_CAPTION_KEYS));
+    TestEqual(TEXT("Help tab 1 caption is HELP_CAPTION_GLOSSARY"), SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, 1),
+        FString(SOLMenuText::HELP_CAPTION_GLOSSARY));
+    TestEqual(TEXT("Help tab 0 caption is \"KEYS\""), SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, 0),
+        FString(TEXT("KEYS")));
+    TestEqual(TEXT("Help tab 1 caption is \"HUD GLOSSARY\""), SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, 1),
+        FString(TEXT("HUD GLOSSARY")));
+    const int32 helpCount = SOLPageTabs::TabCount(ESOLReadOnlyPage::Help);
+    for (int32 tab = 0; tab < helpCount; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help tab %d caption equals SOLGlossary::TabCaption"), tab),
+            SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, tab),
+            FString(SOLGlossary::TabCaption(static_cast<ESOLHelpTab>(tab))));
+        TestTrue(FString::Printf(TEXT("Help tab %d captioned flag"), tab),
+            !SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, tab).IsEmpty() ==
+            SolidPagesTestCaptioned(tab, MakeArrayView(SOLIDPAGESTEST_HELP_CAPTIONED)));
+    }
+    const int32 badHelpTabs[] = { -1, helpCount, helpCount + 1, INDEX_NONE, MIN_int32, MAX_int32 };
+    for (const int32 tab : badHelpTabs)
+    {
+        TestTrue(FString::Printf(TEXT("Help tab %d: no caption"), tab),
+            SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, tab).IsEmpty());
+    }
+
+    // The other pages: no caption on any tab, in range or not
+    const ESOLReadOnlyPage plainPages[] = { ESOLReadOnlyPage::Controls, ESOLReadOnlyPage::Info,
+        ESOLReadOnlyPage::About };
+    for (const ESOLReadOnlyPage page : plainPages)
+    {
+        const int32 count = SOLPageTabs::TabCount(page);
+        for (int32 tab = -1; tab <= count; ++tab)
+        {
+            TestTrue(FString::Printf(TEXT("%s tab %d: no caption"), SolidPagesTestName(page), tab),
+                SOLPageTabs::TabCaption(page, tab).IsEmpty());
+        }
+    }
+
+    // Invalid pages: no caption, even on tabs 0 and 1
+    const ESOLReadOnlyPage invalid[] = { ESOLReadOnlyPage::Count,
+        static_cast<ESOLReadOnlyPage>(static_cast<uint8>(ESOLReadOnlyPage::Count) + 1), SolidPagesTestBadPage(),
+        static_cast<ESOLReadOnlyPage>(255) };
+    const int32 anyTabs[] = { 0, 1, 2, -1 };
+    for (const ESOLReadOnlyPage page : invalid)
+    {
+        for (const int32 tab : anyTabs)
+        {
+            TestTrue(FString::Printf(TEXT("invalid page %d tab %d: no caption"), static_cast<int32>(page), tab),
+                SOLPageTabs::TabCaption(page, tab).IsEmpty());
+        }
+    }
     return true;
 }
 
@@ -621,6 +790,311 @@ bool FSOLSolidPagesLeftColumnTest::RunTest(const FString& /*parameters*/)
     }
 
     TestTrue(TEXT("the narrow column is narrower"), LABEL_COLUMN_NARROW_WIDTH < LABEL_COLUMN_WIDTH);
+
+    // (33d-ii, D37) Help: the glossary's symbol box at every row width, no narrow variant
+    const float helpRows[] = { 0.0f, -1.0f, -50.0f, 100.0f, 500.0f, 1.0e6f, threshold - 1.0f, threshold,
+        std::numeric_limits<float>::quiet_NaN(), std::numeric_limits<float>::infinity(),
+        -std::numeric_limits<float>::infinity() };
+    for (const float row : helpRows)
+    {
+        TestEqual(FString::Printf(TEXT("Help at %.0f"), row), SOLPageTabs::LeftColumnWidth(ESOLReadOnlyPage::Help,
+            row), SOL::Help::GLOSSARY_SYMBOL_BOX, SOLIDPAGESTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("GLOSSARY_SYMBOL_BOX is 96 (today's value)"), SOL::Help::GLOSSARY_SYMBOL_BOX, 96.0f,
+        SOLIDPAGESTEST_TOLERANCE);
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// (33d-ii) Tab rail geometry with group captions (SDD 33 D22)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesCaptionTabTopTest, "SOLTest.SolidPages.Rail.CaptionTabTop",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A tab's top is the padding, one tab step per tab above it and one caption step per caption row up to and including
+// its own; with no captions it is the caption-less layout; an index past the view counts every flag of the view
+bool FSOLSolidPagesCaptionTabTopTest::RunTest(const FString& /*parameters*/)
+{
+    const bool none[] = { false, false, false, false };
+    const bool all[] = { true, true, true, true };
+    const bool alternate[] = { false, true, false, true, false };
+    const bool lastOnly[] = { false, false, true };
+    const TConstArrayView<bool> views[] = { TConstArrayView<bool>(), MakeArrayView(none), MakeArrayView(all),
+        MakeArrayView(alternate), MakeArrayView(lastOnly), MakeArrayView(SOLIDPAGESTEST_HELP_CAPTIONED) };
+    for (int32 v = 0; v < static_cast<int32>(UE_ARRAY_COUNT(views)); ++v)
+    {
+        for (int32 index = 0; index < 9; ++index)
+        {
+            TestEqual(FString::Printf(TEXT("view %d TabTop(%d)"), v, index), SOLSolidTabRail::TabTop(index, views[v]),
+                SolidPagesTestExpectedTabTop(index, views[v]), SOLIDPAGESTEST_TOLERANCE);
+        }
+    }
+
+    // With an empty view or all-false flags it is the caption-less layout, P + i x (T + G)
+    for (int32 index = 0; index < 9; ++index)
+    {
+        const float plain = SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING + index * SolidPagesTestTabStep();
+        TestEqual(FString::Printf(TEXT("TabTop(%d, {})"), index), SOLSolidTabRail::TabTop(index,
+            TConstArrayView<bool>()), plain, SOLIDPAGESTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("TabTop(%d, all false)"), index), SOLSolidTabRail::TabTop(index,
+            MakeArrayView(none)), plain, SOLIDPAGESTEST_TOLERANCE);
+    }
+
+    // Past the view: every flag of the view counts (all four captioned, index 6 = P + 6 steps + 4 captions)
+    TestEqual(TEXT("TabTop(6, all four captioned)"), SOLSolidTabRail::TabTop(6, MakeArrayView(all)),
+        SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING + 6 * SolidPagesTestTabStep() + 4 * SolidPagesTestCaptionStep(),
+        SOLIDPAGESTEST_TOLERANCE);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesCaptionTopTest, "SOLTest.SolidPages.Rail.CaptionTop",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A caption row sits one caption step above its tab and right after the previous tab's gap (no overlap); a tab
+// without a caption, and an index outside the view, has none (-1)
+bool FSOLSolidPagesCaptionTopTest::RunTest(const FString& /*parameters*/)
+{
+    const bool all[] = { true, true, true, true };
+    const bool alternate[] = { false, true, false, true, false };
+    const TConstArrayView<bool> views[] = { MakeArrayView(all), MakeArrayView(alternate),
+        MakeArrayView(SOLIDPAGESTEST_HELP_CAPTIONED) };
+    for (int32 v = 0; v < static_cast<int32>(UE_ARRAY_COUNT(views)); ++v)
+    {
+        const TConstArrayView<bool> view = views[v];
+        for (int32 index = 0; index < view.Num(); ++index)
+        {
+            const float caption = SOLSolidTabRail::CaptionTop(index, view);
+            if (!view[index])
+            {
+                TestEqual(FString::Printf(TEXT("view %d tab %d has no caption"), v, index), caption, -1.0f,
+                    SOLIDPAGESTEST_TOLERANCE);
+                continue;
+            }
+            TestEqual(FString::Printf(TEXT("view %d CaptionTop(%d) is one caption step above its tab"), v, index),
+                caption, SolidPagesTestExpectedTabTop(index, view) - SolidPagesTestCaptionStep(),
+                SOLIDPAGESTEST_TOLERANCE);
+            TestEqual(FString::Printf(TEXT("view %d caption %d ends at its tab"), v, index),
+                caption + SolidPagesTestCaptionStep(), SOLSolidTabRail::TabTop(index, view), SOLIDPAGESTEST_TOLERANCE);
+            if (index >= 1)
+            {
+                TestEqual(FString::Printf(TEXT("view %d caption %d starts after tab %d's gap"), v, index, index - 1),
+                    SOLSolidTabRail::TabTop(index - 1, view) + SolidPagesTestTabStep(), caption,
+                    SOLIDPAGESTEST_TOLERANCE);
+            }
+            else
+            {
+                TestEqual(FString::Printf(TEXT("view %d caption 0 starts at the padding"), v), caption,
+                    SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING, SOLIDPAGESTEST_TOLERANCE);
+            }
+        }
+
+        // Outside the view: no caption
+        const int32 outside[] = { -1, view.Num(), view.Num() + 3, INDEX_NONE, MIN_int32, MAX_int32 };
+        for (const int32 index : outside)
+        {
+            TestEqual(FString::Printf(TEXT("view %d CaptionTop(%d) outside the view"), v, index),
+                SOLSolidTabRail::CaptionTop(index, view), -1.0f, SOLIDPAGESTEST_TOLERANCE);
+        }
+    }
+
+    // An empty view has no caption anywhere
+    for (int32 index = -1; index < 4; ++index)
+    {
+        TestEqual(FString::Printf(TEXT("CaptionTop(%d, {})"), index),
+            SOLSolidTabRail::CaptionTop(index, TConstArrayView<bool>()), -1.0f, SOLIDPAGESTEST_TOLERANCE);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesCaptionHeightTest, "SOLTest.SolidPages.Rail.CaptionHeight",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The rail height is the caption-less height plus one caption step per flag among the first tabCount tabs; a negative
+// count reads 0 (the padding on both sides); with no captions it equals RailHeight(n)
+bool FSOLSolidPagesCaptionHeightTest::RunTest(const FString& /*parameters*/)
+{
+    const bool none[] = { false, false, false };
+    const bool all[] = { true, true, true, true };
+    const bool alternate[] = { false, true, false, true, false };
+    const TConstArrayView<bool> views[] = { TConstArrayView<bool>(), MakeArrayView(none), MakeArrayView(all),
+        MakeArrayView(alternate), MakeArrayView(SOLIDPAGESTEST_HELP_CAPTIONED) };
+    for (int32 v = 0; v < static_cast<int32>(UE_ARRAY_COUNT(views)); ++v)
+    {
+        for (int32 tabs = 0; tabs <= 8; ++tabs)
+        {
+            TestEqual(FString::Printf(TEXT("view %d RailHeight(%d)"), v, tabs),
+                SOLSolidTabRail::RailHeight(tabs, views[v]), SolidPagesTestExpectedRailHeight(tabs, views[v]),
+                SOLIDPAGESTEST_TOLERANCE);
+        }
+        const int32 negatives[] = { -1, -10, INDEX_NONE, MIN_int32 };
+        for (const int32 tabs : negatives)
+        {
+            TestEqual(FString::Printf(TEXT("view %d RailHeight(%d) reads as 0 tabs"), v, tabs),
+                SOLSolidTabRail::RailHeight(tabs, views[v]), 2.0f * SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING,
+                SOLIDPAGESTEST_TOLERANCE);
+        }
+    }
+
+    // No captions: the caption-less overload
+    for (int32 tabs = -1; tabs <= 8; ++tabs)
+    {
+        TestEqual(FString::Printf(TEXT("RailHeight(%d, {}) == RailHeight(%d)"), tabs, tabs),
+            SOLSolidTabRail::RailHeight(tabs, TConstArrayView<bool>()), SOLSolidTabRail::RailHeight(tabs),
+            SOLIDPAGESTEST_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("RailHeight(%d, all false) == RailHeight(%d)"), tabs, tabs),
+            SOLSolidTabRail::RailHeight(tabs, MakeArrayView(none)), SOLSolidTabRail::RailHeight(tabs),
+            SOLIDPAGESTEST_TOLERANCE);
+    }
+
+    // Only the first tabCount flags count: one tab of a fully captioned view adds one caption step
+    TestEqual(TEXT("RailHeight(1, all captioned)"), SOLSolidTabRail::RailHeight(1, MakeArrayView(all)),
+        SOLSolidTabRail::RailHeight(1) + SolidPagesTestCaptionStep(), SOLIDPAGESTEST_TOLERANCE);
+
+    // Every tab and caption lies inside its rail
+    for (int32 v = 0; v < static_cast<int32>(UE_ARRAY_COUNT(views)); ++v)
+    {
+        const int32 count = FMath::Max(views[v].Num(), 1);
+        TestTrue(FString::Printf(TEXT("view %d last tab inside its rail"), v),
+            SOLSolidTabRail::TabTop(count - 1, views[v]) + SOL::MenuStyle::TAB_HEIGHT <=
+            SOLSolidTabRail::RailHeight(count, views[v]) - SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING +
+            SOLIDPAGESTEST_TOLERANCE);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesCaptionTraceTest, "SOLTest.SolidPages.Rail.CaptionTrace",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A tab's hover trace on a captioned rail is the caption-less trace moved to the tab's centre line (same x start and
+// end, two points, no ring terminal); with no captions it equals the caption-less trace
+bool FSOLSolidPagesCaptionTraceTest::RunTest(const FString& /*parameters*/)
+{
+    const bool none[] = { false, false, false, false };
+    const bool all[] = { true, true, true, true };
+    const bool alternate[] = { false, true, false, true, false };
+    const TConstArrayView<bool> views[] = { TConstArrayView<bool>(), MakeArrayView(none), MakeArrayView(all),
+        MakeArrayView(alternate), MakeArrayView(SOLIDPAGESTEST_HELP_CAPTIONED) };
+    const int32 indices[] = { 0, 1, 2, 3, 4, 5, 7, -1, INDEX_NONE };
+    for (int32 v = 0; v < static_cast<int32>(UE_ARRAY_COUNT(views)); ++v)
+    {
+        for (const int32 index : indices)
+        {
+            const FSOLSolidTrace plain = SOLSolidTabRail::TraceForTab(index);
+            const FSOLSolidTrace trace = SOLSolidTabRail::TraceForTab(index, views[v]);
+            if (!TestEqual(FString::Printf(TEXT("view %d tab %d trace has two points"), v, index), trace.Count, 2))
+            {
+                continue;
+            }
+            TestFalse(FString::Printf(TEXT("view %d tab %d trace has no ring terminal"), v, index),
+                trace.bRingTerminal);
+            const float centre = SOLSolidTabRail::TabTop(index, views[v]) + 0.5f * SOL::MenuStyle::TAB_HEIGHT;
+            for (int32 point = 0; point < 2; ++point)
+            {
+                TestEqual(FString::Printf(TEXT("view %d tab %d point %d x unchanged"), v, index, point),
+                    trace.Points[point].X, plain.Points[point].X, SOLIDPAGESTEST_TOLERANCE);
+                TestEqual(FString::Printf(TEXT("view %d tab %d point %d y on the tab's centre line"), v, index, point),
+                    trace.Points[point].Y, centre, SOLIDPAGESTEST_TOLERANCE);
+            }
+        }
+    }
+
+    // No captions: exactly the caption-less trace
+    for (int32 index = 0; index < 8; ++index)
+    {
+        const FSOLSolidTrace plain = SOLSolidTabRail::TraceForTab(index);
+        const FSOLSolidTrace trace = SOLSolidTabRail::TraceForTab(index, TConstArrayView<bool>());
+        TestEqual(FString::Printf(TEXT("TraceForTab(%d, {}) count"), index), trace.Count, plain.Count);
+        TestTrue(FString::Printf(TEXT("TraceForTab(%d, {}) terminal"), index),
+            trace.bRingTerminal == plain.bRingTerminal);
+        for (int32 point = 0; point < 2; ++point)
+        {
+            TestEqual(FString::Printf(TEXT("TraceForTab(%d, {}) point %d y"), index, point), trace.Points[point].Y,
+                plain.Points[point].Y, SOLIDPAGESTEST_TOLERANCE);
+            TestEqual(FString::Printf(TEXT("TraceForTab(%d, {}) point %d x"), index, point), trace.Points[point].X,
+                plain.Points[point].X, SOLIDPAGESTEST_TOLERANCE);
+        }
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidPagesHelpRailTest, "SOLTest.SolidPages.Rail.HelpCaptions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The Help rail (captions from SOLPageTabs::TabCaption): tab tops 42, 132, 188, 244, 300, caption tops 8 and 98, height
+// 364 with today's constants, and no caption row overlaps a tab
+bool FSOLSolidPagesHelpRailTest::RunTest(const FString& /*parameters*/)
+{
+    // The flags as the page derives them: a caption row above every tab with a non-empty caption
+    const int32 count = SOLPageTabs::TabCount(ESOLReadOnlyPage::Help);
+    TArray<bool> captioned;
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        captioned.Add(!SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, tab).IsEmpty());
+    }
+    if (!TestEqual(TEXT("Help flags match {true, true, false, false, false}"), captioned.Num(),
+        static_cast<int32>(UE_ARRAY_COUNT(SOLIDPAGESTEST_HELP_CAPTIONED))))
+    {
+        return true;
+    }
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        TestTrue(FString::Printf(TEXT("Help tab %d captioned"), tab),
+            captioned[tab] == SOLIDPAGESTEST_HELP_CAPTIONED[tab]);
+    }
+
+    // Formula against the constants
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help TabTop(%d)"), tab), SOLSolidTabRail::TabTop(tab, captioned),
+            SolidPagesTestExpectedTabTop(tab, captioned), SOLIDPAGESTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("Help RailHeight"), SOLSolidTabRail::RailHeight(count, captioned),
+        SolidPagesTestExpectedRailHeight(count, captioned), SOLIDPAGESTEST_TOLERANCE);
+
+    // Today's numbers (P 8, T 46, G 10, C 24)
+    TestEqual(TEXT("TAB_RAIL_CAPTION_HEIGHT is 24 (today's value)"), SOL::SolidMenu::TAB_RAIL_CAPTION_HEIGHT, 24.0f,
+        SOLIDPAGESTEST_TOLERANCE);
+    const float tops[] = { 42.0f, 132.0f, 188.0f, 244.0f, 300.0f };
+    static_assert(UE_ARRAY_COUNT(tops) == SOLIDPAGESTEST_HELP_TABS, "one top per Help tab");
+    for (int32 tab = 0; tab < SOLIDPAGESTEST_HELP_TABS; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help TabTop(%d) is %.0f"), tab, tops[tab]),
+            SOLSolidTabRail::TabTop(tab, captioned), tops[tab], SOLIDPAGESTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("Help CaptionTop(0) is 8"), SOLSolidTabRail::CaptionTop(0, captioned), 8.0f,
+        SOLIDPAGESTEST_TOLERANCE);
+    TestEqual(TEXT("Help CaptionTop(1) is 98"), SOLSolidTabRail::CaptionTop(1, captioned), 98.0f,
+        SOLIDPAGESTEST_TOLERANCE);
+    for (int32 tab = 2; tab < SOLIDPAGESTEST_HELP_TABS; ++tab)
+    {
+        TestEqual(FString::Printf(TEXT("Help CaptionTop(%d) is -1"), tab), SOLSolidTabRail::CaptionTop(tab, captioned),
+            -1.0f, SOLIDPAGESTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("Help RailHeight is 364"), SOLSolidTabRail::RailHeight(count, captioned), 364.0f,
+        SOLIDPAGESTEST_TOLERANCE);
+
+    // No caption row overlaps a tab, and every trace sits inside its own tab
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        const float top = SOLSolidTabRail::TabTop(tab, captioned);
+        const FSOLSolidTrace trace = SOLSolidTabRail::TraceForTab(tab, captioned);
+        TestTrue(FString::Printf(TEXT("Help tab %d trace inside its tab"), tab),
+            trace.Points[0].Y > top && trace.Points[0].Y < top + SOL::MenuStyle::TAB_HEIGHT);
+        if (!captioned[tab])
+        {
+            continue;
+        }
+        const float caption = SOLSolidTabRail::CaptionTop(tab, captioned);
+        TestEqual(FString::Printf(TEXT("Help caption %d + C + G is its tab's top"), tab),
+            caption + SolidPagesTestCaptionStep(), top, SOLIDPAGESTEST_TOLERANCE);
+        if (tab >= 1)
+        {
+            TestEqual(FString::Printf(TEXT("Help tab %d + T + G is caption %d's top"), tab - 1, tab),
+                SOLSolidTabRail::TabTop(tab - 1, captioned) + SolidPagesTestTabStep(), caption,
+                SOLIDPAGESTEST_TOLERANCE);
+        }
+    }
     return true;
 }
 

@@ -10,6 +10,8 @@
 
 #include "CoreMinimal.h"
 
+enum class ESOLHudPaletteRole : uint8;
+
 // Display unit for a speed readout or the F3 speed-cap stepper
 enum class ESOLSpeedUnit : uint8
 {
@@ -91,6 +93,10 @@ namespace SOLHudFormat
     SOLTEST_API const TCHAR* FlightModeLabel(ESOLFlightMode mode);
 
     // Returns the flight mode label's color from the original Limit Theory palette: MANUAL Secondary (orange),
-    // ASSISTED Primary (blue-cyan), AUTO Good (green)
+    // ASSISTED Primary (blue-cyan), AUTO Good (green); the HUD palette's colour of FlightModeRole
     SOLTEST_API FLinearColor FlightModeColor(ESOLFlightMode mode);
+
+    // (33d-ii) Returns the HUD palette role of a flight mode's label (MANUAL Secondary, ASSISTED Primary, AUTO Good):
+    // the one source of the mode colours, for the HUD's label and the Help glossary's Flight mode sample
+    SOLTEST_API ESOLHudPaletteRole FlightModeRole(ESOLFlightMode mode);
 }

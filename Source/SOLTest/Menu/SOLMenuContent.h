@@ -133,6 +133,14 @@ namespace SOLMenuContent
     // Builds the About page (a tab page: the game with the engine version, and the credits)
     SOLTEST_API USOLReadOnlyPageWidget* BuildAboutPage(UWidgetTree& tree);
 
+    // (33d-ii) Builds the Help page (a tab page, SDD 33 D22: the Keys group's Keyboard tab and the four HUD glossary
+    // tabs, the rail's group captions from SOLPageTabs::TabCaption)
+    SOLTEST_API USOLReadOnlyPageWidget* BuildHelpPage(UWidgetTree& tree);
+
+    // (33d-ii) Refreshes the Help page from the live keys (called before the page is shown and when the bindings
+    // change): the keyboard diagram's keys and the glossary rows' key-naming texts, each written only on a change
+    SOLTEST_API void RefreshHelpPage(USOLReadOnlyPageWidget& page, const TArray<FString>& liveKeys);
+
     // Builds a read-only tab page of a kind and fills its tabs
     SOLTEST_API USOLReadOnlyPageWidget* BuildReadOnlyPage(UWidgetTree& tree, ESOLReadOnlyPage kind);
 
@@ -143,6 +151,7 @@ namespace SOLMenuContent
     SOLTEST_API void FillControlsTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
     SOLTEST_API void FillInfoTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
     SOLTEST_API void FillAboutTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
+    SOLTEST_API void FillHelpTabs(USOLReadOnlyPageWidget& page, UWidgetTree& tree);
 
     // Builds the Settings page (USOLSettingsPageWidget, a child user widget in the tree)
     SOLTEST_API USOLSettingsPageWidget* BuildSettingsPage(UWidgetTree& tree);

@@ -56,9 +56,9 @@ namespace
     // The shell switcher's empty child (Resume and Quit show no page); a page tab's child index is its EMenuTab value
     constexpr int32 PAUSE_MENU_NO_PAGE = 0;
     static_assert(static_cast<int32>(EMenuTab::Resume) == PAUSE_MENU_NO_PAGE && static_cast<int32>(EMenuTab::Controls)
-        == 1 && static_cast<int32>(EMenuTab::Info) == 2 && static_cast<int32>(EMenuTab::Settings) == 3
-        && static_cast<int32>(EMenuTab::Demo) == 4 && static_cast<int32>(EMenuTab::About) == 5,
-        "the shell's switcher children follow EMenuTab (BuildShell)");
+        == 1 && static_cast<int32>(EMenuTab::Help) == 2 && static_cast<int32>(EMenuTab::Info) == 3
+        && static_cast<int32>(EMenuTab::Settings) == 4 && static_cast<int32>(EMenuTab::Demo) == 5
+        && static_cast<int32>(EMenuTab::About) == 6, "the shell's switcher children follow EMenuTab (BuildShell)");
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the shell switcher's child index for a tab (its own index for a page tab, the empty child otherwise)
@@ -125,10 +125,7 @@ void USOLPauseMenuWidget::BuildSidePanel(UHorizontalBox& row)
         USpacer::StaticClass()), 0.0f, COLUMN_STACK_GAP));
 
     // The tab stack, scrolling past STACK_MAX_VISIBLE_ENTRIES (its view starts at stackTop, panel local); each tab's
-    // hover trace runs from its right end (the point) to the hull's right edge
-    const TCHAR* tabLabels[] = { SOLMenuText::RESUME, SOLMenuText::CONTROLS, SOLMenuText::INFO, SOLMenuText::SETTINGS,
-        SOLMenuText::DEMO, SOLMenuText::ABOUT, SOLMenuText::QUIT_TAB };
-    static_assert(UE_ARRAY_COUNT(tabLabels) == TAB_COUNT, "one label per tab");
+    // hover trace runs from its right end (the point) to the hull's right edge; labels from SOLMenuState::PauseTabLabel
     const float stackTop = inset + COLUMN_TITLE_HEIGHT + COLUMN_STACK_GAP;
     column->AddChildToVerticalBox(TabStack.Build(*WidgetTree, BUTTON_HEIGHT, BUTTON_GAP, stackTop,
         STACK_MAX_VISIBLE_ENTRIES));
@@ -136,7 +133,8 @@ void USOLPauseMenuWidget::BuildSidePanel(UHorizontalBox& row)
     for (int32 tab = 0; tab < TAB_COUNT; ++tab)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, tabLabels[tab], tab, BUTTON_FONT_SIZE, ESOLSolidButtonVariant::Stack);
+        button->Setup(*WidgetTree, SOLMenuState::PauseTabLabel(static_cast<EMenuTab>(tab)), tab, BUTTON_FONT_SIZE,
+            ESOLSolidButtonVariant::Stack);
         button->OnMenuClicked.BindUObject(this, &USOLPauseMenuWidget::HandleTabClicked);
         TabStack.AddItem(SOLMenuContent::MakeSized(*WidgetTree, button, 0.0f, BUTTON_HEIGHT));
         TabButtons.Add(button);
@@ -187,6 +185,8 @@ void USOLPauseMenuWidget::BuildShell(UHorizontalBox& row)
     ControlsPage = SOLMenuContent::BuildControlsPage(*WidgetTree);
     ControlsKeyCells = ControlsPage->GetKeyCells();
     PageSwitcher->AddChild(ControlsPage);
+    HelpPage = SOLMenuContent::BuildHelpPage(*WidgetTree);
+    PageSwitcher->AddChild(HelpPage);
     InfoPage = SOLMenuContent::BuildInfoPage(*WidgetTree);
     InfoKeyTexts = InfoPage->GetKeyTexts();
     PageSwitcher->AddChild(InfoPage);
@@ -314,8 +314,8 @@ void USOLPauseMenuWidget::ApplyPanelLook(const FSOLPausePanelLook& look)
 // Shows a tab: its page in the shell (or the shell closing), the detail area and the selection marks
 void USOLPauseMenuWidget::ShowTab(const EMenuTab tab)
 {
-    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Info, About, Demo and
-    // Settings re-read their state when shown (the tab pages open on their first tab)
+    // Leaving Settings ends its visit (unapplied changes reverted, one write if owed); Controls, Help, Info, About,
+    // Demo and Settings re-read their state when shown (the tab pages open on their first tab)
     if (mTab == EMenuTab::Settings && tab != EMenuTab::Settings && SettingsPage != nullptr)
     {
         SettingsPage->NotifyHidden();
@@ -328,6 +328,11 @@ void USOLPauseMenuWidget::ShowTab(const EMenuTab tab)
     {
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
         ControlsPage->ShowOpening();
+    }
+    if (tab == EMenuTab::Help && HelpPage != nullptr)
+    {
+        SOLMenuContent::RefreshHelpPage(*HelpPage, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+        HelpPage->ShowOpening();
     }
     if (tab == EMenuTab::About && AboutPage != nullptr)
     {

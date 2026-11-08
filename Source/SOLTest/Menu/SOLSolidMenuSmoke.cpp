@@ -6,6 +6,8 @@
 #include "Menu/SOLSolidMenuSmoke.h"
 
 #include "Menu/SOLBuildVersion.h"
+#include "Menu/SOLGlossary.h"
+#include "Menu/SOLHudSymbolView.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLKeyDiagram.h"
@@ -17,6 +19,7 @@
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLMenuState.h"
+#include "Menu/SOLMenuText.h"
 #include "Menu/SOLPageTabs.h"
 #include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLMenuSubsystem.h"
@@ -112,6 +115,15 @@ namespace
         ViewBack,       // 46g: the About page closed, r.SetRes 1280x720 again
         MainFit,        // 46g: Controls, About and Settings opened in turn (looped), read once the shell has
                         // settled: the read-only pages' fit at 1280x720, every rail laid out without a scroll (D17)
+        HelpMain,       // 33d-ii: the Help page at 1280x720: its rail (captions, traces), the Keyboard tab, every
+                        // glossary tab's rows (painted on the first frame after the switch too), Overlays scrolled to
+                        // its end, no rebuild while idle, strength 0 rebuilding the shown tab's views only
+        MainReach,      // 33d-ii: every column entry focused (scrolled whole into view, hit-tested), Help and About
+                        // clicked by synthesized Slate mouse events (Quit hit-tested only)
+        ViewLarge,      // 33d-ii: r.SetRes 1920x1080 (windowed)
+        HelpLarge,      // ... the Help page opened at 1920x1080: its rail, the Keyboard tab, every glossary tab
+        MainReachLarge, // ... the column reach at 1920x1080
+        ViewBackLarge,  // ... the page closed, r.SetRes 1280x720 again
         Diagram,        // 33c: the keyboard diagram test page in the 1280x720 shell content width: fit (D34: the
                         // clusters and mouse stacked under the main block), paint, assignment count, the hover keys
                         // (the panel fixed, D36), Fire rebound to K and back (live rebuild)
@@ -128,6 +140,10 @@ namespace
                         // their slots and the shell at 1280x720 (Info's tabs screenshotted)
         PausePageClose, // ... closed by Esc or Back, alternately: still paused on Resume at once, the shell
                         // closes after
+        HelpPause,      // ... 33d-ii: the Help tab at 1280x720: the Keyboard tab and every glossary tab drawn in the
+                        // shell
+        PauseReach,     // ... 33d-ii: every pause tab focused (scrolled into view, hit-tested); Quit, then Help clicked
+        HelpPauseEsc,   // ... 33d-ii: Esc closes Help (paused on Resume), a second Esc resumes; paused again after
         PauseQuitTab,   // ... the Quit tab: its two choices in the side panel, no page
         PauseResume,    // ... Esc with no page: Playing with the menu input-transparent and the input back at once,
                         // slid out and gone after CLOSE_S; the sim time advanced while paused (step 7, Q3)
@@ -138,6 +154,9 @@ namespace
                         // the tab's glow read; strength 1 applied back
         PauseKeys,      // ... 33b: the Key bindings tab at 1280x720: every key cap cell inside its row beside its
                         // Rebind button, a shot (PauseSmall shows Graphics again)
+        PauseViewLarge, // ... 33d-ii: paused with Settings open, r.SetRes 1920x1080
+        HelpPauseLarge, // ... 33d-ii: the Help tab at 1920x1080: the Keyboard tab and every glossary tab drawn
+        PauseReachLarge,    // ... 33d-ii: the pause reach at 1920x1080, Settings shown again (PauseSmall reads it)
         PauseSmall,     // ... paused with Settings open, r.SetRes 1000x800: the side panel and the shell inside the
                         // view; 46i: every stepper value inside its slot and the shell, the labels in their columns
         PauseSmallKeys, // ... 46i: the Key bindings tab: its narrow rows, each key name beside a narrow Rebind, a shot
@@ -146,6 +165,14 @@ namespace
         Quit,         // SUMMARY, quit
         Count,
     };
+
+    using ESolidSmokeEntry = SOLMenuState::EMainMenuEntry;
+
+    // Returns a main menu entry's index in the column (EMainMenuEntry order: Play, Demo, Start, Controls, Help, ...)
+    constexpr int32 SolidSmokeEntry(const ESolidSmokeEntry entry)
+    {
+        return static_cast<int32>(entry);
+    }
 
     // The main menu pages the page loop opens and closes, in order: the page, its entry, its screenshot name, and
     // whether Back (else Esc) closes it
@@ -157,11 +184,12 @@ namespace
         bool bBack;
     };
     const FSolidSmokePage SOLID_SMOKE_PAGES[] = {
-        { ESOLMainMenuPage::StartLocation, 2, TEXT("start"), true },
-        { ESOLMainMenuPage::Controls, 3, TEXT("controls"), false },
-        { ESOLMainMenuPage::Settings, 4, TEXT("settings"), true },
-        { ESOLMainMenuPage::About, 5, TEXT("about"), false },
-        { ESOLMainMenuPage::Demo, 1, TEXT("demo"), true },
+        { ESOLMainMenuPage::StartLocation, SolidSmokeEntry(ESolidSmokeEntry::StartLocation), TEXT("start"), true },
+        { ESOLMainMenuPage::Controls, SolidSmokeEntry(ESolidSmokeEntry::Controls), TEXT("controls"), false },
+        { ESOLMainMenuPage::Help, SolidSmokeEntry(ESolidSmokeEntry::Help), TEXT("help"), false },
+        { ESOLMainMenuPage::Settings, SolidSmokeEntry(ESolidSmokeEntry::Settings), TEXT("settings"), true },
+        { ESOLMainMenuPage::About, SolidSmokeEntry(ESolidSmokeEntry::About), TEXT("about"), false },
+        { ESOLMainMenuPage::Demo, SolidSmokeEntry(ESolidSmokeEntry::Demo), TEXT("demo"), true },
     };
     constexpr int32 SOLID_SMOKE_PAGE_COUNT = UE_ARRAY_COUNT(SOLID_SMOKE_PAGES);
 
@@ -173,9 +201,10 @@ namespace
         const TCHAR* Name;
     };
     const FSolidSmokeFitPage SOLID_SMOKE_FIT_PAGES[] = {
-        { ESOLMainMenuPage::Controls, 3, TEXT("controls") },
-        { ESOLMainMenuPage::About, 5, TEXT("about") },
-        { ESOLMainMenuPage::Settings, 4, TEXT("settings") },
+        { ESOLMainMenuPage::Controls, SolidSmokeEntry(ESolidSmokeEntry::Controls), TEXT("controls") },
+        { ESOLMainMenuPage::Help, SolidSmokeEntry(ESolidSmokeEntry::Help), TEXT("help") },
+        { ESOLMainMenuPage::About, SolidSmokeEntry(ESolidSmokeEntry::About), TEXT("about") },
+        { ESOLMainMenuPage::Settings, SolidSmokeEntry(ESolidSmokeEntry::Settings), TEXT("settings") },
     };
     constexpr int32 SOLID_SMOKE_FIT_PAGE_COUNT = UE_ARRAY_COUNT(SOLID_SMOKE_FIT_PAGES);
 
@@ -189,6 +218,7 @@ namespace
     };
     const FSolidSmokePausePage SOLID_SMOKE_PAUSE_PAGES[] = {
         { SOLMenuState::EMenuTab::Controls, TEXT("controls"), false },
+        { SOLMenuState::EMenuTab::Help, TEXT("help"), true },
         { SOLMenuState::EMenuTab::Info, TEXT("info"), true },
         { SOLMenuState::EMenuTab::Settings, TEXT("settings"), false },
         { SOLMenuState::EMenuTab::Demo, TEXT("demo"), true },
@@ -209,8 +239,8 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 212;          // 33c: the checks a whole run logs (Finish fails a run
-                                                                // that logged another number: a skipped check)
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 257;          // 33d-ii: the checks a whole run logs (Finish fails
+                                                                // a run that logged another number: a skipped check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
     constexpr double SOLID_SMOKE_PAUSE_S = 0.5;                 // ... this long paused, then Quit to menu
@@ -219,15 +249,30 @@ namespace
     constexpr float SOLID_SMOKE_FIT_TOLERANCE_PX = 0.5f;
     const FIntPoint SOLID_SMOKE_VIEW(1280, 720);
     const FIntPoint SOLID_SMOKE_SMALL_VIEW(1000, 800);
+    const FIntPoint SOLID_SMOKE_LARGE_VIEW(1920, 1080);         // 33d-ii: the Help steps' large view
+    constexpr int32 SOLID_SMOKE_IDLE_FRAMES = 30;               // 33d-ii: idle frames in which no view may rebuild
+    constexpr int32 SOLID_SMOKE_FIRST_OPEN_FRAMES = 4;          // 33d-ii: frames logged after Help's first open
+    constexpr int32 SOLID_SMOKE_INDICES_PER_SHAPE = 6;          // 33d-ii: a shape batch's indices per quad
+    constexpr float SOLID_SMOKE_RAIL_TOLERANCE = 1.0f;          // 33d-ii: a laid-out rail top against its rule (units)
+    const TCHAR* const SOLID_SMOKE_HELP_HOVER_KEY = TEXT("O");  // 33d-ii: the Keyboard tab's hovered key for its shot
 
-    // Main menu entry indices the script drives (USOLMainMenuWidget's EEntry order: Play, Demo, Start, ...)
-    constexpr int32 SOLID_SMOKE_PLAY_ENTRY = 0;
-    constexpr int32 SOLID_SMOKE_HOVER_ENTRY = 1;
-    constexpr int32 SOLID_SMOKE_DOWN_ENTRY = 2;
-    constexpr int32 SOLID_SMOKE_STRENGTH_ENTRY = 3;             // Hovered at strength 0 and 2
-    constexpr int32 SOLID_SMOKE_SETTINGS_ENTRY = 4;
-    constexpr int32 SOLID_SMOKE_CONTROLS_ENTRY = 3;
-    constexpr int32 SOLID_SMOKE_ABOUT_ENTRY = 5;
+    // 33d-ii: screenshot and check names of the Help tabs, in ESOLHelpTab order
+    const TCHAR* const SOLID_SMOKE_HELP_TAB_NAMES[] = { TEXT("keys"), TEXT("flight"), TEXT("targets"),
+        TEXT("overlays"), TEXT("map") };
+    static_assert(UE_ARRAY_COUNT(SOLID_SMOKE_HELP_TAB_NAMES) == static_cast<int32>(ESOLHelpTab::Count),
+        "one name per Help tab");
+
+    // Main menu entry indices the script drives (SOLMenuState::EMainMenuEntry order: Play, Demo, Start, ...)
+    constexpr int32 SOLID_SMOKE_PLAY_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Play);
+    constexpr int32 SOLID_SMOKE_HOVER_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Demo);
+    constexpr int32 SOLID_SMOKE_DOWN_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::StartLocation);
+    // Hovered at strength 0 and 2
+    constexpr int32 SOLID_SMOKE_STRENGTH_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Controls);
+    constexpr int32 SOLID_SMOKE_SETTINGS_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Settings);
+    constexpr int32 SOLID_SMOKE_CONTROLS_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Controls);
+    constexpr int32 SOLID_SMOKE_ABOUT_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::About);
+    constexpr int32 SOLID_SMOKE_MAIN_ENTRIES = SolidSmokeEntry(ESolidSmokeEntry::Count);
+    constexpr int32 SOLID_SMOKE_HELP_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Help);
     constexpr int32 SOLID_SMOKE_COLUMN_TRACES = 3;              // The column's lower-edge traces
     constexpr int32 SOLID_SMOKE_OVERLAY_HOVER_ROW = 1;          // The embedded Overlay list's row hovered for the shot
     constexpr float SOLID_SMOKE_SLIDER_DELTA = 0.25f;           // The Settings slider moves this far (then Revert)
@@ -238,7 +283,7 @@ namespace
     constexpr float SOLID_SMOKE_DRAG_TOLERANCE = 0.03f;         // The dragged value against the drag's end
     constexpr int32 SOLID_SMOKE_PAINT_FRAMES = 3;               // Frames for a value change to be painted
     constexpr int32 SOLID_SMOKE_SCROLL_CAP = 4;                 // 46g: the column's forced visible-entry cap
-    constexpr int32 SOLID_SMOKE_QUIT_ENTRY = 6;                 // 46g: the column's last entry (Quit)
+    constexpr int32 SOLID_SMOKE_QUIT_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Quit);   // 46g: the column's last entry
     constexpr float SOLID_SMOKE_SCROLL_TOLERANCE = 0.5f;        // 46g: two offsets or a drawn y against a laid-out one
     constexpr float SOLID_SMOKE_SCROLL_END_TOLERANCE = 1.5f;    // 46g: Slate's scroll end against the stack's
     constexpr float SOLID_SMOKE_PAUSE_REVERSAL_TOLERANCE = 0.15f;   // 46g: a few frames at the CLOSE_S / open rates
@@ -360,8 +405,11 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns whether a widget's arranged rect lies inside another's (absolute space), with a description
-    bool SolidSmokeInside(const UWidget* inner, const UWidget* outer, FString& outDetail)
+    // Returns whether a widget's arranged rect lies inside another's (absolute space), with a description; (33d-ii)
+    // bLayoutOnly reads the inner widget's laid-out rect (its layout transform only: a hovered button's lift, a render
+    // transform, left out)
+    bool SolidSmokeInside(const UWidget* inner, const UWidget* outer, FString& outDetail,
+        const bool bLayoutOnly = false)
     {
         if (inner == nullptr || outer == nullptr)
         {
@@ -369,16 +417,22 @@ namespace
             return false;
         }
         const FGeometry& innerGeometry = inner->GetCachedGeometry();
+        FVector2D innerMin = innerGeometry.GetAbsolutePosition();
+        FVector2D innerMax = innerMin + innerGeometry.GetAbsoluteSize();
+        if (bLayoutOnly)
+        {
+            const FSlateLayoutTransform layout = innerGeometry.GetAccumulatedLayoutTransform();
+            innerMin = FVector2D(layout.TransformPoint(FVector2f::ZeroVector));
+            innerMax = FVector2D(layout.TransformPoint(innerGeometry.GetLocalSize()));
+        }
         const FGeometry& outerGeometry = outer->GetCachedGeometry();
-        const FVector2D innerMin = innerGeometry.GetAbsolutePosition();
-        const FVector2D innerMax = innerMin + innerGeometry.GetAbsoluteSize();
         const FVector2D outerMin = outerGeometry.GetAbsolutePosition();
         const FVector2D outerMax = outerMin + outerGeometry.GetAbsoluteSize();
         outDetail = FString::Printf(TEXT("[%.0f, %.0f]-[%.0f, %.0f] in [%.0f, %.0f]-[%.0f, %.0f]"), innerMin.X,
             innerMin.Y, innerMax.X, innerMax.Y, outerMin.X, outerMin.Y, outerMax.X, outerMax.Y);
         const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
-        return innerGeometry.GetAbsoluteSize().X > 0.0 && innerMin.X >= outerMin.X - tol
-            && innerMin.Y >= outerMin.Y - tol && innerMax.X <= outerMax.X + tol && innerMax.Y <= outerMax.Y + tol;
+        return innerMax.X > innerMin.X && innerMin.X >= outerMin.X - tol && innerMin.Y >= outerMin.Y - tol
+            && innerMax.X <= outerMax.X + tol && innerMax.Y <= outerMax.Y + tol;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -400,6 +454,22 @@ namespace
             }
         }
         return widget != nullptr ? widget->GetCachedGeometry() : FGeometry();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33d-ii) Returns whether a Slate hit test at a widget's centre (absolute) finds the widget, and that centre
+    bool SolidSmokeHitTest(const UWidget* widget, FVector2D& outCentre)
+    {
+        const TSharedPtr<SWidget> slate = widget != nullptr ? widget->GetCachedWidget() : nullptr;
+        if (!slate.IsValid() || !FSlateApplication::IsInitialized())
+        {
+            return false;
+        }
+        const FGeometry& geometry = widget->GetCachedGeometry();
+        outCentre = FVector2D(geometry.LocalToAbsolute(geometry.GetLocalSize() * 0.5f));
+        FSlateApplication& app = FSlateApplication::Get();
+        const FWidgetPath path = app.LocateWindowUnderMouse(outCentre, app.GetInteractiveTopLevelWindows(), true);
+        return path.IsValid() && path.ContainsWidget(slate.Get());
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -509,6 +579,20 @@ namespace
         else
         {
             FSlateApplication::Get().ProcessMouseButtonUpEvent(SolidSmokeMouseEvent(at, at, false));
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33d-ii) Clicks at an absolute point with synthesized Slate mouse events only: a move there, a left press and a
+    // release in one go (the OS cursor stays put, so no per-tick synthesized move can drop the hover in between)
+    void SolidSmokeSlateClick(const FVector2D& at)
+    {
+        if (FSlateApplication::IsInitialized())
+        {
+            FSlateApplication& slate = FSlateApplication::Get();
+            slate.ProcessMouseMoveEvent(SolidSmokeMouseEvent(at, at, false));
+            slate.ProcessMouseButtonDownEvent(nullptr, SolidSmokeMouseEvent(at, at, true));
+            slate.ProcessMouseButtonUpEvent(SolidSmokeMouseEvent(at, at, false));
         }
     }
 
@@ -674,11 +758,14 @@ bool FSOLSolidMenuSmoke::Update(USOLMenuSubsystem& menu)
         {
             EnterStep(mStep, menu);
         }
+        ObserveHelpFirstOpen(menu);
         return false;
     }
     mStepTimeS += deltaS;
     ++mStepFrames;
-    if (!TickStep(mStep, menu) || mStepFrames < SOLID_SMOKE_MIN_FRAMES)
+    const bool bStepDone = TickStep(mStep, menu);
+    ObserveHelpFirstOpen(menu);
+    if (!bStepDone || mStepFrames < SOLID_SMOKE_MIN_FRAMES)
     {
         return false;
     }
@@ -1027,6 +1114,40 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         ParkCursor();
         ClickEntry(menu, SOLID_SMOKE_FIT_PAGES[mFitIndex].Entry);
         break;
+    case ESolidSmokeStep::HelpMain:
+    case ESolidSmokeStep::HelpLarge:
+    case ESolidSmokeStep::HelpPause:
+    case ESolidSmokeStep::HelpPauseLarge:
+        // 33d-ii: the Help steps read the glossary tabs from the first after the Keyboard tab, the cursor parked
+        mHelpTab = static_cast<int32>(ESOLHelpTab::FlightHud);
+        mIsHelpOk = true;
+        mIsHelpTraceOk = false;
+        mHelpDetail.Reset();
+        SolidSmokeBringGameToFront();
+        ParkCursor();
+        break;
+    case ESolidSmokeStep::MainReach:
+    case ESolidSmokeStep::MainReachLarge:
+    case ESolidSmokeStep::PauseReach:
+    case ESolidSmokeStep::PauseReachLarge:
+    case ESolidSmokeStep::HelpPauseEsc:
+        mReachIndex = 0;
+        mIsReachOk = true;
+        mReachDetail.Reset();
+        SolidSmokeBringGameToFront();
+        ParkCursor();
+        break;
+    case ESolidSmokeStep::ViewLarge:
+    case ESolidSmokeStep::PauseViewLarge:
+        setView(SOLID_SMOKE_LARGE_VIEW);
+        break;
+    case ESolidSmokeStep::ViewBackLarge:
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ClosePage();
+        }
+        setView(SOLID_SMOKE_VIEW);
+        break;
     case ESolidSmokeStep::Diagram:
         // 33c: the Controls page in the shell (its content width is read once it settles), the cursor parked
         mDiagramWidth = 0.0f;
@@ -1214,6 +1335,35 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
             || mStepTimeS >= SOLID_SMOKE_SETTLE_S;
         return (mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES && bSettled) || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
     }
+    case ESolidSmokeStep::ViewLarge:
+    case ESolidSmokeStep::ViewBackLarge:
+    case ESolidSmokeStep::PauseViewLarge:
+    {
+        // 33d-ii: the large view (or 1280x720 again) held for a few frames, and the open pages settled in it
+        const FIntPoint want = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::ViewBackLarge
+            ? SOLID_SMOKE_VIEW : SOLID_SMOKE_LARGE_VIEW;
+        mViewFrames = GetViewSize() == want ? mViewFrames + 1 : 0;
+        return (mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES && mStepTimeS >= SOLID_SMOKE_SETTLE_S)
+            || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
+    }
+    case ESolidSmokeStep::HelpMain:
+        return TickHelp(menu, false, false);
+    case ESolidSmokeStep::HelpLarge:
+        return TickHelp(menu, false, true);
+    case ESolidSmokeStep::HelpPause:
+        return TickHelp(menu, true, false);
+    case ESolidSmokeStep::HelpPauseLarge:
+        return TickHelp(menu, true, true);
+    case ESolidSmokeStep::MainReach:
+        return TickReach(menu, TEXT("w-main-reach"), false, false);
+    case ESolidSmokeStep::MainReachLarge:
+        return TickReach(menu, TEXT("w-main-reach-large"), false, true);
+    case ESolidSmokeStep::PauseReach:
+        return TickReach(menu, TEXT("x-pause-reach"), true, false);
+    case ESolidSmokeStep::PauseReachLarge:
+        return TickReach(menu, TEXT("x-pause-reach-large"), true, true);
+    case ESolidSmokeStep::HelpPauseEsc:
+        return TickHelpPauseEsc(menu);
     case ESolidSmokeStep::MainOpen:
         if (mainMenu != nullptr)
         {
@@ -1534,10 +1684,11 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         const int32 traces = column != nullptr && column->GetTraceLayer().IsValid()
             ? column->GetTraceLayer()->GetTraceCount() : 0;
         Check(TEXT("a-main-panel"), column != nullptr && column->HasUniqueMaterial() && column->IsHullMaterialDrawn()
-            && stack == 7 && entries == 7 && traces == SOLID_SMOKE_COLUMN_TRACES && shell != nullptr
-            && shell->HasUniqueMaterial(), FString::Printf(TEXT("column material %s, %d/%d stack buttons, %d traces, "
-            "shell material %s"), column != nullptr && column->HasUniqueMaterial() ? TEXT("own") : TEXT("no"), stack,
-            entries, traces, shell != nullptr && shell->HasUniqueMaterial() ? TEXT("own") : TEXT("no")));
+            && stack == SOLID_SMOKE_MAIN_ENTRIES && entries == SOLID_SMOKE_MAIN_ENTRIES
+            && traces == SOLID_SMOKE_COLUMN_TRACES && shell != nullptr && shell->HasUniqueMaterial(),
+            FString::Printf(TEXT("column material %s, %d/%d stack buttons, %d traces, shell material %s"),
+            column != nullptr && column->HasUniqueMaterial() ? TEXT("own") : TEXT("no"), stack, entries, traces,
+            shell != nullptr && shell->HasUniqueMaterial() ? TEXT("own") : TEXT("no")));
 
         // The chin recess: the version, studio and engine line
         const FString version = SOLBuildVersion::CurrentVersion();
@@ -1979,7 +2130,8 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             static_cast<int32>(fit.Page), mainMenu != nullptr ? static_cast<int32>(mainMenu->GetShellAnim().Phase)
             : -1));
         USOLReadOnlyPageWidget* readOnly = mainMenu == nullptr ? nullptr : fit.Page == ESOLMainMenuPage::Controls
-            ? mainMenu->GetControlsPage() : fit.Page == ESOLMainMenuPage::About ? mainMenu->GetAboutPage() : nullptr;
+            ? mainMenu->GetControlsPage() : fit.Page == ESOLMainMenuPage::About ? mainMenu->GetAboutPage()
+            : fit.Page == ESOLMainMenuPage::Help ? mainMenu->GetHelpPage() : nullptr;
         USOLSettingsPageWidget* settings = mainMenu != nullptr && fit.Page == ESOLMainMenuPage::Settings
             ? mainMenu->GetSettingsPage() : nullptr;
         if (readOnly != nullptr)
@@ -2010,6 +2162,37 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
         {
             mRepeatStep = static_cast<int32>(ESolidSmokeStep::MainFit);
         }
+        break;
+    }
+    case ESolidSmokeStep::ViewLarge:
+    case ESolidSmokeStep::ViewBackLarge:
+    {
+        // 33d-ii: the view at its size, the column inside it (and back at 1280x720 with no page)
+        const bool bBack = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::ViewBackLarge;
+        const FIntPoint want = bBack ? SOLID_SMOKE_VIEW : SOLID_SMOKE_LARGE_VIEW;
+        const FIntPoint size = GetViewSize();
+        FString column;
+        const bool bColumn = mainMenu != nullptr && SolidSmokeInside(mainMenu->GetColumnPanel(), mainMenu, column);
+        const bool bNoPage = !bBack || (mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::None);
+        Check(bBack ? TEXT("w-view-back-large") : TEXT("w-view-large"), size == want && bColumn && bNoPage,
+            FString::Printf(TEXT("view %dx%d (want %dx%d), column %s, no page %d"), size.X, size.Y, want.X, want.Y,
+            *column, bNoPage ? 1 : 0));
+        break;
+    }
+    case ESolidSmokeStep::PauseViewLarge:
+    {
+        // 33d-ii: paused with Settings open at 1920x1080: the side panel and the shell inside the view
+        const USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+        const FIntPoint size = GetViewSize();
+        FString sideDetail;
+        FString shellDetail;
+        const bool bSide = pause != nullptr && SolidSmokeInside(pause->GetSidePanel(), pause, sideDetail);
+        const bool bShell = pause != nullptr && SolidSmokeInside(pause->GetShellPanel(), pause, shellDetail);
+        const bool bPaused = pause != nullptr && menu.GetState().Mode == SOLMenuState::EMenuMode::Paused
+            && pause->GetTab() == SOLMenuState::EMenuTab::Settings;
+        Check(TEXT("x-pause-view-large"), size == SOLID_SMOKE_LARGE_VIEW && bPaused && bSide && bShell,
+            FString::Printf(TEXT("view %dx%d, paused on Settings %d, side panel %s, shell %s"), size.X, size.Y,
+            bPaused ? 1 : 0, *sideDetail, *shellDetail));
         break;
     }
     case ESolidSmokeStep::PauseFlight:
@@ -2064,19 +2247,26 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             pause->AreQuitChoicesShown() ? 1 : 0, bNoPage ? 1 : 0));
         CheckCueDeltas(TEXT("v-pause-open-cue"), menu, 1, -1, -1);
 
-        // The stack fits; the focused Resume tab (hover is the focus) draws its hover trace on the side panel
+        // (33d-ii) The 8-tab stack is over the 7-entry cap: it scrolls, at the top, Resume laid out inside the view
+        // (its hover lift left out) and Quit below the fold; the focused Resume tab (hover is the focus) draws its
+        // hover trace on the side panel
         FSOLSolidScrollStack& stack = pause->GetTabStack();
+        FString firstDetail = TEXT("missing");
+        const bool bFirst = SolidSmokeInside(resume, stack.Scroll, firstDetail, true);
         FString lastDetail = TEXT("missing");
-        const bool bLast = SolidSmokeInside(pause->GetTabButton(SOLMenuState::EMenuTab::Quit), stack.Scroll,
+        const bool bLastInside = SolidSmokeInside(pause->GetTabButton(SOLMenuState::EMenuTab::Quit), stack.Scroll,
             lastDetail);
+        const float quitTop = SOLSolidScroll::StackItemTop(static_cast<int32>(SOLMenuState::EMenuTab::Quit),
+            SOL::MenuStyle::BUTTON_HEIGHT, SOL::MenuStyle::BUTTON_GAP, 0.0f);
+        const bool bLastBelow = !bLastInside && quitTop + SOL::MenuStyle::BUTTON_HEIGHT > stack.GetViewHeight();
         const bool bResumeTrace = pause->IsTabHoverTraceShown(SOLMenuState::EMenuTab::Resume)
             && !pause->IsTabHoverTraceShown(SOLMenuState::EMenuTab::Quit);
-        Check(TEXT("v-pause-stack"), pause->GetTabButtonCount() == static_cast<int32>(SOLMenuState::EMenuTab::Quit) + 1
-            && stack.GetViewHeight() > 0.0f && !stack.NeedsScroll() && stack.GetScrollOffset() == 0.0f && bLast
-            && bResumeTrace, FString::Printf(TEXT("%d tabs: content %.1f in a %.1f view, offset %.1f, needs scroll %d, "
-            "Quit %s; Resume's hover trace %d"), pause->GetTabButtonCount(), stack.GetContentHeight(),
-            stack.GetViewHeight(), stack.GetScrollOffset(), stack.NeedsScroll() ? 1 : 0, *lastDetail,
-            bResumeTrace ? 1 : 0));
+        Check(TEXT("v-pause-stack"), pause->GetTabButtonCount() == static_cast<int32>(SOLMenuState::EMenuTab::Count)
+            && stack.GetViewHeight() > 0.0f && stack.NeedsScroll() && stack.GetScrollOffset() == 0.0f && bFirst
+            && bLastBelow && bResumeTrace, FString::Printf(TEXT("%d tabs: content %.1f in a %.1f view, offset %.1f, "
+            "needs scroll %d, Resume %s, Quit below the fold %d (%s); Resume's hover trace %d"),
+            pause->GetTabButtonCount(), stack.GetContentHeight(), stack.GetViewHeight(), stack.GetScrollOffset(),
+            stack.NeedsScroll() ? 1 : 0, *firstDetail, bLastBelow ? 1 : 0, *lastDetail, bResumeTrace ? 1 : 0));
         TakeUiShot(TEXT("pause"));
         break;
     }
@@ -2111,7 +2301,8 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             mIsMonotonic ? 1 : 0, marks, pause != nullptr ? static_cast<int32>(pause->GetPanelAnim().Phase) : -1));
         USOLReadOnlyPageWidget* readOnly = pause == nullptr ? nullptr : entry.Tab == SOLMenuState::EMenuTab::Controls
             ? pause->GetControlsPage() : entry.Tab == SOLMenuState::EMenuTab::Info ? pause->GetInfoPage()
-            : entry.Tab == SOLMenuState::EMenuTab::About ? pause->GetAboutPage() : nullptr;
+            : entry.Tab == SOLMenuState::EMenuTab::About ? pause->GetAboutPage()
+            : entry.Tab == SOLMenuState::EMenuTab::Help ? pause->GetHelpPage() : nullptr;
         if (readOnly != nullptr)
         {
             CheckReadOnlyPage(*FString::Printf(TEXT("v-%s"), entry.Name), readOnly);
@@ -3386,16 +3577,19 @@ bool FSOLSolidMenuSmoke::TickMainScroll(USOLMenuSubsystem& menu)
         return false;
     case 5:
     {
-        // The real cap: the 7 entries fit, no scroll, everything at the top, Quit inside the view
+        // The real cap (33d-ii: 7 of the 8 entries in view): it scrolls, back at the top, Play focused and laid out
+        // inside (its hover lift left out)
         if (mStepTimeS - mSubStageS < SOLID_SMOKE_SETTLE_S)
         {
             return false;
         }
         FString inside;
-        const bool bInside = SolidSmokeInside(quit, scroll, inside);
-        Check(TEXT("k-column-restore"), !mainMenu->IsStackScrollNeeded() && offset == 0.0f
-            && layer->GetScrollOffset() == 0.0f && play->HasKeyboardFocus() && bInside, FString::Printf(TEXT("cap %d: "
-            "needs scroll %d, %s, Play focused %d, Quit %s"), SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES,
+        const bool bInside = SolidSmokeInside(play, scroll, inside, true);
+        const bool bScrolls = mainMenu->GetEntryButtonCount() > SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES
+            && mainMenu->IsStackScrollNeeded();
+        Check(TEXT("k-column-restore"), bScrolls && offset == 0.0f && layer->GetScrollOffset() == 0.0f
+            && play->HasKeyboardFocus() && bInside, FString::Printf(TEXT("cap %d, %d entries: needs scroll %d, %s, "
+            "Play focused %d, Play %s"), SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES, mainMenu->GetEntryButtonCount(),
             mainMenu->IsStackScrollNeeded() ? 1 : 0, *state, play->HasKeyboardFocus() ? 1 : 0, *inside));
         return true;
     }
@@ -4769,4 +4963,1090 @@ void FSOLSolidMenuSmoke::CheckDiagramRebind(const TCHAR* id, const bool bRestore
         bFireOnK ? 1 : 0, bKTinted ? 1 : 0, SOLKeyDiagram::AreaName(k.Area), bFireOnLmb ? 1 : 0,
         SOLKeyDiagram::KeyOfBinding(model, fire), kKey, lmbKey, diagram->GetAssignmentCount(),
         defaults.Assignments.Num(), changes, diagram->WasPaintedWhole() ? 1 : 0));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) The Help step's stages: the page opened, its rail, the Keyboard tab, each glossary tab read and shot; the
+// 1280x720 main run also scrolls Overlays to its end and checks the rebuild rule (idle frames, strength 0)
+bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, const bool bLarge)
+{
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+    USOLReadOnlyPageWidget* page = bPause ? (pause != nullptr ? pause->GetHelpPage() : nullptr)
+        : (mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr);
+    const USOLSolidPanel* shell = bPause ? (pause != nullptr ? pause->GetShellPanel() : nullptr)
+        : (mainMenu != nullptr ? mainMenu->GetShellPanel() : nullptr);
+    const TCHAR* prefix = bPause ? (bLarge ? TEXT("x-help-pause-large") : TEXT("x-help-pause-glossary"))
+        : (bLarge ? TEXT("w-help-large") : TEXT("w-help"));
+    if (page == nullptr || shell == nullptr)
+    {
+        Check(prefix, false, TEXT("no Help page or shell"));
+        return true;
+    }
+    const bool bFull = !bPause && !bLarge;      // The 1280x720 main run: the scroll and rebuild stages too
+    const FString shot = FString::Printf(TEXT("help-%s-%s"), bPause ? TEXT("pause") : TEXT("main"),
+        bLarge ? TEXT("1080") : TEXT("720"));
+    const double sinceS = mStepTimeS - mSubStageS;
+    const int32 sinceFrames = mStepFrames - mSubStageFrames;
+    // Moves to a stage, its time and frames counted from now
+    const auto toStage = [this](const int32 stage)
+    {
+        mSubStage = stage;
+        mSubStageS = mStepTimeS;
+        mSubStageFrames = mStepFrames;
+    };
+    // Logs a part's verdict: its own check on the main menu, else folded into the pause run's one check
+    const auto verdict = [this, bPause](const FString& id, const bool bOk, const FString& detail)
+    {
+        if (bPause)
+        {
+            mIsHelpOk &= bOk;
+            mHelpDetail += FString::Printf(TEXT(" [%s %s: %s]"), *id, bOk ? TEXT("ok") : TEXT("FAIL"), *detail);
+        }
+        else
+        {
+            Check(*id, bOk, detail);
+        }
+    };
+    // Reads whether the rail draws a tab's hover trace at the tab's laid-out centre (its hover lift allowed for)
+    const auto readTrace = [page](const int32 tab, FString& outDetail)
+    {
+        FSOLSolidTabRail& rail = page->GetRail();
+        const USOLMenuButton* button = rail.GetButton(tab);
+        const TSharedPtr<SSOLSolidTraceLayer> layer = rail.Panel != nullptr ? rail.Panel->GetTraceLayer() : nullptr;
+        if (button == nullptr || !layer.IsValid())
+        {
+            outDetail += FString::Printf(TEXT(" [tab %d: no button or trace layer]"), tab);
+            return false;
+        }
+        const FGeometry& geometry = button->GetCachedGeometry();
+        const FVector2D centre(geometry.LocalToAbsolute(geometry.GetLocalSize() * 0.5f));
+        const float tabY = static_cast<float>(FVector2D(layer->GetCachedGeometry().AbsoluteToLocal(centre)).Y);
+        const float drawnY = layer->GetDrawnHoverTraceY();
+        const bool bOk = rail.IsTraceShown(tab) && layer->IsHoverTraceDrawn()
+            && FMath::Abs(drawnY - tabY) <= SOL::SolidMenu::HOVER_LIFT_PX + SOLID_SMOKE_SCROLL_TOLERANCE;
+        outDetail += FString::Printf(TEXT(" [tab %d: shown %d, drawn %d at y %.1f, its centre at y %.1f]"), tab,
+            rail.IsTraceShown(tab) ? 1 : 0, layer->IsHoverTraceDrawn() ? 1 : 0, drawnY, tabY);
+        return bOk;
+    };
+    const int32 tabCount = page->GetTabCount();
+    const int32 overlaysTab = static_cast<int32>(ESOLHelpTab::OverlaysRoute);
+    const int32 flightTab = static_cast<int32>(ESOLHelpTab::FlightHud);
+    switch (mSubStage)
+    {
+    case 0:
+        // The page opened as the mouse does (main: its entry; pause: its tab)
+        if (bPause && pause->GetTab() != SOLMenuState::EMenuTab::Help)
+        {
+            SolidSmokeClick(pause->GetTabButton(SOLMenuState::EMenuTab::Help));
+        }
+        else if (!bPause && mainMenu->GetPage() != ESOLMainMenuPage::Help)
+        {
+            ClickEntry(menu, SOLID_SMOKE_HELP_ENTRY);
+        }
+        ParkCursor();
+        toStage(1);
+        return false;
+    case 1:
+    {
+        // Open and settled: the large runs check the open; the Keyboard tab shown; the rail's captions
+        const FSOLHoloMenuAnim& anim = bPause ? pause->GetShellAnim() : mainMenu->GetShellAnim();
+        if (sinceS < SOLID_SMOKE_SETTLE_S || (anim.Phase != ESOLHoloMenuPhase::Open
+            && sinceS < SOLID_SMOKE_VIEW_TIMEOUT_S))
+        {
+            return false;
+        }
+        if (bLarge || bPause)
+        {
+            const bool bShown = bPause ? pause->GetTab() == SOLMenuState::EMenuTab::Help
+                && pause->GetShownPageIndex() == static_cast<int32>(SOLMenuState::EMenuTab::Help)
+                : mainMenu->GetPage() == ESOLMainMenuPage::Help
+                && mainMenu->GetShownPageIndex() == static_cast<int32>(ESOLMainMenuPage::Help);
+            FString inShell;
+            const bool bInShell = SolidSmokeInside(page, shell, inShell);
+            verdict(bPause ? FString(TEXT("open")) : FString::Printf(TEXT("%s-open"), prefix), bShown
+                && anim.Phase == ESOLHoloMenuPhase::Open && bInShell && page->GetSelectedTab() == 0,
+                FString::Printf(TEXT("view %dx%d, page shown %d, shell phase %d, page %s, tab %d"), GetViewSize().X,
+                GetViewSize().Y, bShown ? 1 : 0, static_cast<int32>(anim.Phase), *inShell, page->GetSelectedTab()));
+        }
+        SolidSmokeClick(page->GetTabButton(0));
+        if (!bPause)
+        {
+            CheckHelpCaptions(*FString::Printf(TEXT("%s-captions"), prefix), *page);
+        }
+        if (bFull && page->GetTabButton(1) != nullptr)
+        {
+            page->GetTabButton(1)->NotifyHovered();
+            toStage(2);
+        }
+        else
+        {
+            toStage(4);
+        }
+        return false;
+    }
+    case 2:
+        // Tab 1 (below both captions) hovered: its trace at its centre; then the last tab
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        mIsHelpTraceOk = readTrace(1, mHelpDetail);
+        if (page->GetTabButton(tabCount - 1) != nullptr)
+        {
+            page->GetTabButton(tabCount - 1)->NotifyHovered();
+        }
+        toStage(3);
+        return false;
+    case 3:
+    {
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const bool bLast = readTrace(tabCount - 1, mHelpDetail);
+        Check(TEXT("w-help-traces"), mIsHelpTraceOk && bLast, mHelpDetail);
+        mHelpDetail.Reset();
+        SolidSmokeClick(page->GetTabButton(0));
+        ParkCursor();
+        toStage(4);
+        return false;
+    }
+    case 4:
+    {
+        // The Keyboard tab: the diagram and the pointer line; shot
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        FString detail;
+        bool bKeys = page->GetSelectedTab() == 0 && ReadHelpKeys(menu, *page, *shell, detail);
+        if (bFull)
+        {
+            // The main menu's first open of Help (an earlier step): on the frame after it was shown the diagram was
+            // already laid out in the rows' width and painted whole (no late pop-in; S5)
+            const USOLKeyboardDiagram* diagram = page->GetDiagram();
+            const UScrollBox* keysScroll = page->GetTabScroll(0);
+            const float rowWidth = keysScroll != nullptr ? static_cast<float>(keysScroll->GetCachedGeometry()
+                .GetLocalSize().X) - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP : 0.0f;
+            const bool bFirst = mHelpFirstOpenState == 2 && diagram != nullptr
+                && FMath::Abs(mHelpFirstOpenWidth - rowWidth) <= SOL::Help::DIAGRAM_WIDTH_TOLERANCE
+                + SOLID_SMOKE_FIT_TOLERANCE && mHelpFirstOpenKeys == SOLKeyboardLayout::KeyCount();
+            bKeys &= bFirst;
+            detail += FString::Printf(TEXT("; first open: frame 1 width %.1f (rows %.1f), %d/%d keys painted whole "
+                "(%s)"), mHelpFirstOpenWidth, rowWidth, mHelpFirstOpenKeys, SOLKeyboardLayout::KeyCount(),
+                *mHelpFirstOpenLog);
+        }
+        verdict(bPause ? FString(TEXT("keys")) : FString::Printf(TEXT("%s-keys"), prefix), bKeys, detail);
+        TakeUiShot(*FString::Printf(TEXT("%s-keys"), *shot));
+        toStage(bFull ? 5 : 7);
+        return false;
+    }
+    case 5:
+        // (1280x720 main) a key hovered for a shot of its strip
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        if (page->GetDiagram() != nullptr)
+        {
+            page->GetDiagram()->SetHoveredKey(SOLKeyboardLayout::FindKey(SOLID_SMOKE_HELP_HOVER_KEY));
+        }
+        toStage(6);
+        return false;
+    case 6:
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        TakeUiShot(*FString::Printf(TEXT("%s-keys-hover"), *shot));
+        toStage(7);
+        return false;
+    case 7:
+        // The next glossary tab clicked as the mouse does (after the last shot); its views' first paint read next
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        if (page->GetDiagram() != nullptr)
+        {
+            page->GetDiagram()->SetHoveredKey(INDEX_NONE);
+        }
+        mIsHelpFirstRead = false;
+        SolidSmokeClick(page->GetTabButton(mHelpTab));
+        ParkCursor();
+        toStage(8);
+        return false;
+    case 8:
+    {
+        // The frame after the switch: what each view of the tab painted on the switch's own frame (a blank there is a
+        // visible one-frame flash); then, settled, the tab read and shot
+        if (!mIsHelpFirstRead)
+        {
+            mIsHelpFirstRead = true;
+            const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+            mHelpFirstPainted.SetNumZeroed(rows.Num());
+            for (int32 index = 0; index < rows.Num(); ++index)
+            {
+                const USOLHudSymbolView* view = rows[index].View;
+                mHelpFirstPainted[index] = view != nullptr ? view->GetPaintedShapeCount() + view->GetPaintedTextCount()
+                    : 0;
+            }
+        }
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        FString detail;
+        const bool bTab = page->GetSelectedTab() == mHelpTab && ReadHelpTab(menu, *page, *shell, mHelpTab, !bLarge,
+            detail);
+        const TCHAR* name = SOLID_SMOKE_HELP_TAB_NAMES[mHelpTab];
+        verdict(bPause ? FString(name) : FString::Printf(TEXT("%s-%s"), prefix, name), bTab, detail);
+        TakeUiShot(*FString::Printf(TEXT("%s-%s"), *shot, name));
+        toStage(9);
+        return false;
+    }
+    case 9:
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        if (++mHelpTab < tabCount)
+        {
+            toStage(7);
+            return false;
+        }
+        if (!bFull)
+        {
+            // The pause runs log their one verdict; the large main run is done
+            if (bPause)
+            {
+                Check(prefix, mIsHelpOk, mHelpDetail);
+            }
+            return true;
+        }
+        SolidSmokeClick(page->GetTabButton(overlaysTab));
+        ParkCursor();
+        toStage(10);
+        return false;
+    case 10:
+    {
+        // Overlays settled: the build counts noted, then scrolled to its end
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        mHelpBuilds.SetNumZeroed(rows.Num());
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            mHelpBuilds[index] = rows[index].View != nullptr ? rows[index].View->GetBuildCount() : 0;
+        }
+        if (UScrollBox* scroll = page->GetTabScroll(overlaysTab))
+        {
+            scroll->ScrollToEnd();
+        }
+        toStage(11);
+        return false;
+    }
+    case 11:
+    {
+        // At the end (scrolled again while the end still moves: the descriptions re-wrap once laid out): the views
+        // painted at their new places inside the view, no view rebuilt (R6)
+        UScrollBox* endScroll = page->GetTabScroll(overlaysTab);
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        if (endScroll != nullptr && endScroll->GetScrollOffsetOfEnd() - endScroll->GetScrollOffset()
+            > SOLID_SMOKE_SCROLL_END_TOLERANCE && sinceS < SOLID_SMOKE_VIEW_TIMEOUT_S)
+        {
+            endScroll->ScrollToEnd();
+            mSubStageS = mStepTimeS;
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        // Every view now whole in the view painted (shapes, or a sample's texts), the tab's last view among them
+        const USOLHudSymbolView* last = nullptr;
+        int32 rebuilt = 0;
+        int32 inView = 0;
+        int32 painted = 0;
+        int32 placed = 0;
+        double worstOriginPx = 0.0;
+        FString worstDetail;
+        bool bLastIn = false;
+        FString lastDetail = TEXT("none");
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            const USOLHudSymbolView* view = rows[index].View;
+            rebuilt += view != nullptr && view->GetBuildCount() != mHelpBuilds[index] ? 1 : 0;
+            if (rows[index].Tab != overlaysTab || view == nullptr)
+            {
+                continue;
+            }
+            last = view;
+            FString inside;
+            bLastIn = SolidSmokeInside(view, endScroll, inside);
+            lastDetail = FString::Printf(TEXT("%s %s"), SOLMenuText::GLOSSARY_ENTRIES[rows[index].Entry].Name,
+                *inside);
+            if (bLastIn)
+            {
+                // Painted, and its batch painted at the view's place: the last paint's origin (window space) on the
+                // view's cached paint-space position and inside the scrolled box (a batch left at its place before
+                // the scroll lies far outside it)
+                ++inView;
+                painted += (view->IsSample() ? view->GetPaintedTextCount() : view->GetPaintedShapeCount()) > 0 ? 1 : 0;
+                const FVector2D origin(view->GetLastPaintOrigin());
+                const FVector2D cached = view->GetPaintSpaceGeometry().GetAbsolutePosition();
+                const FGeometry& box = endScroll->GetPaintSpaceGeometry();
+                const FVector2D boxMin = box.GetAbsolutePosition();
+                const FVector2D boxMax = boxMin + box.GetAbsoluteSize();
+                const double originPx = FVector2D::Distance(origin, cached);
+                const bool bInBox = origin.X >= boxMin.X - SOLID_SMOKE_FIT_TOLERANCE_PX
+                    && origin.Y >= boxMin.Y - SOLID_SMOKE_FIT_TOLERANCE_PX && origin.X <= boxMax.X
+                    && origin.Y <= boxMax.Y;
+                if (originPx >= worstOriginPx)
+                {
+                    worstDetail = FString::Printf(TEXT("painted at (%.1f, %.1f), cached (%.1f, %.1f), box (%.1f, "
+                        "%.1f)-(%.1f, %.1f)"), origin.X, origin.Y, cached.X, cached.Y, boxMin.X, boxMin.Y, boxMax.X,
+                        boxMax.Y);
+                }
+                worstOriginPx = FMath::Max(worstOriginPx, originPx);
+                placed += originPx <= SOLID_SMOKE_FIT_TOLERANCE_PX && bInBox ? 1 : 0;
+            }
+        }
+        const float offset = endScroll != nullptr ? endScroll->GetScrollOffset() : 0.0f;
+        Check(TEXT("w-help-scroll"), last != nullptr && bLastIn && offset > 0.0f && inView > 0 && painted == inView
+            && placed == inView && rebuilt == 0, FString::Printf(TEXT("offset %.1f (end %.1f), last view (%s) inside "
+            "%d, %d/%d views in view painted, %d/%d painted at their place (worst %.2f px: %s), %d view(s) "
+            "rebuilt"), offset, endScroll != nullptr ? endScroll->GetScrollOffsetOfEnd() : 0.0f, *lastDetail,
+            bLastIn ? 1 : 0, painted, inView, placed, inView, worstOriginPx, *worstDetail, rebuilt));
+        TakeUiShot(*FString::Printf(TEXT("%s-overlays-end"), *shot));
+        toStage(12);
+        return false;
+    }
+    case 12:
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        SolidSmokeClick(page->GetTabButton(flightTab));
+        ParkCursor();
+        toStage(13);
+        return false;
+    case 13:
+    {
+        // Flight HUD settled: the build counts noted before the idle frames
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            mHelpBuilds[index] = rows[index].View != nullptr ? rows[index].View->GetBuildCount() : 0;
+        }
+        toStage(14);
+        return false;
+    }
+    case 14:
+    {
+        // The idle frames: no view rebuilt; then strength 0 applied
+        if (sinceFrames < SOLID_SMOKE_IDLE_FRAMES)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        int32 idleRebuilt = 0;
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            idleRebuilt += rows[index].View != nullptr && rows[index].View->GetBuildCount() != mHelpBuilds[index]
+                ? 1 : 0;
+        }
+        mIsHelpTraceOk = idleRebuilt == 0;
+        mHelpDetail = FString::Printf(TEXT("%d idle frames: %d view(s) rebuilt"), sinceFrames, idleRebuilt);
+        ApplyStrength(menu, 0.0f);
+        toStage(15);
+        return false;
+    }
+    case 15:
+    {
+        // Strength 0: every shown-tab view rebuilt exactly once, no hidden-tab view; shot
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        int32 shownOnce = 0;
+        int32 shownViews = 0;
+        int32 hiddenRebuilt = 0;
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            const USOLHudSymbolView* view = rows[index].View;
+            if (view == nullptr)
+            {
+                continue;
+            }
+            const int32 delta = view->GetBuildCount() - mHelpBuilds[index];
+            if (rows[index].Tab == flightTab)
+            {
+                ++shownViews;
+                shownOnce += delta == 1 ? 1 : 0;
+            }
+            else
+            {
+                hiddenRebuilt += delta != 0 ? 1 : 0;
+            }
+        }
+        Check(TEXT("w-help-no-rebuild"), mIsHelpTraceOk && shownViews > 0 && shownOnce == shownViews
+            && hiddenRebuilt == 0, FString::Printf(TEXT("%s; strength 0: %d/%d Flight HUD views rebuilt once, %d "
+            "hidden-tab view(s) rebuilt"), *mHelpDetail, shownOnce, shownViews, hiddenRebuilt));
+        TakeUiShot(*FString::Printf(TEXT("%s-flight-s0"), *shot));
+        toStage(16);
+        return false;
+    }
+    case 16:
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        ApplyStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
+        toStage(17);
+        return false;
+    case 17:
+    {
+        // The strength back and settled: the build counts noted, then Help closed by Esc
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            mHelpBuilds[index] = rows[index].View != nullptr ? rows[index].View->GetBuildCount() : 0;
+        }
+        SolidSmokeKey(EKeys::Escape);
+        toStage(18);
+        return false;
+    }
+    case 18:
+        // Closed: reopened from its entry
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        mIsHelpClosed = mainMenu->GetPage() == ESOLMainMenuPage::None;
+        ClickEntry(menu, SOLID_SMOKE_HELP_ENTRY);
+        ParkCursor();
+        toStage(19);
+        return false;
+    case 19:
+    {
+        // Open again: the Flight HUD tab shown again
+        const FSOLHoloMenuAnim& anim = mainMenu->GetShellAnim();
+        if (sinceS < SOLID_SMOKE_SETTLE_S || (anim.Phase != ESOLHoloMenuPhase::Open
+            && sinceS < SOLID_SMOKE_VIEW_TIMEOUT_S))
+        {
+            return false;
+        }
+        SolidSmokeClick(page->GetTabButton(flightTab));
+        ParkCursor();
+        toStage(20);
+        return false;
+    }
+    case 20:
+    {
+        // Closing and reopening Help rebuilt no view (the layers and their batches kept); the Flight HUD views in view
+        // painted.
+        // Also the views' batch memory, from the buffer sizes (a batch: 4 vertices and 6 indices per shape)
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        int32 rebuilt = 0;
+        int32 flightViews = 0;
+        int32 flightPainted = 0;
+        int32 views = 0;
+        int32 capacity = 0;
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            const USOLHudSymbolView* view = rows[index].View;
+            if (view == nullptr)
+            {
+                continue;
+            }
+            ++views;
+            capacity += view->GetShapeCapacity();
+            rebuilt += view->GetBuildCount() != mHelpBuilds[index] ? 1 : 0;
+            FString inside;
+            if (rows[index].Tab == flightTab && SolidSmokeInside(view, page->GetTabScroll(flightTab), inside))
+            {
+                ++flightViews;
+                flightPainted += view->GetPaintedShapeCount() + view->GetPaintedTextCount() > 0 ? 1 : 0;
+            }
+        }
+        constexpr int32 shapeBytes = SOL::Hologram::HUD_VERTICES_PER_SHAPE * static_cast<int32>(sizeof(FSlateVertex))
+            + SOLID_SMOKE_INDICES_PER_SHAPE * static_cast<int32>(sizeof(SlateIndex));
+        Check(TEXT("w-help-reopen"), mIsHelpClosed && page->GetSelectedTab() == flightTab && rebuilt == 0
+            && flightViews > 0 && flightPainted == flightViews, FString::Printf(TEXT("closed %d, reopened on tab %d, "
+            "%d view(s) rebuilt, %d/%d Flight HUD views in view painted; batches: %d shapes over %d views, %d "
+            "bytes (%d per shape)"), mIsHelpClosed ? 1 : 0, page->GetSelectedTab(), rebuilt, flightPainted,
+            flightViews, capacity, views, capacity * shapeBytes, shapeBytes));
+        toStage(21);
+        return false;
+    }
+    default:
+        return sinceS >= SOLID_SMOKE_SETTLE_S;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Watches the main menu's Help page until its first open: from the frame after it was first shown on the
+// Keyboard tab, logs SOLID_SMOKE_FIRST_OPEN_FRAMES frames of the diagram's layout width and keys painted whole, and
+// keeps the first of them for w-help-keys
+void FSOLSolidMenuSmoke::ObserveHelpFirstOpen(USOLMenuSubsystem& menu)
+{
+    if (mHelpFirstOpenState == 2)
+    {
+        return;
+    }
+    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLReadOnlyPageWidget* page = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+    const USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+    if (diagram == nullptr)
+    {
+        return;
+    }
+    if (mHelpFirstOpenState == 0)
+    {
+        // Shown this frame (its first paint follows this frame's tick)
+        if (mainMenu->GetShownPageIndex() == static_cast<int32>(ESOLMainMenuPage::Help) && page->GetSelectedTab() == 0)
+        {
+            mHelpFirstOpenState = 1;
+            mHelpFirstOpenFrames = 0;
+            mHelpFirstOpenLog.Reset();
+        }
+        return;
+    }
+
+    // A frame after the open: what the last paint drew
+    const int32 keys = diagram->WasPaintedWhole() ? diagram->GetPaintedKeyCount() : 0;
+    if (mHelpFirstOpenFrames == 0)
+    {
+        mHelpFirstOpenWidth = diagram->GetLayoutWidth();
+        mHelpFirstOpenKeys = keys;
+    }
+    ++mHelpFirstOpenFrames;
+    mHelpFirstOpenLog += FString::Printf(TEXT("%sf%d w %.1f k %d"), mHelpFirstOpenFrames > 1 ? TEXT(", ") : TEXT(""),
+        mHelpFirstOpenFrames, diagram->GetLayoutWidth(), keys);
+    if (mHelpFirstOpenFrames >= SOLID_SMOKE_FIRST_OPEN_FRAMES)
+    {
+        mHelpFirstOpenState = 2;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Checks the Help page's rail: its tabs and the two group captions at their rule's tops, no caption over a
+// tab, the rail TAB_COLUMN_WIDTH wide, the captions not focusable
+void FSOLSolidMenuSmoke::CheckHelpCaptions(const TCHAR* id, USOLReadOnlyPageWidget& page)
+{
+    FSOLSolidTabRail& rail = page.GetRail();
+    const int32 count = page.GetTabCount();
+    TArray<bool, TInlineAllocator<8>> captioned;
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        captioned.Add(!SOLPageTabs::TabCaption(ESOLReadOnlyPage::Help, tab).IsEmpty());
+    }
+    if (rail.Panel == nullptr)
+    {
+        Check(id, false, TEXT("no rail panel"));
+        return;
+    }
+    // A widget's laid-out top and bottom in rail units from the recess's top (the rail's scroll added back)
+    const FGeometry& panelGeometry = rail.Panel->GetCachedGeometry();
+    const float scale = panelGeometry.GetAccumulatedLayoutTransform().GetScale();
+    const float panelTop = panelGeometry.GetAccumulatedLayoutTransform().TransformPoint(FVector2f::ZeroVector).Y;
+    const auto railSpan = [&](const UWidget* widget, float& outTop, float& outBottom)
+    {
+        const FGeometry& geometry = widget->GetCachedGeometry();
+        const FSlateLayoutTransform layout = geometry.GetAccumulatedLayoutTransform();
+        outTop = (layout.TransformPoint(FVector2f::ZeroVector).Y - panelTop) / scale + rail.GetScrollOffset();
+        outBottom = (layout.TransformPoint(geometry.GetLocalSize()).Y - panelTop) / scale + rail.GetScrollOffset();
+    };
+    bool bOk = count == SOLPageTabs::TabCount(ESOLReadOnlyPage::Help) && scale > 0.0f;
+    FString detail = FString::Printf(TEXT("%d tabs, rail %.1f wide (want %.0f)"), count,
+        panelGeometry.GetLocalSize().X, SOL::SolidMenu::TAB_COLUMN_WIDTH);
+    bOk &= FMath::IsNearlyEqual(panelGeometry.GetLocalSize().X, SOL::SolidMenu::TAB_COLUMN_WIDTH,
+        SOLID_SMOKE_RAIL_TOLERANCE);
+    TArray<FVector2f, TInlineAllocator<8>> tabSpans;
+    for (int32 tab = 0; tab < count; ++tab)
+    {
+        const USOLMenuButton* button = rail.GetButton(tab);
+        float top = 0.0f;
+        float bottom = 0.0f;
+        if (button != nullptr)
+        {
+            railSpan(button, top, bottom);
+        }
+        tabSpans.Add(FVector2f(top, bottom));
+        const float want = SOLSolidTabRail::TabTop(tab, captioned);
+        bOk &= button != nullptr && FMath::Abs(top - want) <= SOLID_SMOKE_RAIL_TOLERANCE;
+        detail += FString::Printf(TEXT(", tab %d top %.1f (want %.1f)"), tab, top, want);
+    }
+    // The captions: KEYS above tab 0, HUD GLOSSARY above tab 1, each at its rule's top, over no tab, not focusable
+    const TCHAR* const wantText[] = { SOLMenuText::HELP_CAPTION_KEYS, SOLMenuText::HELP_CAPTION_GLOSSARY };
+    bOk &= rail.GetCaptionCount() == UE_ARRAY_COUNT(wantText);
+    for (int32 index = 0; index < rail.GetCaptionCount(); ++index)
+    {
+        const UTextBlock* caption = rail.GetCaption(index);
+        const int32 tab = rail.GetCaptionTab(index);
+        if (caption == nullptr || index >= UE_ARRAY_COUNT(wantText))
+        {
+            bOk = false;
+            continue;
+        }
+        float top = 0.0f;
+        float bottom = 0.0f;
+        railSpan(caption, top, bottom);
+        const float want = SOLSolidTabRail::CaptionTop(tab, captioned);
+        bool bOver = false;
+        for (const FVector2f& span : tabSpans)
+        {
+            bOver |= top < span.Y - SOLID_SMOKE_RAIL_TOLERANCE && bottom > span.X + SOLID_SMOKE_RAIL_TOLERANCE;
+        }
+        const TSharedPtr<SWidget> slate = caption->GetCachedWidget();
+        const bool bFocusable = slate.IsValid() && slate->SupportsKeyboardFocus();
+        const FString text = caption->GetText().ToString();
+        bOk &= tab == index && text == wantText[index] && FMath::Abs(top - want) <= SOLID_SMOKE_RAIL_TOLERANCE
+            && !bOver && !bFocusable;
+        detail += FString::Printf(TEXT(", caption \"%s\" over tab %d at %.1f-%.1f (want top %.1f), over a tab %d, "
+            "focusable %d"), *text, tab, top, bottom, want, bOver ? 1 : 0, bFocusable ? 1 : 0);
+    }
+    Check(id, bOk, detail);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Reads the Keyboard tab: the diagram at the live keys painted whole in the rows' width, the pointer line
+// under it, both inside the shell horizontally
+bool FSOLSolidMenuSmoke::ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell,
+    FString& outDetail)
+{
+    USOLKeyboardDiagram* diagram = page.GetDiagram();
+    const UTextBlock* hint = page.GetKeyboardHint();
+    const UScrollBox* scroll = page.GetTabScroll(0);
+    if (diagram == nullptr || hint == nullptr || scroll == nullptr)
+    {
+        outDetail = TEXT("no diagram, pointer line or tab scroll");
+        return false;
+    }
+    FSOLKeyDiagramModel model;
+    SOLKeyDiagram::Build(SOLMenuContent::ResolveLiveKeys(menu.GetWorld()), model);
+    const int32 count = diagram->GetAssignmentCount();
+
+    // The rows' width: the switcher's (the tab's scroll fills it) less the scroll bar's room
+    const float rowWidth = static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().X)
+        - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP;
+    const bool bWidth = FMath::Abs(diagram->GetLayoutWidth() - rowWidth)
+        <= SOL::Help::DIAGRAM_WIDTH_TOLERANCE + SOLID_SMOKE_FIT_TOLERANCE;
+
+    // Both freshly arranged from the tab's scroll box (the line may be below the fold)
+    const FGeometry diagramGeometry = SolidSmokeArrangedGeometry(diagram, scroll);
+    const FGeometry hintGeometry = SolidSmokeArrangedGeometry(hint, scroll);
+    const FVector2D diagramMin = diagramGeometry.GetAbsolutePosition();
+    const FVector2D diagramMax = diagramMin + diagramGeometry.GetAbsoluteSize();
+    const FVector2D hintMin = hintGeometry.GetAbsolutePosition();
+    const FVector2D hintMax = hintMin + hintGeometry.GetAbsoluteSize();
+    const FGeometry& shellGeometry = shell.GetCachedGeometry();
+    const double shellMin = shellGeometry.GetAbsolutePosition().X;
+    const double shellMax = shellMin + shellGeometry.GetAbsoluteSize().X;
+    const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+    const bool bUnder = hintMin.Y >= diagramMax.Y - tol && hintGeometry.GetAbsoluteSize().Y > 0.0;
+    const bool bInside = diagramMin.X >= shellMin - tol && diagramMax.X <= shellMax + tol && hintMin.X >= shellMin - tol
+        && hintMax.X <= shellMax + tol;
+    const bool bText = hint->GetText().ToString() == SOLMenuText::HELP_KEYBOARD_CONTROLS;
+    const bool bPainted = diagram->WasPaintedWhole() && diagram->GetPaintedKeyCount() == SOLKeyboardLayout::KeyCount();
+    outDetail = FString::Printf(TEXT("%d assignments (live keys: %d), painted whole %d with %d/%d keys, layout width "
+        "%.1f (rows %.1f), diagram x %.0f-%.0f y %.0f-%.0f, pointer line x %.0f-%.0f y %.0f-%.0f (under %d), shell x "
+        "%.0f-%.0f, text %d"), count, model.Assignments.Num(), diagram->WasPaintedWhole() ? 1 : 0,
+        diagram->GetPaintedKeyCount(), SOLKeyboardLayout::KeyCount(), diagram->GetLayoutWidth(), rowWidth,
+        diagramMin.X, diagramMax.X, diagramMin.Y, diagramMax.Y, hintMin.X, hintMax.X, hintMin.Y, hintMax.Y,
+        bUnder ? 1 : 0, shellMin, shellMax, bText ? 1 : 0);
+    return count == model.Assignments.Num() && bPainted && bWidth && bUnder && bInside && bText;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) Reads the shown glossary tab's rows: art, views built and painted (also on the first frame), boxes, texts
+// and spacing
+bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell,
+    const int32 tab, const bool bFirstBuild, FString& outDetail)
+{
+    using namespace SOL::Help;
+    TArray<int32> entries;
+    SOLGlossary::EntriesOfTab(static_cast<ESOLHelpTab>(tab), entries);
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld());
+    const UObject* material = solid != nullptr ? solid->GetHudShapeMaterial() : nullptr;
+    const UScrollBox* scroll = page.GetTabScroll(tab);
+    const float scale = page.GetCachedGeometry().GetAccumulatedLayoutTransform().GetScale();
+    if (scroll == nullptr || material == nullptr || !(scale > 0.0f))
+    {
+        outDetail = TEXT("no tab scroll, shared HUD material or layout scale");
+        return false;
+    }
+    const FGeometry& scrollGeometry = scroll->GetCachedGeometry();
+    const FVector2D viewMin = scrollGeometry.GetAbsolutePosition();
+    const FVector2D viewMax = viewMin + scrollGeometry.GetAbsoluteSize();
+    const FGeometry& shellGeometry = shell.GetCachedGeometry();
+    const double shellMin = shellGeometry.GetAbsolutePosition().X;
+    const double shellMax = shellMin + shellGeometry.GetAbsoluteSize().X;
+    const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+    bool bOk = page.GetGlossaryRowCount(tab) == entries.Num() && entries.Num() > 0;
+    int32 order = 0;
+    int32 counts[3] = { 0, 0, 0 };              // Rows per ESOLGlossaryArt
+    int32 inView = 0;
+    int32 firstBlank = 0;
+    double lastBottom = -DBL_MAX;
+    FString fails;
+    const TArray<FSOLHelpGlossaryRow>& rows = page.GetGlossaryRows();
+    for (int32 index = 0; index < rows.Num(); ++index)
+    {
+        const FSOLHelpGlossaryRow& row = rows[index];
+        if (row.Tab != tab)
+        {
+            continue;
+        }
+        const TCHAR* name = SOLMenuText::GLOSSARY_ENTRIES[row.Entry].Name;
+        // Notes a failure of this row
+        const auto fail = [&](const FString& what)
+        {
+            bOk = false;
+            fails += FString::Printf(TEXT(" [%s: %s]"), name, *what);
+        };
+        if (!entries.IsValidIndex(order) || entries[order] != row.Entry)
+        {
+            fail(TEXT("out of EntriesOfTab order"));
+        }
+        ++order;
+        const ESOLGlossaryArt art = SOLGlossary::EntryArt(row.Entry);
+        ++counts[static_cast<int32>(art)];
+        if (row.Box == nullptr || row.Name == nullptr || row.Description == nullptr)
+        {
+            fail(TEXT("a missing widget"));
+            continue;
+        }
+
+        // The row's parts freshly arranged from the tab's scroll box (a row out of view is culled from the paint)
+        const FGeometry boxGeometry = SolidSmokeArrangedGeometry(row.Box, scroll);
+        const FGeometry nameGeometry = SolidSmokeArrangedGeometry(row.Name, scroll);
+        const FGeometry descGeometry = SolidSmokeArrangedGeometry(row.Description, scroll);
+        const FVector2D boxMin = boxGeometry.GetAbsolutePosition();
+        const FVector2D boxMax = boxMin + boxGeometry.GetAbsoluteSize();
+        const FVector2D nameMin = nameGeometry.GetAbsolutePosition();
+        const FVector2D nameMax = nameMin + nameGeometry.GetAbsoluteSize();
+        const FVector2D descMin = descGeometry.GetAbsolutePosition();
+        const FVector2D descMax = descMin + descGeometry.GetAbsoluteSize();
+        const FVector2f boxUnits(boxGeometry.GetLocalSize());
+        const bool bArt = art != ESOLGlossaryArt::None;
+        if (!FMath::IsNearlyEqual(boxUnits.X, GLOSSARY_SYMBOL_BOX, SOLID_SMOKE_FIT_TOLERANCE)
+            || (bArt && !FMath::IsNearlyEqual(boxUnits.Y, GLOSSARY_SYMBOL_BOX, SOLID_SMOKE_FIT_TOLERANCE)))
+        {
+            fail(FString::Printf(TEXT("box %.1fx%.1f units"), boxUnits.X, boxUnits.Y));
+        }
+        if (nameMin.X < boxMax.X - tol || descMin.X < boxMax.X - tol || boxMin.X < shellMin - tol
+            || boxMin.X < viewMin.X - tol || nameMax.X > viewMax.X + tol || descMax.X > viewMax.X + tol
+            || nameMax.X > shellMax + tol || descMax.X > shellMax + tol || descGeometry.GetAbsoluteSize().Y <= 0.0)
+        {
+            fail(FString::Printf(TEXT("box x %.0f-%.0f, name x %.0f-%.0f, description x %.0f-%.0f in view x "
+                "%.0f-%.0f, shell x %.0f-%.0f"), boxMin.X, boxMax.X, nameMin.X, nameMax.X, descMin.X, descMax.X,
+                viewMin.X, viewMax.X, shellMin, shellMax));
+        }
+        const double top = FMath::Min(bArt ? boxMin.Y : nameMin.Y, nameMin.Y);
+        const double bottom = FMath::Max(bArt ? boxMax.Y : descMax.Y, descMax.Y);
+        if (top < lastBottom - tol)
+        {
+            fail(FString::Printf(TEXT("top %.0f over the row above (bottom %.0f)"), top, lastBottom));
+        }
+        lastBottom = bottom;
+
+        // The art: no view without art; a view built at its pixel size with the shared material, nothing dropped;
+        // in view: painted (backing, then shapes or texts), also on the first frame after the switch
+        const USOLHudSymbolView* view = row.View;
+        if (!bArt)
+        {
+            if (view != nullptr)
+            {
+                fail(TEXT("a view on a row without art"));
+            }
+            continue;
+        }
+        if (view == nullptr)
+        {
+            fail(TEXT("no view"));
+            continue;
+        }
+        const FGeometry viewGeometry = SolidSmokeArrangedGeometry(view, scroll);
+        const FIntPoint sizePx = SOLGlossary::ViewPixelSize(FVector2f(viewGeometry.GetLocalSize()),
+            viewGeometry.Scale);
+        const bool bSample = art == ESOLGlossaryArt::Sample;
+        const float fit = view->GetFitScale();
+        const bool bBuilt = view->GetBuildCount() >= 1 && (!bFirstBuild || view->GetBuildCount() == 1)
+            && view->GetBuiltSizePx() == sizePx && view->GetDroppedShapeCount() == 0 && view->GetMaterial() == material
+            && view->IsSample() == bSample && (bSample ? view->GetTextCount() > 0
+            : view->GetSymbolCount() > 0 && view->GetShapeCount() > 0) && fit > 0.0f
+            && fit <= GLOSSARY_SYMBOL_UI_SCALE * scale + SOLID_SMOKE_TOLERANCE;
+        if (!bBuilt)
+        {
+            fail(FString::Printf(TEXT("built %d at %dx%d (laid out %dx%d), %d shapes, %d texts, %d dropped, fit %.3f, "
+                "shared material %d, sample %d"), view->GetBuildCount(), view->GetBuiltSizePx().X,
+                view->GetBuiltSizePx().Y, sizePx.X, sizePx.Y, view->GetShapeCount(), view->GetTextCount(),
+                view->GetDroppedShapeCount(), fit, view->GetMaterial() == material ? 1 : 0, view->IsSample() ? 1 : 0));
+        }
+        if (boxMin.Y >= viewMin.Y - tol && boxMax.Y <= viewMax.Y + tol)
+        {
+            ++inView;
+            const int32 painted = bSample ? view->GetPaintedTextCount() : view->GetPaintedShapeCount();
+            if (painted <= 0 || view->GetPaintedBackingCount() <= 0)
+            {
+                fail(FString::Printf(TEXT("painted %d %s, %d backing(s)"), painted, bSample ? TEXT("texts")
+                    : TEXT("shapes"), view->GetPaintedBackingCount()));
+            }
+            if (!mHelpFirstPainted.IsValidIndex(index) || mHelpFirstPainted[index] <= 0)
+            {
+                ++firstBlank;
+                fail(TEXT("blank on the first frame after the switch"));
+            }
+        }
+    }
+    outDetail = FString::Printf(TEXT("%d rows (EntriesOfTab %d): %d symbols, %d samples, %d without art; %d views in "
+        "view, %d blank on the switch's frame%s"), page.GetGlossaryRowCount(tab), entries.Num(),
+        counts[static_cast<int32>(ESOLGlossaryArt::Symbols)], counts[static_cast<int32>(ESOLGlossaryArt::Sample)],
+        counts[static_cast<int32>(ESOLGlossaryArt::None)], inView, firstBlank, *fails);
+    return bOk && inView > 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) The reach step's stages: each stack entry focused in turn (whole in view, hit-tested at its centre), then
+// the clicks by synthesized Slate mouse events and what they open
+bool FSOLSolidMenuSmoke::TickReach(USOLMenuSubsystem& menu, const TCHAR* id, const bool bPause, const bool bLarge)
+{
+    using SOLMenuState::EMenuTab;
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+    UScrollBox* scroll = bPause ? (pause != nullptr ? pause->GetTabStack().Scroll.Get() : nullptr)
+        : (mainMenu != nullptr ? mainMenu->GetStackScrollBox() : nullptr);
+    if (scroll == nullptr)
+    {
+        Check(id, false, TEXT("no stack"));
+        return true;
+    }
+    const int32 count = bPause ? pause->GetTabButtonCount() : mainMenu->GetEntryButtonCount();
+    const int32 want = bPause ? static_cast<int32>(EMenuTab::Count) : SOLID_SMOKE_MAIN_ENTRIES;
+    // Returns a stack entry's button
+    const auto entryButton = [mainMenu, pause, bPause](const int32 index)
+    {
+        return bPause ? pause->GetTabButton(static_cast<EMenuTab>(index)) : mainMenu->GetEntryButton(index);
+    };
+    // The clicks: main Help and About (Quit never: it would quit); pause Quit (its choices), then Help (opens), and at
+    // 1920x1080 Settings again for PauseSmall
+    const int32 mainClicks[] = { SOLID_SMOKE_HELP_ENTRY, SOLID_SMOKE_ABOUT_ENTRY };
+    const int32 pauseClicks[] = { static_cast<int32>(EMenuTab::Quit), static_cast<int32>(EMenuTab::Help),
+        static_cast<int32>(EMenuTab::Settings) };
+    const int32* clicks = bPause ? pauseClicks : mainClicks;
+    const int32 clickCount = bPause ? (bLarge ? 3 : 2) : UE_ARRAY_COUNT(mainClicks);
+    const double sinceS = mStepTimeS - mSubStageS;
+    // Moves to a stage, its time counted from now
+    const auto toStage = [this](const int32 stage)
+    {
+        mSubStage = stage;
+        mSubStageS = mStepTimeS;
+        mSubStageFrames = mStepFrames;
+    };
+    switch (mSubStage)
+    {
+    case 0:
+        // The main menu's page closed first (its focus back on Play)
+        if (!bPause)
+        {
+            mainMenu->ClosePage();
+        }
+        mIsReachOk = count == want;
+        mReachDetail = FString::Printf(TEXT("%d entries (want %d), cap %d"), count, want,
+            SOL::SolidMenu::STACK_MAX_VISIBLE_ENTRIES);
+        mReachIndex = 0;
+        toStage(1);
+        return false;
+    case 1:
+        // The next entry focused as the keyboard does (the stack follows the focus)
+        if (USOLMenuButton* button = entryButton(mReachIndex))
+        {
+            button->SetFocus();
+        }
+        toStage(2);
+        return false;
+    case 2:
+    {
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const USOLMenuButton* button = entryButton(mReachIndex);
+        FString inside;
+        FVector2D centre = FVector2D::ZeroVector;
+        const bool bFocused = button != nullptr && button->HasKeyboardFocus();
+        const bool bInside = SolidSmokeInside(button, scroll, inside, true);
+        const bool bHit = SolidSmokeHitTest(button, centre);
+        mIsReachOk &= bFocused && bInside && bHit;
+        mReachDetail += FString::Printf(TEXT(" [%d: focused %d, offset %.0f, %s, hit %d]"), mReachIndex,
+            bFocused ? 1 : 0, scroll->GetScrollOffset(), *inside, bHit ? 1 : 0);
+        if (++mReachIndex < count)
+        {
+            toStage(1);
+            return false;
+        }
+        mReachIndex = 0;
+        toStage(3);
+        return false;
+    }
+    case 3:
+        if (USOLMenuButton* button = entryButton(clicks[mReachIndex]))
+        {
+            button->SetFocus();
+        }
+        toStage(4);
+        return false;
+    case 4:
+    {
+        // Scrolled into view: clicked at its centre only when the hit test finds it there
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        FVector2D centre = FVector2D::ZeroVector;
+        const bool bHit = SolidSmokeHitTest(entryButton(clicks[mReachIndex]), centre);
+        if (bHit)
+        {
+            SolidSmokeSlateClick(centre);
+        }
+        mIsReachOk &= bHit;
+        mReachDetail += FString::Printf(TEXT(" [click %d at %.0f,%.0f: hit %d"), clicks[mReachIndex], centre.X,
+            centre.Y, bHit ? 1 : 0);
+        toStage(5);
+        return false;
+    }
+    case 5:
+    {
+        // What the click opened; the main menu's page closed again
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const int32 clicked = clicks[mReachIndex];
+        bool bOpened = false;
+        if (bPause)
+        {
+            bOpened = clicked == static_cast<int32>(EMenuTab::Quit) ? pause->AreQuitChoicesShown()
+                : pause->GetTab() == static_cast<EMenuTab>(clicked) && pause->GetShownPageIndex() == clicked
+                && !pause->AreQuitChoicesShown();
+        }
+        else
+        {
+            const ESOLMainMenuPage wantPage = clicked == SOLID_SMOKE_HELP_ENTRY ? ESOLMainMenuPage::Help
+                : ESOLMainMenuPage::About;
+            bOpened = mainMenu->GetPage() == wantPage;
+            mainMenu->ClosePage();
+        }
+        mIsReachOk &= bOpened;
+        mReachDetail += FString::Printf(TEXT(", opened %d]"), bOpened ? 1 : 0);
+        ParkCursor();
+        if (++mReachIndex < clickCount)
+        {
+            toStage(3);
+            return false;
+        }
+        Check(id, mIsReachOk, mReachDetail);
+        return true;
+    }
+    default:
+        return true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii) The pause Help Esc step's stages: Esc closes the page, Esc again resumes, then paused again
+bool FSOLSolidMenuSmoke::TickHelpPauseEsc(USOLMenuSubsystem& menu)
+{
+    using SOLMenuState::EMenuMode;
+    using SOLMenuState::EMenuTab;
+    USOLPauseMenuWidget* pause = menu.GetPauseMenu();
+    if (pause == nullptr)
+    {
+        Check(TEXT("x-help-pause-esc"), false, TEXT("no pause menu"));
+        return true;
+    }
+    const double sinceS = mStepTimeS - mSubStageS;
+    // Moves to a stage, its time counted from now
+    const auto toStage = [this](const int32 stage)
+    {
+        mSubStage = stage;
+        mSubStageS = mStepTimeS;
+        mSubStageFrames = mStepFrames;
+    };
+    switch (mSubStage)
+    {
+    case 0:
+    {
+        // Help open (from the reach): Esc on the focused tab closes it at once, still paused on Resume
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const bool bHelp = pause->GetTab() == EMenuTab::Help;
+        SolidSmokeKey(EKeys::Escape);
+        const bool bClosed = menu.GetState().Mode == EMenuMode::Paused && menu.GetState().Tab == EMenuTab::Resume
+            && pause->GetTab() == EMenuTab::Resume && pause->GetShellAnim().Phase != ESOLHoloMenuPhase::Open;
+        mIsReachOk = bHelp && bClosed;
+        mReachDetail = FString::Printf(TEXT("Help open %d; Esc: paused on Resume with the shell closing %d (phase %d)"),
+            bHelp ? 1 : 0, bClosed ? 1 : 0, static_cast<int32>(pause->GetShellAnim().Phase));
+        toStage(1);
+        return false;
+    }
+    case 1:
+        // The shell closed; a second Esc on the focused Resume tab
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        mReachIndex = pause->GetShellAnim().Phase == ESOLHoloMenuPhase::Closed ? 1 : 0;
+        SolidSmokeKey(EKeys::Escape);
+        toStage(4);
+        return false;
+    case 4:
+    {
+        // Resumed (as v-resume reads it, once the mode has switched): playing with the flight input back
+        const bool bPlaying = menu.GetState().Mode == EMenuMode::Playing;
+        if (!bPlaying && sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const bool bInput = !SOLMenuState::SuspendsFlightInput(menu.GetState());
+        Check(TEXT("x-help-pause-esc"), mIsReachOk && mReachIndex == 1 && bPlaying && bInput, FString::Printf(
+            TEXT("%s; shell closed %d; second Esc: playing %d after %d frame(s), flight input back %d"),
+            *mReachDetail, mReachIndex, bPlaying ? 1 : 0, mStepFrames - mSubStageFrames, bInput ? 1 : 0));
+        toStage(2);
+        return false;
+    }
+    case 2:
+        // Paused again for the steps after, once the slide-out is over
+        if (sinceS < SOLID_SMOKE_SETTLE_S + SOL::SolidMenu::CLOSE_S)
+        {
+            return false;
+        }
+        menu.RequestEscape();
+        toStage(3);
+        return false;
+    case 3:
+    default:
+        return (sinceS >= SOLID_SMOKE_SETTLE_S && menu.GetState().Mode == EMenuMode::Paused
+            && pause->GetPanelAnim().Phase == ESOLHoloMenuPhase::Open) || sinceS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
+    }
 }

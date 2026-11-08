@@ -922,6 +922,15 @@ bool FSOLSolidKitSanitizeTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("-inf reads the minimum"), FSOLSolidMenuParamCache::SanitizeStrength(-SOLIDKITTEST_INF),
         HUD_EFFECTS_MIN);
 
+    // (33d-ii) The pure SOLSolidMenu::SanitizeStrength (the glossary's) applies the same rule
+    const float strengths[] = { 1.0f, 0.5f, 0.0f, 2.0f, -1.0f, 3.0f, SOLIDKITTEST_NAN, SOLIDKITTEST_INF,
+        -SOLIDKITTEST_INF };
+    for (const float strength : strengths)
+    {
+        TestEqual(FString::Printf(TEXT("pure rule at %f"), strength), SOLSolidMenu::SanitizeStrength(strength),
+            FSOLSolidMenuParamCache::SanitizeStrength(strength));
+    }
+
     TestTrue(TEXT("DPI 1 valid"), FSOLSolidMenuParamCache::IsValidDpiScale(1.0f));
     TestTrue(TEXT("DPI 0.5 valid"), FSOLSolidMenuParamCache::IsValidDpiScale(0.5f));
     TestTrue(TEXT("DPI 2.25 valid"), FSOLSolidMenuParamCache::IsValidDpiScale(2.25f));
@@ -1807,6 +1816,10 @@ bool FSOLSolidKitBareSubsystemTest::RunTest(const FString& /*parameters*/)
     subsystem->PushParams(-5.0f, 0.0f);
     TestEqual(TEXT("-5 (reads 0) with an invalid DPI: no push"), subsystem->GetParamPushCount(), 4);
 
+    // (33d-ii) No shared HUD shape material without its asset, so no push reaches one
+    TestNull(TEXT("no HUD shape material"), subsystem->GetHudShapeMaterial());
+    TestEqual(TEXT("no HUD shape push"), subsystem->GetHudShapeMaterialPushCount(), 0);
+
     // UpdateForFrame without a world or viewport: the first call pushes the default strength at DPI 1, a second in the
     // same frame does nothing, even after other values were pushed in between (without the once-per-frame guard it
     // would push the default values back)
@@ -1882,6 +1895,33 @@ bool FSOLSolidKitWorldSubsystemTest::RunTest(const FString& /*parameters*/)
     }
     subsystem->PushParams(1.5f, 2.0f);
     TestEqual(TEXT("unchanged: no push"), subsystem->GetParamPushCount(), pushes);
+
+    // (33d-ii) The Help glossary's one shared HUD shape material: grain and scanlines on, the same strength, and the
+    // views' pixel size (the symbol box less its recess padding, at the DPI scale), pushed with the solid materials
+    UMaterialInstanceDynamic* const hudShape = subsystem->GetHudShapeMaterial();
+    if (TestNotNull(TEXT("HUD shape material"), hudShape))
+    {
+        using namespace SOL::HudShapeMaterialParams;
+        TestFalse(TEXT("HUD shape: not a style material"), materials.Contains(hudShape));
+        TestEqual(TEXT("HUD shape: composite on"), SolidKitTestScalar(hudShape, COMPOSITE), 1.0f,
+            SOLIDKITTEST_TOLERANCE);
+        TestEqual(TEXT("HUD shape: strength pushed"), SolidKitTestScalar(hudShape, SOL::HudShapeMaterialParams::
+            EFFECTS_STRENGTH), 1.5f, SOLIDKITTEST_TOLERANCE);
+        const float viewPx = (SOL::Help::GLOSSARY_SYMBOL_BOX - 2.0f * SOL::Help::GLOSSARY_SYMBOL_RECESS_PADDING)
+            * 2.0f;
+        TestEqual(TEXT("HUD shape: view width"), SolidKitTestScalar(hudShape, VIEW_WIDTH), viewPx,
+            SOLIDKITTEST_TOLERANCE);
+        TestEqual(TEXT("HUD shape: view height"), SolidKitTestScalar(hudShape, VIEW_HEIGHT), viewPx,
+            SOLIDKITTEST_TOLERANCE);
+        const int32 hudPushes = subsystem->GetHudShapeMaterialPushCount();
+        subsystem->PushParams(1.5f, 2.0f);
+        TestEqual(TEXT("HUD shape: unchanged, no push"), subsystem->GetHudShapeMaterialPushCount(), hudPushes);
+        subsystem->PushParams(0.25f, 2.0f);
+        TestEqual(TEXT("HUD shape: a change pushes once"), subsystem->GetHudShapeMaterialPushCount(), hudPushes + 1);
+        TestEqual(TEXT("HUD shape: the new strength"), SolidKitTestScalar(hudShape, SOL::HudShapeMaterialParams::
+            EFFECTS_STRENGTH), 0.25f, SOLIDKITTEST_TOLERANCE);
+        subsystem->PushParams(1.5f, 2.0f);
+    }
 
     // A unique material starts current and follows later pushes
     UMaterialInstanceDynamic* const unique = subsystem->CreateUniqueMaterial(ESOLSolidStyle::Panel, testWorld.World);

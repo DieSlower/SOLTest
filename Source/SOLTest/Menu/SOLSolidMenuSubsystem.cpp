@@ -6,6 +6,7 @@
 #include "Menu/SOLSolidMenuSubsystem.h"
 
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuMath.h"
 #include "SOLTest.h"
 #include "UI/SOLHoloMenuSubsystem.h"
 
@@ -88,7 +89,7 @@ private:
 // Returns the strength NaN-safe and clamped to the HUD effects range
 float FSOLSolidMenuParamCache::SanitizeStrength(const float raw)
 {
-    return FMath::IsNaN(raw) ? 0.0f : FMath::Clamp(raw, SOL::Settings::HUD_EFFECTS_MIN, SOL::Settings::HUD_EFFECTS_MAX);
+    return SOLSolidMenu::SanitizeStrength(raw);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -243,6 +244,25 @@ void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpi
         }
         WriteParams(*material);
     }
+    WriteHudShapeParams();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the cached strength and the glossary views' pixel size (every view is the symbol box less its recess
+// padding, at the DPI scale) into the shared HUD shape material
+void USOLSolidMenuSubsystem::WriteHudShapeParams()
+{
+    using namespace SOL::Help;
+    if (HudShapeMaterial == nullptr)
+    {
+        return;
+    }
+    const float viewPx = GLOSSARY_VIEW_SIZE * mParamCache.GetDpiScale();
+    HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH,
+        mParamCache.GetStrength());
+    HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_WIDTH, viewPx);
+    HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_HEIGHT, viewPx);
+    ++mHudShapePushCount;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -373,6 +393,16 @@ void USOLSolidMenuSubsystem::LoadAssets()
     {
         Textures[index] = SolidMenuLoad<UTexture2D>(*this, SOLID_TEXTURE_PATHS[index], TEXT("without it"),
             mMissingAssetCount);
+    }
+
+    // (33d-ii) The Help glossary's one shared HUD shape material: grain and scanlines on, current with the cache
+    UMaterialInterface* hudShape = SolidMenuLoad<UMaterialInterface>(*this, SOL::Paths::HUD_SHAPE_MATERIAL,
+        TEXT("glossary symbols without shapes"), mMissingAssetCount);
+    HudShapeMaterial = hudShape != nullptr ? UMaterialInstanceDynamic::Create(hudShape, this) : nullptr;
+    if (HudShapeMaterial != nullptr)
+    {
+        HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::COMPOSITE, 1.0f);
+        WriteHudShapeParams();
     }
     UE_LOG(LogSOL, Log, TEXT("%s: solid menu assets loaded, %d missing"), *GetName(), mMissingAssetCount);
 }

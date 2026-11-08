@@ -106,10 +106,8 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
         USpacer::StaticClass()), 0.0f, COLUMN_STACK_GAP));
 
     // The stack, scrolling past STACK_MAX_VISIBLE_ENTRIES (its view starts at stackTop, column local); each entry's
-    // hover trace runs from its right end (the point) to the hull's right edge
-    const TCHAR* entryLabels[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
-        SOLMenuText::CONTROLS, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
-    static_assert(UE_ARRAY_COUNT(entryLabels) == static_cast<int32>(EEntry::Count), "one label per entry");
+    // hover trace runs from its right end (the point) to the hull's right edge; labels from
+    // SOLMenuState::MainMenuEntryLabel (Start location formatted with the start body by RefreshStartLabel)
     const float stackTop = inset + COLUMN_TITLE_HEIGHT + COLUMN_TAGLINE_HEIGHT + COLUMN_STACK_GAP;
     column->AddChildToVerticalBox(EntryStack.Build(*WidgetTree, BUTTON_HEIGHT, BUTTON_GAP, stackTop,
         STACK_MAX_VISIBLE_ENTRIES));
@@ -118,7 +116,8 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
     for (int32 entry = 0; entry < static_cast<int32>(EEntry::Count); ++entry)
     {
         USOLMenuButton* button = WidgetTree->ConstructWidget<USOLMenuButton>(USOLMenuButton::StaticClass());
-        button->Setup(*WidgetTree, entryLabels[entry], entry, BUTTON_FONT_SIZE, ESOLSolidButtonVariant::Stack);
+        button->Setup(*WidgetTree, SOLMenuState::MainMenuEntryLabel(static_cast<EEntry>(entry)), entry,
+            BUTTON_FONT_SIZE, ESOLSolidButtonVariant::Stack);
         button->OnMenuClicked.BindUObject(this, &USOLMainMenuWidget::HandleEntryClicked);
         EntryStack.AddItem(SOLMenuContent::MakeSized(*WidgetTree, button, 0.0f, BUTTON_HEIGHT));
         EntryButtons.Add(button);
@@ -160,12 +159,18 @@ void USOLMainMenuWidget::BuildColumn(UHorizontalBox& row)
 void USOLMainMenuWidget::BuildShell(UHorizontalBox& row)
 {
     // The pages, one switcher child per page (index = ESOLMainMenuPage; the empty one for None)
+    static_assert(static_cast<int32>(ESOLMainMenuPage::StartLocation) == 1
+        && static_cast<int32>(ESOLMainMenuPage::Controls) == 2 && static_cast<int32>(ESOLMainMenuPage::Help) == 3
+        && static_cast<int32>(ESOLMainMenuPage::Settings) == 4 && static_cast<int32>(ESOLMainMenuPage::About) == 5
+        && static_cast<int32>(ESOLMainMenuPage::Demo) == 6, "the switcher children follow ESOLMainMenuPage");
     PageSwitcher = WidgetTree->ConstructWidget<UWidgetSwitcher>(UWidgetSwitcher::StaticClass());
     PageSwitcher->AddChild(WidgetTree->ConstructWidget<USpacer>(USpacer::StaticClass()));
     PageSwitcher->AddChild(BuildStartLocationPage());
     ControlsPage = SOLMenuContent::BuildControlsPage(*WidgetTree);
     ControlsKeyCells = ControlsPage->GetKeyCells();
     PageSwitcher->AddChild(ControlsPage);
+    HelpPage = SOLMenuContent::BuildHelpPage(*WidgetTree);
+    PageSwitcher->AddChild(HelpPage);
     SettingsPage = SOLMenuContent::BuildSettingsPage(*WidgetTree);
     PageSwitcher->AddChild(SettingsPage);
     AboutPage = SOLMenuContent::BuildAboutPage(*WidgetTree);
@@ -307,6 +312,11 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
         SOLMenuContent::RefreshControlsPage(ControlsKeyCells, SOLMenuContent::ResolveLiveKeys(GetWorld()));
         ControlsPage->ShowOpening();
     }
+    if (page == ESOLMainMenuPage::Help && HelpPage != nullptr)
+    {
+        SOLMenuContent::RefreshHelpPage(*HelpPage, SOLMenuContent::ResolveLiveKeys(GetWorld()));
+        HelpPage->ShowOpening();
+    }
     if (page == ESOLMainMenuPage::About && AboutPage != nullptr)
     {
         AboutPage->ShowOpening();
@@ -337,6 +347,7 @@ void USOLMainMenuWidget::ShowPage(const ESOLMainMenuPage page)
     // The column button of the open page reads as selected
     const int32 pageEntry = page == ESOLMainMenuPage::StartLocation ? static_cast<int32>(EEntry::StartLocation)
         : page == ESOLMainMenuPage::Controls ? static_cast<int32>(EEntry::Controls)
+        : page == ESOLMainMenuPage::Help ? static_cast<int32>(EEntry::Help)
         : page == ESOLMainMenuPage::Settings ? static_cast<int32>(EEntry::Settings)
         : page == ESOLMainMenuPage::About ? static_cast<int32>(EEntry::About)
         : page == ESOLMainMenuPage::Demo ? static_cast<int32>(EEntry::Demo) : INDEX_NONE;
@@ -563,6 +574,9 @@ void USOLMainMenuWidget::HandleEntryClicked(const int32 entry)
         break;
     case EEntry::Controls:
         togglePage(ESOLMainMenuPage::Controls);
+        break;
+    case EEntry::Help:
+        togglePage(ESOLMainMenuPage::Help);
         break;
     case EEntry::Settings:
         togglePage(ESOLMainMenuPage::Settings);

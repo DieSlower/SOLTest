@@ -251,6 +251,52 @@ bool FSOLInfoTextFollowsRebindsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextHudParagraphTest, "SOLTest.InfoText.HudParagraphPointsToHelp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33d-ii, SDD 33 D25 with D1 option B, test-after) One paragraph is the HUD's: it keeps the two effects sliders and
+// what they scale, the HUD's look, the speed and G block's place and the cards' look and life, then points to Help, HUD
+// glossary; the radar and free-look details it used to repeat are left to the glossary
+bool FSOLInfoTextHudParagraphTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    int32 found = INDEX_NONE;
+    int32 count = 0;
+    for (int32 index = 0; index < prose.Num(); ++index)
+    {
+        if (prose[index].Contains(TEXT("Help, HUD glossary")))
+        {
+            found = index;
+            ++count;
+        }
+    }
+    TestEqual(TEXT("one paragraph points to the HUD glossary"), count, 1);
+    if (found == INDEX_NONE)
+    {
+        return false;
+    }
+    const FString& hud = prose[found];
+    const TCHAR* const kept[] = {
+        TEXT("HUD and menu effects slider"), TEXT("0 turns them off"),
+        TEXT("main menu and the pause menu's side panel"),
+        TEXT("Hologram menu effects slider"), TEXT("in-flight hologram menus and the mouse pointer"),
+        TEXT("thin glowing blue lines and text on soft, borderless dark panels"), TEXT("speed and G (bottom left)"),
+        TEXT("glowing corner marks on a faint dark tint with a slow scanline"),
+        TEXT("The date and speed cards are always there"), TEXT("draws in when you select a target and fades out"),
+        TEXT("only changes its text"), TEXT("info card draws in and fades out"),
+    };
+    for (const TCHAR* const phrase : kept)
+    {
+        TestTrue(FString::Printf(TEXT("keeps \"%s\""), phrase), hud.Contains(phrase));
+    }
+    TestTrue(TEXT("the pointer ends the paragraph"), hud.EndsWith(TEXT("explained in Help, HUD glossary.")));
+    TestFalse(TEXT("the radar is left to the glossary"), hud.Contains(TEXT("radar (bottom right)")));
+    TestFalse(TEXT("free look is left to the glossary"), hud.Contains(TEXT("joystick circles turn yellow")));
+    return true;
+}
+
 namespace
 {
     // Returns the index of the only paragraph that mentions orbit lines (case-insensitive), or INDEX_NONE when none or

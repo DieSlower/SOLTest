@@ -34,13 +34,24 @@ class SOLTEST_API SSOLHudShapeLayer : public SLeafWidget
 public:
 
     SLATE_BEGIN_ARGS(SSOLHudShapeLayer)
-        : _MaxShapes(SOL::Hologram::HUD_MAX_SHAPES)
+        : _MaxShapes(SOL::Hologram::HUD_MAX_SHAPES),
+          _MaxTexts(SOL::Hologram::HUD_MAX_TEXTS),
+          _MaxBackings(SOL::Hologram::HUD_MAX_PANELS),
+          _PaintScratch(nullptr)
     {}
         // Shape capacity of the batch and the paint buffer (the HUD's by default; the menu layer asks for less)
         SLATE_ARGUMENT(int32, MaxShapes)
+        // (33d-ii) Glow-text line capacity (the HUD's by default; a glossary symbol view asks for a few)
+        SLATE_ARGUMENT(int32, MaxTexts)
+        // (33d-ii) Panel backing capacity (the HUD's by default; a glossary symbol view asks for one)
+        SLATE_ARGUMENT(int32, MaxBackings)
+        // (33d-ii) A paint vertex buffer shared with other layers (game-thread paint only; the owner keeps it alive and
+        // reserves it for the largest batch it serves); null: the layer reserves its own for MaxShapes
+        SLATE_ARGUMENT(TArray<FSlateVertex>*, PaintScratch)
     SLATE_END_ARGS()
 
-    // Reserves the batch and paint buffers once (args.MaxShapes quads)
+    // Reserves the batch, text, backing and paint buffers once (args.MaxShapes quads, MaxTexts lines, MaxBackings
+    // backings; no paint buffer of its own with a shared PaintScratch)
     void Construct(const FArguments& args);
 
     // Sets the material the shapes are drawn with (kept alive by the owner)
@@ -97,6 +108,13 @@ public:
     // Returns the number of shapes drawn by the last paint (verification)
     int32 GetLastPaintedShapeCount() const { return mLastPaintedShapeCount; }
 
+    // (33d-ii) Returns the window-space point the last paint mapped the batch's origin to (the geometry's accumulated
+    // render transform at (0, 0); verification: a retained batch follows its widget when a parent scrolls)
+    FVector2f GetLastPaintOrigin() const { return mLastPaintOrigin; }
+
+    // (33d-ii) Returns the capacity of the layer's own paint vertex buffer (verification: 0 with a shared PaintScratch)
+    int32 GetOwnPaintVertexCapacity() const { return mPaintVertices.Max(); }
+
     // Returns the frame the batch was last stamped for (verification)
     uint64 GetBatchFrame() const { return mBatchFrame; }
 
@@ -105,6 +123,9 @@ public:
 
     // Returns the number of panel backings queued this frame
     int32 GetBackingCount() const { return mBackings.Num(); }
+
+    // Returns the panel backing capacity (verification)
+    int32 GetMaxBackings() const { return mMaxBackings; }
 
     // Returns a queued backing's rectangle in canvas pixels, or an invalid box for an index out of range (verification)
     FBox2f GetBackingRect(const int32 index) const
@@ -155,6 +176,7 @@ private:
     };
 
     TArray<FSOLHudBacking> mBackings;                   // Panel backings, canvas pixels (reserved once)
+    int32 mMaxBackings = SOL::Hologram::HUD_MAX_PANELS; // Backing capacity (Construct's MaxBackings)
     FSlateFontInfo mFonts[static_cast<int32>(ESOLHudFont::Count)];     // Fonts per ESOLHudFont
     mutable FSlateBrush mBackingBrush;                  // White rounded box tinted per layer; its corner radius is set
                                                         // per layer in OnPaint (Slate copies it into each element)
@@ -165,6 +187,8 @@ private:
     FSlateBrush mBrush;                                 // Brush wrapping the shape material
     mutable FSlateResourceHandle mResourceHandle;       // Renderer handle of the brush, fetched once
     mutable TArray<FSlateVertex> mPaintVertices;        // The batch in window space, reused every paint
+    TArray<FSlateVertex>* mPaintScratch = nullptr;      // A shared paint buffer used instead (null: mPaintVertices)
+    mutable FVector2f mLastPaintOrigin = FVector2f::ZeroVector; // The last paint's batch origin in window space
     uint64 mBatchFrame = 0;                             // Frame the batch was filled for
     mutable int32 mLastPaintedShapeCount = 0;           // Shapes drawn by the last paint
 };

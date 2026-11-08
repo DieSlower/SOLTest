@@ -128,6 +128,7 @@ bool SOLMenuState::IsPageTab(const EMenuTab tab)
     switch (tab)
     {
     case EMenuTab::Controls:
+    case EMenuTab::Help:
     case EMenuTab::Info:
     case EMenuTab::Settings:
     case EMenuTab::Demo:
@@ -136,6 +137,28 @@ bool SOLMenuState::IsPageTab(const EMenuTab tab)
     default:
         return false;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a main-menu entry's label ("" for Count and past it)
+const TCHAR* SOLMenuState::MainMenuEntryLabel(const EMainMenuEntry entry)
+{
+    static const TCHAR* const LABELS[] = { SOLMenuText::PLAY, SOLMenuText::DEMO, SOLMenuText::START_LOCATION_FORMAT,
+        SOLMenuText::CONTROLS, SOLMenuText::HELP, SOLMenuText::SETTINGS, SOLMenuText::ABOUT, SOLMenuText::QUIT };
+    static_assert(UE_ARRAY_COUNT(LABELS) == static_cast<int32>(EMainMenuEntry::Count), "one label per main entry");
+    const int32 index = static_cast<int32>(entry);
+    return index < static_cast<int32>(UE_ARRAY_COUNT(LABELS)) ? LABELS[index] : TEXT("");
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a pause-menu tab's label ("" for Count and past it)
+const TCHAR* SOLMenuState::PauseTabLabel(const EMenuTab tab)
+{
+    static const TCHAR* const LABELS[] = { SOLMenuText::RESUME, SOLMenuText::CONTROLS, SOLMenuText::HELP,
+        SOLMenuText::INFO, SOLMenuText::SETTINGS, SOLMenuText::DEMO, SOLMenuText::ABOUT, SOLMenuText::QUIT_TAB };
+    static_assert(UE_ARRAY_COUNT(LABELS) == static_cast<int32>(EMenuTab::Count), "one label per pause tab");
+    const int32 index = static_cast<int32>(tab);
+    return index < static_cast<int32>(UE_ARRAY_COUNT(LABELS)) ? LABELS[index] : TEXT("");
 }
 
 //////////////////////////////////////////////////////////////////////////

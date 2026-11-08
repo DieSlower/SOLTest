@@ -72,6 +72,10 @@ struct FSOLPausePanelLook
  */
 namespace SOLSolidMenu
 {
+    // (33d-ii) Returns the effects strength NaN-safe (NaN reads 0) and clamped to the HUD effects range (Q1); the rule
+    // FSOLSolidMenuParamCache::SanitizeStrength applies, here for pure callers
+    SOLTEST_API float SanitizeStrength(float s);
+
     // --- Hull (section 8.1) ---
 
     // The hull made valid for a size: negative or NaN values read 0; the chamfers scaled by one common factor so every
