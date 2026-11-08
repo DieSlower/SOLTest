@@ -43,6 +43,21 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Fills the Slate font info a sample's lines are measured and drawn with (the HUD's Medium font with the glow
+    // outline); false when the font or Slate is not up
+    bool HudSymbolViewSampleFont(FSlateFontInfo& outFont)
+    {
+        const UFont* font = HudSymbolViewFont(ESOLHudFont::Medium);
+        if (font == nullptr || !FSlateApplication::IsInitialized())
+        {
+            return false;
+        }
+        outFont = font->GetLegacySlateFontInfo();
+        outFont.OutlineSettings.OutlineSize = SOL::Hologram::HUD_TEXT_GLOW_OUTLINE;
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns the batch the views dry-build their symbols into to size their own batches (GLOSSARY_MAX_SHAPES,
     // reserved at its first use; the views rebuild one at a time on the game thread)
     FSOLHudShapeBatch& HudSymbolViewDryBatch()
@@ -114,7 +129,51 @@ void USOLHudSymbolView::SetSample(const FString& sample, const int32 entryIndex)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Rebuilds the batch when the pixel size (the laid-out size, or GLOSSARY_VIEW_SIZE before the first layout, at the
+// Returns a text sample's row box size in menu units, measured in the HUD's Medium font at the 1080 and 720 scales
+FVector2f USOLHudSymbolView::SampleBoxSize(const FString& sample)
+{
+    using namespace SOL::Help;
+    FSlateFontInfo fontInfo;
+    if (!HudSymbolViewSampleFont(fontInfo))
+    {
+        return FVector2f(GLOSSARY_SYMBOL_BOX);
+    }
+
+    // Measured as drawn at the HUD's size in a 1080 canvas (font scale 1.5) and in a 720 canvas (font scale 1.0): the
+    // fonts round to whole pixel sizes differently, so the box takes the larger of the two (D37's test sizes)
+    const TSharedRef<FSlateFontMeasure> measureService = FSlateApplication::Get().GetRenderer()
+        ->GetFontMeasureService();
+    FVector2f size(GLOSSARY_SYMBOL_BOX);
+    const float fontScales[] = { GLOSSARY_SYMBOL_UI_SCALE, 1.0f };
+    for (const float fontScale : fontScales)
+    {
+        // A text's width per unit of scale, as drawn at fontScale
+        const auto measure = [&measureService, &fontInfo, fontScale](const FStringView text)
+        {
+            return static_cast<float>(measureService->Measure(text, fontInfo, fontScale).X) / fontScale;
+        };
+        const float lineHeight = static_cast<float>(measureService->GetMaxCharacterHeight(fontInfo, fontScale))
+            / fontScale;
+        size = size.ComponentMax(SOLGlossary::SampleBoxSize(sample, GLOSSARY_SYMBOL_UI_SCALE,
+            GLOSSARY_SAMPLE_MIN_UI_SCALE, lineHeight, measure));
+    }
+    return size;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the size the view is built at before its first layout; a change forces the next rebuild
+void USOLHudSymbolView::SetNominalSize(const FVector2f& sizeUnits)
+{
+    if (sizeUnits.X > 0.0f && sizeUnits.Y > 0.0f && sizeUnits != mNominalSize)
+    {
+        mNominalSize = sizeUnits;
+        mStamp.bBuilt = false;
+        mIsNominalPending = true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Rebuilds the batch when the pixel size (the laid-out size, or the nominal size before the first layout, at the
 // page's layout scale) or the strength changed (or it was never built)
 bool USOLHudSymbolView::UpdateBatch(const float strength, FSOLHudSymbolScratch& scratch, const float layoutScale)
 {
@@ -124,8 +183,13 @@ bool USOLHudSymbolView::UpdateBatch(const float strength, FSOLHudSymbolScratch& 
     }
     const FGeometry& geometry = GetCachedGeometry();
     const FVector2f laidOut(geometry.GetLocalSize());
-    const FVector2f localSize = laidOut.X > 0.0f && laidOut.Y > 0.0f ? laidOut
-        : FVector2f(SOL::Help::GLOSSARY_VIEW_SIZE, SOL::Help::GLOSSARY_VIEW_SIZE);
+    // A new nominal size (a rebind resized the box) wins over a layout of the old size until the layout catches up,
+    // so the next paint is not built for the old box
+    if (mIsNominalPending && laidOut.Equals(mNominalSize, SOL::Help::GLOSSARY_NOMINAL_SIZE_TOLERANCE))
+    {
+        mIsNominalPending = false;
+    }
+    const FVector2f localSize = laidOut.X > 0.0f && laidOut.Y > 0.0f && !mIsNominalPending ? laidOut : mNominalSize;
     const float scale = layoutScale > 0.0f ? layoutScale : geometry.Scale;
     const FIntPoint sizePx = SOLGlossary::ViewPixelSize(localSize, scale);
     if (!SOLGlossary::ViewNeedsRebuild(mStamp, sizePx, strength))
@@ -239,14 +303,15 @@ void USOLHudSymbolView::BuildSymbols(const float pxPerUnit, const FSOLHudSymbolP
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Adds the sample's lines in the HUD's Medium font, laid out in the art area (shrunk to fit down to the sample's
-// smallest scale, then wrapped)
+// Adds the sample's lines in the HUD's Medium font, laid out in the art area (SOLGlossary::LayoutSample: unwrapped or
+// wrapped at the HUD's size, else shrunk down to the sample's smallest scale, else wrapped there), fitted as drawn
 void USOLHudSymbolView::BuildSample(const float pxPerUnit, const FSOLHudSymbolPalette& palette)
 {
     using namespace SOL::Help;
     mSampleTexts.Reset();
-    const UFont* font = HudSymbolViewFont(ESOLHudFont::Medium);
-    if (font == nullptr || !mArtArea.bIsValid)
+    mSampleBounds = FBox2f(ForceInit);
+    FSlateFontInfo fontInfo;
+    if (!mArtArea.bIsValid || !HudSymbolViewSampleFont(fontInfo))
     {
         return;
     }
@@ -256,12 +321,6 @@ void USOLHudSymbolView::BuildSample(const float pxPerUnit, const FSOLHudSymbolPa
     // scaled, and the legacy UFont::GetStringSize reads narrower still: a wrapped line ran past the view's clip). The
     // scale is the layout's own result, so it is laid out at unit scale, then again measured at the scale found, until
     // the scale holds (at most GLOSSARY_SAMPLE_MEASURE_PASSES); the lines are made here, never in paint
-    if (!FSlateApplication::IsInitialized())
-    {
-        return;
-    }
-    FSlateFontInfo fontInfo = font->GetLegacySlateFontInfo();
-    fontInfo.OutlineSettings.OutlineSize = SOL::Hologram::HUD_TEXT_GLOW_OUTLINE;
     const TSharedRef<FSlateFontMeasure> measureService = FSlateApplication::Get().GetRenderer()
         ->GetFontMeasureService();
     float measureScale = 1.0f;
@@ -282,10 +341,38 @@ void USOLHudSymbolView::BuildSample(const float pxPerUnit, const FSOLHudSymbolPa
         }
         measureScale = mSampleLayout.Scale;
     }
+    // The lines as drawn at the scale found: a font rounded to a wider pixel size than the layout's measure assumed
+    // (a scale the passes did not settle on) shrinks the scale until the widest line fits the area, the lines kept,
+    // never below the sample's smallest scale (D44); then each line is centred again on its measured width
+    const FVector2f areaSize = mArtArea.GetSize();
+    const float floorScale = FMath::Min(GLOSSARY_SAMPLE_MIN_UI_SCALE, GLOSSARY_SYMBOL_UI_SCALE) * pxPerUnit;
+    for (int32 pass = 0; pass < GLOSSARY_SAMPLE_MEASURE_PASSES && mSampleLayout.Scale > 0.0f; ++pass)
+    {
+        float widest = 0.0f;
+        for (const FSOLGlossarySampleLine& line : mSampleLayout.Lines)
+        {
+            widest = FMath::Max(widest, static_cast<float>(measureService->Measure(line.Text, fontInfo,
+                mSampleLayout.Scale).X));
+        }
+        if (widest <= areaSize.X)
+        {
+            break;
+        }
+        mSampleLayout.Scale = FMath::Max(mSampleLayout.Scale * areaSize.X / widest, floorScale);
+    }
+    const float drawnLineHeight = mSampleLayout.Scale > 0.0f ? static_cast<float>(measureService
+        ->GetMaxCharacterHeight(fontInfo, mSampleLayout.Scale)) : 0.0f;
+    const float top = (areaSize.Y - mSampleLayout.Lines.Num() * drawnLineHeight) * 0.5f;
     mFitScale = mSampleLayout.Scale;
     FSOLHudTextList& texts = mLayer->GetTexts();
-    for (const FSOLGlossarySampleLine& line : mSampleLayout.Lines)
+    for (int32 index = 0; index < mSampleLayout.Lines.Num(); ++index)
     {
+        // The line's measured rect, centred (verification: the lines stay inside the art area)
+        FSOLGlossarySampleLine& line = mSampleLayout.Lines[index];
+        const float width = static_cast<float>(measureService->Measure(line.Text, fontInfo, mSampleLayout.Scale).X);
+        line.Position = FVector2f((areaSize.X - width) * 0.5f, top + index * drawnLineHeight);
+        const FVector2f lineMin = mArtArea.Min + line.Position;
+        mSampleBounds += FBox2f(lineMin, lineMin + FVector2f(width, drawnLineHeight));
         const FText& text = mSampleTexts.Add_GetRef(FText::FromString(line.Text));
         const ESOLHudPaletteRole role = SOLGlossary::SampleLineRole(mSampleEntry, line.Text);
         texts.Add(text, mArtArea.Min + line.Position, mSampleLayout.Scale,

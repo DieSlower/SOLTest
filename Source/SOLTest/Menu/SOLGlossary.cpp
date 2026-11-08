@@ -598,6 +598,27 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Splits a sample on the list delimiter into its parts, each trimmed, the empty ones dropped (out reset first)
+    void GlossarySplitParts(const FStringView sample,
+        TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>>& outParts)
+    {
+        outParts.Reset();
+        int32 partStart = 0;
+        for (int32 at = 0; at <= sample.Len(); ++at)
+        {
+            if (at == sample.Len() || sample[at] == SOLMenuText::GLOSSARY_LIST_DELIMITER)
+            {
+                const FStringView part = sample.Mid(partStart, at - partStart).TrimStartAndEnd();
+                if (!part.IsEmpty())
+                {
+                    outParts.Add(part);
+                }
+                partStart = at + 1;
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Adds a part's lines to out, wrapped greedily at runs of spaces so each line's measure x scale stays within
     // width where it can (a single word wider than width stays whole on its own line); the run where a line ends is
     // dropped
@@ -743,7 +764,8 @@ FVector2f SOLGlossary::SymbolCentre(const FBox2f& boundsAtScale, const FBox2f& c
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Lays a sample's '|' parts out as lines centred in the area: shrunk to fit down to minScale, then wrapped at spaces
+// Lays a sample's '|' parts out as lines centred in the area: at maxScale unwrapped, else wrapped at spaces, else
+// shrunk down to minScale, else wrapped at minScale (D44)
 void SOLGlossary::LayoutSample(const FStringView sample, const FVector2f& areaPx, const float maxScale,
     const float minScale, const float lineHeightAtUnit, const TFunctionRef<float(FStringView)> measureAtUnit,
     FSOLGlossarySampleLayout& out)
@@ -758,55 +780,77 @@ void SOLGlossary::LayoutSample(const FStringView sample, const FVector2f& areaPx
 
     // The parts: split on the delimiter, each trimmed, the empty ones dropped
     TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>> parts;
-    int32 partStart = 0;
-    for (int32 at = 0; at <= sample.Len(); ++at)
-    {
-        if (at == sample.Len() || sample[at] == SOLMenuText::GLOSSARY_LIST_DELIMITER)
-        {
-            const FStringView part = sample.Mid(partStart, at - partStart).TrimStartAndEnd();
-            if (!part.IsEmpty())
-            {
-                parts.Add(part);
-            }
-            partStart = at + 1;
-        }
-    }
+    GlossarySplitParts(sample, parts);
     if (parts.IsEmpty())
     {
         return;
     }
 
-    // The scale that fits every part on its own line, never above maxScale
-    const float floorScale = GlossaryIsPositiveFinite(minScale) && minScale <= maxScale ? minScale : maxScale;
-    float widest = 0.0f;
-    for (const FStringView part : parts)
-    {
-        widest = FMath::Max(widest, measureAtUnit(part));
-    }
-    float scale = FMath::Min(maxScale, areaPx.Y / (parts.Num() * lineHeightAtUnit));
-    if (widest > 0.0f)
-    {
-        scale = FMath::Min(scale, areaPx.X / widest);
-    }
-
-    // Too small: draw at the floor and wrap each part that is still too wide
+    // Wraps each part too wide at a scale, the others one line each
     TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>> lines;
-    if (scale >= floorScale)
+    const auto wrapAt = [&parts, &areaPx, &measureAtUnit, &lines](const float atScale)
+    {
+        lines.Reset();
+        for (const FStringView part : parts)
+        {
+            if (measureAtUnit(part) * atScale > areaPx.X)
+            {
+                GlossaryWrapPart(part, areaPx.X, atScale, measureAtUnit, lines);
+            }
+            else
+            {
+                lines.Add(part);
+            }
+        }
+    };
+    // Whether lines all fit the area at a scale, across and down
+    const auto fitsAt = [&areaPx, &measureAtUnit, lineHeightAtUnit](const auto& candidate, const float atScale)
+    {
+        if (candidate.Num() * lineHeightAtUnit * atScale > areaPx.Y)
+        {
+            return false;
+        }
+        for (const FStringView line : candidate)
+        {
+            if (measureAtUnit(line) * atScale > areaPx.X)
+            {
+                return false;
+            }
+        }
+        return true;
+    };
+
+    // D44, the first that fits: unwrapped at maxScale (A); wrapped at spaces at maxScale (B); shrunk unwrapped down
+    // to the floor (C); else wrapped at the floor, the lines free to overflow the height (D)
+    const float floorScale = GlossaryIsPositiveFinite(minScale) && minScale <= maxScale ? minScale : maxScale;
+    float scale = maxScale;
+    if (fitsAt(parts, maxScale))
     {
         lines = parts;
     }
     else
     {
-        scale = floorScale;
-        for (const FStringView part : parts)
+        wrapAt(maxScale);
+        if (!fitsAt(lines, maxScale))
         {
-            if (measureAtUnit(part) * scale > areaPx.X)
+            float widest = 0.0f;
+            for (const FStringView part : parts)
             {
-                GlossaryWrapPart(part, areaPx.X, scale, measureAtUnit, lines);
+                widest = FMath::Max(widest, measureAtUnit(part));
+            }
+            scale = FMath::Min(maxScale, areaPx.Y / (parts.Num() * lineHeightAtUnit));
+            if (widest > 0.0f)
+            {
+                scale = FMath::Min(scale, areaPx.X / widest);
+            }
+            if (scale >= floorScale)
+            {
+                lines = parts;
             }
             else
             {
-                lines.Add(part);
+                scale = floorScale;
+                wrapAt(floorScale);
             }
         }
     }
@@ -822,6 +866,49 @@ void SOLGlossary::LayoutSample(const FStringView sample, const FVector2f& areaPx
         line.Text = FString(lines[index]);
         line.Position = FVector2f((areaPx.X - measureAtUnit(lines[index]) * scale) * 0.5f, top + index * lineHeight);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of '|' parts LayoutSample draws (trimmed, the empty ones dropped)
+int32 SOLGlossary::SamplePartCount(const FStringView sample)
+{
+    TArray<FStringView, TInlineAllocator<GLOSSARY_SAMPLE_INLINE_PARTS>> parts;
+    GlossarySplitParts(sample, parts);
+    return parts.Num();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a text-sample row's box size in menu units (D44): the symbol box when no part wraps there, else the wide box
+// as tall as the sample's lines need
+FVector2f SOLGlossary::SampleBoxSize(const FStringView sample, const float maxScale, const float minScale,
+    const float lineHeightAtUnit, const TFunctionRef<float(FStringView)> measureAtUnit)
+{
+    using namespace SOL::Help;
+    const FVector2f square(GLOSSARY_SYMBOL_BOX);
+    const int32 parts = SamplePartCount(sample);
+    if (parts == 0 || !GlossaryIsPositiveFinite(maxScale) || !GlossaryIsPositiveFinite(lineHeightAtUnit))
+    {
+        return square;
+    }
+
+    // Short: no part wraps at maxScale in the symbol box's width (the lines wrapped there with room for every line a
+    // view holds, never shrunk: only single words too wide for the box stay, and keep the box and its look)
+    constexpr float inset = 2.0f * (GLOSSARY_SYMBOL_RECESS_PADDING + GLOSSARY_SYMBOL_PADDING);
+    const float tallHeight = static_cast<float>(GLOSSARY_MAX_SAMPLE_LINES) * lineHeightAtUnit * maxScale;
+    FSOLGlossarySampleLayout layout;
+    LayoutSample(sample, FVector2f(GLOSSARY_SYMBOL_BOX - inset, tallHeight), maxScale, maxScale, lineHeightAtUnit,
+        measureAtUnit, layout);
+    if (layout.Lines.Num() <= parts)
+    {
+        return square;
+    }
+
+    // Wide: laid out in the wide box (narrowed by the slack) with room for every line a view holds
+    const FVector2f area(GLOSSARY_SAMPLE_BOX_WIDTH - inset - GLOSSARY_SAMPLE_BOX_SLACK, tallHeight);
+    LayoutSample(sample, area, maxScale, minScale, lineHeightAtUnit, measureAtUnit, layout);
+    const float height = FMath::CeilToFloat(static_cast<float>(layout.Lines.Num()) * lineHeightAtUnit * layout.Scale
+        + inset + GLOSSARY_SAMPLE_BOX_SLACK);
+    return FVector2f(GLOSSARY_SAMPLE_BOX_WIDTH, FMath::Max(GLOSSARY_SYMBOL_BOX, height));
 }
 
 //////////////////////////////////////////////////////////////////////////

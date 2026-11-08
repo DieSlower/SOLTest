@@ -197,7 +197,7 @@ Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
 5. [x] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row shows the
    bright IconPlanet only (D40, no second brightness). Symbols are shrunk to fit with the 2 px feature floor (D42,
    applied by `SOLHudSymbols::Build` since 33d-i). The five map rows stay description-only until 33e-ii (D39).
-6. [ ] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page and glossary`; push.
+6. [x] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page and glossary`; push (commit 265fa5c).
 
    **Built (2026-11-08, SDD 20, not committed yet):** tests first by a separate opus/high author from the contract (red
    on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, Glossary.Layout 13/14; EightEntryStack already green),
@@ -207,6 +207,26 @@ Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
    questions below stay open with the user (step 6, the commit, is still to do).
    Open layout questions (SDD 18, not decided): (1) the Keyboard tab's hover strip sits below the fold at 1280x720 and
    1920x1080; (2) long text samples, e.g. the route progress line, are barely readable at 1280x720.
+
+### 33d-iii: the Help hover strip and readable text samples (opus/high)
+
+Builds on: D43, D44 (O15 and O16 answered by the user, 2026-11-08). Depends on 33d-ii. SDD sections 2, 7, 8.3, 11, 18.
+
+1. [x] Tests first by a separate opus/high author from the contract: `KeyboardLayoutTest` (the new panel order,
+   `PanelStripOnTop`), `GlossaryLayoutTest` (the A-B-C-D sample rule, `SampleWrapsAtMax`, `SamplePartCount`,
+   `SampleBoxSize`); red on stubs (7 of 66 in the three topics), then green.
+2. [x] `SOLKeyboardLayout::LayoutPanel`: legend, hover strip, diagram, Other keys, Unbound (D43).
+3. [x] `SOLGlossary::LayoutSample` wraps at the HUD's size before it shrinks; `SamplePartCount`, `SampleBoxSize`;
+   `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0, `GLOSSARY_SAMPLE_BOX_WIDTH` 200, `GLOSSARY_SAMPLE_BOX_SLACK` 4;
+   `USOLHudSymbolView::SampleBoxSize` / `SetNominalSize`, the post-fit of the drawn lines and their measured bounds;
+   the Help rows size a sample's box at build and on a rebind (D44).
+4. [x] `-SOLSmokeSolidMenu`: `w-help-strip` / `w-help-large-strip` (and in the pause checks), the sample checks in
+   every glossary tab check, a hover shot in every Help run, a `-samples` shot per tab with samples; 259 checks.
+5. [x] Profile passes P16-P21 (three-run medians, SDD 14.5: worst +0.093 ms CPU, +0.100 ms GPU), the review (1
+   must-fix, 3 should-fix, nits, all fixed; the C4 contract updated by the test author), full suite 1718 / 0, all smokes
+   (`-SOLSmokeSolidMenu` 259/259 in 191 s, `-SOLSmokeSolidMenuProfile` 23/23, `-SOLSmokeHoloMenu` 86/86,
+   `-SOLSmokeOverlay` 34/34, `-SOLSmokeHud` 24/24 at 1280x720 and 1920x1080, `-SOLSmokeHoloMenuProfile` 12/12),
+   `GameUserSettings.ini` unchanged; commit `Issue #33: Part 33d-iii - Help hover strip and text samples`; push.
 
 ### 33e: the player guide flag and `Docs/PLAYER_GUIDE.md` (opus/high)
 
@@ -319,3 +339,7 @@ Builds on: D25.
   glossary tab), the first-Esc one-off build cost of the pause Help page, `main-help-overlays` and `pause-help`
   passes in the 4K / one-eye view runs, and the 33c diagram test-page passes and smoke step may be retired. Next: commit 33d-ii,
   then 33e.
+- 2026-11-08: 33d-iii done (SDD 20, 14.5): O15 / O16 answered (D43 the hover strip above the diagram, D44 the wide
+  text-sample boxes at the HUD's size, floor 1.0). Full suite 1718 / 0, all smokes green, the Help passes inside the
+  budget. Note: the 1280x720 `-samples` shots land above the sample row (the scroll offset logged is right; the shot
+  aid only, the 1080 shots and the 720 Overlays end shot show the samples, and the 720 checks pass). Next: 33e.

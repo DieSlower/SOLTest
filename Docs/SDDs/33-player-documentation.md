@@ -69,6 +69,8 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D40 | **Distance darkening (user, 2026-11-08, U2):** the row shows the **bright** `IconPlanet` only; no second brightness, no `IconPlanetFar` (the 33a review note is dropped). |
 | D41 | **Joystick builder radius (2026-11-08, U3 while pending):** the joystick builder takes an optional radius defaulting to the HUD's own size (the HUD unchanged); the glossary size itself is D42. |
 | D42 | **Glossary symbol size and the feature floor (user, 2026-11-08, U3 answered after a mock-up):** symbols are drawn at full HUD size shrunk to fit the box (section 8.3 as written), the joystick included, **but no feature is ever drawn smaller than `SOL::Help::GLOSSARY_MIN_FEATURE_PX` (2 px)**: after scaling, `SOLHudSymbols::Build` (the glossary entry point, and so `Bounds`) clamps dot, ring, arc, ellipse, icon and edge-arrow radii, box and panel sizes and dash / gap lengths up to the floor; line widths, text and cards are unchanged. The per-element builders the HUD calls are never clamped, so the HUD is unchanged. Tested over every glossary symbol. |
+| D43 | **The Keyboard tab's hover strip above the diagram (user, 2026-11-08, O15 answered; built in 33d-iii):** the hover strip moves above the diagram, directly under the area legend (`SOLKeyboardLayout::LayoutPanel` order: legend, hover strip, diagram, Other keys, Unbound), so it is always in view at the top of the tab at 1280x720 and 1920x1080 (the numpad and mouse block lower down may still need a scroll). The strip stays fixed-size (D36) and its cap row stays above its lines. |
+| D44 | **Readable glossary text samples (user, 2026-11-08, O16 answered; built in 33d-iii):** both (1) a text-sample row whose lines would wrap in the 96-unit box gets a wider box (`GLOSSARY_SAMPLE_BOX_WIDTH` 200 units: the symbol column plus the left part of the description column, for that row only; the tab column stays 96), drawn at the HUD's own size (1.5 pixels per unit) without shrinking where it fits; and (2) the smallest text scale rises to `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0 with more wrap points: `SOLGlossary::LayoutSample` now wraps at the HUD's size before it shrinks (more lines, a taller box: `SOLGlossary::SampleBoxSize`), so a wide sample is never below the HUD's size. Short samples (MANUAL / ASSISTED / AUTO) stay in the 96-unit box as before (shrunk only because one word is wider than the box). Row heights adapt; nothing clipped at 1280x720 or 1920x1080 (D37: 4K only in 33f). Reading of "1.0": a scale of 1.0 x pixels per unit, the floor only a single over-wide word reaches; the HUD's size itself is the 1.5 cap. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -262,7 +264,8 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
   (D37), so the diagram stacks (D34) at 43.87 units a key: the main block on top, the clusters and the mouse under it,
   centred. Panel top to bottom (`SOLKeyboardLayout::LayoutPanel`): the area legend (5 x 2 items), the diagram (658 x
   592 units), the Other keys strip and the Unbound line when they have content, the hover strip (the cap row plus 8
-  lines at the defaults, D36): 866 units tall at the defaults, inside the Keyboard tab's vertical scroll. The keys
+  lines at the defaults, D36): 866 units tall at the defaults, inside the Keyboard tab's vertical scroll. **33d-iii
+  (D43):** the hover strip now sits between the legend and the diagram, so it is in view at the tab's top. The keys
   have no LED (D38) and draw their legend over the short label, centred in the key; a legend that does not fit uses
   its D38 abbreviation, then (never at the targets) is clipped (D35); a badge that would overlap the legend hides.
   The modifier mark (D32) is a small caret bottom-right, the lock mark a padlock top-right. The `SInvalidationPanel`
@@ -444,7 +447,8 @@ same headers. One file per topic:
 | `GLOSSARY_SYMBOL_UI_SCALE` | 1.5 (33d-ii, a `static_assert` ties it to 1080 / `HUD_REFERENCE_HEIGHT_PX`) | The HUD's UI scale for a 1080 px canvas, in pixels per menu unit (D5) |
 | `GLOSSARY_SYMBOL_RECESS_PADDING` / `GLOSSARY_VIEW_SIZE` | 4 / 88 units (box less 2 x padding) | Recess padding, and the laid-out side of a symbol view (also the shared material's view size and the size an unarranged view builds at) |
 | `GLOSSARY_SYMBOL_PADDING` / `GLOSSARY_ROW_GAP` | 4 / 12 units | The view's edge to its art area, the gap between glossary rows |
-| `GLOSSARY_SAMPLE_MIN_UI_SCALE` / `GLOSSARY_MAX_SAMPLE_LINES` / `GLOSSARY_SAMPLE_MEASURE_PASSES` | 0.75 / 8 / 3 | A text sample's smallest scale (menu units), the lines a view holds, the layout passes (laid out at unit scale, measured again at the scale found until it holds) |
+| `GLOSSARY_SAMPLE_MIN_UI_SCALE` / `GLOSSARY_MAX_SAMPLE_LINES` / `GLOSSARY_SAMPLE_MEASURE_PASSES` | 1.0 (0.75 until 33d-iii, D44) / 8 / 3 | A text sample's smallest scale (menu units), the lines a view holds, the layout passes (laid out at unit scale, measured again at the scale found until it holds) |
+| `GLOSSARY_SAMPLE_BOX_WIDTH` / `GLOSSARY_SAMPLE_BOX_SLACK` | 200 / 4 | (33d-iii, D44) A long text sample's box width (units); the slack that narrows its units wrap and pads its height so the pixel layout, whose fonts round to whole pixel sizes, still fits |
 | `GLOSSARY_SHAPE_HEADROOM` | 8 shapes | A view's batch is sized lazily at its first build to its symbols' shapes plus this, capped at `GLOSSARY_MAX_SHAPES` |
 | `GLOSSARY_MAX_SYMBOLS_PER_ENTRY` | 6 | Symbol ids one `GLOSSARY_ENTRIES` row may list |
 | `GLOSSARY_MAX_SHAPES` | 128 | One symbol view's batch |
@@ -602,6 +606,26 @@ pages (the batches are sized to their symbols plus `GLOSSARY_SHAPE_HEADROOM`). *
 here; the Help passes join the 4K and one-eye view runs in 33f (`main-help-overlays` and a pause Help pass), and the
 first Esc's one-off build of the pause Help page is unmeasured (33f).
 
+### 14.5 33d-iii amendment: the Help profile after D43 / D44 (2026-11-08)
+
+The same six passes after the hover strip move and the wider text-sample boxes, three default runs of the final code,
+medians in ms, `cpu_slate` / `gpu_ui` (extra against the main Settings baseline, 0.423 / 0.046 at 1080 and 0.444 /
+0.027 at 720, in brackets):
+
+| Pass | Screen | View | `cpu_slate` | `gpu_ui` |
+|---|---|---|---|---|
+| P16 | main-help-keys | 1920x1080 | **0.476** (+0.053) | **0.123** (+0.077) |
+| P17 | main-help-flight | 1920x1080 | **0.513** (+0.090) | **0.146** (+0.100) |
+| P18 | main-help-overlays | 1920x1080 | **0.516** (+0.093) | **0.143** (+0.097) |
+| P19 | main-help-keys | 1280x720 | **0.500** (+0.056) | **0.071** (+0.044) |
+| P20 | main-help-flight | 1280x720 | **0.509** (+0.065) | **0.091** (+0.064) |
+| P21 | main-help-overlays | 1280x720 | **0.505** (+0.061) | **0.087** (+0.060) |
+
+All inside the budget (0.2 ms CPU / 0.3 ms GPU extra) and the same as 33d-ii within noise (the moves change no draw:
+the strip and the views paint as before, a wide sample view is one backing and its text lines). One run logged one
+non-Help pass over its single-run verdict (the known single-run noise, `Docs/TECH_DEBT.md`); the other two passed all
+22. 4K and one-eye stay with 33f.
+
 ## 15. Documentation and in-game text (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 (the Help entry and tab, what the page shows), a pointer from section 1 to
@@ -652,8 +676,9 @@ first Esc's one-off build of the pause Help page is unmeasured (33f).
 
 ## 18. Open questions
 
-**Two layout questions are open with the user (found while building 33d-ii, 2026-11-08; not decided, no code change
-for them yet):**
+**Two layout questions found while building 33d-ii (2026-11-08), both answered by the user the same day and built in
+33d-iii: O15 as D43 (the hover strip above the diagram), O16 as D44 (a wider box and the 1.0 floor with more wrap
+points). Kept for the record:**
 
 - **O15. The Keyboard tab's hover strip below the fold.** The Help page's Keyboard tab holds the diagram and its fixed
   hover strip (D36) under the heading; at 1280x720 and at 1920x1080 the strip sits below the fold of the tab's scroll
@@ -858,7 +883,42 @@ xhigh) found 1 must-fix (these docs) and 6 should-fix and nits, all fixed: S1 th
 (lazy scratch), S3 the paint-allocation claim corrected and moved to `Docs/TECH_DEBT.md` (`MakeCustomVerts` copies the
 vertices on every paint), S4 one flight-mode role source, S5 the diagram start width, S6 the paint origin checked after
 a scroll; nits: `FStringView` measure, `HitTestInvisible` views, renames, line lengths, a smoke helper merged, loop
-comments, pure-header layering, the `w-help-reopen` check. **Open:** the two layout questions O15 (Keyboard tab hover
-strip below the fold) and O16 (long text samples barely readable at 1280x720), section 18. **33f carry-overs:** the draw
+comments, pure-header layering, the `w-help-reopen` check. **Open then:** the two layout questions O15 (Keyboard tab
+hover strip below the fold) and O16 (long text samples barely readable at 1280x720), section 18; answered as D43 and
+D44, built in 33d-iii. **33f carry-overs:** the draw
 count, the first-Esc one-off build cost of the pause Help page (unmeasured), `main-help-overlays` and pause Help passes
 in the 4K / one-eye view runs, and the 33c diagram test-page passes and smoke step may be retired.
+
+**33d-iii (2026-11-08, commit `Issue #33: Part 33d-iii - Help hover strip and text samples`).** The user's answers to
+O15 and O16 (D43, D44). Tests first by a separate opus/high author from a contract (no production code shown):
+`KeyboardLayoutTest` (the new panel order, new `PanelStripOnTop`; `PanelStack`, `PanelDetailLines` re-validated) and
+`GlossaryLayoutTest` (the A-B-C-D sample rule, new `SampleWrapsAtMax`, `SamplePartCount`, `SampleBoxSize`; one 33d-ii
+case that now hits rule B moved there). Red on stubs (7 of 66 in the three topics), then green.
+
+As built:
+- **D43.** `SOLKeyboardLayout::LayoutPanel` stacks legend, hover strip, diagram, Other keys, Unbound (`Height` is the
+  last section's bottom). The strip's top no longer depends on the diagram, so it is in view at the tab's top: at
+  1280x720 it spans y 580-717 in a view of 508-880, at 1920x1080 525-731 in 416-972 (scroll offset 0). The widget,
+  its hit test and paint read the panel, so nothing else changed; the 33c test page follows the same order.
+- **D44.** `SOLGlossary::LayoutSample` takes the first that fits: unwrapped at the HUD's size, wrapped at spaces at the
+  HUD's size, shrunk unwrapped down to the floor, wrapped at the floor. `SOLGlossary::SampleBoxSize` keeps the square
+  box when no part wraps at the HUD's size in it (single words only), else 200 units wide (`GLOSSARY_SAMPLE_BOX_WIDTH`)
+  and as tall as its lines plus `GLOSSARY_SAMPLE_BOX_SLACK` 4, never below 96. `USOLHudSymbolView::SampleBoxSize`
+  measures in the HUD's Medium font at the 1080 and 720 font scales and takes the larger box; the Help rows size a
+  sample's box at build and when a rebind changes its text (`SetNominalSize`, with a pending flag so a resized view is
+  not built for its old box). `BuildSample` fits the lines as drawn (a font rounded wider than the layout's measure
+  shrinks the scale, never below `GLOSSARY_SAMPLE_MIN_UI_SCALE`, now 1.0) and records their measured bounds. Result:
+  Key hints, Autopilot marker, Chase Down line, Overlay profile tag and Route progress line are wide and drawn at the
+  HUD's size (scale 1.0 px at 1280x720, 1.5 at 1920x1080); Flight mode (MANUAL / ASSISTED / AUTO) stays square
+  (0.87 / 1.29 px, as before).
+- **Smoke.** `-SOLSmokeSolidMenu` 259 checks: `w-help-strip` and `w-help-large-strip` (in the pause runs folded into
+  their one check), the sample checks in every glossary tab check (box = SampleBoxSize, scale at or above the floor, a
+  wide one at the HUD's size, measured lines inside the art area), a hover shot in every Help run and a `-samples` shot
+  of each tab's first wide sample; the run logs its time (193 s, watchdog 270).
+
+Verification: see the 33d-iii notes in the plan (suite, all smokes, the profile in section 14.5). The adversarial review
+(fresh opus, xhigh) found 1 must-fix (Chase Down stayed square at 69% of the HUD size: the wide decision now ignores
+rule C's shrink, contract C4 updated by the test author) and 3 should-fix (the box measured at one font scale only, a
+resized view built once for its old box, the post-fit below the floor), all fixed; nits fixed (stale comments, one
+split helper for `SamplePartCount` and `LayoutSample`, a named smoke end stage). Not built: a smoke rebind of a key named
+in a sample (the pending-size path is covered by reasoning only); other resolutions (900p, 1440p, 4K, one-eye) are 33f.

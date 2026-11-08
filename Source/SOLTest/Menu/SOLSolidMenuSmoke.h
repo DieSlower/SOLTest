@@ -214,9 +214,11 @@ private:
     void CheckDiagramRebind(const TCHAR* id, bool bRestored);
 
     // (33d-ii) Runs a Help page step's stages (SDD 33 section 16, contract S1) on the main menu's or the pause menu's
-    // Help page at the current view: opened, its rail (captions, traces), the Keyboard tab, each glossary tab's rows
+    // Help page at the current view: opened, its rail (captions, traces), the Keyboard tab and its hover strip with a
+    // key hovered (33d-iii: every run, shot SolidMenu_help-<menu>-<size>-keys-hover.png), each glossary tab's rows
     // (art per row, the views built and painted, also on the first painted frame after the switch), a screenshot per
-    // tab (SolidMenu_help-<menu>-<size>-<tab>.png); the 1280x720 main run also scrolls Overlays to its end and checks
+    // tab (SolidMenu_help-<menu>-<size>-<tab>.png, and -samples.png with the tab's first text sample scrolled into
+    // view, 33d-iii); the 1280x720 main run also scrolls Overlays to its end and checks
     // the event-driven rebuild (idle frames, strength 0), then closes and reopens Help (no view rebuilt, the views'
     // batch memory logged); returns true once done
     bool TickHelp(USOLMenuSubsystem& menu, bool bPause, bool bLarge);
@@ -233,8 +235,15 @@ private:
     // under it, both inside the shell horizontally; returns whether all hold, with a description
     bool ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell, FString& outDetail);
 
+    // (33d-iii, D43) Reads the Keyboard tab's hover strip with a key hovered: above the diagram, under the legend, at
+    // the tab's top (scroll offset 0) and wholly inside the tab's view (no scrolling to see it), showing the key's cap
+    // row and at least one line; returns whether all hold, with a description
+    bool ReadHelpStrip(USOLReadOnlyPageWidget& page, FString& outDetail);
+
     // (33d-ii) Reads the shown glossary tab: its rows (EntriesOfTab, art per EntryArt), each view built at its pixel
-    // size and painted (in view: also on the first painted frame, mHelpFirstPainted), the boxes GLOSSARY_SYMBOL_BOX,
+    // size and painted (in view: also on the first painted frame, mHelpFirstPainted), the boxes GLOSSARY_SYMBOL_BOX
+    // (a text sample's SampleBoxSize: drawn at >= GLOSSARY_SAMPLE_MIN_UI_SCALE, a wide one at the HUD's scale, its
+    // lines inside the art area, 33d-iii),
     // the texts right of the box and inside the shell, no rows overlapping; bFirstBuild: every view built exactly once
     bool ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell, int32 tab,
         bool bFirstBuild, FString& outDetail);

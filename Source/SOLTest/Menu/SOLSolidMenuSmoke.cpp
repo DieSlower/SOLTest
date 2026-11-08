@@ -238,9 +238,10 @@ namespace
     constexpr double SOLID_SMOKE_SETUP_S = 3.0;                 // The main menu's first frames (and shader loads)
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
-    constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 257;          // 33d-ii: the checks a whole run logs (Finish fails
-                                                                // a run that logged another number: a skipped check)
+    constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;            // A whole run (33d-iii: measured 193 s)
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 259;          // 33d-iii: the checks a whole run logs (Finish
+                                                                // fails a run that logged another number: a skipped
+                                                                // check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
     constexpr double SOLID_SMOKE_PAUSE_S = 0.5;                 // ... this long paused, then Quit to menu
@@ -254,6 +255,7 @@ namespace
     constexpr int32 SOLID_SMOKE_FIRST_OPEN_FRAMES = 4;          // 33d-ii: frames logged after Help's first open
     constexpr int32 SOLID_SMOKE_INDICES_PER_SHAPE = 6;          // 33d-ii: a shape batch's indices per quad
     constexpr float SOLID_SMOKE_RAIL_TOLERANCE = 1.0f;          // 33d-ii: a laid-out rail top against its rule (units)
+    constexpr int32 SOLID_SMOKE_HELP_DONE_STAGE = 99;           // 33d-iii: TickHelp's end (no case: done)
     const TCHAR* const SOLID_SMOKE_HELP_HOVER_KEY = TEXT("O");  // 33d-ii: the Keyboard tab's hovered key for its shot
 
     // 33d-ii: screenshot and check names of the Help tabs, in ESOLHelpTab order
@@ -2496,7 +2498,8 @@ void FSOLSolidMenuSmoke::Finish(USOLMenuSubsystem& menu)
         board->RemoveFromParent();
     }
     // A run that logged another number of checks than a whole run does skipped (or doubled) one: a failure
-    UE_LOG(LogSOL, Log, TEXT("SolidMenu: %d checks run (a whole run: %d)"), mChecksRun, SOLID_SMOKE_EXPECTED_CHECKS);
+    UE_LOG(LogSOL, Log, TEXT("SolidMenu: %d checks run (a whole run: %d) in %.1f s (watchdog %.0f s)"), mChecksRun,
+        SOLID_SMOKE_EXPECTED_CHECKS, mRunTimeS, SOLID_SMOKE_WATCHDOG_S);
     if (mChecksRun != SOLID_SMOKE_EXPECTED_CHECKS)
     {
         Check(TEXT("z-check-count"), false, FString::Printf(TEXT("%d checks run, a whole run logs %d"), mChecksRun,
@@ -5139,11 +5142,11 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
         }
         verdict(bPause ? FString(TEXT("keys")) : FString::Printf(TEXT("%s-keys"), prefix), bKeys, detail);
         TakeUiShot(*FString::Printf(TEXT("%s-keys"), *shot));
-        toStage(bFull ? 5 : 7);
+        toStage(5);
         return false;
     }
     case 5:
-        // (1280x720 main) a key hovered for a shot of its strip
+        // A key hovered: its strip read (D43: in view at the tab's top) and shot
         if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
         {
             return false;
@@ -5159,9 +5162,14 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
         {
             return false;
         }
+    {
+        FString detail;
+        const bool bStrip = page->GetSelectedTab() == 0 && ReadHelpStrip(*page, detail);
+        verdict(bPause ? FString(TEXT("strip")) : FString::Printf(TEXT("%s-strip"), prefix), bStrip, detail);
         TakeUiShot(*FString::Printf(TEXT("%s-keys-hover"), *shot));
         toStage(7);
         return false;
+    }
     case 7:
         // The next glossary tab clicked as the mouse does (after the last shot); its views' first paint read next
         if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
@@ -5203,9 +5211,62 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
         const TCHAR* name = SOLID_SMOKE_HELP_TAB_NAMES[mHelpTab];
         verdict(bPause ? FString(name) : FString::Printf(TEXT("%s-%s"), prefix, name), bTab, detail);
         TakeUiShot(*FString::Printf(TEXT("%s-%s"), *shot, name));
-        toStage(9);
+        toStage(30);
         return false;
     }
+    case 30:
+    {
+        // (33d-iii) A tab with text samples: its first wide sample row (else its first sample row) scrolled into
+        // view for a shot (D44: readable, not clipped); a tab without one goes on
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        UScrollBox* tabScroll = page->GetTabScroll(mHelpTab);
+        const FSOLHelpGlossaryRow* sampleRow = nullptr;
+        for (const FSOLHelpGlossaryRow& row : page->GetGlossaryRows())
+        {
+            if (row.Tab != mHelpTab || SOLGlossary::EntryArt(row.Entry) != ESOLGlossaryArt::Sample)
+            {
+                continue;
+            }
+            const bool bWide = row.Box != nullptr && row.Box->GetWidthOverride() > SOL::Help::GLOSSARY_SYMBOL_BOX;
+            if (sampleRow == nullptr || bWide)
+            {
+                sampleRow = &row;
+            }
+            if (bWide)
+            {
+                break;
+            }
+        }
+        if (tabScroll == nullptr || sampleRow == nullptr || sampleRow->Box == nullptr)
+        {
+            toStage(9);
+            return false;
+        }
+        // Scrolled so the row's box sits centred in the tab's view (from its freshly arranged place)
+        const FGeometry boxGeometry = SolidSmokeArrangedGeometry(sampleRow->Box, tabScroll);
+        const FGeometry& scrollGeometry = tabScroll->GetCachedGeometry();
+        const float boxTop = static_cast<float>(scrollGeometry.AbsoluteToLocal(boxGeometry.GetAbsolutePosition()).Y);
+        const float offset = tabScroll->GetScrollOffset() + boxTop
+            - (static_cast<float>(scrollGeometry.GetLocalSize().Y) - static_cast<float>(boxGeometry.GetLocalSize().Y))
+            * 0.5f;
+        tabScroll->SetScrollOffset(FMath::Clamp(offset, 0.0f, tabScroll->GetScrollOffsetOfEnd()));
+        UE_LOG(LogSOL, Log, TEXT("SolidMenu: Help samples shot of \"%s\": box top %.1f in the view, offset %.1f -> %.1f "
+            "(end %.1f)"), SOLMenuText::GLOSSARY_ENTRIES[sampleRow->Entry].Name, boxTop, tabScroll->GetScrollOffset(),
+            offset, tabScroll->GetScrollOffsetOfEnd());
+        toStage(31);
+        return false;
+    }
+    case 31:
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        TakeUiShot(*FString::Printf(TEXT("%s-%s-samples"), *shot, SOLID_SMOKE_HELP_TAB_NAMES[mHelpTab]));
+        toStage(9);
+        return false;
     case 9:
         if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
         {
@@ -5493,7 +5554,7 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
             "%d view(s) rebuilt, %d/%d Flight HUD views in view painted; batches: %d shapes over %d views, %d "
             "bytes (%d per shape)"), mIsHelpClosed ? 1 : 0, page->GetSelectedTab(), rebuilt, flightPainted,
             flightViews, capacity, views, capacity * shapeBytes, shapeBytes));
-        toStage(21);
+        toStage(SOLID_SMOKE_HELP_DONE_STAGE);
         return false;
     }
     default:
@@ -5676,6 +5737,41 @@ bool FSOLSolidMenuSmoke::ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageW
 }
 
 //////////////////////////////////////////////////////////////////////////
+// (33d-iii, D43) Reads the Keyboard tab's hover strip with a key hovered: under the legend and above the diagram, in
+// the tab's view at scroll offset 0, showing the key
+bool FSOLSolidMenuSmoke::ReadHelpStrip(USOLReadOnlyPageWidget& page, FString& outDetail)
+{
+    const USOLKeyboardDiagram* diagram = page.GetDiagram();
+    const UScrollBox* scroll = page.GetTabScroll(0);
+    if (diagram == nullptr || scroll == nullptr)
+    {
+        outDetail = TEXT("no diagram or tab scroll");
+        return false;
+    }
+    const FSOLDiagramPanel& panel = diagram->GetPanel();
+    const FGeometry diagramGeometry = SolidSmokeArrangedGeometry(diagram, scroll);
+    const FVector2D stripMin = diagramGeometry.LocalToAbsolute(FVector2D(panel.Detail.Min));
+    const FVector2D stripMax = diagramGeometry.LocalToAbsolute(FVector2D(panel.Detail.Max));
+    const FGeometry& scrollGeometry = scroll->GetCachedGeometry();
+    const FVector2D viewMin = scrollGeometry.GetAbsolutePosition();
+    const FVector2D viewMax = viewMin + scrollGeometry.GetAbsoluteSize();
+    const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+    const bool bOrder = panel.Detail.Min.Y >= panel.Legend.Max.Y && panel.Detail.Max.Y <= panel.Diagram.Min.Y;
+    const bool bTop = FMath::IsNearlyZero(scroll->GetScrollOffset(), SOLID_SMOKE_SCROLL_TOLERANCE);
+    const bool bInView = stripMin.X >= viewMin.X - tol && stripMax.X <= viewMax.X + tol
+        && stripMin.Y >= viewMin.Y - tol && stripMax.Y <= viewMax.Y + tol;
+    const bool bShown = diagram->GetHoveredKey() != INDEX_NONE && diagram->GetDetailCapWidth() > 0.0f
+        && diagram->GetDetailRowCount() > 0;
+    outDetail = FString::Printf(TEXT("strip y %.0f-%.0f x %.0f-%.0f in view y %.0f-%.0f x %.0f-%.0f (in view %d), "
+        "panel legend bottom %.1f, strip %.1f-%.1f, diagram top %.1f (order %d), scroll offset %.1f, hovered %d, cap "
+        "row %.1f, %d lines"), stripMin.Y, stripMax.Y, stripMin.X, stripMax.X, viewMin.Y, viewMax.Y, viewMin.X,
+        viewMax.X, bInView ? 1 : 0, panel.Legend.Max.Y, panel.Detail.Min.Y, panel.Detail.Max.Y, panel.Diagram.Min.Y,
+        bOrder ? 1 : 0, scroll->GetScrollOffset(), diagram->GetHoveredKey(), diagram->GetDetailCapWidth(),
+        diagram->GetDetailRowCount());
+    return bOrder && bTop && bInView && bShown;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // (33d-ii) Reads the shown glossary tab's rows: art, views built and painted (also on the first frame), boxes, texts
 // and spacing
 bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell,
@@ -5707,6 +5803,7 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
     int32 firstBlank = 0;
     double lastBottom = -DBL_MAX;
     FString fails;
+    FString samples;                            // Each text sample's box, scale and lines (33d-iii)
     const TArray<FSOLHelpGlossaryRow>& rows = page.GetGlossaryRows();
     for (int32 index = 0; index < rows.Num(); ++index)
     {
@@ -5747,10 +5844,13 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
         const FVector2D descMax = descMin + descGeometry.GetAbsoluteSize();
         const FVector2f boxUnits(boxGeometry.GetLocalSize());
         const bool bArt = art != ESOLGlossaryArt::None;
-        if (!FMath::IsNearlyEqual(boxUnits.X, GLOSSARY_SYMBOL_BOX, SOLID_SMOKE_FIT_TOLERANCE)
-            || (bArt && !FMath::IsNearlyEqual(boxUnits.Y, GLOSSARY_SYMBOL_BOX, SOLID_SMOKE_FIT_TOLERANCE)))
+        const FVector2f wantBox = art == ESOLGlossaryArt::Sample ? USOLHudSymbolView::SampleBoxSize(row.LastSample)
+            : FVector2f(GLOSSARY_SYMBOL_BOX);
+        if (!FMath::IsNearlyEqual(boxUnits.X, wantBox.X, SOLID_SMOKE_FIT_TOLERANCE)
+            || (bArt && !FMath::IsNearlyEqual(boxUnits.Y, wantBox.Y, SOLID_SMOKE_FIT_TOLERANCE)))
         {
-            fail(FString::Printf(TEXT("box %.1fx%.1f units"), boxUnits.X, boxUnits.Y));
+            fail(FString::Printf(TEXT("box %.1fx%.1f units (want %.1fx%.1f)"), boxUnits.X, boxUnits.Y, wantBox.X,
+                wantBox.Y));
         }
         if (nameMin.X < boxMax.X - tol || descMin.X < boxMax.X - tol || boxMin.X < shellMin - tol
             || boxMin.X < viewMin.X - tol || nameMax.X > viewMax.X + tol || descMax.X > viewMax.X + tol
@@ -5801,6 +5901,29 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
                 view->GetBuiltSizePx().Y, sizePx.X, sizePx.Y, view->GetShapeCount(), view->GetTextCount(),
                 view->GetDroppedShapeCount(), fit, view->GetMaterial() == material ? 1 : 0, view->IsSample() ? 1 : 0));
         }
+        if (bSample)
+        {
+            // (33d-iii, D44) A text sample never below its smallest scale, a wide one at the HUD's own scale, its
+            // measured lines inside the art area (nothing clipped)
+            const bool bWide = wantBox.X > GLOSSARY_SYMBOL_BOX + SOLID_SMOKE_FIT_TOLERANCE;
+            const FBox2f lines = view->GetSampleBoundsPx();
+            const FBox2f area = view->GetArtAreaPx();
+            const float pxTol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+            const bool bScale = fit >= GLOSSARY_SAMPLE_MIN_UI_SCALE * scale - SOLID_SMOKE_TOLERANCE
+                && (!bWide || FMath::IsNearlyEqual(fit, GLOSSARY_SYMBOL_UI_SCALE * scale, SOLID_SMOKE_TOLERANCE));
+            const bool bClip = lines.bIsValid && area.bIsValid && lines.Min.X >= area.Min.X - pxTol
+                && lines.Min.Y >= area.Min.Y - pxTol && lines.Max.X <= area.Max.X + pxTol
+                && lines.Max.Y <= area.Max.Y + pxTol;
+            samples += FString::Printf(TEXT(" [%s: box %.0fx%.0f, scale %.3f (HUD %.3f), %d lines]"), name,
+                boxUnits.X, boxUnits.Y, fit, GLOSSARY_SYMBOL_UI_SCALE * scale, view->GetTextCount());
+            if (!bScale || !bClip)
+            {
+                fail(FString::Printf(TEXT("sample scale %.3f (min %.3f, HUD %.3f, wide %d), lines %.1f,%.1f-%.1f,%.1f "
+                    "in art area %.1f,%.1f-%.1f,%.1f px"), fit, GLOSSARY_SAMPLE_MIN_UI_SCALE * scale,
+                    GLOSSARY_SYMBOL_UI_SCALE * scale, bWide ? 1 : 0, lines.Min.X, lines.Min.Y, lines.Max.X,
+                    lines.Max.Y, area.Min.X, area.Min.Y, area.Max.X, area.Max.Y));
+            }
+        }
         if (boxMin.Y >= viewMin.Y - tol && boxMax.Y <= viewMax.Y + tol)
         {
             ++inView;
@@ -5818,9 +5941,9 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
         }
     }
     outDetail = FString::Printf(TEXT("%d rows (EntriesOfTab %d): %d symbols, %d samples, %d without art; %d views in "
-        "view, %d blank on the switch's frame%s"), page.GetGlossaryRowCount(tab), entries.Num(),
+        "view, %d blank on the switch's frame;%s%s"), page.GetGlossaryRowCount(tab), entries.Num(),
         counts[static_cast<int32>(ESOLGlossaryArt::Symbols)], counts[static_cast<int32>(ESOLGlossaryArt::Sample)],
-        counts[static_cast<int32>(ESOLGlossaryArt::None)], inView, firstBlank, *fails);
+        counts[static_cast<int32>(ESOLGlossaryArt::None)], inView, firstBlank, *samples, *fails);
     return bOk && inView > 0;
 }
 

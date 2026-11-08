@@ -31,6 +31,13 @@
 //   FIntPoint ViewPixelSize(const FVector2f& localSize, float layoutScale);
 //   bool ViewNeedsRebuild(const FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, float strength);
 //   void MarkViewBuilt(FSOLGlossaryViewStamp& stamp, const FIntPoint& sizePx, float strength);
+//
+// Part 33d-iii (D44), also test-first against its contract: LayoutSample's new rule order (A unwrapped at maxScale,
+// B wrapped at maxScale, C shrunk unwrapped, D wrapped at the floor) and the text-sample box:
+//
+//   int32 SamplePartCount(FStringView sample);                                  // LayoutSample's step-1 parts
+//   FVector2f SampleBoxSize(FStringView sample, float maxScale, float minScale, float lineHeightAtUnit,
+//       TFunctionRef<float(FStringView)> measureAtUnit);                        // square, or wide when a part wraps
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -127,6 +134,117 @@ namespace
         SOLGlossary::LayoutSample(FStringView(sample), FVector2f(GLOSSARYLAYOUTTEST_AREA, GLOSSARYLAYOUTTEST_AREA),
             GLOSSARYLAYOUTTEST_MAX_SCALE, GLOSSARYLAYOUTTEST_MIN_SCALE, GLOSSARYLAYOUTTEST_LINE_UNITS,
             GlossaryLayoutTestMeasureRef, out);
+    }
+
+    // The text-sample box inputs (D44): the HUD's 1.5 at most, at least 1.0 (GLOSSARY_SYMBOL_UI_SCALE and
+    // GLOSSARY_SAMPLE_MIN_UI_SCALE today); the raised minimum the 84 x 84 layout is also tried with
+    constexpr float GLOSSARYLAYOUTTEST_BOX_MAX_SCALE = 1.5f;
+    constexpr float GLOSSARYLAYOUTTEST_BOX_MIN_SCALE = 1.0f;
+    constexpr float GLOSSARYLAYOUTTEST_RAISED_MIN_SCALE = 1.0f;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Runs LayoutSample with the test measure, line height and an 84 x 84 area at max 1.5 and the given minimum
+    void GlossaryLayoutTestLayoutMin(const TCHAR* sample, const float minScale, FSOLGlossarySampleLayout& out)
+    {
+        SOLGlossary::LayoutSample(FStringView(sample), FVector2f(GLOSSARYLAYOUTTEST_AREA, GLOSSARYLAYOUTTEST_AREA),
+            GLOSSARYLAYOUTTEST_MAX_SCALE, minScale, GLOSSARYLAYOUTTEST_LINE_UNITS, GlossaryLayoutTestMeasureRef, out);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts a laid-out sample's scale, line texts and line positions (the line count first)
+    void GlossaryLayoutTestCheckLines(FAutomationTestBase& test, const FString& what,
+        const FSOLGlossarySampleLayout& out, const float scale, const TConstArrayView<const TCHAR*> texts,
+        const TConstArrayView<FVector2f> positions)
+    {
+        if (!test.TestEqual(what + TEXT(": line count"), out.Lines.Num(), texts.Num()))
+        {
+            return;
+        }
+        test.TestEqual(what + TEXT(": scale"), out.Scale, scale, GLOSSARYLAYOUTTEST_TOLERANCE);
+        for (int32 line = 0; line < texts.Num(); ++line)
+        {
+            test.TestEqual(FString::Printf(TEXT("%s: line %d text"), *what, line), out.Lines[line].Text,
+                FString(texts[line]));
+            if (positions.IsValidIndex(line))
+            {
+                test.TestEqual(FString::Printf(TEXT("%s: line %d x"), *what, line), out.Lines[line].Position.X,
+                    positions[line].X, GLOSSARYLAYOUTTEST_TOLERANCE);
+                test.TestEqual(FString::Printf(TEXT("%s: line %d y"), *what, line), out.Lines[line].Position.Y,
+                    positions[line].Y, GLOSSARYLAYOUTTEST_TOLERANCE);
+            }
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the parts LayoutSample's step 1 makes, restated (independent of production): split on
+    // GLOSSARY_LIST_DELIMITER, each part trimmed, the empty ones dropped
+    int32 GlossaryLayoutTestPartCount(const TCHAR* sample)
+    {
+        const TCHAR delimiter[] = { SOLMenuText::GLOSSARY_LIST_DELIMITER, TEXT('\0') };
+        TArray<FString> parts;
+        FString(sample).ParseIntoArray(parts, delimiter, false);
+        int32 count = 0;
+        for (const FString& part : parts)
+        {
+            count += part.TrimStartAndEnd().IsEmpty() ? 0 : 1;
+        }
+        return count;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the box size the SampleBoxSize contract (C4) gives, restated over LayoutSample and the constants: square
+    // for nothing to draw or when no part wraps at maxScale in the box's inset width, else GLOSSARY_SAMPLE_BOX_WIDTH
+    // wide and as tall as the lines laid out in the wide area (plus the inset and the slack, rounded up, never below
+    // the box)
+    FVector2f GlossaryLayoutTestExpectedBoxSize(const TCHAR* sample, const float maxScale, const float minScale,
+        const float lineHeightAtUnit)
+    {
+        using namespace SOL::Help;
+        const float box = GLOSSARY_SYMBOL_BOX;
+        const float inset = 2.0f * (GLOSSARY_SYMBOL_RECESS_PADDING + GLOSSARY_SYMBOL_PADDING);
+        const int32 parts = GlossaryLayoutTestPartCount(sample);
+        const bool bMaxValid = FMath::IsFinite(maxScale) && maxScale > 0.0f;
+        const bool bLineValid = FMath::IsFinite(lineHeightAtUnit) && lineHeightAtUnit > 0.0f;
+        if (parts == 0 || !bMaxValid || !bLineValid)
+        {
+            return FVector2f(box, box);
+        }
+
+        // Short: the parts wrapped at maxScale (the minimum maxScale, so no shrink) in the square's inset width with
+        // room for every line; no part wrapped keeps the square
+        const float wideHeight = static_cast<float>(GLOSSARY_MAX_SAMPLE_LINES) * lineHeightAtUnit * maxScale;
+        FSOLGlossarySampleLayout layout;
+        SOLGlossary::LayoutSample(FStringView(sample), FVector2f(box - inset, wideHeight), maxScale, maxScale,
+            lineHeightAtUnit, GlossaryLayoutTestMeasureRef, layout);
+        if (layout.Lines.Num() <= parts)
+        {
+            return FVector2f(box, box);
+        }
+
+        // Wide: laid out in the wide box's area (its width less the inset and slack, up to the line cap tall)
+        const float width = GLOSSARY_SAMPLE_BOX_WIDTH;
+        SOLGlossary::LayoutSample(FStringView(sample), FVector2f(width - inset - GLOSSARY_SAMPLE_BOX_SLACK,
+            wideHeight), maxScale, minScale, lineHeightAtUnit, GlossaryLayoutTestMeasureRef, layout);
+        const float height = FMath::CeilToFloat(static_cast<float>(layout.Lines.Num()) * lineHeightAtUnit
+            * layout.Scale + inset + GLOSSARY_SAMPLE_BOX_SLACK);
+        return FVector2f(width, FMath::Max(box, height));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns n space-separated four-letter words ("AAAA BBBB CCCC ..."), two to a line of the wide box at 1.5
+    FString GlossaryLayoutTestWords(const int32 count)
+    {
+        FString text;
+        for (int32 word = 0; word < count; ++word)
+        {
+            if (word > 0)
+            {
+                text.AppendChar(TEXT(' '));
+            }
+            const TCHAR letter = static_cast<TCHAR>(TEXT('A') + word % 26);
+            text.Append(FString::ChrN(4, letter));
+        }
+        return text;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -595,13 +713,15 @@ bool FSOLGlossaryLayoutCentreTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleFitsTest, "SOLTest.Glossary.Layout.SampleFits",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Samples that fit at or above the minimum scale: one line per '|' part, trimmed (inner runs kept), empty parts
-// dropped, shrunk to the widest part and the area height, centred as a block
+// Samples drawn one line per '|' part (trimmed, inner runs kept, empty parts dropped), centred as a block: at maxScale
+// when every part fits there (rule A), else, when wrapping at maxScale does not fit either (rule B), shrunk to the
+// widest part and the area height down to the minimum scale (rule C)
 bool FSOLGlossaryLayoutSampleFitsTest::RunTest(const FString& /*parameters*/)
 {
     FSOLGlossarySampleLayout out;
 
-    // "MANUAL|ASSISTED|AUTO": the widest part (80) sets the scale 84 / 80
+    // "MANUAL|ASSISTED|AUTO": no fit at 1.5 unwrapped, and its single words cannot wrap (B fails), so C: the widest
+    // part (80) sets the scale 84 / 80
     GlossaryLayoutTestLayout(TEXT("MANUAL|ASSISTED|AUTO"), out);
     if (TestEqual(TEXT("flight modes: 3 lines"), out.Lines.Num(), 3))
     {
@@ -629,13 +749,55 @@ bool FSOLGlossaryLayoutSampleFitsTest::RunTest(const FString& /*parameters*/)
         TestEqual(TEXT("\" | AUTO |\": y"), out.Lines[0].Position.Y, 27.0f, GLOSSARYLAYOUTTEST_TOLERANCE);
     }
 
-    // Inner runs of spaces are kept, the ends trimmed: "ROUTE  MOVE" (110) fits at 84 / 110 >= 0.75
-    GlossaryLayoutTestLayout(TEXT("  ROUTE  MOVE  "), out);
+    // Inner runs of spaces are kept, the ends trimmed: "A  B" (40) fits at 1.5 unwrapped (A). ("  ROUTE  MOVE  ", the
+    // 33d-ii case, now wraps at 1.5 under rule B: see SampleWrapsAtMax)
+    GlossaryLayoutTestLayout(TEXT("  A  B  "), out);
     if (TestEqual(TEXT("trimmed: 1 line"), out.Lines.Num(), 1))
     {
-        TestEqual(TEXT("trimmed: inner run kept"), out.Lines[0].Text, FString(TEXT("ROUTE  MOVE")));
-        TestEqual(TEXT("trimmed: scale 84 / 110"), out.Scale, 84.0f / 110.0f, GLOSSARYLAYOUTTEST_TOLERANCE);
-        TestEqual(TEXT("trimmed: x 0"), out.Lines[0].Position.X, 0.0f, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(TEXT("trimmed: inner run kept"), out.Lines[0].Text, FString(TEXT("A  B")));
+        TestEqual(TEXT("trimmed: scale is maxScale"), out.Scale, 1.5f, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(TEXT("trimmed: x"), out.Lines[0].Position.X, (84.0f - 60.0f) * 0.5f, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(TEXT("trimmed: y"), out.Lines[0].Position.Y, (84.0f - 30.0f) * 0.5f, GLOSSARYLAYOUTTEST_TOLERANCE);
+    }
+
+    // Three parts that fit the width at 1.5 but not the height (90 > 84), none to wrap (B fails): C at
+    // min(1.5, 84 / 60, 84 / 50) = 1.4, the block filling the height
+    {
+        const TCHAR* const texts[] = { TEXT("AB CD"), TEXT("EF GH"), TEXT("IJ KL") };
+        const FVector2f positions[] = { FVector2f(7.0f, 0.0f), FVector2f(7.0f, 28.0f), FVector2f(7.0f, 56.0f) };
+        GlossaryLayoutTestLayout(TEXT("AB CD|EF GH|IJ KL"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("three short parts"), out, 1.4f, texts, positions);
+        const float scale = FMath::Min3(GLOSSARYLAYOUTTEST_MAX_SCALE, GLOSSARYLAYOUTTEST_AREA / (3.0f
+            * GLOSSARYLAYOUTTEST_LINE_UNITS), GLOSSARYLAYOUTTEST_AREA / GlossaryLayoutTestMeasure(TEXT("AB CD")));
+        TestEqual(TEXT("three short parts: scale from rule C"), out.Scale, scale, GLOSSARYLAYOUTTEST_TOLERANCE);
+    }
+
+    // B wraps a part but the lines are too tall (3 x 30 > 84), so C keeps the parts whole: min(1.5, 84 / 40, 84 / 70)
+    {
+        const TCHAR* const texts[] = { TEXT("ABC DEF"), TEXT("GHI") };
+        const FVector2f positions[] = { FVector2f(0.0f, 18.0f), FVector2f(24.0f, 42.0f) };
+        GlossaryLayoutTestLayout(TEXT("ABC DEF|GHI"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("wrap too tall"), out, 1.2f, texts, positions);
+    }
+
+    // B needs every line to fit: "ABCDEF" alone is 90 > 84 at 1.5, so C shrinks the part whole (84 / 90)
+    {
+        const TCHAR* const texts[] = { TEXT("ABCDEF GH") };
+        const float scale = 84.0f / 90.0f;
+        const FVector2f positions[] = { FVector2f(0.0f, (84.0f - 20.0f * scale) * 0.5f) };
+        GlossaryLayoutTestLayout(TEXT("ABCDEF GH"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("a word too wide to wrap at max"), out, scale, texts, positions);
+    }
+
+    // A raised minimum of 1.0: C still applies at 1.05 and 1.4 (84 / 60, the single word "PAUSED" not wrappable)
+    GlossaryLayoutTestLayoutMin(TEXT("MANUAL|ASSISTED|AUTO"), GLOSSARYLAYOUTTEST_RAISED_MIN_SCALE, out);
+    TestEqual(TEXT("min 1.0, flight modes: 3 lines"), out.Lines.Num(), 3);
+    TestEqual(TEXT("min 1.0, flight modes: scale"), out.Scale, 1.05f, GLOSSARYLAYOUTTEST_TOLERANCE);
+    {
+        const TCHAR* const texts[] = { TEXT("PAUSED") };
+        const FVector2f positions[] = { FVector2f(0.0f, 28.0f) };
+        GlossaryLayoutTestLayoutMin(TEXT("PAUSED"), GLOSSARYLAYOUTTEST_RAISED_MIN_SCALE, out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("min 1.0, PAUSED"), out, 1.4f, texts, positions);
     }
 
     // Many short parts: the height term sets the scale (84 / (4 x 20) = 1.05)
@@ -664,13 +826,15 @@ bool FSOLGlossaryLayoutSampleFitsTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsTest, "SOLTest.Glossary.Layout.SampleWraps",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Below the minimum scale the sample is drawn at the minimum and each too-wide part wraps greedily at runs of spaces
-// (the run at a break dropped); a single too-wide word stays whole; parts that fit stay one line; no further shrink
+// Rule D: when no layout at maxScale fits (A, B) and shrinking unwrapped would go below the minimum (C), the sample is
+// drawn at the minimum and each too-wide part wraps greedily at runs of spaces (the run at a break dropped); a single
+// too-wide word stays whole; parts that fit stay one line; no further shrink
 bool FSOLGlossaryLayoutSampleWrapsTest::RunTest(const FString& /*parameters*/)
 {
     FSOLGlossarySampleLayout out;
 
-    // "AUTOPILOT > MARS" (160): 0.525 < 0.75, so wrapped at 0.75 (a line holds 112 units)
+    // "AUTOPILOT > MARS" (160): B fails ("AUTOPILOT" alone is 135 > 84 at 1.5), C's 0.525 < 0.75, so wrapped at 0.75
+    // (a line holds 112 units)
     GlossaryLayoutTestLayout(TEXT("AUTOPILOT > MARS"), out);
     if (TestEqual(TEXT("autopilot: 2 lines"), out.Lines.Num(), 2))
     {
@@ -731,6 +895,78 @@ bool FSOLGlossaryLayoutSampleWrapsTest::RunTest(const FString& /*parameters*/)
         TestEqual(TEXT("eight parts: last line"), out.Lines[7].Position.Y, -18.0f + 7.0f * 15.0f,
             GLOSSARYLAYOUTTEST_TOLERANCE);
     }
+
+    // B wraps to lines that each fit but are too tall (3 x 30 > 84) and C's 84 / 140 = 0.6 < 0.75: D at 0.75
+    {
+        const TCHAR* const texts[] = { TEXT("AB CD EF GH"), TEXT("IJ") };
+        const FVector2f positions[] = { FVector2f((84.0f - 82.5f) * 0.5f, 27.0f), FVector2f((84.0f - 15.0f) * 0.5f,
+            42.0f) };
+        GlossaryLayoutTestLayout(TEXT("AB CD EF GH IJ"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("wrap at max too tall"), out, 0.75f, texts, positions);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsAtMaxTest, "SOLTest.Glossary.Layout.SampleWrapsAtMax",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Rule B (D44): when a part does not fit unwrapped at maxScale, wrapping the too-wide parts at maxScale (parts that fit
+// stay one line) is used when every line then fits the width and the lines fit the height, before any shrink
+bool FSOLGlossaryLayoutSampleWrapsAtMaxTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLGlossarySampleLayout out;
+
+    // "ABCD EFGH" (135 > 84 at 1.5): two lines of 60 at 1.5 (33d-ii drew one line at 0.9333)
+    {
+        const TCHAR* const texts[] = { TEXT("ABCD"), TEXT("EFGH") };
+        const FVector2f positions[] = { FVector2f(12.0f, 12.0f), FVector2f(12.0f, 42.0f) };
+        GlossaryLayoutTestLayout(TEXT("ABCD EFGH"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("ABCD EFGH"), out, 1.5f, texts, positions);
+    }
+
+    // The ends trimmed, the run at the break dropped: "ROUTE" (75) and "MOVE" (60) at 1.5
+    {
+        const TCHAR* const texts[] = { TEXT("ROUTE"), TEXT("MOVE") };
+        const FVector2f positions[] = { FVector2f(4.5f, 12.0f), FVector2f(12.0f, 42.0f) };
+        GlossaryLayoutTestLayout(TEXT("  ROUTE  MOVE  "), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("ROUTE  MOVE"), out, 1.5f, texts, positions);
+    }
+
+    // Greedy: "AB CD" (75) still fits a line at 1.5, "EF" starts the next
+    {
+        const TCHAR* const texts[] = { TEXT("AB CD"), TEXT("EF") };
+        const FVector2f positions[] = { FVector2f(4.5f, 12.0f), FVector2f(27.0f, 42.0f) };
+        GlossaryLayoutTestLayout(TEXT("AB CD EF"), out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("AB CD EF"), out, 1.5f, texts, positions);
+    }
+
+    // A part that fits stays one line while another wraps (an 84 x 120 area, so the three lines of 30 fit)
+    {
+        const TCHAR* const texts[] = { TEXT("AB"), TEXT("CDE"), TEXT("FGH") };
+        const FVector2f positions[] = { FVector2f(27.0f, 15.0f), FVector2f(19.5f, 45.0f), FVector2f(19.5f, 75.0f) };
+        SOLGlossary::LayoutSample(FStringView(TEXT("AB|CDE FGH")), FVector2f(GLOSSARYLAYOUTTEST_AREA, 120.0f),
+            GLOSSARYLAYOUTTEST_MAX_SCALE, GLOSSARYLAYOUTTEST_MIN_SCALE, GLOSSARYLAYOUTTEST_LINE_UNITS,
+            GlossaryLayoutTestMeasureRef, out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("AB|CDE FGH"), out, 1.5f, texts, positions);
+    }
+
+    // B comes before C whatever the minimum: a raised minimum of 1.0 gives the same two lines at 1.5
+    {
+        const TCHAR* const texts[] = { TEXT("ABCD"), TEXT("EFGH") };
+        const FVector2f positions[] = { FVector2f(12.0f, 12.0f), FVector2f(12.0f, 42.0f) };
+        GlossaryLayoutTestLayoutMin(TEXT("ABCD EFGH"), GLOSSARYLAYOUTTEST_RAISED_MIN_SCALE, out);
+        GlossaryLayoutTestCheckLines(*this, TEXT("min 1.0, ABCD EFGH"), out, 1.5f, texts, positions);
+    }
+
+    // A line exactly the width still fits (the edge inclusive): in a 90-wide area "ABCDEF" is 90 <= 90 at 1.5
+    {
+        const TCHAR* const texts[] = { TEXT("ABCDEF"), TEXT("GH") };
+        SOLGlossary::LayoutSample(FStringView(TEXT("ABCDEF GH")), FVector2f(90.0f, GLOSSARYLAYOUTTEST_AREA),
+            GLOSSARYLAYOUTTEST_MAX_SCALE, GLOSSARYLAYOUTTEST_MIN_SCALE, GLOSSARYLAYOUTTEST_LINE_UNITS,
+            GlossaryLayoutTestMeasureRef, out);
+        const FVector2f positions[] = { FVector2f(0.0f, 12.0f), FVector2f(30.0f, 42.0f) };
+        GlossaryLayoutTestCheckLines(*this, TEXT("a line exactly the width"), out, 1.5f, texts, positions);
+    }
     return true;
 }
 
@@ -789,8 +1025,8 @@ bool FSOLGlossaryLayoutSampleEdgesTest::RunTest(const FString& /*parameters*/)
             GLOSSARYLAYOUTTEST_TOLERANCE);
     }
 
-    // A bad or too-large minScale reads as maxScale: "MANUAL|ASSISTED|AUTO" (1.05 < 1.5) is drawn at 1.5, its single
-    // words whole on their own lines
+    // A bad or too-large minScale reads as maxScale: "MANUAL|ASSISTED|AUTO" fails A and B, C's 1.05 is under that 1.5
+    // floor, so D draws it at 1.5, its single words whole on their own lines
     const float badMins[] = { 0.0f, -1.0f, GLOSSARYLAYOUTTEST_NAN, GLOSSARYLAYOUTTEST_INF, 2.0f };
     for (const float minScale : badMins)
     {
@@ -805,6 +1041,167 @@ bool FSOLGlossaryLayoutSampleEdgesTest::RunTest(const FString& /*parameters*/)
             TestEqual(FString::Printf(TEXT("minScale %f: ASSISTED overflows to x -18"), minScale),
                 out.Lines[1].Position.X, -18.0f, GLOSSARYLAYOUTTEST_TOLERANCE);
         }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Text-sample box (33d-iii, D44)
+// ---------------------------------------------------------------------------------------------------------------------
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSamplePartCountTest, "SOLTest.Glossary.Layout.SamplePartCount",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// The parts LayoutSample's step 1 makes: split on GLOSSARY_LIST_DELIMITER, trimmed, the empty ones dropped; it agrees
+// with the restated rule and with the line count of a sample whose parts all fit unwrapped
+bool FSOLGlossaryLayoutSamplePartCountTest::RunTest(const FString& /*parameters*/)
+{
+    struct FPartCase
+    {
+        const TCHAR* Sample;
+        int32 Parts;
+    };
+    const FPartCase cases[] = { { TEXT(""), 0 }, { TEXT("|"), 0 }, { TEXT(" | AUTO |"), 1 },
+        { TEXT("MANUAL|ASSISTED|AUTO"), 3 }, { TEXT("A||B"), 2 }, { TEXT("  "), 0 }, { TEXT("||"), 0 },
+        { TEXT(" | |  "), 0 }, { TEXT("AUTOPILOT > MARS"), 1 }, { TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"), 1 },
+        { TEXT("|A|"), 1 }, { TEXT("A|B|C|D|E|F|G|H"), 8 } };
+    for (const FPartCase& partCase : cases)
+    {
+        TestEqual(FString::Printf(TEXT("\"%s\" parts"), partCase.Sample),
+            SOLGlossary::SamplePartCount(FStringView(partCase.Sample)), partCase.Parts);
+        TestEqual(FString::Printf(TEXT("\"%s\" parts as the restated rule"), partCase.Sample),
+            SOLGlossary::SamplePartCount(FStringView(partCase.Sample)), GlossaryLayoutTestPartCount(partCase.Sample));
+    }
+
+    // Parts that all fit at maxScale (rule A) are one line each
+    const TCHAR* const fitting[] = { TEXT(" | AUTO |"), TEXT("A|B"), TEXT("AB||CD") };
+    FSOLGlossarySampleLayout out;
+    for (const TCHAR* sample : fitting)
+    {
+        GlossaryLayoutTestLayout(sample, out);
+        TestEqual(FString::Printf(TEXT("\"%s\": a line per part"), sample), out.Lines.Num(),
+            SOLGlossary::SamplePartCount(FStringView(sample)));
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleBoxSizeTest, "SOLTest.Glossary.Layout.SampleBoxSize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// A text-sample row's box (D44): the square GLOSSARY_SYMBOL_BOX when there is nothing to draw or no part wraps at
+// maxScale in its inset width (whatever shrink would do), else GLOSSARY_SAMPLE_BOX_WIDTH wide and as tall as the lines laid out in the wide area need (the inset
+// and slack added, rounded up, never below the square); the constants it reads
+bool FSOLGlossaryLayoutSampleBoxSizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    const float maxScale = GLOSSARYLAYOUTTEST_BOX_MAX_SCALE;
+    const float minScale = GLOSSARYLAYOUTTEST_BOX_MIN_SCALE;
+    const float lineHeight = GLOSSARYLAYOUTTEST_LINE_UNITS;
+    const float box = GLOSSARY_SYMBOL_BOX;
+    const float inset = 2.0f * (GLOSSARY_SYMBOL_RECESS_PADDING + GLOSSARY_SYMBOL_PADDING);
+
+    // The constants
+    TestEqual(TEXT("GLOSSARY_SAMPLE_MIN_UI_SCALE is 1.0"), GLOSSARY_SAMPLE_MIN_UI_SCALE, 1.0f);
+    TestTrue(TEXT("a wide box is wider than the square"), GLOSSARY_SAMPLE_BOX_WIDTH > GLOSSARY_SYMBOL_BOX);
+    TestTrue(TEXT("the slack is not negative"), GLOSSARY_SAMPLE_BOX_SLACK >= 0.0f);
+    TestEqual(TEXT("the square is 96"), GLOSSARY_SYMBOL_BOX, 96.0f);
+    TestEqual(TEXT("the wide box is 200"), GLOSSARY_SAMPLE_BOX_WIDTH, 200.0f);
+    TestEqual(TEXT("the slack is 4"), GLOSSARY_SAMPLE_BOX_SLACK, 4.0f);
+    TestEqual(TEXT("the inset is 16"), inset, 16.0f);
+    TestEqual(TEXT("at most 8 sample lines"), GLOSSARY_MAX_SAMPLE_LINES, 8);
+    TestEqual(TEXT("the test's scales are the HUD's"), GLOSSARY_SYMBOL_UI_SCALE, maxScale);
+    TestEqual(TEXT("the test's minimum is the sample minimum"), GLOSSARY_SAMPLE_MIN_UI_SCALE, minScale);
+
+    // Asserts a sample's box size against the contract's numbers and the restated rule
+    auto checkBox = [&](const FString& what, const FString& sample, const FVector2f& expected)
+    {
+        const FVector2f size = SOLGlossary::SampleBoxSize(FStringView(sample), maxScale, minScale, lineHeight,
+            GlossaryLayoutTestMeasureRef);
+        const FVector2f restated = GlossaryLayoutTestExpectedBoxSize(*sample, maxScale, minScale, lineHeight);
+        TestEqual(what + TEXT(": width"), size.X, expected.X, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(what + TEXT(": height"), size.Y, expected.Y, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(what + TEXT(": width as the restated rule"), size.X, restated.X, GLOSSARYLAYOUTTEST_TOLERANCE);
+        TestEqual(what + TEXT(": height as the restated rule"), size.Y, restated.Y, GLOSSARYLAYOUTTEST_TOLERANCE);
+    };
+
+    // Square: nothing to draw, or no part wraps at 1.5 in the 80-wide inset (single words stay whole; "AB CD" is 75)
+    checkBox(TEXT("empty"), TEXT(""), FVector2f(box, box));
+    checkBox(TEXT("only a delimiter"), TEXT("|"), FVector2f(box, box));
+    checkBox(TEXT("flight modes"), TEXT("MANUAL|ASSISTED|AUTO"), FVector2f(box, box));
+    checkBox(TEXT("PAUSED"), TEXT("PAUSED"), FVector2f(box, box));
+    checkBox(TEXT("AB CD"), TEXT("AB CD"), FVector2f(box, box));
+
+    // Many short parts overflow the square's height but none wraps: still square
+    checkBox(TEXT("ten short parts"), TEXT("A|B|C|D|E|F|G|H|I|J"), FVector2f(box, box));
+
+    // Multi-word parts that wrap at 1.5 in the 80-wide inset (6 lines) though shrinking unwrapped would fit the
+    // square (C at 1.0): the decision ignores the shrink, so wide; in the wide area A at 1.5, ceil(3 x 30 + 20)
+    checkBox(TEXT("three wrapping parts"), TEXT("AB CD EF|GH IJ KL|MN OP QR"), FVector2f(200.0f, 110.0f));
+
+    // Wide: the short layout wraps; the wide area (180 x 240) lays out B at 1.5 in two lines: max(96, 60 + 20)
+    checkBox(TEXT("autopilot"), TEXT("AUTOPILOT > MARS"), FVector2f(200.0f, 96.0f));
+
+    // Wide, three lines at 1.5 ("leg 2/5  40%" exactly 180 <= 180): ceil(90 + 20)
+    checkBox(TEXT("route"), TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"), FVector2f(200.0f, 110.0f));
+
+    // Wrapped in the square (B, two lines for one part) but one line in the wide area: wide and the square's height
+    checkBox(TEXT("ABCD EFGH"), TEXT("ABCD EFGH"), FVector2f(200.0f, 96.0f));
+
+    // Six parts that each wrap in the square, one line each in the wide area (A at 1.5): ceil(6 x 30 + 20)
+    checkBox(TEXT("six parts"), TEXT("AAAA BBBB|CCCC DDDD|EEEE FFFF|GGGG HHHH|IIII JJJJ|KKKK LLLL"),
+        FVector2f(200.0f, 200.0f));
+
+    // One long part: eight words two to a line at 1.5 (B): ceil(4 x 30 + 20)
+    checkBox(TEXT("eight words"), TEXT("AAAA BBBB CCCC DDDD EEEE FFFF GGGG HHHH"), FVector2f(200.0f, 140.0f));
+
+    // Twelve parts too tall for the wide area at 1.5: C at 240 / 240 = 1.0, the height from that scale
+    FString twelve;
+    for (int32 part = 0; part < 12; ++part)
+    {
+        twelve += part > 0 ? TEXT("|ABCD EFGH") : TEXT("ABCD EFGH");
+    }
+    checkBox(TEXT("twelve parts"), twelve, FVector2f(200.0f, 12.0f * 20.0f * 1.0f + 20.0f));
+
+    // Sixteen parts: C would be 0.75 < 1.0, so D at the floor, the lines overflowing the cap: ceil(16 x 20 + 20)
+    FString sixteen;
+    for (int32 part = 0; part < 16; ++part)
+    {
+        sixteen += part > 0 ? TEXT("|ABCD EFGH") : TEXT("ABCD EFGH");
+    }
+    checkBox(TEXT("sixteen parts"), sixteen, FVector2f(200.0f, 16.0f * 20.0f + 20.0f));
+
+    // Each wide line adds lineHeight x 1.5 = 30 before the ceil: 2k words make k lines (3 to 8), never below 96
+    float previous = 0.0f;
+    for (int32 lines = 3; lines <= GLOSSARY_MAX_SAMPLE_LINES; ++lines)
+    {
+        const FString words = GlossaryLayoutTestWords(2 * lines);
+        const FString what = FString::Printf(TEXT("%d words"), 2 * lines);
+        const float expectedHeight = FMath::CeilToFloat(static_cast<float>(lines) * lineHeight * maxScale + inset
+            + GLOSSARY_SAMPLE_BOX_SLACK);
+        checkBox(what, words, FVector2f(GLOSSARY_SAMPLE_BOX_WIDTH, FMath::Max(box, expectedHeight)));
+        const float height = SOLGlossary::SampleBoxSize(FStringView(words), maxScale, minScale, lineHeight,
+            GlossaryLayoutTestMeasureRef).Y;
+        TestTrue(what + TEXT(": never below the square"), height >= box);
+        if (lines > 3)
+        {
+            TestEqual(what + TEXT(": a line more adds 30"), height - previous, lineHeight * maxScale,
+                GLOSSARYLAYOUTTEST_TOLERANCE);
+        }
+        previous = height;
+    }
+
+    // Bad scales or line heights: the square, also for a sample that would be wide
+    const float badValues[] = { 0.0f, -1.0f, GLOSSARYLAYOUTTEST_NAN, GLOSSARYLAYOUTTEST_INF, -GLOSSARYLAYOUTTEST_INF };
+    for (const float bad : badValues)
+    {
+        const FVector2f badMax = SOLGlossary::SampleBoxSize(FStringView(TEXT("AUTOPILOT > MARS")), bad, minScale,
+            lineHeight, GlossaryLayoutTestMeasureRef);
+        TestTrue(FString::Printf(TEXT("maxScale %f: the square, got (%.2f, %.2f)"), bad, badMax.X, badMax.Y),
+            badMax.Equals(FVector2f(box, box), GLOSSARYLAYOUTTEST_TOLERANCE));
+        const FVector2f badLine = SOLGlossary::SampleBoxSize(FStringView(TEXT("AUTOPILOT > MARS")), maxScale,
+            minScale, bad, GlossaryLayoutTestMeasureRef);
+        TestTrue(FString::Printf(TEXT("line height %f: the square, got (%.2f, %.2f)"), bad, badLine.X, badLine.Y),
+            badLine.Equals(FVector2f(box, box), GLOSSARYLAYOUTTEST_TOLERANCE));
     }
     return true;
 }

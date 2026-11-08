@@ -190,10 +190,20 @@ namespace SOLGlossary
     // in the cell (the cell centre for invalid bounds)
     SOLTEST_API FVector2f SymbolCentre(const FBox2f& boundsAtScale, const FBox2f& cell);
 
-    // Lays a text sample's '|' parts out as lines centred in an area, shrunk to fit down to minScale, then wrapped at
-    // spaces (out reset first, its capacity kept; nothing to draw for no part or an invalid area or scale)
+    // Lays a text sample's '|' parts out as lines centred in an area (D44), the first that fits: unwrapped at
+    // maxScale, wrapped at spaces at maxScale, shrunk unwrapped down to minScale, else wrapped at minScale (out reset
+    // first, its capacity kept; nothing to draw for no part or an invalid area or scale)
     SOLTEST_API void LayoutSample(FStringView sample, const FVector2f& areaPx, float maxScale, float minScale,
         float lineHeightAtUnit, TFunctionRef<float(FStringView)> measureAtUnit, FSOLGlossarySampleLayout& out);
+
+    // Returns the number of '|' parts LayoutSample draws (trimmed, the empty ones dropped)
+    SOLTEST_API int32 SamplePartCount(FStringView sample);
+
+    // Returns a text-sample row's box size in menu units (D44): the square symbol box when no part wraps there at
+    // maxScale (only single words too wide for it), else
+    // GLOSSARY_SAMPLE_BOX_WIDTH wide and as tall as the sample's lines at the scales given need (never below the box)
+    SOLTEST_API FVector2f SampleBoxSize(FStringView sample, float maxScale, float minScale, float lineHeightAtUnit,
+        TFunctionRef<float(FStringView)> measureAtUnit);
 
     // Returns a view's size in pixels (rounded half away from zero); (0, 0) for a non-finite input, a scale <= 0 or a
     // local axis <= 0

@@ -151,9 +151,22 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // (33d-iii) Gives a text-sample row's box and view the size its sample needs (D44): the square symbol box, or the
+    // wide box as tall as its lines at the HUD's size
+    void MenuContentSizeSampleBox(USizeBox& box, USOLHudSymbolView& view, const FString& sample)
+    {
+        using namespace SOL::Help;
+        const FVector2f size = USOLHudSymbolView::SampleBoxSize(sample);
+        box.SetWidthOverride(size.X);
+        box.SetHeightOverride(size.Y);
+        view.SetNominalSize(size - FVector2f(2.0f * GLOSSARY_SYMBOL_RECESS_PADDING));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // (33d-ii) Adds a HUD glossary row to a Help tab and registers it with the page: the symbol box (a recess holding
-    // a symbol view for a row with symbols or a text sample; an empty column for a row without art, rule (c)), then
-    // the name and the wrapping description at the given keys (text is a reused scratch)
+    // a symbol view for a row with symbols or a text sample, a long sample's box wider and taller, D44; an empty
+    // column for a row without art, rule (c)), then the name and the wrapping description at the given keys (text is
+    // a reused scratch)
     void MenuContentAddHelpRow(UWidgetTree& tree, USOLReadOnlyPageWidget& page, UScrollBox& scroll, const int32 tab,
         const int32 entry, const TArray<FString>& keys, FString& text)
     {
@@ -164,7 +177,8 @@ namespace
         row.Entry = entry;
         row.Tab = tab;
 
-        // The symbol column: the box is square with art, a bare column of its width without
+        // The symbol column: the box is square with art (a long text sample's wider and taller, D44), a bare
+        // column of its width without
         UHorizontalBox* line = tree.ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
         row.Box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
         row.Box->SetWidthOverride(GLOSSARY_SYMBOL_BOX);
@@ -184,6 +198,7 @@ namespace
                 SOLGlossary::FormatEntryText(source.Sample, keys, text);
                 row.View->SetSample(text, entry);
                 row.LastSample = text;
+                MenuContentSizeSampleBox(*row.Box, *row.View, text);
             }
             row.Box->SetContent(USOLSolidPanel::MakeRecess(tree, row.View, GLOSSARY_SYMBOL_RECESS_PADDING));
         }
@@ -776,6 +791,10 @@ void SOLMenuContent::RefreshHelpPage(USOLReadOnlyPageWidget& page, const TArray<
             {
                 row.View->SetSample(text, row.Entry);
                 row.LastSample = text;
+                if (row.Box != nullptr)
+                {
+                    MenuContentSizeSampleBox(*row.Box, *row.View, text);
+                }
             }
         }
     }

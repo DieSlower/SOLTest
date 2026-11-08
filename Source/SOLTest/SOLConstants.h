@@ -1656,7 +1656,21 @@ namespace SOL
         // material's view size, and the size a view not laid out yet is built at (so a newly shown tab paints at once)
         inline constexpr float GLOSSARY_VIEW_SIZE = GLOSSARY_SYMBOL_BOX - 2.0f * GLOSSARY_SYMBOL_RECESS_PADDING;
         inline constexpr float GLOSSARY_SYMBOL_PADDING = 4.0f;
-        inline constexpr float GLOSSARY_SAMPLE_MIN_UI_SCALE = 0.75f;
+        // (33d-iii, D44) A text sample's smallest scale, 1.0 x pixels per unit: a sample is wrapped at the HUD's size
+        // (GLOSSARY_SYMBOL_UI_SCALE) first; only a short sample in the square box (single words too wide for it)
+        // shrinks toward this floor, never below it
+        inline constexpr float GLOSSARY_SAMPLE_MIN_UI_SCALE = 1.0f;
+        static_assert(GLOSSARY_SAMPLE_MIN_UI_SCALE > 0.0f && GLOSSARY_SAMPLE_MIN_UI_SCALE <= GLOSSARY_SYMBOL_UI_SCALE,
+            "A sample's smallest scale lies in (0, GLOSSARY_SYMBOL_UI_SCALE]");
+        // (33d-iii, D44) A text sample whose '|' parts would wrap in the symbol box gets a wider box (it reaches into
+        // the description column for its own row), as tall as its lines at the HUD's size need
+        // (SOLGlossary::SampleBoxSize). The slack narrows the units wrap and pads the height so the pixel layout, whose
+        // fonts round to whole pixel sizes, still fits the box
+        inline constexpr float GLOSSARY_SAMPLE_BOX_WIDTH = 200.0f;
+        inline constexpr float GLOSSARY_SAMPLE_BOX_SLACK = 4.0f;
+        static_assert(GLOSSARY_SAMPLE_BOX_WIDTH > GLOSSARY_SYMBOL_BOX, "A wide sample box is wider than a symbol box");
+        // (33d-iii) A view's laid-out size matching its nominal size within this (units) ends a pending resize
+        inline constexpr float GLOSSARY_NOMINAL_SIZE_TOLERANCE = 0.5f;
         inline constexpr int32 GLOSSARY_MAX_SAMPLE_LINES = 8;
         // A sample's layout passes (laid out at unit scale, then measured again at the scale found until it holds)
         inline constexpr int32 GLOSSARY_SAMPLE_MEASURE_PASSES = 3;

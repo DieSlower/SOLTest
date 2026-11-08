@@ -352,15 +352,18 @@ The page is for wide screens (1280x720 and up); there is no narrow variant.
 
 | Tab | What it shows |
 |---|---|
-| Keyboard | The live keyboard and mouse diagram (a key's area colour, "+N" for further actions, lock marks, chord modifier marks, "Other keys" and "Unbound" lines; a fixed strip under it lists what the hovered key does), laid out in a 658-unit content width at first show (`SOL::Help::DIAGRAM_START_LAYOUT_WIDTH`, corrected once laid out), and the line "The Controls page lists every control in full, with all of its keys." Key names follow the live bindings and refresh on a rebind |
-| Flight HUD, Targets and radar, Overlays and route, Menus and map | One row per glossary entry (45 rows in all): a 96-unit symbol recess (`GLOSSARY_SYMBOL_BOX`) drawn with the HUD's own symbol geometry and glow (33 rows a symbol or a grid of several symbols, 6 a text sample such as the route progress line, 6 none), then the entry's name and its description, which names the live keys. The five map rows (orbit lines, route legs, waypoints, the map destination pick, the map grid) and Space dust are description-only, their symbol column empty |
+| Keyboard | The live keyboard and mouse diagram (a key's area colour, "+N" for further actions, lock marks, chord modifier marks, "Other keys" and "Unbound" lines; a fixed strip above it, directly under the area legend, lists what the hovered key does, so it is in view at the tab's top at 1280x720 and 1920x1080 (D43)), laid out in a 658-unit content width at first show (`SOL::Help::DIAGRAM_START_LAYOUT_WIDTH`, corrected once laid out), and the line "The Controls page lists every control in full, with all of its keys." Key names follow the live bindings and refresh on a rebind |
+| Flight HUD, Targets and radar, Overlays and route, Menus and map | One row per glossary entry (45 rows in all): a 96-unit symbol recess (`GLOSSARY_SYMBOL_BOX`) drawn with the HUD's own symbol geometry and glow (33 rows a symbol or a grid of several symbols, 6 a text sample such as the route progress line, 6 none; a long text sample gets a wider box, D44), then the entry's name and its description, which names the live keys. The five map rows (orbit lines, route legs, waypoints, the map destination pick, the map grid) and Space dust are description-only, their symbol column empty |
 
 How a symbol is drawn (starting values, tuned from screenshots): at the HUD's scale for a 1080 px canvas
 (`GLOSSARY_SYMBOL_UI_SCALE` 1.5 pixels per unit, a cap) and shrunk to fit the 88-unit view (`GLOSSARY_VIEW_SIZE`, the
 box less `GLOSSARY_SYMBOL_RECESS_PADDING` 4 on each side); several symbols in one row sit in a near-square grid of equal
-cells with a short last row centred; a text sample is drawn in the HUD font and colour, wrapped, shrunk down to
-`GLOSSARY_SAMPLE_MIN_UI_SCALE` 0.75 (at most `GLOSSARY_MAX_SAMPLE_LINES` 8 lines); the Flight mode words show in their
-HUD colours. Rows are `GLOSSARY_ROW_GAP` 12 apart. The symbols follow the HUD & menu effects strength (the shared glow
+cells with a short last row centred. A text sample is drawn in the HUD font and colour (D44): a sample whose lines
+would wrap at the HUD's size in the 96-unit box gets a box `GLOSSARY_SAMPLE_BOX_WIDTH` 200 units wide (it reaches into
+the description column for its own row) and as tall as its lines need, drawn at the HUD's own size (1.5 pixels per
+unit) and wrapped at spaces rather than shrunk; a short one whose parts are single words (such as MANUAL / ASSISTED /
+AUTO) stays in the 96-unit box, shrunk to fit it; no sample goes below `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0 (at most
+`GLOSSARY_MAX_SAMPLE_LINES` 8 lines); the Flight mode words show in their HUD colours. Rows are `GLOSSARY_ROW_GAP` 12 apart. The symbols follow the HUD & menu effects strength (the shared glow
 material), and are built when first shown, then only when the view's pixel size or the strength changes.
 
 The Info page's HUD paragraph no longer describes the symbols (the radar, the joystick and the rest); it keeps the HUD
@@ -369,7 +372,8 @@ explained in Help, HUD glossary."
 
 Tunables (`SOL::Help` and `SOL::SolidMenu` in `SOLConstants.h`): `GLOSSARY_SYMBOL_BOX` 96, `GLOSSARY_VIEW_SIZE` 88,
 `GLOSSARY_SYMBOL_RECESS_PADDING` 4, `GLOSSARY_SYMBOL_PADDING` 4, `GLOSSARY_SYMBOL_UI_SCALE` 1.5,
-`GLOSSARY_SAMPLE_MIN_UI_SCALE` 0.75, `GLOSSARY_MAX_SAMPLE_LINES` 8, `GLOSSARY_SAMPLE_MEASURE_PASSES` 3,
+`GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0, `GLOSSARY_SAMPLE_BOX_WIDTH` 200, `GLOSSARY_SAMPLE_BOX_SLACK` 4,
+`GLOSSARY_MAX_SAMPLE_LINES` 8, `GLOSSARY_SAMPLE_MEASURE_PASSES` 3,
 `GLOSSARY_ROW_GAP` 12, `GLOSSARY_MAX_SHAPES` 128 (a view's batch, sized to its symbols plus `GLOSSARY_SHAPE_HEADROOM` 8),
 `DIAGRAM_START_LAYOUT_WIDTH` 658, `TAB_RAIL_CAPTION_HEIGHT` 24 / `TAB_RAIL_CAPTION_FONT_SIZE` 15 /
 `TAB_RAIL_CAPTION_LETTER_SPACING` 200. The old narrow symbol box (`GLOSSARY_SYMBOL_BOX_NARROW`) is gone.

@@ -23,7 +23,9 @@
 // The 33c revision (contract section E, D34-D36), also test-first: the Stacked arrangement under a width threshold
 // (FitToWidth's new rule, the clusters and the mouse under the main block), the hover strip sized for a line count
 // (LayoutPanel's detailLines, DIAGRAM_DETAIL_CAP_HEIGHT) and the key text fit (FitKeyText: clipped legends, the "+N"
-// badge hidden when it would overlap).
+// badge hidden when it would overlap). Part 33d-iii (D43), also test-first: the hover strip moves above the diagram, so
+// the panel stacks the legend, hover strip, diagram, "Other keys" and "Unbound" and the strip's top no longer depends
+// on the diagram, the strips or the line count.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -240,8 +242,21 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the panel the LayoutPanel contract gives, restated so the tests stay independent: the sections stacked
-    // top to bottom from y 0 with a section gap under each shown one, a hidden one a zero-height box adding no gap
+    // Returns the hover strip's top the LayoutPanel contract (D43) gives a width: a section gap under the legend, so it
+    // depends on nothing but the legend's rows
+    float KeyboardLayoutTestDetailTop(const float widthPx)
+    {
+        using namespace SOL::Help;
+        const float width = FMath::IsFinite(widthPx) && widthPx > 0.0f ? widthPx : 0.0f;
+        const int32 rows = FMath::DivideAndRoundUp(AREA_COUNT, KeyboardLayoutTestLegendColumns(width));
+        return static_cast<float>(rows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT)
+            + static_cast<float>(DIAGRAM_SECTION_GAP);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the panel the LayoutPanel contract (D43) gives, restated so the tests stay independent: the legend, the
+    // hover strip, the diagram, "Other keys" and "Unbound" stacked top to bottom from y 0 with a section gap under each
+    // shown one, a hidden one a zero-height box adding no gap; the height the last section's bottom
     FSOLDiagramPanel KeyboardLayoutTestExpectedPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound,
         const int32 detailLines)
     {
@@ -257,8 +272,14 @@ namespace
         panel.Legend = FBox2f(FVector2f::ZeroVector, FVector2f(width,
             static_cast<float>(panel.LegendRows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT)));
 
-        // The diagram at its scaled extent; the scale's origin its top-left
-        const float diagramTop = panel.Legend.Max.Y + sectionGap;
+        // The hover strip, always shown, a gap under the legend: the cap row and the clamped line count
+        const float detailTop = panel.Legend.Max.Y + sectionGap;
+        panel.DetailLines = KeyboardLayoutTestDetailLines(detailLines);
+        panel.Detail = FBox2f(FVector2f(0.0f, detailTop), FVector2f(width, detailTop
+            + KeyboardLayoutTestDetailHeight(detailLines)));
+
+        // The diagram a gap under the hover strip at its scaled extent; the scale's origin its top-left
+        const float diagramTop = panel.Detail.Max.Y + sectionGap;
         const FVector2f extent = SOLKeyboardLayout::Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
         panel.Diagram = FBox2f(FVector2f(0.0f, diagramTop), FVector2f(extent.X, diagramTop + extent.Y));
         panel.Scale.OriginPx = panel.Diagram.Min;
@@ -272,14 +293,7 @@ namespace
         const float unboundTop = bUnbound ? bottom + sectionGap : bottom;
         panel.Unbound = FBox2f(FVector2f(0.0f, unboundTop), FVector2f(width,
             unboundTop + (bUnbound ? static_cast<float>(DIAGRAM_UNBOUND_HEIGHT) : 0.0f)));
-        bottom = panel.Unbound.Max.Y;
-
-        // The hover strip, always shown: the cap row and the clamped line count
-        const float detailTop = bottom + sectionGap;
-        panel.DetailLines = KeyboardLayoutTestDetailLines(detailLines);
-        panel.Detail = FBox2f(FVector2f(0.0f, detailTop), FVector2f(width, detailTop
-            + KeyboardLayoutTestDetailHeight(detailLines)));
-        panel.Height = panel.Detail.Max.Y;
+        panel.Height = panel.Unbound.Max.Y;
         return panel;
     }
 
@@ -343,7 +357,7 @@ namespace
         }
         KeyboardLayoutTestCheckBox(test, what + TEXT(": detail"), actual.Detail, expected.Detail);
         test.TestEqual(what + TEXT(": detail lines"), actual.DetailLines, expected.DetailLines);
-        test.TestEqual(what + TEXT(": height is the detail's bottom"), actual.Height, actual.Detail.Max.Y,
+        test.TestEqual(what + TEXT(": height is the last section's bottom"), actual.Height, actual.Unbound.Max.Y,
             KEYBOARDLAYOUTTEST_PX_TOLERANCE);
         test.TestEqual(what + TEXT(": height"), actual.Height, expected.Height, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
     }
@@ -903,9 +917,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelStackTest, "SOLTest.Keyb
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// LayoutPanel stacks the legend, the diagram, "Other keys" and "Unbound" (when shown) and the hover strip in a width,
+// LayoutPanel stacks the legend, the hover strip, the diagram, "Other keys" and "Unbound" (when shown) in a width (D43),
 // a section gap under each shown one; a hidden section is flat and adds no gap; the scale is FitToWidth's with the
-// origin at the diagram, which is its scaled extent; the hover strip is its cap row and the line count tall (E.3)
+// origin at the diagram, which is its scaled extent; the hover strip is its cap row and the line count tall (E.3); the
+// height is the last section's bottom
 bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Help;
@@ -934,7 +949,9 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
             TestEqual(what + TEXT(": legend height"), panel.Legend.Max.Y - panel.Legend.Min.Y,
                 static_cast<float>(panel.LegendRows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT),
                 KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": a gap above the diagram"), panel.Diagram.Min.Y - panel.Legend.Max.Y,
+            TestEqual(what + TEXT(": a gap above the hover strip"), panel.Detail.Min.Y - panel.Legend.Max.Y,
+                static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            TestEqual(what + TEXT(": a gap above the diagram"), panel.Diagram.Min.Y - panel.Detail.Max.Y,
                 static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             const FVector2f size = SOLKeyboardLayout::Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
             TestEqual(what + TEXT(": diagram width is the scaled extent"),
@@ -942,10 +959,15 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
             TestEqual(what + TEXT(": diagram height is the scaled extent"),
                 panel.Diagram.Max.Y - panel.Diagram.Min.Y, size.Y, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             TestEqual(what + TEXT(": diagram at x 0"), panel.Diagram.Min.X, 0.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            const float stripsBottom = bUnbound ? panel.Unbound.Max.Y
+            const float lastBottom = bUnbound ? panel.Unbound.Max.Y
                 : (bOtherKeys ? panel.Other.Max.Y : panel.Diagram.Max.Y);
-            TestEqual(what + TEXT(": a gap above the hover strip"), panel.Detail.Min.Y - stripsBottom,
-                static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            TestEqual(what + TEXT(": height is the last shown section's bottom"), panel.Height, lastBottom,
+                KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            if (bOtherKeys)
+            {
+                TestEqual(what + TEXT(": a gap above other keys"), panel.Other.Min.Y - panel.Diagram.Max.Y,
+                    static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            }
             TestEqual(what + TEXT(": hover strip height"), panel.Detail.Max.Y - panel.Detail.Min.Y,
                 static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT) + static_cast<float>(detailLines)
                 * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
@@ -983,6 +1005,15 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
         TestEqual(FString::Printf(TEXT("width %.0f: a second hover line adds a line height"), width),
             SOLKeyboardLayout::LayoutPanel(width, false, false, 2).Height - plain,
             static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+
+        // A second hover line moves the diagram down by a line height; the strip's top stays (D43)
+        const FSOLDiagramPanel oneLine = SOLKeyboardLayout::LayoutPanel(width, false, false, 1);
+        const FSOLDiagramPanel twoLines = SOLKeyboardLayout::LayoutPanel(width, false, false, 2);
+        TestEqual(FString::Printf(TEXT("width %.0f: a second hover line moves the diagram down"), width),
+            twoLines.Diagram.Min.Y - oneLine.Diagram.Min.Y, static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT),
+            KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("width %.0f: a second hover line keeps the strip's top"), width),
+            twoLines.Detail.Min.Y, oneLine.Detail.Min.Y, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
     }
     return true;
 }
@@ -1251,8 +1282,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelDetailLinesTest, "SOLTes
 
 //////////////////////////////////////////////////////////////////////////
 // The hover strip (E.3) is DIAGRAM_DETAIL_CAP_HEIGHT plus clamp(detailLines, 1, DIAGRAM_DETAIL_LINES) lines tall and
-// DetailLines is that clamped count: 0 and negative counts give one line, counts over the cap the cap; nothing above
-// the strip moves
+// DetailLines is that clamped count: 0 and negative counts give one line, counts over the cap the cap; the strip's top
+// stays and everything under it (the diagram and the strips) moves down by the extra lines (D43)
 bool FSOLKeyboardLayoutPanelDetailLinesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Help;
@@ -1271,15 +1302,82 @@ bool FSOLKeyboardLayoutPanelDetailLinesTest::RunTest(const FString& /*parameters
             TestEqual(what + TEXT(": strip height"), panel.Detail.Max.Y - panel.Detail.Min.Y,
                 static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT) + static_cast<float>(clamped)
                 * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": height is the strip's bottom"), panel.Height, panel.Detail.Max.Y,
+            TestEqual(what + TEXT(": height is the unbound strip's bottom"), panel.Height, panel.Unbound.Max.Y,
                 KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             KeyboardLayoutTestCheckPanel(*this, what, panel, KeyboardLayoutTestExpectedPanel(width, true, true, count),
                 true, true);
 
-            // The sections above the strip do not depend on the line count
+            // The strip's top and the legend do not depend on the line count; the diagram, both strips and the height
+            // move down by the extra lines
+            const float shift = static_cast<float>(clamped - 1) * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT);
+            const FVector2f down(0.0f, shift);
             TestEqual(what + TEXT(": strip top as with one line"), panel.Detail.Min.Y, one.Detail.Min.Y,
                 KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            KeyboardLayoutTestCheckBox(*this, what + TEXT(": diagram as with one line"), panel.Diagram, one.Diagram);
+            KeyboardLayoutTestCheckBox(*this, what + TEXT(": legend as with one line"), panel.Legend, one.Legend);
+            KeyboardLayoutTestCheckBox(*this, what + TEXT(": diagram moved by the extra lines"), panel.Diagram,
+                FBox2f(one.Diagram.Min + down, one.Diagram.Max + down));
+            KeyboardLayoutTestCheckBox(*this, what + TEXT(": other keys moved by the extra lines"), panel.Other,
+                FBox2f(one.Other.Min + down, one.Other.Max + down));
+            KeyboardLayoutTestCheckBox(*this, what + TEXT(": unbound moved by the extra lines"), panel.Unbound,
+                FBox2f(one.Unbound.Min + down, one.Unbound.Max + down));
+            TestEqual(what + TEXT(": height grows by the extra lines"), panel.Height, one.Height + shift,
+                KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelStripOnTopTest, "SOLTest.KeyboardLayout.PanelStripOnTop",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The hover strip sits above the diagram (D43): for a width its top is a section gap under the legend whatever the
+// "Other keys" / "Unbound" flags and the line count, it never overlaps the legend or the diagram, and the diagram
+// starts a section gap under its bottom
+bool FSOLKeyboardLayoutPanelStripOnTopTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    const float sectionGap = static_cast<float>(DIAGRAM_SECTION_GAP);
+    const bool flags[] = { false, true };
+    const int32 counts[] = { 0, 1, 2, DIAGRAM_DETAIL_LINES, DIAGRAM_DETAIL_LINES + 5 };
+    TArray<float> widths(KEYBOARDLAYOUTTEST_PANEL_WIDTHS,
+        static_cast<int32>(UE_ARRAY_COUNT(KEYBOARDLAYOUTTEST_PANEL_WIDTHS)));
+    widths.Add(KEYBOARDLAYOUTTEST_SHELL_WIDE);
+    widths.Add(KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH);
+    for (const float width : widths)
+    {
+        const float expectedTop = KeyboardLayoutTestDetailTop(width);
+        const float referenceTop = SOLKeyboardLayout::LayoutPanel(width, false, false, 1).Detail.Min.Y;
+        TestEqual(FString::Printf(TEXT("width %.0f: strip top a gap under the legend"), width), referenceTop,
+            expectedTop, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+
+        // Every flag and line count combination: the same top, clear of the legend and the diagram
+        for (const bool bOtherKeys : flags)
+        {
+            for (const bool bUnbound : flags)
+            {
+                for (const int32 count : counts)
+                {
+                    const FString what = FString::Printf(TEXT("width %.0f other %d unbound %d lines %d"), width,
+                        bOtherKeys ? 1 : 0, bUnbound ? 1 : 0, count);
+                    const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound, count);
+                    TestEqual(what + TEXT(": strip top unchanged"), panel.Detail.Min.Y, referenceTop,
+                        KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                    TestEqual(what + TEXT(": strip top a gap under the legend"), panel.Detail.Min.Y,
+                        panel.Legend.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                    TestEqual(what + TEXT(": diagram a gap under the strip"), panel.Diagram.Min.Y,
+                        panel.Detail.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                    TestTrue(what + TEXT(": strip under the legend"), panel.Detail.Min.Y >= panel.Legend.Max.Y
+                        - KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                    TestTrue(what + TEXT(": strip above the diagram"), panel.Detail.Max.Y <= panel.Diagram.Min.Y
+                        + KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                    TestFalse(what + TEXT(": strip clear of the legend"),
+                        KeyboardLayoutTestOverlap(panel.Detail, panel.Legend));
+                    TestFalse(what + TEXT(": strip clear of the diagram"),
+                        KeyboardLayoutTestOverlap(panel.Detail, panel.Diagram));
+                }
+            }
         }
     }
     return true;

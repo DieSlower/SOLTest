@@ -52,8 +52,8 @@ struct FSOLDiagramScale
 };
 
 // The Keyboard tab's sections stacked in a width (33c, SOLKeyboardLayout::LayoutPanel), in menu units from the panel's
-// top-left: the area legend, the diagram (keyboard and mouse), the "Other keys" strip, the "Unbound" line and the hover
-// detail strip
+// top-left: the area legend, the hover detail strip (33d-iii, D43: above the diagram, so it is in view at the tab's
+// top), the diagram (keyboard and mouse), the "Other keys" strip and the "Unbound" line
 struct FSOLDiagramPanel
 {
     FSOLDiagramScale Scale;                             // FitToWidth(width) with OriginPx = Diagram.Min
@@ -68,7 +68,7 @@ struct FSOLDiagramPanel
     FBox2f Detail = FBox2f(ForceInit);                  // The hover strip, DIAGRAM_DETAIL_CAP_HEIGHT + DetailLines *
                                                         // DIAGRAM_DETAIL_LINE_HEIGHT tall
     int32 DetailLines = 1;                              // clamp(detailLines, 1, DIAGRAM_DETAIL_LINES)
-    float Height = 0.0f;                                // Detail.Max.Y
+    float Height = 0.0f;                                // Unbound.Max.Y (the last section's bottom)
 };
 
 // D35: how a key cap's top line fits (SOLKeyboardLayout::FitKeyText), in menu units
@@ -127,11 +127,11 @@ namespace SOLKeyboardLayout
     // Converts diagram key units to a widget point: OriginPx + units x UnitPx
     SOLTEST_API FVector2f FromUnits(const FVector2f& units, const FSOLDiagramScale& scale);
 
-    // Stacks the Keyboard tab's sections in a width, top to bottom: Legend, Diagram, Other (if bOtherKeys), Unbound
-    // (if bUnbound), Detail, each DIAGRAM_SECTION_GAP under the previous shown one; a hidden section is a zero-height
-    // box at the previous section's bottom and adds no gap. Every box starts at x 0; Legend, Other, Unbound and Detail
-    // are the full width, the Diagram its scaled extent. A width that is not a positive finite number lays out at width
-    // 0 with the default FitToWidth scale (OriginPx moved to Diagram.Min). The Detail box (D36) is
+    // Stacks the Keyboard tab's sections in a width, top to bottom: Legend, Detail (D43), Diagram, Other (if
+    // bOtherKeys), Unbound (if bUnbound), each DIAGRAM_SECTION_GAP under the previous shown one; a hidden section is a
+    // zero-height box at the previous section's bottom and adds no gap. Every box starts at x 0; Legend, Other, Unbound
+    // and Detail are the full width, the Diagram its scaled extent. A width that is not a positive finite number lays
+    // out at width 0 with the default FitToWidth scale (OriginPx moved to Diagram.Min). The Detail box (D36) is
     // DIAGRAM_DETAIL_CAP_HEIGHT + clamp(detailLines, 1, DIAGRAM_DETAIL_LINES) * DIAGRAM_DETAIL_LINE_HEIGHT tall and
     // DetailLines that clamped count
     SOLTEST_API FSOLDiagramPanel LayoutPanel(float widthPx, bool bOtherKeys, bool bUnbound, int32 detailLines);

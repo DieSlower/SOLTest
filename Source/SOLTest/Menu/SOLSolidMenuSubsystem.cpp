@@ -248,8 +248,8 @@ void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpi
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes the cached strength and the glossary views' pixel size (every view is the symbol box less its recess
-// padding, at the DPI scale) into the shared HUD shape material
+// Writes the cached strength and the glossary views' pixel size (every symbol view is the symbol box less its recess
+// padding, at the DPI scale; a wider text-sample view, 33d-iii, draws no shapes) into the shared HUD shape material
 void USOLSolidMenuSubsystem::WriteHudShapeParams()
 {
     using namespace SOL::Help;

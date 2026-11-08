@@ -33,7 +33,7 @@ struct FSOLHudSymbolScratch
  * SSOLHudShapeLayer in retain mode drawn with the one shared M_SOLHudShape material of USOLSolidMenuSubsystem. It shows
  * either a row's HUD symbols (several share a near-square grid of equal cells, each shrunk to fit its cell, never
  * enlarged; SOLGlossary::CellRect / SymbolFitScale) or its text sample (the '|' parts as glow-text lines in the HUD's
- * Medium font, centred and shrunk to fit; SOLGlossary::LayoutSample), over one dark HUD panel backing filling the view.
+ * Medium font, centred, wrapped at the HUD's size before it shrinks; SOLGlossary::LayoutSample), over one dark HUD panel backing filling the view.
  * Symbols are at the HUD's scale for a 1080 px canvas in menu units (D5: GLOSSARY_SYMBOL_UI_SCALE x pixels per unit).
  * The batch is built by UpdateBatch (the page calls it from its tick for the shown tab) only when the view is first
  * laid out and again when its pixel size or the effects strength changed (SOLGlossary::ViewNeedsRebuild), never per
@@ -62,9 +62,19 @@ public:
     // SOLGlossary::SampleLineRole); a change forces the next rebuild
     void SetSample(const FString& sample, int32 entryIndex = INDEX_NONE);
 
+    // (33d-iii) Returns a text sample's row box size in menu units (D44, SOLGlossary::SampleBoxSize): measured in the
+    // HUD's Medium font as the layer draws it, the larger of the 1080 and 720 font scales; the square symbol box when
+    // Slate is not up
+    static FVector2f SampleBoxSize(const FString& sample);
+
+    // (33d-iii) Sets the view's size in units before its first layout (its box less the recess padding), the size a
+    // newly shown tab builds it at, and after a resize until the layout catches up; GLOSSARY_VIEW_SIZE square by
+    // default
+    void SetNominalSize(const FVector2f& sizeUnits);
+
     // Rebuilds the batch through the scratch when the view's pixel size or the strength changed since the last build
     // (or it was never built); returns whether it rebuilt. The pixel size is the view's laid-out size in units (before
-    // its first layout: GLOSSARY_VIEW_SIZE) at layoutScale, the owning page's current layout scale (0: the view's own
+    // its first layout: the nominal size) at layoutScale, the owning page's current layout scale (0: the view's own
     // last one). The page ticks within its own paint, before its views are arranged in that frame, so their cached
     // geometry is a frame old (zero on a newly shown tab, the old scale after a resize, never updated while a row is
     // scrolled out of view): built at the page's scale, every row of a newly shown tab paints on its first frame
@@ -102,6 +112,10 @@ public:
 
     // Returns the art area of the last build in the view's pixels (the view inset by GLOSSARY_SYMBOL_PADDING)
     FBox2f GetArtAreaPx() const { return mArtArea; }
+
+    // Returns the bounds of the last build's sample lines in the view's pixels, as measured for the layout (an invalid
+    // box for symbols or no line; verification: inside the art area, nothing clipped)
+    FBox2f GetSampleBoundsPx() const { return mSampleBounds; }
 
     // Returns the smallest symbol scale of the last build, or the sample's scale (0 before a build or with nothing
     // drawn)
@@ -150,6 +164,9 @@ private:
     FSOLGlossarySampleLayout mSampleLayout;         // The last build's lines (capacity kept)
     TArray<FText> mSampleTexts;                     // The lines' texts, made at build, never in paint
     FBox2f mArtArea = FBox2f(ForceInit);
+    FBox2f mSampleBounds = FBox2f(ForceInit);       // The last build's sample lines as measured (view pixels)
+    FVector2f mNominalSize = FVector2f(SOL::Help::GLOSSARY_VIEW_SIZE);  // Units, the size before the first layout
+    bool mIsNominalPending = false;                 // A new nominal size the layout has not caught up with yet
     int32 mBuildCount = 0;
     int32 mShapeCount = 0;
     int32 mDroppedCount = 0;

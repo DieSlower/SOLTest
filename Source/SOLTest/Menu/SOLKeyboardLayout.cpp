@@ -410,8 +410,8 @@ FVector2f SOLKeyboardLayout::FromUnits(const FVector2f& units, const FSOLDiagram
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Stacks the Keyboard tab's sections in a width: legend, diagram, other keys, unbound, detail (its cap row and
-// detailLines lines, D36)
+// Stacks the Keyboard tab's sections in a width: legend, detail (its cap row and detailLines lines, D36; above the
+// diagram, D43), diagram, other keys, unbound
 FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound,
     const int32 detailLines)
 {
@@ -440,15 +440,15 @@ FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool 
         bottom = top + height;
         return FBox2f(FVector2f(0.0f, top), FVector2f(sectionWidth, bottom));
     };
+    panel.DetailLines = FMath::Clamp(detailLines, 1, DIAGRAM_DETAIL_LINES);
+    panel.Detail = stack(true, width, DIAGRAM_DETAIL_CAP_HEIGHT + static_cast<float>(panel.DetailLines)
+        * DIAGRAM_DETAIL_LINE_HEIGHT);
     const FVector2f diagramSize = Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
     panel.Diagram = stack(true, diagramSize.X, diagramSize.Y);
     panel.Scale.OriginPx = panel.Diagram.Min;
     panel.Other = stack(bOtherKeys, width, DIAGRAM_STRIP_HEIGHT);
     panel.Unbound = stack(bUnbound, width, DIAGRAM_UNBOUND_HEIGHT);
-    panel.DetailLines = FMath::Clamp(detailLines, 1, DIAGRAM_DETAIL_LINES);
-    panel.Detail = stack(true, width, DIAGRAM_DETAIL_CAP_HEIGHT + static_cast<float>(panel.DetailLines)
-        * DIAGRAM_DETAIL_LINE_HEIGHT);
-    panel.Height = panel.Detail.Max.Y;
+    panel.Height = panel.Unbound.Max.Y;
     return panel;
 }
 
