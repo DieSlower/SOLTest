@@ -1488,14 +1488,53 @@ namespace SOL
             && KEYCAP_MOUSE_GLYPH_HEIGHT < KEYCAP_HEIGHT && KEYCAP_MOUSE_GLYPH_WIDTH + 2.0f * KEYCAP_PADDING
             <= KEYCAP_MIN_WIDTH, "the mouse glyph's parts nest and the glyph fits the smallest cap");
 
-        // Keyboard diagram (section 7; D30: settled by the 33c smoke)
+        // Keyboard diagram (section 7; D30, D34-D38: settled by the 33c smoke at 1280x720 and 1920x1080)
         inline constexpr float DIAGRAM_MIN_UNIT = 20.0f;          // Key unit clamp
         inline constexpr float DIAGRAM_MAX_UNIT = 46.0f;
-        inline constexpr float DIAGRAM_MOUSE_BELOW_UNIT = 24.0f;  // Below this key unit the mouse sits under the keys
+        inline constexpr float DIAGRAM_MOUSE_BELOW_UNIT = 30.0f;  // Below this one-row key unit the mouse sits under
+                                                                  // the keys (D34)
+        inline constexpr float DIAGRAM_STACK_UNIT = 30.0f;        // D34: a below-mouse unit under this stacks the
+                                                                  // clusters and the mouse under the main block
         inline constexpr float DIAGRAM_TINT_ALPHA = 0.28f;        // Area-colour fill over an assigned key's face
         inline constexpr float DIAGRAM_FREE_ALPHA = 0.45f;        // A key with no assignment is drawn at this alpha
-        inline constexpr int32 DIAGRAM_DETAIL_LINES = 6;          // Detail strip height in lines
-        inline constexpr int32 SHORT_LABEL_MAX_CHARS = 8;         // KEY_SHORT_LABELS / FIXED_KEY_SHORT_LABELS length
+        // D36: the cap on the hover strip's lines (the strip is sized once per width and model for the busiest key's
+        // wrapped rows, at most this many), and the height of its cap row above the lines
+        inline constexpr int32 DIAGRAM_DETAIL_LINES = 24;
+        inline constexpr float DIAGRAM_DETAIL_CAP_HEIGHT = 30.0f;
+        inline constexpr float DIAGRAM_BADGE_GAP = 2.0f;          // D35: a key's legend to its "+N" badge
+        inline constexpr int32 DIAGRAM_ABBREVIATION_MAX_CHARS = 4; // D38: a diagram legend abbreviation's length cap
+        inline constexpr float DIAGRAM_NO_LED_X = -1.0f;          // D38: the keys' hull LedX (< 0: no LED)
+        // The Keyboard tab's panel (33c, SOLKeyboardLayout::LayoutPanel): the area legend grid, the gap between its
+        // sections, the "Other keys" strip, the "Unbound" line and one hover strip line
+        inline constexpr float DIAGRAM_LEGEND_ITEM_WIDTH = 104.0f; // One legend item (swatch and area name)
+        inline constexpr float DIAGRAM_LEGEND_GAP = 8.0f;         // Between legend items
+        inline constexpr float DIAGRAM_LEGEND_ROW_HEIGHT = 22.0f; // One legend grid row
+        inline constexpr float DIAGRAM_SECTION_GAP = 12.0f;       // Between the panel's shown sections
+        inline constexpr float DIAGRAM_STRIP_HEIGHT = 40.0f;      // The "Other keys" strip
+        inline constexpr float DIAGRAM_UNBOUND_HEIGHT = 22.0f;    // The "Unbound" line
+        inline constexpr float DIAGRAM_DETAIL_LINE_HEIGHT = 22.0f; // One hover strip line
+        // The diagram leaf's drawing (33c, SSOLKeyboardDiagram; settled from the 33c screenshots)
+        inline constexpr float DIAGRAM_KEY_INSET = 1.5f;          // A key's hull inside its layout rect, a side
+        inline constexpr float DIAGRAM_KEY_PAD = 2.0f;            // Key content to the hull edge
+        inline constexpr int32 DIAGRAM_KEY_FONT_SIZE = 11;        // A key's legend (Rajdhani SemiBold); the short
+                                                                  // label uses KEYCAP_LABEL_FONT_SIZE
+        inline constexpr int32 DIAGRAM_BADGE_FONT_SIZE = 9;       // The "+N" badge
+        inline constexpr float DIAGRAM_AREA_BAR = 3.0f;           // The area bar along an assigned key's lower edge
+        inline constexpr float DIAGRAM_MARK_SIZE = 6.0f;          // The lock mark's and modifier mark's box
+        inline constexpr float DIAGRAM_MARK_LINE = 1.5f;          // Their stroke
+        inline constexpr float DIAGRAM_MARK_GAP = 1.0f;           // A mark to the legend / label beside it
+        inline constexpr float DIAGRAM_BADGE_LINE_EXTRA = 2.0f;   // The "+N" badge's line over DIAGRAM_MARK_SIZE
+        inline constexpr float DIAGRAM_LOCK_BODY_TOP_FRACTION = 0.45f; // The padlock body's top, of the mark size
+        inline constexpr float DIAGRAM_LOCK_SHACKLE_INSET_FRACTION = 0.15f; // The shackle's sides in from the mark's
+                                                                  // edges, of the mark size
+        inline constexpr float DIAGRAM_CARET_HEIGHT_FRACTION = 0.6f; // The modifier caret's tip height, of the mark
+                                                                  // size
+        inline constexpr float DIAGRAM_LEGEND_SWATCH = 12.0f;     // A legend item's colour swatch, square
+        inline constexpr float DIAGRAM_TEXT_GAP = 6.0f;           // Swatch to text, caption to caps, column gaps
+        inline constexpr float DIAGRAM_DETAIL_KEYS_MAX_FRACTION = 0.35f; // The detail keys column's widest share
+        inline constexpr float DIAGRAM_WIDTH_TOLERANCE = 0.5f;    // A layout width change smaller than this keeps the
+                                                                  // laid-out panel (menu units)
+        inline constexpr int32 SHORT_LABEL_MAX_CHARS = 8;        // KEY_SHORT_LABELS / FIXED_KEY_SHORT_LABELS length
 
         // HUD glossary (section 8)
         inline constexpr float GLOSSARY_SYMBOL_BOX = 96.0f;       // Symbol recess, square

@@ -13,6 +13,7 @@
 #include "CoreMinimal.h"
 
 class APlayerController;
+class USOLKeyboardDiagramSmokePage;
 class USOLMenuSubsystem;
 class USOLSettingsPageWidget;
 
@@ -90,9 +91,13 @@ namespace SOLSolidMenuProfile
  * Key bindings tab and the Controls page of each menu at both sizes (P4 main-settings-keys and P5 main-controls at
  * 1920x1080, P6 main-controls and P7 main-settings-keys at 1280x720, P8 pause-settings-keys and P9 pause-controls at
  * 1280x720, P10 pause-controls and P11 pause-settings-keys at 1920x1080), against the 33a baseline taken before their
- * key cap restyle. With -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): nine passes at that
- * size (the game window's size limits lifted so it may be larger than the desktop): the main menu alone, with Settings,
- * Settings on Key bindings, Controls, About and Demo, then the pause menu alone, with Settings and with Info; the
+ * key cap restyle; then (33c) the keyboard diagram test page (USOLKeyboardDiagramSmokePage) over the main menu's
+ * Controls page, laid out in its content width, without and with its busiest key hovered: P12 main-diagram and P13
+ * main-diagram-hover at 1920x1080 (after P5), P14 and P15 the same at 1280x720 (after P6), against the main menu's
+ * Settings baseline (the 46h rule), the same run's main-controls pass being the screen without the page. With
+ * -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): nine passes at that size (the game
+ * window's size limits lifted so it may be larger than the desktop): the main menu alone, with Settings, Settings on
+ * Key bindings, Controls, About and Demo, then the pause menu alone, with Settings and with Info; the
  * verdict judges only the menu's share (user, 2026-11-06): the CPU against the 1920x1080 baseline of its menu and the
  * menu's GPU against the VR floor's ceiling. The p99 frame, game thread and GPU are logged against the XR-4 line
  * (`vr_frame=`, informational) and, at 3840x2160, the p99 frame against the 4K / 100 Hz proxy (`proxy=`, informational:
@@ -152,6 +157,8 @@ private:
         FIntPoint View = FIntPoint::ZeroValue;
         double BaseCpuMs = 0.0;                             // The CPU and GPU baseline (zero: none)
         double BaseGpuMs = 0.0;
+        bool bDiagram = false;                              // 33c: the keyboard diagram test page over the screen
+        bool bDiagramHover = false;                         // ... with its busiest key hovered (the fullest strip)
     };
 
     // Where a capture pass is
@@ -200,6 +207,16 @@ private:
     // Logs the pass's result line with its verdict against the baseline (and the VR floor in a view run)
     void LogPassResult(int32 pass);
 
+    // (33c) Puts the keyboard diagram test page on the viewport, laid out in the Controls page's content width (as the
+    // Help page will be), hovering its busiest key when the pass asks; returns whether it shows
+    bool ShowDiagramPage(int32 pass, const USOLMenuSubsystem& menu);
+
+    // (33c) Takes the diagram test page off the viewport (nothing when none shows)
+    void HideDiagramPage();
+
+    // (33c) Returns whether the pass's diagram test page shows as the pass asks (true for a pass without one)
+    bool IsPassDiagramShown(int32 pass) const;
+
     // Logs the SUMMARY line, stops the capture and quits
     void Finish(USOLMenuSubsystem& menu);
 
@@ -210,6 +227,7 @@ private:
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
 
     TWeakObjectPtr<APlayerController> mController;
+    TWeakObjectPtr<USOLKeyboardDiagramSmokePage> mDiagramPage;  // 33c: the diagram test page of a diagram pass
     FSOLUiProfileCapture mCapture;                          // ProfileGPU and stat dumpave capture (Slate paint)
     TArray<FPass> mPasses;
     TArray<FStep> mSteps;
@@ -234,6 +252,8 @@ private:
     int32 mPassesLogged = 0;                                // Passes with a RESULT line (an abort fails the rest)
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
+    int32 mDiagramKey = INDEX_NONE;                         // 33c: the diagram's busiest key (hovered by a hover pass)
+    float mDiagramWidth = 0.0f;                             // 33c: the content width the diagram page is laid out in
     EPassPhase mPhase = EPassPhase::Settle;
     ESOLSettingsTab mProfileTab = ESOLSettingsTab::Count;   // The tab every Settings pass shows (Count: its own)
     bool mIsDatePinned = false;                             // Setup pinned the sim date

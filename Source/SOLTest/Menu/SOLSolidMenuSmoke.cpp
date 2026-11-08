@@ -6,8 +6,14 @@
 #include "Menu/SOLSolidMenuSmoke.h"
 
 #include "Menu/SOLBuildVersion.h"
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLKeyCapRow.h"
+#include "Menu/SOLKeyDiagram.h"
+#include "Menu/SOLKeyboardDiagram.h"
+#include "Menu/SOLKeyboardDiagramSmokePage.h"
+#include "Menu/SOLKeyboardLayout.h"
 #include "Menu/SOLMainMenuWidget.h"
+#include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuButton.h"
 #include "Menu/SOLDemoPageWidget.h"
 #include "Menu/SOLMenuState.h"
@@ -49,6 +55,7 @@
 #include "HAL/PlatformTime.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Layout/WidgetPath.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/EngineVersion.h"
 #include "Misc/Paths.h"
 #include "Rendering/SlateRenderer.h"
@@ -105,6 +112,9 @@ namespace
         ViewBack,       // 46g: the About page closed, r.SetRes 1280x720 again
         MainFit,        // 46g: Controls, About and Settings opened in turn (looped), read once the shell has
                         // settled: the read-only pages' fit at 1280x720, every rail laid out without a scroll (D17)
+        Diagram,        // 33c: the keyboard diagram test page in the 1280x720 shell content width: fit (D34: the
+                        // clusters and mouse stacked under the main block), paint, assignment count, the hover keys
+                        // (the panel fixed, D36), Fire rebound to K and back (live rebuild)
         MainScroll,     // 46g (D17): the column capped at 4 entries scrolls; Down to Quit scrolls it whole into
                         // view with its hover trace at the scrolled y; scrolled back, the out-of-view Quit draws no
                         // trace; the cap back at 7: no scroll, offset 0
@@ -199,7 +209,7 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 197;          // 33b: the checks a whole run logs (Finish fails a run
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 212;          // 33c: the checks a whole run logs (Finish fails a run
                                                                 // that logged another number: a skipped check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
     constexpr double SOLID_SMOKE_FLIGHT_S = 1.0;                // Return from flight: this long in flight, then Esc
@@ -236,6 +246,31 @@ namespace
     constexpr double SOLID_SMOKE_FLIGHT_SETTLE_S = 2.0;         // 46g: flight after Play (the ship spawn and the HUD)
     constexpr double SOLID_SMOKE_CLOSE_SLACK_S = 0.25;          // 46g: the slide-out's end read after CLOSE_S plus this
     const FVector2D SOLID_SMOKE_RAIL_PAGE_SIZE(900.0, 300.0);   // 46g: the viewport Controls page (units)
+
+    // 33c: the diagram keys the real cursor hovers, in order: the busiest default keys (their strip must fit), then the
+    // six modifier keys (D32 revised: each starts chords; the right ones have no action of their own)
+    struct FSolidSmokeDiagramHover
+    {
+        const TCHAR* KeyName;
+        const TCHAR* Name;          // Check id / shot name part
+        bool bModifier;             // A chord modifier key (bModifier, own actions then chords)
+        bool bRightSide;            // Right Ctrl / Alt / Shift: no action of its own at the defaults
+    };
+    const FSolidSmokeDiagramHover SOLID_SMOKE_DIAGRAM_HOVERS[] = {
+        { TEXT("O"), TEXT("o"), false, false },
+        { TEXT("LeftControl"), TEXT("lctrl"), true, false },
+        { TEXT("LeftMouseButton"), TEXT("lmb"), false, false },
+        { TEXT("LeftShift"), TEXT("lshift"), true, false },
+        { TEXT("RightShift"), TEXT("rshift"), true, true },
+        { TEXT("RightControl"), TEXT("rctrl"), true, true },
+        { TEXT("LeftAlt"), TEXT("lalt"), true, false },
+        { TEXT("RightAlt"), TEXT("ralt"), true, true },
+    };
+    constexpr int32 SOLID_SMOKE_DIAGRAM_HOVER_COUNT = UE_ARRAY_COUNT(SOLID_SMOKE_DIAGRAM_HOVERS);
+    // The hovers shot (bits of SOLID_SMOKE_DIAGRAM_HOVERS): O, Left Ctrl, Right Shift
+    constexpr uint32 SOLID_SMOKE_DIAGRAM_SHOTS = (1u << 0) | (1u << 1) | (1u << 4);
+    constexpr float SOLID_SMOKE_DIAGRAM_TOLERANCE = 0.5f;       // A key rect or width against the content width
+    const TCHAR* const SOLID_SMOKE_DIAGRAM_REBIND_KEY = TEXT("K");  // Fire is rebound to this free key and back
 
     // Screenshot names of the Settings tabs, in ESOLSettingsTab order
     const TCHAR* const SOLID_SMOKE_TAB_NAMES[] = { TEXT("graphics"), TEXT("audio"), TEXT("mouse"), TEXT("gameplay"),
@@ -312,6 +347,16 @@ namespace
             }
         }
         return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33c) Returns whether two diagram panels lay out the same (every section box, the scale, the strip's lines)
+    bool SolidSmokeSamePanel(const FSOLDiagramPanel& a, const FSOLDiagramPanel& b)
+    {
+        return a.Scale.UnitPx == b.Scale.UnitPx && a.Scale.Placement == b.Scale.Placement
+            && a.Scale.OriginPx == b.Scale.OriginPx && a.Legend == b.Legend && a.Diagram == b.Diagram
+            && a.Other == b.Other && a.Unbound == b.Unbound && a.Detail == b.Detail && a.DetailLines == b.DetailLines
+            && a.Height == b.Height;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -982,6 +1027,18 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         ParkCursor();
         ClickEntry(menu, SOLID_SMOKE_FIT_PAGES[mFitIndex].Entry);
         break;
+    case ESolidSmokeStep::Diagram:
+        // 33c: the Controls page in the shell (its content width is read once it settles), the cursor parked
+        mDiagramWidth = 0.0f;
+        mDiagramHover = 0;
+        mCursorRetries = 0;
+        if (mainMenu != nullptr && mainMenu->GetPage() != ESOLMainMenuPage::Controls)
+        {
+            ClickEntry(menu, SOLID_SMOKE_CONTROLS_ENTRY);
+        }
+        SolidSmokeBringGameToFront();
+        ParkCursor();
+        break;
     case ESolidSmokeStep::MainScroll:
         // The page closed (the focus back on Play), the column capped at SOLID_SMOKE_SCROLL_CAP entries
         mDownPresses = 0;
@@ -1373,6 +1430,8 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
             pause != nullptr ? pause->GetShellPanel() : nullptr, bInfo ? TEXT("pause-small-info")
             : TEXT("pause-small-controls"), bInfo ? MAX_int32 : 1);
     }
+    case ESolidSmokeStep::Diagram:
+        return TickDiagram(menu, TEXT("k-diagram"), TEXT("diagram"));
     case ESolidSmokeStep::MainScroll:
         return TickMainScroll(menu);
     case ESolidSmokeStep::RailScroll:
@@ -2236,6 +2295,10 @@ void FSOLSolidMenuSmoke::Finish(USOLMenuSubsystem& menu)
     if (mRailPage.IsValid())
     {
         mRailPage->RemoveFromParent();
+    }
+    if (mDiagramPage.IsValid())
+    {
+        mDiagramPage->RemoveFromParent();
     }
     if (USOLSolidMenuSmokeBoard* board = mBoard.Get())
     {
@@ -4234,4 +4297,476 @@ void FSOLSolidMenuSmoke::CheckSettingsKeyCaps(const TCHAR* id, const USOLSetting
         "painted whole), widest caps \"%s\" %.1f, %d wrapped%s"), static_cast<int32>(page->GetSelectedTab()),
         page->GetFitRowWidth(), page->GetKeyCellWidth(), wrap, rows, SOLKeyBindings::BINDING_COUNT, painted, *widestName,
         widest, wrapped, *detail));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) A keyboard diagram step's stages: 0 the Controls page settles in the shell; 1 its content width read and the
+// test page laid out in it; 2 the fit, paint and assignment checks, a shot; 3 / 4 each hover key under the real
+// cursor (retried when the hover did not take), checked, two of them shot; then on the wide step 5 / 6 / 7 Fire
+// rebound to K (checked, shot) and back (checked); 8 the page removed
+bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, const TCHAR* shotName)
+{
+    using namespace SOL::Help;
+    USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get();
+    USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+    const double stageS = mStepTimeS - mSubStageS;
+    const int32 stageFrames = mStepFrames - mSubStageFrames;
+
+    // Moves to a stage; bAfterShot: its first action waits a shot's frames
+    auto nextStage = [this](const int32 stage, const bool bAfterShot)
+    {
+        mSubStage = stage;
+        mSubStageS = mStepTimeS;
+        mSubStageFrames = bAfterShot ? mStepFrames : mStepFrames - SOLID_SMOKE_SHOT_FRAMES;
+    };
+    switch (mSubStage)
+    {
+    case 0:
+        if (stageS >= SOLID_SMOKE_SETTLE_S)
+        {
+            nextStage(1, false);
+        }
+        return false;
+    case 1:
+    {
+        // The Help tab's content width as the read-only pages lay their rows out: the tab scroll box less a scroll
+        // bar's room and the gap (USOLReadOnlyPageWidget::FitLeftColumn)
+        const USOLReadOnlyPageWidget* controls = mainMenu != nullptr ? mainMenu->GetControlsPage() : nullptr;
+        const UScrollBox* scroll = controls != nullptr ? controls->GetTabScroll(controls->GetSelectedTab()) : nullptr;
+        mDiagramWidth = scroll != nullptr ? static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().X)
+            - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP : 0.0f;
+        page = mController.IsValid() ? CreateWidget<USOLKeyboardDiagramSmokePage>(mController.Get(),
+            USOLKeyboardDiagramSmokePage::StaticClass()) : nullptr;
+        if (page != nullptr)
+        {
+            page->SetContentWidth(mDiagramWidth);
+            page->AddToViewport(SOLID_SMOKE_BOARD_Z);
+            mDiagramPage = page;
+        }
+        nextStage(2, false);
+        return false;
+    }
+    case 2:
+    {
+        if (stageS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+
+        // Fit: the panel in the content width, every key rect inside it and the diagram box, the arrangement as
+        // FitToWidth decides (D34: stacked in the 658-unit shell content of every D37 target, the unit width / 15), the
+        // hover strip sized for the busiest key (D36), the leaf as wide as the content and in the view
+        const FSOLDiagramPanel panel = diagram != nullptr ? diagram->GetPanel() : FSOLDiagramPanel();
+        const FSOLDiagramScale fit = SOLKeyboardLayout::FitToWidth(mDiagramWidth);
+        const float tolerance = SOLID_SMOKE_DIAGRAM_TOLERANCE;
+        int32 outside = 0;
+        for (int32 index = 0; index < SOLKeyboardLayout::KeyCount(); ++index)
+        {
+            const FBox2f units = SOLKeyboardLayout::KeyRect(index, panel.Scale.Placement);
+            const FVector2f min = SOLKeyboardLayout::FromUnits(units.Min, panel.Scale);
+            const FVector2f max = SOLKeyboardLayout::FromUnits(units.Max, panel.Scale);
+            outside += min.X < -tolerance || max.X > mDiagramWidth + tolerance || min.Y < panel.Diagram.Min.Y
+                - tolerance || max.Y > panel.Diagram.Max.Y + tolerance ? 1 : 0;
+        }
+        const float leafWidth = diagram != nullptr ? static_cast<float>(diagram->GetCachedGeometry().GetLocalSize().X)
+            : 0.0f;
+        FString insideDetail;
+        const bool bInView = diagram != nullptr && SolidSmokeInside(diagram, page, insideDetail);
+        const float stackedUnit = mDiagramWidth / SOLKeyboardLayout::Extent(ESOLMousePlacement::Stacked).X;
+        const int32 budget = diagram != nullptr ? diagram->GetDetailLineBudget() : 0;
+        const float stripHeight = DIAGRAM_DETAIL_CAP_HEIGHT + panel.DetailLines * DIAGRAM_DETAIL_LINE_HEIGHT;
+        Check(*FString::Printf(TEXT("%s-fit"), id), diagram != nullptr && mDiagramWidth > 0.0f
+            && panel.Diagram.Max.X <= mDiagramWidth + tolerance && panel.Detail.Max.X <= mDiagramWidth + tolerance
+            && outside == 0 && panel.Scale.Placement == fit.Placement
+            && panel.Scale.Placement == ESOLMousePlacement::Stacked
+            && FMath::IsNearlyEqual(panel.Scale.UnitPx, FMath::Min(stackedUnit, DIAGRAM_MAX_UNIT), KINDA_SMALL_NUMBER)
+            && panel.Scale.bShortLabels == (panel.Scale.UnitPx >= DIAGRAM_MIN_UNIT)
+            && budget >= 1 && budget <= DIAGRAM_DETAIL_LINES && panel.DetailLines == budget
+            && FMath::IsNearlyEqual(panel.Detail.GetSize().Y, stripHeight, tolerance)
+            && FMath::IsNearlyEqual(leafWidth, mDiagramWidth, tolerance) && bInView,
+            FString::Printf(TEXT("content %.1f, unit %.2f (stacked %.2f, min %.0f, mouse below under %.0f, stack under "
+            "%.0f), arrangement %d (want stacked %d), diagram %.1fx%.1f, strip %d lines (budget %d, cap %d) %.1f tall, "
+            "panel height %.1f, legend %dx%d, labels %d, %d keys outside, leaf %.1f, in view %s"), mDiagramWidth,
+            panel.Scale.UnitPx, stackedUnit, DIAGRAM_MIN_UNIT, DIAGRAM_MOUSE_BELOW_UNIT, DIAGRAM_STACK_UNIT,
+            static_cast<int32>(panel.Scale.Placement), static_cast<int32>(ESOLMousePlacement::Stacked),
+            panel.Diagram.GetSize().X, panel.Diagram.GetSize().Y, panel.DetailLines, budget, DIAGRAM_DETAIL_LINES,
+            panel.Detail.GetSize().Y, panel.Height, panel.LegendColumns, panel.LegendRows,
+            panel.Scale.bShortLabels ? 1 : 0, outside, leafWidth, *insideDetail));
+        mDiagramPanel = panel;
+
+        // Painted whole with every layout key, the keys in their own LED-less Small hull material (D38: not the
+        // subsystem's shared SmallButton one, LedX < 0)
+        const int32 painted = diagram != nullptr ? diagram->GetPaintedKeyCount() : 0;
+        const bool bWhole = diagram != nullptr && diagram->WasPaintedWhole();
+        const UMaterialInstanceDynamic* keyMaterial = diagram != nullptr ? diagram->GetKeyMaterial() : nullptr;
+        const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld());
+        const UMaterialInstanceDynamic* sharedSmall = solid != nullptr
+            ? solid->GetStyleMaterial(ESOLSolidStyle::SmallButton) : nullptr;
+        float keyLedX = 0.0f;
+        const bool bKeyLedRead = keyMaterial != nullptr
+            && keyMaterial->GetScalarParameterValue(SOL::SolidMenuMaterialParams::LED_X, keyLedX);
+        const bool bKeyMaterial = keyMaterial != nullptr && keyMaterial != sharedSmall && bKeyLedRead
+            && keyLedX < 0.0f;
+        Check(*FString::Printf(TEXT("%s-painted"), id), bWhole && painted == SOLKeyboardLayout::KeyCount()
+            && bKeyMaterial, FString::Printf(TEXT("whole %d, %d keys painted (want %d), key material %d (shared "
+            "SmallButton %d, LedX read %d %.2f, want < 0)"), bWhole ? 1 : 0, painted, SOLKeyboardLayout::KeyCount(),
+            keyMaterial != nullptr ? 1 : 0, keyMaterial != nullptr && keyMaterial == sharedSmall ? 1 : 0,
+            bKeyLedRead ? 1 : 0, keyLedX));
+
+        // The assignment count at the default keys (the smoke slot starts from them) equals SOLKeyDiagram::Build's
+        const TArray<FString> defaults = SOLKeyBindings::DefaultKeys();
+        FSOLKeyDiagramModel model;
+        SOLKeyDiagram::Build(defaults, model);
+        const bool bDefaultKeys = SOLMenuContent::ResolveLiveKeys(menu.GetWorld()) == defaults;
+        const int32 count = diagram != nullptr ? diagram->GetAssignmentCount() : -1;
+        Check(*FString::Printf(TEXT("%s-assignments"), id), bDefaultKeys && count == model.Assignments.Num(),
+            FString::Printf(TEXT("%d assignments (Build: %d), live keys the defaults %d, %d other, %d unbound"), count,
+            model.Assignments.Num(), bDefaultKeys ? 1 : 0, diagram != nullptr ? diagram->GetModel().Overflow.Num() : -1,
+            diagram != nullptr ? diagram->GetModel().Unbound.Num() : -1));
+
+        // D35 / D38: no legend drawn wider than its key and none clipped (a legend that does not fit uses its
+        // abbreviation, every abbreviated key has an entry); the main Enter keeps its legend, the numpad Enter mirror
+        // is abbreviated; the abbreviated legends and the "+N" badges hidden on overlap named in the detail
+        const int32 wide = diagram != nullptr ? diagram->GetWideLegendCount() : -1;
+        const int32 hiddenBadges = diagram != nullptr ? diagram->GetPaintedHiddenBadges() : -1;
+        int32 clipped = 0;
+        int32 noEntry = 0;
+        int32 mainEnter = -1;                           // -1 not found, 0 found and kept, 1 found and abbreviated
+        int32 mirrorEnter = -1;
+        FString clippedKeys;
+        FString abbreviatedKeys;
+        FString hiddenBadgeKeys;
+        const TConstArrayView<FSOLLayoutKey> layoutKeys = SOLKeyboardLayout::Keys();
+        for (int32 index = 0; diagram != nullptr && index < layoutKeys.Num(); ++index)
+        {
+            const FSOLLayoutKey& layoutKey = layoutKeys[index];
+            const FString name = FString::Printf(TEXT("%s%s"), layoutKey.KeyName,
+                layoutKey.bMirror ? TEXT("(mirror)") : TEXT(""));
+            if (diagram->IsLegendClipped(index))
+            {
+                ++clipped;
+                clippedKeys += (clippedKeys.IsEmpty() ? TEXT("") : TEXT(" ")) + name;
+            }
+            const bool bAbbreviated = diagram->IsLegendAbbreviated(index);
+            abbreviatedKeys += bAbbreviated ? (abbreviatedKeys.IsEmpty() ? TEXT("") : TEXT(" ")) + name : FString();
+            noEntry += bAbbreviated && SOLKeyDiagram::LegendAbbreviation(layoutKey.KeyName) == nullptr ? 1 : 0;
+            if (FCString::Strcmp(layoutKey.KeyName, TEXT("Enter")) == 0)
+            {
+                int32& enter = layoutKey.bMirror ? mirrorEnter : mainEnter;
+                enter = bAbbreviated ? 1 : 0;
+            }
+            hiddenBadgeKeys += diagram->IsBadgeHidden(index) ? (hiddenBadgeKeys.IsEmpty() ? TEXT("") : TEXT(" "))
+                + name : FString();
+        }
+        Check(*FString::Printf(TEXT("%s-legends"), id), diagram != nullptr && wide == 0 && clipped == 0
+            && hiddenBadges >= 0 && mainEnter == 0 && mirrorEnter == 1 && noEntry == 0,
+            FString::Printf(TEXT("%d legends wider than their key, %d clipped [%s], abbreviated [%s] (%d without an "
+            "entry, main Enter %d want 0, numpad Enter mirror %d want 1; -1 not found), %d \"+N\" badges hidden "
+            "(overlap) [%s] at unit %.2f"), wide, clipped, *clippedKeys, *abbreviatedKeys, noEntry, mainEnter,
+            mirrorEnter, hiddenBadges, *hiddenBadgeKeys, panel.Scale.UnitPx));
+        TakeUiShot(shotName);
+        nextStage(3, true);
+        return false;
+    }
+    case 3:
+    {
+        // A shot's frames first (when one was taken), then the real cursor to the hover key's centre
+        if (stageFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        const int32 key = SOLKeyboardLayout::FindKey(SOLID_SMOKE_DIAGRAM_HOVERS[mDiagramHover].KeyName);
+        if (diagram != nullptr && key != INDEX_NONE)
+        {
+            const FSOLDiagramPanel& panel = diagram->GetPanel();
+            const FGeometry& geometry = diagram->GetCachedGeometry();
+            const FVector2f centre = SOLKeyboardLayout::FromUnits(SOLKeyboardLayout::KeyRect(key,
+                panel.Scale.Placement).GetCenter(), panel.Scale);
+            SolidSmokeMouseMove(FVector2D(geometry.LocalToAbsolute(FVector2D(centre))), false);
+        }
+        nextStage(4, false);
+        return false;
+    }
+    case 4:
+    {
+        // Past the hover ramp: the hover read (retried from the front when a covering window dropped it), checked
+        if (stageS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const int32 key = SOLKeyboardLayout::FindKey(SOLID_SMOKE_DIAGRAM_HOVERS[mDiagramHover].KeyName);
+        if (diagram != nullptr && diagram->GetHoveredKey() != key && mCursorRetries < SOLID_SMOKE_CURSOR_RETRIES)
+        {
+            ++mCursorRetries;
+            SolidSmokeBringGameToFront();
+            nextStage(3, false);
+            return false;
+        }
+        CheckDiagramHover(id, mDiagramHover, key);
+        const bool bShot = (SOLID_SMOKE_DIAGRAM_SHOTS & (1u << mDiagramHover)) != 0;
+        if (bShot)
+        {
+            TakeUiShot(*FString::Printf(TEXT("%s-hover-%s"), shotName, SOLID_SMOKE_DIAGRAM_HOVERS[mDiagramHover].Name));
+        }
+        nextStage(++mDiagramHover < SOLID_SMOKE_DIAGRAM_HOVER_COUNT ? 3 : 5, bShot);
+        return false;
+    }
+    case 5:
+    {
+        // A shot's frames, then Fire rebound to K through the settings subsystem and applied (only the smoke slot is
+        // written; nothing else pending reaches the engine's GameUserSettings): the owner's handler rebuilds
+        if (stageFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        ParkCursor();
+        USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+        mDiagramChanges = page != nullptr ? page->GetBindingsChangedCount() : 0;
+        if (settings != nullptr)
+        {
+            int32 conflict = INDEX_NONE;
+            settings->RevertPending();
+            settings->RebindKey(static_cast<int32>(SOLKeyBindings::EBinding::Fire), SOLID_SMOKE_DIAGRAM_REBIND_KEY,
+                conflict);
+            settings->ApplyPending();
+        }
+        nextStage(6, false);
+        return false;
+    }
+    case 6:
+        if (stageS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        CheckDiagramRebind(id, false);
+        TakeUiShot(*FString::Printf(TEXT("%s-rebind"), shotName));
+        nextStage(7, true);
+        return false;
+    case 7:
+    {
+        // A shot's frames, then Fire back on its default key, applied
+        if (stageFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+        if (settings != nullptr)
+        {
+            const int32 fire = static_cast<int32>(SOLKeyBindings::EBinding::Fire);
+            int32 conflict = INDEX_NONE;
+            settings->RevertPending();
+            settings->RebindKey(fire, SOLKeyBindings::GetDef(fire).DefaultKey, conflict);
+            settings->ApplyPending();
+        }
+        nextStage(8, false);
+        return false;
+    }
+    case 8:
+        // A settle after the restore, then its check
+        if (stageS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        CheckDiagramRebind(id, true);
+        if (diagram != nullptr)
+        {
+            // Every layout key hovered in turn (not only the real-cursor ones): the busiest key's strip rows equal the
+            // strip's line budget (D36: sized once for it) and no key needs more; the panel never changes while
+            // hovering or clearing the hover. The panel after the restore is the reference (same keys as the fit)
+            ParkCursor();
+            const FSOLDiagramPanel reference = diagram->GetPanel();
+            int32 changed = 0;
+            int32 maxRows = 0;
+            int32 maxKey = INDEX_NONE;
+            const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
+            for (int32 index = 0; index < layout.Num(); ++index)
+            {
+                if (layout[index].bMirror)
+                {
+                    continue;
+                }
+                diagram->SetHoveredKey(index);
+                changed += SolidSmokeSamePanel(diagram->GetPanel(), reference) ? 0 : 1;
+                const int32 rows = diagram->GetDetailLines().IsEmpty() ? 0 : diagram->GetDetailRowCount();
+                if (rows > maxRows)
+                {
+                    maxRows = rows;
+                    maxKey = index;
+                }
+            }
+            diagram->SetHoveredKey(INDEX_NONE);
+            changed += SolidSmokeSamePanel(diagram->GetPanel(), reference) ? 0 : 1;
+            const bool bSameAsFit = SolidSmokeSamePanel(reference, mDiagramPanel);
+            Check(*FString::Printf(TEXT("%s-strip-all"), id), maxRows > 0 && maxRows <= DIAGRAM_DETAIL_LINES
+                && maxRows == reference.DetailLines && changed == 0 && bSameAsFit,
+                FString::Printf(TEXT("busiest key %s: %d rows (strip %d lines, cap %d) in width %.1f, panel changed on "
+                "%d hovers, same as at the fit %d"), layout.IsValidIndex(maxKey) ? layout[maxKey].KeyName
+                : TEXT("none"), maxRows, reference.DetailLines, DIAGRAM_DETAIL_LINES, mDiagramWidth, changed,
+                bSameAsFit ? 1 : 0));
+        }
+        else
+        {
+            Check(*FString::Printf(TEXT("%s-strip-all"), id), false, TEXT("no diagram"));
+        }
+        nextStage(9, false);
+        return false;
+    default:
+        // The page removed, the cursor parked
+        if (page != nullptr)
+        {
+            page->RemoveFromParent();
+        }
+        mDiagramPage.Reset();
+        ParkCursor();
+        return true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) Checks one hovered diagram key: hovered, its strip filled with its cap and fitting, painted whole; a modifier
+// key also its mark and its lines (its own actions, the primary first, then its chords in order; Right Shift lists
+// RShift+O, Left Shift does not; the right-side keys have no action of their own)
+void FSOLSolidMenuSmoke::CheckDiagramHover(const TCHAR* id, const int32 hoverIndex, const int32 key)
+{
+    const FSolidSmokeDiagramHover& hover = SOLID_SMOKE_DIAGRAM_HOVERS[hoverIndex];
+    const FString label = FString::Printf(TEXT("%s-hover-%s"), id, hover.Name);
+    const USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get();
+    const USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+    if (diagram == nullptr || !diagram->GetModel().Keys.IsValidIndex(key))
+    {
+        Check(*label, false, FString::Printf(TEXT("no diagram or key %s not on the layout"), hover.KeyName));
+        return;
+    }
+    const FSOLKeyDiagramModel& model = diagram->GetModel();
+    const FSOLDiagramKey& diagramKey = model.Keys[key];
+    const TArray<FSOLDiagramDetailLine>& lines = diagram->GetDetailLines();
+    const int32 rows = diagram->GetDetailRowCount();
+    const FSOLDiagramPanel& panel = diagram->GetPanel();
+    const bool bPanelFixed = SolidSmokeSamePanel(panel, mDiagramPanel);
+
+    // D36: the hovered key's cap on its own row above the lines (its row fits a key cap, the lines start under it) and
+    // no wider than the strip; the rows within the strip's fixed line budget
+    const bool bCapRow = diagram->GetDetailCapWidth() > 0.0f && diagram->GetDetailCapWidth() <= panel.Detail.GetSize().X
+        && SOL::Help::KEYCAP_HEIGHT <= SOL::Help::DIAGRAM_DETAIL_CAP_HEIGHT;
+    bool bOk = diagram->GetHoveredKey() == key && !lines.IsEmpty() && rows <= panel.DetailLines
+        && diagram->WasPaintedWhole() && bCapRow && bPanelFixed;
+
+    // The lines as shown, for the log (and for settling DIAGRAM_DETAIL_LINES)
+    FString shown;
+    for (const FSOLDiagramDetailLine& line : lines)
+    {
+        shown += FString::Printf(TEXT("%s[%s = %s]"), shown.IsEmpty() ? TEXT("") : TEXT(" "), *line.Keys,
+            *line.Action);
+    }
+    FString modifierDetail;
+    if (hover.bModifier)
+    {
+        // The expected lines, independently of the leaf: the own assignments (any order, the primary first), then
+        // the key's chords in their model order
+        const TArray<FString> liveKeys = SOLMenuContent::ResolveLiveKeys(mController.IsValid()
+            ? mController->GetWorld() : nullptr);
+        const int32 own = diagramKey.AssignmentCount;
+        bool bLines = lines.Num() == own + diagramKey.ChordCount;
+        FSOLDiagramDetailLine expected;
+        for (int32 index = 0; bLines && index < lines.Num(); ++index)
+        {
+            bool bFound = false;
+            if (index == 0 && own > 0)
+            {
+                SOLKeyDiagram::DetailLine(model, diagramKey.Primary, liveKeys, expected);
+                bFound = expected.Keys == lines[index].Keys && expected.Action == lines[index].Action;
+            }
+            else if (index < own)
+            {
+                for (int32 a = 0; a < own && !bFound; ++a)
+                {
+                    SOLKeyDiagram::DetailLine(model, diagramKey.FirstAssignment + a, liveKeys, expected);
+                    bFound = expected.Keys == lines[index].Keys && expected.Action == lines[index].Action;
+                }
+            }
+            else if (model.Chords.IsValidIndex(diagramKey.FirstChord + index - own))
+            {
+                SOLKeyDiagram::DetailLine(model, model.Chords[diagramKey.FirstChord + index - own], liveKeys, expected);
+                bFound = expected.Keys == lines[index].Keys && expected.Action == lines[index].Action;
+            }
+            bLines = bFound;
+        }
+
+        // RShift+O (CycleOverlayProfile) listed on Right Shift only
+        bool bRShiftO = false;
+        for (int32 a = 0; a < model.Assignments.Num(); ++a)
+        {
+            if (model.Assignments[a].Binding == static_cast<int32>(SOLKeyBindings::EBinding::CycleOverlayProfile))
+            {
+                SOLKeyDiagram::DetailLine(model, a, liveKeys, expected);
+                for (const FSOLDiagramDetailLine& line : lines)
+                {
+                    bRShiftO |= line.Keys == expected.Keys && line.Action == expected.Action;
+                }
+                break;
+            }
+        }
+        const bool bIsRightShift = FCString::Stricmp(hover.KeyName, TEXT("RightShift")) == 0;
+        const bool bIsLeftShift = FCString::Stricmp(hover.KeyName, TEXT("LeftShift")) == 0;
+        const bool bRShiftOk = bIsRightShift ? bRShiftO : !bIsLeftShift || !bRShiftO;
+        const bool bSide = hover.bRightSide ? own == 0 && diagramKey.Primary == INDEX_NONE : own > 0;
+        bOk = bOk && diagramKey.bModifier && diagramKey.ChordCount > 0 && bLines && bSide && bRShiftOk;
+        modifierDetail = FString::Printf(TEXT(", modifier %d, own %d, chords %d, lines own-then-chords %d, "
+            "RShift+O %d"), diagramKey.bModifier ? 1 : 0, own, diagramKey.ChordCount, bLines ? 1 : 0, bRShiftO ? 1 : 0);
+    }
+    Check(*label, bOk, FString::Printf(TEXT("hovered %d (want %d), %d lines in %d rows (strip %d), cap %.1f on its row "
+        "%d, panel fixed %d, whole %d%s: %s"), diagram->GetHoveredKey(), key, lines.Num(), rows, panel.DetailLines,
+        diagram->GetDetailCapWidth(), bCapRow ? 1 : 0, bPanelFixed ? 1 : 0, diagram->WasPaintedWhole() ? 1 : 0,
+        *modifierDetail, *shown));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) Checks the diagram after the rebind (Fire on K, tinting it, not on LMB; the owner's handler ran) or after the
+// restore (Fire back on LMB, K free, the default assignment count)
+void FSOLSolidMenuSmoke::CheckDiagramRebind(const TCHAR* id, const bool bRestored)
+{
+    const USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get();
+    const USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+    const FString label = FString::Printf(TEXT("%s-%s"), id, bRestored ? TEXT("restore") : TEXT("rebind"));
+    const int32 kKey = SOLKeyboardLayout::FindKey(SOLID_SMOKE_DIAGRAM_REBIND_KEY);
+    const int32 lmbKey = SOLKeyboardLayout::FindKey(TEXT("LeftMouseButton"));
+    if (diagram == nullptr || !diagram->GetModel().Keys.IsValidIndex(kKey)
+        || !diagram->GetModel().Keys.IsValidIndex(lmbKey))
+    {
+        Check(*label, false, TEXT("no diagram, K or LMB"));
+        return;
+    }
+    const FSOLKeyDiagramModel& model = diagram->GetModel();
+    const int32 fire = static_cast<int32>(SOLKeyBindings::EBinding::Fire);
+
+    // Whether a key holds Fire among its own assignments
+    auto holdsFire = [&model, fire](const FSOLDiagramKey& key)
+    {
+        for (int32 a = key.FirstAssignment; a < key.FirstAssignment + key.AssignmentCount; ++a)
+        {
+            if (model.Assignments.IsValidIndex(a) && model.Assignments[a].Binding == fire)
+            {
+                return true;
+            }
+        }
+        return false;
+    };
+    const FSOLDiagramKey& k = model.Keys[kKey];
+    const bool bFireOnK = holdsFire(k);
+    const bool bFireOnLmb = holdsFire(model.Keys[lmbKey]);
+    const bool bKTinted = model.Assignments.IsValidIndex(k.Primary) && model.Assignments[k.Primary].Binding == fire
+        && k.Area == ESOLControlArea::Combat;
+    const int32 changes = page->GetBindingsChangedCount() - mDiagramChanges;
+    FSOLKeyDiagramModel defaults;
+    SOLKeyDiagram::Build(SOLKeyBindings::DefaultKeys(), defaults);
+    const bool bOk = bRestored
+        ? !bFireOnK && k.Primary == INDEX_NONE && bFireOnLmb && SOLKeyDiagram::KeyOfBinding(model, fire) == lmbKey
+            && diagram->GetAssignmentCount() == defaults.Assignments.Num() && changes >= 2
+        : bFireOnK && bKTinted && !bFireOnLmb && SOLKeyDiagram::KeyOfBinding(model, fire) == kKey && changes >= 1;
+    Check(*label, bOk && diagram->WasPaintedWhole(), FString::Printf(TEXT("Fire on K %d (tinted %d, area %s), on LMB "
+        "%d, Fire's key %d (K %d, LMB %d), %d assignments (defaults %d), %d bindings changed events, whole %d"),
+        bFireOnK ? 1 : 0, bKTinted ? 1 : 0, SOLKeyDiagram::AreaName(k.Area), bFireOnLmb ? 1 : 0,
+        SOLKeyDiagram::KeyOfBinding(model, fire), kKey, lmbKey, diagram->GetAssignmentCount(),
+        defaults.Assignments.Num(), changes, diagram->WasPaintedWhole() ? 1 : 0));
 }

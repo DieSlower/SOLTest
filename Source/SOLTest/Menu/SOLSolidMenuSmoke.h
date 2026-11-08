@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "Menu/SOLKeyboardLayout.h"
 #include "Menu/SOLSettingsTabs.h"
 #include "Menu/SOLSolidMenuMath.h"
 
@@ -13,6 +14,7 @@
 class APlayerController;
 class UWidget;
 class USOLMenuSubsystem;
+class USOLKeyboardDiagramSmokePage;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
 class USOLSolidMenuSmokeBoard;
@@ -50,8 +52,12 @@ struct FSOLSolidTabRail;
  * under the resting real cursor keeping the keyboard focus). 46i: the pause Settings page's stepper values, labels and
  * value texts in their slots and the shell at 1000x800; the Gameplay and Key bindings tabs' room logged ("SolidMenu
  * NOTE") at 1000x800 in both menus; the Controls and Info rows of every tab with a left column inside their cells and
- * the shell at 1000x800 (main and pause) and 1280x720 (pause); a run that logs another number of checks than a whole
- * run (SOLID_SMOKE_EXPECTED_CHECKS) fails. Each step logs
+ * the shell at 1000x800 (main and pause) and 1280x720 (pause). 33c: the keyboard diagram test page
+ * (USOLKeyboardDiagramSmokePage) in the shell's content width at 1280x720 (D37: no 1000x800 step): its fit (stacked,
+ * D34), legends clipped (D35), paint and assignment count, the real cursor over the busiest and the six modifier keys
+ * (the panel fixed while hovering, D36), every key's strip rows against the strip's line budget, and Fire rebound to
+ * K and back through the settings subsystem (the live rebuild); a run that logs another number of checks
+ * than a whole run (SOLID_SMOKE_EXPECTED_CHECKS) fails. Each step logs
  * "SolidMenu CHECK <id> PASS|FAIL: ..." and takes a window screenshot
  * (Saved/Screenshots/<platform>/SolidMenu_<name>.png) to look at; then a "SolidMenu SUMMARY" line and the quit (a
  * watchdog quits a stuck run).
@@ -185,9 +191,31 @@ private:
     // Runs the pause strength 0 step's stages (46g, SDD 7); returns true once done
     bool TickPauseStrengthZero(USOLMenuSubsystem& menu);
 
+    // (33c) Runs the keyboard diagram step's stages (SDD 33 sections 7 and 16): the Controls page open in the shell for
+    // its content width, the diagram test page laid out in it (fit: stacked, D34; legends clipped, D35; paint,
+    // assignment count), the real cursor over the hover keys (strip filled and fitting, the cap on its row, the panel
+    // fixed, D36; the modifier keys' own actions then chords), a rebind of Fire to K and back through the settings
+    // subsystem, and every key's strip rows against the strip's line budget; checks "<id>-*", screenshots
+    // SolidMenu_<shotName>*.png; returns true once done
+    bool TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, const TCHAR* shotName);
+
+    // (33c) Checks one hovered diagram key ("<id>-hover-<name>"): the leaf hovered it, its strip lines filled and
+    // fitting the strip's line budget, its cap on its own row, the panel as at the fit (D36), painted whole; a modifier
+    // key: bModifier, its own actions then its chords
+    void CheckDiagramHover(const TCHAR* id, int32 hoverIndex, int32 key);
+
+    // (33c) Checks the diagram's rebuild after a rebind ("<id>-rebind": Fire on K, not on LMB, the owner's handler ran)
+    // or after the restore ("<id>-restore": Fire back on LMB, K free, the default assignment count)
+    void CheckDiagramRebind(const TCHAR* id, bool bRestored);
+
     TWeakObjectPtr<APlayerController> mController;
     TWeakObjectPtr<USOLSolidMenuSmokeBoard> mBoard;
     TWeakObjectPtr<USOLReadOnlyPageWidget> mRailPage;   // The Controls page the RailScroll step puts on the viewport
+    TWeakObjectPtr<USOLKeyboardDiagramSmokePage> mDiagramPage;  // 33c: the diagram test page on the viewport
+    float mDiagramWidth = 0.0f;     // 33c: the shell's content width the diagram is laid out in (units)
+    int32 mDiagramHover = 0;        // 33c: the hover key being checked (SOLID_SMOKE_DIAGRAM_HOVERS)
+    int32 mDiagramChanges = 0;      // 33c: the page's bindings changed count before the rebind
+    FSOLDiagramPanel mDiagramPanel; // 33c: the diagram's panel at the fit check (D36: hovers never change it)
     double mLastTimeS = 0.0;        // Real time of the last update
     double mRunTimeS = 0.0;         // Real time since Start (the watchdog)
     double mStepTimeS = 0.0;

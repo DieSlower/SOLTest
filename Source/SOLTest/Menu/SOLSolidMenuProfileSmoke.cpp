@@ -5,10 +5,14 @@
 
 #include "Menu/SOLSolidMenuProfileSmoke.h"
 
+#include "Menu/SOLKeyDiagram.h"
+#include "Menu/SOLKeyboardDiagram.h"
+#include "Menu/SOLKeyboardDiagramSmokePage.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLPauseMenuWidget.h"
+#include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLSettingsPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
@@ -16,6 +20,8 @@
 #include "SOLTest.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
+#include "Blueprint/UserWidget.h"
+#include "Components/ScrollBox.h"
 #include "DynamicRHI.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
@@ -144,11 +150,13 @@ namespace
     constexpr int32 PROFILE_PLAY_PAUSE_CHECKS = 2;              // Play (in flight) and Esc (paused)
     constexpr int32 PROFILE_DEFAULT_VIEW_CHECKS = 3;            // The default run's View steps (1920, 1280, 1920)
     constexpr int32 PROFILE_DEFAULT_SCREEN_CHECKS = 6;          // Its Screen steps (P0, P5, P1; P2, P9, P3)
-    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 13;
+    constexpr int32 PROFILE_DEFAULT_DIAGRAM_CHECKS = 4;         // 33c: its diagram passes (P12-P15), one check each
+    constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 17;
     constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 14;
     static_assert(PROFILE_EXPECTED_CHECKS_DEFAULT == PROFILE_SETUP_CHECKS + PROFILE_DEFAULT_VIEW_CHECKS
-        + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS,
-        "a default run checks the setup (2), three views, six screens, Play and Esc");
+        + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS + PROFILE_DEFAULT_DIAGRAM_CHECKS,
+        "a default run checks the setup (2), three views, six screens, Play and Esc, and four diagram passes");
+    constexpr int32 PROFILE_DIAGRAM_Z = SOL::MenuStyle::Z_ORDER + 10;   // 33c: the diagram test page over the menu
     static_assert(PROFILE_EXPECTED_CHECKS_VIEW == PROFILE_SETUP_CHECKS + 1 + PROFILE_PLAY_PAUSE_CHECKS
         + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
         "a view run checks the setup (2), its view, Play, Esc and each screen");
@@ -396,6 +404,24 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
         const int32 p11 = addPass(TEXT("pause-settings-keys"), true, noPage, pauseSettings, keys, PROFILE_VIEW_LARGE,
             PROFILE_BASE_PAUSE_KEYS_LARGE_CPU_MS, PROFILE_BASE_PAUSE_KEYS_LARGE_GPU_MS);
 
+        // 33c: the keyboard diagram test page over the main menu's Controls page, without and with its busiest key
+        // hovered, at both sizes: against the main menu's Settings baseline (the 46h rule for a page without a flat
+        // look of its own; the Help page that hosts the diagram comes in 33d-ii), the same run's main-controls pass
+        // (P5, P6) being the screen without the page
+        const int32 p12 = addPass(TEXT("main-diagram"), false, controls, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p13 = addPass(TEXT("main-diagram-hover"), false, controls, resume, opening, PROFILE_VIEW_LARGE,
+            PROFILE_BASE_MAIN_LARGE_CPU_MS, PROFILE_BASE_MAIN_LARGE_GPU_MS);
+        const int32 p14 = addPass(TEXT("main-diagram"), false, controls, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        const int32 p15 = addPass(TEXT("main-diagram-hover"), false, controls, resume, opening, PROFILE_VIEW_SMALL,
+            PROFILE_BASE_MAIN_SMALL_CPU_MS, PROFILE_BASE_MAIN_SMALL_GPU_MS);
+        for (const int32 pass : { p12, p13, p14, p15 })
+        {
+            mPasses[pass].bDiagram = true;
+            mPasses[pass].bDiagramHover = pass == p13 || pass == p15;
+        }
+
         // The main menu at 1920x1080 (Settings, its Key bindings tab, Controls), then at 1280x720 the other way round
         // (each Settings pass before its Key bindings pass: a Pass step selects its tab, the page opens on Graphics)
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_LARGE);
@@ -404,8 +430,12 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
         addStep(EStepKind::Pass, p4, FIntPoint::ZeroValue);
         addStep(EStepKind::Screen, p5, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p5, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p12, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p13, FIntPoint::ZeroValue);
         addStep(EStepKind::View, INDEX_NONE, PROFILE_VIEW_SMALL);
         addStep(EStepKind::Pass, p6, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p14, FIntPoint::ZeroValue);
+        addStep(EStepKind::Pass, p15, FIntPoint::ZeroValue);
         addStep(EStepKind::Screen, p1, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p1, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, p7, FIntPoint::ZeroValue);
@@ -508,6 +538,10 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         if (page != nullptr && SOLSettingsTabs::IsValidTab(tab))
         {
             page->SelectTab(tab);
+        }
+        if (pass.bDiagram)
+        {
+            ShowDiagramPage(current.Pass, menu);
         }
         UE_LOG(LogSOL, Log, TEXT("SolidMenuProfile: pass P%d %s %dx%d tab %d starting"), current.Pass, pass.Screen,
             pass.View.X, pass.View.Y, page != nullptr ? static_cast<int32>(page->GetSelectedTab()) : -1);
@@ -612,6 +646,31 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
         Check(TEXT("e-pause"), mode == SOLMenuState::EMenuMode::Paused, FString::Printf(TEXT("Esc: %s"), mode
             == SOLMenuState::EMenuMode::Paused ? TEXT("paused") : TEXT("NOT PAUSED")));
         break;
+    case EStepKind::Pass:
+    {
+        // 33c: a diagram pass checks its page (shown, laid out in the content width, painted whole, no legend clipped
+        // at this view's paint scale (D38), the hover as asked), then takes it off the viewport
+        const FPass& pass = mPasses[current.Pass];
+        if (pass.bDiagram)
+        {
+            const USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get();
+            const USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+            int32 clipped = 0;
+            for (int32 key = 0; diagram != nullptr && key < SOLKeyboardLayout::KeyCount(); ++key)
+            {
+                clipped += diagram->IsLegendClipped(key) ? 1 : 0;
+            }
+            Check(*FString::Printf(TEXT("diagram-P%d"), current.Pass), IsPassDiagramShown(current.Pass)
+                && mDiagramWidth > 0.0f && diagram->WasPaintedWhole() && clipped == 0, FString::Printf(TEXT("%s %dx%d: "
+                "page %s, width %.1f, unit %.2f, painted whole %d, %d legends clipped, hovered key %d (want %d)"),
+                pass.Screen, pass.View.X, pass.View.Y, page != nullptr && page->IsInViewport() ? TEXT("shown")
+                : TEXT("NOT SHOWN"), mDiagramWidth, diagram != nullptr ? diagram->GetPanel().Scale.UnitPx : 0.0f,
+                diagram != nullptr && diagram->WasPaintedWhole() ? 1 : 0, clipped, diagram != nullptr
+                ? diagram->GetHoveredKey() : INDEX_NONE, pass.bDiagramHover ? mDiagramKey : INDEX_NONE));
+            HideDiagramPage();
+        }
+        break;
+    }
     case EStepKind::Quit:
         Finish(menu);
         break;
@@ -736,7 +795,80 @@ bool FSOLSolidMenuProfileSmoke::IsPassScreenShown(const int32 pass, const USOLMe
     const USOLSettingsPageWidget* page = GetPassSettingsPage(pass, menu);
     const bool bTab = !SOLSettingsTabs::IsValidTab(spec.SettingsTab)
         || (page != nullptr && page->GetSelectedTab() == spec.SettingsTab);
-    return IsPassMenuShown(pass, menu) && bTab && GetViewSize() == spec.View;
+    return IsPassMenuShown(pass, menu) && bTab && GetViewSize() == spec.View && IsPassDiagramShown(pass);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) Puts the keyboard diagram test page on the viewport, laid out in the Controls page's content width (as the Help
+// page will be), hovering its busiest key when the pass asks; returns whether it shows
+bool FSOLSolidMenuProfileSmoke::ShowDiagramPage(const int32 pass, const USOLMenuSubsystem& menu)
+{
+    HideDiagramPage();
+
+    // The Controls tab's content width as the read-only pages lay their rows out: the tab scroll box less a scroll
+    // bar's room and the gap (USOLReadOnlyPageWidget::FitLeftColumn; the -SOLSmokeSolidMenu diagram step's width)
+    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLReadOnlyPageWidget* controls = mainMenu != nullptr ? mainMenu->GetControlsPage() : nullptr;
+    const UScrollBox* scroll = controls != nullptr ? controls->GetTabScroll(controls->GetSelectedTab()) : nullptr;
+    mDiagramWidth = scroll != nullptr ? static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().X)
+        - SOL::SolidMenu::SCROLL_BAR_THICKNESS - SOL::MenuStyle::BUTTON_GAP : 0.0f;
+    USOLKeyboardDiagramSmokePage* page = mController.IsValid() ? CreateWidget<USOLKeyboardDiagramSmokePage>(
+        mController.Get(), USOLKeyboardDiagramSmokePage::StaticClass()) : nullptr;
+    if (page == nullptr)
+    {
+        return false;
+    }
+    page->SetContentWidth(mDiagramWidth);
+    page->AddToViewport(PROFILE_DIAGRAM_Z);
+    mDiagramPage = page;
+
+    // The busiest key (the most strip lines; the first of a tie) hovered for a hover pass
+    USOLKeyboardDiagram* diagram = page->GetDiagram();
+    mDiagramKey = INDEX_NONE;
+    if (diagram != nullptr && mPasses[pass].bDiagramHover)
+    {
+        const FSOLKeyDiagramModel& model = diagram->GetModel();
+        TArray<int32> scratch;
+        int32 most = 0;
+        for (int32 key = 0; key < model.Keys.Num(); ++key)
+        {
+            const int32 count = SOLKeyDiagram::DetailAssignments(model, key, scratch);
+            if (count > most)
+            {
+                most = count;
+                mDiagramKey = key;
+            }
+        }
+        diagram->SetHoveredKey(mDiagramKey);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) Takes the diagram test page off the viewport (nothing when none shows)
+void FSOLSolidMenuProfileSmoke::HideDiagramPage()
+{
+    if (USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get())
+    {
+        page->RemoveFromParent();
+    }
+    mDiagramPage.Reset();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33c) Returns whether the pass's diagram test page shows as the pass asks (true for a pass without one)
+bool FSOLSolidMenuProfileSmoke::IsPassDiagramShown(const int32 pass) const
+{
+    const FPass& spec = mPasses[pass];
+    if (!spec.bDiagram)
+    {
+        return true;
+    }
+    const USOLKeyboardDiagramSmokePage* page = mDiagramPage.Get();
+    const USOLKeyboardDiagram* diagram = page != nullptr ? page->GetDiagram() : nullptr;
+    return diagram != nullptr && page->IsInViewport()
+        && diagram->GetHoveredKey() == (spec.bDiagramHover ? mDiagramKey : INDEX_NONE)
+        && (!spec.bDiagramHover || mDiagramKey != INDEX_NONE);
 }
 
 //////////////////////////////////////////////////////////////////////////

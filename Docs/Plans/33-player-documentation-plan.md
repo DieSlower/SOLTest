@@ -81,23 +81,80 @@ Builds on: D20. Depends on 33a. SDD section 6. **Scope grew (D20): the Settings 
 
 ### 33c: the keyboard diagram (opus/high)
 
-Builds on: D17, D18, D19, D23, **D32** (O14 answered, option A: Left Ctrl, Left Alt and Right Shift, used only in
-chords, get a modifier marker: not dimmed, not counted in "+N", a small modifier mark, and the hover strip lists the
-chords they start; `SOLKeyDiagram` and its tests change for it). Depends on 33b. SDD section 7.
+Builds on: D17, D18, D19, D23, **D32 revised and D33** (2026-11-07, user: every physical key that starts a chord gets
+the modifier mark, the six modifier keys are distinct, each side lists the chords it starts as the game reads it,
+chords never count in "+N", the hover strip lists the key's own actions then its chords; default bindings unchanged,
+moving ThrustDown off Left Ctrl is a separate ticket; `SOLKeyDiagram` and its tests change for it). Depends on 33b.
+SDD section 7.
 
-1. [ ] `Menu/SOLKeyboardDiagram` (`SSOLKeyboardDiagram` leaf, `USOLKeyboardDiagram`): caps (**numpad included**, the
+1. [x] `Menu/SOLKeyboardDiagram` (`SSOLKeyboardDiagram` leaf, `USOLKeyboardDiagram`): caps (**numpad included**, the
    larger layout, D19), area fills and bars in the **ten area colours** (D17), short labels, the **"+N" badges** (D18),
    **lock marks** on fixed keys, the mouse (beside the keyboard, stacked under it when narrow), the area legend, the
    fixed detail strip (D23), the "Other keys" and "Unbound" lists; hover through `SOLKeyboardLayout::KeyAt` with the
    hover ramp (instant at strength 0).
-2. [ ] Model built on show and on `OnKeyBindingsChanged` only (bind in `NativeConstruct`, unbind in
+2. [x] Model built on show and on `OnKeyBindingsChanged` only (bind in `NativeConstruct`, unbind in
    `NativeDestruct`); no per-frame work beyond the hover ramp.
-3. [ ] A smoke step on a test page put on the viewport (the 46f Info-page pattern, since Help comes in 33d): the
+3. [x] A smoke step on a test page put on the viewport (the 46f Info-page pattern, since Help comes in 33d): the
    assignment count, a real-cursor hover, a rebind moving a tint, **fit of the larger numpad diagram at 1280x720 and
    1000x800 (the SDD 7 estimates are unproven: tune `DIAGRAM_MIN_UNIT` / `DIAGRAM_MOUSE_BELOW_UNIT`)**.
-4. [ ] Profile the diagram page (a temporary pass or the 33d pass early); apply the invalidation-panel fallback only if
+4. [x] Profile the diagram page (a temporary pass or the 33d pass early); apply the invalidation-panel fallback only if
    over budget.
-5. [ ] Review; fixes; full suite; commit `Issue #33: Part 33c - keyboard and mouse diagram`; push.
+5. [x] Review; fixes; full suite; commit `Issue #33: Part 33c - keyboard diagram`; push.
+
+   **Progress (2026-11-07, paused for a user decision; all uncommitted in the working tree):** tests updated to D32
+   revised by a separate opus/high author (red on stubs: 48 tests, 23 failing), then implemented: `SOLKeyDiagram`
+   (`ChordModifierKeys`, chord ranges, `bModifier`, `Alternative`, `DetailAssignments`, `DetailLine`),
+   `SOLKeyboardLayout::LayoutPanel` / `LegendItemRect`, `Menu/SOLKeyboardDiagram` (leaf + wrapper; hover strip with
+   the hovered key's cap at its left), smoke page `Menu/SOLKeyboardDiagramSmokePage`; full suite 1651 / 0;
+   `-SOLSmokeSolidMenu` 223 / 223 (was 197: `Diagram` at 1280x720 and `SmallDiagram` at 1000x800, real-cursor
+   hovers on O, LMB and the six modifier keys, every key's strip rows, Fire-to-K rebind and restore), ini unchanged.
+   **Blocker (R2 came true):** the real shell content width is 658 units at 1280x720 and 405 at 1000x800 (SDD 7
+   estimated 770 / 530), so the key unit is 24.8 / 17.6 and the legends are unreadable (16 / 37 legends wider than
+   their key, short labels hidden at 1000x800); and the hover strip needs 17 lines (`DIAGRAM_DETAIL_LINES` 17) at
+   1000x800, most of it empty at 1280x720. Needs the user's layout decision (see the 33c report). Not yet done: the
+   layout fix, the adversarial review, the profile (deferred to the 33d-ii Help pass by the smoke agent), docs
+   (SDD 7 / 11 / 20, ARCHITECTURE, TECH_DEBT, STATUS), commit. Next step after the decision: change the layout
+   (contract C / `SOLKeyboardLayout`, tests by a separate author first), re-run the smoke and screenshots, then the
+   review.
+
+   **Progress (2026-11-07, later; paused at 70% of the weekly limit, all uncommitted):** user decisions D34 (stack the
+   navigation cluster, arrows, numpad and mouse under the main block below a width threshold), D35 (legends clipped to
+   their key, the "+N" badge hidden when it would overlap), D36 (hover strip sized once per width for the busiest key,
+   the cap on its own row above the lines) and D37 (wide screens only, at least 1280x720; targets 1280x720, 1920x1080,
+   3840x2160; nothing for 1000x800) - to be written into SDD section 2. Contract: scratchpad `33c_contract.md`
+   sections E.1-E.8 (Stacked = Beside rect + (-13.5, 7) for cluster and mouse keys, Extent (15, 13.5); FitToWidth with
+   `DIAGRAM_MOUSE_BELOW_UNIT` 30 / `DIAGRAM_STACK_UNIT` 30; `LayoutPanel(..., detailLines)`, `DIAGRAM_DETAIL_LINES` a
+   cap of 24, `DIAGRAM_DETAIL_CAP_HEIGHT` 30; `FitKeyText`, `DIAGRAM_BADGE_GAP` 2; `MaxDetailCount`;
+   `GetDetailLineBudget`, `GetPaintedHiddenBadges`). Tests by a separate author (red: 107 / 12 on stubs), implemented:
+   `SOLTest.Key` 107 / 0, full suite 1659 / 0. **Next step:** the smoke agent updates `SOLSolidMenuSmoke.cpp` (about
+   lines 4368 `-fit` placement now Stacked at 658; 4399 note add hidden badges, wide legends 0; 4511-4533 and 4572
+   strip rows against `GetPanel().DetailLines` and the panel unchanged across hovers; the cap row is above the lines;
+   drop the 1000x800 `SmallDiagram` step per D37), screenshots at 1280x720 / 1920x1080 incl. hovers (check the 1-unit
+   keys' 4-5 letter legends at unit 43.9 and the clipped "Wheel" legend), settles the constants, adds the diagram
+   profile pass (three-run medians at 1920x1080 / 1280x720); then the opus/xhigh review, fixes, full suite and the
+   four smokes (ini hash cbcf9b65...), docs, graphify, metrics, commit `Issue #33: Part 33c - keyboard diagram`.
+
+   **Progress (2026-11-08; paused for a user decision, all uncommitted):** `SOLSolidMenuSmoke` updated for D34-D37
+   (the 1000x800 `SmallDiagram` step dropped; `k-diagram-fit` wants Stacked at unit 658 / 15 = 43.87 and the strip
+   sized to `GetDetailLineBudget()`; a new `k-diagram-legends` check: 0 wide legends, 4 badges hidden; each hover checks
+   the panel unchanged and the cap row; `strip-all` checks the busiest key's rows = `DetailLines` (8, Left Ctrl) and no
+   panel change over every hover): `-SOLSmokeSolidMenu` 212 / 212, ini unchanged. `SOLSolidMenuProfileSmoke` gained P12
+   / P13 `main-diagram` / `main-diagram-hover` at 1920x1080 and P14 / P15 at 1280x720 (the diagram test page over the
+   main Controls page, against the main Settings baseline; 17 checks): one run 16 PASS, 17 / 17 (P12 dcpu +0.189 /
+   dgpu +0.102, P13 +0.161 / +0.105, P14 +0.091 / +0.066, P15 +0.120 / +0.067; against the same run's main-controls
+   pass +0.142 / +0.033 at 1920x1080 and +0.088 / +0.027 at 1280x720, the test page's own hull panel included).
+   **Blocker (the known risk came true):** the layout is in menu units, so 1280x720 and 1920x1080 clip the same
+   legends. At `DIAGRAM_KEY_FONT_SIZE` 11 nine 1-unit legends clip to 2-3 letter prefixes (Esc "Es", ScrL "Scr", Pause
+   "Pau", Home "Ho", PgUp "PgU", PgDn "PgD", Del "De", Num "Nu", numpad Enter "En") and the narrow Wheel shows no
+   legend; at 10 (tried, reverted) Esc, Del, ScrL and Num fit but Home, Pause, PgUp, PgDn, numpad Enter and Wheel still
+   clip, and the 1280x720 text gets smaller everywhere. Font and pad tuning cannot fix it; the user picks between no LED
+   room on the diagram caps, abbreviated legends, or another option. Next after the decision: apply it (tests first if
+   the contract changes), re-run the solid smoke and screenshots, three profile runs, then the review (step 4 onwards).
+
+   **Done (2026-11-08):** D38 applied (LED-free diagram caps, `DIAGRAM_LEGEND_ABBREVIATIONS` for numpad Enter, Wheel
+   and Pause, `SOLTest.KeyDiagram.LegendAbbreviations`), 0 legends clipped at both paint scales, screenshots looked at
+   (every legend readable), profile medians in SDD 14.3, the opus/xhigh review (no must-fix; 5 should-fix and 7 nits,
+   fixed by an opus/high agent except the ones moved to `Docs/TECH_DEBT.md` and the 33f note above), docs, commit.
 
 ### 33d-i: HUD symbol helper, the HUD drawing through it (opus/high)
 
@@ -162,6 +219,10 @@ Builds on: D21. Depends on 33e.
 2. [ ] Default runs x3 at 1920x1080 and 1280x720: every pass under 0.2 ms CPU / 0.3 ms GPU (medians).
 3. [ ] View runs: 3840x2160 (4K proxy) and 3840x3744 (one XR-4 eye), three runs of the new passes, menu-share-only
    verdict. **The two-eye run (7680x3744) is skipped (D21)**; note it in the SDD amendment.
+   The `main-help-keys` passes in the view runs carry the keyboard diagram, with the 33c `diagram-P<n>` check (0 legends
+   clipped at that paint scale, D38: 33c verified only the 1280x720 and 1920x1080 scales) and the measured menu GPU
+   replacing 33c's one-eye extrapolation (SDD 14.3, about 0.27 ms). 33c's test-page passes P12-P15 may be dropped once
+   the Help page passes exist.
 4. [ ] Full smoke set: `-SOLSmokeSolidMenu`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`,
    `-SOLMenuSmoke=all`; PIE smoke via unreal-mcp if the editor is open (else noted here).
 5. [ ] Record the numbers in the SDD (section 14 amendment); commit `Issue #33: Part 33f - profile and smoke`; push.

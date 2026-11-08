@@ -6,6 +6,7 @@
 #include "Menu/SOLKeyDiagram.h"
 
 #include "Menu/SOLKeyboardLayout.h"
+#include "Menu/SOLMenuContent.h"
 #include "SOLConstants.h"
 
 #include "String/ParseTokens.h"
@@ -92,9 +93,17 @@ namespace
             const ESOLControlArea area = SOLKeyDiagram::AreaFromName(rows[row].Area);
             const FStringView cell = rows[row].Bindings != nullptr ? FStringView(rows[row].Bindings) : FStringView();
             const TCHAR alternativeDelimiter = SOLMenuText::BINDING_ALTERNATIVE_DELIMITER[0];
+            // Empty alternatives are not skipped by the parse so the index matches a plain '|' split
+            int32 alternativeIndex = -1;
             UE::String::ParseTokens(cell, alternativeDelimiter, [&](const FStringView alternative)
             {
+                ++alternativeIndex;
+                if (alternative.IsEmpty())
+                {
+                    return;
+                }
                 FKeyDiagramPending pending;
+                pending.Assignment.Alternative = alternativeIndex;
                 pending.Assignment.Row = row;
                 pending.Assignment.Area = area;
                 pending.Assignment.bInFlight = area != ESOLControlArea::Map;
@@ -134,8 +143,25 @@ namespace
                 pending.Assignment.ShortLabel = KeyDiagramFixedLabel(lastKey);
                 pending.KeyName = lastKey;
                 visit(pending);
-            }, UE::String::EParseTokensOptions::SkipEmpty);
+            }, UE::String::EParseTokensOptions::None);
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the n-th '|' alternative of a bindings cell (a plain split, empty alternatives counted), or an empty view
+    FStringView KeyDiagramAlternative(const TCHAR* cell, const int32 n)
+    {
+        FStringView found;
+        int32 index = 0;
+        const FStringView view = cell != nullptr ? FStringView(cell) : FStringView();
+        UE::String::ParseTokens(view, SOLMenuText::BINDING_ALTERNATIVE_DELIMITER[0], [&](const FStringView alternative)
+        {
+            if (index++ == n)
+            {
+                found = alternative;
+            }
+        }, UE::String::EParseTokensOptions::None);
+        return found;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -163,6 +189,9 @@ namespace
         key.Area = ESOLControlArea::Count;
         key.ShortLabel = TEXT("");
         key.bLocked = false;
+        key.bModifier = false;
+        key.FirstChord = 0;
+        key.ChordCount = 0;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -291,6 +320,43 @@ void SOLKeyDiagram::Build(const TConstArrayView<SOLMenuText::FControlRow> rows, 
     {
         KeyDiagramFinishKey(out, key);
     }
+
+    // The chords (D32 revised): count the chord assignments each modifier key starts (ChordCount), give each key its
+    // range in layout order, then fill the ranges in Assignments order (ChordCount is the fill cursor and ends at the
+    // count). Overflow keys and mirrors start none of their own (FindKey never returns a mirror)
+    for (const FSOLKeyAssignment& assignment : out.Assignments)
+    {
+        for (const TCHAR* modifierName : ChordModifierKeys(assignment.Chord))
+        {
+            const int32 modifier = SOLKeyboardLayout::FindKey(modifierName);
+            if (modifier != INDEX_NONE)
+            {
+                ++out.Keys[modifier].ChordCount;
+            }
+        }
+    }
+    int32 chordTotal = 0;
+    for (FSOLDiagramKey& key : out.Keys)
+    {
+        key.FirstChord = chordTotal;
+        chordTotal += key.ChordCount;
+        key.bModifier = key.ChordCount > 0;
+        key.ChordCount = 0;
+    }
+    out.Chords.SetNum(chordTotal, EAllowShrinking::No);
+    for (int32 index = 0; index < out.Assignments.Num(); ++index)
+    {
+        for (const TCHAR* modifierName : ChordModifierKeys(out.Assignments[index].Chord))
+        {
+            const int32 modifier = SOLKeyboardLayout::FindKey(modifierName);
+            if (modifier != INDEX_NONE)
+            {
+                FSOLDiagramKey& key = out.Keys[modifier];
+                out.Chords[key.FirstChord + key.ChordCount++] = index;
+            }
+        }
+    }
+
     for (int32 index = 0; index < layout.Num(); ++index)
     {
         const int32 main = layout[index].bMirror ? SOLKeyboardLayout::FindKey(layout[index].KeyName) : INDEX_NONE;
@@ -305,6 +371,9 @@ void SOLKeyDiagram::Build(const TConstArrayView<SOLMenuText::FControlRow> rows, 
             mirror.Area = source.Area;
             mirror.ShortLabel = source.ShortLabel;
             mirror.bLocked = source.bLocked;
+            mirror.bModifier = source.bModifier;
+            mirror.FirstChord = source.FirstChord;
+            mirror.ChordCount = source.ChordCount;
         }
     }
 }
@@ -392,4 +461,146 @@ int32 SOLKeyDiagram::KeyOfBinding(const FSOLKeyDiagramModel& model, const int32 
         }
     }
     return INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the physical layout keys that start a chord, left side first (static tables)
+TConstArrayView<const TCHAR*> SOLKeyDiagram::ChordModifierKeys(const SOLKeyBindings::EKeyChord chord)
+{
+    static const TCHAR* const SHIFT_KEYS[] = { TEXT("LeftShift"), TEXT("RightShift") };
+    static const TCHAR* const RIGHT_SHIFT_KEYS[] = { TEXT("RightShift") };
+    static const TCHAR* const ALT_KEYS[] = { TEXT("LeftAlt"), TEXT("RightAlt") };
+    static const TCHAR* const CONTROL_KEYS[] = { TEXT("LeftControl"), TEXT("RightControl") };
+    switch (chord)
+    {
+    case SOLKeyBindings::EKeyChord::Shift:
+        return TConstArrayView<const TCHAR*>(SHIFT_KEYS);
+    case SOLKeyBindings::EKeyChord::RightShift:
+        return TConstArrayView<const TCHAR*>(RIGHT_SHIFT_KEYS);
+    case SOLKeyBindings::EKeyChord::Alt:
+        return TConstArrayView<const TCHAR*>(ALT_KEYS);
+    case SOLKeyBindings::EKeyChord::Control:
+        return TConstArrayView<const TCHAR*>(CONTROL_KEYS);
+    default:
+        return TConstArrayView<const TCHAR*>();
+    }
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Calls visit(assignment) for each of a key's hover strip assignments in strip order (its own, the primary first,
+    // then the chords it starts); a mirror reads its main key's ranges. Shared by DetailAssignments and MaxDetailCount
+    template <typename FVisit>
+    void KeyDiagramForEachDetail(const FSOLKeyDiagramModel& model, const int32 key, FVisit&& visit)
+    {
+        if (!model.Keys.IsValidIndex(key))
+        {
+            return;
+        }
+        // A mirror shares its main key's ranges; read the main key's all the same
+        const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
+        int32 source = key;
+        if (layout.IsValidIndex(key) && layout[key].bMirror)
+        {
+            const int32 main = SOLKeyboardLayout::FindKey(layout[key].KeyName);
+            source = model.Keys.IsValidIndex(main) ? main : key;
+        }
+        const FSOLDiagramKey& diagramKey = model.Keys[source];
+
+        // Own actions: the primary, then the rest of the range in model order
+        if (model.Assignments.IsValidIndex(diagramKey.Primary))
+        {
+            visit(diagramKey.Primary);
+        }
+        const int32 lastOwn = diagramKey.FirstAssignment + diagramKey.AssignmentCount;
+        for (int32 index = diagramKey.FirstAssignment; index < lastOwn; ++index)
+        {
+            if (index != diagramKey.Primary && model.Assignments.IsValidIndex(index))
+            {
+                visit(index);
+            }
+        }
+
+        // The chords it starts, in range order
+        for (int32 chord = diagramKey.FirstChord; chord < diagramKey.FirstChord + diagramKey.ChordCount; ++chord)
+        {
+            if (model.Chords.IsValidIndex(chord) && model.Assignments.IsValidIndex(model.Chords[chord]))
+            {
+                visit(model.Chords[chord]);
+            }
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills out with the hover strip's assignments of a key: its own (primary first), then the chords it starts
+int32 SOLKeyDiagram::DetailAssignments(const FSOLKeyDiagramModel& model, const int32 key, TArray<int32>& out)
+{
+    out.Reset();
+    KeyDiagramForEachDetail(model, key, [&out](const int32 assignment) { out.Add(assignment); });
+    return out.Num();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills one hover strip line for an assignment: its one alternative's keys and its row's action
+void SOLKeyDiagram::DetailLine(const TConstArrayView<SOLMenuText::FControlRow> rows,
+    const FSOLKeyDiagramModel& model, const int32 assignment, const TArray<FString>& liveKeys,
+    FSOLDiagramDetailLine& out)
+{
+    out.Keys.Reset();
+    out.Action.Reset();
+    out.Area = ESOLControlArea::Count;
+    out.bFixed = false;
+    if (!model.Assignments.IsValidIndex(assignment))
+    {
+        return;
+    }
+    const FSOLKeyAssignment& source = model.Assignments[assignment];
+    if (!rows.IsValidIndex(source.Row))
+    {
+        return;
+    }
+    const SOLMenuText::FControlRow& row = rows[source.Row];
+    const FString alternative(KeyDiagramAlternative(row.Bindings, source.Alternative));
+    out.Keys = SOLMenuContent::FormatBindings(*alternative, liveKeys);
+    out.Action = SOLMenuContent::FormatControlAction(row.Action != nullptr ? row.Action : TEXT(""));
+    out.Area = source.Area;
+    out.bFixed = source.bFixed;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills one hover strip line for an assignment from CONTROL_ROWS
+void SOLKeyDiagram::DetailLine(const FSOLKeyDiagramModel& model, const int32 assignment,
+    const TArray<FString>& liveKeys, FSOLDiagramDetailLine& out)
+{
+    DetailLine(TConstArrayView<SOLMenuText::FControlRow>(SOLMenuText::CONTROL_ROWS), model, assignment, liveKeys, out);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D36: returns the largest DetailAssignments count over the model's keys (mirrors included), counting without a list
+int32 SOLKeyDiagram::MaxDetailCount(const FSOLKeyDiagramModel& model)
+{
+    int32 best = 0;
+    for (int32 key = 0; key < model.Keys.Num(); ++key)
+    {
+        int32 count = 0;
+        KeyDiagramForEachDetail(model, key, [&count](const int32 /*assignment*/) { ++count; });
+        best = FMath::Max(best, count);
+    }
+    return best;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D38: returns the diagram legend abbreviation of an engine key name, or nullptr when it has none
+const TCHAR* SOLKeyDiagram::LegendAbbreviation(const FStringView keyName)
+{
+    for (const SOLMenuText::FDiagramLegendAbbreviation& entry : SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS)
+    {
+        if (keyName.Equals(entry.KeyName, ESearchCase::IgnoreCase))
+        {
+            return entry.Legend;
+        }
+    }
+    return nullptr;
 }

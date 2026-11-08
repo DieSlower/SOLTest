@@ -355,6 +355,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* HELP_DETAIL_HINT = TEXT("Hover a key to see what it does");
     inline constexpr const TCHAR* HELP_OTHER_KEYS = TEXT("Other keys");
     inline constexpr const TCHAR* HELP_EXTRA_BADGE_FORMAT = TEXT("+{0}");
+    inline constexpr const TCHAR* HELP_UNBOUND = TEXT("Unbound");              // The line of actions without a key
+    inline constexpr const TCHAR* HELP_UNBOUND_SEPARATOR = TEXT(", ");        // Between its action names
 
     // Returns whether two table strings are equal (case-sensitive), at compile time: the static_asserts that tie a
     // table's rows to their ids use it (KEY_SHORT_LABELS in SOLKeyBindings.cpp, the glossary coverage table in
@@ -450,6 +452,23 @@ namespace SOLMenuText
         { TEXT("Escape"), TEXT("Menu") },
         { TEXT("F1"), TEXT("Menu") },
         { TEXT("F2"), TEXT("Stats") },
+    };
+
+    // D38: a keyboard diagram legend used only when the layout legend (SOLKeyboardLayout) does not fit its key cap, by
+    // engine key name (the numpad Enter mirror shares "Enter" with the main Enter, which fits and keeps its legend). At
+    // most SOL::Help::DIAGRAM_ABBREVIATION_MAX_CHARS characters and shorter than the layout legend; the hover strip
+    // always shows the key's full name
+    struct FDiagramLegendAbbreviation
+    {
+        const TCHAR* KeyName;
+        const TCHAR* Legend;
+    };
+
+    inline constexpr FDiagramLegendAbbreviation DIAGRAM_LEGEND_ABBREVIATIONS[] =
+    {
+        { TEXT("Enter"), TEXT("Ent") },
+        { TEXT("MouseWheelAxis"), TEXT("W") },
+        { TEXT("Pause"), TEXT("Paus") },
     };
 
     // Between the items of a glossary row's Symbols or Sample cell

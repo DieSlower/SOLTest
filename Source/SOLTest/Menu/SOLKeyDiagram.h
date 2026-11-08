@@ -40,6 +40,8 @@ struct FSOLKeyAssignment
     bool bInFlight = true;                                          // Works in flight (false for the Map area's rows)
     const TCHAR* ShortLabel = TEXT("");                             // SOLMenuText::KEY_SHORT_LABELS of the binding, or
                                                                     // FIXED_KEY_SHORT_LABELS of the key ("" if none)
+    int32 Alternative = 0;                                          // The alternative's index in the row's bindings
+                                                                    // cell ('|'-separated, 0-based)
 };
 
 // One key of the diagram (a SOLKeyboardLayout key, or a bound key off the layout): its assignments (a range of
@@ -55,6 +57,10 @@ struct FSOLDiagramKey
     ESOLControlArea Area = ESOLControlArea::Count;      // The primary's area (Count for a free key)
     const TCHAR* ShortLabel = TEXT("");                 // The primary's short label
     bool bLocked = false;                               // Every assignment is fixed (lock mark; false for a free key)
+    bool bModifier = false;                             // D32 (revised): the key starts at least one chord (ChordCount
+                                                        // > 0), whether or not it has actions of its own
+    int32 FirstChord = 0;                               // Range into FSOLKeyDiagramModel::Chords: the chords this key
+    int32 ChordCount = 0;                               // is a modifier of
 };
 
 // The keyboard diagram's model (SDD 33 section 7): one FSOLDiagramKey per SOLKeyboardLayout key (layout order; a mirror
@@ -67,6 +73,8 @@ struct FSOLKeyDiagramModel
     TArray<FSOLDiagramKey> Keys;                        // One per SOLKeyboardLayout::Keys() entry
     TArray<FSOLDiagramKey> Overflow;                    // Bound keys off the layout, in first-row order
     TArray<int32> Unbound;                              // SOLKeyBindings::EBinding of every binding without a key
+    TArray<int32> Chords;                               // Indices into Assignments, grouped by key in layout order
+                                                        // (each key's FirstChord / ChordCount range)
 
     // Empties the model, keeping its capacity
     void Reset()
@@ -75,7 +83,18 @@ struct FSOLKeyDiagramModel
         Keys.Reset();
         Overflow.Reset();
         Unbound.Reset();
+        Chords.Reset();
     }
+};
+
+// One line of the diagram's hover detail strip (D23): how the player presses an assignment and what it does
+struct FSOLDiagramDetailLine
+{
+    FString Keys;                                       // SOLMenuContent::FormatBindings of that one alternative's text
+                                                        // at the live keys ("Alt+O", "Shift+M", "Ctrl+F1", "LMB")
+    FString Action;                                     // SOLMenuContent::FormatControlAction(rows[Row].Action)
+    ESOLControlArea Area = ESOLControlArea::Count;
+    bool bFixed = false;
 };
 
 /**
@@ -113,4 +132,32 @@ namespace SOLKeyDiagram
     // Returns the layout key (index into model.Keys) that holds a binding's assignment, or INDEX_NONE (off the layout,
     // unbound or out of range)
     SOLTEST_API int32 KeyOfBinding(const FSOLKeyDiagramModel& model, int32 binding);
+
+    // Returns the physical layout keys that start a chord, as the game reads them, left side first: Shift {LeftShift,
+    // RightShift}, RightShift {RightShift}, Alt {LeftAlt, RightAlt}, Control {LeftControl, RightControl}, None empty.
+    // Static data, no allocation
+    SOLTEST_API TConstArrayView<const TCHAR*> ChordModifierKeys(SOLKeyBindings::EKeyChord chord);
+
+    // Fills out (reset, capacity kept) with the hover strip's assignments of a key (index into model.Keys; a mirror
+    // gives its main key's): the key's own actions first (the primary first, then its other assignments in model
+    // order), then the chords it starts (its Chords range in order); empty for a key with neither or an index out of
+    // range. Returns out.Num()
+    SOLTEST_API int32 DetailAssignments(const FSOLKeyDiagramModel& model, int32 key, TArray<int32>& out);
+
+    // D36: returns the largest DetailAssignments count over the model's keys (mirror keys included; 0 for
+    // an empty model): the hover strip's unwrapped line budget. Allocation-free
+    SOLTEST_API int32 MaxDetailCount(const FSOLKeyDiagramModel& model);
+
+    // D38: returns the diagram legend abbreviation of an engine key name (SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS,
+    // case-insensitive), or nullptr when it has none. The leaf uses it only when the layout legend does not fit
+    SOLTEST_API const TCHAR* LegendAbbreviation(FStringView keyName);
+
+    // Fills one hover strip line for an assignment (index into model.Assignments); out of range: Keys and Action
+    // empty, Area Count, bFixed false
+    SOLTEST_API void DetailLine(TConstArrayView<SOLMenuText::FControlRow> rows, const FSOLKeyDiagramModel& model,
+        int32 assignment, const TArray<FString>& liveKeys, FSOLDiagramDetailLine& out);
+
+    // DetailLine with SOLMenuText::CONTROL_ROWS
+    SOLTEST_API void DetailLine(const FSOLKeyDiagramModel& model, int32 assignment, const TArray<FString>& liveKeys,
+        FSOLDiagramDetailLine& out);
 }

@@ -186,41 +186,75 @@ namespace
     // The gap between the keyboard and the mouse (key units), beside it or below it
     constexpr float KEYBOARD_LAYOUT_MOUSE_GAP = 0.5f;
 
-    // The keyboard's and the mouse's sizes in key units, measured from the table once
+    // D34 Stacked: keyboard keys from this X are right of the main block (Scroll Lock, Pause, the navigation cluster,
+    // the arrows, the numpad) and move under it with the mouse, this far under the main block's bottom
+    constexpr float KEYBOARD_LAYOUT_CLUSTER_LEFT = 15.5f;
+    constexpr float KEYBOARD_LAYOUT_STACK_GAP = 0.5f;
+
+    // The keyboard's and the mouse's sizes in key units and the Stacked arrangement, measured from the table once
     struct FKeyboardLayoutExtents
     {
         FVector2f Keyboard = FVector2f::ZeroVector;     // Keyboard keys from the origin
         FVector2f Mouse = FVector2f::ZeroVector;        // Mouse zones from the mouse's top-left
+        FVector2f Main = FVector2f::ZeroVector;         // The main block's keys (X under the cluster edge)
+        FVector2f StackOffset = FVector2f::ZeroVector;  // Stacked: added to a cluster or mouse key's Beside rect
+        FVector2f Stacked = FVector2f::ZeroVector;      // Stacked: the whole diagram's size
     };
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the keyboard's and the mouse's sizes (the right and bottom edges of their keys)
+    // Returns whether a key moves under the main block in Stacked (a mouse zone or a keyboard key right of the block)
+    bool KeyboardLayoutIsStackedGroup(const FSOLLayoutKey& key)
+    {
+        return key.Mouse != ESOLMouseButton::None || key.X >= KEYBOARD_LAYOUT_CLUSTER_LEFT;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the keyboard's and the mouse's sizes (the right and bottom edges of their keys) and the Stacked offset
+    // and extent
     const FKeyboardLayoutExtents& KeyboardLayoutExtents()
     {
         static const FKeyboardLayoutExtents extents = []()
         {
+            // The keyboard, the main block and the mouse, from their keys' far edges
             FKeyboardLayoutExtents measured;
             for (const FSOLLayoutKey& key : KEYBOARD_LAYOUT_KEYS)
             {
                 FVector2f& size = key.Mouse != ESOLMouseButton::None ? measured.Mouse : measured.Keyboard;
                 size.X = FMath::Max(size.X, key.X + key.Width);
                 size.Y = FMath::Max(size.Y, key.Y + key.Height);
+                if (!KeyboardLayoutIsStackedGroup(key))
+                {
+                    measured.Main.X = FMath::Max(measured.Main.X, key.X + key.Width);
+                    measured.Main.Y = FMath::Max(measured.Main.Y, key.Y + key.Height);
+                }
             }
+
+            // Stacked: the right part of the Beside layout (the cluster edge to the mouse's right edge, its top at 0)
+            // centred under the main block, the gap below it; the extent is the main block and that group
+            const float besideRight = measured.Keyboard.X + KEYBOARD_LAYOUT_MOUSE_GAP + measured.Mouse.X;
+            const float groupWidth = besideRight - KEYBOARD_LAYOUT_CLUSTER_LEFT;
+            const float groupX = 0.5f * (measured.Main.X - groupWidth);
+            measured.StackOffset = FVector2f(groupX - KEYBOARD_LAYOUT_CLUSTER_LEFT,
+                measured.Main.Y + KEYBOARD_LAYOUT_STACK_GAP);
+            const float besideBottom = FMath::Max(measured.Keyboard.Y, measured.Mouse.Y);
+            measured.Stacked = FVector2f(FMath::Max(measured.Main.X, groupX + groupWidth),
+                FMath::Max(measured.Main.Y, besideBottom + measured.StackOffset.Y));
             return measured;
         }();
         return extents;
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the mouse's top-left for a placement: right of the keyboard, bottom-aligned with it, or under the
-    // keyboard at its right edge (below the numpad)
+    // Returns the mouse's top-left for a placement: right of the keyboard, bottom-aligned with it (Stacked: that
+    // place moved under the main block), or under the keyboard at its right edge (below the numpad)
     FVector2f KeyboardLayoutMouseOrigin(const ESOLMousePlacement placement)
     {
         const FKeyboardLayoutExtents& extents = KeyboardLayoutExtents();
-        if (placement == ESOLMousePlacement::Beside)
+        if (placement == ESOLMousePlacement::Beside || placement == ESOLMousePlacement::Stacked)
         {
-            return FVector2f(extents.Keyboard.X + KEYBOARD_LAYOUT_MOUSE_GAP,
+            const FVector2f beside(extents.Keyboard.X + KEYBOARD_LAYOUT_MOUSE_GAP,
                 FMath::Max(0.0f, extents.Keyboard.Y - extents.Mouse.Y));
+            return placement == ESOLMousePlacement::Stacked ? beside + extents.StackOffset : beside;
         }
         return FVector2f(FMath::Max(0.0f, extents.Keyboard.X - extents.Mouse.X),
             extents.Keyboard.Y + KEYBOARD_LAYOUT_MOUSE_GAP);
@@ -282,17 +316,28 @@ FBox2f SOLKeyboardLayout::KeyRect(const int32 index, const ESOLMousePlacement pl
         return FBox2f(ForceInit);
     }
     const FSOLLayoutKey& key = KEYBOARD_LAYOUT_KEYS[index];
-    const FVector2f origin = key.Mouse != ESOLMouseButton::None ? KeyboardLayoutMouseOrigin(placement)
-        : FVector2f::ZeroVector;
+    FVector2f origin = FVector2f::ZeroVector;
+    if (key.Mouse != ESOLMouseButton::None)
+    {
+        origin = KeyboardLayoutMouseOrigin(placement);
+    }
+    else if (placement == ESOLMousePlacement::Stacked && KeyboardLayoutIsStackedGroup(key))
+    {
+        origin = KeyboardLayoutExtents().StackOffset;
+    }
     const FVector2f min = origin + FVector2f(key.X, key.Y);
     return FBox2f(min, min + FVector2f(key.Width, key.Height));
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the diagram's size in key units: the keyboard and the mouse at its place
+// Returns the diagram's size in key units: the keyboard and the mouse at its place (Stacked: measured once)
 FVector2f SOLKeyboardLayout::Extent(const ESOLMousePlacement placement)
 {
     const FKeyboardLayoutExtents& extents = KeyboardLayoutExtents();
+    if (placement == ESOLMousePlacement::Stacked)
+    {
+        return extents.Stacked;
+    }
     const FVector2f mouseFar = KeyboardLayoutMouseOrigin(placement) + extents.Mouse;
     return FVector2f(FMath::Max(extents.Keyboard.X, mouseFar.X), FMath::Max(extents.Keyboard.Y, mouseFar.Y));
 }
@@ -314,7 +359,8 @@ int32 SOLKeyboardLayout::KeyAt(const FVector2f& pointUnits, const ESOLMousePlace
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the scale that fits the diagram into a width: the mouse beside when that unit allows it, else below
+// Returns the scale that fits the diagram into a width (D34): one row with the mouse beside, else one row with the
+// mouse below, else stacked, each when its unit allows it
 FSOLDiagramScale SOLKeyboardLayout::FitToWidth(const float widthPx)
 {
     using namespace SOL::Help;
@@ -324,9 +370,22 @@ FSOLDiagramScale SOLKeyboardLayout::FitToWidth(const float widthPx)
         return scale;
     }
     const float besideUnit = widthPx / Extent(ESOLMousePlacement::Beside).X;
-    scale.Placement = MousePlacement(besideUnit);
-    const float unit = scale.Placement == ESOLMousePlacement::Beside ? besideUnit
-        : widthPx / Extent(ESOLMousePlacement::Below).X;
+    const float belowUnit = widthPx / Extent(ESOLMousePlacement::Below).X;
+    float unit = besideUnit;
+    if (besideUnit >= DIAGRAM_MOUSE_BELOW_UNIT)
+    {
+        scale.Placement = ESOLMousePlacement::Beside;
+    }
+    else if (belowUnit >= DIAGRAM_STACK_UNIT)
+    {
+        scale.Placement = ESOLMousePlacement::Below;
+        unit = belowUnit;
+    }
+    else
+    {
+        scale.Placement = ESOLMousePlacement::Stacked;
+        unit = widthPx / Extent(ESOLMousePlacement::Stacked).X;
+    }
     scale.UnitPx = FMath::Min(unit, DIAGRAM_MAX_UNIT);
     scale.bShortLabels = scale.UnitPx >= DIAGRAM_MIN_UNIT;
     return scale;
@@ -348,4 +407,113 @@ FVector2f SOLKeyboardLayout::ToUnits(const FVector2f& px, const FSOLDiagramScale
 FVector2f SOLKeyboardLayout::FromUnits(const FVector2f& units, const FSOLDiagramScale& scale)
 {
     return scale.OriginPx + units * scale.UnitPx;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Stacks the Keyboard tab's sections in a width: legend, diagram, other keys, unbound, detail (its cap row and
+// detailLines lines, D36)
+FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound,
+    const int32 detailLines)
+{
+    using namespace SOL::Help;
+    FSOLDiagramPanel panel;
+    const float width = FMath::IsFinite(widthPx) && widthPx > 0.0f ? widthPx : 0.0f;
+    panel.Scale = FitToWidth(width);
+
+    // The legend grid: as many columns as fit, at least one, at most one per area
+    const int32 fit = FMath::FloorToInt32((width + DIAGRAM_LEGEND_GAP) / (DIAGRAM_LEGEND_ITEM_WIDTH
+        + DIAGRAM_LEGEND_GAP));
+    panel.LegendColumns = FMath::Clamp(fit, 1, AREA_COUNT);
+    panel.LegendRows = FMath::DivideAndRoundUp(AREA_COUNT, panel.LegendColumns);
+    panel.Legend = FBox2f(FVector2f::ZeroVector, FVector2f(width, static_cast<float>(panel.LegendRows)
+        * DIAGRAM_LEGEND_ROW_HEIGHT));
+
+    // Each section under the previous shown one; a hidden section is a zero-height box with no gap
+    float bottom = panel.Legend.Max.Y;
+    const auto stack = [&bottom](const bool bShown, const float sectionWidth, const float height)
+    {
+        if (!bShown)
+        {
+            return FBox2f(FVector2f(0.0f, bottom), FVector2f(sectionWidth, bottom));
+        }
+        const float top = bottom + DIAGRAM_SECTION_GAP;
+        bottom = top + height;
+        return FBox2f(FVector2f(0.0f, top), FVector2f(sectionWidth, bottom));
+    };
+    const FVector2f diagramSize = Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
+    panel.Diagram = stack(true, diagramSize.X, diagramSize.Y);
+    panel.Scale.OriginPx = panel.Diagram.Min;
+    panel.Other = stack(bOtherKeys, width, DIAGRAM_STRIP_HEIGHT);
+    panel.Unbound = stack(bUnbound, width, DIAGRAM_UNBOUND_HEIGHT);
+    panel.DetailLines = FMath::Clamp(detailLines, 1, DIAGRAM_DETAIL_LINES);
+    panel.Detail = stack(true, width, DIAGRAM_DETAIL_CAP_HEIGHT + static_cast<float>(panel.DetailLines)
+        * DIAGRAM_DETAIL_LINE_HEIGHT);
+    panel.Height = panel.Detail.Max.Y;
+    return panel;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the legend item rect of an area index (row-major in the grid), or an empty box out of range
+FBox2f SOLKeyboardLayout::LegendItemRect(const FSOLDiagramPanel& panel, const int32 area)
+{
+    using namespace SOL::Help;
+    if (area < 0 || area >= AREA_COUNT)
+    {
+        return FBox2f(ForceInit);
+    }
+    const int32 columns = FMath::Max(panel.LegendColumns, 1);
+    const FVector2f min = panel.Legend.Min + FVector2f(static_cast<float>(area % columns) * (DIAGRAM_LEGEND_ITEM_WIDTH
+        + DIAGRAM_LEGEND_GAP), static_cast<float>(area / columns) * DIAGRAM_LEGEND_ROW_HEIGHT);
+    return FBox2f(min, min + FVector2f(DIAGRAM_LEGEND_ITEM_WIDTH, DIAGRAM_LEGEND_ROW_HEIGHT));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D35: fits a key cap's top line: the legend beside the "+N" badge when both fit, else the badge hidden and the legend
+// centred in the span, clipped at its right end when wider
+FSOLKeyTextFit SOLKeyboardLayout::FitKeyText(const float left, const float right, const float legendWidth,
+    const float badgeWidth)
+{
+    FSOLKeyTextFit fit;
+    fit.LegendX = left;
+    const float span = right - left;
+    const float legend = FMath::Max(legendWidth, 0.0f);
+    const bool bHasBadge = badgeWidth > 0.0f;
+
+    // No room: nothing drawn, a legend counts as clipped
+    if (!(span > 0.0f))
+    {
+        fit.bClipped = legend > 0.0f;
+        return fit;
+    }
+
+    // No legend: the badge alone needs only the span
+    if (legend <= 0.0f)
+    {
+        fit.bBadge = bHasBadge && badgeWidth <= span + KINDA_SMALL_NUMBER;
+        return fit;
+    }
+
+    // The legend centred left of the badge when both fit
+    if (bHasBadge)
+    {
+        const float beside = span - badgeWidth - SOL::Help::DIAGRAM_BADGE_GAP;
+        if (legend <= beside + KINDA_SMALL_NUMBER)
+        {
+            fit.LegendX = left + 0.5f * (beside - legend);
+            fit.LegendWidth = legend;
+            fit.bBadge = true;
+            return fit;
+        }
+    }
+
+    // The badge hidden: the legend centred in the whole span, or clipped to it
+    if (legend <= span + KINDA_SMALL_NUMBER)
+    {
+        fit.LegendX = left + 0.5f * (span - legend);
+        fit.LegendWidth = legend;
+        return fit;
+    }
+    fit.LegendWidth = span;
+    fit.bClipped = true;
+    return fit;
 }
