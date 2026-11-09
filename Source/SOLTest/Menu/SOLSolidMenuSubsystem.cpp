@@ -335,6 +335,13 @@ UTexture2D* USOLSolidMenuSubsystem::GetTexture(const ESOLSolidTexture texture) c
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a glossary screenshot crop, or null when it is missing or the index is outside the table
+UTexture2D* USOLSolidMenuSubsystem::GetGlossaryCrop(const int32 crop) const
+{
+    return GlossaryCrops.IsValidIndex(crop) ? GlossaryCrops[crop].Get() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns how many unique materials are alive
 int32 USOLSolidMenuSubsystem::GetUniqueMaterialCount() const
 {
@@ -393,6 +400,15 @@ void USOLSolidMenuSubsystem::LoadAssets()
     {
         Textures[index] = SolidMenuLoad<UTexture2D>(*this, SOLID_TEXTURE_PATHS[index], TEXT("without it"),
             mMissingAssetCount);
+    }
+
+    // (33e-ii, D39) The map glossary rows' screenshot crops, in SOL::Paths::GLOSSARY_CROPS order
+    constexpr int32 cropCount = UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS);
+    GlossaryCrops.SetNum(cropCount);
+    for (int32 index = 0; index < cropCount; ++index)
+    {
+        GlossaryCrops[index] = SolidMenuLoad<UTexture2D>(*this, SOL::Paths::GLOSSARY_CROPS[index].Texture,
+            TEXT("that glossary row's box empty"), mMissingAssetCount);
     }
 
     // (33d-ii) The Help glossary's one shared HUD shape material: grain and scanlines on, current with the cache

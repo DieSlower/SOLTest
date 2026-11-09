@@ -31,7 +31,7 @@
 namespace
 {
     // Developer A/B switch for GPU measurements (SDD 17 Amendment 1); the player's toggle is the O key
-    TAutoConsoleVariable<int32> CVarSOLOrbitLines(TEXT("sol.OrbitLines"), 1,
+    TAutoConsoleVariable<int32> CVarSOLOrbitLines(SOL::ORBIT_LINE_CVAR, 1,
         TEXT("1: world-space orbit lines drawn while toggled on; 0: never drawn (A/B profiling, SDD 17)"));
 
     // Custom primitive data slots beyond SOLOrbitLineMesh::PackCustomData's (SOL::ORBIT_LINE_CUSTOM_DATA_TOTAL_FLOATS)

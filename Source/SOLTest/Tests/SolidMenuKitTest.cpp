@@ -1862,6 +1862,26 @@ bool FSOLSolidKitWorldSubsystemTest::RunTest(const FString& /*parameters*/)
     {
         TestNotNull(FString::Printf(TEXT("texture %d"), static_cast<int32>(texture)), subsystem->GetTexture(texture));
     }
+
+    // (33e-ii, D39) Every map glossary crop loaded, one distinct GLOSSARY_CROP_PX square texture per GLOSSARY_CROPS
+    // entry; an index outside the table gives null
+    constexpr int32 cropCount = UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS);
+    TArray<const UTexture2D*> crops;
+    for (int32 crop = 0; crop < cropCount; ++crop)
+    {
+        const UTexture2D* const texture = subsystem->GetGlossaryCrop(crop);
+        const FString name = FString::Printf(TEXT("crop %d (%s)"), crop, SOL::Paths::GLOSSARY_CROPS[crop].Id);
+        if (!TestNotNull(name, texture))
+        {
+            continue;
+        }
+        // The imported size (the platform data may still be compiling in the editor, reading 0 until it is done)
+        TestEqual(name + TEXT(": imported size"), texture->GetImportedSize(), FIntPoint(SOL::Help::GLOSSARY_CROP_PX));
+        TestFalse(name + TEXT(": distinct from the other crops"), crops.Contains(texture));
+        crops.Add(texture);
+    }
+    TestNull(TEXT("crop -1"), subsystem->GetGlossaryCrop(INDEX_NONE));
+    TestNull(TEXT("crop past the table"), subsystem->GetGlossaryCrop(cropCount));
     TArray<UMaterialInstanceDynamic*> materials;
     for (const ESOLSolidStyle style : SOLIDKITTEST_STYLES)
     {

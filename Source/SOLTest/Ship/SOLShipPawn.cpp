@@ -17,6 +17,7 @@
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLPlayerGuide.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcSubsystem.h"
@@ -350,6 +351,14 @@ void ASOLShipPawn::BeginPlay()
         mSmokeHoloMenu = MakeUnique<FSOLHoloMenuSmoke>();
         mSmokeHoloMenu->Start(*this);
     }
+#if !UE_BUILD_SHIPPING
+    else if (SOLPlayerGuide::IsCropCaptureRequested(FCommandLine::Get()))
+    {
+        // The glossary crop run (SDD 33 section 9): the map scenes' shots and their crops, then quit
+        mGlossaryCropWriter = MakeUnique<FSOLGlossaryCropWriter>();
+        mGlossaryCropWriter->Start(*this);
+    }
+#endif
 
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
@@ -357,7 +366,7 @@ void ASOLShipPawn::BeginPlay()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()
-        || mSmokeHoloMenu.IsValid())
+        || mSmokeHoloMenu.IsValid() || mGlossaryCropWriter.IsValid())
     {
         UInputSettings* inputSettings = GetMutableDefault<UInputSettings>();
         mSmokeSavedFocusFlush = inputSettings->bShouldFlushPressedKeysOnViewportFocusLost;
@@ -431,6 +440,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     mSmokeDust.Reset();
     mSmokeHoloMenuProfile.Reset();
     mSmokeHoloMenu.Reset();
+    mGlossaryCropWriter.Reset();
     if (mSmokeSavedFocusFlush.IsSet())
     {
         GetMutableDefault<UInputSettings>()->bShouldFlushPressedKeysOnViewportFocusLost
@@ -515,6 +525,12 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     {
         mSmokeHoloMenu.Reset();
     }
+#if !UE_BUILD_SHIPPING
+    if (mGlossaryCropWriter.IsValid() && mGlossaryCropWriter->Update(*this))
+    {
+        mGlossaryCropWriter.Reset();
+    }
+#endif
 
     // F3 or J/Esc was pressed during input processing; the panel or map opens (or closes) here, outside the Enhanced
     // Input callback
@@ -969,7 +985,7 @@ void ASOLShipPawn::UpdateViewportFocus()
         || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()
-        || mSmokeHoloMenu.IsValid())
+        || mSmokeHoloMenu.IsValid() || mGlossaryCropWriter.IsValid())
     {
         mIsViewportFocused = true;
         return;

@@ -44,6 +44,7 @@
 
 #include "Blueprint/UserWidget.h"
 #include "Components/CheckBox.h"
+#include "Components/Image.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/TextBlock.h"
@@ -51,6 +52,7 @@
 #include "Engine/Font.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/LocalPlayer.h"
+#include "Engine/Texture2D.h"
 #include "Engine/World.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
@@ -5391,7 +5393,7 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
         }
         if (tabScroll == nullptr || sampleRow == nullptr || sampleRow->Box == nullptr)
         {
-            toStage(9);
+            toStage(32);
             return false;
         }
         // Scrolled so the row's box sits centred in the tab's view (from its freshly arranged place)
@@ -5414,6 +5416,48 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
             return false;
         }
         TakeUiShot(*FString::Printf(TEXT("%s-%s-samples"), *shot, SOLID_SMOKE_HELP_TAB_NAMES[mHelpTab]));
+        toStage(32);
+        return false;
+    case 32:
+    {
+        // (33e-ii, D39) A tab with map crop rows: its first crop row scrolled to the top of the tab's view, so the
+        // crops below it show too, for a shot (sharp, inside the recess, clear of the texts); a tab without one goes on
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        UScrollBox* tabScroll = page->GetTabScroll(mHelpTab);
+        const FSOLHelpGlossaryRow* cropRow = nullptr;
+        for (const FSOLHelpGlossaryRow& row : page->GetGlossaryRows())
+        {
+            if (row.Tab == mHelpTab && SOLGlossary::EntryArt(row.Entry) == ESOLGlossaryArt::Crop)
+            {
+                cropRow = &row;
+                break;
+            }
+        }
+        if (tabScroll == nullptr || cropRow == nullptr || cropRow->Box == nullptr)
+        {
+            toStage(9);
+            return false;
+        }
+        const FGeometry boxGeometry = SolidSmokeArrangedGeometry(cropRow->Box, tabScroll);
+        const FGeometry& scrollGeometry = tabScroll->GetCachedGeometry();
+        const float boxTop = static_cast<float>(scrollGeometry.AbsoluteToLocal(boxGeometry.GetAbsolutePosition()).Y);
+        const float offset = tabScroll->GetScrollOffset() + boxTop - SOL::MenuStyle::ROW_GAP;
+        tabScroll->SetScrollOffset(FMath::Clamp(offset, 0.0f, tabScroll->GetScrollOffsetOfEnd()));
+        UE_LOG(LogSOL, Log, TEXT("SolidMenu: Help crops shot from \"%s\": box top %.1f in the view, offset %.1f -> "
+            "%.1f (end %.1f)"), SOLMenuText::GLOSSARY_ENTRIES[cropRow->Entry].Name, boxTop,
+            tabScroll->GetScrollOffset(), offset, tabScroll->GetScrollOffsetOfEnd());
+        toStage(33);
+        return false;
+    }
+    case 33:
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        TakeUiShot(*FString::Printf(TEXT("%s-%s-crops"), *shot, SOLID_SMOKE_HELP_TAB_NAMES[mHelpTab]));
         toStage(9);
         return false;
     case 9:
@@ -5934,8 +5978,8 @@ bool FSOLSolidMenuSmoke::ReadHelpPopup(USOLReadOnlyPageWidget& page, const USOLS
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33d-ii) Reads the shown glossary tab's rows: art, views built and painted (also on the first frame), boxes, texts
-// and spacing
+// (33d-ii) Reads the shown glossary tab's rows: art, views built and painted (also on the first frame), (33e-ii) the
+// map rows' crop images (texture and drawn size), boxes, texts and spacing
 bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell,
     const int32 tab, const bool bFirstBuild, FString& outDetail)
 {
@@ -5960,8 +6004,10 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
     const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
     bool bOk = page.GetGlossaryRowCount(tab) == entries.Num() && entries.Num() > 0;
     int32 order = 0;
-    int32 counts[3] = { 0, 0, 0 };              // Rows per ESOLGlossaryArt
+    int32 counts[4] = { 0, 0, 0, 0 };           // Rows per ESOLGlossaryArt (Crop since 33e-ii)
+    static_assert(static_cast<int32>(ESOLGlossaryArt::Crop) == 3, "one count per ESOLGlossaryArt");
     int32 inView = 0;
+    int32 cropsInView = 0;                      // (33e-ii) Crop rows whole in the view
     int32 firstBlank = 0;
     double lastBottom = -DBL_MAX;
     FString fails;
@@ -6035,11 +6081,40 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
         const USOLHudSymbolView* view = row.View;
         if (!bArt)
         {
-            if (view != nullptr)
+            if (view != nullptr || row.CropImage != nullptr)
             {
-                fail(TEXT("a view on a row without art"));
+                fail(TEXT("a view or crop on a row without art"));
             }
             continue;
+        }
+        if (art == ESOLGlossaryArt::Crop)
+        {
+            // (33e-ii, D39) A map row: no view; its crop image draws the subsystem's crop texture (GLOSSARY_CROP_PX
+            // square) over the whole view area (GLOSSARY_VIEW_SIZE square inside the recess)
+            const UTexture2D* want = solid->GetGlossaryCrop(SOLGlossary::EntryCrop(row.Entry));
+            const UImage* image = row.CropImage;
+            const UTexture2D* texture = image != nullptr ? Cast<UTexture2D>(image->GetBrush().GetResourceObject())
+                : nullptr;
+            const FVector2f imageUnits = image != nullptr
+                ? FVector2f(SolidSmokeArrangedGeometry(image, scroll).GetLocalSize()) : FVector2f::ZeroVector;
+            const FIntPoint texturePx = texture != nullptr ? texture->GetImportedSize() : FIntPoint::ZeroValue;
+            if (view != nullptr || image == nullptr || texture == nullptr || texture != want
+                || texturePx != FIntPoint(GLOSSARY_CROP_PX) || image->GetBrush().DrawAs != ESlateBrushDrawType::Image
+                || !FMath::IsNearlyEqual(imageUnits.X, GLOSSARY_VIEW_SIZE, SOLID_SMOKE_FIT_TOLERANCE)
+                || !FMath::IsNearlyEqual(imageUnits.Y, GLOSSARY_VIEW_SIZE, SOLID_SMOKE_FIT_TOLERANCE))
+            {
+                fail(FString::Printf(TEXT("crop: view %d, image %d, texture %s (%dx%d, the subsystem's %d), drawn "
+                    "%.1fx%.1f units (want %.1f)"), view != nullptr ? 1 : 0, image != nullptr ? 1 : 0,
+                    texture != nullptr ? *texture->GetName() : TEXT("none"), texturePx.X, texturePx.Y,
+                    texture != nullptr && texture == want ? 1 : 0, imageUnits.X, imageUnits.Y,
+                    GLOSSARY_VIEW_SIZE));
+            }
+            cropsInView += boxMin.Y >= viewMin.Y - tol && boxMax.Y <= viewMax.Y + tol ? 1 : 0;
+            continue;
+        }
+        if (row.CropImage != nullptr)
+        {
+            fail(TEXT("a crop on a row with symbols or a sample"));
         }
         if (view == nullptr)
         {
@@ -6102,10 +6177,11 @@ bool FSOLSolidMenuSmoke::ReadHelpTab(USOLMenuSubsystem& menu, USOLReadOnlyPageWi
             }
         }
     }
-    outDetail = FString::Printf(TEXT("%d rows (EntriesOfTab %d): %d symbols, %d samples, %d without art; %d views in "
-        "view, %d blank on the switch's frame;%s%s"), page.GetGlossaryRowCount(tab), entries.Num(),
-        counts[static_cast<int32>(ESOLGlossaryArt::Symbols)], counts[static_cast<int32>(ESOLGlossaryArt::Sample)],
-        counts[static_cast<int32>(ESOLGlossaryArt::None)], inView, firstBlank, *samples, *fails);
+    outDetail = FString::Printf(TEXT("%d rows (EntriesOfTab %d): %d symbols, %d samples, %d crops, %d without art; "
+        "%d views and %d crops in view, %d blank on the switch's frame;%s%s"), page.GetGlossaryRowCount(tab),
+        entries.Num(), counts[static_cast<int32>(ESOLGlossaryArt::Symbols)],
+        counts[static_cast<int32>(ESOLGlossaryArt::Sample)], counts[static_cast<int32>(ESOLGlossaryArt::Crop)],
+        counts[static_cast<int32>(ESOLGlossaryArt::None)], inView, cropsInView, firstBlank, *samples, *fails);
     return bOk && inView > 0;
 }
 

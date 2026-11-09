@@ -196,7 +196,7 @@ Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
    reachable by scroll and click with 8 entries; `-SOLMenuSmoke=all` no new failure; strength 0 / 2 shots looked at.
 5. [x] The 33d review re-checks the starting values and the glossary list (D26). The Distance darkening row shows the
    bright IconPlanet only (D40, no second brightness). Symbols are shrunk to fit with the 2 px feature floor (D42,
-   applied by `SOLHudSymbols::Build` since 33d-i). The five map rows stay description-only until 33e-ii (D39).
+   applied by `SOLHudSymbols::Build` since 33d-i). The five map rows were description-only until 33e-ii (D39, D47).
 6. [x] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page and glossary`; push (commit 265fa5c).
 
    **Built (2026-11-08, SDD 20, not committed yet):** tests first by a separate opus/high author from the contract (red
@@ -277,25 +277,30 @@ Builds on: D45 (supersedes D36, D43), D46. Depends on 33e. SDD sections 7, 9, 11
    with 16 images (12.2 MB); the review (no must-fix, 4 should-fix, nits) fixed except the writer's drawn-offset check
    (kept as a requested-offset sanity check: `SScrollBox` exposes no drawn offset).
 
-### 33e-ii: screenshot crops for the map glossary rows (D39; opus/high; grill-me the open points first)
+### 33e-ii: screenshot crops for the map glossary rows (D39, D47; opus/high)
 
-Builds on: D39. Depends on 33d-ii (the rows) and 33e (the shot-taking writer). Until this part the five rows (orbit
-lines, route legs, waypoints, map destination pick, map grid) are description-only.
+Builds on: D39, D47. Depends on 33d-ii (the rows) and 33e (the shot-taking writer). SDD sections 9, 20.
 
-1. [ ] A capture step (a `-SOLWritePlayerGuide` sub-step or its own smoke flag) that opens the map in a pinned scene
-   (fixed date and view, a planned route with a loop, a pick in progress, orbit lines on), renders the real overlays
-   and saves one crop per row at fixed rects (2x the Help box so it stays sharp at 1920x1080 and 3840x2160).
-2. [ ] In-game display: the crops as imported `UTexture2D` assets under `Content/SOL/UI/Glossary/` (paths in
-   `SOLConstants.h`), drawn in the row's symbol box by an image brush; a row field or a small id -> texture table.
-3. [ ] The same crops in `Docs/PLAYER_GUIDE.md` (copied next to the other guide images).
-4. [ ] Tests: every description-only map row has a crop asset; the capture is deterministic enough to re-run.
+1. [x] A capture step: `Map/SOLGlossaryCropWriter`, flag `-SOLWriteGlossaryCrops`, a pinned scene (fixed date, ship and
+   camera, a 5-waypoint loop, a Move route, a pick in its height step, orbit lines on), four shots at 1920x1080, one
+   176x176 crop per row.
+2. [x] In-game display: the crops as imported `UTexture2D` assets under `Content/SOL/UI/Glossary/` (`GLOSSARY_CROPS` in
+   `SOLConstants.h`, `Tools/UI/import_glossary_crops.py`), loaded once by the solid menu subsystem and drawn in the
+   row's recess by a `UImage`; cooked through `DirectoriesToAlwaysCook`.
+3. [x] The same PNGs in `Docs/PLAYER_GUIDE.md` (the Name cell of a crop row).
+4. [x] Tests: `CropAssetsExist`, `CropImagesSize`, `CropTexturesCurrent` (the import MD5 tag must match the PNG), the
+   guide's crop cell and `InputHash`.
+5. [x] The guide writer's end-of-tab measurement fixed (Measure stage; `PLAYER_GUIDE_TAB_PAGES` 2, 6, 3, 5, 3).
+6. [x] Review (fresh opus/xhigh); fixes; full suite and smokes; profile; commit `Issue #33: Part 33e-ii - map symbol
+   crops`; push.
 
-Feasibility and cost (estimate, 2026-11-08): the screenshot path exists (`FScreenshotRequest` with UI, the smokes and
-the 33e writer use it), so capture is about a day. Showing PNGs in game needs them imported as assets to be cooked
-(re-run the capture and re-import when the map look changes, or the crops go stale; a test can only check that they
-exist, not that they match). Runtime cost is a few small textures (about 0.25 MB each at 256x256 RGBA, less
-compressed) and one image draw per row. Open points for the grill: crop size, whether the guide uses the same files,
-and how a stale crop is noticed.
+   **Done (2026-11-08, SDD 20):** the five map rows show screenshot crops in game and in the guide; the in-game
+   Waypoints and Map grid texts corrected; the writer's end-of-tab bug fixed (20 Help images plus 5 crops).
+   Full suite 1743 / 1743; smokes 275 / 275 (solid), 34 / 34 (overlay), 24 / 24 (HUD) at both sizes, 86 / 86 (holo) at
+   1280x720 and 81 to 85 / 86 at 1920x1080 (the same on a build of `d3e04dc`: not this part, `Docs/TECH_DEBT.md`); holo
+   profile 5 / 5; solid profile 22 / 22 in three runs, Help passes worst +0.022 ms CPU / +0.036 ms GPU over Settings
+   (SDD 20); 5 crops (41.7 KB), 20 Help images (15.9 MB), guide 16.8 KB; a second guide run leaves the crops, the
+   textures and the guide byte-identical (the Help images are rewritten, TECH_DEBT).
 
 ### 33f: smoke and profile, VR floor (opus/high)
 
@@ -380,3 +385,6 @@ Builds on: D25.
 - 2026-11-08: 33e-iii done (SDD 20, 14.6): D45 (the hover popup over the page, the strip removed) and D46 (scrolled
   guide shots: 15 tab pages plus the hover shot). Full suite 1729 / 0, all smokes green, the popup inside the profile
   budget. Next: 33e-ii (grill-me first) or 33f.
+- 2026-11-08: 33e-ii done (SDD 20): D47, the five map glossary rows show 176x176 crops of the real game (capture flag
+  `-SOLWriteGlossaryCrops`, import by `Tools/UI/import_glossary_crops.py`, run by `Tools\WritePlayerGuide.bat`), and the
+  guide writer's end-of-tab measurement fixed (pages 2, 6, 3, 5, 3). Next: 33f.

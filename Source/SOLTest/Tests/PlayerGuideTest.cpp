@@ -29,7 +29,10 @@
 // and SOLTest.PlayerGuide.ImagesExist (every image the guide shows is committed). Part 33e-iii (D46), also test-first:
 // a tab taller than the window is shot in scrolled pages (TabPages from PLAYER_GUIDE_TAB_PAGES, PageCount and
 // PageOffset from the scroll extent, PageFileName's "-<n>" suffix), so the shot list, the guide's images and their alt
-// texts ("..., part n of m") follow the page counts.
+// texts ("..., part n of m") follow the page counts. Part 33e-ii (D39), also test-first: the -SOLWriteGlossaryCrops
+// flag (IsCropCaptureRequested), a map row's Name cell carrying its screenshot crop (GUIDE_CROP_CELL_FORMAT), the crop
+// images among the guide's images (after their tab's pages, in row order), and SOLTest.PlayerGuide.CropImagesSize
+// (each committed crop PNG is GLOSSARY_CROP_PX square), which fails until the crops are captured.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -290,6 +293,97 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns FString::Format of a two-argument format ({0} and {1})
+    FString PlayerGuideTestFormat2(const TCHAR* format, const FString& first, const FString& second)
+    {
+        FStringFormatOrderedArguments arguments;
+        arguments.Add(FStringFormatArg(first));
+        arguments.Add(FStringFormatArg(second));
+        return FString::Format(format, arguments);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the ImageFile of the GLOSSARY_CROPS entry a crop id names (case-sensitive, a scan of the table), empty
+    // for no id or an unknown one
+    FString PlayerGuideTestCropImage(const TCHAR* cropId)
+    {
+        if (cropId == nullptr || cropId[0] == 0)
+        {
+            return FString();
+        }
+        for (const SOL::Paths::FGlossaryCrop& crop : SOL::Paths::GLOSSARY_CROPS)
+        {
+            if (FCString::Strcmp(crop.Id, cropId) == 0)
+            {
+                return FString(crop.ImageFile);
+            }
+        }
+        return FString();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the guide targets ("Images/" + ImageFile) of the crop rows of a glossary tab (an index into
+    // GLOSSARY_TABS; every tab for INDEX_NONE), in GLOSSARY_ENTRIES order
+    TArray<FString> PlayerGuideTestCropTargets(const int32 glossary)
+    {
+        const int32 glossaryTabs = static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_TABS));
+        TArray<FString> targets;
+        for (const SOLMenuText::FGlossaryEntry& row : SOLMenuText::GLOSSARY_ENTRIES)
+        {
+            const bool bOnTab = glossary == INDEX_NONE || (glossary >= 0 && glossary < glossaryTabs
+                && FCString::Strcmp(row.Tab, SOLMenuText::GLOSSARY_TABS[glossary]) == 0);
+            const FString image = PlayerGuideTestCropImage(row.Crop);
+            if (bOnTab && !image.IsEmpty())
+            {
+                targets.Add(FString(TEXT("Images/")) + image);
+            }
+        }
+        return targets;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns every image target of the guide in order (33e-ii): the shots' images as PlayerGuideTestExpectedTargets
+    // gives them, each glossary tab's crop images right after that tab's last page
+    TArray<FString> PlayerGuideTestExpectedGuideTargets()
+    {
+        const TArray<FSOLPlayerGuideShot> shots = PlayerGuideTestExpectedShots();
+        TArray<FString> targets;
+        for (int32 index = 0; index < shots.Num(); ++index)
+        {
+            targets.Add(FString(TEXT("Images/")) + shots[index].FileName);
+            const bool bTabEnds = index + 1 == shots.Num() || shots[index + 1].Tab != shots[index].Tab;
+            const int32 glossary = static_cast<int32>(shots[index].Tab) - static_cast<int32>(ESOLHelpTab::FlightHud);
+            if (bTabEnds && glossary >= 0)
+            {
+                targets.Append(PlayerGuideTestCropTargets(glossary));
+            }
+        }
+        return targets;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the first index of a text in a list, compared case-sensitively, or INDEX_NONE
+    int32 PlayerGuideTestIndexOf(const TArray<FString>& list, const FString& text)
+    {
+        return list.IndexOfByPredicate([&text](const FString& item)
+        {
+            return item.Equals(text, ESearchCase::CaseSensitive);
+        });
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how many items of a list equal a text, compared case-sensitively
+    int32 PlayerGuideTestOccurrences(const TArray<FString>& list, const FString& text)
+    {
+        int32 count = 0;
+        for (const FString& item : list)
+        {
+            count += item.Equals(text, ESearchCase::CaseSensitive) ? 1 : 0;
+        }
+        return count;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns an image's alt text as the contract (E) gives it: the hover shot GUIDE_KEYBOARD_HOVER_ALT; page 0 the
     // tab's alt (GUIDE_KEYBOARD_ALT, a glossary tab's heading); a later page GUIDE_IMAGE_PART_FORMAT over that alt, the
     // 1-based page and the tab's page count
@@ -474,8 +568,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideGlossaryTest, "SOLTest.PlayerGui
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every glossary entry's name and formatted description is in the guide, with an image per page of each Help tab and
-// the Keyboard hover image (D46)
+// Every glossary entry's name and formatted description is in the guide, with an image per page of each Help tab, the
+// Keyboard hover image (D46) and an image per map crop row (33e-ii)
 bool FSOLPlayerGuideGlossaryTest::RunTest(const FString& /*parameters*/)
 {
     const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
@@ -499,7 +593,10 @@ bool FSOLPlayerGuideGlossaryTest::RunTest(const FString& /*parameters*/)
             guide.Contains(heading, ESearchCase::CaseSensitive));
     }
     const int32 images = PlayerGuideTestCount(guide, TEXT("!["));
-    TestEqual(TEXT("an image per tab page plus the hover image"), images, PlayerGuideTestPageSum() + 1);
+    const int32 cropImages = PlayerGuideTestCropTargets(INDEX_NONE).Num();
+    TestEqual(TEXT("five crop rows"), cropImages, static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS)));
+    TestEqual(TEXT("an image per tab page, the hover image and an image per crop row"), images,
+        PlayerGuideTestPageSum() + 1 + cropImages);
     TestTrue(FString::Printf(TEXT("at least one image per Help tab (%d)"), images),
         images >= static_cast<int32>(ESOLHelpTab::Count) + 1);
     return true;
@@ -797,7 +894,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideReferencedImagesTest, "SOLTest.P
 //////////////////////////////////////////////////////////////////////////
 // Every markdown image's target is listed in text order (plain links and unclosed images are not), and the real guide
 // shows exactly the shots' images from Docs/ in Shots() order, each with its alt text (page 0 the tab's, later pages
-// "..., part n of m", D46)
+// "..., part n of m", D46), with each glossary tab's crop images after its last page (33e-ii)
 bool FSOLPlayerGuideReferencedImagesTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> targets = { TEXT("stale") };
@@ -829,15 +926,27 @@ bool FSOLPlayerGuideReferencedImagesTest::RunTest(const FString& /*parameters*/)
     SOLPlayerGuide::ReferencedImages(TEXT("![a](r.png) ![b](r.png)"), targets);
     PlayerGuideTestExpectList(*this, TEXT("a repeated image"), targets, { TEXT("r.png"), TEXT("r.png") });
 
-    // The real guide: "Images/" + each shot's file name, in Shots() order
+    // The real guide: "Images/" + each shot's file name, in Shots() order, each glossary tab's crops after its pages
     const FString guide = SOLPlayerGuide::BuildMarkdown(SOLKeyBindings::DefaultKeys());
     SOLPlayerGuide::ReferencedImages(guide, targets);
-    PlayerGuideTestExpectList(*this, TEXT("the guide's images"), targets, PlayerGuideTestExpectedTargets());
+    PlayerGuideTestExpectList(*this, TEXT("the guide's images"), targets, PlayerGuideTestExpectedGuideTargets());
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
-    TestEqual(TEXT("one guide image per shot"), targets.Num(), shots.Num());
-    for (int32 index = 0; index < FMath::Min(targets.Num(), shots.Num()); ++index)
+    const TArray<FString> cropTargets = PlayerGuideTestCropTargets(INDEX_NONE);
+    TestEqual(TEXT("one guide image per shot and per crop row"), targets.Num(), shots.Num() + cropTargets.Num());
+
+    // Without the crop images, the guide's images are the shots' in Shots() order
+    TArray<FString> shotTargets;
+    for (const FString& target : targets)
     {
-        TestEqual(FString::Printf(TEXT("guide image %d is shot %d"), index, index), targets[index],
+        if (PlayerGuideTestIndexOf(cropTargets, target) == INDEX_NONE)
+        {
+            shotTargets.Add(target);
+        }
+    }
+    TestEqual(TEXT("one non-crop guide image per shot"), shotTargets.Num(), shots.Num());
+    for (int32 index = 0; index < FMath::Min(shotTargets.Num(), shots.Num()); ++index)
+    {
+        TestEqual(FString::Printf(TEXT("non-crop guide image %d is shot %d"), index, index), shotTargets[index],
             FString(TEXT("Images/")) + shots[index].FileName);
     }
 
@@ -998,7 +1107,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImagesExistTest, "SOLTest.Player
 
 //////////////////////////////////////////////////////////////////////////
 // Every image the generated guide shows is committed next to it as a PNG, and so is every shot's image (every page of
-// every tab, D46); a missing one fails naming Tools\WritePlayerGuide.bat
+// every tab, D46) and every glossary crop's image (33e-ii: red until the crops are captured); a missing one fails
+// naming Tools\WritePlayerGuide.bat
 bool FSOLPlayerGuideImagesExistTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> targets;
@@ -1027,6 +1137,10 @@ bool FSOLPlayerGuideImagesExistTest::RunTest(const FString& /*parameters*/)
             continue;
         }
         PlayerGuideTestExpectFile(*this, SOLPlayerGuide::ImagePath(*shots[index].FileName));
+    }
+    for (const SOL::Paths::FGlossaryCrop& crop : SOL::Paths::GLOSSARY_CROPS)
+    {
+        PlayerGuideTestExpectFile(*this, SOLPlayerGuide::ImagePath(crop.ImageFile));
     }
     return true;
 }
@@ -1220,6 +1334,234 @@ bool FSOLPlayerGuidePageFileNameTest::RunTest(const FString& /*parameters*/)
             TestFalse(FString::Printf(TEXT("'%s' page %d is not the hover image"), base, page),
                 name.Equals(PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER));
             names.Add(name);
+        }
+    }
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Part 33e-ii (D39): the glossary crops in the guide
+// ---------------------------------------------------------------------------------------------------------------------
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideCropFlagTest, "SOLTest.PlayerGuide.CropFlag",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// -SOLWriteGlossaryCrops (or /SOLWriteGlossaryCrops) asks for the crop run as a whole switch, case ignored, read from
+// the given command line only; it is not the guide run's switch, nor the guide run's switch it
+bool FSOLPlayerGuideCropFlagTest::RunTest(const FString& /*parameters*/)
+{
+    const TCHAR* const accepted[] = { TEXT("-SOLWriteGlossaryCrops"), TEXT("-game -SOLWriteGlossaryCrops -windowed"),
+        TEXT("-game -windowed -solwriteglossarycrops"), TEXT("\"D:/x/SOLTest.uproject\" -game -SOLWriteGlossaryCrops"),
+        TEXT("/SOLWriteGlossaryCrops"), TEXT("-SOLWritePlayerGuide -SOLWriteGlossaryCrops") };
+    for (const TCHAR* commandLine : accepted)
+    {
+        TestTrue(FString::Printf(TEXT("'%s' asks for the crops"), commandLine),
+            SOLPlayerGuide::IsCropCaptureRequested(commandLine));
+    }
+    const TCHAR* const rejected[] = { TEXT(""), TEXT("-game -windowed"), TEXT("-SOLWriteGlossaryCropsX"),
+        TEXT("-SOLWriteGlossaryCrops2 -game"), TEXT("SOLWriteGlossaryCrops=1"), TEXT("SOLWriteGlossaryCrops"),
+        TEXT("-XSOLWriteGlossaryCrops"), TEXT("-SOLWriteGlossaryCrop"), TEXT("-SOLWritePlayerGuide"),
+        TEXT("-SOLMenu") };
+    for (const TCHAR* commandLine : rejected)
+    {
+        TestFalse(FString::Printf(TEXT("'%s' does not ask for the crops"), commandLine),
+            SOLPlayerGuide::IsCropCaptureRequested(commandLine));
+    }
+    TestFalse(TEXT("a null command line does not ask for the crops"), SOLPlayerGuide::IsCropCaptureRequested(nullptr));
+    TestFalse(TEXT("-SOLWriteGlossaryCrops does not ask for the guide"),
+        SOLPlayerGuide::IsWriteRequested(TEXT("-SOLWriteGlossaryCrops")));
+    TestEqual(TEXT("the constant is the switch's name"), FString(SOL::CommandLine::WRITE_GLOSSARY_CROPS),
+        FString(TEXT("SOLWriteGlossaryCrops")));
+    const FString fromConstant = FString(TEXT("-")) + SOL::CommandLine::WRITE_GLOSSARY_CROPS;
+    TestTrue(FString::Printf(TEXT("the flag from the constant ('%s')"), *fromConstant),
+        SOLPlayerGuide::IsCropCaptureRequested(*fromConstant));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideCropCellsTest, "SOLTest.PlayerGuide.CropCells",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// In the glossary tables a crop row's Name cell is GUIDE_CROP_CELL_FORMAT over its name and its crop image
+// (GUIDE_IMAGE_FORMAT, alt the row's name, "Images/" + ImageFile); every other row's Name cell is its name alone
+bool FSOLPlayerGuideCropCellsTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    const FString guide = SOLPlayerGuide::BuildMarkdown(keys);
+    TArray<FString> lines;
+    guide.ParseIntoArray(lines, TEXT("\n"), false);
+
+    // The formats at a sample (cross-checks)
+    TestEqual(TEXT("GUIDE_CROP_CELL_FORMAT at a sample"),
+        PlayerGuideTestFormat2(SOLMenuText::GUIDE_CROP_CELL_FORMAT, TEXT("A"), TEXT("B")), FString(TEXT("A<br>B")));
+    TestEqual(TEXT("GUIDE_IMAGE_FORMAT at a sample"),
+        PlayerGuideTestFormat2(SOLMenuText::GUIDE_IMAGE_FORMAT, TEXT("A"), TEXT("b.png")),
+        FString(TEXT("![A](b.png)")));
+
+    // Each row's table line
+    int32 cropRows = 0;
+    FString description;
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_ENTRIES)); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        const FString name(row.Name);
+        const FString image = PlayerGuideTestCropImage(row.Crop);
+        FString cell = name;
+        if (!image.IsEmpty())
+        {
+            ++cropRows;
+            cell = PlayerGuideTestFormat2(SOLMenuText::GUIDE_CROP_CELL_FORMAT, name, PlayerGuideTestFormat2(
+                SOLMenuText::GUIDE_IMAGE_FORMAT, name, FString(TEXT("Images/")) + image));
+        }
+        else
+        {
+            TestFalse(FString::Printf(TEXT("entry %d '%s' has no crop in its cell"), index, row.Name),
+                guide.Contains(FString(TEXT("| ")) + name + TEXT("<br>"), ESearchCase::CaseSensitive));
+        }
+
+        // A description with a '|' is not compared verbatim (as in GlossaryContent)
+        SOLGlossary::FormatEntryText(row.Description, keys, description);
+        if (description.Contains(TEXT("|")))
+        {
+            continue;
+        }
+        const FString line = FString(TEXT("| ")) + cell + TEXT(" | ") + description + TEXT(" |");
+        TestTrue(FString::Printf(TEXT("entry %d '%s': the guide has the line '%s'"), index, row.Name, *line),
+            PlayerGuideTestIndexOf(lines, line) != INDEX_NONE);
+    }
+    TestEqual(TEXT("five crop rows"), cropRows, static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS)));
+
+    // The contract's worked example
+    const FString orbit = TEXT("| Orbit lines<br>![Orbit lines](Images/33-glossary-crop-orbit-lines.png) | ");
+    const FString orbitLine = PlayerGuideTestLineWith(guide, *orbit);
+    TestTrue(FString::Printf(TEXT("the Orbit lines row starts '%s' (got '%s')"), *orbit, *orbitLine),
+        orbitLine.StartsWith(orbit, ESearchCase::CaseSensitive));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideCropImagesReferencedTest, "SOLTest.PlayerGuide.CropImagesReferenced",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The guide shows each crop's "Images/<ImageFile>" exactly once, after its row's tab's last page image and before the
+// next tab's first image, the crops in GLOSSARY_ENTRIES row order
+bool FSOLPlayerGuideCropImagesReferencedTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Paths;
+    TArray<FString> targets;
+    SOLPlayerGuide::ReferencedImages(SOLPlayerGuide::BuildMarkdown(SOLKeyBindings::DefaultKeys()), targets);
+    const int32 glossaryTabs = static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_TABS));
+    const int32 glossaryImages = static_cast<int32>(UE_ARRAY_COUNT(PLAYER_GUIDE_IMAGE_GLOSSARY));
+
+    // Every crop of the table once
+    for (const FGlossaryCrop& crop : GLOSSARY_CROPS)
+    {
+        const FString target = FString(TEXT("Images/")) + crop.ImageFile;
+        TestEqual(FString::Printf(TEXT("crop '%s': %s shown once"), crop.Id, *target),
+            PlayerGuideTestOccurrences(targets, target), 1);
+    }
+
+    // The crop rows in order, each in its tab's place
+    int32 previous = INDEX_NONE;
+    int32 cropRows = 0;
+    for (const SOLMenuText::FGlossaryEntry& row : SOLMenuText::GLOSSARY_ENTRIES)
+    {
+        const FString image = PlayerGuideTestCropImage(row.Crop);
+        if (image.IsEmpty())
+        {
+            continue;
+        }
+        ++cropRows;
+        const FString target = FString(TEXT("Images/")) + image;
+        const int32 at = PlayerGuideTestIndexOf(targets, target);
+        if (!TestTrue(FString::Printf(TEXT("'%s': %s is shown"), row.Name, *target), at != INDEX_NONE))
+        {
+            continue;
+        }
+        TestTrue(FString::Printf(TEXT("'%s': in row order (at %d, the previous crop at %d)"), row.Name, at, previous),
+            at > previous);
+        previous = at;
+
+        // After its tab's last page, before the next tab's first image
+        int32 glossary = INDEX_NONE;
+        for (int32 tab = 0; tab < glossaryTabs; ++tab)
+        {
+            glossary = FCString::Strcmp(row.Tab, SOLMenuText::GLOSSARY_TABS[tab]) == 0 ? tab : glossary;
+        }
+        if (!TestTrue(FString::Printf(TEXT("'%s' is on a glossary tab with an image"), row.Name),
+            glossary != INDEX_NONE && glossary < glossaryImages))
+        {
+            continue;
+        }
+        const int32 pages = FMath::Max(PlayerGuideTestTabPages(static_cast<ESOLHelpTab>(glossary
+            + static_cast<int32>(ESOLHelpTab::FlightHud))), 1);
+        const FString lastPage = FString(TEXT("Images/"))
+            + PlayerGuideTestPageName(PLAYER_GUIDE_IMAGE_GLOSSARY[glossary], pages - 1);
+        const int32 lastPageAt = PlayerGuideTestIndexOf(targets, lastPage);
+        TestTrue(FString::Printf(TEXT("'%s': after %s (at %d, it at %d)"), row.Name, *lastPage, at, lastPageAt),
+            lastPageAt != INDEX_NONE && at > lastPageAt);
+        if (glossary + 1 < glossaryImages)
+        {
+            const FString nextFirst = FString(TEXT("Images/")) + PLAYER_GUIDE_IMAGE_GLOSSARY[glossary + 1];
+            const int32 nextAt = PlayerGuideTestIndexOf(targets, nextFirst);
+            TestTrue(FString::Printf(TEXT("'%s': before %s (at %d, it at %d)"), row.Name, *nextFirst, at, nextAt),
+                nextAt != INDEX_NONE && at < nextAt);
+        }
+    }
+    TestEqual(TEXT("five crop rows"), cropRows, static_cast<int32>(UE_ARRAY_COUNT(GLOSSARY_CROPS)));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideCropImagesSizeTest, "SOLTest.PlayerGuide.CropImagesSize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every crop's committed PNG (ImagePath of its ImageFile) is GLOSSARY_CROP_PX x GLOSSARY_CROP_PX by its IHDR header; a
+// missing, non-PNG or wrong-sized one fails naming the file and Tools\WritePlayerGuide.bat (red until captured)
+bool FSOLPlayerGuideCropImagesSizeTest::RunTest(const FString& /*parameters*/)
+{
+    static const uint8 PNG_SIGNATURE[] = { 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A };
+    static const uint8 IHDR_TYPE[] = { 'I', 'H', 'D', 'R' };
+    constexpr int32 ihdrTypeAt = 12;          // After the signature and the IHDR chunk's 4-byte length
+    constexpr int32 widthAt = 16;             // The IHDR width, then the height, big-endian 32-bit
+    constexpr int32 heightAt = 20;
+    constexpr int32 headerBytes = 24;
+    const uint32 expected = static_cast<uint32>(SOL::Help::GLOSSARY_CROP_PX);
+    for (const SOL::Paths::FGlossaryCrop& crop : SOL::Paths::GLOSSARY_CROPS)
+    {
+        const FString path = SOLPlayerGuide::ImagePath(crop.ImageFile);
+        TArray<uint8> bytes;
+        if (!FPaths::FileExists(path) || !FFileHelper::LoadFileToArray(bytes, *path, FILEREAD_Silent))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': %s is missing: run Tools\\WritePlayerGuide.bat (with "
+                "the editor closed) and commit the images"), crop.Id, *path));
+            continue;
+        }
+        const bool bPng = bytes.Num() >= headerBytes
+            && FMemory::Memcmp(bytes.GetData(), PNG_SIGNATURE, UE_ARRAY_COUNT(PNG_SIGNATURE)) == 0
+            && FMemory::Memcmp(bytes.GetData() + ihdrTypeAt, IHDR_TYPE, UE_ARRAY_COUNT(IHDR_TYPE)) == 0;
+        if (!bPng)
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': %s is not a PNG (%s): run Tools\\WritePlayerGuide.bat "
+                "(with the editor closed) and commit the images"), crop.Id, *path, *PlayerGuideTestHex(bytes)));
+            continue;
+        }
+
+        // The IHDR size, big-endian
+        const uint32 width = (static_cast<uint32>(bytes[widthAt]) << 24) | (static_cast<uint32>(bytes[widthAt + 1])
+            << 16) | (static_cast<uint32>(bytes[widthAt + 2]) << 8) | static_cast<uint32>(bytes[widthAt + 3]);
+        const uint32 height = (static_cast<uint32>(bytes[heightAt]) << 24) | (static_cast<uint32>(bytes[heightAt + 1])
+            << 16) | (static_cast<uint32>(bytes[heightAt + 2]) << 8) | static_cast<uint32>(bytes[heightAt + 3]);
+        if (width != expected || height != expected)
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': %s is %u x %u, not %u x %u: run "
+                "Tools\\WritePlayerGuide.bat (with the editor closed) and commit the images"), crop.Id, *path, width,
+                height, expected, expected));
         }
     }
     return true;

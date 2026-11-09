@@ -81,7 +81,8 @@ struct FSOLSolidMenuFrame
 
 /**
  * The solid menus' shared world state (SDD 46 sections 4.1-4.3): loads the menu font F_SOLMenu, the hull material
- * M_SOLSolidHull, its style instances (SOL::Paths::SOLID_STYLE_MATERIALS) and the style textures once at initialize,
+ * M_SOLSolidHull, its style instances (SOL::Paths::SOLID_STYLE_MATERIALS), the style textures and (33e-ii) the Help
+ * glossary's map screenshot crops (SOL::Paths::GLOSSARY_CROPS) once at initialize,
  * with one warning per missing asset (the kit then draws flat fallback brushes and the engine font); owns one shared
  * dynamic material per style (UPROPERTY TObjectPtr), which every button, row and control of that style draws with,
  * their state travelling in the brush tint (SOLSolidStyle::BrushTint); and pushes the effects strength (the Settings
@@ -163,6 +164,10 @@ public:
     // Returns a style texture, or null when it is missing
     UTexture2D* GetTexture(ESOLSolidTexture texture) const;
 
+    // (33e-ii, D39) Returns a map glossary row's screenshot crop (a SOL::Paths::GLOSSARY_CROPS index), or null when it
+    // is missing or the index is outside the table
+    UTexture2D* GetGlossaryCrop(int32 crop) const;
+
     // Returns how many assets were missing at load (each logged one warning)
     int32 GetMissingAssetCount() const { return mMissingAssetCount; }
 
@@ -206,6 +211,10 @@ private:
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTexture2D>> Textures;                        // One per ESOLSolidTexture (null when missing)
+
+    UPROPERTY(Transient)
+    TArray<TObjectPtr<UTexture2D>> GlossaryCrops;                   // (33e-ii) One per SOL::Paths::GLOSSARY_CROPS
+                                                                    // (null when missing)
 
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> HudShapeMaterial;          // (33d-ii) The glossary views' M_SOLHudShape

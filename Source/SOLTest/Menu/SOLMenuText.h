@@ -491,6 +491,14 @@ namespace SOLMenuText
         const TCHAR* Sample;
         const TCHAR* Name;          // Row heading (the coverage table in SOLGlossary.cpp names rows by it)
         const TCHAR* Description;   // Body
+        const TCHAR* Crop = TEXT("");   // (33e-ii, D39) A SOL::Paths::GLOSSARY_CROPS id: the row's screenshot crop
+    };
+
+    // (33e-ii) A GLOSSARY_ENTRIES row (by Name) that shows no symbol, crop or sample on purpose, and why
+    struct FGlossaryDescriptionOnly
+    {
+        const TCHAR* Name;
+        const TCHAR* Reason;
     };
 
     // GLOSSARY_ENTRIES rows: see SDD 33 section 8.4. The coverage table (SOLGlossary.cpp) names its rows by Name and
@@ -612,17 +620,18 @@ namespace SOLMenuText
                 "{IconFadeStartPx} pixels across and gone once it is big enough to see for itself.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Orbit lines"),
             TEXT("Lines that trace the orbits of planets, dwarf planets, moons and the largest asteroids. The "
-                "selected target's orbit is drawn in gold. Switch them with {ToggleOrbitLines}.") },
+                "selected target's orbit is drawn in gold. Switch them with {ToggleOrbitLines}."), TEXT("OrbitLines") },
         { TEXT("Overlays and route"), TEXT(""), TEXT("{OverlayProfileTagSample}"), TEXT("Overlay profile tag"),
             TEXT("Shows for a moment which of the {OverlayProfileCount} overlay profiles is active whenever you cycle "
                 "profiles with {CycleOverlayProfile}. Each profile remembers its own overlay choices.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Route legs"),
             TEXT("Your planned route as glow lines with arrows that fade from dim at the start to bright at the "
                 "end. On a patrol loop the closing leg back to the first waypoint is dashed. Show or hide routes in "
-                "flight with {ToggleRouteOverlay}; the map always shows them.") },
+                "flight with {ToggleRouteOverlay}; the map always shows them."), TEXT("RouteLegs") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Waypoints"),
-            TEXT("A route's stops. Like radar contacts, a stop above the ecliptic plane has a solid stem and one "
-                "below it a dashed stem, which tells you which side of the plane it is on.") },
+            TEXT("A route's stops. A stop above the plane through your ship (on the map, the grid's plane) is a blue "
+                "ring with a dot in it, one below it a hollow orange ring. On the map a stop clearly off that plane "
+                "also has a stem to the grid in the same colour."), TEXT("Waypoints") },
         { TEXT("Overlays and route"), TEXT(""), TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"),
             TEXT("Route progress line"),
             TEXT("Shows the kind of route (move or patrol), the leg you are flying and how far along it is, and the "
@@ -655,13 +664,22 @@ namespace SOLMenuText
         { TEXT("Menus and map"), TEXT(""), TEXT(""), TEXT("Map destination pick"),
             TEXT("Press on a body or on empty space, drag and release to place a destination. A disc shows the "
                 "direction and range, a guide line the height above or below the plane, and a marker the spot. "
-                "Hold Shift to set the height, then click to lock it. The hint line says what to do next.") },
+                "Hold Shift to set the height, then click to lock it. The hint line says what to do next."),
+            TEXT("MapPick") },
         { TEXT("Menus and map"), TEXT(""), TEXT(""), TEXT("Map grid and stems"),
-            TEXT("A flat grid in the plane of the planets, with a stem from each marked point down or up to it, so "
-                "you can read where something is above or below the plane.") },
+            TEXT("A flat grid, level with the plane of the planets, through the point the map turns around, with a "
+                "stem from each marked point down or up to it, so you can read where something is above or below "
+                "the grid."), TEXT("MapGrid") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Map action list"),
             TEXT("Right-click a body on the map for its action menu: choose with Up and Down and Enter, or click, "
                 "and Esc closes it. The same actions as the icons' radial menu, as a list.") },
+    };
+
+    // (33e-ii) The rows that are description-only on purpose (SOLGlossary::DescriptionOnlyReason): every other row
+    // names symbols, a crop or a sample
+    inline constexpr FGlossaryDescriptionOnly GLOSSARY_DESCRIPTION_ONLY[] =
+    {
+        { TEXT("Space dust"), TEXT("Faint specks in the scene around the ship, not a HUD symbol") },
     };
 
     // The generated player guide, Docs/PLAYER_GUIDE.md (SDD 33 section 9, SOLPlayerGuide): its fixed text. In
@@ -695,6 +713,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* GUIDE_KEY_CLOSE = TEXT("</kbd>");
     inline constexpr TCHAR GUIDE_TABLE_ROW_FORMAT[] = TEXT("| %s | %s |");    // A two-column row (Printf: an array)
     inline constexpr const TCHAR* GUIDE_IMAGE_FORMAT = TEXT("![{0}]({1})");
+    // (33e-ii) A crop row's Name cell: {0} the row's name, {1} its crop as a GUIDE_IMAGE_FORMAT image
+    inline constexpr const TCHAR* GUIDE_CROP_CELL_FORMAT = TEXT("{0}<br>{1}");
     // D46: a scrolled shot's alt text ({0} the first shot's alt text, {1} the 1-based page, {2} the tab's pages)
     inline constexpr const TCHAR* GUIDE_IMAGE_PART_FORMAT = TEXT("{0}, part {1} of {2}");
 

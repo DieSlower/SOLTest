@@ -56,7 +56,8 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
         || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_HOLO_MENU)
         || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE)
         || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_PLAYER_GUIDE))
+        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_PLAYER_GUIDE)
+        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_GLOSSARY_CROPS))
     {
         mSlotName = SOL::Settings::SMOKE_SAVE_SLOT;
         UGameplayStatics::DeleteGameInSlot(mSlotName, SOL::Settings::SAVE_USER_INDEX);

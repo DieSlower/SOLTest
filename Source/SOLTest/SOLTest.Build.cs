@@ -45,6 +45,7 @@ public class SOLTest : ModuleRules
             "AssetRegistry",
             "EngineSettings",
             "EnhancedInput",
+            "ImageCore",
             "InputCore",
             "MeshDescription",
             "Niagara",

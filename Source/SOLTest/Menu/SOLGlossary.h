@@ -14,6 +14,7 @@
 #include "Containers/StringView.h"
 #include "CoreMinimal.h"
 #include "Math/Box2D.h"
+#include "Math/IntRect.h"
 #include "Misc/Optional.h"
 #include "Templates/Function.h"
 
@@ -67,12 +68,14 @@ struct FSOLGlossaryEntry
     }
 };
 
-// (33d-ii) What a glossary row's symbol box shows: its HUD symbols, its text sample, or nothing (no box)
+// (33d-ii) What a glossary row's symbol box shows: its HUD symbols, its text sample, its screenshot crop (33e-ii, D39)
+// or nothing (no box)
 enum class ESOLGlossaryArt : uint8
 {
     Symbols,
     Sample,
     None,
+    Crop,
 };
 
 // (33d-ii) The near-square grid of equal cells several symbols of one row share in its box
@@ -220,4 +223,28 @@ namespace SOLGlossary
     // explains flight modes, a line that is a mode's HUD label takes that mode's colour (MANUAL Secondary, ASSISTED
     // Primary, AUTO Good); every other line, and any line of another row or an index outside the table, Primary
     SOLTEST_API ESOLHudPaletteRole SampleLineRole(int32 index, FStringView line);
+
+    // ---- (33e-ii, D39) The map rows' screenshot crops (SOL::Paths::GLOSSARY_CROPS) ----
+
+    // Returns the number of SOL::Paths::GLOSSARY_CROPS
+    SOLTEST_API int32 CropCount();
+
+    // Returns the GLOSSARY_CROPS index of a crop id (case-sensitive); INDEX_NONE for an empty or unknown id
+    SOLTEST_API int32 FindCrop(FStringView id);
+
+    // Returns the GLOSSARY_CROPS index a GLOSSARY_ENTRIES row's Crop names; INDEX_NONE for none, an unknown id or an
+    // index outside the table
+    SOLTEST_API int32 EntryCrop(int32 index);
+
+    // Returns why a GLOSSARY_ENTRIES row is description-only (its SOLMenuText::GLOSSARY_DESCRIPTION_ONLY reason, by
+    // Name); nullptr for a row not listed there and an index outside the table
+    SOLTEST_API const TCHAR* DescriptionOnlyReason(int32 index);
+
+    // Returns a crop's rect in its capture shot: (Left, Top) to (Left + GLOSSARY_CROP_PX, Top + GLOSSARY_CROP_PX);
+    // an empty rect (all zero) for a crop outside the table
+    SOLTEST_API FIntRect CropRect(int32 crop);
+
+    // Returns the full path of a crop texture's .uasset (its package, FPackageName::LongPackageNameToFilename with
+    // FPackageName::GetAssetPackageExtension()); empty for a crop outside the table
+    SOLTEST_API FString CropAssetFile(int32 crop);
 }

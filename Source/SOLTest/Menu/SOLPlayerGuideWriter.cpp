@@ -43,6 +43,8 @@ namespace
     constexpr double GUIDE_SHOT_SETTLE_S = 1.0;             // A shown tab's hover ramps and first paint settled
     constexpr int32 GUIDE_SHOT_SETTLE_FRAMES = 10;          // ... and at least this many frames
     constexpr int32 GUIDE_SHOT_FRAMES = 10;                 // A capture's frames before the next tab is shown
+    constexpr int32 GUIDE_END_STABLE_FRAMES = 10;           // Frames a tab's scroll end holds still before it counts
+    constexpr double GUIDE_MEASURE_TIMEOUT_S = 30.0;        // A tab's scroll-through (measure) wait's limit
     constexpr double GUIDE_FILE_CHECK_S = 0.25;             // The capture size check's period
     constexpr double GUIDE_FILES_TIMEOUT_S = 20.0;          // The captures-on-disk wait's limit
     constexpr double GUIDE_WATCHDOG_S = 120.0;              // A stuck run fails and quits
@@ -217,15 +219,17 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
         page->SelectTab(static_cast<int32>(shot.Tab));
         page->GetDiagram()->SetHoveredKey(shot.bHover ? SOLKeyboardLayout::FindKey(GUIDE_HOVER_KEY) : INDEX_NONE);
 
-        // D46: the tab's scroll at the page's offset (the first page at the top; the later ones from the extent the
-        // first page measured)
+        // D46: the tab's scroll at the page's offset (the first page at the top, measured first; the later ones from
+        // the extent the first page measured)
         UScrollBox* scroll = page->GetTabScroll(static_cast<int32>(shot.Tab));
         if (scroll == nullptr)
         {
             Fail(menu, FString::Printf(TEXT("%s: no scroll for tab %d"), *shot.FileName, static_cast<int32>(shot.Tab)));
             return true;
         }
-        scroll->SetScrollOffset(SOLPlayerGuide::PageOffset(shot.Page, mViewHeight, mScrollEnd));
+        const bool bMeasure = shot.Page == 0 && !shot.bHover;
+        scroll->SetScrollOffset(bMeasure ? 0.0f : SOLPlayerGuide::PageOffset(shot.Page, mViewHeight, mScrollEnd));
+        ResetEndStable();
         ParkCursor();
         const FString capture = SOLPlayerGuide::CapturePath(*shot.FileName);
         if (!IFileManager::Get().Delete(*capture, false, true, true) && IFileManager::Get().FileExists(*capture))
@@ -233,6 +237,56 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
             Fail(menu, FString::Printf(TEXT("could not remove the old capture %s"), *capture));
             return true;
         }
+        ToStage(bMeasure ? EStage::Measure : EStage::Settle);
+        return false;
+    }
+    case EStage::Measure:
+    {
+        // D46: a description below the view wraps at its real width only once it has been painted, so the tab's
+        // end grows as it is scrolled (as SOLSolidMenuSmoke re-scrolls while the end moves): the tab stepped down a
+        // view at a time, each step held until the end stops moving, until the offset is at the stable end
+        const FSOLPlayerGuideShot& shot = shots[mShot];
+        UScrollBox* scroll = page != nullptr ? page->GetTabScroll(static_cast<int32>(shot.Tab)) : nullptr;
+        if (scroll == nullptr)
+        {
+            Fail(menu, FString::Printf(TEXT("%s: no scroll to measure"), *shot.FileName));
+            return true;
+        }
+        const float view = static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().Y);
+        if (!IsEndStable(*scroll) || view <= 0.0f || !GuideShadersReady())
+        {
+            if (mStageS > GUIDE_MEASURE_TIMEOUT_S)
+            {
+                Fail(menu, FString::Printf(TEXT("%s: the scroll end did not settle (end %.1f, view %.1f)"),
+                    *shot.FileName, scroll->GetScrollOffsetOfEnd(), view));
+                return true;
+            }
+            return false;
+        }
+        const float end = scroll->GetScrollOffsetOfEnd();
+        const float offset = scroll->GetScrollOffset();
+        if (offset < end - SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE)
+        {
+            scroll->SetScrollOffset(FMath::Min(offset + view, end));
+            ResetEndStable();
+            return false;
+        }
+
+        // At the stable end: the pages it needs must match SOL::Paths' table; then back to the top for page 0
+        mViewHeight = view;
+        mScrollEnd = end;
+        const int32 pages = SOLPlayerGuide::PageCount(mViewHeight, mScrollEnd);
+        UE_LOG(LogSOL, Log, TEXT("PlayerGuide: tab %d view %.1f, scroll end %.1f: %d pages (table %d)"),
+            static_cast<int32>(shot.Tab), mViewHeight, mScrollEnd, pages, SOLPlayerGuide::TabPages(shot.Tab));
+        if (pages != SOLPlayerGuide::TabPages(shot.Tab))
+        {
+            Fail(menu, FString::Printf(TEXT("tab %d needs %d shots at this size (view %.1f, scroll end %.1f), "
+                "SOL::Paths::PLAYER_GUIDE_TAB_PAGES says %d: update the table"), static_cast<int32>(shot.Tab),
+                pages, mViewHeight, mScrollEnd, SOLPlayerGuide::TabPages(shot.Tab)));
+            return true;
+        }
+        scroll->SetScrollOffset(0.0f);
+        ResetEndStable();
         ToStage(EStage::Settle);
         return false;
     }
@@ -262,41 +316,41 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
             return true;
         }
 
-        // D46: a tab's first plain page measures its scroll (the pages it needs must match SOL::Paths' table); a later
-        // page checks its offset
+        // D46: the tab's end still the one Measure found and held still for a few frames (else the pages are stale)
         const UScrollBox* scroll = page->GetTabScroll(static_cast<int32>(shot.Tab));
         if (scroll == nullptr)
         {
             Fail(menu, FString::Printf(TEXT("%s: no scroll"), *shot.FileName));
             return true;
         }
-        if (shot.Page == 0 && !shot.bHover)
+        const float end = scroll->GetScrollOffsetOfEnd();
+        const bool bSameEnd = FMath::Abs(end - mScrollEnd) <= SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE;
+        if (!IsEndStable(*scroll) || !bSameEnd)
         {
-            mViewHeight = static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().Y);
-            mScrollEnd = scroll->GetScrollOffsetOfEnd();
-            const int32 pages = SOLPlayerGuide::PageCount(mViewHeight, mScrollEnd);
-            UE_LOG(LogSOL, Log, TEXT("PlayerGuide: tab %d view %.1f, scroll end %.1f: %d pages (table %d)"),
-                static_cast<int32>(shot.Tab), mViewHeight, mScrollEnd, pages, SOLPlayerGuide::TabPages(shot.Tab));
-            if (pages != SOLPlayerGuide::TabPages(shot.Tab))
+            if (mStageS > GUIDE_OPEN_TIMEOUT_S)
             {
-                Fail(menu, FString::Printf(TEXT("tab %d needs %d shots at this size (view %.1f, scroll end %.1f), "
-                    "SOL::Paths::PLAYER_GUIDE_TAB_PAGES says %d: update the table"), static_cast<int32>(shot.Tab),
-                    pages, mViewHeight, mScrollEnd, SOLPlayerGuide::TabPages(shot.Tab)));
+                Fail(menu, FString::Printf(TEXT("%s: scroll end %.1f, measured %.1f"), *shot.FileName, end,
+                    mScrollEnd));
                 return true;
             }
+            return false;
         }
         // The requested offset (SScrollBox exposes no drawn offset, and a scrolled-out child's geometry is stale): a
-        // sanity check that Show asked for this page; the images themselves are looked at when regenerated
+        // sanity check that Show asked for this page, and that a tab's last scrolled page sits at its end; the images
+        // themselves are looked at when regenerated
         const float wantOffset = SOLPlayerGuide::PageOffset(shot.Page, mViewHeight, mScrollEnd);
-        if (FMath::Abs(scroll->GetScrollOffset() - wantOffset) > SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE)
+        const float offset = scroll->GetScrollOffset();
+        const bool bLastPage = !shot.bHover && shot.Page > 0 && shot.Page == SOLPlayerGuide::TabPages(shot.Tab) - 1;
+        if (FMath::Abs(offset - wantOffset) > SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE
+            || (bLastPage && FMath::Abs(offset - end) > SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE))
         {
-            Fail(menu, FString::Printf(TEXT("%s: scroll offset %.1f (want %.1f)"), *shot.FileName,
-                scroll->GetScrollOffset(), wantOffset));
+            Fail(menu, FString::Printf(TEXT("%s: scroll offset %.1f (want %.1f, end %.1f)"), *shot.FileName, offset,
+                wantOffset, end));
             return true;
         }
         const FString path = SOLPlayerGuide::CapturePath(*shot.FileName);
         FScreenshotRequest::RequestScreenshot(path, true, false);
-        UE_LOG(LogSOL, Log, TEXT("PlayerGuide: capture %s"), *path);
+        UE_LOG(LogSOL, Log, TEXT("PlayerGuide: capture %s (offset %.1f, end %.1f)"), *path, offset, end);
         ToStage(EStage::Captured);
         return false;
     }
@@ -371,6 +425,25 @@ void FSOLPlayerGuideWriter::ParkCursor() const
             FSlateApplicationBase::CursorPointerIndex, at, at, TSet<FKey>(), EKeys::LeftMouseButton, 0.0f,
             FModifierKeysState()));
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Counts the frames the scroll's end has stayed put; returns whether it has held still long enough
+bool FSOLPlayerGuideWriter::IsEndStable(const UScrollBox& scroll)
+{
+    const float end = scroll.GetScrollOffsetOfEnd();
+    mEndStableFrames = mLastEnd >= 0.0f && FMath::Abs(end - mLastEnd) <= SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE
+        ? mEndStableFrames + 1 : 0;
+    mLastEnd = end;
+    return mEndStableFrames >= GUIDE_END_STABLE_FRAMES;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Forgets the end stability count
+void FSOLPlayerGuideWriter::ResetEndStable()
+{
+    mLastEnd = -1.0f;
+    mEndStableFrames = 0;
 }
 
 //////////////////////////////////////////////////////////////////////////

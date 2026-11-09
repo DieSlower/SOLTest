@@ -13,6 +13,7 @@
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLRadarLayout.h"
 
+#include "Misc/PackageName.h"
 #include "String/ParseTokens.h"
 
 static_assert(UE_ARRAY_COUNT(SOLMenuText::HELP_TAB_LABELS) == static_cast<int32>(ESOLHelpTab::Count),
@@ -676,7 +677,7 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns what a row's box shows: its symbols, else its sample, else nothing
+// Returns what a row's box shows: its symbols, else its screenshot crop, else its sample, else nothing
 ESOLGlossaryArt SOLGlossary::EntryArt(const int32 index)
 {
     if (index < 0 || index >= EntryCount())
@@ -687,6 +688,10 @@ ESOLGlossaryArt SOLGlossary::EntryArt(const int32 index)
     if (GlossaryHasText(row.Symbols))
     {
         return ESOLGlossaryArt::Symbols;
+    }
+    if (EntryCrop(index) != INDEX_NONE)
+    {
+        return ESOLGlossaryArt::Crop;
     }
     return GlossaryHasText(row.Sample) ? ESOLGlossaryArt::Sample : ESOLGlossaryArt::None;
 }
@@ -963,4 +968,84 @@ ESOLHudPaletteRole SOLGlossary::SampleLineRole(const int32 index, const FStringV
         }
     }
     return ESOLHudPaletteRole::Primary;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the number of map-row screenshot crops
+int32 SOLGlossary::CropCount()
+{
+    return UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the GLOSSARY_CROPS index of an id (case-sensitive), INDEX_NONE for an empty or unknown id
+int32 SOLGlossary::FindCrop(const FStringView id)
+{
+    if (id.IsEmpty())
+    {
+        return INDEX_NONE;
+    }
+    for (int32 crop = 0; crop < CropCount(); ++crop)
+    {
+        if (id.Equals(SOL::Paths::GLOSSARY_CROPS[crop].Id, ESearchCase::CaseSensitive))
+        {
+            return crop;
+        }
+    }
+    return INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the crop index a row's Crop names, INDEX_NONE for none, an unknown id or an index outside the table
+int32 SOLGlossary::EntryCrop(const int32 index)
+{
+    if (index < 0 || index >= EntryCount())
+    {
+        return INDEX_NONE;
+    }
+    const TCHAR* crop = SOLMenuText::GLOSSARY_ENTRIES[index].Crop;
+    return crop != nullptr ? FindCrop(crop) : INDEX_NONE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the GLOSSARY_DESCRIPTION_ONLY reason of a row (by Name), nullptr when it is not listed or out of range
+const TCHAR* SOLGlossary::DescriptionOnlyReason(const int32 index)
+{
+    if (index < 0 || index >= EntryCount())
+    {
+        return nullptr;
+    }
+    const FStringView name = SOLMenuText::GLOSSARY_ENTRIES[index].Name;
+    for (const SOLMenuText::FGlossaryDescriptionOnly& row : SOLMenuText::GLOSSARY_DESCRIPTION_ONLY)
+    {
+        if (name.Equals(row.Name, ESearchCase::CaseSensitive))
+        {
+            return row.Reason;
+        }
+    }
+    return nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a crop's GLOSSARY_CROP_PX square in its capture shot, an all-zero rect for a crop outside the table
+FIntRect SOLGlossary::CropRect(const int32 crop)
+{
+    if (crop < 0 || crop >= CropCount())
+    {
+        return FIntRect();
+    }
+    const SOL::Paths::FGlossaryCrop& row = SOL::Paths::GLOSSARY_CROPS[crop];
+    return FIntRect(row.Left, row.Top, row.Left + SOL::Help::GLOSSARY_CROP_PX, row.Top + SOL::Help::GLOSSARY_CROP_PX);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the .uasset file of a crop's texture package, empty for a crop outside the table
+FString SOLGlossary::CropAssetFile(const int32 crop)
+{
+    if (crop < 0 || crop >= CropCount())
+    {
+        return FString();
+    }
+    const FString package = FPackageName::ObjectPathToPackageName(FString(SOL::Paths::GLOSSARY_CROPS[crop].Texture));
+    return FPackageName::LongPackageNameToFilename(package, FPackageName::GetAssetPackageExtension());
 }

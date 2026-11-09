@@ -20,7 +20,7 @@
 // D26, D37, D39, D42), written against the 33d-ii contract before the production code existed. They pin the pure,
 // widget-free logic of Menu/SOLGlossary.h that the Help page's symbol views use:
 //
-//   enum class ESOLGlossaryArt : uint8 { Symbols, Sample, None };
+//   enum class ESOLGlossaryArt : uint8 { Symbols, Sample, None, Crop };       // Crop since 33e-ii
 //   ESOLGlossaryArt EntryArt(int32 index);
 //   FSOLGlossaryCellGrid CellGrid(int32 count);                                 // cols ceil(sqrt n), rows ceil(n/cols)
 //   FBox2f CellRect(int32 cell, int32 count, const FBox2f& area);               // a short last row is centred
@@ -38,6 +38,10 @@
 //   int32 SamplePartCount(FStringView sample);                                  // LayoutSample's step-1 parts
 //   FVector2f SampleBoxSize(FStringView sample, float maxScale, float minScale, float lineHeightAtUnit,
 //       TFunctionRef<float(FStringView)> measureAtUnit);                        // square, or wide when a part wraps
+//
+// Part 33e-ii (D39), also test-first: EntryArt's rule gains the screenshot crop, Symbols when the row names symbols,
+// else Crop when its Crop resolves (SOLGlossary::EntryCrop), else Sample, else None; the five map rows are Crop rows
+// and Space dust is the one None row.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -57,7 +61,9 @@ namespace
     constexpr int32 GLOSSARYLAYOUTTEST_ROWS = 45;
     constexpr int32 GLOSSARYLAYOUTTEST_SYMBOL_ROWS = 33;
     constexpr int32 GLOSSARYLAYOUTTEST_SAMPLE_ROWS = 6;
-    constexpr int32 GLOSSARYLAYOUTTEST_NONE_ROWS = 6;
+    constexpr int32 GLOSSARYLAYOUTTEST_CROP_ROWS = 5;           // The five D39 map rows (33e-ii)
+    constexpr int32 GLOSSARYLAYOUTTEST_NONE_ROWS = 1;           // Space dust
+    constexpr int32 GLOSSARYLAYOUTTEST_ART_KINDS = 4;           // Symbols, Sample, None, Crop (counts by enum value)
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the number of GLOSSARY_ENTRIES rows
@@ -74,14 +80,37 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a row's expected art from the table: Symbols when it names symbols, else Sample when it has a sample,
-    // else None (independent of production)
+    // Returns whether a crop id names a SOL::Paths::GLOSSARY_CROPS entry (case-sensitive; a scan of the table,
+    // independent of production)
+    bool GlossaryLayoutTestCropResolves(const TCHAR* crop)
+    {
+        if (!GlossaryLayoutTestHasText(crop))
+        {
+            return false;
+        }
+        for (const SOL::Paths::FGlossaryCrop& entry : SOL::Paths::GLOSSARY_CROPS)
+        {
+            if (FCString::Strcmp(entry.Id, crop) == 0)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a row's expected art from the table: Symbols when it names symbols, else Crop when its Crop names a
+    // GLOSSARY_CROPS id, else Sample when it has a sample, else None (independent of production)
     ESOLGlossaryArt GlossaryLayoutTestExpectedArt(const int32 index)
     {
         const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
         if (GlossaryLayoutTestHasText(row.Symbols))
         {
             return ESOLGlossaryArt::Symbols;
+        }
+        if (GlossaryLayoutTestCropResolves(row.Crop))
+        {
+            return ESOLGlossaryArt::Crop;
         }
         return GlossaryLayoutTestHasText(row.Sample) ? ESOLGlossaryArt::Sample : ESOLGlossaryArt::None;
     }
@@ -112,6 +141,8 @@ namespace
             return TEXT("Sample");
         case ESOLGlossaryArt::None:
             return TEXT("None");
+        case ESOLGlossaryArt::Crop:
+            return TEXT("Crop");
         default:
             return TEXT("<invalid>");
         }
@@ -288,11 +319,11 @@ namespace
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutEntryArtTest, "SOLTest.Glossary.Layout.EntryArt",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Each row's art follows its table cells (Symbols, else Sample, else None); today 33 / 6 / 6 of 45; an index outside
-// the table is None
+// Each row's art follows its table cells (Symbols, else a resolving Crop, else Sample, else None, 33e-ii); today
+// 33 / 5 / 6 / 1 of 45; an index outside the table is None
 bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
 {
-    int32 counts[3] = { 0, 0, 0 };
+    int32 counts[GLOSSARYLAYOUTTEST_ART_KINDS] = {};
     for (int32 index = 0; index < GlossaryLayoutTestRowCount(); ++index)
     {
         const ESOLGlossaryArt expected = GlossaryLayoutTestExpectedArt(index);
@@ -306,9 +337,10 @@ bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("45 rows"), GlossaryLayoutTestRowCount(), GLOSSARYLAYOUTTEST_ROWS);
     TestEqual(TEXT("33 Symbols rows"), counts[static_cast<int32>(ESOLGlossaryArt::Symbols)],
         GLOSSARYLAYOUTTEST_SYMBOL_ROWS);
+    TestEqual(TEXT("5 Crop rows"), counts[static_cast<int32>(ESOLGlossaryArt::Crop)], GLOSSARYLAYOUTTEST_CROP_ROWS);
     TestEqual(TEXT("6 Sample rows"), counts[static_cast<int32>(ESOLGlossaryArt::Sample)],
         GLOSSARYLAYOUTTEST_SAMPLE_ROWS);
-    TestEqual(TEXT("6 None rows"), counts[static_cast<int32>(ESOLGlossaryArt::None)], GLOSSARYLAYOUTTEST_NONE_ROWS);
+    TestEqual(TEXT("1 None row"), counts[static_cast<int32>(ESOLGlossaryArt::None)], GLOSSARYLAYOUTTEST_NONE_ROWS);
 
     // Outside the table
     const int32 rows = GlossaryLayoutTestRowCount();
@@ -323,14 +355,25 @@ bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtByNameTest, "SOLTest.Glossary.Layout.ArtByName",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// The six Sample rows and the six None rows (the five D39 map rows and Space dust) by name; the rows with several
-// symbols are Symbols rows with 2, 3 and 2 symbols
+// The six Sample rows, the five Crop rows (the D39 map rows, 33e-ii) and the one None row (Space dust) by name; the
+// rows with several symbols are Symbols rows with 2, 3 and 2 symbols
 bool FSOLGlossaryLayoutArtByNameTest::RunTest(const FString& /*parameters*/)
 {
     const TCHAR* const sampleRows[] = { TEXT("Flight mode"), TEXT("Key hints and notices"), TEXT("Autopilot marker"),
         TEXT("Chase Down line"), TEXT("Overlay profile tag"), TEXT("Route progress line") };
-    const TCHAR* const noneRows[] = { TEXT("Orbit lines"), TEXT("Route legs"), TEXT("Waypoints"), TEXT("Space dust"),
+    const TCHAR* const cropRows[] = { TEXT("Orbit lines"), TEXT("Route legs"), TEXT("Waypoints"),
         TEXT("Map destination pick"), TEXT("Map grid and stems") };
+    const TCHAR* const noneRows[] = { TEXT("Space dust") };
+    for (const TCHAR* name : cropRows)
+    {
+        const int32 index = GlossaryLayoutTestRowByName(name);
+        if (TestTrue(FString::Printf(TEXT("row \"%s\" exists"), name), index != INDEX_NONE))
+        {
+            TestTrue(FString::Printf(TEXT("\"%s\" is a Crop row, got %s"), name,
+                GlossaryLayoutTestArtName(SOLGlossary::EntryArt(index))),
+                SOLGlossary::EntryArt(index) == ESOLGlossaryArt::Crop);
+        }
+    }
     for (const TCHAR* name : sampleRows)
     {
         const int32 index = GlossaryLayoutTestRowByName(name);
@@ -378,7 +421,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtPerTabTest, "SOLTest.Gloss
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Per tab (EntriesOfTab): Flight HUD 13 = 9 Symbols + 4 Sample; Targets and radar 7 Symbols; Overlays and route 16 =
-// 10 Symbols + 2 Sample + 4 None; Menus and map 9 = 7 Symbols + 2 None; Keyboard has no rows
+// 10 Symbols + 2 Sample + 3 Crop + 1 None; Menus and map 9 = 7 Symbols + 2 Crop (33e-ii); Keyboard has no rows
 bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
 {
     struct FTabArt
@@ -387,20 +430,21 @@ bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
         const TCHAR* Name;
         int32 Symbols;
         int32 Sample;
+        int32 Crop;
         int32 None;
     };
     const FTabArt tabs[] = {
-        { ESOLHelpTab::FlightHud, TEXT("Flight HUD"), 9, 4, 0 },
-        { ESOLHelpTab::TargetsRadar, TEXT("Targets and radar"), 7, 0, 0 },
-        { ESOLHelpTab::OverlaysRoute, TEXT("Overlays and route"), 10, 2, 4 },
-        { ESOLHelpTab::MenusMap, TEXT("Menus and map"), 7, 0, 2 },
+        { ESOLHelpTab::FlightHud, TEXT("Flight HUD"), 9, 4, 0, 0 },
+        { ESOLHelpTab::TargetsRadar, TEXT("Targets and radar"), 7, 0, 0, 0 },
+        { ESOLHelpTab::OverlaysRoute, TEXT("Overlays and route"), 10, 2, 3, 1 },
+        { ESOLHelpTab::MenusMap, TEXT("Menus and map"), 7, 0, 2, 0 },
     };
     TArray<int32> indices;
     int32 total = 0;
     for (const FTabArt& tab : tabs)
     {
         SOLGlossary::EntriesOfTab(tab.Tab, indices);
-        int32 counts[3] = { 0, 0, 0 };
+        int32 counts[GLOSSARYLAYOUTTEST_ART_KINDS] = {};
         for (const int32 index : indices)
         {
             const ESOLGlossaryArt art = SOLGlossary::EntryArt(index);
@@ -408,11 +452,14 @@ bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
                 art == GlossaryLayoutTestExpectedArt(index));
             ++counts[static_cast<int32>(GlossaryLayoutTestExpectedArt(index))];
         }
-        TestEqual(FString::Printf(TEXT("%s rows"), tab.Name), indices.Num(), tab.Symbols + tab.Sample + tab.None);
+        TestEqual(FString::Printf(TEXT("%s rows"), tab.Name), indices.Num(),
+            tab.Symbols + tab.Sample + tab.Crop + tab.None);
         TestEqual(FString::Printf(TEXT("%s Symbols rows"), tab.Name), counts[static_cast<int32>(
             ESOLGlossaryArt::Symbols)], tab.Symbols);
         TestEqual(FString::Printf(TEXT("%s Sample rows"), tab.Name), counts[static_cast<int32>(
             ESOLGlossaryArt::Sample)], tab.Sample);
+        TestEqual(FString::Printf(TEXT("%s Crop rows"), tab.Name), counts[static_cast<int32>(ESOLGlossaryArt::Crop)],
+            tab.Crop);
         TestEqual(FString::Printf(TEXT("%s None rows"), tab.Name), counts[static_cast<int32>(ESOLGlossaryArt::None)],
             tab.None);
         total += indices.Num();

@@ -44,3 +44,7 @@ graphify-out/2026-*/
 # Unreal assets (Content/SOL/...) are committed
 Tools/StarField/data/
 __pycache__/
+
+# The glossary crop run's staged crops and swap backups (removed by the run; left only if it was killed mid-swap)
+Docs/Images/*.png.new
+Docs/Images/*.png.old

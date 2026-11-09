@@ -228,7 +228,17 @@ namespace
             {
                 const SOLMenuText::FGlossaryEntry& entry = SOLMenuText::GLOSSARY_ENTRIES[index];
                 SOLGlossary::FormatEntryText(entry.Description, keys, description);
-                GuideLine(out, FString::Printf(SOLMenuText::GUIDE_TABLE_ROW_FORMAT, *GuideCell(entry.Name),
+                FString nameCell = GuideCell(entry.Name);
+
+                // A map row's screenshot crop sits under its name (33e-ii, D39)
+                const int32 crop = SOLGlossary::EntryCrop(index);
+                if (crop != INDEX_NONE)
+                {
+                    nameCell = FString::Format(SOLMenuText::GUIDE_CROP_CELL_FORMAT, { nameCell,
+                        FString::Format(SOLMenuText::GUIDE_IMAGE_FORMAT, { FString(entry.Name),
+                            GuideImageDir() + SOL::Paths::GLOSSARY_CROPS[crop].ImageFile }) });
+                }
+                GuideLine(out, FString::Printf(SOLMenuText::GUIDE_TABLE_ROW_FORMAT, *nameCell,
                     *GuideCell(description)));
             }
         }
@@ -296,6 +306,13 @@ FString SOLPlayerGuide::InputHash(const TArray<FString>& keys)
         crc = GuideHash(entry.Sample, crc);
         crc = GuideHash(entry.Name, crc);
         crc = GuideHash(entry.Description, crc);
+        crc = GuideHash(entry.Crop, crc);
+    }
+
+    for (const SOL::Paths::FGlossaryCrop& crop : SOL::Paths::GLOSSARY_CROPS)
+    {
+        crc = GuideHash(crop.Id, crc);
+        crc = GuideHash(crop.ImageFile, crc);
     }
 
     // Each key with a separator, so moving a key between bindings changes the hash too
@@ -326,6 +343,13 @@ FString SOLPlayerGuide::GuideFilePath()
 bool SOLPlayerGuide::IsWriteRequested(const TCHAR* commandLine)
 {
     return commandLine != nullptr && FParse::Param(commandLine, SOL::CommandLine::WRITE_PLAYER_GUIDE);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the command line asks for the crop run
+bool SOLPlayerGuide::IsCropCaptureRequested(const TCHAR* commandLine)
+{
+    return commandLine != nullptr && FParse::Param(commandLine, SOL::CommandLine::WRITE_GLOSSARY_CROPS);
 }
 
 //////////////////////////////////////////////////////////////////////////

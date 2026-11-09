@@ -15,6 +15,7 @@
 
 #include "SOLReadOnlyPageWidget.generated.h"
 
+class UImage;
 class UScrollBox;
 class USOLKeyboardDiagram;
 class USOLKeyboardDiagramPopup;
@@ -24,8 +25,9 @@ class UTextBlock;
 class UWidgetSwitcher;
 
 // (33d-ii) One HUD glossary row of the Help page: its GLOSSARY_ENTRIES row and tab, the symbol box and its view (null
-// for a row without art, rule (c)), the name and description texts, and the description and sample last written
-// (SOLMenuContent::RefreshHelpPage writes a text only when it changed); the widgets are reflected references
+// for a row without art, rule (c), and for a crop row, whose box holds the crop image instead), the name and
+// description texts, and the description and sample last written (SOLMenuContent::RefreshHelpPage writes a text only
+// when it changed); the widgets are reflected references
 USTRUCT()
 struct FSOLHelpGlossaryRow
 {
@@ -42,6 +44,9 @@ struct FSOLHelpGlossaryRow
 
     UPROPERTY(Transient)
     TObjectPtr<USOLHudSymbolView> View;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UImage> CropImage;               // (33e-ii, D39) A map row's screenshot crop (its View is null)
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> Name;

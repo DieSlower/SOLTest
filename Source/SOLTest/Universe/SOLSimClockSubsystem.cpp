@@ -20,9 +20,15 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
     Super::Initialize(collection);
 
 #if !UE_BUILD_SHIPPING
-    // Developer verification override: start at a fixed date (SDD 16 section 7, question 1); not in Shipping builds
+    // Developer verification override: start at a fixed date (SDD 16 section 7, question 1); not in Shipping builds.
+    // The glossary crop run (SDD 33 section 9) always starts at its pinned date
     FString simDate;
-    if (FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    const bool bCropRun = FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_GLOSSARY_CROPS);
+    if (bCropRun)
+    {
+        simDate = SOL::Help::GLOSSARY_CROP_SIM_DATE;
+    }
+    if (bCropRun || FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
     {
         double julianDate = 0.0;
         if (FSOLSimClock::TryParseUtcJulianDate(simDate, julianDate))

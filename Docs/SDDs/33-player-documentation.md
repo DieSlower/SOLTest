@@ -8,7 +8,7 @@ interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
-Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii (grill-me first) or 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii done (2026-11-08, section 20): the map glossary crops (D47) and the guide-writer end-of-tab fix; 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -65,7 +65,7 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D36 | **(Superseded by D45, 33e-iii.) Hover strip (user, 2026-11-07):** sized **once per width and model** for the busiest key's wrapped rows (at most `DIAGRAM_DETAIL_LINES` 24; 8 at the defaults, Left Ctrl), so its height never changes while hovering; the hovered key's **cap is on its own row** (`DIAGRAM_DETAIL_CAP_HEIGHT` 30) **above the lines**, which use the full strip width; not padded to a worst case. |
 | D37 | **Wide screens only (user, 2026-11-07, final):** outside VR every screen is wide and at least 1280x720; the diagram targets are **1280x720, 1920x1080 and 3840x2160** only (658 units of shell content at all three, DPI-scaled). Nothing is added or tuned for smaller windows (no 1000x800 diagram step, screenshots or constants; older tickets' 1000x800 checks stay). The 4K profile belongs to 33f. |
 | D38 | **Legend room (user, 2026-11-08, after the 33c screenshots):** at font 11 nine one-unit legends clipped to 2-3 letters (Esc, ScrL, Pause, Home, PgUp, PgDn, Del, Num, numpad Enter) and the wheel showed none; font 10 fixed only four. The user chose **both**: the diagram's caps (keys and Other keys caps) **drop the LED** (a Small hull material of the diagram's own with `LedX` < 0, made once per widget), so a one-unit key's legend gets about 37 of its 44 units; and **only the legends that still do not fit** at the paint scale use an abbreviation from one table, `SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS` (at most `DIAGRAM_ABBREVIATION_MAX_CHARS` 4 characters, shorter than the layout legend, tested): numpad Enter "Ent" (the main Enter keeps "Enter"), the wheel "W", Pause "Paus" (needed at 1920x1080 only). The hover strip keeps the 33b cap (with its LED) and the full key names; the Controls and Settings caps are unchanged. |
-| D39 | **Map rows without shape code (user, 2026-11-08, 33d-i contract U1):** orbit lines (a 3D mesh with a material) and the route legs, waypoints, map destination pick and map grid (Canvas lines and triangles in the `Map/` overlays) have no 2D shape code to share, so under D5 they cannot be drawn by `SOLHudSymbols`. Their five `GLOSSARY_ENTRIES` rows become **description-only now** (`Symbols` ""; the every-symbol-builds test covers the rows that name a symbol; the enum ids stay, without a builder), and their pictures are to be **screenshot crops of the real game** (static images) shown in the Help page and the player guide, built in a later sub-step (plan 33d-ii / 33e). Porting those overlays to the shape renderer is a ToDo (`Docs/ToDo/map-overlays-shape-renderer.md`). |
+| D39 | **Map rows without shape code (user, 2026-11-08, 33d-i contract U1):** orbit lines (a 3D mesh with a material) and the route legs, waypoints, map destination pick and map grid (Canvas lines and triangles in the `Map/` overlays) have no 2D shape code to share, so under D5 they cannot be drawn by `SOLHudSymbols`. Their five `GLOSSARY_ENTRIES` rows become **description-only now** (`Symbols` ""; the every-symbol-builds test covers the rows that name a symbol; the enum ids stay, without a builder), and their pictures are to be **screenshot crops of the real game** (static images) shown in the Help page and the player guide, built in a later sub-step (plan 33d-ii / 33e). Porting those overlays to the shape renderer is a ToDo (`Docs/ToDo/map-overlays-shape-renderer.md`). **Realised in 33e-ii (D47).** |
 | D40 | **Distance darkening (user, 2026-11-08, U2):** the row shows the **bright** `IconPlanet` only; no second brightness, no `IconPlanetFar` (the 33a review note is dropped). |
 | D41 | **Joystick builder radius (2026-11-08, U3 while pending):** the joystick builder takes an optional radius defaulting to the HUD's own size (the HUD unchanged); the glossary size itself is D42. |
 | D42 | **Glossary symbol size and the feature floor (user, 2026-11-08, U3 answered after a mock-up):** symbols are drawn at full HUD size shrunk to fit the box (section 8.3 as written), the joystick included, **but no feature is ever drawn smaller than `SOL::Help::GLOSSARY_MIN_FEATURE_PX` (2 px)**: after scaling, `SOLHudSymbols::Build` (the glossary entry point, and so `Bounds`) clamps dot, ring, arc, ellipse, icon and edge-arrow radii, box and panel sizes and dash / gap lengths up to the floor; line widths, text and cards are unchanged. The per-element builders the HUD calls are never clamped, so the HUD is unchanged. Tested over every glossary symbol. |
@@ -73,6 +73,7 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D44 | **Readable glossary text samples (user, 2026-11-08, O16 answered; built in 33d-iii):** both (1) a text-sample row whose lines would wrap in the 96-unit box gets a wider box (`GLOSSARY_SAMPLE_BOX_WIDTH` 200 units: the symbol column plus the left part of the description column, for that row only; the tab column stays 96), drawn at the HUD's own size (1.5 pixels per unit) without shrinking where it fits; and (2) the smallest text scale rises to `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0 with more wrap points: `SOLGlossary::LayoutSample` now wraps at the HUD's size before it shrinks (more lines, a taller box: `SOLGlossary::SampleBoxSize`), so a wide sample is never below the HUD's size. Short samples (MANUAL / ASSISTED / AUTO) stay in the 96-unit box as before (shrunk only because one word is wider than the box). Row heights adapt; nothing clipped at 1280x720 or 1920x1080 (D37: 4K only in 33f). Reading of "1.0": a scale of 1.0 x pixels per unit, the floor only a single over-wide word reaches; the HUD's size itself is the 1.5 cap. |
 | D45 | **The keyboard diagram's hover detail is a popup (user, 2026-11-08; supersedes D36 and D43; built in 33e-iii):** the reserved strip (sized for the busiest key, empty at rest, pushing the diagram below the fold) is removed; the diagram starts right under the area legend and the one-line "Hover a key to see what it does" hint. The hovered key's detail (its cap row with the LED cap, its own actions, then the chords it starts, full names per D38) is a popup on top of the page, near the key, in the shared solid style (the Panel hull, Rajdhani, `SOL::SolidMenu` / `SOL::Help` constants), sized to its content (at most `DIAGRAM_POPUP_MAX_WIDTH` 480 units, lines wrapped inside), placed below the key, else above (the side with room), else beside, kept inside the page less `DIAGRAM_POPUP_EDGE_PAD` so it is never cut off and never covers the hovered key; no animation beyond the menu's open style, no sound cue, no tick while idle, no allocation in paint; hover off hides it; hit-test invisible, so it never takes hover from the keys. It works for the numpad and mouse block of the stacked layout and at the edges (a mirror cap such as the numpad Enter places it by that cap). The diagram has no keyboard focus, so no focus popup was added. |
 | D46 | **Scrolled guide shots (user, 2026-11-08; built in 33e-iii):** the guide keeps the first window shot of each Help tab and adds shots scrolled down until the whole tab is covered (`33-help-keyboard-2.png`, `33-help-glossary-flight-hud-2.png` ...), the count derived from the tab's scroll extent at 1920x1080 and referenced in order in `Docs/PLAYER_GUIDE.md`; `33-help-keyboard-hover.png` shows the popup for O. |
+| D47 | **Map glossary crops (user, 2026-11-08, via the main session; built in 33e-ii; realises D39):** the five map rows (Orbit lines, Route legs, Waypoints, Map destination pick, Map grid and stems) show **screenshot crops of the real game**, captured from the real overlays at 1920x1080, **one 176x176 crop per row** (`SOL::Help::GLOSSARY_CROP_PX`, 2x the 88-unit symbol view). The guide uses the **same PNG files** (`Docs/Images/33-glossary-crop-*.png`) as the in-game textures' sources. **Staleness is caught by tests** (`CropAssetsExist`, `CropImagesSize`, `CropTexturesCurrent`: the texture's import MD5 tag must match its PNG); `PlayerGuide.UpToDate` stays markdown / path-based (the crops are not part of the markdown hash, only their ids and files are in `InputHash`). Space dust stays description-only (`SOLMenuText::GLOSSARY_DESCRIPTION_ONLY`, with a reason). |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -383,11 +384,16 @@ written and fails the completeness test; no "²" (TECH_DEBT).
   the action text from `FormatControlAction`), the keyboard image, the area legend, then the **HUD glossary** (per tab
   the screenshot and a table of name and description). Nothing in it is hand-written.
 - **Scrolled shots (D46, 33e-iii):** each tab's shots are its pages, `SOL::Paths::PLAYER_GUIDE_TAB_PAGES` (Keyboard 2,
-  Flight HUD 4, Targets 2, Overlays 4, Map 3 at 1920x1080); a page's offset is `SOLPlayerGuide::PageOffset`
+  Flight HUD 6, Targets 3, Overlays 5, Map 3 at 1920x1080); a page's offset is `SOLPlayerGuide::PageOffset`
   (`PLAYER_GUIDE_PAGE_OVERLAP` 0: the pages adjoin, the last aligned to the tab's end), its name `PageFileName`
   (`-2`, `-3` ... before `.png`), a scrolled image's alt text `GUIDE_IMAGE_PART_FORMAT` ("..., part 2 of 4"). The
-  run measures each tab's view and scroll end on its first page (`PageCount`) and fails, naming the table, when the
-  count differs, so the table cannot go stale silently.
+  run measures each tab's view and scroll end in a Measure stage (33e-ii: it scrolls the tab one view at a time until
+  the end is stable for `GUIDE_END_STABLE_FRAMES` 10 frames, at most `GUIDE_MEASURE_TIMEOUT_S` 30 s, because the
+  descriptions wrap after the first frames), each shot checks the end, the last page must sit at it, and the run fails,
+  naming the table, when the count differs, so the table cannot go stale silently.
+- **Map crops (D47, 33e-ii):** a crop row's Name cell is `Name<br>![Name](Images/<file>)` (`GUIDE_CROP_CELL_FORMAT`);
+  `InputHash` covers the crop ids and files; `SOLPlayerGuide::IsCropCaptureRequested`. The five crops are 176x176 PNGs
+  (`SOL::Paths::GLOSSARY_CROPS`, 5 images besides the 20 Help images).
 - **Staleness (D27):** `SOLTest.PlayerGuide.UpToDate` (written in 33e, with the writer) is a **failing automation
   test**: it loads
   `Docs/PLAYER_GUIDE.md` and compares it with `BuildMarkdown(DefaultKeys())`; a mismatch fails with "run
@@ -453,7 +459,7 @@ same headers. One file per topic:
 | `DIAGRAM_DETAIL_CAP_HEIGHT` / `DIAGRAM_DETAIL_LINE_HEIGHT` | 30 / 22 units | The hover popup's cap row and one line (D36, kept for the D45 popup) |
 | `DIAGRAM_HINT_HEIGHT` | 22 units | D45: the hint line above the diagram |
 | `DIAGRAM_POPUP_MAX_WIDTH` / `DIAGRAM_POPUP_PAD` / `DIAGRAM_POPUP_GAP` / `DIAGRAM_POPUP_EDGE_PAD` / `DIAGRAM_POPUP_WRAP_SLACK` | 480 / 20 / 6 / 8 / 4 units | D45, tuned from the 33e-iii screenshots: the popup's widest outer width (lines wrap in 440 less the slack; 440 gave O 13 rows, too tall to go above or below it), its content inset (the Panel hull draws about 12 units inside its quad, so 10 and 14 left the text on the visible edge), its gap to the key, its inset from the page's edges, the wrap's margin under the shaped text |
-| `PLAYER_GUIDE_TAB_PAGES` / `PLAYER_GUIDE_MAX_PAGES` / `PLAYER_GUIDE_PAGE_OVERLAP` / `PLAYER_GUIDE_SCROLL_TOLERANCE` (`SOL::Paths`) | 2, 4, 2, 4, 3 / 8 / 0 / 0.5 | D46: the shots per Help tab at 1920x1080 (checked by the run), the cap, the repeat between shots (32 gave a third Targets shot for 18 units), no scroll up to this |
+| `PLAYER_GUIDE_TAB_PAGES` / `PLAYER_GUIDE_MAX_PAGES` / `PLAYER_GUIDE_PAGE_OVERLAP` / `PLAYER_GUIDE_SCROLL_TOLERANCE` (`SOL::Paths`) | 2, 6, 3, 5, 3 / 8 / 0 / 0.5 | D46: the shots per Help tab at 1920x1080 (checked by the run), the cap, the repeat between shots (32 gave a third Targets shot for 18 units), no scroll up to this |
 | `DIAGRAM_BADGE_GAP` | 2 units | D35: legend to "+N" badge |
 | `DIAGRAM_ABBREVIATION_MAX_CHARS` / `DIAGRAM_NO_LED_X` | 4 / -1 | D38: an abbreviation's length cap; the keys' hull `LedX` (no LED) |
 | `DIAGRAM_KEY_FONT_SIZE` / `DIAGRAM_BADGE_FONT_SIZE` / `DIAGRAM_KEY_INSET` / `DIAGRAM_KEY_PAD` | 11 / 9 / 1.5 / 2 units | The leaf's key drawing (font 10 was tried in 33c and not kept) |
@@ -715,6 +721,8 @@ P14 (no popup) over its single-run verdict (the known single-run noise, `Docs/TE
 | R8 | Writing into `Docs/` from the game | Flag-only, non-shipping, paths from `SOL::Paths`, logged; nothing writes without the flag |
 
 ## 18. Open questions
+
+**33e-ii (2026-11-08):** the D39 crop questions (size, source of the guide images, staleness) were answered by the user (D47); no question open.
 
 **33e-iii (2026-11-08):** the 33e "open for the user" note (the Keyboard image cut at the fold, one shot per glossary
 tab) was answered by D45 and D46; no question open.
@@ -1071,3 +1079,57 @@ is one of the Help step's popup caps; it is O); nits fixed (a paint-pass flag be
 cleared on a tab change, `GetLeaf` by reference, line lengths, comments, a smoke tolerance constant, a compile-time
 check of the page table) and the "never covers" reading recorded above.
 
+**33e-ii (2026-11-08, commit `Issue #33: Part 33e-ii - map symbol crops`).** D47 (realises D39) and a guide-writer fix.
+
+As built:
+- **Data.** `SOLMenuText::FGlossaryEntry::Crop` (a crop id per row), `SOLMenuText::GLOSSARY_DESCRIPTION_ONLY` (Space
+  dust, with a reason); `SOL::Paths::FGlossaryCrop` / `GLOSSARY_CROPS` (Id, ImageFile in `Docs/Images`
+  `33-glossary-crop-*.png`, Texture `/Game/SOL/UI/Glossary/T_SOLGlossary*`, Left / Top in the capture shot) and
+  `GLOSSARY_CROP_TEXTURE_DIR`; `SOL::Help::GLOSSARY_CROP_PX` 176, `GLOSSARY_CROP_CAPTURE_WIDTH` / `HEIGHT` 1920x1080,
+  `GLOSSARY_CROP_SIM_DATE` 2026-06-01T00:00:00Z; `SOL::ORBIT_LINE_CVAR`.
+- **Logic.** `ESOLGlossaryArt::Crop`; `SOLGlossary::CropCount / FindCrop / EntryCrop / DescriptionOnlyReason / CropRect /
+  CropAssetFile`; `EntryArt` order Symbols, Crop, Sample, None. The guide: see section 9.
+- **Capture.** A new non-shipping `Map/SOLGlossaryCropWriter` (`FSOLGlossaryCropWriter`), flag `-SOLWriteGlossaryCrops`
+  (`SOL::CommandLine::WRITE_GLOSSARY_CROPS`), started from `ASOLShipPawn::BeginPlay` and stepped in its Tick like the
+  map smokes; the smoke settings slot and the engine settings snapshot (`GameUserSettings.ini` untouched); the sim
+  clock pinned to `GLOSSARY_CROP_SIM_DATE` and reset every frame; the ship parked 6e8 m ahead of Earth; the map open in
+  Jump mode with a fixed camera per scene. Four shots: the orbits (Earth targeted so its orbit is gold, hologram off for
+  that shot), an active 5-waypoint patrol loop, a Move route laid out for the grid stems, a destination pick in its
+  height step. Crops are cut with `FImage` (new `ImageCore` module dependency), kept when within pixel noise of the
+  existing file, and swapped into `Docs/Images` all-or-nothing; the log lines are `GlossaryCrops WROTE / KEPT / DONE /
+  FAIL`.
+- **Import.** `Tools/UI/import_glossary_crops.py` (a headless pythonscript commandlet; reads `GLOSSARY_CROPS` from
+  `SOLConstants.h`; skips on an MD5 and settings tag; UI group, UserInterface2D, sRGB, clamp, mips for the downscale
+  at 1280x720, never streamed). `Tools/WritePlayerGuide.ps1` / `.bat`: crops, recompress, import, guide; `-NoCrops`.
+- **Display.** `USOLSolidMenuSubsystem` loads the five textures once into a UPROPERTY array (`GetGlossaryCrop`); a
+  missing one logs once and counts as a missing asset. The Help row shows a `UImage` of `GLOSSARY_VIEW_SIZE` in the
+  recess (`FSOLHelpGlossaryRow::CropImage`, View null). `Config/DefaultGame.ini` `DirectoriesToAlwaysCook`
+  `/Game/SOL/UI/Glossary` (the only cook rule so far; TECH_DEBT lists the other path-loaded assets).
+- **In-game text corrected.** The Waypoints row (stops above the plane through the ship / the map grid's plane are a
+  blue ring with a dot, below a hollow orange ring; on the map a stop clearly off the plane has a stem in the same
+  colour: the old text wrongly said dashed stems like radar contacts) and the Map grid row (level with the plane of
+  the planets, through the point the map turns around).
+- **Guide-writer bug fixed (present since 33e-iii, D46).** The run measured each tab's scroll end before the
+  descriptions had wrapped, so the last page stopped short (Flight HUD end 1254 to 2246, Targets 542 to 638, Overlays
+  1290 to 1930, Menus 726 to 1014). The Measure stage (section 9) fixes it; `PLAYER_GUIDE_TAB_PAGES` 2, 4, 2, 4, 3
+  became 2, 6, 3, 5, 3 (20 Help images plus 5 crops). Note, not a decision: Flight HUD part 6 adds only about 22 units
+  over part 5 (the D46 rule with overlap 0).
+- **Smoke.** `-SOLSmokeSolidMenu` checks the crop rows (no view, the image's texture is the subsystem's crop at
+  176x176, drawn 88x88 units) and writes `-crops` shots; 275 / 275 (the count is unchanged).
+
+- **Numbers.** Full suite 1743 / 1743 (new: `CropRows`, `CropTable`, `FindCrop`, `EntryCrop`, `DescriptionOnlyReason`,
+  `CropRect`, `CropAssetFile`, `CropAssetsExist`, `CropTexturesCurrent`, `MapRowsNameCrops` (renamed from
+  `DescriptionOnlyRows`) and the guide's crop tests). Smokes at 1280x720 and 1920x1080: `-SOLSmokeSolidMenu` 275 / 275,
+  `-SOLSmokeOverlay` 34 / 34, `-SOLSmokeHud` 24 / 24 at both; `-SOLSmokeHoloMenu` 86 / 86 at 1280x720 but 81 to 85 / 86
+  at 1920x1080 (the info / target card checks): a build of the previous commit `d3e04dc` fails the same checks on the
+  same machine, so it is not this part (`Docs/TECH_DEBT.md`); `-SOLSmokeHoloMenuProfile` 5 / 5 passes, 12 / 12 checks;
+  `-SOLSmokeSolidMenuProfile` 22 / 22 passes and 23 / 23 checks in each of three runs. Help passes, three-run medians,
+  `cpu_slate` / `gpu_ui` ms (extra against the Settings passes P0 0.464 / 0.111 at 1080 and P1 0.499 / 0.061 at 720):
+  P16 keys 0.481 / 0.130 (+0.017 / +0.019), P17 flight 0.463 / 0.147 (-0.001 / +0.036), P18 overlays (three crop rows)
+  0.486 / 0.143 (+0.022 / +0.032) at 1920x1080; P19 0.492 / 0.073 (-0.007 / +0.012), P20 0.486 / 0.091 (-0.013 /
+  +0.030), P21 0.487 / 0.088 (-0.012 / +0.027) at 1280x720: all inside 0.2 ms CPU / 0.3 ms GPU. Images: 5 crops of
+  176x176 (41.7 KB in all, textures 100 KB in all), 20 Help images (15.9 MB), `Docs/PLAYER_GUIDE.md` 16.8 KB.
+  `Tools\WritePlayerGuide.ps1` run twice: the second run left the crops (`GlossaryCrops KEPT`, max delta 2 to 4, at
+  most 2 pixels above 2), the five `.uasset` files (import skipped on the tag) and the guide byte-identical, but it
+  rewrites the 20 Help images every time (`Docs/TECH_DEBT.md`). The crop compare tolerates a 1-pixel shift (at most
+  128 per channel, at most 16 pixels above 2), measured over eight capture runs.

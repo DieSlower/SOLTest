@@ -7,6 +7,7 @@
 #include "Menu/SOLGlossary.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
+#include "Menu/SOLPlayerGuide.h"
 #include "SOLConstants.h"
 #include "UI/SOLHudFormat.h"
 #include "UI/SOLHudLines.h"
@@ -14,7 +15,14 @@
 #include "UI/SOLHudSymbols.h"
 #include "UI/SOLOverlayIcons.h"
 
+#include "Engine/Texture2D.h"
+#include "HAL/FileManager.h"
+#include "Math/IntRect.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/PackageName.h"
+#include "Misc/SecureHash.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
 
 #if WITH_DEV_AUTOMATION_TESTS
 
@@ -23,7 +31,12 @@
 // the production code existed: the five Help tabs, the GLOSSARY_ENTRIES rows resolved, the description formatter and
 // the completeness of the coverage table (every HUD line, icon category, card, steer icon and flight mode explained).
 // Part 33d-i: every symbol a row names builds a sane picture at the glossary scale, no feature below the glossary
-// floor (D42); the five map rows are description-only (D39) and Distance darkening shows IconPlanet alone (D40).
+// floor (D42); the five map rows name no symbol (D39) and Distance darkening shows IconPlanet alone (D40).
+// Part 33e-ii (D39), also test-first against its contract: the five map rows show a screenshot crop instead
+// (SOL::Paths::GLOSSARY_CROPS: CropCount, FindCrop, EntryCrop, CropRect, CropAssetFile), Space dust is the one
+// description-only row (SOLMenuText::GLOSSARY_DESCRIPTION_ONLY, DescriptionOnlyReason), every row has art or a reason,
+// and SOLTest.Glossary.CropAssetsExist fails until the crop textures are captured and imported;
+// SOLTest.Glossary.CropTexturesCurrent checks each texture was imported from the PNG in Docs/Images.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -665,12 +678,18 @@ namespace
     constexpr float GLOSSARYTEST_BUILD_SCALES[] = { 1.0f, 1.5f };   // UI 1 (720 px) and the 1080 px HUD scale
     constexpr float GLOSSARYTEST_FLOOR_SCALES[] = { 0.05f, 0.25f, 1.0f, 1.5f };  // Down to a tiny shrink-to-fit
 
-    // The rows the user left description-only (D39): their pictures come later as screenshot crops
-    const TCHAR* const GLOSSARYTEST_PICTURELESS_ROWS[] = { TEXT("Orbit lines"), TEXT("Route legs"), TEXT("Waypoints"),
-        TEXT("Map destination pick"), TEXT("Map grid and stems") };
+    // The five map rows (D39): no symbol and no sample, a screenshot crop instead (33e-ii), and the crop id each names
+    struct FGlossaryTestCropRow
+    {
+        const TCHAR* Name;
+        const TCHAR* Crop;
+    };
+    const FGlossaryTestCropRow GLOSSARYTEST_CROP_ROWS[] = { { TEXT("Orbit lines"), TEXT("OrbitLines") },
+        { TEXT("Route legs"), TEXT("RouteLegs") }, { TEXT("Waypoints"), TEXT("Waypoints") },
+        { TEXT("Map destination pick"), TEXT("MapPick") }, { TEXT("Map grid and stems"), TEXT("MapGrid") } };
 
-    // The symbols of those rows (ids kept in ESOLHudSymbol, no builder required)
-    constexpr ESOLHudSymbol GLOSSARYTEST_PICTURELESS_SYMBOLS[] = { ESOLHudSymbol::OrbitLine, ESOLHudSymbol::RouteLeg,
+    // The symbols those rows would have shown (ids kept in ESOLHudSymbol, no builder required)
+    constexpr ESOLHudSymbol GLOSSARYTEST_CROP_ROW_SYMBOLS[] = { ESOLHudSymbol::OrbitLine, ESOLHudSymbol::RouteLeg,
         ESOLHudSymbol::RouteLoopLeg, ESOLHudSymbol::WaypointAbove, ESOLHudSymbol::WaypointBelow,
         ESOLHudSymbol::MapPick, ESOLHudSymbol::MapGridStem };
 
@@ -855,16 +874,17 @@ bool FSOLGlossaryEverySymbolBuildsTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryDescriptionOnlyTest, "SOLTest.Glossary.DescriptionOnlyRows",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryMapRowsNameCropsTest, "SOLTest.Glossary.MapRowsNameCrops",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The five map rows name no symbol (D39) and no row names their symbols; Distance darkening shows IconPlanet alone,
-// at one brightness (D40)
-bool FSOLGlossaryDescriptionOnlyTest::RunTest(const FString& /*parameters*/)
+// The five map rows name no symbol (D39) and no row names their symbols; each names its screenshot crop instead
+// (33e-ii); Distance darkening shows IconPlanet alone, at one brightness (D40)
+bool FSOLGlossaryMapRowsNameCropsTest::RunTest(const FString& /*parameters*/)
 {
-    for (const TCHAR* name : GLOSSARYTEST_PICTURELESS_ROWS)
+    for (const FGlossaryTestCropRow& cropRow : GLOSSARYTEST_CROP_ROWS)
     {
+        const TCHAR* name = cropRow.Name;
         const int32 index = GlossaryTestEntryNamed(name);
         if (!TestTrue(FString::Printf(TEXT("row '%s' exists"), name), index != INDEX_NONE))
         {
@@ -877,10 +897,12 @@ bool FSOLGlossaryDescriptionOnlyTest::RunTest(const FString& /*parameters*/)
         TestEqual(FString::Printf(TEXT("row '%s' has no symbol slot"), name), entry.SymbolCount, 0);
         TestFalse(FString::Printf(TEXT("row '%s' keeps its description"), name),
             FString(SOLMenuText::GLOSSARY_ENTRIES[index].Description).IsEmpty());
+        TestEqual(FString::Printf(TEXT("row '%s' names its crop"), name),
+            FString(SOLMenuText::GLOSSARY_ENTRIES[index].Crop), FString(cropRow.Crop));
     }
 
-    // No row names a pictureless symbol; their ids still resolve
-    for (const ESOLHudSymbol symbol : GLOSSARYTEST_PICTURELESS_SYMBOLS)
+    // No row names one of those symbols; their ids still resolve
+    for (const ESOLHudSymbol symbol : GLOSSARYTEST_CROP_ROW_SYMBOLS)
     {
         const FString id = SOLHudSymbols::ToName(symbol);
         TestTrue(FString::Printf(TEXT("'%s' still resolves"), *id), SOLGlossary::ResolveSymbol(id).IsSet());
@@ -1005,6 +1027,633 @@ bool FSOLGlossaryMinFeatureTest::RunTest(const FString& /*parameters*/)
             }
         }
     }
+    return true;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------
+// Part 33e-ii (D39): the map rows' screenshot crops and the description-only rows
+// ---------------------------------------------------------------------------------------------------------------------
+
+namespace
+{
+    constexpr int32 GLOSSARYTEST_CROPS = 5;                     // Today's GLOSSARY_CROPS (contract B cross-check)
+    constexpr int32 GLOSSARYTEST_CROP_PX = 176;                 // Today's GLOSSARY_CROP_PX (contract B cross-check)
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the number of SOL::Paths::GLOSSARY_CROPS entries
+    int32 GlossaryTestCropTableCount()
+    {
+        return static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::GLOSSARY_CROPS));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a table cell holds any text (null reads empty)
+    bool GlossaryTestHasText(const TCHAR* text)
+    {
+        return text != nullptr && text[0] != 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the GLOSSARY_CROPS index whose Id equals a text exactly (a scan of the table, independent of
+    // production), or INDEX_NONE for no text or no match
+    int32 GlossaryTestCropIndex(const TCHAR* id)
+    {
+        if (!GlossaryTestHasText(id))
+        {
+            return INDEX_NONE;
+        }
+        for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+        {
+            if (FCString::Strcmp(SOL::Paths::GLOSSARY_CROPS[crop].Id, id) == 0)
+            {
+                return crop;
+            }
+        }
+        return INDEX_NONE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the GLOSSARY_DESCRIPTION_ONLY reason listed for a row name (a scan of the table), or nullptr
+    const TCHAR* GlossaryTestListedReason(const TCHAR* name)
+    {
+        for (const SOLMenuText::FGlossaryDescriptionOnly& listed : SOLMenuText::GLOSSARY_DESCRIPTION_ONLY)
+        {
+            if (name != nullptr && FCString::Strcmp(listed.Name, name) == 0)
+            {
+                return listed.Reason;
+            }
+        }
+        return nullptr;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the row indices outside GLOSSARY_ENTRIES the contract names: -1, the count, the count + 5 and the int32
+    // extremes
+    TArray<int32> GlossaryTestBadRows()
+    {
+        const int32 rows = GlossaryTestRowCount();
+        return { -1, rows, rows + 5, MIN_int32, MAX_int32 };
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the crop indices outside GLOSSARY_CROPS the contract names: -1, the count and the int32 extremes
+    TArray<int32> GlossaryTestBadCrops()
+    {
+        return { -1, GlossaryTestCropTableCount(), MIN_int32, MAX_int32 };
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns every other image name of the player guide: the Keyboard image and each glossary tab's image at every
+    // page up to PLAYER_GUIDE_MAX_PAGES (a superset of the PLAYER_GUIDE_TAB_PAGES pages), and the Keyboard hover image
+    TArray<FString> GlossaryTestGuideImageNames()
+    {
+        using namespace SOL::Paths;
+        TArray<const TCHAR*> bases = { PLAYER_GUIDE_IMAGE_KEYBOARD };
+        for (const TCHAR* name : PLAYER_GUIDE_IMAGE_GLOSSARY)
+        {
+            bases.Add(name);
+        }
+        TArray<FString> names = { FString(PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER) };
+        for (const TCHAR* base : bases)
+        {
+            for (int32 page = 0; page < PLAYER_GUIDE_MAX_PAGES; ++page)
+            {
+                names.Add(SOLPlayerGuide::PageFileName(base, page));
+            }
+        }
+        return names;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropRowsTest, "SOLTest.Glossary.CropRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The five map rows name their crop ids and no symbol or sample (D39); no other row names a crop; Space dust is listed
+// description-only with a reason; every GLOSSARY_DESCRIPTION_ONLY name is exactly one row's, listed once, with a
+// reason, and that row names no symbol, crop or sample
+bool FSOLGlossaryCropRowsTest::RunTest(const FString& /*parameters*/)
+{
+    int32 cropRows = 0;
+    for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        const FString what = FString::Printf(TEXT("entry %d '%s'"), index, row.Name);
+        const FGlossaryTestCropRow* expected = nullptr;
+        for (const FGlossaryTestCropRow& cropRow : GLOSSARYTEST_CROP_ROWS)
+        {
+            if (FCString::Strcmp(cropRow.Name, row.Name) == 0)
+            {
+                expected = &cropRow;
+            }
+        }
+        if (expected != nullptr)
+        {
+            TestEqual(what + TEXT(": names its crop"), FString(row.Crop), FString(expected->Crop));
+            TestFalse(what + TEXT(": names no symbol"), GlossaryTestHasText(row.Symbols));
+            TestFalse(what + TEXT(": names no sample"), GlossaryTestHasText(row.Sample));
+        }
+        else
+        {
+            TestFalse(FString::Printf(TEXT("%s: names no crop (has '%s')"), *what, row.Crop != nullptr ? row.Crop
+                : TEXT("")), GlossaryTestHasText(row.Crop));
+        }
+        cropRows += GlossaryTestHasText(row.Crop) ? 1 : 0;
+    }
+    TestEqual(TEXT("five rows name a crop"), cropRows, static_cast<int32>(UE_ARRAY_COUNT(GLOSSARYTEST_CROP_ROWS)));
+    for (const FGlossaryTestCropRow& cropRow : GLOSSARYTEST_CROP_ROWS)
+    {
+        TestTrue(FString::Printf(TEXT("row '%s' exists"), cropRow.Name),
+            GlossaryTestEntryNamed(cropRow.Name) != INDEX_NONE);
+    }
+
+    // Space dust: description-only on purpose, with a reason
+    const int32 dust = GlossaryTestEntryNamed(TEXT("Space dust"));
+    if (TestTrue(TEXT("the Space dust row exists"), dust != INDEX_NONE))
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[dust];
+        TestFalse(TEXT("Space dust names no symbol"), GlossaryTestHasText(row.Symbols));
+        TestFalse(TEXT("Space dust names no crop"), GlossaryTestHasText(row.Crop));
+        TestFalse(TEXT("Space dust names no sample"), GlossaryTestHasText(row.Sample));
+        TestTrue(TEXT("Space dust is listed description-only with a reason"),
+            GlossaryTestHasText(GlossaryTestListedReason(TEXT("Space dust"))));
+    }
+
+    // Every listed name is one row's, listed once, with a reason; that row shows nothing
+    TSet<FString> listedNames;
+    for (const SOLMenuText::FGlossaryDescriptionOnly& listed : SOLMenuText::GLOSSARY_DESCRIPTION_ONLY)
+    {
+        const FString name(listed.Name != nullptr ? listed.Name : TEXT(""));
+        TestFalse(FString::Printf(TEXT("description-only '%s' listed once"), *name), listedNames.Contains(name));
+        listedNames.Add(name);
+        TestTrue(FString::Printf(TEXT("description-only '%s' has a reason"), *name),
+            GlossaryTestHasText(listed.Reason));
+        int32 matches = 0;
+        int32 match = INDEX_NONE;
+        for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+        {
+            if (FCString::Strcmp(SOLMenuText::GLOSSARY_ENTRIES[index].Name, *name) == 0)
+            {
+                ++matches;
+                match = index;
+            }
+        }
+        TestEqual(FString::Printf(TEXT("description-only '%s' is exactly one row's name"), *name), matches, 1);
+        if (match != INDEX_NONE)
+        {
+            const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[match];
+            TestFalse(FString::Printf(TEXT("description-only '%s' names no symbol"), *name),
+                GlossaryTestHasText(row.Symbols));
+            TestFalse(FString::Printf(TEXT("description-only '%s' names no crop"), *name),
+                GlossaryTestHasText(row.Crop));
+            TestFalse(FString::Printf(TEXT("description-only '%s' names no sample"), *name),
+                GlossaryTestHasText(row.Sample));
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryEveryRowHasArtTest, "SOLTest.Glossary.EveryRowHasArt",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every row names symbols, a crop that resolves or a sample, or is description-only with a reason; a crop row names no
+// symbol and no sample; a description-only row names no symbol, crop or sample
+bool FSOLGlossaryEveryRowHasArtTest::RunTest(const FString& /*parameters*/)
+{
+    for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        const FString what = FString::Printf(TEXT("entry %d '%s'"), index, row.Name);
+        const bool bSymbols = GlossaryTestHasText(row.Symbols);
+        const bool bSample = GlossaryTestHasText(row.Sample);
+        const bool bCrop = SOLGlossary::EntryCrop(index) != INDEX_NONE;
+        const TCHAR* reason = SOLGlossary::DescriptionOnlyReason(index);
+        const bool bReason = GlossaryTestHasText(reason);
+        TestTrue(what + TEXT(": names symbols, a crop or a sample, or is description-only with a reason"),
+            bSymbols || bCrop || bSample || bReason);
+
+        // A crop row: its crop resolves, and it shows nothing else
+        if (GlossaryTestHasText(row.Crop))
+        {
+            TestTrue(FString::Printf(TEXT("%s: crop '%s' resolves"), *what, row.Crop), bCrop);
+            TestFalse(what + TEXT(": a crop row names no symbol"), bSymbols);
+            TestFalse(what + TEXT(": a crop row names no sample"), bSample);
+        }
+
+        // A description-only row: a reason, and nothing shown
+        if (reason != nullptr)
+        {
+            TestTrue(what + TEXT(": the description-only reason is not empty"), bReason);
+            TestFalse(what + TEXT(": a description-only row names no symbol"), bSymbols);
+            TestFalse(what + TEXT(": a description-only row names no crop"), GlossaryTestHasText(row.Crop));
+            TestFalse(what + TEXT(": a description-only row names no sample"), bSample);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropTableTest, "SOLTest.Glossary.CropTable",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// GLOSSARY_CROPS: unique non-empty ids each named by exactly one row; unique bare .png image names that are no other
+// guide image's; unique texture object paths "<GLOSSARY_CROP_TEXTURE_DIR><Name>.<Name>"; each rect inside its capture
+// shot; today 5 crops of 176 px, twice the glossary view
+bool FSOLGlossaryCropTableTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Paths;
+    using namespace SOL::Help;
+    TestEqual(TEXT("5 crops"), GlossaryTestCropTableCount(), GLOSSARYTEST_CROPS);
+    TestEqual(TEXT("GLOSSARY_CROP_PX is 176"), GLOSSARY_CROP_PX, GLOSSARYTEST_CROP_PX);
+    TestEqual(TEXT("GLOSSARY_CROP_PX is twice GLOSSARY_VIEW_SIZE"), static_cast<float>(GLOSSARY_CROP_PX),
+        2.0f * GLOSSARY_VIEW_SIZE, GLOSSARYTEST_TOLERANCE);
+    TestTrue(TEXT("the crop fits the capture"), GLOSSARY_CROP_PX > 0 && GLOSSARY_CROP_PX <= GLOSSARY_CROP_CAPTURE_WIDTH
+        && GLOSSARY_CROP_PX <= GLOSSARY_CROP_CAPTURE_HEIGHT);
+
+    const FString dir(GLOSSARY_CROP_TEXTURE_DIR);
+    TestTrue(TEXT("the texture folder is a /Game/ folder ending in '/'"), dir.StartsWith(TEXT("/Game/"),
+        ESearchCase::CaseSensitive) && dir.EndsWith(TEXT("/"), ESearchCase::CaseSensitive));
+    const TArray<FString> guideImages = GlossaryTestGuideImageNames();
+    TSet<FString> ids;
+    TSet<FString> files;
+    TSet<FString> textures;
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const FGlossaryCrop& entry = GLOSSARY_CROPS[crop];
+        const FString id(entry.Id != nullptr ? entry.Id : TEXT(""));
+        const FString what = FString::Printf(TEXT("crop %d '%s'"), crop, *id);
+
+        // The id: non-empty, unique, named by exactly one row
+        TestFalse(what + TEXT(": has an id"), id.IsEmpty());
+        TestFalse(what + TEXT(": unique id"), ids.Contains(id));
+        ids.Add(id);
+        int32 named = 0;
+        for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+        {
+            const TCHAR* rowCrop = SOLMenuText::GLOSSARY_ENTRIES[index].Crop;
+            named += !id.IsEmpty() && rowCrop != nullptr && FCString::Strcmp(rowCrop, *id) == 0 ? 1 : 0;
+        }
+        TestEqual(what + TEXT(": named by exactly one row"), named, 1);
+
+        // The image: a unique bare .png name, no other guide image's
+        const FString file(entry.ImageFile != nullptr ? entry.ImageFile : TEXT(""));
+        TestFalse(what + TEXT(": has an image file"), file.IsEmpty());
+        TestFalse(FString::Printf(TEXT("%s: unique image file '%s'"), *what, *file), files.Contains(file));
+        files.Add(file);
+        TestTrue(FString::Printf(TEXT("%s: '%s' ends in .png"), *what, *file),
+            file.EndsWith(TEXT(".png"), ESearchCase::CaseSensitive));
+        TestFalse(FString::Printf(TEXT("%s: '%s' has no path separator"), *what, *file),
+            file.Contains(TEXT("/")) || file.Contains(TEXT("\\")));
+        TestFalse(FString::Printf(TEXT("%s: '%s' is no other guide image"), *what, *file), guideImages.Contains(file));
+
+        // The texture: a unique object path "<Dir><Name>.<Name>"
+        const FString texture(entry.Texture != nullptr ? entry.Texture : TEXT(""));
+        TestTrue(FString::Printf(TEXT("%s: '%s' is in %s"), *what, *texture, *dir),
+            texture.StartsWith(dir, ESearchCase::CaseSensitive));
+        TestFalse(FString::Printf(TEXT("%s: unique texture '%s'"), *what, *texture), textures.Contains(texture));
+        textures.Add(texture);
+        const FString rest = texture.StartsWith(dir, ESearchCase::CaseSensitive) ? texture.Mid(dir.Len()) : texture;
+        TestFalse(FString::Printf(TEXT("%s: '%s' has no folder below %s"), *what, *texture, *dir),
+            rest.Contains(TEXT("/")));
+        int32 dot = INDEX_NONE;
+        int32 slash = INDEX_NONE;
+        const bool bDot = texture.FindLastChar(TEXT('.'), dot);
+        texture.FindLastChar(TEXT('/'), slash);
+        if (TestTrue(FString::Printf(TEXT("%s: '%s' has an object name after its last '/'"), *what, *texture),
+            bDot && dot > slash))
+        {
+            const FString packageLeaf = texture.Mid(slash + 1, dot - slash - 1);
+            const FString objectName = texture.Mid(dot + 1);
+            TestFalse(FString::Printf(TEXT("%s: '%s' has a package name"), *what, *texture), packageLeaf.IsEmpty());
+            TestTrue(FString::Printf(TEXT("%s: '%s' object name equals its package name"), *what, *texture),
+                !objectName.IsEmpty() && objectName.Equals(packageLeaf, ESearchCase::CaseSensitive));
+        }
+
+        // The rect: inside the capture shot
+        TestTrue(FString::Printf(TEXT("%s: left %d >= 0"), *what, entry.Left), entry.Left >= 0);
+        TestTrue(FString::Printf(TEXT("%s: top %d >= 0"), *what, entry.Top), entry.Top >= 0);
+        TestTrue(FString::Printf(TEXT("%s: left %d + %d <= %d"), *what, entry.Left, GLOSSARY_CROP_PX,
+            GLOSSARY_CROP_CAPTURE_WIDTH), entry.Left + GLOSSARY_CROP_PX <= GLOSSARY_CROP_CAPTURE_WIDTH);
+        TestTrue(FString::Printf(TEXT("%s: top %d + %d <= %d"), *what, entry.Top, GLOSSARY_CROP_PX,
+            GLOSSARY_CROP_CAPTURE_HEIGHT), entry.Top + GLOSSARY_CROP_PX <= GLOSSARY_CROP_CAPTURE_HEIGHT);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryFindCropTest, "SOLTest.Glossary.FindCrop",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// CropCount is the table's; FindCrop gives each id's table index (also from a view into a longer string) and
+// INDEX_NONE for an empty, unknown, differently-cased, prefixed, extended or space-padded id
+bool FSOLGlossaryFindCropTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("CropCount is the table's"), SOLGlossary::CropCount(), GlossaryTestCropTableCount());
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const TCHAR* id = SOL::Paths::GLOSSARY_CROPS[crop].Id;
+        const FString idText(id != nullptr ? id : TEXT(""));
+        TestEqual(FString::Printf(TEXT("FindCrop('%s') round trip"), *idText), SOLGlossary::FindCrop(idText), crop);
+
+        // A view of the id's length into a longer string is the id
+        const FString longer = idText + TEXT("XYZ");
+        TestEqual(FString::Printf(TEXT("FindCrop of a view '%s' into '%s'"), *idText, *longer),
+            SOLGlossary::FindCrop(FStringView(*longer, idText.Len())), crop);
+
+        // Its lower-case form, a prefix and its padded forms are not ids (unless the table says so)
+        const FString lower = idText.ToLower();
+        if (!lower.Equals(idText, ESearchCase::CaseSensitive))
+        {
+            TestEqual(FString::Printf(TEXT("FindCrop('%s') is case-sensitive"), *lower), SOLGlossary::FindCrop(lower),
+                INDEX_NONE);
+        }
+        if (idText.Len() > 1)
+        {
+            const FString prefix = idText.LeftChop(1);
+            TestEqual(FString::Printf(TEXT("FindCrop('%s') takes no prefix"), *prefix), SOLGlossary::FindCrop(prefix),
+                GlossaryTestCropIndex(*prefix));
+        }
+        const FString padded[] = { FString(TEXT(" ")) + idText, idText + TEXT(" "), FString(TEXT(" ")) + idText
+            + TEXT(" "), idText + TEXT("X") };
+        for (const FString& text : padded)
+        {
+            TestEqual(FString::Printf(TEXT("FindCrop('%s') is no id"), *text), SOLGlossary::FindCrop(text),
+                INDEX_NONE);
+        }
+    }
+
+    // The contract's refusals
+    const TCHAR* const refused[] = { TEXT(""), TEXT("NoSuchCrop"), TEXT("orbitlines"), TEXT("ORBITLINES"),
+        TEXT("Orbit"), TEXT("OrbitLinesX"), TEXT(" OrbitLines"), TEXT("OrbitLines "), TEXT(" OrbitLines ") };
+    for (const TCHAR* text : refused)
+    {
+        TestEqual(FString::Printf(TEXT("FindCrop('%s')"), text), SOLGlossary::FindCrop(text), INDEX_NONE);
+    }
+    TestEqual(TEXT("FindCrop of an empty view"), SOLGlossary::FindCrop(FStringView()), INDEX_NONE);
+    TestEqual(TEXT("FindCrop('OrbitLines') is the table's"), SOLGlossary::FindCrop(TEXT("OrbitLines")),
+        GlossaryTestCropIndex(TEXT("OrbitLines")));
+    TestTrue(TEXT("OrbitLines is in the table"), GlossaryTestCropIndex(TEXT("OrbitLines")) != INDEX_NONE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryEntryCropTest, "SOLTest.Glossary.EntryCrop",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// EntryCrop is the table index a row's Crop names (INDEX_NONE for no crop and for an index outside the table); the
+// five map rows each resolve, and every crop is some row's exactly once
+bool FSOLGlossaryEntryCropTest::RunTest(const FString& /*parameters*/)
+{
+    TArray<int32> uses;
+    uses.Init(0, GlossaryTestCropTableCount());
+    for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        const int32 expected = GlossaryTestCropIndex(row.Crop);
+        const int32 crop = SOLGlossary::EntryCrop(index);
+        TestEqual(FString::Printf(TEXT("entry %d '%s' crop"), index, row.Name), crop, expected);
+        if (uses.IsValidIndex(crop))
+        {
+            ++uses[crop];
+        }
+    }
+    for (int32 crop = 0; crop < uses.Num(); ++crop)
+    {
+        TestEqual(FString::Printf(TEXT("crop %d '%s' is exactly one row's"), crop, SOL::Paths::GLOSSARY_CROPS[crop].Id),
+            uses[crop], 1);
+    }
+
+    // The five map rows by name
+    for (const FGlossaryTestCropRow& cropRow : GLOSSARYTEST_CROP_ROWS)
+    {
+        const int32 index = GlossaryTestEntryNamed(cropRow.Name);
+        if (TestTrue(FString::Printf(TEXT("row '%s' exists"), cropRow.Name), index != INDEX_NONE))
+        {
+            const int32 expected = GlossaryTestCropIndex(cropRow.Crop);
+            TestTrue(FString::Printf(TEXT("crop '%s' is in the table"), cropRow.Crop), expected != INDEX_NONE);
+            TestEqual(FString::Printf(TEXT("row '%s' shows crop '%s'"), cropRow.Name, cropRow.Crop),
+                SOLGlossary::EntryCrop(index), expected);
+        }
+    }
+    const int32 dust = GlossaryTestEntryNamed(TEXT("Space dust"));
+    if (TestTrue(TEXT("the Space dust row exists"), dust != INDEX_NONE))
+    {
+        TestEqual(TEXT("Space dust has no crop"), SOLGlossary::EntryCrop(dust), INDEX_NONE);
+    }
+
+    // Outside the table
+    for (const int32 index : GlossaryTestBadRows())
+    {
+        TestEqual(FString::Printf(TEXT("EntryCrop(%d)"), index), SOLGlossary::EntryCrop(index), INDEX_NONE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryDescriptionOnlyReasonTest, "SOLTest.Glossary.DescriptionOnlyReason",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// DescriptionOnlyReason is the GLOSSARY_DESCRIPTION_ONLY reason listed for the row's Name, nullptr for a row not listed
+// (a map crop row among them) and for an index outside the table
+bool FSOLGlossaryDescriptionOnlyReasonTest::RunTest(const FString& /*parameters*/)
+{
+    for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+    {
+        const SOLMenuText::FGlossaryEntry& row = SOLMenuText::GLOSSARY_ENTRIES[index];
+        const FString what = FString::Printf(TEXT("entry %d '%s'"), index, row.Name);
+        const TCHAR* expected = GlossaryTestListedReason(row.Name);
+        const TCHAR* reason = SOLGlossary::DescriptionOnlyReason(index);
+        if (expected == nullptr)
+        {
+            TestTrue(FString::Printf(TEXT("%s: not listed, no reason (got '%s')"), *what, reason != nullptr ? reason
+                : TEXT("")), reason == nullptr);
+        }
+        else if (TestTrue(what + TEXT(": listed, has a reason"), reason != nullptr))
+        {
+            TestEqual(what + TEXT(": the listed reason"), FString(reason), FString(expected));
+        }
+    }
+
+    // Space dust is listed; a map crop row is not
+    const int32 dust = GlossaryTestEntryNamed(TEXT("Space dust"));
+    if (TestTrue(TEXT("the Space dust row exists"), dust != INDEX_NONE))
+    {
+        const TCHAR* reason = SOLGlossary::DescriptionOnlyReason(dust);
+        TestTrue(TEXT("Space dust has a reason"), GlossaryTestHasText(reason));
+        TestEqual(TEXT("Space dust's reason is the listed one"), FString(reason != nullptr ? reason : TEXT("")),
+            FString(GlossaryTestListedReason(TEXT("Space dust")) != nullptr
+                ? GlossaryTestListedReason(TEXT("Space dust")) : TEXT("<not listed>")));
+    }
+    for (const FGlossaryTestCropRow& cropRow : GLOSSARYTEST_CROP_ROWS)
+    {
+        const int32 index = GlossaryTestEntryNamed(cropRow.Name);
+        if (index != INDEX_NONE)
+        {
+            TestTrue(FString::Printf(TEXT("'%s' is not description-only"), cropRow.Name),
+                SOLGlossary::DescriptionOnlyReason(index) == nullptr);
+        }
+    }
+
+    // Outside the table
+    for (const int32 index : GlossaryTestBadRows())
+    {
+        TestTrue(FString::Printf(TEXT("DescriptionOnlyReason(%d) is nullptr"), index),
+            SOLGlossary::DescriptionOnlyReason(index) == nullptr);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropRectTest, "SOLTest.Glossary.CropRect",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// CropRect is (Left, Top) to (Left + GLOSSARY_CROP_PX, Top + GLOSSARY_CROP_PX), a GLOSSARY_CROP_PX square inside its
+// capture shot; an all-zero rect for a crop outside the table
+bool FSOLGlossaryCropRectTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const SOL::Paths::FGlossaryCrop& entry = SOL::Paths::GLOSSARY_CROPS[crop];
+        const FString what = FString::Printf(TEXT("crop %d '%s'"), crop, entry.Id);
+        const FIntRect rect = SOLGlossary::CropRect(crop);
+        TestEqual(what + TEXT(": min x"), rect.Min.X, entry.Left);
+        TestEqual(what + TEXT(": min y"), rect.Min.Y, entry.Top);
+        TestEqual(what + TEXT(": max x"), rect.Max.X, entry.Left + GLOSSARY_CROP_PX);
+        TestEqual(what + TEXT(": max y"), rect.Max.Y, entry.Top + GLOSSARY_CROP_PX);
+        TestEqual(what + TEXT(": width"), rect.Width(), GLOSSARY_CROP_PX);
+        TestEqual(what + TEXT(": height"), rect.Height(), GLOSSARY_CROP_PX);
+        TestTrue(what + TEXT(": inside the capture shot"), rect.Min.X >= 0 && rect.Min.Y >= 0
+            && rect.Max.X <= GLOSSARY_CROP_CAPTURE_WIDTH && rect.Max.Y <= GLOSSARY_CROP_CAPTURE_HEIGHT);
+    }
+
+    // Outside the table
+    for (const int32 crop : GlossaryTestBadCrops())
+    {
+        const FIntRect rect = SOLGlossary::CropRect(crop);
+        TestTrue(FString::Printf(TEXT("CropRect(%d) is all zero, got (%d, %d)-(%d, %d)"), crop, rect.Min.X,
+            rect.Min.Y, rect.Max.X, rect.Max.Y), rect == FIntRect());
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropAssetFileTest, "SOLTest.Glossary.CropAssetFile",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// CropAssetFile is the .uasset of the texture's package (the object path before its last '.') under
+// Content/SOL/UI/Glossary/, one per crop; empty for a crop outside the table
+bool FSOLGlossaryCropAssetFileTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("the asset extension is .uasset"), FPackageName::GetAssetPackageExtension(),
+        FString(TEXT(".uasset")));
+    TSet<FString> assetFiles;
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const SOL::Paths::FGlossaryCrop& entry = SOL::Paths::GLOSSARY_CROPS[crop];
+        const FString what = FString::Printf(TEXT("crop %d '%s'"), crop, entry.Id);
+        const FString texture(entry.Texture);
+
+        // The package: the object path before its last '.'
+        int32 dot = INDEX_NONE;
+        const FString package = texture.FindLastChar(TEXT('.'), dot) ? texture.Left(dot) : texture;
+        TestEqual(what + TEXT(": the engine reads the same package"), FPackageName::ObjectPathToPackageName(texture),
+            package);
+        int32 slash = INDEX_NONE;
+        package.FindLastChar(TEXT('/'), slash);
+        const FString leaf = package.Mid(slash + 1);
+
+        // The file
+        const FString expected = FPackageName::LongPackageNameToFilename(package,
+            FPackageName::GetAssetPackageExtension());
+        const FString file = SOLGlossary::CropAssetFile(crop);
+        TestEqual(what + TEXT(": the package's .uasset"), file, expected);
+        TestTrue(FString::Printf(TEXT("%s: '%s' ends in .uasset"), *what, *file),
+            file.EndsWith(TEXT(".uasset"), ESearchCase::CaseSensitive));
+        const FString normalised = file.Replace(TEXT("\\"), TEXT("/"));
+        TestTrue(FString::Printf(TEXT("%s: '%s' is in Content/SOL/UI/Glossary/"), *what, *file),
+            normalised.Contains(TEXT("Content/SOL/UI/Glossary/"), ESearchCase::CaseSensitive));
+        TestTrue(FString::Printf(TEXT("%s: '%s' is %s.uasset"), *what, *file, *leaf),
+            !leaf.IsEmpty() && normalised.EndsWith(FString(TEXT("/")) + leaf + TEXT(".uasset"),
+            ESearchCase::CaseSensitive));
+        TestFalse(FString::Printf(TEXT("%s: unique asset file '%s'"), *what, *file), assetFiles.Contains(file));
+        assetFiles.Add(file);
+    }
+
+    // Outside the table
+    for (const int32 crop : GlossaryTestBadCrops())
+    {
+        TestTrue(FString::Printf(TEXT("CropAssetFile(%d) is empty"), crop), SOLGlossary::CropAssetFile(crop).IsEmpty());
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropAssetsExistTest, "SOLTest.Glossary.CropAssetsExist",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every crop's texture asset is committed (D27-style: it fails, naming the crop and Tools\WritePlayerGuide.bat, until
+// the run has captured and imported the crops)
+bool FSOLGlossaryCropAssetsExistTest::RunTest(const FString& /*parameters*/)
+{
+    IFileManager& fileManager = IFileManager::Get();
+    if (SOLGlossary::CropCount() == 0 || GlossaryTestCropTableCount() == 0)
+    {
+        AddError(TEXT("No glossary crops listed (SOL::Paths::GLOSSARY_CROPS / SOLGlossary::CropCount)"));
+    }
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const SOL::Paths::FGlossaryCrop& entry = SOL::Paths::GLOSSARY_CROPS[crop];
+        const FString file = SOLGlossary::CropAssetFile(crop);
+        if (file.IsEmpty() || !fileManager.FileExists(*file))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': its texture %s is missing (%s): run "
+                "Tools\\WritePlayerGuide.bat (with the editor closed), which captures and imports the glossary crops, "
+                "and commit the textures and images"), entry.Id, entry.Texture,
+                file.IsEmpty() ? TEXT("no asset file") : *file));
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropTexturesCurrentTest, "SOLTest.Glossary.CropTexturesCurrent",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every crop's texture was imported from the PNG now in Docs/Images: its SOLSourceMD5 metadata tag (written by
+// Tools/UI/import_glossary_crops.py as "<source MD5>-<import settings>") starts with that PNG's MD5
+bool FSOLGlossaryCropTexturesCurrentTest::RunTest(const FString& /*parameters*/)
+{
+#if WITH_EDITORONLY_DATA
+    for (int32 crop = 0; crop < GlossaryTestCropTableCount(); ++crop)
+    {
+        const SOL::Paths::FGlossaryCrop& entry = SOL::Paths::GLOSSARY_CROPS[crop];
+        const FString image = SOLPlayerGuide::ImagePath(entry.ImageFile);
+        const FMD5Hash hash = FMD5Hash::HashFile(*image);
+        const UTexture2D* texture = LoadObject<UTexture2D>(nullptr, entry.Texture);
+        const FString* tag = texture != nullptr
+            ? texture->GetPackage()->GetMetaData().FindValue(texture, TEXT("SOLSourceMD5")) : nullptr;
+        if (!hash.IsValid() || tag == nullptr || !tag->StartsWith(LexToString(hash)))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': its texture %s is not the import of %s (%s): run "
+                "Tools\\WritePlayerGuide.bat (with the editor closed), which captures and imports the glossary crops, "
+                "and commit the textures and images"), entry.Id, entry.Texture, *image,
+                !hash.IsValid() ? TEXT("no image") : texture == nullptr ? TEXT("no texture")
+                : tag == nullptr ? TEXT("no SOLSourceMD5 tag") : TEXT("a different image's MD5")));
+        }
+    }
+#endif
     return true;
 }
 

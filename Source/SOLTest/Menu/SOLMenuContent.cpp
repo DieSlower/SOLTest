@@ -151,6 +151,20 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // (33e-ii, D39) Returns a map glossary row's crop brush: its screenshot crop (USOLSolidMenuSubsystem's, loaded
+    // once) stretched over the GLOSSARY_VIEW_SIZE square; draws nothing when the crop is missing (the subsystem warned
+    // once at load)
+    FSlateBrush MenuContentCropBrush(const USOLSolidMenuSubsystem* solid, const int32 crop)
+    {
+        FSlateBrush brush;
+        UTexture2D* texture = solid != nullptr ? solid->GetGlossaryCrop(crop) : nullptr;
+        brush.SetResourceObject(texture);
+        brush.DrawAs = texture != nullptr ? ESlateBrushDrawType::Image : ESlateBrushDrawType::NoDrawType;
+        brush.SetImageSize(FVector2f(SOL::Help::GLOSSARY_VIEW_SIZE));
+        return brush;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // (33d-iii) Gives a text-sample row's box and view the size its sample needs (D44): the square symbol box, or the
     // wide box as tall as its lines at the HUD's size
     void MenuContentSizeSampleBox(USizeBox& box, USOLHudSymbolView& view, const FString& sample)
@@ -164,9 +178,9 @@ namespace
 
     //////////////////////////////////////////////////////////////////////////
     // (33d-ii) Adds a HUD glossary row to a Help tab and registers it with the page: the symbol box (a recess holding
-    // a symbol view for a row with symbols or a text sample, a long sample's box wider and taller, D44; an empty
-    // column for a row without art, rule (c)), then the name and the wrapping description at the given keys (text is
-    // a reused scratch)
+    // a symbol view for a row with symbols or a text sample, a long sample's box wider and taller, D44; a map row's
+    // screenshot crop image, 33e-ii; an empty column for a row without art, rule (c)), then the name and the wrapping
+    // description at the given keys (text is a reused scratch)
     void MenuContentAddHelpRow(UWidgetTree& tree, USOLReadOnlyPageWidget& page, UScrollBox& scroll, const int32 tab,
         const int32 entry, const TArray<FString>& keys, FString& text)
     {
@@ -183,7 +197,16 @@ namespace
         row.Box = tree.ConstructWidget<USizeBox>(USizeBox::StaticClass());
         row.Box->SetWidthOverride(GLOSSARY_SYMBOL_BOX);
         const ESOLGlossaryArt art = SOLGlossary::EntryArt(entry);
-        if (art != ESOLGlossaryArt::None)
+        if (art == ESOLGlossaryArt::Crop)
+        {
+            // (33e-ii, D39) A map row: its screenshot crop fills the recess's GLOSSARY_VIEW_SIZE square
+            row.Box->SetHeightOverride(GLOSSARY_SYMBOL_BOX);
+            row.CropImage = tree.ConstructWidget<UImage>(UImage::StaticClass());
+            row.CropImage->SetBrush(MenuContentCropBrush(USOLSolidMenuSubsystem::Get(&tree),
+                SOLGlossary::EntryCrop(entry)));
+            row.Box->SetContent(USOLSolidPanel::MakeRecess(tree, row.CropImage, GLOSSARY_SYMBOL_RECESS_PADDING));
+        }
+        else if (art != ESOLGlossaryArt::None)
         {
             row.Box->SetHeightOverride(GLOSSARY_SYMBOL_BOX);
             row.View = tree.ConstructWidget<USOLHudSymbolView>(USOLHudSymbolView::StaticClass());

@@ -481,6 +481,10 @@ namespace SOL
     // Orbit lines: drift rebuilds allowed per frame (round robin)
     inline constexpr int32 ORBIT_LINE_MAX_REBUILDS_PER_FRAME = 4;
 
+    // Orbit lines: the developer console switch (0: never drawn; A/B profiling, and the glossary crop run hides them in
+    // the scenes that are not about them)
+    inline constexpr const TCHAR* ORBIT_LINE_CVAR = TEXT("sol.OrbitLines");
+
     // Orbit lines: whole dashes per orbit (an integer, so the loop closes on a whole dash) and their lit fraction
     inline constexpr int32 ORBIT_LINE_DASH_COUNT = 120;
     inline constexpr double ORBIT_LINE_DASH_DUTY = 0.6;
@@ -1689,6 +1693,28 @@ namespace SOL
         inline constexpr int32 MAX_PRIMS_PER_SYMBOL = 32;         // FSOLHudSymbolPrims capacity
         inline constexpr float GLOSSARY_CARD_HALF_WIDTH_PX = 24.0f; // The Card symbol's content rect, half size in px
         inline constexpr float GLOSSARY_CARD_HALF_HEIGHT_PX = 14.0f; // at UI scale 1 (the card adds its padding)
+        // (33e-ii, D39) A map row's screenshot crop (SOL::Paths::GLOSSARY_CROPS): a square of this many pixels, twice
+        // the symbol view's side so it stays sharp up to a 2x layout scale, cut from a shot of this size taken by
+        // -SOLWriteGlossaryCrops
+        inline constexpr int32 GLOSSARY_CROP_PX = 176;
+        static_assert(GLOSSARY_CROP_PX == static_cast<int32>(2.0f * GLOSSARY_VIEW_SIZE),
+            "A glossary crop is twice the symbol view's side");
+        inline constexpr int32 GLOSSARY_CROP_CAPTURE_WIDTH = 1920;
+        inline constexpr int32 GLOSSARY_CROP_CAPTURE_HEIGHT = 1080;
+        // ... at this sim date (UTC; the sim clock starts there for that run, so the planets stand where the crop
+        // rects were tuned)
+        inline constexpr const TCHAR* GLOSSARY_CROP_SIM_DATE = TEXT("2026-06-01T00:00:00Z");
+        // A fresh crop that differs from the image in place by at most GLOSSARY_CROP_KEEP_MAX_DELTA (largest colour
+        // channel, 0-255), with at most GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS pixels above GLOSSARY_CROP_NOISE_DELTA, is
+        // capture noise: the run keeps the old file, so an unchanged scene changes no file (and no texture). A pixel's
+        // difference is to the closest old pixel within GLOSSARY_CROP_NOISE_SHIFT_PX (a crisp line moved a row by
+        // sub-pixel jitter). Measured over 11 runs of an unchanged scene: anti-aliasing noise up to 5 on up to 4
+        // pixels, plus a few twinkling single-pixel specks (stars, dust) up to 91 on up to 9 pixels; a real change
+        // (a marker or rect moved by more than a pixel, a new colour) changes dozens of pixels at full contrast
+        inline constexpr int32 GLOSSARY_CROP_KEEP_MAX_DELTA = 128;
+        inline constexpr int32 GLOSSARY_CROP_NOISE_DELTA = 2;
+        inline constexpr int32 GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS = 16;
+        inline constexpr int32 GLOSSARY_CROP_NOISE_SHIFT_PX = 1;
         inline constexpr double GLOSSARY_SAMPLE_CHASE_BURST_G = 6.8; // The Chase Down line sample's burst G (a plan's
                                                                      // burst varies between the sustained and max G)
         inline constexpr int32 GLOSSARY_SAMPLE_OVERLAY_PROFILE = 2; // The overlay profile tag sample's number (1-based)
@@ -1821,6 +1847,9 @@ namespace SOL
         inline constexpr const TCHAR* WRITE_PLAYER_GUIDE = TEXT("SOLWritePlayerGuide"); // Write Docs/PLAYER_GUIDE.md
                                                                                          // and its images, then quit
                                                                                          // (SDD 33 section 9)
+        // (33e-ii) Capture the map glossary rows' screenshot crops (SOL::Paths::GLOSSARY_CROPS) into
+        // Docs/Images, then quit (SDD 33 section 9)
+        inline constexpr const TCHAR* WRITE_GLOSSARY_CROPS = TEXT("SOLWriteGlossaryCrops");
         inline constexpr const TCHAR* SMOKE_SHOT = TEXT("SOLSmokeShot=");       // Screenshot after N s, then quit
         inline constexpr const TCHAR* SMOKE_CONSOLE = TEXT("SOLSmokeConsole="); // Console commands ('|'-separated) run
                                                                                   // just before the -SOLSmokeShot screenshot
@@ -2054,7 +2083,7 @@ namespace SOL
         // D46: the window shots each Help tab needs at 1920x1080 to show all of it, in ESOLHelpTab order (Keyboard,
         // FlightHud, TargetsRadar, OverlaysRoute, MenusMap); the -SOLWritePlayerGuide run measures each tab's scroll
         // extent (SOLPlayerGuide::PageCount) and fails when it differs from this table
-        inline constexpr int32 PLAYER_GUIDE_TAB_PAGES[] = { 2, 4, 2, 4, 3 };
+        inline constexpr int32 PLAYER_GUIDE_TAB_PAGES[] = { 2, 6, 3, 5, 3 };
         inline constexpr int32 PLAYER_GUIDE_MAX_PAGES = 8;            // A tab's shots, at most
         inline constexpr float PLAYER_GUIDE_PAGE_OVERLAP = 0.0f;      // A scrolled shot repeats this much of the last
                                                                       // one's bottom (menu units; 0: the shots adjoin,
@@ -2063,6 +2092,37 @@ namespace SOL
         // Before an image's name where the -SOLWritePlayerGuide run captures it (FPaths::ScreenShotDir()), until the
         // run has every shot and moves them into PLAYER_GUIDE_IMAGE_DIR
         inline constexpr const TCHAR* PLAYER_GUIDE_CAPTURE_PREFIX = TEXT("PlayerGuide_");
+        // (33e-ii) The -SOLWriteGlossaryCrops run's scene shots, in that folder too (removed after a good run), in the
+        // run's scene order: the orbits, the Patrol Loop, the Move over the grid, the destination pick
+        inline constexpr const TCHAR* GLOSSARY_CROP_SHOT_FILES[] = { TEXT("GlossaryShot_Orbits.png"),
+            TEXT("GlossaryShot_Route.png"), TEXT("GlossaryShot_Grid.png"), TEXT("GlossaryShot_Pick.png") };
+
+        // (33e-ii, D39) The map glossary rows' screenshot crops: -SOLWriteGlossaryCrops cuts each one
+        // (SOL::Help::GLOSSARY_CROP_PX square, top-left at Left, Top of its GLOSSARY_CROP_CAPTURE_WIDTH x HEIGHT shot)
+        // and saves it as ImageFile in PLAYER_GUIDE_IMAGE_DIR (the guide shows it next to its row);
+        // Tools/UI/import_glossary_crops.py imports that file as the UTexture2D Texture (the Help page shows it)
+        struct FGlossaryCrop
+        {
+            const TCHAR* Id;          // What a SOLMenuText::GLOSSARY_ENTRIES row's Crop names
+            const TCHAR* ImageFile;   // In PLAYER_GUIDE_IMAGE_DIR
+            const TCHAR* Texture;     // Object path, in GLOSSARY_CROP_TEXTURE_DIR
+            int32 Left;               // The crop's top-left in its capture shot (pixels)
+            int32 Top;
+        };
+        inline constexpr const TCHAR* GLOSSARY_CROP_TEXTURE_DIR = TEXT("/Game/SOL/UI/Glossary/");
+        inline constexpr FGlossaryCrop GLOSSARY_CROPS[] =
+        {
+            { TEXT("OrbitLines"), TEXT("33-glossary-crop-orbit-lines.png"),
+                TEXT("/Game/SOL/UI/Glossary/T_SOLGlossaryOrbitLines.T_SOLGlossaryOrbitLines"), 874, 420 },
+            { TEXT("RouteLegs"), TEXT("33-glossary-crop-route-legs.png"),
+                TEXT("/Game/SOL/UI/Glossary/T_SOLGlossaryRouteLegs.T_SOLGlossaryRouteLegs"), 1136, 440 },
+            { TEXT("Waypoints"), TEXT("33-glossary-crop-waypoints.png"),
+                TEXT("/Game/SOL/UI/Glossary/T_SOLGlossaryWaypoints.T_SOLGlossaryWaypoints"), 727, 397 },
+            { TEXT("MapPick"), TEXT("33-glossary-crop-map-pick.png"),
+                TEXT("/Game/SOL/UI/Glossary/T_SOLGlossaryMapPick.T_SOLGlossaryMapPick"), 878, 447 },
+            { TEXT("MapGrid"), TEXT("33-glossary-crop-map-grid.png"),
+                TEXT("/Game/SOL/UI/Glossary/T_SOLGlossaryMapGrid.T_SOLGlossaryMapGrid"), 957, 417 },
+        };
     }
 
     // Star field (SDD 5, 4c): radius of the sky sphere around the Unreal origin (4e12 cm = 4e7 km), inside the engine's

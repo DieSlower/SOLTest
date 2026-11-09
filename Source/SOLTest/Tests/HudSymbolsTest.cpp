@@ -42,7 +42,7 @@ namespace
     const FVector2f HUDSYMBOLSTEST_OTHER_CENTRE(37.5f, 912.25f);
     const FVector2D HUDSYMBOLSTEST_CENTRE_D(400.25, 300.5);     // The same centre, as the HUD builders take it
 
-    // The symbols the user left without a picture (D39): description-only glossary rows, ids kept for later
+    // The symbols without a builder (D39): the map glossary rows show screenshot crops instead, ids kept for later
     constexpr ESOLHudSymbol HUDSYMBOLSTEST_UNBUILT[] = { ESOLHudSymbol::OrbitLine, ESOLHudSymbol::RouteLeg,
         ESOLHudSymbol::RouteLoopLeg, ESOLHudSymbol::WaypointAbove, ESOLHudSymbol::WaypointBelow, ESOLHudSymbol::MapPick,
         ESOLHudSymbol::MapGridStem };

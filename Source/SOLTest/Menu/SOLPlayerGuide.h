@@ -49,6 +49,10 @@ namespace SOLPlayerGuide
     // as a whole token, case ignored (FParse::Param), so -SOLWritePlayerGuideX or SOLWritePlayerGuide=1 do not
     SOLTEST_API bool IsWriteRequested(const TCHAR* commandLine);
 
+    // (33e-ii) Returns whether a command line asks for the crop run: the switch -SOLWriteGlossaryCrops (or
+    // /SOLWriteGlossaryCrops) as a whole token, case ignored, like IsWriteRequested
+    SOLTEST_API bool IsCropCaptureRequested(const TCHAR* commandLine);
+
     // Returns the guide's screenshots in the order the run takes them (D46): the Keyboard tab's pages, the Keyboard
     // tab with a key hovered, then each glossary tab's pages in ESOLHelpTab order (TabPages pages a tab; the file
     // names PageFileName of SOL::Paths' names)

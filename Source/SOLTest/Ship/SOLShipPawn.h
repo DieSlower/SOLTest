@@ -11,6 +11,7 @@
 #include "Interaction/SOLActionTable.h"
 #include "Interaction/SOLChaseSmoke.h"
 #include "Interaction/SOLInteractSmoke.h"
+#include "Map/SOLGlossaryCropWriter.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
 #include "Map/SOLMapModeState.h"
@@ -1008,6 +1009,7 @@ private:
     TUniquePtr<FSOLSpaceDustSmoke> mSmokeDust;              // Verification-only space dust script (-SOLSmokeDust)
     TUniquePtr<FSOLHoloMenuProfileSmoke> mSmokeHoloMenuProfile; // Verification-only menu cost capture (SDD 42)
     TUniquePtr<FSOLHoloMenuSmoke> mSmokeHoloMenu;           // Verification-only hologram menu script (SDD 42)
+    TUniquePtr<FSOLGlossaryCropWriter> mGlossaryCropWriter; // The -SOLWriteGlossaryCrops run (SDD 33 section 9)
     TOptional<bool> mSmokeSavedFocusFlush;                  // Input setting a smoke script turned off, restored at EndPlay
     FSOLShipControl mControl;                               // Control composed from the input state
     FSOLSteerGateState mSteerGate;                          // Mouse steering gate: hold, toggle, last result (SDD 19)
