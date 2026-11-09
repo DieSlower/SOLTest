@@ -105,8 +105,8 @@ public:
     static USOLSolidMenuSubsystem* Get(const UObject* worldContext);
 
     // Runs the context's subsystem's UpdateForFrame and returns the frame a solid screen animates at this tick: the
-    // real application time, the live strength (HUD_EFFECTS_DEFAULT without a subsystem) and the keyboard focus; one
-    // call per screen tick
+    // menu clock (GetClockS; the real application time without a subsystem), the live strength (HUD_EFFECTS_DEFAULT
+    // without a subsystem) and the keyboard focus; one call per screen tick
     static FSOLSolidMenuFrame BeginFrame(const UObject* worldContext);
 
     // (46g, SDD 46 Q11) Plays one of the #42 menu cues through the context world's USOLHoloMenuSubsystem (its rate gate
@@ -181,6 +181,19 @@ public:
     // (no Slate application), so a hover then takes the focus as before
     bool HasRealMouseMoveThisFrame() const;
 
+    // Returns the menu clock BeginFrame hands out: the real application time plus the offset a released pin left, or
+    // the pinned time while pinned
+    double GetClockS() const;
+
+#if !UE_BUILD_SHIPPING
+    // (33e-iv) Holds the menu clock at a time (at least the current clock), so a capture shows the idle pulse at a
+    // fixed phase whatever the frame timing (FSOLPlayerGuideWriter)
+    void PinClock(double nowS);
+
+    // (33e-iv) Lets the menu clock run on from the pinned time (never backwards)
+    void ReleaseClock();
+#endif
+
 protected:
 
     // Game and PIE worlds only
@@ -224,6 +237,8 @@ private:
     TWeakObjectPtr<USOLSettingsSubsystem> mSettings;                    // Where HudEffectsStrength is read from
     FSOLSolidMenuParamCache mParamCache;
     uint64 mLastUpdateFrame = MAX_uint64;                               // GFrameCounter of the last UpdateForFrame
+    double mClockOffsetS = 0.0;                                         // Added to the real time (a released pin)
+    double mPinnedClockS = -1.0;                                        // The pinned menu clock, or < 0 (running)
     int32 mMissingAssetCount = 0;
     int32 mHudShapePushCount = 0;                                       // Pushes that reached HudShapeMaterial
     bool mIsLoaded = false;

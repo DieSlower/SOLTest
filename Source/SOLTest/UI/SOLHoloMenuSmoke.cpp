@@ -112,6 +112,8 @@ namespace
 
     constexpr int32 HOLOSMOKE_MIN_FRAMES = 3;
     constexpr int32 HOLOSMOKE_SHOT_FRAMES = 3;                 // Frames a step waits after its screenshot request
+    constexpr int32 HOLOSMOKE_HUD_FRAMES = 2;                  // Frames a step waits after its time is up (the HUD
+                                                               // drew past it)
     constexpr double HOLOSMOKE_SETUP_S = 3.0;
     constexpr double HOLOSMOKE_STEP_S = 0.3;
     constexpr double HOLOSMOKE_MID_OPEN_S = 0.5 * SOL::HoloMenu::OPEN_S;       // A capture inside the draw-in
@@ -301,6 +303,7 @@ void FSOLHoloMenuSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
 {
     mStepStartS = FPlatformTime::Seconds();
     mShotFrame = INDEX_NONE;
+    mTimeUpFrame = INDEX_NONE;
     USOLHoloMenuSubsystem* holoMenu = mHoloMenu.Get();
     SSOLHoloFrame* frame = mFrameWidget.IsValid() && mFrameWidget->GetFrame().IsValid()
         ? mFrameWidget->GetFrame().Get() : nullptr;
@@ -1134,7 +1137,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
     case EHoloStep::CardsAlwaysOn:
         return ShotThenDone(TEXT("Cards_Always"), elapsedS >= HOLOSMOKE_SETTLED_S);
     case EHoloStep::CardInfoPrep:
-        return elapsedS >= HOLOSMOKE_CLOSED_S;
+        return HudDrawnThenDone(elapsedS >= HOLOSMOKE_CLOSED_S);
     case EHoloStep::CardInfoOpen:
         // The corner ticks caught about half-way through the draw-in (the last HUD frame), with a screenshot
         if (hud != nullptr && mMidOpenFraction < 0.0f && elapsedS >= HOLOSMOKE_MID_OPEN_S)
@@ -1145,7 +1148,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
             TakeUiShot(TEXT("InfoCardMidOpen"));
             mIsMidOpenShot = true;
         }
-        return elapsedS >= HOLOSMOKE_OPENED_S;
+        return HudDrawnThenDone(elapsedS >= HOLOSMOKE_OPENED_S);
     case EHoloStep::CardTargetOpen:
     {
         // Target once the cleared target's close played out, then the draw-in caught mid-way
@@ -1165,7 +1168,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
             TakeUiShot(TEXT("TargetCardMidOpen"));
             mIsMidOpenShot = true;
         }
-        return mSubStep == 1 && elapsedS >= mSubStepS + HOLOSMOKE_OPENED_S;
+        return mSubStep == 1 && HudDrawnThenDone(elapsedS >= mSubStepS + HOLOSMOKE_OPENED_S);
     }
     case EHoloStep::CardTargetCycle:
     {
@@ -1177,7 +1180,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
             mCycleMinFraction = FMath::Min(mCycleMinFraction, target.bDrawn ? target.Look.FrameFraction : 0.0f);
             mCycleMinFill = FMath::Min(mCycleMinFill, target.bDrawn ? target.Look.FillAlpha : 0.0f);
         }
-        return elapsedS >= HOLOSMOKE_OPENED_S;
+        return HudDrawnThenDone(elapsedS >= HOLOSMOKE_OPENED_S);
     }
     case EHoloStep::CardsShot:
         return ShotThenDone(TEXT("Cards_S1"), elapsedS >= HOLOSMOKE_SETTLED_S);
@@ -1199,7 +1202,7 @@ bool FSOLHoloMenuSmoke::TickStep(const int32 step, ASOLShipPawn& pawn)
                 || (targeting != nullptr && targeting->GetSelectedTarget() != nullptr);
             TakeUiShot(TEXT("CardsClosing"));
         }
-        return elapsedS >= HOLOSMOKE_CLOSED_S;
+        return HudDrawnThenDone(elapsedS >= HOLOSMOKE_CLOSED_S);
     case EHoloStep::CardsFlat:
     {
         // The first drawn frame after the opens; the screenshot; then both cleared and, a frame later, gone at once
@@ -2230,12 +2233,12 @@ void FSOLHoloMenuSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             && mCardTargetMidPhase == ESOLHoloMenuPhase::Closing && mCardTargetMidFraction > 0.0f
             && mCardTargetMidFraction < 1.0f && mCardTargetMidTicks == ticks && bIsInfoClosed && bIsTargetClosed
             && nonePanels > 0, FString::Printf(TEXT("mid-close (Info and target %s): info phase %d, draw-in %.3f, %d "
-                "ticks; target phase %d, draw-in %.3f, %d ticks; after %.2f s: info %s, target %s, %d HUD panel(s) "
-                "for TARGET none"), mIsMidCloseOpen ? TEXT("STILL SET") : TEXT("cleared"),
+                "ticks; target phase %d, draw-in %.3f, %d ticks; after %.2f s and %d frames: info %s, target %s, %d HUD "
+                "panel(s) for TARGET none"), mIsMidCloseOpen ? TEXT("STILL SET") : TEXT("cleared"),
                 static_cast<int32>(mMidClosePhase), mMidCloseFraction, mCardMidTicks,
                 static_cast<int32>(mCardTargetMidPhase), mCardTargetMidFraction, mCardTargetMidTicks,
-                HOLOSMOKE_CLOSED_S, bIsInfoClosed ? TEXT("closed") : TEXT("STILL DRAWN"), bIsTargetClosed
-                ? TEXT("closed") : TEXT("STILL DRAWN"), nonePanels));
+                HOLOSMOKE_CLOSED_S, HOLOSMOKE_HUD_FRAMES, bIsInfoClosed ? TEXT("closed") : TEXT("STILL DRAWN"),
+                bIsTargetClosed ? TEXT("closed") : TEXT("STILL DRAWN"), nonePanels));
         break;
     }
     case EHoloStep::CardsFlat:
@@ -2510,6 +2513,22 @@ bool FSOLHoloMenuSmoke::ShotThenDone(const TCHAR* name, const bool bIsReady)
         return false;
     }
     return mStepFrames >= mShotFrame + HOLOSMOKE_SHOT_FRAMES;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Once the step's time is up, reports done a few frames later: the HUD's card stats are those of its last draw, which
+// lags the wall clock by a whole frame after a slow (screenshot) frame, so the checks read a draw from past that time
+bool FSOLHoloMenuSmoke::HudDrawnThenDone(const bool bIsTimeUp)
+{
+    if (!bIsTimeUp)
+    {
+        return false;
+    }
+    if (mTimeUpFrame == INDEX_NONE)
+    {
+        mTimeUpFrame = mStepFrames;
+    }
+    return mStepFrames >= mTimeUpFrame + HOLOSMOKE_HUD_FRAMES;
 }
 
 //////////////////////////////////////////////////////////////////////////

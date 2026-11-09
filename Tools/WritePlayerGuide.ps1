@@ -10,7 +10,8 @@
 #      textures under Content\SOL\UI\Glossary (an unchanged crop is skipped, so nothing is re-saved);
 #   3. the guide run: the game with -SOLWritePlayerGuide at 1920x1080 (windowed), which opens Help in the main menu,
 #      captures each Help tab's pages (and the Keyboard tab with a key hovered), writes Docs\PLAYER_GUIDE.md and puts
-#      the images in Docs\Images, then quits. It runs last so its Help shots show the fresh crop textures.
+#      the images in Docs\Images (a shot that matches its image within the capture noise keeps the old file), then
+#      quits. It runs last so its Help shots show the fresh crop textures.
 # Both game runs use the smoke settings slot (default keys) and give the player's GameUserSettings.ini back. Their PNGs
 # are recompressed losslessly when Python with Pillow is installed (the crops before the import). A failed crop run or
 # import stops there (the old guide is kept).

@@ -9,6 +9,8 @@
 
 #include "CoreMinimal.h"
 
+struct FImage;
+
 // One screenshot the guide shows (SDD 33 section 9, D24, D46): the Help tab shown, whether a key is hovered (the
 // Keyboard tab's hover popup, D45), the tab's scroll page (0 at its top, D46) and the image's file name in
 // SOL::Paths::PLAYER_GUIDE_IMAGE_DIR
@@ -18,6 +20,25 @@ struct FSOLPlayerGuideShot
     bool bHover = false;
     int32 Page = 0;
     FString FileName;
+};
+
+// How a fresh image differs from the one already on disk (SDD 33 section 9, part 33e-iv; see
+// SOLPlayerGuide::CompareImages)
+struct FSOLImageDiff
+{
+    bool bComparable = false;   // Both are BGRA8, not empty and the same size
+    int32 MaxDelta = 0;         // The largest pixel difference (0-255)
+    int32 NoisyPixels = 0;      // Pixels whose difference is above FSOLImageNoise::NoiseDelta
+};
+
+// What counts as capture noise when a writer compares a fresh image with the one on disk: within it, the old file is
+// kept byte for byte (no Git LFS churn); beyond it, the fresh image replaces it
+struct FSOLImageNoise
+{
+    int32 ShiftPx = 0;              // A fresh pixel is compared with the old pixels up to this far away (a square)
+    int32 NoiseDelta = 0;           // A pixel difference above this counts the pixel as noisy
+    int32 KeepMaxDelta = 0;         // Kept: no pixel difference above this ...
+    int32 KeepMaxNoisyPixels = 0;   // ... and at most this many noisy pixels
 };
 
 /**
@@ -91,4 +112,27 @@ namespace SOLPlayerGuide
 
     // Returns the message a stale or missing guide fails with: it names Tools\WritePlayerGuide.bat (D27)
     SOLTEST_API FString StaleMessage();
+
+    // Compares a fresh image with an old one, colour channels only (alpha ignored). A fresh pixel's difference is the
+    // smallest, over the old pixels within noise.ShiftPx of it in x and y (clamped to the image; a negative shift
+    // reads 0), of the largest absolute R, G or B difference; MaxDelta is the largest such difference and NoisyPixels
+    // counts those above noise.NoiseDelta (a negative one reads 0; the shift is at most the image's larger side). Not
+    // comparable (all zero) unless both are ERawImageFormat::BGRA8, not empty, the same size and their pixels there
+    SOLTEST_API FSOLImageDiff CompareImages(const FImage& fresh, const FImage& old, const FSOLImageNoise& noise);
+
+    // Loads the image at a path (as BGRA8, sRGB) and compares a fresh image with it (CompareImages); not comparable
+    // when the file is missing or does not load
+    SOLTEST_API FSOLImageDiff CompareWithFile(const FImage& fresh, const FString& path, const FSOLImageNoise& noise);
+
+    // Returns whether a difference is capture noise, so the old file is kept: comparable, MaxDelta at most
+    // noise.KeepMaxDelta and NoisyPixels at most noise.KeepMaxNoisyPixels
+    SOLTEST_API bool IsCaptureNoise(const FSOLImageDiff& diff, const FSOLImageNoise& noise);
+
+    // Returns the map glossary crops' capture noise (SOL::Help::GLOSSARY_CROP_NOISE_SHIFT_PX,
+    // GLOSSARY_CROP_NOISE_DELTA, GLOSSARY_CROP_KEEP_MAX_DELTA, GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS)
+    SOLTEST_API FSOLImageNoise CropNoise();
+
+    // Returns the Help screenshots' capture noise (SOL::Help::GUIDE_SHOT_NOISE_SHIFT_PX, GUIDE_SHOT_NOISE_DELTA,
+    // GUIDE_SHOT_KEEP_MAX_DELTA, GUIDE_SHOT_KEEP_MAX_NOISY_PIXELS)
+    SOLTEST_API FSOLImageNoise HelpShotNoise();
 }

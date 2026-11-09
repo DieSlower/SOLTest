@@ -20,8 +20,13 @@ class USOLMenuSubsystem;
  * moving, D46, so the last page reaches the tab's end), and captures a window screenshot with the UI; once every
  * capture is on disk it writes SOLPlayerGuide::BuildMarkdown(DefaultKeys()) to Docs/PLAYER_GUIDE.md (UTF-8 without a
  * BOM, LF) and moves the captures into Docs/Images/ (staged next to them first, so a failure before the final renames
- * leaves the old guide and images). It logs "PlayerGuide WROTE <path>" per file and "PlayerGuide DONE", or
- * "PlayerGuide FAIL <reason>", then quits (exit code 1 on a failure); Tools\WritePlayerGuide.bat reads those lines.
+ * leaves the old guide and images). A capture that matches its image within the capture noise
+ * (SOLPlayerGuide::HelpShotNoise, part 33e-iv) keeps that file untouched, so an unchanged Help page changes no image;
+ * for that the run waits for its window to be active and holds what moves (HoldScene, the solid menu clock and the
+ * materials' game time on the capture frames).
+ * It logs "PlayerGuide WROTE <path>" per written file, "PlayerGuide KEPT <path> (...)" per kept image and
+ * "PlayerGuide DONE", or "PlayerGuide FAIL <reason>", then quits (exit code 1 on a failure);
+ * Tools\WritePlayerGuide.bat reads those lines.
  */
 class SOLTEST_API FSOLPlayerGuideWriter
 {
@@ -50,6 +55,9 @@ private:
     // Moves to a stage, its time and frames counted from now
     void ToStage(EStage stage);
 
+    // Holds the sim clock at SOL::Help::GUIDE_SHOT_SIM_DATE and pins the menu camera's sway (33e-iv); every frame
+    void HoldScene(const USOLMenuSubsystem& menu) const;
+
     // Returns the game viewport's size in pixels (zero without a controller)
     FIntPoint GetViewSize() const;
 
@@ -66,7 +74,8 @@ private:
     // Returns whether every capture of the run is on disk, not empty and no longer growing
     bool AreCapturesWritten();
 
-    // Writes the guide and moves the captures into place; returns false (with a reason) on the first failure
+    // Writes the guide and moves the changed captures into place (an image within the capture noise kept); returns
+    // false (with a reason) on the first failure
     bool WriteOutputs(FString& outReason) const;
 
     // Logs the failure and quits; nothing more is written
@@ -85,6 +94,7 @@ private:
     double mRunS = 0.0;                                // Seconds since the run began (the watchdog)
     double mLastTimeS = 0.0;                           // Platform time of the last update
     double mLastFileCheckS = 0.0;                      // Stage time of the last capture size check
+    double mPinnedJulianDate = -1.0;                   // SOL::Help::GUIDE_SHOT_SIM_DATE (33e-iv), < 0 when unparsed
     float mViewHeight = 0.0f;                          // D46: the shown tab's scroll view height and largest offset,
     float mScrollEnd = 0.0f;                           // measured on its first page (menu units)
     float mLastEnd = -1.0f;                            // The shown tab's scroll end on the last frame

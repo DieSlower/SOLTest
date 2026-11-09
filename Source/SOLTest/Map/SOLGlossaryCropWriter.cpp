@@ -187,64 +187,6 @@ namespace
         return SOLPlayerGuide::CapturePath(SOL::Paths::GLOSSARY_CROP_SHOT_FILES[scene]);
     }
 
-    // How a fresh crop differs from the image already in place
-    struct FCropDiff
-    {
-        bool bComparable = false;   // The old image loaded at the crop's size
-        int32 MaxDelta = 0;         // The largest pixel difference (see CropCompare; 0-255)
-        int32 NoisyPixels = 0;      // Pixels whose difference is above SOL::Help::GLOSSARY_CROP_NOISE_DELTA
-    };
-
-    //////////////////////////////////////////////////////////////////////////
-    // Compares a fresh crop (BGRA8) with the image at a path, colour channels only (both are opaque). A fresh pixel's
-    // difference is its smallest largest-channel difference to the old pixels within GLOSSARY_CROP_NOISE_SHIFT_PX of
-    // it, so a crisp line that the capture's sub-pixel jitter rasterizes a row over does not count as a change
-    FCropDiff CropCompare(const FImage& fresh, const FString& path)
-    {
-        FCropDiff diff;
-        FImage old;
-        if (!IFileManager::Get().FileExists(*path) || !FImageUtils::LoadImage(*path, old))
-        {
-            return diff;
-        }
-        old.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
-        if (old.SizeX != fresh.SizeX || old.SizeY != fresh.SizeY)
-        {
-            return diff;
-        }
-        diff.bComparable = true;
-        const int32 shift = SOL::Help::GLOSSARY_CROP_NOISE_SHIFT_PX;
-        for (int32 y = 0; y < fresh.SizeY; ++y)
-        {
-            for (int32 x = 0; x < fresh.SizeX; ++x)
-            {
-                // The closest old pixel in the neighbourhood (clamped to the image)
-                const FColor& b = *static_cast<const FColor*>(fresh.GetPixelPointer(x, y));
-                int32 delta = MAX_uint8;
-                for (int32 oy = FMath::Max(y - shift, 0); oy <= FMath::Min(y + shift, old.SizeY - 1); ++oy)
-                {
-                    for (int32 ox = FMath::Max(x - shift, 0); ox <= FMath::Min(x + shift, old.SizeX - 1); ++ox)
-                    {
-                        const FColor& a = *static_cast<const FColor*>(old.GetPixelPointer(ox, oy));
-                        delta = FMath::Min(delta, FMath::Max3(FMath::Abs(a.R - b.R), FMath::Abs(a.G - b.G),
-                            FMath::Abs(a.B - b.B)));
-                    }
-                }
-                diff.MaxDelta = FMath::Max(diff.MaxDelta, delta);
-                diff.NoisyPixels += delta > SOL::Help::GLOSSARY_CROP_NOISE_DELTA ? 1 : 0;
-            }
-        }
-        return diff;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns whether a fresh crop is the old image plus capture noise (the old one is then kept, its file untouched)
-    bool CropIsUnchanged(const FCropDiff& diff)
-    {
-        return diff.bComparable && diff.MaxDelta <= SOL::Help::GLOSSARY_CROP_KEEP_MAX_DELTA
-            && diff.NoisyPixels <= SOL::Help::GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS;
-    }
-
     //////////////////////////////////////////////////////////////////////////
     // Returns the map camera yaw that looks along a horizontal direction (SOLMapCamera: forward = (cos, sin) of yaw)
     double CropYawFor(const FVector3d& forward)
@@ -823,6 +765,7 @@ bool FSOLGlossaryCropWriter::WriteCrops(FString& outReason) const
     const int32 side = SOL::Help::GLOSSARY_CROP_PX;
     FImage crop;
     crop.Init(side, side, ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+    const FSOLImageNoise noise = SOLPlayerGuide::CropNoise();
     for (int32 index = 0; index < cropCount; ++index)
     {
         const SOL::Paths::FGlossaryCrop& row = SOL::Paths::GLOSSARY_CROPS[index];
@@ -847,16 +790,15 @@ bool FSOLGlossaryCropWriter::WriteCrops(FString& outReason) const
             pixel.A = CROP_OPAQUE_ALPHA;
         }
         const FString image = SOLPlayerGuide::ImagePath(row.ImageFile);
-        const FCropDiff diff = CropCompare(crop, image);
-        if (CropIsUnchanged(diff))
+        const FSOLImageDiff diff = SOLPlayerGuide::CompareWithFile(crop, image, noise);
+        if (SOLPlayerGuide::IsCaptureNoise(diff, noise))
         {
             UE_LOG(LogSOL, Log, TEXT("GlossaryCrops KEPT %s (max delta %d, %d pixels above %d)"),
-                *FPaths::ConvertRelativePathToFull(image), diff.MaxDelta, diff.NoisyPixels,
-                SOL::Help::GLOSSARY_CROP_NOISE_DELTA);
+                *FPaths::ConvertRelativePathToFull(image), diff.MaxDelta, diff.NoisyPixels, noise.NoiseDelta);
             continue;
         }
         UE_LOG(LogSOL, Log, TEXT("GlossaryCrops: %s changed (comparable %d, max delta %d, %d pixels above %d)"),
-            row.Id, diff.bComparable ? 1 : 0, diff.MaxDelta, diff.NoisyPixels, SOL::Help::GLOSSARY_CROP_NOISE_DELTA);
+            row.Id, diff.bComparable ? 1 : 0, diff.MaxDelta, diff.NoisyPixels, noise.NoiseDelta);
         const FString capture = SOLPlayerGuide::CapturePath(row.ImageFile);
         const FString staged = image + CROP_STAGED_SUFFIX;
         if (!FImageUtils::SaveImageByExtension(*capture, crop) || files.Copy(*staged, *capture, true, true) != COPY_OK)

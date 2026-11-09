@@ -33,6 +33,12 @@ public:
     // Creates the camera
     ASOLMenuCameraPawn();
 
+#if !UE_BUILD_SHIPPING
+    // (33e-iv) Holds the camera's sway at its base azimuth (true) or lets it follow the real time again, so captures
+    // of the menu show the same view (FSOLPlayerGuideWriter)
+    void SetSwayPinned(bool bPinned) { mIsSwayPinned = bPinned; }
+#endif
+
 protected:
 
     // Becomes the observer, places it at the start body and hooks the universe update
@@ -68,4 +74,5 @@ private:
     FDelegateHandle mBodiesUpdatedHandle;     // Binding to the anchor subsystem's OnBodiesUpdated
     FDelegateHandle mUniverseUpdatedHandle;   // Binding to the anchor subsystem's OnUniverseUpdated
     int32 mBodyIndex = INDEX_NONE;            // Body the camera looked at last (a change teleports the observer)
+    bool mIsSwayPinned = false;               // (33e-iv) The sway held at its base azimuth (a capture run)
 };

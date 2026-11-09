@@ -90,7 +90,8 @@ FVector3d ASOLMenuCameraPawn::ComputeObserverPositionM(int32& outBodyIndex) cons
     {
         sunward = FVector3d::XAxisVector;
     }
-    const double swayPhase = 2.0 * UE_DOUBLE_PI * GetWorld()->GetRealTimeSeconds() / SOL::MENU_CAMERA_SWAY_PERIOD_S;
+    const double swayPhase = mIsSwayPinned ? 0.0
+        : 2.0 * UE_DOUBLE_PI * GetWorld()->GetRealTimeSeconds() / SOL::MENU_CAMERA_SWAY_PERIOD_S;
     const double azimuthRad = FMath::DegreesToRadians(SOL::MENU_CAMERA_BASE_AZIMUTH_DEG
         + SOL::MENU_CAMERA_SWAY_AZIMUTH_DEG * FMath::Sin(swayPhase));
     const FVector3d horizontal = FQuat4d(FVector3d::ZAxisVector, azimuthRad).RotateVector(

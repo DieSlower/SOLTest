@@ -133,10 +133,10 @@ USOLSolidMenuSubsystem* USOLSolidMenuSubsystem::Get(const UObject* worldContext)
 FSOLSolidMenuFrame USOLSolidMenuSubsystem::BeginFrame(const UObject* worldContext)
 {
     FSOLSolidMenuFrame frame;
-    frame.NowS = FPlatformTime::Seconds();
     frame.KeyboardFocus = FSlateApplication::IsInitialized() ? FSlateApplication::Get().GetKeyboardFocusedWidget()
         : nullptr;
     USOLSolidMenuSubsystem* subsystem = Get(worldContext);
+    frame.NowS = subsystem != nullptr ? subsystem->GetClockS() : FPlatformTime::Seconds();
     if (subsystem != nullptr)
     {
         subsystem->UpdateForFrame();
@@ -144,6 +144,33 @@ FSOLSolidMenuFrame USOLSolidMenuSubsystem::BeginFrame(const UObject* worldContex
     }
     return frame;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the menu clock: the pinned time, or the real time plus the offset a released pin left
+double USOLSolidMenuSubsystem::GetClockS() const
+{
+    return mPinnedClockS >= 0.0 ? mPinnedClockS : FPlatformTime::Seconds() + mClockOffsetS;
+}
+
+#if !UE_BUILD_SHIPPING
+//////////////////////////////////////////////////////////////////////////
+// Holds the menu clock at a time, never earlier than the clock now (the screens' animations never run backwards)
+void USOLSolidMenuSubsystem::PinClock(const double nowS)
+{
+    mPinnedClockS = FMath::Max(nowS, GetClockS());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Lets the menu clock run on from the pinned time: the offset makes the real time continue from it
+void USOLSolidMenuSubsystem::ReleaseClock()
+{
+    if (mPinnedClockS >= 0.0)
+    {
+        mClockOffsetS = mPinnedClockS - FPlatformTime::Seconds();
+        mPinnedClockS = -1.0;
+    }
+}
+#endif
 
 //////////////////////////////////////////////////////////////////////////
 // Plays a #42 menu cue through the context world's hologram menu subsystem (its rate gate decides)

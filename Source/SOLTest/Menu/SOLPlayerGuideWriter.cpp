@@ -12,12 +12,17 @@
 #include "Menu/SOLKeyboardLayout.h"
 #include "Menu/SOLMainMenuWidget.h"
 #include "Menu/SOLMenuButton.h"
+#include "Menu/SOLMenuCameraPawn.h"
 #include "Menu/SOLMenuState.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLPlayerGuide.h"
 #include "Menu/SOLReadOnlyPageWidget.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
+#include "SOLConstants.h"
 #include "SOLTest.h"
+#include "Universe/SOLSimClock.h"
+#include "Universe/SOLSimClockSubsystem.h"
 
 #include "Components/ScrollBox.h"
 #include "Engine/Engine.h"
@@ -26,6 +31,9 @@
 #include "GameFramework/PlayerController.h"
 #include "InputCoreTypes.h"
 #include "HAL/FileManager.h"
+#include "ImageCore.h"
+#include "ImageUtils.h"
+#include "Misc/App.h"
 #include "UnrealClient.h"
 #include "Widgets/SWindow.h"
 
@@ -53,6 +61,31 @@ namespace
     constexpr int32 GUIDE_MAX_WINDOW_PX = 4096;             // The window may grow past a 1080p desktop's work area
     constexpr const TCHAR* GUIDE_STAGED_SUFFIX = TEXT(".new"); // An image copied next to its target before the swap
     constexpr uint8 GUIDE_EXIT_FAILED = 1;                  // The process exit code of a failed run
+    constexpr double GUIDE_PULSE_PHASE = 0.25;              // 33e-iv: the idle pulse's phase in every shot (the
+                                                            // traces brightest, the pulse dot a quarter along)
+    constexpr double GUIDE_MATERIAL_TIME_S = 0.5;           // 33e-iv: the materials' Time (within the HUD time
+                                                            // wrap) on every capture frame
+    constexpr int32 GUIDE_FRONT_FRAMES = 60;                // Frames between two pulls of an inactive window to front
+
+    //////////////////////////////////////////////////////////////////////////
+    // Holds the materials' game time at a fixed HUD time wrap phase for the rest of this frame (see below)
+    void GuideHoldMaterialTime()
+    {
+        // The application's game time is what the materials' Time node reads (the HUD shape material's flicker and
+        // grain on the glossary symbols, drawn again by the capture). The engine sets it from the real time at the
+        // next frame's start, so the hold lasts this frame only; it is never later than now. It must run on the game
+        // thread outside a task (a task's context scope would restore the time when it ends), and is skipped under a
+        // fixed time step or benchmarking, where the engine builds the next frame's time from this one
+        if (FApp::UseFixedTimeStep() || FApp::IsBenchmarking())
+        {
+            return;
+        }
+        const double wrapS = static_cast<double>(SOL::Hologram::HUD_TIME_WRAP_S);
+        const double gameS = FApp::GetCurrentTime() - GStartTime;
+        const double heldS = FMath::FloorToDouble((gameS - GUIDE_MATERIAL_TIME_S) / wrapS) * wrapS
+            + GUIDE_MATERIAL_TIME_S;
+        FApp::SetCurrentTime(GStartTime + heldS);
+    }
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the main menu's Help page, or nullptr
@@ -67,6 +100,24 @@ namespace
     TSharedPtr<SWindow> GuideGameWindow()
     {
         return GEngine != nullptr && GEngine->GameViewport != nullptr ? GEngine->GameViewport->GetWindow() : nullptr;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether the game application is the active one (its window in front)
+    bool GuideWindowActive()
+    {
+        return FSlateApplication::IsInitialized() && FSlateApplication::Get().IsActive() && FApp::HasFocus();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Pulls the game window to the front now and then while it is inactive (SetForegroundWindow on Windows)
+    void GuidePullToFront(const int32 stageFrames)
+    {
+        const TSharedPtr<SWindow> window = GuideGameWindow();
+        if (window.IsValid() && stageFrames % GUIDE_FRONT_FRAMES == 1)
+        {
+            window->HACK_ForceToFront();
+        }
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -107,8 +158,12 @@ void FSOLPlayerGuideWriter::Start(USOLMenuSubsystem& menu)
     {
         GEngine->Exec(menu.GetWorld(), *FString::Printf(TEXT("r.SetRes %dx%dw"), GUIDE_VIEW.X, GUIDE_VIEW.Y));
     }
-    UE_LOG(LogSOL, Log, TEXT("PlayerGuide: writing %s and %d images"), *SOLPlayerGuide::GuideFilePath(),
-        SOLPlayerGuide::Shots().Num());
+    if (!FSOLSimClock::TryParseUtcJulianDate(SOL::Help::GUIDE_SHOT_SIM_DATE, mPinnedJulianDate))
+    {
+        mPinnedJulianDate = -1.0;
+    }
+    UE_LOG(LogSOL, Log, TEXT("PlayerGuide: writing %s and %d images (sim date %s)"), *SOLPlayerGuide::GuideFilePath(),
+        SOLPlayerGuide::Shots().Num(), SOL::Help::GUIDE_SHOT_SIM_DATE);
     ToStage(EStage::WaitMenu);
 }
 
@@ -136,6 +191,12 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
     {
         mController = menu.GetPlayerController();
     }
+    if (mPinnedJulianDate < 0.0)
+    {
+        Fail(menu, FString::Printf(TEXT("the pinned date %s does not parse"), SOL::Help::GUIDE_SHOT_SIM_DATE));
+        return true;
+    }
+    HoldScene(menu);
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
     USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
     USOLReadOnlyPageWidget* page = GuideHelpPage(menu);
@@ -143,17 +204,23 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
     {
     case EStage::WaitMenu:
     {
-        // The main menu shown and the view at the shots' size for a few frames, then Help opened as a click does
+        // The main menu shown, the view at the shots' size and the game window in front (33e-iv: an inactive window
+        // draws no cursor and its shots differ) for a few frames, then Help opened as a click does
         const FIntPoint view = GetViewSize();
+        const bool bIsActive = GuideWindowActive();
         mViewFrames = view == GUIDE_VIEW && menu.IsMenuShowing() && mainMenu != nullptr && GuideShadersReady()
-            ? mViewFrames + 1 : 0;
+            && bIsActive ? mViewFrames + 1 : 0;
         if (mViewFrames < GUIDE_VIEW_STABLE_FRAMES)
         {
+            if (!bIsActive)
+            {
+                GuidePullToFront(mStageFrames);
+            }
             if (mStageS > GUIDE_VIEW_TIMEOUT_S)
             {
-                Fail(menu, FString::Printf(TEXT("no main menu at %dx%d (view %dx%d, menu %d, shaders ready %d)"),
-                    GUIDE_VIEW.X, GUIDE_VIEW.Y, view.X, view.Y, mainMenu != nullptr ? 1 : 0,
-                    GuideShadersReady() ? 1 : 0));
+                Fail(menu, FString::Printf(TEXT("no main menu at %dx%d in front (view %dx%d, menu %d, shaders ready "
+                    "%d, window active %d)"), GUIDE_VIEW.X, GUIDE_VIEW.Y, view.X, view.Y, mainMenu != nullptr ? 1 : 0,
+                    GuideShadersReady() ? 1 : 0, bIsActive ? 1 : 0));
                 return true;
             }
             return false;
@@ -303,6 +370,20 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
             return false;
         }
 
+        // The window still in front (a click elsewhere would change the shot): else pulled back, and the settle
+        // frames counted again once it is
+        if (!GuideWindowActive())
+        {
+            if (mStageS > GUIDE_OPEN_TIMEOUT_S)
+            {
+                Fail(menu, TEXT("the game window is not active (keep it in front while the guide is written)"));
+                return true;
+            }
+            GuidePullToFront(mStageFrames);
+            mStageFrames = 0;
+            return false;
+        }
+
         // The tab and the hovered key (none on a plain shot) as the shot wants them
         const FSOLPlayerGuideShot& shot = shots[mShot];
         const int32 wantHover = shot.bHover ? SOLKeyboardLayout::FindKey(GUIDE_HOVER_KEY) : INDEX_NONE;
@@ -348,6 +429,13 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
                 wantOffset, end));
             return true;
         }
+        // The menu clock held at the shot's pulse phase until the capture is done (released in Captured)
+        if (USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld()))
+        {
+            constexpr double period = SOL::SolidMenu::IDLE_PULSE_PERIOD_S;
+            solid->PinClock((FMath::FloorToDouble(solid->GetClockS() / period) + 1.0 + GUIDE_PULSE_PHASE) * period);
+        }
+        GuideHoldMaterialTime();
         const FString path = SOLPlayerGuide::CapturePath(*shot.FileName);
         FScreenshotRequest::RequestScreenshot(path, true, false);
         UE_LOG(LogSOL, Log, TEXT("PlayerGuide: capture %s (offset %.1f, end %.1f)"), *path, offset, end);
@@ -355,9 +443,15 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
         return false;
     }
     case EStage::Captured:
+        // The material time held on every frame the capture may be drawn in
+        GuideHoldMaterialTime();
         if (mStageFrames < GUIDE_SHOT_FRAMES)
         {
             return false;
+        }
+        if (USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld()))
+        {
+            solid->ReleaseClock();
         }
         ++mShot;
         ToStage(mShot < shots.Num() ? EStage::Show : EStage::WaitFiles);
@@ -385,6 +479,21 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
     }
     }
     return false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Holds the sim clock at the pinned date and the menu camera's sway at its base azimuth (33e-iv), every frame
+void FSOLPlayerGuideWriter::HoldScene(const USOLMenuSubsystem& menu) const
+{
+    if (USOLSimClockSubsystem* clock = menu.GetWorld() != nullptr
+        ? menu.GetWorld()->GetSubsystem<USOLSimClockSubsystem>() : nullptr)
+    {
+        clock->SetJulianDate(mPinnedJulianDate);
+    }
+    if (ASOLMenuCameraPawn* camera = mController.IsValid() ? mController->GetPawn<ASOLMenuCameraPawn>() : nullptr)
+    {
+        camera->SetSwayPinned(true);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -467,12 +576,16 @@ bool FSOLPlayerGuideWriter::AreCapturesWritten()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Stages every capture next to its image, writes the guide, then swaps the staged images in: a failure before the
-// swap leaves the repository's guide and images as they were (the staged copies removed)
+// Compares every capture with its image: one within the capture noise keeps the image untouched (no new bytes for
+// Git LFS), the others are staged next to theirs. Then writes the guide and swaps the staged images in: a failure
+// before the swap leaves the repository's guide and images as they were (the staged copies removed)
 bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
 {
     IFileManager& files = IFileManager::Get();
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
+    const FSOLImageNoise noise = SOLPlayerGuide::HelpShotNoise();
+    TArray<bool> changed;       // The capture differs from its image (staged, to be swapped in)
+    changed.Init(false, shots.Num());
     // Removes the staged copies left
     const auto dropStaged = [&files, &shots]()
     {
@@ -482,17 +595,39 @@ bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
         }
     };
 
-    // Each capture copied next to its target (the same folder, so the swap is a rename)
-    for (const FSOLPlayerGuideShot& shot : shots)
+    // Each capture loaded and compared with its image: kept, or copied next to its target (the same folder, so the
+    // swap is a rename); a staged copy a crashed run left goes first
+    dropStaged();
+    FImage capture;
+    for (int32 index = 0; index < shots.Num(); ++index)
     {
+        const FSOLPlayerGuideShot& shot = shots[index];
         const FString from = SOLPlayerGuide::CapturePath(*shot.FileName);
-        const FString staged = SOLPlayerGuide::ImagePath(*shot.FileName) + GUIDE_STAGED_SUFFIX;
+        const FString image = SOLPlayerGuide::ImagePath(*shot.FileName);
+        if (!FImageUtils::LoadImage(*from, capture))
+        {
+            dropStaged();
+            outReason = FString::Printf(TEXT("could not read the capture %s"), *from);
+            return false;
+        }
+        capture.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+        const FSOLImageDiff diff = SOLPlayerGuide::CompareWithFile(capture, image, noise);
+        if (SOLPlayerGuide::IsCaptureNoise(diff, noise))
+        {
+            UE_LOG(LogSOL, Log, TEXT("PlayerGuide KEPT %s (max delta %d, %d pixels above %d)"),
+                *FPaths::ConvertRelativePathToFull(image), diff.MaxDelta, diff.NoisyPixels, noise.NoiseDelta);
+            continue;
+        }
+        UE_LOG(LogSOL, Log, TEXT("PlayerGuide: %s changed (comparable %d, max delta %d, %d pixels above %d)"),
+            *shot.FileName, diff.bComparable ? 1 : 0, diff.MaxDelta, diff.NoisyPixels, noise.NoiseDelta);
+        const FString staged = image + GUIDE_STAGED_SUFFIX;
         if (files.Copy(*staged, *from, true, true) != COPY_OK)
         {
             dropStaged();
             outReason = FString::Printf(TEXT("could not copy %s to %s"), *from, *staged);
             return false;
         }
+        changed[index] = true;
     }
     const FString guidePath = SOLPlayerGuide::GuideFilePath();
     if (!SOLPlayerGuide::WriteGuideFile(guidePath, SOLPlayerGuide::BuildMarkdown(SOLKeyBindings::DefaultKeys())))
@@ -504,19 +639,23 @@ bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
     UE_LOG(LogSOL, Log, TEXT("PlayerGuide WROTE %s (%lld bytes)"), *FPaths::ConvertRelativePathToFull(guidePath),
         files.FileSize(*guidePath));
 
-    // The swap: each staged image renamed over its target, then its capture removed
-    for (const FSOLPlayerGuideShot& shot : shots)
+    // The swap: each changed image's staged copy renamed over it; every capture removed
+    for (int32 index = 0; index < shots.Num(); ++index)
     {
+        const FSOLPlayerGuideShot& shot = shots[index];
         const FString to = SOLPlayerGuide::ImagePath(*shot.FileName);
-        if (!files.Move(*to, *(to + GUIDE_STAGED_SUFFIX), true, true))
+        if (changed[index])
         {
-            dropStaged();
-            outReason = FString::Printf(TEXT("could not rename the staged image over %s"), *to);
-            return false;
+            if (!files.Move(*to, *(to + GUIDE_STAGED_SUFFIX), true, true))
+            {
+                dropStaged();
+                outReason = FString::Printf(TEXT("could not rename the staged image over %s"), *to);
+                return false;
+            }
+            UE_LOG(LogSOL, Log, TEXT("PlayerGuide WROTE %s (%lld bytes)"), *FPaths::ConvertRelativePathToFull(to),
+                files.FileSize(*to));
         }
         files.Delete(*SOLPlayerGuide::CapturePath(*shot.FileName), false, true, true);
-        UE_LOG(LogSOL, Log, TEXT("PlayerGuide WROTE %s (%lld bytes)"), *FPaths::ConvertRelativePathToFull(to),
-            files.FileSize(*to));
     }
     return true;
 }

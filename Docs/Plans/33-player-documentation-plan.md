@@ -302,6 +302,25 @@ Builds on: D39, D47. Depends on 33d-ii (the rows) and 33e (the shot-taking write
    (SDD 20); 5 crops (41.7 KB), 20 Help images (15.9 MB), guide 16.8 KB; a second guide run leaves the crops, the
    textures and the guide byte-identical (the Help images are rewritten, TECH_DEBT).
 
+### 33e-iv: smoke timing and keep-unchanged guide images (TECH_DEBT from 33e-ii; opus/high)
+
+Builds on: 33e-ii. SDD sections 9, 18, 20. No design question (two TECH_DEBT fixes).
+
+1. [x] `-SOLSmokeHoloMenu`: the card steps end on HUD frames after their time (`HudDrawnThenDone`), not a wall-clock
+   margin; 86 / 86 three runs at each size.
+2. [x] Tests first by a separate opus/high author for the pure compare (`SOLTest.PlayerGuide.ImageDiff.*`), red on
+   stubs (11 of 12), then the shared `SOLPlayerGuide::CompareImages` / `CompareWithFile` / `IsCaptureNoise` (the crop
+   writer moved onto it) and the guide writer's keep path.
+3. [x] The capture noise measured (about 210,000 pixels per shot) and fixed at the source: the scene held (sim date,
+   camera sway, menu clock at a fixed pulse phase, the materials' game time on the capture frames) and an active
+   window required; the rest (at most 17 per channel, 25 pixels above 8 over three runs) inside `HelpShotNoise()`.
+4. [x] Two full `Tools\WritePlayerGuide.ps1` runs: the second leaves all 20 Help images, the crops, the textures and the
+   guide byte-identical.
+5. [x] Review (fresh opus/xhigh); fixes; full suite and all smokes; commit `Issue #33: Part 33e-iv - smoke timing and
+   keep-unchanged guide images`; push.
+
+   **Done (2026-11-09, SDD 20):** see the SDD for the numbers.
+
 ### 33f: smoke and profile, VR floor (opus/high)
 
 Builds on: D21. Depends on 33e.
@@ -388,3 +407,5 @@ Builds on: D25.
 - 2026-11-08: 33e-ii done (SDD 20): D47, the five map glossary rows show 176x176 crops of the real game (capture flag
   `-SOLWriteGlossaryCrops`, import by `Tools/UI/import_glossary_crops.py`, run by `Tools\WritePlayerGuide.bat`), and the
   guide writer's end-of-tab measurement fixed (pages 2, 6, 3, 5, 3). Next: 33f.
+- 2026-11-09: 33e-iv done (SDD 20): the HoloMenu card checks pass at 1920x1080 (the steps wait on HUD frames), and
+  the guide run keeps unchanged Help images (shared image compare, the scene held still for the shots). Next: 33f.

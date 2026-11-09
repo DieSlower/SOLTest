@@ -32,7 +32,7 @@ class USOLTargetingSubsystem;
  * each SOL::Paths::GLOSSARY_CROPS square (SOLGlossary::CropRect) out of its scene's shot, saves it to
  * SOLPlayerGuide::CapturePath, and only when every crop succeeded moves them into Docs/Images (staged next to them
  * first, each old image backed up during the swap, so any failure leaves the old images) and removes the shots. A crop
- * that matches the image in place within the capture noise (SOL::Help::GLOSSARY_CROP_KEEP_*) keeps that file
+ * that matches the image in place within the capture noise (SOLPlayerGuide::CropNoise) keeps that file
  * untouched, so an unchanged scene changes no file. It logs "GlossaryCrops WROTE <path> (<bytes> bytes)" or
  * "GlossaryCrops KEPT <path> (...)" per crop and "GlossaryCrops DONE", or "GlossaryCrops FAIL <reason>", then quits
  * (exit code 1 on a failure); Tools\WritePlayerGuide.ps1 reads those lines.

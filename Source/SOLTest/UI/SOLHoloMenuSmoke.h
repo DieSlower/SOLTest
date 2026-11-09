@@ -96,6 +96,9 @@ private:
     // Once ready, requests the step's screenshot and returns true a few frames later (the step is done)
     bool ShotThenDone(const TCHAR* name, bool bIsReady);
 
+    // Once the step's time is up, returns true a few frames later, so the HUD has drawn after it (the step is done)
+    bool HudDrawnThenDone(bool bIsTimeUp);
+
     // Sets the live (pending, never saved) HoloMenuEffects, as the Settings slider previews it
     void SetStrength(float strength) const;
 
@@ -219,6 +222,7 @@ private:
     int32 mStep = 0;
     int32 mStepFrames = 0;
     int32 mShotFrame = INDEX_NONE;                          // Step frame of the step's screenshot request, or none
+    int32 mTimeUpFrame = INDEX_NONE;                        // Step frame the step's time was first up, or none
     int32 mOpenRequestsBefore = 0;                          // Cue counters at a step's start
     int32 mHoverRequestsBefore = 0;
     int32 mSelectRequestsBefore = 0;

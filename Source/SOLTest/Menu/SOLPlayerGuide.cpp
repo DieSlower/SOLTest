@@ -13,6 +13,8 @@
 #include "SOLConstants.h"
 
 #include "HAL/FileManager.h"
+#include "ImageCore.h"
+#include "ImageUtils.h"
 #include "Misc/Crc.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Parse.h"
@@ -517,4 +519,95 @@ bool SOLPlayerGuide::WriteGuideFile(const FString& path, const FString& text)
 FString SOLPlayerGuide::StaleMessage()
 {
     return SOLMenuText::GUIDE_STALE_MESSAGE;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Compares a fresh image with an old one: per fresh pixel the closest old colour within the shift (an equal pixel in
+// place needs no search), its largest channel difference counted
+FSOLImageDiff SOLPlayerGuide::CompareImages(const FImage& fresh, const FImage& old, const FSOLImageNoise& noise)
+{
+    FSOLImageDiff diff;
+    if (fresh.Format != ERawImageFormat::BGRA8 || old.Format != ERawImageFormat::BGRA8 || fresh.SizeX <= 0
+        || fresh.SizeY <= 0 || fresh.SizeX != old.SizeX || fresh.SizeY != old.SizeY
+        || fresh.NumSlices < 1 || fresh.NumSlices != old.NumSlices
+        || fresh.RawData.Num() < static_cast<int64>(fresh.SizeX) * fresh.SizeY * static_cast<int64>(sizeof(FColor))
+        || old.RawData.Num() < static_cast<int64>(old.SizeX) * old.SizeY * static_cast<int64>(sizeof(FColor)))
+    {
+        return diff;
+    }
+    diff.bComparable = true;
+    const int32 width = fresh.SizeX;
+    const int32 height = fresh.SizeY;
+    const int32 shift = FMath::Clamp(noise.ShiftPx, 0, FMath::Max(width, height));
+    const int32 noiseDelta = FMath::Max(noise.NoiseDelta, 0);
+    const FColor* freshPixels = reinterpret_cast<const FColor*>(fresh.RawData.GetData());
+    const FColor* oldPixels = reinterpret_cast<const FColor*>(old.RawData.GetData());
+    // The largest of the R, G and B differences of two pixels
+    const auto channelDelta = [](const FColor& a, const FColor& b)
+    {
+        return FMath::Max3(FMath::Abs(a.R - b.R), FMath::Abs(a.G - b.G), FMath::Abs(a.B - b.B));
+    };
+    for (int32 y = 0; y < height; ++y)
+    {
+        for (int32 x = 0; x < width; ++x)
+        {
+            const FColor& b = freshPixels[static_cast<int64>(y) * width + x];
+            int32 delta = channelDelta(oldPixels[static_cast<int64>(y) * width + x], b);
+            if (delta == 0)
+            {
+                continue;
+            }
+
+            // The closest old pixel in the neighbourhood (clamped to the image), stopping at an exact match
+            const int32 yMax = FMath::Min(y + shift, height - 1);
+            const int32 xMax = FMath::Min(x + shift, width - 1);
+            for (int32 oy = FMath::Max(y - shift, 0); oy <= yMax && delta > 0; ++oy)
+            {
+                const FColor* row = oldPixels + static_cast<int64>(oy) * width;
+                for (int32 ox = FMath::Max(x - shift, 0); ox <= xMax && delta > 0; ++ox)
+                {
+                    delta = FMath::Min(delta, channelDelta(row[ox], b));
+                }
+            }
+            diff.MaxDelta = FMath::Max(diff.MaxDelta, delta);
+            diff.NoisyPixels += delta > noiseDelta ? 1 : 0;
+        }
+    }
+    return diff;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Loads the image at a path as BGRA8 (sRGB) and compares a fresh image with it; not comparable without a loaded file
+FSOLImageDiff SOLPlayerGuide::CompareWithFile(const FImage& fresh, const FString& path, const FSOLImageNoise& noise)
+{
+    FImage old;
+    if (!IFileManager::Get().FileExists(*path) || !FImageUtils::LoadImage(*path, old))
+    {
+        return FSOLImageDiff();
+    }
+    old.ChangeFormat(ERawImageFormat::BGRA8, EGammaSpace::sRGB);
+    return CompareImages(fresh, old, noise);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a difference is capture noise (the old file kept)
+bool SOLPlayerGuide::IsCaptureNoise(const FSOLImageDiff& diff, const FSOLImageNoise& noise)
+{
+    return diff.bComparable && diff.MaxDelta <= noise.KeepMaxDelta && diff.NoisyPixels <= noise.KeepMaxNoisyPixels;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the map glossary crops' capture noise
+FSOLImageNoise SOLPlayerGuide::CropNoise()
+{
+    return { SOL::Help::GLOSSARY_CROP_NOISE_SHIFT_PX, SOL::Help::GLOSSARY_CROP_NOISE_DELTA,
+        SOL::Help::GLOSSARY_CROP_KEEP_MAX_DELTA, SOL::Help::GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS };
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the Help screenshots' capture noise
+FSOLImageNoise SOLPlayerGuide::HelpShotNoise()
+{
+    return { SOL::Help::GUIDE_SHOT_NOISE_SHIFT_PX, SOL::Help::GUIDE_SHOT_NOISE_DELTA,
+        SOL::Help::GUIDE_SHOT_KEEP_MAX_DELTA, SOL::Help::GUIDE_SHOT_KEEP_MAX_NOISY_PIXELS };
 }

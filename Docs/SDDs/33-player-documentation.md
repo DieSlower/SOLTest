@@ -394,6 +394,20 @@ written and fails the completeness test; no "²" (TECH_DEBT).
 - **Map crops (D47, 33e-ii):** a crop row's Name cell is `Name<br>![Name](Images/<file>)` (`GUIDE_CROP_CELL_FORMAT`);
   `InputHash` covers the crop ids and files; `SOLPlayerGuide::IsCropCaptureRequested`. The five crops are 176x176 PNGs
   (`SOL::Paths::GLOSSARY_CROPS`, 5 images besides the 20 Help images).
+- **Keep-if-unchanged images (33e-iv):** both writers compare each fresh image with the file in place through one
+  shared, test-first helper (`SOLPlayerGuide::CompareImages` / `CompareWithFile` / `IsCaptureNoise`, `FSOLImageDiff`,
+  `FSOLImageNoise`): a fresh pixel's difference is its smallest largest-channel difference to the old pixels within
+  `ShiftPx`; an image within the noise (`CropNoise()`: the `GLOSSARY_CROP_*` values; `HelpShotNoise()`: shift 1, at
+  most 64 per channel and at most 200 pixels above 8, `SOL::Help::GUIDE_SHOT_*`) keeps the old file byte for byte
+  and logs `KEPT`. To make the Help shots repeatable the guide run holds the scene behind the menu every frame: the
+  sim clock at `SOL::Help::GUIDE_SHOT_SIM_DATE` (2026-06-01, the crops' date), the menu camera's sway at its base
+  azimuth (`ASOLMenuCameraPawn::SetSwayPinned`), and for each capture the solid menu clock pinned at the idle pulse's
+  quarter phase (`USOLSolidMenuSubsystem::PinClock` / `ReleaseClock`; `BeginFrame` hands out `GetClockS`, the real
+  time plus the offset a released pin left, so the clock never runs backwards); on the capture frames the
+  application's game time, which the materials' `Time` node reads (the HUD shape material's flicker and grain on the
+  glossary symbols), is held at a fixed phase of `HUD_TIME_WRAP_S` (`FApp::SetCurrentTime` for the rest of the frame;
+  the engine sets it from the real time again at the next frame). The run also waits until its window is active (an
+  inactive window draws no cursor and laid the menu column's labels out a pixel off), bringing it to the front.
 - **Staleness (D27):** `SOLTest.PlayerGuide.UpToDate` (written in 33e, with the writer) is a **failing automation
   test**: it loads
   `Docs/PLAYER_GUIDE.md` and compares it with `BuildMarkdown(DefaultKeys())`; a mismatch fails with "run
@@ -721,6 +735,9 @@ P14 (no popup) over its single-run verdict (the known single-run noise, `Docs/TE
 | R8 | Writing into `Docs/` from the game | Flag-only, non-shipping, paths from `SOL::Paths`, logged; nothing writes without the flag |
 
 ## 18. Open questions
+
+**33e-iv (2026-11-09):** two TECH_DEBT fixes from 33e-ii, no design question: none open. The 20 Help images change
+once (the held scene shows Earth at the pinned date) and stay byte-identical across runs from then on.
 
 **33e-ii (2026-11-08):** the D39 crop questions (size, source of the guide images, staleness) were answered by the user (D47); no question open.
 
@@ -1133,3 +1150,40 @@ As built:
   most 2 pixels above 2), the five `.uasset` files (import skipped on the tag) and the guide byte-identical, but it
   rewrites the 20 Help images every time (`Docs/TECH_DEBT.md`). The crop compare tolerates a 1-pixel shift (at most
   128 per channel, at most 16 pixels above 2), measured over eight capture runs.
+
+**33e-iv (2026-11-09, commit `Issue #33: Part 33e-iv - smoke timing and keep-unchanged guide images`).** Two
+TECH_DEBT items from 33e-ii fixed; no schema change (`SAVE_VERSION` 11, `KEY_BINDING_LAYOUT_VERSION` 10).
+
+As built:
+- **HoloMenu smoke timing.** The info / target card steps (`CardInfoPrep`, `CardInfoOpen`, `CardTargetOpen`,
+  `CardTargetCycle`, `CardsClose`) ended on a wall-clock margin and read the HUD's last-drawn card stats, which lag a
+  whole frame after a slow screenshot frame at 1920x1080. `FSOLHoloMenuSmoke::HudDrawnThenDone` ends them
+  `HOLOSMOKE_HUD_FRAMES` (2) frames after their time is up, so the checks read a HUD draw from past it; no check
+  changed. 86 / 86 in three runs at 1920x1080 and three at 1280x720.
+- **Keep-unchanged guide images.** Section 9: the shared `SOLPlayerGuide::CompareImages` / `CompareWithFile` /
+  `IsCaptureNoise` (moved out of `FSOLGlossaryCropWriter`, which now uses `CropNoise()`), the guide writer keeping a
+  Help image within `HelpShotNoise()` (`PlayerGuide KEPT`, a stale `.new` copy removed first), and the held scene
+  (`GUIDE_SHOT_SIM_DATE`, `ASOLMenuCameraPawn::SetSwayPinned`, `USOLSolidMenuSubsystem::GetClockS` / `PinClock` /
+  `ReleaseClock`), the held material time and the active-window wait. Noise before the holds: about 210,000 pixels per
+  shot, up to 255 (Earth spinning with the wall-clock date, the camera sway, the idle pulse); with the scene and menu
+  clock held, over four runs, at most 59 per channel (108 in a later run) and 663 pixels above 8, all on the glossary
+  symbols (the HUD shape material's `Time`-driven flicker); with the material time held too, over three runs, at most
+  17 per channel and 25 pixels above 8, hence the 64 / 200 limits. A run launched in the background (window not in
+  front) drew no cursor and shifted the column labels: every image differed, so the run now waits for an active
+  window and checks it again before each capture. The 20 Help images changed once (Earth at the pinned date); a second `Tools\WritePlayerGuide.ps1` run left
+  all 20, the 5 crops, the 5 textures and `Docs/PLAYER_GUIDE.md` byte-identical (`PlayerGuide KEPT`, at most 10
+  per channel and 5 pixels above 8). A run whose window cannot take the focus (launched from a background job while
+  another application is in front) now fails with "no main menu at 1920x1080 in front ... window active 0" instead
+  of writing the unfocused variant (about 1,600 pixels differ: no cursor, the column labels a pixel off).
+- **Tests.** `SOLTest.PlayerGuide.ImageDiff.*` (12 test-first by a separate author, plus `ReviewCases`) and
+  `SOLTest.SolidMenuKit.MenuClock`. Full suite 1757 / 1757. Smokes: `-SOLSmokeSolidMenu` 275 / 275,
+  `-SOLSmokeOverlay` 34 / 34, `-SOLSmokeHud` 24 / 24 at both sizes; `-SOLSmokeSolidMenuProfile` 22 / 22 passes, 23 / 23 checks;
+  `-SOLSmokeHoloMenuProfile` 5 / 5 passes, 12 / 12 checks; `GameUserSettings.ini` unchanged (restored after the
+  1920x1080 HUD smoke). The review (fresh opus/xhigh) asked for tests of the menu clock (added), a slice and pixel
+  data check and a clamped `NoiseDelta` / shift in `CompareImages` (added, with `ReviewCases`), removing a stale `.new`
+  copy before the compare (added) and a few nits (applied, except a log line when the menu pawn is not the camera).
+  A second, focused review of the material-time hold and the active-window wait (both added after the first review)
+  checked the hold against the engine source (same frame as the capture, no lasting skew, DeltaTime unaffected) and
+  asked for: `HACK_ForceToFront` instead of `BringToFront` (which cannot bring a background window forward), active
+  meaning `IsActive() && FApp::HasFocus()`, the capture itself gated on the active window, and the hold skipped under a
+  fixed time step; all applied.

@@ -4,29 +4,29 @@
 
 What building SOLTest has cost so far. **Generated** by `Tools/Metrics/update_metrics.py` (`Tools\UpdateMetrics.bat`); do not edit by hand. Rule and design: `CLAUDE.md` (Project metrics), [SDD 41](SDDs/41-project-metrics-tracking.md).
 
-Last updated: 2026-11-08. Tracking since 2026-09-27 (13 sessions).
+Last updated: 2026-11-09. Tracking since 2026-09-27 (13 sessions).
 
 ## Totals
 
 | Metric | Value |
 |---|---|
-| Work time (wall-clock, agent running; parallel agents do not add up) | 108.8 h |
+| Work time (wall-clock, agent running; parallel agents do not add up) | 109.6 h |
 | Human answer time (waiting on the user's replies) | 8.6 h |
-| Agent time (sum of every subagent's run time; parallel agents add up) | 595.4 h |
-| Tokens, all | 6,120.8M |
-| of which new input / cache writes / cache reads / output | 0.1M / 180.4M / 5,918.2M / 22.2M |
-| Notional API price (list rates, see Method) | $2,428 |
-| Subagents dispatched | 487 |
+| Agent time (sum of every subagent's run time; parallel agents add up) | 597.4 h |
+| Tokens, all | 6,186.7M |
+| of which new input / cache writes / cache reads / output | 0.1M / 181.5M / 5,982.7M / 22.4M |
+| Notional API price (list rates, see Method) | $2,451 |
+| Subagents dispatched | 491 |
 
 ## By model
 
 | Model | New input | Cache writes | Cache reads | Output | Notional price |
 |---|---:|---:|---:|---:|---:|
-| claude-opus-5-5 | 0.0M | 134.3M | 4,701.6M | 18.2M | $1,977 |
+| claude-opus-5-5 | 0.0M | 135.1M | 4,765.2M | 18.5M | $1,999 |
 | claude-sonnet-5 | 0.0M | 15.3M | 803.4M | 2.1M | $241 |
-| claude-sonnet-5-5 | 0.0M | 30.8M | 413.2M | 1.8M | $210 |
+| claude-sonnet-5-5 | 0.0M | 31.1M | 414.1M | 1.8M | $212 |
 | claude-haiku-5-5 | 0.0M | 0.0M | 0.0M | 0.0M | $0.01 |
-| **Total** | 0.1M | 180.4M | 5,918.2M | 22.2M | **$2,428** |
+| **Total** | 0.1M | 181.5M | 5,982.7M | 22.4M | **$2,451** |
 
 ## Subagents by type, model and effort
 
@@ -34,16 +34,16 @@ Effort is the level the agent's messages actually ran at (`default` = none recor
 
 | Agent type | Model | Effort | Agents | Tokens | Agent time | Notional price |
 |---|---|---|---:|---:|---:|---:|
-| general-purpose | claude-opus-5-5 | high | 137 | 2,095.3M | 104.3 h | $857 |
+| general-purpose | claude-opus-5-5 | high | 139 | 2,146.0M | 106.0 h | $873 |
 | general-purpose | claude-opus-5-5 | medium | 206 | 1,936.8M | 435.6 h | $753 |
-| general-purpose | claude-opus-5-5 | xhigh | 52 | 702.8M | 35.2 h | $324 |
+| general-purpose | claude-opus-5-5 | xhigh | 54 | 716.7M | 35.5 h | $330 |
 | general-purpose | claude-sonnet-5-5 | medium | 69 | 124.9M | 9.1 h | $52.69 |
 | claude | claude-opus-5-5 | medium | 5 | 119.3M | 9.4 h | $43.48 |
 | general-purpose | claude-sonnet-5 | high | 9 | 40.0M | 1.8 h | $13.20 |
 | general-purpose | claude-sonnet-5-5 | low | 7 | 2.1M | 0.1 h | $1.54 |
 | Explore | claude-sonnet-5-5 | medium | 1 | 0.2M | 0.0 h | $0.14 |
 | general-purpose | claude-haiku-5-5 | medium | 1 | 0.0M | 0.0 h | $0.01 |
-| **Total** | | | **487** | **5,021.4M** | **595.4 h** | **$2,044** |
+| **Total** | | | **491** | **5,086.1M** | **597.4 h** | **$2,066** |
 
 ## Main contexts by model and effort
 
@@ -52,8 +52,8 @@ The interactive sessions (not counted as agents).
 | Model | Effort | Tokens | Notional price |
 |---|---|---:|---:|
 | claude-sonnet-5 | high | 780.8M | $227 |
-| claude-sonnet-5-5 | medium | 318.6M | $156 |
-| **Total** | | **1,099.4M** | **$383** |
+| claude-sonnet-5-5 | medium | 319.8M | $157 |
+| **Total** | | **1,100.7M** | **$385** |
 
 ## Method and caveats
 

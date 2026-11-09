@@ -3219,4 +3219,42 @@ bool FSOLSolidKitPanelOpenLookTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitMenuClockTest, "SOLTest.SolidMenuKit.MenuClock",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (33e-iv) The menu clock: the real time without a pin; a pin below the clock is raised to it; held while pinned;
+// after the release it runs on from the pinned time (never backwards); a release without a pin changes nothing
+bool FSOLSolidKitMenuClockTest::RunTest(const FString& /*parameters*/)
+{
+    USOLSolidMenuSubsystem* const clock = NewObject<USOLSolidMenuSubsystem>();
+    if (!TestNotNull(TEXT("bare subsystem"), clock))
+    {
+        return false;
+    }
+    constexpr double tolerance = 0.5;     // Seconds a slow test machine may take between two reads
+    const double before = FPlatformTime::Seconds();
+    TestTrue(TEXT("Unpinned, the clock is the real time"), FMath::Abs(clock->GetClockS() - before) < tolerance);
+    clock->ReleaseClock();
+    TestTrue(TEXT("A release without a pin changes nothing"), FMath::Abs(clock->GetClockS() - before) < tolerance);
+
+    // A pin in the past is raised to the clock now
+    clock->PinClock(before - 100.0);
+    const double raised = clock->GetClockS();
+    TestTrue(TEXT("A pin below the clock is raised to it"), raised >= before);
+
+    // A pin ahead holds still, then the clock runs on from it
+    const double ahead = clock->GetClockS() + 50.0;
+    clock->PinClock(ahead);
+    TestEqual(TEXT("Pinned, the clock reads the pin"), clock->GetClockS(), ahead);
+    TestEqual(TEXT("Pinned, the clock holds"), clock->GetClockS(), ahead);
+    clock->ReleaseClock();
+    const double after = clock->GetClockS();
+    TestTrue(TEXT("Released, the clock runs on from the pin (never backwards)"), after >= ahead
+        && after < ahead + tolerance);
+    TestTrue(TEXT("Released, the clock keeps running"), clock->GetClockS() >= after);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

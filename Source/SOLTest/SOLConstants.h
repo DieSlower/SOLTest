@@ -1715,6 +1715,19 @@ namespace SOL
         inline constexpr int32 GLOSSARY_CROP_NOISE_DELTA = 2;
         inline constexpr int32 GLOSSARY_CROP_KEEP_MAX_NOISY_PIXELS = 16;
         inline constexpr int32 GLOSSARY_CROP_NOISE_SHIFT_PX = 1;
+        // The same keep-if-unchanged rule for the player guide's 1920x1080 Help screenshots (FSOLPlayerGuideWriter,
+        // part 33e-iv; SOLPlayerGuide::HelpShotNoise). The run holds what moves (the scene behind the menu at
+        // GUIDE_SHOT_SIM_DATE, the camera sway, the menu clock at a fixed idle pulse phase, the materials' Time on the
+        // capture frames) and waits for its window to be active. Measured over three runs (three pairs): at most 17
+        // per channel, at most 25 pixels above 8 (before the holds: about 210,000 pixels, up to 255). A real change
+        // (text, a key's colour, a layout shift) moves pixels by more than 64 or changes hundreds of them
+        inline constexpr int32 GUIDE_SHOT_KEEP_MAX_DELTA = 64;
+        inline constexpr int32 GUIDE_SHOT_NOISE_DELTA = 8;
+        inline constexpr int32 GUIDE_SHOT_KEEP_MAX_NOISY_PIXELS = 200;
+        inline constexpr int32 GUIDE_SHOT_NOISE_SHIFT_PX = 1;
+        // ... and the sim date the guide run holds the main menu's scene at (the start body's place, spin and light):
+        // the crops' date
+        inline constexpr const TCHAR* GUIDE_SHOT_SIM_DATE = GLOSSARY_CROP_SIM_DATE;
         inline constexpr double GLOSSARY_SAMPLE_CHASE_BURST_G = 6.8; // The Chase Down line sample's burst G (a plan's
                                                                      // burst varies between the sustained and max G)
         inline constexpr int32 GLOSSARY_SAMPLE_OVERLAY_PROFILE = 2; // The overlay profile tag sample's number (1-based)
