@@ -239,7 +239,7 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;            // A whole run (33d-iii: measured 193 s)
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 259;          // 33d-iii: the checks a whole run logs (Finish
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 275;          // 33e-iii: the checks a whole run logs (Finish
                                                                 // fails a run that logged another number: a skipped
                                                                 // check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
@@ -256,7 +256,26 @@ namespace
     constexpr int32 SOLID_SMOKE_INDICES_PER_SHAPE = 6;          // 33d-ii: a shape batch's indices per quad
     constexpr float SOLID_SMOKE_RAIL_TOLERANCE = 1.0f;          // 33d-ii: a laid-out rail top against its rule (units)
     constexpr int32 SOLID_SMOKE_HELP_DONE_STAGE = 99;           // 33d-iii: TickHelp's end (no case: done)
-    const TCHAR* const SOLID_SMOKE_HELP_HOVER_KEY = TEXT("O");  // 33d-ii: the Keyboard tab's hovered key for its shot
+    // 33e-iii (D45): the Keyboard tab's caps the Help step hovers for the popup, in order (the pause runs hover only
+    // the first, O, the guide's hover key): the top row, the left and right edges (Esc, the main Enter; a free key
+    // such as F12 has no popup), the bottom row, the numpad Enter (a mirror cap of "Enter") and the mouse; each is
+    // scrolled into the tab's view first
+    struct FSolidSmokeHelpHover
+    {
+        const TCHAR* KeyName;
+        bool bMirror;               // The mirror cap of the key name (the numpad Enter)
+        const TCHAR* Name;          // Check id / shot name part
+    };
+    const FSolidSmokeHelpHover SOLID_SMOKE_HELP_HOVERS[] = {
+        { TEXT("O"), false, TEXT("o") },
+        { TEXT("Escape"), false, TEXT("esc") },
+        { TEXT("Enter"), false, TEXT("enter") },
+        { TEXT("LeftControl"), false, TEXT("lctrl") },
+        { TEXT("RightControl"), false, TEXT("rctrl") },
+        { TEXT("Enter"), true, TEXT("numenter") },
+        { TEXT("LeftMouseButton"), false, TEXT("lmb") },
+        { TEXT("RightMouseButton"), false, TEXT("rmb") },
+    };
 
     // 33d-ii: screenshot and check names of the Help tabs, in ESOLHelpTab order
     const TCHAR* const SOLID_SMOKE_HELP_TAB_NAMES[] = { TEXT("keys"), TEXT("flight"), TEXT("targets"),
@@ -286,6 +305,7 @@ namespace
     constexpr int32 SOLID_SMOKE_PAINT_FRAMES = 3;               // Frames for a value change to be painted
     constexpr int32 SOLID_SMOKE_SCROLL_CAP = 4;                 // 46g: the column's forced visible-entry cap
     constexpr int32 SOLID_SMOKE_QUIT_ENTRY = SolidSmokeEntry(ESolidSmokeEntry::Quit);   // 46g: the column's last entry
+    constexpr int32 SOLID_SMOKE_SCROLL_FRAMES = 3;              // 33e-iii: frames after a scroll before the hover
     constexpr float SOLID_SMOKE_SCROLL_TOLERANCE = 0.5f;        // 46g: two offsets or a drawn y against a laid-out one
     constexpr float SOLID_SMOKE_SCROLL_END_TOLERANCE = 1.5f;    // 46g: Slate's scroll end against the stack's
     constexpr float SOLID_SMOKE_PAUSE_REVERSAL_TOLERANCE = 0.15f;   // 46g: a few frames at the CLOSE_S / open rates
@@ -397,13 +417,59 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // (33c) Returns whether two diagram panels lay out the same (every section box, the scale, the strip's lines)
+    // (33e-iii) Returns a Help hover's layout cap: the key's own (FindKey) or its mirror cap, or INDEX_NONE
+    int32 SolidSmokeHelpHoverCap(const FSolidSmokeHelpHover& hover)
+    {
+        if (!hover.bMirror)
+        {
+            return SOLKeyboardLayout::FindKey(hover.KeyName);
+        }
+        const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
+        for (int32 index = 0; index < layout.Num(); ++index)
+        {
+            if (layout[index].bMirror && FCString::Stricmp(layout[index].KeyName, hover.KeyName) == 0)
+            {
+                return index;
+            }
+        }
+        return INDEX_NONE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33c) Returns whether two diagram panels lay out the same (every section box and the scale)
     bool SolidSmokeSamePanel(const FSOLDiagramPanel& a, const FSOLDiagramPanel& b)
     {
         return a.Scale.UnitPx == b.Scale.UnitPx && a.Scale.Placement == b.Scale.Placement
-            && a.Scale.OriginPx == b.Scale.OriginPx && a.Legend == b.Legend && a.Diagram == b.Diagram
-            && a.Other == b.Other && a.Unbound == b.Unbound && a.Detail == b.Detail && a.DetailLines == b.DetailLines
-            && a.Height == b.Height;
+            && a.Scale.OriginPx == b.Scale.OriginPx && a.Legend == b.Legend && a.Hint == b.Hint
+            && a.Diagram == b.Diagram && a.Other == b.Other && a.Unbound == b.Unbound && a.Height == b.Height;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33e-iii, D45) Returns whether the diagram's last paint drew the hover popup inside its bounds and clear of the
+    // hovered key (touching edges allowed, within a tolerance; all in the popup layer's space); writes what it read
+    bool SolidSmokePopupPlaced(const USOLKeyboardDiagram& diagram, FString& outDetail)
+    {
+        const TSharedPtr<SSOLKeyboardDiagram> leaf = diagram.GetLeaf();
+        if (!leaf.IsValid() || !leaf->WasPopupPainted())
+        {
+            outDetail = TEXT("popup not painted");
+            return false;
+        }
+        const float tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+        const FBox2f rect = leaf->GetPopupRect();
+        const FBox2f key = leaf->GetPopupKeyRect();
+        const FBox2f bounds = leaf->GetPopupBounds();
+        const bool bInside = rect.Min.X >= bounds.Min.X - tol && rect.Min.Y >= bounds.Min.Y - tol
+            && rect.Max.X <= bounds.Max.X + tol && rect.Max.Y <= bounds.Max.Y + tol;
+        const bool bClear = rect.Max.X <= key.Min.X + tol || rect.Min.X >= key.Max.X - tol
+            || rect.Max.Y <= key.Min.Y + tol || rect.Min.Y >= key.Max.Y - tol;
+        outDetail = FString::Printf(TEXT("popup %.0f,%.0f-%.0f,%.0f side %d, key %.0f,%.0f-%.0f,%.0f, bounds %.0f,%.0f-"
+            "%.0f,%.0f, inside %d, clear of the key %d, rows %d drawn %d"), rect.Min.X, rect.Min.Y, rect.Max.X,
+            rect.Max.Y, static_cast<int32>(leaf->GetPopupSide()), key.Min.X, key.Min.Y, key.Max.X, key.Max.Y,
+            bounds.Min.X, bounds.Min.Y, bounds.Max.X, bounds.Max.Y, bInside ? 1 : 0, bClear ? 1 : 0,
+            leaf->GetDetailRowCount(), leaf->GetPaintedDetailRows());
+        return bInside && bClear && leaf->GetPaintedDetailRows() == FMath::Min(leaf->GetDetailRowCount(),
+            SOL::Help::DIAGRAM_DETAIL_LINES);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -4553,7 +4619,7 @@ bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, c
 
         // Fit: the panel in the content width, every key rect inside it and the diagram box, the arrangement as
         // FitToWidth decides (D34: stacked in the 658-unit shell content of every D37 target, the unit width / 15), the
-        // hover strip sized for the busiest key (D36), the leaf as wide as the content and in the view
+        // one-line hint (D45: no strip), the leaf as wide as the content and in the view
         const FSOLDiagramPanel panel = diagram != nullptr ? diagram->GetPanel() : FSOLDiagramPanel();
         const FSOLDiagramScale fit = SOLKeyboardLayout::FitToWidth(mDiagramWidth);
         const float tolerance = SOLID_SMOKE_DIAGRAM_TOLERANCE;
@@ -4571,24 +4637,22 @@ bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, c
         FString insideDetail;
         const bool bInView = diagram != nullptr && SolidSmokeInside(diagram, page, insideDetail);
         const float stackedUnit = mDiagramWidth / SOLKeyboardLayout::Extent(ESOLMousePlacement::Stacked).X;
-        const int32 budget = diagram != nullptr ? diagram->GetDetailLineBudget() : 0;
-        const float stripHeight = DIAGRAM_DETAIL_CAP_HEIGHT + panel.DetailLines * DIAGRAM_DETAIL_LINE_HEIGHT;
         Check(*FString::Printf(TEXT("%s-fit"), id), diagram != nullptr && mDiagramWidth > 0.0f
-            && panel.Diagram.Max.X <= mDiagramWidth + tolerance && panel.Detail.Max.X <= mDiagramWidth + tolerance
+            && panel.Diagram.Max.X <= mDiagramWidth + tolerance && panel.Hint.Max.X <= mDiagramWidth + tolerance
             && outside == 0 && panel.Scale.Placement == fit.Placement
             && panel.Scale.Placement == ESOLMousePlacement::Stacked
             && FMath::IsNearlyEqual(panel.Scale.UnitPx, FMath::Min(stackedUnit, DIAGRAM_MAX_UNIT), KINDA_SMALL_NUMBER)
             && panel.Scale.bShortLabels == (panel.Scale.UnitPx >= DIAGRAM_MIN_UNIT)
-            && budget >= 1 && budget <= DIAGRAM_DETAIL_LINES && panel.DetailLines == budget
-            && FMath::IsNearlyEqual(panel.Detail.GetSize().Y, stripHeight, tolerance)
+            && FMath::IsNearlyEqual(panel.Hint.GetSize().Y, DIAGRAM_HINT_HEIGHT, tolerance)
+            && FMath::IsNearlyEqual(panel.Diagram.Min.Y, panel.Hint.Max.Y + DIAGRAM_SECTION_GAP, tolerance)
             && FMath::IsNearlyEqual(leafWidth, mDiagramWidth, tolerance) && bInView,
             FString::Printf(TEXT("content %.1f, unit %.2f (stacked %.2f, min %.0f, mouse below under %.0f, stack under "
-            "%.0f), arrangement %d (want stacked %d), diagram %.1fx%.1f, strip %d lines (budget %d, cap %d) %.1f tall, "
+            "%.0f), arrangement %d (want stacked %d), diagram %.1fx%.1f at %.1f, hint %.1f tall, "
             "panel height %.1f, legend %dx%d, labels %d, %d keys outside, leaf %.1f, in view %s"), mDiagramWidth,
             panel.Scale.UnitPx, stackedUnit, DIAGRAM_MIN_UNIT, DIAGRAM_MOUSE_BELOW_UNIT, DIAGRAM_STACK_UNIT,
             static_cast<int32>(panel.Scale.Placement), static_cast<int32>(ESOLMousePlacement::Stacked),
-            panel.Diagram.GetSize().X, panel.Diagram.GetSize().Y, panel.DetailLines, budget, DIAGRAM_DETAIL_LINES,
-            panel.Detail.GetSize().Y, panel.Height, panel.LegendColumns, panel.LegendRows,
+            panel.Diagram.GetSize().X, panel.Diagram.GetSize().Y, panel.Diagram.Min.Y, panel.Hint.GetSize().Y,
+            panel.Height, panel.LegendColumns, panel.LegendRows,
             panel.Scale.bShortLabels ? 1 : 0, outside, leafWidth, *insideDetail));
         mDiagramPanel = panel;
 
@@ -4768,9 +4832,9 @@ bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, c
         CheckDiagramRebind(id, true);
         if (diagram != nullptr)
         {
-            // Every layout key hovered in turn (not only the real-cursor ones): the busiest key's strip rows equal the
-            // strip's line budget (D36: sized once for it) and no key needs more; the panel never changes while
-            // hovering or clearing the hover. The panel after the restore is the reference (same keys as the fit)
+            // Every layout key hovered in turn (not only the real-cursor ones): no key's popup rows exceed the line
+            // cap (D45: the popup is sized per key) and the panel never changes while hovering or clearing the hover.
+            // The panel after the restore is the reference (same keys as the fit)
             ParkCursor();
             const FSOLDiagramPanel reference = diagram->GetPanel();
             int32 changed = 0;
@@ -4795,16 +4859,22 @@ bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, c
             diagram->SetHoveredKey(INDEX_NONE);
             changed += SolidSmokeSamePanel(diagram->GetPanel(), reference) ? 0 : 1;
             const bool bSameAsFit = SolidSmokeSamePanel(reference, mDiagramPanel);
-            Check(*FString::Printf(TEXT("%s-strip-all"), id), maxRows > 0 && maxRows <= DIAGRAM_DETAIL_LINES
-                && maxRows == reference.DetailLines && changed == 0 && bSameAsFit,
-                FString::Printf(TEXT("busiest key %s: %d rows (strip %d lines, cap %d) in width %.1f, panel changed on "
-                "%d hovers, same as at the fit %d"), layout.IsValidIndex(maxKey) ? layout[maxKey].KeyName
-                : TEXT("none"), maxRows, reference.DetailLines, DIAGRAM_DETAIL_LINES, mDiagramWidth, changed,
-                bSameAsFit ? 1 : 0));
+            // The tallest popup's placement is checked in the Help step: the busiest key must be one of its caps
+            bool bBusiestPlaced = false;
+            for (const FSolidSmokeHelpHover& hover : SOLID_SMOKE_HELP_HOVERS)
+            {
+                bBusiestPlaced |= maxKey != INDEX_NONE && SolidSmokeHelpHoverCap(hover) == maxKey;
+            }
+            Check(*FString::Printf(TEXT("%s-popup-all"), id), maxRows > 0 && maxRows <= DIAGRAM_DETAIL_LINES
+                && changed == 0 && bSameAsFit && bBusiestPlaced,
+                FString::Printf(TEXT("busiest key %s: %d popup rows (cap %d) in width %.1f, panel changed on %d "
+                "hovers, same as at the fit %d, in the Help step's popup caps %d (else add it to "
+                "SOLID_SMOKE_HELP_HOVERS)"), layout.IsValidIndex(maxKey) ? layout[maxKey].KeyName : TEXT("none"),
+                maxRows, DIAGRAM_DETAIL_LINES, mDiagramWidth, changed, bSameAsFit ? 1 : 0, bBusiestPlaced ? 1 : 0));
         }
         else
         {
-            Check(*FString::Printf(TEXT("%s-strip-all"), id), false, TEXT("no diagram"));
+            Check(*FString::Printf(TEXT("%s-popup-all"), id), false, TEXT("no diagram"));
         }
         nextStage(9, false);
         return false;
@@ -4821,7 +4891,8 @@ bool FSOLSolidMenuSmoke::TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, c
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33c) Checks one hovered diagram key: hovered, its strip filled with its cap and fitting, painted whole; a modifier
+// (33c) Checks one hovered diagram key: hovered, its popup (D45) painted with its cap, inside its bounds and clear of
+// the key, the panel unchanged, painted whole; a modifier
 // key also its mark and its lines (its own actions, the primary first, then its chords in order; Right Shift lists
 // RShift+O, Left Shift does not; the right-side keys have no action of their own)
 void FSOLSolidMenuSmoke::CheckDiagramHover(const TCHAR* id, const int32 hoverIndex, const int32 key)
@@ -4842,12 +4913,15 @@ void FSOLSolidMenuSmoke::CheckDiagramHover(const TCHAR* id, const int32 hoverInd
     const FSOLDiagramPanel& panel = diagram->GetPanel();
     const bool bPanelFixed = SolidSmokeSamePanel(panel, mDiagramPanel);
 
-    // D36: the hovered key's cap on its own row above the lines (its row fits a key cap, the lines start under it) and
-    // no wider than the strip; the rows within the strip's fixed line budget
-    const bool bCapRow = diagram->GetDetailCapWidth() > 0.0f && diagram->GetDetailCapWidth() <= panel.Detail.GetSize().X
+    // D45: the hovered key's cap on its own row above the lines (its row fits a key cap) and no wider than the
+    // popup's content; the rows within the line cap; the popup painted inside its bounds, clear of the key
+    const bool bCapRow = diagram->GetDetailCapWidth() > 0.0f
+        && diagram->GetDetailCapWidth() <= SOLKeyboardLayout::PopupWrapWidth()
         && SOL::Help::KEYCAP_HEIGHT <= SOL::Help::DIAGRAM_DETAIL_CAP_HEIGHT;
-    bool bOk = diagram->GetHoveredKey() == key && !lines.IsEmpty() && rows <= panel.DetailLines
-        && diagram->WasPaintedWhole() && bCapRow && bPanelFixed;
+    FString popupDetail;
+    const bool bPopup = SolidSmokePopupPlaced(*diagram, popupDetail);
+    bool bOk = diagram->GetHoveredKey() == key && !lines.IsEmpty() && rows <= SOL::Help::DIAGRAM_DETAIL_LINES
+        && diagram->WasPaintedWhole() && bCapRow && bPanelFixed && bPopup;
 
     // The lines as shown, for the log (and for settling DIAGRAM_DETAIL_LINES)
     FString shown;
@@ -4912,10 +4986,10 @@ void FSOLSolidMenuSmoke::CheckDiagramHover(const TCHAR* id, const int32 hoverInd
         modifierDetail = FString::Printf(TEXT(", modifier %d, own %d, chords %d, lines own-then-chords %d, "
             "RShift+O %d"), diagramKey.bModifier ? 1 : 0, own, diagramKey.ChordCount, bLines ? 1 : 0, bRShiftO ? 1 : 0);
     }
-    Check(*label, bOk, FString::Printf(TEXT("hovered %d (want %d), %d lines in %d rows (strip %d), cap %.1f on its row "
-        "%d, panel fixed %d, whole %d%s: %s"), diagram->GetHoveredKey(), key, lines.Num(), rows, panel.DetailLines,
+    Check(*label, bOk, FString::Printf(TEXT("hovered %d (want %d), %d lines in %d rows, cap %.1f on its row %d, panel "
+        "fixed %d, whole %d, %s%s: %s"), diagram->GetHoveredKey(), key, lines.Num(), rows,
         diagram->GetDetailCapWidth(), bCapRow ? 1 : 0, bPanelFixed ? 1 : 0, diagram->WasPaintedWhole() ? 1 : 0,
-        *modifierDetail, *shown));
+        *popupDetail, *modifierDetail, *shown));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -5146,27 +5220,102 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
         return false;
     }
     case 5:
-        // A key hovered: its strip read (D43: in view at the tab's top) and shot
+        // D45: the hover popup over several caps; the page's layout at rest kept to compare with
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        mHelpHover = 0;
+        mHelpRestPanel = page->GetDiagram() != nullptr ? page->GetDiagram()->GetPanel() : FSOLDiagramPanel();
+        mHelpRestEnd = page->GetTabScroll(0) != nullptr ? page->GetTabScroll(0)->GetScrollOffsetOfEnd() : -1.0f;
+        toStage(40);
+        return false;
+    case 40:
+    {
+        // The next cap scrolled into the tab's view (its centre to the view's centre, within the scroll's range)
+        const USOLKeyboardDiagram* diagram = page->GetDiagram();
+        UScrollBox* scroll = page->GetTabScroll(0);
+        const int32 cap = SolidSmokeHelpHoverCap(SOLID_SMOKE_HELP_HOVERS[mHelpHover]);
+        if (diagram != nullptr && scroll != nullptr && cap != INDEX_NONE)
+        {
+            const FSOLDiagramPanel& panel = diagram->GetPanel();
+            const FBox2f units = SOLKeyboardLayout::KeyRect(cap, panel.Scale.Placement);
+            const float capY = 0.5f * (SOLKeyboardLayout::FromUnits(units.Min, panel.Scale).Y
+                + SOLKeyboardLayout::FromUnits(units.Max, panel.Scale).Y);
+            const FGeometry& scrollGeometry = scroll->GetCachedGeometry();
+            const FGeometry diagramGeometry = SolidSmokeArrangedGeometry(diagram, scroll);
+            const float capInScroll = static_cast<float>(FVector2D(scrollGeometry.AbsoluteToLocal(
+                diagramGeometry.LocalToAbsolute(FVector2D(0.0, capY)))).Y);
+            const float viewCentre = 0.5f * static_cast<float>(scrollGeometry.GetLocalSize().Y);
+            scroll->SetScrollOffset(FMath::Clamp(scroll->GetScrollOffset() + capInScroll - viewCentre, 0.0f,
+                scroll->GetScrollOffsetOfEnd()));
+        }
+        toStage(41);
+        return false;
+    }
+    case 41:
+        // The scroll applied, the cap hovered (a mirror cap hovers its main key, the popup goes by the cap)
+        if (sinceFrames < SOLID_SMOKE_SCROLL_FRAMES)
+        {
+            return false;
+        }
+        if (page->GetDiagram() != nullptr)
+        {
+            page->GetDiagram()->SetHoveredKey(SolidSmokeHelpHoverCap(SOLID_SMOKE_HELP_HOVERS[mHelpHover]));
+        }
+        toStage(42);
+        return false;
+    case 42:
+    {
+        // Settled: the popup painted inside the page and the shell, clear of the cap, the page's layout unchanged;
+        // a shot of each
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const FSolidSmokeHelpHover& hover = SOLID_SMOKE_HELP_HOVERS[mHelpHover];
+        FString detail;
+        const bool bPopup = page->GetSelectedTab() == 0 && ReadHelpPopup(*page, *shell,
+            SolidSmokeHelpHoverCap(hover), hover.KeyName, detail);
+        verdict(bPause ? FString(TEXT("popup")) : FString::Printf(TEXT("%s-popup-%s"), prefix, hover.Name), bPopup,
+            detail);
+        TakeUiShot(mHelpHover == 0 ? *FString::Printf(TEXT("%s-keys-hover"), *shot)
+            : *FString::Printf(TEXT("%s-keys-hover-%s"), *shot, hover.Name));
+        ++mHelpHover;
+        toStage(bPause || mHelpHover >= static_cast<int32>(UE_ARRAY_COUNT(SOLID_SMOKE_HELP_HOVERS)) ? 43 : 40);
+        return false;
+    }
+    case 43:
+        // The hover cleared and the tab back at its top
         if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
         {
             return false;
         }
         if (page->GetDiagram() != nullptr)
         {
-            page->GetDiagram()->SetHoveredKey(SOLKeyboardLayout::FindKey(SOLID_SMOKE_HELP_HOVER_KEY));
+            page->GetDiagram()->SetHoveredKey(INDEX_NONE);
         }
-        toStage(6);
+        if (page->GetTabScroll(0) != nullptr)
+        {
+            page->GetTabScroll(0)->ScrollToStart();
+        }
+        toStage(44);
         return false;
-    case 6:
-        if (sinceS < SOLID_SMOKE_SETTLE_S)
+    case 44:
+    {
+        // No hover: the leaf painted and no popup with it
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
         {
             return false;
         }
-    {
-        FString detail;
-        const bool bStrip = page->GetSelectedTab() == 0 && ReadHelpStrip(*page, detail);
-        verdict(bPause ? FString(TEXT("strip")) : FString::Printf(TEXT("%s-strip"), prefix), bStrip, detail);
-        TakeUiShot(*FString::Printf(TEXT("%s-keys-hover"), *shot));
+        const USOLKeyboardDiagram* diagram = page->GetDiagram();
+        const TSharedPtr<SSOLKeyboardDiagram> leaf = diagram != nullptr ? diagram->GetLeaf() : nullptr;
+        const bool bHidden = leaf.IsValid() && diagram->GetHoveredKey() == INDEX_NONE && !leaf->WasPopupPainted()
+            && leaf->GetPaintedKeyCount() == SOLKeyboardLayout::KeyCount();
+        verdict(bPause ? FString(TEXT("popup-hidden")) : FString::Printf(TEXT("%s-popup-hidden"), prefix), bHidden,
+            FString::Printf(TEXT("hovered %d, popup painted %d, keys painted %d"), diagram != nullptr
+            ? diagram->GetHoveredKey() : -2, leaf.IsValid() && leaf->WasPopupPainted() ? 1 : 0, leaf.IsValid()
+            ? leaf->GetPaintedKeyCount() : 0));
         toStage(7);
         return false;
     }
@@ -5737,38 +5886,51 @@ bool FSOLSolidMenuSmoke::ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageW
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33d-iii, D43) Reads the Keyboard tab's hover strip with a key hovered: under the legend and above the diagram, in
-// the tab's view at scroll offset 0, showing the key
-bool FSOLSolidMenuSmoke::ReadHelpStrip(USOLReadOnlyPageWidget& page, FString& outDetail)
+// (33e-iii, D45) Reads the Keyboard tab's hover popup over a cap: the cap hovered and in the tab's view, the popup
+// painted inside its bounds (the page less the edge pad) and inside the shell, clear of the cap, the page's layout as
+// at rest (the panel and the scroll's range)
+bool FSOLSolidMenuSmoke::ReadHelpPopup(USOLReadOnlyPageWidget& page, const USOLSolidPanel& shell, const int32 cap,
+    const TCHAR* keyName, FString& outDetail)
 {
     const USOLKeyboardDiagram* diagram = page.GetDiagram();
     const UScrollBox* scroll = page.GetTabScroll(0);
-    if (diagram == nullptr || scroll == nullptr)
+    const TSharedPtr<SSOLKeyboardDiagram> leaf = diagram != nullptr ? diagram->GetLeaf() : nullptr;
+    if (diagram == nullptr || scroll == nullptr || !leaf.IsValid())
     {
-        outDetail = TEXT("no diagram or tab scroll");
+        outDetail = TEXT("no diagram, leaf or tab scroll");
         return false;
     }
-    const FSOLDiagramPanel& panel = diagram->GetPanel();
-    const FGeometry diagramGeometry = SolidSmokeArrangedGeometry(diagram, scroll);
-    const FVector2D stripMin = diagramGeometry.LocalToAbsolute(FVector2D(panel.Detail.Min));
-    const FVector2D stripMax = diagramGeometry.LocalToAbsolute(FVector2D(panel.Detail.Max));
+    FString placed;
+    const bool bPlaced = SolidSmokePopupPlaced(*diagram, placed);
+    const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
+    const USOLKeyboardDiagramPopup* popup = page.GetDiagramPopup();
+    const FGeometry layerGeometry = popup != nullptr ? popup->GetCachedGeometry() : FGeometry();
+    // Converts a box from the popup layer's local space to absolute (desktop) space, where the cached geometries are
+    const auto toAbsolute = [&layerGeometry](const FBox2f& box)
+    {
+        return FBox2f(FVector2f(layerGeometry.LocalToAbsolute(FVector2D(box.Min))),
+            FVector2f(layerGeometry.LocalToAbsolute(FVector2D(box.Max))));
+    };
+    const FGeometry& shellGeometry = shell.GetCachedGeometry();
+    const FVector2D shellMin = shellGeometry.GetAbsolutePosition();
+    const FVector2D shellMax = shellMin + shellGeometry.GetAbsoluteSize();
+    const FBox2f rect = toAbsolute(leaf->GetPopupRect());
+    const bool bInShell = rect.Min.X >= shellMin.X - tol && rect.Min.Y >= shellMin.Y - tol
+        && rect.Max.X <= shellMax.X + tol && rect.Max.Y <= shellMax.Y + tol;
     const FGeometry& scrollGeometry = scroll->GetCachedGeometry();
     const FVector2D viewMin = scrollGeometry.GetAbsolutePosition();
     const FVector2D viewMax = viewMin + scrollGeometry.GetAbsoluteSize();
-    const double tol = SOLID_SMOKE_FIT_TOLERANCE_PX;
-    const bool bOrder = panel.Detail.Min.Y >= panel.Legend.Max.Y && panel.Detail.Max.Y <= panel.Diagram.Min.Y;
-    const bool bTop = FMath::IsNearlyZero(scroll->GetScrollOffset(), SOLID_SMOKE_SCROLL_TOLERANCE);
-    const bool bInView = stripMin.X >= viewMin.X - tol && stripMax.X <= viewMax.X + tol
-        && stripMin.Y >= viewMin.Y - tol && stripMax.Y <= viewMax.Y + tol;
-    const bool bShown = diagram->GetHoveredKey() != INDEX_NONE && diagram->GetDetailCapWidth() > 0.0f
-        && diagram->GetDetailRowCount() > 0;
-    outDetail = FString::Printf(TEXT("strip y %.0f-%.0f x %.0f-%.0f in view y %.0f-%.0f x %.0f-%.0f (in view %d), "
-        "panel legend bottom %.1f, strip %.1f-%.1f, diagram top %.1f (order %d), scroll offset %.1f, hovered %d, cap "
-        "row %.1f, %d lines"), stripMin.Y, stripMax.Y, stripMin.X, stripMax.X, viewMin.Y, viewMax.Y, viewMin.X,
-        viewMax.X, bInView ? 1 : 0, panel.Legend.Max.Y, panel.Detail.Min.Y, panel.Detail.Max.Y, panel.Diagram.Min.Y,
-        bOrder ? 1 : 0, scroll->GetScrollOffset(), diagram->GetHoveredKey(), diagram->GetDetailCapWidth(),
-        diagram->GetDetailRowCount());
-    return bOrder && bTop && bInView && bShown;
+    const FBox2f key = toAbsolute(leaf->GetPopupKeyRect());
+    const bool bKeyInView = key.Min.Y >= viewMin.Y - tol && key.Max.Y <= viewMax.Y + tol;
+    const bool bLayout = SolidSmokeSamePanel(diagram->GetPanel(), mHelpRestPanel)
+        && FMath::IsNearlyEqual(scroll->GetScrollOffsetOfEnd(), mHelpRestEnd, SOLID_SMOKE_SCROLL_TOLERANCE);
+    const bool bHovered = cap != INDEX_NONE && diagram->GetHoverAnchor() == cap
+        && diagram->GetHoveredKey() != INDEX_NONE && !diagram->GetDetailLines().IsEmpty();
+    outDetail = FString::Printf(TEXT("%s cap %d (anchor %d, key %d), %s, shell %.0f,%.0f-%.0f,%.0f (inside %d), cap in "
+        "view %d (view y %.0f-%.0f, offset %.1f), layout as at rest %d"), keyName, cap, diagram->GetHoverAnchor(),
+        diagram->GetHoveredKey(), *placed, shellMin.X, shellMin.Y, shellMax.X, shellMax.Y, bInShell ? 1 : 0,
+        bKeyInView ? 1 : 0, viewMin.Y, viewMax.Y, scroll->GetScrollOffset(), bLayout ? 1 : 0);
+    return popup != nullptr && bHovered && bPlaced && bInShell && bKeyInView && bLayout;
 }
 
 //////////////////////////////////////////////////////////////////////////

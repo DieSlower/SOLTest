@@ -253,6 +253,30 @@ Builds on: D24, D27. Depends on 33d-ii. SDD section 9.
    user: the Keyboard image shows the diagram only down to the fold (the bottom row, space bar and mouse are below it)
    and every glossary image shows the first rows of its tab only (one window shot per tab, as section 9 says).
 
+### 33e-iii: the hover popup and scrolled guide shots (D45, D46; opus/high)
+
+Builds on: D45 (supersedes D36, D43), D46. Depends on 33e. SDD sections 7, 9, 11, 20.
+
+1. [x] Tests first by a separate opus/high author from a contract (no production code shown): `KeyboardLayoutTest`
+   (the panel without the strip: `PanelHint`; `PopupSize`, `PlacePopup`), `KeyboardDiagramTest` (the budget test
+   deleted, panels compared by `Hint`), `PlayerGuideTest` (`TabPages`, `PageCount`, `PageFileName`, the multi-page
+   `Shots` / `ReferencedImages` / `ImagesExist`); red on stubs (9 of 50 in the three topics), then green.
+2. [x] The strip removed (`LayoutPanel(width, other, unbound)`: legend, hint, diagram, Other, Unbound); the popup:
+   `SSOLKeyboardDiagram::PaintPopup` from `SSOLKeyboardDiagramPopupLayer` / `USOLKeyboardDiagramPopup` over the page
+   (an overlay the Help page and the 33c test page put around their content), the hover anchor for mirror caps.
+3. [x] The guide: `PLAYER_GUIDE_TAB_PAGES` measured by the writer (2, 4, 2, 4, 3 at 1920x1080), the scrolled shots,
+   the guide and 16 images regenerated.
+4. [x] Smokes rewritten for the popup (`w-help-popup-*`, `w-help-large-popup-*`, `-popup-hidden`, `k-diagram-popup-all`,
+   the 33c hover checks, the profile's diagram passes check the popup), screenshots looked at.
+5. [x] Review (fresh opus/xhigh); fixes; full suite and all smokes; profile; commit `Issue #33: Part 33e-iii - hover
+   popup and scrolled guide shots`; push.
+
+   **Done (2026-11-08, SDD 20 and 14.6):** full suite 1729 / 0; `-SOLSmokeSolidMenu` 275 / 275, the profile 23 / 23
+   (three runs, medians in SDD 14.6, the popup within noise of the plain diagram), HoloMenu 86 / 86, Overlay 34 / 34,
+   Hud 24 / 24 at 1280x720 and 1920x1080 (the settings file restored), HoloMenu profile 12 / 12; the guide 16,110 bytes
+   with 16 images (12.2 MB); the review (no must-fix, 4 should-fix, nits) fixed except the writer's drawn-offset check
+   (kept as a requested-offset sanity check: `SScrollBox` exposes no drawn offset).
+
 ### 33e-ii: screenshot crops for the map glossary rows (D39; opus/high; grill-me the open points first)
 
 Builds on: D39. Depends on 33d-ii (the rows) and 33e (the shot-taking writer). Until this part the five rows (orbit
@@ -353,3 +377,6 @@ Builds on: D25.
 - 2026-11-08: 33e done (SDD 20): `-SOLWritePlayerGuide` and `Tools\WritePlayerGuide.bat` write the generated
   `Docs/PLAYER_GUIDE.md` and its six images (about 0.8 MB each after the lossless recompression);
   `SOLTest.PlayerGuide.UpToDate` and `ImagesExist`. Next: 33e-ii (grill-me first) or 33f.
+- 2026-11-08: 33e-iii done (SDD 20, 14.6): D45 (the hover popup over the page, the strip removed) and D46 (scrolled
+  guide shots: 15 tab pages plus the hover shot). Full suite 1729 / 0, all smokes green, the popup inside the profile
+  budget. Next: 33e-ii (grill-me first) or 33f.

@@ -350,8 +350,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* GLOSSARY_TABS[] = { TEXT("Flight HUD"), TEXT("Targets and radar"),
         TEXT("Overlays and route"), TEXT("Menus and map") };
 
-    // Keyboard tab (SDD 33 section 7): the detail strip with no key hovered, the strip of bound keys off the diagram
-    // and a key's "+N" badge ({0} = the further actions on it)
+    // Keyboard tab (SDD 33 section 7): the hint above the diagram (D45: the detail is a hover popup), the strip of
+    // bound keys off the diagram and a key's "+N" badge ({0} = the further actions on it)
     inline constexpr const TCHAR* HELP_DETAIL_HINT = TEXT("Hover a key to see what it does");
     inline constexpr const TCHAR* HELP_OTHER_KEYS = TEXT("Other keys");
     inline constexpr const TCHAR* HELP_EXTRA_BADGE_FORMAT = TEXT("+{0}");
@@ -460,7 +460,7 @@ namespace SOLMenuText
 
     // D38: a keyboard diagram legend used only when the layout legend (SOLKeyboardLayout) does not fit its key cap, by
     // engine key name (the numpad Enter mirror shares "Enter" with the main Enter, which fits and keeps its legend). At
-    // most SOL::Help::DIAGRAM_ABBREVIATION_MAX_CHARS characters and shorter than the layout legend; the hover strip
+    // most SOL::Help::DIAGRAM_ABBREVIATION_MAX_CHARS characters and shorter than the layout legend; the hover popup
     // always shows the key's full name
     struct FDiagramLegendAbbreviation
     {
@@ -695,6 +695,8 @@ namespace SOLMenuText
     inline constexpr const TCHAR* GUIDE_KEY_CLOSE = TEXT("</kbd>");
     inline constexpr TCHAR GUIDE_TABLE_ROW_FORMAT[] = TEXT("| %s | %s |");    // A two-column row (Printf: an array)
     inline constexpr const TCHAR* GUIDE_IMAGE_FORMAT = TEXT("![{0}]({1})");
+    // D46: a scrolled shot's alt text ({0} the first shot's alt text, {1} the 1-based page, {2} the tab's pages)
+    inline constexpr const TCHAR* GUIDE_IMAGE_PART_FORMAT = TEXT("{0}, part {1} of {2}");
 
     // Info page headings
     inline constexpr const TCHAR* INFO_TITLE = TEXT("Info");

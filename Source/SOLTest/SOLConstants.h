@@ -1592,22 +1592,32 @@ namespace SOL
                                                                   // clusters and the mouse under the main block
         inline constexpr float DIAGRAM_TINT_ALPHA = 0.28f;        // Area-colour fill over an assigned key's face
         inline constexpr float DIAGRAM_FREE_ALPHA = 0.45f;        // A key with no assignment is drawn at this alpha
-        // D36: the cap on the hover strip's lines (the strip is sized once per width and model for the busiest key's
-        // wrapped rows, at most this many), and the height of its cap row above the lines
+        // The cap on the hover popup's wrapped lines (D45; was D36's strip budget cap) and the height of its cap row
+        // above the lines
         inline constexpr int32 DIAGRAM_DETAIL_LINES = 24;
         inline constexpr float DIAGRAM_DETAIL_CAP_HEIGHT = 30.0f;
+        // D45: the hover popup over the page (SOLKeyboardLayout::PopupSize / PlacePopup): its widest outer width, its
+        // content inset, its gap to the hovered key and its inset from the page's edges
+        inline constexpr float DIAGRAM_POPUP_MAX_WIDTH = 480.0f;
+        inline constexpr float DIAGRAM_POPUP_PAD = 20.0f;   // The Panel hull draws ~7-12 inside its quad
+        inline constexpr float DIAGRAM_POPUP_GAP = 6.0f;
+        inline constexpr float DIAGRAM_POPUP_EDGE_PAD = 8.0f;
+        // D45: the popup's lines wrap this much narrower than PopupWrapWidth (a margin for the shaped text, which the
+        // wrap calibrates its font measure against, and the popup is sized from)
+        inline constexpr float DIAGRAM_POPUP_WRAP_SLACK = 4.0f;
         inline constexpr float DIAGRAM_BADGE_GAP = 2.0f;          // D35: a key's legend to its "+N" badge
         inline constexpr int32 DIAGRAM_ABBREVIATION_MAX_CHARS = 4; // D38: a diagram legend abbreviation's length cap
         inline constexpr float DIAGRAM_NO_LED_X = -1.0f;          // D38: the keys' hull LedX (< 0: no LED)
         // The Keyboard tab's panel (33c, SOLKeyboardLayout::LayoutPanel): the area legend grid, the gap between its
-        // sections, the "Other keys" strip, the "Unbound" line and one hover strip line
+        // sections, the "Other keys" strip, the "Unbound" line, the hint line (D45) and one hover popup line
         inline constexpr float DIAGRAM_LEGEND_ITEM_WIDTH = 104.0f; // One legend item (swatch and area name)
         inline constexpr float DIAGRAM_LEGEND_GAP = 8.0f;         // Between legend items
         inline constexpr float DIAGRAM_LEGEND_ROW_HEIGHT = 22.0f; // One legend grid row
         inline constexpr float DIAGRAM_SECTION_GAP = 12.0f;       // Between the panel's shown sections
         inline constexpr float DIAGRAM_STRIP_HEIGHT = 40.0f;      // The "Other keys" strip
         inline constexpr float DIAGRAM_UNBOUND_HEIGHT = 22.0f;    // The "Unbound" line
-        inline constexpr float DIAGRAM_DETAIL_LINE_HEIGHT = 22.0f; // One hover strip line
+        inline constexpr float DIAGRAM_DETAIL_LINE_HEIGHT = 22.0f; // One hover popup line
+        inline constexpr float DIAGRAM_HINT_HEIGHT = 22.0f;       // D45: the "Hover a key" hint line
         // The diagram leaf's drawing (33c, SSOLKeyboardDiagram; settled from the 33c screenshots)
         inline constexpr float DIAGRAM_KEY_INSET = 1.5f;          // A key's hull inside its layout rect, a side
         inline constexpr float DIAGRAM_KEY_PAD = 2.0f;            // Key content to the hull edge
@@ -2041,6 +2051,15 @@ namespace SOL
         inline constexpr const TCHAR* PLAYER_GUIDE_IMAGE_GLOSSARY[] = { TEXT("33-help-glossary-flight-hud.png"),
             TEXT("33-help-glossary-targets-radar.png"), TEXT("33-help-glossary-overlays-route.png"),
             TEXT("33-help-glossary-menus-map.png") };
+        // D46: the window shots each Help tab needs at 1920x1080 to show all of it, in ESOLHelpTab order (Keyboard,
+        // FlightHud, TargetsRadar, OverlaysRoute, MenusMap); the -SOLWritePlayerGuide run measures each tab's scroll
+        // extent (SOLPlayerGuide::PageCount) and fails when it differs from this table
+        inline constexpr int32 PLAYER_GUIDE_TAB_PAGES[] = { 2, 4, 2, 4, 3 };
+        inline constexpr int32 PLAYER_GUIDE_MAX_PAGES = 8;            // A tab's shots, at most
+        inline constexpr float PLAYER_GUIDE_PAGE_OVERLAP = 0.0f;      // A scrolled shot repeats this much of the last
+                                                                      // one's bottom (menu units; 0: the shots adjoin,
+                                                                      // the last one aligned to the tab's end)
+        inline constexpr float PLAYER_GUIDE_SCROLL_TOLERANCE = 0.5f;  // A scroll extent up to this is no scroll
         // Before an image's name where the -SOLWritePlayerGuide run captures it (FPaths::ScreenShotDir()), until the
         // run has every shot and moves them into PLAYER_GUIDE_IMAGE_DIR
         inline constexpr const TCHAR* PLAYER_GUIDE_CAPTURE_PREFIX = TEXT("PlayerGuide_");

@@ -75,5 +75,7 @@ private:
     double mRunS = 0.0;                                // Seconds since the run began (the watchdog)
     double mLastTimeS = 0.0;                           // Platform time of the last update
     double mLastFileCheckS = 0.0;                      // Stage time of the last capture size check
+    float mViewHeight = 0.0f;                          // D46: the shown tab's scroll view height and largest offset,
+    float mScrollEnd = 0.0f;                           // measured on its first page (menu units)
     bool mIsFinished = false;                          // The quit has been requested
 };

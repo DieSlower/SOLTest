@@ -18,10 +18,11 @@
 // Tests for the issue #33 Part 33c keyboard diagram widget (Docs/SDDs/33-player-documentation.md sections 7, 10 and 11,
 // D13, D32), written against the header contract (Menu/SOLKeyboardDiagram.h) before the production code existed. They
 // pin USOLKeyboardDiagram's headless state: the model rebuilt only when the keys change, the panel laid out in the
-// layout width, the hover from a local point or an index (a mirror key hovers its main key), the hover strip's lines
-// and the paint verification before any paint. No test calls TakeWidget; the Slate painting is checked by the smoke.
-// The 33c revision (contract section E, D34-D37), also test-first: the hover strip's line budget (GetDetailLineBudget,
-// GetPanel().DetailLines), the panel fixed while hovering, and the measured shell width stacking.
+// layout width, the hover from a local point or an index (a mirror key hovers its main key), the hovered key's detail
+// lines and the paint verification before any paint. No test calls TakeWidget; the Slate painting is checked by the
+// smoke. The 33c revision (contract section E, D34-D37), also test-first: the panel fixed while hovering and the
+// measured shell width stacking. Part 33e-iii (D45): the hover strip gives way to a popup, so the panel is
+// LayoutPanel(width, overflow, unbound) with the hint line and no line budget.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -91,14 +92,6 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the headless hover strip budget the contract (E.6) gives a model: max(1, MaxDetailCount) clamped to
-    // DIAGRAM_DETAIL_LINES
-    int32 KeyboardDiagramTestBudget(const FSOLKeyDiagramModel& model)
-    {
-        return FMath::Clamp(FMath::Max(1, SOLKeyDiagram::MaxDetailCount(model)), 1, SOL::Help::DIAGRAM_DETAIL_LINES);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Asserts two panels are the same in every box and field (D36: hovering never changes the panel)
     void KeyboardDiagramTestSamePanel(FAutomationTestBase& test, const FString& what, const FSOLDiagramPanel& actual,
         const FSOLDiagramPanel& expected)
@@ -109,32 +102,28 @@ namespace
         test.TestTrue(what + TEXT(": short labels"), actual.Scale.bShortLabels == expected.Scale.bShortLabels);
         test.TestEqual(what + TEXT(": legend columns"), actual.LegendColumns, expected.LegendColumns);
         test.TestEqual(what + TEXT(": legend rows"), actual.LegendRows, expected.LegendRows);
-        const FBox2f* actualBoxes[] = { &actual.Legend, &actual.Diagram, &actual.Other, &actual.Unbound,
-            &actual.Detail };
-        const FBox2f* expectedBoxes[] = { &expected.Legend, &expected.Diagram, &expected.Other, &expected.Unbound,
-            &expected.Detail };
-        const TCHAR* boxNames[] = { TEXT("legend"), TEXT("diagram"), TEXT("other keys"), TEXT("unbound"),
-            TEXT("detail") };
+        const FBox2f* actualBoxes[] = { &actual.Legend, &actual.Hint, &actual.Diagram, &actual.Other,
+            &actual.Unbound };
+        const FBox2f* expectedBoxes[] = { &expected.Legend, &expected.Hint, &expected.Diagram, &expected.Other,
+            &expected.Unbound };
+        const TCHAR* boxNames[] = { TEXT("legend"), TEXT("hint"), TEXT("diagram"), TEXT("other keys"),
+            TEXT("unbound") };
         for (int32 box = 0; box < static_cast<int32>(UE_ARRAY_COUNT(boxNames)); ++box)
         {
             test.TestTrue(FString::Printf(TEXT("%s: %s unchanged"), *what, boxNames[box]),
                 actualBoxes[box]->Min == expectedBoxes[box]->Min && actualBoxes[box]->Max == expectedBoxes[box]->Max);
         }
-        test.TestEqual(what + TEXT(": detail lines"), actual.DetailLines, expected.DetailLines);
         test.TestEqual(what + TEXT(": height"), actual.Height, expected.Height);
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Asserts the widget's panel is SOLKeyboardLayout::LayoutPanel's for a width, the shown strips and the headless
-    // hover strip budget of its model (E.6)
+    // Asserts the widget's panel is SOLKeyboardLayout::LayoutPanel's for a width and the shown strips (D45: no line
+    // budget, the hint in place of the hover strip)
     void KeyboardDiagramTestCheckPanel(FAutomationTestBase& test, const FString& what,
         const USOLKeyboardDiagram& widget, const float width, const bool bOtherKeys, const bool bUnbound)
     {
         const FSOLDiagramPanel& actual = widget.GetPanel();
-        const int32 budget = KeyboardDiagramTestBudget(widget.GetModel());
-        const FSOLDiagramPanel expected = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound, budget);
-        test.TestEqual(what + TEXT(": budget"), widget.GetDetailLineBudget(), budget);
-        test.TestEqual(what + TEXT(": detail lines are the budget"), actual.DetailLines, budget);
+        const FSOLDiagramPanel expected = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound);
         test.TestTrue(what + TEXT(": placement"), actual.Scale.Placement == expected.Scale.Placement);
         test.TestEqual(what + TEXT(": unit"), actual.Scale.UnitPx, expected.Scale.UnitPx,
             KEYBOARDDIAGRAMTEST_TOLERANCE);
@@ -144,15 +133,16 @@ namespace
         test.TestEqual(what + TEXT(": legend columns"), actual.LegendColumns, expected.LegendColumns);
         test.TestEqual(what + TEXT(": legend rows"), actual.LegendRows, expected.LegendRows);
         KeyboardDiagramTestCheckBox(test, what + TEXT(": legend"), actual.Legend, expected.Legend);
+        KeyboardDiagramTestCheckBox(test, what + TEXT(": hint"), actual.Hint, expected.Hint);
         KeyboardDiagramTestCheckBox(test, what + TEXT(": diagram"), actual.Diagram, expected.Diagram);
         KeyboardDiagramTestCheckBox(test, what + TEXT(": other keys"), actual.Other, expected.Other);
         KeyboardDiagramTestCheckBox(test, what + TEXT(": unbound"), actual.Unbound, expected.Unbound);
-        KeyboardDiagramTestCheckBox(test, what + TEXT(": detail"), actual.Detail, expected.Detail);
         test.TestEqual(what + TEXT(": height"), actual.Height, expected.Height, KEYBOARDDIAGRAMTEST_TOLERANCE);
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Asserts the widget's hover strip lines are DetailAssignments + DetailLine of its hovered key over its model
+    // Asserts the widget's detail lines (the hover popup's) are DetailAssignments + DetailLine of its hovered key over
+    // its model
     void KeyboardDiagramTestCheckLines(FAutomationTestBase& test, const FString& what,
         const USOLKeyboardDiagram& widget, const TArray<FString>& keys)
     {
@@ -448,7 +438,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramDetailLinesTest, "SOLTest.Ke
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The hovered key's strip lines are SOLKeyDiagram::DetailAssignments + DetailLine over the widget's model, for every
+// The hovered key's detail lines are SOLKeyDiagram::DetailAssignments + DetailLine over the widget's model, for every
 // key (a free key none, a modifier its own actions then its chords, D32 revised; Right Shift, Right Ctrl and Left Ctrl
 // checked by name); no hover, no lines
 bool FSOLKeyboardDiagramDetailLinesTest::RunTest(const FString& /*parameters*/)
@@ -565,7 +555,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramHeadlessTest, "SOLTest.Keybo
 
 //////////////////////////////////////////////////////////////////////////
 // Without a leaf the paint verification reads false, 0 and null, before and after the state is set: no legend
-// clipped or abbreviated, no badge hidden, no wide legend, no strip rows or cap, no key material
+// clipped or abbreviated, no badge hidden, no wide legend, no popup rows or caption, no key material
 bool FSOLKeyboardDiagramHeadlessTest::RunTest(const FString& /*parameters*/)
 {
     USOLKeyboardDiagram* const widget = KeyboardDiagramTestNew();
@@ -583,8 +573,8 @@ bool FSOLKeyboardDiagramHeadlessTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("state set: no keys painted"), widget->GetPaintedKeyCount(), 0);
     TestEqual(TEXT("state set: no badges hidden"), widget->GetPaintedHiddenBadges(), 0);
     TestEqual(TEXT("state set: no wide legends"), widget->GetWideLegendCount(), 0);
-    TestEqual(TEXT("state set: no strip rows"), widget->GetDetailRowCount(), 0);
-    TestEqual(TEXT("state set: no strip cap"), widget->GetDetailCapWidth(), 0.0f);
+    TestEqual(TEXT("state set: no popup rows"), widget->GetDetailRowCount(), 0);
+    TestEqual(TEXT("state set: no popup caption"), widget->GetDetailCapWidth(), 0.0f);
     TestNull(TEXT("state set: no key material"), widget->GetKeyMaterial());
 
     // A few keys, the hovered one, a long legend and the numpad Enter mirror among them: nothing drawn, nothing fitted
@@ -608,63 +598,6 @@ bool FSOLKeyboardDiagramHeadlessTest::RunTest(const FString& /*parameters*/)
         TestFalse(what + TEXT(": legend not abbreviated"), widget->IsLegendAbbreviated(key));
         TestFalse(what + TEXT(": badge not hidden"), widget->IsBadgeHidden(key));
     }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramBudgetTest, "SOLTest.KeyboardDiagram.DetailLineBudget",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// Headless, the hover strip's budget (E.6, D36) is max(1, MaxDetailCount(model)) clamped to DIAGRAM_DETAIL_LINES and
-// GetPanel().DetailLines equals it: 1 for a fresh widget, the busiest key's count at the defaults, the cap when a
-// rebind piles every binding onto one key, and back after the rebind is undone
-bool FSOLKeyboardDiagramBudgetTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOL::Help;
-    USOLKeyboardDiagram* const widget = KeyboardDiagramTestNew();
-    if (!TestNotNull(TEXT("the widget was created"), widget))
-    {
-        return true;
-    }
-    TestEqual(TEXT("fresh: a one-line budget"), widget->GetDetailLineBudget(), 1);
-    TestEqual(TEXT("fresh: the panel's detail lines"), widget->GetPanel().DetailLines, 1);
-
-    // The defaults at the shell width and a wide one
-    const TArray<FString> defaults = SOLKeyBindings::DefaultKeys();
-    widget->SetKeys(defaults);
-    const float widths[] = { KEYBOARDDIAGRAMTEST_NARROW, KEYBOARDDIAGRAMTEST_WIDE };
-    for (const float width : widths)
-    {
-        widget->SetLayoutWidth(width);
-        const FString what = FString::Printf(TEXT("defaults, width %.0f"), width);
-        const int32 budget = KeyboardDiagramTestBudget(widget->GetModel());
-        TestTrue(what + TEXT(": the busiest key has lines"), SOLKeyDiagram::MaxDetailCount(widget->GetModel()) > 0);
-        TestEqual(what + TEXT(": budget"), widget->GetDetailLineBudget(), budget);
-        TestEqual(what + TEXT(": the panel's detail lines are the budget"), widget->GetPanel().DetailLines, budget);
-        KeyboardDiagramTestCheckPanel(*this, what, *widget, width, widget->GetModel().Overflow.Num() > 0,
-            widget->GetModel().Unbound.Num() > 0);
-    }
-
-    // Every binding piled onto K: more lines than the cap, so the budget is the cap
-    TArray<FString> piled = defaults;
-    for (FString& key : piled)
-    {
-        key = TEXT("K");
-    }
-    widget->SetKeys(piled);
-    const int32 piledMax = SOLKeyDiagram::MaxDetailCount(widget->GetModel());
-    TestTrue(FString::Printf(TEXT("piled: the busiest key (%d) is over the cap (%d)"), piledMax,
-        DIAGRAM_DETAIL_LINES), piledMax > DIAGRAM_DETAIL_LINES);
-    TestEqual(TEXT("piled: the budget is the cap"), widget->GetDetailLineBudget(), DIAGRAM_DETAIL_LINES);
-    TestEqual(TEXT("piled: the panel's detail lines are the cap"), widget->GetPanel().DetailLines,
-        DIAGRAM_DETAIL_LINES);
-
-    // Undone: the defaults' budget again
-    widget->SetKeys(defaults);
-    TestEqual(TEXT("undone: the defaults' budget"), widget->GetDetailLineBudget(),
-        KeyboardDiagramTestBudget(widget->GetModel()));
-    TestEqual(TEXT("undone: the panel follows"), widget->GetPanel().DetailLines, widget->GetDetailLineBudget());
     return true;
 }
 

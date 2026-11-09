@@ -13,6 +13,7 @@
 #include "SOLConstants.h"
 
 #include "Brushes/SlateColorBrush.h"
+#include "CoreGlobals.h"
 #include "Fonts/FontCache.h"
 #include "Fonts/FontMeasure.h"
 #include "Framework/Application/SlateApplication.h"
@@ -46,10 +47,11 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a text range's measured width at scale 1 ([start, end) of text), or its length as a fallback width of
-    // one unit a character without a measure service
+    // Returns a text range's measured width in local units at a paint scale ([start, end) of text; the font measured
+    // at that scale, as it is drawn, then divided by it), or its length as a fallback width of one unit a character
+    // without a measure service
     float KeyboardDiagramMeasure(const FSlateFontMeasure* measure, const FStringView text, const int32 start,
-        const int32 end, const FSlateFontInfo& font)
+        const int32 end, const FSlateFontInfo& font, const float scale = 1.0f)
     {
         if (end <= start)
         {
@@ -59,7 +61,8 @@ namespace
         {
             return static_cast<float>(end - start);
         }
-        return static_cast<float>(measure->Measure(text, start, end, font, false, 1.0f).X);
+        const float paintScale = scale > 0.0f ? scale : 1.0f;
+        return static_cast<float>(measure->Measure(text, start, end, font, false, paintScale).X) / paintScale;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -90,20 +93,22 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Wraps hover strip lines in a strip width at scale 1 (D36: the full width, the cap is on its own row above): a
-    // keys column (the widest keys text, at most DIAGRAM_DETAIL_KEYS_MAX_FRACTION of the width), then each action
-    // broken at spaces into visual rows, calling visit(line, bFirst, start, end) per row. Returns the keys column's
-    // width. Without a measure service each action stays one row
+    // Wraps hover popup lines in a width at a paint scale (D45: the popup's wrap width, the cap on its own row above):
+    // a keys column (the widest keys text, at most DIAGRAM_DETAIL_KEYS_MAX_FRACTION of the width), then each action
+    // broken at spaces into visual rows, calling visit(line, bFirst, start, end) per row; every measure is multiplied
+    // by ratio (the shaped text's width over the measure's). Returns the keys column's width. Without a measure service
+    // each action stays one row
     template <typename FVisit>
     float KeyboardDiagramWrapDetail(const FSlateFontMeasure* measure, const FSOLKeyboardDiagramFonts& fonts,
-        const TArray<FSOLDiagramDetailLine>& lines, const float stripWidth, FVisit&& visit)
+        const TArray<FSOLDiagramDetailLine>& lines, const float stripWidth, const float scale, const float ratio,
+        FVisit&& visit)
     {
         using namespace SOL::Help;
         float keysWidth = 0.0f;
         for (const FSOLDiagramDetailLine& line : lines)
         {
-            keysWidth = FMath::Max(keysWidth, KeyboardDiagramMeasure(measure, line.Keys, 0, line.Keys.Len(),
-                fonts.Strong));
+            keysWidth = FMath::Max(keysWidth, ratio * KeyboardDiagramMeasure(measure, line.Keys, 0, line.Keys.Len(),
+                fonts.Strong, scale));
         }
         keysWidth = FMath::Min(keysWidth, stripWidth * DIAGRAM_DETAIL_KEYS_MAX_FRACTION);
         const float textWidth = FMath::Max(stripWidth - DIAGRAM_LEGEND_SWATCH - 2.0f * DIAGRAM_TEXT_GAP - keysWidth,
@@ -134,7 +139,8 @@ namespace
                     {
                         ++wordEnd;
                     }
-                    const bool bFits = KeyboardDiagramMeasure(measure, action, start, wordEnd, fonts.Text) <= textWidth;
+                    const bool bFits = ratio * KeyboardDiagramMeasure(measure, action, start, wordEnd, fonts.Text,
+                        scale) <= textWidth;
                     if (rowEnd != INDEX_NONE && !bFits)
                     {
                         break;
@@ -198,17 +204,18 @@ void SSOLKeyboardDiagram::HandleInvalidateAll(const bool /*bClearResourcesImmedi
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the strip cap's brush, the keys' brush (D38: no LED) and the fonts; the strip is wrapped again and every text
-// reshaped
+// Sets the popup cap's brush, the keys' brush (D38: no LED), the popup's hull (D45) and the fonts; the popup is
+// wrapped again and every text reshaped
 void SSOLKeyboardDiagram::SetStyle(const FSlateBrush& capBrush, const FSlateBrush& keyBrush,
-    const FSOLKeyboardDiagramFonts& fonts)
+    const FSlateBrush& popupBrush, const FSOLKeyboardDiagramFonts& fonts)
 {
     mKeyBrush = keyBrush;
     mCapBrush = capBrush;
+    mPopupBrush = popupBrush;
     mFonts = fonts;
     mHasStyle = true;
     mShapedScale = -1.0f;
-    WrapDetail();
+    WrapDetail(mWrapScale);
     Invalidate(EInvalidateWidgetReason::Layout);
 }
 
@@ -223,8 +230,7 @@ void SSOLKeyboardDiagram::SetModel(const FSOLKeyDiagramModel& model)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the panel; the legends are fitted again when the key unit changed and the strip text is wrapped again only when
-// its width changed
+// Sets the panel; the legends are fitted again when the key unit changed (the popup's wrap does not depend on it)
 void SSOLKeyboardDiagram::SetPanel(const FSOLDiagramPanel& panel)
 {
     if (panel.Scale.UnitPx != mPanel.Scale.UnitPx)
@@ -232,15 +238,11 @@ void SSOLKeyboardDiagram::SetPanel(const FSOLDiagramPanel& panel)
         mShapedScale = -1.0f;
     }
     mPanel = panel;
-    if (mPanel.Detail.GetSize().X != mWrappedWidth)
-    {
-        WrapDetail();
-    }
     Invalidate(EInvalidateWidgetReason::Layout);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the hovered key and its strip lines; a change of key starts the ramp of the gaining and the losing key from the
+// Sets the hovered key and its popup lines; a change of key starts the ramp of the gaining and the losing key from the
 // looks they show now (a reversal mid-ramp continues without a pop)
 void SSOLKeyboardDiagram::SetHover(const int32 key, const TArray<FSOLDiagramDetailLine>& lines,
     const float effectsStrength)
@@ -263,7 +265,7 @@ void SSOLKeyboardDiagram::SetHover(const int32 key, const TArray<FSOLDiagramDeta
         }
     }
     mDetailLines = lines;
-    WrapDetail();
+    WrapDetail(mWrapScale);
     Invalidate(EInvalidateWidgetReason::Paint);
 }
 
@@ -312,28 +314,27 @@ void SSOLKeyboardDiagram::BuildModelTexts()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Wraps the strip's lines in its full width at scale 1 (D36: the hovered key's cap is measured for its own row above
-// them; KeyboardDiagramWrapDetail); the hint alone with no lines
-void SSOLKeyboardDiagram::WrapDetail()
+// Wraps the popup's lines in its wrap width at a paint scale (D45: measured as drawn there, so the popup fits what it
+// shows; the hovered key's cap is measured for its own row above them; KeyboardDiagramWrapDetail) and measures the
+// popup's content width (the cap, or the keys column and the widest row); nothing with no lines. Runs on a hover or
+// style change (at the last popup paint's scale) and when the popup paints at another scale, never per frame
+void SSOLKeyboardDiagram::WrapDetail(const float scale) const
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(SSOLKeyboardDiagram::WrapDetail);
-    using namespace SOL::Help;
-    const float width = mPanel.Detail.GetSize().X;
-    mWrappedWidth = width;
+    mWrapScale = scale > 0.0f ? scale : 1.0f;
     mShapedDetailScale = -1.0f;
     mDetailRows.Reset();
     mDetailCapWidth = 0.0f;
+    mDetailKeysWidth = 0.0f;
+    mPopupContentWidth = 0.0f;
     if (mDetailLines.IsEmpty())
     {
-        FDetailRow& hint = mDetailRows.AddDefaulted_GetRef();
-        hint.Text = SOLMenuText::HELP_DETAIL_HINT;
-        mDetailKeysWidth = 0.0f;
         return;
     }
     const FSlateFontMeasure* measure = GetMeasure();
 
     // The hovered key's cap: rebuilt only when the hovered key changed (its strings keep their buffers), measured on
-    // every wrap (a style or width change re-measures it)
+    // every wrap (a style change re-measures it)
     const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
     if (layout.IsValidIndex(mHoveredKey))
     {
@@ -349,28 +350,42 @@ void SSOLKeyboardDiagram::WrapDetail()
         }
         const FStringView drawn = SOLKeyCaps::DrawnLegend(mDetailCap);
         mDetailCapWidth = SOLKeyCaps::DrawnCapWidth(mDetailCap, KeyboardDiagramMeasure(measure, drawn, 0, drawn.Len(),
-            mFonts.Cap));
+            mFonts.Cap, mWrapScale));
     }
 
-    // The lines at the full width, one row per wrapped visual line
-    mDetailKeysWidth = KeyboardDiagramWrapDetail(measure, mFonts, mDetailLines, width,
-        [this](const int32 line, const bool bFirst, const int32 start, const int32 end)
+    // Slate's shaped text draws a little wider than the font measure (about 3.5% for the menu font at the 1080 paint
+    // scale): each line's action and keys are shaped once and the widest ratio scales every measure of the wrap
+    float ratio = 1.0f;
+    const FSlateFontCache* cache = FSlateApplication::IsInitialized()
+        ? &FSlateApplication::Get().GetRenderer()->GetFontCache().Get() : nullptr;
+    for (int32 line = 0; measure != nullptr && cache != nullptr && line < mDetailLines.Num(); ++line)
+    {
+        const FSOLDiagramDetailLine& detail = mDetailLines[line];
+        for (const TPair<const FString*, const FSlateFontInfo*>& part : { TPair<const FString*, const FSlateFontInfo*>(
+            &detail.Action, &mFonts.Text), TPair<const FString*, const FSlateFontInfo*>(&detail.Keys, &mFonts.Strong) })
+        {
+            const float measured = KeyboardDiagramMeasure(measure, *part.Key, 0, part.Key->Len(), *part.Value,
+                mWrapScale);
+            const float shaped = KeyboardDiagramWidth(KeyboardDiagramShape(cache, *part.Key, *part.Value, mWrapScale),
+                mWrapScale);
+            ratio = measured > 0.0f ? FMath::Max(ratio, shaped / measured) : ratio;
+        }
+    }
+
+    // The lines in the popup's wrap width, one row per wrapped visual line, the widest row measured for the size
+    float widestText = 0.0f;
+    mDetailKeysWidth = KeyboardDiagramWrapDetail(measure, mFonts, mDetailLines, SOLKeyboardLayout::PopupWrapWidth()
+        - SOL::Help::DIAGRAM_POPUP_WRAP_SLACK, mWrapScale, ratio,
+        [this, measure, ratio, &widestText](const int32 line, const bool bFirst, const int32 start, const int32 end)
         {
             FDetailRow& row = mDetailRows.AddDefaulted_GetRef();
             row.Line = line;
             row.bFirst = bFirst;
             row.Text = mDetailLines[line].Action.Mid(start, end - start);
+            widestText = FMath::Max(widestText, ratio * KeyboardDiagramMeasure(measure, mDetailLines[line].Action,
+                start, end, mFonts.Text, mWrapScale));
         });
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns the visual rows a set of strip lines wraps into at a strip width (the strip's own wrap, counting only)
-int32 SSOLKeyboardDiagram::CountDetailRows(const TArray<FSOLDiagramDetailLine>& lines, const float stripWidth) const
-{
-    int32 rows = 0;
-    KeyboardDiagramWrapDetail(GetMeasure(), mFonts, lines, stripWidth,
-        [&rows](const int32 /*line*/, const bool /*bFirst*/, const int32 /*start*/, const int32 /*end*/) { ++rows; });
-    return rows;
+    mPopupContentWidth = SOLKeyboardLayout::PopupContentWidth(mDetailCapWidth, mDetailKeysWidth, widestText);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -453,11 +468,12 @@ void SSOLKeyboardDiagram::ReshapeStatic(const float scale) const
     mShapedOtherCaption = KeyboardDiagramShape(cache, SOLMenuText::HELP_OTHER_KEYS, mFonts.Text, scale);
     mShapedUnboundCaption = KeyboardDiagramShape(cache, SOLMenuText::HELP_UNBOUND, mFonts.Text, scale);
     mShapedUnbound = KeyboardDiagramShape(cache, mUnboundText, mFonts.Text, scale);
+    mShapedHint = KeyboardDiagramShape(cache, SOLMenuText::HELP_DETAIL_HINT, mFonts.Text, scale);
     mShapedScale = scale;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Shapes the strip's rows at a paint scale: the keys on each line's first row, every row's text
+// Shapes the popup's rows at a paint scale: the keys on each line's first row, every row's text, the cap's legend
 void SSOLKeyboardDiagram::ReshapeDetail(const float scale) const
 {
     const FSlateFontCache* cache = FSlateApplication::IsInitialized()
@@ -473,6 +489,22 @@ void SSOLKeyboardDiagram::ReshapeDetail(const float scale) const
     }
     mShapedDetailCap = mDetailCapWidth > 0.0f
         ? KeyboardDiagramShape(cache, SOLKeyCaps::DrawnLegend(mDetailCap), mFonts.Cap, scale) : nullptr;
+
+    // D45: the keys column and the content as shaped (what is drawn), so the popup's pad is exact
+    float keysWidth = 0.0f;
+    float widestText = 0.0f;
+    for (int32 index = 0; index < mDetailRows.Num(); ++index)
+    {
+        keysWidth = FMath::Max(keysWidth, KeyboardDiagramWidth(mShapedDetailKeys[index], scale));
+        widestText = FMath::Max(widestText, KeyboardDiagramWidth(mShapedDetailText[index], scale));
+    }
+    // The keys column capped as the wrap caps it (a long rebound chord would otherwise push the rows out of the hull)
+    const bool bShaped = cache != nullptr && !mDetailRows.IsEmpty();
+    const float keysCap = (SOLKeyboardLayout::PopupWrapWidth() - SOL::Help::DIAGRAM_POPUP_WRAP_SLACK)
+        * SOL::Help::DIAGRAM_DETAIL_KEYS_MAX_FRACTION;
+    mShapedKeysWidth = bShaped ? FMath::Min(keysWidth, keysCap) : mDetailKeysWidth;
+    mShapedContentWidth = bShaped ? SOLKeyboardLayout::PopupContentWidth(mDetailCapWidth, mShapedKeysWidth,
+        widestText) : mPopupContentWidth;
     mShapedDetailScale = scale;
 }
 
@@ -518,15 +550,13 @@ EActiveTimerReturnType SSOLKeyboardDiagram::HandleRampTimer(const double /*curre
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns whether the last paint drew every layout key's hull with the keys' own hull material (D38: not the strip
-// cap's), every legend at the paint scale (D35: fitted, a clipped one as its prefix) and every strip row that fits (the
-// hint, or the panel's DetailLines)
+// Returns whether the last paint drew every layout key's hull with the keys' own hull material (D38: not the popup
+// cap's), every legend at the paint scale (D35: fitted, a clipped one as its prefix) and the hint
 bool SSOLKeyboardDiagram::WasPaintedWhole() const
 {
     const UObject* keyResource = mKeyBrush.GetResourceObject();
     if (!mHasStyle || !(mPaintedScale > 0.0f) || mCapBrush.GetResourceObject() == nullptr || keyResource == nullptr
-        || keyResource == mCapBrush.GetResourceObject() || mShapedScale != mPaintedScale
-        || mShapedDetailScale != mPaintedScale)
+        || keyResource == mCapBrush.GetResourceObject() || mShapedScale != mPaintedScale)
     {
         return false;
     }
@@ -536,23 +566,24 @@ bool SSOLKeyboardDiagram::WasPaintedWhole() const
     {
         legends += FStringView(key.Legend).IsEmpty() ? 0 : 1;
     }
-    const int32 rowsThatFit = FMath::Min(mDetailRows.Num(), mDetailLines.IsEmpty() ? 1 : mPanel.DetailLines);
-    return mPaintedKeys == layout.Num() && mPaintedLegends == legends && mPaintedDetailRows == rowsThatFit
-        && mPaintedDetailCap == (mDetailCapWidth > 0.0f);
+    return mPaintedKeys == layout.Num() && mPaintedLegends == legends && mPaintedHint;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Paints the panel: the legend and the strips, the keys (hulls, then tints, then texts and marks) and the hover strip
+// Paints the panel: the legend, the hint and the strips, then the keys (hulls, then tints, then texts and marks). D45:
+// keeps the geometry and the frame for the popup layer, which paints the hover popup after this leaf
 int32 SSOLKeyboardDiagram::OnPaint(const FPaintArgs& /*args*/, const FGeometry& allottedGeometry,
     const FSlateRect& /*cullingRect*/, FSlateWindowElementList& outDrawElements, const int32 layerId,
     const FWidgetStyle& widgetStyle, const bool bParentEnabled) const
 {
     mPaintedKeys = 0;
     mPaintedLegends = 0;
-    mPaintedDetailRows = 0;
-    mPaintedDetailCap = false;
+    mPaintedHint = false;
     mPaintedWideLegends = 0;
     mPaintedHiddenBadges = 0;
+    mPaintGeometry = allottedGeometry;
+    mPaintFrame = GFrameCounter;
+    mPopupPending = true;
     if (!mHasStyle)
     {
         return layerId;
@@ -562,10 +593,6 @@ int32 SSOLKeyboardDiagram::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
     if (scale != mShapedScale)
     {
         ReshapeStatic(scale);
-    }
-    if (scale != mShapedDetailScale)
-    {
-        ReshapeDetail(scale);
     }
     const ESlateDrawEffect effects = ShouldBeEnabled(bParentEnabled) ? ESlateDrawEffect::None
         : ESlateDrawEffect::DisabledEffect;
@@ -578,7 +605,6 @@ int32 SSOLKeyboardDiagram::OnPaint(const FPaintArgs& /*args*/, const FGeometry& 
     {
         PaintKey(index, allottedGeometry, outDrawElements, layerId, styleTint, effects, nowS);
     }
-    PaintDetail(allottedGeometry, outDrawElements, layerId, styleTint, effects);
     return layerId + 2;
 }
 
@@ -706,8 +732,8 @@ void SSOLKeyboardDiagram::PaintKey(const int32 index, const FGeometry& geometry,
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Paints the area legend (swatch and name per area), the "Other keys" strip (caption, then a tinted cap per key off the
-// layout) and the "Unbound" line (caption, then the actions' names)
+// Paints the area legend (swatch and name per area), the hint (dim, D45), the "Other keys" strip (caption, then a
+// tinted cap per key off the layout) and the "Unbound" line (caption, then the actions' names)
 void SSOLKeyboardDiagram::PaintSections(const FGeometry& geometry, FSlateWindowElementList& out, const int32 layerId,
     const FLinearColor& styleTint, const ESlateDrawEffect effects) const
 {
@@ -729,6 +755,14 @@ void SSOLKeyboardDiagram::PaintSections(const FGeometry& geometry, FSlateWindowE
             PaintText(mShapedAreas[area], item.Min.X + DIAGRAM_LEGEND_SWATCH + DIAGRAM_TEXT_GAP, item.Min.Y,
                 item.GetSize().Y, geometry, out, layerId + 1, text, effects);
         }
+    }
+
+    // D45: the hint line, always shown (the hover detail is the popup)
+    if (mShapedHint.IsValid())
+    {
+        PaintText(mShapedHint, mPanel.Hint.Min.X, mPanel.Hint.Min.Y, mPanel.Hint.GetSize().Y, geometry, out,
+            layerId + 1, dim, effects);
+        mPaintedHint = true;
     }
 
     // The Other keys strip: a Small hull cap per key with its tint, bar, name and short label
@@ -773,62 +807,117 @@ void SSOLKeyboardDiagram::PaintSections(const FGeometry& geometry, FSlateWindowE
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Paints the hover strip (D36): the cap row on top (the hovered key's cap, or the hint (dim) with no hover), then per
-// visual row at the full width, on a line's first row the area swatch and the keys (cyan), then the row's action text.
-// Rows past the panel's DetailLines are not drawn
-void SSOLKeyboardDiagram::PaintDetail(const FGeometry& geometry, FSlateWindowElementList& out, const int32 layerId,
-    const FLinearColor& styleTint, const ESlateDrawEffect effects) const
+// D45: paints the hovered key's popup in the popup layer's geometry: the key's box and the layer's bounds (less the
+// edge pad) in the layer's space, the popup sized and placed (PopupSize, PlacePopup), then its hull panel and content.
+// Shapes the popup's texts only when the hover or the scale changed; nothing is allocated otherwise
+int32 SSOLKeyboardDiagram::PaintPopup(const FGeometry& layerGeometry, FSlateWindowElementList& out,
+    const int32 layerId, const FWidgetStyle& widgetStyle, const bool bParentEnabled) const
 {
     using namespace SOL::Help;
-    const FBox2f strip = mPanel.Detail;
-    if (mDetailCapWidth > 0.0f && !mDetailLines.IsEmpty())
+    mPaintedDetailRows = 0;
+    mPaintedDetailCap = false;
+    // Only right after this leaf's own paint in the same frame (a second Slate paint in one engine frame, or a frame
+    // the leaf was not painted in, such as another tab, shows nothing)
+    const bool bPending = mPopupPending;
+    mPopupPending = false;
+    if (!bPending || !mHasStyle || mDetailLines.IsEmpty() || mPaintFrame != GFrameCounter
+        || !(layerGeometry.Scale > 0.0f))
     {
-        PaintDetailCap(FVector2f(strip.Min.X, strip.Min.Y + 0.5f * (DIAGRAM_DETAIL_CAP_HEIGHT - KEYCAP_HEIGHT)),
+        return layerId;
+    }
+    const bool bAnchor = mMainOf.IsValidIndex(mHoverAnchor) && mMainOf[mHoverAnchor] == mHoveredKey;
+    const FBox2f keyLocal = KeyBox(bAnchor ? mHoverAnchor : mHoveredKey);
+    if (!keyLocal.bIsValid)
+    {
+        return layerId;
+    }
+    if (layerGeometry.Scale != mWrapScale)
+    {
+        WrapDetail(layerGeometry.Scale);
+    }
+    if (layerGeometry.Scale != mShapedDetailScale)
+    {
+        ReshapeDetail(layerGeometry.Scale);
+    }
+
+    // The key's box and the bounds in the layer's space (through absolute space: the scroll offset is in the leaf's)
+    const FVector2f keyMin(layerGeometry.AbsoluteToLocal(mPaintGeometry.LocalToAbsolute(FVector2D(keyLocal.Min))));
+    const FVector2f keyMax(layerGeometry.AbsoluteToLocal(mPaintGeometry.LocalToAbsolute(FVector2D(keyLocal.Max))));
+    const FVector2f edge(DIAGRAM_POPUP_EDGE_PAD, DIAGRAM_POPUP_EDGE_PAD);
+    const FBox2f bounds(edge, FVector2f(layerGeometry.GetLocalSize()) - edge);
+    const FSOLPopupPlacement placement = SOLKeyboardLayout::PlacePopup(FBox2f(keyMin, keyMax),
+        SOLKeyboardLayout::PopupSize(mShapedContentWidth, mDetailRows.Num()), bounds, DIAGRAM_POPUP_GAP);
+    if (!placement.Rect.bIsValid)
+    {
+        return layerId;
+    }
+
+    // The hull panel, then the content inside its pad (the cap's hull a layer above the panel, the texts above that)
+    const ESlateDrawEffect effects = bParentEnabled ? ESlateDrawEffect::None : ESlateDrawEffect::DisabledEffect;
+    const FLinearColor styleTint = widgetStyle.GetColorAndOpacityTint();
+    const FBox2f rect = placement.Rect;
+    FSlateDrawElement::MakeBox(out, layerId, layerGeometry.ToPaintGeometry(rect.GetSize(),
+        FSlateLayoutTransform(rect.Min)), &mPopupBrush, effects, SOLSolidStyle::BrushTint(FSOLSolidButtonLook())
+        * styleTint);
+    const FVector2f pad(DIAGRAM_POPUP_PAD, DIAGRAM_POPUP_PAD);
+    PaintDetail(FBox2f(rect.Min + pad, rect.Max - pad), layerGeometry, out, layerId + 1, styleTint, effects);
+
+    // The verification record, in the layer's local space (paint space is the window's, not the desktop's)
+    mPopupFrame = GFrameCounter;
+    mPopupSide = placement.Side;
+    mPopupRect = rect;
+    mPopupKeyRect = FBox2f(keyMin, keyMax);
+    mPopupBounds = bounds;
+    return layerId + 3;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Paints the popup's content in a box (D36 / D45): the cap row on top (the hovered key's cap), then per visual row, on
+// a line's first row the area swatch and the keys (cyan), then the row's action text. Rows past DIAGRAM_DETAIL_LINES
+// are not drawn (PopupSize sizes the popup for that many at most)
+void SSOLKeyboardDiagram::PaintDetail(const FBox2f& content, const FGeometry& geometry, FSlateWindowElementList& out,
+    const int32 layerId, const FLinearColor& styleTint, const ESlateDrawEffect effects) const
+{
+    using namespace SOL::Help;
+    if (mDetailCapWidth > 0.0f)
+    {
+        PaintDetailCap(FVector2f(content.Min.X, content.Min.Y + 0.5f * (DIAGRAM_DETAIL_CAP_HEIGHT - KEYCAP_HEIGHT)),
             geometry, out, layerId, styleTint, effects);
     }
-    const float linesTop = strip.Min.Y + DIAGRAM_DETAIL_CAP_HEIGHT;
-    const float textLeft = strip.Min.X + DIAGRAM_LEGEND_SWATCH + 2.0f * DIAGRAM_TEXT_GAP + mDetailKeysWidth;
+    const float linesTop = content.Min.Y + DIAGRAM_DETAIL_CAP_HEIGHT;
+    const float textLeft = content.Min.X + DIAGRAM_LEGEND_SWATCH + 2.0f * DIAGRAM_TEXT_GAP + mShapedKeysWidth;
 
-    // Each wrapped row that fits the strip's line budget: the hint in the cap row, or a line's row below it
-    for (int32 index = 0; index < mDetailRows.Num() && index < mPanel.DetailLines; ++index)
+    // Each wrapped row up to the line cap: the swatch and keys on a line's first row, then its text
+    for (int32 index = 0; index < mDetailRows.Num() && index < DIAGRAM_DETAIL_LINES; ++index)
     {
         const FDetailRow& row = mDetailRows[index];
         const float rowTop = linesTop + static_cast<float>(index) * DIAGRAM_DETAIL_LINE_HEIGHT;
-        if (!mShapedDetailText.IsValidIndex(index))
+        if (!mShapedDetailText.IsValidIndex(index) || !mDetailLines.IsValidIndex(row.Line))
         {
             break;
-        }
-        const FShapedGlyphSequencePtr& text = mShapedDetailText[index];
-        if (!mDetailLines.IsValidIndex(row.Line))
-        {
-            // The hint, in the cap row
-            PaintText(text, strip.Min.X, strip.Min.Y, DIAGRAM_DETAIL_CAP_HEIGHT, geometry, out, layerId + 1,
-                SOLSolidStyle::DimTextColor() * styleTint, effects);
-            ++mPaintedDetailRows;
-            continue;
         }
         if (row.bFirst)
         {
             const FSOLDiagramDetailLine& line = mDetailLines[row.Line];
             const float swatchTop = rowTop + 0.5f * (DIAGRAM_DETAIL_LINE_HEIGHT - DIAGRAM_LEGEND_SWATCH);
-            PaintBox(FBox2f(FVector2f(strip.Min.X, swatchTop), FVector2f(strip.Min.X + DIAGRAM_LEGEND_SWATCH,
+            PaintBox(FBox2f(FVector2f(content.Min.X, swatchTop), FVector2f(content.Min.X + DIAGRAM_LEGEND_SWATCH,
                 swatchTop + DIAGRAM_LEGEND_SWATCH)), geometry, out, layerId + 1,
                 SOLSolidStyle::Linear(SOLKeyDiagram::AreaColor(line.Area)) * styleTint, effects);
             if (mShapedDetailKeys.IsValidIndex(index))
             {
-                PaintText(mShapedDetailKeys[index], strip.Min.X + DIAGRAM_LEGEND_SWATCH + DIAGRAM_TEXT_GAP, rowTop,
+                PaintText(mShapedDetailKeys[index], content.Min.X + DIAGRAM_LEGEND_SWATCH + DIAGRAM_TEXT_GAP, rowTop,
                     DIAGRAM_DETAIL_LINE_HEIGHT, geometry, out, layerId + 1, SOLSolidStyle::ValueColor() * styleTint,
                     effects);
             }
         }
-        PaintText(text, textLeft, rowTop, DIAGRAM_DETAIL_LINE_HEIGHT, geometry, out, layerId + 1,
+        PaintText(mShapedDetailText[index], textLeft, rowTop, DIAGRAM_DETAIL_LINE_HEIGHT, geometry, out, layerId + 1,
             SOLSolidStyle::TextColor() * styleTint, effects);
         ++mPaintedDetailRows;
     }
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Paints the hover strip's cap of the hovered key like a 33b key cap (SSOLKeyCapRow): the Small hull KEYCAP_HEIGHT
+// Paints the hover popup's cap of the hovered key like a 33b key cap (SSOLKeyCapRow): the Small hull KEYCAP_HEIGHT
 // tall, then the mouse glyph (its outline and divider dim, the used part lit cyan) and the legend, centred right of
 // the hull's LED
 void SSOLKeyboardDiagram::PaintDetailCap(const FVector2f& topLeft, const FGeometry& geometry,
@@ -931,7 +1020,7 @@ void SSOLKeyboardDiagram::PaintLine(const FVector2f& from, const FVector2f& to, 
 // The panel's laid-out size: its widest section by its height
 FVector2D SSOLKeyboardDiagram::ComputeDesiredSize(const float /*layoutScaleMultiplier*/) const
 {
-    const float width = FMath::Max3(mPanel.Legend.Max.X, mPanel.Diagram.Max.X, mPanel.Detail.Max.X);
+    const float width = FMath::Max3(mPanel.Legend.Max.X, mPanel.Diagram.Max.X, mPanel.Hint.Max.X);
     return FVector2D(FMath::Max(width, 0.0f), FMath::Max(mPanel.Height, 0.0f));
 }
 
@@ -958,9 +1047,9 @@ void SSOLKeyboardDiagram::OnMouseLeave(const FPointerEvent& mouseEvent)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Lays the empty panel out at width 0 with a one-line hover strip
+// Lays the empty panel out at width 0
 USOLKeyboardDiagram::USOLKeyboardDiagram()
-    : mPanel(SOLKeyboardLayout::LayoutPanel(0.0f, false, false, 1))
+    : mPanel(SOLKeyboardLayout::LayoutPanel(0.0f, false, false))
 {
 }
 
@@ -998,57 +1087,15 @@ void USOLKeyboardDiagram::SetLayoutWidth(const float width)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sizes the hover strip for the model and the width (D36: here only, on a model, width or leaf change, never on a
-// hover), lays the panel out with the model's Other keys and Unbound sections and hands it to the leaf
+// Lays the panel out with the model's Other keys and Unbound sections (on a model or width change, never on a hover)
+// and hands it to the leaf
 void USOLKeyboardDiagram::LayoutPanel()
 {
-    mDetailLineBudget = ComputeDetailLineBudget();
-    mPanel = SOLKeyboardLayout::LayoutPanel(mLayoutWidth, mModel.Overflow.Num() > 0, mModel.Unbound.Num() > 0,
-        mDetailLineBudget);
+    mPanel = SOLKeyboardLayout::LayoutPanel(mLayoutWidth, mModel.Overflow.Num() > 0, mModel.Unbound.Num() > 0);
     if (mDiagram.IsValid())
     {
         mDiagram->SetPanel(mPanel);
     }
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Returns the hover strip's line budget: the busiest key's line count (headless) or wrapped row count at the strip's
-// width (with a leaf that measures), at least 1 and at most DIAGRAM_DETAIL_LINES
-int32 USOLKeyboardDiagram::ComputeDetailLineBudget()
-{
-    TRACE_CPUPROFILER_EVENT_SCOPE(USOLKeyboardDiagram::ComputeDetailLineBudget);
-    using namespace SOL::Help;
-    const int32 headless = FMath::Clamp(FMath::Max(1, SOLKeyDiagram::MaxDetailCount(mModel)), 1,
-        DIAGRAM_DETAIL_LINES);
-    if (!mDiagram.IsValid() || !mDiagram->CanMeasure())
-    {
-        return headless;
-    }
-
-    // Every key's lines wrapped as the strip wraps them (the strip is the panel's full width), the most rows kept;
-    // a mirror key shows its main key's lines and is skipped
-    const float stripWidth = FMath::IsFinite(mLayoutWidth) && mLayoutWidth > 0.0f ? mLayoutWidth : 0.0f;
-    const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
-    int32 rows = headless;
-    for (int32 key = 0; key < mModel.Keys.Num() && rows < DIAGRAM_DETAIL_LINES; ++key)
-    {
-        if (layout.IsValidIndex(key) && layout[key].bMirror)
-        {
-            continue;
-        }
-        const int32 count = SOLKeyDiagram::DetailAssignments(mModel, key, mDetailAssignments);
-        if (count == 0)
-        {
-            continue;
-        }
-        mBudgetLines.SetNum(count, EAllowShrinking::No);
-        for (int32 index = 0; index < count; ++index)
-        {
-            SOLKeyDiagram::DetailLine(mModel, mDetailAssignments[index], mLiveKeys, mBudgetLines[index]);
-        }
-        rows = FMath::Max(rows, mDiagram->CountDetailRows(mBudgetLines, stripWidth));
-    }
-    return FMath::Clamp(rows, 1, DIAGRAM_DETAIL_LINES);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1071,6 +1118,16 @@ void USOLKeyboardDiagram::SetHoveredKey(const int32 key)
         const int32 main = SOLKeyboardLayout::FindKey(layout[hovered].KeyName);
         hovered = main != INDEX_NONE ? main : hovered;
     }
+    // D45: the popup goes by the cap given (the numpad Enter, a mirror, is not the main Enter's cap)
+    const int32 anchor = hovered != INDEX_NONE ? key : INDEX_NONE;
+    if (anchor != mHoverAnchor)
+    {
+        mHoverAnchor = anchor;
+        if (mDiagram.IsValid())
+        {
+            mDiagram->SetHoverAnchor(mHoverAnchor);
+        }
+    }
     if (hovered == mHoveredKey)
     {
         return;
@@ -1080,7 +1137,7 @@ void USOLKeyboardDiagram::SetHoveredKey(const int32 key)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Rebuilds the hovered key's strip lines (empty with no hover) and hands the hover to the leaf
+// Rebuilds the hovered key's popup lines (empty with no hover) and hands the hover to the leaf
 void USOLKeyboardDiagram::RefreshHover()
 {
     if (mHoveredKey == INDEX_NONE)
@@ -1125,14 +1182,14 @@ int32 USOLKeyboardDiagram::GetPaintedKeyCount() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the leaf's wrapped hover strip rows (0 without the leaf)
+// Returns the leaf's wrapped hover popup rows (0 without the leaf)
 int32 USOLKeyboardDiagram::GetDetailRowCount() const
 {
     return mDiagram.IsValid() ? mDiagram->GetDetailRowCount() : 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the leaf's hover strip cap width (0 without the leaf)
+// Returns the leaf's hover popup cap width (0 without the leaf)
 float USOLKeyboardDiagram::GetDetailCapWidth() const
 {
     return mDiagram.IsValid() ? mDiagram->GetDetailCapWidth() : 0.0f;
@@ -1155,8 +1212,8 @@ void USOLKeyboardDiagram::ReleaseSlateResources(const bool bReleaseChildren)
 
 //////////////////////////////////////////////////////////////////////////
 // Builds the leaf with the solid kit's Small hull brush and fonts (key legends Rajdhani SemiBold, short labels Medium,
-// the strips the Small role) and hands it the model, the panel, the hover and the mouse handlers, then lays the panel
-// out again with the leaf's wrapped hover strip budget
+// the texts the Small role), the popup's hull panel (D45) and hands it the model, the panel, the hover and the mouse
+// handlers
 TSharedRef<SWidget> USOLKeyboardDiagram::RebuildWidget()
 {
     using namespace SOL::Help;
@@ -1165,6 +1222,7 @@ TSharedRef<SWidget> USOLKeyboardDiagram::RebuildWidget()
     mDiagram->SetModel(mModel);
     mDiagram->SetPanel(mPanel);
     mDiagram->SetHover(mHoveredKey, mDetailLines, GetEffectsStrength());
+    mDiagram->SetHoverAnchor(mHoverAnchor);
 
     // The leaf's mouse moves hover the key under the point and a leave clears it (weak: the leaf may outlive this)
     const TWeakObjectPtr<USOLKeyboardDiagram> weakThis(this);
@@ -1182,7 +1240,7 @@ TSharedRef<SWidget> USOLKeyboardDiagram::RebuildWidget()
         }
     });
 
-    // The fonts: key legends Rajdhani SemiBold, short labels Medium, the badge, the strips' Small role and the 33b cap
+    // The fonts: key legends Rajdhani SemiBold, short labels Medium, the badge, the texts' Small role and the 33b cap
     FSOLKeyboardDiagramFonts fonts;
     fonts.Key = SOLSolidStyle::MenuFont(subsystem, ESOLMenuFontWeight::SemiBold, DIAGRAM_KEY_FONT_SIZE);
     fonts.Label = SOLSolidStyle::MenuFont(subsystem, ESOLMenuFontWeight::Medium, KEYCAP_LABEL_FONT_SIZE);
@@ -1207,10 +1265,9 @@ TSharedRef<SWidget> USOLKeyboardDiagram::RebuildWidget()
     {
         keyBrush.SetResourceObject(KeyMaterial);
     }
-    mDiagram->SetStyle(capBrush, keyBrush, fonts);
-
-    // The leaf measures now: size the hover strip for its wrapped rows (D36)
-    LayoutPanel();
+    const FSlateBrush popupBrush = SOLSolidStyle::MakeHullBrush(subsystem, ESOLSolidStyle::Panel,
+        FVector2f(DIAGRAM_POPUP_MAX_WIDTH, DIAGRAM_DETAIL_CAP_HEIGHT), FSOLSolidButtonLook());
+    mDiagram->SetStyle(capBrush, keyBrush, popupBrush, fonts);
     return mDiagram.ToSharedRef();
 }
 
@@ -1247,4 +1304,74 @@ int32 USOLKeyboardDiagram::GetPaintedHiddenBadges() const
 const UMaterialInstanceDynamic* USOLKeyboardDiagram::GetKeyMaterial() const
 {
     return KeyMaterial.Get();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Makes the popup layer tickless, hit-test invisible (it never takes hover from the keys) and volatile
+void SSOLKeyboardDiagramPopupLayer::Construct(const FArguments& /*args*/)
+{
+    SetCanTick(false);
+    SetVisibility(EVisibility::HitTestInvisible);
+    ForceVolatile(true);    // Painted every frame even under an invalidation panel: the hover lives in the diagram
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the diagram whose popup the layer paints
+void SSOLKeyboardDiagramPopupLayer::SetDiagram(USOLKeyboardDiagram* diagram)
+{
+    mDiagram = diagram;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Paints the diagram leaf's popup in this layer's geometry (nothing without a diagram or its leaf)
+int32 SSOLKeyboardDiagramPopupLayer::OnPaint(const FPaintArgs& /*args*/, const FGeometry& allottedGeometry,
+    const FSlateRect& /*cullingRect*/, FSlateWindowElementList& outDrawElements, const int32 layerId,
+    const FWidgetStyle& widgetStyle, const bool bParentEnabled) const
+{
+    const USOLKeyboardDiagram* diagram = mDiagram.Get();
+    const SSOLKeyboardDiagram* leaf = diagram != nullptr ? diagram->GetLeaf().Get() : nullptr;
+    return leaf != nullptr ? leaf->PaintPopup(allottedGeometry, outDrawElements, layerId, widgetStyle,
+        ShouldBeEnabled(bParentEnabled)) : layerId;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The layer takes no room in the page's layout
+FVector2D SSOLKeyboardDiagramPopupLayer::ComputeDesiredSize(const float /*layoutScaleMultiplier*/) const
+{
+    return FVector2D::ZeroVector;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Makes the widget hit-test invisible
+USOLKeyboardDiagramPopup::USOLKeyboardDiagramPopup()
+{
+    SetVisibilityInternal(ESlateVisibility::HitTestInvisible);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the diagram whose popup the layer paints (handed to a built layer at once)
+void USOLKeyboardDiagramPopup::SetDiagram(USOLKeyboardDiagram* diagram)
+{
+    Diagram = diagram;
+    if (mLayer.IsValid())
+    {
+        mLayer->SetDiagram(Diagram);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drops the layer
+void USOLKeyboardDiagramPopup::ReleaseSlateResources(const bool bReleaseChildren)
+{
+    Super::ReleaseSlateResources(bReleaseChildren);
+    mLayer.Reset();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Builds the layer and hands it the diagram
+TSharedRef<SWidget> USOLKeyboardDiagramPopup::RebuildWidget()
+{
+    mLayer = SNew(SSOLKeyboardDiagramPopupLayer);
+    mLayer->SetDiagram(Diagram);
+    return mLayer.ToSharedRef();
 }

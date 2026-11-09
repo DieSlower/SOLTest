@@ -19,6 +19,7 @@
 #include "Menu/SOLSettingsSubsystem.h"
 #include "SOLTest.h"
 
+#include "Components/ScrollBox.h"
 #include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Framework/Application/SlateApplication.h"
@@ -46,7 +47,7 @@ namespace
     constexpr double GUIDE_FILES_TIMEOUT_S = 20.0;          // The captures-on-disk wait's limit
     constexpr double GUIDE_WATCHDOG_S = 120.0;              // A stuck run fails and quits
     constexpr int32 GUIDE_CURSOR_INSET_PX = 8;              // The parked cursor, this far in from the top right
-    const TCHAR* const GUIDE_HOVER_KEY = TEXT("O");         // The hover shot's key (chords and areas in its strip)
+    const TCHAR* const GUIDE_HOVER_KEY = TEXT("O");         // The hover shot's key (chords and areas in its popup)
     constexpr int32 GUIDE_MAX_WINDOW_PX = 4096;             // The window may grow past a 1080p desktop's work area
     constexpr const TCHAR* GUIDE_STAGED_SUFFIX = TEXT(".new"); // An image copied next to its target before the swap
     constexpr uint8 GUIDE_EXIT_FAILED = 1;                  // The process exit code of a failed run
@@ -215,8 +216,18 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
         }
         page->SelectTab(static_cast<int32>(shot.Tab));
         page->GetDiagram()->SetHoveredKey(shot.bHover ? SOLKeyboardLayout::FindKey(GUIDE_HOVER_KEY) : INDEX_NONE);
+
+        // D46: the tab's scroll at the page's offset (the first page at the top; the later ones from the extent the
+        // first page measured)
+        UScrollBox* scroll = page->GetTabScroll(static_cast<int32>(shot.Tab));
+        if (scroll == nullptr)
+        {
+            Fail(menu, FString::Printf(TEXT("%s: no scroll for tab %d"), *shot.FileName, static_cast<int32>(shot.Tab)));
+            return true;
+        }
+        scroll->SetScrollOffset(SOLPlayerGuide::PageOffset(shot.Page, mViewHeight, mScrollEnd));
         ParkCursor();
-        const FString capture = SOLPlayerGuide::CapturePath(shot.FileName);
+        const FString capture = SOLPlayerGuide::CapturePath(*shot.FileName);
         if (!IFileManager::Get().Delete(*capture, false, true, true) && IFileManager::Get().FileExists(*capture))
         {
             Fail(menu, FString::Printf(TEXT("could not remove the old capture %s"), *capture));
@@ -246,11 +257,44 @@ bool FSOLPlayerGuideWriter::Update(USOLMenuSubsystem& menu)
         if (page == nullptr || page->GetSelectedTab() != static_cast<int32>(shot.Tab)
             || (shot.bHover && wantHover == INDEX_NONE) || hovered != wantHover)
         {
-            Fail(menu, FString::Printf(TEXT("%s: tab %d or hovered key %d (want %d) not shown"), shot.FileName,
+            Fail(menu, FString::Printf(TEXT("%s: tab %d or hovered key %d (want %d) not shown"), *shot.FileName,
                 static_cast<int32>(shot.Tab), hovered, wantHover));
             return true;
         }
-        const FString path = SOLPlayerGuide::CapturePath(shot.FileName);
+
+        // D46: a tab's first plain page measures its scroll (the pages it needs must match SOL::Paths' table); a later
+        // page checks its offset
+        const UScrollBox* scroll = page->GetTabScroll(static_cast<int32>(shot.Tab));
+        if (scroll == nullptr)
+        {
+            Fail(menu, FString::Printf(TEXT("%s: no scroll"), *shot.FileName));
+            return true;
+        }
+        if (shot.Page == 0 && !shot.bHover)
+        {
+            mViewHeight = static_cast<float>(scroll->GetCachedGeometry().GetLocalSize().Y);
+            mScrollEnd = scroll->GetScrollOffsetOfEnd();
+            const int32 pages = SOLPlayerGuide::PageCount(mViewHeight, mScrollEnd);
+            UE_LOG(LogSOL, Log, TEXT("PlayerGuide: tab %d view %.1f, scroll end %.1f: %d pages (table %d)"),
+                static_cast<int32>(shot.Tab), mViewHeight, mScrollEnd, pages, SOLPlayerGuide::TabPages(shot.Tab));
+            if (pages != SOLPlayerGuide::TabPages(shot.Tab))
+            {
+                Fail(menu, FString::Printf(TEXT("tab %d needs %d shots at this size (view %.1f, scroll end %.1f), "
+                    "SOL::Paths::PLAYER_GUIDE_TAB_PAGES says %d: update the table"), static_cast<int32>(shot.Tab),
+                    pages, mViewHeight, mScrollEnd, SOLPlayerGuide::TabPages(shot.Tab)));
+                return true;
+            }
+        }
+        // The requested offset (SScrollBox exposes no drawn offset, and a scrolled-out child's geometry is stale): a
+        // sanity check that Show asked for this page; the images themselves are looked at when regenerated
+        const float wantOffset = SOLPlayerGuide::PageOffset(shot.Page, mViewHeight, mScrollEnd);
+        if (FMath::Abs(scroll->GetScrollOffset() - wantOffset) > SOL::Paths::PLAYER_GUIDE_SCROLL_TOLERANCE)
+        {
+            Fail(menu, FString::Printf(TEXT("%s: scroll offset %.1f (want %.1f)"), *shot.FileName,
+                scroll->GetScrollOffset(), wantOffset));
+            return true;
+        }
+        const FString path = SOLPlayerGuide::CapturePath(*shot.FileName);
         FScreenshotRequest::RequestScreenshot(path, true, false);
         UE_LOG(LogSOL, Log, TEXT("PlayerGuide: capture %s"), *path);
         ToStage(EStage::Captured);
@@ -342,7 +386,7 @@ bool FSOLPlayerGuideWriter::AreCapturesWritten()
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
     for (int32 index = 0; index < shots.Num(); ++index)
     {
-        const int64 size = IFileManager::Get().FileSize(*SOLPlayerGuide::CapturePath(shots[index].FileName));
+        const int64 size = IFileManager::Get().FileSize(*SOLPlayerGuide::CapturePath(*shots[index].FileName));
         bAll &= size > 0 && size == mCaptureSizes[index];
         mCaptureSizes[index] = size;
     }
@@ -361,15 +405,15 @@ bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
     {
         for (const FSOLPlayerGuideShot& shot : shots)
         {
-            files.Delete(*(SOLPlayerGuide::ImagePath(shot.FileName) + GUIDE_STAGED_SUFFIX), false, true, true);
+            files.Delete(*(SOLPlayerGuide::ImagePath(*shot.FileName) + GUIDE_STAGED_SUFFIX), false, true, true);
         }
     };
 
     // Each capture copied next to its target (the same folder, so the swap is a rename)
     for (const FSOLPlayerGuideShot& shot : shots)
     {
-        const FString from = SOLPlayerGuide::CapturePath(shot.FileName);
-        const FString staged = SOLPlayerGuide::ImagePath(shot.FileName) + GUIDE_STAGED_SUFFIX;
+        const FString from = SOLPlayerGuide::CapturePath(*shot.FileName);
+        const FString staged = SOLPlayerGuide::ImagePath(*shot.FileName) + GUIDE_STAGED_SUFFIX;
         if (files.Copy(*staged, *from, true, true) != COPY_OK)
         {
             dropStaged();
@@ -390,14 +434,14 @@ bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
     // The swap: each staged image renamed over its target, then its capture removed
     for (const FSOLPlayerGuideShot& shot : shots)
     {
-        const FString to = SOLPlayerGuide::ImagePath(shot.FileName);
+        const FString to = SOLPlayerGuide::ImagePath(*shot.FileName);
         if (!files.Move(*to, *(to + GUIDE_STAGED_SUFFIX), true, true))
         {
             dropStaged();
             outReason = FString::Printf(TEXT("could not rename the staged image over %s"), *to);
             return false;
         }
-        files.Delete(*SOLPlayerGuide::CapturePath(shot.FileName), false, true, true);
+        files.Delete(*SOLPlayerGuide::CapturePath(*shot.FileName), false, true, true);
         UE_LOG(LogSOL, Log, TEXT("PlayerGuide WROTE %s (%lld bytes)"), *FPaths::ConvertRelativePathToFull(to),
             files.FileSize(*to));
     }

@@ -30,21 +30,23 @@ struct FSOLKeyboardDiagramFonts
     FSlateFontInfo Key;                                 // A key's legend
     FSlateFontInfo Label;                               // A key's short action label
     FSlateFontInfo Badge;                               // The "+N" badge
-    FSlateFontInfo Text;                                // Legend names, captions, the hover strip's actions
-    FSlateFontInfo Strong;                              // The hover strip's keys
-    FSlateFontInfo Cap;                                 // The hover strip's cap of the hovered key (the 33b cap font)
+    FSlateFontInfo Text;                                // Legend names, captions, the hint, the popup's actions
+    FSlateFontInfo Strong;                              // The hover popup's keys
+    FSlateFontInfo Cap;                                 // The hover popup's cap of the hovered key (the 33b cap font)
 };
 
 /**
  * The live keyboard diagram (SDD 33 section 7, 33c): one leaf paints the cached diagram model and panel: the area
  * legend, every layout key as a Small hull cap (the area tint fill and bar, the legend clipped to the key and the short
  * label, the "+N" badge unless it would overlap the legend (D35), the lock mark on fixed keys, the D32 modifier mark on
- * keys that start a chord, free keys dimmed), the mouse zones, the "Other keys" strip, the "Unbound" line and the hover
- * detail strip (D36: the hovered key as a 33b cap on its own row, then its lines at the full strip width, the action
- * text wrapped; the hint in the cap row with no hover). The texts and the legends' fits are shaped once per content,
- * unit or paint-scale change (and after a Slate invalidate-all), so a steady-state paint allocates nothing. No tick: an
- * active timer runs only while a hover ramp (HOVER_RAMP_S, instant at effects strength 0) is in progress. Mouse moves
- * report the local point to the owner (USOLKeyboardDiagram), which hovers the key and hands the lines back.
+ * keys that start a chord, free keys dimmed), the mouse zones, the "Other keys" strip, the "Unbound" line and the
+ * "Hover a key" hint line. D45: the hovered key's detail (the key as a 33b cap on its own row, then its lines, the
+ * action text wrapped in SOLKeyboardLayout::PopupWrapWidth) is a popup the page's SSOLKeyboardDiagramPopupLayer paints
+ * over the page (PaintPopup: placed by SOLKeyboardLayout::PlacePopup by the hovered key, inside the layer). The texts
+ * and the legends' fits are shaped once per content, hover, unit or paint-scale change (and after a Slate
+ * invalidate-all), so a steady-state paint allocates nothing. No tick: an active timer runs only while a hover ramp
+ * (HOVER_RAMP_S, instant at effects strength 0) is in progress. Mouse moves report the local point to the owner
+ * (USOLKeyboardDiagram), which hovers the key and hands the lines back.
  */
 class SOLTEST_API SSOLKeyboardDiagram : public SLeafWidget
 {
@@ -59,43 +61,71 @@ public:
     // Stops listening for Slate's invalidate-all
     virtual ~SSOLKeyboardDiagram() override;
 
-    // Sets the brushes and the fonts; every text is measured and shaped again. capBrush: the hover strip's cap (the 33b
-    // key cap, its LED); keyBrush: the diagram's keys and Other keys caps (D38: the same hull without the LED)
-    void SetStyle(const FSlateBrush& capBrush, const FSlateBrush& keyBrush, const FSOLKeyboardDiagramFonts& fonts);
+    // Sets the brushes and the fonts; every text is measured and shaped again. capBrush: the hover popup's cap (the
+    // 33b key cap, its LED); keyBrush: the diagram's keys and Other keys caps (D38: the same hull without the LED);
+    // popupBrush: the hover popup's hull panel (D45)
+    void SetStyle(const FSlateBrush& capBrush, const FSlateBrush& keyBrush, const FSlateBrush& popupBrush,
+        const FSOLKeyboardDiagramFonts& fonts);
 
     // Sets the model (copied): the badge texts and the unbound line are rebuilt, the key texts reshaped
     void SetModel(const FSOLKeyDiagramModel& model);
 
-    // Sets the panel (copied); the detail text is wrapped again on a width change
+    // Sets the panel (copied)
     void SetPanel(const FSOLDiagramPanel& panel);
 
-    // Sets the hovered key (INDEX_NONE for none) and its strip lines (copied), starting the hover ramp at an effects
-    // strength
+    // Sets the hovered key (INDEX_NONE for none) and its popup lines (copied, wrapped once here), starting the hover
+    // ramp at an effects strength
     void SetHover(int32 key, const TArray<FSOLDiagramDetailLine>& lines, float effectsStrength);
+
+    // D45: sets the layout cap the popup is placed by: the cap under the cursor, a mirror cap (the numpad Enter) of
+    // the hovered key included (INDEX_NONE or a cap that is not the hovered key's: the hovered key's own cap)
+    void SetHoverAnchor(int32 cap)
+    {
+        mHoverAnchor = cap;
+        Invalidate(EInvalidateWidgetReason::Paint);
+    }
 
     // Sets what a mouse move over the leaf (the local point, menu units) and a mouse leave call
     void SetHoverHandlers(TFunction<void(const FVector2f&)> onMove, TFunction<void()> onLeave);
 
     // Returns whether the last paint drew every layout key's hull with the keys' own hull material (D38: set and not
-    // the strip cap's), every legend shaped at the paint scale and the detail strip (verification)
+    // the popup cap's), every legend shaped at the paint scale and the hint (verification)
     bool WasPaintedWhole() const;
+
+    // D45: paints the hovered key's popup into a layer's geometry over the page (SSOLKeyboardDiagramPopupLayer, after
+    // this leaf in the same frame): nothing with no hover or when this leaf did not paint this frame (another tab);
+    // else the hull panel sized by SOLKeyboardLayout::PopupSize, placed by PlacePopup by the key (both in the layer's
+    // space) inside the layer less DIAGRAM_POPUP_EDGE_PAD, the cap row and the lines on it. Returns the layer after
+    // the last one used
+    int32 PaintPopup(const FGeometry& layerGeometry, FSlateWindowElementList& out, int32 layerId,
+        const FWidgetStyle& widgetStyle, bool bParentEnabled) const;
+
+    // D45: returns whether the popup was painted in the frame of this leaf's last paint (verification)
+    bool WasPopupPainted() const { return mPaintFrame != 0 && mPopupFrame == mPaintFrame; }
+
+    // D45: returns the last painted popup's rect in the popup layer's local space (verification)
+    const FBox2f& GetPopupRect() const { return mPopupRect; }
+
+    // D45: returns the hovered key's box the last popup was placed by, in the popup layer's space (verification)
+    const FBox2f& GetPopupKeyRect() const { return mPopupKeyRect; }
+
+    // D45: returns the bounds the last popup was kept in, in the popup layer's space (verification)
+    const FBox2f& GetPopupBounds() const { return mPopupBounds; }
+
+    // D45: returns the side of the key the last popup took (verification)
+    ESOLPopupSide GetPopupSide() const { return mPopupSide; }
 
     // Returns the number of key hulls the last paint drew (layout keys, mirrors and mouse zones included)
     int32 GetPaintedKeyCount() const { return mPaintedKeys; }
 
-    // Returns the hover strip's wrapped visual rows (the hint counts as one; verification: the strip shows the panel's
-    // DetailLines of them)
+    // Returns the hover popup's wrapped visual rows (0 with no hover; verification)
     int32 GetDetailRowCount() const { return mDetailRows.Num(); }
 
-    // Returns the visual rows a set of strip lines wraps into at a strip width (the same wrap the strip uses; each
-    // line one row without a measure service). D36: the owner sizes the strip with it once per width and model
-    int32 CountDetailRows(const TArray<FSOLDiagramDetailLine>& lines, float stripWidth) const;
-
-    // Returns whether the leaf can measure text (Slate is up and the style is set)
-    bool CanMeasure() const { return GetMeasure() != nullptr; }
-
-    // Returns the hover strip cap's drawn width (0 with no cap; verification)
+    // Returns the hover popup cap's drawn width (0 with no cap; verification)
     float GetDetailCapWidth() const { return mDetailCapWidth; }
+
+    // Returns the hover popup's rows drawn by its last paint (verification)
+    int32 GetPaintedDetailRows() const { return mPaintedDetailRows; }
 
     // Returns the number of key legends the last paint drew wider than their key's content (verification: 0, D35
     // clips them)
@@ -138,12 +168,12 @@ public:
 
 private:
 
-    // One visual line of the hover strip: a detail line's first line (swatch and keys) or a wrapped continuation
+    // One visual line of the hover popup: a detail line's first line (swatch and keys) or a wrapped continuation
     struct FDetailRow
     {
-        int32 Line = INDEX_NONE;                        // Index into mDetailLines (INDEX_NONE: the hint)
+        int32 Line = INDEX_NONE;                        // Index into mDetailLines
         bool bFirst = true;
-        FString Text;                                   // This visual line's part of the action (or the hint)
+        FString Text;                                   // This visual line's part of the action
     };
 
     // Returns the font measure service, or null without Slate or before the style is set
@@ -152,19 +182,20 @@ private:
     // Rebuilds the badge texts and the unbound line from the model
     void BuildModelTexts();
 
-    // Wraps the hover strip's lines (or the hint) in the strip width at scale 1
-    void WrapDetail();
+    // Wraps the hover popup's lines in SOLKeyboardLayout::PopupWrapWidth, measured at a paint scale, and measures its
+    // content width (const: the popup paint re-wraps at its own scale)
+    void WrapDetail(float scale) const;
 
     // Slate invalidated every widget (a font cache flush unloads the faces of the kept shaped texts): reshape
     void HandleInvalidateAll(bool bClearResourcesImmediately);
 
-    // Shapes the key, legend and strip texts at a paint scale and fits each key's legend and badge (D35)
+    // Shapes the key, legend, section and hint texts at a paint scale and fits each key's legend and badge (D35)
     void ReshapeStatic(float scale) const;
 
     // Returns a layout key's hull box in local units at rest (no hover lift; empty when the unit leaves no room)
     FBox2f KeyBox(int32 index) const;
 
-    // Shapes the hover strip's texts at a paint scale
+    // Shapes the hover popup's texts at a paint scale
     void ReshapeDetail(float scale) const;
 
     // Returns a key's hover look now (the ramp of the gaining or the losing key; the resting look otherwise)
@@ -180,16 +211,16 @@ private:
     void PaintKey(int32 index, const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId,
         const FLinearColor& styleTint, ESlateDrawEffect effects, double nowS) const;
 
-    // Paints the area legend, the "Other keys" strip and the "Unbound" line
+    // Paints the area legend, the hint, the "Other keys" strip and the "Unbound" line
     void PaintSections(const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId,
         const FLinearColor& styleTint, ESlateDrawEffect effects) const;
 
-    // Paints the hover strip's cap of the hovered key (a 33b key cap: the Small hull, the mouse glyph or the legend)
+    // Paints the hover popup's cap of the hovered key (a 33b key cap: the Small hull, the mouse glyph or the legend)
     void PaintDetailCap(const FVector2f& topLeft, const FGeometry& geometry, FSlateWindowElementList& out,
         int32 layerId, const FLinearColor& styleTint, ESlateDrawEffect effects) const;
 
-    // Paints the hover strip
-    void PaintDetail(const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId,
+    // Paints the hover popup's content (the cap row, then the rows) in a content box of a geometry
+    void PaintDetail(const FBox2f& content, const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId,
         const FLinearColor& styleTint, ESlateDrawEffect effects) const;
 
     // Paints a shaped text at a local x, vertically centred in a line; returns its width (local units)
@@ -212,15 +243,18 @@ private:
     TArray<FString> mOverflowLabels;                // Each Other key's shown name
     FString mUnboundText;                           // The unbound actions' names
     TArray<FSOLDiagramDetailLine> mDetailLines;
-    TArray<FDetailRow> mDetailRows;
-    float mDetailKeysWidth = 0.0f;                  // The keys column (scale 1, local units)
-    FSOLKeyCap mDetailCap;                          // The hovered key's cap at the strip's left (SDD 7: "the key as a
+    // The popup's wrap, mutable: the popup paint re-wraps at its own scale (on a hover or scale change only)
+    mutable TArray<FDetailRow> mDetailRows;
+    mutable float mDetailKeysWidth = 0.0f;          // The keys column (local units, at mWrapScale)
+    mutable float mPopupContentWidth = 0.0f;        // D45: the popup's content width (PopupContentWidth)
+    mutable float mWrapScale = 1.0f;                // D45: the paint scale the popup was wrapped and measured at
+    mutable FSOLKeyCap mDetailCap;                  // The hovered key's cap at the popup's top (SDD 7: "the key as a
                                                     // cap row"); rebuilt on a hover change only
-    float mDetailCapWidth = 0.0f;                   // Its drawn width (0: no cap, the hint shows)
-    int32 mDetailCapKey = INDEX_NONE;               // The layout key the cap was built for
-    float mWrappedWidth = -1.0f;                    // The strip width the rows were wrapped in (-1: stale)
-    FSlateBrush mCapBrush;                          // The hover strip's cap: the 33b key cap's Small hull, its LED
+    mutable float mDetailCapWidth = 0.0f;           // Its drawn width (0: no cap)
+    mutable int32 mDetailCapKey = INDEX_NONE;       // The layout key the cap was built for
+    FSlateBrush mCapBrush;                          // The hover popup's cap: the 33b key cap's Small hull, its LED
     FSlateBrush mKeyBrush;                          // D38: the keys and Other keys caps: the Small hull without the LED
+    FSlateBrush mPopupBrush;                        // D45: the hover popup's hull panel
     FSlateBrush mFlatBrush;                         // A flat white box: tints, bars, swatches and marks
     FSOLKeyboardDiagramFonts mFonts;
     bool mHasStyle = false;
@@ -230,6 +264,7 @@ private:
 
     // The hover ramp: the gaining key and the losing key, each from its look at the change
     int32 mHoveredKey = INDEX_NONE;
+    int32 mHoverAnchor = INDEX_NONE;                // D45: the cap the popup is placed by (a mirror of the hovered key)
     int32 mLeavingKey = INDEX_NONE;
     FSOLSolidButtonLook mHoveredFrom;
     FSOLSolidButtonLook mLeavingFrom;
@@ -251,18 +286,65 @@ private:
     mutable FShapedGlyphSequencePtr mShapedOtherCaption;
     mutable FShapedGlyphSequencePtr mShapedUnboundCaption;
     mutable FShapedGlyphSequencePtr mShapedUnbound;
+    mutable FShapedGlyphSequencePtr mShapedHint;                // D45: the "Hover a key" hint
     mutable TArray<FShapedGlyphSequencePtr> mShapedDetailKeys;  // Per detail row (null on continuations)
     mutable TArray<FShapedGlyphSequencePtr> mShapedDetailText;  // Per detail row
-    mutable FShapedGlyphSequencePtr mShapedDetailCap;           // The strip cap's drawn legend (null: a mouse button)
+    mutable FShapedGlyphSequencePtr mShapedDetailCap;           // The popup cap's drawn legend (null: a mouse button)
     mutable bool mPaintedDetailCap = false;
+    mutable bool mPaintedHint = false;
     mutable float mShapedScale = -1.0f;             // The scale the static texts were shaped at (-1: stale)
-    mutable float mShapedDetailScale = -1.0f;       // ... and the strip's
+    mutable float mShapedDetailScale = -1.0f;       // ... and the popup's
+    mutable float mShapedKeysWidth = 0.0f;          // D45: the popup's keys column as shaped (local units)
+    mutable float mShapedContentWidth = 0.0f;       // ... and its content width (PopupContentWidth of the shaped texts)
+    mutable FGeometry mPaintGeometry;               // D45: the leaf's geometry at its last paint (the popup's key box)
+    mutable uint64 mPaintFrame = 0;                 // GFrameCounter at the last paint (0: never)
+    mutable uint64 mPopupFrame = 0;                 // GFrameCounter at the last popup paint (0: never)
+    mutable bool mPopupPending = false;             // Set by this leaf's paint, taken by the next popup paint
+    mutable FBox2f mPopupRect = FBox2f(ForceInit);  // The last popup's rect, its key and its bounds (layer local)
+    mutable FBox2f mPopupKeyRect = FBox2f(ForceInit);
+    mutable FBox2f mPopupBounds = FBox2f(ForceInit);
+    mutable ESOLPopupSide mPopupSide = ESOLPopupSide::Below;
     mutable float mPaintedScale = 0.0f;
     mutable int32 mPaintedKeys = 0;
     mutable int32 mPaintedLegends = 0;
     mutable int32 mPaintedDetailRows = 0;
     mutable int32 mPaintedWideLegends = 0;          // Legends wider than their key's content (verification)
     mutable int32 mPaintedHiddenBadges = 0;         // Badges D35 hid (verification)
+};
+
+class USOLKeyboardDiagram;
+
+/**
+ * D45: the keyboard diagram's hover popup layer: a hit-test-invisible, tickless leaf over the whole page (the last
+ * child of an overlay above the page's content), so the popup is drawn over the page and is never clipped by the
+ * Keyboard tab's scroll box. Each paint asks the diagram's leaf to paint its popup in this layer's geometry
+ * (SSOLKeyboardDiagram::PaintPopup); it never takes hover from the keys and never changes the page's layout (desired
+ * size zero).
+ */
+class SOLTEST_API SSOLKeyboardDiagramPopupLayer : public SLeafWidget
+{
+public:
+
+    SLATE_BEGIN_ARGS(SSOLKeyboardDiagramPopupLayer) {}
+    SLATE_END_ARGS()
+
+    // Makes the layer tickless and hit-test invisible
+    void Construct(const FArguments& args);
+
+    // Sets the diagram whose popup the layer paints (weak: either may outlive the other)
+    void SetDiagram(USOLKeyboardDiagram* diagram);
+
+    // Paints the diagram's popup (nothing without one)
+    virtual int32 OnPaint(const FPaintArgs& args, const FGeometry& allottedGeometry, const FSlateRect& cullingRect,
+        FSlateWindowElementList& outDrawElements, int32 layerId, const FWidgetStyle& widgetStyle,
+        bool bParentEnabled) const override;
+
+    // Zero: the layer takes no room
+    virtual FVector2D ComputeDesiredSize(float layoutScaleMultiplier) const override;
+
+private:
+
+    TWeakObjectPtr<USOLKeyboardDiagram> mDiagram;
 };
 
 /**
@@ -312,7 +394,11 @@ public:
     // Returns the hovered key, or INDEX_NONE
     int32 GetHoveredKey() const { return mHoveredKey; }
 
-    // Returns the hovered key's strip lines (DetailAssignments + DetailLine); empty with no hover
+    // D45: returns the layout cap the popup is placed by (the cap given to SetHoveredKey: a mirror cap of the hovered
+    // key included), or INDEX_NONE
+    int32 GetHoverAnchor() const { return mHoverAnchor; }
+
+    // Returns the hovered key's popup lines (DetailAssignments + DetailLine); empty with no hover
     const TArray<FSOLDiagramDetailLine>& GetDetailLines() const { return mDetailLines; }
 
     // Returns whether the leaf's last paint drew the whole diagram (false before the leaf exists or paints;
@@ -322,11 +408,14 @@ public:
     // Returns the number of keys the leaf's last paint drew (0 before the leaf exists or paints; verification)
     int32 GetPaintedKeyCount() const;
 
-    // Returns the leaf's wrapped hover strip rows (0 before the leaf exists; verification)
+    // Returns the leaf's wrapped hover popup rows (0 before the leaf exists; verification)
     int32 GetDetailRowCount() const;
 
-    // Returns the leaf's hover strip cap width (0 before the leaf exists or with no cap; verification)
+    // Returns the leaf's hover popup cap width (0 before the leaf exists or with no cap; verification)
     float GetDetailCapWidth() const;
+
+    // Returns the leaf (null before it is built; the popup layer and verification)
+    const TSharedPtr<SSOLKeyboardDiagram>& GetLeaf() const { return mDiagram; }
 
     // Returns the leaf's legends wider than their key in the last paint (0 before the leaf exists; verification)
     int32 GetWideLegendCount() const;
@@ -339,12 +428,6 @@ public:
 
     // Returns whether a layout key's "+N" badge is hidden by D35 (false before the leaf paints)
     bool IsBadgeHidden(int32 key) const;
-
-    // D36: returns the line count the hover strip is sized for, computed once per width and model (never per hover):
-    // headless (no leaf, or one that cannot measure) max(1, SOLKeyDiagram::MaxDetailCount(model)), with the leaf the
-    // busiest key's wrapped row count at the strip's width (at least the headless count); both clamped to
-    // DIAGRAM_DETAIL_LINES. GetPanel().DetailLines equals it
-    int32 GetDetailLineBudget() const { return mDetailLineBudget; }
 
     // D35: returns the "+N" badges the leaf's last paint hid (0 before the leaf exists; verification)
     int32 GetPaintedHiddenBadges() const;
@@ -363,14 +446,10 @@ protected:
 
 private:
 
-    // Sizes the hover strip (the budget) and lays the panel out in the layout width with the model's Other keys and
-    // Unbound sections
+    // Lays the panel out in the layout width with the model's Other keys and Unbound sections
     void LayoutPanel();
 
-    // Returns the hover strip's line budget for the model and the layout width (see GetDetailLineBudget)
-    int32 ComputeDetailLineBudget();
-
-    // Rebuilds the hovered key's strip lines and hands the hover to the leaf
+    // Rebuilds the hovered key's popup lines and hands the hover to the leaf
     void RefreshHover();
 
     // Returns the live effects strength (HUD_EFFECTS_DEFAULT without the solid menu subsystem)
@@ -386,11 +465,43 @@ private:
     TArray<FString> mLiveKeys;                      // The keys of the last SetKeys
     FSOLKeyDiagramModel mModel;
     FSOLDiagramPanel mPanel;
-    TArray<int32> mDetailAssignments;               // DetailAssignments scratch (the hovered key; the budget's keys)
+    TArray<int32> mDetailAssignments;               // DetailAssignments scratch (the hovered key)
     TArray<FSOLDiagramDetailLine> mDetailLines;
-    TArray<FSOLDiagramDetailLine> mBudgetLines;     // ComputeDetailLineBudget's scratch, one key's lines at a time
-    int32 mDetailLineBudget = 1;
     float mLayoutWidth = 0.0f;
     int32 mHoveredKey = INDEX_NONE;
+    int32 mHoverAnchor = INDEX_NONE;                // D45: the cap the popup is placed by
     bool mHasKeys = false;
+};
+
+/**
+ * D45: the UMG wrapper of SSOLKeyboardDiagramPopupLayer: the page puts it over its content (an overlay's last child,
+ * hit-test invisible) and gives it the diagram whose hover popup it paints.
+ */
+UCLASS()
+class SOLTEST_API USOLKeyboardDiagramPopup : public UWidget
+{
+    GENERATED_BODY()
+
+public:
+
+    // Makes the widget hit-test invisible
+    USOLKeyboardDiagramPopup();
+
+    // Sets the diagram whose popup the layer paints
+    void SetDiagram(USOLKeyboardDiagram* diagram);
+
+    // Drops the layer
+    virtual void ReleaseSlateResources(bool bReleaseChildren) override;
+
+protected:
+
+    // Builds the layer and hands it the diagram
+    virtual TSharedRef<SWidget> RebuildWidget() override;
+
+private:
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLKeyboardDiagram> Diagram;
+
+    TSharedPtr<SSOLKeyboardDiagramPopupLayer> mLayer;
 };

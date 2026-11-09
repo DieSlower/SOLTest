@@ -410,10 +410,8 @@ FVector2f SOLKeyboardLayout::FromUnits(const FVector2f& units, const FSOLDiagram
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Stacks the Keyboard tab's sections in a width: legend, detail (its cap row and detailLines lines, D36; above the
-// diagram, D43), diagram, other keys, unbound
-FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound,
-    const int32 detailLines)
+// Stacks the Keyboard tab's sections in a width: legend, hint (D45), diagram, other keys, unbound
+FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound)
 {
     using namespace SOL::Help;
     FSOLDiagramPanel panel;
@@ -440,9 +438,7 @@ FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool 
         bottom = top + height;
         return FBox2f(FVector2f(0.0f, top), FVector2f(sectionWidth, bottom));
     };
-    panel.DetailLines = FMath::Clamp(detailLines, 1, DIAGRAM_DETAIL_LINES);
-    panel.Detail = stack(true, width, DIAGRAM_DETAIL_CAP_HEIGHT + static_cast<float>(panel.DetailLines)
-        * DIAGRAM_DETAIL_LINE_HEIGHT);
+    panel.Hint = stack(true, width, DIAGRAM_HINT_HEIGHT);
     const FVector2f diagramSize = Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
     panel.Diagram = stack(true, diagramSize.X, diagramSize.Y);
     panel.Scale.OriginPx = panel.Diagram.Min;
@@ -450,6 +446,82 @@ FSOLDiagramPanel SOLKeyboardLayout::LayoutPanel(const float widthPx, const bool 
     panel.Unbound = stack(bUnbound, width, DIAGRAM_UNBOUND_HEIGHT);
     panel.Height = panel.Unbound.Max.Y;
     return panel;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D45: returns the width the hover popup's lines wrap in
+float SOLKeyboardLayout::PopupWrapWidth()
+{
+    return SOL::Help::DIAGRAM_POPUP_MAX_WIDTH - 2.0f * SOL::Help::DIAGRAM_POPUP_PAD;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D45: returns the hover popup's content width (the cap or the widest row)
+float SOLKeyboardLayout::PopupContentWidth(const float capWidth, const float keysWidth, const float widestText)
+{
+    using namespace SOL::Help;
+    // A negative or non-finite part reads 0
+    const auto valid = [](const float value) { return FMath::IsFinite(value) && value > 0.0f ? value : 0.0f; };
+    return FMath::Max(valid(capWidth), DIAGRAM_LEGEND_SWATCH + 2.0f * DIAGRAM_TEXT_GAP + valid(keysWidth)
+        + valid(widestText));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D45: returns the hover popup's outer size for its content width and rows
+FVector2f SOLKeyboardLayout::PopupSize(const float contentWidth, const int32 rows)
+{
+    using namespace SOL::Help;
+    const float content = FMath::IsFinite(contentWidth) && contentWidth > 0.0f ? contentWidth : 0.0f;
+    return FVector2f(FMath::Min(content, PopupWrapWidth()) + 2.0f * DIAGRAM_POPUP_PAD, 2.0f * DIAGRAM_POPUP_PAD
+        + DIAGRAM_DETAIL_CAP_HEIGHT + static_cast<float>(FMath::Clamp(rows, 1, DIAGRAM_DETAIL_LINES))
+        * DIAGRAM_DETAIL_LINE_HEIGHT);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D45: places the hover popup by the hovered key inside the bounds
+FSOLPopupPlacement SOLKeyboardLayout::PlacePopup(const FBox2f& key, const FVector2f& size, const FBox2f& bounds,
+    const float gap)
+{
+    FSOLPopupPlacement placement;
+    if (!key.bIsValid || !bounds.bIsValid || !FMath::IsFinite(size.X) || !FMath::IsFinite(size.Y) || size.X <= 0.0f
+        || size.Y <= 0.0f)
+    {
+        return placement;
+    }
+    const float space = FMath::IsFinite(gap) && gap > 0.0f ? gap : 0.0f;
+    // Clamps a start into [min, max - extent] (min when the extent is wider than the range)
+    const auto clampInto = [](const float start, const float min, const float max, const float extent)
+    {
+        return extent > max - min ? min : FMath::Clamp(start, min, max - extent);
+    };
+    const FVector2f centre = key.GetCenter();
+    FVector2f topLeft;
+    if (key.Max.Y + space + size.Y <= bounds.Max.Y + KINDA_SMALL_NUMBER)
+    {
+        // Below, centred on the key
+        placement.Side = ESOLPopupSide::Below;
+        topLeft = FVector2f(clampInto(centre.X - 0.5f * size.X, bounds.Min.X, bounds.Max.X, size.X), key.Max.Y + space);
+    }
+    else if (key.Min.Y - space - size.Y >= bounds.Min.Y - KINDA_SMALL_NUMBER)
+    {
+        // Above, centred on the key
+        placement.Side = ESOLPopupSide::Above;
+        topLeft = FVector2f(clampInto(centre.X - 0.5f * size.X, bounds.Min.X, bounds.Max.X, size.X),
+            key.Min.Y - space - size.Y);
+    }
+    else
+    {
+        // Beside: right, left, else the roomier side (a tie right) clamped in; centred on the key vertically
+        const bool bRightFits = key.Max.X + space + size.X <= bounds.Max.X + KINDA_SMALL_NUMBER;
+        const bool bLeftFits = key.Min.X - space - size.X >= bounds.Min.X - KINDA_SMALL_NUMBER;
+        const bool bRight = bRightFits || (!bLeftFits && bounds.Max.X - key.Max.X >= key.Min.X - bounds.Min.X);
+        placement.Side = bRight ? ESOLPopupSide::Right : ESOLPopupSide::Left;
+        const float left = bRight ? key.Max.X + space : key.Min.X - space - size.X;
+        topLeft = FVector2f(bRightFits || bLeftFits ? left : clampInto(left, bounds.Min.X, bounds.Max.X, size.X),
+            clampInto(centre.Y - 0.5f * size.Y, bounds.Min.Y, bounds.Max.Y, size.Y));
+    }
+    placement.Rect = FBox2f(topLeft, topLeft + size);
+    return placement;
 }
 
 //////////////////////////////////////////////////////////////////////////

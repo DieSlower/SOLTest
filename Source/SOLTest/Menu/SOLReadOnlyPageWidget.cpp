@@ -18,6 +18,8 @@
 #include "Blueprint/WidgetTree.h"
 #include "Components/HorizontalBox.h"
 #include "Components/HorizontalBoxSlot.h"
+#include "Components/Overlay.h"
+#include "Components/OverlaySlot.h"
 #include "Components/ScrollBox.h"
 #include "Components/SizeBox.h"
 #include "Components/VerticalBox.h"
@@ -119,10 +121,16 @@ void USOLReadOnlyPageWidget::ShowOpening()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Shows a tab: the content switcher's child and the tab buttons' selected mark
+// Shows a tab: the content switcher's child and the tab buttons' selected mark; a tab change drops the diagram's
+// hover (D45: no stale popup when the Keyboard tab shows again under a resting cursor)
 void USOLReadOnlyPageWidget::SelectTab(const int32 tab)
 {
+    const int32 previous = mTab;
     mTab = SOLPageTabs::SelectTab(mTab, tab, Rail.Buttons.Num());
+    if (mTab != previous && Diagram != nullptr)
+    {
+        Diagram->SetHoveredKey(INDEX_NONE);
+    }
     if (TabSwitcher != nullptr && TabSwitcher->GetActiveWidgetIndex() != mTab)
     {
         TabSwitcher->SetActiveWidgetIndex(mTab);
@@ -233,11 +241,30 @@ void USOLReadOnlyPageWidget::FitLeftColumn()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33d-ii) Sets the Keyboard tab's diagram and lays it out at its starting width, the width FitDiagram compares with
+// (33d-ii) Sets the Keyboard tab's diagram and lays it out at its starting width, the width FitDiagram compares with.
+// D45: the first diagram also puts the page in an overlay with the diagram's hover popup layer on top (hit-test
+// invisible, so the popup paints over the whole page, never clipped by the tab's scroll box)
 void USOLReadOnlyPageWidget::SetDiagram(USOLKeyboardDiagram* diagram, const float startLayoutWidth)
 {
     Diagram = diagram;
     mDiagramWidth = 0.0f;
+    if (Diagram != nullptr && DiagramPopup == nullptr && WidgetTree != nullptr && WidgetTree->RootWidget != nullptr)
+    {
+        UOverlay* overlay = WidgetTree->ConstructWidget<UOverlay>(UOverlay::StaticClass());
+        UWidget* content = WidgetTree->RootWidget;
+        WidgetTree->RootWidget = overlay;
+        UOverlaySlot* contentSlot = overlay->AddChildToOverlay(content);
+        contentSlot->SetHorizontalAlignment(HAlign_Fill);
+        contentSlot->SetVerticalAlignment(VAlign_Fill);
+        DiagramPopup = WidgetTree->ConstructWidget<USOLKeyboardDiagramPopup>(USOLKeyboardDiagramPopup::StaticClass());
+        UOverlaySlot* popupSlot = overlay->AddChildToOverlay(DiagramPopup);
+        popupSlot->SetHorizontalAlignment(HAlign_Fill);
+        popupSlot->SetVerticalAlignment(VAlign_Fill);
+    }
+    if (DiagramPopup != nullptr)
+    {
+        DiagramPopup->SetDiagram(Diagram);
+    }
     if (Diagram != nullptr && startLayoutWidth > 0.0f)
     {
         Diagram->SetLayoutWidth(startLayoutWidth);

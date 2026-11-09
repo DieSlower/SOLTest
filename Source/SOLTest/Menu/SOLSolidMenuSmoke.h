@@ -18,6 +18,7 @@ class USOLKeyboardDiagramSmokePage;
 class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
 class USOLSolidMenuSmokeBoard;
+class USOLSolidPanel;
 struct FSOLSolidTabRail;
 
 /**
@@ -55,11 +56,12 @@ struct FSOLSolidTabRail;
  * the shell at 1000x800 (main and pause) and 1280x720 (pause). 33c: the keyboard diagram test page
  * (USOLKeyboardDiagramSmokePage) in the shell's content width at 1280x720 (D37: no 1000x800 step): its fit (stacked,
  * D34), legends clipped (D35), paint and assignment count, the real cursor over the busiest and the six modifier keys
- * (the panel fixed while hovering, D36), every key's strip rows against the strip's line budget, and Fire rebound to
- * K and back through the settings subsystem (the live rebuild). 33d-ii: the Help page in both menus at 1280x720 and
- * 1920x1080 (its rail captions and traces, the Keyboard tab's diagram and pointer line, every glossary tab's rows with
- * their symbol views built and painted, also on the first frame after a tab switch, Overlays scrolled to its end,
- * no rebuild while idle and strength 0 rebuilding only the shown tab), every entry of both 8-entry stacks reached by
+ * (the hover popup inside its bounds and clear of the key, D45; the panel fixed while hovering), every key's popup
+ * rows within the line cap, and Fire rebound to K and back through the settings subsystem (the live rebuild).
+ * 33d-ii: the Help page in both menus at 1280x720 and 1920x1080 (its rail captions and traces, the Keyboard tab's
+ * diagram and pointer line, every glossary tab's rows with their symbol views built and painted, also on the first
+ * frame after a tab switch, Overlays scrolled to its end, no rebuild while idle and strength 0 rebuilding only the
+ * shown tab), every entry of both 8-entry stacks reached by
  * focus, hit test and synthesized Slate clicks, and Esc closing the pause Help page before a second Esc resumes; a
  * run that logs another number of checks
  * than a whole run (SOLID_SMOKE_EXPECTED_CHECKS) fails. Each step logs
@@ -198,15 +200,15 @@ private:
 
     // (33c) Runs the keyboard diagram step's stages (SDD 33 sections 7 and 16): the Controls page open in the shell for
     // its content width, the diagram test page laid out in it (fit: stacked, D34; legends clipped, D35; paint,
-    // assignment count), the real cursor over the hover keys (strip filled and fitting, the cap on its row, the panel
-    // fixed, D36; the modifier keys' own actions then chords), a rebind of Fire to K and back through the settings
-    // subsystem, and every key's strip rows against the strip's line budget; checks "<id>-*", screenshots
-    // SolidMenu_<shotName>*.png; returns true once done
+    // assignment count), the real cursor over the hover keys (the popup painted inside its bounds and clear of the
+    // key, the cap on its row, the panel fixed, D45; the modifier keys' own actions then chords), a rebind of Fire to
+    // K and back through the settings subsystem, and every key's popup rows within the line cap; checks "<id>-*",
+    // screenshots SolidMenu_<shotName>*.png; returns true once done
     bool TickDiagram(USOLMenuSubsystem& menu, const TCHAR* id, const TCHAR* shotName);
 
-    // (33c) Checks one hovered diagram key ("<id>-hover-<name>"): the leaf hovered it, its strip lines filled and
-    // fitting the strip's line budget, its cap on its own row, the panel as at the fit (D36), painted whole; a modifier
-    // key: bModifier, its own actions then its chords
+    // (33c) Checks one hovered diagram key ("<id>-hover-<name>"): the leaf hovered it, its popup lines within the line
+    // cap, painted inside its bounds and clear of the key (D45), its cap on its own row, the panel as at the fit,
+    // painted whole; a modifier key: bModifier, its own actions then its chords
     void CheckDiagramHover(const TCHAR* id, int32 hoverIndex, int32 key);
 
     // (33c) Checks the diagram's rebuild after a rebind ("<id>-rebind": Fire on K, not on LMB, the owner's handler ran)
@@ -214,13 +216,14 @@ private:
     void CheckDiagramRebind(const TCHAR* id, bool bRestored);
 
     // (33d-ii) Runs a Help page step's stages (SDD 33 section 16, contract S1) on the main menu's or the pause menu's
-    // Help page at the current view: opened, its rail (captions, traces), the Keyboard tab and its hover strip with a
-    // key hovered (33d-iii: every run, shot SolidMenu_help-<menu>-<size>-keys-hover.png), each glossary tab's rows
-    // (art per row, the views built and painted, also on the first painted frame after the switch), a screenshot per
-    // tab (SolidMenu_help-<menu>-<size>-<tab>.png, and -samples.png with the tab's first text sample scrolled into
-    // view, 33d-iii); the 1280x720 main run also scrolls Overlays to its end and checks
-    // the event-driven rebuild (idle frames, strength 0), then closes and reopens Help (no view rebuilt, the views'
-    // batch memory logged); returns true once done
+    // Help page at the current view: opened, its rail (captions, traces), the Keyboard tab and its hover popup (D45:
+    // over O in every run, shot SolidMenu_help-<menu>-<size>-keys-hover.png; the main runs also over seven more caps,
+    // -keys-hover-<name>.png, then hidden with no hover), each glossary tab's rows (art per row, the views built and
+    // painted, also on the first painted frame after the switch), a screenshot per tab
+    // (SolidMenu_help-<menu>-<size>-<tab>.png, and -samples.png with the tab's first text sample scrolled into view,
+    // 33d-iii); the 1280x720 main run also scrolls Overlays to its end and checks the event-driven rebuild (idle
+    // frames, strength 0), then closes and reopens Help (no view rebuilt, the views' batch memory logged); returns true
+    // once done
     bool TickHelp(USOLMenuSubsystem& menu, bool bPause, bool bLarge);
 
     // (33d-ii) Watches the main menu's Help page until its first open (any step): the Keyboard diagram's layout width
@@ -235,10 +238,11 @@ private:
     // under it, both inside the shell horizontally; returns whether all hold, with a description
     bool ReadHelpKeys(USOLMenuSubsystem& menu, USOLReadOnlyPageWidget& page, const UWidget& shell, FString& outDetail);
 
-    // (33d-iii, D43) Reads the Keyboard tab's hover strip with a key hovered: above the diagram, under the legend, at
-    // the tab's top (scroll offset 0) and wholly inside the tab's view (no scrolling to see it), showing the key's cap
-    // row and at least one line; returns whether all hold, with a description
-    bool ReadHelpStrip(USOLReadOnlyPageWidget& page, FString& outDetail);
+    // (33e-iii, D45) Reads the Keyboard tab's hover popup over a layout cap (its key name for the log): the cap
+    // hovered and in the tab's view, the popup painted inside its bounds and the shell, clear of the cap, the page's
+    // layout as at rest (mHelpRestPanel, mHelpRestEnd); returns whether all hold, with a description
+    bool ReadHelpPopup(USOLReadOnlyPageWidget& page, const USOLSolidPanel& shell, int32 cap, const TCHAR* keyName,
+        FString& outDetail);
 
     // (33d-ii) Reads the shown glossary tab: its rows (EntriesOfTab, art per EntryArt), each view built at its pixel
     // size and painted (in view: also on the first painted frame, mHelpFirstPainted), the boxes GLOSSARY_SYMBOL_BOX
@@ -335,6 +339,9 @@ private:
     bool mIsSweepOk = true;         // ... every row read fits
     FString mSweepDetail;           // ... what was read
     int32 mHelpTab = 0;             // 33d-ii: the Help step's glossary tab being read
+    int32 mHelpHover = 0;           // 33e-iii: the Help step's popup cap being read (SOLID_SMOKE_HELP_HOVERS)
+    FSOLDiagramPanel mHelpRestPanel;    // ... the Keyboard tab's panel at rest
+    float mHelpRestEnd = -1.0f;         // ... and its scroll's range at rest
     bool mIsHelpFirstRead = false;  // ... its views' paint on the first frame after the switch was read
     bool mIsHelpOk = true;          // ... the pause runs' one verdict over every tab
     bool mIsHelpTraceOk = false;    // ... the tab 1 trace read

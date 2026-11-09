@@ -707,11 +707,16 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
             {
                 clipped += diagram->IsLegendClipped(key) ? 1 : 0;
             }
+            // D45: a hover pass draws the hover popup (over the test page), a plain pass none
+            const TSharedPtr<SSOLKeyboardDiagram> leaf = diagram != nullptr ? diagram->GetLeaf() : nullptr;
+            const bool bPopup = leaf.IsValid() && leaf->WasPopupPainted();
             Check(*FString::Printf(TEXT("diagram-P%d"), current.Pass), IsPassDiagramShown(current.Pass)
-                && mDiagramWidth > 0.0f && diagram->WasPaintedWhole() && clipped == 0, FString::Printf(TEXT("%s %dx%d: "
+                && mDiagramWidth > 0.0f && diagram->WasPaintedWhole() && clipped == 0 && bPopup == pass.bDiagramHover,
+                FString::Printf(TEXT("%s %dx%d: popup %d, "
                 "page %s, width %.1f, unit %.2f, painted whole %d, %d legends clipped, hovered key %d (want %d)"),
-                pass.Screen, pass.View.X, pass.View.Y, page != nullptr && page->IsInViewport() ? TEXT("shown")
-                : TEXT("NOT SHOWN"), mDiagramWidth, diagram != nullptr ? diagram->GetPanel().Scale.UnitPx : 0.0f,
+                pass.Screen, pass.View.X, pass.View.Y, bPopup ? 1 : 0, page != nullptr && page->IsInViewport()
+                ? TEXT("shown") : TEXT("NOT SHOWN"), mDiagramWidth,
+                diagram != nullptr ? diagram->GetPanel().Scale.UnitPx : 0.0f,
                 diagram != nullptr && diagram->WasPaintedWhole() ? 1 : 0, clipped, diagram != nullptr
                 ? diagram->GetHoveredKey() : INDEX_NONE, pass.bDiagramHover ? mDiagramKey : INDEX_NONE));
             HideDiagramPage();
@@ -897,7 +902,7 @@ bool FSOLSolidMenuProfileSmoke::ShowDiagramPage(const int32 pass, const USOLMenu
     page->AddToViewport(PROFILE_DIAGRAM_Z);
     mDiagramPage = page;
 
-    // The busiest key (the most strip lines; the first of a tie) hovered for a hover pass
+    // The busiest key (the most popup lines; the first of a tie) hovered for a hover pass (D45: the popup drawn)
     USOLKeyboardDiagram* diagram = page->GetDiagram();
     mDiagramKey = INDEX_NONE;
     if (diagram != nullptr && mPasses[pass].bDiagramHover)

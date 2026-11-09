@@ -20,6 +20,21 @@
 
 static_assert(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY) == UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_TABS),
     "one player guide image per glossary tab");
+static_assert(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_TAB_PAGES) == static_cast<int32>(ESOLHelpTab::Count),
+    "one player guide page count per Help tab");
+// Returns whether every Help tab's page count is in 1 .. PLAYER_GUIDE_MAX_PAGES (compile time)
+constexpr bool GuidePageCountsValid()
+{
+    for (const int32 pages : SOL::Paths::PLAYER_GUIDE_TAB_PAGES)
+    {
+        if (pages < 1 || pages > SOL::Paths::PLAYER_GUIDE_MAX_PAGES)
+        {
+            return false;
+        }
+    }
+    return true;
+}
+static_assert(GuidePageCountsValid(), "each Help tab has 1 .. PLAYER_GUIDE_MAX_PAGES guide pages");
 
 namespace
 {
@@ -38,7 +53,8 @@ namespace
     constexpr const TCHAR* GUIDE_IMAGE_MIDDLE = TEXT("](");
     constexpr int32 GUIDE_IMAGE_MIDDLE_LEN = 2;
     constexpr TCHAR GUIDE_IMAGE_CLOSE = TEXT(')');
-    constexpr int32 GUIDE_FIXED_SHOTS = 2;                          // The Keyboard tab's shots: plain and hovered
+    constexpr TCHAR GUIDE_EXTENSION_DOT = TEXT('.');                // Before an image name's extension
+    constexpr TCHAR GUIDE_PAGE_SUFFIX_FORMAT[] = TEXT("-%d");       // A scrolled shot's name suffix (Printf: an array)
 
     //////////////////////////////////////////////////////////////////////////
     // Appends a line and its '\n'
@@ -115,6 +131,21 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Appends a tab's page images (D46), each on its own line with a blank line after: the first with its alt text,
+    // the scrolled ones with GUIDE_IMAGE_PART_FORMAT
+    void GuidePageImages(FString& out, const ESOLHelpTab tab, const TCHAR* alt, const TCHAR* baseName)
+    {
+        const int32 pages = SOLPlayerGuide::TabPages(tab);
+        for (int32 page = 0; page < pages; ++page)
+        {
+            const FString pageAlt = page == 0 ? FString(alt)
+                : FString::Format(SOLMenuText::GUIDE_IMAGE_PART_FORMAT, { FString(alt), page + 1, pages });
+            GuideImage(out, *pageAlt, *SOLPlayerGuide::PageFileName(baseName, page));
+            GuideBlankLine(out);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns a colour as "#RRGGBB"
     FString GuideHexColor(const FColor& color)
     {
@@ -158,8 +189,8 @@ namespace
         GuideBlankLine(out);
         GuideLine(out, SOLMenuText::GUIDE_KEYBOARD_HEADING);
         GuideBlankLine(out);
-        GuideImage(out, SOLMenuText::GUIDE_KEYBOARD_ALT, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD);
-        GuideBlankLine(out);
+        GuidePageImages(out, ESOLHelpTab::Keyboard, SOLMenuText::GUIDE_KEYBOARD_ALT,
+            SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD);
         GuideImage(out, SOLMenuText::GUIDE_KEYBOARD_HOVER_ALT, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER);
         GuideBlankLine(out);
         GuideLine(out, SOLMenuText::GUIDE_LEGEND_INTRO);
@@ -188,8 +219,8 @@ namespace
             GuideBlankLine(out);
             GuideLine(out, FString(SOLMenuText::GUIDE_SUBHEADING_PREFIX) + heading);
             GuideBlankLine(out);
-            GuideImage(out, heading, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[tab]);
-            GuideBlankLine(out);
+            GuidePageImages(out, SOLGlossary::TabFromGlossaryName(heading), heading,
+                SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[tab]);
             GuideLine(out, SOLMenuText::GUIDE_GLOSSARY_COLUMNS);
             GuideLine(out, SOLMenuText::GUIDE_TABLE_RULE);
             SOLGlossary::EntriesOfTab(SOLGlossary::TabFromGlossaryName(heading), entries);
@@ -215,6 +246,13 @@ namespace
         }
         normalized.LeftInline(end);
         return normalized;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the scroll step between two guide pages for a view height (the overlap off, at least 1)
+    float GuidePageStep(const float viewHeight)
+    {
+        return FMath::Max(viewHeight - SOL::Paths::PLAYER_GUIDE_PAGE_OVERLAP, 1.0f);
     }
 }
 
@@ -291,20 +329,94 @@ bool SOLPlayerGuide::IsWriteRequested(const TCHAR* commandLine)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the guide's screenshots in shot order: the Keyboard tab, its hover shot, then each glossary tab
+// Returns the guide's screenshots in shot order (D46): the Keyboard tab's pages, its hover shot, then each glossary
+// tab's pages; built once from SOL::Paths' page table
 TConstArrayView<FSOLPlayerGuideShot> SOLPlayerGuide::Shots()
 {
-    static const FSOLPlayerGuideShot SHOTS[] = {
-        { ESOLHelpTab::Keyboard, false, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD },
-        { ESOLHelpTab::Keyboard, true, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER },
-        { ESOLHelpTab::FlightHud, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[0] },
-        { ESOLHelpTab::TargetsRadar, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[1] },
-        { ESOLHelpTab::OverlaysRoute, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[2] },
-        { ESOLHelpTab::MenusMap, false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[3] },
-    };
-    static_assert(UE_ARRAY_COUNT(SHOTS) == GUIDE_FIXED_SHOTS + UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY),
-        "one shot per glossary tab after the two Keyboard shots");
+    static const TArray<FSOLPlayerGuideShot> SHOTS = []()
+    {
+        TArray<FSOLPlayerGuideShot> shots;
+        // Adds a tab's page shots (plain, no hover), named from its base image name
+        const auto addPages = [&shots](const ESOLHelpTab tab, const TCHAR* baseName)
+        {
+            for (int32 page = 0; page < TabPages(tab); ++page)
+            {
+                shots.Add({ tab, false, page, PageFileName(baseName, page) });
+            }
+        };
+        addPages(ESOLHelpTab::Keyboard, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD);
+        shots.Add({ ESOLHelpTab::Keyboard, true, 0, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER });
+        for (int32 tab = 0; tab < static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY)); ++tab)
+        {
+            addPages(SOLGlossary::TabFromGlossaryName(SOLMenuText::GLOSSARY_TABS[tab]),
+                SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[tab]);
+        }
+        return shots;
+    }();
     return SHOTS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D46: returns a Help tab's shot count from the page table
+int32 SOLPlayerGuide::TabPages(const ESOLHelpTab tab)
+{
+    const int32 index = static_cast<int32>(tab);
+    return index >= 0 && index < static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_TAB_PAGES))
+        ? SOL::Paths::PLAYER_GUIDE_TAB_PAGES[index] : 0;
+}
+
+
+//////////////////////////////////////////////////////////////////////////
+// D46: returns the window shots a tab's scroll extent needs
+int32 SOLPlayerGuide::PageCount(const float viewHeight, const float scrollEnd)
+{
+    using namespace SOL::Paths;
+    if (!FMath::IsFinite(viewHeight) || viewHeight <= 0.0f || !FMath::IsFinite(scrollEnd)
+        || scrollEnd <= PLAYER_GUIDE_SCROLL_TOLERANCE)
+    {
+        return 1;
+    }
+    const float steps = FMath::CeilToFloat((scrollEnd - PLAYER_GUIDE_SCROLL_TOLERANCE) / GuidePageStep(viewHeight));
+    return steps >= static_cast<float>(PLAYER_GUIDE_MAX_PAGES - 1) ? PLAYER_GUIDE_MAX_PAGES
+        : 1 + static_cast<int32>(steps);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D46: returns a page's scroll offset
+float SOLPlayerGuide::PageOffset(const int32 page, const float viewHeight, const float scrollEnd)
+{
+    if (page <= 0 || !FMath::IsFinite(viewHeight) || viewHeight <= 0.0f || !FMath::IsFinite(scrollEnd)
+        || scrollEnd <= 0.0f)
+    {
+        return 0.0f;
+    }
+    return FMath::Min(static_cast<float>(page) * GuidePageStep(viewHeight), scrollEnd);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// D46: returns a page's image name
+FString SOLPlayerGuide::PageFileName(const TCHAR* baseName, const int32 page)
+{
+    if (baseName == nullptr)
+    {
+        return FString();
+    }
+    FString name(baseName);
+    if (page <= 0)
+    {
+        return name;
+    }
+    const FString suffix = FString::Printf(GUIDE_PAGE_SUFFIX_FORMAT, page + 1);
+    int32 dot = INDEX_NONE;
+    if (name.FindLastChar(GUIDE_EXTENSION_DOT, dot))
+    {
+        name.InsertAt(dot, suffix);
+    }
+    else
+    {
+        name += suffix;
+    }
+    return name;
 }
 
 //////////////////////////////////////////////////////////////////////////

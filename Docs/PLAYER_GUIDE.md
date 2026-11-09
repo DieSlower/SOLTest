@@ -109,6 +109,8 @@ Every control of the game and every element of the flight HUD, as the in-game He
 
 ![The Help page's keyboard](Images/33-help-keyboard.png)
 
+![The Help page's keyboard, part 2 of 2](Images/33-help-keyboard-2.png)
+
 ![The keyboard with a key hovered](Images/33-help-keyboard-hover.png)
 
 Each key is tinted in the colour of the area its action belongs to:
@@ -132,6 +134,12 @@ Each key is tinted in the colour of the area its action belongs to:
 
 ![Flight HUD](Images/33-help-glossary-flight-hud.png)
 
+![Flight HUD, part 2 of 4](Images/33-help-glossary-flight-hud-2.png)
+
+![Flight HUD, part 3 of 4](Images/33-help-glossary-flight-hud-3.png)
+
+![Flight HUD, part 4 of 4](Images/33-help-glossary-flight-hud-4.png)
+
 | Name | Description |
 |---|---|
 | Reticle | Where the ship's nose points: your guns fire along it. Target selection (T) picks the target nearest to it. |
@@ -152,6 +160,8 @@ Each key is tinted in the colour of the area its action belongs to:
 
 ![Targets and radar](Images/33-help-glossary-targets-radar.png)
 
+![Targets and radar, part 2 of 2](Images/33-help-glossary-targets-radar-2.png)
+
 | Name | Description |
 |---|---|
 | Target bracket and name | A bracket drawn around the selected target with its name beside it. Select the target nearest the reticle with T, step farther or nearer with R and F, and clear it with X. |
@@ -165,6 +175,12 @@ Each key is tinted in the colour of the area its action belongs to:
 ### Overlays and route
 
 ![Overlays and route](Images/33-help-glossary-overlays-route.png)
+
+![Overlays and route, part 2 of 4](Images/33-help-glossary-overlays-route-2.png)
+
+![Overlays and route, part 3 of 4](Images/33-help-glossary-overlays-route-3.png)
+
+![Overlays and route, part 4 of 4](Images/33-help-glossary-overlays-route-4.png)
 
 | Name | Description |
 |---|---|
@@ -188,6 +204,10 @@ Each key is tinted in the colour of the area its action belongs to:
 ### Menus and map
 
 ![Menus and map](Images/33-help-glossary-menus-map.png)
+
+![Menus and map, part 2 of 3](Images/33-help-glossary-menus-map-2.png)
+
+![Menus and map, part 3 of 3](Images/33-help-glossary-menus-map-3.png)
 
 | Name | Description |
 |---|---|

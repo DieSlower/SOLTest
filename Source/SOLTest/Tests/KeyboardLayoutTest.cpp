@@ -19,13 +19,13 @@
 // D19, D30), written against the header contract (Menu/SOLKeyboardLayout.h) before the production code existed: the
 // static key table (a compact US layout with the numpad and the mouse's zones), the key lookup, the hit test, the
 // mouse placement and the scale for a width. Part 33c adds, also test-first, the Keyboard tab's panel layout
-// (LayoutPanel: the legend, diagram, "Other keys", "Unbound" and hover strip stacked in a width) and the legend grid.
-// The 33c revision (contract section E, D34-D36), also test-first: the Stacked arrangement under a width threshold
-// (FitToWidth's new rule, the clusters and the mouse under the main block), the hover strip sized for a line count
-// (LayoutPanel's detailLines, DIAGRAM_DETAIL_CAP_HEIGHT) and the key text fit (FitKeyText: clipped legends, the "+N"
-// badge hidden when it would overlap). Part 33d-iii (D43), also test-first: the hover strip moves above the diagram, so
-// the panel stacks the legend, hover strip, diagram, "Other keys" and "Unbound" and the strip's top no longer depends
-// on the diagram, the strips or the line count.
+// (LayoutPanel: the legend, diagram, "Other keys" and "Unbound" stacked in a width) and the legend grid. The 33c
+// revision (contract section E, D34-D36), also test-first: the Stacked arrangement under a width threshold
+// (FitToWidth's new rule, the clusters and the mouse under the main block) and the key text fit (FitKeyText: clipped
+// legends, the "+N" badge hidden when it would overlap). Part 33e-iii (D45), also test-first: the hover strip is gone
+// (the panel stacks the legend, the one-line "Hover a key" hint, the diagram, "Other keys" and "Unbound", the hint's
+// and the diagram's tops independent of the strips), and the hover popup's size (PopupWrapWidth, PopupContentWidth,
+// PopupSize) and place (PlacePopup: below the key, else above, else beside, always inside its bounds).
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -70,8 +70,13 @@ namespace
     const FBox2f KEYBOARDLAYOUTTEST_STACK_INSERT(FVector2f(2.0f, 8.5f), FVector2f(3.0f, 9.5f));
     const FBox2f KEYBOARDLAYOUTTEST_STACK_NUMLOCK(FVector2f(5.5f, 8.5f), FVector2f(6.5f, 9.5f));
 
-    // Hover strip line counts LayoutPanel is tried with (clamped to 1 .. DIAGRAM_DETAIL_LINES)
-    constexpr int32 KEYBOARDLAYOUTTEST_DETAIL_LINES[] = { 1, 4 };
+    // The hover popup's worked-example bounds and size (contract C) and a popup taller than any key's room above or
+    // below in them
+    const FBox2f KEYBOARDLAYOUTTEST_POPUP_BOUNDS(FVector2f(0.0f, 0.0f), FVector2f(1000.0f, 600.0f));
+    const FVector2f KEYBOARDLAYOUTTEST_POPUP_SIZE(300.0f, 140.0f);
+    const FVector2f KEYBOARDLAYOUTTEST_POPUP_TALL(300.0f, 500.0f);
+    constexpr float KEYBOARDLAYOUTTEST_POPUP_GAP = 6.0f;        // DIAGRAM_POPUP_GAP at the current value (cross-check)
+    constexpr float KEYBOARDLAYOUTTEST_POPUP_KEY = 40.0f;       // A swept key's side
 
     // Key text fit spans (menu units) and a width past the edge tolerance
     constexpr float KEYBOARDLAYOUTTEST_FIT_LEFT = 10.0f;
@@ -214,22 +219,6 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the hover strip's line count the LayoutPanel contract (E.3) gives: 1 to DIAGRAM_DETAIL_LINES
-    int32 KeyboardLayoutTestDetailLines(const int32 detailLines)
-    {
-        return FMath::Clamp(detailLines, 1, SOL::Help::DIAGRAM_DETAIL_LINES);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns the hover strip's height the LayoutPanel contract (E.3) gives: the cap row and the clamped lines
-    float KeyboardLayoutTestDetailHeight(const int32 detailLines)
-    {
-        using namespace SOL::Help;
-        return static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT) + static_cast<float>(
-            KeyboardLayoutTestDetailLines(detailLines)) * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Returns the legend columns the LayoutPanel contract gives a width: the items that fit with their gaps, 1 to
     // AREA_COUNT
     int32 KeyboardLayoutTestLegendColumns(const float widthPx)
@@ -242,9 +231,9 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the hover strip's top the LayoutPanel contract (D43) gives a width: a section gap under the legend, so it
+    // Returns the hint's top the LayoutPanel contract (A, D45) gives a width: a section gap under the legend, so it
     // depends on nothing but the legend's rows
-    float KeyboardLayoutTestDetailTop(const float widthPx)
+    float KeyboardLayoutTestHintTop(const float widthPx)
     {
         using namespace SOL::Help;
         const float width = FMath::IsFinite(widthPx) && widthPx > 0.0f ? widthPx : 0.0f;
@@ -254,11 +243,10 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the panel the LayoutPanel contract (D43) gives, restated so the tests stay independent: the legend, the
-    // hover strip, the diagram, "Other keys" and "Unbound" stacked top to bottom from y 0 with a section gap under each
+    // Returns the panel the LayoutPanel contract (A, D45) gives, restated so the tests stay independent: the legend,
+    // the hint, the diagram, "Other keys" and "Unbound" stacked top to bottom from y 0 with a section gap under each
     // shown one, a hidden one a zero-height box adding no gap; the height the last section's bottom
-    FSOLDiagramPanel KeyboardLayoutTestExpectedPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound,
-        const int32 detailLines)
+    FSOLDiagramPanel KeyboardLayoutTestExpectedPanel(const float widthPx, const bool bOtherKeys, const bool bUnbound)
     {
         using namespace SOL::Help;
         const float width = FMath::IsFinite(widthPx) && widthPx > 0.0f ? widthPx : 0.0f;
@@ -272,14 +260,13 @@ namespace
         panel.Legend = FBox2f(FVector2f::ZeroVector, FVector2f(width,
             static_cast<float>(panel.LegendRows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT)));
 
-        // The hover strip, always shown, a gap under the legend: the cap row and the clamped line count
-        const float detailTop = panel.Legend.Max.Y + sectionGap;
-        panel.DetailLines = KeyboardLayoutTestDetailLines(detailLines);
-        panel.Detail = FBox2f(FVector2f(0.0f, detailTop), FVector2f(width, detailTop
-            + KeyboardLayoutTestDetailHeight(detailLines)));
+        // The hint, always shown, a gap under the legend: full width, one line tall
+        const float hintTop = panel.Legend.Max.Y + sectionGap;
+        panel.Hint = FBox2f(FVector2f(0.0f, hintTop), FVector2f(width,
+            hintTop + static_cast<float>(DIAGRAM_HINT_HEIGHT)));
 
-        // The diagram a gap under the hover strip at its scaled extent; the scale's origin its top-left
-        const float diagramTop = panel.Detail.Max.Y + sectionGap;
+        // The diagram a gap under the hint at its scaled extent; the scale's origin its top-left
+        const float diagramTop = panel.Hint.Max.Y + sectionGap;
         const FVector2f extent = SOLKeyboardLayout::Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
         panel.Diagram = FBox2f(FVector2f(0.0f, diagramTop), FVector2f(extent.X, diagramTop + extent.Y));
         panel.Scale.OriginPx = panel.Diagram.Min;
@@ -338,6 +325,7 @@ namespace
         test.TestEqual(what + TEXT(": legend columns"), actual.LegendColumns, expected.LegendColumns);
         test.TestEqual(what + TEXT(": legend rows"), actual.LegendRows, expected.LegendRows);
         KeyboardLayoutTestCheckBox(test, what + TEXT(": legend"), actual.Legend, expected.Legend);
+        KeyboardLayoutTestCheckBox(test, what + TEXT(": hint"), actual.Hint, expected.Hint);
         KeyboardLayoutTestCheckBox(test, what + TEXT(": diagram"), actual.Diagram, expected.Diagram);
         if (bOtherKeys)
         {
@@ -355,11 +343,143 @@ namespace
         {
             KeyboardLayoutTestCheckHidden(test, what + TEXT(": unbound"), actual.Unbound, expected.Unbound.Min.Y);
         }
-        KeyboardLayoutTestCheckBox(test, what + TEXT(": detail"), actual.Detail, expected.Detail);
-        test.TestEqual(what + TEXT(": detail lines"), actual.DetailLines, expected.DetailLines);
         test.TestEqual(what + TEXT(": height is the last section's bottom"), actual.Height, actual.Unbound.Max.Y,
             KEYBOARDLAYOUTTEST_PX_TOLERANCE);
         test.TestEqual(what + TEXT(": height"), actual.Height, expected.Height, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a popup input as the PopupContentWidth / PopupSize contract (B) reads it: 0 when negative or not finite
+    float KeyboardLayoutTestPopupInput(const float value)
+    {
+        return FMath::IsFinite(value) && value > 0.0f ? value : 0.0f;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the width the popup's lines wrap in (contract B): the popup's widest less its padding on both sides
+    float KeyboardLayoutTestPopupWrap()
+    {
+        using namespace SOL::Help;
+        return static_cast<float>(DIAGRAM_POPUP_MAX_WIDTH) - 2.0f * static_cast<float>(DIAGRAM_POPUP_PAD);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the popup content width the contract (B) gives: the caption's width or a line's (swatch, two text gaps,
+    // keys and text), whichever is wider
+    float KeyboardLayoutTestPopupContent(const float capWidth, const float keysWidth, const float widestText)
+    {
+        using namespace SOL::Help;
+        const float line = static_cast<float>(DIAGRAM_LEGEND_SWATCH) + 2.0f * static_cast<float>(DIAGRAM_TEXT_GAP)
+            + KeyboardLayoutTestPopupInput(keysWidth) + KeyboardLayoutTestPopupInput(widestText);
+        return FMath::Max(KeyboardLayoutTestPopupInput(capWidth), line);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the popup size the contract (B) gives: the content capped at the wrap width plus the padding wide; the
+    // padding, the caption row and 1 to DIAGRAM_DETAIL_LINES lines tall
+    FVector2f KeyboardLayoutTestPopupSize(const float contentWidth, const int32 rows)
+    {
+        using namespace SOL::Help;
+        const float pad = static_cast<float>(DIAGRAM_POPUP_PAD);
+        const float width = FMath::Min(KeyboardLayoutTestPopupInput(contentWidth), KeyboardLayoutTestPopupWrap())
+            + 2.0f * pad;
+        const float height = 2.0f * pad + static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT)
+            + static_cast<float>(FMath::Clamp(rows, 1, DIAGRAM_DETAIL_LINES)) * static_cast<float>(
+            DIAGRAM_DETAIL_LINE_HEIGHT);
+        return FVector2f(width, height);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns an edge clamped so a popup of an extent stays in [low, high]: low when the extent is wider than the span
+    float KeyboardLayoutTestClampEdge(const float edge, const float low, const float high, const float extent)
+    {
+        return extent > high - low ? low : FMath::Clamp(edge, low, high - extent);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a popup side's name for messages
+    const TCHAR* KeyboardLayoutTestSideName(const ESOLPopupSide side)
+    {
+        switch (side)
+        {
+        case ESOLPopupSide::Below:
+            return TEXT("below");
+        case ESOLPopupSide::Above:
+            return TEXT("above");
+        case ESOLPopupSide::Right:
+            return TEXT("right");
+        case ESOLPopupSide::Left:
+            return TEXT("left");
+        default:
+            return TEXT("?");
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the placement the PlacePopup contract (C) gives, restated so the tests stay independent: invalid input an
+    // invalid rect below; below the key when it fits, else above, else beside (right, left, or the side with more room
+    // clamped in); centred on the key along the other axis and clamped into the bounds
+    FSOLPopupPlacement KeyboardLayoutTestExpectedPlacement(const FBox2f& key, const FVector2f& size,
+        const FBox2f& bounds, const float gap)
+    {
+        FSOLPopupPlacement placement;
+        if (!key.bIsValid || !bounds.bIsValid || !FMath::IsFinite(size.X) || !FMath::IsFinite(size.Y)
+            || size.X <= 0.0f || size.Y <= 0.0f)
+        {
+            return placement;
+        }
+        const float space = FMath::IsFinite(gap) && gap > 0.0f ? gap : 0.0f;
+        const FVector2f centre = key.GetCenter();
+        FVector2f topLeft = FVector2f::ZeroVector;
+
+        // Below, then above: centred on the key's X and clamped into the bounds' width
+        const bool bBelow = key.Max.Y + space + size.Y <= bounds.Max.Y + KINDA_SMALL_NUMBER;
+        const bool bAbove = key.Min.Y - space - size.Y >= bounds.Min.Y - KINDA_SMALL_NUMBER;
+        if (bBelow || bAbove)
+        {
+            placement.Side = bBelow ? ESOLPopupSide::Below : ESOLPopupSide::Above;
+            topLeft.Y = bBelow ? key.Max.Y + space : key.Min.Y - space - size.Y;
+            topLeft.X = KeyboardLayoutTestClampEdge(centre.X - 0.5f * size.X, bounds.Min.X, bounds.Max.X, size.X);
+            placement.Rect = FBox2f(topLeft, topLeft + size);
+            return placement;
+        }
+
+        // Beside: right when it fits, else left when it fits, else the roomier side (a tie right) clamped in
+        if (key.Max.X + space + size.X <= bounds.Max.X + KINDA_SMALL_NUMBER)
+        {
+            placement.Side = ESOLPopupSide::Right;
+            topLeft.X = key.Max.X + space;
+        }
+        else if (key.Min.X - space - size.X >= bounds.Min.X - KINDA_SMALL_NUMBER)
+        {
+            placement.Side = ESOLPopupSide::Left;
+            topLeft.X = key.Min.X - space - size.X;
+        }
+        else
+        {
+            const bool bRight = bounds.Max.X - key.Max.X >= key.Min.X - bounds.Min.X;
+            placement.Side = bRight ? ESOLPopupSide::Right : ESOLPopupSide::Left;
+            topLeft.X = KeyboardLayoutTestClampEdge(bRight ? key.Max.X + space : key.Min.X - space - size.X,
+                bounds.Min.X, bounds.Max.X, size.X);
+        }
+        topLeft.Y = KeyboardLayoutTestClampEdge(centre.Y - 0.5f * size.Y, bounds.Min.Y, bounds.Max.Y, size.Y);
+        placement.Rect = FBox2f(topLeft, topLeft + size);
+        return placement;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Asserts a placement equals the expected one: the side and the rect's corners (an invalid rect when expected)
+    void KeyboardLayoutTestCheckPlacement(FAutomationTestBase& test, const FString& what,
+        const FSOLPopupPlacement& actual, const FSOLPopupPlacement& expected)
+    {
+        test.TestTrue(FString::Printf(TEXT("%s: side %s, expected %s"), *what, KeyboardLayoutTestSideName(actual.Side),
+            KeyboardLayoutTestSideName(expected.Side)), actual.Side == expected.Side);
+        test.TestTrue(what + TEXT(": rect valid as expected"), (actual.Rect.bIsValid != 0) == (expected.Rect.bIsValid
+            != 0));
+        if (expected.Rect.bIsValid && actual.Rect.bIsValid)
+        {
+            KeyboardLayoutTestCheckBox(test, what + TEXT(": rect"), actual.Rect, expected.Rect);
+        }
     }
 }
 
@@ -917,29 +1037,27 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelStackTest, "SOLTest.Keyb
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// LayoutPanel stacks the legend, the hover strip, the diagram, "Other keys" and "Unbound" (when shown) in a width (D43),
-// a section gap under each shown one; a hidden section is flat and adds no gap; the scale is FitToWidth's with the
-// origin at the diagram, which is its scaled extent; the hover strip is its cap row and the line count tall (E.3); the
-// height is the last section's bottom
+// LayoutPanel stacks the legend, the hint, the diagram, "Other keys" and "Unbound" (when shown) in a width (A, D45), a
+// section gap under each shown one; a hidden section is flat and adds no gap; the scale is FitToWidth's with the origin
+// at the diagram, which is its scaled extent; the hint is full width and DIAGRAM_HINT_HEIGHT tall; the height is the
+// last section's bottom
 bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Help;
     const bool flags[] = { false, true };
-    const int32 combos = 4 * static_cast<int32>(UE_ARRAY_COUNT(KEYBOARDLAYOUTTEST_DETAIL_LINES));
+    constexpr int32 combos = 4;
     for (const float width : KEYBOARDLAYOUTTEST_PANEL_WIDTHS)
     {
-        // Every combination of the shown strips and the hover strip line counts
+        // Every combination of the shown strips
         for (int32 combo = 0; combo < combos; ++combo)
         {
             const bool bOtherKeys = flags[combo & 1];
             const bool bUnbound = flags[(combo >> 1) & 1];
-            const int32 detailLines = KEYBOARDLAYOUTTEST_DETAIL_LINES[combo >> 2];
-            const FString what = FString::Printf(TEXT("width %.0f other %d unbound %d lines %d"), width,
-                bOtherKeys ? 1 : 0, bUnbound ? 1 : 0, detailLines);
-            const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound,
-                detailLines);
+            const FString what = FString::Printf(TEXT("width %.0f other %d unbound %d"), width, bOtherKeys ? 1 : 0,
+                bUnbound ? 1 : 0);
+            const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound);
             KeyboardLayoutTestCheckPanel(*this, what, panel, KeyboardLayoutTestExpectedPanel(width, bOtherKeys,
-                bUnbound, detailLines), bOtherKeys, bUnbound);
+                bUnbound), bOtherKeys, bUnbound);
 
             // The stack read directly: the order, the gaps and the section sizes
             TestEqual(what + TEXT(": legend at the top"), panel.Legend.Min.Y, 0.0f,
@@ -949,9 +1067,9 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
             TestEqual(what + TEXT(": legend height"), panel.Legend.Max.Y - panel.Legend.Min.Y,
                 static_cast<float>(panel.LegendRows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT),
                 KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": a gap above the hover strip"), panel.Detail.Min.Y - panel.Legend.Max.Y,
+            TestEqual(what + TEXT(": a gap above the hint"), panel.Hint.Min.Y - panel.Legend.Max.Y,
                 static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": a gap above the diagram"), panel.Diagram.Min.Y - panel.Detail.Max.Y,
+            TestEqual(what + TEXT(": a gap above the diagram"), panel.Diagram.Min.Y - panel.Hint.Max.Y,
                 static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             const FVector2f size = SOLKeyboardLayout::Extent(panel.Scale.Placement) * panel.Scale.UnitPx;
             TestEqual(what + TEXT(": diagram width is the scaled extent"),
@@ -968,11 +1086,10 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
                 TestEqual(what + TEXT(": a gap above other keys"), panel.Other.Min.Y - panel.Diagram.Max.Y,
                     static_cast<float>(DIAGRAM_SECTION_GAP), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             }
-            TestEqual(what + TEXT(": hover strip height"), panel.Detail.Max.Y - panel.Detail.Min.Y,
-                static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT) + static_cast<float>(detailLines)
-                * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": detail lines"), panel.DetailLines, detailLines);
-            TestEqual(what + TEXT(": hover strip full width"), panel.Detail.Max.X - panel.Detail.Min.X, width,
+            TestEqual(what + TEXT(": hint height"), panel.Hint.Max.Y - panel.Hint.Min.Y,
+                static_cast<float>(DIAGRAM_HINT_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            TestEqual(what + TEXT(": hint at x 0"), panel.Hint.Min.X, 0.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            TestEqual(what + TEXT(": hint full width"), panel.Hint.Max.X - panel.Hint.Min.X, width,
                 KEYBOARDLAYOUTTEST_PX_TOLERANCE);
             if (bOtherKeys)
             {
@@ -992,28 +1109,23 @@ bool FSOLKeyboardLayoutPanelStackTest::RunTest(const FString& /*parameters*/)
             }
         }
 
-        // Each shown strip makes the panel taller by its height and one gap; each hover strip line by a line height
-        const float plain = SOLKeyboardLayout::LayoutPanel(width, false, false, 1).Height;
+        // Each shown strip makes the panel taller by its height and one gap
+        const float plain = SOLKeyboardLayout::LayoutPanel(width, false, false).Height;
         TestEqual(FString::Printf(TEXT("width %.0f: other keys add a strip and a gap"), width),
-            SOLKeyboardLayout::LayoutPanel(width, true, false, 1).Height - plain,
+            SOLKeyboardLayout::LayoutPanel(width, true, false).Height - plain,
             static_cast<float>(DIAGRAM_STRIP_HEIGHT) + static_cast<float>(DIAGRAM_SECTION_GAP),
             KEYBOARDLAYOUTTEST_PX_TOLERANCE);
         TestEqual(FString::Printf(TEXT("width %.0f: unbound adds a line and a gap"), width),
-            SOLKeyboardLayout::LayoutPanel(width, false, true, 1).Height - plain,
+            SOLKeyboardLayout::LayoutPanel(width, false, true).Height - plain,
             static_cast<float>(DIAGRAM_UNBOUND_HEIGHT) + static_cast<float>(DIAGRAM_SECTION_GAP),
             KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-        TestEqual(FString::Printf(TEXT("width %.0f: a second hover line adds a line height"), width),
-            SOLKeyboardLayout::LayoutPanel(width, false, false, 2).Height - plain,
-            static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
 
-        // A second hover line moves the diagram down by a line height; the strip's top stays (D43)
-        const FSOLDiagramPanel oneLine = SOLKeyboardLayout::LayoutPanel(width, false, false, 1);
-        const FSOLDiagramPanel twoLines = SOLKeyboardLayout::LayoutPanel(width, false, false, 2);
-        TestEqual(FString::Printf(TEXT("width %.0f: a second hover line moves the diagram down"), width),
-            twoLines.Diagram.Min.Y - oneLine.Diagram.Min.Y, static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT),
-            KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-        TestEqual(FString::Printf(TEXT("width %.0f: a second hover line keeps the strip's top"), width),
-            twoLines.Detail.Min.Y, oneLine.Detail.Min.Y, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        // With no strip shown, the height is the legend, the hint and the diagram with their two gaps
+        const FSOLDiagramPanel bare = SOLKeyboardLayout::LayoutPanel(width, false, false);
+        TestEqual(FString::Printf(TEXT("width %.0f: the bare height"), width), bare.Height,
+            static_cast<float>(bare.LegendRows) * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT)
+            + 2.0f * static_cast<float>(DIAGRAM_SECTION_GAP) + static_cast<float>(DIAGRAM_HINT_HEIGHT)
+            + (bare.Diagram.Max.Y - bare.Diagram.Min.Y), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
     }
     return true;
 }
@@ -1034,7 +1146,7 @@ bool FSOLKeyboardLayoutPanelLegendTest::RunTest(const FString& /*parameters*/)
     for (const float width : KEYBOARDLAYOUTTEST_PANEL_WIDTHS)
     {
         const FString what = FString::Printf(TEXT("width %.0f"), width);
-        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, false, false, 1);
+        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, false, false);
         TestEqual(what + TEXT(": columns"), panel.LegendColumns, KeyboardLayoutTestLegendColumns(width));
         TestTrue(what + TEXT(": 1 to AREA_COUNT columns"), panel.LegendColumns >= 1
             && panel.LegendColumns <= AREA_COUNT);
@@ -1073,10 +1185,10 @@ bool FSOLKeyboardLayoutPanelLegendTest::RunTest(const FString& /*parameters*/)
 
     // A wide panel puts every area on one row; a narrow one a single column
     const FSOLDiagramPanel wide = SOLKeyboardLayout::LayoutPanel(
-        static_cast<float>(AREA_COUNT) * (item + gap) + item, false, false, 1);
+        static_cast<float>(AREA_COUNT) * (item + gap) + item, false, false);
     TestEqual(TEXT("wide: AREA_COUNT columns"), wide.LegendColumns, AREA_COUNT);
     TestEqual(TEXT("wide: one row"), wide.LegendRows, 1);
-    const FSOLDiagramPanel narrow = SOLKeyboardLayout::LayoutPanel(item * 0.5f, false, false, 1);
+    const FSOLDiagramPanel narrow = SOLKeyboardLayout::LayoutPanel(item * 0.5f, false, false);
     TestEqual(TEXT("narrow: one column"), narrow.LegendColumns, 1);
     TestEqual(TEXT("narrow: a row per area"), narrow.LegendRows, AREA_COUNT);
     return true;
@@ -1098,15 +1210,15 @@ bool FSOLKeyboardLayoutPanelBadWidthTest::RunTest(const FString& /*parameters*/)
     for (const float width : bad)
     {
         const FString what = FString::Printf(TEXT("bad width %f"), width);
-        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, true, true, 3);
-        KeyboardLayoutTestCheckPanel(*this, what, panel, KeyboardLayoutTestExpectedPanel(0.0f, true, true, 3), true,
-            true);
+        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, true, true);
+        KeyboardLayoutTestCheckPanel(*this, what, panel, KeyboardLayoutTestExpectedPanel(0.0f, true, true), true, true);
         TestEqual(what + TEXT(": the default unit"), panel.Scale.UnitPx, defaultScale.UnitPx,
             KEYBOARDLAYOUTTEST_TOLERANCE);
         TestTrue(what + TEXT(": the default placement"), panel.Scale.Placement == defaultScale.Placement);
         TestEqual(what + TEXT(": the legend at width 0"), panel.Legend.Max.X, 0.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-        TestEqual(what + TEXT(": the hover strip at width 0"), panel.Detail.Max.X, 0.0f,
-            KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        TestEqual(what + TEXT(": the hint at width 0"), panel.Hint.Max.X, 0.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        TestEqual(what + TEXT(": the hint still one line tall"), panel.Hint.Max.Y - panel.Hint.Min.Y,
+            static_cast<float>(DIAGRAM_HINT_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
         TestEqual(what + TEXT(": one legend column"), panel.LegendColumns, 1);
         TestTrue(what + TEXT(": a finite height"), FMath::IsFinite(panel.Height) && panel.Height > 0.0f);
     }
@@ -1119,15 +1231,25 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelShellTest, "SOLTest.Keyb
 
 //////////////////////////////////////////////////////////////////////////
 // At the measured shell width (E.2, D37) the panel stacks the clusters (the diagram box the stacked extent, 15 x 13.5
-// units, at the width over 15) and every key's centre maps through its scale into the box and back onto that key; a
-// width of 1000 keeps the one-row layout with the mouse beside
+// units, at the width over 15) and every key's centre maps through its scale into the box and back onto that key; the
+// diagram starts the legend rows, the hint and two gaps below the top (cross-checked at the current values: rows x 22
+// + 12 + 22 + 12, D45); a width of 1000 keeps the one-row layout with the mouse beside
 bool FSOLKeyboardLayoutPanelShellTest::RunTest(const FString& /*parameters*/)
 {
+    using namespace SOL::Help;
     const float shells[] = { KEYBOARDLAYOUTTEST_SHELL_WIDE };
     for (const float width : shells)
     {
         const FString what = FString::Printf(TEXT("%.0f"), width);
-        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, true, true, 1);
+        const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, true, true);
+
+        // The diagram's top from the constants, then at the current values
+        const float rows = static_cast<float>(panel.LegendRows);
+        TestEqual(what + TEXT(": diagram top from the constants"), panel.Diagram.Min.Y,
+            rows * static_cast<float>(DIAGRAM_LEGEND_ROW_HEIGHT) + 2.0f * static_cast<float>(DIAGRAM_SECTION_GAP)
+            + static_cast<float>(DIAGRAM_HINT_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        TestEqual(what + TEXT(": diagram top at the current values"), panel.Diagram.Min.Y,
+            rows * 22.0f + 12.0f + 22.0f + 12.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
         TestTrue(what + TEXT(": stacked"), panel.Scale.Placement == ESOLMousePlacement::Stacked);
         TestTrue(what + TEXT(": as FitToWidth"),
             panel.Scale.Placement == SOLKeyboardLayout::FitToWidth(width).Placement);
@@ -1158,7 +1280,7 @@ bool FSOLKeyboardLayoutPanelShellTest::RunTest(const FString& /*parameters*/)
     }
 
     // A wide width: one row, the mouse beside
-    const FSOLDiagramPanel wide = SOLKeyboardLayout::LayoutPanel(KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH, false, false, 1);
+    const FSOLDiagramPanel wide = SOLKeyboardLayout::LayoutPanel(KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH, false, false);
     TestTrue(TEXT("1000: mouse beside"), wide.Scale.Placement == ESOLMousePlacement::Beside);
     TestTrue(TEXT("1000: the diagram fits the width"), wide.Diagram.Max.X <= KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH
         + KEYBOARDLAYOUTTEST_PX_TOLERANCE);
@@ -1277,109 +1399,349 @@ bool FSOLKeyboardLayoutStackedTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelDetailLinesTest, "SOLTest.KeyboardLayout.PanelDetailLines",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelHintTest, "SOLTest.KeyboardLayout.PanelHint",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The hover strip (E.3) is DIAGRAM_DETAIL_CAP_HEIGHT plus clamp(detailLines, 1, DIAGRAM_DETAIL_LINES) lines tall and
-// DetailLines is that clamped count: 0 and negative counts give one line, counts over the cap the cap; the strip's top
-// stays and everything under it (the diagram and the strips) moves down by the extra lines (D43)
-bool FSOLKeyboardLayoutPanelDetailLinesTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOL::Help;
-    const int32 counts[] = { MIN_int32, -3, 0, 1, 2, DIAGRAM_DETAIL_LINES - 1, DIAGRAM_DETAIL_LINES,
-        DIAGRAM_DETAIL_LINES + 1, DIAGRAM_DETAIL_LINES + 50, MAX_int32 };
-    const float widths[] = { KEYBOARDLAYOUTTEST_SHELL_WIDE, KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH };
-    for (const float width : widths)
-    {
-        const FSOLDiagramPanel one = SOLKeyboardLayout::LayoutPanel(width, true, true, 1);
-        for (const int32 count : counts)
-        {
-            const FString what = FString::Printf(TEXT("width %.0f lines %d"), width, count);
-            const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, true, true, count);
-            const int32 clamped = FMath::Clamp(count, 1, DIAGRAM_DETAIL_LINES);
-            TestEqual(what + TEXT(": detail lines clamped"), panel.DetailLines, clamped);
-            TestEqual(what + TEXT(": strip height"), panel.Detail.Max.Y - panel.Detail.Min.Y,
-                static_cast<float>(DIAGRAM_DETAIL_CAP_HEIGHT) + static_cast<float>(clamped)
-                * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT), KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            TestEqual(what + TEXT(": height is the unbound strip's bottom"), panel.Height, panel.Unbound.Max.Y,
-                KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            KeyboardLayoutTestCheckPanel(*this, what, panel, KeyboardLayoutTestExpectedPanel(width, true, true, count),
-                true, true);
-
-            // The strip's top and the legend do not depend on the line count; the diagram, both strips and the height
-            // move down by the extra lines
-            const float shift = static_cast<float>(clamped - 1) * static_cast<float>(DIAGRAM_DETAIL_LINE_HEIGHT);
-            const FVector2f down(0.0f, shift);
-            TestEqual(what + TEXT(": strip top as with one line"), panel.Detail.Min.Y, one.Detail.Min.Y,
-                KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-            KeyboardLayoutTestCheckBox(*this, what + TEXT(": legend as with one line"), panel.Legend, one.Legend);
-            KeyboardLayoutTestCheckBox(*this, what + TEXT(": diagram moved by the extra lines"), panel.Diagram,
-                FBox2f(one.Diagram.Min + down, one.Diagram.Max + down));
-            KeyboardLayoutTestCheckBox(*this, what + TEXT(": other keys moved by the extra lines"), panel.Other,
-                FBox2f(one.Other.Min + down, one.Other.Max + down));
-            KeyboardLayoutTestCheckBox(*this, what + TEXT(": unbound moved by the extra lines"), panel.Unbound,
-                FBox2f(one.Unbound.Min + down, one.Unbound.Max + down));
-            TestEqual(what + TEXT(": height grows by the extra lines"), panel.Height, one.Height + shift,
-                KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-        }
-    }
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPanelStripOnTopTest, "SOLTest.KeyboardLayout.PanelStripOnTop",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// The hover strip sits above the diagram (D43): for a width its top is a section gap under the legend whatever the
-// "Other keys" / "Unbound" flags and the line count, it never overlaps the legend or the diagram, and the diagram
-// starts a section gap under its bottom
-bool FSOLKeyboardLayoutPanelStripOnTopTest::RunTest(const FString& /*parameters*/)
+// The hint (A, D45) is always shown a section gap under the legend, full width and DIAGRAM_HINT_HEIGHT tall; for a
+// width its top and the diagram's top do not depend on the "Other keys" / "Unbound" flags; it never overlaps the legend
+// or the diagram, which starts a section gap under it
+bool FSOLKeyboardLayoutPanelHintTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Help;
     const float sectionGap = static_cast<float>(DIAGRAM_SECTION_GAP);
+    const float hintHeight = static_cast<float>(DIAGRAM_HINT_HEIGHT);
     const bool flags[] = { false, true };
-    const int32 counts[] = { 0, 1, 2, DIAGRAM_DETAIL_LINES, DIAGRAM_DETAIL_LINES + 5 };
     TArray<float> widths(KEYBOARDLAYOUTTEST_PANEL_WIDTHS,
         static_cast<int32>(UE_ARRAY_COUNT(KEYBOARDLAYOUTTEST_PANEL_WIDTHS)));
     widths.Add(KEYBOARDLAYOUTTEST_SHELL_WIDE);
     widths.Add(KEYBOARDLAYOUTTEST_ONE_ROW_WIDTH);
     for (const float width : widths)
     {
-        const float expectedTop = KeyboardLayoutTestDetailTop(width);
-        const float referenceTop = SOLKeyboardLayout::LayoutPanel(width, false, false, 1).Detail.Min.Y;
-        TestEqual(FString::Printf(TEXT("width %.0f: strip top a gap under the legend"), width), referenceTop,
+        const float expectedTop = KeyboardLayoutTestHintTop(width);
+        const FSOLDiagramPanel reference = SOLKeyboardLayout::LayoutPanel(width, false, false);
+        TestEqual(FString::Printf(TEXT("width %.0f: hint top a gap under the legend"), width), reference.Hint.Min.Y,
             expectedTop, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("width %.0f: diagram top a gap under the hint"), width),
+            reference.Diagram.Min.Y, expectedTop + hintHeight + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
 
-        // Every flag and line count combination: the same top, clear of the legend and the diagram
+        // Every flag combination: the same hint and diagram tops, the hint clear of the legend and the diagram
         for (const bool bOtherKeys : flags)
         {
             for (const bool bUnbound : flags)
             {
-                for (const int32 count : counts)
+                const FString what = FString::Printf(TEXT("width %.0f other %d unbound %d"), width, bOtherKeys ? 1 : 0,
+                    bUnbound ? 1 : 0);
+                const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound);
+                TestEqual(what + TEXT(": hint top unchanged"), panel.Hint.Min.Y, reference.Hint.Min.Y,
+                    KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                TestEqual(what + TEXT(": diagram top unchanged"), panel.Diagram.Min.Y, reference.Diagram.Min.Y,
+                    KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                KeyboardLayoutTestCheckBox(*this, what + TEXT(": hint box"), panel.Hint, FBox2f(FVector2f(0.0f,
+                    expectedTop), FVector2f(FMath::IsFinite(width) && width > 0.0f ? width : 0.0f,
+                    expectedTop + hintHeight)));
+                TestEqual(what + TEXT(": hint top a gap under the legend"), panel.Hint.Min.Y,
+                    panel.Legend.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                TestEqual(what + TEXT(": diagram a gap under the hint"), panel.Diagram.Min.Y,
+                    panel.Hint.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+                TestFalse(what + TEXT(": hint clear of the legend"), KeyboardLayoutTestOverlap(panel.Hint,
+                    panel.Legend));
+                TestFalse(what + TEXT(": hint clear of the diagram"), KeyboardLayoutTestOverlap(panel.Hint,
+                    panel.Diagram));
+                TestTrue(what + TEXT(": hint above the diagram"), panel.Hint.Max.Y <= panel.Diagram.Min.Y
+                    + KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+            }
+        }
+    }
+
+    // At the shell width the diagram starts LegendRows x 22 + 12 + 22 + 12 below the top (cross-check at the current
+    // values)
+    const FSOLDiagramPanel shell = SOLKeyboardLayout::LayoutPanel(KEYBOARDLAYOUTTEST_SHELL_WIDE, true, true);
+    TestEqual(TEXT("658: the hint at the current values"), shell.Hint.Min.Y,
+        static_cast<float>(shell.LegendRows) * 22.0f + 12.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+    TestEqual(TEXT("658: the diagram at the current values"), shell.Diagram.Min.Y,
+        static_cast<float>(shell.LegendRows) * 22.0f + 12.0f + 22.0f + 12.0f, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPopupSizeTest, "SOLTest.KeyboardLayout.PopupSize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The hover popup's size (B, D45): its lines wrap in the widest popup less the padding; its content is the caption or
+// a line (swatch, two text gaps, keys, text), whichever is wider, bad inputs read 0; its width is the content capped
+// at the wrap width plus the padding (never past DIAGRAM_POPUP_MAX_WIDTH) and its height the padding, the caption row
+// and 1 to DIAGRAM_DETAIL_LINES lines
+bool FSOLKeyboardLayoutPopupSizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+
+    // The wrap width, from the constants and at the current values
+    TestEqual(TEXT("wrap width from the constants"), SOLKeyboardLayout::PopupWrapWidth(),
+        KeyboardLayoutTestPopupWrap(), KEYBOARDLAYOUTTEST_TOLERANCE);
+    TestEqual(TEXT("wrap width at the current values"), SOLKeyboardLayout::PopupWrapWidth(), 440.0f,
+        KEYBOARDLAYOUTTEST_TOLERANCE);
+
+    // The content width: the caption or the line, whichever is wider; each bad argument reads 0
+    struct FContentCase
+    {
+        float Cap;
+        float Keys;
+        float Text;
+    };
+    const FContentCase contents[] = { { 100.0f, 50.0f, 80.0f }, { 300.0f, 10.0f, 10.0f }, { 0.0f, 0.0f, 0.0f },
+        { -5.0f, 40.0f, 60.0f }, { nan, 40.0f, 60.0f }, { 500.0f, nan, inf }, { inf, -inf, -1.0f },
+        { 1000.0f, 200.0f, 900.0f } };
+    for (const FContentCase& content : contents)
+    {
+        const FString what = FString::Printf(TEXT("content (%f, %f, %f)"), content.Cap, content.Keys, content.Text);
+        TestEqual(what, SOLKeyboardLayout::PopupContentWidth(content.Cap, content.Keys, content.Text),
+            KeyboardLayoutTestPopupContent(content.Cap, content.Keys, content.Text), KEYBOARDLAYOUTTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("content: the line wins at the current values"), SOLKeyboardLayout::PopupContentWidth(100.0f, 50.0f,
+        80.0f), 154.0f, KEYBOARDLAYOUTTEST_TOLERANCE);
+    TestEqual(TEXT("content: the caption wins"), SOLKeyboardLayout::PopupContentWidth(300.0f, 10.0f, 10.0f), 300.0f,
+        KEYBOARDLAYOUTTEST_TOLERANCE);
+    TestEqual(TEXT("content: nothing is the swatch and the gaps at the current values"),
+        SOLKeyboardLayout::PopupContentWidth(nan, -1.0f, inf), 24.0f, KEYBOARDLAYOUTTEST_TOLERANCE);
+
+    // The size over a sweep of content widths and row counts
+    const float widths[] = { 0.0f, 100.0f, KeyboardLayoutTestPopupWrap() - 1.0f, KeyboardLayoutTestPopupWrap(),
+        KeyboardLayoutTestPopupWrap() + 1.0f, 1000.0f, -1.0f, nan, inf, -inf };
+    const int32 rowCounts[] = { MIN_int32, -1, 0, 1, 2, DIAGRAM_DETAIL_LINES - 1, DIAGRAM_DETAIL_LINES,
+        DIAGRAM_DETAIL_LINES + 1, MAX_int32 };
+    for (const float width : widths)
+    {
+        for (const int32 rows : rowCounts)
+        {
+            const FString what = FString::Printf(TEXT("size (%f, %d)"), width, rows);
+            const FVector2f size = SOLKeyboardLayout::PopupSize(width, rows);
+            const FVector2f expected = KeyboardLayoutTestPopupSize(width, rows);
+            TestEqual(what + TEXT(": width"), size.X, expected.X, KEYBOARDLAYOUTTEST_TOLERANCE);
+            TestEqual(what + TEXT(": height"), size.Y, expected.Y, KEYBOARDLAYOUTTEST_TOLERANCE);
+            TestTrue(what + TEXT(": never wider than DIAGRAM_POPUP_MAX_WIDTH"),
+                size.X <= static_cast<float>(DIAGRAM_POPUP_MAX_WIDTH) + KEYBOARDLAYOUTTEST_TOLERANCE);
+            TestTrue(what + TEXT(": at least the padding wide"),
+                size.X >= 2.0f * static_cast<float>(DIAGRAM_POPUP_PAD) - KEYBOARDLAYOUTTEST_TOLERANCE);
+        }
+    }
+
+    // Rows 0 or negative count as one; past the cap as the cap
+    TestEqual(TEXT("rows 0 as one"), SOLKeyboardLayout::PopupSize(200.0f, 0).Y,
+        SOLKeyboardLayout::PopupSize(200.0f, 1).Y, KEYBOARDLAYOUTTEST_TOLERANCE);
+    TestEqual(TEXT("rows -3 as one"), SOLKeyboardLayout::PopupSize(200.0f, -3).Y,
+        SOLKeyboardLayout::PopupSize(200.0f, 1).Y, KEYBOARDLAYOUTTEST_TOLERANCE);
+    TestEqual(TEXT("rows past the cap as the cap"), SOLKeyboardLayout::PopupSize(200.0f, DIAGRAM_DETAIL_LINES + 6).Y,
+        SOLKeyboardLayout::PopupSize(200.0f, DIAGRAM_DETAIL_LINES).Y, KEYBOARDLAYOUTTEST_TOLERANCE);
+
+    // Cross-checks at the current values
+    const FVector2f small = SOLKeyboardLayout::PopupSize(200.0f, 4);
+    TestTrue(FString::Printf(TEXT("PopupSize(200, 4) = (%.2f, %.2f), expected (240, 158)"), small.X, small.Y),
+        small.Equals(FVector2f(240.0f, 158.0f), KEYBOARDLAYOUTTEST_TOLERANCE));
+    const FVector2f big = SOLKeyboardLayout::PopupSize(1000.0f, 30);
+    TestTrue(FString::Printf(TEXT("PopupSize(1000, 30) = (%.2f, %.2f), expected (480, 598)"), big.X, big.Y),
+        big.Equals(FVector2f(480.0f, 598.0f), KEYBOARDLAYOUTTEST_TOLERANCE));
+    const FVector2f bad = SOLKeyboardLayout::PopupSize(nan, 0);
+    TestTrue(FString::Printf(TEXT("PopupSize(NaN, 0) = (%.2f, %.2f), expected (40, 92)"), bad.X, bad.Y),
+        bad.Equals(FVector2f(40.0f, 92.0f), KEYBOARDLAYOUTTEST_TOLERANCE));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardLayoutPlacePopupTest, "SOLTest.KeyboardLayout.PlacePopup",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// PlacePopup (C, D45): invalid input gives an invalid rect below; else below the key when it fits (even when above also
+// fits), above only when below does not, else beside (right, left, or the roomier side clamped in); the rect is always
+// the given size, inside the bounds when no larger than them, and clear of the key (the gap between) whenever a side
+// fits; the contract's worked examples exactly
+bool FSOLKeyboardLayoutPlacePopupTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Help;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    const FBox2f& bounds = KEYBOARDLAYOUTTEST_POPUP_BOUNDS;
+    const float gap = KEYBOARDLAYOUTTEST_POPUP_GAP;
+    TestEqual(TEXT("the worked examples' gap is DIAGRAM_POPUP_GAP (cross-check)"),
+        static_cast<float>(DIAGRAM_POPUP_GAP), gap, KEYBOARDLAYOUTTEST_TOLERANCE);
+
+    // Asserts one placement against the restated rules and an exact rect and side
+    auto checkExample = [this](const FString& what, const FBox2f& key, const FVector2f& size, const FBox2f& area,
+        const float space, const ESOLPopupSide side, const FBox2f& rect)
+    {
+        const FSOLPopupPlacement placement = SOLKeyboardLayout::PlacePopup(key, size, area, space);
+        KeyboardLayoutTestCheckPlacement(*this, what + TEXT(" (rules)"), placement,
+            KeyboardLayoutTestExpectedPlacement(key, size, area, space));
+        FSOLPopupPlacement exact;
+        exact.Side = side;
+        exact.Rect = rect;
+        KeyboardLayoutTestCheckPlacement(*this, what, placement, exact);
+    };
+
+    // The contract's worked examples
+    checkExample(TEXT("top-left key: below, clamped to x 0"), FBox2f(FVector2f(100.0f, 100.0f),
+        FVector2f(140.0f, 140.0f)), KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, gap, ESOLPopupSide::Below,
+        FBox2f(FVector2f(0.0f, 146.0f), FVector2f(300.0f, 286.0f)));
+    checkExample(TEXT("bottom key: above"), FBox2f(FVector2f(480.0f, 500.0f), FVector2f(520.0f, 540.0f)),
+        KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, gap, ESOLPopupSide::Above,
+        FBox2f(FVector2f(350.0f, 354.0f), FVector2f(650.0f, 494.0f)));
+    checkExample(TEXT("top-right key: below, clamped to the right edge"), FBox2f(FVector2f(960.0f, 20.0f),
+        FVector2f(1000.0f, 60.0f)), KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, gap, ESOLPopupSide::Below,
+        FBox2f(FVector2f(700.0f, 66.0f), FVector2f(1000.0f, 206.0f)));
+    checkExample(TEXT("tall popup, middle key: right"), FBox2f(FVector2f(480.0f, 260.0f), FVector2f(520.0f, 300.0f)),
+        KEYBOARDLAYOUTTEST_POPUP_TALL, bounds, gap, ESOLPopupSide::Right,
+        FBox2f(FVector2f(526.0f, 30.0f), FVector2f(826.0f, 530.0f)));
+    checkExample(TEXT("tall popup, right key: left"), FBox2f(FVector2f(900.0f, 260.0f), FVector2f(940.0f, 300.0f)),
+        KEYBOARDLAYOUTTEST_POPUP_TALL, bounds, gap, ESOLPopupSide::Left,
+        FBox2f(FVector2f(594.0f, 30.0f), FVector2f(894.0f, 530.0f)));
+
+    // Neither side fits: the roomier side (a tie right) clamped in; wider than the bounds: at the bounds' left
+    const FVector2f wideTall(600.0f, 500.0f);
+    checkExample(TEXT("no side fits, a tie: right, clamped"), FBox2f(FVector2f(480.0f, 260.0f),
+        FVector2f(520.0f, 300.0f)), wideTall, bounds, gap, ESOLPopupSide::Right,
+        FBox2f(FVector2f(400.0f, 30.0f), FVector2f(1000.0f, 530.0f)));
+    checkExample(TEXT("no side fits, more room left: left, clamped"), FBox2f(FVector2f(600.0f, 260.0f),
+        FVector2f(640.0f, 300.0f)), wideTall, bounds, gap, ESOLPopupSide::Left,
+        FBox2f(FVector2f(0.0f, 30.0f), FVector2f(600.0f, 530.0f)));
+    checkExample(TEXT("wider than the bounds: at the bounds' left"), FBox2f(FVector2f(480.0f, 260.0f),
+        FVector2f(520.0f, 300.0f)), FVector2f(1200.0f, 500.0f), bounds, gap, ESOLPopupSide::Right,
+        FBox2f(FVector2f(0.0f, 30.0f), FVector2f(1200.0f, 530.0f)));
+    checkExample(TEXT("taller than the bounds: at the bounds' top"), FBox2f(FVector2f(100.0f, 260.0f),
+        FVector2f(140.0f, 300.0f)), FVector2f(300.0f, 700.0f), bounds, gap, ESOLPopupSide::Right,
+        FBox2f(FVector2f(146.0f, 0.0f), FVector2f(446.0f, 700.0f)));
+
+    // Exact fits (edges inclusive): below to the bounds' bottom, above to the bounds' top
+    checkExample(TEXT("below exactly to the bottom"), FBox2f(FVector2f(480.0f, 414.0f), FVector2f(520.0f, 454.0f)),
+        KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, gap, ESOLPopupSide::Below,
+        FBox2f(FVector2f(350.0f, 460.0f), FVector2f(650.0f, 600.0f)));
+    checkExample(TEXT("above exactly to the top"), FBox2f(FVector2f(480.0f, 426.0f), FVector2f(520.0f, 466.0f)),
+        FVector2f(300.0f, 420.0f), bounds, gap, ESOLPopupSide::Above,
+        FBox2f(FVector2f(350.0f, 0.0f), FVector2f(650.0f, 420.0f)));
+
+    // A gap that is negative or not finite reads 0: the popup touches the key
+    const float badGaps[] = { -5.0f, nan, inf, -inf };
+    for (const float badGap : badGaps)
+    {
+        checkExample(FString::Printf(TEXT("gap %f reads 0"), badGap), FBox2f(FVector2f(480.0f, 100.0f),
+            FVector2f(520.0f, 140.0f)), KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, badGap, ESOLPopupSide::Below,
+            FBox2f(FVector2f(350.0f, 140.0f), FVector2f(650.0f, 280.0f)));
+    }
+
+    // Invalid input: an invalid key or bounds, or a size not finite or not positive
+    const FBox2f goodKey(FVector2f(480.0f, 100.0f), FVector2f(520.0f, 140.0f));
+    const FBox2f invalidBox(ForceInit);
+    const FVector2f badSizes[] = { FVector2f(0.0f, 140.0f), FVector2f(300.0f, 0.0f), FVector2f(-1.0f, 140.0f),
+        FVector2f(300.0f, -1.0f), FVector2f(nan, 140.0f), FVector2f(300.0f, nan), FVector2f(inf, 140.0f),
+        FVector2f(300.0f, inf) };
+    FSOLPopupPlacement invalid;
+    invalid.Side = ESOLPopupSide::Below;
+    KeyboardLayoutTestCheckPlacement(*this, TEXT("invalid key"),
+        SOLKeyboardLayout::PlacePopup(invalidBox, KEYBOARDLAYOUTTEST_POPUP_SIZE, bounds, gap), invalid);
+    KeyboardLayoutTestCheckPlacement(*this, TEXT("invalid bounds"),
+        SOLKeyboardLayout::PlacePopup(goodKey, KEYBOARDLAYOUTTEST_POPUP_SIZE, invalidBox, gap), invalid);
+    for (const FVector2f& badSize : badSizes)
+    {
+        KeyboardLayoutTestCheckPlacement(*this, FString::Printf(TEXT("size (%f, %f)"), badSize.X, badSize.Y),
+            SOLKeyboardLayout::PlacePopup(goodKey, badSize, bounds, gap), invalid);
+    }
+
+    // The sweep: keys at the corners, the edge middles and the middle of two bounds (one off the origin), popups small,
+    // tall, wide, nearly the bounds and larger than them
+    const FBox2f sweepBounds[] = { bounds, FBox2f(FVector2f(50.0f, 40.0f), FVector2f(850.0f, 640.0f)) };
+    const FVector2f sizes[] = { KEYBOARDLAYOUTTEST_POPUP_SIZE, KEYBOARDLAYOUTTEST_POPUP_TALL, FVector2f(780.0f, 140.0f),
+        FVector2f(300.0f, 590.0f), FVector2f(790.0f, 590.0f), FVector2f(1200.0f, 700.0f), FVector2f(20.0f, 20.0f) };
+    const float sweepGaps[] = { gap, 0.0f };
+    const float keySide = KEYBOARDLAYOUTTEST_POPUP_KEY;
+    const float fractions[] = { 0.0f, 0.5f, 1.0f };
+    int32 belowCount = 0;
+    int32 aboveCount = 0;
+    int32 besideCount = 0;
+    for (const FBox2f& area : sweepBounds)
+    {
+        const FVector2f areaSize = area.GetSize();
+        for (const float fx : fractions)
+        {
+            for (const float fy : fractions)
+            {
+                // A key flush with the bounds at a corner or an edge, or in the middle
+                const FVector2f keyMin = area.Min + FVector2f(fx * (areaSize.X - keySide), fy * (areaSize.Y
+                    - keySide));
+                const FBox2f key(keyMin, keyMin + FVector2f(keySide, keySide));
+                for (const FVector2f& size : sizes)
                 {
-                    const FString what = FString::Printf(TEXT("width %.0f other %d unbound %d lines %d"), width,
-                        bOtherKeys ? 1 : 0, bUnbound ? 1 : 0, count);
-                    const FSOLDiagramPanel panel = SOLKeyboardLayout::LayoutPanel(width, bOtherKeys, bUnbound, count);
-                    TestEqual(what + TEXT(": strip top unchanged"), panel.Detail.Min.Y, referenceTop,
-                        KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-                    TestEqual(what + TEXT(": strip top a gap under the legend"), panel.Detail.Min.Y,
-                        panel.Legend.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-                    TestEqual(what + TEXT(": diagram a gap under the strip"), panel.Diagram.Min.Y,
-                        panel.Detail.Max.Y + sectionGap, KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-                    TestTrue(what + TEXT(": strip under the legend"), panel.Detail.Min.Y >= panel.Legend.Max.Y
-                        - KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-                    TestTrue(what + TEXT(": strip above the diagram"), panel.Detail.Max.Y <= panel.Diagram.Min.Y
-                        + KEYBOARDLAYOUTTEST_PX_TOLERANCE);
-                    TestFalse(what + TEXT(": strip clear of the legend"),
-                        KeyboardLayoutTestOverlap(panel.Detail, panel.Legend));
-                    TestFalse(what + TEXT(": strip clear of the diagram"),
-                        KeyboardLayoutTestOverlap(panel.Detail, panel.Diagram));
+                    for (const float space : sweepGaps)
+                    {
+                        const FString what = FString::Printf(TEXT("bounds (%.0f, %.0f) key (%.0f, %.0f) size (%.0f, "
+                            "%.0f) gap %.0f"), area.Min.X, area.Min.Y, key.Min.X, key.Min.Y, size.X, size.Y, space);
+                        const FSOLPopupPlacement placement = SOLKeyboardLayout::PlacePopup(key, size, area, space);
+                        KeyboardLayoutTestCheckPlacement(*this, what, placement,
+                            KeyboardLayoutTestExpectedPlacement(key, size, area, space));
+                        if (!TestTrue(what + TEXT(": a rect"), placement.Rect.bIsValid != 0))
+                        {
+                            continue;
+                        }
+
+                        // The size is never changed
+                        TestTrue(what + TEXT(": the rect is the size"), placement.Rect.GetSize().Equals(size,
+                            KEYBOARDLAYOUTTEST_TOLERANCE));
+
+                        // Inside the bounds when no larger than them
+                        if (size.X <= areaSize.X && size.Y <= areaSize.Y)
+                        {
+                            TestTrue(what + TEXT(": inside the bounds"), placement.Rect.Min.X >= area.Min.X
+                                - KEYBOARDLAYOUTTEST_TOLERANCE && placement.Rect.Min.Y >= area.Min.Y
+                                - KEYBOARDLAYOUTTEST_TOLERANCE && placement.Rect.Max.X <= area.Max.X
+                                + KEYBOARDLAYOUTTEST_TOLERANCE && placement.Rect.Max.Y <= area.Max.Y
+                                + KEYBOARDLAYOUTTEST_TOLERANCE);
+                        }
+
+                        // Which sides fit, restated; below wins whenever it fits, above only when below does not
+                        const bool bBelowFits = key.Max.Y + space + size.Y <= area.Max.Y + KINDA_SMALL_NUMBER;
+                        const bool bAboveFits = key.Min.Y - space - size.Y >= area.Min.Y - KINDA_SMALL_NUMBER;
+                        const bool bRightFits = key.Max.X + space + size.X <= area.Max.X + KINDA_SMALL_NUMBER;
+                        const bool bLeftFits = key.Min.X - space - size.X >= area.Min.X - KINDA_SMALL_NUMBER;
+                        if (bBelowFits)
+                        {
+                            ++belowCount;
+                            TestTrue(what + TEXT(": below whenever it fits"), placement.Side == ESOLPopupSide::Below);
+                            TestEqual(what + TEXT(": the gap under the key"), placement.Rect.Min.Y - key.Max.Y, space,
+                                KEYBOARDLAYOUTTEST_TOLERANCE);
+                        }
+                        else if (bAboveFits)
+                        {
+                            ++aboveCount;
+                            TestTrue(what + TEXT(": above when below does not fit"),
+                                placement.Side == ESOLPopupSide::Above);
+                            TestEqual(what + TEXT(": the gap over the key"), key.Min.Y - placement.Rect.Max.Y, space,
+                                KEYBOARDLAYOUTTEST_TOLERANCE);
+                        }
+                        else
+                        {
+                            ++besideCount;
+                            TestTrue(what + TEXT(": beside when neither vertical side fits"),
+                                placement.Side == ESOLPopupSide::Right || placement.Side == ESOLPopupSide::Left);
+                        }
+                        TestFalse(what + TEXT(": above only when below does not fit"),
+                            placement.Side == ESOLPopupSide::Above && bBelowFits);
+
+                        // Clear of the key whenever a side fits (touching counts as clear)
+                        if (bBelowFits || bAboveFits || bRightFits || bLeftFits)
+                        {
+                            TestFalse(what + TEXT(": clear of the key"), KeyboardLayoutTestOverlap(placement.Rect,
+                                key));
+                        }
+                    }
                 }
             }
         }
     }
+    TestTrue(TEXT("the sweep places below"), belowCount > 0);
+    TestTrue(TEXT("the sweep places above"), aboveCount > 0);
+    TestTrue(TEXT("the sweep places beside"), besideCount > 0);
     return true;
 }
 

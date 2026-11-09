@@ -17,6 +17,7 @@
 
 class UScrollBox;
 class USOLKeyboardDiagram;
+class USOLKeyboardDiagramPopup;
 class USOLKeyCapRow;
 class USizeBox;
 class UTextBlock;
@@ -194,6 +195,9 @@ public:
     // Returns the Keyboard tab's diagram, or null (verification)
     USOLKeyboardDiagram* GetDiagram() const { return Diagram; }
 
+    // D45: returns the diagram's hover popup layer (null without a diagram)
+    USOLKeyboardDiagramPopup* GetDiagramPopup() const { return DiagramPopup; }
+
     // Sets the Keyboard tab's line under the diagram
     void SetKeyboardHint(UTextBlock* hint) { KeyboardHint = hint; }
 
@@ -272,6 +276,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLKeyboardDiagram> Diagram;        // (33d-ii) Help's Keyboard tab
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLKeyboardDiagramPopup> DiagramPopup; // D45: its hover popup layer over the whole page
 
     UPROPERTY(Transient)
     TObjectPtr<UTextBlock> KeyboardHint;

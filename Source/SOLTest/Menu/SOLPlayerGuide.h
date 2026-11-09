@@ -9,13 +9,15 @@
 
 #include "CoreMinimal.h"
 
-// One screenshot the guide shows (SDD 33 section 9, D24): the Help tab shown, whether a key is hovered (the Keyboard
-// tab's hover strip), and the image's file name in SOL::Paths::PLAYER_GUIDE_IMAGE_DIR
+// One screenshot the guide shows (SDD 33 section 9, D24, D46): the Help tab shown, whether a key is hovered (the
+// Keyboard tab's hover popup, D45), the tab's scroll page (0 at its top, D46) and the image's file name in
+// SOL::Paths::PLAYER_GUIDE_IMAGE_DIR
 struct FSOLPlayerGuideShot
 {
     ESOLHelpTab Tab = ESOLHelpTab::Keyboard;
     bool bHover = false;
-    const TCHAR* FileName = nullptr;
+    int32 Page = 0;
+    FString FileName;
 };
 
 /**
@@ -47,9 +49,27 @@ namespace SOLPlayerGuide
     // as a whole token, case ignored (FParse::Param), so -SOLWritePlayerGuideX or SOLWritePlayerGuide=1 do not
     SOLTEST_API bool IsWriteRequested(const TCHAR* commandLine);
 
-    // Returns the guide's screenshots in the order the run takes them: the Keyboard tab, the Keyboard tab with a key
-    // hovered, then each glossary tab in SOLMenuText::GLOSSARY_TABS order (file names from SOL::Paths)
+    // Returns the guide's screenshots in the order the run takes them (D46): the Keyboard tab's pages, the Keyboard
+    // tab with a key hovered, then each glossary tab's pages in ESOLHelpTab order (TabPages pages a tab; the file
+    // names PageFileName of SOL::Paths' names)
     SOLTEST_API TConstArrayView<FSOLPlayerGuideShot> Shots();
+
+    // D46: returns a Help tab's shot count, SOL::Paths::PLAYER_GUIDE_TAB_PAGES[tab] (0 for Count or out of range)
+    SOLTEST_API int32 TabPages(ESOLHelpTab tab);
+
+    // D46: returns the window shots a tab's scroll needs to show all of it: 1 for no scroll (a view not positive
+    // finite, or an end not finite or up to PLAYER_GUIDE_SCROLL_TOLERANCE), else 1 + ceil((scrollEnd - tolerance) /
+    // step) with step = max(viewHeight - PLAYER_GUIDE_PAGE_OVERLAP, 1), at most PLAYER_GUIDE_MAX_PAGES. scrollEnd is
+    // the scroll box's largest offset
+    SOLTEST_API int32 PageCount(float viewHeight, float scrollEnd);
+
+    // D46: returns a page's scroll offset: min(page x step, scrollEnd); 0 for page <= 0, a view not positive finite
+    // or an end not finite or not positive
+    SOLTEST_API float PageOffset(int32 page, float viewHeight, float scrollEnd);
+
+    // D46: returns a page's image name: the base name for page <= 0, else "-<page + 1>" inserted before its last '.'
+    // (appended without one); empty for null
+    SOLTEST_API FString PageFileName(const TCHAR* baseName, int32 page);
 
     // Returns an image's full path in the repository: FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + name
     SOLTEST_API FString ImagePath(const TCHAR* fileName);

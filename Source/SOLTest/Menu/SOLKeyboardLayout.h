@@ -52,8 +52,8 @@ struct FSOLDiagramScale
 };
 
 // The Keyboard tab's sections stacked in a width (33c, SOLKeyboardLayout::LayoutPanel), in menu units from the panel's
-// top-left: the area legend, the hover detail strip (33d-iii, D43: above the diagram, so it is in view at the tab's
-// top), the diagram (keyboard and mouse), the "Other keys" strip and the "Unbound" line
+// top-left: the area legend, the "Hover a key" hint line (D45: the hover detail is a popup over the page, no strip),
+// the diagram (keyboard and mouse), the "Other keys" strip and the "Unbound" line
 struct FSOLDiagramPanel
 {
     FSOLDiagramScale Scale;                             // FitToWidth(width) with OriginPx = Diagram.Min
@@ -62,13 +62,27 @@ struct FSOLDiagramPanel
                                                         // (DIAGRAM_LEGEND_ITEM_WIDTH + DIAGRAM_LEGEND_GAP))), at most
                                                         // AREA_COUNT
     int32 LegendRows = 1;                               // ceil(AREA_COUNT / LegendColumns)
+    FBox2f Hint = FBox2f(ForceInit);                    // D45: the hint line, DIAGRAM_HINT_HEIGHT tall
     FBox2f Diagram = FBox2f(ForceInit);                 // The keyboard and mouse: Extent(Scale.Placement) * UnitPx
     FBox2f Other = FBox2f(ForceInit);                   // The "Other keys" strip, DIAGRAM_STRIP_HEIGHT tall when shown
     FBox2f Unbound = FBox2f(ForceInit);                 // The "Unbound" line, DIAGRAM_UNBOUND_HEIGHT tall when shown
-    FBox2f Detail = FBox2f(ForceInit);                  // The hover strip, DIAGRAM_DETAIL_CAP_HEIGHT + DetailLines *
-                                                        // DIAGRAM_DETAIL_LINE_HEIGHT tall
-    int32 DetailLines = 1;                              // clamp(detailLines, 1, DIAGRAM_DETAIL_LINES)
     float Height = 0.0f;                                // Unbound.Max.Y (the last section's bottom)
+};
+
+// D45: the side of the hovered key the hover popup is placed on (SOLKeyboardLayout::PlacePopup)
+enum class ESOLPopupSide : uint8
+{
+    Below,
+    Above,
+    Right,
+    Left,
+};
+
+// D45: where the hover popup goes (SOLKeyboardLayout::PlacePopup): its rect and the side of the key it is on
+struct FSOLPopupPlacement
+{
+    FBox2f Rect = FBox2f(ForceInit);                    // Invalid (bIsValid false) for an invalid input
+    ESOLPopupSide Side = ESOLPopupSide::Below;
 };
 
 // D35: how a key cap's top line fits (SOLKeyboardLayout::FitKeyText), in menu units
@@ -127,14 +141,32 @@ namespace SOLKeyboardLayout
     // Converts diagram key units to a widget point: OriginPx + units x UnitPx
     SOLTEST_API FVector2f FromUnits(const FVector2f& units, const FSOLDiagramScale& scale);
 
-    // Stacks the Keyboard tab's sections in a width, top to bottom: Legend, Detail (D43), Diagram, Other (if
+    // Stacks the Keyboard tab's sections in a width, top to bottom: Legend, Hint (D45), Diagram, Other (if
     // bOtherKeys), Unbound (if bUnbound), each DIAGRAM_SECTION_GAP under the previous shown one; a hidden section is a
-    // zero-height box at the previous section's bottom and adds no gap. Every box starts at x 0; Legend, Other, Unbound
-    // and Detail are the full width, the Diagram its scaled extent. A width that is not a positive finite number lays
-    // out at width 0 with the default FitToWidth scale (OriginPx moved to Diagram.Min). The Detail box (D36) is
-    // DIAGRAM_DETAIL_CAP_HEIGHT + clamp(detailLines, 1, DIAGRAM_DETAIL_LINES) * DIAGRAM_DETAIL_LINE_HEIGHT tall and
-    // DetailLines that clamped count
-    SOLTEST_API FSOLDiagramPanel LayoutPanel(float widthPx, bool bOtherKeys, bool bUnbound, int32 detailLines);
+    // zero-height box at the previous section's bottom and adds no gap. Every box starts at x 0; Legend, Hint, Other
+    // and Unbound are the full width, the Diagram its scaled extent. A width that is not a positive finite number lays
+    // out at width 0 with the default FitToWidth scale (OriginPx moved to Diagram.Min)
+    SOLTEST_API FSOLDiagramPanel LayoutPanel(float widthPx, bool bOtherKeys, bool bUnbound);
+
+    // D45: returns the width the hover popup's lines wrap in: DIAGRAM_POPUP_MAX_WIDTH - 2 x DIAGRAM_POPUP_PAD
+    SOLTEST_API float PopupWrapWidth();
+
+    // D45: returns the hover popup's content width: max(capWidth, DIAGRAM_LEGEND_SWATCH + 2 x DIAGRAM_TEXT_GAP +
+    // keysWidth + widestText), each argument negative or not finite read as 0
+    SOLTEST_API float PopupContentWidth(float capWidth, float keysWidth, float widestText);
+
+    // D45: returns the hover popup's outer size: min(contentWidth, PopupWrapWidth()) + 2 x DIAGRAM_POPUP_PAD wide (a
+    // content width negative or not finite reads 0) and 2 x DIAGRAM_POPUP_PAD + DIAGRAM_DETAIL_CAP_HEIGHT +
+    // clamp(rows, 1, DIAGRAM_DETAIL_LINES) x DIAGRAM_DETAIL_LINE_HEIGHT tall
+    SOLTEST_API FVector2f PopupSize(float contentWidth, int32 rows);
+
+    // D45: places the hover popup of a size by the hovered key's box inside bounds (one space), gap apart (negative
+    // or not finite reads 0); first that fits: Below, Above (both centred on the key and clamped into the bounds'
+    // width), else beside: Right, Left, else the side with more room (a tie Right) clamped into the bounds; beside is
+    // centred on the key vertically and clamped into the bounds' height. A popup wider or taller than the bounds sits
+    // at their left or top. An invalid key or bounds, or a size not finite or not positive, gives an invalid Rect
+    SOLTEST_API FSOLPopupPlacement PlacePopup(const FBox2f& key, const FVector2f& size, const FBox2f& bounds,
+        float gap);
 
     // D35: fits a key cap's top line between left and right (menu units). With a badge (badgeWidth > 0):
     // a legend that fits in [left, right - badgeWidth - DIAGRAM_BADGE_GAP] is centred there and the badge shows.

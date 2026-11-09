@@ -8,7 +8,7 @@ interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
-Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-ii (grill-me first) or 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii (grill-me first) or 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -62,15 +62,17 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D33 | **Left Ctrl's own action (user, 2026-11-07):** moving ThrustDown off Left Ctrl (so the key is not both an action and a chord modifier) is a **separate new ticket**; ticket #33 does **not** change any default binding (`KEY_BINDING_LAYOUT_VERSION` stays 10). The diagram shows Left Ctrl with ThrustDown and the modifier mark until then. |
 | D34 | **Stack the diagram when narrow (user, 2026-11-07, after the 33c fit check):** the real shell content is **658 units** wide at 1280x720 and 1920x1080 (the SDD 7 estimate was 770), so the one-row layout (26.5 units with the mouse beside) gave a 24.8-unit key and unreadable legends. Below a width threshold the diagram **stacks**: the main block (with the function row) on top, and under it, 0.5 units lower and centred, the navigation cluster with Scroll Lock / Pause and the arrows, the numpad and the mouse (each cluster and mouse key is its Beside rect moved by (-13.5, +7); `Extent(Stacked)` = (15, 13.5)). The numpad stays. `FitToWidth`: Beside when the beside unit reaches `DIAGRAM_MOUSE_BELOW_UNIT` (30), else Below when the below unit reaches `DIAGRAM_STACK_UNIT` (30), else Stacked at width / 15; at 658 that is **Stacked, 43.87 units a key**. Supersedes D30's mouse-below rule for the narrow case. |
 | D35 | **Long legends (user, 2026-11-07):** a legend wider than its key is **clipped to the key** (cut to its longest whole-glyph prefix once per model, unit or scale change, no per-key clipping state in paint), and the **"+N" badge hides** when it would overlap the legend (`SOLKeyboardLayout::FitKeyText`); the hover strip still lists everything. After D38 no legend is clipped at the targets; three badges hide at the defaults (Esc, the wheel, RMB). |
-| D36 | **Hover strip (user, 2026-11-07):** sized **once per width and model** for the busiest key's wrapped rows (at most `DIAGRAM_DETAIL_LINES` 24; 8 at the defaults, Left Ctrl), so its height never changes while hovering; the hovered key's **cap is on its own row** (`DIAGRAM_DETAIL_CAP_HEIGHT` 30) **above the lines**, which use the full strip width; not padded to a worst case. |
+| D36 | **(Superseded by D45, 33e-iii.) Hover strip (user, 2026-11-07):** sized **once per width and model** for the busiest key's wrapped rows (at most `DIAGRAM_DETAIL_LINES` 24; 8 at the defaults, Left Ctrl), so its height never changes while hovering; the hovered key's **cap is on its own row** (`DIAGRAM_DETAIL_CAP_HEIGHT` 30) **above the lines**, which use the full strip width; not padded to a worst case. |
 | D37 | **Wide screens only (user, 2026-11-07, final):** outside VR every screen is wide and at least 1280x720; the diagram targets are **1280x720, 1920x1080 and 3840x2160** only (658 units of shell content at all three, DPI-scaled). Nothing is added or tuned for smaller windows (no 1000x800 diagram step, screenshots or constants; older tickets' 1000x800 checks stay). The 4K profile belongs to 33f. |
 | D38 | **Legend room (user, 2026-11-08, after the 33c screenshots):** at font 11 nine one-unit legends clipped to 2-3 letters (Esc, ScrL, Pause, Home, PgUp, PgDn, Del, Num, numpad Enter) and the wheel showed none; font 10 fixed only four. The user chose **both**: the diagram's caps (keys and Other keys caps) **drop the LED** (a Small hull material of the diagram's own with `LedX` < 0, made once per widget), so a one-unit key's legend gets about 37 of its 44 units; and **only the legends that still do not fit** at the paint scale use an abbreviation from one table, `SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS` (at most `DIAGRAM_ABBREVIATION_MAX_CHARS` 4 characters, shorter than the layout legend, tested): numpad Enter "Ent" (the main Enter keeps "Enter"), the wheel "W", Pause "Paus" (needed at 1920x1080 only). The hover strip keeps the 33b cap (with its LED) and the full key names; the Controls and Settings caps are unchanged. |
 | D39 | **Map rows without shape code (user, 2026-11-08, 33d-i contract U1):** orbit lines (a 3D mesh with a material) and the route legs, waypoints, map destination pick and map grid (Canvas lines and triangles in the `Map/` overlays) have no 2D shape code to share, so under D5 they cannot be drawn by `SOLHudSymbols`. Their five `GLOSSARY_ENTRIES` rows become **description-only now** (`Symbols` ""; the every-symbol-builds test covers the rows that name a symbol; the enum ids stay, without a builder), and their pictures are to be **screenshot crops of the real game** (static images) shown in the Help page and the player guide, built in a later sub-step (plan 33d-ii / 33e). Porting those overlays to the shape renderer is a ToDo (`Docs/ToDo/map-overlays-shape-renderer.md`). |
 | D40 | **Distance darkening (user, 2026-11-08, U2):** the row shows the **bright** `IconPlanet` only; no second brightness, no `IconPlanetFar` (the 33a review note is dropped). |
 | D41 | **Joystick builder radius (2026-11-08, U3 while pending):** the joystick builder takes an optional radius defaulting to the HUD's own size (the HUD unchanged); the glossary size itself is D42. |
 | D42 | **Glossary symbol size and the feature floor (user, 2026-11-08, U3 answered after a mock-up):** symbols are drawn at full HUD size shrunk to fit the box (section 8.3 as written), the joystick included, **but no feature is ever drawn smaller than `SOL::Help::GLOSSARY_MIN_FEATURE_PX` (2 px)**: after scaling, `SOLHudSymbols::Build` (the glossary entry point, and so `Bounds`) clamps dot, ring, arc, ellipse, icon and edge-arrow radii, box and panel sizes and dash / gap lengths up to the floor; line widths, text and cards are unchanged. The per-element builders the HUD calls are never clamped, so the HUD is unchanged. Tested over every glossary symbol. |
-| D43 | **The Keyboard tab's hover strip above the diagram (user, 2026-11-08, O15 answered; built in 33d-iii):** the hover strip moves above the diagram, directly under the area legend (`SOLKeyboardLayout::LayoutPanel` order: legend, hover strip, diagram, Other keys, Unbound), so it is always in view at the top of the tab at 1280x720 and 1920x1080 (the numpad and mouse block lower down may still need a scroll). The strip stays fixed-size (D36) and its cap row stays above its lines. |
+| D43 | **(Superseded by D45, 33e-iii.) The Keyboard tab's hover strip above the diagram (user, 2026-11-08, O15 answered; built in 33d-iii):** the hover strip moves above the diagram, directly under the area legend (`SOLKeyboardLayout::LayoutPanel` order: legend, hover strip, diagram, Other keys, Unbound), so it is always in view at the top of the tab at 1280x720 and 1920x1080 (the numpad and mouse block lower down may still need a scroll). The strip stays fixed-size (D36) and its cap row stays above its lines. |
 | D44 | **Readable glossary text samples (user, 2026-11-08, O16 answered; built in 33d-iii):** both (1) a text-sample row whose lines would wrap in the 96-unit box gets a wider box (`GLOSSARY_SAMPLE_BOX_WIDTH` 200 units: the symbol column plus the left part of the description column, for that row only; the tab column stays 96), drawn at the HUD's own size (1.5 pixels per unit) without shrinking where it fits; and (2) the smallest text scale rises to `GLOSSARY_SAMPLE_MIN_UI_SCALE` 1.0 with more wrap points: `SOLGlossary::LayoutSample` now wraps at the HUD's size before it shrinks (more lines, a taller box: `SOLGlossary::SampleBoxSize`), so a wide sample is never below the HUD's size. Short samples (MANUAL / ASSISTED / AUTO) stay in the 96-unit box as before (shrunk only because one word is wider than the box). Row heights adapt; nothing clipped at 1280x720 or 1920x1080 (D37: 4K only in 33f). Reading of "1.0": a scale of 1.0 x pixels per unit, the floor only a single over-wide word reaches; the HUD's size itself is the 1.5 cap. |
+| D45 | **The keyboard diagram's hover detail is a popup (user, 2026-11-08; supersedes D36 and D43; built in 33e-iii):** the reserved strip (sized for the busiest key, empty at rest, pushing the diagram below the fold) is removed; the diagram starts right under the area legend and the one-line "Hover a key to see what it does" hint. The hovered key's detail (its cap row with the LED cap, its own actions, then the chords it starts, full names per D38) is a popup on top of the page, near the key, in the shared solid style (the Panel hull, Rajdhani, `SOL::SolidMenu` / `SOL::Help` constants), sized to its content (at most `DIAGRAM_POPUP_MAX_WIDTH` 480 units, lines wrapped inside), placed below the key, else above (the side with room), else beside, kept inside the page less `DIAGRAM_POPUP_EDGE_PAD` so it is never cut off and never covers the hovered key; no animation beyond the menu's open style, no sound cue, no tick while idle, no allocation in paint; hover off hides it; hit-test invisible, so it never takes hover from the keys. It works for the numpad and mouse block of the stacked layout and at the edges (a mirror cap such as the numpad Enter places it by that cap). The diagram has no keyboard focus, so no focus popup was added. |
+| D46 | **Scrolled guide shots (user, 2026-11-08; built in 33e-iii):** the guide keeps the first window shot of each Help tab and adds shots scrolled down until the whole tab is covered (`33-help-keyboard-2.png`, `33-help-glossary-flight-hud-2.png` ...), the count derived from the tab's scroll extent at 1920x1080 and referenced in order in `Docs/PLAYER_GUIDE.md`; `33-help-keyboard-hover.png` shows the popup for O. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -271,6 +273,15 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
   The modifier mark (D32) is a small caret bottom-right, the lock mark a padlock top-right. The `SInvalidationPanel`
   fallback was not needed (section 14.3). Verification: `-SOLSmokeSolidMenu`'s `Diagram` step at 1280x720 and the
   profile smoke's diagram passes at 1920x1080 and 1280x720 (0 legends clipped at both paint scales).
+- **33e-iii (D45): the hover popup.** The panel is now legend, hint (one line, `DIAGRAM_HINT_HEIGHT` 22), diagram,
+  Other keys, Unbound (`SOLKeyboardLayout::LayoutPanel(width, other, unbound)`); the strip, its line budget and
+  `GetDetailLineBudget` are gone. The leaf wraps the hovered key's lines once per hover in
+  `SOLKeyboardLayout::PopupWrapWidth` and measures the popup's content (`PopupContentWidth`); the page puts an
+  overlay over its content with `USOLKeyboardDiagramPopup` (an `SSOLKeyboardDiagramPopupLayer`, hit-test invisible,
+  zero desired size) as its last child, which asks the leaf to paint the popup in its geometry after the leaf
+  painted in the same frame (`SSOLKeyboardDiagram::PaintPopup`: the key's box through absolute space, `PopupSize`,
+  `PlacePopup` inside the layer less the edge pad, the Panel hull, then the cap row and rows). So the popup is never
+  clipped by the tab's scroll box and changes no layout.
 
 ## 8. The HUD glossary (D5, D6, D7)
 
@@ -371,6 +382,12 @@ written and fails the completeness test; no "²" (TECH_DEBT).
   hash, an intro, then **Controls** (one table per area: keys as `<kbd>` tags, chords as `<kbd>Shift</kbd>+<kbd>M</kbd>`,
   the action text from `FormatControlAction`), the keyboard image, the area legend, then the **HUD glossary** (per tab
   the screenshot and a table of name and description). Nothing in it is hand-written.
+- **Scrolled shots (D46, 33e-iii):** each tab's shots are its pages, `SOL::Paths::PLAYER_GUIDE_TAB_PAGES` (Keyboard 2,
+  Flight HUD 4, Targets 2, Overlays 4, Map 3 at 1920x1080); a page's offset is `SOLPlayerGuide::PageOffset`
+  (`PLAYER_GUIDE_PAGE_OVERLAP` 0: the pages adjoin, the last aligned to the tab's end), its name `PageFileName`
+  (`-2`, `-3` ... before `.png`), a scrolled image's alt text `GUIDE_IMAGE_PART_FORMAT` ("..., part 2 of 4"). The
+  run measures each tab's view and scroll end on its first page (`PageCount`) and fails, naming the table, when the
+  count differs, so the table cannot go stale silently.
 - **Staleness (D27):** `SOLTest.PlayerGuide.UpToDate` (written in 33e, with the writer) is a **failing automation
   test**: it loads
   `Docs/PLAYER_GUIDE.md` and compares it with `BuildMarkdown(DefaultKeys())`; a mismatch fails with "run
@@ -433,13 +450,16 @@ same headers. One file per topic:
 | `DIAGRAM_MIN_UNIT` / `DIAGRAM_MAX_UNIT` | 20 / 46 units | Key unit clamp (short labels hide below the minimum); kept in 33c |
 | `DIAGRAM_MOUSE_BELOW_UNIT` / `DIAGRAM_STACK_UNIT` | 30 / 30 units (33c; was 24 / none) | D34: below the first one-row unit the mouse sits under the keyboard, below the second below-mouse unit the clusters and mouse stack under the main block (658 units: Stacked, 43.87) |
 | `KEYBOARD_LAYOUT_STACK_GAP` (file-local in `SOLKeyboardLayout.cpp`) / `Extent(Stacked)` | 0.5 / (15, 13.5) key units | D34 geometry |
-| `DIAGRAM_DETAIL_CAP_HEIGHT` / `DIAGRAM_DETAIL_LINE_HEIGHT` | 30 / 22 units | D36: the hover strip's cap row and one line |
+| `DIAGRAM_DETAIL_CAP_HEIGHT` / `DIAGRAM_DETAIL_LINE_HEIGHT` | 30 / 22 units | The hover popup's cap row and one line (D36, kept for the D45 popup) |
+| `DIAGRAM_HINT_HEIGHT` | 22 units | D45: the hint line above the diagram |
+| `DIAGRAM_POPUP_MAX_WIDTH` / `DIAGRAM_POPUP_PAD` / `DIAGRAM_POPUP_GAP` / `DIAGRAM_POPUP_EDGE_PAD` / `DIAGRAM_POPUP_WRAP_SLACK` | 480 / 20 / 6 / 8 / 4 units | D45, tuned from the 33e-iii screenshots: the popup's widest outer width (lines wrap in 440 less the slack; 440 gave O 13 rows, too tall to go above or below it), its content inset (the Panel hull draws about 12 units inside its quad, so 10 and 14 left the text on the visible edge), its gap to the key, its inset from the page's edges, the wrap's margin under the shaped text |
+| `PLAYER_GUIDE_TAB_PAGES` / `PLAYER_GUIDE_MAX_PAGES` / `PLAYER_GUIDE_PAGE_OVERLAP` / `PLAYER_GUIDE_SCROLL_TOLERANCE` (`SOL::Paths`) | 2, 4, 2, 4, 3 / 8 / 0 / 0.5 | D46: the shots per Help tab at 1920x1080 (checked by the run), the cap, the repeat between shots (32 gave a third Targets shot for 18 units), no scroll up to this |
 | `DIAGRAM_BADGE_GAP` | 2 units | D35: legend to "+N" badge |
 | `DIAGRAM_ABBREVIATION_MAX_CHARS` / `DIAGRAM_NO_LED_X` | 4 / -1 | D38: an abbreviation's length cap; the keys' hull `LedX` (no LED) |
 | `DIAGRAM_KEY_FONT_SIZE` / `DIAGRAM_BADGE_FONT_SIZE` / `DIAGRAM_KEY_INSET` / `DIAGRAM_KEY_PAD` | 11 / 9 / 1.5 / 2 units | The leaf's key drawing (font 10 was tried in 33c and not kept) |
 | `DIAGRAM_LEGEND_ITEM_WIDTH` / `_GAP` / `_ROW_HEIGHT`, `DIAGRAM_SECTION_GAP`, `DIAGRAM_STRIP_HEIGHT`, `DIAGRAM_UNBOUND_HEIGHT` | 104 / 8 / 22, 12, 40, 22 units | The panel's sections |
 | `DIAGRAM_TINT_ALPHA` / `DIAGRAM_FREE_ALPHA` | 0.28 / 0.45 | Area fill, a free key |
-| `DIAGRAM_DETAIL_LINES` | 24 (33c; was 6) | D36: the cap on the hover strip's lines (the strip is sized for the busiest key, 8 at the defaults) |
+| `DIAGRAM_DETAIL_LINES` | 24 (33c; was 6) | The cap on the hover popup's lines (D36's strip cap, kept for the D45 popup) |
 | `SHORT_LABEL_MAX_CHARS` | 8 | Short label length |
 | `GLOSSARY_SYMBOL_BOX` | 96 units | Symbol recess, square (the narrow 64 variant was dropped, D37) |
 | `TAB_RAIL_CAPTION_HEIGHT` / `TAB_RAIL_CAPTION_FONT_SIZE` / `TAB_RAIL_CAPTION_LETTER_SPACING` | 24 units / `MenuStyle::SMALL_FONT_SIZE` (15, SemiBold, dim) / 200 (33d-ii) | A group caption row in the tab rail (D22), `BUTTON_GAP` follows it |
@@ -626,6 +646,26 @@ the strip and the views paint as before, a wide sample view is one backing and i
 non-Help pass over its single-run verdict (the known single-run noise, `Docs/TECH_DEBT.md`); the other two passed all
 22. 4K and one-eye stay with 33f.
 
+### 14.6 33e-iii amendment: the profile with the hover popup (2026-11-08)
+
+Three default runs of the final code, medians in ms, `cpu_slate` / `gpu_ui` (extra against the main Settings passes
+of the same runs, P0 0.476 / 0.109 at 1080 and P1 0.517 / 0.061 at 720, in brackets). P13 and P15 draw the popup
+(the busiest key, checked by `diagram-P13` / `-P15`), P12 and P14 the same page without a hover:
+
+| Pass | Screen | View | `cpu_slate` | `gpu_ui` |
+|---|---|---|---|---|
+| P12 | main-diagram | 1920x1080 | 0.580 (+0.104) | 0.172 (+0.063) |
+| P13 | main-diagram-hover (popup) | 1920x1080 | **0.580** (+0.104) | **0.176** (+0.067) |
+| P14 | main-diagram | 1280x720 | 0.583 (+0.066) | 0.106 (+0.045) |
+| P15 | main-diagram-hover (popup) | 1280x720 | **0.582** (+0.065) | **0.112** (+0.051) |
+| P16 | main-help-keys | 1920x1080 | 0.499 (+0.023) | 0.127 (+0.018) |
+| P19 | main-help-keys | 1280x720 | 0.488 (-0.029) | 0.074 (+0.013) |
+
+All inside the budget (0.2 ms CPU / 0.3 ms GPU extra); the popup itself costs nothing measurable on the CPU and about
+0.005 ms of GPU (one Panel quad, the cap and about two elements per row, only while a key is hovered). One run logged
+P14 (no popup) over its single-run verdict (the known single-run noise, `Docs/TECH_DEBT.md`); the other two passed all
+22, as did three runs before the review fixes. 4K and one-eye stay with 33f.
+
 ## 15. Documentation and in-game text (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 (the Help entry and tab, what the page shows), a pointer from section 1 to
@@ -675,6 +715,9 @@ non-Help pass over its single-run verdict (the known single-run noise, `Docs/TEC
 | R8 | Writing into `Docs/` from the game | Flag-only, non-shipping, paths from `SOL::Paths`, logged; nothing writes without the flag |
 
 ## 18. Open questions
+
+**33e-iii (2026-11-08):** the 33e "open for the user" note (the Keyboard image cut at the fold, one shot per glossary
+tab) was answered by D45 and D46; no question open.
 
 **Two layout questions found while building 33d-ii (2026-11-08), both answered by the user the same day and built in
 33d-iii: O15 as D43 (the hover strip above the diagram), O16 as D44 (a wider box and the 1.0 floor with more wrap
@@ -978,3 +1021,53 @@ and the in-place save), all fixed. **Open for the user:** the Keyboard image sho
 only (the bottom letter row, the space bar row and the mouse are below it), and each glossary image shows the first
 rows of its tab (one window shot per tab, section 9); a scrolled second shot or a diagram-only capture would be a
 layout decision.
+
+**33e-iii (2026-11-08, commit `Issue #33: Part 33e-iii - hover popup and scrolled guide shots`).** The user's D45 (the
+hover detail as a popup; supersedes D36 and D43) and D46 (scrolled guide shots), which also answer the 33e "open for
+the user" note above. Tests first by a separate opus/high author from a contract (no production code shown):
+`KeyboardLayoutTest` (`PanelHint`, `PopupSize`, `PlacePopup` with the worked examples and a placement sweep; the strip
+tests deleted), `KeyboardDiagramTest` (the budget test deleted, panels compared by `Hint`), `PlayerGuideTest`
+(`TabPages`, `PageCount` with the cover property, `PageFileName`; `Shots`, `ReferencedImages`, `ImagesExist`,
+`GlossaryContent` for the pages); red on stubs (9 of 50 in the three topics), then green.
+
+As built:
+- **D45.** `SOLKeyboardLayout::LayoutPanel(width, other, unbound)` stacks legend, hint (one line), diagram, Other keys,
+  Unbound; `GetDetailLineBudget`, `CountDetailRows` and the per-width budget pass are gone. The page wraps its content in
+  an overlay whose last child is `USOLKeyboardDiagramPopup` (`SSOLKeyboardDiagramPopupLayer`: hit-test invisible,
+  volatile, zero desired size); the layer asks the diagram's leaf to paint the popup in its geometry right after the
+  leaf painted in the same frame (a pending flag plus `GFrameCounter`, so another tab, a closed page or a second Slate
+  paint in one frame shows nothing). The leaf wraps the hovered key's lines at the paint scale in
+  `PopupWrapWidth() - DIAGRAM_POPUP_WRAP_SLACK`, its font measure calibrated against the shaped text (each line shaped
+  once per hover: Slate's shaped text draws up to about 3.5% wider than `FSlateFontMeasure` for the menu font), sizes
+  the popup from the shaped widths (`PopupContentWidth`, `PopupSize`), places it with `PlacePopup` inside the layer less
+  `DIAGRAM_POPUP_EDGE_PAD` and paints the Panel hull, the 33b cap row and the rows (hull, cap hull and texts on three
+  layers). Re-wrap and reshape run on a hover or scale change only; a held hover allocates nothing. A mirror cap (the
+  numpad Enter) places the popup by itself (`GetHoverAnchor`); a free key (F12 at the defaults) has no lines and so no
+  popup; a tab change clears the hover. Placement as tuned: O (11 rows) goes above, Esc below, the bottom row and the
+  stacked numpad / mouse block above, the right edge clamped in. **Reading of "never covers the key":** `PlacePopup`
+  never covers it while any side has room; only when a popup is larger than every side's room does the clamp (never
+  cut off) win, which no key reaches at the D37 sizes (the smoke checks all eight caps clear at both).
+- **D46.** `PLAYER_GUIDE_TAB_PAGES` 2, 4, 2, 4, 3 (Keyboard, Flight HUD, Targets, Overlays, Map at 1920x1080, view 556
+  units; scroll ends 224, 1254, 542, 1194, 662), measured by the writer on each tab's first page and failing on a
+  mismatch with the table; `PLAYER_GUIDE_PAGE_OVERLAP` 0 (32 cost a third Targets shot for 18 units). The guide shows
+  16 images (15 tab pages and the hover shot of O with its popup), 12.2 MB together (losslessly recompressed);
+  `Docs/PLAYER_GUIDE.md` 16,110 bytes, byte-identical on a re-run; the player's `GameUserSettings.ini` unchanged.
+
+Verification: full suite 1729 / 0; `-SOLSmokeSolidMenu` 275 / 275 (was 259: the strip checks replaced by
+`w-help-popup-<cap>` and `w-help-large-popup-<cap>` for O, Esc, the main Enter, Left Ctrl, Right Ctrl, the numpad
+Enter, LMB and RMB, each scrolled into view, then `-popup-hidden`, and the 33c real-cursor hover checks now read the
+popup), `-SOLSmokeSolidMenuProfile` 23 / 23 (22 passes PASS; the diagram hover passes P13 / P15 check the popup is
+drawn), `-SOLSmokeHoloMenu` 86 / 86, `-SOLSmokeOverlay` 34 / 34, `-SOLSmokeHud` 24 / 24 at 1280x720 and 1920x1080 (the
+1080 run rewrote `GameUserSettings.ini`, restored from the copy), `-SOLSmokeHoloMenuProfile` 12 / 12. Screenshots
+looked at: the Keyboard tab at rest and with the popup over O, Esc, Enter, Left Ctrl, Right Ctrl, the numpad Enter,
+LMB and RMB at 1280x720 and 1920x1080, and every guide image. The profile is in section 14.6.
+
+The adversarial review (fresh opus, xhigh) found no must-fix and 4 should-fix: the shaped keys column not capped like
+the wrap's (fixed), the writer's offset check reading the requested offset (kept as a sanity check: `SScrollBox`
+exposes no drawn offset and a scrolled-out child's cached geometry is stale; the images are looked at when
+regenerated), the popup layer stale under an invalidation panel (fixed: the layer is volatile and `SetHoverAnchor`
+invalidates), the tallest popup's placement not checked in the sweep (fixed: `popup-all` fails unless the busiest key
+is one of the Help step's popup caps; it is O); nits fixed (a paint-pass flag besides the frame counter, the hover
+cleared on a tab change, `GetLeaf` by reference, line lengths, comments, a smoke tolerance constant, a compile-time
+check of the page table) and the "never covers" reading recorded above.
+

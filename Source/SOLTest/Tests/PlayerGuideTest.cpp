@@ -16,6 +16,8 @@
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 // Tests for the issue #33 Part 33a generated player guide (Docs/SDDs/33-player-documentation.md sections 9 and 10,
@@ -24,12 +26,16 @@
 // staleness comparison ignores line endings. Part 33e adds the -SOLWritePlayerGuide pieces (the flag test, the shot
 // list, the image and capture paths, the image references, the BOM-less UTF-8 writer, the stale message) and the two
 // checks on the committed files: SOLTest.PlayerGuide.UpToDate (the committed guide against the generated text, D27)
-// and SOLTest.PlayerGuide.ImagesExist (every image the guide shows is committed).
+// and SOLTest.PlayerGuide.ImagesExist (every image the guide shows is committed). Part 33e-iii (D46), also test-first:
+// a tab taller than the window is shot in scrolled pages (TabPages from PLAYER_GUIDE_TAB_PAGES, PageCount and
+// PageOffset from the scroll extent, PageFileName's "-<n>" suffix), so the shot list, the guide's images and their alt
+// texts ("..., part n of m") follow the page counts.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
 {
-    constexpr int32 PLAYERGUIDETEST_MIN_IMAGES = 5;             // One image per Help tab (D24)
+    constexpr float PLAYERGUIDETEST_PAGE_TOLERANCE = 1.0e-3f;   // Scroll offset comparisons (menu units)
+    constexpr float PLAYERGUIDETEST_VIEW = 556.0f;              // The cross-check view height (contract E)
     const TCHAR* const PLAYERGUIDETEST_BANNER = TEXT("<!-- SOLTest / Copyright © 2026 Acid Rain Studios LLC -->");
     const TCHAR* const PLAYERGUIDETEST_FLAG = TEXT("-SOLWritePlayerGuide");
     constexpr int32 PLAYERGUIDETEST_FIRE = static_cast<int32>(SOLKeyBindings::EBinding::Fire);
@@ -186,25 +192,164 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a shot's file name as text, empty for a null name
-    FString PlayerGuideTestName(const FSOLPlayerGuideShot& shot)
+    // Returns a Help tab's page count from PLAYER_GUIDE_TAB_PAGES, 0 for Count or a tab past the table
+    int32 PlayerGuideTestTabPages(const ESOLHelpTab tab)
     {
-        return shot.FileName != nullptr ? FString(shot.FileName) : FString();
+        const int32 index = static_cast<int32>(tab);
+        const int32 known = FMath::Min(static_cast<int32>(ESOLHelpTab::Count),
+            static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_TAB_PAGES)));
+        return index >= 0 && index < known ? SOL::Paths::PLAYER_GUIDE_TAB_PAGES[index] : 0;
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the guide's image targets in the contract order: "Images/" + the keyboard, the hover, then each glossary
-    // tab's image name
+    // Returns the sum of PLAYER_GUIDE_TAB_PAGES over the Help tabs
+    int32 PlayerGuideTestPageSum()
+    {
+        int32 sum = 0;
+        for (int32 tab = 0; tab < static_cast<int32>(ESOLHelpTab::Count); ++tab)
+        {
+            sum += PlayerGuideTestTabPages(static_cast<ESOLHelpTab>(tab));
+        }
+        return sum;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a page's file name as the PageFileName contract (E) gives it: page 0 or less the base name, else the
+    // base name with "-<page + 1>" before its last '.' (appended without one); null gives an empty name
+    FString PlayerGuideTestPageName(const TCHAR* baseName, const int32 page)
+    {
+        if (baseName == nullptr)
+        {
+            return FString();
+        }
+        const FString base(baseName);
+        if (page <= 0)
+        {
+            return base;
+        }
+        const FString suffix = FString::Printf(TEXT("-%d"), page + 1);
+        int32 dot = INDEX_NONE;
+        return base.FindLastChar(TEXT('.'), dot) ? base.Left(dot) + suffix + base.Mid(dot) : base + suffix;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a shot with every field set
+    FSOLPlayerGuideShot PlayerGuideTestShot(const ESOLHelpTab tab, const bool bHover, const int32 page,
+        const FString& fileName)
+    {
+        FSOLPlayerGuideShot shot;
+        shot.Tab = tab;
+        shot.bHover = bHover;
+        shot.Page = page;
+        shot.FileName = fileName;
+        return shot;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the shots the contract (E) lists, in order: the Keyboard tab's pages, the Keyboard hover shot, then each
+    // glossary tab's pages in ESOLHelpTab order, the names from SOL::Paths with the page suffix
+    TArray<FSOLPlayerGuideShot> PlayerGuideTestExpectedShots()
+    {
+        using namespace SOL::Paths;
+        TArray<FSOLPlayerGuideShot> shots;
+        for (int32 page = 0; page < PlayerGuideTestTabPages(ESOLHelpTab::Keyboard); ++page)
+        {
+            shots.Add(PlayerGuideTestShot(ESOLHelpTab::Keyboard, false, page,
+                PlayerGuideTestPageName(PLAYER_GUIDE_IMAGE_KEYBOARD, page)));
+        }
+        shots.Add(PlayerGuideTestShot(ESOLHelpTab::Keyboard, true, 0, PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER));
+
+        // The glossary tabs follow Keyboard in the enum; each one's image is PLAYER_GUIDE_IMAGE_GLOSSARY[tab - 1]
+        const int32 firstGlossary = static_cast<int32>(ESOLHelpTab::FlightHud);
+        for (int32 tab = firstGlossary; tab < static_cast<int32>(ESOLHelpTab::Count); ++tab)
+        {
+            const int32 glossary = tab - firstGlossary;
+            if (glossary >= static_cast<int32>(UE_ARRAY_COUNT(PLAYER_GUIDE_IMAGE_GLOSSARY)))
+            {
+                break;
+            }
+            for (int32 page = 0; page < PlayerGuideTestTabPages(static_cast<ESOLHelpTab>(tab)); ++page)
+            {
+                shots.Add(PlayerGuideTestShot(static_cast<ESOLHelpTab>(tab), false, page,
+                    PlayerGuideTestPageName(PLAYER_GUIDE_IMAGE_GLOSSARY[glossary], page)));
+            }
+        }
+        return shots;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the guide's image targets in the contract order: "Images/" + each expected shot's file name
     TArray<FString> PlayerGuideTestExpectedTargets()
     {
-        const FString folder = TEXT("Images/");
-        TArray<FString> targets = { folder + SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD,
-            folder + SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER };
-        for (const TCHAR* name : SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY)
+        TArray<FString> targets;
+        for (const FSOLPlayerGuideShot& shot : PlayerGuideTestExpectedShots())
         {
-            targets.Add(folder + name);
+            targets.Add(FString(TEXT("Images/")) + shot.FileName);
         }
         return targets;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns an image's alt text as the contract (E) gives it: the hover shot GUIDE_KEYBOARD_HOVER_ALT; page 0 the
+    // tab's alt (GUIDE_KEYBOARD_ALT, a glossary tab's heading); a later page GUIDE_IMAGE_PART_FORMAT over that alt, the
+    // 1-based page and the tab's page count
+    FString PlayerGuideTestAlt(const FSOLPlayerGuideShot& shot)
+    {
+        if (shot.bHover)
+        {
+            return SOLMenuText::GUIDE_KEYBOARD_HOVER_ALT;
+        }
+        const int32 glossary = static_cast<int32>(shot.Tab) - static_cast<int32>(ESOLHelpTab::FlightHud);
+        const bool bGlossary = glossary >= 0 && glossary < static_cast<int32>(UE_ARRAY_COUNT(
+            SOLMenuText::GLOSSARY_TABS));
+        const FString alt = shot.Tab == ESOLHelpTab::Keyboard ? FString(SOLMenuText::GUIDE_KEYBOARD_ALT)
+            : (bGlossary ? FString(SOLMenuText::GLOSSARY_TABS[glossary]) : FString());
+        if (shot.Page <= 0)
+        {
+            return alt;
+        }
+        FStringFormatOrderedArguments arguments;
+        arguments.Add(FStringFormatArg(alt));
+        arguments.Add(FStringFormatArg(shot.Page + 1));
+        arguments.Add(FStringFormatArg(PlayerGuideTestTabPages(shot.Tab)));
+        return FString::Format(SOLMenuText::GUIDE_IMAGE_PART_FORMAT, arguments);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the scroll step the PageCount / PageOffset contract (E) gives a view: the view less the overlap, at
+    // least 1
+    float PlayerGuideTestStep(const float viewHeight)
+    {
+        return FMath::Max(viewHeight - SOL::Paths::PLAYER_GUIDE_PAGE_OVERLAP, 1.0f);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the page count the contract (E) gives: 1 for a bad view or no scroll (an end up to the tolerance), else
+    // one page plus as many steps as reach the end less the tolerance, at most PLAYER_GUIDE_MAX_PAGES
+    int32 PlayerGuideTestPageCount(const float viewHeight, const float scrollEnd)
+    {
+        using namespace SOL::Paths;
+        if (!FMath::IsFinite(viewHeight) || viewHeight <= 0.0f || !FMath::IsFinite(scrollEnd)
+            || scrollEnd <= PLAYER_GUIDE_SCROLL_TOLERANCE)
+        {
+            return 1;
+        }
+        const int32 count = 1 + FMath::CeilToInt32((scrollEnd - PLAYER_GUIDE_SCROLL_TOLERANCE)
+            / PlayerGuideTestStep(viewHeight));
+        return FMath::Min(count, PLAYER_GUIDE_MAX_PAGES);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a page's scroll offset the contract (E) gives: 0 for page 0 or less, a bad view or an end not finite or
+    // not positive, else the page's steps capped at the end
+    float PlayerGuideTestPageOffset(const int32 page, const float viewHeight, const float scrollEnd)
+    {
+        if (page <= 0 || !FMath::IsFinite(viewHeight) || viewHeight <= 0.0f || !FMath::IsFinite(scrollEnd)
+            || scrollEnd <= 0.0f)
+        {
+            return 0.0f;
+        }
+        return FMath::Min(static_cast<float>(page) * PlayerGuideTestStep(viewHeight), scrollEnd);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -329,7 +474,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideGlossaryTest, "SOLTest.PlayerGui
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every glossary entry's name and formatted description is in the guide, with one image per Help tab
+// Every glossary entry's name and formatted description is in the guide, with an image per page of each Help tab and
+// the Keyboard hover image (D46)
 bool FSOLPlayerGuideGlossaryTest::RunTest(const FString& /*parameters*/)
 {
     const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
@@ -353,7 +499,9 @@ bool FSOLPlayerGuideGlossaryTest::RunTest(const FString& /*parameters*/)
             guide.Contains(heading, ESearchCase::CaseSensitive));
     }
     const int32 images = PlayerGuideTestCount(guide, TEXT("!["));
-    TestTrue(FString::Printf(TEXT("one image per Help tab (%d)"), images), images >= PLAYERGUIDETEST_MIN_IMAGES);
+    TestEqual(TEXT("an image per tab page plus the hover image"), images, PlayerGuideTestPageSum() + 1);
+    TestTrue(FString::Printf(TEXT("at least one image per Help tab (%d)"), images),
+        images >= static_cast<int32>(ESOLHelpTab::Count) + 1);
     return true;
 }
 
@@ -498,28 +646,25 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideShotsTest, "SOLTest.PlayerGuide.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The shots are the Keyboard tab, the Keyboard tab hovered, then each glossary tab in GLOSSARY_TABS order, with
-// unique bare .png names from SOL::Paths, and the list is stable
+// The shots (D46) are the Keyboard tab's pages, one Keyboard hover shot, then each glossary tab's pages in ESOLHelpTab
+// order, as many pages per tab as PLAYER_GUIDE_TAB_PAGES says, page 0 first; the names are SOL::Paths' with the page
+// suffix, unique bare .png names; only the hover shot hovers; the list is stable
 bool FSOLPlayerGuideShotsTest::RunTest(const FString& /*parameters*/)
 {
+    using namespace SOL::Paths;
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
     const int32 glossaryTabs = static_cast<int32>(UE_ARRAY_COUNT(SOLMenuText::GLOSSARY_TABS));
     TestEqual(TEXT("one glossary image name per glossary tab"),
-        static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY)), glossaryTabs);
-    TestEqual(TEXT("two Keyboard shots plus one per glossary tab"), shots.Num(), 2 + glossaryTabs);
+        static_cast<int32>(UE_ARRAY_COUNT(PLAYER_GUIDE_IMAGE_GLOSSARY)), glossaryTabs);
+    TestEqual(TEXT("a glossary tab per Help tab after Keyboard"), glossaryTabs,
+        static_cast<int32>(ESOLHelpTab::Count) - 1);
+    TestEqual(TEXT("a shot per tab page plus the hover shot"), shots.Num(), PlayerGuideTestPageSum() + 1);
 
     // The expected shots, in order
-    const ESOLHelpTab glossaryOrder[] = { ESOLHelpTab::FlightHud, ESOLHelpTab::TargetsRadar,
-        ESOLHelpTab::OverlaysRoute, ESOLHelpTab::MenusMap };
-    TArray<FSOLPlayerGuideShot> expected;
-    expected.Add({ ESOLHelpTab::Keyboard, false, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD });
-    expected.Add({ ESOLHelpTab::Keyboard, true, SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER });
-    const int32 glossaryKnown = FMath::Min3(glossaryTabs, static_cast<int32>(UE_ARRAY_COUNT(glossaryOrder)),
-        static_cast<int32>(UE_ARRAY_COUNT(SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY)));
-    for (int32 index = 0; index < glossaryKnown; ++index)
-    {
-        expected.Add({ glossaryOrder[index], false, SOL::Paths::PLAYER_GUIDE_IMAGE_GLOSSARY[index] });
-    }
+    const TArray<FSOLPlayerGuideShot> expected = PlayerGuideTestExpectedShots();
+    TestEqual(TEXT("the expected list has every page and the hover shot"), expected.Num(),
+        PlayerGuideTestPageSum() + 1);
+    TestEqual(TEXT("as many shots as expected"), shots.Num(), expected.Num());
     const int32 common = FMath::Min(shots.Num(), expected.Num());
     for (int32 index = 0; index < common; ++index)
     {
@@ -527,11 +672,11 @@ bool FSOLPlayerGuideShotsTest::RunTest(const FString& /*parameters*/)
             static_cast<int32>(expected[index].Tab));
         TestTrue(FString::Printf(TEXT("shot %d hover is %d"), index, expected[index].bHover ? 1 : 0),
             shots[index].bHover == expected[index].bHover);
-        TestEqual(FString::Printf(TEXT("shot %d file name"), index), PlayerGuideTestName(shots[index]),
-            FString(expected[index].FileName));
+        TestEqual(FString::Printf(TEXT("shot %d page"), index), shots[index].Page, expected[index].Page);
+        TestEqual(FString::Printf(TEXT("shot %d file name"), index), shots[index].FileName, expected[index].FileName);
     }
 
-    // One shot per Help tab without hover, exactly one hover shot, unique bare .png names
+    // Per tab: its pages without hover, numbered 0 .. pages - 1 in order; exactly one hover shot; unique bare names
     int32 perTab[static_cast<int32>(ESOLHelpTab::Count)] = {};
     int32 hoverShots = 0;
     TSet<FString> names;
@@ -539,18 +684,26 @@ bool FSOLPlayerGuideShotsTest::RunTest(const FString& /*parameters*/)
     {
         const FSOLPlayerGuideShot& shot = shots[index];
         const int32 tab = static_cast<int32>(shot.Tab);
-        TestTrue(FString::Printf(TEXT("shot %d tab %d is a Help tab"), index, tab),
-            tab >= 0 && tab < static_cast<int32>(ESOLHelpTab::Count));
+        const bool bHelpTab = tab >= 0 && tab < static_cast<int32>(ESOLHelpTab::Count);
+        TestTrue(FString::Printf(TEXT("shot %d tab %d is a Help tab"), index, tab), bHelpTab);
+        TestTrue(FString::Printf(TEXT("shot %d page %d in 0 .. PLAYER_GUIDE_MAX_PAGES - 1"), index, shot.Page),
+            shot.Page >= 0 && shot.Page < PLAYER_GUIDE_MAX_PAGES);
         if (shot.bHover)
         {
             ++hoverShots;
+            TestTrue(FString::Printf(TEXT("hover shot %d is the Keyboard tab"), index),
+                shot.Tab == ESOLHelpTab::Keyboard);
+            TestEqual(FString::Printf(TEXT("hover shot %d is page 0"), index), shot.Page, 0);
+            TestEqual(FString::Printf(TEXT("hover shot %d name"), index), shot.FileName,
+                FString(PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER));
         }
-        else if (tab >= 0 && tab < static_cast<int32>(ESOLHelpTab::Count))
+        else if (bHelpTab)
         {
+            TestEqual(FString::Printf(TEXT("shot %d is the tab's next page"), index), shot.Page, perTab[tab]);
             ++perTab[tab];
         }
-        const FString name = PlayerGuideTestName(shot);
-        TestTrue(FString::Printf(TEXT("shot %d has a file name"), index), shot.FileName != nullptr && !name.IsEmpty());
+        const FString& name = shot.FileName;
+        TestFalse(FString::Printf(TEXT("shot %d has a file name"), index), name.IsEmpty());
         TestTrue(FString::Printf(TEXT("shot %d '%s' ends in .png"), index, *name),
             name.EndsWith(TEXT(".png"), ESearchCase::CaseSensitive));
         TestFalse(FString::Printf(TEXT("shot %d '%s' has no path separator"), index, *name),
@@ -560,16 +713,17 @@ bool FSOLPlayerGuideShotsTest::RunTest(const FString& /*parameters*/)
     }
     for (int32 tab = 0; tab < static_cast<int32>(ESOLHelpTab::Count); ++tab)
     {
-        TestEqual(FString::Printf(TEXT("Help tab %d has one shot without hover"), tab), perTab[tab], 1);
+        TestEqual(FString::Printf(TEXT("Help tab %d has its pages"), tab), perTab[tab],
+            PlayerGuideTestTabPages(static_cast<ESOLHelpTab>(tab)));
     }
     TestEqual(TEXT("exactly one hover shot"), hoverShots, 1);
 
-    // Every glossary shot's tab is its glossary tab's Help tab
-    for (int32 index = 0; index < glossaryTabs && 2 + index < shots.Num(); ++index)
+    // The glossary tabs follow Keyboard in the enum in GLOSSARY_TABS order
+    for (int32 index = 0; index < glossaryTabs; ++index)
     {
-        TestEqual(FString::Printf(TEXT("glossary shot %d tab from '%s'"), index, SOLMenuText::GLOSSARY_TABS[index]),
-            static_cast<int32>(shots[2 + index].Tab),
-            static_cast<int32>(SOLGlossary::TabFromGlossaryName(SOLMenuText::GLOSSARY_TABS[index])));
+        TestEqual(FString::Printf(TEXT("glossary tab %d '%s' is Help tab %d"), index, SOLMenuText::GLOSSARY_TABS[index],
+            index + 1), static_cast<int32>(SOLGlossary::TabFromGlossaryName(SOLMenuText::GLOSSARY_TABS[index])),
+            index + 1);
     }
 
     // Stable across calls
@@ -578,8 +732,8 @@ bool FSOLPlayerGuideShotsTest::RunTest(const FString& /*parameters*/)
     for (int32 index = 0; index < FMath::Min(again.Num(), shots.Num()); ++index)
     {
         TestTrue(FString::Printf(TEXT("shot %d the same twice"), index), again[index].Tab == shots[index].Tab
-            && again[index].bHover == shots[index].bHover
-            && PlayerGuideTestName(again[index]).Equals(PlayerGuideTestName(shots[index]), ESearchCase::CaseSensitive));
+            && again[index].bHover == shots[index].bHover && again[index].Page == shots[index].Page
+            && again[index].FileName.Equals(shots[index].FileName, ESearchCase::CaseSensitive));
     }
     return true;
 }
@@ -590,29 +744,34 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuidePathsTest, "SOLTest.PlayerGuide.
 
 //////////////////////////////////////////////////////////////////////////
 // An image sits in Docs/Images/ under the project directory, its capture is the prefixed name in the screenshot folder
-// as a full path, and distinct shots give distinct paths
+// as a full path, and distinct shots (every page among them) give distinct paths
 bool FSOLPlayerGuidePathsTest::RunTest(const FString& /*parameters*/)
 {
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
     TestTrue(TEXT("there are shots to check"), shots.Num() > 0);
     TestEqual(TEXT("the keyboard image path"), SOLPlayerGuide::ImagePath(SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD),
         FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD);
+    const FString secondPage = PlayerGuideTestPageName(SOL::Paths::PLAYER_GUIDE_IMAGE_KEYBOARD, 1);
+    TestEqual(TEXT("the keyboard's second page image path"), SOLPlayerGuide::ImagePath(*secondPage),
+        FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + secondPage);
+    TestTrue(TEXT("the second page image ends in Docs/Images/33-help-keyboard-2.png"),
+        SOLPlayerGuide::ImagePath(*secondPage).EndsWith(TEXT("Docs/Images/33-help-keyboard-2.png")));
     TSet<FString> images;
     TSet<FString> captures;
     for (int32 index = 0; index < shots.Num(); ++index)
     {
-        if (shots[index].FileName == nullptr)
+        const FString& name = shots[index].FileName;
+        if (name.IsEmpty())
         {
             AddError(FString::Printf(TEXT("shot %d has no file name"), index));
             continue;
         }
-        const FString name = shots[index].FileName;
-        const FString image = SOLPlayerGuide::ImagePath(shots[index].FileName);
+        const FString image = SOLPlayerGuide::ImagePath(*name);
         TestEqual(FString::Printf(TEXT("'%s' image path"), *name), image,
             FPaths::ProjectDir() + SOL::Paths::PLAYER_GUIDE_IMAGE_DIR + name);
 
         // The capture: the prefixed name in the screenshot folder, as a full path apart from the image
-        const FString capture = SOLPlayerGuide::CapturePath(shots[index].FileName);
+        const FString capture = SOLPlayerGuide::CapturePath(*name);
         const FString captureName = FString(SOL::Paths::PLAYER_GUIDE_CAPTURE_PREFIX) + name;
         TestEqual(FString::Printf(TEXT("'%s' capture path"), *name), capture,
             FPaths::ConvertRelativePathToFull(FPaths::ScreenShotDir() / captureName));
@@ -637,7 +796,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideReferencedImagesTest, "SOLTest.P
 
 //////////////////////////////////////////////////////////////////////////
 // Every markdown image's target is listed in text order (plain links and unclosed images are not), and the real guide
-// shows exactly the shots' images from Docs/
+// shows exactly the shots' images from Docs/ in Shots() order, each with its alt text (page 0 the tab's, later pages
+// "..., part n of m", D46)
 bool FSOLPlayerGuideReferencedImagesTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> targets = { TEXT("stale") };
@@ -670,14 +830,30 @@ bool FSOLPlayerGuideReferencedImagesTest::RunTest(const FString& /*parameters*/)
     PlayerGuideTestExpectList(*this, TEXT("a repeated image"), targets, { TEXT("r.png"), TEXT("r.png") });
 
     // The real guide: "Images/" + each shot's file name, in Shots() order
-    SOLPlayerGuide::ReferencedImages(SOLPlayerGuide::BuildMarkdown(SOLKeyBindings::DefaultKeys()), targets);
+    const FString guide = SOLPlayerGuide::BuildMarkdown(SOLKeyBindings::DefaultKeys());
+    SOLPlayerGuide::ReferencedImages(guide, targets);
     PlayerGuideTestExpectList(*this, TEXT("the guide's images"), targets, PlayerGuideTestExpectedTargets());
     const TConstArrayView<FSOLPlayerGuideShot> shots = SOLPlayerGuide::Shots();
     TestEqual(TEXT("one guide image per shot"), targets.Num(), shots.Num());
     for (int32 index = 0; index < FMath::Min(targets.Num(), shots.Num()); ++index)
     {
         TestEqual(FString::Printf(TEXT("guide image %d is shot %d"), index, index), targets[index],
-            FString(TEXT("Images/")) + PlayerGuideTestName(shots[index]));
+            FString(TEXT("Images/")) + shots[index].FileName);
+    }
+
+    // The part format at a sample (cross-check), then each image with its alt text
+    FStringFormatOrderedArguments sample;
+    sample.Add(FStringFormatArg(FString(TEXT("Alt"))));
+    sample.Add(FStringFormatArg(2));
+    sample.Add(FStringFormatArg(3));
+    TestEqual(TEXT("GUIDE_IMAGE_PART_FORMAT at a sample"),
+        FString::Format(SOLMenuText::GUIDE_IMAGE_PART_FORMAT, sample),
+        FString(TEXT("Alt, part 2 of 3")));
+    for (const FSOLPlayerGuideShot& shot : PlayerGuideTestExpectedShots())
+    {
+        const FString image = FString::Printf(TEXT("![%s](Images/%s)"), *PlayerGuideTestAlt(shot), *shot.FileName);
+        TestTrue(FString::Printf(TEXT("the guide shows %s"), *image),
+            guide.Contains(image, ESearchCase::CaseSensitive));
     }
     return true;
 }
@@ -821,7 +997,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImagesExistTest, "SOLTest.Player
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every image the generated guide shows is committed next to it as a PNG, and so is every shot's image
+// Every image the generated guide shows is committed next to it as a PNG, and so is every shot's image (every page of
+// every tab, D46); a missing one fails naming Tools\WritePlayerGuide.bat
 bool FSOLPlayerGuideImagesExistTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> targets;
@@ -844,12 +1021,206 @@ bool FSOLPlayerGuideImagesExistTest::RunTest(const FString& /*parameters*/)
     }
     for (int32 index = 0; index < shots.Num(); ++index)
     {
-        if (shots[index].FileName == nullptr)
+        if (shots[index].FileName.IsEmpty())
         {
             AddError(FString::Printf(TEXT("shot %d has no file name"), index));
             continue;
         }
-        PlayerGuideTestExpectFile(*this, SOLPlayerGuide::ImagePath(shots[index].FileName));
+        PlayerGuideTestExpectFile(*this, SOLPlayerGuide::ImagePath(*shots[index].FileName));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideTabPagesTest, "SOLTest.PlayerGuide.TabPages",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// TabPages (D46) reads PLAYER_GUIDE_TAB_PAGES, one entry per Help tab, each 1 .. PLAYER_GUIDE_MAX_PAGES; Count and a
+// tab past the enum give 0
+bool FSOLPlayerGuideTabPagesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Paths;
+    TestEqual(TEXT("one page count per Help tab"), static_cast<int32>(UE_ARRAY_COUNT(PLAYER_GUIDE_TAB_PAGES)),
+        static_cast<int32>(ESOLHelpTab::Count));
+    TestTrue(TEXT("PLAYER_GUIDE_MAX_PAGES is at least 1"), PLAYER_GUIDE_MAX_PAGES >= 1);
+    const int32 known = FMath::Min(static_cast<int32>(ESOLHelpTab::Count),
+        static_cast<int32>(UE_ARRAY_COUNT(PLAYER_GUIDE_TAB_PAGES)));
+    for (int32 tab = 0; tab < known; ++tab)
+    {
+        const int32 pages = PLAYER_GUIDE_TAB_PAGES[tab];
+        TestEqual(FString::Printf(TEXT("tab %d: TabPages is the table's"), tab),
+            SOLPlayerGuide::TabPages(static_cast<ESOLHelpTab>(tab)), pages);
+        TestTrue(FString::Printf(TEXT("tab %d: %d pages in 1 .. PLAYER_GUIDE_MAX_PAGES"), tab, pages),
+            pages >= 1 && pages <= PLAYER_GUIDE_MAX_PAGES);
+    }
+    TestEqual(TEXT("Count: 0"), SOLPlayerGuide::TabPages(ESOLHelpTab::Count), 0);
+    TestEqual(TEXT("past the enum: 0"), SOLPlayerGuide::TabPages(static_cast<ESOLHelpTab>(200)), 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuidePageCountTest, "SOLTest.PlayerGuide.PageCount",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// PageCount and PageOffset (D46): one page for a bad view or no scroll, else one plus the steps (the view less the
+// overlap, at least 1) that reach the scroll end less the tolerance, capped; a page's offset its steps capped at the
+// end; the pages cover the whole content (consecutive offsets a step apart at most, the last within the tolerance of
+// the end) and no page is spare; the contract's cross-checks at the current values
+bool FSOLPlayerGuidePageCountTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Paths;
+    const float nan = std::numeric_limits<float>::quiet_NaN();
+    const float inf = std::numeric_limits<float>::infinity();
+    const float view = PLAYERGUIDETEST_VIEW;
+
+    // Cross-checks at the current values (overlap 0, so view 556 is a step of 556)
+    struct FCountCase
+    {
+        float View;
+        float End;
+        int32 Pages;
+    };
+    const FCountCase counts[] = { { view, 0.0f, 1 }, { view, 0.5f, 1 }, { view, 100.0f, 2 }, { view, 556.0f, 2 },
+        { view, 556.5f, 2 }, { view, 557.0f, 3 }, { view, 1.0e6f, 8 }, { 10.0f, 3.0f, 2 }, { 10.0f, 25.0f, 4 },
+        { nan, 100.0f, 1 } };
+    for (const FCountCase& count : counts)
+    {
+        TestEqual(FString::Printf(TEXT("PageCount(%f, %f)"), count.View, count.End),
+            SOLPlayerGuide::PageCount(count.View, count.End), count.Pages);
+    }
+    TestEqual(TEXT("PageOffset(1, 556, 100)"), SOLPlayerGuide::PageOffset(1, view, 100.0f), 100.0f,
+        PLAYERGUIDETEST_PAGE_TOLERANCE);
+    TestEqual(TEXT("PageOffset(1, 556, 1000)"), SOLPlayerGuide::PageOffset(1, view, 1000.0f), 556.0f,
+        PLAYERGUIDETEST_PAGE_TOLERANCE);
+    TestEqual(TEXT("PageOffset(2, 556, 1000)"), SOLPlayerGuide::PageOffset(2, view, 1000.0f), 1000.0f,
+        PLAYERGUIDETEST_PAGE_TOLERANCE);
+
+    // Bad inputs: one page, offset 0
+    const float badViews[] = { 0.0f, -1.0f, nan, inf, -inf };
+    for (const float badView : badViews)
+    {
+        TestEqual(FString::Printf(TEXT("view %f: one page"), badView), SOLPlayerGuide::PageCount(badView, 1000.0f), 1);
+        TestEqual(FString::Printf(TEXT("view %f: offset 0"), badView), SOLPlayerGuide::PageOffset(1, badView, 1000.0f),
+            0.0f, PLAYERGUIDETEST_PAGE_TOLERANCE);
+    }
+    const float badEnds[] = { -5.0f, nan, inf, -inf };
+    for (const float badEnd : badEnds)
+    {
+        TestEqual(FString::Printf(TEXT("end %f: one page"), badEnd), SOLPlayerGuide::PageCount(view, badEnd), 1);
+        TestEqual(FString::Printf(TEXT("end %f: offset 0"), badEnd), SOLPlayerGuide::PageOffset(1, view, badEnd),
+            0.0f, PLAYERGUIDETEST_PAGE_TOLERANCE);
+    }
+    TestEqual(TEXT("end 0: offset 0"), SOLPlayerGuide::PageOffset(1, view, 0.0f), 0.0f, PLAYERGUIDETEST_PAGE_TOLERANCE);
+    const int32 badPages[] = { 0, -1, MIN_int32 };
+    for (const int32 badPage : badPages)
+    {
+        TestEqual(FString::Printf(TEXT("page %d: offset 0"), badPage), SOLPlayerGuide::PageOffset(badPage, view,
+            1000.0f), 0.0f, PLAYERGUIDETEST_PAGE_TOLERANCE);
+    }
+
+    // The sweep: the rules restated, then the cover property
+    const float views[] = { 10.0f, 33.0f, 100.0f, view, 1080.0f, 2000.0f };
+    const float ends[] = { 0.0f, 0.25f, PLAYER_GUIDE_SCROLL_TOLERANCE, 0.75f, 1.0f, 37.3f, 100.0f, 523.9f, 600.0f,
+        1234.5f, 3000.0f, 1.0e5f };
+    for (const float sweepView : views)
+    {
+        const float step = PlayerGuideTestStep(sweepView);
+        for (const float end : ends)
+        {
+            const FString what = FString::Printf(TEXT("view %.2f end %.2f"), sweepView, end);
+            const int32 pages = SOLPlayerGuide::PageCount(sweepView, end);
+            TestEqual(what + TEXT(": page count"), pages, PlayerGuideTestPageCount(sweepView, end));
+            TestTrue(what + TEXT(": 1 .. PLAYER_GUIDE_MAX_PAGES pages"), pages >= 1 && pages <= PLAYER_GUIDE_MAX_PAGES);
+
+            // Each page's offset as restated, the first at the top, a step apart at most, never past the end
+            float previous = 0.0f;
+            for (int32 page = 0; page < pages; ++page)
+            {
+                const float offset = SOLPlayerGuide::PageOffset(page, sweepView, end);
+                TestEqual(FString::Printf(TEXT("%s: page %d offset"), *what, page), offset,
+                    PlayerGuideTestPageOffset(page, sweepView, end), PLAYERGUIDETEST_PAGE_TOLERANCE);
+                if (page == 0)
+                {
+                    TestEqual(what + TEXT(": the first page at the top"), offset, 0.0f, PLAYERGUIDETEST_PAGE_TOLERANCE);
+                }
+                else
+                {
+                    TestTrue(FString::Printf(TEXT("%s: page %d at most a step on"), *what, page),
+                        offset - previous >= -PLAYERGUIDETEST_PAGE_TOLERANCE
+                        && offset - previous <= step + PLAYERGUIDETEST_PAGE_TOLERANCE);
+                }
+                TestTrue(FString::Printf(TEXT("%s: page %d not past the end"), *what, page),
+                    offset <= FMath::Max(end, 0.0f) + PLAYERGUIDETEST_PAGE_TOLERANCE);
+                previous = offset;
+            }
+
+            // Uncapped, the last page reaches the end within the tolerance and one page fewer would not
+            if (pages < PLAYER_GUIDE_MAX_PAGES)
+            {
+                TestTrue(FString::Printf(TEXT("%s: the last page (%.3f) reaches the end"), *what, previous),
+                    end - previous <= PLAYER_GUIDE_SCROLL_TOLERANCE + PLAYERGUIDETEST_PAGE_TOLERANCE);
+                if (pages > 1)
+                {
+                    TestTrue(what + TEXT(": no spare page"), SOLPlayerGuide::PageOffset(pages - 2, sweepView, end)
+                        < end - PLAYER_GUIDE_SCROLL_TOLERANCE + PLAYERGUIDETEST_PAGE_TOLERANCE);
+                }
+            }
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuidePageFileNameTest, "SOLTest.PlayerGuide.PageFileName",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// PageFileName (D46): page 0 or less keeps the base name; a later page inserts "-<page + 1>" before the last '.' (or
+// appends it without one); a null name gives an empty one
+bool FSOLPlayerGuidePageFileNameTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Paths;
+    TestEqual(TEXT("page 0 keeps the name"), SOLPlayerGuide::PageFileName(TEXT("33-help-keyboard.png"), 0),
+        FString(TEXT("33-help-keyboard.png")));
+    TestEqual(TEXT("page -1 keeps the name"), SOLPlayerGuide::PageFileName(TEXT("33-help-keyboard.png"), -1),
+        FString(TEXT("33-help-keyboard.png")));
+    TestEqual(TEXT("page 1 is the second image"), SOLPlayerGuide::PageFileName(TEXT("33-help-keyboard.png"), 1),
+        FString(TEXT("33-help-keyboard-2.png")));
+    TestEqual(TEXT("page 2 is the third image"), SOLPlayerGuide::PageFileName(TEXT("33-help-keyboard.png"), 2),
+        FString(TEXT("33-help-keyboard-3.png")));
+    TestEqual(TEXT("page 9 is the tenth image"), SOLPlayerGuide::PageFileName(TEXT("33-help-keyboard.png"), 9),
+        FString(TEXT("33-help-keyboard-10.png")));
+    TestEqual(TEXT("before the last dot"), SOLPlayerGuide::PageFileName(TEXT("a.b.png"), 1),
+        FString(TEXT("a.b-2.png")));
+    TestEqual(TEXT("no dot: appended"), SOLPlayerGuide::PageFileName(TEXT("noextension"), 1),
+        FString(TEXT("noextension-2")));
+    TestEqual(TEXT("no dot, page 0: unchanged"), SOLPlayerGuide::PageFileName(TEXT("noextension"), 0),
+        FString(TEXT("noextension")));
+    TestEqual(TEXT("null: empty"), SOLPlayerGuide::PageFileName(nullptr, 1), FString());
+    TestEqual(TEXT("null, page 0: empty"), SOLPlayerGuide::PageFileName(nullptr, 0), FString());
+
+    // Every guide image name over every page, as the rule restates
+    TArray<const TCHAR*> bases = { PLAYER_GUIDE_IMAGE_KEYBOARD };
+    for (const TCHAR* name : PLAYER_GUIDE_IMAGE_GLOSSARY)
+    {
+        bases.Add(name);
+    }
+    for (const TCHAR* base : bases)
+    {
+        TSet<FString> names;
+        for (int32 page = 0; page < PLAYER_GUIDE_MAX_PAGES; ++page)
+        {
+            const FString name = SOLPlayerGuide::PageFileName(base, page);
+            TestEqual(FString::Printf(TEXT("'%s' page %d"), base, page), name, PlayerGuideTestPageName(base, page));
+            TestTrue(FString::Printf(TEXT("'%s' page %d still a .png"), base, page),
+                name.EndsWith(TEXT(".png"), ESearchCase::CaseSensitive));
+            TestFalse(FString::Printf(TEXT("'%s' page %d unique"), base, page), names.Contains(name));
+            TestFalse(FString::Printf(TEXT("'%s' page %d is not the hover image"), base, page),
+                name.Equals(PLAYER_GUIDE_IMAGE_KEYBOARD_HOVER));
+            names.Add(name);
+        }
     }
     return true;
 }
