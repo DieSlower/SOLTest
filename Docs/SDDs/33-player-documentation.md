@@ -686,6 +686,73 @@ All inside the budget (0.2 ms CPU / 0.3 ms GPU extra); the popup itself costs no
 P14 (no popup) over its single-run verdict (the known single-run noise, `Docs/TECH_DEBT.md`); the other two passed all
 22, as did three runs before the review fixes. 4K and one-eye stay with 33f.
 
+### 14.7 33f amendment: the one-eye and 4K view runs (2026-11-09)
+
+The view run of `-SOLSmokeSolidMenuProfile` (`-ResX` / `-ResY` other than 1920x1080) gains twelve Help screens after
+its nine 46h screens: each menu's Help page (the main menu's page, the pause menu's tab) on the Keyboard tab without
+and with the diagram's busiest key hovered (Shift, the D45 popup), then on the Flight HUD, Targets, Overlays and Map
+tabs (the map rows with their D47 crops). Each Help pass logs a `help-P<n>` check: the tab shown with every view
+built, and on the Keyboard tab the diagram painted whole, no legend clipped at the view's paint scale (D38) and the
+popup painted exactly when a key is hovered; the default run's P16 / P19 get the same Keyboard checks. A view run is
+21 passes and 38 checks (was 9 and 14). Three runs each at 3840x2160 (the 4K stand-in) and 3840x3744 (one XR-4 eye);
+**the two-eye run (7680x3744) is skipped (D21, user decision O8), so the two-eye budget is not measured.**
+
+Medians of the three runs in ms, `cpu_slate` (`dcpu` against the menu's 1920x1080 baseline, the 46h rule, in
+brackets) and `gpu_ui` (the extra over the same run's Settings screen of the same menu at the same size in brackets),
+and the Slate UI draws (4K / one eye). Settings rows are the baselines:
+
+| Screen | 4K `cpu_slate` | 4K `gpu_ui` | One eye `cpu_slate` | One eye `gpu_ui` | Draws |
+|---|---|---|---|---|---|
+| main-settings | 0.496 (+0.073) | 0.378 | 0.504 (+0.081) | 0.659 | 36 / 33 |
+| main-help-keys | 0.503 (+0.080) | 0.431 (+0.053) | 0.507 (+0.084) | 0.700 (+0.041) | 35 / 35 |
+| main-help-keys-hover | 0.511 (+0.088) | 0.468 (+0.090) | 0.510 (+0.087) | 0.769 (+0.110) | 39 / 39 |
+| main-help-flight | 0.488 (+0.065) | 0.438 (+0.060) | 0.478 (+0.055) | 0.716 (+0.057) | 53 / 39 |
+| main-help-targets | 0.502 (+0.079) | 0.440 (+0.062) | 0.479 (+0.056) | 0.716 (+0.057) | 60 / 39 |
+| main-help-overlays | 0.518 (+0.095) | 0.434 (+0.056) | 0.482 (+0.059) | 0.721 (+0.062) | 60 / 39 |
+| main-help-map | 0.507 (+0.084) | 0.444 (+0.066) | 0.485 (+0.062) | 0.739 (+0.080) | 53 / 39 |
+| pause-settings | 0.497 (+0.068) | 0.516 | 0.521 (+0.092) | 0.899 | 35 / 32 |
+| pause-help-keys | 0.518 (+0.089) | 0.556 (+0.040) | 0.518 (+0.089) | 0.929 (+0.030) | 34 / 34 |
+| pause-help-keys-hover | 0.516 (+0.087) | 0.588 (+0.072) | 0.525 (+0.096) | **1.003** (+0.104) | 38 / 38 |
+| pause-help-flight | 0.497 (+0.068) | 0.561 (+0.045) | 0.491 (+0.062) | 0.957 (+0.058) | 52 / 38 |
+| pause-help-targets | 0.501 (+0.072) | 0.566 (+0.050) | 0.490 (+0.061) | 0.953 (+0.054) | 59 / 38 |
+| pause-help-overlays | 0.507 (+0.078) | 0.560 (+0.044) | 0.492 (+0.063) | 0.952 (+0.053) | 59 / 38 |
+| pause-help-map | 0.516 (+0.087) | 0.569 (+0.053) | 0.498 (+0.069) | 0.967 (+0.068) | 52 / 38 |
+
+**Verdict (the 46h rules): PASS.**
+- **Menu share against the VR floor:** every Help pass's `dcpu` is +0.055 to +0.096 ms (under 0.2) and its menu GPU
+  0.43-0.59 ms at 4K and 0.70-1.00 ms at one eye, under the 1.2 ms one-eye ceiling; the highest is the pause menu's
+  Keyboard tab with the popup at one eye, 1.003 ms (84% of the ceiling). All 63 one-eye passes (21 x 3) and 60
+  of the 63 4K passes PASS; the three others are one run's consecutive CPU hitch at 4K (P9-P11, `cpu_slate` 0.75-0.79 ms, the known
+  single-run noise of `Docs/TECH_DEBT.md`; their medians are inside).
+- **Solid-menu budget against the Settings baseline at the same size:** the Help screens cost at most +0.022 ms CPU
+  (4K; at one eye they are at or below Settings) and +0.090 ms GPU at 4K / +0.110 ms at one eye over their menu's
+  Settings screen, under the 0.2 / 0.3 ms budget. Against the **main** menu's Settings at the same size the pause
+  Help screens read +0.18 to +0.21 ms GPU at 4K and +0.27 to +0.34 ms at one eye; that is the pause menu's own
+  backdrop (the pause menu alone is +0.135 / +0.243 ms over the main menu alone, and pause Settings +0.138 / +0.240 ms
+  over main Settings), not the Help page, so the per-menu baseline is the one judged.
+- **The popup** (D45) costs about 0.03-0.04 ms GPU at 4K and 0.07 ms at one eye (four draws), nothing measurable on
+  the CPU. The glossary tabs draw 52-60 elements at 4K, inside the 33d-ii estimate, at 0.06 ms GPU over Settings.
+- **Whole frame (informational, project-level VR work, SDD 46 13.2 and the VR doc section 7a):** the 4K p99 frame is
+  15.7-17.3 ms on every screen, so the 100 Hz stand-in reads `proxy=MISS` everywhere (as in 46h, scene-bound, the
+  game thread 4.4-5.7 ms); at one eye the p99 frame is 27-32 ms (`vr_frame=MISS`).
+- The nine 46h screens measured in the same runs match 46h: `gpu_ui` 0.09-0.52 ms at 4K and 0.21-0.92 ms at one eye.
+
+**The diagram and popup passes at these sizes (D38, 33c's pending one-eye check).** At 4K the diagram paints at the
+D37 layout (43.87 px a unit), 0 legends clipped, the popup painted when hovered and inside the shell; the screenshots
+(Keyboard with the popup, Map tab with its crops) are crisp, readable and without overflow. At one XR-4 eye the four
+Keyboard `help-P` checks fail in all three runs (34 / 38): the nearly square view lays the menus out by its height,
+so the Help content column is narrow, the diagram paints at 10.78 px a unit with 95 legends clipped and the hover
+hint cut off, and on the glossary tabs the description column is about one word wide (the tab title and longer words
+clipped, fewer rows: 39 draws). The popup itself stays readable and inside the shell. D37 targets wide screens only
+(1280x720, 1920x1080, 3840x2160), so this is outside the design; it is recorded in `Docs/TECH_DEBT.md` and left to
+the user with the VR menu presentation (a wide quad or stereo layer, `Docs/ToDo/vr-performance-gate.md`). The one-eye
+Help costs above are therefore those of the narrow layout. 33c's one-eye extrapolation for the diagram (SDD 14.3,
+about 0.27 ms) is replaced by the measured +0.041 ms over Settings (+0.110 ms with the popup).
+
+**Not done in 33f (by the part's scope):** the plan's `pause-controls` / `pause-settings-keys` view passes and a
+default-run `pause-help-keys` pass (the first-Esc build cost of the pause Help page); recorded in `Docs/TECH_DEBT.md`
+with the `main-start` item.
+
 ## 15. Documentation and in-game text (same change as the code)
 
 - **`Docs/GAME_MECHANICS.md`:** section 8 (the Help entry and tab, what the page shows), a pointer from section 1 to
@@ -1187,3 +1254,20 @@ As built:
   asked for: `HACK_ForceToFront` instead of `BringToFront` (which cannot bring a background window forward), active
   meaning `IsActive() && FApp::HasFocus()`, the capture itself gated on the active window, and the hold skipped under a
   fixed time step; all applied.
+
+**33f (2026-11-09, commit `Issue #33: Part 33f - one-eye and 4K profile runs`).** Measurement part (section 14.7):
+`-SOLSmokeSolidMenuProfile`'s view run gains the twelve Help screens of both menus (the Keyboard tab without and with
+the popup, the four glossary tabs) with a `help-P` check each (the D38 legend and D45 popup checks on the Keyboard
+tab, also on the default run's P16 / P19); a view run is 21 passes, 38 checks. Three runs at 3840x2160 and three at
+one XR-4 eye (3840x3744); the two-eye run skipped (D21, O8). Verdict PASS (menu share and the per-menu Settings
+baseline); the 4K frame stays scene-bound (`proxy=MISS`, project-level VR work). At one eye the Help layout is the
+narrow one (95 legends clipped, glossary text clipped; outside D37, `Docs/TECH_DEBT.md`, left to the user).
+No schema change (`SAVE_VERSION` 11, `KEY_BINDING_LAYOUT_VERSION` 10); no pure logic changed, so no new unit test (the
+smoke's check count is static-asserted). Full suite 1757 / 1757. Smokes: `-SOLSmokeSolidMenu` 275 / 275,
+`-SOLSmokeSolidMenuProfile` default run 22 / 22 passes and 23 / 23 checks, `-SOLSmokeHoloMenu` 86 / 86 at 1280x720 and
+1920x1080, `-SOLSmokeOverlay` 34 / 34, `-SOLSmokeHud` 24 / 24 at both sizes, `-SOLSmokeHoloMenuProfile` 5 / 5 passes and
+12 / 12 checks; `GameUserSettings.ini` unchanged (restored
+after the 1920x1080 runs). The review (fresh opus/xhigh, report only) found nothing blocking: stale pass counts and
+comments, a missing separator and verb-first helper names, `mDiagramKey` reset for every Help pass and a guard that no
+pass mixes the 33c test page with a Help tab (all applied); the plan's `pause-controls` / `pause-settings-keys` view
+passes and a default `pause-help-keys` pass were left out by the part's scope (`Docs/TECH_DEBT.md`).

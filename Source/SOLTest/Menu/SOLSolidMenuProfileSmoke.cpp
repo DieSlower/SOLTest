@@ -117,7 +117,8 @@ namespace
     const TCHAR* const PROFILE_SOLID_MATERIAL_TOKEN = TEXT("SOLSolid");
 
     // One screen of a run: its name, menu, main menu page or pause tab, and Settings tab (Count: the opening tab); a
-    // main-menu screen's PauseTab is Resume, never read (the pass reads it only for the pause menu)
+    // main-menu screen's PauseTab is Resume, never read (the pass reads it only for the pause menu); (33f) a Help
+    // screen's ESOLHelpTab and whether its Keyboard tab hovers the diagram's busiest key (the hover popup)
     struct FProfileScreen
     {
         const TCHAR* Name;
@@ -125,11 +126,29 @@ namespace
         ESOLMainMenuPage MainPage;
         SOLMenuState::EMenuTab PauseTab;
         ESOLSettingsTab SettingsTab;
+        int32 HelpTab = INDEX_NONE;
+        bool bHelpHover = false;
     };
 
+    // A Help screen of the view run (33f): the main menu's Help page or the pause menu's Help tab on one tab
+    constexpr FProfileScreen MakeHelpScreen(const TCHAR* name, const bool bPause, const ESOLHelpTab tab,
+        const bool bHover = false)
+    {
+        return {
+            name,
+            bPause,
+            bPause ? ESOLMainMenuPage::None : ESOLMainMenuPage::Help,
+            bPause ? SOLMenuState::EMenuTab::Help : SOLMenuState::EMenuTab::Resume,
+            ESOLSettingsTab::Count,
+            static_cast<int32>(tab),
+            bHover,
+        };
+    }
+
     // The view run's screens (46h): the main menu alone and with each page that nests recesses, then the pause menu
-    // alone, with Settings and with Info; the main menu's first (Play comes between)
-    const FProfileScreen PROFILE_VIEW_SCREENS[] = {
+    // alone, with Settings and with Info; the main menu's first (Play comes between). 33f: each menu's Help page on
+    // every tab, the Keyboard tab without and with the hover popup (SDD 33 section 14.7)
+    constexpr FProfileScreen PROFILE_VIEW_SCREENS[] = {
         { TEXT("main"), false, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
         { TEXT("main-settings"), false, ESOLMainMenuPage::Settings, SOLMenuState::EMenuTab::Resume,
             ESOLSettingsTab::Count },
@@ -139,15 +158,57 @@ namespace
             ESOLSettingsTab::Count },
         { TEXT("main-about"), false, ESOLMainMenuPage::About, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
         { TEXT("main-demo"), false, ESOLMainMenuPage::Demo, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
+        MakeHelpScreen(TEXT("main-help-keys"), false, ESOLHelpTab::Keyboard),
+        MakeHelpScreen(TEXT("main-help-keys-hover"), false, ESOLHelpTab::Keyboard, true),
+        MakeHelpScreen(TEXT("main-help-flight"), false, ESOLHelpTab::FlightHud),
+        MakeHelpScreen(TEXT("main-help-targets"), false, ESOLHelpTab::TargetsRadar),
+        MakeHelpScreen(TEXT("main-help-overlays"), false, ESOLHelpTab::OverlaysRoute),
+        MakeHelpScreen(TEXT("main-help-map"), false, ESOLHelpTab::MenusMap),
         { TEXT("pause"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Resume, ESOLSettingsTab::Count },
         { TEXT("pause-settings"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Settings,
             ESOLSettingsTab::Count },
         { TEXT("pause-info"), true, ESOLMainMenuPage::None, SOLMenuState::EMenuTab::Info, ESOLSettingsTab::Count },
+        MakeHelpScreen(TEXT("pause-help-keys"), true, ESOLHelpTab::Keyboard),
+        MakeHelpScreen(TEXT("pause-help-keys-hover"), true, ESOLHelpTab::Keyboard, true),
+        MakeHelpScreen(TEXT("pause-help-flight"), true, ESOLHelpTab::FlightHud),
+        MakeHelpScreen(TEXT("pause-help-targets"), true, ESOLHelpTab::TargetsRadar),
+        MakeHelpScreen(TEXT("pause-help-overlays"), true, ESOLHelpTab::OverlaysRoute),
+        MakeHelpScreen(TEXT("pause-help-map"), true, ESOLHelpTab::MenusMap),
     };
+
+    // (33f) Returns the number of Help screens in the view run (each logs one help-P check besides its screen check)
+    constexpr int32 CountViewHelpScreens()
+    {
+        int32 count = 0;
+        for (const FProfileScreen& screen : PROFILE_VIEW_SCREENS)
+        {
+            count += screen.HelpTab != INDEX_NONE ? 1 : 0;
+        }
+        return count;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // (33f) Returns the diagram model's busiest key (the most popup lines; the first of a tie), or INDEX_NONE
+    int32 FindBusiestDiagramKey(const FSOLKeyDiagramModel& model)
+    {
+        TArray<int32> scratch;
+        int32 most = 0;
+        int32 busiest = INDEX_NONE;
+        for (int32 key = 0; key < model.Keys.Num(); ++key)
+        {
+            const int32 count = SOLKeyDiagram::DetailAssignments(model, key, scratch);
+            if (count > most)
+            {
+                most = count;
+                busiest = key;
+            }
+        }
+        return busiest;
+    }
 
     // 46i: the checks a whole run logs (Finish fails a run that logged another number: a skipped check). Default: the
     // setup's two, three views, six screens (33a: was two), Play and Esc; a view run: the setup's two, its view, Play,
-    // Esc and one per screen
+    // Esc and one per screen, and (33f) one help-P check per Help screen
     constexpr int32 PROFILE_SETUP_CHECKS = 2;                   // The main menu and the strength
     constexpr int32 PROFILE_PLAY_PAUSE_CHECKS = 2;              // Play (in flight) and Esc (paused)
     constexpr int32 PROFILE_DEFAULT_VIEW_CHECKS = 3;            // The default run's View steps (1920, 1280, 1920)
@@ -155,15 +216,15 @@ namespace
     constexpr int32 PROFILE_DEFAULT_DIAGRAM_CHECKS = 4;         // 33c: its diagram passes (P12-P15), one check each
     constexpr int32 PROFILE_DEFAULT_HELP_CHECKS = 6;            // 33d-ii: its Help passes (P16-P21), one check each
     constexpr int32 PROFILE_EXPECTED_CHECKS_DEFAULT = 23;
-    constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 14;
+    constexpr int32 PROFILE_EXPECTED_CHECKS_VIEW = 38;          // 33f: was 14 (nine screens, no Help)
     static_assert(PROFILE_EXPECTED_CHECKS_DEFAULT == PROFILE_SETUP_CHECKS + PROFILE_DEFAULT_VIEW_CHECKS
         + PROFILE_DEFAULT_SCREEN_CHECKS + PROFILE_PLAY_PAUSE_CHECKS + PROFILE_DEFAULT_DIAGRAM_CHECKS
         + PROFILE_DEFAULT_HELP_CHECKS, "a default run checks the setup (2), three views, six screens, Play and Esc, "
         "four diagram passes and six Help passes");
     constexpr int32 PROFILE_DIAGRAM_Z = SOL::MenuStyle::Z_ORDER + 10;   // 33c: the diagram test page over the menu
     static_assert(PROFILE_EXPECTED_CHECKS_VIEW == PROFILE_SETUP_CHECKS + 1 + PROFILE_PLAY_PAUSE_CHECKS
-        + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)),
-        "a view run checks the setup (2), its view, Play, Esc and each screen");
+        + static_cast<int32>(UE_ARRAY_COUNT(PROFILE_VIEW_SCREENS)) + CountViewHelpScreens(),
+        "a view run checks the setup (2), its view, Play, Esc, each screen and each Help screen's page");
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -332,7 +393,7 @@ bool FSOLSolidMenuProfileSmoke::Update(USOLMenuSubsystem& menu)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Builds the run's passes and steps: the default twelve, or the view run's nine at the -ResX / -ResY size
+// Builds the run's passes and steps: the default twenty-two, or the view run's twenty-one at the -ResX / -ResY size
 void FSOLSolidMenuProfileSmoke::BuildScript()
 {
     int32 resX = 0;
@@ -505,6 +566,8 @@ void FSOLSolidMenuProfileSmoke::BuildScript()
         }
         const int32 pass = addPass(screen.Name, screen.bPause, screen.MainPage, screen.PauseTab, screen.SettingsTab,
             mRunView, screen.bPause ? PROFILE_BASE_PAUSE_LARGE_CPU_MS : PROFILE_BASE_MAIN_LARGE_CPU_MS, 0.0);
+        mPasses[pass].HelpTab = screen.HelpTab;
+        mPasses[pass].bHelpHover = screen.bHelpHover;
         addStep(EStepKind::Screen, pass, FIntPoint::ZeroValue);
         addStep(EStepKind::Pass, pass, FIntPoint::ZeroValue);
     }
@@ -573,10 +636,20 @@ void FSOLSolidMenuProfileSmoke::EnterStep(const int32 step, USOLMenuSubsystem& m
         {
             mainMenu->ShowPage(pass.MainPage);
         }
-        USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+        // 33f: the Help page of the pass's menu (the pause menu's Help tab in a view run), and on its Keyboard tab the
+        // diagram's busiest key hovered for a hover pass, no hover otherwise
+        USOLReadOnlyPageWidget* help = GetPassHelpPage(current.Pass, menu);
+        check(!pass.bDiagram || pass.HelpTab == INDEX_NONE);   // Both would share mDiagramKey (the hover checks)
         if (pass.HelpTab != INDEX_NONE && help != nullptr)
         {
             help->SelectTab(pass.HelpTab);
+            USOLKeyboardDiagram* diagram = help->GetDiagram();
+            mDiagramKey = pass.bHelpHover && diagram != nullptr ? FindBusiestDiagramKey(diagram->GetModel())
+                : INDEX_NONE;
+            if (diagram != nullptr)
+            {
+                diagram->SetHoveredKey(mDiagramKey);
+            }
         }
         USOLSettingsPageWidget* page = GetPassSettingsPage(current.Pass, menu);
         const ESOLSettingsTab tab = SOLSettingsTabs::IsValidTab(pass.SettingsTab) ? pass.SettingsTab
@@ -723,22 +796,33 @@ void FSOLSolidMenuProfileSmoke::ExitStep(const int32 step, USOLMenuSubsystem& me
         }
 
         // 33d-ii: a Help pass checks its page on its tab: the Keyboard tab's diagram painted whole, a glossary tab's
-        // views all built and some painted
+        // views all built and some painted; 33f: the Keyboard tab also with no legend clipped at this view's paint
+        // scale (D38) and the hover popup painted exactly when the pass hovers a key (D45)
         if (pass.HelpTab != INDEX_NONE)
         {
             int32 views = 0;
             int32 built = 0;
             int32 painted = 0;
             const bool bShown = IsPassHelpShown(current.Pass, menu, views, built, painted);
-            const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
-            const USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
+            const USOLReadOnlyPageWidget* help = GetPassHelpPage(current.Pass, menu);
             const USOLKeyboardDiagram* diagram = help != nullptr ? help->GetDiagram() : nullptr;
             const bool bKeys = pass.HelpTab == static_cast<int32>(ESOLHelpTab::Keyboard);
-            const bool bArt = bKeys ? diagram != nullptr && diagram->WasPaintedWhole() : views > 0 && painted > 0;
+            int32 clipped = 0;
+            for (int32 key = 0; bKeys && diagram != nullptr && key < SOLKeyboardLayout::KeyCount(); ++key)
+            {
+                clipped += diagram->IsLegendClipped(key) ? 1 : 0;
+            }
+            const TSharedPtr<SSOLKeyboardDiagram> leaf = diagram != nullptr ? diagram->GetLeaf() : nullptr;
+            const bool bPopup = bKeys && leaf.IsValid() && leaf->WasPopupPainted();
+            const bool bArt = bKeys ? diagram != nullptr && diagram->WasPaintedWhole() && clipped == 0
+                && bPopup == pass.bHelpHover : views > 0 && painted > 0;
             Check(*FString::Printf(TEXT("help-P%d"), current.Pass), bShown && bArt, FString::Printf(TEXT("%s %dx%d: "
-                "Help on tab %d %s, %d/%d views built, %d painted, diagram painted whole %d"), pass.Screen,
-                pass.View.X, pass.View.Y, pass.HelpTab, bShown ? TEXT("shown") : TEXT("NOT SHOWN"), built, views,
-                painted, diagram != nullptr && diagram->WasPaintedWhole() ? 1 : 0));
+                "Help on tab %d %s, %d/%d views built, %d painted, diagram painted whole %d, unit %.2f, %d legends "
+                "clipped, popup %d, hovered key %d (want %d)"), pass.Screen, pass.View.X, pass.View.Y, pass.HelpTab,
+                bShown ? TEXT("shown") : TEXT("NOT SHOWN"), built, views, painted, diagram != nullptr
+                && diagram->WasPaintedWhole() ? 1 : 0, diagram != nullptr ? diagram->GetPanel().Scale.UnitPx : 0.0f,
+                clipped, bPopup ? 1 : 0, diagram != nullptr ? diagram->GetHoveredKey() : INDEX_NONE,
+                pass.bHelpHover ? mDiagramKey : INDEX_NONE));
         }
         break;
     }
@@ -907,21 +991,22 @@ bool FSOLSolidMenuProfileSmoke::ShowDiagramPage(const int32 pass, const USOLMenu
     mDiagramKey = INDEX_NONE;
     if (diagram != nullptr && mPasses[pass].bDiagramHover)
     {
-        const FSOLKeyDiagramModel& model = diagram->GetModel();
-        TArray<int32> scratch;
-        int32 most = 0;
-        for (int32 key = 0; key < model.Keys.Num(); ++key)
-        {
-            const int32 count = SOLKeyDiagram::DetailAssignments(model, key, scratch);
-            if (count > most)
-            {
-                most = count;
-                mDiagramKey = key;
-            }
-        }
+        mDiagramKey = FindBusiestDiagramKey(diagram->GetModel());
         diagram->SetHoveredKey(mDiagramKey);
     }
     return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (33f) Returns the Help page of the pass's menu (the main menu's or the pause menu's), or null
+USOLReadOnlyPageWidget* FSOLSolidMenuProfileSmoke::GetPassHelpPage(const int32 pass,
+    const USOLMenuSubsystem& menu) const
+{
+    if (mPasses[pass].bPause)
+    {
+        return menu.GetPauseMenu() != nullptr ? menu.GetPauseMenu()->GetHelpPage() : nullptr;
+    }
+    return menu.GetMainMenu() != nullptr ? menu.GetMainMenu()->GetHelpPage() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -936,7 +1021,8 @@ void FSOLSolidMenuProfileSmoke::HideDiagramPage()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built (true without a Help tab)
+// (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built (33f: and the diagram's
+// hover as the pass asks; true without a Help tab)
 bool FSOLSolidMenuProfileSmoke::IsPassHelpShown(const int32 pass, const USOLMenuSubsystem& menu, int32& outViews,
     int32& outBuilt, int32& outPainted) const
 {
@@ -946,9 +1032,13 @@ bool FSOLSolidMenuProfileSmoke::IsPassHelpShown(const int32 pass, const USOLMenu
     {
         return true;
     }
-    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
-    const USOLReadOnlyPageWidget* help = mainMenu != nullptr ? mainMenu->GetHelpPage() : nullptr;
-    if (help == nullptr || mainMenu->GetPage() != ESOLMainMenuPage::Help || help->GetSelectedTab() != spec.HelpTab)
+    // The pass's menu on its Help page (IsPassMenuShown: the main menu's page or the pause menu's tab), on the tab, and
+    // (33f) the diagram's hover as the pass asks
+    const USOLReadOnlyPageWidget* help = GetPassHelpPage(pass, menu);
+    const USOLKeyboardDiagram* diagram = help != nullptr ? help->GetDiagram() : nullptr;
+    const int32 wantKey = spec.bHelpHover ? mDiagramKey : INDEX_NONE;
+    if (help == nullptr || !IsPassMenuShown(pass, menu) || help->GetSelectedTab() != spec.HelpTab
+        || (spec.bHelpHover && wantKey == INDEX_NONE) || (diagram != nullptr && diagram->GetHoveredKey() != wantKey))
     {
         return false;
     }

@@ -223,6 +223,7 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
 - **The whole frame does not reach either line here.** At 4K the p99 frame is 16.0-17.7 ms with a menu open, and at
   one XR-4 eye 27-33 ms, GPU-bound by the scene behind the menus (the game thread is 4.4-6.7 ms). That is project-level
   VR work (section 7a, `Docs/ToDo/vr-performance-gate.md`), not a menu cost.
+- **Measured (#33 part 33f, 2026-11-09, RTX 2080 Ti; SDD 33 section 14.7).** The Help page of both menus (the Keyboard tab with the live diagram, with and without the hover popup, and the four HUD glossary tabs) in three runs each at 4K and one XR-4 eye (two eyes skipped, user decision): the menu's GPU is 0.43-0.59 ms at 4K and 0.70-1.00 ms at one eye (the pause menu's Keyboard tab with the popup the highest, 84% of the 1.2 ms ceiling), at most +0.09 / +0.11 ms over its menu's Settings screen at the same size; the CPU extra is +0.06 to +0.10 ms against the flat baseline. Inside the ceilings and the 0.2 / 0.3 ms budget. The 4K p99 frame is 15.7-17.3 ms (`proxy=MISS`, scene-bound as above). At the eye's near-square aspect the menus are laid out narrow and the Help page clips (outside its wide-screen design, `Docs/TECH_DEBT.md`), one more reason for a wide quad or stereo layer in VR.
 
 ### 7a. Proxy on this machine (user decision, 2026-11-06)
 
@@ -231,7 +232,7 @@ two eyes) cannot pass here: the scene alone costs about 25-32 ms of GPU at one e
 rule: the game counts as VR-ready if it runs at 4K (3840x2160) at 100 Hz or better (frame p99 <= 10.0 ms) on this
 machine. Optimisation for real XR-4 hardware happens later, on a different card. XR-4 one-eye and two-eye measurements
 already taken stay recorded as informational. `-SOLSmokeSolidMenuProfile -ResX=3840 -ResY=2160` logs `proxy=PASS|MISS`
-per pass; on 2026-11-06 it read MISS on all nine screens (p99 frame 16.0-17.7 ms, about 60 fps).
+per pass; on 2026-11-06 it read MISS on all nine screens (p99 frame 16.0-17.7 ms, about 60 fps). On 2026-11-09 (#33 part 33f, 21 screens with the Help page) it read MISS on all of them again (15.7-17.3 ms).
 
 ## 8. Sources
 

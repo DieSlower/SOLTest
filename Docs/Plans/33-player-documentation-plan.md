@@ -325,19 +325,27 @@ Builds on: 33e-ii. SDD sections 9, 18, 20. No design question (two TECH_DEBT fix
 
 Builds on: D21. Depends on 33e.
 
-1. [ ] `-SOLSmokeSolidMenuProfile` passes `main-help-keys`, `main-help-glossary`, `pause-help-keys` (with
+1. [x] `-SOLSmokeSolidMenuProfile` passes `main-help-keys`, `main-help-glossary`, `pause-help-keys` (with
    `main-controls` / `pause-controls` and `main-settings-keys` / `pause-settings-keys`) in the default and view runs.
    Also profile the Overlays and route glossary tab (16 rows, the most symbol views).
-2. [ ] Default runs x3 at 1920x1080 and 1280x720: every pass under 0.2 ms CPU / 0.3 ms GPU (medians).
-3. [ ] View runs: 3840x2160 (4K proxy) and 3840x3744 (one XR-4 eye), three runs of the new passes, menu-share-only
+2. [x] Default runs x3 at 1920x1080 and 1280x720: every pass under 0.2 ms CPU / 0.3 ms GPU (medians).
+3. [x] View runs: 3840x2160 (4K proxy) and 3840x3744 (one XR-4 eye), three runs of the new passes, menu-share-only
    verdict. **The two-eye run (7680x3744) is skipped (D21)**; note it in the SDD amendment.
    The `main-help-keys` passes in the view runs carry the keyboard diagram, with the 33c `diagram-P<n>` check (0 legends
    clipped at that paint scale, D38: 33c verified only the 1280x720 and 1920x1080 scales) and the measured menu GPU
    replacing 33c's one-eye extrapolation (SDD 14.3, about 0.27 ms). 33c's test-page passes P12-P15 may be dropped once
    the Help page passes exist.
-4. [ ] Full smoke set: `-SOLSmokeSolidMenu`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`,
+4. [x] Full smoke set: `-SOLSmokeSolidMenu`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`, `-SOLSmokeOverlay`,
    `-SOLMenuSmoke=all`; PIE smoke via unreal-mcp if the editor is open (else noted here).
-5. [ ] Record the numbers in the SDD (section 14 amendment); commit `Issue #33: Part 33f - profile and smoke`; push.
+5. [x] Record the numbers in the SDD (section 14 amendment); commit `Issue #33: Part 33f - profile and smoke`; push.
+
+   **Done (2026-11-09, SDD 14.7 and 20):** commit `Issue #33: Part 33f - one-eye and 4K profile runs`. Scope set by
+   the coordinator: the one-eye and 4K view runs only (the default-run medians came from 33d-ii / 33e-iii). Step 1:
+   the view run has every Help tab of both menus (Keyboard without and with the popup, the four glossary tabs); the
+   `pause-controls` / `pause-settings-keys` view passes and a default `pause-help-keys` pass were left out
+   (`Docs/TECH_DEBT.md`). Step 3: verdict PASS; at one eye the Help layout is the narrow one (95 legends clipped, the
+   four Keyboard `help-P` checks fail, outside D37; recorded in TECH_DEBT for the user). Step 4: the smokes listed in
+   SDD 20 (no `-SOLMenuSmoke=all`, no PIE smoke: the editor was closed). The 33c test-page passes P12-P15 are kept.
 
 ### 33g: final adversarial review (opus/xhigh, report only; fixes opus/high)
 
@@ -409,3 +417,6 @@ Builds on: D25.
   guide writer's end-of-tab measurement fixed (pages 2, 6, 3, 5, 3). Next: 33f.
 - 2026-11-09: 33e-iv done (SDD 20): the HoloMenu card checks pass at 1920x1080 (the steps wait on HUD frames), and
   the guide run keeps unchanged Help images (shared image compare, the scene held still for the shots). Next: 33f.
+- 2026-11-09: 33f done (SDD 14.7, 20): the 4K and one-eye view runs with the twelve Help screens, verdict PASS
+  (worst Help menu GPU 0.59 ms at 4K, 1.00 ms at one eye under the 1.2 ms ceiling; +0.11 ms over Settings at most);
+  the one-eye Help layout clips (outside D37, TECH_DEBT, for the user). Next: 33g.

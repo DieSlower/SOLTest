@@ -15,6 +15,7 @@
 class APlayerController;
 class USOLKeyboardDiagramSmokePage;
 class USOLMenuSubsystem;
+class USOLReadOnlyPageWidget;
 class USOLSettingsPageWidget;
 
 /**
@@ -85,7 +86,7 @@ namespace SOLSolidMenuProfile
  * standalone -game run, for the solid restyle's before / after comparison. The run starts in the main menu
  * (USOLMenuSubsystem::ShouldStartInMenu) on the smoke settings slot (HUD effects strength 1, the default, checked),
  * with the sim date pinned (PROFILE_SIM_JD in the .cpp) so the live view behind the menus is the same every run. The
- * default run has twelve passes, each at a view size set with `r.SetRes` (windowed) and checked: P0 the main menu with
+ * default run has twenty-two passes, each at a view size set with `r.SetRes` (windowed) and checked: P0 the main menu with
  * Settings open at 1920x1080, P1 the same at 1280x720, then Play and Esc: P2 the pause menu (in flight) with Settings
  * open at 1280x720, P3 the same at 1920x1080, each against the pre-46c baseline in the .cpp; then (33a) the Settings
  * Key bindings tab and the Controls page of each menu at both sizes (P4 main-settings-keys and P5 main-controls at
@@ -98,9 +99,11 @@ namespace SOLSolidMenuProfile
  * the main menu's Help page on its Keyboard, Flight HUD and Overlays tabs: P16 main-help-keys, P17 main-help-flight and
  * P18 main-help-overlays at 1920x1080 (after P13), P19-P21 the same at 1280x720 (after P15), against the main menu's
  * Settings baseline (each settles until every view of its tab is built, one check each). With
- * -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): nine passes at that size (the game
+ * -ResX / -ResY other than 1920x1080 it is a view run (46h, the VR floor): twenty-one passes at that size (the game
  * window's size limits lifted so it may be larger than the desktop): the main menu alone, with Settings, Settings on
- * Key bindings, Controls, About and Demo, then the pause menu alone, with Settings and with Info; the
+ * Key bindings, Controls, About and Demo, then (33f) its Help page on the Keyboard tab without and with the hover
+ * popup (the busiest key) and on the four glossary tabs, then the pause menu alone, with Settings and with Info and
+ * its Help tab on the same six screens (each Help pass checks its page: SDD 33 section 14.7); the
  * verdict judges only the menu's share (user, 2026-11-06): the CPU against the 1920x1080 baseline of its menu and the
  * menu's GPU against the VR floor's ceiling. The p99 frame, game thread and GPU are logged against the XR-4 line
  * (`vr_frame=`, informational) and, at 3840x2160, the p99 frame against the 4K / 100 Hz proxy (`proxy=`, informational:
@@ -162,7 +165,8 @@ private:
         double BaseGpuMs = 0.0;
         bool bDiagram = false;                              // 33c: the keyboard diagram test page over the screen
         bool bDiagramHover = false;                         // ... with its busiest key hovered (the fullest strip)
-        int32 HelpTab = INDEX_NONE;                         // 33d-ii: the main menu's Help page on this ESOLHelpTab
+        int32 HelpTab = INDEX_NONE;                         // 33d-ii: the menu's Help page on this ESOLHelpTab
+        bool bHelpHover = false;                            // 33f: its Keyboard tab hovers the busiest key (popup)
     };
 
     // Where a capture pass is
@@ -175,7 +179,7 @@ private:
         Done,
     };
 
-    // Builds the run's passes and steps: the default twelve, or the view run's nine at the -ResX / -ResY size
+    // Builds the run's passes and steps: the default twenty-two, or the view run's twenty-one at the -ResX / -ResY size
     void BuildScript();
 
     // Runs the step's action at its start
@@ -218,8 +222,11 @@ private:
     // (33c) Takes the diagram test page off the viewport (nothing when none shows)
     void HideDiagramPage();
 
-    // (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built, and the views and
-    // those painted (true for a pass without a Help tab)
+    // (33f) Returns the Help page of the pass's menu (the main menu's or the pause menu's), or null
+    USOLReadOnlyPageWidget* GetPassHelpPage(int32 pass, const USOLMenuSubsystem& menu) const;
+
+    // (33d-ii) Returns whether a Help pass's page shows its tab with every view of the tab built (33f: and the
+    // diagram's hover as the pass asks), and the views and those painted (true for a pass without a Help tab)
     bool IsPassHelpShown(int32 pass, const USOLMenuSubsystem& menu, int32& outViews, int32& outBuilt,
         int32& outPainted) const;
 
@@ -261,7 +268,8 @@ private:
     int32 mPassesLogged = 0;                                // Passes with a RESULT line (an abort fails the rest)
     int32 mChecksPassed = 0;
     int32 mChecksRun = 0;
-    int32 mDiagramKey = INDEX_NONE;                         // 33c: the diagram's busiest key (hovered by a hover pass)
+    int32 mDiagramKey = INDEX_NONE;                         // 33c: the diagram's busiest key (hovered by a hover pass;
+                                                            // 33f: the Help page's too)
     float mDiagramWidth = 0.0f;                             // 33c: the content width the diagram page is laid out in
     EPassPhase mPhase = EPassPhase::Settle;
     ESOLSettingsTab mProfileTab = ESOLSettingsTab::Count;   // The tab every Settings pass shows (Count: its own)

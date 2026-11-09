@@ -211,9 +211,9 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 |---|---|
 | Work time (wall-clock) | 109.6 h |
 | Time spent answering questions | 8.6 h |
-| Tokens | 6,186.7M |
-| Notional API price | $2,451 |
-| Subagents dispatched | 491 |
+| Tokens | 6,210.0M |
+| Notional API price | $2,460 |
+| Subagents dispatched | 493 |
 <!-- METRICS:END -->
 
 ## Documentation map
