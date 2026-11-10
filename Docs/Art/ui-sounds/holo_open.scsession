@@ -24,7 +24,7 @@
   "tracks": [
     {
       "id": 2,
-      "name": "phaserUp2",
+      "name": "FUI Hologram Ping Tone Echoed-2",
       "kind": "Audio",
       "format": "Stereo",
       "color": [
@@ -35,28 +35,28 @@
       "height": "Medium",
       "playlists": [
         {
-          "name": "phaserUp2",
+          "name": "FUI Hologram Ping Tone Echoed-2",
           "clips": [
             {
               "id": 3,
-              "name": "phaserUp2",
+              "name": "FUI Hologram Ping Tone Echoed-2",
               "start": 0,
-              "length": 16462,
+              "length": 28800,
               "content": {
                 "Audio": {
                   "source": 1,
-                  "offset": 3600
+                  "offset": 0
                 }
               },
-              "gain_db": 0.0,
+              "gain_db": -5.7,
               "gain_env": [],
               "fade_in": {
-                "len": 96,
+                "len": 0,
                 "shape": "EqualPower",
                 "curvature": 0.0
               },
               "fade_out": {
-                "len": 6000,
+                "len": 12000,
                 "shape": "Exponential",
                 "curvature": 0.0
               },
@@ -90,166 +90,8 @@
         "input": "None",
         "output": "Main",
         "inserts": [
-          {
-            "plugin": "eq_1band",
-            "params": {
-              "freq": 350.0,
-              "gain": 0.0,
-              "output_gain": 0.0,
-              "q": 0.7,
-              "type": 3.0
-            },
-            "bypass": false,
-            "active": true,
-            "preset": "<factory default>"
-          },
-          {
-            "plugin": "plate_reverb",
-            "params": {
-              "damping": 10000.0,
-              "decay": 0.6,
-              "diffusion": 85.0,
-              "low_cut": 300.0,
-              "mix": 15.0,
-              "pre_delay": 5.0,
-              "size": 30.0,
-              "width": 100.0
-            },
-            "bypass": false,
-            "active": true,
-            "preset": "<factory default>"
-          },
           null,
           null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null
-        ],
-        "sends": [
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null,
-          null
-        ],
-        "automation_mode": "Read",
-        "trim_db": 0.0,
-        "vca": null,
-        "surround": null
-      },
-      "automation": [],
-      "view": "waveform",
-      "hidden": false,
-      "inactive": false,
-      "frozen": false,
-      "comments": "",
-      "folder": null,
-      "folder_open": true,
-      "instrument": null,
-      "ticks_timebase": false,
-      "elastic": null,
-      "pinned": false
-    },
-    {
-      "id": 5,
-      "name": "maximize_009",
-      "kind": "Audio",
-      "format": "Mono",
-      "color": [
-        94,
-        170,
-        214
-      ],
-      "height": "Medium",
-      "playlists": [
-        {
-          "name": "maximize_009",
-          "clips": [
-            {
-              "id": 6,
-              "name": "maximize_009",
-              "start": 2400,
-              "length": 10790,
-              "content": {
-                "Audio": {
-                  "source": 4,
-                  "offset": 0
-                }
-              },
-              "gain_db": -7.0,
-              "gain_env": [],
-              "fade_in": {
-                "len": 0,
-                "shape": "EqualPower",
-                "curvature": 0.0
-              },
-              "fade_out": {
-                "len": 4000,
-                "shape": "Exponential",
-                "curvature": 0.0
-              },
-              "muted": false,
-              "edit_locked": false,
-              "time_locked": false,
-              "rating": 0,
-              "sync_point": 0,
-              "color": null,
-              "auto_name": null,
-              "stretch": 1.0,
-              "group": null,
-              "loop_id": null
-            }
-          ]
-        }
-      ],
-      "active_playlist": 0,
-      "mixer": {
-        "volume_db": 0.0,
-        "pan": [
-          0.0
-        ],
-        "mute": false,
-        "solo": false,
-        "solo_safe": false,
-        "record_arm": false,
-        "input_monitor": false,
-        "phase_invert": false,
-        "input": "None",
-        "output": "Main",
-        "inserts": [
-          {
-            "plugin": "gain",
-            "params": {
-              "gain": -7.0
-            },
-            "bypass": false,
-            "active": true,
-            "preset": "<factory default>"
-          },
-          {
-            "plugin": "plate_reverb",
-            "params": {
-              "damping": 10000.0,
-              "decay": 0.6,
-              "diffusion": 85.0,
-              "low_cut": 300.0,
-              "mix": 18.0,
-              "pre_delay": 5.0,
-              "size": 30.0,
-              "width": 100.0
-            },
-            "bypass": false,
-            "active": true,
-            "preset": "<factory default>"
-          },
           null,
           null,
           null,
@@ -293,24 +135,13 @@
   "sources": [
     {
       "id": 1,
-      "name": "phaserUp2",
-      "path": "Audio Files/phaserUp2.wav",
+      "name": "FUI Hologram Ping Tone Echoed-2",
+      "path": "Audio Files/FUI Hologram Ping Tone Echoed-2.wav",
       "channels": 2,
-      "frames": 20062,
+      "frames": 39168,
       "sample_rate": 48000,
       "format": "Wav",
-      "time_reference": 0,
-      "unsaved": false
-    },
-    {
-      "id": 4,
-      "name": "maximize_009",
-      "path": "Audio Files/maximize_009.wav",
-      "channels": 1,
-      "frames": 10790,
-      "sample_rate": 48000,
-      "format": "Wav",
-      "time_reference": 0,
+      "time_reference": 11967627,
       "unsaved": false
     }
   ],
@@ -334,9 +165,7 @@
       "end": 0
     },
     "selected_tracks": [],
-    "selected_clips": [
-      6
-    ],
+    "selected_clips": [],
     "selected_sources": [],
     "playhead": 0,
     "grid": {
@@ -409,7 +238,7 @@
     ],
     "values": {}
   },
-  "next_id": 7,
+  "next_id": 4,
   "comments": "",
   "midi_originals": {}
 }

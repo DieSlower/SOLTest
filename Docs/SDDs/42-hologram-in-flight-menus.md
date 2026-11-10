@@ -712,17 +712,25 @@ Asset paths for the cues go in `SOLConstants.h` (STYLE_GUIDE section 7), section
 
 **Files made (2026-11-03).** Source files are in `Docs/Art/ui-sounds/` (outside `Content/`, so never cooked):
 
-| Cue | File | Made from (all CC0) | Processing in SoundCraft | Length | Peak |
+| Cue | File | Made from | Processing in SoundCraft | Length | Peak |
 |---|---|---|---|---|---|
-| Open | `S_SOLHoloOpen.wav` | `kenney_digital-audio/Audio/phaserUp2.ogg` (first 75 ms of silence trimmed) + `kenney_interface-sounds/Audio/maximize_009.ogg` (at +50 ms, -7 dB) | 350 Hz high-pass and a short plate (15 %) on the sweep, a short plate (18 %) on the blip, exponential fade-outs | 0.40 s | -9.6 dBFS |
+| Open (replaced by #48, 2026-11-10) | `S_SOLHoloOpen.wav` | Sonniss GDC 2023 Game Audio Bundle, Shapeforms Audio "Future UI": `FUI Hologram Ping Tone Echoed-2.wav` (Sonniss licence, see below) | cut at 0.60 s, a 0.25 s exponential fade-out, -5.7 dB clip gain so its loudest 400 ms matches the Select cue (-22.5 LUFS momentary) | 0.60 s | -13.8 dBFS |
 | Hover | `S_SOLHoloHover.wav` | `kenney_interface-sounds/Audio/select_001.ogg` | -13 dB clip gain, 1.2 kHz high-pass, fade-out; dry (it repeats under a moving cursor) | 0.05 s | -14.6 dBFS |
 | Select | `S_SOLHoloSelect.wav` | `kenney_interface-sounds/Audio/select_003.ogg` (-5 dB, cut at 0.27 s) + `kenney_interface-sounds/Audio/confirmation_001.ogg` (-14 dB, 450 Hz high-pass) | a short plate (15 %) on the ping, fade-outs | 0.30 s | -10.0 dBFS |
 
 All three are 48 kHz, 16-bit, stereo WAV, staged so that hover is the quietest. The SoundCraft sessions
 (`holo_open.scsession`, `holo_hover.scsession`, `holo_select.scsession`) and the source sounds they use (`Audio Files/`,
-the Kenney files converted to WAV) sit next to them, so a cue can be reopened and remade. SoundCraft writes to absolute
-paths (no write-root flag needed). Tool note: its `gain` insert plugin had no effect in a bounce, so levels are set
-with clip gain. **The user has not listened to them yet:** the listen-and-approve round of part 42h still applies.
+the Kenney files converted to WAV, and the unmodified Sonniss original of the Open cue) sit next to them, so a cue can be
+reopened and remade. SoundCraft writes to absolute paths (no write-root flag needed). Tool note: its `gain` insert
+plugin had no effect in a bounce, so levels are set with clip gain. **The user has not listened to them yet:** the
+listen-and-approve round of part 42h still applies.
+
+**Open cue replaced (#48, 2026-11-10).** The user found the first Open cue (a Kenney `phaserUp2` sweep with a
+`maximize_009` blip, 0.40 s, -9.6 dBFS) annoying and, after auditioning 15 candidates, chose candidate G: Shapeforms'
+"FUI Hologram Ping Tone Echoed-2", a very low, warm hologram tone with an echo. It keeps the asset path, the
+`CUES[CUE_OPEN]` row (volume 0.8, 0.1 s interval) and the import settings of the other cues (SFX class, no
+attenuation, inherited loading); `Tools/UI/import_holo_menu_sounds.py` re-imported only it. The two Kenney files used
+only by the old Open cue were removed from `Audio Files/` (they stay in Git history). Hover and Select are unchanged.
 
 **Licences of `D:\MediaLib\Sounds` (checked 2026-11-03).** The GitHub repo `DieSlower/SOLTest` is **public** and
 CC0-licensed, so a sound committed here (as a WAV source or inside a `.uasset`) is redistributed, not only shipped in
@@ -730,17 +738,21 @@ the game. That rules out packs that allow game use but forbid passing the files 
 
 | Pack | Licence (from its own licence / readme file) | Shipped game | In this public repo | Used |
 |---|---|---|---|---|
-| `kenney_digital-audio`, `kenney_interface-sounds`, `kenney_sci-fi-sounds`, `kenney_ui-audio` (the other `kenney_*` folders also have a `License.txt`, not read) | CC0 1.0 (public domain); credit optional | Yes | Yes | **Yes**, the only source used |
+| `kenney_digital-audio`, `kenney_interface-sounds`, `kenney_sci-fi-sounds`, `kenney_ui-audio` (the other `kenney_*` folders also have a `License.txt`, not read) | CC0 1.0 (public domain); credit optional | Yes | Yes | **Yes**, Hover and Select |
 | `CrispUI_Sampler` | Royalty-free in commercial games, no credit; no resale or redistribution of the sounds, modified or not | Yes | No (redistribution) | No |
 | `Cosy-UI-Sound-Pack-Sampler` (Leckie Pixel Studio) | Commercial games allowed; no redistribution, even modified | Yes | No | No |
 | `UI-SFX-Vol1-Lite` | Royalty-free, may ship inside a packaged product; no redistribution "as-is, renamed, converted, or edited" | Yes | No | No |
 | `Free UI And Soundtrack Samples` (Echo Chamber Works) | Commercial use allowed; no redistribution "in any form" except inside a larger work; Indian law | Yes, inside the game | Unclear (raw files in a public repo), treated as no | No |
 | `UI Soundpack` (Nathan Gibson) | CC BY 4.0 | Yes, with attribution in the credits | Yes, with attribution | No |
 | `JDSherbert - Ultimate UI SFX Pack (FREE)` | **No licence or readme file in the folder** | **Unknown** | **Unknown** | No |
-| `Sonniss.com - GDC ... Game Audio Bundle` (2015-2026) | Readme: royalty-free, commercial use without attribution; the licence PDFs were not read in detail | Very likely yes | Not checked | No |
+| `Sonniss.com - GDC ... Game Audio Bundle` (2015-2026) | Readme: royalty-free, commercial use without attribution. GDC 2023 `License.pdf` (read 2026-11-10 for #48): worldwide, non-exclusive, royalty-free; rights (b) personal and commercial use without attribution, (e) distribute and publicly perform a reproduction over any public or private medium, (f) edit and release as part of a production; restrictions: no modifying with intent to claim authorship, no selling the sounds as-is (selling them inside a project is allowed); English law. The files' copyright stays with the supplier (here "2022 Shapeforms (Future UI) https://www.shapeforms.com") | Yes | Yes (rights e, f) | **Yes (#48)**, the Open cue (`FUI Hologram Ping Tone Echoed-2`) |
 
-Answer: **the three cues are cleared for a shipped game and for this public repo** (all sources CC0, no credit
-required; a credit line for Kenney is welcome but optional). No open licensing item blocks #42. If the user later
+Answer: **the three cues are cleared for a shipped game and for this public repo** (Hover and Select from CC0 Kenney
+sounds, the Open cue from the Sonniss GDC 2023 bundle under the Sonniss licence; neither requires a credit, a credit
+line for Kenney or Shapeforms is welcome but optional). The Sonniss sound is not CC0: the repo's CC0 licence does not
+cover `Docs/Art/ui-sounds/Audio Files/FUI Hologram Ping Tone Echoed-2.wav`, `S_SOLHoloOpen.wav` or
+`S_SOLHoloOpen.uasset`, which stay under the Sonniss licence (copyright Shapeforms Audio); they must not be sold on
+their own. No open licensing item blocks #42. If the user later
 wants sounds from a non-CC0 pack, two questions come back: whether committing them to the public repo is acceptable
 (it is redistribution for most of these licences), and the JDSherbert pack's licence (none on disk).
 

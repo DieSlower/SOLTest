@@ -221,11 +221,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 113.6 h |
+| Work time (wall-clock) | 113.8 h |
 | Time spent answering questions | 8.6 h |
-| Tokens | 6,360.4M |
-| Notional API price | $2,518 |
-| Subagents dispatched | 504 |
+| Tokens | 6,372.9M |
+| Notional API price | $2,522 |
+| Subagents dispatched | 505 |
 <!-- METRICS:END -->
 
 ## Documentation map
@@ -241,4 +241,4 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 ## Licence
 
-The repository carries a `LICENSE` file (CC0 1.0 Universal text, added in its latest commit). Baked star data derives from CC BY-SA 4.0 catalogues, so check that against the licence before redistributing. The licence choice has not been confirmed by Acid Rain Studios.
+The repository carries a `LICENSE` file (CC0 1.0 Universal text, added in its latest commit). Baked star data derives from CC BY-SA 4.0 catalogues, so check that against the licence before redistributing. The window-open sound (`Docs/Art/ui-sounds/S_SOLHoloOpen.wav`, its source under `Audio Files/` and `Content/SOL/UI/Audio/S_SOLHoloOpen.uasset`) is "FUI Hologram Ping Tone Echoed-2" by Shapeforms Audio from the Sonniss GDC 2023 Game Audio Bundle: it is under the Sonniss licence, not CC0 (free use and redistribution, no attribution required, not to be sold on its own; see SDD 42 section 7.1). The licence choice has not been confirmed by Acid Rain Studios.

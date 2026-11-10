@@ -10,8 +10,16 @@
 #include "UI/SOLHudShapeMath.h"
 #include "SOLConstants.h"
 
+#include "HAL/FileManager.h"
 #include "Misc/AutomationTest.h"
+#include "Misc/Paths.h"
+#include "Misc/SecureHash.h"
+#include "Sound/SoundClass.h"
+#include "Sound/SoundWave.h"
 #include "Templates/UniquePtr.h"
+#include "UObject/MetaData.h"
+#include "UObject/Package.h"
+#include "UObject/SoftObjectPath.h"
 
 #include <cmath>
 #include <limits>
@@ -54,6 +62,12 @@ namespace
     constexpr int32 HOLOKITTEST_BRACKET_PIECES = 6;
     constexpr int32 HOLOKITTEST_CARD_TICKS = 8;
     constexpr float HOLOKITTEST_SWEEP_FRACTION = 0.25f;
+
+    // Sound cue sources (SDD 42 section 7.1): the folder of the committed WAVs, relative to the project, and the
+    // accepted length of the issue #48 Open cue (trimmed to about 0.6 s)
+    constexpr const TCHAR* HOLOKITTEST_CUE_SOURCE_DIR = TEXT("Docs/Art/ui-sounds");
+    constexpr float HOLOKITTEST_OPEN_CUE_MIN_S = 0.5f;
+    constexpr float HOLOKITTEST_OPEN_CUE_MAX_S = 0.7f;
 
     // Section 4.6 worst case: 24 + 14 + 6 + 4 + 40 + 6 + FRAME_MAX_TABS * 4 + 1 + 8 + 1 + 2 (= 126 with 5 tabs)
     constexpr int32 HOLOKITTEST_WORST_CASE_FIXED = 24 + 14 + 6 + 4 + 40 + 6 + 1 + 8 + 1 + 2;
@@ -957,6 +971,22 @@ namespace
                 batch.AddLine(shape.A, shape.B, shape.HalfWidthPx, shape.Color, shape.Intensity, shape.PadPx);
             }
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a file is a Git LFS pointer (the repo keeps WAVs and .uassets in LFS) rather than its content
+    bool HoloKitTestIsLfsPointerFile(const FString& path)
+    {
+        static const ANSICHAR LFS_POINTER_START[] = "version https://git-lfs";
+        constexpr int64 startLength = static_cast<int64>(UE_ARRAY_COUNT(LFS_POINTER_START)) - 1;
+        const TUniquePtr<FArchive> reader(IFileManager::Get().CreateFileReader(*path, FILEREAD_Silent));
+        if (!reader.IsValid() || reader->TotalSize() < startLength)
+        {
+            return false;
+        }
+        ANSICHAR head[UE_ARRAY_COUNT(LFS_POINTER_START)] = {};
+        reader->Serialize(head, startLength);
+        return !reader->IsError() && FMemory::Memcmp(head, LFS_POINTER_START, startLength) == 0;
     }
 }
 
@@ -2181,6 +2211,58 @@ bool FSOLHoloMenuKitCueEnumTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("Select = CUE_SELECT"), static_cast<int32>(ESOLHoloCue::Select), static_cast<int32>(CUE_SELECT));
     TestEqual(TEXT("Count = the CUES table size"), static_cast<int32>(ESOLHoloCue::Count),
         static_cast<int32>(UE_ARRAY_COUNT(CUES)));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHoloMenuKitCueAssetsTest, "SOLTest.HoloMenuKit.CueAssets",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every CUES entry loads as a one-shot sound wave in the SFX class (so the SFX volume slider drives it), imported from
+// its current source WAV in Docs/Art/ui-sounds (its SOLSourceMD5 tag is that WAV's MD5); the Open cue is the issue #48
+// hologram ping, trimmed to about 0.6 s. A source WAV that is only its Git LFS pointer fails asking for git lfs pull
+bool FSOLHoloMenuKitCueAssetsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::HoloMenu;
+    const USoundClass* sfx = LoadObject<USoundClass>(nullptr, SOL::Paths::SOUND_CLASS_SFX);
+    TestNotNull(TEXT("the SFX sound class loads"), sfx);
+    for (int32 cue = 0; cue < static_cast<int32>(UE_ARRAY_COUNT(CUES)); ++cue)
+    {
+        const TCHAR* path = CUES[cue].Path;
+        const USoundWave* wave = LoadObject<USoundWave>(nullptr, path);
+        if (!TestNotNull(FString::Printf(TEXT("cue %d: %s loads as a sound wave"), cue, path), wave))
+        {
+            continue;
+        }
+        TestTrue(FString::Printf(TEXT("cue %d: in the SFX class"), cue), wave->SoundClassObject == sfx);
+        TestFalse(FString::Printf(TEXT("cue %d: does not loop"), cue), static_cast<bool>(wave->bLooping));
+
+#if WITH_EDITORONLY_DATA
+        // The asset is the import of the committed source WAV (Tools/UI/import_holo_menu_sounds.py writes the tag)
+        const FString source = FPaths::Combine(FPaths::ProjectDir(), HOLOKITTEST_CUE_SOURCE_DIR,
+            FSoftObjectPath(path).GetAssetName() + TEXT(".wav"));
+        if (HoloKitTestIsLfsPointerFile(source))
+        {
+            AddError(FString::Printf(TEXT("cue %d: %s is a Git LFS pointer, not the file: run git lfs pull"), cue,
+                *source));
+            continue;
+        }
+        const FMD5Hash hash = FMD5Hash::HashFile(*source);
+        const FString* tag = wave->GetPackage()->GetMetaData().FindValue(wave, TEXT("SOLSourceMD5"));
+        TestTrue(FString::Printf(TEXT("cue %d: %s exists"), cue, *source), hash.IsValid());
+        TestTrue(FString::Printf(TEXT("cue %d: imported from the current %s (run Tools/UI/import_holo_menu_sounds.py)"),
+            cue, *source), hash.IsValid() && tag != nullptr && *tag == LexToString(hash));
+#endif
+    }
+
+    // Issue #48: the window-open cue is the hologram ping tone, trimmed to about 0.6 s (the old cue was 0.40 s)
+    if (const USoundWave* open = LoadObject<USoundWave>(nullptr, CUES[CUE_OPEN].Path))
+    {
+        const float duration = open->GetDuration();
+        TestTrue(FString::Printf(TEXT("Open cue lasts about 0.6 s (%.3f s)"), duration),
+            duration >= HOLOKITTEST_OPEN_CUE_MIN_S && duration <= HOLOKITTEST_OPEN_CUE_MAX_S);
+    }
     return true;
 }
 

@@ -253,7 +253,7 @@ Hologram menu tunables (`SOL::HoloMenu`, `SOLConstants.h`; the same for every me
 | 16 px | `CARD_TICK_PX` | Corner tick length of the frameless cards (x UI scale) |
 | 0.45 / 0.15 per unit | `FLAT_PANEL_ALPHA` / `BACKDROP_ALPHA_PER_UNIT` | Tint alpha at strength 0, and at strength 1 and per unit above it |
 | 4 s | `IDLE_SWEEP_PERIOD_S` | One scanline pass, glow 0.08 x strength |
-| Open 0.8 / 0.1 s, Hover 0.5 / 0.05 s, Select 0.8 / 0.1 s | `CUES[]` | Cue volume and the shortest gap between two of the same cue (more are dropped), through the Effects volume |
+| Open 0.8 / 0.1 s, Hover 0.5 / 0.05 s, Select 0.8 / 0.1 s | `CUES[]` | Cue volume and the shortest gap between two of the same cue (more are dropped), through the Effects volume. The Open cue is a low, warm hologram ping with an echo, 0.6 s (#48) |
 
 ## 8. Menus
 
