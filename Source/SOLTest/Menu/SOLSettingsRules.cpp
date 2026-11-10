@@ -6,7 +6,10 @@
 #include "Menu/SOLSettingsRules.h"
 
 #include "Menu/SOLMenuText.h"
+#include "SOLConstants.h"
 #include "UI/SOLOverlayModel.h"
+
+#include "Misc/Parse.h"
 
 namespace
 {
@@ -185,4 +188,36 @@ bool SOLSettingsRules::IsSaveOwed(const bool bWriteOwed, const SOLOverlay::FOver
     const SOLOverlay::FOverlayPrefs& written)
 {
     return bWriteOwed || !SOLOverlay::AreEqual(applied, written);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a command line uses the smoke save slot: the menu script anywhere, or a listed smoke or writer switch
+bool SOLSettingsRules::IsSmokeSlotRun(const TCHAR* commandLine)
+{
+    if (commandLine == nullptr)
+    {
+        return false;
+    }
+    if (FCString::Strifind(commandLine, SOL::CommandLine::MENU_SMOKE_NAME) != nullptr)
+    {
+        return true;
+    }
+
+    // The smoke runners ship in every build; the writers only outside Shipping
+    const TCHAR* const switches[] = {
+        SOL::CommandLine::SMOKE_OVERLAY, SOL::CommandLine::SMOKE_INTERACT, SOL::CommandLine::SMOKE_CHASE,
+        SOL::CommandLine::SMOKE_DUST, SOL::CommandLine::SMOKE_HOLO_MENU_PROFILE, SOL::CommandLine::SMOKE_HOLO_MENU,
+        SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE, SOL::CommandLine::SMOKE_SOLID_MENU,
+#if !UE_BUILD_SHIPPING
+        SOL::CommandLine::WRITE_PLAYER_GUIDE, SOL::CommandLine::WRITE_GLOSSARY_CROPS,
+#endif
+    };
+    for (const TCHAR* name : switches)
+    {
+        if (FParse::Param(commandLine, name))
+        {
+            return true;
+        }
+    }
+    return false;
 }

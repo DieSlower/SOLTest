@@ -216,8 +216,8 @@ bool USOLMenuSubsystem::DoesSupportWorldType(const EWorldType::Type worldType) c
 bool USOLMenuSubsystem::ShouldStartInMenu()
 {
     // -SOLNoMenu wins, then -SOLMenu / -SOLMenuSmoke / -SOLSmokeSolidMenuProfile / -SOLSmokeSolidMenu /
-    // -SOLWritePlayerGuide; any other -SOL*
-    // switch is a verification or start flag that has always started straight in flight
+    // -SOLWritePlayerGuide (outside Shipping); any other -SOL* switch is a verification or start flag that has always
+    // started straight in flight
     TArray<FString> tokens;
     TArray<FString> switches;
     FCommandLine::Parse(FCommandLine::Get(), tokens, switches);
@@ -235,11 +235,16 @@ bool USOLMenuSubsystem::ShouldStartInMenu()
         {
             return false;
         }
+#if !UE_BUILD_SHIPPING
+        // The player guide writer is compiled out of Shipping builds, so only other builds read its switch
+        const bool bGuideSwitch = name.Equals(SOL::CommandLine::WRITE_PLAYER_GUIDE, ESearchCase::IgnoreCase);
+#else
+        const bool bGuideSwitch = false;
+#endif
         if (name.Equals(SOL::CommandLine::MENU, ESearchCase::IgnoreCase)
             || name.Equals(SOL::CommandLine::MENU_SMOKE_NAME, ESearchCase::IgnoreCase)
             || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE, ESearchCase::IgnoreCase)
-            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU, ESearchCase::IgnoreCase)
-            || name.Equals(SOL::CommandLine::WRITE_PLAYER_GUIDE, ESearchCase::IgnoreCase))
+            || name.Equals(SOL::CommandLine::SMOKE_SOLID_MENU, ESearchCase::IgnoreCase) || bGuideSwitch)
         {
             bForceMenu = true;
         }

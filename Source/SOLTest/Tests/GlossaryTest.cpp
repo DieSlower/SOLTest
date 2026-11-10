@@ -1047,6 +1047,23 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns whether a file is a Git LFS pointer (its object not fetched: "git lfs pull" brings it) rather than the
+    // file itself: it starts with "version https://git-lfs". Reads only the first bytes
+    bool GlossaryTestIsLfsPointerFile(const FString& path)
+    {
+        static const ANSICHAR LFS_POINTER_START[] = "version https://git-lfs";
+        constexpr int64 startLength = static_cast<int64>(UE_ARRAY_COUNT(LFS_POINTER_START)) - 1;
+        const TUniquePtr<FArchive> reader(IFileManager::Get().CreateFileReader(*path, FILEREAD_Silent));
+        if (!reader.IsValid() || reader->TotalSize() < startLength)
+        {
+            return false;
+        }
+        ANSICHAR head[UE_ARRAY_COUNT(LFS_POINTER_START)] = {};
+        reader->Serialize(head, startLength);
+        return !reader->IsError() && FMemory::Memcmp(head, LFS_POINTER_START, startLength) == 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns whether a table cell holds any text (null reads empty)
     bool GlossaryTestHasText(const TCHAR* text)
     {
@@ -1603,7 +1620,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropAssetsExistTest, "SOLTest.Gloss
 
 //////////////////////////////////////////////////////////////////////////
 // Every crop's texture asset is committed (D27-style: it fails, naming the crop and Tools\WritePlayerGuide.bat, until
-// the run has captured and imported the crops)
+// the run has captured and imported the crops); an asset file that is only its Git LFS pointer fails asking for
+// "git lfs pull"
 bool FSOLGlossaryCropAssetsExistTest::RunTest(const FString& /*parameters*/)
 {
     IFileManager& fileManager = IFileManager::Get();
@@ -1622,6 +1640,11 @@ bool FSOLGlossaryCropAssetsExistTest::RunTest(const FString& /*parameters*/)
                 "and commit the textures and images"), entry.Id, entry.Texture,
                 file.IsEmpty() ? TEXT("no asset file") : *file));
         }
+        else if (GlossaryTestIsLfsPointerFile(file))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': its texture %s (%s) is a Git LFS pointer, not the "
+                "asset: run git lfs pull"), entry.Id, entry.Texture, *file));
+        }
     }
     return true;
 }
@@ -1632,7 +1655,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryCropTexturesCurrentTest, "SOLTest.G
 
 //////////////////////////////////////////////////////////////////////////
 // Every crop's texture was imported from the PNG now in Docs/Images: its SOLSourceMD5 metadata tag (written by
-// Tools/UI/import_glossary_crops.py as "<source MD5>-<import settings>") starts with that PNG's MD5
+// Tools/UI/import_glossary_crops.py as "<source MD5>-<import settings>") starts with that PNG's MD5. A PNG or texture
+// asset that is only its Git LFS pointer fails asking for "git lfs pull" (regenerating would not help)
 bool FSOLGlossaryCropTexturesCurrentTest::RunTest(const FString& /*parameters*/)
 {
 #if WITH_EDITORONLY_DATA
@@ -1640,6 +1664,14 @@ bool FSOLGlossaryCropTexturesCurrentTest::RunTest(const FString& /*parameters*/)
     {
         const SOL::Paths::FGlossaryCrop& entry = SOL::Paths::GLOSSARY_CROPS[crop];
         const FString image = SOLPlayerGuide::ImagePath(entry.ImageFile);
+        const FString assetFile = SOLGlossary::CropAssetFile(crop);
+        const bool bImagePointer = GlossaryTestIsLfsPointerFile(image);
+        if (bImagePointer || (!assetFile.IsEmpty() && GlossaryTestIsLfsPointerFile(assetFile)))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': %s is a Git LFS pointer, not the file: run git lfs "
+                "pull"), entry.Id, bImagePointer ? *image : *assetFile));
+            continue;
+        }
         const FMD5Hash hash = FMD5Hash::HashFile(*image);
         const UTexture2D* texture = LoadObject<UTexture2D>(nullptr, entry.Texture);
         const FString* tag = texture != nullptr

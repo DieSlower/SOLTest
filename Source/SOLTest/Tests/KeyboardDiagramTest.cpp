@@ -7,6 +7,7 @@
 #include "Menu/SOLKeyDiagram.h"
 #include "Menu/SOLKeyboardDiagram.h"
 #include "Menu/SOLKeyboardLayout.h"
+#include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLMenuText.h"
 #include "SOLConstants.h"
 
@@ -387,7 +388,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramSetHoveredTest, "SOLTest.Key
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SetHoveredKey hovers a key in range; INDEX_NONE or an index out of range clears; a mirror key hovers its main key
+// SetHoveredKey hovers a key in range; INDEX_NONE or an index out of range clears; a mirror key hovers its main key.
+// D45 hover anchor (the cap the popup is placed by): the cap given, a mirror's own cap included; cleared with the
+// hover; moved to the main cap when the main key is hovered by its own cap; set by HoverAt at a mirror's centre; and
+// kept across SetKeys and a new width, which rebuild the model and panel but not the hover
 bool FSOLKeyboardDiagramSetHoveredTest::RunTest(const FString& /*parameters*/)
 {
     USOLKeyboardDiagram* const widget = KeyboardDiagramTestNew();
@@ -395,28 +399,33 @@ bool FSOLKeyboardDiagramSetHoveredTest::RunTest(const FString& /*parameters*/)
     {
         return true;
     }
-    TestEqual(TEXT("fresh: nothing hovered"), widget->GetHoveredKey(), static_cast<int32>(INDEX_NONE));
+    constexpr int32 none = static_cast<int32>(INDEX_NONE);
+    TestEqual(TEXT("fresh: nothing hovered"), widget->GetHoveredKey(), none);
+    TestEqual(TEXT("fresh: no anchor"), widget->GetHoverAnchor(), none);
     TestEqual(TEXT("fresh: no lines"), widget->GetDetailLines().Num(), 0);
     widget->SetKeys(SOLKeyBindings::DefaultKeys());
     widget->SetLayoutWidth(KEYBOARDDIAGRAMTEST_WIDE);
-    TestEqual(TEXT("keys set: nothing hovered"), widget->GetHoveredKey(), static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("keys set: nothing hovered"), widget->GetHoveredKey(), none);
+    TestEqual(TEXT("keys set: no anchor"), widget->GetHoverAnchor(), none);
 
     const int32 o = SOLKeyboardLayout::FindKey(TEXT("O"));
     widget->SetHoveredKey(o);
     TestEqual(TEXT("O hovered"), widget->GetHoveredKey(), o);
-    const int32 clears[] = { static_cast<int32>(INDEX_NONE), -5, widget->GetModel().Keys.Num(), MAX_int32 };
+    TestEqual(TEXT("O is its own anchor"), widget->GetHoverAnchor(), o);
+    const int32 clears[] = { none, -5, widget->GetModel().Keys.Num(), MAX_int32 };
     for (const int32 key : clears)
     {
         widget->SetHoveredKey(o);
         widget->SetHoveredKey(key);
-        TestEqual(FString::Printf(TEXT("key %d clears the hover"), key), widget->GetHoveredKey(),
-            static_cast<int32>(INDEX_NONE));
+        TestEqual(FString::Printf(TEXT("key %d clears the hover"), key), widget->GetHoveredKey(), none);
+        TestEqual(FString::Printf(TEXT("key %d clears the anchor"), key), widget->GetHoverAnchor(), none);
         TestEqual(FString::Printf(TEXT("key %d leaves no lines"), key), widget->GetDetailLines().Num(), 0);
     }
 
-    // Every mirror key hovers its main key
+    // Every mirror key hovers its main key and anchors on its own cap; the main cap then moves the anchor there
     const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
     int32 mirrors = 0;
+    int32 firstMirror = none;
     for (int32 index = 0; index < layout.Num(); ++index)
     {
         if (!layout[index].bMirror)
@@ -424,12 +433,45 @@ bool FSOLKeyboardDiagramSetHoveredTest::RunTest(const FString& /*parameters*/)
             continue;
         }
         ++mirrors;
+        firstMirror = firstMirror == none ? index : firstMirror;
         const int32 main = SOLKeyboardLayout::FindKey(layout[index].KeyName);
+        const FString what = FString::Printf(TEXT("mirror %d '%s'"), index, layout[index].KeyName);
         widget->SetHoveredKey(index);
-        TestEqual(FString::Printf(TEXT("mirror %d '%s' hovers its main key"), index, layout[index].KeyName),
-            widget->GetHoveredKey(), main);
+        TestEqual(what + TEXT(" hovers its main key"), widget->GetHoveredKey(), main);
+        TestEqual(what + TEXT(" anchors on its own cap"), widget->GetHoverAnchor(), index);
+        widget->SetHoveredKey(main);
+        TestEqual(what + TEXT(": the main cap keeps the main key hovered"), widget->GetHoveredKey(), main);
+        TestEqual(what + TEXT(": the main cap moves the anchor"), widget->GetHoverAnchor(), main);
+        widget->SetHoveredKey(index);
+        TestEqual(what + TEXT(": back on the mirror cap"), widget->GetHoverAnchor(), index);
+        widget->SetHoveredKey(none);
+        TestEqual(what + TEXT(": unhovered, no anchor"), widget->GetHoverAnchor(), none);
     }
     TestTrue(TEXT("the layout has a mirror key"), mirrors > 0);
+    if (firstMirror == none)
+    {
+        return true;
+    }
+
+    // HoverAt at the mirror cap's centre anchors on the mirror; a point off every key clears the anchor
+    const int32 mirrorMain = SOLKeyboardLayout::FindKey(layout[firstMirror].KeyName);
+    const FSOLDiagramScale scale = widget->GetPanel().Scale;
+    const FVector2f mirrorCentre = SOLKeyboardLayout::KeyRect(firstMirror, scale.Placement).GetCenter();
+    TestEqual(TEXT("HoverAt the mirror: its main key"),
+        widget->HoverAt(SOLKeyboardLayout::FromUnits(mirrorCentre, scale)), mirrorMain);
+    TestEqual(TEXT("HoverAt the mirror: anchored on the mirror cap"), widget->GetHoverAnchor(), firstMirror);
+    widget->HoverAt(SOLKeyboardLayout::FromUnits(FVector2f(-1.0f, -1.0f), scale));
+    TestEqual(TEXT("HoverAt off the keys: no anchor"), widget->GetHoverAnchor(), none);
+
+    // SetKeys (a rebuild, then the same keys) and a new width keep the hover and its mirror anchor
+    widget->SetHoveredKey(firstMirror);
+    TestTrue(TEXT("new keys: rebuilt"), widget->SetKeys(KeyboardDiagramTestOverflowAndUnbound()));
+    TestEqual(TEXT("new keys: the main key still hovered"), widget->GetHoveredKey(), mirrorMain);
+    TestEqual(TEXT("new keys: the mirror anchor kept"), widget->GetHoverAnchor(), firstMirror);
+    TestFalse(TEXT("same keys: no rebuild"), widget->SetKeys(KeyboardDiagramTestOverflowAndUnbound()));
+    TestEqual(TEXT("same keys: the mirror anchor kept"), widget->GetHoverAnchor(), firstMirror);
+    widget->SetLayoutWidth(KEYBOARDDIAGRAMTEST_NARROW);
+    TestEqual(TEXT("new width: the mirror anchor kept"), widget->GetHoverAnchor(), firstMirror);
     return true;
 }
 
@@ -606,8 +648,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramPanelFixedTest, "SOLTest.Key
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// D36: hovering any key (by index, mirrors included, and through HoverAt at its centre) and clearing the hover never
-// changes the panel, at the stacked shell width and a wide one, with and without the strips
+// D36 after D45: the hover is a popup on its own layer, so the panel, and the leaf's desired size read from it (the
+// widest of the legend, hint and diagram by the Height), stays the same when a key is hovered or the hover cleared.
+// Checked on a plain key, a modifier with chords (the most popup lines), a mirror cap and a cleared hover, with the
+// strips shown, at the stacked shell width and a wide one
 bool FSOLKeyboardDiagramPanelFixedTest::RunTest(const FString& /*parameters*/)
 {
     USOLKeyboardDiagram* const widget = KeyboardDiagramTestNew();
@@ -615,39 +659,37 @@ bool FSOLKeyboardDiagramPanelFixedTest::RunTest(const FString& /*parameters*/)
     {
         return true;
     }
-    const TArray<FString> keySets[] = { SOLKeyBindings::DefaultKeys(), KeyboardDiagramTestOverflowAndUnbound() };
-    const TCHAR* keySetNames[] = { TEXT("defaults"), TEXT("strips") };
-    const float widths[] = { KEYBOARDDIAGRAMTEST_NARROW, KEYBOARDDIAGRAMTEST_WIDE };
-    const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
-    for (int32 set = 0; set < static_cast<int32>(UE_ARRAY_COUNT(keySets)); ++set)
+
+    // Returns the desired size SSOLKeyboardDiagram::ComputeDesiredSize gives for a panel
+    auto desiredSize = [](const FSOLDiagramPanel& panel)
     {
-        widget->SetKeys(keySets[set]);
-        for (const float width : widths)
+        const float width = FMath::Max3(panel.Legend.Max.X, panel.Diagram.Max.X, panel.Hint.Max.X);
+        return FVector2f(FMath::Max(width, 0.0f), FMath::Max(panel.Height, 0.0f));
+    };
+    widget->SetKeys(KeyboardDiagramTestOverflowAndUnbound());
+    const TConstArrayView<FSOLLayoutKey> layout = SOLKeyboardLayout::Keys();
+    int32 mirror = INDEX_NONE;
+    for (int32 index = 0; index < layout.Num() && mirror == INDEX_NONE; ++index)
+    {
+        mirror = layout[index].bMirror ? index : INDEX_NONE;
+    }
+    const int32 hovers[] = { SOLKeyboardLayout::FindKey(TEXT("O")), SOLKeyboardLayout::FindKey(TEXT("LeftControl")),
+        mirror, static_cast<int32>(INDEX_NONE) };
+    const float widths[] = { KEYBOARDDIAGRAMTEST_NARROW, KEYBOARDDIAGRAMTEST_WIDE };
+    for (const float width : widths)
+    {
+        widget->SetLayoutWidth(width);
+        widget->SetHoveredKey(INDEX_NONE);
+        const FSOLDiagramPanel before = widget->GetPanel();
+        const FVector2f sizeBefore = desiredSize(before);
+        TestTrue(FString::Printf(TEXT("width %.0f: the panel has a size"), width), sizeBefore.X > 0.0f
+            && sizeBefore.Y > 0.0f);
+        for (const int32 key : hovers)
         {
-            widget->SetLayoutWidth(width);
-            widget->SetHoveredKey(INDEX_NONE);
-            const FSOLDiagramPanel before = widget->GetPanel();
-            const FString what = FString::Printf(TEXT("%s, width %.0f"), keySetNames[set], width);
-
-            // Every key by index, then through HoverAt at its centre
-            for (int32 index = 0; index < layout.Num(); ++index)
-            {
-                widget->SetHoveredKey(index);
-                KeyboardDiagramTestSamePanel(*this, FString::Printf(TEXT("%s: key %d hovered"), *what, index),
-                    widget->GetPanel(), before);
-                const FVector2f centre = SOLKeyboardLayout::KeyRect(index, before.Scale.Placement).GetCenter();
-                widget->HoverAt(SOLKeyboardLayout::FromUnits(centre, before.Scale));
-                KeyboardDiagramTestSamePanel(*this, FString::Printf(TEXT("%s: key %d hovered at its centre"), *what,
-                    index), widget->GetPanel(), before);
-            }
-
-            // Cleared by index and by a point off every key
-            widget->SetHoveredKey(INDEX_NONE);
-            KeyboardDiagramTestSamePanel(*this, what + TEXT(": hover cleared"), widget->GetPanel(), before);
-            widget->SetHoveredKey(SOLKeyboardLayout::FindKey(TEXT("O")));
-            widget->HoverAt(SOLKeyboardLayout::FromUnits(FVector2f(-1.0f, -1.0f), before.Scale));
-            KeyboardDiagramTestSamePanel(*this, what + TEXT(": hover cleared off the keys"), widget->GetPanel(),
-                before);
+            widget->SetHoveredKey(key);
+            const FString what = FString::Printf(TEXT("width %.0f: key %d hovered"), width, key);
+            TestTrue(what + TEXT(": desired size unchanged"), desiredSize(widget->GetPanel()) == sizeBefore);
+            KeyboardDiagramTestSamePanel(*this, what, widget->GetPanel(), before);
         }
     }
     return true;
@@ -674,6 +716,52 @@ bool FSOLKeyboardDiagramArrangementTest::RunTest(const FString& /*parameters*/)
         KEYBOARDDIAGRAMTEST_NARROW / KEYBOARDDIAGRAMTEST_MAIN_WIDTH, KEYBOARDDIAGRAMTEST_TOLERANCE);
     widget->SetLayoutWidth(KEYBOARDDIAGRAMTEST_WIDE);
     TestTrue(TEXT("1000: one row, mouse beside"), widget->GetPanel().Scale.Placement == ESOLMousePlacement::Beside);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The hover ramp runs on the menu clock (33g): the leaf reads its clock source's (pinned) clock, the ramp counts from
+// the hover change on that clock, a time before the change (a clock that went back) counts as settled, and without a
+// source the leaf reads the real application time
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyboardDiagramClockTest, "SOLTest.KeyboardDiagram.MenuClockRamp",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Runs the menu clock ramp checks on a bare leaf and a bare subsystem
+bool FSOLKeyboardDiagramClockTest::RunTest(const FString& /*parameters*/)
+{
+    USOLSolidMenuSubsystem* const clock = NewObject<USOLSolidMenuSubsystem>();
+    if (!TestNotNull(TEXT("bare subsystem"), clock))
+    {
+        return false;
+    }
+    const TSharedRef<SSOLKeyboardDiagram> leaf = SNew(SSOLKeyboardDiagram);
+
+    // Without a source, the real time
+    double startS = FPlatformTime::Seconds();
+    const double unsourced = leaf->GetNowS();
+    double endS = FPlatformTime::Seconds();
+    TestTrue(TEXT("Without a clock source the leaf reads the real time"), unsourced >= startS && unsourced <= endS);
+
+    // With a pinned source, exactly the pin
+    const double pinS = FPlatformTime::Seconds() + 1000.0;
+    clock->PinClock(pinS);
+    leaf->SetClockSource(clock);
+    TestTrue(TEXT("With a clock source the leaf reads the pinned menu clock"), leaf->GetNowS() == clock->GetClockS());
+
+    // A hover change at the pin ramps from the pin on the menu clock
+    leaf->SetHover(0, TArray<FSOLDiagramDetailLine>(), 1.0f);
+    const double changeS = clock->GetClockS();
+    TestTrue(TEXT("Ramping just after the change"), leaf->IsRamping(changeS + 0.25 * SOL::SolidMenu::HOVER_RAMP_S));
+    TestFalse(TEXT("Settled after the ramp time"), leaf->IsRamping(changeS + 2.0 * SOL::SolidMenu::HOVER_RAMP_S));
+    TestFalse(TEXT("A time before the change counts as settled"), leaf->IsRamping(changeS - 500.0));
+
+    // Source cleared: back on the real time
+    leaf->SetClockSource(nullptr);
+    clock->ReleaseClock();
+    startS = FPlatformTime::Seconds();
+    const double cleared = leaf->GetNowS();
+    endS = FPlatformTime::Seconds();
+    TestTrue(TEXT("A cleared source falls back to the real time"), cleared >= startS && cleared <= endS);
     return true;
 }
 

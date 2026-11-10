@@ -181,4 +181,46 @@ bool FSOLBindingLabelRebindableTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLBindingLabelAssignTest, "SOLTest.BindingLabel.AssignKeyDisplayName",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AssignKeyDisplayName writes KeyDisplayName into out (overwriting what was there) and reuses out's buffer: once it
+// has room, later calls with names no longer than the room keep the same allocation, whatever display name they give
+bool FSOLBindingLabelAssignTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLBindingLabel;
+    const TCHAR* names[] = { TEXT("LeftMouseButton"), TEXT("SpaceBar"), TEXT("Nine"), TEXT("Add"), TEXT("W"),
+        TEXT("PageUp"), TEXT("Gamepad_FaceButton_Bottom"), TEXT("") };
+
+    // Same text as KeyDisplayName, the old contents overwritten (a long value first, then shorter ones)
+    FString out = TEXT("A previous, much longer value that must not survive");
+    for (const TCHAR* name : names)
+    {
+        AssignKeyDisplayName(FString(name), out);
+        TestEqual(FString::Printf(TEXT("'%s' as KeyDisplayName"), name), out, KeyDisplayName(FString(name)));
+    }
+
+    // With room reserved up front (more than any display name here), every call writes into the same buffer
+    FString reused;
+    reused.Reserve(64);
+    const TCHAR* const buffer = reused.GetCharArray().GetData();
+    const SIZE_T capacity = reused.GetAllocatedSize();
+    TestTrue(TEXT("the reserve allocated"), buffer != nullptr && capacity > 0);
+    for (int32 pass = 0; pass < 2; ++pass)
+    {
+        for (const TCHAR* name : names)
+        {
+            AssignKeyDisplayName(FString(name), reused);
+            const FString what = FString::Printf(TEXT("pass %d '%s'"), pass, name);
+            TestEqual(what + TEXT(": the display name"), reused, KeyDisplayName(FString(name)));
+            TestTrue(what + TEXT(": the buffer reused"), reused.GetCharArray().GetData() == buffer);
+            TestEqual(what + TEXT(": the capacity kept"), static_cast<int64>(reused.GetAllocatedSize()),
+                static_cast<int64>(capacity));
+        }
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

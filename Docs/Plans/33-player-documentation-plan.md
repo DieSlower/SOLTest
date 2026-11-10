@@ -124,7 +124,7 @@ SDD section 7.
    3840x2160; nothing for 1000x800) - to be written into SDD section 2. Contract: scratchpad `33c_contract.md`
    sections E.1-E.8 (Stacked = Beside rect + (-13.5, 7) for cluster and mouse keys, Extent (15, 13.5); FitToWidth with
    `DIAGRAM_MOUSE_BELOW_UNIT` 30 / `DIAGRAM_STACK_UNIT` 30; `LayoutPanel(..., detailLines)`, `DIAGRAM_DETAIL_LINES` a
-   cap of 24, `DIAGRAM_DETAIL_CAP_HEIGHT` 30; `FitKeyText`, `DIAGRAM_BADGE_GAP` 2; `MaxDetailCount`;
+   cap of 24, `DIAGRAM_DETAIL_CAP_HEIGHT` 30; `FitKeyText`, `DIAGRAM_BADGE_GAP` 2; `MaxDetailCount` (removed in 33g, dead since D45);
    `GetDetailLineBudget`, `GetPaintedHiddenBadges`). Tests by a separate author (red: 107 / 12 on stubs), implemented:
    `SOLTest.Key` 107 / 0, full suite 1659 / 0. **Next step:** the smoke agent updates `SOLSolidMenuSmoke.cpp` (about
    lines 4368 `-fit` placement now Stacked at 658; 4399 note add hidden badges, wide legends 0; 4511-4533 and 4572
@@ -200,7 +200,7 @@ Builds on: D16, D22, D26. Depends on 33c and 33d-i. SDD sections 5 and 8.2-8.5.
 6. [x] Review; fixes; full suite; commit `Issue #33: Part 33d-ii - Help page and glossary`; push (commit 265fa5c).
 
    **Built (2026-11-08, SDD 20, not committed yet):** tests first by a separate opus/high author from the contract (red
-   on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, Glossary.Layout 13/14; EightEntryStack already green),
+   on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, GlossaryLayout 13/14 (`SOLTest.GlossaryLayout.*` since 33g); EightEntryStack already green),
    then green; the Help page, its glossary views and the 8-entry stacks; full suite 1714 / 0; `-SOLSmokeSolidMenu`
    257 / 257; the profile passes P16-P21 (SDD 14.4); the fresh opus/xhigh review had 1 must-fix (these docs) and 6
    should-fix, all fixed. Item 5 (the starting values) is built and reported as the D26 starting values; the two layout
@@ -308,7 +308,7 @@ Builds on: 33e-ii. SDD sections 9, 18, 20. No design question (two TECH_DEBT fix
 
 1. [x] `-SOLSmokeHoloMenu`: the card steps end on HUD frames after their time (`HudDrawnThenDone`), not a wall-clock
    margin; 86 / 86 three runs at each size.
-2. [x] Tests first by a separate opus/high author for the pure compare (`SOLTest.PlayerGuide.ImageDiff.*`), red on
+2. [x] Tests first by a separate opus/high author for the pure compare (`SOLTest.PlayerGuideImageDiff.*` since 33g), red on
    stubs (11 of 12), then the shared `SOLPlayerGuide::CompareImages` / `CompareWithFile` / `IsCaptureNoise` (the crop
    writer moved onto it) and the guide writer's keep path.
 3. [x] The capture noise measured (about 210,000 pixels per shot) and fixed at the source: the scene held (sim date,
@@ -349,12 +349,24 @@ Builds on: D21. Depends on 33e.
 
 ### 33g: final adversarial review (opus/xhigh, report only; fixes opus/high)
 
-1. [ ] Fresh opus/xhigh reviewer: every changed file of #33, the SDD, `Docs/STYLE_GUIDE.md`,
+1. [x] Fresh opus/xhigh reviewer: every changed file of #33, the SDD, `Docs/STYLE_GUIDE.md`,
    `Docs/Research/UE_PERFORMANCE_GUIDELINES.md`, `Docs/Research/VR_PERFORMANCE_TARGETS.md`, the SDD section 3 tech
    debt; the CLAUDE.md checklist 1-11.
-2. [ ] Fixes; re-check against the SDD; full suite and the smoke set; findings left open go to `Docs/TECH_DEBT.md`
+2. [x] Fixes; re-check against the SDD; full suite and the smoke set; findings left open go to `Docs/TECH_DEBT.md`
    with the user's agreement.
-3. [ ] Commit `Issue #33: Part 33g - final review fixes`; push.
+
+   **Done (2026-11-09, SDD 20 "33g"):** tests extended by a separate author; fixes applied (player text, the shared
+   cap painter `Menu/SOLKeyCapPaint`, `MaxDetailCount` removed, decision refs, `IsSmokeSlotRun` and the Shipping guards,
+   the diagram's hover ramp on the menu clock, the writer's swap comment, docs); the user deferred the one-eye Help
+   layout (D48) and chose the keyboard-diagram contrast (D49: bright key texts over the kept 0.28 tint, 3:1 floor,
+   `SOLTest.KeyDiagram.Contrast.*` by a separate author; worst idle face Demo 3.22, free keys 3.12, hovered Demo 2.74
+   reported); a short opus/xhigh review of the new code (null-brush guards in the cap painter, a clock that went back
+   counts as settled, named WCAG constants, `SOLTest.KeyCapPaint.NullInputs` and `SOLTest.KeyboardDiagram.MenuClockRamp`
+   added); guide regenerated twice byte-identical; suite 1770 / 0; smokes: SolidMenu 275/275, HoloMenu 86/86 at
+   1280x720 and 1920x1080, Overlay 34/34, Hud 24/24 at both sizes, HoloMenuProfile 5/5 PASS, SolidMenuProfile three
+   runs 22/22, 22/22, 21/22 (P15 one noisy run; medians all PASS, worst over Settings +0.113 ms CPU / +0.070 ms GPU,
+   under the 0.2 / 0.3 budget); accepted debt in `Docs/TECH_DEBT.md`.
+3. [x] Commit `Issue #33: Part 33g - final review fixes`; push.
 
 ### 33h: docs, in-game text, README screenshots, close (sonnet/medium)
 

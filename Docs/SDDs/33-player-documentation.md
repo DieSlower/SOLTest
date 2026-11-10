@@ -8,7 +8,7 @@ interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
-Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii done (2026-11-08, section 20): the map glossary crops (D47) and the guide-writer end-of-tab fix; 33f next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
+Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii done (2026-11-08, section 20): the map glossary crops (D47) and the guide-writer end-of-tab fix; 33e-iv and 33f done (2026-11-09, section 20); 33g done (2026-11-09, section 20): the whole-ticket review fixes, D48 and D49; 33h next.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,
 2026-11-06), checked against the code at HEAD `f397b00`; the open questions O1-O13 were answered by the user the same day
 and are recorded as D16-D28 (section 2, section 18). Items still marked **(proposed)** are starting values the user
 approved as the tuning start (D26); they are reviewed again in the 33d review and at the hand check.
@@ -74,6 +74,8 @@ no longer matches the game. Everything is generated from the tables the game alr
 | D45 | **The keyboard diagram's hover detail is a popup (user, 2026-11-08; supersedes D36 and D43; built in 33e-iii):** the reserved strip (sized for the busiest key, empty at rest, pushing the diagram below the fold) is removed; the diagram starts right under the area legend and the one-line "Hover a key to see what it does" hint. The hovered key's detail (its cap row with the LED cap, its own actions, then the chords it starts, full names per D38) is a popup on top of the page, near the key, in the shared solid style (the Panel hull, Rajdhani, `SOL::SolidMenu` / `SOL::Help` constants), sized to its content (at most `DIAGRAM_POPUP_MAX_WIDTH` 480 units, lines wrapped inside), placed below the key, else above (the side with room), else beside, kept inside the page less `DIAGRAM_POPUP_EDGE_PAD` so it is never cut off and never covers the hovered key; no animation beyond the menu's open style, no sound cue, no tick while idle, no allocation in paint; hover off hides it; hit-test invisible, so it never takes hover from the keys. It works for the numpad and mouse block of the stacked layout and at the edges (a mirror cap such as the numpad Enter places it by that cap). The diagram has no keyboard focus, so no focus popup was added. |
 | D46 | **Scrolled guide shots (user, 2026-11-08; built in 33e-iii):** the guide keeps the first window shot of each Help tab and adds shots scrolled down until the whole tab is covered (`33-help-keyboard-2.png`, `33-help-glossary-flight-hud-2.png` ...), the count derived from the tab's scroll extent at 1920x1080 and referenced in order in `Docs/PLAYER_GUIDE.md`; `33-help-keyboard-hover.png` shows the popup for O. |
 | D47 | **Map glossary crops (user, 2026-11-08, via the main session; built in 33e-ii; realises D39):** the five map rows (Orbit lines, Route legs, Waypoints, Map destination pick, Map grid and stems) show **screenshot crops of the real game**, captured from the real overlays at 1920x1080, **one 176x176 crop per row** (`SOL::Help::GLOSSARY_CROP_PX`, 2x the 88-unit symbol view). The guide uses the **same PNG files** (`Docs/Images/33-glossary-crop-*.png`) as the in-game textures' sources. **Staleness is caught by tests** (`CropAssetsExist`, `CropImagesSize`, `CropTexturesCurrent`: the texture's import MD5 tag must match its PNG); `PlayerGuide.UpToDate` stays markdown / path-based (the crops are not part of the markdown hash, only their ids and files are in `InputHash`). Space dust stays description-only (`SOLMenuText::GLOSSARY_DESCRIPTION_ONLY`, with a reason). |
+| D48 | **The one-eye XR-4 Help layout is deferred (user, 2026-11-09, after 33f):** on the near-square one-eye view (3840x3744) the menus lay out by the view's height, so the Help content column is narrow, the keyboard diagram paints small (10.78 px a unit, 95 legends clipped) and the glossary description column is about one word wide (section 14.7). This is **deferred to the VR menu presentation work** (a wide quad or a stereo layer, `Docs/ToDo/vr-performance-gate.md`), and **no VR work is scheduled until after procedural terrain**. No VR ticket is added to the roadmap order; D37 (wide screens only) stands. |
+| D49 | **Keyboard diagram contrast: bright text, the area tint kept (user, 2026-11-09, 33g review):** the keys' legends, short labels, "+N" badges, lock marks and modifier carets, and the Other keys strip's names and labels, are drawn in the bright menu text (`SOL::Help::DIAGRAM_KEY_TEXT_COLOR` = `SOL::SolidMenu::TEXT_BRIGHT_COLOR`, was the area colour for labels, the label colour for legends, the text colour for badges and the dim colour for locks); the face tint stays at `DIAGRAM_TINT_ALPHA` 0.28 over `RAISED_COLOR` and the thin area bar is unchanged, so the colour coding is the same; sizes (D26 fonts) and the D38 abbreviations unchanged. Floor `DIAGRAM_MIN_CONTRAST` 3:1 (WCAG large-text / UI level), gated by `SOLTest.KeyDiagram.Contrast.*` on the faces modelled as the sRGB blend Slate draws (matches the rendered pixels). Measured text-to-face ratios (the test's rounded faces, matching the guide's pixels): Flight 3.96, Targeting 3.68, Combat 5.25, Time 4.73, Overlays 4.02, HUD 4.72, Map 4.19, Routes 4.53, Menu 3.69, Demo 3.22; free (dimmed) keys 3.12 (bright legend at `DIAGRAM_FREE_ALPHA` 0.45 over the dimmed face). **Caveat:** small-text AA 4.5:1 is not met on Demo, Menu, Targeting, Flight, Overlays and Map; the hovered key's lifted face is lighter (Flight 3.34, Targeting 3.13, Combat 4.42, Time 3.98, Overlays 3.40, HUD 3.97, Map 3.51, Routes 3.82, Menu 3.13, Demo 2.74: Demo under 3:1 while hovered, reported, tint not changed). The popup's cap is not area-tinted and keeps its colours. |
 
 ## 3. What exists today (checked in code at HEAD `f397b00`)
 
@@ -130,8 +132,8 @@ code, each type's `.h` and `.cpp` side by side.
 | `SOLGlossary` (`Menu/SOLGlossary.h/.cpp`) | Pure namespace, test-first | The Help tabs, the glossary entries resolved from `SOLMenuText::GLOSSARY_ENTRIES` (symbol ids to `ESOLHudSymbol`), the token formatter (constants and `{<BindingId>}` keys), and the coverage tables (entry to the HUD lines, icon categories, cards, steer icons and flight modes it explains) the completeness tests read |
 | `SOLHudSymbols` (`UI/SOLHudSymbols.h/.cpp`) | Pure namespace, test-first | `ESOLHudSymbol` and `Build(symbol, centre, scale, FSOLHudSymbolPrims&)`: a fixed-capacity list of primitives (line, ring, arc, box, dot, dashed line, ellipse, text sample) in HUD palette roles; `AddToBatch` replays them into a `FSOLHudShapeBatch`; the size of a symbol's bounds for a scale. Overlay icons and edge arrows call `SOLOverlayIcons::AddIconShapes` / `AddEdgeArrow`, cards `SOLHoloFrameBuild::BuildCard` (D5: no second copy of any geometry) |
 | `SOLPlayerGuide` (`Menu/SOLPlayerGuide.h/.cpp`) | Pure namespace, test-first | `BuildMarkdown(keys)`: the whole `PLAYER_GUIDE.md` text, deterministic (fixed order, `\n` endings, an input hash in the header); `IsGuideCurrent(fileText, generated)` (line-ending tolerant) |
-| `SSOLKeyCapRow` + `USOLKeyCapRow` (`Menu/SOLKeyCapRow.h/.cpp`) | Slate leaf + `UWidget` wrapper | Paints a cap sequence: each cap one hull box (the shared Small hull brush, `SOLSolidStyle::BrushTint`) with its legend in the menu font, a mouse glyph for mouse buttons, " / " between alternatives and "+" inside a chord; desired size from the pure layout; wraps inside its column. Replaces the Controls key `UTextBlock` **and the key cell of the Settings > Key bindings rows (D20)**; also used in the diagram's detail strip |
-| `SSOLKeyboardDiagram` + `USOLKeyboardDiagram` (`Menu/SOLKeyboardDiagram.h/.cpp`) | Slate leaf + `UWidget` wrapper | Paints every layout key as a cap (hull brush, area fill, legend, short label), the mouse, the area legend and the detail strip of the hovered key; hover from `OnMouseMove` through `SOLKeyboardLayout::KeyAt`; rebuilt from `SOLKeyDiagram` only on show and on a rebind (D13) |
+| `SSOLKeyCapRow` + `USOLKeyCapRow` (`Menu/SOLKeyCapRow.h/.cpp`) | Slate leaf + `UWidget` wrapper | Paints a cap sequence: each cap one hull box (the shared Small hull brush, `SOLSolidStyle::BrushTint`) with its legend in the menu font, a mouse glyph for mouse buttons, " / " between alternatives and "+" inside a chord; desired size from the pure layout; wraps inside its column. Replaces the Controls key `UTextBlock` **and the key cell of the Settings > Key bindings rows (D20)**. Its cap painter (`SOLKeyCapPaint`, `Menu/SOLKeyCapPaint.h/.cpp`, 33g) is shared with the diagram's D45 hover popup, so a cap looks the same everywhere (D3) |
+| `SSOLKeyboardDiagram` + `USOLKeyboardDiagram` (`Menu/SOLKeyboardDiagram.h/.cpp`) | Slate leaf + `UWidget` wrapper | Paints every layout key as a cap (hull brush, area fill, legend, short label), the mouse, the area legend and the D45 hover popup of the hovered key (its cap drawn by the shared `SOLKeyCapPaint` painter); hover from `OnMouseMove` through `SOLKeyboardLayout::KeyAt`; rebuilt from `SOLKeyDiagram` only on show and on a rebind (D13) |
 | `USOLHudSymbolView` (`Menu/SOLHudSymbolView.h/.cpp`) | `UWidget` wrapping a small `SSOLHudShapeLayer` | Draws one glossary entry's symbols in a recess box with the HUD shape material; the batch is built once (and again only on a size or strength change) and retained |
 | `SSOLHudShapeLayer` (changed) | Slate leaf | Gains a **retain mode** (`SetRetainBatch(true)`): a retained batch paints every frame until it is reset, instead of only in the frame it was stamped. The HUD's behaviour is unchanged (the mode defaults off) |
 | `ASOLFlightHud` (changed) | `AHUD` | `DrawReticle`, `DrawJoystick`, `DrawSteerIcon`, `DrawVelocityMarkers`, the target bracket and edge arrow, the radar contact marks and the G meter marks build their shapes through `SOLHudSymbols` and replay them through `GlowLine` / `GlowRing` / `GlowBox` (batch or Canvas): same pixels, one source of geometry. `ESOLHudLine` moves out of the class into `UI/SOLHudLines.h` (namespace-scope `enum class ESOLHudLine`, unchanged values) so the coverage test can name it |
@@ -160,7 +162,7 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
 
   | Group (caption) | Tab label | Heading / content |
   |---|---|---|
-  | KEYS | Keyboard | Area legend, the keyboard and mouse diagram, the "Other keys" strip, the detail strip, a line pointing to Controls for the full list |
+  | KEYS | Keyboard | Area legend, the hover hint, the keyboard and mouse diagram with the hovered key's popup (D45), the "Other keys" strip, a line pointing to Controls for the full list |
   | HUD GLOSSARY | Flight HUD | "Flight HUD": glossary rows (section 8.4) |
   | | Targets | "Targets and radar": glossary rows |
   | | Overlays | "Overlays and route": glossary rows |
@@ -250,7 +252,8 @@ smokes need them (the diagram's assignment count, the hovered key, a symbol view
   "Prev", "Clear", "Match", "Lock", "Fire", "Drop", "Warp -", "Warp +", "Warp 1x", "Overlay", "Orbits", "Ov menu",
   "Profile", "Radar -", "Radar +", "Radar A", "Map", "Jump map", "Resume", "Routes") and `FIXED_KEY_SHORT_LABELS` for
   the fixed rows' keys ("Jump", "Move", "Patrol", "Go", "Del rte", "Menu", "Stats", ...). Final wording is part of D26.
-- **Hover (D23).** Hovering a key (the mouse; the Help page has no keyboard focus inside the diagram, SDD 46 D6) lifts
+- **Hover (D23; the strip is superseded by D45 since 33e-iii: the detail is a popup next to the hovered key, its cap
+  drawn by the shared `SOLKeyCapPaint` painter since 33g, and a one-line hint stays above the diagram).** Hovering a key (the mouse; the Help page has no keyboard focus inside the diagram, SDD 46 D6) lifts
   it like a hovered button (the amber edge and lift, `HOVER_RAMP_S` 0.12 s, instant at strength 0) and fills the
   **detail strip**, a fixed strip under the diagram (no floating box): the key as a cap row,
   then one line per assignment: its chord ("Alt+"), its full action text (`FormatControlAction` of the row) and its
@@ -744,8 +747,9 @@ Keyboard `help-P` checks fail in all three runs (34 / 38): the nearly square vie
 so the Help content column is narrow, the diagram paints at 10.78 px a unit with 95 legends clipped and the hover
 hint cut off, and on the glossary tabs the description column is about one word wide (the tab title and longer words
 clipped, fewer rows: 39 draws). The popup itself stays readable and inside the shell. D37 targets wide screens only
-(1280x720, 1920x1080, 3840x2160), so this is outside the design; it is recorded in `Docs/TECH_DEBT.md` and left to
-the user with the VR menu presentation (a wide quad or stereo layer, `Docs/ToDo/vr-performance-gate.md`). The one-eye
+(1280x720, 1920x1080, 3840x2160), so this is outside the design; it is recorded in `Docs/TECH_DEBT.md`. **The user
+deferred it (D48) to the VR menu presentation work (a wide quad or stereo layer, `Docs/ToDo/vr-performance-gate.md`),
+and no VR work is scheduled until after procedural terrain.** The one-eye
 Help costs above are therefore those of the narrow layout. 33c's one-eye extrapolation for the diagram (SDD 14.3,
 about 0.27 ms) is replaced by the measured +0.041 ms over Settings (+0.110 ms with the popup).
 
@@ -802,6 +806,10 @@ with the `main-start` item.
 | R8 | Writing into `Docs/` from the game | Flag-only, non-shipping, paths from `SOL::Paths`, logged; nothing writes without the flag |
 
 ## 18. Open questions
+
+**33g (2026-11-09):** the one-eye Help layout that 33f left to the user is answered: deferred to the VR menu
+presentation work, no VR work before procedural terrain (D48). The keyboard diagram's contrast is answered too:
+bright text over the kept area tint, a 3:1 floor (D49). None open.
 
 **33e-iv (2026-11-09):** two TECH_DEBT fixes from 33e-ii, no design question: none open. The 20 Help images change
 once (the held scene shows Earth at the pinned date) and stay byte-identical across runs from then on.
@@ -905,7 +913,7 @@ were fixed but those two.
 **33c (2026-11-08, commit `Issue #33: Part 33c - keyboard diagram`).** `Menu/SOLKeyboardDiagram` (`SSOLKeyboardDiagram`
 leaf, `USOLKeyboardDiagram` wrapper, section 7 as built): the live diagram, not yet on a page (the Help page is
 33d-ii). Pure additions: `SOLKeyDiagram` D32 revised (`ChordModifierKeys`, per-key chord ranges, `bModifier`,
-`Alternative`, `DetailAssignments`, `DetailLine`, `MaxDetailCount`, `LegendAbbreviation`), `SOLKeyboardLayout`
+`Alternative`, `DetailAssignments`, `DetailLine`, `MaxDetailCount` (dead after D45, removed in 33g), `LegendAbbreviation`), `SOLKeyboardLayout`
 (`ESOLMousePlacement::Stacked`, the new `FitToWidth`, `LayoutPanel(width, other, unbound, detailLines)`,
 `LegendItemRect`, `FitKeyText`), `SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS`, the `SOL::Help` diagram constants
 (section 11). Decisions taken while building: D34-D38 (section 2). Verification-only `USOLKeyboardDiagramSmokePage`
@@ -966,7 +974,7 @@ done. `-SOLSmokeJump` `g3-orientation-rebase` fails in some runs before and afte
 page and its HUD glossary, in both menus. Tests first, by a separate opus/high author from the contract (no production
 code shown): `SolidPageTabsTest` (Help, captions, the rail with captions; `Tabs.Count` 3 to 4), `SOLMenuStateTest`
 (`TabOrder`, `EntryLists`, `HelpEscape`), `SolidPauseTest`, `SolidScrollTest` (`EightEntryStack`) and the new
-`GlossaryLayoutTest` (14). Red on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, Glossary.Layout 13/14
+`GlossaryLayoutTest` (14; `SOLTest.GlossaryLayout.*` since 33g). Red on stubs: SolidPages 12/23, MenuState 3/28, SolidPause 3/15, GlossaryLayout 13/14
 (`EightEntryStack` was already green, the 8-entry stack needs no new function), then green.
 
 As built:
@@ -1011,8 +1019,8 @@ Play / Play again / Play a third time "cursor 1" failures, which depend on windo
 44/6 was logged on 2026-11-04), are already in `Docs/TECH_DEBT.md`, and the Play phases click no entry. The player's
 `GameUserSettings.ini` is byte-identical.
 
-Deviations and notes: the Help page lives in `USOLReadOnlyPageWidget` rather than new `SOLMenuContent::BuildHelpPage`
-functions; the per-view clip means about 4 draws per view (50-64 per glossary tab) against the section 8.3 estimate
+Deviations and notes: the Help page is a `USOLReadOnlyPageWidget` built and refreshed by `SOLMenuContent::BuildHelpPage`,
+`FillHelpTabs` and `RefreshHelpPage` (corrected in 33g; the page widget owns the parts they fill); the per-view clip means about 4 draws per view (50-64 per glossary tab) against the section 8.3 estimate
 (section 14.4); the shared paint scratch is lazily sized (0 until Help opens). The adversarial review (fresh opus,
 xhigh) found 1 must-fix (these docs) and 6 should-fix and nits, all fixed: S1 the glow pad unscaled, S2 the memory
 (lazy scratch), S3 the paint-allocation claim corrected and moved to `Docs/TECH_DEBT.md` (`MakeCustomVerts` copies the
@@ -1242,7 +1250,7 @@ As built:
   per channel and 5 pixels above 8). A run whose window cannot take the focus (launched from a background job while
   another application is in front) now fails with "no main menu at 1920x1080 in front ... window active 0" instead
   of writing the unfocused variant (about 1,600 pixels differ: no cursor, the column labels a pixel off).
-- **Tests.** `SOLTest.PlayerGuide.ImageDiff.*` (12 test-first by a separate author, plus `ReviewCases`) and
+- **Tests.** `SOLTest.PlayerGuideImageDiff.*` (`SOLTest.PlayerGuide.ImageDiff.*` until 33g; 12 test-first by a separate author, plus `ReviewCases`) and
   `SOLTest.SolidMenuKit.MenuClock`. Full suite 1757 / 1757. Smokes: `-SOLSmokeSolidMenu` 275 / 275,
   `-SOLSmokeOverlay` 34 / 34, `-SOLSmokeHud` 24 / 24 at both sizes; `-SOLSmokeSolidMenuProfile` 22 / 22 passes, 23 / 23 checks;
   `-SOLSmokeHoloMenuProfile` 5 / 5 passes, 12 / 12 checks; `GameUserSettings.ini` unchanged (restored after the
@@ -1261,7 +1269,7 @@ the popup, the four glossary tabs) with a `help-P` check each (the D38 legend an
 tab, also on the default run's P16 / P19); a view run is 21 passes, 38 checks. Three runs at 3840x2160 and three at
 one XR-4 eye (3840x3744); the two-eye run skipped (D21, O8). Verdict PASS (menu share and the per-menu Settings
 baseline); the 4K frame stays scene-bound (`proxy=MISS`, project-level VR work). At one eye the Help layout is the
-narrow one (95 legends clipped, glossary text clipped; outside D37, `Docs/TECH_DEBT.md`, left to the user).
+narrow one (95 legends clipped, glossary text clipped; outside D37, `Docs/TECH_DEBT.md`; deferred by the user, D48).
 No schema change (`SAVE_VERSION` 11, `KEY_BINDING_LAYOUT_VERSION` 10); no pure logic changed, so no new unit test (the
 smoke's check count is static-asserted). Full suite 1757 / 1757. Smokes: `-SOLSmokeSolidMenu` 275 / 275,
 `-SOLSmokeSolidMenuProfile` default run 22 / 22 passes and 23 / 23 checks, `-SOLSmokeHoloMenu` 86 / 86 at 1280x720 and
@@ -1271,3 +1279,30 @@ after the 1920x1080 runs). The review (fresh opus/xhigh, report only) found noth
 comments, a missing separator and verb-first helper names, `mDiagramKey` reset for every Help pass and a guard that no
 pass mixes the 33c test page with a Help tab (all applied); the plan's `pause-controls` / `pause-settings-keys` view
 passes and a default `pause-help-keys` pass were left out by the part's scope (`Docs/TECH_DEBT.md`).
+
+**33g (2026-11-09, done; commit `Issue #33: Part 33g - final review fixes`).** The fixes of a fresh
+adversarial review of the whole ticket, and D48. Player text (`SOLMenuText::GLOSSARY_ENTRIES`, `Docs/GAME_MECHANICS.md`
+8.3) made true against the code: the flight mode label is the speed card's last line, under the speed bar, with BOOST
+or "boost off" beside it; hovering an overlay icon only turns it orange with a highlight ring and {Fire} opens the radial
+menu (the Planet icon row too); the icon fade start is a radius; the speed card names the live frame-lock key; the
+Chase Down ticks show only during a chase; the target's name and distance sit under the bracket; the route line's move
+and patrol readings; waypoints against the level plane through the ship; contacts past the range pulled in to its edge
+and dimmer. Code: one shared key cap painter (`Menu/SOLKeyCapPaint.h/.cpp`: the cap, the text, box, outline, shape and
+measure helpers) used by `SSOLKeyCapRow` and the diagram's popup cap, which so gains the wheel outline the row draws
+for non-wheel mouse caps (D3); `SOLKeyDiagram::MaxDetailCount` removed (dead since D45) and the "strip" comments
+reworded to the popup; the diagram's hover ramp on the menu clock (`USOLSolidMenuSubsystem::GetClockS`, as every solid
+widget since 33e-iv); `SOLSettingsRules::IsSmokeSlotRun` (the pure smoke-slot check `USOLSettingsSubsystem` uses; the
+two writer switches count only outside Shipping, where the writers exist; the smoke runners ship in every build, so
+their switches count everywhere) and the menu's `-SOLWritePlayerGuide` read guarded by `!UE_BUILD_SHIPPING` (the sim
+clock's crop-run read already was); wrong decision references and the guide writer's swap comment (not all-or-nothing)
+corrected. Tests renamed by the test author: `SOLTest.GlossaryLayout.*` (was `SOLTest.Glossary.Layout.*`) and
+`SOLTest.PlayerGuideImageDiff.*` (was `SOLTest.PlayerGuide.ImageDiff.*`); new `SOLTest.MenuContent.RefreshHelpPage`,
+`SOLTest.SettingsRules.IsSmokeSlotRun`, `SOLTest.SolidScroll.Stack.ButtonTops` and extended cases. The review's
+accepted debt is in `Docs/TECH_DEBT.md`. D49 (user): the diagram's key texts and marks and the Other keys strip's texts in the bright menu
+text over the kept 0.28 area tint (measured ratios in D49; worst idle face Demo 3.22, free keys 3.12, hovered Demo 2.74),
+pure helpers `SOLKeyDiagram::BlendSrgb` / `ContrastRatio` / `AssignedFaceColor` / `FreeFaceColor` / `FreeLegendColor`. A short review of the new code added null-brush guards to the cap painter, a
+clock that went back counting as settled in the hover ramp and named WCAG constants (`SOLTest.KeyCapPaint.NullInputs`,
+`SOLTest.KeyboardDiagram.MenuClockRamp`). Verified: suite 1770 / 0; the guide regenerated twice, byte-identical;
+smokes SolidMenu 275/275, HoloMenu 86/86 at 1280x720 and 1920x1080, Overlay 34/34, Hud 24/24 at both sizes,
+HoloMenuProfile 5/5 PASS; SolidMenuProfile three-run medians all PASS (one noisy P15 run failed its own gate), worst
+over the Settings baseline +0.113 ms CPU (P13) / +0.070 ms GPU (P13), under the 0.2 / 0.3 ms budget.

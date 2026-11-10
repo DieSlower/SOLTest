@@ -142,7 +142,7 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffIdenticalTest, "SOLTest.PlayerGuide.ImageDiff.Identical",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffIdenticalTest, "SOLTest.PlayerGuideImageDiff.Identical",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -168,7 +168,7 @@ bool FSOLPlayerGuideImageDiffIdenticalTest::RunTest(const FString& /*parameters*
 
 //////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffNotComparableTest,
-    "SOLTest.PlayerGuide.ImageDiff.NotComparable",
+    "SOLTest.PlayerGuideImageDiff.NotComparable",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -225,7 +225,7 @@ bool FSOLPlayerGuideImageDiffNotComparableTest::RunTest(const FString& /*paramet
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffAlphaTest, "SOLTest.PlayerGuide.ImageDiff.AlphaIgnored",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffAlphaTest, "SOLTest.PlayerGuideImageDiff.AlphaIgnored",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -247,7 +247,7 @@ bool FSOLPlayerGuideImageDiffAlphaTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffChannelTest, "SOLTest.PlayerGuide.ImageDiff.LargestChannel",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffChannelTest, "SOLTest.PlayerGuideImageDiff.LargestChannel",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -280,7 +280,7 @@ bool FSOLPlayerGuideImageDiffChannelTest::RunTest(const FString& /*parameters*/)
 
 //////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffThresholdTest,
-    "SOLTest.PlayerGuide.ImageDiff.NoiseDeltaBoundary",
+    "SOLTest.PlayerGuideImageDiff.NoiseDeltaBoundary",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -312,7 +312,7 @@ bool FSOLPlayerGuideImageDiffThresholdTest::RunTest(const FString& /*parameters*
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffShiftTest, "SOLTest.PlayerGuide.ImageDiff.Shift",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffShiftTest, "SOLTest.PlayerGuideImageDiff.Shift",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -374,7 +374,7 @@ bool FSOLPlayerGuideImageDiffShiftTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffBorderTest, "SOLTest.PlayerGuide.ImageDiff.BorderClamp",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffBorderTest, "SOLTest.PlayerGuideImageDiff.BorderClamp",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -427,7 +427,7 @@ bool FSOLPlayerGuideImageDiffBorderTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffDirectionTest, "SOLTest.PlayerGuide.ImageDiff.FreshToOld",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffDirectionTest, "SOLTest.PlayerGuideImageDiff.FreshToOld",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -459,7 +459,7 @@ bool FSOLPlayerGuideImageDiffDirectionTest::RunTest(const FString& /*parameters*
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffKeepTest, "SOLTest.PlayerGuide.ImageDiff.KeepLimits",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffKeepTest, "SOLTest.PlayerGuideImageDiff.KeepLimits",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -492,7 +492,7 @@ bool FSOLPlayerGuideImageDiffKeepTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffDecisionTest, "SOLTest.PlayerGuide.ImageDiff.KeepOrReplace",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffDecisionTest, "SOLTest.PlayerGuideImageDiff.KeepOrReplace",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -546,7 +546,7 @@ bool FSOLPlayerGuideImageDiffDecisionTest::RunTest(const FString& /*parameters*/
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffSettingsTest, "SOLTest.PlayerGuide.ImageDiff.Settings",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffSettingsTest, "SOLTest.PlayerGuideImageDiff.Settings",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -582,7 +582,7 @@ bool FSOLPlayerGuideImageDiffSettingsTest::RunTest(const FString& /*parameters*/
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffFileTest, "SOLTest.PlayerGuide.ImageDiff.CompareWithFile",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffFileTest, "SOLTest.PlayerGuideImageDiff.CompareWithFile",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
@@ -642,7 +642,7 @@ bool FSOLPlayerGuideImageDiffFileTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffReviewTest, "SOLTest.PlayerGuide.ImageDiff.ReviewCases",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImageDiffReviewTest, "SOLTest.PlayerGuideImageDiff.ReviewCases",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////

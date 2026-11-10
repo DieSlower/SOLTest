@@ -20,6 +20,7 @@
 #include "SOLKeyboardDiagram.generated.h"
 
 class UMaterialInstanceDynamic;
+class USOLSolidMenuSubsystem;
 
 class FActiveTimerHandle;
 class FSlateFontMeasure;
@@ -87,6 +88,17 @@ public:
 
     // Sets what a mouse move over the leaf (the local point, menu units) and a mouse leave call
     void SetHoverHandlers(TFunction<void(const FVector2f&)> onMove, TFunction<void()> onLeave);
+
+    // Sets the subsystem whose menu clock (USOLSolidMenuSubsystem::GetClockS) the hover ramp runs on, as every solid
+    // widget's animation does (weakly held; the real application time without one)
+    void SetClockSource(const USOLSolidMenuSubsystem* source);
+
+    // Returns whether a hover ramp is still in progress at a time (a time before the last hover change counts as
+    // settled; public for verification)
+    bool IsRamping(double nowS) const;
+
+    // Returns the menu clock now (the clock source's, else the real application time; public for verification)
+    double GetNowS() const;
 
     // Returns whether the last paint drew every layout key's hull with the keys' own hull material (D38: set and not
     // the popup cap's), every legend shaped at the paint scale and the hint (verification)
@@ -201,9 +213,6 @@ private:
     // Returns a key's hover look now (the ramp of the gaining or the losing key; the resting look otherwise)
     FSOLSolidButtonLook LookOf(int32 key, double nowS) const;
 
-    // Returns whether a hover ramp is still in progress at a time
-    bool IsRamping(double nowS) const;
-
     // Keeps repainting while the hover ramp runs; stops when it settles
     EActiveTimerReturnType HandleRampTimer(double currentTime, float deltaTime);
 
@@ -215,7 +224,7 @@ private:
     void PaintSections(const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId,
         const FLinearColor& styleTint, ESlateDrawEffect effects) const;
 
-    // Paints the hover popup's cap of the hovered key (a 33b key cap: the Small hull, the mouse glyph or the legend)
+    // Paints the hover popup's cap of the hovered key with the shared cap painter (SOLKeyCapPaint::PaintCap)
     void PaintDetailCap(const FVector2f& topLeft, const FGeometry& geometry, FSlateWindowElementList& out,
         int32 layerId, const FLinearColor& styleTint, ESlateDrawEffect effects) const;
 
@@ -268,8 +277,9 @@ private:
     int32 mLeavingKey = INDEX_NONE;
     FSOLSolidButtonLook mHoveredFrom;
     FSOLSolidButtonLook mLeavingFrom;
-    double mHoverChangeS = -1.0e9;
+    double mHoverChangeS = -1.0e9;                  // On the menu clock (GetNowS)
     float mStrength = 1.0f;
+    TWeakObjectPtr<const USOLSolidMenuSubsystem> mClockSource;  // The menu clock's owner (SetClockSource)
     TSharedPtr<FActiveTimerHandle> mRampTimer;
 
     // The shaped texts, kept between paints
@@ -375,7 +385,7 @@ public:
 
     // Sets the layout width (menu units) the panel is laid out in (LayoutPanel with the model's Overflow / Unbound
     // shown); a change within DIAGRAM_WIDTH_TOLERANCE keeps the panel. Not a per-frame call: the owner calls it when
-    // its width changes (a relayout re-wraps every key's strip lines)
+    // its width changes (a relayout refits every key's legend when the key unit changes; the popup's wrap is fixed)
     void SetLayoutWidth(float width);
 
     // Returns the layout width set

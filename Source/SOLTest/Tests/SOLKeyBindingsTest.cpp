@@ -52,6 +52,44 @@ bool FSOLKeyBindingsTableTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsFindByIdViewTest, "SOLTest.KeyBindings.FindByIdUnterminatedView",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// FindById reads only the view's characters: a view into a larger string (not null-terminated at its end, as a cell's
+// '@' alternative is) finds its id, case-insensitively, and never matches the longer id the characters past its end
+// would spell
+bool FSOLKeyBindingsFindByIdViewTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLKeyBindings;
+    const int32 openMap = static_cast<int32>(EBinding::OpenMap);
+    const int32 openMapJump = static_cast<int32>(EBinding::OpenMapJump);
+
+    // An alternative inside a cell: the characters after the view are '|' and the next alternative
+    const FStringView cell = TEXT("@Fire|@Boost");
+    TestEqual(TEXT("'Fire' inside a cell"), FindById(cell.Mid(1, 4)), KEYBINDINGS_FIRE);
+    TestEqual(TEXT("'Boost' at the cell's end"), FindById(cell.Mid(7)), KEYBINDINGS_BOOST);
+
+    // A prefix of a longer id finds the shorter id, not the longer one spelled past the view's end
+    const FStringView longer = TEXT("OpenMapJump");
+    TestEqual(TEXT("the whole string is OpenMapJump"), FindById(longer), openMapJump);
+    TestEqual(TEXT("its first 7 characters are OpenMap"), FindById(longer.Left(7)), openMap);
+    TestEqual(TEXT("its first 4 characters are no id"), FindById(longer.Left(4)), static_cast<int32>(INDEX_NONE));
+
+    // Case-insensitive inside a view, and an id followed by more letters
+    const FStringView padded = TEXT("xxBOOSTyy");
+    TestEqual(TEXT("'BOOST' in the middle of a string"), FindById(padded.Mid(2, 5)), KEYBINDINGS_BOOST);
+    TestEqual(TEXT("'BOOSTyy' is no id"), FindById(padded.Mid(2)), static_cast<int32>(INDEX_NONE));
+    const FStringView fire = TEXT("FireRate");
+    TestEqual(TEXT("'Fire' of 'FireRate'"), FindById(fire.Left(4)), KEYBINDINGS_FIRE);
+    TestEqual(TEXT("'Fir' is no id"), FindById(fire.Left(3)), static_cast<int32>(INDEX_NONE));
+
+    // An empty view of a non-empty string is no id
+    TestEqual(TEXT("an empty view"), FindById(fire.Left(0)), static_cast<int32>(INDEX_NONE));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyBindingsBindableTest, "SOLTest.KeyBindings.Bindable",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

@@ -3224,8 +3224,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitMenuClockTest, "SOLTest.SolidMenuKi
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// (33e-iv) The menu clock: the real time without a pin; a pin below the clock is raised to it; held while pinned;
-// after the release it runs on from the pinned time (never backwards); a release without a pin changes nothing
+// (33e-iv) The menu clock: the real time without a pin (and it advances); a pin below the clock is raised to it; held
+// exactly while pinned, across a sleep; after the release it runs on from the pinned time (never backwards, never
+// faster than the real time) and advances again; a release without a pin changes nothing. No time tolerance: the
+// clock is bracketed by real-time reads taken around it (the run-on bounds allow only double rounding), held values
+// compare exactly, and a short sleep makes "advances" strict
 bool FSOLSolidKitMenuClockTest::RunTest(const FString& /*parameters*/)
 {
     USOLSolidMenuSubsystem* const clock = NewObject<USOLSolidMenuSubsystem>();
@@ -3233,27 +3236,55 @@ bool FSOLSolidKitMenuClockTest::RunTest(const FString& /*parameters*/)
     {
         return false;
     }
-    constexpr double tolerance = 0.5;     // Seconds a slow test machine may take between two reads
-    const double before = FPlatformTime::Seconds();
-    TestTrue(TEXT("Unpinned, the clock is the real time"), FMath::Abs(clock->GetClockS() - before) < tolerance);
+    constexpr float sleepS = 0.02f;     // Long enough for FPlatformTime::Seconds to move on any machine
+    constexpr double roundingS = 1.0e-9; // Double rounding of (now + offset) - pin, far below any real interval
+
+    // Unpinned, the clock is the real time: bracketed by two real-time reads, and it advances across a sleep
+    double startS = FPlatformTime::Seconds();
+    const double unpinned = clock->GetClockS();
+    double endS = FPlatformTime::Seconds();
+    TestTrue(TEXT("Unpinned, the clock is the real time"), unpinned >= startS && unpinned <= endS);
+    FPlatformProcess::Sleep(sleepS);
+    TestTrue(TEXT("Unpinned, the clock advances"), clock->GetClockS() > unpinned);
+
+    // A release without a pin leaves the clock on the real time
     clock->ReleaseClock();
-    TestTrue(TEXT("A release without a pin changes nothing"), FMath::Abs(clock->GetClockS() - before) < tolerance);
+    startS = FPlatformTime::Seconds();
+    const double unreleased = clock->GetClockS();
+    endS = FPlatformTime::Seconds();
+    TestTrue(TEXT("A release without a pin changes nothing"), unreleased >= startS && unreleased <= endS);
 
-    // A pin in the past is raised to the clock now
-    clock->PinClock(before - 100.0);
+    // A pin in the past is raised to the clock at the pin
+    startS = FPlatformTime::Seconds();
+    clock->PinClock(startS - 100.0);
+    endS = FPlatformTime::Seconds();
     const double raised = clock->GetClockS();
-    TestTrue(TEXT("A pin below the clock is raised to it"), raised >= before);
+    TestTrue(TEXT("A pin below the clock is raised to it"), raised >= startS && raised <= endS);
+    FPlatformProcess::Sleep(sleepS);
+    TestTrue(TEXT("A raised pin holds exactly"), clock->GetClockS() == raised);
 
-    // A pin ahead holds still, then the clock runs on from it
-    const double ahead = clock->GetClockS() + 50.0;
+    // A pin ahead holds exactly across a sleep
+    const double ahead = raised + 50.0;
     clock->PinClock(ahead);
-    TestEqual(TEXT("Pinned, the clock reads the pin"), clock->GetClockS(), ahead);
-    TestEqual(TEXT("Pinned, the clock holds"), clock->GetClockS(), ahead);
+    TestTrue(TEXT("Pinned, the clock reads the pin"), clock->GetClockS() == ahead);
+    FPlatformProcess::Sleep(sleepS);
+    TestTrue(TEXT("Pinned, the clock holds across a sleep"), clock->GetClockS() == ahead);
+
+    // Released, it runs on from the pin: at least the pin, at most the pin plus the real time since the release
+    startS = FPlatformTime::Seconds();
     clock->ReleaseClock();
     const double after = clock->GetClockS();
-    TestTrue(TEXT("Released, the clock runs on from the pin (never backwards)"), after >= ahead
-        && after < ahead + tolerance);
-    TestTrue(TEXT("Released, the clock keeps running"), clock->GetClockS() >= after);
+    endS = FPlatformTime::Seconds();
+    TestTrue(TEXT("Released, the clock runs on from the pin (never backwards)"),
+        after >= ahead - roundingS);
+    TestTrue(TEXT("Released, the clock runs no faster than the real time"), after - ahead <= endS - startS + roundingS);
+    FPlatformProcess::Sleep(sleepS);
+    TestTrue(TEXT("Released, the clock keeps running"), clock->GetClockS() > after);
+
+    // A pin below the run-on clock is raised to it, so the clock never steps back to the real time
+    clock->PinClock(startS);
+    TestTrue(TEXT("A pin below the run-on clock is raised to it"), clock->GetClockS() > after);
+    clock->ReleaseClock();
     return true;
 }
 

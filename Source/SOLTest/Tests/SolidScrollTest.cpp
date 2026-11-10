@@ -574,6 +574,115 @@ bool FSOLSolidScrollStackCapTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollStackButtonTopsTest, "SOLTest.SolidScroll.Stack.ButtonTops",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// (33d-ii) SetButtonTops gives each button its own top (an empty view, or an index past the given tops, falls back to
+// StackItemTop with no padding); a captioned tab rail sets them to TabTop - SETTINGS_TAB_RAIL_PADDING, one caption per
+// non-empty caption in tab order (caption count and caption tab), its stack holding a caption item above each
+// captioned tab; a caption-less rail keeps no tops. ShowItem moves nothing before the first layout (the headless run
+// has none: no view height) or for an index outside the buttons, the captioned rail's included
+bool FSOLSolidScrollStackButtonTopsTest::RunTest(const FString& /*parameters*/)
+{
+    UWidgetTree* const tree = NewObject<UWidgetTree>(GetTransientPackage());
+
+    // A plain stack of four items: the equal items' tops
+    FSOLSolidScrollStack stack;
+    stack.Build(*tree, SOLIDSCROLLTEST_ITEM, SOLIDSCROLLTEST_GAP, 0.0f);
+    for (int32 index = 0; index < 4; ++index)
+    {
+        stack.AddItem(tree->ConstructWidget<UTextBlock>(UTextBlock::StaticClass()));
+    }
+    for (int32 index = 0; index < 4; ++index)
+    {
+        TestEqual(FString::Printf(TEXT("no tops: button %d at its item top"), index), stack.ButtonTop(index),
+            SOLSolidScroll::StackItemTop(index, SOLIDSCROLLTEST_ITEM, SOLIDSCROLLTEST_GAP, 0.0f),
+            SOLIDSCROLLTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("no tops: a negative index reads the first top"), stack.ButtonTop(-3), 0.0f,
+        SOLIDSCROLLTEST_TOLERANCE);
+
+    // Given tops win; past them the item tops come back; an empty view clears them
+    const float tops[] = { 0.0f, 80.0f, 140.0f };
+    stack.SetButtonTops(tops);
+    TestEqual(TEXT("three tops kept"), stack.ButtonTops.Num(), 3);
+    for (int32 index = 0; index < 3; ++index)
+    {
+        TestEqual(FString::Printf(TEXT("given tops: button %d"), index), stack.ButtonTop(index), tops[index],
+            SOLIDSCROLLTEST_TOLERANCE);
+    }
+    TestEqual(TEXT("given tops: past them, the item top"), stack.ButtonTop(3),
+        SOLSolidScroll::StackItemTop(3, SOLIDSCROLLTEST_ITEM, SOLIDSCROLLTEST_GAP, 0.0f), SOLIDSCROLLTEST_TOLERANCE);
+    const float shorter[] = { 12.0f };
+    stack.SetButtonTops(shorter);
+    TestEqual(TEXT("new tops replace the old"), stack.ButtonTops.Num(), 1);
+    TestEqual(TEXT("new tops: button 0"), stack.ButtonTop(0), 12.0f, SOLIDSCROLLTEST_TOLERANCE);
+    TestEqual(TEXT("new tops: button 1 back on its item top"), stack.ButtonTop(1),
+        SOLSolidScroll::StackItemTop(1, SOLIDSCROLLTEST_ITEM, SOLIDSCROLLTEST_GAP, 0.0f), SOLIDSCROLLTEST_TOLERANCE);
+    stack.SetButtonTops(TConstArrayView<float>());
+    TestEqual(TEXT("an empty view clears the tops"), stack.ButtonTops.Num(), 0);
+
+    // ShowItem before any layout: nothing moves, whatever the index
+    const int32 showIndices[] = { 0, 3, 4, -1, MAX_int32 };
+    for (const int32 index : showIndices)
+    {
+        stack.ShowItem(index);
+        TestEqual(FString::Printf(TEXT("before layout: ShowItem(%d) keeps the top"), index), stack.GetScrollOffset(),
+            0.0f, SOLIDSCROLLTEST_TOLERANCE);
+    }
+
+    // A captioned rail of five tabs, captions above tabs 0 and 2
+    const TArray<FString> labels = { TEXT("A"), TEXT("B"), TEXT("C"), TEXT("D"), TEXT("E") };
+    const TArray<FString> captions = { TEXT("KEYS"), FString(), TEXT("GLOSSARY"), FString(), FString() };
+    const TArray<bool> captioned = { true, false, true, false, false };
+    FSOLSolidTabRail rail;
+    TestNotNull(TEXT("captioned rail: built"), rail.Build(*tree, labels, FSOLMenuButtonClicked(), captions));
+    TestEqual(TEXT("captioned rail: two captions"), rail.GetCaptionCount(), 2);
+    TestEqual(TEXT("captioned rail: caption 0 above tab 0"), rail.GetCaptionTab(0), 0);
+    TestEqual(TEXT("captioned rail: caption 1 above tab 2"), rail.GetCaptionTab(1), 2);
+    TestEqual(TEXT("captioned rail: no caption 2"), rail.GetCaptionTab(2), static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("captioned rail: no caption -1"), rail.GetCaptionTab(-1), static_cast<int32>(INDEX_NONE));
+    if (TestNotNull(TEXT("captioned rail: caption 1's text block"), rail.GetCaption(1)))
+    {
+        TestEqual(TEXT("captioned rail: caption 1's text"), rail.GetCaption(1)->GetText().ToString(),
+            FString(TEXT("GLOSSARY")));
+    }
+    TestNull(TEXT("captioned rail: no caption 2 text block"), rail.GetCaption(2));
+    TestEqual(TEXT("captioned rail: five buttons"), rail.Buttons.Num(), 5);
+    if (TestNotNull(TEXT("captioned rail: its item box"), rail.Stack.Items.Get()))
+    {
+        TestEqual(TEXT("captioned rail: five tabs and two caption items"), rail.Stack.Items->GetChildrenCount(), 7);
+    }
+    TestEqual(TEXT("captioned rail: one top per button"), rail.Stack.ButtonTops.Num(), 5);
+    for (int32 index = 0; index < labels.Num(); ++index)
+    {
+        TestEqual(FString::Printf(TEXT("captioned rail: tab %d top"), index), rail.Stack.ButtonTop(index),
+            SOLSolidTabRail::TabTop(index, captioned) - SOL::SolidMenu::SETTINGS_TAB_RAIL_PADDING,
+            SOLIDSCROLLTEST_TOLERANCE);
+    }
+    TestTrue(TEXT("captioned rail: a caption pushes tab 2 below the equal items' top"), rail.Stack.ButtonTop(2)
+        > SOLSolidScroll::StackItemTop(2, SOL::MenuStyle::TAB_HEIGHT, SOL::MenuStyle::BUTTON_GAP, 0.0f));
+
+    // ShowItem on the captioned rail before any layout: nothing moves, a caption item's index (6) included
+    const int32 railIndices[] = { 0, 4, 5, 6, -1 };
+    for (const int32 index : railIndices)
+    {
+        rail.Stack.ShowItem(index);
+        TestEqual(FString::Printf(TEXT("captioned rail before layout: ShowItem(%d) keeps the top"), index),
+            rail.GetScrollOffset(), 0.0f, SOLIDSCROLLTEST_TOLERANCE);
+    }
+
+    // A caption-less rail keeps no tops and no captions
+    FSOLSolidTabRail plainRail;
+    plainRail.Build(*tree, labels, FSOLMenuButtonClicked());
+    TestEqual(TEXT("plain rail: no captions"), plainRail.GetCaptionCount(), 0);
+    TestEqual(TEXT("plain rail: no tops"), plainRail.Stack.ButtonTops.Num(), 0);
+    TestEqual(TEXT("plain rail: tab 3 at its item top"), plainRail.Stack.ButtonTop(3),
+        SOLSolidScroll::StackItemTop(3, SOL::MenuStyle::TAB_HEIGHT, SOL::MenuStyle::BUTTON_GAP, 0.0f),
+        SOLIDSCROLLTEST_TOLERANCE);
+    return true;
+}
+
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidScrollStackLightsTest, "SOLTest.SolidScroll.Stack.Lights",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

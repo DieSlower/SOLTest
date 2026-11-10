@@ -486,7 +486,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudFormatFlightModeRolesTest, "SOLTest.HudF
 
 //////////////////////////////////////////////////////////////////////////
 // (33d-ii) Each mode's palette role is the Limit Theory one (Manual Secondary, Assisted Primary, Auto Good), and the
-// label colour is the HUD palette's colour of that role, so the HUD and the Help glossary share one source
+// label colour is the HUD palette's colour of that role, so the HUD and the Help glossary share one source; the Count
+// sentinel and values past it clamp onto AUTO
 bool FSOLHudFormatFlightModeRolesTest::RunTest(const FString& /*parameters*/)
 {
     const struct
@@ -506,6 +507,19 @@ bool FSOLHudFormatFlightModeRolesTest::RunTest(const FString& /*parameters*/)
             static_cast<int32>(item.Role));
         TestTrue(label + TEXT(": colour is the role's palette colour"), SOLHudFormat::FlightModeColor(item.Mode)
             .Equals(palette.Colors[static_cast<int32>(item.Role)], 1e-6f));
+    }
+
+    // The Count sentinel (and anything past it) is clamped onto the last mode: AUTO's role, label and colour
+    const ESOLFlightMode outOfRange[] = { ESOLFlightMode::Count,
+        static_cast<ESOLFlightMode>(static_cast<int32>(ESOLFlightMode::Count) + 1) };
+    for (const ESOLFlightMode mode : outOfRange)
+    {
+        const FString what = FString::Printf(TEXT("mode %d"), static_cast<int32>(mode));
+        TestEqual(what + TEXT(": AUTO's role"), static_cast<int32>(SOLHudFormat::FlightModeRole(mode)),
+            static_cast<int32>(ESOLHudPaletteRole::Good));
+        TestEqual(what + TEXT(": AUTO's label"), FString(SOLHudFormat::FlightModeLabel(mode)), FString(TEXT("AUTO")));
+        TestTrue(what + TEXT(": AUTO's colour"), SOLHudFormat::FlightModeColor(mode)
+            .Equals(SOLHudFormat::FlightModeColor(ESOLFlightMode::Auto), 1e-6f));
     }
     return true;
 }

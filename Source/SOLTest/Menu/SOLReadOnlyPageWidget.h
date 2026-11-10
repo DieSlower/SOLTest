@@ -291,7 +291,7 @@ private:
     UPROPERTY(Transient)
     TArray<FSOLHelpGlossaryRow> GlossaryRows;
 
-    TUniquePtr<FSOLHudSymbolScratch> mSymbolScratch;    // (33d-ii) Help only: the views' shared build scratch (D8)
+    TUniquePtr<FSOLHudSymbolScratch> mSymbolScratch;    // (33d-ii) Help only: the views' shared scratch (review S2)
     FDelegateHandle mBindingsHandle;                // (33d-ii) Help only: OnKeyBindingsChanged
     int32 mBindingsChangedCount = 0;
     float mDiagramWidth = 0.0f;                     // The diagram's last layout width (0: not laid out yet)

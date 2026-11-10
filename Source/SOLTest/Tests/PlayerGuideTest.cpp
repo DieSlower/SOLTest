@@ -153,6 +153,16 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns whether a file's bytes are a Git LFS pointer (the checkout lacks the object: "git lfs pull" fetches it)
+    // rather than the file itself: they start with "version https://git-lfs"
+    bool PlayerGuideTestIsLfsPointer(const TArray<uint8>& bytes)
+    {
+        static const ANSICHAR LFS_POINTER_START[] = "version https://git-lfs";
+        constexpr int32 startLength = static_cast<int32>(UE_ARRAY_COUNT(LFS_POINTER_START)) - 1;
+        return bytes.Num() >= startLength && FMemory::Memcmp(bytes.GetData(), LFS_POINTER_START, startLength) == 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns whether bytes look like UTF-16: an FF FE or FE FF start, or a zero byte
     bool PlayerGuideTestLooksUtf16(const TArray<uint8>& bytes)
     {
@@ -456,7 +466,12 @@ namespace
         const bool bRead = FPaths::FileExists(path) && FFileHelper::LoadFileToArray(bytes, *path);
         const bool bPng = bRead && bytes.Num() > static_cast<int32>(UE_ARRAY_COUNT(PNG_SIGNATURE))
             && FMemory::Memcmp(bytes.GetData(), PNG_SIGNATURE, UE_ARRAY_COUNT(PNG_SIGNATURE)) == 0;
-        if (!bPng)
+        if (bRead && PlayerGuideTestIsLfsPointer(bytes))
+        {
+            // The image is committed but this checkout holds only its LFS pointer: regenerating would not help
+            test.AddError(FString::Printf(TEXT("%s is a Git LFS pointer, not the image: run git lfs pull"), *path));
+        }
+        else if (!bPng)
         {
             test.AddError(SOLPlayerGuide::StaleMessage() + FString::Printf(TEXT(" (missing or not a PNG: %s)"),
                 *path));
@@ -1108,7 +1123,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLPlayerGuideImagesExistTest, "SOLTest.Player
 //////////////////////////////////////////////////////////////////////////
 // Every image the generated guide shows is committed next to it as a PNG, and so is every shot's image (every page of
 // every tab, D46) and every glossary crop's image (33e-ii: red until the crops are captured); a missing one fails
-// naming Tools\WritePlayerGuide.bat
+// naming Tools\WritePlayerGuide.bat, and a Git LFS pointer in its place fails asking for "git lfs pull"
 bool FSOLPlayerGuideImagesExistTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> targets;
@@ -1540,6 +1555,12 @@ bool FSOLPlayerGuideCropImagesSizeTest::RunTest(const FString& /*parameters*/)
         {
             AddError(FString::Printf(TEXT("Glossary crop '%s': %s is missing: run Tools\\WritePlayerGuide.bat (with "
                 "the editor closed) and commit the images"), crop.Id, *path));
+            continue;
+        }
+        if (PlayerGuideTestIsLfsPointer(bytes))
+        {
+            AddError(FString::Printf(TEXT("Glossary crop '%s': %s is a Git LFS pointer, not the image: run git lfs "
+                "pull"), crop.Id, *path));
             continue;
         }
         const bool bPng = bytes.Num() >= headerBytes

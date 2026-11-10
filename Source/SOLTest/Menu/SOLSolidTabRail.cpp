@@ -133,7 +133,7 @@ USizeBox* FSOLSolidTabRail::Build(UWidgetTree& tree, const TArray<FString>& labe
     for (int32 index = 0; index < labels.Num(); ++index)
     {
         // A group caption row above the tab: plain text (not focusable, never clicked) left-aligned with the tabs,
-        // TAB_RAIL_CAPTION_HEIGHT tall with the stack's gap after it (SDD 33 D7)
+        // TAB_RAIL_CAPTION_HEIGHT tall with the stack's gap after it (SDD 33 D22)
         if (Captioned.IsValidIndex(index) && Captioned[index])
         {
             UTextBlock* caption = tree.ConstructWidget<UTextBlock>(UTextBlock::StaticClass());

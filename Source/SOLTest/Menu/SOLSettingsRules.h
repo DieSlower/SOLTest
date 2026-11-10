@@ -90,4 +90,10 @@ namespace SOLSettingsRules
     // the engine's level is custom and the player never chose a preset, the model shows fallbackQuality (clamped)
     SOLTEST_API FBootGraphics DecideBootGraphics(bool bSaveUsed, bool bVsyncChosen, bool bQualityChosen,
         bool savedVsync, int32 savedQuality, bool engineVsync, int32 engineQuality, int32 fallbackQuality);
+
+    // Returns whether a command line is a verification run that uses the smoke save slot (never the player's): it
+    // names SOL::CommandLine::MENU_SMOKE_NAME anywhere (any case, with or without its value) or carries one of the
+    // menu / overlay / interact / chase / dust smoke switches or, outside Shipping builds (the writers are compiled
+    // out of it), the player guide or glossary crop writer switch. nullptr reads as false
+    SOLTEST_API bool IsSmokeSlotRun(const TCHAR* commandLine);
 }

@@ -5,6 +5,7 @@
 
 #include "Menu/SOLKeyCapRow.h"
 
+#include "Menu/SOLKeyCapPaint.h"
 #include "Menu/SOLSolidMenuSubsystem.h"
 #include "Menu/SOLSolidStyle.h"
 #include "Menu/SOLMenuText.h"
@@ -49,58 +50,6 @@ namespace
             }
         }
         return true;
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Returns a text's measured width at scale 1 (local units), 0 for an empty text or without Slate
-    float KeyCapRowMeasure(const FSlateFontMeasure* measure, const FStringView text, const FSlateFontInfo& font)
-    {
-        if (measure == nullptr || text.IsEmpty())
-        {
-            return 0.0f;
-        }
-        return static_cast<float>(measure->Measure(text, font, 1.0f).X);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Shapes a text at a scale (null for an empty text or without Slate)
-    FShapedGlyphSequencePtr KeyCapRowShape(const FSlateFontCache* cache, const FStringView text,
-        const FSlateFontInfo& font, const float scale)
-    {
-        if (cache == nullptr || text.IsEmpty())
-        {
-            return nullptr;
-        }
-        return cache->ShapeBidirectionalText(text.GetData(), 0, text.Len(), font, scale,
-            TextBiDi::ETextDirection::LeftToRight, ETextShapingMethod::Auto);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Draws a box outline of a line width (four flat boxes) in local units
-    void KeyCapRowOutline(const FBox2f& box, const float line, const FGeometry& geometry, FSlateWindowElementList& out,
-        const int32 layerId, const FSlateBrush* brush, const ESlateDrawEffect effects, const FLinearColor& color)
-    {
-        const FVector2f size = box.GetSize();
-        const FVector2f pieces[4][2] = {
-            { box.Min, FVector2f(size.X, line) },
-            { FVector2f(box.Min.X, box.Max.Y - line), FVector2f(size.X, line) },
-            { box.Min, FVector2f(line, size.Y) },
-            { FVector2f(box.Max.X - line, box.Min.Y), FVector2f(line, size.Y) },
-        };
-        for (const FVector2f (&piece)[2] : pieces)
-        {
-            FSlateDrawElement::MakeBox(out, layerId, geometry.ToPaintGeometry(piece[1],
-                FSlateLayoutTransform(piece[0])), brush, effects, color);
-        }
-    }
-
-    //////////////////////////////////////////////////////////////////////////
-    // Draws a filled box in local units
-    void KeyCapRowFill(const FBox2f& box, const FGeometry& geometry, FSlateWindowElementList& out, const int32 layerId,
-        const FSlateBrush* brush, const ESlateDrawEffect effects, const FLinearColor& color)
-    {
-        FSlateDrawElement::MakeBox(out, layerId, geometry.ToPaintGeometry(box.GetSize(),
-            FSlateLayoutTransform(box.Min)), brush, effects, color);
     }
 }
 
@@ -228,10 +177,11 @@ void SSOLKeyCapRow::MeasureLegends()
     mLegendWidths.SetNumUninitialized(mModel.Caps.Num(), EAllowShrinking::No);
     for (int32 index = 0; index < mModel.Caps.Num(); ++index)
     {
-        mLegendWidths[index] = KeyCapRowMeasure(measure, SOLKeyCaps::DrawnLegend(mModel.Caps[index]), mLegendFont);
+        mLegendWidths[index] = SOLKeyCapPaint::Measure(measure, SOLKeyCaps::DrawnLegend(mModel.Caps[index]),
+            mLegendFont);
     }
-    mPlusWidth = KeyCapRowMeasure(measure, SOLMenuText::KEYCAP_CHORD_PLUS, mLegendFont);
-    mSlashWidth = KeyCapRowMeasure(measure, SOLMenuText::KEYCAP_ALTERNATIVE_SLASH, mLegendFont);
+    mPlusWidth = SOLKeyCapPaint::Measure(measure, SOLMenuText::KEYCAP_CHORD_PLUS, mLegendFont);
+    mSlashWidth = SOLKeyCapPaint::Measure(measure, SOLMenuText::KEYCAP_ALTERNATIVE_SLASH, mLegendFont);
     mShapedScale = -1.0f;
 }
 
@@ -240,7 +190,7 @@ void SSOLKeyCapRow::MeasureLegends()
 void SSOLKeyCapRow::MeasureMessage()
 {
     const FSlateFontMeasure* measure = mIsMessage ? GetMeasure() : nullptr;
-    mMessageWidth = KeyCapRowMeasure(measure, mMessage, mMessageFont);
+    mMessageWidth = SOLKeyCapPaint::Measure(measure, mMessage, mMessageFont);
     mMessageHeight = measure != nullptr ? static_cast<float>(measure->GetMaxCharacterHeight(mMessageFont, 1.0f))
         : 0.0f;
     mShapedMessageScale = -1.0f;
@@ -309,18 +259,18 @@ void SSOLKeyCapRow::Reshape(const float scale) const
         ? &FSlateApplication::Get().GetRenderer()->GetFontCache().Get() : nullptr;
     if (mIsMessage)
     {
-        mShapedMessage = KeyCapRowShape(cache, mMessage, mMessageFont, scale);
+        mShapedMessage = SOLKeyCapPaint::Shape(cache, mMessage, mMessageFont, scale);
         mShapedMessageScale = scale;
         return;
     }
     mShapedLegends.SetNum(mModel.Caps.Num(), EAllowShrinking::No);
     for (int32 index = 0; index < mModel.Caps.Num(); ++index)
     {
-        mShapedLegends[index] = KeyCapRowShape(cache, SOLKeyCaps::DrawnLegend(mModel.Caps[index]), mLegendFont,
+        mShapedLegends[index] = SOLKeyCapPaint::Shape(cache, SOLKeyCaps::DrawnLegend(mModel.Caps[index]), mLegendFont,
             scale);
     }
-    mShapedPlus = KeyCapRowShape(cache, SOLMenuText::KEYCAP_CHORD_PLUS, mLegendFont, scale);
-    mShapedSlash = KeyCapRowShape(cache, SOLMenuText::KEYCAP_ALTERNATIVE_SLASH, mLegendFont, scale);
+    mShapedPlus = SOLKeyCapPaint::Shape(cache, SOLMenuText::KEYCAP_CHORD_PLUS, mLegendFont, scale);
+    mShapedSlash = SOLKeyCapPaint::Shape(cache, SOLMenuText::KEYCAP_ALTERNATIVE_SLASH, mLegendFont, scale);
     mShapedScale = scale;
 }
 
@@ -349,7 +299,7 @@ int32 SSOLKeyCapRow::OnPaint(const FPaintArgs& /*args*/, const FGeometry& allott
     if (mIsMessage)
     {
         const float top = 0.5f * (allottedGeometry.GetLocalSize().Y - lineHeight);
-        PaintText(mShapedMessage, 0.0f, top, lineHeight, allottedGeometry, outDrawElements, layerId,
+        SOLKeyCapPaint::PaintText(mShapedMessage, 0.0f, top, lineHeight, allottedGeometry, outDrawElements, layerId,
             SOLSolidStyle::TextColor() * styleTint, effects);
         mPaintedLegends += mShapedMessage.IsValid() ? 1 : 0;
         return layerId;
@@ -365,92 +315,39 @@ int32 SSOLKeyCapRow::OnPaint(const FPaintArgs& /*args*/, const FGeometry& allott
             continue;
         }
         const FShapedGlyphSequencePtr& joint = item.Kind == ESOLKeyCapItem::Plus ? mShapedPlus : mShapedSlash;
-        const float jointWidth = joint.IsValid() ? joint->GetMeasuredWidth() / scale : 0.0f;
-        PaintText(joint, item.X + 0.5f * (item.Width - jointWidth), item.Y, lineHeight, allottedGeometry,
-            outDrawElements, layerId + 1, dim, effects);
+        const float jointWidth = SOLKeyCapPaint::ShapedWidth(joint, scale);
+        SOLKeyCapPaint::PaintText(joint, item.X + 0.5f * (item.Width - jointWidth), item.Y, lineHeight,
+            allottedGeometry, outDrawElements, layerId + 1, dim, effects);
     }
     return layerId + 1;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Paints one cap: its hull, then its mouse glyph and its legend centred in it
+// Paints one cap with the shared cap painter (SOLKeyCapPaint::PaintCap): its hull (the recess for an unbound cap), then
+// its mouse glyph and its legend (dim when unbound)
 int32 SSOLKeyCapRow::PaintCap(const FSOLKeyCapLayoutItem& item, const FGeometry& geometry,
     FSlateWindowElementList& out, const int32 layerId, const FLinearColor& styleTint,
     const ESlateDrawEffect effects) const
 {
-    using namespace SOL::Help;
     if (!mModel.Caps.IsValidIndex(item.Cap))
     {
         return layerId;
     }
     const FSOLKeyCap& cap = mModel.Caps[item.Cap];
-    const FSlateBrush* hull = cap.bUnbound ? &mUnboundBrush : &mCapBrush;
-    FSlateDrawElement::MakeBox(out, layerId, geometry.ToPaintGeometry(FVector2f(item.Width, KEYCAP_HEIGHT),
-        FSlateLayoutTransform(FVector2f(item.X, item.Y))), hull, effects, hull->GetTint(FWidgetStyle()) * styleTint);
-    ++mPaintedCaps;
-
-    // The content (the glyph, then the legend as shaped at this scale) centred in the cap right of the hull's LED (a
-    // recess cap has none: SOLKeyCaps::ContentLeft)
+    FSOLKeyCapPaintStyle style;
+    style.Hull = cap.bUnbound ? &mUnboundBrush : &mCapBrush;
+    style.HullTint = style.Hull->GetTint(FWidgetStyle()) * styleTint;
+    style.Line = &mLineBrush;
+    style.LegendColor = (cap.bUnbound ? SOLSolidStyle::DimTextColor() : mLegendColor) * styleTint;
+    style.StyleTint = styleTint;
+    style.Effects = effects;
     const FShapedGlyphSequencePtr* legend = mShapedLegends.IsValidIndex(item.Cap) ? &mShapedLegends[item.Cap] : nullptr;
-    const float legendWidth = legend != nullptr && legend->IsValid() && geometry.Scale > 0.0f
-        ? (*legend)->GetMeasuredWidth() / geometry.Scale : 0.0f;
-    const float content = SOLKeyCaps::ContentWidth(cap, legendWidth);
-    const float left = SOLKeyCaps::ContentLeft(cap);
-    float x = item.X + left + 0.5f * (item.Width - left - KEYCAP_PADDING - content);
-    if (cap.Shape == ESOLKeyCapShape::Mouse)
+    ++mPaintedCaps;
+    if (SOLKeyCapPaint::PaintCap(cap, FVector2f(item.X, item.Y), item.Width, legend, geometry, out, layerId, style))
     {
-        // The glyph: its outline and button divider dim, the used part lit in cyan
-        const FVector2f glyphSize(KEYCAP_MOUSE_GLYPH_WIDTH, KEYCAP_MOUSE_GLYPH_HEIGHT);
-        const FSOLMouseGlyph glyph = SOLKeyCaps::MouseGlyph(FVector2f(x, item.Y + 0.5f * (KEYCAP_HEIGHT
-            - glyphSize.Y)), glyphSize, cap.Mouse);
-        const FLinearColor dim = SOLSolidStyle::DimTextColor() * styleTint;
-        const FLinearColor lit = SOLSolidStyle::ValueColor() * styleTint;
-        const float line = KEYCAP_MOUSE_LINE_PX / FMath::Max(geometry.Scale, UE_SMALL_NUMBER);
-        const FBox2f* litBox = glyph.Lit == ESOLMouseGlyphPart::LeftButton ? &glyph.LeftButton
-            : glyph.Lit == ESOLMouseGlyphPart::RightButton ? &glyph.RightButton
-            : glyph.Lit == ESOLMouseGlyphPart::Wheel ? &glyph.Wheel : nullptr;
-        if (litBox != nullptr)
-        {
-            KeyCapRowFill(*litBox, geometry, out, layerId + 1, &mLineBrush, effects, lit);
-        }
-        if (glyph.Lit != ESOLMouseGlyphPart::Wheel)
-        {
-            KeyCapRowOutline(glyph.Wheel, line, geometry, out, layerId + 1, &mLineBrush, effects, dim);
-        }
-        KeyCapRowOutline(glyph.Body, line, geometry, out, layerId + 1, &mLineBrush, effects,
-            glyph.Lit == ESOLMouseGlyphPart::Body ? lit : dim);
-        const FBox2f divider(FVector2f(glyph.LeftButton.Max.X - 0.5f * line, glyph.Body.Min.Y),
-            FVector2f(glyph.LeftButton.Max.X + 0.5f * line, glyph.LeftButton.Max.Y));
-        const FBox2f base(FVector2f(glyph.Body.Min.X, glyph.LeftButton.Max.Y - 0.5f * line),
-            FVector2f(glyph.Body.Max.X, glyph.LeftButton.Max.Y + 0.5f * line));
-        KeyCapRowFill(divider, geometry, out, layerId + 1, &mLineBrush, effects, dim);
-        KeyCapRowFill(base, geometry, out, layerId + 1, &mLineBrush, effects, dim);
-        x += KEYCAP_MOUSE_GLYPH_WIDTH + (legendWidth > 0.0f ? KEYCAP_GAP : 0.0f);
-    }
-    if (legend != nullptr && legend->IsValid())
-    {
-        const FLinearColor color = (cap.bUnbound ? SOLSolidStyle::DimTextColor() : mLegendColor) * styleTint;
-        PaintText(*legend, x, item.Y, KEYCAP_HEIGHT, geometry, out, layerId + 1, color, effects);
         ++mPaintedLegends;
     }
     return layerId + 1;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Paints a shaped text at a local x, vertically centred in a line (the glyphs were shaped at the paint scale)
-void SSOLKeyCapRow::PaintText(const FShapedGlyphSequencePtr& text, const float x, const float lineTop,
-    const float lineHeight, const FGeometry& geometry, FSlateWindowElementList& out, const int32 layerId,
-    const FLinearColor& color, const ESlateDrawEffect effects) const
-{
-    if (!text.IsValid() || !(geometry.Scale > 0.0f))
-    {
-        return;
-    }
-    const float inverse = 1.0f / geometry.Scale;
-    const FVector2f size(text->GetMeasuredWidth() * inverse, text->GetMaxTextHeight() * inverse);
-    const FVector2f topLeft(x, lineTop + 0.5f * (lineHeight - size.Y));
-    FSlateDrawElement::MakeShapedText(out, layerId, geometry.ToPaintGeometry(size, FSlateLayoutTransform(topLeft)),
-        text.ToSharedRef(), effects, color, FLinearColor::Transparent);
 }
 
 //////////////////////////////////////////////////////////////////////////

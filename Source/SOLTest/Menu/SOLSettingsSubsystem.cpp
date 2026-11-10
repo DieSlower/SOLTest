@@ -47,17 +47,7 @@ void USOLSettingsSubsystem::Initialize(FSubsystemCollectionBase& collection)
     // player's; it also copies the engine's GameUserSettings as it found them, given back at shutdown (its window
     // resizes are stored as the confirmed resolution, which the engine writes at exit)
     mSlotName = SOL::Settings::SAVE_SLOT;
-    if (FCString::Strifind(FCommandLine::Get(), SOL::CommandLine::MENU_SMOKE_NAME) != nullptr
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_OVERLAY)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_INTERACT)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_CHASE)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_DUST)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_HOLO_MENU_PROFILE)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_HOLO_MENU)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU_PROFILE)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_SOLID_MENU)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_PLAYER_GUIDE)
-        || FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_GLOSSARY_CROPS))
+    if (SOLSettingsRules::IsSmokeSlotRun(FCommandLine::Get()))
     {
         mSlotName = SOL::Settings::SMOKE_SAVE_SLOT;
         UGameplayStatics::DeleteGameInSlot(mSlotName, SOL::Settings::SAVE_USER_INDEX);

@@ -87,7 +87,7 @@ struct FSOLKeyDiagramModel
     }
 };
 
-// One line of the diagram's hover detail strip (D23): how the player presses an assignment and what it does
+// One line of the diagram's hover popup (D23, D45): how the player presses an assignment and what it does
 struct FSOLDiagramDetailLine
 {
     FString Keys;                                       // SOLMenuContent::FormatBindings of that one alternative's text
@@ -123,6 +123,23 @@ namespace SOLKeyDiagram
     // Returns an area's colour (SOL::Help::AREA_COLORS); SOL::SolidMenu::TEXT_DIM_COLOR for Count
     SOLTEST_API FColor AreaColor(ESOLControlArea area);
 
+    // Returns over blended onto under at an alpha clamped to [0, 1], per sRGB channel (Slate blends in gamma space),
+    // opaque
+    SOLTEST_API FColor BlendSrgb(const FColor& under, const FColor& over, float alpha);
+
+    // Returns the WCAG 2 contrast ratio of two sRGB colours (1 to 21, symmetric, alpha ignored)
+    SOLTEST_API float ContrastRatio(const FColor& a, const FColor& b);
+
+    // Returns an assigned key's face: the raised (or the hovered key's lifted) hull tinted by the area colour at
+    // SOL::Help::DIAGRAM_TINT_ALPHA (D49)
+    SOLTEST_API FColor AssignedFaceColor(ESOLControlArea area, bool bLifted);
+
+    // Returns a free key's face: the raised hull at SOL::Help::DIAGRAM_FREE_ALPHA over the panel (D49)
+    SOLTEST_API FColor FreeFaceColor();
+
+    // Returns a free key's legend: the key text colour at SOL::Help::DIAGRAM_FREE_ALPHA over the free face (D49)
+    SOLTEST_API FColor FreeLegendColor();
+
     // Returns a binding's short label (SOLMenuText::KEY_SHORT_LABELS; "" for an out-of-range binding)
     SOLTEST_API const TCHAR* BindingShortLabel(int32 binding);
 
@@ -138,21 +155,17 @@ namespace SOLKeyDiagram
     // Static data, no allocation
     SOLTEST_API TConstArrayView<const TCHAR*> ChordModifierKeys(SOLKeyBindings::EKeyChord chord);
 
-    // Fills out (reset, capacity kept) with the hover strip's assignments of a key (index into model.Keys; a mirror
+    // Fills out (reset, capacity kept) with the hover popup's assignments of a key (index into model.Keys; a mirror
     // gives its main key's): the key's own actions first (the primary first, then its other assignments in model
     // order), then the chords it starts (its Chords range in order); empty for a key with neither or an index out of
     // range. Returns out.Num()
     SOLTEST_API int32 DetailAssignments(const FSOLKeyDiagramModel& model, int32 key, TArray<int32>& out);
 
-    // D36: returns the largest DetailAssignments count over the model's keys (mirror keys included; 0 for
-    // an empty model): the hover strip's unwrapped line budget. Allocation-free
-    SOLTEST_API int32 MaxDetailCount(const FSOLKeyDiagramModel& model);
-
     // D38: returns the diagram legend abbreviation of an engine key name (SOLMenuText::DIAGRAM_LEGEND_ABBREVIATIONS,
     // case-insensitive), or nullptr when it has none. The leaf uses it only when the layout legend does not fit
     SOLTEST_API const TCHAR* LegendAbbreviation(FStringView keyName);
 
-    // Fills one hover strip line for an assignment (index into model.Assignments); out of range: Keys and Action
+    // Fills one hover popup line for an assignment (index into model.Assignments); out of range: Keys and Action
     // empty, Area Count, bFixed false
     SOLTEST_API void DetailLine(TConstArrayView<SOLMenuText::FControlRow> rows, const FSOLKeyDiagramModel& model,
         int32 assignment, const TArray<FString>& liveKeys, FSOLDiagramDetailLine& out);

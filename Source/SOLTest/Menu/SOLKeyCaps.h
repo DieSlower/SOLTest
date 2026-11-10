@@ -175,8 +175,9 @@ namespace SOLKeyCaps
     // "+" pieces and alternatives by " / " pieces (each piece with metrics.Gap on both sides), wrapping onto a new line
     // (metrics.RowGap below the last) before an alternative that would cross the width; a chord is split between its
     // caps only when it alone is wider than the width; a line never starts with a separator. capWidths has one drawn
-    // width per model cap (CapWidth); a missing, negative or NaN one reads as KEYCAP_MIN_WIDTH. An availableWidth that
-    // is not a positive finite number lays everything out on one line. Returns out.Height (0 for an empty model)
+    // width per model cap (DrawnCapWidth); a missing, negative or NaN one reads as KEYCAP_MIN_WIDTH. An
+    // availableWidth that is not a positive finite number lays everything out on one line. Returns out.Height (0 for
+    // an empty model)
     SOLTEST_API float LayoutRow(const FSOLKeyCapModel& model, TConstArrayView<float> capWidths,
         const FSOLKeyCapMetrics& metrics, float availableWidth, FSOLKeyCapLayout& out);
 

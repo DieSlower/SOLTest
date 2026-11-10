@@ -5,6 +5,7 @@
 
 #include "Menu/SOLBindingLabel.h"
 #include "Menu/SOLKeyBindings.h"
+#include "Menu/SOLKeyCapPaint.h"
 #include "Menu/SOLKeyCaps.h"
 #include "Menu/SOLMenuContent.h"
 #include "Menu/SOLMenuText.h"
@@ -874,11 +875,20 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapsColumnTest, "SOLTest.KeyCaps.Control
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every Controls cell at the default keys lays out inside the Controls key column (stand-in legend widths)
+// Every Controls cell at the default keys lays out inside the Controls key column, with the caps sized as the page
+// sizes them (SSOLKeyCapRow::Layout: DrawnCapWidth of the measured DrawnLegend, so the LED room and the mouse glyph
+// count, and the measured "+" and "/" joints). The real measure needs Slate's font service, which the headless run lacks, so
+// every legend glyph and joint glyph is given a conservative upper bound (KEYCAPSTEST_LEGEND_GLYPH_WIDTH)
 bool FSOLKeyCapsColumnTest::RunTest(const FString& /*parameters*/)
 {
+    // An upper bound on one glyph's mean advance in the page's legend font, Rajdhani SemiBold at KEYCAP_FONT_SIZE
+    // (15 pt is a 20 px em at Slate's 96 DPI; Rajdhani is condensed, its mean advance about 0.45 em, so 0.6 em = 12)
+    constexpr float KEYCAPSTEST_LEGEND_GLYPH_WIDTH = 12.0f;
+    static_assert(SOL::Help::KEYCAP_FONT_SIZE == 15, "the glyph bound assumes the 15 pt legend font: re-derive it");
     const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
-    const FSOLKeyCapMetrics metrics = KeyCapsTestMetrics();
+    FSOLKeyCapMetrics metrics;
+    metrics.PlusWidth = KEYCAPSTEST_LEGEND_GLYPH_WIDTH * FStringView(SOLMenuText::KEYCAP_CHORD_PLUS).Len();
+    metrics.SeparatorWidth = KEYCAPSTEST_LEGEND_GLYPH_WIDTH * FStringView(SOLMenuText::KEYCAP_ALTERNATIVE_SLASH).Len();
     const float column = SOL::MenuStyle::KEY_COLUMN_WIDTH;
     FSOLKeyCapModel model;
     FSOLKeyCapLayout layout;
@@ -890,7 +900,10 @@ bool FSOLKeyCapsColumnTest::RunTest(const FString& /*parameters*/)
         widths.Reset();
         for (const FSOLKeyCap& keyCap : model.Caps)
         {
-            widths.Add(SOLKeyCaps::CapWidth(keyCap, KEYCAPSTEST_CHAR_WIDTH * keyCap.Label.Len()));
+            const float legendWidth = KEYCAPSTEST_LEGEND_GLYPH_WIDTH * SOLKeyCaps::DrawnLegend(keyCap).Len();
+            widths.Add(SOLKeyCaps::DrawnCapWidth(keyCap, legendWidth));
+            TestTrue(FString::Printf(TEXT("%s: cap '%s' narrower than the column"), *what, *keyCap.Label),
+                widths.Last() <= column);
         }
         const float height = SOLKeyCaps::LayoutRow(model, widths, metrics, column, layout);
         KeyCapsTestCheckLayout(*this, model, layout, metrics, height, what);
@@ -900,11 +913,11 @@ bool FSOLKeyCapsColumnTest::RunTest(const FString& /*parameters*/)
             TestTrue(what + TEXT(": item inside the column"), item.X + item.Width <= column + KEYCAPSTEST_TOLERANCE);
             if (item.Kind == ESOLKeyCapItem::Cap && widths.IsValidIndex(item.Cap))
             {
-                TestEqual(what + TEXT(": cap at its measured width"), item.Width, widths[item.Cap],
+                TestEqual(what + TEXT(": cap at its drawn width"), item.Width, widths[item.Cap],
                     KEYCAPSTEST_TOLERANCE);
             }
         }
-        // Chords only split when one chord alone is wider than the column (none is at these widths)
+        // Chords only split when one chord alone is wider than the column (none is, even at the glyph bound)
         for (int32 cap = 1; cap < model.Caps.Num(); ++cap)
         {
             const FSOLKeyCapLayoutItem* previous = KeyCapsTestItemOfCap(layout, cap - 1);
@@ -1394,6 +1407,29 @@ bool FSOLKeyCapsDrawnCapWidthTest::RunTest(const FString& /*parameters*/)
         TestEqual(TEXT("an unbound cap is CapWidth of its legend"), SOLKeyCaps::DrawnCapWidth(cap, 50.0f),
             SOLKeyCaps::CapWidth(cap, 50.0f), KEYCAPSTEST_TOLERANCE);
     }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// The shared cap painter's helpers (33g) degrade to nothing without a service or a text: no measure gives width 0,
+// no font cache or an empty text shapes nothing, and a missing shaped text or a non-positive scale has width 0
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyCapPaintNullInputsTest, "SOLTest.KeyCapPaint.NullInputs",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+// Runs the cap painter helpers' null and empty input checks
+bool FSOLKeyCapPaintNullInputsTest::RunTest(const FString& /*parameters*/)
+{
+    const FSlateFontInfo font;
+    TestEqual(TEXT("No measure service: a range is 0 wide"),
+        SOLKeyCapPaint::MeasureRange(nullptr, TEXT("Shift"), 0, 5, font, 1.0f), 0.0f);
+    TestEqual(TEXT("No measure service: a text is 0 wide"),
+        SOLKeyCapPaint::Measure(nullptr, TEXT("Shift"), font), 0.0f);
+    TestFalse(TEXT("No font cache: nothing shaped"),
+        SOLKeyCapPaint::Shape(nullptr, TEXT("Shift"), font, 1.0f).IsValid());
+    TestFalse(TEXT("No font cache, empty text: nothing shaped"),
+        SOLKeyCapPaint::Shape(nullptr, FStringView(), font, 1.0f).IsValid());
+    TestEqual(TEXT("No shaped text: 0 wide"), SOLKeyCapPaint::ShapedWidth(nullptr, 1.0f), 0.0f);
+    TestEqual(TEXT("No shaped text at scale 0: 0 wide"), SOLKeyCapPaint::ShapedWidth(nullptr, 0.0f), 0.0f);
     return true;
 }
 

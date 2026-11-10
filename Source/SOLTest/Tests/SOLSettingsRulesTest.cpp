@@ -2590,4 +2590,55 @@ bool FSOLSettingsRulesHoloMenuEffectsDiskTest::RunTest(const FString& /*paramete
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesIsSmokeSlotRunTest, "SOLTest.SettingsRules.IsSmokeSlotRun",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A run uses the smoke save slot when it names -SOLMenuSmoke anywhere or carries one of the smoke / writer switches;
+// nothing else does (tests run in non-shipping builds, where the writer switches count)
+bool FSOLSettingsRulesIsSmokeSlotRunTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSettingsRules::IsSmokeSlotRun;
+    namespace CommandLine = SOL::CommandLine;
+
+    // Each switch on its own, built from its constant
+    const TCHAR* switches[] = { CommandLine::SMOKE_OVERLAY, CommandLine::SMOKE_INTERACT, CommandLine::SMOKE_CHASE,
+        CommandLine::SMOKE_DUST, CommandLine::SMOKE_HOLO_MENU_PROFILE, CommandLine::SMOKE_HOLO_MENU,
+        CommandLine::SMOKE_SOLID_MENU_PROFILE, CommandLine::SMOKE_SOLID_MENU, CommandLine::WRITE_PLAYER_GUIDE,
+        CommandLine::WRITE_GLOSSARY_CROPS };
+    for (const TCHAR* name : switches)
+    {
+        const FString line = FString(TEXT("-")) + name;
+        TestTrue(FString::Printf(TEXT("%s alone"), *line), IsSmokeSlotRun(*line));
+
+        // The same switch in another case, and embedded among other arguments
+        TestTrue(FString::Printf(TEXT("%s upper case"), *line), IsSmokeSlotRun(*line.ToUpper()));
+        TestTrue(FString::Printf(TEXT("%s lower case"), *line), IsSmokeSlotRun(*line.ToLower()));
+        const FString embedded = FString(TEXT("-game -windowed ")) + line + TEXT(" -SOLStartRegion=Earth -log");
+        TestTrue(FString::Printf(TEXT("%s among other args"), *line), IsSmokeSlotRun(*embedded));
+    }
+
+    // The menu script matches as a substring, with or without its value, in any case
+    const FString menuSmoke = FString(TEXT("-")) + CommandLine::MENU_SMOKE_NAME;
+    TestTrue(TEXT("menu smoke name alone"), IsSmokeSlotRun(*menuSmoke));
+    TestTrue(TEXT("menu smoke with a value"), IsSmokeSlotRun(*(menuSmoke + TEXT("=all"))));
+    TestTrue(TEXT("menu smoke built from MENU_SMOKE"), IsSmokeSlotRun(*(FString(TEXT("-")) + CommandLine::MENU_SMOKE
+        + TEXT("flow"))));
+    TestTrue(TEXT("menu smoke upper case"), IsSmokeSlotRun(*(menuSmoke + TEXT("=screens")).ToUpper()));
+    TestTrue(TEXT("menu smoke lower case"), IsSmokeSlotRun(*(menuSmoke + TEXT("=screens")).ToLower()));
+    TestTrue(TEXT("menu smoke among other args"), IsSmokeSlotRun(*(FString(TEXT("-game -windowed ")) + menuSmoke
+        + TEXT("=all -ResX=1280 -ResY=720"))));
+
+    // Nothing, and unrelated command lines, use the player's slot
+    TestFalse(TEXT("nullptr"), IsSmokeSlotRun(nullptr));
+    TestFalse(TEXT("empty"), IsSmokeSlotRun(TEXT("")));
+    TestFalse(TEXT("whitespace only"), IsSmokeSlotRun(TEXT("   ")));
+    TestFalse(TEXT("unrelated"), IsSmokeSlotRun(TEXT("-game -windowed -SOLStartRegion=Earth")));
+    TestFalse(TEXT("a plain menu run"), IsSmokeSlotRun(*(FString(TEXT("-game -")) + CommandLine::MENU)));
+    TestFalse(TEXT("a smoke switch outside the list"), IsSmokeSlotRun(*(FString(TEXT("-game -"))
+        + CommandLine::SMOKE_FLIGHT)));
+    return true;
+}
+
 #endif

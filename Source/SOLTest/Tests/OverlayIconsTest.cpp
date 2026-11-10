@@ -676,6 +676,20 @@ bool FSOLOverlayIconsExtentTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("zero direction has no extent"),
         EdgeArrowExtent(center, FVector2f::ZeroVector, 12.0f).bIsValid != 0);
     TestFalse(TEXT("zero length has no extent"), EdgeArrowExtent(center, FVector2f(1.0f, 0.0f), 0.0f).bIsValid != 0);
+
+    // A NaN or negative radius or length has no extent either (never a NaN box)
+    const float nan = static_cast<float>(OVERLAYICONS_NAN);
+    for (int32 category = 0; category < static_cast<int32>(EIconCategory::Count); ++category)
+    {
+        const EIconCategory value = static_cast<EIconCategory>(category);
+        TestFalse(FString::Printf(TEXT("icon %d: NaN radius has no extent"), category),
+            IconExtent(value, center, nan).bIsValid != 0);
+        TestFalse(FString::Printf(TEXT("icon %d: negative radius has no extent"), category),
+            IconExtent(value, center, -radius).bIsValid != 0);
+    }
+    TestFalse(TEXT("NaN length has no extent"), EdgeArrowExtent(center, FVector2f(1.0f, 0.0f), nan).bIsValid != 0);
+    TestFalse(TEXT("negative length has no extent"),
+        EdgeArrowExtent(center, FVector2f(1.0f, 0.0f), -12.0f).bIsValid != 0);
     return true;
 }
 

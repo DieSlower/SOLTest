@@ -19,9 +19,9 @@ class SSOLHudShapeLayer;
 class UMaterialInterface;
 struct FSOLHudShapeBatch;
 
-// The scratch memory a symbol view builds its batch through (SDD 33 D8): a symbol's primitives and a card / frame
-// output, about 11 KB. The Help page owns one and lends it to each view's UpdateBatch (the views rebuild one at a time
-// on the game thread), so no view carries its own
+// The scratch memory a symbol view builds its batch through (SDD 33, the 33d-ii review S2): a symbol's primitives and
+// a card / frame output, about 11 KB. The Help page owns one and lends it to each view's UpdateBatch (the views rebuild
+// one at a time on the game thread), so no view carries its own
 struct FSOLHudSymbolScratch
 {
     FSOLHudSymbolPrims Prims;

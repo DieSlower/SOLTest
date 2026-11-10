@@ -316,7 +316,7 @@ namespace
 // Row art
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutEntryArtTest, "SOLTest.Glossary.Layout.EntryArt",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutEntryArtTest, "SOLTest.GlossaryLayout.EntryArt",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Each row's art follows its table cells (Symbols, else a resolving Crop, else Sample, else None, 33e-ii); today
@@ -352,7 +352,7 @@ bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtByNameTest, "SOLTest.Glossary.Layout.ArtByName",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtByNameTest, "SOLTest.GlossaryLayout.ArtByName",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // The six Sample rows, the five Crop rows (the D39 map rows, 33e-ii) and the one None row (Space dust) by name; the
@@ -417,7 +417,7 @@ bool FSOLGlossaryLayoutArtByNameTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtPerTabTest, "SOLTest.Glossary.Layout.ArtPerTab",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtPerTabTest, "SOLTest.GlossaryLayout.ArtPerTab",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Per tab (EntriesOfTab): Flight HUD 13 = 9 Symbols + 4 Sample; Targets and radar 7 Symbols; Overlays and route 16 =
@@ -475,7 +475,7 @@ bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
 // Symbol grid and cells (rule (a))
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellGridTest, "SOLTest.Glossary.Layout.CellGrid",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellGridTest, "SOLTest.GlossaryLayout.CellGrid",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // A near-square grid: columns ceil(sqrt n), rows ceil(n / columns); no grid for n <= 0
@@ -518,7 +518,7 @@ bool FSOLGlossaryLayoutCellGridTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellRectTest, "SOLTest.Glossary.Layout.CellRect",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellRectTest, "SOLTest.GlossaryLayout.CellRect",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Equal row-major cells with a short last row centred; the contract's worked examples in an 84 x 84 area; the cells of
@@ -592,7 +592,7 @@ bool FSOLGlossaryLayoutCellRectTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellRectInvalidTest, "SOLTest.Glossary.Layout.CellRectInvalid",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCellRectInvalidTest, "SOLTest.GlossaryLayout.CellRectInvalid",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // An invalid box (bIsValid false) for a cell outside [0, count), a count <= 0, an invalid area and an area with a
@@ -635,7 +635,7 @@ bool FSOLGlossaryLayoutCellRectInvalidTest::RunTest(const FString& /*parameters*
 // Fit scale and centring
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutFitScaleTest, "SOLTest.Glossary.Layout.FitScale",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutFitScaleTest, "SOLTest.GlossaryLayout.FitScale",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // A symbol is shrunk to fit its cell and never enlarged: maxScale x min(1, cellW / w, cellH / h); only the bounds'
@@ -688,7 +688,7 @@ bool FSOLGlossaryLayoutFitScaleTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutFitScaleInvalidTest, "SOLTest.Glossary.Layout.FitScaleInvalid",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutFitScaleInvalidTest, "SOLTest.GlossaryLayout.FitScaleInvalid",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // 0 for a maxScale that is not a positive finite number, a cell axis that is not a positive finite number, and invalid
@@ -717,7 +717,7 @@ bool FSOLGlossaryLayoutFitScaleInvalidTest::RunTest(const FString& /*parameters*
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCentreTest, "SOLTest.Glossary.Layout.SymbolCentre",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutCentreTest, "SOLTest.GlossaryLayout.SymbolCentre",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // The build point centres the symbol's bounds in the cell (cell centre - bounds centre); invalid bounds give the cell
@@ -757,7 +757,7 @@ bool FSOLGlossaryLayoutCentreTest::RunTest(const FString& /*parameters*/)
 // Text samples (rule (b))
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleFitsTest, "SOLTest.Glossary.Layout.SampleFits",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleFitsTest, "SOLTest.GlossaryLayout.SampleFits",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Samples drawn one line per '|' part (trimmed, inner runs kept, empty parts dropped), centred as a block: at maxScale
@@ -870,7 +870,7 @@ bool FSOLGlossaryLayoutSampleFitsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsTest, "SOLTest.Glossary.Layout.SampleWraps",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsTest, "SOLTest.GlossaryLayout.SampleWraps",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Rule D: when no layout at maxScale fits (A, B) and shrinking unwrapped would go below the minimum (C), the sample is
@@ -954,7 +954,7 @@ bool FSOLGlossaryLayoutSampleWrapsTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsAtMaxTest, "SOLTest.Glossary.Layout.SampleWrapsAtMax",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleWrapsAtMaxTest, "SOLTest.GlossaryLayout.SampleWrapsAtMax",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Rule B (D44): when a part does not fit unwrapped at maxScale, wrapping the too-wide parts at maxScale (parts that fit
@@ -1017,7 +1017,7 @@ bool FSOLGlossaryLayoutSampleWrapsAtMaxTest::RunTest(const FString& /*parameters
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleEdgesTest, "SOLTest.Glossary.Layout.SampleEdges",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleEdgesTest, "SOLTest.GlossaryLayout.SampleEdges",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Nothing to draw (no lines, scale 0) for no part, a bad area, a bad maxScale or a bad line height; out is reset first
@@ -1096,7 +1096,7 @@ bool FSOLGlossaryLayoutSampleEdgesTest::RunTest(const FString& /*parameters*/)
 // Text-sample box (33d-iii, D44)
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSamplePartCountTest, "SOLTest.Glossary.Layout.SamplePartCount",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSamplePartCountTest, "SOLTest.GlossaryLayout.SamplePartCount",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // The parts LayoutSample's step 1 makes: split on GLOSSARY_LIST_DELIMITER, trimmed, the empty ones dropped; it agrees
@@ -1132,7 +1132,7 @@ bool FSOLGlossaryLayoutSamplePartCountTest::RunTest(const FString& /*parameters*
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleBoxSizeTest, "SOLTest.Glossary.Layout.SampleBoxSize",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleBoxSizeTest, "SOLTest.GlossaryLayout.SampleBoxSize",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // A text-sample row's box (D44): the square GLOSSARY_SYMBOL_BOX when there is nothing to draw or no part wraps at
@@ -1257,7 +1257,7 @@ bool FSOLGlossaryLayoutSampleBoxSizeTest::RunTest(const FString& /*parameters*/)
 // View pixel size and the rebuild rule
 // ---------------------------------------------------------------------------------------------------------------------
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutViewPixelSizeTest, "SOLTest.Glossary.Layout.ViewPixelSize",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutViewPixelSizeTest, "SOLTest.GlossaryLayout.ViewPixelSize",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // The view's pixel size is its local size times the layout scale, rounded; (0, 0) for any non-finite input, a scale
@@ -1310,7 +1310,7 @@ bool FSOLGlossaryLayoutViewPixelSizeTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutViewRebuildTest, "SOLTest.Glossary.Layout.ViewRebuild",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutViewRebuildTest, "SOLTest.GlossaryLayout.ViewRebuild",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // A view builds once when first laid out, then only when its pixel size or the sanitized effects strength changes
@@ -1419,7 +1419,7 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleRoleTest, "SOLTest.Glossary.Layout.SampleLineRole",
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutSampleRoleTest, "SOLTest.GlossaryLayout.SampleLineRole",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////

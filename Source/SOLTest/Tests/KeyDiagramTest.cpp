@@ -1412,14 +1412,22 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramReuseTest, "SOLTest.KeyDiagram.No
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A second Build into the same model (same keys, or a rebind between layout keys) keeps every buffer, the chords
-// included (D13, D32); Reset keeps the chords' capacity
+// A second Build into the same model (same keys, or a rebind between layout keys) keeps every buffer, the chords,
+// the overflow and the unbound lists included (D13, D32); Reset keeps the chords' capacity. The first build puts
+// DropTarget on F13 (off the layout) and leaves WarpReset unbound, so the overflow and unbound buffers are really
+// allocated and the checks on them are not vacuous
 bool FSOLKeyDiagramReuseTest::RunTest(const FString& /*parameters*/)
 {
     TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    keys[KEYDIAGRAMTEST_DROP] = TEXT("F13");
+    keys[KEYDIAGRAMTEST_WARP_RESET] = FString();
     FSOLKeyDiagramModel model;
     SOLKeyDiagram::Build(keys, model);
     TestTrue(TEXT("first build made assignments"), model.Assignments.Num() > 0);
+    TestEqual(TEXT("first build: F13 is the one overflow key"), model.Overflow.Num(), 1);
+    TestEqual(TEXT("first build: WarpReset is the one unbound binding"), model.Unbound.Num(), 1);
+    TestTrue(TEXT("first build: the overflow buffer is allocated"), model.Overflow.GetAllocatedSize() > 0);
+    TestTrue(TEXT("first build: the unbound buffer is allocated"), model.Unbound.GetAllocatedSize() > 0);
     const void* assignmentsData = model.Assignments.GetData();
     const SIZE_T assignmentsSize = model.Assignments.GetAllocatedSize();
     const void* keysData = model.Keys.GetData();
@@ -1449,17 +1457,43 @@ bool FSOLKeyDiagramReuseTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("same build: unbound buffer kept"), model.Unbound.GetData() == unboundData);
     TestEqual(TEXT("same build: unbound capacity kept"), static_cast<int64>(model.Unbound.GetAllocatedSize()),
         static_cast<int64>(unboundSize));
+    TestEqual(TEXT("same build: one overflow key"), model.Overflow.Num(), 1);
+    TestEqual(TEXT("same build: one unbound binding"), model.Unbound.Num(), 1);
     TestEqual(TEXT("same build: same chords"), model.Chords.Num(), chordCount);
     TestTrue(TEXT("same build: chords buffer kept"), model.Chords.GetData() == chordsData);
     TestEqual(TEXT("same build: chords capacity kept"), static_cast<int64>(model.Chords.GetAllocatedSize()),
         static_cast<int64>(chordsSize));
 
     // A rebind between two layout keys
-    keys[KEYDIAGRAMTEST_DROP] = TEXT("K");
+    keys[KEYDIAGRAMTEST_FIRE] = TEXT("K");
     SOLKeyDiagram::Build(keys, model);
     TestTrue(TEXT("rebind: assignments buffer kept"), model.Assignments.GetData() == assignmentsData);
     TestTrue(TEXT("rebind: keys buffer kept"), model.Keys.GetData() == keysData);
     TestTrue(TEXT("rebind: chords buffer kept"), model.Chords.GetData() == chordsData);
+    TestTrue(TEXT("rebind: overflow buffer kept"), model.Overflow.GetData() == overflowData);
+    TestTrue(TEXT("rebind: unbound buffer kept"), model.Unbound.GetData() == unboundData);
+
+    // DropTarget back on the layout and WarpReset bound again: both lists empty, their buffers kept
+    keys[KEYDIAGRAMTEST_DROP] = TEXT("K");
+    keys[KEYDIAGRAMTEST_WARP_RESET] = SOLKeyBindings::DefaultKeys()[KEYDIAGRAMTEST_WARP_RESET];
+    SOLKeyDiagram::Build(keys, model);
+    TestEqual(TEXT("lists emptied: no overflow"), model.Overflow.Num(), 0);
+    TestEqual(TEXT("lists emptied: nothing unbound"), model.Unbound.Num(), 0);
+    TestTrue(TEXT("lists emptied: overflow buffer kept"), model.Overflow.GetData() == overflowData);
+    TestEqual(TEXT("lists emptied: overflow capacity kept"), static_cast<int64>(model.Overflow.GetAllocatedSize()),
+        static_cast<int64>(overflowSize));
+    TestTrue(TEXT("lists emptied: unbound buffer kept"), model.Unbound.GetData() == unboundData);
+    TestEqual(TEXT("lists emptied: unbound capacity kept"), static_cast<int64>(model.Unbound.GetAllocatedSize()),
+        static_cast<int64>(unboundSize));
+
+    // Off the layout and unbound again: the kept buffers are refilled, not reallocated
+    keys[KEYDIAGRAMTEST_DROP] = TEXT("F13");
+    keys[KEYDIAGRAMTEST_WARP_RESET] = FString();
+    SOLKeyDiagram::Build(keys, model);
+    TestEqual(TEXT("refilled: one overflow key"), model.Overflow.Num(), 1);
+    TestEqual(TEXT("refilled: one unbound binding"), model.Unbound.Num(), 1);
+    TestTrue(TEXT("refilled: overflow buffer kept"), model.Overflow.GetData() == overflowData);
+    TestTrue(TEXT("refilled: unbound buffer kept"), model.Unbound.GetData() == unboundData);
 
     // A chord binding's base key moved: the chords keep their buffer
     keys[KEYDIAGRAMTEST_OVERLAY_MENU] = TEXT("N");
@@ -2397,65 +2431,6 @@ bool FSOLKeyDiagramDetailLineRowsTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramMaxDetailCountTest, "SOLTest.KeyDiagram.MaxDetailCount",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// MaxDetailCount (contract E.5, D36) is the largest DetailAssignments count over every model key, mirrors included: at
-// the defaults, with the modifiers freed, after a rebind that piles actions onto one key (it follows the model), and 0
-// for an empty model or one built from no rows
-bool FSOLKeyDiagramMaxDetailCountTest::RunTest(const FString& /*parameters*/)
-{
-    // Returns the expected budget: DetailAssignments of every key, the largest count
-    auto expectedMax = [](const FSOLKeyDiagramModel& model)
-    {
-        TArray<int32> scratch;
-        int32 best = 0;
-        for (int32 key = 0; key < model.Keys.Num(); ++key)
-        {
-            best = FMath::Max(best, SOLKeyDiagram::DetailAssignments(model, key, scratch));
-        }
-        return best;
-    };
-
-    // The defaults and the freed modifiers
-    FSOLKeyDiagramModel model;
-    SOLKeyDiagram::Build(SOLKeyBindings::DefaultKeys(), model);
-    const int32 defaultMax = expectedMax(model);
-    TestTrue(TEXT("defaults: some key has lines"), defaultMax > 0);
-    TestEqual(TEXT("defaults: the busiest key's count"), SOLKeyDiagram::MaxDetailCount(model), defaultMax);
-    SOLKeyDiagram::Build(KeyDiagramTestFreedModifierKeys(), model);
-    TestEqual(TEXT("freed modifiers: the busiest key's count"), SOLKeyDiagram::MaxDetailCount(model),
-        expectedMax(model));
-
-    // A rebind piling more bindings than the busiest default key has lines onto K: the budget follows the model
-    TArray<FString> piled = SOLKeyBindings::DefaultKeys();
-    const int32 pileCount = FMath::Min(defaultMax + 1, SOLKeyBindings::BINDING_COUNT);
-    for (int32 binding = 0; binding < pileCount; ++binding)
-    {
-        piled[binding] = TEXT("K");
-    }
-    SOLKeyDiagram::Build(piled, model);
-    const int32 piledMax = expectedMax(model);
-    TestTrue(TEXT("piled onto K: the busiest key is busier than at the defaults"), piledMax > defaultMax);
-    TestEqual(TEXT("piled onto K: the busiest key's count"), SOLKeyDiagram::MaxDetailCount(model), piledMax);
-    TArray<int32> kLines;
-    TestTrue(TEXT("piled onto K: at least K's count"), SOLKeyDiagram::MaxDetailCount(model)
-        >= SOLKeyDiagram::DetailAssignments(model, SOLKeyboardLayout::FindKey(TEXT("K")), kLines));
-
-    // Back to the defaults
-    SOLKeyDiagram::Build(SOLKeyBindings::DefaultKeys(), model);
-    TestEqual(TEXT("defaults again: the busiest key's count"), SOLKeyDiagram::MaxDetailCount(model), defaultMax);
-
-    // Empty: a default model, and a model built from no rows
-    TestEqual(TEXT("an empty model: 0"), SOLKeyDiagram::MaxDetailCount(FSOLKeyDiagramModel()), 0);
-    FSOLKeyDiagramModel noRows;
-    SOLKeyDiagram::Build(TConstArrayView<SOLMenuText::FControlRow>(), SOLKeyBindings::DefaultKeys(), noRows);
-    TestEqual(TEXT("no rows: 0"), SOLKeyDiagram::MaxDetailCount(noRows), expectedMax(noRows));
-    TestEqual(TEXT("no rows: nothing to list"), SOLKeyDiagram::MaxDetailCount(noRows), 0);
-    return true;
-}
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramLegendAbbreviationsTest, "SOLTest.KeyDiagram.LegendAbbreviations",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
@@ -2493,6 +2468,268 @@ bool FSOLKeyDiagramLegendAbbreviationsTest::RunTest(const FString& /*parameters*
     }
     TestNull(TEXT("A has none"), SOLKeyDiagram::LegendAbbreviation(TEXT("A")));
     TestNull(TEXT("an empty name has none"), SOLKeyDiagram::LegendAbbreviation(FStringView()));
+    return true;
+}
+
+// D49, written test-first against the header contract: the diagram's key faces and text colours. An assigned key's face
+// is RAISED_COLOR tinted by its area colour at DIAGRAM_TINT_ALPHA as a plain per-channel sRGB lerp (Slate blends in
+// gamma space); legends, short labels, the "+N" badge and the lock mark draw in DIAGRAM_KEY_TEXT_COLOR; tinted faces
+// and free (dimmed) keys keep at least DIAGRAM_MIN_CONTRAST (3:1, WCAG large-text / UI level) against their text.
+
+// Helpers here carry names unique across the test files so unity builds do not collide
+namespace
+{
+    // The rendered Flight key face measured in the guide image (D49)
+    const FColor KEYDIAGRAMCONTRAST_MEASURED_FLIGHT(64, 117, 131);
+    constexpr int32 KEYDIAGRAMCONTRAST_MEASURED_TOLERANCE = 1;  // Per channel, 0-255
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two colours' R, G and B lie within a tolerance of each other, per channel (alpha ignored)
+    bool KeyDiagramContrastNear(const FColor& a, const FColor& b, const int32 tolerance)
+    {
+        return FMath::Abs(static_cast<int32>(a.R) - static_cast<int32>(b.R)) <= tolerance
+            && FMath::Abs(static_cast<int32>(a.G) - static_cast<int32>(b.G)) <= tolerance
+            && FMath::Abs(static_cast<int32>(a.B) - static_cast<int32>(b.B)) <= tolerance;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether two colours' R, G, B and A are all equal
+    bool KeyDiagramContrastSame(const FColor& a, const FColor& b)
+    {
+        return a.R == b.R && a.G == b.G && a.B == b.B && a.A == b.A;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a colour's R, G, B and A as "(r,g,b,a)" for test messages
+    FString KeyDiagramContrastText(const FColor& color)
+    {
+        return FString::Printf(TEXT("(%d,%d,%d,%d)"), color.R, color.G, color.B, color.A);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a colour with alpha forced to 255 (the result alpha of BlendSrgb)
+    FColor KeyDiagramContrastOpaque(const FColor& color)
+    {
+        return FColor(color.R, color.G, color.B, 255);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastRatioTest, "SOLTest.KeyDiagram.Contrast.Ratio",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// ContrastRatio is the WCAG 2 ratio: white on black 21, a colour on itself 1, symmetric, alpha ignored, and #777777 on
+// white about 4.48
+bool FSOLKeyDiagramContrastRatioTest::RunTest(const FString& /*parameters*/)
+{
+    const FColor white(255, 255, 255);
+    const FColor black(0, 0, 0);
+    const FColor grey(0x77, 0x77, 0x77);
+    TestEqual(TEXT("white on black is 21"), SOLKeyDiagram::ContrastRatio(white, black), 21.0f, 0.01f);
+    TestEqual(TEXT("black on white is 21"), SOLKeyDiagram::ContrastRatio(black, white), 21.0f, 0.01f);
+    TestEqual(TEXT("#777777 on white about 4.48"), SOLKeyDiagram::ContrastRatio(grey, white), 4.48f, 0.02f);
+
+    // A colour against itself is 1, and every pair reads the same both ways
+    const FColor samples[] = { white, black, grey, SOL::SolidMenu::RAISED_COLOR, SOL::SolidMenu::TEXT_BRIGHT_COLOR,
+        SOL::SolidMenu::BASE_COLOR, FColor(0x28, 0xD2, 0xF0), FColor(0xE5, 0x53, 0x3D) };
+    for (int32 a = 0; a < static_cast<int32>(UE_ARRAY_COUNT(samples)); ++a)
+    {
+        const FString whatA = KeyDiagramContrastText(samples[a]);
+        TestEqual(whatA + TEXT(" against itself is 1"), SOLKeyDiagram::ContrastRatio(samples[a], samples[a]), 1.0f,
+            0.001f);
+        for (int32 b = a + 1; b < static_cast<int32>(UE_ARRAY_COUNT(samples)); ++b)
+        {
+            const float forward = SOLKeyDiagram::ContrastRatio(samples[a], samples[b]);
+            const float backward = SOLKeyDiagram::ContrastRatio(samples[b], samples[a]);
+            TestEqual(whatA + TEXT(" and ") + KeyDiagramContrastText(samples[b]) + TEXT(" symmetric"), forward,
+                backward, 0.0001f);
+            TestTrue(whatA + TEXT(" and ") + KeyDiagramContrastText(samples[b]) + TEXT(" at least 1"),
+                forward >= 1.0f - 0.0001f);
+        }
+    }
+
+    // Alpha plays no part
+    TestEqual(TEXT("alpha ignored"), SOLKeyDiagram::ContrastRatio(FColor(255, 255, 255, 0), FColor(0, 0, 0, 10)),
+        21.0f, 0.01f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastBlendTest, "SOLTest.KeyDiagram.Contrast.Blend",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// BlendSrgb is a per-channel lerp rounded to the nearest value (halves up), alpha clamped to [0, 1], result alpha 255
+bool FSOLKeyDiagramContrastBlendTest::RunTest(const FString& /*parameters*/)
+{
+    const FColor under(10, 20, 30, 40);
+    const FColor over(20, 41, 0, 90);
+
+    // The ends give the inputs, opaque
+    TestTrue(TEXT("alpha 0 is under"), KeyDiagramContrastSame(SOLKeyDiagram::BlendSrgb(under, over, 0.0f),
+        KeyDiagramContrastOpaque(under)));
+    TestTrue(TEXT("alpha 1 is over"), KeyDiagramContrastSame(SOLKeyDiagram::BlendSrgb(under, over, 1.0f),
+        KeyDiagramContrastOpaque(over)));
+
+    // The midpoint: 15, 30.5 rounds to 31, 15
+    const FColor mid = SOLKeyDiagram::BlendSrgb(under, over, 0.5f);
+    TestTrue(FString::Printf(TEXT("0.5 midpoint is (15,31,15,255), got %s"), *KeyDiagramContrastText(mid)),
+        KeyDiagramContrastSame(mid, FColor(15, 31, 15, 255)));
+
+    // A quarter of white over black rounds 63.75 to 64 (not truncated), three quarters 191.25 to 191
+    const FColor quarter = SOLKeyDiagram::BlendSrgb(FColor(0, 0, 0), FColor(255, 255, 255), 0.25f);
+    TestTrue(FString::Printf(TEXT("0.25 is (64,64,64,255), got %s"), *KeyDiagramContrastText(quarter)),
+        KeyDiagramContrastSame(quarter, FColor(64, 64, 64, 255)));
+    const FColor threeQuarters = SOLKeyDiagram::BlendSrgb(FColor(0, 0, 0), FColor(255, 255, 255), 0.75f);
+    TestTrue(FString::Printf(TEXT("0.75 is (191,191,191,255), got %s"), *KeyDiagramContrastText(threeQuarters)),
+        KeyDiagramContrastSame(threeQuarters, FColor(191, 191, 191, 255)));
+
+    // Out-of-range alphas clamp to the ends
+    TestTrue(TEXT("alpha -0.5 clamps to under"), KeyDiagramContrastSame(SOLKeyDiagram::BlendSrgb(under, over, -0.5f),
+        KeyDiagramContrastOpaque(under)));
+    TestTrue(TEXT("alpha 1.5 clamps to over"), KeyDiagramContrastSame(SOLKeyDiagram::BlendSrgb(under, over, 1.5f),
+        KeyDiagramContrastOpaque(over)));
+
+    // The result is opaque whatever the inputs' alpha
+    TestEqual(TEXT("result alpha 255"), static_cast<int32>(SOLKeyDiagram::BlendSrgb(FColor(1, 2, 3, 0),
+        FColor(4, 5, 6, 0), 0.3f).A), 255);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastFaceTest, "SOLTest.KeyDiagram.Contrast.Face",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AssignedFaceColor is RAISED_COLOR (RAISED_LIFTED_COLOR when lifted) blended with the area colour at
+// DIAGRAM_TINT_ALPHA; the Flight face matches the measured guide image within one per channel
+bool FSOLKeyDiagramContrastFaceTest::RunTest(const FString& /*parameters*/)
+{
+    const FColor flight = SOLKeyDiagram::AssignedFaceColor(ESOLControlArea::Flight, false);
+    TestTrue(FString::Printf(TEXT("Flight face %s within 1 of the measured %s"), *KeyDiagramContrastText(flight),
+        *KeyDiagramContrastText(KEYDIAGRAMCONTRAST_MEASURED_FLIGHT)),
+        KeyDiagramContrastNear(flight, KEYDIAGRAMCONTRAST_MEASURED_FLIGHT, KEYDIAGRAMCONTRAST_MEASURED_TOLERANCE));
+    TestEqual(TEXT("Flight face opaque"), static_cast<int32>(flight.A), 255);
+
+    // Every area: the rest face over RAISED_COLOR, the lifted face over RAISED_LIFTED_COLOR
+    for (int32 index = 0; index < SOL::Help::AREA_COUNT; ++index)
+    {
+        const ESOLControlArea area = static_cast<ESOLControlArea>(index);
+        const FString what = FString(SOLKeyDiagram::AreaName(area));
+        const FColor rest = SOLKeyDiagram::AssignedFaceColor(area, false);
+        const FColor expectedRest = SOLKeyDiagram::BlendSrgb(SOL::SolidMenu::RAISED_COLOR,
+            SOL::Help::AREA_COLORS[index], SOL::Help::DIAGRAM_TINT_ALPHA);
+        TestTrue(FString::Printf(TEXT("%s face %s is RAISED_COLOR tinted %s"), *what, *KeyDiagramContrastText(rest),
+            *KeyDiagramContrastText(expectedRest)), KeyDiagramContrastSame(rest, expectedRest));
+        const FColor lifted = SOLKeyDiagram::AssignedFaceColor(area, true);
+        const FColor expectedLifted = SOLKeyDiagram::BlendSrgb(SOL::SolidMenu::RAISED_LIFTED_COLOR,
+            SOL::Help::AREA_COLORS[index], SOL::Help::DIAGRAM_TINT_ALPHA);
+        TestTrue(FString::Printf(TEXT("%s lifted face %s is RAISED_LIFTED_COLOR tinted %s"), *what,
+            *KeyDiagramContrastText(lifted), *KeyDiagramContrastText(expectedLifted)),
+            KeyDiagramContrastSame(lifted, expectedLifted));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastTintedFacesTest, "SOLTest.KeyDiagram.Contrast.TintedFaces",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every area's tinted rest face keeps DIAGRAM_MIN_CONTRAST against DIAGRAM_KEY_TEXT_COLOR, for the legend / short label
+// and for the "+N" badge (drawn in the same colour); each ratio is reported (worst expected about 3.22, Demo)
+bool FSOLKeyDiagramContrastTintedFacesTest::RunTest(const FString& /*parameters*/)
+{
+    const FColor text = SOL::Help::DIAGRAM_KEY_TEXT_COLOR;
+
+    // The badge draws in the key text colour (D49), so the legend check covers it
+    const FColor badge = SOL::Help::DIAGRAM_KEY_TEXT_COLOR;
+    TestTrue(TEXT("the badge colour is the key text colour (TEXT_BRIGHT_COLOR)"),
+        KeyDiagramContrastSame(badge, SOL::SolidMenu::TEXT_BRIGHT_COLOR));
+
+    float worst = MAX_flt;
+    const TCHAR* worstName = TEXT("");
+    for (int32 index = 0; index < SOL::Help::AREA_COUNT; ++index)
+    {
+        const ESOLControlArea area = static_cast<ESOLControlArea>(index);
+        const TCHAR* name = SOLKeyDiagram::AreaName(area);
+        const FColor face = SOLKeyDiagram::AssignedFaceColor(area, false);
+        const float ratio = SOLKeyDiagram::ContrastRatio(text, face);
+        AddInfo(FString::Printf(TEXT("%s: face %s, text contrast %.2f"), name, *KeyDiagramContrastText(face), ratio));
+        TestTrue(FString::Printf(TEXT("%s: legend contrast %.2f at least %.1f"), name, ratio,
+            SOL::Help::DIAGRAM_MIN_CONTRAST), ratio >= SOL::Help::DIAGRAM_MIN_CONTRAST);
+        const float badgeRatio = SOLKeyDiagram::ContrastRatio(badge, face);
+        TestTrue(FString::Printf(TEXT("%s: badge contrast %.2f at least %.1f"), name, badgeRatio,
+            SOL::Help::DIAGRAM_MIN_CONTRAST), badgeRatio >= SOL::Help::DIAGRAM_MIN_CONTRAST);
+        if (ratio < worst)
+        {
+            worst = ratio;
+            worstName = name;
+        }
+    }
+    AddInfo(FString::Printf(TEXT("Worst tinted face: %s at %.2f"), worstName, worst));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastFreeKeysTest, "SOLTest.KeyDiagram.Contrast.FreeKeys",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A free key's dimmed legend keeps DIAGRAM_MIN_CONTRAST against its dimmed face (expected about 3.10); the face is the
+// raised hull at DIAGRAM_FREE_ALPHA over the panel, the legend the key text colour at that alpha over the face
+bool FSOLKeyDiagramContrastFreeKeysTest::RunTest(const FString& /*parameters*/)
+{
+    const FColor face = SOLKeyDiagram::FreeFaceColor();
+    const FColor legend = SOLKeyDiagram::FreeLegendColor();
+    TestTrue(TEXT("free face is the hull over the panel at the free alpha"), KeyDiagramContrastSame(face,
+        SOLKeyDiagram::BlendSrgb(SOL::Help::DIAGRAM_PANEL_COLOR, SOL::SolidMenu::RAISED_COLOR,
+            SOL::Help::DIAGRAM_FREE_ALPHA)));
+    TestTrue(TEXT("free legend is the key text over the free face at the free alpha"), KeyDiagramContrastSame(legend,
+        SOLKeyDiagram::BlendSrgb(face, SOL::Help::DIAGRAM_KEY_TEXT_COLOR, SOL::Help::DIAGRAM_FREE_ALPHA)));
+    const float ratio = SOLKeyDiagram::ContrastRatio(legend, face);
+    AddInfo(FString::Printf(TEXT("Free key: face %s, legend %s, contrast %.2f"), *KeyDiagramContrastText(face),
+        *KeyDiagramContrastText(legend), ratio));
+    TestTrue(FString::Printf(TEXT("free key contrast %.2f at least %.1f"), ratio, SOL::Help::DIAGRAM_MIN_CONTRAST),
+        ratio >= SOL::Help::DIAGRAM_MIN_CONTRAST);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastLiftedTest, "SOLTest.KeyDiagram.Contrast.Lifted",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Reports (does not gate) each area's lifted (hovered) face contrast against DIAGRAM_KEY_TEXT_COLOR: the lifted face is
+// lighter and only shows while hovered
+bool FSOLKeyDiagramContrastLiftedTest::RunTest(const FString& /*parameters*/)
+{
+    for (int32 index = 0; index < SOL::Help::AREA_COUNT; ++index)
+    {
+        const ESOLControlArea area = static_cast<ESOLControlArea>(index);
+        const FColor face = SOLKeyDiagram::AssignedFaceColor(area, true);
+        AddInfo(FString::Printf(TEXT("%s lifted: face %s, text contrast %.2f"), SOLKeyDiagram::AreaName(area),
+            *KeyDiagramContrastText(face), SOLKeyDiagram::ContrastRatio(SOL::Help::DIAGRAM_KEY_TEXT_COLOR, face)));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLKeyDiagramContrastDecisionTest, "SOLTest.KeyDiagram.Contrast.Decision",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// D49's constants: the key text is TEXT_BRIGHT_COLOR, the panel is BASE_COLOR, the tint alpha stays 0.28 and the
+// contrast floor is 3:1
+bool FSOLKeyDiagramContrastDecisionTest::RunTest(const FString& /*parameters*/)
+{
+    TestTrue(TEXT("key text colour is TEXT_BRIGHT_COLOR"),
+        KeyDiagramContrastSame(SOL::Help::DIAGRAM_KEY_TEXT_COLOR, SOL::SolidMenu::TEXT_BRIGHT_COLOR));
+    TestTrue(TEXT("panel colour is BASE_COLOR"),
+        KeyDiagramContrastSame(SOL::Help::DIAGRAM_PANEL_COLOR, SOL::SolidMenu::BASE_COLOR));
+    TestEqual(TEXT("tint alpha unchanged at 0.28"), SOL::Help::DIAGRAM_TINT_ALPHA, 0.28f, 0.0f);
+    TestEqual(TEXT("contrast floor 3:1"), SOL::Help::DIAGRAM_MIN_CONTRAST, 3.0f, 0.0f);
     return true;
 }
 

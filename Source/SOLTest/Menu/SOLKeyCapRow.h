@@ -99,19 +99,14 @@ private:
     // Shapes the stale drawn texts at a paint scale (on the first paint and after a content, font or scale change)
     void Reshape(float scale) const;
 
-    // Paints one cap (its hull, glyph and legend) at a laid-out item
+    // Paints one cap (its hull, glyph and legend) at a laid-out item with the shared cap painter (SOLKeyCapPaint)
     int32 PaintCap(const FSOLKeyCapLayoutItem& item, const FGeometry& geometry, FSlateWindowElementList& out,
         int32 layerId, const FLinearColor& styleTint, ESlateDrawEffect effects) const;
-
-    // Paints a shaped text at a local top-left, vertically centred in a line of lineHeight
-    void PaintText(const FShapedGlyphSequencePtr& text, float x, float lineTop, float lineHeight,
-        const FGeometry& geometry, FSlateWindowElementList& out, int32 layerId, const FLinearColor& color,
-        ESlateDrawEffect effects) const;
 
     FSOLKeyCapModel mModel;
     FSOLKeyCapLayout mLayout;
     TArray<float> mLegendWidths;                    // Each cap's drawn legend, measured (local units)
-    TArray<float> mCapWidths;                       // Each cap's drawn width (SOLKeyCaps::CapWidth)
+    TArray<float> mCapWidths;                       // Each cap's drawn width (SOLKeyCaps::DrawnCapWidth)
     FString mMessage;
     FSlateBrush mCapBrush;
     FSlateBrush mUnboundBrush;

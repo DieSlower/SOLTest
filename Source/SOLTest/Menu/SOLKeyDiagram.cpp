@@ -421,6 +421,60 @@ FColor SOLKeyDiagram::AreaColor(const ESOLControlArea area)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns over blended onto under per sRGB channel at a clamped alpha, opaque
+FColor SOLKeyDiagram::BlendSrgb(const FColor& under, const FColor& over, const float alpha)
+{
+    const float a = FMath::Clamp(alpha, 0.0f, 1.0f);
+    return FColor(static_cast<uint8>(FMath::RoundToInt(FMath::Lerp<float>(under.R, over.R, a))),
+        static_cast<uint8>(FMath::RoundToInt(FMath::Lerp<float>(under.G, over.G, a))),
+        static_cast<uint8>(FMath::RoundToInt(FMath::Lerp<float>(under.B, over.B, a))), 255);
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns an sRGB colour's WCAG 2 relative luminance (the engine's sRGB decode, the WCAG channel weights)
+    float KeyDiagramRelativeLuminance(const FColor& color)
+    {
+        using namespace SOL::Help;
+        const FLinearColor linear = FLinearColor::FromSRGBColor(color);
+        return WCAG_LUMINANCE_R * linear.R + WCAG_LUMINANCE_G * linear.G + WCAG_LUMINANCE_B * linear.B;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the WCAG 2 contrast ratio of two colours
+float SOLKeyDiagram::ContrastRatio(const FColor& a, const FColor& b)
+{
+    using SOL::Help::WCAG_CONTRAST_FLARE;
+    const float la = KeyDiagramRelativeLuminance(a);
+    const float lb = KeyDiagramRelativeLuminance(b);
+    return (FMath::Max(la, lb) + WCAG_CONTRAST_FLARE) / (FMath::Min(la, lb) + WCAG_CONTRAST_FLARE);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an assigned key's area-tinted face (raised or lifted hull)
+FColor SOLKeyDiagram::AssignedFaceColor(const ESOLControlArea area, const bool bLifted)
+{
+    return BlendSrgb(bLifted ? SOL::SolidMenu::RAISED_LIFTED_COLOR : SOL::SolidMenu::RAISED_COLOR, AreaColor(area),
+        SOL::Help::DIAGRAM_TINT_ALPHA);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a free key's dimmed face over the panel
+FColor SOLKeyDiagram::FreeFaceColor()
+{
+    return BlendSrgb(SOL::Help::DIAGRAM_PANEL_COLOR, SOL::SolidMenu::RAISED_COLOR, SOL::Help::DIAGRAM_FREE_ALPHA);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a free key's dimmed legend over its face
+FColor SOLKeyDiagram::FreeLegendColor()
+{
+    return BlendSrgb(FreeFaceColor(), SOL::Help::DIAGRAM_KEY_TEXT_COLOR, SOL::Help::DIAGRAM_FREE_ALPHA);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns a binding's short label ("" out of range)
 const TCHAR* SOLKeyDiagram::BindingShortLabel(const int32 binding)
 {
@@ -489,8 +543,8 @@ TConstArrayView<const TCHAR*> SOLKeyDiagram::ChordModifierKeys(const SOLKeyBindi
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
-    // Calls visit(assignment) for each of a key's hover strip assignments in strip order (its own, the primary first,
-    // then the chords it starts); a mirror reads its main key's ranges. Shared by DetailAssignments and MaxDetailCount
+    // Calls visit(assignment) for each of a key's hover popup assignments in popup order (its own, the primary first,
+    // then the chords it starts); a mirror reads its main key's ranges (DetailAssignments)
     template <typename FVisit>
     void KeyDiagramForEachDetail(const FSOLKeyDiagramModel& model, const int32 key, FVisit&& visit)
     {
@@ -534,7 +588,7 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Fills out with the hover strip's assignments of a key: its own (primary first), then the chords it starts
+// Fills out with the hover popup's assignments of a key: its own (primary first), then the chords it starts
 int32 SOLKeyDiagram::DetailAssignments(const FSOLKeyDiagramModel& model, const int32 key, TArray<int32>& out)
 {
     out.Reset();
@@ -543,7 +597,7 @@ int32 SOLKeyDiagram::DetailAssignments(const FSOLKeyDiagramModel& model, const i
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Fills one hover strip line for an assignment: its one alternative's keys and its row's action
+// Fills one hover popup line for an assignment: its one alternative's keys and its row's action
 void SOLKeyDiagram::DetailLine(const TConstArrayView<SOLMenuText::FControlRow> rows,
     const FSOLKeyDiagramModel& model, const int32 assignment, const TArray<FString>& liveKeys,
     FSOLDiagramDetailLine& out)
@@ -570,25 +624,11 @@ void SOLKeyDiagram::DetailLine(const TConstArrayView<SOLMenuText::FControlRow> r
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Fills one hover strip line for an assignment from CONTROL_ROWS
+// Fills one hover popup line for an assignment from CONTROL_ROWS
 void SOLKeyDiagram::DetailLine(const FSOLKeyDiagramModel& model, const int32 assignment,
     const TArray<FString>& liveKeys, FSOLDiagramDetailLine& out)
 {
     DetailLine(TConstArrayView<SOLMenuText::FControlRow>(SOLMenuText::CONTROL_ROWS), model, assignment, liveKeys, out);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// D36: returns the largest DetailAssignments count over the model's keys (mirrors included), counting without a list
-int32 SOLKeyDiagram::MaxDetailCount(const FSOLKeyDiagramModel& model)
-{
-    int32 best = 0;
-    for (int32 key = 0; key < model.Keys.Num(); ++key)
-    {
-        int32 count = 0;
-        KeyDiagramForEachDetail(model, key, [&count](const int32 /*assignment*/) { ++count; });
-        best = FMath::Max(best, count);
-    }
-    return best;
 }
 
 //////////////////////////////////////////////////////////////////////////

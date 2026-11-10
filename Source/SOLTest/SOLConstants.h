@@ -1516,7 +1516,7 @@ namespace SOL
         inline constexpr float SETTINGS_TAB_TRACE_PX = 14.0f;     // Room right of the tabs for the hovered tab's trace
         inline constexpr float SETTINGS_TAB_TRACE_END_PX = 4.0f;  // ... which ends this far inside the rail's edge
         inline constexpr int32 SETTINGS_TAB_LETTER_SPACING = 100; // Tab labels (the stack's 260 is too wide for them)
-        // (33d-ii, SDD 33 D22 / D7) A group caption row above a tab in the rail (the Help page's "KEYS" and "HUD
+        // (33d-ii, SDD 33 D22) A group caption row above a tab in the rail (the Help page's "KEYS" and "HUD
         // GLOSSARY"): its height (BUTTON_GAP follows it), font size (SemiBold, DimTextColor) and letter spacing
         inline constexpr float TAB_RAIL_CAPTION_HEIGHT = 24.0f;
         inline constexpr int32 TAB_RAIL_CAPTION_FONT_SIZE = MenuStyle::SMALL_FONT_SIZE;
@@ -1596,6 +1596,17 @@ namespace SOL
                                                                   // clusters and the mouse under the main block
         inline constexpr float DIAGRAM_TINT_ALPHA = 0.28f;        // Area-colour fill over an assigned key's face
         inline constexpr float DIAGRAM_FREE_ALPHA = 0.45f;        // A key with no assignment is drawn at this alpha
+        // D49: the keys' legends, short labels, "+N" badges and lock marks (and the Other keys strip's texts) are
+        // drawn in the bright menu text over the area-tinted face; the floor every tinted face and the dimmed free key
+        // must reach against it (WCAG 3:1, the large-text and UI level), and the panel colour the diagram sits on
+        inline const FColor& DIAGRAM_KEY_TEXT_COLOR = SolidMenu::TEXT_BRIGHT_COLOR;
+        inline const FColor& DIAGRAM_PANEL_COLOR = SolidMenu::BASE_COLOR;
+        inline constexpr float DIAGRAM_MIN_CONTRAST = 3.0f;
+        // The WCAG 2 relative luminance weights of linear R, G and B and the flare added to both luminances of a ratio
+        inline constexpr float WCAG_LUMINANCE_R = 0.2126f;
+        inline constexpr float WCAG_LUMINANCE_G = 0.7152f;
+        inline constexpr float WCAG_LUMINANCE_B = 0.0722f;
+        inline constexpr float WCAG_CONTRAST_FLARE = 0.05f;
         // The cap on the hover popup's wrapped lines (D45; was D36's strip budget cap) and the height of its cap row
         // above the lines
         inline constexpr int32 DIAGRAM_DETAIL_LINES = 24;

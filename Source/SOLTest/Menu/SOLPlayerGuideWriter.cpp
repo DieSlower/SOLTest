@@ -577,8 +577,11 @@ bool FSOLPlayerGuideWriter::AreCapturesWritten()
 
 //////////////////////////////////////////////////////////////////////////
 // Compares every capture with its image: one within the capture noise keeps the image untouched (no new bytes for
-// Git LFS), the others are staged next to theirs. Then writes the guide and swaps the staged images in: a failure
-// before the swap leaves the repository's guide and images as they were (the staged copies removed)
+// Git LFS), the others are staged next to theirs. Then writes the guide (in place) and swaps the staged images in,
+// one rename at a time. A failure while staging leaves the guide and every image as they were (the staged copies
+// removed). The guide write and the swap are not all-or-nothing: a failed guide write can leave it partly written,
+// and a rename that fails mid-swap leaves the new guide, the images renamed before it new and the rest old (the
+// staged copies removed); the next run redoes it
 bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
 {
     IFileManager& files = IFileManager::Get();
@@ -639,7 +642,8 @@ bool FSOLPlayerGuideWriter::WriteOutputs(FString& outReason) const
     UE_LOG(LogSOL, Log, TEXT("PlayerGuide WROTE %s (%lld bytes)"), *FPaths::ConvertRelativePathToFull(guidePath),
         files.FileSize(*guidePath));
 
-    // The swap: each changed image's staged copy renamed over it; every capture removed
+    // The swap: each changed image's staged copy renamed over it in turn (not atomic: a failed rename stops it with
+    // the earlier images already replaced); every capture removed
     for (int32 index = 0; index < shots.Num(); ++index)
     {
         const FSOLPlayerGuideShot& shot = shots[index];

@@ -74,8 +74,8 @@ private:
     // Returns whether every capture of the run is on disk, not empty and no longer growing
     bool AreCapturesWritten();
 
-    // Writes the guide and moves the changed captures into place (an image within the capture noise kept); returns
-    // false (with a reason) on the first failure
+    // Writes the guide and moves the changed captures into place one by one (an image within the capture noise kept;
+    // not all-or-nothing once the guide is written); returns false (with a reason) on the first failure
     bool WriteOutputs(FString& outReason) const;
 
     // Logs the failure and quits; nothing more is written

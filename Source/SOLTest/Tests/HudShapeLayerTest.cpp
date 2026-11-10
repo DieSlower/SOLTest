@@ -68,13 +68,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapeLayerRetainTest, "SOLTest.HudShapeL
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A new layer is per-frame; SetRetainBatch switches the mode both ways; ResetFrame empties the batch and the backings
-// in either mode and keeps the mode; MarkBatchChanged keeps the batch and the mode
+// A new layer is per-frame (and volatile); SetRetainBatch switches the mode both ways, the widget volatile exactly when
+// not retained (IsVolatile() == !retain); ResetFrame empties the batch and the backings in either mode and keeps the
+// mode; MarkBatchChanged keeps the batch and the mode
 bool FSOLHudShapeLayerRetainTest::RunTest(const FString& /*parameters*/)
 {
     const TSharedRef<SSOLHudShapeLayer> layer = SNew(SSOLHudShapeLayer).MaxShapes(HUDSHAPELAYERTEST_MAX_SHAPES);
     TestEqual(TEXT("the asked capacity"), layer->GetBatch().GetMaxShapes(), HUDSHAPELAYERTEST_MAX_SHAPES);
     TestFalse(TEXT("per-frame by default"), layer->IsRetainBatch());
+    TestTrue(TEXT("volatile by default"), layer->IsVolatile());
 
     const FBox2f backing(FVector2f(10.0f, 10.0f), FVector2f(60.0f, 40.0f));
     for (const bool bRetain : { true, false })
@@ -82,6 +84,7 @@ bool FSOLHudShapeLayerRetainTest::RunTest(const FString& /*parameters*/)
         const FString mode = bRetain ? TEXT("retained") : TEXT("per-frame");
         layer->SetRetainBatch(bRetain);
         TestEqual(mode + TEXT(": the mode set"), layer->IsRetainBatch(), bRetain);
+        TestEqual(mode + TEXT(": volatile exactly when not retained"), layer->IsVolatile(), !bRetain);
 
         // Fill, mark changed (retain mode's refill signal), then reset
         layer->GetBatch().AddLine(FVector2f(1.0f, 2.0f), FVector2f(30.0f, 4.0f),
@@ -95,8 +98,17 @@ bool FSOLHudShapeLayerRetainTest::RunTest(const FString& /*parameters*/)
         TestEqual(mode + TEXT(": reset empties the batch"), layer->GetBatch().GetShapeCount(), 0);
         TestEqual(mode + TEXT(": reset empties the backings"), layer->GetBackingCount(), 0);
         TestEqual(mode + TEXT(": reset keeps the mode"), layer->IsRetainBatch(), bRetain);
+        TestEqual(mode + TEXT(": reset keeps the volatility"), layer->IsVolatile(), !bRetain);
     }
     TestFalse(TEXT("back to per-frame"), layer->IsRetainBatch());
+    TestTrue(TEXT("back to volatile"), layer->IsVolatile());
+
+    // Setting the same mode twice keeps the volatility
+    layer->SetRetainBatch(true);
+    layer->SetRetainBatch(true);
+    TestFalse(TEXT("retained twice: not volatile"), layer->IsVolatile());
+    layer->SetRetainBatch(false);
+    TestTrue(TEXT("per-frame again: volatile"), layer->IsVolatile());
     return true;
 }
 

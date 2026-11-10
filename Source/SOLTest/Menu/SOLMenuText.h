@@ -527,20 +527,21 @@ namespace SOLMenuText
                 "relative to the reference frame.") },
         { TEXT("Flight HUD"), TEXT(""), TEXT("{FlightModeManual}|{FlightModeAssisted}|{FlightModeAuto}"),
             TEXT("Flight mode"),
-            TEXT("The label above the speed block names the flight mode. ASSISTED (blue) holds the velocity "
-                "your keys ask for, MANUAL (orange) fires the thrusters directly and keeps any spin until you hold "
-                "{StopSpin}, and AUTO (green) is the autopilot flying for you. Switch between the first two with "
-                "{ToggleAssist}. Boost ({Boost}) is shown next to the label while it is on.") },
+            TEXT("The last line of the speed card, under the speed bar, names the flight mode. ASSISTED (blue) "
+                "holds the velocity your keys ask for, MANUAL (orange) fires the thrusters directly and keeps any spin "
+                "until you hold {StopSpin}, and AUTO (green) is the autopilot flying for you. Switch between the first "
+                "two with {ToggleAssist}. Next to it the line reads BOOST while boost ({Boost}) is on, else boost "
+                "off.") },
         { TEXT("Flight HUD"), TEXT("SpeedCapBar|Card"), TEXT(""), TEXT("Speed card"),
             TEXT("The big number is your speed relative to the reference frame, with the frame's name under it ("
-                "[M LOCK] when it is locked to your target) and your speed against the Sun beneath. The cap line and "
+                "[{MatchLock} LOCK] when it is locked to your target) and your speed against the Sun beneath. The cap line and "
                 "its bar show how much of your speed limit you use, orange when above it. Step the cap with the mouse "
                 "wheel or set it with {SpeedPanel}.") },
         { TEXT("Flight HUD"), TEXT("GMeter"), TEXT(""), TEXT("G meter"),
             TEXT("Shows the G force you feel and how much of your tolerance is left. Above {SustainedG} G the bar "
                 "drains, harder pulls drain it faster, and it refills below that. Manual flight warns when you pass "
                 "the limit, and at the combat limit of {CombatG} G the meter empties in seconds and you black out. "
-                "The small ticks on the bar are the Chase Down floor and resume marks.") },
+                "During a Chase Down, small ticks on the bar mark its floor and resume points.") },
         { TEXT("Flight HUD"), TEXT("Card"), TEXT(""), TEXT("Date and anchor card"),
             TEXT("Top left: the simulated date and the time-warp factor, the anchor (the body the world is centred "
                 "on) and the nearest body, and the surface-lock state. Surface-lock ({SurfaceLock}) keeps the ship "
@@ -564,7 +565,7 @@ namespace SOLMenuText
 
         // ---- Targets and radar ----
         { TEXT("Targets and radar"), TEXT("TargetBracket"), TEXT(""), TEXT("Target bracket and name"),
-            TEXT("A bracket drawn around the selected target with its name beside it. Select the target nearest the "
+            TEXT("A bracket drawn around the selected target with its name and distance under it. Select the target nearest the "
                 "reticle with {SelectTarget}, step farther or nearer with {NextTarget} and {PreviousTarget}, and clear "
                 "it with {ClearTarget}.") },
         { TEXT("Targets and radar"), TEXT("TargetEdgeArrow"), TEXT(""), TEXT("Off-screen target arrow"),
@@ -584,7 +585,8 @@ namespace SOLMenuText
                 "height and the short tick at the foot is its position straight under it.") },
         { TEXT("Targets and radar"), TEXT("RadarContactBelow"), TEXT(""), TEXT("Contact below the plane"),
             TEXT("An orange hollow ring on a dashed stem: the object is below your ship's plane. Contacts behind you "
-                "are dimmer, and ones past the range are pulled onto the rim with their true direction.") },
+                "are dimmer, and ones past the range are pulled in to the edge of the range along their true "
+                "direction and drawn dimmer still.") },
         { TEXT("Targets and radar"), TEXT("RadarSelected"), TEXT(""), TEXT("Selected target on the radar"),
             TEXT("Your selected target is drawn larger with a highlight ring and its name beside it, so you can "
                 "find it among the other contacts.") },
@@ -594,8 +596,8 @@ namespace SOLMenuText
             TEXT("A yellow ring crossed by rays marks a star. Overlay icons are hologram markers that show where "
                 "things are; switch them with {OverlayMaster} or choose kinds in the Overlay Menu ({OverlayMenu}).") },
         { TEXT("Overlays and route"), TEXT("IconPlanet"), TEXT(""), TEXT("Planet icon"),
-            TEXT("A plain ring marks a planet. Point at it with the mouse free to open its action menu "
-                "and choose what to do with it.") },
+            TEXT("A plain ring marks a planet. Point at it with the mouse free and press {Fire} to open its action "
+                "menu and choose what to do with it.") },
         { TEXT("Overlays and route"), TEXT("IconMoon"), TEXT(""), TEXT("Moon icon"),
             TEXT("A smaller ring marks a moon, so it reads as a satellite of the planet it circles.") },
         { TEXT("Overlays and route"), TEXT("IconDwarf"), TEXT(""), TEXT("Dwarf planet icon"),
@@ -617,7 +619,7 @@ namespace SOLMenuText
         { TEXT("Overlays and route"), TEXT("IconPlanet"), TEXT(""), TEXT("Distance darkening"),
             TEXT("With darkening on (a row of the Overlay Menu), far icons dim so near ones stand out. Icons also "
                 "fade as the object itself grows on screen: brightest while it is smaller than about "
-                "{IconFadeStartPx} pixels across and gone once it is big enough to see for itself.") },
+                "{IconFadeStartPx} pixels in radius and gone once it is big enough to see for itself.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Orbit lines"),
             TEXT("Lines that trace the orbits of planets, dwarf planets, moons and the largest asteroids. The "
                 "selected target's orbit is drawn in gold. Switch them with {ToggleOrbitLines}."), TEXT("OrbitLines") },
@@ -629,21 +631,22 @@ namespace SOLMenuText
                 "end. On a patrol loop the closing leg back to the first waypoint is dashed. Show or hide routes in "
                 "flight with {ToggleRouteOverlay}; the map always shows them."), TEXT("RouteLegs") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Waypoints"),
-            TEXT("A route's stops. A stop above the plane through your ship (on the map, the grid's plane) is a blue "
+            TEXT("A route's stops. A stop above the level plane through your ship (on the map, the grid's plane) is a blue "
                 "ring with a dot in it, one below it a hollow orange ring. On the map a stop clearly off that plane "
                 "also has a stem to the grid in the same colour."), TEXT("Waypoints") },
         { TEXT("Overlays and route"), TEXT(""), TEXT("ROUTE  MOVE  leg 2/5  40%   ETA 1:02:03"),
             TEXT("Route progress line"),
-            TEXT("Shows the kind of route (move or patrol), the leg you are flying and how far along it is, and the "
-                "time to the end. When a route is paused, {Resume} re-plans it from where you are and resumes.") },
+            TEXT("Shows the kind of route. A move shows the leg you are flying, how much of the route is done and "
+                "the time to its end; a patrol shows the next waypoint and the time to reach it. When a route is paused, {Resume} re-plans it from where you are and resumes.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Space dust"),
             TEXT("Faint specks drifting around the ship. They are not objects: they only make your speed visible "
                 "when everything else is far away. Turn them off in Settings, Graphics.") },
 
         // ---- Menus and map ----
         { TEXT("Menus and map"), TEXT("RadialMenu"), TEXT(""), TEXT("Icon hover and radial menu"),
-            TEXT("Point at an overlay icon with the mouse free and it highlights, with its name and what you can do "
-                "to it. Press {Fire} on it, drag toward an action and release to choose it. Release in the centre, "
+            TEXT("Point at an overlay icon with the mouse free and it turns orange with a highlight ring. Press "
+                "{Fire} on it to open the radial menu with its name and actions, drag toward one and release to "
+                "choose it. Release in the centre, "
                 "or press Esc, to cancel. An action that cannot run says why.") },
         { TEXT("Menus and map"), TEXT("Card"), TEXT(""), TEXT("Info card"),
             TEXT("Choosing Info on an object opens its card at the top right for {InfoCardSeconds} seconds: name, "
