@@ -218,8 +218,9 @@ namespace
     enum class EGlossaryToken : uint8
     {
         InfoCardSeconds,
-        RadarAutoFloor,
-        RadarAutoFloorTarget,
+        RadarAutoRange,
+        RadarAutoRangeTarget,
+        RadarManualFloor,
         IconFadeStartPx,
         VelocityMarkerMinSpeed,
         ChaseSafetyMarginDefault,
@@ -239,10 +240,11 @@ namespace
     // Each token's name as a description writes it between braces, in EGlossaryToken order
     constexpr const TCHAR* GLOSSARY_TOKEN_NAMES[] =
     {
-        TEXT("InfoCardSeconds"), TEXT("RadarAutoFloor"), TEXT("RadarAutoFloorTarget"), TEXT("IconFadeStartPx"),
-        TEXT("VelocityMarkerMinSpeed"), TEXT("ChaseSafetyMarginDefault"), TEXT("SustainedG"), TEXT("CombatG"),
-        TEXT("OverlayProfileCount"), TEXT("FlightModeManual"), TEXT("FlightModeAssisted"), TEXT("FlightModeAuto"),
-        TEXT("ChaseBurstSample"), TEXT("ChaseCoolSample"), TEXT("ChaseBrakeSample"), TEXT("OverlayProfileTagSample"),
+        TEXT("InfoCardSeconds"), TEXT("RadarAutoRange"), TEXT("RadarAutoRangeTarget"), TEXT("RadarManualFloor"),
+        TEXT("IconFadeStartPx"), TEXT("VelocityMarkerMinSpeed"), TEXT("ChaseSafetyMarginDefault"), TEXT("SustainedG"),
+        TEXT("CombatG"), TEXT("OverlayProfileCount"), TEXT("FlightModeManual"), TEXT("FlightModeAssisted"),
+        TEXT("FlightModeAuto"), TEXT("ChaseBurstSample"), TEXT("ChaseCoolSample"), TEXT("ChaseBrakeSample"),
+        TEXT("OverlayProfileTagSample"),
     };
     static_assert(UE_ARRAY_COUNT(GLOSSARY_TOKEN_NAMES) == static_cast<int32>(EGlossaryToken::Count),
         "one name per glossary token");
@@ -286,10 +288,12 @@ namespace
         {
         case EGlossaryToken::InfoCardSeconds:
             return SOLInfoText::FormatPercentOrValue(SOL::Interact::INFO_CARD_S);
-        case EGlossaryToken::RadarAutoFloor:
-            return GlossaryKilometres(SOLRadar::DefaultFloorM);
-        case EGlossaryToken::RadarAutoFloorTarget:
-            return GlossaryKilometres(SOLRadar::TargetedFloorM);
+        case EGlossaryToken::RadarAutoRange:
+            return GlossaryKilometres(SOLRadar::AUTO_RANGE_M);
+        case EGlossaryToken::RadarAutoRangeTarget:
+            return GlossaryKilometres(SOLRadar::AUTO_RANGE_TARGETED_M);
+        case EGlossaryToken::RadarManualFloor:
+            return GlossaryKilometres(SOLRadar::MANUAL_FLOOR_M);
         case EGlossaryToken::IconFadeStartPx:
             return SOLInfoText::FormatPercentOrValue(SOL::Overlay::ICON_FADE_START_PX);
         case EGlossaryToken::VelocityMarkerMinSpeed:

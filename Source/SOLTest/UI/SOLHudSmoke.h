@@ -22,9 +22,10 @@ class USOLTargetingSubsystem;
  * as a real keyboard would (the log says if Slate did not deliver one and the panel was called directly instead).
  * It checks the O toggle, that W does nothing while the panel is open and works again after it closes, digit stepping
  * with carry, the unit cycle, setting the cap from the body list, closing with F3 and Esc, the radar's '-' manual
- * zoom and Home back to AUTO, logging a LogSOL PASS/FAIL line per check. It ends with two screenshots: the HUD over
- * Earth with Earth targeted and the radar zoomed in manually, and the orbit ellipses seen from 3 AU above the Sun;
- * then it quits.
+ * zoom and Home back to AUTO, logging a LogSOL PASS/FAIL line per check. Before Earth is selected it checks the manual
+ * zoom with no target (SDD 36): '-' down to 10 km and 1 km, and MANUAL keeping its range through T and X (with a
+ * screenshot of RADAR 1.0 km (MANUAL) and no target). It ends with two screenshots: the HUD over Earth with Earth
+ * targeted and the radar zoomed in manually, and the orbit ellipses seen from 3 AU above the Sun; then it quits.
  */
 class SOLTEST_API FSOLHudSmoke
 {
@@ -42,6 +43,12 @@ private:
     enum class ESOLHudPhase : uint8
     {
         Setup,
+        NoTargetZoomIn,     // Issue #36: '-' x3 with no target selected: MANUAL 10 km (repeats once per press)
+        NoTargetSelect,     // T: a target selected, MANUAL 10 km kept
+        NoTargetClear,      // X: no target, MANUAL 10 km kept
+        NoTargetFloor,      // '-': MANUAL 1 km
+        NoTargetFloorNoOp,  // '-' again: a no-op at the 1 km floor (screenshot)
+        NoTargetAuto,       // Home: AUTO 10,000 km
         SelectEarth,
         OrbitsOn,
         OrbitsOff,
@@ -106,6 +113,10 @@ private:
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
 
+    // Checks the radar's mode and exact range and whether a target is selected after the action described
+    void CheckRadarState(const TCHAR* label, const TCHAR* action, bool bExpectTarget, bool bExpectManual,
+        double expectedRangeM);
+
     // Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
     void TryBeginOrbitOverride(bool bLate);
 
@@ -122,6 +133,7 @@ private:
     int32 mPhaseFrames = 0;                                 // Frames in the current phase
     bool mIsOrbitOverrideOn = false;                        // The orbit-line verification override is applied
     int32 mRadarZoomTaps = 0;                               // '-' presses made so far in the RadarZoomIn phase
+    int32 mNoTargetZoomTaps = 0;                            // '-' presses made so far in the NoTargetZoomIn phase
     int32 mEarthIndex = INDEX_NONE;                         // Registry index of Earth
     int32 mSlateMisses = 0;                                 // Panel keys Slate did not deliver (sent directly)
     int32 mChecksPassed = 0;                                // Checks that passed

@@ -222,10 +222,10 @@ bool FSOLHudFormatAppendDistanceTest::RunTest(const FString& /*parameters*/)
             FString(TEXT("RADAR ")) + expected);
     }
 
-    // The radar's default floor reads as the in-game label shows it
+    // The radar's AUTO range with no target (SOLRadar::AUTO_RANGE_M) reads as the in-game label shows it
     FString label;
     SOLHudFormat::AppendDistanceM(label, 1.0e7);
-    TestEqual(TEXT("10,000 km floor label"), label, FString(TEXT("10000.0 km")));
+    TestEqual(TEXT("10,000 km AUTO range label"), label, FString(TEXT("10000.0 km")));
     return true;
 }
 

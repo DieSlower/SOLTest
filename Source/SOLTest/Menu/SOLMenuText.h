@@ -577,9 +577,10 @@ namespace SOLMenuText
         { TEXT("Targets and radar"), TEXT("RadarScope"), TEXT(""), TEXT("Radar scope"),
             TEXT("A 3D scope at the bottom right. The disc is your ship's own plane with forward at the top, the "
                 "rings mark a quarter, half, three quarters and all of the range, and the pulse sweeping outward "
-                "is for show. The wedge is your camera's view. In AUTO the range is {RadarAutoFloor}, tightening to "
-                "{RadarAutoFloorTarget} when you select a target. {RadarZoomIn} and {RadarZoomOut} zoom by ten "
-                "(MANUAL) and {RadarAuto} returns to AUTO.") },
+                "is for show. The wedge is your camera's view. In AUTO the range is {RadarAutoRange}, tightening to "
+                "{RadarAutoRangeTarget} when you select a target. {RadarZoomIn} and {RadarZoomOut} step the range "
+                "through powers of ten (MANUAL), in to {RadarManualFloor} with or without a target; MANUAL keeps its "
+                "range when you change targets, and {RadarAuto} returns to AUTO.") },
         { TEXT("Targets and radar"), TEXT("RadarContactAbove"), TEXT(""), TEXT("Contact above the plane"),
             TEXT("A blue dot on a solid stem: the object is above your ship's plane (or on it). The stem is its "
                 "height and the short tick at the foot is its position straight under it.") },

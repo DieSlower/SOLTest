@@ -52,8 +52,8 @@ class USOLTargetingSubsystem;
  * virtual-joystick indicator, speed relative to the active frame (absolute beneath), speed cap and fill bar, assist
  * and boost state, frame and anchor names, nearest body and altitude, the surface-lock status (or the L hint while a
  * body is within manual range; SDD 4 decision 6), sim UTC date and warp, the selected target's
- * bracket (or an edge arrow when off-screen), prograde/retrograde markers, a 3D spherical radar (AUTO range = the
- * target-dependent floor, or MANUAL decade zoom with '-' / '=' and Home back to AUTO) and, toggled by O, every body's
+ * bracket (or an edge arrow when off-screen), prograde/retrograde markers, a 3D spherical radar (AUTO range by target
+ * state, or MANUAL power-of-ten zoom down to 1 km with '-' / '=' and Home back to AUTO) and, toggled by O, every body's
  * orbit ellipse. While the jump map is open the pilot aids are hidden, the hint line shows the map's keys and every
  * body too small on screen gets a colored icon and name label (FSOLMapBodyOverlay), with the destination pick's disc,
  * height guide line and marker drawn over them (FSOLMapPickOverlay); the orbit ellipses and target
@@ -118,7 +118,7 @@ public:
     // Returns the radar range used in the last frame, meters (verification)
     double GetLastRadarRangeM() const { return mLastRadarRangeM; }
 
-    // Steps the radar range one decade in ('-') or out ('='); switches to MANUAL only when the range changes
+    // Steps the radar range to the next power of ten in ('-') or out ('='); switches to MANUAL only when it changes
     void StepRadarZoom(bool bZoomIn);
 
     // Returns the radar to AUTO range (Home)
@@ -509,7 +509,7 @@ private:
     // and each budgeted contact's stem and blip, above the plane LT Primary, below LT Secondary dashed and hollow
     void DrawRadar(const FSOLHudView* view, const FSOLShipState& state);
 
-    // Returns true when a target is selected (sets the radar's range floor)
+    // Returns true when a target is selected (sets the radar's AUTO range)
     bool HasSelectedTarget() const;
 
     // Appends a speed with its auto-picked unit to the text buffer
@@ -600,8 +600,8 @@ private:
     int32 mLastRadarAboveCount = 0;                 // Contacts drawn above / below the plane last frame
     int32 mLastRadarBelowCount = 0;
     TArray<FSOLWarpStreak> mWarpStreaks;            // Jump warp streak table, built once
-    double mLastRadarRangeM = 0.0;                  // Radar range of the last frame
-    double mManualRadarRangeM = 0.0;                // Radar range while in MANUAL mode, reclamped every frame
+    double mLastRadarRangeM = SOLRadar::AUTO_RANGE_M;  // Radar range of the last frame (AUTO before the first draw)
+    double mManualRadarRangeM = 0.0;                // Radar range in MANUAL, set only by a zoom press (SDD 36)
     FString mFlightHintsOrbitsOn;                   // Key hint line with the orbit lines on (rebuilt on rebinds)
     FString mFlightHintsOrbitsOff;                  // ...and off
     FString mMapHints;                              // The jump map's first hint line

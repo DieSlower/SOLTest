@@ -1054,14 +1054,14 @@ ASOLOrbitLineVisuals* ASOLFlightHud::GetOrbitLineVisuals() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Steps the radar range one decade in ('-') or out ('='); switches to MANUAL only when the range changes
+// Steps the radar range to the next power of ten in ('-') or out ('='); switches to MANUAL only when the range changes
 void ASOLFlightHud::StepRadarZoom(const bool bZoomIn)
 {
     // The first press starts from the range on screen; later presses from the manual range
     const double currentM = mIsRadarManual ? mManualRadarRangeM : mLastRadarRangeM;
-    const double steppedM = SOLRadar::StepManualRange(currentM, bZoomIn, HasSelectedTarget());
+    const double steppedM = SOLRadar::StepManualRange(currentM, bZoomIn);
 
-    // A press that leaves the range where it is (e.g. '-' at the AUTO floor) keeps the current mode
+    // A press that leaves the range where it is (e.g. '-' at the 1 km floor) keeps the current mode
     if (steppedM == currentM)
     {
         UE_LOG(LogSOL, Log, TEXT("FlightHud %s: radar zoom %s is a no-op at %.4g m (%s kept)"), *GetName(),
@@ -2501,15 +2501,9 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
         }
     }
 
-    // AUTO: the range floor for the current target state (SDD 2 Appendix C Amendment 3); MANUAL: the zoomed range,
-    // reclamped to that floor
-    const bool bHasTarget = HasSelectedTarget();
-    const double floorM = SOLRadar::EffectiveFloorM(bHasTarget);
-    if (mIsRadarManual)
-    {
-        mManualRadarRangeM = FMath::Clamp(mManualRadarRangeM, floorM, SOLRadar::MaxRangeM);
-    }
-    const double rangeM = mIsRadarManual ? mManualRadarRangeM : floorM;
+    // AUTO: the AUTO range for the current target state; MANUAL: the zoomed range, independent of the target (SDD 36
+    // D4, D5: StepManualRange already clamps it to [MANUAL_FLOOR_M, MaxRangeM])
+    const double rangeM = mIsRadarManual ? mManualRadarRangeM : SOLRadar::AutoRangeM(HasSelectedTarget());
     mLastRadarRangeM = rangeM;
 
     // Scope layout: the plane is an ellipse (the tilted disc); below it the longest downward stem (plus half a
@@ -2627,7 +2621,7 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns true when a target is selected (sets the radar's range floor)
+// Returns true when a target is selected (sets the radar's AUTO range)
 bool ASOLFlightHud::HasSelectedTarget() const
 {
     return Targeting != nullptr && Targeting->GetSelectedTarget() != nullptr;

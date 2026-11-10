@@ -33,13 +33,6 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns a relative tolerance for comparing ranges of the given magnitude
-    double RadarTol(const double expectedM)
-    {
-        return FMath::Max(1e-9, FMath::Abs(expectedM) * 1e-9);
-    }
-
-    //////////////////////////////////////////////////////////////////////////
     // Returns the projected radial distance from the scope center of a contact dead ahead at the given distance
     double RadarAheadRadius(const double distanceM)
     {
@@ -49,19 +42,89 @@ namespace
     }
 }
 
-// --- EffectiveFloorM ---
+// --- Manual zoom helpers (issue #36, Docs/SDDs/36-radar-manual-zoom-floor.md section 4) ---
 
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarEffectiveFloorTest, "SOLTest.RadarLayout.EffectiveFloorByTargetState",
+namespace
+{
+    // Every StepManualRange result is an exact constant (SDD 36 section 4), so the step tests compare with no tolerance
+    constexpr double RADAR_EXACT = 0.0;
+
+    // Relative slack of the sweep's "at most one decade" bounds (well above the 1e-9 snap tolerance)
+    constexpr double RADAR_DECADE_SLACK = 1e-8;
+
+    // The powers of ten from the manual floor to the last one under 1 AU (decimal literals are exact doubles)
+    constexpr double RADAR_DECADES_M[] = { 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9, 1.0e10, 1.0e11 };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a range is one StepManualRange may return: MANUAL_FLOOR_M, a power of ten in (1e3, 1e11] or
+    // MaxRangeM
+    bool RadarStepIsAllowed(const double rangeM)
+    {
+        if (rangeM == SOLRadar::MANUAL_FLOOR_M || rangeM == SOLRadar::MaxRangeM)
+        {
+            return true;
+        }
+        for (const double decadeM : RADAR_DECADES_M)
+        {
+            if (rangeM == decadeM)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks one manual step from a start range against its exact expected result
+    void RadarCheckStep(FAutomationTestBase& test, const FString& label, const double startM, const bool bZoomIn,
+        const double expectedM)
+    {
+        test.TestEqual(FString::Printf(TEXT("%s: %s from %.17g"), *label, bZoomIn ? TEXT("in") : TEXT("out"), startM),
+            SOLRadar::StepManualRange(startM, bZoomIn), expectedM, RADAR_EXACT);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks a run of same-direction presses from a start range, one exact expected range per press; returns the last
+    double RadarCheckLadder(FAutomationTestBase& test, const FString& label, const double startM, const bool bZoomIn,
+        const TArray<double>& expectedM)
+    {
+        double rangeM = startM;
+        for (int32 press = 0; press < expectedM.Num(); ++press)
+        {
+            rangeM = SOLRadar::StepManualRange(rangeM, bZoomIn);
+            test.TestEqual(FString::Printf(TEXT("%s: press %d (%s)"), *label, press + 1,
+                bZoomIn ? TEXT("in") : TEXT("out")), rangeM, expectedM[press], RADAR_EXACT);
+        }
+        return rangeM;
+    }
+}
+
+// --- AutoRangeM and the manual zoom constants ---
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarAutoRangeTest, "SOLTest.RadarLayout.AutoRangeByTargetState",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// The effective floor is 10,000 km with no target selected and 1 km with one selected
-bool FSOLRadarEffectiveFloorTest::RunTest(const FString& /*parameters*/)
+// The AUTO range is exactly 10,000 km with no target and 1 km with one; the manual floor is 1 km and never above AUTO
+bool FSOLRadarAutoRangeTest::RunTest(const FString& /*parameters*/)
 {
-    TestEqual(TEXT("No target -> DefaultFloorM"), SOLRadar::EffectiveFloorM(false), SOLRadar::DefaultFloorM, 0.0);
-    TestEqual(TEXT("No target -> 1e7 m"), SOLRadar::EffectiveFloorM(false), 1.0e7, 0.0);
-    TestEqual(TEXT("Target -> TargetedFloorM"), SOLRadar::EffectiveFloorM(true), SOLRadar::TargetedFloorM, 0.0);
-    TestEqual(TEXT("Target -> 1e3 m"), SOLRadar::EffectiveFloorM(true), 1.0e3, 0.0);
+    // AutoRangeM by target state, exactly its constant
+    TestEqual(TEXT("No target -> AUTO_RANGE_M"), SOLRadar::AutoRangeM(false), SOLRadar::AUTO_RANGE_M, RADAR_EXACT);
+    TestEqual(TEXT("No target -> 1e7 m (10,000 km)"), SOLRadar::AutoRangeM(false), 1.0e7, RADAR_EXACT);
+    TestEqual(TEXT("Target -> AUTO_RANGE_TARGETED_M"), SOLRadar::AutoRangeM(true), SOLRadar::AUTO_RANGE_TARGETED_M,
+        RADAR_EXACT);
+    TestEqual(TEXT("Target -> 1e3 m (1 km)"), SOLRadar::AutoRangeM(true), 1.0e3, RADAR_EXACT);
+
+    // The constants of the contract
+    TestEqual(TEXT("AUTO_RANGE_M is 1e7 m"), SOLRadar::AUTO_RANGE_M, 1.0e7, RADAR_EXACT);
+    TestEqual(TEXT("AUTO_RANGE_TARGETED_M is 1e3 m"), SOLRadar::AUTO_RANGE_TARGETED_M, 1.0e3, RADAR_EXACT);
+    TestEqual(TEXT("MANUAL_FLOOR_M is 1000 m"), SOLRadar::MANUAL_FLOOR_M, 1000.0, RADAR_EXACT);
+    TestEqual(TEXT("MaxRangeM is 1 AU, unchanged"), SOLRadar::MaxRangeM, 149597870700.0, RADAR_EXACT);
+    TestEqual(TEXT("ZOOM_SNAP_RELATIVE_TOLERANCE is 1e-9"), SOLRadar::ZOOM_SNAP_RELATIVE_TOLERANCE, 1e-9, RADAR_EXACT);
+
+    // AUTO is never below the manual floor
+    TestTrue(TEXT("MANUAL_FLOOR_M <= AutoRangeM(false)"), SOLRadar::MANUAL_FLOOR_M <= SOLRadar::AutoRangeM(false));
+    TestTrue(TEXT("MANUAL_FLOOR_M <= AutoRangeM(true)"), SOLRadar::MANUAL_FLOOR_M <= SOLRadar::AutoRangeM(true));
     return true;
 }
 
@@ -71,21 +134,113 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarStepBasicTest, "SOLTest.RadarLayout.St
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Zooming in divides by ZoomStepFactor and zooming out multiplies by it, when the result stays inside the clamp
+// An exact power of ten inside the clamp steps exactly one decade: in to p / 10, out to p * 10
 bool FSOLRadarStepBasicTest::RunTest(const FString& /*parameters*/)
 {
-    TestEqual(TEXT("No target: in from 1e9 -> 1e8"), SOLRadar::StepManualRange(1.0e9, true, false), 1.0e8, RadarTol(1.0e8));
-    TestEqual(TEXT("No target: out from 1e9 -> 1e10"), SOLRadar::StepManualRange(1.0e9, false, false), 1.0e10,
-        RadarTol(1.0e10));
-    TestEqual(TEXT("Target: in from 1e5 -> 1e4"), SOLRadar::StepManualRange(1.0e5, true, true), 1.0e4, RadarTol(1.0e4));
-    TestEqual(TEXT("Target: out from 1e5 -> 1e6"), SOLRadar::StepManualRange(1.0e5, false, true), 1.0e6, RadarTol(1.0e6));
+    // 1e7 is AUTO with no target: '-' used to be a no-op here and now goes to 1e6
+    RadarCheckStep(*this, TEXT("1e7 (AUTO, no target)"), 1.0e7, true, 1.0e6);
+    RadarCheckStep(*this, TEXT("1e7 (AUTO, no target)"), 1.0e7, false, 1.0e8);
 
-    // Non-power-of-10 ranges step by the same factor (no snapping)
-    TestEqual(TEXT("No target: in from 3e9 -> 3e8"), SOLRadar::StepManualRange(3.0e9, true, false), 3.0e8, RadarTol(3.0e8));
-    TestEqual(TEXT("Target: out from 2.5e3 -> 2.5e4"), SOLRadar::StepManualRange(2.5e3, false, true), 2.5e4,
-        RadarTol(2.5e4));
-    TestEqual(TEXT("No target: in from MaxRangeM -> MaxRangeM / 10"), SOLRadar::StepManualRange(SOLRadar::MaxRangeM, true,
-        false), SOLRadar::MaxRangeM / SOLRadar::ZoomStepFactor, RadarTol(SOLRadar::MaxRangeM / 10.0));
+    // Exact powers 1e6, 1e5, 1e4
+    RadarCheckStep(*this, TEXT("1e6"), 1.0e6, true, 1.0e5);
+    RadarCheckStep(*this, TEXT("1e6"), 1.0e6, false, 1.0e7);
+    RadarCheckStep(*this, TEXT("1e5"), 1.0e5, true, 1.0e4);
+    RadarCheckStep(*this, TEXT("1e5"), 1.0e5, false, 1.0e6);
+    RadarCheckStep(*this, TEXT("1e4"), 1.0e4, true, 1.0e3);
+    RadarCheckStep(*this, TEXT("1e4"), 1.0e4, false, 1.0e5);
+
+    // Exact powers above AUTO
+    RadarCheckStep(*this, TEXT("1e8"), 1.0e8, true, 1.0e7);
+    RadarCheckStep(*this, TEXT("1e8"), 1.0e8, false, 1.0e9);
+    RadarCheckStep(*this, TEXT("1e10"), 1.0e10, true, 1.0e9);
+    RadarCheckStep(*this, TEXT("1e10"), 1.0e10, false, 1.0e11);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarStepSnapTest, "SOLTest.RadarLayout.StepManualRangeSnapsToPowersOfTen",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Off-decade ranges snap to the next power of ten; a range within the relative tolerance of a power counts as it
+bool FSOLRadarStepSnapTest::RunTest(const FString& /*parameters*/)
+{
+    // Between powers: in = the largest power strictly below, out = the smallest strictly above
+    RadarCheckStep(*this, TEXT("5e3"), 5.0e3, true, 1.0e3);
+    RadarCheckStep(*this, TEXT("5e3"), 5.0e3, false, 1.0e4);
+    RadarCheckStep(*this, TEXT("1.5e3"), 1.5e3, true, 1.0e3);
+    RadarCheckStep(*this, TEXT("1.5e3"), 1.5e3, false, 1.0e4);
+    RadarCheckStep(*this, TEXT("2.5e4"), 2.5e4, true, 1.0e4);
+    RadarCheckStep(*this, TEXT("2.5e4"), 2.5e4, false, 1.0e5);
+    RadarCheckStep(*this, TEXT("3e9"), 3.0e9, true, 1.0e9);
+    RadarCheckStep(*this, TEXT("3e9"), 3.0e9, false, 1.0e10);
+
+    // Just under a power and outside the tolerance: still between powers
+    RadarCheckStep(*this, TEXT("9.99e6"), 9.99e6, true, 1.0e6);
+    RadarCheckStep(*this, TEXT("9.99e6"), 9.99e6, false, 1.0e7);
+
+    // Within the tolerance of 1e6: counts as 1e6 and steps one decade
+    RadarCheckStep(*this, TEXT("1e6 * (1 + 1e-12)"), 1.0e6 * (1.0 + 1e-12), true, 1.0e5);
+    RadarCheckStep(*this, TEXT("1e6 * (1 + 1e-12)"), 1.0e6 * (1.0 + 1e-12), false, 1.0e7);
+    RadarCheckStep(*this, TEXT("1e6 * (1 - 1e-12)"), 1.0e6 * (1.0 - 1e-12), true, 1.0e5);
+    RadarCheckStep(*this, TEXT("1e6 * (1 - 1e-12)"), 1.0e6 * (1.0 - 1e-12), false, 1.0e7);
+
+    // Outside the tolerance of 1e6: above it snaps in to 1e6, below it snaps out to 1e6
+    RadarCheckStep(*this, TEXT("1e6 * (1 + 1e-6)"), 1.0e6 * (1.0 + 1e-6), true, 1.0e6);
+    RadarCheckStep(*this, TEXT("1e6 * (1 + 1e-6)"), 1.0e6 * (1.0 + 1e-6), false, 1.0e7);
+    RadarCheckStep(*this, TEXT("1e6 * (1 - 1e-6)"), 1.0e6 * (1.0 - 1e-6), true, 1.0e5);
+    RadarCheckStep(*this, TEXT("1e6 * (1 - 1e-6)"), 1.0e6 * (1.0 - 1e-6), false, 1.0e6);
+
+    // Arithmetic results of exact powers (exact or a rounding away) are never misclassified
+    const double computedM[] = { 1.0e7 / 10.0, 1.0e3 * 10.0 * 10.0 * 10.0, FMath::Pow(10.0, 6.0),
+        1.0e6 / 3.0 * 3.0, 1.0e6 * 0.1 * 10.0 };
+    for (const double startM : computedM)
+    {
+        RadarCheckStep(*this, TEXT("1e6 computed"), startM, true, 1.0e5);
+        RadarCheckStep(*this, TEXT("1e6 computed"), startM, false, 1.0e7);
+    }
+    double builtM = SOLRadar::MANUAL_FLOOR_M;
+    for (int32 decade = 0; decade < 8; ++decade)
+    {
+        builtM *= 10.0;
+    }
+    RadarCheckStep(*this, TEXT("1e11 built as 1e3 * 10^8"), builtM, true, 1.0e10);
+    RadarCheckStep(*this, TEXT("1e11 built as 1e3 * 10^8"), builtM, false, SOLRadar::MaxRangeM);
+
+    // Sweep: every result is an allowed exact constant; inside the clamp it moves the asked way by at most a decade
+    const double mantissas[] = { 1.0, 1.0 + 1e-12, 1.0 - 1e-12, 1.0 + 1e-6, 1.0 - 1e-6, 1.5, 2.0, 3.7, 5.0, 9.99 };
+    for (int32 exponent = -2; exponent <= 14; ++exponent)
+    {
+        for (const double mantissa : mantissas)
+        {
+            const double startM = mantissa * FMath::Pow(10.0, static_cast<double>(exponent));
+            const bool bInsideClamp = startM >= SOLRadar::MANUAL_FLOOR_M && startM <= SOLRadar::MaxRangeM;
+            for (const bool bZoomIn : { true, false })
+            {
+                const double resultM = SOLRadar::StepManualRange(startM, bZoomIn);
+                const FString label = FString::Printf(TEXT("sweep %.17g %s -> %.17g"), startM,
+                    bZoomIn ? TEXT("in") : TEXT("out"), resultM);
+                TestTrue(label + TEXT(": an allowed exact constant"), RadarStepIsAllowed(resultM));
+                if (!bInsideClamp)
+                {
+                    continue;
+                }
+                if (bZoomIn)
+                {
+                    TestTrue(label + TEXT(": smaller, or held at the floor"),
+                        resultM < startM || resultM == SOLRadar::MANUAL_FLOOR_M);
+                    TestTrue(label + TEXT(": at most one decade in"), resultM == SOLRadar::MANUAL_FLOOR_M
+                        || resultM * 10.0 >= startM * (1.0 - RADAR_DECADE_SLACK));
+                }
+                else
+                {
+                    TestTrue(label + TEXT(": larger, or held at the ceiling"),
+                        resultM > startM || resultM == SOLRadar::MaxRangeM);
+                    TestTrue(label + TEXT(": at most one decade out"), resultM == SOLRadar::MaxRangeM
+                        || resultM <= startM * 10.0 * (1.0 + RADAR_DECADE_SLACK));
+                }
+            }
+        }
+    }
     return true;
 }
 
@@ -93,44 +248,42 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarStepClampTest, "SOLTest.RadarLayout.St
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Steps clamp exactly at the effective floor (in) and at MaxRangeM (out); the floor depends on the target state
+// Steps clamp exactly to [MANUAL_FLOOR_M, MaxRangeM] whatever the target state; the clamped ends are exact no-ops
 bool FSOLRadarStepClampTest::RunTest(const FString& /*parameters*/)
 {
-    // Zoom-in floor, no target
-    TestEqual(TEXT("No target: in from 5e7 -> DefaultFloorM exactly"), SOLRadar::StepManualRange(5.0e7, true, false),
-        SOLRadar::DefaultFloorM, 0.0);
-    TestEqual(TEXT("No target: in from DefaultFloorM stays at DefaultFloorM"),
-        SOLRadar::StepManualRange(SOLRadar::DefaultFloorM, true, false), SOLRadar::DefaultFloorM, 0.0);
+    // The floor (also AUTO with a target): in is a no-op the HUD detects with stepped == current
+    TestEqual(TEXT("in from MANUAL_FLOOR_M returns MANUAL_FLOOR_M exactly (no-op)"),
+        SOLRadar::StepManualRange(SOLRadar::MANUAL_FLOOR_M, true), SOLRadar::MANUAL_FLOOR_M, RADAR_EXACT);
+    RadarCheckStep(*this, TEXT("1e3 (floor)"), 1.0e3, true, 1.0e3);
+    RadarCheckStep(*this, TEXT("1e3 (floor)"), 1.0e3, false, 1.0e4);
+    RadarCheckStep(*this, TEXT("1e3 * (1 + 1e-12) counts as the floor"), 1.0e3 * (1.0 + 1e-12), true, 1.0e3);
+    RadarCheckStep(*this, TEXT("1e3 * (1 - 1e-12) counts as the floor"), 1.0e3 * (1.0 - 1e-12), false, 1.0e4);
 
-    // Zoom-in floor, target selected
-    TestEqual(TEXT("Target: in from 5e3 -> TargetedFloorM exactly"), SOLRadar::StepManualRange(5.0e3, true, true),
-        SOLRadar::TargetedFloorM, 0.0);
-    TestEqual(TEXT("Target: in from TargetedFloorM stays at TargetedFloorM"),
-        SOLRadar::StepManualRange(SOLRadar::TargetedFloorM, true, true), SOLRadar::TargetedFloorM, 0.0);
-
-    // The same starting range zooms in further when a target is selected
-    TestEqual(TEXT("From 1e7, no target -> stays 1e7"), SOLRadar::StepManualRange(1.0e7, true, false), 1.0e7, 0.0);
-    TestEqual(TEXT("From 1e7, target -> 1e6"), SOLRadar::StepManualRange(1.0e7, true, true), 1.0e6, RadarTol(1.0e6));
-
-    // Clearing the target re-clamps a below-floor manual range up to DefaultFloorM, whichever direction is stepped
-    TestEqual(TEXT("No target: out from 1e3 -> DefaultFloorM (1e4 is below the floor)"),
-        SOLRadar::StepManualRange(1.0e3, false, false), SOLRadar::DefaultFloorM, 0.0);
-    TestEqual(TEXT("No target: in from 1e5 -> DefaultFloorM"), SOLRadar::StepManualRange(1.0e5, true, false),
-        SOLRadar::DefaultFloorM, 0.0);
-
-    // Zoom-out ceiling, both target states
-    for (const bool bHasTarget : { false, true })
+    // Below the floor: clamped up in both directions
+    const double belowFloorM[] = { 1.0, 0.5, std::numeric_limits<double>::denorm_min() };
+    for (const double startM : belowFloorM)
     {
-        const FString state = bHasTarget ? TEXT("target") : TEXT("no target");
-        TestEqual(FString::Printf(TEXT("%s: out from 1e11 -> MaxRangeM exactly (1e12 > 1 AU)"), *state),
-            SOLRadar::StepManualRange(1.0e11, false, bHasTarget), SOLRadar::MaxRangeM, 0.0);
-        TestEqual(FString::Printf(TEXT("%s: out from MaxRangeM stays at MaxRangeM"), *state),
-            SOLRadar::StepManualRange(SOLRadar::MaxRangeM, false, bHasTarget), SOLRadar::MaxRangeM, 0.0);
-        TestEqual(FString::Printf(TEXT("%s: out from 30 AU -> MaxRangeM"), *state),
-            SOLRadar::StepManualRange(30.0 * SOLTestHelpers::AU_M, false, bHasTarget), SOLRadar::MaxRangeM, 0.0);
-        TestEqual(FString::Printf(TEXT("%s: out from 1e10 -> 1e11 (still under 1 AU)"), *state),
-            SOLRadar::StepManualRange(1.0e10, false, bHasTarget), 1.0e11, RadarTol(1.0e11));
+        RadarCheckStep(*this, TEXT("below the floor"), startM, true, SOLRadar::MANUAL_FLOOR_M);
+        RadarCheckStep(*this, TEXT("below the floor"), startM, false, SOLRadar::MANUAL_FLOOR_M);
     }
+
+    // The ceiling: 1 AU is not a power of ten, so in goes to 1e11 and out is a no-op
+    TestEqual(TEXT("out from MaxRangeM returns MaxRangeM exactly (no-op)"),
+        SOLRadar::StepManualRange(SOLRadar::MaxRangeM, false), SOLRadar::MaxRangeM, RADAR_EXACT);
+    RadarCheckStep(*this, TEXT("MaxRangeM (1 AU)"), SOLRadar::MaxRangeM, true, 1.0e11);
+    RadarCheckStep(*this, TEXT("1e11 (1e12 clamped)"), 1.0e11, false, SOLRadar::MaxRangeM);
+    RadarCheckStep(*this, TEXT("1e11"), 1.0e11, true, 1.0e10);
+    RadarCheckStep(*this, TEXT("1e10 (still under 1 AU)"), 1.0e10, false, 1.0e11);
+
+    // Above the ceiling: clamped down in both directions
+    const double aboveCeilingM[] = { 30.0 * SOLTestHelpers::AU_M, std::numeric_limits<double>::max() };
+    for (const double startM : aboveCeilingM)
+    {
+        RadarCheckStep(*this, TEXT("above the ceiling"), startM, true, SOLRadar::MaxRangeM);
+        RadarCheckStep(*this, TEXT("above the ceiling"), startM, false, SOLRadar::MaxRangeM);
+    }
+    RadarCheckStep(*this, TEXT("1e12 (a power above 1 AU)"), 1.0e12, true, 1.0e11);
+    RadarCheckStep(*this, TEXT("1e12 (a power above 1 AU)"), 1.0e12, false, SOLRadar::MaxRangeM);
     return true;
 }
 
@@ -138,44 +291,46 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarStepChainTest, "SOLTest.RadarLayout.St
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Chained steps land where repeated single-step application predicts, including a clamp mid-chain
+// Mixed in/out chains feed results back in: decades round-trip exactly, an off-decade start does not come back
 bool FSOLRadarStepChainTest::RunTest(const FString& /*parameters*/)
 {
-    // No target: 1e9 -in-> 1e8 -in-> 1e7 -out-> 1e8
-    double range = 1.0e9;
-    range = SOLRadar::StepManualRange(range, true, false);
-    TestEqual(TEXT("No target chain step 1 (in)"), range, 1.0e8, RadarTol(1.0e8));
-    range = SOLRadar::StepManualRange(range, true, false);
-    TestEqual(TEXT("No target chain step 2 (in)"), range, 1.0e7, RadarTol(1.0e7));
-    range = SOLRadar::StepManualRange(range, false, false);
-    TestEqual(TEXT("No target chain step 3 (out)"), range, 1.0e8, RadarTol(1.0e8));
+    // Out then in returns every decade from the floor to 1e11; in then out returns every decade above the floor
+    for (const double decadeM : RADAR_DECADES_M)
+    {
+        TestEqual(FString::Printf(TEXT("%g: out then in"), decadeM),
+            SOLRadar::StepManualRange(SOLRadar::StepManualRange(decadeM, false), true), decadeM, RADAR_EXACT);
+        if (decadeM > SOLRadar::MANUAL_FLOOR_M)
+        {
+            TestEqual(FString::Printf(TEXT("%g: in then out"), decadeM),
+                SOLRadar::StepManualRange(SOLRadar::StepManualRange(decadeM, true), false), decadeM, RADAR_EXACT);
+        }
+    }
 
-    // No target, clamp mid-chain: 1e8 -in-> 1e7 -in-> 1e7 (floor) -out-> 1e8
-    range = 1.0e8;
-    range = SOLRadar::StepManualRange(range, true, false);
-    range = SOLRadar::StepManualRange(range, true, false);
-    TestEqual(TEXT("No target: second in clamps at the floor"), range, SOLRadar::DefaultFloorM, 0.0);
-    range = SOLRadar::StepManualRange(range, false, false);
-    TestEqual(TEXT("No target: out from the floor -> 1e8"), range, 1.0e8, RadarTol(1.0e8));
+    // The ceiling: in then out comes back to 1 AU (1e11 out is clamped)
+    TestEqual(TEXT("MaxRangeM: in then out"),
+        SOLRadar::StepManualRange(SOLRadar::StepManualRange(SOLRadar::MaxRangeM, true), false), SOLRadar::MaxRangeM,
+        RADAR_EXACT);
 
-    // Target: 1e5 -in-> 1e4 -in-> 1e3 -in-> 1e3 (floor) -out-> 1e4
-    range = 1.0e5;
-    range = SOLRadar::StepManualRange(range, true, true);
-    range = SOLRadar::StepManualRange(range, true, true);
-    TestEqual(TEXT("Target chain: two ins -> 1e3"), range, 1.0e3, RadarTol(1.0e3));
-    range = SOLRadar::StepManualRange(range, true, true);
-    TestEqual(TEXT("Target chain: third in clamps at TargetedFloorM"), range, SOLRadar::TargetedFloorM, 0.0);
-    range = SOLRadar::StepManualRange(range, false, true);
-    TestEqual(TEXT("Target chain: out -> 1e4"), range, 1.0e4, RadarTol(1.0e4));
+    // Off-decade starts snap and stay on decades: 2.5e4 -in-> 1e4 -out-> 1e5, 5e3 -out-> 1e4 -in-> 1e3
+    double rangeM = SOLRadar::StepManualRange(2.5e4, true);
+    TestEqual(TEXT("2.5e4 in"), rangeM, 1.0e4, RADAR_EXACT);
+    rangeM = SOLRadar::StepManualRange(rangeM, false);
+    TestEqual(TEXT("2.5e4 in, out"), rangeM, 1.0e5, RADAR_EXACT);
+    rangeM = SOLRadar::StepManualRange(5.0e3, false);
+    TestEqual(TEXT("5e3 out"), rangeM, 1.0e4, RADAR_EXACT);
+    rangeM = SOLRadar::StepManualRange(rangeM, true);
+    TestEqual(TEXT("5e3 out, in"), rangeM, 1.0e3, RADAR_EXACT);
 
-    // Out to the ceiling then back in: 1e10 -out-> 1e11 -out-> MaxRangeM -in-> MaxRangeM / 10
-    range = 1.0e10;
-    range = SOLRadar::StepManualRange(range, false, false);
-    range = SOLRadar::StepManualRange(range, false, false);
-    TestEqual(TEXT("Ceiling chain: clamps at MaxRangeM"), range, SOLRadar::MaxRangeM, 0.0);
-    range = SOLRadar::StepManualRange(range, true, false);
-    TestEqual(TEXT("Ceiling chain: in from MaxRangeM -> MaxRangeM / 10"), range, SOLRadar::MaxRangeM / 10.0,
-        RadarTol(SOLRadar::MaxRangeM / 10.0));
+    // 3e9 -in-> 1e9 -in-> 1e8 -out-> 1e9 -out-> 1e10 -out-> 1e11 -out-> MaxRangeM
+    rangeM = 3.0e9;
+    const bool directions[] = { true, true, false, false, false, false };
+    const double expectedM[] = { 1.0e9, 1.0e8, 1.0e9, 1.0e10, 1.0e11, SOLRadar::MaxRangeM };
+    for (int32 press = 0; press < static_cast<int32>(UE_ARRAY_COUNT(directions)); ++press)
+    {
+        rangeM = SOLRadar::StepManualRange(rangeM, directions[press]);
+        TestEqual(FString::Printf(TEXT("3e9 chain press %d (%s)"), press + 1, directions[press] ? TEXT("in")
+            : TEXT("out")), rangeM, expectedM[press], RADAR_EXACT);
+    }
     return true;
 }
 
@@ -183,26 +338,65 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarStepDegenerateTest, "SOLTest.RadarLayo
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Zero or negative current ranges never yield NaN or a negative value; they clamp to the effective floor
+// A range that is not > 0 (zero, negative, NaN) gives MANUAL_FLOOR_M exactly; +infinity gives MaxRangeM; never NaN
 bool FSOLRadarStepDegenerateTest::RunTest(const FString& /*parameters*/)
 {
-    const double inputs[] = { 0.0, -0.0, -1.0, -5.0e8, -SOLRadar::MaxRangeM };
-    for (const double input : inputs)
+    const double invalidM[] = { 0.0, -0.0, -1.0, -5.0e8, -SOLRadar::MaxRangeM,
+        std::numeric_limits<double>::quiet_NaN(), -std::numeric_limits<double>::infinity() };
+    for (const double inputM : invalidM)
     {
         for (const bool bZoomIn : { true, false })
         {
-            for (const bool bHasTarget : { false, true })
-            {
-                const double result = SOLRadar::StepManualRange(input, bZoomIn, bHasTarget);
-                const double floor = bHasTarget ? SOLRadar::TargetedFloorM : SOLRadar::DefaultFloorM;
-                const FString label = FString::Printf(TEXT("input %g, %s, %s"), input, bZoomIn ? TEXT("in") : TEXT("out"),
-                    bHasTarget ? TEXT("target") : TEXT("no target"));
-                TestFalse(FString::Printf(TEXT("%s: not NaN"), *label), FMath::IsNaN(result));
-                TestTrue(FString::Printf(TEXT("%s: positive"), *label), result > 0.0);
-                TestEqual(FString::Printf(TEXT("%s: clamps to the floor"), *label), result, floor, 0.0);
-            }
+            const double resultM = SOLRadar::StepManualRange(inputM, bZoomIn);
+            const FString label = FString::Printf(TEXT("input %g, %s"), inputM, bZoomIn ? TEXT("in") : TEXT("out"));
+            TestFalse(label + TEXT(": not NaN"), FMath::IsNaN(resultM));
+            TestEqual(label + TEXT(": MANUAL_FLOOR_M exactly"), resultM, SOLRadar::MANUAL_FLOOR_M, RADAR_EXACT);
         }
     }
+
+    // +infinity clamps to the ceiling in both directions
+    const double infinityM = std::numeric_limits<double>::infinity();
+    for (const bool bZoomIn : { true, false })
+    {
+        const double resultM = SOLRadar::StepManualRange(infinityM, bZoomIn);
+        const FString label = FString::Printf(TEXT("+infinity, %s"), bZoomIn ? TEXT("in") : TEXT("out"));
+        TestFalse(label + TEXT(": not NaN"), FMath::IsNaN(resultM));
+        TestEqual(label + TEXT(": MaxRangeM exactly"), resultM, SOLRadar::MaxRangeM, RADAR_EXACT);
+    }
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRadarManualFloorLaddersTest, "SOLTest.RadarLayout.ManualFloorLadders",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Repeated presses walk the power-of-ten ladder down to 1 km with or without a target and up to 1 AU (D2, D6)
+bool FSOLRadarManualFloorLaddersTest::RunTest(const FString& /*parameters*/)
+{
+    // No target, from AUTO (10,000 km): 1,000 km, 100 km, 10 km, 1 km, then a no-op; one out from there is 10 km
+    const double noTargetEndM = RadarCheckLadder(*this, TEXT("No target from AUTO"), SOLRadar::AutoRangeM(false), true,
+        { 1.0e6, 1.0e5, 1.0e4, 1.0e3, 1.0e3 });
+    RadarCheckStep(*this, TEXT("No target from AUTO, after the floor"), noTargetEndM, false, 1.0e4);
+
+    // Target, from AUTO (1 km): in is a no-op (so the HUD keeps AUTO), out is 10 km
+    TestEqual(TEXT("Target from AUTO: in is a no-op"), SOLRadar::StepManualRange(SOLRadar::AutoRangeM(true), true),
+        SOLRadar::AutoRangeM(true), RADAR_EXACT);
+    RadarCheckLadder(*this, TEXT("Target from AUTO"), SOLRadar::AutoRangeM(true), true, { 1.0e3 });
+    RadarCheckLadder(*this, TEXT("Target from AUTO"), SOLRadar::AutoRangeM(true), false, { 1.0e4 });
+
+    // From the ceiling: nine presses in reach the floor through every decade (10 km included), the tenth is a no-op
+    RadarCheckLadder(*this, TEXT("From MaxRangeM"), SOLRadar::MaxRangeM, true,
+        { 1.0e11, 1.0e10, 1.0e9, 1.0e8, 1.0e7, 1.0e6, 1.0e5, 1.0e4, 1.0e3, 1.0e3 });
+
+    // Up to the ceiling: nine presses out from the floor reach 1 AU, the tenth is a no-op
+    RadarCheckLadder(*this, TEXT("From the floor"), SOLRadar::MANUAL_FLOOR_M, false,
+        { 1.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9, 1.0e10, 1.0e11, SOLRadar::MaxRangeM, SOLRadar::MaxRangeM });
+
+    // Off-decade start: the first press snaps to a decade, then one decade per press
+    RadarCheckLadder(*this, TEXT("From 3e9 in"), 3.0e9, true,
+        { 1.0e9, 1.0e8, 1.0e7, 1.0e6, 1.0e5, 1.0e4, 1.0e3, 1.0e3 });
+    RadarCheckLadder(*this, TEXT("From 3e9 out"), 3.0e9, false,
+        { 1.0e10, 1.0e11, SOLRadar::MaxRangeM, SOLRadar::MaxRangeM });
     return true;
 }
 

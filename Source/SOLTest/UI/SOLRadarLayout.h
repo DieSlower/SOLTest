@@ -43,11 +43,16 @@ struct FSOLRadarStyle
 
 namespace SOLRadar
 {
-    constexpr double MaxRangeM = 149597870700.0;   // 1 AU
-    constexpr double DefaultFloorM = 10000000.0;   // 10,000 km: floor with no target selected
-    constexpr double TargetedFloorM = 1000.0;      // 1 km: floor when a target is selected (close-combat detail)
-    constexpr double ZoomStepFactor = 10.0;        // '-' / '=' step the manual range by this factor (one decade)
+    constexpr double MaxRangeM = 149597870700.0;            // 1 AU: the manual zoom ceiling (not a power of ten)
+    constexpr double AUTO_RANGE_M = 10000000.0;             // 10,000 km: the AUTO range with no target selected
+    constexpr double AUTO_RANGE_TARGETED_M = 1000.0;        // 1 km: the AUTO range with a target (close-combat detail)
+    constexpr double MANUAL_FLOOR_M = 1000.0;               // 1 km: the manual zoom floor, any target state (SDD 36)
+    constexpr double ZOOM_SNAP_RELATIVE_TOLERANCE = 1e-9;   // A range this close (relative) to a power of ten is it
+    static_assert(ZOOM_SNAP_RELATIVE_TOLERANCE < 0.5, "at most one power of ten may match a range");
     constexpr double CollapseFraction = 0.01;
+
+    static_assert(MANUAL_FLOOR_M <= AUTO_RANGE_M && MANUAL_FLOOR_M <= AUTO_RANGE_TARGETED_M,
+        "AUTO must never be below the manual zoom floor");
 
     // Hologram radar (SDD 21 phase C)
     constexpr int32 MaxDrawnContacts = 64;          // Contact budget per frame: the selected one, then the nearest
@@ -59,11 +64,14 @@ namespace SOLRadar
     constexpr double SonarSharpness = 8.0;          // Pulse shape exponent (LT minimap: |sin|^8)
     constexpr double SonarMaxStrength = 2.0;        // The effects strength is clamped to [0, this]
 
-    // Returns the range floor for auto and manual range: TargetedFloorM if a target is selected, else DefaultFloorM
-    SOLTEST_API double EffectiveFloorM(bool bHasSelectedTarget);
+    // Returns the AUTO range: AUTO_RANGE_TARGETED_M if a target is selected, else AUTO_RANGE_M
+    SOLTEST_API double AutoRangeM(bool bHasSelectedTarget);
 
-    // Steps a manual range one ZoomStepFactor decade (in = divide, out = multiply), clamped to [EffectiveFloorM, MaxRangeM]
-    SOLTEST_API double StepManualRange(double currentRangeM, bool bZoomIn, bool bHasSelectedTarget);
+    // Steps a manual range to the next power of ten (SDD 36 D6): a range within ZOOM_SNAP_RELATIVE_TOLERANCE of a
+    // power steps one decade, any other range snaps to the nearest power below (in) or above (out); clamped to
+    // [MANUAL_FLOOR_M, MaxRangeM]. Not > 0 or NaN gives MANUAL_FLOOR_M, +infinity MaxRangeM; results are exact
+    // constants
+    SOLTEST_API double StepManualRange(double currentRangeM, bool bZoomIn);
 
     // Projects one ship-relative contact onto the scope at the given range (collapse law near center, bBehind if astern)
     SOLTEST_API FSOLRadarPoint ProjectContact(const FSOLRadarContact& contact, double rangeM);

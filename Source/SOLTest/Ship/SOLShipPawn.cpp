@@ -1993,7 +1993,7 @@ void ASOLShipPawn::HandleResumeRoute()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
+// Steps the flight HUD's radar range to the next power of ten in ('-') or out ('='), switching it to MANUAL
 void ASOLShipPawn::HandleRadarZoom(const bool bZoomIn)
 {
     SendHudCommand(bZoomIn ? ESOLHudCommand::RadarZoomIn : ESOLHudCommand::RadarZoomOut);

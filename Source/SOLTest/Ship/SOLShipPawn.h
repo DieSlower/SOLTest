@@ -278,7 +278,7 @@ public:
     // Resumes a paused route (V; flight and map)
     void HandleResumeRoute();
 
-    // Steps the flight HUD's radar range one decade in ('-') or out ('='), switching it to MANUAL
+    // Steps the flight HUD's radar range to the next power of ten in ('-') or out ('='), switching it to MANUAL
     void HandleRadarZoom(bool bZoomIn);
 
     // Returns the flight HUD's radar to AUTO range (Home)

@@ -214,6 +214,14 @@ The Help page's HUD glossary (issue #33): each HUD symbol drawn with the HUD's o
 
 The Controls page with drawn key caps (issue #33, part 33b): each binding shown as caps, with chords and alternatives, instead of plain text.
 
+![Radar zoomed in to 1 km with no target](Docs/Images/36-radar-manual-1km-no-target.png)
+
+The radar zoomed in to `RADAR 1.0 km (MANUAL)` with no target selected (issue #36): `-` and `=` step through powers of ten from 1 AU down to 1 km whatever the target state, here with a 3,000-ship NPC population whose nearest battle ships (5-20 km away) sit beyond the range on the radar's rim.
+
+![Help page: the radar scope's zoom text](Docs/Images/33-help-glossary-targets-radar-2.png)
+
+The Help page's Targets and radar tab (issue #36 text): the AUTO range, the 1 km manual floor with or without a target, and MANUAL keeping its range when you change targets.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -221,11 +229,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 113.8 h |
-| Time spent answering questions | 8.6 h |
-| Tokens | 6,372.9M |
-| Notional API price | $2,522 |
-| Subagents dispatched | 505 |
+| Work time (wall-clock) | 114.4 h |
+| Time spent answering questions | 8.8 h |
+| Tokens | 6,420.2M |
+| Notional API price | $2,542 |
+| Subagents dispatched | 509 |
 <!-- METRICS:END -->
 
 ## Documentation map

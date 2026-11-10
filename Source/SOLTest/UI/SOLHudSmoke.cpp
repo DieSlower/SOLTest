@@ -47,8 +47,10 @@ namespace
     constexpr float HUDSMOKE_SHOT_STICK_X_PX = 40.0f;       // Stick offset shown in the HUD screenshot
     constexpr float HUDSMOKE_SHOT_STICK_Y_PX = 15.0f;
     constexpr double HUDSMOKE_ORBIT_VIEW_HEIGHT_AU = 3.0;   // Vantage above the Sun for the orbit screenshot
-    constexpr int32 HUDSMOKE_RADAR_ZOOM_STEPS = 8;          // '-' presses: enough to reach the 1 km floor from any range
+    constexpr int32 HUDSMOKE_RADAR_ZOOM_STEPS = 9;          // '-' presses: enough to reach the 1 km floor from 1 AU
     constexpr int32 HUDSMOKE_RADAR_OUT_STEPS = 9;           // Zoom-out steps for the radar shot: 1 km -> 1 AU (clamped)
+    constexpr int32 HUDSMOKE_NO_TARGET_ZOOM_STEPS = 3;      // '-' presses from AUTO with no target: 10,000 km -> 10 km
+    constexpr double HUDSMOKE_NO_TARGET_ZOOM_M = 1.0e4;     // ...the range they reach (SDD 36 D2), exact
     constexpr double HUDSMOKE_RADAR_PITCH_DEG = 30.0;       // Radar shot ship attitude (relative to facing Earth)
     constexpr double HUDSMOKE_RADAR_ROLL_DEG = 40.0;
 
@@ -61,6 +63,21 @@ namespace
     constexpr int32 HUDSMOKE_RETICLE_SHAPES = 5;            // Glow reticle: 4 arms and a dot
     constexpr int32 HUDSMOKE_MIN_GLOW_TEXTS = 10;           // Info, speed, G, target and radar lines (SDD 21 B)
     constexpr int32 HUDSMOKE_MIN_PANELS = 3;                // Info, speed and G, target readout
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a range is exactly a power of ten from the manual floor up to 1 AU (an exact power times 10 stays
+    // exact in this span)
+    bool HudSmokeIsRadarDecade(const double rangeM)
+    {
+        for (double decadeM = SOLRadar::MANUAL_FLOOR_M; decadeM <= SOLRadar::MaxRangeM; decadeM *= 10.0)
+        {
+            if (rangeM == decadeM)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -139,9 +156,10 @@ bool FSOLHudSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         return false;
     }
 
-    // Phase over: checks, then the next phase (the radar zoom phase repeats once per '-' press)
+    // Phase over: checks, then the next phase (the radar zoom phases repeat once per '-' press)
     ExitPhase(mPhase, pawn);
-    const bool bRepeatPhase = mPhase == ESOLHudPhase::RadarZoomIn && mRadarZoomTaps < HUDSMOKE_RADAR_ZOOM_STEPS;
+    const bool bRepeatPhase = (mPhase == ESOLHudPhase::RadarZoomIn && mRadarZoomTaps < HUDSMOKE_RADAR_ZOOM_STEPS)
+        || (mPhase == ESOLHudPhase::NoTargetZoomIn && mNoTargetZoomTaps < HUDSMOKE_NO_TARGET_ZOOM_STEPS);
     if (!bRepeatPhase)
     {
         mPhase = static_cast<ESOLHudPhase>(static_cast<uint8>(mPhase) + 1);
@@ -188,9 +206,30 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         // Orbit lines start on and stay detached from the player's saved setting for the whole run
         TryBeginOrbitOverride(false);
         SetupShip(state.PositionM, (earthM - state.PositionM).GetSafeNormal(), mShips->GetReferenceVelocityMps());
+
+        // The no-target radar phases (SDD 36) start with nothing selected and the radar in AUTO at 10,000 km
+        if (mTargeting->GetSelectedTarget() != nullptr)
+        {
+            mTargeting->ClearTarget();
+        }
         break;
+    case ESOLHudPhase::NoTargetZoomIn:
+        ++mNoTargetZoomTaps;
+        TapKey(EKeys::Hyphen);
+        break;
+    case ESOLHudPhase::NoTargetFloor:
+    case ESOLHudPhase::NoTargetFloorNoOp:
+        TapKey(EKeys::Hyphen);
+        break;
+    case ESOLHudPhase::NoTargetSelect:
     case ESOLHudPhase::SelectEarth:
         TapKey(EKeys::T);
+        break;
+    case ESOLHudPhase::NoTargetClear:
+        TapKey(EKeys::X);
+        break;
+    case ESOLHudPhase::NoTargetAuto:
+        TapKey(EKeys::Home);
         break;
     case ESOLHudPhase::OrbitsOn:
     case ESOLHudPhase::OrbitsOff:
@@ -332,13 +371,41 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
     // Each phase checks one expectation
     switch (phase)
     {
+    case ESOLHudPhase::NoTargetZoomIn:
+        // Issue #36, checked once after the last press: from AUTO 10,000 km with no target, '-' reaches 10 km (D2)
+        if (mNoTargetZoomTaps >= HUDSMOKE_NO_TARGET_ZOOM_STEPS)
+        {
+            CheckRadarState(TEXT("h0-radar-10km"), TEXT("'-' x3 with no target"), false, true,
+                HUDSMOKE_NO_TARGET_ZOOM_M);
+        }
+        break;
+    case ESOLHudPhase::NoTargetSelect:
+        // MANUAL keeps its range when a target is selected (D4, D5; AUTO would read 1 km)
+        CheckRadarState(TEXT("h0-radar-select"), TEXT("T while MANUAL"), true, true, HUDSMOKE_NO_TARGET_ZOOM_M);
+        break;
+    case ESOLHudPhase::NoTargetClear:
+        // ...and when it is cleared (the old floor pushed it back to 10,000 km)
+        CheckRadarState(TEXT("h0-radar-clear"), TEXT("X while MANUAL"), false, true, HUDSMOKE_NO_TARGET_ZOOM_M);
+        break;
+    case ESOLHudPhase::NoTargetFloor:
+        CheckRadarState(TEXT("h0-radar-1km"), TEXT("'-' with no target"), false, true, SOLRadar::MANUAL_FLOOR_M);
+        break;
+    case ESOLHudPhase::NoTargetFloorNoOp:
+        // '-' at the 1 km floor is a no-op; the label reads RADAR 1.0 km (MANUAL) with no target
+        CheckRadarState(TEXT("h0-radar-floor"), TEXT("'-' at the floor"), false, true, SOLRadar::MANUAL_FLOOR_M);
+        TakeUiShot(TEXT("RadarManualFloor"));
+        break;
+    case ESOLHudPhase::NoTargetAuto:
+        CheckRadarState(TEXT("h0-radar-auto"), TEXT("Home with no target"), false, false,
+            SOLRadar::AutoRangeM(false));
+        break;
     case ESOLHudPhase::SelectEarth:
         Check(TEXT("a-select"), mTargeting->GetSelectedIndex() == mEarthIndex, FString::Printf(TEXT("T facing Earth: "
             "selected index %d (Earth %d); radar %d contacts, range %.3g m"), mTargeting->GetSelectedIndex(),
             mEarthIndex, mHud.IsValid() ? mHud->GetLastRadarContactCount() : 0,
             mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0));
 
-        // Target selected with the radar still in AUTO (no zoom keys yet): the label should read the 1 km floor
+        // Target selected with the radar in AUTO (Home after the no-target phases): the label reads the 1 km AUTO range
         if (gameMode != nullptr)
         {
             gameMode->CaptureScreenshot();
@@ -433,10 +500,11 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         const double rangeM = mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0;
         const bool bManual = mHud.IsValid() && mHud->IsRadarManual();
 
-        // Starting at the floor every press is a no-op and AUTO is kept (Amendment 4); otherwise it zooms to MANUAL
-        const double floorM = SOLRadar::EffectiveFloorM(mTargeting->GetSelectedTarget() != nullptr);
-        const bool bZoomOk = mReferenceValue <= floorM ? (!bManual && rangeM == floorM)
-            : (bManual && rangeM < SOLRadar::DefaultFloorM && rangeM >= SOLRadar::TargetedFloorM);
+        // Starting at the 1 km floor (AUTO with a target) every press is a no-op and AUTO is kept (Amendment 4);
+        // otherwise it zooms to MANUAL, to a power of ten in [MANUAL_FLOOR_M, the starting range) (SDD 36)
+        const double autoM = SOLRadar::AutoRangeM(mTargeting->GetSelectedTarget() != nullptr);
+        const bool bZoomOk = mReferenceValue <= SOLRadar::MANUAL_FLOOR_M ? (!bManual && rangeM == autoM)
+            : (bManual && HudSmokeIsRadarDecade(rangeM) && rangeM < mReferenceValue);
         Check(TEXT("h-radar-zoom"), bZoomOk,
             FString::Printf(TEXT("'-' x%d with %s selected: radar %s, range %.4g -> %.4g m"), mRadarZoomTaps,
                 mTargeting->GetSelectedTarget() != nullptr ? *mTargeting->GetSelectedTarget()->Name.ToString()
@@ -448,12 +516,12 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         // The Canvas screenshot has been taken by now: the glow-shape renderer back on
         SetHudRendererCvar(1);
 
-        // AUTO range is the floor for the current target state (SDD 2 Appendix C Amendment 3)
+        // AUTO range for the current target state (SDD 36)
         const double rangeM = mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0;
-        const double floorM = SOLRadar::EffectiveFloorM(mTargeting->GetSelectedTarget() != nullptr);
-        Check(TEXT("h-radar-auto"), mHud.IsValid() && !mHud->IsRadarManual() && rangeM == floorM,
-            FString::Printf(TEXT("Home: radar %s, range %.4g m (expected floor %.4g m)"), mHud.IsValid()
-                && mHud->IsRadarManual() ? TEXT("MANUAL") : TEXT("AUTO"), rangeM, floorM));
+        const double autoM = SOLRadar::AutoRangeM(mTargeting->GetSelectedTarget() != nullptr);
+        Check(TEXT("h-radar-auto"), mHud.IsValid() && !mHud->IsRadarManual() && rangeM == autoM,
+            FString::Printf(TEXT("Home: radar %s, range %.4g m (expected AUTO range %.4g m)"), mHud.IsValid()
+                && mHud->IsRadarManual() ? TEXT("MANUAL") : TEXT("AUTO"), rangeM, autoM));
         break;
     }
     case ESOLHudPhase::HudShotSetup:
@@ -679,4 +747,19 @@ void FSOLHudSmoke::Check(const TCHAR* label, const bool bPassed, const FString& 
     ++mChecksRun;
     mChecksPassed += bPassed ? 1 : 0;
     UE_LOG(LogSOL, Log, TEXT("SmokeHud CHECK %-16s %s: %s"), label, bPassed ? TEXT("PASS") : TEXT("FAIL"), *detail);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks the radar's mode and exact range and whether a target is selected after the action described
+void FSOLHudSmoke::CheckRadarState(const TCHAR* label, const TCHAR* action, const bool bExpectTarget,
+    const bool bExpectManual, const double expectedRangeM)
+{
+    const FSOLTargetInfo* target = mTargeting->GetSelectedTarget();
+    const bool bManual = mHud.IsValid() && mHud->IsRadarManual();
+    const double rangeM = mHud.IsValid() ? mHud->GetLastRadarRangeM() : 0.0;
+    Check(label, mHud.IsValid() && (target != nullptr) == bExpectTarget && bManual == bExpectManual
+        && rangeM == expectedRangeM, FString::Printf(TEXT("%s: target %s, radar %s %.4g m (expected %s, %s %.4g m)"),
+            action, target != nullptr ? *target->Name.ToString() : TEXT("none"), bManual ? TEXT("MANUAL")
+            : TEXT("AUTO"), rangeM, bExpectTarget ? TEXT("a target") : TEXT("none"), bExpectManual ? TEXT("MANUAL")
+            : TEXT("AUTO"), expectedRangeM));
 }

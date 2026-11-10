@@ -366,6 +366,9 @@ example (proposed) `{InfoCardSeconds}`, `{RadarAutoFloor}`, `{RadarAutoFloorTarg
 `{VelocityMarkerMinSpeed}`, `{ChaseSafetyMarginDefault}`, `{SustainedG}`, `{CombatG}`. An unknown token is left as
 written and fails the completeness test; no "²" (TECH_DEBT).
 
+Note (issue #36, [SDD 36](36-radar-manual-zoom-floor.md) D7): `{RadarAutoFloor}` / `{RadarAutoFloorTarget}` were
+renamed `{RadarAutoRange}` / `{RadarAutoRangeTarget}`, and `{RadarManualFloor}` (the 1 km manual zoom floor) was added.
+
 ## 9. The player guide (D8)
 
 - **Flag:** `-SOLWritePlayerGuide` (`SOL::CommandLine::WRITE_PLAYER_GUIDE` in `SOLConstants.h`; editor and development

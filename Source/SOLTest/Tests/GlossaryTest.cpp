@@ -14,6 +14,7 @@
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudSymbols.h"
 #include "UI/SOLOverlayIcons.h"
+#include "UI/SOLRadarLayout.h"
 
 #include "Engine/Texture2D.h"
 #include "HAL/FileManager.h"
@@ -37,6 +38,8 @@
 // description-only row (SOLMenuText::GLOSSARY_DESCRIPTION_ONLY, DescriptionOnlyReason), every row has art or a reason,
 // and SOLTest.Glossary.CropAssetsExist fails until the crop textures are captured and imported;
 // SOLTest.Glossary.CropTexturesCurrent checks each texture was imported from the PNG in Docs/Images.
+// Issue #36 (Docs/SDDs/36-radar-manual-zoom-floor.md section 5), test-first: the Radar scope row names the AUTO
+// range, the targeted AUTO range and the 1 km manual floor through tokens read from the SOLRadar constants.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -113,6 +116,50 @@ namespace
             }
         }
         return false;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the GLOSSARY_ENTRIES row with this exact name, or INDEX_NONE
+    int32 GlossaryTestFindEntry(const TCHAR* name)
+    {
+        for (int32 index = 0; index < GlossaryTestRowCount(); ++index)
+        {
+            if (FCString::Strcmp(SOLMenuText::GLOSSARY_ENTRIES[index].Name, name) == 0)
+            {
+                return index;
+            }
+        }
+        return INDEX_NONE;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a distance in whole kilometres with ',' grouping and its unit ("10,000 km", "1 km")
+    FString GlossaryTestKilometres(const double meters)
+    {
+        const int64 kilometres = FMath::RoundToInt64(meters / 1000.0);
+        FString digits = FString::Printf(TEXT("%lld"), static_cast<long long>(kilometres));
+        for (int32 at = digits.Len() - 3; at > 0; at -= 3)
+        {
+            digits.InsertAt(at, TEXT(','));
+        }
+        return digits + TEXT(" km");
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns how many times a case-sensitive substring occurs in a text (non-overlapping)
+    int32 GlossaryTestCountOf(const FString& text, const TCHAR* part)
+    {
+        const int32 partLen = FCString::Strlen(part);
+        int32 count = 0;
+        int32 at = partLen > 0 ? text.Find(part, ESearchCase::CaseSensitive) : INDEX_NONE;
+        while (at != INDEX_NONE)
+        {
+            ++count;
+            const int32 next = at + partLen;
+            at = next < text.Len() ? text.Find(part, ESearchCase::CaseSensitive, ESearchDir::FromStart, next)
+                : INDEX_NONE;
+        }
+        return count;
     }
 }
 
@@ -380,6 +427,71 @@ bool FSOLGlossaryTokensTest::RunTest(const FString& /*parameters*/)
             }
         }
     }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryRadarScopeTest, "SOLTest.Glossary.RadarScopeRanges",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #36) The Radar scope row names the AUTO range (10,000 km), the targeted AUTO range (1 km) and the manual
+// floor (1 km) through tokens read from the SOLRadar constants, and says MANUAL steps by powers of ten with or
+// without a target and keeps its range across target changes
+bool FSOLGlossaryRadarScopeTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 index = GlossaryTestFindEntry(TEXT("Radar scope"));
+    if (!TestTrue(TEXT("the Radar scope row exists"), index != INDEX_NONE))
+    {
+        return true;
+    }
+    const FString description = SOLMenuText::GLOSSARY_ENTRIES[index].Description;
+
+    // The raw text names the three range tokens and no longer the renamed floor tokens (D7)
+    TestTrue(TEXT("names {RadarAutoRange}"),
+        description.Contains(TEXT("{RadarAutoRange}"), ESearchCase::CaseSensitive));
+    TestTrue(TEXT("names {RadarAutoRangeTarget}"),
+        description.Contains(TEXT("{RadarAutoRangeTarget}"), ESearchCase::CaseSensitive));
+    TestTrue(TEXT("names {RadarManualFloor}"),
+        description.Contains(TEXT("{RadarManualFloor}"), ESearchCase::CaseSensitive));
+    TestFalse(TEXT("no {RadarAutoFloor}"), description.Contains(TEXT("{RadarAutoFloor}"), ESearchCase::CaseSensitive));
+    TestFalse(TEXT("no {RadarAutoFloorTarget}"),
+        description.Contains(TEXT("{RadarAutoFloorTarget}"), ESearchCase::CaseSensitive));
+
+    // Each token is its constant in whole grouped kilometres
+    const TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    FString out;
+    SOLGlossary::FormatEntryText(TEXT("{RadarAutoRange}"), keys, out);
+    TestEqual(TEXT("{RadarAutoRange} from AUTO_RANGE_M"), out, GlossaryTestKilometres(SOLRadar::AUTO_RANGE_M));
+    TestEqual(TEXT("{RadarAutoRange} reads 10,000 km"), out, FString(TEXT("10,000 km")));
+    SOLGlossary::FormatEntryText(TEXT("{RadarAutoRangeTarget}"), keys, out);
+    TestEqual(TEXT("{RadarAutoRangeTarget} from AUTO_RANGE_TARGETED_M"), out,
+        GlossaryTestKilometres(SOLRadar::AUTO_RANGE_TARGETED_M));
+    TestEqual(TEXT("{RadarAutoRangeTarget} reads 1 km"), out, FString(TEXT("1 km")));
+    SOLGlossary::FormatEntryText(TEXT("{RadarManualFloor}"), keys, out);
+    TestEqual(TEXT("{RadarManualFloor} from MANUAL_FLOOR_M"), out, GlossaryTestKilometres(SOLRadar::MANUAL_FLOOR_M));
+    TestEqual(TEXT("{RadarManualFloor} reads 1 km"), out, FString(TEXT("1 km")));
+
+    // The renamed tokens are no longer known, so they stay as written
+    SOLGlossary::FormatEntryText(TEXT("{RadarAutoFloor}"), keys, out);
+    TestEqual(TEXT("{RadarAutoFloor} is gone"), out, FString(TEXT("{RadarAutoFloor}")));
+    SOLGlossary::FormatEntryText(TEXT("{RadarAutoFloorTarget}"), keys, out);
+    TestEqual(TEXT("{RadarAutoFloorTarget} is gone"), out, FString(TEXT("{RadarAutoFloorTarget}")));
+
+    // The formatted text the player reads
+    SOLGlossary::FormatEntryText(*description, keys, out);
+    TestTrue(FString::Printf(TEXT("'%s' names the 10,000 km AUTO range"), *out),
+        out.Contains(TEXT("10,000 km"), ESearchCase::CaseSensitive));
+    TestTrue(FString::Printf(TEXT("'%s' names 1 km twice (targeted AUTO and the manual floor)"), *out),
+        GlossaryTestCountOf(out, TEXT(" 1 km")) >= 2);
+    TestTrue(FString::Printf(TEXT("'%s' says powers of ten"), *out),
+        out.Contains(TEXT("powers of ten"), ESearchCase::CaseSensitive));
+    TestTrue(FString::Printf(TEXT("'%s' says with or without a target"), *out),
+        out.Contains(TEXT("with or without a target"), ESearchCase::CaseSensitive));
+    TestTrue(FString::Printf(TEXT("'%s' says MANUAL keeps its range"), *out),
+        out.Contains(TEXT("keeps its range"), ESearchCase::CaseSensitive));
+    TestFalse(FString::Printf(TEXT("'%s' no longer says zoom by ten"), *out),
+        out.Contains(TEXT("zoom by ten"), ESearchCase::CaseSensitive));
     return true;
 }
 

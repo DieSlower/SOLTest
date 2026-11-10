@@ -18,23 +18,73 @@ namespace
 namespace SOLRadar
 {
     //////////////////////////////////////////////////////////////////////////
-    // Returns the range floor: TargetedFloorM with a selected target, DefaultFloorM without
-    double EffectiveFloorM(const bool bHasSelectedTarget)
+    // Returns the AUTO range: AUTO_RANGE_TARGETED_M with a selected target, AUTO_RANGE_M without
+    double AutoRangeM(const bool bHasSelectedTarget)
     {
-        return bHasSelectedTarget ? TargetedFloorM : DefaultFloorM;
+        return bHasSelectedTarget ? AUTO_RANGE_TARGETED_M : AUTO_RANGE_M;
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Steps a manual range by one ZoomStepFactor (in = divide, out = multiply), clamped to [EffectiveFloorM, MaxRangeM]
-    double StepManualRange(const double currentRangeM, const bool bZoomIn, const bool bHasSelectedTarget)
+    // Steps a manual range to the next power of ten (exact table values), clamped to [MANUAL_FLOOR_M, MaxRangeM]
+    double StepManualRange(const double currentRangeM, const bool bZoomIn)
     {
-        const double floorM = EffectiveFloorM(bHasSelectedTarget);
-        if (!(currentRangeM > 0.0))
+        // Exact powers of ten (decimal literals up to 1e22 are exact doubles), one decade beyond each search bound
+        static constexpr double DECADES_M[] = { 1.0e1, 1.0e2, 1.0e3, 1.0e4, 1.0e5, 1.0e6, 1.0e7, 1.0e8, 1.0e9, 1.0e10,
+            1.0e11, 1.0e12, 1.0e13, 1.0e14, 1.0e15 };
+        constexpr int32 DECADE_COUNT = UE_ARRAY_COUNT(DECADES_M);
+        constexpr double SEARCH_LOW_M = 1.0e2;      // At or below: every step clamps to the floor
+        constexpr double SEARCH_HIGH_M = 1.0e14;    // At or above (also +infinity): every step clamps to the ceiling
+
+        // Not > 0 (zero, negative, -infinity, NaN) is invalid; the bounds keep the search inside the table
+        if (!(currentRangeM > 0.0) || currentRangeM <= SEARCH_LOW_M)
         {
-            return floorM;
+            return MANUAL_FLOOR_M;
         }
-        const double stepped = bZoomIn ? currentRangeM / ZoomStepFactor : currentRangeM * ZoomStepFactor;
-        return FMath::Clamp(stepped, floorM, MaxRangeM);
+        if (currentRangeM >= SEARCH_HIGH_M)
+        {
+            return MaxRangeM;
+        }
+
+        // A range within the tolerance of a power counts as that power and steps one decade
+        double targetM = MANUAL_FLOOR_M;
+        int32 match = INDEX_NONE;
+        for (int32 index = 0; index < DECADE_COUNT; ++index)
+        {
+            if (FMath::Abs(currentRangeM - DECADES_M[index]) <= DECADES_M[index] * ZOOM_SNAP_RELATIVE_TOLERANCE)
+            {
+                match = index;
+                break;
+            }
+        }
+        if (match != INDEX_NONE)
+        {
+            targetM = DECADES_M[bZoomIn ? match - 1 : match + 1];
+        }
+        else if (bZoomIn)
+        {
+            // The largest power strictly below (exists: the range is above SEARCH_LOW_M)
+            for (int32 index = DECADE_COUNT - 1; index >= 0; --index)
+            {
+                if (DECADES_M[index] < currentRangeM)
+                {
+                    targetM = DECADES_M[index];
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // The smallest power strictly above (exists: the range is below SEARCH_HIGH_M)
+            for (int32 index = 0; index < DECADE_COUNT; ++index)
+            {
+                if (DECADES_M[index] > currentRangeM)
+                {
+                    targetM = DECADES_M[index];
+                    break;
+                }
+            }
+        }
+        return FMath::Clamp(targetM, MANUAL_FLOOR_M, MaxRangeM);
     }
 
     //////////////////////////////////////////////////////////////////////////
