@@ -202,6 +202,18 @@ The solid Scale demo page (issue #46, part 46f): the presets row and the option 
 
 The solid pause menu (issue #46, parts 46g-46i): the side panel slid in from the left over the dimmed, still-running flight (Resume, Controls, Info, Settings, Demo, About, Quit, the note that the simulation keeps running and the key hints), with the Controls page open in the shell beside it.
 
+![Help page: keyboard and mouse diagram with a hovered key](Docs/Images/33-help-keyboard-hover.png)
+
+The Help page (issue #33): the live keyboard and mouse diagram, each key tinted by area with a "+N" badge for further actions, and the popup beside a hovered key listing what it does (here O and its chords). The keys follow the player's own bindings.
+
+![Help page: Flight HUD glossary](Docs/Images/33-help-glossary-flight-hud.png)
+
+The Help page's HUD glossary (issue #33): each HUD symbol drawn with the HUD's own shape code beside its name and a description that names the live keys. `Docs/PLAYER_GUIDE.md` is generated from the same tables.
+
+![Controls page with key caps](Docs/Images/33-controls-key-caps.png)
+
+The Controls page with drawn key caps (issue #33, part 33b): each binding shown as caps, with chords and alternatives, instead of plain text.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -209,11 +221,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 113.5 h |
+| Work time (wall-clock) | 113.6 h |
 | Time spent answering questions | 8.6 h |
-| Tokens | 6,355.3M |
-| Notional API price | $2,515 |
-| Subagents dispatched | 503 |
+| Tokens | 6,360.4M |
+| Notional API price | $2,518 |
+| Subagents dispatched | 504 |
 <!-- METRICS:END -->
 
 ## Documentation map

@@ -372,17 +372,19 @@ Builds on: D21. Depends on 33e.
 
 Builds on: D25.
 
-1. [ ] `Docs/GAME_MECHANICS.md` (section 8, the section 1 pointer, the `SOL::Help` tunables) and the in-game text
+1. [x] `Docs/GAME_MECHANICS.md` (section 8, the section 1 pointer, the `SOL::Help` tunables) and the in-game text
    audit (Controls, Info with its HUD paragraph shortened to a pointer to Help per D25, Help texts, Settings key rows) so nothing states something false.
-2. [ ] `Docs/ARCHITECTURE.md` (new types, the `-SOLWritePlayerGuide` flag, the HUD's use of `SOLHudSymbols`);
+2. [x] `Docs/ARCHITECTURE.md` (new types, the `-SOLWritePlayerGuide` flag, the HUD's use of `SOLHudSymbols`);
    `Docs/TECH_DEBT.md`; check the Mermaid blocks touched, if any, parse.
-3. [ ] Regenerate the guide (`Tools\WritePlayerGuide.bat`); README: the "Player guide" link and 2-3 gallery shots
+3. [x] Regenerate the guide (`Tools\WritePlayerGuide.bat`); README: the "Player guide" link and 2-3 gallery shots
    (`33-help-keyboard.png`, a glossary tab, the Controls caps); temporary shots deleted.
-4. [ ] `Docs/Plans/STATUS.md`: #33 to Done; SDD status line Done; this plan ticked.
-5. [ ] `graphify update .`; `Tools\UpdateMetrics.bat`; commit `Issue #33: Part 33h - docs, in-game text and README`;
+4. [x] `Docs/Plans/STATUS.md`: #33 to Done; SDD status line Done; this plan ticked.
+5. [x] `graphify update .`; `Tools\UpdateMetrics.bat`; commit `Issue #33: Part 33h - docs, in-game text and README`;
    push; close issue #33.
 
 ## Progress notes
+
+- 2026-11-10: 33h done. The in-game text (Controls rows, key short labels, Help texts) and `GAME_MECHANICS.md` (sections 1, 8, 8.3) were re-checked against the default bindings and `SOL::Help` / `SOL::SolidMenu` constants: no stale statement found, so no table changed and the guide was not regenerated. README gallery uses the committed guide shots plus a 1280x720 Controls key-cap shot. Ticket closed.
 
 - 2026-11-06: SDD and plan drafted from the grill-me answers (Q1-Q11 and the budget items).
 - 2026-11-06: open questions O1-O13 answered by the user and recorded as D16-D28 in the SDD; design final, ready to
