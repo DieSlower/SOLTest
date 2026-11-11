@@ -306,7 +306,7 @@ namespace SOLMenuText
         { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off in the active profile") },
         { TEXT("Overlays"), TEXT("@OverlayMenu"),
             TEXT("Overlay Menu: the five overlay profiles and what the overlay key shows in each (icons per kind, "
-                "orbits per kind, ships on radar, darkening); also in Settings") },
+                "orbits per kind, ships on radar, NPC lanes, darkening); also in Settings") },
         { TEXT("Overlays"), TEXT("@CycleOverlayProfile"),
             TEXT("Cycle overlay profiles (the enabled ones; also in the Overlay Menu)") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
@@ -658,8 +658,8 @@ namespace SOLMenuText
                 "type, distance, details and its current status.") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Overlay Menu"),
             TEXT("A hologram checklist ({OverlayMenu}) with a tab for each of the {OverlayProfileCount} overlay "
-                "profiles. Choose which icons, orbit lines, radar ships and darkening each profile shows. Enable more "
-                "profiles and cycle them with {CycleOverlayProfile}.") },
+                "profiles. Choose which icons, orbit lines, radar ships, NPC lanes and darkening each profile shows. "
+                "Enable more profiles and cycle them with {CycleOverlayProfile}.") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Speed panel"),
             TEXT("Opened with {SpeedPanel}: type your speed cap digit by digit, or pick a body from the list to set "
                 "the cap to its orbital speed. Changes apply to the ship at once.") },

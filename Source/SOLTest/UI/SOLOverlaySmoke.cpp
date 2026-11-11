@@ -12,6 +12,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "UI/SOLFlightHud.h"
+#include "UI/SOLHoloFrameWidget.h"
 #include "UI/SOLHologramCursorSubsystem.h"
 #include "UI/SOLOverlayMenuWidget.h"
 
@@ -23,6 +24,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "Widgets/SViewport.h"
 
 namespace
 {
@@ -37,10 +39,13 @@ namespace
         CycleSolo,          // Step 2: Right Shift+O with only Profile 1
         LeftShift,          // Step 3: Left Shift+O does nothing (D1)
         MenuOpen,           // Step 4: Ctrl+O
+        LanesSpace,         // Step 4b: Space on the Lanes row of Profile 1 unchecks it (SDD 38)
+        LanesSpaceBack,     // Step 4b: Space on it again checks it
         TabClick,           // Step 5: a Slate click on the Profile 3 tab (disabled: its enable page)
         EnableClick,        // Step 5: a Slate click on its Enable row
         TabsShot,           // Step 5: screenshot of the tabs
         PlanetsClick,       // Step 6: a Slate click on Planets in Profile 3
+        LanesThirdSpace,    // Step 6b: Space on the Lanes row of Profile 3 unchecks it there only (SDD 38)
         PageUp,             // Step 7: PageUp views Profile 2 (disabled)
         MenuClose,          // Step 8: Esc through Slate
         FinalShot,          // Screenshot with the icons
@@ -78,7 +83,7 @@ namespace
     constexpr int32 OVERLAYSMOKE_PROFILE_COUNT = 5;
     constexpr int32 OVERLAYSMOKE_THIRD = 2;                     // Profile 3 (0-based)
     constexpr int32 OVERLAYSMOKE_SECOND = 1;                    // Profile 2 (0-based)
-    constexpr int32 OVERLAYSMOKE_PAGE_ROWS = 16;                // Profile 1's page: the 15 table rows and Orbit Lines
+    constexpr int32 OVERLAYSMOKE_PAGE_ROWS = 17;                // Profile 1's page: the 16 table rows and Orbit Lines
 
     //////////////////////////////////////////////////////////////////////////
     // Returns how long a step lasts at least (real seconds)
@@ -107,6 +112,56 @@ namespace
     bool IsRowCheckedIn(const SOLOverlay::FOverlayPrefs& prefs, const int32 profile, const SOLOverlay::EOverlay overlay)
     {
         return (prefs.Masks[profile] & (1u << static_cast<int32>(overlay))) != 0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether the viewed page's Lanes row shows the Lanes label, top level (not indented), and the row shown
+    // right below it is Darkening
+    bool IsLanesRowListed(const USOLOverlayMenuWidget* menu)
+    {
+        if (menu == nullptr)
+        {
+            return false;
+        }
+        const int32 lanesRow = USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::Lanes);
+        const FString text = menu->GetRowText(lanesRow);
+        const FString below = menu->GetRowText(lanesRow + 1);
+        return text.Contains(SOLOverlay::GetDef(static_cast<int32>(SOLOverlay::EOverlay::Lanes)).Label)
+            && !text.StartsWith(SOLMenuText::OVERLAY_MENU_CHILD_INDENT)
+            && below.Contains(SOLOverlay::GetDef(static_cast<int32>(SOLOverlay::EOverlay::Darkening)).Label);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether the standalone menu's hologram frame lies inside the game viewport and the page's last row sits
+    // inside the frame (absolute Slate space, as last laid out); fills a detail line either way
+    bool IsMenuInView(const UWorld* world, const USOLOverlayMenuWidget* menu, FString& outDetail)
+    {
+        const UGameViewportClient* viewportClient = world != nullptr ? world->GetGameViewport() : nullptr;
+        const TSharedPtr<SViewport> viewportWidget = viewportClient != nullptr
+            ? viewportClient->GetGameViewportWidget() : nullptr;
+        const USOLHoloFrameWidget* frame = menu != nullptr ? menu->GetHoloFrame() : nullptr;
+        if (!viewportWidget.IsValid() || frame == nullptr)
+        {
+            outDetail = TEXT("no viewport widget or no hologram frame");
+            return false;
+        }
+
+        // Both rectangles in absolute space; half a pixel of slack for the layout's rounding
+        constexpr double slackPx = 0.5;
+        const FGeometry& viewGeometry = viewportWidget->GetCachedGeometry();
+        const FVector2D viewMin(viewGeometry.LocalToAbsolute(FVector2D::ZeroVector));
+        const FVector2D viewMax(viewGeometry.LocalToAbsolute(viewGeometry.GetLocalSize()));
+        const FGeometry& frameGeometry = frame->GetCachedGeometry();
+        const FVector2D frameMin(frameGeometry.LocalToAbsolute(FVector2D::ZeroVector));
+        const FVector2D frameMax(frameGeometry.LocalToAbsolute(frameGeometry.GetLocalSize()));
+        const FVector2D lastRow = menu->GetRowScreenCenter(menu->GetRowCount() - 1);
+        const bool bFrameInView = frameMin.X >= viewMin.X - slackPx && frameMin.Y >= viewMin.Y - slackPx
+            && frameMax.X <= viewMax.X + slackPx && frameMax.Y <= viewMax.Y + slackPx && frameMax.Y > frameMin.Y;
+        const bool bRowInFrame = lastRow.Y > frameMin.Y && lastRow.Y < frameMax.Y;
+        outDetail = FString::Printf(TEXT("viewport %.0fx%.0f, frame bottom %.1f (viewport bottom %.1f), last row %d "
+            "centre y %.1f"), viewMax.X - viewMin.X, viewMax.Y - viewMin.Y, frameMax.Y, viewMax.Y,
+            menu->GetRowCount() - 1, lastRow.Y);
+        return bFrameInView && bRowInFrame;
     }
 }
 
@@ -205,8 +260,23 @@ void FSOLOverlaySmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
         TapChord(EKeys::LeftShift, EKeys::O);
         break;
     case EOverlayStep::MenuOpen:
+        // The Lanes steps check that no write happens while the menu is open (MenuClose takes its own count)
+        mSavesBefore = mSettings->GetSaveRequestCount();
+        TapChord(EKeys::LeftControl, EKeys::O);
+        break;
     case EOverlayStep::MenuReopen:
         TapChord(EKeys::LeftControl, EKeys::O);
+        break;
+    case EOverlayStep::LanesSpace:
+    case EOverlayStep::LanesSpaceBack:
+    case EOverlayStep::LanesThirdSpace:
+        // Up / Down move the highlight to the Lanes row, then Space toggles it, all through Slate like a player
+        if (menu != nullptr)
+        {
+            mWasLanesShown = mSettings->IsOverlayShown(SOLOverlay::EOverlay::Lanes);
+            HighlightRow(*menu, USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::Lanes));
+            SlateKey(EKeys::SpaceBar);
+        }
         break;
     case EOverlayStep::TabClick:
     case EOverlayStep::ReenableTab:
@@ -303,6 +373,9 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     const USOLOverlayMenuWidget* menu = pawn.GetOverlayMenu();
     const int32 rows = menu != nullptr ? menu->GetRowCount() : 0;
     const int32 viewed = menu != nullptr ? menu->GetViewedProfile() + 1 : 0;
+    const bool bLanesShown = mSettings->IsOverlayShown(SOLOverlay::EOverlay::Lanes);
+    const bool bLanesChecked = SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::Lanes);
+    const int32 writesInMenu = mSettings->GetSaveRequestCount() - mSavesBefore;
     switch (static_cast<EOverlayStep>(step))
     {
     case EOverlayStep::Setup:
@@ -314,6 +387,9 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         Check(TEXT("1-start"), prefs.ActiveProfile == 0 && prefs.EnabledProfiles == 0x01 && bMaster
             && tagAlpha == 0.0f, FString::Printf(TEXT("active Profile %d, enabled bits 0x%02x, master %s, tag alpha "
             "%.2f"), active, prefs.EnabledProfiles, bMaster ? TEXT("on") : TEXT("off"), tagAlpha));
+        Check(TEXT("a-lanes-start"), bLanesChecked && bLanesShown, FString::Printf(TEXT("flight start: Lanes row %s, "
+            "shown %s (on by default, D5)"), bLanesChecked ? TEXT("checked") : TEXT("UNCHECKED"), bLanesShown
+            ? TEXT("yes") : TEXT("NO")));
         const USOLHologramCursorSubsystem* cursor = pawn.GetWorld()->GetSubsystem<USOLHologramCursorSubsystem>();
         const UGameViewportClient* viewport = pawn.GetWorld()->GetGameViewport();
         const bool bInstalled = cursor != nullptr && cursor->GetCursorWidget().IsValid() && viewport != nullptr
@@ -328,11 +404,16 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         Check(TEXT("b-master-off"), !bMaster && icons == 0 && arrows == 0 && visibleLines == 0,
             FString::Printf(TEXT("O: master %s, %d icons, %d arrows, %d orbit lines"), bMaster ? TEXT("on")
             : TEXT("off"), icons, arrows, visibleLines));
+        Check(TEXT("b-lanes-off"), !bLanesShown && bLanesChecked, FString::Printf(TEXT("O: Lanes %s, its row %s "
+            "(the master governs it, D11)"), bLanesShown ? TEXT("SHOWN") : TEXT("hidden"), bLanesChecked
+            ? TEXT("still checked") : TEXT("UNCHECKED")));
         break;
     case EOverlayStep::MasterOn:
         Check(TEXT("c-master-on"), bMaster && icons == mStartIcons, FString::Printf(TEXT("O again: master %s, %d "
             "icons (start %d), %d orbit lines"), bMaster ? TEXT("on") : TEXT("off"), icons, mStartIcons,
             visibleLines));
+        Check(TEXT("c-lanes-on"), bLanesShown, FString::Printf(TEXT("O again: Lanes %s"), bLanesShown
+            ? TEXT("shown") : TEXT("HIDDEN")));
         break;
     case EOverlayStep::OrbitLinesOff:
     case EOverlayStep::OrbitLinesOn:
@@ -381,6 +462,43 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             "master %s"), pawn.IsOverlayMenuOpen() ? TEXT("open") : TEXT("closed"),
             menu != nullptr ? menu->GetTabCount() : 0, rows, OVERLAYSMOKE_PAGE_ROWS, bIndented ? TEXT("yes")
             : TEXT("NO"), bMaster ? TEXT("on") : TEXT("off")));
+        Check(TEXT("4-lanes-row"), IsLanesRowListed(menu) && bLanesChecked && bLanesShown, FString::Printf(TEXT(
+            "Profile 1's page: Lanes row '%s' (top level, above Darkening: %s), checked %s, shown %s"),
+            menu != nullptr ? *menu->GetRowText(USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::Lanes))
+            : TEXT(""), IsLanesRowListed(menu) ? TEXT("yes") : TEXT("NO"), bLanesChecked ? TEXT("yes") : TEXT("NO"),
+            bLanesShown ? TEXT("yes") : TEXT("NO")));
+        FString fitDetail;
+        const bool bInView = IsMenuInView(pawn.GetWorld(), menu, fitDetail);
+        Check(TEXT("4-menu-fits"), bInView, FString::Printf(TEXT("Profile 1's %d-row page inside the view: %s"), rows,
+            *fitDetail));
+        break;
+    }
+    case EOverlayStep::LanesSpace:
+    case EOverlayStep::LanesSpaceBack:
+    {
+        // Space flips the row in memory only: no write while the menu is open (the close writes once)
+        const bool bWantOn = static_cast<EOverlayStep>(step) == EOverlayStep::LanesSpaceBack;
+        const int32 lanesRow = USOLOverlayMenuWidget::GetOverlayRow(SOLOverlay::EOverlay::Lanes);
+        const int32 highlighted = menu != nullptr ? menu->GetHighlightedRow() : INDEX_NONE;
+        Check(bWantOn ? TEXT("4-lanes-space-on") : TEXT("4-lanes-space-off"), prefs.ActiveProfile == 0
+            && highlighted == lanesRow && mWasLanesShown != bWantOn && bLanesChecked == bWantOn
+            && bLanesShown == bWantOn && bMaster && writesInMenu == 0, FString::Printf(TEXT("Space on the Lanes row "
+            "(highlight %d, want %d) in Profile %d: shown %s -> %s, checked %s, master %s, %d write(s) in the menu "
+            "(want 0)"), highlighted, lanesRow, active, mWasLanesShown ? TEXT("on") : TEXT("off"), bLanesShown
+            ? TEXT("on") : TEXT("off"), bLanesChecked ? TEXT("yes") : TEXT("no"), bMaster ? TEXT("on") : TEXT("OFF"),
+            writesInMenu));
+        break;
+    }
+    case EOverlayStep::LanesThirdSpace:
+    {
+        // Per profile: Profile 3 loses its Lanes bit, Profile 1 keeps its own
+        const bool bThird = IsRowCheckedIn(prefs, OVERLAYSMOKE_THIRD, SOLOverlay::EOverlay::Lanes);
+        const bool bFirst = IsRowCheckedIn(prefs, 0, SOLOverlay::EOverlay::Lanes);
+        Check(TEXT("6-lanes-third"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && mWasLanesShown && !bLanesShown
+            && !bThird && bFirst && writesInMenu == 0, FString::Printf(TEXT("Space on the Lanes row in Profile %d: "
+            "shown %s -> %s, Profile 3 %s, Profile 1 %s, %d write(s) in the menu (want 0)"), active, mWasLanesShown
+            ? TEXT("on") : TEXT("off"), bLanesShown ? TEXT("ON") : TEXT("off"), bThird ? TEXT("CHECKED")
+            : TEXT("unchecked"), bFirst ? TEXT("checked") : TEXT("UNCHECKED"), writesInMenu));
         break;
     }
     case EOverlayStep::TabClick:
@@ -396,6 +514,16 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             "Profile %d, mask 0x%x (Profile 1: 0x%x), %d rows"), SOLOverlay::IsProfileEnabled(prefs,
             OVERLAYSMOKE_THIRD) ? TEXT("enabled") : TEXT("NOT enabled"), active, prefs.Masks[OVERLAYSMOKE_THIRD],
             prefs.Masks[0], rows));
+        Check(TEXT("5-lanes-row"), IsLanesRowListed(menu) && bLanesChecked, FString::Printf(TEXT("Profile 3's page: "
+            "Lanes row %s, checked (copied from Profile 1) %s"), IsLanesRowListed(menu) ? TEXT("listed")
+            : TEXT("MISSING"), bLanesChecked ? TEXT("yes") : TEXT("NO")));
+        {
+            // The tallest page (the table, Orbit Lines and Profile enabled) still fits
+            FString fitDetail;
+            const bool bInView = IsMenuInView(pawn.GetWorld(), menu, fitDetail);
+            Check(TEXT("5-menu-fits"), bInView, FString::Printf(TEXT("Profile 3's %d-row page inside the view: %s"),
+                rows, *fitDetail));
+        }
         break;
     case EOverlayStep::PlanetsClick:
     {
@@ -427,6 +555,8 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             && tagText.Contains(TEXT("PROFILE 1")) && tagAlpha > 0.0f, FString::Printf(TEXT("Right Shift+O: active "
             "Profile %d, Planets row %s, %d icons (%d planet icons), tag '%s' alpha %.2f"), active, bShown
             ? TEXT("shown") : TEXT("HIDDEN"), icons, planets, *tagText, tagAlpha));
+        Check(TEXT("9-lanes-first"), prefs.ActiveProfile == 0 && bLanesShown, FString::Printf(TEXT("Right Shift+O "
+            "to Profile %d: Lanes %s (its own bit)"), active, bLanesShown ? TEXT("shown") : TEXT("HIDDEN")));
         break;
     }
     case EOverlayStep::CycleToThird:
@@ -436,6 +566,11 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             && tagText.Contains(TEXT("PROFILE 3")), FString::Printf(TEXT("Right Shift+O: active Profile %d, Planets "
             "row %s, %d planet icons, tag '%s'"), active, bShown ? TEXT("SHOWN") : TEXT("hidden"), planets,
             *tagText));
+        Check(TEXT("10-lanes-third"), prefs.ActiveProfile == OVERLAYSMOKE_THIRD && bMaster && !bLanesShown
+            && IsRowCheckedIn(prefs, 0, SOLOverlay::EOverlay::Lanes), FString::Printf(TEXT("Right Shift+O to Profile "
+            "%d (master %s): Lanes %s (its own bit), Profile 1's Lanes %s"), active, bMaster ? TEXT("on")
+            : TEXT("OFF"), bLanesShown ? TEXT("SHOWN") : TEXT("hidden"), IsRowCheckedIn(prefs, 0,
+            SOLOverlay::EOverlay::Lanes) ? TEXT("checked") : TEXT("UNCHECKED")));
         break;
     }
     case EOverlayStep::MasterThirdOff:
@@ -490,13 +625,15 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         break;
     case EOverlayStep::ReenableClick:
     {
-        // Its own values come back (D12): Planets unchecked, master and orbit lines as left, not a copy of Profile 1
+        // Its own values come back (D12): Planets and Lanes unchecked, master and orbit lines as left, not a copy of
+        // Profile 1
         const bool bPlanets = IsRowCheckedIn(prefs, OVERLAYSMOKE_THIRD, SOLOverlay::EOverlay::IconPlanets);
         Check(TEXT("13-reenable"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD)
-            && prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bPlanets && !bMaster && mSettings->AreOrbitLinesShown(),
-            FString::Printf(TEXT("click on Enable: Profile 3 %s, active Profile %d, Planets %s, master %s, orbit "
-            "lines %s"), SOLOverlay::IsProfileEnabled(prefs, OVERLAYSMOKE_THIRD) ? TEXT("enabled")
-            : TEXT("NOT enabled"), active, bPlanets ? TEXT("CHECKED") : TEXT("unchecked"), bMaster ? TEXT("ON")
+            && prefs.ActiveProfile == OVERLAYSMOKE_THIRD && !bPlanets && !bLanesChecked && !bMaster
+            && mSettings->AreOrbitLinesShown(), FString::Printf(TEXT("click on Enable: Profile 3 %s, active Profile "
+            "%d, Planets %s, Lanes %s, master %s, orbit lines %s"), SOLOverlay::IsProfileEnabled(prefs,
+            OVERLAYSMOKE_THIRD) ? TEXT("enabled") : TEXT("NOT enabled"), active, bPlanets ? TEXT("CHECKED")
+            : TEXT("unchecked"), bLanesChecked ? TEXT("CHECKED") : TEXT("unchecked"), bMaster ? TEXT("ON")
             : TEXT("off"), mSettings->AreOrbitLinesShown() ? TEXT("on") : TEXT("OFF")));
         break;
     }
@@ -580,6 +717,18 @@ void FSOLOverlaySmoke::SlateKey(const FKey& key) const
     const FKeyEvent keyEvent(key, FModifierKeysState(), slate.GetUserIndexForKeyboard(), false, 0, 0);
     slate.ProcessKeyDownEvent(keyEvent);
     slate.ProcessKeyUpEvent(keyEvent);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Moves the menu's highlight to a display row with Slate Down presses (it wraps over the viewed page's rows)
+void FSOLOverlaySmoke::HighlightRow(const USOLOverlayMenuWidget& menu, const int32 row) const
+{
+    const int32 count = FMath::Max(menu.GetRowCount(), 1);
+    const int32 presses = ((row - menu.GetHighlightedRow()) % count + count) % count;
+    for (int32 press = 0; press < presses; ++press)
+    {
+        SlateKey(EKeys::Down);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////

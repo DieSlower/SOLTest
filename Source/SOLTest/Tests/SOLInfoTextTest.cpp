@@ -406,4 +406,36 @@ bool FSOLInfoTextDemoParagraphTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextOverlayMenuLanesTest, "SOLTest.InfoText.OverlayMenuControlsLanes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 (SDD 38 section 7, D19): exactly one Controls row is the Overlay Menu's, and it lists the NPC lanes among
+// the row kinds, after ships on radar and before darkening, with no placeholder left
+bool FSOLInfoTextOverlayMenuLanesTest::RunTest(const FString& /*parameters*/)
+{
+    int32 found = 0;
+    for (const SOLMenuText::FControlRow& row : SOLMenuText::CONTROL_ROWS)
+    {
+        if (FString(row.Bindings) != TEXT("@OverlayMenu"))
+        {
+            continue;
+        }
+        ++found;
+        const FString action = row.Action;
+        TestTrue(TEXT("the row names the row kinds with NPC lanes"), action.Contains(
+            TEXT("(icons per kind, orbits per kind, ships on radar, NPC lanes, darkening); also in Settings"),
+            ESearchCase::CaseSensitive));
+        const int32 radar = action.Find(TEXT("ships on radar"), ESearchCase::CaseSensitive);
+        const int32 lanes = action.Find(TEXT("NPC lanes"), ESearchCase::CaseSensitive);
+        const int32 darkening = action.Find(TEXT("darkening"), ESearchCase::CaseSensitive);
+        TestTrue(TEXT("NPC lanes after ships on radar"), radar != INDEX_NONE && lanes > radar);
+        TestTrue(TEXT("NPC lanes before darkening"), lanes != INDEX_NONE && darkening > lanes);
+        TestFalse(TEXT("no '{' left"), action.Contains(TEXT("{")));
+    }
+    TestEqual(TEXT("exactly one Overlay Menu row"), found, 1);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

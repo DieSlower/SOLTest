@@ -137,7 +137,9 @@ public:
     /** Overlay profiles (SDD 22, SDD 34). Added in schema 7; an older save is migrated to one default profile (every
      *  overlay on except Asteroid Orbits). Schema 9 (SDD 43) wrote SpaceDust = on into every profile; schema 10
      *  (SDD 34) moves that value to bSpaceDust, removes the key, and enables every stored entry. From schema 10 it is
-     *  written with SOL::Overlay::MAX_PROFILES entries (a missing entry reads as disabled and unused). */
+     *  written with SOL::Overlay::MAX_PROFILES entries (a missing entry reads as disabled and unused). Schema 13
+     *  (SDD 38) writes Lanes = on into every used entry (a non-empty map) that has no Lanes key; unused entries keep
+     *  their empty map. */
     UPROPERTY()
     TArray<FSOLOverlayProfileSave> OverlayProfiles;
 

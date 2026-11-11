@@ -1,0 +1,1189 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+#include "Npc/SOLNpcLaneMath.h"
+#include "Npc/SOLNpcRail.h"
+#include "OrbitLines/SOLOrbitLineMath.h"
+#include "SOLConstants.h"
+#include "UI/SOLHudShapeMath.h"
+
+#include "Misc/AutomationTest.h"
+
+#include <limits>
+
+#if WITH_DEV_AUTOMATION_TESTS
+
+// Tests for the issue #38 NPC lane-line math (SOLNpcLane, SDD 38 section 6 cases 1-16), written against that contract
+// before the production code existed. Doubles are compared to 1e-9 unless a case says otherwise.
+
+// Helpers here carry names unique across the test files so unity builds do not collide
+namespace
+{
+    constexpr double NPCLANE_TOL = 1.0e-9;
+    constexpr double NPCLANE_FLOAT_TOL = 1.0e-6;          // Results that pass through the float HUD glow profile
+    constexpr double NPCLANE_NAN = std::numeric_limits<double>::quiet_NaN();
+    constexpr double NPCLANE_INF = std::numeric_limits<double>::infinity();
+    constexpr double NPCLANE_AU_M = 1.495978707e11;
+    constexpr double NPCLANE_REF_HEIGHT = 1080.0;                // The contract's reference height (case 9 at 1080p)
+
+    // Lane radii of the default layout (Earth-Moon and an outer lane, SDD 38 section 3)
+    constexpr double NPCLANE_RADIUS_INNER_M = 2.0e5;
+    constexpr double NPCLANE_RADIUS_OUTER_M = 1.0e7;
+
+    // The four line widths the contract samples (px)
+    const double NPCLANE_WIDTHS[] = { 0.5, 1.0, 2.5, 5.0 };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the circular distance between two phases in [0, 1) (so 0.9999999999 and 0 are close)
+    double NpcLaneWrapDistance(const double a, const double b)
+    {
+        const double d = FMath::Abs(a - b);
+        return FMath::Min(d, 1.0 - d);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's closed form of the line fade (inside the band only): log(d / (NEAR R)) / log(FAR / NEAR)
+    double NpcLaneFadeClosedForm(const double distanceM, const double radiusM)
+    {
+        return FMath::Loge(distanceM / (SOL::NPC_LANE_FADE_NEAR_RADII * radiusM))
+            / FMath::Loge(SOL::NPC_LANE_FADE_FAR_RADII / SOL::NPC_LANE_FADE_NEAR_RADII);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the viewport scale height / NPC_LANE_REFERENCE_HEIGHT_PX
+    double NpcLaneScale(const double heightPx)
+    {
+        return heightPx / static_cast<double>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's line profile: GlowProfile(d', g) x min(width, 1), d' = max(0, |d| - (max(w, 1) / 2 -
+    // HUD_GLOW_CORE_HALF_PX)) / (height / REFERENCE) (D25), with g sanitized like the HUD
+    double NpcLaneExpectedProfile(const double distancePx, const double widthPx, const double glowScale,
+        const double heightPx = 1080.0)
+    {
+        const double halfCore = FMath::Max(widthPx, 1.0) * 0.5 - SOL::Hologram::HUD_GLOW_CORE_HALF_PX;
+        const double shifted = FMath::Max(0.0, FMath::Abs(distancePx) - halfCore)
+            / (heightPx / static_cast<double>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX));
+        const float g = SOLHudShapeMath::SanitizeGlowScale(static_cast<float>(glowScale));
+        return static_cast<double>(SOLHudShapeMath::GlowProfile(static_cast<float>(shifted), g))
+            * FMath::Min(widthPx, 1.0);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the orbit lines' multi-scale dash coverage with the orbit lines' level and solid constants
+    double NpcLaneOrbitDash(const double dashPhase, const double phaseFootprint)
+    {
+        return SOLOrbitLineMath::MultiScaleDashCoverage(dashPhase, SOL::NPC_LANE_DASH_DUTY, phaseFootprint,
+            SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX, SOL::ORBIT_LINE_DASH_MAX_LEVEL, SOL::ORBIT_LINE_DASH_SOLID_START_PX,
+            SOL::ORBIT_LINE_DASH_SOLID_END_PX);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns one rail of a kind in a global group
+    FSOLNpcRail NpcLaneRail(const SOLNpcScale::EPlacementKind kind, const int32 group)
+    {
+        FSOLNpcRail rail;
+        rail.Kind = static_cast<uint8>(kind);
+        rail.Group = static_cast<uint16>(group);
+        return rail;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the distance from a point to the ray from the origin along a unit direction (t >= 0)
+    double NpcLanePointToRayM(const FVector3d& pointM, const FVector3d& unitDirection)
+    {
+        const double t = FMath::Max(0.0, FVector3d::DotProduct(pointM, unitDirection));
+        return (pointM - unitDirection * t).Size();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathConstantsTest, "SOLTest.NpcLaneMath.Constants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 1: the proposed tuning values (asserted so a tuning change is a visible test edit) and the two hologram colours,
+// neither grey nor white
+bool FSOLNpcLaneMathConstantsTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("fade near 100 radii"), static_cast<double>(SOL::NPC_LANE_FADE_NEAR_RADII), 100.0, NPCLANE_TOL);
+    TestEqual(TEXT("fade far 400 radii"), static_cast<double>(SOL::NPC_LANE_FADE_FAR_RADII), 400.0, NPCLANE_TOL);
+    TestTrue(TEXT("far > near > 1"), SOL::NPC_LANE_FADE_FAR_RADII > SOL::NPC_LANE_FADE_NEAR_RADII
+        && SOL::NPC_LANE_FADE_NEAR_RADII > 1.0);
+    TestEqual(TEXT("traffic low 100"), static_cast<double>(SOL::NPC_LANE_TRAFFIC_LOW), 100.0, NPCLANE_TOL);
+    TestEqual(TEXT("traffic high 100,000"), static_cast<double>(SOL::NPC_LANE_TRAFFIC_HIGH), 100000.0, NPCLANE_TOL);
+    TestEqual(TEXT("width min 1.0 px"), static_cast<double>(SOL::NPC_LANE_WIDTH_MIN_PX), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("width max 2.5 px"), static_cast<double>(SOL::NPC_LANE_WIDTH_MAX_PX), 2.5, NPCLANE_TOL);
+    TestEqual(TEXT("gap 1.5 px"), static_cast<double>(SOL::NPC_LANE_GAP_PX), 1.5, NPCLANE_TOL);
+    TestEqual(TEXT("reference height 1080"), static_cast<double>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX), 1080.0,
+        NPCLANE_TOL);
+    TestEqual(TEXT("brightness min 0.35"), static_cast<double>(SOL::NPC_LANE_BRIGHTNESS_MIN), 0.35, NPCLANE_TOL);
+    TestEqual(TEXT("brightness max 1.0"), static_cast<double>(SOL::NPC_LANE_BRIGHTNESS_MAX), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("64 base dashes"), static_cast<int32>(SOL::NPC_LANE_DASH_BASE_COUNT), 64);
+    TestEqual(TEXT("dash duty 0.5"), static_cast<double>(SOL::NPC_LANE_DASH_DUTY), 0.5, NPCLANE_TOL);
+    TestEqual(TEXT("flow 0.75 periods per second"), static_cast<double>(SOL::NPC_LANE_DASH_FLOW_PERIODS_PER_S), 0.75,
+        NPCLANE_TOL);
+    TestEqual(TEXT("glow pad 12 px"), static_cast<double>(SOL::NPC_LANE_GLOW_PAD_PX), 12.0, NPCLANE_TOL);
+    TestEqual(TEXT("64 segments"), static_cast<int32>(SOL::NPC_LANE_SEGMENTS), 64);
+
+    // The two colours: teal-white outbound, cyan inbound, stored as sRGB FColor
+    TestTrue(TEXT("outbound #9FD6D0"), SOL::NPC_LANE_OUTBOUND_COLOR == FColor(0x9F, 0xD6, 0xD0));
+    TestTrue(TEXT("inbound #3FD0E0"), SOL::NPC_LANE_INBOUND_COLOR == FColor(0x3F, 0xD0, 0xE0));
+    const FColor colors[] = { SOL::NPC_LANE_OUTBOUND_COLOR, SOL::NPC_LANE_INBOUND_COLOR };
+    for (const FColor& color : colors)
+    {
+        const FLinearColor linear(color);
+        const double maxChannel = FMath::Max3(linear.R, linear.G, linear.B);
+        const double minChannel = FMath::Min3(linear.R, linear.G, linear.B);
+        TestTrue(FString::Printf(TEXT("%s is neither grey nor white"), *color.ToHex()),
+            maxChannel - minChannel >= 0.1);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLineFadeTest, "SOLTest.NpcLaneMath.LineFade",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 2: the close-up fade is 0 inside NEAR radii, 1 beyond FAR radii, 0.5 at the geometric mean and linear in log
+// distance between; it is scale free, and a bad radius or distance keeps the line (1)
+bool FSOLNpcLaneMathLineFadeTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneLineFade;
+    const double nearRadii = SOL::NPC_LANE_FADE_NEAR_RADII;
+    const double farRadii = SOL::NPC_LANE_FADE_FAR_RADII;
+    const double radii[] = { NPCLANE_RADIUS_INNER_M, NPCLANE_RADIUS_OUTER_M };
+    for (const double radiusM : radii)
+    {
+        const FString label = FString::Printf(TEXT("R %.0f m"), radiusM);
+        const double nearM = nearRadii * radiusM;
+        const double farM = farRadii * radiusM;
+
+        // The ends of the band and beyond
+        TestEqual(label + TEXT(": 0 at NEAR R"), LaneLineFade(nearM, radiusM), 0.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 0 below NEAR R"), LaneLineFade(nearM * 0.5, radiusM), 0.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 0 at d = 0"), LaneLineFade(0.0, radiusM), 0.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 0 at a negative d"), LaneLineFade(-radiusM, radiusM), 0.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 1 at FAR R"), LaneLineFade(farM, radiusM), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 1 beyond FAR R"), LaneLineFade(farM * 10.0, radiusM), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 1 at +inf"), LaneLineFade(NPCLANE_INF, radiusM), 1.0, NPCLANE_TOL);
+
+        // 0.5 at the geometric mean (200 R with the proposed values)
+        TestEqual(label + TEXT(": 0.5 at sqrt(NEAR FAR) R"), LaneLineFade(FMath::Sqrt(nearRadii * farRadii) * radiusM,
+            radiusM), 0.5, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 0.5 at 200 R"), LaneLineFade(200.0 * radiusM, radiusM), 0.5, NPCLANE_TOL);
+
+        // Linear in log d: three interior points against the closed form
+        for (const double t : { 0.25, 0.5, 0.75 })
+        {
+            const double d = nearM * FMath::Pow(farRadii / nearRadii, t);
+            TestEqual(label + FString::Printf(TEXT(": log-linear at t %.2f"), t), LaneLineFade(d, radiusM), t,
+                NPCLANE_TOL);
+            TestEqual(label + FString::Printf(TEXT(": closed form at t %.2f"), t), LaneLineFade(d, radiusM),
+                NpcLaneFadeClosedForm(d, radiusM), NPCLANE_TOL);
+        }
+        const double oddM = 137.0 * radiusM;
+        TestEqual(label + TEXT(": closed form at 137 R"), LaneLineFade(oddM, radiusM),
+            NpcLaneFadeClosedForm(oddM, radiusM), NPCLANE_TOL);
+
+        // Non-decreasing in d, in [0, 1]
+        double previous = -1.0;
+        for (int32 step = 0; step <= 200; ++step)
+        {
+            const double d = radiusM * 10.0 * FMath::Pow(10.0, static_cast<double>(step) / 100.0);
+            const double fade = LaneLineFade(d, radiusM);
+            TestTrue(label + FString::Printf(TEXT(": in [0, 1] at step %d"), step), fade >= 0.0 && fade <= 1.0);
+            TestTrue(label + FString::Printf(TEXT(": non-decreasing at step %d"), step), fade >= previous - 1.0e-12);
+            previous = fade;
+        }
+    }
+
+    // Scale free: fade(k d, k R) == fade(d, R)
+    constexpr double scaleK = 1.0e3;
+    for (const double inRadii : { 50.0, 100.0, 150.0, 200.0, 333.0, 400.0, 900.0 })
+    {
+        const double d = inRadii * NPCLANE_RADIUS_INNER_M;
+        TestEqual(FString::Printf(TEXT("scale free at %.0f R"), inRadii),
+            LaneLineFade(scaleK * d, scaleK * NPCLANE_RADIUS_INNER_M), LaneLineFade(d, NPCLANE_RADIUS_INNER_M),
+            NPCLANE_TOL);
+    }
+
+    // Bad input keeps the line
+    TestEqual(TEXT("NaN distance -> 1"), LaneLineFade(NPCLANE_NAN, NPCLANE_RADIUS_INNER_M), 1.0, NPCLANE_TOL);
+    const double badRadii[] = { NPCLANE_NAN, 0.0, -NPCLANE_RADIUS_INNER_M, NPCLANE_INF, -NPCLANE_INF };
+    for (const double badRadius : badRadii)
+    {
+        const FString label = FString::Printf(TEXT("radius %f"), badRadius);
+        TestEqual(label + TEXT(": 1 at d = 0"), LaneLineFade(0.0, badRadius), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 1 at 1 km"), LaneLineFade(1000.0, badRadius), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": 1 at 1 AU"), LaneLineFade(NPCLANE_AU_M, badRadius), 1.0, NPCLANE_TOL);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathShipPointAlphaTest, "SOLTest.NpcLaneMath.ShipPointAlpha",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 3: with lanes shown a lane ship's far point is the fade's complement (so line + points sum to 1 everywhere);
+// with lanes off every point draws as today (1)
+bool FSOLNpcLaneMathShipPointAlphaTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    const double radiusM = NPCLANE_RADIUS_INNER_M;
+    for (int32 step = 0; step <= 60; ++step)
+    {
+        const double d = radiusM * FMath::Pow(10.0, static_cast<double>(step) / 15.0);
+        const FString label = FString::Printf(TEXT("d %.3e m"), d);
+        TestEqual(label + TEXT(": shown = 1 - fade"), LaneShipPointAlpha(d, radiusM, true),
+            1.0 - LaneLineFade(d, radiusM), NPCLANE_TOL);
+        TestEqual(label + TEXT(": shown + fade = 1"), LaneShipPointAlpha(d, radiusM, true) + LaneLineFade(d, radiusM),
+            1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": not shown = 1"), LaneShipPointAlpha(d, radiusM, false), 1.0, NPCLANE_TOL);
+    }
+    TestEqual(TEXT("shown, close: 1"), LaneShipPointAlpha(0.0, radiusM, true), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("shown, far: 0"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, true), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("not shown, far: 1"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, false), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("shown, bad radius: the line stays, so 0"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, true), 0.0,
+        NPCLANE_TOL);
+    TestEqual(TEXT("not shown, bad radius: 1"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, false), 1.0, NPCLANE_TOL);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathTrafficWeightTest, "SOLTest.NpcLaneMath.TrafficWeight",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 4: the ship-count weight is log-linear from TRAFFIC_LOW (0) to TRAFFIC_HIGH (1), clamped; a lane with no ships
+// is not drawn, any lane with a ship is
+bool FSOLNpcLaneMathTrafficWeightTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    TestEqual(TEXT("0 ships: weight 0"), LaneTrafficWeight(0), 0.0, NPCLANE_TOL);
+    TestFalse(TEXT("0 ships: not drawn"), IsLaneDrawn(0));
+    TestEqual(TEXT("-5 ships: weight 0"), LaneTrafficWeight(-5), 0.0, NPCLANE_TOL);
+    TestFalse(TEXT("-5 ships: not drawn"), IsLaneDrawn(-5));
+    TestFalse(TEXT("INT32_MIN: not drawn"), IsLaneDrawn(TNumericLimits<int32>::Min()));
+    TestEqual(TEXT("1 ship: weight 0"), LaneTrafficWeight(1), 0.0, NPCLANE_TOL);
+    TestTrue(TEXT("1 ship: drawn"), IsLaneDrawn(1));
+    TestEqual(TEXT("100 ships: weight 0"), LaneTrafficWeight(100), 0.0, NPCLANE_TOL);
+    TestTrue(TEXT("100 ships: drawn"), IsLaneDrawn(100));
+    TestEqual(TEXT("1,000 ships: 1/3"), LaneTrafficWeight(1000), 1.0 / 3.0, NPCLANE_TOL);
+    TestEqual(TEXT("10,000 ships: 2/3"), LaneTrafficWeight(10000), 2.0 / 3.0, NPCLANE_TOL);
+    TestEqual(TEXT("100,000 ships: 1"), LaneTrafficWeight(100000), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("1,000,000 ships: 1"), LaneTrafficWeight(1000000), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("INT32_MAX ships: 1"), LaneTrafficWeight(TNumericLimits<int32>::Max()), 1.0, NPCLANE_TOL);
+    TestTrue(TEXT("INT32_MAX ships: drawn"), IsLaneDrawn(TNumericLimits<int32>::Max()));
+
+    // The closed form between the ends
+    const double low = static_cast<double>(SOL::NPC_LANE_TRAFFIC_LOW);
+    const double high = static_cast<double>(SOL::NPC_LANE_TRAFFIC_HIGH);
+    for (const int32 count : { 250, 4400, 44000, 89000 })
+    {
+        const double expected = FMath::Loge(static_cast<double>(count) / low) / FMath::Loge(high / low);
+        TestEqual(FString::Printf(TEXT("%d ships: closed form"), count), LaneTrafficWeight(count), expected,
+            NPCLANE_TOL);
+    }
+
+    // Non-decreasing, in [0, 1], drawn for every count >= 1
+    double previous = -1.0;
+    for (int32 count = 0; count <= 2000000; count = count < 10 ? count + 1 : count + count / 7)
+    {
+        const double weight = LaneTrafficWeight(count);
+        TestTrue(FString::Printf(TEXT("%d: in [0, 1]"), count), weight >= 0.0 && weight <= 1.0);
+        TestTrue(FString::Printf(TEXT("%d: non-decreasing"), count), weight >= previous - 1.0e-12);
+        TestEqual(FString::Printf(TEXT("%d: drawn iff >= 1"), count), IsLaneDrawn(count), count >= 1);
+        previous = weight;
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLineWidthTest, "SOLTest.NpcLaneMath.LineWidth",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 5: each line is lerp(WIDTH_MIN, WIDTH_MAX, clamped weight) px at the reference height, scaled by the viewport
+// height; a bad height reads as the reference
+bool FSOLNpcLaneMathLineWidthTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneLineWidthPx;
+    const double widthMin = SOL::NPC_LANE_WIDTH_MIN_PX;
+    const double widthMax = SOL::NPC_LANE_WIDTH_MAX_PX;
+    const double reference = SOL::NPC_LANE_REFERENCE_HEIGHT_PX;
+
+    // At the reference height, with the proposed values
+    TestEqual(TEXT("w 0 -> 1.0 px"), LaneLineWidthPx(0.0, 1080.0), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("w 1 -> 2.5 px"), LaneLineWidthPx(1.0, 1080.0), 2.5, NPCLANE_TOL);
+    TestEqual(TEXT("w 0.5 -> 1.75 px"), LaneLineWidthPx(0.5, 1080.0), 1.75, NPCLANE_TOL);
+    TestEqual(TEXT("w -1 -> clamped to 1.0 px"), LaneLineWidthPx(-1.0, 1080.0), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("w 3 -> clamped to 2.5 px"), LaneLineWidthPx(3.0, 1080.0), 2.5, NPCLANE_TOL);
+    TestEqual(TEXT("NaN w -> as 0"), LaneLineWidthPx(NPCLANE_NAN, 1080.0), LaneLineWidthPx(0.0, 1080.0), NPCLANE_TOL);
+
+    // The formula against the constants
+    for (const double w : { 0.0, 0.2, 0.5, 0.8, 1.0 })
+    {
+        TestEqual(FString::Printf(TEXT("w %.1f at the reference"), w), LaneLineWidthPx(w, reference),
+            FMath::Lerp(widthMin, widthMax, w), NPCLANE_TOL);
+    }
+
+    // Scaled by the viewport height
+    for (const double w : { 0.0, 0.5, 1.0 })
+    {
+        const double at1080 = LaneLineWidthPx(w, 1080.0);
+        TestEqual(FString::Printf(TEXT("w %.1f: 720 -> x 2/3"), w), LaneLineWidthPx(w, 720.0), at1080 * 2.0 / 3.0,
+            NPCLANE_TOL);
+        TestEqual(FString::Printf(TEXT("w %.1f: 2160 -> x 2"), w), LaneLineWidthPx(w, 2160.0), at1080 * 2.0,
+            NPCLANE_TOL);
+        TestEqual(FString::Printf(TEXT("w %.1f: 3744 -> x scale"), w), LaneLineWidthPx(w, 3744.0),
+            FMath::Lerp(widthMin, widthMax, w) * NpcLaneScale(3744.0), NPCLANE_TOL);
+        for (const double badHeight : { 0.0, -720.0, NPCLANE_NAN })
+        {
+            TestEqual(FString::Printf(TEXT("w %.1f: height %f -> the reference"), w, badHeight),
+                LaneLineWidthPx(w, badHeight), at1080, NPCLANE_TOL);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathBrightnessTest, "SOLTest.NpcLaneMath.Brightness",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 6: brightness lerp(BRIGHTNESS_MIN, BRIGHTNESS_MAX, clamped weight); NaN reads MIN; non-decreasing
+bool FSOLNpcLaneMathBrightnessTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneLineBrightness;
+    const double minimum = SOL::NPC_LANE_BRIGHTNESS_MIN;
+    const double maximum = SOL::NPC_LANE_BRIGHTNESS_MAX;
+    TestEqual(TEXT("w 0 -> MIN"), LaneLineBrightness(0.0), minimum, NPCLANE_TOL);
+    TestEqual(TEXT("w 1 -> MAX"), LaneLineBrightness(1.0), maximum, NPCLANE_TOL);
+    TestEqual(TEXT("w 0.5 -> the middle"), LaneLineBrightness(0.5), FMath::Lerp(minimum, maximum, 0.5), NPCLANE_TOL);
+    TestEqual(TEXT("w 0 -> 0.35"), LaneLineBrightness(0.0), 0.35, NPCLANE_TOL);
+    TestEqual(TEXT("w -2 -> MIN"), LaneLineBrightness(-2.0), minimum, NPCLANE_TOL);
+    TestEqual(TEXT("w 7 -> MAX"), LaneLineBrightness(7.0), maximum, NPCLANE_TOL);
+    TestEqual(TEXT("NaN -> MIN"), LaneLineBrightness(NPCLANE_NAN), minimum, NPCLANE_TOL);
+    double previous = -1.0;
+    for (int32 step = -10; step <= 30; ++step)
+    {
+        const double w = static_cast<double>(step) / 20.0;
+        const double brightness = LaneLineBrightness(w);
+        TestTrue(FString::Printf(TEXT("w %.2f: non-decreasing"), w), brightness >= previous - 1.0e-12);
+        TestTrue(FString::Printf(TEXT("w %.2f: in [MIN, MAX]"), w), brightness >= minimum - NPCLANE_TOL
+            && brightness <= maximum + NPCLANE_TOL);
+        previous = brightness;
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathCenterOffsetTest, "SOLTest.NpcLaneMath.CenterOffset",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 7: each line's centre sits 0.5 x (width + scaled GAP) px from the lane's centre line, so the two cores never
+// overlap; a bad height reads as the reference
+bool FSOLNpcLaneMathCenterOffsetTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneLineCenterOffsetPx;
+    const double gap = SOL::NPC_LANE_GAP_PX;
+    for (const double height : { 720.0, 1080.0, 2160.0 })
+    {
+        const double scale = NpcLaneScale(height);
+        for (const double width : NPCLANE_WIDTHS)
+        {
+            const FString label = FString::Printf(TEXT("width %.1f at %.0f"), width, height);
+            const double offset = LaneLineCenterOffsetPx(width, height);
+            TestEqual(label + TEXT(": the formula"), offset, 0.5 * (width + gap * scale), NPCLANE_TOL);
+            TestTrue(label + TEXT(": cores do not overlap"), 2.0 * offset - width >= gap * scale - 1.0e-12);
+        }
+    }
+    TestEqual(TEXT("1080, width 1: 1.25 px"), LaneLineCenterOffsetPx(1.0, 1080.0), 1.25, NPCLANE_TOL);
+    for (const double badHeight : { 0.0, -1080.0, NPCLANE_NAN })
+    {
+        TestEqual(FString::Printf(TEXT("height %f -> the reference"), badHeight),
+            LaneLineCenterOffsetPx(2.5, badHeight), LaneLineCenterOffsetPx(2.5, SOL::NPC_LANE_REFERENCE_HEIGHT_PX),
+            NPCLANE_TOL);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathRibbonExtentTest, "SOLTest.NpcLaneMath.RibbonHalfExtent",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 8 (D25): the ribbon's edge sits where the height-scaled glow has its 1080p pad value: max(width, 1) / 2 -
+// CORE_HALF + (PAD + CORE_HALF) x scale, exactly max(width, 1) / 2 + PAD at 1080, never less than max(width, 1) / 2
+bool FSOLNpcLaneMathRibbonExtentTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneRibbonHalfExtentPx;
+    const double pad = SOL::NPC_LANE_GLOW_PAD_PX;
+    const double coreHalf = SOL::Hologram::HUD_GLOW_CORE_HALF_PX;
+    for (const double height : { 720.0, 1080.0, 2160.0, 3744.0 })
+    {
+        for (const double width : { 0.25, 0.5, 1.0, 2.5, 5.0 })
+        {
+            const FString label = FString::Printf(TEXT("width %.2f at %.0f"), width, height);
+            const double halfWidth = FMath::Max(width, 1.0) * 0.5;
+            const double extent = LaneRibbonHalfExtentPx(width, height);
+            TestEqual(label + TEXT(": the formula"), extent,
+                FMath::Max(halfWidth, halfWidth - coreHalf + (pad + coreHalf) * NpcLaneScale(height)), NPCLANE_TOL);
+            TestTrue(label + TEXT(": at least max(w, 1) / 2"), extent >= halfWidth);
+        }
+    }
+    for (const double width : { 0.5, 1.0, 2.5 })
+    {
+        TestEqual(FString::Printf(TEXT("1080, width %.1f: max(w, 1) / 2 + PAD"), width),
+            LaneRibbonHalfExtentPx(width, 1080.0), FMath::Max(width, 1.0) * 0.5 + pad, NPCLANE_TOL);
+    }
+    TestEqual(TEXT("1080, width 1: 12.5 px"), LaneRibbonHalfExtentPx(1.0, 1080.0), 12.5, NPCLANE_TOL);
+    TestEqual(TEXT("2160, width 2: 1 - 0.5 + 12.5 x 2 = 25.5 px"), LaneRibbonHalfExtentPx(2.0, 2160.0), 25.5,
+        NPCLANE_TOL);
+    for (const double badHeight : { 0.0, -720.0, NPCLANE_NAN })
+    {
+        TestEqual(FString::Printf(TEXT("height %f -> the reference"), badHeight),
+            LaneRibbonHalfExtentPx(2.5, badHeight), LaneRibbonHalfExtentPx(2.5, SOL::NPC_LANE_REFERENCE_HEIGHT_PX),
+            NPCLANE_TOL);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLineProfileTest, "SOLTest.NpcLaneMath.LineProfile",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 9 at 1080p: the cross-line profile is the HUD glow profile shifted out by the line's half width, times
+// min(width, 1): full at the centre, symmetric, falling with distance, more halo with more glow just past the core
+// edge outward, crisp at g = 0 and inside the pad
+bool FSOLNpcLaneMathLineProfileTest::RunTest(const FString& /*parameters*/)
+{
+    const double glowMax = SOL::Hologram::HUD_GLOW_SCALE_MAX;
+    const double settingMaxG = 2.0 * static_cast<double>(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL);
+    const double pad = SOL::NPC_LANE_GLOW_PAD_PX;
+
+    // The profile at the reference height
+    const auto profile = [](const double d, const double width, const double g)
+    {
+        return SOLNpcLane::LaneLineProfile(d, width, g, NPCLANE_REF_HEIGHT);
+    };
+
+    for (const double width : NPCLANE_WIDTHS)
+    {
+        const double halfWidth = FMath::Max(width, 1.0) * 0.5;
+        const FString wLabel = FString::Printf(TEXT("width %.1f"), width);
+
+        // The closed form against the HUD glow profile, and the centre value
+        for (const double g : { 0.0, 0.3, 1.0, glowMax })
+        {
+            const FString label = wLabel + FString::Printf(TEXT(", g %.2f"), g);
+            TestEqual(label + TEXT(": centre = min(width, 1)"), profile(0.0, width, g), FMath::Min(width, 1.0),
+                NPCLANE_FLOAT_TOL);
+            for (const double d : { 0.0, 0.3, halfWidth, halfWidth + 0.5, halfWidth + 2.0, halfWidth + 7.5, 30.0 })
+            {
+                TestEqual(label + FString::Printf(TEXT(": closed form at %.2f px"), d), profile(d, width, g),
+                    NpcLaneExpectedProfile(d, width, g), NPCLANE_FLOAT_TOL);
+                TestEqual(label + FString::Printf(TEXT(": symmetric at %.2f px"), d), profile(-d, width, g),
+                    profile(d, width, g), NPCLANE_FLOAT_TOL);
+            }
+
+            // Non-increasing in |d|
+            double previous = 2.0;
+            for (int32 step = 0; step <= 160; ++step)
+            {
+                const double d = static_cast<double>(step) * 0.25;
+                const double value = profile(d, width, g);
+                TestTrue(label + FString::Printf(TEXT(": non-increasing at %.2f px"), d),
+                    value <= previous + NPCLANE_FLOAT_TOL);
+                TestTrue(label + FString::Printf(TEXT(": in [0, 1] at %.2f px"), d), value >= 0.0
+                    && value <= 1.0 + NPCLANE_FLOAT_TOL);
+                previous = value;
+            }
+        }
+
+        // Just past the core edge outward (sampled from 0.25 px past it; the halo outgrows the core weight it takes
+        // from about 0.04 px), more glow never darkens a pixel
+        for (const double past : { 0.25, 1.0, 3.0, 8.0, 15.0 })
+        {
+            const double d = halfWidth + past;
+            double previous = -1.0;
+            for (const double g : { 0.0, 0.1, 0.3, 0.6, 1.0, glowMax })
+            {
+                const double value = profile(d, width, g);
+                TestTrue(wLabel + FString::Printf(TEXT(": non-decreasing in g at %.2f px, g %.2f"), d, g),
+                    value >= previous - NPCLANE_FLOAT_TOL);
+                previous = value;
+            }
+        }
+
+        // g = 0 is crisp: under 0.01 from 1 px past the core edge
+        for (int32 step = 0; step <= 40; ++step)
+        {
+            const double d = halfWidth + 1.0 + static_cast<double>(step) * 0.5;
+            TestTrue(wLabel + FString::Printf(TEXT(": g 0 under 0.01 at %.2f px"), d), profile(d, width, 0.0) < 0.01);
+        }
+
+        // At the ribbon's edge (the 1080p pad) the glow is under 0.01 for every g the HUD glow setting reaches
+        for (const double g : { 0.0, 0.15, 0.3, 0.45, settingMaxG })
+        {
+            TestTrue(wLabel + FString::Printf(TEXT(": under 0.01 at the pad, g %.2f"), g),
+                profile(halfWidth + pad, width, g) < 0.01);
+        }
+    }
+
+    // Width 1 at g = 1 is the HUD glow profile itself
+    for (const double d : { 0.0, 0.25, 0.5, 1.0, 2.0, 5.0, 12.0 })
+    {
+        TestEqual(FString::Printf(TEXT("width 1, g 1: GlowProfile at %.2f px"), d), profile(d, 1.0, 1.0),
+            static_cast<double>(SOLHudShapeMath::GlowProfile(static_cast<float>(d), 1.0f)), NPCLANE_FLOAT_TOL);
+    }
+
+    // A bad g is sanitized like the HUD's: NaN as 1, clamped to [0, HUD_GLOW_SCALE_MAX]
+    for (const double d : { 1.0, 3.0, 9.0 })
+    {
+        TestEqual(FString::Printf(TEXT("NaN g as 1 at %.0f px"), d), profile(d, 2.5, NPCLANE_NAN), profile(d, 2.5, 1.0),
+            NPCLANE_FLOAT_TOL);
+        TestEqual(FString::Printf(TEXT("g 9 as the max at %.0f px"), d), profile(d, 2.5, 9.0),
+            profile(d, 2.5, glowMax), NPCLANE_FLOAT_TOL);
+        TestEqual(FString::Printf(TEXT("g -1 as 0 at %.0f px"), d), profile(d, 2.5, -1.0), profile(d, 2.5, 0.0),
+            NPCLANE_FLOAT_TOL);
+    }
+
+    // A bad distance or width draws nothing
+    TestEqual(TEXT("NaN distance -> 0"), profile(NPCLANE_NAN, 2.5, 0.3), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("width 0 -> 0"), profile(0.0, 0.0, 0.3), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("NaN width -> 0"), profile(0.0, NPCLANE_NAN, 0.3), 0.0, NPCLANE_TOL);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLineProfileScaledTest, "SOLTest.NpcLaneMath.LineProfileScaled",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 9 at 720p and 4K (D25): the glow's distance past the core is in reference pixels, so the profile is the 1080p
+// shape stretched by height / 1080 (full at the centre, the same value at the same scaled distance), and it is under
+// 0.01 at the ribbon's edge for every g the HUD glow setting reaches; a bad height reads as 1080
+bool FSOLNpcLaneMathLineProfileScaledTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneLineProfile;
+    using SOLNpcLane::LaneRibbonHalfExtentPx;
+    const double coreHalf = SOL::Hologram::HUD_GLOW_CORE_HALF_PX;
+    const double settingMaxG = 2.0 * static_cast<double>(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL);
+    for (const double height : { 720.0, 2160.0 })
+    {
+        const double scale = NpcLaneScale(height);
+        for (const double width : NPCLANE_WIDTHS)
+        {
+            const double halfCore = FMath::Max(width, 1.0) * 0.5 - coreHalf;
+            const FString wLabel = FString::Printf(TEXT("%.0f, width %.1f"), height, width);
+            for (const double g : { 0.0, 0.3, 0.6, 1.0 })
+            {
+                const FString label = wLabel + FString::Printf(TEXT(", g %.2f"), g);
+                TestEqual(label + TEXT(": centre = min(width, 1)"), LaneLineProfile(0.0, width, g, height),
+                    FMath::Min(width, 1.0), NPCLANE_FLOAT_TOL);
+
+                // The closed form, and the 1080p value at the same distance in reference pixels
+                for (const double past : { 0.0, 0.4, 1.0, 2.5, 6.0, 12.0 })
+                {
+                    const double d = halfCore + past * scale;
+                    TestEqual(label + FString::Printf(TEXT(": closed form at %.2f px"), d),
+                        LaneLineProfile(d, width, g, height), NpcLaneExpectedProfile(d, width, g, height),
+                        NPCLANE_FLOAT_TOL);
+                    TestEqual(label + FString::Printf(TEXT(": as 1080p at %.2f reference px"), past),
+                        LaneLineProfile(d, width, g, height),
+                        LaneLineProfile(halfCore + past, width, g, NPCLANE_REF_HEIGHT), NPCLANE_FLOAT_TOL);
+                }
+            }
+
+            // The ribbon's edge never clips a visible glow
+            const double edge = LaneRibbonHalfExtentPx(width, height);
+            for (const double g : { 0.0, 0.15, 0.3, 0.45, settingMaxG })
+            {
+                TestTrue(wLabel + FString::Printf(TEXT(": under 0.01 at the ribbon edge (%.2f px), g %.2f"), edge, g),
+                    LaneLineProfile(edge, width, g, height) < 0.01);
+            }
+        }
+    }
+
+    // 4K stretches the glow: 4 px past the core reads as 2 reference px there, brighter than 4 px at 1080p
+    TestTrue(TEXT("4K glow is wider in pixels"), LaneLineProfile(0.5 + 4.0, 1.0, 0.6, 2160.0)
+        > LaneLineProfile(0.5 + 4.0, 1.0, 0.6, NPCLANE_REF_HEIGHT));
+    for (const double badHeight : { 0.0, -1080.0, NPCLANE_NAN })
+    {
+        TestEqual(FString::Printf(TEXT("height %f -> the reference"), badHeight),
+            LaneLineProfile(3.0, 2.5, 0.3, badHeight), LaneLineProfile(3.0, 2.5, 0.3, NPCLANE_REF_HEIGHT),
+            NPCLANE_FLOAT_TOL);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathFlowPhaseTest, "SOLTest.NpcLaneMath.DashFlowPhase",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 10: the flow phase is frac(FLOW x t) in [0, 1), computed in double (a huge t stays exact), wrapping up for a
+// negative t; NaN and infinities read 0
+bool FSOLNpcLaneMathFlowPhaseTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneDashFlowPhase;
+    const double flow = SOL::NPC_LANE_DASH_FLOW_PERIODS_PER_S;
+    TestEqual(TEXT("t 0 -> 0"), LaneDashFlowPhase(0.0), 0.0, NPCLANE_TOL);
+    const double onePeriod = LaneDashFlowPhase(1.0 / flow);
+    TestTrue(TEXT("t 1 / FLOW: below 1"), onePeriod >= 0.0 && onePeriod < 1.0);
+    TestTrue(TEXT("t 1 / FLOW: 0 modulo 1"), NpcLaneWrapDistance(onePeriod, 0.0) < NPCLANE_TOL);
+    TestEqual(TEXT("t 0.5 / FLOW -> 0.5"), LaneDashFlowPhase(0.5 / flow), 0.5, NPCLANE_TOL);
+    TestEqual(TEXT("t 0.25 / FLOW -> 0.25"), LaneDashFlowPhase(0.25 / flow), 0.25, NPCLANE_TOL);
+
+    // A huge time stays in range and matches the closed form
+    for (const double t : { 1.0e9, 1.0e9 + 0.3, 3.7e8 + 0.11 })
+    {
+        const double phase = LaneDashFlowPhase(t);
+        const double scaled = flow * t;
+        const double expected = scaled - FMath::FloorToDouble(scaled);
+        TestTrue(FString::Printf(TEXT("t %.2f: in [0, 1)"), t), phase >= 0.0 && phase < 1.0);
+        TestTrue(FString::Printf(TEXT("t %.2f: the closed form"), t), NpcLaneWrapDistance(phase, expected) < 1.0e-6);
+    }
+
+    // A negative time wraps up into [0, 1)
+    TestEqual(TEXT("t -0.5 / FLOW -> 0.5"), LaneDashFlowPhase(-0.5 / flow), 0.5, NPCLANE_TOL);
+    TestEqual(TEXT("t -0.2 -> 1 - 0.15"), LaneDashFlowPhase(-0.2), 1.0 - flow * 0.2, NPCLANE_TOL);
+    for (const double t : { -1.0e-3, -7.3, -1.0e9 - 0.3 })
+    {
+        const double phase = LaneDashFlowPhase(t);
+        TestTrue(FString::Printf(TEXT("t %.3f: in [0, 1)"), t), phase >= 0.0 && phase < 1.0);
+    }
+
+    // Always in [0, 1) over a sweep
+    for (int32 step = -200; step <= 200; ++step)
+    {
+        const double t = static_cast<double>(step) * 0.173;
+        const double phase = LaneDashFlowPhase(t);
+        TestTrue(FString::Printf(TEXT("t %.3f in [0, 1)"), t), phase >= 0.0 && phase < 1.0);
+    }
+
+    // Bad times
+    TestEqual(TEXT("NaN -> 0"), LaneDashFlowPhase(NPCLANE_NAN), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("+inf -> 0"), LaneDashFlowPhase(NPCLANE_INF), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("-inf -> 0"), LaneDashFlowPhase(-NPCLANE_INF), 0.0, NPCLANE_TOL);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashPhaseTest, "SOLTest.NpcLaneMath.DashPhase",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 11: the level-k dash phase is s x BASE x 2^k - sign(direction) x f (level clamped, direction 0 as +1), so an
+// outbound dash moves toward B and an inbound one toward A as f grows
+bool FSOLNpcLaneMathDashPhaseTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneDashPhase;
+    const double base = static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT);
+    const int32 maxLevel = SOL::ORBIT_LINE_DASH_MAX_LEVEL;
+
+    // The closed form
+    TestEqual(TEXT("s 0.3, level 2, f 0.25, out"), LaneDashPhase(0.3, 2, 0.25, 1), 0.3 * base * 4.0 - 0.25,
+        NPCLANE_TOL);
+    TestEqual(TEXT("s 0.3, level 2, f 0.25, in"), LaneDashPhase(0.3, 2, 0.25, -1), 0.3 * base * 4.0 + 0.25,
+        NPCLANE_TOL);
+    TestEqual(TEXT("s 0.7, level 0, f 0"), LaneDashPhase(0.7, 0, 0.0, 1), 0.7 * base, NPCLANE_TOL);
+    TestEqual(TEXT("s 1, top level"), LaneDashPhase(1.0, maxLevel, 0.0, 1), base * FMath::Pow(2.0, maxLevel),
+        NPCLANE_TOL);
+
+    // Level clamped to [0, ORBIT_LINE_DASH_MAX_LEVEL]
+    TestEqual(TEXT("level -3 as 0"), LaneDashPhase(0.41, -3, 0.2, 1), LaneDashPhase(0.41, 0, 0.2, 1), NPCLANE_TOL);
+    TestEqual(TEXT("level 20 as the max"), LaneDashPhase(0.41, 20, 0.2, 1), LaneDashPhase(0.41, maxLevel, 0.2, 1),
+        NPCLANE_TOL);
+
+    // Direction: its sign, 0 as +1
+    TestEqual(TEXT("direction 0 as +1"), LaneDashPhase(0.41, 3, 0.6, 0), LaneDashPhase(0.41, 3, 0.6, 1), NPCLANE_TOL);
+    TestEqual(TEXT("direction 5 as +1"), LaneDashPhase(0.41, 3, 0.6, 5), LaneDashPhase(0.41, 3, 0.6, 1), NPCLANE_TOL);
+    TestEqual(TEXT("direction -7 as -1"), LaneDashPhase(0.41, 3, 0.6, -7), LaneDashPhase(0.41, 3, 0.6, -1),
+        NPCLANE_TOL);
+
+    // Motion: a dash feature moves toward B (outbound) or A (inbound) by df / (BASE 2^k) of the lane per df
+    for (int32 level = 0; level <= maxLevel; ++level)
+    {
+        const double perPhase = 1.0 / (base * FMath::Pow(2.0, static_cast<double>(level)));
+        for (const double s : { 0.1, 0.5, 0.83 })
+        {
+            const double f = 0.3;
+            const double df = 0.17;
+            const FString label = FString::Printf(TEXT("level %d, s %.2f"), level, s);
+            TestEqual(label + TEXT(": outbound moves toward B"), LaneDashPhase(s + perPhase * df, level, f + df, 1),
+                LaneDashPhase(s, level, f, 1), NPCLANE_TOL);
+            TestEqual(label + TEXT(": inbound moves toward A"), LaneDashPhase(s - perPhase * df, level, f + df, -1),
+                LaneDashPhase(s, level, f, -1), NPCLANE_TOL);
+            TestEqual(label + TEXT(": both directions agree at f 0"), LaneDashPhase(s, level, 0.0, 1),
+                LaneDashPhase(s, level, 0.0, -1), NPCLANE_TOL);
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashCoverageTest, "SOLTest.NpcLaneMath.DashCoverage",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 12: the lane dash coverage is the orbit lines' multi-scale coverage at zero flow, in [0, 1], a level-0 square
+// wave for a bad footprint, periodic in the flow, and a phase shift inside a pure level
+bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    const double base = static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT);
+
+    // Zero flow: equal to the orbit lines' coverage over 20 (s, footprint) pairs, from level 0 (sub-24 px periods)
+    // through the crossfades and the top level to the solid fade and beyond
+    const double footprints[] = { 2.0, 0.5, 0.1, 0.05, 0.035, 0.02, 0.012, 5.0e-3, 2.0e-3, 8.0e-4, 3.0e-4, 1.2e-4,
+        6.0e-5, 3.0e-5, 1.8e-5, 1.2e-5, 8.0e-6, 5.5e-6, 3.0e-6, 1.0e-6 };
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(footprints)); ++index)
+    {
+        const double s = 0.013 + 0.049 * static_cast<double>(index);
+        const double footprint = footprints[index];
+        const FString label = FString::Printf(TEXT("s %.3f, footprint %.1e"), s, footprint);
+        const double expected = NpcLaneOrbitDash(s * base, footprint);
+        TestEqual(label + TEXT(": outbound = orbit lines"), LaneDashCoverage(s, 0.0, 1, footprint), expected,
+            NPCLANE_TOL);
+        TestEqual(label + TEXT(": inbound = orbit lines"), LaneDashCoverage(s, 0.0, -1, footprint), expected,
+            NPCLANE_TOL);
+    }
+
+    // Always in [0, 1]; a whole flow period changes nothing
+    for (int32 step = 0; step < 60; ++step)
+    {
+        const double s = static_cast<double>(step) / 59.0;
+        const double f = FMath::Frac(0.37 * static_cast<double>(step));
+        const double footprint = FMath::Pow(10.0, -6.0 + 6.0 * static_cast<double>(step) / 59.0);
+        for (const int32 direction : { 1, -1 })
+        {
+            const FString label = FString::Printf(TEXT("step %d, dir %d"), step, direction);
+            const double coverage = LaneDashCoverage(s, f, direction, footprint);
+            TestTrue(label + TEXT(": in [0, 1]"), coverage >= 0.0 && coverage <= 1.0);
+            TestEqual(label + TEXT(": a whole period of flow changes nothing"),
+                LaneDashCoverage(s, f + 1.0, direction, footprint), coverage, NPCLANE_FLOAT_TOL);
+        }
+    }
+
+    // A NaN or non-positive footprint: a level-0 point sample of the flowed phase (a square wave of duty DASH_DUTY)
+    for (const double badFootprint : { 0.0, -1.0, NPCLANE_NAN })
+    {
+        for (const double s : { 0.0031, 0.2117, 0.5049, 0.7766 })
+        {
+            for (const int32 direction : { 1, -1 })
+            {
+                const double f = 0.29;
+                const FString label = FString::Printf(TEXT("footprint %f, s %.4f, dir %d"), badFootprint, s,
+                    direction);
+                const double phase = LaneDashPhase(s, 0, f, direction);
+                const double coverage = LaneDashCoverage(s, f, direction, badFootprint);
+                TestEqual(label + TEXT(": the point sample"), coverage,
+                    SOLOrbitLineMath::DashCoverage(phase, SOL::NPC_LANE_DASH_DUTY, 0.0), NPCLANE_TOL);
+                TestTrue(label + TEXT(": 0 or 1"), coverage == 0.0 || coverage == 1.0);
+            }
+        }
+    }
+
+    // Inside a pure level (level 0 at a 10 px period; the top level far past its last halving, before the solid
+    // fade), shifting the flow by delta equals shifting that level's phase by delta (moving s by delta / (BASE 2^k))
+    struct FPureLevel
+    {
+        int32 Level;
+        double Footprint;
+    };
+    const FPureLevel pureLevels[] = { { 0, 0.1 }, { SOL::ORBIT_LINE_DASH_MAX_LEVEL, 5.0e-5 } };
+    for (const FPureLevel& pure : pureLevels)
+    {
+        const double perPhase = 1.0 / (base * FMath::Pow(2.0, static_cast<double>(pure.Level)));
+        for (const double s : { 0.137, 0.4021, 0.866 })
+        {
+            for (const int32 direction : { 1, -1 })
+            {
+                const double delta = 0.23;
+                const FString label = FString::Printf(TEXT("level %d, s %.4f, dir %d"), pure.Level, s, direction);
+                const double flowed = LaneDashCoverage(s, delta, direction, pure.Footprint);
+                const double movedS = s - static_cast<double>(direction) * delta * perPhase;
+                TestEqual(label + TEXT(": flow = moved phase"), flowed,
+                    LaneDashCoverage(movedS, 0.0, direction, pure.Footprint), NPCLANE_FLOAT_TOL);
+                TestEqual(label + TEXT(": flow = the orbit lines at the moved phase"), flowed,
+                    NpcLaneOrbitDash(movedS * base, pure.Footprint), NPCLANE_FLOAT_TOL);
+            }
+        }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathClosestParamTest, "SOLTest.NpcLaneMath.ClosestLaneParam",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 13: the lane parameter under a pixel is the point of segment A-B closest to the pixel's view ray (camera at
+// the origin), clamped to [0, 1], exact at solar-system scale in double; bad input reads 0. The distance at a
+// parameter is |A + s (B - A)| with s clamped
+bool FSOLNpcLaneMathClosestParamTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    const FVector3d a(1.0e9, -1.0e9, 0.0);
+    const FVector3d b(1.0e9, 1.0e9, 0.0);
+
+    // The contract's cases
+    TestEqual(TEXT("ray (1, 0, 0) -> 0.5"), ClosestLaneParam(a, b, FVector3d(1.0, 0.0, 0.0)), 0.5, NPCLANE_TOL);
+    TestEqual(TEXT("ray toward B -> 1"), ClosestLaneParam(a, b, b), 1.0, 1.0e-6);
+    TestEqual(TEXT("ray toward B (unit) -> 1"), ClosestLaneParam(a, b, b.GetSafeNormal()), 1.0, 1.0e-6);
+    TestEqual(TEXT("ray toward A -> 0"), ClosestLaneParam(a, b, a * 3.0), 0.0, 1.0e-6);
+    TestEqual(TEXT("ray length does not matter"), ClosestLaneParam(a, b, FVector3d(7.0e3, 0.0, 0.0)), 0.5,
+        NPCLANE_TOL);
+
+    // A ray pointing away from the segment: its closest point is the origin, so the segment point nearest the origin
+    const FVector3d longB(1.0e9, 3.0e9, 0.0);
+    TestEqual(TEXT("ray away -> nearest to the origin"), ClosestLaneParam(a, longB, FVector3d(-1.0, 0.0, 0.0)), 0.25,
+        NPCLANE_TOL);
+
+    // A ray parallel to A-B: the segment point nearest the origin, clamped
+    TestEqual(TEXT("parallel ray -> nearest to the origin"), ClosestLaneParam(a, longB, FVector3d(0.0, 1.0, 0.0)),
+        0.25, NPCLANE_TOL);
+    const FVector3d farA(1.0e9, 1.0e9, 0.0);
+    TestEqual(TEXT("parallel ray, nearest point clamped to A"), ClosestLaneParam(farA, longB,
+        FVector3d(0.0, 1.0, 0.0)), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("anti-parallel ray, nearest point clamped to A"), ClosestLaneParam(farA, longB,
+        FVector3d(0.0, -1.0, 0.0)), 0.0, NPCLANE_TOL);
+
+    // Degenerate and bad input
+    TestEqual(TEXT("A == B -> 0"), ClosestLaneParam(a, a, FVector3d(1.0, 0.0, 0.0)), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("zero ray -> 0"), ClosestLaneParam(a, b, FVector3d::ZeroVector), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("NaN ray -> 0"), ClosestLaneParam(a, b, FVector3d(NPCLANE_NAN, 0.0, 0.0)), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("NaN A -> 0"), ClosestLaneParam(FVector3d(NPCLANE_NAN, 0.0, 0.0), b, FVector3d(1.0, 0.0, 0.0)),
+        0.0, NPCLANE_TOL);
+    TestEqual(TEXT("NaN B -> 0"), ClosestLaneParam(a, FVector3d(0.0, NPCLANE_NAN, 0.0), FVector3d(1.0, 0.0, 0.0)),
+        0.0, NPCLANE_TOL);
+
+    // True solar-system scale: a ray through a known lane point gives its parameter to 1e-9
+    const FVector3d auA(NPCLANE_AU_M, 2.0e9, 3.0e8);
+    const FVector3d auB(-0.4 * NPCLANE_AU_M, 1.5 * NPCLANE_AU_M, -1.0e9);
+    for (const double s0 : { 0.0, 0.003, 0.37, 0.5, 0.91, 1.0 })
+    {
+        const FVector3d point = auA + (auB - auA) * s0;
+        TestEqual(FString::Printf(TEXT("1 AU lane: s %.3f"), s0), ClosestLaneParam(auA, auB, point), s0, NPCLANE_TOL);
+    }
+
+    // The result minimizes the segment-to-ray distance (checked against a fine sampling)
+    const FVector3d rays[] = { FVector3d(0.9, 0.3, 0.05), FVector3d(0.2, 1.0, -0.1), FVector3d(1.0, -0.6, 0.4) };
+    for (const FVector3d& ray : rays)
+    {
+        const FVector3d unit = ray.GetSafeNormal();
+        const double s = ClosestLaneParam(auA, auB, ray);
+        TestTrue(FString::Printf(TEXT("ray %s: s in [0, 1]"), *ray.ToString()), s >= 0.0 && s <= 1.0);
+        const double best = NpcLanePointToRayM(auA + (auB - auA) * s, unit);
+        double sampledMin = TNumericLimits<double>::Max();
+        for (int32 step = 0; step <= 4000; ++step)
+        {
+            const double t = static_cast<double>(step) / 4000.0;
+            sampledMin = FMath::Min(sampledMin, NpcLanePointToRayM(auA + (auB - auA) * t, unit));
+        }
+        TestTrue(FString::Printf(TEXT("ray %s: no sampled point closer"), *ray.ToString()),
+            best <= sampledMin * (1.0 + 1.0e-9) + 1.0);
+    }
+
+    // A lane wholly behind the camera: the ray's closest point is its origin, so the segment point nearest the camera
+    const FVector3d behindA(-3.0e9, 1.0e9, -1.0e9);
+    const FVector3d behindB(-1.0e9, 1.0e9, 1.0e9);
+    TestEqual(TEXT("lane behind the camera -> its point nearest the camera (B)"),
+        ClosestLaneParam(behindA, behindB, FVector3d(1.0, 0.0, 0.0)), 1.0, NPCLANE_TOL);
+
+    // A lane crossing from in front of the camera to behind it: the closest point is where it crosses the plane
+    // across the ray (x = 0), nearer than any point in front or behind
+    const FVector3d crossA(2.0e9, 1.0e9, 1.0e9);
+    const FVector3d crossB(-2.0e9, 1.0e9, -1.0e9);
+    TestEqual(TEXT("lane crossing behind the camera -> 0.5"), ClosestLaneParam(crossA, crossB,
+        FVector3d(1.0, 0.0, 0.0)), 0.5, NPCLANE_TOL);
+
+    // Both against a fine sampling of the segment
+    struct FBehindCase
+    {
+        FVector3d A;
+        FVector3d B;
+        FVector3d Ray;
+    };
+    const FBehindCase behindCases[] = {
+        { behindA, behindB, FVector3d(1.0, 0.0, 0.0) },
+        { crossA, crossB, FVector3d(1.0, 0.0, 0.0) },
+        { crossA, crossB, FVector3d(0.7, 0.2, -0.1) },
+        { behindA, behindB, FVector3d(-0.2, 1.0, 0.3) },
+    };
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(behindCases)); ++index)
+    {
+        const FBehindCase& entry = behindCases[index];
+        const FVector3d unit = entry.Ray.GetSafeNormal();
+        const double s = ClosestLaneParam(entry.A, entry.B, entry.Ray);
+        const double best = NpcLanePointToRayM(entry.A + (entry.B - entry.A) * s, unit);
+        double sampledMin = TNumericLimits<double>::Max();
+        for (int32 step = 0; step <= 4000; ++step)
+        {
+            const double t = static_cast<double>(step) / 4000.0;
+            sampledMin = FMath::Min(sampledMin, NpcLanePointToRayM(entry.A + (entry.B - entry.A) * t, unit));
+        }
+        TestTrue(FString::Printf(TEXT("behind case %d: no sampled point closer"), index),
+            best <= sampledMin * (1.0 + 1.0e-9) + 1.0);
+    }
+
+    // The distance at a parameter, s clamped
+    TestEqual(TEXT("distance at 0 = |A|"), LaneDistanceAtParamM(auA, auB, 0.0), auA.Size(), 1.0e-3);
+    TestEqual(TEXT("distance at 1 = |B|"), LaneDistanceAtParamM(auA, auB, 1.0), auB.Size(), 1.0e-3);
+    TestEqual(TEXT("distance at 0.5"), LaneDistanceAtParamM(auA, auB, 0.5), ((auA + auB) * 0.5).Size(), 1.0e-3);
+    TestEqual(TEXT("distance at -1 as 0"), LaneDistanceAtParamM(auA, auB, -1.0), auA.Size(), 1.0e-3);
+    TestEqual(TEXT("distance at 2 as 1"), LaneDistanceAtParamM(auA, auB, 2.0), auB.Size(), 1.0e-3);
+    TestEqual(TEXT("distance at 0.5 on the small lane"), LaneDistanceAtParamM(a, b, 0.5), 1.0e9, 1.0e-6);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathSideNormalTest, "SOLTest.NpcLaneMath.OutboundSideNormal",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 14: "keep right" on screen (x right, y down): the outbound line's unit normal lies on the right of the travel
+// direction A -> B; the inbound line uses the negated normal; A == B or NaN gives (0, 0)
+bool FSOLNpcLaneMathSideNormalTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneOutboundSideNormal;
+    const FVector2D origin(400.0, 300.0);
+
+    // The contract's directions, and the fourth one
+    struct FCase
+    {
+        FVector2D Direction;
+        FVector2D Expected;
+    };
+    const FCase cases[] = {
+        { FVector2D(1.0, 0.0), FVector2D(0.0, 1.0) },
+        { FVector2D(0.0, -1.0), FVector2D(1.0, 0.0) },
+        { FVector2D(-1.0, 0.0), FVector2D(0.0, -1.0) },
+        { FVector2D(0.0, 1.0), FVector2D(-1.0, 0.0) },
+    };
+    for (const FCase& entry : cases)
+    {
+        for (const double length : { 1.0, 37.5, 2.0e4 })
+        {
+            const FVector2D normal = LaneOutboundSideNormal(origin, origin + entry.Direction * length);
+            const FString label = FString::Printf(TEXT("A -> B %s x %.1f"), *entry.Direction.ToString(), length);
+            TestEqual(label + TEXT(": x"), normal.X, entry.Expected.X, NPCLANE_TOL);
+            TestEqual(label + TEXT(": y"), normal.Y, entry.Expected.Y, NPCLANE_TOL);
+        }
+    }
+
+    // A diagonal: unit length, perpendicular, and the inbound line on the other side
+    const FVector2D screenA(100.0, 200.0);
+    const FVector2D screenB(700.0, -150.0);
+    const FVector2D outbound = LaneOutboundSideNormal(screenA, screenB);
+    TestEqual(TEXT("diagonal: unit"), outbound.Size(), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("diagonal: perpendicular"), FVector2D::DotProduct(outbound, (screenB - screenA).GetSafeNormal()),
+        0.0, NPCLANE_TOL);
+    TestTrue(TEXT("diagonal: on the right (y down)"), FVector2D::CrossProduct(screenB - screenA, outbound) > 0.0);
+    const FVector2D inbound = LaneOutboundSideNormal(screenB, screenA);
+    TestEqual(TEXT("inbound = -outbound: x"), inbound.X, -outbound.X, NPCLANE_TOL);
+    TestEqual(TEXT("inbound = -outbound: y"), inbound.Y, -outbound.Y, NPCLANE_TOL);
+
+    // Degenerate and bad input
+    const FVector2D same = LaneOutboundSideNormal(screenA, screenA);
+    TestTrue(TEXT("A == B -> (0, 0)"), same.X == 0.0 && same.Y == 0.0);
+    const FVector2D nanA = LaneOutboundSideNormal(FVector2D(NPCLANE_NAN, 0.0), screenB);
+    TestTrue(TEXT("NaN A -> (0, 0)"), nanA.X == 0.0 && nanA.Y == 0.0);
+    const FVector2D nanB = LaneOutboundSideNormal(screenA, FVector2D(0.0, NPCLANE_NAN));
+    TestTrue(TEXT("NaN B -> (0, 0)"), nanB.X == 0.0 && nanB.Y == 0.0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathCountShipsTest, "SOLTest.NpcLaneMath.CountLaneShips",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 15: the lane histogram counts lane rails per group below laneCount; cluster and battle rails (whatever their
+// group) and lane rails of an out-of-range group are ignored; the output is reset to laneCount zeros first
+bool FSOLNpcLaneMathCountShipsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::CountLaneShips;
+    using SOLNpcScale::EPlacementKind;
+
+    // Three lanes (groups 0-2): 4, 0 and 2 lane ships, plus clusters and battles in groups the lanes also use, and lane
+    // rails of groups 3 and 9 (out of range)
+    TArray<FSOLNpcRail> rails;
+    for (int32 index = 0; index < 4; ++index)
+    {
+        rails.Add(NpcLaneRail(EPlacementKind::Lane, 0));
+    }
+    rails.Add(NpcLaneRail(EPlacementKind::Lane, 2));
+    rails.Add(NpcLaneRail(EPlacementKind::Cluster, 1));
+    rails.Add(NpcLaneRail(EPlacementKind::Cluster, 3));
+    rails.Add(NpcLaneRail(EPlacementKind::Battle, 0));
+    rails.Add(NpcLaneRail(EPlacementKind::Battle, 4));
+    rails.Add(NpcLaneRail(EPlacementKind::Lane, 2));
+    rails.Add(NpcLaneRail(EPlacementKind::Lane, 3));
+    rails.Add(NpcLaneRail(EPlacementKind::Lane, 9));
+
+    // Stale content is replaced by exactly laneCount counts
+    TArray<int32> counts = { 77, 88, 99, 11, 22 };
+    CountLaneShips(rails, 3, counts);
+    if (TestEqual(TEXT("three counts"), counts.Num(), 3))
+    {
+        TestEqual(TEXT("lane 0: 4"), counts[0], 4);
+        TestEqual(TEXT("lane 1: 0 (the cluster in group 1 ignored)"), counts[1], 0);
+        TestEqual(TEXT("lane 2: 2"), counts[2], 2);
+    }
+
+    // A fresh call over the same rails gives the same result
+    TArray<int32> again;
+    CountLaneShips(rails, 3, again);
+    TestTrue(TEXT("same result twice"), again == counts);
+    CountLaneShips(rails, 3, again);
+    TestTrue(TEXT("same result on a reused array"), again == counts);
+
+    // A larger lane count takes in the group 3 lane rail
+    TArray<int32> four;
+    CountLaneShips(rails, 4, four);
+    if (TestEqual(TEXT("four counts"), four.Num(), 4))
+    {
+        TestEqual(TEXT("lane 3: 1"), four[3], 1);
+        TestEqual(TEXT("lane 0 still 4"), four[0], 4);
+    }
+
+    // No lanes: no counts
+    TArray<int32> none = { 5, 6 };
+    CountLaneShips(rails, 0, none);
+    TestEqual(TEXT("laneCount 0: empty"), none.Num(), 0);
+    none = { 5, 6 };
+    CountLaneShips(rails, -2, none);
+    TestEqual(TEXT("laneCount -2: empty"), none.Num(), 0);
+
+    // No rails: all zeros
+    TArray<int32> empty = { 3 };
+    CountLaneShips(TConstArrayView<FSOLNpcRail>(), 8, empty);
+    if (TestEqual(TEXT("no rails: eight counts"), empty.Num(), 8))
+    {
+        for (int32 lane = 0; lane < 8; ++lane)
+        {
+            TestEqual(FString::Printf(TEXT("no rails: lane %d is 0"), lane), empty[lane], 0);
+        }
+    }
+
+    // Only cluster and battle rails: all zeros
+    TArray<FSOLNpcRail> others = { NpcLaneRail(EPlacementKind::Cluster, 0), NpcLaneRail(EPlacementKind::Battle, 1) };
+    TArray<int32> otherCounts;
+    CountLaneShips(others, 2, otherCounts);
+    TestTrue(TEXT("no lane rails: zeros"), otherCounts.Num() == 2 && otherCounts[0] == 0 && otherCounts[1] == 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLaneFrameTest, "SOLTest.NpcLaneMath.BuildLaneFrame",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 16: the per-frame lane frame (the #49 extension point) has one entry per lane with its endpoints, radius,
+// count, weight and drawn flag (ships and both bodies resolved); a lane past the end of the counts or of the frame
+// arrays is not drawn (count 0); a second build with the same sizes does not reallocate
+bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+
+    // Five lanes and one cluster: lane 0 busy, lane 1 empty, lane 2 with an unknown body A, lane 3 with an unknown
+    // body B, lane 4 past the end of the counts
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 5;
+    groups.ClusterCount = 1;
+    groups.LaneBodyA = { 1, 2, INDEX_NONE, 4, 5 };
+    groups.LaneBodyB = { 2, 3, 4, INDEX_NONE, 6 };
+    groups.LaneRadiusM = { 2.0e5, 1.0e7, 5.0e6, 3.0e6, 1.0e7 };
+    groups.ClusterBody = { 3 };
+    groups.ClusterInnerM = { 1.0e7 };
+    groups.ClusterOuterM = { 4.0e7 };
+
+    FSOLNpcRailFrame frame;
+    frame.RailTimeS = 12.5;
+    for (int32 group = 0; group < groups.Num(); ++group)
+    {
+        const double offset = static_cast<double>(group + 1);
+        frame.GroupPointAM.Add(FVector3d(offset * 1.0e10, -offset * 3.0e9, offset * 1.0e8));
+        frame.GroupPointBM.Add(FVector3d(-offset * 2.0e10, offset * 5.0e9, -offset * 2.0e8));
+        frame.GroupBodyM.Add(frame.GroupPointAM.Last());
+    }
+    const TArray<int32> counts = { 44000, 0, 900, 1000, 777 };
+    const TConstArrayView<int32> fourCounts(counts.GetData(), 4);
+
+    FSOLNpcLaneFrame laneFrame;
+    BuildLaneFrame(groups, frame, fourCounts, laneFrame);
+    if (!TestEqual(TEXT("one entry per lane"), laneFrame.Lanes.Num(), groups.LaneCount))
+    {
+        return false;
+    }
+    for (int32 lane = 0; lane < groups.LaneCount; ++lane)
+    {
+        const FSOLNpcLaneEntry& entry = laneFrame.Lanes[lane];
+        const FString label = FString::Printf(TEXT("lane %d"), lane);
+        TestTrue(label + TEXT(": A from the frame"), entry.A == frame.GroupPointAM[lane]);
+        TestTrue(label + TEXT(": B from the frame"), entry.B == frame.GroupPointBM[lane]);
+        TestEqual(label + TEXT(": radius from the groups"), entry.RadiusM, groups.LaneRadiusM[lane], NPCLANE_TOL);
+        const int32 count = lane < fourCounts.Num() ? fourCounts[lane] : 0;
+        TestEqual(label + TEXT(": ship count"), entry.ShipCount, count);
+        TestEqual(label + TEXT(": traffic weight"), entry.TrafficWeight, LaneTrafficWeight(count), NPCLANE_TOL);
+        const bool bBodies = groups.LaneBodyA[lane] != INDEX_NONE && groups.LaneBodyB[lane] != INDEX_NONE;
+        TestEqual(label + TEXT(": drawn"), entry.bDrawn, IsLaneDrawn(count) && bBodies);
+    }
+    TestTrue(TEXT("lane 0 drawn"), laneFrame.Lanes[0].bDrawn);
+    TestFalse(TEXT("lane 1 (no ships) not drawn"), laneFrame.Lanes[1].bDrawn);
+    TestFalse(TEXT("lane 2 (body A unknown) not drawn"), laneFrame.Lanes[2].bDrawn);
+    TestFalse(TEXT("lane 3 (body B unknown) not drawn"), laneFrame.Lanes[3].bDrawn);
+    TestFalse(TEXT("lane 4 (past the counts) not drawn"), laneFrame.Lanes[4].bDrawn);
+    TestEqual(TEXT("lane 4 count 0"), laneFrame.Lanes[4].ShipCount, 0);
+
+    // A second build with the same sizes keeps the array (no allocation per frame), with the new values
+    const FSOLNpcLaneEntry* dataBefore = laneFrame.Lanes.GetData();
+    frame.GroupPointAM[0] = FVector3d(4.0e10, 1.0e9, 0.0);
+    BuildLaneFrame(groups, frame, fourCounts, laneFrame);
+    TestTrue(TEXT("second build: same array data"), laneFrame.Lanes.GetData() == dataBefore);
+    TestEqual(TEXT("second build: same count"), laneFrame.Lanes.Num(), groups.LaneCount);
+    TestTrue(TEXT("second build: A follows the body"), laneFrame.Lanes[0].A == frame.GroupPointAM[0]);
+
+    // All five counts: lane 4 drawn
+    BuildLaneFrame(groups, frame, counts, laneFrame);
+    TestTrue(TEXT("five counts: lane 4 drawn"), laneFrame.Lanes[4].bDrawn);
+    TestEqual(TEXT("five counts: lane 4 count"), laneFrame.Lanes[4].ShipCount, 777);
+
+    // Frame arrays shorter than the lanes: the lanes past their end are not drawn (count 0)
+    FSOLNpcRailFrame shortFrame = frame;
+    shortFrame.GroupPointAM.SetNum(3);
+    shortFrame.GroupPointBM.SetNum(3);
+    shortFrame.GroupBodyM.SetNum(3);
+    FSOLNpcLaneFrame shortLanes;
+    BuildLaneFrame(groups, shortFrame, counts, shortLanes);
+    if (TestEqual(TEXT("short frame: one entry per lane"), shortLanes.Lanes.Num(), groups.LaneCount))
+    {
+        TestTrue(TEXT("short frame: lane 0 drawn"), shortLanes.Lanes[0].bDrawn);
+        for (const int32 lane : { 3, 4 })
+        {
+            TestFalse(FString::Printf(TEXT("short frame: lane %d not drawn"), lane), shortLanes.Lanes[lane].bDrawn);
+            TestEqual(FString::Printf(TEXT("short frame: lane %d count 0"), lane), shortLanes.Lanes[lane].ShipCount,
+                0);
+        }
+    }
+
+    // No lanes: no entries
+    FSOLNpcGroupTable noLanes;
+    FSOLNpcLaneFrame emptyFrame;
+    BuildLaneFrame(noLanes, frame, counts, emptyFrame);
+    TestEqual(TEXT("no lanes: no entries"), emptyFrame.Lanes.Num(), 0);
+    return true;
+}
+
+#endif // WITH_DEV_AUTOMATION_TESTS

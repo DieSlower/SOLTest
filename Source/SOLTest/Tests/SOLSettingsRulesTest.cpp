@@ -255,7 +255,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
+    TestEqual(TEXT("schema version is 13"), SOL::Settings::SAVE_VERSION, 13);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -277,6 +277,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 10 migrates"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 11 migrates"), ClassifySaveVersion(11, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 12 migrates"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -378,6 +380,8 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
         TestTrue(TEXT("profile 1 orbit lines from the shown legacy flag"), save->OverlayProfiles[0].bOrbitLinesOn);
         TestFalse(TEXT("profile 1 has no SpaceDust key"),
             save->OverlayProfiles[0].Overlays.Contains(TEXT("SpaceDust")));
+        const bool* lanes = save->OverlayProfiles[0].Overlays.Find(TEXT("Lanes"));
+        TestTrue(TEXT("profile 1 has Lanes on (issue #38)"), lanes != nullptr && *lanes);
     }
 
     // Every other field is untouched
@@ -817,8 +821,8 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->HudGlow = 0.35f;                                        // A stray value a v5 file never wrote
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 12 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11 and 11 -> 12)"), save->Version,
-        12);
+    TestEqual(TEXT("v5 -> 13 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11, 11 -> 12 and 12 -> 13)"),
+        save->Version, 13);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
@@ -845,7 +849,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> ... -> 12, and a current one
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> ... -> 13, and a current one
     // across two calls
     USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
     v6->Version = 6;
@@ -946,7 +950,8 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     save->HudGlow = 0.35f;                                        // A stray value a v6 file never wrote
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v6 -> 12 (through 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11 and 11 -> 12)"), save->Version, 12);
+    TestEqual(TEXT("v6 -> 13 (through 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11, 11 -> 12 and 12 -> 13)"),
+        save->Version, 13);
     TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
@@ -1009,7 +1014,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A current (schema 12) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
+// A current (schema 13) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
 // they were
 bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
 {
@@ -1358,7 +1363,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 up to 11 -> 12 only)
+// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 up to 12 -> 13 only)
 // and a current one keep their margin; a newer save is left alone
 bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*parameters*/)
 {
@@ -1397,7 +1402,7 @@ bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*paramete
     TestEqual(TEXT("v1: second migrate keeps the version"), v1->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("v1: second migrate keeps the margin"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
 
-    // A schema 8 save has the margin: only 8 -> 9 up to 11 -> 12 run, and its margin is the player's choice
+    // A schema 8 save has the margin: only 8 -> 9 up to 12 -> 13 run, and its margin is the player's choice
     USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
     v8->Version = 8;
     v8->ChaseSafetyMargin = 0.1f;
@@ -1507,6 +1512,22 @@ namespace
         return overlays.Contains(SETTINGSRULES_DUST_ID);
     }
 
+    // The saved id of the issue #38 Lanes overlay row, restated so the tests stay independent of the production table
+    constexpr const TCHAR* SETTINGSRULES_LANES_ID = TEXT("Lanes");
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a saved overlay map as the 12 -> 13 step leaves it (SDD 38 section 4.9): a non-empty map gains
+    // Lanes = true when the key is missing (an existing value is kept); an empty map stays empty
+    TMap<FString, bool> SettingsRulesWithLanes(const TMap<FString, bool>& overlays)
+    {
+        TMap<FString, bool> result = overlays;
+        if (result.Num() > 0 && !result.Contains(SETTINGSRULES_LANES_ID))
+        {
+            result.Add(SETTINGSRULES_LANES_ID, true);
+        }
+        return result;
+    }
+
     //////////////////////////////////////////////////////////////////////////
     // Returns whether two key-override maps hold exactly the same ids and keys
     bool SettingsRulesSameOverrides(const TMap<FString, FString>& a, const TMap<FString, FString>& b)
@@ -1538,7 +1559,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV8SpaceDustTest, "SOLTe
 bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
+    TestEqual(TEXT("schema version is 13"), SOL::Settings::SAVE_VERSION, 13);
     TestEqual(TEXT("key layout is still 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v8 save is migrated"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
@@ -1575,20 +1596,22 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v8 -> 12"), save->Version, 12);
+    TestEqual(TEXT("v8 -> 13"), save->Version, 13);
     TestEqual(TEXT("v8 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("profile count kept (not padded)"), save->OverlayProfiles.Num(), before.Num());
     TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 2);
     TestTrue(TEXT("global dust on (8 -> 9 added it as on to profile 1)"), save->bSpaceDust);
 
-    // Each profile is exactly its old map, enabled, master on, switch from the hidden legacy flag
+    // Each profile is exactly its old map (plus Lanes = true from 12 -> 13 where it was missing), enabled, master on,
+    // switch from the hidden legacy flag
     const int32 checked = FMath::Min(save->OverlayProfiles.Num(), before.Num());
     for (int32 index = 0; index < checked; ++index)
     {
         const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
         const FString label = FString::Printf(TEXT("profile %d"), index + 1);
         TestFalse(label + TEXT(": no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
-        TestTrue(label + TEXT(": exactly its old map"), SettingsRulesSameOverlayMap(profile.Overlays, before[index]));
+        TestTrue(label + TEXT(": exactly its old map plus Lanes"),
+            SettingsRulesSameOverlayMap(profile.Overlays, SettingsRulesWithLanes(before[index])));
         TestTrue(label + TEXT(": enabled"), profile.bEnabled);
         TestTrue(label + TEXT(": master on"), profile.bMasterOn);
         TestFalse(label + TEXT(": orbit lines off from the legacy flag"), profile.bOrbitLinesOn);
@@ -1646,10 +1669,11 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     TestFalse(TEXT("chosen: global dust off from profile 1"), chosen->bSpaceDust);
     if (chosen->OverlayProfiles.Num() == 2)
     {
-        TestTrue(TEXT("chosen: profile 1 without SpaceDust"),
-            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[0].Overlays, SettingsRulesWithoutDust(dustOff)));
-        TestTrue(TEXT("chosen: profile 2 its old map"),
-            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[1].Overlays, first));
+        TestTrue(TEXT("chosen: profile 1 without SpaceDust, with Lanes"),
+            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[0].Overlays,
+                SettingsRulesWithLanes(SettingsRulesWithoutDust(dustOff))));
+        TestTrue(TEXT("chosen: profile 2 its old map plus Lanes"),
+            SettingsRulesSameOverlayMap(chosen->OverlayProfiles[1].Overlays, SettingsRulesWithLanes(first)));
     }
     TestFalse(TEXT("chosen: reads the dust off"), chosen->GetValues().bSpaceDust);
     return true;
@@ -1684,10 +1708,10 @@ bool FSOLSettingsRulesSpaceDustVersionsTest::RunTest(const FString& /*parameters
     TestTrue(TEXT("v7: dust on"), v7->bSpaceDust);
     if (v7->OverlayProfiles.Num() == 2)
     {
-        TestTrue(TEXT("v7: profile 1 as it was"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[0].Overlays,
-            iconsOff));
-        TestTrue(TEXT("v7: profile 2 as it was"), SettingsRulesSameOverlayMap(v7->OverlayProfiles[1].Overlays,
-            orbits));
+        TestTrue(TEXT("v7: profile 1 as it was plus Lanes"),
+            SettingsRulesSameOverlayMap(v7->OverlayProfiles[0].Overlays, SettingsRulesWithLanes(iconsOff)));
+        TestTrue(TEXT("v7: profile 2 as it was plus Lanes"),
+            SettingsRulesSameOverlayMap(v7->OverlayProfiles[1].Overlays, SettingsRulesWithLanes(orbits)));
         TestTrue(TEXT("v7: profile 1 enabled"), v7->OverlayProfiles[0].bEnabled);
         TestTrue(TEXT("v7: profile 2 enabled"), v7->OverlayProfiles[1].bEnabled);
     }
@@ -1805,21 +1829,22 @@ bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters
     save->bVsyncChosen = true;
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v9 -> 12"), save->Version, 12);
+    TestEqual(TEXT("v9 -> 13"), save->Version, 13);
     TestEqual(TEXT("v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("global dust from profile 1 (off)"), save->bSpaceDust);
     TestEqual(TEXT("entries not padded"), save->OverlayProfiles.Num(), 2);
     TestEqual(TEXT("active profile kept"), save->ActiveOverlayProfile, 1);
 
-    // Each stored entry: its old map without SpaceDust, enabled, master on, switch off from the legacy flag
+    // Each stored entry: its old map without SpaceDust and with Lanes = true (12 -> 13), enabled, master on, switch
+    // off from the legacy flag
     for (int32 index = 0; index < FMath::Min(save->OverlayProfiles.Num(), before.Num()); ++index)
     {
         const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
         const FString label = FString::Printf(TEXT("profile %d"), index + 1);
         TestFalse(label + TEXT(": SpaceDust removed"), SettingsRulesHasDustKey(profile.Overlays));
-        TestTrue(label + TEXT(": every other key kept"), SettingsRulesSameOverlayMap(profile.Overlays,
-            SettingsRulesWithoutDust(before[index])));
-        TestEqual(label + TEXT(": one key fewer"), profile.Overlays.Num(), before[index].Num() - 1);
+        TestTrue(label + TEXT(": every other key kept, Lanes added"), SettingsRulesSameOverlayMap(profile.Overlays,
+            SettingsRulesWithLanes(SettingsRulesWithoutDust(before[index]))));
+        TestEqual(label + TEXT(": SpaceDust out, Lanes in"), profile.Overlays.Num(), before[index].Num());
         TestTrue(label + TEXT(": enabled"), profile.bEnabled);
         TestTrue(label + TEXT(": master on"), profile.bMasterOn);
         TestFalse(label + TEXT(": orbit lines off from the legacy flag"), profile.bOrbitLinesOn);
@@ -1949,10 +1974,11 @@ bool FSOLSettingsRulesMigrateV9DustSourceTest::RunTest(const FString& /*paramete
     TestTrue(TEXT("missing key: default constant"), missing->bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
     if (missing->OverlayProfiles.Num() == 2)
     {
-        TestTrue(TEXT("missing key: profile 1 map unchanged"),
-            SettingsRulesSameOverlayMap(missing->OverlayProfiles[0].Overlays, noDust));
+        TestTrue(TEXT("missing key: profile 1 map unchanged but for Lanes"),
+            SettingsRulesSameOverlayMap(missing->OverlayProfiles[0].Overlays, SettingsRulesWithLanes(noDust)));
         TestTrue(TEXT("missing key: profile 2 loses SpaceDust"),
-            SettingsRulesSameOverlayMap(missing->OverlayProfiles[1].Overlays, SettingsRulesWithoutDust(dustOff)));
+            SettingsRulesSameOverlayMap(missing->OverlayProfiles[1].Overlays,
+                SettingsRulesWithLanes(SettingsRulesWithoutDust(dustOff))));
     }
 
     // No profiles at all: the default (on), and no profile is invented
@@ -2096,8 +2122,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateChainToProfilesTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A v6 and a v8 save go through the whole chain to schema 12: dust on, profile 1 enabled with its master on, no
-// SpaceDust key anywhere, and the orbit-lines switch from the legacy flag
+// A v6 and a v8 save go through the whole chain to schema 13: dust on, profile 1 enabled with its master on, no
+// SpaceDust key anywhere, Lanes on, and the orbit-lines switch from the legacy flag
 bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*parameters*/)
 {
     // A v6 save (no overlay profiles in its schema; stray ones are replaced by 6 -> 7) with the legacy lines shown
@@ -2109,7 +2135,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v6->bShowOrbitLines = true;
     v6->bSpaceDust = false;
     v6->MigrateToCurrentVersion();
-    TestEqual(TEXT("v6 -> 12"), v6->Version, 12);
+    TestEqual(TEXT("v6 -> 13"), v6->Version, 13);
     TestTrue(TEXT("v6: dust on"), v6->bSpaceDust);
     TestEqual(TEXT("v6: one profile"), v6->OverlayProfiles.Num(), 1);
     TestEqual(TEXT("v6: active 0"), v6->ActiveOverlayProfile, 0);
@@ -2122,6 +2148,8 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
         TestFalse(TEXT("v6: no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
         TestTrue(TEXT("v6: the default rows"), SettingsRulesSameOverlayMap(profile.Overlays,
             SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask())));
+        const bool* lanes = profile.Overlays.Find(SETTINGSRULES_LANES_ID);
+        TestTrue(TEXT("v6: Lanes on"), lanes != nullptr && *lanes);
     }
     const SOLSettingsModel::FSettingsValues v6Values = v6->GetValues();
     TestTrue(TEXT("v6: reads profile 1 enabled"), SOLOverlay::IsProfileEnabled(v6Values.OverlayPrefs, 0));
@@ -2138,7 +2166,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v8->bShowOrbitLines = false;
     v8->bSpaceDust = false;
     v8->MigrateToCurrentVersion();
-    TestEqual(TEXT("v8 -> 12"), v8->Version, 12);
+    TestEqual(TEXT("v8 -> 13"), v8->Version, 13);
     TestTrue(TEXT("v8: dust on"), v8->bSpaceDust);
     TestEqual(TEXT("v8: one profile"), v8->OverlayProfiles.Num(), 1);
     if (v8->OverlayProfiles.Num() == 1)
@@ -2148,7 +2176,8 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
         TestTrue(TEXT("v8: profile 1 master on"), profile.bMasterOn);
         TestFalse(TEXT("v8: profile 1 switch off"), profile.bOrbitLinesOn);
         TestFalse(TEXT("v8: no SpaceDust key"), SettingsRulesHasDustKey(profile.Overlays));
-        TestTrue(TEXT("v8: its old map"), SettingsRulesSameOverlayMap(profile.Overlays, iconsOff));
+        TestTrue(TEXT("v8: its old map plus Lanes"), SettingsRulesSameOverlayMap(profile.Overlays,
+            SettingsRulesWithLanes(iconsOff)));
     }
     const SOLSettingsModel::FSettingsValues v8Values = v8->GetValues();
     TestTrue(TEXT("v8: reads profile 1 enabled"), SOLOverlay::IsProfileEnabled(v8Values.OverlayPrefs, 0));
@@ -2206,12 +2235,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV10HoloMenuEffectsTest,
 
 //////////////////////////////////////////////////////////////////////////
 // Schema 10 -> 11 (issue #42, A1 / A2): the hologram menu effects strength (absent from a v10 file) is copied from the
-// file's HUD effects strength, then 11 -> 12 (issue #37) sets the HUD glow to 100%; every other field is kept as loaded
-// (no earlier step re-runs), and a second migrate changes nothing
+// file's HUD effects strength, then 11 -> 12 (issue #37) sets the HUD glow to 100% and 12 -> 13 (issue #38) adds
+// Lanes = true to each non-empty profile map; every other field is kept as loaded (no earlier step re-runs), and a
+// second migrate changes nothing
 bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
+    TestEqual(TEXT("schema version is 13"), SOL::Settings::SAVE_VERSION, 13);
     TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v10 save is migrated"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
@@ -2267,7 +2297,7 @@ bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*pa
     const TMap<FString, FString> overridesBefore = save->KeyOverrides;
 
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v10 -> 12"), save->Version, 12);
+    TestEqual(TEXT("v10 -> 13"), save->Version, 13);
     TestEqual(TEXT("v10 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("menu effects copied from the HUD strength (A2)"), save->HoloMenuEffects, 0.3f,
         SETTINGSRULES_TEST_TOLERANCE);
@@ -2301,10 +2331,11 @@ bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*pa
     {
         const FSOLOverlayProfileSave& one = save->OverlayProfiles[0];
         const FSOLOverlayProfileSave& two = save->OverlayProfiles[1];
-        TestTrue(TEXT("profile 1 map kept (SpaceDust key not removed again)"),
-            SettingsRulesSameOverlayMap(one.Overlays, first));
+        TestTrue(TEXT("profile 1 map kept plus Lanes (SpaceDust key not removed again)"),
+            SettingsRulesSameOverlayMap(one.Overlays, SettingsRulesWithLanes(first)));
         TestTrue(TEXT("profile 1 flags kept"), one.bEnabled && !one.bMasterOn && !one.bOrbitLinesOn);
-        TestTrue(TEXT("profile 2 map kept"), SettingsRulesSameOverlayMap(two.Overlays, second));
+        TestTrue(TEXT("profile 2 map kept plus Lanes"), SettingsRulesSameOverlayMap(two.Overlays,
+            SettingsRulesWithLanes(second)));
         TestTrue(TEXT("profile 2 flags kept (not re-enabled)"), !two.bEnabled && two.bMasterOn && two.bOrbitLinesOn);
     }
 
@@ -2401,9 +2432,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every save from schema 1 to 10 reaches schema 12 with the menu strength copied from the HUD strength the chain leaves
-// (1 for schemas 1 to 4, whose 4 -> 5 step sets the HUD default; the stored value from schema 5 on); a current save
-// keeps its own menu strength; an unversioned or newer save is never migrated
+// Every save from schema 1 to 10 reaches the current schema with the menu strength copied from the HUD strength the
+// chain leaves (1 for schemas 1 to 4, whose 4 -> 5 step sets the HUD default; the stored value from schema 5 on); a
+// current save keeps its own menu strength; an unversioned or newer save is never migrated
 bool FSOLSettingsRulesHoloMenuEffectsVersionsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
@@ -2678,20 +2709,21 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowSchemaVersionTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Issue #37 bumps only the settings schema, to 12 (D1): a v11 save migrates, a v12 save is used, a v13 one is ignored,
-// the key layout stays 10 and a v11 save gets no controls-changed notice
+// Issue #37 bumped only the settings schema, to 12 (D1): classify(11, 12) migrates, (12, 12) is used, (13, 12) is
+// ignored; issue #38 has since moved it to 13, so a v11 save still migrates; the key layout stays 10 and a v11 save
+// gets no controls-changed notice
 bool FSOLSettingsRulesHudGlowSchemaVersionTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
+    TestEqual(TEXT("schema version is 13 (issue #38)"), SOL::Settings::SAVE_VERSION, 13);
     TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("classify(11, 12) migrates"), ClassifySaveVersion(11, 12) == ESaveVersionAction::Migrate);
     TestTrue(TEXT("classify(12, 12) uses"), ClassifySaveVersion(12, 12) == ESaveVersionAction::Use);
     TestTrue(TEXT("classify(13, 12) ignores"), ClassifySaveVersion(13, 12) == ESaveVersionAction::UseDefaults);
     TestTrue(TEXT("a v11 save is migrated"), ClassifySaveVersion(11, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
-    TestTrue(TEXT("a v12 save is used"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
-        == ESaveVersionAction::Use);
+    TestTrue(TEXT("a v12 save is now migrated"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
     TestFalse(TEXT("a v11 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(11));
     TestFalse(TEXT("a v12 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(12));
     return true;
@@ -2703,15 +2735,15 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV11HudGlowTest, "SOLTes
 
 //////////////////////////////////////////////////////////////////////////
 // Schema 11 -> 12 (issue #37, D1): the HUD glow (absent from a v11 file) becomes 100%, overwriting a stray value; every
-// other field, the five overlay profiles, the active profile and the key overrides are kept as loaded (no earlier step
-// re-runs), and a second migrate changes nothing
+// other field, the five overlay profiles (each gaining only Lanes = true from 12 -> 13), the active profile and the key
+// overrides are kept as loaded (no earlier step re-runs), and a second migrate changes nothing
 bool FSOLSettingsRulesMigrateV11HudGlowTest::RunTest(const FString& /*parameters*/)
 {
     USOLSettingsSave* save = SettingsRulesFullV11Save();
     const TMap<FString, FString> overridesBefore = save->KeyOverrides;
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v11 -> 12"), save->Version, 12);
+    TestEqual(TEXT("v11 -> 13"), save->Version, 13);
     TestEqual(TEXT("v11 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("HUD glow set to the default"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
@@ -2747,7 +2779,8 @@ bool FSOLSettingsRulesMigrateV11HudGlowTest::RunTest(const FString& /*parameters
         const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
         const FSOLOverlayProfileSave expected = SettingsRulesGlowProfile(index);
         const FString label = FString::Printf(TEXT("profile %d"), index + 1);
-        TestTrue(label + TEXT(": rows kept"), SettingsRulesSameOverlayMap(profile.Overlays, expected.Overlays));
+        TestTrue(label + TEXT(": rows kept plus Lanes"), SettingsRulesSameOverlayMap(profile.Overlays,
+            SettingsRulesWithLanes(expected.Overlays)));
         TestEqual(label + TEXT(": enabled kept"), profile.bEnabled, expected.bEnabled);
         TestEqual(label + TEXT(": master kept"), profile.bMasterOn, expected.bMasterOn);
         TestEqual(label + TEXT(": orbit-lines switch kept"), profile.bOrbitLinesOn, expected.bOrbitLinesOn);
@@ -2770,7 +2803,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowVersionsTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every save from schema 1 to 11 reaches schema 12 with the HUD glow at 100% (a stray value overwritten); a current
+// Every save from schema 1 to 11 reaches schema 13 with the HUD glow at 100% (a stray value overwritten); a current
 // save keeps its glow; an unversioned or newer save is never migrated
 bool FSOLSettingsRulesHudGlowVersionsTest::RunTest(const FString& /*parameters*/)
 {
@@ -2788,7 +2821,7 @@ bool FSOLSettingsRulesHudGlowVersionsTest::RunTest(const FString& /*parameters*/
         older->HudGlow = SETTINGSRULES_STRAY_GLOW;
         older->MasterVolume = 0.45f;
         older->MigrateToCurrentVersion();
-        TestEqual(label + TEXT(": ends at 12"), older->Version, 12);
+        TestEqual(label + TEXT(": ends at 13"), older->Version, 13);
         TestEqual(label + TEXT(": ends at the current schema"), older->Version, SAVE_VERSION);
         TestEqual(label + TEXT(": HUD glow 100%"), older->HudGlow, HUD_GLOW_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
         TestEqual(label + TEXT(": master kept"), older->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
@@ -2830,8 +2863,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowSaveValuesTest, "SOLTes
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A new save holds the glow default; SetValues / GetValues round-trip it apart from the effects strengths; a v12 file
-// holding NaN or 9 is kept as loaded by the save and sanitized by the model (to 1 / 2)
+// A new save holds the glow default; SetValues / GetValues round-trip it apart from the effects strengths; a v12 file's
+// glow survives 12 -> 13; a current file holding NaN or 9 is kept as loaded by the save and sanitized by the model
+// (to 1 / 2)
 bool FSOLSettingsRulesHudGlowSaveValuesTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Settings;
@@ -2842,15 +2876,23 @@ bool FSOLSettingsRulesHudGlowSaveValuesTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("new save: GetValues default glow"), fresh->GetValues().HudGlow, HUD_GLOW_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
 
-    // A v12 save holding 0.35 is left alone by the migration and reads back 0.35
+    // A current save holding 0.35 is left alone by the migration and reads back 0.35
     USOLSettingsSave* current = NewObject<USOLSettingsSave>();
     current->Version = SAVE_VERSION;
     current->HudGlow = SETTINGSRULES_STRAY_GLOW;
     current->MigrateToCurrentVersion();
-    TestEqual(TEXT("v12: glow kept by the migration"), current->HudGlow, SETTINGSRULES_STRAY_GLOW,
+    TestEqual(TEXT("current: glow kept by the migration"), current->HudGlow, SETTINGSRULES_STRAY_GLOW,
         SETTINGSRULES_TEST_TOLERANCE);
-    TestEqual(TEXT("v12: GetValues reads it"), current->GetValues().HudGlow, SETTINGSRULES_STRAY_GLOW,
+    TestEqual(TEXT("current: GetValues reads it"), current->GetValues().HudGlow, SETTINGSRULES_STRAY_GLOW,
         SETTINGSRULES_TEST_TOLERANCE);
+
+    // A v12 save (which has the glow) keeps it through 12 -> 13
+    USOLSettingsSave* v12 = NewObject<USOLSettingsSave>();
+    v12->Version = 12;
+    v12->HudGlow = SETTINGSRULES_STRAY_GLOW;
+    v12->MigrateToCurrentVersion();
+    TestEqual(TEXT("v12: migrated to the current schema"), v12->Version, SAVE_VERSION);
+    TestEqual(TEXT("v12: glow kept by 12 -> 13"), v12->HudGlow, SETTINGSRULES_STRAY_GLOW, SETTINGSRULES_TEST_TOLERANCE);
 
     // SetValues / GetValues round-trip a mid value and both ends
     USOLSettingsSave* save = NewObject<USOLSettingsSave>();
@@ -2880,7 +2922,7 @@ bool FSOLSettingsRulesHudGlowSaveValuesTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("menu effects read apart"), readBack.HoloMenuEffects, 1.8f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("glow read apart"), readBack.HudGlow, 0.6f, SETTINGSRULES_TEST_TOLERANCE);
 
-    // A corrupt v12 file: the save keeps the value as loaded, the model sanitizes it
+    // A corrupt current file: the save keeps the value as loaded, the model sanitizes it
     USOLSettingsSave* nanSave = NewObject<USOLSettingsSave>();
     nanSave->Version = SAVE_VERSION;
     nanSave->HudGlow = SETTINGSRULES_TEST_NAN;
@@ -2960,6 +3002,625 @@ bool FSOLSettingsRulesHudGlowDiskTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("five overlay profiles kept"), loaded->OverlayProfiles.Num(), SETTINGSRULES_GLOW_PROFILES);
     TestEqual(TEXT("active overlay profile kept"), loaded->ActiveOverlayProfile, SETTINGSRULES_GLOW_ACTIVE);
     TestTrue(TEXT("key overrides kept"), SettingsRulesSameOverrides(loaded->KeyOverrides, written->KeyOverrides));
+    return true;
+}
+
+// Issue #38 Lanes overlay row in the settings save (schema 13), written against the SDD 38 section 6 contract (cases
+// 18-23) before the production code
+
+namespace
+{
+    constexpr int32 SETTINGSRULES_LANES_PROFILES = 5;       // Every overlay profile slot of the full v12 save is stored
+    constexpr int32 SETTINGSRULES_LANES_ACTIVE = 2;         // The active overlay profile of the full v12 save (index)
+
+    // The fifteen row ids a v12 file wrote (the table before issue #38), restated literally
+    const TCHAR* const SETTINGSRULES_V12_ROW_IDS[] =
+    {
+        TEXT("Icons"), TEXT("IconStars"), TEXT("IconPlanets"), TEXT("IconMoons"), TEXT("IconDwarfs"),
+        TEXT("IconAsteroids"), TEXT("IconRings"), TEXT("IconShips"), TEXT("IconTargets"), TEXT("PlanetOrbits"),
+        TEXT("AsteroidOrbits"), TEXT("MoonOrbits"), TEXT("OtherOrbits"), TEXT("ShipsOnRadar"), TEXT("Darkening"),
+    };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a custom fifteen-key v12 row map (no Lanes key): each row checked or not by a pattern set by the seed
+    TMap<FString, bool> SettingsRulesV12RowMap(const int32 seed)
+    {
+        TMap<FString, bool> overlays;
+        const int32 count = static_cast<int32>(UE_ARRAY_COUNT(SETTINGSRULES_V12_ROW_IDS));
+        for (int32 index = 0; index < count; ++index)
+        {
+            overlays.Add(SETTINGSRULES_V12_ROW_IDS[index], (index + seed) % 3 != 0);
+        }
+        return overlays;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns overlay profile i of the full v12 save: 0 enabled with a custom map, 1 unused (empty map, disabled), 2
+    // enabled with a custom map, master off and orbit lines off, 3 disabled but used (non-empty map), 4 unused
+    FSOLOverlayProfileSave SettingsRulesLanesProfile(const int32 index)
+    {
+        FSOLOverlayProfileSave profile;
+        switch (index)
+        {
+        case 0:
+            profile.Overlays = SettingsRulesV12RowMap(0);
+            profile.bEnabled = true;
+            break;
+        case 2:
+            profile.Overlays = SettingsRulesV12RowMap(1);
+            profile.bEnabled = true;
+            profile.bMasterOn = false;
+            profile.bOrbitLinesOn = false;
+            break;
+        case 3:
+            profile.Overlays = SettingsRulesV12RowMap(2);
+            profile.bEnabled = false;
+            profile.bOrbitLinesOn = false;
+            break;
+        default:
+            profile.bEnabled = false;
+            break;
+        }
+        return profile;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether profile slot i of the full v12 save is used (a non-empty row map)
+    bool SettingsRulesLanesSlotUsed(const int32 index)
+    {
+        return index == 0 || index == 2 || index == 3;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a v12 save with every scalar field non-default, the five profile entries and two key overrides
+    USOLSettingsSave* SettingsRulesFullV12Save()
+    {
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = 12;
+        save->MasterVolume = 0.3f;
+        save->SfxVolume = 0.4f;
+        save->MusicVolume = 0.5f;
+        save->MouseSensitivity = 2.5f;
+        save->bInvertY = true;
+        save->HudScale = 1.5f;
+        save->bHudVisible = false;
+        save->bDefaultFlightAssist = false;
+        save->bVsync = false;
+        save->QualityPreset = 1;
+        save->bVsyncChosen = true;
+        save->bQualityChosen = true;
+        save->bShowOrbitLines = false;
+        save->HudEffectsStrength = 0.3f;
+        save->HoloMenuEffects = 1.7f;
+        save->HudGlow = SETTINGSRULES_STRAY_GLOW;
+        save->bMouseSteerAtStart = true;
+        save->ChaseSafetyMargin = 0.1f;
+        save->bSpaceDust = false;
+        for (int32 index = 0; index < SETTINGSRULES_LANES_PROFILES; ++index)
+        {
+            save->OverlayProfiles.Add(SettingsRulesLanesProfile(index));
+        }
+        save->ActiveOverlayProfile = SETTINGSRULES_LANES_ACTIVE;
+        save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+        save->KeyOverrides.Add(TEXT("Boost"), TEXT("LeftShift"));
+        return save;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks that every scalar field of a save still holds the full v12 save's value
+    void SettingsRulesCheckV12Scalars(FAutomationTestBase& test, const USOLSettingsSave* save, const FString& what)
+    {
+        test.TestEqual(what + TEXT(": master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestTrue(what + TEXT(": invert Y kept"), save->bInvertY);
+        test.TestEqual(what + TEXT(": HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestFalse(what + TEXT(": HUD hidden kept"), save->bHudVisible);
+        test.TestFalse(what + TEXT(": flight assist kept"), save->bDefaultFlightAssist);
+        test.TestFalse(what + TEXT(": vsync kept"), save->bVsync);
+        test.TestEqual(what + TEXT(": quality kept"), save->QualityPreset, 1);
+        test.TestTrue(what + TEXT(": vsync chosen kept"), save->bVsyncChosen);
+        test.TestTrue(what + TEXT(": quality chosen kept"), save->bQualityChosen);
+        test.TestFalse(what + TEXT(": legacy orbit-lines flag kept"), save->bShowOrbitLines);
+        test.TestEqual(what + TEXT(": HUD effects kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": menu effects kept"), save->HoloMenuEffects, 1.7f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestEqual(what + TEXT(": HUD glow kept (11 -> 12 not re-run)"), save->HudGlow, SETTINGSRULES_STRAY_GLOW,
+            SETTINGSRULES_TEST_TOLERANCE);
+        test.TestTrue(what + TEXT(": steer at start kept"), save->bMouseSteerAtStart);
+        test.TestEqual(what + TEXT(": chase margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+        test.TestFalse(what + TEXT(": space dust off kept"), save->bSpaceDust);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a saved row map holds the Lanes key with this value
+    bool SettingsRulesLanesIs(const TMap<FString, bool>& overlays, const bool bValue)
+    {
+        const bool* value = overlays.Find(SETTINGSRULES_LANES_ID);
+        return value != nullptr && *value == bValue;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the mask bit of the Lanes row
+    uint32 SettingsRulesLanesBit()
+    {
+        return 1u << static_cast<uint32>(SOLOverlay::EOverlay::Lanes);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesLanesSchemaVersionTest, "SOLTest.SettingsRules.LanesSchemaVersion",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 bumps only the settings schema, to 13 (SDD 38 D1): a v12 save migrates, a v13 one is used, a v14 one is
+// ignored; the key layout stays 10, so a v12 save gets no controls-changed notice (1-9 still do, 10-11 still do not)
+bool FSOLSettingsRulesLanesSchemaVersionTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestEqual(TEXT("schema version is 13"), SOL::Settings::SAVE_VERSION, 13);
+    TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestTrue(TEXT("classify(12, 13) migrates"), ClassifySaveVersion(12, 13) == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(13, 13) uses"), ClassifySaveVersion(13, 13) == ESaveVersionAction::Use);
+    TestTrue(TEXT("classify(14, 13) ignores"), ClassifySaveVersion(14, 13) == ESaveVersionAction::UseDefaults);
+    TestTrue(TEXT("a v12 save is migrated"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v13 save is used"), ClassifySaveVersion(13, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Use);
+    TestFalse(TEXT("a v12 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(12));
+    TestFalse(TEXT("a v13 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(13));
+    for (int32 version = 1; version <= 9; ++version)
+    {
+        TestTrue(FString::Printf(TEXT("a v%d save still gets the notice"), version),
+            SOLKeyBindings::DefaultLayoutChangedSince(version));
+    }
+    TestFalse(TEXT("a v10 save gets no notice"), SOLKeyBindings::DefaultLayoutChangedSince(10));
+    TestFalse(TEXT("a v11 save gets no notice"), SOLKeyBindings::DefaultLayoutChangedSince(11));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV12LanesTest, "SOLTest.SettingsRules.MigrateV12Lanes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 12 -> 13 (issue #38, SDD 38 section 4.9): every used profile entry (non-empty map, enabled or not) gains
+// Lanes = true with every original key and value kept; the unused entries keep their empty maps (so they stay
+// unused); every flag, the active profile, the key overrides and every scalar field are kept; a second migrate
+// changes nothing
+bool FSOLSettingsRulesMigrateV12LanesTest::RunTest(const FString& /*parameters*/)
+{
+    USOLSettingsSave* save = SettingsRulesFullV12Save();
+    const TMap<FString, FString> overridesBefore = save->KeyOverrides;
+    const SOLOverlay::FOverlayPrefs prefsBefore = save->GetValues().OverlayPrefs;
+    save->MigrateToCurrentVersion();
+
+    TestEqual(TEXT("v12 -> 13"), save->Version, 13);
+    TestEqual(TEXT("v12 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    SettingsRulesCheckV12Scalars(*this, save, TEXT("v12"));
+    TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, SETTINGSRULES_LANES_ACTIVE);
+    TestTrue(TEXT("key overrides kept verbatim"), SettingsRulesSameOverrides(save->KeyOverrides, overridesBefore));
+    TestEqual(TEXT("five entries kept"), save->OverlayProfiles.Num(), SETTINGSRULES_LANES_PROFILES);
+
+    // Each entry: a used one gains exactly Lanes = true, an unused one stays empty; every flag kept
+    const int32 checked = FMath::Min(save->OverlayProfiles.Num(), SETTINGSRULES_LANES_PROFILES);
+    for (int32 index = 0; index < checked; ++index)
+    {
+        const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
+        const FSOLOverlayProfileSave expected = SettingsRulesLanesProfile(index);
+        const FString label = FString::Printf(TEXT("entry %d"), index);
+        if (SettingsRulesLanesSlotUsed(index))
+        {
+            TestTrue(label + TEXT(": Lanes added as on"), SettingsRulesLanesIs(profile.Overlays, true));
+            TestEqual(label + TEXT(": one key more"), profile.Overlays.Num(), expected.Overlays.Num() + 1);
+            for (const TPair<FString, bool>& entry : expected.Overlays)
+            {
+                const bool* value = profile.Overlays.Find(entry.Key);
+                TestTrue(label + TEXT(": ") + entry.Key + TEXT(" kept"), value != nullptr && *value == entry.Value);
+            }
+        }
+        else
+        {
+            TestEqual(label + TEXT(": unused, map still empty"), profile.Overlays.Num(), 0);
+        }
+        TestEqual(label + TEXT(": enabled kept"), profile.bEnabled, expected.bEnabled);
+        TestEqual(label + TEXT(": master kept"), profile.bMasterOn, expected.bMasterOn);
+        TestEqual(label + TEXT(": orbit-lines switch kept"), profile.bOrbitLinesOn, expected.bOrbitLinesOn);
+    }
+
+    // Read back: the used set {0, 2, 3} and the enabled set {0, 2} are unchanged by the migration, Lanes is on in
+    // every used profile, and every other row is as the map had it
+    const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
+    TestEqual(TEXT("used profiles {0, 2, 3}"),
+        static_cast<int32>(prefs.UsedProfiles & SOL::Overlay::ALL_PROFILES_MASK), 0x0D);
+    TestEqual(TEXT("used profiles unchanged by the migration"), static_cast<int32>(prefs.UsedProfiles),
+        static_cast<int32>(prefsBefore.UsedProfiles));
+    TestEqual(TEXT("enabled profiles {0, 2}"),
+        static_cast<int32>(prefs.EnabledProfiles & SOL::Overlay::ALL_PROFILES_MASK), 0x05);
+    TestEqual(TEXT("active profile read back"), prefs.ActiveProfile, SETTINGSRULES_LANES_ACTIVE);
+    TestFalse(TEXT("active profile 2's master reads off"), SOLOverlay::IsMasterOn(prefs));
+    TestFalse(TEXT("active profile 2's orbit lines read off"), SOLOverlay::AreOrbitLinesOn(prefs));
+    for (const int32 profile : { 0, 2, 3 })
+    {
+        const FString label = FString::Printf(TEXT("read: profile %d"), profile);
+        TestEqual(label + TEXT(" Lanes on"), prefs.Masks[profile] & SettingsRulesLanesBit(), SettingsRulesLanesBit());
+        TestEqual(label + TEXT(" rows as saved"), prefs.Masks[profile],
+            SOLOverlay::FromSavedProfile(SettingsRulesLanesProfile(profile).Overlays) | SettingsRulesLanesBit());
+        TestEqual(label + TEXT(" mask unchanged by the migration"), prefs.Masks[profile], prefsBefore.Masks[profile]);
+    }
+    TestTrue(TEXT("active profile 2: Lanes checked"), SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::Lanes));
+    TestFalse(TEXT("active profile 2: Lanes hidden by its master off"),
+        SOLOverlay::IsShown(prefs, SOLOverlay::EOverlay::Lanes));
+
+    // Idempotent: a second migrate changes nothing, and a later Lanes choice survives another
+    const TArray<FSOLOverlayProfileSave> afterFirst = save->OverlayProfiles;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the count"), save->OverlayProfiles.Num(), afterFirst.Num());
+    for (int32 index = 0; index < FMath::Min(save->OverlayProfiles.Num(), afterFirst.Num()); ++index)
+    {
+        TestTrue(FString::Printf(TEXT("second migrate keeps entry %d"), index),
+            SettingsRulesSameOverlayMap(save->OverlayProfiles[index].Overlays, afterFirst[index].Overlays));
+    }
+    if (save->OverlayProfiles.Num() > 0)
+    {
+        save->OverlayProfiles[0].Overlays.Add(SETTINGSRULES_LANES_ID, false);
+        save->MigrateToCurrentVersion();
+        TestTrue(TEXT("a later Lanes off survives"), SettingsRulesLanesIs(save->OverlayProfiles[0].Overlays, false));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV12LanesEdgesTest,
+    "SOLTest.SettingsRules.MigrateV12LanesEdges",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The 12 -> 13 step keeps an existing Lanes value (false or true, in any key case, without adding a second key), never
+// adds an entry to a save with none, never pads the entries to five, and leaves an empty map empty even in entry 0
+bool FSOLSettingsRulesMigrateV12LanesEdgesTest::RunTest(const FString& /*parameters*/)
+{
+    // Existing values: false kept, true kept, a lower-case "lanes" = false kept as the only Lanes key
+    TMap<FString, bool> lanesOff = SettingsRulesV12RowMap(0);
+    lanesOff.Add(SETTINGSRULES_LANES_ID, false);
+    TMap<FString, bool> lanesOn = SettingsRulesV12RowMap(1);
+    lanesOn.Add(SETTINGSRULES_LANES_ID, true);
+    TMap<FString, bool> lowerOff = SettingsRulesV12RowMap(2);
+    lowerOff.Add(TEXT("lanes"), false);
+    USOLSettingsSave* existing = NewObject<USOLSettingsSave>();
+    existing->Version = 12;
+    existing->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(lanesOff));
+    existing->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(lanesOn));
+    existing->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(lowerOff));
+    existing->OverlayProfiles[1].bEnabled = true;
+    existing->OverlayProfiles[2].bEnabled = true;
+    existing->MigrateToCurrentVersion();
+    TestEqual(TEXT("existing: v12 -> current"), existing->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("existing: three entries, not padded"), existing->OverlayProfiles.Num(), 3);
+    if (existing->OverlayProfiles.Num() == 3)
+    {
+        TestTrue(TEXT("existing: Lanes false kept"),
+            SettingsRulesSameOverlayMap(existing->OverlayProfiles[0].Overlays, lanesOff));
+        TestTrue(TEXT("existing: Lanes true kept"),
+            SettingsRulesSameOverlayMap(existing->OverlayProfiles[1].Overlays, lanesOn));
+        TestEqual(TEXT("existing: lower-case key, no second Lanes key"), existing->OverlayProfiles[2].Overlays.Num(),
+            lowerOff.Num());
+        TestTrue(TEXT("existing: lower-case key keeps false"),
+            SettingsRulesLanesIs(existing->OverlayProfiles[2].Overlays, false));
+        const SOLOverlay::FOverlayPrefs prefs = existing->GetValues().OverlayPrefs;
+        TestEqual(TEXT("existing: profile 0 reads Lanes off"), prefs.Masks[0] & SettingsRulesLanesBit(), 0u);
+        TestEqual(TEXT("existing: profile 2 reads Lanes off"), prefs.Masks[2] & SettingsRulesLanesBit(), 0u);
+    }
+
+    // No profile entries: none gained
+    USOLSettingsSave* none = NewObject<USOLSettingsSave>();
+    none->Version = 12;
+    none->ActiveOverlayProfile = 0;
+    none->MigrateToCurrentVersion();
+    TestEqual(TEXT("none: v12 -> current"), none->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("none: still no entries"), none->OverlayProfiles.Num(), 0);
+    TestEqual(TEXT("none: active 0 kept"), none->ActiveOverlayProfile, 0);
+    TestTrue(TEXT("none: reads Lanes on (the default)"),
+        SOLOverlay::IsEnabled(none->GetValues().OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+
+    // Two entries, one used and one unused: still two, the unused one still empty and unused
+    USOLSettingsSave* two = NewObject<USOLSettingsSave>();
+    two->Version = 12;
+    two->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(SettingsRulesV12RowMap(0)));
+    two->OverlayProfiles.Add(FSOLOverlayProfileSave());
+    two->MigrateToCurrentVersion();
+    TestEqual(TEXT("two: not padded"), two->OverlayProfiles.Num(), 2);
+    if (two->OverlayProfiles.Num() == 2)
+    {
+        TestTrue(TEXT("two: entry 0 gains Lanes on"), SettingsRulesLanesIs(two->OverlayProfiles[0].Overlays, true));
+        TestEqual(TEXT("two: entry 1 still empty"), two->OverlayProfiles[1].Overlays.Num(), 0);
+        TestFalse(TEXT("two: entry 1 still disabled"), two->OverlayProfiles[1].bEnabled);
+        TestFalse(TEXT("two: entry 1 still unused"), SOLOverlay::IsProfileUsed(two->GetValues().OverlayPrefs, 1));
+    }
+
+    // Entry 0 with an empty map: left empty (the rule is the map, not the slot), and it still reads Lanes on
+    USOLSettingsSave* emptyFirst = NewObject<USOLSettingsSave>();
+    emptyFirst->Version = 12;
+    emptyFirst->OverlayProfiles.Add(FSOLOverlayProfileSave());
+    emptyFirst->OverlayProfiles[0].bEnabled = true;
+    emptyFirst->MigrateToCurrentVersion();
+    if (TestEqual(TEXT("empty first: one entry"), emptyFirst->OverlayProfiles.Num(), 1))
+    {
+        TestEqual(TEXT("empty first: map still empty"), emptyFirst->OverlayProfiles[0].Overlays.Num(), 0);
+    }
+    TestTrue(TEXT("empty first: reads Lanes on (the default)"),
+        SOLOverlay::IsEnabled(emptyFirst->GetValues().OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesLanesVersionsTest, "SOLTest.SettingsRules.LanesVersions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// v1, v6, v9, v10 and v11 saves reach schema 13 with Lanes = true in every non-empty profile map, empty maps left
+// empty, the entry count kept, and every earlier step's result unchanged (v6 -> 7 default profile, 9 -> 10 dust and
+// flags, 10 -> 11 menu effects, 11 -> 12 HUD glow 100%); every schema 1 to 12 ends at 13
+bool FSOLSettingsRulesLanesVersionsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+
+    // Every older schema ends at 13
+    for (int32 version = 1; version <= 12; ++version)
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        TestTrue(label + TEXT(": classified as migrate"), ClassifySaveVersion(version, SOL::Settings::SAVE_VERSION)
+            == ESaveVersionAction::Migrate);
+        USOLSettingsSave* older = NewObject<USOLSettingsSave>();
+        older->Version = version;
+        older->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": ends at 13"), older->Version, 13);
+    }
+
+    // v1 and v6: the 6 -> 7 default profile, with Lanes on
+    for (const int32 version : { 1, 6 })
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = version;
+        save->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": ends at the current schema"), save->Version, SOL::Settings::SAVE_VERSION);
+        if (TestEqual(label + TEXT(": one profile"), save->OverlayProfiles.Num(), 1))
+        {
+            TestTrue(label + TEXT(": Lanes on"), SettingsRulesLanesIs(save->OverlayProfiles[0].Overlays, true));
+            TestTrue(label + TEXT(": the default rows"), SettingsRulesSameOverlayMap(save->OverlayProfiles[0].Overlays,
+                SOLOverlay::ToSavedProfile(SOLOverlay::DefaultMask())));
+            TestTrue(label + TEXT(": enabled"), save->OverlayProfiles[0].bEnabled);
+        }
+        TestTrue(label + TEXT(": reads Lanes on"),
+            SOLOverlay::IsEnabled(save->GetValues().OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+    }
+
+    // v9: two non-empty maps (profile 1 with the dust off): 9 -> 10 still moves the dust and enables both, then each
+    // gains Lanes on
+    TMap<FString, bool> v9First;
+    v9First.Add(TEXT("Icons"), false);
+    v9First.Add(SETTINGSRULES_DUST_ID, false);
+    TMap<FString, bool> v9Second;
+    v9Second.Add(TEXT("PlanetOrbits"), true);
+    USOLSettingsSave* v9 = NewObject<USOLSettingsSave>();
+    v9->Version = 9;
+    v9->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(v9First));
+    v9->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(v9Second));
+    v9->MigrateToCurrentVersion();
+    TestEqual(TEXT("v9: ends at the current schema"), v9->Version, SOL::Settings::SAVE_VERSION);
+    TestFalse(TEXT("v9: dust from profile 1 (off)"), v9->bSpaceDust);
+    if (TestEqual(TEXT("v9: two entries"), v9->OverlayProfiles.Num(), 2))
+    {
+        TestTrue(TEXT("v9: profile 1 without SpaceDust, with Lanes"),
+            SettingsRulesSameOverlayMap(v9->OverlayProfiles[0].Overlays,
+                SettingsRulesWithLanes(SettingsRulesWithoutDust(v9First))));
+        TestTrue(TEXT("v9: profile 2 with Lanes"),
+            SettingsRulesSameOverlayMap(v9->OverlayProfiles[1].Overlays, SettingsRulesWithLanes(v9Second)));
+        TestTrue(TEXT("v9: both enabled"), v9->OverlayProfiles[0].bEnabled && v9->OverlayProfiles[1].bEnabled);
+    }
+
+    // v10 and v11: a used enabled entry, an unused empty one and a used disabled one
+    for (const int32 version : { 10, 11 })
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = version;
+        save->HudEffectsStrength = 0.4f;
+        save->HoloMenuEffects = 1.6f;
+        save->HudGlow = SETTINGSRULES_STRAY_GLOW;
+        FSOLOverlayProfileSave used = SettingsRulesOverlayProfileOf(SettingsRulesV12RowMap(0));
+        used.bEnabled = true;
+        FSOLOverlayProfileSave usedDisabled = SettingsRulesOverlayProfileOf(SettingsRulesV12RowMap(1));
+        usedDisabled.bEnabled = false;
+        save->OverlayProfiles.Add(used);
+        save->OverlayProfiles.Add(FSOLOverlayProfileSave());
+        save->OverlayProfiles.Add(usedDisabled);
+        save->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": ends at the current schema"), save->Version, SOL::Settings::SAVE_VERSION);
+        if (TestEqual(label + TEXT(": three entries, not padded"), save->OverlayProfiles.Num(), 3))
+        {
+            TestTrue(label + TEXT(": used entry gains Lanes"), SettingsRulesSameOverlayMap(
+                save->OverlayProfiles[0].Overlays, SettingsRulesWithLanes(SettingsRulesV12RowMap(0))));
+            TestEqual(label + TEXT(": unused entry stays empty"), save->OverlayProfiles[1].Overlays.Num(), 0);
+            TestTrue(label + TEXT(": used disabled entry gains Lanes"), SettingsRulesSameOverlayMap(
+                save->OverlayProfiles[2].Overlays, SettingsRulesWithLanes(SettingsRulesV12RowMap(1))));
+            TestFalse(label + TEXT(": used disabled entry stays disabled"), save->OverlayProfiles[2].bEnabled);
+        }
+        TestEqual(label + TEXT(": HUD glow 100% from 11 -> 12"), save->HudGlow, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+        const float expectedMenu = version == 10 ? 0.4f : 1.6f;
+        TestEqual(label + TEXT(": menu effects as 10 -> 11 leaves them"), save->HoloMenuEffects, expectedMenu,
+            SETTINGSRULES_TEST_TOLERANCE);
+        const SOLOverlay::FOverlayPrefs prefs = save->GetValues().OverlayPrefs;
+        TestFalse(label + TEXT(": the unused slot reads unused"), SOLOverlay::IsProfileUsed(prefs, 1));
+        TestTrue(label + TEXT(": the used disabled slot reads used"), SOLOverlay::IsProfileUsed(prefs, 2));
+    }
+
+    // The v11 chain also through the full v11 save: the glow ends at 1
+    USOLSettingsSave* fullV11 = SettingsRulesFullV11Save();
+    fullV11->MigrateToCurrentVersion();
+    TestEqual(TEXT("full v11: ends at 13"), fullV11->Version, 13);
+    TestEqual(TEXT("full v11: HUD glow 1"), fullV11->HudGlow, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    for (int32 index = 0; index < fullV11->OverlayProfiles.Num(); ++index)
+    {
+        TestTrue(FString::Printf(TEXT("full v11: profile %d Lanes on"), index + 1),
+            SettingsRulesLanesIs(fullV11->OverlayProfiles[index].Overlays, true));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesLanesCurrentTest, "SOLTest.SettingsRules.LanesCurrentAndRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A v13 save is left alone by MigrateToCurrentVersion (no Lanes key added to a map without one); SetValues writes the
+// Lanes key in every used profile and none in an unused one, and GetValues reads it back
+bool FSOLSettingsRulesLanesCurrentTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLOverlay;
+
+    // A v13 save: untouched, a map without Lanes stays without it, an empty map stays empty
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = 13;
+    const TMap<FString, bool> noLanes = SettingsRulesV12RowMap(0);
+    current->OverlayProfiles.Add(SettingsRulesOverlayProfileOf(noLanes));
+    current->OverlayProfiles.Add(FSOLOverlayProfileSave());
+    current->HudGlow = SETTINGSRULES_STRAY_GLOW;
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), current->Version, 13);
+    if (TestEqual(TEXT("current: two entries"), current->OverlayProfiles.Num(), 2))
+    {
+        TestTrue(TEXT("current: map unchanged"), SettingsRulesSameOverlayMap(current->OverlayProfiles[0].Overlays,
+            noLanes));
+        TestEqual(TEXT("current: empty map stays empty"), current->OverlayProfiles[1].Overlays.Num(), 0);
+    }
+    TestEqual(TEXT("current: glow kept"), current->HudGlow, SETTINGSRULES_STRAY_GLOW, SETTINGSRULES_TEST_TOLERANCE);
+
+    // SetValues / GetValues: Lanes off in profile 0, on in enabled profile 2, profiles 1, 3 and 4 unused
+    SOLSettingsModel::FSettingsValues values;
+    FOverlayPrefs& prefs = values.OverlayPrefs;
+    prefs = MakeDefaultPrefs();
+    SetEnabled(prefs, EOverlay::Lanes, false);
+    SetProfileEnabled(prefs, 2, true);
+    SetActiveProfile(prefs, 2);
+    SetEnabled(prefs, EOverlay::Lanes, true);
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    save->SetValues(values);
+    if (TestEqual(TEXT("SetValues: five entries"), save->OverlayProfiles.Num(), SOL::Overlay::MAX_PROFILES))
+    {
+        const TArray<FSOLOverlayProfileSave>& stored = save->OverlayProfiles;
+        TestTrue(TEXT("profile 0: Lanes written off"), SettingsRulesLanesIs(stored[0].Overlays, false));
+        TestTrue(TEXT("profile 2: Lanes written on"), SettingsRulesLanesIs(stored[2].Overlays, true));
+        TestEqual(TEXT("profile 0: sixteen keys"), stored[0].Overlays.Num(), OVERLAY_COUNT);
+        for (const int32 unused : { 1, 3, 4 })
+        {
+            TestEqual(FString::Printf(TEXT("profile %d: unused, empty map"), unused), stored[unused].Overlays.Num(),
+                0);
+        }
+    }
+    const FOverlayPrefs read = save->GetValues().OverlayPrefs;
+    TestTrue(TEXT("prefs round trip"), AreEqual(read, prefs));
+    TestEqual(TEXT("read: profile 0 Lanes off"), read.Masks[0] & SettingsRulesLanesBit(), 0u);
+    TestEqual(TEXT("read: profile 2 Lanes on"), read.Masks[2] & SettingsRulesLanesBit(), SettingsRulesLanesBit());
+    TestTrue(TEXT("read: active profile 2 shows Lanes"), IsShown(read, EOverlay::Lanes));
+    TestFalse(TEXT("read: profiles 1, 3 and 4 unused"),
+        IsProfileUsed(read, 1) || IsProfileUsed(read, 3) || IsProfileUsed(read, 4));
+    TestTrue(TEXT("values round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesLanesSaveOwedTest, "SOLTest.SettingsRules.LanesSaveOwed",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A Lanes toggle owes a write like any row (SDD 38 D5): once owes one, twice does not; a Lanes change in a used but
+// disabled profile owes one too, and one in an unused slot does not
+bool FSOLSettingsRulesLanesSaveOwedTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLSettingsRules::IsSaveOwed;
+    using namespace SOLOverlay;
+
+    // The active profile
+    const FOverlayPrefs written = MakeDefaultPrefs();
+    FOverlayPrefs applied = written;
+    TestFalse(TEXT("after load: not owed"), IsSaveOwed(false, applied, written));
+    Toggle(applied, EOverlay::Lanes);
+    TestTrue(TEXT("after one Lanes toggle: owed"), IsSaveOwed(false, applied, written));
+    Toggle(applied, EOverlay::Lanes);
+    TestFalse(TEXT("after toggling Lanes back: not owed"), IsSaveOwed(false, applied, written));
+
+    // A used but disabled profile
+    FOverlayPrefs usedDisabled = MakeDefaultPrefs();
+    SetProfileEnabled(usedDisabled, 3, true);
+    SetProfileEnabled(usedDisabled, 3, false);
+    FOverlayPrefs usedDisabledEdited = usedDisabled;
+    usedDisabledEdited.Masks[3] ^= SettingsRulesLanesBit();
+    TestTrue(TEXT("Lanes in a used disabled profile: owed"), IsSaveOwed(false, usedDisabledEdited, usedDisabled));
+
+    // An unused slot
+    FOverlayPrefs unusedEdited = written;
+    unusedEdited.Masks[4] ^= SettingsRulesLanesBit();
+    TestFalse(TEXT("Lanes in an unused slot: not owed"), IsSaveOwed(false, unusedEdited, written));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesLanesDiskTest, "SOLTest.SettingsRules.LanesDiskRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The full schema 12 file loads back as schema 12 (its unused entries' empty maps intact) and migrates with Lanes on
+// in every used entry, the unused ones still empty, and every other value intact
+bool FSOLSettingsRulesLanesDiskTest::RunTest(const FString& /*parameters*/)
+{
+    const FString slotName = TEXT("SOLTest_Lanes");
+    constexpr int32 userIndex = 0;
+
+    // Start clean, and always remove the test slot when the test ends, whichever path it takes
+    UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    ON_SCOPE_EXIT
+    {
+        UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    };
+
+    USOLSettingsSave* written = SettingsRulesFullV12Save();
+    if (!TestTrue(TEXT("schema 12 save written"), UGameplayStatics::SaveGameToSlot(written, slotName, userIndex)))
+    {
+        return false;
+    }
+    USOLSettingsSave* loaded = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("schema 12 save loaded"), loaded))
+    {
+        return false;
+    }
+    TestEqual(TEXT("loaded as schema 12"), loaded->Version, 12);
+    loaded->MigrateToCurrentVersion();
+    TestEqual(TEXT("migrated to the current schema"), loaded->Version, SOL::Settings::SAVE_VERSION);
+    SettingsRulesCheckV12Scalars(*this, loaded, TEXT("disk"));
+    TestEqual(TEXT("active overlay profile kept"), loaded->ActiveOverlayProfile, SETTINGSRULES_LANES_ACTIVE);
+    TestTrue(TEXT("key overrides kept"), SettingsRulesSameOverrides(loaded->KeyOverrides, written->KeyOverrides));
+    if (TestEqual(TEXT("five entries kept"), loaded->OverlayProfiles.Num(), SETTINGSRULES_LANES_PROFILES))
+    {
+        for (int32 index = 0; index < SETTINGSRULES_LANES_PROFILES; ++index)
+        {
+            const TMap<FString, bool>& overlays = loaded->OverlayProfiles[index].Overlays;
+            const FString label = FString::Printf(TEXT("entry %d"), index);
+            if (SettingsRulesLanesSlotUsed(index))
+            {
+                TestTrue(label + TEXT(": old map plus Lanes"), SettingsRulesSameOverlayMap(overlays,
+                    SettingsRulesWithLanes(SettingsRulesLanesProfile(index).Overlays)));
+            }
+            else
+            {
+                TestEqual(label + TEXT(": still empty"), overlays.Num(), 0);
+            }
+        }
+    }
+    TestEqual(TEXT("read: used profiles {0, 2, 3}"),
+        static_cast<int32>(loaded->GetValues().OverlayPrefs.UsedProfiles & SOL::Overlay::ALL_PROFILES_MASK), 0x0D);
     return true;
 }
 

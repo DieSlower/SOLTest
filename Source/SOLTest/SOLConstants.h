@@ -1830,8 +1830,9 @@ namespace SOL
         // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
         // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43;
         // 10: overlay profiles with their enabled, master and orbit-lines flags, the global space dust and the
-        // RShift+O profile cycle, SDD 34; 11: the hologram menu effects strength, SDD 42; 12: the HUD glow, SDD 37)
-        inline constexpr int32 SAVE_VERSION = 12;
+        // RShift+O profile cycle, SDD 34; 11: the hologram menu effects strength, SDD 42; 12: the HUD glow, SDD 37;
+        // 13: the Lanes overlay row written into every used profile, SDD 38)
+        inline constexpr int32 SAVE_VERSION = 13;
         // The save schema that introduced the current default key layout (issue #34: O / Alt+O / Ctrl+O / RShift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 10;
@@ -2513,6 +2514,31 @@ namespace SOL
         FLinearColor(0.25f, 0.6f, 1.0f),                               // Faction 0: blue
         FLinearColor(1.0f, 0.4f, 0.2f),                                // Faction 1: orange
     };
+
+    // NPC lane lines (SDD 38 sections 4.4-4.7, issue #38): each lane with traffic is two dashed hologram lines
+    // (outbound A -> B on the right of its travel, inbound on the left), faded out close up where the ships resolve.
+    // SOLNpcLaneMath is the CPU mirror of the lane material; a change here must change the shader too
+    inline constexpr double NPC_LANE_FADE_NEAR_RADII = 100.0;          // Line gone at and inside this many lane radii
+    inline constexpr double NPC_LANE_FADE_FAR_RADII = 400.0;           // Line full at and past this many (log-linear)
+    inline constexpr int32 NPC_LANE_TRAFFIC_LOW = 100;                 // Ships per lane at traffic weight 0...
+    inline constexpr int32 NPC_LANE_TRAFFIC_HIGH = 100000;             // ...and at weight 1 (log-linear between)
+    inline constexpr double NPC_LANE_WIDTH_MIN_PX = 1.0;               // Each line's width at weight 0 / 1, in pixels
+    inline constexpr double NPC_LANE_WIDTH_MAX_PX = 2.5;               // at the reference height (scaled with it)
+    inline constexpr double NPC_LANE_GAP_PX = 1.5;                     // Gap between the two lines' cores (scaled)
+    inline constexpr double NPC_LANE_REFERENCE_HEIGHT_PX = 1080.0;     // Viewport height the pixel values are for
+    inline constexpr double NPC_LANE_BRIGHTNESS_MIN = 0.35;            // Line brightness at weight 0...
+    inline constexpr double NPC_LANE_BRIGHTNESS_MAX = 1.0;             // ...and at weight 1
+    inline constexpr int32 NPC_LANE_DASH_BASE_COUNT = 64;              // Level-0 dash periods per lane
+    inline constexpr double NPC_LANE_DASH_DUTY = 0.5;                  // Lit fraction of a dash period
+    inline constexpr double NPC_LANE_DASH_FLOW_PERIODS_PER_S = 0.75;   // Dash flow, periods per real second (any zoom)
+    inline constexpr double NPC_LANE_GLOW_PAD_PX = 12.0;               // Ribbon pad past the line for the glow (scaled)
+    inline constexpr int32 NPC_LANE_SEGMENTS = 64;                     // Ribbon segments per line
+    inline constexpr FColor NPC_LANE_OUTBOUND_COLOR = FColor(0x9F, 0xD6, 0xD0);   // Teal-white, sRGB (A -> B)
+    inline constexpr FColor NPC_LANE_INBOUND_COLOR = FColor(0x3F, 0xD0, 0xE0);    // Cyan, sRGB (B -> A)
+    static_assert(NPC_LANE_FADE_FAR_RADII > NPC_LANE_FADE_NEAR_RADII && NPC_LANE_FADE_NEAR_RADII > 1.0,
+        "the lane fade band runs outward from the near radii");
+    static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,
+        "the traffic weight divides by log(HIGH / LOW)");
 
     // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
     inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist

@@ -886,6 +886,59 @@ bool FSOLSettingsModelOverlayProfilesEqualTest::RunTest(const FString& /*paramet
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelOverlayLanesTest, "SOLTest.SettingsModel.OverlayLanes",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 (SDD 38 D5, section 4.9): the default values have the Lanes row on; a Lanes edit is a settings change like
+// any row (in the active profile and in a used but disabled one), applied in memory by SetAppliedOverlayPrefs
+bool FSOLSettingsModelOverlayLanesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    const uint32 lanesBit = 1u << static_cast<uint32>(SOLOverlay::EOverlay::Lanes);
+
+    // On by default
+    const FSettingsValues defaults;
+    TestTrue(TEXT("Lanes on by default"), SOLOverlay::IsEnabled(defaults.OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+    TestTrue(TEXT("Sanitized keeps Lanes on"),
+        SOLOverlay::IsEnabled(Sanitized(defaults).OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+
+    // A Lanes edit in the active profile differs, and toggling back is equal again
+    FSettingsValues base = SettingsModelCustomValues();
+    SOLOverlay::SetProfileEnabled(base.OverlayPrefs, 1, true);
+    FSettingsValues changed = base;
+    SOLOverlay::Toggle(changed.OverlayPrefs, SOLOverlay::EOverlay::Lanes);
+    TestFalse(TEXT("A Lanes edit differs"), AreEqual(base, changed));
+    SOLOverlay::Toggle(changed.OverlayPrefs, SOLOverlay::EOverlay::Lanes);
+    TestTrue(TEXT("Toggling back is equal"), AreEqual(base, changed));
+
+    // A Lanes edit in a used but disabled profile differs too
+    FSettingsValues usedDisabled = base;
+    SOLOverlay::SetProfileEnabled(usedDisabled.OverlayPrefs, 3, true);
+    SOLOverlay::SetProfileEnabled(usedDisabled.OverlayPrefs, 3, false);
+    FSettingsValues usedDisabledEdited = usedDisabled;
+    usedDisabledEdited.OverlayPrefs.Masks[3] ^= lanesBit;
+    TestFalse(TEXT("A Lanes edit in a used disabled profile differs"), AreEqual(usedDisabled, usedDisabledEdited));
+
+    // An unused slot's Lanes bit is ignored
+    FSettingsValues unusedEdited = base;
+    unusedEdited.OverlayPrefs.Masks[4] ^= lanesBit;
+    TestTrue(TEXT("An unused slot's Lanes bit is ignored"), AreEqual(base, unusedEdited));
+
+    // Applied in memory to Saved and Pending together, once
+    FSettingsModel model = MakeModel(FSettingsValues());
+    SOLOverlay::FOverlayPrefs lanesOff = SOLOverlay::MakeDefaultPrefs();
+    SOLOverlay::SetEnabled(lanesOff, SOLOverlay::EOverlay::Lanes, false);
+    TestTrue(TEXT("Lanes off applies"), SetAppliedOverlayPrefs(model, lanesOff));
+    TestFalse(TEXT("Saved Lanes off"), SOLOverlay::IsEnabled(model.Saved.OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+    TestFalse(TEXT("Pending Lanes off"),
+        SOLOverlay::IsEnabled(model.Pending.OverlayPrefs, SOLOverlay::EOverlay::Lanes));
+    TestFalse(TEXT("The same prefs again change nothing"), SetAppliedOverlayPrefs(model, lanesOff));
+    TestFalse(TEXT("Not dirty (Saved and Pending moved together)"), IsDirty(model));
+    return true;
+}
+
 // Issue #32 Chase Down safety margin in the settings model, written against the SDD 32 section 3.10 contract before
 // the production code
 

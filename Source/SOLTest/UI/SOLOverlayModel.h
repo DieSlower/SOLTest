@@ -34,6 +34,7 @@ namespace SOLOverlay
         MoonOrbits,
         OtherOrbits,        // Dwarf-planet orbits and the transient line of a target without a permanent line
         ShipsOnRadar,       // NPC ship contacts on the radar
+        Lanes,              // NPC lane lines (issue #38, SDD 38 D17)
         Darkening,          // Distance darkening of far icons
         Count,
     };

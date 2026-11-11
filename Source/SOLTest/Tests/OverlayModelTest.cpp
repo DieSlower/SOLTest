@@ -13,7 +13,8 @@
 // Tests for the issue #22 overlay model (SDD 22 section 2.3), written against the contract in
 // Docs/Plans/22-overlay-icons-and-interaction-menus-plan.md before the production code existed. Rewritten for the
 // issue #34 overlay profiles (SDD 34 sections 2, 4 and 11) from that contract: Space Dust is no longer a row, and each
-// profile carries its own enabled / used state, master O state and Alt+O orbit-lines switch.
+// profile carries its own enabled / used state, master O state and Alt+O orbit-lines switch. Extended for the issue #38
+// Lanes row (SDD 38 section 6 case 17) from that contract: 16 rows, Lanes at index 14, Darkening last at index 15.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -32,8 +33,12 @@ namespace
 
     constexpr int32 OVERLAYMODEL_ICONS = static_cast<int32>(EOverlay::Icons);
 
-    // The row count after issue #34 removed Space Dust (16 rows under issue #43)
-    constexpr int32 OVERLAYMODEL_ROW_COUNT = 15;
+    // The row count after issue #34 removed Space Dust and issue #38 added Lanes (SDD 38 D17)
+    constexpr int32 OVERLAYMODEL_ROW_COUNT = 16;
+
+    // The Lanes row's and the Darkening row's indices (SDD 38 D17: Lanes between Ships on Radar and Darkening)
+    constexpr int32 OVERLAYMODEL_LANES_INDEX = 14;
+    constexpr int32 OVERLAYMODEL_DARKENING_INDEX = 15;
 
     // The profile mask with every one of the five profiles set
     constexpr int32 OVERLAYMODEL_ALL_PROFILES = 0x1F;
@@ -54,6 +59,7 @@ namespace
         { EOverlay::MoonOrbits, TEXT("MoonOrbits"), TEXT("Moon Orbits"), true, INDEX_NONE },
         { EOverlay::OtherOrbits, TEXT("OtherOrbits"), TEXT("Other Orbits"), true, INDEX_NONE },
         { EOverlay::ShipsOnRadar, TEXT("ShipsOnRadar"), TEXT("Ships on Radar"), true, INDEX_NONE },
+        { EOverlay::Lanes, TEXT("Lanes"), TEXT("Lanes"), true, INDEX_NONE },
         { EOverlay::Darkening, TEXT("Darkening"), TEXT("Darkening"), true, INDEX_NONE },
     };
 
@@ -111,7 +117,7 @@ bool FSOLOverlayModelTableTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLOverlay;
     TestEqual(TEXT("row count"), OVERLAY_COUNT, static_cast<int32>(UE_ARRAY_COUNT(OVERLAYMODEL_ROWS)));
-    TestEqual(TEXT("fifteen rows"), OVERLAY_COUNT, OVERLAYMODEL_ROW_COUNT);
+    TestEqual(TEXT("sixteen rows"), OVERLAY_COUNT, OVERLAYMODEL_ROW_COUNT);
     for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(OVERLAYMODEL_ROWS)); ++index)
     {
         const FOverlayModelExpectedRow& expected = OVERLAYMODEL_ROWS[index];
@@ -141,17 +147,18 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLOverlayModelNoSpaceDustTest, "SOLTest.Overl
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Issue #34 (SDD 34 D5, section 4.1): Space Dust is no longer an overlay row, so Darkening is the last row again
+// Issue #34 (SDD 34 D5, section 4.1): Space Dust is no longer an overlay row, so Darkening is the last row again;
+// issue #38 (SDD 38 D17) puts Lanes before it, so Darkening moves to index 15
 bool FSOLOverlayModelNoSpaceDustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLOverlay;
     TestEqual(TEXT("Darkening is the last row"), static_cast<int32>(EOverlay::Darkening), OVERLAY_COUNT - 1);
-    TestEqual(TEXT("Darkening at index 14"), static_cast<int32>(EOverlay::Darkening), 14);
+    TestEqual(TEXT("Darkening at index 15"), static_cast<int32>(EOverlay::Darkening), OVERLAYMODEL_DARKENING_INDEX);
     TestEqual(TEXT("Darkening id"), FString(GetDef(OVERLAY_COUNT - 1).Id), FString(TEXT("Darkening")));
     TestEqual(TEXT("SpaceDust is not an id"), FindById(TEXT("SpaceDust")), static_cast<int32>(INDEX_NONE));
     TestEqual(TEXT("spacedust is not an id"), FindById(TEXT("spacedust")), static_cast<int32>(INDEX_NONE));
     TestEqual(TEXT("Space Dust is not an id"), FindById(TEXT("Space Dust")), static_cast<int32>(INDEX_NONE));
-    TestEqual(TEXT("fifteen valid bits"), AllBitsMask(), 0x7FFFu);
+    TestEqual(TEXT("sixteen valid bits"), AllBitsMask(), 0xFFFFu);
     return true;
 }
 
@@ -1040,7 +1047,7 @@ bool FSOLOverlayModelSavedProfileTest::RunTest(const FString& /*parameters*/)
         | OverlayModelBit(EOverlay::AsteroidOrbits) | OverlayModelBit(EOverlay::Darkening);
     const TMap<FString, bool> saved = ToSavedProfile(mask);
     TestEqual(TEXT("one entry per row"), saved.Num(), OVERLAY_COUNT);
-    TestEqual(TEXT("fifteen entries"), saved.Num(), OVERLAYMODEL_ROW_COUNT);
+    TestEqual(TEXT("sixteen entries"), saved.Num(), OVERLAYMODEL_ROW_COUNT);
     TestNull(TEXT("no SpaceDust entry"), saved.Find(TEXT("SpaceDust")));
     for (const FOverlayModelExpectedRow& row : OVERLAYMODEL_ROWS)
     {
@@ -1090,6 +1097,140 @@ bool FSOLOverlayModelSavedProfileTest::RunTest(const FString& /*parameters*/)
     TMap<FString, bool> dustOnly;
     dustOnly.Add(TEXT("spacedust"), false);
     TestEqual(TEXT("only a spacedust key -> default"), FromSavedProfile(dustOnly), DefaultMask());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLOverlayModelLanesRowTest, "SOLTest.OverlayModel.LanesRow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 (SDD 38 section 4.9, D5, D11, D17): the Lanes row is a top-level row, on by default, between Ships on
+// Radar and Darkening, persisted by its id, governed by the master O, per profile and copied on first enable
+bool FSOLOverlayModelLanesRowTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLOverlay;
+    const uint32 lanesBit = OverlayModelBit(EOverlay::Lanes);
+
+    // The row itself and its place in the table
+    TestEqual(TEXT("sixteen rows"), OVERLAY_COUNT, 16);
+    TestEqual(TEXT("Lanes at index 14"), static_cast<int32>(EOverlay::Lanes), OVERLAYMODEL_LANES_INDEX);
+    TestEqual(TEXT("Lanes right after Ships on Radar"), static_cast<int32>(EOverlay::Lanes),
+        static_cast<int32>(EOverlay::ShipsOnRadar) + 1);
+    TestEqual(TEXT("Darkening right after Lanes"), static_cast<int32>(EOverlay::Darkening),
+        static_cast<int32>(EOverlay::Lanes) + 1);
+    TestEqual(TEXT("Darkening still last"), static_cast<int32>(EOverlay::Darkening), OVERLAY_COUNT - 1);
+    const FOverlayDef& def = GetDef(OVERLAYMODEL_LANES_INDEX);
+    TestEqual(TEXT("Lanes id"), FString(def.Id), FString(TEXT("Lanes")));
+    TestEqual(TEXT("Lanes label"), FString(def.Label), FString(TEXT("Lanes")));
+    TestTrue(TEXT("Lanes on by default"), def.bDefaultOn);
+    TestEqual(TEXT("Lanes is top level"), def.Parent, static_cast<int32>(INDEX_NONE));
+    TestEqual(TEXT("FindById lanes"), FindById(TEXT("lanes")), OVERLAYMODEL_LANES_INDEX);
+    TestEqual(TEXT("FindById Lanes"), FindById(TEXT("Lanes")), OVERLAYMODEL_LANES_INDEX);
+    TestEqual(TEXT("the label NPC Lanes is not an id"), FindById(TEXT("NPC Lanes")), static_cast<int32>(INDEX_NONE));
+
+    // On in the default mask and in every mask of the default prefs
+    TestTrue(TEXT("Lanes in DefaultMask"), (DefaultMask() & lanesBit) != 0u);
+    TestTrue(TEXT("Lanes in AllBitsMask"), (AllBitsMask() & lanesBit) != 0u);
+    const FOverlayPrefs defaults = MakeDefaultPrefs();
+    for (int32 slot = 0; slot < SOL::Overlay::MAX_PROFILES; ++slot)
+    {
+        TestTrue(FString::Printf(TEXT("default prefs slot %d has Lanes"), slot),
+            (defaults.Masks[slot] & lanesBit) != 0u);
+    }
+    TestTrue(TEXT("Lanes enabled in the default prefs"), IsEnabled(defaults, EOverlay::Lanes));
+
+    // Saved by id: 16 keys including Lanes, with the bit's state
+    const TMap<FString, bool> savedOn = ToSavedProfile(DefaultMask());
+    TestEqual(TEXT("sixteen saved keys"), savedOn.Num(), OVERLAYMODEL_ROW_COUNT);
+    const bool* lanesOn = savedOn.Find(TEXT("Lanes"));
+    if (TestNotNull(TEXT("Lanes key saved"), lanesOn))
+    {
+        TestTrue(TEXT("Lanes saved on"), *lanesOn);
+    }
+    const TMap<FString, bool> savedOff = ToSavedProfile(DefaultMask() & ~lanesBit);
+    const bool* lanesOff = savedOff.Find(TEXT("Lanes"));
+    if (TestNotNull(TEXT("Lanes key saved when off"), lanesOff))
+    {
+        TestFalse(TEXT("Lanes saved off"), *lanesOff);
+    }
+
+    // A v12 profile: the 15 pre-#38 keys (literal ids), no Lanes key -> Lanes on, every other row as in the map
+    TMap<FString, bool> v12;
+    v12.Add(TEXT("Icons"), true);
+    v12.Add(TEXT("IconStars"), false);
+    v12.Add(TEXT("IconPlanets"), true);
+    v12.Add(TEXT("IconMoons"), false);
+    v12.Add(TEXT("IconDwarfs"), true);
+    v12.Add(TEXT("IconAsteroids"), false);
+    v12.Add(TEXT("IconRings"), true);
+    v12.Add(TEXT("IconShips"), false);
+    v12.Add(TEXT("IconTargets"), true);
+    v12.Add(TEXT("PlanetOrbits"), false);
+    v12.Add(TEXT("AsteroidOrbits"), true);
+    v12.Add(TEXT("MoonOrbits"), false);
+    v12.Add(TEXT("OtherOrbits"), true);
+    v12.Add(TEXT("ShipsOnRadar"), false);
+    v12.Add(TEXT("Darkening"), false);
+    TestEqual(TEXT("the v12 map holds fifteen keys"), v12.Num(), 15);           // Frozen: the rows a v12 file wrote
+    uint32 expectedV12 = lanesBit;
+    for (const TPair<FString, bool>& entry : v12)
+    {
+        const int32 row = FindById(entry.Key);
+        if (TestTrue(FString::Printf(TEXT("v12 key %s is a row"), *entry.Key), row != INDEX_NONE) && entry.Value)
+        {
+            expectedV12 |= 1u << static_cast<uint32>(row);
+        }
+    }
+    TestEqual(TEXT("v12 profile: Lanes on, the rest as saved"), FromSavedProfile(v12), expectedV12);
+
+    // Only Lanes = false: Lanes off, every other row its default
+    TMap<FString, bool> onlyOff;
+    onlyOff.Add(TEXT("Lanes"), false);
+    TestEqual(TEXT("{Lanes: false}"), FromSavedProfile(onlyOff), DefaultMask() & ~lanesBit);
+    TMap<FString, bool> lowerOff;
+    lowerOff.Add(TEXT("lanes"), false);
+    TestEqual(TEXT("{lanes: false} (case-insensitive)"), FromSavedProfile(lowerOff), DefaultMask() & ~lanesBit);
+
+    // Shown only with the active profile's master on and the row checked (D11)
+    FOverlayPrefs prefs = MakeDefaultPrefs();
+    TestTrue(TEXT("shown by default"), IsShown(prefs, EOverlay::Lanes));
+    SetMasterOn(prefs, false);
+    TestFalse(TEXT("hidden with the master off"), IsShown(prefs, EOverlay::Lanes));
+    TestTrue(TEXT("still checked with the master off"), IsEnabled(prefs, EOverlay::Lanes));
+    SetMasterOn(prefs, true);
+    TestTrue(TEXT("shown again with the master on"), IsShown(prefs, EOverlay::Lanes));
+    SetEnabled(prefs, EOverlay::Lanes, false);
+    TestFalse(TEXT("hidden when unchecked"), IsShown(prefs, EOverlay::Lanes));
+    SetEnabled(prefs, EOverlay::Lanes, true);
+
+    // Not an orbit row, never an orbit line
+    TestFalse(TEXT("Lanes is no orbit overlay"), IsOrbitOverlay(EOverlay::Lanes));
+    TestFalse(TEXT("Lanes is no orbit line"), IsOrbitShown(prefs, EOverlay::Lanes));
+
+    // Per profile: toggling Lanes in profile 2 leaves profiles 0 and 1 alone
+    FOverlayPrefs perProfile = MakeDefaultPrefs();
+    SetProfileEnabled(perProfile, 1, true);
+    SetProfileEnabled(perProfile, 2, true);
+    TestTrue(TEXT("activate 2"), SetActiveProfile(perProfile, 2));
+    TestFalse(TEXT("toggle Lanes off in 2"), Toggle(perProfile, EOverlay::Lanes));
+    TestEqual(TEXT("profile 2 lost the Lanes bit"), perProfile.Masks[2] & lanesBit, 0u);
+    TestEqual(TEXT("profile 0 keeps the Lanes bit"), perProfile.Masks[0] & lanesBit, lanesBit);
+    TestEqual(TEXT("profile 1 keeps the Lanes bit"), perProfile.Masks[1] & lanesBit, lanesBit);
+    SetActiveProfile(perProfile, 1);
+    TestTrue(TEXT("profile 1 shows Lanes"), IsShown(perProfile, EOverlay::Lanes));
+    SetActiveProfile(perProfile, 2);
+    TestFalse(TEXT("profile 2 hides Lanes"), IsShown(perProfile, EOverlay::Lanes));
+
+    // The first enable copies profile 0's Lanes bit, off or on
+    FOverlayPrefs copyOff = MakeDefaultPrefs();
+    SetEnabled(copyOff, EOverlay::Lanes, false);
+    TestTrue(TEXT("enable 3"), SetProfileEnabled(copyOff, 3, true));
+    TestEqual(TEXT("copied Lanes off"), copyOff.Masks[3] & lanesBit, 0u);
+    FOverlayPrefs copyOn = MakeDefaultPrefs();
+    copyOn.Masks[4] = 0u;
+    TestTrue(TEXT("enable 4"), SetProfileEnabled(copyOn, 4, true));
+    TestEqual(TEXT("copied Lanes on"), copyOn.Masks[4] & lanesBit, lanesBit);
     return true;
 }
 

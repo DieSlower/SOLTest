@@ -27,6 +27,7 @@ namespace
         { TEXT("MoonOrbits"), TEXT("Moon Orbits"), true, INDEX_NONE },
         { TEXT("OtherOrbits"), TEXT("Other Orbits"), true, INDEX_NONE },
         { TEXT("ShipsOnRadar"), TEXT("Ships on Radar"), true, INDEX_NONE },
+        { TEXT("Lanes"), TEXT("Lanes"), true, INDEX_NONE },
         { TEXT("Darkening"), TEXT("Darkening"), true, INDEX_NONE },
     };
     static_assert(UE_ARRAY_COUNT(OVERLAY_DEFS) == SOLOverlay::OVERLAY_COUNT, "one definition per overlay");

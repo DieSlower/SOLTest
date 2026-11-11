@@ -1,0 +1,111 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+#pragma once
+
+#include "Npc/SOLNpcRail.h"
+
+#include "CoreMinimal.h"
+
+// One lane of the per-frame lane frame (SDD 38 section 4.2): its endpoints (the two body centres, universe metres),
+// radius, ship count, traffic weight and whether it is drawn (at least one ship and both bodies resolved)
+struct FSOLNpcLaneEntry
+{
+    FVector3d A = FVector3d::ZeroVector;     // Body A's centre (outbound traffic leaves it)
+    FVector3d B = FVector3d::ZeroVector;     // Body B's centre
+    double RadiusM = 0.0;                    // Lane radius (FSOLNpcGroupTable::LaneRadiusM)
+    int32 ShipCount = 0;                     // Lane rails of the population
+    double TrafficWeight = 0.0;              // SOLNpcLane::LaneTrafficWeight(ShipCount)
+    bool bDrawn = false;                     // Ships on it and both bodies resolved
+};
+
+// The lanes of one frame, in lane order (global groups 0 .. LaneCount - 1). Built each frame by
+// SOLNpcLane::BuildLaneFrame without allocating once sized; the extension point for issue #49 (SDD 38 section 4.10)
+struct FSOLNpcLaneFrame
+{
+    TArray<FSOLNpcLaneEntry> Lanes;
+};
+
+// Pure math of the NPC lane lines (SDD 38 sections 4.2-4.7, contract section 6): the close-up fade and the lane ships'
+// point crossfade, width and brightness from the ship count, the two lines' screen offsets and glow profile, the
+// flowing world-anchored dashes, the analytic lane parameter under a pixel, the "keep right" side rule, the ship
+// histogram and the per-frame lane frame. The lane and point materials' HLSL mirrors these functions; a change to one
+// must change the other
+namespace SOLNpcLane
+{
+    // Returns the line's close-up fade: 0 at and inside NPC_LANE_FADE_NEAR_RADII x R (also for d <= 0), 1 at and past
+    // NPC_LANE_FADE_FAR_RADII x R, linear in log d between; a NaN distance or a NaN, non-positive or infinite radius
+    // returns 1 (no close-up band, the line stays)
+    SOLTEST_API double LaneLineFade(double distanceM, double laneRadiusM);
+
+    // Returns a lane ship's far-point alpha: 1 - LaneLineFade(d, R) while the lanes are shown (they sum to 1), else 1
+    SOLTEST_API double LaneShipPointAlpha(double distanceM, double laneRadiusM, bool bLanesShown);
+
+    // Returns the traffic weight of a lane's ship count: log-linear from NPC_LANE_TRAFFIC_LOW (0) to
+    // NPC_LANE_TRAFFIC_HIGH (1), clamped; 0 for a count <= 0
+    SOLTEST_API double LaneTrafficWeight(int32 shipCount);
+
+    // Returns whether a lane with this ship count is drawn (at least one ship)
+    SOLTEST_API bool IsLaneDrawn(int32 shipCount);
+
+    // Returns each line's width: lerp(NPC_LANE_WIDTH_MIN_PX, NPC_LANE_WIDTH_MAX_PX, clamped weight, NaN as 0) scaled by
+    // the viewport height against NPC_LANE_REFERENCE_HEIGHT_PX (a non-positive or non-finite height reads as it)
+    SOLTEST_API double LaneLineWidthPx(double weight, double viewportHeightPx);
+
+    // Returns the line brightness: lerp(NPC_LANE_BRIGHTNESS_MIN, NPC_LANE_BRIGHTNESS_MAX, clamped weight, NaN as 0)
+    SOLTEST_API double LaneLineBrightness(double weight);
+
+    // Returns each line's centre offset from the lane's projected centre line: 0.5 x (width + scaled NPC_LANE_GAP_PX),
+    // so the two cores never overlap (a bad height reads as the reference)
+    SOLTEST_API double LaneLineCenterOffsetPx(double widthPx, double viewportHeightPx);
+
+    // Returns a line ribbon's half extent (SDD 38 D25): its edge where the height-scaled glow has its reference-height
+    // pad value, max(w, 1) / 2 - HUD_GLOW_CORE_HALF_PX + (NPC_LANE_GLOW_PAD_PX + HUD_GLOW_CORE_HALF_PX) x scale, never
+    // less than max(w, 1) / 2 (max(w, 1) / 2 + NPC_LANE_GLOW_PAD_PX at the reference; a bad height reads as it)
+    SOLTEST_API double LaneRibbonHalfExtentPx(double widthPx, double viewportHeightPx);
+
+    // Returns the profile across one line: SOLHudShapeMath::GlowProfile(d', g) x min(width, 1) with
+    // d' = max(0, |d| - (max(width, 1) / 2 - HUD_GLOW_CORE_HALF_PX)) / scale (the HUD glow shifted out by the half
+    // width, its distance in reference pixels so it looks the same at every height, D25; g sanitized like the HUD's; a
+    // bad height reads as the reference); 0 for a non-finite distance or a non-finite or non-positive width
+    SOLTEST_API double LaneLineProfile(double distanceFromCenterPx, double widthPx, double glowScale,
+        double viewportHeightPx);
+
+    // Returns the dash flow phase frac(NPC_LANE_DASH_FLOW_PERIODS_PER_S x t) in [0, 1), computed in double (a negative
+    // time wraps up); 0 for a NaN or infinite time
+    SOLTEST_API double LaneDashFlowPhase(double timeS);
+
+    // Returns a level's dash phase: s x NPC_LANE_DASH_BASE_COUNT x 2^level - sign(direction) x flowPhase (level clamped
+    // to [0, ORBIT_LINE_DASH_MAX_LEVEL], direction 0 as +1), so outbound dashes move toward B and inbound ones toward A
+    SOLTEST_API double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction);
+
+    // Returns the multi-scale dash coverage of a flowing lane line: SOLOrbitLineMath::MultiScaleDashCoverage with the
+    // orbit lines' level and solid constants, the flow applied per level (equal to it at flowPhase 0); the footprint is
+    // one pixel in level-0 dash periods, and a NaN or non-positive one is a level-0 point sample
+    SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint);
+
+    // Returns the parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the ray from the
+    // origin along rayDirection (normalized inside); a ray parallel to A-B takes the segment point nearest the origin;
+    // 0 for a degenerate segment, a zero ray or a non-finite input
+    SOLTEST_API double ClosestLaneParam(const FVector3d& aRelM, const FVector3d& bRelM, const FVector3d& rayDirection);
+
+    // Returns |A + s (B - A)| with s clamped to [0, 1] (NaN as 0): the camera distance of a lane point
+    SOLTEST_API double LaneDistanceAtParamM(const FVector3d& aRelM, const FVector3d& bRelM, double laneParam);
+
+    // Returns the outbound line's side on screen (x right, y down): the unit normal on the right of the travel
+    // direction A -> B ("keep right"; the inbound line uses the negated normal); (0, 0) for A == B or a non-finite
+    // input
+    SOLTEST_API FVector2D LaneOutboundSideNormal(const FVector2D& screenA, const FVector2D& screenB);
+
+    // Counts the lane rails per lane: outCounts is reset to laneCount zeros (empty for laneCount <= 0) and each rail of
+    // kind Lane with a group below laneCount adds one to its group; cluster and battle rails are ignored
+    SOLTEST_API void CountLaneShips(TConstArrayView<FSOLNpcRail> rails, int32 laneCount, TArray<int32>& outCounts);
+
+    // Fills one entry per lane (groups.LaneCount) from the frame's group points, the lane radii and the ship counts;
+    // a lane past the end of the counts or of the frame arrays has count 0 and is not drawn. Keeps outFrame's array
+    // when its size does not change (no allocation per frame)
+    SOLTEST_API void BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame,
+        TConstArrayView<int32> counts, FSOLNpcLaneFrame& outFrame);
+}

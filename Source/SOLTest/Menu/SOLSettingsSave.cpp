@@ -241,4 +241,24 @@ void USOLSettingsSave::MigrateToCurrentVersion()
         HudGlow = glowAtSchema12;
         Version = 12;
     }
+
+    // Schema 12 -> 13 (SDD 38 D1, section 4.9): the Lanes overlay row. Every stored profile entry with a non-empty row
+    // map (a used slot, enabled or not) gains Lanes as on when it has no Lanes key (any key case); an existing value is
+    // kept. An empty map is an unused slot (SDD 34 section 5.1) and stays empty, so it stays unused; entries are not
+    // padded, and every other key, flag, the active profile, the key overrides and every other field are kept as loaded
+    // (the key layout is unchanged: no controls-changed notice)
+    if (Version == 12)
+    {
+        // The id as it was written at schema 13, a literal on purpose: a migration step must stay fixed forever, even
+        // if the live overlay table is renamed or reordered later
+        const TCHAR* lanesId = TEXT("Lanes");
+        for (FSOLOverlayProfileSave& profile : OverlayProfiles)
+        {
+            if (profile.Overlays.Num() > 0 && !profile.Overlays.Contains(lanesId))
+            {
+                profile.Overlays.Add(lanesId, true);
+            }
+        }
+        Version = 13;
+    }
 }

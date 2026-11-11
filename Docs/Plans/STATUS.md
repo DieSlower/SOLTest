@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-11-10.
+Last updated: 2026-11-11.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -52,7 +52,8 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 1c | #42 | **Done.** Hologram in-flight menus: radial menu, Ctrl+O Overlay Menu with profile tabs, F3 speed panel, target/info cards (the HUD itself unchanged; full screens are #46). Glow-line outline frames on the HUD renderer, faint backdrop tint, open/close draw-in, hover glow and flicker, idle sweep and jitter, open/hover/select cues, a separate hologram-menu effects slider. SDD 42 and plan done, every question answered (2026-11-03). Parts built: (hologram menu maths, profiling baseline), 42b (settings schema 11, `HoloMenuEffects`, Settings > Gameplay slider, the hologram cursor follows it), 42c (frame kit, menu layer, menu subsystem), 42d (radial), 42e (Overlay Menu), 42f (speed panel), 42g (the four frameless cards and the map list menu) and 42h (cue assets) done; 42i (final profile within budget, docs and in-game text audit, README screenshots, final review) done. Q13 (no hover glow on a disabled radial sector) and Q16 (text glow kept at strength 0) answered 2026-11-04; Q14 and Q15 likewise | M-L | #22 |
 | 2 | #33 | **Done.** Player documentation: Help page, keyboard diagram, HUD glossary, key caps, generated `Docs/PLAYER_GUIDE.md` (see Done) | M | #22, #46 |
 | 3b2 | #37 | **Done** (2026-11-11). Settings "HUD glow" slider (0-200%, save schema 12) with a lower default glow (see Done) | S-M | none |
-| 3b3 | #38 | NPC lanes drawn as one animated hologram line per lane, with an overlay-menu toggle | M | #22 |
+| 3b3 | #38 | **In progress** (2026-11-11): NPC lanes drawn as one animated hologram line per lane (two dashed lines flowing opposite ways, teal-white outbound / cyan inbound, width and brightness by ship count, faded out close up), with a Lanes row in the Overlay Menu (save schema 13 approved). Grill-me D1-D6 done and every open question answered (D7-D24, 2026-11-11; keep right: outbound on the right); SDD 38 and plan ready. Part 38a done (2026-11-11, reviewed, committed): `SOLNpcLaneMath` (pure lane math), the Lanes row of the Overlay Menu (16 rows, Darkening last), settings schema 13 (12 -> 13 adds Lanes = on to every used profile) and the Controls text; the row toggles and persists but draws nothing until 38b (renderer). The close-up guidance tunnel is #49 | M | #22 |
+| 3b3b | #49 | Lane guidance tunnel: HUD tunnel to fly through near an NPC lane, showing traffic direction; needs grill-me. Mock-ups (animated GIFs and their generator scripts) in `Docs/ToDo/49-lane-tunnel-mockups/` | M | #38 |
 | 3b4 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |

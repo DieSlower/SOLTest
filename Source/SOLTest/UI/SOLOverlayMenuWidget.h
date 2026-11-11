@@ -108,7 +108,7 @@ public:
     // Views a profile as a tab click does: an enabled one becomes active, a disabled one shows its enable page
     void ClickTab(int32 profile);
 
-    // Returns the number of rows on the viewed page (16 on Profile 1, 17 on profiles 2-5, 1 on a disabled one)
+    // Returns the number of rows on the viewed page (17 on Profile 1, 18 on profiles 2-5, 1 on a disabled one)
     int32 GetRowCount() const;
 
     // Returns the display row of a table row on an enabled profile's page
