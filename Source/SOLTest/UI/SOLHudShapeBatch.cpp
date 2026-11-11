@@ -36,12 +36,20 @@ void FSOLHudShapeBatch::Initialize(const int32 maxShapes)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Empties the batch, keeping its capacity
+// Empties the batch and clears the glow override, keeping its capacity
 void FSOLHudShapeBatch::Reset()
 {
     mVertices.Reset();
     mIndices.Reset();
     mDroppedCount = 0;
+    ClearGlowOverride();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Gives the shapes added from now on their own (sanitized) glow scale, flagged by y = 1
+void FSOLHudShapeBatch::SetGlowOverride(const float glowScale)
+{
+    mGlowOverride = FVector2f(SOLHudShapeMath::SanitizeGlowScale(glowScale), 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -148,7 +156,7 @@ bool FSOLHudShapeBatch::AddQuad(const FVector2f& origin, const FVector2f& axisX,
         vertex.TexCoords[1] = local.Y;
         vertex.TexCoords[2] = size1;
         vertex.TexCoords[3] = encodedKind;
-        vertex.MaterialTexCoords = FVector2f::ZeroVector;
+        vertex.MaterialTexCoords = mGlowOverride;
         vertex.Color = color;
         vertex.SecondaryColor = FColor::Transparent;
         vertex.PixelSize[0] = 0;

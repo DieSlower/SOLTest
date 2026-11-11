@@ -255,8 +255,9 @@ private:
 
     // (33d-ii) Lets the shown glossary tab's symbol views rebuild when their size or the strength changed (hidden
     // tabs' views catch up when shown); the size at the page's current layout scale, so every row of a newly shown tab
-    // (also one scrolled out of view) is built before its first paint
-    void UpdateShownSymbolViews(float strength, float layoutScale);
+    // (also one scrolled out of view) is built before its first paint. (Issue #37) Also hands them the HUD glow scale
+    // for their glow text (a repaint on a change only)
+    void UpdateShownSymbolViews(float strength, float layoutScale, float glowScale);
 
     // (33d-ii) Refreshes the Help page from the live keys (the key bindings changed handler)
     void HandleKeyBindingsChanged();

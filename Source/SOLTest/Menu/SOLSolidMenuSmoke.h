@@ -190,6 +190,11 @@ private:
     // reaches the engine's GameUserSettings; only the smoke settings slot is written)
     void ApplyStrength(USOLMenuSubsystem& menu, float strength) const;
 
+    // (Issue #37, SDD 37 D11) Checks that the Help glossary follows a Settings HUD glow value: the subsystem's glow
+    // scale, the shared HUD shape material's GlowScale and the shown tab's views' text glow alpha; false with detail
+    bool ReadHelpGlow(USOLMenuSubsystem& menu, const USOLReadOnlyPageWidget& page, int32 tab, float setting,
+        FString& outDetail) const;
+
     // Runs the column scroll step's stages (46g, D17); returns true once done
     bool TickMainScroll(USOLMenuSubsystem& menu);
 

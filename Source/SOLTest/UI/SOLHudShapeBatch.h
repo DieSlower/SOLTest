@@ -17,16 +17,25 @@
  * vertex: TexCoords[0..1] = the pixel position in the shape's local frame, TexCoords[2] = the first size parameter,
  * TexCoords[3] = SOLHudShapeMath::EncodeKind(kind, second size parameter), Color = sRGB(colour x intensity) with alpha
  * = the shape's extra parameter (line: 255, arc: half aperture / pi, panel: fill; 8 bits, so an arc's ends sit within
- * pi / 510 rad of the asked aperture, about 3 px at a 500 px radius). Buffers are reserved once by
- * Initialize; a shape that would exceed the capacity is dropped (counted), never reallocated.
+ * pi / 510 rad of the asked aperture, about 3 px at a 500 px radius), MaterialTexCoords = the shape's own glow scale
+ * (g, 1) while a glow override is set, else (0, 0) = the material's GlowScale (SDD 37 section 4.6, read through
+ * Customized UV 2). Buffers are reserved once by Initialize; a shape that would exceed the capacity is dropped
+ * (counted), never reallocated.
  */
 struct SOLTEST_API FSOLHudShapeBatch
 {
     // Reserves room for maxShapes quads (the only allocation) and empties the batch
     void Initialize(int32 maxShapes);
 
-    // Empties the batch, keeping its capacity
+    // Empties the batch and clears the glow override, keeping its capacity
     void Reset();
+
+    // Gives the shapes added from now on their own glow scale (SOLHudShapeMath::SanitizeGlowScale of glowScale)
+    // instead of the material's GlowScale, until ClearGlowOverride or Reset (SDD 37 section 4.6)
+    void SetGlowOverride(float glowScale);
+
+    // Lets the shapes added from now on use the material's GlowScale again
+    void ClearGlowOverride() { mGlowOverride = FVector2f::ZeroVector; }
 
     // Adds a glow line from a to b (local X along a -> b, origin at the midpoint); false if dropped
     bool AddLine(const FVector2f& a, const FVector2f& b, float halfWidthPx, const FLinearColor& color, float intensity,
@@ -84,4 +93,5 @@ private:
     TArray<SlateIndex> mIndices;        // 6 per shape
     int32 mMaxShapes = 0;               // Capacity reserved by Initialize
     int32 mDroppedCount = 0;            // Shapes dropped this frame (batch full)
+    FVector2f mGlowOverride = FVector2f::ZeroVector;   // MaterialTexCoords of new shapes: (g, 1), or (0, 0) for none
 };

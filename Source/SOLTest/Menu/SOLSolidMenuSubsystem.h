@@ -35,8 +35,9 @@ enum class ESOLSolidTexture : uint8
 };
 
 /**
- * The hull materials' parameter cache (SDD 46 section 4.3): says when the sanitized effects strength or the DPI scale
- * changed since the last push, so the shared materials are written only on a change (never per frame). Pure, headless.
+ * The hull materials' parameter cache (SDD 46 section 4.3): says when the sanitized effects strength, the DPI scale or
+ * (issue #37, SDD 37 section 4.7) the Help glossary's HUD glow scale changed since the last push, so the shared
+ * materials are written only on a change (never per frame). Pure, headless.
  */
 struct SOLTEST_API FSOLSolidMenuParamCache
 {
@@ -48,14 +49,18 @@ struct SOLTEST_API FSOLSolidMenuParamCache
     static bool IsValidDpiScale(float dpiScale);
 
     // Stores the values and returns true when a push is due: the first call, or an exact change of the sanitized
-    // strength or of a valid DPI scale; an invalid DPI scale keeps the last valid one (1 before any)
-    bool Update(float rawStrength, float dpiScale);
+    // strength, of a valid DPI scale or of the glow scale of the Settings HUD glow value (SOLHudShapeMath::HudGlowScale,
+    // NaN reads the default setting); an invalid DPI scale keeps the last valid one (1 before any)
+    bool Update(float rawStrength, float dpiScale, float glowSetting);
 
     // Returns the last sanitized strength (HUD_EFFECTS_DEFAULT before the first call)
     float GetStrength() const { return mStrength; }
 
     // Returns the last valid DPI scale (1 before any)
     float GetDpiScale() const { return mDpiScale; }
+
+    // Returns the last glow scale (that of the default HUD glow before the first call)
+    float GetGlowScale() const { return mGlowScale; }
 
     // Returns how many pushes Update asked for
     int32 GetPushCount() const { return mPushCount; }
@@ -64,17 +69,19 @@ private:
 
     float mStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;
     float mDpiScale = 1.0f;
+    float mGlowScale = SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;    // HudGlowScale(HUD_GLOW_DEFAULT)
     int32 mPushCount = 0;
     bool mHasPushed = false;
 };
 
-// The time, effects strength and keyboard focus a solid screen animates its widgets at during one tick
+// The time, effects strength, HUD glow scale and keyboard focus a solid screen animates its widgets at during one tick
 // (USOLSolidMenuSubsystem::BeginFrame), read once per screen tick and handed to every button
 // (USOLMenuButton::RefreshHighlightAt), so a button compares its widget with the focus instead of querying Slate
 struct FSOLSolidMenuFrame
 {
     double NowS = 0.0;                                      // Real application seconds (FPlatformTime::Seconds)
     float Strength = SOL::Settings::HUD_EFFECTS_DEFAULT;    // Sanitized HudEffectsStrength
+    float GlowScale = SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;    // The Help glossary's HUD glow scale (SDD 37 D11)
     TSharedPtr<SWidget> KeyboardFocus;                      // The keyboard user's focused widget (null: none, or
                                                             // no Slate application)
 };
@@ -123,19 +130,23 @@ public:
     // Unregisters the mouse-move watch and drops the unique material list and the settings subsystem
     virtual void Deinitialize() override;
 
-    // Reads the live strength and the viewport DPI scale once per frame (later calls in the same frame do nothing) and
-    // pushes them into every material when either changed
+    // Reads the live strength, the viewport DPI scale and the live HUD glow once per frame (later calls in the same
+    // frame do nothing) and pushes them into every material when one changed
     void UpdateForFrame();
 
-    // Pushes a strength and a DPI scale into every material when the cache says one changed (UpdateForFrame's work,
-    // reachable without a viewport)
-    void PushParams(float rawStrength, float dpiScale);
+    // Pushes a strength, a DPI scale and (issue #37) the glow scale of a Settings HUD glow value into every material
+    // when the cache says one changed (UpdateForFrame's work, reachable without a viewport)
+    void PushParams(float rawStrength, float dpiScale, float glowSetting = SOL::Settings::HUD_GLOW_DEFAULT);
 
     // Returns the sanitized live HudEffectsStrength (HUD_EFFECTS_DEFAULT with no settings subsystem)
     float GetStrength() const;
 
     // Returns the last pushed DPI scale (1 before any)
     float GetDpiScale() const { return mParamCache.GetDpiScale(); }
+
+    // (Issue #37, SDD 37 D11) Returns the last pushed glow scale of the Help glossary's symbols (that of the default
+    // HUD glow before any push)
+    float GetGlowScale() const { return mParamCache.GetGlowScale(); }
 
     // Returns the game viewport's UMG DPI scale (1 without a viewport), the scale UpdateForFrame pushes
     float GetViewportDpiScale() const;
@@ -155,7 +166,8 @@ public:
     UFont* GetMenuFont() const { return MenuFont; }
 
     // (33d-ii) Returns the one shared M_SOLHudShape material every Help glossary symbol view draws with (Composite 1,
-    // the sanitized strength and the views' pixel size pushed with the solid materials), or null when it is missing
+    // the sanitized strength, the views' pixel size and, issue #37, the HUD glow scale pushed with the solid
+    // materials), or null when it is missing
     UMaterialInstanceDynamic* GetHudShapeMaterial() const { return HudShapeMaterial; }
 
     // (33d-ii) Returns how many parameter pushes reached the shared HUD shape material (verification)
@@ -210,7 +222,8 @@ private:
     // Writes the cached strength and DPI scale into one material
     void WriteParams(UMaterialInstanceDynamic& material) const;
 
-    // (33d-ii) Writes the cached strength and the glossary views' pixel size into the shared HUD shape material
+    // (33d-ii) Writes the cached strength, the glossary views' pixel size and (issue #37) the glow scale into the shared
+    // HUD shape material
     void WriteHudShapeParams();
 
     UPROPERTY(Transient)

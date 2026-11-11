@@ -229,4 +229,57 @@ bool FSOLHudShapeLayerTextGlowAlphaTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapeLayerResetOverridesTest, "SOLTest.HudShapeLayer.ResetFrameClearsOverrides",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD cases 13 and 14, D10, written before the overrides) ResetFrame clears a card-content override left set
+// on the batch (MaterialTexCoords back to (0, 0)) and on the text list (GlowAlpha back to -1), in either mode, while
+// the layer's own text glow alpha (pushed only on change) is kept
+bool FSOLHudShapeLayerResetOverridesTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float tolerance = 1.0e-6f;
+    constexpr float glowOverride = 0.3f;
+    constexpr float alphaOverride = 0.09f;
+    constexpr float layerAlpha = 0.05f;
+    const TSharedRef<SSOLHudShapeLayer> layer = SNew(SSOLHudShapeLayer).MaxShapes(HUDSHAPELAYERTEST_MAX_SHAPES);
+    const FText line = FText::FromString(TEXT("12:34 UTC"));
+    for (const bool bRetain : { true, false })
+    {
+        const FString mode = bRetain ? TEXT("retained") : TEXT("per-frame");
+        layer->SetRetainBatch(bRetain);
+        layer->ResetFrame();
+        layer->SetTextGlowAlpha(layerAlpha);
+
+        // Overrides set and left set, as if EndCardContent had not run
+        layer->GetBatch().SetGlowOverride(glowOverride);
+        layer->GetTexts().SetGlowAlphaOverride(alphaOverride);
+        layer->ResetFrame();
+
+        // The next frame's shape and line use the material's glow and the layer's alpha
+        TestTrue(mode + TEXT(": a line shape added"), layer->GetBatch().AddLine(FVector2f(1.0f, 2.0f),
+            FVector2f(30.0f, 4.0f), SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, SOL::HudPalette::PRIMARY, 1.0f, 2.0f));
+        TestTrue(mode + TEXT(": a text line added"), layer->GetTexts().Add(line, FVector2f(0.0f, 0.0f), 1.0f,
+            SOL::HudPalette::PRIMARY, ESOLHudFont::Medium));
+        const TArray<FSlateVertex>& vertices = layer->GetBatch().GetVertices();
+        if (TestEqual(mode + TEXT(": one quad"), vertices.Num(), SOL::Hologram::HUD_VERTICES_PER_SHAPE))
+        {
+            for (const FSlateVertex& vertex : vertices)
+            {
+                TestTrue(mode + TEXT(": no glow override after the reset"),
+                    vertex.MaterialTexCoords == FVector2f(0.0f, 0.0f));
+            }
+        }
+        if (TestEqual(mode + TEXT(": one text line"), layer->GetTexts().Num(), 1))
+        {
+            TestEqual(mode + TEXT(": the layer's alpha after the reset"), layer->GetTexts().GetItems()[0].GlowAlpha,
+                -1.0f, tolerance);
+        }
+        TestEqual(mode + TEXT(": the layer's own alpha kept"), layer->GetTextGlowAlpha(), layerAlpha, tolerance);
+        TestEqual(mode + TEXT(": the mode kept"), layer->IsRetainBatch(), bRetain);
+    }
+    return true;
+}
+
 #endif

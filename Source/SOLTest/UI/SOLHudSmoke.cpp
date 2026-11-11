@@ -656,6 +656,7 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         const float setting = settings != nullptr ? settings->GetLiveValues().HudGlow : -1.0f;
         CheckGlowPushed(TEXT("l-glow-live"), TEXT("pending HUD glow"), setting, settings != nullptr
             && settings->IsDirty(), *pawn.GetWorld());
+        CheckCardReadoutGlow(TEXT("l-card-glow-live"), TEXT("pending HUD glow"), setting);
         TakeUiShot(TEXT("GlowPending"));
         break;
     }
@@ -672,6 +673,7 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         const float saved = settings != nullptr ? settings->GetSavedValues().HudGlow : -1.0f;
         CheckGlowPushed(TEXT("l-glow-revert"), TEXT("Revert, saved HUD glow"), saved, settings != nullptr
             && !settings->IsDirty(), *pawn.GetWorld());
+        CheckCardReadoutGlow(TEXT("l-card-glow-revert"), TEXT("Revert, saved HUD glow"), saved);
         break;
     }
     case ESOLHudPhase::OrbitShotSetup:
@@ -842,4 +844,76 @@ void FSOLHudSmoke::CheckGlowPushed(const TCHAR* label, const TCHAR* action, cons
         "GlowScale %.3f (want 1, -1 = no menu material), settings dirty state %s"), action, setting * 100.0f,
         frameScale, pushed, expected, alpha, expectedAlpha, menuScale, bDirtyOk ? TEXT("as expected")
         : TEXT("wrong")));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks that the card readouts on the menu layer carry a HUD glow value's glow scale and text alpha while the card
+// frames and the other menu shapes and lines carry no override (SDD 37 D10)
+void FSOLHudSmoke::CheckCardReadoutGlow(const TCHAR* label, const TCHAR* action, const float setting)
+{
+    const float expected = SOLHudShapeMath::HudGlowScale(setting);
+    const float expectedAlpha = SOLHudShapeMath::TextGlowAlpha(expected);
+    const FSOLHudShapeBatch* batch = mHud.IsValid() ? mHud->GetMenuLayerBatch() : nullptr;
+    const FSOLHudTextList* texts = mHud.IsValid() ? mHud->GetMenuLayerTexts() : nullptr;
+    if (batch == nullptr || texts == nullptr)
+    {
+        Check(label, false, FString::Printf(TEXT("%s: no menu layer"), action));
+        return;
+    }
+
+    // The readouts' counts and the frames' shapes from the cards' stats; the frames must carry no override
+    int32 readoutShapes = 0;
+    int32 readoutTexts = 0;
+    int32 frameShapes = 0;
+    int32 frameOverrides = 0;
+    const TArray<FSlateVertex>& vertices = batch->GetVertices();
+    constexpr int32 perShape = SOL::Hologram::HUD_VERTICES_PER_SHAPE;
+    for (int32 card = 0; card < static_cast<int32>(ESOLHudCard::Count); ++card)
+    {
+        const ASOLFlightHud::FSOLHudCardStats& stats = mHud->GetLastCard(static_cast<ESOLHudCard>(card));
+        readoutShapes += stats.ReadoutShapes;
+        readoutTexts += stats.ReadoutTexts;
+        if (!stats.bDrawn || stats.FrameShapeStart < 0)
+        {
+            continue;
+        }
+        for (int32 shape = stats.FrameShapeStart; shape < stats.FrameShapeStart + stats.Shapes; ++shape)
+        {
+            ++frameShapes;
+            frameOverrides += vertices.IsValidIndex(shape * perShape)
+                && vertices[shape * perShape].MaterialTexCoords != FVector2f::ZeroVector ? 1 : 0;
+        }
+    }
+
+    // Every overridden shape (each of its vertices) and line must hold this glow, and their counts the readouts'
+    int32 overrideShapes = 0;
+    int32 wrongShapes = 0;
+    for (int32 first = 0; first + perShape <= vertices.Num(); first += perShape)
+    {
+        bool bOverride = false;
+        bool bRight = true;
+        for (int32 v = first; v < first + perShape; ++v)
+        {
+            const FVector2f value = vertices[v].MaterialTexCoords;
+            bOverride |= value.Y != 0.0f;
+            bRight &= value.Y == 1.0f && FMath::IsNearlyEqual(value.X, expected, HUDSMOKE_GLOW_TOLERANCE);
+        }
+        overrideShapes += bOverride ? 1 : 0;
+        wrongShapes += bOverride && !bRight ? 1 : 0;
+    }
+    int32 overrideTexts = 0;
+    int32 wrongTexts = 0;
+    for (const FSOLHudTextItem& item : texts->GetItems())
+    {
+        const bool bOverride = item.GlowAlpha >= 0.0f;
+        overrideTexts += bOverride ? 1 : 0;
+        wrongTexts += bOverride && !FMath::IsNearlyEqual(item.GlowAlpha, expectedAlpha, HUDSMOKE_GLOW_TOLERANCE) ? 1
+            : 0;
+    }
+    Check(label, setting >= 0.0f && readoutTexts > 0 && frameShapes > 0 && frameOverrides == 0 && wrongShapes == 0
+        && wrongTexts == 0 && overrideShapes == readoutShapes && overrideTexts == readoutTexts,
+        FString::Printf(TEXT("%s %.0f%%: card readouts %d shapes and %d lines with the HUD glow (overridden on the menu "
+            "layer: %d shapes, %d lines; %d shapes and %d lines not at glow %.4f / alpha %.4f), card frames %d shapes, "
+            "%d overridden (want 0)"), action, setting * 100.0f, readoutShapes, readoutTexts, overrideShapes,
+            overrideTexts, wrongShapes, wrongTexts, expected, expectedAlpha, frameShapes, frameOverrides));
 }

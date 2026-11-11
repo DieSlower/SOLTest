@@ -15,11 +15,19 @@ void FSOLHudTextList::Initialize(const int32 maxItems)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Empties the list and its dropped count, keeping its capacity
+// Empties the list, its dropped count and the glow alpha override, keeping its capacity
 void FSOLHudTextList::Reset()
 {
     mItems.Reset();
     mDroppedCount = 0;
+    ClearGlowAlphaOverride();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Gives the lines added from now on their own glow-text outline alpha (clamped to [0, 1]; NaN = the layer's)
+void FSOLHudTextList::SetGlowAlphaOverride(const float alpha)
+{
+    mGlowAlpha = FMath::IsNaN(alpha) ? -1.0f : FMath::Clamp(alpha, 0.0f, 1.0f);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -38,5 +46,6 @@ bool FSOLHudTextList::Add(const FText& text, const FVector2f& position, const fl
     item.Scale = scale;
     item.Color = color;
     item.Font = font;
+    item.GlowAlpha = mGlowAlpha;
     return true;
 }

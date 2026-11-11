@@ -132,6 +132,11 @@ private:
     // menu material still reads GlowScale 1 (SDD 37) and that the settings' dirty state is as expected (bDirtyOk)
     void CheckGlowPushed(const TCHAR* label, const TCHAR* action, float setting, bool bDirtyOk, const UWorld& world);
 
+    // (SDD 37 D10) Checks the menu layer's last batch and text lines: the card readouts carry the glow scale of a
+    // Settings HUD glow value (shapes MaterialTexCoords (g, 1), text lines its outline alpha), the card frames carry no
+    // override, and nothing else on the menu layer does
+    void CheckCardReadoutGlow(const TCHAR* label, const TCHAR* action, float setting);
+
     TWeakObjectPtr<APlayerController> mController;          // Controller the game keys are injected into
     TWeakObjectPtr<ASOLFlightHud> mHud;                     // The flight HUD
     TWeakObjectPtr<USOLShipSubsystem> mShips;               // Ship state and control

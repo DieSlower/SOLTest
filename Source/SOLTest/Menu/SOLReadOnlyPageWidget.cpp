@@ -290,8 +290,9 @@ void USOLReadOnlyPageWidget::FitDiagram()
 
 //////////////////////////////////////////////////////////////////////////
 // (33d-ii) Lets the shown glossary tab's symbol views rebuild when their size (at the page's current layout scale)
-// or the strength changed
-void USOLReadOnlyPageWidget::UpdateShownSymbolViews(const float strength, const float layoutScale)
+// or the strength changed, and gives them the HUD glow scale (issue #37, D11)
+void USOLReadOnlyPageWidget::UpdateShownSymbolViews(const float strength, const float layoutScale,
+    const float glowScale)
 {
     if (!mSymbolScratch.IsValid())
     {
@@ -302,6 +303,7 @@ void USOLReadOnlyPageWidget::UpdateShownSymbolViews(const float strength, const 
         if (row.Tab == mTab && row.View != nullptr)
         {
             row.View->UpdateBatch(strength, *mSymbolScratch, layoutScale);
+            row.View->SetGlowScale(glowScale);
         }
     }
 }
@@ -353,7 +355,7 @@ void USOLReadOnlyPageWidget::NativeTick(const FGeometry& geometry, const float d
     if (mPage == ESOLReadOnlyPage::Help)
     {
         FitDiagram();
-        UpdateShownSymbolViews(frame.Strength, geometry.Scale);
+        UpdateShownSymbolViews(frame.Strength, geometry.Scale, frame.GlowScale);
     }
 }
 

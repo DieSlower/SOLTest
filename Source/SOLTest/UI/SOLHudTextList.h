@@ -16,7 +16,8 @@ enum class ESOLHudFont : uint8
     Count = 3,
 };
 
-// One HUD text line in canvas pixels: its text, top-left position, scale on the font's size, colour and font
+// One HUD text line in canvas pixels: its text, top-left position, scale on the font's size, colour, font and glow-text
+// outline alpha (-1 = the layer's, SSOLHudShapeLayer::SetTextGlowAlpha; SDD 37 section 4.6)
 struct FSOLHudTextItem
 {
     FText Text;
@@ -24,6 +25,7 @@ struct FSOLHudTextItem
     float Scale = 1.0f;
     FLinearColor Color = FLinearColor::White;
     ESOLHudFont Font = ESOLHudFont::Small;
+    float GlowAlpha = -1.0f;
 };
 
 /**
@@ -36,8 +38,15 @@ struct SOLTEST_API FSOLHudTextList
     // Reserves room for maxItems lines (the only allocation; a negative count is treated as 0) and empties the list
     void Initialize(int32 maxItems);
 
-    // Empties the list and its dropped count, keeping its capacity
+    // Empties the list, its dropped count and the glow alpha override, keeping its capacity
     void Reset();
+
+    // Gives the lines added from now on their own glow-text outline alpha (clamped to [0, 1]; NaN = the layer's)
+    // until ClearGlowAlphaOverride or Reset (SDD 37 section 4.6)
+    void SetGlowAlphaOverride(float alpha);
+
+    // Lets the lines added from now on use the layer's glow-text outline alpha again
+    void ClearGlowAlphaOverride() { mGlowAlpha = -1.0f; }
 
     // Appends a line; false (and counted as dropped) when the list is full
     bool Add(const FText& text, const FVector2f& position, float scale, const FLinearColor& color, ESOLHudFont font);
@@ -59,4 +68,5 @@ private:
     TArray<FSOLHudTextItem> mItems;     // Lines of this frame
     int32 mMaxItems = 0;                // Capacity reserved by Initialize
     int32 mDroppedCount = 0;            // Lines dropped this frame (list full)
+    float mGlowAlpha = -1.0f;           // GlowAlpha of new lines: the override, or -1 for the layer's
 };

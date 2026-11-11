@@ -289,7 +289,8 @@ bool FSOLInfoTextHudParagraphTest::RunTest(const FString& /*parameters*/)
         TEXT("only changes its text"), TEXT("info card draws in and fades out"),
         TEXT("The HUD glow slider in Settings"), TEXT("0% leaves crisp lines with no glow"),
         TEXT("and the mouse pointer with them"), TEXT("the sample under the slider shows it at once"),
-        TEXT("the menus keep their own look"),
+        TEXT("the menus keep their own look"), TEXT("the readouts inside the hologram cards"),
+        TEXT("HUD pictures in the Help glossary"), TEXT("so do the cards' corner marks"),
     };
     for (const TCHAR* const phrase : kept)
     {

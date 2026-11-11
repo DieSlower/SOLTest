@@ -9,6 +9,7 @@
 #include "Menu/SOLSolidMenuMath.h"
 #include "SOLTest.h"
 #include "UI/SOLHoloMenuSubsystem.h"
+#include "UI/SOLHudShapeMath.h"
 
 #include "Engine/Engine.h"
 #include "Engine/Font.h"
@@ -100,18 +101,20 @@ bool FSOLSolidMenuParamCache::IsValidDpiScale(const float dpiScale)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Stores the sanitized strength and the (valid) DPI scale; true when a push is due
-bool FSOLSolidMenuParamCache::Update(const float rawStrength, const float dpiScale)
+// Stores the sanitized strength, the (valid) DPI scale and the glow scale; true when a push is due
+bool FSOLSolidMenuParamCache::Update(const float rawStrength, const float dpiScale, const float glowSetting)
 {
     const float strength = SanitizeStrength(rawStrength);
     const float dpi = IsValidDpiScale(dpiScale) ? dpiScale : mDpiScale;
-    if (mHasPushed && strength == mStrength && dpi == mDpiScale)
+    const float glowScale = SOLHudShapeMath::HudGlowScale(glowSetting);
+    if (mHasPushed && strength == mStrength && dpi == mDpiScale && glowScale == mGlowScale)
     {
         return false;
     }
     mHasPushed = true;
     mStrength = strength;
     mDpiScale = dpi;
+    mGlowScale = glowScale;
     ++mPushCount;
     return true;
 }
@@ -141,6 +144,7 @@ FSOLSolidMenuFrame USOLSolidMenuSubsystem::BeginFrame(const UObject* worldContex
     {
         subsystem->UpdateForFrame();
         frame.Strength = subsystem->GetStrength();
+        frame.GlowScale = subsystem->GetGlowScale();
     }
     return frame;
 }
@@ -226,7 +230,7 @@ void USOLSolidMenuSubsystem::Deinitialize()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Reads the live strength and the viewport DPI scale once per frame and pushes them when either changed
+// Reads the live strength, the viewport DPI scale and the live HUD glow once per frame and pushes them when one changed
 void USOLSolidMenuSubsystem::UpdateForFrame()
 {
     if (mLastUpdateFrame == GFrameCounter)
@@ -241,14 +245,16 @@ void USOLSolidMenuSubsystem::UpdateForFrame()
     const USOLSettingsSubsystem* settings = mSettings.Get();
     const float raw = settings != nullptr ? settings->GetLiveValues().HudEffectsStrength
         : SOL::Settings::HUD_EFFECTS_DEFAULT;
-    PushParams(raw, GetViewportDpiScale());
+    const float glow = settings != nullptr ? settings->GetLiveValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT;
+    PushParams(raw, GetViewportDpiScale(), glow);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Pushes the strength and DPI scale into every shared and live unique material when the cache says one changed
-void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpiScale)
+// Pushes the strength, DPI scale and glow scale into every shared and live unique material when the cache says one
+// changed
+void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpiScale, const float glowSetting)
 {
-    if (!mParamCache.Update(rawStrength, dpiScale))
+    if (!mParamCache.Update(rawStrength, dpiScale, glowSetting))
     {
         return;
     }
@@ -275,8 +281,9 @@ void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpi
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes the cached strength and the glossary views' pixel size (every symbol view is the symbol box less its recess
-// padding, at the DPI scale; a wider text-sample view, 33d-iii, draws no shapes) into the shared HUD shape material
+// Writes the cached strength, the glossary views' pixel size (every symbol view is the symbol box less its recess
+// padding, at the DPI scale; a wider text-sample view, 33d-iii, draws no shapes) and the HUD glow scale (issue #37, D11:
+// the glossary's symbols are pictures of the HUD) into the shared HUD shape material
 void USOLSolidMenuSubsystem::WriteHudShapeParams()
 {
     using namespace SOL::Help;
@@ -289,6 +296,7 @@ void USOLSolidMenuSubsystem::WriteHudShapeParams()
         mParamCache.GetStrength());
     HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_WIDTH, viewPx);
     HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::VIEW_HEIGHT, viewPx);
+    HudShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::GLOW_SCALE, mParamCache.GetGlowScale());
     ++mHudShapePushCount;
 }
 

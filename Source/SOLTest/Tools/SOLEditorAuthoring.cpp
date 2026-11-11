@@ -5,6 +5,8 @@
 
 #include "Tools/SOLEditorAuthoring.h"
 
+#include "Materials/Material.h"
+#include "Materials/MaterialExpression.h"
 #include "UObject/UnrealType.h"
 
 #if WITH_EDITOR
@@ -30,6 +32,26 @@ bool USOLEditorAuthoring::SetObjectStringProperty(UObject* object, FName propert
     // The same notification a details-panel edit sends, so the owner (e.g. a PCG node) recompiles
     FPropertyChangedEvent changedEvent(property);
     object->PostEditChangeProperty(changedEvent);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Connects an expression's first output to a material's Customized UV input (0-7)
+bool USOLEditorAuthoring::ConnectMaterialCustomizedUV(UMaterial* material, UMaterialExpression* expression,
+    const int32 uvIndex)
+{
+    if (material == nullptr || expression == nullptr || uvIndex < 0 || uvIndex >= MP_NumCustomizedUVs)
+    {
+        return false;
+    }
+    FExpressionInput* input = material->GetExpressionInputForProperty(
+        static_cast<EMaterialProperty>(MP_CustomizedUVs0 + uvIndex));
+    if (input == nullptr)
+    {
+        return false;
+    }
+    material->Modify();
+    input->Connect(0, expression);
     return true;
 }
 #endif

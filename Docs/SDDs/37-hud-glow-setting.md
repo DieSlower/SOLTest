@@ -7,8 +7,9 @@ a Settings glow slider (0-200%)". Plan: [`Plans/37-hud-glow-setting-plan.md`](..
 Amends SDD 21 (HUD hologram rendering; Amendment 4 = issue #31's halving) and SDD 20 section 2.4 (the route overlay's
 Canvas halo). Persistence change: settings save schema 11 -> 12 (approved, D1).
 Status: part 37a built (2026-11-10): schema 12 and the "HUD glow" row, the glow math, the material's `GlowScale`, the
-HUD feed, the route halo, and (after the 37a review, D16 and D17) the Settings glow sample and the pointer's glow;
-parts 37b (card readouts, glossary) and 37c (default level, verification, docs) to do. Grill-me done 2026-11-10
+HUD feed, the route halo, and (after the 37a review, D16 and D17) the Settings glow sample and the pointer's glow.
+Part 37b built (2026-11-10): the card readouts (section 4.6, engine route proven) and the Help glossary (section 4.7)
+follow the HUD glow. Part 37c (default level, verification, docs) to do. Grill-me done 2026-11-10
 (D1-D4), open questions answered the same day (D5-D15), review decisions D16-D17. **One decision is still open: the
 default level (D4, placeholder 0.5)**, picked by the user from candidate screenshots during the build (section 9).
 
@@ -206,6 +207,28 @@ does not work, stop and report (D10); do not pick another route.**
   `SOLHoloFrameBuild` outside that window) carries no override and keeps the menu MID's `GlowScale` 1. The content's
   glow pad stays `LinePad(mCardStrength)` (D13).
 
+**As built (37b, 2026-11-10):**
+
+- **Engine proof.** UE 5.8 `SlateVertexShader.usf` (vertex UV channel 4 = `InMaterialTextureCoordinates`, copied into
+  `VertexParameters.TexCoords` up to `NUM_MATERIAL_TEXCOORDS_VERTEX`, then `GetMaterialCustomizedUVs` into the Slate
+  interpolants) and `SlateElementPixelShader.usf` `FillTexCoords` (`ST_Custom`: `TexCoords[i]` = the interpolated
+  Slate UV i) re-read; `UMaterial::IsPropertyActive` allows Customized UVs in the UI domain. `M_SOLHudShape` now has
+  `NumCustomizedUVs` 3, Customized UV 2 = vertex `TexCoord[4]` and the Custom node's `GlowOverride` = pixel
+  `TexCoord[2]`; it compiled clean. Screenshot proof (`-SOLSmokeHud` at 1280x720, the speed card at 100% and 200%):
+  the G bar readout's halo doubles (column profile 30-55 vs 53-112 beside a 231 core) while the card's corner tick
+  profile is identical (218 core, 69-122 skirt in both).
+- **Tooling.** The `EMaterialProperty` Customized UV entries are `UMETA(Hidden)`, so Python cannot name them;
+  `USOLEditorAuthoring::ConnectMaterialCustomizedUV` (editor-only, the existing authoring helper library) makes the
+  connection for `Tools/UI/create_hud_shape_material.py`.
+- **Target and info cards.** Their text is drawn with `MenuText` outside a `BeginCardContent` window, so the override
+  pair is factored into `ASOLFlightHud::BeginReadoutGlow(card)` / `EndReadoutGlow()`: `BeginCardContent` /
+  `EndCardContent` call them, and `DrawTargetCard` / `DrawInfoCard` call them around their text (ended before
+  `DrawCard`). `BeginMenuFrame` clears any override left set on the menu layer (a missed end on a frame that drew
+  nothing, when `ResetFrame` is skipped). The cards' stats gain `FrameShapeStart`, `ReadoutShapes` and
+  `ReadoutTexts`, and `GetMenuLayerBatch` / `GetMenuLayerTexts` let `-SOLSmokeHud` read the vertices: new checks
+  `l-card-glow-live` and `l-card-glow-revert` (every overridden shape and line holds the frame's g and text alpha,
+  their counts are the readouts', the card frames' 30 shapes carry none).
+
 ### 4.7 Help glossary (D11; `Menu/SOLSolidMenuSubsystem.*`, `Menu/SOLHudSymbolView.cpp`)
 
 - `FSOLSolidMenuParamCache` also caches the sanitized glow scale (`HudGlowScale` of the live `HudGlow`); `Update`
@@ -216,6 +239,12 @@ does not work, stop and report (D10); do not pick another route.**
   geometry is needed for a glow change.
 - `Docs/PLAYER_GUIDE.md` and its glossary images are regenerated with `Tools\WritePlayerGuide.bat` at the chosen
   default level.
+- **As built (37b):** `FSOLSolidMenuFrame` carries the subsystem's `GlowScale` (`GetGlowScale()`); the Help page's
+  `UpdateShownSymbolViews` hands it to the shown tab's views (`USOLHudSymbolView::SetGlowScale`, a layer text alpha
+  set that repaints only on a change, never a rebuild). `PushParams` takes the glow setting as a third argument
+  (default `HUD_GLOW_DEFAULT`). `-SOLSmokeSolidMenu` checks a pending 0% on the Flight HUD tab (`w-help-glow-0`:
+  the subsystem's scale, the material's `GlowScale` and every view's text alpha at 0, no view rebuilt) and its revert
+  (`w-help-glow-revert`); a whole run logs 296 checks. The player guide was regenerated at the placeholder level.
 
 ### 4.8 Settings (persistence; D1, D2, D5)
 
@@ -377,8 +406,8 @@ The material itself is not unit-testable; the smoke and screenshots check it (se
 
 - **Settings row label:** "HUD glow" (D6), value "0%" ... "200%"; Settings hint as in D6.
 - **In-game Info** (`SOLMenuText.h`, the flight HUD paragraph): the D6 sentence as amended by D17, after the sentence
-  on the HUD and menu effects slider. (In 37a the card readouts do not follow yet; the sentence names lines, text,
-  radar and route lines and is left as is until 37b makes the readouts follow.)
+  on the HUD and menu effects slider. 37b adds that the readouts inside the hologram cards and the Help glossary's HUD
+  pictures follow, and that the cards' corner marks keep their own look.
 - **Settings glow sample text** (`SOLMenuText::SETTINGS_GLOW_SAMPLE`): "TARGET  Earth", a HUD-style readout.
 - `Docs/GAME_MECHANICS.md`: a new Settings row "HUD glow (`HudGlow`) | 0-200% in 5% steps; default 100% (= N% of the
   issue #31 glow) ... | At once (preview); kept on Apply | ..." (save schema 12, the knob table of section 4.2, card
@@ -472,3 +501,6 @@ Temporary screenshots are deleted once looked at; only README gallery shots are 
   pointer follows HUD glow, narrowing D3), section 4.10 and contract cases 18-20; D14 corrected (the real save slot,
   values kept pending); the route piece triangle count as a pure helper with the overlay's glow scale kept for the
   smoke.
+- 2026-11-10: part 37b built: the per-shape glow override (engine route proven by compile and screenshots), the
+  per-line text glow alpha, the target and info cards' readouts through `BeginReadoutGlow`, the glossary glow push and
+  the views' text alpha; the Customized UV connection through an editor-only helper (hidden enum entries).

@@ -1570,4 +1570,240 @@ bool FSOLHudShapesGlowScaleFeedTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// --- Per-shape glow override (issue #37 part 37b) ---
+
+// Issue #37 card readouts (SDD 37 section 4.6, D10), written against the SDD 37 section 5 contract (case 13) before the
+// production code: a shape's own glow factor rides in FSlateVertex::MaterialTexCoords as (g, 1); (0, 0) means "use the
+// material's GlowScale"
+
+namespace
+{
+    // The shapes HudShapesAddEveryKind adds, in the order added
+    constexpr int32 HUDSHAPES_EVERY_KIND_COUNT = 6;
+    const TCHAR* const HUDSHAPES_EVERY_KIND_NAMES[HUDSHAPES_EVERY_KIND_COUNT] = { TEXT("line"), TEXT("ring"),
+        TEXT("arc"), TEXT("ellipse"), TEXT("dashed line"), TEXT("panel") };
+
+    // A glow factor inside the sanitizer's range, used as the override
+    constexpr float HUDSHAPES_OVERRIDE_SCALE = 0.3f;
+
+    // The vertex value of a shape with no override (use the material's GlowScale)
+    const FVector2f HUDSHAPES_NO_OVERRIDE(0.0f, 0.0f);
+
+    //////////////////////////////////////////////////////////////////////////
+    // Adds one line, ring, arc, ellipse, dashed line and panel, in that order; returns how many were added
+    int32 HudShapesAddEveryKind(FSOLHudShapeBatch& batch)
+    {
+        using namespace SOL::Hologram;
+        constexpr float halfWidth = HUD_LINE_HALF_WIDTH_PX;
+        constexpr float pad = HUD_GLOW_PAD_PX;
+        constexpr float intensity = 0.8f;
+        const FLinearColor color(0.2f, 0.6f, 1.0f, 1.0f);
+        const FVector2f a(40.0f, 30.0f);
+        const FVector2f b(120.0f, 90.0f);
+        int32 added = 0;
+        added += batch.AddLine(a, b, halfWidth, color, intensity, pad) ? 1 : 0;
+        added += batch.AddRing(a, 12.0f, halfWidth, color, intensity, pad) ? 1 : 0;
+        added += batch.AddArc(b, 20.0f, halfWidth, 0.7f, 1.0f, color, intensity, pad) ? 1 : 0;
+        added += batch.AddEllipse(a, 40.0f, 20.0f, halfWidth, color, intensity, pad) ? 1 : 0;
+        added += batch.AddDashedLine(a, b, halfWidth, 6.0f, color, intensity, pad) ? 1 : 0;
+        added += batch.AddPanel(b, FVector2f(30.0f, 15.0f), color, intensity, 0.25f, pad) ? 1 : 0;
+        return added;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks that all four vertices of one shape carry MaterialTexCoords == expected
+    void HudShapesCheckGlowOverride(FAutomationTestBase& test, const FSOLHudShapeBatch& batch, const int32 shapeIndex,
+        const FVector2f& expected, const FString& label)
+    {
+        const TArray<FSlateVertex>& vertices = batch.GetVertices();
+        const int32 first = shapeIndex * HUDSHAPES_VERTS_PER_SHAPE;
+        if (!test.TestTrue(label + TEXT(": vertex buffer holds the shape"),
+            vertices.Num() >= first + HUDSHAPES_VERTS_PER_SHAPE))
+        {
+            return;
+        }
+        for (int32 v = 0; v < HUDSHAPES_VERTS_PER_SHAPE; ++v)
+        {
+            const FVector2f actual = vertices[first + v].MaterialTexCoords;
+            const FString where = FString::Printf(TEXT("%s: vertex %d"), *label, v);
+            test.TestEqual(where + TEXT(": glow factor (x)"), actual.X, expected.X, HUDSHAPES_TOLERANCE);
+            test.TestEqual(where + TEXT(": override flag (y)"), actual.Y, expected.Y, HUDSHAPES_TOLERANCE);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks the six shapes HudShapesAddEveryKind added from firstShape on all carry MaterialTexCoords == expected
+    void HudShapesCheckEveryKindOverride(FAutomationTestBase& test, const FSOLHudShapeBatch& batch,
+        const int32 firstShape, const FVector2f& expected, const FString& label)
+    {
+        for (int32 k = 0; k < HUDSHAPES_EVERY_KIND_COUNT; ++k)
+        {
+            HudShapesCheckGlowOverride(test, batch, firstShape + k, expected,
+                FString::Printf(TEXT("%s: %s"), *label, HUDSHAPES_EVERY_KIND_NAMES[k]));
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchGlowOverrideTest, "SOLTest.HudShapes.BatchGlowOverride",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 13, D10, written before the override) Every kind of shape carries (0, 0) in MaterialTexCoords
+// unless an override is set, then (sanitized g, 1) until ClearGlowOverride or Reset; shapes keep the value they were
+// added with
+bool FSOLHudShapesBatchGlowOverrideTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr int32 count = HUDSHAPES_EVERY_KIND_COUNT;
+    const FVector2f overridden(HUDSHAPES_OVERRIDE_SCALE, 1.0f);
+    FSOLHudShapeBatch batch;
+    batch.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+
+    // A fresh batch: every kind uses the material's GlowScale
+    TestEqual(TEXT("fresh: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, 0, HUDSHAPES_NO_OVERRIDE, TEXT("fresh"));
+
+    // With an override set, the next shapes carry (g, 1); the shapes added before keep (0, 0)
+    batch.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
+    TestEqual(TEXT("override: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, count, overridden, TEXT("override"));
+    HudShapesCheckEveryKindOverride(*this, batch, 0, HUDSHAPES_NO_OVERRIDE, TEXT("added before the override"));
+
+    // Cleared: (0, 0) again, and the overridden shapes keep theirs
+    batch.ClearGlowOverride();
+    TestEqual(TEXT("cleared: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, 2 * count, HUDSHAPES_NO_OVERRIDE, TEXT("cleared"));
+    HudShapesCheckEveryKindOverride(*this, batch, count, overridden, TEXT("overridden, after the clear"));
+
+    // An override of 0 (no glow) is flagged, so it is not the "use the material's" default
+    batch.SetGlowOverride(0.0f);
+    TestEqual(TEXT("override 0: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, 3 * count, FVector2f(0.0f, 1.0f), TEXT("override 0"));
+
+    // Sanitized like SanitizeGlowScale: NaN reads 1, below 0 reads 0, past the bound reads the bound
+    const struct { float In; FVector2f Want; const TCHAR* Name; } cases[] = {
+        { HUDSHAPES_NAN, FVector2f(1.0f, 1.0f), TEXT("override NaN reads 1") },
+        { -2.0f, FVector2f(0.0f, 1.0f), TEXT("override -2 reads 0") },
+        { 9.0f, FVector2f(HUDSHAPES_SCALE_MAX, 1.0f), TEXT("override 9 reads the bound") },
+        { HUDSHAPES_SCALE_MAX, FVector2f(HUDSHAPES_SCALE_MAX, 1.0f), TEXT("override at the bound kept") },
+        { HUDSHAPES_LEVEL, FVector2f(HUDSHAPES_LEVEL, 1.0f), TEXT("override at the default level kept") },
+    };
+    int32 next = 4 * count;
+    for (const auto& item : cases)
+    {
+        batch.SetGlowOverride(item.In);
+        TestEqual(FString(item.Name) + TEXT(": every kind added"), HudShapesAddEveryKind(batch), count);
+        HudShapesCheckEveryKindOverride(*this, batch, next, item.Want, item.Name);
+        next += count;
+    }
+
+    // A second SetGlowOverride replaces the first
+    batch.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
+    batch.SetGlowOverride(HUDSHAPES_LEVEL);
+    TestEqual(TEXT("replaced: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, next, FVector2f(HUDSHAPES_LEVEL, 1.0f), TEXT("replaced"));
+
+    // Reset clears an override left set: the next frame's shapes use the material's GlowScale
+    batch.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
+    batch.Reset();
+    TestEqual(TEXT("after reset: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, 0, HUDSHAPES_NO_OVERRIDE, TEXT("after reset"));
+
+    // Clearing with no override set is harmless
+    batch.ClearGlowOverride();
+    TestEqual(TEXT("clear twice: every kind added"), HudShapesAddEveryKind(batch), count);
+    HudShapesCheckEveryKindOverride(*this, batch, count, HUDSHAPES_NO_OVERRIDE, TEXT("clear with none set"));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchGlowOverrideVertexTest, "SOLTest.HudShapes.BatchGlowOverrideVertex",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 13) The override changes only MaterialTexCoords: the same shapes added with and without one have
+// identical positions, local frames, size and kind packing, colours, pixel sizes and indices
+bool FSOLHudShapesBatchGlowOverrideVertexTest::RunTest(const FString& /*parameters*/)
+{
+    FSOLHudShapeBatch plain;
+    plain.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+    FSOLHudShapeBatch overridden;
+    overridden.Initialize(SOL::Hologram::HUD_MAX_SHAPES);
+    overridden.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
+    TestEqual(TEXT("plain: every kind added"), HudShapesAddEveryKind(plain), HUDSHAPES_EVERY_KIND_COUNT);
+    TestEqual(TEXT("overridden: every kind added"), HudShapesAddEveryKind(overridden), HUDSHAPES_EVERY_KIND_COUNT);
+    TestEqual(TEXT("same shape count"), overridden.GetShapeCount(), plain.GetShapeCount());
+
+    const TArray<FSlateVertex>& a = plain.GetVertices();
+    const TArray<FSlateVertex>& b = overridden.GetVertices();
+    if (!TestEqual(TEXT("same vertex count"), b.Num(), a.Num()))
+    {
+        return false;
+    }
+    for (int32 i = 0; i < a.Num(); ++i)
+    {
+        const FString label = FString::Printf(TEXT("%s vertex %d"),
+            HUDSHAPES_EVERY_KIND_NAMES[i / HUDSHAPES_VERTS_PER_SHAPE], i % HUDSHAPES_VERTS_PER_SHAPE);
+        TestTrue(label + TEXT(": position"), a[i].Position == b[i].Position);
+        for (int32 t = 0; t < 4; ++t)
+        {
+            TestEqual(FString::Printf(TEXT("%s: TexCoords[%d]"), *label, t), b[i].TexCoords[t], a[i].TexCoords[t]);
+        }
+        TestTrue(label + TEXT(": colour"), a[i].Color == b[i].Color);
+        TestTrue(label + TEXT(": secondary colour"), a[i].SecondaryColor == b[i].SecondaryColor);
+        TestTrue(label + TEXT(": pixel size"), a[i].PixelSize[0] == b[i].PixelSize[0]
+            && a[i].PixelSize[1] == b[i].PixelSize[1]);
+        TestTrue(label + TEXT(": the override is the only difference"),
+            b[i].MaterialTexCoords == FVector2f(HUDSHAPES_OVERRIDE_SCALE, 1.0f));
+    }
+
+    const TArray<SlateIndex>& ia = plain.GetIndices();
+    const TArray<SlateIndex>& ib = overridden.GetIndices();
+    if (TestEqual(TEXT("same index count"), ib.Num(), ia.Num()))
+    {
+        bool bSame = true;
+        for (int32 i = 0; i < ia.Num(); ++i)
+        {
+            bSame &= ia[i] == ib[i];
+        }
+        TestTrue(TEXT("same indices"), bSame);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesBatchGlowOverrideCapacityTest,
+    "SOLTest.HudShapes.BatchGlowOverrideCapacity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 13) An override set on a full batch still drops and counts shapes, without growing the buffers,
+// and a shape that fits after a Reset carries no override
+bool FSOLHudShapesBatchGlowOverrideCapacityTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float halfWidth = SOL::Hologram::HUD_LINE_HALF_WIDTH_PX;
+    constexpr float pad = SOL::Hologram::HUD_GLOW_PAD_PX;
+    const FVector2f a(0.0f, 0.0f);
+    const FVector2f b(10.0f, 0.0f);
+
+    FSOLHudShapeBatch batch;
+    batch.Initialize(1);
+    const int32 vertexMax = batch.GetVertices().Max();
+    const int32 indexMax = batch.GetIndices().Max();
+    batch.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
+    TestTrue(TEXT("first line fits"), batch.AddLine(a, b, halfWidth, FLinearColor::White, 1.0f, pad));
+    TestFalse(TEXT("second line dropped"), batch.AddLine(a, b, halfWidth, FLinearColor::White, 1.0f, pad));
+    TestEqual(TEXT("one dropped"), batch.GetDroppedCount(), 1);
+    TestEqual(TEXT("one shape"), batch.GetShapeCount(), 1);
+    TestEqual(TEXT("vertex capacity did not grow"), batch.GetVertices().Max(), vertexMax);
+    TestEqual(TEXT("index capacity did not grow"), batch.GetIndices().Max(), indexMax);
+    HudShapesCheckGlowOverride(*this, batch, 0, FVector2f(HUDSHAPES_OVERRIDE_SCALE, 1.0f), TEXT("the kept line"));
+
+    batch.Reset();
+    TestTrue(TEXT("after reset a line fits"), batch.AddLine(a, b, halfWidth, FLinearColor::White, 1.0f, pad));
+    HudShapesCheckGlowOverride(*this, batch, 0, HUDSHAPES_NO_OVERRIDE, TEXT("after reset"));
+    TestEqual(TEXT("reset: vertex capacity kept"), batch.GetVertices().Max(), vertexMax);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

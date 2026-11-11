@@ -245,6 +245,11 @@ public:
     // Returns the backings the menu layer's last paint drew (verification)
     int32 GetLastMenuPaintedBackingCount() const;
 
+    // Returns the menu layer's shape batch and text lines as last filled, or null without a menu layer (verification:
+    // SDD 37 D10, the card readouts carry the HUD glow and the card frames do not)
+    const FSOLHudShapeBatch* GetMenuLayerBatch() const;
+    const FSOLHudTextList* GetMenuLayerTexts() const;
+
     // What one card (ESOLHudCard, UI/SOLHudLines.h) drew last frame (verification)
     struct FSOLHudCardStats
     {
@@ -262,6 +267,9 @@ public:
         int32 ContentShapes = 0;                // Content shapes (bars, icon, G meter) added on the menu layer
         int32 ContentTexts = 0;                 // Content text lines added on the menu layer
         float ContentPadPx = -1.0f;             // Glow pad of its content lines (-1: no content on the menu layer)
+        int32 FrameShapeStart = -1;             // Its frame's first shape in the menu layer's batch (-1: not there)
+        int32 ReadoutShapes = 0;                // Readout shapes given the HUD glow on the menu layer (SDD 37 D10)
+        int32 ReadoutTexts = 0;                 // Readout text lines given the HUD glow's outline alpha (SDD 37 D10)
     };
 
     // Returns what a card drew last frame (verification)
@@ -442,6 +450,15 @@ private:
 
     // Sends the HUD's draw helpers back to the HUD layer and records the content added into the card's stats
     void EndCardContent();
+
+    // (Issue #37, SDD 37 D10) Gives a card readout drawn on the menu layer from now on the HUD glow (the menu batch's
+    // glow override, the menu text list's outline alpha) until EndReadoutGlow, while the card frame keeps the menu
+    // material's; nothing when the menu layer is not in use (the readout is then on the HUD layer, which follows the
+    // HUD glow anyway). BeginCardContent calls it; the target and info cards call it around their text
+    void BeginReadoutGlow(ESOLHudCard card);
+
+    // Ends a readout's HUD glow and counts what it drew into its card's stats
+    void EndReadoutGlow();
 
     // Builds a frameless card (SOLHoloFrameBuild::BuildCard: corner ticks, faint tint, sweep) around a content
     // rectangle at a look and draws it on the menu layer (else the HUD layer), recording what it drew
@@ -627,6 +644,9 @@ private:
     ESOLHudCard mContentCard = ESOLHudCard::Count;  // The card whose content is being drawn, with the menu layer's
     int32 mContentShapeStart = 0;                   // shape and text counts when it began
     int32 mContentTextStart = 0;
+    ESOLHudCard mReadoutCard = ESOLHudCard::Count;  // The card whose readout has the HUD glow (SDD 37 D10), with the
+    int32 mReadoutShapeStart = 0;                   // menu layer's shape and text counts when it began
+    int32 mReadoutTextStart = 0;
     float mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;   // Glow pad of the Glow* helpers (LinePad on card content)
     FSOLHudSymbolPrims mSymbolScratch;              // One HUD element's symbol primitives, reset before each build
                                                     // (about 2.8 KB: a member, never a local)

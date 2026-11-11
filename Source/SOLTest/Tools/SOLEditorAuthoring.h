@@ -11,6 +11,9 @@
 
 #include "SOLEditorAuthoring.generated.h"
 
+class UMaterial;
+class UMaterialExpression;
+
 // Editor-only authoring helper for editor Python scripts (never called by gameplay code). Exists because some
 // engine asset properties that authoring needs (e.g. a PCG Custom HLSL node's shader source) are plain
 // UPROPERTY() with no edit/Blueprint flags, so Python's set_editor_property and the MCP toolsets cannot reach them.
@@ -25,5 +28,10 @@ public:
 #if WITH_EDITOR
     UFUNCTION(BlueprintCallable, Category = "SOL|EditorAuthoring")
     static bool SetObjectStringProperty(UObject* object, FName propertyName, const FString& value);
+
+    // Connects an expression's first output to a material's Customized UV input (0-7; the EMaterialProperty entries
+    // are hidden from Python, issue #37 M_SOLHudShape); returns false for a bad index, material or expression
+    UFUNCTION(BlueprintCallable, Category = "SOL|EditorAuthoring")
+    static bool ConnectMaterialCustomizedUV(UMaterial* material, UMaterialExpression* expression, int32 uvIndex);
 #endif
 };

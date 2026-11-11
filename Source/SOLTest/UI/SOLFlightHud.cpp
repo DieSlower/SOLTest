@@ -407,6 +407,7 @@ void ASOLFlightHud::BeginShapeFrame()
     mCardHudBatch = nullptr;
     mCardHudTextList = nullptr;
     mContentCard = ESOLHudCard::Count;
+    mReadoutCard = ESOLHudCard::Count;
     mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;
     mLastPanelCount = 0;
     mWasSteerHintDrawn = false;
@@ -503,6 +504,9 @@ void ASOLFlightHud::BeginMenuFrame()
     {
         mMenuLayer->ResetFrame();
     }
+    // A readout's glow override left set by a missed EndReadoutGlow (on a frame that drew nothing) ends here too
+    mMenuLayer->GetBatch().ClearGlowOverride();
+    mMenuLayer->GetTexts().ClearGlowAlphaOverride();
     if (HoloMenu == nullptr)
     {
         return;
@@ -607,8 +611,10 @@ bool ASOLFlightHud::BeginCardContent(const ESOLHudCard card)
     mContentCard = card;
     mContentShapeStart = menuBatch->GetShapeCount();
     mContentTextStart = mTextList->GetItems().Num();
-    // The content lines follow the hologram menu strength as the card's ticks do (flat at 0, D18); text keeps its glow
+    // The content lines follow the hologram menu strength as the card's ticks do (flat at 0, D18); text keeps its glow.
+    // Their glow is the HUD's (SDD 37 D10)
     mGlowPadPx = SOLHoloFrameBuild::LinePad(mCardStrength);
+    BeginReadoutGlow(card);
     return true;
 }
 
@@ -627,12 +633,50 @@ void ASOLFlightHud::EndCardContent()
         stats.ContentTexts += mTextList->GetItems().Num() - mContentTextStart;
         stats.ContentPadPx = mGlowPadPx;
     }
+    EndReadoutGlow();
     mBatch = mCardHudBatch;
     mTextList = mCardHudTextList;
     mCardHudBatch = nullptr;
     mCardHudTextList = nullptr;
     mContentCard = ESOLHudCard::Count;
     mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Gives a card readout on the menu layer the HUD glow until EndReadoutGlow (nothing without the menu layer)
+void ASOLFlightHud::BeginReadoutGlow(const ESOLHudCard card)
+{
+    mReadoutCard = ESOLHudCard::Count;
+    if (mBatch == nullptr || !mMenuLayer.IsValid() || mMenuLayer->GetMaterial() == nullptr)
+    {
+        return;
+    }
+    FSOLHudShapeBatch& batch = mMenuLayer->GetBatch();
+    FSOLHudTextList& texts = mMenuLayer->GetTexts();
+    batch.SetGlowOverride(mHudGlowScale);
+    texts.SetGlowAlphaOverride(SOLHudShapeMath::TextGlowAlpha(mHudGlowScale));
+    mReadoutCard = card;
+    mReadoutShapeStart = batch.GetShapeCount();
+    mReadoutTextStart = texts.Num();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Ends a readout's HUD glow (the next menu shapes and lines use the menu material's) and counts what it drew
+void ASOLFlightHud::EndReadoutGlow()
+{
+    if (mReadoutCard == ESOLHudCard::Count || !mMenuLayer.IsValid())
+    {
+        mReadoutCard = ESOLHudCard::Count;
+        return;
+    }
+    FSOLHudShapeBatch& batch = mMenuLayer->GetBatch();
+    FSOLHudTextList& texts = mMenuLayer->GetTexts();
+    batch.ClearGlowOverride();
+    texts.ClearGlowAlphaOverride();
+    FSOLHudCardStats& stats = mCardStats[static_cast<int32>(mReadoutCard)];
+    stats.ReadoutShapes += batch.GetShapeCount() - mReadoutShapeStart;
+    stats.ReadoutTexts += texts.Num() - mReadoutTextStart;
+    mReadoutCard = ESOLHudCard::Count;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -650,6 +694,7 @@ void ASOLFlightHud::DrawCard(const ESOLHudCard card, const FBox2D& content, cons
     // What it drew, for the smokes: its parts, its tint and its rect (as BuildCard grows the content)
     FSOLHudCardStats& stats = mCardStats[static_cast<int32>(card)];
     stats.bOnMenuLayer = batch != nullptr && batch != mBatch;
+    stats.FrameShapeStart = stats.bOnMenuLayer ? batch->GetShapeCount() : -1;
     stats.Shapes = MenuHoloShapes(mCardOutput);
     stats.bDrawn = true;
     stats.Look = look;
@@ -801,6 +846,20 @@ int32 ASOLFlightHud::GetLastMenuBackingCount() const
 int32 ASOLFlightHud::GetLastMenuPaintedShapeCount() const
 {
     return mMenuLayer.IsValid() ? mMenuLayer->GetLastPaintedShapeCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the menu layer's shape batch as last filled, or null without a menu layer
+const FSOLHudShapeBatch* ASOLFlightHud::GetMenuLayerBatch() const
+{
+    return mMenuLayer.IsValid() ? &mMenuLayer->GetBatch() : nullptr;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the menu layer's text lines as last filled, or null without a menu layer
+const FSOLHudTextList* ASOLFlightHud::GetMenuLayerTexts() const
+{
+    return mMenuLayer.IsValid() ? &mMenuLayer->GetTexts() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -2085,6 +2144,7 @@ void ASOLFlightHud::DrawTargetCard(const FSOLHoloMenuLook& look)
     const float panelX = Canvas->ClipX - (HUD_MARGIN_PX + HUD_TARGET_PANEL_WIDTH_PX) * mUiScale;
     float panelY = HUD_MARGIN_PX * mUiScale;
     const FLinearColor color = SOLHoloRadial::Faded(HUD_SECONDARY, look.FillAlpha);
+    BeginReadoutGlow(ESOLHudCard::Target);
     mText.Reset();
     mText.Append(TEXT("TARGET  "));
     mTargetCardName.AppendString(mText);
@@ -2099,6 +2159,7 @@ void ASOLFlightHud::DrawTargetCard(const FSOLHoloMenuLook& look)
     mText.Append(TEXT("REL "));
     AppendSpeed(mTargetCardRelativeMps);
     readout += MenuText(ESOLHudLine::TargetRelative, color, panelX, panelY, ESOLHudFont::Small);
+    EndReadoutGlow();
     DrawCard(ESOLHudCard::Target, readout, look);
 }
 
@@ -2393,6 +2454,7 @@ void ASOLFlightHud::DrawInfoCard()
     const float x = Canvas->ClipX - (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_WIDTH_PX) * mUiScale;
     float y = (HUD_MARGIN_PX + SOL::Interact::INFO_CARD_TOP_PX) * mUiScale;
     FBox2D panel(ForceInit);
+    BeginReadoutGlow(ESOLHudCard::Info);
 
     // Name (or the type when the object has none), then the type with a moon's planet
     mText.Reset();
@@ -2448,6 +2510,7 @@ void ASOLFlightHud::DrawInfoCard()
         panel += MenuText(ESOLHudLine::InfoStatus, primary, x, y, ESOLHudFont::Small);
         ++lines;
     }
+    EndReadoutGlow();
     DrawCard(ESOLHudCard::Info, panel, look);
     mLastInfoCardLineCount = lines;
 }

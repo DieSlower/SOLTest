@@ -11,6 +11,7 @@
 #include "Menu/SOLSolidStyle.h"
 #include "Menu/SOLSolidTraceLayer.h"
 #include "SOLConstants.h"
+#include "UI/SOLHudShapeMath.h"
 
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetTree.h"
@@ -947,10 +948,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitPushTest, "SOLTest.SolidMenuKit.Par
 
 //////////////////////////////////////////////////////////////////////////
 // Update asks for a push on the first call and on an exact change of the sanitized strength or of a valid DPI scale;
-// an invalid DPI scale keeps the last valid one (1 before any)
+// an invalid DPI scale keeps the last valid one (1 before any). (Issue #37 37b) Every call passes the default HUD glow,
+// so the glow never causes a push here
 bool FSOLSolidKitPushTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOL::Settings;
+    constexpr float glow = HUD_GLOW_DEFAULT;
 
     // Before any call
     FSOLSolidMenuParamCache cache;
@@ -959,48 +962,115 @@ bool FSOLSolidKitPushTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("fresh: no push"), cache.GetPushCount(), 0);
 
     // The first call always pushes, even with the default values
-    TestTrue(TEXT("first call pushes (values equal to the defaults)"), cache.Update(HUD_EFFECTS_DEFAULT, 1.0f));
-    TestFalse(TEXT("same values: no push"), cache.Update(HUD_EFFECTS_DEFAULT, 1.0f));
-    TestTrue(TEXT("strength change pushes"), cache.Update(0.5f, 1.0f));
+    TestTrue(TEXT("first call pushes (values equal to the defaults)"), cache.Update(HUD_EFFECTS_DEFAULT, 1.0f, glow));
+    TestFalse(TEXT("same values: no push"), cache.Update(HUD_EFFECTS_DEFAULT, 1.0f, glow));
+    TestTrue(TEXT("strength change pushes"), cache.Update(0.5f, 1.0f, glow));
     TestEqual(TEXT("strength stored"), cache.GetStrength(), 0.5f);
-    TestTrue(TEXT("DPI change pushes"), cache.Update(0.5f, 1.5f));
+    TestTrue(TEXT("DPI change pushes"), cache.Update(0.5f, 1.5f, glow));
     TestEqual(TEXT("DPI stored"), cache.GetDpiScale(), 1.5f);
-    TestFalse(TEXT("the same again: no push"), cache.Update(0.5f, 1.5f));
+    TestFalse(TEXT("the same again: no push"), cache.Update(0.5f, 1.5f, glow));
     TestEqual(TEXT("3 pushes"), cache.GetPushCount(), 3);
 
     // Invalid DPI scales keep the last valid one and never push on their own
     const float badDpi[] = { 0.0f, -2.0f, SOLIDKITTEST_NAN, SOLIDKITTEST_INF, -SOLIDKITTEST_INF };
     for (int32 i = 0; i < static_cast<int32>(UE_ARRAY_COUNT(badDpi)); ++i)
     {
-        TestFalse(FString::Printf(TEXT("invalid DPI %d: no push"), i), cache.Update(0.5f, badDpi[i]));
+        TestFalse(FString::Printf(TEXT("invalid DPI %d: no push"), i), cache.Update(0.5f, badDpi[i], glow));
         TestEqual(FString::Printf(TEXT("invalid DPI %d: the last valid kept"), i), cache.GetDpiScale(), 1.5f);
     }
-    TestTrue(TEXT("strength change with an invalid DPI pushes"), cache.Update(0.75f, SOLIDKITTEST_NAN));
+    TestTrue(TEXT("strength change with an invalid DPI pushes"), cache.Update(0.75f, SOLIDKITTEST_NAN, glow));
     TestEqual(TEXT("DPI still the last valid"), cache.GetDpiScale(), 1.5f);
-    TestFalse(TEXT("then the kept DPI: no push"), cache.Update(0.75f, 1.5f));
+    TestFalse(TEXT("then the kept DPI: no push"), cache.Update(0.75f, 1.5f, glow));
     TestEqual(TEXT("4 pushes"), cache.GetPushCount(), 4);
 
     // Strengths compare after sanitizing
-    TestTrue(TEXT("5 pushes (reads 2)"), cache.Update(5.0f, 1.5f));
+    TestTrue(TEXT("5 pushes (reads 2)"), cache.Update(5.0f, 1.5f, glow));
     TestEqual(TEXT("5 stored as the maximum"), cache.GetStrength(), HUD_EFFECTS_MAX);
-    TestFalse(TEXT("2 after 5: no push"), cache.Update(2.0f, 1.5f));
-    TestFalse(TEXT("+inf after 2: no push"), cache.Update(SOLIDKITTEST_INF, 1.5f));
-    TestTrue(TEXT("NaN pushes (reads 0)"), cache.Update(SOLIDKITTEST_NAN, 1.5f));
+    TestFalse(TEXT("2 after 5: no push"), cache.Update(2.0f, 1.5f, glow));
+    TestFalse(TEXT("+inf after 2: no push"), cache.Update(SOLIDKITTEST_INF, 1.5f, glow));
+    TestTrue(TEXT("NaN pushes (reads 0)"), cache.Update(SOLIDKITTEST_NAN, 1.5f, glow));
     TestEqual(TEXT("NaN stored as 0"), cache.GetStrength(), 0.0f);
-    TestFalse(TEXT("-3 after NaN: no push"), cache.Update(-3.0f, 1.5f));
-    TestFalse(TEXT("0 after NaN: no push"), cache.Update(0.0f, 1.5f));
+    TestFalse(TEXT("-3 after NaN: no push"), cache.Update(-3.0f, 1.5f, glow));
+    TestFalse(TEXT("0 after NaN: no push"), cache.Update(0.0f, 1.5f, glow));
     TestTrue(TEXT("the smallest positive change pushes (exact compare)"),
-        cache.Update(std::nextafter(0.0f, 1.0f), 1.5f));
+        cache.Update(std::nextafter(0.0f, 1.0f), 1.5f, glow));
     TestTrue(TEXT("the smallest DPI change pushes (exact compare)"),
-        cache.Update(std::nextafter(0.0f, 1.0f), std::nextafter(1.5f, 2.0f)));
+        cache.Update(std::nextafter(0.0f, 1.0f), std::nextafter(1.5f, 2.0f), glow));
     TestEqual(TEXT("8 pushes"), cache.GetPushCount(), 8);
 
     // A first call with an invalid DPI still pushes and keeps 1
     FSOLSolidMenuParamCache fresh;
-    TestTrue(TEXT("first call with an invalid DPI pushes"), fresh.Update(1.0f, SOLIDKITTEST_NAN));
+    TestTrue(TEXT("first call with an invalid DPI pushes"), fresh.Update(1.0f, SOLIDKITTEST_NAN, glow));
     TestEqual(TEXT("its DPI scale stays 1"), fresh.GetDpiScale(), 1.0f);
     TestEqual(TEXT("its push counted"), fresh.GetPushCount(), 1);
-    TestFalse(TEXT("then DPI 1: no change, no push"), fresh.Update(1.0f, 1.0f));
+    TestFalse(TEXT("then DPI 1: no change, no push"), fresh.Update(1.0f, 1.0f, glow));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidKitGlowPushTest, "SOLTest.SolidMenuKit.ParamCache.GlowChange",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 15, D11, written before the glow argument) The cache also keeps the glossary's glow scale,
+// SOLHudShapeMath::HudGlowScale of the HUD glow setting (NaN reads the default setting): Update pushes when only the
+// glow changes, never for a repeat or for two settings that map to the same scale, and the strength and DPI scale are
+// untouched by a glow change
+bool FSOLSolidKitGlowPushTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Settings;
+    using SOLHudShapeMath::HudGlowScale;
+    constexpr float strength = HUD_EFFECTS_DEFAULT;
+    constexpr float dpi = 1.5f;
+    constexpr float tolerance = 1.0e-5f;
+
+    // The first call pushes and stores the mapped scale
+    FSOLSolidMenuParamCache cache;
+    TestTrue(TEXT("first call pushes"), cache.Update(strength, dpi, HUD_GLOW_DEFAULT));
+    TestEqual(TEXT("100%: HudGlowScale(default)"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_DEFAULT), tolerance);
+    TestFalse(TEXT("identical repeat: no push"), cache.Update(strength, dpi, HUD_GLOW_DEFAULT));
+
+    // Only the glow changes: a push, the strength and DPI scale kept
+    TestTrue(TEXT("0%: pushes"), cache.Update(strength, dpi, HUD_GLOW_MIN));
+    TestEqual(TEXT("0%: scale HudGlowScale(min)"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_MIN), tolerance);
+    TestEqual(TEXT("0%: scale 0"), cache.GetGlowScale(), 0.0f, tolerance);
+    TestEqual(TEXT("0%: strength kept"), cache.GetStrength(), strength);
+    TestEqual(TEXT("0%: DPI kept"), cache.GetDpiScale(), dpi);
+    TestFalse(TEXT("0% again: no push"), cache.Update(strength, dpi, HUD_GLOW_MIN));
+    TestTrue(TEXT("200%: pushes"), cache.Update(strength, dpi, HUD_GLOW_MAX));
+    TestEqual(TEXT("200%: scale HudGlowScale(max)"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_MAX), tolerance);
+
+    // One slider step (well beyond VALUE_EQUAL_TOLERANCE) pushes
+    static_assert(HUD_GLOW_STEP > VALUE_EQUAL_TOLERANCE, "a slider step is a real change");
+    const float stepped = HUD_GLOW_DEFAULT + HUD_GLOW_STEP;
+    TestTrue(TEXT("100%: pushes"), cache.Update(strength, dpi, HUD_GLOW_DEFAULT));
+    TestTrue(TEXT("one step up: pushes"), cache.Update(strength, dpi, stepped));
+    TestEqual(TEXT("one step up: its scale"), cache.GetGlowScale(), HudGlowScale(stepped), tolerance);
+    TestEqual(TEXT("5 pushes so far"), cache.GetPushCount(), 5);
+
+    // Settings that map to the same scale do not push: past the ends, and NaN after the default
+    TestTrue(TEXT("200% again: pushes"), cache.Update(strength, dpi, HUD_GLOW_MAX));
+    TestFalse(TEXT("500% after 200%: no push (same scale)"), cache.Update(strength, dpi, 5.0f));
+    TestEqual(TEXT("500%: scale HudGlowScale(max)"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_MAX), tolerance);
+    TestTrue(TEXT("0% again: pushes"), cache.Update(strength, dpi, HUD_GLOW_MIN));
+    TestFalse(TEXT("-100% after 0%: no push (same scale)"), cache.Update(strength, dpi, -1.0f));
+    TestTrue(TEXT("NaN after 0%: pushes (reads the default)"), cache.Update(strength, dpi, SOLIDKITTEST_NAN));
+    TestEqual(TEXT("NaN: scale HudGlowScale(default)"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_DEFAULT),
+        tolerance);
+    TestFalse(TEXT("100% after NaN: no push"), cache.Update(strength, dpi, HUD_GLOW_DEFAULT));
+    TestEqual(TEXT("8 pushes"), cache.GetPushCount(), 8);
+
+    // A glow change with an invalid DPI pushes and keeps the last valid DPI; a strength change keeps the glow
+    TestTrue(TEXT("glow change with an invalid DPI pushes"), cache.Update(strength, SOLIDKITTEST_NAN, HUD_GLOW_MIN));
+    TestEqual(TEXT("DPI still the last valid"), cache.GetDpiScale(), dpi);
+    TestTrue(TEXT("strength change pushes"), cache.Update(0.25f, dpi, HUD_GLOW_MIN));
+    TestEqual(TEXT("strength change: glow scale kept"), cache.GetGlowScale(), HudGlowScale(HUD_GLOW_MIN), tolerance);
+    TestEqual(TEXT("10 pushes"), cache.GetPushCount(), 10);
+
+    // A first call at a non-default glow stores its scale
+    FSOLSolidMenuParamCache fresh;
+    TestTrue(TEXT("fresh: first call pushes"), fresh.Update(strength, 1.0f, HUD_GLOW_MAX));
+    TestEqual(TEXT("fresh: scale HudGlowScale(max)"), fresh.GetGlowScale(), HudGlowScale(HUD_GLOW_MAX), tolerance);
     return true;
 }
 

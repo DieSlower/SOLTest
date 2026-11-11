@@ -9,6 +9,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 namespace
@@ -889,6 +891,178 @@ bool FSOLHudPanelsTextListZeroCapacityTest::RunTest(const FString& /*parameters*
     FSOLHudTextList uninitialized;
     TestFalse(TEXT("uninitialized: Add dropped"), HudPanelsAddLine(uninitialized, 0));
     TestEqual(TEXT("uninitialized: empty"), uninitialized.Num(), 0);
+    return true;
+}
+
+// Issue #37 card readouts (SDD 37 section 4.6, D10), written against the SDD 37 section 5 contract (case 14) before the
+// production code: a text line can carry its own glow-text outline alpha; -1 means "use the layer's"
+
+namespace
+{
+    constexpr float HUDPANELS_NAN = std::numeric_limits<float>::quiet_NaN();
+    constexpr float HUDPANELS_USE_LAYER_ALPHA = -1.0f;      // An item's GlowAlpha when it has no override
+    constexpr float HUDPANELS_OVERRIDE_ALPHA = 0.09f;       // An override alpha inside [0, 1]
+
+    //////////////////////////////////////////////////////////////////////////
+    // Checks the GlowAlpha of the items [first, first + count) of a list
+    void HudPanelsCheckGlowAlpha(FAutomationTestBase& test, const FSOLHudTextList& list, const int32 first,
+        const int32 count, const float expected, const FString& label)
+    {
+        const TConstArrayView<FSOLHudTextItem> items = list.GetItems();
+        if (!test.TestTrue(label + TEXT(": the list holds the lines"), items.Num() >= first + count))
+        {
+            return;
+        }
+        for (int32 i = first; i < first + count; ++i)
+        {
+            test.TestEqual(FString::Printf(TEXT("%s: line %d glow alpha"), *label, i), items[i].GlowAlpha, expected,
+                HUDPANELS_TOLERANCE);
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsTextListGlowAlphaTest, "SOLTest.HudPanels.TextListGlowAlpha",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 14, D10, written before the override) A line carries GlowAlpha -1 (the layer's) unless an
+// override is set, then the override (clamped to [0, 1], NaN reads -1) until ClearGlowAlphaOverride or Reset; lines
+// keep the value they were added with
+bool FSOLHudPanelsTextListGlowAlphaTest::RunTest(const FString& /*parameters*/)
+{
+    // A default item uses the layer's alpha
+    TestEqual(TEXT("default item: the layer's"), FSOLHudTextItem().GlowAlpha, HUDPANELS_USE_LAYER_ALPHA);
+
+    FSOLHudTextList list;
+    list.Initialize(SOL::Hologram::HUD_MAX_TEXTS);
+    int32 next = 0;
+
+    // No override: -1
+    TestTrue(TEXT("plain line added"), HudPanelsAddLine(list, next));
+    HudPanelsCheckGlowAlpha(*this, list, next, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("no override"));
+    ++next;
+
+    // With an override, the next lines carry it; the lines added before keep -1
+    list.SetGlowAlphaOverride(HUDPANELS_OVERRIDE_ALPHA);
+    TestTrue(TEXT("override line 1 added"), HudPanelsAddLine(list, next));
+    TestTrue(TEXT("override line 2 added"), HudPanelsAddLine(list, next + 1));
+    HudPanelsCheckGlowAlpha(*this, list, next, 2, HUDPANELS_OVERRIDE_ALPHA, TEXT("override"));
+    HudPanelsCheckGlowAlpha(*this, list, 0, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("added before the override"));
+    next += 2;
+
+    // Cleared: -1 again, the overridden lines keep theirs
+    list.ClearGlowAlphaOverride();
+    TestTrue(TEXT("cleared line added"), HudPanelsAddLine(list, next));
+    HudPanelsCheckGlowAlpha(*this, list, next, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("cleared"));
+    HudPanelsCheckGlowAlpha(*this, list, 1, 2, HUDPANELS_OVERRIDE_ALPHA, TEXT("overridden, after the clear"));
+    ++next;
+
+    // An override of 0 (no outline) is kept, distinct from -1; out of range clamps; NaN reads the layer's
+    const struct { float In; float Want; const TCHAR* Name; } cases[] = {
+        { 0.0f, 0.0f, TEXT("override 0 kept (no outline)") },
+        { 1.0f, 1.0f, TEXT("override 1 kept") },
+        { -0.5f, 0.0f, TEXT("override -0.5 clamps to 0") },
+        { 3.0f, 1.0f, TEXT("override 3 clamps to 1") },
+        { HUDPANELS_NAN, HUDPANELS_USE_LAYER_ALPHA, TEXT("override NaN reads the layer's") },
+        { SOLHudShapeMath::TextGlowAlpha(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL),
+            SOLHudShapeMath::TextGlowAlpha(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL),
+            TEXT("override at the default level's alpha kept") },
+    };
+    for (const auto& item : cases)
+    {
+        list.SetGlowAlphaOverride(item.In);
+        TestTrue(FString(item.Name) + TEXT(": line added"), HudPanelsAddLine(list, next));
+        HudPanelsCheckGlowAlpha(*this, list, next, 1, item.Want, item.Name);
+        ++next;
+    }
+
+    // A second override replaces the first
+    list.SetGlowAlphaOverride(0.2f);
+    list.SetGlowAlphaOverride(HUDPANELS_OVERRIDE_ALPHA);
+    TestTrue(TEXT("replaced: line added"), HudPanelsAddLine(list, next));
+    HudPanelsCheckGlowAlpha(*this, list, next, 1, HUDPANELS_OVERRIDE_ALPHA, TEXT("replaced"));
+    ++next;
+    TestEqual(TEXT("nothing dropped"), list.GetDroppedCount(), 0);
+
+    // Reset clears an override left set
+    list.SetGlowAlphaOverride(HUDPANELS_OVERRIDE_ALPHA);
+    list.Reset();
+    TestTrue(TEXT("after reset: line added"), HudPanelsAddLine(list, 0));
+    HudPanelsCheckGlowAlpha(*this, list, 0, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("after reset"));
+
+    // Clearing with no override set is harmless
+    list.ClearGlowAlphaOverride();
+    TestTrue(TEXT("clear with none set: line added"), HudPanelsAddLine(list, 1));
+    HudPanelsCheckGlowAlpha(*this, list, 1, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("clear with none set"));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsTextListGlowAlphaFieldsTest, "SOLTest.HudPanels.TextListGlowAlphaFields",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 14) The override changes only GlowAlpha: a line added with one keeps its text, position, scale,
+// colour and font
+bool FSOLHudPanelsTextListGlowAlphaFieldsTest::RunTest(const FString& /*parameters*/)
+{
+    const FText text = FText::FromString(TEXT("12:34 UTC"));
+    const FVector2f position(48.5f, 96.25f);
+    constexpr float scale = 1.25f;
+    const FLinearColor color(0.2f, 0.6f, 1.0f, 0.75f);
+
+    FSOLHudTextList list;
+    list.Initialize(SOL::Hologram::HUD_MAX_TEXTS);
+    list.SetGlowAlphaOverride(HUDPANELS_OVERRIDE_ALPHA);
+    TestTrue(TEXT("line added"), list.Add(text, position, scale, color, ESOLHudFont::Medium));
+    if (!TestEqual(TEXT("one line"), list.Num(), 1))
+    {
+        return false;
+    }
+    const FSOLHudTextItem& item = list.GetItems()[0];
+    TestTrue(TEXT("text identical"), item.Text.IdenticalTo(text));
+    TestEqual(TEXT("position x"), item.Position.X, position.X);
+    TestEqual(TEXT("position y"), item.Position.Y, position.Y);
+    TestEqual(TEXT("scale"), item.Scale, scale);
+    TestTrue(TEXT("colour"), item.Color == color);
+    TestTrue(TEXT("font"), item.Font == ESOLHudFont::Medium);
+    TestEqual(TEXT("glow alpha"), item.GlowAlpha, HUDPANELS_OVERRIDE_ALPHA, HUDPANELS_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudPanelsTextListGlowAlphaCapacityTest,
+    "SOLTest.HudPanels.TextListGlowAlphaCapacity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 14) With an override set, a full list still drops and counts lines without reallocating, and
+// Reset clears the drops and the override together
+bool FSOLHudPanelsTextListGlowAlphaCapacityTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr int32 capacity = HUDPANELS_SMALL_CAPACITY;
+    FSOLHudTextList list;
+    list.Initialize(capacity);
+    list.SetGlowAlphaOverride(HUDPANELS_OVERRIDE_ALPHA);
+    TestTrue(TEXT("line 0 fits"), HudPanelsAddLine(list, 0));
+    const FSOLHudTextItem* storage = list.GetItems().GetData();
+    for (int32 i = 1; i < capacity; ++i)
+    {
+        TestTrue(FString::Printf(TEXT("line %d fits"), i), HudPanelsAddLine(list, i));
+    }
+    TestFalse(TEXT("extra line dropped"), HudPanelsAddLine(list, capacity));
+    TestEqual(TEXT("one dropped"), list.GetDroppedCount(), 1);
+    TestEqual(TEXT("count stays at capacity"), list.Num(), capacity);
+    TestEqual(TEXT("capacity unchanged"), list.GetMaxItems(), capacity);
+    TestTrue(TEXT("no reallocation"), list.GetItems().GetData() == storage);
+    HudPanelsCheckGlowAlpha(*this, list, 0, capacity, HUDPANELS_OVERRIDE_ALPHA, TEXT("full list"));
+
+    list.Reset();
+    TestEqual(TEXT("reset: dropped cleared"), list.GetDroppedCount(), 0);
+    TestTrue(TEXT("reset: a line fits"), HudPanelsAddLine(list, 0));
+    TestTrue(TEXT("reset: same storage"), list.GetItems().GetData() == storage);
+    HudPanelsCheckGlowAlpha(*this, list, 0, 1, HUDPANELS_USE_LAYER_ALPHA, TEXT("after reset"));
     return true;
 }
 

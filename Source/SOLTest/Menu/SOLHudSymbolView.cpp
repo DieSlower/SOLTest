@@ -9,6 +9,7 @@
 #include "SOLTest.h"
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudShapeLayer.h"
+#include "UI/SOLHudShapeMath.h"
 #include "UI/SOLHudTextList.h"
 
 #include "Engine/Engine.h"
@@ -201,6 +202,23 @@ bool USOLHudSymbolView::UpdateBatch(const float strength, FSOLHudSymbolScratch& 
     ++mBuildCount;
     mLayer->MarkBatchChanged();
     return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Gives the sample's glow text the outline alpha of a HUD glow scale (the layer repaints only when it changes)
+void USOLHudSymbolView::SetGlowScale(const float glowScale)
+{
+    if (mLayer.IsValid())
+    {
+        mLayer->SetTextGlowAlpha(SOLHudShapeMath::TextGlowAlpha(glowScale));
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the text glow alpha the view's layer draws with (the default with no layer)
+float USOLHudSymbolView::GetTextGlowAlpha() const
+{
+    return mLayer.IsValid() ? mLayer->GetTextGlowAlpha() : SOL::Hologram::HUD_TEXT_GLOW_ALPHA;
 }
 
 //////////////////////////////////////////////////////////////////////////

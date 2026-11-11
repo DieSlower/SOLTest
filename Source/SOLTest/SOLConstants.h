@@ -859,7 +859,9 @@ namespace SOL
         // The glow weights and falloff below are the reference (glow scale g = 1, the issue #31 glow): the material's
         // GlowScale parameter (default 1, so the menus keep it) scales them per SOLHudShapeMath::GlowProfile(d, g),
         // halo weight x g, core weight 1 - halo weight, core falloff / max(g, falloff / HUD_GLOW_CORE_FALLOFF_MAX).
-        // The flight HUD sets g = Settings HUD glow x HUD_GLOW_DEFAULT_LEVEL (SOLHudShapeMath::HudGlowScale, SDD 37)
+        // The flight HUD sets g = Settings HUD glow x HUD_GLOW_DEFAULT_LEVEL (SOLHudShapeMath::HudGlowScale, SDD 37);
+        // a shape can carry its own g instead (FSOLHudShapeBatch::SetGlowOverride: the card readouts on the menu
+        // layer, SDD 37 section 4.6), read through the material's Customized UV 2
         inline constexpr const TCHAR* CVAR_HUD_RENDERER = TEXT("sol.HudRenderer");     // 1 = shape renderer, 0 = Canvas
         inline constexpr const TCHAR* CVAR_HUD_COMPOSITE = TEXT("sol.HudComposite");   // 1 = grain and scanlines on
         inline constexpr double HUD_GLOW_CORE_HALF_PX = 0.5;        // Full-strength core around the centre line

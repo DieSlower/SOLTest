@@ -253,7 +253,7 @@ namespace
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
     constexpr double SOLID_SMOKE_WATCHDOG_S = 300.0;            // A whole run (issue #37: measured 236 s)
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 294;          // Issue #37: the checks a whole run logs (Finish
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 296;          // Issue #37: the checks a whole run logs (Finish
                                                                 // fails a run that logged another number: a skipped
                                                                 // check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
@@ -5893,8 +5893,79 @@ bool FSOLSolidMenuSmoke::TickHelp(USOLMenuSubsystem& menu, const bool bPause, co
             return false;
         }
         ApplyStrength(menu, SOL::Settings::HUD_EFFECTS_DEFAULT);
+        toStage(50);
+        return false;
+    case 50:
+    {
+        // (Issue #37, D11) The strength back and settled: the build counts noted, then a pending HUD glow of 0% (as
+        // the Settings slider previews it; never applied or written)
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            mHelpBuilds[index] = rows[index].View != nullptr ? rows[index].View->GetBuildCount() : 0;
+        }
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu))
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = SOL::Settings::HUD_GLOW_MIN;
+            settings->SetPendingValues(values);
+        }
+        toStage(51);
+        return false;
+    }
+    case 51:
+    {
+        // The glossary at 0%: the shared material and the shown views' text follow, no view rebuilt; shot; reverted
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        FString detail;
+        const bool bGlow = ReadHelpGlow(menu, *page, flightTab, SOL::Settings::HUD_GLOW_MIN, detail);
+        const TArray<FSOLHelpGlossaryRow>& rows = page->GetGlossaryRows();
+        int32 rebuilt = 0;
+        for (int32 index = 0; index < rows.Num(); ++index)
+        {
+            rebuilt += rows[index].View != nullptr && rows[index].View->GetBuildCount() != mHelpBuilds[index] ? 1 : 0;
+        }
+        Check(TEXT("w-help-glow-0"), bGlow && rebuilt == 0, FString::Printf(TEXT("%s, %d view(s) rebuilt"), *detail,
+            rebuilt));
+        TakeUiShot(*FString::Printf(TEXT("%s-flight-glow0"), *shot));
+        toStage(52);
+        return false;
+    }
+    case 52:
+        if (sinceFrames < SOLID_SMOKE_SHOT_FRAMES)
+        {
+            return false;
+        }
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu))
+        {
+            settings->RevertPending();
+        }
+        toStage(53);
+        return false;
+    case 53:
+    {
+        // Reverted: the glossary back at the saved HUD glow, nothing left pending
+        if (sinceS < SOLID_SMOKE_SETTLE_S)
+        {
+            return false;
+        }
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&menu);
+        const float saved = settings != nullptr ? settings->GetSavedValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT;
+        FString detail;
+        const bool bGlow = ReadHelpGlow(menu, *page, flightTab, saved, detail);
+        Check(TEXT("w-help-glow-revert"), bGlow && settings != nullptr && !settings->IsDirty(),
+            FString::Printf(TEXT("%s, settings dirty %d"), *detail, settings != nullptr && settings->IsDirty() ? 1
+            : 0));
         toStage(17);
         return false;
+    }
     case 17:
     {
         // The strength back and settled: the build counts noted, then Help closed by Esc
@@ -6203,6 +6274,36 @@ bool FSOLSolidMenuSmoke::ReadHelpPopup(USOLReadOnlyPageWidget& page, const USOLS
         diagram->GetHoveredKey(), *placed, shellMin.X, shellMin.Y, shellMax.X, shellMax.Y, bInShell ? 1 : 0,
         bKeyInView ? 1 : 0, viewMin.Y, viewMax.Y, scroll->GetScrollOffset(), bLayout ? 1 : 0);
     return popup != nullptr && bHovered && bPlaced && bInShell && bKeyInView && bLayout;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37, D11) Checks the glossary's glow against a Settings HUD glow value: the subsystem's pushed glow scale, the
+// shared HUD shape material's GlowScale and every view of the tab's text glow alpha
+bool FSOLSolidMenuSmoke::ReadHelpGlow(USOLMenuSubsystem& menu, const USOLReadOnlyPageWidget& page, const int32 tab,
+    const float setting, FString& outDetail) const
+{
+    const float want = SOLHudShapeMath::HudGlowScale(setting);
+    const float wantAlpha = SOLHudShapeMath::TextGlowAlpha(want);
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld());
+    UMaterialInstanceDynamic* material = solid != nullptr ? solid->GetHudShapeMaterial() : nullptr;
+    const float pushed = solid != nullptr ? solid->GetGlowScale() : -1.0f;
+    const float materialScale = material != nullptr
+        ? material->K2_GetScalarParameterValue(FName(SOL::HudShapeMaterialParams::GLOW_SCALE)) : -1.0f;
+    int32 views = 0;
+    int32 right = 0;
+    for (const FSOLHelpGlossaryRow& row : page.GetGlossaryRows())
+    {
+        if (row.Tab == tab && row.View != nullptr)
+        {
+            ++views;
+            right += FMath::IsNearlyEqual(row.View->GetTextGlowAlpha(), wantAlpha, 1.0e-6f) ? 1 : 0;
+        }
+    }
+    outDetail = FString::Printf(TEXT("HUD glow %.0f%%: glossary glow scale %.4f, material GlowScale %.4f (want %.4f), "
+        "%d/%d views at text glow alpha %.4f"), setting * 100.0f, pushed, materialScale, want, right, views,
+        wantAlpha);
+    return material != nullptr && pushed == want && FMath::IsNearlyEqual(materialScale, want, 1.0e-6f) && views > 0
+        && right == views;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -63,7 +63,8 @@ public:
     // Returns the glow-text lines the owner refills each frame (same frame stamp as the batch)
     FSOLHudTextList& GetTexts() { return mTexts; }
 
-    // Empties the batch, the text lines and the panel backings for a new frame
+    // Empties the batch, the text lines and the panel backings for a new frame (their glow overrides cleared; the
+    // layer's own text glow alpha is kept)
     void ResetFrame();
 
     // Adds a soft dark backing under a hologram panel (canvas pixels, rounded with cornerPx and fading in over
@@ -80,7 +81,8 @@ public:
     void SetTextGlow(bool bGlow) { mIsTextGlow = bGlow; }
 
     // Sets the glow text's outline alpha (SOLHudShapeMath::TextGlowAlpha of the HUD glow scale, SDD 37; clamped to
-    // [0, 1], NaN reads as the HUD_TEXT_GLOW_ALPHA default); at 0 the outline is not drawn, the core and shadow stay
+    // [0, 1], NaN reads as the HUD_TEXT_GLOW_ALPHA default); at 0 the outline is not drawn, the core and shadow stay. A
+    // line with its own GlowAlpha (FSOLHudTextList::SetGlowAlphaOverride, the card readouts) uses that instead
     void SetTextGlowAlpha(float alpha);
 
     // Returns the glow text's outline alpha (verification)

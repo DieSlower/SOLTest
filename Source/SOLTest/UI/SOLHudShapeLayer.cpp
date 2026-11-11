@@ -122,7 +122,7 @@ void SSOLHudShapeLayer::SetMaterial(UMaterialInterface* material)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Empties the batch, the text lines and the panel backings for a new frame
+// Empties the batch, the text lines and the panel backings for a new frame (clearing any glow override left set)
 void SSOLHudShapeLayer::ResetFrame()
 {
     mBatch.Reset();
@@ -260,11 +260,12 @@ void SSOLHudShapeLayer::PaintTexts(const FGeometry& allottedGeometry, FSlateWind
                 ESlateDrawEffect::None, item.Color);
             continue;
         }
-        // (an outline alpha of 0, HUD glow 0%, drops the outline: SDD 37 D9)
+        // (the line's own outline alpha if it has one, e.g. a card readout, else the layer's; 0, HUD glow 0%, drops
+        // the outline: SDD 37 D9 and section 4.6)
+        const float glowAlpha = item.GlowAlpha >= 0.0f ? item.GlowAlpha : mTextGlowAlpha;
         FSlateFontInfo glowFont = baseFont;
-        glowFont.OutlineSettings.OutlineSize = mTextGlowAlpha > 0.0f ? HUD_TEXT_GLOW_OUTLINE : 0;
-        glowFont.OutlineSettings.OutlineColor = FLinearColor(item.Color.R, item.Color.G, item.Color.B,
-            mTextGlowAlpha);
+        glowFont.OutlineSettings.OutlineSize = glowAlpha > 0.0f ? HUD_TEXT_GLOW_OUTLINE : 0;
+        glowFont.OutlineSettings.OutlineColor = FLinearColor(item.Color.R, item.Color.G, item.Color.B, glowAlpha);
         FLinearColor core = FMath::Lerp(item.Color, FLinearColor::White, HUD_TEXT_CORE_WHITEN);
         core.A = item.Color.A;
         FSlateDrawElement::MakeText(outDrawElements, layerId + 1, textGeometry, item.Text, glowFont,

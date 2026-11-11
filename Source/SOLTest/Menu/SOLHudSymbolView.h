@@ -80,6 +80,14 @@ public:
     // scrolled out of view): built at the page's scale, every row of a newly shown tab paints on its first frame
     bool UpdateBatch(float strength, FSOLHudSymbolScratch& scratch, float layoutScale = 0.0f);
 
+    // (Issue #37, SDD 37 D11) Gives the text sample's glow text the outline alpha of a HUD glow scale
+    // (SOLHudShapeMath::TextGlowAlpha); the shapes follow it through the shared material's GlowScale. Repaints only on
+    // a change, never rebuilds (the layout is measured with the outline size, which stays)
+    void SetGlowScale(float glowScale);
+
+    // Returns the text glow alpha the view's layer draws with (verification)
+    float GetTextGlowAlpha() const;
+
     // Returns the shapes of the last build (verification)
     int32 GetShapeCount() const { return mShapeCount; }
 

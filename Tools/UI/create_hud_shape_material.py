@@ -14,7 +14,11 @@
 #       and scanline composite, LT's tone curve and blue grade. The GlowScale parameter (issue #37, SDD 37 section 4.3;
 #       default 1.0 = the issue #31 glow, so the menu instances keep it) scales the glow: halo weight x g, core weight
 #       1 - halo weight, core falloff / max(g, falloff / HUD_GLOW_CORE_FALLOFF_MAX)
-#       (SOLHudShapeMath::GlowProfile(d, g)).
+#       (SOLHudShapeMath::GlowProfile(d, g)). A shape can carry its own g (issue #37 part 37b, SDD 37 section 4.6: the
+#       hologram cards' readouts follow the HUD glow while the menu instance keeps 1): FSOLHudShapeBatch writes (g, 1)
+#       into FSlateVertex::MaterialTexCoords, (0, 0) = use GlowScale. Slate hands MaterialTexCoords to the material's
+#       vertex stage as UV channel 4 only, so NumCustomizedUVs is 3, Customized UV 2 = vertex TexCoord[4], and the
+#       pixel stage reads it as TexCoord[2] (GlowOverride); UV 0 and 1 stay the vertex TexCoord[0] and [1].
 # Every default is read from Source/SOLTest/SOLConstants.h (SOL::Hologram HUD_*, SOL::Settings::HUD_EFFECTS_DEFAULT);
 # the parameter names must match SOL::HudShapeMaterialParams and the asset path SOL::Paths::HUD_SHAPE_MATERIAL.
 # Run (editor closed):
@@ -116,7 +120,7 @@ const bool isPanel = kind >= 1.5 && kind < 2.5;
 // glow scale g (SDD 37, SOLHudShapeMath::GlowProfile(d, g); 1 = the issue #31 glow, 0 = a crisp core) scales the halo
 // weight, keeps the core pixel at 1 and widens the core's skirt with g (its falloff capped at CoreFMax)
 const float dd = max(d + CoreHalf, 0.0);
-const float g = max(GlowScale, 0.0);
+const float g = max(GlowOverride.y > 0.5 ? GlowOverride.x : GlowScale, 0.0);   // A shape's own g, else the MID's
 const float haloW = HaloW * g;
 const float coreF = CoreF / max(g, CoreF / CoreFMax);
 float shape = isPanel ? 0.0 : (1.0 - haloW) * exp(-coreF * max(0.0, dd - CoreHalf))
@@ -205,7 +209,7 @@ def build_shape(material):
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_UI)
     material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
     variable_pins = ["Local", "Params", "VColor", "VAlpha", "Time", "Strength", "Composite", "ViewW", "ViewH",
-        "GlowScale"]
+        "GlowScale", "GlowOverride"]
     custom = add(material, unreal.MaterialExpressionCustom, -500, 0)
     custom.set_editor_property("description", "SOLHudShape")
     custom.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
@@ -240,6 +244,18 @@ def build_shape(material):
     MEL.connect_material_expressions(view_w, "", custom, "ViewW")
     MEL.connect_material_expressions(view_h, "", custom, "ViewH")
     MEL.connect_material_expressions(glow_scale, "", custom, "GlowScale")
+
+    # Per-shape glow override (SDD 37 section 4.6): the vertex stage's UV channel 4 (FSlateVertex::MaterialTexCoords)
+    # routed through Customized UV 2, read in the pixel stage as TexCoord[2]
+    material.set_editor_property("num_customized_u_vs", 3)
+    override_vertex = add(material, unreal.MaterialExpressionTextureCoordinate, -1500, 600)
+    override_vertex.set_editor_property("coordinate_index", 4)
+    # (the EMaterialProperty Customized UV entries are hidden from Python: USOLEditorAuthoring makes the connection)
+    if not unreal.SOLEditorAuthoring.connect_material_customized_uv(material, override_vertex, 2):
+        raise RuntimeError("create_hud_shape_material: Customized UV 2 not connected")
+    override_pixel = add(material, unreal.MaterialExpressionTextureCoordinate, -1200, 500)
+    override_pixel.set_editor_property("coordinate_index", 2)
+    MEL.connect_material_expressions(override_pixel, "", custom, "GlowOverride")
     for index, (pin, name) in enumerate(CONSTANT_PINS):
         node = add(material, unreal.MaterialExpressionConstant, -900, 400 + 60 * index)
         node.set_editor_property("r", constant(name))
