@@ -124,6 +124,11 @@ public:
     UPROPERTY()
     float HoloMenuEffects = SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT;
 
+    /** HUD glow, 1 = 100% (SDD 37 D2; x SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL of the issue #31 glow). Added in schema
+     *  12; an older save is migrated to 100% (the 11 -> 12 step). */
+    UPROPERTY()
+    float HudGlow = SOL::Settings::HUD_GLOW_DEFAULT;
+
     /** Mouse steering toggle on at every flight start (SDD 19 Amendment 5). Added in schema 6; an older save is
      *  migrated to off (the new default). */
     UPROPERTY()

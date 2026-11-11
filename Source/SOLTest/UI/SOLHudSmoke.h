@@ -14,6 +14,7 @@ class ASOLShipPawn;
 class USOLBodyRegistrySubsystem;
 class USOLShipSubsystem;
 class USOLTargetingSubsystem;
+class UWorld;
 
 /**
  * Verification-only HUD script (-SOLSmokeHud). Game keys (T, O, F3, W) are injected into the player controller with
@@ -24,8 +25,11 @@ class USOLTargetingSubsystem;
  * with carry, the unit cycle, setting the cap from the body list, closing with F3 and Esc, the radar's '-' manual
  * zoom and Home back to AUTO, logging a LogSOL PASS/FAIL line per check. Before Earth is selected it checks the manual
  * zoom with no target (SDD 36): '-' down to 10 km and 1 km, and MANUAL keeping its range through T and X (with a
- * screenshot of RADAR 1.0 km (MANUAL) and no target). It ends with two screenshots: the HUD over Earth with Earth
- * targeted and the radar zoomed in manually, and the orbit ellipses seen from 3 AU above the Sun; then it quits.
+ * screenshot of RADAR 1.0 km (MANUAL) and no target). It checks that a pending HUD glow (SDD 37, set through the
+ * settings subsystem, never applied or written) is pushed to the HUD's material and text alpha at once (a screenshot,
+ * at 200% for the default save) and that Revert restores the saved one, with the menu material untouched. It ends with
+ * two screenshots: the HUD over Earth with Earth targeted and the radar zoomed in manually, and the orbit ellipses seen
+ * from 3 AU above the Sun; then it quits.
  */
 class SOLTEST_API FSOLHudSmoke
 {
@@ -72,6 +76,10 @@ private:
         RadarShot,
         CanvasFallback,     // sol.HudRenderer 0 (SDD 21): the reticle back on Canvas; RadarAuto's exit restores 1
         RadarAuto,
+        GlowLive,           // Issue #37: a pending (never applied) HUD glow reaches the HUD's material and text alpha
+                            // (screenshot)
+        GlowShot,           // ...Revert once the shot is taken
+        GlowRevert,         // ...the saved one is back; the menu material keeps GlowScale 1 throughout (SDD 37 D3)
         OrbitShotSetup,
         OrbitShot,
         Done,
@@ -119,6 +127,10 @@ private:
 
     // Detaches the orbit lines from the saved setting and turns them on, once the HUD's line actor exists
     void TryBeginOrbitOverride(bool bLate);
+
+    // Checks that the HUD pushed the glow scale of a Settings HUD glow value to its material and text alpha, that the
+    // menu material still reads GlowScale 1 (SDD 37) and that the settings' dirty state is as expected (bDirtyOk)
+    void CheckGlowPushed(const TCHAR* label, const TCHAR* action, float setting, bool bDirtyOk, const UWorld& world);
 
     TWeakObjectPtr<APlayerController> mController;          // Controller the game keys are injected into
     TWeakObjectPtr<ASOLFlightHud> mHud;                     // The flight HUD

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UI/SOLHudShapeBatch.h"
+#include "UI/SOLHudShapeMath.h"
 
 #include "CoreMinimal.h"
 #include "Styling/SlateBrush.h"
@@ -21,8 +22,8 @@ class USOLSettingsSubsystem;
  * The hologram mouse pointer (SDD 22 section 2.5): a leaf widget Slate draws as the game viewport's software cursor,
  * centred on the pointer, so the arrow's tip (SOLHologramCursor::ArrowSegments) sits at the widget centre and the
  * clicks land where the tip points. The arrow is a few glow lines in one custom-vertex draw with the HUD shape
- * material (HUD palette, the effects slider's row jitter), built once; the material's effects strength follows
- * Settings, pushed only when it changes.
+ * material (HUD palette, the effects slider's row jitter), built once; the material's effects strength and (SDD 37
+ * D17) its HUD glow scale follow the pending Settings values, each pushed only when it changes.
  */
 class SOLTEST_API SSOLHologramCursor : public SLeafWidget
 {
@@ -43,6 +44,9 @@ public:
     // Returns the effects strength last pushed to the material, -1 before the first paint (verification, D19)
     float GetPushedStrength() const { return mPushedStrength; }
 
+    // Returns the HUD glow scale last pushed to the material, -1 before the first paint (verification, SDD 37 D17)
+    float GetPushedGlowScale() const { return mGlowFeed.GetScale(); }
+
     // Draws the arrow as one custom-vertex element
     virtual int32 OnPaint(const FPaintArgs& args, const FGeometry& allottedGeometry, const FSlateRect& cullingRect,
         FSlateWindowElementList& outDrawElements, int32 layerId, const FWidgetStyle& widgetStyle,
@@ -60,6 +64,7 @@ private:
     TWeakObjectPtr<UMaterialInstanceDynamic> mMaterial;
     TWeakObjectPtr<USOLSettingsSubsystem> mSettings;
     mutable float mPushedStrength = -1.0f;                  // Effects strength last pushed to the material
+    mutable FSOLGlowScaleFeed mGlowFeed;                    // HUD glow scale last pushed to the material (SDD 37)
     mutable int32 mPaintCount = 0;
 };
 

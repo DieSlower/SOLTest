@@ -445,7 +445,8 @@ bool FSOLSolidSettingsBindingInvalidTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSolidSettingsSliderTabTest, "SOLTest.SolidSettings.Map.Sliders",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Volumes on Audio, sensitivity on Mouse, HUD scale / HUD effects / menu effects / Chase margin on Gameplay
+// Volumes on Audio, sensitivity on Mouse, HUD scale / HUD effects / HUD glow / menu effects / Chase margin on Gameplay;
+// the HUD glow slider (issue #37, SDD 37 D5) sits right after HUD effects in enum order
 bool FSOLSolidSettingsSliderTabTest::RunTest(const FString& /*parameters*/)
 {
     struct FCase
@@ -461,11 +462,15 @@ bool FSOLSolidSettingsSliderTabTest::RunTest(const FString& /*parameters*/)
         { ESOLSettingsSlider::MouseSensitivity, ESOLSettingsTab::Mouse, TEXT("MouseSensitivity") },
         { ESOLSettingsSlider::HudScale, ESOLSettingsTab::Gameplay, TEXT("HudScale") },
         { ESOLSettingsSlider::HudEffects, ESOLSettingsTab::Gameplay, TEXT("HudEffects") },
+        { ESOLSettingsSlider::HudGlow, ESOLSettingsTab::Gameplay, TEXT("HudGlow") },
         { ESOLSettingsSlider::HoloMenuEffects, ESOLSettingsTab::Gameplay, TEXT("HoloMenuEffects") },
         { ESOLSettingsSlider::ChaseSafetyMargin, ESOLSettingsTab::Gameplay, TEXT("ChaseSafetyMargin") },
     };
     TestEqual(TEXT("one case per slider"), static_cast<int32>(UE_ARRAY_COUNT(cases)),
         static_cast<int32>(ESOLSettingsSlider::Count));
+    TestEqual(TEXT("nine sliders with the HUD glow"), static_cast<int32>(ESOLSettingsSlider::Count), 9);
+    TestEqual(TEXT("HUD glow follows HUD effects"), static_cast<int32>(ESOLSettingsSlider::HudGlow),
+        static_cast<int32>(ESOLSettingsSlider::HudEffects) + 1);
     for (const FCase& c : cases)
     {
         SolidSettingsTestTab(*this, FString::Printf(TEXT("slider %s"), c.Name), SOLSettingsTabs::TabOfSlider(c.Slider),
@@ -577,8 +582,8 @@ bool FSOLSolidSettingsMapCoverageTest::RunTest(const FString& /*parameters*/)
         5);
     TestEqual(TEXT("Audio rows (3 sliders)"), perTab[SolidSettingsTestIndex(ESOLSettingsTab::Audio)], 3);
     TestEqual(TEXT("Mouse rows (1 slider + 1 toggle)"), perTab[SolidSettingsTestIndex(ESOLSettingsTab::Mouse)], 2);
-    TestEqual(TEXT("Gameplay rows (4 sliders + 3 toggles)"), perTab[SolidSettingsTestIndex(ESOLSettingsTab::Gameplay)],
-        7);
+    TestEqual(TEXT("Gameplay rows (5 sliders + 3 toggles)"), perTab[SolidSettingsTestIndex(ESOLSettingsTab::Gameplay)],
+        8);
     TestEqual(TEXT("Overlays has no slider, toggle or stepper"),
         perTab[SolidSettingsTestIndex(ESOLSettingsTab::Overlays)], 0);
     TestEqual(TEXT("Key bindings has no slider, toggle or stepper"),

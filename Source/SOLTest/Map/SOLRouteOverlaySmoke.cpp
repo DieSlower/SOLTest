@@ -9,6 +9,7 @@
 #include "Map/SOLMapModeSubsystem.h"
 #include "Map/SOLRouteOverlayMath.h"
 #include "Map/SOLRouteSubsystem.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLTest.h"
@@ -57,6 +58,8 @@ namespace
     {
         StepSettle,
         StepFlightCheck,
+        StepGlowZero,           // Issue #37: a pending HUD glow of 0% reaches the overlay (no halo, fewer triangles)
+        StepGlowBack,           // ...and Revert brings the saved glow back
         StepOverlayOff,
         StepOverlayOn,
         StepMapCheck,
@@ -143,6 +146,8 @@ bool FSOLRouteOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeco
             Check(TEXT("PAUSED tag"), overlay.HasDrawnPausedTag(), TEXT("beside the target marker"));
             Check(TEXT("triangle budget"), !overlay.WasBudgetExhausted() && overlay.GetLastTriangles() > 0,
                 FString::Printf(TEXT("%d triangles"), overlay.GetLastTriangles()));
+            CheckGlowWiring(TEXT("HUD glow reaches the overlay"), *hud, overlay);
+            mSavedGlowTriangles = overlay.GetLastTriangles();
             CheckRouteMarkers(TEXT("flight"), shipM);
             const FString& line = hud->GetLastRouteLineText();
             Check(TEXT("HUD route marker"), line.Contains(TEXT("PAUSED")) && line.Contains(TEXT("PATROL LOOP")),
@@ -155,6 +160,41 @@ bool FSOLRouteOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeco
                 mViewportPx.Y));
             UE_LOG(LogSOL, Log, TEXT("SmokeRouteOverlay: screenshot (flight view, paused route)"));
             gameMode->CaptureScreenshot();
+            NextStep();
+        }
+        break;
+
+    case StepGlowZero:
+    {
+        // After the screenshot frame has rendered: a pending (never applied) HUD glow of 0% through the settings
+        USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        if (mStepFrames == OVERLAY_SMOKE_SHORT_FRAMES && settings != nullptr)
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = SOL::Settings::HUD_GLOW_MIN;
+            settings->SetPendingValues(values);
+        }
+        if (mStepFrames >= 2 * OVERLAY_SMOKE_SHORT_FRAMES)
+        {
+            CheckGlowWiring(TEXT("pending HUD glow 0% reaches the overlay"), *hud, overlay);
+            const int32 triangles = overlay.GetLastTriangles();
+            Check(TEXT("no halo at HUD glow 0%"), overlay.GetLastHaloIntensity() == 0.0 && triangles > 0
+                && triangles < mSavedGlowTriangles && overlay.GetLastLegsDrawn() == OVERLAY_SMOKE_WAYPOINTS,
+                FString::Printf(TEXT("halo %.3f, %d triangles (%d at the saved glow), %d legs"),
+                overlay.GetLastHaloIntensity(), triangles, mSavedGlowTriangles, overlay.GetLastLegsDrawn()));
+            if (settings != nullptr)
+            {
+                settings->RevertPending();
+            }
+            NextStep();
+        }
+        break;
+    }
+
+    case StepGlowBack:
+        if (mStepFrames >= OVERLAY_SMOKE_SHORT_FRAMES)
+        {
+            CheckGlowWiring(TEXT("Revert brings the saved HUD glow back to the overlay"), *hud, overlay);
             NextStep();
         }
         break;
@@ -419,6 +459,18 @@ void FSOLRouteOverlaySmoke::NextStep()
     ++mStep;
     mStepFrames = 0;
     mStepTimeS = 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks that the overlay drew with the HUD's glow scale of this frame and its halo intensity (SDD 37 section 4.4)
+void FSOLRouteOverlaySmoke::CheckGlowWiring(const TCHAR* name, const ASOLFlightHud& hud,
+    const FSOLMapRouteOverlay& overlay)
+{
+    const float hudScale = hud.GetHudGlowScale();
+    const double wantHalo = SOLRouteOverlayMath::RouteHaloIntensity(hudScale);
+    Check(name, overlay.GetLastGlowScale() == hudScale && overlay.GetLastHaloIntensity() == wantHalo,
+        FString::Printf(TEXT("overlay glow scale %.4f (HUD %.4f), halo %.4f (want %.4f), %d triangles"),
+        overlay.GetLastGlowScale(), hudScale, overlay.GetLastHaloIntensity(), wantHalo, overlay.GetLastTriangles()));
 }
 
 //////////////////////////////////////////////////////////////////////////

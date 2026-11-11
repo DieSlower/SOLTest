@@ -166,6 +166,15 @@ public:
     // Returns true if the last frame drew with the shape renderer (SDD 21; verification)
     bool WasShapeRendererActive() const { return mWasShapeRendererActive; }
 
+    // Returns the HUD glow scale g last pushed to the shape material (-1: never; SDD 37; verification)
+    float GetShapeGlowScale() const { return mShapeGlowScale; }
+
+    // Returns this frame's HUD glow scale g, from the live Settings HUD glow (SDD 37; verification)
+    float GetHudGlowScale() const { return mHudGlowScale; }
+
+    // Returns the HUD layer's glow-text outline alpha (-1: no shape layer; SDD 37; verification)
+    float GetTextGlowAlpha() const;
+
     // Returns the flight view's overlay icon layer (SDD 22; verification)
     const FSOLOverlayIconLayer& GetIconLayer() const { return mIconLayer; }
 
@@ -644,6 +653,8 @@ private:
     bool mIsOverflowWarned = false;                 // The capacity-overflow warning was logged (once per HUD)
     float mShapeStrength = -1.0f;                   // Material parameters last pushed (-1 = never)
     float mShapeComposite = -1.0f;
+    float mShapeGlowScale = -1.0f;                  // GlowScale and the text glow alpha follow it (SDD 37)
+    float mHudGlowScale = SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;   // This frame's HUD glow scale g (SDD 37 section 4.4)
     FVector2f mShapeViewSize = FVector2f::ZeroVector;
     bool mWasShapeRendererActive = false;           // The last frame drew with the shape renderer
     float mUiScale = 1.0f;                          // Layout and font scale for the current canvas height

@@ -34,6 +34,7 @@ void USOLSettingsSave::SetValues(const SOLSettingsModel::FSettingsValues& values
     QualityPreset = values.QualityPreset;
     HudEffectsStrength = values.HudEffectsStrength;
     HoloMenuEffects = values.HoloMenuEffects;
+    HudGlow = values.HudGlow;
     bMouseSteerAtStart = values.bMouseSteerAtStart;
     ChaseSafetyMargin = values.ChaseSafetyMargin;
     bSpaceDust = values.bSpaceDust;
@@ -80,6 +81,7 @@ SOLSettingsModel::FSettingsValues USOLSettingsSave::GetValues() const
     values.QualityPreset = QualityPreset;
     values.HudEffectsStrength = HudEffectsStrength;
     values.HoloMenuEffects = HoloMenuEffects;
+    values.HudGlow = HudGlow;
     values.bMouseSteerAtStart = bMouseSteerAtStart;
     values.ChaseSafetyMargin = ChaseSafetyMargin;
     values.bSpaceDust = bSpaceDust;
@@ -228,5 +230,15 @@ void USOLSettingsSave::MigrateToCurrentVersion()
             : FMath::Clamp(HudEffectsStrength, SOL::Settings::HOLO_MENU_EFFECTS_MIN,
                 SOL::Settings::HOLO_MENU_EFFECTS_MAX);
         Version = 11;
+    }
+
+    // Schema 11 -> 12 (SDD 37 D1, section 4.8): the HUD glow, which a v11 file does not have, starts at 100%; every
+    // other field, the key overrides and the overlay profiles are kept as loaded, and the key layout is unchanged (no
+    // controls-changed notice). Frozen: 100% is a literal on purpose (SOL::Settings::HUD_GLOW_DEFAULT at schema 12)
+    if (Version == 11)
+    {
+        constexpr float glowAtSchema12 = 1.0f;
+        HudGlow = glowAtSchema12;
+        Version = 12;
     }
 }

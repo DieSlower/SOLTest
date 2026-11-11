@@ -7,6 +7,7 @@
 
 #include "Menu/SOLBuildVersion.h"
 #include "Menu/SOLGlossary.h"
+#include "Menu/SOLHudGlowSample.h"
 #include "Menu/SOLHudSymbolView.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLKeyCapRow.h"
@@ -39,6 +40,8 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "UI/SOLHoloMenuSubsystem.h"
+#include "UI/SOLHologramCursorSubsystem.h"
+#include "UI/SOLHudShapeMath.h"
 #include "UI/SOLOverlayMenuWidget.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
@@ -126,6 +129,15 @@ namespace
         HelpLarge,      // ... the Help page opened at 1920x1080: its rail, the Keyboard tab, every glossary tab
         MainReachLarge, // ... the column reach at 1920x1080
         ViewBackLarge,  // ... the page closed, r.SetRes 1280x720 again
+        GlowView,       // Issue #37 (SDD 37 D16): r.SetRes for the HUD glow sample (1280x720 and 1920x1080 windowed,
+                        // then windowed fullscreen at the display's own size, 3840x2160 on a 4K display; looped with
+                        // the four steps after it)
+        GlowOpen,       // ... Settings opened
+        GlowZero,       // ... the Gameplay tab, a pending HUD glow of 0%: the sample laid out inside the tab and
+                        // painted, its glow and the pointer's following
+        GlowTwo,        // ... 200%: the sample and the pointer follow; a screenshot
+        GlowRevert,     // ... Revert: the saved glow back; the next size, or the page closed
+        GlowViewBack,   // ... r.SetRes 1280x720 again, no page
         Diagram,        // 33c: the keyboard diagram test page in the 1280x720 shell content width: fit (D34: the
                         // clusters and mouse stacked under the main block), paint, assignment count, the hover keys
                         // (the panel fixed, D36), Fire rebound to K and back (live rebuild)
@@ -240,8 +252,8 @@ namespace
     constexpr double SOLID_SMOKE_SETUP_S = 3.0;                 // The main menu's first frames (and shader loads)
     constexpr double SOLID_SMOKE_SETTLE_S = 0.8;                // Longer than every hover ramp and press linger
     constexpr double SOLID_SMOKE_VIEW_TIMEOUT_S = 8.0;
-    constexpr double SOLID_SMOKE_WATCHDOG_S = 270.0;            // A whole run (33d-iii: measured 193 s)
-    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 275;          // 33e-iii: the checks a whole run logs (Finish
+    constexpr double SOLID_SMOKE_WATCHDOG_S = 300.0;            // A whole run (issue #37: measured 236 s)
+    constexpr int32 SOLID_SMOKE_EXPECTED_CHECKS = 294;          // Issue #37: the checks a whole run logs (Finish
                                                                 // fails a run that logged another number: a skipped
                                                                 // check)
     constexpr double SOLID_SMOKE_REVERSE_OPEN_S = 0.5;          // The reversal: open this long before the close
@@ -253,6 +265,19 @@ namespace
     const FIntPoint SOLID_SMOKE_VIEW(1280, 720);
     const FIntPoint SOLID_SMOKE_SMALL_VIEW(1000, 800);
     const FIntPoint SOLID_SMOKE_LARGE_VIEW(1920, 1080);         // 33d-ii: the Help steps' large view
+    // Issue #37 (SDD 37 D16): the sizes the HUD glow sample is checked and shot at, and their r.SetRes mode. The engine
+    // clamps a windowed size to the desktop's work area, so the largest is windowed fullscreen at the display's own
+    // size (a zero size here: 3840x2160 on a 4K display, whatever the display offers elsewhere)
+    struct FSolidSmokeGlowView
+    {
+        FIntPoint Size;
+        const TCHAR* Mode;
+    };
+    const FSolidSmokeGlowView SOLID_SMOKE_GLOW_VIEWS[] = {
+        { FIntPoint(1280, 720), TEXT("w") }, { FIntPoint(1920, 1080), TEXT("w") }, { FIntPoint(3840, 2160), TEXT("wf") },
+    };
+    constexpr int32 SOLID_SMOKE_GLOW_DISPLAY_VIEW = 2;          // The entry asked as windowed fullscreen
+    constexpr int32 SOLID_SMOKE_GLOW_VIEW_COUNT = UE_ARRAY_COUNT(SOLID_SMOKE_GLOW_VIEWS);
     constexpr int32 SOLID_SMOKE_IDLE_FRAMES = 30;               // 33d-ii: idle frames in which no view may rebuild
     constexpr int32 SOLID_SMOKE_FIRST_OPEN_FRAMES = 4;          // 33d-ii: frames logged after Help's first open
     constexpr int32 SOLID_SMOKE_INDICES_PER_SHAPE = 6;          // 33d-ii: a shape batch's indices per quad
@@ -472,6 +497,28 @@ namespace
             leaf->GetDetailRowCount(), leaf->GetPaintedDetailRows());
         return bInside && bClear && leaf->GetPaintedDetailRows() == FMath::Min(leaf->GetDetailRowCount(),
             SOL::Help::DIAGRAM_DETAIL_LINES);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////
+    // (Issue #37) Returns whether a view size is one of the displays' own sizes (windowed fullscreen fills one)
+    bool SolidSmokeIsDisplaySize(const FIntPoint& size)
+    {
+        if (!FSlateApplication::IsInitialized())
+        {
+            return false;
+        }
+        FDisplayMetrics metrics;
+        FSlateApplication::Get().GetCachedDisplayMetrics(metrics);
+        for (const FMonitorInfo& monitor : metrics.MonitorInfo)
+        {
+            const FPlatformRect& rect = monitor.DisplayRect;
+            if (size == FIntPoint(rect.Right - rect.Left, rect.Bottom - rect.Top))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1218,6 +1265,54 @@ void FSOLSolidMenuSmoke::EnterStep(const int32 step, USOLMenuSubsystem& menu)
         }
         setView(SOLID_SMOKE_VIEW);
         break;
+    case ESolidSmokeStep::GlowView:
+        // Issue #37: the page of the last size closed (none on the first), then the next size
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ClosePage();
+        }
+        mViewFrames = 0;
+        if (mController.IsValid())
+        {
+            const FSolidSmokeGlowView& glowView = SOLID_SMOKE_GLOW_VIEWS[mGlowViewIndex];
+            mController->ConsoleCommand(FString::Printf(TEXT("r.SetRes %dx%d%s"), glowView.Size.X, glowView.Size.Y,
+                glowView.Mode));
+        }
+        break;
+    case ESolidSmokeStep::GlowOpen:
+        ParkCursor();
+        ClickEntry(menu, SOLID_SMOKE_SETTINGS_ENTRY);
+        break;
+    case ESolidSmokeStep::GlowZero:
+    case ESolidSmokeStep::GlowTwo:
+    {
+        // A pending HUD glow through the slider, as a drag would set it (never applied)
+        const bool bZero = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::GlowZero;
+        USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+        if (bZero)
+        {
+            ClickSettingsTab(page, ESOLSettingsTab::Gameplay);
+        }
+        if (page != nullptr)
+        {
+            page->SetSliderValue(ESOLSettingsSlider::HudGlow, bZero ? SOL::Settings::HUD_GLOW_MIN
+                : SOL::Settings::HUD_GLOW_MAX);
+        }
+        break;
+    }
+    case ESolidSmokeStep::GlowRevert:
+        if (USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr)
+        {
+            page->Revert();
+        }
+        break;
+    case ESolidSmokeStep::GlowViewBack:
+        if (mainMenu != nullptr)
+        {
+            mainMenu->ClosePage();
+        }
+        setView(SOLID_SMOKE_VIEW);
+        break;
     case ESolidSmokeStep::Diagram:
         // 33c: the Controls page in the shell (its content width is read once it settles), the cursor parked
         mDiagramWidth = 0.0f;
@@ -1416,6 +1511,23 @@ bool FSOLSolidMenuSmoke::TickStep(const int32 step, USOLMenuSubsystem& menu)
         return (mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES && mStepTimeS >= SOLID_SMOKE_SETTLE_S)
             || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
     }
+    case ESolidSmokeStep::GlowView:
+    case ESolidSmokeStep::GlowViewBack:
+    {
+        // Issue #37: the view at its size (windowed fullscreen: a display's) for a few frames, the page settled in it
+        const bool bBack = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::GlowViewBack;
+        const FIntPoint size = GetViewSize();
+        const bool bAtSize = !bBack && mGlowViewIndex == SOLID_SMOKE_GLOW_DISPLAY_VIEW ? SolidSmokeIsDisplaySize(size)
+            : size == (bBack ? SOLID_SMOKE_VIEW : SOLID_SMOKE_GLOW_VIEWS[mGlowViewIndex].Size);
+        mViewFrames = bAtSize ? mViewFrames + 1 : 0;
+        return (mViewFrames >= SOLID_SMOKE_VIEW_STABLE_FRAMES && mStepTimeS >= SOLID_SMOKE_SETTLE_S)
+            || mStepTimeS >= SOLID_SMOKE_VIEW_TIMEOUT_S;
+    }
+    case ESolidSmokeStep::GlowOpen:
+    case ESolidSmokeStep::GlowZero:
+    case ESolidSmokeStep::GlowTwo:
+    case ESolidSmokeStep::GlowRevert:
+        return mStepTimeS >= SOLID_SMOKE_SETTLE_S;
     case ESolidSmokeStep::HelpMain:
         return TickHelp(menu, false, false);
     case ESolidSmokeStep::HelpLarge:
@@ -2249,6 +2361,64 @@ void FSOLSolidMenuSmoke::ExitStep(const int32 step, USOLMenuSubsystem& menu)
             *column, bNoPage ? 1 : 0));
         break;
     }
+    case ESolidSmokeStep::GlowView:
+    case ESolidSmokeStep::GlowViewBack:
+    {
+        // Issue #37: the view at its size (windowed fullscreen: a display's own, 3840x2160 on a 4K display; and back at
+        // 1280x720), no page open
+        const bool bBack = static_cast<ESolidSmokeStep>(step) == ESolidSmokeStep::GlowViewBack;
+        const bool bDisplay = !bBack && mGlowViewIndex == SOLID_SMOKE_GLOW_DISPLAY_VIEW;
+        const FIntPoint want = bBack ? SOLID_SMOKE_VIEW : SOLID_SMOKE_GLOW_VIEWS[mGlowViewIndex].Size;
+        const FIntPoint size = GetViewSize();
+        const bool bNoPage = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::None;
+        const FString id = bBack ? FString(TEXT("l-glow-view-back")) : bDisplay ? FString(TEXT("l-glow-view-display"))
+            : FString::Printf(TEXT("l-glow-view-%dx%d"), want.X, want.Y);
+        const bool bSize = bDisplay ? SolidSmokeIsDisplaySize(size) && size.X >= SOLID_SMOKE_LARGE_VIEW.X
+            && size.Y >= SOLID_SMOKE_LARGE_VIEW.Y : size == want;
+        Check(*id, bSize && bNoPage, FString::Printf(TEXT("view %dx%d (want %s), no page %d"), size.X, size.Y,
+            bDisplay ? *FString::Printf(TEXT("a display's own size, at least %dx%d; %dx%d on a 4K display"),
+            SOLID_SMOKE_LARGE_VIEW.X, SOLID_SMOKE_LARGE_VIEW.Y, want.X, want.Y)
+            : *FString::Printf(TEXT("%dx%d"), want.X, want.Y), bNoPage ? 1 : 0));
+        if (bDisplay && size != want)
+        {
+            UE_LOG(LogSOL, Warning, TEXT("SolidMenu: no 4K display: the HUD glow sample's largest view is %dx%d"),
+                size.X, size.Y);
+        }
+        break;
+    }
+    case ESolidSmokeStep::GlowOpen:
+    {
+        const FIntPoint size = GetViewSize();
+        const bool bOpen = mainMenu != nullptr && mainMenu->GetPage() == ESOLMainMenuPage::Settings;
+        Check(*FString::Printf(TEXT("l-glow-settings-%dx%d"), size.X, size.Y), bOpen, FString::Printf(TEXT("page %d"),
+            mainMenu != nullptr ? static_cast<int32>(mainMenu->GetPage()) : -1));
+        break;
+    }
+    case ESolidSmokeStep::GlowZero:
+    case ESolidSmokeStep::GlowTwo:
+    case ESolidSmokeStep::GlowRevert:
+    {
+        // The sample (laid out and painted, at the first value) and the pointer follow the pending HUD glow
+        const ESolidSmokeStep glowStep = static_cast<ESolidSmokeStep>(step);
+        const FIntPoint size = GetViewSize();
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(menu.GetWorld());
+        const float setting = glowStep == ESolidSmokeStep::GlowZero ? SOL::Settings::HUD_GLOW_MIN
+            : glowStep == ESolidSmokeStep::GlowTwo ? SOL::Settings::HUD_GLOW_MAX
+            : settings != nullptr ? settings->GetSavedValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT;
+        const TCHAR* phase = glowStep == ESolidSmokeStep::GlowZero ? TEXT("zero")
+            : glowStep == ESolidSmokeStep::GlowTwo ? TEXT("two") : TEXT("revert");
+        CheckGlowSample(menu, *FString::Printf(TEXT("l-glow-%s-%dx%d"), phase, size.X, size.Y), setting,
+            glowStep == ESolidSmokeStep::GlowZero);
+        if (glowStep == ESolidSmokeStep::GlowTwo)
+        {
+            TakeUiShot(*FString::Printf(TEXT("glow-sample-%dx%d"), size.X, size.Y));
+        }
+        if (glowStep == ESolidSmokeStep::GlowRevert && ++mGlowViewIndex < SOLID_SMOKE_GLOW_VIEW_COUNT)
+        {
+            mRepeatStep = static_cast<int32>(ESolidSmokeStep::GlowView);
+        }
+        break;
+    }
     case ESolidSmokeStep::PauseViewLarge:
     {
         // 33d-ii: paused with Settings open at 1920x1080: the side panel and the shell inside the view
@@ -2566,12 +2736,13 @@ void FSOLSolidMenuSmoke::Finish(USOLMenuSubsystem& menu)
         board->RemoveFromParent();
     }
     // A run that logged another number of checks than a whole run does skipped (or doubled) one: a failure
+    const int32 expected = SOLID_SMOKE_EXPECTED_CHECKS;
     UE_LOG(LogSOL, Log, TEXT("SolidMenu: %d checks run (a whole run: %d) in %.1f s (watchdog %.0f s)"), mChecksRun,
-        SOLID_SMOKE_EXPECTED_CHECKS, mRunTimeS, SOLID_SMOKE_WATCHDOG_S);
-    if (mChecksRun != SOLID_SMOKE_EXPECTED_CHECKS)
+        expected, mRunTimeS, SOLID_SMOKE_WATCHDOG_S);
+    if (mChecksRun != expected)
     {
         Check(TEXT("z-check-count"), false, FString::Printf(TEXT("%d checks run, a whole run logs %d"), mChecksRun,
-            SOLID_SMOKE_EXPECTED_CHECKS));
+            expected));
     }
     UE_LOG(LogSOL, Log, TEXT("SolidMenu SUMMARY %d/%d checks passed"), mChecksPassed, mChecksRun);
     UKismetSystemLibrary::QuitGame(menu.GetWorld(), nullptr, EQuitPreference::Quit, false);
@@ -3220,6 +3391,63 @@ void FSOLSolidMenuSmoke::ParkCursor() const
     {
         SolidSmokeMouseMove(FSlateApplication::Get().GetCursorPos(), false);
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37, SDD 37 D16 / D17) Checks that the Settings page's HUD glow sample and the hologram pointer pushed the
+// glow scale of a HUD glow setting (and the sample its text alpha); bLayout also checks that the sample is on the
+// shown Gameplay tab, inside its scroll box and the page, built at its laid-out pixel size with its own material, and
+// painted whole (its shapes, one text line, one backing)
+void FSOLSolidMenuSmoke::CheckGlowSample(USOLMenuSubsystem& menu, const TCHAR* id, const float setting,
+    const bool bLayout)
+{
+    const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
+    const USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
+    const USOLHudGlowSample* sample = page != nullptr ? page->GetGlowSample() : nullptr;
+    const USOLHologramCursorSubsystem* cursors = menu.GetWorld() != nullptr
+        ? menu.GetWorld()->GetSubsystem<USOLHologramCursorSubsystem>() : nullptr;
+    const TSharedPtr<SSOLHologramCursor> cursor = cursors != nullptr ? cursors->GetCursorWidget() : nullptr;
+    const float want = SOLHudShapeMath::HudGlowScale(setting);
+    const float wantAlpha = SOLHudShapeMath::TextGlowAlpha(want);
+    const float sampleScale = sample != nullptr ? sample->GetGlowScale() : -1.0f;
+    const float sampleAlpha = sample != nullptr ? sample->GetTextGlowAlpha() : -1.0f;
+    const float pointerScale = cursor.IsValid() ? cursor->GetPushedGlowScale() : -1.0f;
+    Check(id, sample != nullptr && sampleScale == want && FMath::IsNearlyEqual(sampleAlpha, wantAlpha, 1.0e-6f)
+        && pointerScale == want, FString::Printf(TEXT("HUD glow %.0f%%: sample glow scale %.4f, text alpha %.4f "
+        "(want %.4f, %.4f), pointer glow scale %.4f"), setting * 100.0f, sampleScale, sampleAlpha, want, wantAlpha,
+        pointerScale));
+    if (!bLayout)
+    {
+        return;
+    }
+
+    // Laid out inside the shown Gameplay tab and the page, built at its pixel size, painted whole
+    const FString layoutId = FString::Printf(TEXT("%s-layout"), id);
+    const UScrollBox* scroll = page != nullptr ? page->GetTabScroll(ESOLSettingsTab::Gameplay) : nullptr;
+    if (sample == nullptr || scroll == nullptr)
+    {
+        Check(*layoutId, false, TEXT("no sample or no Gameplay tab"));
+        return;
+    }
+    FString inScroll;
+    FString inPage;
+    const bool bInScroll = SolidSmokeInside(sample, scroll, inScroll, true);
+    const bool bInPage = SolidSmokeInside(sample, page, inPage, true);
+    const FGeometry& geometry = sample->GetCachedGeometry();
+    const FIntPoint wantPx = SOLGlossary::ViewPixelSize(FVector2f(geometry.GetLocalSize()), geometry.Scale);
+    const bool bBuilt = sample->GetBuildCount() > 0 && sample->GetBuiltSizePx() == wantPx;
+    const bool bPainted = sample->GetShapeCount() >= 2 && sample->GetPaintedShapeCount() == sample->GetShapeCount()
+        && sample->GetPaintedTextCount() == 1 && sample->GetPaintedBackingCount() == 1;
+    const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(page);
+    const UObject* material = sample->GetMaterial();
+    const bool bOwnMaterial = material != nullptr && (solid == nullptr || material != solid->GetHudShapeMaterial());
+    Check(*layoutId, page->GetSelectedTab() == ESOLSettingsTab::Gameplay && bInScroll && bInPage && bBuilt && bPainted
+        && bOwnMaterial, FString::Printf(TEXT("tab %d, in the tab %s, in the page %s, built %dx%d (want %dx%d, %d "
+        "builds), painted %d/%d shapes, %d texts, %d backings, own material %d"),
+        static_cast<int32>(page->GetSelectedTab()),
+        *inScroll, *inPage, sample->GetBuiltSizePx().X, sample->GetBuiltSizePx().Y, wantPx.X, wantPx.Y,
+        sample->GetBuildCount(), sample->GetPaintedShapeCount(), sample->GetShapeCount(),
+        sample->GetPaintedTextCount(), sample->GetPaintedBackingCount(), bOwnMaterial ? 1 : 0));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -4356,7 +4584,7 @@ void FSOLSolidMenuSmoke::CheckSettingsRoom(const TCHAR* id, const USOLSettingsPa
     {
         // Gameplay: each slider's laid-out width (the room left of its value readout)
         const ESOLSettingsSlider sliders[] = { ESOLSettingsSlider::HudScale, ESOLSettingsSlider::HudEffects,
-            ESOLSettingsSlider::HoloMenuEffects, ESOLSettingsSlider::ChaseSafetyMargin };
+            ESOLSettingsSlider::HudGlow, ESOLSettingsSlider::HoloMenuEffects, ESOLSettingsSlider::ChaseSafetyMargin };
         bool bSliders = true;
         FString widths;
         for (const ESOLSettingsSlider slider : sliders)

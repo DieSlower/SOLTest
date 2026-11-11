@@ -42,6 +42,7 @@ SOLSettingsModel::FSettingsValues SOLSettingsModel::Sanitized(const FSettingsVal
         defaults.HudEffectsStrength);
     result.HoloMenuEffects = ClampOrDefault(values.HoloMenuEffects, HOLO_MENU_EFFECTS_MIN, HOLO_MENU_EFFECTS_MAX,
         defaults.HoloMenuEffects);
+    result.HudGlow = ClampOrDefault(values.HudGlow, HUD_GLOW_MIN, HUD_GLOW_MAX, defaults.HudGlow);
     result.QualityPreset = FMath::Clamp(values.QualityPreset, 0, SOLSettingsRules::QUALITY_PRESET_COUNT - 1);
     result.OverlayPrefs = SOLOverlay::Sanitized(values.OverlayPrefs);
     result.ChaseSafetyMargin = ClampOrDefault(values.ChaseSafetyMargin, CHASE_SAFETY_MARGIN_MIN,
@@ -60,7 +61,7 @@ bool SOLSettingsModel::AreEqual(const FSettingsValues& a, const FSettingsValues&
         && x.bHudVisible == y.bHudVisible && x.bDefaultFlightAssist == y.bDefaultFlightAssist && x.bVsync == y.bVsync
         && x.QualityPreset == y.QualityPreset && x.bSpaceDust == y.bSpaceDust
         && Near(x.HudEffectsStrength, y.HudEffectsStrength) && Near(x.HoloMenuEffects, y.HoloMenuEffects)
-        && x.bMouseSteerAtStart == y.bMouseSteerAtStart
+        && Near(x.HudGlow, y.HudGlow) && x.bMouseSteerAtStart == y.bMouseSteerAtStart
         && SOLOverlay::AreEqual(x.OverlayPrefs, y.OverlayPrefs) && Near(x.ChaseSafetyMargin, y.ChaseSafetyMargin);
 }
 

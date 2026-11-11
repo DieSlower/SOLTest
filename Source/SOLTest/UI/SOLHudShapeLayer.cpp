@@ -160,6 +160,22 @@ bool SSOLHudShapeLayer::AddBacking(const FBox2f& rect, const float cornerPx, con
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Sets the glow text's outline alpha (clamped, NaN -> the default); a retained picture repaints when it changes
+void SSOLHudShapeLayer::SetTextGlowAlpha(const float alpha)
+{
+    const float sanitized = FMath::IsNaN(alpha) ? SOL::Hologram::HUD_TEXT_GLOW_ALPHA : FMath::Clamp(alpha, 0.0f, 1.0f);
+    if (sanitized == mTextGlowAlpha)
+    {
+        return;
+    }
+    mTextGlowAlpha = sanitized;
+    if (mIsRetainBatch)
+    {
+        MarkBatchChanged();
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Sets the font a text line of a given ESOLHudFont is drawn with
 void SSOLHudShapeLayer::SetFont(const ESOLHudFont font, const FSlateFontInfo& fontInfo)
 {
@@ -244,10 +260,11 @@ void SSOLHudShapeLayer::PaintTexts(const FGeometry& allottedGeometry, FSlateWind
                 ESlateDrawEffect::None, item.Color);
             continue;
         }
+        // (an outline alpha of 0, HUD glow 0%, drops the outline: SDD 37 D9)
         FSlateFontInfo glowFont = baseFont;
-        glowFont.OutlineSettings.OutlineSize = HUD_TEXT_GLOW_OUTLINE;
+        glowFont.OutlineSettings.OutlineSize = mTextGlowAlpha > 0.0f ? HUD_TEXT_GLOW_OUTLINE : 0;
         glowFont.OutlineSettings.OutlineColor = FLinearColor(item.Color.R, item.Color.G, item.Color.B,
-            HUD_TEXT_GLOW_ALPHA);
+            mTextGlowAlpha);
         FLinearColor core = FMath::Lerp(item.Color, FLinearColor::White, HUD_TEXT_CORE_WHITEN);
         core.A = item.Color.A;
         FSlateDrawElement::MakeText(outDrawElements, layerId + 1, textGeometry, item.Text, glowFont,

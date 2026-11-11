@@ -6,6 +6,7 @@
 #include "Map/SOLRouteOverlayMath.h"
 
 #include "SOLConstants.h"
+#include "UI/SOLHudShapeMath.h"
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the number of waypoint-to-waypoint legs a route draws (a Loop adds its closing leg)
@@ -257,4 +258,19 @@ double SOLRouteOverlayMath::StyleAlpha(const ESOLRouteDrawStyle style)
     default:
         return SOL::Route::OVERLAY_ALPHA_ACTIVE;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a glow piece's halo intensity at a HUD glow scale
+double SOLRouteOverlayMath::RouteHaloIntensity(const float glowScale)
+{
+    return SOL::Hologram::GLOW_HALO_INTENSITY * static_cast<double>(SOLHudShapeMath::SanitizeGlowScale(glowScale));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a glow piece's triangle count at a HUD glow scale: the core quad and the halo, or the core alone
+int32 SOLRouteOverlayMath::GlowPieceTriangles(const float glowScale)
+{
+    return RouteHaloIntensity(glowScale) > 0.0 ? SOL::Route::OVERLAY_GLOW_PIECE_TRIANGLES
+        : SOL::Route::OVERLAY_GLOW_CORE_TRIANGLES;
 }

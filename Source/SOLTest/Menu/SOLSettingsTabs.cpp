@@ -23,7 +23,7 @@ namespace
     // The tab of each slider in ESOLSettingsSlider order
     constexpr ESOLSettingsTab SETTINGS_SLIDER_TABS[] = { ESOLSettingsTab::Audio, ESOLSettingsTab::Audio,
         ESOLSettingsTab::Audio, ESOLSettingsTab::Mouse, ESOLSettingsTab::Gameplay, ESOLSettingsTab::Gameplay,
-        ESOLSettingsTab::Gameplay, ESOLSettingsTab::Gameplay };
+        ESOLSettingsTab::Gameplay, ESOLSettingsTab::Gameplay, ESOLSettingsTab::Gameplay };
     static_assert(UE_ARRAY_COUNT(SETTINGS_SLIDER_TABS) == static_cast<int32>(ESOLSettingsSlider::Count),
         "one tab per slider");
 

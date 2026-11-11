@@ -20,6 +20,7 @@ class UCheckBox;
 class UHorizontalBox;
 class UScrollBox;
 class USizeBox;
+class USOLHudGlowSample;
 class USOLKeyCapRow;
 class USOLMenuButton;
 class USOLOverlayMenuWidget;
@@ -38,7 +39,8 @@ enum class ESOLSettingsSlider : uint8
     MouseSensitivity,
     HudScale,
     HudEffects,         // HUD hologram effects strength (SDD 21)
-    HoloMenuEffects,    // Hologram menu effects strength (SDD 42 section 8); under the HUD effects slider
+    HudGlow,            // HUD glow, 0-200% (SDD 37 D2); under the HUD effects slider (D5)
+    HoloMenuEffects,    // Hologram menu effects strength (SDD 42 section 8); under the HUD glow slider
     ChaseSafetyMargin,  // Chase Down meter floor, a percent of a full meter (SDD 32); after Mouse steering at start
     Count,
 };
@@ -119,6 +121,12 @@ public:
 
     // Returns the tab rail (its scroll state and ScrollToEnd; verification)
     FSOLSolidTabRail& GetRail() { return Rail; }
+
+    // Returns the HUD glow sample under the HUD glow row (SDD 37 D16), or null (verification)
+    USOLHudGlowSample* GetGlowSample() const { return GlowSample; }
+
+    // Returns a tab's scroll box, or null for an invalid tab (verification)
+    const UScrollBox* GetTabScroll(ESOLSettingsTab tab) const;
 
     // Returns a stepper's back (side 0) or forward (side 1) button, or null (verification)
     USOLMenuButton* GetStepperButton(ESOLSettingsStepper stepper, int32 side) const;
@@ -344,6 +352,10 @@ private:
     UFUNCTION()
     void HandleHudEffectsChanged(float value);
 
+    // HUD glow slider moved (SDD 37)
+    UFUNCTION()
+    void HandleHudGlowChanged(float value);
+
     // Hologram menu effects slider moved (SDD 42)
     UFUNCTION()
     void HandleHoloMenuEffectsChanged(float value);
@@ -390,6 +402,12 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLOverlayMenuWidget> OverlayList;          // The Overlay Menu's list, embedded (SDD 22)
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLHudGlowSample> GlowSample;               // The HUD glow sample under its slider (SDD 37 D16)
+
+    UPROPERTY(Transient)
+    TObjectPtr<USizeBox> GlowSampleIndent;                  // Its indent, the Gameplay label column's width
 
     UPROPERTY(Transient)
     TArray<TObjectPtr<UTextBlock>> SliderValueTexts;

@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLSettingsRules.h"
 #include "Menu/SOLSettingsSave.h"
 #include "SOLConstants.h"
@@ -254,7 +255,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesOrbitLinesSaveTest, "SOLTest.S
 bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
+    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
     TestTrue(TEXT("schema 1 migrates"), ClassifySaveVersion(1, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 2 migrates"), ClassifySaveVersion(2, SOL::Settings::SAVE_VERSION)
@@ -274,6 +275,8 @@ bool FSOLSettingsRulesOrbitLinesSaveTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("schema 9 migrates"), ClassifySaveVersion(9, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("schema 10 migrates"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("schema 11 migrates"), ClassifySaveVersion(11, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("current schema is used"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION,
         SOL::Settings::SAVE_VERSION) == ESaveVersionAction::Use);
@@ -355,9 +358,12 @@ bool FSOLSettingsRulesMigrateV1Test::RunTest(const FString& /*parameters*/)
     save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));
     save->bShowOrbitLines = false;
     save->HudEffectsStrength = 0.3f;
+    save->HudGlow = 0.35f;
 
     save->MigrateToCurrentVersion();
     TestEqual(TEXT("upgraded to the current version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("HUD glow set to 100% by the 11 -> 12 step"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
     TestTrue(TEXT("orbit lines default to shown"), save->bShowOrbitLines);
     TestEqual(TEXT("HUD effects default from the 4 -> 5 step"), save->HudEffectsStrength,
         SOL::Settings::HUD_EFFECTS_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
@@ -809,12 +815,16 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
     save->bDefaultFlightAssist = false;
     save->MasterVolume = 0.45f;
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->HudGlow = 0.35f;                                        // A stray value a v5 file never wrote
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v5 -> 11 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10 and 10 -> 11)"), save->Version, 11);
+    TestEqual(TEXT("v5 -> 12 (through 5 -> 6, 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11 and 11 -> 12)"), save->Version,
+        12);
     TestEqual(TEXT("v5 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("steer at start set to off"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("menu effects copied from it"), save->HoloMenuEffects, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD glow set to 100% by 11 -> 12"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
     TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
     TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
@@ -835,7 +845,7 @@ bool FSOLSettingsRulesMigrateV5MouseSteerTest::RunTest(const FString& /*paramete
         TestFalse(label + TEXT(": steer at start off"), older->bMouseSteerAtStart);
     }
 
-    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> 8 -> 9 -> 10 -> 11, and a current one
+    // A v6 save (which has the flag) keeps the player's choice through 6 -> 7 -> ... -> 12, and a current one
     // across two calls
     USOLSettingsSave* v6 = NewObject<USOLSettingsSave>();
     v6->Version = 6;
@@ -933,9 +943,10 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     save->QualityPreset = 2;
     save->KeyOverrides.Add(TEXT("ToggleOrbitLines"), TEXT("K"));
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+    save->HudGlow = 0.35f;                                        // A stray value a v6 file never wrote
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v6 -> 11 (through 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10 and 10 -> 11)"), save->Version, 11);
+    TestEqual(TEXT("v6 -> 12 (through 6 -> 7, 7 -> 8, 8 -> 9, 9 -> 10, 10 -> 11 and 11 -> 12)"), save->Version, 12);
     TestEqual(TEXT("v6 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("one overlay profile"), save->OverlayProfiles.Num(), 1);
     if (save->OverlayProfiles.Num() == 1)
@@ -949,6 +960,8 @@ bool FSOLSettingsRulesMigrateV6OverlaysTest::RunTest(const FString& /*parameters
     TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
     TestEqual(TEXT("strength kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("menu effects copied from it by 10 -> 11"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD glow set to 100% by 11 -> 12"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
     TestFalse(TEXT("hidden orbit lines kept"), save->bShowOrbitLines);
     TestEqual(TEXT("master kept"), save->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
@@ -996,7 +1009,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesCurrentOverlaysTest, "SOLTest.
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A current (schema 11) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
+// A current (schema 12) save is not migrated: its overlay profiles (flags included) and active profile stay exactly as
 // they were
 bool FSOLSettingsRulesCurrentOverlaysTest::RunTest(const FString& /*parameters*/)
 {
@@ -1345,8 +1358,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesChaseMarginVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9, 9 -> 10 and 10 -> 11
-// only) and a current one keep their margin; a newer save is left alone
+// Saves 1 to 7 reach the current schema with the default margin; a v8 save (migrated by 8 -> 9 up to 11 -> 12 only)
+// and a current one keep their margin; a newer save is left alone
 bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
@@ -1384,7 +1397,7 @@ bool FSOLSettingsRulesChaseMarginVersionsTest::RunTest(const FString& /*paramete
     TestEqual(TEXT("v1: second migrate keeps the version"), v1->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("v1: second migrate keeps the margin"), v1->ChaseSafetyMargin, 0.25f, SETTINGSRULES_TEST_TOLERANCE);
 
-    // A schema 8 save has the margin: only 8 -> 9, 9 -> 10 and 10 -> 11 run, and its margin is the player's choice
+    // A schema 8 save has the margin: only 8 -> 9 up to 11 -> 12 run, and its margin is the player's choice
     USOLSettingsSave* v8 = NewObject<USOLSettingsSave>();
     v8->Version = 8;
     v8->ChaseSafetyMargin = 0.1f;
@@ -1525,7 +1538,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV8SpaceDustTest, "SOLTe
 bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
+    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
     TestEqual(TEXT("key layout is still 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v8 save is migrated"), ClassifySaveVersion(8, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
@@ -1562,7 +1575,7 @@ bool FSOLSettingsRulesMigrateV8SpaceDustTest::RunTest(const FString& /*parameter
     save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v8 -> 11"), save->Version, 11);
+    TestEqual(TEXT("v8 -> 12"), save->Version, 12);
     TestEqual(TEXT("v8 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("profile count kept (not padded)"), save->OverlayProfiles.Num(), before.Num());
     TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, 2);
@@ -1792,7 +1805,7 @@ bool FSOLSettingsRulesMigrateV9ProfilesTest::RunTest(const FString& /*parameters
     save->bVsyncChosen = true;
     save->MigrateToCurrentVersion();
 
-    TestEqual(TEXT("v9 -> 11"), save->Version, 11);
+    TestEqual(TEXT("v9 -> 12"), save->Version, 12);
     TestEqual(TEXT("v9 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestFalse(TEXT("global dust from profile 1 (off)"), save->bSpaceDust);
     TestEqual(TEXT("entries not padded"), save->OverlayProfiles.Num(), 2);
@@ -2083,7 +2096,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateChainToProfilesTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A v6 and a v8 save go through the whole chain to schema 11: dust on, profile 1 enabled with its master on, no
+// A v6 and a v8 save go through the whole chain to schema 12: dust on, profile 1 enabled with its master on, no
 // SpaceDust key anywhere, and the orbit-lines switch from the legacy flag
 bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*parameters*/)
 {
@@ -2096,7 +2109,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v6->bShowOrbitLines = true;
     v6->bSpaceDust = false;
     v6->MigrateToCurrentVersion();
-    TestEqual(TEXT("v6 -> 11"), v6->Version, 11);
+    TestEqual(TEXT("v6 -> 12"), v6->Version, 12);
     TestTrue(TEXT("v6: dust on"), v6->bSpaceDust);
     TestEqual(TEXT("v6: one profile"), v6->OverlayProfiles.Num(), 1);
     TestEqual(TEXT("v6: active 0"), v6->ActiveOverlayProfile, 0);
@@ -2125,7 +2138,7 @@ bool FSOLSettingsRulesMigrateChainToProfilesTest::RunTest(const FString& /*param
     v8->bShowOrbitLines = false;
     v8->bSpaceDust = false;
     v8->MigrateToCurrentVersion();
-    TestEqual(TEXT("v8 -> 11"), v8->Version, 11);
+    TestEqual(TEXT("v8 -> 12"), v8->Version, 12);
     TestTrue(TEXT("v8: dust on"), v8->bSpaceDust);
     TestEqual(TEXT("v8: one profile"), v8->OverlayProfiles.Num(), 1);
     if (v8->OverlayProfiles.Num() == 1)
@@ -2193,19 +2206,19 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV10HoloMenuEffectsTest,
 
 //////////////////////////////////////////////////////////////////////////
 // Schema 10 -> 11 (issue #42, A1 / A2): the hologram menu effects strength (absent from a v10 file) is copied from the
-// file's HUD effects strength; every other field is kept as loaded (no earlier step re-runs), and a second migrate
-// changes nothing
+// file's HUD effects strength, then 11 -> 12 (issue #37) sets the HUD glow to 100%; every other field is kept as loaded
+// (no earlier step re-runs), and a second migrate changes nothing
 bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLSettingsRules;
-    TestEqual(TEXT("schema version is 11"), SOL::Settings::SAVE_VERSION, 11);
+    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
     TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
     TestTrue(TEXT("a v10 save is migrated"), ClassifySaveVersion(10, SOL::Settings::SAVE_VERSION)
         == ESaveVersionAction::Migrate);
     TestTrue(TEXT("classify(10, 11) migrates"), ClassifySaveVersion(10, 11) == ESaveVersionAction::Migrate);
     TestTrue(TEXT("classify(11, 11) uses"), ClassifySaveVersion(11, 11) == ESaveVersionAction::Use);
-    TestTrue(TEXT("a v12 save is ignored"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
-        == ESaveVersionAction::UseDefaults);
+    TestTrue(TEXT("a newer save is ignored"), ClassifySaveVersion(SOL::Settings::SAVE_VERSION + 1,
+        SOL::Settings::SAVE_VERSION) == ESaveVersionAction::UseDefaults);
 
     // Two v10 profiles in shapes the 9 -> 10 step would change (disabled, master off, a stray SpaceDust key), so a
     // re-run of an earlier step would show
@@ -2250,12 +2263,15 @@ bool FSOLSettingsRulesMigrateV10HoloMenuEffectsTest::RunTest(const FString& /*pa
     save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));            // Already past 3 -> 4: must not be moved
     save->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));   // Already past 9 -> 10: must not be dropped
     save->HoloMenuEffects = 1.7f;
+    save->HudGlow = 0.35f;                                        // A stray value a v10 file never wrote
     const TMap<FString, FString> overridesBefore = save->KeyOverrides;
 
     save->MigrateToCurrentVersion();
-    TestEqual(TEXT("v10 -> 11"), save->Version, 11);
+    TestEqual(TEXT("v10 -> 12"), save->Version, 12);
     TestEqual(TEXT("v10 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
     TestEqual(TEXT("menu effects copied from the HUD strength (A2)"), save->HoloMenuEffects, 0.3f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD glow set to 100% by 11 -> 12"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
         SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("GetValues reads the copied menu strength"), save->GetValues().HoloMenuEffects, 0.3f,
         SETTINGSRULES_TEST_TOLERANCE);
@@ -2385,7 +2401,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsVersionsTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Every save from schema 1 to 10 reaches schema 11 with the menu strength copied from the HUD strength the chain leaves
+// Every save from schema 1 to 10 reaches schema 12 with the menu strength copied from the HUD strength the chain leaves
 // (1 for schemas 1 to 4, whose 4 -> 5 step sets the HUD default; the stored value from schema 5 on); a current save
 // keeps its own menu strength; an unversioned or newer save is never migrated
 bool FSOLSettingsRulesHoloMenuEffectsVersionsTest::RunTest(const FString& /*parameters*/)
@@ -2530,7 +2546,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHoloMenuEffectsDiskTest,
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// A schema 11 file keeps its menu strength through disk, and a schema 10 file loads back as schema 10 and migrates
+// A current file keeps its menu strength through disk, and a schema 10 file loads back as schema 10 and migrates
 // with the menu strength copied from its HUD strength
 bool FSOLSettingsRulesHoloMenuEffectsDiskTest::RunTest(const FString& /*parameters*/)
 {
@@ -2587,6 +2603,363 @@ bool FSOLSettingsRulesHoloMenuEffectsDiskTest::RunTest(const FString& /*paramete
         SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("HUD strength kept"), loaded->HudEffectsStrength, 0.55f, SETTINGSRULES_TEST_TOLERANCE);
     TestEqual(TEXT("master volume kept"), loaded->MasterVolume, 0.35f, SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+// Issue #37 HUD glow in the settings save (schema 12), written against the SDD 37 section 5 contract (cases 5-8)
+// before the production code
+
+namespace
+{
+    constexpr int32 SETTINGSRULES_GLOW_PROFILES = 5;        // Every overlay profile slot is stored
+    constexpr int32 SETTINGSRULES_GLOW_ACTIVE = 3;          // The active overlay profile (index; Profile 4)
+    constexpr float SETTINGSRULES_STRAY_GLOW = 0.35f;       // A HUD glow a pre-12 file never wrote
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns overlay profile i of the full v11 save: its own rows (profile 0 with a SpaceDust key a re-run of 9 -> 10
+    // would remove) and its own enabled, master and orbit-lines flags
+    FSOLOverlayProfileSave SettingsRulesGlowProfile(const int32 index)
+    {
+        TMap<FString, bool> overlays;
+        overlays.Add(TEXT("Icons"), index % 2 == 0);
+        overlays.Add(TEXT("PlanetOrbits"), index % 3 == 0);
+        if (index == 0)
+        {
+            overlays.Add(SETTINGSRULES_DUST_ID, false);
+        }
+        FSOLOverlayProfileSave profile = SettingsRulesOverlayProfileOf(overlays);
+        profile.bEnabled = index != 2;
+        profile.bMasterOn = index % 2 == 1;
+        profile.bOrbitLinesOn = index != 4;
+        return profile;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a v11 save with every field set to a non-default value and the HUD glow set to a stray value
+    USOLSettingsSave* SettingsRulesFullV11Save()
+    {
+        USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+        save->Version = 11;
+        save->MasterVolume = 0.3f;
+        save->SfxVolume = 0.4f;
+        save->MusicVolume = 0.5f;
+        save->MouseSensitivity = 2.5f;
+        save->bInvertY = true;
+        save->HudScale = 1.5f;
+        save->bHudVisible = false;
+        save->bDefaultFlightAssist = false;
+        save->bVsync = false;
+        save->QualityPreset = 1;
+        save->bVsyncChosen = true;
+        save->bQualityChosen = true;
+        save->bShowOrbitLines = false;
+        save->HudEffectsStrength = 0.3f;
+        save->HoloMenuEffects = 1.7f;
+        save->bMouseSteerAtStart = true;
+        save->ChaseSafetyMargin = 0.1f;
+        save->bSpaceDust = false;
+        for (int32 index = 0; index < SETTINGSRULES_GLOW_PROFILES; ++index)
+        {
+            save->OverlayProfiles.Add(SettingsRulesGlowProfile(index));
+        }
+        save->ActiveOverlayProfile = SETTINGSRULES_GLOW_ACTIVE;
+        save->KeyOverrides.Add(TEXT("Fire"), TEXT("F"));
+        save->KeyOverrides.Add(TEXT("ToggleMap"), TEXT("Comma"));            // Already past 3 -> 4: must not be moved
+        save->KeyOverrides.Add(SETTINGSRULES_DARKENING_KEY_ID, TEXT("P"));   // Past 9 -> 10 already: must stay
+        save->KeyOverrides.Add(TEXT("Boost"), TEXT("LeftShift"));
+        save->HudGlow = SETTINGSRULES_STRAY_GLOW;
+        return save;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowSchemaVersionTest,
+    "SOLTest.SettingsRules.HudGlowSchemaVersion",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #37 bumps only the settings schema, to 12 (D1): a v11 save migrates, a v12 save is used, a v13 one is ignored,
+// the key layout stays 10 and a v11 save gets no controls-changed notice
+bool FSOLSettingsRulesHudGlowSchemaVersionTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    TestEqual(TEXT("schema version is 12"), SOL::Settings::SAVE_VERSION, 12);
+    TestEqual(TEXT("key layout stays 10"), SOL::Settings::KEY_BINDING_LAYOUT_VERSION, 10);
+    TestTrue(TEXT("classify(11, 12) migrates"), ClassifySaveVersion(11, 12) == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("classify(12, 12) uses"), ClassifySaveVersion(12, 12) == ESaveVersionAction::Use);
+    TestTrue(TEXT("classify(13, 12) ignores"), ClassifySaveVersion(13, 12) == ESaveVersionAction::UseDefaults);
+    TestTrue(TEXT("a v11 save is migrated"), ClassifySaveVersion(11, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Migrate);
+    TestTrue(TEXT("a v12 save is used"), ClassifySaveVersion(12, SOL::Settings::SAVE_VERSION)
+        == ESaveVersionAction::Use);
+    TestFalse(TEXT("a v11 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(11));
+    TestFalse(TEXT("a v12 save gets no controls-changed notice"), SOLKeyBindings::DefaultLayoutChangedSince(12));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesMigrateV11HudGlowTest, "SOLTest.SettingsRules.MigrateV11HudGlow",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Schema 11 -> 12 (issue #37, D1): the HUD glow (absent from a v11 file) becomes 100%, overwriting a stray value; every
+// other field, the five overlay profiles, the active profile and the key overrides are kept as loaded (no earlier step
+// re-runs), and a second migrate changes nothing
+bool FSOLSettingsRulesMigrateV11HudGlowTest::RunTest(const FString& /*parameters*/)
+{
+    USOLSettingsSave* save = SettingsRulesFullV11Save();
+    const TMap<FString, FString> overridesBefore = save->KeyOverrides;
+    save->MigrateToCurrentVersion();
+
+    TestEqual(TEXT("v11 -> 12"), save->Version, 12);
+    TestEqual(TEXT("v11 -> current"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("HUD glow set to the default"), save->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD glow is 1"), save->HudGlow, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("GetValues reads the glow"), save->GetValues().HudGlow, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // Every other field is identical
+    TestEqual(TEXT("master kept"), save->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sfx kept"), save->SfxVolume, 0.4f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("music kept"), save->MusicVolume, 0.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("sensitivity kept"), save->MouseSensitivity, 2.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("invert Y kept"), save->bInvertY);
+    TestEqual(TEXT("HUD scale kept"), save->HudScale, 1.5f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("HUD hidden kept"), save->bHudVisible);
+    TestFalse(TEXT("flight assist kept"), save->bDefaultFlightAssist);
+    TestFalse(TEXT("vsync kept"), save->bVsync);
+    TestEqual(TEXT("quality kept"), save->QualityPreset, 1);
+    TestTrue(TEXT("vsync chosen kept"), save->bVsyncChosen);
+    TestTrue(TEXT("quality chosen kept"), save->bQualityChosen);
+    TestFalse(TEXT("legacy orbit-lines flag kept"), save->bShowOrbitLines);
+    TestEqual(TEXT("HUD effects kept"), save->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects kept (10 -> 11 not re-run)"), save->HoloMenuEffects, 1.7f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestTrue(TEXT("steer at start kept"), save->bMouseSteerAtStart);
+    TestEqual(TEXT("chase margin kept"), save->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    TestFalse(TEXT("space dust off kept"), save->bSpaceDust);
+    TestEqual(TEXT("active overlay profile kept"), save->ActiveOverlayProfile, SETTINGSRULES_GLOW_ACTIVE);
+    TestTrue(TEXT("key overrides kept verbatim"), SettingsRulesSameOverrides(save->KeyOverrides, overridesBefore));
+    TestEqual(TEXT("five overlay profiles kept"), save->OverlayProfiles.Num(), SETTINGSRULES_GLOW_PROFILES);
+    const int32 checked = FMath::Min(save->OverlayProfiles.Num(), SETTINGSRULES_GLOW_PROFILES);
+    for (int32 index = 0; index < checked; ++index)
+    {
+        const FSOLOverlayProfileSave& profile = save->OverlayProfiles[index];
+        const FSOLOverlayProfileSave expected = SettingsRulesGlowProfile(index);
+        const FString label = FString::Printf(TEXT("profile %d"), index + 1);
+        TestTrue(label + TEXT(": rows kept"), SettingsRulesSameOverlayMap(profile.Overlays, expected.Overlays));
+        TestEqual(label + TEXT(": enabled kept"), profile.bEnabled, expected.bEnabled);
+        TestEqual(label + TEXT(": master kept"), profile.bMasterOn, expected.bMasterOn);
+        TestEqual(label + TEXT(": orbit-lines switch kept"), profile.bOrbitLinesOn, expected.bOrbitLinesOn);
+    }
+
+    // Idempotent: a second migrate changes nothing, and a later glow survives another migrate
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("second migrate keeps the version"), save->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("second migrate keeps the glow"), save->HudGlow, 1.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("second migrate keeps the menu effects"), save->HoloMenuEffects, 1.7f,
+        SETTINGSRULES_TEST_TOLERANCE);
+    save->HudGlow = 0.6f;
+    save->MigrateToCurrentVersion();
+    TestEqual(TEXT("a later glow survives"), save->HudGlow, 0.6f, SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowVersionsTest, "SOLTest.SettingsRules.HudGlowVersions",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Every save from schema 1 to 11 reaches schema 12 with the HUD glow at 100% (a stray value overwritten); a current
+// save keeps its glow; an unversioned or newer save is never migrated
+bool FSOLSettingsRulesHudGlowVersionsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    using namespace SOL::Settings;
+
+    // Every older schema
+    for (int32 version = 1; version <= 11; ++version)
+    {
+        const FString label = FString::Printf(TEXT("v%d"), version);
+        TestTrue(label + TEXT(": classified as migrate"), ClassifySaveVersion(version, SAVE_VERSION)
+            == ESaveVersionAction::Migrate);
+        USOLSettingsSave* older = NewObject<USOLSettingsSave>();
+        older->Version = version;
+        older->HudGlow = SETTINGSRULES_STRAY_GLOW;
+        older->MasterVolume = 0.45f;
+        older->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": ends at 12"), older->Version, 12);
+        TestEqual(label + TEXT(": ends at the current schema"), older->Version, SAVE_VERSION);
+        TestEqual(label + TEXT(": HUD glow 100%"), older->HudGlow, HUD_GLOW_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": master kept"), older->MasterVolume, 0.45f, SETTINGSRULES_TEST_TOLERANCE);
+    }
+
+    // A current save keeps its own glow, across two calls, the ends included
+    const float currentGlows[] = { SETTINGSRULES_STRAY_GLOW, HUD_GLOW_MIN, HUD_GLOW_MAX };
+    for (const float glow : currentGlows)
+    {
+        const FString label = FString::Printf(TEXT("current %.2f"), glow);
+        USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+        current->Version = SAVE_VERSION;
+        current->HudGlow = glow;
+        current->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": version kept"), current->Version, SAVE_VERSION);
+        TestEqual(label + TEXT(": glow kept"), current->HudGlow, glow, SETTINGSRULES_TEST_TOLERANCE);
+        current->MigrateToCurrentVersion();
+        TestEqual(label + TEXT(": glow kept twice"), current->HudGlow, glow, SETTINGSRULES_TEST_TOLERANCE);
+    }
+
+    // An unversioned or newer save is never migrated
+    const int32 untouchedVersions[] = { 0, -1, SAVE_VERSION + 1 };
+    for (const int32 version : untouchedVersions)
+    {
+        USOLSettingsSave* untouched = NewObject<USOLSettingsSave>();
+        untouched->Version = version;
+        untouched->HudGlow = SETTINGSRULES_STRAY_GLOW;
+        untouched->MigrateToCurrentVersion();
+        const FString label = FString::Printf(TEXT("version %d"), version);
+        TestEqual(label + TEXT(": version kept"), untouched->Version, version);
+        TestEqual(label + TEXT(": glow kept"), untouched->HudGlow, SETTINGSRULES_STRAY_GLOW,
+            SETTINGSRULES_TEST_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowSaveValuesTest, "SOLTest.SettingsRules.HudGlowSaveValues",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A new save holds the glow default; SetValues / GetValues round-trip it apart from the effects strengths; a v12 file
+// holding NaN or 9 is kept as loaded by the save and sanitized by the model (to 1 / 2)
+bool FSOLSettingsRulesHudGlowSaveValuesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Settings;
+
+    // A new save holds the default
+    const USOLSettingsSave* fresh = NewObject<USOLSettingsSave>();
+    TestEqual(TEXT("new save: default glow"), fresh->HudGlow, HUD_GLOW_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("new save: GetValues default glow"), fresh->GetValues().HudGlow, HUD_GLOW_DEFAULT,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // A v12 save holding 0.35 is left alone by the migration and reads back 0.35
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SAVE_VERSION;
+    current->HudGlow = SETTINGSRULES_STRAY_GLOW;
+    current->MigrateToCurrentVersion();
+    TestEqual(TEXT("v12: glow kept by the migration"), current->HudGlow, SETTINGSRULES_STRAY_GLOW,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("v12: GetValues reads it"), current->GetValues().HudGlow, SETTINGSRULES_STRAY_GLOW,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // SetValues / GetValues round-trip a mid value and both ends
+    USOLSettingsSave* save = NewObject<USOLSettingsSave>();
+    SOLSettingsModel::FSettingsValues values;
+    const float glows[] = { SETTINGSRULES_STRAY_GLOW, HUD_GLOW_MIN, HUD_GLOW_MAX };
+    for (const float glow : glows)
+    {
+        const FString label = FString::Printf(TEXT("glow %.2f"), glow);
+        values.HudGlow = glow;
+        save->SetValues(values);
+        TestEqual(label + TEXT(": SetValues stores it"), save->HudGlow, glow, SETTINGSRULES_TEST_TOLERANCE);
+        TestEqual(label + TEXT(": GetValues gives it back"), save->GetValues().HudGlow, glow,
+            SETTINGSRULES_TEST_TOLERANCE);
+        TestTrue(label + TEXT(": round trip"), SOLSettingsModel::AreEqual(save->GetValues(), values));
+    }
+
+    // The glow and the two effects strengths are stored in their own fields
+    values.HudEffectsStrength = 0.2f;
+    values.HoloMenuEffects = 1.8f;
+    values.HudGlow = 0.6f;
+    save->SetValues(values);
+    TestEqual(TEXT("HUD effects stored apart"), save->HudEffectsStrength, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects stored apart"), save->HoloMenuEffects, 1.8f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("glow stored apart"), save->HudGlow, 0.6f, SETTINGSRULES_TEST_TOLERANCE);
+    const SOLSettingsModel::FSettingsValues readBack = save->GetValues();
+    TestEqual(TEXT("HUD effects read apart"), readBack.HudEffectsStrength, 0.2f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects read apart"), readBack.HoloMenuEffects, 1.8f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("glow read apart"), readBack.HudGlow, 0.6f, SETTINGSRULES_TEST_TOLERANCE);
+
+    // A corrupt v12 file: the save keeps the value as loaded, the model sanitizes it
+    USOLSettingsSave* nanSave = NewObject<USOLSettingsSave>();
+    nanSave->Version = SAVE_VERSION;
+    nanSave->HudGlow = SETTINGSRULES_TEST_NAN;
+    nanSave->MigrateToCurrentVersion();
+    TestTrue(TEXT("NaN: kept as loaded by the save"), FMath::IsNaN(nanSave->HudGlow));
+    TestEqual(TEXT("NaN: the model reads 1"), SOLSettingsModel::Sanitized(nanSave->GetValues()).HudGlow,
+        HUD_GLOW_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+    USOLSettingsSave* highSave = NewObject<USOLSettingsSave>();
+    highSave->Version = SAVE_VERSION;
+    highSave->HudGlow = 9.0f;
+    highSave->MigrateToCurrentVersion();
+    TestEqual(TEXT("9: kept as loaded by the save"), highSave->HudGlow, 9.0f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("9: the model reads 2"), SOLSettingsModel::Sanitized(highSave->GetValues()).HudGlow, HUD_GLOW_MAX,
+        SETTINGSRULES_TEST_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsRulesHudGlowDiskTest, "SOLTest.SettingsRules.HudGlowDiskRoundTrip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// A current file keeps its glow through disk, and a full schema 11 file loads back as schema 11 and migrates with the
+// glow at 100% and every other value intact
+bool FSOLSettingsRulesHudGlowDiskTest::RunTest(const FString& /*parameters*/)
+{
+    const FString slotName = TEXT("SOLTest_HudGlow");
+    constexpr int32 userIndex = 0;
+
+    // Start clean, and always remove the test slot when the test ends, whichever path it takes
+    UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    ON_SCOPE_EXIT
+    {
+        UGameplayStatics::DeleteGameInSlot(slotName, userIndex);
+    };
+
+    // A current file with a non-default glow survives the write and the read
+    USOLSettingsSave* current = NewObject<USOLSettingsSave>();
+    current->Version = SOL::Settings::SAVE_VERSION;
+    current->HudGlow = SETTINGSRULES_STRAY_GLOW;
+    current->HudEffectsStrength = 1.4f;
+    if (!TestTrue(TEXT("current save written"), UGameplayStatics::SaveGameToSlot(current, slotName, userIndex)))
+    {
+        return false;
+    }
+    USOLSettingsSave* loadedCurrent = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("current save loaded"), loadedCurrent))
+    {
+        return false;
+    }
+    loadedCurrent->MigrateToCurrentVersion();
+    TestEqual(TEXT("current: version kept"), loadedCurrent->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("current: glow from disk"), loadedCurrent->HudGlow, SETTINGSRULES_STRAY_GLOW,
+        SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("current: HUD effects from disk"), loadedCurrent->HudEffectsStrength, 1.4f,
+        SETTINGSRULES_TEST_TOLERANCE);
+
+    // A full schema 11 file (with a stray glow) loads back as schema 11 and migrates per D1
+    USOLSettingsSave* written = SettingsRulesFullV11Save();
+    if (!TestTrue(TEXT("schema 11 save written"), UGameplayStatics::SaveGameToSlot(written, slotName, userIndex)))
+    {
+        return false;
+    }
+    USOLSettingsSave* loaded = Cast<USOLSettingsSave>(UGameplayStatics::LoadGameFromSlot(slotName, userIndex));
+    if (!TestNotNull(TEXT("schema 11 save loaded"), loaded))
+    {
+        return false;
+    }
+    TestEqual(TEXT("loaded as schema 11"), loaded->Version, 11);
+    loaded->MigrateToCurrentVersion();
+    TestEqual(TEXT("migrated to the current schema"), loaded->Version, SOL::Settings::SAVE_VERSION);
+    TestEqual(TEXT("glow 100%"), loaded->HudGlow, SOL::Settings::HUD_GLOW_DEFAULT, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("menu effects kept"), loaded->HoloMenuEffects, 1.7f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("HUD effects kept"), loaded->HudEffectsStrength, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("master volume kept"), loaded->MasterVolume, 0.3f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("chase margin kept"), loaded->ChaseSafetyMargin, 0.1f, SETTINGSRULES_TEST_TOLERANCE);
+    TestEqual(TEXT("five overlay profiles kept"), loaded->OverlayProfiles.Num(), SETTINGSRULES_GLOW_PROFILES);
+    TestEqual(TEXT("active overlay profile kept"), loaded->ActiveOverlayProfile, SETTINGSRULES_GLOW_ACTIVE);
+    TestTrue(TEXT("key overrides kept"), SettingsRulesSameOverrides(loaded->KeyOverrides, written->KeyOverrides));
     return true;
 }
 

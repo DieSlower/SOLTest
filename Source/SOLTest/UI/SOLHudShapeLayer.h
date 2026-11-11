@@ -79,6 +79,13 @@ public:
     // Turns the glow-text style on (hot core and coloured outline) or off (plain text over the drop shadow)
     void SetTextGlow(bool bGlow) { mIsTextGlow = bGlow; }
 
+    // Sets the glow text's outline alpha (SOLHudShapeMath::TextGlowAlpha of the HUD glow scale, SDD 37; clamped to
+    // [0, 1], NaN reads as the HUD_TEXT_GLOW_ALPHA default); at 0 the outline is not drawn, the core and shadow stay
+    void SetTextGlowAlpha(float alpha);
+
+    // Returns the glow text's outline alpha (verification)
+    float GetTextGlowAlpha() const { return mTextGlowAlpha; }
+
     // Returns the number of text lines drawn by the last paint (verification)
     int32 GetLastPaintedTextCount() const { return mLastPaintedTextCount; }
 
@@ -181,6 +188,7 @@ private:
     mutable FSlateBrush mBackingBrush;                  // White rounded box tinted per layer; its corner radius is set
                                                         // per layer in OnPaint (Slate copies it into each element)
     bool mIsTextGlow = true;                            // Glow-text style (false: plain text over the shadow)
+    float mTextGlowAlpha = SOL::Hologram::HUD_TEXT_GLOW_ALPHA;  // Glow-text outline alpha (0: no outline; SDD 37)
     bool mIsRetainBatch = false;                        // Retain mode: paint the batch every paint (still picture)
     mutable int32 mLastPaintedTextCount = 0;            // Text lines drawn by the last paint
     mutable int32 mLastPaintedBackingCount = 0;         // Panel backings drawn by the last paint

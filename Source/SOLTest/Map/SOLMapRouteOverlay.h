@@ -7,6 +7,7 @@
 
 #include "Map/SOLMapBodyOverlay.h"
 #include "Map/SOLRouteOverlayMath.h"
+#include "SOLConstants.h"
 
 #include "CoreMinimal.h"
 
@@ -30,6 +31,8 @@ struct FSOLRouteOverlayInputs
     FVector3d PlanePointM = FVector3d::ZeroVector;              // The ecliptic plane runs through here (ship / focus)
     bool bHasCursorPoint = false;                               // Draw the draft's segment to the cursor
     bool bHasShip = false;                                      // Draw the leg from the ship to the route's target
+    float GlowScale = 1.0f;                                     // HUD glow scale g of the halo (SDD 37; 1 = the
+                                                                // issue #31 halo, 0 = core only)
 };
 
 /**
@@ -91,6 +94,12 @@ public:
     // Returns the number of triangles in the last frame's batch (verification)
     int32 GetLastTriangles() const { return mLastTriangles; }
 
+    // Returns the last frame's HUD glow scale g, from the inputs (SDD 37; verification)
+    float GetLastGlowScale() const { return mGlowScale; }
+
+    // Returns the last frame's halo intensity, RouteHaloIntensity of that g (SDD 37; verification)
+    double GetLastHaloIntensity() const { return mHaloIntensity; }
+
     // Returns true when the last frame drew the leg from the ship to the route's target (verification)
     bool HasDrawnShipLeg() const { return mHasDrawnShipLeg; }
 
@@ -147,7 +156,8 @@ private:
     // Projects a camera-local point to the screen (caller guarantees X > 0)
     static FVector2D LocalToScreen(const FFrame& frame, const FVector& local);
 
-    // Appends one glow piece (core plus soft halo) between two screen points with their intensities
+    // Appends one glow piece (core plus soft halo at mHaloIntensity; the core alone when that is 0) between two screen
+    // points with their intensities
     void AppendGlowPiece(const FVector2D& a, const FVector2D& b, const FLinearColor& color, double intensityA,
         double intensityB, float uiScale);
 
@@ -186,6 +196,10 @@ private:
     bool mHasDrawnShipLeg = false;                  // Ship-to-target leg drawn last frame
     bool mHasDrawnCursorSegment = false;            // Draft cursor segment drawn last frame
     bool mHasDrawnPausedTag = false;                // PAUSED tag drawn last frame
+    float mGlowScale = 1.0f;                        // This frame's HUD glow scale g (the inputs')
+    double mHaloIntensity = SOL::Hologram::GLOW_HALO_INTENSITY;    // This frame's halo intensity (RouteHaloIntensity
+                                                                    // of the inputs' glow scale)
+    int32 mGlowPieceTriangles = SOL::Route::OVERLAY_GLOW_PIECE_TRIANGLES;  // Triangles per glow piece this frame
     int32 mBudgetLimit = 0;                         // Triangles the current part (route or draft) may fill up to
     bool mIsLimitHit = false;                       // The current part hit its limit (stops its loops)
     bool mIsBudgetExhausted = false;                // A triangle limit was hit last frame

@@ -8,6 +8,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 // Tests for the issue #33 Part 33d-i retain mode of the HUD shape layer (Docs/SDDs/33-player-documentation.md
@@ -178,6 +180,52 @@ bool FSOLHudShapeLayerPaintScratchTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("no batch until sized"), lean->GetBatch().GetMaxShapes(), 0);
     lean->GetBatch().Initialize(3);
     TestEqual(TEXT("sized by its owner"), lean->GetBatch().GetMaxShapes(), 3);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapeLayerTextGlowAlphaTest, "SOLTest.HudShapeLayer.TextGlowAlpha",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 19, the 37a review) A new layer's glow-text outline alpha is HUD_TEXT_GLOW_ALPHA (so a layer that
+// never sets it, such as the menu layer, keeps the issue #31 look); SetTextGlowAlpha clamps to [0, 1], NaN reads as the
+// default, and setting it keeps the retain mode and the queued shapes in either mode
+bool FSOLHudShapeLayerTextGlowAlphaTest::RunTest(const FString& /*parameters*/)
+{
+    constexpr float tolerance = 1.0e-6f;
+    const TSharedRef<SSOLHudShapeLayer> layer = SNew(SSOLHudShapeLayer).MaxShapes(HUDSHAPELAYERTEST_MAX_SHAPES);
+    TestEqual(TEXT("new: the default"), layer->GetTextGlowAlpha(), SOL::Hologram::HUD_TEXT_GLOW_ALPHA, tolerance);
+
+    // Values in range are kept, out of range clamped, NaN the default
+    const struct { float In; float Want; const TCHAR* Name; } cases[] = {
+        { 0.09f, 0.09f, TEXT("0.09 kept") },
+        { 0.0f, 0.0f, TEXT("0 kept (no outline)") },
+        { 1.0f, 1.0f, TEXT("1 kept") },
+        { -1.0f, 0.0f, TEXT("-1 clamps to 0") },
+        { 3.0f, 1.0f, TEXT("3 clamps to 1") },
+        { std::numeric_limits<float>::quiet_NaN(), SOL::Hologram::HUD_TEXT_GLOW_ALPHA, TEXT("NaN reads the default") },
+    };
+    for (const auto& item : cases)
+    {
+        layer->SetTextGlowAlpha(item.In);
+        TestEqual(item.Name, layer->GetTextGlowAlpha(), item.Want, tolerance);
+    }
+
+    // Setting it keeps the mode and the queued shape in either mode
+    for (const bool bRetain : { true, false })
+    {
+        const FString mode = bRetain ? TEXT("retained") : TEXT("per-frame");
+        layer->SetRetainBatch(bRetain);
+        layer->ResetFrame();
+        layer->GetBatch().AddLine(FVector2f(1.0f, 2.0f), FVector2f(30.0f, 4.0f),
+            SOL::Hologram::HUD_LINE_HALF_WIDTH_PX, SOL::HudPalette::PRIMARY, 1.0f, 2.0f);
+        layer->SetTextGlowAlpha(0.05f);
+        layer->SetTextGlowAlpha(0.3f);
+        TestEqual(mode + TEXT(": the mode kept"), layer->IsRetainBatch(), bRetain);
+        TestEqual(mode + TEXT(": the shape kept"), layer->GetBatch().GetShapeCount(), 1);
+        TestEqual(mode + TEXT(": the last alpha"), layer->GetTextGlowAlpha(), 0.3f, tolerance);
+    }
     return true;
 }
 

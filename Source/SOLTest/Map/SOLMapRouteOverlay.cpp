@@ -38,7 +38,6 @@ namespace
 
     // Tessellation and triangle counts
     constexpr int32 ROUTE_MARKER_SEGMENTS = 12;
-    constexpr int32 ROUTE_GLOW_PIECE_TRIANGLES = 6;
     constexpr int32 ROUTE_MARKER_RECORD_CAP = 2 * SOL::Route::OVERLAY_MAX_MARKERS_DRAWN;   // Route plus draft
     const FLinearColor ROUTE_TRANSPARENT(0.0f, 0.0f, 0.0f, 0.0f);
 
@@ -126,6 +125,9 @@ void FSOLMapRouteOverlay::Draw(UCanvas& canvas, const FSOLMapOverlayView& view, 
     frame.View = &view;
     frame.Anchor = &anchor;
     frame.UiScale = uiScale;
+    mGlowScale = inputs.GlowScale;
+    mHaloIntensity = SOLRouteOverlayMath::RouteHaloIntensity(inputs.GlowScale);
+    mGlowPieceTriangles = SOLRouteOverlayMath::GlowPieceTriangles(inputs.GlowScale);
     frame.ViewpointM = anchor.GetViewpointM();
     frame.ViewpointOffsetCm = anchor.ComputePointRenderLocationCm(frame.ViewpointM) - view.LocationCm;
     const double marginPx = ROUTE_CLIP_MARGIN_PX * uiScale;
@@ -484,23 +486,28 @@ void FSOLMapRouteOverlay::AppendGlowPiece(const FVector2D& a, const FVector2D& b
 {
     const FVector2D delta = b - a;
     const double length = delta.Size();
-    if (length < ROUTE_MIN_PIECE_PX || !Reserve(ROUTE_GLOW_PIECE_TRIANGLES))
+    const bool bHasHalo = mGlowPieceTriangles > SOL::Route::OVERLAY_GLOW_CORE_TRIANGLES;   // HUD glow 0%: core only
+    if (length < ROUTE_MIN_PIECE_PX || !Reserve(mGlowPieceTriangles))
     {
         return;
     }
     const FVector2D normal = FVector2D(-delta.Y, delta.X) / length;
     const FVector2D core = normal * (SOL::Hologram::GLOW_CORE_HALF_PX * uiScale);
-    const FVector2D halo = normal * (SOL::Hologram::GLOW_HALO_HALF_PX * uiScale);
     const FLinearColor coreA = RouteScaled(color, intensityA);
     const FLinearColor coreB = RouteScaled(color, intensityB);
-    const FLinearColor haloA = RouteScaled(color, intensityA * SOL::Hologram::GLOW_HALO_INTENSITY);
-    const FLinearColor haloB = RouteScaled(color, intensityB * SOL::Hologram::GLOW_HALO_INTENSITY);
 
     // Core quad
     AppendTriangle(a - core, a + core, b + core, coreA, coreA, coreB);
     AppendTriangle(a - core, b + core, b - core, coreA, coreB, coreB);
+    if (!bHasHalo)
+    {
+        return;
+    }
 
     // Halo quads on both sides, fading to nothing at the outer edge
+    const FVector2D halo = normal * (SOL::Hologram::GLOW_HALO_HALF_PX * uiScale);
+    const FLinearColor haloA = RouteScaled(color, intensityA * mHaloIntensity);
+    const FLinearColor haloB = RouteScaled(color, intensityB * mHaloIntensity);
     AppendTriangle(a - halo, a - core, b - core, ROUTE_TRANSPARENT, haloA, haloB);
     AppendTriangle(a - halo, b - core, b - halo, ROUTE_TRANSPARENT, haloB, ROUTE_TRANSPARENT);
     AppendTriangle(a + core, a + halo, b + halo, haloA, ROUTE_TRANSPARENT, ROUTE_TRANSPARENT);

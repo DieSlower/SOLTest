@@ -365,6 +365,7 @@ void ASOLFlightHud::CreateShapeLayer()
     mIsMenuFrameStamped = false;
     mShapeStrength = -1.0f;
     mShapeComposite = -1.0f;
+    mShapeGlowScale = -1.0f;
     mShapeViewSize = FVector2f::ZeroVector;
 }
 
@@ -409,6 +410,11 @@ void ASOLFlightHud::BeginShapeFrame()
     mGlowPadPx = SOL::Hologram::HUD_GLOW_PAD_PX;
     mLastPanelCount = 0;
     mWasSteerHintDrawn = false;
+
+    // The HUD glow scale g (SDD 37 section 4.4) from the live value, so the Settings page previews at once; the route
+    // overlay reads it too, with or without the shape renderer
+    mHudGlowScale = SOLHudShapeMath::HudGlowScale(Settings != nullptr ? Settings->GetLiveValues().HudGlow
+        : SOL::Settings::HUD_GLOW_DEFAULT);
     if (!mShapeLayer.IsValid())
     {
         return;
@@ -457,6 +463,13 @@ void ASOLFlightHud::BeginShapeFrame()
     {
         mShapeComposite = composite;
         ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::COMPOSITE, composite);
+    }
+    if (mHudGlowScale != mShapeGlowScale)
+    {
+        // The HUD layer only: the menu layer's MID keeps the material's GlowScale 1 (SDD 37 D3)
+        mShapeGlowScale = mHudGlowScale;
+        ShapeMaterial->SetScalarParameterValue(SOL::HudShapeMaterialParams::GLOW_SCALE, mHudGlowScale);
+        mShapeLayer->SetTextGlowAlpha(SOLHudShapeMath::TextGlowAlpha(mHudGlowScale));
     }
     if (viewSize != mShapeViewSize)
     {
@@ -732,6 +745,13 @@ bool ASOLFlightHud::HasFreshPilot() const
 int32 ASOLFlightHud::GetLastShapeCount() const
 {
     return mShapeLayer.IsValid() ? mShapeLayer->GetBatch().GetShapeCount() : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD layer's glow-text outline alpha (-1 without a shape layer)
+float ASOLFlightHud::GetTextGlowAlpha() const
+{
+    return mShapeLayer.IsValid() ? mShapeLayer->GetTextGlowAlpha() : -1.0f;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1847,6 +1867,7 @@ void ASOLFlightHud::DrawHologramOverlay(const FSOLMapOverlayView& overlayView)
 void ASOLFlightHud::DrawRouteOverlay(const FSOLMapOverlayView& overlayView)
 {
     FSOLRouteOverlayInputs inputs;
+    inputs.GlowScale = mHudGlowScale;
     const ESOLRouteState state = Routes->GetState();
     if (state != ESOLRouteState::None)
     {

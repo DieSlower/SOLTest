@@ -11,7 +11,10 @@
 #       the local frame through ddx), the line / arc / panel / ellipse / dashed line signed distance (the last two
 #       phase C, issue #30; alpha = Y / X radius or dash period / 255), LT's glow profile, the borderless panel fill
 #       (fades in from the edge, no outline; issue #31), scanlines and flicker (phase B, issue #29), the optional grain
-#       and scanline composite, LT's tone curve and blue grade.
+#       and scanline composite, LT's tone curve and blue grade. The GlowScale parameter (issue #37, SDD 37 section 4.3;
+#       default 1.0 = the issue #31 glow, so the menu instances keep it) scales the glow: halo weight x g, core weight
+#       1 - halo weight, core falloff / max(g, falloff / HUD_GLOW_CORE_FALLOFF_MAX)
+#       (SOLHudShapeMath::GlowProfile(d, g)).
 # Every default is read from Source/SOLTest/SOLConstants.h (SOL::Hologram HUD_*, SOL::Settings::HUD_EFFECTS_DEFAULT);
 # the parameter names must match SOL::HudShapeMaterialParams and the asset path SOL::Paths::HUD_SHAPE_MATERIAL.
 # Run (editor closed):
@@ -109,9 +112,15 @@ else
 }
 const bool isPanel = kind >= 1.5 && kind < 2.5;
 
-// LT glow of the distance from a CoreHalf px core (lines, arcs, ellipses, dashes); a panel has no outline glow
+// LT glow of the distance from a CoreHalf px core (lines, arcs, ellipses, dashes); a panel has no outline glow. The
+// glow scale g (SDD 37, SOLHudShapeMath::GlowProfile(d, g); 1 = the issue #31 glow, 0 = a crisp core) scales the halo
+// weight, keeps the core pixel at 1 and widens the core's skirt with g (its falloff capped at CoreFMax)
 const float dd = max(d + CoreHalf, 0.0);
-float shape = isPanel ? 0.0 : CoreW * exp(-CoreF * max(0.0, dd - CoreHalf)) + HaloW * exp(-pow(HaloS * dd, HaloP));
+const float g = max(GlowScale, 0.0);
+const float haloW = HaloW * g;
+const float coreF = CoreF / max(g, CoreF / CoreFMax);
+float shape = isPanel ? 0.0 : (1.0 - haloW) * exp(-coreF * max(0.0, dd - CoreHalf))
+    + haloW * exp(-pow(HaloS * dd, HaloP));
 
 // The halo fades to nothing over the outer part of the quad padding, so no quad edge ever shows
 shape *= 1.0 - smoothstep(PadFade * Pad, Pad, dd);
@@ -164,7 +173,7 @@ CONSTANT_PINS = [
     ("KindStride", "HUD_SHAPE_KIND_STRIDE"), ("RowCells", "HUD_JITTER_ROW_CELLS"),
     ("Scroll", "HUD_JITTER_SCROLL_RATE"), ("SignSpeed", "HUD_JITTER_SIGN_SPEED"),
     ("SignOffset", "HUD_JITTER_SIGN_OFFSET"), ("JitterMax", "HUD_JITTER_MAX_FRACTION"),
-    ("Sharp", "HUD_JITTER_SHARPNESS"), ("Corner", "HUD_PANEL_CORNER_PX"), ("CoreW", "HUD_GLOW_CORE_WEIGHT"),
+    ("Sharp", "HUD_JITTER_SHARPNESS"), ("Corner", "HUD_PANEL_CORNER_PX"), ("CoreFMax", "HUD_GLOW_CORE_FALLOFF_MAX"),
     ("CoreF", "HUD_GLOW_CORE_FALLOFF"), ("HaloW", "HUD_GLOW_HALO_WEIGHT"), ("HaloS", "HUD_GLOW_HALO_SCALE"),
     ("HaloP", "HUD_GLOW_HALO_POWER"), ("Feather", "HUD_PANEL_FEATHER_PX"),
     ("PanelScan", "HUD_PANEL_SCANLINE"), ("ColorGain", "HUD_COLOR_GAIN"), ("Grain", "HUD_GRAIN_AMOUNT"),
@@ -195,7 +204,8 @@ def scalar(material, name, value, x, y):
 def build_shape(material):
     material.set_editor_property("material_domain", unreal.MaterialDomain.MD_UI)
     material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
-    variable_pins = ["Local", "Params", "VColor", "VAlpha", "Time", "Strength", "Composite", "ViewW", "ViewH"]
+    variable_pins = ["Local", "Params", "VColor", "VAlpha", "Time", "Strength", "Composite", "ViewW", "ViewH",
+        "GlowScale"]
     custom = add(material, unreal.MaterialExpressionCustom, -500, 0)
     custom.set_editor_property("description", "SOLHudShape")
     custom.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT3)
@@ -217,6 +227,9 @@ def build_shape(material):
     composite = scalar(material, "Composite", 0.0, -1200, 100)
     view_w = scalar(material, "ViewWidthPx", 1280.0, -1200, 200)
     view_h = scalar(material, "ViewHeightPx", 720.0, -1200, 300)
+    # Glow scale (SDD 37): a literal 1.0 default, not HUD_GLOW_DEFAULT_LEVEL, so every instance that never sets it (the
+    # menus, the cursor, the glossary) keeps the issue #31 glow; the flight HUD's instance sets it from the Settings
+    glow_scale = scalar(material, "GlowScale", 1.0, -1200, 400)
     MEL.connect_material_expressions(local, "", custom, "Local")
     MEL.connect_material_expressions(params, "", custom, "Params")
     MEL.connect_material_expressions(vertex_color, "", custom, "VColor")
@@ -226,6 +239,7 @@ def build_shape(material):
     MEL.connect_material_expressions(composite, "", custom, "Composite")
     MEL.connect_material_expressions(view_w, "", custom, "ViewW")
     MEL.connect_material_expressions(view_h, "", custom, "ViewH")
+    MEL.connect_material_expressions(glow_scale, "", custom, "GlowScale")
     for index, (pin, name) in enumerate(CONSTANT_PINS):
         node = add(material, unreal.MaterialExpressionConstant, -900, 400 + 60 * index)
         node.set_editor_property("r", constant(name))

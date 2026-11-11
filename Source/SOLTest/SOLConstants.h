@@ -447,6 +447,10 @@ namespace SOL
         inline constexpr int32 OVERLAY_MAX_LEGS_CONSIDERED = 512;
         inline constexpr int32 OVERLAY_MAX_LEGS_DRAWN = 128;
         inline constexpr int32 OVERLAY_MAX_TRIANGLES = 16384;
+        // A glow piece's triangles: a core quad plus two halo quads, or the core quad alone at HUD glow 0% (SDD 37;
+        // SOLRouteOverlayMath::GlowPieceTriangles)
+        inline constexpr int32 OVERLAY_GLOW_PIECE_TRIANGLES = 6;
+        inline constexpr int32 OVERLAY_GLOW_CORE_TRIANGLES = 2;
         // Waypoint markers drawn per route (nearest the target first), and the active route's share of the triangles
         // (the rest is kept for the draft, so the plan being edited is never starved)
         inline constexpr int32 OVERLAY_MAX_MARKERS_DRAWN = 256;
@@ -784,7 +788,9 @@ namespace SOL
         inline constexpr const TCHAR* CVAR_POST_STRENGTH = TEXT("sol.HologramPostStrength"); // Post-process strength
         inline constexpr double GLOW_CORE_HALF_PX = 0.9;
         inline constexpr double GLOW_HALO_HALF_PX = 4.5;
-        inline constexpr double GLOW_HALO_INTENSITY = 0.15;     // Halved in issue #31 (was 0.3)
+        inline constexpr double GLOW_HALO_INTENSITY = 0.15;     // Halved in issue #31 (was 0.3); the g = 1 reference:
+                                                                // the route overlay draws it x the HUD glow scale g
+                                                                // (SOLRouteOverlayMath::RouteHaloIntensity, SDD 37)
 
         // LT hologram fragment (proxy bodies and rings, Tools/Map/create_hologram_assets.py reads these defaults):
         // Fresnel rim 1 - |N.V| x time noise 1 - NOISE_LOG_SCALE log(1 - noise) x 1 px scanlines
@@ -849,7 +855,11 @@ namespace SOL
         // padded by HUD_GLOW_PAD_PX; the material computes the pixel distance d to the shape and draws LT's glow
         // HUD_GLOW_CORE_WEIGHT exp(-HUD_GLOW_CORE_FALLOFF max(0, d - 0.5))
         // + HUD_GLOW_HALO_WEIGHT exp(-(HUD_GLOW_HALO_SCALE d)^HUD_GLOW_HALO_POWER), times colour x HUD_COLOR_GAIN, then
-        // LT's tone curve 1 - exp(-2 c^1.25) and blue grade (HUD_GRADE_BLUE_1..3 as a Bezier from 0 to 1), additive
+        // LT's tone curve 1 - exp(-2 c^1.25) and blue grade (HUD_GRADE_BLUE_1..3 as a Bezier from 0 to 1), additive.
+        // The glow weights and falloff below are the reference (glow scale g = 1, the issue #31 glow): the material's
+        // GlowScale parameter (default 1, so the menus keep it) scales them per SOLHudShapeMath::GlowProfile(d, g),
+        // halo weight x g, core weight 1 - halo weight, core falloff / max(g, falloff / HUD_GLOW_CORE_FALLOFF_MAX).
+        // The flight HUD sets g = Settings HUD glow x HUD_GLOW_DEFAULT_LEVEL (SOLHudShapeMath::HudGlowScale, SDD 37)
         inline constexpr const TCHAR* CVAR_HUD_RENDERER = TEXT("sol.HudRenderer");     // 1 = shape renderer, 0 = Canvas
         inline constexpr const TCHAR* CVAR_HUD_COMPOSITE = TEXT("sol.HudComposite");   // 1 = grain and scanlines on
         inline constexpr double HUD_GLOW_CORE_HALF_PX = 0.5;        // Full-strength core around the centre line
@@ -858,6 +868,13 @@ namespace SOL
         inline constexpr double HUD_GLOW_HALO_WEIGHT = 0.1;         // halo 0.2 -> 0.1 (SDD 21 Amendment 4)
         inline constexpr double HUD_GLOW_HALO_SCALE = 0.2;
         inline constexpr double HUD_GLOW_HALO_POWER = 0.75;
+        // The core falloff's cap (SDD 37 D8): a ~1 px antialiased edge, reached for every g <= HUD_GLOW_CORE_FALLOFF /
+        // this (0.5, so at 100% HUD glow and below while the default level is 0.5), not only at 0%
+        inline constexpr double HUD_GLOW_CORE_FALLOFF_MAX = 6.0;
+        inline constexpr float HUD_GLOW_DEFAULT_LEVEL = 0.5f;       // g at 100% HUD glow, of the issue #31 glow
+                                                                    // (SDD 37 D4: placeholder until the user picks it)
+        inline constexpr float HUD_GLOW_SCALE_MAX = 2.0f;           // Glow scales are clamped to [0, this] (reference
+                                                                    // units: g = 1 is never clamped)
         inline constexpr float HUD_GLOW_PAD_PX = 32.0f;             // Quad padding around a shape (LT kExpansion)
         inline constexpr double HUD_PAD_FADE_START = 0.5;           // The halo fades out from this fraction of the pad
         inline constexpr double HUD_TONE_GAIN = 2.0;                // LT tone curve 1 - exp(-GAIN c^POWER)
@@ -919,7 +936,8 @@ namespace SOL
         inline constexpr const TCHAR* CVAR_HUD_TEXT_GLOW = TEXT("sol.HudTextGlow");
         inline constexpr float HUD_TEXT_CORE_WHITEN = 0.3f;
         inline constexpr int32 HUD_TEXT_GLOW_OUTLINE = 1;
-        inline constexpr float HUD_TEXT_GLOW_ALPHA = 0.18f;         // Halved in issue #31 (was 0.35)
+        inline constexpr float HUD_TEXT_GLOW_ALPHA = 0.18f;         // Halved in issue #31 (was 0.35); the g = 1
+                                                                    // reference (SOLHudShapeMath::TextGlowAlpha)
         inline constexpr float HUD_TEXT_SHADOW_PX = 1.0f;
         inline constexpr float HUD_TEXT_SHADOW_ALPHA = 0.7f;
         inline constexpr float HUD_SHAPE_KIND_STRIDE = 8192.0f;     // Kind packed as kind x stride + size parameter
@@ -1540,6 +1558,11 @@ namespace SOL
         inline constexpr float SETTINGS_KEYS_NARROW_LABEL_WIDTH = 168.0f; // Key bindings' label column, narrow
         inline constexpr float SETTINGS_GAMEPLAY_NARROW_LABEL_WIDTH = 150.0f; // Gameplay's label column, narrow
         inline constexpr float SETTINGS_REBIND_NARROW_WIDTH = 104.0f;     // A Rebind button, narrow
+        // The HUD glow sample under the HUD glow row (SDD 37 D16, section 4.10): its box in units (it fits beside the
+        // narrow Gameplay label column at 1000x800) and its shape capacity (a ring and a line, with headroom)
+        inline constexpr float SETTINGS_GLOW_SAMPLE_WIDTH = 260.0f;
+        inline constexpr float SETTINGS_GLOW_SAMPLE_HEIGHT = 56.0f;
+        inline constexpr int32 SETTINGS_GLOW_SAMPLE_MAX_SHAPES = 4;
     }
     static_assert(MenuStyle::TITLE_FONT_SIZE == SolidMenu::FONT_TITLE_SIZE
         && MenuStyle::HEADING_FONT_SIZE == SolidMenu::FONT_HEADING_SIZE
@@ -1805,8 +1828,8 @@ namespace SOL
         // strength, SDD 21; 6: mouse steering at start, SDD 19 Amendment 5; 7: overlay profiles and the O keys, SDD 22;
         // 8: Chase Down safety margin, SDD 32; 9: the Space Dust overlay row written into every profile, SDD 43;
         // 10: overlay profiles with their enabled, master and orbit-lines flags, the global space dust and the
-        // RShift+O profile cycle, SDD 34; 11: the hologram menu effects strength, SDD 42)
-        inline constexpr int32 SAVE_VERSION = 11;
+        // RShift+O profile cycle, SDD 34; 11: the hologram menu effects strength, SDD 42; 12: the HUD glow, SDD 37)
+        inline constexpr int32 SAVE_VERSION = 12;
         // The save schema that introduced the current default key layout (issue #34: O / Alt+O / Ctrl+O / RShift+O);
         // older saves get the one-time "default controls changed" notice (SOLKeyBindings::DefaultLayoutChangedSince)
         inline constexpr int32 KEY_BINDING_LAYOUT_VERSION = 10;
@@ -1831,6 +1854,12 @@ namespace SOL
         inline constexpr float HOLO_MENU_EFFECTS_DEFAULT = 1.0f; // Full strength (D8); a migrated save copies its HUD
                                                                  // effects strength instead (SDD 42 section 9, A2)
         inline constexpr float HOLO_MENU_EFFECTS_STEP = 0.05f;
+        // HUD glow (SDD 37 D2), 0-200%: the glow scale is the value x Hologram::HUD_GLOW_DEFAULT_LEVEL, in units of the
+        // issue #31 glow (SOLHudShapeMath::HudGlowScale)
+        inline constexpr float HUD_GLOW_MIN = 0.0f;
+        inline constexpr float HUD_GLOW_MAX = 2.0f;
+        inline constexpr float HUD_GLOW_DEFAULT = 1.0f;
+        inline constexpr float HUD_GLOW_STEP = 0.05f;
         inline constexpr float VALUE_EQUAL_TOLERANCE = 1.0e-4f;    // Two slider values closer than this are equal
 
         // Chase Down safety margin (SDD 32 section 3.10): a floor on the G meter, as a fraction of a full meter
@@ -2231,6 +2260,7 @@ namespace SOL
     namespace HudShapeMaterialParams
     {
         inline constexpr const TCHAR* EFFECTS_STRENGTH = TEXT("EffectsStrength");   // Settings slider (jitter)
+        inline constexpr const TCHAR* GLOW_SCALE = TEXT("GlowScale");                // Glow scale g (SDD 37), default 1
         inline constexpr const TCHAR* COMPOSITE = TEXT("Composite");                 // 1 = grain and scanlines on
         inline constexpr const TCHAR* VIEW_WIDTH = TEXT("ViewWidthPx");              // Canvas size in pixels
         inline constexpr const TCHAR* VIEW_HEIGHT = TEXT("ViewHeightPx");

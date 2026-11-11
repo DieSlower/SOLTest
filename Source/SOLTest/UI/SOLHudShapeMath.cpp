@@ -40,6 +40,85 @@ float SOLHudShapeMath::GlowProfile(const float distancePx)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a glow scale with NaN read as 1, clamped to [0, HUD_GLOW_SCALE_MAX]
+float SOLHudShapeMath::SanitizeGlowScale(const float glowScale)
+{
+    return FMath::IsNaN(glowScale) ? 1.0f : FMath::Clamp(glowScale, 0.0f, SOL::Hologram::HUD_GLOW_SCALE_MAX);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the glow scale of a Settings HUD glow value (sanitized like the settings model) x the default level
+float SOLHudShapeMath::HudGlowScale(const float setting)
+{
+    using namespace SOL::Settings;
+    const float sanitized = FMath::IsNaN(setting) ? HUD_GLOW_DEFAULT
+        : FMath::Clamp(setting, HUD_GLOW_MIN, HUD_GLOW_MAX);
+    return sanitized * SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the halo weight at a glow scale
+float SOLHudShapeMath::GlowHaloWeight(const float glowScale)
+{
+    return static_cast<float>(SOL::Hologram::HUD_GLOW_HALO_WEIGHT) * SanitizeGlowScale(glowScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the core weight at a glow scale (the core pixel stays at 1)
+float SOLHudShapeMath::GlowCoreWeight(const float glowScale)
+{
+    return 1.0f - GlowHaloWeight(glowScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the core falloff at a glow scale (capped at HUD_GLOW_CORE_FALLOFF_MAX)
+float SOLHudShapeMath::GlowCoreFalloff(const float glowScale)
+{
+    using namespace SOL::Hologram;
+    const float falloff = static_cast<float>(HUD_GLOW_CORE_FALLOFF);
+    return falloff / FMath::Max(SanitizeGlowScale(glowScale), falloff / static_cast<float>(HUD_GLOW_CORE_FALLOFF_MAX));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// LT glow of a pixel at a distance from a 1 px core, at a glow scale
+float SOLHudShapeMath::GlowProfile(const float distancePx, const float glowScale)
+{
+    using namespace SOL::Hologram;
+    const float d = FMath::Max(distancePx, 0.0f);
+    const float haloWeight = GlowHaloWeight(glowScale);
+    return (1.0f - haloWeight) * FMath::Exp(-GlowCoreFalloff(glowScale) * FMath::Max(0.0f, d - HUDSHAPE_CORE_HALF_PX))
+        + haloWeight * FMath::Exp(-FMath::Pow(static_cast<float>(HUD_GLOW_HALO_SCALE) * d,
+            static_cast<float>(HUD_GLOW_HALO_POWER)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the glow text's outline alpha at a glow scale
+float SOLHudShapeMath::TextGlowAlpha(const float glowScale)
+{
+    return FMath::Clamp(SOL::Hologram::HUD_TEXT_GLOW_ALPHA * SanitizeGlowScale(glowScale), 0.0f, 1.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Maps a HUD glow setting to its glow scale; true when the scale changed since the last update (or there was none)
+bool FSOLGlowScaleFeed::Update(const float hudGlowSetting)
+{
+    const float scale = SOLHudShapeMath::HudGlowScale(hudGlowSetting);
+    if (scale == mScale)
+    {
+        return false;
+    }
+    mScale = scale;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the glow text's outline alpha at the last scale (the default before the first update)
+float FSOLGlowScaleFeed::GetTextAlpha() const
+{
+    return mScale < 0.0f ? SOL::Hologram::HUD_TEXT_GLOW_ALPHA : SOLHudShapeMath::TextGlowAlpha(mScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Signed distance to a capsule along local X
 float SOLHudShapeMath::LineDistancePx(const FVector2f& local, const float halfLengthPx, const float halfWidthPx)
 {

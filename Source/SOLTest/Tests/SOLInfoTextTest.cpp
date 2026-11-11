@@ -257,8 +257,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextHudParagraphTest, "SOLTest.InfoText
 
 //////////////////////////////////////////////////////////////////////////
 // (33d-ii, SDD 33 D25 with D1 option B, test-after) One paragraph is the HUD's: it keeps the two effects sliders and
-// what they scale, the HUD's look, the speed and G block's place and the cards' look and life, then points to Help, HUD
-// glossary; the radar and free-look details it used to repeat are left to the glossary
+// what they scale, the HUD glow slider (issue #37, SDD 37 D6), the HUD's look, the speed and G block's place and the
+// cards' look and life, then points to Help, HUD glossary; the radar and free-look details it used to repeat are left
+// to the glossary
 bool FSOLInfoTextHudParagraphTest::RunTest(const FString& /*parameters*/)
 {
     const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
@@ -286,6 +287,9 @@ bool FSOLInfoTextHudParagraphTest::RunTest(const FString& /*parameters*/)
         TEXT("glowing corner marks on a faint dark tint with a slow scanline"),
         TEXT("The date and speed cards are always there"), TEXT("draws in when you select a target and fades out"),
         TEXT("only changes its text"), TEXT("info card draws in and fades out"),
+        TEXT("The HUD glow slider in Settings"), TEXT("0% leaves crisp lines with no glow"),
+        TEXT("and the mouse pointer with them"), TEXT("the sample under the slider shows it at once"),
+        TEXT("the menus keep their own look"),
     };
     for (const TCHAR* const phrase : kept)
     {

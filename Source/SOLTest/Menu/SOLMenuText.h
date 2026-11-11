@@ -75,6 +75,9 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_INVERT_Y = TEXT("Invert mouse Y");
     inline constexpr const TCHAR* SETTINGS_HUD_SCALE = TEXT("HUD scale");
     inline constexpr const TCHAR* SETTINGS_HUD_EFFECTS = TEXT("HUD and menu effects");
+    inline constexpr const TCHAR* SETTINGS_HUD_GLOW = TEXT("HUD glow");
+    // The HUD glow sample's text line under the HUD glow row (SDD 37 D16): a HUD-style readout
+    inline constexpr const TCHAR* SETTINGS_GLOW_SAMPLE = TEXT("TARGET  Earth");
     inline constexpr const TCHAR* SETTINGS_HOLO_MENU_EFFECTS = TEXT("Hologram menu effects");
     inline constexpr const TCHAR* SETTINGS_HUD_VISIBLE = TEXT("Show flight HUD");
     inline constexpr const TCHAR* SETTINGS_DEFAULT_ASSIST = TEXT("Flight assist on at launch");
@@ -87,8 +90,9 @@ namespace SOLMenuText
     inline constexpr const TCHAR* SETTINGS_STEP_BACK = TEXT("<");
     inline constexpr const TCHAR* SETTINGS_STEP_FORWARD = TEXT(">");
     inline constexpr const TCHAR* SETTINGS_KEY_WAITING = TEXT("Press a key...");
-    inline constexpr const TCHAR* SETTINGS_HINT = TEXT("Audio, mouse, HUD and hologram effect changes preview at once; "
-        "graphics and key bindings take effect on Apply. Leaving this page discards changes that were not applied.");
+    inline constexpr const TCHAR* SETTINGS_HINT = TEXT("Audio, mouse, HUD, glow and hologram effect changes preview at "
+        "once; graphics and key bindings take effect on Apply. Leaving this page discards changes that were not "
+        "applied.");
     inline constexpr const TCHAR* SETTINGS_STATUS_CLEAN = TEXT("All changes applied.");
     inline constexpr const TCHAR* SETTINGS_STATUS_DIRTY = TEXT("Unapplied changes: Apply keeps them, Revert discards "
         "them.");
@@ -877,7 +881,10 @@ namespace SOLMenuText
             "and then a thin band of it shifts sideways for a moment, like a flickering hologram, and the radar's "
             "range rings pulse like sonar; the HUD and menu effects slider in Settings sets how strong those HUD "
             "effects are (0 turns them off), and it also scales the animations of the main menu and the pause "
-            "menu's side panel (at 0 they show at once, still fully usable). The date and anchor (top left), "
+            "menu's side panel (at 0 they show at once, still fully usable). The HUD glow slider in Settings sets how "
+            "much the HUD's lines, text, radar and route lines glow, and the mouse pointer with them (100% is the "
+            "default, 0% leaves crisp lines with no glow; the sample under the slider shows it at once); the menus "
+            "keep their own look. The date and anchor (top left), "
             "speed and G (bottom left), target (top right) and info (top right) blocks are hologram cards: glowing "
             "corner marks on a faint dark tint with "
             "a slow scanline. The date and speed cards are always there, the target card draws in when you select "

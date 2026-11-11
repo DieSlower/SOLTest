@@ -9,6 +9,8 @@
 
 #include "Misc/AutomationTest.h"
 
+#include <limits>
+
 #if WITH_DEV_AUTOMATION_TESTS
 
 namespace
@@ -174,6 +176,324 @@ bool FSOLHudShapesGlowProfileTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("non-increasing in distance"), bNonIncreasing);
     TestTrue(TEXT("below 1% at the pad"), GlowProfile(SOL::Hologram::HUD_GLOW_PAD_PX) < 0.01f);
     TestTrue(TEXT("positive at the pad"), GlowProfile(SOL::Hologram::HUD_GLOW_PAD_PX) > 0.0f);
+    return true;
+}
+
+// Issue #37 HUD glow scale (SDD 37 sections 4.1, 4.2), written against the SDD 37 section 5 contract (cases 9-12)
+// before the production code. g is in reference units: g = 1 is the post-#31 glow, g = 0 no glow
+
+namespace
+{
+    constexpr float HUDSHAPES_NAN = std::numeric_limits<float>::quiet_NaN();
+    constexpr float HUDSHAPES_INF = std::numeric_limits<float>::infinity();
+
+    // The sanitizer bound and the default level as floats (whatever their declared type)
+    constexpr float HUDSHAPES_SCALE_MAX = static_cast<float>(SOL::Hologram::HUD_GLOW_SCALE_MAX);
+    constexpr float HUDSHAPES_LEVEL = static_cast<float>(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL);
+
+    // Glow scales sampled by the profile tests (the clamp bound included)
+    constexpr float HUDSHAPES_GLOW_SCALES[] = { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f, HUDSHAPES_SCALE_MAX };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a glow scale sanitized per the contract (NaN -> 1, clamp to [0, HUD_GLOW_SCALE_MAX]), computed in the
+    // test
+    double HudShapesReferenceSanitize(const float glowScale)
+    {
+        if (FMath::IsNaN(glowScale))
+        {
+            return 1.0;
+        }
+        return FMath::Clamp(static_cast<double>(glowScale), 0.0, static_cast<double>(HUDSHAPES_SCALE_MAX));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the scaled glow profile computed straight from the SOL::Hologram constants (SDD 37 section 4.2)
+    float HudShapesReferenceGlowAt(const float distancePx, const float glowScale)
+    {
+        using namespace SOL::Hologram;
+        const double g = HudShapesReferenceSanitize(glowScale);
+        const double d = FMath::Max(0.0, static_cast<double>(distancePx));
+        const double haloWeight = HUD_GLOW_HALO_WEIGHT * g;
+        const double coreWeight = 1.0 - haloWeight;
+        const double coreFalloff = HUD_GLOW_CORE_FALLOFF / FMath::Max(g, HUD_GLOW_CORE_FALLOFF
+            / static_cast<double>(HUD_GLOW_CORE_FALLOFF_MAX));
+        const double core = coreWeight * FMath::Exp(-coreFalloff * FMath::Max(0.0, d - 0.5));
+        const double halo = haloWeight * FMath::Exp(-FMath::Pow(HUD_GLOW_HALO_SCALE * d, HUD_GLOW_HALO_POWER));
+        return static_cast<float>(core + halo);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesGlowConstantsTest, "SOLTest.HudShapes.GlowScaleConstants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The default level is below today's glow (D4), the reference core and halo weights sum to 1, the 0% falloff is
+// sharper than the reference one, and the sanitizer bound is 2 in reference units
+bool FSOLHudShapesGlowConstantsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Hologram;
+    TestTrue(TEXT("default level above 0"), HUDSHAPES_LEVEL > 0.0f);
+    TestTrue(TEXT("default level below today's glow (D4)"), HUDSHAPES_LEVEL < 1.0f);
+    TestEqual(TEXT("core weight + halo weight = 1"), static_cast<float>(HUD_GLOW_CORE_WEIGHT + HUD_GLOW_HALO_WEIGHT),
+        1.0f, HUDSHAPES_TOLERANCE);
+    TestTrue(TEXT("0% falloff sharper than the reference"),
+        static_cast<double>(HUD_GLOW_CORE_FALLOFF_MAX) > static_cast<double>(HUD_GLOW_CORE_FALLOFF));
+    TestEqual(TEXT("scale bound is 2"), HUDSHAPES_SCALE_MAX, 2.0f, HUDSHAPES_TOLERANCE);
+    TestTrue(TEXT("every reachable scale (2 x level) is below the bound"),
+        2.0f * HUDSHAPES_LEVEL < HUDSHAPES_SCALE_MAX);
+    TestEqual(TEXT("material parameter name"), FString(SOL::HudShapeMaterialParams::GLOW_SCALE),
+        FString(TEXT("GlowScale")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesHudGlowScaleTest, "SOLTest.HudShapes.HudGlowScale",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// HudGlowScale maps the Settings value (sanitized like the model: NaN -> 1, clamp [0, 2]) to reference units,
+// setting x HUD_GLOW_DEFAULT_LEVEL; SanitizeGlowScale maps NaN to 1 and clamps to [0, HUD_GLOW_SCALE_MAX]
+bool FSOLHudShapesHudGlowScaleTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHudShapeMath;
+    const float level = HUDSHAPES_LEVEL;
+
+    // The settings mapping
+    TestEqual(TEXT("100% is the default level"), HudGlowScale(1.0f), level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("0% is no glow"), HudGlowScale(0.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("200% is twice the level"), HudGlowScale(2.0f), 2.0f * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("60% is 0.6 x the level"), HudGlowScale(0.6f), 0.6f * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("140% is 1.4 x the level"), HudGlowScale(1.4f), 1.4f * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("one step is 0.05 x the level"), HudGlowScale(SOL::Settings::HUD_GLOW_STEP),
+        SOL::Settings::HUD_GLOW_STEP * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("below the range clamps to 0"), HudGlowScale(-1.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("above the range clamps to 200%"), HudGlowScale(5.0f), 2.0f * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("NaN reads as 100%"), HudGlowScale(HUDSHAPES_NAN), level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("+inf reads as 200%"), HudGlowScale(HUDSHAPES_INF), 2.0f * level, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("-inf reads as 0%"), HudGlowScale(-HUDSHAPES_INF), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("the settings default maps to the level"), HudGlowScale(SOL::Settings::HUD_GLOW_DEFAULT), level,
+        HUDSHAPES_TOLERANCE);
+
+    // Non-decreasing across the slider's positions
+    float previous = HudGlowScale(SOL::Settings::HUD_GLOW_MIN);
+    bool bNonDecreasing = true;
+    for (int32 position = 1; position <= 40; ++position)
+    {
+        const float value = HudGlowScale(SOL::Settings::HUD_GLOW_MIN + position * SOL::Settings::HUD_GLOW_STEP);
+        bNonDecreasing &= value >= previous - HUDSHAPES_TOLERANCE;
+        previous = value;
+    }
+    TestTrue(TEXT("non-decreasing across the slider"), bNonDecreasing);
+
+    // The sanitizer, in reference units
+    TestEqual(TEXT("sanitize 1"), SanitizeGlowScale(1.0f), 1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize 0"), SanitizeGlowScale(0.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize 0.3"), SanitizeGlowScale(0.3f), 0.3f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize NaN -> 1"), SanitizeGlowScale(HUDSHAPES_NAN), 1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize -2 -> 0"), SanitizeGlowScale(-2.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize 9 -> the bound"), SanitizeGlowScale(9.0f), HUDSHAPES_SCALE_MAX, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize +inf -> the bound"), SanitizeGlowScale(HUDSHAPES_INF), HUDSHAPES_SCALE_MAX,
+        HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("sanitize -inf -> 0"), SanitizeGlowScale(-HUDSHAPES_INF), 0.0f, HUDSHAPES_TOLERANCE);
+
+    // Every reachable HudGlowScale value passes the sanitizer unchanged
+    const float settings[] = { 0.0f, 0.05f, 0.6f, 1.0f, 1.4f, 2.0f };
+    for (const float setting : settings)
+    {
+        const float scale = HudGlowScale(setting);
+        TestEqual(FString::Printf(TEXT("setting %.2f passes the sanitizer"), setting), SanitizeGlowScale(scale), scale,
+            HUDSHAPES_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesGlowKnobsTest, "SOLTest.HudShapes.GlowKnobs",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The halo weight scales with g, the core weight keeps the core peak at 1, the core falloff widens the skirt with g
+// (capped at HUD_GLOW_CORE_FALLOFF_MAX at 0), g = 1 is the reference, and a bad g is sanitized first
+bool FSOLHudShapesGlowKnobsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHudShapeMath;
+    using namespace SOL::Hologram;
+    const float haloRef = static_cast<float>(HUD_GLOW_HALO_WEIGHT);
+    const float falloffRef = static_cast<float>(HUD_GLOW_CORE_FALLOFF);
+    const float falloffMax = static_cast<float>(HUD_GLOW_CORE_FALLOFF_MAX);
+
+    // The reference at g = 1 and the crisp core at g = 0
+    TestEqual(TEXT("halo weight at 1 is the reference"), GlowHaloWeight(1.0f), haloRef, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("core weight at 1 is the reference"), GlowCoreWeight(1.0f),
+        static_cast<float>(HUD_GLOW_CORE_WEIGHT), HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("falloff at 1 is the reference"), GlowCoreFalloff(1.0f), falloffRef, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("halo weight at 0 is 0"), GlowHaloWeight(0.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("core weight at 0 is 1"), GlowCoreWeight(0.0f), 1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("falloff at 0 is the cap"), GlowCoreFalloff(0.0f), falloffMax, HUDSHAPES_TOLERANCE);
+
+    // The formulas at every sampled scale, and the falloff never rises with g
+    float previousFalloff = GlowCoreFalloff(0.0f);
+    for (const float g : HUDSHAPES_GLOW_SCALES)
+    {
+        const FString label = FString::Printf(TEXT("g %.2f"), g);
+        const float expectedFalloff = static_cast<float>(HUD_GLOW_CORE_FALLOFF / FMath::Max(static_cast<double>(g),
+            HUD_GLOW_CORE_FALLOFF / static_cast<double>(HUD_GLOW_CORE_FALLOFF_MAX)));
+        TestEqual(label + TEXT(": halo weight"), GlowHaloWeight(g), haloRef * g, HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(": core weight"), GlowCoreWeight(g), 1.0f - GlowHaloWeight(g), HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(": falloff"), GlowCoreFalloff(g), expectedFalloff, HUDSHAPES_TOLERANCE);
+        TestTrue(label + TEXT(": falloff non-increasing in g"), GlowCoreFalloff(g) <= previousFalloff
+            + HUDSHAPES_TOLERANCE);
+        TestTrue(label + TEXT(": falloff within [reference / bound, cap]"), GlowCoreFalloff(g) <= falloffMax
+            + HUDSHAPES_TOLERANCE && GlowCoreFalloff(g) > 0.0f);
+        previousFalloff = GlowCoreFalloff(g);
+    }
+
+    // A fine sweep: the falloff is non-increasing over the whole range
+    bool bNonIncreasing = true;
+    previousFalloff = GlowCoreFalloff(0.0f);
+    for (float g = 0.01f; g <= HUDSHAPES_SCALE_MAX; g += 0.01f)
+    {
+        const float value = GlowCoreFalloff(g);
+        bNonIncreasing &= value <= previousFalloff + HUDSHAPES_TOLERANCE;
+        previousFalloff = value;
+    }
+    TestTrue(TEXT("falloff non-increasing over [0, bound]"), bNonIncreasing);
+
+    // A bad g behaves as its sanitized value: negative as 0, NaN as 1, past the bound as the bound
+    TestEqual(TEXT("negative halo weight as 0"), GlowHaloWeight(-1.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("negative core weight as 0"), GlowCoreWeight(-1.0f), 1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("negative falloff as 0"), GlowCoreFalloff(-1.0f), falloffMax, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("NaN halo weight as 1"), GlowHaloWeight(HUDSHAPES_NAN), haloRef, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("NaN core weight as 1"), GlowCoreWeight(HUDSHAPES_NAN), static_cast<float>(HUD_GLOW_CORE_WEIGHT),
+        HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("NaN falloff as 1"), GlowCoreFalloff(HUDSHAPES_NAN), falloffRef, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("9 halo weight as the bound"), GlowHaloWeight(9.0f), haloRef * HUDSHAPES_SCALE_MAX,
+        HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("9 falloff as the bound"), GlowCoreFalloff(9.0f), GlowCoreFalloff(HUDSHAPES_SCALE_MAX),
+        HUDSHAPES_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesScaledGlowProfileTest, "SOLTest.HudShapes.ScaledGlowProfile",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// GlowProfile(d, g) is the reference profile at g = 1, peaks at 1 for every g, is a crisp core at g = 0, grows with g
+// outside the core, falls with d to below 1% at the pad, and matches the closed form of SDD 37 section 4.2
+bool FSOLHudShapesScaledGlowProfileTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::GlowProfile;
+    constexpr float pad = SOL::Hologram::HUD_GLOW_PAD_PX;
+
+    // g = 1 is today's profile, bit for bit within the tolerance
+    const float referenceSamples[] = { 0.0f, 0.25f, 0.5f, 1.0f, 3.0f, 10.0f, 20.0f, 32.0f };
+    for (const float d : referenceSamples)
+    {
+        TestEqual(FString::Printf(TEXT("g 1 is the reference at %.2f px"), d), GlowProfile(d, 1.0f), GlowProfile(d),
+            HUDSHAPES_TOLERANCE);
+    }
+
+    // The core pixel is 1 at every scale, and a negative distance clamps to it
+    const float peakScales[] = { 0.0f, 0.25f, 0.5f, 1.0f, HUDSHAPES_SCALE_MAX };
+    for (const float g : peakScales)
+    {
+        const FString label = FString::Printf(TEXT("g %.2f"), g);
+        TestEqual(label + TEXT(": core is 1"), GlowProfile(0.0f, g), 1.0f, HUDSHAPES_TOLERANCE);
+        TestEqual(label + TEXT(": negative clamps to the core"), GlowProfile(-5.0f, g), GlowProfile(0.0f, g),
+            HUDSHAPES_TOLERANCE);
+    }
+
+    // 0% leaves a crisp core with no glow (D4)
+    TestEqual(TEXT("g 0: flat inside the half-pixel core"), GlowProfile(0.5f, 0.0f), 1.0f, HUDSHAPES_TOLERANCE);
+    TestTrue(TEXT("g 0: below 1% at 1.5 px"), GlowProfile(1.5f, 0.0f) < 0.01f);
+
+    // Outside the core the glow never drops as g grows
+    const float outsideSamples[] = { 1.0f, 3.0f, 10.0f };
+    for (const float d : outsideSamples)
+    {
+        float previous = GlowProfile(d, HUDSHAPES_GLOW_SCALES[0]);
+        bool bNonDecreasing = true;
+        for (const float g : HUDSHAPES_GLOW_SCALES)
+        {
+            const float value = GlowProfile(d, g);
+            bNonDecreasing &= value >= previous - HUDSHAPES_TOLERANCE;
+            previous = value;
+        }
+        TestTrue(FString::Printf(TEXT("non-decreasing in g at %.0f px"), d), bNonDecreasing);
+    }
+
+    // For every sampled scale: the closed form, non-increasing outward, nearly gone at the pad
+    for (const float g : HUDSHAPES_GLOW_SCALES)
+    {
+        const FString label = FString::Printf(TEXT("g %.2f"), g);
+        const float formulaSamples[] = { 0.0f, 0.25f, 0.5f, 1.0f, 1.5f, 3.0f, 10.0f, 20.0f, pad };
+        for (const float d : formulaSamples)
+        {
+            TestEqual(label + FString::Printf(TEXT(": formula at %.2f px"), d), GlowProfile(d, g),
+                HudShapesReferenceGlowAt(d, g), HUDSHAPES_TOLERANCE);
+        }
+        float previous = GlowProfile(0.0f, g);
+        bool bNonIncreasing = true;
+        for (float d = 0.05f; d <= pad; d += 0.05f)
+        {
+            const float value = GlowProfile(d, g);
+            bNonIncreasing &= value <= previous + HUDSHAPES_TOLERANCE;
+            previous = value;
+        }
+        TestTrue(label + TEXT(": non-increasing in distance"), bNonIncreasing);
+        TestTrue(label + TEXT(": below 1% at the pad"), GlowProfile(pad, g) < 0.01f);
+        TestTrue(label + TEXT(": never negative at the pad"), GlowProfile(pad, g) >= 0.0f);
+    }
+
+    // A bad g behaves as its sanitized value
+    const float badSamples[] = { 0.0f, 1.0f, 3.0f, 10.0f };
+    for (const float d : badSamples)
+    {
+        TestEqual(FString::Printf(TEXT("NaN as 1 at %.0f px"), d), GlowProfile(d, HUDSHAPES_NAN), GlowProfile(d, 1.0f),
+            HUDSHAPES_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("negative as 0 at %.0f px"), d), GlowProfile(d, -2.0f), GlowProfile(d, 0.0f),
+            HUDSHAPES_TOLERANCE);
+        TestEqual(FString::Printf(TEXT("9 as the bound at %.0f px"), d), GlowProfile(d, 9.0f),
+            GlowProfile(d, HUDSHAPES_SCALE_MAX), HUDSHAPES_TOLERANCE);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesTextGlowAlphaTest, "SOLTest.HudShapes.TextGlowAlpha",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The glow text's outline alpha is HUD_TEXT_GLOW_ALPHA x the sanitized g, clamped to [0, 1]: the reference at 1, none
+// at 0 (the outline is dropped), NaN as 1, and never decreasing in g
+bool FSOLHudShapesTextGlowAlphaTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLHudShapeMath::TextGlowAlpha;
+    using SOL::Hologram::HUD_TEXT_GLOW_ALPHA;
+    TestEqual(TEXT("1 is the reference"), TextGlowAlpha(1.0f), HUD_TEXT_GLOW_ALPHA, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("1 is 0.18"), TextGlowAlpha(1.0f), 0.18f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("0 is none"), TextGlowAlpha(0.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("NaN as 1"), TextGlowAlpha(HUDSHAPES_NAN), TextGlowAlpha(1.0f), HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("negative as 0"), TextGlowAlpha(-1.0f), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("the default level"), TextGlowAlpha(HUDSHAPES_LEVEL), HUD_TEXT_GLOW_ALPHA * HUDSHAPES_LEVEL,
+        HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("past the bound as the bound"), TextGlowAlpha(9.0f),
+        FMath::Clamp(HUD_TEXT_GLOW_ALPHA * HUDSHAPES_SCALE_MAX, 0.0f, 1.0f), HUDSHAPES_TOLERANCE);
+
+    // The formula at every sampled scale, inside [0, 1] and non-decreasing
+    float previous = TextGlowAlpha(0.0f);
+    for (const float g : HUDSHAPES_GLOW_SCALES)
+    {
+        const FString label = FString::Printf(TEXT("g %.2f"), g);
+        const float value = TextGlowAlpha(g);
+        TestEqual(label + TEXT(": formula"), value, FMath::Clamp(HUD_TEXT_GLOW_ALPHA * g, 0.0f, 1.0f),
+            HUDSHAPES_TOLERANCE);
+        TestTrue(label + TEXT(": in [0, 1]"), value >= 0.0f && value <= 1.0f);
+        TestTrue(label + TEXT(": non-decreasing"), value >= previous - HUDSHAPES_TOLERANCE);
+        previous = value;
+    }
     return true;
 }
 
@@ -1197,6 +1517,56 @@ bool FSOLHudShapesBatchDashedLineTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("index count unchanged"), fullBatch.GetIndices().Num(), HUDSHAPES_INDICES_PER_SHAPE);
     TestEqual(TEXT("vertex capacity did not grow"), fullBatch.GetVertices().Max(), vertexMax);
     TestEqual(TEXT("index capacity did not grow"), fullBatch.GetIndices().Max(), indexMax);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudShapesGlowScaleFeedTest, "SOLTest.HudShapes.GlowScaleFeed",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 18, D16 / D17, written before the feed) The feed maps a HUD glow setting through HudGlowScale and
+// reports a change only when the scale differs from the last one: always on the first update and after Reset, never
+// for a repeat or for two settings that clamp to the same scale; NaN reads as the default setting
+bool FSOLHudShapesGlowScaleFeedTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLHudShapeMath;
+    FSOLGlowScaleFeed feed;
+    TestEqual(TEXT("new: no scale yet"), feed.GetScale(), -1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("new: the default text alpha"), feed.GetTextAlpha(), SOL::Hologram::HUD_TEXT_GLOW_ALPHA,
+        HUDSHAPES_TOLERANCE);
+
+    // The first update always reports a change
+    TestTrue(TEXT("first update: changed"), feed.Update(1.0f));
+    TestEqual(TEXT("100%: HudGlowScale(1)"), feed.GetScale(), HudGlowScale(1.0f), HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("100%: its text alpha"), feed.GetTextAlpha(), TextGlowAlpha(HudGlowScale(1.0f)),
+        HUDSHAPES_TOLERANCE);
+    TestFalse(TEXT("the same setting: no change"), feed.Update(1.0f));
+
+    // 0%: no glow, no outline
+    TestTrue(TEXT("0%: changed"), feed.Update(0.0f));
+    TestEqual(TEXT("0%: scale 0"), feed.GetScale(), 0.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("0%: alpha 0"), feed.GetTextAlpha(), 0.0f, HUDSHAPES_TOLERANCE);
+    TestFalse(TEXT("0% again: no change"), feed.Update(0.0f));
+
+    // 200%, then a setting past the end that clamps to the same scale
+    TestTrue(TEXT("200%: changed"), feed.Update(2.0f));
+    TestEqual(TEXT("200%: HudGlowScale(2)"), feed.GetScale(), HudGlowScale(2.0f), HUDSHAPES_TOLERANCE);
+    TestFalse(TEXT("500% clamps to the same scale: no change"), feed.Update(5.0f));
+    TestEqual(TEXT("500%: still HudGlowScale(2)"), feed.GetScale(), HudGlowScale(2.0f), HUDSHAPES_TOLERANCE);
+
+    // NaN reads as the default setting
+    TestTrue(TEXT("NaN after 200%: changed"), feed.Update(HUDSHAPES_NAN));
+    TestEqual(TEXT("NaN: HudGlowScale(1)"), feed.GetScale(), HudGlowScale(1.0f), HUDSHAPES_TOLERANCE);
+    TestFalse(TEXT("100% after NaN: no change"), feed.Update(1.0f));
+
+    // Reset forgets the last scale, so the next update pushes again even for the same value
+    feed.Reset();
+    TestEqual(TEXT("reset: no scale"), feed.GetScale(), -1.0f, HUDSHAPES_TOLERANCE);
+    TestEqual(TEXT("reset: the default text alpha"), feed.GetTextAlpha(), SOL::Hologram::HUD_TEXT_GLOW_ALPHA,
+        HUDSHAPES_TOLERANCE);
+    TestTrue(TEXT("after reset: the same value changes"), feed.Update(1.0f));
+    TestEqual(TEXT("after reset: HudGlowScale(1)"), feed.GetScale(), HudGlowScale(1.0f), HUDSHAPES_TOLERANCE);
     return true;
 }
 

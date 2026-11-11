@@ -29,6 +29,33 @@ namespace SOLHudShapeMath
     // CORE_WEIGHT exp(-CORE_FALLOFF max(0, d - 0.5)) + HALO_WEIGHT exp(-(HALO_SCALE d)^HALO_POWER)
     SOLTEST_API float GlowProfile(float distancePx);
 
+    // HUD glow scale (SDD 37 sections 4.1, 4.2). g is in reference units: g = 1 is the issue #31 glow (the constants'
+    // values), g = 0 no glow. A bad g is sanitized first by every function taking one (SanitizeGlowScale)
+
+    // Returns a glow scale with NaN read as 1 and the value clamped to [0, HUD_GLOW_SCALE_MAX]
+    SOLTEST_API float SanitizeGlowScale(float glowScale);
+
+    // Returns the glow scale of a Settings HUD glow value: the value (NaN -> HUD_GLOW_DEFAULT, clamped to
+    // [HUD_GLOW_MIN, HUD_GLOW_MAX], like the settings model) x HUD_GLOW_DEFAULT_LEVEL
+    SOLTEST_API float HudGlowScale(float setting);
+
+    // Returns the halo weight at a glow scale: HUD_GLOW_HALO_WEIGHT x g
+    SOLTEST_API float GlowHaloWeight(float glowScale);
+
+    // Returns the core weight at a glow scale: 1 - GlowHaloWeight(g), so the core pixel stays at 1
+    SOLTEST_API float GlowCoreWeight(float glowScale);
+
+    // Returns the core falloff at a glow scale: HUD_GLOW_CORE_FALLOFF / max(g, HUD_GLOW_CORE_FALLOFF /
+    // HUD_GLOW_CORE_FALLOFF_MAX) (the core's skirt widens with g, capped at HUD_GLOW_CORE_FALLOFF_MAX at g = 0)
+    SOLTEST_API float GlowCoreFalloff(float glowScale);
+
+    // LT glow at a glow scale: GlowCoreWeight(g) exp(-GlowCoreFalloff(g) max(0, d - 0.5))
+    // + GlowHaloWeight(g) exp(-(HALO_SCALE d)^HALO_POWER), d clamped to >= 0; GlowProfile(d, 1) == GlowProfile(d)
+    SOLTEST_API float GlowProfile(float distancePx, float glowScale);
+
+    // Returns the glow text's outline alpha at a glow scale: clamp(HUD_TEXT_GLOW_ALPHA x g, 0, 1) (0: no outline)
+    SOLTEST_API float TextGlowAlpha(float glowScale);
+
     // Signed distance to a capsule centred on the origin along local X (half length, half width)
     SOLTEST_API float LineDistancePx(const FVector2f& local, float halfLengthPx, float halfWidthPx);
 
@@ -102,3 +129,29 @@ namespace SOLHudShapeMath
     SOLTEST_API bool BoxCapsule(float x, float y, float width, float height, float coreHalfPx, FVector2f& outStart,
         FVector2f& outEnd, float& outHalfWidth);
 }
+
+/**
+ * The HUD glow scale one material or layer was last given (SDD 37 section 4.10: the hologram cursor and the Settings
+ * glow sample): Update maps a Settings HUD glow value through SOLHudShapeMath::HudGlowScale and reports whether the
+ * scale changed, so the owner pushes material parameters and text alphas only on a change. Plain data, no allocation.
+ */
+struct SOLTEST_API FSOLGlowScaleFeed
+{
+    // Maps the setting to its glow scale; true when it differs from the last one (always on the first call and after
+    // Reset)
+    bool Update(float hudGlowSetting);
+
+    // Forgets the last scale, so the next Update reports a change
+    void Reset() { mScale = -1.0f; }
+
+    // Returns the last scale, or -1 before the first Update
+    float GetScale() const { return mScale; }
+
+    // Returns the glow text's outline alpha at the last scale (SOLHudShapeMath::TextGlowAlpha; HUD_TEXT_GLOW_ALPHA
+    // before the first Update)
+    float GetTextAlpha() const;
+
+private:
+
+    float mScale = -1.0f;
+};

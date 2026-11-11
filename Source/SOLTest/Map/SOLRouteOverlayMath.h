@@ -92,4 +92,12 @@ namespace SOLRouteOverlayMath
 
     // Returns a draw style's alpha: SOL::Route::OVERLAY_ALPHA_ACTIVE, _DRAFT, _PAUSED or _FINISHED
     SOLTEST_API double StyleAlpha(ESOLRouteDrawStyle style);
+
+    // Returns the halo intensity of a glow piece at a HUD glow scale (SDD 37 section 4.2): SOL::Hologram::
+    // GLOW_HALO_INTENSITY x SOLHudShapeMath::SanitizeGlowScale(g) (g = 1 the issue #31 halo, 0 none)
+    SOLTEST_API double RouteHaloIntensity(float glowScale);
+
+    // Returns the triangles a glow piece takes at a HUD glow scale (SDD 37 section 4.4): SOL::Route::
+    // OVERLAY_GLOW_PIECE_TRIANGLES while RouteHaloIntensity(g) > 0, else OVERLAY_GLOW_CORE_TRIANGLES (the core quad)
+    SOLTEST_API int32 GlowPieceTriangles(float glowScale);
 }

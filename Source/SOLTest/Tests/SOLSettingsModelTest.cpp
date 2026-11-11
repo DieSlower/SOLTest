@@ -4,6 +4,7 @@
 */
 
 #include "Menu/SOLSettingsModel.h"
+#include "Menu/SOLSettingsRules.h"
 #include "SOLConstants.h"
 
 #include "Misc/AutomationTest.h"
@@ -60,6 +61,7 @@ bool FSOLSettingsModelDefaultsTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("Space dust follows the constant"), defaults.bSpaceDust == SOL::Settings::SPACE_DUST_DEFAULT);
     TestTrue(TEXT("Space dust on"), defaults.bSpaceDust);
     TestEqual(TEXT("Hologram menu effects"), defaults.HoloMenuEffects, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("HUD glow"), defaults.HudGlow, 1.0f, SETTINGSMODEL_TOLERANCE);
     TestTrue(TEXT("Defaults equal their sanitized form"), AreEqual(defaults, Sanitized(defaults)));
     return true;
 }
@@ -1178,6 +1180,245 @@ bool FSOLSettingsModelHoloMenuEffectsDirtyTest::RunTest(const FString& /*paramet
     SetPending(maxed, beyond);
     TestFalse(TEXT("Clamped back to saved is clean"), IsDirty(maxed));
     TestFalse(TEXT("Clamped back to saved needs no write"), CommitIfDirty(maxed));
+    return true;
+}
+
+// Issue #37 HUD glow setting in the settings model, written against the SDD 37 section 5 contract (cases 1-4) before
+// the production code
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudGlowConstantsTest, "SOLTest.SettingsModel.HudGlowConstants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The HUD glow slider runs 0% to 200% in 5% steps (41 positions) with 100% as the default (D2)
+bool FSOLSettingsModelHudGlowConstantsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOL::Settings;
+    TestEqual(TEXT("Min constant is 0"), HUD_GLOW_MIN, 0.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Max constant is 2"), HUD_GLOW_MAX, 2.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default constant is 1"), HUD_GLOW_DEFAULT, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Step constant is 0.05"), HUD_GLOW_STEP, 0.05f, SETTINGSMODEL_TOLERANCE);
+    TestTrue(TEXT("Default inside the range"), HUD_GLOW_DEFAULT >= HUD_GLOW_MIN && HUD_GLOW_DEFAULT <= HUD_GLOW_MAX);
+
+    // 41 slider positions, and the default sits on one of them
+    const float positions = (HUD_GLOW_MAX - HUD_GLOW_MIN) / HUD_GLOW_STEP + 1.0f;
+    TestEqual(TEXT("41 positions"), positions, 41.0f, 1.0e-4f);
+    TestEqual(TEXT("41 positions (rounded)"), FMath::RoundToInt(positions), 41);
+    const float defaultSteps = (HUD_GLOW_DEFAULT - HUD_GLOW_MIN) / HUD_GLOW_STEP;
+    TestEqual(TEXT("Default on a step"), defaultSteps, static_cast<float>(FMath::RoundToInt(defaultSteps)), 1.0e-4f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudGlowSanitizeTest, "SOLTest.SettingsModel.HudGlowSanitize",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The HUD glow defaults to 1, clamps to [0, 2], NaN -> the default, infinities -> the ends, and is sanitized
+// independently of the HUD and hologram menu effects strengths
+bool FSOLSettingsModelHudGlowSanitizeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    using namespace SOL::Settings;
+
+    // The default value is the constant and survives sanitizing
+    const FSettingsValues defaults;
+    TestEqual(TEXT("Default"), defaults.HudGlow, HUD_GLOW_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Default is 1"), defaults.HudGlow, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Sanitized default kept"), Sanitized(defaults).HudGlow, HUD_GLOW_DEFAULT, SETTINGSMODEL_TOLERANCE);
+
+    // In range, one step and the exact ends pass through
+    const float inRange[] = { HUD_GLOW_MIN, HUD_GLOW_STEP, 0.35f, 1.55f, HUD_GLOW_MAX };
+    for (const float glow : inRange)
+    {
+        FSettingsValues values = SettingsModelCustomValues();
+        values.HudGlow = glow;
+        TestEqual(FString::Printf(TEXT("%.2f kept"), glow), Sanitized(values).HudGlow, glow, SETTINGSMODEL_TOLERANCE);
+    }
+
+    // Out of range clamps
+    FSettingsValues values = SettingsModelCustomValues();
+    values.HudGlow = -0.5f;
+    TestEqual(TEXT("Below -> MIN"), Sanitized(values).HudGlow, HUD_GLOW_MIN, SETTINGSMODEL_TOLERANCE);
+    values.HudGlow = 2.01f;
+    TestEqual(TEXT("Just above -> MAX"), Sanitized(values).HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+    values.HudGlow = 7.0f;
+    TestEqual(TEXT("Above -> MAX"), Sanitized(values).HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+
+    // Non-finite values
+    values.HudGlow = SETTINGSMODEL_NAN;
+    const FSettingsValues nanOut = Sanitized(values);
+    TestEqual(TEXT("NaN -> default"), nanOut.HudGlow, HUD_GLOW_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN -> 1"), nanOut.HudGlow, 1.0f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("NaN leaves other fields alone"), nanOut.MouseSensitivity, 2.0f, SETTINGSMODEL_TOLERANCE);
+    values.HudGlow = SETTINGSMODEL_INF;
+    TestEqual(TEXT("+inf -> MAX"), Sanitized(values).HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+    values.HudGlow = -SETTINGSMODEL_INF;
+    TestEqual(TEXT("-inf -> MIN"), Sanitized(values).HudGlow, HUD_GLOW_MIN, SETTINGSMODEL_TOLERANCE);
+
+    // The glow clamps on its own: the effects strengths beside it are never moved, and their sanitizing never moves it
+    FSettingsValues split = SettingsModelCustomValues();
+    split.HudEffectsStrength = 0.3f;
+    split.HoloMenuEffects = 1.7f;
+    split.HudGlow = 9.0f;
+    const FSettingsValues splitOut = Sanitized(split);
+    TestEqual(TEXT("HUD effects kept beside a clamped glow"), splitOut.HudEffectsStrength, 0.3f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Menu effects kept beside a clamped glow"), splitOut.HoloMenuEffects, 1.7f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Glow clamped on its own"), splitOut.HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+    split.HudEffectsStrength = SETTINGSMODEL_NAN;
+    split.HoloMenuEffects = 9.0f;
+    split.HudGlow = 0.35f;
+    const FSettingsValues effectsBadOut = Sanitized(split);
+    TestEqual(TEXT("Bad effects strengths do not touch the glow"), effectsBadOut.HudGlow, 0.35f,
+        SETTINGSMODEL_TOLERANCE);
+
+    // Sanitizing a clamped value again changes nothing
+    values.HudGlow = 5.0f;
+    const FSettingsValues once = Sanitized(values);
+    TestEqual(TEXT("Idempotent"), Sanitized(once).HudGlow, once.HudGlow, SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudGlowDirtyTest, "SOLTest.SettingsModel.HudGlowDirty",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// AreEqual compares the HUD glow within VALUE_EQUAL_TOLERANCE, so a glow-only edit makes the model dirty; revert
+// returns the saved glow, commit asks for one write, and SetPending stores it sanitized
+bool FSOLSettingsModelHudGlowDirtyTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsModel;
+    using namespace SOL::Settings;
+    const FSettingsValues base = SettingsModelCustomValues();
+
+    // A difference beyond the tolerance is a change; within half of it is not
+    FSettingsValues changed = base;
+    changed.HudGlow = base.HudGlow + VALUE_EQUAL_TOLERANCE * 2.0f;
+    TestFalse(TEXT("Beyond the tolerance differs"), AreEqual(base, changed));
+    TestFalse(TEXT("Symmetric"), AreEqual(changed, base));
+    FSettingsValues step = base;
+    step.HudGlow = base.HudGlow - HUD_GLOW_STEP;
+    TestFalse(TEXT("A one-step change differs"), AreEqual(base, step));
+    FSettingsValues nearlySame = base;
+    nearlySame.HudGlow += VALUE_EQUAL_TOLERANCE * 0.5f;
+    TestTrue(TEXT("Within half the tolerance is equal"), AreEqual(base, nearlySame));
+    FSettingsModel tolerance = MakeModel(base);
+    SetPending(tolerance, changed);
+    TestTrue(TEXT("Model dirty beyond the tolerance"), IsDirty(tolerance));
+    SetPending(tolerance, nearlySame);
+    TestFalse(TEXT("Model clean within half the tolerance"), IsDirty(tolerance));
+
+    // Two values that clamp to the same end, and NaN vs the default, compare equal
+    FSettingsValues overA = base;
+    overA.HudGlow = 5.0f;
+    FSettingsValues overB = base;
+    overB.HudGlow = 9.0f;
+    TestTrue(TEXT("Both clamp to MAX"), AreEqual(overA, overB));
+    FSettingsValues underA = base;
+    underA.HudGlow = -1.0f;
+    FSettingsValues underB = base;
+    underB.HudGlow = -SETTINGSMODEL_INF;
+    TestTrue(TEXT("Both clamp to MIN"), AreEqual(underA, underB));
+    FSettingsValues nanGlow;
+    nanGlow.HudGlow = SETTINGSMODEL_NAN;
+    TestTrue(TEXT("NaN equals the default"), AreEqual(nanGlow, FSettingsValues()));
+
+    // The glow and the HUD effects strength are compared separately
+    FSettingsValues glowLow = base;
+    glowLow.HudEffectsStrength = 1.0f;
+    glowLow.HudGlow = 0.4f;
+    FSettingsValues effectsLow = base;
+    effectsLow.HudEffectsStrength = 0.4f;
+    effectsLow.HudGlow = 1.0f;
+    TestFalse(TEXT("Glow-low differs from effects-low"), AreEqual(glowLow, effectsLow));
+
+    // The model sees a glow-only edit as dirty; revert discards it, commit adopts it with one write
+    FSettingsValues edited = base;
+    edited.HudGlow = 0.35f;
+    FSettingsModel model = MakeModel(base);
+    TestFalse(TEXT("Fresh model is clean"), IsDirty(model));
+    TestFalse(TEXT("Fresh model needs no write"), CommitIfDirty(model));
+    SetPending(model, edited);
+    TestTrue(TEXT("Dirty when only the glow differs"), IsDirty(model));
+    TestEqual(TEXT("Saved glow untouched by SetPending"), model.Saved.HudGlow, base.HudGlow, SETTINGSMODEL_TOLERANCE);
+    const FSettingsValues reverted = Revert(model);
+    TestEqual(TEXT("Revert returns the saved glow"), reverted.HudGlow, base.HudGlow, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Pending glow reverted"), model.Pending.HudGlow, base.HudGlow, SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after revert"), IsDirty(model));
+    TestFalse(TEXT("Reverted model needs no write"), CommitIfDirty(model));
+    SetPending(model, edited);
+    TestTrue(TEXT("Commit of the glow needs a write"), CommitIfDirty(model));
+    TestEqual(TEXT("Saved takes the glow"), model.Saved.HudGlow, 0.35f, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("Saved HUD effects untouched"), model.Saved.HudEffectsStrength, base.HudEffectsStrength,
+        SETTINGSMODEL_TOLERANCE);
+    TestFalse(TEXT("Clean after commit"), IsDirty(model));
+    TestFalse(TEXT("Second commit needs no write"), CommitIfDirty(model));
+    TestEqual(TEXT("Revert after commit returns the committed glow"), Revert(model).HudGlow, 0.35f,
+        SETTINGSMODEL_TOLERANCE);
+
+    // Moving the slider away and back within one visit is not dirty and needs no write
+    FSettingsValues away = model.Saved;
+    away.HudGlow = 1.8f;
+    SetPending(model, away);
+    TestTrue(TEXT("Dirty while moved away"), IsDirty(model));
+    SetPending(model, model.Saved);
+    TestFalse(TEXT("Clean once set back"), IsDirty(model));
+    TestFalse(TEXT("Set back needs no write"), CommitIfDirty(model));
+
+    // An out-of-range pending glow is stored sanitized, and one that clamps to the saved value is not dirty
+    FSettingsValues over = model.Saved;
+    over.HudGlow = 12.0f;
+    SetPending(model, over);
+    TestEqual(TEXT("Pending sanitized (12 -> 2)"), model.Pending.HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+    FSettingsValues atMax = base;
+    atMax.HudGlow = HUD_GLOW_MAX;
+    FSettingsModel maxed = MakeModel(atMax);
+    FSettingsValues beyond = maxed.Saved;
+    beyond.HudGlow = 4.0f;
+    SetPending(maxed, beyond);
+    TestFalse(TEXT("Clamped back to saved is clean"), IsDirty(maxed));
+    TestFalse(TEXT("Clamped back to saved needs no write"), CommitIfDirty(maxed));
+
+    // MakeModel sanitizes a loaded glow (a corrupt file holding NaN or 9)
+    FSettingsValues loadedNan = base;
+    loadedNan.HudGlow = SETTINGSMODEL_NAN;
+    TestEqual(TEXT("MakeModel: NaN -> 1"), MakeModel(loadedNan).Saved.HudGlow, HUD_GLOW_DEFAULT,
+        SETTINGSMODEL_TOLERANCE);
+    FSettingsValues loadedHigh = base;
+    loadedHigh.HudGlow = 9.0f;
+    TestEqual(TEXT("MakeModel: 9 -> 2"), MakeModel(loadedHigh).Pending.HudGlow, HUD_GLOW_MAX, SETTINGSMODEL_TOLERANCE);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLSettingsModelHudGlowSliderStepsTest, "SOLTest.SettingsModel.HudGlowSliderSteps",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The HUD glow slider snaps to 5% steps inside [0%, 200%] and reads as a whole percentage (D2, D6)
+bool FSOLSettingsModelHudGlowSliderStepsTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLSettingsRules;
+    using namespace SOL::Settings;
+    TestEqual(TEXT("0.52 snaps to 0.5"), SnapToStep(0.52f, HUD_GLOW_STEP, HUD_GLOW_MIN, HUD_GLOW_MAX), 0.5f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("1.976 snaps to 2"), SnapToStep(1.976f, HUD_GLOW_STEP, HUD_GLOW_MIN, HUD_GLOW_MAX), 2.0f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("-1 clamps to 0"), SnapToStep(-1.0f, HUD_GLOW_STEP, HUD_GLOW_MIN, HUD_GLOW_MAX), 0.0f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("5 clamps to 2"), SnapToStep(5.0f, HUD_GLOW_STEP, HUD_GLOW_MIN, HUD_GLOW_MAX), 2.0f,
+        SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("the default is a step"), SnapToStep(HUD_GLOW_DEFAULT, HUD_GLOW_STEP, HUD_GLOW_MIN, HUD_GLOW_MAX),
+        HUD_GLOW_DEFAULT, SETTINGSMODEL_TOLERANCE);
+    TestEqual(TEXT("0%"), FormatPercent(0.0f), FString(TEXT("0%")));
+    TestEqual(TEXT("5%"), FormatPercent(0.05f), FString(TEXT("5%")));
+    TestEqual(TEXT("100%"), FormatPercent(1.0f), FString(TEXT("100%")));
+    TestEqual(TEXT("200%"), FormatPercent(2.0f), FString(TEXT("200%")));
+    TestEqual(TEXT("the default reads 100%"), FormatPercent(HUD_GLOW_DEFAULT), FString(TEXT("100%")));
+    TestEqual(TEXT("the max reads 200%"), FormatPercent(HUD_GLOW_MAX), FString(TEXT("200%")));
     return true;
 }
 

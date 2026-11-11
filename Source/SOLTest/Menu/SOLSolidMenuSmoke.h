@@ -44,7 +44,10 @@ struct FSOLSolidTabRail;
  * view, the About page's rows and rail inside the shell); then (46g) back at
  * 1280x720: the Controls, About and Settings pages' fit and rails (no scroll), the column capped at 4 entries scrolling
  * (D17: the focused entry scrolled into view, its hover trace drawn at the scrolled y, none out of view), a Controls
- * page put on the viewport 300 units tall (its rail scrolls), then flight and the solid pause menu (SDD 14 steps 5 and
+ * page put on the viewport 300 units tall (its rail scrolls); issue #37's HUD glow sample on Settings, Gameplay (laid
+ * out inside the tab, painted, following a pending 0% and 200% together with the pointer, reverted; a screenshot) at
+ * 1280x720 and 1920x1080 windowed and windowed fullscreen at the display's own size, 3840x2160 on a 4K display (a
+ * windowed size is clamped to the desktop's work area); then flight and the solid pause menu (SDD 14 steps 5 and
  * 7: the side panel's slide-in and dim, each page in the shell with its fit and rail, Esc / Back closing a page, the
  * Quit choices, Esc resuming with the input back at once and the slide-out after, a re-pause reversing the slide-out,
  * the simulation running while paused, strength 0 instant, strength 2 with a page open (the glow doubled), and the
@@ -168,6 +171,10 @@ private:
     // (46i) Checks a Settings page in a wide view keeps (or is back in) the wide layout: no tab narrow, every label
     // column, row box and Rebind box at its wide size with no narrow override left
     void CheckSettingsWide(const TCHAR* id, const USOLSettingsPageWidget* page);
+
+    // (Issue #37, SDD 37 D16 / D17) Checks that the Settings page's HUD glow sample and the hologram pointer follow a
+    // HUD glow setting; bLayout also checks the sample's place, build and paint on the Gameplay tab
+    void CheckGlowSample(USOLMenuSubsystem& menu, const TCHAR* id, float setting, bool bLayout);
 
     // (33b, D20) Checks the shown Key bindings tab's key cap cells ("<id>"): each cell wraps in SOLSettingsTabs::
     // KeyCellWidth of the fitted row (SETTINGS_KEYCAP_CELL_WIDTH when wide), its laid-out caps inside that width and its
@@ -318,6 +325,7 @@ private:
     float mPreProgress = -1.0f;     // A reversal: the shell's progress just before and after the reopen
     float mPostProgress = -1.0f;
     int32 mFitIndex = 0;            // 46g: the 1280x720 fit loop's page (SOLID_SMOKE_FIT_PAGES)
+    int32 mGlowViewIndex = 0;       // Issue #37: the HUD glow sample loop's size (SOLID_SMOKE_GLOW_VIEWS)
     int32 mPausePageIndex = 0;      // 46g: the pause page loop's page (SOLID_SMOKE_PAUSE_PAGES)
     int32 mDownPresses = 0;         // 46g: Down keys sent by the column scroll step
     float mFirstSlideX = 0.0f;      // 46g: the side panel's slide on the pause's first sampled frame

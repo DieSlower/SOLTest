@@ -29,6 +29,7 @@ namespace SOLSettingsModel
         bool bSpaceDust = SOL::Settings::SPACE_DUST_DEFAULT;             // Space dust speed cues (SDD 34 section 9)
         float HudEffectsStrength = SOL::Settings::HUD_EFFECTS_DEFAULT;   // HUD hologram effects (jitter; SDD 21)
         float HoloMenuEffects = SOL::Settings::HOLO_MENU_EFFECTS_DEFAULT; // Hologram menu effects (SDD 42 section 8)
+        float HudGlow = SOL::Settings::HUD_GLOW_DEFAULT;                 // HUD glow, 1 = 100% (SDD 37 D2)
         bool bMouseSteerAtStart = SOL::SHIP_STEER_TOGGLE_START_ON;      // Steering toggle on at flight start (SDD 19
                                                                         // Amendment 5; default off)
         SOLOverlay::FOverlayPrefs OverlayPrefs = SOLOverlay::MakeDefaultPrefs();  // Overlay profiles (SDD 22, 34),

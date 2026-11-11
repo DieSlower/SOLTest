@@ -6,6 +6,7 @@
 #include "Menu/SOLSettingsPageWidget.h"
 
 #include "Menu/SOLBindingLabel.h"
+#include "Menu/SOLHudGlowSample.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLKeyCapRow.h"
 #include "Menu/SOLMenuButton.h"
@@ -65,6 +66,8 @@ namespace
             SOL::Settings::HUD_SCALE_STEP, false },
         { SOLMenuText::SETTINGS_HUD_EFFECTS, SOL::Settings::HUD_EFFECTS_MIN, SOL::Settings::HUD_EFFECTS_MAX,
             SOL::Settings::HUD_EFFECTS_STEP, false },
+        { SOLMenuText::SETTINGS_HUD_GLOW, SOL::Settings::HUD_GLOW_MIN, SOL::Settings::HUD_GLOW_MAX,
+            SOL::Settings::HUD_GLOW_STEP, true },
         { SOLMenuText::SETTINGS_HOLO_MENU_EFFECTS, SOL::Settings::HOLO_MENU_EFFECTS_MIN,
             SOL::Settings::HOLO_MENU_EFFECTS_MAX, SOL::Settings::HOLO_MENU_EFFECTS_STEP, false },
         { SOLMenuText::SETTINGS_CHASE_SAFETY_MARGIN, SOL::Settings::CHASE_SAFETY_MARGIN_MIN,
@@ -197,6 +200,8 @@ namespace
             return values.MouseSensitivity;
         case ESOLSettingsSlider::HudEffects:
             return values.HudEffectsStrength;
+        case ESOLSettingsSlider::HudGlow:
+            return values.HudGlow;
         case ESOLSettingsSlider::HoloMenuEffects:
             return values.HoloMenuEffects;
         case ESOLSettingsSlider::ChaseSafetyMargin:
@@ -414,6 +419,21 @@ void USOLSettingsPageWidget::NativeOnInitialized()
         &USOLSettingsPageWidget::HandleHudScaleChanged);
     addSlider(ESOLSettingsSlider::HudEffects)->OnValueChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHudEffectsChanged);
+    addSlider(ESOLSettingsSlider::HudGlow)->OnValueChanged.AddDynamic(this,
+        &USOLSettingsPageWidget::HandleHudGlowChanged);
+
+    // The HUD glow sample right under its slider (SDD 37 D16): indented to the slider column (FitNarrowRows keeps the
+    // indent in step with the label column), not a labelled row
+    UHorizontalBox* sampleRow = WidgetTree->ConstructWidget<UHorizontalBox>(UHorizontalBox::StaticClass());
+    GlowSampleIndent = WidgetTree->ConstructWidget<USizeBox>(USizeBox::StaticClass());
+    GlowSampleIndent->SetWidthOverride(SOLSettingsTabs::LabelColumnWidth(ESOLSettingsTab::Gameplay)
+        + SOL::MenuStyle::BUTTON_GAP);
+    sampleRow->AddChildToHorizontalBox(GlowSampleIndent);
+    GlowSample = WidgetTree->ConstructWidget<USOLHudGlowSample>(USOLHudGlowSample::StaticClass());
+    sampleRow->AddChildToHorizontalBox(SOLMenuContent::MakeSized(*WidgetTree, GlowSample,
+        SOL::SolidMenu::SETTINGS_GLOW_SAMPLE_WIDTH, SOL::SolidMenu::SETTINGS_GLOW_SAMPLE_HEIGHT));
+    Cast<UScrollBoxSlot>(scrollOf(ESOLSettingsTab::Gameplay).AddChild(sampleRow))->SetPadding(FMargin(0.0f, 0.0f,
+        0.0f, SOL::MenuStyle::ROW_GAP));
     addSlider(ESOLSettingsSlider::HoloMenuEffects)->OnValueChanged.AddDynamic(this,
         &USOLSettingsPageWidget::HandleHoloMenuEffectsChanged);
     addToggle(ESOLSettingsToggle::HudVisible)->OnCheckStateChanged.AddDynamic(this,
@@ -591,8 +611,13 @@ void USOLSettingsPageWidget::FitNarrowRows()
         }
         bApplied = bNarrow;
 
-        // The tab's rows: the column width and the labels' wrap; a narrow row box grows with a wrapped label
+        // The tab's rows: the column width and the labels' wrap; a narrow row box grows with a wrapped label (and
+        // the Gameplay tab's HUD glow sample keeps its indent at the column, SDD 37 D16)
         const float labelWidth = SOLSettingsTabs::LabelColumnWidth(tab, mFitRowWidth);
+        if (tab == ESOLSettingsTab::Gameplay && GlowSampleIndent != nullptr)
+        {
+            GlowSampleIndent->SetWidthOverride(labelWidth + SOL::MenuStyle::BUTTON_GAP);
+        }
         for (int32 index = 0; index < RowLabels.Num(); ++index)
         {
             if (mRowLabelTabs[index] != tab)
@@ -932,6 +957,9 @@ void USOLSettingsPageWidget::ApplySliderValue(const ESOLSettingsSlider slider, c
     case ESOLSettingsSlider::HudEffects:
         values.HudEffectsStrength = snapped;
         break;
+    case ESOLSettingsSlider::HudGlow:
+        values.HudGlow = snapped;
+        break;
     case ESOLSettingsSlider::HoloMenuEffects:
         values.HoloMenuEffects = snapped;
         break;
@@ -1203,7 +1231,8 @@ void USOLSettingsPageWidget::SetStatus(const FString& message)
 //////////////////////////////////////////////////////////////////////////
 // Refreshes the button highlights (focus follows the keyboard and the mouse; the mouse over a slider, toggle or
 // Overlay row wins over the focus, so one highlight shows), gives the tab rail's trace layer the effects strength
-// when it changed and fits the narrow rows to the laid-out width (46i)
+// when it changed, fits the narrow rows to the laid-out width (46i) and lets the HUD glow sample follow the pending
+// values (SDD 37 D16; it pushes and rebuilds only on a change)
 void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float deltaSeconds)
 {
     Super::NativeTick(geometry, deltaSeconds);
@@ -1212,6 +1241,21 @@ void USOLSettingsPageWidget::NativeTick(const FGeometry& geometry, const float d
     Rail.Tick(frame, mIsHoverElsewhere);
     RefreshButtons(frame);
     FitNarrowRows();
+    if (GlowSample != nullptr)
+    {
+        const bool bSettings = Settings != nullptr;
+        GlowSample->Update(bSettings ? Settings->GetLiveValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT,
+            bSettings ? Settings->GetLiveValues().HudEffectsStrength : SOL::Settings::HUD_EFFECTS_DEFAULT,
+            geometry.Scale);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a tab's scroll box, or null for an invalid tab
+const UScrollBox* USOLSettingsPageWidget::GetTabScroll(const ESOLSettingsTab tab) const
+{
+    const int32 index = static_cast<int32>(tab);
+    return TabScrolls.IsValidIndex(index) ? TabScrolls[index].Get() : nullptr;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1302,6 +1346,13 @@ void USOLSettingsPageWidget::HandleHudScaleChanged(const float value)
 void USOLSettingsPageWidget::HandleHudEffectsChanged(const float value)
 {
     ApplySliderValue(ESOLSettingsSlider::HudEffects, value);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// HUD glow slider moved (SDD 37)
+void USOLSettingsPageWidget::HandleHudGlowChanged(const float value)
+{
+    ApplySliderValue(ESOLSettingsSlider::HudGlow, value);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -491,4 +491,96 @@ bool FSOLRouteOverlayPlaneAndStyleTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+// Issue #37 route halo scale (SDD 37 section 4.2), written against the SDD 37 section 5 contract (case 16) before the
+// production code. g is in reference units: g = 1 is the post-#31 halo
+namespace
+{
+    constexpr double ROM_GLOW_TOL = 1e-5;                       // Float glow math
+    constexpr float ROM_GLOW_NAN = std::numeric_limits<float>::quiet_NaN();
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns RouteHaloIntensity(g) as a double, whatever its declared return type
+    double RouteOverlayHalo(const float glowScale)
+    {
+        return static_cast<double>(SOLRouteOverlayMath::RouteHaloIntensity(glowScale));
+    }
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRouteOverlayHaloIntensityTest, "SOLTest.RouteOverlayMath.RouteHaloIntensity",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The route halo is GLOW_HALO_INTENSITY x the sanitized g (NaN -> 1, clamp [0, HUD_GLOW_SCALE_MAX]): the reference at
+// 1, none at 0 or below, and never decreasing in g
+bool FSOLRouteOverlayHaloIntensityTest::RunTest(const FString& /*parameters*/)
+{
+    using SOL::Hologram::GLOW_HALO_INTENSITY;
+    const double scaleMax = static_cast<double>(SOL::Hologram::HUD_GLOW_SCALE_MAX);
+    const double level = static_cast<double>(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL);
+
+    TestEqual(TEXT("1 is the reference"), RouteOverlayHalo(1.0f), static_cast<double>(GLOW_HALO_INTENSITY),
+        ROM_GLOW_TOL);
+    TestEqual(TEXT("1 is 0.15"), RouteOverlayHalo(1.0f), 0.15, ROM_GLOW_TOL);
+    TestEqual(TEXT("0 is none"), RouteOverlayHalo(0.0f), 0.0, ROM_GLOW_TOL);
+    TestEqual(TEXT("-2 is none"), RouteOverlayHalo(-2.0f), 0.0, ROM_GLOW_TOL);
+    TestEqual(TEXT("NaN as 1"), RouteOverlayHalo(ROM_GLOW_NAN), RouteOverlayHalo(1.0f), ROM_GLOW_TOL);
+    TestEqual(TEXT("half"), RouteOverlayHalo(0.5f), 0.5 * GLOW_HALO_INTENSITY, ROM_GLOW_TOL);
+    TestEqual(TEXT("the default level"), RouteOverlayHalo(static_cast<float>(level)), level * GLOW_HALO_INTENSITY,
+        ROM_GLOW_TOL);
+    TestEqual(TEXT("the bound"), RouteOverlayHalo(static_cast<float>(scaleMax)), scaleMax * GLOW_HALO_INTENSITY,
+        ROM_GLOW_TOL);
+    TestEqual(TEXT("past the bound as the bound"), RouteOverlayHalo(9.0f), scaleMax * GLOW_HALO_INTENSITY,
+        ROM_GLOW_TOL);
+
+    // Monotone over [0, bound], and never negative
+    double previous = RouteOverlayHalo(0.0f);
+    bool bNonDecreasing = true;
+    bool bNonNegative = previous >= 0.0;
+    for (float g = 0.05f; g <= static_cast<float>(scaleMax); g += 0.05f)
+    {
+        const double value = RouteOverlayHalo(g);
+        bNonDecreasing &= value >= previous - ROM_GLOW_TOL;
+        bNonNegative &= value >= 0.0;
+        previous = value;
+    }
+    TestTrue(TEXT("non-decreasing in g"), bNonDecreasing);
+    TestTrue(TEXT("never negative"), bNonNegative);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLRouteOverlayGlowPieceTrianglesTest, "SOLTest.RouteOverlayMath.GlowPieceTriangles",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// (Issue #37 SDD case 20, the 37a review) A glow piece is a core quad plus four halo triangles (6) while the halo has
+// any intensity, the core quad alone (2) when it has none (g = 0 or below); NaN reads as g = 1
+bool FSOLRouteOverlayGlowPieceTrianglesTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("a full piece is 6 triangles"), SOL::Route::OVERLAY_GLOW_PIECE_TRIANGLES, 6);
+    TestEqual(TEXT("a core-only piece is 2 triangles"), SOL::Route::OVERLAY_GLOW_CORE_TRIANGLES, 2);
+    const float withHalo[] = { 1.0f, 0.05f, SOL::Hologram::HUD_GLOW_SCALE_MAX, SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL,
+        ROM_GLOW_NAN };
+    for (const float g : withHalo)
+    {
+        TestEqual(*FString::Printf(TEXT("g %.3f: a full piece"), g), SOLRouteOverlayMath::GlowPieceTriangles(g),
+            SOL::Route::OVERLAY_GLOW_PIECE_TRIANGLES);
+    }
+    const float coreOnly[] = { 0.0f, -1.0f };
+    for (const float g : coreOnly)
+    {
+        TestEqual(*FString::Printf(TEXT("g %.3f: the core alone"), g), SOLRouteOverlayMath::GlowPieceTriangles(g),
+            SOL::Route::OVERLAY_GLOW_CORE_TRIANGLES);
+    }
+
+    // The core alone exactly when the halo has no intensity
+    bool bMatches = true;
+    for (float g = -0.5f; g <= SOL::Hologram::HUD_GLOW_SCALE_MAX + 0.5f; g += 0.05f)
+    {
+        const bool bCoreOnly = SOLRouteOverlayMath::GlowPieceTriangles(g) == SOL::Route::OVERLAY_GLOW_CORE_TRIANGLES;
+        bMatches &= bCoreOnly == (RouteOverlayHalo(g) == 0.0);
+    }
+    TestTrue(TEXT("core-only exactly when the halo intensity is 0"), bMatches);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

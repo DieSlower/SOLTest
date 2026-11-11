@@ -10,6 +10,7 @@
 class APlayerController;
 class ASOLFlightHud;
 class ASOLShipPawn;
+class FSOLMapRouteOverlay;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLMapModeSubsystem;
@@ -25,7 +26,9 @@ class USOLShipSubsystem;
  * (not overlapping the key hints). P (the overlay flag) off must hide everything and on must bring it back. Then it
  * opens the map, aims its camera at the route and repeats the projection checks there, and plans a draft of two
  * waypoints with scripted picks, checking the Secondary cursor segment while each pick drags and the draft markers
- * after. Screenshots in flight, map and with the draft. Each check logs a LogSOL PASS/FAIL line; the run then quits.
+ * after. Screenshots in flight, map and with the draft. Issue #37: the overlay draws with the HUD's glow scale, and a
+ * pending HUD glow of 0% (through the settings, never applied) drops the halo, then Revert brings it back. Each check
+ * logs a LogSOL PASS/FAIL line; the run then quits.
  */
 class SOLTEST_API FSOLRouteOverlaySmoke
 {
@@ -51,6 +54,9 @@ private:
     // Checks the route markers against the engine projection; label names the view
     void CheckRouteMarkers(const TCHAR* label, const FVector3d& planePointM);
 
+    // Checks that the overlay drew with the HUD's glow scale of this frame and its halo intensity (SDD 37)
+    void CheckGlowWiring(const TCHAR* name, const ASOLFlightHud& hud, const FSOLMapRouteOverlay& overlay);
+
     // Advances to the next step
     void NextStep();
 
@@ -65,6 +71,7 @@ private:
     TWeakObjectPtr<USOLBodyRegistrySubsystem> mRegistry;
     FVector2D mViewportPx = FVector2D::ZeroVector;          // Viewport size at the route start
     int32 mBodyIndex = INDEX_NONE;                          // Body the waypoints follow
+    int32 mSavedGlowTriangles = 0;                          // Overlay triangles at the saved HUD glow (issue #37)
     int32 mStep = 0;                                        // Current script step
     int32 mStepFrames = 0;                                  // Frames spent in the current step
     double mStepTimeS = 0.0;                                // Real seconds spent in the current step

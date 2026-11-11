@@ -15,7 +15,9 @@
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLFlightHud.h"
+#include "UI/SOLHoloMenuSubsystem.h"
 #include "UI/SOLHudFormat.h"
+#include "UI/SOLHudShapeMath.h"
 #include "UI/SOLRadarLayout.h"
 #include "UI/SOLSpeedPanelWidget.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -25,6 +27,7 @@
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "InputKeyEventArgs.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
 
@@ -63,6 +66,20 @@ namespace
     constexpr int32 HUDSMOKE_RETICLE_SHAPES = 5;            // Glow reticle: 4 arms and a dot
     constexpr int32 HUDSMOKE_MIN_GLOW_TEXTS = 10;           // Info, speed, G, target and radar lines (SDD 21 B)
     constexpr int32 HUDSMOKE_MIN_PANELS = 3;                // Info, speed and G, target readout
+    constexpr float HUDSMOKE_GLOW_TOLERANCE = 1.0e-5f;      // Pushed glow scale and text alpha vs the math
+
+    // The pending HUD glow of the glow phases (SDD 37), whichever is farther from the saved value: 200% (the issue #31
+    // glow while HUD_GLOW_DEFAULT_LEVEL is 0.5, so the default save shows that look in the screenshot) or 35%
+    constexpr float HUDSMOKE_GLOW_LOW = 0.35f;
+    constexpr float HUDSMOKE_GLOW_HIGH = SOL::Settings::HUD_GLOW_MAX;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the pending HUD glow the glow phases set: one far from the saved value, so the revert is visible
+    float HudSmokeGlowSetting(const float savedGlow)
+    {
+        return FMath::Abs(savedGlow - HUDSMOKE_GLOW_LOW) >= FMath::Abs(savedGlow - HUDSMOKE_GLOW_HIGH)
+            ? HUDSMOKE_GLOW_LOW : HUDSMOKE_GLOW_HIGH;
+    }
 
     //////////////////////////////////////////////////////////////////////////
     // Returns whether a range is exactly a power of ten from the manual floor up to 1 AU (an exact power times 10 stays
@@ -307,6 +324,15 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::RadarAuto:
         TapKey(EKeys::Home);
+        break;
+    case ESOLHudPhase::GlowLive:
+        // SDD 37 D14: a pending HUD glow, as the Settings slider sets it (previewed at once, never applied or written)
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = HudSmokeGlowSetting(settings->GetSavedValues().HudGlow);
+            settings->SetPendingValues(values);
+        }
         break;
     case ESOLHudPhase::HudShotSetup:
     {
@@ -623,6 +649,31 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         TakeUiShot(TEXT("Canvas"));
         break;
     }
+    case ESOLHudPhase::GlowLive:
+    {
+        // The pending glow reached the HUD this frame or earlier (screenshot; GlowShot reverts it once it is taken)
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        const float setting = settings != nullptr ? settings->GetLiveValues().HudGlow : -1.0f;
+        CheckGlowPushed(TEXT("l-glow-live"), TEXT("pending HUD glow"), setting, settings != nullptr
+            && settings->IsDirty(), *pawn.GetWorld());
+        TakeUiShot(TEXT("GlowPending"));
+        break;
+    }
+    case ESOLHudPhase::GlowShot:
+        // Revert discards the pending glow (nothing applied or written)
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            settings->RevertPending();
+        }
+        break;
+    case ESOLHudPhase::GlowRevert:
+    {
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        const float saved = settings != nullptr ? settings->GetSavedValues().HudGlow : -1.0f;
+        CheckGlowPushed(TEXT("l-glow-revert"), TEXT("Revert, saved HUD glow"), saved, settings != nullptr
+            && !settings->IsDirty(), *pawn.GetWorld());
+        break;
+    }
     case ESOLHudPhase::OrbitShotSetup:
         Check(TEXT("g-orbit-view"), bOrbits && segments > 0, FString::Printf(TEXT("3 AU above the Sun: orbit lines "
             "%s, %d lines visible"), bOrbits ? TEXT("ON") : TEXT("OFF"), segments));
@@ -659,6 +710,7 @@ double FSOLHudSmoke::GetPhaseDuration(const ESOLHudPhase phase)
     case ESOLHudPhase::HudShot:
     case ESOLHudPhase::FreeLookShot:
     case ESOLHudPhase::RadarShot:
+    case ESOLHudPhase::GlowShot:
         return HUDSMOKE_SHOT_WAIT_S;
     case ESOLHudPhase::OrbitShot:
         return HUDSMOKE_QUIT_WAIT_S;
@@ -762,4 +814,32 @@ void FSOLHudSmoke::CheckRadarState(const TCHAR* label, const TCHAR* action, cons
             action, target != nullptr ? *target->Name.ToString() : TEXT("none"), bManual ? TEXT("MANUAL")
             : TEXT("AUTO"), rangeM, bExpectTarget ? TEXT("a target") : TEXT("none"), bExpectManual ? TEXT("MANUAL")
             : TEXT("AUTO"), expectedRangeM));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks the HUD's pushed glow scale and text alpha against a Settings HUD glow value, the menu material's untouched
+// GlowScale and the settings' dirty state
+void FSOLHudSmoke::CheckGlowPushed(const TCHAR* label, const TCHAR* action, const float setting, const bool bDirtyOk,
+    const UWorld& world)
+{
+    const float expected = SOLHudShapeMath::HudGlowScale(setting);
+    const float expectedAlpha = SOLHudShapeMath::TextGlowAlpha(expected);
+    const float frameScale = mHud.IsValid() ? mHud->GetHudGlowScale() : -1.0f;
+    const float pushed = mHud.IsValid() ? mHud->GetShapeGlowScale() : -1.0f;
+    const float alpha = mHud.IsValid() ? mHud->GetTextGlowAlpha() : -1.0f;
+
+    // The menu layer's material is never given a glow scale: it reads the asset's default 1 (0 if the asset has none)
+    const USOLHoloMenuSubsystem* holoMenu = world.GetSubsystem<USOLHoloMenuSubsystem>();
+    UMaterialInstanceDynamic* menuMaterial = holoMenu != nullptr ? holoMenu->GetMenuMaterial() : nullptr;
+    const float menuScale = menuMaterial != nullptr
+        ? menuMaterial->K2_GetScalarParameterValue(FName(SOL::HudShapeMaterialParams::GLOW_SCALE)) : -1.0f;
+    const bool bScale = FMath::IsNearlyEqual(frameScale, expected, HUDSMOKE_GLOW_TOLERANCE)
+        && FMath::IsNearlyEqual(pushed, expected, HUDSMOKE_GLOW_TOLERANCE);
+    const bool bAlpha = FMath::IsNearlyEqual(alpha, expectedAlpha, HUDSMOKE_GLOW_TOLERANCE);
+    const bool bMenu = menuMaterial == nullptr || FMath::IsNearlyEqual(menuScale, 1.0f, HUDSMOKE_GLOW_TOLERANCE);
+    Check(label, setting >= 0.0f && bScale && bAlpha && bMenu && bDirtyOk, FString::Printf(TEXT("%s %.0f%%: glow "
+        "scale %.4f this frame, %.4f pushed (want %.4f), text glow alpha %.4f (want %.4f), menu material "
+        "GlowScale %.3f (want 1, -1 = no menu material), settings dirty state %s"), action, setting * 100.0f,
+        frameScale, pushed, expected, alpha, expectedAlpha, menuScale, bDirtyOk ? TEXT("as expected")
+        : TEXT("wrong")));
 }

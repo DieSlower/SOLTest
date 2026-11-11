@@ -35,7 +35,7 @@ void SSOLHologramCursor::Construct(const FArguments& /*args*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Sets the material and the settings the effects strength is read from
+// Sets the material and the settings the effects strength and the HUD glow are read from
 void SSOLHologramCursor::SetMaterial(UMaterialInstanceDynamic* material, USOLSettingsSubsystem* settings)
 {
     mMaterial = material;
@@ -45,6 +45,7 @@ void SSOLHologramCursor::SetMaterial(UMaterialInstanceDynamic* material, USOLSet
     mBrush.ImageSize = FVector2D(1.0, 1.0);
     mResourceHandle = FSlateResourceHandle();
     mPushedStrength = -1.0f;
+    mGlowFeed.Reset();
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -75,6 +76,12 @@ int32 SSOLHologramCursor::OnPaint(const FPaintArgs& /*args*/, const FGeometry& a
     {
         mPushedStrength = strength;
         material->SetScalarParameterValue(SOL::HudShapeMaterialParams::EFFECTS_STRENGTH, strength);
+    }
+
+    // The pointer's glow follows the pending HUD glow (SDD 37 D17), pushed only when its glow scale changes
+    if (mGlowFeed.Update(settings != nullptr ? settings->GetLiveValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT))
+    {
+        material->SetScalarParameterValue(SOL::HudShapeMaterialParams::GLOW_SCALE, mGlowFeed.GetScale());
     }
     if (!mResourceHandle.IsValid())
     {
