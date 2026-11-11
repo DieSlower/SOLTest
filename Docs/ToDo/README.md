@@ -51,3 +51,5 @@ archive.
   resolution to keep VR-capable frame rates without a headset.
 - [`map-overlays-shape-renderer.md`](map-overlays-shape-renderer.md) — the map's route, waypoint, pick and grid
   overlays on the HUD glow-shape renderer, so the Help glossary can draw them (issue #33, D39).
+- [`49-lane-tunnel-mockups/`](49-lane-tunnel-mockups/README.md) — user-approved mock-ups (GIFs and
+  generator scripts) for ticket #49, the lane guidance tunnel; deleted when #49 is built.
