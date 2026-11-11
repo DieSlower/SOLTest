@@ -27,7 +27,8 @@ class USOLShipSubsystem;
  * opens the map, aims its camera at the route and repeats the projection checks there, and plans a draft of two
  * waypoints with scripted picks, checking the Secondary cursor segment while each pick drags and the draft markers
  * after. Screenshots in flight, map and with the draft. Issue #37: the overlay draws with the HUD's glow scale, and a
- * pending HUD glow of 0% (through the settings, never applied) drops the halo, then Revert brings it back. Each check
+ * pending HUD glow of 0% (through the settings, never applied) drops the halo (a second flight screenshot), then Revert
+ * brings it back. Each check
  * logs a LogSOL PASS/FAIL line; the run then quits.
  */
 class SOLTEST_API FSOLRouteOverlaySmoke

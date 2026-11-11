@@ -9,9 +9,10 @@ Canvas halo). Persistence change: settings save schema 11 -> 12 (approved, D1).
 Status: part 37a built (2026-11-10): schema 12 and the "HUD glow" row, the glow math, the material's `GlowScale`, the
 HUD feed, the route halo, and (after the 37a review, D16 and D17) the Settings glow sample and the pointer's glow.
 Part 37b built (2026-11-10): the card readouts (section 4.6, engine route proven) and the Help glossary (section 4.7)
-follow the HUD glow. Part 37c (default level, verification, docs) to do. Grill-me done 2026-11-10
-(D1-D4), open questions answered the same day (D5-D15), review decisions D16-D17. **One decision is still open: the
-default level (D4, placeholder 0.5)**, picked by the user from candidate screenshots during the build (section 9).
+follow the HUD glow. Part 37c built (2026-11-11): the default level the user picked (D4: 0.3), the final screenshots,
+smokes and profile (sections 7 and 8) and the docs, reviewed (whole ticket, no Critical / High) and committed; #37
+is done. Grill-me done 2026-11-10 (D1-D4), open questions answered the same day (D5-D15), review decisions D16-D17,
+D4 decided 2026-11-11. No decision is open.
 
 ## 1. Problem
 
@@ -37,8 +38,9 @@ Grill-me:
   pointer and the Settings glow sample follow).
 - **D4: The new 100% level is lower than the post-#31 level;** the user picks the amount from screenshots. Before the
   constant is fixed, candidate screenshots at 30%, 50% and 70% of today's glow (1920x1080, HUD smoke tooling, on a
-  bright and a dark background) are shown to the user by the main session. **Open decision; placeholder 50%**
-  (`SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL = 0.5`). 0% must leave a crisp, legible core with no glow.
+  bright and a dark background) are shown to the user by the main session. **Decided 2026-11-11 (user, from the
+  candidate screenshots): 30% of the post-#31 glow** (`SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL = 0.3`; the build used the
+  placeholder 0.5 until then). 0% must leave a crisp, legible core with no glow.
 
 Answers to the first draft's open questions (all as recommended):
 
@@ -60,7 +62,8 @@ Answers to the first draft's open questions (all as recommended):
   per-item text glow alpha (section 4.6). **Instruction: the implementer checks the engine's Slate shaders first; if
   the vertex slot is not viable, stop and report instead of choosing another route.**
 - **D11 (was Q7): The Help glossary's HUD symbols follow HUD glow** (they are pictures of the HUD); the player guide
-  images are regenerated.
+  images are regenerated. The two map route pictures are fixed crop textures captured at the default, so they do not
+  follow (the Info text says so, 37c review).
 - **D12 (was Q8): Not scaled:** the map grid, stems and foot rings (core-only lines, no halo) and every panel fill.
 - **D13 (was Q9): The 32 px glow pad is kept** at every level (HUD geometry and cost unchanged).
 - **D14 (was Q10): Screenshot tooling** is new `-SOLSmokeHud` glow phases that set the live value through the settings
@@ -120,7 +123,7 @@ All runtime glow is expressed as one scalar **`g` in reference units: `g = 1` is
 
 `g = SanitizedSetting(s) x HUD_GLOW_DEFAULT_LEVEL`
 
-so 100% = `HUD_GLOW_DEFAULT_LEVEL` of today's glow (placeholder 0.5, D4), 200% = twice that, 0% = none. The material
+so 100% = `HUD_GLOW_DEFAULT_LEVEL` of today's glow (0.3, D4), 200% = twice that (0.6), 0% = none. The material
 default of `g` is 1, so every MID and vertex that never sets it (the menus) keeps today's look exactly (D3), and
 `g = 1` reproduces every post-#31 number bit for bit (the existing `SOLTest.HudShapes.GlowProfile` stays valid).
 
@@ -244,13 +247,14 @@ does not work, stop and report (D10); do not pick another route.**
   set that repaints only on a change, never a rebuild). `PushParams` takes the glow setting as a third argument
   (default `HUD_GLOW_DEFAULT`). `-SOLSmokeSolidMenu` checks a pending 0% on the Flight HUD tab (`w-help-glow-0`:
   the subsystem's scale, the material's `GlowScale` and every view's text alpha at 0, no view rebuilt) and its revert
-  (`w-help-glow-revert`); a whole run logs 296 checks. The player guide was regenerated at the placeholder level.
+  (`w-help-glow-revert`); a whole run logs 296 checks. The player guide was regenerated at the placeholder level in 37b and again at the chosen level 0.3 in 37c.
 
 ### 4.8 Settings (persistence; D1, D2, D5)
 
 - **Constants** (`SOL::Settings`): `HUD_GLOW_MIN` 0, `HUD_GLOW_MAX` 2, `HUD_GLOW_DEFAULT` 1, `HUD_GLOW_STEP` 0.05;
   `SAVE_VERSION` 11 -> **12** (its comment gains "12: the HUD glow, SDD 37"). `KEY_BINDING_LAYOUT_VERSION` stays 10.
-  (`SOL::Hologram`): `HUD_GLOW_DEFAULT_LEVEL` 0.5 (placeholder, D4), `HUD_GLOW_CORE_FALLOFF_MAX` (proposed 6, D8),
+  (`SOL::Hologram`): `HUD_GLOW_DEFAULT_LEVEL` 0.3 (D4, the user's pick), `HUD_GLOW_CORE_FALLOFF_MAX` 6 (D8, kept after
+  the 0% screenshots),
   `HUD_GLOW_SCALE_MAX` 2 (sanitizer bound in reference units); `SOL::HudShapeMaterialParams::GLOW_SCALE`.
 - **Model** (`Menu/SOLSettingsModel.*`): `FSettingsValues::HudGlow = HUD_GLOW_DEFAULT`; `Sanitized` clamps it to
   `[MIN, MAX]`, NaN -> default, +-inf -> the ends (`ClampOrDefault`, like `HudEffectsStrength`); `AreEqual` compares
@@ -407,7 +411,8 @@ The material itself is not unit-testable; the smoke and screenshots check it (se
 - **Settings row label:** "HUD glow" (D6), value "0%" ... "200%"; Settings hint as in D6.
 - **In-game Info** (`SOLMenuText.h`, the flight HUD paragraph): the D6 sentence as amended by D17, after the sentence
   on the HUD and menu effects slider. 37b adds that the readouts inside the hologram cards and the Help glossary's HUD
-  pictures follow, and that the cards' corner marks keep their own look.
+  pictures follow, and that the cards' corner marks keep their own look; 37c (review) adds the exception of the
+  glossary's two route pictures, fixed textures captured at the default.
 - **Settings glow sample text** (`SOLMenuText::SETTINGS_GLOW_SAMPLE`): "TARGET  Earth", a HUD-style readout.
 - `Docs/GAME_MECHANICS.md`: a new Settings row "HUD glow (`HudGlow`) | 0-200% in 5% steps; default 100% (= N% of the
   issue #31 glow) ... | At once (preview); kept on Apply | ..." (save schema 12, the knob table of section 4.2, card
@@ -439,7 +444,7 @@ The material itself is not unit-testable; the smoke and screenshots check it (se
    deleted.
 3. **Final screenshots:** 0% / 100% / 200% at 1280x720 and 1920x1080, bright and dark: 0% must show crisp, legible
    lines and text with no halo and no aliasing shimmer on the radar rings; the card readouts change with the slider
-   while the card corner marks do not (D10); 200% stays at or below today's look when the level is at most 0.5. One
+   while the card corner marks do not (D10); 200% stays at or below today's look when the level is at most 0.5 (it is 0.3). One
    shot of the radial menu at 0% proves the menus are unchanged (D3), and one Help glossary tab at 0% and 100% proves
    D11.
 4. **Smokes:** `-SOLSmokeHud` at 1280x720 and 1920x1080, all checks PASS, with new checks that the pushed glow scale
@@ -462,6 +467,23 @@ The material itself is not unit-testable; the smoke and screenshots check it (se
 
 Temporary screenshots are deleted once looked at; only README gallery shots are kept.
 
+**As run in part 37c (2026-11-11, level 0.3).** Full suite 1800/1800. `-SOLSmokeHud` 45/45 at 1280x720 and
+1920x1080: the glow series (pending 0%, 100%, 200% over the lit Earth and the dark star field, each checking the pushed
+glow scale, text glow alpha and the menu material's `GlowScale` 1, `HudSmoke_GlowSeries_<earth|dark>_<percent>.png`),
+then the F3 hologram speed panel opened at a pending 0% and at the saved glow (`l-menu-*`,
+`HudSmoke_GlowSeries_menu_<0|saved>.png`: the panel's frame and text identical, only the HUD behind it and the pointer
+change; this stands in for the radial-menu shot of item 3, the same menu material), then the existing pending / revert
+and card checks. `-SOLSmokeRouteOverlay` 29/29 (overlay glow 0.3, halo 0.045, 340 triangles; at 0% no halo and 180
+triangles, with a screenshot; Revert restores). `-SOLSmokeHoloMenu` 86/86. `-SOLSmokeSolidMenu` 296/296 (the glossary
+at 0% and back, the Settings glow sample). Looked at: 0% is crisp with smooth radar rings at both sizes; the card
+readouts change with the slider and the corner marks do not; 200% (60% of the issue #31 glow) stays below the old
+look. `Tools\WritePlayerGuide.ps1` run in full: the two route crops (`T_SOLGlossaryRouteLegs`, `T_SOLGlossaryWaypoints`)
+re-captured and re-imported at the new glow, the other three kept; the guide text unchanged, its Help images redrawn.
+Persistence: the 11 -> 12 migration is covered by `SOLTest.SettingsRules.MigrateV11HudGlow` and the migration chain
+tests; the real slot `SOLSettings.sav` was migrated once in 37a and not written by any 37b / 37c smoke (no write
+without Apply). The PIE check via unreal-mcp was not run (the editor was closed for builds and smokes; unreal-mcp needs
+it open); the smokes drive the same settings path.
+
 ## 8. Performance
 
 - **CPU:** one float compare per frame in `BeginShapeFrame`; `SetScalarParameterValue` and the text-alpha set only
@@ -480,16 +502,44 @@ Temporary screenshots are deleted once looked at; only README gallery shots are 
   proxy (3840x2160, VR doc section 7a) and one XR-4 eye (3840x3744); two eyes skipped (D15). The UI must stay inside
   the provisional one-eye ceiling (1.2 ms GPU, VR doc section 7) and add no more than +0.01 ms GPU over the before
   figure at 1920x1080.
+- **Measured (part 37c, 2026-11-11, RTX 2080 Ti).** `-SOLSmokeHoloMenuProfile` (the SDD 42 profile, `ProfileGPU` and
+  `stat dumpave` per pass, vsync off, scalability 3) in three runs per build and size, interleaved, before (a worktree
+  at `5388c2f`, the commit before #37) and after (level 0.3), at 1920x1080, 3840x2160 and 3840x3744 (one XR-4 eye).
+  The profile gained two flight passes for this ticket, P5 at HUD glow 0% and P6 at 200%; P0-P4 run at the saved
+  100%. The pre-#37 build logs every pass as FAIL with `valid=no` at these sizes: its stored baseline and validity
+  rule are for 1280x720 only, so its verdict is ignored and validity is read from the logged fields (vsync off,
+  scalability 3, the view size asked for); the new build logs NOBASE with `valid=yes`. Medians of the whole Slate UI pass's GPU (ms), before / after:
+
+  | Pass | 1920x1080 | 3840x2160 | 3840x3744 |
+  |---|---|---|---|
+  | P0 flight HUD | 0.115 / 0.117 | 0.192 / 0.194 | 0.317 / 0.322 |
+  | P1 radial menu | 0.173 / 0.176 | 0.271 / 0.274 | 0.393 / 0.404 |
+  | P2 Overlay Menu | 0.235 / 0.236 | 0.497 / 0.501 | 1.142 / 1.152 |
+  | P3 speed panel | 0.247 / 0.249 | 0.602 / 0.604 | 1.248 / 1.259 |
+  | P4 map list | 0.156 / 0.158 | 0.244 / 0.249 | 0.380 / 0.384 |
+  | P5 flight HUD at 0% | - / 0.109 | - / 0.187 | - / 0.315 |
+  | P6 flight HUD at 200% | - / 0.117 | - / 0.196 | - / 0.323 |
+
+  The change adds +0.001 to +0.003 ms at 1920x1080 (inside the +0.01 ms limit; at most +1.7%), up to +0.005 ms at 4K
+  (at most +2.0%) and +0.004 to +0.011 ms at one eye (up to +2.8%, P1 radial: 0.393 -> 0.404 ms). The `M_SOLHudShape` MID alone moves by the same
+  +0.001 to +0.015 ms. The flight HUD stays at 0.32 ms at one eye, far inside the 1.2 ms ceiling. 0% is the cheapest
+  setting (0.109 ms against 0.117 at 1920x1080: no text outline pass, the route's halo triangles skipped) and 200%
+  costs the same as 100% (only the shader's constants differ). The speed panel's one-eye figure (1.248 ms before) was
+  already above 1.2 ms; its frame is drawn by the unchanged menu material (D3), so #37 does not change it (+0.011 ms,
+  the shared `GlowScale` multiply and the HUD behind it). CPU (`cpu_total` of the profile) is unchanged within its
+  run-to-run spread (0.27-1.02 ms before and after, no pass moving in one direction at every size); draws per pass
+  are unchanged (45-69), except 43 instead of 45 at 0% (the text outline batch is not drawn).
 - Known debt not to re-report: `Docs/TECH_DEBT.md` "HUD glow text ... two string copies per line per frame",
   "HUD hologram panels ... flicker per pixel / worst-case profile", "HUD shape layers copy their vertices on every
   paint", and the Settings key-row items.
 
 ## 9. Open questions
 
-- **Default level (D4):** `HUD_GLOW_DEFAULT_LEVEL` is a placeholder 0.5 until the user picks it from the candidate
-  screenshots (plan step 9). Tests reference the constant, never the number, so the pick changes no test.
-- `HUD_GLOW_CORE_FALLOFF_MAX` (proposed 6) is a tuning value under D8, set from the 0% screenshot (8 if 6 looks soft,
-  lower if radar rings shimmer); reported with the shots, not a separate user question unless the shots are ambiguous.
+None. Resolved in 37c: the default level (D4) is 0.3, the user's pick from the candidate screenshots (tests reference
+the constant, so no test changed); `HUD_GLOW_CORE_FALLOFF_MAX` stays 6 (the 0% shots are crisp, with smooth,
+antialiased radar rings and no stair steps or shimmer at 1280x720 and 1920x1080). At level 0.3 the cap binds for
+every slider value up to about 167% (g <= 0.5), so the core edge is the same crisp edge from 0% to 167% and only the
+halo and text outline grow there; at 200% (g = 0.6) the falloff is 5.
 
 ## 10. Change log
 
@@ -504,3 +554,10 @@ Temporary screenshots are deleted once looked at; only README gallery shots are 
 - 2026-11-10: part 37b built: the per-shape glow override (engine route proven by compile and screenshots), the
   per-line text glow alpha, the target and info cards' readouts through `BeginReadoutGlow`, the glossary glow push and
   the views' text alpha; the Customized UV connection through an editor-only helper (hidden enum entries).
+- 2026-11-11: part 37c: D4 decided by the user (level 0.3), section 9 closed; the glow series and F3 panel phases in
+  `-SOLSmokeHud`, the 0% route shot, the profile's glow passes (P5, P6) and view sizes; results in sections 7 and 8;
+  SDD 21 Amendment 5, docs, the player guide and route crops, the README gallery. Whole-ticket review (no Critical /
+  High): the one-eye percentages corrected in section 8, the pre-#37 profile verdicts explained, the Info text names
+  the glossary's two fixed route pictures, a hold before the F3 panel closes in `-SOLSmokeHud`, a distinct override
+  value in `SOLTest.HudShapes.BatchGlowOverride`, editor-only includes, style nits; the speed panel's one-eye cost
+  recorded as tech debt and in the VR targets doc.

@@ -120,10 +120,11 @@ bool USOLHudGlowSample::Update(const float hudGlowSetting, const float effectsSt
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Refills the layer: one HUD panel backing over the view, the ring, the line and the text line in the HUD's Medium
-// font at the glossary's HUD scale, shrunk until it fits beside the ring and above the line
+// Refills the layer: one panel backing over the view, the ring, the line and the text line
 void USOLHudGlowSample::Rebuild(const FIntPoint& sizePx, const float pxPerUnit)
 {
+    // The text is in the HUD's Medium font at the glossary's HUD scale, shrunk until it fits beside the ring and above
+    // the line
     using namespace SOL::Hologram;
     const FVector2f size(sizePx);
     const float height = size.Y;
@@ -222,10 +223,11 @@ void USOLHudGlowSample::ReleaseSlateResources(const bool bReleaseChildren)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Creates the retained shape layer (a few shapes, one text line, one backing) with the sample's own HUD shape material
-// instance (grain and scanlines on, like the glossary's), the HUD's engine fonts and the glow text
+// Creates the retained shape layer (a few shapes, one text line, one backing) with the sample's own material
 TSharedRef<SWidget> USOLHudGlowSample::RebuildWidget()
 {
+    // The sample's own HUD shape material instance has grain and scanlines on, like the glossary's; the HUD's engine
+    // fonts and the glow text
     mLayer = SNew(SSOLHudShapeLayer).MaxShapes(SOL::SolidMenu::SETTINGS_GLOW_SAMPLE_MAX_SHAPES).MaxTexts(1)
         .MaxBackings(1);
     mLayer->SetRetainBatch(true);

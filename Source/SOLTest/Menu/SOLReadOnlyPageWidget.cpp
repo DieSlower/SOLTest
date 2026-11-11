@@ -289,11 +289,11 @@ void USOLReadOnlyPageWidget::FitDiagram()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (33d-ii) Lets the shown glossary tab's symbol views rebuild when their size (at the page's current layout scale)
-// or the strength changed, and gives them the HUD glow scale (issue #37, D11)
+// (33d-ii) Rebuilds the shown glossary tab's symbol views on a size or strength change; gives them the HUD glow scale
 void USOLReadOnlyPageWidget::UpdateShownSymbolViews(const float strength, const float layoutScale,
     const float glowScale)
 {
+    // The size is taken at the page's current layout scale; the HUD glow scale is issue #37, D11
     if (!mSymbolScratch.IsValid())
     {
         return;

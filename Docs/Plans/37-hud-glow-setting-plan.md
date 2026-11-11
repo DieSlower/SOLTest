@@ -3,9 +3,9 @@
 # Plan 37: HUD glow setting (lower default glow, Settings slider 0-200%)
 
 SDD: [`SDDs/37-hud-glow-setting.md`](../SDDs/37-hud-glow-setting.md). Issue
-[#37](https://github.com/DieSlower/SOLTest/issues/37). Decisions D1-D15 are in SDD section 2. **One decision is still
-open: the default level (D4, placeholder `HUD_GLOW_DEFAULT_LEVEL = 0.5`), picked by the user from screenshots at
-step 9.** No other question is pending.
+[#37](https://github.com/DieSlower/SOLTest/issues/37). Decisions D1-D17 are in SDD section 2. The default level (D4)
+was picked by the user from the step 9 screenshots on 2026-11-11: `HUD_GLOW_DEFAULT_LEVEL = 0.3`. No question is
+pending.
 
 **Schema change (D1, approved):** `SOL::Settings::SAVE_VERSION` 11 -> 12 (the settings save has this one version
 constant); new field `USOLSettingsSave::HudGlow` (float, default `HUD_GLOW_DEFAULT` = 1.0) and
@@ -21,7 +21,7 @@ pass, its smokes pass, and its own adversarial performance and style review's fi
 
 1. **37a - settings, glow math, material and HUD feed** (steps 2-6): schema 12 and the "HUD glow" row; the glow
    math; `M_SOLHudShape` `GlowScale`; the HUD layer, its text and the route overlay follow the slider. The slider works
-   end to end at the placeholder level 0.5.
+   end to end at the placeholder level 0.5 (replaced by the user's pick, 0.3, in 37c).
 2. **37b - card readouts and Help glossary** (steps 7-8): the per-shape glow override and per-item text alpha (D10),
    the glossary push (D11).
 3. **37c - chosen default level, verification and docs** (steps 9-14): candidate screenshots and the user's pick, the
@@ -31,7 +31,7 @@ pass, its smokes pass, and its own adversarial performance and style review's fi
 
 | File | Change | Part |
 |---|---|---|
-| `Source/SOLTest/SOLConstants.h` | `SOL::Settings`: `HUD_GLOW_MIN/MAX/DEFAULT/STEP`, `SAVE_VERSION` 12 and its comment. `SOL::Hologram`: `HUD_GLOW_DEFAULT_LEVEL` (0.5 placeholder, D4), `HUD_GLOW_CORE_FALLOFF_MAX` (6, D8), `HUD_GLOW_SCALE_MAX` 2; comment blocks above `GLOW_HALO_INTENSITY`, `HUD_GLOW_CORE_HALF_PX` and `HUD_TEXT_GLOW_ALPHA` say these are the `g = 1` reference values. `SOL::HudShapeMaterialParams::GLOW_SCALE` | 37a (level fixed in 37c) |
+| `Source/SOLTest/SOLConstants.h` | `SOL::Settings`: `HUD_GLOW_MIN/MAX/DEFAULT/STEP`, `SAVE_VERSION` 12 and its comment. `SOL::Hologram`: `HUD_GLOW_DEFAULT_LEVEL` (0.5 placeholder in 37a-37b, 0.3 from 37c: the user's pick, D4), `HUD_GLOW_CORE_FALLOFF_MAX` (6, D8), `HUD_GLOW_SCALE_MAX` 2; comment blocks above `GLOW_HALO_INTENSITY`, `HUD_GLOW_CORE_HALF_PX` and `HUD_TEXT_GLOW_ALPHA` say these are the `g = 1` reference values. `SOL::HudShapeMaterialParams::GLOW_SCALE` | 37a (level fixed in 37c) |
 | `Source/SOLTest/Menu/SOLSettingsModel.h` / `.cpp` | `FSettingsValues::HudGlow`; `Sanitized` (`ClampOrDefault`) and `AreEqual` | 37a |
 | `Source/SOLTest/Menu/SOLSettingsSave.h` / `.cpp` | `UPROPERTY() float HudGlow`; `SetValues` / `GetValues`; frozen migration step 11 -> 12 | 37a |
 | `Source/SOLTest/Menu/SOLSettingsPageWidget.h` / `.cpp` | `ESOLSettingsSlider::HudGlow` after `HudEffects` (D5), `SETTINGS_SLIDERS` entry (percent), get / apply cases, `addSlider` row between HUD and menu effects and Hologram menu effects, `HandleHudGlowChanged` | 37a |
@@ -78,12 +78,12 @@ pass, its smokes pass, and its own adversarial performance and style review's fi
 | 7 | Engine check first (re-read `SlateVertexShader.usf` UV channel 4 and `SlateElementPixelShader.usf` `FillTexCoords`; build the material with `NumCustomizedUVs` 3 and Customized UV 2 = vertex `TexCoord[4]`; prove with one smoke screenshot that a card readout's glow changes and its frame's does not). **If not viable: stop and report to the main session (D10); no other route.** Then TDD cases 13-15 (opus / high, contract only), red for the right reason | opus / high | Done |
 | 8 | Batch override, text-list item alpha, card content wiring, glossary cache and pushes; the Info sentence and `GAME_MECHANICS.md` say the card readouts and the glossary follow (37a review finding 4); tests and full suite green; `-SOLSmokeHud`, `-SOLSmokeHoloMenu`, `-SOLSmokeSolidMenu` PASS; review of 37b (fresh opus / xhigh), fixes, suite again; metrics; commit and push 37b. (The 37b review is folded into the 37c review; a careful self-review was done) | opus / high, review opus / xhigh | Done |
 | **37c** | | | |
-| 9 | **D4 candidate screenshots** (D14): `-SOLSmokeHud` glow phases at 1920x1080 with the placeholder level 0.5: slider 60% / 100% / 140% (= 30% / 50% / 70% of today's) and 200% (= today's baseline), each over the lit Earth (bright) and facing away (dark), target card shown, plus the route overlay; the 0% shot for `HUD_GLOW_CORE_FALLOFF_MAX`. Handed to the main session, which shows them to the user and asks for the level (`AskUserQuestion`); the user's pick goes into `HUD_GLOW_DEFAULT_LEVEL`; candidate shots deleted | sonnet / medium, then main session | To do |
-| 10 | Smokes at 1280x720 and 1920x1080 (`-SOLSmokeHud`, `-SOLSmokeRouteOverlay`, `-SOLSmokeHoloMenu`, `-SOLSmokeSolidMenu`), final screenshots at 0 / 100 / 200% bright and dark at both sizes, the radial menu at 0% (D3) and a glossary tab at 0% and 100% (D11), looked at; persistence check (v11 file -> v12 written once; no write without Apply); PIE check via unreal-mcp if the editor is open | sonnet / medium | To do |
-| 11 | Profile (SDD section 8, D15): before and after, 0 / 100 / 200%, at 1920x1080, 3840x2160 and 3840x3744 (one XR-4 eye); numbers into SDD 21 Amendment 5 and SDD 37 | sonnet / medium | To do |
-| 12 | Docs: `GAME_MECHANICS.md`, in-game Info / Settings text check, SDD 21 Amendment 5, SDD 20 / 33 / 42 pointers, `ARCHITECTURE.md`, `Tools\WritePlayerGuide.bat` and `SOLTest.PlayerGuide`, SDD 37 as built | sonnet / low-medium | To do |
-| 13 | Adversarial review of 37c's diff (fresh opus / xhigh, report only); fixes; re-check against SDD 37; full suite and smokes again | opus / xhigh, then fixes | To do |
-| 14 | README gallery shots (2-3), temp screenshots deleted, `Tools\UpdateMetrics.bat`, STATUS #37 Done, `graphify update .`, commit and push 37c; close #37 | sonnet / low | To do |
+| 9 | **D4 candidate screenshots** (D14): `-SOLSmokeHud` glow phases at 1920x1080 with the placeholder level 0.5: slider 60% / 100% / 140% (= 30% / 50% / 70% of today's) and 200% (= today's baseline), each over the lit Earth (bright) and facing away (dark), target card shown, plus the route overlay; the 0% shot for `HUD_GLOW_CORE_FALLOFF_MAX`. Handed to the main session, which shows them to the user and asks for the level (`AskUserQuestion`); the user's pick goes into `HUD_GLOW_DEFAULT_LEVEL`; candidate shots deleted | sonnet / medium, then main session | Done (user: 30%, level 0.3) |
+| 10 | Smokes at 1280x720 and 1920x1080 (`-SOLSmokeHud`, `-SOLSmokeRouteOverlay`, `-SOLSmokeHoloMenu`, `-SOLSmokeSolidMenu`), final screenshots at 0 / 100 / 200% bright and dark at both sizes, the radial menu at 0% (D3) and a glossary tab at 0% and 100% (D11), looked at; persistence check (v11 file -> v12 written once; no write without Apply); PIE check via unreal-mcp if the editor is open | sonnet / medium | Done |
+| 11 | Profile (SDD section 8, D15): before and after, 0 / 100 / 200%, at 1920x1080, 3840x2160 and 3840x3744 (one XR-4 eye); numbers into SDD 21 Amendment 5 and SDD 37 | sonnet / medium | Done |
+| 12 | Docs: `GAME_MECHANICS.md`, in-game Info / Settings text check, SDD 21 Amendment 5, SDD 20 / 33 / 42 pointers, `ARCHITECTURE.md`, `Tools\WritePlayerGuide.bat` and `SOLTest.PlayerGuide`, SDD 37 as built | sonnet / low-medium | Done |
+| 13 | Adversarial review of 37c's diff (fresh opus / xhigh, report only); fixes; re-check against SDD 37; full suite and smokes again | opus / xhigh, then fixes | Done |
+| 14 | README gallery shots (2-3), temp screenshots deleted, `Tools\UpdateMetrics.bat`, STATUS #37 Done, `graphify update .`, commit and push 37c; close #37 | sonnet / low | Done |
 
 ## Test contract (summary; full contract in SDD section 5)
 
@@ -144,3 +144,26 @@ ceiling (1.2 ms); measured with ProfileGPU / `stat dumpave` at 1920x1080, 4K and
   Smokes: `-SOLSmokeHud` 34/34 at 1280x720 and 1920x1080 (new `l-card-glow-live` / `-revert`), `-SOLSmokeHoloMenu`
   86/86, `-SOLSmokeSolidMenu` 296/296 (new `w-help-glow-0` / `-revert`). Next: step 9 (37c, the D4 candidate
   screenshots).
+- 2026-11-11: 37c steps 9-12 done. Step 9: the user picked 30% from the candidate screenshots, so
+  `HUD_GLOW_DEFAULT_LEVEL` = 0.3 (no test changed; candidate shots deleted). Step 10: `-SOLSmokeHud` gained the glow
+  series (0 / 100 / 200%, Earth and dark) and the F3 speed panel at 0% and the saved glow (45/45 at 1280x720 and
+  1920x1080), `-SOLSmokeRouteOverlay` a 0% shot (29/29), `-SOLSmokeHoloMenu` 86/86, `-SOLSmokeSolidMenu` 296/296;
+  full suite 1800/1800; `HUD_GLOW_CORE_FALLOFF_MAX` kept at 6; PIE via unreal-mcp not run (editor closed). Step 11:
+  `-SOLSmokeHoloMenuProfile` gained P5 (0%) and P6 (200%) and logs the glow scale; three interleaved runs per build at
+  1920x1080, 3840x2160 and 3840x3744 against a pre-#37 worktree (`D:\Development\UnrealProjects\SOLTest_pre37`, at
+  `5388c2f`; remove with `git worktree remove` once 37c is committed): +0.001 to +0.003 ms GPU at 1920x1080, flight HUD
+  0.32 ms at one eye; table in SDD 37 section 8 and SDD 21 Amendment 5. Step 12: docs (GAME_MECHANICS, ARCHITECTURE,
+  SDD 20 / 21 / 33 / 42, SDD 37 as built); `Tools\WritePlayerGuide.ps1` in full (route crops re-captured and
+  re-imported, guide text unchanged, Help images redrawn); two README gallery images (`37-hud-glow-compare.png`,
+  `37-hud-glow-default.png`); STATUS row; two new TECH_DEBT items (the glossary's pictured card corner marks follow
+  the HUD glow; `PushParams` rewrites every MID on a glow-only change). Next: step 13 (adversarial review of the 37c
+  diff), then step 14.
+- 2026-11-11: steps 13-14 done. Whole-ticket adversarial review: no Critical / High. Fixed: SDD 37 section 8 one-eye
+  figure (up to +2.8%, P1) and the pre-#37 build's FAIL / `valid=no` verdicts explained; `GlowMenuSavedHold` so the
+  saved-glow panel shot is not taken while closing; `HUDSHAPES_OVERRIDE_SCALE` 0.45 (distinct from the level, with a
+  `static_assert`); the Info sentence names the glossary's two fixed route pictures (test phrase added; the guide is
+  unaffected); `Materials/*` includes inside `WITH_EDITOR` in `SOLEditorAuthoring.cpp`; long lines, one-line function
+  headers, the GlowLive comment and the Info wraps; GAME_MECHANICS reference glow labelled as the g = 1 reference.
+  Recorded: the speed panel above the 1.2 ms one-eye ceiling (TECH_DEBT, VR targets doc section 7). Rebuilt; suite
+  1800/1800, `-SOLSmokeHud` 45/45 at both sizes, `-SOLSmokeHoloMenu` 86/86, `-SOLSmokeSolidMenu` 296/296. Pre-#37
+  worktree removed. Metrics, STATUS Done, commit and push; #37 closed.

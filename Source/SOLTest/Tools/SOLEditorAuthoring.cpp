@@ -5,11 +5,12 @@
 
 #include "Tools/SOLEditorAuthoring.h"
 
-#include "Materials/Material.h"
-#include "Materials/MaterialExpression.h"
 #include "UObject/UnrealType.h"
 
 #if WITH_EDITOR
+#include "Materials/Material.h"
+#include "Materials/MaterialExpression.h"
+
 //////////////////////////////////////////////////////////////////////////
 // Sets a string property on an object through reflection regardless of its edit flags, then notifies the object
 bool USOLEditorAuthoring::SetObjectStringProperty(UObject* object, FName propertyName, const FString& value)

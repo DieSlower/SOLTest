@@ -5,7 +5,8 @@
 Umbrella issue #21; phases are issues #28 (A), #29 (B) and #30 (C). Depends on SDD 20 (`SOL::Hologram` shared style),
 SDD 8 (HUD, menus, settings) and the Limit Theory research (`Docs/Research/LT_features_for_SOL.md` section C).
 Status: done. Phase A built (Amendment 1), phase B built (Amendment 2), phase C built (Amendment 3); #21 closed.
-Amendment 4: issue #31 polish (less glow, borderless panels, free-look colour).
+Amendment 4: issue #31 polish (less glow, borderless panels, free-look colour). Amendment 5: issue #37 (a lower
+default glow and the Settings HUD glow slider, 0-200%; SDD 37).
 
 ## 1. Goal
 
@@ -288,3 +289,15 @@ BackingLayer 3 new; HudFormat SteerHint and PilotCircleColor new (written from t
 stubs, then green).
 
 The earlier statement that menus stay unchanged is superseded: the user wants all in-game menus as holograms; tracked as issue #42.
+
+## Amendment 5: issue #37 (lower default glow, HUD glow setting)
+
+Full design in [SDD 37](37-hud-glow-setting.md). The flight HUD's glow is scaled by one factor
+`g = Settings HUD glow (0-200%, save schema 12) x SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL (0.3)`, so the default (100%)
+is 30% of the Amendment 4 glow and 200% is 60% of it. `M_SOLHudShape` gained a `GlowScale` scalar parameter that
+scales the glow line's halo weight by `g` and sharpens its core falloff to `HUD_GLOW_CORE_FALLOFF / g`, capped at
+`HUD_GLOW_CORE_FALLOFF_MAX` 6 (so 0% keeps a crisp 1 px core); the menu layer's MID keeps `GlowScale` 1 (menus unchanged, D3), except the hologram cards'
+readouts, which follow the HUD through a per-shape override in Customized UV 2 while the card frames do not (D10). The
+glow-text outline alpha and the route overlay's Canvas halo (`GLOW_HALO_INTENSITY`) scale by `g` too; at 0% the text
+outline pass and the route's halo triangles are skipped. Measured cost (SDD 37 section 8): +0.001 to +0.003 ms GPU at
+1920x1080, the flight HUD 0.32 ms at one XR-4 eye.

@@ -250,8 +250,7 @@ void USOLSolidMenuSubsystem::UpdateForFrame()
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Pushes the strength, DPI scale and glow scale into every shared and live unique material when the cache says one
-// changed
+// Pushes the strength, DPI scale and glow scale into every shared and live unique material when one changed
 void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpiScale, const float glowSetting)
 {
     if (!mParamCache.Update(rawStrength, dpiScale, glowSetting))
@@ -281,11 +280,11 @@ void USOLSolidMenuSubsystem::PushParams(const float rawStrength, const float dpi
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Writes the cached strength, the glossary views' pixel size (every symbol view is the symbol box less its recess
-// padding, at the DPI scale; a wider text-sample view, 33d-iii, draws no shapes) and the HUD glow scale (issue #37, D11:
-// the glossary's symbols are pictures of the HUD) into the shared HUD shape material
+// Writes the cached strength, the glossary views' pixel size and the HUD glow scale into the shared HUD shape material
 void USOLSolidMenuSubsystem::WriteHudShapeParams()
 {
+    // Each symbol view is the symbol box less its recess padding, at the DPI scale (a wider text-sample view, 33d-iii,
+    // draws no shapes); the glow follows the HUD (issue #37 D11) because the glossary's symbols are pictures of the HUD
     using namespace SOL::Help;
     if (HudShapeMaterial == nullptr)
     {

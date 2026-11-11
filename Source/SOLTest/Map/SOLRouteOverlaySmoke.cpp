@@ -174,7 +174,7 @@ bool FSOLRouteOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeco
             values.HudGlow = SOL::Settings::HUD_GLOW_MIN;
             settings->SetPendingValues(values);
         }
-        if (mStepFrames >= 2 * OVERLAY_SMOKE_SHORT_FRAMES)
+        if (mStepFrames == 2 * OVERLAY_SMOKE_SHORT_FRAMES)
         {
             CheckGlowWiring(TEXT("pending HUD glow 0% reaches the overlay"), *hud, overlay);
             const int32 triangles = overlay.GetLastTriangles();
@@ -182,6 +182,12 @@ bool FSOLRouteOverlaySmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeco
                 && triangles < mSavedGlowTriangles && overlay.GetLastLegsDrawn() == OVERLAY_SMOKE_WAYPOINTS,
                 FString::Printf(TEXT("halo %.3f, %d triangles (%d at the saved glow), %d legs"),
                 overlay.GetLastHaloIntensity(), triangles, mSavedGlowTriangles, overlay.GetLastLegsDrawn()));
+            UE_LOG(LogSOL, Log, TEXT("SmokeRouteOverlay: screenshot (flight view, paused route, HUD glow 0%%)"));
+            gameMode->CaptureScreenshot();
+        }
+        if (mStepFrames >= 3 * OVERLAY_SMOKE_SHORT_FRAMES)
+        {
+            // The 0% screenshot frame has rendered: Revert discards the pending glow
             if (settings != nullptr)
             {
                 settings->RevertPending();

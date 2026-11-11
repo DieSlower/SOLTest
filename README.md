@@ -222,6 +222,14 @@ The radar zoomed in to `RADAR 1.0 km (MANUAL)` with no target selected (issue #3
 
 The Help page's Targets and radar tab (issue #36 text): the AUTO range, the 1 km manual floor with or without a target, and MANUAL keeping its range when you change targets.
 
+![HUD glow at 0%, 100% and 200%](Docs/Images/37-hud-glow-compare.png)
+
+The HUD glow slider (issue #37) at 0%, 100% and 200%, over the lit Earth: the speed card's readouts, the target card and reticle, and the radar. 0% leaves crisp lines and text with no glow; 100% is the new default, 30% of the glow before the change; the cards' corner marks keep their own look.
+
+![Flight HUD at the default HUD glow](Docs/Images/37-hud-glow-default.png)
+
+The whole flight HUD at the new default glow (issue #37) with Earth targeted.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -229,11 +237,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 115.6 h |
+| Work time (wall-clock) | 117.3 h |
 | Time spent answering questions | 8.9 h |
-| Tokens | 6,596.9M |
-| Notional API price | $2,602 |
-| Subagents dispatched | 515 |
+| Tokens | 6,670.7M |
+| Notional API price | $2,626 |
+| Subagents dispatched | 518 |
 <!-- METRICS:END -->
 
 ## Documentation map

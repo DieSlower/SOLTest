@@ -27,8 +27,11 @@ class UWorld;
  * zoom with no target (SDD 36): '-' down to 10 km and 1 km, and MANUAL keeping its range through T and X (with a
  * screenshot of RADAR 1.0 km (MANUAL) and no target). It checks that a pending HUD glow (SDD 37, set through the
  * settings subsystem, never applied or written) is pushed to the HUD's material and text alpha at once (a screenshot,
- * at 200% for the default save) and that Revert restores the saved one, with the menu material untouched. It ends with
- * two screenshots: the HUD over Earth with Earth targeted and the radar zoomed in manually, and the orbit ellipses seen
+ * at 200% for the default save) and that Revert restores the saved one, with the menu material untouched; before
+ * that a glow series checks and shoots the HUD at a pending 0%, 100% and 200% facing the lit Earth and then ecliptic
+ * north, the dark star field (HudSmoke_GlowSeries_<earth|dark>_<percent>.png), then the F3 hologram speed panel at 0%
+ * and at the saved glow (HudSmoke_GlowSeries_menu_<0|saved>.png: a menu keeps its look). It ends with two
+ * screenshots: the HUD over Earth with Earth targeted and the radar zoomed in manually, and the orbit ellipses seen
  * from 3 AU above the Sun; then it quits.
  */
 class SOLTEST_API FSOLHudSmoke
@@ -76,8 +79,14 @@ private:
         RadarShot,
         CanvasFallback,     // sol.HudRenderer 0 (SDD 21): the reticle back on Canvas; RadarAuto's exit restores 1
         RadarAuto,
-        GlowLive,           // Issue #37: a pending (never applied) HUD glow reaches the HUD's material and text alpha
-                            // (screenshot)
+        GlowSeriesSet,      // Issue #37: a pending HUD glow of the series, facing Earth or north (checked, screenshot)
+        GlowSeriesHold,     // ...the shot is taken; repeats with GlowSeriesSet for every series value and view
+        GlowMenuOpen,       // F3 at a pending HUD glow of 0%: the hologram speed panel is unchanged (SDD 37 D3; shot)
+        GlowMenuHold,       // ...the shot is taken
+        GlowMenuSaved,      // Revert: the same panel at the saved HUD glow (screenshot)
+        GlowMenuSavedHold,  // ...the shot is taken before the panel closes
+        GlowMenuClose,      // F3 to the panel: closed
+        GlowLive,           // Issue #37: a pending HUD glow reaches the HUD's material and text alpha (screenshot)
         GlowShot,           // ...Revert once the shot is taken
         GlowRevert,         // ...the saved one is back; the menu material keeps GlowScale 1 throughout (SDD 37 D3)
         OrbitShotSetup,
@@ -151,6 +160,7 @@ private:
     bool mIsOrbitOverrideOn = false;                        // The orbit-line verification override is applied
     int32 mRadarZoomTaps = 0;                               // '-' presses made so far in the RadarZoomIn phase
     int32 mNoTargetZoomTaps = 0;                            // '-' presses made so far in the NoTargetZoomIn phase
+    int32 mGlowSeriesShot = 0;                              // Glow series shots started so far (SDD 37 section 7.3)
     int32 mEarthIndex = INDEX_NONE;                         // Registry index of Earth
     int32 mSlateMisses = 0;                                 // Panel keys Slate did not deliver (sent directly)
     int32 mChecksPassed = 0;                                // Checks that passed

@@ -17,13 +17,17 @@ class ASOLShipPawn;
 class USOLInteractionSubsystem;
 class USOLShipSubsystem;
 class USOLTargetingSubsystem;
+class UWorld;
 
 /**
  * Verification-only cost capture of the in-flight menus and cards (-SOLSmokeHoloMenuProfile, SDD 42 section 11, D14),
- * in a standalone -game run at 1280x720. The scene is fixed: the sim date is pinned (PROFILE_SIM_JD in the .cpp) and
+ * in a standalone -game run at 1280x720 (another view size, e.g. through r.SetRes, logs every pass as NOBASE: a view
+ * run, SDD 37 section 8). The scene is fixed: the sim date is pinned (PROFILE_SIM_JD in the .cpp) and
  * the ship is placed at the default start above Earth's Sun-facing side for that date, at rest in its frame, facing Earth;
- * the menus and cards work on one named body (PROFILE_BODY_NAME), whose icon must be on screen. It runs five passes:
- * P0 flight with no menu open (no target, no info card), then, with the body targeted and its info card shown, P1 the
+ * the menus and cards work on one named body (PROFILE_BODY_NAME), whose icon must be on screen. It runs seven passes:
+ * P0 flight with no menu open (no target, no info card), P5 and P6 the same at a pending (never applied) HUD glow of
+ * 0% and 200% (issue #37; P0 has the smoke slot's default 100%, restored by Revert), then, with the body targeted and
+ * its info card shown, P1 the
  * radial menu held open over the body's icon, P2 the Ctrl+O Overlay Menu, P3 the F3 speed panel and P4 the map's list
  * menu, each opened through the same input paths as the other smokes. Each pass waits for the menu to settle, takes a
  * window screenshot (Saved/Screenshots/WindowsEditor/HoloMenuProfile_P<n>.png from the editor binary), then three
@@ -85,6 +89,13 @@ private:
     // Logs the pass's result line with its verdict against the baseline
     void LogPassResult(int32 pass, const ASOLShipPawn& pawn);
 
+    // A view run (SDD 37 section 8): lifts the window size limit and sets the -ResX / -ResY view with r.SetRes; false
+    // while the game window does not exist yet
+    static bool ApplyCommandLineView(UWorld* world);
+
+    // Checks that the HUD pushed the glow scale of a Settings HUD glow value to its material (SDD 37 section 8)
+    void CheckHudGlow(const TCHAR* label, float setting, const ASOLShipPawn& pawn);
+
     // Finds the icon hit of the named profile body; false if its icon is not drawn
     bool FindBodyHit(int32 bodyIndex);
 
@@ -143,5 +154,6 @@ private:
     EPassPhase mPhase = EPassPhase::Settle;
     FSOLUiProfileCapture mCapture;                          // ProfileGPU and stat dumpave capture (HUD, Slate, UI)
     bool mIsShipPlaced = false;                             // Setup placed the ship for the pinned date
+    bool mIsViewApplied = false;                            // The view run's size is set (or not needed)
     bool mIsBodyFound = false;                              // The named body's icon was on screen at the end of Setup
 };

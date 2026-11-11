@@ -49,8 +49,9 @@ struct SOLTEST_API FSOLSolidMenuParamCache
     static bool IsValidDpiScale(float dpiScale);
 
     // Stores the values and returns true when a push is due: the first call, or an exact change of the sanitized
-    // strength, of a valid DPI scale or of the glow scale of the Settings HUD glow value (SOLHudShapeMath::HudGlowScale,
-    // NaN reads the default setting); an invalid DPI scale keeps the last valid one (1 before any)
+    // strength, of a valid DPI scale or of the glow scale of the Settings HUD glow value
+    // (SOLHudShapeMath::HudGlowScale, NaN reads the default setting); an invalid DPI scale keeps the last valid one
+    // (1 before any)
     bool Update(float rawStrength, float dpiScale, float glowSetting);
 
     // Returns the last sanitized strength (HUD_EFFECTS_DEFAULT before the first call)
@@ -222,8 +223,8 @@ private:
     // Writes the cached strength and DPI scale into one material
     void WriteParams(UMaterialInstanceDynamic& material) const;
 
-    // (33d-ii) Writes the cached strength, the glossary views' pixel size and (issue #37) the glow scale into the shared
-    // HUD shape material
+    // (33d-ii) Writes the cached strength, the glossary views' pixel size and (issue #37) the glow scale into the
+    // shared HUD shape material
     void WriteHudShapeParams();
 
     UPROPERTY(Transient)

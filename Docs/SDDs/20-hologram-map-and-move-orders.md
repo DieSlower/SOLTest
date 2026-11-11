@@ -85,6 +85,10 @@ directional fade `exp(-2 (1 - t))` (used for route direction). Palette: Primary 
 | Patrol loop closing leg | dashed |
 | Waypoint below the plane | hollow marker, Secondary tint; above the plane Primary |
 
+Issue #37 (SDD 37): the route overlay's Canvas halo (`GLOW_HALO_INTENSITY` 0.15 since issue #31) is scaled by the HUD
+glow setting's glow scale g (`SOLRouteOverlayMath::RouteHaloIntensity`; 0.045 at the default 100%, the core line
+alone at 0%); see SDD 21 Amendment 5.
+
 ### 2.5 Related tickets
 
 - #25 first (separate commit), then #20 feature work.

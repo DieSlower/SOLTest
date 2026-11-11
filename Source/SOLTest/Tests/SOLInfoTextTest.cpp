@@ -291,6 +291,7 @@ bool FSOLInfoTextHudParagraphTest::RunTest(const FString& /*parameters*/)
         TEXT("and the mouse pointer with them"), TEXT("the sample under the slider shows it at once"),
         TEXT("the menus keep their own look"), TEXT("the readouts inside the hologram cards"),
         TEXT("HUD pictures in the Help glossary"), TEXT("so do the cards' corner marks"),
+        TEXT("except its two route pictures, fixed pictures taken at the default"),
     };
     for (const TCHAR* const phrase : kept)
     {

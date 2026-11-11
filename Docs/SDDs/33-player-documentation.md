@@ -6,6 +6,9 @@ Issue #33 ("Player documentation: all controls with keyboard pictures and a glos
 on SDD 8 (menus, Controls / Info / About, key rebinding), SDD 21 (the hologram HUD renderer), SDD 22 (overlay icons,
 interaction menus), SDD 42 (hologram menus and cards) and SDD 46 (the solid menu kit, the page shell, the tab pages,
 the profile smoke and the VR floor). Plan: [`Docs/Plans/33-player-documentation-plan.md`](../Plans/33-player-documentation-plan.md).
+Issue #37 (SDD 37 D11): the Help glossary's HUD symbols and text samples follow the Settings HUD glow slider, except the two route crop textures captured at the default (the
+glossary's shared `M_SOLHudShape` MID gets the glow scale, the views their text glow alpha, on change); the player guide
+images are taken at the default 100% (SDD 21 Amendment 5).
 
 Status: **33a done (2026-11-07): pure logic, tables and tests; 33b done (2026-11-07): the key cap widget on the
 Controls page and the Settings key rows (section 20); 33c and 33d-i done (2026-11-08); 33d-ii and 33d-iii done (2026-11-08, section 20): the Help page, its HUD glossary and the D43 / D44 layout answers; 33e done (2026-11-08): the generated player guide; 33e-iii done (2026-11-08, section 20): the hover popup (D45) and the scrolled guide shots (D46); 33e-ii done (2026-11-08, section 20): the map glossary crops (D47) and the guide-writer end-of-tab fix; 33e-iv and 33f done (2026-11-09, section 20); 33g done (2026-11-09, section 20): the whole-ticket review fixes, D48 and D49; 33h done (2026-11-10): the final text and docs check and the README gallery shots, ticket closed.** O14 answered (D32). Design final since 2026-11-06. Drafted from the resolved grill-me decisions (user,

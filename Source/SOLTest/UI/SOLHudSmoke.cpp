@@ -68,10 +68,17 @@ namespace
     constexpr int32 HUDSMOKE_MIN_PANELS = 3;                // Info, speed and G, target readout
     constexpr float HUDSMOKE_GLOW_TOLERANCE = 1.0e-5f;      // Pushed glow scale and text alpha vs the math
 
-    // The pending HUD glow of the glow phases (SDD 37), whichever is farther from the saved value: 200% (the issue #31
-    // glow while HUD_GLOW_DEFAULT_LEVEL is 0.5, so the default save shows that look in the screenshot) or 35%
+    // The pending HUD glow of the glow phases (SDD 37), whichever is farther from the saved value: 200% (the brightest,
+    // so the default save shows a visible change in the screenshot) or 35%
     constexpr float HUDSMOKE_GLOW_LOW = 0.35f;
     constexpr float HUDSMOKE_GLOW_HIGH = SOL::Settings::HUD_GLOW_MAX;
+
+    // The glow series (SDD 37 section 7.3): screenshots at these pending HUD glow values, first facing the lit Earth,
+    // then facing ecliptic north (the dark star field), each value's shot named by its percentage
+    constexpr float HUDSMOKE_GLOW_SERIES[] = { SOL::Settings::HUD_GLOW_MIN, SOL::Settings::HUD_GLOW_DEFAULT,
+        SOL::Settings::HUD_GLOW_MAX };
+    constexpr int32 HUDSMOKE_GLOW_SERIES_VALUES = UE_ARRAY_COUNT(HUDSMOKE_GLOW_SERIES);
+    constexpr int32 HUDSMOKE_GLOW_SERIES_SHOTS = 2 * HUDSMOKE_GLOW_SERIES_VALUES;  // Earth, then dark
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the pending HUD glow the glow phases set: one far from the saved value, so the revert is visible
@@ -173,11 +180,16 @@ bool FSOLHudSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
         return false;
     }
 
-    // Phase over: checks, then the next phase (the radar zoom phases repeat once per '-' press)
+    // Phase over: checks, then the next phase (the radar zoom phases repeat once per '-' press, the glow series pair
+    // once per shot)
     ExitPhase(mPhase, pawn);
     const bool bRepeatPhase = (mPhase == ESOLHudPhase::RadarZoomIn && mRadarZoomTaps < HUDSMOKE_RADAR_ZOOM_STEPS)
         || (mPhase == ESOLHudPhase::NoTargetZoomIn && mNoTargetZoomTaps < HUDSMOKE_NO_TARGET_ZOOM_STEPS);
-    if (!bRepeatPhase)
+    if (mPhase == ESOLHudPhase::GlowSeriesHold && mGlowSeriesShot < HUDSMOKE_GLOW_SERIES_SHOTS)
+    {
+        mPhase = ESOLHudPhase::GlowSeriesSet;
+    }
+    else if (!bRepeatPhase)
     {
         mPhase = static_cast<ESOLHudPhase>(static_cast<uint8>(mPhase) + 1);
     }
@@ -324,6 +336,44 @@ void FSOLHudSmoke::EnterPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLHudPhase::RadarAuto:
         TapKey(EKeys::Home);
+        break;
+    case ESOLHudPhase::GlowSeriesSet:
+    {
+        // SDD 37 section 7.3: the series' next pending HUD glow (never applied or written); each view's first shot
+        // turns the ship toward Earth (its lit disc behind the HUD) or toward ecliptic north (Unreal +Z: the dark star
+        // field; facing away from Earth would face the Sun, as the ship is on Earth's day side)
+        const int32 shot = mGlowSeriesShot++;
+        if (shot % HUDSMOKE_GLOW_SERIES_VALUES == 0)
+        {
+            SetupShip(state.PositionM, shot < HUDSMOKE_GLOW_SERIES_VALUES ? (earthM - state.PositionM).GetSafeNormal()
+                : FVector3d::UnitZ(), mShips->GetReferenceVelocityMps());
+        }
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = HUDSMOKE_GLOW_SERIES[shot % HUDSMOKE_GLOW_SERIES_VALUES];
+            settings->SetPendingValues(values);
+        }
+        break;
+    }
+    case ESOLHudPhase::GlowMenuOpen:
+        // SDD 37 D3: a hologram menu (the F3 speed panel, on the menu material) opened at a pending HUD glow of 0%
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = SOL::Settings::HUD_GLOW_MIN;
+            settings->SetPendingValues(values);
+        }
+        TapKey(EKeys::F3);
+        break;
+    case ESOLHudPhase::GlowMenuSaved:
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            settings->RevertPending();
+        }
+        break;
+    case ESOLHudPhase::GlowMenuClose:
+        SlateKey(pawn, EKeys::F3);
         break;
     case ESOLHudPhase::GlowLive:
         // SDD 37 D14: a pending HUD glow, as the Settings slider sets it (previewed at once, never applied or written)
@@ -649,6 +699,43 @@ void FSOLHudSmoke::ExitPhase(const ESOLHudPhase phase, ASOLShipPawn& pawn)
         TakeUiShot(TEXT("Canvas"));
         break;
     }
+    case ESOLHudPhase::GlowSeriesSet:
+    {
+        // The series value reached the HUD (dirty exactly when it differs from the saved value), then its screenshot;
+        // GlowSeriesHold keeps it until the shot is taken
+        const int32 shot = mGlowSeriesShot - 1;
+        const TCHAR* view = shot < HUDSMOKE_GLOW_SERIES_VALUES ? TEXT("earth") : TEXT("dark");
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        const float setting = settings != nullptr ? settings->GetLiveValues().HudGlow : -1.0f;
+        const bool bWantDirty = settings != nullptr && !FMath::IsNearlyEqual(setting,
+            settings->GetSavedValues().HudGlow, SOL::Settings::VALUE_EQUAL_TOLERANCE);
+        const int32 percent = FMath::RoundToInt32(HUDSMOKE_GLOW_SERIES[shot % HUDSMOKE_GLOW_SERIES_VALUES] * 100.0f);
+        CheckGlowPushed(*FString::Printf(TEXT("l-glow-%s-%d"), view, percent), TEXT("glow series, pending HUD glow"),
+            setting, settings != nullptr && settings->IsDirty() == bWantDirty, *pawn.GetWorld());
+        TakeUiShot(*FString::Printf(TEXT("GlowSeries_%s_%d"), view, percent));
+        break;
+    }
+    case ESOLHudPhase::GlowMenuOpen:
+    case ESOLHudPhase::GlowMenuSaved:
+    {
+        // The panel is open with the HUD at 0% (then at the saved glow) while the menu material keeps GlowScale 1
+        // (CheckGlowPushed); the two screenshots show the panel's frame unchanged
+        const bool bZero = phase == ESOLHudPhase::GlowMenuOpen;
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        const float setting = settings != nullptr ? settings->GetLiveValues().HudGlow : -1.0f;
+        Check(bZero ? TEXT("l-menu-open-0") : TEXT("l-menu-saved"), pawn.IsSpeedPanelOpen() && panel != nullptr
+            && panel->IsInViewport(), FString::Printf(TEXT("F3 at HUD glow %.0f%%: panel %s"), setting * 100.0f,
+            pawn.IsSpeedPanelOpen() ? TEXT("open") : TEXT("CLOSED")));
+        CheckGlowPushed(bZero ? TEXT("l-menu-glow-0") : TEXT("l-menu-glow-saved"), bZero
+            ? TEXT("F3 panel open, pending HUD glow") : TEXT("F3 panel open, Revert, saved HUD glow"), setting,
+            settings != nullptr && settings->IsDirty() == bZero, *pawn.GetWorld());
+        TakeUiShot(bZero ? TEXT("GlowSeries_menu_0") : TEXT("GlowSeries_menu_saved"));
+        break;
+    }
+    case ESOLHudPhase::GlowMenuClose:
+        Check(TEXT("l-menu-close"), !pawn.IsSpeedPanelOpen() && (panel == nullptr || !panel->IsInViewport()),
+            FString::Printf(TEXT("F3: panel %s"), pawn.IsSpeedPanelOpen() ? TEXT("STILL OPEN") : TEXT("closed")));
+        break;
     case ESOLHudPhase::GlowLive:
     {
         // The pending glow reached the HUD this frame or earlier (screenshot; GlowShot reverts it once it is taken)
@@ -713,6 +800,11 @@ double FSOLHudSmoke::GetPhaseDuration(const ESOLHudPhase phase)
     case ESOLHudPhase::FreeLookShot:
     case ESOLHudPhase::RadarShot:
     case ESOLHudPhase::GlowShot:
+    case ESOLHudPhase::GlowSeriesSet:
+    case ESOLHudPhase::GlowMenuOpen:
+    case ESOLHudPhase::GlowMenuHold:
+    case ESOLHudPhase::GlowMenuSaved:
+    case ESOLHudPhase::GlowMenuSavedHold:
         return HUDSMOKE_SHOT_WAIT_S;
     case ESOLHudPhase::OrbitShot:
         return HUDSMOKE_QUIT_WAIT_S;
@@ -819,8 +911,7 @@ void FSOLHudSmoke::CheckRadarState(const TCHAR* label, const TCHAR* action, cons
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Checks the HUD's pushed glow scale and text alpha against a Settings HUD glow value, the menu material's untouched
-// GlowScale and the settings' dirty state
+// Checks the HUD's pushed glow scale and text alpha for a HUD glow value, the menu GlowScale and the dirty state
 void FSOLHudSmoke::CheckGlowPushed(const TCHAR* label, const TCHAR* action, const float setting, const bool bDirtyOk,
     const UWorld& world)
 {
@@ -847,10 +938,10 @@ void FSOLHudSmoke::CheckGlowPushed(const TCHAR* label, const TCHAR* action, cons
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Checks that the card readouts on the menu layer carry a HUD glow value's glow scale and text alpha while the card
-// frames and the other menu shapes and lines carry no override (SDD 37 D10)
+// Checks the card readouts carry a HUD glow value's glow and text alpha while the card frames do not (SDD 37 D10)
 void FSOLHudSmoke::CheckCardReadoutGlow(const TCHAR* label, const TCHAR* action, const float setting)
 {
+    // The other menu shapes and lines carry no override either
     const float expected = SOLHudShapeMath::HudGlowScale(setting);
     const float expectedAlpha = SOLHudShapeMath::TextGlowAlpha(expected);
     const FSOLHudShapeBatch* batch = mHud.IsValid() ? mHud->GetMenuLayerBatch() : nullptr;
@@ -912,8 +1003,8 @@ void FSOLHudSmoke::CheckCardReadoutGlow(const TCHAR* label, const TCHAR* action,
     }
     Check(label, setting >= 0.0f && readoutTexts > 0 && frameShapes > 0 && frameOverrides == 0 && wrongShapes == 0
         && wrongTexts == 0 && overrideShapes == readoutShapes && overrideTexts == readoutTexts,
-        FString::Printf(TEXT("%s %.0f%%: card readouts %d shapes and %d lines with the HUD glow (overridden on the menu "
-            "layer: %d shapes, %d lines; %d shapes and %d lines not at glow %.4f / alpha %.4f), card frames %d shapes, "
-            "%d overridden (want 0)"), action, setting * 100.0f, readoutShapes, readoutTexts, overrideShapes,
+        FString::Printf(TEXT("%s %.0f%%: card readouts %d shapes and %d lines with the HUD glow (overridden on the "
+            "menu layer: %d shapes, %d lines; %d shapes and %d lines not at glow %.4f / alpha %.4f), card frames %d "
+            "shapes, %d overridden (want 0)"), action, setting * 100.0f, readoutShapes, readoutTexts, overrideShapes,
             overrideTexts, wrongShapes, wrongTexts, expected, expectedAlpha, frameShapes, frameOverrides));
 }

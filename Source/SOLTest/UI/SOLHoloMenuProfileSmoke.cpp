@@ -8,17 +8,20 @@
 #include "Flight/SOLFlight.h"
 #include "Interaction/SOLInteractionSubsystem.h"
 #include "Interaction/SOLInteractMenus.h"
+#include "Menu/SOLSettingsSubsystem.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
 #include "UI/SOLFlightHud.h"
+#include "UI/SOLHudShapeMath.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
 #include "Engine/Engine.h"
+#include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "Framework/Application/SlateApplication.h"
 #include "GameFramework/GameUserSettings.h"
@@ -26,7 +29,10 @@
 #include "HAL/PlatformTime.h"
 #include "InputKeyEventArgs.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Widgets/SWindow.h"
 #include "UnrealClient.h"
 
 namespace
@@ -36,6 +42,11 @@ namespace
     {
         Setup,              // The date pinned, the ship placed at rest facing Earth; the named body's icon is found
         Pass0,              // P0: flight, no menu, no target, no info card
+        GlowZero,           // Issue #37: a pending HUD glow of 0% (through the settings, never applied)
+        Pass5,              // P5: P0 at HUD glow 0%
+        GlowDouble,         // A pending HUD glow of 200%
+        Pass6,              // P6: P0 at HUD glow 200%
+        GlowRevert,         // Revert: the saved HUD glow back
         PrepTarget,         // Radial Target on the body: the target card shows
         PrepInfo,           // Radial Info on the body: the info card shows
         RadialOpen,         // Fire press on the body's icon, held, the cursor on a sector
@@ -56,7 +67,7 @@ namespace
         Count,              // Number of steps
     };
 
-    constexpr int32 PROFILE_PASS_COUNT = 5;
+    constexpr int32 PROFILE_PASS_COUNT = 7;
     constexpr int32 PROFILE_SHOT_FRAMES = 15;                   // Frames after the screenshot request
     constexpr int32 PROFILE_MIN_FRAMES = 5;
     constexpr double PROFILE_SETUP_S = 3.0;
@@ -73,6 +84,7 @@ namespace
     constexpr int32 PROFILE_PLACE_FRAME = 3;                    // Setup frame the ship is placed (bodies at the date)
     constexpr int32 PROFILE_VIEW_WIDTH = 1280;                  // The view the baseline was measured at
     constexpr int32 PROFILE_VIEW_HEIGHT = 720;
+    constexpr float PROFILE_MAX_WINDOW_PX = 16384.0f;           // A view run's lifted window size limit (SDD 37 8)
 
     // The fixed scene (SDD 42 section 11.1): the sim date is pinned so the bodies behind Earth, the profile body's
     // icon and card and the map's overlays are the same every run (JD 2461348.5 = 2026-11-04 00:00 UTC); the menus and
@@ -83,14 +95,21 @@ namespace
 
     // The pass names, in the log line
     const TCHAR* const PROFILE_PASS_NAMES[PROFILE_PASS_COUNT] = {
-        TEXT("flight"), TEXT("radial"), TEXT("overlay-menu"), TEXT("speed-panel"), TEXT("map-list") };
+        TEXT("flight"), TEXT("radial"), TEXT("overlay-menu"), TEXT("speed-panel"), TEXT("map-list"),
+        TEXT("flight-glow-0"), TEXT("flight-glow-200") };
+
+    // The pending HUD glow of the glow steps (SDD 37 section 8): P5 at 0%, P6 at 200%; P0 has the saved (default) 100%
+    constexpr float PROFILE_GLOW_ZERO = SOL::Settings::HUD_GLOW_MIN;
+    constexpr float PROFILE_GLOW_DOUBLE = SOL::Settings::HUD_GLOW_MAX;
+    constexpr float PROFILE_GLOW_TOLERANCE = 1.0e-5f;           // Pushed glow scale vs the math
 
     // Pre-conversion baseline (SDD 42 section 11.1, measured before 42c): cpu_total (HUD Time + Draw Window And
     // Children Time) and gpu_ui (the game window's SlateUI pass), ms, the mean of the two baseline runs at commit
     // 49949c0 plus the 42a files (no rendering change), PROFILE_SIM_JD 2461348.5 with Neptune as the body, on an
     // i9-9960X / RTX 2080 Ti with the Development editor binary in -game. Zero means no baseline: the verdict is NOBASE
-    constexpr double PROFILE_BASELINE_CPU_MS[PROFILE_PASS_COUNT] = { 0.2365, 0.285, 0.4015, 0.4275, 0.927 };
-    constexpr double PROFILE_BASELINE_GPU_MS[PROFILE_PASS_COUNT] = { 0.0785, 0.1075, 0.114, 0.127, 0.0785 };
+    // (the glow passes P5 and P6, issue #37, are compared with the same run's P0 by hand)
+    constexpr double PROFILE_BASELINE_CPU_MS[PROFILE_PASS_COUNT] = { 0.2365, 0.285, 0.4015, 0.4275, 0.927, 0.0, 0.0 };
+    constexpr double PROFILE_BASELINE_GPU_MS[PROFILE_PASS_COUNT] = { 0.0785, 0.1075, 0.114, 0.127, 0.0785, 0.0, 0.0 };
 
     // The game-thread stats, one stat dumpave window each: HUD Time, Draw Window And Children Time, Game UI Paint
     const TCHAR* const PROFILE_CPU_ROOT_STATS[] = {
@@ -114,9 +133,20 @@ namespace
             return 3;
         case EProfileStep::Pass4:
             return 4;
+        case EProfileStep::Pass5:
+            return 5;
+        case EProfileStep::Pass6:
+            return 6;
         default:
             return INDEX_NONE;
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a pass runs with the body targeted and its info card shown (P1-P4; P0, P5 and P6 fly bare)
+    bool PassHasCards(const int32 pass)
+    {
+        return pass >= 1 && pass <= 4;
     }
 }
 
@@ -151,6 +181,31 @@ void FSOLHoloMenuProfileSmoke::Start(ASOLShipPawn& pawn)
         static_cast<int32>(UE_ARRAY_COUNT(PROFILE_CPU_ROOT_STATS)), FSOLUiProfileCapture::DUMP_FRAMES);
     mStep = 0;
     EnterStep(mStep, pawn);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Sets the -ResX / -ResY view of a view run (SDD 37 section 8); false while the game window does not exist yet
+bool FSOLHoloMenuProfileSmoke::ApplyCommandLineView(UWorld* world)
+{
+    // The game window may grow past the desktop and the view is set with r.SetRes (a windowed game is otherwise clamped
+    // to the desktop's work area); the setup step retries every frame, and its wait covers the resize
+    int32 width = 0;
+    int32 height = 0;
+    if (!FParse::Value(FCommandLine::Get(), TEXT("ResX="), width) || !FParse::Value(FCommandLine::Get(), TEXT("ResY="),
+        height) || width <= 0 || height <= 0 || (width == PROFILE_VIEW_WIDTH && height == PROFILE_VIEW_HEIGHT))
+    {
+        return true;
+    }
+    const TSharedPtr<SWindow> window = GEngine != nullptr && GEngine->GameViewport != nullptr
+        ? GEngine->GameViewport->GetWindow() : nullptr;
+    if (!window.IsValid())
+    {
+        return false;
+    }
+    window->SetSizeLimits(FWindowSizeLimits().SetMaxWidth(PROFILE_MAX_WINDOW_PX).SetMaxHeight(PROFILE_MAX_WINDOW_PX));
+    FSOLUiProfileCapture::RunCommand(*FString::Printf(TEXT("r.SetRes %dx%dw"), width, height), world);
+    UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile: view run at %dx%d (window size limit lifted)"), width, height);
+    return true;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -235,6 +290,22 @@ void FSOLHoloMenuProfileSmoke::EnterStep(const int32 step, ASOLShipPawn& pawn)
             clock != nullptr ? TEXT("") : TEXT(" FAILED (no sim clock)"), PROFILE_BODY_NAME);
         break;
     }
+    case EProfileStep::GlowZero:
+    case EProfileStep::GlowDouble:
+        // SDD 37 section 8: a pending HUD glow, as the Settings slider sets it (previewed at once, never applied)
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            SOLSettingsModel::FSettingsValues values = settings->GetLiveValues();
+            values.HudGlow = current == EProfileStep::GlowZero ? PROFILE_GLOW_ZERO : PROFILE_GLOW_DOUBLE;
+            settings->SetPendingValues(values);
+        }
+        break;
+    case EProfileStep::GlowRevert:
+        if (USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn))
+        {
+            settings->RevertPending();
+        }
+        break;
     case EProfileStep::PrepTarget:
         RadialAction(pawn, ESOLAction::Target);
         break;
@@ -301,6 +372,10 @@ bool FSOLHoloMenuProfileSmoke::TickStep(const int32 step, ASOLShipPawn& pawn, co
     switch (current)
     {
     case EProfileStep::Setup:
+        if (!mIsViewApplied)
+        {
+            mIsViewApplied = ApplyCommandLineView(pawn.GetWorld());
+        }
         if (mStepFrames == PROFILE_PLACE_FRAME)
         {
             UWorld* world = pawn.GetWorld();
@@ -362,6 +437,18 @@ void FSOLHoloMenuProfileSmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             UE_LOG(LogSOL, Error, TEXT("HoloMenuProfile: the %s icon is not on screen at JD %.5f; every pass is "
                 "INVALID (FAIL)"), PROFILE_BODY_NAME, PROFILE_SIM_JD);
         }
+        break;
+    }
+    case EProfileStep::GlowZero:
+        CheckHudGlow(TEXT("m-glow-0"), PROFILE_GLOW_ZERO, pawn);
+        break;
+    case EProfileStep::GlowDouble:
+        CheckHudGlow(TEXT("m-glow-200"), PROFILE_GLOW_DOUBLE, pawn);
+        break;
+    case EProfileStep::GlowRevert:
+    {
+        const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+        CheckHudGlow(TEXT("m-glow-revert"), settings != nullptr ? settings->GetSavedValues().HudGlow : -1.0f, pawn);
         break;
     }
     case EProfileStep::PrepTarget:
@@ -510,6 +597,8 @@ bool FSOLHoloMenuProfileSmoke::IsPassMenuOpen(const int32 pass, const ASOLShipPa
     switch (pass)
     {
     case 0:
+    case 5:
+    case 6:
         return !mInteraction->IsRadialOpen() && !pawn.IsOverlayMenuOpen() && !pawn.IsSpeedPanelOpen()
             && !pawn.IsMapOpen();
     case 1:
@@ -529,7 +618,7 @@ bool FSOLHoloMenuProfileSmoke::IsPassMenuOpen(const int32 pass, const ASOLShipPa
 // Shows the info card again (the same Execute the radial and list menus run), so it outlives a long pass
 void FSOLHoloMenuProfileSmoke::RefreshInfoCard() const
 {
-    if (PassOfStep(static_cast<EProfileStep>(mStep)) > 0 && mBody.IsValid())
+    if (PassHasCards(PassOfStep(static_cast<EProfileStep>(mStep))) && mBody.IsValid())
     {
         mInteraction->Execute(mBody, ESOLAction::Info);
     }
@@ -595,7 +684,7 @@ void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPaw
     const double cpuSlate = result.CpuMs[1];
     const double cpuGameUi = result.CpuMs[2];
     const double cpuTotal = cpuHud >= 0.0 && cpuSlate >= 0.0 ? cpuHud + cpuSlate : -1.0;
-    const bool bCards = pass > 0;
+    const bool bCards = PassHasCards(pass);
     const bool bTarget = mBody.IsValid() && mTargeting->GetSelectedIndex() == mBody.Index;
     const int32 infoLines = mHud.IsValid() ? mHud->GetLastInfoCardLineCount() : 0;
     const bool bCardsAsWanted = bCards ? bTarget && infoLines > 0 : !bTarget && infoLines == 0;
@@ -603,11 +692,12 @@ void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPaw
     int32 height = 0;
     mController->GetViewportSize(width, height);
 
-    // Valid only in the baseline's conditions: the fixed scene with its body, a standalone 1280x720 game, every number
-    // read, the pass's menu open on every capture frame and the cards as the pass wants them
-    const bool bValid = mIsShipPlaced && mIsBodyFound && !GIsEditor && width == PROFILE_VIEW_WIDTH
-        && height == PROFILE_VIEW_HEIGHT && cpuTotal >= 0.0 && gpu.UiMs >= 0.0 && mMenuFrames > 0
-        && mMenuOpenFrames == mMenuFrames && bCardsAsWanted;
+    // Valid in the baseline's conditions: the fixed scene with its body, a standalone game, every number read, the
+    // pass's menu open on every capture frame and the cards as the pass wants them. Only a 1280x720 view is compared
+    // with the baseline; at another size (a view run, SDD 37 section 8) the numbers are logged as NOBASE
+    const bool bValid = mIsShipPlaced && mIsBodyFound && !GIsEditor && cpuTotal >= 0.0 && gpu.UiMs >= 0.0
+        && mMenuFrames > 0 && mMenuOpenFrames == mMenuFrames && bCardsAsWanted;
+    const bool bBaseView = width == PROFILE_VIEW_WIDTH && height == PROFILE_VIEW_HEIGHT;
     const UGameUserSettings* userSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr;
     const bool bVSync = userSettings != nullptr && userSettings->IsVSyncEnabled();
     const int32 scalability = userSettings != nullptr ? userSettings->GetOverallScalabilityLevel() : INDEX_NONE;
@@ -615,7 +705,7 @@ void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPaw
     // The verdict against the pre-conversion baseline (budget: under 0.1 ms extra CPU and GPU)
     const double baseCpu = PROFILE_BASELINE_CPU_MS[pass];
     const double baseGpu = PROFILE_BASELINE_GPU_MS[pass];
-    const bool bHasBase = baseCpu > 0.0 && baseGpu > 0.0;
+    const bool bHasBase = baseCpu > 0.0 && baseGpu > 0.0 && bBaseView;
     const double deltaCpu = bHasBase ? cpuTotal - baseCpu : 0.0;
     const double deltaGpu = bHasBase ? gpu.UiMs - baseGpu : 0.0;
     const TCHAR* verdict = !bValid ? TEXT("FAIL") : !bHasBase ? TEXT("NOBASE")
@@ -623,16 +713,30 @@ void FSOLHoloMenuProfileSmoke::LogPassResult(const int32 pass, const ASOLShipPaw
     mPassesFailed += FCString::Strcmp(verdict, TEXT("FAIL")) == 0 ? 1 : 0;
     mPassesNoBase += FCString::Strcmp(verdict, TEXT("NOBASE")) == 0 ? 1 : 0;
     const double frameMs = result.FrameMs;
+    const float hudGlowScale = mHud.IsValid() ? mHud->GetShapeGlowScale() : -1.0f;
     UE_LOG(LogSOL, Log, TEXT("HoloMenuProfile RESULT P%d %s pass=%s cpu_hud=%.3f cpu_slate=%.3f cpu_gameui=%.3f "
         "cpu_total=%.3f gpu_ui=%.3f gpu_slate=%.3f gpu_shapes=%.3f gpu_frame=%.3f ui_draws=%d gpu_ui_all=%s "
         "frame_ms=%.2f view=%dx%d vsync=%s scalability=%d editor=%s valid=%s jd=%.5f body=%s menu_frames=%d/%d "
-        "target=%s info_lines=%d base_cpu=%.3f base_gpu=%.3f dcpu=%+.3f dgpu=%+.3f budget=%.3f map=%s"), pass,
+        "target=%s info_lines=%d base_cpu=%.3f base_gpu=%.3f dcpu=%+.3f dgpu=%+.3f budget=%.3f map=%s "
+        "glow_scale=%.3f"), pass,
         verdict, PROFILE_PASS_NAMES[pass], cpuHud, cpuSlate, cpuGameUi, cpuTotal, gpu.UiMs, gpu.SlateMs, gpu.MaterialMs,
         gpu.FrameMs, gpu.UiDraws, *result.GpuUiAll, frameMs, width, height, bVSync ? TEXT("on") : TEXT("off"), scalability,
         GIsEditor ? TEXT("yes") : TEXT("no"), bValid ? TEXT("yes") : TEXT("no"), PROFILE_SIM_JD,
         mIsBodyFound ? PROFILE_BODY_NAME : TEXT("MISSING"), mMenuOpenFrames, mMenuFrames, bTarget ? TEXT("yes")
         : TEXT("no"), infoLines, baseCpu, baseGpu, deltaCpu, deltaGpu, PROFILE_BUDGET_MS, pawn.IsMapOpen()
-        ? TEXT("open") : TEXT("closed"));
+        ? TEXT("open") : TEXT("closed"), hudGlowScale);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks that the HUD pushed the glow scale of a Settings HUD glow value to its material (SDD 37 section 8)
+void FSOLHoloMenuProfileSmoke::CheckHudGlow(const TCHAR* label, const float setting, const ASOLShipPawn& pawn)
+{
+    const float expected = SOLHudShapeMath::HudGlowScale(setting);
+    const float pushed = mHud.IsValid() ? mHud->GetShapeGlowScale() : -1.0f;
+    const USOLSettingsSubsystem* settings = USOLSettingsSubsystem::Get(&pawn);
+    Check(label, setting >= 0.0f && settings != nullptr
+        && FMath::IsNearlyEqual(pushed, expected, PROFILE_GLOW_TOLERANCE), FString::Printf(TEXT("HUD glow %.0f%%: "
+        "glow scale %.4f pushed (want %.4f)"), setting * 100.0f, pushed, expected));
 }
 
 //////////////////////////////////////////////////////////////////////////

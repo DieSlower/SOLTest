@@ -1583,8 +1583,9 @@ namespace
     const TCHAR* const HUDSHAPES_EVERY_KIND_NAMES[HUDSHAPES_EVERY_KIND_COUNT] = { TEXT("line"), TEXT("ring"),
         TEXT("arc"), TEXT("ellipse"), TEXT("dashed line"), TEXT("panel") };
 
-    // A glow factor inside the sanitizer's range, used as the override
-    constexpr float HUDSHAPES_OVERRIDE_SCALE = 0.3f;
+    // A glow factor inside the sanitizer's range, used as the override (not the default level, so a replaced
+    // override is told apart from the replacing one)
+    constexpr float HUDSHAPES_OVERRIDE_SCALE = 0.45f;
 
     // The vertex value of a shape with no override (use the material's GlowScale)
     const FVector2f HUDSHAPES_NO_OVERRIDE(0.0f, 0.0f);
@@ -1697,7 +1698,9 @@ bool FSOLHudShapesBatchGlowOverrideTest::RunTest(const FString& /*parameters*/)
         next += count;
     }
 
-    // A second SetGlowOverride replaces the first
+    // A second SetGlowOverride replaces the first (two different values, so the check is not tautological)
+    static_assert(HUDSHAPES_OVERRIDE_SCALE != static_cast<float>(SOL::Hologram::HUD_GLOW_DEFAULT_LEVEL),
+        "the replaced and replacing overrides must differ");
     batch.SetGlowOverride(HUDSHAPES_OVERRIDE_SCALE);
     batch.SetGlowOverride(HUDSHAPES_LEVEL);
     TestEqual(TEXT("replaced: every kind added"), HudShapesAddEveryKind(batch), count);

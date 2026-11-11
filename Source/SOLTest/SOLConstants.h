@@ -871,10 +871,10 @@ namespace SOL
         inline constexpr double HUD_GLOW_HALO_SCALE = 0.2;
         inline constexpr double HUD_GLOW_HALO_POWER = 0.75;
         // The core falloff's cap (SDD 37 D8): a ~1 px antialiased edge, reached for every g <= HUD_GLOW_CORE_FALLOFF /
-        // this (0.5, so at 100% HUD glow and below while the default level is 0.5), not only at 0%
+        // this (0.5, so up to about 167% HUD glow at the default level 0.3), not only at 0%
         inline constexpr double HUD_GLOW_CORE_FALLOFF_MAX = 6.0;
-        inline constexpr float HUD_GLOW_DEFAULT_LEVEL = 0.5f;       // g at 100% HUD glow, of the issue #31 glow
-                                                                    // (SDD 37 D4: placeholder until the user picks it)
+        inline constexpr float HUD_GLOW_DEFAULT_LEVEL = 0.3f;       // g at 100% HUD glow, of the issue #31 glow
+                                                                    // (SDD 37 D4: the user's pick, 2026-11-11)
         inline constexpr float HUD_GLOW_SCALE_MAX = 2.0f;           // Glow scales are clamped to [0, this] (reference
                                                                     // units: g = 1 is never clamped)
         inline constexpr float HUD_GLOW_PAD_PX = 32.0f;             // Quad padding around a shape (LT kExpansion)

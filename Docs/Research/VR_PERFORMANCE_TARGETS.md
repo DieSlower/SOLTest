@@ -224,6 +224,12 @@ Nothing here replaces testing on hardware, but pixel throughput and frame time a
   one XR-4 eye 27-33 ms, GPU-bound by the scene behind the menus (the game thread is 4.4-6.7 ms). That is project-level
   VR work (section 7a, `Docs/ToDo/vr-performance-gate.md`), not a menu cost.
 - **Measured (#33 part 33f, 2026-11-09, RTX 2080 Ti; SDD 33 section 14.7).** The Help page of both menus (the Keyboard tab with the live diagram, with and without the hover popup, and the four HUD glossary tabs) in three runs each at 4K and one XR-4 eye (two eyes skipped, user decision): the menu's GPU is 0.43-0.59 ms at 4K and 0.70-1.00 ms at one eye (the pause menu's Keyboard tab with the popup the highest, 84% of the 1.2 ms ceiling), at most +0.09 / +0.11 ms over its menu's Settings screen at the same size; the CPU extra is +0.06 to +0.10 ms against the flat baseline. Inside the ceilings and the 0.2 / 0.3 ms budget. The 4K p99 frame is 15.7-17.3 ms (`proxy=MISS`, scene-bound as above). At the eye's near-square aspect the menus are laid out narrow and the Help page clips (outside its wide-screen design, `Docs/TECH_DEBT.md`), one more reason for a wide quad or stereo layer in VR.
+- **Measured (#37 part 37c, 2026-11-11, RTX 2080 Ti; SDD 37 section 8).** `-SOLSmokeHoloMenuProfile` at one XR-4 eye
+  (3840x3744), medians of three runs, whole Slate UI pass GPU after the HUD glow change (level 0.3): P0 flight HUD
+  0.322 ms, P1 radial menu 0.404, P2 Overlay Menu 1.152, P3 speed panel 1.259, P4 map list 0.384, P5 flight HUD at
+  HUD glow 0% 0.315, P6 at 200% 0.323. The flight HUD is far inside the 1.2 ms ceiling; the Overlay Menu is at 96% of
+  it and the speed panel above it (1.248 ms before #37 too: a #42 hologram-menu cost, recorded in
+  `Docs/TECH_DEBT.md`, not addressed until the VR work).
 
 ### 7a. Proxy on this machine (user decision, 2026-11-06)
 

@@ -274,7 +274,9 @@ namespace
         const TCHAR* Mode;
     };
     const FSolidSmokeGlowView SOLID_SMOKE_GLOW_VIEWS[] = {
-        { FIntPoint(1280, 720), TEXT("w") }, { FIntPoint(1920, 1080), TEXT("w") }, { FIntPoint(3840, 2160), TEXT("wf") },
+        { FIntPoint(1280, 720), TEXT("w") },
+        { FIntPoint(1920, 1080), TEXT("w") },
+        { FIntPoint(3840, 2160), TEXT("wf") },
     };
     constexpr int32 SOLID_SMOKE_GLOW_DISPLAY_VIEW = 2;          // The entry asked as windowed fullscreen
     constexpr int32 SOLID_SMOKE_GLOW_VIEW_COUNT = UE_ARRAY_COUNT(SOLID_SMOKE_GLOW_VIEWS);
@@ -3394,13 +3396,13 @@ void FSOLSolidMenuSmoke::ParkCursor() const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (Issue #37, SDD 37 D16 / D17) Checks that the Settings page's HUD glow sample and the hologram pointer pushed the
-// glow scale of a HUD glow setting (and the sample its text alpha); bLayout also checks that the sample is on the
-// shown Gameplay tab, inside its scroll box and the page, built at its laid-out pixel size with its own material, and
-// painted whole (its shapes, one text line, one backing)
+// (Issue #37, D16 / D17) Checks the Settings HUD glow sample and the pointer pushed a HUD glow setting's glow
 void FSOLSolidMenuSmoke::CheckGlowSample(USOLMenuSubsystem& menu, const TCHAR* id, const float setting,
     const bool bLayout)
 {
+    // The sample also pushes its text alpha. bLayout also checks that the sample is on the shown Gameplay tab, inside
+    // its scroll box and the page, built at its laid-out pixel size with its own material, and painted whole (its
+    // shapes, one text line, one backing)
     const USOLMainMenuWidget* mainMenu = menu.GetMainMenu();
     const USOLSettingsPageWidget* page = mainMenu != nullptr ? mainMenu->GetSettingsPage() : nullptr;
     const USOLHudGlowSample* sample = page != nullptr ? page->GetGlowSample() : nullptr;
@@ -6277,11 +6279,12 @@ bool FSOLSolidMenuSmoke::ReadHelpPopup(USOLReadOnlyPageWidget& page, const USOLS
 }
 
 //////////////////////////////////////////////////////////////////////////
-// (Issue #37, D11) Checks the glossary's glow against a Settings HUD glow value: the subsystem's pushed glow scale, the
-// shared HUD shape material's GlowScale and every view of the tab's text glow alpha
+// (Issue #37, D11) Checks the glossary's glow against a Settings HUD glow value
 bool FSOLSolidMenuSmoke::ReadHelpGlow(USOLMenuSubsystem& menu, const USOLReadOnlyPageWidget& page, const int32 tab,
     const float setting, FString& outDetail) const
 {
+    // The subsystem's pushed glow scale, the shared HUD shape material's GlowScale and every view of the tab's text
+    // glow alpha
     const float want = SOLHudShapeMath::HudGlowScale(setting);
     const float wantAlpha = SOLHudShapeMath::TextGlowAlpha(want);
     const USOLSolidMenuSubsystem* solid = USOLSolidMenuSubsystem::Get(menu.GetWorld());

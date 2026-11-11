@@ -7,6 +7,9 @@ Overlay Menu, hologram cursor, action table), SDD 34 (Overlay Menu profile tabs)
 and SDD 8 (Settings). Sister ticket: #46 (solid console menus for the full screens; notes in
 `Docs/Plans/46-solid-menus-grill-notes.md`), which depends on #42 for the shared hover, cursor and animation code.
 Plan: [`Docs/Plans/42-hologram-in-flight-menus-plan.md`](../Plans/42-hologram-in-flight-menus-plan.md).
+Issue #37 (SDD 37 D10): the readouts inside the four hologram cards (text and lines) follow the Settings HUD glow
+slider through a per-shape glow override; the card frames (corner marks, tint, sweep) and every menu keep the menu
+material's `GlowScale` 1 and follow Hologram menu effects only (SDD 21 Amendment 5).
 
 Status: **every question is answered (2026-11-03); implementation in progress.** The grill-me decisions below are
 resolved. The user approved A1 and A2 (section 9.1) and answered Q1 and Q2 on 2026-11-03 (D7-D10), then Q2b, Q3-Q8,
