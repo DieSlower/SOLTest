@@ -92,8 +92,8 @@ namespace
     //////////////////////////////////////////////////////////////////////////
     // Returns the contract's accordion lane dash coverage (SDD 38 D15 amendment D): one continuous level for the whole
     // lane, clamp(log2(1 / (laneFootprint x MIN_PERIOD_PX)), NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL), the
-    // phase (s - 0.5) x BASE x 2^level - direction x f box-filtered over pixelFootprint x 2^level, then the orbit lines'
-    // fade to solid by this pixel's own period 1 / (pixelFootprint x 2^level)
+    // phase (s - 0.5) x BASE x 2^level - direction x f box-filtered over pixelFootprint x 2^level, then the orbit
+    // lines' fade to solid by this pixel's own period 1 / (pixelFootprint x 2^level)
     double NpcLaneAccordionDash(const double s, const double flowPhase, const int32 direction,
         const double laneFootprint, const double pixelFootprint)
     {
@@ -886,8 +886,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashCoverageTest, "SOLTest.NpcLa
 // level, and nothing pops: the coverage is continuous in the footprint (no step where the stepped scheme jumped), the
 // mean brightness stays the duty, the whole levels reproduce the stepped scheme (64 base dashes at level 0, the
 // orbit lines' coverage where their blend is 0, 4 dashes at the floor), the lane's middle never slides, one size is
-// drawn (no dimmer copy), the box filter and the solid fade follow the pixel's own footprint, in [0, 1], a level-0
-// square wave for a bad lane footprint, periodic in the flow, and the flow moves the pattern at every scale
+// drawn (no dimmer copy), the box filter and the solid fade follow the pixel's own footprint, in [0, 1], the floor
+// level (the limit of a lane shrinking to a point) for a bad lane footprint, periodic in the flow, and the flow moves
+// the pattern at every scale
 bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcLane;
@@ -1107,9 +1108,13 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
         }
     }
 
-    // A NaN or non-positive lane footprint: a level-0 point sample of the flowed phase (a square wave of duty
-    // DASH_DUTY); a bad pixel footprint with a good lane one: a point sample at the lane's scale, no solid fade
-    for (const double badFootprint : { 0.0, -1.0, NPCLANE_NAN })
+    // A NaN, non-positive or infinite lane footprint (a lane with no angle on screen) takes the floor level, the
+    // limit of a lane shrinking to a point: with a bad pixel footprint too a point sample of the flowed floor-level
+    // phase (a square wave of duty DASH_DUTY); with a good pixel footprint the box filter over footprint x 2^MIN (and
+    // the solid fade) exactly as for a huge lane footprint, the duty once that is a whole period or more; a bad pixel
+    // footprint with a good lane one: a point sample at the lane's scale, no solid fade
+    const double hugeLaneFootprint = 1.0e12;
+    for (const double badFootprint : { 0.0, -1.0, NPCLANE_NAN, NPCLANE_INF })
     {
         for (const double s : { 0.0031, 0.2117, 0.5049, 0.7766 })
         {
@@ -1119,10 +1124,22 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
                 const FString label = FString::Printf(TEXT("footprint %f, s %.4f, dir %d"), badFootprint, s,
                     direction);
                 const double coverage = LaneDashCoverage(s, f, direction, badFootprint);
-                TestEqual(label + TEXT(": the level-0 point sample"), coverage,
-                    SOLOrbitLineMath::DashCoverage(LaneDashPhase(s, 0.0, f, direction), SOL::NPC_LANE_DASH_DUTY, 0.0),
-                    NPCLANE_TOL);
+                TestEqual(label + TEXT(": the floor-level point sample"), coverage, SOLOrbitLineMath::DashCoverage(
+                    LaneDashPhase(s, static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL), f, direction),
+                    SOL::NPC_LANE_DASH_DUTY, 0.0), NPCLANE_TOL);
                 TestTrue(label + TEXT(": 0 or 1"), coverage == 0.0 || coverage == 1.0);
+                for (const double pixelFootprint : { 0.01, 0.05, 0.4, 3.0 })
+                {
+                    const FString pixelLabel = label + FString::Printf(TEXT(", pixel %.2f"), pixelFootprint);
+                    const double filtered = LaneDashCoverage(s, f, direction, badFootprint, pixelFootprint);
+                    TestEqual(pixelLabel + TEXT(": the floor level, box-filtered"), filtered,
+                        NpcLaneAccordionDash(s, f, direction, hugeLaneFootprint, pixelFootprint), NPCLANE_TOL);
+                    TestEqual(pixelLabel + TEXT(": the limit of a huge lane footprint"), filtered,
+                        LaneDashCoverage(s, f, direction, hugeLaneFootprint, pixelFootprint), NPCLANE_TOL);
+                }
+                TestEqual(label + TEXT(": a pixel over a whole floor-level period is the duty"),
+                    LaneDashCoverage(s, f, direction, badFootprint, 1.25 / minLevelScale), SOL::NPC_LANE_DASH_DUTY,
+                    NPCLANE_TOL);
                 const double laneFootprint = 1.0 / (minPeriodPx * FMath::Exp2(1.3));
                 const double atLane = LaneDashCoverage(s, f, direction, laneFootprint, badFootprint);
                 TestEqual(label + TEXT(": bad pixel footprint, the point sample at the lane's level"), atLane,
@@ -1170,7 +1187,9 @@ bool FSOLNpcLaneMathDashScreenSpacingTest::RunTest(const FString& /*parameters*/
     const double minLevel = static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL);
     const double maxLevel = static_cast<double>(SOL::ORBIT_LINE_DASH_MAX_LEVEL);
 
-    // LaneDashLevel: log2 of the period over the minimum, continuous, clamped, 0 for a bad footprint
+    // LaneDashLevel: log2 of the period over the minimum, continuous, clamped; the floor for a bad footprint (a lane
+    // with no angle on screen, LaneDashLaneFootprint's 0, or an infinite one: the limit of a lane shrinking to a
+    // point, as the shader's clamp of log2(0))
     TestEqual(TEXT("level 0 at a 24 px period"), LaneDashLevel(1.0 / minPeriodPx), 0.0, NPCLANE_TOL);
     for (const double level : { -3.5, -1.0, 0.25, 2.0, 5.75 })
     {
@@ -1181,8 +1200,11 @@ bool FSOLNpcLaneMathDashScreenSpacingTest::RunTest(const FString& /*parameters*/
     TestEqual(TEXT("clamped at the top"), LaneDashLevel(1.0e-9), maxLevel, NPCLANE_TOL);
     for (const double bad : { 0.0, -2.0, NPCLANE_NAN, NPCLANE_INF })
     {
-        TestEqual(FString::Printf(TEXT("bad footprint %f -> 0"), bad), LaneDashLevel(bad), 0.0, NPCLANE_TOL);
+        TestEqual(FString::Printf(TEXT("bad footprint %f -> the floor"), bad), LaneDashLevel(bad), minLevel,
+            NPCLANE_TOL);
     }
+    TestEqual(TEXT("a huge footprint -> the floor (the limit the bad ones take)"), LaneDashLevel(1.0e300), minLevel,
+        NPCLANE_TOL);
     double previousLevel = LaneDashLevel(100.0);
     for (int32 step = 1; step <= 400; ++step)
     {
@@ -1205,8 +1227,8 @@ bool FSOLNpcLaneMathDashScreenSpacingTest::RunTest(const FString& /*parameters*/
         focalPx), 1.0e-9);
     TestEqual(TEXT("behind the camera: the angle through the side"), LaneDashLaneFootprint(FVector3d(d, -h, 0.0),
         FVector3d(-d, -h, 0.0), focalPx), base / ((UE_DOUBLE_PI - smallAngle) * focalPx), 1.0e-9);
-    TestEqual(TEXT("end-on (B behind A): 0"), LaneDashLaneFootprint(FVector3d(d, 0.0, 0.0), FVector3d(2.0 * d, 0.0, 0.0),
-        focalPx), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("end-on (B behind A): 0"), LaneDashLaneFootprint(FVector3d(d, 0.0, 0.0),
+        FVector3d(2.0 * d, 0.0, 0.0), focalPx), 0.0, NPCLANE_TOL);
     TestEqual(TEXT("A on the camera: 0"), LaneDashLaneFootprint(FVector3d::ZeroVector, FVector3d(d, h, 0.0), focalPx),
         0.0, NPCLANE_TOL);
     TestEqual(TEXT("focal 0: 0"), LaneDashLaneFootprint(FVector3d(d, -h, 0.0), FVector3d(d, h, 0.0), 0.0), 0.0,
@@ -1272,6 +1294,129 @@ bool FSOLNpcLaneMathDashScreenSpacingTest::RunTest(const FString& /*parameters*/
         NPCLANE_TOL);
     TestEqual(TEXT("NaN endpoint -> s"), LaneScreenParam(FVector3d(NPCLANE_NAN, 0.0, 0.0), FVector3d(d, h, 0.0), 0.37),
         0.37, NPCLANE_TOL);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashPinholeSpacingTest, "SOLTest.NpcLaneMath.DashPinholeSpacing",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a camera-relative point (x forward, y right, z up) projected through a pinhole camera of this focal
+    // length onto the image plane, in pixels from the screen centre
+    FVector2D NpcLanePinholeProject(const FVector3d& pointCamM, const double focalPx)
+    {
+        return FVector2D(focalPx * pointCamM.Y / pointCamM.X, focalPx * pointCamM.Z / pointCamM.X);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Fills outPx with the on-screen points of the composed shader path's dash period boundaries along lane A-B (the
+    // level from LaneDashLevel(LaneDashLaneFootprint), the phase (sigma - 0.5) x BASE x 2^level a whole number at no
+    // flow, sigma = LaneScreenParam), each found by bisecting the lane parameter, then projected through the pinhole
+    void NpcLanePinholeBoundaries(const FVector3d& aCamM, const FVector3d& bCamM, const double focalPx,
+        TArray<FVector2D>& outPx)
+    {
+        outPx.Reset();
+        const double level = SOLNpcLane::LaneDashLevel(SOLNpcLane::LaneDashLaneFootprint(aCamM, bCamM, focalPx));
+        const double periods = static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) * FMath::Exp2(level);
+        const int32 first = FMath::CeilToInt32(-0.5 * periods);
+        const int32 last = FMath::FloorToInt32(0.5 * periods);
+        for (int32 index = first; index <= last; ++index)
+        {
+            // Bisect for the lane parameter whose screen parameter is this boundary's
+            const double sigma = 0.5 + static_cast<double>(index) / periods;
+            double low = 0.0;
+            double high = 1.0;
+            for (int32 iteration = 0; iteration < 100; ++iteration)
+            {
+                const double mid = 0.5 * (low + high);
+                const bool bBefore = SOLNpcLane::LaneScreenParam(aCamM, bCamM, mid) < sigma;
+                low = bBefore ? mid : low;
+                high = bBefore ? high : mid;
+            }
+            outPx.Add(NpcLanePinholeProject(aCamM + (bCamM - aCamM) * (0.5 * (low + high)), focalPx));
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Case 12c (the reviewed claim of D15 amendment D): through a pinhole camera (90 degrees across 1920 px, focal 960
+// px) the composed path (lane footprint -> level -> screen parameter -> phase) puts the dash periods about
+// MIN_PERIOD_PX = 24 px apart on screen near the screen centre, in perspective too (one end three times nearer);
+// off axis a period is 24 px of angle, so on screen 24 / cos^2 of the off-axis angle radially (about 2x at 45
+// degrees, the edge of a 90 degree view) and 24 / cos across (about 1.41x there)
+bool FSOLNpcLaneMathDashPinholeSpacingTest::RunTest(const FString& /*parameters*/)
+{
+    const double focalPx = 960.0;
+    const double minPeriodPx = SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX;
+    TArray<FVector2D> boundaries;
+
+    // Near the centre, in perspective: A 10 degrees left at 1 AU, B 10 degrees right at a third of that, slightly
+    // off the horizon (so not exactly radial); every period within 4% of 24 px (1 / cos^2 of 10 degrees is 1.031)
+    const double tan10 = FMath::Tan(FMath::DegreesToRadians(10.0));
+    const FVector3d nearCentreA = FVector3d(1.0, -tan10, 0.02) * NPCLANE_AU_M;
+    const FVector3d nearCentreB = FVector3d(1.0, tan10, -0.01) * (NPCLANE_AU_M / 3.0);
+    NpcLanePinholeBoundaries(nearCentreA, nearCentreB, focalPx, boundaries);
+    TestTrue(FString::Printf(TEXT("near the centre: %d periods (between the clamps)"), boundaries.Num() - 1),
+        boundaries.Num() >= 10);
+    double shortest = TNumericLimits<double>::Max();
+    double longest = 0.0;
+    for (int32 index = 1; index < boundaries.Num(); ++index)
+    {
+        const double spacingPx = FVector2D::Distance(boundaries[index - 1], boundaries[index]);
+        shortest = FMath::Min(shortest, spacingPx);
+        longest = FMath::Max(longest, spacingPx);
+    }
+    TestTrue(FString::Printf(TEXT("near the centre: periods %.2f-%.2f px, about 24"), shortest, longest),
+        shortest >= minPeriodPx * 0.99 && longest <= minPeriodPx * 1.04);
+
+    // A short lane through the centre itself: within 0.5% of 24 px
+    const FVector3d centreA = FVector3d(1.0, -0.06, 0.0) * NPCLANE_AU_M;
+    const FVector3d centreB = FVector3d(1.0, 0.06, 0.0) * (0.5 * NPCLANE_AU_M);
+    NpcLanePinholeBoundaries(centreA, centreB, focalPx, boundaries);
+    TestTrue(TEXT("through the centre: some periods"), boundaries.Num() >= 4);
+    for (int32 index = 1; index < boundaries.Num(); ++index)
+    {
+        const double spacingPx = FVector2D::Distance(boundaries[index - 1], boundaries[index]);
+        TestEqual(FString::Printf(TEXT("through the centre, period %d"), index), spacingPx, minPeriodPx,
+            0.005 * minPeriodPx);
+    }
+
+    // Radially at 40-50 degrees off axis (in the horizontal plane, so the lane lies on a screen radius): each period
+    // is 24 / cos^2 of its off-axis angle on screen within 1%, about twice 24 px at 45 degrees
+    const auto horizontalDirection = [](const double degrees)
+    {
+        const double radians = FMath::DegreesToRadians(degrees);
+        return FVector3d(FMath::Cos(radians), FMath::Sin(radians), 0.0);
+    };
+    NpcLanePinholeBoundaries(horizontalDirection(40.0) * NPCLANE_AU_M, horizontalDirection(50.0)
+        * (0.5 * NPCLANE_AU_M), focalPx, boundaries);
+    TestTrue(TEXT("radial at 45 degrees: some periods"), boundaries.Num() >= 4);
+    for (int32 index = 1; index < boundaries.Num(); ++index)
+    {
+        const double spacingPx = FVector2D::Distance(boundaries[index - 1], boundaries[index]);
+        const double offAxis = FMath::Atan(0.5 * (boundaries[index - 1] + boundaries[index]).Size() / focalPx);
+        const double expectedPx = minPeriodPx / FMath::Square(FMath::Cos(offAxis));
+        TestEqual(FString::Printf(TEXT("radial, %.1f degrees off axis: 24 / cos^2"),
+            FMath::RadiansToDegrees(offAxis)), spacingPx, expectedPx, 0.01 * expectedPx);
+        if (FMath::Abs(FMath::RadiansToDegrees(offAxis) - 45.0) < 1.0)
+        {
+            TestEqual(TEXT("radial at 45 degrees: about 2x"), spacingPx / minPeriodPx, 2.0, 0.06);
+        }
+    }
+
+    // Across the radius at 45 degrees (a vertical lane 45 degrees to the right): 24 / cos 45 = 1.41 x 24 px
+    NpcLanePinholeBoundaries(FVector3d(1.0, 1.0, -0.1) * NPCLANE_AU_M, FVector3d(1.0, 1.0, 0.1) * NPCLANE_AU_M,
+        focalPx, boundaries);
+    TestTrue(TEXT("tangential at 45 degrees: some periods"), boundaries.Num() >= 4);
+    for (int32 index = 1; index < boundaries.Num(); ++index)
+    {
+        const double spacingPx = FVector2D::Distance(boundaries[index - 1], boundaries[index]);
+        TestEqual(FString::Printf(TEXT("tangential at 45 degrees, period %d: 24 / cos 45"), index), spacingPx,
+            minPeriodPx * UE_DOUBLE_SQRT_2, 0.03 * minPeriodPx * UE_DOUBLE_SQRT_2);
+    }
     return true;
 }
 

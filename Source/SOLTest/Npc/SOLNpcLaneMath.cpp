@@ -189,16 +189,19 @@ double SOLNpcLane::LaneDashPhase(const double laneParam, const double level, con
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the lane's continuous dash level from its lane-wide footprint (0 for a bad footprint)
+// Returns the lane's continuous dash level from its lane-wide footprint (the floor level for a bad footprint)
 double SOLNpcLane::LaneDashLevel(const double laneFootprint)
 {
+    const double floorLevel = static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0));
+
+    // A lane that subtends no angle (LaneDashLaneFootprint's 0) or an infinite footprint is the limit of a lane that
+    // shrinks to a point on screen: the floor, as the shader's clamp of log2(0)
     if (!FMath::IsFinite(laneFootprint) || laneFootprint <= 0.0)
     {
-        return 0.0;
+        return floorLevel;
     }
     const double periodPx = 1.0 / laneFootprint;
-    return FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
-        static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0)),
+    return FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX), floorLevel,
         static_cast<double>(FMath::Max(SOL::ORBIT_LINE_DASH_MAX_LEVEL, 0)));
 }
 
@@ -239,14 +242,10 @@ double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPha
     {
         return 0.0;
     }
-    if (!FMath::IsFinite(laneFootprint) || laneFootprint <= 0.0)
-    {
-        return SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, 0.0, flowPhase, direction),
-            SOL::NPC_LANE_DASH_DUTY, 0.0);
-    }
 
     // One continuous scale for the whole lane: the period is the orbit lines' minimum on screen between the clamps, so
-    // a zoom slides the dashes along the lane (from its middle) instead of popping them to another size
+    // a zoom slides the dashes along the lane (from its middle) instead of popping them to another size. A bad lane
+    // footprint (a lane with no angle on screen) takes the floor level, its limit, and is filtered like any other
     const double level = LaneDashLevel(laneFootprint);
     const double levelScale = FMath::Exp2(level);
     const bool bPixelFootprint = FMath::IsFinite(pixelFootprint) && pixelFootprint > 0.0;

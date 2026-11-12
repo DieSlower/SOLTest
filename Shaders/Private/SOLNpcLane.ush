@@ -102,19 +102,20 @@ float SOLNL_AngleBetween(float3 u, float3 v)
 }
 
 // LaneDashLaneFootprint: base count / (the angle the lane subtends at the camera x the focal length in pixels), one
-// value for the whole lane (camera-relative endpoints); 0 when an endpoint sits on the camera or the input is bad
-float SOLNL_LaneFootprint(float3 aCamM, float3 bCamM, float baseCount, float focalLengthPx)
+// value for the whole lane; totalAngle = SOLNL_AngleBetween of the camera-relative endpoints, computed once per pixel
+// and shared with SOLNL_ScreenParam; 0 when the lane subtends no angle or the input is bad
+float SOLNL_LaneFootprint(float totalAngle, float baseCount, float focalLengthPx)
 {
-    const float lengthPx = SOLNL_AngleBetween(aCamM, bCamM) * max(focalLengthPx, 0.0);
+    const float lengthPx = totalAngle * max(focalLengthPx, 0.0);
     return lengthPx > 0.0 ? baseCount / lengthPx : 0.0;
 }
 
-// LaneScreenParam: the lane parameter re-spaced by on-screen (angular) length, the angle from A to the point at
-// laneParam over the whole lane's angle, so equal steps of it are equal steps on screen even in perspective (0 at A,
-// 1 at B, 0.5 at the lane's middle on screen); laneParam itself when the lane subtends no angle
-float SOLNL_ScreenParam(float3 aCamM, float3 bCamM, float laneParam)
+// LaneScreenParam: the lane parameter re-spaced by angular length, the angle from A to the point at laneParam over
+// the whole lane's angle (totalAngle, as for SOLNL_LaneFootprint), so equal steps of it are equal angles at the camera
+// even in perspective (0 at A, 1 at B, 0.5 at the lane's angular midpoint); laneParam itself when the lane subtends
+// no angle
+float SOLNL_ScreenParam(float3 aCamM, float3 bCamM, float laneParam, float totalAngle)
 {
-    const float totalAngle = SOLNL_AngleBetween(aCamM, bCamM);
     if (!(totalAngle > 0.0))
     {
         return laneParam;
@@ -124,21 +125,25 @@ float SOLNL_ScreenParam(float3 aCamM, float3 bCamM, float laneParam)
 }
 
 // LaneDashCoverage (SDD 38 D15 amendment D, the accordion): one continuous scale for the whole lane from its lane-wide
-// footprint, clamped to the levels [minLevel, max level], so a dash period stays the minimum period on screen and
-// nothing pops; the phase pivots on the lane's middle and the flow is applied after the scaling. The box filter and
-// the fade to solid use this pixel's own footprint. phase0 = the screen parameter x base count (level-0 periods),
-// laneFootprint / footprint = one pixel in level-0 periods for the lane / at this pixel, direction +1 outbound (toward
-// B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
+// footprint, clamped to the levels [minLevel, max level], so a dash period stays the minimum period of angle and
+// nothing pops; the phase pivots on the lane's angular midpoint and the flow is applied after the scaling. The box
+// filter and the fade to solid (a guard, in practice only in the corners of the widest field of view) use this
+// pixel's own footprint. A lane footprint of 0 (no angle) takes the floor level, its limit, like LaneDashLevel.
+// phase0 = the screen parameter x base count (level-0 periods), laneFootprint / footprint = one pixel in level-0
+// periods for the lane / at this pixel, direction +1 outbound (toward B) or -1 inbound; dash = the orbit lines' (min
+// period px, max level, solid start px, solid end px)
 float SOLNL_DashCoverage(float phase0, float baseCount, float flowPhase, float direction, float laneFootprint,
     float footprint, float duty, float4 dash, float minLevel)
 {
     const float flow = direction * flowPhase;
     const float centeredPhase0 = phase0 - 0.5 * baseCount;
-    if (!(laneFootprint > 0.0) || dash.x <= 0.0)
+    if (dash.x <= 0.0)
     {
         return SOLOL_DashCoverage(centeredPhase0 - flow, duty, 0.0);
     }
-    const float level = clamp(log2(1.0 / (laneFootprint * dash.x)), min(minLevel, 0.0), max(dash.y, 0.0));
+    const float floorLevel = min(minLevel, 0.0);
+    const float level = laneFootprint > 0.0
+        ? clamp(log2(1.0 / (laneFootprint * dash.x)), floorLevel, max(dash.y, 0.0)) : floorLevel;
     const float levelScale = exp2(level);
     const bool bFootprint = footprint > 0.0;
     const float coverage = SOLOL_DashCoverage(centeredPhase0 * levelScale - flow, duty,
@@ -281,7 +286,8 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
     const float3 aCamM = groupA.xyz - cameraM;
     const float3 bCamM = groupB.xyz - cameraM;
     const float laneParam = SOLNL_ClosestLaneParam(aCamM, bCamM, SOLOL_EclipticToUnreal(rayUnreal));
-    const float phase0 = SOLNL_ScreenParam(aCamM, bCamM, laneParam) * style1.z;
+    const float totalAngle = SOLNL_AngleBetween(aCamM, bCamM);
+    const float phase0 = SOLNL_ScreenParam(aCamM, bCamM, laneParam, totalAngle) * style1.z;
     const float footprint = fwidth(phase0);
     if (groupB.w < 0.0)
     {
@@ -324,7 +330,7 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
     // (its angular length in pixels; the focal length from the rendering view's projection, so every view gets its own)
     const float direction = lineIndex < 0.5 ? 1.0 : -1.0;
     const float focalLengthPx = 0.5 * ResolvedView.ViewToClip[0][0] * ResolvedView.ViewSizeAndInvSize.x;
-    const float laneFootprint = SOLNL_LaneFootprint(aCamM, bCamM, style1.z, focalLengthPx);
+    const float laneFootprint = SOLNL_LaneFootprint(totalAngle, style1.z, focalLengthPx);
     const float coverage = SOLNL_DashCoverage(phase0, style1.z, params0.x, direction, laneFootprint, footprint,
         style1.w, dash, style2.z);
     const float3 color = lineIndex < 0.5 ? outboundColor : inboundColor;

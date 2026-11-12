@@ -78,15 +78,16 @@ namespace SOLNpcLane
     SOLTEST_API double LaneDashFlowPhase(double timeS);
 
     // Returns a (continuous) level's dash phase: (s - 0.5) x NPC_LANE_DASH_BASE_COUNT x 2^level - sign(direction) x
-    // flowPhase (level clamped to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], NaN as 0, direction 0 as +1), so
-    // outbound dashes move toward B and inbound ones toward A; the scale pivots on the lane's middle, and at a whole
+    // flowPhase (level clamped to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], NaN as 0, direction 0 as
+    // +1), so outbound dashes move toward B and inbound ones toward A; the scale pivots on s = 0.5, and at a whole
     // level the pattern is that of s x BASE x 2^level (the two differ by a whole number of periods)
     SOLTEST_API double LaneDashPhase(double laneParam, double level, double flowPhase, int32 direction);
 
-    // Returns the lane's continuous dash level (SDD 38 D15 amendment D) from its lane-wide footprint (one on-screen pixel
-    // in level-0 dash periods): clamp(log2(1 / (footprint x ORBIT_LINE_DASH_MIN_PERIOD_PX)), NPC_LANE_DASH_MIN_LEVEL,
-    // ORBIT_LINE_DASH_MAX_LEVEL), so a dash period is ORBIT_LINE_DASH_MIN_PERIOD_PX on screen between the two clamps;
-    // 0 for a NaN or non-positive footprint
+    // Returns the lane's continuous dash level (SDD 38 D15 amendment D) from its lane-wide footprint (one on-screen
+    // pixel in level-0 dash periods): clamp(log2(1 / (footprint x ORBIT_LINE_DASH_MIN_PERIOD_PX)),
+    // NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL), so a dash period is ORBIT_LINE_DASH_MIN_PERIOD_PX of
+    // angle on screen between the two clamps; NPC_LANE_DASH_MIN_LEVEL for a NaN, non-positive (a lane with no angle)
+    // or infinite footprint, the limit of a lane shrinking to a point (the shader's clamp of log2(0))
     SOLTEST_API double LaneDashLevel(double laneFootprint);
 
     // Returns the lane-wide footprint the shader derives once per lane: NPC_LANE_DASH_BASE_COUNT / (the angle the lane
@@ -96,18 +97,21 @@ namespace SOLNpcLane
 
     // Returns the lane parameter re-spaced by on-screen (angular) length, the parameter the dashes are laid along:
     // (the angle from A to the point at s, s clamped to [0, 1]) / (the whole lane's angle), so equal steps of it are
-    // equal steps on screen even in perspective (0 at A, 1 at B, 0.5 at the lane's middle on screen); laneParam itself
-    // when the lane subtends no angle (an endpoint on the camera, A == B in direction, bad input)
+    // equal angles at the camera even in perspective (0 at A, 1 at B, 0.5 at the lane's angular midpoint, which moves
+    // along the lane as the camera moves); laneParam itself when the lane subtends no angle (an endpoint on the
+    // camera, A == B in direction, bad input)
     SOLTEST_API double LaneScreenParam(const FVector3d& aRelM, const FVector3d& bRelM, double laneParam);
 
     // Returns the dash coverage of a flowing lane line with the continuous accordion scale (D15 amendment D): one
     // scale for the whole lane, 2^LaneDashLevel(laneFootprint), so the dash period stays about
-    // ORBIT_LINE_DASH_MIN_PERIOD_PX on screen and nothing pops (the dashes slide along the lane, from its middle, as the
-    // scale changes); the flow applied after the scaling; box-filtered over pixelFootprint (one pixel in level-0
-    // periods at this pixel), then the orbit lines' fade to solid where this pixel's own dash period passes
-    // ORBIT_LINE_DASH_SOLID_START_PX. A NaN or non-positive lane footprint is a level-0 point sample; a NaN or
-    // non-positive pixel footprint a point sample at the lane's scale with no solid fade. The shader passes
-    // LaneScreenParam as laneParam, so the dashes are evenly spaced on screen in perspective too
+    // ORBIT_LINE_DASH_MIN_PERIOD_PX of angle and nothing pops (the dashes slide along the lane, from its angular
+    // midpoint, as the scale changes); the flow applied after the scaling; box-filtered over pixelFootprint (one
+    // pixel in level-0 periods at this pixel), then the orbit lines' fade to solid where this pixel's own dash period
+    // passes ORBIT_LINE_DASH_SOLID_START_PX (a guard: in practice only in the corners of the widest field of view). A
+    // NaN or non-positive lane footprint takes the floor level (LaneDashLevel) and is filtered as usual; a NaN or
+    // non-positive pixel footprint is a point sample at the lane's scale with no solid fade. The shader passes
+    // LaneScreenParam as laneParam, so a period is about ORBIT_LINE_DASH_MIN_PERIOD_PX near the screen centre and
+    // longer toward the edges at a wide field of view (1 / cos^2 of the off-axis angle radially, 1 / cos across)
     SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double laneFootprint,
         double pixelFootprint);
 

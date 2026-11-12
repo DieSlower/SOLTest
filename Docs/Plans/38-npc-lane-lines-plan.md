@@ -219,3 +219,7 @@ The full contract is SDD section 6 (cases 1-24). In short:
 - 2026-11-11: second follow-up (user decision, SDD 38 D15 amendment D, the "accordion"): one continuous dash scale per lane
   laid along the on-screen spacing (`LaneScreenParam`), replacing the stepped `floor(level)` and its pop; cases 11, 12
   and the new 12b; suite 1844 / 0, `-SOLSmokeNpcLanes` 35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50.
+- 2026-11-11: amendment D review fixes (SDD 38 change log): docs state the real reachable dash ranges and the angular spacing,
+  the floor level for a lane with no angle (C++ and HLSL), the lane angle computed once in the shader, case 12c
+  (pinhole camera); suite 1845 / 0, `-SOLSmokeNpcLanes` 35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50,
+  lane draw 0.027-0.028 ms at 1080p.

@@ -89,18 +89,34 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
   **Amendment D (user decision, 2026-11-11, second follow-up after 38c): the "accordion" dash scale; replaces
   amendment C's stepped `floor(level)` and its accepted pop.** From a prototype comparison of four schemes (current
   stepped, accordion, split morph, grow-in-gap morph) the user chose the accordion: **one continuous scale for the
-  whole lane**, so a dash period is always about 24 px on screen, nothing pops, no dimmer shadow copy. **Accepted
-  trade-off:** the dashes slide along the lane while zooming (they are no longer fixed to the lane through a zoom;
-  the lane's middle on screen stays put). As built: the lane's level is continuous, `L = clamp(log2(period0Px / 24),
+  whole lane**, so a dash period is about 24 px on screen near the screen centre (longer toward the edges, below),
+  nothing pops, no dimmer shadow copy. **Accepted trade-off:** the dashes slide along the lane whenever the lane's
+  angle on screen changes (they are no longer fixed to the lane; the pivot is the lane's angular midpoint, which
+  itself moves along the lane as the camera moves). That is not only the map zoom: the chase camera's field of view
+  follows the speed (90-110°) and pulses to 135° on a jump, so the dashes also slide during normal acceleration and
+  jumps, and while flying. As built: the lane's level is continuous, `L = clamp(log2(period0Px / 24),
   MIN, 8)` with `period0Px` = the lane's on-screen length / 64, that length taken once per lane as the angle the lane
   subtends at the camera times the view's focal length in pixels (`LaneDashLaneFootprint`), so every pixel of a lane
   uses the same scale `2^L`. To keep "about 24 px on screen" true in perspective too (a lane seen from inside the solar
   system is often much nearer at one end), the dashes are laid along the **screen parameter** `LaneScreenParam`, the
   lane parameter re-spaced by angle from A (0 at A, 1 at B; equal to s for a lane seen without perspective), instead of
-  the raw lane parameter s; this is the prototype's accordion carried into 3D (the prototype was flat), an
-  implementation choice recorded here. The phase pivots on the lane's middle on screen: `(sigma - 0.5) x 64 x 2^L -
-  direction x f`, so at whole levels the pattern is exactly the stepped scheme's (the offset is a whole number of
-  periods), and the 64-dash base (a lane 1,536 px on screen), the 4-dash floor (96 px and shorter) and the flow
+  the raw lane parameter s; this is the prototype's accordion carried into 3D (the prototype was flat), **pending
+  user confirmation (asked 2026-11-11)**: it is user-visible (the dashes are spaced by angle at the camera, not along
+  the lane in space). On screen that means a period is about 24 px near the screen centre and longer toward the
+  edges at a wide field of view: 24 px of angle is `24 / cos^2(theta)` px along a screen radius and `24 / cos(theta)`
+  px across it at `theta` off axis, about 2x at the edge at 90°, 3x at 110°, more in the corners at the 135° warp
+  peak, and the flow speed on screen scales the same (test case 12c, `SOLTest.NpcLaneMath.DashPinholeSpacing`,
+  projects the composed path through a pinhole camera). The dashes are not re-spaced on the image plane. The phase
+  pivots on the lane's angular midpoint (sigma = 0.5): `(sigma - 0.5) x 64 x 2^L - direction x f`. At whole levels
+  this equals the stepped scheme's pattern (the offset is a whole number of periods) only for the C++ function
+  called with sigma = s and one footprint for the lane and the pixel (no perspective); in the shader sigma is the
+  screen parameter and the box filter uses the pixel's own footprint, so it differs in perspective. **Reachable
+  range:** the lane's length on screen is its angle times the focal length and that angle is at most pi, so a lane
+  has at most `pi x focal / 24` periods: about 126 at 1920x1080 with the 90° chase camera (focal 960 px, level about
+  1), about 250 at 3840x2160 (level about 2), about 220 / 435 periods on the 60° map at 1080p / 4K; level 8
+  (64 x 2^8) is never reached. The per-pixel fade to solid needs a pixel's own period past 200 px, that is about 70°
+  off axis (`1 / cos^2 > 8.3`), so it effectively never runs (at most in the corners at the 135° warp peak); it is
+  kept as a guard. The 64-dash base (a lane 1,536 px on screen), the 4-dash floor (96 px and shorter) and the flow
   (0.75 periods per real second, applied after the scaling, so a changing scale never makes the flow phase jump) are
   unchanged; so are the fade to solid (now by the pixel's own dash period), the duty, glow, width and brightness. The
   orbit lines keep their own scheme. No schema change.
@@ -228,19 +244,32 @@ that distance; the close-up part, where float error would matter, is faded out (
 - **Lane-anchored dashes (as designed; since the D15 amendment D they slide while zooming, below):** the dash
   pattern is fixed in lane-parameter units (base count `DASH_BASE_COUNT` = 64 per
   lane, duty 0.5), with the orbit lines' multi-scale scheme (SDD 17 Amendment 1: the period halves in power-of-two
-  levels while a dash is longer than 24 px on screen, up to level 8, then fades to solid between 200 and 800 px), so the
-  dashes neither swim when the camera moves nor vanish in a gap. Since 38c (D15 amendment B) the period also
+  levels while a dash is longer than 24 px on screen, up to level 8, then fades to solid between 200 and 800 px; for
+  the lanes neither is reached in practice, see the reachable range below), so the dashes neither swim when the
+  camera moves nor vanish in a gap. Since 38c (D15 amendment B) the period also
   **doubles** in power-of-two levels while it is shorter than 24 px, down to level -4 (4 dashes per lane), so a short
   lane on screen keeps visible dashes: with `MIN` = `NPC_LANE_DASH_MIN_LEVEL` the continuous level is
   `clamp(log2(period0Px / 24), MIN, 8)`, so a lane shorter than about 64 x 24 = 1,536 px on screen already uses the
   coarser levels (4-8 dashes at 100-200 px). **Since the D15 amendment D (the accordion)** the level is not rounded:
   one continuous scale `2^L` for the whole lane, `L` from the lane-wide `period0Px` (the angle the lane subtends at
   the camera times the view's focal length in pixels, / 64), so between the clamps the period is 24 px on screen at
-  every zoom, nothing pops and one size is drawn (no dimmer copy); the dashes slide along the lane as the scale
-  changes (accepted), from the lane's middle on screen, which stays put. The dashes are laid along the screen
+  every zoom (of angle: on screen near the centre), nothing pops and one size is drawn (no dimmer copy); the dashes
+  slide along the lane as the scale changes (accepted), from the lane's angular midpoint (sigma = 0.5), which itself
+  moves along the lane as the camera moves; the scale changes with the map zoom, while flying, and with the chase
+  camera's field of view (90-110° with the speed, a pulse to 135° on a jump). The dashes are laid along the screen
   parameter `sigma = LaneScreenParam(A, B, s)` (the angle from A to the point over the whole lane's angle), so they
-  are evenly spaced on screen in perspective too. At whole levels the pattern is the stepped scheme's, so the coverage
-  at zero flow there equals the orbit lines' where their blend is 0: for lane levels in [`MIN`, `8 + MIN`] that of a
+  are spaced by angle at the camera in perspective too: a period is about 24 px near the screen centre and longer
+  toward the edges at a wide field of view (`1 / cos^2` of the off-axis angle radially, `1 / cos` across: about 2x
+  at the edge at 90°, 3x at 110°, more in the corners at the 135° warp peak), the flow speed on screen scaling the
+  same (case 12c). **Reachable range:** at most `pi x focal / 24` periods per lane (the angle is at most pi): about
+  126 at 1920x1080 with the 90° chase camera (level about 1), about 250 at 3840x2160 (level about 2), about 220 /
+  435 on the 60° map; level 8 is never reached, and the per-pixel fade to solid (a pixel's own period past 200 px,
+  about 70° off axis) effectively never runs; it stays as a guard. A lane footprint of 0 (a lane that subtends no
+  angle) takes the floor level `MIN`, the limit of a lane shrinking to a point, box-filtered by `pixelFootprint x
+  2^MIN` like any other lane (C++ and HLSL alike; `LaneDashLevel` returns `MIN` for a NaN, non-positive or infinite
+  footprint, as the shader's clamp of `log2(0)`). At whole levels, for the C++ function called with sigma = s and one
+  footprint for the lane and the pixel (no perspective), the pattern is the stepped scheme's, so the coverage at
+  zero flow there equals the orbit lines' where their blend is 0: for lane levels in [`MIN`, `8 + MIN`] that of a
   line with `64 x 2^MIN` dashes, and for lane levels [0, 8] that of the orbit lines' 64-dash line. (Amendment C, now
   replaced, drew `floor(level)` and let the dashes pop at a size step.)
 - **Flow:** the phase is `(sigma - 0.5) x DASH_BASE_COUNT x 2^L - direction x f`, where `f = frac(FLOW x t)` is one flow
@@ -477,6 +506,18 @@ control (the embedded Overlays tab gains the row from the table).
   98.5% of it, so no new debt item is added (D21 records only a crossing); the existing `TECH_DEBT.md` item on the
   speed panel's one-eye cost notes the 1.182 ms. The step 11 one-eye runs were made in 38c; the 1920x1080, 3840x2160
   and 1280x720 runs were added in the whole-ticket review fixes.
+- **Re-measured after the amendment D review fixes (2026-11-11)** (the accordion's per-pixel math, with the lane's
+  whole angle now computed once and shared by the footprint and the screen parameter: two `atan2` per pixel instead
+  of three): the same `-SOLSmokeNpcLanesProfile` at 1920x1080, three runs, medians. Lane draw (`M_SOLNpcLanes`)
+  **0.027 ms in V2 and 0.028 ms in V3** (0.025 / 0.027 in 38c, before the accordion); with the after-motion-blur pass
+  and its composite 0.042 + 0.037 = 0.079 ms (V2) and 0.044 + 0.039 = 0.083 ms (V3), inside the 0.15 ms budget
+  (D22); `ASOLNpcVisuals::Redraw` 0.031 / 0.029 ms (V2) and 0.037 / 0.037 ms (V3) with the lanes on / off, the lane
+  share 0.004 ms. V2's NPC translucency with the composite is 0.365 + 0.037 = 0.402 ms against 0.401 ms off (+0.001).
+  **V3's point draw varied between runs:** with the lanes on it was 1.14-1.15 ms in two of five runs (the lanes-off
+  cost, as if the lane ships beyond 400 radii were not left out) and 0.84 ms in the other three (as in 38c), so the
+  three-run median of V3's translucency is 1.254 + 0.039 = 1.293 ms against 1.169 ms off (+0.12 ms), while the
+  five-run median is 0.962 + 0.039 = 1.001 ms against 1.183 ms (-0.18 ms). The point path is unchanged since 38c
+  and the lane draw is the same in every run; the variance is recorded here, not investigated.
 - **1M ramp and the per-population upload (whole-ticket review fixes):** `-SOLNpcRamp -SOLNpcCount=1M` (standalone
   `-game`, 1920x1080, `-corelimit=16`, vsync off) **PASSes every stage**: p95 6.99 / 7.08 / 7.04 / 7.53 / **7.43 ms**
   at 10k / 100k / 250k / 500k / 1M ships (mean 6.24-6.71 ms, max 10.05 ms at 1M). `ASOLNpcVisuals::UploadPopulation`
@@ -583,20 +624,29 @@ test edit).
     to 9,999 px); a lane 32, 64, 130 or 400 px long shows dashes (coverage range at least 0.5); **no step**: across
     each of the stepped scheme's size steps the coverage changes by under 1e-4 (it jumped by 0.5 or more), and a zoom
     in steps of 0.002% of the lane's length from the floor to level 2 moves a point's coverage by under 0.1 per step;
-    the lane's middle stays put at every lane length; the mean coverage along the lane is the duty within the half
+    the lane's middle (s = 0.5; in the shader the angular midpoint) stays put at every lane length; the mean coverage along the lane is the duty within the half
     period the ends can cut off, across the old size steps too; half way between two old size steps only the dash
-    edges are part lit (no dimmer copy); in [0, 1] always; a whole flow period changes nothing; a NaN or non-positive
-    lane footprint -> a level-0 point sample of `LaneDashPhase(s, 0, f, dir)`, a bad pixel footprint with a good lane
-    one -> a point sample at the lane's level; at every scale shifting f by `delta` equals moving s by `delta /
+    edges are part lit (no dimmer copy); in [0, 1] always; a whole flow period changes nothing; a NaN, non-positive or
+    infinite lane footprint -> the floor level `MIN` (the limit of a huge lane footprint): with a bad pixel footprint
+    too a point sample of `LaneDashPhase(s, MIN, f, dir)`, with a good one the closed form at `MIN` (box filter over
+    `pixelFootprint x 2^MIN`, equal to the coverage at a lane footprint of 1e12), the duty for a pixel over a whole
+    floor-level period; a bad pixel footprint with a good lane one -> a point sample at the lane's level; at every scale shifting f by `delta` equals moving s by `delta /
     (DASH_BASE_COUNT x 2^L)`.
 12b. **`LaneDashLevel(laneFootprint)`, `LaneDashLaneFootprint(aRelM, bRelM, focalLengthPx)`, `LaneScreenParam(aRelM,
     bRelM, laneParam)`** (D15 amendment D, `SOLTest.NpcLaneMath.DashScreenSpacing`): the level is `log2(1 /
-    (footprint x 24))` clamped to [MIN, 8], non-decreasing as the lane grows, 0 for a bad footprint; the lane
+    (footprint x 24))` clamped to [MIN, 8], non-decreasing as the lane grows, `MIN` for a bad footprint (0, negative,
+    NaN, infinite; also a huge finite one); the lane
     footprint is `DASH_BASE_COUNT / (angle x focal)` (a right angle, a symmetric small angle, an endpoint behind the
     camera, scale free; 0 end-on, with an endpoint on the camera, a zero focal length or a NaN); the screen parameter
     is 0 at A and 1 at B (clamped outside), the symmetric lane's closed form `0.5 + atan((2s - 1) h / d) / (2 atan(h /
     d))` (close to s for a small angle), increasing along a perspective lane, and the point a quarter, half and three
     quarters of the lane's angle from A has 0.25, 0.5 and 0.75; s itself when the lane subtends no angle.
+12c. **The composed path through a pinhole camera** (`SOLTest.NpcLaneMath.DashPinholeSpacing`, added in the review
+    fixes of amendment D): focal 960 px (90° across 1920 px); the dash period boundaries of `LaneDashLevel(
+    LaneDashLaneFootprint)` and `LaneScreenParam` (bisected), projected: a perspective lane within 10° of the centre
+    (one end three times nearer) has every period within [0.99, 1.04] x 24 px, a short lane through the centre within
+    0.5% of 24 px; radially at 40-50° off axis each period is `24 / cos^2` of its angle within 1% (about 2x at 45°),
+    and across the radius at 45° `24 / cos 45` (1.41x) within 3%.
 13. **`double ClosestLaneParam(const FVector3d& aRelM, const FVector3d& bRelM, const FVector3d& rayDirection)`**: the
     parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the ray from the origin along
     `rayDirection` (normalized inside). Cases: A = (1e9, -1e9, 0), B = (1e9, 1e9, 0), ray (1, 0, 0) -> 0.5; ray toward
@@ -744,15 +794,17 @@ Temporary screenshots and captures are deleted once looked at; only README galle
   counts) and one small mesh build (about 2,000 vertices). Budget: `ASOLNpcVisuals::Redraw` +0.02 ms or less at 1M.
 - **GPU:** the lane ribbons are ~2,000 vertices; the pixel cost is the ribbon area: at 1080p with all 8 lanes across
   the screen about 8 x 2 x 2,000 px x 2 x 13.25 px ~ 0.85 Mpx of a cheap additive shader (closest-point math, one log
-  for the fade, one dash scale for the whole lane since the D15 amendment D, plus three `atan2` angles for it and the
-  screen parameter, the two-exp glow profile, up to 8 ray-sphere tests). Expected well under 0.1 ms at
+  for the fade, one dash scale for the whole lane since the D15 amendment D, plus two `atan2` angles for it and the
+  screen parameter (the lane's whole angle computed once and shared since the amendment D review fixes), the two-exp glow profile, up to 8 ray-sphere tests). Expected well under 0.1 ms at
   1080p, scaling with pixels at 4K and one eye. The far layer gets cheaper: lane ships beyond `FADE_FAR x R` return
   the hidden offset after the rail evaluation (vertex cost unchanged, their raster and pixel cost gone; ~40% of the
   points at the default lane fraction). Budgets (D22, gated at 1920x1080 only): lanes <= 0.15 ms GPU at 1920x1080 in V3 with 1M; NPC
   translucency (points + lanes) no more than +0.05 ms over the before figure at 1920x1080; recorded (not gated) at 4K
   and one eye, where the whole frame is already scene-bound (`VR_PERFORMANCE_TARGETS.md` section 7a).
 - **Measured (38c):** section 4.13; every 1080p budget holds (lane draw 0.027 ms, the NPC translucency cheaper with
-  the lanes on, the redraw +0.003 ms).
+  the lanes on, the redraw +0.003 ms). **Re-measured after the amendment D review fixes:** lane draw 0.027-0.028 ms,
+  0.079-0.083 ms with the after-motion-blur pass and its composite (budget 0.15 ms), redraw lane share 0.004 ms; V3's
+  point draw varied between runs (section 4.13).
 - **1M scaling:** nothing in the lane path is per ship on the CPU; per ship on the GPU it is one branch and one log
   in the far-point vertex shader for lane ships only.
 - **VR (record only, no VR work before procedural terrain):** lanes are world-space geometry, so they render per eye
@@ -811,3 +863,12 @@ separate occluder set for the lanes (D24).
   `LaneDashCoverage` a lane and a pixel footprint, new `LaneDashLevel`, `LaneDashLaneFootprint`, `LaneScreenParam`;
   `SOLNL_DashCoverage` and `SOLNL_Pixel` updated (the focal length read from `ResolvedView`, no material graph
   change); section 4.6, section 6 cases 11, 12 and 12b, sections 9 and 11 updated. No schema change.
+- 2026-11-11: amendment D review fixes: the real reachable ranges (at most `pi x focal / 24` periods per lane, level
+  about 1 at 1080p and 2 at 4K with the 90° chase camera, never 8; the solid fade only a guard), the spacing stated as
+  angular (about 24 px near the screen centre, `1 / cos^2` radially and `1 / cos` across toward the edges, flow
+  speed alike) with the new case 12c (pinhole camera), the angle-based spacing marked pending user confirmation
+  (asked 2026-11-11), the whole-level equality limited to the C++ function with sigma = s and one footprint, the
+  pivot as the angular midpoint, the field of view (90-110°, 135° on jumps) as another cause of sliding; a lane
+  footprint of 0 now takes the floor level `MIN` (box-filtered) in both `LaneDashCoverage` and `SOLNL_DashCoverage`,
+  `LaneDashLevel` returns `MIN` for a bad or infinite footprint (cases 12 and 12b); the shader computes the lane's
+  angle once (two `atan2` per pixel); re-profiled at 1080p (section 4.13). No schema change.
