@@ -82,9 +82,11 @@ namespace SOLNpcLane
     // inbound ones toward A
     SOLTEST_API double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction);
 
-    // Returns the multi-scale dash coverage of a flowing lane line: SOLOrbitLineMath::MultiScaleDashCoverage with the
-    // orbit lines' level and solid constants, the flow applied per level (equal to it at flowPhase 0 wherever the
-    // level-0 period is at least ORBIT_LINE_DASH_MIN_PERIOD_PX); where it is shorter the levels go coarser, down to
+    // Returns the dash coverage of a flowing lane line at a single whole level: the orbit lines' continuous level
+    // (ORBIT_LINE_DASH_MIN_PERIOD_PX, ORBIT_LINE_DASH_MAX_LEVEL) rounded down to the coarser size, box-filtered at that
+    // level only (no blend toward the finer size, so no dimmer dash copy; the dashes jump to double or half length as
+    // the on-screen period crosses a size step), the flow applied after the level's scaling, then the orbit lines' fade
+    // to solid past the last level. Where the level-0 period is under the minimum the levels go coarser, down to
     // NPC_LANE_DASH_MIN_LEVEL, so a lane short on screen still shows dashes. The footprint is one pixel in level-0 dash
     // periods, and a NaN or non-positive one is a level-0 point sample
     SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint);

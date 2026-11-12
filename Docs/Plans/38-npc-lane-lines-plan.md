@@ -213,3 +213,6 @@ The full contract is SDD section 6 (cases 1-24). In short:
   tuning, profiling, docs), whole-ticket review next.
 - 2026-11-11: whole-ticket review fixes (step 14), the P2 correction, the ramp and upload timings; 38c committed and
   #38 closed.
+- 2026-11-11: follow-up (user decision, SDD 38 D15 amendment C): the lane dash size blend (the dimmer finer
+  "shadow" copy) removed in `LaneDashCoverage` and `SOLNL_DashCoverage`; case 12 tests updated; suite 1843 / 0,
+  `-SOLSmokeNpcLanes` 35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50; README lane shots recaptured.

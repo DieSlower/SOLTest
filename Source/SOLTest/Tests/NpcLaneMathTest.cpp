@@ -89,6 +89,41 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's single-level lane dash coverage (SDD 38 D15 amendment C): the orbit lines' continuous
+    // level clamped to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], rounded down to k, the box-filtered
+    // level-k dash alone (no blend toward k + 1), then the orbit lines' fade to solid past the last level
+    double NpcLaneSingleLevelDash(const double s, const double flowPhase, const int32 direction,
+        const double footprint)
+    {
+        const double periodPx = 1.0 / footprint;
+        const double level = FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
+            static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL), static_cast<double>(SOL::ORBIT_LINE_DASH_MAX_LEVEL));
+        const double scale = FMath::Exp2(FMath::FloorToDouble(level));
+        const double phase = s * static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) * scale
+            - static_cast<double>(direction) * flowPhase;
+        const double coverage = SOLOrbitLineMath::DashCoverage(phase, SOL::NPC_LANE_DASH_DUTY, footprint * scale);
+        const double solid = FMath::Clamp((periodPx / FMath::Exp2(level) - SOL::ORBIT_LINE_DASH_SOLID_START_PX)
+            / (SOL::ORBIT_LINE_DASH_SOLID_END_PX - SOL::ORBIT_LINE_DASH_SOLID_START_PX), 0.0, 1.0);
+        return FMath::Lerp(coverage, 1.0, solid);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the fraction of 4,000 samples along a coverage function that are part lit (strictly between 0.05 and
+    // 0.95): a sharp single level leaves only its dash edges there, a size blend leaves its dimmer copy too
+    template <typename TCoverage>
+    double NpcLanePartLitFraction(const TCoverage& coverageAt)
+    {
+        constexpr int32 sampleCount = 4000;
+        int32 partLit = 0;
+        for (int32 step = 0; step < sampleCount; ++step)
+        {
+            const double coverage = coverageAt((static_cast<double>(step) + 0.5) / static_cast<double>(sampleCount));
+            partLit += coverage > 0.05 && coverage < 0.95 ? 1 : 0;
+        }
+        return static_cast<double>(partLit) / static_cast<double>(sampleCount);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns one rail of a kind in a global group
     FSOLNpcRail NpcLaneRail(const SOLNpcScale::EPlacementKind kind, const int32 group)
     {
@@ -757,12 +792,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashCoverageTest, "SOLTest.NpcLa
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 12: the lane dash coverage is the orbit lines' multi-scale coverage at zero flow wherever the level-0 period is
-// at least the orbit lines' minimum (long lanes keep the 64-dash base); where it is shorter (a short lane on screen,
-// D15 amendment 2026-11-11) the levels go coarser down to NPC_LANE_DASH_MIN_LEVEL (4 dashes per lane): the coverage is
-// then the orbit lines' with BASE x 2^MIN dashes, so a short lane still shows dashes, its scale changes continuously
-// and never pops. In [0, 1], a level-0 square wave for a bad footprint, periodic in the flow, and a phase shift inside
-// a pure level
+// Case 12: the lane dash coverage draws a single whole level (D15 amendment C, 2026-11-11: no size blend, so no
+// dimmer finer dash copy): the orbit lines' level choice rounded down to the coarser size, coarser levels down to
+// NPC_LANE_DASH_MIN_LEVEL (4 dashes per lane) where the level-0 period is under the orbit lines' minimum, and the
+// orbit lines' solid fade. It equals the orbit lines' coverage only where their blend is 0 (whole levels and past the
+// top level). A short lane still shows dashes, between size steps only the coarser level is drawn, and across a step
+// the dashes jump (the accepted pop). In [0, 1], a level-0 square wave for a bad footprint, periodic in the flow, and a
+// phase shift inside a level
 bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcLane;
@@ -771,24 +807,46 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
     const double minPeriodPx = SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX;
 
     // Zero flow over 20 (s, footprint) pairs: from the coarsest level (a level-0 period under 2 px), through the
-    // coarse levels to level 0, the crossfades and the top level to the solid fade and beyond. Level 0 and finer
-    // (a level-0 period of at least minPeriodPx): the orbit lines' coverage of s x BASE. Coarser: the orbit lines'
-    // coverage of s x BASE x 2^MIN with the footprint scaled alike (the same levels, shifted by MIN)
+    // coarse levels to level 0, between size steps and the top level to the solid fade and beyond: the single chosen
+    // level of the contract
     const double footprints[] = { 2.0, 0.5, 0.1, 0.05, 0.035, 0.02, 0.012, 5.0e-3, 2.0e-3, 8.0e-4, 3.0e-4, 1.2e-4,
         6.0e-5, 3.0e-5, 1.8e-5, 1.2e-5, 8.0e-6, 5.5e-6, 3.0e-6, 1.0e-6 };
     for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(footprints)); ++index)
     {
         const double s = 0.013 + 0.049 * static_cast<double>(index);
         const double footprint = footprints[index];
-        const bool bCoarse = 1.0 / footprint < minPeriodPx;
-        const FString label = FString::Printf(TEXT("s %.3f, footprint %.1e%s"), s, footprint,
-            bCoarse ? TEXT(" (coarse)") : TEXT(""));
-        const double expected = bCoarse ? NpcLaneOrbitDash(s * base * minLevelScale, footprint * minLevelScale)
-            : NpcLaneOrbitDash(s * base, footprint);
-        TestEqual(label + TEXT(": outbound = orbit lines"), LaneDashCoverage(s, 0.0, 1, footprint), expected,
-            NPCLANE_TOL);
-        TestEqual(label + TEXT(": inbound = orbit lines"), LaneDashCoverage(s, 0.0, -1, footprint), expected,
-            NPCLANE_TOL);
+        const FString label = FString::Printf(TEXT("s %.3f, footprint %.1e"), s, footprint);
+        TestEqual(label + TEXT(": outbound = the single level"), LaneDashCoverage(s, 0.0, 1, footprint),
+            NpcLaneSingleLevelDash(s, 0.0, 1, footprint), NPCLANE_TOL);
+        TestEqual(label + TEXT(": inbound = the single level"), LaneDashCoverage(s, 0.0, -1, footprint),
+            NpcLaneSingleLevelDash(s, 0.0, -1, footprint), NPCLANE_TOL);
+    }
+
+    // Where the orbit lines' blend is 0 the coverage at zero flow is still theirs: at each whole level (an on-screen
+    // period just past minPeriodPx x 2^k) level 0 and finer equal the orbit lines' coverage of s x BASE, coarser ones
+    // that of s x BASE x 2^MIN with the footprint scaled alike (the same levels, shifted by MIN); past the top level
+    // (the solid fade and beyond) both equal the orbit lines' 64-dash line
+    for (int32 level = SOL::NPC_LANE_DASH_MIN_LEVEL; level <= SOL::ORBIT_LINE_DASH_MAX_LEVEL; ++level)
+    {
+        const double footprint = (1.0 - 1.0e-12) / (minPeriodPx * FMath::Exp2(static_cast<double>(level)));
+        for (const double s : { 0.0213, 0.3779, 0.8041 })
+        {
+            const FString label = FString::Printf(TEXT("whole level %d, s %.4f"), level, s);
+            const double expected = level < 0 ? NpcLaneOrbitDash(s * base * minLevelScale, footprint * minLevelScale)
+                : NpcLaneOrbitDash(s * base, footprint);
+            TestEqual(label + TEXT(": outbound = orbit lines"), LaneDashCoverage(s, 0.0, 1, footprint), expected,
+                NPCLANE_TOL);
+            TestEqual(label + TEXT(": inbound = orbit lines"), LaneDashCoverage(s, 0.0, -1, footprint), expected,
+                NPCLANE_TOL);
+        }
+    }
+    for (const double footprint : { 1.0e-5, 3.0e-6, 1.0e-6 })
+    {
+        for (const double s : { 0.0213, 0.3779, 0.8041 })
+        {
+            TestEqual(FString::Printf(TEXT("past the top level, footprint %.1e, s %.4f: = orbit lines"), footprint, s),
+                LaneDashCoverage(s, 0.0, 1, footprint), NpcLaneOrbitDash(s * base, footprint), NPCLANE_TOL);
+        }
     }
 
     // A short lane still shows dashes: a lane L px long on screen (footprint BASE / L at every s) whose 64 base dashes
@@ -824,18 +882,59 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
         TestEqual(FString::Printf(TEXT("lane %.0f px: %d dashes"), lanePx, coarsestDashes), rises, coarsestDashes);
     }
 
-    // No popping: across each level boundary (the on-screen period crossing minPeriodPx x 2^k), coarse and fine, the
-    // coverage changes continuously with the footprint; level MIN is the clamp boundary (footprint 1 / (24 x 2^MIN))
-    for (int32 level = SOL::NPC_LANE_DASH_MIN_LEVEL; level <= 2; ++level)
+    // Single level, no partial copy: half way between two size steps (an on-screen period of minPeriodPx x 2^(k + 0.5)),
+    // coarse and fine, the coverage is level k's dash alone at full brightness, so only its edges are part lit, where
+    // the orbit lines' blend (half way toward k + 1) leaves a dimmer finer copy part lit over much of the line
+    for (int32 level = SOL::NPC_LANE_DASH_MIN_LEVEL; level <= 3; ++level)
     {
-        const double boundary = 1.0 / (minPeriodPx * FMath::Exp2(static_cast<double>(level)));
+        const double footprint = 1.0 / (minPeriodPx * FMath::Exp2(static_cast<double>(level) + 0.5));
+        const double levelFootprint = footprint * FMath::Exp2(static_cast<double>(level));
         for (const double s : { 0.0917, 0.3333, 0.6071 })
         {
-            const double below = LaneDashCoverage(s, 0.3, 1, boundary * (1.0 - 1.0e-9));
-            const double above = LaneDashCoverage(s, 0.3, 1, boundary * (1.0 + 1.0e-9));
-            TestTrue(FString::Printf(TEXT("level %d boundary, s %.4f: continuous (%.6f vs %.6f)"), level, s, below,
-                above), FMath::Abs(below - above) <= 1.0e-6);
+            TestEqual(FString::Printf(TEXT("level %d.5, s %.4f: level %d alone"), level, s, level),
+                LaneDashCoverage(s, 0.3, 1, footprint), SOLOrbitLineMath::DashCoverage(LaneDashPhase(s, level, 0.3, 1),
+                    SOL::NPC_LANE_DASH_DUTY, levelFootprint), NPCLANE_TOL);
         }
+        const double lanePartLit = NpcLanePartLitFraction([footprint](const double s)
+        {
+            return LaneDashCoverage(s, 0.3, 1, footprint);
+        });
+        TestTrue(FString::Printf(TEXT("level %d.5: only dash edges part lit (%.3f)"), level, lanePartLit),
+            lanePartLit <= 0.1);
+        if (level >= 0)
+        {
+            const double orbitPartLit = NpcLanePartLitFraction([footprint, base](const double s)
+            {
+                return NpcLaneOrbitDash(s * base, footprint);
+            });
+            TestTrue(FString::Printf(TEXT("level %d.5: the orbit lines' blend is part lit more (%.3f vs %.3f)"), level,
+                orbitPartLit, lanePartLit), orbitPartLit >= 0.3);
+        }
+    }
+
+    // The accepted pop: across a size step (the on-screen period crossing minPeriodPx x 2^k), coarse and fine, the
+    // coverage jumps from level k - 1 alone to level k alone (dashes of half the length), with no blend between them
+    for (int32 level = SOL::NPC_LANE_DASH_MIN_LEVEL + 1; level <= 3; ++level)
+    {
+        const double boundary = 1.0 / (minPeriodPx * FMath::Exp2(static_cast<double>(level)));
+        const double coarserFootprint = boundary * (1.0 + 1.0e-9);
+        const double finerFootprint = boundary * (1.0 - 1.0e-9);
+        double largestJump = 0.0;
+        for (int32 step = 0; step < 200; ++step)
+        {
+            const double s = (static_cast<double>(step) + 0.37) / 200.0;
+            const double coarser = LaneDashCoverage(s, 0.3, 1, coarserFootprint);
+            const double finer = LaneDashCoverage(s, 0.3, 1, finerFootprint);
+            TestEqual(FString::Printf(TEXT("step %d, s %.4f: just short of it, level %d alone"), level, s, level - 1),
+                coarser, SOLOrbitLineMath::DashCoverage(LaneDashPhase(s, level - 1, 0.3, 1), SOL::NPC_LANE_DASH_DUTY,
+                    coarserFootprint * FMath::Exp2(static_cast<double>(level - 1))), NPCLANE_TOL);
+            TestEqual(FString::Printf(TEXT("step %d, s %.4f: just past it, level %d alone"), level, s, level),
+                finer, SOLOrbitLineMath::DashCoverage(LaneDashPhase(s, level, 0.3, 1), SOL::NPC_LANE_DASH_DUTY,
+                    finerFootprint * FMath::Exp2(static_cast<double>(level))), NPCLANE_TOL);
+            largestJump = FMath::Max(largestJump, FMath::Abs(coarser - finer));
+        }
+        TestTrue(FString::Printf(TEXT("step %d: the dashes jump (largest change %.3f)"), level, largestJump),
+            largestJump >= 0.5);
     }
 
     // Always in [0, 1]; a whole flow period changes nothing (footprints 1e-6 to 1e3: past the coarsest clamp too)
@@ -873,15 +972,15 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
         }
     }
 
-    // Inside a pure level (the coarsest level at a 0.5 px level-0 period; level 0 at exactly the minimum period; the
-    // top level far past its last halving, before the solid fade), shifting the flow by delta equals shifting that
-    // level's phase by delta (moving s by delta / (BASE 2^k))
+    // Inside a level (the coarsest level at a 0.5 px level-0 period; level 0 just past the minimum period, where the
+    // orbit lines' blend is 0 too; the top level far past its last halving, before the solid fade), shifting the flow
+    // by delta equals shifting that level's phase by delta (moving s by delta / (BASE 2^k))
     struct FPureLevel
     {
         int32 Level;
         double Footprint;
     };
-    const FPureLevel pureLevels[] = { { SOL::NPC_LANE_DASH_MIN_LEVEL, 2.0 }, { 0, 1.0 / minPeriodPx },
+    const FPureLevel pureLevels[] = { { SOL::NPC_LANE_DASH_MIN_LEVEL, 2.0 }, { 0, (1.0 - 1.0e-12) / minPeriodPx },
         { SOL::ORBIT_LINE_DASH_MAX_LEVEL, 5.0e-5 } };
     for (const FPureLevel& pure : pureLevels)
     {

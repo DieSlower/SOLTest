@@ -87,8 +87,8 @@ float SOLNL_LineProfile(float distanceFromCenterPx, float widthPx, float glowSca
     return SOLNL_GlowProfile(shifted, glowScale, glow0, glow1) * min(widthPx, 1.0);
 }
 
-// LaneDashCoverage: the orbit lines' multi-scale coverage with the flow applied after each level's scaling, and
-// coarser levels (negative, down to minLevel) where the level-0 period is under the minimum, so a lane short on screen
+// LaneDashCoverage: the orbit lines' level choice rounded down to one whole level (no size blend), the flow applied
+// after the level's scaling, and coarser levels (negative, down to minLevel) where the level-0 period is under the minimum, so a lane short on screen
 // still shows dashes. phase0 = s x base count (level-0 periods), footprint = one pixel in level-0 periods, direction +1
 // outbound (toward B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
 float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float footprint, float duty, float4 dash,
@@ -101,16 +101,10 @@ float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float f
     }
     const float periodPx = 1.0 / footprint;
     const float level = clamp(log2(periodPx / dash.x), min(minLevel, 0.0), dash.y);
-    const float lower = min(floor(level), dash.y);
-    const float blend = level - lower;
-    const float lowerScale = exp2(lower);
-    const float lowerCoverage = SOLOL_DashCoverage(phase0 * lowerScale - flow, duty, footprint * lowerScale);
-    float coverage = lowerCoverage;
-    if (blend > 0.0 && lower < dash.y)
-    {
-        coverage = lerp(lowerCoverage, SOLOL_DashCoverage(phase0 * 2.0 * lowerScale - flow, duty,
-            footprint * 2.0 * lowerScale), blend);
-    }
+
+    // Only the coarser whole level is drawn, with no blend toward the finer one (no dimmer dash copy)
+    const float chosenScale = exp2(min(floor(level), dash.y));
+    const float coverage = SOLOL_DashCoverage(phase0 * chosenScale - flow, duty, footprint * chosenScale);
     const float remainingPeriodPx = periodPx / exp2(level);
     const float solid = dash.w > dash.z ? saturate((remainingPeriodPx - dash.z) / (dash.w - dash.z))
         : (remainingPeriodPx >= dash.z ? 1.0 : 0.0);

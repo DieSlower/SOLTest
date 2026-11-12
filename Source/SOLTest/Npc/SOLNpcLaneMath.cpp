@@ -170,9 +170,10 @@ double SOLNpcLane::LaneDashPhase(const double laneParam, const int32 level, cons
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the multi-scale coverage of a flowing lane line (SOLOrbitLineMath::MultiScaleDashCoverage with the flow
-// applied after each level's scaling, so the dashes move by the same fraction of their own period at every zoom, and
-// with coarser levels down to NPC_LANE_DASH_MIN_LEVEL where the level-0 period is under the minimum)
+// Returns the dash coverage of a flowing lane line at one whole level (the orbit lines' level choice rounded down to
+// the coarser size, with no blend toward the finer one), the flow applied after the level's scaling so the dashes
+// move by the same fraction of their own period at every zoom, with coarser levels down to NPC_LANE_DASH_MIN_LEVEL
+// where the level-0 period is under the minimum, and the orbit lines' fade to solid past the last level
 double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPhase, const int32 direction,
     const double phaseFootprint)
 {
@@ -187,23 +188,15 @@ double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPha
     }
 
     // Continuous level: how many halvings bring the on-screen period down to the orbit lines' minimum (as theirs), or
-    // for a short lane how many doublings bring it up to it (negative, down to the coarsest level)
+    // for a short lane how many doublings bring it up to it (negative, down to the coarsest level). Only the coarser
+    // whole level is drawn, with no blend toward the finer one (SDD 38 amendment 2026-11-11: no dimmer dash copy)
     const int32 topLevel = FMath::Max(SOL::ORBIT_LINE_DASH_MAX_LEVEL, 0);
     const double periodPx = 1.0 / phaseFootprint;
     const double level = FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
         static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0)), static_cast<double>(topLevel));
-    const int32 lower = FMath::Min(static_cast<int32>(FMath::FloorToDouble(level)), topLevel);
-    const double blend = level - static_cast<double>(lower);
-    const double lowerScale = FMath::Exp2(static_cast<double>(lower));
-    const double lowerCoverage = SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, lower, flowPhase, direction),
-        SOL::NPC_LANE_DASH_DUTY, phaseFootprint * lowerScale);
-    double coverage = lowerCoverage;
-    if (blend > 0.0 && lower < topLevel)
-    {
-        const double upperCoverage = SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, lower + 1, flowPhase,
-            direction), SOL::NPC_LANE_DASH_DUTY, phaseFootprint * 2.0 * lowerScale);
-        coverage = FMath::Lerp(lowerCoverage, upperCoverage, blend);
-    }
+    const int32 chosen = FMath::Min(static_cast<int32>(FMath::FloorToDouble(level)), topLevel);
+    const double coverage = SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, chosen, flowPhase, direction),
+        SOL::NPC_LANE_DASH_DUTY, phaseFootprint * FMath::Exp2(static_cast<double>(chosen)));
 
     // Past the last level the period keeps growing: fade to a solid line so it never sits in a gap
     const double remainingPeriodPx = periodPx / FMath::Exp2(level);
