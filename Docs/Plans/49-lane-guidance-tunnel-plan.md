@@ -5,9 +5,10 @@
 SDD: [`SDDs/49-lane-guidance-tunnel.md`](../SDDs/49-lane-guidance-tunnel.md). Issue
 [#49](https://github.com/DieSlower/SOLTest/issues/49).
 
-**Grill-me complete (2026-11-11):** decisions D1-D15 are in SDD section 2. **Gate:** the derived choices Q1-Q11 (SDD
-section 11) are pending with the user; the build starts at step 2 only once they are answered and the SDD, contract and
-this plan are updated to match.
+**Grill-me complete (2026-11-11):** decisions D1-D16 are in SDD section 2, and the derived questions Q1-Q11 were
+answered by the user the same day (SDD section 11, resolved decisions). No question is open; the build starts at step 2.
+Keep-right rails and the rest of the lane traffic behaviour are the follow-up ticket
+[#50](https://github.com/DieSlower/SOLTest/issues/50), not part of #49.
 
 **Persistence: none.** `SOL::Settings::SAVE_VERSION` stays 13, `KEY_BINDING_LAYOUT_VERSION` stays 10, no
 `UPROPERTY` of a save class and no key binding changes (D3). If the work shows that any of these is needed, **stop and
@@ -32,20 +33,21 @@ pass, its smokes pass and its adversarial performance and style review's finding
 |---|---|---|
 | `Source/SOLTest/SOLConstants.h` | `NPC_TUNNEL_*` constants (SDD section 6 case 1, plus emissive, ring / dot / chevron sizes, segment counts, slot counts, sort priority, label constants, `NPC_TUNNEL_CVAR`), `SOL::Paths::NPC_TUNNEL_MATERIAL`, `SOL::NpcTunnelMaterialParams`, the two smoke flags | 49a (math constants), 49b (rest) |
 | `Source/SOLTest/Npc/SOLNpcTunnelMath.h` / `.cpp` (new) | `SOLNpcTunnel`: fade, radius, basis, keep-right rows, nearest param and distance, ring level / spacing / own level / alpha, phases, depth / near / detail fades, slot coverage (rings, dots, chevrons), end arcs, ring samples, label lane, end distances, renderer feed | 49a |
-| `Source/SOLTest/Npc/SOLNpcLaneMath.h` / `.cpp` | `FSOLNpcLaneEntry::bResolved`, set by `BuildLaneFrame` | 49a |
-| `Source/SOLTest/UI/SOLLaneTunnelLabel.h` / `.cpp` (new) | `LaneLabelClearOfDots`, `PlaceLaneLabel`, `FormatLaneLabelLines` | 49a |
-| `Source/SOLTest/HudEvents/SOLHudBus.*` | `FSOLHudLaneTunnelLabel`, `PublishLaneTunnelLabel`, `GetLaneTunnelLabel` | 49a |
+| `Source/SOLTest/Npc/SOLNpcLaneMath.h` / `.cpp` | `FSOLNpcLaneEntry::bResolved`, set by `BuildLaneFrame`; the Q5 crossfade: new `LaneLineFadeWithTunnel`, `LaneShipPointAlpha` gains the tunnel fade (SDD section 4.2, case 17b) | 49a |
+| `Source/SOLTest/UI/SOLLaneTunnelLabel.h` / `.cpp` (new) | `LaneLabelClearOfDots`, `PlaceLaneLabels` (greedy, strongest first, Q4), `FormatLaneLabelLines` | 49a |
+| `Source/SOLTest/HudEvents/SOLHudBus.*` | `FSOLHudLaneTunnelLabels` (up to 4 `FSOLHudLaneTunnelLabel` entries, Q4), `PublishLaneTunnelLabels`, `GetLaneTunnelLabels` | 49a |
 | `Source/SOLTest/Npc/SOLNpcTunnelComponent.h` / `.cpp` (new) | Slot mesh (built once), fixed-bounds ISM instances per lane in range, MID, tunnel texture and upload ring, per-frame update, label publish, verification override | 49b |
-| `Source/SOLTest/Npc/SOLNpcVisuals.h` / `.cpp` | Create the component, call `UpdateTunnels` from `UpdateLanes`, glow push to its MID, `SetLanesDrawn` = lanes or tunnels drawn, override pass-through | 49b |
-| `Shaders/Private/SOLNpcTunnel.ush` (new) | HLSL mirror of `SOLNpcTunnelMath` (slots, levels, fades, ring samples), reusing `SOLOrbitLine.ush` and `SOLNpcLane.ush` | 49b |
-| `Tools/Npc/create_npc_assets.py`, `Content/SOL/Npc/M_SOLNpcTunnel.uasset` (new) | The tunnel material; rebuilt with `-SOLRebuild`, editor closed | 49b |
+| `Source/SOLTest/Npc/SOLNpcVisuals.h` / `.cpp` | Create the component, call `UpdateTunnels` from `UpdateLanes`, glow push to its MID, `SetLanesDrawn` = lanes or tunnels drawn, override pass-through, bind `NpcTunnelTex` on the lane and far-point MIDs (Q5) | 49b |
+| `Shaders/Private/SOLNpcTunnel.ush` (new) | HLSL mirror of `SOLNpcTunnelMath` (accordion warp and its inverse, slots, fades, ring samples), reusing `SOLOrbitLine.ush` and `SOLNpcLane.ush` | 49b |
+| `Shaders/Private/SOLNpcLane.ush` | The line's close-up fade times `1 - F` from `NpcTunnelTex` (Q5, mirror of `LaneLineFadeWithTunnel`) | 49b |
+| `Tools/Npc/create_npc_assets.py`, `Content/SOL/Npc/M_SOLNpcTunnel.uasset` (new), `M_SOLNpcLanes`, `M_SOLNpcPoints` | The tunnel material; the `NpcTunnelTex` texture parameter on the lane and point materials (the points' lane branch multiplies `SOLNL_LineFade` by `1 - F`, Q5); all rebuilt with `-SOLRebuild`, editor closed | 49b |
 | `Source/SOLTest/UI/SOLFlightHud.*` | Read the label snapshot, project the anchors and dot rows, place and draw the glow text | 49b |
 | `Source/SOLTest/Npc/SOLNpcTunnelSmoke.*` (new), smoke wiring | `-SOLSmokeNpcTunnel` (SDD section 8 item 2), later `-SOLSmokeNpcTunnelProfile` | 49b, 49c |
-| `Source/SOLTest/Menu/SOLMenuText.h` | Info sentence and `@OverlayMenu` wording (SDD section 5); glossary entry text if Q7 (a) | 49b |
-| Tests: `NpcTunnelMathTest.cpp` (new), `LaneTunnelLabelTest.cpp` (new), `NpcLaneMathTest.cpp`, the HUD bus test, InfoText | SDD section 6 cases 1-22; re-validation of the touched files | 49a (22 in 49b) |
+| `Source/SOLTest/Menu/SOLMenuText.h` and the Help glossary table | Info sentence and `@OverlayMenu` wording (SDD section 5); the Overlay Menu glossary entry mentions the tunnels (Q7, no new row) | 49b |
+| Tests: `NpcTunnelMathTest.cpp` (new), `LaneTunnelLabelTest.cpp` (new), `NpcLaneMathTest.cpp` (17, 17b), `NpcLaneVisualsTest.cpp` (17c), the HUD bus test, InfoText, the glossary test | SDD section 6 cases 1-22; re-validation of the touched files | 49a (17c and 22 in 49b) |
 | `Docs/GAME_MECHANICS.md` | "Lane tunnel" row in section 9, Lanes overlay note | 49c |
 | `Docs/ARCHITECTURE.md` | `Npc/`, `UI/`, `HudEvents/` rows; the `Npc -> HudEvents` edge and sentence; flags and cvar | 49b (edge, files), 49c |
-| `Docs/SDDs/38-npc-lane-lines.md` | Note in section 4.10: extension point consumed, `bResolved` added | 49a |
+| `Docs/SDDs/38-npc-lane-lines.md` | Note in section 4.10: extension point consumed, `bResolved` added (49a); Q5 amendment note on D9 / D10 and section 4.8: the crossfade carries the tunnel fade, `LaneLineFade x (1 - F)`, sum still 1 (49b) | 49a, 49b |
 | `Docs/PLAYER_GUIDE.md`, `Docs/Images/` | Regenerated with `Tools\WritePlayerGuide.bat` if the Controls or glossary text changes | 49b |
 | `Docs/TECH_DEBT.md` | New debt found (existing items in SDD section 3 are not re-reported) | 49c |
 | `Docs/Plans/STATUS.md` | #49 in progress (this draft), Done with results at the end | 1, 49c |
@@ -58,15 +60,15 @@ pass, its smokes pass and its adversarial performance and style review's finding
 |---|---|---|---|
 | 0 | Grill-me (D1-D15) | main session | Done (2026-11-11) |
 | 1 | SDD, this plan, STATUS #49 in progress | opus / high | Done |
-| 1b | Q1-Q11 answered by the user; SDD (decisions, contract), this plan and STATUS updated | main session, then opus / high | **Pending** |
+| 1b | Q1-Q11 answered by the user; SDD (decisions, contract), this plan and STATUS updated; follow-up ticket #50 created | main session, then opus / high | Done (2026-11-11) |
 | **49a** | | | |
-| 2 | TDD: SDD section 6 cases 1-21 written from the contract only (no implementation shown) | opus / high | To do |
+| 2 | TDD: SDD section 6 cases 1-21 (with 17b) written from the contract only (no implementation shown) | opus / high | To do |
 | 3 | `Tools\RunTests.bat -Build -Filter` `SOLTest.NpcTunnelMath`, `SOLTest.LaneTunnelLabel`, `SOLTest.NpcLaneMath`, the bus test: fail for the right reason (missing `SOLNpcTunnel`, `bResolved`, `PublishLaneTunnelLabel`), not a typo. Record the red run here | sonnet / medium | To do |
-| 4 | Implement `SOLNpcTunnelMath`, `bResolved`, `SOLLaneTunnelLabel`, the bus snapshot, the constants; tests green, full suite green; SDD 38 note | opus / high | To do |
+| 4 | Implement `SOLNpcTunnelMath`, `bResolved`, `LaneLineFadeWithTunnel` and the `LaneShipPointAlpha` tunnel fade, `SOLLaneTunnelLabel`, the bus snapshot, the constants; tests green, full suite green; SDD 38 note | opus / high | To do |
 | 5 | Adversarial performance and style review of 49a (fresh opus / xhigh, report only; brief: changed files, SDD 49, style guide, performance guidelines, the TECH_DEBT items of SDD section 3); fixes; re-check against SDD 49; full suite; `Tools\UpdateMetrics.bat`; commit and push 49a | opus / xhigh, then opus / high | To do |
 | **49b** | | | |
 | 6 | Engine and code check first: the `SOLOL_*` / `SOLNL_*` entry points the tunnel reuses, the fixed-bounds ISM pattern (`USOLNpcHullInstances`), per-instance custom data in the material, how the HUD projects (`ProjectLocal`) and draws glow text, how the map state is read for the hide rule. If a decision turns out not viable, stop and report | opus / high | To do |
-| 7 | Material: `M_SOLNpcTunnel` in `create_npc_assets.py`, `SOLNpcTunnel.ush` mirroring `SOLNpcTunnelMath`; rebuilt with the editor closed; compile clean | opus / high | To do |
+| 7 | Materials: `M_SOLNpcTunnel` in `create_npc_assets.py`, `SOLNpcTunnel.ush` mirroring `SOLNpcTunnelMath`; the `NpcTunnelTex` fade in `M_SOLNpcLanes` (`SOLNpcLane.ush`) and `M_SOLNpcPoints` (Q5); all rebuilt with the editor closed; compile clean; case 17c; SDD 38 Q5 amendment note | opus / high | To do |
 | 8 | Renderer and label: `USOLNpcTunnelComponent`, the `ASOLNpcVisuals` hook, texture, instances on change, glow feed, occluder flag, `sol.NpcTunnel`, override, HUD label, Info / Controls text (case 22), `-SOLSmokeNpcTunnel` checks (SDD section 8 item 2); tests and full suite green; smokes PASS at 1280x720 and 1920x1080; `-SOLSmokeNpcLanes` still 35 / 35; the 1M ramp PASS | opus / high | To do |
 | 9 | Review of 49b (fresh opus / xhigh, report only, same brief plus the material and `.ush`); fixes; re-check against SDD; full suite; metrics; commit and push 49b | opus / xhigh, then opus / high | To do |
 | **49c** | | | |
@@ -83,15 +85,17 @@ The full contract is SDD section 6 (cases 1-22). In short:
 - **`SOLNpcTunnelMath` (new `SOLTest.NpcTunnelMath.*`):** constants and colours (1); the 100 -> 50 lane-radii fade,
   log linear, scale free (2); the radius 1x-3x the lane radius by traffic, never 0 for an empty lane (3); the
   ecliptic-up basis, right-handed, with the fallback (4); keep-right rows, chevron walls and their screen sides from
-  both ends (5); the segment point nearest the viewpoint (6); ring level and spacing (7); nested own levels and the
-  no-pop alpha (8); float-safe grid phases on AU lanes (9); depth, near and detail fades (10); slot coverage against
-  a brute-force reference, exactly once (11); end-ring arcs and drawability (12); ring samples clockwise from 12
-  o'clock (13); the label lane (14); end distances (15); the renderer feed, instance change detection and the shown
-  rule (16).
-- **Lane frame:** `bResolved` true for an empty lane with both bodies (17).
-- **Label (new `SOLTest.LaneTunnelLabel.*`):** box clear of the projected dot rows (18); candidate placement, never
-  over a row (19); the three text lines, no side line (20).
-- **Bus:** label snapshot round trip (21). **Text:** tokens resolve, player guide current (22).
+  both ends (5); the segment point nearest the viewpoint (6); the continuous ring spacing (7); the accordion warp, its
+  inverse, the no-pop sweep and the lane-fixed near rings (8); the ring phase advance and its float path on AU lanes
+  (9); depth, near, detail, end and cap fades (10); slot coverage against a brute-force reference, exactly once (11);
+  end-ring arcs and drawability (12); ring samples clockwise from 12 o'clock (13); the label lanes, strongest first,
+  and the dimmed side alpha (14); end distances (15); the renderer feed (zeros when the last tunnel goes), instance
+  change detection and the shown rule (16).
+- **Lane math:** `bResolved` true for an empty lane with both bodies (17); the Q5 line and point crossfade with the
+  tunnel fade, sum 1 (17b). **Lane visuals:** the `NpcTunnelTex` parameter on both lane materials (17c).
+- **Labels (new `SOLTest.LaneTunnelLabel.*`):** box clear of the projected dot rows (18); greedy placement of up to 4
+  labels, never over a row or another label (19); the three text lines, no side line (20).
+- **Bus:** the label snapshot round trip (21). **Text:** tokens resolve, player guide current (22).
 
 ## Notes
 
@@ -99,11 +103,17 @@ The full contract is SDD section 6 (cases 1-22). In short:
   captures once used", "no AI attribution in commits or code comments" and "no persistence change: stop and report if
   one seems needed".
 - `SOLNpcTunnel.ush` mirrors `SOLNpcTunnelMath`; a change to one changes the other (file headers say so).
-- D13 / Q9: if the #38 dash-length follow-up lands before 49b with a different smooth scheme, the ring spacing follows
-  it (cases 7, 8, 11 and the shader change together).
+- D13 / Q9 resolved: the #38 follow-up chose the continuous accordion scale (`b5bae2c`), and the rings use the same
+  principle (SDD section 4.5). The accordion's slide of the far rings is accepted; its lever is the constant-spacing
+  zone `D0` (SDD section 10).
+- Q5: the lane smoke (`-SOLSmokeNpcLanes`) hides the tunnels through their override, so its 35 checks keep measuring
+  the #38 crossfade; the new tunnel smoke checks the combined crossfade.
 - Pause points per CLAUDE.md (context above 35%, usage limits, 70% weekly): save resume state here (the step, files
   mid-edit, next action) and run `Tools\UpdateMetrics.bat`.
 
 ## Change log
 
 - 2026-11-11: first draft with the SDD (grill-me D1-D15); Q1-Q11 pending with the user.
+- 2026-11-11: Q1-Q11 answered by the user and recorded as SDD decisions; the gate removed; files, steps and the test
+  summary updated (labels per shown tunnel, the Q5 crossfade and material rebuilds, the accordion ring spacing);
+  follow-up ticket #50 (lane traffic flow) created.

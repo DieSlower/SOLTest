@@ -54,9 +54,10 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 2 | #33 | **Done.** Player documentation: Help page, keyboard diagram, HUD glossary, key caps, generated `Docs/PLAYER_GUIDE.md` (see Done) | M | #22, #46 |
 | 3b2 | #37 | **Done** (2026-11-11). Settings "HUD glow" slider (0-200%, save schema 12) with a lower default glow (see Done) | S-M | none |
 | 3b3 | #38 | **Done** (2026-11-11). NPC lanes drawn as two flowing dashed hologram lines per lane with a Lanes row in the Overlay Menu (save schema 13; see Done) | M | #22 |
-| 3b3b | #49 | **In progress** (2026-11-11): grill-me done (D1-D15), SDD 49 and plan drafted; open questions Q1-Q11 pending with the user before 49a starts. Lane guidance tunnel: cyan ring tunnel to fly through within 100-50 lane radii of an NPC lane (12 o'clock to the ecliptic north), keep right shown by side-wall chevrons and green / red guide dots, rings anchored to the lane (they stream only with the player's own motion), multi-scale spacing to the end rings, width by ship count (empty lanes kept), one wall label (lane, distance to each end, ships); follows the Lanes row and HUD glow, no schema change; parts 49a-49c. Mock-ups in `Docs/ToDo/49-lane-tunnel-mockups/` | M | #38 |
-| 3b4 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
-| 3b5 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
+| 3b4 | #49 | **In progress** (2026-11-11): SDD done, grill-me complete (D1-D16, and the user's answers to Q1-Q11 recorded as decisions); 49a (tunnel and label math, TDD) is next. Lane guidance tunnel: cyan ring tunnel to fly through within 100-50 lane radii of an NPC lane (12 o'clock to the ecliptic north), keep right shown by side-wall chevrons and green / red guide dots, rings and chevrons anchored to the lane (they move only with the player's own motion, and with the lane under time warp), one continuous "accordion" ring spacing to the end rings just outside each body (as the #38 dashes), width 1x-3x the lane radius by ship count (empty lanes kept), the lane's far line fading out with its tunnel while its ships show as points again, one wall label per shown tunnel (lane, distance to each end ring, ships; the weaker ones dimmer); follows the Lanes row and HUD glow, hidden on the map, no schema change; parts 49a-49c. Mock-ups in `Docs/ToDo/49-lane-tunnel-mockups/` | M | #38 |
+| 3b5 | #50 | Lane traffic flow: NPC lane ships faster near the tunnel's middle and slower outside, some traffic just outside the tunnel, keep-right rails (outbound right, inbound left; today the rails ignore direction), the player merging in by matching the outer traffic's speed; simulation and rail-shader work; needs grill-me | M | #49 |
+| 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
+| 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
 | 3d | #44 | Space dust look: subtler, debris-like particles (user feedback on #43: too coarse, uniform lines or spheres); needs grill-me | S-M | #43 |
 | 3e | #45 | Key rebinding conflict prevention: Settings warns and refuses a binding that conflicts with another bound key (also covers the RShift+O cycle key case in TECH_DEBT); needs grill-me | S-M | none |
@@ -98,5 +99,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 11 tickets (#49, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
+About 12 tickets (#49, #50, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

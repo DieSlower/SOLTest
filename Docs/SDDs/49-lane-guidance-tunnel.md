@@ -9,9 +9,10 @@ and shared occluders), SDD 37 (the HUD glow scale `g`), SDD 21 (the HUD event bu
 SDD 34 (the overlay profiles). Mock-ups: [`Docs/ToDo/49-lane-tunnel-mockups/`](../ToDo/49-lane-tunnel-mockups/README.md)
 (`tunnel8_rings_dots_sides.gif` is the chosen look).
 **Persistence change: none.** `SOL::Settings::SAVE_VERSION` stays 13 and `KEY_BINDING_LAYOUT_VERSION` stays 10 (D3).
-Status: **draft (2026-11-11).** Grill-me done 2026-11-11 (D1-D15, section 2); the derived design choices that the
-user has not made are listed as **open questions Q1-Q11 (section 11)**, each with a recommended answer. The build does
-not start until they are answered.
+Status: **agreed (2026-11-11), build not started.** Grill-me done 2026-11-11 (D1-D15, section 2); the derived
+questions Q1-Q11 were answered by the user the same day and are resolved decisions (section 11, numbering kept). The
+keep-right rails and the rest of the traffic behaviour went to the new ticket
+[#50](https://github.com/DieSlower/SOLTest/issues/50).
 
 ## 1. Problem
 
@@ -56,19 +57,26 @@ it.
   meet) are accepted and covered by the budget (D14), which applies to the all-lanes case at 1M NPCs.
 - **D10: Ships.** No special drawing: lane ships look like normal NPC ships with the usual HUD treatment; they are not
   tinted green or red (issue comment of 2026-11-11). The tunnel only adds rings, dots, chevrons and its label.
-- **D11: Readout = ONE floating wall label** (mock-up "Option B"): world-anchored text near the tunnel wall that
+- **D11: Readout = floating wall labels** (mock-up "Option B"): world-anchored text near the tunnel wall that
   **never overlaps the guide dots**, showing the **lane name** (e.g. "Earth - Mars"), the **distance to each end** and
-  the **ships in the lane**. It must **not** show a left/right "your side" line.
+  the **ships in the lane**. It must **not** show a left/right "your side" line. *Amended by Q4:* **one label per shown
+  tunnel**, the weaker tunnels' labels dimmer (section 4.9).
 - **D12: Lane ends.** An **end ring** marks each node. The tunnel draws over a planet **unless the planet is in front
   of the tunnel's path**: the #38 shared occluders (the orbit lines' 8 analytic spheres) hide the parts behind a
   planet.
 - **D13: Smooth spacing dependency.** Smooth dash size changes for the far lane line are a separate #38 follow-up, not
-  part of #49; the tunnel's multi-scale ring spacing **must use the same smooth scheme once it is chosen** (section 4.5
-  proposes one; recorded as dependency Q9).
+  part of #49; the tunnel's multi-scale ring spacing **must use the same smooth scheme once it is chosen**. *Resolved
+  (Q9):* the follow-up chose the continuous "accordion" scale (SDD 38 D15 amendment D, `b5bae2c`); section 4.5 applies
+  the same principle to the rings.
 - **D14: Budget gate at 1920x1080**, all lanes in range, 1M NPCs present: **<= 0.15 ms GPU, <= 0.02 ms CPU**. 4K
   (3840x2160) and one XR-4 eye (3840x3744) are measured and **recorded only** (no VR work, no two-eye run). Review
   items 9 and 11 apply; the method follows #38 (section 4.13 of SDD 38).
-- **D15: Not in #49:** the far-line dash-length follow-up (D13), any VR work, gameplay aids (D2).
+- **D15: Not in #49:** the far-line dash-length follow-up (D13), any VR work, gameplay aids (D2), and every change to
+  how the lane ships move (keep-right rails, speed by radial position, traffic just outside the tunnel, merging): ticket
+  [#50](https://github.com/DieSlower/SOLTest/issues/50) (Q1).
+- **D16 (user, 2026-11-11): traffic outside the tunnel.** Some ships may travel just **outside** the tunnel, along it
+  (#50). The display needs nothing special for them: it only draws rings, dots, chevrons, end rings and labels, and the
+  ships keep their normal look and HUD markings wherever they are.
 
 ## 3. What exists today (code survey, HEAD `24ca30f`)
 
@@ -79,7 +87,8 @@ it.
 | Lane renderer | `ASOLNpcVisuals` (930-line `.cpp`), `M_SOLNpcLanes`, `Shaders/Private/SOLNpcLane.ush` (`SOLNL_*`), `Tools/Npc/create_npc_assets.py` | One `USOLOrbitLineComponent` ribbon, placed on the GPU from the 64x2 group texture; after motion blur, additive, depth test off, sort priority 1; `FSOLGlowScaleFeed mLaneGlowFeed`; `SetLaneVerificationOverride`; cvar `sol.NpcLanes`; reads `USOLSettingsSubsystem` (Lanes row, live HUD glow) |
 | Orbit-line library | `Shaders/Private/SOLOrbitLine.ush` (`SOLOL_*`), `OrbitLines/SOLOrbitLineMath` | `SOLOL_PlaceLinePointCm` (far-depth compression on the true ray), `SOLOL_RibbonSideDirection`, `SOLOL_LineCoverage`, `SOLOL_IsPointOccludedBySphere` / `IsPointOccluded`, `SOLOL_IsHiddenBySceneDepth`, `SOLOL_EclipticToUnreal`; occluders and trust limit in `MPC_SOLOrbitLine`, written while orbit lines **or** lanes draw (SDD 38 D24) |
 | Fixed-bounds ISM | `Npc/SOLNpcHullInstances` (`USOLNpcHullInstances`) | An ISM subclass with fixed bounds (no per-frame `CalcBoundsImpl`); the pattern the tunnel's slot instances reuse |
-| Lane rails | `Npc/SOLNpcScaleMath.cpp` (`MakeSpawn`, `LaneParamAt`) | A lane ship's lateral offset is uniform over the lane disc and its direction (+1 / -1) is an independent hash; the triangle wave reverses it at each end. **Ships do not keep right today** (Q1) |
+| Lane rails | `Npc/SOLNpcScaleMath.cpp` (`MakeSpawn`, `LaneParamAt`) | A lane ship's lateral offset is uniform over the lane disc and its direction (+1 / -1) is an independent hash; the triangle wave reverses it at each end. **Ships do not keep right today** (accepted for #49, Q1; fixed by #50) |
+| Lane ship points | `M_SOLNpcPoints` vertex node (`Tools/Npc/create_npc_assets.py`), `SOLNpcLane::LaneShipPointAlpha`, `PointLaneParams` (`NpcParams4`) | In rail mode a lane ship's alpha is `1 - SOLNL_LineFade(d_ship, R)` while `NpcParams4.x` = 1, so it and the line sum to 1 at every lane point (SDD 38 D9); the CPU-position mode and Lanes off draw every point as before. Q5 changes this crossfade (section 4.2) |
 | Default lanes | `SOLNpcScale::DefaultLayout` | 8 lanes, radii 2e5 m (Earth-Moon), 2e6 (Mercury-Venus, Venus-Earth), 3e6 (Earth-Mars), 5e6, 8e6, 1e7, 1e7 m; lengths 3.8e8 m to about 4.5e12 m |
 | HUD | `UI/SOLFlightHud` (`ProjectLocal(FSOLHudView, localCm)`), `UI/SOLHudTextList`, `UI/SOLHudFormat` | Glow text through the fixed-capacity text list in `SSOLHudShapeLayer`; distance formatting; the HUD hides while a menu shows and follows the HUD visibility setting |
 | HUD event bus | `HudEvents/SOLHudBus.h` (`FSOLHudBus`, owned by `USOLHudEventSubsystem`) | Plain C++ bus between the pawn and the HUD (pilot snapshot, commands, map body overlay); `UI -> HudEvents` exists |
@@ -95,12 +104,13 @@ add a sixth); the NPC worst case with every Demo option at its maximum; `ASOLOrb
 ### 4.1 Overview
 
 For every lane within 100 lane radii of the render viewpoint the CPU computes, in double, a small per-lane **tunnel
-frame** (nearest lane point, axis, up from the ecliptic, tunnel radius, fade, ring grid phases, end-ring positions) and
+frame** (nearest lane point, axis, up from the ecliptic, tunnel radius, fade, the ring phase, end-ring positions) and
 uploads it as a few texels. A **fixed slot mesh** (one instance per lane in range) of ring ribbons, dot quads and
 chevron quads is placed and shaded entirely on the GPU by a new material `M_SOLNpcTunnel` (HLSL in
-`Shaders/Private/SOLNpcTunnel.ush`, reusing the orbit-line and lane libraries). The single wall label is chosen and
-formatted on the CPU, published on the HUD event bus and drawn by the flight HUD as glow text. Per-frame CPU work is
-O(lanes in range); nothing in the tunnel is per ship.
+`Shaders/Private/SOLNpcTunnel.ush`, reusing the orbit-line and lane libraries). The same texture's per-lane fade is
+also read by the #38 lane and point materials, which fade the lane's line out with its tunnel and show its ships as
+points again (Q5). The wall labels (one per shown tunnel, Q4) are chosen on the CPU, published on the HUD event bus
+and drawn by the flight HUD as glow text. Per-frame CPU work is O(lanes in range); nothing in the tunnel is per ship.
 
 ### 4.2 Trigger, hand-over and visibility (D1, D3, D8)
 
@@ -110,19 +120,43 @@ O(lanes in range); nothing in the tunnel is per ship.
   `NPC_TUNNEL_FADE_FULL_RADII` (50) x `R`, linear in `log d` between; `R` is the **lane** radius (`LaneRadiusM`, as
   D1 states the band in lane radii). One scalar per lane per frame multiplies everything the lane's tunnel draws (rings,
   dots, chevrons, end rings).
-- **The #38 line is not changed.** Its per-pixel close-up fade already removes it inside 100 lane radii of each lane
-  point; the far parts of a lane (more than 100 lane radii from the camera) keep their dashes, so from inside a tunnel
-  the distant section shows the tunnel rings with the dashed line pair down its middle. The far points' crossfade
-  (`M_SOLNpcPoints`) is unchanged, so a lane is never empty at any distance (SDD 38 D9). Suppressing the far line
-  inside a shown tunnel is the alternative (Q5).
+- **The lane's whole #38 line fades out with its tunnel (Q5).** Without a tunnel the line's per-pixel close-up fade
+  removes it only inside 100 lane radii of each lane point, so from inside a tunnel the distant section would keep its
+  dashes down the tube. Instead, with `F` the lane's tunnel fade (above) and `d` the camera distance of the lane point
+  (line pixel) or of the ship (point), both clamped to [0, 1], NaN as 0:
+  - **line alpha** = `LaneLineFade(d, R) x (1 - F)` (new `SOLNpcLane::LaneLineFadeWithTunnel(d, R, F)`);
+  - **lane-ship point alpha** = `1 - LaneLineFade(d, R) x (1 - F)` while the lanes are shown, else 1
+    (`SOLNpcLane::LaneShipPointAlpha` gains the argument `tunnelFade`; `F` = 0 gives exactly today's values).
+  The two still **sum to 1 at every lane point** (SDD 38 D9 holds: a lane is never empty at any distance). As the
+  player closes from 100 to 50 lane radii the far dashes fade together with the tunnel coming in, and the far ships,
+  which the line stood for, come back as points; with the tunnel full (`F` = 1) the line is gone and every lane ship
+  draws as a point exactly as with Lanes off. **Lanes off and the exact points stay consistent:** with the lanes not
+  shown no tunnel shows (`F` = 0 everywhere) and `NpcParams4.x` = 0 draws every point as before; ships in the
+  CPU-position mode (the exact tier) were never crossfaded and are not touched; `sol.NpcTunnel 0`, the jump map (Q6)
+  and the hidden verification override all write `F` = 0, so the #38 behaviour returns exactly. An empty lane has no
+  line and no lane ships, so its `F` changes nothing there.
+- **Where `F` reaches the shaders.** `F` is row 1 `.w` of the tunnel texture `NpcTunnelTex` (section 4.7), indexed by
+  the lane's group column like the group texture. `M_SOLNpcLanes` (`SOLNL_Pixel`) and `M_SOLNpcPoints` (the lane
+  branch of the rail vertex node) gain the texture parameter `NpcTunnelTex` (name in `SOL::NpcLaneMaterialParams`,
+  bound once at `BeginPlay` to the component's texture) and multiply `SOLNL_LineFade` by `1 - F`. The texture is
+  written with fade 0 for every column on the frame the last tunnel goes away (and holds zeros before the first one),
+  so a stale fade can never hide a line. Both materials are **rebuilt** by `Tools/Npc/create_npc_assets.py`
+  (`-SOLRebuild`, editor closed) in 49b, together with `M_SOLNpcTunnel`; the vertex node's lane branch stays the one
+  `SOLNL_LineFade` call times one texel load. Cost: one extra texel load per lane-ship vertex in rail mode and per
+  lane pixel (budget re-checked in the profile run, section 8 item 6).
+- **Ship markings (Q5):** lane ships keep their **normal HUD markings** (symbols, brackets, the radar) inside and near
+  tunnels; nothing in the HUD's ship marking changes.
+- **SDD 38 amendment note** (written in 49b with the material change): SDD 38 D9 / D10 and section 4.8 gain a note that
+  since #49 the line and point crossfade also carries the per-lane tunnel fade, `LaneLineFade x (1 - F)`, sum still 1.
 - **Shown** = the lanes shown (`SOLNpcLane::AreLanesShown`: the Lanes row with the master O, `sol.NpcLanes`) **and**
   the new cvar `sol.NpcTunnel` (default 1, A/B profiling) **and** both lane bodies resolved. An **empty lane** (0 ships)
   is shown at the minimum radius (D8). To tell empty from unresolved, `FSOLNpcLaneEntry` gains
   `bool bResolved` (both bodies resolved, `LaneBodyA/B != INDEX_NONE` and inside the frame arrays), set by
   `BuildLaneFrame`; `bDrawn` keeps its meaning (`bResolved` and at least one ship), so #38 is unaffected.
-- **Map:** hidden while the jump map is open (proposed, Q6): the map viewpoint is the map camera, and the tunnel is a
-  flight aid. **Menus:** the tunnel geometry stays while a menu shows (as the lane lines do); the label is HUD text and
-  hides with the HUD (Q6).
+- **Map (Q6):** the tunnels are hidden while the jump map is open (the map viewpoint is the map camera, and the
+  tunnel is a flight aid); their fades read 0 there, so the lanes' #38 lines show on the map as before (SDD 38 D18).
+  **Menus (Q6):** the tunnel geometry stays while a menu shows (as the lane lines do); the wall labels are HUD text and
+  hide with the HUD.
 - A verification override (`SetTunnelVerificationOverride(bShown, bForceAllLanes)`) lets the smokes show or hide the
   tunnels without the player's settings, and force every lane's fade to 1 for the all-lanes budget case (D14).
 
@@ -144,49 +178,87 @@ O(lanes in range); nothing in the tunnel is per ship.
   `cos(t) u + sin(t) r`.
 - **Keep right:** the outbound half of the tube is the `r` side (3 o'clock), the inbound half the `-r` side (9
   o'clock). Seen from B looking toward A the sides swap on screen, and each direction's traffic is still on the right of
-  its own travel, as with the #38 line. Ships themselves are not moved (D10; see Q1).
+  its own travel, as with the #38 line. Ships themselves are not moved (D10, Q1: accepted; keep-right rails are #50).
 - **Radius** `Rt = R x lerp(NPC_TUNNEL_RADIUS_MIN_SCALE, NPC_TUNNEL_RADIUS_MAX_SCALE, LaneTrafficWeight(n))`, scales 1
-  and 3 (D8); the **base radius is the lane radius `R`** (proposed, Q3): the ships' lateral offsets lie inside `R`, so
-  even the minimum tunnel contains all its ships, and a busy lane's tube is roomier around them.
+  and 3 (D8); the **base radius is the lane radius `R`** (Q3): the ships' lateral offsets lie inside `R`, so even the
+  minimum tunnel contains all its ships, and a busy lane's tube is roomier around them. An empty lane gets `R`.
 - **Nearest point** `P = A + s_P (B - A)`, `s_P` the segment parameter nearest the viewpoint, and its lane arc
-  `a_P = s_P x L` (`L = |B - A|`), all in double.
+  `a_P = s_P x L` (`L = |B - A|`), all in double; it gives the trigger distance and fade (section 4.2).
+- **Foot point** `F` on the axis **line** (the same projection, not clamped to the segment), its arc `a_F` (may lie
+  below 0 or above `L` past an end) and the camera's distance `h` from the line: the origin of the ring layout
+  (sections 4.4, 4.5). Inside the segment `F = P`.
 - **End rings** (D12) at arcs `a_A = R_bodyA + NPC_TUNNEL_END_MARGIN_RADII x Rt` and `a_B = L - R_bodyB - margin`
-  (body radii from the registry; proposed, Q10): just outside each body's surface, so the end ring is not inside the
-  planet, where the analytic occluder would always hide it. Rings, dots and chevrons exist only between the end rings.
+  (body radii from the registry; Q10): just outside each body's surface (surface plus one tunnel radius), so the end
+  ring is not inside the planet, where the analytic occluder would always hide it. Rings, dots and chevrons exist only
+  between the end rings; the tunnel draws over the planet unless the planet is in front of its path (the shared
+  occluders, D12).
   If the end arcs cross (a lane shorter than its bodies plus margins), the tunnel is not drawn.
 
-### 4.4 Streaming (D6)
+### 4.4 Streaming (D6, Q2, Q8)
 
-Rings, dots and chevrons are **anchored to the lane** in lane-arc units measured from node A (like the #38 dashes and
-like the lane ships' rails), never animated by a clock. What the player sees move is therefore exactly the player's
-motion relative to the lane: flying along the lane streams the rings toward the camera at the player's speed, flying
-backwards streams them away, and a player at rest relative to the lane sees nothing move. The flow cannot change
-direction per lane because it is not a per-lane animation. The only other motion is the lane's own (the bodies orbit,
-the lane stretches and turns): at 1x warp under about 0.003 ring spacings per second for every default lane (checked
-in the smoke), visible only under high time warp, where the bodies and the lane ships (whose rails run on sim time)
-visibly move with it. A player-driven "odometer" phase that ignores the lane's motion is the alternative (Q8).
+Rings, dots and chevrons are **anchored to the lane** (Q2: the chevrons too, like the rings) and are never animated by
+a clock. The anchor is the per-lane **ring phase** `Phi` in [0, 1) (section 4.5), held by the component in double and
+advanced each frame by the change of the camera's **foot arc** `a_F` (the arc from node A of the camera's foot point on
+the lane's axis line, unclamped, in double) divided by the ring spacing at the foot point (`AdvanceRingPhase`). The
+rings near the player therefore move exactly with the player's motion relative to the lane: flying along the lane
+streams them toward the camera at the player's speed, flying backwards streams them away, and a player at rest
+relative to the lane sees nothing move. The flow cannot change direction per lane because it is not a per-lane
+animation. **Under time warp (Q8)** the lane's own motion (the bodies orbit, the lane stretches and turns) changes
+`a_F` and the foot point too, so the rings move with the lane like the lane ships do; at 1x warp this is under about
+0.003 ring spacings per second for every default lane (checked in the smoke). When a lane enters range (its fade leaves
+0) its phase starts at `InitialRingPhase(a_F, spacing) = frac(a_F / spacing)`, so the start is deterministic; a jump
+across the solar system just advances the phase by a large wrapped amount.
 
-Precision: the shader never sees a large arc. The CPU sends each ring grid phase as `a_P mod S` for two periods (a fine
-level and the coarsest level, section 4.5) as floats smaller than their period, and every ring position as an offset
-from `P` (camera-relative), so rings near the camera are exact to far under a pixel on a 30 AU lane (contract case 9).
+Precision: the shader never sees a large arc. The CPU sends the phase (a float in [0, 1)), the foot point relative to
+the viewpoint and the end-ring arcs relative to `a_F`; every ring position is an offset from the foot point
+(camera-relative) computed from warp values smaller than the slot count, so rings near the camera are exact to far
+under a pixel on a 30 AU lane (contract case 9).
 
-### 4.5 Multi-scale ring spacing (D7, D13)
+### 4.5 Continuous "accordion" ring spacing (D7, D13, Q9)
 
-- **Level by camera distance.** For a ring centre at camera distance `d` (true 3D distance, so the on-screen density is
-  bounded from inside and from outside the tube), the continuous level is
-  `l(d) = max(0, log2(rho x d / (S0)))`, with `S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII` (2) x `Rt` and
-  `rho = NPC_TUNNEL_RING_SPACING_PER_DISTANCE` (0.25, proposed). So rings are 2 tunnel radii apart within
-  `D0 = S0 / rho` (8 tunnel radii) of the camera, and beyond it about `d / 4` apart: each ring is about 1.25 times
-  farther than the one before it, a steady geometric tunnel to the end node. Level `k` spacing `S_k = S0 x 2^k`.
-- **Nested power-of-two rings, no pops (proposed scheme).** The ring at grid index `n` (arc `n x S0`) has the **own
-  level** `j(n)` = the number of trailing zero bits of `n` (capped at `NPC_TUNNEL_MAX_LEVEL`, 20, which covers 4.5e12 m
-  lanes at the 2e5 m minimum radius), i.e. the coarsest level whose grid contains it. Its alpha is
-  `RingLevelAlpha = clamp(j(n) + 1 - l(d), 0, 1)`: fully drawn while `l(d) <= j`, fading out linearly as `l` goes from
-  `j` to `j + 1`. Every ring of a coarser level is also a ring of every finer one, so as the camera moves a ring only
-  ever fades in or out continuously; nothing pops and no dimmer copy is drawn beside a ring (the #38 "shadow" issue
-  cannot occur, since a ring is never drawn at two sizes).
-- **Dependency (D13, Q9):** if the #38 dash-length follow-up chooses a different smooth scheme, the tunnel adopts it
-  (the spacing functions and their mirror change together). The nested fade above is the proposal until then.
+The #38 follow-up chose one continuous dash scale per lane, the accordion (SDD 38 D15 amendment D: a dash period stays
+about 24 px on screen, nothing pops, no dimmer copy, the dashes slide while zooming; `LaneDashLevel`,
+`LaneDashLaneFootprint`, `LaneScreenParam`). The rings use the same principle (Q9): **one continuous spacing function**,
+evenly spaced near the player and growing smoothly with distance, no levels, no pops.
+
+- **Spacing.** With `x` the signed axial offset from the camera's foot point on the axis line, `h` the camera's
+  distance from the axis line, `S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII` (2) x `Rt` and
+  `rho = NPC_TUNNEL_RING_SPACING_PER_DISTANCE` (0.25), the local ring spacing is
+  `sigma(x, h) = max(S0, rho x sqrt(x^2 + h^2))` (`RingSpacingM`): 2 tunnel radii apart within `D0 = S0 / rho`
+  (8 tunnel radii) of the camera, beyond it about a quarter of the ring's own distance (neighbouring rings about
+  `e^rho` = 1.28 times farther each), a steady geometric tunnel to the end node. Using the true distance bounds the
+  on-screen density from inside and from outside the tube (seen from 50 tunnel radii away the rings at the foot point
+  are 12.5 tunnel radii apart).
+- **Warp.** The ring coordinate is `w = W(x, h)`, the integral of `1 / sigma` from the foot point (`RingWarp`, odd in
+  `x`, strictly increasing). With `x0 = sqrt(max(0, D0^2 - h^2))`: `W = x / S0` for `|x| <= x0`, and beyond it
+  `W = sign(x) (x0 / S0 + ln((u + sqrt(u^2 + h^2)) / (x0 + sqrt(x0^2 + h^2))) / rho)` with `u = |x|` (the `asinh`
+  form, well defined at `h` = 0 and at `x0` = 0). Its closed-form inverse `RingWarpInverse(w, h)`: `x = w S0` inside,
+  else `v = (x0 + sqrt(x0^2 + h^2)) e^(rho (|w| - x0 / S0))` and `u = (v^2 - h^2) / (2 v)`.
+- **Rings** sit at every `x` with `W(x, h) + Phi` a whole number (`Phi` the lane's phase, section 4.4). Ring slot `k`
+  (0 .. `NPC_TUNNEL_RING_SLOTS_PER_SIDE` - 1, 64 per side) is the ring at `w = k + 1 - Phi` ahead (along `+a`) and
+  `w = -(k + Phi)` behind, so **slot and ring are one to one**: every ring with `|w| < 64` is drawn by exactly one
+  slot, with no level bands to cover. On the axis (`h` = 0) a lane needs `W(L, 0) = 4 + 4 ln(L / (8 Rt))` rings per
+  side: about 48 for a 4.5e12 m lane of radius 1e7 m, and still under 64 (about 63.4) for a 4.5e12 m lane at the
+  2e5 m minimum radius, so no ring between the end rings is lost on any default lane (contract case 11 checks each).
+- **No pops.** Every ring's position is a continuous function of `Phi`, `h` and `Rt` (when `Phi` wraps, the slot
+  labels shift by one and the set of rings is the same). Rings only enter or leave at alpha 0: the **cap fade**
+  `clamp(64 - |w|, 0, 1)` fades a ring in or out at the far end of the slot range, and the **end fade**
+  `TunnelEndFade(dEnd, sigma) = clamp(dEnd / (NPC_TUNNEL_END_FADE_SPACINGS x sigma), 0, 1)` (0.5 spacings) fades a ring
+  to 0 as it reaches an end ring (`dEnd` its axial distance to the nearer end ring, inside the tunnel). The tunnel
+  radius steps only when the lane's ship count changes, by a fraction of a ring spacing (accepted).
+- **Accepted trade-off (the accordion's slide, as in #38).** Rings within `x0` (8 tunnel radii inside the tube) are
+  fixed to the lane: they move exactly with the player and the lane (D6, Q2, Q8). Farther rings **slide along the lane**
+  when the player moves along it (an outer ring moves `sigma(x, h) / sigma(0, h)` times as fast, the far tunnel
+  "breathing" in toward the player) and spread or gather around the foot point when the player moves toward or away
+  from the axis; the foot point is the pivot and stays put, as the lane's middle on screen does for the #38 dashes.
+  Their on-screen spacing stays constant, which is the point of the scheme.
+- **Why the nested power-of-two fade (the first draft) is dropped.** It kept every ring fixed to the lane, but it did
+  so by fading half of the rings out at every octave of distance, so the far tunnel showed rings continually dimming
+  and brightening as the player flew, the multi-level look the user moved away from in #38 (amendments C and D); it
+  needed a level per ring (trailing zero bits of the grid index), two float phases for precision and a banded slot
+  layout with an "exactly once" proof per band, and about twice the ring vertices (12,000 against about 5,000 per
+  lane, section 4.7). The accordion draws every ring with no level fade, needs one phase and one slot per ring, and
+  matches the lane line's behaviour, so the player sees one rule for both.
 - **Depth fade (D7):** `TunnelDepthFade(d, Rt)` = 1 inside `NPC_TUNNEL_DEPTH_FADE_START_RADII` (8) x `Rt`, falling
   linearly in `log d` to `NPC_TUNNEL_DEPTH_FADE_FLOOR` (0.2) at `NPC_TUNNEL_DEPTH_FADE_END_RADII` (65,536) x `Rt` and
   staying at the floor beyond, so the rings stay visible to the end node, darker and more transparent with distance.
@@ -194,10 +266,12 @@ from `P` (camera-relative), so rings near the camera are exact to far under a pi
 - **Near fade:** a ring whose axial offset from the camera's foot point is under `NPC_TUNNEL_NEAR_FADE_FULL_RADII`
   (1.5) tunnel radii fades out, to 0 at `NPC_TUNNEL_NEAR_FADE_START_RADII` (0.5) (smoothstep). This keeps the ring the
   player passes through from sweeping the whole screen edge-on, as in the mock-up (rings from half a radius ahead).
-- **Dots and chevrons** use the same grid and fades: dots at `NPC_TUNNEL_DOTS_PER_GAP` (2) per ring gap of the level
-  in use, chevrons one per ring gap (mid-gap), both with `RingLevelAlpha` of their own grid index. Both **fade out
-  between 256 and 512 tunnel radii** (`NPC_TUNNEL_DETAIL_FADE_*`; proposed, Q11), where they are below a pixel or two;
-  rings alone carry the lane to its end.
+- **Dots and chevrons** use the same warp and phase, so they are anchored and slide exactly like the rings: dots at
+  `NPC_TUNNEL_DOTS_PER_GAP` (2) per ring gap (at `w` + 0.25 and + 0.75 of the gap), chevrons one per ring gap
+  (mid-gap, `w` + 0.5), each with the cap, end and near fades of its own `w`. Both **fade out between 256 and 512
+  tunnel radii** of true distance (`NPC_TUNNEL_DETAIL_FADE_*`, Q11), where they are below a pixel or two; rings alone
+  carry the lane to its end ring. `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (24) gaps per side cover 512 tunnel radii
+  (`W(512 Rt, 0)` is about 20.6).
 
 ### 4.6 Look (D4, D6, D11, D12)
 
@@ -206,8 +280,8 @@ from `P` (camera-relative), so rings near the camera are exact to far under a pi
 | Rings | Circle of radius `Rt` in the plane normal to `a`, drawn as a constant-pixel-width line ribbon | `CYAN_COLOR` #28D2F0, `NPC_TUNNEL_RING_WIDTH_PX` 1.5 px at 1080p, scaled by the viewport height | HUD glow profile with the live `g` (`LaneLineProfile` / `SOLNL_LineProfile` with the ring width), `LaneRibbonHalfExtentPx` for the ribbon edge |
 | End rings | Same, at `a_A` and `a_B` | Cyan, `NPC_TUNNEL_END_RING_WIDTH_PX` 3 px, alpha floor 0.5 | One per node (D12) |
 | Guide dots | 8 rows at clock angles `(g + 0.5) x 45` degrees (22.5, 67.5, ... ), radius `NPC_TUNNEL_DOT_RADIUS_SCALE` (1.1) x `Rt`, camera-facing round quads | Outbound rows (angles in (0, 180), the `r` half) **#5C8F6C** muted green, inbound rows **#9A5656** muted red (the mock-up's colours); `NPC_TUNNEL_DOT_SIZE_PX` 3 px at 1080p, scaled | "Outside the rings" (D6); a soft glow like the mock-up |
-| Chevrons | Flat arrowheads on the wall at 3 o'clock (outbound, pointing toward B) and 9 o'clock (inbound, pointing toward A), radius 0.97 `Rt`, half width 0.17 `Rt`, half length 0.26 `Rt` (the mock-up's proportions, world-sized so they foreshorten) | Outbound **#84AB90**, inbound **#B38080** (the dot colours lightened 25%, as in the mock-up), alpha 0.75 | World-anchored like the rings (proposed, Q2; the mock-up let them flow in their traffic direction) |
-| Label | HUD glow text (section 4.9) | HUD text colour and glow | One for the whole view |
+| Chevrons | Flat arrowheads on the wall at 3 o'clock (outbound, pointing toward B) and 9 o'clock (inbound, pointing toward A), radius 0.97 `Rt`, half width 0.17 `Rt`, half length 0.26 `Rt` (the mock-up's proportions, world-sized so they foreshorten) | Outbound **#84AB90**, inbound **#B38080** (the dot colours lightened 25%, as in the mock-up), alpha 0.75 | Fixed to the lane like the rings (Q2): they move only with the player's own motion, not on a clock (the mock-up let them flow) |
+| Labels | HUD glow text (section 4.9) | HUD text colour and glow, alpha by tunnel strength | One per shown tunnel (Q4), the strongest brightest |
 
 All tunnel colours are stored as sRGB `FColor` constants and converted to linear once; the emissive scale
 `NPC_TUNNEL_EMISSIVE` is tuned on the screenshots so the brightest ring core keeps its cyan after tone mapping (as SDD
@@ -218,7 +292,8 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
 - **Where the code lives.** A new component `USOLNpcTunnelComponent` (`Npc/SOLNpcTunnelComponent.{h,cpp}`, a
   `USceneComponent`, never ticks) created in `ASOLNpcVisuals`' constructor and attached to its root. It owns the slot
   instances (a `USOLNpcHullInstances`-style fixed-bounds ISM, never culled), the tunnel MID, the tunnel data texture
-  and its upload ring, and the label snapshot. `ASOLNpcVisuals::UpdateLanes` calls
+  and its upload ring, the per-lane ring phases and last foot arcs (fixed arrays of `NPC_GROUP_TEXTURE_WIDTH`), and the
+  label snapshot. `ASOLNpcVisuals::UpdateLanes` calls
   `Tunnel->UpdateTunnels(laneFrame, viewpointM, bodies, bLanesShown, glowScale)` once per redraw; this keeps the
   930-line `SOLNpcVisuals.cpp` from growing by more than a few lines. The pure math is in
   `Npc/SOLNpcTunnelMath.{h,cpp}` (namespace `SOLNpcTunnel`); the HLSL mirror in `Shaders/Private/SOLNpcTunnel.ush`
@@ -230,33 +305,35 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
   order for free, needs no CPU projection or clipping per frame, and renders per eye in a future VR stereo view. A HUD
   shape-batch tunnel would project and clip hundreds of rings on the CPU every frame.
 - **Slot mesh, built once at `BeginPlay`** (the same for every lane; one ISM instance per lane in range, its lane index
-  in the per-instance custom data). Slots: for each direction along the axis (ahead, behind), a level-0 band of
-  `NPC_TUNNEL_RING_SLOTS_LEVEL0` ring slots and, for each level 1 .. `NPC_TUNNEL_MAX_LEVEL`,
-  `NPC_TUNNEL_RING_SLOTS_PER_LEVEL` slots (proposed 9 and 8: a level band spans camera distances `[D0 2^k, D0 2^(k+1))`,
-  whose axial length is at most `0.87 x D0 2^(k+1)`, at most 7 spacings, plus one at the boundary). Each slot carries
-  its direction, level band and index; the vertex shader computes its grid index `n` from the band's first ring at or
-  after the band's inner edge (using the lane's phases), so **every ring with a non-zero alpha between the end rings is
-  covered exactly once** for any camera position, inside or outside the tube (contract case 11). A slot whose ring is
-  outside its band or past an end ring returns the hidden offset in the vertex shader (no raster cost).
-- **Level of detail by band.** A ring's on-screen radius is about `Rt / d x 960` px at 1080p, so far bands get fewer
-  segments: `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for bands 0-1, 24 for bands 2-3, 12 beyond. Dots and chevrons have
-  slots only in bands 0-5 (they fade out by 512 tunnel radii). Estimated vertices per lane instance: rings about
-  12,000, dots about 6,300, chevrons about 800, end rings about 200: **about 20,000 per lane, about 160,000 for all 8
-  lanes** (the D14 worst case). The implementer pins the exact slot counts with the coverage test.
+  in the per-instance custom data). Slots (section 4.5): for each side along the axis (ahead, behind)
+  `NPC_TUNNEL_RING_SLOTS_PER_SIDE` (64) ring slots, slot `k` being the ring at `w = k + 1 - Phi` ahead or
+  `w = -(k + Phi)` behind; `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (24) gap slots per side for the dots and chevrons; and two
+  end-ring slots. Slot and ring are one to one, so **every ring with a non-zero alpha between the end rings is drawn
+  exactly once** for any camera position, inside or outside the tube (contract case 11). A slot whose ring is past an
+  end ring or at alpha 0 returns the hidden offset in the vertex shader (no raster cost).
+- **Level of detail by slot.** A ring's on-screen radius is about `Rt / d x 960` px at 1080p, and the slot index grows
+  with distance (geometrically past `x0`), so far slots get fewer segments: `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for
+  slots 0-7, 24 for slots 8-23, 12 beyond (seen from outside the tube slot 0 is already far, so this only errs toward
+  more segments). Estimated vertices per lane instance: rings about 5,100, dots about 3,100, chevrons about 400, end
+  rings about 200: **about 9,000 per lane, about 72,000 for all 8 lanes** (the D14 worst case). The implementer pins
+  the exact counts with the coverage test.
 - **Instances change only on events.** The ISM's instance list is rewritten only when the set of lanes with a non-zero
   fade changes (a lane enters or leaves range, the lanes turn on or off), not per frame, so out-of-range lanes cost no
   vertex work at all.
 - **Per-lane data texture** `NpcTunnelTex`, `NPC_GROUP_TEXTURE_WIDTH` (64) x 4 float texels, a 3-slot upload ring like
-  the group texels, uploaded only on frames where at least one tunnel shows. Per lane column (proposed layout, the
-  implementer keeps or reports a better packing; `WriteTunnelTexels` pins it): row 0 = `P` relative to the viewpoint
-  (ecliptic m), `Rt`; row 1 = `a`, fade; row 2 = `u`, fine phase; row 3 = coarse phase, `a_A - a_P`, `a_B - a_P`,
-  0. `r = a x u` is computed in the shader.
-- **Vertex shader.** Ring slot: grid index and arc offset `x` from the phases, centre `P + x a`, sample `k` of the
-  circle `centre + Rt (cos(2 pi k / N) u + sin(2 pi k / N) r)`, placed with `SOLOL_PlaceLinePointCm` (so it lands on
-  its true pixel at any distance), expanded along `SOLOL_RibbonSideDirection` by the ribbon half extent; neighbouring
-  samples give the tangent. The alpha (`RingLevelAlpha x TunnelDepthFade x TunnelNearFade x fade`) is computed per
-  vertex; a vertex of a zero-alpha ring returns the hidden offset. Dot and chevron quads: their centre on the wall,
-  expanded camera-facing (dots, pixel size) or in the wall plane (chevrons, world size).
+  the group texels, uploaded on frames where at least one tunnel shows and once more (all zeros) on the frame the
+  last one goes away (section 4.2). Per lane column (the implementer keeps or reports a better packing;
+  `WriteTunnelTexels` pins it): row 0 = the foot point `F` on the axis line relative to the viewpoint (ecliptic m; its
+  length is `h`), `Rt`; row 1 = `a`, **fade** (also read by `M_SOLNpcLanes` and `M_SOLNpcPoints`, Q5); row 2 = `u`,
+  ring phase `Phi`; row 3 = `a_A - a_F`, `a_B - a_F`, 0, 0. `r = a x u` is computed in the shader. Columns of lanes
+  without a tunnel are zero (fade 0).
+- **Vertex shader.** Ring slot: `w` from the slot index and `Phi`, axial offset `x = RingWarpInverse(w, h)`, centre
+  `F + x a`, sample `k` of the circle `centre + Rt (cos(2 pi k / N) u + sin(2 pi k / N) r)`, placed with
+  `SOLOL_PlaceLinePointCm` (so it lands on its true pixel at any distance), expanded along `SOLOL_RibbonSideDirection`
+  by the ribbon half extent; neighbouring samples give the tangent. The alpha (`cap fade x TunnelEndFade x
+  TunnelDepthFade x TunnelNearFade x fade`) is computed per vertex; a vertex of a zero-alpha ring returns the hidden
+  offset. Dot and chevron quads: their centre on the wall at their gap's `w`, expanded camera-facing (dots, pixel
+  size) or in the wall plane (chevrons, world size), with `TunnelDetailFade` as well.
 - **Near-plane rule.** Rings close to the camera plane are already faded (near fade, section 4.5), but when the
   player looks sideways inside the tube some ring samples lie behind the camera. A segment with both ends behind the
   near plane is collapsed; a vertex just behind it is clamped to the plane along its segment (the SDD 38 V4b
@@ -274,7 +351,8 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
   when the live HUD glow changes (the Settings slider previews at once).
 - **Assets.** `M_SOLNpcTunnel` added to `Tools/Npc/create_npc_assets.py` (rebuilt with `-SOLRebuild`, editor closed),
   path `SOL::Paths::NPC_TUNNEL_MATERIAL`, parameter names in a new `SOL::NpcTunnelMaterialParams`; constants as vector
-  parameters set once at `BeginPlay`, the texture per frame.
+  parameters set once at `BeginPlay`, the texture per frame. The same script run rebuilds `M_SOLNpcLanes` and
+  `M_SOLNpcPoints` with their new `NpcTunnelTex` texture parameter (Q5, section 4.2).
 
 ### 4.8 Per-frame data flow and cost scaling
 
@@ -289,18 +367,21 @@ sequenceDiagram
     Npc->>Vis: OnNpcsUpdated
     Vis->>Vis: UpdateFarPoints builds the lane frame
     Vis->>Tun: UpdateTunnels with the lane frame, viewpoint, lanes shown, glow
-    Tun->>Tun: per lane - distance, fade, axis and up, radius, phases, end arcs
-    Tun->>Gpu: tunnel texels (only while a tunnel shows), instances only on a change
-    Tun->>Bus: PublishLaneTunnelLabel (lane, distances, ships, anchor candidates)
+    Tun->>Tun: per lane - distance, fade, axis and up, radius, ring phase, end arcs
+    Tun->>Gpu: tunnel texels (while a tunnel shows, zeros once after), instances only on a change
+    Note over Gpu: M_SOLNpcLanes and M_SOLNpcPoints read the same fade texel
+    Tun->>Bus: PublishLaneTunnelLabels (per shown tunnel - lane, strength, distances, ships, anchors)
     Hud->>Bus: read the label snapshot at draw time
-    Hud->>Hud: place the label clear of the dot rows, glow text
+    Hud->>Hud: place the labels strongest first, clear of the dot rows and of each other, glow text
 ```
 
 - **CPU per frame:** O(lanes): for each of up to 64 lanes (8 in the default layout) one segment distance, one log, one
-  basis, two `fmod` in double, 4 texels; one label selection; one bus publish of plain numbers (no strings). No
+  basis, one phase advance (`fmod` in double), 4 texels; one label selection (at most `NPC_TUNNEL_LABEL_MAX_COUNT`);
+  one bus publish of plain numbers (no strings). No
   allocation (arrays sized once), no tick, no UObject per frame. Budget with the HUD's label work: **<= 0.02 ms** at
   1080p (D14), measured with a new `STAT_SOL_NpcTunnel` and the HUD's label stat.
-- **GPU:** vertex work scales with the lanes in range (about 20,000 vertices each, most of them early-out hidden);
+- **GPU:** vertex work scales with the lanes in range (about 9,000 vertices each, most of them early-out hidden), plus
+  one texel load per lane-ship point vertex and per lane-line pixel for the Q5 fade;
   pixel work with the ring area: inside one tube about 0.3-0.5 Mpx of a cheap shader at 1080p (near rings are large,
   the series of far rings small), several tubes seen from outside less each. Expected well inside **0.15 ms** at 1080p
   with all 8 lanes forced in range (D14); 4K and one eye scale with the pixels and are recorded only.
@@ -308,35 +389,50 @@ sequenceDiagram
   fully shown and Earth-Moon partly, all three ending in end rings just outside Earth. Accepted by D9; the smoke's T5
   view records it.
 
-### 4.9 Wall label (D11)
+### 4.9 Wall labels (D11, Q4)
 
-- **Which lane:** the lane with the highest tunnel fade, at least `NPC_TUNNEL_LABEL_MIN_FADE` (0.5); ties go to the
-  smallest `d / R` (the lane the player is deepest in). One label for the whole view (proposed, Q4). None while no lane
-  qualifies.
+- **Which lanes (Q4): one label per shown tunnel.** Every lane whose tunnel fade `F` is above 0 is a candidate. The
+  candidates are ordered by **strength = `F`** (the same value as the tunnel fade), highest first; ties (several at
+  1) go to the smallest `d / R` (the lane the player is deepest in), then the lower lane index. The first is the
+  **strongest** tunnel. At most `NPC_TUNNEL_LABEL_MAX_COUNT` (4) labels are placed (the default layout meets at most
+  three tunnels at a time, at Earth; the cap bounds the HUD work and the clutter); `SelectLabelLanes`.
+- **Dimming (Q4):** a label's alpha is `LaneLabelAlpha(F, bStrongest)` = `F` for the strongest tunnel's label and
+  `F x NPC_TUNNEL_LABEL_SIDE_ALPHA` (0.55) for every other, so a side or weaker tunnel's label is always dimmer than
+  the strongest one's, even when both tunnels are fully shown, and each label fades in and out with its own tunnel. A
+  label below `NPC_TUNNEL_LABEL_MIN_ALPHA` (0.05) is not placed. The displayed alpha of each lane's label eases toward
+  its target over `NPC_TUNNEL_LABEL_FADE_S` (0.2 s), so a change of the strongest lane, or a candidate switch, does not
+  flicker.
 - **Content (three lines), no "your side" line:**
   - `Earth - Mars` (body A and body B names from the registry, layout order).
-  - `Earth 0.42 AU   Mars 1.08 AU`: the straight-line distance from the ship to each end ring (proposed, Q4), with
+  - `Earth 0.42 AU   Mars 1.08 AU`: the straight-line distance from the ship to each end ring (Q4), with
     `SOLHudFormat`'s distance format.
   - `62,400 ships` (the lane's population count; `0 ships` for an empty lane).
-  The bus carries numbers and body indices only; the HUD formats them and rebuilds the text only when a displayed
-  (rounded) value changes, so no string is built per frame.
-- **Where:** anchored on the wall at **12 o'clock** (the gap between the dot rows at 337.5 and 22.5 degrees), at
-  `NPC_TUNNEL_LABEL_AHEAD_RADII` (4) tunnel radii ahead along the axis in the direction the camera looks (sign of the
-  camera forward on `a`); candidates 12 o'clock, then 6 o'clock (the gap between 157.5 and 202.5 degrees).
-- **Never over the dots:** the HUD projects the candidate anchor and the 8 dot rows (straight lines along the tube, so
-  straight on screen, since the far-depth compression keeps every point on its true ray), and draws the label box only
-  where it is clear of every projected row by `NPC_TUNNEL_LABEL_DOT_MARGIN_PX` (6 px, scaled) plus the dot radius
-  (`LaneLabelClearOfDots`, pure, in `UI/SOLLaneTunnelLabel`); otherwise it tries the next candidate, else the label is
-  hidden that frame. Hidden too when the anchor is behind the camera, off screen, or behind a planet (the same sphere
-  test, CPU side). The label eases in and out over `NPC_TUNNEL_LABEL_FADE_S` (0.2 s) so a candidate switch does not
-  flicker.
-- The label follows the HUD: hidden while a menu shows or the HUD is hidden, sized by the HUD scale, glowing with the
-  HUD glow.
+  The bus carries numbers and body indices only; the HUD formats them and rebuilds a label's text only when one of its
+  displayed (rounded) values changes, so no string is built per frame.
+- **Where:** each label is anchored on its own tunnel's wall at **12 o'clock** (the gap between the dot rows at 337.5
+  and 22.5 degrees), at `NPC_TUNNEL_LABEL_AHEAD_RADII` (4) tunnel radii ahead of the foot point along the axis in the
+  direction the camera looks (sign of the camera forward on `a`); candidates 12 o'clock, then 6 o'clock (the gap
+  between 157.5 and 202.5 degrees).
+- **Placement rules (no collisions, never over dots).** The HUD projects every shown tunnel's 8 dot rows (straight
+  lines along the tube, so straight on screen, since the far-depth compression keeps every point on its true ray;
+  clipped to the near plane and to the 512 tunnel radii where the dots end). It then places the labels **greedily,
+  strongest first**: a label takes the first of its candidates whose box is on screen, whose anchor is in front of the
+  camera and not behind a planet (the same sphere test, CPU side), that is clear of **every** projected dot row of
+  **every** shown tunnel by `NPC_TUNNEL_LABEL_DOT_MARGIN_PX` (6 px, scaled) plus the dot radius
+  (`LaneLabelClearOfDots`), and that does not overlap any label already placed, grown by `NPC_TUNNEL_LABEL_GAP_PX`
+  (6 px, scaled). A label with no such candidate is hidden that frame (it eases out). So the strongest label always has
+  first choice, labels never cross each other or the guide dots, and a crowded view drops the weakest labels first.
+  `PlaceLaneLabels`, pure, in `UI/SOLLaneTunnelLabel`; at most 4 labels against at most 64 row segments (8 lanes x 8
+  rows), in fixed arrays.
+- The labels follow the HUD: hidden while a menu shows or the HUD is hidden (Q6), sized by the HUD scale, glowing
+  with the HUD glow.
 
 ### 4.10 Module edges (for `ARCHITECTURE.md`)
 
 - `Npc -> HudEvents` (new, solid): `USOLNpcTunnelComponent` publishes the label snapshot on `FSOLHudBus`
-  (`PublishLaneTunnelLabel`, plain struct `FSOLHudLaneTunnelLabel` in `HudEvents/`). `UI -> HudEvents` exists, so the
+  (`PublishLaneTunnelLabels`, plain struct `FSOLHudLaneTunnelLabels` in `HudEvents/`: a count and a fixed array of
+  `NPC_TUNNEL_LABEL_MAX_COUNT` entries `FSOLHudLaneTunnelLabel`, plus the shown tunnels' frames for the dot rows).
+  `UI -> HudEvents` exists, so the
   HUD reads it **without** a `UI -> Npc` edge (the same decoupling the bus gives `Ship` and `UI`).
 - `Npc -> OrbitLines` and `Npc -> UI` (existing): the shader library and `SOLHudShapeMath` glow profile, reused.
 - `Npc -> Menu` (existing dashed): no new settings read; the Lanes row and the live HUD glow are already read by
@@ -345,33 +441,42 @@ sequenceDiagram
 - New files: `Npc/SOLNpcTunnelMath.{h,cpp}`, `Npc/SOLNpcTunnelComponent.{h,cpp}`, `Npc/SOLNpcTunnelSmoke.{h,cpp}`,
   `UI/SOLLaneTunnelLabel.{h,cpp}`, `Shaders/Private/SOLNpcTunnel.ush`, `Content/SOL/Npc/M_SOLNpcTunnel.uasset`,
   `Tests/NpcTunnelMathTest.cpp`, `Tests/LaneTunnelLabelTest.cpp`. Extended: `FSOLNpcLaneEntry` (`bResolved`),
-  `ASOLNpcVisuals` (component, call, override, occluder flag), `FSOLHudBus`, `ASOLFlightHud` (label draw),
-  `SOLConstants.h`, `Tools/Npc/create_npc_assets.py`.
+  `SOLNpcLane::LaneShipPointAlpha` (tunnel fade argument) and the new `LaneLineFadeWithTunnel` (Q5), `ASOLNpcVisuals`
+  (component, call, override, occluder flag, binding `NpcTunnelTex` on the lane and point MIDs), `FSOLHudBus`,
+  `ASOLFlightHud` (label draw), `SOLConstants.h`, `Tools/Npc/create_npc_assets.py` (`M_SOLNpcTunnel`, and the
+  `NpcTunnelTex` parameter of `M_SOLNpcLanes` and `M_SOLNpcPoints`), `Shaders/Private/SOLNpcLane.ush` (the line fade
+  times `1 - F`).
 - Flags: `-SOLSmokeNpcTunnel`, `-SOLSmokeNpcTunnelProfile`; cvar `sol.NpcTunnel`.
 
 ### 4.11 What does not change
 
-The #38 lane line, its fades, the far points' crossfade, the rails, tiers and NPC simulation, NPC combat, the Lanes
-row, overlay profiles, every setting, the save schema and key layout, key bindings, the flight model, the orbit lines'
-look, the map look (the tunnel is hidden there, Q6).
+The #38 lane line's look, dashes and its own close-up fade (only multiplied by `1 - F`, Q5), the crossfade's sum
+of 1, the CPU-position (exact) points, the rails, tiers and NPC simulation (keep-right rails and traffic flow are #50),
+NPC combat, the ships' HUD markings, the Lanes row, overlay profiles, every setting, the save schema and key layout,
+key bindings, the flight model, the orbit lines' look, the map look (the tunnel is hidden there and every `F` is 0, so
+the map shows the #38 lines exactly as before, Q6).
 
 ## 5. Player-facing text and docs
 
 - **Info, overlay paragraph** (after the #38 lane sentence): "Close to a lane (within about 50-100 lane widths) its
-  lines become a tunnel of cyan rings that you can fly through. Traffic keeps right: the green dots and chevrons on the
-  right wall show ships leaving the inner body, the red ones on the left ships coming back. The rings stream past at
-  your own speed, and a label on the wall names the lane, the distance to each end and how many ships use it. The
-  tunnel follows the Lanes row and the HUD glow." (Final wording checked against the constants in 49c.)
+  dashed lines fade out and become a tunnel of cyan rings that you can fly through, and its ships show as points again.
+  The lane's rule is keep right: the green dots and chevrons on the right wall mark the way out from the inner body,
+  the red ones on the left the way back. The rings move only as you move along the lane, and a label on each tunnel's
+  wall names the lane, the distance to each end and how many ships use it (the nearest tunnel's label is the
+  brightest). Tunnels follow the Lanes row and the HUD glow and are not shown on the map." (Final wording checked
+  against the constants in 49c; it states keep right as the lane's rule, not as what every ship does, which stays true
+  until #50 moves the ships.)
 - **Controls, `@OverlayMenu` row:** "NPC lanes" becomes "NPC lanes and tunnels".
-- **Help glossary:** no new row; the existing "Overlay Menu" glossary entry's text gains "and their tunnels" (proposed,
-  Q7).
+- **Help glossary (Q7):** no new row; the existing "Overlay Menu" glossary entry's text gains "and their tunnels" (the
+  Info and Controls text above mention the tunnels too).
 - `Docs/GAME_MECHANICS.md`: a new "Lane tunnel" row in section 9 with every tunable of section 6 case 1, the trigger,
   orientation, keep right, spacing scheme, colours, label rule, `sol.NpcTunnel`; the Lanes overlay row notes the tunnel.
 - `Docs/PLAYER_GUIDE.md` regenerated with `Tools\WritePlayerGuide.bat` if the Controls or glossary text changes.
 - `Docs/ARCHITECTURE.md`: `Npc/` row (tunnel math, component, material, `.ush`, smoke), `UI/` row (label math), the
   `Npc -> HudEvents` edge and its sentence, `HudEvents/` row (the label snapshot), the frame-update note (the tunnel
   updates inside `ASOLNpcVisuals::Redraw`), flags and cvar.
-- SDD 38: a note in section 4.10 that #49 consumed the extension point and that `FSOLNpcLaneEntry` gained `bResolved`.
+- SDD 38: a note in section 4.10 that #49 consumed the extension point and that `FSOLNpcLaneEntry` gained `bResolved`
+  (49a), and the Q5 amendment note on D9 / D10 and section 4.8 (49b, with the material change; section 4.2).
 - `Docs/Plans/STATUS.md` (#49 in progress, then done), `Docs/TECH_DEBT.md` (new debt only), the README gallery (2-3
   tunnel shots), `Docs/ToDo/49-lane-tunnel-mockups/` deleted at the end of 49c.
 
@@ -388,11 +493,13 @@ right-handed, +Z north.
 1. **Constants** (proposed values): `NPC_TUNNEL_FADE_START_RADII` 100 and `NPC_TUNNEL_FADE_FULL_RADII` 50 (start >
    full > 1, and start equals `NPC_LANE_FADE_NEAR_RADII`, so the hand-over meets the line's fade);
    `NPC_TUNNEL_RADIUS_MIN_SCALE` 1, `NPC_TUNNEL_RADIUS_MAX_SCALE` 3; `NPC_TUNNEL_RING_BASE_SPACING_RADII` 2;
-   `NPC_TUNNEL_RING_SPACING_PER_DISTANCE` 0.25; `NPC_TUNNEL_MAX_LEVEL` 20; `NPC_TUNNEL_PHASE_FINE_LEVEL` 10 (between 0 and MAX); `NPC_TUNNEL_DEPTH_FADE_START_RADII` 8,
+   `NPC_TUNNEL_RING_SPACING_PER_DISTANCE` 0.25; `NPC_TUNNEL_RING_SLOTS_PER_SIDE` 64;
+   `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` 24; `NPC_TUNNEL_END_FADE_SPACINGS` 0.5; `NPC_TUNNEL_DEPTH_FADE_START_RADII` 8,
    `_END_RADII` 65,536, `_FLOOR` 0.2; `NPC_TUNNEL_NEAR_FADE_START_RADII` 0.5, `_FULL_RADII` 1.5;
    `NPC_TUNNEL_DETAIL_FADE_START_RADII` 256, `_END_RADII` 512; `NPC_TUNNEL_END_MARGIN_RADII` 1;
    `NPC_TUNNEL_END_RING_MIN_ALPHA` 0.5; `NPC_TUNNEL_DOT_ROWS` 8; `NPC_TUNNEL_DOTS_PER_GAP` 2;
-   `NPC_TUNNEL_DOT_RADIUS_SCALE` 1.1; `NPC_TUNNEL_UP_FALLBACK_DEG` 1; `NPC_TUNNEL_LABEL_MIN_FADE` 0.5;
+   `NPC_TUNNEL_DOT_RADIUS_SCALE` 1.1; `NPC_TUNNEL_UP_FALLBACK_DEG` 1; `NPC_TUNNEL_LABEL_MAX_COUNT` 4;
+   `NPC_TUNNEL_LABEL_SIDE_ALPHA` 0.55 (in (0, 1)); `NPC_TUNNEL_LABEL_MIN_ALPHA` 0.05; `NPC_TUNNEL_LABEL_GAP_PX` 6;
    `NPC_TUNNEL_LABEL_AHEAD_RADII` 4; ring colour `== SOL::SolidMenu::CYAN_COLOR` (#28D2F0); dot colours #5C8F6C and
    #9A5656, chevron colours #84AB90 and #B38080; outbound and inbound colours differ (green channel above red for the
    outbound pair, red above green for the inbound pair).
@@ -421,37 +528,50 @@ right-handed, +Z north.
    **`double LaneSegmentDistanceM(aRelM, bRelM)`**: the parameter in [0, 1] of the segment point nearest the origin
    and its distance; beside the middle -> 0.5; beyond B -> 1 and the distance to B; degenerate segment -> 0; non-finite
    -> 0 and +inf distance; 1 AU scale keeps 1e-9 relative accuracy.
-7. **`double RingLevel(double distanceM, double tunnelRadiusM)`** = `max(0, log2(rho x d / (BASE x Rt)))`: 0 for
-   `d <= BASE x Rt / rho` (8 `Rt`); 1 at 16 `Rt`; continuous and non-decreasing; bad inputs -> 0.
-   **`double RingSpacingM(int32 level, double tunnelRadiusM)`** = `BASE x Rt x 2^level`, level clamped to [0, MAX].
-8. **`int32 RingOwnLevel(int64 gridIndex)`** = trailing zero bits of `|n|`, capped at `NPC_TUNNEL_MAX_LEVEL` (0 ->
-   MAX); 1 -> 0, 2 -> 1, 12 -> 2, -8 -> 3, 2^30 -> MAX. **`double RingLevelAlpha(int64 gridIndex, double distanceM,
-   double tunnelRadiusM)`** = `clamp(own + 1 - RingLevel(d), 0, 1)`. **No pops:** for a camera moving in small steps
-   along and across a lane (sweep of 2,000 positions), every ring's alpha changes by at most the change of
-   `RingLevel` at its distance (plus 1e-9) per step (continuity), and a ring never goes from 0 to 1 in one step; a
-   ring of own level `j` is fully drawn wherever `RingLevel <= j`. Spacing near the camera: inside 8 `Rt` the
-   fully drawn rings are 2 `Rt` apart; beyond 8 `Rt` the gap between neighbouring fully drawn rings is at least 0.25
-   and under 0.5 of their distance (`rho` and `2 rho`; at 100 `Rt` it is 32 `Rt`).
-9. **`FSOLNpcTunnelPhases TunnelPhases(double arcM, double tunnelRadiusM)`** (fine and coarse floats): fine =
-   `arc mod (BASE x Rt x 2^NPC_TUNNEL_PHASE_FINE_LEVEL)`, coarse = `arc mod (BASE x Rt x 2^MAX)`, each in [0, period);
-   reconstructing the camera-relative offset of the grid ring nearest the camera, at every level, **in float arithmetic
-   emulated by the test** (the shader's path, `ReconstructRingOffsetM`) is within `1e-3 x Rt` of the double result for
-   arcs up to 4.5e12 m at `Rt` = 2e5 m and 3e7 m; negative or non-finite arc -> zeros.
+7. **`double RingSpacingM(double axialM, double radialM, double tunnelRadiusM)`** = `max(BASE x Rt, rho x
+   sqrt(x^2 + h^2))` (section 4.5): `2 Rt` on the axis within 8 `Rt`; `rho x d` beyond (at 100 `Rt` on the axis
+   25 `Rt`); `rho h` at the foot point when `h > 8 Rt` (12.5 `Rt` at `h` = 50 `Rt`); continuous, even in `x`,
+   non-decreasing in `|x|` and in `h`; scale free; bad inputs (NaN, non-positive or infinite radius) -> 0.
+8. **`double RingWarp(double axialM, double radialM, double tunnelRadiusM)`** and **`double RingWarpInverse(double
+   w, double radialM, double tunnelRadiusM)`** (the accordion, Q9): `RingWarp` is odd in `x`, strictly increasing,
+   `x / (2 Rt)` for `|x| <= x0` (`x0 = sqrt(max(0, 64 Rt^2 - h^2))`), and its derivative equals `1 / RingSpacingM`
+   (central differences at 40 points, `h` in {0, 0.5, 7.9, 8, 50, 100} `Rt`, 1e-6 relative); continuous at `x0`
+   and as `h` crosses 8 `Rt`; the closed form at `h` = 0 is `4 + 4 ln(|x| / (8 Rt))` past 8 `Rt`; the inverse
+   round-trips both ways (1e-9 relative, `|w|` up to 64, `x` up to 4.5e12 m); bad inputs -> 0.
+   **No pops (sweep):** for a camera moving in 2,000 small steps along a lane, across it (h from 0 to 100 `Rt`) and
+   with the phase advanced and wrapped, the set of visible rings (axial offsets with their alphas, slots 0-63 per side,
+   section 4.5 fades) changes continuously: every ring of a step matches a ring of the previous step within the
+   step's bound, and any ring without a match has alpha below 1e-3 (it entered or left at the cap or an end ring).
+   **Lane-fixed near rings:** within `x0` a ring's lane arc (`a_F + x`) is unchanged when the camera moves along the
+   lane and the phase is advanced by `AdvanceRingPhase` (1e-6 `Rt`). **Spacing:** inside 8 `Rt` the rings on the axis
+   are 2 `Rt` apart; with both rings past 8 `Rt` on the axis, the ratio of neighbouring ring distances is `e^0.25`
+   (about 1.284, 1e-9 relative).
+9. **`double AdvanceRingPhase(double phase, double deltaArcM, double radialM, double tunnelRadiusM)`** =
+   `frac(phase + deltaArc / RingSpacingM(0, h, Rt))` in [0, 1), in double (a negative delta wraps up); a NaN or
+   infinite delta or a bad radius keeps the phase; a delta of 4.5e12 m keeps the result in [0, 1).
+   **`double InitialRingPhase(double footArcM, double radialM, double tunnelRadiusM)`** = `frac(footArc /
+   RingSpacingM(0, h, Rt))` (NaN -> 0). **Float path:** rebuilding a ring's camera-relative axial offset from the
+   phase and the slot index **in float arithmetic emulated by the test** (the shader's path, `RingSlotOffsetM`) is
+   within `1e-3 x Rt` of the double result for foot arcs up to 4.5e12 m at `Rt` = 2e5 m and 3e7 m.
 10. **`double TunnelDepthFade(double distanceM, double tunnelRadiusM)`**, **`double TunnelNearFade(double
     axialOffsetM, double tunnelRadiusM)`**, **`double TunnelDetailFade(double distanceM, double tunnelRadiusM)`**:
     depth 1 inside 8 `Rt`, the floor at and past 65,536 `Rt`, log-linear between (2 interior points), non-increasing,
     never below the floor; near 0 for `|x| <= 0.5 Rt`, 1 for `|x| >= 1.5 Rt`, smoothstep between, symmetric in x;
     detail 1 inside 256 `Rt`, 0 at and past 512 `Rt`; all scale free; bad inputs -> 0 for near and detail, the floor
-    for depth.
+    for depth. **`double TunnelEndFade(double distanceToEndM, double spacingM)`** = `clamp(dEnd / (0.5 x spacing), 0,
+    1)`: 0 at the end ring and outside the tunnel (negative), 1 from half a spacing inside; bad inputs -> 0.
+    **`double RingCapFade(double w)`** = `clamp(64 - |w|, 0, 1)`.
 11. **Slot coverage: `bool RingSlot(int32 slot, const FSOLNpcTunnelSlotInput& in, FSOLNpcTunnelRing& out)`** (input:
-    camera radial offset `|P|`, `Rt`, phases, end-ring arcs relative to `P`; output: grid index, axial offset, own level,
-    alpha) and `int32 RingSlotCount()`: against a brute-force reference (every grid index between the end rings with a
-    non-zero `RingLevelAlpha x TunnelNearFade`), for camera positions on the axis, at 0.5, 1, 10, 50 and 100 `Rt`
-    radial offset, at both ends and the middle of the shortest (Earth-Moon at its perigee) and longest (Uranus-Neptune at
-    30 AU) default lanes, at both radius scales: every visible ring is returned by **exactly one** slot with the same
-    axial offset (1e-6 relative) and alpha; no slot returns a ring outside the end rings; `RingSlotCount()` equals
-    `2 x (SLOTS_LEVEL0 + MAX x SLOTS_PER_LEVEL)`; the same holds for the dot and chevron slots (`DotSlot`,
-    `ChevronSlot`) over their bands.
+    `h`, `Rt`, the phase, end-ring arcs relative to the foot arc; output: `w`, axial offset, alpha) and
+    `int32 RingSlotCount()`: against a brute-force reference (every whole `n` with `W^-1(n - Phi)` between the end rings
+    and a non-zero alpha), for camera positions on the axis, at 0.5, 1, 10, 50 and 100 `Rt` radial offset, at both ends
+    and the middle of the shortest (Earth-Moon at its perigee) and longest (Uranus-Neptune at 30 AU) default lanes, at
+    both radius scales and at phases 0, 0.3 and 0.999: every visible ring is returned by **exactly one** slot with the
+    same axial offset (1e-6 relative) and alpha; no slot returns a ring outside the end rings; `RingSlotCount()` equals
+    `2 x NPC_TUNNEL_RING_SLOTS_PER_SIDE`; for every default lane at the minimum radius and `h` = 0, `RingWarp` of its
+    whole length is below `NPC_TUNNEL_RING_SLOTS_PER_SIDE` - 1 (no ring between the end rings lost to the cap); the
+    same holds for the dot and chevron slots (`DotSlot`, `ChevronSlot`, `2 x NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` gaps)
+    out to 512 `Rt`.
 12. **`FVector2D TunnelEndArcsM(double laneLengthM, double bodyRadiusAM, double bodyRadiusBM, double tunnelRadiusM)`**:
     `(R_A + MARGIN x Rt, L - R_B - MARGIN x Rt)`; when the two cross -> (0, 0) and **`IsTunnelDrawable`** false;
     a zero body radius -> just the margin; non-finite -> not drawable.
@@ -459,15 +579,21 @@ right-handed, +Z north.
     int32 segments)`**: on the circle (distance from the centre = radius, 1e-9 relative), in the plane normal to the
     axis, sample 0 at 12 o'clock (along `Up`), sample `segments / 4` at 3 o'clock (along `Right`), clockwise as seen
     along the axis; `segments` <= 0 -> the centre.
-14. **Label lane: `int32 SelectLabelLane(TConstArrayView<double> fades, TConstArrayView<double> distanceRadii)`**:
-    the highest fade at least `LABEL_MIN_FADE`; ties (equal fades, e.g. several at 1) -> the smallest `d / R`; none
-    -> `INDEX_NONE`; mismatched lengths -> the shorter; NaN entries ignored.
+14. **Label lanes (Q4): `int32 SelectLabelLanes(TConstArrayView<double> fades, TConstArrayView<double>
+    distanceRadii, TArrayView<int32> outLanes)`**: writes the lanes with a fade above 0, strongest first (highest
+    fade; ties, e.g. several at 1, -> the smallest `d / R`, then the lower index), at most
+    `min(NPC_TUNNEL_LABEL_MAX_COUNT, outLanes.Num())`, and returns the count; no lane above 0 -> 0; mismatched lengths
+    -> the shorter; NaN entries ignored; a fifth shown tunnel is dropped (the weakest). **`double LaneLabelAlpha(double
+    fade, bool bStrongest)`** = `fade` for the strongest, `fade x NPC_TUNNEL_LABEL_SIDE_ALPHA` otherwise (fade clamped
+    to [0, 1], NaN -> 0); for every fade in (0, 1] a side label is strictly dimmer than the strongest label at the same
+    or a higher fade; **`bool IsLabelPlaced(double alpha)`** is `alpha >= NPC_TUNNEL_LABEL_MIN_ALPHA`.
 15. **`FVector2D LaneEndDistancesM(const FVector3d& shipM, const FSOLNpcLaneEntry&, const FSOLNpcTunnelBasis&,
     FVector2D endArcsM)`**: the straight-line distance from the ship to end ring A's and end ring B's centres
     (`A + a_A axis`, `A + a_B axis`); a ship on the axis between them -> the arc differences.
 16. **Renderer feed:** `void WriteTunnelTexels(TConstArrayView<FSOLNpcTunnelLaneData> lanes, TArrayView<FVector4f>
-    texels)` writes the documented 4-row layout per lane column and zeros (fade 0) for every other column, and leaves a
-    buffer shorter than 4 rows alone; `bool CollectTunnelLanes(TConstArrayView<double> fades, TArray<int32>&
+    texels)` writes the documented 4-row layout per lane column (the fade in row 1 `.w`, the phase in row 2 `.w`) and
+    zeros (fade 0) for every other column, writes all zeros for an empty lane list (the frame the last tunnel goes
+    away, Q5), and leaves a buffer shorter than 4 rows alone; `bool CollectTunnelLanes(TConstArrayView<double> fades, TArray<int32>&
     inOutLanes)` returns true only when the set of lanes with a fade above 0 changed, keeps the array's allocation when
     the count does not grow, and lists lanes in index order; `bool AreTunnelsShown(bool bLanesShown, bool bCvarOn,
     bool bMapOpen)` is `bLanesShown && bCvarOn && !bMapOpen`.
@@ -477,6 +603,22 @@ right-handed, +Z north.
 17. Case 16 (`BuildLaneFrame`) gains `bResolved`: true when both bodies are resolved and inside the frame arrays,
     **whatever the ship count**; an empty lane has `bResolved` true and `bDrawn` false; an unresolved lane both false;
     every existing assertion unchanged.
+17b. **The Q5 crossfade (section 4.2):** `double LaneLineFadeWithTunnel(double distanceM, double laneRadiusM, double
+    tunnelFade)` = `LaneLineFade(d, R) x (1 - clamp(F, 0, 1))` and `LaneShipPointAlpha(d, R, bLanesShown, tunnelFade)`
+    = `1 - LaneLineFadeWithTunnel(d, R, F)` while shown, else 1. Cases: `F` = 0 gives exactly today's values at every
+    distance of the existing case (the existing `LaneShipPointAlpha` assertions are kept, called with `F` = 0);
+    `F` = 1 -> line 0 and point 1 at every distance (1 km, 100 R, 400 R, 1 AU, +inf); `F` = 0.5 at 400 R and beyond ->
+    line 0.5, point 0.5; **the two sum to 1** for a grid of distances x `F` in {0, 0.25, 0.5, 0.75, 1} x 2 radii;
+    the line alpha is non-increasing and the point alpha non-decreasing in `F`; `F` below 0 or above 1 is clamped; NaN
+    `F` -> 0 (the line stays, a lane is never empty); lanes not shown -> point 1 whatever `F`; the bad-radius cases of
+    `LaneLineFade` keep their results at `F` = 0. `PointLaneParams` is unchanged (case 27 re-validated).
+
+**Extended `Tests/NpcLaneVisualsTest.cpp` (re-validate every case):**
+
+17c. `SOL::NpcLaneMaterialParams` gains the tunnel texture parameter name (`"NpcTunnelTex"`), and both
+    `M_SOLNpcLanes` and `M_SOLNpcPoints` expose a texture parameter of that name after the rebuild (the existing
+    parameter checks unchanged); `M_SOLNpcTunnel` loads from `SOL::Paths::NPC_TUNNEL_MATERIAL` with every name in
+    `SOL::NpcTunnelMaterialParams` (49b).
 
 **New `Tests/LaneTunnelLabelTest.cpp` (`SOLTest.LaneTunnelLabel.*`), `UI/SOLLaneTunnelLabel.h`:**
 
@@ -484,19 +626,24 @@ right-handed, +Z north.
     TConstArrayView<FVector2D> rowEnds, double marginPx)`**: true when the box, grown by the margin, intersects none
     of the row segments; a row crossing the box, a row ending inside it, a row passing within the margin -> false; a
     degenerate row (a point) is tested as a point; an empty row list -> true.
-19. **`FSOLLaneLabelPlacement PlaceLaneLabel(...)`** (inputs: the projected 12 and 6 o'clock anchors with their
-    in-front flags, the projected dot rows, the label size, the viewport): picks the 12 o'clock candidate when clear and
-    on screen, else 6 o'clock, else hidden; a candidate behind the camera or off screen is skipped; the returned box
-    is always clear of every row (property check over 500 random views of a synthetic tube); the box is centred on the
-    anchor horizontally.
+19. **`int32 PlaceLaneLabels(...)`** (Q4; inputs: per label, strongest first, the projected 12 and 6 o'clock anchors
+    with their in-front and not-occluded flags and the label size; the projected dot rows of **every** shown tunnel;
+    the viewport; the margins; output: one `FSOLLaneLabelPlacement` per label, placed or hidden, and the placed count):
+    each label picks its 12 o'clock candidate when it is on screen, clear of every row and not overlapping an earlier
+    placed label grown by `NPC_TUNNEL_LABEL_GAP_PX`, else 6 o'clock, else hidden; a candidate behind the camera, behind
+    a planet or off screen is skipped; the labels are placed in the given order, so the first (strongest) label is
+    never displaced by a later one; properties over 500 random views of 1-4 synthetic tubes: every placed box is clear
+    of every row, no two placed boxes (grown by the gap) overlap, at most `NPC_TUNNEL_LABEL_MAX_COUNT` are placed,
+    removing a later label never changes an earlier one's placement; each box is centred on its anchor horizontally.
 20. **Text values (`FormatLaneLabelLines`, built on `SOLHudFormat`)**: line 1 is "A - B" with the registry names;
     line 2 has both distances in the HUD's distance format; line 3 the ship count with thousands separators and
     "ships" (0 -> "0 ships", 1 -> "1 ship"); **no line mentions a side** (no "left", "right" or "your").
 
 **HUD bus (`Tests/HudBusTest.cpp` or the existing bus test, re-validated):**
 
-21. `PublishLaneTunnelLabel` / `GetLaneTunnelLabel` round-trip every field; a cleared label (`bShown` false) reads as
-    hidden; publishing twice in a frame keeps the last.
+21. `PublishLaneTunnelLabels` / `GetLaneTunnelLabels` round-trip every field of every entry (lane, strength,
+    strongest flag, distances, ship count, anchors) and the count; a count above `NPC_TUNNEL_LABEL_MAX_COUNT` is
+    clamped; a cleared snapshot (count 0) reads as no labels; publishing twice in a frame keeps the last.
 
 **Text (`SOLTest.InfoText.*`, `SOLTest.PlayerGuide.UpToDate`):**
 
@@ -504,11 +651,13 @@ right-handed, +Z north.
     resolving (existing token check); the player guide is regenerated and up to date.
 
 Not unit-testable (smoke and screenshots, section 8): the material, ring placement and LOD on screen, near-plane
-behaviour, occlusion, colours after tone mapping, the label on screen.
+behaviour, occlusion, colours after tone mapping, the labels on screen, the Q5 line and point crossfade on screen.
 
 ## 7. Tests to re-validate
 
-`NpcLaneMathTest.cpp` (case 16 extended, every other case unchanged), the HUD bus tests, `InfoText`, `PlayerGuide`,
+`NpcLaneMathTest.cpp` (case 16 extended, the `LaneShipPointAlpha` case extended with the tunnel fade, case 17b,
+every other case unchanged), `NpcLaneVisualsTest.cpp` (case 17c: material parameter names), the HUD bus tests,
+`InfoText`, `PlayerGuide`, the Help glossary tests (the Overlay Menu entry's text, Q7),
 `OverlayModelTest.cpp` (no change expected: no new row), every settings and migration test (no change: no schema
 bump; a test edit there is a red flag to report).
 
@@ -519,7 +668,8 @@ bump; a test edit there is a red flag to report).
 2. **New smoke `-SOLSmokeNpcTunnel`** (1M NPCs, fixed seed, tunnel and lane verification overrides so the player's
    settings are neither read nor written, HUD glow as a pending value, never applied; the space dust off in memory as
    in the lane smoke). Views:
-   - **T1** 75 lane radii beside the Earth-Mars lane's middle (tunnel half faded in, the far dashes beyond 100 radii);
+   - **T1** 75 lane radii beside the Earth-Mars lane's middle (tunnel half faded in, the far dashes at `1 - F` of
+     their #38 alpha and the far lane ships back as points at the complementary alpha, Q5);
    - **T2** on the Earth-Mars axis a quarter of the way from Earth, looking toward Mars (rings to the end ring, green
      dots and chevrons on the right, red on the left);
    - **T3** the same point looking toward Earth (sides swapped on screen: inbound traffic, now forward, on the right);
@@ -529,21 +679,30 @@ bump; a test edit there is a red flag to report).
      at Earth, Earth in front of part of a tunnel: occlusion and clutter);
    - **T6** the same population with Demo lane fraction 0 (every lane empty): minimum-radius tunnels, no far line;
    - **T7** flight: the ship at rest relative to the lane for 2 s (ring screen positions unchanged within 0.5 px), then
-     flying along the axis at a fixed speed (ring phase advance equals speed x time within 1%), then reversed.
+     flying along the axis at a fixed speed (the rings within 8 tunnel radii advance by speed x time within 1%, the
+     phase by `AdvanceRingPhase`), then reversed; then a slow move toward the axis from 50 to 1 tunnel radii (no ring
+     jumps more than its own slide between frames, the accordion pivot at the foot point).
    Checks (logged PASS / FAIL): instance list = lanes with a fade above 0; every texel equals the pure frame; the fade
    equals `TunnelFade` of the logged distance (about 0.415 at 75 lane radii in T1); visibility follows the Lanes
    row, the master O, `sol.NpcTunnel` and the map (hidden when open); the pushed glow scale follows the live HUD glow
-   and returns on revert; the label shows the expected lane, its three values match the pure functions and its box is
-   clear of the projected dot rows; the label hides with the HUD and menus; `SetLanesDrawn` true with only an empty
-   lane's tunnel shown (T6).
+   and returns on revert; one label per shown tunnel (at most 4), the strongest first and brightest, every other
+   label's alpha `F x 0.55`, their values match the pure functions, every box clear of every projected dot row and of
+   the other boxes (T5 has three); the labels hide with the HUD and menus; `SetLanesDrawn` true with only an empty
+   lane's tunnel shown (T6). **Q5 crossfade:** the fade texel read back for each lane equals its `TunnelFade`; with the
+   tunnel at `F` the lane material's line alpha and the point material's lane-ship alpha at sampled lane points equal
+   `LaneLineFadeWithTunnel` and `LaneShipPointAlpha` (sum 1); with the map open, `sol.NpcTunnel 0` or the Lanes row
+   off, every fade texel is 0 and the #38 values return exactly.
 3. **Screenshots** of T1-T6 at 1280x720, 1920x1080 and 3840x2160 (4K proxy), HUD glow 0% / 100% / 200%, looked at:
    cyan rings never white, rings to the end node getting darker, no ring popping while the camera moves (a short
    capture sequence along the axis), dots outside the rings, chevrons at 3 and 9 o'clock pointing the right ways, keep
    right in T2 and T3, end rings outside the planet, planets in front hiding the tunnel, no near-plane smear in T4 and
-   T4b, the label clear of the dots and with no side line. Tuning (spacing rho, widths, dot size, emissive, depth
+   T4b, the labels clear of the dots and of each other, the side labels dimmer, no side line, the far dashes gone
+   inside a full tunnel and the lane ships shown as points there. Tuning (spacing rho, widths, dot size, emissive, depth
    floor, label distance) on these shots, recorded in an as-built section; candidate shots deleted, 2-3 kept for the
    README gallery.
-4. **Existing smokes:** `-SOLSmokeNpcLanes` (unchanged checks, 35 / 35), `-SOLSmokeOverlay` (the Lanes row also hides
+4. **Existing smokes:** `-SOLSmokeNpcLanes` (unchanged checks, 35 / 35; it hides the tunnels through their
+   verification override so every fade texel is 0 and its close-up views measure the #38 crossfade as before),
+   `-SOLSmokeOverlay` (the Lanes row also hides
    the tunnel), `-SOLSmokeHud` (label absent without NPCs), `-SOLSmokeHoloMenu`, `-SOLSmokeSolidMenu` (Controls text).
 5. **PIE smoke check** via unreal-mcp when the editor is open (Demo 1M, fly into the Earth-Mars lane, Ctrl+O Lanes off
    / on, HUD glow slider); noted in the plan if it could not be run.
@@ -560,60 +719,96 @@ Temporary screenshots and captures are deleted once looked at; only README galle
 ## 9. Performance
 
 - **CPU per frame:** O(lanes), independent of the ship count (section 4.8). No allocation, no tick, no UObject churn,
-  no per-frame strings (the HUD formats the label only on a value change). Instances rewritten only on enter / leave.
-- **GPU:** about 20,000 vertices per lane in range (most early-out hidden); pixel cost is the ring ribbon area, with LOD
-  by band. Expected well under 0.15 ms at 1080p with all 8 lanes forced in range.
-- **1M scaling:** nothing in the tunnel is per ship on the CPU or the GPU.
+  no per-frame strings (the HUD formats a label only on a value change). Instances rewritten only on enter / leave.
+- **GPU:** about 9,000 vertices per lane in range (most early-out hidden); pixel cost is the ring ribbon area, with LOD
+  by slot. Expected well under 0.15 ms at 1080p with all 8 lanes forced in range.
+- **1M scaling:** nothing in the tunnel is per ship on the CPU. On the GPU the only per-ship cost is the Q5 fade: one
+  texel load per lane-ship point vertex in rail mode (measured in the profile run against `sol.NpcTunnel 0`). Inside
+  a full tunnel the lane's far ships draw as points again, which is the Lanes-off point cost, already within the #38
+  budgets.
 - **VR (record only):** world-space geometry, per-eye cost is the ribbon area; recorded at 3840x3744, no VR work before
   procedural terrain.
 
 ## 10. Risks
 
-- **Keep right versus the real ships (Q1):** the cue states a convention the NPC rails do not follow today; ships fly
-  both ways on both halves of the tube. Lever: Q1.
+- **Keep right versus the real ships (Q1, accepted):** the cue states a convention the NPC rails do not follow today;
+  ships fly both ways on both halves of the tube until #50 adds keep-right rails. The player text states keep right as
+  the lane's rule (section 5), so it stays true meanwhile.
+- **The accordion slide (Q9, accepted):** rings beyond 8 tunnel radii slide along the lane as the player moves; if it
+  reads as wrong on the screenshots, the lever is a larger constant-spacing zone (`D0`, through rho) so more of the
+  visible rings are lane-fixed.
+- **Q5 crossfade drift:** the line fade now lives in three places (C++, `SOLNpcLane.ush` for the line, the points
+  material's vertex node); case 17b and the smoke's sampled-alpha check cover the sum of 1.
 - **Clutter near planets (D9):** three or more tunnels meet at Earth; levers: the fade band, the detail fade, ring
   brightness.
-- **Vertex count:** about 160,000 vertices in the forced all-lanes case; levers: band LOD, fewer slots per band (rho),
+- **Vertex count:** about 72,000 vertices in the forced all-lanes case; levers: slot LOD, fewer slots (a larger rho),
   fewer ring segments.
 - **Near-plane artefacts** when looking sideways inside the tube; covered by T4 / T4b.
 - **Float precision** of ring positions on AU-long lanes; covered by case 9 and the camera-relative layout.
 - **Additive cyan toward white** after tone mapping; tuned on the screenshots (as SDD 38 D16).
-- **The smooth-spacing dependency (D13):** if the #38 follow-up picks another scheme, the ring spacing functions,
-  their mirror and cases 7, 8 and 11 change together.
 - **HLSL mirror drift:** `SOLNpcTunnel.ush` mirrors `SOLNpcTunnelMath`; both file headers say so.
 
-## 11. Open questions (for the user; recommended answer first)
+## 11. Resolved questions (user, 2026-11-11; numbering kept)
 
-- **Q1: Ships and keep right.** The rails spread lane ships uniformly over the lane disc whatever their direction
-  (`SOLNpcScale::MakeSpawn`), so in the tunnel ships fly both ways on both sides, against the keep-right cue.
-  (a) **Recommended:** accept for #49 (pure display, D2), record a ToDo for keep-right rails; (b) change the rails in
-  #49 so each ship's lateral offset sits in its own direction's half (a simulation and rail-shader change: the ship
-  crosses the lane at every turnaround).
-- **Q2: Chevron motion.** (a) **Recommended:** anchored to the lane like the rings (they move only with the player,
-  "nothing moves" when stationary, D6); (b) flowing in their traffic direction as in the mock-up, on a real-time clock
-  like the #38 dashes.
-- **Q3: Base radius.** (a) **Recommended:** the lane radius (minimum tunnel contains all its ships; radius 1x-3x of
-  it); (b) a fixed fraction or multiple of it.
-- **Q4: Label scope and distances.** (a) **Recommended:** one label for the lane with the strongest tunnel, distances
-  as straight lines from the ship to each end ring; (b) one label per shown tunnel; (c) distances along the lane, or
-  to the body centres.
-- **Q5: Far line inside a shown tunnel.** (a) **Recommended:** keep the #38 line unchanged (its far dashes run down
-  the distant tunnel; the point crossfade stays exact); (b) fade the lane's whole line out with its tunnel fade (the
-  far lane ships would then have to show as points again, changing `M_SOLNpcPoints`).
-- **Q6: Map and hidden HUD.** (a) **Recommended:** tunnel hidden while the jump map is open; tunnel stays while a menu
-  shows (like the lane lines) and the label hides with the HUD; (b) tunnel on the map too; (c) the whole tunnel hidden
-  with the HUD.
-- **Q7: Help glossary.** (a) **Recommended:** no new row, the "Overlay Menu" entry mentions the tunnels; (b) a new
-  description-only "Lane tunnel" row; (c) a row with a screenshot crop.
-- **Q8: Lane motion under time warp.** (a) **Recommended:** rings anchored to the lane (they move with it under warp,
-  like the ships); (b) a player-driven phase that ignores the lane's own motion.
-- **Q9: Smooth spacing scheme (dependency, D13).** (a) **Recommended:** build with the nested power-of-two ring fade of
-  section 4.5 now and switch if the #38 follow-up chooses another; (b) wait for the follow-up before building 49b.
-- **Q10: End ring position.** (a) **Recommended:** just outside each body (surface plus one tunnel radius), the tunnel
-  running between the end rings; (b) at the body centre (then hidden inside the planet by the occluder).
-- **Q11: Dots and chevrons far away.** (a) **Recommended:** they fade out between 256 and 512 tunnel radii (below a
-  pixel or two there), rings alone reach the end node; (b) they also run to the end node.
+The derived choices of the first draft, each now a decision. The user's answer is in bold; the rationale and where
+the design applies it follow.
+
+- **Q1: Ships and keep right. Accepted for #49; keep-right rails go to the new traffic ticket
+  [#50](https://github.com/DieSlower/SOLTest/issues/50).** The tunnel is pure display (D2), so the ships keep their
+  current random placement over the lane disc (`SOLNpcScale::MakeSpawn`, direction independent of the offset).
+  *Rationale:* keep-right rails are a simulation and rail-shader change (the ship would cross the lane at every
+  turnaround) that belongs with the rest of the traffic behaviour in #50 (speed by radial position, traffic just
+  outside the tunnel, merging). The player text states keep right as the lane's rule (section 5). Applied: 4.3, 10.
+- **Q2: Chevron motion. Fixed to the lane like the rings**; they move only with the player's own speed (no clock).
+  *Rationale:* one motion rule for every tunnel element, "nothing moves" when stationary (D6). Applied: 4.4, 4.5, 4.6.
+- **Q3: Base radius. The lane radius**: tunnel radius 1x-3x of it by ship count; an empty lane gets the minimum width
+  and never vanishes (D8). *Rationale:* the ships' lateral offsets lie inside `R`, so even the minimum tube contains
+  them. Applied: 4.3, case 3.
+- **Q4: Labels. One label per shown tunnel**, the side or weaker tunnels' labels **dimmer** than the strongest
+  tunnel's. Content: lane name, the straight-line distance from the ship to each end ring, ships in the lane, no side
+  line. Decided here (sensible defaults, recorded for the tests): strength = the tunnel fade `F`; the strongest label's
+  alpha is `F`, every other `F x 0.55` (`NPC_TUNNEL_LABEL_SIDE_ALPHA`), so a side label is always dimmer even when both
+  tunnels are full; at most 4 labels (`NPC_TUNNEL_LABEL_MAX_COUNT`, the weakest dropped first); none placed below
+  alpha 0.05; greedy placement strongest first at 12 then 6 o'clock, each box clear of every shown tunnel's dot rows
+  and 6 px (scaled) from every placed label, else hidden that frame; 0.2 s ease per label. *Rationale:* the strongest
+  tunnel is the one the player is in or nearest; ordering the placement by it means it is never displaced, and the
+  greedy rule with fixed caps keeps the HUD work bounded. Applied: 4.9, cases 14, 19, 21.
+- **Q5: Far line inside a shown tunnel. Fade the lane's whole #38 line out together with the tunnel fade; the lane
+  ships then show as points again; ships keep their normal HUD markings inside and near tunnels.** Consequences
+  (section 4.2): line alpha `LaneLineFade(d, R) x (1 - F)` and lane-ship point alpha `1 - LaneLineFade(d, R) x
+  (1 - F)`, summing to 1 at every lane point; `F` reaches `M_SOLNpcLanes` and `M_SOLNpcPoints` as row 1 `.w` of
+  `NpcTunnelTex` (new texture parameter on both); both materials are rebuilt with `M_SOLNpcTunnel` in 49b; Lanes off,
+  the exact (CPU-position) points, the map, `sol.NpcTunnel 0` and the hidden override all give `F` = 0 and the #38
+  behaviour exactly; tests: case 17b (crossfade), 17c (material parameters), the extended `LaneShipPointAlpha` case,
+  case 16 (zeros when the last tunnel goes), the smoke's sampled-alpha check, the lane smoke run with the tunnels
+  hidden; SDD 38 gets an amendment note on D9 / D10 and section 4.8 in 49b. *Rationale:* inside a tunnel the far
+  dashes would double the cue and clutter the view down the tube; the points keep the lane's ships visible.
+- **Q6: Map, menus and the hidden HUD. The tunnel is hidden while the jump map is open; it stays while a menu shows
+  (like the lane lines); the wall labels hide with the HUD.** Applied: 4.2, 4.9, case 16 (`AreTunnelsShown`).
+- **Q7: Help glossary. No new row**; the existing Overlay Menu entry, the Info text and the Controls text mention lane
+  tunnels. Applied: section 5, case 22.
+- **Q8: Lane motion under time warp. Rings anchored to the lane**: they move with it under time warp like the ships.
+  Applied: 4.4 (the phase advances by the foot arc change, which includes the lane's own motion).
+- **Q9: Smooth spacing scheme. Resolved by the #38 dash follow-up**, which chose the continuous accordion scale
+  (`b5bae2c`, SDD 38 D15 amendment D). The rings use the same continuous-scale principle: evenly spaced near the
+  player, spacing growing smoothly with distance, no pops. The nested power-of-two fade is dropped (section 4.5 gives
+  the reasons and the accepted slide). Applied: 4.4, 4.5, 4.7, cases 7-11.
+- **Q10: End ring position. Just outside each body** (surface plus one tunnel radius); the tunnel runs between the end
+  rings and draws over the planet unless the planet is in front of the tunnel's path (shared occluders). Applied: 4.3,
+  case 12.
+- **Q11: Dots and chevrons far away. They fade out between 256 and 512 tunnel radii**; rings alone reach the end ring.
+  Applied: 4.5, case 10.
+- **Also stated by the user (D16):** some ships may travel just outside the tunnel, along it (#50); the display needs
+  nothing special for them.
+
+No question is open. Interpretation recorded for Q9: "even near the player" is read as "evenly spaced near the
+player" (D7's 2 tunnel radii), with the smooth growth beyond.
 
 ## 12. Change log
 
 - 2026-11-11: first draft from grill-me D1-D15; derived choices Q1-Q11 reported to the main session for the user.
+- 2026-11-11: the user's answers to Q1-Q11 recorded as resolved decisions (section 11): labels per shown tunnel with
+  dimmed side labels (Q4), the lane line faded out with its tunnel and the ships back as points (Q5, the crossfade
+  change to `M_SOLNpcLanes` and `M_SOLNpcPoints`), the continuous accordion ring spacing replacing the nested
+  power-of-two fade (Q9, after SDD 38 D15 amendment D), D16 (traffic outside the tunnel); keep-right rails and the
+  traffic flow moved to the new ticket #50.
