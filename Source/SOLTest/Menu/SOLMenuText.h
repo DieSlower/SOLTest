@@ -940,6 +940,13 @@ namespace SOLMenuText
     inline constexpr const TCHAR* CHASE_CANCEL_HINT = TEXT("Thrust, steer or Esc to stop chasing");
     inline constexpr const TCHAR* CHASE_ENDED_NOTE = TEXT("CHASE ENDED: target lost");
 
+    // HUD lane tunnel wall label (SDD 49 section 4.9): "Earth - Mars", "Earth 0.42 AU   Mars 1.08 AU", "62,400 ships"
+    inline constexpr const TCHAR* LANE_LABEL_NAME_SEPARATOR = TEXT(" - ");
+    inline constexpr const TCHAR* LANE_LABEL_DISTANCE_SEPARATOR = TEXT("   ");
+    inline constexpr const TCHAR* LANE_LABEL_SHIP = TEXT(" ship");
+    inline constexpr const TCHAR* LANE_LABEL_SHIPS = TEXT(" ships");
+    inline constexpr TCHAR LANE_LABEL_THOUSANDS_SEPARATOR = TEXT(',');
+
     // HUD flight mode labels (SDD 19 section 3.7), in ESOLFlightMode order
     inline constexpr const TCHAR* HUD_FLIGHT_MODE_LABELS[] = { TEXT("MANUAL"), TEXT("ASSISTED"), TEXT("AUTO") };
 

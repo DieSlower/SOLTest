@@ -10,7 +10,8 @@
 #include "CoreMinimal.h"
 
 // One lane of the per-frame lane frame (SDD 38 section 4.2): its endpoints (the two body centres, universe metres),
-// radius, ship count, traffic weight and whether it is drawn (at least one ship and both bodies resolved)
+// radius, ship count, traffic weight, whether both bodies are resolved (SDD 49: an empty lane still has a tunnel) and
+// whether it is drawn (at least one ship and both bodies resolved)
 struct FSOLNpcLaneEntry
 {
     FVector3d A = FVector3d::ZeroVector;     // Body A's centre (outbound traffic leaves it)
@@ -18,7 +19,8 @@ struct FSOLNpcLaneEntry
     double RadiusM = 0.0;                    // Lane radius (FSOLNpcGroupTable::LaneRadiusM)
     int32 ShipCount = 0;                     // Lane rails of the population
     double TrafficWeight = 0.0;              // SOLNpcLane::LaneTrafficWeight(ShipCount)
-    bool bDrawn = false;                     // Ships on it and both bodies resolved
+    bool bResolved = false;                  // Both bodies resolved and inside the frame arrays, any ship count
+    bool bDrawn = false;                     // Ships on it and both bodies resolved (bResolved and a ship)
 };
 
 // The lanes of one frame, in lane order (global groups 0 .. LaneCount - 1). Built each frame by
@@ -40,8 +42,13 @@ namespace SOLNpcLane
     // returns 1 (no close-up band, the line stays)
     SOLTEST_API double LaneLineFade(double distanceM, double laneRadiusM);
 
-    // Returns a lane ship's far-point alpha: 1 - LaneLineFade(d, R) while the lanes are shown (they sum to 1), else 1
-    SOLTEST_API double LaneShipPointAlpha(double distanceM, double laneRadiusM, bool bLanesShown);
+    // Returns the line alpha with the lane's tunnel fade (SDD 49 Q5): LaneLineFade(d, R) x (1 - F), F clamped to
+    // [0, 1] and NaN read as 0 (the line stays)
+    SOLTEST_API double LaneLineFadeWithTunnel(double distanceM, double laneRadiusM, double tunnelFade);
+
+    // Returns a lane ship's far-point alpha: 1 - LaneLineFadeWithTunnel(d, R, F) while the lanes are shown (line and
+    // point sum to 1), else 1; F = 0 (no tunnel) gives the #38 crossfade
+    SOLTEST_API double LaneShipPointAlpha(double distanceM, double laneRadiusM, bool bLanesShown, double tunnelFade);
 
     // Returns the traffic weight of a lane's ship count: log-linear from NPC_LANE_TRAFFIC_LOW (0) to
     // NPC_LANE_TRAFFIC_HIGH (1), clamped; 0 for a count <= 0
@@ -145,8 +152,8 @@ namespace SOLNpcLane
     SOLTEST_API void CountLaneShips(TConstArrayView<FSOLNpcRail> rails, int32 laneCount, TArray<int32>& outCounts);
 
     // Fills one entry per lane (groups.LaneCount) from the frame's group points, the lane radii and the ship counts;
-    // a lane past the end of the counts or of the frame arrays has count 0 and is not drawn. Keeps outFrame's array
-    // when its size does not change (no allocation per frame)
+    // a lane past the end of the counts or of the frame arrays has count 0 and is not drawn, and past the frame arrays
+    // it is not resolved either. Keeps outFrame's array when its size does not change (no allocation per frame)
     SOLTEST_API void BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame,
         TConstArrayView<int32> counts, FSOLNpcLaneFrame& outFrame);
 

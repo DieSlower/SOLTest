@@ -84,10 +84,19 @@ double SOLNpcLane::LaneLineFade(const double distanceM, const double laneRadiusM
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a lane ship's far-point alpha: the line fade's complement while the lanes are shown, else 1
-double SOLNpcLane::LaneShipPointAlpha(const double distanceM, const double laneRadiusM, const bool bLanesShown)
+// Returns the line alpha with the lane's tunnel fade: the close-up fade times 1 - F (F clamped, NaN as 0)
+double SOLNpcLane::LaneLineFadeWithTunnel(const double distanceM, const double laneRadiusM, const double tunnelFade)
 {
-    return bLanesShown ? 1.0 - LaneLineFade(distanceM, laneRadiusM) : 1.0;
+    const double clampedFade = FMath::IsNaN(tunnelFade) ? 0.0 : FMath::Clamp(tunnelFade, 0.0, 1.0);
+    return LaneLineFade(distanceM, laneRadiusM) * (1.0 - clampedFade);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane ship's far-point alpha: the tunnel-faded line's complement while the lanes are shown, else 1
+double SOLNpcLane::LaneShipPointAlpha(const double distanceM, const double laneRadiusM, const bool bLanesShown,
+    const double tunnelFade)
+{
+    return bLanesShown ? 1.0 - LaneLineFadeWithTunnel(distanceM, laneRadiusM, tunnelFade) : 1.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -433,9 +442,10 @@ void SOLNpcLane::BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRa
         entry.ShipCount = bInFrame && lane < counts.Num() ? counts[lane] : 0;
         entry.TrafficWeight = LaneTrafficWeight(entry.ShipCount);
 
-        // Drawn with ships on it and both bodies resolved
+        // Resolved with both bodies known inside the frame arrays (any ship count); drawn with ships on it as well
         const bool bBodies = groups.LaneBodyA.IsValidIndex(lane) && groups.LaneBodyA[lane] != INDEX_NONE
             && groups.LaneBodyB.IsValidIndex(lane) && groups.LaneBodyB[lane] != INDEX_NONE;
+        entry.bResolved = bInFrame && bBodies;
         entry.bDrawn = bBodies && IsLaneDrawn(entry.ShipCount);
     }
 }

@@ -4,6 +4,7 @@
 */
 
 #include "HudEvents/SOLHudBus.h"
+#include "SOLConstants.h"
 
 #include "Misc/AutomationTest.h"
 
@@ -35,6 +36,33 @@ namespace
         return a.StickOffsetPx == b.StickOffsetPx && a.StickRadiusPx == b.StickRadiusPx && a.SteerIcon == b.SteerIcon
             && a.bIsSteering == b.bIsSteering && a.bIsFreeLooking == b.bIsFreeLooking;
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a lane tunnel label with every field off its default, distinct per seed
+    FSOLHudLaneTunnelLabel HudBusMakeLabel(const int32 seed)
+    {
+        const double k = static_cast<double>(seed + 1);
+        FSOLHudLaneTunnelLabel label;
+        label.Lane = seed + 2;
+        label.Strength = 0.1 * k;
+        label.bStrongest = seed == 0;
+        label.Alpha = 0.05 * k;
+        label.DistanceAM = 1.0e9 * k;
+        label.DistanceBM = 7.5e10 * k;
+        label.ShipCount = 1000 * (seed + 3);
+        label.TopAnchorM = FVector3d(1.0e6 * k, -2.0e6, 3.0e5 * k);
+        label.BottomAnchorM = FVector3d(-4.0e6 * k, 5.0e5, -6.0e5 * k);
+        return label;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true if two lane tunnel labels are equal field by field
+    bool HudBusSameLabel(const FSOLHudLaneTunnelLabel& a, const FSOLHudLaneTunnelLabel& b)
+    {
+        return a.Lane == b.Lane && a.Strength == b.Strength && a.bStrongest == b.bStrongest && a.Alpha == b.Alpha
+            && a.DistanceAM == b.DistanceAM && a.DistanceBM == b.DistanceBM && a.ShipCount == b.ShipCount
+            && a.TopAnchorM == b.TopAnchorM && a.BottomAnchorM == b.BottomAnchorM;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -52,6 +80,8 @@ bool FSOLHudEventBusDefaultsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("no commands"), bus.GetCommandCount(), 0);
     TestNull(TEXT("no overlay"), bus.GetMapBodyOverlay());
     TestTrue(TEXT("default snapshot"), HudBusSameSnapshot(bus.GetPilot(), FSOLHudPilotSnapshot()));
+    TestEqual(TEXT("no lane tunnel labels"), bus.GetLaneTunnelLabels().Count, 0);
+    TestEqual(TEXT("no lane tunnel label frame"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(0));
     return true;
 }
 
@@ -198,6 +228,87 @@ bool FSOLHudEventBusOverlayTest::RunTest(const FString& /*parameters*/)
     TestTrue(TEXT("overlay stored"), bus.GetMapBodyOverlay() == overlay);
     bus.SetMapBodyOverlay(nullptr);
     TestNull(TEXT("nullptr clears"), bus.GetMapBodyOverlay());
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudEventBusLaneLabelsTest, "SOLTest.HudEventBus.LaneTunnelLabels",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 case 21 (Q4): the lane tunnel label snapshot round-trips every field of every entry, the count and the frame
+// it was made for; a count above NPC_TUNNEL_LABEL_MAX_COUNT is clamped; a cleared snapshot (count 0, or
+// ClearLaneTunnelLabels, which also resets the frame) reads as no labels; the last publish wins
+bool FSOLHudEventBusLaneLabelsTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 maxCount = SOL::NPC_TUNNEL_LABEL_MAX_COUNT;
+    FSOLHudBus bus;
+
+    // A full snapshot round-trips
+    FSOLHudLaneTunnelLabels full;
+    full.Count = maxCount;
+    for (int32 index = 0; index < maxCount; ++index)
+    {
+        full.Labels[index] = HudBusMakeLabel(index);
+    }
+    bus.PublishLaneTunnelLabels(full, 120);
+    TestEqual(TEXT("full: frame"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(120));
+    if (TestEqual(TEXT("full: count"), bus.GetLaneTunnelLabels().Count, maxCount))
+    {
+        for (int32 index = 0; index < maxCount; ++index)
+        {
+            TestTrue(FString::Printf(TEXT("full: entry %d"), index),
+                HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[index], HudBusMakeLabel(index)));
+        }
+    }
+
+    // A second publish in the frame replaces the first (two labels)
+    FSOLHudLaneTunnelLabels partial;
+    partial.Count = 2;
+    partial.Labels[0] = HudBusMakeLabel(5);
+    partial.Labels[1] = HudBusMakeLabel(6);
+    bus.PublishLaneTunnelLabels(partial, 121);
+    TestEqual(TEXT("last publish: frame"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(121));
+    if (TestEqual(TEXT("last publish: count"), bus.GetLaneTunnelLabels().Count, 2))
+    {
+        TestTrue(TEXT("last publish: entry 0"), HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[0],
+            HudBusMakeLabel(5)));
+        TestTrue(TEXT("last publish: entry 1"), HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[1],
+            HudBusMakeLabel(6)));
+    }
+
+    // A count above the cap is clamped, the entries kept
+    FSOLHudLaneTunnelLabels over = full;
+    over.Count = maxCount + 5;
+    bus.PublishLaneTunnelLabels(over, 122);
+    if (TestEqual(TEXT("over: count clamped"), bus.GetLaneTunnelLabels().Count, maxCount))
+    {
+        for (int32 index = 0; index < maxCount; ++index)
+        {
+            TestTrue(FString::Printf(TEXT("over: entry %d"), index),
+                HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[index], HudBusMakeLabel(index)));
+        }
+    }
+
+    // A cleared snapshot reads as no labels
+    FSOLHudLaneTunnelLabels cleared;
+    cleared.Count = 0;
+    bus.PublishLaneTunnelLabels(cleared, 123);
+    TestEqual(TEXT("cleared: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+    TestEqual(TEXT("cleared: the frame of the empty snapshot"), bus.GetLaneTunnelLabelsFrame(),
+        static_cast<uint64>(123));
+
+    // ClearLaneTunnelLabels forgets the labels and the frame (a stale snapshot never outlives its tunnels)
+    bus.PublishLaneTunnelLabels(full, 124);
+    bus.ClearLaneTunnelLabels();
+    TestEqual(TEXT("clear: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+    TestEqual(TEXT("clear: frame 0"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(0));
+    TestTrue(TEXT("clear: entries back to their defaults"),
+        HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[0], FSOLHudLaneTunnelLabel()));
+
+    // Labels are not a pilot snapshot nor a command
+    TestFalse(TEXT("labels publish no pilot"), bus.HasPilot());
+    TestEqual(TEXT("labels send no command"), bus.GetCommandCount(), 0);
     return true;
 }
 

@@ -30,3 +30,20 @@ void FSOLHudBus::SendCommand(const ESOLHudCommand command)
     ++mCommandCount;
     mCommandSignal.Broadcast(command);
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Stores the lane tunnel labels of a frame with the count clamped to the fixed capacity
+void FSOLHudBus::PublishLaneTunnelLabels(const FSOLHudLaneTunnelLabels& labels, const uint64 frameNumber)
+{
+    mLaneTunnelLabels = labels;
+    mLaneTunnelLabels.Count = FMath::Clamp(labels.Count, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_COUNT));
+    mLaneTunnelLabelsFrame = frameNumber;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Forgets the lane tunnel labels and their frame
+void FSOLHudBus::ClearLaneTunnelLabels()
+{
+    mLaneTunnelLabels = FSOLHudLaneTunnelLabels();
+    mLaneTunnelLabelsFrame = 0;
+}

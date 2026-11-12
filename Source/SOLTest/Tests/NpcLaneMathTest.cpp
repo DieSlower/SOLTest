@@ -24,7 +24,8 @@
 // keep-right side direction, LaneOutboundSide, checked by projecting a moved lane point. Part 38c (user, 2026-11-11):
 // the flow clock has no pause input (case 31), and short lanes get coarser dash levels down to 4 dashes (cases 1, 11,
 // 12). Follow-up (user, 2026-11-11, D15 amendment D): the dashes use one continuous "accordion" scale per lane, laid
-// along the lane's on-screen spacing, so nothing pops (cases 11, 12 and the screen spacing case 12b).
+// along the lane's on-screen spacing, so nothing pops (cases 11, 12 and the screen spacing case 12b). Issue #49 (SDD 49
+// cases 17 and 17b, test first): the lane frame's resolved flag and the line / point crossfade with the tunnel fade.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -325,7 +326,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathShipPointAlphaTest, "SOLTest.Npc
 
 //////////////////////////////////////////////////////////////////////////
 // Case 3: with lanes shown a lane ship's far point is the fade's complement (so line + points sum to 1 everywhere);
-// with lanes off every point draws as today (1)
+// with lanes off every point draws as today (1). Since SDD 49 Q5 the function takes the lane's tunnel fade; with a
+// tunnel fade of 0 (no tunnel) every value here is the #38 one
 bool FSOLNpcLaneMathShipPointAlphaTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcLane;
@@ -334,18 +336,122 @@ bool FSOLNpcLaneMathShipPointAlphaTest::RunTest(const FString& /*parameters*/)
     {
         const double d = radiusM * FMath::Pow(10.0, static_cast<double>(step) / 15.0);
         const FString label = FString::Printf(TEXT("d %.3e m"), d);
-        TestEqual(label + TEXT(": shown = 1 - fade"), LaneShipPointAlpha(d, radiusM, true),
+        TestEqual(label + TEXT(": shown = 1 - fade"), LaneShipPointAlpha(d, radiusM, true, 0.0),
             1.0 - LaneLineFade(d, radiusM), NPCLANE_TOL);
-        TestEqual(label + TEXT(": shown + fade = 1"), LaneShipPointAlpha(d, radiusM, true) + LaneLineFade(d, radiusM),
-            1.0, NPCLANE_TOL);
-        TestEqual(label + TEXT(": not shown = 1"), LaneShipPointAlpha(d, radiusM, false), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": shown + fade = 1"), LaneShipPointAlpha(d, radiusM, true, 0.0)
+            + LaneLineFade(d, radiusM), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": not shown = 1"), LaneShipPointAlpha(d, radiusM, false, 0.0), 1.0, NPCLANE_TOL);
     }
-    TestEqual(TEXT("shown, close: 1"), LaneShipPointAlpha(0.0, radiusM, true), 1.0, NPCLANE_TOL);
-    TestEqual(TEXT("shown, far: 0"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, true), 0.0, NPCLANE_TOL);
-    TestEqual(TEXT("not shown, far: 1"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, false), 1.0, NPCLANE_TOL);
-    TestEqual(TEXT("shown, bad radius: the line stays, so 0"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, true), 0.0,
+    TestEqual(TEXT("shown, close: 1"), LaneShipPointAlpha(0.0, radiusM, true, 0.0), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("shown, far: 0"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, true, 0.0), 0.0, NPCLANE_TOL);
+    TestEqual(TEXT("not shown, far: 1"), LaneShipPointAlpha(1.0e3 * radiusM, radiusM, false, 0.0), 1.0, NPCLANE_TOL);
+    TestEqual(TEXT("shown, bad radius: the line stays, so 0"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, true, 0.0),
+        0.0, NPCLANE_TOL);
+    TestEqual(TEXT("not shown, bad radius: 1"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, false, 0.0), 1.0,
         NPCLANE_TOL);
-    TestEqual(TEXT("not shown, bad radius: 1"), LaneShipPointAlpha(1.0e3, NPCLANE_NAN, false), 1.0, NPCLANE_TOL);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathTunnelCrossfadeTest, "SOLTest.NpcLaneMath.TunnelCrossfade",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 case 17b (Q5): with the lane's tunnel fade F (clamped to [0, 1], NaN as 0) the line alpha is
+// LaneLineFade(d, R) x (1 - F) and a lane ship's point alpha its complement while the lanes are shown (1 when not), so
+// the two still sum to 1 at every lane point; F = 0 gives the #38 values, F = 1 removes the line and shows every ship
+bool FSOLNpcLaneMathTunnelCrossfadeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    const double radii[] = { NPCLANE_RADIUS_INNER_M, NPCLANE_RADIUS_OUTER_M };
+    const double tunnelFades[] = { 0.0, 0.25, 0.5, 0.75, 1.0 };
+    for (const double radiusM : radii)
+    {
+        const FString rLabel = FString::Printf(TEXT("R %.0f m"), radiusM);
+
+        // F = 0: exactly the #38 values; and the closed form for every F, the two summing to 1
+        for (int32 step = 0; step <= 60; ++step)
+        {
+            const double d = radiusM * FMath::Pow(10.0, static_cast<double>(step) / 15.0);
+            const FString label = rLabel + FString::Printf(TEXT(", d %.3e m"), d);
+            TestEqual(label + TEXT(": F 0 line = LaneLineFade"), LaneLineFadeWithTunnel(d, radiusM, 0.0),
+                LaneLineFade(d, radiusM), NPCLANE_TOL);
+            TestEqual(label + TEXT(": F 0 point = 1 - LaneLineFade"), LaneShipPointAlpha(d, radiusM, true, 0.0),
+                1.0 - LaneLineFade(d, radiusM), NPCLANE_TOL);
+            for (const double tunnelFade : tunnelFades)
+            {
+                const double line = LaneLineFadeWithTunnel(d, radiusM, tunnelFade);
+                const double point = LaneShipPointAlpha(d, radiusM, true, tunnelFade);
+                TestEqual(label + FString::Printf(TEXT(", F %.2f: line closed form"), tunnelFade), line,
+                    LaneLineFade(d, radiusM) * (1.0 - tunnelFade), NPCLANE_TOL);
+                TestEqual(label + FString::Printf(TEXT(", F %.2f: sum 1"), tunnelFade), line + point, 1.0,
+                    NPCLANE_TOL);
+                TestEqual(label + FString::Printf(TEXT(", F %.2f: not shown -> 1"), tunnelFade),
+                    LaneShipPointAlpha(d, radiusM, false, tunnelFade), 1.0, NPCLANE_TOL);
+            }
+        }
+
+        // F = 1: no line and every ship a point, at every distance
+        for (const double d : { 1.0e3, 100.0 * radiusM, 400.0 * radiusM, NPCLANE_AU_M, NPCLANE_INF })
+        {
+            const FString label = rLabel + FString::Printf(TEXT(", d %.3e m"), d);
+            TestEqual(label + TEXT(": F 1 line 0"), LaneLineFadeWithTunnel(d, radiusM, 1.0), 0.0, NPCLANE_TOL);
+            TestEqual(label + TEXT(": F 1 point 1"), LaneShipPointAlpha(d, radiusM, true, 1.0), 1.0, NPCLANE_TOL);
+        }
+
+        // F = 0.5 at and beyond 400 R (the line's own fade is 1 there): line 0.5, point 0.5
+        for (const double d : { 400.0 * radiusM, 1000.0 * radiusM, NPCLANE_AU_M, NPCLANE_INF })
+        {
+            const FString label = rLabel + FString::Printf(TEXT(", d %.3e m"), d);
+            TestEqual(label + TEXT(": F 0.5 line 0.5"), LaneLineFadeWithTunnel(d, radiusM, 0.5), 0.5, NPCLANE_TOL);
+            TestEqual(label + TEXT(": F 0.5 point 0.5"), LaneShipPointAlpha(d, radiusM, true, 0.5), 0.5, NPCLANE_TOL);
+        }
+
+        // The line non-increasing and the point non-decreasing in F
+        for (const double inRadii : { 120.0, 200.0, 350.0, 900.0 })
+        {
+            const double d = inRadii * radiusM;
+            double previousLine = 2.0;
+            double previousPoint = -1.0;
+            for (int32 step = 0; step <= 40; ++step)
+            {
+                const double tunnelFade = static_cast<double>(step) / 40.0;
+                const double line = LaneLineFadeWithTunnel(d, radiusM, tunnelFade);
+                const double point = LaneShipPointAlpha(d, radiusM, true, tunnelFade);
+                const FString label = rLabel + FString::Printf(TEXT(", %.0f R, F %.3f"), inRadii, tunnelFade);
+                TestTrue(label + TEXT(": line non-increasing in F"), line <= previousLine + 1.0e-12);
+                TestTrue(label + TEXT(": point non-decreasing in F"), point >= previousPoint - 1.0e-12);
+                previousLine = line;
+                previousPoint = point;
+            }
+        }
+
+        // F clamped to [0, 1]; NaN F as 0 (the line stays, a lane is never empty)
+        const double d = 250.0 * radiusM;
+        TestEqual(rLabel + TEXT(": F -0.5 as 0 (line)"), LaneLineFadeWithTunnel(d, radiusM, -0.5),
+            LaneLineFadeWithTunnel(d, radiusM, 0.0), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": F 1.7 as 1 (line)"), LaneLineFadeWithTunnel(d, radiusM, 1.7),
+            LaneLineFadeWithTunnel(d, radiusM, 1.0), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": F -0.5 as 0 (point)"), LaneShipPointAlpha(d, radiusM, true, -0.5),
+            LaneShipPointAlpha(d, radiusM, true, 0.0), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": F 1.7 as 1 (point)"), LaneShipPointAlpha(d, radiusM, true, 1.7),
+            LaneShipPointAlpha(d, radiusM, true, 1.0), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": NaN F as 0 (line)"), LaneLineFadeWithTunnel(d, radiusM, NPCLANE_NAN),
+            LaneLineFade(d, radiusM), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": NaN F as 0 (point)"), LaneShipPointAlpha(d, radiusM, true, NPCLANE_NAN),
+            1.0 - LaneLineFade(d, radiusM), NPCLANE_TOL);
+        TestEqual(rLabel + TEXT(": not shown, NaN F -> 1"), LaneShipPointAlpha(d, radiusM, false, NPCLANE_NAN), 1.0,
+            NPCLANE_TOL);
+    }
+
+    // The bad-radius results of LaneLineFade hold at F = 0 (the line stays)
+    for (const double badRadius : { NPCLANE_NAN, 0.0, -NPCLANE_RADIUS_INNER_M, NPCLANE_INF })
+    {
+        const FString label = FString::Printf(TEXT("radius %f"), badRadius);
+        TestEqual(label + TEXT(": line 1 at F 0"), LaneLineFadeWithTunnel(1.0e3, badRadius, 0.0), 1.0, NPCLANE_TOL);
+        TestEqual(label + TEXT(": point 0 at F 0"), LaneShipPointAlpha(1.0e3, badRadius, true, 0.0), 0.0,
+            NPCLANE_TOL);
+    }
     return true;
 }
 
@@ -1689,7 +1795,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLaneFrameTest, "SOLTest.NpcLaneM
 //////////////////////////////////////////////////////////////////////////
 // Case 16: the per-frame lane frame (the #49 extension point) has one entry per lane with its endpoints, radius,
 // count, weight and drawn flag (ships and both bodies resolved); a lane past the end of the counts or of the frame
-// arrays is not drawn (count 0); a second build with the same sizes does not reallocate
+// arrays is not drawn (count 0); a second build with the same sizes does not reallocate. SDD 49 case 17: the resolved
+// flag (both bodies known and inside the frame arrays) is set whatever the ship count, so an empty lane can be told
+// from an unresolved one
 bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcLane;
@@ -1736,6 +1844,9 @@ bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
         TestEqual(label + TEXT(": traffic weight"), entry.TrafficWeight, LaneTrafficWeight(count), NPCLANE_TOL);
         const bool bBodies = groups.LaneBodyA[lane] != INDEX_NONE && groups.LaneBodyB[lane] != INDEX_NONE;
         TestEqual(label + TEXT(": drawn"), entry.bDrawn, IsLaneDrawn(count) && bBodies);
+
+        // SDD 49 case 17: resolved whatever the ship count (both bodies known and inside the frame arrays)
+        TestEqual(label + TEXT(": resolved"), entry.bResolved, bBodies);
     }
     TestTrue(TEXT("lane 0 drawn"), laneFrame.Lanes[0].bDrawn);
     TestFalse(TEXT("lane 1 (no ships) not drawn"), laneFrame.Lanes[1].bDrawn);
@@ -1743,6 +1854,13 @@ bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
     TestFalse(TEXT("lane 3 (body B unknown) not drawn"), laneFrame.Lanes[3].bDrawn);
     TestFalse(TEXT("lane 4 (past the counts) not drawn"), laneFrame.Lanes[4].bDrawn);
     TestEqual(TEXT("lane 4 count 0"), laneFrame.Lanes[4].ShipCount, 0);
+
+    // SDD 49 case 17: an empty lane with both bodies is resolved but not drawn; an unresolved lane is neither
+    TestTrue(TEXT("lane 0 resolved"), laneFrame.Lanes[0].bResolved);
+    TestTrue(TEXT("lane 1 (empty) resolved"), laneFrame.Lanes[1].bResolved);
+    TestFalse(TEXT("lane 2 (body A unknown) not resolved"), laneFrame.Lanes[2].bResolved);
+    TestFalse(TEXT("lane 3 (body B unknown) not resolved"), laneFrame.Lanes[3].bResolved);
+    TestTrue(TEXT("lane 4 (past the counts, bodies known) resolved"), laneFrame.Lanes[4].bResolved);
 
     // A second build with the same sizes keeps the array (no allocation per frame), with the new values
     const FSOLNpcLaneEntry* dataBefore = laneFrame.Lanes.GetData();
@@ -1772,7 +1890,15 @@ bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
             TestFalse(FString::Printf(TEXT("short frame: lane %d not drawn"), lane), shortLanes.Lanes[lane].bDrawn);
             TestEqual(FString::Printf(TEXT("short frame: lane %d count 0"), lane), shortLanes.Lanes[lane].ShipCount,
                 0);
+            TestFalse(FString::Printf(TEXT("short frame: lane %d not resolved"), lane),
+                shortLanes.Lanes[lane].bResolved);
         }
+
+        // Inside the frame arrays: lanes 0 and 1 (empty) resolved, lane 2 (body A unknown) not
+        TestTrue(TEXT("short frame: lane 0 resolved"), shortLanes.Lanes[0].bResolved);
+        TestTrue(TEXT("short frame: lane 1 (empty) resolved"), shortLanes.Lanes[1].bResolved);
+        TestFalse(TEXT("short frame: lane 1 (empty) not drawn"), shortLanes.Lanes[1].bDrawn);
+        TestFalse(TEXT("short frame: lane 2 not resolved"), shortLanes.Lanes[2].bResolved);
     }
 
     // No lanes: no entries
@@ -1787,13 +1913,15 @@ bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
 namespace
 {
     //////////////////////////////////////////////////////////////////////////
-    // Returns a lane frame entry with a radius and a ship count, its weight and drawn flag as BuildLaneFrame sets them
+    // Returns a lane frame entry with a radius and a ship count, its weight, resolved and drawn flags as BuildLaneFrame
+    // sets them
     FSOLNpcLaneEntry NpcLaneFeedEntry(const double radiusM, const int32 shipCount, const bool bBodiesResolved = true)
     {
         FSOLNpcLaneEntry entry;
         entry.RadiusM = radiusM;
         entry.ShipCount = shipCount;
         entry.TrafficWeight = SOLNpcLane::LaneTrafficWeight(shipCount);
+        entry.bResolved = bBodiesResolved;
         entry.bDrawn = SOLNpcLane::IsLaneDrawn(shipCount) && bBodiesResolved;
         return entry;
     }

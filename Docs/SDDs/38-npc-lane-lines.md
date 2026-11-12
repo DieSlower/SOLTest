@@ -100,8 +100,8 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
   uses the same scale `2^L`. To keep "about 24 px on screen" true in perspective too (a lane seen from inside the solar
   system is often much nearer at one end), the dashes are laid along the **screen parameter** `LaneScreenParam`, the
   lane parameter re-spaced by angle from A (0 at A, 1 at B; equal to s for a lane seen without perspective), instead of
-  the raw lane parameter s; this is the prototype's accordion carried into 3D (the prototype was flat), **pending
-  user confirmation (asked 2026-11-11)**: it is user-visible (the dashes are spaced by angle at the camera, not along
+  the raw lane parameter s; this is the prototype's accordion carried into 3D (the prototype was flat), **confirmed
+  by the user on 2026-11-12 (asked 2026-11-11)**: it is user-visible (the dashes are spaced by angle at the camera, not along
   the lane in space). On screen that means a period is about 24 px near the screen centre and longer toward the
   edges at a wide field of view: 24 px of angle is `24 / cos^2(theta)` px along a screen radius and `24 / cos(theta)`
   px across it at `theta` off axis, about 2x at the edge at 90°, 3x at 110°, more in the corners at the 135° warp
@@ -378,6 +378,13 @@ count, weight, drawn flag) built each frame and exposed by `ASOLNpcVisuals::GetL
 `ClosestLaneParam` / `LaneLineFade` functions, whose near band (inside `FADE_NEAR x R`) is where a tunnel would take
 over; (c) the Lanes row as the switch the tunnel can also obey. Tunnel geometry, trigger distance and its relation to
 the profiles and glow are #49's grill-me.
+
+*Note (#49, part 49a):* issue #49 consumed this extension point ([SDD 49](49-lane-guidance-tunnel.md)).
+`FSOLNpcLaneEntry` gained `bResolved` (both bodies resolved and inside the frame arrays, whatever the ship count), set
+by `BuildLaneFrame`, so an empty lane, which still gets a tunnel, can be told from an unresolved one; `bDrawn` keeps
+its meaning (`bResolved` and at least one ship). `LaneShipPointAlpha` gained the lane's tunnel fade argument and the
+new `LaneLineFadeWithTunnel` gives the tunnel-faded line alpha (SDD 49 Q5); with a tunnel fade of 0 both give the
+#38 values exactly.
 
 ### 4.11 What does not change
 
@@ -872,3 +879,5 @@ separate occluder set for the lanes (D24).
   footprint of 0 now takes the floor level `MIN` (box-filtered) in both `LaneDashCoverage` and `SOLNL_DashCoverage`,
   `LaneDashLevel` returns `MIN` for a bad or infinite footprint (cases 12 and 12b); the shader computes the lane's
   angle once (two `atan2` per pixel); re-profiled at 1080p (section 4.13). No schema change.
+- 2026-11-12: the user confirmed amendment D's angle-based dash spacing (the dashes spaced by angle at the camera);
+  the "pending user confirmation" note in D15 now reads confirmed. No code or schema change.
