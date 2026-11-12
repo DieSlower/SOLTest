@@ -14,7 +14,8 @@ chosen look:
   - `tunnel8_rings_dots_sides.gif`: left/right wall chevrons at 3 and 9 o'clock, with muted
     green/red guide dots.
 
-More edits are expected in the #49 grill-me interview.
+The #49 grill-me (2026-11-11) chose `tunnel8_rings_dots_sides.gif` (side-wall chevrons with
+green/red guide dots); the design is [`SDD 49`](../../SDDs/49-lane-guidance-tunnel.md).
 
 The scripts `tunnels.py` .. `tunnels8.py` regenerate the GIFs with Pillow (`python -I tunnels8.py`;
 `tunnels8.py` imports the earlier ones).
