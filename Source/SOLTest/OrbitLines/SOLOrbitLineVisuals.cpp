@@ -94,6 +94,20 @@ void ASOLOrbitLineVisuals::BeginVerificationOverride()
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Records whether the NPC lanes draw; writes the shared occluders at once when they turn on with the lines hidden
+void ASOLOrbitLineVisuals::SetLanesDrawn(const bool bLanesDrawn)
+{
+    const bool bTurnedOn = bLanesDrawn && !mAreLanesDrawn;
+    mAreLanesDrawn = bLanesDrawn;
+    if (bTurnedOn && !mIsDrawn && HasActorBegunPlay() && AnchorSubsystem != nullptr && BodyRegistry != nullptr
+        && ParameterCollectionInstance != nullptr)
+    {
+        UpdateOccluders(AnchorSubsystem->GetViewpointM());
+        ++mLaneOnlyOccluderWrites;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the number of line components currently visible (verification)
 int32 ASOLOrbitLineVisuals::CountVisibleLines() const
 {
@@ -356,13 +370,19 @@ void ASOLOrbitLineVisuals::HandleUniverseUpdated()
         mIsDrawn = bDraw;
         SetActorHiddenInGame(!bDraw);
     }
+    const FVector3d& viewpointM = AnchorSubsystem->GetViewpointM();
     if (!bDraw)
     {
+        // The NPC lanes share the occluders (SDD 38 D24): kept current while they draw without orbit lines
+        if (SOLOrbitLineLogic::ShouldWriteOccluders(false, mAreLanesDrawn))
+        {
+            UpdateOccluders(viewpointM);
+            ++mLaneOnlyOccluderWrites;
+        }
         return;
     }
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
     const double centuries = SimClock->GetClock().GetCenturiesSinceJ2000();
-    const FVector3d& viewpointM = AnchorSubsystem->GetViewpointM();
     const FVector viewpointRenderCm = AnchorSubsystem->UniverseToRenderCm(viewpointM);
     ParameterCollectionInstance->SetVectorParameterValue(mFrameParamName, FLinearColor(
         static_cast<float>(viewpointRenderCm.X), static_cast<float>(viewpointRenderCm.Y),

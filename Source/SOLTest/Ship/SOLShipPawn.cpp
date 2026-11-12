@@ -281,6 +281,11 @@ void ASOLShipPawn::BeginPlay()
         mSmokeHud = MakeUnique<FSOLHudSmoke>();
         mSmokeHud->Start(*this);
     }
+    else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_LANES))
+    {
+        mSmokeNpcLanes = MakeUnique<FSOLNpcLaneSmoke>();
+        mSmokeNpcLanes->Start(*this);
+    }
     else if (FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_MAP))
     {
         mSmokeMap = MakeUnique<FSOLMapSmoke>();
@@ -363,7 +368,7 @@ void ASOLShipPawn::BeginPlay()
     // A script's synthetic held keys (e.g. Shift through the map pick's height preview) must survive the OS window
     // losing focus, which otherwise flushes every pressed key; in memory only, restored at EndPlay
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
+        || mSmokeNpcLanes.IsValid() || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()
         || mSmokeHoloMenu.IsValid() || mGlossaryCropWriter.IsValid())
@@ -426,6 +431,7 @@ void ASOLShipPawn::EndPlay(const EEndPlayReason::Type endPlayReason)
     }
     mSmokeInput.Reset();
     mSmokeHud.Reset();
+    mSmokeNpcLanes.Reset();
     mSmokeMap.Reset();
     mSmokeMapPick.Reset();
     mSmokeMapAlign.Reset();
@@ -468,6 +474,10 @@ void ASOLShipPawn::Tick(const float deltaSeconds)
     if (mSmokeHud.IsValid() && mSmokeHud->Update(*this, deltaSeconds))
     {
         mSmokeHud.Reset();
+    }
+    if (mSmokeNpcLanes.IsValid() && mSmokeNpcLanes->Update(*this, deltaSeconds))
+    {
+        mSmokeNpcLanes.Reset();
     }
     if (mSmokeMap.IsValid() && mSmokeMap->Update(*this, deltaSeconds))
     {
@@ -982,7 +992,7 @@ void ASOLShipPawn::UpdateViewportFocus()
     // The input scripts inject synthetic events whatever the OS focus is, so focus is ignored while they run; the
     // open speed panel and the open map have already released the flight input
     if (mSmokeInput.IsValid() || mSmokeHud.IsValid() || mSmokeMap.IsValid() || mSmokeMapPick.IsValid()
-        || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
+        || mSmokeNpcLanes.IsValid() || mSmokeMapAlign.IsValid() || mSmokeRoute.IsValid() || mSmokeRouteOverlay.IsValid()
         || mSmokeHologram.IsValid() || mSmokeOverlay.IsValid() || mSmokeInteract.IsValid() || mSmokeChase.IsValid()
         || mSmokeJump.IsValid() || mSmokeLevel.IsValid() || mSmokeDust.IsValid() || mSmokeHoloMenuProfile.IsValid()
         || mSmokeHoloMenu.IsValid() || mGlossaryCropWriter.IsValid())

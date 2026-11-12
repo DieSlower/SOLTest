@@ -1879,6 +1879,7 @@ namespace SOL
     namespace BodyNames
     {
         inline constexpr const TCHAR* SUN = TEXT("Sun");
+        inline constexpr const TCHAR* VENUS = TEXT("Venus");
         inline constexpr const TCHAR* EARTH = TEXT("Earth");
         inline constexpr const TCHAR* MOON = TEXT("Moon");
         inline constexpr const TCHAR* MARS = TEXT("Mars");
@@ -1920,6 +1921,7 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_ROUTE = TEXT("SOLSmokeRoute");      // Map modes and a route, then quit
         inline constexpr const TCHAR* SMOKE_ROUTE_OVERLAY = TEXT("SOLSmokeRouteOverlay");   // Route overlay, then quit
         inline constexpr const TCHAR* SMOKE_HOLOGRAM = TEXT("SOLSmokeHologram");   // Map hologram look, then quit
+        inline constexpr const TCHAR* SMOKE_NPC_LANES = TEXT("SOLSmokeNpcLanes");  // NPC lane lines (SDD 38), quit
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2022,6 +2024,8 @@ namespace SOL
         // the placeholder hull material; the two placeholder hulls are engine basic shapes (open question 10)
         inline constexpr const TCHAR* NPC_POINTS_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcPoints.M_SOLNpcPoints");
         inline constexpr const TCHAR* NPC_HULL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcHull.M_SOLNpcHull");
+        // NPC lane lines (SDD 38 section 4.8): the lane ribbon material (Tools/Npc/create_npc_assets.py)
+        inline constexpr const TCHAR* NPC_LANES_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcLanes.M_SOLNpcLanes");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_0 = TEXT("/Engine/BasicShapes/Cone.Cone");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_1 = TEXT("/Engine/BasicShapes/Cube.Cube");
         inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
@@ -2257,6 +2261,34 @@ namespace SOL
         inline constexpr const TCHAR* RING_INNER_FRACTION = TEXT("RingInnerFraction"); // Ring inner / outer radius
         inline constexpr const TCHAR* POST_STRENGTH = TEXT("Strength");          // Post-process overall strength
         inline constexpr const TCHAR* POST_TINT = TEXT("Tint");                  // Post-process tint colour
+    }
+
+    // Parameter names of Paths::NPC_LANES_MATERIAL and the lane crossfade input of NPC_POINTS_MATERIAL (SDD 38 section
+    // 4.8; Tools/Npc/create_npc_assets.py creates them with these names)
+    namespace NpcLaneMaterialParams
+    {
+        // Per frame
+        inline constexpr const TCHAR* LANE_PARAMS0 = TEXT("NpcLaneParams0");     // (flow phase, 0 unused, fade near
+                                                                                  //  radii, fade far radii)
+        inline constexpr const TCHAR* FRAME = TEXT("NpcLaneFrame");              // (viewpoint render cm, max render cm)
+        inline constexpr const TCHAR* POINT_LANE_PARAMS = TEXT("NpcParams4");    // Points: (lanes shown, fade near
+                                                                                  //  radii, fade far radii, 0)
+        inline constexpr const TCHAR* GLOW_SCALE = TEXT("GlowScale");            // HUD glow scale g, on change only
+        inline constexpr const TCHAR* GROUP_TEXTURE = TEXT("NpcGroupTex");       // The far points' group texture
+
+        // Once at BeginPlay, from the NPC_LANE_* and Hologram::HUD_GLOW_* constants (the shader keeps no copy)
+        inline constexpr const TCHAR* STYLE0 = TEXT("NpcLaneStyle0");            // (width min px, width max px, gap
+                                                                                  //  px, glow pad px), at 1080
+        inline constexpr const TCHAR* STYLE1 = TEXT("NpcLaneStyle1");            // (brightness min, max, dash base
+                                                                                  //  count, dash duty)
+        inline constexpr const TCHAR* STYLE2 = TEXT("NpcLaneStyle2");            // (reference height px, emissive,
+                                                                                  //  0, 0)
+        inline constexpr const TCHAR* GLOW0 = TEXT("NpcLaneGlow0");              // (core half px, core falloff, core
+                                                                                  //  falloff max, halo weight)
+        inline constexpr const TCHAR* GLOW1 = TEXT("NpcLaneGlow1");              // (halo scale, halo power, glow scale
+                                                                                  //  max, 0)
+        inline constexpr const TCHAR* OUTBOUND_COLOR = TEXT("NpcLaneOutboundColor"); // Linear colours
+        inline constexpr const TCHAR* INBOUND_COLOR = TEXT("NpcLaneInboundColor");
     }
 
     // Parameter names of HUD_SHAPE_MATERIAL (Tools/UI/create_hud_shape_material.py creates them with these names)
@@ -2535,6 +2567,11 @@ namespace SOL
     inline constexpr int32 NPC_LANE_SEGMENTS = 64;                     // Ribbon segments per line
     inline constexpr FColor NPC_LANE_OUTBOUND_COLOR = FColor(0x9F, 0xD6, 0xD0);   // Teal-white, sRGB (A -> B)
     inline constexpr FColor NPC_LANE_INBOUND_COLOR = FColor(0x3F, 0xD0, 0xE0);    // Cyan, sRGB (B -> A)
+    inline constexpr double NPC_LANE_EMISSIVE = 2.0;                   // Lane emissive scale (exposure-relative; tuned
+                                                                       // so the brightest core keeps its hue, D16)
+    inline constexpr int32 NPC_LANE_TRANSLUCENCY_SORT_PRIORITY = 1;    // Order within the after-motion-blur pass only
+                                                                       // (the far points draw in the normal pass)
+    inline constexpr const TCHAR* NPC_LANE_CVAR = TEXT("sol.NpcLanes"); // 0 hides the lane lines (A/B profiling, D20)
     static_assert(NPC_LANE_FADE_FAR_RADII > NPC_LANE_FADE_NEAR_RADII && NPC_LANE_FADE_NEAR_RADII > 1.0,
         "the lane fade band runs outward from the near radii");
     static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,

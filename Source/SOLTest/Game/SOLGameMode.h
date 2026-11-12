@@ -11,6 +11,7 @@
 #include "SOLGameMode.generated.h"
 
 class ASOLHologramVisuals;
+class ASOLNpcVisuals;
 class ASOLOrbitLineVisuals;
 class ASOLShipPawn;
 class USOLCombatSubsystem;
@@ -45,6 +46,9 @@ public:
     // Returns the world-space orbit-line actor spawned in StartPlay, or nullptr
     ASOLOrbitLineVisuals* GetOrbitLineVisuals() const { return OrbitLineVisuals; }
 
+    // Returns the NPC presentation actor spawned in StartPlay (SDD 11, the lane lines of SDD 38), or nullptr
+    ASOLNpcVisuals* GetNpcVisuals() const { return NpcVisuals; }
+
     // Returns the map hologram look actor (SDD 20), or nullptr before StartPlay
     ASOLHologramVisuals* GetHologramVisuals() const { return HologramVisuals; }
 
@@ -66,6 +70,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<ASOLHologramVisuals> HologramVisuals;          // Spawned in StartPlay (SDD 20 hologram look)
+
+    UPROPERTY(Transient)
+    TObjectPtr<ASOLNpcVisuals> NpcVisuals;                    // Spawned in StartPlay (SDD 11, SDD 38)
 
     // Phases of the -SOLCombatDemo script
     enum class ECombatDemoPhase : uint8

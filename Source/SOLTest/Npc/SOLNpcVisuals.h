@@ -5,7 +5,9 @@
 
 #pragma once
 
+#include "Npc/SOLNpcLaneMath.h"
 #include "Npc/SOLNpcTierProcessor.h"
+#include "UI/SOLHudShapeMath.h"
 
 #include "CoreMinimal.h"
 #include "Engine/Texture2D.h"
@@ -13,13 +15,17 @@
 
 #include "SOLNpcVisuals.generated.h"
 
+class ASOLOrbitLineVisuals;
 class UInstancedStaticMeshComponent;
 class UMaterialInstanceDynamic;
 class UStaticMesh;
 class UStaticMeshComponent;
 class UTexture2D;
 class USOLAnchorSubsystem;
+class USOLMenuSubsystem;
 class USOLNpcSubsystem;
+class USOLOrbitLineComponent;
+class USOLSettingsSubsystem;
 
 /**
  * Presentation of the NPC ships (SDD 11 section 3.4, Part 10c). It does not tick; it redraws on USOLNpcSubsystem's
@@ -41,6 +47,13 @@ class USOLNpcSubsystem;
  *   shrinks again when it stays far above the use.
  * - Mesh: a small pool of static mesh components for the closest ships; a slot that changes ship resets its scene
  *   velocity, so it has no motion vector from the previous owner.
+ * - Lane lines (SDD 38): each lane with ships is a pair of flowing dashed hologram lines, one world-space ribbon mesh
+ *   built once per population (LaneLines, M_SOLNpcLanes) and placed on the GPU from the group texture, whose free .w
+ *   channels carry the lane radius and traffic weight (ship counts from a histogram folded into the rail fill). The
+ *   far points of lane ships cross-fade the other way (NpcParams4). Shown while the Lanes overlay row is (read from
+ *   USOLSettingsSubsystem every frame) and sol.NpcLanes is on; the lines glow with the live HUD glow and their dashes
+ *   flow on a real-time clock that ignores time warp and stops while paused. The lanes share the orbit lines'
+ *   occluders, which ASOLOrbitLineVisuals writes while lanes are drawn (SetOrbitLineVisuals).
  */
 UCLASS()
 class SOLTEST_API ASOLNpcVisuals : public AActor
@@ -51,6 +64,35 @@ public:
 
     // Creates the root and the instanced components
     ASOLNpcVisuals();
+
+    // Returns this frame's lane frame (SDD 38 section 4.2; the extension point for issue #49)
+    const FSOLNpcLaneFrame& GetLaneFrame() const { return mLaneFrame; }
+
+    // Gives the lanes the orbit-line actor whose occluders they share (SDD 38 D24; ASOLGameMode, at spawn)
+    void SetOrbitLineVisuals(ASOLOrbitLineVisuals* orbitLines);
+
+    // Verification runs (-SOLSmokeNpcLanes): detaches the lanes from the Lanes overlay row, so the player's settings
+    // are neither read nor changed for them, and shows or hides them as given (may be called again to switch)
+    void SetLaneVerificationOverride(bool bShown);
+
+    // Returns whether the lanes were shown last frame (the row or override, and sol.NpcLanes; verification)
+    bool AreLanesShown() const { return mAreLanesShown; }
+
+    // Returns whether the lane ribbon component is visible (verification)
+    bool IsLaneComponentVisible() const;
+
+    // Returns the lane ribbon's vertex count built for the current population (verification)
+    int32 GetLaneMeshVertexCount() const { return mLaneMeshVertexCount; }
+
+    // Returns the dash flow phase of the lane clock (verification)
+    double GetLaneFlowPhase() const { return SOLNpcLane::LaneDashFlowPhase(mLaneFlowClockS); }
+
+    // Returns the lane material's GlowScale and the far-point material's NpcParams4 as the materials hold them; false
+    // without the materials (verification)
+    bool GetPushedLaneParams(float& outGlowScale, FLinearColor& outPointLaneParams) const;
+
+    // Returns the group texels uploaded last frame (two rows of NPC_GROUP_TEXTURE_WIDTH; verification)
+    TConstArrayView<FVector4f> GetLastGroupTexels() const { return mGroupTexels[mUploadRing]; }
 
 protected:
 
@@ -71,8 +113,18 @@ private:
     // Re-uploads the rails re-based to the current rail time, in place (rail time far from the GPU epoch)
     void ReepochRails();
 
-    // Fills an upload buffer with the population's rails re-based to epochRailTimeS (two texels per ship)
-    void FillRailTexels(FVector4f* texels, int32 texelCount, double epochRailTimeS) const;
+    // Fills an upload buffer with the population's re-based rails (two texels per ship) and the lane histogram if asked
+    void FillRailTexels(FVector4f* texels, int32 texelCount, double epochRailTimeS, TArray<int32>* outLaneShipCounts);
+
+    // Loads the lane material and sets its constant parameters (SDD 38 section 4.8); false if it is missing
+    bool SetUpLanes();
+
+    // Builds the lane ribbon mesh for the current population's lane ship counts (once per population)
+    void BuildLaneMesh();
+
+    // Per frame: the lanes shown, the far points' crossfade, the lane component's visibility, the flow clock, the
+    // glow and the lane material's frame parameters
+    void UpdateLanes(const FLinearColor& frameParams);
 
     // Updates one faction's hull instances: grows or shrinks the count and writes only the used range
     void UploadHulls(int32 faction);
@@ -110,8 +162,17 @@ private:
     UPROPERTY(Transient)
     TArray<TObjectPtr<UStaticMeshComponent>> MeshPool;
 
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Npc")
+    TObjectPtr<USOLOrbitLineComponent> LaneLines;
+
     UPROPERTY(Transient)
     TObjectPtr<UStaticMesh> PointBlockMesh;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UStaticMesh> LaneMesh;
+
+    UPROPERTY(Transient)
+    TObjectPtr<UMaterialInstanceDynamic> LaneMaterial;
 
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> FarMaterial;
@@ -134,6 +195,15 @@ private:
     UPROPERTY(Transient)
     TObjectPtr<USOLAnchorSubsystem> Anchor;
 
+    UPROPERTY(Transient)
+    TObjectPtr<USOLSettingsSubsystem> Settings;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLMenuSubsystem> Menu;
+
+    UPROPERTY(Transient)
+    TObjectPtr<ASOLOrbitLineVisuals> OrbitLines;
+
     FDelegateHandle mNpcsUpdatedHandle;
     uint32 mUploadedRevision = MAX_uint32;            // Population revision of the rail texture
     int32 mFarBlockCount = 0;
@@ -153,4 +223,15 @@ private:
     TArray<FTransform> mHullPrevTransforms[2];
     TArray<int32> mShipSlots;                         // Scratch: each CPU ship's slot in its layer this frame
     TArray<int32> mMeshPoolOwners;                    // NPC index each pool mesh showed last frame (INDEX_NONE: none)
+    TArray<int32> mLaneShipCounts;                    // Lane ships per lane of the population (SDD 38 D13)
+    FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)
+    FSOLGlowScaleFeed mLaneGlowFeed;                  // HUD glow scale last pushed to the lane material (SDD 37)
+    double mLaneFlowClockS = 0.0;                     // Real seconds of dash flow (no warp, held while paused)
+    int32 mLaneMeshVertexCount = 0;                   // Lane ribbon vertices of the current population
+    bool mAreLanesShown = false;                      // Last frame's lanes shown
+    bool mIsPointCrossfadeOn = false;                 // NpcParams4.x last pushed to the far points
+    bool mHasPushedPointCrossfade = false;            // ...pushed at least once
+    bool mAreLaneLinesDrawn = false;                  // Lane component visibility last applied
+    bool mIsLaneOverride = false;                     // Verification: the Lanes row is not read
+    bool mIsLaneOverrideShown = true;                 // ...and the lanes are shown as this says
 };

@@ -59,4 +59,8 @@ namespace SOLOrbitLineLogic
 
     // Returns whether the lines are drawn: the setting is on and the main menu is not showing
     SOLTEST_API bool AreLinesVisible(bool bSettingShown, bool bInMainMenu);
+
+    // Returns whether the occluder spheres and the scene-depth trust limit are written this frame: whenever orbit
+    // lines or the NPC lanes (which share them, SDD 38 D24) are drawn
+    SOLTEST_API bool ShouldWriteOccluders(bool bOrbitLinesDrawn, bool bLanesDrawn);
 }

@@ -65,10 +65,10 @@ pass, its smokes pass and its adversarial performance and style review's finding
 | 4 | Persistence: `SAVE_VERSION` 13, the table row, migration 12 -> 13, Controls text (guardrails: version and migrate, never discard; only what D1 approved; never add a key to an empty map; report every constant, field and key changed). Then `SOLNpcLaneMath`. Tests green, full suite green; `-SOLSmokeOverlay` (row exists, toggles, writes once on close), `-SOLSmokeHoloMenu` and `-SOLSmokeSolidMenu` (row fits at 1280x720 and 1920x1080) PASS | opus / xhigh (persistence), opus / high (math) | Done (not committed; review next) |
 | 5 | Adversarial performance and style review of 38a (fresh opus / xhigh, report only; brief: changed files, SDD 38, style guide, performance guidelines, the TECH_DEBT items of SDD section 9, the persistence report); fixes; re-check against SDD 38; full suite again; `Tools\UpdateMetrics.bat`; commit and push 38a | opus / xhigh, then opus / high | Done |
 | **38b** | | | |
-| 6 | Engine and code check first: the orbit lines' material and `.ush` entry points the lane material reuses, whether `ASOLNpcVisuals` is hidden on the map (SDD section 5, D18: the lanes must show there; record the finding), a time source that ignores warp and stops on pause (D15). If a decision turns out not viable, stop and report | opus / high | To do |
-| 7 | Materials: `M_SOLNpcLanes` and the `M_SOLNpcPoints` crossfade in `create_npc_assets.py`, `SOLNpcLane.ush` mirroring `SOLNpcLaneMath`; rebuilt with the editor closed; compile clean | opus / high | To do |
-| 8 | Renderer: histogram, lane frame, group texel `.w`, lane mesh and component, parameters, glow feed, settings reads, verification override, `sol.NpcLanes`, shared occluders (D24); `-SOLSmokeNpcLanes` checks (SDD section 8 item 2); the Info sentences (case 24); player guide regenerated; tests and full suite green; smokes PASS at 1280x720 and 1920x1080; the 1M ramp PASS | opus / high | To do |
-| 9 | Review of 38b (fresh opus / xhigh, report only, same brief plus the materials and `.ush`); fixes; re-check against SDD; full suite; metrics; commit and push 38b | opus / xhigh, then opus / high | To do |
+| 6 | Engine and code check first: the orbit lines' material and `.ush` entry points the lane material reuses, whether `ASOLNpcVisuals` is hidden on the map (SDD section 5, D18: the lanes must show there; record the finding), a time source that ignores warp and stops on pause (D15). If a decision turns out not viable, stop and report | opus / high | Done (map: `ASOLNpcVisuals` is never hidden there; see notes) |
+| 7 | Materials: `M_SOLNpcLanes` and the `M_SOLNpcPoints` crossfade in `create_npc_assets.py`, `SOLNpcLane.ush` mirroring `SOLNpcLaneMath`; rebuilt with the editor closed; compile clean | opus / high | Done |
+| 8 | Renderer: histogram, lane frame, group texel `.w`, lane mesh and component, parameters, glow feed, settings reads, verification override, `sol.NpcLanes`, shared occluders (D24); `-SOLSmokeNpcLanes` checks (SDD section 8 item 2); the Info sentences (case 24); player guide regenerated; tests and full suite green; smokes PASS at 1280x720 and 1920x1080; the 1M ramp PASS | opus / high | Done (not committed; review next) |
+| 9 | Review of 38b (fresh opus / xhigh, report only, same brief plus the materials and `.ush`); fixes; re-check against SDD; full suite; metrics; commit and push 38b | opus / xhigh, then opus / high | Done |
 | **38c** | | | |
 | 10 | Screenshots V1-V5 at 1280x720, 1920x1080, 3840x2160, lanes on / off, HUD glow 0 / 100 / 200%; tuning of the fade radii, widths, brightness, emissive, flow and dash count from them (main session shows the shots to the user if a value needs the user's eye); final values in `SOLConstants.h` and the SDD; candidate shots deleted | opus / high | To do |
 | 11 | Profiling (SDD section 8 item 7): `ProfileGPU` and Insights, 1M, V2 and V3, `sol.NpcLanes` 0 / 1, three runs, 1920x1080 / 3840x2160 / 3840x3744, before (worktree at the commit before #38) and after; `-SOLSmokeHoloMenuProfile` P2 at the three sizes (D21: recorded, not gated; budgets gated at 1920x1080 only, D22); results in SDD 11 Amendment 8 and SDD 38 section 9 | opus / high | To do |
@@ -132,6 +132,35 @@ The full contract is SDD section 6 (cases 1-24). In short:
   `-SOLSmokeHoloMenu` 86/86 at both sizes, `-SOLSmokeSolidMenu` 296/296, full suite 1827/1827; the guide
   regenerated (`33-help-glossary-menus-map.png` and `33-help-keyboard-hover.png` changed for real, 18 build-string-only
   images restored).
+
+- **38b progress (2026-11-11, steps 6-8 done, not committed; step 9 review next):** engine check: the orbit lines'
+  `SOLOrbitLine.ush` functions are reused from `SOLNpcLane.ush` (placement, occlusion, scene depth, dash box filter);
+  the map view hides only body, ring and gas-giant actors, so the lanes show there unchanged (SDD 38 section 5
+  finding); the flow clock uses `FApp::GetDeltaTime` (no time warp) and holds while the world is paused or the pause
+  menu shows. Built: the renderer's pure feed in `SOLNpcLaneMath` (test cases 25-32), `ShouldWriteOccluders`, the lane
+  histogram inside the rail-fill `ParallelFor` (per-task counts), the lane ribbon (`USOLOrbitLineComponent`,
+  `ApplyRibbonToMesh`, 2,080 vertices for 8 lanes), `M_SOLNpcLanes` and the `M_SOLNpcPoints` crossfade
+  (`Tools/Npc/create_npc_assets.py -SOLRebuild`), `Shaders/Private/SOLNpcLane.ush`, the per-frame lane frame and `.w`
+  texels, the glow feed, `sol.NpcLanes`, `ASOLGameMode::GetNpcVisuals` / `SetOrbitLineVisuals`, the Info sentences
+  and Demo clause, `-SOLSmokeNpcLanes` (`Npc/SOLNpcLaneSmoke`), and renderer checks in `-SOLSmokeOverlay`
+  (`*-lanes-renderer`: the renderer follows the row and the master; with no NPCs out its lines stay hidden). Deviations
+  are listed in SDD 38 section 4.12. The player guide does not include the Info prose, so nothing in it changed
+  (`SOLTest.PlayerGuide.UpToDate` passes without a regeneration). Results are in the report of this step (tests, the
+  new smoke 30/30 at 1280x720 and 1920x1080, `-SOLSmokeOverlay`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`,
+  `-SOLSmokeSolidMenu`, the 1M ramp, full suite). `ARCHITECTURE.md` (Npc row, `Npc -> Menu` edge, occluder note, flag,
+  cvar), `GAME_MECHANICS.md` (Lanes row, Render tiers crossfade, new "Lane lines" row) and STATUS updated now; the
+  rest of the docs stay in 38c.
+- **38b review fixes (2026-11-11, step 9):** the shader's keep-right sign is pinned by a C++ port and a unit test
+  (`SOLNpcLane::LaneOutboundSide`, `SOLTest.NpcLaneMath.OutboundSide`, six views, two with an endpoint behind the
+  camera; the HLSL was already right); `SOLTest.NpcLaneVisuals.Materials` checks every `SOL::NpcLaneMaterialParams`
+  name, two-sided and the after-motion-blur pass; the misleading sort-priority test and comment went; the lane
+  histogram counts on the stack (no false sharing between tasks); `NpcLaneParams0.y` dropped (unused, case 28
+  updated); the points' crossfade calls `SOLNL_LineFade` (materials rebuilt); `IsValid(OrbitLines)`; the occluders
+  are written at once when lanes turn on with the orbit lines hidden; `FillRailTexels` no longer `const`; smoke view
+  V4b (one lane radius off the Earth-Mars axis, 1.5 degrees off it): no near-plane smear at either size, kept as a
+  regression view; three `TECH_DEBT.md` items (orbit-line coupling, `Npc <-> Menu` cycle, points moving under the
+  pause menu while the dashes hold). Results: lane topics 44/44, full suite 1843/1843, `-SOLSmokeNpcLanes` 34/34 at
+  1280x720 and 1920x1080, `-SOLSmokeOverlay` 50/50.
 
 ## Change log
 

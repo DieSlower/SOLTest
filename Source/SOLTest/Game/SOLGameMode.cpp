@@ -101,10 +101,16 @@ void ASOLGameMode::StartPlay()
     GetWorld()->SpawnActor<ASOLAsteroidBeltVisuals>(ASOLAsteroidBeltVisuals::StaticClass(), FTransform::Identity,
         params);
     GetWorld()->SpawnActor<ASOLCombatVisuals>(ASOLCombatVisuals::StaticClass(), FTransform::Identity, params);
-    GetWorld()->SpawnActor<ASOLNpcVisuals>(ASOLNpcVisuals::StaticClass(), FTransform::Identity, params);
+    NpcVisuals = GetWorld()->SpawnActor<ASOLNpcVisuals>(ASOLNpcVisuals::StaticClass(), FTransform::Identity, params);
     GetWorld()->SpawnActor<ASOLNpcCombatVisuals>(ASOLNpcCombatVisuals::StaticClass(), FTransform::Identity, params);
     OrbitLineVisuals = GetWorld()->SpawnActor<ASOLOrbitLineVisuals>(ASOLOrbitLineVisuals::StaticClass(),
         FTransform::Identity, params);
+
+    // The NPC lanes share the orbit lines' occluders (SDD 38 D24): the line actor writes them while lanes draw
+    if (NpcVisuals != nullptr)
+    {
+        NpcVisuals->SetOrbitLineVisuals(OrbitLineVisuals);
+    }
     GetWorld()->SpawnActor<ASOLCombatAudio>(ASOLCombatAudio::StaticClass(), FTransform::Identity, params);
     HologramVisuals = GetWorld()->SpawnActor<ASOLHologramVisuals>(ASOLHologramVisuals::StaticClass(),
         FTransform::Identity, params);

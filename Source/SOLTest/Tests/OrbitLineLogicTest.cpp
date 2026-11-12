@@ -848,4 +848,21 @@ bool FSOLOrbitLineLogicLinesVisibleTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLOrbitLineLogicOccludersWrittenTest, "SOLTest.OrbitLineLogic.OccludersWritten",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 (SDD 38 D24, test-first): the NPC lanes share the orbit lines' occluders, so the occluder spheres and the
+// scene-depth trust limit are written whenever orbit lines or lanes are drawn, and skipped only when neither is
+bool FSOLOrbitLineLogicOccludersWrittenTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLOrbitLineLogic::ShouldWriteOccluders;
+    TestTrue(TEXT("orbit lines and lanes"), ShouldWriteOccluders(true, true));
+    TestTrue(TEXT("orbit lines only (today's case)"), ShouldWriteOccluders(true, false));
+    TestTrue(TEXT("lanes only (orbit lines off)"), ShouldWriteOccluders(false, true));
+    TestFalse(TEXT("neither"), ShouldWriteOccluders(false, false));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

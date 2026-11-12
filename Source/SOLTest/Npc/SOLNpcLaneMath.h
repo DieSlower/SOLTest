@@ -99,6 +99,15 @@ namespace SOLNpcLane
     // input
     SOLTEST_API FVector2D LaneOutboundSideNormal(const FVector2D& screenA, const FVector2D& screenB);
 
+    // Returns the lane ribbon's side direction (unit; endpoints relative to the camera, the camera's right, up and
+    // forward in the same axes): the normal of the plane through the camera and the lane, so it is perpendicular to
+    // every view ray of the lane, signed so that moving a lane point along it moves it on screen to the right of the
+    // travel A -> B (LaneOutboundSideNormal, "keep right"; the outbound line is offset along it, the inbound one
+    // against it). Zero when the lane is wholly behind the camera, seen end-on, degenerate or not finite. The lane
+    // material's SOLNL_OutboundSide mirrors it
+    SOLTEST_API FVector3d LaneOutboundSide(const FVector3d& aCamM, const FVector3d& bCamM, const FVector3d& right,
+        const FVector3d& up, const FVector3d& forward);
+
     // Counts the lane rails per lane: outCounts is reset to laneCount zeros (empty for laneCount <= 0) and each rail of
     // kind Lane with a group below laneCount adds one to its group; cluster and battle rails are ignored
     SOLTEST_API void CountLaneShips(TConstArrayView<FSOLNpcRail> rails, int32 laneCount, TArray<int32>& outCounts);
@@ -108,4 +117,45 @@ namespace SOLNpcLane
     // when its size does not change (no allocation per frame)
     SOLTEST_API void BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRailFrame& frame,
         TConstArrayView<int32> counts, FSOLNpcLaneFrame& outFrame);
+
+    // Part 38b, the renderer's pure feed (SDD 38 sections 4.2, 4.5, 4.6 and 4.8)
+
+    // Returns whether the lanes are shown: sol.NpcLanes on, and the Lanes row shown (IsOverlayShown, which folds in
+    // the master O) when there is a settings subsystem; without one they are on
+    SOLTEST_API bool AreLanesShown(bool bHasSettings, bool bRowShown, bool bCvarOn);
+
+    // Returns the lane component's visibility: the lanes shown and at least one lane of the frame drawn
+    SOLTEST_API bool ShouldDrawLaneLines(bool bLanesShown, const FSOLNpcLaneFrame& frame);
+
+    // Returns the far-point material's NpcParams4: (lanes shown 0 / 1, fade near radii, fade far radii, 0), the inputs
+    // of the lane ships' crossfade (LaneShipPointAlpha)
+    SOLTEST_API FLinearColor PointLaneParams(bool bLanesShown);
+
+    // Returns the lane material's NpcLaneParams0: (flow phase, 0 unused, fade near radii, fade far radii); a non-finite
+    // phase reads as 0. The shader scales by its own view height (SDD 38 section 4.12), so no viewport scale is sent
+    SOLTEST_API FLinearColor LaneMaterialParams(double flowPhase);
+
+    // Writes the lane data into the group texels' free .w channels (row 0 = the first NPC_GROUP_TEXTURE_WIDTH texels,
+    // row 1 the next): for a lane column, row 0 .w = its radius (m) and row 1 .w = its traffic weight, or -1 when it is
+    // not drawn; every other column 0. x, y and z are not touched; a buffer shorter than two rows is left alone
+    SOLTEST_API void WriteLaneGroupTexelW(const FSOLNpcLaneFrame& frame, TArrayView<FVector4f> groupTexels);
+
+    // Adds one per lane rail whose group is below inOutCounts.Num() (no reset): one rail-fill task's share of the lane
+    // histogram, so per-task counts over any partition of the rails, merged, equal CountLaneShips. Counts on the stack
+    // and writes inOutCounts once at the end, so tasks whose count arrays share a cache line do not contend
+    SOLTEST_API void AccumulateLaneShips(TConstArrayView<FSOLNpcRail> rails, TArrayView<int32> inOutCounts);
+
+    // Returns the dash flow's real-time clock advanced by a real (warp-free) frame time: unchanged while paused or for
+    // a zero, negative or non-finite delta; a non-finite clock restarts from 0
+    SOLTEST_API double AdvanceLaneFlowClockS(double clockS, double realDeltaS, bool bPaused);
+
+    // Returns the lane ribbon mesh's vertex count: lanes x 2 lines x (NPC_LANE_SEGMENTS + 1) samples x 2 sides (0 for
+    // no lanes)
+    SOLTEST_API int32 LaneRibbonVertexCount(int32 laneCount);
+
+    // Resets the outputs and lays out one strip per line (0 outbound, 1 inbound) of every lane with ships (IsLaneDrawn
+    // of its count): per sample k two vertices (side -1, then +1) with UV0 = (k / NPC_LANE_SEGMENTS, side) and UV1 =
+    // (lane group index, line index), and two triangles per segment
+    SOLTEST_API void BuildLaneRibbonLayout(TConstArrayView<int32> laneShipCounts, TArray<FVector2f>& outUv0,
+        TArray<FVector2f>& outUv1, TArray<uint32>& outIndices);
 }

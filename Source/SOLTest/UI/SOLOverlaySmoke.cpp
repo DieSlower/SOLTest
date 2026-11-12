@@ -5,8 +5,10 @@
 
 #include "UI/SOLOverlaySmoke.h"
 
+#include "Game/SOLGameMode.h"
 #include "Menu/SOLMenuText.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcVisuals.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "SOLConstants.h"
@@ -376,6 +378,19 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
     const bool bLanesShown = mSettings->IsOverlayShown(SOLOverlay::EOverlay::Lanes);
     const bool bLanesChecked = SOLOverlay::IsEnabled(prefs, SOLOverlay::EOverlay::Lanes);
     const int32 writesInMenu = mSettings->GetSaveRequestCount() - mSavesBefore;
+
+    // The lane renderer reads the row every frame (SDD 38 D23); with no NPCs out it still follows it, its lines hidden
+    const ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>();
+    const ASOLNpcVisuals* npcVisuals = gameMode != nullptr ? gameMode->GetNpcVisuals() : nullptr;
+    const bool bRendererFollows = npcVisuals != nullptr && npcVisuals->AreLanesShown() == bLanesShown;
+
+    // Logs whether the lane renderer's lanes-shown state follows the Lanes row (shown with the master on)
+    const auto checkRenderer = [this, npcVisuals, bRendererFollows, bLanesShown](const TCHAR* label)
+    {
+        Check(label, bRendererFollows, FString::Printf(TEXT("lane renderer: lanes %s (row shown %s)"),
+            npcVisuals == nullptr ? TEXT("MISSING") : (npcVisuals->AreLanesShown() ? TEXT("shown") : TEXT("hidden")),
+            bLanesShown ? TEXT("yes") : TEXT("no")));
+    };
     switch (static_cast<EOverlayStep>(step))
     {
     case EOverlayStep::Setup:
@@ -407,6 +422,7 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
         Check(TEXT("b-lanes-off"), !bLanesShown && bLanesChecked, FString::Printf(TEXT("O: Lanes %s, its row %s "
             "(the master governs it, D11)"), bLanesShown ? TEXT("SHOWN") : TEXT("hidden"), bLanesChecked
             ? TEXT("still checked") : TEXT("UNCHECKED")));
+        checkRenderer(TEXT("b-lanes-renderer"));
         break;
     case EOverlayStep::MasterOn:
         Check(TEXT("c-master-on"), bMaster && icons == mStartIcons, FString::Printf(TEXT("O again: master %s, %d "
@@ -414,6 +430,7 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             visibleLines));
         Check(TEXT("c-lanes-on"), bLanesShown, FString::Printf(TEXT("O again: Lanes %s"), bLanesShown
             ? TEXT("shown") : TEXT("HIDDEN")));
+        checkRenderer(TEXT("c-lanes-renderer"));
         break;
     case EOverlayStep::OrbitLinesOff:
     case EOverlayStep::OrbitLinesOn:
@@ -487,6 +504,7 @@ void FSOLOverlaySmoke::ExitStep(const int32 step, ASOLShipPawn& pawn)
             "(want 0)"), highlighted, lanesRow, active, mWasLanesShown ? TEXT("on") : TEXT("off"), bLanesShown
             ? TEXT("on") : TEXT("off"), bLanesChecked ? TEXT("yes") : TEXT("no"), bMaster ? TEXT("on") : TEXT("OFF"),
             writesInMenu));
+        checkRenderer(bWantOn ? TEXT("4-lanes-renderer-on") : TEXT("4-lanes-renderer-off"));
         break;
     }
     case EOverlayStep::LanesThirdSpace:

@@ -17,6 +17,11 @@
 
 // Tests for the issue #38 NPC lane-line math (SOLNpcLane, SDD 38 section 6 cases 1-16), written against that contract
 // before the production code existed. Doubles are compared to 1e-9 unless a case says otherwise.
+// Part 38b, also test-first: the renderer's pure feed (cases 25-32 below: lanes shown, lane component visibility, the
+// NpcParams4 and NpcLaneParams0 vectors, the group texels' .w lane data, the per-task ship histogram, the paused-aware
+// flow clock and the ribbon mesh layout), from SDD 38 sections 4.2, 4.5, 4.6 and 4.8 with header forms proposed by
+// the test author where the SDD names the behaviour but not the signature. Case 33 (from the 38b review): the ribbon's
+// keep-right side direction, LaneOutboundSide, checked by projecting a moved lane point.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -1183,6 +1188,676 @@ bool FSOLNpcLaneMathLaneFrameTest::RunTest(const FString& /*parameters*/)
     FSOLNpcLaneFrame emptyFrame;
     BuildLaneFrame(noLanes, frame, counts, emptyFrame);
     TestEqual(TEXT("no lanes: no entries"), emptyFrame.Lanes.Num(), 0);
+    return true;
+}
+
+// Part 38b helpers (names unique across the test files)
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a lane frame entry with a radius and a ship count, its weight and drawn flag as BuildLaneFrame sets them
+    FSOLNpcLaneEntry NpcLaneFeedEntry(const double radiusM, const int32 shipCount, const bool bBodiesResolved = true)
+    {
+        FSOLNpcLaneEntry entry;
+        entry.RadiusM = radiusM;
+        entry.ShipCount = shipCount;
+        entry.TrafficWeight = SOLNpcLane::LaneTrafficWeight(shipCount);
+        entry.bDrawn = SOLNpcLane::IsLaneDrawn(shipCount) && bBodiesResolved;
+        return entry;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a deterministic mixed rail set: lane rails over groups 0-9 (8 lanes and two out of range), clusters and
+    // battles, in a hashed order
+    TArray<FSOLNpcRail> NpcLaneFeedRails(const int32 count)
+    {
+        TArray<FSOLNpcRail> rails;
+        rails.Reserve(count);
+        for (int32 index = 0; index < count; ++index)
+        {
+            const uint32 hash = static_cast<uint32>(index + 1) * 2654435761u;
+            const uint32 kindPick = (hash >> 7) % 5u;                  // 0-2 lane, 3 cluster, 4 battle
+            const int32 group = static_cast<int32>((hash >> 13) % 10u);
+            const SOLNpcScale::EPlacementKind kind = kindPick < 3u ? SOLNpcScale::EPlacementKind::Lane
+                : (kindPick == 3u ? SOLNpcScale::EPlacementKind::Cluster : SOLNpcScale::EPlacementKind::Battle);
+            rails.Add(NpcLaneRail(kind, group));
+        }
+        return rails;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns frac(x) in [0, 1) (a negative x wraps up)
+    double NpcLaneFeedFrac(const double x)
+    {
+        return x - FMath::FloorToDouble(x);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLanesShownTest, "SOLTest.NpcLaneMath.LanesShown",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 25 (38b; D10, D11, D20, section 4.8): AreLanesShown(bHasSettings, bRowShown, bCvarOn). The lanes are shown
+// while sol.NpcLanes is on and the Lanes row is shown (IsOverlayShown already folds in the master O); without a
+// settings subsystem they are on; sol.NpcLanes 0 hides them whatever the row says (and so restores the points)
+bool FSOLNpcLaneMathLanesShownTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::AreLanesShown;
+
+    // The cvar off wins over everything
+    for (const bool bHasSettings : { false, true })
+    {
+        for (const bool bRowShown : { false, true })
+        {
+            TestFalse(FString::Printf(TEXT("cvar off (settings %d, row %d) -> hidden"),
+                static_cast<int32>(bHasSettings), static_cast<int32>(bRowShown)),
+                AreLanesShown(bHasSettings, bRowShown, false));
+        }
+    }
+
+    // With settings the row decides
+    TestTrue(TEXT("settings, row shown -> shown"), AreLanesShown(true, true, true));
+    TestFalse(TEXT("settings, row hidden (unchecked or master off) -> hidden"), AreLanesShown(true, false, true));
+
+    // Without settings the lanes are on
+    TestTrue(TEXT("no settings -> shown (row false)"), AreLanesShown(false, false, true));
+    TestTrue(TEXT("no settings -> shown (row true)"), AreLanesShown(false, true, true));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDrawLaneLinesTest, "SOLTest.NpcLaneMath.ShouldDrawLaneLines",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 26 (38b, section 4.8): ShouldDrawLaneLines(bLanesShown, frame), the lane component's visibility, is true only
+// while the lanes are shown and at least one lane of the frame is drawn; with no population (an empty frame) nothing
+// is drawn
+bool FSOLNpcLaneMathDrawLaneLinesTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::ShouldDrawLaneLines;
+
+    const FSOLNpcLaneFrame empty{};
+    TestFalse(TEXT("no population: hidden"), ShouldDrawLaneLines(true, empty));
+
+    // Lanes exist but none is drawn: one with no ships, one with an unresolved body
+    FSOLNpcLaneFrame noneDrawn;
+    noneDrawn.Lanes = { NpcLaneFeedEntry(2.0e5, 0), NpcLaneFeedEntry(1.0e7, 5000, false) };
+    TestFalse(TEXT("precondition: lane 0 not drawn"), noneDrawn.Lanes[0].bDrawn);
+    TestFalse(TEXT("precondition: lane 1 not drawn"), noneDrawn.Lanes[1].bDrawn);
+    TestFalse(TEXT("no drawn lane: hidden"), ShouldDrawLaneLines(true, noneDrawn));
+
+    // One drawn lane (a single ship is enough) makes the component visible while the lanes are shown
+    FSOLNpcLaneFrame oneDrawn = noneDrawn;
+    oneDrawn.Lanes.Add(NpcLaneFeedEntry(1.0e7, 1));
+    TestTrue(TEXT("one drawn lane, shown: visible"), ShouldDrawLaneLines(true, oneDrawn));
+    TestFalse(TEXT("one drawn lane, lanes hidden: hidden"), ShouldDrawLaneLines(false, oneDrawn));
+    TestFalse(TEXT("empty, lanes hidden: hidden"), ShouldDrawLaneLines(false, empty));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathPointParamsTest, "SOLTest.NpcLaneMath.PointLaneParams",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 27 (38b; D9, D10, section 4.8): PointLaneParams(bLanesShown) is the far-point material's NpcParams4 = (lanes
+// shown 0 / 1, fade near radii, fade far radii, 0), the inputs of the kind-1 crossfade LaneShipPointAlpha
+bool FSOLNpcLaneMathPointParamsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::PointLaneParams;
+    const float nearRadii = static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII);
+    const float farRadii = static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII);
+
+    const FLinearColor shown = PointLaneParams(true);
+    TestTrue(TEXT("shown: x = 1"), shown.R == 1.0f);
+    TestTrue(TEXT("shown: y = fade near radii"), shown.G == nearRadii);
+    TestTrue(TEXT("shown: z = fade far radii"), shown.B == farRadii);
+    TestTrue(TEXT("shown: w = 0"), shown.A == 0.0f);
+
+    const FLinearColor hidden = PointLaneParams(false);
+    TestTrue(TEXT("hidden: x = 0 (every lane ship point as before)"), hidden.R == 0.0f);
+    TestTrue(TEXT("hidden: y = fade near radii"), hidden.G == nearRadii);
+    TestTrue(TEXT("hidden: z = fade far radii"), hidden.B == farRadii);
+    TestTrue(TEXT("hidden: w = 0"), hidden.A == 0.0f);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLaneParamsTest, "SOLTest.NpcLaneMath.LaneMaterialParams",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 28 (38b; D15, section 4.8): LaneMaterialParams(flowPhase) is the lane material's NpcLaneParams0 = (flow phase
+// f, 0 unused, fade near radii, fade far radii); a non-finite flow phase reads as 0. The y slot once carried a viewport
+// scale the shader never read (it scales by its own view height, section 4.12), so it is pinned at 0
+bool FSOLNpcLaneMathLaneParamsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneMaterialParams;
+    const float nearRadii = static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII);
+    const float farRadii = static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII);
+
+    // The flow phase passes through, y is unused (0), the fade band is the constants'
+    for (const double phase : { 0.0, 0.25, 0.5, 0.999 })
+    {
+        const FLinearColor params = LaneMaterialParams(phase);
+        const FString label = FString::Printf(TEXT("f %.3f"), phase);
+        TestEqual(label + TEXT(": x = f"), params.R, static_cast<float>(phase), 1.0e-7f);
+        TestTrue(label + TEXT(": y unused, 0"), params.G == 0.0f);
+        TestTrue(label + TEXT(": z = fade near radii"), params.B == nearRadii);
+        TestTrue(label + TEXT(": w = fade far radii"), params.A == farRadii);
+    }
+
+    // A non-finite phase is 0, never NaN in the material
+    for (const double badPhase : { NPCLANE_NAN, NPCLANE_INF, -NPCLANE_INF })
+    {
+        TestTrue(FString::Printf(TEXT("bad phase %f -> 0"), badPhase),
+            LaneMaterialParams(badPhase).R == 0.0f);
+    }
+
+    // Fed from the flow phase, x stays in [0, 1) at any time
+    for (const double t : { 0.0, 1.7, 1.0e6 + 0.3, 1.0e9 })
+    {
+        const float x = LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(t)).R;
+        TestTrue(FString::Printf(TEXT("t %.1f: x in [0, 1]"), t), x >= 0.0f && x <= 1.0f);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathGroupTexelWTest, "SOLTest.NpcLaneMath.GroupTexelW",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 29 (38b, section 4.2): WriteLaneGroupTexelW(frame, groupTexels) writes the lane data into the free .w channels
+// of the group texture (row 0 = texels [0, NPC_GROUP_TEXTURE_WIDTH), row 1 = the next NPC_GROUP_TEXTURE_WIDTH): for a
+// lane column, row 0 .w = the lane radius (m) and row 1 .w = its traffic weight, or -1 when the lane is not drawn;
+// every other column's .w = 0; x, y and z are never touched; a buffer shorter than two rows is left alone
+bool FSOLNpcLaneMathGroupTexelWTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::WriteLaneGroupTexelW;
+    constexpr int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+
+    // Stale .w values and distinct x, y, z in every texel
+    TArray<FVector4f> texels;
+    texels.SetNum(2 * width);
+    for (int32 index = 0; index < texels.Num(); ++index)
+    {
+        const float value = static_cast<float>(index);
+        texels[index] = FVector4f(value + 0.25f, -value - 0.5f, value * 3.0f, 99.0f);
+    }
+    const TArray<FVector4f> before = texels;
+
+    // Lane 0 busy, lane 1 empty, lane 2 drawn at weight 0 (50 ships), lane 3 busy with an unresolved body
+    FSOLNpcLaneFrame frame;
+    frame.Lanes = { NpcLaneFeedEntry(2.0e5, 44000), NpcLaneFeedEntry(1.0e7, 0), NpcLaneFeedEntry(5.0e6, 50),
+        NpcLaneFeedEntry(3.0e6, 900, false) };
+    WriteLaneGroupTexelW(frame, texels);
+    if (!TestEqual(TEXT("buffer size unchanged"), texels.Num(), 2 * width))
+    {
+        return false;
+    }
+
+    bool bXyzKept = true;
+    bool bOthersZero = true;
+    for (int32 column = 0; column < width; ++column)
+    {
+        const FVector4f& row0 = texels[column];
+        const FVector4f& row1 = texels[width + column];
+        for (const int32 index : { column, width + column })
+        {
+            const FVector4f& now = texels[index];
+            const FVector4f& old = before[index];
+            bXyzKept &= now.X == old.X && now.Y == old.Y && now.Z == old.Z;
+        }
+        if (column < frame.Lanes.Num())
+        {
+            const FSOLNpcLaneEntry& entry = frame.Lanes[column];
+            const FString label = FString::Printf(TEXT("lane %d"), column);
+            TestTrue(label + TEXT(": row 0 .w = radius"), row0.W == static_cast<float>(entry.RadiusM));
+            const float weight = entry.bDrawn ? static_cast<float>(entry.TrafficWeight) : -1.0f;
+            TestTrue(label + TEXT(": row 1 .w = weight or -1"), row1.W == weight);
+        }
+        else
+        {
+            bOthersZero &= row0.W == 0.0f && row1.W == 0.0f;
+        }
+    }
+    TestTrue(TEXT("x, y, z of both rows untouched"), bXyzKept);
+    TestTrue(TEXT("non-lane columns: .w = 0"), bOthersZero);
+    TestTrue(TEXT("lane 1 (no ships): -1"), texels[width + 1].W == -1.0f);
+    TestTrue(TEXT("lane 2 (drawn, weight 0): 0, not -1"), texels[width + 2].W == 0.0f);
+    TestTrue(TEXT("lane 3 (body unresolved): -1"), texels[width + 3].W == -1.0f);
+    TestTrue(TEXT("lane 0 weight in (0, 1]"), texels[width].W > 0.0f && texels[width].W <= 1.0f);
+
+    // An empty frame (no population) clears every .w
+    WriteLaneGroupTexelW(FSOLNpcLaneFrame(), texels);
+    bool bAllZero = true;
+    for (const FVector4f& texel : texels)
+    {
+        bAllZero &= texel.W == 0.0f;
+    }
+    TestTrue(TEXT("empty frame: every .w = 0"), bAllZero);
+
+    // More lanes than columns: the first NPC_GROUP_TEXTURE_WIDTH lanes are written, nothing past the buffer
+    FSOLNpcLaneFrame wide;
+    for (int32 lane = 0; lane < width + 2; ++lane)
+    {
+        wide.Lanes.Add(NpcLaneFeedEntry(1.0e6 + 1000.0 * lane, 1000));
+    }
+    WriteLaneGroupTexelW(wide, texels);
+    TestEqual(TEXT("wide frame: buffer size unchanged"), texels.Num(), 2 * width);
+    TestTrue(TEXT("wide frame: last column = lane width - 1"),
+        texels[width - 1].W == static_cast<float>(wide.Lanes[width - 1].RadiusM));
+
+    // A buffer shorter than two rows is not written
+    TArray<FVector4f> shortTexels;
+    shortTexels.Init(FVector4f(1.0f, 2.0f, 3.0f, 7.0f), 2 * width - 1);
+    WriteLaneGroupTexelW(frame, shortTexels);
+    bool bShortKept = true;
+    for (const FVector4f& texel : shortTexels)
+    {
+        bShortKept &= texel == FVector4f(1.0f, 2.0f, 3.0f, 7.0f);
+    }
+    TestTrue(TEXT("short buffer: untouched"), bShortKept);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathAccumulateShipsTest, "SOLTest.NpcLaneMath.AccumulateLaneShips",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 30 (38b, D13): AccumulateLaneShips(rails, inOutCounts) is one rail-fill task's share of the histogram: it adds
+// one per lane rail whose group is below inOutCounts.Num(), without resetting, so per-task counts over any partition
+// of the rails, merged, equal CountLaneShips (the pure reference)
+bool FSOLNpcLaneMathAccumulateShipsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::AccumulateLaneShips;
+    using SOLNpcLane::CountLaneShips;
+    constexpr int32 laneCount = 8;
+
+    const TArray<FSOLNpcRail> rails = NpcLaneFeedRails(1000);
+    TArray<int32> reference;
+    CountLaneShips(rails, laneCount, reference);
+
+    // The fixture has lane rails in range and out of range, and other kinds
+    int32 inRange = 0;
+    int32 outOfRange = 0;
+    for (const FSOLNpcRail& rail : rails)
+    {
+        if (rail.Kind == static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane))
+        {
+            (rail.Group < laneCount ? inRange : outOfRange) += 1;
+        }
+    }
+    TestTrue(TEXT("fixture: lane rails out of range exist"), outOfRange > 0);
+    TestTrue(TEXT("fixture: other kinds exist"), inRange + outOfRange < rails.Num());
+
+    // Uneven task boundaries, each task into its own zeroed counts, merged at the end
+    const int32 bounds[] = { 0, 1, 8, 108, 441, 1000 };
+    TArray<int32> merged;
+    merged.Init(0, laneCount);
+    for (int32 task = 0; task + 1 < static_cast<int32>(UE_ARRAY_COUNT(bounds)); ++task)
+    {
+        TArray<int32> local;
+        local.Init(0, laneCount);
+        AccumulateLaneShips(TConstArrayView<FSOLNpcRail>(rails.GetData() + bounds[task],
+            bounds[task + 1] - bounds[task]), local);
+        for (int32 lane = 0; lane < laneCount; ++lane)
+        {
+            merged[lane] += local[lane];
+        }
+    }
+    TestTrue(TEXT("merged task counts == CountLaneShips"), merged == reference);
+    int32 total = 0;
+    for (const int32 count : merged)
+    {
+        total += count;
+    }
+    TestEqual(TEXT("total == lane rails in range"), total, inRange);
+
+    // No reset: the counts are added to what is there
+    TArray<int32> offset;
+    offset.Init(5, laneCount);
+    AccumulateLaneShips(rails, offset);
+    bool bAdded = true;
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        bAdded &= offset[lane] == reference[lane] + 5;
+    }
+    TestTrue(TEXT("adds to the existing counts"), bAdded);
+    AccumulateLaneShips(rails, offset);
+    bool bTwice = true;
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        bTwice &= offset[lane] == 2 * reference[lane] + 5;
+    }
+    TestTrue(TEXT("a second pass adds again"), bTwice);
+
+    // No rails: unchanged; fewer counts: only those groups
+    TArray<int32> untouched = { 1, 2, 3 };
+    AccumulateLaneShips(TConstArrayView<FSOLNpcRail>(), untouched);
+    TestTrue(TEXT("no rails: unchanged"), untouched == TArray<int32>({ 1, 2, 3 }));
+    TArray<int32> three;
+    three.Init(0, 3);
+    AccumulateLaneShips(rails, three);
+    TArray<int32> threeReference;
+    CountLaneShips(rails, 3, threeReference);
+    TestTrue(TEXT("three counts: groups 0-2 only"), three == threeReference);
+    TArray<int32> none;
+    AccumulateLaneShips(rails, none);
+    TestEqual(TEXT("no counts: still none"), none.Num(), 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathFlowClockTest, "SOLTest.NpcLaneMath.FlowClock",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 31 (38b, D15): AdvanceLaneFlowClockS(clockS, realDeltaS, bPaused) is the dash flow's real-time clock: it takes a
+// real (undilated, warp-free) frame time and stops while paused; LaneDashFlowPhase of the result advances by
+// NPC_LANE_DASH_FLOW_PERIODS_PER_S x the delta (mod 1); a negative or non-finite delta leaves the clock as it is, and a
+// non-finite clock restarts from 0
+bool FSOLNpcLaneMathFlowClockTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::AdvanceLaneFlowClockS;
+    using SOLNpcLane::LaneDashFlowPhase;
+    const double flow = SOL::NPC_LANE_DASH_FLOW_PERIODS_PER_S;
+
+    // Paused: the clock stands still
+    for (const double clock : { 0.0, 3.5, 1.0e6 + 0.125 })
+    {
+        TestEqual(FString::Printf(TEXT("paused at %.3f: unchanged"), clock),
+            AdvanceLaneFlowClockS(clock, 1.0 / 60.0, true), clock, NPCLANE_TOL);
+    }
+
+    // Running: the phase advances by flow x delta, wrapped
+    for (const double clock : { 0.0, 3.5, 1.0e6 + 0.125 })
+    {
+        for (const double delta : { 1.0 / 60.0, 0.5, 1.0 / flow, 10.0 })
+        {
+            const double expected = NpcLaneFeedFrac(LaneDashFlowPhase(clock) + flow * delta);
+            const double phase = LaneDashFlowPhase(AdvanceLaneFlowClockS(clock, delta, false));
+            TestTrue(FString::Printf(TEXT("clock %.3f + %.4f s: phase advanced"), clock, delta),
+                NpcLaneWrapDistance(phase, expected) <= NPCLANE_TOL);
+        }
+    }
+
+    // 60 frames of 1/60 s advance the phase by one second's flow
+    double clock = 2.0;
+    for (int32 frame = 0; frame < 60; ++frame)
+    {
+        clock = AdvanceLaneFlowClockS(clock, 1.0 / 60.0, false);
+    }
+    TestTrue(TEXT("one second of frames: phase + flow"), NpcLaneWrapDistance(LaneDashFlowPhase(clock),
+        NpcLaneFeedFrac(LaneDashFlowPhase(2.0) + flow)) <= 1.0e-9);
+
+    // Pausing midway holds the phase exactly
+    const double held = AdvanceLaneFlowClockS(clock, 0.7, true);
+    TestEqual(TEXT("paused: phase held"), LaneDashFlowPhase(held), LaneDashFlowPhase(clock), NPCLANE_TOL);
+
+    // Zero, negative and non-finite deltas leave the clock as it is
+    for (const double badDelta : { 0.0, -0.016, NPCLANE_NAN, NPCLANE_INF, -NPCLANE_INF })
+    {
+        TestEqual(FString::Printf(TEXT("delta %f: unchanged"), badDelta), AdvanceLaneFlowClockS(5.25, badDelta, false),
+            5.25, NPCLANE_TOL);
+    }
+
+    // A non-finite clock restarts from 0
+    for (const double badClock : { NPCLANE_NAN, NPCLANE_INF })
+    {
+        const double restarted = AdvanceLaneFlowClockS(badClock, 0.5, false);
+        TestTrue(FString::Printf(TEXT("clock %f: finite"), badClock), FMath::IsFinite(restarted));
+        TestTrue(FString::Printf(TEXT("clock %f: phase of 0.5 s"), badClock),
+            NpcLaneWrapDistance(LaneDashFlowPhase(restarted), LaneDashFlowPhase(0.5)) <= NPCLANE_TOL);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathRibbonLayoutTest, "SOLTest.NpcLaneMath.RibbonLayout",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 32 (38b, section 4.8): the lane mesh, built once per population. LaneRibbonVertexCount(lanes) = lanes x 2
+// lines x (NPC_LANE_SEGMENTS + 1) samples x 2 sides (2,080 for 8 lanes). BuildLaneRibbonLayout(counts, uv0, uv1,
+// indices) resets its outputs and lays out one strip per line (0 outbound, 1 inbound) of every lane with ships
+// (IsLaneDrawn): UV0 = (sample parameter u = k / NPC_LANE_SEGMENTS, side -1 / +1), UV1 = (lane group index, line
+// index); two triangles per segment, each within one strip, spanning one segment and both sides
+bool FSOLNpcLaneMathRibbonLayoutTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::BuildLaneRibbonLayout;
+    using SOLNpcLane::LaneRibbonVertexCount;
+    constexpr int32 segments = SOL::NPC_LANE_SEGMENTS;
+    const double segmentU = 1.0 / static_cast<double>(segments);
+
+    // Vertex count (2,080 at the proposed 64 segments)
+    TestEqual(TEXT("8 lanes: formula"), LaneRibbonVertexCount(8), 8 * 2 * (segments + 1) * 2);
+    TestEqual(TEXT("8 lanes: 2,080 (proposed value)"), LaneRibbonVertexCount(8), 2080);
+    TestEqual(TEXT("0 lanes: 0"), LaneRibbonVertexCount(0), 0);
+    TestEqual(TEXT("-1 lanes: 0"), LaneRibbonVertexCount(-1), 0);
+
+    // Lanes 0, 2 and 4 have ships; 1 (none) and 3 (a bad count) get no strip. Stale outputs are replaced
+    const TArray<int32> counts = { 44000, 0, 900, -5, 1 };
+    const int32 drawnLanes[] = { 0, 2, 4 };
+    TArray<FVector2f> uv0 = { FVector2f(9.0f, 9.0f) };
+    TArray<FVector2f> uv1 = { FVector2f(9.0f, 9.0f), FVector2f(8.0f, 8.0f) };
+    TArray<uint32> indices = { 7u, 7u, 7u };
+    BuildLaneRibbonLayout(counts, uv0, uv1, indices);
+    const int32 drawnCount = static_cast<int32>(UE_ARRAY_COUNT(drawnLanes));
+    const int32 vertexCount = LaneRibbonVertexCount(drawnCount);
+    if (!TestEqual(TEXT("uv0: one per vertex"), uv0.Num(), vertexCount)
+        || !TestEqual(TEXT("uv1: one per vertex"), uv1.Num(), vertexCount)
+        || !TestEqual(TEXT("indices: 2 triangles per segment per strip"), indices.Num(),
+            drawnCount * 2 * segments * 6))
+    {
+        return false;
+    }
+
+    // Every vertex: a known strip, a sample on the grid and a side; each (strip, sample, side) exactly once
+    TMap<int32, TArray<uint8>> stripSides;                  // Strip key (lane x 2 + line) -> side bits per sample
+    bool bVerticesValid = true;
+    TArray<int32> vertexStrip;
+    TArray<int32> vertexSample;
+    TArray<uint8> vertexSide;
+    for (int32 vertex = 0; vertex < vertexCount; ++vertex)
+    {
+        const int32 lane = FMath::RoundToInt32(uv1[vertex].X);
+        const int32 line = FMath::RoundToInt32(uv1[vertex].Y);
+        const int32 sample = FMath::RoundToInt32(uv0[vertex].X * segments);
+        const uint8 side = static_cast<uint8>(uv0[vertex].Y == -1.0f ? 1 : (uv0[vertex].Y == 1.0f ? 2 : 0));
+        bVerticesValid &= uv1[vertex].X == static_cast<float>(lane) && uv1[vertex].Y == static_cast<float>(line);
+        bVerticesValid &= lane == 0 || lane == 2 || lane == 4;
+        bVerticesValid &= line == 0 || line == 1;
+        bVerticesValid &= sample >= 0 && sample <= segments
+            && FMath::Abs(static_cast<double>(uv0[vertex].X) - sample * segmentU) <= 1.0e-6;
+        bVerticesValid &= side != 0u;
+        const int32 key = lane * 2 + line;
+        TArray<uint8>& sides = stripSides.FindOrAdd(key);
+        if (sides.Num() == 0)
+        {
+            sides.Init(0, segments + 1);
+        }
+        if (sample >= 0 && sample <= segments)
+        {
+            bVerticesValid &= (sides[sample] & side) == 0;
+            sides[sample] |= side;
+        }
+        vertexStrip.Add(key);
+        vertexSample.Add(sample);
+        vertexSide.Add(side);
+    }
+    TestTrue(TEXT("every vertex: known lane and line, grid sample, side -1 or +1, no duplicate"), bVerticesValid);
+    TestEqual(TEXT("two strips per drawn lane"), stripSides.Num(), drawnCount * 2);
+    bool bStripsFull = true;
+    for (const TPair<int32, TArray<uint8>>& strip : stripSides)
+    {
+        for (const uint8 sides : strip.Value)
+        {
+            bStripsFull &= sides == 3u;
+        }
+    }
+    TestTrue(TEXT("every strip: both sides at every sample 0..segments"), bStripsFull);
+
+    // Every triangle: three distinct in-range vertices of one strip spanning one segment and both sides; every segment
+    // of every strip covered by exactly two triangles
+    TMap<int32, TArray<int32>> segmentTriangles;
+    bool bTrianglesValid = true;
+    for (int32 triangle = 0; triangle + 2 < indices.Num(); triangle += 3)
+    {
+        const uint32 i0 = indices[triangle];
+        const uint32 i1 = indices[triangle + 1];
+        const uint32 i2 = indices[triangle + 2];
+        const uint32 limit = static_cast<uint32>(vertexCount);
+        if (i0 >= limit || i1 >= limit || i2 >= limit || i0 == i1 || i1 == i2 || i0 == i2)
+        {
+            bTrianglesValid = false;
+            continue;
+        }
+        const int32 key = vertexStrip[i0];
+        bTrianglesValid &= vertexStrip[i1] == key && vertexStrip[i2] == key;
+        const int32 low = FMath::Min3(vertexSample[i0], vertexSample[i1], vertexSample[i2]);
+        const int32 high = FMath::Max3(vertexSample[i0], vertexSample[i1], vertexSample[i2]);
+        bTrianglesValid &= high - low == 1;
+        bTrianglesValid &= (vertexSide[i0] | vertexSide[i1] | vertexSide[i2]) == 3u;
+        TArray<int32>& perSegment = segmentTriangles.FindOrAdd(key);
+        if (perSegment.Num() == 0)
+        {
+            perSegment.Init(0, segments);
+        }
+        if (low >= 0 && low < segments)
+        {
+            ++perSegment[low];
+        }
+    }
+    TestTrue(TEXT("every triangle: one strip, one segment, both sides"), bTrianglesValid);
+    bool bSegmentsCovered = segmentTriangles.Num() == stripSides.Num();
+    for (const TPair<int32, TArray<int32>>& strip : segmentTriangles)
+    {
+        for (const int32 count : strip.Value)
+        {
+            bSegmentsCovered &= count == 2;
+        }
+    }
+    TestTrue(TEXT("every segment of every strip: two triangles"), bSegmentsCovered);
+
+    // No lane with ships: empty outputs
+    BuildLaneRibbonLayout(TArray<int32>({ 0, 0 }), uv0, uv1, indices);
+    TestTrue(TEXT("no ships: empty"), uv0.Num() == 0 && uv1.Num() == 0 && indices.Num() == 0);
+    BuildLaneRibbonLayout(TConstArrayView<int32>(), uv0, uv1, indices);
+    TestTrue(TEXT("no lanes: empty"), uv0.Num() == 0 && uv1.Num() == 0 && indices.Num() == 0);
+    return true;
+}
+
+namespace
+{
+    // One camera and lane of the keep-right side cases (endpoints relative to the camera, metres)
+    struct FNpcLaneSideView
+    {
+        const TCHAR* Name;
+        FRotator Rotation;   // Camera rotation: X forward, Y right, Z up
+        FVector3d A;
+        FVector3d B;
+    };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Projects a camera-relative point to the screen plane at unit depth (x right, y down)
+    FVector2D NpcLaneProjectToScreen(const FVector3d& pointM, const FVector3d& right, const FVector3d& up,
+        const FVector3d& forward)
+    {
+        const double depth = FVector3d::DotProduct(pointM, forward);
+        return FVector2D(FVector3d::DotProduct(pointM, right) / depth, -FVector3d::DotProduct(pointM, up) / depth);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathOutboundSideTest, "SOLTest.NpcLaneMath.OutboundSide",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 33 (38b review; D2, section 4.8): LaneOutboundSide, the C++ mirror of the lane shader's SOLNL_OutboundSide,
+// keeps the outbound line on the screen right of its travel. Over several views (one endpoint behind the camera in
+// two), a lane point moved along the returned side lands on the side LaneOutboundSideNormal gives for the projected
+// travel (two visible lane points in A -> B order); the side is a unit vector perpendicular to the view rays of the
+// lane, and the reversed lane gives the opposite side. Degenerate lanes give zero
+bool FSOLNpcLaneMathOutboundSideTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcLane::LaneOutboundSide;
+    const FNpcLaneSideView views[] = {
+        { TEXT("broadside, level camera"), FRotator(0.0, 0.0, 0.0), FVector3d(10.0, -3.0, 1.0),
+            FVector3d(12.0, 4.0, -2.0) },
+        { TEXT("rotated camera"), FRotator(-20.0, 30.0, 40.0), FVector3d(8.0, 9.0, -1.0), FVector3d(3.0, 12.0, 4.0) },
+        { TEXT("looking down, diagonal travel"), FRotator(-90.0, 0.0, 0.0), FVector3d(-3.0, -4.0, -20.0),
+            FVector3d(5.0, 2.0, -25.0) },
+        { TEXT("A behind the camera"), FRotator(0.0, 0.0, 0.0), FVector3d(-5.0, 1.0, 2.0),
+            FVector3d(20.0, -3.0, 1.0) },
+        { TEXT("B behind the camera, rolled"), FRotator(10.0, -15.0, -70.0), FVector3d(30.0, 2.0, -6.0),
+            FVector3d(-8.0, -1.0, 3.0) },
+        { TEXT("nearly along the axis, 1.5 degrees off"), FRotator(0.0, 1.5, 0.0), FVector3d(-1.0e3, 1.4, 0.0),
+            FVector3d(1.0e5, 1.4, 0.0) },
+    };
+    for (const FNpcLaneSideView& view : views)
+    {
+        const FRotationMatrix basis(view.Rotation);
+        const FVector3d forward = basis.GetScaledAxis(EAxis::X);
+        const FVector3d right = basis.GetScaledAxis(EAxis::Y);
+        const FVector3d up = basis.GetScaledAxis(EAxis::Z);
+        const FString label(view.Name);
+        const FVector3d side = LaneOutboundSide(view.A, view.B, right, up, forward);
+        TestEqual(label + TEXT(": unit"), side.Size(), 1.0, 1.0e-9);
+        TestTrue(label + TEXT(": perpendicular to the view rays of A and B"),
+            FMath::Abs(FVector3d::DotProduct(side, view.A)) <= 1.0e-9 * view.A.Size()
+            && FMath::Abs(FVector3d::DotProduct(side, view.B)) <= 1.0e-9 * view.B.Size());
+
+        // The visible part of the lane (depth > 0) and two of its points in A -> B order
+        const double depthA = FVector3d::DotProduct(view.A, forward);
+        const double depthB = FVector3d::DotProduct(view.B, forward);
+        double low = 0.0;
+        double high = 1.0;
+        if (depthA <= 0.0)
+        {
+            low = depthA / (depthA - depthB);
+        }
+        else if (depthB <= 0.0)
+        {
+            high = depthA / (depthA - depthB);
+        }
+        const double s1 = low + 0.25 * (high - low);
+        const double s2 = low + 0.75 * (high - low);
+        const FVector3d p1 = FMath::Lerp(view.A, view.B, s1);
+        const FVector3d p2 = FMath::Lerp(view.A, view.B, s2);
+        const FVector2D screenRight = SOLNpcLane::LaneOutboundSideNormal(
+            NpcLaneProjectToScreen(p1, right, up, forward), NpcLaneProjectToScreen(p2, right, up, forward));
+
+        // A lane point offset along the side lands on the outbound (right-hand) side on screen
+        const FVector3d point = FMath::Lerp(p1, p2, 0.5);
+        const FVector3d moved = point + side * (1.0e-3 * point.Size());
+        const FVector2D shift = NpcLaneProjectToScreen(moved, right, up, forward)
+            - NpcLaneProjectToScreen(point, right, up, forward);
+        TestTrue(label + TEXT(": moved along the side, lands right of the travel A -> B"),
+            FVector2D::DotProduct(shift, screenRight) > 1.0e-3 * shift.Size());
+
+        // The reversed lane (the inbound travel) gives the opposite side
+        const FVector3d reversed = LaneOutboundSide(view.B, view.A, right, up, forward);
+        TestTrue(label + TEXT(": reversed lane -> opposite side"), (reversed + side).Size() <= 1.0e-9);
+    }
+
+    // Degenerate lanes: no side
+    const FVector3d forward = FVector3d::UnitX();
+    const FVector3d right = FVector3d::UnitY();
+    const FVector3d up = FVector3d::UnitZ();
+    const FVector3d a(10.0, 1.0, 2.0);
+    TestTrue(TEXT("A == B -> zero"), LaneOutboundSide(a, a, right, up, forward).IsZero());
+    TestTrue(TEXT("wholly behind the camera -> zero"),
+        LaneOutboundSide(FVector3d(-5.0, 1.0, 0.0), FVector3d(-9.0, -2.0, 1.0), right, up, forward).IsZero());
+    TestTrue(TEXT("seen end-on -> zero"), LaneOutboundSide(a, a * 3.0, right, up, forward).IsZero());
+    TestTrue(TEXT("non-finite endpoint -> zero"),
+        LaneOutboundSide(FVector3d(NPCLANE_NAN, 0.0, 0.0), a, right, up, forward).IsZero());
+    TestTrue(TEXT("non-finite basis -> zero"),
+        LaneOutboundSide(a, FVector3d(12.0, 4.0, -2.0), FVector3d(NPCLANE_INF, 0.0, 0.0), up, forward).IsZero());
     return true;
 }
 

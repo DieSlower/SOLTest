@@ -1,0 +1,290 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// NPC lane lines (SDD 38 sections 4.4-4.8): the HLSL mirror of Source/SOLTest/Npc/SOLNpcLaneMath.cpp (fade, width,
+// ribbon extent, glow profile, flowing multi-scale dashes, closest lane parameter, the "keep right" side), plus the
+// vertex and pixel entry points the M_SOLNpcLanes Custom nodes call. A change to one must change the other. Lane data
+// comes from the far points' group texture (viewpoint-relative metres, J2000 ecliptic axes; row 0 .w = lane radius,
+// row 1 .w = traffic weight or -1 when not drawn); the tunables arrive as material parameters set once from
+// SOLConstants.h (SOL::NpcLaneMaterialParams), so this file has no copy of them. Placement, occlusion and the dash box
+// filter are the orbit lines' (SOLOrbitLine.ush). Included as "/Project/SOLTest/Private/SOLNpcLane.ush" by the lane
+// material and by M_SOLNpcPoints' vertex node (the lane ships' crossfade calls SOLNL_LineFade).
+//
+// Parameter vectors: frame = (viewpoint render location cm, max render distance cm); params0 = (flow phase, 0 unused,
+// fade near radii, fade far radii; widths scale by the view's own height, never a CPU value); style0 = (width min px,
+// width max px, gap px, glow pad px), at the reference height; style1 = (brightness min, brightness max, dash base
+// count, dash duty); style2 = (reference height px, emissive, 0, 0); glow0 = (core half px, core falloff, core falloff
+// max, halo weight); glow1 = (halo scale, halo power, glow scale max, 0)
+
+#pragma once
+
+#include "/Project/SOLTest/Private/SOLOrbitLine.ush"
+
+// Squared sine below which a view ray counts as parallel to the lane (float: SOLNpcLaneMath uses 1e-20 in double)
+#define SOLNL_PARALLEL_SIN_SQ 1e-12
+
+// Returns the viewport scale height / reference height (1 for a non-positive height)
+float SOLNL_HeightScale(float viewportHeightPx, float referenceHeightPx)
+{
+    return viewportHeightPx > 0.0 && referenceHeightPx > 0.0 ? viewportHeightPx / referenceHeightPx : 1.0;
+}
+
+// LaneLineFade: 0 inside nearRadii x R, 1 past farRadii x R, linear in log distance between; no radius keeps the line
+float SOLNL_LineFade(float distanceM, float radiusM, float nearRadii, float farRadii)
+{
+    if (!(radiusM > 0.0))
+    {
+        return 1.0;
+    }
+    const float nearM = nearRadii * radiusM;
+    if (distanceM <= nearM)
+    {
+        return 0.0;
+    }
+    if (distanceM >= farRadii * radiusM)
+    {
+        return 1.0;
+    }
+    return saturate(log(distanceM / nearM) / log(farRadii / nearRadii));
+}
+
+// LaneLineWidthPx: lerp(width min, width max, weight) scaled with the viewport height
+float SOLNL_WidthPx(float weight, float scale, float4 style0)
+{
+    return lerp(style0.x, style0.y, saturate(weight)) * scale;
+}
+
+// LaneRibbonHalfExtentPx: the edge where the height-scaled glow has its reference-height pad value (D25)
+float SOLNL_RibbonHalfExtentPx(float widthPx, float scale, float padPx, float coreHalfPx)
+{
+    const float halfWidth = max(widthPx, 1.0) * 0.5;
+    return max(halfWidth, halfWidth - coreHalfPx + (padPx + coreHalfPx) * scale);
+}
+
+// SOLHudShapeMath::GlowProfile(d, g): core weight 1 - halo weight, falloff / max(g, falloff / falloff max), plus halo
+float SOLNL_GlowProfile(float distancePx, float glowScale, float4 glow0, float4 glow1)
+{
+    const float d = max(distancePx, 0.0);
+    const float g = clamp(glowScale, 0.0, glow1.z);
+    const float haloWeight = glow0.w * g;
+    const float falloff = glow0.y / max(g, glow0.y / glow0.z);
+    return (1.0 - haloWeight) * exp(-falloff * max(0.0, d - glow0.x))
+        + haloWeight * exp(-pow(max(glow1.x * d, 1e-20), glow1.y));
+}
+
+// LaneLineProfile: the HUD glow shifted out by the half width, its distance in reference pixels, times min(width, 1)
+float SOLNL_LineProfile(float distanceFromCenterPx, float widthPx, float glowScale, float scale, float4 glow0,
+    float4 glow1)
+{
+    if (!(widthPx > 0.0))
+    {
+        return 0.0;
+    }
+    const float halfCore = max(widthPx, 1.0) * 0.5 - glow0.x;
+    const float shifted = max(0.0, abs(distanceFromCenterPx) - halfCore) / scale;
+    return SOLNL_GlowProfile(shifted, glowScale, glow0, glow1) * min(widthPx, 1.0);
+}
+
+// LaneDashCoverage: the orbit lines' multi-scale coverage with the flow applied after each level's scaling.
+// phase0 = s x base count (level-0 periods), footprint = one pixel in level-0 periods, direction +1 outbound (toward
+// B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
+float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float footprint, float duty, float4 dash)
+{
+    const float flow = direction * flowPhase;
+    if (!(footprint > 0.0) || dash.x <= 0.0)
+    {
+        return SOLOL_DashCoverage(phase0 - flow, duty, 0.0);
+    }
+    const float periodPx = 1.0 / footprint;
+    const float level = clamp(log2(periodPx / dash.x), 0.0, dash.y);
+    const float lower = min(floor(level), dash.y);
+    const float blend = level - lower;
+    const float lowerScale = exp2(lower);
+    const float lowerCoverage = SOLOL_DashCoverage(phase0 * lowerScale - flow, duty, footprint * lowerScale);
+    float coverage = lowerCoverage;
+    if (blend > 0.0 && lower < dash.y)
+    {
+        coverage = lerp(lowerCoverage, SOLOL_DashCoverage(phase0 * 2.0 * lowerScale - flow, duty,
+            footprint * 2.0 * lowerScale), blend);
+    }
+    const float remainingPeriodPx = periodPx / exp2(level);
+    const float solid = dash.w > dash.z ? saturate((remainingPeriodPx - dash.z) / (dash.w - dash.z))
+        : (remainingPeriodPx >= dash.z ? 1.0 : 0.0);
+    return lerp(coverage, 1.0, solid);
+}
+
+// Squared distance from a point to the ray from the origin along a unit direction
+float SOLNL_RayDistanceSq(float3 pointM, float3 unitDirection)
+{
+    const float3 offset = pointM - unitDirection * max(0.0, dot(pointM, unitDirection));
+    return dot(offset, offset);
+}
+
+// ClosestLaneParam: the parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the view ray
+float SOLNL_ClosestLaneParam(float3 aM, float3 bM, float3 rayDirection)
+{
+    const float rayLength = length(rayDirection);
+    const float3 edge = bM - aM;
+    const float edgeSq = dot(edge, edge);
+    if (!(rayLength > 0.0) || !(edgeSq > 0.0))
+    {
+        return 0.0;
+    }
+    const float3 direction = rayDirection / rayLength;
+    const float nearest = saturate(-dot(aM, edge) / edgeSq);
+    const float3 acrossA = aM - direction * dot(aM, direction);
+    const float3 acrossEdge = edge - direction * dot(edge, direction);
+    const float acrossSq = dot(acrossEdge, acrossEdge);
+    if (acrossSq <= edgeSq * SOLNL_PARALLEL_SIN_SQ)
+    {
+        return nearest;
+    }
+    const float onLine = saturate(-dot(acrossA, acrossEdge) / acrossSq);
+
+    // The distance to the ray is convex along the segment: the minimum is one of these candidates
+    float best = onLine;
+    float bestSq = SOLNL_RayDistanceSq(aM + edge * onLine, direction);
+    const float candidates[3] = { nearest, 0.0, 1.0 };
+    for (int index = 0; index < 3; ++index)
+    {
+        const float distanceSq = SOLNL_RayDistanceSq(aM + edge * candidates[index], direction);
+        if (distanceSq < bestSq)
+        {
+            best = candidates[index];
+            bestSq = distanceSq;
+        }
+    }
+    return best;
+}
+
+// The lane's side direction (unit, Unreal axes; camera-relative endpoints in metres), SOLNpcLane::LaneOutboundSide:
+// the normal of the plane through the camera and the lane, so it is perpendicular to every view ray of the lane, signed
+// so the outbound line lies on the screen-space right of its travel A -> B ("keep right"). Zero when the lane is wholly
+// behind the camera or seen end-on. Moving a point in front of the camera along +n moves it on screen toward
+// +(n.right, n.up), so the sign is fixed by comparing that with the right-hand normal of the projected travel
+float3 SOLNL_OutboundSide(float3 aCamM, float3 bCamM, float3 right, float3 up, float3 forward)
+{
+    const float3 edge = bCamM - aCamM;
+    const float edgeLength = length(edge);
+    if (!(edgeLength > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    const float3 travel = edge / edgeLength;
+
+    // A point of the lane in front of the camera if there is one: the endpoint farther along the view direction
+    const float3 front = dot(aCamM, forward) >= dot(bCamM, forward) ? aCamM : bCamM;
+    const float depth = dot(front, forward);
+    const float3 normal = cross(front, travel);
+    const float normalLength = length(normal);
+    if (!(depth > 0.0) || !(normalLength > 1e-6 * length(front)))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // The travel direction on screen (right, up) at that point, and its right-hand normal (y, -x)
+    const float travelForward = dot(travel, forward);
+    const float2 screenTravel = float2(dot(travel, right) - dot(front, right) / depth * travelForward,
+        dot(travel, up) - dot(front, up) / depth * travelForward);
+    const float2 rightOfTravel = float2(screenTravel.y, -screenTravel.x);
+    const float sideSign = dot(float2(dot(normal, right), dot(normal, up)), rightOfTravel) >= 0.0 ? 1.0 : -1.0;
+    return normal * (sideSign / normalLength);
+}
+
+// Vertex stage: returns the ribbon vertex's render position (cm, Unreal axes; the mesh vertices sit at zero so this is
+// the world position offset). uv0 = (sample parameter u, side -1 / +1), lineIndex 0 outbound / 1 inbound, groupA / B
+// = the lane's group texels. A lane that is not drawn puts every vertex at the origin (nothing is rasterised).
+// outSignedPx = the vertex's pixel distance from its own line's centre
+float3 SOLNL_Vertex(float2 uv0, float lineIndex, float4 groupA, float4 groupB, float3 cameraUnreal, float4 frame,
+    float4 style0, float4 style2, float4 glow0, float3 right, float3 up, float3 forward, float projectionScaleX,
+    float2 viewSize, out float outSignedPx)
+{
+    outSignedPx = 0.0;
+    if (groupB.w < 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // The sample on the lane's centre line, placed with the far-depth compression (on its true ray)
+    const float3 cameraM = SOLOL_EclipticToUnreal(cameraUnreal - frame.xyz) / SOLOL_CM_PER_M;
+    const float3 pointM = lerp(groupA.xyz, groupB.xyz, uv0.x);
+    const float3 centerUnreal = frame.xyz + SOLOL_EclipticToUnreal(SOLOL_PlaceLinePointCm(pointM, frame.w));
+
+    // The two lines either side of the centre line ("keep right"), each ribbon wide enough for its glow
+    const float3 side = SOLNL_OutboundSide(SOLOL_EclipticToUnreal(groupA.xyz - cameraM),
+        SOLOL_EclipticToUnreal(groupB.xyz - cameraM), right, up, forward);
+    const float scale = SOLNL_HeightScale(viewSize.y, style2.x);
+    const float widthPx = SOLNL_WidthPx(groupB.w, scale, style0);
+    const float centerOffsetPx = 0.5 * (widthPx + style0.z * scale);
+    const float lineSign = lineIndex < 0.5 ? 1.0 : -1.0;
+    outSignedPx = uv0.y * SOLNL_RibbonHalfExtentPx(widthPx, scale, style0.w, glow0.x);
+
+    // Pixels to world at this point's view depth
+    const float3 toPoint = centerUnreal - cameraUnreal;
+    const float depth = max(abs(dot(toPoint, forward)), 1.0);
+    const float worldPerPixel = 2.0 * depth / max(projectionScaleX * viewSize.x, 1.0);
+    return centerUnreal + side * ((lineSign * centerOffsetPx + outSignedPx) * worldPerPixel);
+}
+
+// Pixel stage: returns the line's additive emissive colour = colour x brightness x emissive x profile x dashes x fade,
+// 0 where a true-scale occluder sphere or near scene depth hides the lane point under the pixel. The lane parameter
+// and the camera distance are computed analytically from the view ray (rayUnreal, from the camera), not interpolated.
+// orbitStyle2 = the orbit lines' (highlight min alpha, feather px, depth bias, scene-depth trust limit cm);
+// occluders[i] = (viewpoint-relative centre m, ecliptic axes; radius m), radius 0 = unused
+float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB, float3 rayUnreal,
+    float3 cameraUnreal, float4 frame, float4 params0, float4 style0, float4 style1, float4 style2, float4 glow0,
+    float4 glow1, float glowScale, float3 outboundColor, float3 inboundColor, float4 dash, float4 orbitStyle2,
+    float viewportHeightPx, float pixelDepthCm, float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS])
+{
+    // The lane parameter under the pixel and its footprint first: the derivatives need every pixel of the quad
+    const float3 cameraM = SOLOL_EclipticToUnreal(cameraUnreal - frame.xyz) / SOLOL_CM_PER_M;
+    const float3 aCamM = groupA.xyz - cameraM;
+    const float3 bCamM = groupB.xyz - cameraM;
+    const float laneParam = SOLNL_ClosestLaneParam(aCamM, bCamM, SOLOL_EclipticToUnreal(rayUnreal));
+    const float phase0 = laneParam * style1.z;
+    const float footprint = fwidth(phase0);
+    if (groupB.w < 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // Across the line: the glow profile at this line's width
+    const float scale = SOLNL_HeightScale(viewportHeightPx, style2.x);
+    const float weight = saturate(groupB.w);
+    const float profile = SOLNL_LineProfile(signedPx, SOLNL_WidthPx(weight, scale, style0), glowScale, scale, glow0,
+        glow1);
+    const float3 pointCamM = aCamM + (bCamM - aCamM) * laneParam;
+    const float distanceM = length(pointCamM);
+    const float fade = SOLNL_LineFade(distanceM, groupA.w, params0.z, params0.w);
+    if (profile <= 0.0 || fade <= 0.0)
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // True-scale analytic occlusion of the lane point by the selected spheres (shared with the orbit lines, D24)
+    const float3 pointM = pointCamM + cameraM;
+    for (int index = 0; index < SOLOL_MAX_OCCLUDERS; ++index)
+    {
+        if (SOLOL_IsPointOccludedBySphere(cameraM, pointM, occluders[index].xyz, occluders[index].w))
+        {
+            return float3(0.0, 0.0, 0.0);
+        }
+    }
+
+    // Scene depth only nearer than any log-compressed body can be (the orbit lines' rule)
+    const float trueDistanceCm = distanceM * SOLOL_CM_PER_M;
+    const float placedCm = max(SOLOL_PlacedDistanceCm(trueDistanceCm, frame.w), 1.0);
+    if (SOLOL_IsHiddenBySceneDepth(pixelDepthCm * (trueDistanceCm / placedCm), sceneDepthCm, orbitStyle2.w,
+        orbitStyle2.z))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // Flowing dashes: outbound toward B, inbound toward A
+    const float direction = lineIndex < 0.5 ? 1.0 : -1.0;
+    const float coverage = SOLNL_DashCoverage(phase0, params0.x, direction, footprint, style1.w, dash);
+    const float3 color = lineIndex < 0.5 ? outboundColor : inboundColor;
+    return color * (lerp(style1.x, style1.y, weight) * style2.y * profile * coverage * fade);
+}

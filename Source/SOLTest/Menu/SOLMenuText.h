@@ -833,8 +833,13 @@ namespace SOLMenuText
             "planets, moons, dwarf planets and the 50 largest named asteroids (each kind can be checked in the "
             "Overlay Menu; asteroid orbits start unchecked), dashed and fading with distance. Your target's orbit is "
             "drawn in gold. A line behind a planet or moon is hidden by it, and the part in front of it stays "
-            "visible. Space dust (a Settings > Graphics option, the same in every profile) streams past when the ship "
-            "moves relative to its reference frame; its speed is compressed and only shows motion and direction. It "
+            "visible. With NPC ships out (the Demo page), each lane between two bodies is drawn as a pair of dashed "
+            "hologram lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the "
+            "dashes flowing each way; a busier lane is wider and brighter. Close to a lane the lines fade out and its "
+            "ships show one by one. The Lanes row of the Overlay Menu ({OverlayMenu}) turns them off (the ships then "
+            "show as points, as before); the lines glow with the HUD glow setting. Space dust (a Settings > Graphics "
+            "option, the same in every profile) streams past when the ship moves relative to its reference frame; "
+            "its speed is compressed and only shows motion and direction. It "
             "is hidden when stopped, under time warp, during jumps, on the map and while paused, and {OverlayMaster} "
             "does not affect it."),
         TEXT("Interaction menus: with mouse steering off, hovering an overlay icon highlights it. Press {Fire} on "
@@ -908,7 +913,8 @@ namespace SOLMenuText
         TEXT("The Demo page (main menu, or the Demo tab here) fills the solar system with up to a million NPC ships "
             "on lanes between the planets, in clusters around bodies and the asteroid belt, and in battles a few "
             "kilometres from you. Ships near you fly and fight with full AI; farther ones follow simpler motion and "
-            "are drawn as points. Ctrl+F2 shows or hides the stats overlay. Ctrl+F1 does the same as Esc, for "
+            "are drawn as points, or as lane lines (see the overlays). Ctrl+F2 shows or hides the stats overlay. "
+            "Ctrl+F1 does the same as Esc, for "
             "Play-In-Editor, where Esc stops the game."),
     };
 

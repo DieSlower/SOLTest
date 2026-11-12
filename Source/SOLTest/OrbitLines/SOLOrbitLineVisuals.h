@@ -78,6 +78,15 @@ public:
     // Returns true while the transient target line is shown
     bool IsTransientLineShown() const { return mIsTransientShown; }
 
+    // Tells the lines whether the NPC lanes are drawn (ASOLNpcVisuals, SDD 38 D24): the lanes share the occluder
+    // spheres and the scene-depth trust limit, so those are written while orbit lines or lanes are drawn. When the
+    // lanes turn on with every orbit line hidden, the occluders are written at once, so the first lane frame does not
+    // read stale spheres (the two actors' universe-update handlers run in no fixed order)
+    void SetLanesDrawn(bool bLanesDrawn);
+
+    // Returns the number of frames the occluders were written with every orbit line hidden (verification, SDD 38 D24)
+    int32 GetLaneOnlyOccluderWrites() const { return mLaneOnlyOccluderWrites; }
+
 protected:
 
     // Resolves subsystems and assets, builds every permanent line and subscribes to universe updates
@@ -206,5 +215,7 @@ private:
     bool mIsDrawn = true;                                          // Actor visibility last applied (ShouldDrawLines)
     bool mIsTransientShown = false;
     bool mIsVerificationOverride = false;                          // Settings ignored (smoke runs)
+    bool mAreLanesDrawn = false;                                   // NPC lanes drawn (they read the occluders too)
+    int32 mLaneOnlyOccluderWrites = 0;                             // Occluder writes for the lanes alone (verification)
     bool mIsCategoryShown[SOLOverlay::OVERLAY_COUNT] = {};         // Per overlay row this frame (orbit rows used)
 };

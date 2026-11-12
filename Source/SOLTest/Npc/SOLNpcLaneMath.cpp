@@ -15,6 +15,10 @@ namespace
     // parameter is then undefined and the segment point nearest the origin is taken
     constexpr double LANE_PARALLEL_SIN_SQ = 1.0e-20;
 
+    // A lane counts as seen end-on (no side direction) when the sine of the angle between it and the view ray to its
+    // front point is below this (the lane material's SOLNL_OutboundSide uses the same value)
+    constexpr double LANE_END_ON_SIN = 1.0e-6;
+
     //////////////////////////////////////////////////////////////////////////
     // Returns the viewport scale height / NPC_LANE_REFERENCE_HEIGHT_PX (1 for a non-positive or non-finite height)
     double LaneHeightScale(const double viewportHeightPx)
@@ -286,6 +290,47 @@ FVector2D SOLNpcLane::LaneOutboundSideNormal(const FVector2D& screenA, const FVe
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the ribbon side direction: the camera-lane plane's unit normal, signed to the screen right of A -> B
+FVector3d SOLNpcLane::LaneOutboundSide(const FVector3d& aCamM, const FVector3d& bCamM, const FVector3d& right,
+    const FVector3d& up, const FVector3d& forward)
+{
+    if (aCamM.ContainsNaN() || bCamM.ContainsNaN() || right.ContainsNaN() || up.ContainsNaN()
+        || forward.ContainsNaN())
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d edge = bCamM - aCamM;
+    const double edgeLength = edge.Size();
+    if (!(edgeLength > 0.0) || !FMath::IsFinite(edgeLength))
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d travel = edge / edgeLength;
+
+    // A point of the lane in front of the camera if there is one: the endpoint farther along the view direction
+    const FVector3d& front = FVector3d::DotProduct(aCamM, forward) >= FVector3d::DotProduct(bCamM, forward)
+        ? aCamM : bCamM;
+    const double depth = FVector3d::DotProduct(front, forward);
+    const FVector3d normal = FVector3d::CrossProduct(front, travel);
+    const double normalLength = normal.Size();
+    if (!(depth > 0.0) || !(normalLength > LANE_END_ON_SIN * front.Size()))
+    {
+        return FVector3d::ZeroVector;
+    }
+
+    // The travel direction on screen (right, up) at that point and its right-hand normal (y, -x); moving a point along
+    // +normal moves it on screen toward +(normal . right, normal . up), the screen line's own normal
+    const double travelForward = FVector3d::DotProduct(travel, forward);
+    const FVector2D screenTravel(
+        FVector3d::DotProduct(travel, right) - FVector3d::DotProduct(front, right) / depth * travelForward,
+        FVector3d::DotProduct(travel, up) - FVector3d::DotProduct(front, up) / depth * travelForward);
+    const FVector2D rightOfTravel(screenTravel.Y, -screenTravel.X);
+    const double side = FVector3d::DotProduct(normal, right) * rightOfTravel.X
+        + FVector3d::DotProduct(normal, up) * rightOfTravel.Y;
+    return normal * ((side >= 0.0 ? 1.0 : -1.0) / normalLength);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Counts the lane rails per lane (laneCount entries; other kinds and out-of-range groups ignored)
 void SOLNpcLane::CountLaneShips(const TConstArrayView<FSOLNpcRail> rails, const int32 laneCount,
     TArray<int32>& outCounts)
@@ -330,5 +375,166 @@ void SOLNpcLane::BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRa
         const bool bBodies = groups.LaneBodyA.IsValidIndex(lane) && groups.LaneBodyA[lane] != INDEX_NONE
             && groups.LaneBodyB.IsValidIndex(lane) && groups.LaneBodyB[lane] != INDEX_NONE;
         entry.bDrawn = bBodies && IsLaneDrawn(entry.ShipCount);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the lanes are shown: the cvar on and, with settings, the Lanes row shown
+bool SOLNpcLane::AreLanesShown(const bool bHasSettings, const bool bRowShown, const bool bCvarOn)
+{
+    return bCvarOn && (!bHasSettings || bRowShown);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the lane component is visible: lanes shown and at least one drawn lane
+bool SOLNpcLane::ShouldDrawLaneLines(const bool bLanesShown, const FSOLNpcLaneFrame& frame)
+{
+    if (!bLanesShown)
+    {
+        return false;
+    }
+    return frame.Lanes.ContainsByPredicate([](const FSOLNpcLaneEntry& entry)
+    {
+        return entry.bDrawn;
+    });
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the far-point material's crossfade vector (lanes shown, fade near and far radii, 0)
+FLinearColor SOLNpcLane::PointLaneParams(const bool bLanesShown)
+{
+    return FLinearColor(bLanesShown ? 1.0f : 0.0f, static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII),
+        static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII), 0.0f);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane material's per-frame vector (flow phase, 0 unused, fade near and far radii)
+FLinearColor SOLNpcLane::LaneMaterialParams(const double flowPhase)
+{
+    return FLinearColor(FMath::IsFinite(flowPhase) ? static_cast<float>(flowPhase) : 0.0f, 0.0f,
+        static_cast<float>(SOL::NPC_LANE_FADE_NEAR_RADII), static_cast<float>(SOL::NPC_LANE_FADE_FAR_RADII));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes each lane's radius (row 0) and weight or -1 (row 1) into the group texels' .w; other columns get 0
+void SOLNpcLane::WriteLaneGroupTexelW(const FSOLNpcLaneFrame& frame, const TArrayView<FVector4f> groupTexels)
+{
+    constexpr int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    if (groupTexels.Num() < 2 * width)
+    {
+        return;
+    }
+    const int32 laneCount = FMath::Min(frame.Lanes.Num(), width);
+    for (int32 column = 0; column < width; ++column)
+    {
+        float radius = 0.0f;
+        float weight = 0.0f;
+        if (column < laneCount)
+        {
+            const FSOLNpcLaneEntry& entry = frame.Lanes[column];
+            radius = static_cast<float>(entry.RadiusM);
+            weight = entry.bDrawn ? static_cast<float>(entry.TrafficWeight) : -1.0f;
+        }
+        groupTexels[column].W = radius;
+        groupTexels[width + column].W = weight;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Adds the lane rails of a slice to the per-lane counts (groups past the counts ignored, no reset)
+void SOLNpcLane::AccumulateLaneShips(const TConstArrayView<FSOLNpcRail> rails, const TArrayView<int32> inOutCounts)
+{
+    const int32 laneCount = inOutCounts.Num();
+    if (laneCount <= 0)
+    {
+        return;
+    }
+
+    // Counted on the stack (the texture's group columns), added to the caller's counts once at the end; a group past
+    // the texture width (none in a real layout) is counted in place
+    constexpr int32 localWidth = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    int32 localCounts[localWidth] = {};
+    const uint8 laneKind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
+    for (const FSOLNpcRail& rail : rails)
+    {
+        const int32 group = static_cast<int32>(rail.Group);
+        if (rail.Kind == laneKind && group < laneCount)
+        {
+            if (group < localWidth)
+            {
+                ++localCounts[group];
+            }
+            else
+            {
+                ++inOutCounts[group];
+            }
+        }
+    }
+    const int32 localLanes = FMath::Min(laneCount, localWidth);
+    for (int32 lane = 0; lane < localLanes; ++lane)
+    {
+        inOutCounts[lane] += localCounts[lane];
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the flow clock advanced by a real frame time (held while paused or for a bad delta; a bad clock restarts)
+double SOLNpcLane::AdvanceLaneFlowClockS(const double clockS, const double realDeltaS, const bool bPaused)
+{
+    const double base = FMath::IsFinite(clockS) ? clockS : 0.0;
+    if (bPaused || !FMath::IsFinite(realDeltaS) || realDeltaS <= 0.0)
+    {
+        return base;
+    }
+    return base + realDeltaS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the ribbon vertex count of a number of lanes (two lines, two sides per sample)
+int32 SOLNpcLane::LaneRibbonVertexCount(const int32 laneCount)
+{
+    return laneCount > 0 ? laneCount * 2 * (SOL::NPC_LANE_SEGMENTS + 1) * 2 : 0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Lays out the ribbon strips of every lane with ships: UVs per vertex and two triangles per segment
+void SOLNpcLane::BuildLaneRibbonLayout(const TConstArrayView<int32> laneShipCounts, TArray<FVector2f>& outUv0,
+    TArray<FVector2f>& outUv1, TArray<uint32>& outIndices)
+{
+    constexpr int32 segments = SOL::NPC_LANE_SEGMENTS;
+    int32 drawnLanes = 0;
+    for (const int32 count : laneShipCounts)
+    {
+        drawnLanes += IsLaneDrawn(count) ? 1 : 0;
+    }
+    outUv0.Reset(LaneRibbonVertexCount(drawnLanes));
+    outUv1.Reset(LaneRibbonVertexCount(drawnLanes));
+    outIndices.Reset(drawnLanes * 2 * segments * 6);
+
+    // One strip per line: samples 0..segments, side -1 then +1 at each
+    for (int32 lane = 0; lane < laneShipCounts.Num(); ++lane)
+    {
+        if (!IsLaneDrawn(laneShipCounts[lane]))
+        {
+            continue;
+        }
+        for (int32 line = 0; line < 2; ++line)
+        {
+            const uint32 first = static_cast<uint32>(outUv0.Num());
+            const FVector2f strip(static_cast<float>(lane), static_cast<float>(line));
+            for (int32 sample = 0; sample <= segments; ++sample)
+            {
+                const float u = static_cast<float>(sample) / static_cast<float>(segments);
+                outUv0.Add(FVector2f(u, -1.0f));
+                outUv0.Add(FVector2f(u, 1.0f));
+                outUv1.Add(strip);
+                outUv1.Add(strip);
+            }
+            for (uint32 segment = 0; segment < static_cast<uint32>(segments); ++segment)
+            {
+                const uint32 v0 = first + 2 * segment;
+                outIndices.Append({ v0, v0 + 2, v0 + 1, v0 + 1, v0 + 2, v0 + 3 });
+            }
+        }
     }
 }

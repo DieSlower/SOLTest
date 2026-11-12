@@ -1801,4 +1801,31 @@ bool FSOLGlossaryCropTexturesCurrentTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryNoLaneEntryTest, "SOLTest.Glossary.LanesInOverlayMenuOnly",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 (SDD 38 D19 and the 38a review): the NPC lanes get no glossary entry of their own; the Overlay Menu entry
+// lists them among the rows a profile shows, and its tokens resolve
+bool FSOLGlossaryNoLaneEntryTest::RunTest(const FString& /*parameters*/)
+{
+    for (const TCHAR* name : { TEXT("Lanes"), TEXT("NPC lanes"), TEXT("Lane lines"), TEXT("NPC lane lines") })
+    {
+        TestEqual(FString::Printf(TEXT("no '%s' entry"), name), GlossaryTestFindEntry(name),
+            static_cast<int32>(INDEX_NONE));
+    }
+    const int32 index = GlossaryTestFindEntry(TEXT("Overlay Menu"));
+    if (!TestTrue(TEXT("the Overlay Menu entry exists"), index != INDEX_NONE))
+    {
+        return false;
+    }
+    FString out;
+    SOLGlossary::FormatEntryText(SOLMenuText::GLOSSARY_ENTRIES[index].Description, SOLKeyBindings::DefaultKeys(), out);
+    TestTrue(FString::Printf(TEXT("'%s' lists NPC lanes"), *out),
+        out.Contains(TEXT("radar ships, NPC lanes and darkening"), ESearchCase::CaseSensitive));
+    TestFalse(FString::Printf(TEXT("'%s' has no placeholder left"), *out), out.Contains(TEXT("{")));
+    return true;
+}
+
 #endif

@@ -169,4 +169,11 @@ namespace SOLOrbitLineLogic
     {
         return bSettingShown && !bInMainMenu;
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether the shared occluders are written (orbit lines or NPC lanes drawn)
+    bool ShouldWriteOccluders(const bool bOrbitLinesDrawn, const bool bLanesDrawn)
+    {
+        return bOrbitLinesDrawn || bLanesDrawn;
+    }
 }

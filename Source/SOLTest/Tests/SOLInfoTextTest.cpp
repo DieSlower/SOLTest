@@ -438,4 +438,95 @@ bool FSOLInfoTextOverlayMenuLanesTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+namespace
+{
+    // The Info overlay paragraph's lane sentences of SDD 38 section 7 (D19), binding token unformatted
+    constexpr const TCHAR* INFOTEXT_LANES_SENTENCE =
+        TEXT("With NPC ships out (the Demo page), each lane between two bodies is drawn as a pair of dashed hologram "
+            "lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the dashes "
+            "flowing each way; a busier lane is wider and brighter. Close to a lane the lines fade out and its ships "
+            "show one by one. The Lanes row of the Overlay Menu ({OverlayMenu}) turns them off (the ships then show "
+            "as points, as before); the lines glow with the HUD glow setting.");
+
+    // The Info Demo paragraph's far-ship clause of SDD 38 section 7
+    constexpr const TCHAR* INFOTEXT_DEMO_LANE_LINES =
+        TEXT("farther ones follow simpler motion and are drawn as points, or as lane lines (see the overlays).");
+
+    // Returns the indices of the paragraphs that contain a text (case-sensitive)
+    TArray<int32> InfoTextParagraphsWith(const TArray<FString>& prose, const FString& text)
+    {
+        TArray<int32> found;
+        for (int32 index = 0; index < prose.Num(); ++index)
+        {
+            if (prose[index].Contains(text, ESearchCase::CaseSensitive))
+            {
+                found.Add(index);
+            }
+        }
+        return found;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextLanesSentenceTest, "SOLTest.InfoText.LanesSentence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 Part 38b (SDD 38 section 6 case 24, section 7), test-first: the overlay paragraph (the one that explains
+// orbit lines) carries the lane sentences after its orbit-lines sentence, with {OverlayMenu} resolved to the current
+// key before and after a rebind, and no placeholder left
+bool FSOLInfoTextLanesSentenceTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    const TArray<FString> prose = SOLInfoText::BuildProse(keys);
+    const FString expected = SOLKeyBindings::FormatKeyText(INFOTEXT_LANES_SENTENCE, keys);
+    TestFalse(TEXT("the expected sentence resolves its token"), expected.Contains(TEXT("{")));
+
+    const TArray<int32> found = InfoTextParagraphsWith(prose, expected);
+    if (!TestEqual(TEXT("exactly one paragraph has the lane sentences"), found.Num(), 1))
+    {
+        return false;
+    }
+    int32 orbitCount = 0;
+    const int32 orbitParagraph = InfoTextFindOrbitLinesParagraph(prose, orbitCount);
+    TestEqual(TEXT("in the overlay paragraph (the orbit-lines one)"), found[0], orbitParagraph);
+    const FString& paragraph = prose[found[0]];
+    const int32 orbitAt = paragraph.Find(TEXT("Orbit lines ("), ESearchCase::CaseSensitive);
+    const int32 lanesAt = paragraph.Find(expected, ESearchCase::CaseSensitive);
+    TestTrue(TEXT("after the orbit-lines sentence"), orbitAt != INDEX_NONE && lanesAt > orbitAt);
+    TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
+    TestFalse(TEXT("no '}' left"), paragraph.Contains(TEXT("}")));
+
+    // A rebound Overlay Menu key shows in the sentence
+    keys[static_cast<int32>(EBinding::OverlayMenu)] = TEXT("F9");
+    const FString rebound = SOLKeyBindings::FormatKeyText(INFOTEXT_LANES_SENTENCE, keys);
+    TestNotEqual(TEXT("the rebind changes the sentence"), rebound, expected);
+    TestEqual(TEXT("rebound: exactly one paragraph has the lane sentences"),
+        InfoTextParagraphsWith(SOLInfoText::BuildProse(keys), rebound).Num(), 1);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextDemoLaneLinesTest, "SOLTest.InfoText.DemoLaneLines",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #38 Part 38b (SDD 38 section 7), test-first: the Demo paragraph (the one naming Ctrl+F1) says far ships are
+// drawn as points or as lane lines, pointing to the overlays
+bool FSOLInfoTextDemoLaneLinesTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    const TArray<int32> found = InfoTextParagraphsWith(prose, INFOTEXT_DEMO_LANE_LINES);
+    if (!TestEqual(TEXT("exactly one paragraph has the lane-lines clause"), found.Num(), 1))
+    {
+        return false;
+    }
+    TestTrue(TEXT("it is the Demo paragraph"), prose[found[0]].Contains(TEXT("Ctrl+F1"), ESearchCase::CaseSensitive)
+        && prose[found[0]].Contains(TEXT("Demo"), ESearchCase::CaseSensitive));
+    TestFalse(TEXT("the old full stop after points is gone"),
+        prose[found[0]].Contains(TEXT("are drawn as points. "), ESearchCase::CaseSensitive));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

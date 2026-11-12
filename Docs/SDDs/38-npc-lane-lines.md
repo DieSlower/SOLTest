@@ -9,7 +9,8 @@ shader library) and SDD 37 (the HUD glow scale `g`). Leaves an extension point f
 [#49](https://github.com/DieSlower/SOLTest/issues/49) (lane guidance tunnel), which is **not** designed here.
 Persistence change: settings save schema 12 -> 13 (approved, D1).
 Status: **part 38a built (2026-11-11):** the pure lane math (`Npc/SOLNpcLaneMath`), the Lanes row of the Overlay Menu
-and settings schema 13; the renderer (38b) and the tuning and docs (38c) are next. Grill-me done 2026-11-11 (D1-D6);
+and settings schema 13. **Part 38b built (2026-11-11, review pending):** the renderer (section 4.12 records what was
+built and its deviations); the tuning and docs (38c) are next. Grill-me done 2026-11-11 (D1-D6);
 the draft's open questions Q1-Q18 were answered by the user the same day (D7-D24, section 2); D25 (the glow scaled with
 the viewport height) was decided by the user after the 38a review. No decision is open.
 
@@ -125,7 +126,8 @@ library. The rest of this section describes that route.
 
 - **Ship counts per lane (D13).** `CountLaneShips(rails, laneCount, outCounts)` counts the rails of kind Lane per lane.
   Run once per population, folded into `ASOLNpcVisuals::FillRailTexels`' existing `ParallelFor` (per-task local counts,
-  merged at the end), so it adds no pass over the 1M rails. Counts are constant for a population (destroyed ships
+  merged at the end): each task loops over its own slice a second time while it is still in cache (counting on the stack
+  and writing its counts once), so there is no separate serial pass over the 1M rails. Counts are constant for a population (destroyed ships
   respawn at their rail slot).
 - **`FSOLNpcLaneFrame`** (plain data, per lane): endpoints A and B (universe metres, from `GroupPointAM / BM`), lane
   radius, ship count, traffic weight (section 4.4), drawn flag (at least one ship and both bodies resolved). Built each
@@ -219,7 +221,8 @@ that distance; the close-up part, where float error would matter, is faded out (
   in), `NPC_LANE_SEGMENTS + 1` samples (proposed 64 segments), two vertices each (side -1 / +1). UV0 = (sample
   parameter `u`, side), UV1 = (lane group index, line index). Positions are zero; bounds cover all render space (never
   culled). 8 lanes x 2 lines x 65 x 2 = 2,080 vertices. One `UStaticMeshComponent` (`LaneLines`, no shadow, no
-  collision, no ray tracing, `TranslucencySortPriority` just above the far points).
+  collision, no ray tracing; `TranslucencySortPriority` 1 orders it only within the after-motion-blur pass, section
+  4.12, so it is not ordered against the far points).
 - **Vertex shader** (`Shaders/Private/SOLNpcLane.ush`, mirrored by `SOLNpcLaneMath`): reads A and B (viewpoint
   relative) and the lane's `.w` data from `NpcGroupTex`; a lane with weight -1 returns the hidden offset. The sample
   point `A + u (B - A)` is placed with the far-depth compression (`PlaceLinePointCm`, so it lands on the same pixel as
@@ -237,13 +240,14 @@ that distance; the close-up part, where float error would matter, is faded out (
   occluder update moved into a small shared helper both call; implementer's choice within that rule).
 - **Per frame (CPU):** `UpdateFarPoints` writes the `.w` lane data with the group rows; the point material gets one
   more vector parameter `NpcParams4` = (lanes shown 0/1, fade near radii, fade far radii, 0), the lane material one
-  `NpcLaneParams0` = (flow phase `f`, viewport-height scale, fade near radii, fade far radii) (the colours, widths and
+  `NpcLaneParams0` = (flow phase `f`, 0 unused, fade near radii, fade far radii) (the colours, widths and
   dash constants are set once at `BeginPlay`); `GlowScale` only on change. The
   lane component's visibility follows (row shown and at least one drawn lane); with no population nothing changes from
   today. Reads `USOLSettingsSubsystem::IsOverlayShown(EOverlay::Lanes)` and the live `HudGlow` (D23: a new dashed
   `Npc -> Menu` dependency, like `Ship -> Menu` and `UI -> Menu`); without a settings subsystem the lanes are on at 100%
-  glow. A verification override (`BeginLaneVerificationOverride`, like `ASOLOrbitLineVisuals::BeginVerificationOverride`)
-  lets smokes toggle lanes without reading or writing the player's settings.
+  glow. A verification override (`SetLaneVerificationOverride(bShown)`, like
+  `ASOLOrbitLineVisuals::BeginVerificationOverride`; it has no end call, it lasts for the run) lets smokes toggle lanes
+  without reading or writing the player's settings.
 - **Assets:** `M_SOLNpcLanes` added to `Tools/Npc/create_npc_assets.py` (rebuilt with `-SOLRebuild`, editor closed),
   path `SOL::Paths::NPC_LANES_MATERIAL`; `M_SOLNpcPoints` gains the crossfade (kind 1 only) and the `NpcParams4` input.
 - **Developer switch (D20):** cvar `sol.NpcLanes 0|1` (default 1) hides the lane line and restores the points, for A/B
@@ -288,6 +292,58 @@ Rails, tiers, budgets, the simulation and the stats (D6); cluster and battle shi
 meshed hulls; NPC combat; orbit lines' look; the HUD; key bindings and the key layout version; every Settings page
 control (the embedded Overlays tab gains the row from the table).
 
+### 4.12 As built in 38b (2026-11-11)
+
+- **Pure feed (tests cases 25-32, header forms proposed by the test author and kept):** `AreLanesShown`,
+  `ShouldDrawLaneLines`, `PointLaneParams`, `LaneMaterialParams`, `WriteLaneGroupTexelW`, `AccumulateLaneShips` (one
+  rail-fill task's share; `FillRailTexels` calls it on each task's slice inside its existing `ParallelFor`, per-task
+  counts merged after it, once per population; it counts on the stack and writes the task's counts once, so tasks
+  whose count arrays share a cache line do not contend), `AdvanceLaneFlowClockS`, `LaneRibbonVertexCount`,
+  `BuildLaneRibbonLayout`; `SOLOrbitLineLogic::ShouldWriteOccluders` (D24). From the 38b review: `LaneOutboundSide`
+  (case 33), the C++ port of the shader's `SOLNL_OutboundSide`; its test moves a lane point along the returned side,
+  projects it and finds it on the side `LaneOutboundSideNormal` gives, over six views (two with an endpoint behind the
+  camera), so the shader's keep-right sign is pinned by a unit test (it was right; no HLSL change).
+- **Renderer:** the ribbon component is a `USOLOrbitLineComponent` (fixed huge bounds, never culled) whose mesh is filled
+  by `SOLOrbitLineMesh::ApplyRibbonToMesh` (vertices at zero, UV0 / UV1 as section 4.8), so `Npc` now uses the
+  `OrbitLines` actor-side helpers too, not only the pure math. `ASOLGameMode` gives `ASOLNpcVisuals` the orbit-line
+  actor (`SetOrbitLineVisuals`); `ASOLNpcVisuals` reports `SetLanesDrawn` on each change, and the orbit lines write the
+  occluders and trust limit while every orbit line is hidden only when lanes draw; when the lanes turn on with the
+  orbit lines hidden, `SetLanesDrawn` writes them at once, so the first lane frame never reads stale spheres (the two
+  actors' universe-update handlers run in no fixed order). `ASOLGameMode::GetNpcVisuals` added for the smoke.
+- **Materials:** `M_SOLNpcLanes` is built by `Tools/Npc/create_npc_assets.py` (as section 4.8 says; not a `Tools/UI`
+  script). Additive, unlit, two-sided, depth test off and drawn **after motion blur** like the orbit lines (issue #25:
+  analytic lines outside TSR's history), so the sort priority `NPC_LANE_TRANSLUCENCY_SORT_PRIORITY` = 1 only orders it
+  within that pass (the far points keep the default 0 in the normal translucency pass; additive, so the order does not
+  change the result). The tunables reach the shader as vector parameters set once at `BeginPlay`
+  (`NpcLaneStyle0..2`, `NpcLaneGlow0..1`, the two colours; names in `SOL::NpcLaneMaterialParams`), the frame and flow per
+  frame (`NpcLaneFrame`, `NpcLaneParams0`), `GlowScale` on change; the dash constants, depth bias, trust limit and
+  occluders come from `MPC_SOLOrbitLine`. `M_SOLNpcPoints` gained `NpcParams4` and the kind-1 crossfade (the lane's
+  `.w` -1 keeps a lane that is not drawn fully as points); its vertex node includes `SOLNpcLane.ush` and calls the lane
+  line's own `SOLNL_LineFade`, so the two fades cannot drift. A drawn lane with a bad radius (never in a real layout)
+  keeps its line at full strength and hides its points, as `LaneShipPointAlpha` says (the earlier inline copy kept
+  the points instead).
+- **Deviations to review:** (1) the shader scales widths, gap, glow and ribbon by its own view height
+  (`ResolvedView.ViewSizeAndInvSize.y`, as the orbit lines do), so high-resolution shots and per-eye views scale
+  correctly; the CPU viewport scale first planned for `NpcLaneParams0.y` was never read, so the review dropped it:
+  `LaneMaterialParams(flowPhase)` writes 0 there (unused; case 28 pins it). (2) "Paused" for the flow clock
+  (D15) is the world paused **or the pause menu showing** (the Esc menu does not pause the simulation, SDD 8, but the
+  player reads it as paused; the space dust also hides "while paused" in the pause menu). If only a world pause was
+  meant, it is one condition in `ASOLNpcVisuals::UpdateLanes`. With the pause menu open the world keeps running, so
+  the lane ships' points keep moving while the dashes hold (recorded in `TECH_DEBT.md`). (3) The crossfade flag `NpcParams4.x` is pushed only
+  while lines can actually draw (lane material loaded and a ribbon built), so a missing asset never empties a lane.
+  (4) `NPC_LANE_EMISSIVE` starts at 2.0 (3.0 desaturated the cores visibly at 1080p); final value in 38c.
+- **Observed for 38c tuning:** a lane shorter than about 130 px on screen at 1080p (64 dashes) has a dash period under
+  2 px, so its dashes box-filter to an even half-bright line (the multi-scale levels only make dashes finer); the
+  teal-white core reads pale (about RGB 195, 219, 217 at 1080p against #9FD6D0) while cyan keeps its hue.
+- **Smoke `-SOLSmokeNpcLanes`:** 34/34 checks at 1280x720 and 1920x1080 (section 8 item 2 checks plus the shared
+  occluders written with the orbit lines off, and the map); views V1-V5 as listed there, V4 inside the Earth-Mars lane
+  0.5 radii off its centre line looking 25 degrees off its axis, V4b (added by the review) one lane radius off that
+  centre line looking 1.5 degrees off the axis, V5 40,000 km beside Earth looking 20,000 km along the Earth-Moon lane.
+  V4b is the near-plane regression view: the ribbon of the lane around the camera crosses the camera plane close to
+  it, which could smear a ribbon whose vertices sit behind the camera; the shots at both sizes show no smear (every
+  lane point that near is inside the close-up fade, 100 lane radii, so nothing draws there). It turns the space dust off in memory (its streaks covered the lanes after each teleport). The keep-
+  right rule was checked on the V3 shots against the logged screen endpoints (`LogLaneScreenSides`).
+
 ## 5. Map, route overlay and other views (D18)
 
 The lanes show on the hologram map too, following the same row; the HUD-drawn route overlay is drawn over them (it is
@@ -295,6 +351,11 @@ screen space). SDD 20 hides some real actors in the map view: the implementer fi
 (or just its lane component) is hidden there today and, if so, keeps the lane component visible on the map (the far
 points may stay as they are there). The finding and the result are recorded here. Nothing changes in the main menu (no
 NPCs exist there).
+
+**Finding (38b):** the map view hides only the body, ring and gas-giant actors (`ASOLHologramVisuals`, `IsReplacedVisual`,
+through the player controller's `HiddenActors`); `ASOLNpcVisuals` is never hidden there, so the lane component shows on
+the map with no change. Verified by `-SOLSmokeNpcLanes` (`g-map-lanes`: the map open and the lane component visible, and
+its `_map` screenshot shows the outer lanes as dashed lines between the hologram proxies).
 
 ## 6. Contract for the test author
 
@@ -554,3 +615,4 @@ separate occluder set for the lanes (D24).
 - 2026-11-11: first draft from grill-me D1-D6; open questions Q1-Q18 reported to the main session.
 - 2026-11-11: Q1-Q18 answered by the user (D7-D24, all as recommended; D9 states the crossfade so a lane is never empty, D22 gates the budgets at 1920x1080 only); D2 gains the keep-right rule shared with #49 (outbound on the right, inbound on the left); section 5 (map) and section 10 updated; ready to build.
 - 2026-11-11: part 38a built; after its review the user decided D25 (the glow scaled with the viewport height: cases 8 and 9 updated, 720p and 4K cases added), D23 gained the `Npc -> UI` and `Npc -> OrbitLines` edges of the pure math, and case 9's "non-decreasing in g" was narrowed to just past the core edge.
+- 2026-11-11: part 38b built; after its review: `LaneOutboundSide` (case 33) pins the shader's keep-right sign, `NpcLaneParams0.y` dropped (unused, case 28), the lane histogram counts on the stack, the occluders are written at once when lanes turn on with the orbit lines hidden, the points' crossfade calls `SOLNL_LineFade`, smoke view V4b added, section 4.12 moved after 4.11.
