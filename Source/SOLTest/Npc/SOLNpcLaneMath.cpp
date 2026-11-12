@@ -28,6 +28,24 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns the angle in radians between two directions from the camera (atan2 of the unit vectors' cross and dot
+    // products, accurate for tiny and near-straight angles alike); 0 when either is zero or not finite
+    double AngleBetweenRad(const FVector3d& u, const FVector3d& v)
+    {
+        if (u.ContainsNaN() || v.ContainsNaN())
+        {
+            return 0.0;
+        }
+        const FVector3d uUnit = u.GetSafeNormal();
+        const FVector3d vUnit = v.GetSafeNormal();
+        if (uUnit.IsZero() || vUnit.IsZero())
+        {
+            return 0.0;
+        }
+        return FMath::Atan2(FVector3d::CrossProduct(uUnit, vUnit).Size(), FVector3d::DotProduct(uUnit, vUnit));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns a traffic weight clamped to [0, 1] with NaN read as 0
     double LaneClampedWeight(const double weight)
     {
@@ -159,47 +177,89 @@ double SOLNpcLane::LaneDashFlowPhase(const double timeS)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a level's flowing dash phase: s x BASE x 2^level - sign(direction) x flowPhase
-double SOLNpcLane::LaneDashPhase(const double laneParam, const int32 level, const double flowPhase,
+// Returns a continuous level's flowing dash phase: (s - 0.5) x BASE x 2^level - sign(direction) x flowPhase
+double SOLNpcLane::LaneDashPhase(const double laneParam, const double level, const double flowPhase,
     const int32 direction)
 {
-    const int32 clampedLevel = FMath::Clamp(level, SOL::NPC_LANE_DASH_MIN_LEVEL, SOL::ORBIT_LINE_DASH_MAX_LEVEL);
-    const double levelScale = FMath::Exp2(static_cast<double>(clampedLevel));
+    const double clampedLevel = FMath::IsNaN(level) ? 0.0 : FMath::Clamp(level,
+        static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL), static_cast<double>(SOL::ORBIT_LINE_DASH_MAX_LEVEL));
+    const double levelScale = FMath::Exp2(clampedLevel);
     const double sign = direction < 0 ? -1.0 : 1.0;
-    return laneParam * static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) * levelScale - sign * flowPhase;
+    return (laneParam - 0.5) * static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) * levelScale - sign * flowPhase;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the dash coverage of a flowing lane line at one whole level (the orbit lines' level choice rounded down to
-// the coarser size, with no blend toward the finer one), the flow applied after the level's scaling so the dashes
-// move by the same fraction of their own period at every zoom, with coarser levels down to NPC_LANE_DASH_MIN_LEVEL
-// where the level-0 period is under the minimum, and the orbit lines' fade to solid past the last level
+// Returns the lane's continuous dash level from its lane-wide footprint (0 for a bad footprint)
+double SOLNpcLane::LaneDashLevel(const double laneFootprint)
+{
+    if (!FMath::IsFinite(laneFootprint) || laneFootprint <= 0.0)
+    {
+        return 0.0;
+    }
+    const double periodPx = 1.0 / laneFootprint;
+    return FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
+        static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0)),
+        static_cast<double>(FMath::Max(SOL::ORBIT_LINE_DASH_MAX_LEVEL, 0)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns BASE / (the angle the lane subtends at the camera x the focal length in pixels); 0 for degenerate input
+double SOLNpcLane::LaneDashLaneFootprint(const FVector3d& aRelM, const FVector3d& bRelM, const double focalLengthPx)
+{
+    if (!FMath::IsFinite(focalLengthPx) || focalLengthPx <= 0.0)
+    {
+        return 0.0;
+    }
+    const double lengthPx = AngleBetweenRad(aRelM, bRelM) * focalLengthPx;
+    return lengthPx > 0.0 ? static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) / lengthPx : 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane parameter re-spaced by angular length from A (laneParam when the lane subtends no angle)
+double SOLNpcLane::LaneScreenParam(const FVector3d& aRelM, const FVector3d& bRelM, const double laneParam)
+{
+    const double totalAngle = AngleBetweenRad(aRelM, bRelM);
+    if (!(totalAngle > 0.0) || !FMath::IsFinite(laneParam))
+    {
+        return laneParam;
+    }
+    const double s = FMath::Clamp(laneParam, 0.0, 1.0);
+    const FVector3d point = aRelM + (bRelM - aRelM) * s;
+    return FMath::Clamp(AngleBetweenRad(aRelM, point) / totalAngle, 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the dash coverage of a flowing lane line with one continuous scale for the whole lane (the accordion), the
+// flow applied after the scaling so the dashes move by the same fraction of their own period at every zoom, box-
+// filtered at the pixel, and the orbit lines' fade to solid where the pixel's own dash period grows past its start
 double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPhase, const int32 direction,
-    const double phaseFootprint)
+    const double laneFootprint, const double pixelFootprint)
 {
     if (!FMath::IsFinite(laneParam) || !FMath::IsFinite(flowPhase))
     {
         return 0.0;
     }
-    if (!FMath::IsFinite(phaseFootprint) || phaseFootprint <= 0.0)
+    if (!FMath::IsFinite(laneFootprint) || laneFootprint <= 0.0)
     {
-        return SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, 0, flowPhase, direction),
-            SOL::NPC_LANE_DASH_DUTY, phaseFootprint);
+        return SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, 0.0, flowPhase, direction),
+            SOL::NPC_LANE_DASH_DUTY, 0.0);
     }
 
-    // Continuous level: how many halvings bring the on-screen period down to the orbit lines' minimum (as theirs), or
-    // for a short lane how many doublings bring it up to it (negative, down to the coarsest level). Only the coarser
-    // whole level is drawn, with no blend toward the finer one (SDD 38 amendment 2026-11-11: no dimmer dash copy)
-    const int32 topLevel = FMath::Max(SOL::ORBIT_LINE_DASH_MAX_LEVEL, 0);
-    const double periodPx = 1.0 / phaseFootprint;
-    const double level = FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
-        static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0)), static_cast<double>(topLevel));
-    const int32 chosen = FMath::Min(static_cast<int32>(FMath::FloorToDouble(level)), topLevel);
-    const double coverage = SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, chosen, flowPhase, direction),
-        SOL::NPC_LANE_DASH_DUTY, phaseFootprint * FMath::Exp2(static_cast<double>(chosen)));
+    // One continuous scale for the whole lane: the period is the orbit lines' minimum on screen between the clamps, so
+    // a zoom slides the dashes along the lane (from its middle) instead of popping them to another size
+    const double level = LaneDashLevel(laneFootprint);
+    const double levelScale = FMath::Exp2(level);
+    const bool bPixelFootprint = FMath::IsFinite(pixelFootprint) && pixelFootprint > 0.0;
+    const double coverage = SOLOrbitLineMath::DashCoverage(LaneDashPhase(laneParam, level, flowPhase, direction),
+        SOL::NPC_LANE_DASH_DUTY, bPixelFootprint ? pixelFootprint * levelScale : 0.0);
+    if (!bPixelFootprint)
+    {
+        return coverage;
+    }
 
-    // Past the last level the period keeps growing: fade to a solid line so it never sits in a gap
-    const double remainingPeriodPx = periodPx / FMath::Exp2(level);
+    // Where this pixel's own dash period passes the solid start (past the last level, or a lane near the camera in
+    // perspective) fade to a solid line so it never sits in a gap
+    const double remainingPeriodPx = 1.0 / (pixelFootprint * levelScale);
     double solid = 0.0;
     if (SOL::ORBIT_LINE_DASH_SOLID_END_PX > SOL::ORBIT_LINE_DASH_SOLID_START_PX)
     {
@@ -211,6 +271,14 @@ double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPha
         solid = remainingPeriodPx >= SOL::ORBIT_LINE_DASH_SOLID_START_PX ? 1.0 : 0.0;
     }
     return FMath::Lerp(coverage, 1.0, solid);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the lane dash coverage with one footprint for both the lane's scale and the pixel's box filter
+double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPhase, const int32 direction,
+    const double phaseFootprint)
+{
+    return LaneDashCoverage(laneParam, flowPhase, direction, phaseFootprint, phaseFootprint);
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -4,7 +4,7 @@
 */
 
 // NPC lane lines (SDD 38 sections 4.4-4.8): the HLSL mirror of Source/SOLTest/Npc/SOLNpcLaneMath.cpp (fade, width,
-// ribbon extent, glow profile, flowing multi-scale dashes, closest lane parameter, the "keep right" side), plus the
+// ribbon extent, glow profile, flowing accordion dashes, closest lane parameter, the "keep right" side), plus the
 // vertex and pixel entry points the M_SOLNpcLanes Custom nodes call. A change to one must change the other. Lane data
 // comes from the far points' group texture (viewpoint-relative metres, J2000 ecliptic axes; row 0 .w = lane radius,
 // row 1 .w = traffic weight or -1 when not drawn); the tunables arrive as material parameters set once from
@@ -87,25 +87,67 @@ float SOLNL_LineProfile(float distanceFromCenterPx, float widthPx, float glowSca
     return SOLNL_GlowProfile(shifted, glowScale, glow0, glow1) * min(widthPx, 1.0);
 }
 
-// LaneDashCoverage: the orbit lines' level choice rounded down to one whole level (no size blend), the flow applied
-// after the level's scaling, and coarser levels (negative, down to minLevel) where the level-0 period is under the minimum, so a lane short on screen
-// still shows dashes. phase0 = s x base count (level-0 periods), footprint = one pixel in level-0 periods, direction +1
-// outbound (toward B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
-float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float footprint, float duty, float4 dash,
-    float minLevel)
+// The angle (radians) between two camera-relative directions; 0 when either is zero
+float SOLNL_AngleBetween(float3 u, float3 v)
+{
+    const float uLength = length(u);
+    const float vLength = length(v);
+    if (!(uLength > 0.0) || !(vLength > 0.0))
+    {
+        return 0.0;
+    }
+    const float3 uUnit = u / uLength;
+    const float3 vUnit = v / vLength;
+    return atan2(length(cross(uUnit, vUnit)), dot(uUnit, vUnit));
+}
+
+// LaneDashLaneFootprint: base count / (the angle the lane subtends at the camera x the focal length in pixels), one
+// value for the whole lane (camera-relative endpoints); 0 when an endpoint sits on the camera or the input is bad
+float SOLNL_LaneFootprint(float3 aCamM, float3 bCamM, float baseCount, float focalLengthPx)
+{
+    const float lengthPx = SOLNL_AngleBetween(aCamM, bCamM) * max(focalLengthPx, 0.0);
+    return lengthPx > 0.0 ? baseCount / lengthPx : 0.0;
+}
+
+// LaneScreenParam: the lane parameter re-spaced by on-screen (angular) length, the angle from A to the point at
+// laneParam over the whole lane's angle, so equal steps of it are equal steps on screen even in perspective (0 at A,
+// 1 at B, 0.5 at the lane's middle on screen); laneParam itself when the lane subtends no angle
+float SOLNL_ScreenParam(float3 aCamM, float3 bCamM, float laneParam)
+{
+    const float totalAngle = SOLNL_AngleBetween(aCamM, bCamM);
+    if (!(totalAngle > 0.0))
+    {
+        return laneParam;
+    }
+    const float3 pointCamM = aCamM + (bCamM - aCamM) * saturate(laneParam);
+    return saturate(SOLNL_AngleBetween(aCamM, pointCamM) / totalAngle);
+}
+
+// LaneDashCoverage (SDD 38 D15 amendment D, the accordion): one continuous scale for the whole lane from its lane-wide
+// footprint, clamped to the levels [minLevel, max level], so a dash period stays the minimum period on screen and
+// nothing pops; the phase pivots on the lane's middle and the flow is applied after the scaling. The box filter and
+// the fade to solid use this pixel's own footprint. phase0 = the screen parameter x base count (level-0 periods),
+// laneFootprint / footprint = one pixel in level-0 periods for the lane / at this pixel, direction +1 outbound (toward
+// B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
+float SOLNL_DashCoverage(float phase0, float baseCount, float flowPhase, float direction, float laneFootprint,
+    float footprint, float duty, float4 dash, float minLevel)
 {
     const float flow = direction * flowPhase;
-    if (!(footprint > 0.0) || dash.x <= 0.0)
+    const float centeredPhase0 = phase0 - 0.5 * baseCount;
+    if (!(laneFootprint > 0.0) || dash.x <= 0.0)
     {
-        return SOLOL_DashCoverage(phase0 - flow, duty, 0.0);
+        return SOLOL_DashCoverage(centeredPhase0 - flow, duty, 0.0);
     }
-    const float periodPx = 1.0 / footprint;
-    const float level = clamp(log2(periodPx / dash.x), min(minLevel, 0.0), dash.y);
-
-    // Only the coarser whole level is drawn, with no blend toward the finer one (no dimmer dash copy)
-    const float chosenScale = exp2(min(floor(level), dash.y));
-    const float coverage = SOLOL_DashCoverage(phase0 * chosenScale - flow, duty, footprint * chosenScale);
-    const float remainingPeriodPx = periodPx / exp2(level);
+    const float level = clamp(log2(1.0 / (laneFootprint * dash.x)), min(minLevel, 0.0), max(dash.y, 0.0));
+    const float levelScale = exp2(level);
+    const bool bFootprint = footprint > 0.0;
+    const float coverage = SOLOL_DashCoverage(centeredPhase0 * levelScale - flow, duty,
+        bFootprint ? footprint * levelScale : 0.0);
+    if (!bFootprint)
+    {
+        return coverage;
+    }
+    const float remainingPeriodPx = 1.0 / (footprint * levelScale);
     const float solid = dash.w > dash.z ? saturate((remainingPeriodPx - dash.z) / (dash.w - dash.z))
         : (remainingPeriodPx >= dash.z ? 1.0 : 0.0);
     return lerp(coverage, 1.0, solid);
@@ -239,7 +281,7 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
     const float3 aCamM = groupA.xyz - cameraM;
     const float3 bCamM = groupB.xyz - cameraM;
     const float laneParam = SOLNL_ClosestLaneParam(aCamM, bCamM, SOLOL_EclipticToUnreal(rayUnreal));
-    const float phase0 = laneParam * style1.z;
+    const float phase0 = SOLNL_ScreenParam(aCamM, bCamM, laneParam) * style1.z;
     const float footprint = fwidth(phase0);
     if (groupB.w < 0.0)
     {
@@ -278,9 +320,13 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
         return float3(0.0, 0.0, 0.0);
     }
 
-    // Flowing dashes: outbound toward B, inbound toward A
+    // Flowing dashes: outbound toward B, inbound toward A, spaced by on-screen length at one scale for the whole lane
+    // (its angular length in pixels; the focal length from the rendering view's projection, so every view gets its own)
     const float direction = lineIndex < 0.5 ? 1.0 : -1.0;
-    const float coverage = SOLNL_DashCoverage(phase0, params0.x, direction, footprint, style1.w, dash, style2.z);
+    const float focalLengthPx = 0.5 * ResolvedView.ViewToClip[0][0] * ResolvedView.ViewSizeAndInvSize.x;
+    const float laneFootprint = SOLNL_LaneFootprint(aCamM, bCamM, style1.z, focalLengthPx);
+    const float coverage = SOLNL_DashCoverage(phase0, style1.z, params0.x, direction, laneFootprint, footprint,
+        style1.w, dash, style2.z);
     const float3 color = lineIndex < 0.5 ? outboundColor : inboundColor;
     return color * (lerp(style1.x, style1.y, weight) * style2.y * profile * coverage * fade);
 }

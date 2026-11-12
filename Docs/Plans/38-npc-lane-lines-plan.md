@@ -216,3 +216,6 @@ The full contract is SDD section 6 (cases 1-24). In short:
 - 2026-11-11: follow-up (user decision, SDD 38 D15 amendment C): the lane dash size blend (the dimmer finer
   "shadow" copy) removed in `LaneDashCoverage` and `SOLNL_DashCoverage`; case 12 tests updated; suite 1843 / 0,
   `-SOLSmokeNpcLanes` 35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50; README lane shots recaptured.
+- 2026-11-11: second follow-up (user decision, SDD 38 D15 amendment D, the "accordion"): one continuous dash scale per lane
+  laid along the on-screen spacing (`LaneScreenParam`), replacing the stepped `floor(level)` and its pop; cases 11, 12
+  and the new 12b; suite 1844 / 0, `-SOLSmokeNpcLanes` 35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50.

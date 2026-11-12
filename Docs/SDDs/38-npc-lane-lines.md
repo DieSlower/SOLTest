@@ -86,6 +86,24 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
   and the coarse floor `NPC_LANE_DASH_MIN_LEVEL` stay. **Accepted trade-off:** the dashes jump to double or half
   length when the on-screen period crosses a size step (the original "no popping" promise is dropped for the lane
   dashes). The orbit lines keep their blend (SDD 17), so the lane coverage equals theirs only where their blend is 0.
+  **Amendment D (user decision, 2026-11-11, second follow-up after 38c): the "accordion" dash scale; replaces
+  amendment C's stepped `floor(level)` and its accepted pop.** From a prototype comparison of four schemes (current
+  stepped, accordion, split morph, grow-in-gap morph) the user chose the accordion: **one continuous scale for the
+  whole lane**, so a dash period is always about 24 px on screen, nothing pops, no dimmer shadow copy. **Accepted
+  trade-off:** the dashes slide along the lane while zooming (they are no longer fixed to the lane through a zoom;
+  the lane's middle on screen stays put). As built: the lane's level is continuous, `L = clamp(log2(period0Px / 24),
+  MIN, 8)` with `period0Px` = the lane's on-screen length / 64, that length taken once per lane as the angle the lane
+  subtends at the camera times the view's focal length in pixels (`LaneDashLaneFootprint`), so every pixel of a lane
+  uses the same scale `2^L`. To keep "about 24 px on screen" true in perspective too (a lane seen from inside the solar
+  system is often much nearer at one end), the dashes are laid along the **screen parameter** `LaneScreenParam`, the
+  lane parameter re-spaced by angle from A (0 at A, 1 at B; equal to s for a lane seen without perspective), instead of
+  the raw lane parameter s; this is the prototype's accordion carried into 3D (the prototype was flat), an
+  implementation choice recorded here. The phase pivots on the lane's middle on screen: `(sigma - 0.5) x 64 x 2^L -
+  direction x f`, so at whole levels the pattern is exactly the stepped scheme's (the offset is a whole number of
+  periods), and the 64-dash base (a lane 1,536 px on screen), the 4-dash floor (96 px and shorter) and the flow
+  (0.75 periods per real second, applied after the scaling, so a changing scale never makes the flow phase jump) are
+  unchanged; so are the fade to solid (now by the pixel's own dash period), the duty, glow, width and brightness. The
+  orbit lines keep their own scheme. No schema change.
 - **D16 (was Q10): Colour after tone mapping:** no HUD colour gain; the emissive scale is tuned on the screenshots so
   the brightest core keeps its hue.
 - **D17 (was Q11): Overlay row** label "Lanes" (id `"Lanes"`), top level, between "Ships on Radar" and "Darkening"
@@ -207,31 +225,38 @@ that distance; the close-up part, where float error would matter, is faded out (
   "keep right": seen on screen, each line lies to the right of its own direction of travel, so the outbound line is on
   the screen-space right of the projected A -> B direction (`LaneOutboundSideNormal`, section 6) and the rule holds
   from any viewpoint.
-- **World-anchored dashes:** the dash pattern is fixed in lane-parameter units (base count `DASH_BASE_COUNT` = 64 per
+- **Lane-anchored dashes (as designed; since the D15 amendment D they slide while zooming, below):** the dash
+  pattern is fixed in lane-parameter units (base count `DASH_BASE_COUNT` = 64 per
   lane, duty 0.5), with the orbit lines' multi-scale scheme (SDD 17 Amendment 1: the period halves in power-of-two
   levels while a dash is longer than 24 px on screen, up to level 8, then fades to solid between 200 and 800 px), so the
   dashes neither swim when the camera moves nor vanish in a gap. Since 38c (D15 amendment B) the period also
   **doubles** in power-of-two levels while it is shorter than 24 px, down to level -4 (4 dashes per lane), so a short
   lane on screen keeps visible dashes: with `MIN` = `NPC_LANE_DASH_MIN_LEVEL` the continuous level is
   `clamp(log2(period0Px / 24), MIN, 8)`, so a lane shorter than about 64 x 24 = 1,536 px on screen already uses the
-  coarser levels (4-8 dashes at 100-200 px). Since the D15 amendment C only one whole level is drawn,
-  `k = floor(level)` (the coarser size), with no blend toward `k + 1`: no dimmer finer dash copy, one brightness, and
-  the dashes jump to double or half length as the period crosses a size step. So the coverage at zero flow equals
-  the orbit lines' only where their blend is 0 (a whole level, or the top level and its solid fade): for lane levels
-  in [`MIN`, `8 + MIN`] (-4 to 4) that of a line with `64 x 2^MIN` dashes (its levels [0, 8] shifted by `MIN`), and
-  for lane levels [0, 8] that of the orbit lines' 64-dash line.
-- **Flow:** each level's phase is `s x DASH_BASE_COUNT x 2^k - direction x f`, where `f = frac(FLOW x t)` is one flow
+  coarser levels (4-8 dashes at 100-200 px). **Since the D15 amendment D (the accordion)** the level is not rounded:
+  one continuous scale `2^L` for the whole lane, `L` from the lane-wide `period0Px` (the angle the lane subtends at
+  the camera times the view's focal length in pixels, / 64), so between the clamps the period is 24 px on screen at
+  every zoom, nothing pops and one size is drawn (no dimmer copy); the dashes slide along the lane as the scale
+  changes (accepted), from the lane's middle on screen, which stays put. The dashes are laid along the screen
+  parameter `sigma = LaneScreenParam(A, B, s)` (the angle from A to the point over the whole lane's angle), so they
+  are evenly spaced on screen in perspective too. At whole levels the pattern is the stepped scheme's, so the coverage
+  at zero flow there equals the orbit lines' where their blend is 0: for lane levels in [`MIN`, `8 + MIN`] that of a
+  line with `64 x 2^MIN` dashes, and for lane levels [0, 8] that of the orbit lines' 64-dash line. (Amendment C, now
+  replaced, drew `floor(level)` and let the dashes pop at a size step.)
+- **Flow:** the phase is `(sigma - 0.5) x DASH_BASE_COUNT x 2^L - direction x f`, where `f = frac(FLOW x t)` is one flow
   phase in dash periods, `FLOW` = 0.75 periods per second (proposed), `direction` +1 outbound (dashes move toward B),
   -1 inbound. Because the flow is added after the level scaling, the dashes move by the same fraction of their own
-  on-screen period at every zoom. `f` is computed on the CPU in double and wrapped, so the shader never sees a large
+  on-screen period at every zoom, and a continuously changing scale never makes the flow phase jump. `f` is computed on the CPU in double and wrapped, so the shader never sees a large
   time. The clock is real time, independent of time warp, and never stops, the pause menu included (D15 as amended in
   38c).
-- `LaneDashCoverage(s, f, direction, footprint)` follows `MultiScaleDashCoverage`'s level choice and solid fade with
-  the flow applied after the level scaling, but box-filters the chosen level `k` only: `lerp(DashCoverage(s x
-  DASH_BASE_COUNT x 2^k - direction x f, DASH_DUTY, footprint x 2^k), 1, solid)`. With `f = 0` it equals
-  `MultiScaleDashCoverage(s x DASH_BASE_COUNT, ...)` where the orbit lines' blend is 0 and the level-0 period is at
-  least 24 px, and `MultiScaleDashCoverage(s x DASH_BASE_COUNT x 2^MIN, footprint x 2^MIN)` at whole coarse levels
-  (tests pin both, and pin that no partial copy of the finer level is drawn between them).
+- `LaneDashCoverage(sigma, f, direction, laneFootprint, pixelFootprint)` (D15 amendment D): `L =
+  LaneDashLevel(laneFootprint)`, `lerp(DashCoverage((sigma - 0.5) x DASH_BASE_COUNT x 2^L - direction x f, DASH_DUTY,
+  pixelFootprint x 2^L), 1, solid)`, `solid` the orbit lines' fade by this pixel's own period `1 / (pixelFootprint x
+  2^L)` (a lane near the camera in perspective, or past the top level). The lane footprint (one pixel in level-0
+  periods for the whole lane) sets the scale, the pixel's (`fwidth` in the shader) the box filter. A four-argument
+  form uses one footprint for both. Tests pin the whole levels against `MultiScaleDashCoverage`, the base and floor
+  dash counts, the continuity across the old size steps, the constant mean brightness and that no partial copy is
+  drawn.
 
 ### 4.7 Look, colour and HUD glow (D2, D5)
 
@@ -537,29 +562,41 @@ test edit).
 10. **`double LaneDashFlowPhase(double timeS)`**: `frac(FLOW x t)` in [0, 1), computed in double; t = 0 -> 0;
     t = 1 / FLOW -> within 1e-9 of 0 modulo 1 (the result itself always < 1); t = 0.5 / FLOW -> 0.5; t = 1e9 s stays in [0, 1) and equals the
     closed form within 1e-6; negative t -> in [0, 1) (`frac` of a negative number wraps up); NaN or inf -> 0.
-11. **`double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction)`**:
-    `laneParam x DASH_BASE_COUNT x 2^level - sign(direction) x flowPhase`, level clamped to
-    [`NPC_LANE_DASH_MIN_LEVEL`, `ORBIT_LINE_DASH_MAX_LEVEL`] (38c; it was [0, max]), direction 0 treated as +1. Motion check: for outbound, the phase at
+11. **`double LaneDashPhase(double laneParam, double level, double flowPhase, int32 direction)`** (D15 amendment D:
+    a continuous level, pivoting on the middle): `(laneParam - 0.5) x DASH_BASE_COUNT x 2^level - sign(direction) x
+    flowPhase`, level clamped to [`NPC_LANE_DASH_MIN_LEVEL`, `ORBIT_LINE_DASH_MAX_LEVEL`] (NaN as 0), direction 0
+    treated as +1. At whole levels it differs from the stepped scheme's `laneParam x DASH_BASE_COUNT x 2^level` by a
+    whole number of periods; at `laneParam = 0.5` it is `-sign(direction) x flowPhase` at every level; continuous in
+    the level across whole levels. Motion check at whole and fractional levels: for outbound, the phase at
     `(s + DASH_BASE_COUNT^-1 x 2^-level x df, f + df)` equals the phase at `(s, f)` (a dash feature moves toward B, s
     increasing, as f grows); for inbound the feature moves toward A (s decreasing). Both directions give the same
     phase at f = 0.
-12. **`double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint)`**
-    (D15 amendment C: a single level, no size blend): with `flowPhase == 0` it equals the single chosen level,
-    `lerp(DashCoverage(laneParam x DASH_BASE_COUNT x 2^k, DASH_DUTY, phaseFootprint x 2^k), 1, solid)` with
-    `k = floor(clamp(log2(1 / (footprint x ORBIT_LINE_DASH_MIN_PERIOD_PX)), MIN, ORBIT_LINE_DASH_MAX_LEVEL))` and the
-    orbit lines' solid fade, for a sweep of 20 (s, footprint) pairs from the coarsest level through level 0 and the
-    top level to the solid fade; where the orbit lines' blend is 0 (whole levels 0 to 8, and past the top level) it equals
-    `SOLOrbitLineMath::MultiScaleDashCoverage(laneParam x DASH_BASE_COUNT, DASH_DUTY, phaseFootprint, <the orbit
-    lines' level and solid constants>)`, and at whole coarse levels (38c) `MultiScaleDashCoverage(laneParam x
-    DASH_BASE_COUNT x 2^MIN, ..., phaseFootprint x 2^MIN, ...)`; a lane 32, 64, 130 or 400 px long on screen shows
-    dashes (coverage range along it at least 0.5); a lane 8 or 16 px long keeps `DASH_BASE_COUNT x 2^MIN` (4) dashes;
-    between two size steps (the level half way) only the coarser level is drawn, with no partial copy of the finer
-    one: the coverage equals that level's alone and few samples along the lane are part lit (only the dash edges),
-    where the orbit lines' blend leaves many; across a size step the coverage jumps from one whole level to the next
-    (the accepted pop); in [0, 1] always; NaN or non-positive footprint -> a
-    level-0 point sample of `LaneDashPhase(s, 0, f, dir)` (a square wave of duty `DASH_DUTY`); shifting f by a whole
-    period (1.0) leaves the coverage unchanged; inside a pure level-k regime, shifting f by `delta` equals shifting the
-    level-k phase by `delta` (same value as the point sample at the shifted phase).
+12. **`double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double laneFootprint, double
+    pixelFootprint)`** and the four-argument form with one footprint for both (D15 amendment D, the accordion):
+    equals the closed form of section 4.6 over 20 (s, footprint) pairs from the coarsest level through level 0 and the
+    top level to the solid fade, flowing too, and over split (lane, pixel) footprints (perspective: a pixel whose own
+    period is 1,000 px is solid, a pixel whose dashes are under a pixel box-filters to the duty); at whole levels it
+    equals `SOLOrbitLineMath::MultiScaleDashCoverage(laneParam x DASH_BASE_COUNT, ...)` (levels 0 to 8 and past the
+    top level) and `MultiScaleDashCoverage(laneParam x DASH_BASE_COUNT x 2^MIN, ..., footprint x 2^MIN, ...)` at whole
+    coarse levels; a lane 1,536, 3,072 and 6,144 px long on screen has 64, 128 and 256 dash periods, one 8, 16 or 96 px
+    long 4 (the floor); between the clamps the period is 24 px on screen (dash count within one of L / 24 for lanes 100
+    to 9,999 px); a lane 32, 64, 130 or 400 px long shows dashes (coverage range at least 0.5); **no step**: across
+    each of the stepped scheme's size steps the coverage changes by under 1e-4 (it jumped by 0.5 or more), and a zoom
+    in steps of 0.002% of the lane's length from the floor to level 2 moves a point's coverage by under 0.1 per step;
+    the lane's middle stays put at every lane length; the mean coverage along the lane is the duty within the half
+    period the ends can cut off, across the old size steps too; half way between two old size steps only the dash
+    edges are part lit (no dimmer copy); in [0, 1] always; a whole flow period changes nothing; a NaN or non-positive
+    lane footprint -> a level-0 point sample of `LaneDashPhase(s, 0, f, dir)`, a bad pixel footprint with a good lane
+    one -> a point sample at the lane's level; at every scale shifting f by `delta` equals moving s by `delta /
+    (DASH_BASE_COUNT x 2^L)`.
+12b. **`LaneDashLevel(laneFootprint)`, `LaneDashLaneFootprint(aRelM, bRelM, focalLengthPx)`, `LaneScreenParam(aRelM,
+    bRelM, laneParam)`** (D15 amendment D, `SOLTest.NpcLaneMath.DashScreenSpacing`): the level is `log2(1 /
+    (footprint x 24))` clamped to [MIN, 8], non-decreasing as the lane grows, 0 for a bad footprint; the lane
+    footprint is `DASH_BASE_COUNT / (angle x focal)` (a right angle, a symmetric small angle, an endpoint behind the
+    camera, scale free; 0 end-on, with an endpoint on the camera, a zero focal length or a NaN); the screen parameter
+    is 0 at A and 1 at B (clamped outside), the symmetric lane's closed form `0.5 + atan((2s - 1) h / d) / (2 atan(h /
+    d))` (close to s for a small angle), increasing along a perspective lane, and the point a quarter, half and three
+    quarters of the lane's angle from A has 0.25, 0.5 and 0.75; s itself when the lane subtends no angle.
 13. **`double ClosestLaneParam(const FVector3d& aRelM, const FVector3d& bRelM, const FVector3d& rayDirection)`**: the
     parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the ray from the origin along
     `rayDirection` (normalized inside). Cases: A = (1e9, -1e9, 0), B = (1e9, 1e9, 0), ray (1, 0, 0) -> 0.5; ray toward
@@ -707,7 +744,8 @@ Temporary screenshots and captures are deleted once looked at; only README galle
   counts) and one small mesh build (about 2,000 vertices). Budget: `ASOLNpcVisuals::Redraw` +0.02 ms or less at 1M.
 - **GPU:** the lane ribbons are ~2,000 vertices; the pixel cost is the ribbon area: at 1080p with all 8 lanes across
   the screen about 8 x 2 x 2,000 px x 2 x 13.25 px ~ 0.85 Mpx of a cheap additive shader (closest-point math, one log
-  for the fade, one dash level since the D15 amendment C, the two-exp glow profile, up to 8 ray-sphere tests). Expected well under 0.1 ms at
+  for the fade, one dash scale for the whole lane since the D15 amendment D, plus three `atan2` angles for it and the
+  screen parameter, the two-exp glow profile, up to 8 ray-sphere tests). Expected well under 0.1 ms at
   1080p, scaling with pixels at 4K and one eye. The far layer gets cheaper: lane ships beyond `FADE_FAR x R` return
   the hidden offset after the rail evaluation (vertex cost unchanged, their raster and pixel cost gone; ~40% of the
   points at the default lane fraction). Budgets (D22, gated at 1920x1080 only): lanes <= 0.15 ms GPU at 1920x1080 in V3 with 1M; NPC
@@ -743,8 +781,8 @@ separate occluder set for the lanes (D24).
   band where the lane looks dimmer or busier. Lever: the fade radii and the line brightness.
 - Additive cores can tone-map toward white (D2 forbids white): watched in the screenshots (D16).
 - Multi-scale levels flowing at different on-screen speeds during a level crossfade may shimmer slightly; lever: the
-  flow speed or a narrower crossfade. (Gone since the D15 amendment C: one level is drawn, and the accepted cost is
-  that the dashes pop to double or half length at a size step.)
+  flow speed or a narrower crossfade. (Gone since the D15 amendment C: one size is drawn; since amendment D at one
+  continuous scale per lane, and the accepted cost is that the dashes slide along the lane while zooming.)
 - The Overlay Menu with one more row may come closer to the framed paddings at 720p (TECH_DEBT) and to the one-eye
   ceiling (recorded per D21).
 - `M_SOLNpcPoints` and `M_SOLNpcLanes` HLSL mirror `SOLNpcLaneMath`; a change to one must change the other (noted in
@@ -766,3 +804,10 @@ separate occluder set for the lanes (D24).
   dashes pop at a size step (accepted); section 4.6, section 6 case 12, section 9 and section 11 updated; the orbit
   lines keep their blend. Verified: suite 1843/1843 (lane topics 29/29), `-SOLSmokeNpcLanes` 35/35 at 1280x720 and
   1920x1080, `-SOLSmokeOverlay` 50/50; the three README lane shots recaptured at 1080p.
+- 2026-11-11: second follow-up after 38c, the user's D15 amendment D (the "accordion", chosen from a prototype
+  comparison; replaces amendment C's stepped `floor(level)` and its pop): one continuous dash scale per lane from the
+  lane's angular length on screen, the dashes laid along the screen parameter (`LaneScreenParam`) so they stay about
+  24 px apart in perspective too, the phase pivoting on the lane's middle; `LaneDashPhase` takes a continuous level,
+  `LaneDashCoverage` a lane and a pixel footprint, new `LaneDashLevel`, `LaneDashLaneFootprint`, `LaneScreenParam`;
+  `SOLNL_DashCoverage` and `SOLNL_Pixel` updated (the focal length read from `ResolvedView`, no material graph
+  change); section 4.6, section 6 cases 11, 12 and 12b, sections 9 and 11 updated. No schema change.

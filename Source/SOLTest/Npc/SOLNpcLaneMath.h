@@ -77,18 +77,41 @@ namespace SOLNpcLane
     // time wraps up); 0 for a NaN or infinite time
     SOLTEST_API double LaneDashFlowPhase(double timeS);
 
-    // Returns a level's dash phase: s x NPC_LANE_DASH_BASE_COUNT x 2^level - sign(direction) x flowPhase (level clamped
-    // to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], direction 0 as +1), so outbound dashes move toward B and
-    // inbound ones toward A
-    SOLTEST_API double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction);
+    // Returns a (continuous) level's dash phase: (s - 0.5) x NPC_LANE_DASH_BASE_COUNT x 2^level - sign(direction) x
+    // flowPhase (level clamped to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], NaN as 0, direction 0 as +1), so
+    // outbound dashes move toward B and inbound ones toward A; the scale pivots on the lane's middle, and at a whole
+    // level the pattern is that of s x BASE x 2^level (the two differ by a whole number of periods)
+    SOLTEST_API double LaneDashPhase(double laneParam, double level, double flowPhase, int32 direction);
 
-    // Returns the dash coverage of a flowing lane line at a single whole level: the orbit lines' continuous level
-    // (ORBIT_LINE_DASH_MIN_PERIOD_PX, ORBIT_LINE_DASH_MAX_LEVEL) rounded down to the coarser size, box-filtered at that
-    // level only (no blend toward the finer size, so no dimmer dash copy; the dashes jump to double or half length as
-    // the on-screen period crosses a size step), the flow applied after the level's scaling, then the orbit lines' fade
-    // to solid past the last level. Where the level-0 period is under the minimum the levels go coarser, down to
-    // NPC_LANE_DASH_MIN_LEVEL, so a lane short on screen still shows dashes. The footprint is one pixel in level-0 dash
-    // periods, and a NaN or non-positive one is a level-0 point sample
+    // Returns the lane's continuous dash level (SDD 38 D15 amendment D) from its lane-wide footprint (one on-screen pixel
+    // in level-0 dash periods): clamp(log2(1 / (footprint x ORBIT_LINE_DASH_MIN_PERIOD_PX)), NPC_LANE_DASH_MIN_LEVEL,
+    // ORBIT_LINE_DASH_MAX_LEVEL), so a dash period is ORBIT_LINE_DASH_MIN_PERIOD_PX on screen between the two clamps;
+    // 0 for a NaN or non-positive footprint
+    SOLTEST_API double LaneDashLevel(double laneFootprint);
+
+    // Returns the lane-wide footprint the shader derives once per lane: NPC_LANE_DASH_BASE_COUNT / (the angle the lane
+    // subtends at the camera x focalLengthPx), the lane's on-screen length taken as that angle in pixels; 0 when A or
+    // B sits on the camera, A == B in direction, the focal length is not positive or an input is not finite
+    SOLTEST_API double LaneDashLaneFootprint(const FVector3d& aRelM, const FVector3d& bRelM, double focalLengthPx);
+
+    // Returns the lane parameter re-spaced by on-screen (angular) length, the parameter the dashes are laid along:
+    // (the angle from A to the point at s, s clamped to [0, 1]) / (the whole lane's angle), so equal steps of it are
+    // equal steps on screen even in perspective (0 at A, 1 at B, 0.5 at the lane's middle on screen); laneParam itself
+    // when the lane subtends no angle (an endpoint on the camera, A == B in direction, bad input)
+    SOLTEST_API double LaneScreenParam(const FVector3d& aRelM, const FVector3d& bRelM, double laneParam);
+
+    // Returns the dash coverage of a flowing lane line with the continuous accordion scale (D15 amendment D): one
+    // scale for the whole lane, 2^LaneDashLevel(laneFootprint), so the dash period stays about
+    // ORBIT_LINE_DASH_MIN_PERIOD_PX on screen and nothing pops (the dashes slide along the lane, from its middle, as the
+    // scale changes); the flow applied after the scaling; box-filtered over pixelFootprint (one pixel in level-0
+    // periods at this pixel), then the orbit lines' fade to solid where this pixel's own dash period passes
+    // ORBIT_LINE_DASH_SOLID_START_PX. A NaN or non-positive lane footprint is a level-0 point sample; a NaN or
+    // non-positive pixel footprint a point sample at the lane's scale with no solid fade. The shader passes
+    // LaneScreenParam as laneParam, so the dashes are evenly spaced on screen in perspective too
+    SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double laneFootprint,
+        double pixelFootprint);
+
+    // Returns LaneDashCoverage with the same footprint for the lane and the pixel (a lane seen without perspective)
     SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint);
 
     // Returns the parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the ray from the
