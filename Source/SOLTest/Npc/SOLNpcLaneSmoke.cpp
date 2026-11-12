@@ -18,17 +18,20 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "UI/SOLHudShapeMath.h"
+#include "UI/SOLUiProfileCapture.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
 
 #include "Camera/PlayerCameraManager.h"
+#include "Engine/Engine.h"
 #include "Engine/GameViewportClient.h"
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "Widgets/SWindow.h"
 
 namespace
 {
@@ -62,6 +65,15 @@ namespace
     constexpr double LANESMOKE_AXIS_OFFSET_RADII = 1.0;      // ...from one lane radius off its centre line
     constexpr double LANESMOKE_PROJECT_CM = 1.0e5;           // Lane endpoints projected along their direction
 
+    // Profile flag (SDD 38 section 8 item 7): V2 and V3, lanes drawn then sol.NpcLanes 0
+    constexpr int32 LANESMOKE_PROFILE_VIEWS[] = { 1, 2 };
+    constexpr double LANESMOKE_PROFILE_SETTLE_S = 4.0;       // Anchor, far layer and GPU settle after the move
+    constexpr int32 LANESMOKE_PROFILE_FRAMES = 240;          // stat dumpave window
+    constexpr int32 LANESMOKE_PROFILE_GPU_FRAMES[] = { 20, 100, 180 };   // ProfileGPU inside the window
+    constexpr int32 LANESMOKE_PROFILE_TAIL_FRAMES = 30;      // Frames left for the dump to print
+    const TCHAR* const LANESMOKE_PROFILE_AVE_ROOT = TEXT("STAT_SOL_NpcRedraw");   // stat dumpave root
+    constexpr float LANESMOKE_PROFILE_MAX_WINDOW_PX = 16384.0f;   // Lifted window size limit (4K and one-eye views)
+
     // The variants shot per view: lanes shown and the pending HUD glow
     struct FSOLLaneSmokeVariant
     {
@@ -94,6 +106,34 @@ namespace
             cvar->Set(value, ECVF_SetByCode);
         }
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Sets the -ResX / -ResY view past the desktop size with r.SetRes (a windowed game is otherwise clamped to the
+    // desktop's work area), as the menu profile smokes do; nothing without both values or before the window exists
+    void LaneSmokeApplyCommandLineView(UWorld* world)
+    {
+        int32 width = 0;
+        int32 height = 0;
+        const TSharedPtr<SWindow> window = GEngine != nullptr && GEngine->GameViewport != nullptr
+            ? GEngine->GameViewport->GetWindow() : nullptr;
+        if (!FParse::Value(FCommandLine::Get(), TEXT("ResX="), width) || !FParse::Value(FCommandLine::Get(),
+            TEXT("ResY="), height) || width <= 0 || height <= 0 || !window.IsValid())
+        {
+            return;
+        }
+        window->SetSizeLimits(FWindowSizeLimits().SetMaxWidth(LANESMOKE_PROFILE_MAX_WINDOW_PX)
+            .SetMaxHeight(LANESMOKE_PROFILE_MAX_WINDOW_PX));
+        GEngine->Exec(world, *FString::Printf(TEXT("r.SetRes %dx%dw"), width, height));
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes: profile view at %dx%d (window size limit lifted)"), width, height);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Runs a console command in the world (the profile captures)
+    void LaneSmokeRunCommand(const TCHAR* command, UWorld* world)
+    {
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes: console command '%s'"), command);
+        FSOLUiProfileCapture::RunCommand(command, world);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -110,9 +150,12 @@ void FSOLNpcLaneSmoke::Start(ASOLShipPawn& pawn)
     mMenu = world->GetSubsystem<USOLMenuSubsystem>();
     mSimClock = world->GetSubsystem<USOLSimClockSubsystem>();
     mSettings = USOLSettingsSubsystem::Get(&pawn);
-    UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes: starting (NPC visuals %s, orbit lines %s, settings %s)"),
+
+    // The cost captures need a standalone -game process (in the editor ProfileGPU opens its visualizer)
+    mIsProfile = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_LANES_PROFILE) && !GIsEditor;
+    UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes: starting (NPC visuals %s, orbit lines %s, settings %s, profile %s)"),
         mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mOrbitLines.IsValid() ? *mOrbitLines->GetName()
-        : TEXT("none"), mSettings.IsValid() ? TEXT("yes") : TEXT("none"));
+        : TEXT("none"), mSettings.IsValid() ? TEXT("yes") : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"));
 
     // Overrides: the lanes and the orbit lines leave the player's settings alone; orbit lines off (D24 check)
     if (mVisuals.IsValid())
@@ -173,6 +216,14 @@ bool FSOLNpcLaneSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
             return false;
         }
     }
+    else if (mPhase == ESOLLanePhase::ProfileOn || mPhase == ESOLLanePhase::ProfileOff)
+    {
+        if (!TickProfile(mPhase == ESOLLanePhase::ProfileOn ? TEXT("lanes drawn") : TEXT("sol.NpcLanes 0"),
+            pawn.GetWorld()))
+        {
+            return false;
+        }
+    }
     else if (mPhaseTimeS < GetPhaseDuration(mPhase) || mPhaseFrames < LANESMOKE_MIN_PHASE_FRAMES)
     {
         return false;
@@ -194,6 +245,27 @@ bool FSOLNpcLaneSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds)
 // Returns the next phase after one has ended (variants per view, then the next view, then the single checks)
 FSOLNpcLaneSmoke::ESOLLanePhase FSOLNpcLaneSmoke::NextPhase(const ESOLLanePhase phase)
 {
+    // The profile flag skips the views and checks; each profile view runs its setup, lanes drawn, then lanes off
+    if (phase == ESOLLanePhase::WaitPopulation && mIsProfile)
+    {
+        mProfileView = 0;
+        mView = LANESMOKE_PROFILE_VIEWS[0];
+        return ESOLLanePhase::ProfileSetup;
+    }
+    if (phase == ESOLLanePhase::GlowRevert)
+    {
+        return ESOLLanePhase::Done;
+    }
+    if (phase == ESOLLanePhase::ProfileOff)
+    {
+        if (mProfileView + 1 < static_cast<int32>(UE_ARRAY_COUNT(LANESMOKE_PROFILE_VIEWS)))
+        {
+            ++mProfileView;
+            mView = LANESMOKE_PROFILE_VIEWS[mProfileView];
+            return ESOLLanePhase::ProfileSetup;
+        }
+        return ESOLLanePhase::Done;
+    }
     if (phase != ESOLLanePhase::VariantShot)
     {
         return static_cast<ESOLLanePhase>(static_cast<uint8>(phase) + 1);
@@ -256,6 +328,7 @@ void FSOLNpcLaneSmoke::EnterPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
         break;
     case ESOLLanePhase::PauseHold:
         mFlowStartPhase = mVisuals->GetLaneFlowPhase();
+        mFlowStartS = FPlatformTime::Seconds();
         break;
     case ESOLLanePhase::Resume:
         if (mMenu.IsValid())
@@ -267,6 +340,7 @@ void FSOLNpcLaneSmoke::EnterPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
             mSimClock->ResetWarp();
         }
         mFlowStartPhase = mVisuals->GetLaneFlowPhase();
+        mFlowStartS = FPlatformTime::Seconds();
         break;
     case ESOLLanePhase::CvarOff:
         LaneSmokeSetCvar(SOL::NPC_LANE_CVAR, 0);
@@ -285,6 +359,21 @@ void FSOLNpcLaneSmoke::EnterPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
         {
             mSettings->RevertPending();
         }
+        break;
+    case ESOLLanePhase::ProfileSetup:
+        // Lanes on at 100% glow at the profile view; the material draw events name the lane and point draws
+        SetupView();
+        mVisuals->SetLaneVerificationOverride(true);
+        SetPendingGlow(SOL::Settings::HUD_GLOW_DEFAULT);
+        LaneSmokeSetCvar(SOL::NPC_LANE_CVAR, 1);
+        LaneSmokeRunCommand(TEXT("r.ShowMaterialDrawEvents 1"), pawn.GetWorld());
+        LaneSmokeRunCommand(TEXT("r.VSync 0"), pawn.GetWorld());
+        LaneSmokeApplyCommandLineView(pawn.GetWorld());
+        break;
+    case ESOLLanePhase::ProfileOn:
+    case ESOLLanePhase::ProfileOff:
+        LaneSmokeSetCvar(SOL::NPC_LANE_CVAR, phase == ESOLLanePhase::ProfileOn ? 1 : 0);
+        mProfileFrame = 0;
         break;
     default:
         break;
@@ -305,9 +394,16 @@ void FSOLNpcLaneSmoke::ExitPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
             FString::Printf(TEXT("%d rails after %.1f s, lane ribbon %d vertices (%d expected for 8 lanes)"), rails,
                 mPhaseTimeS, mVisuals->GetLaneMeshVertexCount(), SOLNpcLane::LaneRibbonVertexCount(8)));
         mOccluderWritesAtStart = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() : 0;
+
+        // D15 amendment B: the shader receives the coarsest dash level (NpcLaneStyle2.z)
+        FLinearColor style2 = FLinearColor::Black;
+        const bool bStyle = mVisuals->GetPushedLaneStyle2(style2);
+        Check(TEXT("a-dash-min-level"), bStyle && style2.B == static_cast<float>(SOL::NPC_LANE_DASH_MIN_LEVEL),
+            FString::Printf(TEXT("NpcLaneStyle2.z %.1f (expected %d)"), style2.B, SOL::NPC_LANE_DASH_MIN_LEVEL));
         break;
     }
     case ESOLLanePhase::ViewSetup:
+    case ESOLLanePhase::ProfileSetup:
     {
         // At rest relative to the reference body the move may have changed (the anchor follows the ship)
         FSOLShipState state = mShips->GetState();
@@ -353,18 +449,31 @@ void FSOLNpcLaneSmoke::ExitPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
     }
     case ESOLLanePhase::PauseHold:
     {
+        // The dashes never freeze (D15 amended 2026-11-11): real-time flow with the pause menu open
         const bool bPaused = mMenu.IsValid() && mMenu->GetState().Mode == SOLMenuState::EMenuMode::Paused;
         const double phase1 = mVisuals->GetLaneFlowPhase();
-        Check(TEXT("e-flow-paused"), bPaused && phase1 == mFlowStartPhase, FString::Printf(TEXT("pause menu %s, "
-            "phase %.6f -> %.6f"), bPaused ? TEXT("open") : TEXT("closed"), mFlowStartPhase, phase1));
+        const double elapsedS = FPlatformTime::Seconds() - mFlowStartS;
+        const double expected = mFlowStartPhase + flow * elapsedS;
+        const double error = LaneSmokeWrapDistance(phase1, expected);
+        Check(TEXT("e-flow-pause-menu"), bPaused && phase1 != mFlowStartPhase && error <= LANESMOKE_FLOW_TOLERANCE,
+            FString::Printf(TEXT("pause menu %s, phase %.4f -> %.4f over %.3f s (expected %.4f, error %.4f periods)"),
+                bPaused ? TEXT("open") : TEXT("closed"), mFlowStartPhase, phase1, elapsedS,
+                expected - FMath::FloorToDouble(expected), error));
         break;
     }
     case ESOLLanePhase::Resume:
     {
+        // After the resume, at warp 1: still the real-time rate
         const bool bPlaying = mMenu.IsValid() && mMenu->GetState().Mode == SOLMenuState::EMenuMode::Playing;
         const double phase1 = mVisuals->GetLaneFlowPhase();
-        Check(TEXT("e-flow-resumed"), bPlaying && phase1 != mFlowStartPhase, FString::Printf(TEXT("playing %d, "
-            "phase %.6f -> %.6f"), bPlaying ? 1 : 0, mFlowStartPhase, phase1));
+        const double elapsedS = FPlatformTime::Seconds() - mFlowStartS;
+        const double expected = mFlowStartPhase + flow * elapsedS;
+        const double error = LaneSmokeWrapDistance(phase1, expected);
+        const double warp = mSimClock.IsValid() ? mSimClock->GetClock().GetWarpFactor() : 1.0;
+        Check(TEXT("e-flow-resumed"), bPlaying && warp == 1.0 && phase1 != mFlowStartPhase
+            && error <= LANESMOKE_FLOW_TOLERANCE, FString::Printf(TEXT("playing %d, phase %.4f -> %.4f over %.3f s at "
+            "%.0fx warp (expected %.4f, error %.4f periods)"), bPlaying ? 1 : 0, mFlowStartPhase, phase1, elapsedS,
+            warp, expected - FMath::FloorToDouble(expected), error));
         break;
     }
     case ESOLLanePhase::CvarShotWait:
@@ -396,15 +505,16 @@ void FSOLNpcLaneSmoke::ExitPhase(const ESOLLanePhase phase, ASOLShipPawn& pawn)
         const float saved = mSettings.IsValid() ? mSettings->GetSavedValues().HudGlow
             : SOL::Settings::HUD_GLOW_DEFAULT;
         CheckLaneState(TEXT("h-glow-revert"), true, saved);
-        LaneSmokeSetCvar(SOL::SpaceDust::CVAR_ENABLED, 1);
-        UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes SUMMARY: complete after %.1f s, %d/%d checks run passed%s"),
-            mTotalTimeS, mChecksPassed, mChecksRun, mChecksPassed == mChecksRun ? TEXT("") : TEXT(" (FAILURES)"));
-        if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
-        {
-            gameMode->TakeSmokeScreenshot();
-        }
+        Finish(pawn);
         break;
     }
+    case ESOLLanePhase::ProfileOff:
+        LaneSmokeSetCvar(SOL::NPC_LANE_CVAR, 1);
+        if (mProfileView + 1 >= static_cast<int32>(UE_ARRAY_COUNT(LANESMOKE_PROFILE_VIEWS)))
+        {
+            Finish(pawn);
+        }
+        break;
     default:
         break;
     }
@@ -418,6 +528,8 @@ double FSOLNpcLaneSmoke::GetPhaseDuration(const ESOLLanePhase phase)
     {
     case ESOLLanePhase::ViewSetup:
         return LANESMOKE_VIEW_SETUP_S;
+    case ESOLLanePhase::ProfileSetup:
+        return LANESMOKE_PROFILE_SETTLE_S;
     case ESOLLanePhase::VariantSet:
     case ESOLLanePhase::CvarOff:
         return LANESMOKE_VARIANT_S;
@@ -435,6 +547,60 @@ double FSOLNpcLaneSmoke::GetPhaseDuration(const ESOLLanePhase phase)
         return LANESMOKE_MAP_S;
     default:
         return LANESMOKE_TAP_S;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one cost capture from the first frame it is called; returns true once it is done
+bool FSOLNpcLaneSmoke::TickProfile(const TCHAR* label, UWorld* world)
+{
+    // stat dumpave averages the next 240 frames; ProfileGPU captures three frames inside that window. The numbers
+    // are read from the log (the dumps print on the stats thread, the GPU profiles on the render thread)
+    if (mProfileFrame == 0)
+    {
+        mProfileStartS = mTotalTimeS;
+        FVector2D size(0.0, 0.0);
+        if (world->GetGameViewport() != nullptr)
+        {
+            world->GetGameViewport()->GetViewportSize(size);
+        }
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes PROFILE %s %s: start (lane component %s, viewport %.0fx%.0f)"),
+            GetViewName(), label, mVisuals->IsLaneComponentVisible() ? TEXT("visible") : TEXT("hidden"), size.X,
+            size.Y);
+        LaneSmokeRunCommand(*FString::Printf(TEXT("stat dumpave -num=%d -ms=0 -root=%s"), LANESMOKE_PROFILE_FRAMES,
+            LANESMOKE_PROFILE_AVE_ROOT), world);
+    }
+    for (const int32 gpuFrame : LANESMOKE_PROFILE_GPU_FRAMES)
+    {
+        if (mProfileFrame == gpuFrame)
+        {
+            UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes PROFILE %s %s: ProfileGPU at frame %d"), GetViewName(), label,
+                mProfileFrame);
+            LaneSmokeRunCommand(TEXT("ProfileGPU"), world);
+        }
+    }
+    if (mProfileFrame == LANESMOKE_PROFILE_FRAMES + LANESMOKE_PROFILE_TAIL_FRAMES)
+    {
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes PROFILE %s %s: done after %d frames, %.2f s (lane component %s). "
+            "The game-thread cost is the LogStats block '240 frames, average' (STAT_SOL_NpcRedraw and its "
+            "STAT_SOL_NpcLanes line), the GPU cost the LogRHI 'GPU Profile for Frame' blocks (the translucency "
+            "passes); compare with the sol.NpcLanes 0 capture"), GetViewName(), label, mProfileFrame,
+            mTotalTimeS - mProfileStartS, mVisuals->IsLaneComponentVisible() ? TEXT("visible") : TEXT("hidden"));
+    }
+    ++mProfileFrame;
+    return mProfileFrame > LANESMOKE_PROFILE_FRAMES + LANESMOKE_PROFILE_TAIL_FRAMES;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Logs the SUMMARY line, restores the space dust and takes the closing screenshot (which quits)
+void FSOLNpcLaneSmoke::Finish(ASOLShipPawn& pawn) const
+{
+    LaneSmokeSetCvar(SOL::SpaceDust::CVAR_ENABLED, 1);
+    UE_LOG(LogSOL, Log, TEXT("SmokeNpcLanes SUMMARY: complete after %.1f s, %d/%d checks run passed%s"),
+        mTotalTimeS, mChecksPassed, mChecksRun, mChecksPassed == mChecksRun ? TEXT("") : TEXT(" (FAILURES)"));
+    if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
+    {
+        gameMode->TakeSmokeScreenshot();
     }
 }
 

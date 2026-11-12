@@ -31,9 +31,13 @@ class USOLSimClockSubsystem;
  * visibility equals (lanes shown and a lane drawn), that the far points' crossfade flag follows, that the lane
  * material's glow scale is HudGlowScale of the pending value, and once that every lane's group-texel .w values are its
  * radius and weight from a fresh histogram (CountLaneShips) and BuildLaneFrame. Then: the dash flow advances at the
- * real-time rate under a 4-step time warp, holds while the pause menu shows and runs again after it; sol.NpcLanes 0
- * hides the lines and restores the points (screenshot); the lanes stay visible on the jump map (D18, screenshot); the
- * reverted glow returns. Each check logs a LogSOL PASS / FAIL line, then a SUMMARY line, and the game quits.
+ * real-time rate under a 4-step time warp, keeps flowing at that rate while the pause menu shows (it never freezes,
+ * D15 amended 2026-11-11) and after the resume; sol.NpcLanes 0 hides the lines and restores the points (screenshot);
+ * the lanes stay visible on the jump map (D18, screenshot); the reverted glow returns. Each check logs a LogSOL PASS /
+ * FAIL line, then a SUMMARY line, and the game quits. With -SOLSmokeNpcLanesProfile (standalone -game only) it skips
+ * the views and checks after the population and, for V2 and V3, captures stat dumpave of STAT_SOL_NpcRedraw (with its
+ * STAT_SOL_NpcLanes share) over 240 frames and three ProfileGPU frames inside that window with the lanes drawn and
+ * again with sol.NpcLanes 0 (SDD 38 section 8 item 7); the numbers are read from the log.
  */
 class SOLTEST_API FSOLNpcLaneSmoke
 {
@@ -56,8 +60,8 @@ private:
         VariantShot,        // ...its screenshot; then the next variant, or the next view
         Flow,               // Time warp up: the flow phase advances at the real-time rate
         PauseOpen,          // The pause menu opens
-        PauseHold,          // ...the flow phase holds
-        Resume,             // ...and runs again after the resume (time warp reset)
+        PauseHold,          // ...the flow phase keeps advancing at the real-time rate (never frozen)
+        Resume,             // ...and after the resume (time warp reset)
         CvarOff,            // sol.NpcLanes 0: lines hidden, points restored (screenshot)
         CvarShotWait,       // ...the screenshot is written before the cvar returns
         CvarOn,             // sol.NpcLanes 1 again
@@ -65,6 +69,9 @@ private:
         MapShotWait,        // ...the screenshot is written before the map closes
         MapClose,
         GlowRevert,         // The pending HUD glow reverted: the saved glow scale is back
+        ProfileSetup,       // Profile flag only: the ship moves to the next profile view and settles
+        ProfileOn,          // ...stat dumpave and ProfileGPU with the lanes drawn
+        ProfileOff,         // ...and again with sol.NpcLanes 0
         Done,
     };
 
@@ -79,6 +86,13 @@ private:
 
     // Returns the minimum real duration of a phase in seconds
     static double GetPhaseDuration(ESOLLanePhase phase);
+
+    // With the profile flag: runs one cost capture (stat dumpave, three ProfileGPU frames) from the first frame it is
+    // called; returns true once it is done
+    bool TickProfile(const TCHAR* label, UWorld* world);
+
+    // Logs the SUMMARY line and takes the closing screenshot (which quits)
+    void Finish(ASOLShipPawn& pawn) const;
 
     // Moves the ship to a view (Unreal-handed universe metres) facing a direction, at the reference velocity
     void SetupShip(const FVector3d& positionM, const FVector3d& forwardDir) const;
@@ -125,6 +139,10 @@ private:
     double mFlowStartPhase = 0.0;           // Flow phase and platform time at a measurement's start
     double mFlowStartS = 0.0;
     int32 mOccluderWritesAtStart = 0;       // The orbit lines' lane-only occluder writes when the first view starts
+    int32 mProfileView = 0;                 // Index into the profile views
+    int32 mProfileFrame = 0;                // Frames into the running cost capture
+    double mProfileStartS = 0.0;            // Script clock at the capture's start
+    bool mIsProfile = false;                // -SOLSmokeNpcLanesProfile in a standalone -game run
     bool mIsTexelChecked = false;
     int32 mChecksRun = 0;
     int32 mChecksPassed = 0;

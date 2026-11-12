@@ -163,7 +163,7 @@ double SOLNpcLane::LaneDashFlowPhase(const double timeS)
 double SOLNpcLane::LaneDashPhase(const double laneParam, const int32 level, const double flowPhase,
     const int32 direction)
 {
-    const int32 clampedLevel = FMath::Clamp(level, 0, SOL::ORBIT_LINE_DASH_MAX_LEVEL);
+    const int32 clampedLevel = FMath::Clamp(level, SOL::NPC_LANE_DASH_MIN_LEVEL, SOL::ORBIT_LINE_DASH_MAX_LEVEL);
     const double levelScale = FMath::Exp2(static_cast<double>(clampedLevel));
     const double sign = direction < 0 ? -1.0 : 1.0;
     return laneParam * static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT) * levelScale - sign * flowPhase;
@@ -171,7 +171,8 @@ double SOLNpcLane::LaneDashPhase(const double laneParam, const int32 level, cons
 
 //////////////////////////////////////////////////////////////////////////
 // Returns the multi-scale coverage of a flowing lane line (SOLOrbitLineMath::MultiScaleDashCoverage with the flow
-// applied after each level's scaling, so the dashes move by the same fraction of their own period at every zoom)
+// applied after each level's scaling, so the dashes move by the same fraction of their own period at every zoom, and
+// with coarser levels down to NPC_LANE_DASH_MIN_LEVEL where the level-0 period is under the minimum)
 double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPhase, const int32 direction,
     const double phaseFootprint)
 {
@@ -185,11 +186,12 @@ double SOLNpcLane::LaneDashCoverage(const double laneParam, const double flowPha
             SOL::NPC_LANE_DASH_DUTY, phaseFootprint);
     }
 
-    // Continuous level: how many halvings bring the on-screen period down to the orbit lines' minimum (as theirs)
+    // Continuous level: how many halvings bring the on-screen period down to the orbit lines' minimum (as theirs), or
+    // for a short lane how many doublings bring it up to it (negative, down to the coarsest level)
     const int32 topLevel = FMath::Max(SOL::ORBIT_LINE_DASH_MAX_LEVEL, 0);
     const double periodPx = 1.0 / phaseFootprint;
-    const double level = FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX), 0.0,
-        static_cast<double>(topLevel));
+    const double level = FMath::Clamp(FMath::Log2(periodPx / SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX),
+        static_cast<double>(FMath::Min(SOL::NPC_LANE_DASH_MIN_LEVEL, 0)), static_cast<double>(topLevel));
     const int32 lower = FMath::Min(static_cast<int32>(FMath::FloorToDouble(level)), topLevel);
     const double blend = level - static_cast<double>(lower);
     const double lowerScale = FMath::Exp2(static_cast<double>(lower));
@@ -478,11 +480,11 @@ void SOLNpcLane::AccumulateLaneShips(const TConstArrayView<FSOLNpcRail> rails, c
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the flow clock advanced by a real frame time (held while paused or for a bad delta; a bad clock restarts)
-double SOLNpcLane::AdvanceLaneFlowClockS(const double clockS, const double realDeltaS, const bool bPaused)
+// Returns the flow clock advanced by a real frame time (held only for a bad delta; a bad clock restarts)
+double SOLNpcLane::AdvanceLaneFlowClockS(const double clockS, const double realDeltaS)
 {
     const double base = FMath::IsFinite(clockS) ? clockS : 0.0;
-    if (bPaused || !FMath::IsFinite(realDeltaS) || realDeltaS <= 0.0)
+    if (!FMath::IsFinite(realDeltaS) || realDeltaS <= 0.0)
     {
         return base;
     }

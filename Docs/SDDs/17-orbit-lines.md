@@ -157,6 +157,17 @@ Raised while writing the SDD. **All answered by the user on 2026-10-14** (answer
 - **Not verified:** a packaged (cooked) build. The material includes `/Project/SOLTest/Private/SOLOrbitLine.ush` through the module's shader directory mapping, which a cooked build only needs at cook time; this has not been tried.
 - **Tests:** OrbitLine* 56 (Math 32, Packing 10, Logic 14), Settings* 25, InfoText 11, HudFormat 10, KeyBindings 9, MenuState 12, all pass; `-SOLSmokeHud` 17/17, `-SOLSmokeMap` 16/16, `-SOLMenuSmoke=screens` 40/41 (the failure is its audio-volume check, because the run used `-NoSound`). GPU in the Jupiter view: translucency 0.255 ms with lines.
 
+### Amendment 4: shared with the NPC lane lines (issue #38)
+
+[SDD 38](38-npc-lane-lines.md) draws the NPC lanes with this ticket's technique and code: `SOLNpcLane.ush` includes
+`SOLOrbitLine.ush` (far-depth placement, analytic sphere occlusion, the scene-depth rule, the dash box filter), its
+ribbon is a `USOLOrbitLineComponent` filled by `SOLOrbitLineMesh::ApplyRibbonToMesh`, and its dashes reuse the
+multi-scale constants (`ORBIT_LINE_DASH_*`; the lanes add coarser levels down to 4 dashes per lane for short lanes,
+the orbit lines are unchanged). The occluder spheres and the scene-depth trust limit in `MPC_SOLOrbitLine` are shared:
+`ASOLOrbitLineVisuals` now writes them whenever orbit lines **or** lanes are drawn (SDD 38 D24,
+`SOLOrbitLineLogic::ShouldWriteOccluders`, `SetLanesDrawn`). The orbit lines' look and cost are unchanged. The
+coupling of the two actors is recorded in `Docs/TECH_DEBT.md`.
+
 ## 9. Revision history
 
 - 2026-10-14: initial design from the grill-me decisions; 17a contract and test file written.

@@ -222,3 +222,11 @@ fixes (results above).
 ## Amendment 3: overlay profiles delivered by #34
 
 Section 2.7 (overlay profiles) is delivered by issue #34, see [`34-overlay-profiles.md`](34-overlay-profiles.md): five profiles with vertical tabs in the Overlay Menu, per-profile enable, master O and Alt+O orbit-lines switch, save schema 10. The Shift+O row of section 2.2 (darkening) is replaced by RShift+O, which cycles the enabled profiles; Left Shift+O does nothing, and darkening is now only the Darkening row of the Overlay Menu (saved per profile). The Space Dust row of the table (SDD 43) left the overlay table and became a Settings option.
+
+## Amendment 4: the Lanes row (issue #38)
+
+[SDD 38](38-npc-lane-lines.md) adds a top-level row to the overlay table: `EOverlay::Lanes` (id and label "Lanes",
+default on), between "Ships on Radar" and "Darkening" (Darkening moves to index 15 and stays last; 16 rows). It
+switches the NPC lane lines (two flowing dashed hologram lines per lane) and, unchecked or with the master O off,
+restores every lane ship's far point as before. Like every row it is stored per overlay profile (settings save schema
+13, a migration turns it on in every used profile) and governed by the master O; there is no key for it.

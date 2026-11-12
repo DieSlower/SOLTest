@@ -1922,6 +1922,8 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_ROUTE_OVERLAY = TEXT("SOLSmokeRouteOverlay");   // Route overlay, then quit
         inline constexpr const TCHAR* SMOKE_HOLOGRAM = TEXT("SOLSmokeHologram");   // Map hologram look, then quit
         inline constexpr const TCHAR* SMOKE_NPC_LANES = TEXT("SOLSmokeNpcLanes");  // NPC lane lines (SDD 38), quit
+        // With -SOLSmokeNpcLanes (-game only): V2 and V3 cost captures, lanes drawn and sol.NpcLanes 0 (SDD 38)
+        inline constexpr const TCHAR* SMOKE_NPC_LANES_PROFILE = TEXT("SOLSmokeNpcLanesProfile");
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2282,7 +2284,7 @@ namespace SOL
         inline constexpr const TCHAR* STYLE1 = TEXT("NpcLaneStyle1");            // (brightness min, max, dash base
                                                                                   //  count, dash duty)
         inline constexpr const TCHAR* STYLE2 = TEXT("NpcLaneStyle2");            // (reference height px, emissive,
-                                                                                  //  0, 0)
+                                                                                  //  dash min level, 0)
         inline constexpr const TCHAR* GLOW0 = TEXT("NpcLaneGlow0");              // (core half px, core falloff, core
                                                                                   //  falloff max, halo weight)
         inline constexpr const TCHAR* GLOW1 = TEXT("NpcLaneGlow1");              // (halo scale, halo power, glow scale
@@ -2561,13 +2563,16 @@ namespace SOL
     inline constexpr double NPC_LANE_BRIGHTNESS_MIN = 0.35;            // Line brightness at weight 0...
     inline constexpr double NPC_LANE_BRIGHTNESS_MAX = 1.0;             // ...and at weight 1
     inline constexpr int32 NPC_LANE_DASH_BASE_COUNT = 64;              // Level-0 dash periods per lane
+    inline constexpr int32 NPC_LANE_DASH_MIN_LEVEL = -4;               // Coarsest dash level (64 x 2^-4 = 4 dashes):
+                                                                       // a lane short on screen still shows its flow
     inline constexpr double NPC_LANE_DASH_DUTY = 0.5;                  // Lit fraction of a dash period
     inline constexpr double NPC_LANE_DASH_FLOW_PERIODS_PER_S = 0.75;   // Dash flow, periods per real second (any zoom)
     inline constexpr double NPC_LANE_GLOW_PAD_PX = 12.0;               // Ribbon pad past the line for the glow (scaled)
     inline constexpr int32 NPC_LANE_SEGMENTS = 64;                     // Ribbon segments per line
-    inline constexpr FColor NPC_LANE_OUTBOUND_COLOR = FColor(0x9F, 0xD6, 0xD0);   // Teal-white, sRGB (A -> B)
+    inline constexpr FColor NPC_LANE_OUTBOUND_COLOR = FColor(0x7F, 0xD0, 0xC4);   // Teal-white, sRGB (A -> B); its
+                                                                       // core renders as #9FD6D0 at the emissive below
     inline constexpr FColor NPC_LANE_INBOUND_COLOR = FColor(0x3F, 0xD0, 0xE0);    // Cyan, sRGB (B -> A)
-    inline constexpr double NPC_LANE_EMISSIVE = 2.0;                   // Lane emissive scale (exposure-relative; tuned
+    inline constexpr double NPC_LANE_EMISSIVE = 1.3;                   // Lane emissive scale (exposure-relative; tuned
                                                                        // so the brightest core keeps its hue, D16)
     inline constexpr int32 NPC_LANE_TRANSLUCENCY_SORT_PRIORITY = 1;    // Order within the after-motion-blur pass only
                                                                        // (the far points draw in the normal pass)
@@ -2576,6 +2581,8 @@ namespace SOL
         "the lane fade band runs outward from the near radii");
     static_assert(NPC_LANE_TRAFFIC_HIGH > NPC_LANE_TRAFFIC_LOW && NPC_LANE_TRAFFIC_LOW > 0,
         "the traffic weight divides by log(HIGH / LOW)");
+    static_assert(NPC_LANE_DASH_MIN_LEVEL <= 0 && (NPC_LANE_DASH_BASE_COUNT >> -NPC_LANE_DASH_MIN_LEVEL) >= 1,
+        "the coarsest dash level keeps at least one whole dash per lane");
 
     // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
     inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist

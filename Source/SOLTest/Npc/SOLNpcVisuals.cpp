@@ -5,8 +5,6 @@
 
 #include "Npc/SOLNpcVisuals.h"
 
-#include "Menu/SOLMenuState.h"
-#include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
 #include "Npc/SOLNpcHullInstances.h"
 #include "Npc/SOLNpcRail.h"
@@ -34,7 +32,13 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "MeshDescription.h"
 #include "Misc/App.h"
+#include "Stats/Stats.h"
 #include "StaticMeshAttributes.h"
+
+// Game-thread cost of the NPC redraw and of its per-frame lane share (stat dumpave in -SOLSmokeNpcLanesProfile)
+DECLARE_STATS_GROUP(TEXT("SOLNpc"), STATGROUP_SOLNpc, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("SOL_NpcRedraw"), STAT_SOL_NpcRedraw, STATGROUP_SOLNpc);
+DECLARE_CYCLE_STAT(TEXT("SOL_NpcLanes"), STAT_SOL_NpcLanes, STATGROUP_SOLNpc);
 
 namespace
 {
@@ -172,6 +176,14 @@ bool ASOLNpcVisuals::GetPushedLaneParams(float& outGlowScale, FLinearColor& outP
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the lane material's NpcLaneStyle2 as the material holds it
+bool ASOLNpcVisuals::GetPushedLaneStyle2(FLinearColor& outStyle2) const
+{
+    return LaneMaterial != nullptr && LaneMaterial->GetVectorParameterValue(
+        FHashedMaterialParameterInfo(FName(SOL::NpcLaneMaterialParams::STYLE2)), outStyle2);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Loads the assets, builds the block mesh and subscribes to NPC updates
 void ASOLNpcVisuals::BeginPlay()
 {
@@ -208,10 +220,9 @@ void ASOLNpcVisuals::BeginPlay()
     CpuPoints->SetStaticMesh(PointBlockMesh);
     CpuPoints->SetMaterial(0, CpuPointMaterial);
 
-    // Lane lines (SDD 38): the settings are read directly (the Lanes row, the live HUD glow; D23), the menu for the
-    // pause; a missing lane material leaves the lane ships' points exactly as before
+    // Lane lines (SDD 38): the settings are read directly (the Lanes row, the live HUD glow; D23); a missing lane
+    // material leaves the lane ships' points exactly as before
     Settings = USOLSettingsSubsystem::Get(this);
-    Menu = GetWorld()->GetSubsystem<USOLMenuSubsystem>();
     if (!SetUpLanes())
     {
         UE_LOG(LogSOL, Warning, TEXT("NpcVisuals %s: %s missing; NPC lane lines not drawn"), *GetName(),
@@ -277,6 +288,7 @@ void ASOLNpcVisuals::EndPlay(const EEndPlayReason::Type endPlayReason)
 void ASOLNpcVisuals::Redraw()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::Redraw);
+    SCOPE_CYCLE_COUNTER(STAT_SOL_NpcRedraw);
     if (FarMaterial == nullptr)
     {
         return;
@@ -388,6 +400,7 @@ void ASOLNpcVisuals::SizePointBlocks(UInstancedStaticMeshComponent* component, c
 void ASOLNpcVisuals::UploadPopulation()
 {
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UploadPopulation);
+    const double uploadStartS = FPlatformTime::Seconds();
     mUploadedRevision = Npcs->GetPopulationRevision();
     const int32 shipCount = Npcs->GetRails().Num();
     if (shipCount == 0)
@@ -414,7 +427,9 @@ void ASOLNpcVisuals::UploadPopulation()
     RailTexture->NeverStream = true;
     FTexture2DMipMap& mip = RailTexture->GetPlatformData()->Mips[0];
     FVector4f* texels = static_cast<FVector4f*>(mip.BulkData.Lock(LOCK_READ_WRITE));
+    const double fillStartS = FPlatformTime::Seconds();
     FillRailTexels(texels, width * height, mGpuRailEpochS, &mLaneShipCounts);
+    const double fillMs = (FPlatformTime::Seconds() - fillStartS) * 1000.0;
     mip.BulkData.Unlock();
     RailTexture->UpdateResource();
     FarMaterial->SetTextureParameterValue(PARAM_RAIL_TEX, RailTexture);
@@ -422,8 +437,9 @@ void ASOLNpcVisuals::UploadPopulation()
     SizePointBlocks(FarPoints, FMath::DivideAndRoundUp(shipCount, SOL::NPC_POINT_BLOCK_SHIPS), mFarBlockCount);
     BuildLaneMesh();
     UE_LOG(LogSOL, Log, TEXT("NpcVisuals %s: uploaded %d rails (%dx%d texels, %.1f MB), %d far blocks, %d lane ribbon "
-        "vertices"), *GetName(), shipCount, width, height, width * height * sizeof(FVector4f) / (1024.0 * 1024.0),
-        mFarBlockCount, mLaneMeshVertexCount);
+        "vertices; rail fill with the lane histogram %.2f ms, whole upload %.2f ms"), *GetName(), shipCount, width,
+        height, width * height * sizeof(FVector4f) / (1024.0 * 1024.0), mFarBlockCount, mLaneMeshVertexCount, fillMs,
+        (FPlatformTime::Seconds() - uploadStartS) * 1000.0);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -438,7 +454,10 @@ void ASOLNpcVisuals::ReepochRails()
 
     // A rare (rate-limited) upload: the buffer and region are owned by the render command and freed when it ran
     FVector4f* texels = new FVector4f[static_cast<SIZE_T>(width) * height];
+    const double fillStartS = FPlatformTime::Seconds();
     FillRailTexels(texels, width * height, mGpuRailEpochS, nullptr);
+    UE_LOG(LogSOL, Log, TEXT("NpcVisuals %s: rails re-epoched, rail fill without the lane histogram %.2f ms"),
+        *GetName(), (FPlatformTime::Seconds() - fillStartS) * 1000.0);
     FUpdateTextureRegion2D* region = new FUpdateTextureRegion2D(0, 0, 0, 0, width, height);
     RailTexture->UpdateTextureRegions(0, 1, region, width * sizeof(FVector4f), sizeof(FVector4f),
         reinterpret_cast<uint8*>(texels), [](uint8* data, const FUpdateTextureRegion2D* regions)
@@ -518,8 +537,11 @@ void ASOLNpcVisuals::UpdateFarPoints()
     }
 
     // The lanes of this frame and their data in the free .w channels (SDD 38 section 4.2): O(lanes), no allocation
-    SOLNpcLane::BuildLaneFrame(Npcs->GetGroups(), frame, mLaneShipCounts, mLaneFrame);
-    SOLNpcLane::WriteLaneGroupTexelW(mLaneFrame, texels);
+    {
+        SCOPE_CYCLE_COUNTER(STAT_SOL_NpcLanes);
+        SOLNpcLane::BuildLaneFrame(Npcs->GetGroups(), frame, mLaneShipCounts, mLaneFrame);
+        SOLNpcLane::WriteLaneGroupTexelW(mLaneFrame, texels);
+    }
     mGroupRegions[mUploadRing] = FUpdateTextureRegion2D(0, 0, 0, 0, SOL::NPC_GROUP_TEXTURE_WIDTH, 2);
     GroupTexture->UpdateTextureRegions(0, 1, &mGroupRegions[mUploadRing],
         SOL::NPC_GROUP_TEXTURE_WIDTH * sizeof(FVector4f), sizeof(FVector4f),
@@ -569,7 +591,8 @@ bool ASOLNpcVisuals::SetUpLanes()
         static_cast<float>(SOL::NPC_LANE_BRIGHTNESS_MAX), static_cast<float>(SOL::NPC_LANE_DASH_BASE_COUNT),
         static_cast<float>(SOL::NPC_LANE_DASH_DUTY)));
     LaneMaterial->SetVectorParameterValue(FName(STYLE2), FLinearColor(
-        static_cast<float>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX), static_cast<float>(SOL::NPC_LANE_EMISSIVE), 0.0f, 0.0f));
+        static_cast<float>(SOL::NPC_LANE_REFERENCE_HEIGHT_PX), static_cast<float>(SOL::NPC_LANE_EMISSIVE),
+        static_cast<float>(SOL::NPC_LANE_DASH_MIN_LEVEL), 0.0f));
     LaneMaterial->SetVectorParameterValue(FName(GLOW0), FLinearColor(static_cast<float>(HUD_GLOW_CORE_HALF_PX),
         static_cast<float>(HUD_GLOW_CORE_FALLOFF), static_cast<float>(HUD_GLOW_CORE_FALLOFF_MAX),
         static_cast<float>(HUD_GLOW_HALO_WEIGHT)));
@@ -627,6 +650,8 @@ void ASOLNpcVisuals::BuildLaneMesh()
 // Per frame: lanes shown, the far points' crossfade, the lane component, the flow clock, the glow and the frame
 void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
 {
+    SCOPE_CYCLE_COUNTER(STAT_SOL_NpcLanes);
+
     // Shown: the Lanes row (IsOverlayShown folds in the master O) or the verification override, and sol.NpcLanes
     const bool bHasSettings = mIsLaneOverride || Settings != nullptr;
     const bool bRowShown = mIsLaneOverride ? mIsLaneOverrideShown
@@ -654,11 +679,9 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
         }
     }
 
-    // The dash flow: real time (no time warp), held while the game is paused or the pause menu shows (D15)
-    const bool bPaused = GetWorld()->IsPaused()
-        || (Menu != nullptr && Menu->GetState().Mode == SOLMenuState::EMenuMode::Paused);
+    // The dash flow: real time (no time warp), never held, the pause menu included (D15, amended 2026-11-11)
     mLaneFlowClockS = SOLNpcLane::AdvanceLaneFlowClockS(mLaneFlowClockS,
-        FMath::Min(FApp::GetDeltaTime(), SOL::MAX_FRAME_DELTA_S), bPaused);
+        FMath::Min(FApp::GetDeltaTime(), SOL::MAX_FRAME_DELTA_S));
     if (!bDraw)
     {
         return;

@@ -519,3 +519,11 @@ No question is open.
 - **The migration's use of the live table:** the existing 6 -> 7 step writes `ToSavedProfile(DefaultMask())` from the
   live table. Once `SpaceDust` is gone from the table, a v6 save gets no dust key at 7, and 8 -> 9 then adds it. The
   chain still ends correctly; a test pins this.
+
+## 16. Note: the Lanes row (issue #38)
+
+[SDD 38](38-npc-lane-lines.md) adds the "Lanes" row (id `Lanes`, default on, top level, before Darkening) to the
+overlay table, so every profile now holds 16 rows. Settings save schema 12 -> 13: a frozen migration step adds
+`"Lanes" = true` to every **used** profile's row map and leaves unused (empty) maps empty, so `UsedProfiles` is
+unchanged (section 5.1's rule). The master O governs it, and the first enable of a profile copies Profile 1's bit, as
+for every row. `KEY_BINDING_LAYOUT_VERSION` stays 10 (no new key).

@@ -22,7 +22,6 @@ class UStaticMesh;
 class UStaticMeshComponent;
 class UTexture2D;
 class USOLAnchorSubsystem;
-class USOLMenuSubsystem;
 class USOLNpcSubsystem;
 class USOLOrbitLineComponent;
 class USOLSettingsSubsystem;
@@ -52,8 +51,8 @@ class USOLSettingsSubsystem;
  *   channels carry the lane radius and traffic weight (ship counts from a histogram folded into the rail fill). The
  *   far points of lane ships cross-fade the other way (NpcParams4). Shown while the Lanes overlay row is (read from
  *   USOLSettingsSubsystem every frame) and sol.NpcLanes is on; the lines glow with the live HUD glow and their dashes
- *   flow on a real-time clock that ignores time warp and stops while paused. The lanes share the orbit lines'
- *   occluders, which ASOLOrbitLineVisuals writes while lanes are drawn (SetOrbitLineVisuals).
+ *   flow on a real-time clock that ignores time warp and never stops (the pause menu included). The lanes share the
+ *   orbit lines' occluders, which ASOLOrbitLineVisuals writes while lanes are drawn (SetOrbitLineVisuals).
  */
 UCLASS()
 class SOLTEST_API ASOLNpcVisuals : public AActor
@@ -90,6 +89,10 @@ public:
     // Returns the lane material's GlowScale and the far-point material's NpcParams4 as the materials hold them; false
     // without the materials (verification)
     bool GetPushedLaneParams(float& outGlowScale, FLinearColor& outPointLaneParams) const;
+
+    // Returns the lane material's NpcLaneStyle2 (reference height, emissive, coarsest dash level) as the material
+    // holds it; false without the material (verification)
+    bool GetPushedLaneStyle2(FLinearColor& outStyle2) const;
 
     // Returns the group texels uploaded last frame (two rows of NPC_GROUP_TEXTURE_WIDTH; verification)
     TConstArrayView<FVector4f> GetLastGroupTexels() const { return mGroupTexels[mUploadRing]; }
@@ -199,9 +202,6 @@ private:
     TObjectPtr<USOLSettingsSubsystem> Settings;
 
     UPROPERTY(Transient)
-    TObjectPtr<USOLMenuSubsystem> Menu;
-
-    UPROPERTY(Transient)
     TObjectPtr<ASOLOrbitLineVisuals> OrbitLines;
 
     FDelegateHandle mNpcsUpdatedHandle;
@@ -226,7 +226,7 @@ private:
     TArray<int32> mLaneShipCounts;                    // Lane ships per lane of the population (SDD 38 D13)
     FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)
     FSOLGlowScaleFeed mLaneGlowFeed;                  // HUD glow scale last pushed to the lane material (SDD 37)
-    double mLaneFlowClockS = 0.0;                     // Real seconds of dash flow (no warp, held while paused)
+    double mLaneFlowClockS = 0.0;                     // Real seconds of dash flow (no warp, never held)
     int32 mLaneMeshVertexCount = 0;                   // Lane ribbon vertices of the current population
     bool mAreLanesShown = false;                      // Last frame's lanes shown
     bool mIsPointCrossfadeOn = false;                 // NpcParams4.x last pushed to the far points

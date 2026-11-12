@@ -676,6 +676,32 @@ No regression against Amendment 6 (1M p95 8.75 ms then). The NPC update is ~0.17
 the respawn check in Select, and the bare-rail distance in Collect. The 1M spawn's largest slice is 45 ms (the ramp's
 500k -> 1M step, which also despawns and builds rails), and no bolts were dropped.
 
+## Amendment 8 — NPC lane lines (issue #38)
+
+Issue #38 ([SDD 38](38-npc-lane-lines.md)) changes how the far layer draws the **lane** ships (40% of the population
+at the default lane fraction). Each lane with ships is now drawn as two thin flowing dashed hologram lines between its
+two body centres (outbound A -> B teal-white, inbound cyan, "keep right"), one world-space ribbon mesh per population
+(`M_SOLNpcLanes`, 2,080 vertices for the 8 lanes) placed on the GPU from the existing group texture, whose free `.w`
+channels now carry each lane's radius and traffic weight (ship counts from a histogram folded into the rail fill's
+`ParallelFor`, once per population). The far points of lane ships cross-fade the other way: `M_SOLNpcPoints` hides a
+lane ship's point beyond 400 lane radii from the camera and fades it in by 100 radii, where the line fades out
+(`NpcParams4`; kind 1 only). Cluster and battle points and every CPU tier are unchanged, and so are the rails, the
+tiers, the stats and the simulation. The Lanes row of the Overlay Menu (on by default, per profile, settings schema 13)
+or `sol.NpcLanes 0` restores the lane ship points exactly as before.
+
+**Measured (part 38c, 2026-11-11, RTX 2080 Ti; SDD 38 section 4.13).** `-SOLSmokeNpcLanesProfile` (1M NPCs, views V2
+0.15 AU off Venus and V3 3 AU above the Sun, lanes drawn against `sol.NpcLanes 0`, medians of three runs). At
+1920x1080 the lane draw costs 0.025-0.027 ms GPU (0.08 ms with its after-motion-blur pass and composite), the NPC
+translucency pass is **cheaper** with the lanes on (V3 0.950 against 1.190 ms, V2 0.375 against 0.393 ms) because the
+far lane ships leave the point layer, and `ASOLNpcVisuals::Redraw` grows by 0.003 ms (its per-frame lane share is
+0.004-0.005 ms; new stats `STAT_SOL_NpcRedraw` and `STAT_SOL_NpcLanes`). At 3840x2160 the lane draw is 0.035-0.043 ms
+and at one XR-4 eye (3840x3744) 0.047-0.079 ms (recorded, not gated); the redraw stays at 0.025-0.027 ms. The
+translucency figures already include the lanes' after-motion-blur pass; with its composite counted too, V2 at 1080p is
+0.412 against 0.393 ms (+0.019 ms). "Before" is `sol.NpcLanes 0` in the same run, not a build of the commit before #38
+(a deviation from SDD 38 section 8 item 7; the deltas are slightly too small). The 1M `-SOLNpcRamp` passes every stage
+(1M p95 7.43 ms at 1920x1080), and `UploadPopulation` takes 22.0 ms once per 1M population (the rail fill with the
+lane histogram 2.65 ms).
+
 ## 6. Revision history
 
 - 2026-10-15: initial SDD from the `grill-me` session (decisions 1-8), with design proposals 9-12 and open questions.
@@ -689,3 +715,4 @@ the respawn check in Select, and the bare-rail distance in Collect. The 1M spawn
 - 2026-10-20: Amendment 6 (10f in progress: statistical fraction 0.15 with parity measured, hot-spot fixes, time-sliced
   spawn, worst-case ramps W1 PASS / W2 FAIL from 250k, soak).
 - 2026-10-21: Amendment 7 (10f adversarial review fixes; Demo option maxima kept by user decision).
+- 2026-11-11: Amendment 8 (issue #38: lane ships drawn as lane lines, their far points cross-faded; measured).

@@ -70,11 +70,11 @@ pass, its smokes pass and its adversarial performance and style review's finding
 | 8 | Renderer: histogram, lane frame, group texel `.w`, lane mesh and component, parameters, glow feed, settings reads, verification override, `sol.NpcLanes`, shared occluders (D24); `-SOLSmokeNpcLanes` checks (SDD section 8 item 2); the Info sentences (case 24); player guide regenerated; tests and full suite green; smokes PASS at 1280x720 and 1920x1080; the 1M ramp PASS | opus / high | Done (not committed; review next) |
 | 9 | Review of 38b (fresh opus / xhigh, report only, same brief plus the materials and `.ush`); fixes; re-check against SDD; full suite; metrics; commit and push 38b | opus / xhigh, then opus / high | Done |
 | **38c** | | | |
-| 10 | Screenshots V1-V5 at 1280x720, 1920x1080, 3840x2160, lanes on / off, HUD glow 0 / 100 / 200%; tuning of the fade radii, widths, brightness, emissive, flow and dash count from them (main session shows the shots to the user if a value needs the user's eye); final values in `SOLConstants.h` and the SDD; candidate shots deleted | opus / high | To do |
-| 11 | Profiling (SDD section 8 item 7): `ProfileGPU` and Insights, 1M, V2 and V3, `sol.NpcLanes` 0 / 1, three runs, 1920x1080 / 3840x2160 / 3840x3744, before (worktree at the commit before #38) and after; `-SOLSmokeHoloMenuProfile` P2 at the three sizes (D21: recorded, not gated; budgets gated at 1920x1080 only, D22); results in SDD 11 Amendment 8 and SDD 38 section 9 | opus / high | To do |
-| 12 | Persistence check (SDD section 8 item 5) and the PIE check via unreal-mcp if the editor is open (else noted here) | sonnet / medium | To do |
-| 13 | Docs: `GAME_MECHANICS.md`, SDD 11 Amendment 8, SDD 17 / 22 / 34 notes, `ARCHITECTURE.md`, `TECH_DEBT.md`, STATUS #38 Done, README gallery (2-3 shots), in-game text truth check against the constants | sonnet / medium | To do |
-| 14 | Whole-ticket adversarial review (fresh opus / xhigh); fixes; full suite; metrics; commit and push 38c; close #38 | opus / xhigh, then opus / high | To do |
+| 10 | Screenshots V1-V5 at 1280x720, 1920x1080, 3840x2160, lanes on / off, HUD glow 0 / 100 / 200%; tuning of the fade radii, widths, brightness, emissive, flow and dash count from them (main session shows the shots to the user if a value needs the user's eye); final values in `SOLConstants.h` and the SDD; candidate shots deleted | opus / high | Done (emissive 1.3, outbound #7FD0C4; SDD 38 section 4.13) |
+| 11 | Profiling (SDD section 8 item 7): `ProfileGPU` and Insights, 1M, V2 and V3, `sol.NpcLanes` 0 / 1, three runs, 1920x1080 / 3840x2160 / 3840x3744, before (worktree at the commit before #38) and after; `-SOLSmokeHoloMenuProfile` P2 at the three sizes (D21: recorded, not gated; budgets gated at 1920x1080 only, D22); results in SDD 11 Amendment 8 and SDD 38 section 9 | opus / high | Done (cvar A/B instead of a pre-#38 worktree, a deviation recorded in SDD 38 section 4.13; `-SOLSmokeNpcLanesProfile`; HoloMenu P2 re-measured: three runs at 3840x3744 in step 11, and in step 14 one run at 1280x720 and three each at 1920x1080 and 3840x2160) |
+| 12 | Persistence check (SDD section 8 item 5) and the PIE check via unreal-mcp if the editor is open (else noted here) | sonnet / medium | Done by the tests and smokes (no PIE: the editor was not open; see notes) |
+| 13 | Docs: `GAME_MECHANICS.md`, SDD 11 Amendment 8, SDD 17 / 22 / 34 notes, `ARCHITECTURE.md`, `TECH_DEBT.md`, STATUS #38 Done, README gallery (2-3 shots), in-game text truth check against the constants | sonnet / medium | Done (not committed) |
+| 14 | Whole-ticket adversarial review (fresh opus / xhigh); fixes; full suite; metrics; commit and push 38c; close #38 | opus / xhigh, then opus / high | Done |
 
 ## Test contract summary
 
@@ -162,8 +162,54 @@ The full contract is SDD section 6 (cases 1-24). In short:
   pause menu while the dashes hold). Results: lane topics 44/44, full suite 1843/1843, `-SOLSmokeNpcLanes` 34/34 at
   1280x720 and 1920x1080, `-SOLSmokeOverlay` 50/50.
 
+- **38c progress (2026-11-11, steps 10-13 done; step 14 below):** two user decisions recorded as
+  the D15 amendment: (A) the dashes never freeze (the flow clock lost its pause input; `ASOLNpcVisuals` no longer
+  reads `USOLMenuSubsystem`; the `TECH_DEBT.md` item about dashes freezing under the pause menu is deleted, the
+  `Npc <-> Menu` item updated; the smoke's `e-flow-paused` became `e-flow-pause-menu`); (B) short lanes get coarser
+  dash levels down to 4 dashes per lane (`NPC_LANE_DASH_MIN_LEVEL` -4, in `SOLNpcLaneMath`, `SOLNpcLane.ush` via
+  `NpcLaneStyle2.z`, and test cases 1, 11, 12). The tests were updated with the code in one build, so their red run
+  was not observed (the new short-lane case fails on the old clamp by construction: a 130 px lane's 64 dashes
+  box-filter to an even line). Tuning from 1080p shots (temporary tuning cvars, removed): emissive 1.3, outbound
+  stored #7FD0C4 (SDD 38 section 4.13 has the candidates). Profiling with the new `-SOLSmokeNpcLanesProfile`
+  (`STAT_SOL_NpcRedraw` / `STAT_SOL_NpcLanes` added); "before" is `sol.NpcLanes 0` in the same run rather than a
+  worktree at the commit before #38 (the old build has no lane views to place). Results in SDD 38 section 4.13 and
+  SDD 11 Amendment 8. No PIE check (the editor was not open); the persistence of the Lanes row is covered by the 38a
+  tests and `-SOLSmokeOverlay`. Docs: GAME_MECHANICS (Lane lines row), ARCHITECTURE (no menu read, stats, profile
+  flag), SDD 11 Amendment 8, SDD 17 Amendment 4, SDD 22 Amendment 4, SDD 34 section 16, TECH_DEBT, STATUS, README
+  gallery. The Info and Controls texts name no changed value, so they are unchanged. Results: full suite 1843/1843,
+  `-SOLSmokeNpcLanes` 34/34 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50/50, `-SOLSmokeHud` 45/45,
+  `-SOLSmokeHoloMenu` 86/86 at both sizes, `-SOLSmokeSolidMenu` 296/296.
+- **Correction (step 14):** the HoloMenu P2 re-measure *was* run in step 11 (`smoke_c38_holoprof_1..3.log`, three
+  runs at 3840x3744: 1.179 / 1.182 / 1.195 ms, median 1.182 ms), as SDD 38 section 4.13 and `TECH_DEBT.md` say; an
+  earlier version of this plan said it was not.
+- **Step 14 (2026-11-11, whole-ticket review fixes):** the `Npc -> Menu` edge label of `ARCHITECTURE.md` lost
+  "pause" (the module graph was checked by eye for `;` and unbalanced quotes, not rendered: no Node.js here); SDD 38's
+  D15 amendment states the real coarse-dash threshold (about 64 x 24 = 1,536 px of lane length on screen, not 130 px)
+  and the user's wording, as does `GAME_MECHANICS.md`; SDD 38 section 4.6's equality range ([MIN, 8 + MIN]), the
+  section 6 / test-file case citations, section 10 (the running clock adopted in 38c) and section 4.13 (the
+  `sol.NpcLanes 0` baseline listed as a deviation from section 8 item 7; the Translucency column already includes the
+  after-motion-blur pass: V2 at 1080p is 0.412 against 0.393 ms, +0.019 ms) fixed; the smoke's `e-flow-resumed` now
+  times the phase from the resume and checks the real-time rate at warp 1, and the new `a-dash-min-level` reads
+  `NpcLaneStyle2.z` back (`ASOLNpcVisuals::GetPushedLaneStyle2`): 35 checks; the profile's `stat dumpave -num=` comes
+  from `LANESMOKE_PROFILE_FRAMES` and the console commands go through `FSOLUiProfileCapture::RunCommand` (the
+  duplicated view-size helper is a `TECH_DEBT.md` note); `NpcLaneMathTest.cpp`'s [0, 1] sweep reaches footprints of
+  1e3 and the continuity loop includes the clamp boundary at MIN (footprint 1 / (24 x 2^MIN)); `UploadPopulation`
+  and `ReepochRails` log their rail-fill times once per population. Results: full suite 1843/1843 (lane topics
+  29/29), `-SOLSmokeNpcLanes` 35/35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50/50, the 1M `-SOLNpcRamp` PASS
+  at every stage (1M p95 7.43 ms; upload at 1M 22.0 ms, of which the rail fill with the lane histogram 2.65 ms),
+  `-SOLSmokeHoloMenuProfile` P2 0.164 ms at 1280x720 (PASS against its baseline), 0.240 ms at
+  1920x1080 and 0.515 ms at 3840x2160 (medians of three); `GameUserSettings.ini` unchanged.
+- **Process note (honest record):** for 38c the TDD red run was never observed. The D15-amendment test changes
+  (cases 1, 11, 12, 31) and the step 14 test extensions were written and built together with the code, so no run
+  showed them failing for the right reason first; the only evidence that they would is by construction (the
+  short-lane case cannot pass on the old [0, max] clamp).
+
 ## Change log
 
 - 2026-11-11: first draft with the SDD (D1-D6); Q1-Q18 pending with the user.
 - 2026-11-11: Q1-Q18 answered (D7-D24) and the keep-right rule added to D2; the open-question gate and the Q references
   removed; ready to build.
+- 2026-11-11: 38a and 38b built, reviewed and committed; 38c built (two user decisions as the SDD's D15 amendment,
+  tuning, profiling, docs), whole-ticket review next.
+- 2026-11-11: whole-ticket review fixes (step 14), the P2 correction, the ramp and upload timings; 38c committed and
+  #38 closed.

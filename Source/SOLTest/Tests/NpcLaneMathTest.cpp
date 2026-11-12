@@ -18,10 +18,12 @@
 // Tests for the issue #38 NPC lane-line math (SOLNpcLane, SDD 38 section 6 cases 1-16), written against that contract
 // before the production code existed. Doubles are compared to 1e-9 unless a case says otherwise.
 // Part 38b, also test-first: the renderer's pure feed (cases 25-32 below: lanes shown, lane component visibility, the
-// NpcParams4 and NpcLaneParams0 vectors, the group texels' .w lane data, the per-task ship histogram, the paused-aware
+// NpcParams4 and NpcLaneParams0 vectors, the group texels' .w lane data, the per-task ship histogram, the real-time
 // flow clock and the ribbon mesh layout), from SDD 38 sections 4.2, 4.5, 4.6 and 4.8 with header forms proposed by
 // the test author where the SDD names the behaviour but not the signature. Case 33 (from the 38b review): the ribbon's
-// keep-right side direction, LaneOutboundSide, checked by projecting a moved lane point.
+// keep-right side direction, LaneOutboundSide, checked by projecting a moved lane point. Part 38c (user, 2026-11-11):
+// the flow clock has no pause input (case 31), and short lanes get coarser dash levels down to 4 dashes (cases 1, 11,
+// 12).
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -128,6 +130,13 @@ bool FSOLNpcLaneMathConstantsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("brightness min 0.35"), static_cast<double>(SOL::NPC_LANE_BRIGHTNESS_MIN), 0.35, NPCLANE_TOL);
     TestEqual(TEXT("brightness max 1.0"), static_cast<double>(SOL::NPC_LANE_BRIGHTNESS_MAX), 1.0, NPCLANE_TOL);
     TestEqual(TEXT("64 base dashes"), static_cast<int32>(SOL::NPC_LANE_DASH_BASE_COUNT), 64);
+
+    // Short lanes (D15 amendment, 2026-11-11): the levels go coarser down to 4 dashes per lane
+    TestEqual(TEXT("coarsest dash level -4"), static_cast<int32>(SOL::NPC_LANE_DASH_MIN_LEVEL), -4);
+    TestEqual(TEXT("coarsest level: 4 dashes per lane"), static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT)
+        * FMath::Exp2(static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL)), 4.0, NPCLANE_TOL);
+    TestTrue(TEXT("min level <= 0 < max level"), SOL::NPC_LANE_DASH_MIN_LEVEL <= 0
+        && SOL::ORBIT_LINE_DASH_MAX_LEVEL > 0);
     TestEqual(TEXT("dash duty 0.5"), static_cast<double>(SOL::NPC_LANE_DASH_DUTY), 0.5, NPCLANE_TOL);
     TestEqual(TEXT("flow 0.75 periods per second"), static_cast<double>(SOL::NPC_LANE_DASH_FLOW_PERIODS_PER_S), 0.75,
         NPCLANE_TOL);
@@ -135,7 +144,8 @@ bool FSOLNpcLaneMathConstantsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("64 segments"), static_cast<int32>(SOL::NPC_LANE_SEGMENTS), 64);
 
     // The two colours: teal-white outbound, cyan inbound, stored as sRGB FColor
-    TestTrue(TEXT("outbound #9FD6D0"), SOL::NPC_LANE_OUTBOUND_COLOR == FColor(0x9F, 0xD6, 0xD0));
+    // 38c tuning: the stored outbound colour is a deeper teal so its tone-mapped core reads as #9FD6D0 (D16)
+    TestTrue(TEXT("outbound #7FD0C4"), SOL::NPC_LANE_OUTBOUND_COLOR == FColor(0x7F, 0xD0, 0xC4));
     TestTrue(TEXT("inbound #3FD0E0"), SOL::NPC_LANE_INBOUND_COLOR == FColor(0x3F, 0xD0, 0xE0));
     const FColor colors[] = { SOL::NPC_LANE_OUTBOUND_COLOR, SOL::NPC_LANE_INBOUND_COLOR };
     for (const FColor& color : colors)
@@ -688,13 +698,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashPhaseTest, "SOLTest.NpcLaneM
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 11: the level-k dash phase is s x BASE x 2^k - sign(direction) x f (level clamped, direction 0 as +1), so an
-// outbound dash moves toward B and an inbound one toward A as f grows
+// Case 11: the level-k dash phase is s x BASE x 2^k - sign(direction) x f (level clamped to [DASH_MIN_LEVEL, the orbit
+// lines' max level], direction 0 as +1), so an outbound dash moves toward B and an inbound one toward A as f grows
 bool FSOLNpcLaneMathDashPhaseTest::RunTest(const FString& /*parameters*/)
 {
     using SOLNpcLane::LaneDashPhase;
     const double base = static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT);
     const int32 maxLevel = SOL::ORBIT_LINE_DASH_MAX_LEVEL;
+    const int32 minLevel = SOL::NPC_LANE_DASH_MIN_LEVEL;
 
     // The closed form
     TestEqual(TEXT("s 0.3, level 2, f 0.25, out"), LaneDashPhase(0.3, 2, 0.25, 1), 0.3 * base * 4.0 - 0.25,
@@ -705,8 +716,13 @@ bool FSOLNpcLaneMathDashPhaseTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("s 1, top level"), LaneDashPhase(1.0, maxLevel, 0.0, 1), base * FMath::Pow(2.0, maxLevel),
         NPCLANE_TOL);
 
-    // Level clamped to [0, ORBIT_LINE_DASH_MAX_LEVEL]
-    TestEqual(TEXT("level -3 as 0"), LaneDashPhase(0.41, -3, 0.2, 1), LaneDashPhase(0.41, 0, 0.2, 1), NPCLANE_TOL);
+    // Level clamped to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL]: coarser levels for short lanes
+    TestEqual(TEXT("level -3: an eighth of the base dashes"), LaneDashPhase(0.41, -3, 0.2, 1), 0.41 * base / 8.0 - 0.2,
+        NPCLANE_TOL);
+    TestEqual(TEXT("s 1, coarsest level"), LaneDashPhase(1.0, minLevel, 0.0, 1),
+        base * FMath::Exp2(static_cast<double>(minLevel)), NPCLANE_TOL);
+    TestEqual(TEXT("level below the min as the min"), LaneDashPhase(0.41, minLevel - 5, 0.2, 1),
+        LaneDashPhase(0.41, minLevel, 0.2, 1), NPCLANE_TOL);
     TestEqual(TEXT("level 20 as the max"), LaneDashPhase(0.41, 20, 0.2, 1), LaneDashPhase(0.41, maxLevel, 0.2, 1),
         NPCLANE_TOL);
 
@@ -717,7 +733,7 @@ bool FSOLNpcLaneMathDashPhaseTest::RunTest(const FString& /*parameters*/)
         NPCLANE_TOL);
 
     // Motion: a dash feature moves toward B (outbound) or A (inbound) by df / (BASE 2^k) of the lane per df
-    for (int32 level = 0; level <= maxLevel; ++level)
+    for (int32 level = minLevel; level <= maxLevel; ++level)
     {
         const double perPhase = 1.0 / (base * FMath::Pow(2.0, static_cast<double>(level)));
         for (const double s : { 0.1, 0.5, 0.83 })
@@ -741,35 +757,93 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathDashCoverageTest, "SOLTest.NpcLa
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 12: the lane dash coverage is the orbit lines' multi-scale coverage at zero flow, in [0, 1], a level-0 square
-// wave for a bad footprint, periodic in the flow, and a phase shift inside a pure level
+// Case 12: the lane dash coverage is the orbit lines' multi-scale coverage at zero flow wherever the level-0 period is
+// at least the orbit lines' minimum (long lanes keep the 64-dash base); where it is shorter (a short lane on screen,
+// D15 amendment 2026-11-11) the levels go coarser down to NPC_LANE_DASH_MIN_LEVEL (4 dashes per lane): the coverage is
+// then the orbit lines' with BASE x 2^MIN dashes, so a short lane still shows dashes, its scale changes continuously
+// and never pops. In [0, 1], a level-0 square wave for a bad footprint, periodic in the flow, and a phase shift inside
+// a pure level
 bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcLane;
     const double base = static_cast<double>(SOL::NPC_LANE_DASH_BASE_COUNT);
+    const double minLevelScale = FMath::Exp2(static_cast<double>(SOL::NPC_LANE_DASH_MIN_LEVEL));
+    const double minPeriodPx = SOL::ORBIT_LINE_DASH_MIN_PERIOD_PX;
 
-    // Zero flow: equal to the orbit lines' coverage over 20 (s, footprint) pairs, from level 0 (sub-24 px periods)
-    // through the crossfades and the top level to the solid fade and beyond
+    // Zero flow over 20 (s, footprint) pairs: from the coarsest level (a level-0 period under 2 px), through the
+    // coarse levels to level 0, the crossfades and the top level to the solid fade and beyond. Level 0 and finer
+    // (a level-0 period of at least minPeriodPx): the orbit lines' coverage of s x BASE. Coarser: the orbit lines'
+    // coverage of s x BASE x 2^MIN with the footprint scaled alike (the same levels, shifted by MIN)
     const double footprints[] = { 2.0, 0.5, 0.1, 0.05, 0.035, 0.02, 0.012, 5.0e-3, 2.0e-3, 8.0e-4, 3.0e-4, 1.2e-4,
         6.0e-5, 3.0e-5, 1.8e-5, 1.2e-5, 8.0e-6, 5.5e-6, 3.0e-6, 1.0e-6 };
     for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(footprints)); ++index)
     {
         const double s = 0.013 + 0.049 * static_cast<double>(index);
         const double footprint = footprints[index];
-        const FString label = FString::Printf(TEXT("s %.3f, footprint %.1e"), s, footprint);
-        const double expected = NpcLaneOrbitDash(s * base, footprint);
+        const bool bCoarse = 1.0 / footprint < minPeriodPx;
+        const FString label = FString::Printf(TEXT("s %.3f, footprint %.1e%s"), s, footprint,
+            bCoarse ? TEXT(" (coarse)") : TEXT(""));
+        const double expected = bCoarse ? NpcLaneOrbitDash(s * base * minLevelScale, footprint * minLevelScale)
+            : NpcLaneOrbitDash(s * base, footprint);
         TestEqual(label + TEXT(": outbound = orbit lines"), LaneDashCoverage(s, 0.0, 1, footprint), expected,
             NPCLANE_TOL);
         TestEqual(label + TEXT(": inbound = orbit lines"), LaneDashCoverage(s, 0.0, -1, footprint), expected,
             NPCLANE_TOL);
     }
 
-    // Always in [0, 1]; a whole flow period changes nothing
+    // A short lane still shows dashes: a lane L px long on screen (footprint BASE / L at every s) whose 64 base dashes
+    // would be under 2 px each and box-filter to an even half-bright line has lit dashes and dark gaps along it
+    for (const double lanePx : { 32.0, 64.0, 130.0, 400.0 })
+    {
+        const double footprint = base / lanePx;
+        double lowest = 1.0;
+        double highest = 0.0;
+        for (int32 step = 0; step < 2000; ++step)
+        {
+            const double coverage = LaneDashCoverage(static_cast<double>(step) / 2000.0, 0.3, 1, footprint);
+            lowest = FMath::Min(lowest, coverage);
+            highest = FMath::Max(highest, coverage);
+        }
+        TestTrue(FString::Printf(TEXT("lane %.0f px: dashes visible (coverage %.3f-%.3f)"), lanePx, lowest, highest),
+            highest - lowest >= 0.5);
+    }
+
+    // The coarsest level keeps BASE x 2^MIN dashes along a lane however short it is on screen
+    const int32 coarsestDashes = FMath::RoundToInt32(base * minLevelScale);
+    for (const double lanePx : { 8.0, 16.0 })
+    {
+        const double footprint = base / lanePx;
+        int32 rises = 0;
+        double previous = LaneDashCoverage(0.01, 0.0, 1, footprint);
+        for (int32 step = 1; step <= 4000; ++step)
+        {
+            const double coverage = LaneDashCoverage(0.01 + static_cast<double>(step) / 4000.0, 0.0, 1, footprint);
+            rises += previous < 0.5 && coverage >= 0.5 ? 1 : 0;
+            previous = coverage;
+        }
+        TestEqual(FString::Printf(TEXT("lane %.0f px: %d dashes"), lanePx, coarsestDashes), rises, coarsestDashes);
+    }
+
+    // No popping: across each level boundary (the on-screen period crossing minPeriodPx x 2^k), coarse and fine, the
+    // coverage changes continuously with the footprint; level MIN is the clamp boundary (footprint 1 / (24 x 2^MIN))
+    for (int32 level = SOL::NPC_LANE_DASH_MIN_LEVEL; level <= 2; ++level)
+    {
+        const double boundary = 1.0 / (minPeriodPx * FMath::Exp2(static_cast<double>(level)));
+        for (const double s : { 0.0917, 0.3333, 0.6071 })
+        {
+            const double below = LaneDashCoverage(s, 0.3, 1, boundary * (1.0 - 1.0e-9));
+            const double above = LaneDashCoverage(s, 0.3, 1, boundary * (1.0 + 1.0e-9));
+            TestTrue(FString::Printf(TEXT("level %d boundary, s %.4f: continuous (%.6f vs %.6f)"), level, s, below,
+                above), FMath::Abs(below - above) <= 1.0e-6);
+        }
+    }
+
+    // Always in [0, 1]; a whole flow period changes nothing (footprints 1e-6 to 1e3: past the coarsest clamp too)
     for (int32 step = 0; step < 60; ++step)
     {
         const double s = static_cast<double>(step) / 59.0;
         const double f = FMath::Frac(0.37 * static_cast<double>(step));
-        const double footprint = FMath::Pow(10.0, -6.0 + 6.0 * static_cast<double>(step) / 59.0);
+        const double footprint = FMath::Pow(10.0, -6.0 + 9.0 * static_cast<double>(step) / 59.0);
         for (const int32 direction : { 1, -1 })
         {
             const FString label = FString::Printf(TEXT("step %d, dir %d"), step, direction);
@@ -799,17 +873,20 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
         }
     }
 
-    // Inside a pure level (level 0 at a 10 px period; the top level far past its last halving, before the solid
-    // fade), shifting the flow by delta equals shifting that level's phase by delta (moving s by delta / (BASE 2^k))
+    // Inside a pure level (the coarsest level at a 0.5 px level-0 period; level 0 at exactly the minimum period; the
+    // top level far past its last halving, before the solid fade), shifting the flow by delta equals shifting that
+    // level's phase by delta (moving s by delta / (BASE 2^k))
     struct FPureLevel
     {
         int32 Level;
         double Footprint;
     };
-    const FPureLevel pureLevels[] = { { 0, 0.1 }, { SOL::ORBIT_LINE_DASH_MAX_LEVEL, 5.0e-5 } };
+    const FPureLevel pureLevels[] = { { SOL::NPC_LANE_DASH_MIN_LEVEL, 2.0 }, { 0, 1.0 / minPeriodPx },
+        { SOL::ORBIT_LINE_DASH_MAX_LEVEL, 5.0e-5 } };
     for (const FPureLevel& pure : pureLevels)
     {
         const double perPhase = 1.0 / (base * FMath::Pow(2.0, static_cast<double>(pure.Level)));
+        const double orbitScale = pure.Level < 0 ? minLevelScale : 1.0;
         for (const double s : { 0.137, 0.4021, 0.866 })
         {
             for (const int32 direction : { 1, -1 })
@@ -821,7 +898,7 @@ bool FSOLNpcLaneMathDashCoverageTest::RunTest(const FString& /*parameters*/)
                 TestEqual(label + TEXT(": flow = moved phase"), flowed,
                     LaneDashCoverage(movedS, 0.0, direction, pure.Footprint), NPCLANE_FLOAT_TOL);
                 TestEqual(label + TEXT(": flow = the orbit lines at the moved phase"), flowed,
-                    NpcLaneOrbitDash(movedS * base, pure.Footprint), NPCLANE_FLOAT_TOL);
+                    NpcLaneOrbitDash(movedS * base * orbitScale, pure.Footprint * orbitScale), NPCLANE_FLOAT_TOL);
             }
         }
     }
@@ -1557,8 +1634,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathFlowClockTest, "SOLTest.NpcLaneM
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 31 (38b, D15): AdvanceLaneFlowClockS(clockS, realDeltaS, bPaused) is the dash flow's real-time clock: it takes a
-// real (undilated, warp-free) frame time and stops while paused; LaneDashFlowPhase of the result advances by
+// Case 31 (38b, D15; amended 2026-11-11: the dashes never freeze): AdvanceLaneFlowClockS(clockS, realDeltaS) is the
+// dash flow's real-time clock: it takes a real (undilated, warp-free) frame time and has no pause input, so it runs on
+// in the pause menu and under any time warp; LaneDashFlowPhase of the result advances by
 // NPC_LANE_DASH_FLOW_PERIODS_PER_S x the delta (mod 1); a negative or non-finite delta leaves the clock as it is, and a
 // non-finite clock restarts from 0
 bool FSOLNpcLaneMathFlowClockTest::RunTest(const FString& /*parameters*/)
@@ -1567,20 +1645,13 @@ bool FSOLNpcLaneMathFlowClockTest::RunTest(const FString& /*parameters*/)
     using SOLNpcLane::LaneDashFlowPhase;
     const double flow = SOL::NPC_LANE_DASH_FLOW_PERIODS_PER_S;
 
-    // Paused: the clock stands still
-    for (const double clock : { 0.0, 3.5, 1.0e6 + 0.125 })
-    {
-        TestEqual(FString::Printf(TEXT("paused at %.3f: unchanged"), clock),
-            AdvanceLaneFlowClockS(clock, 1.0 / 60.0, true), clock, NPCLANE_TOL);
-    }
-
     // Running: the phase advances by flow x delta, wrapped
     for (const double clock : { 0.0, 3.5, 1.0e6 + 0.125 })
     {
         for (const double delta : { 1.0 / 60.0, 0.5, 1.0 / flow, 10.0 })
         {
             const double expected = NpcLaneFeedFrac(LaneDashFlowPhase(clock) + flow * delta);
-            const double phase = LaneDashFlowPhase(AdvanceLaneFlowClockS(clock, delta, false));
+            const double phase = LaneDashFlowPhase(AdvanceLaneFlowClockS(clock, delta));
             TestTrue(FString::Printf(TEXT("clock %.3f + %.4f s: phase advanced"), clock, delta),
                 NpcLaneWrapDistance(phase, expected) <= NPCLANE_TOL);
         }
@@ -1590,26 +1661,22 @@ bool FSOLNpcLaneMathFlowClockTest::RunTest(const FString& /*parameters*/)
     double clock = 2.0;
     for (int32 frame = 0; frame < 60; ++frame)
     {
-        clock = AdvanceLaneFlowClockS(clock, 1.0 / 60.0, false);
+        clock = AdvanceLaneFlowClockS(clock, 1.0 / 60.0);
     }
     TestTrue(TEXT("one second of frames: phase + flow"), NpcLaneWrapDistance(LaneDashFlowPhase(clock),
         NpcLaneFeedFrac(LaneDashFlowPhase(2.0) + flow)) <= 1.0e-9);
 
-    // Pausing midway holds the phase exactly
-    const double held = AdvanceLaneFlowClockS(clock, 0.7, true);
-    TestEqual(TEXT("paused: phase held"), LaneDashFlowPhase(held), LaneDashFlowPhase(clock), NPCLANE_TOL);
-
     // Zero, negative and non-finite deltas leave the clock as it is
     for (const double badDelta : { 0.0, -0.016, NPCLANE_NAN, NPCLANE_INF, -NPCLANE_INF })
     {
-        TestEqual(FString::Printf(TEXT("delta %f: unchanged"), badDelta), AdvanceLaneFlowClockS(5.25, badDelta, false),
+        TestEqual(FString::Printf(TEXT("delta %f: unchanged"), badDelta), AdvanceLaneFlowClockS(5.25, badDelta),
             5.25, NPCLANE_TOL);
     }
 
     // A non-finite clock restarts from 0
     for (const double badClock : { NPCLANE_NAN, NPCLANE_INF })
     {
-        const double restarted = AdvanceLaneFlowClockS(badClock, 0.5, false);
+        const double restarted = AdvanceLaneFlowClockS(badClock, 0.5);
         TestTrue(FString::Printf(TEXT("clock %f: finite"), badClock), FMath::IsFinite(restarted));
         TestTrue(FString::Printf(TEXT("clock %f: phase of 0.5 s"), badClock),
             NpcLaneWrapDistance(LaneDashFlowPhase(restarted), LaneDashFlowPhase(0.5)) <= NPCLANE_TOL);

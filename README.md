@@ -230,6 +230,18 @@ The HUD glow slider (issue #37) at 0%, 100% and 200%, over the lit Earth: the sp
 
 The whole flight HUD at the new default glow (issue #37) with Earth targeted.
 
+![NPC lane lines of the inner solar system](Docs/Images/38-npc-lanes-network.png)
+
+The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC ships out: each lane is a pair of thin dashed hologram lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the dashes flowing each way. The short Mercury-Venus and Venus-Earth lanes keep a few longer dashes so their flow still shows.
+
+![Lanes converging on Venus](Docs/Images/38-npc-lanes-venus.png)
+
+0.15 AU off Venus: the Mercury-Venus and Venus-Earth lanes meet at the planet. The dashes stay fixed to the lane as the camera moves and regroup into finer or coarser dashes with the zoom.
+
+![Lane ships beside Earth at 200% HUD glow](Docs/Images/38-npc-lanes-crossfade-glow.png)
+
+40,000 km beside Earth at 200% HUD glow: the Earth-Moon lane leaves from behind Earth's disc (the planet hides it), its ships show one by one close to Earth where the lines have faded out, and the lines take over farther along the lane; the lines glow with the HUD glow setting.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -237,11 +249,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 119.3 h |
+| Work time (wall-clock) | 121.0 h |
 | Time spent answering questions | 9.1 h |
-| Tokens | 6,909.0M |
-| Notional API price | $2,715 |
-| Subagents dispatched | 537 |
+| Tokens | 6,990.5M |
+| Notional API price | $2,741 |
+| Subagents dispatched | 540 |
 <!-- METRICS:END -->
 
 ## Documentation map

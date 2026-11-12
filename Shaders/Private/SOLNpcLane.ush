@@ -15,8 +15,8 @@
 // Parameter vectors: frame = (viewpoint render location cm, max render distance cm); params0 = (flow phase, 0 unused,
 // fade near radii, fade far radii; widths scale by the view's own height, never a CPU value); style0 = (width min px,
 // width max px, gap px, glow pad px), at the reference height; style1 = (brightness min, brightness max, dash base
-// count, dash duty); style2 = (reference height px, emissive, 0, 0); glow0 = (core half px, core falloff, core falloff
-// max, halo weight); glow1 = (halo scale, halo power, glow scale max, 0)
+// count, dash duty); style2 = (reference height px, emissive, dash min level, 0); glow0 = (core half px, core
+// falloff, core falloff max, halo weight); glow1 = (halo scale, halo power, glow scale max, 0)
 
 #pragma once
 
@@ -87,10 +87,12 @@ float SOLNL_LineProfile(float distanceFromCenterPx, float widthPx, float glowSca
     return SOLNL_GlowProfile(shifted, glowScale, glow0, glow1) * min(widthPx, 1.0);
 }
 
-// LaneDashCoverage: the orbit lines' multi-scale coverage with the flow applied after each level's scaling.
-// phase0 = s x base count (level-0 periods), footprint = one pixel in level-0 periods, direction +1 outbound (toward
-// B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
-float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float footprint, float duty, float4 dash)
+// LaneDashCoverage: the orbit lines' multi-scale coverage with the flow applied after each level's scaling, and
+// coarser levels (negative, down to minLevel) where the level-0 period is under the minimum, so a lane short on screen
+// still shows dashes. phase0 = s x base count (level-0 periods), footprint = one pixel in level-0 periods, direction +1
+// outbound (toward B) or -1 inbound; dash = the orbit lines' (min period px, max level, solid start px, solid end px)
+float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float footprint, float duty, float4 dash,
+    float minLevel)
 {
     const float flow = direction * flowPhase;
     if (!(footprint > 0.0) || dash.x <= 0.0)
@@ -98,7 +100,7 @@ float SOLNL_DashCoverage(float phase0, float flowPhase, float direction, float f
         return SOLOL_DashCoverage(phase0 - flow, duty, 0.0);
     }
     const float periodPx = 1.0 / footprint;
-    const float level = clamp(log2(periodPx / dash.x), 0.0, dash.y);
+    const float level = clamp(log2(periodPx / dash.x), min(minLevel, 0.0), dash.y);
     const float lower = min(floor(level), dash.y);
     const float blend = level - lower;
     const float lowerScale = exp2(lower);
@@ -284,7 +286,7 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
 
     // Flowing dashes: outbound toward B, inbound toward A
     const float direction = lineIndex < 0.5 ? 1.0 : -1.0;
-    const float coverage = SOLNL_DashCoverage(phase0, params0.x, direction, footprint, style1.w, dash);
+    const float coverage = SOLNL_DashCoverage(phase0, params0.x, direction, footprint, style1.w, dash, style2.z);
     const float3 color = lineIndex < 0.5 ? outboundColor : inboundColor;
     return color * (lerp(style1.x, style1.y, weight) * style2.y * profile * coverage * fade);
 }

@@ -9,8 +9,9 @@ shader library) and SDD 37 (the HUD glow scale `g`). Leaves an extension point f
 [#49](https://github.com/DieSlower/SOLTest/issues/49) (lane guidance tunnel), which is **not** designed here.
 Persistence change: settings save schema 12 -> 13 (approved, D1).
 Status: **part 38a built (2026-11-11):** the pure lane math (`Npc/SOLNpcLaneMath`), the Lanes row of the Overlay Menu
-and settings schema 13. **Part 38b built (2026-11-11, review pending):** the renderer (section 4.12 records what was
-built and its deviations); the tuning and docs (38c) are next. Grill-me done 2026-11-11 (D1-D6);
+and settings schema 13. **Part 38b built (2026-11-11):** the renderer (section 4.12 records what was built and its
+deviations). **Part 38c built (2026-11-11, whole-ticket review pending):** the D15 amendment (dashes never freeze;
+coarser dashes on short lanes), tuning, profiling and docs (section 4.13). Grill-me done 2026-11-11 (D1-D6);
 the draft's open questions Q1-Q18 were answered by the user the same day (D7-D24, section 2); D25 (the glow scaled with
 the viewport height) was decided by the user after the 38a review. No decision is open.
 
@@ -62,6 +63,22 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
 - **D15 (was Q9): Dashes** fixed to the lane (lane-parameter units, the orbit lines' multi-scale levels), steady flow:
   64 base dashes per lane, 50% duty, 0.75 dash periods per second at every zoom; outbound = body A to body B (layout
   order); keep right on screen (D2); real-time clock that ignores time warp and stops while the game is paused.
+  **Amended by the user (2026-11-11, part 38c):** (A) **the dashes never freeze:** the flow clock always runs on real
+  time (still ignoring time warp); the hold while the world is paused or the pause menu shows is removed (and with it
+  `ASOLNpcVisuals`' read of `USOLMenuSubsystem`), so the dashes keep flowing under the pause menu like the lane ships'
+  points do. (B) **Short lanes:** the user's decision was "allow coarser dashes (about 4-8 per lane) so short lanes
+  keep visible flow" (in 38b a lane under about 130 px on screen at 1080p had its 64 base dashes box-filter to an
+  even half-bright line). As built, the multi-scale levels also go **coarser**, down to `NPC_LANE_DASH_MIN_LEVEL` = -4
+  (64 x 2^-4 = **4 dashes per lane**): the level is `clamp(log2(period0Px / 24), -4, 8)`, `period0Px` being the
+  lane's on-screen length / 64 in screen pixels (not scaled with the viewport height). So the real threshold is
+  **about 64 x 24 = 1,536 px** of lane length on screen: any lane shorter than that already goes coarser, its dash
+  period never below about 24 px, and below 4 x 24 = 96 px it stays at the 4-dash floor. Most lanes in normal views
+  are shorter than 1,536 px, so they now show fewer than 64 dashes (about 4-8 on a lane 100-200 px long, as the user
+  asked for short lanes); only a lane 1,536 px or more on screen keeps the 64-dash base and the finer levels. The
+  scale changes continuously (crossfaded levels, no popping). The same contract is in `SOLNpcLaneMath`,
+  `SOLNpcLane.ush` (the coarsest level arrives as `NpcLaneStyle2.z`, read back by the smoke's `a-dash-min-level`)
+  and the tests: section 6 cases 1, 11 and 12, and for (A) test case 31 of `Tests/NpcLaneMathTest.cpp` (cases 25-33
+  were added in 38b and are listed in section 4.12, not in section 6).
 - **D16 (was Q10): Colour after tone mapping:** no HUD colour gain; the emissive scale is tuned on the screenshots so
   the brightest core keeps its hue.
 - **D17 (was Q11): Overlay row** label "Lanes" (id `"Lanes"`), top level, between "Ships on Radar" and "Darkening"
@@ -186,18 +203,28 @@ that distance; the close-up part, where float error would matter, is faded out (
 - **World-anchored dashes:** the dash pattern is fixed in lane-parameter units (base count `DASH_BASE_COUNT` = 64 per
   lane, duty 0.5), with the orbit lines' multi-scale scheme (SDD 17 Amendment 1: the period halves in power-of-two
   levels while a dash is longer than 24 px on screen, up to level 8, then fades to solid between 200 and 800 px), so the
-  dashes neither swim when the camera moves nor vanish in a gap.
+  dashes neither swim when the camera moves nor vanish in a gap. Since 38c (D15 amendment B) the period also
+  **doubles** in power-of-two levels while it is shorter than 24 px, down to level -4 (4 dashes per lane), so a short
+  lane on screen keeps visible dashes: with `MIN` = `NPC_LANE_DASH_MIN_LEVEL` the continuous level is
+  `clamp(log2(period0Px / 24), MIN, 8)`, so a lane shorter than about 64 x 24 = 1,536 px on screen already uses the
+  coarser levels (4-8 dashes at 100-200 px). For lane levels in [`MIN`, `8 + MIN`] (-4 to 4) the coverage at zero
+  flow equals the orbit lines' coverage of a line with `64 x 2^MIN` dashes (its levels [0, 8] shifted by `MIN`), and
+  for lane levels [0, 8] that of the orbit lines' 64-dash line.
 - **Flow:** each level's phase is `s x DASH_BASE_COUNT x 2^k - direction x f`, where `f = frac(FLOW x t)` is one flow
   phase in dash periods, `FLOW` = 0.75 periods per second (proposed), `direction` +1 outbound (dashes move toward B),
   -1 inbound. Because the flow is added after the level scaling, the dashes move by the same fraction of their own
   on-screen period at every zoom. `f` is computed on the CPU in double and wrapped, so the shader never sees a large
-  time. The clock is real time, independent of time warp, and stops while the game is paused (D15).
+  time. The clock is real time, independent of time warp, and never stops, the pause menu included (D15 as amended in
+  38c).
 - `LaneDashCoverage(s, f, direction, footprint)` mirrors `MultiScaleDashCoverage` with the flow applied per level; with
-  `f = 0` it equals `MultiScaleDashCoverage(s x DASH_BASE_COUNT, ...)` exactly (a test pins this).
+  `f = 0` it equals `MultiScaleDashCoverage(s x DASH_BASE_COUNT, ...)` exactly wherever the level-0 period is at least
+  24 px, and `MultiScaleDashCoverage(s x DASH_BASE_COUNT x 2^MIN, footprint x 2^MIN)` where it is shorter (tests pin
+  both).
 
 ### 4.7 Look, colour and HUD glow (D2, D5)
 
-- **Colours:** `NPC_LANE_OUTBOUND_COLOR` = sRGB #9FD6D0 (teal-white), `NPC_LANE_INBOUND_COLOR` = sRGB #3FD0E0 (cyan),
+- **Colours:** `NPC_LANE_OUTBOUND_COLOR` = sRGB #9FD6D0 (teal-white; stored as #7FD0C4 since the 38c tuning, so its
+  tone-mapped core reads as #9FD6D0, section 4.13), `NPC_LANE_INBOUND_COLOR` = sRGB #3FD0E0 (cyan),
   stored as `FColor` and converted to linear once. No `HUD_COLOR_GAIN` (that gain clips cores toward white); the
   emissive scale (`NPC_LANE_EMISSIVE`, tuned on screenshots) is chosen so the brightest lane core keeps its hue after
   tone mapping (checked on the screenshots, section 8).
@@ -325,15 +352,18 @@ control (the embedded Overlays tab gains the row from the table).
 - **Deviations to review:** (1) the shader scales widths, gap, glow and ribbon by its own view height
   (`ResolvedView.ViewSizeAndInvSize.y`, as the orbit lines do), so high-resolution shots and per-eye views scale
   correctly; the CPU viewport scale first planned for `NpcLaneParams0.y` was never read, so the review dropped it:
-  `LaneMaterialParams(flowPhase)` writes 0 there (unused; case 28 pins it). (2) "Paused" for the flow clock
+  `LaneMaterialParams(flowPhase)` writes 0 there (unused; case 28 pins it). (2) *(Superseded in 38c by the D15
+  amendment A: the dashes never freeze, so neither condition holds the clock any more; the `TECH_DEBT.md` item is
+  deleted.)* "Paused" for the flow clock
   (D15) is the world paused **or the pause menu showing** (the Esc menu does not pause the simulation, SDD 8, but the
   player reads it as paused; the space dust also hides "while paused" in the pause menu). If only a world pause was
   meant, it is one condition in `ASOLNpcVisuals::UpdateLanes`. With the pause menu open the world keeps running, so
   the lane ships' points keep moving while the dashes hold (recorded in `TECH_DEBT.md`). (3) The crossfade flag `NpcParams4.x` is pushed only
   while lines can actually draw (lane material loaded and a ribbon built), so a missing asset never empties a lane.
-  (4) `NPC_LANE_EMISSIVE` starts at 2.0 (3.0 desaturated the cores visibly at 1080p); final value in 38c.
+  (4) `NPC_LANE_EMISSIVE` starts at 2.0 (3.0 desaturated the cores visibly at 1080p); final value 1.3 (38c, section 4.13).
 - **Observed for 38c tuning:** a lane shorter than about 130 px on screen at 1080p (64 dashes) has a dash period under
-  2 px, so its dashes box-filter to an even half-bright line (the multi-scale levels only make dashes finer); the
+  2 px, so its dashes box-filter to an even half-bright line (the multi-scale levels only make dashes finer; fixed in
+  38c with coarser levels, whose real threshold is about 1,536 px, D15 amendment B); the
   teal-white core reads pale (about RGB 195, 219, 217 at 1080p against #9FD6D0) while cyan keeps its hue.
 - **Smoke `-SOLSmokeNpcLanes`:** 34/34 checks at 1280x720 and 1920x1080 (section 8 item 2 checks plus the shared
   occluders written with the orbit lines off, and the map); views V1-V5 as listed there, V4 inside the Earth-Mars lane
@@ -343,6 +373,88 @@ control (the embedded Overlays tab gains the row from the table).
   it, which could smear a ribbon whose vertices sit behind the camera; the shots at both sizes show no smear (every
   lane point that near is inside the close-up fade, 100 lane radii, so nothing draws there). It turns the space dust off in memory (its streaks covered the lanes after each teleport). The keep-
   right rule was checked on the V3 shots against the logged screen endpoints (`LogLaneScreenSides`).
+
+### 4.13 As built in 38c (2026-11-11)
+
+- **The two user decisions (D15 amendment):** `SOLNpcLane::AdvanceLaneFlowClockS(clockS, realDeltaS)` lost its pause
+  input and `ASOLNpcVisuals` its `USOLMenuSubsystem` reference (A); `NPC_LANE_DASH_MIN_LEVEL` = -4 clamps the level of
+  `LaneDashPhase` / `LaneDashCoverage` and of the shader's `SOLNL_DashCoverage`, which reads it from
+  `NpcLaneStyle2.z` (B). The smoke's `e-flow-paused` check became `e-flow-pause-menu`: with the pause menu open the
+  phase advances at the real-time rate (still 34 checks then; 35 since the whole-ticket review: `a-dash-min-level` reads `NpcLaneStyle2.z` back from the lane material through `ASOLNpcVisuals::GetPushedLaneStyle2`, and `e-flow-resumed` now times the phase from the resume and checks the real-time rate at warp 1). On the V3 shots the Mercury-Venus and Venus-Earth lanes
+  (about 150 and 100 px long at 1080p) now show clear flowing dashes instead of an even half-bright line.
+- **Tuning (1080p shots; lane cores measured on V3's Venus-Earth lane, sRGB):** `NPC_LANE_EMISSIVE` 2.0 -> **1.3** and
+  `NPC_LANE_OUTBOUND_COLOR` stored as **#7FD0C4** (was #9FD6D0, the same teal family, a little deeper). Candidates
+  (outbound core / inbound core): 2.0 with #9FD6D0 (210, 229, 227) / (115, 218, 223), the pale core of the 38b note;
+  1.3 with #9FD6D0 (188, 214, 212) / (109, 215, 219); 1.6 with #7FD0C4 (179, 220, 215) / (113, 218, 222); 1.3 with
+  #8CD4CA (176, 214, 209) / (106, 214, 219); **1.3 with #7FD0C4 (166, 213, 207) / (107, 215, 219)**, whose outbound
+  core reads as #9FD6D0 itself (159, 214, 208), so D16 holds (the core keeps its hue). The inbound cyan #3FD0E0 is
+  unchanged (its core's red comes mostly from the outbound line's glow beside it), and the two stay distinct (red 166
+  against 107). The lower emissive costs the cores little brightness (green 229 -> 213, the tone mapper's shoulder).
+  Every other value is kept (fade 100 / 400 radii, widths 1.0-2.5 px, gap 1.5 px, brightness 0.35-1.0, flow 0.75
+  periods per second, 64 base dashes): the crossfade shows no seam (V1, V5), 0% glow is crisp and 200% softer, and V4
+  (inside the Earth-Mars lane) stays uninformative by design: the camera is inside the lane's close-up fade, so the
+  lane is its ships as points there.
+- **Profiling** (`-SOLSmokeNpcLanesProfile`, new: standalone `-game`, `-corelimit=16`, vsync off, 1M NPCs, orbit lines
+  off, V2 and V3, `stat dumpave` of `STAT_SOL_NpcRedraw` / `STAT_SOL_NpcLanes` over 240 frames and three `ProfileGPU`
+  frames per pass, three runs per size, medians; RTX 2080 Ti, i9-9960X). "Before" is the same run with
+  `sol.NpcLanes 0` (D20's A/B switch): it restores every lane ship point exactly and skips the lane pass; the only
+  #38 code it keeps is the per-frame lane frame (`STAT_SOL_NpcLanes` 0.002 ms) and one branch in the point shader.
+  **Deviation from section 8 item 7** ("before" = the commit before #38): no worktree build of that commit was
+  profiled (the pre-#38 build has no lane views or profile flag to place the camera), and the `sol.NpcLanes 0`
+  baseline is not an exact pre-#38 figure: it still pays the lane frame and the point-shader branch, so every
+  on / off delta below is slightly too small (by about 0.002 ms CPU and that branch's GPU cost). GPU ms (inclusive):
+
+  | Size | View | Lane draw (`M_SOLNpcLanes`) | After-motion-blur pass + its composite | Translucency, lanes on / off | Redraw CPU, on / off (lane share) |
+  |---|---|---|---|---|---|
+  | 1920x1080 | V2 | 0.025 | 0.040 + 0.037 | 0.375 / 0.393 | 0.033 / 0.030 (0.005) |
+  | 1920x1080 | V3 | 0.027 | 0.042 + 0.038 | 0.950 / 1.190 | 0.039 / 0.036 (0.004) |
+  | 3840x2160 | V2 | 0.035 | 0.053 + 0.086 | 0.362 / 0.347 | 0.027 / 0.025 (0.004) |
+  | 3840x2160 | V3 | 0.043 | 0.060 + 0.088 | 1.003 / 1.165 | 0.027 / 0.025 (0.004) |
+  | 3840x3744 | V2 | 0.047 | 0.064 + 0.146 | 0.388 / 0.356 | 0.026 / 0.025 (0.004) |
+  | 3840x3744 | V3 | 0.079 | 0.095 + 0.153 | 1.347 / 1.314 | 0.026 / 0.025 (0.004) |
+
+  **Reading the Translucency column:** it is the `Translucency` node of `ProfileGPU`, which already **includes** the
+  after-motion-blur pass (the lane draw is inside it); only the composite (`ComposeTranslucencyToNewSceneColor
+  (AfterMotionBlur)`, the second figure of the after-motion-blur column) is outside it. So the after-motion-blur pass
+  must not be added to the Translucency figure a second time: in V2 at 1080p the real comparison is 0.375 + 0.037
+  (composite) = **0.412 ms against 0.393 ms, +0.019 ms**, not 0.375 + 0.040 + 0.037 = 0.452 ms (+0.059, a double
+  count of the 0.040 ms pass); in V3 it is 0.950 + 0.038 = 0.988 ms against 1.190 ms (-0.202 ms).
+
+  **The 1080p budgets (D22) hold:** the lanes cost 0.027 ms GPU for the draw and 0.08 ms with the whole
+  after-motion-blur pass and its composite (<= 0.15 ms; the composite is shared with the orbit lines, which are on by
+  default and were off here); the NPC translucency (points + lanes, the column above) is 0.018 ms (V2) and 0.24 ms
+  (V3) **cheaper** than with the lanes off, because the lane ships beyond 400 lane radii leave the point layer, and
+  with the composite counted too it is +0.019 ms in V2 and -0.202 ms in V3 (<= +0.05 ms); `ASOLNpcVisuals::Redraw`
+  grows by 0.003 ms and its whole
+  per-frame lane share is 0.004-0.005 ms (<= +0.02 ms). 4K and one eye are recorded, not gated (D22): the lane draw
+  grows with the pixels to 0.035-0.043 ms at 3840x2160 and 0.047-0.079 ms at 3840x3744 (0.21-0.25 ms there with the
+  after-motion-blur pass and its composite, which the orbit lines pay anyway when they are on); the NPC translucency
+  is again cheaper with the lanes on in V3 at 4K (1.003 against 1.165 ms), +0.015 ms in V2 at 4K and +0.03 ms in both
+  views at one eye (the Translucency column alone; the composite adds 0.086-0.153 ms there; the lane pixels grow
+  with the view, the saved points do not). The Overlay Menu with its one more
+  row (D21; `-SOLSmokeHoloMenuProfile` P2, the game window's Slate UI pass, GPU ms, medians of three runs against
+  SDD 37's after-#37 figures): **0.240 ms at 1920x1080** (0.240 / 0.239 / 0.241; 0.236 before, +0.004), **0.515 ms
+  at 3840x2160** (0.517 / 0.515 / 0.515; 0.501 before, +0.014) and **1.182 ms at 3840x3744** (1.179 / 1.182 / 1.195;
+  1.152 before, +0.030), plus one run at 1280x720 (0.164 ms, PASS against the profile's stored baseline; every pass
+  of that run PASS or NOBASE, 15/15 checks). The one-eye figure is still inside the provisional 1.2 ms ceiling, at
+  98.5% of it, so no new debt item is added (D21 records only a crossing); the existing `TECH_DEBT.md` item on the
+  speed panel's one-eye cost notes the 1.182 ms. The step 11 one-eye runs were made in 38c; the 1920x1080, 3840x2160
+  and 1280x720 runs were added in the whole-ticket review fixes.
+- **1M ramp and the per-population upload (whole-ticket review fixes):** `-SOLNpcRamp -SOLNpcCount=1M` (standalone
+  `-game`, 1920x1080, `-corelimit=16`, vsync off) **PASSes every stage**: p95 6.99 / 7.08 / 7.04 / 7.53 / **7.43 ms**
+  at 10k / 100k / 250k / 500k / 1M ships (mean 6.24-6.71 ms, max 10.05 ms at 1M). `ASOLNpcVisuals::UploadPopulation`
+  now logs its time once per population (no per-frame cost): at 1M the whole upload takes **22.0 ms** (texture
+  creation and `UpdateResource`, the far blocks and the lane mesh), of which the rail fill **with the lane histogram
+  (D13) 2.65 ms** (0.16 / 0.52 / 1.04 / 1.36 ms at 10k / 100k / 250k / 500k; whole upload 0.8 / 3.5 / 6.0 / 9.7 ms).
+  The histogram alone is not timed separately: it runs inside the fill's `ParallelFor` tasks, and the only fill
+  without it (`ReepochRails`, which now logs its fill time too) did not run during the ramp, so its share is not
+  isolated here.
+- **Verification (38c):** full suite 1843/1843 (lane topics 29/29); `-SOLSmokeNpcLanes` 34/34 at 1280x720 and
+  1920x1080; `-SOLSmokeOverlay` 50/50, `-SOLSmokeHud` 45/45, `-SOLSmokeHoloMenu` 86/86 at 1280x720 and 1920x1080,
+  `-SOLSmokeSolidMenu` 296/296; the player's `GameUserSettings.ini` unchanged after every run. After the whole-ticket
+  review fixes: full suite 1843/1843, `-SOLSmokeNpcLanes` 35/35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50/50,
+  the 1M ramp PASS (above). README gallery: three
+  1080p shots from the final smoke (`Docs/Images/38-npc-lanes-*.png`).
 
 ## 5. Map, route overlay and other views (D18)
 
@@ -369,9 +481,10 @@ test edit).
 1. **Constants** (`SOLConstants.h`, proposed values): `NPC_LANE_FADE_NEAR_RADII` 100, `NPC_LANE_FADE_FAR_RADII` 400
    (far > near > 1), `NPC_LANE_TRAFFIC_LOW` 100, `NPC_LANE_TRAFFIC_HIGH` 100,000, `NPC_LANE_WIDTH_MIN_PX` 1.0,
    `NPC_LANE_WIDTH_MAX_PX` 2.5, `NPC_LANE_GAP_PX` 1.5, `NPC_LANE_REFERENCE_HEIGHT_PX` 1080, `NPC_LANE_BRIGHTNESS_MIN`
-   0.35, `NPC_LANE_BRIGHTNESS_MAX` 1.0, `NPC_LANE_DASH_BASE_COUNT` 64, `NPC_LANE_DASH_DUTY` 0.5,
+   0.35, `NPC_LANE_BRIGHTNESS_MAX` 1.0, `NPC_LANE_DASH_BASE_COUNT` 64, `NPC_LANE_DASH_MIN_LEVEL` -4 (38c: 4 dashes
+   per lane at the coarsest level), `NPC_LANE_DASH_DUTY` 0.5,
    `NPC_LANE_DASH_FLOW_PERIODS_PER_S` 0.75, `NPC_LANE_GLOW_PAD_PX` 12, `NPC_LANE_SEGMENTS` 64;
-   `NPC_LANE_OUTBOUND_COLOR == FColor(0x9F, 0xD6, 0xD0)`, `NPC_LANE_INBOUND_COLOR == FColor(0x3F, 0xD0, 0xE0)`, and
+   `NPC_LANE_OUTBOUND_COLOR == FColor(0x9F, 0xD6, 0xD0)` (38c tuning: `FColor(0x7F, 0xD0, 0xC4)`), `NPC_LANE_INBOUND_COLOR == FColor(0x3F, 0xD0, 0xE0)`, and
    neither is grey or white (max channel minus min channel >= 0.1 in linear).
 2. **`double LaneLineFade(double distanceM, double laneRadiusM)`**: 0 at and below `NEAR x R` (also for d = 0 and
    negative d); 1 at and above `FAR x R` and for +inf; exactly 0.5 at `sqrt(NEAR x FAR) x R` (200 R with the proposed
@@ -414,14 +527,18 @@ test edit).
     closed form within 1e-6; negative t -> in [0, 1) (`frac` of a negative number wraps up); NaN or inf -> 0.
 11. **`double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction)`**:
     `laneParam x DASH_BASE_COUNT x 2^level - sign(direction) x flowPhase`, level clamped to
-    [0, `ORBIT_LINE_DASH_MAX_LEVEL`], direction 0 treated as +1. Motion check: for outbound, the phase at
+    [`NPC_LANE_DASH_MIN_LEVEL`, `ORBIT_LINE_DASH_MAX_LEVEL`] (38c; it was [0, max]), direction 0 treated as +1. Motion check: for outbound, the phase at
     `(s + DASH_BASE_COUNT^-1 x 2^-level x df, f + df)` equals the phase at `(s, f)` (a dash feature moves toward B, s
     increasing, as f grows); for inbound the feature moves toward A (s decreasing). Both directions give the same
     phase at f = 0.
 12. **`double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint)`**: with
     `flowPhase == 0` it equals `SOLOrbitLineMath::MultiScaleDashCoverage(laneParam x DASH_BASE_COUNT, DASH_DUTY,
     phaseFootprint, <the orbit lines' level and solid constants>)` for a sweep of 20 (s, footprint) pairs covering
-    level 0, a crossfade, the top level and the solid fade; in [0, 1] always; NaN or non-positive footprint -> a
+    level 0, a crossfade, the top level and the solid fade, wherever the level-0 period `1 / footprint` is at least
+    `ORBIT_LINE_DASH_MIN_PERIOD_PX`; where it is shorter (38c, the coarse levels) it equals
+    `MultiScaleDashCoverage(laneParam x DASH_BASE_COUNT x 2^MIN, ..., phaseFootprint x 2^MIN, ...)`; a lane 32, 64,
+    130 or 400 px long on screen shows dashes (coverage range along it at least 0.5); a lane 8 or 16 px long keeps
+    `DASH_BASE_COUNT x 2^MIN` (4) dashes; the coverage is continuous across every level boundary; in [0, 1] always; NaN or non-positive footprint -> a
     level-0 point sample of `LaneDashPhase(s, 0, f, dir)` (a square wave of duty `DASH_DUTY`); shifting f by a whole
     period (1.0) leaves the coverage unchanged; inside a pure level-k regime, shifting f by `delta` equals shifting the
     level-k phase by `delta` (same value as the point sample at the shifted phase).
@@ -535,7 +652,8 @@ new `-SOLSmokeNpcLanes` flag and `sol.NpcLanes` cvar), `Docs/Plans/STATUS.md` (#
    (occlusion). Per view: Lanes on and off, HUD glow 0% / 100% / 200%. Checks (logged PASS / FAIL): the lane
    component's visibility equals (row shown and a drawn lane); every drawn lane's group-texture `.w` values equal
    `BuildLaneFrame`'s radius and weight; the points material's lanes flag follows the row; the pushed glow scale is
-   `HudGlowScale(live)` and returns on revert; the flow phase advances between frames and not while paused;
+   `HudGlowScale(live)` and returns on revert; the flow phase advances at the real-time rate under time warp and, since
+   38c (D15 amendment A), with the pause menu open too (`e-flow-pause-menu`);
    `sol.NpcLanes 0` hides the lines and restores the points.
 3. **Screenshots** of V1-V5 at **1280x720, 1920x1080 and 3840x2160 (4K proxy)**, looked at: two parallel lines in the
    two colours, never white, dashes flowing opposite ways, the outbound line on the right of A -> B, busy lanes
@@ -577,6 +695,8 @@ Temporary screenshots and captures are deleted once looked at; only README galle
   points at the default lane fraction). Budgets (D22, gated at 1920x1080 only): lanes <= 0.15 ms GPU at 1920x1080 in V3 with 1M; NPC
   translucency (points + lanes) no more than +0.05 ms over the before figure at 1920x1080; recorded (not gated) at 4K
   and one eye, where the whole frame is already scene-bound (`VR_PERFORMANCE_TARGETS.md` section 7a).
+- **Measured (38c):** section 4.13; every 1080p budget holds (lane draw 0.027 ms, the NPC translucency cheaper with
+  the lanes on, the redraw +0.003 ms).
 - **1M scaling:** nothing in the lane path is per ship on the CPU; per ship on the GPU it is one branch and one log
   in the far-point vertex shader for lane ships only.
 - **VR (record only, no VR work before procedural terrain):** lanes are world-space geometry, so they render per eye
@@ -594,7 +714,8 @@ per-frame CPU projection and clipping, no depth in a future VR stereo layer) and
 editor Python, SDD 11 Amendment 2) (D7); trimming the lanes at the bodies' surfaces (D8); hiding every far lane ship
 while lanes are on, which leaves an empty band near a lane (D9); lane ships hidden with Lanes off (D10); lanes
 ignoring the master O (D11); fade thresholds on the lane's apparent pixel width (D12); expected or spawn-bucket ship
-counts (D13); fixed pixel widths (D14); screen-space dashes, real-speed dashes, a clock running while paused (D15); an
+counts (D13); fixed pixel widths (D14); screen-space dashes and real-speed dashes (D15; a clock running while paused
+was rejected at first, then **adopted in 38c** by the D15 amendment A: the dashes never freeze); an
 appended row or the label "NPC Lanes" (D17); lanes hidden on the map (D18); a Help glossary entry (D19); no new smoke
 flag or cvar (D20); compacting the Overlay Menu in #38 (D21); a push of the settings from the game mode (D23); a
 separate occluder set for the lanes (D24).
@@ -616,3 +737,8 @@ separate occluder set for the lanes (D24).
 - 2026-11-11: Q1-Q18 answered by the user (D7-D24, all as recommended; D9 states the crossfade so a lane is never empty, D22 gates the budgets at 1920x1080 only); D2 gains the keep-right rule shared with #49 (outbound on the right, inbound on the left); section 5 (map) and section 10 updated; ready to build.
 - 2026-11-11: part 38a built; after its review the user decided D25 (the glow scaled with the viewport height: cases 8 and 9 updated, 720p and 4K cases added), D23 gained the `Npc -> UI` and `Npc -> OrbitLines` edges of the pure math, and case 9's "non-decreasing in g" was narrowed to just past the core edge.
 - 2026-11-11: part 38b built; after its review: `LaneOutboundSide` (case 33) pins the shader's keep-right sign, `NpcLaneParams0.y` dropped (unused, case 28), the lane histogram counts on the stack, the occluders are written at once when lanes turn on with the orbit lines hidden, the points' crossfade calls `SOLNL_LineFade`, smoke view V4b added, section 4.12 moved after 4.11.
+- 2026-11-11: whole-ticket review fixes: the real coarse-dash threshold (about 1,536 px) in the D15 amendment and
+  section 4.6, the equality range [MIN, 8 + MIN], the case citations, section 10, the `sol.NpcLanes 0` baseline as a
+  deviation and the Translucency column read correctly (section 4.13), P2 at 1920x1080 / 3840x2160 / 1280x720, the 1M
+  ramp and the upload timing; the smoke has 35 checks.
+- 2026-11-11: part 38c: the user's D15 amendment (A: the dashes never freeze; B: coarser dash levels down to 4 dashes per lane for short lanes, `NPC_LANE_DASH_MIN_LEVEL`), tuning (emissive 1.3, outbound stored #7FD0C4), the profile capture `-SOLSmokeNpcLanesProfile` and its measurements (section 4.13, budgets held).

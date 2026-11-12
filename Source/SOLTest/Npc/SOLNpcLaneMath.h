@@ -78,12 +78,15 @@ namespace SOLNpcLane
     SOLTEST_API double LaneDashFlowPhase(double timeS);
 
     // Returns a level's dash phase: s x NPC_LANE_DASH_BASE_COUNT x 2^level - sign(direction) x flowPhase (level clamped
-    // to [0, ORBIT_LINE_DASH_MAX_LEVEL], direction 0 as +1), so outbound dashes move toward B and inbound ones toward A
+    // to [NPC_LANE_DASH_MIN_LEVEL, ORBIT_LINE_DASH_MAX_LEVEL], direction 0 as +1), so outbound dashes move toward B and
+    // inbound ones toward A
     SOLTEST_API double LaneDashPhase(double laneParam, int32 level, double flowPhase, int32 direction);
 
     // Returns the multi-scale dash coverage of a flowing lane line: SOLOrbitLineMath::MultiScaleDashCoverage with the
-    // orbit lines' level and solid constants, the flow applied per level (equal to it at flowPhase 0); the footprint is
-    // one pixel in level-0 dash periods, and a NaN or non-positive one is a level-0 point sample
+    // orbit lines' level and solid constants, the flow applied per level (equal to it at flowPhase 0 wherever the
+    // level-0 period is at least ORBIT_LINE_DASH_MIN_PERIOD_PX); where it is shorter the levels go coarser, down to
+    // NPC_LANE_DASH_MIN_LEVEL, so a lane short on screen still shows dashes. The footprint is one pixel in level-0 dash
+    // periods, and a NaN or non-positive one is a level-0 point sample
     SOLTEST_API double LaneDashCoverage(double laneParam, double flowPhase, int32 direction, double phaseFootprint);
 
     // Returns the parameter in [0, 1] of the point on segment A-B (camera at the origin) closest to the ray from the
@@ -145,9 +148,10 @@ namespace SOLNpcLane
     // and writes inOutCounts once at the end, so tasks whose count arrays share a cache line do not contend
     SOLTEST_API void AccumulateLaneShips(TConstArrayView<FSOLNpcRail> rails, TArrayView<int32> inOutCounts);
 
-    // Returns the dash flow's real-time clock advanced by a real (warp-free) frame time: unchanged while paused or for
-    // a zero, negative or non-finite delta; a non-finite clock restarts from 0
-    SOLTEST_API double AdvanceLaneFlowClockS(double clockS, double realDeltaS, bool bPaused);
+    // Returns the dash flow's real-time clock advanced by a real (warp-free) frame time; it never stops (the pause menu
+    // and time warp included), only a zero, negative or non-finite delta leaves it as it is; a non-finite clock
+    // restarts from 0
+    SOLTEST_API double AdvanceLaneFlowClockS(double clockS, double realDeltaS);
 
     // Returns the lane ribbon mesh's vertex count: lanes x 2 lines x (NPC_LANE_SEGMENTS + 1) samples x 2 sides (0 for
     // no lanes)
