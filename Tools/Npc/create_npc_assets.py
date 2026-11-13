@@ -216,8 +216,8 @@ const float4 t3 = TunnelTex.Load(int3(lane, 3, 0));
 float4 interp0;
 float4 interp1;
 const float3 target = SOLNT_Vertex(float3(UV0.xy, 0.0), UV1.xy, UV2.xy, t0, t1, t2, t3,
-    WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Shape, Layout0, Layout1, Layout2, Layout3,
-    Glow0, ResolvedView.ViewToTranslatedWorld[0].xyz, ResolvedView.ViewToTranslatedWorld[1].xyz,
+    WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Shape, Style2, Style3, Layout0, Layout1,
+    Layout2, Layout3, Glow0, ResolvedView.ViewToTranslatedWorld[0].xyz, ResolvedView.ViewToTranslatedWorld[1].xyz,
     ResolvedView.ViewForward, ResolvedView.ViewToClip[0][0], ResolvedView.ViewSizeAndInvSize.xy, interp0, interp1);
 Interp0 = interp0;
 Interp1 = interp1;
@@ -225,9 +225,9 @@ return target;"""
 
 TUNNEL_PIXEL_HLSL = r"""// NPC lane tunnel colour (SDD 49 4.6-4.7)
 float4 occluders[SOLOL_MAX_OCCLUDERS] = { O0, O1, O2, O3, O4, O5, O6, O7 };
-return SOLNT_Pixel(Interp0, Interp1, WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Glow0, Glow1,
-    GlowScale, RingColor.rgb, DotOutColor.rgb, DotInColor.rgb, ChevronOutColor.rgb, ChevronInColor.rgb, OrbitStyle2,
-    ResolvedView.ViewSizeAndInvSize.y, PixelDepth, SceneDepth, occluders);"""
+return SOLNT_Pixel(Interp0, Interp1, WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Style2,
+    Glow0, Glow1, GlowScale, RingColor.rgb, DotOutColor.rgb, DotInColor.rgb, ChevronOutColor.rgb, ChevronInColor.rgb,
+    OrbitStyle2, ResolvedView.ViewSizeAndInvSize.y, PixelDepth, SceneDepth, occluders);"""
 
 PIXEL_HLSL = r"""// NPC point pixel: a soft dot inside the billboard triangle, faction tint times distance brightness
 const float r = length(Corner);
@@ -514,6 +514,11 @@ def tunnel_vector_defaults():
         ("NpcTunnelShape", unreal.LinearColor(constant("NPC_TUNNEL_CHEVRON_RADIUS_SCALE"),
             constant("NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII"), constant("NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII"),
             constant("NPC_TUNNEL_END_RING_MIN_ALPHA"))),
+        ("NpcTunnelStyle2", unreal.LinearColor(constant("NPC_TUNNEL_CHEVRON_NOTCH_FRACTION"),
+            constant("NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII"), constant("NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII"),
+            constant("NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII"))),
+        ("NpcTunnelStyle3", unreal.LinearColor(constant("NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS"),
+            constant("NPC_TUNNEL_CHEVRON_FADE_START_RADII"), constant("NPC_TUNNEL_CHEVRON_FADE_END_RADII"), 0.0)),
         ("NpcTunnelLayout0", unreal.LinearColor(constant("NPC_TUNNEL_RING_BASE_SPACING_RADII"),
             constant("NPC_TUNNEL_RING_SPACING_PER_DISTANCE"), constant("NPC_TUNNEL_RING_SLOTS_PER_SIDE"),
             constant("NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE"))),
@@ -578,8 +583,9 @@ def build_tunnel(material, default_texture):
 
     # Vertex stage: world position offset plus two interpolated vectors for the pixel stage
     vertex_pins = [("Frame", "NpcTunnelFrame"), ("Style0", "NpcTunnelStyle0"), ("Style1", "NpcTunnelStyle1"),
-                   ("Shape", "NpcTunnelShape"), ("Layout0", "NpcTunnelLayout0"), ("Layout1", "NpcTunnelLayout1"),
-                   ("Layout2", "NpcTunnelLayout2"), ("Layout3", "NpcTunnelLayout3"), ("Glow0", "NpcTunnelGlow0")]
+                   ("Shape", "NpcTunnelShape"), ("Style2", "NpcTunnelStyle2"), ("Style3", "NpcTunnelStyle3"),
+                   ("Layout0", "NpcTunnelLayout0"), ("Layout1", "NpcTunnelLayout1"), ("Layout2", "NpcTunnelLayout2"),
+                   ("Layout3", "NpcTunnelLayout3"), ("Glow0", "NpcTunnelGlow0")]
     vertex = add_custom(material, -1100, -300, "SOLNpcTunnelVertex", TUNNEL_VERTEX_HLSL,
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
         ["Lane", "UV0", "UV1", "UV2", "TunnelTex"] + [pin for pin, _ in vertex_pins])
@@ -609,7 +615,8 @@ def build_tunnel(material, default_texture):
     scene_depth = add(material, unreal.MaterialExpressionSceneDepth, -800, 280)
     pixel_occluders = ["O%d" % i for i in range(len(occluder_names))]
     pixel_pins = [("Frame", "NpcTunnelFrame"), ("Style0", "NpcTunnelStyle0"), ("Style1", "NpcTunnelStyle1"),
-                  ("Glow0", "NpcTunnelGlow0"), ("Glow1", "NpcTunnelGlow1"), ("RingColor", "NpcTunnelRingColor"),
+                  ("Style2", "NpcTunnelStyle2"), ("Glow0", "NpcTunnelGlow0"), ("Glow1", "NpcTunnelGlow1"),
+                  ("RingColor", "NpcTunnelRingColor"),
                   ("DotOutColor", "NpcTunnelDotOutboundColor"), ("DotInColor", "NpcTunnelDotInboundColor"),
                   ("ChevronOutColor", "NpcTunnelChevronOutboundColor"),
                   ("ChevronInColor", "NpcTunnelChevronInboundColor")]

@@ -7,6 +7,8 @@
 
 #include "SOLConstants.h"
 
+#include "Containers/StaticArray.h"
+
 #include <cmath>
 #include <limits>
 
@@ -90,6 +92,55 @@ namespace
     {
         return TunnelIsPositive(input.TunnelRadiusM) && FMath::IsFinite(input.RadialM) && !FMath::IsNaN(input.EndArcAM)
             && !FMath::IsNaN(input.EndArcBM);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the dot rows' clock directions (cos, sin of each row's clock angle), computed once: the same values
+    // WallDirection takes, so a row written from the table matches one written through it
+    const FVector2D* TunnelDotRowClocks()
+    {
+        static const TStaticArray<FVector2D, SOL::NPC_TUNNEL_DOT_ROWS> clocks = []()
+        {
+            TStaticArray<FVector2D, SOL::NPC_TUNNEL_DOT_ROWS> table;
+            for (int32 row = 0; row < SOL::NPC_TUNNEL_DOT_ROWS; ++row)
+            {
+                const double angle = FMath::DegreesToRadians(SOLNpcTunnel::DotRowAngleDeg(row));
+                table[row] = FVector2D(FMath::Cos(angle), FMath::Sin(angle));
+            }
+            return table;
+        }();
+        return clocks.GetData();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Fills the axial range (from, to) every dot row of a tunnel shares: max(end arc A, -X) to min(end arc B, X), X
+    // where the dots end at NPC_TUNNEL_DETAIL_FADE_END_RADII x Rt of true distance; false when it is empty or an input
+    // is bad
+    bool TunnelDotRowRangeM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis, const double tunnelRadiusM,
+        const double endArcAM, const double endArcBM, FVector2D& outRangeM)
+    {
+        if (!basis.bValid || !TunnelIsPositive(tunnelRadiusM) || !TunnelIsFinite(footRelM) || FMath::IsNaN(endArcAM)
+            || FMath::IsNaN(endArcBM))
+        {
+            return false;
+        }
+        const double radialM = footRelM.Size();
+        const double reachM = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * tunnelRadiusM;
+        const double halfM = FMath::Sqrt(FMath::Max(0.0, reachM * reachM - radialM * radialM));
+        outRangeM = FVector2D(FMath::Max(endArcAM, -halfM), FMath::Min(endArcBM, halfM));
+        return outRangeM.X < outRangeM.Y;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Writes dot row k's segment over a shared axial range, on the wall at NPC_TUNNEL_DOT_RADIUS_SCALE x Rt
+    void TunnelWriteDotRow(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis, const double tunnelRadiusM,
+        const FVector2D& rangeM, const int32 row, FVector3d& outStartM, FVector3d& outEndM)
+    {
+        const FVector2D clock = TunnelDotRowClocks()[row];
+        const FVector3d wallM = (basis.Up * clock.X + basis.Right * clock.Y) * (SOL::NPC_TUNNEL_DOT_RADIUS_SCALE
+            * tunnelRadiusM);
+        outStartM = footRelM + basis.Axis * rangeM.X + wallM;
+        outEndM = footRelM + basis.Axis * rangeM.Y + wallM;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -452,6 +503,69 @@ double SOLNpcTunnel::TunnelDetailFade(const double distanceM, const double tunne
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns the dot and chevron near fade by the element's own distance (smoothstep from the start to the full radius)
+double SOLNpcTunnel::TunnelDetailNearFade(const double elementDistanceM, const double tunnelRadiusM)
+{
+    if (FMath::IsNaN(elementDistanceM) || !TunnelIsPositive(tunnelRadiusM))
+    {
+        return 0.0;
+    }
+    const double startM = SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII * tunnelRadiusM;
+    const double fullM = SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII * tunnelRadiusM;
+    const double t = FMath::Clamp((elementDistanceM - startM) / (fullM - startM), 0.0, 1.0);
+    return t * t * (3.0 - 2.0 * t);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns clamp(projected radius / (SCREEN_FADE_HALF_EXTENTS x ribbon half extent), 0, 1)
+double SOLNpcTunnel::TunnelScreenSizeFade(const double projectedRadiusPx, const double halfExtentPx)
+{
+    if (FMath::IsNaN(projectedRadiusPx) || !(halfExtentPx > 0.0))
+    {
+        return 0.0;
+    }
+    return FMath::Clamp(projectedRadiusPx / (SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS * halfExtentPx), 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ring's screen-size fade: 1 for an end ring (exempt), else of Rt x the pixels per metre at its centre
+double SOLNpcTunnel::TunnelRingScreenFade(const bool bEndRing, const double tunnelRadiusM, const double pxPerMAtCentre,
+    const double halfExtentPx)
+{
+    if (bEndRing)
+    {
+        return 1.0;
+    }
+    return TunnelScreenSizeFade(tunnelRadiusM * pxPerMAtCentre, halfExtentPx);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the chevrons' far fade: 1 inside the start radii, 0 from the end radii, a falling smoothstep between
+double SOLNpcTunnel::TunnelChevronFarFade(const double distanceM, const double tunnelRadiusM)
+{
+    if (FMath::IsNaN(distanceM) || !TunnelIsPositive(tunnelRadiusM))
+    {
+        return 0.0;
+    }
+    const double startM = SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII * tunnelRadiusM;
+    const double endM = SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII * tunnelRadiusM;
+    const double t = FMath::Clamp((distanceM - startM) / (endM - startM), 0.0, 1.0);
+    return 1.0 - t * t * (3.0 - 2.0 * t);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the signed distance from the filled dart (negative inside)
+double SOLNpcTunnel::ChevronDartDistance(const double x, const double y, const double notchFraction)
+{
+    // Front edges: tip (0, 1) to the wings (+-1, -1); rear edges: the notch (0, -n) to the wings
+    const double ax = FMath::Abs(x);
+    const double front = (2.0 * ax + y - 1.0) / FMath::Sqrt(5.0);
+    const double rearSlope = 1.0 - notchFraction;
+    const double rear = (-rearSlope * ax - y - notchFraction) / FMath::Sqrt(rearSlope * rearSlope + 1.0);
+    return FMath::Max(front, rear);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the end fade over half a spacing inside an end ring (0 at it and outside, 0 for bad input)
 double SOLNpcTunnel::TunnelEndFade(const double distanceToEndM, const double spacingM)
 {
@@ -566,7 +680,16 @@ bool SOLNpcTunnel::ChevronSlot(const int32 slot, const FSOLNpcTunnelSlotInput& i
         return false;
     }
     const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + 0.5;
-    return TunnelPlaceElement(w, DetailCapFade(w), true, input, outChevron);
+    if (!TunnelPlaceElement(w, DetailCapFade(w), true, input, outChevron))
+    {
+        return false;
+    }
+
+    // The chevrons' own far fade (D22), by the same camera-to-axis-point distance as the detail fade
+    const double axialM = outChevron.AxialOffsetM;
+    outChevron.Alpha *= TunnelChevronFarFade(FMath::Sqrt(axialM * axialM + input.RadialM * input.RadialM),
+        input.TunnelRadiusM);
+    return outChevron.Alpha > 0.0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -837,25 +960,33 @@ bool SOLNpcTunnel::TunnelDotRowSegmentRelM(const FVector3d& footRelM, const FSOL
     const double tunnelRadiusM, const double endArcAM, const double endArcBM, const int32 row, FVector3d& outStartM,
     FVector3d& outEndM)
 {
-    if (row < 0 || row >= SOL::NPC_TUNNEL_DOT_ROWS || !basis.bValid || !TunnelIsPositive(tunnelRadiusM)
-        || !TunnelIsFinite(footRelM) || FMath::IsNaN(endArcAM) || FMath::IsNaN(endArcBM))
+    FVector2D rangeM;
+    if (row < 0 || row >= SOL::NPC_TUNNEL_DOT_ROWS
+        || !TunnelDotRowRangeM(footRelM, basis, tunnelRadiusM, endArcAM, endArcBM, rangeM))
     {
         return false;
     }
-    const double radialM = footRelM.Size();
-    const double reachM = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * tunnelRadiusM;
-    const double halfM = FMath::Sqrt(FMath::Max(0.0, reachM * reachM - radialM * radialM));
-    const double startX = FMath::Max(endArcAM, -halfM);
-    const double endX = FMath::Min(endArcBM, halfM);
-    if (!(startX < endX))
-    {
-        return false;
-    }
-    const FVector3d wallM = WallDirection(basis, DotRowAngleDeg(row)) * (SOL::NPC_TUNNEL_DOT_RADIUS_SCALE
-        * tunnelRadiusM);
-    outStartM = footRelM + basis.Axis * startX + wallM;
-    outEndM = footRelM + basis.Axis * endX + wallM;
+    TunnelWriteDotRow(footRelM, basis, tunnelRadiusM, rangeM, row, outStartM, outEndM);
     return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes every dot row's segment of one tunnel (the shared range computed once); returns how many were written
+int32 SOLNpcTunnel::TunnelDotRowSegmentsRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+    const double tunnelRadiusM, const double endArcAM, const double endArcBM, const TArrayView<FVector3d> outStartsM,
+    const TArrayView<FVector3d> outEndsM)
+{
+    FVector2D rangeM;
+    if (!TunnelDotRowRangeM(footRelM, basis, tunnelRadiusM, endArcAM, endArcBM, rangeM))
+    {
+        return 0;
+    }
+    const int32 count = FMath::Min3(static_cast<int32>(SOL::NPC_TUNNEL_DOT_ROWS), outStartsM.Num(), outEndsM.Num());
+    for (int32 row = 0; row < count; ++row)
+    {
+        TunnelWriteDotRow(footRelM, basis, tunnelRadiusM, rangeM, row, outStartsM[row], outEndsM[row]);
+    }
+    return count;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -971,6 +1102,10 @@ int32 SOLNpcTunnel::RingSegmentsForSlot(const int32 slot)
         return 0;
     }
     const int32 k = slot % SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
+    if (k < SOL::NPC_TUNNEL_RING_NEAREST_SLOTS)
+    {
+        return SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST;
+    }
     if (k < SOL::NPC_TUNNEL_RING_NEAR_SLOTS)
     {
         return SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR;
@@ -982,7 +1117,7 @@ int32 SOLNpcTunnel::RingSegmentsForSlot(const int32 slot)
 // Returns the slot mesh's vertex count: ring ribbons, two end rings, dot and chevron quads
 int32 SOLNpcTunnel::TunnelSlotMeshVertexCount()
 {
-    int32 count = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR + 1);
+    int32 count = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST + 1);
     for (int32 slot = 0; slot < RingSlotCount(); ++slot)
     {
         count += 2 * (RingSegmentsForSlot(slot) + 1);

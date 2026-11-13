@@ -63,6 +63,7 @@ struct FSOLHudLaneTunnelLabels
     FVector3d RowStartM[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};                 // Every shown tunnel's dot rows (the
     FVector3d RowEndM[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};                   // labels keep clear of them), relative
                                                                             // to the viewpoint (ecliptic m)
+    double RowDotDiameterM[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};            // Each row's world dot diameter (m)
 };
 
 /**

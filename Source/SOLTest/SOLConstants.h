@@ -2318,6 +2318,12 @@ namespace SOL
                                                                                   //  px, dot radius scale)
         inline constexpr const TCHAR* SHAPE = TEXT("NpcTunnelShape");            // (chevron radius scale, half width,
                                                                                   //  half length, end ring min alpha)
+        inline constexpr const TCHAR* STYLE2 = TEXT("NpcTunnelStyle2");          // (chevron notch fraction, detail
+                                                                                  //  near fade start and full radii,
+                                                                                  //  dot world diameter radii)
+        inline constexpr const TCHAR* STYLE3 = TEXT("NpcTunnelStyle3");          // (screen fade half extents,
+                                                                                  //  chevron fade start and end
+                                                                                  //  radii, unused)
         inline constexpr const TCHAR* LAYOUT0 = TEXT("NpcTunnelLayout0");        // (base spacing radii, rho, ring
                                                                                   //  and gap slots per side)
         inline constexpr const TCHAR* LAYOUT1 = TEXT("NpcTunnelLayout1");        // (end fade spacings, depth start
@@ -2336,9 +2342,9 @@ namespace SOL
 
         // Every name by kind (the material test walks these lists)
         inline constexpr const TCHAR* SCALAR_NAMES[] = { GLOW_SCALE };
-        inline constexpr const TCHAR* VECTOR_NAMES[] = { FRAME, STYLE0, STYLE1, SHAPE, LAYOUT0, LAYOUT1, LAYOUT2,
-            LAYOUT3, GLOW0, GLOW1, RING_COLOR, DOT_OUTBOUND_COLOR, DOT_INBOUND_COLOR, CHEVRON_OUTBOUND_COLOR,
-            CHEVRON_INBOUND_COLOR };
+        inline constexpr const TCHAR* VECTOR_NAMES[] = { FRAME, STYLE0, STYLE1, SHAPE, STYLE2, STYLE3, LAYOUT0,
+            LAYOUT1, LAYOUT2, LAYOUT3, GLOW0, GLOW1, RING_COLOR, DOT_OUTBOUND_COLOR, DOT_INBOUND_COLOR,
+            CHEVRON_OUTBOUND_COLOR, CHEVRON_INBOUND_COLOR };
         inline constexpr const TCHAR* TEXTURE_NAMES[] = { TUNNEL_TEXTURE };
     }
 
@@ -2658,10 +2664,19 @@ namespace SOL
                                                                        // from here (smoothstep; outside the tube the
                                                                        // nearest ring stays, user 2026-11-12)
     inline constexpr double NPC_TUNNEL_DETAIL_FADE_START_RADII = 256.0;    // Dots and chevrons full inside this many
-    inline constexpr double NPC_TUNNEL_DETAIL_FADE_END_RADII = 512.0;  // tunnel radii, gone from here (Q11)
+    inline constexpr double NPC_TUNNEL_DETAIL_FADE_END_RADII = 512.0;  // tunnel radii, gone from here (Q11; the
+                                                                       // chevron far fade below ends them sooner)
+    inline constexpr double NPC_TUNNEL_CHEVRON_FADE_START_RADII = 13.0;    // Chevrons also fade like the mock-up:
+    inline constexpr double NPC_TUNNEL_CHEVRON_FADE_END_RADII = 30.0;  // full inside, gone from here (D22, smoothstep)
+    inline constexpr double NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS = 10.0; // A repeating ring or dot row fades out while
+                                                                       // its projected radius is below this many ribbon
+                                                                       // half extents (no white vanishing point; the
+                                                                       // end rings are exempt, user 2026-11-13)
     inline constexpr double NPC_TUNNEL_END_MARGIN_RADII = 1.0;         // End ring this many tunnel radii outside the
                                                                        // body's surface (Q10)
-    inline constexpr double NPC_TUNNEL_END_RING_MIN_ALPHA = 0.5;       // End rings never dim below this
+    inline constexpr double NPC_TUNNEL_END_RING_MIN_ALPHA = 0.5;       // End rings' depth fade never goes below this
+                                                                       // (no screen-size fade; only the near fade can
+                                                                       // dim one further, beside the camera)
     inline constexpr int32 NPC_TUNNEL_DOT_ROWS = 8;                    // Guide-dot rows round the tube
     inline constexpr int32 NPC_TUNNEL_DOTS_PER_GAP = 2;                // Dots per row in each ring gap
     inline constexpr double NPC_TUNNEL_DOT_RADIUS_SCALE = 1.1;         // Dot rows sit at this many tunnel radii
@@ -2687,30 +2702,41 @@ namespace SOL
     inline constexpr FColor NPC_TUNNEL_CHEVRON_INBOUND_COLOR = FColor(0xB3, 0x80, 0x80);  // lightened 25%
     inline constexpr double NPC_TUNNEL_RING_WIDTH_PX = 1.5;            // Ring line width at the reference height
     inline constexpr double NPC_TUNNEL_END_RING_WIDTH_PX = 3.0;        // End ring line width (scaled like the rings)
-    inline constexpr double NPC_TUNNEL_DOT_SIZE_PX = 3.0;              // Guide-dot diameter (scaled like the rings)
+    inline constexpr double NPC_TUNNEL_DOT_SIZE_PX = 3.0;              // Guide-dot diameter floor (scaled like rings)
+    inline constexpr double NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII = 0.034;   // Near dots are this wide in Rt (the
+                                                                       // mock-up's), never below DOT_SIZE_PX
     inline constexpr double NPC_TUNNEL_CHEVRON_RADIUS_SCALE = 0.97;    // Chevrons sit on the wall at this many Rt
     inline constexpr double NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII = 0.17;    // Chevron half width across the wall, Rt
     inline constexpr double NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII = 0.26;   // Chevron half length along the axis, Rt
-    inline constexpr double NPC_TUNNEL_CHEVRON_ALPHA = 0.75;           // Chevron alpha (the mock-up's)
+    inline constexpr double NPC_TUNNEL_CHEVRON_NOTCH_FRACTION = 0.3;   // Filled dart: rear notch this far behind the
+                                                                       // centre, in half lengths (the mock-up's)
+    inline constexpr double NPC_TUNNEL_CHEVRON_ALPHA = 0.3;            // Linear chevron alpha: reads like the
+                                                                       // mock-up's sRGB 0.75 x its fog over black
+    inline constexpr double NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII = 0.5; // A dot or chevron this close to the camera
+    inline constexpr double NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII = 1.0;  // is 0, full from here (fill cost, Rt)
     inline constexpr double NPC_TUNNEL_EMISSIVE = 1.3;                 // Tunnel emissive scale (exposure-relative;
                                                                        // tuned so the ring core keeps its cyan)
-    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAR = 48;         // Ring segments of slots 0 .. NEAR_SLOTS - 1...
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAREST = 96;      // Ring segments of slots 0 .. NEAREST_SLOTS - 1
+    inline constexpr int32 NPC_TUNNEL_RING_NEAREST_SLOTS = 2;          // and of the end rings (they fill the view)...
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAR = 48;         // ...of slots NEAREST_SLOTS .. NEAR_SLOTS - 1...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_MID = 24;          // ...of slots NEAR_SLOTS .. MID_SLOTS - 1...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FAR = 12;          // ...and beyond (per side; level of detail)
     inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 8;
     inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 24;
     inline constexpr int32 NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY = 2;  // Above the lanes in the after-motion-blur pass
     inline constexpr double NPC_TUNNEL_LABEL_DOT_MARGIN_PX = 6.0;      // Label box clearance from a dot row (scaled,
-                                                                       // plus the dot radius)
+                                                                       // plus the row's largest projected dot radius)
     inline constexpr double NPC_TUNNEL_LABEL_FLIP_HYSTERESIS = 0.2;    // Dead band of dot(camera forward, axis) before
                                                                        // a label flips to the other side of the foot
     inline constexpr double NPC_TUNNEL_LABEL_FADE_S = 0.2;             // A label's alpha eases over this many seconds
-    inline constexpr double NPC_TUNNEL_LABEL_TEXT_REFRESH_S = 0.1;     // A label's distance text reformats at most
-                                                                       // this often (real seconds, SDD 49 section 4.9)
+    inline constexpr double NPC_TUNNEL_LABEL_TEXT_REFRESH_S = 0.1;     // A label's distance and ship-count text is
+                                                                       // checked and reformatted at most this often
+                                                                       // (real seconds, SDD 49 sections 4.9 and 12c)
     inline constexpr float NPC_TUNNEL_LABEL_TEXT_SCALE = 1.0f;         // Label text scale on the HUD's small font
     inline constexpr uint64 NPC_TUNNEL_LABEL_MAX_AGE_FRAMES = 2;       // An older label snapshot is not drawn
     inline constexpr const TCHAR* NPC_TUNNEL_CVAR = TEXT("sol.NpcTunnel"); // 0 hides the tunnels (A/B profiling)
-    static_assert(NPC_TUNNEL_RING_NEAR_SLOTS < NPC_TUNNEL_RING_MID_SLOTS
+    static_assert(NPC_TUNNEL_RING_NEAREST_SLOTS < NPC_TUNNEL_RING_NEAR_SLOTS
+        && NPC_TUNNEL_RING_NEAR_SLOTS < NPC_TUNNEL_RING_MID_SLOTS
         && NPC_TUNNEL_RING_MID_SLOTS <= NPC_TUNNEL_RING_SLOTS_PER_SIDE, "the ring level-of-detail bands are ordered");
     static_assert(NPC_TUNNEL_FADE_START_RADII > NPC_TUNNEL_FADE_FULL_RADII && NPC_TUNNEL_FADE_FULL_RADII > 1.0,
         "the tunnel fade band runs inward from the start radii");
@@ -2721,6 +2747,8 @@ namespace SOL
     static_assert(NPC_TUNNEL_DEPTH_FADE_END_RADII > NPC_TUNNEL_DEPTH_FADE_START_RADII
         && NPC_TUNNEL_DETAIL_FADE_END_RADII > NPC_TUNNEL_DETAIL_FADE_START_RADII
         && NPC_TUNNEL_NEAR_FADE_FULL_RADII > NPC_TUNNEL_NEAR_FADE_START_RADII
+        && NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII > NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII
+        && NPC_TUNNEL_CHEVRON_FADE_END_RADII > NPC_TUNNEL_CHEVRON_FADE_START_RADII
         && NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII > NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII
         && NPC_TUNNEL_UP_BLEND_DEG > NPC_TUNNEL_UP_FALLBACK_DEG, "every fade band has a width");
     static_assert(NPC_TUNNEL_DOT_ROWS % 2 == 0, "the dot rows split evenly into an outbound and an inbound half");

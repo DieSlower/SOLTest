@@ -234,6 +234,74 @@ bool FSOLLaneTunnelLabelClearTest::RunTest(const FString& /*parameters*/)
 }
 
 //////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLLaneTunnelLabelDotRadiusTest, "SOLTest.LaneTunnelLabel.DotRadiusMargin",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Review fix (49c): near guide dots are world-sized (tens of pixels at 1-2 tunnel radii), so the clearance grows by
+// each row's projected dot radius: LaneLabelDotRadiusPx is half of max(floor, diameter x focal / depth), and a row's
+// extra margin is added to the shared one for that row only (D11: a label never overlaps a dot)
+bool FSOLLaneTunnelLabelDotRadiusTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLLaneTunnelLabel::LaneLabelClearOfDots;
+    using SOLLaneTunnelLabel::LaneLabelDotRadiusPx;
+
+    // The radius: world-sized near, inverse to the depth, never below half the floor; bad inputs give half the floor
+    constexpr double focalPx = 960.0;
+    constexpr double floorPx = 3.0;
+    constexpr double rtCm = 3.0e8;
+    const double diameterCm = SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII * rtCm;
+    TestEqual(TEXT("at 1 Rt: half of 0.034 x 960 px"), LaneLabelDotRadiusPx(rtCm, diameterCm, focalPx, floorPx),
+        0.5 * SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII * focalPx, LANELABEL_TOL);
+    TestEqual(TEXT("half the depth, twice the radius"), LaneLabelDotRadiusPx(0.5 * rtCm, diameterCm, focalPx, floorPx),
+        2.0 * LaneLabelDotRadiusPx(rtCm, diameterCm, focalPx, floorPx), LANELABEL_TOL);
+    TestTrue(TEXT("at 2.5 Rt: well above the floor's 1.5 px"),
+        LaneLabelDotRadiusPx(2.5 * rtCm, diameterCm, focalPx, floorPx) > 6.0);
+    TestEqual(TEXT("far: the floor"), LaneLabelDotRadiusPx(1000.0 * rtCm, diameterCm, focalPx, floorPx), 0.5 * floorPx,
+        LANELABEL_TOL);
+    TestEqual(TEXT("zero depth: the floor"), LaneLabelDotRadiusPx(0.0, diameterCm, focalPx, floorPx), 0.5 * floorPx);
+    TestEqual(TEXT("negative depth: the floor"), LaneLabelDotRadiusPx(-rtCm, diameterCm, focalPx, floorPx),
+        0.5 * floorPx);
+    TestEqual(TEXT("NaN depth: the floor"), LaneLabelDotRadiusPx(std::numeric_limits<double>::quiet_NaN(), diameterCm,
+        focalPx, floorPx), 0.5 * floorPx);
+    TestEqual(TEXT("no diameter: the floor"), LaneLabelDotRadiusPx(rtCm, 0.0, focalPx, floorPx), 0.5 * floorPx);
+    TestEqual(TEXT("no focal length: the floor"), LaneLabelDotRadiusPx(rtCm, diameterCm, 0.0, floorPx), 0.5 * floorPx);
+
+    // Per-row extra margins: a row 10 px below the box is clear by 6 px, not by 6 + 8; the extra counts for its own
+    // row only, and a row without an entry takes none
+    const FBox2D box(FVector2D(100.0, 100.0), FVector2D(200.0, 140.0));
+    constexpr double margin = 6.0;
+    const FVector2D starts[] = { FVector2D(50.0, 150.0), FVector2D(50.0, 400.0) };
+    const FVector2D ends[] = { FVector2D(250.0, 150.0), FVector2D(250.0, 400.0) };
+    const double nearExtra[] = { 8.0, 0.0 };
+    const double farExtra[] = { 0.0, 8.0 };
+    const double shortExtra[] = { 3.0 };
+    TestTrue(TEXT("no extras: clear by 6"), LaneLabelClearOfDots(box, starts, ends, margin));
+    TestFalse(TEXT("the near row's 8 px dot radius: not clear"), LaneLabelClearOfDots(box, starts, ends, margin,
+        nearExtra));
+    TestTrue(TEXT("the far row's extra does not reach the box"), LaneLabelClearOfDots(box, starts, ends, margin,
+        farExtra));
+    TestTrue(TEXT("3 px extra: 9 px still clear of 10"), LaneLabelClearOfDots(box, starts, ends, margin, shortExtra));
+
+    // The placement takes the extras: the 12 o'clock box beside a near row with large dots moves to 6 o'clock
+    const FVector2D top(960.0, 300.0);
+    const FVector2D bottom(960.0, 800.0);
+    const FVector2D rowStarts[] = { FVector2D(860.0, 315.0) };
+    const FVector2D rowEnds[] = { FVector2D(1060.0, 315.0) };
+    const double rowExtra[] = { 12.0 };
+    const FSOLLaneLabelInput labels[] = { LaneLabelInput(top, bottom) };
+    FSOLLaneLabelPlacement placements[1];
+    TestEqual(TEXT("small dots: placed"), SOLLaneTunnelLabel::PlaceLaneLabels(labels, rowStarts, rowEnds,
+        TConstArrayView<FBox2D>(), LANELABEL_VIEWPORT, LANELABEL_ROW_MARGIN_PX, LANELABEL_GAP_PX, placements), 1);
+    TestEqual(TEXT("small dots: at 12 o'clock"), placements[0].Candidate, LANELABEL_TOP);
+    TestEqual(TEXT("large dots: placed"), SOLLaneTunnelLabel::PlaceLaneLabels(labels, rowStarts, rowEnds,
+        TConstArrayView<FBox2D>(), LANELABEL_VIEWPORT, LANELABEL_ROW_MARGIN_PX, LANELABEL_GAP_PX, placements,
+        rowExtra), 1);
+    TestEqual(TEXT("large dots: moved to 6 o'clock"), placements[0].Candidate, LANELABEL_BOTTOM);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLLaneTunnelLabelPlaceRulesTest, "SOLTest.LaneTunnelLabel.PlaceRules",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 

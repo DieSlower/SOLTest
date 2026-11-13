@@ -527,3 +527,6 @@ overlay table, so every profile now holds 16 rows. Settings save schema 12 -> 13
 `"Lanes" = true` to every **used** profile's row map and leaves unused (empty) maps empty, so `UsedProfiles` is
 unchanged (section 5.1's rule). The master O governs it, and the first enable of a profile copies Profile 1's bit, as
 for every row. `KEY_BINDING_LAYOUT_VERSION` stays 10 (no new key).
+
+Issue #49 ([SDD 49](49-lane-guidance-tunnel.md)) lets the same per-profile Lanes bit also show the lane tunnels and
+their wall labels; nothing is added to the profile model or the save (schema 13 and layout 10 unchanged).

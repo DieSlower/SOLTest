@@ -216,6 +216,8 @@ public:
         mLaneRowCount); }
     TConstArrayView<FVector2D> GetLastLaneRowEnds() const { return TConstArrayView<FVector2D>(mLaneRowEnds,
         mLaneRowCount); }
+    TConstArrayView<double> GetLastLaneRowDotRadiiPx() const { return TConstArrayView<double>(mLaneRowDotRadiiPx,
+        mLaneRowCount); }
 
     // Returns the number of glow shapes the last frame queued (verification)
     int32 GetLastShapeCount() const;
@@ -736,13 +738,13 @@ private:
         FString NameB;
         FSOLLaneLabelKey Key;
         bool bHasText = false;
-        double TextTimeS = -1.0;                    // Real time of the last full-text reformat
+        double KeyCheckS = -1.0;                    // Real time the distances were last checked (key built)
         FString Lines[3];
         FText Texts[3];
         FVector2D Sizes[3];
         FSOLLaneLabelKey CompactKey;
         bool bHasCompactText = false;
-        double CompactTimeS = -1.0;                 // Real time of the last compact reformat
+        double CompactKeyCheckS = -1.0;             // Real time the compact distance was last checked
         FString CompactLine;
         FText CompactText;
         FVector2D CompactSize = FVector2D::ZeroVector;
@@ -757,6 +759,7 @@ private:
     FString mLaneLabelScratch[3];                                     // Lines formatted before comparing
     FVector2D mLaneRowStarts[SOL::NPC_TUNNEL_LABEL_MAX_ROWS];         // This frame's projected dot rows
     FVector2D mLaneRowEnds[SOL::NPC_TUNNEL_LABEL_MAX_ROWS];
+    double mLaneRowDotRadiiPx[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};  // Each row's largest on-screen dot radius
     int32 mLaneRowCount = 0;
     int32 mLastLaneLabelLanes[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};  // Labels drawn last frame (verification)
     FBox2D mLastLaneLabelBoxes[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];

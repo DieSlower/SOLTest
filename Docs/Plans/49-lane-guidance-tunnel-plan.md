@@ -51,7 +51,7 @@ pass, its smokes pass and its adversarial performance and style review's finding
 | `Docs/PLAYER_GUIDE.md`, `Docs/Images/` | Regenerated with `Tools\WritePlayerGuide.bat` if the Controls or glossary text changes | 49b |
 | `Docs/TECH_DEBT.md` | New debt found (existing items in SDD section 3 are not re-reported) | 49c |
 | `Docs/Plans/STATUS.md` | #49 in progress (this draft), Done with results at the end | 1, 49c |
-| `Docs/ToDo/49-lane-tunnel-mockups/`, `Docs/ToDo/README.md` | Folder and its list entry deleted | 49c |
+| `Docs/ToDo/49-lane-tunnel-mockups/`, `Docs/ToDo/README.md` | Folder and its list entry deleted (done at the close; the folder stays in the tree of commit `c8cab1f`) | 49c |
 | `README.md`, `Docs/PROJECT_METRICS.md`, `Docs/Images/` | `Tools\UpdateMetrics.bat` before each commit and at pauses; 2-3 gallery shots | 49a-49c |
 
 ## Steps
@@ -73,14 +73,14 @@ pass, its smokes pass and its adversarial performance and style review's finding
 | 8 | Renderer and label: `USOLNpcTunnelComponent`, the `ASOLNpcVisuals` hook, texture, instances on change, glow feed, occluder flag, `sol.NpcTunnel`, override, HUD label, Info / Controls text (case 22), `-SOLSmokeNpcTunnel` checks (SDD section 8 item 2); tests and full suite green; smokes PASS at 1280x720 and 1920x1080; `-SOLSmokeNpcLanes` still 35 / 35; the 1M ramp PASS | opus / high | Done (2026-11-12): tunnel component, `M_SOLNpcTunnel`, HUD labels with D18 (anchor 2.5 tunnel radii, HUD panels avoided, compact one-line fallback), `-SOLSmokeNpcTunnel` 32 / 34 at 1280x720 and 1920x1080 before D19 (T4 and T5 draw no label, accepted as D19, the smoke now asserts 0 labels there), `-SOLSmokeNpcLanes` 35 / 35, overlay / HUD / holo / solid menu smokes PASS, 1M ramp PASS, full suite 1899 / 0, guide regenerated |
 | 9 | Review of 49b (fresh opus / xhigh, report only, same brief plus the material and `.ush`); fixes; re-check against SDD; full suite; metrics; commit and push 49b | opus / xhigh, then opus / high | Done (2026-11-12): findings 1-5 and 8-13 fixed (near-plane clamp replaced by hardware clipping, label text cache, label hysteresis, visible-only avoid boxes, labels hide when the HUD does not draw, `RowCount` clamp, `STAT_SOL_HudLaneLabels`, smoke checks, Info text, tests); 6 and 7 deferred to 49c (steps 10a, 10b); full suite 1901 / 1901, smokes green (tunnel 35 / 35 at 1280x720 and 1920x1080); committed and pushed |
 | **49c** | | | |
-| 10-0 | **First (user report 2026-11-12: the wall chevrons do not look like the preview image).** Make the chevron look match the approved mock-up (`Docs/ToDo/49-lane-tunnel-mockups/tunnel8_rings_dots_sides.gif` and `tunnels8.py`: wall chevrons at 3 and 9 o'clock). Read the script for their exact shape, size, spacing, brightness, stroke and count per wall; take real T2 / T3 screenshots, compare them against the mock-up and list every difference before changing anything; then fix the shader (`SOLNpcTunnel.ush`) and the `NPC_TUNNEL_CHEVRON_*` constants. Note: the chevron stroke was thinned from 0.32 to 0.2 earlier in 49b, which probably contributes | opus / high | To do |
-| 10 | Screenshots T1-T6 at 1280x720, 1920x1080, 3840x2160, HUD glow 0 / 100 / 200%, plus a short sequence along the axis for popping; tuning of rho, widths, dot size, emissive, depth floor, label distance (the main session shows the shots to the user if a value needs the user's eye); final values in `SOLConstants.h` and an as-built section of the SDD; candidate shots deleted | opus / high | To do |
-| 10a | Review finding 6: chevron fill: fade the detail elements by true distance below about 1 Rt, or cap their screen size | opus / high | To do |
-| 10b | Review finding 7: far rings white at the vanishing point: multiply alpha by saturate(projected radius in px / ribbon half extent), 64-96 segments for ring slots 0-1, GPU scaling past 8 lanes measured in the profile, dots faint at 3 px | opus / high | To do |
-| 11 | Profiling (SDD section 8 item 6): `-SOLSmokeNpcTunnelProfile`, all lanes forced in range, T2 and T5, `sol.NpcTunnel` 0 / 1, three runs, 1920x1080 (gate: <= 0.15 ms GPU, <= 0.02 ms CPU), 3840x2160 and 3840x3744 recorded; the 1M ramp; results in the SDD | opus / high | To do |
-| 12 | PIE check via unreal-mcp if the editor is open (else noted here) | sonnet / medium | To do |
-| 13 | Docs: `GAME_MECHANICS.md`, `ARCHITECTURE.md`, `TECH_DEBT.md`, STATUS #49 Done, README gallery (2-3 shots), in-game text truth check against the constants, mock-up folder and its ToDo entry deleted | sonnet / medium | To do |
-| 14 | Whole-ticket adversarial review (fresh opus / xhigh); fixes; full suite; metrics; commit and push 49c; close #49 | opus / xhigh, then opus / high | To do |
+| 10-0 | **First (user report 2026-11-12: the wall chevrons do not look like the preview image).** Make the chevron look match the approved mock-up (`tunnel8_rings_dots_sides.gif` and `tunnels8.py` of the mock-up folder `Docs/ToDo/49-lane-tunnel-mockups/`, deleted at the close and kept in the tree of commit `c8cab1f`: wall chevrons at 3 and 9 o'clock). Read the script for their exact shape, size, spacing, brightness, stroke and count per wall; take real T2 / T3 screenshots, compare them against the mock-up and list every difference before changing anything; then fix the shader (`SOLNpcTunnel.ush`) and the `NPC_TUNNEL_CHEVRON_*` constants. Note: the chevron stroke was thinned from 0.32 to 0.2 earlier in 49b, which probably contributes | opus / high | Done (2026-11-13, see resume notes 49c) |
+| 10 | Screenshots T1-T6 at 1280x720, 1920x1080, 3840x2160, HUD glow 0 / 100 / 200%, plus a short sequence along the axis for popping; tuning of rho, widths, dot size, emissive, depth floor, label distance (the main session shows the shots to the user if a value needs the user's eye); final values in `SOLConstants.h` and an as-built section of the SDD; candidate shots deleted | opus / high | Done (2026-11-13): tuned on 1280x720 / 1920x1080 smoke shots and the 3840x2160 / 3840x3744 profile shots (chevron dart and alpha, dot size, near and screen fades, chevron far fade; SDD 49 section 12c); HUD glow variants not re-shot in 49c (the glow feed is unchanged since 49b and checked by the smoke); candidate shots deleted |
+| 10a | Review finding 6: chevron fill: fade the detail elements by true distance below about 1 Rt, or cap their screen size | opus / high | Done (2026-11-13, SDD 49 section 12c) |
+| 10b | Review finding 7: far rings white at the vanishing point: multiply alpha by saturate(projected radius in px / ribbon half extent), 64-96 segments for ring slots 0-1, GPU scaling past 8 lanes measured in the profile, dots faint at 3 px | opus / high | Done (2026-11-13, SDD 49 section 12c) |
+| 11 | Profiling (SDD section 8 item 6): `-SOLSmokeNpcTunnelProfile`, all lanes forced in range, T2 and T5, `sol.NpcTunnel` 0 / 1, three runs, 1920x1080 (gate: <= 0.15 ms GPU, <= 0.02 ms CPU), 3840x2160 and 3840x3744 recorded; the 1M ramp; results in the SDD | opus / high | Done (2026-11-13): 1080p, 3840x2160 and 3840x3744 three runs each (SDD 49 section 12c); CPU judged against the tunnels-off baseline (D20, user); 1M ramp PASS (p95 8.20 ms) |
+| 12 | PIE check via unreal-mcp if the editor is open (else noted here) | sonnet / medium | Not run: the editor was closed for the builds and the standalone smokes and unreal-mcp was not connected; the `-game` smokes and their screenshots cover the views |
+| 13 | Docs: `GAME_MECHANICS.md`, `ARCHITECTURE.md`, `TECH_DEBT.md`, STATUS #49 Done, README gallery (2-3 shots), in-game text truth check against the constants, mock-up folder and its ToDo entry deleted | sonnet / medium | Done except the last item (2026-11-13): GAME_MECHANICS tunnel row final, ARCHITECTURE profile flag / stats / style vectors, TECH_DEBT measured items, notes in SDD 11 / 17 / 22 / 34, STATUS "ready for review", README three shots `49-lane-tunnel-*.png`; the Info text states no changed value (no guide regeneration). The mock-up folder and its ToDo entry were deleted in step 14 (the folder is in the tree of commit `c8cab1f`), STATUS #49 Done at the close |
+| 14 | Whole-ticket adversarial review (fresh opus / xhigh); fixes; full suite; metrics; commit and push 49c; close #49 | opus / xhigh, then opus / high | Done (2026-11-13): user decisions A (end rings exempt from the screen-size fade) and B (chevron fade kept); review items 2-13 applied (SDD 49 section 12c, whole-ticket review fixes); smoke view T5b; ramp attributed; mock-up folder deleted; committed and pushed; #49 closed |
 
 ## Test contract summary
 
@@ -128,9 +128,120 @@ drift and restored). Full suite 1899 / 0.
 
 **Step 9 done:** the review's findings 1-5 and 8-13 are fixed (SDD 49 section 12b), findings 6 and 7 are in 49c (steps 10a, 10b). Full suite 1901 / 1901, smokes green (NpcTunnel 35 / 35 at 1280x720 and 1920x1080, NpcLanes 35 / 35, Overlay 50 / 50, Hud 45 / 45, HoloMenu 86 / 86, SolidMenu 296 / 296); 49b committed and pushed. Next: 49c step 10-0 (chevron look vs the mock-up).
 
+## Resume notes (49c, 2026-11-13, paused at the context limit; nothing committed)
+
+**Done, built, tests green (full suite 1902 / 1902; `-SOLSmokeNpcTunnel` 35 / 35 at 1280x720 and 1920x1080 after the chevron fix, before the profile flag was added):**
+
+- **Step 10-0 (chevrons).** Differences found against `tunnels8.py` (`side_chevrons`): (1) the mock-up draws a
+  **filled, notched dart** (tip (0, +l), wings (+-w, -l), notch (0, -0.3 l)), the game drew an open stroke "V"
+  (half stroke 0.2); (2) the game's chevrons were about 1.6x too bright and pale (sampled sRGB (185, 139, 138) red /
+  (147, 182, 157) green against the mock-up's (123, 68, 68) / (79, 107, 104)): the mock-up's 0.75 is an sRGB blend times
+  its distance fog, the game's 0.75 was a linear alpha times emissive 1.3; (3) size, place (0.97 Rt, 3 / 9 o'clock),
+  proportions (0.17 / 0.26 Rt), colours, directions (outbound away toward B on the right in T2, inbound toward the
+  viewer on the left; mirrored in T3) and spacing (one per ring gap, 2 Rt near vs the mock-up's 1.8) already matched;
+  (4) remaining, accepted: the mock-up's fog fades its chevrons out by about 13 Rt, the game keeps them to the Q11 detail
+  fade (256-512 Rt), so far chevrons show as thin slivers toward the vanishing point. Fixed: `SOLNT_ChevronCoverage` is
+  the filled dart (`SOLNT_ChevronDartDistance`, C++ mirror `SOLNpcTunnel::ChevronDartDistance`),
+  `NPC_TUNNEL_CHEVRON_NOTCH_FRACTION` 0.3, `NPC_TUNNEL_CHEVRON_ALPHA` 0.75 -> 0.3 (sampled after: red (115, 76, 75),
+  green (80, 115, 91)). The comparison image (scratchpad, never committed) was deleted after use.
+- **Steps 10a / 10b (deferred review items).** New vector parameter `NpcTunnelStyle2` = (chevron notch fraction,
+  detail near fade start / full radii, dot world diameter radii) in `SOL::NpcTunnelMaterialParams` (VECTOR_NAMES),
+  set by the component, created and wired to both Custom nodes by `create_npc_assets.py`; `M_SOLNpcTunnel` rebuilt
+  with `-SOLRebuild` (the other three materials' byte drift restored with `git checkout`). Values:
+  `NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII` 0.5 / `_FULL_RADII` 1.0 (dots and chevrons by their own distance, smoothstep,
+  `TunnelDetailNearFade`); far rings and dot rows fade by `TunnelScreenSizeFade` = clamp(projected radius px / ribbon
+  half extent, 0, 1) (shader only applies it; C++ has the pure function and its test); `NPC_TUNNEL_RING_SEGMENTS_NEAREST`
+  96 for ring slots 0-1 per side and the end rings (`NPC_TUNNEL_RING_NEAREST_SLOTS` 2; `TunnelSlotMeshVertexCount`
+  8,900 -> 9,476, 8 lanes 75,808, test bound 72,000 -> 76,000: **the SDD's 72,000 estimate must be updated**); dots
+  world-sized near (`NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII` 0.034, the mock-up's), `NPC_TUNNEL_DOT_SIZE_PX` 3 kept as the
+  floor (the dot diameter travels in interp1.w); emissive 1.3 unchanged. New test `SOLTest.NpcTunnelMath.ShapeFades`;
+  `RendererConstants` and `SlotMesh` updated. **Open in 10b:** the vanishing point still reads white in T2 (the 1:1
+  ratio fades only rings smaller than their ribbon; a factor of about 4-10 half extents, i.e. a new constant, would be
+  needed). Checked with the profile shots (T2-all on / off, centre crop): the cross is the HUD reticle and a body glow
+  sits at the vanishing point with the tunnels off too, but with them on the converging rings still make the core
+  clearly larger and whiter, so a stronger fade is still to be tuned (re-shoot with the profile flag).
+- **Step 11 (profile), flag built:** `-SOLSmokeNpcTunnel -SOLSmokeNpcTunnelProfile` (`-game`, `-corelimit=16`, vsync
+  off): passes T2-all and T5-all (every lane forced in range, 8 tunnels) and T2-own (its 1 lane); per state (drawn,
+  `sol.NpcTunnel 0`) `stat dumpave -root=STAT_SOL_NpcRedraw` 240 frames with ProfileGPU at frames 20 / 100 / 180, then
+  `stat dumpave -root=STAT_SOL_HudLaneLabels` 240 frames, then a screenshot. Parser:
+  `...\scratchpad\c49\tunnel_prof.py <logs>`. **Three runs at 1920x1080, medians (9 GPU frames each), ms:**
+
+  | Pass | Tunnel draw | After-motion-blur pass on / off | Composite | Points on / off | Translucency on / off | `SOL_NpcTunnel` on / off | `SOL_HudLaneLabels` on / off |
+  |---|---|---|---|---|---|---|---|
+  | T2-all | 0.039 | 0.082 / 0.040 | 0.037 | 0.702 / 0.453 | 0.846 / 0.554 | 0.018 / 0.004 | 0.021 / 0.002 |
+  | T5-all | 0.021 | 0.061 / 0.038 | 0.038 | 0.325 / 0.307 | 0.456 / 0.418 | 0.018 / 0.004 | 0.030 / 0.002 |
+  | T2-own | 0.033 | 0.075 / 0.040 | 0.038 | 0.684 / 0.445 | 0.827 / 0.548 | 0.015 / 0.004 | 0.015 / 0.002 |
+
+  **GPU budget holds** (draw 0.039 ms; its after-motion-blur share +0.042 ms; with the shared composite 0.119 ms
+  against 0.077 off). **CPU budget (<= 0.02 ms, tunnel update + HUD labels) is exceeded:** 0.018 + 0.021 = 0.039 ms in
+  T2-all (+0.033 over the off state), 0.048 ms in T5-all (where D19 draws no label but the placement still runs for 4
+  forced labels), 0.030 ms in T2-own. **Also found:** the points draw grows by 0.23-0.25 ms GPU inside the Earth-Mars
+  tunnel: that is the Q5 crossfade bringing the lane's 88k ships back as points (with `sol.NpcTunnel 0` the lane line
+  replaces them), not the tunnel draw; it is outside D14's definition but should be shown to the user. Not done: GPU
+  scaling at 16 / 64 lanes (only 8 lanes exist; T2-own 1 lane 0.033 ms vs 8 lanes 0.039 ms gives the slope), 4K and
+  one-eye records, the 1M ramp.
+
+**Superseded by the second resume notes below.**
+
+## Resume notes 2 (49c, 2026-11-13, third agent; paused at its context limit; nothing committed)
+
+**Tree found:** consistent with the notes above (the stopped second agent had left no edits: every source file
+predated its run, build and tests matched). **Done since:** user decisions D20-D22 recorded in SDD 49 (section 2) with
+a new as-built section 12c; vanishing point fixed (`NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS` 10, new vector
+`NpcTunnelStyle3` = (screen fade half extents, chevron fade start, end, 0), wired by `create_npc_assets.py`,
+`M_SOLNpcTunnel` rebuilt with `-SOLRebuild`, the other three materials' drift restored); chevron far fade 13-30 Rt
+(`TunnelChevronFarFade`, in `ChevronSlot` and the shader; tests updated, the brute reference too); CPU cuts (SDD 12c:
+label key and ship count rate-limited at 0.1 s, text only for usable labels, occlusion only on screen, placement
+skipped with no usable anchor, out-of-range lanes skip the frame build, rows only with a placed label and from
+`TunnelDotRowSegmentsRelM`, new test cases); TECH_DEBT items (D21 points cost, D20 CPU floor). Profile, three runs at
+1920x1080: CPU tunnel + labels 0.026 (T2-all) / 0.024 (T2-own) / 0.022 (T5-all) ms, was 0.039 / 0.030 / 0.048; off
+state 0.006; GPU tunnel draw 0.039 / 0.034 / 0.021 ms, after-motion-blur pass 0.082 / 0.077 / 0.062 vs 0.041 off,
+composite 0.038. NPC tests 172 / 172 and the full suite 1902 / 1902 green after the changes (smokes not yet re-run).
+GameUserSettings.ini restored to `cbcf9b65...` after every run (backup `scratchpad\gus_49c_backup.ini`).
+
+**Next steps, in order:** (1) the user's call on D20 (absolute 0.022-0.026 ms vs 0.02; 0.016-0.020 above the off
+state); (2) 4K record: `run_smoke.sh prof4k -SOLSmokeNpcTunnel -SOLSmokeNpcTunnelProfile -corelimit=16 -ResX=3840
+-ResY=2160` (fallback 2560x1440), one eye `-ResX=3840 -ResY=3744`, record only; GPU scaling: only 8 lanes exist (T2-own
+1 lane 0.034 ms vs 8 lanes 0.039 ms); (3) 1M ramp (`run_smoke.sh ramp -SOLNpcCount=1M -SOLNpcRamp`, read the
+`NpcRamp` lines); (4) smokes `-SOLSmokeNpcTunnel` and `-SOLSmokeNpcLanes` at 1280x720 and 1920x1080,
+`-SOLSmokeOverlay`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`, `-SOLSmokeSolidMenu`; (5) docs: GAME_MECHANICS lane tunnel
+row (chevrons a filled dart, alpha 0.3, fading 13-30 Rt; dots world-sized 0.034 Rt with a 3 px floor, near fade 0.5-1
+Rt; screen fade 10 half extents; ring segments 96 / 48 / 24 / 12), ARCHITECTURE `-SOLSmokeNpcTunnelProfile` row
+(built), short notes in SDD 11 / 17 / 22 / 34 where they mention tunnels or labels, SDD 49 sections 9 and 12c final
+(4K, one eye, ramp), STATUS #49 "in progress, ready for review"; the Info text names no fade distances, so it needs no
+change and the guide no regeneration; (6) README: three 1080p shots `Docs/Images/49-lane-tunnel-*.png` plus gallery
+entries; (7) `Tools\UpdateMetrics.bat`, `graphify update .`; delete the temp screenshots
+(`Saved/Screenshots/WindowsEditor/NpcTunnel_*profile*`, `HighresScreenshot0006*`) and `Saved/Logs/smoke_prof*.log`.
+
+## Resume notes 3 (49c, 2026-11-13, fourth agent; done, ready for the whole-ticket review; nothing committed)
+
+**Done:** D20 recorded as the user decided (budget judged against the tunnels-off baseline: +0.016-0.020 ms, SDD 49 D20
+and 12c, TECH_DEBT); 4K and one-eye profile records, three runs each (SDD 49 section 12c: tunnel draw 0.091 / 0.209 ms
+in T2-all at 3840x2160 / 3840x3744, CPU unchanged with resolution); 1M ramp PASS (1M p95 8.20 ms at 1280x720); docs
+(step 13 above); README gallery. **Verified:** build up to date, `-SOLSmokeNpcTunnel` 35 / 35 and `-SOLSmokeNpcLanes`
+35 / 35 at 1280x720 and 1920x1080, `-SOLSmokeOverlay` 50 / 50, `-SOLSmokeHud` 45 / 45, `-SOLSmokeHoloMenu` 86 / 86,
+`-SOLSmokeSolidMenu` 296 / 296, full suite 1902 / 1902, `GameUserSettings.ini` restored to `cbcf9b65...`. Temp shots and logs deleted.
+**Next:** step 14 (whole-ticket review, fixes, full suite, metrics, delete the mock-up folder and its ToDo entry, STATUS
+Done, commit and push 49c, close #49).
+
+## Resume notes 4 (49c, 2026-11-13, whole-ticket review fixes; done)
+
+**Done:** user decisions A and B and review items 2-13 (SDD 49 section 12c, "Whole-ticket review fixes"):
+`TunnelRingScreenFade` (end rings exempt, ring radius from the pixels per metre at its centre, shader mirror
+`SOLNT_RingScreenFade`); label clearance per dot row (`LaneLabelDotRadiusPx`, per-row extra margins, rows clipped to
+the viewport, `RowDotDiameterM` on the bus); smoke view T5b with `T5b-earth-end-rings` and `T5b-earth-occlusion`
+(Earth among the shared occluders read back from the parameter collection, `GetParameterCollectionInstance`); README
+Earth image reshot from T5b at 1080p and its caption rewritten; tests tightened (fixed 80,000-vertex budget, chevron
+near fade, batch dot-row geometry, new cases); SDD stale text amended; TECH_DEBT (six view-size helpers, the D20
+wording); `M_SOLNpcTunnel` rebuilt with `-SOLRebuild` (the script's HLSL string was re-wrapped; the other three NPC
+materials' byte drift from that run is left unstaged). Verified: build, full suite 1903 / 1903, `-SOLSmokeNpcTunnel`
+39 / 39 at 1280x720 and 1920x1080, `-SOLSmokeNpcLanes` 35 / 35 at both, `-SOLSmokeOverlay` 50 / 50,
+`-SOLSmokeHud` 45 / 45, `-SOLSmokeHoloMenu` 86 / 86, `-SOLSmokeSolidMenu` 296 / 296, the 1M ramp three times (two tunnels on, one off: no difference), one 1080p profile.
+
 ## Change log
 
 - 2026-11-11: first draft with the SDD (grill-me D1-D15); Q1-Q11 pending with the user.
 - 2026-11-11: Q1-Q11 answered by the user and recorded as SDD decisions; the gate removed; files, steps and the test
   summary updated (labels per shown tunnel, the Q5 crossfade and material rebuilds, the accordion ring spacing);
   follow-up ticket #50 (lane traffic flow) created.
+- 2026-11-13: step 14 done: the whole-ticket review fixes, the mock-up folder deleted, #49 closed.

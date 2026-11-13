@@ -242,6 +242,18 @@ The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC s
 
 40,000 km beside Earth at 200% HUD glow: the Earth-Moon lane leaves from behind Earth's disc (the planet hides it), its ships show one by one close to Earth where the lines have faded out, and the lines take over farther along the lane; the lines glow with the HUD glow setting.
 
+![Approaching the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-approach.png)
+
+The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in.
+
+![Inside the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-inside.png)
+
+On the Earth-Mars tunnel's axis looking toward Mars: cyan rings receding toward Mars, closer together on screen with distance, keep right shown by green guide dots and chevrons on the right wall (outbound) and red ones on the left (inbound), and the wall label in its compact one-line form (the lane and the distance to the nearer end ring).
+
+![Lane tunnels meeting at Earth](Docs/Images/49-lane-tunnel-earth.png)
+
+40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet. Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -249,11 +261,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 125.8 h |
-| Time spent answering questions | 9.9 h |
-| Tokens | 7,187.7M |
-| Notional API price | $2,836 |
-| Subagents dispatched | 560 |
+| Work time (wall-clock) | 127.7 h |
+| Time spent answering questions | 10.1 h |
+| Tokens | 7,320.4M |
+| Notional API price | $2,882 |
+| Subagents dispatched | 566 |
 <!-- METRICS:END -->
 
 ## Documentation map

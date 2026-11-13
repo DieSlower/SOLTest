@@ -162,6 +162,15 @@ bool USOLNpcTunnelComponent::InitializeTunnels()
         static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII),
         static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII),
         static_cast<float>(SOL::NPC_TUNNEL_END_RING_MIN_ALPHA)));
+    TunnelMaterial->SetVectorParameterValue(FName(STYLE2), FLinearColor(
+        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_NOTCH_FRACTION),
+        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII),
+        static_cast<float>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII),
+        static_cast<float>(SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII)));
+    TunnelMaterial->SetVectorParameterValue(FName(STYLE3), FLinearColor(
+        static_cast<float>(SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS),
+        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII),
+        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII), 0.0f));
     TunnelMaterial->SetVectorParameterValue(FName(LAYOUT0), FLinearColor(
         static_cast<float>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII),
         static_cast<float>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE),
@@ -233,7 +242,7 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
     }
     for (int32 end = 0; end < 2; ++end)
     {
-        TunnelAddRing(vertices, indices, TUNNEL_KIND_END_RING, end, SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR);
+        TunnelAddRing(vertices, indices, TUNNEL_KIND_END_RING, end, SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST);
     }
     for (int32 slot = 0; slot < SOLNpcTunnel::DetailSlotCount(); ++slot)
     {
@@ -303,7 +312,15 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
             mLabelSigns[lane] = 0;
             continue;
         }
+        // A lane out of range (fade 0, not forced) needs only its segment distance: no frame is built for it
         const FSOLNpcLaneEntry& entry = laneFrame.Lanes[lane];
+        const double segmentM = SOLNpcTunnel::LaneSegmentDistanceM(entry.A - viewpointM, entry.B - viewpointM);
+        if (!mIsForceAllLanes && !(SOLNpcTunnel::TunnelFade(segmentM, entry.RadiusM) > 0.0))
+        {
+            mIsInRange[lane] = false;
+            mLabelSigns[lane] = 0;
+            continue;
+        }
         const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
         const int32 bodyA = groups.LaneBodyA.IsValidIndex(lane) ? groups.LaneBodyA[lane] : INDEX_NONE;
         const int32 bodyB = groups.LaneBodyB.IsValidIndex(lane) ? groups.LaneBodyB[lane] : INDEX_NONE;
@@ -330,8 +347,7 @@ void USOLNpcTunnelComponent::UpdateTunnels(const FSOLNpcLaneFrame& laneFrame, co
         data.Fade = fade;
         data.Phase = mPhases[lane];
         mFades[lane] = fade;
-        mDistanceRadii[lane] = entry.RadiusM > 0.0
-            ? SOLNpcTunnel::LaneSegmentDistanceM(entry.A - viewpointM, entry.B - viewpointM) / entry.RadiusM : 0.0;
+        mDistanceRadii[lane] = entry.RadiusM > 0.0 ? segmentM / entry.RadiusM : 0.0;
         mShownLanes.Add(data);
     }
 
@@ -427,23 +443,34 @@ void USOLNpcTunnelComponent::PublishLabels(const TConstArrayView<FSOLNpcLaneEntr
             mLabelSigns[lane], 180.0);
     }
 
-    // Every shown tunnel's dot rows (lane order, up to the row cap), so no label sits on a dot
+    // Every shown tunnel's dot rows (lane order, up to the row cap), so no label sits on a dot; none when no label is
+    // placed (the HUD then has nothing to keep clear), and none of a tunnel faded below the label cut (its dots are
+    // all but invisible)
     mLabels.RowCount = 0;
     for (const FSOLNpcTunnelLaneData& data : mShownLanes)
     {
+        if (mLabels.Count == 0 || !SOLNpcTunnel::IsLabelPlaced(data.Fade))
+        {
+            continue;
+        }
         FSOLNpcTunnelBasis basis;
         basis.Axis = data.Axis;
         basis.Up = data.Up;
         basis.Right = FVector3d::CrossProduct(data.Axis, data.Up);
         basis.bValid = true;
-        for (int32 row = 0; row < SOL::NPC_TUNNEL_DOT_ROWS && mLabels.RowCount < SOL::NPC_TUNNEL_LABEL_MAX_ROWS; ++row)
+        const int32 room = SOL::NPC_TUNNEL_LABEL_MAX_ROWS - mLabels.RowCount;
+        if (room <= 0)
         {
-            if (SOLNpcTunnel::TunnelDotRowSegmentRelM(data.FootRelM, basis, data.TunnelRadiusM, data.EndArcAM,
-                data.EndArcBM, row, mLabels.RowStartM[mLabels.RowCount], mLabels.RowEndM[mLabels.RowCount]))
-            {
-                ++mLabels.RowCount;
-            }
+            break;
         }
+        const int32 written = SOLNpcTunnel::TunnelDotRowSegmentsRelM(data.FootRelM, basis, data.TunnelRadiusM,
+            data.EndArcAM, data.EndArcBM, TArrayView<FVector3d>(mLabels.RowStartM + mLabels.RowCount, room),
+            TArrayView<FVector3d>(mLabels.RowEndM + mLabels.RowCount, room));
+        for (int32 row = mLabels.RowCount; row < mLabels.RowCount + written; ++row)
+        {
+            mLabels.RowDotDiameterM[row] = SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII * data.TunnelRadiusM;
+        }
+        mLabels.RowCount += written;
     }
     hudEvents->GetBus().PublishLaneTunnelLabels(mLabels, frameNumber);
     mHasLabels = true;

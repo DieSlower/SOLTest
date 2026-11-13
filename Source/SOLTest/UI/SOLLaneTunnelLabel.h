@@ -59,24 +59,34 @@ struct FSOLLaneLabelKey
 namespace SOLLaneTunnelLabel
 {
     // Returns true when the box, grown by the margin on every side, meets none of the row segments (rowStarts[i] to
-    // rowEnds[i], the shorter list used; a point row is tested as a point); true for no rows
+    // rowEnds[i], the shorter list used; a point row is tested as a point); true for no rows. Row i's margin is
+    // marginPx plus rowExtraMarginsPx[i] when that list has an entry for it (its projected dot radius), else marginPx
     SOLTEST_API bool LaneLabelClearOfDots(const FBox2D& labelBox, TConstArrayView<FVector2D> rowStarts,
-        TConstArrayView<FVector2D> rowEnds, double marginPx);
+        TConstArrayView<FVector2D> rowEnds, double marginPx,
+        TConstArrayView<double> rowExtraMarginsPx = TConstArrayView<double>());
+
+    // Returns the projected radius in pixels of a guide dot at a view depth: half of max(floorDiameterPx,
+    // dotDiameterCm x focalPx / depthCm), the shader's world-sized near dots over their pixel floor (49c); half the
+    // floor for a non-finite or non-positive depth, diameter or focal length
+    SOLTEST_API double LaneLabelDotRadiusPx(double depthCm, double dotDiameterCm, double focalPx,
+        double floorDiameterPx);
 
     // Places the labels in the given order (strongest first). Each takes last frame's candidate and form first when
     // PreviousCandidate is 0 or 1 (and, for bPreviousCompact, the compact size is valid) and that spot is usable
-    // (hysteresis), else the first usable of: the full form at its 12 o'clock candidate, the full form at 6 o'clock, the compact form at 12 o'clock, the compact form at 6 o'clock
-    // (the compact ones only when CompactSizePx is finite with both sides > 0); else it is hidden. The box has the
-    // form's size, centred on the anchor horizontally, its bottom edge on a 12 o'clock anchor and its top edge on a
-    // 6 o'clock one (outward from the tube). A candidate is usable when its anchor is in front of the camera and not
-    // occluded, the box lies on the viewport, is clear of every row by rowMarginPx, does not overlap any avoid box
-    // (a HUD panel) grown by gapPx (invalid avoid boxes ignored) and does not overlap an earlier placed box grown by
-    // gapPx. At most NPC_TUNNEL_LABEL_MAX_COUNT labels (the first ones) are placed; nothing is placed for a
-    // non-finite or non-positive viewport or a label with a non-finite or negative full size. Every entry of
-    // outPlacements up to the shorter list is written. Returns the placed count
+    // (hysteresis), else the first usable of: the full form at its 12 o'clock candidate, the full form at 6 o'clock,
+    // the compact form at 12 o'clock, the compact form at 6 o'clock (the compact ones only when CompactSizePx is
+    // finite with both sides > 0); else it is hidden. The box has the form's size, centred on the anchor
+    // horizontally, its bottom edge on a 12 o'clock anchor and its top edge on a 6 o'clock one (outward from the
+    // tube). A candidate is usable when its anchor is in front of the camera and not occluded, the box lies on the
+    // viewport, is clear of every row by rowMarginPx (plus that row's rowExtraMarginsPx entry, LaneLabelClearOfDots),
+    // does not overlap any avoid box (a HUD panel) grown by gapPx (invalid avoid boxes ignored) and does not overlap
+    // an earlier placed box grown by gapPx. At most NPC_TUNNEL_LABEL_MAX_COUNT labels (the first ones) are placed;
+    // nothing is placed for a non-finite or non-positive viewport or a label with a non-finite or negative full size.
+    // Every entry of outPlacements up to the shorter list is written. Returns the placed count
     SOLTEST_API int32 PlaceLaneLabels(TConstArrayView<FSOLLaneLabelInput> labels, TConstArrayView<FVector2D> rowStarts,
         TConstArrayView<FVector2D> rowEnds, TConstArrayView<FBox2D> avoidBoxes, const FVector2D& viewportPx,
-        double rowMarginPx, double gapPx, TArrayView<FSOLLaneLabelPlacement> outPlacements);
+        double rowMarginPx, double gapPx, TArrayView<FSOLLaneLabelPlacement> outPlacements,
+        TConstArrayView<double> rowExtraMarginsPx = TConstArrayView<double>());
 
     // Writes a label's three lines: "A - B", "A <distance>   B <distance>" (SOLHudFormat's distance format) and the
     // ship count with thousands separators and "ships" ("1 ship"; a negative count reads as 0); the fixed words and

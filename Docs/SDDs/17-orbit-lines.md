@@ -168,6 +168,15 @@ the orbit lines are unchanged). The occluder spheres and the scene-depth trust l
 `SOLOrbitLineLogic::ShouldWriteOccluders`, `SetLanesDrawn`). The orbit lines' look and cost are unchanged. The
 coupling of the two actors is recorded in `Docs/TECH_DEBT.md`.
 
+### Amendment 5: shared with the lane tunnels (issue #49)
+
+[SDD 49](49-lane-guidance-tunnel.md)'s tunnel material reuses the same library again: `SOLNpcTunnel.ush` includes
+`SOLOrbitLine.ush` (far-depth placement, ribbon side direction, line coverage, sphere and scene-depth occlusion), its
+slot mesh is built once with `SOLOrbitLineMesh::ApplyRibbonToMesh`, and planets in front hide the tunnel through the
+same `MPC_SOLOrbitLine` occluders. `ASOLNpcVisuals` now reports `SetLanesDrawn` as "lane lines **or** tunnels drawn"
+(an empty lane's tunnel has no line), so the occluders are written while either draws. The orbit lines' look and cost
+are unchanged.
+
 ## 9. Revision history
 
 - 2026-10-14: initial design from the grill-me decisions; 17a contract and test file written.

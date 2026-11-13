@@ -6,12 +6,14 @@
 [`Plans/49-lane-guidance-tunnel-plan.md`](../Plans/49-lane-guidance-tunnel-plan.md). Builds on SDD 38 (the NPC lane
 lines; this ticket consumes its section 4.10 extension point), SDD 17 (the orbit-line ribbon technique, shader library
 and shared occluders), SDD 37 (the HUD glow scale `g`), SDD 21 (the HUD event bus and the HUD glow-text list) and
-SDD 34 (the overlay profiles). Mock-ups: [`Docs/ToDo/49-lane-tunnel-mockups/`](../ToDo/49-lane-tunnel-mockups/README.md)
-(`tunnel8_rings_dots_sides.gif` is the chosen look).
+SDD 34 (the overlay profiles). Mock-ups: the folder `Docs/ToDo/49-lane-tunnel-mockups/` was deleted when #49 closed;
+it is kept in the tree of commit `c8cab1f` (`tunnel8_rings_dots_sides.gif` there is the chosen look, `tunnels8.py`
+the script that drew it).
 **Persistence change: none.** `SOL::Settings::SAVE_VERSION` stays 13 and `KEY_BINDING_LAYOUT_VERSION` stays 10 (D3).
-Status: **agreed (2026-11-11); part 49a built (2026-11-12)**: the pure tunnel math, the label layout and text and the
-HUD bus snapshot, with the review amendments of D17 and section 12; 49b (renderer and label) and 49c (tuning,
-profiling, docs) to do. Grill-me done 2026-11-11 (D1-D15, section 2); the derived
+Status: **done (2026-11-13), issue #49 closed.** Part 49a (2026-11-12): the pure tunnel math, the label layout and
+text and the HUD bus snapshot (section 12); part 49b (2026-11-12): the renderer, the material and the HUD labels
+(section 12b); part 49c (2026-11-13): tuning, CPU cuts, profiling, docs and the whole-ticket review fixes (section
+12c). Grill-me done 2026-11-11 (D1-D15, section 2); the derived
 questions Q1-Q11 were answered by the user the same day and are resolved decisions (section 11, numbering kept). The
 keep-right rails and the rest of the traffic behaviour went to the new ticket
 [#50](https://github.com/DieSlower/SOLTest/issues/50).
@@ -50,7 +52,9 @@ it.
 - **D7: Ring visibility and spacing.** From inside, the rings ahead are visible **all the way to the lane's end node**,
   darker and more transparent with distance. Near the player they are **about 2 tunnel radii apart**; the spacing
   **grows smoothly with distance** (multi-scale like the far dashes, **no pops**), so the whole lane stays readable and
-  cheap.
+  cheap. *As built (49c):* the repeating rings also fade while their projected radius is below 10 ribbon half extents
+  (no white vanishing point, section 12c), so the far rings thin out before the end node; the end ring itself is
+  exempt (D12 amendment) and stays visible at its 0.5 floor.
 - **D8: Width from traffic, empty lanes kept.** The tunnel radius follows the lane's ship count on the #38 scale (100
   to 100,000 ships, `LaneTrafficWeight`), mapped to **1x .. 3x a base radius**. **An empty lane never vanishes:** it
   still gets a tunnel at the minimum width (the player may be inside it). The far line of an empty lane stays undrawn,
@@ -65,7 +69,9 @@ it.
   tunnel**, the weaker tunnels' labels dimmer (section 4.9).
 - **D12: Lane ends.** An **end ring** marks each node. The tunnel draws over a planet **unless the planet is in front
   of the tunnel's path**: the #38 shared occluders (the orbit lines' 8 analytic spheres) hide the parts behind a
-  planet.
+  planet. *Amended (user, 2026-11-13, whole-ticket review):* the end rings are **exempt from the screen-size fade**
+  (section 12c) and keep the designed alpha floor `NPC_TUNNEL_END_RING_MIN_ALPHA` (0.5), so every lane end stays
+  marked however small it is on screen; only the repeating rings and the dot rows take that fade.
 - **D13: Smooth spacing dependency.** Smooth dash size changes for the far lane line are a separate #38 follow-up, not
   part of #49; the tunnel's multi-scale ring spacing **must use the same smooth scheme once it is chosen**. *Resolved
   (Q9):* the follow-up chose the continuous "accordion" scale (SDD 38 D15 amendment D, `b5bae2c`); section 4.5 applies
@@ -89,6 +95,26 @@ it.
   Earth: the label anchors of the tunnels ending at Earth lie past the nearer end ring, behind Earth, so occluded). The
   smoke asserts 0 labels drawn at T4 and T5. Options considered and deferred: clamping the anchor short of the nearer
   end ring (a temporary clamp still drew no label at T5), a label pinned to the screen edge.
+- **D20 (user, 2026-11-12/13, after the first 49c profile): the CPU budget stands; optimise first.** D14's
+  <= 0.02 ms CPU (tunnel update + HUD labels, 1080p, 1M NPCs, all lanes in range) is kept. The overrun found in the
+  first profile (0.039 ms in T2, 0.048 ms in T5) is profiled and cut (early-outs, no label work where no label can
+  draw, caching, rate limits where invisible); if it stays above after real effort, the floor reached and what remains
+  are reported to the user, not re-scoped silently. Result: section 12c. **Measurement method (user, 2026-11-13):**
+  the budget is judged against the tunnels-off baseline of the same run (`sol.NpcTunnel 0`). Measured after the cuts
+  (the two stat scopes, tunnel update + HUD labels): 0.022-0.026 ms on, 0.006 ms off; **on vs off: 0.016-0.022 ms
+  across runs, at the budget (0.020)** (the 1080p medians give 0.016-0.020, the one-eye T2-all row 0.022). The
+  difference is not the whole cost the tunnels add: it does not count the Slate paint of the label text, the
+  render-thread texture update or the per-frame MID parameter update, and the off baseline still runs update code
+  inside both scopes (the 0.006 ms off figure is not fully explained). This is how the budget is measured, not a
+  re-scope; the absolute numbers stay recorded (section 12c, `TECH_DEBT.md`).
+- **D21 (user, 2026-11-12/13): the extra points cost inside a tunnel is accepted.** Inside a tunnel the Q5 crossfade
+  brings the lane's ships (about 88k on Earth - Mars) back as points, about +0.25 ms GPU on the points draw against
+  `sol.NpcTunnel 0` (where the lane line stands in for them). It is outside D14's tunnel budget and recorded in
+  `TECH_DEBT.md` and section 12c.
+- **D22 (user, 2026-11-12/13): far chevrons fade like the mock-up.** The chevrons fade out by their camera-to-axis
+  distance between `NPC_TUNNEL_CHEVRON_FADE_START_RADII` (13) and `NPC_TUNNEL_CHEVRON_FADE_END_RADII` (30) tunnel radii
+  (a falling smoothstep, `TunnelChevronFarFade`, mirrored in the shader) instead of only the 256-512 tunnel radii detail
+  fade, which the dots keep (the mock-up's fog has them gone by about 13 tunnel radii).
 - **D16 (user, 2026-11-11): traffic outside the tunnel.** Some ships may travel just **outside** the tunnel, along it
   (#50). The display needs nothing special for them: it only draws rings, dots, chevrons, end rings and labels, and the
   ships keep their normal look and HUD markings wherever they are.
@@ -111,8 +137,8 @@ it.
 
 Known debt not to re-report (grep of `Docs/TECH_DEBT.md`): `Npc` leaning on the orbit lines' actor-side code
 (`USOLOrbitLineComponent`, `SetLanesDrawn`); the `Npc <-> Menu` folder cycle; the speed panel and Overlay Menu one-eye
-cost; the duplicated view-size helper of the profile smokes (the tunnel smoke will reuse the lane smoke's copy, not
-add a sixth); the NPC worst case with every Demo option at its maximum; `ASOLOrbitLineVisuals`' drift rebuilds.
+cost; the duplicated view-size helper of the profile smokes (planned: the tunnel smoke reuses the lane smoke's copy;
+as built it added a sixth, since the lane copy is file-local, and `TECH_DEBT.md` now lists six); the NPC worst case with every Demo option at its maximum; `ASOLOrbitLineVisuals`' drift rebuilds.
 
 ## 4. Design
 
@@ -280,7 +306,8 @@ evenly spaced near the player and growing smoothly with distance, no levels, no 
 - **Depth fade (D7):** `TunnelDepthFade(d, Rt)` = 1 inside `NPC_TUNNEL_DEPTH_FADE_START_RADII` (8) x `Rt`, falling
   linearly in `log d` to `NPC_TUNNEL_DEPTH_FADE_FLOOR` (0.2) at `NPC_TUNNEL_DEPTH_FADE_END_RADII` (65,536) x `Rt` and
   staying at the floor beyond, so the rings stay visible to the end node, darker and more transparent with distance.
-  The end rings never fall below `NPC_TUNNEL_END_RING_MIN_ALPHA` (0.5).
+  The end rings never fall below `NPC_TUNNEL_END_RING_MIN_ALPHA` (0.5) by distance: they take no screen-size fade
+  (D12 amendment), and only the near fade can dim one further, beside the camera.
 - **Near fade:** a ring whose axial offset from the camera's foot point is under `NPC_TUNNEL_NEAR_FADE_FULL_RADII`
   (1.5) tunnel radii fades out, to 0 at `NPC_TUNNEL_NEAR_FADE_START_RADII` (0.5) (smoothstep). This keeps the ring the
   player passes through from sweeping the whole screen edge-on, as in the mock-up (rings from half a radius ahead).
@@ -301,9 +328,9 @@ evenly spaced near the player and growing smoothly with distance, no levels, no 
 | Element | Geometry | Colour, size | Notes |
 |---|---|---|---|
 | Rings | Circle of radius `Rt` in the plane normal to `a`, drawn as a constant-pixel-width line ribbon | `CYAN_COLOR` #28D2F0, `NPC_TUNNEL_RING_WIDTH_PX` 1.5 px at 1080p, scaled by the viewport height | HUD glow profile with the live `g` (`LaneLineProfile` / `SOLNL_LineProfile` with the ring width), `LaneRibbonHalfExtentPx` for the ribbon edge |
-| End rings | Same, at `a_A` and `a_B` | Cyan, `NPC_TUNNEL_END_RING_WIDTH_PX` 3 px, alpha floor 0.5 | One per node (D12) |
-| Guide dots | 8 rows at clock angles `(g + 0.5) x 45` degrees (22.5, 67.5, ... ), radius `NPC_TUNNEL_DOT_RADIUS_SCALE` (1.1) x `Rt`, camera-facing round quads | Outbound rows (angles in (0, 180), the `r` half) **#5C8F6C** muted green, inbound rows **#9A5656** muted red (the mock-up's colours); `NPC_TUNNEL_DOT_SIZE_PX` 3 px at 1080p, scaled | "Outside the rings" (D6); a soft glow like the mock-up |
-| Chevrons | Flat arrowheads on the wall at 3 o'clock (outbound, pointing toward B) and 9 o'clock (inbound, pointing toward A), radius 0.97 `Rt`, half width 0.17 `Rt`, half length 0.26 `Rt` (the mock-up's proportions, world-sized so they foreshorten) | Outbound **#84AB90**, inbound **#B38080** (the dot colours lightened 25%, as in the mock-up), alpha 0.75 | Fixed to the lane like the rings (Q2): they move only with the player's own motion, not on a clock (the mock-up let them flow) |
+| End rings | Same, at `a_A` and `a_B` | Cyan, `NPC_TUNNEL_END_RING_WIDTH_PX` 3 px, alpha floor 0.5, no screen-size fade (D12 amendment) | One per node (D12) |
+| Guide dots | 8 rows at clock angles `(g + 0.5) x 45` degrees (22.5, 67.5, ... ), radius `NPC_TUNNEL_DOT_RADIUS_SCALE` (1.1) x `Rt`, camera-facing round quads | Outbound rows (angles in (0, 180), the `r` half) **#5C8F6C** muted green, inbound rows **#9A5656** muted red (the mock-up's colours); world-sized near (`NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII` 0.034 `Rt`, the mock-up's), never below the floor `NPC_TUNNEL_DOT_SIZE_PX` 3 px at 1080p (scaled); faded below 0.5-1 `Rt` of their own distance and while the row is small on screen (12c) | "Outside the rings" (D6); a soft glow like the mock-up |
+| Chevrons | Filled, notched darts (the mock-up's arrowheads: tip, two wings, rear notch at 0.3 half lengths) on the wall at 3 o'clock (outbound, pointing toward B) and 9 o'clock (inbound, pointing toward A), radius 0.97 `Rt`, half width 0.17 `Rt`, half length 0.26 `Rt` (the mock-up's proportions, world-sized so they foreshorten) | Outbound **#84AB90**, inbound **#B38080** (the dot colours lightened 25%, as in the mock-up), linear alpha `NPC_TUNNEL_CHEVRON_ALPHA` 0.3; gone between 13 and 30 `Rt` (D22) | Fixed to the lane like the rings (Q2): they move only with the player's own motion, not on a clock (the mock-up let them flow) |
 | Labels | HUD glow text (section 4.9) | HUD text colour and glow, alpha by tunnel strength | One per shown tunnel (Q4), the strongest brightest |
 
 All tunnel colours are stored as sRGB `FColor` constants and converted to linear once; the emissive scale
@@ -335,11 +362,12 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
   exactly once** for any camera position, inside or outside the tube (contract case 11). A slot whose ring is past an
   end ring or at alpha 0 returns the hidden offset in the vertex shader (no raster cost).
 - **Level of detail by slot.** A ring's on-screen radius is about `Rt / d x 960` px at 1080p, and the slot index grows
-  with distance (geometrically past `x0`), so far slots get fewer segments: `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for
-  slots 0-7, 24 for slots 8-23, 12 beyond (seen from outside the tube slot 0 is already far, so this only errs toward
-  more segments). Estimated vertices per lane instance: rings about 5,100, dots about 3,100, chevrons about 400, end
-  rings about 200: **about 9,000 per lane, about 72,000 for all 8 lanes** (the D14 worst case). The implementer pins
-  the exact counts with the coverage test.
+  with distance (geometrically past `x0`), so far slots get fewer segments: `NPC_TUNNEL_RING_SEGMENTS_NEAREST` 96 for
+  slots 0-1 and the end rings (49c: they fill the view), `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for slots 2-7, 24 for
+  slots 8-23, 12 beyond (seen from outside the tube slot 0 is already far, so this only errs toward more segments).
+  As built (`TunnelSlotMeshVertexCount`, pinned by the slot-mesh test): **9,476 vertices per lane, 75,808 for all 8
+  lanes** (the D14 worst case; the first estimate was about 9,000 and 72,000). **Fixed budget: at most 80,000 vertices
+  for 8 lanes**; the test checks this limit and it is not raised to follow the code.
 - **Instances change only on events.** The ISM's instance list is rewritten only when the set of lanes with a non-zero
   fade changes (a lane enters or leaves range, the lanes turn on or off), not per frame, so out-of-range lanes cost no
   vertex work at all.
@@ -356,7 +384,11 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
   by the ribbon half extent; neighbouring samples give the tangent. The alpha (`cap fade x TunnelEndFade x
   TunnelDepthFade x TunnelNearFade x fade`) is computed per vertex; a vertex of a zero-alpha ring returns the hidden
   offset. Dot and chevron quads: their centre on the wall at their gap's `w`, expanded camera-facing (dots, pixel
-  size) or in the wall plane (chevrons, world size), with `TunnelDetailFade` as well.
+  size) or in the wall plane (chevrons, world size), with `TunnelDetailFade` as well. *As built (49c):* the C++
+  `RingSlot`, `DotSlot` and `ChevronSlot` give the slot alpha (cap, end, depth, near, detail and, for chevrons, the far
+  fade); they are **not the full rendered alpha**: the shader alone adds the ring and dot-row screen-size fade
+  (`TunnelRingScreenFade` / `TunnelScreenSizeFade`, of which C++ has the pure functions and tests), the dots' and
+  chevrons' near fade by their own distance (`TunnelDetailNearFade`), the world dot size and `NPC_TUNNEL_CHEVRON_ALPHA`.
 - **Near-plane rule.** Rings close to the camera plane are already faded (near fade, section 4.5), but when the
   player looks sideways inside the tube some ring samples lie behind the camera. A segment with both ends behind the
   near plane is collapsed; a vertex just behind it is clamped to the plane along its segment (the SDD 38 V4b
@@ -450,7 +482,9 @@ sequenceDiagram
   strongest first**: a label takes the first of its candidates whose box is on screen, whose anchor is in front of the
   camera and not behind a planet (the same sphere test, CPU side), that is clear of **every** projected dot row of
   **every** shown tunnel by `NPC_TUNNEL_LABEL_DOT_MARGIN_PX` (6 px, scaled) plus the dot radius
-  (`LaneLabelClearOfDots`), that does not overlap any **HUD panel** grown by `NPC_TUNNEL_LABEL_GAP_PX` (D18: every
+  (`LaneLabelClearOfDots`; *as built, 49c review:* each row is also clipped to the viewport and keeps the projected
+  radius of its nearest on-screen dot, `LaneLabelDotRadiusPx`, since near dots are world-sized: about 12 px across at
+  2.5 tunnel radii and 16-33 px at 1-2; the bus carries each row's world dot diameter), that does not overlap any **HUD panel** grown by `NPC_TUNNEL_LABEL_GAP_PX` (D18: every
   holo panel and card, the key-hint line and the radar with its stems and range label, recorded by the HUD as it
   draws them; the labels draw before the panels, so they avoid the previous frame's set, at most
   `NPC_TUNNEL_LABEL_MAX_AVOID_BOXES` 32), and that does not overlap any label already placed, grown by
@@ -743,13 +777,18 @@ bump; a test edit there is a red flag to report).
    in the lane smoke). Views:
    - **T1** 75 lane radii beside the Earth-Mars lane's middle (tunnel half faded in, the far dashes at `1 - F` of
      their #38 alpha and the far lane ships back as points at the complementary alpha, Q5);
-   - **T2** on the Earth-Mars axis a quarter of the way from Earth, looking toward Mars (rings to the end ring, green
-     dots and chevrons on the right, red on the left);
+   - **T2** on the Earth-Mars axis a quarter of the way from Earth, looking toward Mars (rings toward Mars, thinning
+     into the vanishing point by the screen-size fade, the end ring marked at its floor; green dots and chevrons on the
+     right, red on the left);
    - **T3** the same point looking toward Earth (sides swapped on screen: inbound traffic, now forward, on the right);
    - **T4** inside, looking 90 degrees off the axis, and **T4b** 1 tunnel radius off the axis looking 1.5 degrees off
      it (near-plane regression views, as SDD 38 V4b);
    - **T5** the default spawn 10,000 km above Earth (Venus-Earth, Earth-Mars and Earth-Moon tunnels meeting, end rings
-     at Earth, Earth in front of part of a tunnel: occlusion and clutter);
+     at Earth, Earth in front of part of a tunnel: occlusion and clutter; as built it faces the Moon), and **T5b** the
+     same point facing Earth (49c review): the tunnels meeting at Earth with their end rings just outside it, checked by
+     `T5b-earth-end-rings` (each end ring at Earth is `NPC_TUNNEL_END_MARGIN_RADII` tunnel radii outside the surface)
+     and `T5b-earth-occlusion` (Earth among the shared occluder spheres the shader reads, written during the view,
+     and the C++ sphere test hiding some tunnel samples behind Earth while others stay in front);
    - **T6** the same population with Demo lane fraction 0 (every lane empty): minimum-radius tunnels, no far line;
    - **T7** flight: the ship at rest relative to the lane for 2 s (ring screen positions unchanged within 0.5 px), then
      flying along the axis at a fixed speed (the rings within 8 tunnel radii advance by speed x time within 1%, the
@@ -771,7 +810,8 @@ bump; a test edit there is a red flag to report).
    `LaneLineFadeWithTunnel` and `LaneShipPointAlpha` (sum 1); with the map open, `sol.NpcTunnel 0` or the Lanes row
    off, every fade texel is 0 and the #38 values return exactly.
 3. **Screenshots** of T1-T6 at 1280x720, 1920x1080 and 3840x2160 (4K proxy), HUD glow 0% / 100% / 200%, looked at:
-   cyan rings never white, rings to the end node getting darker, no ring popping while the camera moves (a short
+   cyan rings never white, rings getting darker with distance and thinning into the vanishing point, the end rings
+   marked, no ring popping while the camera moves (a short
    capture sequence along the axis), dots outside the rings, chevrons at 3 and 9 o'clock pointing the right ways, keep
    right in T2 and T3, end rings outside the planet, planets in front hiding the tunnel, no near-plane smear in T4 and
    T4b, the labels clear of the dots and of each other, the side labels dimmer, no side line, the far dashes gone
@@ -798,14 +838,14 @@ Temporary screenshots and captures are deleted once looked at; only README galle
 
 - **CPU per frame:** O(lanes), independent of the ship count (section 4.8). No allocation, no tick, no UObject churn,
   no per-frame strings (the HUD formats a label only on a value change). Instances rewritten only on enter / leave.
-- **GPU:** about 9,000 vertices per lane in range (most early-out hidden); pixel cost is the ring ribbon area, with LOD
-  by slot. Expected well under 0.15 ms at 1080p with all 8 lanes forced in range.
+- **GPU:** 9,476 vertices per lane in range as built (most early-out hidden; section 12c); pixel cost is the ring
+  ribbon area, with LOD by slot. Measured 0.039 ms at 1080p with all 8 lanes forced in range (section 12c).
 - **1M scaling:** nothing in the tunnel is per ship on the CPU. On the GPU the only per-ship cost is the Q5 fade: one
   texel load per lane-ship point vertex in rail mode (measured in the profile run against `sol.NpcTunnel 0`). Inside
   a full tunnel the lane's far ships draw as points again, which is the Lanes-off point cost, already within the #38
   budgets.
-- **VR (record only):** world-space geometry, per-eye cost is the ribbon area; recorded at 3840x3744, no VR work before
-  procedural terrain.
+- **VR (record only):** world-space geometry, per-eye cost is the ribbon area; recorded at 3840x3744 (section 12c), no
+  VR work before procedural terrain.
 
 ## 10. Risks
 
@@ -819,8 +859,8 @@ Temporary screenshots and captures are deleted once looked at; only README galle
   material's vertex node); case 17b and the smoke's sampled-alpha check cover the sum of 1.
 - **Clutter near planets (D9):** three or more tunnels meet at Earth; levers: the fade band, the detail fade, ring
   brightness.
-- **Vertex count:** about 72,000 vertices in the forced all-lanes case; levers: slot LOD, fewer slots (a larger rho),
-  fewer ring segments.
+- **Vertex count:** 75,808 vertices in the forced all-lanes case as built (9,476 per lane; fixed budget 80,000,
+  section 4.7); levers: slot LOD, fewer slots (a larger rho), fewer ring segments.
 - **Near-plane artefacts** when looking sideways inside the tube; covered by T4 / T4b.
 - **Float precision** of ring positions on AU-long lanes; covered by case 9 and the camera-relative layout.
 - **Additive cyan toward white** after tone mapping; tuned on the screenshots (as SDD 38 D16).
@@ -959,7 +999,128 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
   T3, also on the screenshots); dots render but are faint at 3 px (49c tuning); the far ring series is white at the
   vanishing point (49c emissive tuning).
 
+## 12c. As built (part 49c, 2026-11-13, whole-ticket review done, fixes applied)
+
+- **Chevrons (step 10-0):** the mock-up's filled, notched dart (`ChevronDartDistance`, notch
+  `NPC_TUNNEL_CHEVRON_NOTCH_FRACTION` 0.3), linear alpha `NPC_TUNNEL_CHEVRON_ALPHA` 0.3 (reads like the mock-up's sRGB
+  0.75 times its fog over black); far fade 13-30 tunnel radii (D22).
+- **Review items 6 and 7 (steps 10a, 10b):** dots and chevrons fade by their own distance below 0.5-1 tunnel radii
+  (`TunnelDetailNearFade`); near dots are world-sized (`NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII` 0.034, 3 px floor); a ring
+  or dot row (since the whole-ticket review, not an end ring) fades while its projected radius is below
+  `NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS` (10) ribbon half extents
+  (`TunnelScreenSizeFade`; 1 left a white core at the vanishing point, 6 still a large one, 10 leaves a soft glow no
+  larger than the body glow there with the tunnels off); ring slots 0-1 and the end rings use 96 segments
+  (`NPC_TUNNEL_RING_SEGMENTS_NEAREST`), so the slot mesh has 9,476 vertices (75,808 for 8 lanes; the earlier 72,000
+  estimate is superseded). New material vectors `NpcTunnelStyle2` (notch, detail near fade start / full, dot world
+  diameter) and `NpcTunnelStyle3` (screen fade half extents, chevron fade start / end).
+- **CPU (D20):** where the time went (finer temporary stats, T2 all lanes forced): the HUD label pass built both label
+  distance keys (two number formats per label) every frame and reformatted a busy lane's ship count every frame; the
+  placement ran its passes and the occlusion loop over every body even when no anchor was on screen and unoccluded
+  (T4, T5); the tunnel published dot rows with a cosine and sine per row and when no label was placed. Cuts: the
+  distance keys and the ship count are checked at most every `NPC_TUNNEL_LABEL_TEXT_REFRESH_S` (0.1 s; names and lane
+  changes stay immediate); a label's text is updated only when one of its anchors is usable; the occlusion test runs
+  only for anchors on the viewport; the placement passes are skipped when no anchor is usable; out-of-range lanes (fade
+  0, not forced) build no tunnel frame; rows only while a label is placed and only for tunnels at or above the label
+  alpha cut, all rows of a tunnel in one call from a table of row directions (`TunnelDotRowSegmentsRelM`).
+  Medians of three 1920x1080 runs (`stat dumpave`, 240 frames, ms):
+
+  | Pass | Tunnel update before / after | HUD labels before / after | Sum before / after | Off state (`sol.NpcTunnel 0`) |
+  |---|---|---|---|---|
+  | T2-all (8 lanes) | 0.018 / 0.017 | 0.021 / 0.009 | 0.039 / 0.026 | 0.004 + 0.002 = 0.006 |
+  | T2-own (1 lane) | 0.015 / 0.016 | 0.015 / 0.008 | 0.030 / 0.024 | 0.006 |
+  | T5-all (8 lanes, no label) | 0.018 / 0.018 | 0.030 / 0.004 | 0.048 / 0.022 | 0.006 |
+
+  The absolute sum is still above 0.02 ms (floor reached 0.022-0.026 ms); on vs off it is 0.016-0.022 ms across runs,
+  at the budget (0.020). What remains is mostly the tunnel update (about 1 us per lane for the frame build, the label
+  publication with its rows, the texture upload's render command about 0.003 ms). **Not counted** by the two scopes:
+  the Slate paint of the label text, the render-thread texture update and the per-frame MID parameter update. The off
+  baseline still runs update code inside both scopes, and its 0.006 ms is not fully explained (stat scope overhead and
+  cold caches after the 1M-ship pass are guesses, not measured). Reported to the user as D20 asks.
+- **GPU (1920x1080, same runs, medians of 9 ProfileGPU frames):** tunnel draw 0.039 ms (T2-all), 0.034 ms (T2-own, 1
+  lane), 0.021 ms (T5-all); its share of the after-motion-blur translucency pass 0.082 / 0.077 / 0.062 ms against
+  0.041 / 0.042 / 0.038 off; the shared composite 0.038 ms either way. Within D14's 0.15 ms. The points draw grows by
+  about 0.25-0.4 ms inside the Earth - Mars tunnel (D21, accepted).
+- **D20 verdict (user, 2026-11-13):** the CPU budget is judged against the tunnels-off baseline of the same run: on
+  vs off, 0.016-0.022 ms across runs (0.022-0.026 ms on, 0.006 ms off at 1920x1080; the one-eye T2-all row below
+  gives 0.022), at the budget (0.020), with the uncounted work listed above. The absolute figures stay as recorded.
+  The decision is not reopened.
+- **4K proxy and one XR-4 eye (recorded only, not gated; no VR work, two eyes skipped).** Same flag and method,
+  `-ResX` / `-ResY` set past the 2560x1440 desktop with `r.SetRes` (screenshots confirmed at the full size), three runs
+  each, medians of 9 ProfileGPU frames and of the three `stat dumpave` runs, ms:
+
+  | Resolution | Pass | Tunnel draw | After-motion-blur pass on / off | Composite | Points on / off | Tunnel update + labels on / off |
+  |---|---|---|---|---|---|---|
+  | 3840x2160 | T2-all | 0.091 | 0.140 / 0.048 | 0.088 | 0.784 / 0.453 | 0.018 + 0.009 = 0.027 / 0.007 |
+  | 3840x2160 | T2-own | 0.082 | 0.135 / 0.049 | 0.090 | 0.718 / 0.458 | 0.015 + 0.008 = 0.023 / 0.007 |
+  | 3840x2160 | T5-all | 0.049 | 0.099 / 0.052 | 0.088 | 0.279 / 0.274 | 0.018 + 0.005 = 0.023 / 0.007 |
+  | 3840x3744 | T2-all | 0.209 | 0.263 / 0.056 | 0.149 | 1.218 / 0.814 | 0.019 + 0.009 = 0.028 / 0.006 |
+  | 3840x3744 | T2-own | 0.199 | 0.277 / 0.059 | 0.151 | 1.313 / 0.817 | 0.016 + 0.009 = 0.025 / 0.006 |
+  | 3840x3744 | T5-all | 0.138 | 0.196 / 0.062 | 0.147 | 0.275 / 0.278 | 0.019 + 0.004 = 0.023 / 0.006 |
+
+  The tunnel draw scales with the ring ribbon pixels (about 2.3x from 1080p to 4K, 5.4x at one eye; T5 grows more at
+  one eye because the taller view shows more of the Earth tunnels); the after-motion-blur pass grows by about the draw
+  itself, and the composite is shared and the same with the tunnels off. The CPU does not depend on the resolution.
+  At one eye the tunnel adds about 0.21 ms GPU and the D21 points about 0.40-0.50 ms more inside the Earth - Mars
+  tunnel: about 0.7 ms together, below the provisional 1.2 ms one-eye ceiling of `VR_PERFORMANCE_TARGETS.md` (a
+  menu / HUD figure; the tunnel is world geometry, recorded against it for scale).
+- **GPU scaling past 8 lanes (review item 7):** only 8 lanes exist; 1 lane (T2-own) 0.034 ms against 8 lanes 0.039 ms
+  at 1080p (0.082 / 0.091 ms at 4K), so the draw is dominated by the near rings' pixels, not the lane count: about
+  0.001 ms per extra far lane. #50 re-measures with more lanes.
+- **1M ramp (`-SOLNpcRamp`, 1280x720, 2026-11-13):** every stage PASS; 1M mean 6.98 ms, p95 8.20 ms, p99 10.94 ms,
+  NPC mean 1.54 ms (49b's run: mean 6.52, p95 7.15 ms, NPC mean 1.47 ms; single runs; the 500k stage of this run
+  also shows a hitchy p95 of 13.0 ms). **Attributed (whole-ticket review, three more runs after the fixes below):**
+  tunnels on, 1M mean 6.47 / 6.59 ms, p95 7.06 / 7.31 ms, NPC mean 1.43 / 1.45 ms; with `-ExecCmds="sol.NpcTunnel 0"`
+  mean 6.51 ms, p95 7.46 ms, NPC mean 1.44 ms. Every stage PASS in all three. The tunnels make no measurable
+  difference to the ramp, and the 8.20 ms p95 above was run-to-run noise (that run's hitchy 500k stage points the same
+  way), not a 49c regression.
+- **Whole-ticket review fixes (2026-11-13).**
+  - *End rings exempt from the screen-size fade (user decision A):* `TunnelRingScreenFade(bEndRing, Rt, pxPerM,
+    halfExtentPx)` is 1 for an end ring, so every lane end stays marked at its 0.5 floor however small on screen;
+    the shader mirrors it (`SOLNT_RingScreenFade`); repeating rings and dot rows keep the fade (D7, D12 amendments).
+  - *Ring screen fade measured at the ring centre (review item 9):* the ring's projected radius is now `Rt` x the
+    pixels per true metre at its centre (as the dot rows), not the distance of each sample from the centre in the
+    far-depth-compressed render space, which faded an oblique far ring unevenly round its circumference.
+  - *Chevron fade kept as built (user decision B, D22):* flat to 13 tunnel radii, gone at 30. Recorded from the
+    review: at mid distance the game's chevrons are about 1.5-5x brighter than the mock-up's continuous
+    `(1 - z / 13)^1.1` fog, which dims them from the first metre; the user kept the built curve.
+  - *Label clearance from world-sized dots (review item 5, D11):* each dot row is clipped to the viewport (grown by
+    the 6 px margin) and keeps the projected radius of its nearest on-screen dot (`LaneLabelDotRadiusPx`, half of
+    max(3 px floor, 0.034 `Rt` x focal / depth)); the label box keeps clear of each row by the margin plus that
+    radius (`LaneLabelClearOfDots` / `PlaceLaneLabels` per-row extra margins; the bus snapshot carries each row's
+    world dot diameter, `RowDotDiameterM`). The largest radius seen in the smoke is 16.2 px (T2 and T3 at 1080p);
+    every label the smoke expects still places, and the HUD label stat is unchanged (0.009 ms in T2-all).
+  - *T5b (review item 2):* the smoke's new view 40,000 km from Earth on its far side from Mars, 15 degrees off the
+    Earth-Mars axis, facing Earth. Logged: the Venus-Earth and Earth-Mars tunnels end at Earth, each end ring exactly
+    1.00 tunnel radius outside the surface (5,767 km and 8,892 km); Earth is among the shared occluder spheres the
+    shader reads, written every frame of the view (lane-only writes); of the tunnel samples within 8 tunnel radii of
+    those end rings 236 are behind Earth and 852 in front (C++ sphere test). The screenshot shows the Earth-Mars rings
+    cut off at Earth's limb and coming out from behind it toward the vanishing point (now the README image). The
+    earlier T5 image's white blob at the Moon is the same with `sol.NpcTunnel 0` (profile shots T5-all on / off): it
+    is the Moon's body glow with the Earth-Moon lane's ships there, not the tunnel's vanishing point.
+  - *HUD glow check (review item 8):* T2 at 1920x1080 with HUD glow 0% and 200% (the vanishing-point fade was tuned
+    at 100%): at 0% the rings stay cyan and crisp to the centre; at 200% the core is brighter, its white mostly the
+    HUD reticle's own 200% glow, the innermost rings still cyan. Judged acceptable, no change (the ribbon half
+    extent, and so the 10-half-extent fade, grows with the glow). Shots deleted.
+  - *CPU after the fixes (one 1920x1080 profile run, ms):* tunnel update + labels on / off: T2-all 0.016 + 0.009 =
+    0.025 / 0.006, T2-own 0.014 + 0.008 = 0.022 / 0.006, T5-all 0.016 + 0.005 = 0.021 / 0.006, so on vs off
+    0.015-0.019 ms, inside the recorded 0.016-0.022 ms range; GPU tunnel draw 0.034 / 0.031 / 0.019 ms.
+  - *Tests (review item 11):* the slot-mesh test checks the fixed 80,000-vertex budget (section 4.7); the chevron
+    near-fade test asserts the real value beside a camera on the axis (about 0.99, at least 0.985) instead of a 0.05
+    slack; the batch dot-row test asserts each row's geometry (end ring A to end ring B at its clock angle); new
+    cases for `TunnelRingScreenFade` and `SOLTest.LaneTunnelLabel.DotRadiusMargin`.
+  - *Shader-only alpha (review item 13):* `DotSlot` and `ChevronSlot` are the slot alpha, not the full rendered
+    alpha (section 4.7); their header comments say so.
+
 ## 13. Change log
+
+- 2026-11-13: 49c in progress: D20-D22 (user), section 12c (chevron dart, review items 6-7, screen fade 10 half
+  extents, chevron far fade 13-30 tunnel radii, CPU cuts and the profile before / after).
+- 2026-11-13: D20 measurement method (user: against the tunnels-off baseline); 4K and one-eye records, GPU scaling,
+  the 1M ramp; section 9 updated (9,476 vertices); 49c ready for the whole-ticket review.
+- 2026-11-13: whole-ticket review fixes (section 12c): end rings exempt from the screen-size fade (user, D12 / D7
+  amendments), ring screen fade at the ring centre, label clearance from world-sized dots, smoke view T5b, the ramp
+  attributed, the D20 wording made exact, stale text amended in place (status, 4.6, 4.7 with the fixed 80,000-vertex
+  budget, 8, 10); the mock-up folder deleted (kept in the tree of `c8cab1f`); #49 done.
 
 - 2026-11-11: first draft from grill-me D1-D15; derived choices Q1-Q11 reported to the main session for the user.
 - 2026-11-11: the user's answers to Q1-Q11 recorded as resolved decisions (section 11): labels per shown tunnel with

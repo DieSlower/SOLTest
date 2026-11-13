@@ -14,6 +14,7 @@
 #include "Npc/SOLNpcTunnelComponent.h"
 #include "Npc/SOLNpcTunnelMath.h"
 #include "Npc/SOLNpcVisuals.h"
+#include "OrbitLines/SOLOrbitLineMath.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "Ship/SOLShipPawn.h"
 #include "Ship/SOLShipSubsystem.h"
@@ -22,6 +23,7 @@
 #include "UI/SOLFlightHud.h"
 #include "UI/SOLHudShapeMath.h"
 #include "UI/SOLLaneTunnelLabel.h"
+#include "UI/SOLUiProfileCapture.h"
 #include "HudEvents/SOLHudEventSubsystem.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
@@ -34,8 +36,10 @@
 #include "Engine/World.h"
 #include "GameFramework/PlayerController.h"
 #include "HAL/IConsoleManager.h"
+#include "Materials/MaterialParameterCollectionInstance.h"
 #include "Misc/Paths.h"
 #include "UnrealClient.h"
+#include "Widgets/SWindow.h"
 
 namespace
 {
@@ -52,8 +56,18 @@ namespace
     // Script values
     constexpr int32 TUNNELSMOKE_SHIPS = 1000000;             // Population (SDD 49 section 8: 1M NPCs)
     const TCHAR* const TUNNELSMOKE_VIEW_NAMES[] = { TEXT("T1"), TEXT("T2"), TEXT("T3"), TEXT("T4"), TEXT("T4b"),
-        TEXT("T5"), TEXT("T6") };
-    constexpr int32 TUNNELSMOKE_FIRST_VIEWS = 6;             // T1 .. T5 with T4b before T7; T6 comes last
+        TEXT("T5"), TEXT("T5b"), TEXT("T6") };
+    constexpr int32 TUNNELSMOKE_FIRST_VIEWS = 7;             // T1 .. T5b with T4b before T7; T6 comes last
+    constexpr int32 TUNNELSMOKE_VIEW_T5 = 5;                 // The start above Earth facing the Moon
+    constexpr int32 TUNNELSMOKE_VIEW_T5B = 6;                // Facing Earth from beyond it (end rings, Earth in front)
+    constexpr int32 TUNNELSMOKE_VIEW_T6 = 7;                 // The T2 point with every lane empty
+    constexpr double TUNNELSMOKE_T5B_DISTANCE_M = 4.0e7;     // T5b: the camera this far from Earth's centre...
+    constexpr double TUNNELSMOKE_T5B_OFF_AXIS_DEG = 15.0;    // ...this far off the Earth-Mars axis behind Earth
+    constexpr int32 TUNNELSMOKE_T5B_RING_SAMPLES = 32;       // T5b: samples per ring tested against Earth...
+    constexpr int32 TUNNELSMOKE_T5B_RING_STEPS = 16;         // ...on this many rings past the end ring...
+    constexpr double TUNNELSMOKE_T5B_STEP_RADII = 0.5;       // ...this many tunnel radii apart
+    constexpr double TUNNELSMOKE_T5B_BODY_TOLERANCE = 1.0e-3;    // A lane node at Earth, in Earth radii
+    constexpr double TUNNELSMOKE_T5B_OCCLUDER_TOLERANCE = 1.0e-2;    // The occluder sphere read back (float), radii
     constexpr double TUNNELSMOKE_T1_RADII = 75.0;            // T1: lane radii beside the lane's middle
     constexpr double TUNNELSMOKE_T1_EXPECTED_FADE = 0.415;   // ...TunnelFade there (SDD 49 section 8)
     constexpr double TUNNELSMOKE_T1_LOOK_DEG = 20.0;         // ...looking along the lane, this far toward it
@@ -72,6 +86,24 @@ namespace
     constexpr float TUNNELSMOKE_GLOW_TOLERANCE = 1.0e-5f;
     constexpr double TUNNELSMOKE_PROJECT_CM = 1.0e5;         // Points projected along their direction from the camera
 
+    // Profile flag (SDD 49 section 8 item 6, 49c): the passes, each captured with the tunnels drawn and with
+    // sol.NpcTunnel 0
+    struct FSOLTunnelProfilePass
+    {
+        int32 View;             // T2 = 1, T5 = TUNNELSMOKE_VIEW_T5
+        bool bForceAllLanes;    // Every lane in range (fade 1), or the view's own lanes only
+        const TCHAR* Name;
+    };
+    constexpr FSOLTunnelProfilePass TUNNELSMOKE_PROFILE_PASSES[] = {
+        { 1, true, TEXT("T2-all") }, { TUNNELSMOKE_VIEW_T5, true, TEXT("T5-all") }, { 1, false, TEXT("T2-own") } };
+    constexpr double TUNNELSMOKE_PROFILE_SETTLE_S = 4.0;     // Anchor, far layer and GPU settle after the move
+    constexpr int32 TUNNELSMOKE_PROFILE_FRAMES = 240;        // Each stat dumpave window
+    constexpr int32 TUNNELSMOKE_PROFILE_GPU_FRAMES[] = { 20, 100, 180 };  // ProfileGPU inside the first window
+    constexpr int32 TUNNELSMOKE_PROFILE_TAIL_FRAMES = 30;    // Frames left for a dump to print
+    const TCHAR* const TUNNELSMOKE_PROFILE_REDRAW_ROOT = TEXT("STAT_SOL_NpcRedraw");      // Tunnel update inside
+    const TCHAR* const TUNNELSMOKE_PROFILE_LABEL_ROOT = TEXT("STAT_SOL_HudLaneLabels");   // HUD label work
+    constexpr float TUNNELSMOKE_PROFILE_MAX_WINDOW_PX = 16384.0f;   // Lifted window size limit (4K, one eye)
+
     //////////////////////////////////////////////////////////////////////////
     // Sets an integer console variable (sol.NpcTunnel, sol.SpaceDust)
     void TunnelSmokeSetCvar(const TCHAR* name, const int32 value)
@@ -80,6 +112,33 @@ namespace
         {
             cvar->Set(value, ECVF_SetByCode);
         }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Runs a console command in the world (the profile captures)
+    void TunnelSmokeRunCommand(const TCHAR* command, UWorld* world)
+    {
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel: console command '%s'"), command);
+        FSOLUiProfileCapture::RunCommand(command, world);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Sets the -ResX / -ResY view past the desktop size with r.SetRes (as the lane profile does); nothing without both
+    void TunnelSmokeApplyCommandLineView(UWorld* world)
+    {
+        int32 width = 0;
+        int32 height = 0;
+        const TSharedPtr<SWindow> window = GEngine != nullptr && GEngine->GameViewport != nullptr
+            ? GEngine->GameViewport->GetWindow() : nullptr;
+        if (!FParse::Value(FCommandLine::Get(), TEXT("ResX="), width) || !FParse::Value(FCommandLine::Get(),
+            TEXT("ResY="), height) || width <= 0 || height <= 0 || !window.IsValid())
+        {
+            return;
+        }
+        window->SetSizeLimits(FWindowSizeLimits().SetMaxWidth(TUNNELSMOKE_PROFILE_MAX_WINDOW_PX)
+            .SetMaxHeight(TUNNELSMOKE_PROFILE_MAX_WINDOW_PX));
+        GEngine->Exec(world, *FString::Printf(TEXT("r.SetRes %dx%dw"), width, height));
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel: profile view at %dx%d (window size limit lifted)"), width, height);
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -114,9 +173,12 @@ void FSOLNpcTunnelSmoke::Start(ASOLShipPawn& pawn)
     mSettings = USOLSettingsSubsystem::Get(&pawn);
     mController = pawn.GetController<APlayerController>();
     mHud = mController.IsValid() ? Cast<ASOLFlightHud>(mController->GetHUD()) : nullptr;
-    UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel: starting (NPC visuals %s, HUD %s, settings %s)"),
+
+    // The cost captures need a standalone -game process (in the editor ProfileGPU opens its visualizer)
+    mIsProfile = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_TUNNEL_PROFILE) && !GIsEditor;
+    UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel: starting (NPC visuals %s, HUD %s, settings %s, profile %s)"),
         mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mHud.IsValid() ? *mHud->GetName() : TEXT("none"),
-        mSettings.IsValid() ? TEXT("yes") : TEXT("none"));
+        mSettings.IsValid() ? TEXT("yes") : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"));
 
     // Overrides: the lanes (and so the tunnels) and the orbit lines leave the player's settings alone; orbit lines off
     if (mVisuals.IsValid())
@@ -179,6 +241,16 @@ bool FSOLNpcTunnelSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds
             return false;
         }
     }
+    else if (mPhase == ESOLTunnelPhase::ProfileOn || mPhase == ESOLTunnelPhase::ProfileOff)
+    {
+        // A capture runs frame by frame until its dumps, GPU profiles and screenshot are out
+        if (!mIsProfileDone)
+        {
+            mIsProfileDone = TickProfile(mPhase == ESOLTunnelPhase::ProfileOn ? TEXT("tunnels drawn")
+                : TEXT("sol.NpcTunnel 0"), pawn.GetWorld());
+            return false;
+        }
+    }
     else if (mPhaseTimeS < GetPhaseDuration(mPhase) || mPhaseFrames < TUNNELSMOKE_MIN_PHASE_FRAMES)
     {
         return false;
@@ -197,9 +269,21 @@ bool FSOLNpcTunnelSmoke::Update(ASOLShipPawn& pawn, const float realDeltaSeconds
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the next phase (views T1 .. T5 in turn, then the single steps)
+// Returns the next phase (views T1 .. T5b in turn, then the single steps)
 FSOLNpcTunnelSmoke::ESOLTunnelPhase FSOLNpcTunnelSmoke::NextPhase(const ESOLTunnelPhase phase)
 {
+    // Profile flag: the passes in turn after the population, then the end
+    if (phase == ESOLTunnelPhase::WaitPopulation && mIsProfile)
+    {
+        mProfilePass = 0;
+        return ESOLTunnelPhase::ProfileSetup;
+    }
+    if (phase == ESOLTunnelPhase::ProfileOff)
+    {
+        ++mProfilePass;
+        return mProfilePass < static_cast<int32>(UE_ARRAY_COUNT(TUNNELSMOKE_PROFILE_PASSES))
+            ? ESOLTunnelPhase::ProfileSetup : ESOLTunnelPhase::Done;
+    }
     if (phase == ESOLTunnelPhase::ViewCheck && mView + 1 < TUNNELSMOKE_FIRST_VIEWS)
     {
         ++mView;
@@ -232,6 +316,8 @@ double FSOLNpcTunnelSmoke::GetPhaseDuration(const ESOLTunnelPhase phase)
         return TUNNELSMOKE_APPROACH_S;
     case ESOLTunnelPhase::MapOpen:
         return TUNNELSMOKE_MAP_S;
+    case ESOLTunnelPhase::ProfileSetup:
+        return TUNNELSMOKE_PROFILE_SETTLE_S;
     default:
         return TUNNELSMOKE_STEP_S;
     }
@@ -246,6 +332,27 @@ void FSOLNpcTunnelSmoke::EnterPhase(const ESOLTunnelPhase phase, ASOLShipPawn& p
     case ESOLTunnelPhase::ViewSetup:
         SetPendingGlow(SOL::Settings::HUD_GLOW_DEFAULT);
         SetupView();
+        mOccluderWritesAtStart = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() : 0;
+        break;
+    case ESOLTunnelPhase::ProfileSetup:
+    {
+        // The pass's view at 100% glow, its lanes forced or not; the material draw events name the tunnel draw
+        const FSOLTunnelProfilePass& pass = TUNNELSMOKE_PROFILE_PASSES[mProfilePass];
+        mView = pass.View;
+        SetPendingGlow(SOL::Settings::HUD_GLOW_DEFAULT);
+        SetupView();
+        mVisuals->SetTunnelVerificationOverride(true, pass.bForceAllLanes);
+        TunnelSmokeSetCvar(SOL::NPC_TUNNEL_CVAR, 1);
+        TunnelSmokeRunCommand(TEXT("r.ShowMaterialDrawEvents 1"), pawn.GetWorld());
+        TunnelSmokeRunCommand(TEXT("r.VSync 0"), pawn.GetWorld());
+        TunnelSmokeApplyCommandLineView(pawn.GetWorld());
+        break;
+    }
+    case ESOLTunnelPhase::ProfileOn:
+    case ESOLTunnelPhase::ProfileOff:
+        TunnelSmokeSetCvar(SOL::NPC_TUNNEL_CVAR, phase == ESOLTunnelPhase::ProfileOn ? 1 : 0);
+        mProfileFrame = 0;
+        mIsProfileDone = false;
         break;
     case ESOLTunnelPhase::ViewCheck:
     case ESOLTunnelPhase::EmptyCheck:
@@ -324,7 +431,7 @@ void FSOLNpcTunnelSmoke::EnterPhase(const ESOLTunnelPhase phase, ASOLShipPawn& p
         mNpcs->SetOptionValue(SOLNpcScale::EDemoOption::LaneFraction, 0.0);
         break;
     case ESOLTunnelPhase::EmptySetup:
-        mView = 6;
+        mView = TUNNELSMOKE_VIEW_T6;
         SetupView();
         mOccluderWritesAtStart = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() : 0;
         break;
@@ -437,6 +544,10 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
         if (mView == 1 || mView == 2)
         {
             CheckSides(mView == 1 ? TEXT("T2-sides") : TEXT("T3-sides"), mView == 1);
+        }
+        if (mView == TUNNELSMOKE_VIEW_T5B)
+        {
+            CheckEarthEnds(TEXT("T5b-earth"));
         }
         break;
     }
@@ -551,9 +662,63 @@ void FSOLNpcTunnelSmoke::ExitPhase(const ESOLTunnelPhase phase, ASOLShipPawn& pa
         CheckHidden(TEXT("override-hidden"));
         Finish(pawn);
         break;
+    case ESOLTunnelPhase::ProfileOff:
+        TunnelSmokeSetCvar(SOL::NPC_TUNNEL_CVAR, 1);
+        if (mProfilePass + 1 >= static_cast<int32>(UE_ARRAY_COUNT(TUNNELSMOKE_PROFILE_PASSES)))
+        {
+            Finish(pawn);
+        }
+        break;
     default:
         break;
     }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Runs one profile capture from its first frame; returns true once it is done
+bool FSOLNpcTunnelSmoke::TickProfile(const TCHAR* label, UWorld* world)
+{
+    // Window 1: stat dumpave of the redraw (the tunnel update inside it) with three ProfileGPU frames; window 2: the
+    // HUD label work; then a screenshot. The numbers are read from the log (LogStats and LogRHI blocks)
+    const TCHAR* passName = TUNNELSMOKE_PROFILE_PASSES[mProfilePass].Name;
+    constexpr int32 labelStart = TUNNELSMOKE_PROFILE_FRAMES + TUNNELSMOKE_PROFILE_TAIL_FRAMES;
+    constexpr int32 shotFrame = labelStart + TUNNELSMOKE_PROFILE_FRAMES + TUNNELSMOKE_PROFILE_TAIL_FRAMES;
+    if (mProfileFrame == 0)
+    {
+        FVector2D size(0.0, 0.0);
+        if (world->GetGameViewport() != nullptr)
+        {
+            world->GetGameViewport()->GetViewportSize(size);
+        }
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel PROFILE %s %s: start (%d tunnels drawn, viewport %.0fx%.0f)"),
+            passName, label, mVisuals->GetTunnels()->AreTunnelsDrawn() ? mVisuals->GetTunnels()->GetShownLanes().Num()
+            : 0, size.X, size.Y);
+        TunnelSmokeRunCommand(*FString::Printf(TEXT("stat dumpave -num=%d -ms=0 -root=%s"),
+            TUNNELSMOKE_PROFILE_FRAMES, TUNNELSMOKE_PROFILE_REDRAW_ROOT), world);
+    }
+    for (const int32 gpuFrame : TUNNELSMOKE_PROFILE_GPU_FRAMES)
+    {
+        if (mProfileFrame == gpuFrame)
+        {
+            UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel PROFILE %s %s: ProfileGPU at frame %d"), passName, label,
+                mProfileFrame);
+            TunnelSmokeRunCommand(TEXT("ProfileGPU"), world);
+        }
+    }
+    if (mProfileFrame == labelStart)
+    {
+        TunnelSmokeRunCommand(*FString::Printf(TEXT("stat dumpave -num=%d -ms=0 -root=%s"),
+            TUNNELSMOKE_PROFILE_FRAMES, TUNNELSMOKE_PROFILE_LABEL_ROOT), world);
+    }
+    if (mProfileFrame == shotFrame)
+    {
+        TakeShot(FString::Printf(TEXT("profile_%s_%s"), passName,
+            mPhase == ESOLTunnelPhase::ProfileOn ? TEXT("on") : TEXT("off")));
+        UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel PROFILE %s %s: done after %d frames"), passName, label,
+            mProfileFrame);
+    }
+    ++mProfileFrame;
+    return mProfileFrame > shotFrame + TUNNELSMOKE_PROFILE_TAIL_FRAMES;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -639,7 +804,7 @@ void FSOLNpcTunnelSmoke::SetupView()
             break;
         }
         case 1:
-        case 6:
+        case TUNNELSMOKE_VIEW_T6:
             positionM = quarterM;
             forward = basis.Axis;
             break;
@@ -660,11 +825,20 @@ void FSOLNpcTunnelSmoke::SetupView()
         }
         default:
         {
-            // T5: the start above Earth, facing the Moon (Venus-Earth, Earth-Mars and Earth-Moon meet at Earth)
+            // T5: the start above Earth, facing the Moon (Venus-Earth, Earth-Mars and Earth-Moon meet at Earth);
+            // T5b: 40,000 km from Earth on the far side from Mars, 15 degrees off the Earth-Mars axis, facing Earth
+            // (the tunnels meeting there with their end rings outside it, the Earth-Mars end ring partly behind it)
             const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
-            const int32 moon = registry.FindByName(FName(SOL::BodyNames::MOON));
+            const bool bFacingEarth = mView == TUNNELSMOKE_VIEW_T5B;
+            const int32 body = registry.FindByName(FName(bFacingEarth ? SOL::BodyNames::EARTH : SOL::BodyNames::MOON));
             positionM = mStartPositionM;
-            forward = moon != INDEX_NONE ? (registry.GetPositionM(moon) - positionM).GetSafeNormal() : forward;
+            if (bFacingEarth && body != INDEX_NONE)
+            {
+                const double offAxis = FMath::DegreesToRadians(TUNNELSMOKE_T5B_OFF_AXIS_DEG);
+                positionM = registry.GetPositionM(body) + (basis.Up * FMath::Sin(offAxis)
+                    - basis.Axis * FMath::Cos(offAxis)) * TUNNELSMOKE_T5B_DISTANCE_M;
+            }
+            forward = body != INDEX_NONE ? (registry.GetPositionM(body) - positionM).GetSafeNormal() : forward;
             break;
         }
         }
@@ -824,16 +998,23 @@ void FSOLNpcTunnelSmoke::CheckLabels(const TCHAR* label)
             entry.TopAnchorM.Length());
     }
 
-    // The boxes drawn: clear of every projected dot row (a pixel of slack for rounding), of the HUD panels the
-    // labels avoid and of each other
+    // The boxes drawn: clear of every projected dot row by the margin plus the row's projected dot radius (a pixel
+    // of slack for rounding), of the HUD panels the labels avoid and of each other
     const TConstArrayView<FVector2D> starts = mHud->GetLastLaneRowStarts();
     const TConstArrayView<FVector2D> ends = mHud->GetLastLaneRowEnds();
+    const TConstArrayView<double> dotRadiiPx = mHud->GetLastLaneRowDotRadiiPx();
+    double largestDotRadiusPx = 0.0;
+    for (const double radiusPx : dotRadiiPx)
+    {
+        largestDotRadiusPx = FMath::Max(largestDotRadiusPx, radiusPx);
+    }
+    detail += FString::Printf(TEXT(" [rows %d, largest dot radius %.1f px]"), dotRadiiPx.Num(), largestDotRadiusPx);
     bool bBoxes = true;
     for (int32 index = 0; index < mHud->GetLastLaneLabelCount(); ++index)
     {
         const FBox2D& box = mHud->GetLastLaneLabelBox(index);
         bBoxes &= SOLLaneTunnelLabel::LaneLabelClearOfDots(box, starts, ends,
-            SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX - 1.0);
+            SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX - 1.0, dotRadiiPx);
         for (int32 avoid = 0; avoid < mHud->GetLaneLabelAvoidBoxCount(); ++avoid)
         {
             bBoxes &= !box.Intersect(mHud->GetLaneLabelAvoidBox(avoid));
@@ -948,6 +1129,94 @@ void FSOLNpcTunnelSmoke::CheckSides(const TCHAR* label, const bool bLookingTowar
             tip.X, tip.Y, bPointsAhead ? TEXT("ahead") : TEXT("back"));
     }
     Check(label, bOk, detail);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Checks T5b (SDD 49 section 8 items 2 and 3): every shown tunnel ending at Earth has its end ring outside the planet
+// by the end margin; the shared occluders the tunnel shader tests hold Earth and were written during the view; and
+// Earth hides part of those tunnels (the C++ mirror of the shader's sphere test) while the part in front stays visible
+void FSOLNpcTunnelSmoke::CheckEarthEnds(const TCHAR* label)
+{
+    const FSOLBodyRegistry& registry = mRegistry->GetRegistry();
+    const int32 earth = registry.FindByName(FName(SOL::BodyNames::EARTH));
+    const USOLNpcTunnelComponent* tunnels = mVisuals->GetTunnels();
+    if (earth == INDEX_NONE || tunnels == nullptr || !mController.IsValid()
+        || mController->PlayerCameraManager == nullptr)
+    {
+        Check(label, false, TEXT("no Earth, tunnel component or camera"));
+        return;
+    }
+    const FVector3d viewpointM = mAnchor->GetViewpointM();
+    const FVector3d earthM = registry.GetPositionM(earth);
+    const FVector3d earthRelM = earthM - viewpointM;
+    const double earthRadiusM = registry.GetRadiusM(earth);
+    const FVector3d cameraRelM = mAnchor->RenderToUniverseM(mController->PlayerCameraManager->GetCameraLocation())
+        - viewpointM;
+
+    // Each shown tunnel with a node at Earth: its end ring's clearance outside the surface, then samples of the end
+    // ring and of the rings past it, away from Earth, tested against Earth's sphere
+    int32 earthEnds = 0;
+    int32 occluded = 0;
+    int32 visible = 0;
+    bool bOutside = true;
+    FString detail;
+    for (const FSOLNpcTunnelLaneData& data : tunnels->GetShownLanes())
+    {
+        const FSOLNpcLaneEntry& entry = mVisuals->GetLaneFrame().Lanes[data.Lane];
+        const double toleranceM = TUNNELSMOKE_T5B_BODY_TOLERANCE * earthRadiusM;
+        const bool bAtA = (entry.A - earthM).Size() <= toleranceM;
+        if (!bAtA && (entry.B - earthM).Size() > toleranceM)
+        {
+            continue;
+        }
+        ++earthEnds;
+        FSOLNpcTunnelBasis basis;
+        basis.Axis = data.Axis;
+        basis.Up = data.Up;
+        basis.Right = FVector3d::CrossProduct(data.Axis, data.Up);
+        basis.bValid = true;
+        const double rt = data.TunnelRadiusM;
+        const FVector3d endRingM = data.FootRelM + data.Axis * (bAtA ? data.EndArcAM : data.EndArcBM);
+        const double clearanceM = (endRingM - earthRelM).Size() - earthRadiusM;
+        bOutside &= rt > 0.0 && clearanceM >= (SOL::NPC_TUNNEL_END_MARGIN_RADII - 0.01) * rt;
+        const FVector3d awayFromEarth = bAtA ? data.Axis : -data.Axis;
+        for (int32 step = 0; step <= TUNNELSMOKE_T5B_RING_STEPS; ++step)
+        {
+            const FVector3d centreM = endRingM + awayFromEarth * (TUNNELSMOKE_T5B_STEP_RADII * step * rt);
+            for (int32 sample = 0; sample < TUNNELSMOKE_T5B_RING_SAMPLES; ++sample)
+            {
+                const FVector3d pointM = SOLNpcTunnel::RingSamplePointM(basis, centreM, rt, sample,
+                    TUNNELSMOKE_T5B_RING_SAMPLES);
+                ++(SOLOrbitLineMath::IsPointOccludedBySphere(cameraRelM, pointM, earthRelM, earthRadiusM) ? occluded
+                    : visible);
+            }
+        }
+        detail += FString::Printf(TEXT(" [lane %d, end %s: Rt %.0f km, end ring %.0f km outside Earth = %.2f Rt]"),
+            data.Lane, bAtA ? TEXT("A") : TEXT("B"), rt / 1000.0, clearanceM / 1000.0, clearanceM / rt);
+    }
+    Check(*FString::Printf(TEXT("%s-end-rings"), label), earthEnds >= 2 && bOutside, FString::Printf(
+        TEXT("%d tunnels end at Earth (radius %.0f km), every end ring outside it by the margin:%s"), earthEnds,
+        earthRadiusM / 1000.0, *detail));
+
+    // The occluder spheres the shader reads (the shared parameter collection) hold Earth, written during the view
+    bool bEarthOccluder = false;
+    const UMaterialParameterCollectionInstance* collection = mOrbitLines.IsValid()
+        ? mOrbitLines->GetParameterCollectionInstance() : nullptr;
+    for (int32 index = 0; collection != nullptr && index < SOL::ORBIT_LINE_MAX_OCCLUDERS && !bEarthOccluder; ++index)
+    {
+        FLinearColor sphere;
+        if (collection->GetVectorParameterValue(FName(SOL::OrbitLineMpcParams::OCCLUDERS[index]), sphere))
+        {
+            const double toleranceM = TUNNELSMOKE_T5B_OCCLUDER_TOLERANCE * earthRadiusM;
+            bEarthOccluder = FMath::Abs(sphere.A - earthRadiusM) <= toleranceM
+                && (FVector3d(sphere.R, sphere.G, sphere.B) - earthRelM).Size() <= toleranceM;
+        }
+    }
+    const int32 writes = mOrbitLines.IsValid() ? mOrbitLines->GetLaneOnlyOccluderWrites() - mOccluderWritesAtStart : 0;
+    Check(*FString::Printf(TEXT("%s-occlusion"), label), bEarthOccluder && writes > 0 && occluded > 0 && visible > 0,
+        FString::Printf(TEXT("Earth among the shared occluders %s, %d lane-only occluder writes in the view; tunnel "
+        "samples near Earth: %d hidden behind it, %d in front (C++ sphere test)"), bEarthOccluder ? TEXT("yes")
+        : TEXT("no"), writes, occluded, visible));
 }
 
 //////////////////////////////////////////////////////////////////////////

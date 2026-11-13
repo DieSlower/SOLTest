@@ -18,11 +18,13 @@
 //
 // Parameter vectors: frame = (viewpoint render location cm, max render distance cm); style0 = (ring width px, end ring
 // width px, dot size px, reference height px); style1 = (emissive, chevron alpha, glow pad px, dot radius scale);
-// shape = (chevron radius scale, chevron half width radii, chevron half length radii, end ring min alpha); layout0 =
-// (base spacing radii, rho, ring slots per side, gap slots per side); layout1 = (end fade spacings, depth fade start
-// radii, depth fade end radii, depth floor); layout2 = (near fade start, near fade full, radial full, radial none;
-// tunnel radii); layout3 = (detail fade start radii, detail fade end radii, dots per gap, dot rows); glow0 / glow1 as
-// SOLNpcLane.ush
+// shape = (chevron radius scale, chevron half width radii, chevron half length radii, end ring min alpha); style2 =
+// (chevron notch fraction, detail near fade start radii, detail near fade full radii, dot world diameter radii);
+// style3 = (screen fade half extents, chevron far fade start radii, chevron far fade end radii, unused);
+// layout0 = (base spacing radii, rho, ring slots per side, gap slots per side); layout1 = (end fade spacings, depth
+// fade start radii, depth fade end radii, depth floor); layout2 = (near fade start, near fade full, radial full,
+// radial none; tunnel radii); layout3 = (detail fade start radii, detail fade end radii, dots per gap, dot rows);
+// glow0 / glow1 as SOLNpcLane.ush
 
 #pragma once
 
@@ -112,6 +114,42 @@ float SOLNT_DetailFade(float d, float rt, float4 layout3)
     return saturate(1.0 - log(d / startM) / log(layout3.y / layout3.x));
 }
 
+// TunnelDetailNearFade: 0 inside the start, 1 from the full radius (the element's own distance), smoothstep between
+float SOLNT_DetailNearFade(float elementDistance, float rt, float4 style2)
+{
+    const float t = saturate((elementDistance - style2.y * rt) / ((style2.z - style2.y) * rt));
+    return t * t * (3.0 - 2.0 * t);
+}
+
+// TunnelScreenSizeFade: projected radius over k ribbon half extents, clamped (no white pile-up at the vanishing point)
+float SOLNT_ScreenSizeFade(float projectedRadiusPx, float halfExtentPx, float4 style3)
+{
+    return saturate(projectedRadiusPx / max(style3.x * halfExtentPx, 1e-4));
+}
+
+// TunnelRingScreenFade: 1 for an end ring (exempt, every lane end stays marked), else the screen fade of Rt x pxPerM
+float SOLNT_RingScreenFade(bool bEndRing, float rt, float pxPerMAtCentre, float halfExtentPx, float4 style3)
+{
+    return bEndRing ? 1.0 : SOLNT_ScreenSizeFade(rt * pxPerMAtCentre, halfExtentPx, style3);
+}
+
+// TunnelChevronFarFade: 1 inside the start, 0 from the end, a falling smoothstep between (D22, like the mock-up)
+float SOLNT_ChevronFarFade(float d, float rt, float4 style3)
+{
+    const float t = saturate((d - style3.y * rt) / ((style3.z - style3.y) * rt));
+    return 1.0 - t * t * (3.0 - 2.0 * t);
+}
+
+// ChevronDartDistance: signed distance from the filled dart, tip (0, 1), wings (+-1, -1), notch (0, -notch)
+float SOLNT_ChevronDartDistance(float2 corner, float notch)
+{
+    const float ax = abs(corner.x);
+    const float front = (2.0 * ax + corner.y - 1.0) * 0.44721359550;
+    const float rearSlope = 1.0 - notch;
+    const float rear = (-rearSlope * ax - corner.y - notch) * rsqrt(rearSlope * rearSlope + 1.0);
+    return max(front, rear);
+}
+
 // The alpha of a ring, dot or chevron at warp coordinate w (TunnelPlaceElement): cap, end, depth, near and, for
 // detail elements, the detail fade; 0 outside the end rings. outX = its axial offset from the foot point
 float SOLNT_ElementAlpha(float w, float capFade, bool bDetail, float h, float rt, float2 endArcs, float4 layout0,
@@ -163,11 +201,12 @@ float SOLNT_WorldPerPixel(float3 placedUnreal, float3 cameraUnreal, float3 forwa
 // Vertex stage: returns the slot vertex's render position (cm, Unreal axes; the mesh vertices sit at zero so this is
 // the world position offset), or the origin when the element is hidden (nothing is rasterised).
 // outInterp0 = (signed px across a ring, or quad corner x; quad corner y; alpha; colour code),
-// outInterp1 = (the element point relative to the viewpoint, ecliptic m; 0) for the pixel stage's occlusion
+// outInterp1 = (the element point relative to the viewpoint, ecliptic m; a dot's diameter px, else 0) for the pixel
+// stage's occlusion and dot profile
 float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, float4 t2, float4 t3,
-    float3 cameraUnreal, float4 frame, float4 style0, float4 style1, float4 shape, float4 layout0, float4 layout1,
-    float4 layout2, float4 layout3, float4 glow0, float3 right, float3 up, float3 forward, float projectionScaleX,
-    float2 viewSize, out float4 outInterp0, out float4 outInterp1)
+    float3 cameraUnreal, float4 frame, float4 style0, float4 style1, float4 shape, float4 style2, float4 style3,
+    float4 layout0, float4 layout1, float4 layout2, float4 layout3, float4 glow0, float3 right, float3 up,
+    float3 forward, float projectionScaleX, float2 viewSize, out float4 outInterp0, out float4 outInterp1)
 {
     outInterp0 = float4(0.0, 0.0, 0.0, 0.0);
     outInterp1 = float4(0.0, 0.0, 0.0, 0.0);
@@ -224,7 +263,21 @@ float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, fl
         const float3 placed = SOLNT_Place(pointM, frame);
         const float3 side = SOLOL_RibbonSideDirection(placed - cameraUnreal,
             SOLOL_EclipticToUnreal(tubeRight * c - tubeUp * s));
-        const float signedPx = uv1.y * SOLNL_RibbonHalfExtentPx(widthPx, scale, style1.z, glow0.x);
+        const float halfExtentPx = SOLNL_RibbonHalfExtentPx(widthPx, scale, style1.z, glow0.x);
+        const float signedPx = uv1.y * halfExtentPx;
+
+        // A repeating ring small on screen against its ribbon fades out: its radius Rt x the pixels per true metre at
+        // its centre (as the dot rows), so one value holds across an oblique far ring; the end rings are exempt
+        const float3 centreM = foot + axis * x;
+        const float3 centrePlaced = SOLNT_Place(centreM, frame);
+        const float centreTrueCm = max(length(centreM) * SOLOL_CM_PER_M, 1.0);
+        const float centrePxPerM = SOLOL_CM_PER_M * (length(centrePlaced - frame.xyz) / centreTrueCm)
+            / SOLNT_WorldPerPixel(centrePlaced, cameraUnreal, forward, projectionScaleX, viewSize.x);
+        alpha *= SOLNT_RingScreenFade(kind == SOLNT_KIND_END_RING, rt, centrePxPerM, halfExtentPx, style3);
+        if (!(alpha > 0.0))
+        {
+            return float3(0.0, 0.0, 0.0);
+        }
         outInterp0 = float4(signedPx, 0.0, alpha * fade, code);
         outInterp1 = float4(pointM, 0.0);
         return placed + side * (signedPx * SOLNT_WorldPerPixel(placed, cameraUnreal, forward, projectionScaleX,
@@ -251,10 +304,24 @@ float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, fl
         sincos(clockRad, s, c);
         const float3 pointM = foot + axis * x + (tubeUp * c + tubeRight * s) * (style1.w * rt);
         const float3 placed = SOLNT_Place(pointM, frame);
-        const float halfPx = SOLNL_RibbonHalfExtentPx(style0.z * scale, scale, style1.z, glow0.x);
+
+        // World-sized near (the mock-up's), never below the pixel floor; the row's own screen size and the dot's
+        // true distance fade it (no pile-up at the vanishing point, no fill cost at the wall)
+        const float trueCm = max(length(pointM) * SOLOL_CM_PER_M, 1.0);
+        const float placedPerTrue = length(placed - frame.xyz) / trueCm;
+        const float pxPerM = SOLOL_CM_PER_M * placedPerTrue / SOLNT_WorldPerPixel(placed, cameraUnreal, forward,
+            projectionScaleX, viewSize.x);
+        const float dotPx = max(style0.z * scale, style2.w * rt * pxPerM);
+        const float halfPx = SOLNL_RibbonHalfExtentPx(dotPx, scale, style1.z, glow0.x);
+        alpha *= SOLNT_ScreenSizeFade(style1.w * rt * pxPerM, halfPx, style3)
+            * SOLNT_DetailNearFade(length(pointM), rt, style2);
+        if (!(alpha > 0.0))
+        {
+            return float3(0.0, 0.0, 0.0);
+        }
         const bool bOutbound = uv2.x < 0.5 * layout3.w;
         outInterp0 = float4(uv1.x, uv1.y, alpha * fade, bOutbound ? SOLNT_CODE_DOT_OUT : SOLNT_CODE_DOT_IN);
-        outInterp1 = float4(pointM, 0.0);
+        outInterp1 = float4(pointM, dotPx);
         return placed + (right * uv1.x + up * uv1.y) * (halfPx * SOLNT_WorldPerPixel(placed, cameraUnreal, forward,
             projectionScaleX, viewSize.x));
     }
@@ -265,39 +332,39 @@ float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, fl
     const float3 wall = bOutboundWall ? tubeRight : -tubeRight;
     const float3 around = bOutboundWall ? -tubeUp : tubeUp;
     const float3 along = bOutboundWall ? axis : -axis;
-    const float3 pointM = foot + axis * x + wall * (shape.x * rt) + around * (uv1.x * shape.y * rt)
-        + along * (uv1.y * shape.z * rt);
+    const float3 centreM = foot + axis * x + wall * (shape.x * rt);
+    alpha *= SOLNT_DetailNearFade(length(centreM), rt, style2) * SOLNT_ChevronFarFade(sqrt(x * x + h * h), rt, style3);
+    if (!(alpha > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    const float3 pointM = centreM + around * (uv1.x * shape.y * rt) + along * (uv1.y * shape.z * rt);
     outInterp0 = float4(uv1.x, uv1.y, alpha * fade * style1.y,
         bOutboundWall ? SOLNT_CODE_CHEVRON_OUT : SOLNT_CODE_CHEVRON_IN);
     outInterp1 = float4(pointM, 0.0);
     return SOLNT_Place(pointM, frame);
 }
 
-// The chevron's coverage in its quad (corner coordinates in [-1, 1], pointing toward +y): an arrowhead stroke from
-// the two rear corners to the tip, anti-aliased over a pixel
-float SOLNT_ChevronCoverage(float2 corner)
+// The chevron's coverage in its quad (corner coordinates in [-1, 1], pointing toward +y): the mock-up's filled,
+// notched dart (SOLNT_ChevronDartDistance), anti-aliased over a pixel
+float SOLNT_ChevronCoverage(float2 corner, float notch)
 {
-    const float2 tip = float2(0.0, 1.0);
-    const float2 toRear = normalize(float2(1.0, -2.0));
-    const float2 p = float2(abs(corner.x), corner.y) - tip;
-    const float along = clamp(dot(p, toRear), 0.0, sqrt(5.0));
-    const float distance = length(p - toRear * along);
-    const float halfStroke = 0.2;
+    const float distance = SOLNT_ChevronDartDistance(corner, notch);
     const float feather = max(fwidth(distance), 1e-4);
-    return saturate((halfStroke - distance) / feather + 0.5);
+    return saturate(0.5 - distance / feather);
 }
 
 // Pixel stage: returns the additive emissive colour = colour x alpha x emissive x profile, 0 where a true-scale
 // occluder sphere or near scene depth hides the element's point. orbitStyle2 = the orbit lines' (highlight min alpha,
 // feather px, depth bias, scene-depth trust limit cm); occluders[i] = (viewpoint-relative centre m; radius m)
 float3 SOLNT_Pixel(float4 interp0, float4 interp1, float3 cameraUnreal, float4 frame, float4 style0, float4 style1,
-    float4 glow0, float4 glow1, float glowScale, float3 ringColor, float3 dotOutColor, float3 dotInColor,
+    float4 style2, float4 glow0, float4 glow1, float glowScale, float3 ringColor, float3 dotOutColor, float3 dotInColor,
     float3 chevronOutColor, float3 chevronInColor, float4 orbitStyle2, float viewportHeightPx, float pixelDepthCm,
     float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS])
 {
     const float code = interp0.w;
     const float alpha = interp0.z;
-    const float chevronCoverage = SOLNT_ChevronCoverage(interp0.xy);
+    const float chevronCoverage = SOLNT_ChevronCoverage(interp0.xy, style2.x);
     if (!(alpha > 0.0))
     {
         return float3(0.0, 0.0, 0.0);
@@ -315,7 +382,7 @@ float3 SOLNT_Pixel(float4 interp0, float4 interp1, float3 cameraUnreal, float4 f
     }
     else if (code < 3.5)
     {
-        const float dotPx = style0.z * scale;
+        const float dotPx = max(interp1.w, style0.z * scale);
         const float halfPx = SOLNL_RibbonHalfExtentPx(dotPx, scale, style1.z, glow0.x);
         profile = SOLNL_LineProfile(length(interp0.xy) * halfPx, dotPx, glowScale, scale, glow0, glow1);
         color = code < 2.5 ? dotOutColor : dotInColor;

@@ -144,6 +144,32 @@ namespace SOLNpcTunnel
     // NPC_TUNNEL_DETAIL_FADE_END_RADII x Rt, log-linear between; 0 for a NaN distance or a bad tunnel radius
     SOLTEST_API double TunnelDetailFade(double distanceM, double tunnelRadiusM);
 
+    // Returns the dot and chevron near fade by the element's own distance from the camera (49c, fill cost near a
+    // wall): 0 inside NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII x Rt, 1 from NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII x Rt,
+    // smoothstep between; 0 for a NaN distance or a bad tunnel radius
+    SOLTEST_API double TunnelDetailNearFade(double elementDistanceM, double tunnelRadiusM);
+
+    // Returns the screen-size fade of a ring or a dot row (49c, no white pile-up at the vanishing point):
+    // clamp(projected radius px / (NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS x ribbon half extent px), 0, 1); 0 for NaN or
+    // a non-positive half extent
+    SOLTEST_API double TunnelScreenSizeFade(double projectedRadiusPx, double halfExtentPx);
+
+    // Returns a ring's screen-size fade as the shader applies it: 1 for an end ring (exempt, so every lane end stays
+    // marked at its NPC_TUNNEL_END_RING_MIN_ALPHA floor; user 2026-11-13), else TunnelScreenSizeFade of the ring's
+    // radius Rt x the pixels per metre at the ring's centre (one value per ring, even across an oblique far ring)
+    SOLTEST_API double TunnelRingScreenFade(bool bEndRing, double tunnelRadiusM, double pxPerMAtCentre,
+        double halfExtentPx);
+
+    // Returns the chevrons' far fade (D22, like the mock-up): 1 inside NPC_TUNNEL_CHEVRON_FADE_START_RADII x Rt, 0 from
+    // NPC_TUNNEL_CHEVRON_FADE_END_RADII x Rt, a falling smoothstep between (distance from the camera to the axis
+    // point); 0 for a NaN distance or a bad tunnel radius
+    SOLTEST_API double TunnelChevronFarFade(double distanceM, double tunnelRadiusM);
+
+    // Returns the signed distance of a chevron quad point (corner units: x across in [-1, 1], y along its pointing
+    // direction in [-1, 1]) from the filled dart: tip (0, 1), wings (+-1, -1), rear notch (0, -notch); negative
+    // inside, the larger of the front and rear edge distances (the mock-up's arrowhead)
+    SOLTEST_API double ChevronDartDistance(double x, double y, double notchFraction);
+
     // Returns the end fade clamp(dEnd / (NPC_TUNNEL_END_FADE_SPACINGS x spacing), 0, 1): 0 at an end ring and outside
     // the tunnel (negative dEnd); 0 for a NaN distance or a NaN, non-positive or infinite spacing
     SOLTEST_API double TunnelEndFade(double distanceToEndM, double spacingM);
@@ -174,11 +200,13 @@ namespace SOLNpcTunnel
 
     // Returns a gap slot's dot (dot 0 .. NPC_TUNNEL_DOTS_PER_GAP - 1, at (dot + 0.5) / DOTS_PER_GAP of the gap whose
     // ring is at w = k - phase ahead or -(k - PER_SIDE + 1) - phase behind): true when it lies strictly between the
-    // end rings with a non-zero alpha (DetailCapFade, end, depth, TunnelNearFadeAt and detail fades)
+    // end rings with a non-zero alpha (DetailCapFade, end, depth, TunnelNearFadeAt and detail fades). Not the full
+    // rendered alpha: the shader also applies TunnelDetailNearFade, the world dot size and TunnelScreenSizeFade
     SOLTEST_API bool DotSlot(int32 slot, int32 dot, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outDot);
 
     // Returns a gap slot's chevron (mid-gap, the same gaps as DotSlot): true when it lies strictly between the end
-    // rings with a non-zero alpha
+    // rings with a non-zero alpha (DotSlot's slot fades times TunnelChevronFarFade). Not the full rendered alpha: the
+    // shader also applies TunnelDetailNearFade and NPC_TUNNEL_CHEVRON_ALPHA
     SOLTEST_API bool ChevronSlot(int32 slot, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outChevron);
 
     // Returns the end rings' arcs from node A, (R_A + MARGIN x Rt, L - R_B - MARGIN x Rt); (0, 0) when they cross or
@@ -254,6 +282,13 @@ namespace SOLNpcTunnel
     SOLTEST_API bool TunnelDotRowSegmentRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
         double tunnelRadiusM, double endArcAM, double endArcBM, int32 row, FVector3d& outStartM, FVector3d& outEndM);
 
+    // Writes every dot row's segment of one tunnel (TunnelDotRowSegmentRelM for rows 0 .. NPC_TUNNEL_DOT_ROWS - 1, the
+    // range they share computed once, the rows' clock directions from a table): returns how many were written (all
+    // rows, capped by the outputs' sizes; 0 when the range is empty or an input is bad)
+    SOLTEST_API int32 TunnelDotRowSegmentsRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+        double tunnelRadiusM, double endArcAM, double endArcBM, TArrayView<FVector3d> outStartsM,
+        TArrayView<FVector3d> outEndsM);
+
     // Fills a lane's renderer feed (phase 0, left to the caller) and its foot; returns whether the lane can have a
     // tunnel (both bodies resolved, a valid basis, drawable end rings), whatever its fade (0 when it cannot)
     SOLTEST_API bool BuildTunnelLaneData(int32 laneIndex, const FSOLNpcLaneEntry& lane, const FVector3d& viewpointM,
@@ -283,11 +318,11 @@ namespace SOLNpcTunnel
     SOLTEST_API bool ShouldUploadTunnelTexels(bool bShownNow, bool bShownLastFrame);
 
     // Returns ring slot k's segment count (level of detail by slot, behind slots like the ahead slot of the same
-    // index): NPC_TUNNEL_RING_SEGMENTS_NEAR / MID / FAR; 0 out of range
+    // index): NPC_TUNNEL_RING_SEGMENTS_NEAREST / NEAR / MID / FAR; 0 out of range
     SOLTEST_API int32 RingSegmentsForSlot(int32 slot);
 
-    // Returns the slot mesh's vertex count: ring ribbons ((N + 1) samples x 2 sides), two end rings at the near count,
-    // a quad per dot and per chevron
+    // Returns the slot mesh's vertex count: ring ribbons ((N + 1) samples x 2 sides), two end rings at the nearest
+    // count, a quad per dot and per chevron
     SOLTEST_API int32 TunnelSlotMeshVertexCount();
 
     // Returns a lane's tunnel fade where the lane and point materials read it (row 1 .w of its column); 0 out of range

@@ -268,7 +268,11 @@ namespace
                 {
                     continue;
                 }
-                const double alpha = NpcTunnelRefDetailAlpha(x, input);
+                // Chevrons also take their own far fade (D22), by the camera-to-axis-point distance
+                const double alpha = NpcTunnelRefDetailAlpha(x, input) * (bChevrons
+                    ? SOLNpcTunnel::TunnelChevronFarFade(FMath::Sqrt(x * x + input.RadialM * input.RadialM),
+                        input.TunnelRadiusM)
+                    : 1.0);
                 if (alpha > 0.0)
                 {
                     outElements.Add({ w, x, alpha });
@@ -2565,14 +2569,29 @@ bool FSOLNpcTunnelMathRendererConstantsTest::RunTest(const FString& /*parameters
     TestEqual(TEXT("dot size 3 px"), static_cast<double>(SOL::NPC_TUNNEL_DOT_SIZE_PX), 3.0, NPCTUNNEL_TOL);
     TestTrue(TEXT("end rings wider than rings"), SOL::NPC_TUNNEL_END_RING_WIDTH_PX > SOL::NPC_TUNNEL_RING_WIDTH_PX);
 
-    // Chevrons: on the wall inside the dot rows, the mock-up's proportions, alpha 0.75
+    // Chevrons: on the wall inside the dot rows, the mock-up's proportions (alpha below)
     TestEqual(TEXT("chevron radius 0.97 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE), 0.97,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("chevron half width 0.17 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII), 0.17,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("chevron half length 0.26 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII),
         0.26, NPCTUNNEL_TOL);
-    TestEqual(TEXT("chevron alpha 0.75"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_ALPHA), 0.75, NPCTUNNEL_TOL);
+    // 49c (the user's report: match the mock-up): a filled dart notched at 0.3 half lengths, linear alpha 0.3 (reads
+    // like the mock-up's sRGB 0.75 x fog over black); near dots world-sized like the mock-up's, 3 px floor
+    TestEqual(TEXT("chevron notch 0.3"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_NOTCH_FRACTION), 0.3,
+        NPCTUNNEL_TOL);
+    TestEqual(TEXT("chevron alpha 0.3"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_ALPHA), 0.3, NPCTUNNEL_TOL);
+    TestEqual(TEXT("dot world diameter 0.034 Rt"), static_cast<double>(SOL::NPC_TUNNEL_DOT_WORLD_DIAMETER_RADII),
+        0.034, NPCTUNNEL_TOL);
+    TestEqual(TEXT("detail near fade from 0.5 Rt"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_START_RADII),
+        0.5, NPCTUNNEL_TOL);
+    TestEqual(TEXT("detail near fade full at 1 Rt"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_NEAR_FADE_FULL_RADII),
+        1.0, NPCTUNNEL_TOL);
+    // A chevron beside a camera on the axis is 0.97 Rt away, just inside the near fade's full radius: it keeps about
+    // 0.99 (smoothstep at 0.94), so the wall chevrons never visibly dim from the axis
+    const double besideFade = SOLNpcTunnel::TunnelDetailNearFade(SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE, 1.0);
+    TestTrue(FString::Printf(TEXT("chevrons beside a camera on the axis keep at least 0.985 (%.4f)"), besideFade),
+        besideFade >= 0.985);
     TestTrue(TEXT("chevrons inside the dot rows (dots outside the rings, D6)"),
         SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE < 1.0 && 1.0 < SOL::NPC_TUNNEL_DOT_RADIUS_SCALE);
 
@@ -2580,6 +2599,7 @@ bool FSOLNpcTunnelMathRendererConstantsTest::RunTest(const FString& /*parameters
     const double emissive = SOL::NPC_TUNNEL_EMISSIVE;
     TestTrue(TEXT("emissive positive and finite"), FMath::IsFinite(emissive) && emissive > 0.0);
     TestEqual(TEXT("near ring segments 48"), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR, 48);
+    TestEqual(TEXT("nearest ring segments 96"), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST, 96);
     TestEqual(TEXT("sort priority 2"), SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY, 2);
     TestTrue(TEXT("sorted above the lanes in the after-motion-blur pass"),
         SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY > SOL::NPC_LANE_TRANSLUCENCY_SORT_PRIORITY);
@@ -3005,6 +3025,31 @@ bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
         -10.0 * rt, 20.0 * rt, 0, start, end));
     TestFalse(TEXT("bad radius"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, NPCTUNNEL_NAN, -10.0 * rt,
         20.0 * rt, 0, start, end));
+
+    // 49c: the batch writes every row's segment (all rows, capped by the outputs), 0 when empty. Off the axis by
+    // sqrt(13) Rt the dots reach about 512 Rt, so both end rings clip: each row runs from end ring A to end ring B at
+    // its own clock angle, and matches the single-row function
+    FVector3d starts[SOL::NPC_TUNNEL_DOT_ROWS];
+    FVector3d ends[SOL::NPC_TUNNEL_DOT_ROWS];
+    const FVector3d foot(0.0, 3.0 * rt, -2.0 * rt);
+    TestEqual(TEXT("batch: every row"), TunnelDotRowSegmentsRelM(foot, basis, rt, -40.0 * rt, 90.0 * rt,
+        TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), static_cast<int32>(SOL::NPC_TUNNEL_DOT_ROWS));
+    for (int32 row = 0; row < SOL::NPC_TUNNEL_DOT_ROWS; ++row)
+    {
+        const FString label = FString::Printf(TEXT("batch, row %d"), row);
+        TestTrue(label + TEXT(": starts at end ring A"), NpcTunnelVecNear(starts[row], rowPoint(foot, row, -40.0 * rt),
+            tol));
+        TestTrue(label + TEXT(": ends at end ring B"), NpcTunnelVecNear(ends[row], rowPoint(foot, row, 90.0 * rt),
+            tol));
+        TestTrue(label + TEXT(": the single row's segment"), TunnelDotRowSegmentRelM(foot, basis, rt, -40.0 * rt,
+            90.0 * rt, row, start, end) && start == starts[row] && end == ends[row]);
+    }
+    TestEqual(TEXT("batch: capped by the outputs"), TunnelDotRowSegmentsRelM(foot, basis, rt, -40.0 * rt, 90.0 * rt,
+        TArrayView<FVector3d>(starts, 3), TArrayView<FVector3d>(ends, 5)), 3);
+    TestEqual(TEXT("batch: crossed end arcs"), TunnelDotRowSegmentsRelM(foot, basis, rt, 20.0 * rt, -10.0 * rt,
+        TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), 0);
+    TestEqual(TEXT("batch: invalid basis"), TunnelDotRowSegmentsRelM(foot, FSOLNpcTunnelBasis(), rt, -10.0 * rt,
+        20.0 * rt, TArrayView<FVector3d>(starts), TArrayView<FVector3d>(ends)), 0);
     return true;
 }
 
@@ -3204,11 +3249,13 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathSlotMeshTest, "SOLTest.NpcTunn
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 49 section 4.7 (level of detail by slot, the mesh built once): RingSegmentsForSlot gives 48
-// (NPC_TUNNEL_RING_SEGMENTS_NEAR) segments to ring slots 0-7 of each side, 24 to 8-23 and 12 beyond (behind slots like
-// the ahead slot of the same index), 0 out of range; TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples
-// x 2 sides each), two end rings at the near segment count, a quad per dot (rows x dots per gap x gap slots) and a quad
-// per chevron (2 walls x gap slots): 8,900 vertices per lane, under the SDD's 72,000 for all 8 lanes
+// SDD 49 section 4.7 (level of detail by slot, the mesh built once; 49c: 96 segments for the two nearest slots):
+// RingSegmentsForSlot gives 96 (NPC_TUNNEL_RING_SEGMENTS_NEAREST) segments to ring slots 0-1 of each side, 48 to 2-7,
+// 24 to 8-23 and 12 beyond (behind slots like the ahead slot of the same index), 0 out of range;
+// TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples x 2 sides each), two end rings at the nearest
+// segment count, a quad per dot (rows x dots per gap x gap slots) and a quad per chevron (2 walls x gap slots): 9,476
+// vertices per lane. The 8-lane total stays within the SDD's fixed budget of 80,000 vertices (section 4.7), a limit
+// set by the design, not a figure moved to follow the code
 bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcTunnel;
@@ -3216,10 +3263,11 @@ bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
     for (int32 slot = 0; slot < 2 * perSide; ++slot)
     {
         const int32 k = slot < perSide ? slot : slot - perSide;
-        const int32 expected = k < 8 ? 48 : k < 24 ? 24 : 12;
+        const int32 expected = k < 2 ? 96 : k < 8 ? 48 : k < 24 ? 24 : 12;
         TestEqual(FString::Printf(TEXT("slot %d segments"), slot), RingSegmentsForSlot(slot), expected);
     }
-    TestEqual(TEXT("slot 0 at the near count"), RingSegmentsForSlot(0), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR);
+    TestEqual(TEXT("slot 0 at the nearest count"), RingSegmentsForSlot(0), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST);
+    TestEqual(TEXT("slot 2 at the near count"), RingSegmentsForSlot(2), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR);
     TestEqual(TEXT("slot -1: 0"), RingSegmentsForSlot(-1), 0);
     TestEqual(TEXT("slot 128: 0"), RingSegmentsForSlot(2 * perSide), 0);
 
@@ -3228,13 +3276,99 @@ bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
     {
         ringVertices += 2 * (RingSegmentsForSlot(slot) + 1);
     }
-    const int32 endRingVertices = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR + 1);
+    const int32 endRingVertices = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAREST + 1);
     const int32 dotVertices = 4 * DetailSlotCount() * SOL::NPC_TUNNEL_DOTS_PER_GAP * SOL::NPC_TUNNEL_DOT_ROWS;
     const int32 chevronVertices = 4 * DetailSlotCount() * 2;
     TestEqual(TEXT("vertex count: the formula"), TunnelSlotMeshVertexCount(),
         ringVertices + endRingVertices + dotVertices + chevronVertices);
-    TestEqual(TEXT("vertex count: 8,900 (proposed value)"), TunnelSlotMeshVertexCount(), 8900);
-    TestTrue(TEXT("all 8 default lanes within the SDD estimate"), 8 * TunnelSlotMeshVertexCount() <= 72000);
+    TestEqual(TEXT("vertex count: 9,476 (49c value)"), TunnelSlotMeshVertexCount(), 9476);
+    constexpr int32 eightLaneVertexBudget = 80000;
+    TestTrue(TEXT("all 8 default lanes within the SDD's fixed vertex budget"),
+        8 * TunnelSlotMeshVertexCount() <= eightLaneVertexBudget);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathShapeFadesTest, "SOLTest.NpcTunnelMath.ShapeFades",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// 49c (SDD 49 section 12c): the detail near fade by the element's own distance (0 to 0.5 Rt, smoothstep, 1 from 1 Rt,
+// scale free, 0 for bad input); the screen-size fade (projected radius / (k x ribbon half extent), clamped; 0 for bad
+// input); the chevrons' far fade (D22); the filled chevron dart (tip, wings and notch on the edge, the centre and the
+// shaft inside, the notch's rear and the corners beside the tip outside)
+bool FSOLNpcTunnelMathShapeFadesTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    for (const double rt : { 1.0, 3.0e4, 2.0e8 })
+    {
+        TestEqual(TEXT("near fade 0 at the camera"), TunnelDetailNearFade(0.0, rt), 0.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("near fade 0 at 0.5 Rt"), TunnelDetailNearFade(0.5 * rt, rt), 0.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("near fade 0.5 at 0.75 Rt"), TunnelDetailNearFade(0.75 * rt, rt), 0.5, 1.0e-9);
+        TestEqual(TEXT("near fade 1 at 1 Rt"), TunnelDetailNearFade(rt, rt), 1.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("near fade 1 far away"), TunnelDetailNearFade(1.0e3 * rt, rt), 1.0, NPCTUNNEL_TOL);
+        TestTrue(TEXT("near fade rises"), TunnelDetailNearFade(0.6 * rt, rt) < TunnelDetailNearFade(0.9 * rt, rt));
+    }
+    TestEqual(TEXT("near fade: NaN"), TunnelDetailNearFade(NAN, 1.0), 0.0);
+    TestEqual(TEXT("near fade: bad radius"), TunnelDetailNearFade(1.0, 0.0), 0.0);
+
+    // The screen fade reaches 1 at NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS half extents (49c: more than one, so the
+    // converging far rings do not pile up into a white vanishing point)
+    const double k = SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS;
+    TestTrue(TEXT("screen fade: more than one half extent"), k > 1.0);
+    TestEqual(TEXT("screen fade 0 at 0 px"), TunnelScreenSizeFade(0.0, 4.0), 0.0, NPCTUNNEL_TOL);
+    TestEqual(TEXT("screen fade 0.5"), TunnelScreenSizeFade(2.0 * k, 4.0), 0.5, NPCTUNNEL_TOL);
+    TestEqual(TEXT("screen fade below 1 at one half extent"), TunnelScreenSizeFade(4.0, 4.0), 1.0 / k, NPCTUNNEL_TOL);
+    TestEqual(TEXT("screen fade 1 at k half extents"), TunnelScreenSizeFade(4.0 * k, 4.0), 1.0, NPCTUNNEL_TOL);
+    TestEqual(TEXT("screen fade 1 beyond"), TunnelScreenSizeFade(400.0 * k, 4.0), 1.0, NPCTUNNEL_TOL);
+    TestEqual(TEXT("screen fade: NaN"), TunnelScreenSizeFade(NAN, 4.0), 0.0);
+    TestEqual(TEXT("screen fade: no half extent"), TunnelScreenSizeFade(4.0, 0.0), 0.0);
+
+    // Review fix (user, 2026-11-13): the end rings are exempt, so a far lane end keeps its 0.5 floor; a repeating
+    // ring's projected radius is Rt x the pixels per metre at its centre (one value round an oblique ring)
+    TestEqual(TEXT("ring screen fade: a tiny end ring stays 1"), TunnelRingScreenFade(true, 1.0e6, 1.0e-9, 4.0), 1.0);
+    TestEqual(TEXT("ring screen fade: an end ring with no half extent stays 1"), TunnelRingScreenFade(true, 1.0e6,
+        1.0e-3, 0.0), 1.0);
+    TestEqual(TEXT("ring screen fade: a far end ring keeps the floor"), TunnelRingScreenFade(true, 1.0e6, 1.0e-9, 4.0)
+        * EndRingAlpha(1.0e8 * 1.0e6, 0.0, 1.0e6), SOL::NPC_TUNNEL_END_RING_MIN_ALPHA, NPCTUNNEL_TOL);
+    TestEqual(TEXT("ring screen fade: a ring is Rt x px per m"), TunnelRingScreenFade(false, 1.0e6, 2.0e-5, 4.0),
+        TunnelScreenSizeFade(20.0, 4.0), NPCTUNNEL_TOL);
+    TestEqual(TEXT("ring screen fade: a tiny ring fades out"), TunnelRingScreenFade(false, 1.0e6, 1.0e-12, 4.0), 0.0,
+        1.0e-6);
+    TestEqual(TEXT("ring screen fade: a large ring is full"), TunnelRingScreenFade(false, 1.0e6, 1.0e-3, 4.0), 1.0,
+        NPCTUNNEL_TOL);
+
+    // The chevrons' far fade (D22): full inside the start, gone from the end, falling smoothly, scale free
+    const double startRadii = SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII;
+    const double endRadii = SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII;
+    TestTrue(TEXT("chevron fade: the mock-up's range"), startRadii >= 8.0 && startRadii <= 16.0
+        && endRadii > startRadii && endRadii <= 40.0);
+    for (const double rt : { 1.0, 3.0e4, 2.0e8 })
+    {
+        TestEqual(TEXT("chevron fade 1 near"), TunnelChevronFarFade(2.0 * rt, rt), 1.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("chevron fade 1 at the start"), TunnelChevronFarFade(startRadii * rt, rt), 1.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("chevron fade 0.5 mid-band"), TunnelChevronFarFade(0.5 * (startRadii + endRadii) * rt, rt),
+            0.5, 1.0e-9);
+        TestEqual(TEXT("chevron fade 0 at the end"), TunnelChevronFarFade(endRadii * rt, rt), 0.0, NPCTUNNEL_TOL);
+        TestEqual(TEXT("chevron fade 0 far"), TunnelChevronFarFade(300.0 * rt, rt), 0.0, NPCTUNNEL_TOL);
+        TestTrue(TEXT("chevron fade falls"), TunnelChevronFarFade((startRadii + 2.0) * rt, rt)
+            > TunnelChevronFarFade((endRadii - 2.0) * rt, rt));
+    }
+    TestEqual(TEXT("chevron fade: NaN"), TunnelChevronFarFade(NAN, 1.0), 0.0);
+    TestEqual(TEXT("chevron fade: bad radius"), TunnelChevronFarFade(1.0, 0.0), 0.0);
+
+    const double n = SOL::NPC_TUNNEL_CHEVRON_NOTCH_FRACTION;
+    TestEqual(TEXT("dart: tip on the edge"), ChevronDartDistance(0.0, 1.0, n), 0.0, 1.0e-12);
+    TestEqual(TEXT("dart: wing on the edge"), ChevronDartDistance(1.0, -1.0, n), 0.0, 1.0e-12);
+    TestEqual(TEXT("dart: other wing on the edge"), ChevronDartDistance(-1.0, -1.0, n), 0.0, 1.0e-12);
+    TestEqual(TEXT("dart: notch on the edge"), ChevronDartDistance(0.0, -n, n), 0.0, 1.0e-12);
+    TestTrue(TEXT("dart: centre inside"), ChevronDartDistance(0.0, 0.0, n) < 0.0);
+    TestTrue(TEXT("dart: shaft inside"), ChevronDartDistance(0.3, -0.4, n) < 0.0);
+    TestTrue(TEXT("dart: behind the notch outside"), ChevronDartDistance(0.0, -0.6, n) > 0.0);
+    TestTrue(TEXT("dart: beside the tip outside"), ChevronDartDistance(0.9, 0.9, n) > 0.0);
+    TestTrue(TEXT("dart: mirror symmetric"),
+        FMath::IsNearlyEqual(ChevronDartDistance(0.4, -0.2, n), ChevronDartDistance(-0.4, -0.2, n)));
+    TestEqual(TEXT("dart: front edge distance"), ChevronDartDistance(0.0, 2.0, n), 1.0 / FMath::Sqrt(5.0), 1.0e-12);
     return true;
 }
 

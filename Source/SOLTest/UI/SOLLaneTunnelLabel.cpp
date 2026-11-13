@@ -89,17 +89,16 @@ namespace
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns true when no row segment meets the box grown by the margin
+// Returns true when no row segment meets the box grown by the margin (plus the row's own extra margin)
 bool SOLLaneTunnelLabel::LaneLabelClearOfDots(const FBox2D& labelBox, const TConstArrayView<FVector2D> rowStarts,
-    const TConstArrayView<FVector2D> rowEnds, const double marginPx)
+    const TConstArrayView<FVector2D> rowEnds, const double marginPx, const TConstArrayView<double> rowExtraMarginsPx)
 {
-    const FVector2D grow(marginPx, marginPx);
-    const FVector2D boxMin = labelBox.Min - grow;
-    const FVector2D boxMax = labelBox.Max + grow;
     const int32 rowCount = FMath::Min(rowStarts.Num(), rowEnds.Num());
     for (int32 row = 0; row < rowCount; ++row)
     {
-        if (LaneLabelSegmentMeetsBox(rowStarts[row], rowEnds[row], boxMin, boxMax))
+        const double rowMarginPx = marginPx + (row < rowExtraMarginsPx.Num() ? rowExtraMarginsPx[row] : 0.0);
+        const FVector2D grow(rowMarginPx, rowMarginPx);
+        if (LaneLabelSegmentMeetsBox(rowStarts[row], rowEnds[row], labelBox.Min - grow, labelBox.Max + grow))
         {
             return false;
         }
@@ -108,11 +107,26 @@ bool SOLLaneTunnelLabel::LaneLabelClearOfDots(const FBox2D& labelBox, const TCon
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns half of max(floor, world diameter x focal / depth): a guide dot's projected radius in pixels
+double SOLLaneTunnelLabel::LaneLabelDotRadiusPx(const double depthCm, const double dotDiameterCm, const double focalPx,
+    const double floorDiameterPx)
+{
+    const double floorPx = FMath::IsFinite(floorDiameterPx) ? FMath::Max(floorDiameterPx, 0.0) : 0.0;
+    if (!FMath::IsFinite(depthCm) || !FMath::IsFinite(dotDiameterCm) || !FMath::IsFinite(focalPx) || depthCm <= 0.0
+        || dotDiameterCm <= 0.0 || focalPx <= 0.0)
+    {
+        return 0.5 * floorPx;
+    }
+    return 0.5 * FMath::Max(floorPx, dotDiameterCm * focalPx / depthCm);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Places the labels greedily in order: last frame's spot, full form at 12 then 6 o'clock, compact, else hidden
 int32 SOLLaneTunnelLabel::PlaceLaneLabels(const TConstArrayView<FSOLLaneLabelInput> labels,
     const TConstArrayView<FVector2D> rowStarts, const TConstArrayView<FVector2D> rowEnds,
     const TConstArrayView<FBox2D> avoidBoxes, const FVector2D& viewportPx, const double rowMarginPx,
-    const double gapPx, const TArrayView<FSOLLaneLabelPlacement> outPlacements)
+    const double gapPx, const TArrayView<FSOLLaneLabelPlacement> outPlacements,
+    const TConstArrayView<double> rowExtraMarginsPx)
 {
     const int32 labelCount = FMath::Min(labels.Num(), outPlacements.Num());
     const bool bViewportValid = FMath::IsFinite(viewportPx.X) && FMath::IsFinite(viewportPx.Y) && viewportPx.X > 0.0
@@ -175,7 +189,7 @@ int32 SOLLaneTunnelLabel::PlaceLaneLabels(const TConstArrayView<FSOLLaneLabelInp
             {
                 continue;
             }
-            if (!LaneLabelClearOfDots(box, rowStarts, rowEnds, rowMarginPx))
+            if (!LaneLabelClearOfDots(box, rowStarts, rowEnds, rowMarginPx, rowExtraMarginsPx))
             {
                 continue;
             }

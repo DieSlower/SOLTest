@@ -26,16 +26,22 @@ struct FSOLNpcTunnelBasis;
  * switch (verification overrides, orbit lines off so the lanes and tunnels alone keep the shared occluders current),
  * turns the space dust off in memory and sets the HUD glow as a pending value only (reverted). Views T1 (75 lane radii
  * beside the Earth-Mars lane's middle), T2 / T3 (on its axis a quarter of the way from Earth looking toward Mars /
- * Earth), T4 (there looking 90 degrees off the axis), T4b (one tunnel radius off the axis looking 1.5 degrees off it)
- * and T5 (the start above Earth) each check the instances, every texel against the tunnel feed, the fade read back
- * (Q5) and its crossfade, the labels (strongest first, side alpha, boxes clear of the projected dot rows and of each
- * other) and, in T2 / T3, keep right and the chevron directions, and shoot NpcTunnel_<w>x<h>_<view>.png with the HUD.
+ * Earth), T4 (there looking 90 degrees off the axis), T4b (one tunnel radius off the axis looking 1.5 degrees off it),
+ * T5 (the start above Earth facing the Moon) and T5b (40,000 km beyond Earth from Mars, 15 degrees off the Earth-Mars
+ * axis, facing Earth) each check the instances, every texel against the tunnel feed, the fade read back (Q5) and its
+ * crossfade, the labels (strongest first, side alpha, boxes clear of the projected dot rows and of each other), in
+ * T2 / T3 keep right and the chevron directions, in T5b the end rings outside Earth and Earth among the shared
+ * occluders hiding the tunnel parts behind it, and shoot NpcTunnel_<w>x<h>_<view>.png with the HUD.
  * T7 holds the ship at rest relative to the lane (phase unchanged), flies it along the axis and back at a fixed speed
  * (the phase follows the foot arc, the arc follows speed x time) and moves it from 50 to 1 tunnel radii toward the axis
  * (the lane-fixed rings stay put). Then the glow feed and its revert, the labels hidden with the pause menu, the Lanes
  * row off, sol.NpcTunnel 0 and the jump map (tunnels hidden, every fade texel 0), T6 (Demo lane fraction 0: empty
  * lanes keep minimum-radius tunnels, no lane line, the shared occluders still written) and the hidden override. Each
- * check logs a LogSOL PASS / FAIL line, then a SUMMARY line, and the game quits.
+ * check logs a LogSOL PASS / FAIL line, then a SUMMARY line, and the game quits. With -SOLSmokeNpcTunnelProfile (-game
+ * only) it skips the views and checks after the population and runs the cost captures instead (SDD 49 section 12c):
+ * per pass (T2 and T5 with every lane forced in range, T2 with its own lanes only) a settle, then with the tunnels
+ * drawn and with sol.NpcTunnel 0 a stat dumpave of STAT_SOL_NpcRedraw over 240 frames with three ProfileGPU frames
+ * inside it, a stat dumpave of STAT_SOL_HudLaneLabels over 240 frames and a screenshot.
  */
 class SOLTEST_API FSOLNpcTunnelSmoke
 {
@@ -75,6 +81,9 @@ private:
         EmptySetup,         // T6: the ship on the Earth-Mars axis again
         EmptyCheck,         // ...minimum-radius tunnels, no lane line, occluders still written (screenshot)
         OverrideHidden,     // The hidden tunnel override: tunnels hidden, fades 0
+        ProfileSetup,       // Profile flag: the pass's view, lanes forced or not, settles
+        ProfileOn,          // ...the captures with the tunnels drawn
+        ProfileOff,         // ...and with sol.NpcTunnel 0
         Done,
     };
 
@@ -102,7 +111,7 @@ private:
     // Places the ship (universe ecliptic metres) facing a direction, at the reference velocity, not rotating
     void SetupShip(const FVector3d& positionM, const FVector3d& forward) const;
 
-    // Places the ship for view mView (T1 .. T5, T4b; T6 = the T2 point)
+    // Places the ship for view mView (T1 .. T5b, T4b; T6 = the T2 point)
     void SetupView();
 
     // Returns the current view's name for the checks, logs and screenshot names
@@ -116,6 +125,10 @@ private:
 
     // Checks keep right and the chevron directions on screen (T2 looking toward B, T3 toward A)
     void CheckSides(const TCHAR* label, bool bLookingTowardB);
+
+    // Checks T5b: the end rings at Earth outside the planet, Earth among the shared occluders and hiding part of the
+    // tunnels behind it
+    void CheckEarthEnds(const TCHAR* label);
 
     // Checks that the tunnels are hidden and every fade texel is 0
     void CheckHidden(const TCHAR* label);
@@ -132,6 +145,9 @@ private:
     // Logs one check with its verdict and counts it
     void Check(const TCHAR* label, bool bPassed, const FString& detail);
 
+    // Runs one profile capture from its first frame (the dumps, ProfileGPU, the screenshot); true once it is done
+    bool TickProfile(const TCHAR* label, UWorld* world);
+
     TWeakObjectPtr<ASOLNpcVisuals> mVisuals;
     TWeakObjectPtr<ASOLOrbitLineVisuals> mOrbitLines;
     TWeakObjectPtr<ASOLFlightHud> mHud;
@@ -146,7 +162,7 @@ private:
     double mPhaseTimeS = 0.0;
     double mTotalTimeS = 0.0;
     int32 mPhaseFrames = 0;
-    int32 mView = 0;                        // Current view (T1 = 0 .. T5 = 5, T6 = 6)
+    int32 mView = 0;                        // Current view (T1 = 0 .. T5 = 5, T5b = 6, T6 = 7)
     FVector3d mStartPositionM = FVector3d::ZeroVector;  // The ship's start (T5), ecliptic
     double mLaneParam = 0.25;               // T7: the lane point's parameter the ship is held at
     double mStartPhase = 0.0;               // T7: phase, foot arc and unwrapped phase advance at a phase's start
@@ -157,8 +173,12 @@ private:
     double mCaptureAxialM = 0.0;            // T7: the axial offset set at the measurement's start and last frame
     double mLastSetAxialM = 0.0;
     double mCaptureTimeS = 0.0;             // T7: the part's clock at the measurement's start
-    int32 mOccluderWritesAtStart = 0;       // T6: the orbit lines' lane-only occluder writes at the view's start
+    int32 mOccluderWritesAtStart = 0;       // T5b, T6: the orbit lines' lane-only occluder writes at the view's start
     uint32 mPopulationRevision = 0;         // Repopulate: the revision before the lane fraction changed
     int32 mChecksRun = 0;
     int32 mChecksPassed = 0;
+    bool mIsProfile = false;                // -SOLSmokeNpcTunnelProfile in a standalone -game process
+    int32 mProfilePass = 0;                 // Current profile pass
+    int32 mProfileFrame = 0;                // Frames into the current capture
+    bool mIsProfileDone = false;            // The current capture has finished
 };

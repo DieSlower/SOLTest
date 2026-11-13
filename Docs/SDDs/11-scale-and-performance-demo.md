@@ -702,6 +702,18 @@ translucency figures already include the lanes' after-motion-blur pass; with its
 (1M p95 7.43 ms at 1920x1080), and `UploadPopulation` takes 22.0 ms once per 1M population (the rail fill with the
 lane histogram 2.65 ms).
 
+## Amendment 9 — lane tunnels (issue #49)
+
+Issue #49 ([SDD 49](49-lane-guidance-tunnel.md)) adds a guidance tunnel to every lane within 100 lane radii of the
+viewpoint, drawn by `USOLNpcTunnelComponent` inside `ASOLNpcVisuals` (`UpdateTunnels` runs from `UpdateLanes`; no tick
+of its own). It changes the far layer in one place: while a tunnel fades in (fade `F`, 0 at 100 and 1 at 50 lane
+radii) the lane line fades by `1 - F` and that lane's ships come back as far points at the complementary alpha
+(`NpcTunnelTex`, read by `M_SOLNpcLanes` and `M_SOLNpcPoints`; line + point alpha stays 1). Inside a full tunnel the
+points draw cost is therefore the Lanes-off cost of that lane: about +0.25 ms (1 lane) to +0.39 ms (8 lanes forced)
+GPU at 1920x1080 against `sol.NpcTunnel 0`, accepted by the user (SDD 49 D21, `TECH_DEBT.md`). Nothing in the tunnel
+is per ship on the CPU; the rails, tiers, stats and simulation are unchanged, and the 1M `-SOLNpcRamp` still passes
+(SDD 49 section 12c).
+
 ## 6. Revision history
 
 - 2026-10-15: initial SDD from the `grill-me` session (decisions 1-8), with design proposals 9-12 and open questions.
@@ -716,3 +728,4 @@ lane histogram 2.65 ms).
   spawn, worst-case ramps W1 PASS / W2 FAIL from 250k, soak).
 - 2026-10-21: Amendment 7 (10f adversarial review fixes; Demo option maxima kept by user decision).
 - 2026-11-11: Amendment 8 (issue #38: lane ships drawn as lane lines, their far points cross-faded; measured).
+- 2026-11-13: Amendment 9 (issue #49: lane tunnels; the lane ships return as points inside a tunnel).

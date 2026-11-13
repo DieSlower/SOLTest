@@ -146,6 +146,56 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns true when a screen point lies on the viewport (a label anchor off it can place no box)
+    bool HudIsOnViewport(const FVector2D& screenPx, const double widthPx, const double heightPx)
+    {
+        return screenPx.X >= 0.0 && screenPx.X <= widthPx && screenPx.Y >= 0.0 && screenPx.Y <= heightPx;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Clips a camera-local segment (cm, X forward) to the near plane and the viewport's side planes grown by a pad
+    // (Liang-Barsky); false when nothing of it is left
+    bool HudClipSegmentToView(FVector& a, FVector& b, const FVector2D& centerPx, const double focalPx,
+        const double widthPx, const double heightPx, const double nearCm, const double padPx)
+    {
+        // Each plane as n . p + c >= 0 inside: near, left, right, top, bottom (screen = centre + f (Y, -Z) / X)
+        const FVector4 planes[5] = {
+            FVector4(1.0, 0.0, 0.0, -nearCm),
+            FVector4(centerPx.X + padPx, focalPx, 0.0, 0.0),
+            FVector4(widthPx - centerPx.X + padPx, -focalPx, 0.0, 0.0),
+            FVector4(centerPx.Y + padPx, 0.0, -focalPx, 0.0),
+            FVector4(heightPx - centerPx.Y + padPx, 0.0, focalPx, 0.0),
+        };
+        double t0 = 0.0;
+        double t1 = 1.0;
+        for (const FVector4& plane : planes)
+        {
+            const double fa = plane.X * a.X + plane.Y * a.Y + plane.Z * a.Z + plane.W;
+            const double fb = plane.X * b.X + plane.Y * b.Y + plane.Z * b.Z + plane.W;
+            if (fa < 0.0 && fb < 0.0)
+            {
+                return false;
+            }
+            if (fa < 0.0)
+            {
+                t0 = FMath::Max(t0, fa / (fa - fb));
+            }
+            else if (fb < 0.0)
+            {
+                t1 = FMath::Min(t1, fa / (fa - fb));
+            }
+        }
+        if (t0 > t1)
+        {
+            return false;
+        }
+        const FVector delta = b - a;
+        b = a + delta * t1;
+        a = a + delta * t0;
+        return true;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Returns true when the segment from the camera to a point (universe ecliptic m) passes inside a registry body
     // (the camera outside it): the CPU side of the tunnels' sphere occlusion, for the label anchors
     bool HudIsSegmentBlockedByBody(const FSOLBodyRegistry& registry, const FVector3d& cameraM,
@@ -2328,24 +2378,26 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
                 - cameraOffsetCm);
         };
 
-        // The dot rows, clipped to the near plane, then projected
+        // The dot rows, clipped to the near plane and the viewport (grown by the label margin), then projected; each
+        // row keeps the projected radius of its nearest on-screen dot (world-sized near dots grow to tens of pixels,
+        // D11 keeps the labels off them), a conservative bound along the row
+        const double pixelScale = HudLaneHeightScale(Canvas->ClipY);
+        const double baseMarginPx = SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX * mUiScale;
+        const double floorDotPx = SOL::NPC_TUNNEL_DOT_SIZE_PX * pixelScale;
         const int32 rowCount = FMath::Clamp(snapshot->RowCount, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_ROWS));
         for (int32 row = 0; row < rowCount; ++row)
         {
             FVector a = toLocal(snapshot->RowStartM[row]);
             FVector b = toLocal(snapshot->RowEndM[row]);
-            if (a.X < HUD_NEAR_PLANE_CM && b.X < HUD_NEAR_PLANE_CM)
+            if (!HudClipSegmentToView(a, b, view->Center, view->FocalPx, Canvas->ClipX, Canvas->ClipY,
+                HUD_NEAR_PLANE_CM, baseMarginPx))
             {
                 continue;
             }
-            if (a.X < HUD_NEAR_PLANE_CM || b.X < HUD_NEAR_PLANE_CM)
-            {
-                const double t = (HUD_NEAR_PLANE_CM - a.X) / (b.X - a.X);
-                const FVector onPlane = a + (b - a) * t;
-                (a.X < HUD_NEAR_PLANE_CM ? a : b) = onPlane;
-            }
             ProjectLocal(*view, a, mLaneRowStarts[mLaneRowCount]);
             ProjectLocal(*view, b, mLaneRowEnds[mLaneRowCount]);
+            mLaneRowDotRadiiPx[mLaneRowCount] = SOLLaneTunnelLabel::LaneLabelDotRadiusPx(FMath::Min(a.X, b.X),
+                snapshot->RowDotDiameterM[row] * SOL::METERS_TO_CM, view->FocalPx, floorDotPx);
             ++mLaneRowCount;
         }
 
@@ -2356,6 +2408,8 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
         FSOLLaneLabelPlacement placements[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
         const float scale = mUiScale * SOL::NPC_TUNNEL_LABEL_TEXT_SCALE;
         const int32 count = FMath::Clamp(snapshot->Count, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_COUNT));
+        bool bUsable[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};
+        bool bAnyCandidate = false;
         for (int32 index = 0; index < count; ++index)
         {
             const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
@@ -2365,50 +2419,60 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
                 input.SizePx = FVector2D(-1.0, -1.0);
                 continue;
             }
-            FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
-            UpdateLaneLabelText(cache, label, nowS);
-            input.SizePx = FVector2D(FMath::Max3(cache.Sizes[0].X, cache.Sizes[1].X, cache.Sizes[2].X),
-                cache.Sizes[0].Y + cache.Sizes[1].Y + cache.Sizes[2].Y) * scale;
-            input.PreviousCandidate = cache.PreviousCandidate;
-            input.bPreviousCompact = cache.PreviousCandidate != INDEX_NONE && cache.bCompact;
-            if (input.bPreviousCompact)
-            {
-                UpdateLaneLabelCompactText(cache, label, nowS);
-                input.CompactSizePx = cache.CompactSize * scale;
-            }
+
+            // The anchors first; the occlusion test (a loop over the bodies) only for an anchor on screen, since one
+            // off it places no box
             const FVector3d anchorsM[2] = { label.TopAnchorM, label.BottomAnchorM };
             for (int32 candidate = 0; candidate < 2; ++candidate)
             {
                 FVector2D screen = FVector2D::ZeroVector;
                 const bool bInFront = ProjectLocal(*view, toLocal(anchorsM[candidate]), screen);
-                const bool bOccluded = bInFront && HudIsSegmentBlockedByBody(registry, cameraM,
+                const bool bOnScreen = bInFront && HudIsOnViewport(screen, Canvas->ClipX, Canvas->ClipY);
+                const bool bOccluded = bOnScreen && HudIsSegmentBlockedByBody(registry, cameraM,
                     viewpointM + anchorsM[candidate]);
                 (candidate == 0 ? input.TopAnchorPx : input.BottomAnchorPx) = screen;
                 (candidate == 0 ? input.bTopInFront : input.bBottomInFront) = bInFront;
                 (candidate == 0 ? input.bTopOccluded : input.bBottomOccluded) = bOccluded;
+                bUsable[index] |= bOnScreen && !bOccluded;
+            }
+            bAnyCandidate |= bUsable[index];
+
+            // The text only for a label that can be placed (one easing out keeps its last text)
+            FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
+            if (bUsable[index])
+            {
+                UpdateLaneLabelText(cache, label, nowS);
+            }
+            input.SizePx = FVector2D(FMath::Max3(cache.Sizes[0].X, cache.Sizes[1].X, cache.Sizes[2].X),
+                cache.Sizes[0].Y + cache.Sizes[1].Y + cache.Sizes[2].Y) * scale;
+            input.PreviousCandidate = cache.PreviousCandidate;
+            input.bPreviousCompact = cache.PreviousCandidate != INDEX_NONE && cache.bCompact;
+            if (input.bPreviousCompact && bUsable[index])
+            {
+                UpdateLaneLabelCompactText(cache, label, nowS);
+                input.CompactSizePx = cache.CompactSize * scale;
             }
         }
 
         // Greedy placement strongest first (last frame's spot, the full form, else the compact line), clear of every
         // dot row, of last frame's HUD panels and of the labels already placed; a label the full form could not
         // place gets its compact size and the placement runs again (at most once per label)
-        const double pixelScale = HudLaneHeightScale(Canvas->ClipY);
-        const double rowMarginPx = SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX * mUiScale
-            + 0.5 * SOL::NPC_TUNNEL_DOT_SIZE_PX * pixelScale;
-        for (int32 pass = 0; pass <= count; ++pass)
+        // Skipped when no anchor is on screen, in front and unoccluded (no box can be placed, D19's views)
+        for (int32 pass = 0; bAnyCandidate && pass <= count; ++pass)
         {
             SOLLaneTunnelLabel::PlaceLaneLabels(TConstArrayView<FSOLLaneLabelInput>(inputs, count),
                 TConstArrayView<FVector2D>(mLaneRowStarts, mLaneRowCount),
                 TConstArrayView<FVector2D>(mLaneRowEnds, mLaneRowCount),
                 TConstArrayView<FBox2D>(mPrevHudAvoidBoxes, mPrevHudAvoidBoxCount),
-                FVector2D(Canvas->ClipX, Canvas->ClipY), rowMarginPx, SOL::NPC_TUNNEL_LABEL_GAP_PX * mUiScale,
-                TArrayView<FSOLLaneLabelPlacement>(placements, count));
+                FVector2D(Canvas->ClipX, Canvas->ClipY), baseMarginPx, SOL::NPC_TUNNEL_LABEL_GAP_PX * mUiScale,
+                TArrayView<FSOLLaneLabelPlacement>(placements, count),
+                TConstArrayView<double>(mLaneRowDotRadiiPx, mLaneRowCount));
             bool bMeasured = false;
             for (int32 index = 0; index < count; ++index)
             {
                 const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
-                if (placements[index].bPlaced || inputs[index].CompactSizePx.X > 0.0 || label.Lane < 0
-                    || label.Lane >= SOL::NPC_GROUP_TEXTURE_WIDTH)
+                if (!bUsable[index] || placements[index].bPlaced || inputs[index].CompactSizePx.X > 0.0
+                    || label.Lane < 0 || label.Lane >= SOL::NPC_GROUP_TEXTURE_WIDTH)
                 {
                     continue;
                 }
@@ -2510,17 +2574,18 @@ void ASOLFlightHud::UpdateLaneLabelText(FSOLLaneLabelCache& cache, const FSOLHud
         cache.bHasCompactText = false;
     }
 
-    // The lines when the displayed values change: at once for new names or ship count, the distances at most every
-    // NPC_TUNNEL_LABEL_TEXT_REFRESH_S; only a line that reads differently gets a new text and size
-    const FSOLLaneLabelKey key = SOLLaneTunnelLabel::MakeLaneLabelKey(label.Lane, label.DistanceAM, label.DistanceBM,
-        label.ShipCount);
-    if (cache.bHasText && !bNamesChanged && cache.Key == key)
+    // The lines when the displayed values change: at once for new names, the distances and the ship count checked at
+    // most every NPC_TUNNEL_LABEL_TEXT_REFRESH_S (building the key formats both numbers, and a busy lane's count can
+    // change every frame, so neither is done per frame); only a line that reads differently gets a new text and size
+    const bool bUrgent = !cache.bHasText || bNamesChanged || label.Lane != cache.Key.Lane;
+    if (!bUrgent && nowS - cache.KeyCheckS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S)
     {
         return;
     }
-    const bool bUrgent = !cache.bHasText || bNamesChanged || key.Lane != cache.Key.Lane
-        || key.Ships != cache.Key.Ships;
-    if (!bUrgent && nowS - cache.TextTimeS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S)
+    cache.KeyCheckS = nowS;
+    const FSOLLaneLabelKey key = SOLLaneTunnelLabel::MakeLaneLabelKey(label.Lane, label.DistanceAM, label.DistanceBM,
+        label.ShipCount);
+    if (cache.bHasText && !bNamesChanged && cache.Key == key)
     {
         return;
     }
@@ -2541,18 +2606,22 @@ void ASOLFlightHud::UpdateLaneLabelText(FSOLLaneLabelCache& cache, const FSOLHud
     }
     cache.Key = key;
     cache.bHasText = true;
-    cache.TextTimeS = nowS;
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Updates a lane label's compact line: reformatted and measured only when it reads differently
+// Updates a lane label's compact line: its distance checked at most every NPC_TUNNEL_LABEL_TEXT_REFRESH_S, the line
+// reformatted and measured only when it reads differently
 void ASOLFlightHud::UpdateLaneLabelCompactText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label,
     const double nowS)
 {
+    if (cache.bHasCompactText && nowS - cache.CompactKeyCheckS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S)
+    {
+        return;
+    }
+    cache.CompactKeyCheckS = nowS;
     const FSOLLaneLabelKey key = SOLLaneTunnelLabel::MakeLaneLabelCompactKey(label.Lane, label.DistanceAM,
         label.DistanceBM);
-    if (cache.bHasCompactText && (cache.CompactKey == key
-        || nowS - cache.CompactTimeS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S))
+    if (cache.bHasCompactText && cache.CompactKey == key)
     {
         return;
     }
@@ -2569,7 +2638,6 @@ void ASOLFlightHud::UpdateLaneLabelCompactText(FSOLLaneLabelCache& cache, const 
     }
     cache.CompactKey = key;
     cache.bHasCompactText = true;
-    cache.CompactTimeS = nowS;
 }
 
 //////////////////////////////////////////////////////////////////////////

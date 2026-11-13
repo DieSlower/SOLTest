@@ -230,3 +230,7 @@ default on), between "Ships on Radar" and "Darkening" (Darkening moves to index 
 switches the NPC lane lines (two flowing dashed hologram lines per lane) and, unchecked or with the master O off,
 restores every lane ship's far point as before. Like every row it is stored per overlay profile (settings save schema
 13, a migration turns it on in every used profile) and governed by the master O; there is no key for it.
+
+**Note (issue #49):** the same row also switches the lane tunnels and their HUD wall labels
+([SDD 49](49-lane-guidance-tunnel.md)); unchecked or with the master O off no tunnel or label is drawn. No new row,
+no schema or key change; the Overlay Menu glossary entry and the `@OverlayMenu` wording name the tunnels.

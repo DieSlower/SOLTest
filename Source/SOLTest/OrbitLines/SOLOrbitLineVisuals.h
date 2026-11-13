@@ -87,6 +87,13 @@ public:
     // Returns the number of frames the occluders were written with every orbit line hidden (verification, SDD 38 D24)
     int32 GetLaneOnlyOccluderWrites() const { return mLaneOnlyOccluderWrites; }
 
+    // Returns the shared orbit-line parameter collection instance the occluders are written to (verification, SDD 49
+    // section 8: the tunnel smoke reads the spheres the shader tests); null before BeginPlay
+    const UMaterialParameterCollectionInstance* GetParameterCollectionInstance() const
+    {
+        return ParameterCollectionInstance;
+    }
+
 protected:
 
     // Resolves subsystems and assets, builds every permanent line and subscribes to universe updates
