@@ -23,6 +23,7 @@ class UStaticMeshComponent;
 class UTexture2D;
 class USOLAnchorSubsystem;
 class USOLNpcSubsystem;
+class USOLNpcTunnelComponent;
 class USOLOrbitLineComponent;
 class USOLSettingsSubsystem;
 
@@ -73,6 +74,13 @@ public:
     // Verification runs (-SOLSmokeNpcLanes): detaches the lanes from the Lanes overlay row, so the player's settings
     // are neither read nor changed for them, and shows or hides them as given (may be called again to switch)
     void SetLaneVerificationOverride(bool bShown);
+
+    // Verification runs (-SOLSmokeNpcTunnel, -SOLSmokeNpcLanes): shows or hides the lane tunnels as given without the
+    // player's settings, optionally with every lane's fade forced to 1 (SDD 49 section 4.2)
+    void SetTunnelVerificationOverride(bool bShown, bool bForceAllLanes);
+
+    // Returns the lane tunnel component (verification)
+    const USOLNpcTunnelComponent* GetTunnels() const { return Tunnels; }
 
     // Returns whether the lanes were shown last frame (the row or override, and sol.NpcLanes; verification)
     bool AreLanesShown() const { return mAreLanesShown; }
@@ -126,7 +134,7 @@ private:
     void BuildLaneMesh();
 
     // Per frame: the lanes shown, the far points' crossfade, the lane component's visibility, the flow clock, the
-    // glow and the lane material's frame parameters
+    // tunnels (SDD 49), the shared occluders' flag, the glow and the lane material's frame parameters
     void UpdateLanes(const FLinearColor& frameParams);
 
     // Updates one faction's hull instances: grows or shrinks the count and writes only the used range
@@ -167,6 +175,9 @@ private:
 
     UPROPERTY(VisibleAnywhere, Category = "SOL|Npc")
     TObjectPtr<USOLOrbitLineComponent> LaneLines;
+
+    UPROPERTY(VisibleAnywhere, Category = "SOL|Npc")
+    TObjectPtr<USOLNpcTunnelComponent> Tunnels;
 
     UPROPERTY(Transient)
     TObjectPtr<UStaticMesh> PointBlockMesh;
@@ -232,6 +243,7 @@ private:
     bool mIsPointCrossfadeOn = false;                 // NpcParams4.x last pushed to the far points
     bool mHasPushedPointCrossfade = false;            // ...pushed at least once
     bool mAreLaneLinesDrawn = false;                  // Lane component visibility last applied
+    bool mIsLaneOverlayDrawn = false;                 // Lane lines or tunnels drawn, as told to the orbit lines
     bool mIsLaneOverride = false;                     // Verification: the Lanes row is not read
     bool mIsLaneOverrideShown = true;                 // ...and the lanes are shown as this says
 };

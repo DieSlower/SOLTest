@@ -50,6 +50,8 @@ namespace
         label.DistanceAM = 1.0e9 * k;
         label.DistanceBM = 7.5e10 * k;
         label.ShipCount = 1000 * (seed + 3);
+        label.BodyA = 3 * seed + 1;
+        label.BodyB = 3 * seed + 2;
         label.TopAnchorM = FVector3d(1.0e6 * k, -2.0e6, 3.0e5 * k);
         label.BottomAnchorM = FVector3d(-4.0e6 * k, 5.0e5, -6.0e5 * k);
         return label;
@@ -61,7 +63,17 @@ namespace
     {
         return a.Lane == b.Lane && a.Strength == b.Strength && a.bStrongest == b.bStrongest && a.Alpha == b.Alpha
             && a.DistanceAM == b.DistanceAM && a.DistanceBM == b.DistanceBM && a.ShipCount == b.ShipCount
-            && a.TopAnchorM == b.TopAnchorM && a.BottomAnchorM == b.BottomAnchorM;
+            && a.BodyA == b.BodyA && a.BodyB == b.BodyB && a.TopAnchorM == b.TopAnchorM
+            && a.BottomAnchorM == b.BottomAnchorM;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns one end of a lane tunnel dot row with full double precision, distinct per row and end
+    FVector3d HudBusMakeRowPoint(const int32 row, const bool bEnd)
+    {
+        const double k = static_cast<double>(row + 1);
+        return bEnd ? FVector3d(-3.25e9 * k - 0.125, 1.0e10 / 3.0 + k, 7.0e-3 * k)
+            : FVector3d(1.5e11 + k / 3.0, -2.0e6 * k, 4.0e8 + 0.1 * k);
     }
 }
 
@@ -236,9 +248,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudEventBusLaneLabelsTest, "SOLTest.HudEven
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// SDD 49 case 21 (Q4): the lane tunnel label snapshot round-trips every field of every entry, the count and the frame
-// it was made for; a count above NPC_TUNNEL_LABEL_MAX_COUNT is clamped; a cleared snapshot (count 0, or
-// ClearLaneTunnelLabels, which also resets the frame) reads as no labels; the last publish wins
+// SDD 49 case 21 (Q4): the lane tunnel label snapshot is stored as a copy and round-trips every field of every entry
+// (BodyA and BodyB included), the count and the frame it was made for; the count is clamped to
+// [0, NPC_TUNNEL_LABEL_MAX_COUNT] (negative reads as 0); a cleared snapshot (count 0, or ClearLaneTunnelLabels, which
+// also resets the frame and the row count) reads as no labels; the last publish wins. The dot rows (RowCount clamped
+// to [0, NPC_TUNNEL_LABEL_MAX_ROWS], RowStartM / RowEndM round-tripping) are tested in HudEventBus.LaneTunnelRows
 bool FSOLHudEventBusLaneLabelsTest::RunTest(const FString& /*parameters*/)
 {
     const int32 maxCount = SOL::NPC_TUNNEL_LABEL_MAX_COUNT;
@@ -290,6 +304,12 @@ bool FSOLHudEventBusLaneLabelsTest::RunTest(const FString& /*parameters*/)
         }
     }
 
+    // A negative count reads as no labels
+    FSOLHudLaneTunnelLabels negative = full;
+    negative.Count = -3;
+    bus.PublishLaneTunnelLabels(negative, 122);
+    TestEqual(TEXT("negative count: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+
     // A cleared snapshot reads as no labels
     FSOLHudLaneTunnelLabels cleared;
     cleared.Count = 0;
@@ -309,6 +329,130 @@ bool FSOLHudEventBusLaneLabelsTest::RunTest(const FString& /*parameters*/)
     // Labels are not a pilot snapshot nor a command
     TestFalse(TEXT("labels publish no pilot"), bus.HasPilot());
     TestEqual(TEXT("labels send no command"), bus.GetCommandCount(), 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLHudEventBusLaneRowsTest, "SOLTest.HudEventBus.LaneTunnelRows",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// The lane tunnel snapshot's dot rows: RowCount is clamped to [0, NPC_TUNNEL_LABEL_MAX_ROWS] (negative reads as 0,
+// above the cap as the cap) and RowStartM / RowEndM entries 0 .. RowCount - 1 round-trip exactly; the bus keeps a copy
+// (changing the published struct afterwards changes nothing); rows and labels are independent (rows with no labels,
+// labels with no rows); ClearLaneTunnelLabels resets RowCount to 0
+bool FSOLHudEventBusLaneRowsTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 maxRows = SOL::NPC_TUNNEL_LABEL_MAX_ROWS;
+    FSOLHudBus bus;
+    TestEqual(TEXT("new bus: no rows"), bus.GetLaneTunnelLabels().RowCount, 0);
+
+    // Every row slot filled; each case only changes the counts
+    FSOLHudLaneTunnelLabels snapshot;
+    for (int32 row = 0; row < maxRows; ++row)
+    {
+        snapshot.RowStartM[row] = HudBusMakeRowPoint(row, false);
+        snapshot.RowEndM[row] = HudBusMakeRowPoint(row, true);
+    }
+
+    // Checks the stored row count and that the stored rows 0 .. count - 1 are the made ones, exactly
+    const auto expectRows = [this, &bus](const int32 expectedCount, const FString& what)
+    {
+        const FSOLHudLaneTunnelLabels& stored = bus.GetLaneTunnelLabels();
+        if (!TestEqual(what + TEXT(": row count"), stored.RowCount, expectedCount))
+        {
+            return;
+        }
+        int32 mismatches = 0;
+        for (int32 row = 0; row < expectedCount; ++row)
+        {
+            const bool bSame = stored.RowStartM[row] == HudBusMakeRowPoint(row, false)
+                && stored.RowEndM[row] == HudBusMakeRowPoint(row, true);
+            mismatches += bSame ? 0 : 1;
+        }
+        TestEqual(what + TEXT(": rows round-trip exactly"), mismatches, 0);
+    };
+
+    // Every row, no labels
+    snapshot.Count = 0;
+    snapshot.RowCount = maxRows;
+    bus.PublishLaneTunnelLabels(snapshot, 200);
+    expectRows(maxRows, TEXT("all rows"));
+    TestEqual(TEXT("all rows: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+    TestEqual(TEXT("all rows: frame"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(200));
+
+    // The bus keeps a copy: changing the published struct afterwards changes nothing
+    snapshot.RowStartM[0] = FVector3d::ZeroVector;
+    snapshot.RowEndM[maxRows - 1] = FVector3d::ZeroVector;
+    snapshot.RowCount = 1;
+    expectRows(maxRows, TEXT("source changed after publishing"));
+    snapshot.RowStartM[0] = HudBusMakeRowPoint(0, false);
+    snapshot.RowEndM[maxRows - 1] = HudBusMakeRowPoint(maxRows - 1, true);
+
+    // A few rows with two labels: both round-trip
+    snapshot.Count = 2;
+    snapshot.Labels[0] = HudBusMakeLabel(0);
+    snapshot.Labels[1] = HudBusMakeLabel(1);
+    snapshot.RowCount = 3;
+    bus.PublishLaneTunnelLabels(snapshot, 201);
+    expectRows(3, TEXT("three rows"));
+    if (TestEqual(TEXT("three rows: two labels"), bus.GetLaneTunnelLabels().Count, 2))
+    {
+        TestTrue(TEXT("three rows: label 0"), HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[0],
+            HudBusMakeLabel(0)));
+        TestTrue(TEXT("three rows: label 1"), HudBusSameLabel(bus.GetLaneTunnelLabels().Labels[1],
+            HudBusMakeLabel(1)));
+    }
+
+    // One row, then labels with no rows
+    snapshot.RowCount = 1;
+    bus.PublishLaneTunnelLabels(snapshot, 202);
+    expectRows(1, TEXT("one row"));
+    snapshot.RowCount = 0;
+    bus.PublishLaneTunnelLabels(snapshot, 203);
+    expectRows(0, TEXT("labels with no rows"));
+    TestEqual(TEXT("labels with no rows: two labels"), bus.GetLaneTunnelLabels().Count, 2);
+
+    // A row count above the cap reads as the cap, the rows kept
+    for (const int32 overCount : { maxRows + 1, maxRows + 10, static_cast<int32>(MAX_int32) })
+    {
+        snapshot.RowCount = overCount;
+        bus.PublishLaneTunnelLabels(snapshot, 204);
+        expectRows(maxRows, FString::Printf(TEXT("row count %d"), overCount));
+    }
+
+    // A negative row count reads as 0 (the labels unaffected)
+    for (const int32 negativeCount : { -1, -1000, static_cast<int32>(MIN_int32) })
+    {
+        snapshot.RowCount = maxRows;
+        bus.PublishLaneTunnelLabels(snapshot, 205);
+        snapshot.RowCount = negativeCount;
+        bus.PublishLaneTunnelLabels(snapshot, 206);
+        expectRows(0, FString::Printf(TEXT("row count %d"), negativeCount));
+        TestEqual(FString::Printf(TEXT("row count %d: two labels"), negativeCount), bus.GetLaneTunnelLabels().Count,
+            2);
+    }
+
+    // A negative label count reads as 0, the rows unaffected
+    snapshot.Count = -3;
+    snapshot.RowCount = 5;
+    bus.PublishLaneTunnelLabels(snapshot, 207);
+    TestEqual(TEXT("negative label count: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+    expectRows(5, TEXT("negative label count"));
+
+    // ClearLaneTunnelLabels resets the rows with the labels and the frame
+    snapshot.Count = 2;
+    snapshot.RowCount = maxRows;
+    bus.PublishLaneTunnelLabels(snapshot, 208);
+    bus.ClearLaneTunnelLabels();
+    TestEqual(TEXT("clear: no rows"), bus.GetLaneTunnelLabels().RowCount, 0);
+    TestEqual(TEXT("clear: no labels"), bus.GetLaneTunnelLabels().Count, 0);
+    TestEqual(TEXT("clear: frame 0"), bus.GetLaneTunnelLabelsFrame(), static_cast<uint64>(0));
+
+    // Publishing after a clear works again
+    snapshot.RowCount = 4;
+    bus.PublishLaneTunnelLabels(snapshot, 209);
+    expectRows(4, TEXT("after clear"));
     return true;
 }
 

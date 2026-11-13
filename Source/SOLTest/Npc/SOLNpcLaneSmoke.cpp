@@ -157,10 +157,12 @@ void FSOLNpcLaneSmoke::Start(ASOLShipPawn& pawn)
         mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mOrbitLines.IsValid() ? *mOrbitLines->GetName()
         : TEXT("none"), mSettings.IsValid() ? TEXT("yes") : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"));
 
-    // Overrides: the lanes and the orbit lines leave the player's settings alone; orbit lines off (D24 check)
+    // Overrides: the lanes and the orbit lines leave the player's settings alone; orbit lines off (D24 check); the
+    // lane tunnels hidden, so every tunnel fade is 0 and the close-up views measure the #38 crossfade (SDD 49 Q5)
     if (mVisuals.IsValid())
     {
         mVisuals->SetLaneVerificationOverride(true);
+        mVisuals->SetTunnelVerificationOverride(false, false);
     }
     if (mOrbitLines.IsValid())
     {

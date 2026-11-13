@@ -37,6 +37,7 @@ void FSOLHudBus::PublishLaneTunnelLabels(const FSOLHudLaneTunnelLabels& labels, 
 {
     mLaneTunnelLabels = labels;
     mLaneTunnelLabels.Count = FMath::Clamp(labels.Count, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_COUNT));
+    mLaneTunnelLabels.RowCount = FMath::Clamp(labels.RowCount, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_ROWS));
     mLaneTunnelLabelsFrame = frameNumber;
 }
 

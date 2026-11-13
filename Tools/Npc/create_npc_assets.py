@@ -29,9 +29,20 @@
 #       mirror of Source/SOLTest/Npc/SOLNpcLaneMath.cpp). It reads the orbit lines' parameter collection
 #       (OrbitLineDash, OrbitLineStyle2, OrbitLineOccluder0..7; SDD 38 D24) and the vector parameters of
 #       SOL::NpcLaneMaterialParams (set by ASOLNpcVisuals; their defaults here are read from SOLConstants.h).
-# Parameter names must match SOLNpcVisuals.cpp and SOL::NpcLaneMaterialParams; asset paths SOL::Paths::
-# NPC_POINTS_MATERIAL / NPC_HULL_MATERIAL / NPC_LANES_MATERIAL. The lane material and the point material's vertex node
-# include SOLNpcLane.ush, so a shader change there needs no rebuild; a graph or parameter change does.
+#       Issue #49 (SDD 49 Q5): the pixel stage multiplies the line's close-up fade by 1 - F, F = the lane's tunnel fade
+#       from the texture parameter NpcTunnelTex (row 1 .w, the column of the lane); the point material's lane branch
+#       does the same, so the line and its ships' points still sum to 1.
+#   /Game/SOL/Npc/M_SOLNpcTunnel
+#       Issue #49 (SDD 49 section 4.7): the lane guidance tunnels. Unlit, additive, two-sided, depth test off, after
+#       motion blur, used with instanced static meshes. Drawn on USOLNpcTunnelComponent's slot mesh (vertices at zero,
+#       one ISM instance per lane in range, custom data 0 = the lane): the vertex stage places the ring ribbons, dot
+#       quads, chevron quads and end rings from NpcTunnelTex, the pixel stage draws the glow profile or the chevron
+#       shape and the shared occlusion (Shaders/Private/SOLNpcTunnel.ush, the mirror of SOLNpcTunnelMath.cpp). It reads
+#       the orbit lines' collection (OrbitLineStyle2, OrbitLineOccluder0..7) and SOL::NpcTunnelMaterialParams.
+# Parameter names must match SOLNpcVisuals.cpp, SOL::NpcLaneMaterialParams and SOL::NpcTunnelMaterialParams; asset
+# paths SOL::Paths::NPC_POINTS_MATERIAL / NPC_HULL_MATERIAL / NPC_LANES_MATERIAL / NPC_TUNNEL_MATERIAL. The lane and
+# tunnel materials and the point material's vertex node include SOLNpcLane.ush / SOLNpcTunnel.ush, so a shader change
+# there needs no rebuild; a graph or parameter change does.
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/Npc/create_npc_assets.py"
 #       -unattended [-SOLRebuild]
@@ -44,6 +55,8 @@ NPC_DIR = "/Game/SOL/Npc"
 POINTS_NAME = "M_SOLNpcPoints"
 HULL_NAME = "M_SOLNpcHull"
 LANES_NAME = "M_SOLNpcLanes"
+TUNNEL_NAME = "M_SOLNpcTunnel"
+TUNNEL_INCLUDE = "/Project/SOLTest/Private/SOLNpcTunnel.ush"
 ORBIT_LINE_MPC = "/Game/SOL/OrbitLines/MPC_SOLOrbitLine"
 LANE_INCLUDE = "/Project/SOLTest/Private/SOLNpcLane.ush"   # SOL::SHADER_VIRTUAL_DIRECTORY + file
 CONSTANTS_FILE = os.path.join(unreal.Paths.project_dir(), "Source", "SOLTest", "SOLConstants.h")
@@ -107,10 +120,13 @@ if (P0.w < 0.5)
 
         // Lane crossfade (SDD 38 D9): while the lanes are shown (P4.x) the point fades in where the lane line fades
         // out, 1 - LaneLineFade(d, R) (SOLNpcLane::LaneShipPointAlpha, the lane shader's own SOLNL_LineFade); R = row 0
-        // .w (a bad radius keeps the line, so the point hides, as in C++), a lane not drawn has row 1 .w -1
+        // .w (a bad radius keeps the line, so the point hides, as in C++), a lane not drawn has row 1 .w -1. Since
+        // issue #49 (SDD 49 Q5) the line's fade carries the lane's tunnel fade F (NpcTunnelTex row 1 .w):
+        // 1 - LaneLineFade x (1 - F), so the ships show as points again inside a tunnel
         if (P4.x > 0.5 && groupB.w >= 0.0)
         {
-            laneAlpha = 1.0 - SOLNL_LineFade(length(relM), groupA.w, P4.y, P4.z);
+            const float tunnelFade = saturate(TunnelTex.Load(int3(group, 1, 0)).w);
+            laneAlpha = 1.0 - SOLNL_LineFade(length(relM), groupA.w, P4.y, P4.z) * (1.0 - tunnelFade);
             if (laneAlpha <= 0.0)
             {
                 return hiddenOffset;
@@ -188,7 +204,30 @@ const float4 groupB = GroupTex.Load(int3(lane, 1, 0));
 return SOLNL_Pixel(Interp.x, UV1.y, groupA, groupB, -Parameters.CameraVector,
     WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Params0, Style0, Style1, Style2, Glow0, Glow1, GlowScale,
     OutColor.rgb, InColor.rgb, Dash, OrbitStyle2, ResolvedView.ViewSizeAndInvSize.y, PixelDepth, SceneDepth,
-    occluders);"""
+    occluders, TunnelTex.Load(int3(lane, 1, 0)).w);"""
+
+TUNNEL_VERTEX_HLSL = r"""// NPC lane tunnel vertex (SDD 49 4.7): the slot mesh sits at zero with identity instances,
+// so the world position offset is the target render position itself
+const int lane = (int)(Lane + 0.5);
+const float4 t0 = TunnelTex.Load(int3(lane, 0, 0));
+const float4 t1 = TunnelTex.Load(int3(lane, 1, 0));
+const float4 t2 = TunnelTex.Load(int3(lane, 2, 0));
+const float4 t3 = TunnelTex.Load(int3(lane, 3, 0));
+float4 interp0;
+float4 interp1;
+const float3 target = SOLNT_Vertex(float3(UV0.xy, 0.0), UV1.xy, UV2.xy, t0, t1, t2, t3,
+    WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Shape, Layout0, Layout1, Layout2, Layout3,
+    Glow0, ResolvedView.ViewToTranslatedWorld[0].xyz, ResolvedView.ViewToTranslatedWorld[1].xyz,
+    ResolvedView.ViewForward, ResolvedView.ViewToClip[0][0], ResolvedView.ViewSizeAndInvSize.xy, interp0, interp1);
+Interp0 = interp0;
+Interp1 = interp1;
+return target;"""
+
+TUNNEL_PIXEL_HLSL = r"""// NPC lane tunnel colour (SDD 49 4.6-4.7)
+float4 occluders[SOLOL_MAX_OCCLUDERS] = { O0, O1, O2, O3, O4, O5, O6, O7 };
+return SOLNT_Pixel(Interp0, Interp1, WSDemote(GetWorldCameraOrigin(Parameters)), Frame, Style0, Style1, Glow0, Glow1,
+    GlowScale, RingColor.rgb, DotOutColor.rgb, DotInColor.rgb, ChevronOutColor.rgb, ChevronInColor.rgb, OrbitStyle2,
+    ResolvedView.ViewSizeAndInvSize.y, PixelDepth, SceneDepth, occluders);"""
 
 PIXEL_HLSL = r"""// NPC point pixel: a soft dot inside the billboard triangle, faction tint times distance brightness
 const float r = length(Corner);
@@ -222,6 +261,15 @@ def add_custom(material, x, y, description, code, output_type, input_names):
 def add_lane_custom(material, x, y, description, code, output_type, input_names):
     node = add_custom(material, x, y, description, code, output_type, input_names)
     node.set_editor_property("include_file_paths", [LANE_INCLUDE])
+    return node
+
+
+# Adds a float texture object parameter (the linear placeholder as its default)
+def add_texture_object(material, name, default_texture, x, y):
+    node = add(material, unreal.MaterialExpressionTextureObjectParameter, x, y)
+    node.set_editor_property("parameter_name", name)
+    node.set_editor_property("texture", default_texture)
+    node.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
     return node
 
 
@@ -286,7 +334,7 @@ def build_points(material, default_texture):
     uv1 = add(material, unreal.MaterialExpressionTextureCoordinate, -1600, -300)
     uv1.set_editor_property("coordinate_index", 1)
     textures = {}
-    for index, name in enumerate(["NpcRailTex", "NpcGroupTex", "NpcCpuTex"]):
+    for index, name in enumerate(["NpcRailTex", "NpcGroupTex", "NpcCpuTex", "NpcTunnelTex"]):
         node = add(material, unreal.MaterialExpressionTextureObjectParameter, -1600, -100 + 120 * index)
         node.set_editor_property("parameter_name", name)
         node.set_editor_property("texture", default_texture)
@@ -301,7 +349,8 @@ def build_points(material, default_texture):
     # Vertex stage: world position offset plus the interpolated (faction, brightness)
     vertex = add_lane_custom(material, -1100, -300, "SOLNpcPointVertex", VERTEX_HLSL,
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
-        ["ShipBase", "ShipUv", "Corner", "RailTex", "GroupTex", "CpuTex", "P0", "P1", "P2", "P3", "P4"])
+        ["ShipBase", "ShipUv", "Corner", "RailTex", "GroupTex", "CpuTex", "TunnelTex", "P0", "P1", "P2", "P3",
+         "P4"])
     extra = unreal.CustomOutput()
     extra.set_editor_property("output_name", "Shade")
     extra.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT2)
@@ -312,6 +361,7 @@ def build_points(material, default_texture):
     MEL.connect_material_expressions(textures["NpcRailTex"], "", vertex, "RailTex")
     MEL.connect_material_expressions(textures["NpcGroupTex"], "", vertex, "GroupTex")
     MEL.connect_material_expressions(textures["NpcCpuTex"], "", vertex, "CpuTex")
+    MEL.connect_material_expressions(textures["NpcTunnelTex"], "", vertex, "TunnelTex")
     for index in range(5):
         MEL.connect_material_expressions(params["NpcParams%d" % index], "RGBA", vertex, "P%d" % index)
     MEL.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
@@ -387,6 +437,7 @@ def build_lanes(material, default_texture):
     group_tex.set_editor_property("parameter_name", "NpcGroupTex")
     group_tex.set_editor_property("texture", default_texture)
     group_tex.set_editor_property("sampler_type", unreal.MaterialSamplerType.SAMPLERTYPE_LINEAR_COLOR)
+    tunnel_tex = add_texture_object(material, "NpcTunnelTex", default_texture, -1900, -200)
     vectors = {}
     for index, (name, default) in enumerate(lane_vector_defaults()):
         vectors[name] = add_vector(material, name, -1600, -60 + 100 * index, default)
@@ -429,11 +480,12 @@ def build_lanes(material, default_texture):
     pixel_occluders = ["O%d" % i for i in range(len(occluder_names))]
     pixel = add_lane_custom(material, -500, 100, "SOLNpcLanePixel", LANE_PIXEL_HLSL,
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
-        ["Interp", "UV1", "GroupTex", "Frame", "Params0", "Style0", "Style1", "Style2", "Glow0", "Glow1", "GlowScale",
-         "OutColor", "InColor", "Dash", "OrbitStyle2", "PixelDepth", "SceneDepth"] + pixel_occluders)
+        ["Interp", "UV1", "GroupTex", "TunnelTex", "Frame", "Params0", "Style0", "Style1", "Style2", "Glow0", "Glow1",
+         "GlowScale", "OutColor", "InColor", "Dash", "OrbitStyle2", "PixelDepth", "SceneDepth"] + pixel_occluders)
     MEL.connect_material_expressions(interpolator, "PS", pixel, "Interp")
     MEL.connect_material_expressions(uv1, "", pixel, "UV1")
     MEL.connect_material_expressions(group_tex, "", pixel, "GroupTex")
+    MEL.connect_material_expressions(tunnel_tex, "", pixel, "TunnelTex")
     for pin, name in [("Frame", "NpcLaneFrame"), ("Params0", "NpcLaneParams0"), ("Style0", "NpcLaneStyle0"),
                       ("Style1", "NpcLaneStyle1"), ("Style2", "NpcLaneStyle2"), ("Glow0", "NpcLaneGlow0"),
                       ("Glow1", "NpcLaneGlow1"), ("OutColor", "NpcLaneOutboundColor"),
@@ -441,6 +493,136 @@ def build_lanes(material, default_texture):
         MEL.connect_material_expressions(vectors[name], "RGBA", pixel, pin)
     MEL.connect_material_expressions(glow_scale, "", pixel, "GlowScale")
     MEL.connect_material_expressions(collection["OrbitLineDash"], "", pixel, "Dash")
+    MEL.connect_material_expressions(collection["OrbitLineStyle2"], "", pixel, "OrbitStyle2")
+    MEL.connect_material_expressions(pixel_depth, "", pixel, "PixelDepth")
+    MEL.connect_material_expressions(scene_depth, "", pixel, "SceneDepth")
+    for pin, name in zip(pixel_occluders, occluder_names):
+        MEL.connect_material_expressions(collection[name], "", pixel, pin)
+    MEL.connect_material_property(pixel, "", unreal.MaterialProperty.MP_EMISSIVE_COLOR)
+
+
+# Returns the tunnel material's vector parameters and their defaults (SOL::NpcTunnelMaterialParams; the component
+# writes every one at BeginPlay or per frame, the colours included)
+def tunnel_vector_defaults():
+    return [
+        ("NpcTunnelFrame", unreal.LinearColor(0.0, 0.0, 0.0, constant("DEFAULT_MAX_RENDER_DISTANCE_CM"))),
+        ("NpcTunnelStyle0", unreal.LinearColor(constant("NPC_TUNNEL_RING_WIDTH_PX"),
+            constant("NPC_TUNNEL_END_RING_WIDTH_PX"), constant("NPC_TUNNEL_DOT_SIZE_PX"),
+            constant("NPC_LANE_REFERENCE_HEIGHT_PX"))),
+        ("NpcTunnelStyle1", unreal.LinearColor(constant("NPC_TUNNEL_EMISSIVE"), constant("NPC_TUNNEL_CHEVRON_ALPHA"),
+            constant("NPC_LANE_GLOW_PAD_PX"), constant("NPC_TUNNEL_DOT_RADIUS_SCALE"))),
+        ("NpcTunnelShape", unreal.LinearColor(constant("NPC_TUNNEL_CHEVRON_RADIUS_SCALE"),
+            constant("NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII"), constant("NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII"),
+            constant("NPC_TUNNEL_END_RING_MIN_ALPHA"))),
+        ("NpcTunnelLayout0", unreal.LinearColor(constant("NPC_TUNNEL_RING_BASE_SPACING_RADII"),
+            constant("NPC_TUNNEL_RING_SPACING_PER_DISTANCE"), constant("NPC_TUNNEL_RING_SLOTS_PER_SIDE"),
+            constant("NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE"))),
+        ("NpcTunnelLayout1", unreal.LinearColor(constant("NPC_TUNNEL_END_FADE_SPACINGS"),
+            constant("NPC_TUNNEL_DEPTH_FADE_START_RADII"), constant("NPC_TUNNEL_DEPTH_FADE_END_RADII"),
+            constant("NPC_TUNNEL_DEPTH_FADE_FLOOR"))),
+        ("NpcTunnelLayout2", unreal.LinearColor(constant("NPC_TUNNEL_NEAR_FADE_START_RADII"),
+            constant("NPC_TUNNEL_NEAR_FADE_FULL_RADII"), constant("NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII"),
+            constant("NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII"))),
+        ("NpcTunnelLayout3", unreal.LinearColor(constant("NPC_TUNNEL_DETAIL_FADE_START_RADII"),
+            constant("NPC_TUNNEL_DETAIL_FADE_END_RADII"), constant("NPC_TUNNEL_DOTS_PER_GAP"),
+            constant("NPC_TUNNEL_DOT_ROWS"))),
+        ("NpcTunnelGlow0", unreal.LinearColor(constant("HUD_GLOW_CORE_HALF_PX"), constant("HUD_GLOW_CORE_FALLOFF"),
+            constant("HUD_GLOW_CORE_FALLOFF_MAX"), constant("HUD_GLOW_HALO_WEIGHT"))),
+        ("NpcTunnelGlow1", unreal.LinearColor(constant("HUD_GLOW_HALO_SCALE"), constant("HUD_GLOW_HALO_POWER"),
+            constant("HUD_GLOW_SCALE_MAX"), 0.0)),
+        ("NpcTunnelRingColor", unreal.LinearColor(0.0, 0.0, 0.0, 1.0)),
+        ("NpcTunnelDotOutboundColor", unreal.LinearColor(0.0, 0.0, 0.0, 1.0)),
+        ("NpcTunnelDotInboundColor", unreal.LinearColor(0.0, 0.0, 0.0, 1.0)),
+        ("NpcTunnelChevronOutboundColor", unreal.LinearColor(0.0, 0.0, 0.0, 1.0)),
+        ("NpcTunnelChevronInboundColor", unreal.LinearColor(0.0, 0.0, 0.0, 1.0)),
+    ]
+
+
+# Builds the lane tunnel material graph
+def build_tunnel(material, default_texture):
+    material.set_editor_property("shading_model", unreal.MaterialShadingModel.MSM_UNLIT)
+    material.set_editor_property("blend_mode", unreal.BlendMode.BLEND_ADDITIVE)
+    material.set_editor_property("two_sided", True)
+    material.set_editor_property("disable_depth_test", True)
+    material.set_editor_property("use_translucency_vertex_fog", False)
+    material.set_editor_property("translucency_pass", unreal.MaterialTranslucencyPass.MTP_AFTER_MOTION_BLUR)
+    material.set_editor_property("allow_negative_emissive_color", False)
+    material.set_editor_property("used_with_instanced_static_meshes", True)
+
+    # Inputs: the lane (instance custom data), UV0-UV2, the tunnel texture, the parameters and the orbit-line collection
+    lane = add(material, unreal.MaterialExpressionPerInstanceCustomData, -1600, -600)
+    lane.set_editor_property("data_index", 0)
+    uvs = []
+    for index in range(3):
+        node = add(material, unreal.MaterialExpressionTextureCoordinate, -1600, -500 + 100 * index)
+        node.set_editor_property("coordinate_index", index)
+        uvs.append(node)
+    tunnel_tex = add_texture_object(material, "NpcTunnelTex", default_texture, -1600, -200)
+    vectors = {}
+    for index, (name, default) in enumerate(tunnel_vector_defaults()):
+        vectors[name] = add_vector(material, name, -1600, -60 + 100 * index, default)
+    glow_scale = add(material, unreal.MaterialExpressionScalarParameter, -1600, 1500)
+    glow_scale.set_editor_property("parameter_name", "GlowScale")
+    glow_scale.set_editor_property("default_value", constant("HUD_GLOW_DEFAULT_LEVEL"))
+    mpc = EAL.load_asset(ORBIT_LINE_MPC)
+    if mpc is None:
+        raise RuntimeError("create_npc_assets: %s missing (run Tools/OrbitLines/create_orbit_line_assets.py first)"
+            % ORBIT_LINE_MPC)
+    collection = {}
+    occluder_names = ["OrbitLineOccluder%d" % i for i in range(int(constant("ORBIT_LINE_MAX_OCCLUDERS")))]
+    for index, name in enumerate(["OrbitLineStyle2"] + occluder_names):
+        node = add(material, unreal.MaterialExpressionCollectionParameter, -1600, 1600 + 90 * index)
+        node.set_editor_property("collection", mpc)
+        node.set_editor_property("parameter_name", name)
+        collection[name] = node
+
+    # Vertex stage: world position offset plus two interpolated vectors for the pixel stage
+    vertex_pins = [("Frame", "NpcTunnelFrame"), ("Style0", "NpcTunnelStyle0"), ("Style1", "NpcTunnelStyle1"),
+                   ("Shape", "NpcTunnelShape"), ("Layout0", "NpcTunnelLayout0"), ("Layout1", "NpcTunnelLayout1"),
+                   ("Layout2", "NpcTunnelLayout2"), ("Layout3", "NpcTunnelLayout3"), ("Glow0", "NpcTunnelGlow0")]
+    vertex = add_custom(material, -1100, -300, "SOLNpcTunnelVertex", TUNNEL_VERTEX_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT3,
+        ["Lane", "UV0", "UV1", "UV2", "TunnelTex"] + [pin for pin, _ in vertex_pins])
+    vertex.set_editor_property("include_file_paths", [TUNNEL_INCLUDE])
+    outputs = []
+    for name in ["Interp0", "Interp1"]:
+        extra = unreal.CustomOutput()
+        extra.set_editor_property("output_name", name)
+        extra.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT4)
+        outputs.append(extra)
+    vertex.set_editor_property("additional_outputs", outputs)
+    MEL.connect_material_expressions(lane, "", vertex, "Lane")
+    for index in range(3):
+        MEL.connect_material_expressions(uvs[index], "", vertex, "UV%d" % index)
+    MEL.connect_material_expressions(tunnel_tex, "", vertex, "TunnelTex")
+    for pin, name in vertex_pins:
+        MEL.connect_material_expressions(vectors[name], "RGBA", vertex, pin)
+    MEL.connect_material_property(vertex, "", unreal.MaterialProperty.MP_WORLD_POSITION_OFFSET)
+    interpolators = []
+    for index, name in enumerate(["Interp0", "Interp1"]):
+        node = add(material, unreal.MaterialExpressionVertexInterpolator, -800, -200 + 150 * index)
+        MEL.connect_material_expressions(vertex, name, node, "VS")
+        interpolators.append(node)
+
+    # Pixel stage: the additive tunnel colour (profile or chevron, occlusion)
+    pixel_depth = add(material, unreal.MaterialExpressionPixelDepth, -800, 200)
+    scene_depth = add(material, unreal.MaterialExpressionSceneDepth, -800, 280)
+    pixel_occluders = ["O%d" % i for i in range(len(occluder_names))]
+    pixel_pins = [("Frame", "NpcTunnelFrame"), ("Style0", "NpcTunnelStyle0"), ("Style1", "NpcTunnelStyle1"),
+                  ("Glow0", "NpcTunnelGlow0"), ("Glow1", "NpcTunnelGlow1"), ("RingColor", "NpcTunnelRingColor"),
+                  ("DotOutColor", "NpcTunnelDotOutboundColor"), ("DotInColor", "NpcTunnelDotInboundColor"),
+                  ("ChevronOutColor", "NpcTunnelChevronOutboundColor"),
+                  ("ChevronInColor", "NpcTunnelChevronInboundColor")]
+    pixel = add_custom(material, -500, 100, "SOLNpcTunnelPixel", TUNNEL_PIXEL_HLSL,
+        unreal.CustomMaterialOutputType.CMOT_FLOAT3,
+        ["Interp0", "Interp1"] + [pin for pin, _ in pixel_pins]
+        + ["GlowScale", "OrbitStyle2", "PixelDepth", "SceneDepth"] + pixel_occluders)
+    pixel.set_editor_property("include_file_paths", [TUNNEL_INCLUDE])
+    MEL.connect_material_expressions(interpolators[0], "PS", pixel, "Interp0")
+    MEL.connect_material_expressions(interpolators[1], "PS", pixel, "Interp1")
+    for pin, name in pixel_pins:
+        MEL.connect_material_expressions(vectors[name], "RGBA", pixel, pin)
+    MEL.connect_material_expressions(glow_scale, "", pixel, "GlowScale")
     MEL.connect_material_expressions(collection["OrbitLineStyle2"], "", pixel, "OrbitStyle2")
     MEL.connect_material_expressions(pixel_depth, "", pixel, "PixelDepth")
     MEL.connect_material_expressions(scene_depth, "", pixel, "SceneDepth")
@@ -469,3 +651,7 @@ lanes = material_for_build(LANES_NAME)
 if lanes is not None:
     build_lanes(lanes, default_texture)
     finish(lanes, LANES_NAME)
+tunnel = material_for_build(TUNNEL_NAME)
+if tunnel is not None:
+    build_tunnel(tunnel, default_texture)
+    finish(tunnel, TUNNEL_NAME)

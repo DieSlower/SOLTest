@@ -10,11 +10,14 @@
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
 #include "Npc/SOLNpcSubsystem.h"
+#include "Npc/SOLNpcTunnelComponent.h"
+#include "Npc/SOLNpcTunnelMath.h"
 #include "OrbitLines/SOLOrbitLineComponent.h"
 #include "OrbitLines/SOLOrbitLineMesh.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
+#include "Ship/SOLShipPawn.h"
 #include "UI/SOLOverlayModel.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLRenderPlacement.h"
@@ -65,6 +68,7 @@ namespace
     const FName PARAM_LANE_FRAME(SOL::NpcLaneMaterialParams::FRAME);
     const FName PARAM_POINT_LANES(SOL::NpcLaneMaterialParams::POINT_LANE_PARAMS);
     const FName PARAM_LANE_GLOW_SCALE(SOL::NpcLaneMaterialParams::GLOW_SCALE);
+    const FName PARAM_TUNNEL_TEX(SOL::NpcLaneMaterialParams::TUNNEL_TEXTURE);
 
     // Placeholder hull: point corners of the billboard triangle (incircle radius 1)
     const FVector2f POINT_CORNERS[3] = { FVector2f(0.0f, 2.0f), FVector2f(-1.7320508f, -1.0f),
@@ -135,6 +139,10 @@ ASOLNpcVisuals::ASOLNpcVisuals()
     LaneLines->SetMobility(EComponentMobility::Movable);
     LaneLines->TranslucencySortPriority = SOL::NPC_LANE_TRANSLUCENCY_SORT_PRIORITY;
     LaneLines->SetVisibility(false);
+
+    // Lane tunnels (SDD 49): created here, set up in BeginPlay, updated from UpdateLanes (never ticks)
+    Tunnels = CreateDefaultSubobject<USOLNpcTunnelComponent>(TEXT("Tunnels"));
+    Tunnels->SetupAttachment(RootComponent);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -144,7 +152,7 @@ void ASOLNpcVisuals::SetOrbitLineVisuals(ASOLOrbitLineVisuals* orbitLines)
     OrbitLines = orbitLines;
     if (IsValid(OrbitLines))
     {
-        OrbitLines->SetLanesDrawn(mAreLaneLinesDrawn);
+        OrbitLines->SetLanesDrawn(mIsLaneOverlayDrawn);
     }
 }
 
@@ -154,6 +162,13 @@ void ASOLNpcVisuals::SetLaneVerificationOverride(const bool bShown)
 {
     mIsLaneOverride = true;
     mIsLaneOverrideShown = bShown;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Shows or hides the lane tunnels for a verification run, optionally forcing every lane's fade to 1
+void ASOLNpcVisuals::SetTunnelVerificationOverride(const bool bShown, const bool bForceAllLanes)
+{
+    Tunnels->SetVerificationOverride(bShown, bForceAllLanes);
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -214,6 +229,16 @@ void ASOLNpcVisuals::BeginPlay()
         material->SetTextureParameterValue(PARAM_GROUP_TEX, GroupTexture);
         material->SetVectorParameterValue(PARAM_FACTION_0, SOL::NPC_FACTION_COLORS[0]);
         material->SetVectorParameterValue(PARAM_FACTION_1, SOL::NPC_FACTION_COLORS[1]);
+    }
+    // The tunnels (SDD 49): their texture always exists (zeros), so the lane ships' crossfade reads F = 0 without them
+    if (!Tunnels->InitializeTunnels())
+    {
+        UE_LOG(LogSOL, Warning, TEXT("NpcVisuals %s: %s missing; NPC lane tunnels not drawn"), *GetName(),
+            SOL::Paths::NPC_TUNNEL_MATERIAL);
+    }
+    for (UMaterialInstanceDynamic* material : { FarMaterial.Get(), CpuPointMaterial.Get() })
+    {
+        material->SetTextureParameterValue(PARAM_TUNNEL_TEX, Tunnels->GetTunnelTexture());
     }
     FarPoints->SetStaticMesh(PointBlockMesh);
     FarPoints->SetMaterial(0, FarMaterial);
@@ -582,6 +607,7 @@ bool ASOLNpcVisuals::SetUpLanes()
     }
     LaneMaterial = UMaterialInstanceDynamic::Create(laneMaterial, this);
     LaneMaterial->SetTextureParameterValue(FName(GROUP_TEXTURE), GroupTexture);
+    LaneMaterial->SetTextureParameterValue(FName(TUNNEL_TEXTURE), Tunnels->GetTunnelTexture());
 
     // The tunables go to the material once (the shader keeps no copy of them, SOLNpcLane.ush)
     LaneMaterial->SetVectorParameterValue(FName(STYLE0), FLinearColor(static_cast<float>(SOL::NPC_LANE_WIDTH_MIN_PX),
@@ -667,34 +693,57 @@ void ASOLNpcVisuals::UpdateLanes(const FLinearColor& frameParams)
         FarMaterial->SetVectorParameterValue(PARAM_POINT_LANES, SOLNpcLane::PointLaneParams(bCrossfade));
     }
 
-    // The component: shown with a drawn lane; the orbit lines keep the shared occluders current meanwhile (D24)
+    // The component: shown with a drawn lane
     const bool bDraw = bCrossfade && SOLNpcLane::ShouldDrawLaneLines(mAreLanesShown, mLaneFrame);
     if (bDraw != mAreLaneLinesDrawn)
     {
         mAreLaneLinesDrawn = bDraw;
         LaneLines->SetVisibility(bDraw);
+    }
+
+    // The tunnels near the viewpoint (SDD 49): hidden on the jump map (Q6), oriented by the camera for their labels
+    const APlayerController* controller = GetWorld()->GetFirstPlayerController();
+    const ASOLShipPawn* pawn = controller != nullptr ? Cast<ASOLShipPawn>(controller->GetPawn()) : nullptr;
+    const FVector forwardUnreal = controller != nullptr && controller->PlayerCameraManager != nullptr
+        ? controller->PlayerCameraManager->GetCameraRotation().Vector() : FVector::ForwardVector;
+    Tunnels->UpdateTunnels(mLaneFrame, Npcs->GetGroups(), Anchor->GetViewpointM(),
+        FVector3d(forwardUnreal.X, -forwardUnreal.Y, forwardUnreal.Z), mAreLanesShown,
+        pawn != nullptr && pawn->IsMapOpen(), frameParams, GFrameCounter);
+
+    // The orbit lines keep the shared occluders current while lane lines or tunnels draw (SDD 38 D24, SDD 49 D12)
+    const bool bOverlayDrawn = SOLNpcTunnel::IsLaneOverlayDrawn(bDraw, Tunnels->AreTunnelsDrawn());
+    if (bOverlayDrawn != mIsLaneOverlayDrawn)
+    {
+        mIsLaneOverlayDrawn = bOverlayDrawn;
         if (IsValid(OrbitLines))
         {
-            OrbitLines->SetLanesDrawn(bDraw);
+            OrbitLines->SetLanesDrawn(bOverlayDrawn);
         }
     }
 
     // The dash flow: real time (no time warp), never held, the pause menu included (D15, amended 2026-11-11)
     mLaneFlowClockS = SOLNpcLane::AdvanceLaneFlowClockS(mLaneFlowClockS,
         FMath::Min(FApp::GetDeltaTime(), SOL::MAX_FRAME_DELTA_S));
+
+    // The HUD glow (pending or applied) to the lane and tunnel materials, only when it changes while one draws
+    if (bOverlayDrawn && mLaneGlowFeed.Update(Settings != nullptr ? Settings->GetLiveValues().HudGlow
+        : SOL::Settings::HUD_GLOW_DEFAULT))
+    {
+        if (LaneMaterial != nullptr)
+        {
+            LaneMaterial->SetScalarParameterValue(PARAM_LANE_GLOW_SCALE, mLaneGlowFeed.GetScale());
+        }
+        Tunnels->SetGlowScale(mLaneGlowFeed.GetScale());
+    }
     if (!bDraw)
     {
         return;
     }
 
-    // The lane material: the frame and flow every frame, the HUD glow (pending or applied) only when it changes
+    // The lane material: the frame and flow every frame
     LaneMaterial->SetVectorParameterValue(PARAM_LANE_FRAME, frameParams);
     LaneMaterial->SetVectorParameterValue(PARAM_LANE_0,
         SOLNpcLane::LaneMaterialParams(SOLNpcLane::LaneDashFlowPhase(mLaneFlowClockS)));
-    if (mLaneGlowFeed.Update(Settings != nullptr ? Settings->GetLiveValues().HudGlow : SOL::Settings::HUD_GLOW_DEFAULT))
-    {
-        LaneMaterial->SetScalarParameterValue(PARAM_LANE_GLOW_SCALE, mLaneGlowFeed.GetScale());
-    }
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Npc/SOLNpcTunnelMath.h"
 #include "OrbitLines/SOLOrbitLineLogic.h"
 #include "OrbitLines/SOLOrbitLineMath.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
@@ -862,6 +863,27 @@ bool FSOLOrbitLineLogicOccludersWrittenTest::RunTest(const FString& /*parameters
     TestTrue(TEXT("orbit lines only (today's case)"), ShouldWriteOccluders(true, false));
     TestTrue(TEXT("lanes only (orbit lines off)"), ShouldWriteOccluders(false, true));
     TestFalse(TEXT("neither"), ShouldWriteOccluders(false, false));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLOrbitLineLogicOccludersTunnelsTest, "SOLTest.OrbitLineLogic.OccludersWithTunnels",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #49 (SDD 49 section 4.7, D12, test-first): the lane tunnels need the shared occluders exactly when the lanes
+// do, so the lanes report "drawn" when lane lines or tunnels draw (SOLNpcTunnel::IsLaneOverlayDrawn) and the orbit
+// lines write the occluders for an empty lane's tunnel with no lane line and the orbit lines off; no new writer
+bool FSOLOrbitLineLogicOccludersTunnelsTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLOrbitLineLogic::ShouldWriteOccluders;
+    using SOLNpcTunnel::IsLaneOverlayDrawn;
+    TestTrue(TEXT("tunnels only, orbit lines off"), ShouldWriteOccluders(false, IsLaneOverlayDrawn(false, true)));
+    TestTrue(TEXT("lane lines only, orbit lines off"), ShouldWriteOccluders(false, IsLaneOverlayDrawn(true, false)));
+    TestTrue(TEXT("lane lines and tunnels, orbit lines off"),
+        ShouldWriteOccluders(false, IsLaneOverlayDrawn(true, true)));
+    TestTrue(TEXT("orbit lines on, no lanes"), ShouldWriteOccluders(true, IsLaneOverlayDrawn(false, false)));
+    TestFalse(TEXT("nothing drawn"), ShouldWriteOccluders(false, IsLaneOverlayDrawn(false, false)));
     return true;
 }
 

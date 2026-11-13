@@ -50,6 +50,10 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Math/RandomStream.h"
 
+// Game-thread cost of the lane tunnel wall labels (stat dumpave in -SOLSmokeNpcTunnelProfile, SDD 49 section 4.8)
+DECLARE_STATS_GROUP(TEXT("SOLHud"), STATGROUP_SOLHud, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("SOL_HudLaneLabels"), STAT_SOL_HudLaneLabels, STATGROUP_SOLHud);
+
 namespace
 {
     // Layout at a 720-pixel-high canvas (scaled up with the canvas height, see SOL::Hologram::HUD_REFERENCE_HEIGHT_PX)
@@ -132,6 +136,41 @@ namespace
     FLinearColor HudScaled(const FLinearColor& color, const float intensity)
     {
         return FLinearColor(color.R * intensity, color.G * intensity, color.B * intensity, 1.0f);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the lane and tunnel pixel scale, the viewport height over the lanes' reference height (1 for none)
+    double HudLaneHeightScale(const double viewportHeightPx)
+    {
+        return viewportHeightPx > 0.0 ? viewportHeightPx / SOL::NPC_LANE_REFERENCE_HEIGHT_PX : 1.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true when the segment from the camera to a point (universe ecliptic m) passes inside a registry body
+    // (the camera outside it): the CPU side of the tunnels' sphere occlusion, for the label anchors
+    bool HudIsSegmentBlockedByBody(const FSOLBodyRegistry& registry, const FVector3d& cameraM,
+        const FVector3d& pointM)
+    {
+        const FVector3d toPoint = pointM - cameraM;
+        const double lengthSq = toPoint.SizeSquared();
+        for (int32 body = 0; body < registry.Num(); ++body)
+        {
+            const double radiusM = registry.GetRadiusM(body);
+            const FVector3d toCenter = registry.GetPositionM(body) - cameraM;
+            const double radiusSq = radiusM * radiusM;
+            if (!(radiusM > 0.0) || toCenter.SizeSquared() <= radiusSq)
+            {
+                continue;
+            }
+            const double t = lengthSq > 0.0
+                ? FMath::Clamp(FVector3d::DotProduct(toCenter, toPoint) / lengthSq, 0.0, 1.0)
+                : 0.0;
+            if ((toCenter - toPoint * t).SizeSquared() < radiusSq)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -683,6 +722,10 @@ void ASOLFlightHud::EndReadoutGlow()
 // Builds a frameless card around a content rectangle at a look, draws it on the menu layer and records what it drew
 void ASOLFlightHud::DrawCard(const ESOLHudCard card, const FBox2D& content, const FSOLHoloMenuLook& look)
 {
+    if (content.bIsValid && look.bVisible)
+    {
+        AddHudAvoidBox(content.ExpandBy(SOL::Hologram::HUD_PANEL_PADDING_PX * mUiScale));
+    }
     if (mBatch == nullptr || mCardHudBatch != nullptr || !content.bIsValid || !look.bVisible)
     {
         return;
@@ -1070,6 +1113,10 @@ int32 ASOLFlightHud::ReplaySymbolPrims(const FSOLHudSymbolPrims& prims)
 // Queues a hologram panel (glow shape and dark backing, scaled by backingOpacity) around a content rectangle
 void ASOLFlightHud::AddHoloPanel(const FBox2D& content, const FLinearColor& color, const float backingOpacity)
 {
+    if (content.bIsValid && color.A > 0.0f)
+    {
+        AddHudAvoidBox(content.ExpandBy(SOL::Hologram::HUD_PANEL_PADDING_PX * mUiScale));
+    }
     if (mBatch == nullptr || !content.bIsValid || !mShapeLayer.IsValid())
     {
         return;
@@ -1176,6 +1223,14 @@ void ASOLFlightHud::DrawHUD()
     mAutopilotBlockBottomY = 0.0f;
     mLeftBlockRect = FBox2D(ForceInit);
     mTopBlockRect = FBox2D(ForceInit);
+
+    // Last frame's HUD panel boxes become the set the lane labels avoid (the labels draw before the panels)
+    for (int32 index = 0; index < mHudAvoidBoxCount; ++index)
+    {
+        mPrevHudAvoidBoxes[index] = mHudAvoidBoxes[index];
+    }
+    mPrevHudAvoidBoxCount = mHudAvoidBoxCount;
+    mHudAvoidBoxCount = 0;
     mRouteOverlay.ResetFrame();
     mHologramOverlay.ResetFrame();
     mIconLayer.ClearStats();
@@ -1223,6 +1278,7 @@ void ASOLFlightHud::DrawHUD()
     // The main and pause menus (SDD 8) draw over a clean view: no flight HUD while one shows
     if (bIsMenuShowing)
     {
+        HideLaneTunnelLabels();
         return;
     }
 
@@ -1230,12 +1286,14 @@ void ASOLFlightHud::DrawHUD()
     if (bIsWarping)
     {
         mLastWarpStreaksDrawn = DrawWarpStreaks(Jump->ComputeStreakIntensity(), Jump->GetElapsedS());
+        HideLaneTunnelLabels();
         return;
     }
 
     // The player hid the flight HUD (SDD 8): nothing more, unless the jump map needs its overlays
     if (bIsHudHidden)
     {
+        HideLaneTunnelLabels();
         return;
     }
     mWasFlightHudDrawn = true;
@@ -1276,7 +1334,9 @@ void ASOLFlightHud::DrawHUD()
         mMapPickOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, mUiScale);
     }
     DrawOverlayIcons(bHasView && !IsMapOpen() ? &view : nullptr);
+    DrawLaneTunnelLabels(bHasView && !IsMapOpen() ? &view : nullptr);
     DrawInfoBlock();
+    AddHudAvoidBox(mLastHintsRect);
     DrawInteraction();
 
     if (Ships == nullptr || Targeting == nullptr || !Ships->HasPlayerShip())
@@ -2229,6 +2289,314 @@ void ASOLFlightHud::DrawOverlayIcons(const FSOLHudView* view)
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Draws the lane tunnels' wall labels: projects the anchors and dot rows, places, eases and draws the glow text
+void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
+{
+    SCOPE_CYCLE_COUNTER(STAT_SOL_HudLaneLabels);
+    TRACE_CPUPROFILER_EVENT_SCOPE(ASOLFlightHud::DrawLaneTunnelLabels);
+    mLastLaneLabelCount = 0;
+    mLaneRowCount = 0;
+    const double deltaS = FMath::Min(static_cast<double>(FApp::GetDeltaTime()), SOL::MAX_FRAME_DELTA_S);
+    const double nowS = GetWorld()->GetRealTimeSeconds();
+    for (FSOLLaneLabelCache& cache : mLaneLabels)
+    {
+        cache.TargetAlpha = 0.0;
+        cache.PreviousCandidate = cache.Candidate;
+        cache.Candidate = INDEX_NONE;
+    }
+
+    // The snapshot of this frame or the last one (a stale snapshot shows nothing and the labels ease out)
+    const FSOLHudLaneTunnelLabels* snapshot = nullptr;
+    if (view != nullptr && HudEvents != nullptr && AnchorSubsystem != nullptr && BodyRegistry != nullptr
+        && HudEvents->GetBus().GetLaneTunnelLabels().Count > 0
+        && GFrameCounter - HudEvents->GetBus().GetLaneTunnelLabelsFrame() <= SOL::NPC_TUNNEL_LABEL_MAX_AGE_FRAMES)
+    {
+        snapshot = &HudEvents->GetBus().GetLaneTunnelLabels();
+    }
+    if (snapshot != nullptr)
+    {
+        // Viewpoint-relative ecliptic metres to camera-local cm (true positions: the far-depth placement keeps every
+        // point on its true ray, so a straight row stays straight on screen); the camera's true offset from the
+        // viewpoint is its render offset inside the 1:1 zone
+        const FVector3d viewpointM = AnchorSubsystem->GetViewpointM();
+        const FVector cameraOffsetCm = view->Location - AnchorSubsystem->UniverseToRenderCm(viewpointM);
+        const FVector3d cameraM = viewpointM
+            + SOLRender::EclipticToUnreal(FVector3d(cameraOffsetCm)) / SOL::METERS_TO_CM;
+        const auto toLocal = [&](const FVector3d& relM)
+        {
+            return view->Rotation.UnrotateVector(FVector(SOLRender::EclipticToUnreal(relM) * SOL::METERS_TO_CM)
+                - cameraOffsetCm);
+        };
+
+        // The dot rows, clipped to the near plane, then projected
+        const int32 rowCount = FMath::Clamp(snapshot->RowCount, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_ROWS));
+        for (int32 row = 0; row < rowCount; ++row)
+        {
+            FVector a = toLocal(snapshot->RowStartM[row]);
+            FVector b = toLocal(snapshot->RowEndM[row]);
+            if (a.X < HUD_NEAR_PLANE_CM && b.X < HUD_NEAR_PLANE_CM)
+            {
+                continue;
+            }
+            if (a.X < HUD_NEAR_PLANE_CM || b.X < HUD_NEAR_PLANE_CM)
+            {
+                const double t = (HUD_NEAR_PLANE_CM - a.X) / (b.X - a.X);
+                const FVector onPlane = a + (b - a) * t;
+                (a.X < HUD_NEAR_PLANE_CM ? a : b) = onPlane;
+            }
+            ProjectLocal(*view, a, mLaneRowStarts[mLaneRowCount]);
+            ProjectLocal(*view, b, mLaneRowEnds[mLaneRowCount]);
+            ++mLaneRowCount;
+        }
+
+        // Each label: its text (reformatted only where it reads differently), size and the two projected anchors;
+        // the compact size only when last frame's placement was compact (else after a full-form miss, below)
+        const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+        FSOLLaneLabelInput inputs[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+        FSOLLaneLabelPlacement placements[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+        const float scale = mUiScale * SOL::NPC_TUNNEL_LABEL_TEXT_SCALE;
+        const int32 count = FMath::Clamp(snapshot->Count, 0, static_cast<int32>(SOL::NPC_TUNNEL_LABEL_MAX_COUNT));
+        for (int32 index = 0; index < count; ++index)
+        {
+            const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
+            FSOLLaneLabelInput& input = inputs[index];
+            if (label.Lane < 0 || label.Lane >= SOL::NPC_GROUP_TEXTURE_WIDTH)
+            {
+                input.SizePx = FVector2D(-1.0, -1.0);
+                continue;
+            }
+            FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
+            UpdateLaneLabelText(cache, label, nowS);
+            input.SizePx = FVector2D(FMath::Max3(cache.Sizes[0].X, cache.Sizes[1].X, cache.Sizes[2].X),
+                cache.Sizes[0].Y + cache.Sizes[1].Y + cache.Sizes[2].Y) * scale;
+            input.PreviousCandidate = cache.PreviousCandidate;
+            input.bPreviousCompact = cache.PreviousCandidate != INDEX_NONE && cache.bCompact;
+            if (input.bPreviousCompact)
+            {
+                UpdateLaneLabelCompactText(cache, label, nowS);
+                input.CompactSizePx = cache.CompactSize * scale;
+            }
+            const FVector3d anchorsM[2] = { label.TopAnchorM, label.BottomAnchorM };
+            for (int32 candidate = 0; candidate < 2; ++candidate)
+            {
+                FVector2D screen = FVector2D::ZeroVector;
+                const bool bInFront = ProjectLocal(*view, toLocal(anchorsM[candidate]), screen);
+                const bool bOccluded = bInFront && HudIsSegmentBlockedByBody(registry, cameraM,
+                    viewpointM + anchorsM[candidate]);
+                (candidate == 0 ? input.TopAnchorPx : input.BottomAnchorPx) = screen;
+                (candidate == 0 ? input.bTopInFront : input.bBottomInFront) = bInFront;
+                (candidate == 0 ? input.bTopOccluded : input.bBottomOccluded) = bOccluded;
+            }
+        }
+
+        // Greedy placement strongest first (last frame's spot, the full form, else the compact line), clear of every
+        // dot row, of last frame's HUD panels and of the labels already placed; a label the full form could not
+        // place gets its compact size and the placement runs again (at most once per label)
+        const double pixelScale = HudLaneHeightScale(Canvas->ClipY);
+        const double rowMarginPx = SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX * mUiScale
+            + 0.5 * SOL::NPC_TUNNEL_DOT_SIZE_PX * pixelScale;
+        for (int32 pass = 0; pass <= count; ++pass)
+        {
+            SOLLaneTunnelLabel::PlaceLaneLabels(TConstArrayView<FSOLLaneLabelInput>(inputs, count),
+                TConstArrayView<FVector2D>(mLaneRowStarts, mLaneRowCount),
+                TConstArrayView<FVector2D>(mLaneRowEnds, mLaneRowCount),
+                TConstArrayView<FBox2D>(mPrevHudAvoidBoxes, mPrevHudAvoidBoxCount),
+                FVector2D(Canvas->ClipX, Canvas->ClipY), rowMarginPx, SOL::NPC_TUNNEL_LABEL_GAP_PX * mUiScale,
+                TArrayView<FSOLLaneLabelPlacement>(placements, count));
+            bool bMeasured = false;
+            for (int32 index = 0; index < count; ++index)
+            {
+                const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
+                if (placements[index].bPlaced || inputs[index].CompactSizePx.X > 0.0 || label.Lane < 0
+                    || label.Lane >= SOL::NPC_GROUP_TEXTURE_WIDTH)
+                {
+                    continue;
+                }
+                FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
+                UpdateLaneLabelCompactText(cache, label, nowS);
+                inputs[index].CompactSizePx = cache.CompactSize * scale;
+                bMeasured |= inputs[index].CompactSizePx.X > 0.0;
+            }
+            if (!bMeasured)
+            {
+                break;
+            }
+        }
+        for (int32 index = 0; index < count; ++index)
+        {
+            const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
+            if (placements[index].bPlaced && label.Lane >= 0 && label.Lane < SOL::NPC_GROUP_TEXTURE_WIDTH)
+            {
+                FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
+                cache.TargetAlpha = label.Alpha;
+                cache.Box = placements[index].BoxPx;
+                cache.bCompact = placements[index].bCompact;
+                cache.Candidate = placements[index].Candidate;
+            }
+        }
+    }
+
+    // Every lane's alpha eases toward its target; a label still visible draws at its last box
+    const float scale = mUiScale * SOL::NPC_TUNNEL_LABEL_TEXT_SCALE;
+    for (int32 lane = 0; lane < SOL::NPC_GROUP_TEXTURE_WIDTH; ++lane)
+    {
+        FSOLLaneLabelCache& cache = mLaneLabels[lane];
+        if (cache.Alpha <= 0.0 && cache.TargetAlpha <= 0.0)
+        {
+            continue;
+        }
+        cache.Alpha = SOLLaneTunnelLabel::EaseLaneLabelAlpha(cache.Alpha, cache.TargetAlpha, deltaS);
+        if (view == nullptr || cache.Alpha <= 0.0 || !cache.bHasText || !cache.Box.bIsValid)
+        {
+            continue;
+        }
+        FLinearColor color = HUD_PRIMARY;
+        color.A *= static_cast<float>(cache.Alpha);
+        if (cache.bCompact && !cache.bHasCompactText)
+        {
+            continue;
+        }
+
+        // The three lines, or the one compact line, centred in the box from its top
+        float y = static_cast<float>(cache.Box.Min.Y);
+        const float centerX = static_cast<float>(cache.Box.GetCenter().X);
+        const int32 lineCount = cache.bCompact ? 1 : 3;
+        for (int32 line = 0; line < lineCount; ++line)
+        {
+            const FText& text = cache.bCompact ? cache.CompactText : cache.Texts[line];
+            const FVector2D& size = cache.bCompact ? cache.CompactSize : cache.Sizes[line];
+            const FVector2f position(centerX - 0.5f * static_cast<float>(size.X) * scale, y);
+            if (mTextList != nullptr)
+            {
+                mTextList->Add(text, position, scale, color, ESOLHudFont::Small);
+            }
+            else
+            {
+                FCanvasTextItem item(FVector2D(position), text, GetHudFont(ESOLHudFont::Small), color);
+                item.Scale = FVector2D(scale, scale);
+                item.EnableShadow(FLinearColor::Black);
+                Canvas->DrawItem(item);
+            }
+            y += static_cast<float>(size.Y) * scale;
+        }
+        if (mLastLaneLabelCount < SOL::NPC_TUNNEL_LABEL_MAX_COUNT)
+        {
+            mLastLaneLabelLanes[mLastLaneLabelCount] = lane;
+            mLastLaneLabelBoxes[mLastLaneLabelCount] = cache.Box;
+            mLastLaneLabelAlphas[mLastLaneLabelCount] = static_cast<float>(cache.Alpha);
+            mLastLaneLabelCompact[mLastLaneLabelCount] = cache.bCompact;
+            ++mLastLaneLabelCount;
+        }
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Updates a lane label's names and full text: each line reformatted and measured only when it reads differently
+void ASOLFlightHud::UpdateLaneLabelText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label,
+    const double nowS)
+{
+    // The body names, fetched only when the lane's bodies change
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const bool bNamesChanged = !cache.bHasNames || cache.BodyA != label.BodyA || cache.BodyB != label.BodyB;
+    if (bNamesChanged)
+    {
+        cache.NameA = label.BodyA >= 0 && label.BodyA < registry.Num() ? registry.GetName(label.BodyA).ToString()
+            : FString();
+        cache.NameB = label.BodyB >= 0 && label.BodyB < registry.Num() ? registry.GetName(label.BodyB).ToString()
+            : FString();
+        cache.BodyA = label.BodyA;
+        cache.BodyB = label.BodyB;
+        cache.bHasNames = true;
+        cache.bHasCompactText = false;
+    }
+
+    // The lines when the displayed values change: at once for new names or ship count, the distances at most every
+    // NPC_TUNNEL_LABEL_TEXT_REFRESH_S; only a line that reads differently gets a new text and size
+    const FSOLLaneLabelKey key = SOLLaneTunnelLabel::MakeLaneLabelKey(label.Lane, label.DistanceAM, label.DistanceBM,
+        label.ShipCount);
+    if (cache.bHasText && !bNamesChanged && cache.Key == key)
+    {
+        return;
+    }
+    const bool bUrgent = !cache.bHasText || bNamesChanged || key.Lane != cache.Key.Lane
+        || key.Ships != cache.Key.Ships;
+    if (!bUrgent && nowS - cache.TextTimeS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S)
+    {
+        return;
+    }
+    SOLLaneTunnelLabel::FormatLaneLabelLines(cache.NameA, cache.NameB, label.DistanceAM, label.DistanceBM,
+        label.ShipCount, mLaneLabelScratch[0], mLaneLabelScratch[1], mLaneLabelScratch[2]);
+    for (int32 line = 0; line < 3; ++line)
+    {
+        if (cache.bHasText && cache.Lines[line].Equals(mLaneLabelScratch[line], ESearchCase::CaseSensitive))
+        {
+            continue;
+        }
+        cache.Lines[line] = mLaneLabelScratch[line];
+        cache.Texts[line] = FText::FromString(cache.Lines[line]);
+        float width = 0.0f;
+        float height = 0.0f;
+        Canvas->StrLen(GetHudFont(ESOLHudFont::Small), cache.Lines[line], width, height);
+        cache.Sizes[line] = FVector2D(width, height);
+    }
+    cache.Key = key;
+    cache.bHasText = true;
+    cache.TextTimeS = nowS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Updates a lane label's compact line: reformatted and measured only when it reads differently
+void ASOLFlightHud::UpdateLaneLabelCompactText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label,
+    const double nowS)
+{
+    const FSOLLaneLabelKey key = SOLLaneTunnelLabel::MakeLaneLabelCompactKey(label.Lane, label.DistanceAM,
+        label.DistanceBM);
+    if (cache.bHasCompactText && (cache.CompactKey == key
+        || nowS - cache.CompactTimeS < SOL::NPC_TUNNEL_LABEL_TEXT_REFRESH_S))
+    {
+        return;
+    }
+    SOLLaneTunnelLabel::FormatLaneLabelCompactLine(cache.NameA, cache.NameB, label.DistanceAM, label.DistanceBM,
+        mLaneLabelScratch[0]);
+    if (!cache.bHasCompactText || !cache.CompactLine.Equals(mLaneLabelScratch[0], ESearchCase::CaseSensitive))
+    {
+        cache.CompactLine = mLaneLabelScratch[0];
+        cache.CompactText = FText::FromString(cache.CompactLine);
+        float width = 0.0f;
+        float height = 0.0f;
+        Canvas->StrLen(GetHudFont(ESOLHudFont::Small), cache.CompactLine, width, height);
+        cache.CompactSize = FVector2D(width, height);
+    }
+    cache.CompactKey = key;
+    cache.bHasCompactText = true;
+    cache.CompactTimeS = nowS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Hides every lane label at once: nothing drawn, every alpha and candidate back to none
+void ASOLFlightHud::HideLaneTunnelLabels()
+{
+    mLastLaneLabelCount = 0;
+    for (FSOLLaneLabelCache& cache : mLaneLabels)
+    {
+        cache.Alpha = 0.0;
+        cache.TargetAlpha = 0.0;
+        cache.Candidate = INDEX_NONE;
+        cache.PreviousCandidate = INDEX_NONE;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Records a HUD panel's screen box for next frame's lane labels to avoid
+void ASOLFlightHud::AddHudAvoidBox(const FBox2D& box)
+{
+    if (box.bIsValid && mHudAvoidBoxCount < SOL::NPC_TUNNEL_LABEL_MAX_AVOID_BOXES)
+    {
+        mHudAvoidBoxes[mHudAvoidBoxCount++] = box;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Draws the interaction menus' HUD parts: the info card, the action hint and the open radial menu
 void ASOLFlightHud::DrawInteraction()
 {
@@ -2601,6 +2969,11 @@ void ASOLFlightHud::DrawRadar(const FSOLHudView* view, const FSOLShipState& stat
     const FVector2D center(rightEdge - radius,
         Canvas->ClipY - HUD_MARGIN_PX * mUiScale - labelHeight - stalkReserve - squashedRadius);
     const FVector2D labelPos(center.X - radius, center.Y + squashedRadius + stalkReserve);
+
+    // The scope with its upward stems and the range label, kept clear of the lane labels
+    AddHudAvoidBox(FBox2D(FVector2D(center.X - radius,
+        center.Y - squashedRadius - radius * SOL::HudGeometry::RADAR_STALK_SCALE),
+        FVector2D(rightEdge, labelPos.Y + labelHeight)));
     if (mBatch == nullptr)
     {
         DrawRect(HUD_RADAR_BACK_COLOR, center.X - radius, center.Y - squashedRadius, 2.0f * radius,

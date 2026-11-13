@@ -8,6 +8,7 @@
 #include "SOLConstants.h"
 #include "Universe/SOLRenderPlacement.h"
 
+#include "Math/RandomStream.h"
 #include "Misc/AutomationTest.h"
 
 #include <cmath>
@@ -23,6 +24,7 @@
 // fade is weighted by the camera's distance from the axis (TunnelNearFadeAt), the up reference turns smoothly from +X
 // to north between 1 and 2 degrees off the pole, the detail cap ends one gap early, slot phases are wrapped, the
 // along-lane no-pop sweeps travel far enough for rings to cross an end ring, and dots and chevrons get their own sweep.
+// Part 49b (test first, plan steps 7b and 8) adds the renderer-facing cases at the end of the file.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -541,7 +543,7 @@ bool FSOLNpcTunnelMathConstantsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("label min alpha 0.05"), static_cast<double>(SOL::NPC_TUNNEL_LABEL_MIN_ALPHA), 0.05,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("label gap 6 px"), static_cast<double>(SOL::NPC_TUNNEL_LABEL_GAP_PX), 6.0, NPCTUNNEL_TOL);
-    TestEqual(TEXT("label 4 radii ahead"), static_cast<double>(SOL::NPC_TUNNEL_LABEL_AHEAD_RADII), 4.0,
+    TestEqual(TEXT("label 2.5 radii ahead"), static_cast<double>(SOL::NPC_TUNNEL_LABEL_AHEAD_RADII), 2.5,
         NPCTUNNEL_TOL);
 
     // Colours, stored as sRGB FColor
@@ -2511,6 +2513,806 @@ bool FSOLNpcTunnelMathShownTest::RunTest(const FString& /*parameters*/)
                     bLanesShown && bCvarOn && !bMapOpen);
             }
         }
+    }
+    return true;
+}
+
+// Part 49b (test first, plan steps 7b and 8): the renderer's constants, the unclamped foot point, the end rings' alpha,
+// the label anchors with their ahead sign's hysteresis, the projected dot rows' extent, the per-lane renderer feed, the
+// phase step, the visibility and upload rules, the slot mesh's size and the fade texel the lane and point materials
+// read
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a uniformly random unit vector from a stream
+    FVector3d NpcTunnelRandomUnit(FRandomStream& stream)
+    {
+        const double z = stream.FRandRange(-1.0, 1.0);
+        const double azimuth = stream.FRandRange(0.0, 2.0 * UE_DOUBLE_PI);
+        const double s = FMath::Sqrt(FMath::Max(0.0, 1.0 - z * z));
+        return FVector3d(s * FMath::Cos(azimuth), s * FMath::Sin(azimuth), z);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the Earth-Mars-like test lane of the 49b cases: resolved, drawn, 62,400 ships, radius 3e6 m
+    FSOLNpcLaneEntry NpcTunnelTestLane()
+    {
+        FSOLNpcLaneEntry lane;
+        lane.A = FVector3d(1.0e11, 2.0e10, 1.0e8);
+        lane.B = lane.A + FVector3d(8.0e10, 3.0e10, 1.0e9);
+        lane.RadiusM = 3.0e6;
+        lane.ShipCount = 62400;
+        lane.TrafficWeight = SOLNpcLane::LaneTrafficWeight(lane.ShipCount);
+        lane.bResolved = true;
+        lane.bDrawn = true;
+        return lane;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathRendererConstantsTest, "SOLTest.NpcTunnelMath.RendererConstants",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 sections 4.6, 4.7 and 4.9 (proposed values, so a tuning change is a visible test edit): ring and end-ring
+// widths, dot size, the chevrons' size, place and alpha, the emissive scale, the near ring segments, the sort priority
+// above the lanes, the label's dot margin and its ahead sign's dead band
+bool FSOLNpcTunnelMathRendererConstantsTest::RunTest(const FString& /*parameters*/)
+{
+    TestEqual(TEXT("ring width 1.5 px"), static_cast<double>(SOL::NPC_TUNNEL_RING_WIDTH_PX), 1.5, NPCTUNNEL_TOL);
+    TestEqual(TEXT("end ring width 3 px"), static_cast<double>(SOL::NPC_TUNNEL_END_RING_WIDTH_PX), 3.0,
+        NPCTUNNEL_TOL);
+    TestEqual(TEXT("dot size 3 px"), static_cast<double>(SOL::NPC_TUNNEL_DOT_SIZE_PX), 3.0, NPCTUNNEL_TOL);
+    TestTrue(TEXT("end rings wider than rings"), SOL::NPC_TUNNEL_END_RING_WIDTH_PX > SOL::NPC_TUNNEL_RING_WIDTH_PX);
+
+    // Chevrons: on the wall inside the dot rows, the mock-up's proportions, alpha 0.75
+    TestEqual(TEXT("chevron radius 0.97 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE), 0.97,
+        NPCTUNNEL_TOL);
+    TestEqual(TEXT("chevron half width 0.17 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII), 0.17,
+        NPCTUNNEL_TOL);
+    TestEqual(TEXT("chevron half length 0.26 Rt"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII),
+        0.26, NPCTUNNEL_TOL);
+    TestEqual(TEXT("chevron alpha 0.75"), static_cast<double>(SOL::NPC_TUNNEL_CHEVRON_ALPHA), 0.75, NPCTUNNEL_TOL);
+    TestTrue(TEXT("chevrons inside the dot rows (dots outside the rings, D6)"),
+        SOL::NPC_TUNNEL_CHEVRON_RADIUS_SCALE < 1.0 && 1.0 < SOL::NPC_TUNNEL_DOT_RADIUS_SCALE);
+
+    // Emissive (tuned in 49c), segments, sort priority
+    const double emissive = SOL::NPC_TUNNEL_EMISSIVE;
+    TestTrue(TEXT("emissive positive and finite"), FMath::IsFinite(emissive) && emissive > 0.0);
+    TestEqual(TEXT("near ring segments 48"), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR, 48);
+    TestEqual(TEXT("sort priority 2"), SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY, 2);
+    TestTrue(TEXT("sorted above the lanes in the after-motion-blur pass"),
+        SOL::NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY > SOL::NPC_LANE_TRANSLUCENCY_SORT_PRIORITY);
+
+    // Labels
+    TestEqual(TEXT("label dot margin 6 px"), static_cast<double>(SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX), 6.0,
+        NPCTUNNEL_TOL);
+    const double band = SOL::NPC_TUNNEL_LABEL_FLIP_HYSTERESIS;
+    TestTrue(TEXT("ahead-sign dead band in (0, 1)"), band > 0.0 && band < 1.0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLaneFootTest, "SOLTest.NpcTunnelMath.LaneFoot",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Step 7b (SDD 49 sections 4.3 and 4.4): LaneFoot(aRel, bRel) is the viewpoint's (origin's) foot on the lane's axis
+// LINE, not clamped to the segment: its arc from node A (below 0 before A, above L past B), the foot point relative to
+// the viewpoint (perpendicular to the axis, its length h) and h; inside the segment it is the nearest point; moving the
+// viewpoint along the axis moves the arc by the same amount and keeps h; A == B or a non-finite input is invalid
+bool FSOLNpcTunnelMathLaneFootTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+
+    // Beside a lane along +X: the foot is the nearest point
+    {
+        const FVector3d aRel(-4.0e6, 2.0e5, -1.0e5);
+        const FVector3d bRel(6.0e6, 2.0e5, -1.0e5);
+        const FSOLNpcTunnelFoot foot = LaneFoot(aRel, bRel);
+        TestTrue(TEXT("beside: valid"), foot.bValid);
+        TestEqual(TEXT("beside: arc 4e6"), foot.ArcM, 4.0e6, NPCTUNNEL_TOL * 1.0e7);
+        TestEqual(TEXT("beside: arc = nearest param x L"), foot.ArcM, LaneNearestParam(aRel, bRel) * 1.0e7,
+            NPCTUNNEL_TOL * 1.0e7);
+        TestTrue(TEXT("beside: foot point (0, 2e5, -1e5)"),
+            NpcTunnelVecNear(foot.PointRelM, FVector3d(0.0, 2.0e5, -1.0e5), NPCTUNNEL_TOL * 1.0e7));
+        TestEqual(TEXT("beside: h"), foot.RadialM, FMath::Sqrt(5.0e10), NPCTUNNEL_TOL * 1.0e7);
+    }
+
+    // Before A and past B: the arc leaves [0, L] (the nearest param is clamped, the foot is not)
+    {
+        const FVector3d aRel(3.0e6, 1.0e5, 0.0);
+        const FVector3d bRel(1.3e7, 1.0e5, 0.0);
+        const FSOLNpcTunnelFoot foot = LaneFoot(aRel, bRel);
+        TestTrue(TEXT("before A: valid"), foot.bValid);
+        TestEqual(TEXT("before A: arc -3e6"), foot.ArcM, -3.0e6, NPCTUNNEL_TOL * 1.0e7);
+        TestEqual(TEXT("before A: nearest param clamped to 0"), LaneNearestParam(aRel, bRel), 0.0, NPCTUNNEL_TOL);
+        TestTrue(TEXT("before A: foot point on the line"),
+            NpcTunnelVecNear(foot.PointRelM, FVector3d(0.0, 1.0e5, 0.0), NPCTUNNEL_TOL * 1.0e7));
+        TestEqual(TEXT("before A: h"), foot.RadialM, 1.0e5, NPCTUNNEL_TOL * 1.0e7);
+    }
+    {
+        const FVector3d aRel(-1.3e7, 0.0, 4.0e5);
+        const FVector3d bRel(-3.0e6, 0.0, 4.0e5);
+        const FSOLNpcTunnelFoot foot = LaneFoot(aRel, bRel);
+        TestEqual(TEXT("past B: arc 1.3e7 (above L = 1e7)"), foot.ArcM, 1.3e7, NPCTUNNEL_TOL * 1.0e7);
+        TestEqual(TEXT("past B: h"), foot.RadialM, 4.0e5, NPCTUNNEL_TOL * 1.0e7);
+    }
+
+    // Random lanes at AU scale: the foot point is A + arc x axis, perpendicular to the axis, of length h; moving the
+    // viewpoint along the axis shifts the arc by the move and keeps h
+    FRandomStream stream(49);
+    for (int32 index = 0; index < 32; ++index)
+    {
+        const FVector3d aRel = NpcTunnelRandomUnit(stream) * stream.FRandRange(1.0e6, 3.0 * NPCTUNNEL_AU_M);
+        const FVector3d bRel = aRel + NpcTunnelRandomUnit(stream) * stream.FRandRange(4.0e8, 30.0 * NPCTUNNEL_AU_M);
+        const double scale = FMath::Max(aRel.Size(), bRel.Size());
+        const FVector3d axis = (bRel - aRel).GetSafeNormal();
+        const FSOLNpcTunnelFoot foot = LaneFoot(aRel, bRel);
+        const FString label = FString::Printf(TEXT("random %d"), index);
+        if (!TestTrue(label + TEXT(": valid"), foot.bValid))
+        {
+            continue;
+        }
+        TestTrue(label + TEXT(": foot = A + arc axis"), NpcTunnelVecNear(foot.PointRelM, aRel + axis * foot.ArcM,
+            NPCTUNNEL_TOL * scale));
+        TestTrue(label + TEXT(": perpendicular to the axis"),
+            FMath::Abs(FVector3d::DotProduct(foot.PointRelM, axis)) <= NPCTUNNEL_TOL * scale);
+        TestEqual(label + TEXT(": h = |foot|"), foot.RadialM, foot.PointRelM.Size(), NPCTUNNEL_TOL * scale);
+
+        const double moveM = stream.FRandRange(-1.0e9, 1.0e9);
+        const FSOLNpcTunnelFoot moved = LaneFoot(aRel - axis * moveM, bRel - axis * moveM);
+        TestEqual(label + TEXT(": a move along the axis shifts the arc"), moved.ArcM - foot.ArcM, moveM,
+            NPCTUNNEL_TOL * scale);
+        TestEqual(label + TEXT(": a move along the axis keeps h"), moved.RadialM, foot.RadialM,
+            NPCTUNNEL_TOL * scale);
+    }
+
+    // Invalid inputs
+    const FVector3d invalidEnds[][2] = {
+        { FVector3d(1.0e6, 0.0, 0.0), FVector3d(1.0e6, 0.0, 0.0) },
+        { FVector3d(NPCTUNNEL_NAN, 0.0, 0.0), FVector3d(1.0e6, 0.0, 0.0) },
+        { FVector3d(0.0, 0.0, 0.0), FVector3d(NPCTUNNEL_INF, 0.0, 0.0) },
+    };
+    for (int32 index = 0; index < static_cast<int32>(UE_ARRAY_COUNT(invalidEnds)); ++index)
+    {
+        const FSOLNpcTunnelFoot foot = LaneFoot(invalidEnds[index][0], invalidEnds[index][1]);
+        const FString label = FString::Printf(TEXT("invalid %d"), index);
+        TestFalse(label + TEXT(": not valid"), foot.bValid);
+        TestEqual(label + TEXT(": arc 0"), foot.ArcM, 0.0);
+        TestEqual(label + TEXT(": h 0"), foot.RadialM, 0.0);
+        TestTrue(label + TEXT(": foot point zero"), foot.PointRelM == FVector3d::ZeroVector);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathEndRingTest, "SOLTest.NpcTunnelMath.EndRing",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Step 7b (SDD 49 sections 4.5 and 4.6): EndRingAlpha(x, h, Rt) = max(TunnelDepthFade(sqrt(x^2 + h^2), Rt),
+// NPC_TUNNEL_END_RING_MIN_ALPHA) x TunnelNearFadeAt(x, h, Rt): the depth floor is lifted to 0.5 so an end ring stays
+// readable to the far node, while the near fade still removes the end ring the camera passes through on the axis; no
+// cap, end or detail fade applies and the tunnel fade is left to the caller (as for the ring slots). EndRingSlot(end)
+// returns end ring A (0) or B (1) at its arc with its warp coordinate and that alpha, beyond the ring cap too
+bool FSOLNpcTunnelMathEndRingTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const double rt = 1.0e6;
+    const double floorAlpha = SOL::NPC_TUNNEL_END_RING_MIN_ALPHA;
+
+    // Seen from outside the tube (no near fade): the depth fade with its floor raised to 0.5
+    for (const double inRadii : { 9.0, 100.0, 1.0e3, 1.0e4, 65536.0, 1.0e6, 1.0e9 })
+    {
+        const double h = 4.0 * rt;
+        const double d = inRadii * rt;
+        const double x = FMath::Sqrt(d * d - h * h);
+        const double expected = FMath::Max(TunnelDepthFade(d, rt), floorAlpha);
+        TestEqual(FString::Printf(TEXT("%g Rt: max(depth, 0.5)"), inRadii), EndRingAlpha(x, h, rt), expected,
+            NPCTUNNEL_TOL);
+        TestTrue(FString::Printf(TEXT("%g Rt: never below 0.5"), inRadii), EndRingAlpha(-x, h, rt) >= floorAlpha);
+    }
+    TestEqual(TEXT("near, outside the tube: 1"), EndRingAlpha(5.0 * rt, 4.0 * rt, rt), 1.0, NPCTUNNEL_TOL);
+    TestEqual(TEXT("far: the floor, not the depth floor 0.2"), EndRingAlpha(1.0e8 * rt, 0.0, rt), floorAlpha,
+        NPCTUNNEL_TOL);
+
+    // On the axis the near fade still applies: the end ring the camera flies through does not sweep the screen
+    TestEqual(TEXT("at the camera's foot on the axis: 0"), EndRingAlpha(0.0, 0.0, rt), 0.0, NPCTUNNEL_TOL);
+    for (const double x : { 0.3, 0.75, 1.0, 1.4, 2.0 })
+    {
+        for (const double h : { 0.0, 1.0, 2.0, 2.5, 3.0 })
+        {
+            const double d = FMath::Sqrt(x * x + h * h) * rt;
+            const double expected = FMath::Max(TunnelDepthFade(d, rt), floorAlpha)
+                * TunnelNearFadeAt(x * rt, h * rt, rt);
+            TestEqual(FString::Printf(TEXT("x %g Rt, h %g Rt: floored depth x near"), x, h), EndRingAlpha(x * rt,
+                h * rt, rt), expected, NPCTUNNEL_TOL);
+            TestEqual(FString::Printf(TEXT("x %g Rt, h %g Rt: symmetric in x"), x, h), EndRingAlpha(-x * rt, h * rt,
+                rt), EndRingAlpha(x * rt, h * rt, rt), NPCTUNNEL_TOL);
+        }
+    }
+
+    // Bad inputs
+    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
+    {
+        TestEqual(FString::Printf(TEXT("radius %g: 0"), badRadius), EndRingAlpha(10.0 * rt, 0.0, badRadius), 0.0);
+    }
+    TestEqual(TEXT("NaN offset: 0"), EndRingAlpha(NPCTUNNEL_NAN, 0.0, rt), 0.0);
+    TestEqual(TEXT("NaN radial: 0"), EndRingAlpha(10.0 * rt, NPCTUNNEL_NAN, rt), 0.0);
+
+    // The two end-ring slots
+    const double h = 0.5 * rt;
+    const FSOLNpcTunnelSlotInput input = NpcTunnelInput(h, rt, 0.3, -20.0 * rt, 500.0 * rt);
+    const double ends[] = { input.EndArcAM, input.EndArcBM };
+    for (int32 end = 0; end < 2; ++end)
+    {
+        FSOLNpcTunnelRing ring;
+        const FString label = FString::Printf(TEXT("end %d"), end);
+        if (!TestTrue(label + TEXT(": drawn"), EndRingSlot(end, input, ring)))
+        {
+            continue;
+        }
+        TestEqual(label + TEXT(": at its arc"), ring.AxialOffsetM, ends[end], NPCTUNNEL_TOL * rt);
+        TestEqual(label + TEXT(": warp coordinate"), ring.W, RingWarp(ends[end], h, rt), NPCTUNNEL_TOL);
+        TestEqual(label + TEXT(": alpha"), ring.Alpha, EndRingAlpha(ends[end], h, rt), NPCTUNNEL_TOL);
+    }
+
+    // Beyond the ring cap (|w| > 64) the end ring is still drawn, at least at the floor
+    {
+        const FSOLNpcTunnelSlotInput farInput = NpcTunnelInput(0.0, rt, 0.0, -5.0 * rt, 1.0e9 * rt);
+        FSOLNpcTunnelRing ring;
+        TestTrue(TEXT("far end ring: drawn"), EndRingSlot(1, farInput, ring));
+        TestTrue(TEXT("far end ring: past the ring cap"), ring.W > SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE);
+        TestTrue(TEXT("far end ring: at least the floor"), ring.Alpha >= floorAlpha);
+    }
+
+    // The camera on the axis at end ring A: that ring is hidden by the near fade, end ring B is drawn
+    {
+        const FSOLNpcTunnelSlotInput atEnd = NpcTunnelInput(0.0, rt, 0.0, 0.0, 300.0 * rt);
+        FSOLNpcTunnelRing ring;
+        TestFalse(TEXT("camera at end ring A: A hidden"), EndRingSlot(0, atEnd, ring));
+        TestTrue(TEXT("camera at end ring A: B drawn"), EndRingSlot(1, atEnd, ring));
+    }
+
+    // Crossed or equal end arcs, a bad index or a bad radius: nothing
+    FSOLNpcTunnelRing ring;
+    const FSOLNpcTunnelSlotInput crossed = NpcTunnelInput(h, rt, 0.3, 50.0 * rt, 10.0 * rt);
+    const FSOLNpcTunnelSlotInput equal = NpcTunnelInput(h, rt, 0.3, 10.0 * rt, 10.0 * rt);
+    for (int32 end = 0; end < 2; ++end)
+    {
+        TestFalse(FString::Printf(TEXT("crossed: end %d"), end), EndRingSlot(end, crossed, ring));
+        TestFalse(FString::Printf(TEXT("equal: end %d"), end), EndRingSlot(end, equal, ring));
+    }
+    TestFalse(TEXT("end -1"), EndRingSlot(-1, input, ring));
+    TestFalse(TEXT("end 2"), EndRingSlot(2, input, ring));
+    TestFalse(TEXT("bad radius"), EndRingSlot(0, NpcTunnelInput(h, NPCTUNNEL_NAN, 0.3, -20.0 * rt, 500.0 * rt), ring));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLabelAheadTest, "SOLTest.NpcTunnelMath.LabelAheadSign",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Step 7b (SDD 49 section 4.9): a label sits ahead of the foot point in the direction the camera looks along the axis,
+// LabelAheadSign(dot(camera forward, axis), previous sign) = +1 or -1 with a dead band of
+// NPC_TUNNEL_LABEL_FLIP_HYSTERESIS: with no previous sign (0, the lane just came in range) the sign of the dot (+1 at 0
+// and for NaN); a held +1 flips only once the dot is below -band and a held -1 only once it is above +band; a NaN dot
+// keeps the held sign; any other previous value reads by its sign
+bool FSOLNpcTunnelMathLabelAheadTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLNpcTunnel::LabelAheadSign;
+    const double band = SOL::NPC_TUNNEL_LABEL_FLIP_HYSTERESIS;
+    const double eps = 1.0e-6;
+
+    // No previous sign
+    TestEqual(TEXT("new: looking along +axis"), LabelAheadSign(0.5, 0), 1);
+    TestEqual(TEXT("new: looking along -axis"), LabelAheadSign(-0.5, 0), -1);
+    TestEqual(TEXT("new: inside the band, negative"), LabelAheadSign(-0.5 * band, 0), -1);
+    TestEqual(TEXT("new: exactly sideways"), LabelAheadSign(0.0, 0), 1);
+    TestEqual(TEXT("new: NaN"), LabelAheadSign(NPCTUNNEL_NAN, 0), 1);
+
+    // Holding +1 or -1
+    TestEqual(TEXT("+1: inside the band stays"), LabelAheadSign(-band + eps, 1), 1);
+    TestEqual(TEXT("+1: past -band flips"), LabelAheadSign(-band - eps, 1), -1);
+    TestEqual(TEXT("+1: fully backwards flips"), LabelAheadSign(-1.0, 1), -1);
+    TestEqual(TEXT("-1: inside the band stays"), LabelAheadSign(band - eps, -1), -1);
+    TestEqual(TEXT("-1: past +band flips"), LabelAheadSign(band + eps, -1), 1);
+    TestEqual(TEXT("+1: NaN keeps"), LabelAheadSign(NPCTUNNEL_NAN, 1), 1);
+    TestEqual(TEXT("-1: NaN keeps"), LabelAheadSign(NPCTUNNEL_NAN, -1), -1);
+    TestEqual(TEXT("previous 5 reads as +1"), LabelAheadSign(-0.5 * band, 5), 1);
+    TestEqual(TEXT("previous -3 reads as -1"), LabelAheadSign(0.5 * band, -3), -1);
+
+    // A full turn of the camera flips exactly twice, each time only past the band
+    int32 sign = 0;
+    int32 flips = 0;
+    bool bFlipsOutsideBand = true;
+    bool bAlwaysUnit = true;
+    for (int32 step = 0; step <= 3600; ++step)
+    {
+        const double dot = FMath::Cos(2.0 * UE_DOUBLE_PI * static_cast<double>(step) / 3600.0);
+        const int32 next = LabelAheadSign(dot, sign);
+        bAlwaysUnit &= next == 1 || next == -1;
+        if (sign != 0 && next != sign)
+        {
+            ++flips;
+            bFlipsOutsideBand &= FMath::Abs(dot) > band;
+        }
+        sign = next;
+    }
+    TestEqual(TEXT("a full turn: two flips"), flips, 2);
+    TestTrue(TEXT("a full turn: each flip past the band"), bFlipsOutsideBand);
+    TestTrue(TEXT("always +1 or -1"), bAlwaysUnit);
+
+    // Jitter round sideways inside the band never flips
+    sign = 1;
+    flips = 0;
+    for (int32 step = 0; step < 1000; ++step)
+    {
+        const double dot = 0.9 * band * FMath::Sin(0.37 * static_cast<double>(step));
+        const int32 next = LabelAheadSign(dot, sign);
+        flips += next != sign ? 1 : 0;
+        sign = next;
+    }
+    TestEqual(TEXT("jitter inside the band: no flip"), flips, 0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLabelAnchorTest, "SOLTest.NpcTunnelMath.LabelAnchor",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Step 7b (SDD 49 section 4.9): LaneLabelAnchorRelM(foot, basis, Rt, aheadSign, clockDeg) = foot + sign x
+// NPC_TUNNEL_LABEL_AHEAD_RADII x Rt x Axis + Rt x WallDirection(basis, clock), on the tube wall (radius Rt) at the
+// clock angle (0 = 12 o'clock, 180 = 6 o'clock), viewpoint-relative like the foot point; sign 0 reads as +1, any other
+// value by its sign; an invalid basis or a bad tunnel radius returns the foot point
+bool FSOLNpcTunnelMathLabelAnchorTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const double rt = 3.0e6;
+    const double ahead = SOL::NPC_TUNNEL_LABEL_AHEAD_RADII * rt;
+    const FSOLNpcTunnelBasis basis = TunnelBasis(FVector3d::ZeroVector, FVector3d(1.0e9, 0.0, 0.0));
+    const FVector3d foot(0.0, 2.0e5, -1.0e5);
+    const double tol = NPCTUNNEL_TOL * rt;
+
+    TestTrue(TEXT("12 o'clock ahead"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, 1, 0.0),
+        foot + FVector3d(ahead, 0.0, rt), tol));
+    TestTrue(TEXT("6 o'clock ahead"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, 1, 180.0),
+        foot + FVector3d(ahead, 0.0, -rt), tol));
+    TestTrue(TEXT("12 o'clock behind"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, -1, 0.0),
+        foot + FVector3d(-ahead, 0.0, rt), tol));
+    TestTrue(TEXT("sign 0 reads as +1"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, 0, 0.0),
+        LaneLabelAnchorRelM(foot, basis, rt, 1, 0.0), tol));
+    TestTrue(TEXT("sign 7 reads as +1"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, 7, 0.0),
+        LaneLabelAnchorRelM(foot, basis, rt, 1, 0.0), tol));
+    TestTrue(TEXT("sign -7 reads as -1"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, rt, -7, 180.0),
+        LaneLabelAnchorRelM(foot, basis, rt, -1, 180.0), tol));
+
+    // An inclined lane: the anchor is the given axial distance along the axis and on the wall at its clock angle
+    FRandomStream stream(4949);
+    for (int32 index = 0; index < 16; ++index)
+    {
+        const FVector3d a = NpcTunnelRandomUnit(stream) * 1.0e11;
+        const FVector3d direction = NpcTunnelRandomUnit(stream);
+        const FVector3d b = a + FVector3d(direction.X, direction.Y, 0.1) * 1.0e11;
+        const FSOLNpcTunnelBasis tilted = TunnelBasis(a, b);
+        const FVector3d tiltedFoot = NpcTunnelRandomUnit(stream) * 5.0e7;
+        const int32 sign = (index % 2) == 0 ? 1 : -1;
+        for (const double clock : { 0.0, 180.0, 90.0 })
+        {
+            const FVector3d offset = LaneLabelAnchorRelM(tiltedFoot, tilted, rt, sign, clock) - tiltedFoot;
+            const FString label = FString::Printf(TEXT("lane %d, clock %g"), index, clock);
+            TestEqual(label + TEXT(": axial"), FVector3d::DotProduct(offset, tilted.Axis), sign * ahead, tol);
+            TestTrue(label + TEXT(": on the wall at the clock angle"), NpcTunnelVecNear(offset - tilted.Axis
+                * FVector3d::DotProduct(offset, tilted.Axis), WallDirection(tilted, clock) * rt, tol));
+        }
+    }
+
+    // Bad inputs return the foot point
+    const FSOLNpcTunnelBasis invalid;
+    TestTrue(TEXT("invalid basis: the foot"), NpcTunnelVecNear(LaneLabelAnchorRelM(foot, invalid, rt, 1, 0.0), foot,
+        NPCTUNNEL_TOL));
+    for (const double badRadius : { NPCTUNNEL_NAN, 0.0, -rt, NPCTUNNEL_INF })
+    {
+        TestTrue(FString::Printf(TEXT("radius %g: the foot"), badRadius),
+            NpcTunnelVecNear(LaneLabelAnchorRelM(foot, basis, badRadius, 1, 0.0), foot, NPCTUNNEL_TOL));
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathDotRowSegmentTest, "SOLTest.NpcTunnelMath.DotRowSegment",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 section 4.9 (49b, what the HUD projects to keep labels off the dots): TunnelDotRowSegmentRelM gives a dot
+// row's straight segment along the tube, viewpoint-relative: foot + x Axis + NPC_TUNNEL_DOT_RADIUS_SCALE x Rt x
+// WallDirection(basis, DotRowAngleDeg(row)) for x from max(end arc A, -X) to min(end arc B, X), X = sqrt(max(0,
+// (NPC_TUNNEL_DETAIL_FADE_END_RADII Rt)^2 - h^2)) (where the dots end), h = |foot|; false when that range is empty,
+// the row is out of range, the basis invalid or the tunnel radius bad
+bool FSOLNpcTunnelMathDotRowSegmentTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const double rt = 1.0e6;
+    const double detailEnd = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * rt;
+    const double dotRadius = SOL::NPC_TUNNEL_DOT_RADIUS_SCALE * rt;
+    const FSOLNpcTunnelBasis basis = TunnelBasis(FVector3d::ZeroVector, FVector3d(1.0e12, 0.0, 0.0));
+    const double tol = NPCTUNNEL_TOL * detailEnd;
+
+    // Returns the expected row point at axial offset x from a foot point
+    const auto rowPoint = [&](const FVector3d& foot, const int32 row, const double x)
+    {
+        return foot + basis.Axis * x + WallDirection(basis, DotRowAngleDeg(row)) * dotRadius;
+    };
+
+    // On the axis: from end ring A to where the dots end
+    for (int32 row = 0; row < SOL::NPC_TUNNEL_DOT_ROWS; ++row)
+    {
+        FVector3d start;
+        FVector3d end;
+        const FString label = FString::Printf(TEXT("on the axis, row %d"), row);
+        if (!TestTrue(label + TEXT(": a segment"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt,
+            -100.0 * rt, 1.0e4 * rt, row, start, end)))
+        {
+            continue;
+        }
+        TestTrue(label + TEXT(": starts at end ring A"), NpcTunnelVecNear(start, rowPoint(FVector3d::ZeroVector, row,
+            -100.0 * rt), tol));
+        TestTrue(label + TEXT(": ends where the dots end"), NpcTunnelVecNear(end, rowPoint(FVector3d::ZeroVector, row,
+            detailEnd), tol));
+    }
+
+    // 300 Rt off the axis: the far end at the true distance where the dots end
+    {
+        const FVector3d foot(0.0, 0.0, -300.0 * rt);
+        const double reach = FMath::Sqrt(detailEnd * detailEnd - 300.0 * rt * 300.0 * rt);
+        FVector3d start;
+        FVector3d end;
+        TestTrue(TEXT("off the axis: a segment"), TunnelDotRowSegmentRelM(foot, basis, rt, -1.0e4 * rt, 1.0e4 * rt, 2,
+            start, end));
+        TestTrue(TEXT("off the axis: from -X"), NpcTunnelVecNear(start, rowPoint(foot, 2, -reach), tol));
+        TestTrue(TEXT("off the axis: to +X"), NpcTunnelVecNear(end, rowPoint(foot, 2, reach), tol));
+    }
+
+    // Both end rings inside the reach clip both ends
+    {
+        FVector3d start;
+        FVector3d end;
+        TestTrue(TEXT("short tunnel: a segment"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, -10.0 * rt,
+            20.0 * rt, 5, start, end));
+        TestTrue(TEXT("short tunnel: from end ring A"), NpcTunnelVecNear(start, rowPoint(FVector3d::ZeroVector, 5,
+            -10.0 * rt), tol));
+        TestTrue(TEXT("short tunnel: to end ring B"), NpcTunnelVecNear(end, rowPoint(FVector3d::ZeroVector, 5,
+            20.0 * rt), tol));
+    }
+
+    // Nothing to draw
+    FVector3d start;
+    FVector3d end;
+    TestFalse(TEXT("600 Rt off the axis: no dots"), TunnelDotRowSegmentRelM(FVector3d(0.0, 600.0 * rt, 0.0), basis,
+        rt, -1.0e4 * rt, 1.0e4 * rt, 0, start, end));
+    TestFalse(TEXT("tunnel beyond the dots' reach"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt,
+        600.0 * rt, 700.0 * rt, 0, start, end));
+    TestFalse(TEXT("crossed end arcs"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, 20.0 * rt,
+        -10.0 * rt, 0, start, end));
+    TestFalse(TEXT("row -1"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, -10.0 * rt, 20.0 * rt, -1,
+        start, end));
+    TestFalse(TEXT("row 8"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, rt, -10.0 * rt, 20.0 * rt,
+        SOL::NPC_TUNNEL_DOT_ROWS, start, end));
+    TestFalse(TEXT("invalid basis"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, FSOLNpcTunnelBasis(), rt,
+        -10.0 * rt, 20.0 * rt, 0, start, end));
+    TestFalse(TEXT("bad radius"), TunnelDotRowSegmentRelM(FVector3d::ZeroVector, basis, NPCTUNNEL_NAN, -10.0 * rt,
+        20.0 * rt, 0, start, end));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLaneDataTest, "SOLTest.NpcTunnelMath.BuildTunnelLaneData",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 sections 4.2, 4.3 and 4.7 (the per-lane renderer feed, what the smoke compares every texel with):
+// BuildTunnelLaneData(lane, entry, viewpoint, body radius A, body radius B, out data, out foot) fills the lane index,
+// the foot point relative to the viewpoint (LaneFoot of A and B relative to it), Rt = TunnelRadiusM(R, ships), the
+// basis' axis and up, the fade TunnelFade(LaneSegmentDistanceM, R) and the end arcs (TunnelEndArcsM) minus the foot
+// arc, leaving the phase at 0 for the caller; it returns whether the lane can have a tunnel (both bodies resolved, a
+// valid basis, drawable end rings), whatever its fade. An empty lane gets the minimum radius
+bool FSOLNpcTunnelMathLaneDataTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const FSOLNpcLaneEntry lane = NpcTunnelTestLane();
+    const double radiusA = 6.371e6;
+    const double radiusB = 3.3895e6;
+    const FSOLNpcTunnelBasis basis = TunnelBasis(lane.A, lane.B);
+    const double laneLengthM = (lane.B - lane.A).Size();
+    const double tol = NPCTUNNEL_TOL * lane.B.Size();
+
+    // Beside the middle, 75 lane radii off the axis (smoke view T1)
+    const FVector3d viewpoint = lane.A + basis.Axis * (0.5 * laneLengthM) + basis.Up * (75.0 * lane.RadiusM);
+    FSOLNpcTunnelLaneData data;
+    FSOLNpcTunnelFoot foot;
+    TestTrue(TEXT("T1: can have a tunnel"), BuildTunnelLaneData(5, lane, viewpoint, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("T1: lane index"), data.Lane, 5);
+    const double rt = TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+    TestEqual(TEXT("T1: Rt"), data.TunnelRadiusM, rt, NPCTUNNEL_TOL * rt);
+    TestTrue(TEXT("T1: axis"), NpcTunnelVecNear(data.Axis, basis.Axis, 1.0e-12));
+    TestTrue(TEXT("T1: up"), NpcTunnelVecNear(data.Up, basis.Up, 1.0e-12));
+    TestEqual(TEXT("T1: fade = TunnelFade(75 R)"), data.Fade, TunnelFade(75.0 * lane.RadiusM, lane.RadiusM), 1.0e-6);
+    TestEqual(TEXT("T1: fade about 0.415"), data.Fade, 0.415, 1.0e-3);
+    TestEqual(TEXT("T1: phase left to the caller"), data.Phase, 0.0);
+    TestTrue(TEXT("T1: foot valid"), foot.bValid);
+    TestEqual(TEXT("T1: foot arc mid-lane"), foot.ArcM, 0.5 * laneLengthM, tol);
+    TestEqual(TEXT("T1: h 75 R"), foot.RadialM, 75.0 * lane.RadiusM, tol);
+    TestTrue(TEXT("T1: foot point relative to the viewpoint"), NpcTunnelVecNear(data.FootRelM,
+        lane.A + basis.Axis * foot.ArcM - viewpoint, tol));
+    TestTrue(TEXT("T1: foot point = LaneFoot's"), NpcTunnelVecNear(data.FootRelM, foot.PointRelM, tol));
+    const FVector2D endArcs = TunnelEndArcsM(laneLengthM, radiusA, radiusB, rt);
+    TestEqual(TEXT("T1: end arc A relative to the foot arc"), data.EndArcAM, endArcs.X - foot.ArcM, tol);
+    TestEqual(TEXT("T1: end arc B relative to the foot arc"), data.EndArcBM, endArcs.Y - foot.ArcM, tol);
+
+    // Out of range: still a tunnel lane, fade 0
+    const FVector3d farView = lane.A + basis.Axis * (0.5 * laneLengthM) + basis.Right * (500.0 * lane.RadiusM);
+    TestTrue(TEXT("500 R: can have a tunnel"), BuildTunnelLaneData(5, lane, farView, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("500 R: fade 0"), data.Fade, 0.0);
+
+    // On the axis a quarter of the way along (smoke view T2): full fade, h 0
+    const FVector3d onAxis = lane.A + basis.Axis * (0.25 * laneLengthM);
+    TestTrue(TEXT("T2: can have a tunnel"), BuildTunnelLaneData(5, lane, onAxis, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("T2: full fade"), data.Fade, 1.0, NPCTUNNEL_TOL);
+    TestEqual(TEXT("T2: h about 0"), foot.RadialM, 0.0, tol);
+
+    // An empty lane keeps a tunnel at the minimum radius (D8)
+    FSOLNpcLaneEntry empty = lane;
+    empty.ShipCount = 0;
+    empty.TrafficWeight = 0.0;
+    empty.bDrawn = false;
+    TestTrue(TEXT("empty lane: can have a tunnel"), BuildTunnelLaneData(2, empty, onAxis, radiusA, radiusB, data,
+        foot));
+    TestEqual(TEXT("empty lane: Rt = R x min scale"), data.TunnelRadiusM,
+        lane.RadiusM * SOL::NPC_TUNNEL_RADIUS_MIN_SCALE, NPCTUNNEL_TOL * lane.RadiusM);
+
+    // No tunnel: unresolved, crossed end rings, A == B
+    FSOLNpcLaneEntry unresolved = lane;
+    unresolved.bResolved = false;
+    unresolved.bDrawn = false;
+    TestFalse(TEXT("unresolved: no tunnel"), BuildTunnelLaneData(1, unresolved, onAxis, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("unresolved: fade 0"), data.Fade, 0.0);
+    FSOLNpcLaneEntry shortLane = lane;
+    shortLane.B = lane.A + basis.Axis * 1.0e7;
+    TestFalse(TEXT("crossed end rings: no tunnel"), BuildTunnelLaneData(1, shortLane, lane.A + basis.Axis * 5.0e6,
+        radiusA, radiusB, data, foot));
+    TestEqual(TEXT("crossed end rings: fade 0"), data.Fade, 0.0);
+    FSOLNpcLaneEntry point = lane;
+    point.B = lane.A;
+    TestFalse(TEXT("A == B: no tunnel"), BuildTunnelLaneData(1, point, onAxis, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("A == B: fade 0"), data.Fade, 0.0);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathStepPhaseTest, "SOLTest.NpcTunnelMath.StepRingPhase",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 section 4.4: StepRingPhase(bWasInRange, phase, previous foot arc, foot arc, h, Rt) starts a lane entering
+// range at InitialRingPhase(foot arc) and otherwise advances it by the foot arc's change (AdvanceRingPhase), so a lane
+// that entered at one arc and moved reads the phase it would have entered with at the new arc (the rings stay fixed to
+// the lane), and a camera at rest relative to the lane sees no change
+bool FSOLNpcTunnelMathStepPhaseTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const double rt = 1.0e6;
+    const double h = 0.5 * rt;
+    TestEqual(TEXT("entering: the initial phase"), StepRingPhase(false, 0.77, 123.0, 5.0e8, h, rt),
+        InitialRingPhase(5.0e8, h, rt), NPCTUNNEL_TOL);
+    TestEqual(TEXT("in range: advanced by the arc change"), StepRingPhase(true, 0.3, 5.0e8, 5.0e8 + 1.3e6, h, rt),
+        AdvanceRingPhase(0.3, 1.3e6, h, rt), NPCTUNNEL_TOL);
+    TestEqual(TEXT("at rest: unchanged"), StepRingPhase(true, 0.42, 7.0e9, 7.0e9, h, rt), 0.42, NPCTUNNEL_TOL);
+    TestEqual(TEXT("NaN previous arc: unchanged"), StepRingPhase(true, 0.42, NPCTUNNEL_NAN, 7.0e9, h, rt), 0.42,
+        NPCTUNNEL_TOL);
+
+    // Enter, then move in steps: the phase matches entering at the end arc
+    for (const double h2 : { 0.0, 0.5 * rt, 50.0 * rt })
+    {
+        double phase = StepRingPhase(false, 0.0, 0.0, 3.3e8, h2, rt);
+        double arc = 3.3e8;
+        for (int32 step = 1; step <= 200; ++step)
+        {
+            const double next = arc + 1.7e5 * FMath::Sin(0.1 * static_cast<double>(step)) + 2.1e4;
+            phase = StepRingPhase(true, phase, arc, next, h2, rt);
+            arc = next;
+        }
+        TestTrue(FString::Printf(TEXT("h %g Rt: lane-fixed after 200 steps"), h2 / rt),
+            NpcTunnelWrapDistance(phase, InitialRingPhase(arc, h2, rt)) < 1.0e-9);
+        TestTrue(FString::Printf(TEXT("h %g Rt: in [0, 1)"), h2 / rt), phase >= 0.0 && phase < 1.0);
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathVisibilityTest, "SOLTest.NpcTunnelMath.VisibilityRules",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 sections 4.2 and 4.7 (Q5, Q6, D12): ResolveTunnelsShown follows AreTunnelsShown without the verification
+// override, and with it the override's choice (the player's settings ignored) still under sol.NpcTunnel and the map;
+// EffectiveTunnelFade is 0 while hidden, 1 for every lane when forced (the all-lanes budget case), else the fade
+// clamped (NaN as 0); ShouldDrawTunnels needs the tunnels shown and a fade above 0; the lanes report "drawn" to the
+// shared occluders when lane lines or tunnels draw (IsLaneOverlayDrawn); the texture uploads while a tunnel shows and
+// once more (all zeros) on the frame the last one goes away (ShouldUploadTunnelTexels)
+bool FSOLNpcTunnelMathVisibilityTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    for (int32 bits = 0; bits < 32; ++bits)
+    {
+        const bool bOverride = (bits & 1) != 0;
+        const bool bOverrideShown = (bits & 2) != 0;
+        const bool bLanesShown = (bits & 4) != 0;
+        const bool bCvarOn = (bits & 8) != 0;
+        const bool bMapOpen = (bits & 16) != 0;
+        const bool expected = bOverride ? bOverrideShown && bCvarOn && !bMapOpen
+            : AreTunnelsShown(bLanesShown, bCvarOn, bMapOpen);
+        TestEqual(FString::Printf(TEXT("override %d shown %d, lanes %d, cvar %d, map %d"), bOverride ? 1 : 0,
+            bOverrideShown ? 1 : 0, bLanesShown ? 1 : 0, bCvarOn ? 1 : 0, bMapOpen ? 1 : 0),
+            ResolveTunnelsShown(bOverride, bOverrideShown, bLanesShown, bCvarOn, bMapOpen), expected);
+    }
+
+    // The effective fade
+    TestEqual(TEXT("hidden: 0"), EffectiveTunnelFade(0.4, false, false), 0.0);
+    TestEqual(TEXT("hidden and forced: 0"), EffectiveTunnelFade(0.4, false, true), 0.0);
+    TestEqual(TEXT("shown: the fade"), EffectiveTunnelFade(0.4, true, false), 0.4, NPCTUNNEL_TOL);
+    TestEqual(TEXT("forced: 1"), EffectiveTunnelFade(0.4, true, true), 1.0);
+    TestEqual(TEXT("forced, out of range: 1"), EffectiveTunnelFade(0.0, true, true), 1.0);
+    TestEqual(TEXT("forced, NaN: 1"), EffectiveTunnelFade(NPCTUNNEL_NAN, true, true), 1.0);
+    TestEqual(TEXT("NaN: 0"), EffectiveTunnelFade(NPCTUNNEL_NAN, true, false), 0.0);
+    TestEqual(TEXT("above 1: clamped"), EffectiveTunnelFade(1.5, true, false), 1.0);
+    TestEqual(TEXT("below 0: clamped"), EffectiveTunnelFade(-0.2, true, false), 0.0);
+
+    // Drawing the tunnel component
+    const double none[] = { 0.0, 0.0, 0.0 };
+    const double one[] = { 0.0, 0.2, 0.0 };
+    const double nanOnly[] = { NPCTUNNEL_NAN, 0.0 };
+    TestFalse(TEXT("hidden: not drawn"), ShouldDrawTunnels(false, one));
+    TestFalse(TEXT("no fade above 0: not drawn"), ShouldDrawTunnels(true, none));
+    TestTrue(TEXT("one fade above 0: drawn"), ShouldDrawTunnels(true, one));
+    TestFalse(TEXT("NaN only: not drawn"), ShouldDrawTunnels(true, nanOnly));
+    TestFalse(TEXT("no lanes: not drawn"), ShouldDrawTunnels(true, TConstArrayView<double>()));
+
+    // The shared occluders' "lanes drawn" flag
+    TestFalse(TEXT("neither: not drawn"), IsLaneOverlayDrawn(false, false));
+    TestTrue(TEXT("lane lines only"), IsLaneOverlayDrawn(true, false));
+    TestTrue(TEXT("tunnels only (an empty lane's tunnel, T6)"), IsLaneOverlayDrawn(false, true));
+    TestTrue(TEXT("both"), IsLaneOverlayDrawn(true, true));
+
+    // The upload rule over a sequence of frames: shown, shown, gone (zeros once), gone (no upload)
+    const bool shownByFrame[] = { true, true, false, false, true, false };
+    const bool uploadByFrame[] = { true, true, true, false, true, true };
+    bool bLast = false;
+    for (int32 frame = 0; frame < static_cast<int32>(UE_ARRAY_COUNT(shownByFrame)); ++frame)
+    {
+        TestEqual(FString::Printf(TEXT("frame %d: upload"), frame), ShouldUploadTunnelTexels(shownByFrame[frame],
+            bLast), uploadByFrame[frame]);
+        bLast = shownByFrame[frame];
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathSlotMeshTest, "SOLTest.NpcTunnelMath.SlotMesh",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// SDD 49 section 4.7 (level of detail by slot, the mesh built once): RingSegmentsForSlot gives 48
+// (NPC_TUNNEL_RING_SEGMENTS_NEAR) segments to ring slots 0-7 of each side, 24 to 8-23 and 12 beyond (behind slots like
+// the ahead slot of the same index), 0 out of range; TunnelSlotMeshVertexCount is the rings' ribbons ((N + 1) samples
+// x 2 sides each), two end rings at the near segment count, a quad per dot (rows x dots per gap x gap slots) and a quad
+// per chevron (2 walls x gap slots): 8,900 vertices per lane, under the SDD's 72,000 for all 8 lanes
+bool FSOLNpcTunnelMathSlotMeshTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const int32 perSide = SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
+    for (int32 slot = 0; slot < 2 * perSide; ++slot)
+    {
+        const int32 k = slot < perSide ? slot : slot - perSide;
+        const int32 expected = k < 8 ? 48 : k < 24 ? 24 : 12;
+        TestEqual(FString::Printf(TEXT("slot %d segments"), slot), RingSegmentsForSlot(slot), expected);
+    }
+    TestEqual(TEXT("slot 0 at the near count"), RingSegmentsForSlot(0), SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR);
+    TestEqual(TEXT("slot -1: 0"), RingSegmentsForSlot(-1), 0);
+    TestEqual(TEXT("slot 128: 0"), RingSegmentsForSlot(2 * perSide), 0);
+
+    int32 ringVertices = 0;
+    for (int32 slot = 0; slot < RingSlotCount(); ++slot)
+    {
+        ringVertices += 2 * (RingSegmentsForSlot(slot) + 1);
+    }
+    const int32 endRingVertices = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR + 1);
+    const int32 dotVertices = 4 * DetailSlotCount() * SOL::NPC_TUNNEL_DOTS_PER_GAP * SOL::NPC_TUNNEL_DOT_ROWS;
+    const int32 chevronVertices = 4 * DetailSlotCount() * 2;
+    TestEqual(TEXT("vertex count: the formula"), TunnelSlotMeshVertexCount(),
+        ringVertices + endRingVertices + dotVertices + chevronVertices);
+    TestEqual(TEXT("vertex count: 8,900 (proposed value)"), TunnelSlotMeshVertexCount(), 8900);
+    TestTrue(TEXT("all 8 default lanes within the SDD estimate"), 8 * TunnelSlotMeshVertexCount() <= 72000);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathTexelCrossfadeTest, "SOLTest.NpcTunnelMath.TexelCrossfade",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 17c's data path (Q5, section 4.2): ReadTunnelFadeTexel(texels, lane) reads a lane's fade where the lane and
+// point materials read it, row 1 .w of its column (0 out of range or for a buffer shorter than two rows); with that
+// fade the lane line's alpha and its ships' point alpha sum to 1 at every distance, a lane without a tunnel keeps the
+// #38 values exactly, and after the all-zeros upload every lane is back to #38
+bool FSOLNpcTunnelMathTexelCrossfadeTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    TArray<FSOLNpcTunnelLaneData> lanes;
+    for (const TPair<int32, double>& laneFade : { TPair<int32, double>(1, 0.25), TPair<int32, double>(4, 1.0) })
+    {
+        FSOLNpcTunnelLaneData data;
+        data.Lane = laneFade.Key;
+        data.FootRelM = FVector3d(1.0e5, 2.0e5, 3.0e5);
+        data.TunnelRadiusM = 3.0e6;
+        data.Axis = FVector3d(1.0, 0.0, 0.0);
+        data.Fade = laneFade.Value;
+        data.Up = FVector3d(0.0, 0.0, 1.0);
+        data.Phase = 0.5;
+        data.EndArcAM = -1.0e8;
+        data.EndArcBM = 1.0e9;
+        lanes.Add(data);
+    }
+    TArray<FVector4f> texels;
+    texels.Init(FVector4f(0.0f, 0.0f, 0.0f, 0.0f), width * 4);
+    WriteTunnelTexels(lanes, texels);
+    TestEqual(TEXT("lane 1 reads 0.25"), ReadTunnelFadeTexel(texels, 1), 0.25, 1.0e-6);
+    TestEqual(TEXT("lane 4 reads 1"), ReadTunnelFadeTexel(texels, 4), 1.0, 1.0e-6);
+    TestEqual(TEXT("lane 0 reads 0"), ReadTunnelFadeTexel(texels, 0), 0.0);
+    TestEqual(TEXT("lane 63 reads 0"), ReadTunnelFadeTexel(texels, width - 1), 0.0);
+    TestEqual(TEXT("lane -1 reads 0"), ReadTunnelFadeTexel(texels, -1), 0.0);
+    TestEqual(TEXT("lane 64 reads 0"), ReadTunnelFadeTexel(texels, width), 0.0);
+    TArray<FVector4f> shortTexels;
+    shortTexels.Init(FVector4f(1.0f, 1.0f, 1.0f, 1.0f), 2 * width - 1);
+    TestEqual(TEXT("short buffer reads 0"), ReadTunnelFadeTexel(shortTexels, 1), 0.0);
+
+    // The crossfade with the fade read back: sum 1, #38 values where there is no tunnel
+    const double distancesInRadii[] = { 0.0, 1.0e-3, 50.0, 75.0, 100.0, 200.0, 400.0, 1.0e5 };
+    for (const double radiusM : { 2.0e5, 3.0e6 })
+    {
+        for (int32 lane = 0; lane < 8; ++lane)
+        {
+            const double fade = ReadTunnelFadeTexel(texels, lane);
+            for (const double inRadii : distancesInRadii)
+            {
+                const double d = inRadii * radiusM;
+                const double line = SOLNpcLane::LaneLineFadeWithTunnel(d, radiusM, fade);
+                const double point = SOLNpcLane::LaneShipPointAlpha(d, radiusM, true, fade);
+                const FString label = FString::Printf(TEXT("R %g, lane %d, %g R"), radiusM, lane, inRadii);
+                TestEqual(label + TEXT(": sum 1"), line + point, 1.0, NPCTUNNEL_TOL);
+                if (lane != 1 && lane != 4)
+                {
+                    TestEqual(label + TEXT(": no tunnel, the #38 line"), line, SOLNpcLane::LaneLineFade(d, radiusM));
+                }
+                if (lane == 4)
+                {
+                    TestEqual(label + TEXT(": full tunnel, no line"), line, 0.0, NPCTUNNEL_TOL);
+                }
+            }
+        }
+    }
+
+    // The frame the last tunnel goes away: every lane back to #38
+    WriteTunnelTexels(TArray<FSOLNpcTunnelLaneData>(), texels);
+    for (int32 lane = 0; lane < width; ++lane)
+    {
+        const double fade = ReadTunnelFadeTexel(texels, lane);
+        TestEqual(FString::Printf(TEXT("after the zeros, lane %d: the #38 line at 400 R"), lane),
+            SOLNpcLane::LaneLineFadeWithTunnel(400.0 * 3.0e6, 3.0e6, fade), SOLNpcLane::LaneLineFade(400.0 * 3.0e6,
+            3.0e6));
     }
     return true;
 }

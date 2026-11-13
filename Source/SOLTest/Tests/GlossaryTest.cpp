@@ -1807,10 +1807,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryNoLaneEntryTest, "SOLTest.Glossary.
 
 //////////////////////////////////////////////////////////////////////////
 // Issue #38 (SDD 38 D19 and the 38a review): the NPC lanes get no glossary entry of their own; the Overlay Menu entry
-// lists them among the rows a profile shows, and its tokens resolve
+// lists them among the rows a profile shows, and its tokens resolve. Issue #49 (SDD 49 Q7, section 5): the lane
+// tunnels get no row either, and the Overlay Menu entry names the lanes "and their tunnels", still before darkening
 bool FSOLGlossaryNoLaneEntryTest::RunTest(const FString& /*parameters*/)
 {
-    for (const TCHAR* name : { TEXT("Lanes"), TEXT("NPC lanes"), TEXT("Lane lines"), TEXT("NPC lane lines") })
+    for (const TCHAR* name : { TEXT("Lanes"), TEXT("NPC lanes"), TEXT("Lane lines"), TEXT("NPC lane lines"),
+        TEXT("Tunnels"), TEXT("Lane tunnel"), TEXT("Lane tunnels"), TEXT("NPC lane tunnels") })
     {
         TestEqual(FString::Printf(TEXT("no '%s' entry"), name), GlossaryTestFindEntry(name),
             static_cast<int32>(INDEX_NONE));
@@ -1822,8 +1824,11 @@ bool FSOLGlossaryNoLaneEntryTest::RunTest(const FString& /*parameters*/)
     }
     FString out;
     SOLGlossary::FormatEntryText(SOLMenuText::GLOSSARY_ENTRIES[index].Description, SOLKeyBindings::DefaultKeys(), out);
-    TestTrue(FString::Printf(TEXT("'%s' lists NPC lanes"), *out),
-        out.Contains(TEXT("radar ships, NPC lanes and darkening"), ESearchCase::CaseSensitive));
+    const int32 lanesAt = out.Find(TEXT("radar ships, NPC lanes and their tunnels"), ESearchCase::CaseSensitive);
+    const int32 darkeningAt = out.Find(TEXT("darkening"), ESearchCase::CaseSensitive);
+    TestTrue(FString::Printf(TEXT("'%s' lists NPC lanes and their tunnels after radar ships"), *out),
+        lanesAt != INDEX_NONE);
+    TestTrue(FString::Printf(TEXT("'%s' still lists darkening after them"), *out), darkeningAt > lanesAt);
     TestFalse(FString::Printf(TEXT("'%s' has no placeholder left"), *out), out.Contains(TEXT("{")));
     return true;
 }

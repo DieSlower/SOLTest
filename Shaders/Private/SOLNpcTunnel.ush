@@ -1,0 +1,351 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// NPC lane guidance tunnel (SDD 49 sections 4.5-4.7): the HLSL mirror of Source/SOLTest/Npc/SOLNpcTunnelMath.cpp (the
+// accordion ring warp's inverse, the ring / gap / end-ring slots, the depth, near, detail, end and cap fades), plus
+// the vertex and pixel entry points the M_SOLNpcTunnel Custom nodes call. A change to one must change the other.
+// Per-lane data comes from the tunnel texture NpcTunnelTex (column = lane, SOLNpcTunnel::WriteTunnelTexels): row 0 =
+// (foot point relative to the viewpoint, ecliptic m; tunnel radius Rt), row 1 = (axis; tunnel fade F), row 2 = (up;
+// ring phase), row 3 = (end arc A, end arc B relative to the foot arc, 0, 0); right = axis x up. The tunables arrive as
+// material parameters set once from SOLConstants.h (SOL::NpcTunnelMaterialParams), so this file has no copy of them.
+// Placement, occlusion and the glow profile are the orbit lines' and lanes' (SOLOrbitLine.ush, SOLNpcLane.ush).
+//
+// Slot mesh (vertices at zero, one ISM instance per lane in range, custom data 0 = the lane): UV0 = (kind, slot) with
+// kind 0 ring, 1 end ring (slot = end 0 / 1), 2 dot, 3 chevron (slot = gap slot); rings: UV1 = (sample, side -1 / +1),
+// UV2 = (segments, 0); dots and chevrons: UV1 = quad corner (-1 / +1, -1 / +1), UV2 = (row or wall 0 out / 1 in, dot).
+//
+// Parameter vectors: frame = (viewpoint render location cm, max render distance cm); style0 = (ring width px, end ring
+// width px, dot size px, reference height px); style1 = (emissive, chevron alpha, glow pad px, dot radius scale);
+// shape = (chevron radius scale, chevron half width radii, chevron half length radii, end ring min alpha); layout0 =
+// (base spacing radii, rho, ring slots per side, gap slots per side); layout1 = (end fade spacings, depth fade start
+// radii, depth fade end radii, depth floor); layout2 = (near fade start, near fade full, radial full, radial none;
+// tunnel radii); layout3 = (detail fade start radii, detail fade end radii, dots per gap, dot rows); glow0 / glow1 as
+// SOLNpcLane.ush
+
+#pragma once
+
+#include "/Project/SOLTest/Private/SOLNpcLane.ush"
+
+#define SOLNT_KIND_RING 0
+#define SOLNT_KIND_END_RING 1
+#define SOLNT_KIND_DOT 2
+#define SOLNT_KIND_CHEVRON 3
+#define SOLNT_TWO_PI 6.28318530718
+
+// Colour codes the vertex stage hands the pixel stage
+#define SOLNT_CODE_RING 0.0
+#define SOLNT_CODE_END_RING 1.0
+#define SOLNT_CODE_DOT_OUT 2.0
+#define SOLNT_CODE_DOT_IN 3.0
+#define SOLNT_CODE_CHEVRON_OUT 4.0
+#define SOLNT_CODE_CHEVRON_IN 5.0
+
+// Descending smoothstep: 1 at and below low, 0 at and above high
+float SOLNT_SmoothFall(float value, float low, float high)
+{
+    const float t = saturate((value - low) / (high - low));
+    return 1.0 - t * t * (3.0 - 2.0 * t);
+}
+
+// RingSlotOffsetM / RingWarpInverse (float path): the axial offset x with W(x, h) = w
+float SOLNT_RingWarpInverse(float w, float h, float rt, float4 layout0)
+{
+    const float s0 = layout0.x * rt;
+    const float d0 = s0 / layout0.y;
+    const float x0 = sqrt(max(0.0, d0 * d0 - h * h));
+    const float magnitude = abs(w);
+    if (magnitude <= x0 / s0)
+    {
+        return w * s0;
+    }
+    const float c = x0 + sqrt(x0 * x0 + h * h);
+    const float t = layout0.y * (magnitude - x0 / s0);
+    const float u = (0.5 * c * (exp(2.0 * t) - 1.0) + x0) * exp(-t);
+    return w < 0.0 ? -u : u;
+}
+
+// RingSpacingM: max(S0, rho sqrt(x^2 + h^2))
+float SOLNT_RingSpacing(float x, float h, float rt, float4 layout0)
+{
+    return max(layout0.x * rt, layout0.y * sqrt(x * x + h * h));
+}
+
+// TunnelDepthFade: 1 inside the start, log-linear down to the floor at the end, the floor beyond
+float SOLNT_DepthFade(float d, float rt, float4 layout1)
+{
+    const float startM = layout1.y * rt;
+    if (d <= startM)
+    {
+        return 1.0;
+    }
+    if (d >= layout1.z * rt)
+    {
+        return layout1.w;
+    }
+    const float t = log(d / startM) / log(layout1.z / layout1.y);
+    return clamp(1.0 - (1.0 - layout1.w) * t, layout1.w, 1.0);
+}
+
+// TunnelNearFadeAt: 1 - radial weight(h) x (1 - near(x)), the near fade a smoothstep on |x|
+float SOLNT_NearFadeAt(float x, float h, float rt, float4 layout2)
+{
+    const float t = saturate((abs(x) - layout2.x * rt) / ((layout2.y - layout2.x) * rt));
+    const float nearFade = t * t * (3.0 - 2.0 * t);
+    const float weight = SOLNT_SmoothFall(abs(h), layout2.z * rt, layout2.w * rt);
+    return 1.0 - weight * (1.0 - nearFade);
+}
+
+// TunnelDetailFade: 1 inside the start, 0 from the end, log-linear between
+float SOLNT_DetailFade(float d, float rt, float4 layout3)
+{
+    const float startM = layout3.x * rt;
+    if (d <= startM)
+    {
+        return 1.0;
+    }
+    if (d >= layout3.y * rt)
+    {
+        return 0.0;
+    }
+    return saturate(1.0 - log(d / startM) / log(layout3.y / layout3.x));
+}
+
+// The alpha of a ring, dot or chevron at warp coordinate w (TunnelPlaceElement): cap, end, depth, near and, for
+// detail elements, the detail fade; 0 outside the end rings. outX = its axial offset from the foot point
+float SOLNT_ElementAlpha(float w, float capFade, bool bDetail, float h, float rt, float2 endArcs, float4 layout0,
+    float4 layout1, float4 layout2, float4 layout3, out float outX)
+{
+    const float x = SOLNT_RingWarpInverse(w, h, rt, layout0);
+    outX = x;
+    if (!(x > endArcs.x && x < endArcs.y))
+    {
+        return 0.0;
+    }
+    const float d = sqrt(x * x + h * h);
+    const float distanceToEnd = min(x - endArcs.x, endArcs.y - x);
+    float alpha = capFade * saturate(distanceToEnd / (layout1.x * SOLNT_RingSpacing(x, h, rt, layout0)))
+        * SOLNT_DepthFade(d, rt, layout1) * SOLNT_NearFadeAt(x, h, rt, layout2);
+    if (bDetail)
+    {
+        alpha *= SOLNT_DetailFade(d, rt, layout3);
+    }
+    return alpha;
+}
+
+// Ring slot k's warp coordinate (ahead: k + 1 - phase; behind: -((k - PER_SIDE) + phase))
+float SOLNT_RingSlotW(float slot, float phase, float perSide)
+{
+    return slot < perSide ? slot + 1.0 - phase : -((slot - perSide) + phase);
+}
+
+// Gap slot k's ring warp coordinate (ahead: k - phase; behind: -(k - PER_SIDE + 1) - phase)
+float SOLNT_GapSlotW(float slot, float phase, float perSide)
+{
+    return slot < perSide ? slot - phase : -(slot - perSide + 1.0) - phase;
+}
+
+// Places a viewpoint-relative point (ecliptic m) in render space (cm, Unreal axes), far-depth compressed
+float3 SOLNT_Place(float3 relM, float4 frame)
+{
+    return frame.xyz + SOLOL_EclipticToUnreal(SOLOL_PlaceLinePointCm(relM, frame.w));
+}
+
+// World units per pixel at a render point's view depth
+float SOLNT_WorldPerPixel(float3 placedUnreal, float3 cameraUnreal, float3 forward, float projectionScaleX,
+    float viewWidthPx)
+{
+    const float depth = max(abs(dot(placedUnreal - cameraUnreal, forward)), 1.0);
+    return 2.0 * depth / max(projectionScaleX * viewWidthPx, 1.0);
+}
+
+// Vertex stage: returns the slot vertex's render position (cm, Unreal axes; the mesh vertices sit at zero so this is
+// the world position offset), or the origin when the element is hidden (nothing is rasterised).
+// outInterp0 = (signed px across a ring, or quad corner x; quad corner y; alpha; colour code),
+// outInterp1 = (the element point relative to the viewpoint, ecliptic m; 0) for the pixel stage's occlusion
+float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, float4 t2, float4 t3,
+    float3 cameraUnreal, float4 frame, float4 style0, float4 style1, float4 shape, float4 layout0, float4 layout1,
+    float4 layout2, float4 layout3, float4 glow0, float3 right, float3 up, float3 forward, float projectionScaleX,
+    float2 viewSize, out float4 outInterp0, out float4 outInterp1)
+{
+    outInterp0 = float4(0.0, 0.0, 0.0, 0.0);
+    outInterp1 = float4(0.0, 0.0, 0.0, 0.0);
+    const float rt = t0.w;
+    const float fade = t1.w;
+    if (!(fade > 0.0) || !(rt > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // The lane's tunnel frame: foot point, basis, phase, end arcs, the camera's distance from the axis
+    const float3 foot = t0.xyz;
+    const float3 axis = t1.xyz;
+    const float3 tubeUp = t2.xyz;
+    const float3 tubeRight = cross(axis, tubeUp);
+    const float phase = t2.w;
+    const float2 endArcs = t3.xy;
+    const float h = length(foot);
+    const int kind = (int)(uv0.x + 0.5);
+    const float slot = floor(uv0.y + 0.5);
+    const float scale = SOLNL_HeightScale(viewSize.y, style0.w);
+
+    if (kind == SOLNT_KIND_RING || kind == SOLNT_KIND_END_RING)
+    {
+        // The ring's axial offset and alpha: a ring slot by the warp, an end ring at its arc (alpha floor, near fade)
+        float x = 0.0;
+        float alpha = 0.0;
+        float widthPx = style0.x * scale;
+        float code = SOLNT_CODE_RING;
+        if (kind == SOLNT_KIND_RING)
+        {
+            const float w = SOLNT_RingSlotW(slot, phase, layout0.z);
+            alpha = SOLNT_ElementAlpha(w, saturate(layout0.z - abs(w)), false, h, rt, endArcs, layout0, layout1,
+                layout2, layout3, x);
+        }
+        else if (endArcs.x < endArcs.y)
+        {
+            x = slot < 0.5 ? endArcs.x : endArcs.y;
+            const float d = sqrt(x * x + h * h);
+            alpha = max(SOLNT_DepthFade(d, rt, layout1), shape.w) * SOLNT_NearFadeAt(x, h, rt, layout2);
+            widthPx = style0.y * scale;
+            code = SOLNT_CODE_END_RING;
+        }
+        if (!(alpha > 0.0))
+        {
+            return float3(0.0, 0.0, 0.0);
+        }
+
+        // Sample k of the circle clockwise from 12 o'clock, its tangent, then the ribbon across the view ray
+        float s;
+        float c;
+        sincos(SOLNT_TWO_PI * uv1.x / max(uv2.x, 1.0), s, c);
+        const float3 pointM = foot + axis * x + (tubeUp * c + tubeRight * s) * rt;
+        const float3 placed = SOLNT_Place(pointM, frame);
+        const float3 side = SOLOL_RibbonSideDirection(placed - cameraUnreal,
+            SOLOL_EclipticToUnreal(tubeRight * c - tubeUp * s));
+        const float signedPx = uv1.y * SOLNL_RibbonHalfExtentPx(widthPx, scale, style1.z, glow0.x);
+        outInterp0 = float4(signedPx, 0.0, alpha * fade, code);
+        outInterp1 = float4(pointM, 0.0);
+        return placed + side * (signedPx * SOLNT_WorldPerPixel(placed, cameraUnreal, forward, projectionScaleX,
+            viewSize.x));
+    }
+
+    // Dots and chevrons: the gap slot's element at its warp coordinate (the detail and detail-cap fades)
+    const bool bDot = kind == SOLNT_KIND_DOT;
+    const float offset = bDot ? (uv2.y + 0.5) / max(layout3.z, 1.0) : 0.5;
+    const float w = SOLNT_GapSlotW(slot, phase, layout0.w) + offset;
+    float x;
+    float alpha = SOLNT_ElementAlpha(w, saturate(layout0.w - 1.0 - abs(w)), true, h, rt, endArcs, layout0, layout1,
+        layout2, layout3, x);
+    if (!(alpha > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    if (bDot)
+    {
+        // A camera-facing round quad on the dot row (outside the rings), its size in pixels
+        const float clockRad = SOLNT_TWO_PI * (uv2.x + 0.5) / max(layout3.w, 1.0);
+        float s;
+        float c;
+        sincos(clockRad, s, c);
+        const float3 pointM = foot + axis * x + (tubeUp * c + tubeRight * s) * (style1.w * rt);
+        const float3 placed = SOLNT_Place(pointM, frame);
+        const float halfPx = SOLNL_RibbonHalfExtentPx(style0.z * scale, scale, style1.z, glow0.x);
+        const bool bOutbound = uv2.x < 0.5 * layout3.w;
+        outInterp0 = float4(uv1.x, uv1.y, alpha * fade, bOutbound ? SOLNT_CODE_DOT_OUT : SOLNT_CODE_DOT_IN);
+        outInterp1 = float4(pointM, 0.0);
+        return placed + (right * uv1.x + up * uv1.y) * (halfPx * SOLNT_WorldPerPixel(placed, cameraUnreal, forward,
+            projectionScaleX, viewSize.x));
+    }
+
+    // A chevron: flat on the wall at 3 o'clock (outbound, pointing toward B) or 9 o'clock (inbound, toward A),
+    // world-sized so it foreshortens; corner y runs along its pointing direction, x around the tube
+    const bool bOutboundWall = uv2.x < 0.5;
+    const float3 wall = bOutboundWall ? tubeRight : -tubeRight;
+    const float3 around = bOutboundWall ? -tubeUp : tubeUp;
+    const float3 along = bOutboundWall ? axis : -axis;
+    const float3 pointM = foot + axis * x + wall * (shape.x * rt) + around * (uv1.x * shape.y * rt)
+        + along * (uv1.y * shape.z * rt);
+    outInterp0 = float4(uv1.x, uv1.y, alpha * fade * style1.y,
+        bOutboundWall ? SOLNT_CODE_CHEVRON_OUT : SOLNT_CODE_CHEVRON_IN);
+    outInterp1 = float4(pointM, 0.0);
+    return SOLNT_Place(pointM, frame);
+}
+
+// The chevron's coverage in its quad (corner coordinates in [-1, 1], pointing toward +y): an arrowhead stroke from
+// the two rear corners to the tip, anti-aliased over a pixel
+float SOLNT_ChevronCoverage(float2 corner)
+{
+    const float2 tip = float2(0.0, 1.0);
+    const float2 toRear = normalize(float2(1.0, -2.0));
+    const float2 p = float2(abs(corner.x), corner.y) - tip;
+    const float along = clamp(dot(p, toRear), 0.0, sqrt(5.0));
+    const float distance = length(p - toRear * along);
+    const float halfStroke = 0.2;
+    const float feather = max(fwidth(distance), 1e-4);
+    return saturate((halfStroke - distance) / feather + 0.5);
+}
+
+// Pixel stage: returns the additive emissive colour = colour x alpha x emissive x profile, 0 where a true-scale
+// occluder sphere or near scene depth hides the element's point. orbitStyle2 = the orbit lines' (highlight min alpha,
+// feather px, depth bias, scene-depth trust limit cm); occluders[i] = (viewpoint-relative centre m; radius m)
+float3 SOLNT_Pixel(float4 interp0, float4 interp1, float3 cameraUnreal, float4 frame, float4 style0, float4 style1,
+    float4 glow0, float4 glow1, float glowScale, float3 ringColor, float3 dotOutColor, float3 dotInColor,
+    float3 chevronOutColor, float3 chevronInColor, float4 orbitStyle2, float viewportHeightPx, float pixelDepthCm,
+    float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS])
+{
+    const float code = interp0.w;
+    const float alpha = interp0.z;
+    const float chevronCoverage = SOLNT_ChevronCoverage(interp0.xy);
+    if (!(alpha > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // The shape: the glow profile across a ring or round a dot, the arrowhead of a chevron
+    const float scale = SOLNL_HeightScale(viewportHeightPx, style0.w);
+    float profile;
+    float3 color;
+    if (code < 1.5)
+    {
+        const float widthPx = (code < 0.5 ? style0.x : style0.y) * scale;
+        profile = SOLNL_LineProfile(interp0.x, widthPx, glowScale, scale, glow0, glow1);
+        color = ringColor;
+    }
+    else if (code < 3.5)
+    {
+        const float dotPx = style0.z * scale;
+        const float halfPx = SOLNL_RibbonHalfExtentPx(dotPx, scale, style1.z, glow0.x);
+        profile = SOLNL_LineProfile(length(interp0.xy) * halfPx, dotPx, glowScale, scale, glow0, glow1);
+        color = code < 2.5 ? dotOutColor : dotInColor;
+    }
+    else
+    {
+        profile = chevronCoverage;
+        color = code < 4.5 ? chevronOutColor : chevronInColor;
+    }
+    if (!(profile > 0.0))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+
+    // True-scale analytic occlusion by the shared spheres, then scene depth only inside the 1:1 zone
+    const float3 cameraM = SOLOL_EclipticToUnreal(cameraUnreal - frame.xyz) / SOLOL_CM_PER_M;
+    const float3 pointM = interp1.xyz;
+    for (int index = 0; index < SOLOL_MAX_OCCLUDERS; ++index)
+    {
+        if (SOLOL_IsPointOccludedBySphere(cameraM, pointM, occluders[index].xyz, occluders[index].w))
+        {
+            return float3(0.0, 0.0, 0.0);
+        }
+    }
+    const float trueDistanceCm = length(pointM) * SOLOL_CM_PER_M;
+    const float placedCm = max(SOLOL_PlacedDistanceCm(trueDistanceCm, frame.w), 1.0);
+    if (SOLOL_IsHiddenBySceneDepth(pixelDepthCm * (max(trueDistanceCm, 1.0) / placedCm), sceneDepthCm, orbitStyle2.w,
+        orbitStyle2.z))
+    {
+        return float3(0.0, 0.0, 0.0);
+    }
+    return color * (alpha * style1.x * profile);
+}

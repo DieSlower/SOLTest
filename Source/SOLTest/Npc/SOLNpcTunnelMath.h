@@ -53,6 +53,15 @@ struct FSOLNpcTunnelLaneData
     double EndArcBM = 0.0;                      // End ring B's arc minus the foot arc
 };
 
+// The viewpoint's foot on a lane's axis line (SDD 49 sections 4.3 and 4.4), not clamped to the segment
+struct FSOLNpcTunnelFoot
+{
+    double ArcM = 0.0;                              // Arc from node A (below 0 before A, above L past B)
+    FVector3d PointRelM = FVector3d::ZeroVector;    // Foot point relative to the viewpoint (ecliptic m)
+    double RadialM = 0.0;                           // Viewpoint distance from the axis line (h = |PointRelM|)
+    bool bValid = false;                            // False (and zeros) for A == B or a non-finite input
+};
+
 // Pure math of the NPC lane guidance tunnel (SDD 49 sections 4.2-4.9, contract section 6 cases 1-16): the trigger
 // fade, radius, basis and keep-right rows, the nearest lane point, the continuous "accordion" ring spacing and warp,
 // the ring phase, the fades, the ring / dot / chevron slots, the end rings, ring samples, the label lanes and the
@@ -215,4 +224,73 @@ namespace SOLNpcTunnel
 
     // Returns whether the tunnels show: the lanes shown, sol.NpcTunnel on and the jump map closed (Q6)
     SOLTEST_API bool AreTunnelsShown(bool bLanesShown, bool bCvarOn, bool bMapOpen);
+
+    // Returns the viewpoint's (the origin's) foot on the axis line of A-B (relative to the viewpoint): its arc from A,
+    // not clamped, the foot point and its distance h; invalid (zeros) for A == B or a non-finite input
+    SOLTEST_API FSOLNpcTunnelFoot LaneFoot(const FVector3d& aRelM, const FVector3d& bRelM);
+
+    // Returns an end ring's alpha max(TunnelDepthFade(sqrt(x^2 + h^2), Rt), NPC_TUNNEL_END_RING_MIN_ALPHA) x
+    // TunnelNearFadeAt(x, h, Rt) (no cap, end or detail fade; the tunnel fade is the caller's); 0 for a NaN input or a
+    // bad tunnel radius
+    SOLTEST_API double EndRingAlpha(double axialOffsetM, double radialM, double tunnelRadiusM);
+
+    // Returns end ring A (end 0) or B (end 1) at its arc with its warp coordinate and EndRingAlpha: true when the end
+    // arcs are in order and the alpha is above 0 (beyond the ring cap too); false for a bad index or input
+    SOLTEST_API bool EndRingSlot(int32 end, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outRing);
+
+    // Returns the side of the foot point a label sits on: with no previous sign (0) the sign of the dot of the camera
+    // forward and the axis (+1 at 0 and for NaN); a held sign flips only once the dot passes
+    // NPC_TUNNEL_LABEL_FLIP_HYSTERESIS the other way (NaN keeps it); another previous value reads by its sign
+    SOLTEST_API int32 LabelAheadSign(double forwardDotAxis, int32 previousSign);
+
+    // Returns a label anchor relative to the viewpoint: foot + sign x NPC_TUNNEL_LABEL_AHEAD_RADII x Rt x Axis + Rt x
+    // WallDirection(clock) (sign 0 reads as +1); the foot point for an invalid basis or a bad tunnel radius
+    SOLTEST_API FVector3d LaneLabelAnchorRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+        double tunnelRadiusM, int32 aheadSign, double clockDeg);
+
+    // Writes a dot row's straight segment relative to the viewpoint: foot + x Axis + NPC_TUNNEL_DOT_RADIUS_SCALE x Rt x
+    // WallDirection(DotRowAngleDeg(row)) for x from max(end arc A, -X) to min(end arc B, X), X where the dots end at
+    // NPC_TUNNEL_DETAIL_FADE_END_RADII x Rt of true distance; false for an empty range, a bad row, basis or radius
+    SOLTEST_API bool TunnelDotRowSegmentRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+        double tunnelRadiusM, double endArcAM, double endArcBM, int32 row, FVector3d& outStartM, FVector3d& outEndM);
+
+    // Fills a lane's renderer feed (phase 0, left to the caller) and its foot; returns whether the lane can have a
+    // tunnel (both bodies resolved, a valid basis, drawable end rings), whatever its fade (0 when it cannot)
+    SOLTEST_API bool BuildTunnelLaneData(int32 laneIndex, const FSOLNpcLaneEntry& lane, const FVector3d& viewpointM,
+        double bodyRadiusAM, double bodyRadiusBM, FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot);
+
+    // Returns the next ring phase: InitialRingPhase(foot arc) for a lane entering range, else the phase advanced by
+    // the foot arc's change (AdvanceRingPhase; a NaN change keeps it)
+    SOLTEST_API double StepRingPhase(bool bWasInRange, double phase, double previousFootArcM, double footArcM,
+        double radialM, double tunnelRadiusM);
+
+    // Returns whether the tunnels show: the verification override's choice under sol.NpcTunnel and the map when it is
+    // active, else AreTunnelsShown
+    SOLTEST_API bool ResolveTunnelsShown(bool bOverride, bool bOverrideShown, bool bLanesShown, bool bCvarOn,
+        bool bMapOpen);
+
+    // Returns the fade the renderer uses: 0 while hidden, 1 when forced (the all-lanes budget case), else the fade
+    // clamped to [0, 1] (NaN as 0)
+    SOLTEST_API double EffectiveTunnelFade(double fade, bool bShown, bool bForceAllLanes);
+
+    // Returns whether the tunnel component draws: shown and at least one fade above 0
+    SOLTEST_API bool ShouldDrawTunnels(bool bShown, TConstArrayView<double> fades);
+
+    // Returns whether the lane overlay counts as drawn for the shared occluders: lane lines or tunnels drawn
+    SOLTEST_API bool IsLaneOverlayDrawn(bool bLaneLinesDrawn, bool bTunnelsDrawn);
+
+    // Returns whether the tunnel texture uploads this frame: a tunnel shows now or showed last frame (the zeros once)
+    SOLTEST_API bool ShouldUploadTunnelTexels(bool bShownNow, bool bShownLastFrame);
+
+    // Returns ring slot k's segment count (level of detail by slot, behind slots like the ahead slot of the same
+    // index): NPC_TUNNEL_RING_SEGMENTS_NEAR / MID / FAR; 0 out of range
+    SOLTEST_API int32 RingSegmentsForSlot(int32 slot);
+
+    // Returns the slot mesh's vertex count: ring ribbons ((N + 1) samples x 2 sides), two end rings at the near count,
+    // a quad per dot and per chevron
+    SOLTEST_API int32 TunnelSlotMeshVertexCount();
+
+    // Returns a lane's tunnel fade where the lane and point materials read it (row 1 .w of its column); 0 out of range
+    // or for a buffer shorter than two rows
+    SOLTEST_API double ReadTunnelFadeTexel(TConstArrayView<FVector4f> texels, int32 lane);
 }

@@ -272,6 +272,7 @@ float3 SOLNL_Vertex(float2 uv0, float lineIndex, float4 groupA, float4 groupB, f
 }
 
 // Pixel stage: returns the line's additive emissive colour = colour x brightness x emissive x profile x dashes x fade,
+// the close-up fade times 1 - the lane's tunnel fade (SDD 49 Q5, LaneLineFadeWithTunnel; row 1 .w of NpcTunnelTex),
 // 0 where a true-scale occluder sphere or near scene depth hides the lane point under the pixel. The lane parameter
 // and the camera distance are computed analytically from the view ray (rayUnreal, from the camera), not interpolated.
 // orbitStyle2 = the orbit lines' (highlight min alpha, feather px, depth bias, scene-depth trust limit cm);
@@ -279,7 +280,8 @@ float3 SOLNL_Vertex(float2 uv0, float lineIndex, float4 groupA, float4 groupB, f
 float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB, float3 rayUnreal,
     float3 cameraUnreal, float4 frame, float4 params0, float4 style0, float4 style1, float4 style2, float4 glow0,
     float4 glow1, float glowScale, float3 outboundColor, float3 inboundColor, float4 dash, float4 orbitStyle2,
-    float viewportHeightPx, float pixelDepthCm, float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS])
+    float viewportHeightPx, float pixelDepthCm, float sceneDepthCm, float4 occluders[SOLOL_MAX_OCCLUDERS],
+    float tunnelFade)
 {
     // The lane parameter under the pixel and its footprint first: the derivatives need every pixel of the quad
     const float3 cameraM = SOLOL_EclipticToUnreal(cameraUnreal - frame.xyz) / SOLOL_CM_PER_M;
@@ -301,7 +303,7 @@ float3 SOLNL_Pixel(float signedPx, float lineIndex, float4 groupA, float4 groupB
         glow1);
     const float3 pointCamM = aCamM + (bCamM - aCamM) * laneParam;
     const float distanceM = length(pointCamM);
-    const float fade = SOLNL_LineFade(distanceM, groupA.w, params0.z, params0.w);
+    const float fade = SOLNL_LineFade(distanceM, groupA.w, params0.z, params0.w) * (1.0 - saturate(tunnelFade));
     if (profile <= 0.0 || fade <= 0.0)
     {
         return float3(0.0, 0.0, 0.0);

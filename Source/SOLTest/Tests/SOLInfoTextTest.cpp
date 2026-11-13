@@ -412,7 +412,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextOverlayMenuLanesTest, "SOLTest.Info
 
 //////////////////////////////////////////////////////////////////////////
 // Issue #38 (SDD 38 section 7, D19): exactly one Controls row is the Overlay Menu's, and it lists the NPC lanes among
-// the row kinds, after ships on radar and before darkening, with no placeholder left
+// the row kinds, after ships on radar and before darkening, with no placeholder left. Since issue #49 (SDD 49 section
+// 5, case 22) the row reads "NPC lanes and tunnels"
 bool FSOLInfoTextOverlayMenuLanesTest::RunTest(const FString& /*parameters*/)
 {
     int32 found = 0;
@@ -424,9 +425,9 @@ bool FSOLInfoTextOverlayMenuLanesTest::RunTest(const FString& /*parameters*/)
         }
         ++found;
         const FString action = row.Action;
-        TestTrue(TEXT("the row names the row kinds with NPC lanes"), action.Contains(
-            TEXT("(icons per kind, orbits per kind, ships on radar, NPC lanes, darkening); also in Settings"),
-            ESearchCase::CaseSensitive));
+        TestTrue(TEXT("the row names the row kinds with NPC lanes and tunnels"), action.Contains(
+            TEXT("(icons per kind, orbits per kind, ships on radar, NPC lanes and tunnels, darkening); also in "
+                "Settings"), ESearchCase::CaseSensitive));
         const int32 radar = action.Find(TEXT("ships on radar"), ESearchCase::CaseSensitive);
         const int32 lanes = action.Find(TEXT("NPC lanes"), ESearchCase::CaseSensitive);
         const int32 darkening = action.Find(TEXT("darkening"), ESearchCase::CaseSensitive);
@@ -526,6 +527,60 @@ bool FSOLInfoTextDemoLaneLinesTest::RunTest(const FString& /*parameters*/)
         && prose[found[0]].Contains(TEXT("Demo"), ESearchCase::CaseSensitive));
     TestFalse(TEXT("the old full stop after points is gone"),
         prose[found[0]].Contains(TEXT("are drawn as points. "), ESearchCase::CaseSensitive));
+    return true;
+}
+
+namespace
+{
+    // The Info overlay paragraph's lane tunnel sentences of SDD 49 section 5 (issue #49 Part 49b)
+    constexpr const TCHAR* INFOTEXT_TUNNEL_SENTENCE =
+        TEXT("Close to a lane (the tunnel fades in between 100 and 50 lane radii away) its dashed lines fade "
+            "out and become a tunnel of cyan rings that you can fly through, and its ships show as points again. The "
+            "lane's rule is keep right: the green dots and chevrons on the right wall mark the way out from the inner "
+            "body, the red ones on the left the way back. The rings near you stay fixed to the lane and the far ones "
+            "also slide when you move toward or away from its axis, and everything moves with the lane under time "
+            "warp. A label on each tunnel's wall names the lane, the distance to each end and how many ships use it, "
+            "or only the lane and the nearest end where space is short (the nearest tunnel's label is the "
+            "brightest). Tunnels follow the Lanes row and the HUD glow and are not shown on the map.");
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextTunnelSentenceTest, "SOLTest.InfoText.TunnelSentence",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #49 Part 49b (SDD 49 section 5, case 22), test-first: the overlay paragraph carries the lane tunnel sentences
+// once, after the #38 lane sentences and before the space dust, before and after a rebind of the Overlay Menu key, with
+// no placeholder left; the text states keep right as the lane's rule and names no "your side"
+bool FSOLInfoTextTunnelSentenceTest::RunTest(const FString& /*parameters*/)
+{
+    using SOLKeyBindings::EBinding;
+    TArray<FString> keys = SOLKeyBindings::DefaultKeys();
+    const TArray<FString> prose = SOLInfoText::BuildProse(keys);
+    const TArray<int32> found = InfoTextParagraphsWith(prose, INFOTEXT_TUNNEL_SENTENCE);
+    if (!TestEqual(TEXT("exactly one paragraph has the tunnel sentences"), found.Num(), 1))
+    {
+        return false;
+    }
+    int32 orbitCount = 0;
+    TestEqual(TEXT("in the overlay paragraph (the orbit-lines one)"), found[0],
+        InfoTextFindOrbitLinesParagraph(prose, orbitCount));
+    const FString& paragraph = prose[found[0]];
+    const FString lanes = SOLKeyBindings::FormatKeyText(INFOTEXT_LANES_SENTENCE, keys);
+    const int32 lanesAt = paragraph.Find(lanes, ESearchCase::CaseSensitive);
+    const int32 tunnelAt = paragraph.Find(INFOTEXT_TUNNEL_SENTENCE, ESearchCase::CaseSensitive);
+    const int32 dustAt = paragraph.Find(TEXT("Space dust"), ESearchCase::CaseSensitive);
+    TestTrue(TEXT("after the #38 lane sentences"), lanesAt != INDEX_NONE && tunnelAt > lanesAt);
+    TestTrue(TEXT("before the space dust"), dustAt != INDEX_NONE && dustAt > tunnelAt);
+    TestEqual(TEXT("the tunnel text appears once"), paragraph.Find(INFOTEXT_TUNNEL_SENTENCE,
+        ESearchCase::CaseSensitive, ESearchDir::FromEnd), tunnelAt);
+    TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
+    TestFalse(TEXT("no 'your side'"), FString(INFOTEXT_TUNNEL_SENTENCE).Contains(TEXT("your side")));
+
+    // A rebound Overlay Menu key leaves the tunnel text in place
+    keys[static_cast<int32>(EBinding::OverlayMenu)] = TEXT("F9");
+    TestEqual(TEXT("rebound: exactly one paragraph has the tunnel sentences"),
+        InfoTextParagraphsWith(SOLInfoText::BuildProse(keys), INFOTEXT_TUNNEL_SENTENCE).Num(), 1);
     return true;
 }
 

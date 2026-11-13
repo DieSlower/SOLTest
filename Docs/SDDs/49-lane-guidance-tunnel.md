@@ -80,6 +80,15 @@ it.
   fade (section 4.5) acts fully while the camera is within `NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII` (1.5) tunnel radii
   of the axis and not at all from `NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII` (3) (smoothstep between), so seen from
   outside the tube the ring nearest the foot point stays instead of blinking out as the foot point passes it.
+- **D18 (user, 2026-11-12, after the 49b smoke): labels that fit from inside a tube.** The label anchor moves to
+  2.5 tunnel radii ahead; the labels avoid the HUD panels (key-hint line, cards and panels, radar); when the three-line
+  box still fits at neither candidate, a compact one-line label "A - B  <nearest end distance>" is tried at the same
+  candidates, dimmed by the same side-tunnel rule (section 4.9).
+- **D19 (user, 2026-11-12, after the 49b review): two smoke views draw no label, by design.** T4 (camera on the tunnel
+  axis looking straight at the 12 o'clock wall: both anchors lie along the axis, off screen) and T5 (start above
+  Earth: the label anchors of the tunnels ending at Earth lie past the nearer end ring, behind Earth, so occluded). The
+  smoke asserts 0 labels drawn at T4 and T5. Options considered and deferred: clamping the anchor short of the nearer
+  end ring (a temporary clamp still drew no label at T5), a label pinned to the screen edge.
 - **D16 (user, 2026-11-11): traffic outside the tunnel.** Some ships may travel just **outside** the tunnel, along it
   (#50). The display needs nothing special for them: it only draws rings, dots, chevrons, end rings and labels, and the
   ships keep their normal look and HUD markings wherever they are.
@@ -351,7 +360,8 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
 - **Near-plane rule.** Rings close to the camera plane are already faded (near fade, section 4.5), but when the
   player looks sideways inside the tube some ring samples lie behind the camera. A segment with both ends behind the
   near plane is collapsed; a vertex just behind it is clamped to the plane along its segment (the SDD 38 V4b
-  regression view is repeated for the tunnel, section 8).
+  regression view is repeated for the tunnel, section 8). *As built: the clamp was replaced by hardware clipping, see
+  12b.*
 - **Pixel shader.** HUD glow profile across the ribbon (`SOLNL_LineProfile`) or the dot / chevron shape with AA, times
   the colour, the interpolated alpha, the emissive scale and `(1 - occluded)`: the analytic sphere test against the
   shared `MPC_SOLOrbitLine` occluders plus the 1:1-zone scene-depth rule, as the lane lines. Additive, unlit,
@@ -393,7 +403,8 @@ sequenceDiagram
   basis, one phase advance (`fmod` in double), 4 texels; one label selection (at most `NPC_TUNNEL_LABEL_MAX_COUNT`);
   one bus publish of plain numbers (no strings). No
   allocation (arrays sized once), no tick, no UObject per frame. Budget with the HUD's label work: **<= 0.02 ms** at
-  1080p (D14), measured with a new `STAT_SOL_NpcTunnel` and the HUD's label stat.
+  1080p (D14), measured with a new `STAT_SOL_NpcTunnel` and the HUD's label stat `STAT_SOL_HudLaneLabels` (stat group
+  `SOLHud`, declared in `UI/SOLFlightHud.cpp`).
 - **GPU:** vertex work scales with the lanes in range (about 9,000 vertices each, most of them early-out hidden), plus
   one texel load per lane-ship point vertex and per lane-line pixel for the Q5 fade;
   pixel work with the ring area: inside one tube about 0.3-0.5 Mpx of a cheap shader at 1080p (near rings are large,
@@ -423,11 +434,13 @@ sequenceDiagram
   - `Earth 0.42 AU   Mars 1.08 AU`: the straight-line distance from the ship to each end ring (Q4), with
     `SOLHudFormat`'s distance format.
   - `62,400 ships` (the lane's population count; `0 ships` for an empty lane).
-  The bus carries numbers and body indices only; the HUD formats them and rebuilds a label's text only when one of its
-  displayed (rounded) values changes, so no string is built per frame. The fixed words and separators ("ship",
+  The bus carries numbers and body indices only; the HUD formats them and rebuilds a label's text only when its key
+  changes (`MakeLaneLabelKey`: the lane, the ship count and each distance's `LaneLabelDistanceKey`, the number exactly as
+  `SOLHudFormat` prints it with its unit, so two distances share a key exactly when they read the same), so no string
+  is built per frame. The fixed words and separators ("ship",
   "ships", " - ", the spacing, the thousands separator) are `SOLMenuText::LANE_LABEL_*`.
 - **Where:** each label is anchored on its own tunnel's wall at **12 o'clock** (the gap between the dot rows at 337.5
-  and 22.5 degrees), at `NPC_TUNNEL_LABEL_AHEAD_RADII` (4) tunnel radii ahead of the foot point along the axis in the
+  and 22.5 degrees), at `NPC_TUNNEL_LABEL_AHEAD_RADII` (2.5; was 4, D18) tunnel radii ahead of the foot point along the axis in the
   direction the camera looks (sign of the camera forward on `a`); candidates 12 o'clock, then 6 o'clock (the gap
   between 157.5 and 202.5 degrees). The box is centred on its anchor horizontally and sits **outward from the tube**:
   its bottom edge on a 12 o'clock anchor, its top edge on a 6 o'clock one (review amendment, 2026-11-12).
@@ -437,13 +450,32 @@ sequenceDiagram
   strongest first**: a label takes the first of its candidates whose box is on screen, whose anchor is in front of the
   camera and not behind a planet (the same sphere test, CPU side), that is clear of **every** projected dot row of
   **every** shown tunnel by `NPC_TUNNEL_LABEL_DOT_MARGIN_PX` (6 px, scaled) plus the dot radius
-  (`LaneLabelClearOfDots`), and that does not overlap any label already placed, grown by `NPC_TUNNEL_LABEL_GAP_PX`
-  (6 px, scaled). A label with no such candidate is hidden that frame (it eases out). So the strongest label always has
+  (`LaneLabelClearOfDots`), that does not overlap any **HUD panel** grown by `NPC_TUNNEL_LABEL_GAP_PX` (D18: every
+  holo panel and card, the key-hint line and the radar with its stems and range label, recorded by the HUD as it
+  draws them; the labels draw before the panels, so they avoid the previous frame's set, at most
+  `NPC_TUNNEL_LABEL_MAX_AVOID_BOXES` 32), and that does not overlap any label already placed, grown by
+  `NPC_TUNNEL_LABEL_GAP_PX` (6 px, scaled). **Compact fallback (D18):** when neither candidate fits the full
+  three-line box, the label tries the same two candidates with a one-line box, "A - B  <nearest end distance>"
+  (`FormatLaneLabelCompactLine`, the nearer of the two end-ring distances, `SOLMenuText::LANE_LABEL_COMPACT_SEPARATOR`;
+  its own text key `MakeLaneLabelCompactKey`), at the same alpha (a side tunnel's compact label is dimmed by the same
+  `NPC_TUNNEL_LABEL_SIDE_ALPHA` rule). A label with no such candidate is hidden that frame (it eases out). So the strongest label always has
   first choice, labels never cross each other or the guide dots, and a crowded view drops the weakest labels first.
   `PlaceLaneLabels`, pure, in `UI/SOLLaneTunnelLabel`; at most 4 labels against at most 64 row segments (8 lanes x 8
   rows), in fixed arrays.
 - The labels follow the HUD: hidden while a menu shows or the HUD is hidden (Q6), sized by the HUD scale, glowing
   with the HUD glow.
+- **Text cost (49b review).** The HUD caches per lane the two body names (refetched only when `BodyA` / `BodyB`
+  change), line 1 and its width (rebuilt when the names change), line 3 and its width (when the ship count changes)
+  and line 2 and its width (only when its quantised distance key changes). The compact line is built and measured only
+  when the full form found no usable spot, or the label's previous form was compact.
+- **Hysteresis (49b review).** Each label keeps last frame's candidate (12 or 6 o'clock) and form (full or compact)
+  while that spot is still usable: `FSOLLaneLabelInput` has the new fields `PreviousCandidate` and `bPreviousCompact`,
+  which `PlaceLaneLabels` tries first, else the normal order full@12, full@6, compact@12, compact@6.
+- **Avoid boxes (49b review).** A HUD panel's box is recorded only when it is visible (`DrawCard`: it looks visible,
+  `AddHoloPanel`: its colour alpha is above 0). The boxes are last frame's (one frame stale, tech debt).
+- **Hiding.** The labels hide (drawn count 0, alphas back to 0 so they ease back in) on every frame the flight HUD
+  does not draw: menu, warp, HUD hidden. `RowCount` is clamped to `NPC_TUNNEL_LABEL_MAX_ROWS` by the bus and by the HUD
+  loop.
 
 ### 4.10 Module edges (for `ARCHITECTURE.md`)
 
@@ -478,10 +510,11 @@ the map shows the #38 lines exactly as before, Q6).
 
 ## 5. Player-facing text and docs
 
-- **Info, overlay paragraph** (after the #38 lane sentence): "Close to a lane (within about 50-100 lane widths) its
+- **Info, overlay paragraph** (after the #38 lane sentence): "Close to a lane (the tunnel fades in between 100 and 50 lane radii away) its
   dashed lines fade out and become a tunnel of cyan rings that you can fly through, and its ships show as points again.
   The lane's rule is keep right: the green dots and chevrons on the right wall mark the way out from the inner body,
-  the red ones on the left the way back. The rings move only as you move along the lane, and a label on each tunnel's
+  the red ones on the left the way back. The rings near you stay fixed to the lane and the far ones also slide when you move toward or away from its axis,
+  and everything moves with the lane under time warp. A label on each tunnel's
   wall names the lane, the distance to each end and how many ships use it (the nearest tunnel's label is the
   brightest). Tunnels follow the Lanes row and the HUD glow and are not shown on the map." (Final wording checked
   against the constants in 49c; it states keep right as the lane's rule, not as what every ship does, which stays true
@@ -520,7 +553,7 @@ right-handed, +Z north.
    `NPC_TUNNEL_END_RING_MIN_ALPHA` 0.5; `NPC_TUNNEL_DOT_ROWS` 8; `NPC_TUNNEL_DOTS_PER_GAP` 2;
    `NPC_TUNNEL_DOT_RADIUS_SCALE` 1.1; `NPC_TUNNEL_UP_FALLBACK_DEG` 1; `NPC_TUNNEL_LABEL_MAX_COUNT` 4;
    `NPC_TUNNEL_LABEL_SIDE_ALPHA` 0.55 (in (0, 1)); `NPC_TUNNEL_LABEL_MIN_ALPHA` 0.05; `NPC_TUNNEL_LABEL_GAP_PX` 6;
-   `NPC_TUNNEL_LABEL_AHEAD_RADII` 4; ring colour `== SOL::SolidMenu::CYAN_COLOR` (#28D2F0); dot colours #5C8F6C and
+   `NPC_TUNNEL_LABEL_AHEAD_RADII` 2.5 (D18); ring colour `== SOL::SolidMenu::CYAN_COLOR` (#28D2F0); dot colours #5C8F6C and
    #9A5656, chevron colours #84AB90 and #B38080; outbound and inbound colours differ (green channel above red for the
    outbound pair, red above green for the inbound pair).
 2. **`double TunnelFade(double distanceM, double laneRadiusM)`**: 0 at and beyond `START x R`; 1 at and inside
@@ -662,15 +695,27 @@ right-handed, +Z north.
     never displaced by a later one; properties over 500 random views of 1-4 synthetic tubes: every placed box is clear
     of every row, no two placed boxes (grown by the gap) overlap, at most `NPC_TUNNEL_LABEL_MAX_COUNT` are placed,
     removing a later label never changes an earlier one's placement; each box is centred on its anchor horizontally.
+    *Amended (D18):* `PlaceLaneLabels` also takes the HUD panel boxes (`avoidBoxes`; a candidate overlapping one grown
+    by the gap is skipped, touching allowed, invalid boxes ignored) and tries, after the full form at 12 then 6
+    o'clock, the compact form (`CompactSizePx`, only when finite with both sides > 0) at 12 then 6 o'clock;
+    `FSOLLaneLabelPlacement::bCompact` reports the form, the box has that form's size.
 20. **Text values (`FormatLaneLabelLines`, built on `SOLHudFormat`)**: line 1 is "A - B" with the registry names;
     line 2 has both distances in the HUD's distance format; line 3 the ship count with thousands separators and
     "ships" (0 -> "0 ships", 1 -> "1 ship"); **no line mentions a side** (no "left", "right" or "your").
+20b. **Compact form (D18):** `FormatLaneLabelCompactLine` writes "A - B", `LANE_LABEL_COMPACT_SEPARATOR` and
+    `LaneLabelNearestDistanceM(a, b)` in the HUD's distance format; the nearest distance is the smaller one, a NaN one
+    ignored unless both are NaN; `MakeLaneLabelCompactKey` (lane, the nearest distance's `LaneLabelDistanceKey`,
+    `bCompact` set) changes exactly when the compact text would and never equals a full key.
+20c. **Hysteresis (49b review, `SOLTest.LaneTunnelLabel.Hysteresis`):** a label whose `PreviousCandidate` and
+    `bPreviousCompact` spot is still usable keeps it even when an earlier candidate in the normal order is also free;
+    when the previous spot is no longer usable the normal order full@12, full@6, compact@12, compact@6 applies.
 
 **HUD bus (`Tests/HudBusTest.cpp` or the existing bus test, re-validated):**
 
 21. `PublishLaneTunnelLabels(labels, frame)` / `GetLaneTunnelLabels` / `GetLaneTunnelLabelsFrame` round-trip every
-    field of every entry (lane, strength, strongest flag, alpha, distances, ship count, anchors), the count and the
-    frame; a count above `NPC_TUNNEL_LABEL_MAX_COUNT` is clamped; a cleared snapshot (count 0) reads as no labels;
+    field of every entry (lane, strength, strongest flag, alpha, distances, ship count, anchors, `BodyA`, `BodyB`), the
+    count and the frame; `RowCount` is clamped to `NPC_TUNNEL_LABEL_MAX_ROWS` and `RowStartM` / `RowEndM` round-trip
+    (`HudEventBusTest`); a count above `NPC_TUNNEL_LABEL_MAX_COUNT` is clamped; a cleared snapshot (count 0) reads as no labels;
     `ClearLaneTunnelLabels` resets the labels and the frame to 0; publishing twice in a frame keeps the last.
 
 **Text (`SOLTest.InfoText.*`, `SOLTest.PlayerGuide.UpToDate`):**
@@ -715,7 +760,12 @@ bump; a test edit there is a red flag to report).
    row, the master O, `sol.NpcTunnel` and the map (hidden when open); the pushed glow scale follows the live HUD glow
    and returns on revert; one label per shown tunnel (at most 4), the strongest first and brightest, every other
    label's alpha `F x 0.55`, their values match the pure functions, every box clear of every projected dot row and of
-   the other boxes (T5 has three); the labels hide with the HUD and menus; `SetLanesDrawn` true with only an empty
+   the other boxes (T5 has three); T4 and T5 assert 0 labels drawn (D19); the snapshot check needs the exact expected
+   count (the shown lanes whose label alpha is placed, strongest first, capped); published end distances and anchors
+   are compared with the pure functions; the a-population check asserts the built slot mesh's vertex count equals
+   `SOLNpcTunnel::TunnelSlotMeshVertexCount()`; the chevron-side check (`CheckSides`) and the Q5 crossfade sum are
+   C++-side checks (they prove the C++ mirror and the formulas, not the shader output, which the screenshots cover);
+   the labels hide with the HUD and menus; `SetLanesDrawn` true with only an empty
    lane's tunnel shown (T6). **Q5 crossfade:** the fade texel read back for each lane equals its `TunnelFade`; with the
    tunnel at `F` the lane material's line alpha and the point material's lane-ship alpha at sampled lane points equal
    `LaneLineFadeWithTunnel` and `LaneShipPointAlpha` (sum 1); with the map open, `sol.NpcTunnel 0` or the Lanes row
@@ -858,6 +908,57 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
   about 2e-9 of direction error in its rounded inputs.
 - **Tests:** `NpcTunnelMath` 24, `LaneTunnelLabel` 4, `NpcLaneMath` 29 (cases 17, 17b), `HudEventBus` 6 (case 21).
 
+## 12b. As built (part 49b, 2026-11-12, review done, fixes applied)
+
+- **Files:** `Npc/SOLNpcTunnelComponent.{h,cpp}`, `Npc/SOLNpcTunnelSmoke.{h,cpp}`, `Shaders/Private/SOLNpcTunnel.ush`,
+  `Content/SOL/Npc/M_SOLNpcTunnel.uasset` (built by `Tools/Npc/create_npc_assets.py`, which also rebuilt
+  `M_SOLNpcLanes` and `M_SOLNpcPoints` with `NpcTunnelTex`); the 49b pure functions in `SOLNpcTunnelMath` (`LaneFoot`,
+  `EndRingAlpha` / `EndRingSlot`, `LabelAheadSign` with the dead band `NPC_TUNNEL_LABEL_FLIP_HYSTERESIS` 0.2,
+  `LaneLabelAnchorRelM`, `TunnelDotRowSegmentRelM`, `BuildTunnelLaneData`, `StepRingPhase`, the visibility and upload
+  rules, `RingSegmentsForSlot`, `TunnelSlotMeshVertexCount` 8,900, `ReadTunnelFadeTexel`) and in `SOLLaneTunnelLabel`
+  (`LaneLabelDistanceKey`, `MakeLaneLabelKey`, `EaseLaneLabelAlpha`; new `SOLHudFormat::DistanceUnitM`); the HUD label
+  drawing in `UI/SOLFlightHud`. No persistence change.
+- **Choices accepted by the main session (2026-11-12):** the jump-map state is read from the player pawn
+  (`ASOLShipPawn::IsMapOpen`, the existing `Npc -> Ship` edge; no `Npc -> Map` edge); the label distances use the
+  viewpoint as the ship's position (in flight the viewpoint is the ship); the bus label carries `BodyA` / `BodyB`
+  (registry indices, the HUD looks up the names) and the snapshot carries every shown tunnel's dot rows
+  (`RowCount`, `RowStartM` / `RowEndM`, viewpoint-relative ecliptic metres, cap `NPC_TUNNEL_LABEL_MAX_ROWS` 64); the
+  near-plane rule of section 4.7 is left to the GPU's clipping (vertices keep their true positions behind the camera,
+  the ribbon width uses `|depth|`); T4 and T4b show no smear, so the clamp was not added.
+- **Material layout** (`SOL::NpcTunnelMaterialParams`, documented in `SOLNpcTunnel.ush`): `NpcTunnelFrame`, `GlowScale`,
+  `NpcTunnelStyle0` / `Style1` / `Shape` / `Layout0-3` / `Glow0-1` and five colours, set once except the frame, the
+  texture and the glow. Slot mesh UVs: UV0 = (kind, slot), UV1 = (sample, side) or quad corner, UV2 = (segments, 0) or
+  (row or wall, dot).
+- **HUD:** the labels are drawn as glow text after the overlay icons (hidden with the HUD, menus and the map); the dot
+  rows and anchors are projected from their true camera-relative positions (the far-depth placement keeps every point
+  on its true ray); the anchor's planet test runs against every registry body on the CPU; the glow-text capacity
+  `Hologram::HUD_MAX_TEXTS` rose from 64 to 80 for the 12 label lines.
+- **Glow feed:** `ASOLNpcVisuals`' feed now runs while lane lines **or** tunnels draw and pushes to both materials.
+- **D18 (user, 2026-11-12, found by the smoke):** with the label 4 tunnel radii ahead the box (about 190 px wide at
+  1280x720) was wider than the gap between the dot rows where it sits, so from inside a tube it was never placed
+  (T2-T6 published one label and drew none). The user chose: the anchor at 2.5 tunnel radii; the labels avoid the
+  HUD panels (key-hint line, cards, panels, radar); a compact one-line fallback ("A - B  <nearest end distance>",
+  dimmed by the same side-tunnel rule) when the three-line box still does not fit (section 4.9). The HUD records the
+  panel boxes in `AddHoloPanel`, `DrawCard`, after the info block (the key-hint line) and in `DrawRadar`
+  (`AddHudAvoidBox`, fixed arrays, previous frame's set used). The smoke now requires T2-T6 (and T4b) to draw a
+  label and checks every drawn box against the avoided panels. Result: T2, T3 and T6 draw the full label (6 o'clock,
+  below the ship), T4b the compact one; T4 (looking straight at the wall: both anchors off screen) and T5 (anchors
+  past the nearer end ring, behind Earth) draw none, accepted by the user as D19.
+- **Review fixes (2026-11-12, D19):** (1) the near-plane clamp is replaced by hardware clipping (above); (2) label text
+  cached per lane (section 4.9); (3) label hysteresis, `PreviousCandidate` / `bPreviousCompact` (section 4.9); (4) HUD
+  avoid boxes recorded only for visible panels; (5) labels hide on every frame the flight HUD does not draw, with
+  alphas reset; (8) `RowCount` clamped by the bus and the HUD loop; (9) `STAT_SOL_HudLaneLabels` beside
+  `STAT_SOL_NpcTunnel`; (10) smoke: exact expected label count, T4 and T5 assert 0 labels, new check `labels-hud-hidden`
+  (flight HUD hidden through the HUD-visible setting draws 0 labels, the pause-menu check stays); (11) smoke: end
+  distances and anchors compared with the pure functions, slot mesh vertex count checked against
+  `TunnelSlotMeshVertexCount()`; (12) Info text and `GAME_MECHANICS.md` ring wording corrected; (13) tests: label
+  hysteresis and bus cases (section 6). Deferred to 49c: chevron fill and far-ring tuning (plan).
+- **Smoke count (re-run after the review fixes):** `-SOLSmokeNpcTunnel` has 35 checks, expected 35 / 35 at 1280x720 and 1920x1080.
+- **Regression smokes (2026-11-12, before the review fixes):** `-SOLSmokeNpcTunnel` 34 / 34 at 1920x1080 too, `-SOLSmokeNpcLanes` 35 / 35 at 1920x1080, `-SOLSmokeOverlay` 50 / 50, `-SOLSmokeHud` 45 / 45, `-SOLSmokeHoloMenu` 86 / 86, `-SOLSmokeSolidMenu` 296 / 296, `-SOLNpcRamp` to 1M PASS (1M: mean 6.52 ms, p95 7.15 ms, NPC mean 1.47 ms at 1280x720); `GameUserSettings.ini` unchanged after the runs. The 49c profile capture is still to come.
+- **Verification (1280x720, before the review fixes):** `-SOLSmokeNpcTunnel` 34 / 34 (keep right and the chevron directions confirmed in T2 and
+  T3, also on the screenshots); dots render but are faint at 3 px (49c tuning); the far ring series is white at the
+  vanishing point (49c emissive tuning).
+
 ## 13. Change log
 
 - 2026-11-11: first draft from grill-me D1-D15; derived choices Q1-Q11 reported to the main session for the user.
@@ -866,5 +967,8 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
   change to `M_SOLNpcLanes` and `M_SOLNpcPoints`), the continuous accordion ring spacing replacing the nested
   power-of-two fade (Q9, after SDD 38 D15 amendment D), D16 (traffic outside the tunnel); keep-right rails and the
   traffic flow moved to the new ticket #50.
+- 2026-11-12: 49b review fixes, D19.
+- 2026-11-12: part 49b built; D18 (the user's answer to the label fit found by the smoke): anchor at 2.5 tunnel radii,
+  HUD panels avoided, compact one-line fallback (sections 4.9, 6 cases 19-20b, 12b).
 - 2026-11-12: part 49a built; the 49a review amendments recorded (D17, the label box outward, the bus alpha and frame,
   the detail cap, the pole blend, the label words in `SOLMenuText`, phase wrapping) and the as-built section 12 added.

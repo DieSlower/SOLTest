@@ -908,7 +908,8 @@ namespace SOL
         inline constexpr double HUD_PANEL_FLICKER = 0.08;
         inline constexpr double HUD_PANEL_FLICKER_RATE_HZ = 12.0;
         inline constexpr double HUD_PANEL_FLICKER_OFFSET = 41.0;
-        inline constexpr int32 HUD_MAX_TEXTS = 64;                  // Glow-text lines per frame, reserved once
+        inline constexpr int32 HUD_MAX_TEXTS = 80;                  // Glow-text lines per frame, reserved once (64
+                                                                    // plus the lane tunnel labels, SDD 49)
         inline constexpr int32 HUD_MAX_PANELS = 32;                 // Panel backings per frame, reserved once
 
         // Hologram panels behind HUD text blocks (SDD 21 phase B, borderless since issue #31): a dark translucent
@@ -1924,6 +1925,9 @@ namespace SOL
         inline constexpr const TCHAR* SMOKE_NPC_LANES = TEXT("SOLSmokeNpcLanes");  // NPC lane lines (SDD 38), quit
         // With -SOLSmokeNpcLanes (-game only): V2 and V3 cost captures, lanes drawn and sol.NpcLanes 0 (SDD 38)
         inline constexpr const TCHAR* SMOKE_NPC_LANES_PROFILE = TEXT("SOLSmokeNpcLanesProfile");
+        inline constexpr const TCHAR* SMOKE_NPC_TUNNEL = TEXT("SOLSmokeNpcTunnel");    // Lane tunnels (SDD 49), quit
+        // With -SOLSmokeNpcTunnel (-game only): T2 and T5 cost captures, all lanes forced, sol.NpcTunnel 0 / 1 (49c)
+        inline constexpr const TCHAR* SMOKE_NPC_TUNNEL_PROFILE = TEXT("SOLSmokeNpcTunnelProfile");
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2028,6 +2032,8 @@ namespace SOL
         inline constexpr const TCHAR* NPC_HULL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcHull.M_SOLNpcHull");
         // NPC lane lines (SDD 38 section 4.8): the lane ribbon material (Tools/Npc/create_npc_assets.py)
         inline constexpr const TCHAR* NPC_LANES_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcLanes.M_SOLNpcLanes");
+        // NPC lane guidance tunnel (SDD 49 section 4.7): rings, dots, chevrons and end rings (create_npc_assets.py)
+        inline constexpr const TCHAR* NPC_TUNNEL_MATERIAL = TEXT("/Game/SOL/Npc/M_SOLNpcTunnel.M_SOLNpcTunnel");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_0 = TEXT("/Engine/BasicShapes/Cone.Cone");
         inline constexpr const TCHAR* NPC_HULL_MESH_FACTION_1 = TEXT("/Engine/BasicShapes/Cube.Cube");
         inline constexpr const TCHAR* COMBAT_BOLT_NIAGARA_SYSTEM = TEXT("/Game/SOL/Combat/NS_SOLBolts.NS_SOLBolts");
@@ -2277,6 +2283,8 @@ namespace SOL
                                                                                   //  radii, fade far radii, 0)
         inline constexpr const TCHAR* GLOW_SCALE = TEXT("GlowScale");            // HUD glow scale g, on change only
         inline constexpr const TCHAR* GROUP_TEXTURE = TEXT("NpcGroupTex");       // The far points' group texture
+        inline constexpr const TCHAR* TUNNEL_TEXTURE = TEXT("NpcTunnelTex");     // Tunnel texture: row 1 .w is the
+                                                                                  //  lane's tunnel fade (SDD 49 Q5)
 
         // Once at BeginPlay, from the NPC_LANE_* and Hologram::HUD_GLOW_* constants (the shader keeps no copy)
         inline constexpr const TCHAR* STYLE0 = TEXT("NpcLaneStyle0");            // (width min px, width max px, gap
@@ -2291,6 +2299,47 @@ namespace SOL
                                                                                   //  max, 0)
         inline constexpr const TCHAR* OUTBOUND_COLOR = TEXT("NpcLaneOutboundColor"); // Linear colours
         inline constexpr const TCHAR* INBOUND_COLOR = TEXT("NpcLaneInboundColor");
+    }
+
+    // Parameter names of Paths::NPC_TUNNEL_MATERIAL (SDD 49 section 4.7; Tools/Npc/create_npc_assets.py creates them
+    // with these names, Shaders/Private/SOLNpcTunnel.ush documents each vector's layout)
+    namespace NpcTunnelMaterialParams
+    {
+        // Per frame (the texture), on change (the glow scale)
+        inline constexpr const TCHAR* TUNNEL_TEXTURE = NpcLaneMaterialParams::TUNNEL_TEXTURE;   // Per-lane tunnel
+                                                                                  //  frames (4 rows, WriteTunnelTexels)
+        inline constexpr const TCHAR* FRAME = TEXT("NpcTunnelFrame");            // (viewpoint render cm, max render cm)
+        inline constexpr const TCHAR* GLOW_SCALE = TEXT("GlowScale");            // HUD glow scale g, on change only
+
+        // Once at BeginPlay, from the NPC_TUNNEL_* and Hologram::HUD_GLOW_* constants (the shader keeps no copy)
+        inline constexpr const TCHAR* STYLE0 = TEXT("NpcTunnelStyle0");          // (ring width px, end ring width px,
+                                                                                  //  dot size px, reference height px)
+        inline constexpr const TCHAR* STYLE1 = TEXT("NpcTunnelStyle1");          // (emissive, chevron alpha, glow pad
+                                                                                  //  px, dot radius scale)
+        inline constexpr const TCHAR* SHAPE = TEXT("NpcTunnelShape");            // (chevron radius scale, half width,
+                                                                                  //  half length, end ring min alpha)
+        inline constexpr const TCHAR* LAYOUT0 = TEXT("NpcTunnelLayout0");        // (base spacing radii, rho, ring
+                                                                                  //  and gap slots per side)
+        inline constexpr const TCHAR* LAYOUT1 = TEXT("NpcTunnelLayout1");        // (end fade spacings, depth start
+                                                                                  //  radii, depth end radii, floor)
+        inline constexpr const TCHAR* LAYOUT2 = TEXT("NpcTunnelLayout2");        // (near start, near full, radial full,
+                                                                                  //  radial none; tunnel radii)
+        inline constexpr const TCHAR* LAYOUT3 = TEXT("NpcTunnelLayout3");        // (detail start radii, detail end
+                                                                                  //  radii, dots per gap, dot rows)
+        inline constexpr const TCHAR* GLOW0 = TEXT("NpcTunnelGlow0");            // As NpcLaneMaterialParams::GLOW0
+        inline constexpr const TCHAR* GLOW1 = TEXT("NpcTunnelGlow1");            // As NpcLaneMaterialParams::GLOW1
+        inline constexpr const TCHAR* RING_COLOR = TEXT("NpcTunnelRingColor");   // Linear colours
+        inline constexpr const TCHAR* DOT_OUTBOUND_COLOR = TEXT("NpcTunnelDotOutboundColor");
+        inline constexpr const TCHAR* DOT_INBOUND_COLOR = TEXT("NpcTunnelDotInboundColor");
+        inline constexpr const TCHAR* CHEVRON_OUTBOUND_COLOR = TEXT("NpcTunnelChevronOutboundColor");
+        inline constexpr const TCHAR* CHEVRON_INBOUND_COLOR = TEXT("NpcTunnelChevronInboundColor");
+
+        // Every name by kind (the material test walks these lists)
+        inline constexpr const TCHAR* SCALAR_NAMES[] = { GLOW_SCALE };
+        inline constexpr const TCHAR* VECTOR_NAMES[] = { FRAME, STYLE0, STYLE1, SHAPE, LAYOUT0, LAYOUT1, LAYOUT2,
+            LAYOUT3, GLOW0, GLOW1, RING_COLOR, DOT_OUTBOUND_COLOR, DOT_INBOUND_COLOR, CHEVRON_OUTBOUND_COLOR,
+            CHEVRON_INBOUND_COLOR };
+        inline constexpr const TCHAR* TEXTURE_NAMES[] = { TUNNEL_TEXTURE };
     }
 
     // Parameter names of HUD_SHAPE_MATERIAL (Tools/UI/create_hud_shape_material.py creates them with these names)
@@ -2621,16 +2670,48 @@ namespace SOL
                                                                        // universe +X as its up reference...
     inline constexpr double NPC_TUNNEL_UP_BLEND_DEG = 2.0;             // ...turning smoothly back to north by here
     inline constexpr int32 NPC_TUNNEL_LABEL_MAX_COUNT = 4;             // Wall labels placed at most (Q4)
+    inline constexpr int32 NPC_TUNNEL_LABEL_MAX_ROWS = 64;             // Dot-row segments the labels avoid (8 lanes x
+                                                                       // 8 rows; more shown tunnels drop the rest)
     inline constexpr double NPC_TUNNEL_LABEL_SIDE_ALPHA = 0.55;        // Every label but the strongest is this dim
     inline constexpr double NPC_TUNNEL_LABEL_MIN_ALPHA = 0.05;         // A label below this alpha is not placed
-    inline constexpr double NPC_TUNNEL_LABEL_GAP_PX = 6.0;             // Gap between placed labels (scaled)
-    inline constexpr double NPC_TUNNEL_LABEL_AHEAD_RADII = 4.0;        // Label anchor ahead of the foot point, tunnel
+    inline constexpr double NPC_TUNNEL_LABEL_GAP_PX = 6.0;             // Gap between placed labels, and from a
+                                                                       // HUD panel (scaled)
+    inline constexpr int32 NPC_TUNNEL_LABEL_MAX_AVOID_BOXES = 32;      // HUD panel boxes the labels avoid (the
+                                                                       // last frame's panels and key-hint line)
+    inline constexpr double NPC_TUNNEL_LABEL_AHEAD_RADII = 2.5;        // Label anchor ahead of the foot point, tunnel
                                                                        // radii along the view direction
     inline constexpr FColor NPC_TUNNEL_RING_COLOR = SolidMenu::CYAN_COLOR;    // Rings: the HUD kit cyan (D6)
     inline constexpr FColor NPC_TUNNEL_DOT_OUTBOUND_COLOR = FColor(0x5C, 0x8F, 0x6C);     // Muted green, sRGB
     inline constexpr FColor NPC_TUNNEL_DOT_INBOUND_COLOR = FColor(0x9A, 0x56, 0x56);      // Muted red, sRGB
     inline constexpr FColor NPC_TUNNEL_CHEVRON_OUTBOUND_COLOR = FColor(0x84, 0xAB, 0x90); // The dot colours
     inline constexpr FColor NPC_TUNNEL_CHEVRON_INBOUND_COLOR = FColor(0xB3, 0x80, 0x80);  // lightened 25%
+    inline constexpr double NPC_TUNNEL_RING_WIDTH_PX = 1.5;            // Ring line width at the reference height
+    inline constexpr double NPC_TUNNEL_END_RING_WIDTH_PX = 3.0;        // End ring line width (scaled like the rings)
+    inline constexpr double NPC_TUNNEL_DOT_SIZE_PX = 3.0;              // Guide-dot diameter (scaled like the rings)
+    inline constexpr double NPC_TUNNEL_CHEVRON_RADIUS_SCALE = 0.97;    // Chevrons sit on the wall at this many Rt
+    inline constexpr double NPC_TUNNEL_CHEVRON_HALF_WIDTH_RADII = 0.17;    // Chevron half width across the wall, Rt
+    inline constexpr double NPC_TUNNEL_CHEVRON_HALF_LENGTH_RADII = 0.26;   // Chevron half length along the axis, Rt
+    inline constexpr double NPC_TUNNEL_CHEVRON_ALPHA = 0.75;           // Chevron alpha (the mock-up's)
+    inline constexpr double NPC_TUNNEL_EMISSIVE = 1.3;                 // Tunnel emissive scale (exposure-relative;
+                                                                       // tuned so the ring core keeps its cyan)
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAR = 48;         // Ring segments of slots 0 .. NEAR_SLOTS - 1...
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_MID = 24;          // ...of slots NEAR_SLOTS .. MID_SLOTS - 1...
+    inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FAR = 12;          // ...and beyond (per side; level of detail)
+    inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 8;
+    inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 24;
+    inline constexpr int32 NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY = 2;  // Above the lanes in the after-motion-blur pass
+    inline constexpr double NPC_TUNNEL_LABEL_DOT_MARGIN_PX = 6.0;      // Label box clearance from a dot row (scaled,
+                                                                       // plus the dot radius)
+    inline constexpr double NPC_TUNNEL_LABEL_FLIP_HYSTERESIS = 0.2;    // Dead band of dot(camera forward, axis) before
+                                                                       // a label flips to the other side of the foot
+    inline constexpr double NPC_TUNNEL_LABEL_FADE_S = 0.2;             // A label's alpha eases over this many seconds
+    inline constexpr double NPC_TUNNEL_LABEL_TEXT_REFRESH_S = 0.1;     // A label's distance text reformats at most
+                                                                       // this often (real seconds, SDD 49 section 4.9)
+    inline constexpr float NPC_TUNNEL_LABEL_TEXT_SCALE = 1.0f;         // Label text scale on the HUD's small font
+    inline constexpr uint64 NPC_TUNNEL_LABEL_MAX_AGE_FRAMES = 2;       // An older label snapshot is not drawn
+    inline constexpr const TCHAR* NPC_TUNNEL_CVAR = TEXT("sol.NpcTunnel"); // 0 hides the tunnels (A/B profiling)
+    static_assert(NPC_TUNNEL_RING_NEAR_SLOTS < NPC_TUNNEL_RING_MID_SLOTS
+        && NPC_TUNNEL_RING_MID_SLOTS <= NPC_TUNNEL_RING_SLOTS_PER_SIDE, "the ring level-of-detail bands are ordered");
     static_assert(NPC_TUNNEL_FADE_START_RADII > NPC_TUNNEL_FADE_FULL_RADII && NPC_TUNNEL_FADE_FULL_RADII > 1.0,
         "the tunnel fade band runs inward from the start radii");
     static_assert(NPC_TUNNEL_FADE_START_RADII == NPC_LANE_FADE_NEAR_RADII,

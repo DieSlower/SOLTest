@@ -306,7 +306,7 @@ namespace SOLMenuText
         { TEXT("Overlays"), TEXT("@ToggleOrbitLines"), TEXT("Orbit lines on / off in the active profile") },
         { TEXT("Overlays"), TEXT("@OverlayMenu"),
             TEXT("Overlay Menu: the five overlay profiles and what the overlay key shows in each (icons per kind, "
-                "orbits per kind, ships on radar, NPC lanes, darkening); also in Settings") },
+                "orbits per kind, ships on radar, NPC lanes and tunnels, darkening); also in Settings") },
         { TEXT("Overlays"), TEXT("@CycleOverlayProfile"),
             TEXT("Cycle overlay profiles (the enabled ones; also in the Overlay Menu)") },
         { TEXT("HUD"), TEXT("@RadarZoomIn|@RadarZoomOut"), TEXT("Radar range in / out (manual)") },
@@ -658,8 +658,8 @@ namespace SOLMenuText
                 "type, distance, details and its current status.") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Overlay Menu"),
             TEXT("A hologram checklist ({OverlayMenu}) with a tab for each of the {OverlayProfileCount} overlay "
-                "profiles. Choose which icons, orbit lines, radar ships, NPC lanes and darkening each profile shows. "
-                "Enable more profiles and cycle them with {CycleOverlayProfile}.") },
+                "profiles. Choose which icons, orbit lines, radar ships, NPC lanes and their tunnels, and darkening "
+                "each profile shows. Enable more profiles and cycle them with {CycleOverlayProfile}.") },
         { TEXT("Menus and map"), TEXT("ListFrame"), TEXT(""), TEXT("Speed panel"),
             TEXT("Opened with {SpeedPanel}: type your speed cap digit by digit, or pick a body from the list to set "
                 "the cap to its orbital speed. Changes apply to the ship at once.") },
@@ -837,7 +837,15 @@ namespace SOLMenuText
             "hologram lines, teal-white for traffic leaving the inner body and cyan for traffic coming back, the "
             "dashes flowing each way; a busier lane is wider and brighter. Close to a lane the lines fade out and its "
             "ships show one by one. The Lanes row of the Overlay Menu ({OverlayMenu}) turns them off (the ships then "
-            "show as points, as before); the lines glow with the HUD glow setting. Space dust (a Settings > Graphics "
+            "show as points, as before); the lines glow with the HUD glow setting. Close to a lane (the tunnel fades "
+            "in between 100 and 50 lane radii away) its dashed lines fade out and become a tunnel of cyan rings that "
+            "you can fly through, and its ships show as points again. The lane's rule is keep right: the green dots "
+            "and chevrons on the right wall mark the way out from the inner body, the red ones on the left the way "
+            "back. The rings near you stay fixed to the lane and the far ones also slide when you move toward or away "
+            "from its axis, and everything moves with the lane under time warp. A label on each tunnel's wall names "
+            "the lane, the distance to each end and how many ships use it, or only the lane and the nearest end where "
+            "space is short (the nearest tunnel's label is the brightest). Tunnels follow the Lanes row and the HUD "
+            "glow and are not shown on the map. Space dust (a Settings > Graphics "
             "option, the same in every profile) streams past when the ship moves relative to its reference frame; "
             "its speed is compressed and only shows motion and direction. It "
             "is hidden when stopped, under time warp, during jumps, on the map and while paused, and {OverlayMaster} "
@@ -943,6 +951,8 @@ namespace SOLMenuText
     // HUD lane tunnel wall label (SDD 49 section 4.9): "Earth - Mars", "Earth 0.42 AU   Mars 1.08 AU", "62,400 ships"
     inline constexpr const TCHAR* LANE_LABEL_NAME_SEPARATOR = TEXT(" - ");
     inline constexpr const TCHAR* LANE_LABEL_DISTANCE_SEPARATOR = TEXT("   ");
+    inline constexpr const TCHAR* LANE_LABEL_COMPACT_SEPARATOR = TEXT("  ");   // Before the one-line label's
+                                                                                 // nearest end distance
     inline constexpr const TCHAR* LANE_LABEL_SHIP = TEXT(" ship");
     inline constexpr const TCHAR* LANE_LABEL_SHIPS = TEXT(" ships");
     inline constexpr TCHAR LANE_LABEL_THOUSANDS_SEPARATOR = TEXT(',');

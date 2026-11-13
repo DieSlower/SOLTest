@@ -52,7 +52,12 @@ Answers to the first draft's open questions (user, 2026-11-11; all as recommende
 - **D9 (was Q3): Crossfade.** The line fades out while the lane ships' far points fade in as separate dots up close
   (`M_SOLNpcPoints`, lane kind only, point alpha = 1 - line fade), so a lane is never empty at any distance
   (section 4.5).
-- **D10 (was Q4): Lanes off** (the row unchecked) restores the lane ship points exactly as today.
+  *Amendment (#49 Q5, part 49b):* since issue #49 the crossfade also carries the lane's tunnel fade `F` (row 1 .w of
+  the tunnel texture `NpcTunnelTex`, [SDD 49](49-lane-guidance-tunnel.md) section 4.2): line alpha
+  `LaneLineFade x (1 - F)`, lane-ship point alpha `1 - LaneLineFade x (1 - F)`; the sum is still 1 at every lane
+  point, and `F` = 0 (no tunnel, Lanes off, the map, `sol.NpcTunnel 0`) gives exactly the values above.
+- **D10 (was Q4): Lanes off** (the row unchecked) restores the lane ship points exactly as today (every tunnel fade is
+  0 then too, so #49 does not change this).
 - **D11 (was Q5): The master O turns Lanes off too,** like every row.
 - **D12 (was Q6): Fade:** line full beyond 400 lane radii, gone inside 100, linear in log distance between.
 - **D13 (was Q7): Ship counts** by a histogram once per population, folded into the existing rail-fill `ParallelFor`;
@@ -309,6 +314,11 @@ that distance; the close-up part, where float error would matter, is faded out (
   than `max(width, 1) / 2`).
 
 ### 4.8 Renderer (`ASOLNpcVisuals`, `M_SOLNpcLanes`)
+
+*Note (#49 Q5, part 49b):* `M_SOLNpcLanes` (`SOLNL_Pixel`, new last argument `tunnelFade`) and the lane branch of
+`M_SOLNpcPoints` read the texture parameter `NpcTunnelTex` (`SOL::NpcLaneMaterialParams::TUNNEL_TEXTURE`, bound by
+`ASOLNpcVisuals` to the tunnel component's texture) and multiply `SOLNL_LineFade` by `1 - F`; `SetLanesDrawn` now
+reports lane lines **or** tunnels drawn ([SDD 49](49-lane-guidance-tunnel.md) sections 4.2 and 4.7).
 
 - **Mesh, built once per population** (`BuildLaneMesh`, like `BuildPointBlockMesh`): per drawn lane, per line (out,
   in), `NPC_LANE_SEGMENTS + 1` samples (proposed 64 segments), two vertices each (side -1 / +1). UV0 = (sample

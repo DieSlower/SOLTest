@@ -48,6 +48,8 @@ struct FSOLHudLaneTunnelLabel
     double DistanceAM = 0.0;                            // Straight-line distance from the ship to end ring A
     double DistanceBM = 0.0;                            // ...and to end ring B
     int32 ShipCount = 0;                                // Ships in the lane
+    int32 BodyA = INDEX_NONE;                           // Registry index of body A (the label's first name)
+    int32 BodyB = INDEX_NONE;                           // Registry index of body B
     FVector3d TopAnchorM = FVector3d::ZeroVector;       // 12 o'clock anchor relative to the viewpoint (ecliptic m)
     FVector3d BottomAnchorM = FVector3d::ZeroVector;    // 6 o'clock anchor relative to the viewpoint (ecliptic m)
 };
@@ -57,6 +59,10 @@ struct FSOLHudLaneTunnelLabels
 {
     int32 Count = 0;                                                        // Labels in use (0 = none)
     FSOLHudLaneTunnelLabel Labels[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];         // Entries 0 .. Count - 1
+    int32 RowCount = 0;                                                     // Dot-row segments in use
+    FVector3d RowStartM[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};                 // Every shown tunnel's dot rows (the
+    FVector3d RowEndM[SOL::NPC_TUNNEL_LABEL_MAX_ROWS] = {};                   // labels keep clear of them), relative
+                                                                            // to the viewpoint (ecliptic m)
 };
 
 /**
@@ -104,7 +110,8 @@ public:
     const FSOLMapBodyOverlay* GetMapBodyOverlay() const { return mMapBodyOverlay; }
 
     // Stores the lane tunnel labels of a frame, replacing any earlier ones (the count clamped to
-    // [0, NPC_TUNNEL_LABEL_MAX_COUNT]) with the frame number they were made for
+    // [0, NPC_TUNNEL_LABEL_MAX_COUNT], the row count to [0, NPC_TUNNEL_LABEL_MAX_ROWS]) with the frame number they
+    // were made for
     void PublishLaneTunnelLabels(const FSOLHudLaneTunnelLabels& labels, uint64 frameNumber);
 
     // Forgets the lane tunnel labels (no tunnel shows, the NPC visuals ended); the frame returns to 0

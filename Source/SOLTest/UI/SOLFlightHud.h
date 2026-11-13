@@ -20,6 +20,7 @@
 #include "UI/SOLHudShapeBatch.h"
 #include "UI/SOLHudSymbols.h"
 #include "UI/SOLHudTextList.h"
+#include "UI/SOLLaneTunnelLabel.h"
 #include "UI/SOLOverlayIconLayer.h"
 #include "UI/SOLRadarLayout.h"
 
@@ -199,6 +200,22 @@ public:
 
     // Returns the NPC ship contacts the radar drew last frame (Ships on Radar; verification)
     int32 GetLastRadarShipCount() const { return mLastRadarShipCount; }
+
+    // Returns the lane tunnel labels drawn last frame (SDD 49 section 4.9; verification): their lanes, boxes, alphas
+    // and forms, and the HUD panel boxes the labels avoided
+    int32 GetLastLaneLabelCount() const { return mLastLaneLabelCount; }
+    int32 GetLastLaneLabelLane(int32 index) const { return mLastLaneLabelLanes[index]; }
+    const FBox2D& GetLastLaneLabelBox(int32 index) const { return mLastLaneLabelBoxes[index]; }
+    float GetLastLaneLabelAlpha(int32 index) const { return mLastLaneLabelAlphas[index]; }
+    bool IsLastLaneLabelCompact(int32 index) const { return mLastLaneLabelCompact[index]; }
+    int32 GetLaneLabelAvoidBoxCount() const { return mPrevHudAvoidBoxCount; }
+    const FBox2D& GetLaneLabelAvoidBox(int32 index) const { return mPrevHudAvoidBoxes[index]; }
+
+    // Returns the projected dot rows the labels kept clear of last frame (verification)
+    TConstArrayView<FVector2D> GetLastLaneRowStarts() const { return TConstArrayView<FVector2D>(mLaneRowStarts,
+        mLaneRowCount); }
+    TConstArrayView<FVector2D> GetLastLaneRowEnds() const { return TConstArrayView<FVector2D>(mLaneRowEnds,
+        mLaneRowCount); }
 
     // Returns the number of glow shapes the last frame queued (verification)
     int32 GetLastShapeCount() const;
@@ -503,6 +520,25 @@ private:
     // Draws the overlay icons and edge arrows (SDD 22) and chooses the NPC ships for the icons and the radar
     void DrawOverlayIcons(const FSOLHudView* view);
 
+    // Draws the lane tunnels' wall labels (SDD 49 section 4.9): reads the bus snapshot, projects the anchors and the
+    // dot rows, places the labels strongest first clear of the rows and of each other, eases each lane's alpha and
+    // draws three glow-text lines per label (text rebuilt only when its displayed values change); null view = none
+    void DrawLaneTunnelLabels(const FSOLHudView* view);
+
+    struct FSOLLaneLabelCache;                      // One lane's wall label state (defined below)
+
+    // Updates a lane label's names and full text from a snapshot entry (only what reads differently)
+    void UpdateLaneLabelText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label, double nowS);
+
+    // Updates a lane label's compact line from a snapshot entry (only when it reads differently)
+    void UpdateLaneLabelCompactText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label, double nowS);
+
+    // Hides every lane label at once (a frame without the flight HUD: menu, warp, HUD hidden); they ease back in
+    void HideLaneTunnelLabels();
+
+    // Records a HUD panel's screen box for the lane labels to avoid next frame (ignored when invalid or full)
+    void AddHudAvoidBox(const FBox2D& box);
+
     // Draws the interaction menus' HUD parts (SDD 22 section 2.4): the info card and the action hint (flight and map)
     // and, in flight, the open radial menu
     void DrawInteraction();
@@ -686,4 +722,49 @@ private:
     float mLastProfileTagAlpha = 0.0f;              // The tag's alpha last frame, 0 when not drawn
     bool mWasFlightHudDrawn = false;                // The last frame drew the flight HUD (not hidden by a warp)
     bool mIsRadarManual = false;                    // Radar range mode: false = AUTO (starts here), true = MANUAL
+
+    // One lane's wall label (SDD 49 section 4.9): its body names, its full and compact texts (each line reformatted
+    // and measured only when it reads differently, the distances at most every NPC_TUNNEL_LABEL_TEXT_REFRESH_S; the
+    // compact line only when needed), its eased alpha, its last box and form (where and how it eases out when it is
+    // not placed) and last frame's candidate (hysteresis)
+    struct FSOLLaneLabelCache
+    {
+        int32 BodyA = INDEX_NONE;                   // The bodies the names were fetched for
+        int32 BodyB = INDEX_NONE;
+        bool bHasNames = false;
+        FString NameA;
+        FString NameB;
+        FSOLLaneLabelKey Key;
+        bool bHasText = false;
+        double TextTimeS = -1.0;                    // Real time of the last full-text reformat
+        FString Lines[3];
+        FText Texts[3];
+        FVector2D Sizes[3];
+        FSOLLaneLabelKey CompactKey;
+        bool bHasCompactText = false;
+        double CompactTimeS = -1.0;                 // Real time of the last compact reformat
+        FString CompactLine;
+        FText CompactText;
+        FVector2D CompactSize = FVector2D::ZeroVector;
+        bool bCompact = false;                      // The last placement took the compact form
+        int32 Candidate = INDEX_NONE;               // This frame's placed candidate (INDEX_NONE when not placed)
+        int32 PreviousCandidate = INDEX_NONE;       // Last frame's
+        double Alpha = 0.0;
+        double TargetAlpha = 0.0;
+        FBox2D Box = FBox2D(ForceInit);
+    };
+    FSOLLaneLabelCache mLaneLabels[SOL::NPC_GROUP_TEXTURE_WIDTH];     // Per lane (fixed, no per-frame allocation)
+    FString mLaneLabelScratch[3];                                     // Lines formatted before comparing
+    FVector2D mLaneRowStarts[SOL::NPC_TUNNEL_LABEL_MAX_ROWS];         // This frame's projected dot rows
+    FVector2D mLaneRowEnds[SOL::NPC_TUNNEL_LABEL_MAX_ROWS];
+    int32 mLaneRowCount = 0;
+    int32 mLastLaneLabelLanes[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};  // Labels drawn last frame (verification)
+    FBox2D mLastLaneLabelBoxes[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+    float mLastLaneLabelAlphas[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};
+    bool mLastLaneLabelCompact[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};
+    int32 mLastLaneLabelCount = 0;
+    FBox2D mHudAvoidBoxes[SOL::NPC_TUNNEL_LABEL_MAX_AVOID_BOXES];       // This frame's HUD panel boxes (being drawn)
+    int32 mHudAvoidBoxCount = 0;
+    FBox2D mPrevHudAvoidBoxes[SOL::NPC_TUNNEL_LABEL_MAX_AVOID_BOXES];   // Last frame's, which the labels avoid
+    int32 mPrevHudAvoidBoxCount = 0;
 };

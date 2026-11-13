@@ -100,6 +100,24 @@ namespace SOLHudFormat
     }
 
     //////////////////////////////////////////////////////////////////////////
+    // Returns the unit AppendDistanceM picks (0 m, 1 km, 2 AU) and the number in that unit
+    int32 DistanceUnitM(const double distanceM, double& outValue)
+    {
+        if (distanceM < HUD_KM_DISTANCE_MIN_M)
+        {
+            outValue = distanceM;
+            return 0;
+        }
+        if (distanceM < HUD_AU_DISTANCE_MIN_M)
+        {
+            outValue = distanceM / SOL::METERS_PER_KM;
+            return 1;
+        }
+        outValue = distanceM / SOL::AU_M;
+        return 2;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
     // Appends a duration rounded to whole seconds: "45 s", "12:05", "3:02:07" or "13 d 12 h" ("--" if invalid)
     void AppendDurationS(FString& outText, const double seconds)
     {

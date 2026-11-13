@@ -37,6 +37,10 @@ namespace SOLHudFormat
     // Appends FormatDistanceM(distanceM)'s exact text to an existing buffer, without a temporary FString
     SOLTEST_API void AppendDistanceM(FString& outText, double distanceM);
 
+    // Returns the unit FormatDistanceM picks (0 = m and 1 = km with "%.1f", 2 = AU with "%.4f") and the number in
+    // that unit, so a caller can reproduce the text's digits without building it
+    SOLTEST_API int32 DistanceUnitM(double distanceM, double& outValue);
+
     // Appends a duration rounded to whole seconds: "45 s", "12:05", "3:02:07" or "13 d 12 h" ("--" if invalid)
     SOLTEST_API void AppendDurationS(FString& outText, double seconds);
 

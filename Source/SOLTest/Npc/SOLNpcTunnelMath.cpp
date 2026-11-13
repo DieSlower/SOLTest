@@ -749,3 +749,257 @@ bool SOLNpcTunnel::AreTunnelsShown(const bool bLanesShown, const bool bCvarOn, c
 {
     return bLanesShown && bCvarOn && !bMapOpen;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the viewpoint's foot on the axis line of A-B, its arc from A not clamped
+FSOLNpcTunnelFoot SOLNpcTunnel::LaneFoot(const FVector3d& aRelM, const FVector3d& bRelM)
+{
+    FSOLNpcTunnelFoot foot;
+    if (!TunnelIsFinite(aRelM) || !TunnelIsFinite(bRelM))
+    {
+        return foot;
+    }
+    const FVector3d ab = bRelM - aRelM;
+    const double lengthSq = ab.SizeSquared();
+    if (!(lengthSq > 0.0) || !FMath::IsFinite(lengthSq))
+    {
+        return foot;
+    }
+    const FVector3d axis = ab / FMath::Sqrt(lengthSq);
+    foot.ArcM = -FVector3d::DotProduct(aRelM, axis);
+    foot.PointRelM = aRelM + axis * foot.ArcM;
+    foot.RadialM = foot.PointRelM.Size();
+    foot.bValid = true;
+    return foot;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns an end ring's alpha: the depth fade with its floor raised to the end-ring minimum, times the near fade
+double SOLNpcTunnel::EndRingAlpha(const double axialOffsetM, const double radialM, const double tunnelRadiusM)
+{
+    if (FMath::IsNaN(axialOffsetM) || FMath::IsNaN(radialM) || !TunnelIsPositive(tunnelRadiusM))
+    {
+        return 0.0;
+    }
+    const double distanceM = FMath::Sqrt(axialOffsetM * axialOffsetM + radialM * radialM);
+    return FMath::Max(TunnelDepthFade(distanceM, tunnelRadiusM), SOL::NPC_TUNNEL_END_RING_MIN_ALPHA)
+        * TunnelNearFadeAt(axialOffsetM, radialM, tunnelRadiusM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns end ring A or B at its arc when the end arcs are in order and its alpha is above 0
+bool SOLNpcTunnel::EndRingSlot(const int32 end, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outRing)
+{
+    if ((end != 0 && end != 1) || !TunnelIsInputValid(input) || !(input.EndArcAM < input.EndArcBM))
+    {
+        return false;
+    }
+    const double axialM = end == 0 ? input.EndArcAM : input.EndArcBM;
+    outRing.AxialOffsetM = axialM;
+    outRing.W = RingWarp(axialM, input.RadialM, input.TunnelRadiusM);
+    outRing.Alpha = EndRingAlpha(axialM, input.RadialM, input.TunnelRadiusM);
+    return outRing.Alpha > 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the label's side of the foot point, flipping a held side only past the dead band
+int32 SOLNpcTunnel::LabelAheadSign(const double forwardDotAxis, const int32 previousSign)
+{
+    const double band = SOL::NPC_TUNNEL_LABEL_FLIP_HYSTERESIS;
+    if (previousSign == 0)
+    {
+        return forwardDotAxis < 0.0 ? -1 : 1;
+    }
+    if (previousSign > 0)
+    {
+        return forwardDotAxis < -band ? -1 : 1;
+    }
+    return forwardDotAxis > band ? 1 : -1;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a label anchor on the tube wall at a clock angle, ahead of the foot point on the given side
+FVector3d SOLNpcTunnel::LaneLabelAnchorRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+    const double tunnelRadiusM, const int32 aheadSign, const double clockDeg)
+{
+    if (!basis.bValid || !TunnelIsPositive(tunnelRadiusM))
+    {
+        return footRelM;
+    }
+    const double sign = aheadSign < 0 ? -1.0 : 1.0;
+    return footRelM + basis.Axis * (sign * SOL::NPC_TUNNEL_LABEL_AHEAD_RADII * tunnelRadiusM)
+        + WallDirection(basis, clockDeg) * tunnelRadiusM;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes a dot row's straight segment between the end rings, cut where the dots end
+bool SOLNpcTunnel::TunnelDotRowSegmentRelM(const FVector3d& footRelM, const FSOLNpcTunnelBasis& basis,
+    const double tunnelRadiusM, const double endArcAM, const double endArcBM, const int32 row, FVector3d& outStartM,
+    FVector3d& outEndM)
+{
+    if (row < 0 || row >= SOL::NPC_TUNNEL_DOT_ROWS || !basis.bValid || !TunnelIsPositive(tunnelRadiusM)
+        || !TunnelIsFinite(footRelM) || FMath::IsNaN(endArcAM) || FMath::IsNaN(endArcBM))
+    {
+        return false;
+    }
+    const double radialM = footRelM.Size();
+    const double reachM = SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII * tunnelRadiusM;
+    const double halfM = FMath::Sqrt(FMath::Max(0.0, reachM * reachM - radialM * radialM));
+    const double startX = FMath::Max(endArcAM, -halfM);
+    const double endX = FMath::Min(endArcBM, halfM);
+    if (!(startX < endX))
+    {
+        return false;
+    }
+    const FVector3d wallM = WallDirection(basis, DotRowAngleDeg(row)) * (SOL::NPC_TUNNEL_DOT_RADIUS_SCALE
+        * tunnelRadiusM);
+    outStartM = footRelM + basis.Axis * startX + wallM;
+    outEndM = footRelM + basis.Axis * endX + wallM;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Fills a lane's renderer feed and foot; true when the lane can have a tunnel
+bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneEntry& lane,
+    const FVector3d& viewpointM, const double bodyRadiusAM, const double bodyRadiusBM,
+    FSOLNpcTunnelLaneData& outData, FSOLNpcTunnelFoot& outFoot)
+{
+    outData = FSOLNpcTunnelLaneData();
+    outData.Lane = laneIndex;
+    outFoot = FSOLNpcTunnelFoot();
+    if (!lane.bResolved)
+    {
+        return false;
+    }
+    const FVector3d aRelM = lane.A - viewpointM;
+    const FVector3d bRelM = lane.B - viewpointM;
+    const FSOLNpcTunnelBasis basis = TunnelBasis(lane.A, lane.B);
+    outFoot = LaneFoot(aRelM, bRelM);
+    const double tunnelRadiusM = TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+    const double laneLengthM = (lane.B - lane.A).Size();
+    if (!basis.bValid || !outFoot.bValid
+        || !IsTunnelDrawable(laneLengthM, bodyRadiusAM, bodyRadiusBM, tunnelRadiusM))
+    {
+        return false;
+    }
+
+    // The feed: foot point, radius, basis, fade from the segment distance, end arcs relative to the foot arc
+    const FVector2D endArcsM = TunnelEndArcsM(laneLengthM, bodyRadiusAM, bodyRadiusBM, tunnelRadiusM);
+    outData.FootRelM = outFoot.PointRelM;
+    outData.TunnelRadiusM = tunnelRadiusM;
+    outData.Axis = basis.Axis;
+    outData.Up = basis.Up;
+    outData.Fade = TunnelFade(LaneSegmentDistanceM(aRelM, bRelM), lane.RadiusM);
+    outData.EndArcAM = endArcsM.X - outFoot.ArcM;
+    outData.EndArcBM = endArcsM.Y - outFoot.ArcM;
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the next ring phase: the initial phase on entering range, else advanced by the foot arc's change
+double SOLNpcTunnel::StepRingPhase(const bool bWasInRange, const double phase, const double previousFootArcM,
+    const double footArcM, const double radialM, const double tunnelRadiusM)
+{
+    if (!bWasInRange)
+    {
+        return InitialRingPhase(footArcM, radialM, tunnelRadiusM);
+    }
+    return AdvanceRingPhase(phase, footArcM - previousFootArcM, radialM, tunnelRadiusM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the tunnels show, the verification override taking the place of the player's lanes
+bool SOLNpcTunnel::ResolveTunnelsShown(const bool bOverride, const bool bOverrideShown, const bool bLanesShown,
+    const bool bCvarOn, const bool bMapOpen)
+{
+    return AreTunnelsShown(bOverride ? bOverrideShown : bLanesShown, bCvarOn, bMapOpen);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the fade the renderer uses: 0 hidden, 1 forced, else the clamped fade
+double SOLNpcTunnel::EffectiveTunnelFade(const double fade, const bool bShown, const bool bForceAllLanes)
+{
+    if (!bShown)
+    {
+        return 0.0;
+    }
+    if (bForceAllLanes)
+    {
+        return 1.0;
+    }
+    return FMath::IsNaN(fade) ? 0.0 : FMath::Clamp(fade, 0.0, 1.0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the tunnel component draws: shown and a fade above 0
+bool SOLNpcTunnel::ShouldDrawTunnels(const bool bShown, const TConstArrayView<double> fades)
+{
+    if (!bShown)
+    {
+        return false;
+    }
+    for (const double fade : fades)
+    {
+        if (fade > 0.0)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the lane overlay counts as drawn for the shared occluders
+bool SOLNpcTunnel::IsLaneOverlayDrawn(const bool bLaneLinesDrawn, const bool bTunnelsDrawn)
+{
+    return bLaneLinesDrawn || bTunnelsDrawn;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the tunnel texture uploads: while a tunnel shows and once more after the last one goes
+bool SOLNpcTunnel::ShouldUploadTunnelTexels(const bool bShownNow, const bool bShownLastFrame)
+{
+    return bShownNow || bShownLastFrame;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ring slot's segment count by its index on its side
+int32 SOLNpcTunnel::RingSegmentsForSlot(const int32 slot)
+{
+    if (slot < 0 || slot >= RingSlotCount())
+    {
+        return 0;
+    }
+    const int32 k = slot % SOL::NPC_TUNNEL_RING_SLOTS_PER_SIDE;
+    if (k < SOL::NPC_TUNNEL_RING_NEAR_SLOTS)
+    {
+        return SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR;
+    }
+    return k < SOL::NPC_TUNNEL_RING_MID_SLOTS ? SOL::NPC_TUNNEL_RING_SEGMENTS_MID : SOL::NPC_TUNNEL_RING_SEGMENTS_FAR;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the slot mesh's vertex count: ring ribbons, two end rings, dot and chevron quads
+int32 SOLNpcTunnel::TunnelSlotMeshVertexCount()
+{
+    int32 count = 2 * 2 * (SOL::NPC_TUNNEL_RING_SEGMENTS_NEAR + 1);
+    for (int32 slot = 0; slot < RingSlotCount(); ++slot)
+    {
+        count += 2 * (RingSegmentsForSlot(slot) + 1);
+    }
+    count += 4 * DetailSlotCount() * SOL::NPC_TUNNEL_DOTS_PER_GAP * SOL::NPC_TUNNEL_DOT_ROWS;
+    count += 4 * DetailSlotCount() * 2;
+    return count;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane's tunnel fade from row 1 .w of its column
+double SOLNpcTunnel::ReadTunnelFadeTexel(const TConstArrayView<FVector4f> texels, const int32 lane)
+{
+    constexpr int32 width = SOL::NPC_GROUP_TEXTURE_WIDTH;
+    if (lane < 0 || lane >= width || texels.Num() < 2 * width)
+    {
+        return 0.0;
+    }
+    return static_cast<double>(texels[width + lane].W);
+}
