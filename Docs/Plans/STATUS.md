@@ -3,7 +3,7 @@
 # Project status: tickets and remaining work
 
 Living document. **Update it whenever a ticket is added, started, finished or re-scoped** (rule in `CLAUDE.md`).
-Last updated: 2026-11-11.
+Last updated: 2026-11-13.
 
 Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a large multi-session feature.
 
@@ -56,7 +56,8 @@ Sizes are rough: S = a day of agent work or less, M = a few sessions, L = a larg
 | 3b2 | #37 | **Done** (2026-11-11). Settings "HUD glow" slider (0-200%, save schema 12) with a lower default glow (see Done) | S-M | none |
 | 3b3 | #38 | **Done** (2026-11-11). NPC lanes drawn as two flowing dashed hologram lines per lane with a Lanes row in the Overlay Menu (save schema 13; see Done) | M | #22 |
 | 3b4 | #49 | **Done** (2026-11-13). Lane guidance tunnel near NPC lanes: cyan ring tunnels with keep-right chevrons and guide dots, wall labels, no schema change (see Done) | M | #38 |
-| 3b5 | #50 | Lane traffic flow: NPC lane ships faster near the tunnel's middle and slower outside, some traffic just outside the tunnel, keep-right rails (outbound right, inbound left; today the rails ignore direction), the player merging in by matching the outer traffic's speed; simulation and rail-shader work; needs grill-me | M | #49 |
+| 3b5 | #50 | **In progress** (grill-me done 2026-11-13, D1-D12; SDD 50 and plan drafted; Q1-Q8 answered and folded in as D13-D20, one open question Q9 for part 50d: how AUTO is told to fly around lanes). Lane traffic flow: keep-right closed-form rails (outbound right, inbound left, U-turn outside each end ring), flip-and-burn along the lane at 1.65 G with 50-100 % effort capped at 300 km/s, fastest on the axis and 20 km/s at the wall, 25 % halo traffic outside the wall, a HUD merge readout (traffic speed here, TOO FAST / TOO SLOW / MATCHED), AUTO merging and holding the traffic speed in lanes; parts 50a-50e; no schema change planned | M-L | #49 |
+| 3b5b | #51 | Placeholder main thruster effect for the player ship and all NPC ships (consumes #50's per-ship thrust state); needs grill-me | S-M | #50 |
 | 3b6 | #39 | NPC ships vanish at distance (realistic visibility, no pixel or brightness floor) | M | none |
 | 3b7 | #40 | NPC ships selectable with T / R / F, only inside the radar range (also enables the ship row of Chase Down, greyed since #32) | M | #22 |
 | 3c | #35 | Bolts follow normal perspective (today a constant ~3 px on screen past 100 m) | S-M | none |
@@ -100,5 +101,5 @@ Picked up as tickets when scheduled; each needs grill-me first.
 
 ## How much is left
 
-About 11 tickets (#50, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
+About 12 tickets (#50, #51, #39, #40, #35, #44, #45, #47, #23, #27, #26, #24 decisions) before the two large roadmap items (#10, #9),
 plus whatever #24 adopts. The ToDo list above is the backlog beyond that.

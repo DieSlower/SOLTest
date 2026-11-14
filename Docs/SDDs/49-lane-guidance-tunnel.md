@@ -71,7 +71,9 @@ it.
   of the tunnel's path**: the #38 shared occluders (the orbit lines' 8 analytic spheres) hide the parts behind a
   planet. *Amended (user, 2026-11-13, whole-ticket review):* the end rings are **exempt from the screen-size fade**
   (section 12c) and keep the designed alpha floor `NPC_TUNNEL_END_RING_MIN_ALPHA` (0.5), so every lane end stays
-  marked however small it is on screen; only the repeating rings and the dot rows take that fade.
+  marked however small it is on screen; only the repeating rings and the dot rows take that fade. *Amended (user,
+  2026-11-13, #50 D14):* `NPC_TUNNEL_END_MARGIN_RADII` goes from 1 to 3, so each end ring lies 3 tunnel radii above the
+  surface (room for the #50 U-turn).
 - **D13: Smooth spacing dependency.** Smooth dash size changes for the far lane line are a separate #38 follow-up, not
   part of #49; the tunnel's multi-scale ring spacing **must use the same smooth scheme once it is chosen**. *Resolved
   (Q9):* the follow-up chose the continuous "accordion" scale (SDD 38 D15 amendment D, `b5bae2c`); section 4.5 applies
