@@ -252,7 +252,7 @@ On the Earth-Mars tunnel's axis looking toward Mars: cyan rings receding toward 
 
 ![Lane tunnels meeting at Earth](Docs/Images/49-lane-tunnel-earth.png)
 
-40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet. Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
+40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet (as built in #49; since #50 the end rings sit three tunnel radii out, so the lane U-turns clear the planet). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
 
 ## Development effort
 
@@ -261,11 +261,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 128.6 h |
-| Time spent answering questions | 10.1 h |
-| Tokens | 7,323.0M |
-| Notional API price | $2,882 |
-| Subagents dispatched | 566 |
+| Work time (wall-clock) | 129.0 h |
+| Time spent answering questions | 10.6 h |
+| Tokens | 7,376.9M |
+| Notional API price | $2,915 |
+| Subagents dispatched | 572 |
 <!-- METRICS:END -->
 
 ## Documentation map

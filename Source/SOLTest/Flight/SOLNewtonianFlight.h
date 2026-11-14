@@ -15,7 +15,7 @@
 namespace SOLNewtonian
 {
     inline constexpr double EPSILON = 1.0e-9;
-    inline constexpr double STANDARD_GRAVITY_MPS2 = 9.80665;
+    using SOL::STANDARD_GRAVITY_MPS2;                       // One definition, in SOLConstants.h
     inline constexpr double HUMAN_MAX_G = 9.0;
     inline constexpr double ATTITUDE_GAIN_PER_S = 4.0;
     inline constexpr double ATTITUDE_BRAKE_FRACTION = 0.8;

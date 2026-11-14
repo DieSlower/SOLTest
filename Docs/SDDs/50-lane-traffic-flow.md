@@ -128,7 +128,7 @@ cycle; the duplicated view-size helper of the profile smokes.
 ```mermaid
 flowchart LR
     S["Spawn: hashes per ship<br/>phase, effort, radius, clock angle, halo"] --> P["Lane profile per lane<br/>wall radius, nominal leg, end arcs, U-turn"]
-    P --> R["FSOLNpcRail lane: 7 floats<br/>phase, dv, t_a, T_leg, offsets"]
+    P --> R["FSOLNpcRail lane: 7 floats<br/>phase, dv, t_a, offsets, T_leg derived"]
     M["Traffic math (pure, double)"] --> C["CPU: SOLNpcRail::EvaluateAtTimeM<br/>Mid and Full AI tiers"]
     M --> G["GPU: M_SOLNpcPoints vertex<br/>SOLNpcTraffic.ush mirror"]
     M --> H["HUD merge readout"]
@@ -165,8 +165,10 @@ Per lane (frozen at spawn unless stated):
   so near-axis ships would fly through the planet (Earth - Mars: end ring 6.4e6 + 8.6e6 m from Earth's centre, apex at
   6.4e6 - 8.6e6 < 0, past the centre). The user moved the end rings out to `m` = 3
   (apex one wall radius above the surface).
-- **Drivable:** a lane whose nominal leg is below `2 Z` (section 4.5) is not drivable; its ships stay on the lane's
-  midpoint disc at rest. No default lane is close (asserted by a test).
+- **Drivable:** a lane whose nominal leg is not above `2 Z` (section 4.5) is not drivable; since `Z = min(0.05 l0,
+  l0 / 2)` that means a nominal leg `<= 0` (the end rings meet or cross; a leg within the rounding of the end-ring
+  subtraction counts as 0). Its ships stay on the lane's midpoint disc at rest. No default lane is close (asserted by
+  a test).
 
 ### 4.3 Speed profile (D2-D6)
 
@@ -213,6 +215,16 @@ Per ship, precomputed in double at spawn (`MakeLegProfile`): `alpha`, `v_p`, `dv
 (accelerate time; 0 when `kappa` = 0), `d_a = w t_a + dv t_a / 2` (accelerate distance), `t_c = (l0 - 2 d_a) / v_p`
 (coast), `T_leg = 2 t_a + t_c`. Per lane: `T_U = pi D_U / w` (U-turn time). Cycle `T_cyc = 2 T_leg + 2 T_U`.
 
+**Only `dv` and `t_a` are stored; `T_leg` is derived at evaluation** (`LaneShipLegS`, 50a review): `t_c = (l0 - 2 t_a
+(w + dv / 2)) / (w + dv)` from the stored (float on the rail) `dv`, `t_a` and the lane's `l0`, so `2 d_a + v_p t_c = l0`
+holds for the rounded values too and the leg is evaluated from the nearer end **in time** (`s = min(tl, T_leg - tl)`,
+split at `T_leg / 2`), so the two halves meet exactly. A stored `T_leg` (as first built) let the halves disagree by
+`l0 - 2 d_a - v_p t_c`, up to about 18 km on Earth - Mars once rounded to float (a visible jump mid-leg). On an
+uncapped leg the rounded `t_a` can overshoot `l0 / 2` by a rounding step, giving a tiny negative `t_c`: allowed, the
+halves then meet inside the accelerate phase, off by `alpha (t_c / 2)^2` (below a micrometre). The test
+`SOLTest.NpcTrafficMath.FloatRail` rounds every stored value to float and checks 1 m continuity at `T_leg / 2 +- 1 ms`,
+the joints and the exact end rings.
+
 ```mermaid
 flowchart LR
     O["Outbound leg A to B<br/>right half, accelerate, coast, brake"] --> TB["U-turn beyond end ring B<br/>half-ellipse, speed w at both joints"]
@@ -228,7 +240,9 @@ flowchart LR
   capped lane (traffic piles up near the planets, as it should).
 - **Leg arc** `u(tl)`, `tl` the time into the leg: `w tl + alpha tl^2 / 2` while `tl <= t_a`; `d_a + v_p (tl - t_a)`
   while coasting; `l0 - (w tb + alpha tb^2 / 2)` with `tb = T_leg - tl` while braking (`alpha = dv / t_a`, written with
-  selects, no divergent branch). `u(0) = 0`, `u(T_leg) = l0`, speed `w` at both ends.
+  selects, no divergent branch). `u(0) = 0`, `u(T_leg) = l0`, speed `w` at both ends. As built (50a review): with `s =
+  min(tl, T_leg - tl)` the arc from the nearer end ring is `w s + alpha s^2 / 2` while `s <= t_a`, else `d_a + v_p (s -
+  t_a)`; `u` is that arc in the first half and `l0` minus it in the second (the same curve, one formula).
 - **Along position** on the current lane: `x = e_A + X(u)` from A (outbound), `x = e_A + l(t) - X(u)` (inbound), with
   the metric end-zone map `X` of section 4.5 and the current leg `l(t)`. Evaluated from the **nearer end** (from A
   while `X <= l / 2`, else from B: `B - a (R_B + m Rw + l - X)`), which halves the magnitudes and keeps ships near
@@ -264,8 +278,11 @@ that is **metric near both end rings**:
 `Z` = `NPC_LANE_METRIC_ZONE_FRACTION` (0.05) x `l0` (`J'` is a smoothstep ramp over the zone, so `X(0) = 0`, `X(l0) = l`,
 `X' = 1` at both ends). The ship therefore leaves and reaches each end ring exactly at the wall speed relative to that
 end's body (D3), the end rings and U-turns sit at their metric places whatever the length (planet clearance holds),
-and the stretch goes into the middle. `X` is monotone whenever `l > Z` (every default lane: `l / l0` stays above 0.14
-with the recommended nominal length). `l - l0` is computed in double on the CPU per lane per frame and uploaded, so the
+and the stretch goes into the middle. `X` is monotone whenever `l > Z` (every default lane: `l / l0` stays above about
+0.137, Earth - Mars at its closest, with the recommended nominal length). *(50a review:)* the lane frame floors `l` at
+`1.001 Z` (`MakeLaneFrame`; never reached on a real lane, it also keeps `l >= 0` when the end rings cross) and moves B's
+end ring and U-turn out by the excess (`FSOLLaneFrame::EndShiftM`, 0 on every real lane), so evaluations from either
+end agree; the map functions read a shorter `l` the same way. `l - l0` is computed in double on the CPU per lane per frame and uploaded, so the
 shader never subtracts two large floats.
 
 The mid-lane speed scales by about `l / l0`. **Nominal length (D16):** the lane's **maximum** length (sum
@@ -278,9 +295,10 @@ length, where the middle can run up to about 7x faster than the cap.
 
 **Rail layout (lane kind)**, still 32 bytes and two texels: P0 `phi` at the epoch, P1 `dv` (m/s, stored directly so a
 halo ship's tiny `dv` does not cancel in float), P2 the up offset `rho Rw cos psi` (m), P3 the right offset `rho Rw sin
-psi` >= 0 (m), P4 `t_a` (s), P5 `T_leg` (s), **P6 reserved** (0; the future destination hook, section 4.11). `T_cyc` and
-`alpha` are derived (`2 T_leg + 2 T_U`, `dv / t_a`). `AdvancedToEpoch` advances `phi` by `delta / T_cyc` in double and
-wraps it into [0, 1).
+psi` >= 0 (m), P4 `t_a` (s), **P5 free** (50a review: `T_leg` is no longer stored, section 4.4; part 50b uses it for
+phase precision, see the plan's 50b notes), **P6 reserved** (0; the future destination hook, section 4.11). `T_leg`,
+`T_cyc` and `alpha` are derived (`2 t_a + (l0 - 2 t_a (w + dv / 2)) / (w + dv)`, `2 T_leg + 2 T_U`, `dv / t_a`).
+`AdvancedToEpoch` advances `phi` by `delta / T_cyc` in double and wraps it into [0, 1).
 
 **Group texture** `NpcGroupTex` grows from 64 x 2 to 64 x 6 rows (per frame, 8 lanes, about 6 KB per upload): row 0 and
 1 unchanged (`A`, `B` relative to the viewpoint, `R`, drawn flag); row 2 `Up`, `Rw`; row 3 `Right`, `D_U`; row 4 `l - l0`
@@ -299,7 +317,11 @@ evaluation. **Today's lane error is the same order** (`ulp(param) x L`, about 27
 at the Mid-radius hand-over (2,000 km): ships closer than that are evaluated on the CPU in double from the same rail
 floats. The outer lanes (up to about 50 AU nominal) reach several hundred km, as today. A contract case (section 6 case
 10) re-implements the shader formula in C++ float and asserts the bound per default lane; the smoke (section 8 V5)
-checks the hand-over.
+checks the hand-over. *(50a review:)* a single float phase also makes the motion **step in time**: `frac(phi + t /
+T_cyc)` only changes in `ulp x T_cyc` steps, about 0.16 s on a short (axis) cycle to about 1.3 s on a long halo
+cycle, a visible stutter; part 50b uses the freed P5 for a second (low-order) phase float or for seconds from the
+nearest leg joint, picks one phase formula for the CPU and the shader, and V5 tests smoothness over time (plan, 50b
+notes, with the reviewer's shader cost advice).
 
 **Cost estimate at 1M NPCs.** About 400k lane ships, three vertices each, so about 1.2M lane-branch evaluations per
 frame. Today: two rail texels and about 40 ALU. New: the same two rail texels, four extra group texels (one column,
@@ -323,8 +345,13 @@ counting pass (about 5-10 ms once, in parallel, on the spawn frame).
 - **Rail frame** (`FSOLNpcRailFrame`) gains per lane `Up`, `Right` (double) and `l(t)`; `BuildFrame` fills them.
 - **Tiers:** unchanged code paths. Mid and Full AI ships still sit at `EvaluateM + deviation`, so the tier hand-overs
   are seam-free by construction; the velocity (central difference over 0.5 s) is continuous across the segment joints.
-- **Wake bound:** `LaneShipSpeedBoundMps` takes the lane's largest `v_p` (computed at spawn, at most `c`), the length
-  ratio `max(1, l / l0)`, the halo outer radius `H Rw` (the turning lever) and the endpoint speed. The bound grows from
+- **Wake bound:** `SOLLaneTraffic::LaneShipSpeedBoundMps` takes the lane's largest `v_p` (computed at spawn, at most
+  `c`), the nominal and current legs, the halo outer radius `H Rw` (the turning lever) and the endpoint speed; it
+  scales `v_p` by the metric map's largest slope `max(1, (l - Z) / (l0 - Z))` (the literal length ratio `l / l0`
+  understates it: 2.05 against 2 at `l = 2 l0`, found by the 50a brute-force test) and adds a 1e-6 relative rounding
+  allowance, since a coasting peak ship mid-lane reaches the bound exactly (50a review: 1e-8 was below the float
+  rounding of the rail's stored `dv`, about 6e-8 relative); a non-finite peak reads as the cap, so the bound is never
+  NaN. The bound grows from
   150 to at most 300 km/s on capped lanes, so lane chunks wake more often (risk R4, profiled).
 - **Lane histogram:** `AccumulateLaneShips` counts all lane ships (the label, D15) and the new in-wall count;
   `FSOLNpcLaneEntry` gains `InWallShipCount` and `WallRadiusM` (frozen `Rw`), which `BuildTunnelLaneData` uses instead
@@ -404,14 +431,17 @@ data.
   subsystem at spawn, cleared at despawn; no per-frame data). New edges `Npc -> Traffic`, `Ship -> Traffic`, `UI ->
   Traffic`; `Traffic -> Universe` (body registry) and `Traffic -> Const`. No `Ship -> Npc` or `UI -> Npc` edge is added.
   The lane basis function moves from `SOLNpcTunnel::TunnelBasis` into `Traffic/` (`SOLLaneTraffic::LaneBasis`); the
-  `SOLNpcTunnel` name stays as a forwarding inline, so the #49 tests do not change.
+  `SOLNpcTunnel` name stays as a forwarding inline, so the #49 tests do not change. *(As built in 50a:
+  `FSOLNpcTunnelBasis` is an alias of `FSOLLaneBasis`. After the 50a review `MakeLaneProfile` takes the wall radius
+  `Rw` (the caller, the NPC subsystem in 50b, computes `SOLNpcTunnel::TunnelRadiusM`), so `Traffic/` includes nothing
+  from `Npc/`: only `Npc -> Traffic` exists.)*
 - `Npc`: `SOLNpcScaleMath` (spawn), `SOLNpcRail` (rail, frame, epoch), `SOLNpcSubsystem` (counting pass, lane profiles,
   wake bound, publishes the lane table), `SOLNpcVisuals` (group texture rows), `SOLNpcLaneMath` (`InWallShipCount`,
   `WallRadiusM`), `SOLNpcTunnelMath` / component (radius from `WallRadiusM`, label count per D15).
 - `Ship`: `USOLShipFlightProcessor` (lane leg per frame, merge / hold / leave per substep), `FSOLShipControlFragment`
   transient lane fields. `UI`: `SOLFlightHud` (readout line), `SOLLaneTunnelLabel` (fourth line), `SOLMenuText`.
 - New files: `Traffic/SOLLaneTrafficMath.{h,cpp}`, `Traffic/SOLLaneTrafficSubsystem.{h,cpp}`,
-  `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/LaneTrafficMathTest.cpp`; flags
+  `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/NpcTrafficMathTest.cpp`; flags
   `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile`; no new cvar (the A/B baseline is the pre-#50 commit, section 8).
 
 ### 4.11 Future hooks (record only)
@@ -430,6 +460,14 @@ data.
 `SOLLaneTraffic::LaneThrustAt(rail, laneProfile, t)` returns the segment and the thrust: Accelerate (thrust `alpha`
 along travel), Coast (none), Brake (`alpha` against travel, the hull flipped per D17), Turn (centripetal, toward the
 turn's centre). Pure and CPU-side; #51 decides how a flame uses it (a shader mirror is #51's call).
+
+**Known simplification (50a review, for #51):** the legs report the **nominal** profile. The ship's real acceleration
+along the current lane is `X'(u) u'' + X''(u) u'^2`; the second term, from the metric map's curvature, is left out. It
+is non-zero only in the end zones while `l != l0`, so a ship marked Coast there slows (a shortened lane) by up to
+`|X''| v^2`. Measured on every default lane for the fastest ship (axis, full effort) at a length below its shortest
+geometry (`SOLTest.NpcTrafficMath.MapCurvature`: 0.13 `l0` for the planet lanes, the Moon's smallest perigee for
+Earth - Moon): Mercury - Venus 1.41 G, Venus - Earth 0.97 G, Earth - Moon 0.77 G, Earth - Mars 0.63 G, the outer lanes
+0.03-0.24 G, all below `a` (1.65 G). #51 may add the term (flame on while "coasting" in a zone) or accept it.
 
 ### 4.13 What does not change
 
@@ -463,7 +501,7 @@ manual flight, every setting, the save schema and the key layout, the map.
 
 Pure functions and plain data only, written from this section without seeing the implementation. Names are proposals.
 Tolerance 1e-9 relative for doubles unless stated; constants referenced by name, and where a case says "proposed value"
-the test asserts it. New file `Tests/LaneTrafficMathTest.cpp` (`SOLTest.LaneTrafficMath.*`, namespace
+the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTrafficMath.*`, namespace
 `SOLLaneTraffic`) unless stated.
 
 1. **Constants:** `NPC_LANE_WALL_SPEED_MPS` 2.0e4; `NPC_LANE_PEAK_ACCEL_G` 1.65 (= 1.1 x `PILOT_SUSTAINED_G`) and the
@@ -495,13 +533,15 @@ the test asserts it. New file `Tests/LaneTrafficMathTest.cpp` (`SOLTest.LaneTraf
 6. **`double MetricMapM(double u, double l0, double l)` and `MetricMapInverseM`:** `X(0) = 0`, `X(l0) = l`; identity
    when `l == l0`; `X' = 1` at both ends (finite difference, 1e-6) for `l / l0` in {0.15, 0.5, 2, 7}; `X(u) - u` below
    1e-3 of the zone size at `u = 0.01 Z`; strictly monotone for `l / l0` in {0.06, 0.15, 1, 7}; `J` continuous at `Z`
-   and `l0 - Z`; inverse round trip 1e-9; `Z` = `l0 / 2` when the leg is shorter than `2 Z`.
+   and `l0 - Z`; inverse round trip 1e-9; `Z` = `min(NPC_LANE_METRIC_ZONE_FRACTION x l0, l0 / 2)`.
 7. **`FSOLLaneCycle` / `CycleSegmentAt(...)`:** `T_U = pi D_U / w`, `T_cyc = 2 LegS + 2 T_U`; the four segment
    boundaries; `tau` identical for `t` and `t + k T_cyc` (k = -3 .. 3) and for negative `t`; phase in [0, 1).
 8. **`FVector3d LaneShipPositionM(lane, ship, t)`** (pure; lane = A, B, Up, Right, current leg, profile constants;
-   ship = phase, dv, offsets, t_a, T_leg): at 200 sampled times per ship and 20 ships per lane: outbound legs have a
+   ship = phase, dv, offsets, t_a; `T_leg` from `LaneShipLegS`): at 200 sampled times per ship and 20 ships per lane: outbound legs have a
    positive `Right` component (`psi` in (0, pi)), inbound legs a negative one, from the lane's own basis; the lateral
-   radius on legs equals `rho Rw` (1e-9); position continuous across every joint (1e-6 m at 1 AU scale with the joint
+   radius on legs equals `rho Rw` (1e-9); position continuous across every joint (1e-3 m relative to the nearer body,
+   the time rounding times the speed; 1e-6 m only for lateral offsets, since absolute positions at 1 AU have an ulp of
+   about 3e-5 m; with the joint
    evaluated from both sides) and velocity continuous (central difference, speed `w` at the joints, 1e-3); the U-turn
    reaches `D_U` beyond its end ring at `theta = pi / 2` with a zero `Right` component there; with the D14
    margin no sample is inside either body's sphere; each direction keeps to the right of its own travel when seen from
@@ -511,15 +551,16 @@ the test asserts it. New file `Tests/LaneTrafficMathTest.cpp` (`SOLTest.LaneTraf
    in-wall `rho^2` mean 0.5 +- 0.01 (uniform disc); halo `rho^2` uniform in [1, 4] (mean 2.5 +- 0.03); `psi` in [0, pi];
    effort uniform in [0.5, 1]; phase uniform in [0, 1); deterministic per (seed, index); battle and cluster spawns
    bit-identical to the current implementation (regression copy of three samples each).
-10. **Rail (`NpcRailTest.cpp`):** `FromSpawn` lane fields equal the profile values (P6 = 0); `EvaluateAtTimeM` equals
+10. **Rail (`NpcRailTest.cpp`):** `FromSpawn` lane fields equal the profile values (P6 = 0; P5 as 50b assigns it); `EvaluateAtTimeM` equals
     `LaneShipPositionM` (1e-6 relative); `AdvancedToEpoch` keeps `phi` in [0, 1) and `EvaluateM(advanced, t)` matches
     `EvaluateM(rail, t + delta)` within the float rounding of the wrapped phase; **GPU float mirror** (a C++ float copy
     of the shader formula in the test, like `NpcRailGpuTheta`): within one epoch window the error per default lane is
     below `2 x ulp(phi) x T_cyc x v_max + 2 x ulp(|pB|)` (logged per lane; Earth - Mars below 30 km); `VelocityMps`
     magnitude equals `LegSpeedMps` on a leg (1e-3).
-11. **`FSOLLaneProfile MakeLaneProfile(R, inWallCount, L0, R_A, R_B)`:** `Rw == SOLNpcTunnel::TunnelRadiusM(R,
-    inWallCount)`; `e_A`, `l0`, `D_U`, `T_U`, `Z` from section 4.2; every default lane drivable at its nominal length;
-    a lane shorter than its end rings plus `2 Z` -> not drivable.
+11. **`FSOLLaneProfile MakeLaneProfile(Rw, L0, R_A, R_B)`** (50a review: the caller passes `Rw =
+    SOLNpcTunnel::TunnelRadiusM(R, inWallCount)`, which the test computes the same way): `Rw` passed through;
+    `e_A`, `l0`, `D_U`, `T_U`, `Z` from section 4.2; every default lane drivable at its nominal length; a lane
+    shorter than its end rings plus `2 Z`, or a zero, negative or non-finite `Rw` -> not drivable.
 12. **Wake bound:** `LaneShipSpeedBoundMps` is at or above the largest sampled ship speed relative to A (brute force over
     1,000 ships of a lane, `l / l0` in {0.15, 1, 2}, endpoint speed 0 and 30 km/s).
 13. **Merge readout `FSOLLaneMergeReadout MergeReadout(...)`:** lane choice (smallest `rho_p`, hidden beyond `H` and
@@ -534,7 +575,11 @@ the test asserts it. New file `Tests/LaneTrafficMathTest.cpp` (`SOLTest.LaneTraf
     autopilot, route and chase steps are bit-identical to today's (`RouteGuidanceTest`, `ChaseTest`,
     `NewtonianFlightMathTest` unchanged).
 15. **`LaneThrustAt`:** Accelerate / Coast / Brake / Turn at sampled times, magnitudes `Alpha`, 0, `Alpha`,
-    `w^2 / D_U`-scale.
+    `w^2 / D_U`-scale; the left-out map term `|X''| v^2` below `a` on every default lane (section 4.12).
+15b. **50a review additions:** float rail (every stored ship value rounded to float: 1 m continuity at `T_leg / 2 +-
+    1 ms` and at the joints, exact end rings, below the wake bound; `T_leg` from `LaneShipLegS`); a current leg at or
+    below `Z` (map strictly monotone, inverse round trip, `X(l0) = 1.001 Z`, a crowded lane's ship moves forward); the
+    wake bound with a NaN or infinite peak finite and at least the cap.
 16. **Text:** the readout tokens resolve, the glossary entry exists, the player guide is current (`InfoText`,
     `PlayerGuide`, glossary tests).
 
@@ -643,3 +688,8 @@ D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20.
 - 2026-11-13: first draft from the grill-me decisions D1-D12; open questions Q1-Q8.
 - 2026-11-13: Q1-Q8 answered by the user and folded in as D13-D20 (Q7 changed from the recommendation: AUTO obeys lane
   rules by default with an override); Q9 added (how the override is given).
+- 2026-11-13: 50a adversarial review applied: `T_leg` derived from `dv`, `t_a` and `l0` and the leg split at
+  `T_leg / 2` (float rails no longer jump mid-leg; rail P5 freed, sections 4.4 and 4.6); `MakeLaneProfile` takes `Rw`
+  (no `Traffic -> Npc` edge, section 4.10); the wake bound's rounding allowance 1e-6 and a NaN guard (section 4.7);
+  the current leg floored at `1.001 Z` with B's end shifted (section 4.5); the thrust state's left-out map term
+  documented and bounded (section 4.12); contract cases 11, 15 and 15b.

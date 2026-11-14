@@ -226,60 +226,6 @@ double SOLNpcTunnel::TunnelRadiusM(const double laneRadiusM, const int32 shipCou
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns the lane's tunnel basis: outbound axis, up from the ecliptic north pole (or +X near the pole), right
-FSOLNpcTunnelBasis SOLNpcTunnel::TunnelBasis(const FVector3d& aM, const FVector3d& bM)
-{
-    FSOLNpcTunnelBasis basis;
-    if (!TunnelIsFinite(aM) || !TunnelIsFinite(bM))
-    {
-        return basis;
-    }
-    const FVector3d delta = bM - aM;
-    const double lengthSq = delta.SizeSquared();
-    if (!(lengthSq > 0.0) || !FMath::IsFinite(lengthSq))
-    {
-        return basis;
-    }
-
-    // Up from north projected off the axis; within the fallback angle of the pole it is +X projected, and between the
-    // fallback and blend angles it turns smoothly about the axis from the one to the other
-    const FVector3d axis = delta / FMath::Sqrt(lengthSq);
-    const double poleAngleDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Min(FMath::Abs(axis.Z), 1.0)));
-    const double fallbackWeight = TunnelSmoothFall(poleAngleDeg, SOL::NPC_TUNNEL_UP_FALLBACK_DEG,
-        SOL::NPC_TUNNEL_UP_BLEND_DEG);
-    FVector3d up;
-    if (fallbackWeight <= 0.0)
-    {
-        const FVector3d projected = FVector3d::UnitZ() - axis * axis.Z;
-        up = projected / projected.Size();
-    }
-    else
-    {
-        const FVector3d projectedX = FVector3d::UnitX() - axis * axis.X;
-        const FVector3d upX = projectedX / projectedX.Size();
-        if (fallbackWeight >= 1.0)
-        {
-            up = upX;
-        }
-        else
-        {
-            // Rotate the north up about the axis toward the +X up by the weighted signed angle between them
-            const FVector3d projectedZ = FVector3d::UnitZ() - axis * axis.Z;
-            const FVector3d upZ = projectedZ / projectedZ.Size();
-            const FVector3d side = FVector3d::CrossProduct(axis, upZ);
-            const double angle = FMath::Atan2(FVector3d::DotProduct(upX, side), FVector3d::DotProduct(upX, upZ));
-            const double turned = fallbackWeight * angle;
-            up = upZ * FMath::Cos(turned) + side * FMath::Sin(turned);
-        }
-    }
-    basis.Axis = axis;
-    basis.Up = up;
-    basis.Right = FVector3d::CrossProduct(axis, up);
-    basis.bValid = true;
-    return basis;
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Returns a dot row's side: +1 outbound (right half), -1 inbound, 0 out of range
 int32 SOLNpcTunnel::DotRowSide(const int32 row)
 {

@@ -84,6 +84,9 @@ namespace SOL
     inline constexpr double PLAYER_ANGULAR_RATE_PITCH_YAW_RADPS = 1.5707963267948966;  // 90 deg/s
     inline constexpr double PLAYER_SPIN_CLAMP_RADPS = 6.283185307179586;               // 360 deg/s
 
+    // Standard gravity, the m/s^2 of one G (SOLNewtonian re-exports it under its own namespace)
+    inline constexpr double STANDARD_GRAVITY_MPS2 = 9.80665;
+
     // Untrained pilot G tolerance (SDD 18 section 3.2; Amendment 7 adds the G-LOC recovery floor and the lethal-G
     // warning, user decision H2)
     inline constexpr double PILOT_SUSTAINED_G = 1.5;
@@ -2672,8 +2675,9 @@ namespace SOL
                                                                        // its projected radius is below this many ribbon
                                                                        // half extents (no white vanishing point; the
                                                                        // end rings are exempt, user 2026-11-13)
-    inline constexpr double NPC_TUNNEL_END_MARGIN_RADII = 1.0;         // End ring this many tunnel radii outside the
-                                                                       // body's surface (Q10)
+    inline constexpr double NPC_TUNNEL_END_MARGIN_RADII = 3.0;         // End ring this many tunnel radii outside the
+                                                                       // body's surface (Q10; 3 since #50 D14, so the
+                                                                       // 2-radius lane U-turn clears the planet)
     inline constexpr double NPC_TUNNEL_END_RING_MIN_ALPHA = 0.5;       // End rings' depth fade never goes below this
                                                                        // (no screen-size fade; only the near fade can
                                                                        // dim one further, beside the camera)
@@ -2752,6 +2756,45 @@ namespace SOL
         && NPC_TUNNEL_NEAR_FADE_RADIAL_NONE_RADII > NPC_TUNNEL_NEAR_FADE_RADIAL_FULL_RADII
         && NPC_TUNNEL_UP_BLEND_DEG > NPC_TUNNEL_UP_FALLBACK_DEG, "every fade band has a width");
     static_assert(NPC_TUNNEL_DOT_ROWS % 2 == 0, "the dot rows split evenly into an outbound and an inbound half");
+
+    // NPC lane traffic (issue #50, SDD 50 sections 4.2-4.9): keep right, flip-and-burn legs, U-turns past the end rings
+    inline constexpr double NPC_LANE_WALL_SPEED_MPS = 2.0e4;           // Comfortable speed at the wall and at both end
+                                                                       // rings, relative to the nearest body (D3)
+    inline constexpr double NPC_LANE_PEAK_ACCEL_G = 1.1 * PILOT_SUSTAINED_G;   // Design peak acceleration, 1.65 G
+                                                                       // (1.1 x the sustained pilot G, D4)
+    inline constexpr double NPC_LANE_PEAK_ACCEL_MPS2 = NPC_LANE_PEAK_ACCEL_G * STANDARD_GRAVITY_MPS2;   // The same in
+                                                                       // m/s^2
+    inline constexpr double NPC_LANE_SPEED_CAP_MPS = 3.0e5;            // Peak speed cap: long lanes coast at it (D4)
+    inline constexpr double NPC_LANE_EFFORT_MIN = 0.5;                 // Per-ship effort, a fraction of the peak
+    inline constexpr double NPC_LANE_EFFORT_MAX = 1.0;                 // acceleration hashed in [min, max] (D4)...
+    inline constexpr double NPC_LANE_EFFORT_MEAN = 0.75;               // ...and the mean the speed field uses
+    inline constexpr double NPC_LANE_HALO_FRACTION = 0.25;             // Share of lane ships outside the wall (D6)
+    inline constexpr double NPC_LANE_HALO_OUTER_WALL_RADII = 2.0;      // The halo reaches this many wall radii (D6)
+    inline constexpr double NPC_LANE_HALO_KAPPA = 0.01;                // Halo radial speed factor (section 4.3)...
+    inline constexpr double NPC_LANE_HALO_RAMP_WALL_RADII = 0.25;      // ...reached this far past the wall (smoothstep)
+    inline constexpr double NPC_LANE_UTURN_DEPTH_WALL_RADII = 2.0;     // U-turn depth past an end ring (D1)
+    inline constexpr double NPC_LANE_METRIC_ZONE_FRACTION = 0.05;      // Metric end zones, fraction of the nominal leg
+                                                                       // (section 4.5)
+    inline constexpr double NPC_LANE_MERGE_MATCH_FRACTION = 0.05;      // Merge readout: MATCHED (green) within this...
+    inline constexpr double NPC_LANE_MERGE_AMBER_FRACTION = 0.20;      // ...amber to this, red beyond (D8)
+    inline constexpr double NPC_LANE_MERGE_DIRECTION_MIN_MPS = 1000.0; // Below this along-lane speed the readout takes
+                                                                       // the direction from the ship's forward
+    inline constexpr double NPC_LANE_AUTO_TRACK_WALL_RADII = 0.25;     // AUTO's right-hand track radius (D9)
+    inline constexpr double NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII = 20.0;   // An AUTO path uses a lane only when it runs
+                                                                       // this far inside the halo (D20)
+    inline constexpr double NPC_LANE_FLIP_S = 60.0;                    // Hull flip time while braking (D17)
+    static_assert(NPC_LANE_SPEED_CAP_MPS > NPC_LANE_WALL_SPEED_MPS, "the cap is above the wall speed");
+    static_assert(NPC_LANE_EFFORT_MIN > 0.0 && NPC_LANE_EFFORT_MIN < NPC_LANE_EFFORT_MEAN
+        && NPC_LANE_EFFORT_MEAN < NPC_LANE_EFFORT_MAX, "the mean effort lies inside the effort range");
+    static_assert(NPC_LANE_HALO_KAPPA > 0.0 && NPC_LANE_HALO_KAPPA < 1.0
+        && NPC_LANE_HALO_RAMP_WALL_RADII > 0.0 && NPC_LANE_HALO_RAMP_WALL_RADII < NPC_LANE_HALO_OUTER_WALL_RADII - 1.0,
+        "the halo factor ramps up inside the halo");
+    static_assert(NPC_LANE_METRIC_ZONE_FRACTION > 0.0 && NPC_LANE_METRIC_ZONE_FRACTION < 0.5,
+        "the two metric zones fit inside the leg");
+    static_assert(NPC_LANE_UTURN_DEPTH_WALL_RADII > 0.0
+        && NPC_LANE_UTURN_DEPTH_WALL_RADII < NPC_TUNNEL_END_MARGIN_RADII,
+        "the U-turn apex stays above the body's surface (D14)");
+    static_assert(NPC_LANE_MERGE_MATCH_FRACTION < NPC_LANE_MERGE_AMBER_FRACTION, "the readout bands are ordered");
 
     // NPC statistics (SDD 11 sections 3.7-3.8): the NpcStats log line and the stats overlay (Part 10e)
     inline constexpr double NPC_STATS_LOG_PERIOD_S = 2.0;              // One NpcStats line per period while NPCs exist

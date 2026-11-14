@@ -527,7 +527,7 @@ bool FSOLNpcTunnelMathConstantsTest::RunTest(const FString& /*parameters*/)
         256.0, NPCTUNNEL_TOL);
     TestEqual(TEXT("detail fade end 512 radii"), static_cast<double>(SOL::NPC_TUNNEL_DETAIL_FADE_END_RADII), 512.0,
         NPCTUNNEL_TOL);
-    TestEqual(TEXT("end margin 1 radius"), static_cast<double>(SOL::NPC_TUNNEL_END_MARGIN_RADII), 1.0,
+    TestEqual(TEXT("end margin 3 radii (SDD 50 D14)"), static_cast<double>(SOL::NPC_TUNNEL_END_MARGIN_RADII), 3.0,
         NPCTUNNEL_TOL);
     TestEqual(TEXT("end ring min alpha 0.5"), static_cast<double>(SOL::NPC_TUNNEL_END_RING_MIN_ALPHA), 0.5,
         NPCTUNNEL_TOL);

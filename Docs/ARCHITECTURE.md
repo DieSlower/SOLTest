@@ -38,6 +38,7 @@ flowchart TD
     Combat["Combat (Part 6)<br/>bolts, targets, damage, sweeps"]
     MinorBodies["MinorBodies (Part 5)<br/>belt and ring-rock Mass entities"]
     Npc["Npc (Part 10, issue #11)<br/>NPC ships at scale, Demo options"]
+    Traffic["Traffic (#50)<br/>pure lane traffic math, lane basis"]
     Level["Level (Part 3)<br/>pure surface-lock state machine and alignment math"]
     Flight["Flight<br/>pure flight and targeting math"]
     Universe["Universe<br/>clock, orbits, registry, anchor, render origin"]
@@ -89,6 +90,8 @@ flowchart TD
     Npc -. "lane glow profile (SOLHudShapeMath, #38)" .-> UI
     Npc -. "Lanes row, live HUD glow (#38)" .-> Menu
     Npc --> OrbitLines["OrbitLines (#17)<br/>orbit-line math and actor"]
+    Npc -- "lane basis (#50)" --> Traffic
+    Traffic --> Const
     Universe -. "IsSOLGameWorld gate" .-> Game
     Flight --> Const
     Universe --> Const
@@ -102,7 +105,13 @@ flowchart TD
 SDD 49) add `Npc -> HudEvents`: `USOLNpcTunnelComponent` publishes the wall-label snapshot on `FSOLHudBus`
 (`PublishLaneTunnelLabels`, `ClearLaneTunnelLabels`: plain numbers, body indices and the dot rows with their world dot diameters), which the flight
 HUD reads at draw time, so the label alpha and anchors are computed on the Npc side and `UI/SOLLaneTunnelLabel` needs
-only `SOLHudFormat` and `SOLMenuText`. Every module includes `SOLConstants.h`. Only the pure leaves are drawn above.
+only `SOLHudFormat` and `SOLMenuText`. The lane traffic (issue #50, SDD 50 section 4.10; part 50a so far) adds the
+pure `Traffic/` folder and `Npc -> Traffic`: `SOLNpcTunnelMath.h` includes `Traffic/SOLLaneTrafficMath.h` because the
+lane basis moved there (`SOLNpcTunnel::TunnelBasis` forwards to `SOLLaneTraffic::LaneBasis`, `FSOLNpcTunnelBasis` is
+an alias of `FSOLLaneBasis`). `Traffic/` includes only `SOLConstants.h` (the wall radius is passed in by the caller,
+so it never includes `Npc/`); the later parts add `Ship -> Traffic`, `UI -> Traffic` and `Traffic -> Universe`, and no
+`Ship -> Npc` or `UI -> Npc` edge. No new `-SOL` flag in 50a. Every module includes `SOLConstants.h`. Only the pure
+leaves are drawn above.
 
 | Folder | Responsibility | Key files |
 |---|---|---|
@@ -123,6 +132,7 @@ only `SOLHudFormat` and `SOLMenuText`. Every module includes `SOLConstants.h`. O
 | `Level/` | Surface-lock (Part 3) pure logic: the engage/warn/release state machine and the up-alignment math. Its engine integration lives in `Ship/`, `Targeting/` and `UI/` (no new subsystem) | `SOLSurfaceLock` |
 | `Menu/` | Menus and settings (issue #8, Parts 8a-8d): the pure menu state machine, info-text, settings, key-label, key-binding and settings-rules logic; the menu subsystem that owns the flow (main menu, Play, Esc pause, Quit to menu), the main-menu camera pawn, the C++-built UMG main and pause menus with their Controls/Info/About/Settings pages and the Demo page (SDD 11 Part 10e: the NPC demo options, session-only, kept in the menu subsystem and pushed to `USOLNpcSubsystem::StartDemo`; Ctrl+F1 acts as Esc in both menus and the ship pawn), the settings subsystem and its save game, all menu strings in one file, and the `-SOLMenuSmoke` script | `SOLMenuState`, `SOLInfoText`, `SOLSettingsModel`, `SOLBindingLabel`, `SOLKeyBindings`, `SOLSettingsRules`, `SOLMenuSubsystem`, `SOLSettingsSubsystem`, `SOLEngineSettingsSnapshot`, `SOLSettingsSave`, `SOLMenuCameraPawn`, `SOLMainMenuWidget`, `SOLPauseMenuWidget`, `SOLDemoPageWidget`, `SOLSettingsPageWidget`, `SOLSettingsTabs`, `SOLMenuButton`, `SOLMenuContent`, `SOLMenuText`, `SOLMenuSmoke` |
 | `Npc/` | NPC ships at scale (Part 10, issue #11, SDD 11; 10a-10f): the pure tier/distribution/ramp/demo-option logic (10a), the motion model's rail half and the Mass fragments, the tier processor (group, temporal and per-chunk cull, budgeted hysteresis tiers, archetype moves by tag; a serial chunk walk records the active chunks, then the work runs in a ParallelFor over them, SDD 11 Amendment 6) and the Mid deviation processor (10b; since 18c a Newtonian point-mass return to the rail), the Full AI and NPC-vs-NPC combat (gather/scatter processor, flat-list steering, guns, bolt pool, statistical model, respawn; the NPC combat renderer; 10d), the subsystem that spawns the population (entities created in time slices, 10f) and runs them on `OnUniverseUpdated`, the renderer (GPU rail points evaluated in the `M_SOLNpcPoints` vertex shader from a rail texture re-based to a recent epoch, CPU points, instanced and pooled placeholder hulls, 10c/10f), the stats overlay (pure line formatting and a C++ UMG widget refreshed at 4 Hz, 10e), the pure NPC lane-line math (issue #38 part 38a, SDD 38: fade, width, dashes, the lane parameter under a pixel, the per-lane ship histogram, the per-frame lane frame and the renderer's pure feed), and the lane lines in `ASOLNpcVisuals` (part 38b: one ribbon mesh per population, placed and shaded on the GPU by `M_SOLNpcLanes` / `Shaders/Private/SOLNpcLane.ush`, the HLSL mirror of `SOLNpcLaneMath`; the far points' crossfade; the `-SOLSmokeNpcLanes` script `FSOLNpcLaneSmoke`), and the lane guidance tunnels (issue #49, SDD 49: the pure `SOLNpcTunnelMath` (fade, basis, accordion ring warp, slots, fades, label lanes, renderer feed), `USOLNpcTunnelComponent` (a slot mesh built once, one fixed-bounds ISM instance per lane in range, `M_SOLNpcTunnel` / `Shaders/Private/SOLNpcTunnel.ush`, the HLSL mirror of `SOLNpcTunnelMath`, the per-lane tunnel texture `NpcTunnelTex` also read by the lane and point materials, the label snapshot) and the `-SOLSmokeNpcTunnel` script `FSOLNpcTunnelSmoke`) | `SOLNpcScaleMath`, `SOLNpcLaneMath`, `SOLNpcTunnelMath`, `USOLNpcTunnelComponent`, `FSOLNpcLaneSmoke`, `FSOLNpcTunnelSmoke`, `SOLNpcStatsText`, `SOLNpcStatsWidget`, `SOLNpcRail`, `SOLNpcFragments`, `USOLNpcTierProcessor`, `USOLNpcMidProcessor`, `SOLNpcAiMath`, `USOLNpcFullAiProcessor`, `FSOLNpcCombat`, `USOLNpcSubsystem`, `ASOLNpcVisuals`, `USOLNpcHullInstances`, `ASOLNpcCombatVisuals` |
+| `Traffic/` | Lane traffic (issue #50, SDD 50; part 50a): the pure, double-precision math of the NPC lane flow (keep right, flip-and-burn legs, U-turns past the end rings): the lane basis (moved here from `SOLNpcTunnelMath`), radial speed factor, per-ship leg profile with the leg time derived from the stored `dv` and `t_a`, mean speed field, metric end-zone map and its inverse, cycle, lane profile and frame, lane ship position (from the nearer end), wake speed bound and thrust state. Later parts add the merge readout, the AUTO lane rules and the lane-table subsystem; `Shaders/Private/SOLNpcTraffic.ush` (50b) mirrors it | `SOLLaneTrafficMath` |
 | `Game/` | Game mode (default pawn and HUD, spawns the body visuals, the star field, the asteroid-belt visuals, the NPC visuals and the NPC combat visuals, smoke screenshot), shared Enhanced Input helpers, debug spectator | `SOLGameMode`, `SOLInputHelpers`, `SOLSpectatorPawn` |
 | `Tools/` | Editor-only authoring helpers the Python asset scripts call (`USOLEditorAuthoring`: setting a string property by name, and, since issue #37 part 37b, connecting a material's Customized UV input, whose `EMaterialProperty` entries are hidden from Python; `Tools/UI/create_hud_shape_material.py` uses it for `M_SOLHudShape`'s Customized UV 2) | `SOLEditorAuthoring` |
 | root | Module boilerplate, log category, central constants | `SOLTest.h/.cpp`, `SOLConstants.h`, `SOLTest.Build.cs` (the `ImageCore` module since issue #33 part 33e-ii: the crop writer's `FImage`) |

@@ -6,18 +6,13 @@
 #pragma once
 
 #include "Npc/SOLNpcLaneMath.h"
+#include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
 
-// A lane tunnel's orthonormal frame (SDD 49 section 4.3), universe ecliptic directions: the outbound axis A -> B, up
-// (12 o'clock) from the ecliptic north pole projected off the axis, right (3 o'clock, the outbound side) = axis x up
-struct FSOLNpcTunnelBasis
-{
-    FVector3d Axis = FVector3d::ZeroVector;     // Outbound direction A -> B
-    FVector3d Up = FVector3d::ZeroVector;       // 12 o'clock
-    FVector3d Right = FVector3d::ZeroVector;    // 3 o'clock (outbound half of the tube)
-    bool bValid = false;                        // False (and zero vectors) for A == B or a non-finite input
-};
+// A lane tunnel's orthonormal frame (SDD 49 section 4.3): the lane basis, which moved to Traffic/ (SDD 50 section
+// 4.10); the #49 name stays for the tunnel code
+using FSOLNpcTunnelBasis = FSOLLaneBasis;
 
 // The inputs of a ring, dot or chevron slot (SDD 49 sections 4.5 and 4.7), all relative to the camera's foot point on
 // the lane's axis line
@@ -78,12 +73,15 @@ namespace SOLNpcTunnel
     // SOLNpcLane::LaneTrafficWeight(n)): R x MIN for an empty lane (never 0, D8); 0 for a bad lane radius
     SOLTEST_API double TunnelRadiusM(double laneRadiusM, int32 shipCount);
 
-    // Returns the tunnel basis of the lane A -> B: up = the ecliptic north pole projected off the axis, right = axis x
-    // up; within NPC_TUNNEL_UP_FALLBACK_DEG of the pole up is universe +X projected off the axis, and up to
-    // NPC_TUNNEL_UP_BLEND_DEG it turns smoothly about the axis from that to north (continuous along the pole angle;
-    // like any up field on a sphere it keeps a seam, here at the azimuth where the two ups are opposite inside the
-    // blend band); invalid for A == B or a non-finite input
-    SOLTEST_API FSOLNpcTunnelBasis TunnelBasis(const FVector3d& aM, const FVector3d& bM);
+    // Returns the tunnel basis of the lane A -> B, forwarding to SOLLaneTraffic::LaneBasis (SDD 50 section 4.10): up =
+    // the ecliptic north pole projected off the axis, right = axis x up; within NPC_TUNNEL_UP_FALLBACK_DEG of the pole
+    // up is universe +X projected off the axis, and up to NPC_TUNNEL_UP_BLEND_DEG it turns smoothly about the axis from
+    // that to north (continuous along the pole angle; like any up field on a sphere it keeps a seam, here at the
+    // azimuth where the two ups are opposite inside the blend band); invalid for A == B or a non-finite input
+    inline FSOLNpcTunnelBasis TunnelBasis(const FVector3d& aM, const FVector3d& bM)
+    {
+        return SOLLaneTraffic::LaneBasis(aM, bM);
+    }
 
     // Returns a dot row's side: +1 for the outbound (right) half, rows 0 .. NPC_TUNNEL_DOT_ROWS / 2 - 1, -1 for the
     // inbound half, 0 for a row out of range

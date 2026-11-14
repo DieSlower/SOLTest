@@ -18,7 +18,7 @@ class USOLMenuSubsystem;
 class USOLNpcSubsystem;
 class USOLSettingsSubsystem;
 class USOLShipSubsystem;
-struct FSOLNpcTunnelBasis;
+struct FSOLLaneBasis;
 
 /**
  * Verification-only NPC lane tunnel script (-SOLSmokeNpcTunnel, SDD 49 section 8 item 2). It requests a 1M population
@@ -106,7 +106,7 @@ private:
     void Finish(ASOLShipPawn& pawn);
 
     // Finds the Earth-Mars lane in the lane frame; false without it
-    bool FindLane(int32& outLane, FSOLNpcTunnelBasis& outBasis, double& outLengthM, double& outTunnelRadiusM) const;
+    bool FindLane(int32& outLane, FSOLLaneBasis& outBasis, double& outLengthM, double& outTunnelRadiusM) const;
 
     // Places the ship (universe ecliptic metres) facing a direction, at the reference velocity, not rotating
     void SetupShip(const FVector3d& positionM, const FVector3d& forward) const;
