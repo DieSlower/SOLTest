@@ -19,6 +19,7 @@ struct FSOLNpcLaneEntry
     double RadiusM = 0.0;                    // Lane radius (FSOLNpcGroupTable::LaneRadiusM)
     int32 ShipCount = 0;                     // Lane rails of the population
     double TrafficWeight = 0.0;              // SOLNpcLane::LaneTrafficWeight(ShipCount)
+    double WallRadiusM = 0.0;                // Frozen wall radius Rw of the lane profile (0 without a profile)
     bool bResolved = false;                  // Both bodies resolved and inside the frame arrays, any ship count
     bool bDrawn = false;                     // Ships on it and both bodies resolved (bResolved and a ship)
 };

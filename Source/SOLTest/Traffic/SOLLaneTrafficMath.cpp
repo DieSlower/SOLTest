@@ -181,6 +181,63 @@ namespace
         leg.bValid = true;
         return leg;
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the hull flip fraction at a cycle point: f on a leg, in a turn 1 for a ship whose legs brake (the brake
+    // attitude is held through the turn) and 0 otherwise
+    double TrafficFlipFraction(const FSOLLaneLeg& leg, const FSOLLaneCyclePoint& point)
+    {
+        if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
+        {
+            return SOLLaneTraffic::LaneHullFlipFraction(leg.LegS, leg.AccelS, point.SegmentTimeS);
+        }
+        return leg.AccelS > 0.0 ? 1.0 : 0.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the hull facing at a cycle point (SDD 50 section 4.4, D21); the point is ignored for an invalid frame,
+    // a non-drivable lane or an invalid leg
+    FVector3d TrafficHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const FSOLLaneShip& ship,
+        const FSOLLaneLeg& leg, const FSOLLaneCyclePoint& point)
+    {
+        if (!frame.bValid)
+        {
+            return frame.Axis.SizeSquared() > 0.5 ? frame.Axis : FVector3d::UnitX();
+        }
+        if (!profile.bDrivable || !leg.bValid)
+        {
+            return frame.Axis;
+        }
+
+        // Legs: facing travel, turning over about Up in the mid-leg window, facing the brake thrust after it
+        if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
+        {
+            const FVector3d travel = point.Segment == ESOLLaneSegment::Outbound ? frame.Axis : -frame.Axis;
+            const double angle = TRAFFIC_PI * SOLLaneTraffic::LaneHullFlipFraction(leg.LegS, leg.AccelS,
+                point.SegmentTimeS);
+            return travel * FMath::Cos(angle) + frame.Up * FMath::Sin(angle);
+        }
+
+        // Turns: a braking ship holds its brake attitude in world space (it enters the next leg facing travel)
+        const double side = point.Segment == ESOLLaneSegment::TurnAtB ? 1.0 : -1.0;
+        if (leg.AccelS > 0.0)
+        {
+            return -frame.Axis * side;
+        }
+
+        // A ship that never brakes faces the turn's velocity, d/dtheta of the half-ellipse (the reversal direction at
+        // a zero-speed apex of an axis ship)
+        const double theta = TRAFFIC_PI * point.SegmentTimeS / profile.UTurnS;
+        const double cosTheta = FMath::Cos(theta);
+        const FVector3d velocity = (frame.Axis * (profile.UTurnDepthM * cosTheta)
+            - frame.Right * (ship.RightOffsetM * FMath::Sin(theta))) * side;
+        const double speed = velocity.Size();
+        if (speed > 0.0 && FMath::IsFinite(speed))
+        {
+            return velocity / speed;
+        }
+        return frame.Axis * (cosTheta > 0.0 ? side : -side);
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -254,8 +311,10 @@ double SOLLaneTraffic::RadialFactor(const double rho)
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a ship's flip-and-burn leg; v_p^2 - w^2 = min(Alpha l0, kappa (c^2 - w^2)) gives dv without cancellation
-FSOLLaneLeg SOLLaneTraffic::MakeLegProfile(const double kappa, const double effort, const double legM)
+// Returns a ship's flip-and-burn leg (D21): dv = max(0, min(dv_f, dv_c)), each root written without cancellation, so
+// the coast is at least T_f on a burning leg and a leg of at most w T_f has no burn
+FSOLLaneLeg SOLLaneTraffic::MakeLegProfile(const double kappa, const double effort, const double legM,
+    const double flipS)
 {
     FSOLLaneLeg leg;
     if (!FMath::IsFinite(legM) || !(legM > 0.0))
@@ -267,36 +326,31 @@ FSOLLaneLeg SOLLaneTraffic::MakeLegProfile(const double kappa, const double effo
     const double k = FMath::IsNaN(kappa) ? 0.0 : FMath::Clamp(kappa, 0.0, 1.0);
     const double e = FMath::IsNaN(effort) ? SOL::NPC_LANE_EFFORT_MIN
         : FMath::Clamp(effort, SOL::NPC_LANE_EFFORT_MIN, SOL::NPC_LANE_EFFORT_MAX);
-
-    // Peak: the unbraked mid-leg speed or the blended cap c_k, whichever is lower
+    const double flipWindowS = FMath::IsNaN(flipS) ? 0.0 : FMath::Max(flipS, 0.0);
     const double alpha = k * e * SOL::NPC_LANE_PEAK_ACCEL_MPS2;
-    const double rampExcessSq = alpha * legM;
-    const double capExcessSq = k * (c * c - w * w);
-    const bool bCapped = rampExcessSq > capExcessSq;
-    const double excessSq = bCapped ? capExcessSq : rampExcessSq;
-    const double peak = FMath::Sqrt(w * w + excessSq);
-    leg.Alpha = alpha;
-    leg.PeakMps = peak;
-    leg.DvMps = excessSq / (peak + w);
 
-    // Accelerate, coast, brake (the wall speed throughout when there is no acceleration)
-    if (alpha > 0.0)
+    // Flip-limited excess dv_f: the positive root of dv^2 + (2 w + alpha T_f) dv - alpha (l0 - w T_f) = 0 in its
+    // cancellation-free form; 0 when the leg leaves no room to burn (l0 <= w T_f, an infinite window included)
+    const double burnRoomM = legM - w * flipWindowS;
+    double flipExcessMps = 0.0;
+    if (alpha > 0.0 && burnRoomM > 0.0)
     {
-        leg.AccelS = leg.DvMps / alpha;
-        if (bCapped)
-        {
-            leg.AccelM = excessSq / (2.0 * alpha);
-            leg.CoastS = FMath::Max(0.0, (legM - 2.0 * leg.AccelM) / peak);
-        }
-        else
-        {
-            leg.AccelM = 0.5 * legM;
-        }
+        const double linear = 2.0 * w + alpha * flipWindowS;
+        flipExcessMps = 2.0 * alpha * burnRoomM / (linear + FMath::Sqrt(linear * linear + 4.0 * alpha * burnRoomM));
     }
-    else
-    {
-        leg.CoastS = legM / peak;
-    }
+
+    // Cap-limited excess dv_c = kappa (c^2 - w^2) / (c_k + w), c_k^2 = w^2 + kappa (c^2 - w^2)
+    const double capExcessSq = k * (c * c - w * w);
+    const double capExcessMps = capExcessSq / (FMath::Sqrt(w * w + capExcessSq) + w);
+    const double dv = FMath::Max(0.0, FMath::Min(flipExcessMps, capExcessMps));
+
+    // Accelerate, coast, brake (the wall speed throughout when there is no burn)
+    leg.Alpha = alpha;
+    leg.DvMps = dv;
+    leg.PeakMps = w + dv;
+    leg.AccelS = alpha > 0.0 ? dv / alpha : 0.0;
+    leg.AccelM = leg.AccelS * (w + 0.5 * dv);
+    leg.CoastS = FMath::Max(0.0, (legM - 2.0 * leg.AccelM) / leg.PeakMps);
     leg.LegS = 2.0 * leg.AccelS + leg.CoastS;
     leg.bValid = true;
     return leg;
@@ -562,11 +616,43 @@ double SOLLaneTraffic::LaneShipLegS(const FSOLLaneProfile& profile, const FSOLLa
     return TrafficShipLeg(ship, profile.NominalLegM).LegS;
 }
 
+// Returns a ship's position relative to an origin from its already derived leg and cycle (defined below)
+static FVector3d TrafficPositionRelMImpl(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FSOLLaneShip& ship, const FSOLLaneLeg& leg, const FSOLLaneCycle& cycle, double timeS,
+    const FVector3d& originM);
+
 //////////////////////////////////////////////////////////////////////////
 // Returns a ship's position relative to an origin, from the nearer end of the lane
 FVector3d SOLLaneTraffic::LaneShipPositionRelM(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
     const FSOLLaneShip& ship, const double timeS, const FVector3d& originM)
 {
+    const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
+    return TrafficPositionRelMImpl(profile, frame, ship, leg, MakeCycle(leg.LegS, profile.UTurnDepthM), timeS, originM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's velocity (central difference over +- stepS) and hull facing, the leg and cycle derived once
+FSOLLaneShipMotion SOLLaneTraffic::LaneShipMotion(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FSOLLaneShip& ship, const double timeS, const double stepS)
+{
+    const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
+    const FSOLLaneCycle cycle = MakeCycle(leg.LegS, profile.UTurnDepthM);
+    FSOLLaneShipMotion motion;
+    motion.VelocityMps = (TrafficPositionRelMImpl(profile, frame, ship, leg, cycle, timeS + stepS, frame.AM)
+        - TrafficPositionRelMImpl(profile, frame, ship, leg, cycle, timeS - stepS, frame.AM)) / (2.0 * stepS);
+    motion.HullForward = (!frame.bValid || !profile.bDrivable || !leg.bValid)
+        ? TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint())
+        : TrafficHullForward(profile, frame, ship, leg, CycleSegmentAt(cycle, ship.Phase, timeS));
+    return motion;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's position relative to an origin from its already derived leg and cycle (LaneShipPositionRelM)
+static FVector3d TrafficPositionRelMImpl(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FSOLLaneShip& ship, const FSOLLaneLeg& leg, const FSOLLaneCycle& cycle, const double timeS,
+    const FVector3d& originM)
+{
+    using namespace SOLLaneTraffic;
     const FVector3d aRelM = frame.AM - originM;
     if (!frame.bValid)
     {
@@ -578,13 +664,12 @@ FVector3d SOLLaneTraffic::LaneShipPositionRelM(const FSOLLaneProfile& profile, c
     const FVector3d rightM = frame.Right * ship.RightOffsetM;
 
     // A lane that cannot be driven parks its ships on the midpoint disc
-    const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
     if (!profile.bDrivable || !leg.bValid)
     {
         return aRelM + frame.Axis * (0.5 * (frame.BM - frame.AM).Size()) + upM + rightM;
     }
 
-    const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
+    const FSOLLaneCyclePoint point = CycleSegmentAt(cycle, ship.Phase, timeS);
     const double l0 = profile.NominalLegM;
     const double l = frame.CurrentLegM;
     switch (point.Segment)
@@ -658,28 +743,37 @@ FSOLLaneThrustState SOLLaneTraffic::LaneThrustAt(const FSOLLaneProfile& profile,
     const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
     if (!frame.bValid || !profile.bDrivable || !leg.bValid)
     {
+        state.HullForward = TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint());
         return state;
     }
 
     const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
     state.Segment = point.Segment;
+    state.FlipFraction = TrafficFlipFraction(leg, point);
+    state.HullForward = TrafficHullForward(profile, frame, ship, leg, point);
     if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
     {
-        // Legs: accelerate along travel, coast, brake against it (the nominal profile only: the metric map's X'' u'^2
-        // term, below a in the end zones of every default lane, is left out, SDD 50 section 4.12)
+        // Legs: accelerate along travel, brake against it, the flip window (no thrust) centred on the leg's midpoint,
+        // coast otherwise; the burn kinds win where a float-rounded window overlaps them by a rounding step (the
+        // nominal profile only: the metric map's X'' u'^2 term, below a in the end zones of every default lane, is left
+        // out, SDD 50 section 4.12)
         const FVector3d travel = point.Segment == ESOLLaneSegment::Outbound ? frame.Axis : -frame.Axis;
         const double tl = point.SegmentTimeS;
         state.Direction = travel;
-        if (leg.Alpha > 0.0 && tl < leg.AccelS)
+        if (leg.AccelS > 0.0 && tl < leg.AccelS)
         {
             state.Thrust = ESOLLaneThrust::Accelerate;
             state.AccelMps2 = leg.Alpha;
         }
-        else if (leg.Alpha > 0.0 && leg.LegS - tl < leg.AccelS)
+        else if (leg.AccelS > 0.0 && tl > leg.LegS - leg.AccelS)
         {
             state.Thrust = ESOLLaneThrust::Brake;
             state.AccelMps2 = leg.Alpha;
             state.Direction = -travel;
+        }
+        else if (leg.AccelS > 0.0 && FMath::Abs(tl - 0.5 * leg.LegS) < 0.5 * SOL::NPC_LANE_FLIP_S)
+        {
+            state.Thrust = ESOLLaneThrust::Flip;
         }
         return state;
     }
@@ -696,4 +790,37 @@ FSOLLaneThrustState SOLLaneTraffic::LaneThrustAt(const FSOLLaneProfile& profile,
     state.AccelMps2 = rate * rate * distanceM;
     state.Direction = distanceM > 0.0 ? -fromCentreM / distanceM : -frame.Axis * side;
     return state;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the hull flip fraction at a leg time
+double SOLLaneTraffic::LaneHullFlipFraction(const double legS, const double accelS, const double legTimeS)
+{
+    if (!FMath::IsFinite(legS) || !FMath::IsFinite(accelS) || !FMath::IsFinite(legTimeS) || !(accelS > 0.0)
+        || !(legS > 0.0))
+    {
+        return 0.0;
+    }
+    const double tl = FMath::Clamp(legTimeS, 0.0, legS);
+    const double flipWindowS = SOL::NPC_LANE_FLIP_S;
+    if (!(flipWindowS > 0.0))
+    {
+        return tl >= 0.5 * legS ? 1.0 : 0.0;
+    }
+    const double x = FMath::Clamp((tl - 0.5 * (legS - flipWindowS)) / flipWindowS, 0.0, 1.0);
+    return x * x * (3.0 - 2.0 * x);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's hull facing at a time
+FVector3d SOLLaneTraffic::LaneHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FSOLLaneShip& ship, const double timeS)
+{
+    const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
+    if (!frame.bValid || !profile.bDrivable || !leg.bValid)
+    {
+        return TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint());
+    }
+    const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
+    return TrafficHullForward(profile, frame, ship, leg, point);
 }

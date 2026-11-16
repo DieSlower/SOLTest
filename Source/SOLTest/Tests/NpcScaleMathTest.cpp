@@ -69,9 +69,6 @@ namespace
         clusterB.MaxInclinationRad = 0.2;
         clusterB.Weight = 1.0;
         layout.Clusters = { clusterA, clusterB };
-
-        layout.LaneMinSpeedMps = 2.0e4;
-        layout.LaneMaxSpeedMps = 2.0e5;
         return layout;
     }
 
@@ -99,11 +96,11 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns true when every lane-only field of a spawn holds its default
+    // Returns true when every lane-only field of a spawn holds its default (issue #50: the dimensionless lane fields)
     bool NpcScaleLaneFieldsDefault(const SOLNpcScale::FSpawn& spawn)
     {
-        return spawn.LaneStartParam == 0.0 && spawn.LaneDirection == 1.0 && spawn.LaneSpeedMps == 0.0
-            && spawn.LaneLateralOffsetM == FVector2d::ZeroVector;
+        return spawn.LanePhase == 0.0 && spawn.LaneEffort == 0.0 && spawn.LaneRho == 0.0 && spawn.LaneClockRad == 0.0
+            && !spawn.bLaneHalo;
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -126,8 +123,8 @@ namespace
     bool NpcScaleSpawnsIdentical(const SOLNpcScale::FSpawn& a, const SOLNpcScale::FSpawn& b)
     {
         return a.Kind == b.Kind && a.GroupIndex == b.GroupIndex && a.Faction == b.Faction
-            && a.LaneStartParam == b.LaneStartParam && a.LaneDirection == b.LaneDirection
-            && a.LaneSpeedMps == b.LaneSpeedMps && a.LaneLateralOffsetM == b.LaneLateralOffsetM
+            && a.LanePhase == b.LanePhase && a.LaneEffort == b.LaneEffort && a.LaneRho == b.LaneRho
+            && a.LaneClockRad == b.LaneClockRad && a.bLaneHalo == b.bLaneHalo
             && a.OrbitRadiusM == b.OrbitRadiusM && a.OrbitInclinationRad == b.OrbitInclinationRad
             && a.OrbitNodeRad == b.OrbitNodeRad && a.OrbitPhaseRad == b.OrbitPhaseRad
             && a.BattleSlotOffsetM == b.BattleSlotOffsetM;
@@ -751,13 +748,13 @@ bool FSOLNpcScaleSpawnDeterminismTest::RunTest(const FString& /*parameters*/)
         {
             const FSpawn other = MakeSpawn(NPCSCALE_SEED + 1u, index, counts, layout, battle);
             ++laneShips;
-            laneDiffers += (other.LaneStartParam != a.LaneStartParam) ? 1 : 0;
+            laneDiffers += (other.LanePhase != a.LanePhase) ? 1 : 0;
         }
     }
     TestTrue(TEXT("Bit-identical on repeat"), bIdentical);
     TestTrue(TEXT("Kind is ClassifyIndex's kind"), bKindsMatch);
     TestEqual(TEXT("300 lane ships"), laneShips, 300);
-    TestTrue(TEXT("Another seed changes (almost) every lane start"), laneDiffers >= 270);
+    TestTrue(TEXT("Another seed changes (almost) every lane phase"), laneDiffers >= 270);
 
     // Out-of-range indices give a default spawn
     const FSpawn defaultSpawn;
@@ -848,60 +845,161 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleSpawnLaneTest, "SOLTest.NpcScaleMat
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Lane ships pick a lane by weight and get a start, direction, speed and lateral offset inside the contract's ranges
+// Issue #50 (SDD 50 section 4.7, contract case 9): over 100k lane indices, lane ships pick a lane by weight and get
+// dimensionless values only: a phase uniform in [0, 1), an effort uniform in [NPC_LANE_EFFORT_MIN,
+// NPC_LANE_EFFORT_MAX], NPC_LANE_HALO_FRACTION of them in the halo, a radius in wall radii uniform by area over the
+// disc inside the wall (rho^2 uniform in [0, 1)) or over the annulus out to NPC_LANE_HALO_OUTER_WALL_RADII (rho^2
+// uniform in [1, H^2]), and a clock angle in [0, pi] (the right half); the streams are independent of each other, the
+// statistics hold for other seeds, and a lane ship with no lane keeps every lane field at its default
 bool FSOLNpcScaleSpawnLaneTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLNpcScale;
     const FLayout layout = NpcScaleTestLayout();
     const FBattleParams battle = NpcScaleTestBattle();
-    const FCounts counts = NpcScaleCounts(0, 20000, 0);
+    const FCounts counts = NpcScaleCounts(0, 100000, 0);
+    const double outer = SOL::NPC_LANE_HALO_OUTER_WALL_RADII;
+    const double effortMin = SOL::NPC_LANE_EFFORT_MIN;
+    const double effortMax = SOL::NPC_LANE_EFFORT_MAX;
+    const double haloRho2Middle = 0.5 * (1.0 + outer * outer);
 
     int32 secondLane = 0;
-    int32 forward = 0;
     int32 factionOne = 0;
-    int32 wideOffset = 0;
-    double meanStart = 0.0;
+    int32 haloShips = 0;
+    int32 insideShips = 0;
+    int32 shipsPerLane[2] = {};
+    int32 haloPerLane[2] = {};
+    int32 haloInnerHalf = 0;
+    int32 effortLowQuarter = 0;
+    int32 phaseLowQuarter = 0;
+    double insideRho2 = 0.0;
+    double haloRho2 = 0.0;
+    double meanPhase = 0.0;
+    double meanEffort = 0.0;
+    double meanClock = 0.0;
     bool bRanges = true;
     bool bOtherFieldsDefault = true;
+    TArray<double> efforts;
+    TArray<double> rho2s;
+    TArray<double> phases;
+    TArray<double> clocks;
+    TArray<double> haloFlags;
+    efforts.Reserve(counts.Lane);
+    rho2s.Reserve(counts.Lane);
+    phases.Reserve(counts.Lane);
+    clocks.Reserve(counts.Lane);
+    haloFlags.Reserve(counts.Lane);
     for (int32 index = 0; index < counts.Lane; ++index)
     {
         const FSpawn spawn = MakeSpawn(NPCSCALE_SEED, index, counts, layout, battle);
         const bool bValidGroup = spawn.GroupIndex == 0 || spawn.GroupIndex == 1;
-        const double laneRadius = bValidGroup ? layout.Lanes[spawn.GroupIndex].RadiusM : 0.0;
+        const double rho2 = spawn.LaneRho * spawn.LaneRho;
+
+        // Every value inside its range (NaN fails every comparison)
+        const bool bRadius = spawn.bLaneHalo ? (spawn.LaneRho >= 1.0 && spawn.LaneRho <= outer)
+            : (spawn.LaneRho >= 0.0 && spawn.LaneRho < 1.0);
         bRanges = bRanges && spawn.Kind == EPlacementKind::Lane && bValidGroup
-            && spawn.LaneStartParam >= 0.0 && spawn.LaneStartParam < 1.0
-            && (spawn.LaneDirection == 1.0 || spawn.LaneDirection == -1.0)
-            && spawn.LaneSpeedMps >= layout.LaneMinSpeedMps && spawn.LaneSpeedMps <= layout.LaneMaxSpeedMps
-            && spawn.LaneLateralOffsetM.Size() <= laneRadius * (1.0 + 1.0e-12)
+            && spawn.LanePhase >= 0.0 && spawn.LanePhase < 1.0
+            && spawn.LaneEffort >= effortMin && spawn.LaneEffort <= effortMax
+            && bRadius
+            && spawn.LaneClockRad >= 0.0 && spawn.LaneClockRad <= UE_DOUBLE_PI
             && (spawn.Faction == 0 || spawn.Faction == 1);
         bOtherFieldsDefault = bOtherFieldsDefault && NpcScaleClusterFieldsDefault(spawn)
             && NpcScaleBattleFieldsDefault(spawn);
+        if (!bValidGroup)
+        {
+            continue;
+        }
+
+        // Tallies for the distribution checks
         secondLane += spawn.GroupIndex == 1 ? 1 : 0;
-        forward += spawn.LaneDirection > 0.0 ? 1 : 0;
         factionOne += spawn.Faction == 1 ? 1 : 0;
-        wideOffset += (bValidGroup && spawn.LaneLateralOffsetM.Size() > 0.5 * laneRadius) ? 1 : 0;
-        meanStart += spawn.LaneStartParam;
+        shipsPerLane[spawn.GroupIndex] += 1;
+        if (spawn.bLaneHalo)
+        {
+            ++haloShips;
+            haloPerLane[spawn.GroupIndex] += 1;
+            haloRho2 += rho2;
+            haloInnerHalf += rho2 < haloRho2Middle ? 1 : 0;
+        }
+        else
+        {
+            ++insideShips;
+            insideRho2 += rho2;
+        }
+        effortLowQuarter += spawn.LaneEffort < effortMin + 0.25 * (effortMax - effortMin) ? 1 : 0;
+        phaseLowQuarter += spawn.LanePhase < 0.25 ? 1 : 0;
+        meanPhase += spawn.LanePhase;
+        meanEffort += spawn.LaneEffort;
+        meanClock += spawn.LaneClockRad;
+        efforts.Add(spawn.LaneEffort);
+        rho2s.Add(rho2);
+        phases.Add(spawn.LanePhase);
+        clocks.Add(spawn.LaneClockRad);
+        haloFlags.Add(spawn.bLaneHalo ? 1.0 : 0.0);
     }
     const double n = counts.Lane;
     TestTrue(TEXT("Every lane field in range"), bRanges);
     TestTrue(TEXT("Cluster and battle fields keep their defaults"), bOtherFieldsDefault);
     TestNearlyEqual(TEXT("Lane weights 1:3"), secondLane / n, 0.75, 0.02);
-    TestNearlyEqual(TEXT("About half go A to B"), forward / n, 0.5, 0.02);
     TestNearlyEqual(TEXT("About half are faction 1"), factionOne / n, 0.5, 0.02);
-    TestNearlyEqual(TEXT("Start params spread over [0, 1)"), meanStart / n, 0.5, 0.02);
-    TestTrue(TEXT("Lateral offsets fill the lane disc"), wideOffset > counts.Lane / 2);
 
-    // Swapped speed bounds still bound the speed
-    FLayout swapped = layout;
-    swapped.LaneMinSpeedMps = 2.0e5;
-    swapped.LaneMaxSpeedMps = 2.0e4;
-    bool bSwappedSpeeds = true;
-    for (int32 index = 0; index < 200; ++index)
+    // Halo share, overall and per lane
+    TestNearlyEqual(TEXT("Halo fraction NPC_LANE_HALO_FRACTION"), haloShips / n, SOL::NPC_LANE_HALO_FRACTION, 0.01);
+    for (int32 lane = 0; lane < 2; ++lane)
     {
-        const FSpawn spawn = MakeSpawn(NPCSCALE_SEED, index, counts, swapped, battle);
-        bSwappedSpeeds = bSwappedSpeeds && spawn.LaneSpeedMps >= 2.0e4 && spawn.LaneSpeedMps <= 2.0e5;
+        TestNearlyEqual(*FString::Printf(TEXT("Lane %d: halo fraction"), lane),
+            haloPerLane[lane] / FMath::Max(1.0, static_cast<double>(shipsPerLane[lane])), SOL::NPC_LANE_HALO_FRACTION,
+            0.015);
     }
-    TestTrue(TEXT("Swapped speed bounds"), bSwappedSpeeds);
+
+    // Radii uniform by area: rho^2 uniform in [0, 1) inside, in [1, H^2] in the halo
+    TestNearlyEqual(TEXT("Inside: rho^2 mean 1/2 (uniform disc)"), insideRho2 / FMath::Max(1, insideShips), 0.5, 0.01);
+    TestNearlyEqual(TEXT("Halo: rho^2 mean (1 + H^2) / 2 (uniform annulus)"), haloRho2 / FMath::Max(1, haloShips),
+        haloRho2Middle, 0.03);
+    TestNearlyEqual(TEXT("Halo: half the ships inside the annulus' rho^2 middle"),
+        haloInnerHalf / FMath::Max(1.0, static_cast<double>(haloShips)), 0.5, 0.02);
+
+    // Phase, effort and clock angle uniform
+    TestNearlyEqual(TEXT("Phase mean 1/2"), meanPhase / n, 0.5, 0.01);
+    TestNearlyEqual(TEXT("Phase: a quarter below 0.25"), phaseLowQuarter / n, 0.25, 0.01);
+    TestNearlyEqual(TEXT("Effort mean (min + max) / 2"), meanEffort / n, 0.5 * (effortMin + effortMax), 0.005);
+    TestNearlyEqual(TEXT("Effort: a quarter in the lowest quarter of the range"), effortLowQuarter / n, 0.25, 0.01);
+    TestNearlyEqual(TEXT("Clock angle mean pi / 2 (the right half)"), meanClock / n, 0.5 * UE_DOUBLE_PI, 0.02);
+
+    // Independent streams
+    const double effortRadius = NpcScaleCorrelation(efforts, rho2s);
+    const double phaseClock = NpcScaleCorrelation(phases, clocks);
+    const double haloEffort = NpcScaleCorrelation(haloFlags, efforts);
+    const double phaseEffort = NpcScaleCorrelation(phases, efforts);
+    TestTrue(*FString::Printf(TEXT("Effort and radius independent (r = %.4f)"), effortRadius),
+        FMath::Abs(effortRadius) < 0.02);
+    TestTrue(*FString::Printf(TEXT("Phase and clock angle independent (r = %.4f)"), phaseClock),
+        FMath::Abs(phaseClock) < 0.02);
+    TestTrue(*FString::Printf(TEXT("Halo flag and effort independent (r = %.4f)"), haloEffort),
+        FMath::Abs(haloEffort) < 0.02);
+    TestTrue(*FString::Printf(TEXT("Phase and effort independent (r = %.4f)"), phaseEffort),
+        FMath::Abs(phaseEffort) < 0.02);
+
+    // Seed stability: the same statistics for other seeds (20k ships each)
+    const FCounts smaller = NpcScaleCounts(0, 20000, 0);
+    for (const uint32 seed : { NPCSCALE_SEED + 7u, NPCSCALE_SEED + 99u, SOL::NPC_DEFAULT_SEED })
+    {
+        int32 seedHalo = 0;
+        double seedEffort = 0.0;
+        double seedPhase = 0.0;
+        for (int32 index = 0; index < smaller.Lane; ++index)
+        {
+            const FSpawn spawn = MakeSpawn(seed, index, smaller, layout, battle);
+            seedHalo += spawn.bLaneHalo ? 1 : 0;
+            seedEffort += spawn.LaneEffort;
+            seedPhase += spawn.LanePhase;
+        }
+        const double m = smaller.Lane;
+        const FString label = FString::Printf(TEXT("Seed %u"), seed);
+        TestNearlyEqual(*(label + TEXT(": halo fraction")), seedHalo / m, SOL::NPC_LANE_HALO_FRACTION, 0.015);
+        TestNearlyEqual(*(label + TEXT(": effort mean")), seedEffort / m, 0.5 * (effortMin + effortMax), 0.01);
+        TestNearlyEqual(*(label + TEXT(": phase mean")), seedPhase / m, 0.5, 0.015);
+    }
 
     // No lane with a positive weight: group INDEX_NONE and every other field at its default, kind still Lane
     FLayout noLanes = layout;
@@ -1054,188 +1152,6 @@ bool FSOLNpcScaleBattleCenterTest::RunTest(const FString& /*parameters*/)
     nanBattle.MaxDistanceM = NpcScaleNaN();
     TestTrue(TEXT("NaN distances count as 0"),
         BattleCenterOffsetM(NPCSCALE_SEED, 3, nanBattle).Equals(FVector3d::ZeroVector, NPCSCALE_EPS));
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleTriangleWaveTest, "SOLTest.NpcScaleMath.TriangleWave",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// The triangle wave rises 0 to 1, falls back to 0, and repeats every 2
-bool FSOLNpcScaleTriangleWaveTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcScale;
-    TestNearlyEqual(TEXT("0"), TriangleWave01(0.0), 0.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("0.25"), TriangleWave01(0.25), 0.25, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("1"), TriangleWave01(1.0), 1.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("1.5"), TriangleWave01(1.5), 0.5, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("2"), TriangleWave01(2.0), 0.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("2.25"), TriangleWave01(2.25), 0.25, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("3.75"), TriangleWave01(3.75), 0.25, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("-0.25"), TriangleWave01(-0.25), 0.25, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("-1"), TriangleWave01(-1.0), 1.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("-1.5"), TriangleWave01(-1.5), 0.5, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("Large argument"), TriangleWave01(1000000.3), 0.3, 1.0e-6);
-    TestEqual(TEXT("NaN"), TriangleWave01(NpcScaleNaN()), 0.0);
-    TestEqual(TEXT("+inf"), TriangleWave01(NpcScaleInf()), 0.0);
-    TestEqual(TEXT("-inf"), TriangleWave01(-NpcScaleInf()), 0.0);
-
-    // Range and continuity on a fine sweep
-    bool bInRange = true;
-    bool bContinuous = true;
-    double previous = TriangleWave01(-5.0);
-    for (int32 step = 1; step <= 10000; ++step)
-    {
-        const double value = TriangleWave01(-5.0 + step * 0.001);
-        bInRange = bInRange && value >= 0.0 && value <= 1.0;
-        bContinuous = bContinuous && FMath::Abs(value - previous) <= 0.001 + NPCSCALE_EPS;
-        previous = value;
-    }
-    TestTrue(TEXT("Always in [0, 1]"), bInRange);
-    TestTrue(TEXT("Continuous (slope 1)"), bContinuous);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleLaneParamTest, "SOLTest.NpcScaleMath.LaneParam",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// A lane ship moves along its lane at speed / length per second and bounces at the ends
-bool FSOLNpcScaleLaneParamTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcScale;
-    FSpawn spawn;
-    spawn.Kind = EPlacementKind::Lane;
-    spawn.LaneStartParam = 0.2;
-    spawn.LaneDirection = 1.0;
-    spawn.LaneSpeedMps = 100.0;
-    const double length = 1000.0;     // 0.1 lane per second
-
-    TestNearlyEqual(TEXT("t = 0: the start"), LaneParamAt(spawn, length, 0.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("t = 3"), LaneParamAt(spawn, length, 3.0), 0.5, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("t = 8: reaches B"), LaneParamAt(spawn, length, 8.0), 1.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("t = 10: bounced back"), LaneParamAt(spawn, length, 10.0), 0.8, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("t = 18: back at A"), LaneParamAt(spawn, length, 18.0), 0.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("t = 20: one full period"), LaneParamAt(spawn, length, 20.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("Negative time runs backwards"), LaneParamAt(spawn, length, -1.0), 0.1, NPCSCALE_EPS);
-
-    spawn.LaneDirection = -1.0;
-    TestNearlyEqual(TEXT("Reverse, t = 1"), LaneParamAt(spawn, length, 1.0), 0.1, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("Reverse, t = 2: at A"), LaneParamAt(spawn, length, 2.0), 0.0, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("Reverse, t = 3: bounced off A"), LaneParamAt(spawn, length, 3.0), 0.1, NPCSCALE_EPS);
-
-    // Invalid length or time: the start
-    TestNearlyEqual(TEXT("Zero length"), LaneParamAt(spawn, 0.0, 5.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("Negative length"), LaneParamAt(spawn, -5.0, 5.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("NaN length"), LaneParamAt(spawn, NpcScaleNaN(), 5.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("+inf length"), LaneParamAt(spawn, NpcScaleInf(), 5.0), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("NaN time"), LaneParamAt(spawn, length, NpcScaleNaN()), 0.2, NPCSCALE_EPS);
-    TestNearlyEqual(TEXT("+inf time"), LaneParamAt(spawn, length, NpcScaleInf()), 0.2, NPCSCALE_EPS);
-
-    // Solar-system scale: Earth-Mars-like lane, 100 km/s, one month
-    FSpawn real;
-    real.LaneStartParam = 0.0;
-    real.LaneDirection = 1.0;
-    real.LaneSpeedMps = 1.0e5;
-    const double realLength = 1.0 * SOLTestHelpers::AU_M;
-    const double monthS = 30.0 * SOLTestHelpers::SECONDS_PER_DAY;
-    const double expected = 1.0e5 * monthS / realLength;   // ~1.73: past B and on the way back
-    TestNearlyEqual(TEXT("Real scale"), LaneParamAt(real, realLength, monthS), 2.0 - expected, 1.0e-9);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleLaneBasisTest, "SOLTest.NpcScaleMath.LaneBasis",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// The lane basis is orthonormal, perpendicular to the lane, right-handed, and deterministic
-bool FSOLNpcScaleLaneBasisTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcScale;
-    const FVector3d axes[] = {
-        FVector3d(1.0, 0.0, 0.0), FVector3d(0.0, 1.0, 0.0), FVector3d(0.0, 0.0, 1.0), FVector3d(0.0, 0.0, -1.0),
-        FVector3d(1.0, 2.0, 3.0), FVector3d(-4.0e11, 2.0e11, 1.0e9), FVector3d(0.0, 0.001, 1.0),
-        FVector3d(0.3, -0.2, 0.9)
-    };
-    for (const FVector3d& axis : axes)
-    {
-        const FVector3d a = axis.GetSafeNormal();
-        FVector3d u;
-        FVector3d v;
-        LaneBasis(axis, u, v);
-        const FString label = axis.ToString();
-        TestNearlyEqual(*(TEXT("|U| = 1 for ") + label), u.Size(), 1.0, 1.0e-12);
-        TestNearlyEqual(*(TEXT("|V| = 1 for ") + label), v.Size(), 1.0, 1.0e-12);
-        TestNearlyEqual(*(TEXT("U . axis = 0 for ") + label), u.Dot(a), 0.0, 1.0e-12);
-        TestNearlyEqual(*(TEXT("V . axis = 0 for ") + label), v.Dot(a), 0.0, 1.0e-12);
-        TestNearlyEqual(*(TEXT("U . V = 0 for ") + label), u.Dot(v), 0.0, 1.0e-12);
-        TestTrue(*(TEXT("U x V = axis for ") + label), u.Cross(v).Equals(a, 1.0e-12));
-
-        FVector3d u2;
-        FVector3d v2;
-        LaneBasis(axis, u2, v2);
-        TestTrue(*(TEXT("Deterministic for ") + label), u == u2 && v == v2);
-
-        FVector3d uScaled;
-        FVector3d vScaled;
-        LaneBasis(axis * 1.0e3, uScaled, vScaled);
-        TestTrue(*(TEXT("Depends only on the direction for ") + label),
-            uScaled.Equals(u, 1.0e-12) && vScaled.Equals(v, 1.0e-12));
-    }
-
-    // Zero and non-finite axes
-    FVector3d u;
-    FVector3d v;
-    LaneBasis(FVector3d::ZeroVector, u, v);
-    TestTrue(TEXT("Zero axis: U = +X"), u == FVector3d(1.0, 0.0, 0.0));
-    TestTrue(TEXT("Zero axis: V = +Y"), v == FVector3d(0.0, 1.0, 0.0));
-    LaneBasis(FVector3d(NpcScaleNaN(), 1.0, 0.0), u, v);
-    TestTrue(TEXT("NaN axis: U = +X"), u == FVector3d(1.0, 0.0, 0.0));
-    TestTrue(TEXT("NaN axis: V = +Y"), v == FVector3d(0.0, 1.0, 0.0));
-    LaneBasis(FVector3d(0.0, NpcScaleInf(), 0.0), u, v);
-    TestTrue(TEXT("Infinite axis: U = +X"), u == FVector3d(1.0, 0.0, 0.0));
-    TestTrue(TEXT("Infinite axis: V = +Y"), v == FVector3d(0.0, 1.0, 0.0));
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleLanePositionTest, "SOLTest.NpcScaleMath.LanePosition",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// A lane position interpolates the endpoints and adds the lateral offset in the lane basis, at AU scale
-bool FSOLNpcScaleLanePositionTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcScale;
-    const FVector3d a(1.0e11, 0.0, 0.0);
-    const FVector3d b(2.0e11, 5.0e10, 0.0);
-    TestTrue(TEXT("s = 0 at A"), LanePositionM(a, b, 0.0, FVector2d::ZeroVector).Equals(a, 1.0e-3));
-    TestTrue(TEXT("s = 1 at B"), LanePositionM(a, b, 1.0, FVector2d::ZeroVector).Equals(b, 1.0e-3));
-    const FVector3d mid = (a + b) * 0.5;
-    TestTrue(TEXT("s = 0.5 at the midpoint"), LanePositionM(a, b, 0.5, FVector2d::ZeroVector).Equals(mid, 1.0e-3));
-    TestTrue(TEXT("s is not clamped"),
-        LanePositionM(a, b, 1.5, FVector2d::ZeroVector).Equals(a + (b - a) * 1.5, 1.0e-3));
-
-    // Lateral offset: perpendicular to the lane, with its own length, along U and V
-    const FVector3d withOffset = LanePositionM(a, b, 0.5, FVector2d(300.0, -400.0));
-    const FVector3d lateral = withOffset - mid;
-    TestNearlyEqual(TEXT("Offset length"), lateral.Size(), 500.0, 1.0e-3);
-    TestNearlyEqual(TEXT("Offset perpendicular to the lane"), lateral.Dot((b - a).GetSafeNormal()), 0.0, 1.0e-3);
-    FVector3d u;
-    FVector3d v;
-    LaneBasis(b - a, u, v);
-    TestTrue(TEXT("Offset X along U"),
-        (LanePositionM(a, b, 0.5, FVector2d(300.0, 0.0)) - mid).Equals(u * 300.0, 1.0e-3));
-    TestTrue(TEXT("Offset Y along V"),
-        (LanePositionM(a, b, 0.5, FVector2d(0.0, -400.0)) - mid).Equals(v * -400.0, 1.0e-3));
-
-    // Degenerate lane: the basis falls back to X / Y
-    const FVector3d same(3.0e11, 0.0, 0.0);
-    TestTrue(TEXT("A == B: offset along X and Y"),
-        LanePositionM(same, same, 0.7, FVector2d(10.0, 20.0)).Equals(same + FVector3d(10.0, 20.0, 0.0), 1.0e-3));
     return true;
 }
 
@@ -1416,8 +1332,6 @@ bool FSOLNpcScaleDefaultLayoutTest::RunTest(const FString& /*parameters*/)
             && cluster.OuterRadiusM <= 3.5 * SOLTestHelpers::AU_M);
     }
     TestTrue(TEXT("Includes the asteroid belt (Sun, 2.0-3.5 AU)"), bHasBelt);
-    TestTrue(TEXT("Lane speeds 0 < min <= max"), layout.LaneMinSpeedMps > 0.0
-        && layout.LaneMinSpeedMps <= layout.LaneMaxSpeedMps && FMath::IsFinite(layout.LaneMaxSpeedMps));
     return true;
 }
 
@@ -2420,73 +2334,6 @@ bool FSOLNpcScaleFarChunkCullTest::RunTest(const FString& /*parameters*/)
         IsFarChunkActive(nowCandidate[0] != 0, spawnDirty[0] != 0, true, 1.0e12, 0.0));
     ClearVisitedWakeDirty(spawnDirty, nowCandidate);
     TestTrue(TEXT("Cleared after that visit"), spawnDirty[0] == 0);
-    return true;
-}
-
-//////////////////////////////////////////////////////////////////////////
-IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcScaleLaneSpeedBoundTest, "SOLTest.NpcScaleMath.LaneSpeedBound",
-    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
-
-//////////////////////////////////////////////////////////////////////////
-// The lane speed bound holds for a lane ship relative to endpoint A while the endpoints move apart, together and
-// sideways (the lane far longer than at its epoch), and its degenerate inputs are safe
-bool FSOLNpcScaleLaneSpeedBoundTest::RunTest(const FString& /*parameters*/)
-{
-    using namespace SOLNpcScale;
-
-    // Formula on simple inputs
-    TestEqual(TEXT("Nominal length, still endpoints"), LaneShipSpeedBoundMps(1.0e5, 1.0e9, 1.0e9, 1.0e6, 0.0), 1.0e5);
-    TestEqual(TEXT("Twice as long: twice as fast"), LaneShipSpeedBoundMps(1.0e5, 1.0e9, 2.0e9, 1.0e6, 0.0), 2.0e5);
-    TestEqual(TEXT("Zero nominal length: unscaled"), LaneShipSpeedBoundMps(1.0e5, 0.0, 2.0e9, 0.0, 0.0), 1.0e5);
-    TestTrue(TEXT("Negative inputs use magnitudes"),
-        LaneShipSpeedBoundMps(-1.0e5, 1.0e9, 1.0e9, -5.0, -3.0e4) >= 1.3e5);
-
-    // Numerical check: endpoints on straight paths, the ship on its rail (rate fixed at spawn from the nominal length)
-    const double nominalLengthM = 1.0e9;
-    const double laneSpeedMps = 1.5e5;
-    const double laneRadiusM = 3.0e6;
-    const FVector2d lateralM(2.0e6, -1.5e6);
-    const FVector3d a0(0.0, 0.0, 0.0);
-    const FVector3d b0(nominalLengthM, 0.0, 0.0);
-    struct FCase
-    {
-        FVector3d VelocityA;
-        FVector3d VelocityB;
-    };
-    const FCase cases[] = {
-        { FVector3d(0.0, 3.0e4, 0.0), FVector3d(2.0e4, -1.0e4, 5.0e3) },     // Apart and sideways
-        { FVector3d(-1.0e4, 0.0, 0.0), FVector3d(4.0e4, 0.0, 0.0) },         // Straight apart (lane 5x longer)
-        { FVector3d(0.0, 0.0, 0.0), FVector3d(-4.0e3, 4.0e4, 0.0) },         // B swinging around A
-    };
-    const double rate = laneSpeedMps / nominalLengthM;
-    const double stepS = 1.0;
-    int32 checked = 0;
-    for (int32 caseIndex = 0; caseIndex < UE_ARRAY_COUNT(cases); ++caseIndex)
-    {
-        const FCase& lane = cases[caseIndex];
-        double worstRatio = 0.0;
-        for (double t = 0.0; t <= 1.0e5; t += 997.0)
-        {
-            // Position relative to A at t and t + step
-            const auto relative = [&](const double time)
-            {
-                const FVector3d pointA = a0 + lane.VelocityA * time;
-                const FVector3d pointB = b0 + lane.VelocityB * time;
-                return LanePositionM(pointA, pointB, TriangleWave01(0.3 + rate * time), lateralM) - pointA;
-            };
-            const double speedMps = (relative(t + stepS) - relative(t)).Size() / stepS;
-            const double lengthM = ((b0 + lane.VelocityB * t) - (a0 + lane.VelocityA * t)).Size();
-            const double boundMps = LaneShipSpeedBoundMps(laneSpeedMps, nominalLengthM, lengthM, laneRadiusM,
-                (lane.VelocityB - lane.VelocityA).Size());
-            worstRatio = FMath::Max(worstRatio, speedMps / boundMps);
-            ++checked;
-        }
-        TestTrue(*FString::Printf(TEXT("Case %d: speed within the bound (worst %.3f)"), caseIndex, worstRatio),
-            worstRatio <= 1.0 + 1.0e-6);
-        TestTrue(*FString::Printf(TEXT("Case %d: the bound is not loose (worst %.3f)"), caseIndex, worstRatio),
-            worstRatio > 0.5);
-    }
-    TestTrue(TEXT("Samples were checked"), checked > 100);
     return true;
 }
 

@@ -70,8 +70,6 @@ namespace SOLNpcScale
     {
         TArray<FLaneDef> Lanes;
         TArray<FClusterDef> Clusters;
-        double LaneMinSpeedMps = 0.0;
-        double LaneMaxSpeedMps = 0.0;
     };
 
     // Battles near the player
@@ -107,10 +105,12 @@ namespace SOLNpcScale
         EPlacementKind Kind = EPlacementKind::Cluster;
         int32 GroupIndex = INDEX_NONE;                          // Lane, cluster or battle index
         int32 Faction = 0;                                      // 0 or 1
-        double LaneStartParam = 0.0;                            // Lane only
-        double LaneDirection = 1.0;                             // Lane only: +1 or -1
-        double LaneSpeedMps = 0.0;                              // Lane only
-        FVector2d LaneLateralOffsetM = FVector2d::ZeroVector;   // Lane only
+        double LanePhase = 0.0;                                 // Lane only: cycle phase in [0, 1) (SDD 50 4.7)
+        double LaneEffort = 0.0;                                // Lane only: [NPC_LANE_EFFORT_MIN, _MAX]
+        double LaneRho = 0.0;                                   // Lane only: wall radii off the axis ([0, 1)
+                                                                // inside, [1, H] in the halo)
+        double LaneClockRad = 0.0;                              // Lane only: clock angle in [0, pi] (right half)
+        bool bLaneHalo = false;                                 // Lane only: in the halo beyond the wall
         double OrbitRadiusM = 0.0;                              // Cluster only
         double OrbitInclinationRad = 0.0;                       // Cluster only
         double OrbitNodeRad = 0.0;                              // Cluster only
@@ -269,12 +269,6 @@ namespace SOLNpcScale
     // they become candidates
     SOLTEST_API void ClearVisitedWakeDirty(TArrayView<int32> groupWakeDirty, TConstArrayView<uint8> groupCandidate);
 
-    // Returns an upper bound on how fast a lane ship moves relative to the lane's endpoint A: the lane speed scaled by
-    // the lane's current over nominal length (the rail's rate is per nominal length), plus the endpoints' relative
-    // speed, which also turns the lateral offset (at most laneRadiusM) about A
-    SOLTEST_API double LaneShipSpeedBoundMps(double laneMaxSpeedMps, double nominalLengthM, double currentLengthM,
-        double laneRadiusM, double endpointRelativeSpeedMps);
-
     // ---- Distribution and rails ----
 
     // Returns a deterministic, uniform value in [0, 1) for (seed, index, stream)
@@ -296,18 +290,16 @@ namespace SOLNpcScale
     // Returns a battle centre's offset from the player's frame
     SOLTEST_API FVector3d BattleCenterOffsetM(uint32 seed, int32 battleIndex, const FBattleParams& battle);
 
-    // Returns a period-2 triangle wave in [0, 1]
-    SOLTEST_API double TriangleWave01(double x);
+    // Counts each layout lane's ships inside the wall and in the halo (SDD 50 section 4.7 step 1): both arrays reset to
+    // one zero per lane, then one count per lane ship with a lane, by bLaneHalo, exactly as MakeSpawn places it
+    SOLTEST_API void CountLaneSpawns(uint32 seed, const FCounts& counts, const FLayout& layout,
+        TArray<int32>& outInWall, TArray<int32>& outHalo);
 
-    // Returns a lane ship's parameter along its lane at a time
-    SOLTEST_API double LaneParamAt(const FSpawn& spawn, double nominalLaneLengthM, double timeS);
-
-    // Returns a deterministic right-handed basis (U, V) perpendicular to an axis
-    SOLTEST_API void LaneBasis(const FVector3d& axis, FVector3d& outU, FVector3d& outV);
-
-    // Returns a lane ship's position from the lane endpoints, its parameter and lateral offset
-    SOLTEST_API FVector3d LanePositionM(const FVector3d& endpointAM, const FVector3d& endpointBM, double laneParam,
-        const FVector2d& lateralOffsetM);
+    // Adds the lane counts of the NPC index range [begin, end) (clamped to the population; empty or reversed adds
+    // nothing) to the arrays without resetting them; non-lane indices and lanes past the arrays' ends are skipped (one
+    // share of the parallel counting pass)
+    SOLTEST_API void AccumulateLaneSpawns(uint32 seed, const FCounts& counts, const FLayout& layout,
+        int32 beginNpcIndex, int32 endNpcIndex, TArrayView<int32> inOutInWall, TArrayView<int32> inOutHalo);
 
     // Returns a cluster ship's circular-orbit offset from its body
     SOLTEST_API FVector3d ClusterOffsetM(const FSpawn& spawn, double bodyGM, double timeS);

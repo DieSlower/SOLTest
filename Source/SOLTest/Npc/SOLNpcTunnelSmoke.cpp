@@ -757,7 +757,8 @@ bool FSOLNpcTunnelSmoke::FindLane(int32& outLane, FSOLNpcTunnelBasis& outBasis, 
             outLane = lane;
             outBasis = SOLNpcTunnel::TunnelBasis(entry.A, entry.B);
             outLengthM = (entry.B - entry.A).Size();
-            outTunnelRadiusM = SOLNpcTunnel::TunnelRadiusM(entry.RadiusM, entry.ShipCount);
+            outTunnelRadiusM = entry.WallRadiusM > 0.0 ? entry.WallRadiusM
+                : SOLNpcTunnel::TunnelRadiusM(entry.RadiusM, entry.ShipCount);
             return outBasis.bValid;
         }
     }

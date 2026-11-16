@@ -1,0 +1,159 @@
+/*
+* SOLTest
+* Copyright © 2026 Acid Rain Studios LLC
+*/
+
+// NPC lane traffic (SDD 50 sections 4.3-4.6): the closed-form position of a lane ship, the HLSL mirror of
+// Source/SOLTest/Traffic/SOLLaneTrafficMath.cpp (leg profile, metric end-zone map, U-turns, keep right and the halo
+// offsets) and of the lane branch of SOLNpcRail::EvaluateAtTimeM. The float reference formula is
+// SOLNpcTrafficMirror::LaneShipRelM in Source/SOLTest/Npc/SOLNpcTrafficMirror.h (shared by
+// SOLTest.NpcRail.GpuLaneFloatMirror / GpuLaneSmoothness and the -SOLSmokeNpcTraffic hand-over check); a change here
+// must change it too. M_SOLNpcPoints's vertex Custom node (Tools/Npc/create_npc_assets.py) includes this file and
+// calls SOLNTR_LaneShipRelM for lane rails (kind 1), so a formula change here needs no material rebuild (a signature
+// change does).
+//
+// Precision (SDD 50 section 4.6): double-float pairs. The ship's cycle time is (tau0 high, tau0 low + t): the epoch
+// part, computed on the CPU in double, stays fixed and only the small moving part changes per frame. Boundaries are
+// subtracted from the high part one float at a time (each step exact or rounded at the result's size), and on a leg
+// (accelerating, coasting and in the end zones) the mapped arc is a per-epoch constant plus a moving part, added after
+// the large terms, so the motion is smooth at any distance from the lane's ends.
+//
+// Rail texels (SOLNpcRail::GpuRailTexels, lane kind): railA = (packed kind / faction / group plus T_leg's rounding /
+// (2 ulp(T_leg)) as a fraction within +-0.25, tau0 high s, dv m/s, up offset m), railB = (right offset m >= 0,
+// accelerate time t_a s, tau0 low s, leg time T_leg s rounded once), tau0 the ship's time into its cycle at the GPU
+// epoch.
+// Group texels (NpcGroupTex column = lane): g0 = (A relative to the viewpoint, ecliptic m; R), g1 = (B; drawn flag),
+// g2 = (Up; wall speed w m/s), g3 = (Right; D_U), g4 = (pi / T_U; e_A; l0; Z), g5 = (e_B; T_U; (l - l0) / (l0 - Z);
+// 1 / Z), rows 2-5 written by SOLNpcRail::WriteLaneTrafficTexels (l0 = 0 marks a lane that is not drivable).
+
+#pragma once
+
+// End-zone ramp P(s) = s^3 - s^4 / 2 (SDD 50 section 4.5)
+float SOLNTR_Ramp(float s)
+{
+    return s * s * s - 0.5 * s * s * s * s;
+}
+
+// Lane ship position relative to the viewpoint (ecliptic m) at rail time t since the GPU epoch
+float3 SOLNTR_LaneShipRelM(float4 railA, float4 railB, float4 g0, float4 g1, float4 g2, float4 g3, float4 g4,
+    float4 g5, float t)
+{
+    const float3 a = g0.xyz;
+    const float3 b = g1.xyz;
+    const float3 up = g2.xyz;
+    const float wallMps = g2.w;
+    const float3 right = g3.xyz;
+    const float uTurnDepthM = g3.w;
+    const float piOverTurn = g4.x;
+    const float endArcAM = g4.y;
+    const float nominalLegM = g4.z;
+    const float zoneM = g4.w;
+    const float endArcBM = g5.x;
+    const float turnS = g5.y;
+    const float stretch = g5.z;
+    const float inverseZone = g5.w;
+    const float tauHighS = railA.y;
+    const float dv = railA.z;
+    const float upOffsetM = railA.w;
+    const float rightOffsetM = railB.x;
+    const float accelS = railB.y;
+    const float tauLowS = railB.z;
+    const float legS = railB.w;
+
+    // A lane that is not drivable (uniform per lane) or a ship without a leg: the midpoint disc at rest
+    if (!(nominalLegM > 0.0 && legS > 0.0))
+    {
+        return 0.5 * (a + b) + up * upOffsetM + right * rightOffsetM;
+    }
+
+    // The ship's leg constants
+    const float3 axis = cross(up, right);
+    const float peak = wallMps + dv;
+    const float alpha = accelS > 0.0 ? dv / accelS : 0.0;
+
+    // T_leg's float rounding, carried in the packed value's fraction (SOLNpcRail::GpuRailTexels): r = 2 ulp x fraction.
+    // Every term of the double-float scheme is precise: UE compiles shaders with fast math (DXC without -Gis), which
+    // would let the compiler regroup the pairs and lose the low parts
+    precise const float legLowS = (railA.x - round(railA.x)) * (2.0 * asfloat(asuint(legS) & 0x7F800000u)
+        * 1.1920928955078125e-7);
+
+    // Segment constants: the epoch part minus each boundary, one float at a time; the inbound start's rounding is
+    // carried into the moving part (Fast2Sum, kept by precise), and so is T_leg's rounding for every leg passed. The
+    // segment is the first whose end is still ahead
+    const float movingS = tauLowS + t;
+    const float wraps = max(floor((tauHighS + movingS) / (2.0 * (legS + turnS))), 0.0);
+    precise const float cycleConstS = (tauHighS - wraps * (2.0 * legS)) - wraps * (2.0 * turnS);
+    precise const float turnBConstS = cycleConstS - legS;
+    precise const float inboundConstS = turnBConstS - turnS;
+    precise const float inboundLowS = (turnBConstS - inboundConstS) - turnS;
+    precise const float turnAConstS = inboundConstS - legS;
+    const float cycleMovingS = movingS - wraps * (2.0 * legLowS);
+    const float turnBMovingS = cycleMovingS - legLowS;
+    const float inboundMovingS = turnBMovingS + inboundLowS;
+    const float turnAMovingS = inboundMovingS - legLowS;
+    const bool bSegment0 = turnBConstS + turnBMovingS < 0.0;
+    const bool bSegment1 = !bSegment0 && inboundConstS + inboundMovingS < 0.0;
+    const bool bSegment2 = !bSegment0 && !bSegment1 && turnAConstS + turnAMovingS < 0.0;
+    const bool bLeg = bSegment0 || bSegment2;
+    const float segmentConstS = bSegment0 ? cycleConstS
+        : (bSegment1 ? turnBConstS : (bSegment2 ? inboundConstS : turnAConstS));
+    const float segmentMovingS = bSegment0 ? cycleMovingS
+        : (bSegment1 ? turnBMovingS : (bSegment2 ? inboundMovingS : turnAMovingS));
+    const float lengthS = bLeg ? legS : turnS;
+    const float toEndConstS = lengthS - segmentConstS;
+    const float toEndMovingS = (bLeg ? legLowS : 0.0) - segmentMovingS;
+    const float fromStartS = clamp(segmentConstS + segmentMovingS, 0.0, lengthS);
+    const float fromEndS = clamp(toEndConstS + toEndMovingS, 0.0, lengthS);
+
+    // U-turns: a half-ellipse beyond the end ring, the lateral swinging from one side to the other. Evaluated for
+    // every ship and selected (the rare turn branch would diverge)
+    float sinTheta;
+    float cosTheta;
+    sincos(fromStartS * piOverTurn, sinTheta, cosTheta);
+    const float3 turnB = b - axis * (endArcBM - uTurnDepthM * sinTheta) + up * upOffsetM
+        + right * (cosTheta * rightOffsetM);
+    const float3 turnA = a + axis * (endArcAM - uTurnDepthM * sinTheta) + up * upOffsetM
+        - right * (cosTheta * rightOffsetM);
+
+    // Legs: the arc from the nearer end ring (in time) as a part fixed over the epoch plus the small moving part (S, m
+    // the segment time's two parts): accelerating w S + alpha S^2 / 2 and (w + alpha S) m + alpha m^2 / 2, coasting
+    // d_a + v_p (S - t_a) = v_p S - dv t_a / 2 and v_p m. The end zones reach 5 % of the nominal leg (2e10 m on Earth -
+    // Mars), so a direct float arc there would step in ulp(arc), up to kilometres (SDD 50 section 4.6). The quadratic
+    // split is taken while |m| <= s (its terms then stay at the arc's scale); for s < |m|, at most an epoch span from
+    // the ring, the arc is direct from s, whose ulp is far below a frame's motion there
+    const bool bFirstHalf = fromStartS <= fromEndS;
+    const float s = bFirstHalf ? fromStartS : fromEndS;
+    const float sConstS = bFirstHalf ? segmentConstS : toEndConstS;
+    const float sMovingS = bFirstHalf ? segmentMovingS : toEndMovingS;
+    const bool bAccelerate = s <= accelS;
+    const bool bSplit = abs(sMovingS) <= s;
+    precise const float arcConstM = bAccelerate ? (bSplit ? wallMps * sConstS + 0.5 * alpha * sConstS * sConstS
+        : wallMps * s + 0.5 * alpha * s * s) : peak * sConstS - 0.5 * dv * accelS;
+    precise const float arcMovingM = bAccelerate ? (bSplit ? (wallMps + alpha * sConstS) * sMovingS
+        + 0.5 * alpha * sMovingS * sMovingS : 0.0) : peak * sMovingS;
+    const float arcM = arcConstM + arcMovingM;
+
+    // Mapped onto the current leg (the metric map, SDD 50 section 4.5), split the same way. In an end zone X(c + m) =
+    // X(c) + m (1 + stretch Q), Q the ramp's exact difference quotient at u = c / Z, d = m / Z, while |d| <= 1 (else
+    // the direct map); beyond the zone (1 + stretch) c - stretch Z / 2 and (1 + stretch) m
+    const bool bZone = arcM < zoneM;
+    const float scale = 1.0 + stretch;
+    const float beyondZoneM = 0.5 * stretch * zoneM;
+    const float u = arcConstM * inverseZone;
+    const float d = arcMovingM * inverseZone;
+    const bool bZoneSplit = bSplit && abs(d) <= 1.0;
+    const float zoneSlope = (3.0 - 2.0 * u) * u * u + d * ((3.0 - 3.0 * u) * u + d * ((1.0 - 2.0 * u) - 0.5 * d));
+    precise const float fromRingConstM = bZone ? (bZoneSplit ? arcConstM + stretch * zoneM * SOLNTR_Ramp(u)
+        : arcM + stretch * zoneM * SOLNTR_Ramp(arcM * inverseZone)) : scale * arcConstM - beyondZoneM;
+    precise const float fromRingMovingM = bZone ? (bZoneSplit ? arcMovingM * (1.0 + stretch * zoneSlope) : 0.0)
+        : scale * arcMovingM;
+
+    // Mapped onto the current leg from that end: the large terms first, then the lateral and the moving part
+    const bool bOutbound = bSegment0;
+    const float3 lateral = up * upOffsetM + right * (bOutbound ? rightOffsetM : -rightOffsetM);
+    const bool bFromA = bOutbound == bFirstHalf;
+    precise const float3 ringPosition = bFromA ? a + axis * (endArcAM + fromRingConstM)
+        : b - axis * (endArcBM + fromRingConstM);
+    precise const float3 legPosition = (ringPosition + lateral) + axis * (bFromA ? fromRingMovingM : -fromRingMovingM);
+    return bSegment1 ? turnB : (bLeg ? legPosition : turnA);
+}

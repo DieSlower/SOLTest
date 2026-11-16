@@ -96,7 +96,12 @@ it.
   axis looking straight at the 12 o'clock wall: both anchors lie along the axis, off screen) and T5 (start above
   Earth: the label anchors of the tunnels ending at Earth lie past the nearer end ring, behind Earth, so occluded). The
   smoke asserts 0 labels drawn at T4 and T5. Options considered and deferred: clamping the anchor short of the nearer
-  end ring (a temporary clamp still drew no label at T5), a label pinned to the screen edge.
+  end ring (a temporary clamp still drew no label at T5), a label pinned to the screen edge. *Note (2026-11-16, SDD
+  50):* T5 faces the Moon from the start above Earth, so whether an anchor lies on screen depends on the sim date (the
+  clock starts at the real date): at 2026-11-16 21:10 UTC the Earth - Mars anchor entered the top-left corner,
+  unoccluded, and its compact label drew (the label code behaved as designed; 12:00 UTC the same day and 2026-11-12
+  drew none). The smoke now starts at the pinned date `SOL::CommandLine::SMOKE_NPC_TUNNEL_SIM_DATE` (2026-11-12 12:00
+  UTC) unless `-SOLSimDate=` names another, so D19's views are deterministic.
 - **D20 (user, 2026-11-12/13, after the first 49c profile): the CPU budget stands; optimise first.** D14's
   <= 0.02 ms CPU (tunnel update + HUD labels, 1080p, 1M NPCs, all lanes in range) is kept. The overrun found in the
   first profile (0.039 ms in T2, 0.048 ms in T5) is profiled and cut (early-outs, no label work where no label can

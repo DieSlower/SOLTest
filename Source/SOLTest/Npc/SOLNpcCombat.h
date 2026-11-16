@@ -20,7 +20,8 @@ struct FSOLNpcAiShip
     FVector3d NewDeviationM = FVector3d::ZeroVector;        // Deviation after the step (written by Step)
     FVector3d NewDeviationVelocityMps = FVector3d::ZeroVector;
     FVector3d AimDirection = FVector3d::ZeroVector;         // Gun aim for this frame's shots
-    FVector3d RailVelocityMps = FVector3d::ZeroVector;      // The rail's velocity relative to its group's anchors
+    FVector3d RailHeadingMps = FVector3d::ZeroVector;       // The rail's hull heading (HullHeadingVelocityMps with no
+                                                            // deviation: a lane ship faces its thrust)
     FVector3d UpHint = FVector3d::ZeroVector;               // Away from the group's body (the attitude's desired up)
     FQuat4d Orientation = FQuat4d::Identity;                // Attitude (read and written by Step; rail-frame axes =
     FVector3d AngularVelocityRadPerS = FVector3d::ZeroVector; // universe ecliptic axes)

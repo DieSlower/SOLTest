@@ -94,15 +94,18 @@ void USOLNpcFullAiProcessor::GatherChunk(const FChunkView& view) const
         const FSOLNpcRail& rail = view.Rails[entity].Rail;
         FSOLNpcAiShip ship;
 
-        // Rail velocity and the up hint (away from the group's body); a ship just promoted to Full starts with its
-        // nose along its rail plus deviation velocity, the heading its hull was drawn with, and no spin
-        ship.RailVelocityMps = SOLNpcRail::VelocityMps(rail, frame);
+        // Hull heading (one leg derivation, SOLNpcRail::Motion) and the up hint (away from the group's body); a ship
+        // just promoted to Full starts with its nose along its rail heading plus deviation velocity (the heading its
+        // hull was drawn with) and no spin, and its step keeps the nose on the rail heading (a lane ship faces its
+        // thrust, D21), so the hull does not turn at promotion or at demotion
+        const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame);
+        ship.RailHeadingMps = SOLNpcRail::HullHeadingVelocityMps(motion, FVector3d::ZeroVector);
         ship.UpHint = state.PositionM - frame.GroupBodyM[rail.Group];
         FSOLNpcAttitudeFragment& attitude = view.Attitudes[entity];
         if (attitude.Orientation.SizeSquared() <= 0.0)
         {
-            attitude.Orientation = SOLNpcAi::HandoffOrientation(ship.RailVelocityMps + deviation.DeviationVelocityMps,
-                ship.UpHint);
+            attitude.Orientation = SOLNpcAi::HandoffOrientation(SOLNpcRail::HullHeadingVelocityMps(motion,
+                deviation.DeviationVelocityMps), ship.UpHint);
             attitude.AngularVelocityRadPerS = FVector3d::ZeroVector;
         }
         ship.Orientation = attitude.Orientation;

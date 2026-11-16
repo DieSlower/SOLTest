@@ -144,6 +144,9 @@ public:
     const FSOLNpcGroupTable& GetGroups() const { return mGroups; }
     const FSOLNpcRailFrame& GetRailFrame() const { return mRailFrame; }
 
+    // Returns this frame's Mid radius margin per group (a lane's hand-over margin, SDD 50 section 4.6; 0 otherwise)
+    TConstArrayView<double> GetGroupMidMarginsM() const { return mGroupMidMarginM; }
+
     // Returns this frame's CPU-simulated (Mid and Full) ships, for the renderer
     TConstArrayView<FSOLNpcCpuShip> GetCpuShips() const { return mCpuShips; }
 
@@ -236,9 +239,7 @@ private:
     TArray<double> mDistancesM;                             // Budget distances (one slot per NPC; front filled)
     TArray<double> mGroupMaxSpeedMps;                       // Per cluster / battle group: bound on a ship's speed
                                                             // relative to the group point, per rail (sim) second
-                                                            // (lanes: recomputed each frame, LaneShipSpeedBoundMps)
-    TArray<double> mLaneNominalLengthM;                     // Per lane: endpoint distance at the epoch (rail rates)
-    double mLaneMaxSpeedMps = 0.0;                          // The layout's fastest lane speed
+                                                            // (lanes: recomputed each frame, LaneWakeSpeedBoundMps)
     TArray<double> mGroupTravelM;                           // Per group: viewer path length relative to the group
     TArray<double> mGroupShipTravelM;                       // Per group: integral of the ship speed bound over the
                                                             // rail time steps (the ships' possible travel)
@@ -246,6 +247,8 @@ private:
     TArray<int32> mGroupWakeDirty;                          // Per group: chunk wake minimums stale (a demotion or a
                                                             // spawn slice); cleared once Evaluate visited the group
     TArray<double> mGroupWakeClockM;                        // Per group: viewer travel + ship travel
+    TArray<double> mGroupMidMarginM;                        // Per group: Mid radius margin this frame (lanes:
+                                                            // SOLNpcRail::LaneHandOverMarginM; clusters, battles 0)
     double mLastRailTimeS = 0.0;
     bool mHasGroupPrevView = false;
     TArray<double> mBudgetScratch[2];                       // BudgetedRadiusM working storage (one per thread)

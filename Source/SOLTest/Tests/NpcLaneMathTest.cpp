@@ -2571,4 +2571,64 @@ bool FSOLNpcLaneMathOutboundSideTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcLaneMathLaneFrameWallTest, "SOLTest.NpcLaneMath.BuildLaneFrameWall",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 part 50b (SDD 50 section 4.7, D13 and D15): BuildLaneFrame also copies each lane's frozen in-wall ship
+// count (FSOLNpcGroupTable::LaneInWallCount) and wall radius (the lane profile's WallRadiusM) into its entry; the ship
+// count keeps its meaning (every lane rail, halo included, from the counts passed in); a lane past the end of the
+// group table's arrays (or a table without profiles) gets 0 for both
+bool FSOLNpcLaneMathLaneFrameWallTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcLane;
+    FSOLNpcGroupTable groups;
+    groups.LaneCount = 3;
+    groups.LaneBodyA = { 0, 0, 1 };
+    groups.LaneBodyB = { 1, 2, 2 };
+    groups.LaneRadiusM = { 3.0e6, 2.0e5, 1.0e7 };
+    const int32 inWall[] = { 30000, 1500 };
+    const int32 halo[] = { 10000, 500 };
+    const double nominal[] = { 4.0133e11, 4.055e8 };
+    const double radiusA[] = { 6.371e6, 6.371e6 };
+    const double radiusB[] = { 3.3895e6, 1.7374e6 };
+    SOLNpcRail::BuildLaneProfiles(groups, inWall, halo, nominal, radiusA, radiusB);
+    const TArray<FVector3d> bodies = { FVector3d(1.2e11, -8.0e10, 3.0e6), FVector3d(2.6e11, 1.0e11, 0.0),
+        FVector3d(1.2e11, -7.96e10, 3.0e6) };
+    FSOLNpcRailFrame frame;
+    SOLNpcRail::BuildFrame(groups, bodies, 0.0, frame);
+
+    const TArray<int32> counts = { 40000, 2000, 7 };
+    FSOLNpcLaneFrame laneFrame;
+    BuildLaneFrame(groups, frame, counts, laneFrame);
+    if (!TestEqual(TEXT("one entry per lane"), laneFrame.Lanes.Num(), 3))
+    {
+        return false;
+    }
+    for (int32 lane = 0; lane < 2; ++lane)
+    {
+        const FSOLNpcLaneEntry& entry = laneFrame.Lanes[lane];
+        const FString label = FString::Printf(TEXT("lane %d"), lane);
+        TestEqual(label + TEXT(": wall radius from the frozen profile"), entry.WallRadiusM,
+            groups.LaneProfile[lane].WallRadiusM, NPCLANE_TOL * groups.LaneProfile[lane].WallRadiusM);
+        TestEqual(label + TEXT(": ship count keeps every lane rail (D15)"), entry.ShipCount, counts[lane]);
+        TestEqual(label + TEXT(": weight from the whole count (the #38 line width)"), entry.TrafficWeight,
+            LaneTrafficWeight(counts[lane]), NPCLANE_TOL);
+    }
+
+    // Lane 2: past the end of the counting pass' arrays (BuildLaneProfiles sized them, with zeros)
+    TestEqual(TEXT("lane 2: ship count from the counts"), laneFrame.Lanes[2].ShipCount, 7);
+
+    // A table without profiles or in-wall counts: 0 for both
+    FSOLNpcGroupTable bare = groups;
+    bare.LaneProfile.Reset();
+    bare.LaneInWallCount.Reset();
+    FSOLNpcLaneFrame bareFrame;
+    BuildLaneFrame(bare, frame, counts, bareFrame);
+    TestTrue(TEXT("no profiles: zero wall radius"), bareFrame.Lanes.Num() == 3
+        && bareFrame.Lanes[0].WallRadiusM == 0.0 && bareFrame.Lanes[0].ShipCount == counts[0]);
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

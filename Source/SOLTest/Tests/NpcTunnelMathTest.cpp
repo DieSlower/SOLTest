@@ -3451,4 +3451,58 @@ bool FSOLNpcTunnelMathTexelCrossfadeTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTunnelMathLaneDataWallTest, "SOLTest.NpcTunnelMath.BuildTunnelLaneDataWall",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 part 50b (SDD 50 section 4.7, D13): when the lane entry carries a frozen wall radius (WallRadiusM > 0 and
+// finite), BuildTunnelLaneData draws the tunnel at exactly that radius (Rt = WallRadiusM, and the end arcs use it),
+// whatever the ship count; with no wall radius (0, negative or not finite) it keeps the #49 rule Rt =
+// TunnelRadiusM(R, ShipCount)
+bool FSOLNpcTunnelMathLaneDataWallTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLNpcTunnel;
+    const double radiusA = 6.371e6;
+    const double radiusB = 3.3895e6;
+    FSOLNpcLaneEntry lane = NpcTunnelTestLane();
+    const FSOLNpcTunnelBasis basis = TunnelBasis(lane.A, lane.B);
+    const double laneLengthM = (lane.B - lane.A).Size();
+    const double tol = NPCTUNNEL_TOL * lane.B.Size();
+    const FVector3d viewpoint = lane.A + basis.Axis * (0.5 * laneLengthM) + basis.Up * (20.0 * lane.RadiusM);
+    FSOLNpcTunnelLaneData data;
+    FSOLNpcTunnelFoot foot;
+
+    // A frozen wall radius from the in-wall count (smaller than the whole count's radius)
+    const int32 inWallShipCount = 46800;
+    lane.WallRadiusM = TunnelRadiusM(lane.RadiusM, inWallShipCount);
+    TestTrue(TEXT("frozen: can have a tunnel"), BuildTunnelLaneData(3, lane, viewpoint, radiusA, radiusB, data, foot));
+    TestEqual(TEXT("frozen: Rt = WallRadiusM"), data.TunnelRadiusM, lane.WallRadiusM, NPCTUNNEL_TOL * lane.WallRadiusM);
+    TestTrue(TEXT("frozen: narrower than the whole count's radius"),
+        data.TunnelRadiusM < TunnelRadiusM(lane.RadiusM, lane.ShipCount));
+    const FVector2D endArcs = TunnelEndArcsM(laneLengthM, radiusA, radiusB, lane.WallRadiusM);
+    TestEqual(TEXT("frozen: end arc A from Rw"), data.EndArcAM, endArcs.X - foot.ArcM, tol);
+    TestEqual(TEXT("frozen: end arc B from Rw"), data.EndArcBM, endArcs.Y - foot.ArcM, tol);
+
+    // The ship count does not move a frozen radius
+    lane.ShipCount = 3;
+    TestTrue(TEXT("frozen, 3 ships: can have a tunnel"), BuildTunnelLaneData(3, lane, viewpoint, radiusA, radiusB,
+        data, foot));
+    TestEqual(TEXT("frozen, 3 ships: Rt still WallRadiusM"), data.TunnelRadiusM, lane.WallRadiusM,
+        NPCTUNNEL_TOL * lane.WallRadiusM);
+
+    // No usable wall radius: the #49 radius of the whole count
+    lane.ShipCount = 62400;
+    for (const double badRadius : { 0.0, -5.0, NPCTUNNEL_NAN, NPCTUNNEL_INF })
+    {
+        lane.WallRadiusM = badRadius;
+        TestTrue(FString::Printf(TEXT("wall radius %f: can have a tunnel"), badRadius),
+            BuildTunnelLaneData(3, lane, viewpoint, radiusA, radiusB, data, foot));
+        const double rt = TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+        TestEqual(FString::Printf(TEXT("wall radius %f: Rt = TunnelRadiusM(R, ShipCount)"), badRadius),
+            data.TunnelRadiusM, rt, NPCTUNNEL_TOL * rt);
+    }
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

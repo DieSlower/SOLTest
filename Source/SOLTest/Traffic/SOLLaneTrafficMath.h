@@ -6,6 +6,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "SOLConstants.h"
 
 // A lane's orthonormal frame (SDD 49 section 4.3, moved here by SDD 50 section 4.10), universe ecliptic directions:
 // the outbound axis A -> B, up (12 o'clock) from the ecliptic north pole projected off the axis, right (3 o'clock, the
@@ -18,16 +19,16 @@ struct FSOLLaneBasis
     bool bValid = false;                        // False (and zero vectors) for A == B or a non-finite input
 };
 
-// One ship's flip-and-burn leg over a nominal leg l0 (SDD 50 sections 4.3 and 4.4): accelerate at Alpha from the wall
-// speed w to PeakMps, coast, brake back to w
+// One ship's flip-and-burn leg over a nominal leg l0 (SDD 50 sections 4.3 and 4.4, D21): accelerate at Alpha from the
+// wall speed w to PeakMps, coast (at least the hull flip window T_f when the leg burns), brake back to w
 struct FSOLLaneLeg
 {
     double Alpha = 0.0;         // Acceleration kappa x effort x a (m/s^2)
-    double PeakMps = 0.0;       // Peak speed v_p = min(sqrt(w^2 + Alpha l0), c_k)
+    double PeakMps = 0.0;       // Peak speed v_p = max(w, min(v_f, c_k)), v_f the peak that leaves a T_f coast
     double DvMps = 0.0;         // v_p - w, computed without cancellation
     double AccelS = 0.0;        // Accelerate (and brake) time t_a
     double AccelM = 0.0;        // Accelerate (and brake) distance d_a
-    double CoastS = 0.0;        // Coast time t_c (>= 0)
+    double CoastS = 0.0;        // Coast time t_c (>= 0; >= T_f when the leg burns)
     double LegS = 0.0;          // Leg time 2 t_a + t_c
     bool bValid = false;        // False (and zeros) for a non-positive or non-finite leg
 };
@@ -98,13 +99,21 @@ struct FSOLLaneShip
     double AccelS = 0.0;            // t_a
 };
 
+// A lane ship's velocity and hull facing at one time (SOLLaneTraffic::LaneShipMotion)
+struct FSOLLaneShipMotion
+{
+    FVector3d VelocityMps = FVector3d::ZeroVector;  // Central difference of the position, m/s
+    FVector3d HullForward = FVector3d::ZeroVector;  // Unit hull facing (LaneHullForward)
+};
+
 // A lane ship's thrust kind (SDD 50 section 4.12, consumer #51)
 enum class ESOLLaneThrust : uint8
 {
     Accelerate,                     // Alpha along travel
     Coast,                          // No thrust
     Brake,                          // Alpha against travel
-    Turn                            // Centripetal, toward the U-turn's centre
+    Turn,                           // Centripetal, toward the U-turn's centre
+    Flip                            // No thrust, the hull turning over mid-leg (D21; appended, nothing persists it)
 };
 
 // A lane ship's thrust at a time
@@ -114,6 +123,8 @@ struct FSOLLaneThrustState
     ESOLLaneThrust Thrust = ESOLLaneThrust::Coast;
     double AccelMps2 = 0.0;                         // Thrust acceleration magnitude
     FVector3d Direction = FVector3d::ZeroVector;    // Unit thrust direction (travel direction while coasting)
+    double FlipFraction = 0.0;                      // Hull flip f on a leg; in a turn 1 for a braking ship, else 0
+    FVector3d HullForward = FVector3d::ZeroVector;  // Unit hull facing (LaneHullForward)
 };
 
 // Pure math of the issue #50 lane traffic (SDD 50 sections 4.2-4.5 and 4.12, contract section 6): the radial factor,
@@ -133,9 +144,12 @@ namespace SOLLaneTraffic
     // NPC_LANE_HALO_KAPPA x smoothstep(1, 1 + NPC_LANE_HALO_RAMP_WALL_RADII, rho) beyond it; |rho| is used, NaN gives 0
     SOLTEST_API double RadialFactor(double rho);
 
-    // Returns a ship's leg profile: kappa clamped to [0, 1] (NaN 0), effort clamped to [NPC_LANE_EFFORT_MIN,
-    // NPC_LANE_EFFORT_MAX] (NaN the minimum); invalid with every field 0 for a non-positive or non-finite leg
-    SOLTEST_API FSOLLaneLeg MakeLegProfile(double kappa, double effort, double legM);
+    // Returns a ship's leg profile with a coast of at least flipS (T_f) on a burning leg (D21): kappa clamped to [0, 1]
+    // (NaN 0), effort clamped to [NPC_LANE_EFFORT_MIN, NPC_LANE_EFFORT_MAX] (NaN the minimum), flipS negative or NaN
+    // read as 0 (the pre-D21 profile); a leg of at most w T_f has no burn; invalid with every field 0 for a
+    // non-positive or non-finite leg
+    SOLTEST_API FSOLLaneLeg MakeLegProfile(double kappa, double effort, double legM,
+        double flipS = SOL::NPC_LANE_FLIP_S);
 
     // Returns the arc u(tl) along a leg from its departure end ring, tl clamped to [0, LegS] (NaN 0); 0 for an invalid
     // leg
@@ -204,6 +218,11 @@ namespace SOLLaneTraffic
     SOLTEST_API FVector3d LaneShipPositionM(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
         const FSOLLaneShip& ship, double timeS);
 
+    // Returns a ship's velocity (the central difference of LaneShipPositionM over +- stepS) and its LaneHullForward at
+    // time t, the leg and cycle derived once (the per-frame Mid / Full hull paths)
+    SOLTEST_API FSOLLaneShipMotion LaneShipMotion(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        const FSOLLaneShip& ship, double timeS, double stepS);
+
     // Returns an upper bound on a lane ship's speed relative to body A: the lane's largest peak times the map's
     // largest slope max(1, (l - Z) / (l0 - Z)), plus the endpoint speed times (1 + halo outer radius / current leg),
     // with a 1e-6 relative allowance for rounding (the bound is reached by a coasting peak ship mid-lane, and the
@@ -211,11 +230,22 @@ namespace SOLLaneTraffic
     SOLTEST_API double LaneShipSpeedBoundMps(double maxPeakMps, double nominalLegM, double currentLegM,
         double haloOuterRadiusM, double endpointRelativeSpeedMps);
 
-    // Returns a ship's thrust at time t: Accelerate / Coast / Brake on the legs (Alpha along or against travel), Turn
-    // in the U-turns ((w / D_U)^2 x the distance from the turn's centre, toward it); Coast for an invalid frame or a
-    // non-drivable lane. The legs report the nominal profile only: the metric map adds X''(u) u'^2 along the lane in
-    // the end zones when l != l0 (a ship marked Coast slows or speeds up there, at most about 0.6-1.4 G, below a on
-    // every default lane; SDD 50 section 4.12, for #51)
+    // Returns a ship's thrust at time t: on a burning leg Accelerate while tl < t_a, Brake while tl > T_leg - t_a, Flip
+    // (no thrust, travel direction) while |tl - T_leg / 2| < T_f / 2, else Coast; Turn in the U-turns ((w / D_U)^2 x
+    // the distance from the turn's centre, toward it); Coast for an invalid frame or a non-drivable lane; with the
+    // hull's FlipFraction and HullForward (LaneHullForward). The legs report the nominal profile only: the metric map
+    // adds X''(u) u'^2 along the lane in the end zones when l != l0 (a ship marked Coast slows or speeds up there, at
+    // most about 0.6-1.4 G, below a on every default lane; SDD 50 section 4.12, for #51)
     SOLTEST_API FSOLLaneThrustState LaneThrustAt(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        const FSOLLaneShip& ship, double timeS);
+
+    // Returns the hull flip fraction f at leg time tl (D21): the smoothstep 3 x^2 - 2 x^3 of x = (tl - (legS - T_f) /
+    // 2) / T_f clamped to [0, 1], tl clamped to [0, legS]; 0 when accelS <= 0 (no brake) or any input is not finite
+    SOLTEST_API double LaneHullFlipFraction(double legS, double accelS, double legTimeS);
+
+    // Returns a ship's unit hull facing at time t (SDD 50 section 4.4, D21): on a leg cos(pi f) d + sin(pi f) Up, d the
+    // travel direction; in a turn the brake attitude held (-Axis at B, +Axis at A) for a ship whose legs brake, else the
+    // turn's velocity direction; +Axis (or +X when there is no axis) for an invalid frame, +Axis for a non-drivable lane
+    SOLTEST_API FVector3d LaneHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
         const FSOLLaneShip& ship, double timeS);
 }

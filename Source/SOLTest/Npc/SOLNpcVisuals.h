@@ -102,8 +102,12 @@ public:
     // holds it; false without the material (verification)
     bool GetPushedLaneStyle2(FLinearColor& outStyle2) const;
 
-    // Returns the group texels uploaded last frame (two rows of NPC_GROUP_TEXTURE_WIDTH; verification)
+    // Returns the group texels uploaded last frame (NPC_GROUP_TEXTURE_ROWS rows of NPC_GROUP_TEXTURE_WIDTH; verification)
     TConstArrayView<FVector4f> GetLastGroupTexels() const { return mGroupTexels[mUploadRing]; }
+
+    // Returns the rail time the GPU copy of the rails is based at (the point shader's time is rail time minus this;
+    // verification)
+    double GetGpuRailEpochS() const { return mGpuRailEpochS; }
 
 protected:
 
@@ -233,6 +237,8 @@ private:
     TArray<FTransform> mHullTransforms[2];            // Scratch per faction, reused every frame
     TArray<FTransform> mHullPrevTransforms[2];
     TArray<int32> mShipSlots;                         // Scratch: each CPU ship's slot in its layer this frame
+    TArray<FVector4f> mPointRelM;                     // Scratch: each Point-tier CPU ship's drawn position relative to
+                                                      // the viewpoint, w 1 when the CPU draws it (the Mid hand-over)
     TArray<int32> mMeshPoolOwners;                    // NPC index each pool mesh showed last frame (INDEX_NONE: none)
     TArray<int32> mLaneShipCounts;                    // Lane ships per lane of the population (SDD 38 D13)
     FSOLNpcLaneFrame mLaneFrame;                      // This frame's lanes (sized once per population)

@@ -277,7 +277,9 @@ void USOLNpcTierProcessor::EvaluateChunk(const FChunkView& view)
 {
     const FSOLNpcRailFrame& frame = *mInputs.RailFrame;
     const FVector3d viewpointM = mInputs.ViewpointM;
-    const double keepRadiusM = mInputs.MidKeepRadiusM;
+    const double marginM = mInputs.GroupMidMarginM.IsValidIndex(view.Group) ? mInputs.GroupMidMarginM[view.Group]
+        : 0.0;
+    const double keepRadiusM = mInputs.MidKeepRadiusM + marginM * (1.0 + FMath::Max(mInputs.AiHysteresis, 0.0));
     const double wakeClockM = mInputs.GroupWakeClockM.IsValidIndex(view.Group) ? mInputs.GroupWakeClockM[view.Group]
         : 0.0;
     const bool bFarChunk = view.Tier == NPC_TIER_FAR;
@@ -343,6 +345,8 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
     const uint8 chunkTier = view.Tier;
     const double wakeClockM = mInputs.GroupWakeClockM.IsValidIndex(view.Group) ? mInputs.GroupWakeClockM[view.Group]
         : 0.0;
+    const double midRadiusM = mInputs.MidRadiusM
+        + (mInputs.GroupMidMarginM.IsValidIndex(view.Group) ? mInputs.GroupMidMarginM[view.Group] : 0.0);
     int32 aiCounts[2] = {};
     int32 renderCounts[2] = {};
     int32 changes = 0;
@@ -372,9 +376,11 @@ void USOLNpcTierProcessor::SelectChunk(const FChunkView& view)
         {
             continue;
         }
+        // The Mid radius of a lane ship grows by the lane's hand-over margin (the far layer hides a lane ship by its
+        // float position, which is up to the margin off this double one)
         const double distanceM = state.DistanceM;
         uint8 aiTier = static_cast<uint8>(SOLNpcScale::SelectAiTier(
-            static_cast<SOLNpcScale::EAiTier>(state.AiTier), distanceM, mInputs.FullRadiusM, mInputs.MidRadiusM,
+            static_cast<SOLNpcScale::EAiTier>(state.AiTier), distanceM, mInputs.FullRadiusM, midRadiusM,
             mInputs.AiHysteresis));
 
         // Dropping to Far snaps the deviation to the rail: only when that is under half a pixel, or the budget forces
@@ -471,8 +477,10 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
         ship.RailDistanceM = static_cast<float>((state.PositionM - view.Deviations[entity].DeviationM
             - mInputs.ViewpointM).Size());
 
-        // Hull heading (hulls only): a Full ship's nose, else the rail plus deviation velocity, which is also the nose
-        // a promotion to Full starts with (SOLNpcAi::HandoffOrientation), so neither hand-off turns the hull
+        // Hull heading (hulls only): a Full ship's nose, else the rail heading plus deviation velocity (a lane ship
+        // faces its thrust, D21: SOLNpcRail::HullHeadingVelocityMps, the leg and cycle derived once by Motion). A
+        // promotion to Full starts from this heading (SOLNpcAi::HandoffOrientation) and the Full step steers the nose
+        // along the same rail heading (SOLNpcCombat), so neither hand-off turns the hull
         ship.HeadingDirection = FVector3f::ZeroVector;
         if (state.RenderTier != NPC_RENDER_POINT)
         {
@@ -485,8 +493,9 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
             else
             {
                 const FSOLNpcRail& rail = view.Rails[entity].Rail;
-                ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::VelocityMps(rail, frame)
-                    + view.Deviations[entity].DeviationVelocityMps, state.PositionM - frame.GroupBodyM[rail.Group]));
+                ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(
+                    SOLNpcRail::Motion(rail, frame), view.Deviations[entity].DeviationVelocityMps),
+                    state.PositionM - frame.GroupBodyM[rail.Group]));
             }
         }
 

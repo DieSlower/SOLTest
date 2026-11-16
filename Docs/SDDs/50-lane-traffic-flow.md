@@ -11,7 +11,8 @@ event bus).
 (D11). No setting, no key binding, no `UPROPERTY` of a save class changes. If the work shows that one is needed, stop
 and report (section 12).
 Status: **draft (2026-11-13), grill-me done (D1-D12), questions Q1-Q8 answered by the user (2026-11-13, D13-D20),
-one open question left (Q9, section 12).** No code is written before Q9 is answered (it only affects part 50d).
+amended for the hull flip before braking (D21, section 14), one open question left (Q9, section 12).** No code is
+written before Q9 is answered (it only affects part 50d).
 
 ## 1. Problem
 
@@ -89,7 +90,7 @@ the lane.
 - **D16: Nominal lane length = the lane's maximum length** (user, Q4), with exact (metric) distances near the end rings
   (section 4.5): the 300 km/s cap and the 1.65 G bound hold at every geometry and the ends stay exact.
 - **D17: Engine-first hull flip** (user, Q5): hulls face their thrust, flipping over about 60 s (`NPC_LANE_FLIP_S`)
-  while braking; this is also what #51's flame needs.
+  while braking; this is also what #51's flame needs. *Refined by D21: the flip finishes before braking starts.*
 - **D18: Readout fallback** (user, Q6): when no tunnel label is placed, the merge readout falls back to a fixed line
   under the speed readout.
 - **D19: AUTO obeys lane traffic rules by default, with an override** (user, Q7, changed from the recommendation): the
@@ -99,6 +100,12 @@ the lane.
   setting.
 - **D20: AUTO paths count as using a lane only when they run inside the halo for 20 or more wall radii along the
   lane** (user, Q8): a path that only crosses a lane is left unchanged.
+- **D21: The hull flip finishes before braking starts** (user, 2026-11-13, refines D17). Every leg that burns has a
+  mandatory zero-thrust window of `T_f` = `NPC_LANE_FLIP_S` (60 s) between the end of the burn and the start of the
+  brake, in which the hull turns over (engine first). The window is centred on the leg's midpoint in time: on a lane
+  with no other coast the window is exactly the flip (the ship coasts at its peak speed for 60 s); on a lane with a
+  longer coast the flip sits in the middle of the coast. The leg profile, the thrust state (a new `Flip` state) and
+  the hull facing are redefined in sections 4.3, 4.4 and 4.12; summary and test impact in section 14.
 
 ## 3. What exists today (code survey, HEAD `f336e10`)
 
@@ -195,25 +202,67 @@ end ring along a nominal leg `l0`) is
 so `v^2 - w^2` is exactly `kappa` times the axis ship's `v^2 - w^2` at every point (accelerating, coasting and braking
 phases start at the same `u` for every `kappa`). It equals the wall speed at the wall (`kappa` = 0) and at both end
 rings, the axis profile at the axis, and is smooth and strictly monotone in `rho` in between. Peak (mid-lane or the cap)
-`v_p = min(sqrt(w^2 + alpha l0), c_k)`: D4's `sqrt(w^2 + a L)` with the leg for `L`.
+`v_p = min(sqrt(w^2 + alpha l0), c_k)`: D4's `sqrt(w^2 + a L)` with the leg for `L`. *(Pre-D21; superseded by the
+paragraph below. The speed law `v(u)^2 = min(w^2 + 2 alpha min(u, l0 - u), v_p^2)` stays, only `v_p` changes.)*
+
+**Peak with the flip window (D21).** A leg that burns keeps a zero-thrust window of `T_f` = `NPC_LANE_FLIP_S` (60 s)
+between the burn and the brake, so its coast is `t_c >= T_f`. With `l0 = 2 d_a + v_p t_c`, `d_a = (v_p^2 - w^2) / (2
+alpha)` and the shortest coast `t_c = T_f`, the uncapped peak solves `v^2 + alpha T_f v - (w^2 + alpha l0) = 0`:
+
+    v_f = sqrt((alpha T_f / 2)^2 + w^2 + alpha l0) - alpha T_f / 2
+    v_p = max(w, min(v_f, c_k))
+
+computed without cancellation as `dv = v_p - w = max(0, min(dv_f, dv_c))`, with
+
+    dv_f = 2 alpha (l0 - w T_f) / ( (2 w + alpha T_f) + sqrt((2 w + alpha T_f)^2 + 4 alpha (l0 - w T_f)) )
+    dv_c = kappa (c^2 - w^2) / (c_k + w)
+
+(`dv_f` is the positive root of `dv^2 + (2 w + alpha T_f) dv - alpha (l0 - w T_f) = 0`). Then `t_a = dv / alpha` (0
+when `alpha` = 0), `d_a = t_a (w + dv / 2)`, `t_c = (l0 - 2 d_a) / v_p`, `T_leg = 2 t_a + t_c`, as before.
+
+- **Reduces to the old profile at `T_f = 0`:** `v_f = sqrt(w^2 + alpha l0)` and `dv_f = alpha l0 / (w + sqrt(w^2 +
+  alpha l0))`, the pre-D21 formulas.
+- **Capped legs** (`l0 >= (c_k^2 - w^2) / alpha + c_k T_f`; axis ship at full effort: 5.555e9 m, was 5.537e9):
+  `v_p = c_k`, `t_c = (l0 - 2 d_a) / c_k > T_f`; peak, `t_a`, coast and leg time are **unchanged** from pre-D21, and
+  the flip sits in the middle of the coast.
+- **Uncapped legs:** `t_c = T_f` exactly (the window is the whole coast); the peak is a little lower and the leg time
+  about the same (the 60 s coast replaces the last few km/s of burn).
+- **Short legs** (`l0 <= w T_f` = 1,200 km; no default lane, the shortest default leg is Earth - Moon at about 3.95e8
+  m): `dv_f <= 0`, so `dv` = 0, `t_a` = 0, the ship moves at `w` over the whole leg with no burn, no brake and **no
+  flip** (the hull keeps facing travel). The peak is reduced, never below `w`, and continuous at `l0 = w T_f` (`dv ->
+  0`). The lane stays drivable (section 4.2's rule is unchanged).
+- **Blend:** in the burn phases `v^2 - w^2` is still exactly `kappa` times the axis ship's; the peaks follow `v_p^2 -
+  w^2 = min(alpha (l0 - v_p T_f), kappa (c^2 - w^2))`, so on an uncapped leg the coast starts at `d_a = (l0 - v_p T_f)
+  / 2`, which moves with `v_p` by at most `v_p T_f / 2` (about 2,500 km on Earth - Moon) instead of being the same `u`
+  for every `kappa`. Still `w` at the wall and at both end rings, and still strictly monotone in `rho`: `dv_f / d alpha
+  > 0` exactly when `l0 > w T_f`, and `c_k` grows with `kappa`, so both terms of the `min` in the speed law grow with
+  `kappa`.
+- **No speed changes in the window itself:** the flip is attitude only; positions, the metric map and the wake bound
+  see only the lower `v_p` (section 4.7).
 
 **Mean speed field** (HUD and AUTO): `vbar(u, rho)` = the speed above with `eps = eps_ref`: the speed of a
 mean-effort ship at that radius. With `eps_ref` = 0.75 the axis acceleration is 1.24 G, below the human sustained 1.5 G,
 so the player's AUTO can fly it (section 4.9).
 
-Examples (axis ship, `eps` = 1, `Rw` from the default 1M population; times at 1x):
+Examples (axis ship, `eps` = 1, `Rw` from the default 1M population; times at 1x; D21 profile):
 
-| Lane (leg) | Peak | Accelerate | Coast | Leg time |
+| Lane (leg) | Peak | Accelerate | Coast (flip) | Leg time |
 |---|---|---|---|---|
-| Earth - Moon (about 3.95e8 m) | 82 km/s (uncapped) | 1.1 h | none | 2.1 h |
-| Earth - Mars (at 1.5 AU, 2.25e11 m) | 300 km/s (cap) | 4.8 h, 2.8e9 m | 8.5 d | 8.9 d |
-| Halo, Earth - Mars | 36 km/s (cap `c_k` with `kappa_h` 0.01) | 27 h, 2.8e9 m | 71 d | about 73 d |
+| Earth - Moon (about 3.95e8 m) | 81.9 km/s (uncapped; 82.4 before D21, -0.6 %) | 1.06 h (3,827 s) | 60 s, all of it the flip | 2.14 h (+0.2 s) |
+| Earth - Moon, effort 0.5 | 59.7 km/s (60.0 before, -0.4 %) | 1.36 h | 60 s | 2.74 h (+0.1 s) |
+| Earth - Mars (at 1.5 AU, 2.25e11 m) | 300 km/s (cap, unchanged) | 4.8 h, 2.8e9 m | 8.5 d, flip in its middle | 8.9 d (unchanged) |
+| Halo, Earth - Mars | 36 km/s (cap `c_k` with `kappa_h` 0.01, unchanged) | 27 h, 2.8e9 m | 71 d, flip in its middle | about 73 d (unchanged) |
+
+Every planet lane (Mercury - Venus up to Uranus - Neptune) is capped for every ship, so only the Earth - Moon lane's
+numbers move. The default layout has no Sun lane (the "Sun" entry is the asteroid-belt cluster).
 
 ### 4.4 Closed-form cycle (D1, D10)
 
-Per ship, precomputed in double at spawn (`MakeLegProfile`): `alpha`, `v_p`, `dv = v_p - w`, `t_a = dv / alpha`
-(accelerate time; 0 when `kappa` = 0), `d_a = w t_a + dv t_a / 2` (accelerate distance), `t_c = (l0 - 2 d_a) / v_p`
-(coast), `T_leg = 2 t_a + t_c`. Per lane: `T_U = pi D_U / w` (U-turn time). Cycle `T_cyc = 2 T_leg + 2 T_U`.
+Per ship, precomputed in double at spawn (`MakeLegProfile`): `alpha`, `v_p` (D21 formula, section 4.3), `dv = v_p -
+w`, `t_a = dv / alpha` (accelerate time; 0 when `kappa` = 0), `d_a = w t_a + dv t_a / 2` (accelerate distance), `t_c =
+(l0 - 2 d_a) / v_p` (coast, `>= T_f` whenever `dv > 0`, D21), `T_leg = 2 t_a + t_c`. Per lane: `T_U = pi D_U / w`
+(U-turn time). Cycle `T_cyc = 2 T_leg + 2 T_U`. *(D21 changes only how `dv` and `t_a` are chosen; the derivation of
+`T_leg` below is pure geometry, so the rail layout and the shader mirror do not change.)*
 
 **Only `dv` and `t_a` are stored; `T_leg` is derived at evaluation** (`LaneShipLegS`, 50a review): `t_c = (l0 - 2 t_a
 (w + dv / 2)) / (w + dv)` from the stored (float on the rail) `dv`, `t_a` and the lane's `l0`, so `2 d_a + v_p t_c = l0`
@@ -224,6 +273,11 @@ uncapped leg the rounded `t_a` can overshoot `l0 / 2` by a rounding step, giving
 halves then meet inside the accelerate phase, off by `alpha (t_c / 2)^2` (below a micrometre). The test
 `SOLTest.NpcTrafficMath.FloatRail` rounds every stored value to float and checks 1 m continuity at `T_leg / 2 +- 1 ms`,
 the joints and the exact end rings.
+
+**Phase formula (CPU, 50b).** `tau = (phi T_cyc + t) mod T_cyc` with `phi = P0 + P5` in double
+(`SOLLaneTraffic::CycleSegmentAt`): P0 is the phase's high float, P5 its low part, so `P0 + P5` holds the phase to about
+1e-14 and the motion no longer steps in time (the single-float phase stepped in `ulp x T_cyc`, up to 1.3 s on a long
+cycle). The GPU evaluates the same formula in the double-float form of section 4.6.
 
 ```mermaid
 flowchart LR
@@ -260,8 +314,33 @@ flowchart LR
   D1; near-axis ships nearly stop and reverse). **U-turn at A** mirrors it (`+ a (R_A + m Rw) - a D_U sin(theta)`, lateral
   `-cos(theta) sin psi`).
 - **Planet clearance:** the apex lies `m Rw - D_U` above the body's surface along the axis (D14).
-- **Hull facing** (mesh and instanced tiers): today the hull faces its velocity. Flip-and-burn implies the hull faces
-  its thrust while braking (engine first). Adopted (D17): the hull turns over `NPC_LANE_FLIP_S` (about 60 s); the thrust state is derivable (section 4.12).
+- **Hull facing** (mesh and instanced tiers; D17 refined by D21): today the hull faces its velocity. The lane hull faces
+  its thrust: nose first while accelerating, engine first while braking, turning over in the flip window between.
+  - **Flip fraction** on a leg, `tl` the time into the leg: `f(tl) = S((tl - (T_leg - T_f) / 2) / T_f)`,
+    `S(x) = 3 x^2 - 2 x^3` with `x` clamped to [0, 1] (zero angular rate at both ends, peak `1.5 pi / T_f` = 4.5
+    degrees per s). The
+    window `[T_leg / 2 - T_f / 2, T_leg / 2 + T_f / 2]` is centred on the leg's midpoint in time and lies inside the
+    coast (`t_c >= T_f`): it starts when the burn ends or later and ends when the brake starts or earlier; on an uncapped
+    leg it is the whole coast. `f` = 0 on a leg with no brake (`t_a` = 0: `kappa` 0, or `l0 <= w T_f`). After the
+    rail's float rounding an uncapped leg's derived `t_c` can be below `T_f` by a rounding step, so the window may
+    overlap a burn by microseconds; accepted (the thrust state's burn kinds win, section 4.12).
+  - **Hull forward on a leg:** `F = cos(pi f) d + sin(pi f) Up`, `d` the travel direction (`+Axis` outbound, `-Axis`
+    inbound), `Up` the lane's #49 basis *(chosen: the nose pitches over ecliptic north; the flip axis is a 50e tuning
+    item)*. So `F = d` (facing travel) through the burn and up to the window, `F = -d` (facing the brake thrust) from the
+    window's end to the end ring.
+  - **No end-zone interaction:** the flip is placed on the nominal leg time; the metric map changes the along-lane
+    speed only, never its direction (`X' > 0`), so `d` and `F` are the same on the current leg. The window's arc span
+    `v_p T_f` (about 4,900 km on Earth - Moon, 18,000 km on a capped lane) lies far inside `[Z, l0 - Z]` on every
+    default lane; on a lane where it reaches a zone nothing breaks (only section 4.12's known map term applies there).
+  - **Re-turn at the lane end (recommended, D21):** through the U-turn the hull **holds its brake attitude in world
+    space**, `F = -Axis` at B and `+Axis` at A, while the velocity turns 180 degrees under it. Relative to travel the
+    hull therefore turns from engine first back to nose first over the whole arc (`T_U = pi D_U / w`) and enters the
+    next leg facing travel with `f` = 0. `F` is continuous at all four joints, the hull does not rotate in the turn,
+    and it is aligned with the turn's thrust at the apex (`w^2 / D_U` toward `-Axis` at B). A ship whose leg has no
+    brake keeps today's velocity facing in its turns (it arrives nose first). *Alternative not taken:* the hull follows
+    the turn's centripetal thrust (a 90-degree jump at the joints for a ship with a lateral offset).
+  - `SOLLaneTraffic::LaneHullFlipFraction` and `LaneHullForward` (section 4.12) evaluate this; the thrust state is
+    derivable (section 4.12).
 
 ### 4.5 Lane length drift (D16)
 
@@ -293,42 +372,145 @@ length, where the middle can run up to about 7x faster than the cap.
 
 ### 4.6 GPU evaluation, precision and cost (D10)
 
-**Rail layout (lane kind)**, still 32 bytes and two texels: P0 `phi` at the epoch, P1 `dv` (m/s, stored directly so a
-halo ship's tiny `dv` does not cancel in float), P2 the up offset `rho Rw cos psi` (m), P3 the right offset `rho Rw sin
-psi` >= 0 (m), P4 `t_a` (s), **P5 free** (50a review: `T_leg` is no longer stored, section 4.4; part 50b uses it for
-phase precision, see the plan's 50b notes), **P6 reserved** (0; the future destination hook, section 4.11). `T_leg`,
-`T_cyc` and `alpha` are derived (`2 t_a + (l0 - 2 t_a (w + dv / 2)) / (w + dv)`, `2 T_leg + 2 T_U`, `dv / t_a`).
-`AdvancedToEpoch` advances `phi` by `delta / T_cyc` in double and wraps it into [0, 1).
+**Rail layout (lane kind, CPU)**, 32 bytes and two texels, unchanged by the 50b review fixes: P0 `phi` high float, P1 `dv`
+(m/s, stored directly so a halo ship's tiny `dv` does not cancel in float), P2 the up offset `rho Rw cos psi` (m), P3 the
+right offset `rho Rw sin psi` >= 0 (m), P4 `t_a` (s), P5 the phase's low part (`P0 + P5` = the phase to about 1e-14),
+**P6 reserved** (0; the future destination hook, section 4.11). `T_leg`, `T_cyc` and `alpha` are derived on the CPU
+(`2 t_a + (l0 - 2 t_a (w + dv / 2)) / (w + dv)`, `2 T_leg + 2 T_U`, `dv / t_a`). `AdvancedToEpoch` advances `phi` by
+`delta / T_cyc` in double and wraps it into [0, 1), re-splitting it into P0 and P5.
 
-**Group texture** `NpcGroupTex` grows from 64 x 2 to 64 x 6 rows (per frame, 8 lanes, about 6 KB per upload): row 0 and
-1 unchanged (`A`, `B` relative to the viewpoint, `R`, drawn flag); row 2 `Up`, `Rw`; row 3 `Right`, `D_U`; row 4 `l - l0`
-(double on the CPU), `e_A`, `l0`, `Z`; row 5 `R_B + m Rw`, `T_U`, spare. Cluster and battle columns ignore rows 2-5.
+**GPU upload (built per epoch in double).** A new `SOLNpcRail` function builds the two GPU texels from the CPU rail and the
+lane profile; `ASOLNpcVisuals::FillRailTexels`, the smoke and the test all call it (one source of truth). With `tau0 =
+phi x T_cyc` (the cycle time at the GPU epoch) computed in double and split into a high and a low float:
+
+- texel A = (packed kind / faction / group plus `r / (2 ulp(T_leg))` as a fraction, `tau0` high float, `dv`, up offset);
+- texel B = (right offset, `t_a`, `tau0` low float, `T_leg`).
+
+`T_leg` is computed in double (`LaneShipLegS`) and rounded once, so the shader no longer derives `T_leg` in float from
+`l0` and the per-ship coast divide is gone. Its rounding `r = T_leg - float(T_leg)` (up to `v_p x ulp(T_leg) / 2`, about
+15 km on Earth - Mars, twice that on the inbound leg's far half) rides in the packed value's fraction, within +-0.25 of
+the integer (the vertex node decodes kind, faction and group by rounding, so they are unchanged); the shader decodes `r`
+(`SOLNpcRail::GpuLegUlpS`, exponent bits x 2^-23) and carries it into the moving part of every leg boundary passed and
+into the far-half time to the leg's end (50b test pass, 2026-11-16: Earth - Mars 42 km -> 28 km).
+
+**Group texture** `NpcGroupTex` grows from 64 x 2 to 64 x 6 rows (per frame, 8 lanes, about 6 KB per upload): rows 0 and 1
+unchanged (`A`, `B` relative to the viewpoint, `R`, drawn flag); row 2 `Up` with `.w` the wall speed (written by
+`WriteLaneTrafficTexels` from `SOL::NPC_LANE_WALL_SPEED_MPS`, so retuning it cannot desync the material); row 3 `Right`,
+`D_U`; row 4 `pi / T_U`, `e_A`, `l0`, `Z`; row 5 `R_B + m Rw - end shift`, `T_U`, `(l - l0) / (l0 - Z)`, `1 / Z`. (Row 2
+`.w` used to hold `Rw` and row 4 `.x` `l - l0`; no shader read either.) Cluster and battle columns ignore rows 2-5.
 `SOL::NPC_GROUP_TEXTURE_ROWS` names the count.
 
-**Shader.** The lane branch of the point vertex node calls `SOLNTR_LaneShipRelM(railA, railB, groupRows, t, w)` from
-the new `Shaders/Private/SOLNpcTraffic.ush` (header: mirror of `Traffic/SOLLaneTrafficMath.cpp` and
-`SOLNpcRail::EvaluateAtTimeM`, both ways). `M_SOLNpcPoints` is rebuilt once by `create_npc_assets.py` (`-SOLRebuild`,
-editor closed) to include it and pass the extra rows and `w`; later formula changes need no rebuild.
+**Shader.** The lane branch of the point vertex node calls `SOLNTR_LaneShipRelM(railA, railB, g0, g1, g2, g3, g4, g5,
+t)` from `Shaders/Private/SOLNpcTraffic.ush` (header: mirror of `Traffic/SOLLaneTrafficMath.cpp` and
+`SOLNpcRail::EvaluateAtTimeM`, both ways): the two rail texels, the lane column's six group rows and the rail time.
+There is no `w` parameter: the wall speed is data in row 2 `.w`. `M_SOLNpcPoints` is rebuilt by `create_npc_assets.py`
+(`-SOLRebuild`, editor closed) to include it and pass the six rows; later formula changes need no rebuild. The
+evaluation is a double-float scheme, in float arithmetic throughout:
 
-**Precision.** The shader evaluates in float relative to the viewpoint. Within one epoch window the along-lane error is
-about `ulp(phi) x T_cyc x v`: Earth - Mars (cycle about 1.5e6 s) up to about 27 km mid-lane at 300 km/s and about 2 km
-near the ends at 20 km/s; the endpoint float error (about 9 km at 1 AU) is avoided near either body by the nearer-end
-evaluation. **Today's lane error is the same order** (`ulp(param) x L`, about 27 km on Earth - Mars), and it only shows
-at the Mid-radius hand-over (2,000 km): ships closer than that are evaluated on the CPU in double from the same rail
-floats. The outer lanes (up to about 50 AU nominal) reach several hundred km, as today. A contract case (section 6 case
-10) re-implements the shader formula in C++ float and asserts the bound per default lane; the smoke (section 8 V5)
-checks the hand-over. *(50a review:)* a single float phase also makes the motion **step in time**: `frac(phi + t /
-T_cyc)` only changes in `ulp x T_cyc` steps, about 0.16 s on a short (axis) cycle to about 1.3 s on a long halo
-cycle, a visible stutter; part 50b uses the freed P5 for a second (low-order) phase float or for seconds from the
-nearest leg joint, picks one phase formula for the CPU and the shader, and V5 tests smoothness over time (plan, 50b
-notes, with the reviewer's shader cost advice).
+- **Cycle time as a pair.** The cycle time is `(tau0 high, tau0 low + t)`: the epoch part is fixed, the moving part
+  small.
+- **Segment choice.** The segment is chosen by comparing `(segment constant - boundary) + moving part`. The boundaries
+  are subtracted from `tau0` high one float at a time (each step exact by Sterbenz, or rounded at the result's size), and
+  the rounding of the inbound boundary is carried into the moving part (Fast2Sum, `precise` in HLSL).
+- **Coast.** Beyond the end zones the arc is split into an epoch constant (`v_p s_const - dv t_a / 2`, times `(1 +
+  stretch)`, minus `stretch Z / 2`) and the moving part `(1 + stretch) v_p s_moving`, added after the large terms, so the
+  motion is smooth (no repeated positions) at any distance.
+- **Accelerate and end zones (2026-11-16, third 50b pass).** The end zones are not short: `Z` is 5 % of the nominal leg
+  (2e10 m on Earth - Mars), so the direct float arc there stepped in `ulp(arc)`, up to kilometres, and slow ships (near
+  the wall or in the halo) repeated positions. The accelerate arc is now split the same way, `w S + alpha S^2 / 2` and
+  `(w + alpha S) m + alpha m^2 / 2` (`S`, `m` the segment time's constant and moving parts), and the end-zone map by the
+  ramp's exact difference quotient: `X(c + m) = X(c) + m (1 + stretch Q)`, `Q = 3u^2 - 2u^3 + d (3u - 3u^2) + d^2 (1 -
+  2u) - d^3 / 2`, `u = c / Z`, `d = m / Z`. The quadratic split is taken only while `|m| <= s` (its terms then stay at
+  the arc's scale; for `s < |m|` the terms cancel and their rounding showed as 100 m frame noise near the rings late in
+  an epoch window) and `|d| <= 1`; otherwise the arc is direct from `s`, which is then under one epoch span from the
+  ring, where `ulp(arc)` is under 7 % of a frame's motion. Measured (`SOLTest.NpcRail.GpuLaneCycleSweep`, 24 hashed ships
+  x 40 cycle times x 60 frames, 2,000 km away, 9,000 s into the window): repeated end-zone frames before / after: Earth
+  - Mars 498 / 0 of 5,760 (554 / 0 at 0.6 L0), Jupiter - Saturn 2,345 / 0, Saturn - Uranus 4,000 / 0; the worst frame
+  step off the CPU's 0.52 / 0.15 px (0.55 / 0.26 at 0.6 L0), 2.75 / 0.16 px and 5.38 / 0.15 px at 2,000 km and 1080p;
+  Earth - Moon 0 repeats before and after; the coast was never affected (0 of 51,840). The second review's V5 finding
+  (227-239 repeated far-point positions of 6,000 frames with the samples spread over the whole lane) was this end-zone
+  stepping: a real one-frame stall of the far points, about 1 px at the Mid radius on Earth - Mars and up to 5 px on
+  the outer lanes. Cost: 171 -> 213 float ops in the function alone (Windows SDK DXC, `cs_6_0 -O3 -Zpr -HV 2018`).
+- **Divides.** The per-lane `pi / T_U` (row 4) replaces the per-vertex divide in the U-turn angle. The remaining
+  per-vertex divides are `alpha = dv / t_a` and the wrap count.
+- **`precise`.** UE compiles shaders with fast math (DXC emits `fast` on every float op unless `-Gis`), which lets the
+  compiler regroup a double-float pair and lose its low part. Every term of the scheme is therefore `precise`: the
+  cycle constants and the inbound Fast2Sum, `T_leg`'s rounding carry, the coast split (epoch constant and moving
+  part), `fromRing*M`, the ring position and the leg position (the "large terms first, moving part last" sum). DXC
+  propagates `precise` to everything that feeds a marked value. Verified on the DXIL (second review, 2026-11-16): the
+  engine's `dxcompiler.dll` (DXC 1.8) with UE's SM6 flags (`-O3 -Zpr -HV 2018`, no `-Gis`), `vs_6_6`, the function
+  alone: before, 129 of 149 float ops carried `fast`; after, 47 of 153, all of them in the U-turn and not-drivable
+  branches (153 - 106 = 47). With those two branches stubbed out, none of the 103 float ops that feed the leg position
+  carries `fast`. The C++ mirror (`SOLNpcTrafficMirror.h`) needs `/fp:precise` for the same sums, which UBT uses for
+  editor targets (tests and smoke); a game build's `/fp:fast` only affects the visuals' hand-over (below), by
+  milliseconds of motion.
+
+**Precision.** The remaining CPU / GPU difference is the float rounding of the lane ends relative to the viewpoint, of the
+large constant terms (about `ulp(l0)`), and of `T_leg` (`v_p x ulp(T_leg) / 2` in the far half of a leg). The endpoint
+float error (about 9 km at 1 AU) is avoided near either body by the nearer-end evaluation. Targets: **Earth - Mars below
+30 km mid-lane, and no repeated positions mid-lane at 60 Hz** (the single-float design had about 27 km and stepped in time:
+`frac(phi + t / T_cyc)` changed only in `ulp x T_cyc` steps, about 0.16 s on a short axis cycle to about 1.3 s on a long
+halo cycle). Measured (50b review fixes, see the plan's change log): Earth - Mars mid-lane 27.8 km (worst anywhere on the
+lane, case 10; 7.7 km at the smoke's hand-over), outer lane 307.5 km (Saturn - Uranus; Uranus - Neptune 433.6 km, both
+within the case-10 bound, whose `ulp(l0)` term is 524 km there), repeated frames mid-lane 0 of 7,200 (smoke hand-over 0 of
+6,000). Ships closer than the Mid radius (2,000 km) are evaluated on the CPU in double from the
+same rail floats, so the difference only shows at the hand-over. A contract case (section 6 case 10) re-implements the
+shader formula in C++ float and asserts the bound per default lane; the smoke (section 8 V5) checks the hand-over and the
+smoothness over time.
+
+**Mid hand-over of the CPU points (second review, 2026-11-16).** The shader hides a lane ship by its own float length
+`length(relM) < Mid radius`, while the CPU used to decide from the double rail distance and draw the double position:
+the two positions differ by the error above (28 km on Earth - Mars to 430 km on the outer lanes, about 17-265 px at
+2,000 km at 1080p), so a ship crossing the radius popped, and near the radius could be drawn twice or not at all.
+`ASOLNpcVisuals::UpdateCpuShips` now evaluates `SOLNpcTrafficMirror::LaneShipRelM` for every Point-tier lane ship on
+this frame's GPU inputs (`SOLNpcRail::GpuRailTexels` at the GPU epoch, the uploaded group rows, the shader's rail
+time), draws it exactly when the mirror's float length is below the Mid radius (the shader's test), and draws it at
+`SOLNpcTrafficMirror::CpuPointHandOver`: the mirror's position at the Mid radius, smoothstepped to the double position
+(rail plus deviation) at the instanced hull radius (200 km by default), where the hulls start. The pass runs in
+parallel before the slot pass (two texels and one float evaluation per Point-tier ship, no allocation). Cluster and
+battle ships keep the rail-distance test. Measured (smoke V5, 1280x720 and 1920x1080, two views): no Earth - Mars ship
+lay within 0.5-2 Mid radii of either view at 1M ships, so each check takes 100 sampled ships seen from viewpoints that
+make them cross the radius (1,888-2,111 km); the float mirror is within 11.2-19.7 km of the CPU (0.06-0.10 of the
+case-10 bound), the drawn point steps within 0.003 px of the far point at the Mid radius (limit 0.5 px), where the
+double position alone would pop up to 3.1 px at 720p and 7.1 px at 1080p on those samples.
+
+**Lane hand-over margin (third 50b pass, 2026-11-16).** A ship whose float position was inside the radius while its
+double one was still outside (3-4 % of the hand-over frames, runs of up to 31 frames, about 0.5 s) was drawn by
+neither layer when it arrived from beyond the radius, because the tiers promoted by the double distance. The tiers now
+promote and keep a lane ship as a CPU ship within the Mid radius plus its lane's margin `SOLNpcRail::LaneHandOverMarginM`
+(the subsystem fills it per lane per frame; the group cull and the evaluate keep radius grow by it too; clusters and
+battles 0): case 10's bound written per lane, `4 ulp(|B - A| + 4 Mid) + 1 m`, plus for a drivable lane `2^-22 l0`
+times the metric slope (every ship's `v_p ulp(T_leg) <= v_p T_leg 2^-23 = (l0 + dv t_a) 2^-23 <= 2^-22 l0`), `4
+ulp(l0)` and the lane's largest peak times `ulp(2 x 10^4 s)` (the shader time's rounding). So every ship the shader
+hides is a CPU ship, and the CPU point layer draws exactly those (it keeps the shader's float test): no frame is missing
+or doubled by construction. Margins at the nominal lengths (`SOLTest.NpcRail.LaneHandOverMargin`): Mercury - Venus 174
+km, Venus - Earth 194, Earth - Moon 0.49, Earth - Mars 358, Mars - Jupiter 779, Jupiter - Saturn 2,653, Saturn -
+Uranus 5,273, Uranus - Neptune 5,993; the sampled float errors stay within 0.04-0.33 of them. Cost: a lane ship is a
+Mid ship out to `(2,000 km + margin) x 1.1` instead of 2,200 km, which at 1M ships holds well under one extra ship near
+a lane (V5 found no Earth - Mars ship within 0.5-2 Mid radii); the Mid budget still counts the double distance against
+the nominal keep radius, so the margin shell can add a few ships beyond it. Smoke V5 `-handover-once` asserts zero
+missing and zero doubled frames with the tiers' rule simulated from the subsystem's own margin.
+
+**Reference-ring switch at `T_leg / 2`.** The shader evaluates a leg from the nearer end ring in time (`bFirstHalf`),
+so at the leg's half time the reference switches from the start ring to the end ring and the float error changes from
+one evaluation's to the other's in one frame. Measured (`SOLTest.NpcRail.GpuLaneSmoothness`, targets straddling
+`T_leg / 2` on both legs, viewpoint 1,000 km from the ship, 9,000 s into the epoch window): the worst single-frame jump
+is 0.094 km on Earth - Moon, 34.0 km on Earth - Mars, 298.7 km on Jupiter - Saturn and 523.3 km on Saturn - Uranus,
+0.15-0.40 of the case-10 bound (whose end-distance term dominates mid-lane), so the per-lane foot-point fix (one more
+group row and a material rebuild) was not taken. On Earth - Mars the jump is about 1.2x the lane's measured worst
+error (27.8 km) and shows as one step of about 16 px at the Mid radius at 1080p, once per leg, smaller with distance
+(left to the user, see the plan's change log).
 
 **Cost estimate at 1M NPCs.** About 400k lane ships, three vertices each, so about 1.2M lane-branch evaluations per
 frame. Today: two rail texels and about 40 ALU. New: the same two rail texels, four extra group texels (one column,
-cached), about 80-110 ALU with selects (the U-turn `sincos` only for the about 1 % of ships turning; the divergence cost
-is that branch). Estimate **+0.02-0.05 ms GPU** at 1080p (gate +0.10 ms, section 8). CPU: the per-call rail cost is
+cached), about 80-110 ALU with selects (the U-turn `sincos` and both turn positions run for every ship and the result
+is selected, so no branch diverges and the about 1 % of ships turning cost nothing extra). Estimate **+0.02-0.05 ms GPU** at 1080p (gate +0.10 ms, section 8). CPU: the per-call rail cost is
 about the same (the basis now comes from the frame instead of a per-call normalize and cross); the spawn gains one
-counting pass (about 5-10 ms once, in parallel, on the spawn frame).
+counting pass (about 5-10 ms once, in parallel, on the spawn frame). The double-float scheme of the 50b review fixes added about 36 ALU (measured, see the plan's change log: DXC
+`-O3` DXIL of `SOLNTR_LaneShipRelM` alone, 213 ALU ops against 177 for the same formula in single float; 158 against 134
+float math ops). The accelerate and end-zone split of the third pass adds about 42 float ops more (171 -> 213 by
+another count: Windows SDK DXC, `cs_6_0 -O3 -Zpr -HV 2018`, `fadd` / `fmul` / `fdiv` / `fcmp` and `dx.op` float
+intrinsics), about +25 % of the function, estimated under +0.02 ms GPU at 1M; not profiled.
 
 ### 4.7 Spawn and the near tiers
 
@@ -352,7 +534,9 @@ counting pass (about 5-10 ms once, in parallel, on the spawn frame).
   allowance, since a coasting peak ship mid-lane reaches the bound exactly (50a review: 1e-8 was below the float
   rounding of the rail's stored `dv`, about 6e-8 relative); a non-finite peak reads as the cap, so the bound is never
   NaN. The bound grows from
-  150 to at most 300 km/s on capped lanes, so lane chunks wake more often (risk R4, profiled).
+  150 to at most 300 km/s on capped lanes, so lane chunks wake more often (risk R4, profiled). *D21:* the formula is
+  unchanged; it reads the largest stored peak (`w + P1`), which is at or below the pre-D21 value (lower only on
+  uncapped legs), and the flip changes no speed, so the bound stays tight and correct.
 - **Lane histogram:** `AccumulateLaneShips` counts all lane ships (the label, D15) and the new in-wall count;
   `FSOLNpcLaneEntry` gains `InWallShipCount` and `WallRadiusM` (frozen `Rw`), which `BuildTunnelLaneData` uses instead
   of `TunnelRadiusM(R, ShipCount)`. `ShipCount` keeps its meaning (all lane ships) for the #38 line width.
@@ -408,8 +592,9 @@ exists; independent of the Lanes overlay row (a display setting never changes fl
    rho) X'(u)` plus a lateral term toward the track (`NPC_LANE_AUTO_LATERAL_GAIN_PER_S`, capped at
    `NPC_LANE_AUTO_LATERAL_MAX_MPS`), desired net acceleration `(v_des - v) x VelocityGainPerS` (the guidance law's own
    gain, 2/s) plus the profile acceleration, clamped by `FlyGuidance` to the pilot's autopilot limit (sustained 1.5 G;
-   the mean-effort axis profile needs 1.24 G); `DesiredForward` = `d` while accelerating and coasting, `-d` while
-   braking (the ship flips like the traffic); `Phase` from the profile (Accelerate / Cruise / Brake); `SpeedLimitMps` =
+   the mean-effort axis profile needs 1.24 G); `DesiredForward` = `d` before the leg's midpoint (`u < l0 / 2` on the
+   mean profile), `-d` from it (D21: the ship turns in the first half of the flip window; the mean profile's brake
+   starts `T_f / 2` = 30 s after the midpoint on an uncapped leg, days later on a capped one); `Phase` from the profile (Accelerate / Cruise / Brake); `SpeedLimitMps` =
    `v_t`; `DistanceM` to the AUTO target. `FlyGuidance` and the G meter run as today.
 4. **Leave:** at the exit arc the normal AUTO step to the real target resumes (for a body at the lane end the ship is
    at the wall speed relative to that body at the end ring, and the autopilot brakes to its standoff point as usual).
@@ -461,6 +646,24 @@ data.
 along travel), Coast (none), Brake (`alpha` against travel, the hull flipped per D17), Turn (centripetal, toward the
 turn's centre). Pure and CPU-side; #51 decides how a flame uses it (a shader mirror is #51's call).
 
+**D21 additions.**
+
+- New kind **`Flip`** (appended after `Turn`, so the existing values keep their ordinals; nothing persists them): no
+  thrust (`AccelMps2` 0, `Direction` the travel direction, as Coast), the hull rotating. On a leg with `t_a > 0`, in
+  order of precedence: Accelerate while `tl < t_a`; Brake while `tl > T_leg - t_a`; Flip while `|tl - T_leg / 2| <
+  T_f / 2`; Coast otherwise. On an uncapped leg the sequence is Accelerate, Flip (60 s), Brake; on a capped leg
+  Accelerate, Coast, Flip (60 s, mid-coast), Coast, Brake; on a leg with no brake, Coast throughout.
+- `FSOLLaneThrustState` gains `double FlipFraction` (`f` of section 4.4 on legs; in a turn 1 when the ship's legs brake,
+  since the brake attitude is held, else 0) and `FVector3d HullForward` (unit,
+  `LaneHullForward`): equal to `Direction` in Accelerate and Brake (the hull faces its thrust), `+-Axis` held through a
+  turn (section 4.4).
+- New pure functions: `double LaneHullFlipFraction(double legS, double accelS, double legTimeS)` (0 when `accelS <= 0`
+  or not finite; `tl` clamped to [0, `legS`]) and `FVector3d LaneHullForward(profile, frame, ship, t)` (unit; an
+  invalid frame gives the basis `+Axis`, or `+X` when the basis is invalid; a non-drivable lane gives `+Axis`).
+- For #51: the flame is off for the whole window and on again exactly when braking starts, with the hull already
+  turned; in a turn the main engine is aligned with the thrust only at the apex (#51 may scale the flame by the
+  thrust's component along `HullForward`).
+
 **Known simplification (50a review, for #51):** the legs report the **nominal** profile. The ship's real acceleration
 along the current lane is `X'(u) u'' + X''(u) u'^2`; the second term, from the metric map's curvature, is left out. It
 is non-zero only in the end zones while `l != l0`, so a ship marked Coast there slows (a shortened lane) by up to
@@ -510,7 +713,8 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
    `NPC_LANE_HALO_KAPPA` 0.01 (in (0, 1)); `NPC_LANE_HALO_RAMP_WALL_RADII` 0.25 (< outer - 1);
    `NPC_LANE_UTURN_DEPTH_WALL_RADII` 2; `NPC_LANE_METRIC_ZONE_FRACTION` 0.05 (< 0.5); merge match 0.05 < amber 0.20;
    `NPC_LANE_MERGE_DIRECTION_MIN_MPS` 1000; `NPC_LANE_AUTO_TRACK_WALL_RADII` 0.25; `NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII`
-   20. (`NPC_TUNNEL_END_MARGIN_RADII` 3, D14; `NPC_LANE_FLIP_S` 60, D17.)
+   20. (`NPC_TUNNEL_END_MARGIN_RADII` 3, D14; `NPC_LANE_FLIP_S` 60, D17 / D21: now the mandatory zero-thrust flip
+   window `T_f`, and `w T_f` below every default lane's nominal leg, case 11.)
 2. **`double RadialFactor(double rho)`:** 1 at 0, 0 at 1, `1 - rho^2` at 0.3 / 0.7; strictly decreasing on [0, 1];
    derivative 0 at 0 (finite difference); halo: 0 at 1, `kappa_h` at and beyond `1 + r_h`, smoothstep between (one
    interior point against the closed form), non-decreasing on [1, 2], continuous at 1 and `1 + r_h`; negative rho as
@@ -522,10 +726,20 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
    CoastS`, every time and distance >= 0; `kappa` 0: peak `w`, `LegS = l0 / w`; `LegS` continuous as `kappa -> 0`
    (1e-6, 1e-9, 0); the cap blend `c_k^2 = w^2 + kappa (c^2 - w^2)` (kappa 0.5, long leg); `legM <= 0` or NaN ->
    `bValid` false.
+   **D21 (supersedes the uncapped values above):** the signature gains `double flipS = SOL::NPC_LANE_FLIP_S` (`T_f`;
+   negative or NaN read as 0). Uncapped short leg: peak `v_f = sqrt((a T_f / 2)^2 + w^2 + a l0) - a T_f / 2` (81.93
+   km/s within 0.1 %), `CoastS = T_f`, `AccelM = (l0 - PeakMps T_f) / 2`; effort 0.6 the same formula with `0.6 a`;
+   for every combination peak `= max(w, min(v_f, c_k))`, `CoastS >= T_f` (1e-9 relative) whenever `DvMps > 0`, `CoastS
+   = T_f` on a burning uncapped leg, `DvMps >= 0` always; a leg `<= w T_f` (1e3 and 1e6 m) has `DvMps` 0, `AccelS` 0,
+   `PeakMps` `w`, `LegS = l0 / w`; `PeakMps` continuous across `l0 = w T_f` (1e-6 relative at `w T_f (1 +- 1e-9)`);
+   `flipS` 0 reproduces `min(sqrt(w^2 + alpha l0), c_k)` and coast 0 on the short leg (the pre-D21 reduction). The long
+   leg, `kappa` 0, `kappa -> 0` and cap-blend values are unchanged.
 4. **`double LegArcM(const FSOLLaneLeg&, double legM, double tl)` and `LegSpeedMps`:** `u(0) = 0`, `u(LegS) = l0`,
    strictly increasing; speed `w` at both ends and `PeakMps` at mid-leg (uncapped) or over the coast; symmetric `u(LegS
    - t) = l0 - u(t)`; `v(u)^2 = min(w^2 + 2 Alpha min(u, l0 - u), PeakMps^2)` at 50 sampled times; second differences
-   never above `Alpha` (1e-6 relative); `tl` clamped to [0, LegS].
+   never above `Alpha` (1e-6 relative); `tl` clamped to [0, LegS]. **D21:** the speed is `PeakMps` over the whole
+   flip window `[LegS / 2 - T_f / 2, LegS / 2 + T_f / 2]` of a burning leg; the sampled legs include a short burning
+   leg above `w T_f` (2e6 m) and a no-burn leg at or below it (1e6 m, speed `w` throughout).
 5. **`double MeanSpeedMps(double u, double rho, double legM)`:** equals `LegSpeedMps` of `MakeLegProfile(K(rho),
    eps_ref, l0)` at the same `u`; `w` at `rho` = 1 for every `u`; `w` at `u` = 0 and `l0` for every `rho`; strictly
    decreasing in `rho` on [0, 1] mid-leg; symmetric in `u`; never above `c`; halo values in [w, MeanSpeedMps(u, sqrt(1 -
@@ -551,16 +765,23 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
    in-wall `rho^2` mean 0.5 +- 0.01 (uniform disc); halo `rho^2` uniform in [1, 4] (mean 2.5 +- 0.03); `psi` in [0, pi];
    effort uniform in [0.5, 1]; phase uniform in [0, 1); deterministic per (seed, index); battle and cluster spawns
    bit-identical to the current implementation (regression copy of three samples each).
-10. **Rail (`NpcRailTest.cpp`):** `FromSpawn` lane fields equal the profile values (P6 = 0; P5 as 50b assigns it); `EvaluateAtTimeM` equals
+10. **Rail (`NpcRailTest.cpp`):** `FromSpawn` lane fields equal the profile values (P6 = 0; P5 the phase's low part, `P0 + P5` = the phase); `EvaluateAtTimeM` equals
     `LaneShipPositionM` (1e-6 relative); `AdvancedToEpoch` keeps `phi` in [0, 1) and `EvaluateM(advanced, t)` matches
     `EvaluateM(rail, t + delta)` within the float rounding of the wrapped phase; **GPU float mirror** (a C++ float copy
     of the shader formula in the test, like `NpcRailGpuTheta`): within one epoch window the error per default lane is
-    below `2 x ulp(phi) x T_cyc x v_max + 2 x ulp(|pB|)` (logged per lane; Earth - Mars below 30 km); `VelocityMps`
-    magnitude equals `LegSpeedMps` on a leg (1e-3).
+    below the section 4.6 target (the float rounding of the lane ends, of the large constant terms about `ulp(l0)`, and of `T_leg`: `v_p x ulp(T_leg) / 2` in the far half of a leg; logged per lane; Earth - Mars below 30 km mid-lane, no repeated positions mid-lane at 60 Hz; measured 27.8 km / 307.5 km / 0 of 7,200 frames, with `T_leg`'s rounding carried in the packed value's fraction), the mirror taking the GPU texels from the same `SOLNpcRail` upload function as the visuals; `VelocityMps`
+    magnitude equals `LegSpeedMps` on a leg (1e-3). **D21 (new test `SOLTest.NpcRail.LaneHullForward`):**
+    `SOLNpcRail::LaneHullForward(rail, frame, t)` equals `SOLLaneTraffic::LaneHullForward` of `LaneShipFromRail(rail)`
+    (1e-9), is unit length, is continuous at the float rail's joints and across the window, and is the zero vector for
+    a cluster or battle rail (the caller keeps the velocity heading). **Third 50b pass (2026-11-16):**
+    `SOLTest.NpcRail.GpuLaneCycleSweep` (no repeated float positions anywhere on the cycle, per phase, section 4.6) and
+    `SOLTest.NpcRail.LaneHandOverMargin` (the float mirror within `LaneHandOverMarginM` on every default lane, seen from
+    1,000 km and from the grown Mid radius; 0 for an unknown lane or one without a frame).
 11. **`FSOLLaneProfile MakeLaneProfile(Rw, L0, R_A, R_B)`** (50a review: the caller passes `Rw =
     SOLNpcTunnel::TunnelRadiusM(R, inWallCount)`, which the test computes the same way): `Rw` passed through;
     `e_A`, `l0`, `D_U`, `T_U`, `Z` from section 4.2; every default lane drivable at its nominal length; a lane
-    shorter than its end rings plus `2 Z`, or a zero, negative or non-finite `Rw` -> not drivable.
+    shorter than its end rings plus `2 Z`, or a zero, negative or non-finite `Rw` -> not drivable. **D21:** every
+    default lane's nominal leg is above `w T_f` (the flip fits; Earth - Moon by a factor of about 330).
 12. **Wake bound:** `LaneShipSpeedBoundMps` is at or above the largest sampled ship speed relative to A (brute force over
     1,000 ships of a lane, `l / l0` in {0.15, 1, 2}, endpoint speed 0 and 30 km/s).
 13. **Merge readout `FSOLLaneMergeReadout MergeReadout(...)`:** lane choice (smallest `rho_p`, hidden beyond `H` and
@@ -571,11 +792,22 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
     exit at Mars's end ring; a crossing path (overlap under 20 wall radii) -> none; no lanes -> none; a ship already
     inside -> hold without approach. `LaneMergeTarget`: on the right half at the track radius, velocity = frame + `d
     v_t`. `LaneHoldGuidance`: desired acceleration toward `v_des` (never above the autopilot limit after `FlyGuidance`),
-    `DesiredForward` flips to `-d` in the braking half, phase from the profile. **Regression:** with no lane leg the
+    `DesiredForward` flips to `-d` from the leg's midpoint (D21, before the brake), phase from the profile. **Regression:** with no lane leg the
     autopilot, route and chase steps are bit-identical to today's (`RouteGuidanceTest`, `ChaseTest`,
     `NewtonianFlightMathTest` unchanged).
 15. **`LaneThrustAt`:** Accelerate / Coast / Brake / Turn at sampled times, magnitudes `Alpha`, 0, `Alpha`,
-    `w^2 / D_U`-scale; the left-out map term `|X''| v^2` below `a` on every default lane (section 4.12).
+    `w^2 / D_U`-scale; the left-out map term `|X''| v^2` below `a` on every default lane (section 4.12). **D21:** `Flip`
+    inside the window on a leg with `t_a > 0` (magnitude 0, direction the travel direction), Coast outside it, burn
+    kinds win where they overlap; samples within 1e-6 `LegS` of a window edge or a burn edge skipped; `HullForward`
+    equals `Direction` in Accelerate and Brake; `FlipFraction` 0 while accelerating, 1 while braking.
+15c. **Hull flip (D21, new test `SOLTest.NpcTrafficMath.HullFlip`):** `LaneHullFlipFraction`: 0 up to `(LegS - T_f) /
+    2`, 1 from `(LegS + T_f) / 2`, `S(x)` in between (three interior points), non-decreasing; the window starts at or
+    after `AccelS` and ends at or before `LegS - AccelS` (1e-6 s) for the short, long and halo legs of case 3; 0
+    everywhere when `AccelS` is 0 or not finite. `LaneHullForward` over whole cycles on the case 8 lanes: unit length
+    (1e-12); `+Axis` / `-Axis` (travel) before the window, `-travel` after it; inside the window `cos(pi f) d + sin(pi
+    f) Up` (1e-9); held at `-Axis` through the turn at B and `+Axis` through the turn at A for a braking ship;
+    continuous at the four joints and across the window (sampled angle steps below `1.5 pi dt / T_f` plus 1e-9 rad); a
+    no-brake ship (`kappa` 0, or a leg `<= w T_f`) faces travel on legs and its velocity in turns.
 15b. **50a review additions:** float rail (every stored ship value rounded to float: 1 m continuity at `T_leg / 2 +-
     1 ms` and at the joints, exact end rings, below the wake bound; `T_leg` from `LaneShipLegS`); a current leg at or
     below `Z` (map strictly monotone, inverse round trip, `X(l0) = 1.001 Z`, a crowded lane's ship moves forward); the
@@ -598,6 +830,7 @@ label line placement, the AUTO merge in real flight.
   (`BuildTunnelLaneData` radius source; the end margin constant 3 (D14); `TunnelBasis` via the forwarding name),
   `LaneTunnelLabelTest.cpp` (the fourth line, the count per D15), `HudEventBusTest.cpp` if the label snapshot grows.
 - `RouteGuidanceTest`, `ChaseTest`, `NewtonianFlightMathTest`: unchanged (regression of case 14).
+- D21: `NpcTrafficMathTest.cpp` and `NpcRailTest.cpp` as listed in section 14.
 - `InfoText`, `PlayerGuide`, Help glossary tests: the new entry and wording.
 - Every settings and migration test: no change expected; an edit there is a red flag to report.
 
@@ -610,11 +843,18 @@ label line placement, the AUTO merge in real flight.
    way from Earth looking toward Mars, sampled CPU ships (every lane, 100 each) on the side of their direction (C++),
    two screenshots 0.5 s apart (right half streaming away, left half toward); **V2** radial speeds: Mid-tier ships
    inside the tunnel mid-lane, measured speed against `MeanSpeedMps` within the effort spread, rank correlation with
-   `rho` below -0.8, wall ships at `w` +- 10 %; **V3** U-turn beside Earth's end ring of Earth - Mars (side view):
+   `rho` below -0.8, wall ships at `w` +- 10 %; the viewpoint flies 5 km past a coasting mid-lane ship so it is drawn
+   as a Mid hull, promoted to Full and demoted (second review: at least one Mid and one Full hull, the Mid and Full
+   hulls over the pass along `LaneHullForward`, the tracked nose's per-frame change at promotion and demotion within 3
+   degrees), sampled rails' heading chain (D21: nose first before the flip window, engine first after it, held through
+   the U-turn); **V3** U-turn beside Earth's end ring of Earth - Mars (side view):
    ships turning beyond the ring, the closest sampled turn ship outside Earth by the D14 clearance; **V4** halo: 25 % +-
    2 % of sampled lane ships beyond `Rw`, the tunnel texel radius equals the frozen `Rw`; **V5** hand-over: ships
-   crossing the Mid radius, CPU position against the float mirror within case 10's bound, a screenshot sequence with no
-   visible jump; **V6** readout: the player placed at `rho` 1.5, 0.8, 0.2 mid-lane with velocities 0.9, 1.0 and 1.3 x
+   within 0.5-2 Mid radii (those there now, plus sampled ships seen from viewpoints that make them cross the radius),
+   CPU position against the float mirror within case 10's bound, the drawn point (the visuals' CPU blend inside, the
+   far point beyond) stepping like the far point within 0.5 px at the Mid radius, every frame drawing each ship exactly
+   once (`-handover-once`: the tiers' Mid radius plus the lane's hand-over margin, the ship arriving as a Far ship), a
+   screenshot sequence with no visible jump; **V6** readout: the player placed at `rho` 1.5, 0.8, 0.2 mid-lane with velocities 0.9, 1.0 and 1.3 x
    `v_t` (TOO SLOW amber, MATCHED green, TOO FAST red), hidden at 2.5, the warp note at 1000x; **V7** AUTO: autopilot
    Earth -> Mars under warp: entered on the right half, matched within 5 % at the halo boundary, held within 5 % of
    `vbar` through the leg, left at Mars's end ring, arrived; a crossing path unchanged (D20).
@@ -652,19 +892,26 @@ Temporary screenshots and captures are deleted once looked at; only the README g
 
 - **R1 Planet clearance and the U-turn (D14):** with #49's 1-radius end margin the 2-radius U-turn would enter the planet, so the margin is 3.
 - **R2 Lane length drift (D16):** under warp the lanes stretch 0.15-7x; mid-lane speeds scale with it.
-- **R3 Float parity at the Mid hand-over:** same order as today (tens of km on 1-2 AU lanes, hundreds on the outer
-  lanes); case 10 and V5 measure it; lever: a two-float phase if a jump shows.
+- **R3 Float parity at the Mid hand-over:** the float position differs from the double one by tens of km on 1-2 AU
+  lanes and hundreds on the outer lanes (case 10). The two-float phase lever is used up (section 4.6). The hand-over no
+  longer shows it: the CPU point layer draws a lane ship by the shader's own float test, at the float mirror's
+  position at the Mid radius, blended to the double position by the hull radius (section 4.6, smoke V5
+  `-handover-px`), and the tiers make every lane ship within the Mid radius plus the lane's hand-over margin a CPU ship,
+  so none is dropped (`-handover-once`). What remains is the one-frame reference-ring switch at `T_leg / 2` (section 4.6).
 - **R4 Temporal cull efficiency:** speed bound 150 -> up to 300 km/s and the capsule `R` -> `2 Rw` (up to about 6x)
   wake lane chunks more often; CPU gate.
 - **R5 Density near the ends:** `1 / v` piles ships near the end rings (about 15x mid-lane), and about 1 % of lane ships
   are in a U-turn at any time; near Earth more lane ships fall inside the Mid and Full radii (budgets hold them).
 - **R6 #49 semantics:** the tunnel radius now comes from the in-wall count (about 3 % narrower on Earth - Mars) and the
   label count per D15; tests and the tunnel smoke updated.
-- **R7 Shader cost and divergence:** selects for the leg phases, one rare `sincos` branch; gate +0.10 ms.
+- **R7 Shader cost and divergence:** selects for the leg phases and segments; the U-turn `sincos` runs for every ship
+  and is selected (no divergent branch); the `precise` terms give up some reassociation; gate +0.10 ms.
 - **R8 AUTO plug-in:** a moving merge point at up to 300 km/s under warp substeps; the existing moving-target
   rendezvous is reused; slower lane trips are a visible gameplay change (D19) and the override of Q9 must leave the no-lane path bit-identical.
 - **R9 Mirror drift** (C++ / `SOLNpcTraffic.ush`): file headers, the float-mirror test.
-- **R10 Hull flip** (D17): a 180-degree flip at mid-lane must look smooth (a rotation over `NPC_LANE_FLIP_S`).
+- **R10 Hull flip** (D17, D21): a 180-degree flip at mid-lane must look smooth (a smoothstep rotation over
+  `NPC_LANE_FLIP_S`, zero rate at both ends, finished before the brake). On capped lanes ships then coast engine first
+  for days (by design, D21); through the U-turn the hull holds still while the velocity turns.
 - **R11 Overlapping halos** near Earth (three lanes): halo ships of one lane pass through another's tunnel; accepted.
 - **R12 Removed fields:** any reader of `LaneDirection` / `LaneSpeedMps` (stats, combat, smokes) is found by the
   implementer's grep and updated.
@@ -672,7 +919,8 @@ Temporary screenshots and captures are deleted once looked at; only the README g
 ## 11. Resolved questions
 
 D1-D12 (grill-me) and D13-D20 (the user's answers to Q1-Q8, 2026-11-13, section 2). Q1 = D13, Q2 = D14, Q3 = D15, Q4 =
-D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20.
+D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20. D21 (the hull flip finishes before
+braking, 2026-11-13) is the user's refinement of D17 (section 14).
 
 ## 12. Open questions (for the user; each with the recommended answer)
 
@@ -693,3 +941,58 @@ D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20.
   (no `Traffic -> Npc` edge, section 4.10); the wake bound's rounding allowance 1e-6 and a NaN guard (section 4.7);
   the current leg floored at `1.001 Z` with B's end shifted (section 4.5); the thrust state's left-out map term
   documented and bounded (section 4.12); contract cases 11, 15 and 15b.
+- 2026-11-13: amendment 1 (D21, section 14): the hull flip finishes before braking; leg peak from the flip window,
+  `Flip` thrust kind, hull facing functions, U-turn hull attitude; contract cases 1, 3, 4, 10, 11, 14, 15 and new 15c.
+- 2026-11-16: third 50b pass (section 4.6): the accelerate arc and the end-zone map split into epoch constant and
+  moving part (`GpuLaneCycleSweep`); the lane hand-over margin on the tiers' Mid radius (`LaneHandOverMargin`, smoke V5
+  `-handover-once`); the tunnel smoke pinned to a sim date (SDD 49 D19).
+
+## 14. Amendment 1 (2026-11-13): the hull flip finishes before braking (D21)
+
+**Decision (user, refines D17):** the about 60 s engine-first hull flip must finish before braking starts. Every
+burning leg therefore has a mandatory zero-thrust window `T_f` = `NPC_LANE_FLIP_S` (60 s, the existing constant, new
+meaning) between the burn and the brake, centred on the leg's midpoint in time.
+
+**Formulas** (section 4.3): `v_f = sqrt((alpha T_f / 2)^2 + w^2 + alpha l0) - alpha T_f / 2`, `v_p = max(w, min(v_f,
+c_k))`, `dv` from the cancellation-free root `dv_f = 2 alpha (l0 - w T_f) / ((2 w + alpha T_f) + sqrt((2 w + alpha
+T_f)^2 + 4 alpha (l0 - w T_f)))` and `dv_c = kappa (c^2 - w^2) / (c_k + w)`, `dv = max(0, min(dv_f, dv_c))`; `t_a = dv
+/ alpha`, `t_c = (l0 - 2 d_a) / v_p >= T_f` (equal on uncapped legs), `T_leg = 2 t_a + t_c`. At `T_f = 0` this is the
+pre-D21 `sqrt(w^2 + alpha l0)`. The speed law `v(u)^2 = min(w^2 + 2 alpha min(u, l0 - u), v_p^2)`, the cycle, the
+derived `T_leg`, the rail layout, the GPU mirror, the metric map and the wake bound formula are unchanged.
+
+**Hull** (section 4.4): flip fraction `f = S((tl - (T_leg - T_f) / 2) / T_f)`, smoothstep; forward `cos(pi f) d + sin(pi
+f) Up`; through the U-turn the brake attitude is held in world space (`-Axis` at B, `+Axis` at A), so the hull faces
+travel again at the next leg's start. **Thrust** (section 4.12): new `Flip` kind (appended), `FlipFraction` and
+`HullForward` in the state.
+
+**Effect on the lanes:** Earth - Moon peak 82.4 -> 81.9 km/s (-0.6 %; effort 0.5: 60.0 -> 59.7), leg time 2.14 h
+(+0.2 s), the 60 s coast is the flip; Earth - Mars and every other planet lane capped, so peak 300 km/s, 8.9 d leg and
+the halo's 36 km/s and 73 d unchanged, with the flip in the middle of the 8.5 d coast. There is no Sun lane in the
+default layout. **Short lanes:** a leg `<= w T_f` (1,200 km; none by default) gets no burn, no brake and no flip (speed
+`w` throughout); the peak is reduced, never below `w`.
+
+**Tests to change (50a, `Tests/NpcTrafficMathTest.cpp`):**
+
+- `LegProfile`: the short-leg block (peak `v_f`, 81.93 km/s, coast `T_f`, `AccelM = (l0 - v_p T_f) / 2`), the effort
+  0.6 peak, the identities loop's peak formula (the 1e3 and 1e6 m legs become no-burn legs), plus the new `CoastS >=
+  T_f`, no-burn, continuity at `w T_f` and `flipS = 0` reduction checks (case 3).
+- `LegArc`: the `{0.5, 1.0, 1.0e6}` case becomes a no-burn leg: replace it by 2e6 m, add a 1e6 m no-burn case, add the
+  peak over the window (case 4).
+- `ThrustState`: the expected kind is `Flip` inside the window (the current 100 samples per leg never land in the
+  60 s window, so samples inside it are added), plus the `FlipFraction` and `HullForward` fields (case 15).
+- `Constants` (label of `NPC_LANE_FLIP_S`) and `LaneProfile` (every default nominal leg above `w T_f`): one assertion
+  each (cases 1 and 11).
+- New `HullFlip` (case 15c).
+- Re-validate, no assertion change expected: `MeanSpeed` (driven by `MakeLegProfile`; still strictly monotone in `rho`
+  since every default leg is above `w T_f`), `FloatRail`, `MapCurvature` (the end-zone speeds are in the burn or at the
+  cap on every default lane, so the logged values do not move), `WakeBound`, `Precision`, `KeepRight`, `Cycle`,
+  `UTurnJoints`, `UTurnPlanetClearance`, `EdgeCases`, `ShortCurrentLeg`.
+
+**Tests to change (50b):** no existing assertion in `NpcRailTest.cpp` (`GpuLaneFloatMirror`, `GpuLaneSmoothness`,
+`LaneClosedForm`, `LaneFloatContinuity`, `LanePacking`, `RailVelocity`, `EpochMatches`) or `NpcTrafficSpawnTest.cpp`
+(`MaxPeak`, `WakeBound`) encodes the peak formula: they read rails made by `MakeLaneShip` and derive `T_leg` by the
+unchanged geometry, so only their Earth - Moon numbers move; re-run them. New `NpcRail.LaneHullForward` (case 10), which
+replaces the plan's "hull facing not covered by a test" gap.
+
+**Not changed:** the persisted data (none), the shader and `M_SOLNpcPoints` (points have no facing), the group texture
+rows, the spawn statistics.

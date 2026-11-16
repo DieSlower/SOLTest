@@ -952,7 +952,9 @@ bool SOLNpcTunnel::BuildTunnelLaneData(const int32 laneIndex, const FSOLNpcLaneE
     const FVector3d bRelM = lane.B - viewpointM;
     const FSOLNpcTunnelBasis basis = TunnelBasis(lane.A, lane.B);
     outFoot = LaneFoot(aRelM, bRelM);
-    const double tunnelRadiusM = TunnelRadiusM(lane.RadiusM, lane.ShipCount);
+    // The frozen wall radius of the lane profile (SDD 50, D13) when there is one, else the #49 radius of every ship
+    const double tunnelRadiusM = FMath::IsFinite(lane.WallRadiusM) && lane.WallRadiusM > 0.0 ? lane.WallRadiusM
+        : TunnelRadiusM(lane.RadiusM, lane.ShipCount);
     const double laneLengthM = (lane.B - lane.A).Size();
     if (!basis.bValid || !outFoot.bValid
         || !IsTunnelDrawable(laneLengthM, bodyRadiusAM, bodyRadiusBM, tunnelRadiusM))

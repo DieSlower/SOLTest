@@ -441,6 +441,7 @@ void SOLNpcLane::BuildLaneFrame(const FSOLNpcGroupTable& groups, const FSOLNpcRa
         entry.RadiusM = groups.LaneRadiusM.IsValidIndex(lane) ? groups.LaneRadiusM[lane] : 0.0;
         entry.ShipCount = bInFrame && lane < counts.Num() ? counts[lane] : 0;
         entry.TrafficWeight = LaneTrafficWeight(entry.ShipCount);
+        entry.WallRadiusM = groups.LaneProfile.IsValidIndex(lane) ? groups.LaneProfile[lane].WallRadiusM : 0.0;
 
         // Resolved with both bodies known inside the frame arrays (any ship count); drawn with ships on it as well
         const bool bBodies = groups.LaneBodyA.IsValidIndex(lane) && groups.LaneBodyA[lane] != INDEX_NONE

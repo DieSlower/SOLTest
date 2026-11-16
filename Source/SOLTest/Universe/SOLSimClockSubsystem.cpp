@@ -21,14 +21,20 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
 
 #if !UE_BUILD_SHIPPING
     // Developer verification override: start at a fixed date (SDD 16 section 7, question 1); not in Shipping builds.
-    // The glossary crop run (SDD 33 section 9) always starts at its pinned date
+    // The glossary crop run (SDD 33 section 9) always starts at its pinned date; the lane tunnel smoke (SDD 49) at its
+    // own unless -SOLSimDate= names another
     FString simDate;
     const bool bCropRun = FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_GLOSSARY_CROPS);
+    const bool bTunnelSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_TUNNEL);
     if (bCropRun)
     {
         simDate = SOL::Help::GLOSSARY_CROP_SIM_DATE;
     }
-    if (bCropRun || FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    else if (bTunnelSmoke && !FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    {
+        simDate = SOL::CommandLine::SMOKE_NPC_TUNNEL_SIM_DATE;
+    }
+    if (bCropRun || bTunnelSmoke || FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
     {
         double julianDate = 0.0;
         if (FSOLSimClock::TryParseUtcJulianDate(simDate, julianDate))

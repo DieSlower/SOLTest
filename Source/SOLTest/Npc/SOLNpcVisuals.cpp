@@ -12,6 +12,7 @@
 #include "Npc/SOLNpcSubsystem.h"
 #include "Npc/SOLNpcTunnelComponent.h"
 #include "Npc/SOLNpcTunnelMath.h"
+#include "Npc/SOLNpcTrafficMirror.h"
 #include "OrbitLines/SOLOrbitLineComponent.h"
 #include "OrbitLines/SOLOrbitLineMesh.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
@@ -221,7 +222,7 @@ void ASOLNpcVisuals::BeginPlay()
 
     // Point layers: one shared block mesh, two material instances (rail mode and CPU mode)
     PointBlockMesh = BuildPointBlockMesh();
-    GroupTexture = CreateFloatTexture(SOL::NPC_GROUP_TEXTURE_WIDTH, 2);
+    GroupTexture = CreateFloatTexture(SOL::NPC_GROUP_TEXTURE_WIDTH, SOL::NPC_GROUP_TEXTURE_ROWS);
     FarMaterial = UMaterialInstanceDynamic::Create(pointMaterial, this);
     CpuPointMaterial = UMaterialInstanceDynamic::Create(pointMaterial, this);
     for (UMaterialInstanceDynamic* material : { FarMaterial.Get(), CpuPointMaterial.Get() })
@@ -497,7 +498,8 @@ void ASOLNpcVisuals::ReepochRails()
 void ASOLNpcVisuals::FillRailTexels(FVector4f* texels, const int32 texelCount, const double epochRailTimeS,
     TArray<int32>* outLaneShipCounts)
 {
-    // Two texels per ship: (kind + 4 faction + 8 group, P0, P1, P2), (P3, P4, P5, P6); the padding is zero
+    // Two texels per ship (SOLNpcRail::GpuRailTexels: a lane ship's cycle time at the epoch as hi / lo floats and its
+    // leg time); the padding is zero
     const TConstArrayView<FSOLNpcRail> rails = Npcs->GetRails();
     const int32 shipCount = FMath::Min(rails.Num(), texelCount / 2);
     constexpr int32 SHIPS_PER_TASK = 16384;
@@ -508,16 +510,15 @@ void ASOLNpcVisuals::FillRailTexels(FVector4f* texels, const int32 texelCount, c
     const int32 laneCount = outLaneShipCounts != nullptr ? FMath::Max(Npcs->GetGroups().LaneCount, 0) : 0;
     TArray<int32> taskLaneCounts;
     taskLaneCounts.SetNumZeroed(taskCount * laneCount);
+    const TConstArrayView<FSOLLaneProfile> laneProfiles = Npcs->GetGroups().LaneProfile;
     ParallelFor(taskCount, [&](const int32 block)
     {
         const int32 start = block * SHIPS_PER_TASK;
         const int32 end = FMath::Min(start + SHIPS_PER_TASK, shipCount);
         for (int32 ship = start; ship < end; ++ship)
         {
-            const FSOLNpcRail rail = SOLNpcRail::AdvancedToEpoch(rails[ship], epochRailTimeS);
-            const float packed = static_cast<float>(rail.Kind + 4 * rail.Faction + 8 * rail.Group);
-            texels[ship * 2] = FVector4f(packed, rail.P[0], rail.P[1], rail.P[2]);
-            texels[ship * 2 + 1] = FVector4f(rail.P[3], rail.P[4], rail.P[5], rail.P[6]);
+            SOLNpcRail::GpuRailTexels(rails[ship], epochRailTimeS, laneProfiles, texels[ship * 2],
+                texels[ship * 2 + 1]);
         }
         if (laneCount > 0)
         {
@@ -553,7 +554,7 @@ void ASOLNpcVisuals::UpdateFarPoints()
 
     // Group points relative to the viewpoint (float is enough: rails are evaluated relative to the viewer)
     TArray<FVector4f>& texels = mGroupTexels[mUploadRing];
-    texels.SetNumZeroed(SOL::NPC_GROUP_TEXTURE_WIDTH * 2, EAllowShrinking::No);
+    texels.SetNumZeroed(SOL::NPC_GROUP_TEXTURE_WIDTH * SOL::NPC_GROUP_TEXTURE_ROWS, EAllowShrinking::No);
     for (int32 group = 0; group < groupCount; ++group)
     {
         texels[group] = FVector4f(FVector3f(frame.GroupPointAM[group] - viewpointM), 0.0f);
@@ -567,7 +568,11 @@ void ASOLNpcVisuals::UpdateFarPoints()
         SOLNpcLane::BuildLaneFrame(Npcs->GetGroups(), frame, mLaneShipCounts, mLaneFrame);
         SOLNpcLane::WriteLaneGroupTexelW(mLaneFrame, texels);
     }
-    mGroupRegions[mUploadRing] = FUpdateTextureRegion2D(0, 0, 0, 0, SOL::NPC_GROUP_TEXTURE_WIDTH, 2);
+
+    // The lane traffic rows 2-5 (SDD 50 section 4.6): basis, wall radius, U-turn and leg data per lane
+    SOLNpcRail::WriteLaneTrafficTexels(frame, texels);
+    mGroupRegions[mUploadRing] = FUpdateTextureRegion2D(0, 0, 0, 0, SOL::NPC_GROUP_TEXTURE_WIDTH,
+        SOL::NPC_GROUP_TEXTURE_ROWS);
     GroupTexture->UpdateTextureRegions(0, 1, &mGroupRegions[mUploadRing],
         SOL::NPC_GROUP_TEXTURE_WIDTH * sizeof(FVector4f), sizeof(FVector4f),
         reinterpret_cast<uint8*>(texels.GetData()));
@@ -765,6 +770,55 @@ void ASOLNpcVisuals::UpdateCpuShips()
     const FVector viewRenderCm(origin.UniverseToRenderCm(viewpointM));
     const float gpuHideRadiusM = static_cast<float>(Npcs->GetStats().MidRadiusM);
     int32 meshSlots[2] = { 0, 1 };
+    TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UpdateCpuShips);
+
+    // The Mid hand-over of the Point-tier ships (SDD 50 section 4.6), in parallel before the slots: a lane ship is
+    // drawn here exactly where the point shader hides it (the float mirror of SOLNpcTraffic.ush on this frame's GPU
+    // inputs, its length against the Mid radius) and blended from the mirror's position at the Mid radius to the
+    // double one at the hull radius; other ships by their bare-rail distance at their double position. Per ship: the
+    // two GPU rail texels and one float evaluation, no allocation
+    const TConstArrayView<FSOLNpcRail> rails = Npcs->GetRails();
+    const TConstArrayView<FSOLLaneProfile> laneProfiles = Npcs->GetGroups().LaneProfile;
+    const TConstArrayView<FVector4f> groupTexels = mGroupTexels[mUploadRing];
+    const bool bHasGroupRows = groupTexels.Num() >= SOL::NPC_GROUP_TEXTURE_WIDTH * SOL::NPC_GROUP_TEXTURE_ROWS;
+    const float shaderTimeS = static_cast<float>(Npcs->GetRailFrame().RailTimeS - mGpuRailEpochS);
+    const double hullStartM = Npcs->GetStats().InstancedRadiusM;
+    const uint8 laneKind = static_cast<uint8>(SOLNpcScale::EPlacementKind::Lane);
+    constexpr int32 SHIPS_PER_TASK = 1024;
+    mPointRelM.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
+    ParallelFor(FMath::DivideAndRoundUp(ships.Num(), SHIPS_PER_TASK), [&](const int32 block)
+    {
+        const int32 end = FMath::Min((block + 1) * SHIPS_PER_TASK, ships.Num());
+        for (int32 index = block * SHIPS_PER_TASK; index < end; ++index)
+        {
+            const FSOLNpcCpuShip& ship = ships[index];
+            if (ship.RenderTier != static_cast<uint8>(SOLNpcScale::ERenderTier::Point) || ship.bHidden != 0)
+            {
+                continue;
+            }
+            const FVector3d cpuRelM = ship.PositionM - viewpointM;
+            const FSOLNpcRail* rail = rails.IsValidIndex(ship.NpcIndex) ? &rails[ship.NpcIndex] : nullptr;
+            if (bHasGroupRows && rail != nullptr && rail->Kind == laneKind && laneProfiles.IsValidIndex(rail->Group)
+                && rail->Group < SOL::NPC_GROUP_TEXTURE_WIDTH)
+            {
+                // The shader's inputs: the rail texels at the GPU epoch and the lane column's six rows as uploaded
+                FVector4f texelA;
+                FVector4f texelB;
+                SOLNpcRail::GpuRailTexels(*rail, mGpuRailEpochS, laneProfiles, texelA, texelB);
+                FVector4f rows[SOL::NPC_GROUP_TEXTURE_ROWS];
+                for (int32 row = 0; row < SOL::NPC_GROUP_TEXTURE_ROWS; ++row)
+                {
+                    rows[row] = groupTexels[row * SOL::NPC_GROUP_TEXTURE_WIDTH + rail->Group];
+                }
+                const SOLNpcTrafficMirror::FHandOver handOver = SOLNpcTrafficMirror::CpuPointHandOver(
+                    SOLNpcTrafficMirror::LaneShipRelM(texelA, texelB, rows, shaderTimeS), cpuRelM, gpuHideRadiusM,
+                    hullStartM);
+                mPointRelM[index] = FVector4f(handOver.RelM, handOver.bCpuDraws ? 1.0f : 0.0f);
+                continue;
+            }
+            mPointRelM[index] = FVector4f(FVector3f(cpuRelM), ship.RailDistanceM < gpuHideRadiusM ? 1.0f : 0.0f);
+        }
+    });
 
     // Returns a ship's render location, previous location and hull heading (the collected heading: a Full ship's nose,
     // a Mid ship's rail plus deviation velocity; the motion since last frame if none)
@@ -780,7 +834,6 @@ void ASOLNpcVisuals::UpdateCpuShips()
 
     // Serial pass: each ship's slot in its layer (texel or per-faction instance; mesh-pool ships are placed here,
     // INDEX_NONE), so the heavy per-ship work below can run in parallel (SDD 11 Amendment 6)
-    TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::UpdateCpuShips);
     mShipSlots.SetNumUninitialized(ships.Num(), EAllowShrinking::No);
     int32 pointCount = 0;
     int32 instanceCounts[2] = { 0, 0 };
@@ -796,8 +849,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
         if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point))
         {
             // At or beyond the Mid radius the far layer draws this ship's rail point (Mid hysteresis band): drawing it
-            // here too would double it
-            mShipSlots[index] = ship.RailDistanceM >= gpuHideRadiusM ? INDEX_NONE : pointCount++;
+            // here too would double it (the hand-over pass above decided by the far layer's own test)
+            mShipSlots[index] = mPointRelM[index].W > 0.5f ? pointCount++ : INDEX_NONE;
             continue;
         }
         if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Mesh)
@@ -830,7 +883,6 @@ void ASOLNpcVisuals::UpdateCpuShips()
 
     // Parallel pass: point texels and instanced hulls (never smaller than a few pixels, previous transform from the
     // ship's own last position)
-    constexpr int32 SHIPS_PER_TASK = 1024;
     TRACE_CPUPROFILER_EVENT_SCOPE(ASOLNpcVisuals::PlaceShips);
     ParallelFor(FMath::DivideAndRoundUp(ships.Num(), SHIPS_PER_TASK), [&](const int32 block)
     {
@@ -846,7 +898,8 @@ void ASOLNpcVisuals::UpdateCpuShips()
             }
             if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Point))
             {
-                cpuTexels[slot] = FVector4f(FVector3f(ship.PositionM - viewpointM), static_cast<float>(faction));
+                const FVector4f& relM = mPointRelM[index];
+                cpuTexels[slot] = FVector4f(relM.X, relM.Y, relM.Z, static_cast<float>(faction));
                 continue;
             }
             FVector locationCm, prevLocationCm, heading;

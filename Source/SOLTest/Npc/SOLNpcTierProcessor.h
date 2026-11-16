@@ -79,6 +79,8 @@ public:
                                                       // minimum wake key is stale): Evaluate visits every chunk of the
                                                       // group once; Select sets it, the subsystem clears it
         double MidKeepRadiusM = 0.0;                  // Nominal Mid radius times (1 + hysteresis)
+        TConstArrayView<double> GroupMidMarginM;      // Per group: added to the Mid radius (promote and keep; a lane's
+                                                      // hand-over margin, SDD 50 section 4.6; missing reads 0)
         FVector3d ViewpointM = FVector3d::ZeroVector;
         double FullRadiusM = 0.0;                     // Budgeted
         double MidRadiusM = 0.0;                      // Budgeted

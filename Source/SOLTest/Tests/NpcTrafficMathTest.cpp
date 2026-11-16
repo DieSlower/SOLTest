@@ -21,7 +21,8 @@
 // relative unless a case says otherwise; positions at universe scale are compared relative to the nearer end body,
 // where double keeps sub-millimetre precision. Frames: universe ecliptic metres, right-handed, +Z north. The names of
 // the API under test are the ones recorded in the plan's "Part 50a API contract (from the test author)" section, as
-// amended by the 50a review (MakeLaneProfile takes the wall radius, the leg time is derived by LaneShipLegS).
+// amended by the 50a review (MakeLaneProfile takes the wall radius, the leg time is derived by LaneShipLegS) and by
+// amendment 1 (D21, SDD 50 section 14: the zero-thrust flip window T_f before braking; cases 1, 3, 4, 11, 15, 15c).
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -334,6 +335,63 @@ namespace
             && NpcTrafficNear(a.AccelS, b.AccelS, 1.0e-12) && NpcTrafficNear(a.AccelM, b.AccelM, 1.0e-12)
             && NpcTrafficNear(a.CoastS, b.CoastS, 1.0e-12) && NpcTrafficNear(a.LegS, b.LegS, 1.0e-12);
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the flip window T_f (D21)
+    double NpcTrafficFlip()
+    {
+        return SOL::NPC_LANE_FLIP_S;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's uncapped D21 peak v_f = sqrt((alpha T_f / 2)^2 + w^2 + alpha l0) - alpha T_f / 2 (SDD 50
+    // section 4.3), before the cap and the floor at w
+    double NpcTrafficFlipPeak(const double alpha, const double l0, const double flipS)
+    {
+        const double w = NpcTrafficWall();
+        const double half = 0.5 * alpha * flipS;
+        return FMath::Sqrt(half * half + w * w + alpha * l0) - half;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's flip fraction f(tl) = S((tl - (legS - T_f) / 2) / T_f), S(x) = 3 x^2 - 2 x^3 with x
+    // clamped to [0, 1] and tl to [0, legS]; 0 for a leg with no burn (SDD 50 section 4.4)
+    double NpcTrafficRefFlipFraction(const double legS, const double accelS, const double tl)
+    {
+        if (!(accelS > 0.0))
+        {
+            return 0.0;
+        }
+        const double flipS = NpcTrafficFlip();
+        const double clamped = FMath::Clamp(tl, 0.0, legS);
+        const double x = FMath::Clamp((clamped - 0.5 * (legS - flipS)) / flipS, 0.0, 1.0);
+        return x * x * (3.0 - 2.0 * x);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the contract's hull forward on a leg, cos(pi f) d + sin(pi f) Up (SDD 50 section 4.4)
+    FVector3d NpcTrafficRefHull(const FVector3d& travel, const FVector3d& up, const double flipFraction)
+    {
+        return travel * FMath::Cos(NPCTRAFFIC_PI * flipFraction) + up * FMath::Sin(NPCTRAFFIC_PI * flipFraction);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the angle in radians between two vectors (atan2 of the cross and dot products, accurate near 0 and pi)
+    double NpcTrafficAngle(const FVector3d& a, const FVector3d& b)
+    {
+        return FMath::Atan2(FVector3d::CrossProduct(a, b).Size(), FVector3d::DotProduct(a, b));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a ship's velocity direction by a central difference over +-h relative to a nearby origin (so the
+    // positions keep their precision), or the zero vector when the ship is nearly at rest (below 1 % of w)
+    FVector3d NpcTrafficVelocityDirection(const FNpcTrafficLane& lane, const FSOLLaneShip& ship, const double t,
+        const double h, const FVector3d& originM)
+    {
+        const FVector3d velocity = (NpcTrafficPos(lane, ship, t + h, originM)
+            - NpcTrafficPos(lane, ship, t - h, originM)) / (2.0 * h);
+        return velocity.Size() >= 0.01 * NpcTrafficWall() ? velocity.GetSafeNormal() : FVector3d::ZeroVector;
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -394,8 +452,8 @@ bool FSOLNpcTrafficMathConstantsTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("AUTO minimum overlap 20 wall radii"),
         static_cast<double>(SOL::NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII), 20.0, NPCTRAFFIC_TOL);
 
-    // Hull flip (D17)
-    TestEqual(TEXT("hull flip 60 s"), static_cast<double>(SOL::NPC_LANE_FLIP_S), 60.0, NPCTRAFFIC_TOL);
+    // Hull flip (D17, D21): the mandatory zero-thrust flip window T_f between the burn and the brake
+    TestEqual(TEXT("flip window T_f 60 s (D21)"), static_cast<double>(SOL::NPC_LANE_FLIP_S), 60.0, NPCTRAFFIC_TOL);
     return true;
 }
 
@@ -489,31 +547,43 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathLegProfileTest, "SOLTest.NpcT
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Case 3: the per-ship flip-and-burn leg: uncapped short leg (peak sqrt(w^2 + a l0) at mid-leg, no coast), capped
-// long leg (accelerate / coast / brake at c), the effort scale, kappa 0 (wall speed throughout), the kappa -> 0 limit,
-// the cap blend c_k^2 = w^2 + kappa (c^2 - w^2), and the bookkeeping identities for every combination
+// Case 3: the per-ship flip-and-burn leg with the D21 flip window: uncapped short leg (peak v_f, the coast exactly
+// T_f), capped long leg (accelerate / coast / brake at c, unchanged), the effort scale, kappa 0 (wall speed
+// throughout), the kappa -> 0 limit, the cap blend c_k^2 = w^2 + kappa (c^2 - w^2), the bookkeeping identities for
+// every combination, legs no longer than w T_f (no burn), continuity at w T_f, and the flipS argument (0 gives the
+// pre-D21 profile, negative or NaN reads as 0)
 bool FSOLNpcTrafficMathLegProfileTest::RunTest(const FString& /*parameters*/)
 {
     using SOLLaneTraffic::MakeLegProfile;
     const double w = NpcTrafficWall();
     const double a = NpcTrafficAccel();
     const double c = NpcTrafficCap();
+    const double tf = NpcTrafficFlip();
 
-    // Uncapped short leg: axis ship at full effort
+    // Uncapped short leg: axis ship at full effort; the 60 s window is the whole coast (D21)
     {
         const double l0 = NPCTRAFFIC_SHORT_LEG_M;
         const FSOLLaneLeg leg = MakeLegProfile(1.0, 1.0, l0);
-        const double peak = FMath::Sqrt(w * w + a * l0);
+        const double peak = NpcTrafficFlipPeak(a, l0, tf);
+        const double b = 2.0 * w + a * tf;
+        const double dvRoot = 2.0 * a * (l0 - w * tf) / (b + FMath::Sqrt(b * b + 4.0 * a * (l0 - w * tf)));
         TestTrue(TEXT("short: valid"), leg.bValid);
+        TestTrue(TEXT("short: the default flipS is NPC_LANE_FLIP_S"),
+            NpcTrafficSameLeg(leg, MakeLegProfile(1.0, 1.0, l0, SOL::NPC_LANE_FLIP_S)));
         NpcTrafficExpectNear(*this, TEXT("short: alpha = a"), leg.Alpha, a, NPCTRAFFIC_TOL);
-        NpcTrafficExpectNear(*this, TEXT("short: peak sqrt(w^2 + a l0)"), leg.PeakMps, peak, NPCTRAFFIC_TOL);
-        NpcTrafficExpectNear(*this, TEXT("short: peak 82.4 km/s within 0.1 %"), leg.PeakMps, 82.4e3, 1.0e-3);
+        NpcTrafficExpectNear(*this, TEXT("short: peak v_f = sqrt((a T_f / 2)^2 + w^2 + a l0) - a T_f / 2"),
+            leg.PeakMps, peak, NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("short: peak 81.93 km/s within 0.1 %"), leg.PeakMps, 81.93e3, 1.0e-3);
         TestTrue(TEXT("short: below the cap"), leg.PeakMps < c);
+        TestTrue(TEXT("short: below the pre-D21 peak sqrt(w^2 + a l0)"), leg.PeakMps < FMath::Sqrt(w * w + a * l0));
         NpcTrafficExpectNear(*this, TEXT("short: dv = peak - w"), leg.DvMps, peak - w, NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("short: dv = the cancellation-free root dv_f"), leg.DvMps, dvRoot,
+            NPCTRAFFIC_TOL);
         NpcTrafficExpectNear(*this, TEXT("short: accelerate time dv / a"), leg.AccelS, (peak - w) / a,
             NPCTRAFFIC_TOL);
-        NpcTrafficExpectNear(*this, TEXT("short: no coast"), leg.CoastS, 0.0, 0.0, 1.0e-6);
-        NpcTrafficExpectNear(*this, TEXT("short: accelerate distance l0 / 2"), leg.AccelM, 0.5 * l0, NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("short: coast = T_f"), leg.CoastS, tf, NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("short: accelerate distance (l0 - peak T_f) / 2"), leg.AccelM,
+            0.5 * (l0 - leg.PeakMps * tf), NPCTRAFFIC_TOL);
         NpcTrafficExpectNear(*this, TEXT("short: leg time 2 t_a + t_c"), leg.LegS, 2.0 * leg.AccelS + leg.CoastS,
             NPCTRAFFIC_TOL);
     }
@@ -537,12 +607,13 @@ bool FSOLNpcTrafficMathLegProfileTest::RunTest(const FString& /*parameters*/)
         NpcTrafficExpectNear(*this, TEXT("long: accelerate about 4.8 h"), leg.AccelS, 4.8 * 3600.0, 0.01);
     }
 
-    // Effort scales the acceleration (kappa 1)
+    // Effort scales the acceleration (kappa 1): the same D21 formula with 0.6 a, the coast still T_f
     {
         const FSOLLaneLeg leg = MakeLegProfile(1.0, 0.6, NPCTRAFFIC_SHORT_LEG_M);
         NpcTrafficExpectNear(*this, TEXT("effort 0.6: alpha = 0.6 a"), leg.Alpha, 0.6 * a, NPCTRAFFIC_TOL);
-        NpcTrafficExpectNear(*this, TEXT("effort 0.6: peak sqrt(w^2 + 0.6 a l0)"), leg.PeakMps,
-            FMath::Sqrt(w * w + 0.6 * a * NPCTRAFFIC_SHORT_LEG_M), NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("effort 0.6: peak v_f with 0.6 a"), leg.PeakMps,
+            NpcTrafficFlipPeak(0.6 * a, NPCTRAFFIC_SHORT_LEG_M, tf), NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("effort 0.6: coast = T_f"), leg.CoastS, tf, NPCTRAFFIC_TOL);
     }
 
     // kappa 0: the wall speed for the whole leg
@@ -589,7 +660,9 @@ bool FSOLNpcTrafficMathLegProfileTest::RunTest(const FString& /*parameters*/)
         NpcTrafficExpectNear(*this, TEXT("halo kappa: peak 36 km/s"), halo.PeakMps, 36.0e3, 1.0e-3);
     }
 
-    // Identities and signs for every combination
+    // Identities and signs for every combination (D21: the 1e3 and 1e6 m legs are at or below w T_f, no-burn legs)
+    int32 noBurnLegs = 0;
+    int32 uncappedBurningLegs = 0;
     for (const double kappa : { 0.0, 1.0e-6, 0.01, 0.3, 1.0 })
     {
         for (const double effort : { 0.5, 0.75, 1.0 })
@@ -599,14 +672,39 @@ bool FSOLNpcTrafficMathLegProfileTest::RunTest(const FString& /*parameters*/)
                 const FString label = FString::Printf(TEXT("kappa %.0e effort %.2f leg %.1e m"), kappa, effort, l0);
                 const FSOLLaneLeg leg = MakeLegProfile(kappa, effort, l0);
                 const double capK = FMath::Sqrt(w * w + kappa * (c * c - w * w));
-                const double peak = FMath::Min(FMath::Sqrt(w * w + kappa * effort * a * l0), capK);
+                const double flipPeak = NpcTrafficFlipPeak(kappa * effort * a, l0, tf);
+                const double peak = FMath::Max(w, FMath::Min(flipPeak, capK));
                 TestTrue(label + TEXT(": valid"), leg.bValid);
                 TestTrue(label + TEXT(": every time and distance finite and >= 0"),
                     NpcTrafficLegFiniteNonNegative(leg));
                 NpcTrafficExpectNear(*this, label + TEXT(": alpha = kappa eps a"), leg.Alpha, kappa * effort * a,
                     NPCTRAFFIC_TOL, 1.0e-18);
-                NpcTrafficExpectNear(*this, label + TEXT(": peak = min(sqrt(w^2 + alpha l0), c_k)"), leg.PeakMps,
-                    peak, NPCTRAFFIC_TOL);
+                NpcTrafficExpectNear(*this, label + TEXT(": peak = max(w, min(v_f, c_k))"), leg.PeakMps, peak,
+                    NPCTRAFFIC_TOL);
+                if (leg.DvMps > 0.0)
+                {
+                    TestTrue(label + FString::Printf(TEXT(": burning, coast %.12e >= T_f"), leg.CoastS),
+                        leg.CoastS >= tf * (1.0 - NPCTRAFFIC_TOL));
+                }
+                if (l0 <= w * tf)
+                {
+                    // No burn, no brake, no flip: the wall speed over the whole leg
+                    ++noBurnLegs;
+                    NpcTrafficExpectNear(*this, label + TEXT(": no burn, dv 0"), leg.DvMps, 0.0, 0.0, 1.0e-12);
+                    NpcTrafficExpectNear(*this, label + TEXT(": no burn, no accelerate time"), leg.AccelS, 0.0, 0.0,
+                        1.0e-12);
+                    NpcTrafficExpectNear(*this, label + TEXT(": no burn, peak w"), leg.PeakMps, w, NPCTRAFFIC_TOL);
+                    NpcTrafficExpectNear(*this, label + TEXT(": no burn, leg time l0 / w"), leg.LegS, l0 / w,
+                        NPCTRAFFIC_TOL);
+                }
+                else if (kappa > 0.0 && flipPeak < capK * (1.0 - 1.0e-6))
+                {
+                    // A burning uncapped leg: the window is the whole coast
+                    ++uncappedBurningLegs;
+                    TestTrue(label + TEXT(": uncapped leg burns"), leg.DvMps > 0.0 && leg.AccelS > 0.0);
+                    NpcTrafficExpectNear(*this, label + TEXT(": uncapped, coast = T_f"), leg.CoastS, tf,
+                        NPCTRAFFIC_TOL);
+                }
                 NpcTrafficExpectNear(*this, label + TEXT(": dv = peak - w"), leg.DvMps, leg.PeakMps - w, 1.0e-6,
                     1.0e-9);
                 NpcTrafficExpectNear(*this, label + TEXT(": LegS = 2 t_a + t_c"), leg.LegS,
@@ -618,6 +716,56 @@ bool FSOLNpcTrafficMathLegProfileTest::RunTest(const FString& /*parameters*/)
                 TestTrue(label + TEXT(": peak never above c"), leg.PeakMps <= c * (1.0 + 1.0e-12));
             }
         }
+    }
+    TestEqual(TEXT("no-burn legs sampled (kappa x effort x the 1e3 and 1e6 m legs)"), noBurnLegs, 30);
+    TestTrue(TEXT("uncapped burning legs sampled"), uncappedBurningLegs >= 10);
+
+    // A leg of exactly w T_f has no burn; the peak and the leg time are continuous across it
+    {
+        const double edge = w * tf;
+        const FSOLLaneLeg atEdge = MakeLegProfile(1.0, 1.0, edge);
+        NpcTrafficExpectNear(*this, TEXT("leg w T_f: dv 0"), atEdge.DvMps, 0.0, 0.0, 1.0e-12);
+        NpcTrafficExpectNear(*this, TEXT("leg w T_f: peak w"), atEdge.PeakMps, w, NPCTRAFFIC_TOL);
+        for (const double scale : { 1.0 - 1.0e-9, 1.0 + 1.0e-9 })
+        {
+            const FSOLLaneLeg nearEdge = MakeLegProfile(1.0, 1.0, edge * scale);
+            const FString label = FString::Printf(TEXT("leg w T_f x (1 %+.0e)"), scale - 1.0);
+            TestTrue(label + TEXT(": valid and finite"), nearEdge.bValid && NpcTrafficLegFiniteNonNegative(nearEdge));
+            NpcTrafficExpectNear(*this, label + TEXT(": peak continuous"), nearEdge.PeakMps, atEdge.PeakMps, 1.0e-6);
+            NpcTrafficExpectNear(*this, label + TEXT(": leg time continuous"), nearEdge.LegS, atEdge.LegS, 1.0e-6);
+        }
+    }
+
+    // flipS 0 gives the pre-D21 profile: peak min(sqrt(w^2 + alpha l0), c_k), no coast on the short leg
+    {
+        const double l0 = NPCTRAFFIC_SHORT_LEG_M;
+        const FSOLLaneLeg leg = MakeLegProfile(1.0, 1.0, l0, 0.0);
+        NpcTrafficExpectNear(*this, TEXT("flipS 0, short: peak sqrt(w^2 + a l0)"), leg.PeakMps,
+            FMath::Sqrt(w * w + a * l0), NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("flipS 0, short: peak 82.4 km/s within 0.1 %"), leg.PeakMps, 82.4e3, 1.0e-3);
+        NpcTrafficExpectNear(*this, TEXT("flipS 0, short: no coast"), leg.CoastS, 0.0, 0.0, 1.0e-6);
+        NpcTrafficExpectNear(*this, TEXT("flipS 0, short: accelerate distance l0 / 2"), leg.AccelM, 0.5 * l0,
+            NPCTRAFFIC_TOL);
+        for (const double kappa : { 1.0e-6, 0.01, 0.3 })
+        {
+            const FSOLLaneLeg blend = MakeLegProfile(kappa, 0.75, l0, 0.0);
+            const double capK = FMath::Sqrt(w * w + kappa * (c * c - w * w));
+            NpcTrafficExpectNear(*this, FString::Printf(TEXT("flipS 0, kappa %.0e: peak min(sqrt(w^2 + alpha l0), "
+                "c_k)"), kappa), blend.PeakMps, FMath::Min(FMath::Sqrt(w * w + kappa * 0.75 * a * l0), capK),
+                NPCTRAFFIC_TOL);
+        }
+        TestTrue(TEXT("flipS 0, long: the capped leg unchanged"), NpcTrafficSameLeg(
+            MakeLegProfile(1.0, 1.0, NPCTRAFFIC_LONG_LEG_M, 0.0), MakeLegProfile(1.0, 1.0, NPCTRAFFIC_LONG_LEG_M)));
+        TestTrue(TEXT("flipS -5 reads as 0"), NpcTrafficSameLeg(MakeLegProfile(1.0, 1.0, l0, -5.0), leg));
+        TestTrue(TEXT("flipS NaN reads as 0"), NpcTrafficSameLeg(MakeLegProfile(1.0, 1.0, l0, NPCTRAFFIC_NAN), leg));
+    }
+
+    // Another window length uses the same formula
+    {
+        const FSOLLaneLeg leg = MakeLegProfile(1.0, 1.0, NPCTRAFFIC_SHORT_LEG_M, 120.0);
+        NpcTrafficExpectNear(*this, TEXT("flipS 120: peak v_f with T_f 120 s"), leg.PeakMps,
+            NpcTrafficFlipPeak(a, NPCTRAFFIC_SHORT_LEG_M, 120.0), NPCTRAFFIC_TOL);
+        NpcTrafficExpectNear(*this, TEXT("flipS 120: coast 120 s"), leg.CoastS, 120.0, NPCTRAFFIC_TOL);
     }
 
     // A bad leg length is invalid
@@ -638,24 +786,28 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathLegArcTest, "SOLTest.NpcTraff
 //////////////////////////////////////////////////////////////////////////
 // Case 4: the leg arc u(t) runs from 0 to l0, strictly increasing and symmetric; the speed is w at both ends, the peak
 // at mid-leg or over the coast, v(u)^2 = min(w^2 + 2 alpha min(u, l0 - u), peak^2); the acceleration never exceeds
-// alpha; t is clamped to [0, LegS]
+// alpha; t is clamped to [0, LegS]. D21: the speed is the peak over the whole flip window [LegS / 2 - T_f / 2, LegS /
+// 2 + T_f / 2] of a burning leg (a short one above w T_f included), and a leg at or below w T_f moves at w throughout
 bool FSOLNpcTrafficMathLegArcTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLLaneTraffic;
     const double w = NpcTrafficWall();
+    const double tf = NpcTrafficFlip();
     struct FLegCase
     {
         double Kappa;
         double Effort;
         double LegM;
+        bool bBurns;
     };
     const FLegCase cases[] = {
-        { 1.0, 1.0, NPCTRAFFIC_SHORT_LEG_M },
-        { 1.0, 1.0, NPCTRAFFIC_LONG_LEG_M },
-        { 0.3, 0.6, NPCTRAFFIC_LONG_LEG_M },
-        { 0.01, 0.75, NPCTRAFFIC_LONG_LEG_M },
-        { 0.0, 0.8, NPCTRAFFIC_SHORT_LEG_M },
-        { 0.5, 1.0, 1.0e6 },
+        { 1.0, 1.0, NPCTRAFFIC_SHORT_LEG_M, true },
+        { 1.0, 1.0, NPCTRAFFIC_LONG_LEG_M, true },
+        { 0.3, 0.6, NPCTRAFFIC_LONG_LEG_M, true },
+        { 0.01, 0.75, NPCTRAFFIC_LONG_LEG_M, true },
+        { 0.0, 0.8, NPCTRAFFIC_SHORT_LEG_M, false },
+        { 0.5, 1.0, 2.0e6, true },          // A short burning leg above w T_f (1.2e6 m)
+        { 1.0, 1.0, 1.0e6, false },         // At or below w T_f: no burn, no flip
     };
     for (const FLegCase& legCase : cases)
     {
@@ -664,6 +816,28 @@ bool FSOLNpcTrafficMathLegArcTest::RunTest(const FString& /*parameters*/)
         const FString label = FString::Printf(TEXT("kappa %.2f effort %.2f leg %.3e m"), legCase.Kappa,
             legCase.Effort, l0);
         TestTrue(label + TEXT(": valid"), leg.bValid);
+        TestTrue(label + (legCase.bBurns ? TEXT(": burns") : TEXT(": no burn")), (leg.AccelS > 0.0) == legCase.bBurns);
+
+        // D21: the peak over the whole flip window of a burning leg, the wall speed throughout a no-burn leg
+        if (legCase.bBurns)
+        {
+            for (const double x : { -0.999, -0.5, 0.0, 0.5, 0.999 })
+            {
+                const double t = 0.5 * leg.LegS + 0.5 * x * tf;
+                NpcTrafficExpectNear(*this, label + FString::Printf(TEXT(": the peak in the flip window (x %.3f)"), x),
+                    LegSpeedMps(leg, l0, t), leg.PeakMps, NPCTRAFFIC_TOL);
+            }
+        }
+        else
+        {
+            for (int32 sample = 0; sample <= 20; ++sample)
+            {
+                const double t = leg.LegS * static_cast<double>(sample) / 20.0;
+                NpcTrafficExpectNear(*this, label + FString::Printf(TEXT(": w throughout (sample %d)"), sample),
+                    LegSpeedMps(leg, l0, t), w, NPCTRAFFIC_TOL);
+            }
+            NpcTrafficExpectNear(*this, label + TEXT(": leg time l0 / w"), leg.LegS, l0 / w, NPCTRAFFIC_TOL);
+        }
 
         // The ends and the peak
         NpcTrafficExpectNear(*this, label + TEXT(": u(0) = 0"), LegArcM(leg, l0, 0.0), 0.0, 0.0, 1.0e-6);
@@ -1029,7 +1203,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathLaneProfileTest, "SOLTest.Npc
 //////////////////////////////////////////////////////////////////////////
 // Case 11: the frozen lane profile: wall radius = the #49 tunnel radius of the in-wall count (D13), halo, end arcs,
 // nominal leg, U-turn depth and time, metric zone (section 4.2); every default lane drivable at its nominal (maximum,
-// D16) length; a lane no longer than its end rings, or with bad input, not drivable
+// D16) length, with a nominal leg above w T_f so the D21 flip fits; a lane no longer than its end rings, or with bad
+// input, not drivable
 bool FSOLNpcTrafficMathLaneProfileTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLLaneTraffic;
@@ -1114,6 +1289,8 @@ bool FSOLNpcTrafficMathLaneProfileTest::RunTest(const FString& /*parameters*/)
             TestTrue(label + FString::Printf(TEXT(": drivable with %d ships in the wall"), inWall), lane.bDrivable);
             TestTrue(label + FString::Printf(TEXT(": nominal leg above twice the zone (%d ships)"), inWall),
                 lane.NominalLegM > 2.0 * lane.MetricZoneM);
+            TestTrue(label + FString::Printf(TEXT(": nominal leg %.6e above w T_f, the flip fits (D21, %d ships)"),
+                lane.NominalLegM, inWall), lane.NominalLegM > SOL::NPC_LANE_WALL_SPEED_MPS * SOL::NPC_LANE_FLIP_S);
         }
     }
 
@@ -1704,11 +1881,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathThrustTest, "SOLTest.NpcTraff
 
 //////////////////////////////////////////////////////////////////////////
 // Case 15 (consumer #51): Accelerate (alpha along travel), Coast (none), Brake (alpha against travel) on the legs and
-// Turn (centripetal, (w / D_U)^2 x the distance from the turn's centre, w^2 / D_U at the apex) in the U-turns
+// Turn (centripetal, (w / D_U)^2 x the distance from the turn's centre, w^2 / D_U at the apex) in the U-turns. D21:
+// Flip (no thrust, direction the travel) inside the window |tl - T_leg / 2| < T_f / 2 of a leg that burns, the burn
+// kinds winning where they overlap; FlipFraction 0 while accelerating, the smoothstep in the window, 1 while braking
+// and through the turns of a braking ship; HullForward unit, equal to Direction in Accelerate and Brake and to
+// LaneHullForward at every sample. Samples within 1e-6 T_leg of a burn or window edge are skipped
 bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLLaneTraffic;
     const double w = NpcTrafficWall();
+    const double tf = NpcTrafficFlip();
     const TArray<FNpcTrafficLane> allLanes = NpcTrafficTestLanes();
     const FNpcTrafficLane* lanes[] = { &allLanes[0], &allLanes[2] };     // Capped Earth - Mars, uncapped Earth - Moon
     struct FThrustShip
@@ -1736,30 +1918,69 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
             const FSOLLaneLeg leg = MakeLegProfile(RadialFactor(spec.Rho), spec.Effort, profile.NominalLegM);
             const FSOLLaneCycle cycle = MakeCycle(shipLegS, depth);
 
-            // The legs: the burn phases by time into the leg, along or against travel
+            const bool bBurns = leg.AccelS > 0.0;
+            TestTrue(label + TEXT(": burns unless at the wall (kappa 0)"), bBurns == (spec.Rho != 1.0));
+
+            // Leg sample times: 100 spread over the leg (none falls in the 60 s window), 7 inside the window and one
+            // just outside either side of it (5 s, or twice the edge tolerance on a long leg so it is not skipped)
+            const double edgeTol = 1.0e-6 * shipLegS;
+            TArray<double, TInlineAllocator<112>> legTimes;
+            for (int32 sample = 0; sample < 100; ++sample)
+            {
+                legTimes.Add(shipLegS * (static_cast<double>(sample) + 0.5) / 100.0);
+            }
+            for (const double x : { -0.95, -0.6, -0.2, 0.0, 0.3, 0.7, 0.95 })
+            {
+                legTimes.Add(0.5 * shipLegS + 0.5 * x * tf);
+            }
+            for (const double side : { -1.0, 1.0 })
+            {
+                legTimes.Add(0.5 * shipLegS + side * (0.5 * tf + FMath::Max(5.0, 2.0 * edgeTol)));
+            }
+
+            // The skip rule (within the edge tolerance of a burn or window edge) and the window samples it keeps: on
+            // a long leg the tolerance drops the samples nearest the window edges, so the expected count is derived
+            // from the same rule, and the centre and +-0.2 samples (24 s clear of the edges) must always survive
+            const auto bSkipSample = [&](const double tl)
+            {
+                return FMath::Abs(tl - leg.AccelS) < edgeTol || FMath::Abs(tl - (shipLegS - leg.AccelS)) < edgeTol
+                    || FMath::Abs(FMath::Abs(tl - 0.5 * shipLegS) - 0.5 * tf) < edgeTol;
+            };
+            int32 windowSamplesPerLeg = 0;
+            for (const double tl : legTimes)
+            {
+                windowSamplesPerLeg += !bSkipSample(tl) && FMath::Abs(tl - 0.5 * shipLegS) < 0.5 * tf ? 1 : 0;
+            }
+            TestTrue(label + FString::Printf(TEXT(": at least 3 window samples survive the edge tolerance (%d)"),
+                windowSamplesPerLeg), windowSamplesPerLeg >= 3);
+
+            // The legs: the burn phases by time into the leg, along or against travel, the flip window between
             FNpcTrafficFailures legFailures;
+            int32 flipSamples = 0;
             for (const bool bOutbound : { true, false })
             {
                 const double legStart = bOutbound ? 0.0 : shipLegS + cycle.TurnS;
                 const FVector3d travel = bOutbound ? frame.Axis : -frame.Axis;
-                for (int32 sample = 0; sample < 100; ++sample)
+                for (const double tl : legTimes)
                 {
-                    const double tl = shipLegS * (static_cast<double>(sample) + 0.5) / 100.0;
-                    if (FMath::Abs(tl - leg.AccelS) < 1.0e-6 * shipLegS
-                        || FMath::Abs(tl - (shipLegS - leg.AccelS)) < 1.0e-6 * shipLegS)
+                    if (bSkipSample(tl))
                     {
                         continue;
                     }
-                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship,
-                        NpcTrafficTimeAt(ship, cycle, legStart + tl));
+                    const double t = NpcTrafficTimeAt(ship, cycle, legStart + tl);
+                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
                     ESOLLaneThrust expectedKind = ESOLLaneThrust::Coast;
-                    if (leg.Alpha > 0.0 && tl < leg.AccelS)
+                    if (bBurns && tl < leg.AccelS)
                     {
                         expectedKind = ESOLLaneThrust::Accelerate;
                     }
-                    else if (leg.Alpha > 0.0 && tl > shipLegS - leg.AccelS)
+                    else if (bBurns && tl > shipLegS - leg.AccelS)
                     {
                         expectedKind = ESOLLaneThrust::Brake;
+                    }
+                    else if (bBurns && FMath::Abs(tl - 0.5 * shipLegS) < 0.5 * tf)
+                    {
+                        expectedKind = ESOLLaneThrust::Flip;
                     }
                     const ESOLLaneSegment expectedSegment = bOutbound ? ESOLLaneSegment::Outbound
                         : ESOLLaneSegment::Inbound;
@@ -1772,26 +1993,56 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                             static_cast<int32>(expectedSegment), static_cast<int32>(expectedKind)));
                         continue;
                     }
-                    if (expectedKind == ESOLLaneThrust::Coast)
+
+                    // The hull: unit, the pure function's value, the contract's fraction and facing
+                    const double expectedFraction = NpcTrafficRefFlipFraction(shipLegS, ship.AccelS, tl);
+                    const FVector3d expectedHull = NpcTrafficRefHull(travel, frame.Up, expectedFraction);
+                    const FVector3d pureHull = LaneHullForward(profile, frame, ship, t);
+                    if (FMath::Abs(state.HullForward.Size() - 1.0) > 1.0e-12
+                        || (state.HullForward - pureHull).GetAbsMax() > 1.0e-12
+                        || !NpcTrafficNear(state.FlipFraction, expectedFraction, 0.0, 1.0e-9)
+                        || (state.HullForward - expectedHull).GetAbsMax() > 1.0e-9)
                     {
+                        legFailures.Add(where + FString::Printf(TEXT(": hull (%.9f, %.9f, %.9f) fraction %.9f, "
+                            "expected (%.9f, %.9f, %.9f) fraction %.9f, LaneHullForward (%.9f, %.9f, %.9f)"),
+                            state.HullForward.X, state.HullForward.Y, state.HullForward.Z, state.FlipFraction,
+                            expectedHull.X, expectedHull.Y, expectedHull.Z, expectedFraction, pureHull.X, pureHull.Y,
+                            pureHull.Z));
+                        continue;
+                    }
+                    if (expectedKind == ESOLLaneThrust::Coast || expectedKind == ESOLLaneThrust::Flip)
+                    {
+                        // No thrust while coasting or turning over; a flipping ship reports the travel direction
+                        flipSamples += expectedKind == ESOLLaneThrust::Flip ? 1 : 0;
                         if (FMath::Abs(state.AccelMps2) > 1.0e-12)
                         {
-                            legFailures.Add(where + FString::Printf(TEXT(": coasting with %.6e m/s^2"),
-                                state.AccelMps2));
+                            legFailures.Add(where + FString::Printf(TEXT(": thrust %d with %.6e m/s^2"),
+                                static_cast<int32>(expectedKind), state.AccelMps2));
+                        }
+                        if (expectedKind == ESOLLaneThrust::Flip && (state.Direction - travel).GetAbsMax() > 1.0e-9)
+                        {
+                            legFailures.Add(where + FString::Printf(TEXT(": flip direction (%.6f, %.6f, %.6f), "
+                                "expected the travel"), state.Direction.X, state.Direction.Y, state.Direction.Z));
                         }
                         continue;
                     }
-                    const FVector3d expectedDirection = expectedKind == ESOLLaneThrust::Accelerate ? travel : -travel;
+                    const bool bAccelerating = expectedKind == ESOLLaneThrust::Accelerate;
+                    const FVector3d expectedDirection = bAccelerating ? travel : -travel;
                     if (!NpcTrafficNear(state.AccelMps2, leg.Alpha, NPCTRAFFIC_TOL)
-                        || (state.Direction - expectedDirection).GetAbsMax() > 1.0e-9)
+                        || (state.Direction - expectedDirection).GetAbsMax() > 1.0e-9
+                        || (state.HullForward - state.Direction).GetAbsMax() > 1.0e-9
+                        || FMath::Abs(state.FlipFraction - (bAccelerating ? 0.0 : 1.0)) > 1.0e-12)
                     {
-                        legFailures.Add(where + FString::Printf(TEXT(": %.9e m/s^2 along (%.6f, %.6f, %.6f), "
-                            "expected %.9e"), state.AccelMps2, state.Direction.X, state.Direction.Y,
-                            state.Direction.Z, leg.Alpha));
+                        legFailures.Add(where + FString::Printf(TEXT(": %.9e m/s^2 along (%.6f, %.6f, %.6f), hull "
+                            "(%.6f, %.6f, %.6f), fraction %.9f, expected %.9e along the hull"), state.AccelMps2,
+                            state.Direction.X, state.Direction.Y, state.Direction.Z, state.HullForward.X,
+                            state.HullForward.Y, state.HullForward.Z, state.FlipFraction, leg.Alpha));
                     }
                 }
             }
             NpcTrafficReport(*this, label + TEXT(": leg thrust"), legFailures);
+            TestEqual(label + TEXT(": flip samples (every unskipped window sample, both legs, on a burning leg, none "
+                "otherwise)"), flipSamples, bBurns ? 2 * windowSamplesPerLeg : 0);
 
             // The U-turns: centripetal toward the turn's centre
             for (const bool bAtB : { true, false })
@@ -1823,6 +2074,20 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                         NpcTrafficExpectNear(*this, where + TEXT(": w^2 / D_U at the apex"), state.AccelMps2,
                             w * w / depth, 1.0e-6);
                     }
+
+                    // D21: a braking ship holds its brake attitude in world space (-Axis at B, +Axis at A, fraction
+                    // 1); a ship whose legs do not brake faces its velocity (fraction 0)
+                    TestTrue(where + TEXT(": hull unit and = LaneHullForward"),
+                        FMath::Abs(state.HullForward.Size() - 1.0) <= 1.0e-12
+                        && (state.HullForward - LaneHullForward(profile, frame, ship, t)).GetAbsMax() <= 1.0e-12);
+                    NpcTrafficExpectNear(*this, where + TEXT(": flip fraction"), state.FlipFraction,
+                        bBurns ? 1.0 : 0.0, 0.0, 1.0e-12);
+                    const FVector3d expectedHull = bBurns ? (bAtB ? -frame.Axis : frame.Axis)
+                        : NpcTrafficVelocityDirection(*lane, ship, t, 1.0e-5 * cycle.TurnS, originM);
+                    TestTrue(where + FString::Printf(TEXT(": hull (%.9f, %.9f, %.9f), expected (%.9f, %.9f, %.9f)"),
+                        state.HullForward.X, state.HullForward.Y, state.HullForward.Z, expectedHull.X, expectedHull.Y,
+                        expectedHull.Z), !expectedHull.IsZero()
+                        && (state.HullForward - expectedHull).GetAbsMax() <= (bBurns ? 1.0e-9 : 1.0e-6));
                 }
             }
         }
@@ -1995,7 +2260,9 @@ bool FSOLNpcTrafficMathEdgeCasesTest::RunTest(const FString& /*parameters*/)
         }
         const FSOLLaneThrustState thrust = LaneThrustAt(profile, frame, ship, t);
         const FSOLLaneThrustState thrustAgain = LaneThrustAt(profileAgain, frameAgain, shipAgain, t);
-        if (thrust.AccelMps2 != thrustAgain.AccelMps2 || !(thrust.Direction == thrustAgain.Direction))
+        if (thrust.Thrust != thrustAgain.Thrust || thrust.AccelMps2 != thrustAgain.AccelMps2
+            || !(thrust.Direction == thrustAgain.Direction) || thrust.FlipFraction != thrustAgain.FlipFraction
+            || !(thrust.HullForward == thrustAgain.HullForward))
         {
             determinismFailures.Add(FString::Printf(TEXT("thrust differs at t %.9e"), t));
         }
@@ -2322,6 +2589,376 @@ bool FSOLNpcTrafficMathShortCurrentLegTest::RunTest(const FString& /*parameters*
         previousAxial = axial;
     }
     NpcTrafficReport(*this, TEXT("crowded lane: outbound leg moves forward"), forwardFailures);
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathHullFlipTest, "SOLTest.NpcTrafficMath.HullFlip",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Case 15c (D21): LaneHullFlipFraction is the smoothstep S over [T_leg / 2 - T_f / 2, T_leg / 2 + T_f / 2] (0 before,
+// 1 after, non-decreasing, peak rate 1.5 / T_f), the window inside the coast of the short, long and halo legs, and 0
+// for a leg with no burn or a non-finite input. LaneHullForward over whole cycles on the case 8 lanes: unit, travel
+// before the window, cos(pi f) d + sin(pi f) Up inside it, -travel after it, held at -Axis through the turn at B and
+// +Axis through the turn at A for a braking ship (facing travel again at the next leg's start), continuous at the four
+// joints and across the window, no thrust inside the window; a ship with no brake (kappa 0, or a leg <= w T_f) never
+// flips: it faces travel on the legs and its velocity in the turns
+bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLLaneTraffic;
+    const double w = NpcTrafficWall();
+    const double tf = NpcTrafficFlip();
+    const double peakRate = 1.5 / tf;                       // Largest dS/dt (1 / s): 1.5 pi / T_f in rad / s
+
+    // The flip fraction on the case 3 legs (all three burn)
+    struct FFlipLeg
+    {
+        const TCHAR* Name;
+        double Kappa;
+        double LegM;
+    };
+    const FFlipLeg flipLegs[] = {
+        { TEXT("short (uncapped)"), 1.0, NPCTRAFFIC_SHORT_LEG_M },
+        { TEXT("long (capped)"), 1.0, NPCTRAFFIC_LONG_LEG_M },
+        { TEXT("halo"), SOL::NPC_LANE_HALO_KAPPA, NPCTRAFFIC_LONG_LEG_M },
+    };
+    for (const FFlipLeg& flipLeg : flipLegs)
+    {
+        const FSOLLaneLeg leg = MakeLegProfile(flipLeg.Kappa, 1.0, flipLeg.LegM);
+        const double legS = leg.LegS;
+        const double accelS = leg.AccelS;
+        const double start = 0.5 * (legS - tf);
+        const double end = 0.5 * (legS + tf);
+        const FString label = FString::Printf(TEXT("%s leg"), flipLeg.Name);
+        TestTrue(label + TEXT(": burns"), accelS > 0.0);
+
+        // 0 up to the window, 1 from its end, the smoothstep at three interior points, tl clamped
+        for (const double tl : { -100.0, 0.0, 0.5 * start, start - 1.0e-3, start })
+        {
+            NpcTrafficExpectNear(*this, label + FString::Printf(TEXT(": 0 at tl %.6e"), tl),
+                LaneHullFlipFraction(legS, accelS, tl), 0.0, 0.0, 1.0e-9);
+        }
+        for (const double tl : { end, end + 1.0e-3, 0.5 * (end + legS), legS, legS + 100.0 })
+        {
+            NpcTrafficExpectNear(*this, label + FString::Printf(TEXT(": 1 at tl %.6e"), tl),
+                LaneHullFlipFraction(legS, accelS, tl), 1.0, 0.0, 1.0e-9);
+        }
+        for (const double x : { 0.25, 0.5, 0.8 })
+        {
+            NpcTrafficExpectNear(*this, label + FString::Printf(TEXT(": S(%.2f) inside the window"), x),
+                LaneHullFlipFraction(legS, accelS, start + x * tf), x * x * (3.0 - 2.0 * x), 0.0, 1.0e-9);
+        }
+
+        // Non-decreasing over the window (dense) and the whole leg (coarse); the fastest rate is 1.5 / T_f
+        bool bMonotone = true;
+        double fastestRate = 0.0;
+        const double dt = 0.05;
+        double previous = LaneHullFlipFraction(legS, accelS, start - 10.0);
+        for (int32 step = 1; step <= 1600; ++step)
+        {
+            const double f = LaneHullFlipFraction(legS, accelS, start - 10.0 + dt * static_cast<double>(step));
+            bMonotone = bMonotone && f >= previous;
+            fastestRate = FMath::Max(fastestRate, (f - previous) / dt);
+            previous = f;
+        }
+        previous = 0.0;
+        for (int32 step = 0; step <= 200; ++step)
+        {
+            const double f = LaneHullFlipFraction(legS, accelS, legS * static_cast<double>(step) / 200.0);
+            bMonotone = bMonotone && f >= previous;
+            previous = f;
+        }
+        TestTrue(label + TEXT(": non-decreasing"), bMonotone);
+        TestTrue(label + FString::Printf(TEXT(": fastest rate %.9e about 1.5 / T_f"), fastestRate),
+            fastestRate <= peakRate * (1.0 + 1.0e-6) && fastestRate >= 0.99 * peakRate);
+
+        // The window lies inside the coast: it starts when the burn ends or later, ends when the brake starts or
+        // earlier
+        TestTrue(label + FString::Printf(TEXT(": window start %.9e at or after the burn's end %.9e"), start, accelS),
+            start >= accelS - 1.0e-6);
+        TestTrue(label + FString::Printf(TEXT(": window end %.9e at or before the brake's start %.9e"), end,
+            legS - accelS), end <= legS - accelS + 1.0e-6);
+        NpcTrafficExpectNear(*this, label + TEXT(": 0 when the burn ends"), LaneHullFlipFraction(legS, accelS, accelS),
+            0.0, 0.0, 1.0e-9);
+        NpcTrafficExpectNear(*this, label + TEXT(": 1 when the brake starts"),
+            LaneHullFlipFraction(legS, accelS, legS - accelS), 1.0, 0.0, 1.0e-9);
+    }
+
+    // 0 everywhere for a leg with no burn, or a non-finite input
+    {
+        const FSOLLaneLeg leg = MakeLegProfile(1.0, 1.0, NPCTRAFFIC_SHORT_LEG_M);
+        for (const double badAccel : { 0.0, -1.0, NPCTRAFFIC_NAN, NPCTRAFFIC_INF })
+        {
+            for (const double fraction : { 0.0, 0.25, 0.5, 0.75, 1.0 })
+            {
+                NpcTrafficExpectNear(*this, FString::Printf(TEXT("accelerate time %f: 0 at %.2f T_leg"), badAccel,
+                    fraction), LaneHullFlipFraction(leg.LegS, badAccel, fraction * leg.LegS), 0.0, 0.0, 0.0);
+            }
+        }
+        NpcTrafficExpectNear(*this, TEXT("NaN leg time: 0"), LaneHullFlipFraction(NPCTRAFFIC_NAN, leg.AccelS, 1.0e4),
+            0.0, 0.0, 0.0);
+        NpcTrafficExpectNear(*this, TEXT("infinite leg time: 0"),
+            LaneHullFlipFraction(NPCTRAFFIC_INF, leg.AccelS, 1.0e4), 0.0, 0.0, 0.0);
+        NpcTrafficExpectNear(*this, TEXT("NaN leg time into the leg: 0"),
+            LaneHullFlipFraction(leg.LegS, leg.AccelS, NPCTRAFFIC_NAN), 0.0, 0.0, 0.0);
+    }
+
+    // The hull over whole cycles on the case 8 lanes
+    const TArray<FNpcTrafficLane> lanes = NpcTrafficTestLanes();
+    for (int32 laneIndex = 0; laneIndex < lanes.Num(); ++laneIndex)
+    {
+        const FNpcTrafficLane& lane = lanes[laneIndex];
+        const FSOLLaneProfile& profile = lane.Profile;
+        const FSOLLaneFrame& frame = lane.Frame;
+        const double depth = profile.UTurnDepthM;
+        FNpcTrafficFailures hullFailures;
+        FNpcTrafficFailures windowFailures;
+        FNpcTrafficFailures jointFailures;
+        for (int32 shipIndex = 0; shipIndex < 8; ++shipIndex)
+        {
+            // Five hashed ships, then an axis ship at full effort, a halo plateau ship and a wall (kappa 0) ship
+            FNpcTrafficShipSpec spec = NpcTrafficSpec(300ull + static_cast<uint64>(laneIndex), shipIndex);
+            if (shipIndex == 5)
+            {
+                spec.Rho = 0.0;
+                spec.Effort = 1.0;
+            }
+            spec.Rho = shipIndex == 6 ? 1.6 : (shipIndex == 7 ? 1.0 : spec.Rho);
+            const FSOLLaneShip ship = MakeLaneShip(profile, spec.Phase, spec.Effort, spec.Rho, spec.ClockRad);
+            const double shipLegS = LaneShipLegS(profile, ship);
+            const FSOLLaneCycle cycle = MakeCycle(shipLegS, depth);
+            const bool bBurns = ship.AccelS > 0.0;
+            const FString shipLabel = lane.Name + FString::Printf(TEXT(", ship %d (rho %.3f)"), shipIndex, spec.Rho);
+            TestTrue(shipLabel + TEXT(": burns unless at the wall"), bBurns == (spec.Rho != 1.0));
+
+            // Returns the contract's hull at rail time t (zero when a turn's velocity is too slow to define it)
+            const auto expectedHullAt = [&](const double t, double& outTolerance)
+            {
+                const FSOLLaneCyclePoint point = CycleSegmentAt(cycle, ship.Phase, t);
+                outTolerance = 1.0e-9;
+                if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
+                {
+                    const FVector3d travel = point.Segment == ESOLLaneSegment::Outbound ? frame.Axis : -frame.Axis;
+                    return NpcTrafficRefHull(travel, frame.Up,
+                        NpcTrafficRefFlipFraction(shipLegS, ship.AccelS, point.SegmentTimeS));
+                }
+                const bool bAtB = point.Segment == ESOLLaneSegment::TurnAtB;
+                if (bBurns)
+                {
+                    return bAtB ? FVector3d(-frame.Axis) : frame.Axis;
+                }
+                outTolerance = 1.0e-6;
+                return NpcTrafficVelocityDirection(lane, ship, t, 1.0e-5 * cycle.TurnS, bAtB ? frame.BM : frame.AM);
+            };
+
+            // Checks the hull at rail time t against the contract (unit length, value)
+            const auto checkHullAt = [&](const double t, const TCHAR* what)
+            {
+                const FVector3d hull = LaneHullForward(profile, frame, ship, t);
+                double tolerance = 0.0;
+                const FVector3d expected = expectedHullAt(t, tolerance);
+                if (FMath::Abs(hull.Size() - 1.0) > 1.0e-12
+                    || (!expected.IsZero() && (hull - expected).GetAbsMax() > tolerance))
+                {
+                    hullFailures.Add(shipLabel + FString::Printf(TEXT(" %s t %.9e: hull (%.9f, %.9f, %.9f), expected "
+                        "(%.9f, %.9f, %.9f)"), what, t, hull.X, hull.Y, hull.Z, expected.X, expected.Y, expected.Z));
+                }
+                return hull;
+            };
+
+            // The whole cycle coarsely, and each U-turn at 16 points
+            for (int32 sample = 0; sample < 400; ++sample)
+            {
+                const double tau = cycle.CycleS * (static_cast<double>(sample)
+                    + NpcTrafficUnit(static_cast<uint64>(shipIndex) * 131ull + static_cast<uint64>(sample))) / 400.0;
+                checkHullAt(NpcTrafficTimeAt(ship, cycle, tau), TEXT("cycle"));
+            }
+            for (const double turnStart : { shipLegS, 2.0 * shipLegS + cycle.TurnS })
+            {
+                for (int32 sample = 0; sample < 16; ++sample)
+                {
+                    const double tau = turnStart + cycle.TurnS * (static_cast<double>(sample) + 0.5) / 16.0;
+                    checkHullAt(NpcTrafficTimeAt(ship, cycle, tau), TEXT("turn"));
+                }
+            }
+
+            // Across each leg's window (0.5 s steps from 5 s before to 5 s after it): the contract's value, angle
+            // steps below the peak rate, travel before, -travel after, Up at the middle, no thrust inside
+            const double windowStep = 0.5;
+            const double start = 0.5 * (shipLegS - tf);
+            for (const bool bOutbound : { true, false })
+            {
+                const double legStart = bOutbound ? 0.0 : shipLegS + cycle.TurnS;
+                const FVector3d travel = bOutbound ? frame.Axis : -frame.Axis;
+                FVector3d previousHull = checkHullAt(NpcTrafficTimeAt(ship, cycle, legStart + start - 5.0),
+                    TEXT("window"));
+                for (int32 step = 1; step <= 140; ++step)
+                {
+                    const double tl = start - 5.0 + windowStep * static_cast<double>(step);
+                    const double t = NpcTrafficTimeAt(ship, cycle, legStart + tl);
+                    const FVector3d hull = checkHullAt(t, TEXT("window"));
+                    const double angle = NpcTrafficAngle(previousHull, hull);
+                    if (angle > NPCTRAFFIC_PI * peakRate * windowStep + 1.0e-9)
+                    {
+                        windowFailures.Add(shipLabel + FString::Printf(TEXT(" tl %.6e: angle step %.9e rad"), tl,
+                            angle));
+                    }
+                    previousHull = hull;
+                    const double fromMiddle = FMath::Abs(tl - 0.5 * shipLegS);
+                    if (fromMiddle < 0.5 * tf - 1.0e-3 || fromMiddle > 0.5 * tf + 1.0e-3)
+                    {
+                        const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
+                        const bool bInside = bBurns && fromMiddle < 0.5 * tf;
+                        const bool bInBurn = bBurns && (tl < ship.AccelS || tl > shipLegS - ship.AccelS);
+                        const ESOLLaneThrust expectedKind = bInside ? ESOLLaneThrust::Flip : ESOLLaneThrust::Coast;
+                        if (!bInBurn && (state.Thrust != expectedKind || FMath::Abs(state.AccelMps2) > 1.0e-12))
+                        {
+                            windowFailures.Add(shipLabel + FString::Printf(TEXT(" tl %.6e: thrust %d with %.6e m/s^2, "
+                                "expected %d with none"), tl, static_cast<int32>(state.Thrust), state.AccelMps2,
+                                static_cast<int32>(expectedKind)));
+                        }
+                    }
+                }
+                const FVector3d before = LaneHullForward(profile, frame, ship,
+                    NpcTrafficTimeAt(ship, cycle, legStart + start - 1.0));
+                const FVector3d middle = LaneHullForward(profile, frame, ship,
+                    NpcTrafficTimeAt(ship, cycle, legStart + 0.5 * shipLegS));
+                const FVector3d after = LaneHullForward(profile, frame, ship,
+                    NpcTrafficTimeAt(ship, cycle, legStart + start + tf + 1.0));
+                const FVector3d expectedMiddle = bBurns ? frame.Up : travel;
+                const FVector3d expectedAfter = bBurns ? FVector3d(-travel) : travel;
+                if ((before - travel).GetAbsMax() > 1.0e-9 || (middle - expectedMiddle).GetAbsMax() > 1.0e-6
+                    || (after - expectedAfter).GetAbsMax() > 1.0e-9)
+                {
+                    windowFailures.Add(shipLabel + FString::Printf(TEXT(" %s: before (%.6f, %.6f, %.6f), middle "
+                        "(%.6f, %.6f, %.6f), after (%.6f, %.6f, %.6f)"), bOutbound ? TEXT("outbound") : TEXT("inbound"),
+                        before.X, before.Y, before.Z, middle.X, middle.Y, middle.Z, after.X, after.Y, after.Z));
+                }
+            }
+
+            // The four joints: continuous (a braking ship holds its attitude, a non-braking one follows a velocity
+            // that turns at most w / D_U rad/s there), and facing travel 1 s into each leg
+            const double jointDelta = 1.0e-3;
+            const double jointBound = bBurns ? NPCTRAFFIC_PI * peakRate * 2.0 * jointDelta + 1.0e-9
+                : 2.0 * jointDelta * 2.0 * w / depth + 1.0e-9;
+            for (const double jointTau : { shipLegS, shipLegS + cycle.TurnS, 2.0 * shipLegS + cycle.TurnS,
+                cycle.CycleS })
+            {
+                const double tj = NpcTrafficTimeAt(ship, cycle, jointTau);
+                const double angle = NpcTrafficAngle(LaneHullForward(profile, frame, ship, tj - jointDelta),
+                    LaneHullForward(profile, frame, ship, tj + jointDelta));
+                if (angle > jointBound)
+                {
+                    jointFailures.Add(shipLabel + FString::Printf(TEXT(" joint tau %.9e: angle %.9e rad (bound "
+                        "%.9e)"), jointTau, angle, jointBound));
+                }
+            }
+            const FVector3d outboundStart = LaneHullForward(profile, frame, ship, NpcTrafficTimeAt(ship, cycle, 1.0));
+            const FVector3d inboundStart = LaneHullForward(profile, frame, ship,
+                NpcTrafficTimeAt(ship, cycle, shipLegS + cycle.TurnS + 1.0));
+            if ((outboundStart - frame.Axis).GetAbsMax() > 1.0e-9 || (inboundStart + frame.Axis).GetAbsMax() > 1.0e-9)
+            {
+                jointFailures.Add(shipLabel + FString::Printf(TEXT(": 1 s into the legs (%.6f, %.6f, %.6f) and "
+                    "(%.6f, %.6f, %.6f), expected +Axis and -Axis"), outboundStart.X, outboundStart.Y,
+                    outboundStart.Z, inboundStart.X, inboundStart.Y, inboundStart.Z));
+            }
+        }
+        NpcTrafficReport(*this, lane.Name + TEXT(": hull forward"), hullFailures);
+        NpcTrafficReport(*this, lane.Name + TEXT(": flip window"), windowFailures);
+        NpcTrafficReport(*this, lane.Name + TEXT(": joints"), jointFailures);
+    }
+
+    // A lane whose nominal leg is at or below w T_f: no burn, no brake and no flip
+    {
+        const double wallRadiusM = 1.0e4;
+        const double bodyRadiusM = 1.0e5;
+        const double legM = 1.0e6;
+        const double lengthM = 2.0 * bodyRadiusM + 2.0 * SOL::NPC_TUNNEL_END_MARGIN_RADII * wallRadiusM + legM;
+        const FVector3d aM(1.0e9, 2.0e9, 0.0);
+        FNpcTrafficLane shortLane;
+        shortLane.Name = TEXT("short lane");
+        shortLane.Profile = MakeLaneProfile(wallRadiusM, lengthM, bodyRadiusM, bodyRadiusM);
+        shortLane.Frame = MakeLaneFrame(shortLane.Profile, aM, aM + FVector3d(0.6, 0.8, 0.0) * lengthM);
+        shortLane.BodyRadiusAM = bodyRadiusM;
+        shortLane.BodyRadiusBM = bodyRadiusM;
+        const FSOLLaneProfile& profile = shortLane.Profile;
+        const FSOLLaneFrame& frame = shortLane.Frame;
+        TestTrue(TEXT("short lane: drivable, frame valid"), profile.bDrivable && frame.bValid);
+        NpcTrafficExpectNear(*this, TEXT("short lane: nominal leg 1e6 m"), profile.NominalLegM, legM, 0.0, 1.0e-3);
+        TestTrue(TEXT("short lane: nominal leg at or below w T_f"), profile.NominalLegM <= w * tf);
+        FNpcTrafficFailures failures;
+        for (const FNpcTrafficShipSpec& spec : { FNpcTrafficShipSpec{ 0.3, 1.0, 0.0, 0.5 * NPCTRAFFIC_PI },
+            FNpcTrafficShipSpec{ 0.8, 0.75, 0.5, 1.0 } })
+        {
+            const FSOLLaneShip ship = MakeLaneShip(profile, spec.Phase, spec.Effort, spec.Rho, spec.ClockRad);
+            const FString shipLabel = FString::Printf(TEXT("short lane, rho %.2f"), spec.Rho);
+            NpcTrafficExpectNear(*this, shipLabel + TEXT(": no burn, dv 0"), ship.DvMps, 0.0, 0.0, 1.0e-12);
+            NpcTrafficExpectNear(*this, shipLabel + TEXT(": no burn, no accelerate time"), ship.AccelS, 0.0, 0.0,
+                1.0e-12);
+            const FSOLLaneCycle cycle = MakeCycle(LaneShipLegS(profile, ship), profile.UTurnDepthM);
+            TArray<double, TInlineAllocator<240>> taus;
+            for (int32 sample = 0; sample < 200; ++sample)
+            {
+                taus.Add(cycle.CycleS * (static_cast<double>(sample) + 0.5) / 200.0);
+            }
+            for (const double turnStart : { cycle.LegS, 2.0 * cycle.LegS + cycle.TurnS })
+            {
+                for (int32 sample = 0; sample < 16; ++sample)
+                {
+                    taus.Add(turnStart + cycle.TurnS * (static_cast<double>(sample) + 0.5) / 16.0);
+                }
+            }
+            for (const double tau : taus)
+            {
+                const double t = NpcTrafficTimeAt(ship, cycle, tau);
+                const FSOLLaneCyclePoint point = CycleSegmentAt(cycle, ship.Phase, t);
+                const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
+                const FVector3d hull = LaneHullForward(profile, frame, ship, t);
+                const bool bLeg = point.Segment == ESOLLaneSegment::Outbound
+                    || point.Segment == ESOLLaneSegment::Inbound;
+                const bool bAtB = point.Segment == ESOLLaneSegment::TurnAtB;
+                const FVector3d expected = bLeg ? (point.Segment == ESOLLaneSegment::Outbound ? frame.Axis
+                    : FVector3d(-frame.Axis)) : NpcTrafficVelocityDirection(shortLane, ship, t, 1.0e-5 * cycle.TurnS,
+                    bAtB ? frame.BM : frame.AM);
+                const double tolerance = bLeg ? 1.0e-9 : 1.0e-6;
+                if (state.Thrust == ESOLLaneThrust::Flip || (bLeg && state.Thrust != ESOLLaneThrust::Coast)
+                    || state.FlipFraction != 0.0 || FMath::Abs(hull.Size() - 1.0) > 1.0e-12
+                    || (!expected.IsZero() && (hull - expected).GetAbsMax() > tolerance))
+                {
+                    failures.Add(shipLabel + FString::Printf(TEXT(" tau %.6e: thrust %d fraction %.3f hull (%.9f, "
+                        "%.9f, %.9f), expected (%.9f, %.9f, %.9f)"), tau, static_cast<int32>(state.Thrust),
+                        state.FlipFraction, hull.X, hull.Y, hull.Z, expected.X, expected.Y, expected.Z));
+                }
+            }
+        }
+        NpcTrafficReport(*this, TEXT("short lane: no flip, travel or velocity facing"), failures);
+    }
+
+    // Bad lanes: an invalid frame (A == B, no basis) gives +X, a lane that is not drivable gives +Axis
+    {
+        const FVector3d aM(1.2e11, -8.0e10, 3.0e6);
+        const FSOLLaneProfile profile = NpcTrafficProfile(NPCTRAFFIC_EARTH_MARS_LANE_RADIUS_M,
+            NPCTRAFFIC_EARTH_MARS_IN_WALL, NPCTRAFFIC_EARTH_MARS_MAX_M, NPCTRAFFIC_EARTH_RADIUS_M,
+            NPCTRAFFIC_MARS_RADIUS_M);
+        const FSOLLaneShip ship = MakeLaneShip(profile, 0.3, 0.8, 0.5, 1.0);
+        const FVector3d invalid = LaneHullForward(profile, MakeLaneFrame(profile, aM, aM), ship, 1.0e4);
+        TestTrue(FString::Printf(TEXT("invalid frame: +X (%.9f, %.9f, %.9f)"), invalid.X, invalid.Y, invalid.Z),
+            (invalid - FVector3d::UnitX()).GetAbsMax() <= 1.0e-12);
+        const FSOLLaneProfile shortProfile = NpcTrafficProfile(NPCTRAFFIC_EARTH_MARS_LANE_RADIUS_M,
+            NPCTRAFFIC_EARTH_MARS_IN_WALL, 0.5 * (profile.EndArcAM + profile.EndArcBM), NPCTRAFFIC_EARTH_RADIUS_M,
+            NPCTRAFFIC_MARS_RADIUS_M);
+        const FSOLLaneFrame shortFrame = MakeLaneFrame(shortProfile, aM,
+            aM + FVector3d(0.6, 0.8, 0.0) * shortProfile.NominalLengthM);
+        const FSOLLaneShip restShip = MakeLaneShip(shortProfile, 0.3, 0.8, 0.5, 1.0);
+        TestFalse(TEXT("short profile: not drivable"), shortProfile.bDrivable);
+        for (const double t : { 0.0, 1.0e5 })
+        {
+            const FVector3d hull = LaneHullForward(shortProfile, shortFrame, restShip, t);
+            TestTrue(FString::Printf(TEXT("not drivable, t %.0f: +Axis"), t),
+                (hull - shortFrame.Axis).GetAbsMax() <= 1.0e-12);
+        }
+    }
     return true;
 }
 

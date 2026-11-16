@@ -1929,8 +1929,12 @@ namespace SOL
         // With -SOLSmokeNpcLanes (-game only): V2 and V3 cost captures, lanes drawn and sol.NpcLanes 0 (SDD 38)
         inline constexpr const TCHAR* SMOKE_NPC_LANES_PROFILE = TEXT("SOLSmokeNpcLanesProfile");
         inline constexpr const TCHAR* SMOKE_NPC_TUNNEL = TEXT("SOLSmokeNpcTunnel");    // Lane tunnels (SDD 49), quit
+        // The sim date -SOLSmokeNpcTunnel starts at unless -SOLSimDate= is given: its T5 view faces the Moon, so which
+        // label anchors it shows (SDD 49 D19: none) depends on the date; pinned so the views are deterministic
+        inline constexpr const TCHAR* SMOKE_NPC_TUNNEL_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
         // With -SOLSmokeNpcTunnel (-game only): T2 and T5 cost captures, all lanes forced, sol.NpcTunnel 0 / 1 (49c)
         inline constexpr const TCHAR* SMOKE_NPC_TUNNEL_PROFILE = TEXT("SOLSmokeNpcTunnelProfile");
+        inline constexpr const TCHAR* SMOKE_NPC_TRAFFIC = TEXT("SOLSmokeNpcTraffic");  // Lane traffic (SDD 50), quit
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2585,6 +2589,8 @@ namespace SOL
     inline constexpr int32 NPC_RAIL_TEXTURE_WIDTH = 2048;              // Rail texture width (2 texels per ship)
     inline constexpr int32 NPC_CPU_TEXTURE_WIDTH = 1024;               // CPU point texture width (1 texel per ship)
     inline constexpr int32 NPC_GROUP_TEXTURE_WIDTH = 64;               // Group texture width (max groups)
+    inline constexpr int32 NPC_GROUP_TEXTURE_ROWS = 6;                 // Group texture rows: 0-1 group points, 2-5 the
+                                                                       // lane traffic rows (SDD 50 section 4.6)
     inline constexpr double NPC_RENDER_SPACE_BOUNDS_CM = 5.0e11;       // Half-extent of the NPC point layers' and
                                                                        // hulls' fixed bounds (all render space)
     inline constexpr double NPC_GPU_RAIL_EPOCH_S = 1.0e4;              // The GPU rail copy is re-based once the rail

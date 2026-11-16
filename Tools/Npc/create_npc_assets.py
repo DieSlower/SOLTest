@@ -18,6 +18,11 @@
 #       lane whose row 1 .w is -1, i.e. not drawn), and a ship at alpha 0 returns the hidden offset; with
 #       NpcParams4.x = 0 every point is drawn exactly as before. The fade is SOLNL_LineFade from SOLNpcLane.ush (the
 #       vertex Custom node includes it), the same function the lane line uses.
+#       Issue #50 (SDD 50 section 4.6): a lane ship's position is the closed-form keep-right traffic of
+#       SOLNpcTraffic.ush (SOLNTR_LaneShipRelM, the mirror of Traffic/SOLLaneTrafficMath.cpp and the lane branch of
+#       SOLNpcRail::EvaluateAtTimeM) from the rail texels (SOLNpcRail::GpuRailTexels) and the group texture's rows 0-5
+#       (the wall speed w is data in row 2 .w, written by SOLNpcRail::WriteLaneTrafficTexels, so retuning
+#       SOL::NPC_LANE_WALL_SPEED_MPS needs no rebuild).
 #   /Game/SOL/Npc/M_SOLNpcHull
 #       Default-lit placeholder hull (vector parameter Tint), usable on ISMs.
 #   /Game/SOL/Npc/M_SOLNpcLanes
@@ -41,7 +46,8 @@
 #       the orbit lines' collection (OrbitLineStyle2, OrbitLineOccluder0..7) and SOL::NpcTunnelMaterialParams.
 # Parameter names must match SOLNpcVisuals.cpp, SOL::NpcLaneMaterialParams and SOL::NpcTunnelMaterialParams; asset
 # paths SOL::Paths::NPC_POINTS_MATERIAL / NPC_HULL_MATERIAL / NPC_LANES_MATERIAL / NPC_TUNNEL_MATERIAL. The lane and
-# tunnel materials and the point material's vertex node include SOLNpcLane.ush / SOLNpcTunnel.ush, so a shader change
+# tunnel materials and the point material's vertex node include SOLNpcLane.ush / SOLNpcTunnel.ush (the vertex node
+# also SOLNpcTraffic.ush), so a shader change
 # there needs no rebuild; a graph or parameter change does.
 # Run (editor closed):
 #   UnrealEditor-Cmd.exe SOLTest.uproject -run=pythonscript -script="<abs path>/Tools/Npc/create_npc_assets.py"
@@ -59,6 +65,7 @@ TUNNEL_NAME = "M_SOLNpcTunnel"
 TUNNEL_INCLUDE = "/Project/SOLTest/Private/SOLNpcTunnel.ush"
 ORBIT_LINE_MPC = "/Game/SOL/OrbitLines/MPC_SOLOrbitLine"
 LANE_INCLUDE = "/Project/SOLTest/Private/SOLNpcLane.ush"   # SOL::SHADER_VIRTUAL_DIRECTORY + file
+TRAFFIC_INCLUDE = "/Project/SOLTest/Private/SOLNpcTraffic.ush"
 CONSTANTS_FILE = os.path.join(unreal.Paths.project_dir(), "Source", "SOLTest", "SOLConstants.h")
 DEFAULT_TEXTURE_NAME = "T_SOLNpcFloatDefault"
 REBUILD = ("-solrebuild" in unreal.SystemLibrary.get_command_line().lower()) or bool(globals().get("SOL_REBUILD"))
@@ -105,18 +112,11 @@ if (P0.w < 0.5)
     const float t = P0.x;
     if (kind == 1)
     {
-        // Lane: triangle wave along A-B plus the lateral offset in the lane basis (SOLNpcScale::LaneBasis)
+        // Lane (SDD 50): the closed-form keep-right traffic of SOLNpcTraffic.ush (double-float), from the group rows
+        // 0-5 (rows 2-5 from SOLNpcRail::WriteLaneTrafficTexels, the wall speed in row 2 .w)
         const float4 groupB = GroupTex.Load(int3(group, 1, 0));
-        const float3 pB = groupB.xyz;
-        const float x = a.y + a.z * t;
-        const float m = x - 2.0 * floor(x * 0.5);
-        const float s = m <= 1.0 ? m : 2.0 - m;
-        const float3 axis = pB - pA;
-        const float3 ax = normalize(axis);
-        const float3 refAxis = abs(ax.z) < 0.9 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
-        const float3 u = normalize(cross(refAxis, ax));
-        const float3 v = cross(ax, u);
-        relM = pA + axis * s + u * a.w + v * b.x;
+        relM = SOLNTR_LaneShipRelM(a, b, groupA, groupB, GroupTex.Load(int3(group, 2, 0)),
+            GroupTex.Load(int3(group, 3, 0)), GroupTex.Load(int3(group, 4, 0)), GroupTex.Load(int3(group, 5, 0)), t);
 
         // Lane crossfade (SDD 38 D9): while the lanes are shown (P4.x) the point fades in where the lane line fades
         // out, 1 - LaneLineFade(d, R) (SOLNpcLane::LaneShipPointAlpha, the lane shader's own SOLNL_LineFade); R = row 0
@@ -147,6 +147,9 @@ if (P0.w < 0.5)
         // Battle: fixed slot around the battle centre
         relM = pA + a.yzw;
     }
+
+    // Inside the Mid radius the CPU draws the ship; for a lane ship ASOLNpcVisuals takes this same float length test
+    // (SOLNpcTrafficMirror::CpuPointHandOver), so the point is never doubled or missing at the hand-over
     if (length(relM) < P0.y)
     {
         return hiddenOffset;
@@ -351,6 +354,7 @@ def build_points(material, default_texture):
         unreal.CustomMaterialOutputType.CMOT_FLOAT3,
         ["ShipBase", "ShipUv", "Corner", "RailTex", "GroupTex", "CpuTex", "TunnelTex", "P0", "P1", "P2", "P3",
          "P4"])
+    vertex.set_editor_property("include_file_paths", [LANE_INCLUDE, TRAFFIC_INCLUDE])
     extra = unreal.CustomOutput()
     extra.set_editor_property("output_name", "Shade")
     extra.set_editor_property("output_type", unreal.CustomMaterialOutputType.CMOT_FLOAT2)

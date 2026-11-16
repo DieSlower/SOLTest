@@ -10,6 +10,11 @@ are folded in as D13-D20. **One open question remains, Q9 (SDD section 12): how 
 lanes or ignore the safe space (D19).** It affects only part 50d, to be asked in the 50d interview (recommended: a
 console flag plus an interaction-menu entry); 50a-50c may start.
 
+**Amendment 1 (2026-11-13, D21, SDD section 14):** the user decided that the about 60 s hull flip finishes before
+braking starts. Every burning leg gets a zero-thrust window `T_f` = `NPC_LANE_FLIP_S` centred on its midpoint in time;
+the leg peak, the thrust state (new `Flip` kind) and the hull facing change. Step 5b reworks the committed 50a math
+for it before step 8; the 50a and 50b API contracts below carry the amendment.
+
 **Persistence: none.** `SOL::Settings::SAVE_VERSION` stays 13, `KEY_BINDING_LAYOUT_VERSION` stays 10, no setting, key
 binding or `UPROPERTY` of a save class changes (D11). If the work shows that any of these is needed, **stop and
 report**; do not choose.
@@ -56,7 +61,8 @@ notes here.
 | `Source/SOLTest/Npc/SOLNpcSubsystem.*` | Counting pass, lane profiles, rails, wake bound, lane table publish | 50b, 50c |
 | `Source/SOLTest/Npc/SOLNpcLaneMath.*` | `InWallShipCount`, `WallRadiusM` on `FSOLNpcLaneEntry`; `AccumulateLaneShips` in-wall count | 50b |
 | `Source/SOLTest/Npc/SOLNpcVisuals.*`, `SOLNpcTunnelComponent.*` | Group texture rows 2-5; tunnel radius from `WallRadiusM`; label count (D15) | 50b |
-| `Source/SOLTest/Npc/SOLNpcTierProcessor.cpp` | Hull facing per D17 (thrust direction while braking, smooth flip) | 50b |
+| `Source/SOLTest/Npc/SOLNpcTierProcessor.*` | Hull facing per D17 / D21 (`SOLNpcRail::LaneHullForward`: nose first, smoothstep flip in the mid-leg window, engine first while braking, brake attitude held through the U-turn); the per-group Mid margin (`GroupMidMarginM`, the lane hand-over margin) on the promote / keep and evaluate keep radii | 50b |
+| `Source/SOLTest/Universe/SOLSimClockSubsystem.cpp` | `-SOLSmokeNpcTunnel` starts at `SMOKE_NPC_TUNNEL_SIM_DATE` unless `-SOLSimDate=` is given (SDD 49 D19 views deterministic) | 50b |
 | `Shaders/Private/SOLNpcTraffic.ush` (new), `Tools/Npc/create_npc_assets.py`, `Content/SOL/Npc/M_SOLNpcPoints.uasset` | HLSL mirror of the lane rail; the point vertex node's lane branch calls it with the extra group rows and `w`; rebuilt with `-SOLRebuild`, editor closed (restore any byte drift of the other NPC assets) | 50b |
 | `Source/SOLTest/Npc/SOLNpcTrafficSmoke.*` (new), smoke wiring | `-SOLSmokeNpcTraffic` V1-V7, later `-SOLSmokeNpcTrafficProfile` | 50b-50e |
 | `Source/SOLTest/UI/SOLLaneTunnelLabel.*`, `UI/SOLFlightHud.*` | Readout line in the label, fallback (D18), draw and colours | 50c |
@@ -84,11 +90,13 @@ notes here.
 | 3 | Red run: skipped, as in 49a (the test file cannot compile without the `SOLLaneTraffic` API it names) | sonnet / medium | Skipped (2026-11-13) |
 | 4 | Implement `Traffic/SOLLaneTrafficMath`, the basis move with the forwarding name (`FSOLNpcTunnelBasis` now an alias of `FSOLLaneBasis`), the constants, the end margin 3 (D14, `NpcTunnelMathTest` constant case updated); topic tests and the full suite green | opus / high | Done (2026-11-13): `SOLTest.NpcTrafficMath` 17 / 17, `SOLTest.Npc` 189 / 189, full suite 1920 / 1920 |
 | 5 | Adversarial performance and style review of 50a (fresh opus / xhigh, report only; brief: changed files, SDD 50, style guide, performance guidelines, the SDD section 3 debt list); fixes; re-check against SDD 50; full suite; `Tools\UpdateMetrics.bat`; commit and push 50a | opus / xhigh, then opus / high | In progress (2026-11-13): review done, findings 1-9 fixed (see the change log), `SOLTest.NpcTrafficMath` 20 / 20; next: metrics, commit and push |
+| 5b | **D21 rework of 50a** (SDD section 14): TDD by a separate author from SDD cases 1, 3, 4, 11, 15 and 15c only (`LegProfile`, `LegArc`, `ThrustState`, `Constants`, `LaneProfile` changed, new `HullFlip`; the other `NpcTrafficMath` tests re-validated unchanged); then `MakeLegProfile(..., flipS)` with the cancellation-free `dv`, `ESOLLaneThrust::Flip`, `FSOLLaneThrustState::FlipFraction` / `HullForward`, `LaneHullFlipFraction`, `LaneHullForward`; `SOLTest.NpcTrafficMath` and the full suite green; review (fresh opus / xhigh); metrics; commit and push as `Issue #50: Part 50a2 - hull flip before braking (D21)` | opus / high, review opus / xhigh | In progress (2026-11-13): tests written (21 `NpcTrafficMath` tests, notes in the 50a API contract); implementation done (uncommitted, see the change log), 20 / 21 green, `ThrustState` red on a test-side count (change log); next: test fix by the test author, review, commit (with 50b, since the working tree now holds both) |
 | **50b** | | | |
 | 6 | Code check first: every reader of the removed `FSpawn` / `FLayout` lane fields and of `TriangleWave01` / `LaneParamAt`; the hull heading path (`HullForward`, `HandoffOrientation`); the group texture readers (`M_SOLNpcLanes`, `M_SOLNpcTunnel`, points); the label count path. If a decision is not viable, stop and report | opus / high | To do |
-| 7 | TDD: section 6 cases 9 and 10 (spawn statistics, rail packing, epoch, the GPU float mirror) and the section 7 re-validation of `NpcScaleMathTest`, `NpcRailTest`, `NpcLaneMathTest`, `NpcTunnelMathTest`, `LaneTunnelLabelTest` (count) from the contract only | opus / high | To do |
-| 8 | Implement the spawn pass, rails, frame, group table and texture rows, wake bound and capsule, tunnel radius, label count, end margin (D14), hull facing (D17); tests and the full suite green | opus / high | To do |
-| 9 | `SOLNpcTraffic.ush`, the point vertex node, `M_SOLNpcPoints` rebuilt (editor closed); `-SOLSmokeNpcTraffic` V1-V5 PASS at 1280x720 and 1920x1080; `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTunnel` 39 / 39 (updated checks), the 1M ramp PASS | opus / high | To do |
+| 7 | TDD: section 6 cases 9 and 10 (spawn statistics, rail packing, epoch, the GPU float mirror) and the section 7 re-validation of `NpcScaleMathTest`, `NpcRailTest`, `NpcLaneMathTest`, `NpcTunnelMathTest`, `LaneTunnelLabelTest` (count) from the contract only | opus / high | Done (2026-11-13): 18 new tests, 7 updated, 3 deleted; API in "Part 50b API contract" below; hull facing (D17) left open |
+| 7b | D21: add `SOLTest.NpcRail.LaneHullForward` (SDD case 10) from the contract only; no existing 50b assertion changes (SDD section 14) | opus / high | Done (2026-11-13): test written (notes in the 50b API contract) |
+| 8 | Implement the spawn pass, rails, frame, group table and texture rows, wake bound and capsule, tunnel radius, label count, end margin (D14), hull facing (D17 / D21, `SOLNpcRail::LaneHullForward` in the tiers); tests and the full suite green | opus / high | Done, uncommitted (2026-11-14, 50b review fixes): CPU side, tier / Full-AI hull facing and the review fixes are in. The tier / Full-AI hull heading fix: a Full lane ship takes its nose from the rail hull heading `SOLNpcRail::HullHeadingVelocityMps` instead of the rail velocity, so promotion and demotion no longer turn or snap the hull 180 degrees; `CollectChunk` and the Full gather derive the lane leg and cycle once per ship per frame through a new combined motion function. Dead code removed: `SOLNpcScale::LaneBasis` / `LanePositionM` and their tests |
+| 9 | `SOLNpcTraffic.ush`, the point vertex node, `M_SOLNpcPoints` rebuilt (editor closed); `-SOLSmokeNpcTraffic` V1-V5 PASS at 1280x720 and 1920x1080; `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTunnel` 39 / 39 (updated checks), the 1M ramp PASS | opus / high | Built, smokes pending a final run (2026-11-14, 50b review fixes): `Shaders/Private/SOLNpcTraffic.ush` rewritten for double-float (hi / lo) precision (SDD 50 sections 4.4 and 4.6), `M_SOLNpcPoints` rebuilt by `create_npc_assets.py -SOLRebuild` (the wall speed is now passed as data in group row 2 `.w`, not a baked literal), `-SOLSmokeNpcTraffic` gained a Full-tier hull check |
 | 10 | Review of 50b (fresh opus / xhigh, report only, brief plus the `.ush` and material); fixes; re-check against SDD; full suite; metrics; commit and push 50b | opus / xhigh, then opus / high | To do |
 | **50c** | | | |
 | 11 | TDD: case 13 (merge readout), the label's fourth line, case 16 (text) from the contract only | opus / high | To do |
@@ -101,7 +109,7 @@ notes here.
 | 16 | Review of 50d; fixes; full suite; metrics; commit and push 50d | opus / xhigh, then opus / high | To do |
 | **50e** | | | |
 | 17 | Screenshots at 1280x720, 1920x1080, 3840x2160, HUD glow 0 / 100 / 200 %: flow, halo, U-turn, readout colours, AUTO in a lane; tuning (halo kappa, U-turn depth, flip time, readout colours) with the main session showing shots to the user where a value needs the user's eye; final values in `SOLConstants.h` and an as-built section of the SDD; candidate shots deleted | opus / high | To do |
-| 18 | Profiling (SDD section 8 item 6): build and run the pre-#50 baseline (`f336e10`) and #50 in one session, T2, T5 and a far view, three runs each, 1920x1080 gates (points draw <= +0.10 ms GPU, NPC update <= +0.10 ms CPU, readout and AUTO rules <= 0.01 ms CPU each), 3840x2160 and 3840x3744 recorded; the 1M ramp; results in the SDD | opus / high | To do |
+| 18 | Profiling (SDD section 8 item 6): build and run the pre-#50 baseline (`f336e10`) and #50 in one session, T2, T5 and a far view, three runs each, 1920x1080 gates (points draw <= +0.10 ms GPU, NPC update <= +0.10 ms CPU, readout and AUTO rules <= 0.01 ms CPU each), 3840x2160 and 3840x3744 recorded; the 1M ramp; results in the SDD | opus / high | To do; record the wake cost (the lane wake / speed-bound check) in the 50e profile (finding 5 of the 50b review: record only, no change now) |
 | 19 | PIE check via unreal-mcp if the editor is open (else noted here) | sonnet / medium | To do |
 | 20 | Docs: `GAME_MECHANICS.md`, `ARCHITECTURE.md`, SDD 11 / 38 / 49 notes, `TECH_DEBT.md`, README gallery (2-3 shots), in-game text truth check against the constants | sonnet / medium | To do |
 | 21 | Whole-ticket adversarial review (fresh opus / xhigh); fixes; full suite; metrics | opus / xhigh, then opus / high | To do |
@@ -217,6 +225,41 @@ structs at global scope:
   passed for the direction)*. Legs: `Alpha` along (Accelerate) or against (Brake) travel, 0 and Coast for `kappa` 0 or
   in the coast. Turns: `(w / D_U)^2 x |p - c|` toward the ellipse centre `c` (end ring centre plus the up offset).
 
+**Amendment 1 (D21, SDD sections 4.3, 4.4, 4.12 and 14), applied in step 5b; supersedes the matching rules above:**
+
+- `FSOLLaneLeg MakeLegProfile(double kappa, double effort, double legM, double flipS = SOL::NPC_LANE_FLIP_S)`: `flipS`
+  (`T_f`) negative or NaN reads as 0. `DvMps = max(0, min(dv_f, dv_c))`, `dv_f = 2 alpha (l0 - w T_f) / ((2 w + alpha
+  T_f) + sqrt((2 w + alpha T_f)^2 + 4 alpha (l0 - w T_f)))` (taken as 0 when `l0 <= w T_f`), `dv_c = kappa (c^2 - w^2)
+  / (c_k + w)`; `PeakMps = w + DvMps`; `AccelS = DvMps / Alpha` (0 when `Alpha` = 0); `AccelM = AccelS (w + DvMps /
+  2)`; `CoastS = max(0, (l0 - 2 AccelM) / PeakMps)` (`>= T_f` when `DvMps > 0`); `LegS = 2 AccelS + CoastS`. `flipS`
+  0 gives the pre-D21 profile exactly. No new `FSOLLaneLeg` field (the window is derived from `LegS` and `T_f`).
+- `MakeLaneShip` uses the default `flipS`; `FSOLLaneShip`, `LaneShipLegS`, `LegArcM`, `LegSpeedMps`,
+  `LegSpeedAtArcMps`, `MeanSpeedMps`, the cycle, the position and `LaneShipSpeedBoundMps` keep their signatures and
+  formulas (only their inputs' peaks move).
+- `enum class ESOLLaneThrust : uint8 { Accelerate, Coast, Brake, Turn, Flip }` (`Flip` appended). `LaneThrustAt` on a
+  leg with `AccelS > 0`: Accelerate while `tl < t_a`, Brake while `tl > T_leg - t_a`, Flip while `|tl - T_leg / 2| <
+  T_f / 2`, else Coast; Flip has `AccelMps2` 0 and `Direction` the travel direction.
+- `FSOLLaneThrustState` gains `double FlipFraction = 0.0` and `FVector3d HullForward = FVector3d::ZeroVector`.
+- New `double LaneHullFlipFraction(double legS, double accelS, double legTimeS)`: `S(x)`, `x = (tl - (legS - T_f) / 2)
+  / T_f` clamped to [0, 1], `S(x) = 3 x^2 - 2 x^3`; `tl` clamped to [0, `legS`]; 0 when `accelS <= 0`, or any input
+  is not finite; with `T_f` = 0 a step at `legS / 2`.
+- New `FVector3d LaneHullForward(const FSOLLaneProfile&, const FSOLLaneFrame&, const FSOLLaneShip&, double timeS)`
+  (unit): legs `cos(pi f) d + sin(pi f) Up` (`d` = `+Axis` outbound, `-Axis` inbound); turns `-Axis` at B, `+Axis` at
+  A when the ship's leg brakes (`AccelS > 0`), else the turn's velocity direction; an invalid frame gives `+Axis` of
+  the basis (or `+X` when the basis is invalid); a non-drivable lane gives `+Axis`.
+- **Step 5b tests (test author, from SDD cases 1, 3, 4, 11, 15 and 15c only; no implementation read).**
+  `NpcTrafficMathTest.cpp` now has 21 tests: `LegProfile`, `LegArc`, `ThrustState`, `Constants` and `LaneProfile`
+  changed, `EdgeCases` (determinism also compares `Thrust`, `FlipFraction`, `HullForward`) extended, new
+  `SOLTest.NpcTrafficMath.HullFlip`; every other test re-validated unchanged. No API name beyond the ones above.
+  Choices the tests pin *(chosen)*: the default `flipS` equals an explicit `SOL::NPC_LANE_FLIP_S` (same leg, 1e-12);
+  `DvMps` equals the cancellation-free `dv_f` to 1e-9 on the Earth - Moon leg; a leg of exactly `w T_f` has no burn;
+  `LaneThrustAt`'s `FlipFraction` on a leg equals `f` of SDD section 4.4 (0 before the window, 1 after it on a burning
+  leg, also while coasting), in a turn 1 for a braking ship and 0 otherwise; `HullForward` equals
+  `LaneHullForward(profile, frame, ship, t)` to 1e-12 in every state; Flip's `Direction` is the travel direction (Coast's
+  is not asserted); `LaneHullFlipFraction` returns exactly 0 for `accelS` 0, negative, NaN or infinite and for a NaN or
+  infinite `legS` or `legTimeS`; a no-brake ship's turn hull is its velocity direction (1e-6, checked only where the
+  speed is at least 1 % of `w`).
+
 **Constants** (`SOLConstants.h`, `namespace SOL`): `NPC_LANE_WALL_SPEED_MPS` 2.0e4, `NPC_LANE_PEAK_ACCEL_G` 1.65,
 `NPC_LANE_PEAK_ACCEL_MPS2` (= 1.65 x 9.80665, *(chosen name)*; `SOLConstants.h` has no gravity constant today, the one
 in `SOLNewtonian` is `STANDARD_GRAVITY_MPS2`), `NPC_LANE_SPEED_CAP_MPS` 3.0e5, `NPC_LANE_EFFORT_MIN` / `_MAX` / `_MEAN`
@@ -235,6 +278,126 @@ until 50b. Both are isolated in their own tests so nothing else depends on it.
 nominal leg is `<= 0`". The SDD's "1e-6 m at 1 AU scale" joint tolerance is below the double ulp of absolute positions
 at 1 AU (about 3e-5 m); the tests measure joints relative to the nearer body at 1e-3 m (time rounding x speed), and
 use 1e-6 m only for lateral offsets.
+
+## Part 50b API contract (from the test author)
+
+Written with the step 7 tests from SDD sections 4.2-4.7 and 6 (cases 9, 10, 12) and the 50b notes above, without
+reading any 50b code. The implementer follows these names and rules; choices the SDD left open are marked *(chosen)*.
+
+**Test files.** `NpcRailTest.cpp` (`SOLTest.NpcRail.*`, 14 tests: `EpochMatches`, `EvaluateAtTimeMatches`,
+`RailVelocity` rewritten for lane rails; `BuildFrameGroupBody` unchanged; `GpuFloatPrecision` only the new
+`AdvancedToEpoch` signature; new `BuildFrameLanes`, `LanePacking`, `LaneClosedForm`, `LaneFloatContinuity`,
+`LaneTrafficTexels`, `GpuLaneFloatMirror`, `GpuLaneSmoothness`, `HaloCapsule`, `LaneEdgeCases`). New
+`NpcTrafficSpawnTest.cpp` (`SOLTest.NpcTrafficSpawn.*`: `CountingPass`, `WallRadiusFrozen`, `Population`, `MaxPeak`,
+`WakeBound`, `EdgeCases`). `NpcScaleMathTest.cpp`: `SpawnLane` rewritten for case 9, `SpawnDeterminism` and
+`DefaultLayout` updated, `TriangleWave`, `LaneParam` and `LaneSpeedBound` deleted (their targets go away). New
+`NpcSpawnRegressionTest.cpp` (`SOLTest.NpcSpawnRegression.BattleClusterUnchanged`). `NpcLaneMathTest.cpp` gains
+`BuildLaneFrameWall`, `NpcTunnelMathTest.cpp` gains `BuildTunnelLaneDataWall`; every other existing test in those files
+is still valid unchanged. `LaneTunnelLabelTest.cpp` needs no change in 50b (the label count is `ShipCount`, which keeps
+its meaning; the fourth line is 50c).
+
+**Regression capture (step 8, before `MakeSpawn` changes):** `NpcSpawnRegressionTest.cpp` uses only fields that exist
+before and after 50b. Build the pre-#50 code with only that file added, run `-Filter SOLTest.NpcSpawnRegression`, paste
+the three logged tables over the zero rows and set `NPCSPAWNREG_CAPTURED` to true. It fails on purpose until then.
+
+**`SOLConstants.h`:** `NPC_GROUP_TEXTURE_ROWS` = 6 (`NPC_GROUP_TEXTURE_WIDTH` stays 64).
+
+**`Npc/SOLNpcScaleMath.h` (`SOLNpcScale`):**
+
+- `FSpawn` lane fields replaced by `double LanePhase` ([0, 1)), `double LaneEffort` ([`EFFORT_MIN`, `EFFORT_MAX`]),
+  `double LaneRho` (wall radii: [0, 1) inside, [1, H] in the halo), `double LaneClockRad` ([0, pi]), `bool bLaneHalo`;
+  all default 0 / false (also for a lane ship with no lane). `LaneStartParam`, `LaneDirection`, `LaneSpeedMps`,
+  `LaneLateralOffsetM` removed; `FLayout::LaneMinSpeedMps` / `LaneMaxSpeedMps` removed.
+- `TriangleWave01`, `LaneParamAt` and `LaneShipSpeedBoundMps` *(chosen: replaced by `SOLNpcRail::LaneWakeSpeedBoundMps`)*
+  deleted. `LaneBasis` and `LanePositionM` stay while they have a caller; if step 6 finds none, delete them with their
+  tests (`LaneBasis`, `LanePosition`).
+- `void CountLaneSpawns(uint32 seed, const FCounts&, const FLayout&, TArray<int32>& outInWall, TArray<int32>& outHalo)`:
+  both reset to `layout.Lanes.Num()` zeros; one per lane ship with a lane, by `bLaneHalo`, equal to `MakeSpawn`'s.
+- `void AccumulateLaneSpawns(uint32 seed, const FCounts&, const FLayout&, int32 beginNpcIndex, int32 endNpcIndex,
+  TArrayView<int32> inOutInWall, TArrayView<int32> inOutHalo)`: no reset, range clamped to `[0, Total)`, empty or
+  reversed ranges add nothing, non-lane indices skipped, lanes past the arrays not counted (the parallel counting pass).
+
+**`Npc/SOLNpcRail.h` (`SOLNpcRail`):**
+
+- Lane rail layout: P0 phase high float in [0, 1) (forced below 1 when `float(phase)` rounds up), P1 `float(dv)`, P2
+  `float(rho Rw cos psi)`, P3 `float(rho Rw sin psi)` (>= 0), P4 `float(t_a)`, P5 `float(phase - P0)` (the low part,
+  |P5| <= 2^-24), P6 0. Each value is rounded once from `SOLLaneTraffic::MakeLaneShip`'s double.
+- `FSOLNpcGroupTable` gains `TArray<FSOLLaneProfile> LaneProfile`, `TArray<int32> LaneInWallCount`,
+  `TArray<int32> LaneHaloCount`, `TArray<double> LaneMaxPeakMps` *(chosen: the profile array holds `Rw`, so no separate
+  `LaneWallRadiusM`)*.
+- `FSOLNpcRailFrame` gains `TArray<FSOLLaneProfile> LaneProfile` (a copy of the table's, so `EvaluateAtTimeM` needs no
+  table) and `TArray<FSOLLaneFrame> LaneFrame`, one each per lane.
+- `void BuildLaneProfiles(FSOLNpcGroupTable&, TConstArrayView<int32> inWallCounts, TConstArrayView<int32> haloCounts,
+  TConstArrayView<double> nominalLengthsM, TConstArrayView<double> bodyRadiiAM, TConstArrayView<double> bodyRadiiBM)`:
+  sizes the four arrays to `LaneCount`; `LaneProfile[i] = MakeLaneProfile(TunnelRadiusM(LaneRadiusM[i], inWall[i]),
+  L0[i], R_A[i], R_B[i])` (D13; the halo count is stored only); an entry past an input's end reads 0; `LaneMaxPeakMps`
+  reset to zeros.
+- `FSOLNpcRail FromSpawn(const FSpawn&, int32 groupBase, const FSOLLaneProfile& laneProfile, double bodyGM)` (lane
+  constants from `MakeLaneShip(profile, LanePhase, LaneEffort, LaneRho, LaneClockRad)`; NaN spawn values still give a
+  finite rail; cluster and battle unchanged).
+- `FSOLLaneShip LaneShipFromRail(const FSOLNpcRail&)`: Phase `double(P0) + double(P5)`, then P1-P4.
+- `BuildFrame`: also fills `LaneProfile[i]` (default, not drivable, when the table has none) and `LaneFrame[i] =
+  SOLLaneTraffic::MakeLaneFrame(profile, A, B)` (invalid for an unresolved body); no reallocation at the same sizes.
+- `EvaluateAtTimeM` (lane) = `SOLLaneTraffic::LaneShipPositionM(frame.LaneProfile[g], frame.LaneFrame[g],
+  LaneShipFromRail(rail), t)`; finite for a group with no lane frame. **Phase formula** *(chosen, CPU and shader)*:
+  `tau = wrap(phase x T_cyc + t, T_cyc)`, as `CycleSegmentAt` does.
+- `FSOLNpcRail AdvancedToEpoch(const FSOLNpcRail&, double deltaS, TConstArrayView<FSOLLaneProfile> laneProfiles)`: a
+  lane rail's phase advances by `deltaS / T_cyc` in double (`T_cyc = MakeCycle(LaneShipLegS(profile,
+  LaneShipFromRail(rail)), D_U).CycleS`), wrapped and split into P0 / P5; P1-P4, P6 kept; a non-finite delta or a group
+  without a profile leaves the rail as it is; clusters and battles ignore the profiles.
+- `void AccumulateLaneMaxPeak(TConstArrayView<FSOLNpcRail>, TArrayView<double> inOutMaxPeakMps)`: max with `w + P1`
+  per lane rail (never lowers a value; other kinds and out-of-range groups ignored).
+- `double LaneWakeSpeedBoundMps(const FSOLNpcGroupTable&, const FSOLNpcRailFrame&, int32 lane, double
+  endpointRelativeSpeedMps)` = `SOLLaneTraffic::LaneShipSpeedBoundMps(LaneMaxPeakMps[lane], l0, frame.LaneFrame[lane].
+  CurrentLegM, H Rw, endpoint)`, without the `NPC_WAKE_SPEED_MARGIN` (the subsystem applies it); finite and >= 0 for an
+  out-of-range lane.
+- `GroupDistanceM` (lane): capsule A - B of radius `LaneProfile[lane].HaloOuterRadiusM` when there is a profile, else
+  `LaneRadiusM`.
+- `void WriteLaneTrafficTexels(const FSOLNpcRailFrame&, TArrayView<FVector4f> groupTexels)`: row r, column c at
+  `r x W + c`; writes rows 2-5 only: drivable lane = row 2 (Up, Rw), row 3 (Right, D_U), row 4 (l - l0 in double,
+  e_A, l0, Z), row 5 (e_B - EndShiftM, T_U, (l - l0) / (l0 - Z), 1 / Z) *(chosen: the spare slots carry the reviewer's
+  per-lane reciprocals; `EndShiftM` folded into e_B, rows 0 and 1 keep the body centres)*; valid frame but not
+  drivable = rows 2-3 (basis) and zero rows 4-5 (l0 = 0 holds the ship at rest); invalid frame, cluster, battle and
+  unused columns = zero rows 2-5; a buffer under 6 rows untouched; lanes past W not written.
+
+**Shader contract (`SOLNpcTraffic.ush`):** the float mirror `NpcRailGpuLaneRelM` in `NpcRailTest.cpp` is the reference
+formula: axis = cross(Up, Right); T_leg derived in float; the cycle time split into a constant part `P0 x T_cyc - k
+T_cyc - segment start` and a moving part `P5 x T_cyc + t`, the segment chosen from their sum, the time into a leg taken
+from the nearer end (`constant + moving` or `(length - constant) - moving`), the arc mapped from the nearer end ring with
+row 5's reciprocals; U-turns as SDD section 4.4 with `sincos` of `pi x time / T_U`. A change to one changes the other.
+Bound asserted per ship *(chosen)*: `2 x FLT_EPSILON x T_cyc x v_peak x max(1, (l - Z) / (l0 - Z)) + 4 x ulp(max(|A -
+V|, |B - V|)) + 1 m`, viewpoint 1,000 km from the ship. Smoothness: 60 Hz for 5 s at 9,000 s into the epoch, near both
+end rings and inside both U-turns, each frame step within 20 % of the CPU's plus 8 ulps of the nearer end's distance.
+
+**`Npc/SOLNpcLaneMath.h`:** `FSOLNpcLaneEntry` gains `int32 InWallShipCount` and `double WallRadiusM`, copied by
+`BuildLaneFrame` from `LaneInWallCount` and `LaneProfile[].WallRadiusM` (0 when missing) *(chosen: the frozen counts
+come from the counting pass via the group table, not from `AccumulateLaneShips`, which keeps counting every lane rail
+for D15)*. **`Npc/SOLNpcTunnelMath`:** `BuildTunnelLaneData` uses `Rt = WallRadiusM` when it is positive and finite,
+else `TunnelRadiusM(R, ShipCount)` as in #49.
+
+**Not covered by a test (decide before step 8):** the hull facing of D17. The SDD fixes only "about 60 s"; where the
+flip sits (completed by the brake start, or centred on it; uncapped legs have no coast to flip in) and when the hull
+turns back for the next leg (during the U-turn?) are open, so no contract was written. *Resolved by D21 (amendment 1,
+2026-11-13), contract below.*
+
+**Amendment 1 (D21): hull facing contract (step 7b test, step 8 implementation).**
+
+- `FVector3d SOLNpcRail::LaneHullForward(const FSOLNpcRail&, const FSOLNpcRailFrame&, double timeS)`: for a lane rail
+  `SOLLaneTraffic::LaneHullForward(frame.LaneProfile[g], frame.LaneFrame[g], LaneShipFromRail(rail), t)` (unit, phase
+  formula as `EvaluateAtTimeM`); the zero vector for cluster and battle rails and for a group without a lane frame (the
+  caller keeps today's velocity heading).
+- The tiers (Mid, Full AI, the instanced hulls) use it for lane ships in place of `HullForward(VelocityMps + deviation
+  velocity, ...)`; how a large AI deviation blends back to the velocity heading is confirmed in step 6
+  (`HullForward`, `HandoffOrientation`); if not viable, stop and report.
+- No change to the rail layout (P0-P6), the group texture, `SOLNpcTraffic.ush` or `M_SOLNpcPoints`: D21 only changes
+  the spawn-time `dv` and `t_a`, and `T_leg` stays derived by the same geometry. No existing 50b assertion changes
+  (SDD section 14); the Earth - Moon numbers they log move slightly.
+- **Step 7b test (test author, contract only):** `SOLTest.NpcRail.LaneHullForward` in `NpcRailTest.cpp` (15 tests
+  now). It asserts the rail value equals the pure function (1e-9, unit, fixed and spread times and both U-turns), no
+  jump at the float rail's four joints, travel 1 s before each leg's window, the lane's `Up` at the window's middle
+  (1e-6), against travel 1 s after it, angle steps below `1.5 pi dt / T_f` across the window, and the zero vector for
+  cluster and battle rails and for a lane rail on a frame without lane entries. No new API name; no existing 50b
+  assertion changed.
 
 ## Change log
 
@@ -268,3 +431,123 @@ use 1e-6 m only for lateral offsets.
   the end margin 3.
   The API contract above is amended accordingly (`MakeLaneProfile`, `FSOLLaneShip` without `LegS`, `LaneShipLegS`,
   `FSOLLaneFrame::EndShiftM`).
+- 2026-11-13: step 7 tests written from the contract (`NpcRailTest`, `NpcTrafficSpawnTest`, `NpcScaleMathTest`,
+  `NpcSpawnRegressionTest`, `NpcLaneMathTest`, `NpcTunnelMathTest`); the 50b API contract recorded above.
+- 2026-11-13: amendment 1, user decision D21 (refines D17): the hull flip finishes before braking. SDD sections 2,
+  4.3, 4.4, 4.7, 4.9, 4.12, 6 (cases 1, 3, 4, 10, 11, 14, 15, new 15c), 8, 10 and new section 14; this plan gains steps
+  5b and 7b and the amendment notes in both API contracts. Peak `v_f = sqrt((alpha T_f / 2)^2 + w^2 + alpha l0) -
+  alpha T_f / 2`, capped at `c_k`, floored at `w`; Earth - Moon 82.4 -> 81.9 km/s, the capped lanes unchanged.
+- 2026-11-13: step 5b tests and step 7b test written from the contract (`NpcTrafficMathTest.cpp`: `LegProfile`,
+  `LegArc`, `ThrustState`, `Constants`, `LaneProfile`, `EdgeCases`, new `HullFlip`; `NpcRailTest.cpp`: new
+  `LaneHullForward`); notes in both API contracts. Not built yet (they name the D21 API). Next: the 5b implementation.
+- 2026-11-13: step 5b and the CPU side of step 8 implemented (one agent, uncommitted; tests untouched except the
+  regression capture). **Regression capture:** `NpcSpawnRegressionTest.cpp` tables pasted from the pre-#50 build
+  (`a2fe894` code with only that file added), `NPCSPAWNREG_CAPTURED` true; passes after the `MakeSpawn` change.
+  **5b:** `MakeLegProfile(kappa, effort, legM, flipS = NPC_LANE_FLIP_S)` with `dv = max(0, min(dv_f, dv_c))`,
+  `ESOLLaneThrust::Flip`, `FSOLLaneThrustState::FlipFraction` / `HullForward`, `LaneHullFlipFraction`,
+  `LaneHullForward` (shared file-local `TrafficHullForward`, so the state's hull equals the pure function exactly; a
+  no-brake ship's zero-speed turn apex falls back to the reversal direction). **50b CPU:** `FSpawn` lane fields
+  dimensionless, `FLayout` speed fields, `TriangleWave01`, `LaneParamAt`, `SOLNpcScale::LaneShipSpeedBoundMps` removed
+  (`LaneBasis` / `LanePositionM` kept: their tests remain); the halo hash stream appended last (battle and cluster
+  streams keep their values; the retired direction stream keeps its slot); `CountLaneSpawns` / `AccumulateLaneSpawns`;
+  `SOLNpcRail`: `FromSpawn(spawn, base, laneProfile, GM)`, P0 / P5 phase split, `LaneShipFromRail`,
+  `BuildLaneProfiles`, `AccumulateLaneMaxPeak`, `BuildFrame` lane profiles and frames (invalid for an unresolved body),
+  `EvaluateAtTimeM` = the 50a closed form (endpoint A without a lane frame), `AdvancedToEpoch(rail, delta, profiles)`
+  (`fmod(delta, T_cyc) / T_cyc`), `LaneHullForward`, `LaneWakeSpeedBoundMps` (an unknown lane gives the cap bound),
+  `WriteLaneTrafficTexels`, the halo capsule; `NPC_GROUP_TEXTURE_ROWS` 6; `FSOLNpcLaneEntry::InWallShipCount` /
+  `WallRadiusM`; `BuildTunnelLaneData` (and the tunnel smoke's expected radius) from the frozen wall radius. Subsystem:
+  parallel counting pass (per-block arrays merged), nominal length = the apoapsis sums up the parent chains to the common
+  ancestor at the epoch (file-local `NpcLaneNominalLengthM`, D16), body radii from the registry, rails with the lane
+  profile, per-block largest peaks merged, the wake bound from `LaneWakeSpeedBoundMps`; visuals: the 6-row group
+  texture (all readers use `Load`, so rows 0-1 are unaffected), rows 2-5 written per frame, `AdvancedToEpoch` with the
+  table's profiles. `ARCHITECTURE.md` still needs the `Npc -> Traffic` edges (`SOLNpcRail.h` includes
+  `Traffic/SOLLaneTrafficMath.h`; `SOLNpcRail.cpp` includes `SOLNpcTunnelMath.h`). **Test issue (for the test author,
+  not edited):** `NpcTrafficMath.ThrustState` asserts 14 flip samples per burning ship, but its own skip rule (samples
+  within `1e-6 T_leg` of a window edge) drops the `x = +-0.95` samples when `T_leg > 1.5e6 s` and also `+-0.7` when
+  `T_leg > 9e6 s` (Earth - Mars rho 0.5: 10, rho 1.6: 8); every sample it does check passes. Suggested fix: count the
+  samples that were not skipped, or cap the edge tolerance (e.g. `min(1e-6 T_leg, 0.1 s)`).
+- 2026-11-13: `NpcTrafficMath.ThrustState` count fixed (test only, skip rule unchanged): the skip predicate is shared,
+  the expected flip count is `2 x` the window samples that survive it (asserted at least 3 per leg: the centre and
+  `+-0.2` samples, 24 s clear of the edges), and the two just-outside samples sit `max(5 s, 2 x tolerance)` beyond the
+  window edges so a long leg no longer skips them.
+- 2026-11-14: 50b adversarial-review fixes (uncommitted). **GPU:** `Shaders/Private/SOLNpcTraffic.ush` rewritten for
+  double-float precision: the CPU rail layout is unchanged (P0 phase high, P5 phase low, P6 reserved 0), the GPU upload is
+  built per epoch in double by a new `SOLNpcRail` function (used by `ASOLNpcVisuals::FillRailTexels`, the smoke and the
+  test) with `tau0 = phi x T_cyc` split into a hi / lo float pair and `T_leg` computed in double and rounded once; the
+  shader takes the segment from `(segment constant - boundary) + moving part` and splits the coast arc into an epoch
+  constant and a small moving part, so motion is smooth at any distance (SDD 50 sections 4.4 and 4.6). Group row 2 `.w`
+  is now the wall speed (written by `WriteLaneTrafficTexels` from `SOL::NPC_LANE_WALL_SPEED_MPS`); rows 4 and 5 re-laid
+  out (`pi / T_U`, `e_A`, `l0`, `Z`; `R_B + m Rw - end shift`, `T_U`, `(l - l0)/(l0 - Z)`, `1/Z`). `M_SOLNpcPoints`
+  rebuilt with `create_npc_assets.py -SOLRebuild`. **Smoke:** `-SOLSmokeNpcTraffic` gained a Full-tier hull check.
+  **Tiers:** a Full lane ship takes its nose from `SOLNpcRail::HullHeadingVelocityMps`, not the rail velocity (no 180
+  degree turn or snap on promotion / demotion); `CollectChunk` and the Full gather derive the lane leg and cycle once per
+  ship per frame via a combined motion function. **Dead code:** `SOLNpcScale::LaneBasis` / `LanePositionM` and their tests
+  removed. **Docs:** `GAME_MECHANICS.md` lane rows and the wall-radius rule, SDD 50 sections 4.4, 4.6 and case 10. The
+  in-game Info text states no lane speeds, so the player guide needs no regeneration for this change.
+  Measured: Earth - Mars mid-lane 27.8 km, outer lane 307.5 km, repeated frames mid-lane 0, added ALU about 36.
+- 2026-11-16: 50b test pass of the review fixes (uncommitted). `M_SOLNpcPoints` rebuilt with `-SOLRebuild` (the other
+  NPC materials' byte drift restored to HEAD). First full suite: 1938 / 1940, two failures. (1)
+  `NpcRail.GpuLaneFloatMirror`: Earth - Mars 42.4 km over the 30 km target; diagnosis: `T_leg`'s single float rounding
+  (`v_p x ulp(T_leg) / 2`, doubled on the inbound far half) dominated. Fix: `SOLNpcRail::GpuRailTexels` puts `r =
+  T_leg - float(T_leg)` as `r / (2 ulp)` in the packed value's fraction (within +-0.25; the vertex node decodes the
+  integer by rounding, so no material change), new `SOLNpcRail::GpuLegUlpS`; `SOLNpcTraffic.ush` and
+  `SOLNpcTrafficMirror.h` decode it and carry it into the moving part of every leg boundary passed and the far-half time
+  to the leg's end. (2) `NpcRail.GpuRailTexels`: the `tau0` high + low bound of 1e-9 s cannot hold with a float low part
+  (its own rounding is up to 1.5e-8 s); the bound is now one float step of the low part, and the test checks the
+  packed integer, the fraction range and the decoded `r`. Measured after the fix (`GpuLaneFloatMirror`, worst anywhere,
+  viewpoint 1,000 km from the ship): Mercury - Venus 9.9 km, Venus - Earth 13.2, Earth - Moon 0.08, Earth - Mars 27.8
+  (0.93 of the 30 km clamp), Mars - Jupiter 68.7, Jupiter - Saturn 234, Saturn - Uranus 307.5, Uranus - Neptune 433.6,
+  Earth - Mars at 0.3 L0 11.1; `GpuLaneSmoothness` mid-lane 0 of 7,200 frames repeat. ALU (DXC `-O3`, `cs_6_0`, the
+  function alone): 213 DXIL ALU ops (158 float math) against 177 (134) for the same formula in single float, so about
+  +36. Full suite 1940 / 1940. Smokes at 1280x720 and 1920x1080: `-SOLSmokeNpcTraffic` 14 / 14 (hand-over worst 7.1 /
+  7.7 km, 0 repeated of 6,000 frames; `V2-full-hull-heading` passes with no Full-tier lane hull near the view, so it is
+  not exercised), `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTunnel` 39 / 39; `GameUserSettings.ini` unchanged. The wake
+  cost stays unmeasured.
+- 2026-11-16: fixes of the second 50b review (uncommitted). (1) `SOLNpcTraffic.ush`: `T_leg`'s rounding carry, the
+  coast split, `fromRing*M`, the ring and leg positions are `precise` (UE's DXC runs without `-Gis`). Verified on the
+  DXIL (engine `dxcompiler.dll`, `-O3 -Zpr -HV 2018`, `vs_6_6`, the function alone): `fast` ops 129 / 149 before, 47 /
+  153 after, all in the U-turn and not-drivable branches; the leg position's 103 feeding ops carry none. (2) Mid
+  hand-over: `ASOLNpcVisuals::UpdateCpuShips` decides a Point-tier lane ship by the float mirror's length (the shader's
+  test) and draws it at `SOLNpcTrafficMirror::CpuPointHandOver` (mirror at the Mid radius, smoothstep to the double
+  position at the instanced radius); smoke `V5-*-handover-px`: within 0.003 px of the far point (limit 0.5), where the
+  double position alone popped up to 3.1 px (720p) / 7.1 px (1080p) on Earth - Mars. Residual, reported not fixed: a
+  ship inside by the float test and outside by the double one gets no point if it arrives from beyond the radius (3-4 %
+  of the hand-over frames, runs up to 31 frames). (3) `GpuLaneSmoothness` straddles `T_leg / 2`: worst one-frame jump
+  0.094 km (Earth - Moon), 34.0 km (Earth - Mars, about 16 px at the Mid radius at 1080p), 298.7 km (Jupiter - Saturn),
+  523.3 km (Saturn - Uranus), 0.15-0.40 of the case-10 bound, so the foot-point fix was not taken (SDD 50 section 4.6).
+  (4) Smoke: V2 flies 5 km past a coasting mid-lane ship (28 km/s relative): 943 Mid and 812 Full hull frames, all
+  within 0.0 deg of `LaneHullForward`, 1 promotion and 1 demotion with 0.000 deg nose change (new `V2-handoff-nose`);
+  the V5 hand-over samples lie within 0.5-2 Mid radii (no real ship there at 1M, so 100 sampled ships seen from
+  viewpoints that make them cross, 1,888-2,111 km; mirror vs CPU worst 11.2-19.7 km, 0.06-0.10 of the bound); spreading
+  the samples over the whole lane shows 227-239 repeated float positions of 6,000 frames (reported). New tests
+  `NpcRail.FullTierHandoff` (promotion 0.0000 deg, worst frame 0.075 deg, flip lag 1.05 deg, demotion 0.000 deg) and
+  `NpcRail.CpuPointHandOver`. (5) Dead code removed (`accelM` in the shader, `FSOLNpcAiShip::RailVelocityMps`, the
+  rail overload of `HullHeadingVelocityMps`; `HullHeading` uses the Motion overload); `GpuRailTexels` derives the leg
+  and cycle once; `static_assert` on the packed value. `M_SOLNpcPoints` rebuilt (the other NPC materials restored to
+  HEAD). Full suite 1942 / 1942. Smokes at 1280x720 and 1920x1080: `-SOLSmokeNpcTraffic` 17 / 17, `-SOLSmokeNpcLanes`
+  35 / 35, `-SOLSmokeNpcTunnel` 38 / 39: `T5-labels` draws the Earth - Mars compact label in T5, where D19 expects none;
+  the code path is untouched here (the sim clock starts at the wall-clock date, so the T5 geometry moves), left open.
+  The 1080p runs rewrite `GameUserSettings.ini`; it was restored from a backup after each run.
+- 2026-11-16: third 50b pass (uncommitted). (A) `T5-labels` was date-fragile, not a code regression: the same build
+  passes at `-SOLSimDate=2026-11-16T12:00:00Z` and `2026-11-12T12:00:00Z` and failed at the real 21:10 UTC (T5 faces the
+  Moon, about 0.5 degrees an hour; the Earth - Mars anchor entered the top-left corner unoccluded and its compact label
+  drew, as the label rules say). `-SOLSmokeNpcTunnel` now starts at `SOL::CommandLine::SMOKE_NPC_TUNNEL_SIM_DATE`
+  (2026-11-12 12:00 UTC) unless `-SOLSimDate=` is given (`USOLSimClockSubsystem::Initialize`); the check is unchanged
+  (SDD 49 D19 note). (B) Lane hand-over margin: `SOLNpcRail::LaneHandOverMarginM` per lane per frame
+  (`USOLNpcSubsystem::mGroupMidMarginM`, `GetGroupMidMarginsM`), added by `USOLNpcTierProcessor` to the Mid radius
+  (promote and keep) and the evaluate keep radius, and by the subsystem to the group cull; smoke V5 `-handover-once`
+  (tiers simulated from the subsystem's margin, the ship arriving Far): 0 missing, 0 doubled of 6,100 frames per view,
+  Earth - Mars margin 292.9 km at the current length (224-279 frames per view inside by the float test but outside the
+  bare radius by the double one, runs up to 31, all CPU ships now); new test `NpcRail.LaneHandOverMargin` (margins 0.49 km
+  Earth - Moon to 5,993 km Uranus - Neptune at the nominal lengths, sampled errors 0.04-0.33 of them). (C) The V5
+  whole-lane repeats were real: the end zones (5 % of the nominal leg) used the direct float arc. New test
+  `NpcRail.GpuLaneCycleSweep` (whole cycle, per phase): end-zone repeats before Earth - Mars 498 / 5,760 (0.52 px worst
+  step at 2,000 km, 1080p), Jupiter - Saturn 2,345 (2.75 px), Saturn - Uranus 4,000 (5.38 px), none in the coast or on
+  Earth - Moon. Fix in `SOLNpcTraffic.ush` and `SOLNpcTrafficMirror.h`: the accelerate arc and the end-zone map split into
+  epoch constant and moving part (the ramp's exact difference quotient) while `|m| <= s` and `|d| <= 1`, else direct;
+  after: 0 repeats in every phase, worst step 0.26 px; `GpuLaneSmoothness`, `GpuLaneFloatMirror` unchanged (Earth - Mars
+  27.8 km). +42 float ops in the function (171 -> 213, SDK DXC `cs_6_0 -O3`), not profiled. `M_SOLNpcPoints` rebuilt
+  (`-SOLRebuild`; Hull, Lanes, Tunnel restored to HEAD, byte-identical). Full suite 1944 / 1944. Smokes at 1280x720 and
+  1920x1080: `-SOLSmokeNpcTraffic` 19 / 19 (V5 0 repeated of 6,000 frames, hand-over within 0.001 px),
+  `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTunnel` 39 / 39; `GameUserSettings.ini` restored after each run (MD5
+  unchanged).

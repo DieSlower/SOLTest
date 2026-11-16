@@ -56,6 +56,58 @@ namespace
     // Bytes per megabyte, for the memory figures
     constexpr double NPC_BYTES_PER_MB = 1024.0 * 1024.0;
 
+    // Parent-chain depth limit of the lane nominal length walk (Sun - planet - moon is 2)
+    constexpr int32 NPC_LANE_CHAIN_MAX_DEPTH = 8;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a lane's nominal (maximum) length (SDD 50 D16): the sum of the apoapsis distances a (1 + e) along each
+    // body's parent chain up to their nearest common ancestor (the two aphelia for two planets, the moon's apoapsis for a
+    // planet - moon lane), from the secular elements at the given centuries since J2000; 0 for bodies with no common
+    // ancestor
+    double NpcLaneNominalLengthM(const FSOLBodyRegistry& registry, const int32 bodyA, const int32 bodyB,
+        const double centuries)
+    {
+        // A's ancestors (itself first) with the apoapsis sum from A up to each
+        int32 chainBody[NPC_LANE_CHAIN_MAX_DEPTH + 1];
+        double chainSumM[NPC_LANE_CHAIN_MAX_DEPTH + 1];
+        int32 chainCount = 0;
+        double sumM = 0.0;
+        for (int32 body = bodyA; body != INDEX_NONE && chainCount <= NPC_LANE_CHAIN_MAX_DEPTH;
+            body = registry.GetParent(body))
+        {
+            chainBody[chainCount] = body;
+            chainSumM[chainCount] = sumM;
+            ++chainCount;
+            if (registry.GetParent(body) != INDEX_NONE)
+            {
+                const FSOLKeplerElements elements = registry.GetElements(body).AtCenturies(centuries);
+                sumM += elements.SemiMajorAxisM * (1.0 + elements.Eccentricity);
+            }
+        }
+
+        // Walk up from B until the chain is met
+        sumM = 0.0;
+        int32 body = bodyB;
+        for (int32 depth = 0; body != INDEX_NONE && depth <= NPC_LANE_CHAIN_MAX_DEPTH; ++depth)
+        {
+            for (int32 link = 0; link < chainCount; ++link)
+            {
+                if (chainBody[link] == body)
+                {
+                    return sumM + chainSumM[link];
+                }
+            }
+            if (registry.GetParent(body) == INDEX_NONE)
+            {
+                break;
+            }
+            const FSOLKeplerElements elements = registry.GetElements(body).AtCenturies(centuries);
+            sumM += elements.SemiMajorAxisM * (1.0 + elements.Eccentricity);
+            body = registry.GetParent(body);
+        }
+        return 0.0;
+    }
+
     //////////////////////////////////////////////////////////////////////////
     // Returns the NPC subsystem of a world, or nullptr
     USOLNpcSubsystem* FindNpcSubsystem(UWorld* world)
@@ -541,53 +593,101 @@ void USOLNpcSubsystem::Spawn(const int32 count)
     BuildGroups(layout, battle);
     mEpochSecondsSinceJ2000 = SimClock->GetClock().GetSecondsSinceJ2000();
 
-    // Nominal lane lengths and cluster GMs at the epoch
+    // Cluster GMs at the epoch
     const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
-    const TConstArrayView<FVector3d> bodyPositionsM = registry.GetPositionsM();
-    TArray<double> laneLengthsM;
     TArray<double> clusterGMs;
-    for (int32 lane = 0; lane < mGroups.LaneCount; ++lane)
-    {
-        const int32 bodyA = mGroups.LaneBodyA[lane];
-        const int32 bodyB = mGroups.LaneBodyB[lane];
-        laneLengthsM.Add(bodyPositionsM.IsValidIndex(bodyA) && bodyPositionsM.IsValidIndex(bodyB)
-            ? (bodyPositionsM[bodyB] - bodyPositionsM[bodyA]).Size() : 0.0);
-    }
     for (int32 cluster = 0; cluster < mGroups.ClusterCount; ++cluster)
     {
         const int32 body = mGroups.ClusterBody[cluster];
         clusterGMs.Add(body != INDEX_NONE ? registry.GetGM(body) : 0.0);
     }
 
-    // Rails for every NPC index, in parallel blocks (stateless per-index hash)
+    // Lane profiles (SDD 50 section 4.7): (1) the parallel counting pass, in-wall and halo ships per lane; (2) each
+    // lane's frozen profile from its in-wall count (D13), nominal (maximum) length (D16) and end body radii
     const uint32 seed = mOptions.Seed;
+    const int32 laneCount = mGroups.LaneCount;
+    const int32 blockCount = FMath::DivideAndRoundUp(count, NPC_SPAWN_BLOCK);
+    TArray<int32> blockInWall;
+    TArray<int32> blockHalo;
+    blockInWall.SetNumZeroed(blockCount * laneCount);
+    blockHalo.SetNumZeroed(blockCount * laneCount);
+    ParallelFor(blockCount, [&](int32 block)
+    {
+        SOLNpcScale::AccumulateLaneSpawns(seed, counts, layout, block * NPC_SPAWN_BLOCK,
+            FMath::Min((block + 1) * NPC_SPAWN_BLOCK, count), MakeArrayView(blockInWall).Slice(block * laneCount,
+            laneCount), MakeArrayView(blockHalo).Slice(block * laneCount, laneCount));
+    });
+    TArray<int32> laneInWall;
+    TArray<int32> laneHalo;
+    TArray<double> laneNominalM;
+    TArray<double> laneRadiusAM;
+    TArray<double> laneRadiusBM;
+    laneInWall.SetNumZeroed(laneCount);
+    laneHalo.SetNumZeroed(laneCount);
+    laneNominalM.SetNumZeroed(laneCount);
+    laneRadiusAM.SetNumZeroed(laneCount);
+    laneRadiusBM.SetNumZeroed(laneCount);
+    const double epochCenturies = mEpochSecondsSinceJ2000 / SOL::SECONDS_PER_JULIAN_CENTURY;
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        for (int32 block = 0; block < blockCount; ++block)
+        {
+            laneInWall[lane] += blockInWall[block * laneCount + lane];
+            laneHalo[lane] += blockHalo[block * laneCount + lane];
+        }
+        const int32 bodyA = mGroups.LaneBodyA[lane];
+        const int32 bodyB = mGroups.LaneBodyB[lane];
+        if (bodyA != INDEX_NONE && bodyB != INDEX_NONE)
+        {
+            laneNominalM[lane] = NpcLaneNominalLengthM(registry, bodyA, bodyB, epochCenturies);
+            laneRadiusAM[lane] = registry.GetRadiusM(bodyA);
+            laneRadiusBM[lane] = registry.GetRadiusM(bodyB);
+        }
+    }
+    SOLNpcRail::BuildLaneProfiles(mGroups, laneInWall, laneHalo, laneNominalM, laneRadiusAM, laneRadiusBM);
+
+    // (3) Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak
     const int32 clusterBase = mGroups.LaneCount;
     const int32 battleBase = mGroups.LaneCount + mGroups.ClusterCount;
+    const FSOLLaneProfile noLaneProfile;
+    TArray<double> blockMaxPeakMps;
+    blockMaxPeakMps.SetNumZeroed(blockCount * laneCount);
     mRails.SetNumUninitialized(count);
-    ParallelFor(FMath::DivideAndRoundUp(count, NPC_SPAWN_BLOCK), [&](int32 block)
+    ParallelFor(blockCount, [&](int32 block)
     {
+        const int32 begin = block * NPC_SPAWN_BLOCK;
         const int32 end = FMath::Min((block + 1) * NPC_SPAWN_BLOCK, count);
-        for (int32 index = block * NPC_SPAWN_BLOCK; index < end; ++index)
+        for (int32 index = begin; index < end; ++index)
         {
             const SOLNpcScale::FSpawn spawn = SOLNpcScale::MakeSpawn(seed, index, counts, layout, battle);
             const int32 local = FMath::Max(spawn.GroupIndex, 0);
             switch (spawn.Kind)
             {
             case SOLNpcScale::EPlacementKind::Lane:
-                mRails[index] = SOLNpcRail::FromSpawn(spawn, 0,
-                    laneLengthsM.IsValidIndex(local) ? laneLengthsM[local] : 0.0, 0.0);
+                mRails[index] = SOLNpcRail::FromSpawn(spawn, 0, mGroups.LaneProfile.IsValidIndex(local)
+                    ? mGroups.LaneProfile[local] : noLaneProfile, 0.0);
                 break;
             case SOLNpcScale::EPlacementKind::Cluster:
-                mRails[index] = SOLNpcRail::FromSpawn(spawn, clusterBase, 0.0,
+                mRails[index] = SOLNpcRail::FromSpawn(spawn, clusterBase, noLaneProfile,
                     clusterGMs.IsValidIndex(local) ? clusterGMs[local] : 0.0);
                 break;
             case SOLNpcScale::EPlacementKind::Battle:
             default:
-                mRails[index] = SOLNpcRail::FromSpawn(spawn, battleBase, 0.0, 0.0);
+                mRails[index] = SOLNpcRail::FromSpawn(spawn, battleBase, noLaneProfile, 0.0);
                 break;
             }
         }
+        SOLNpcRail::AccumulateLaneMaxPeak(MakeArrayView(mRails).Slice(begin, end - begin),
+            MakeArrayView(blockMaxPeakMps).Slice(block * laneCount, laneCount));
     });
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        for (int32 block = 0; block < blockCount; ++block)
+        {
+            mGroups.LaneMaxPeakMps[lane] = FMath::Max(mGroups.LaneMaxPeakMps[lane],
+                blockMaxPeakMps[block * laneCount + lane]);
+        }
+    }
     const double railsS = FPlatformTime::Seconds();
 
     // Bucket the NPC indices by (group, class) (counting sort), so each bucket is one batch with its shared fragments
@@ -655,13 +755,10 @@ void USOLNpcSubsystem::Spawn(const int32 count)
     mCombat.Reset(count);
     mHasPrevCombatFrameBody = false;
 
-    // Temporal-cull bounds per group (relative to the group's anchor point): lanes move at the lane speed plus the
-    // endpoints' relative speed, cluster orbits at most at the inner circular speed, battle slots are fixed
-    // (lanes: the bound changes as the endpoints move, so it is recomputed every frame from their current distance and
-    // relative velocity, SOLNpcScale::LaneShipSpeedBoundMps)
+    // Temporal-cull bounds per group (relative to the group's anchor point): cluster orbits at most at the inner
+    // circular speed, battle slots are fixed (lanes: the bound changes as the endpoints move, so it is recomputed every
+    // frame from the lane's largest peak, current leg and endpoint speed, SOLNpcRail::LaneWakeSpeedBoundMps)
     mGroupMaxSpeedMps.SetNumZeroed(groupCount);
-    mLaneNominalLengthM = laneLengthsM;
-    mLaneMaxSpeedMps = FMath::Max(layout.LaneMinSpeedMps, layout.LaneMaxSpeedMps);
     for (int32 cluster = 0; cluster < mGroups.ClusterCount; ++cluster)
     {
         const double innerM = FMath::Max(FMath::Min(mGroups.ClusterInnerM[cluster], mGroups.ClusterOuterM[cluster]),
@@ -674,6 +771,7 @@ void USOLNpcSubsystem::Spawn(const int32 count)
     mGroupPrevViewM.SetNumZeroed(groupCount);
     mGroupWakeClockM.SetNumZeroed(groupCount);
     mGroupWakeDirty.SetNumZeroed(groupCount);
+    mGroupMidMarginM.SetNumZeroed(groupCount);
     mLastRailTimeS = 0.0;
     mHasGroupPrevView = false;
     mDistancesM.SetNumUninitialized(count);
@@ -808,7 +906,8 @@ void USOLNpcSubsystem::Update()
     const TConstArrayView<FVector3d> bodyVelocitiesMps = BodyRegistry->GetRegistry().GetVelocitiesMps();
     for (int32 group = 0; group < mGroups.Num(); ++group)
     {
-        // Ship speed bound this frame: a lane's grows with its current length and its endpoints' relative speed
+        // Ship speed bound this frame: a lane's (SDD 50 section 4.7) grows with its current leg and its endpoints'
+        // relative speed, from the lane's largest peak frozen at spawn
         double shipSpeedBoundMps = mGroupMaxSpeedMps[group];
         if (group < mGroups.LaneCount)
         {
@@ -817,10 +916,8 @@ void USOLNpcSubsystem::Update()
             const double endpointSpeedMps = bodyVelocitiesMps.IsValidIndex(bodyA)
                 && bodyVelocitiesMps.IsValidIndex(bodyB) ? (bodyVelocitiesMps[bodyB] - bodyVelocitiesMps[bodyA]).Size()
                 : 0.0;
-            shipSpeedBoundMps = SOL::NPC_WAKE_SPEED_MARGIN * SOLNpcScale::LaneShipSpeedBoundMps(mLaneMaxSpeedMps,
-                mLaneNominalLengthM.IsValidIndex(group) ? mLaneNominalLengthM[group] : 0.0,
-                (mRailFrame.GroupPointBM[group] - mRailFrame.GroupPointAM[group]).Size(), mGroups.LaneRadiusM[group],
-                endpointSpeedMps);
+            shipSpeedBoundMps = SOL::NPC_WAKE_SPEED_MARGIN * SOLNpcRail::LaneWakeSpeedBoundMps(mGroups, mRailFrame,
+                group, endpointSpeedMps);
         }
 
         // Wake clock: the viewer's path relative to the group's anchor point plus the ships' possible travel; both
@@ -834,8 +931,12 @@ void USOLNpcSubsystem::Update()
         mGroupShipTravelM[group] += shipSpeedBoundMps * railStepS;
         mGroupWakeClockM[group] = mGroupTravelM[group] + mGroupShipTravelM[group];
 
+        // A lane's Mid radius grows by its hand-over margin (SDD 50 section 4.6): every ship the far layer's float
+        // evaluation puts inside the Mid radius is then already a CPU ship, so the CPU point layer can draw it
+        mGroupMidMarginM[group] = group < mGroups.LaneCount
+            ? SOLNpcRail::LaneHandOverMarginM(mGroups, mRailFrame, group, mOptions.MidAiRadiusM) : 0.0;
         const bool bCandidate = SOLNpcRail::GroupDistanceM(mGroups, mRailFrame, group, viewpointM)
-            < mOptions.MidAiRadiusM * aiKeepScale;
+            < (mOptions.MidAiRadiusM + mGroupMidMarginM[group]) * aiKeepScale;
         mGroupCandidate[group] = bCandidate ? 1 : 0;
         mStats.CandidateGroups += bCandidate ? 1 : 0;
     }
@@ -847,6 +948,7 @@ void USOLNpcSubsystem::Update()
     inputs.GroupWakeClockM = mGroupWakeClockM;
     inputs.GroupWakeDirty = mGroupWakeDirty;
     inputs.MidKeepRadiusM = mOptions.MidAiRadiusM * aiKeepScale;
+    inputs.GroupMidMarginM = mGroupMidMarginM;
     inputs.ViewpointM = viewpointM;
     inputs.AiHysteresis = mOptions.AiHysteresis;
     inputs.RenderHysteresis = mOptions.RenderHysteresis;

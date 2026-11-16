@@ -323,14 +323,15 @@ void FSOLNpcCombat::StepShip(FScratch& scratch, const int32 slot, const FSOLNpcC
         target->PositionM, target->VelocityMps, shipClass.MuzzleSpeedMps) : FVector3d::ZeroVector;
 
     // 6-DOF Newtonian flight in the rail frame under the class envelope (SDD 18 section 3.7); away from the target
-    // the nose follows the desired (else the current) velocity relative to the group's anchors
+    // the nose follows the desired (else the current) velocity relative to the group's anchors, on the rail's hull
+    // heading (a lane ship faces its thrust, D21), so promotion and demotion never turn the hull
     FSOLShipState flight;
     flight.PositionM = ship.DeviationM;
     flight.VelocityMps = ship.DeviationVelocityMps;
     flight.Orientation = ship.Orientation;
     flight.AngularVelocityRadPerS = ship.AngularVelocityRadPerS;
     const FVector3d desiredForward = SOLNpcAi::FullShipDesiredForward(ship.AimDirection, distanceM,
-        shipClass.FireRangeM, ship.RailVelocityMps + desiredMps, ship.RailVelocityMps + ship.DeviationVelocityMps,
+        shipClass.FireRangeM, ship.RailHeadingMps + desiredMps, ship.RailHeadingMps + ship.DeviationVelocityMps,
         ship.Orientation.GetForwardVector());
     flight = SOLNpcAi::StepFullShip(flight, desiredMps, desiredForward, ship.UpHint,
         mClassEnvelopes[FMath::Clamp(ship.ClassIndex, 0, mClassEnvelopes.Num() - 1)], dt);

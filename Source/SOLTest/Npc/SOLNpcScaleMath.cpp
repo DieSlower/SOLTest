@@ -7,14 +7,15 @@
 
 namespace
 {
-    // Hash streams, one per hashed spawn field (any distinct values)
+    // Hash streams, one per hashed spawn field (any distinct values; new ones are appended so the battle and cluster
+    // streams keep their values and their spawns stay bit-identical)
     enum ESOLNpcHashStream : uint32
     {
         STREAM_GROUP = 1,
         STREAM_FACTION,
-        STREAM_LANE_START,
-        STREAM_LANE_DIRECTION,
-        STREAM_LANE_SPEED,
+        STREAM_LANE_START,                  // Lane phase (SDD 50 section 4.7)
+        STREAM_LANE_DIRECTION_RETIRED,      // Unused since issue #50 (each lane ship flies both legs)
+        STREAM_LANE_SPEED,                  // Lane effort
         STREAM_LANE_RADIUS,
         STREAM_LANE_ANGLE,
         STREAM_ORBIT_RADIUS,
@@ -27,7 +28,26 @@ namespace
         STREAM_CENTER_DISTANCE,
         STREAM_CENTER_Z,
         STREAM_CENTER_AZIMUTH,
+        STREAM_LANE_HALO,                   // Lane halo flag (issue #50)
     };
+
+    //////////////////////////////////////////////////////////////////////////
+    // Fills the lane weights of a layout (the input of the lane pick)
+    void NpcLaneWeights(const SOLNpcScale::FLayout& layout, TArray<double, TInlineAllocator<32>>& outWeights)
+    {
+        outWeights.Reset();
+        for (const SOLNpcScale::FLaneDef& lane : layout.Lanes)
+        {
+            outWeights.Add(lane.Weight);
+        }
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a lane ship flies in the halo beyond the wall (the counting pass and MakeSpawn share it)
+    bool NpcLaneHalo(const uint32 seed, const uint32 index)
+    {
+        return SOLNpcScale::HashUnit(seed, index, STREAM_LANE_HALO) < SOL::NPC_LANE_HALO_FRACTION;
+    }
 
     // Seed salt that separates battle-centre hashes from per-ship hashes
     constexpr uint32 BATTLE_CENTER_SALT = 0xB4771E5Eu;
@@ -316,17 +336,6 @@ void SOLNpcScale::ClearVisitedWakeDirty(TArrayView<int32> groupWakeDirty, TConst
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Lane speed scaled to the current length, plus the endpoints' relative motion (along the lane and turning the
-// lateral offset about A)
-double SOLNpcScale::LaneShipSpeedBoundMps(const double laneMaxSpeedMps, const double nominalLengthM,
-    const double currentLengthM, const double laneRadiusM, const double endpointRelativeSpeedMps)
-{
-    const double lengthScale = nominalLengthM > 0.0 ? FMath::Max(currentLengthM, 0.0) / nominalLengthM : 1.0;
-    const double turnScale = currentLengthM > 0.0 ? 1.0 + FMath::Max(laneRadiusM, 0.0) / currentLengthM : 1.0;
-    return FMath::Abs(laneMaxSpeedMps) * lengthScale + FMath::Abs(endpointRelativeSpeedMps) * turnScale;
-}
-
-//////////////////////////////////////////////////////////////////////////
 // Hashes (seed, index, stream) through chained 32-bit mixes into [0, 1)
 double SOLNpcScale::HashUnit(uint32 seed, uint32 index, uint32 stream)
 {
@@ -448,14 +457,13 @@ SOLNpcScale::FSpawn SOLNpcScale::MakeSpawn(uint32 seed, int32 npcIndex, const FC
         return spawn;
     }
 
-    // Lane: weighted lane, faction, start parameter, direction, speed, lateral offset uniform over the disc
+    // Lane (SDD 50 section 4.7): weighted lane, faction and dimensionless values only: phase, effort, halo flag,
+    // radius in wall radii uniform by area (the disc inside the wall or the annulus out to H), clock angle in the
+    // right half
     if (slot.Kind == EPlacementKind::Lane)
     {
         TArray<double, TInlineAllocator<32>> weights;
-        for (const FLaneDef& lane : layout.Lanes)
-        {
-            weights.Add(lane.Weight);
-        }
+        NpcLaneWeights(layout, weights);
         const int32 laneIndex = PickWeighted(HashUnit(seed, index, STREAM_GROUP), weights);
         if (laneIndex == INDEX_NONE)
         {
@@ -463,20 +471,15 @@ SOLNpcScale::FSpawn SOLNpcScale::MakeSpawn(uint32 seed, int32 npcIndex, const FC
         }
         spawn.GroupIndex = laneIndex;
         spawn.Faction = HashUnit(seed, index, STREAM_FACTION) < 0.5 ? 0 : 1;
-        spawn.LaneStartParam = HashUnit(seed, index, STREAM_LANE_START);
-        spawn.LaneDirection = HashUnit(seed, index, STREAM_LANE_DIRECTION) < 0.5 ? 1.0 : -1.0;
-        const double speedLo = FMath::Min(layout.LaneMinSpeedMps, layout.LaneMaxSpeedMps);
-        const double speedHi = FMath::Max(layout.LaneMinSpeedMps, layout.LaneMaxSpeedMps);
-        spawn.LaneSpeedMps = speedLo + (speedHi - speedLo) * HashUnit(seed, index, STREAM_LANE_SPEED);
-        const double laneRadius = layout.Lanes[laneIndex].RadiusM;
-        if (FMath::IsFinite(laneRadius) && laneRadius > 0.0)
-        {
-            const double radius = laneRadius * FMath::Sqrt(HashUnit(seed, index, STREAM_LANE_RADIUS));
-            double sinA = 0.0;
-            double cosA = 0.0;
-            FMath::SinCos(&sinA, &cosA, 2.0 * UE_DOUBLE_PI * HashUnit(seed, index, STREAM_LANE_ANGLE));
-            spawn.LaneLateralOffsetM = FVector2d(radius * cosA, radius * sinA);
-        }
+        spawn.LanePhase = HashUnit(seed, index, STREAM_LANE_START);
+        spawn.LaneEffort = FMath::Lerp(SOL::NPC_LANE_EFFORT_MIN, SOL::NPC_LANE_EFFORT_MAX,
+            HashUnit(seed, index, STREAM_LANE_SPEED));
+        spawn.bLaneHalo = NpcLaneHalo(seed, index);
+        const double radiusUnit = HashUnit(seed, index, STREAM_LANE_RADIUS);
+        const double outer = SOL::NPC_LANE_HALO_OUTER_WALL_RADII;
+        spawn.LaneRho = spawn.bLaneHalo ? FMath::Min(FMath::Sqrt(1.0 + (outer * outer - 1.0) * radiusUnit), outer)
+            : FMath::Sqrt(radiusUnit);
+        spawn.LaneClockRad = UE_DOUBLE_PI * HashUnit(seed, index, STREAM_LANE_ANGLE);
         return spawn;
     }
 
@@ -521,56 +524,45 @@ FVector3d SOLNpcScale::BattleCenterOffsetM(uint32 seed, int32 battleIndex, const
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Folds x into a period-2 triangle wave in [0, 1]
-double SOLNpcScale::TriangleWave01(double x)
+// Counts every lane's in-wall and halo ships over the whole population
+void SOLNpcScale::CountLaneSpawns(const uint32 seed, const FCounts& counts, const FLayout& layout,
+    TArray<int32>& outInWall, TArray<int32>& outHalo)
 {
-    if (!FMath::IsFinite(x))
-    {
-        return 0.0;
-    }
-    const double m = x - 2.0 * FMath::FloorToDouble(x / 2.0);
-    return m <= 1.0 ? m : 2.0 - m;
+    outInWall.Reset();
+    outHalo.Reset();
+    outInWall.SetNumZeroed(layout.Lanes.Num());
+    outHalo.SetNumZeroed(layout.Lanes.Num());
+    AccumulateLaneSpawns(seed, counts, layout, 0, counts.Total(), outInWall, outHalo);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Moves a lane ship back and forth along its lane at its fixed speed
-double SOLNpcScale::LaneParamAt(const FSpawn& spawn, double nominalLaneLengthM, double timeS)
+// Adds one NPC index range's lane counts: only the lane and halo hashes, the same calls MakeSpawn makes
+void SOLNpcScale::AccumulateLaneSpawns(const uint32 seed, const FCounts& counts, const FLayout& layout,
+    const int32 beginNpcIndex, const int32 endNpcIndex, TArrayView<int32> inOutInWall, TArrayView<int32> inOutHalo)
 {
-    if (!FMath::IsFinite(nominalLaneLengthM) || !(nominalLaneLengthM > 0.0) || !FMath::IsFinite(timeS))
+    // Lane ships occupy the NPC indices [Battle, Battle + Lane) (ClassifyIndex)
+    const int32 laneBegin = FMath::Max3(beginNpcIndex, counts.Battle, 0);
+    const int32 laneEnd = FMath::Min3(endNpcIndex, counts.Battle + counts.Lane, counts.Total());
+    if (laneBegin >= laneEnd)
     {
-        return TriangleWave01(spawn.LaneStartParam);
-    }
-    return TriangleWave01(spawn.LaneStartParam + spawn.LaneDirection * spawn.LaneSpeedMps * timeS
-        / nominalLaneLengthM);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Builds a right-handed (U, V, axis) basis from a reference axis that is not near-parallel to the lane
-void SOLNpcScale::LaneBasis(const FVector3d& axis, FVector3d& outU, FVector3d& outV)
-{
-    const double length = axis.Size();
-    if (!FMath::IsFinite(length) || !(length > 0.0))
-    {
-        outU = FVector3d(1.0, 0.0, 0.0);
-        outV = FVector3d(0.0, 1.0, 0.0);
         return;
     }
-    const FVector3d a = axis / length;
-    const FVector3d reference = FMath::Abs(a.Z) < 0.9 ? FVector3d(0.0, 0.0, 1.0) : FVector3d(1.0, 0.0, 0.0);
-    outU = FVector3d::CrossProduct(reference, a).GetSafeNormal();
-    outV = FVector3d::CrossProduct(a, outU);
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Interpolates along the lane and adds the lateral offset in the lane's basis
-FVector3d SOLNpcScale::LanePositionM(const FVector3d& endpointAM, const FVector3d& endpointBM, double laneParam,
-    const FVector2d& lateralOffsetM)
-{
-    const FVector3d axis = endpointBM - endpointAM;
-    FVector3d u;
-    FVector3d v;
-    LaneBasis(axis, u, v);
-    return endpointAM + axis * laneParam + u * lateralOffsetM.X + v * lateralOffsetM.Y;
+    TArray<double, TInlineAllocator<32>> weights;
+    NpcLaneWeights(layout, weights);
+    for (int32 npcIndex = laneBegin; npcIndex < laneEnd; ++npcIndex)
+    {
+        const uint32 index = static_cast<uint32>(npcIndex);
+        const int32 lane = PickWeighted(HashUnit(seed, index, STREAM_GROUP), weights);
+        if (lane == INDEX_NONE)
+        {
+            continue;
+        }
+        TArrayView<int32>& tally = NpcLaneHalo(seed, index) ? inOutHalo : inOutInWall;
+        if (tally.IsValidIndex(lane))
+        {
+            ++tally[lane];
+        }
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -706,9 +698,6 @@ SOLNpcScale::FLayout SOLNpcScale::DefaultLayout()
         cluster.Weight = row.Weight;
         layout.Clusters.Add(cluster);
     }
-
-    layout.LaneMinSpeedMps = 2.0e4;
-    layout.LaneMaxSpeedMps = 1.5e5;
     return layout;
 }
 
