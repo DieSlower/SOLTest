@@ -1896,4 +1896,29 @@ bool FSOLGlossaryLaneTrafficReadoutTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryAutopilotLaneTagTest, "SOLTest.Glossary.AutopilotLaneTag",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 Part 50d (SDD 50 section 4.9, contract case 16), test-first: the AUTOPILOT / CHASE marker's lane tag is the
+// SOLMenuText token LANE, and the Autopilot marker entry explains it (the token as the HUD prints it and the word
+// lane), with no placeholder left
+bool FSOLGlossaryAutopilotLaneTagTest::RunTest(const FString& /*parameters*/)
+{
+    const FString tag = FString(SOLMenuText::AUTOPILOT_LANE_TAG).TrimStartAndEnd();
+    TestEqual(TEXT("the tag reads LANE"), tag, FString(TEXT("LANE")));
+    const int32 index = GlossaryTestFindEntry(TEXT("Autopilot marker"));
+    if (!TestTrue(TEXT("the Autopilot marker entry exists"), index != INDEX_NONE))
+    {
+        return false;
+    }
+    FString out;
+    SOLGlossary::FormatEntryText(SOLMenuText::GLOSSARY_ENTRIES[index].Description, SOLKeyBindings::DefaultKeys(), out);
+    TestTrue(FString::Printf(TEXT("'%s' names the %s tag"), *out, *tag), out.Contains(tag, ESearchCase::CaseSensitive));
+    TestTrue(FString::Printf(TEXT("'%s' says lane"), *out), out.Contains(TEXT("lane"), ESearchCase::CaseSensitive));
+    TestFalse(FString::Printf(TEXT("'%s' has no placeholder left"), *out), out.Contains(TEXT("{")));
+    return true;
+}
+
 #endif

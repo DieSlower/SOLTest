@@ -556,6 +556,10 @@ bool USOLInteractionSubsystem::Execute(const FSOLObjectRef& object, const ESOLAc
     case ESOLAction::MoveTo:
         bDone = bBody && Ships->EngageAutopilot(object.Index);
         break;
+    case ESOLAction::MoveToWarPower:
+        // The War power move (SDD 50 D22): this order only ignores the lane rules and flies at full thrust
+        bDone = bBody && Ships->EngageAutopilot(object.Index, true);
+        break;
     case ESOLAction::Follow:
         bDone = bBody && FollowBody(object.Index);
         break;

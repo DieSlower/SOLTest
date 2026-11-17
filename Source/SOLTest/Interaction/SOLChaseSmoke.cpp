@@ -136,6 +136,8 @@ namespace
             return TEXT("BRAKE COOL");
         case ESOLChaseActivity::Hold:
             return TEXT("HOLD");
+        case ESOLChaseActivity::Lane:
+            return TEXT("LANE");
         default:
             return TEXT("?");
         }

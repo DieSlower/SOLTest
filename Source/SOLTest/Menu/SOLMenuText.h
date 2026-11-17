@@ -214,7 +214,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* INTERACT_ACTION_LABELS[] =
     {
         TEXT("Target"), TEXT("Info"), TEXT("Move To"), TEXT("Follow / Orbit"), TEXT("Jump To"), TEXT("Match speed"),
-        TEXT("Attack"), TEXT("Chase Down"), TEXT("Communications"), TEXT("Trade"),
+        TEXT("Attack"), TEXT("Chase Down"), TEXT("Communications"), TEXT("Trade"), TEXT("War Power Move"),
     };
     inline constexpr const TCHAR* INTERACT_BLOCK_TEXTS[] =
     {
@@ -556,6 +556,7 @@ namespace SOLMenuText
                 "default controls. Rebind keys in Settings and the hints follow.") },
         { TEXT("Flight HUD"), TEXT(""), TEXT("AUTOPILOT > MARS"), TEXT("Autopilot marker"),
             TEXT("At the top centre while the autopilot flies you: its target, the time to arrive and the distance. "
+                "While it holds a traffic lane at the traffic speed the marker ends with LANE (a chase marker too). "
                 "Any thrust, roll, steering or stop spin of yours, or {ToggleAssist}, takes control back in assisted "
                 "flight at once. A key you were already holding counts only after you let it go.") },
         { TEXT("Flight HUD"), TEXT(""), TEXT("{ChaseBurstSample}|{ChaseCoolSample}|{ChaseBrakeSample}"),
@@ -810,7 +811,14 @@ namespace SOLMenuText
             "Boost ({Boost}) is a switch: it stays on until you press it again, black out, jump or respawn."),
         TEXT("The autopilot (AUTO) flies you to a body and hands back to assisted flight when it arrives. Any thrust, "
             "roll, mouse steering or stop spin of yours takes control back in assisted flight at once, as does "
-            "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go."),
+            "{ToggleAssist}; a key already held when the autopilot starts counts only after you let it go. With NPC "
+            "ships out (the Demo page) it follows the lane rules wherever its straight path runs along a traffic lane "
+            "for at least 20 lane radii inside the outer traffic (a path that only crosses a lane is flown as "
+            "usual): it slows to the traffic speed where it joins, on the right half of the lane, keeps to the right "
+            "and holds the traffic speed to the lane's end, turning over at the middle like the lane ships, then "
+            "flies on to its target. The trip is slower (Earth to Mars takes over two weeks, 16 days, instead of "
+            "about three) and the ETA counts it; the marker shows LANE while it holds the lane. A route and a Chase Down follow the same rules "
+            "(a chase holds the traffic speed without bursts)."),
         TEXT("Above the sustained G limit your body takes a G dose. The G meter on the HUD drains, faster the harder "
             "you pull, and refills below the limit. Manual flight warns when you pass the limit (assisted flight "
             "never does). As the meter runs low your vision narrows and grays out; when it empties you black out "
@@ -867,8 +875,10 @@ namespace SOLMenuText
             "{Fire} away from icons still fires. On the map, a right click on a body opens the same actions as a list. "
             "Target selects it; Info shows its card (top right) for ten seconds, a hologram card that draws in "
             "from its corners with a sound and fades away; Move To flies the autopilot there "
-            "and stops; Follow / Orbit keeps station at the autopilot's safe distance on your side until you take "
-            "control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
+            "and stops; War Power Move flies straight there with boost, ignoring the lane rules (it may cut through a "
+            "traffic lane), for that order only, in pulses of full thrust at about 6.8 G that let your G meter "
+            "recover in between, so you never grey out; Follow / Orbit keeps station at the autopilot's safe "
+            "distance on your side until you take control; Jump To jumps next to it; Match speed locks the reference frame to it; on a dropped target, "
             "Attack targets it and shows the fire hint. Greyed entries say why they are unavailable (Chase Down on a "
             "ship, Communications and Trade are not available yet). The menu is a hologram: its ring draws in and "
             "out in a fifth of a second, the highlighted action glows and flickers, and it plays a sound when it "
@@ -944,6 +954,11 @@ namespace SOLMenuText
     inline constexpr const TCHAR* DEMO_TITLE = TEXT("Scale demo");
     // HUD line under the AUTOPILOT marker (SDD 19 section 3.7): how to take control back from the autopilot
     inline constexpr const TCHAR* AUTOPILOT_CANCEL_HINT = TEXT("Thrust or steer to take control");
+    // The AUTOPILOT / CHASE marker's tag while the autopilot holds a traffic lane (SDD 50 section 4.9), after a gap
+    inline constexpr const TCHAR* AUTOPILOT_LANE_TAG_SEPARATOR = TEXT("   ");
+    inline constexpr const TCHAR* AUTOPILOT_LANE_TAG = TEXT("LANE");
+    // The AUTOPILOT marker's activity line while a War power order flies (SDD 50 D22)
+    inline constexpr const TCHAR* AUTOPILOT_WAR_POWER_ACTIVITY = TEXT("WAR POWER");
 
     // HUD chase marker (SDD 32 section 3.9): "CHASE > <name>  <distance>  closing <speed>  T <time>", the activity line
     // ("BURST 6.8 G", "COOL 1.5 G (resume at 45%)", "BRAKE 6.8 G", "BRAKE COOL 1.5 G", "HOLD"), the cancel hint and the
@@ -956,6 +971,7 @@ namespace SOLMenuText
     inline constexpr const TCHAR* CHASE_COOL = TEXT("COOL");
     inline constexpr const TCHAR* CHASE_BRAKE = TEXT("BRAKE");
     inline constexpr const TCHAR* CHASE_BRAKE_COOL = TEXT("BRAKE COOL");
+    inline constexpr const TCHAR* CHASE_LANE = TEXT("IN LANE");    // A lane step: the traffic speed, no bursts
     inline constexpr const TCHAR* CHASE_RESUME_LABEL = TEXT("resume at ");
     inline constexpr const TCHAR* CHASE_CANCEL_HINT = TEXT("Thrust, steer or Esc to stop chasing");
     inline constexpr const TCHAR* CHASE_ENDED_NOTE = TEXT("CHASE ENDED: target lost");

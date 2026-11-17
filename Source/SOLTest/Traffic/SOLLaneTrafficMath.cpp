@@ -21,6 +21,8 @@ namespace
                                                                    // mid-lane reaches it), so it adds this fraction
                                                                    // for rounding: the float rail's dv (about 6e-8
                                                                    // relative) and the evaluated positions
+    constexpr int32 TRAFFIC_LEAVE_MARCH_STEPS = 16;                // The ETA's leave arc: march samples...
+    constexpr int32 TRAFFIC_LEAVE_BISECT_STEPS = 12;               // ...then bisection steps
     constexpr double TRAFFIC_MAP_MIN_LEG_ZONES = 1.001;            // The metric map folds over for l <= Z, so a
                                                                    // shorter current leg reads as this many zones
 
@@ -962,4 +964,662 @@ FSOLLaneMergeReadout SOLLaneTraffic::MergeReadout(const TConstArrayView<FSOLLane
         readout.Lane = INDEX_NONE;
     }
     return readout;
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns +1 for an outbound direction sign (> 0), else -1
+    double TrafficDirection(const int32 directionSign)
+    {
+        return directionSign > 0 ? 1.0 : -1.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true when a lane view can be flown: a drivable profile on a valid frame
+    bool TrafficLaneUsable(const FSOLLaneMergeLane& lane)
+    {
+        return lane.Profile.bDrivable && lane.Frame.bValid && lane.Profile.WallRadiusM > 0.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the lane frame's velocity at a foot fraction, lerp(V_A, V_B, s)
+    FVector3d TrafficFrameVelocity(const FSOLLaneMergeLane& lane, const double footFraction)
+    {
+        return lane.AVelocityMps + (lane.BVelocityMps - lane.AVelocityMps) * footFraction;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the nominal arc u (from the departure ring of a direction) of a leg arc, through the metric map
+    double TrafficNominalArc(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const double legArcM,
+        const int32 directionSign)
+    {
+        const double l = frame.CurrentLegM;
+        const double x = FMath::Clamp(legArcM, 0.0, l);
+        return SOLLaneTraffic::MetricMapInverseM(directionSign > 0 ? x : l - x, profile.NominalLegM, l);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the mean-effort leg of a radius on a lane (the speed field's own profile)
+    FSOLLaneLeg TrafficMeanLeg(const FSOLLaneProfile& profile, const double rho)
+    {
+        return SOLLaneTraffic::MakeLegProfile(SOLLaneTraffic::RadialFactor(rho), SOL::NPC_LANE_EFFORT_MEAN,
+            profile.NominalLegM);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the traffic's acceleration along its travel at a leg arc: +Alpha while the mean leg accelerates, -Alpha
+    // while it brakes, 0 at its peak, times the map's slope (the map's curvature term is left out, SDD 50 section 4.12)
+    double TrafficAlongAccelMps2(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const double legArcM,
+        const double rho, const int32 directionSign)
+    {
+        const FSOLLaneLeg leg = TrafficMeanLeg(profile, rho);
+        if (!leg.bValid || !(leg.Alpha > 0.0) || !(leg.DvMps > 0.0))
+        {
+            return 0.0;
+        }
+        const double l0 = profile.NominalLegM;
+        const double u = TrafficNominalArc(profile, frame, legArcM, directionSign);
+        const double alpha = u < leg.AccelM ? leg.Alpha : (u > l0 - leg.AccelM ? -leg.Alpha : 0.0);
+        return alpha * SOLLaneTraffic::MetricMapSlope(u, l0, frame.CurrentLegM);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the time over a distance accelerating from the wall speed, (sqrt(w^2 + 2 a s) - w) / a without
+    // cancellation
+    double TrafficBurnTimeS(const double alpha, const double distanceM)
+    {
+        const double w = SOL::NPC_LANE_WALL_SPEED_MPS;
+        return 2.0 * distanceM / (FMath::Sqrt(w * w + 2.0 * alpha * distanceM) + w);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the time a leg takes from its departure ring to nominal arc u (closed form: accelerate, coast, brake)
+    double TrafficLegTimeToArcS(const FSOLLaneLeg& leg, const double l0, const double u)
+    {
+        const double arc = FMath::IsNaN(u) ? 0.0 : FMath::Clamp(u, 0.0, l0);
+        if (!leg.bValid || !(leg.PeakMps > 0.0))
+        {
+            return 0.0;
+        }
+        if (!(leg.Alpha > 0.0) || !(leg.DvMps > 0.0))
+        {
+            return arc / leg.PeakMps;
+        }
+        const double coastM = FMath::Max(0.0, l0 - 2.0 * leg.AccelM);
+        if (arc <= leg.AccelM)
+        {
+            return TrafficBurnTimeS(leg.Alpha, arc);
+        }
+        if (arc <= leg.AccelM + coastM)
+        {
+            return leg.AccelS + (arc - leg.AccelM) / leg.PeakMps;
+        }
+
+        // Braking: the whole leg minus the time left to the far ring (a mirrored burn)
+        return 2.0 * leg.AccelS + coastM / leg.PeakMps - TrafficBurnTimeS(leg.Alpha, FMath::Max(0.0, l0 - arc));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a target's leg arc on a lane, unclamped (beyond the end rings for a body at an end)
+    double TrafficTargetArcM(const FSOLLaneMergeLane& lane, const FVector3d& targetM)
+    {
+        return (targetM - lane.Frame.AM).Dot(lane.Frame.Axis) - lane.Profile.EndArcAM;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the leave arc: the nearer (first reached in the travel direction) of the exit arc and the target's own
+    // arc less the leave distance
+    double TrafficLeaveArcM(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const FVector3d& targetM,
+        const double leaveDistanceM)
+    {
+        const double d = TrafficDirection(leg.DirectionSign);
+        const double brakeArcM = TrafficTargetArcM(lane, targetM) - d * FMath::Min(leaveDistanceM, 1.0e300);
+        return d > 0.0 ? FMath::Min(leg.ExitArcM, brakeArcM) : FMath::Max(leg.ExitArcM, brakeArcM);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a ship on the track at a leg arc, at the traffic speed there, is at or past its leave arc
+    bool TrafficIsPastLeave(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const double arcM,
+        const FVector3d& targetM, const double brakeAccelMps2, const double flipS)
+    {
+        const double speedMps = SOLLaneTraffic::TrafficSpeedMps(lane.Profile, lane.Frame, arcM,
+            SOL::NPC_LANE_AUTO_TRACK_WALL_RADII, leg.DirectionSign);
+        const double leaveArcM = TrafficLeaveArcM(lane, leg, targetM, SOLLaneTraffic::LaneLeaveDistanceM(speedMps,
+            brakeAccelMps2, flipS));
+        return (arcM - leaveArcM) * TrafficDirection(leg.DirectionSign) >= 0.0;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the first arc from startArcM toward the exit where a ship holding the traffic speed leaves (the exit at
+    // the latest): a march of TRAFFIC_LEAVE_MARCH_STEPS samples, then a bisection of the first bracket
+    double TrafficFirstLeaveArcM(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const double startArcM,
+        const FVector3d& targetM, const double brakeAccelMps2, const double flipS)
+    {
+        const double exitM = leg.ExitArcM;
+        if ((exitM - startArcM) * TrafficDirection(leg.DirectionSign) <= 0.0
+            || TrafficIsPastLeave(lane, leg, startArcM, targetM, brakeAccelMps2, flipS))
+        {
+            return startArcM;
+        }
+        double beforeM = startArcM;
+        double afterM = exitM;
+        for (int32 step = 1; step <= TRAFFIC_LEAVE_MARCH_STEPS; ++step)
+        {
+            const double arcM = startArcM + (exitM - startArcM) * step / TRAFFIC_LEAVE_MARCH_STEPS;
+            if (TrafficIsPastLeave(lane, leg, arcM, targetM, brakeAccelMps2, flipS))
+            {
+                afterM = arcM;
+                break;
+            }
+            beforeM = arcM;
+        }
+        for (int32 step = 0; step < TRAFFIC_LEAVE_BISECT_STEPS; ++step)
+        {
+            const double midM = 0.5 * (beforeM + afterM);
+            (TrafficIsPastLeave(lane, leg, midM, targetM, brakeAccelMps2, flipS) ? afterM : beforeM) = midM;
+        }
+        return afterM;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a view's track leg: the precomputed one, else computed now
+    FSOLLaneLeg TrafficTrackLeg(const FSOLLaneMergeLane& lane)
+    {
+        return lane.TrackLeg.bValid ? lane.TrackLeg : TrafficMeanLeg(lane.Profile, SOL::NPC_LANE_AUTO_TRACK_WALL_RADII);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the point on the keep-right track at a leg arc for a direction
+    FVector3d TrafficTrackPointM(const FSOLLaneMergeLane& lane, const double legArcM, const int32 directionSign)
+    {
+        return lane.Frame.AM + lane.Frame.Axis * (lane.Profile.EndArcAM + legArcM)
+            + SOLLaneTraffic::LaneTrackOffsetM(lane.Profile, lane.Frame, directionSign);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the first lane the straight path runs along inside its halo for at least the minimum overlap
+FSOLLaneAutoLeg SOLLaneTraffic::FindLaneLeg(const TConstArrayView<FSOLLaneMergeLane> lanes, const FVector3d& shipM,
+    const FVector3d& targetM)
+{
+    FSOLLaneAutoLeg result;
+    if (!TrafficIsFinite(shipM) || !TrafficIsFinite(targetM) || shipM == targetM)
+    {
+        return result;
+    }
+    for (int32 index = 0; index < lanes.Num(); ++index)
+    {
+        const FSOLLaneMergeLane& lane = lanes[index];
+        if (!TrafficLaneUsable(lane))
+        {
+            continue;
+        }
+        const FSOLLaneProfile& profile = lane.Profile;
+        const FSOLLaneFrame& frame = lane.Frame;
+        const double l = frame.CurrentLegM;
+        const double haloM = profile.HaloOuterRadiusM;
+
+        // The path in lane coordinates: leg arc x(t) and the lateral offset r(t) on (Right, Up), t in [0, 1]
+        const FVector3d relShipM = shipM - frame.AM;
+        const FVector3d relTargetM = targetM - frame.AM;
+        const double x0 = relShipM.Dot(frame.Axis) - profile.EndArcAM;
+        const double x1 = relTargetM.Dot(frame.Axis) - profile.EndArcAM;
+        const FVector2d r0(relShipM.Dot(frame.Right), relShipM.Dot(frame.Up));
+        const FVector2d r1(relTargetM.Dot(frame.Right), relTargetM.Dot(frame.Up));
+        const double dx = x1 - x0;
+        const FVector2d dr = r1 - r0;
+
+        // Between the end rings
+        double legEnterT = 0.0;
+        double legLeaveT = 1.0;
+        if (dx == 0.0)
+        {
+            if (x0 < 0.0 || x0 > l)
+            {
+                continue;
+            }
+        }
+        else
+        {
+            const double ringAT = -x0 / dx;
+            const double ringBT = (l - x0) / dx;
+            legEnterT = FMath::Min(ringAT, ringBT);
+            legLeaveT = FMath::Max(ringAT, ringBT);
+        }
+
+        // Inside the halo: |r0 + t dr|^2 <= H^2, roots in the cancellation-free form
+        double haloEnterT = 0.0;
+        double haloLeaveT = 1.0;
+        const double a = dr.SizeSquared();
+        const double halfB = r0.Dot(dr);
+        const double c = r0.SizeSquared() - haloM * haloM;
+        if (a <= UE_DOUBLE_SMALL_NUMBER * haloM * haloM)
+        {
+            if (c > 0.0)
+            {
+                continue;
+            }
+        }
+        else
+        {
+            const double disc = halfB * halfB - a * c;
+            if (disc < 0.0)
+            {
+                continue;
+            }
+            const double q = -(halfB + (halfB >= 0.0 ? 1.0 : -1.0) * FMath::Sqrt(disc));
+            const double rootA = q / a;
+            const double rootB = q != 0.0 ? c / q : rootA;
+            haloEnterT = FMath::Min(rootA, rootB);
+            haloLeaveT = FMath::Max(rootA, rootB);
+        }
+
+        // The part inside both, its axis length against the minimum (D20: a crossing is left unchanged)
+        const double t0 = FMath::Max3(0.0, legEnterT, haloEnterT);
+        const double t1 = FMath::Min3(1.0, legLeaveT, haloLeaveT);
+        const double overlapM = FMath::Abs(dx) * (t1 - t0);
+        if (!(t1 > t0) || !(overlapM >= SOL::NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII * profile.WallRadiusM))
+        {
+            continue;
+        }
+
+        // Direction, entry (exactly the ring arc when a ring bounds it) and exit
+        result.bFound = true;
+        result.Lane = index;
+        result.DirectionSign = dx > 0.0 ? 1 : -1;
+        result.OverlapM = overlapM;
+        result.bStartsInside = x0 >= 0.0 && x0 <= l && r0.SizeSquared() <= haloM * haloM;
+        if (result.bStartsInside)
+        {
+            result.EntryArcM = x0;
+        }
+        else if (t0 == legEnterT)
+        {
+            result.EntryArcM = dx > 0.0 ? 0.0 : l;
+        }
+        else
+        {
+            result.EntryArcM = FMath::Clamp(x0 + t0 * dx, 0.0, l);
+        }
+        result.ExitArcM = FMath::Clamp(x1, 0.0, l);
+        result.BodyA = lane.BodyA;
+        result.BodyB = lane.BodyB;
+        result.bTargetInside = x1 >= 0.0 && x1 <= l && r1.SizeSquared() <= haloM * haloM;
+        return result;
+    }
+    return result;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a lane view of the end bodies' positions and velocities, with the track's mean leg precomputed
+FSOLLaneMergeLane SOLLaneTraffic::MakeMergeLane(const FSOLLaneProfile& profile, const int32 bodyA, const int32 bodyB,
+    const FVector3d& aM, const FVector3d& bM, const FVector3d& aVelocityMps, const FVector3d& bVelocityMps)
+{
+    FSOLLaneMergeLane lane;
+    lane.Profile = profile;
+    lane.Frame = MakeLaneFrame(profile, aM, bM);
+    lane.AVelocityMps = aVelocityMps;
+    lane.BVelocityMps = bVelocityMps;
+    lane.BodyA = bodyA;
+    lane.BodyB = bodyB;
+    lane.TrackLeg = TrafficMeanLeg(profile, SOL::NPC_LANE_AUTO_TRACK_WALL_RADII);
+    return lane;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether a lane may be searched: never for War power, only with nothing latched
+bool SOLLaneTraffic::IsLaneSearchAllowed(const ESOLLaneAutoMode latched, const bool bIgnoreLanes)
+{
+    return !bIgnoreLanes && latched == ESOLLaneAutoMode::None;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the keep-right track's lateral offset for a direction
+FVector3d SOLLaneTraffic::LaneTrackOffsetM(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const int32 directionSign)
+{
+    if (!frame.bValid || !profile.bDrivable)
+    {
+        return FVector3d::ZeroVector;
+    }
+    return frame.Right * (TrafficDirection(directionSign) * SOL::NPC_LANE_AUTO_TRACK_WALL_RADII * profile.WallRadiusM);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the merge point on the keep-right track at the entry arc with the traffic's velocity and acceleration
+FSOLLaneMergeTarget SOLLaneTraffic::LaneMergeTarget(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg)
+{
+    FSOLLaneMergeTarget merge;
+    if (!leg.bFound || !TrafficLaneUsable(lane))
+    {
+        return merge;
+    }
+    const double d = TrafficDirection(leg.DirectionSign);
+    const double rho = SOL::NPC_LANE_AUTO_TRACK_WALL_RADII;
+    merge.PositionM = TrafficTrackPointM(lane, leg.EntryArcM, leg.DirectionSign);
+    merge.TrafficSpeedMps = TrafficSpeedMps(lane.Profile, lane.Frame, leg.EntryArcM, rho, leg.DirectionSign);
+    const FSOLLanePoint point = LanePointOf(lane.Profile, lane.Frame, merge.PositionM);
+    merge.VelocityMps = TrafficFrameVelocity(lane, point.FootFraction) + lane.Frame.Axis * (d * merge.TrafficSpeedMps);
+    merge.AccelMps2 = lane.Frame.Axis * (d * TrafficAlongAccelMps2(lane.Profile, lane.Frame, leg.EntryArcM, rho,
+        leg.DirectionSign));
+    merge.bValid = point.bValid && TrafficIsFinite(merge.VelocityMps) && TrafficIsFinite(merge.AccelMps2);
+    return merge;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the ship flies in the halo near the track's radius at the track's traffic speed
+bool SOLLaneTraffic::IsLaneMerged(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const FVector3d& shipM,
+    const FVector3d& shipVelocityMps)
+{
+    if (!leg.bFound || !TrafficLaneUsable(lane) || !TrafficIsFinite(shipVelocityMps))
+    {
+        return false;
+    }
+    const FSOLLanePoint point = LanePointOf(lane.Profile, lane.Frame, shipM);
+    if (!point.bInHalo
+        || FMath::Abs(point.Rho - SOL::NPC_LANE_AUTO_TRACK_WALL_RADII) > SOL::NPC_LANE_AUTO_HOLD_RADIUS_WALL_RADII)
+    {
+        return false;
+    }
+    const double trafficMps = TrafficSpeedMps(lane.Profile, lane.Frame, point.LegArcM,
+        SOL::NPC_LANE_AUTO_TRACK_WALL_RADII, leg.DirectionSign);
+    const double alongMps = (shipVelocityMps - TrafficFrameVelocity(lane, point.FootFraction)).Dot(lane.Frame.Axis)
+        * TrafficDirection(leg.DirectionSign);
+    return trafficMps > 0.0 && FMath::Abs(alongMps - trafficMps) <= SOL::NPC_LANE_AUTO_HOLD_SPEED_FRACTION * trafficMps;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the AUTO lane mode: Left stays, leave at the leave arc, hold inside (or merged), else approach
+ESOLLaneAutoMode SOLLaneTraffic::LaneAutoModeAt(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg,
+    const FVector3d& shipM, const FVector3d& shipVelocityMps, const FVector3d& targetM,
+    const FVector3d& targetVelocityMps, const double brakeAccelMps2, const double flipS,
+    const ESOLLaneAutoMode previous)
+{
+    if (previous == ESOLLaneAutoMode::Left)
+    {
+        return ESOLLaneAutoMode::Left;
+    }
+    if (!leg.bFound || !TrafficLaneUsable(lane))
+    {
+        return ESOLLaneAutoMode::None;
+    }
+    const FSOLLanePoint point = LanePointOf(lane.Profile, lane.Frame, shipM);
+    if (!point.bValid)
+    {
+        return ESOLLaneAutoMode::None;
+    }
+    const double leaveDistanceM = LaneLeaveDistanceM((shipVelocityMps - targetVelocityMps).Size(), brakeAccelMps2,
+        flipS);
+    if ((point.LegArcM - TrafficLeaveArcM(lane, leg, targetM, leaveDistanceM)) * TrafficDirection(leg.DirectionSign)
+        >= 0.0)
+    {
+        return ESOLLaneAutoMode::Left;
+    }
+    if ((previous == ESOLLaneAutoMode::None && leg.bStartsInside)
+        || (previous == ESOLLaneAutoMode::Hold && point.bInHalo) || IsLaneMerged(lane, leg, shipM, shipVelocityMps))
+    {
+        return ESOLLaneAutoMode::Hold;
+    }
+    return ESOLLaneAutoMode::Approach;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the marker shows its LANE tag
+bool SOLLaneTraffic::IsLaneMarkerShown(const ESOLLaneAutoMode mode)
+{
+    return mode == ESOLLaneAutoMode::Hold;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the hold guidance on the keep-right track at the traffic speed
+FSOLGuidanceOutput SOLLaneTraffic::LaneHoldGuidance(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg,
+    const FVector3d& shipM, const FVector3d& shipVelocityMps, const FVector3d& targetM,
+    const FVector3d& gravityAccelMps2, const double velocityGainPerS)
+{
+    FSOLGuidanceOutput out;
+    const FSOLLanePoint point = LanePointOf(lane.Profile, lane.Frame, shipM);
+    if (!leg.bFound || !TrafficLaneUsable(lane) || !point.bValid || !TrafficIsFinite(shipVelocityMps)
+        || !TrafficIsFinite(gravityAccelMps2) || !TrafficIsFinite(targetM))
+    {
+        return out;
+    }
+    const FSOLLaneFrame& frame = lane.Frame;
+    const FVector3d travel = frame.Axis * TrafficDirection(leg.DirectionSign);
+    const double rho = SOL::NPC_LANE_AUTO_TRACK_WALL_RADII;
+    const double trafficMps = TrafficSpeedMps(lane.Profile, frame, point.LegArcM, rho, leg.DirectionSign);
+    const FVector3d frameVelocityMps = TrafficFrameVelocity(lane, point.FootFraction);
+
+    // Lateral pull toward the track (perpendicular to the axis), capped
+    const FVector3d lateralM = frame.Right * point.RightOffsetM + frame.Up * point.UpOffsetM;
+    FVector3d pullMps = (LaneTrackOffsetM(lane.Profile, frame, leg.DirectionSign) - lateralM)
+        * SOL::NPC_LANE_AUTO_LATERAL_GAIN_PER_S;
+    const double pullSize = pullMps.Size();
+    if (pullSize > SOL::NPC_LANE_AUTO_LATERAL_MAX_MPS)
+    {
+        pullMps *= SOL::NPC_LANE_AUTO_LATERAL_MAX_MPS / pullSize;
+    }
+
+    // Toward the desired velocity at the guidance gain, plus the traffic's own acceleration
+    const FVector3d desiredMps = frameVelocityMps + travel * trafficMps + pullMps;
+    const double gain = FMath::IsFinite(velocityGainPerS) ? FMath::Max(velocityGainPerS, 0.0) : 0.0;
+    out.DesiredNetAccelMps2 = (desiredMps - shipVelocityMps) * gain
+        + travel * TrafficAlongAccelMps2(lane.Profile, frame, point.LegArcM, rho, leg.DirectionSign);
+    out.DesiredThrustAccelMps2 = out.DesiredNetAccelMps2 - gravityAccelMps2;
+
+    // Nose along travel before the leg's midpoint, against it from there (D21); the phase from the mean leg
+    const double l0 = lane.Profile.NominalLegM;
+    const double u = TrafficNominalArc(lane.Profile, frame, point.LegArcM, leg.DirectionSign);
+    out.DesiredForward = u < 0.5 * l0 ? travel : -travel;
+    const FSOLLaneLeg mean = TrafficTrackLeg(lane);
+    out.Phase = u < mean.AccelM ? ESOLGuidancePhase::Accelerate
+        : (u > l0 - mean.AccelM ? ESOLGuidancePhase::Brake : ESOLGuidancePhase::Cruise);
+    out.SpeedLimitMps = trafficMps;
+    out.DistanceM = (targetM - shipM).Size();
+    out.ClosingSpeedMps = (shipVelocityMps - frameVelocityMps).Dot(travel);
+    return out;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the time between two leg arcs at the traffic speed of a radius (closed form on the nominal arcs)
+double SOLLaneTraffic::LaneLegTimeS(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const double fromArcM,
+    const double toArcM, const double rho, const int32 directionSign)
+{
+    if (!frame.bValid || !profile.bDrivable || FMath::IsNaN(fromArcM) || FMath::IsNaN(toArcM) || FMath::IsNaN(rho))
+    {
+        return 0.0;
+    }
+    const double l = frame.CurrentLegM;
+    const double fromM = FMath::Clamp(fromArcM, 0.0, l);
+    const double toM = FMath::Clamp(toArcM, 0.0, l);
+    if (fromM == toM)
+    {
+        return 0.0;
+    }
+
+    // dt = dx / (vbar(u) X'(u)) and dx = X'(u) du, so the time is the mean leg's between the two nominal arcs
+    const FSOLLaneLeg leg = TrafficMeanLeg(profile, rho);
+    const double l0 = profile.NominalLegM;
+    return FMath::Abs(TrafficLegTimeToArcS(leg, l0, TrafficNominalArc(profile, frame, toM, directionSign))
+        - TrafficLegTimeToArcS(leg, l0, TrafficNominalArc(profile, frame, fromM, directionSign)));
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the AUTO ETA with the lane: approach, the lane part on the track, leave
+double SOLLaneTraffic::LaneAutoEtaS(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const FVector3d& shipM,
+    const FVector3d& targetM, const double accelMps2, const double flipS)
+{
+    if (!leg.bFound || !TrafficLaneUsable(lane) || !TrafficIsFinite(targetM))
+    {
+        return 0.0;
+    }
+    const FSOLLanePoint point = LanePointOf(lane.Profile, lane.Frame, shipM);
+    if (!point.bValid)
+    {
+        return 0.0;
+    }
+    const double d = TrafficDirection(leg.DirectionSign);
+    const double rho = SOL::NPC_LANE_AUTO_TRACK_WALL_RADII;
+
+    // The approach (none inside the halo), then the lane part from where the ship joins to the exit
+    double approachS = 0.0;
+    double startArcM = FMath::Clamp(point.LegArcM, 0.0, lane.Frame.CurrentLegM);
+    if (!point.bInHalo)
+    {
+        const FSOLLaneMergeTarget merge = LaneMergeTarget(lane, leg);
+        approachS = SOLNewtonian::EstimateTimeToArrivalS((merge.PositionM - shipM).Size(), 0.0, accelMps2, accelMps2,
+            flipS, SOL::MAX_SPEED_CAP_MPS);
+        startArcM = leg.EntryArcM;
+    }
+
+    // The leave arc: the first arc from where the ship joins at which the remaining distance falls within the leave
+    // distance of the traffic speed there (as LaneAutoModeAt decides it in flight): a march, then a bisection
+    const double leaveArcM = TrafficFirstLeaveArcM(lane, leg, startArcM, targetM, accelMps2, flipS);
+    const double laneS = LaneLegTimeS(lane.Profile, lane.Frame, startArcM, leaveArcM, rho, leg.DirectionSign);
+
+    // The leave: from the track at the leave arc to the target, closing at the traffic speed there (it brakes)
+    const FVector3d exitM = TrafficTrackPointM(lane, leaveArcM, leg.DirectionSign);
+    const FVector3d toTargetM = targetM - exitM;
+    const double leaveM = toTargetM.Size();
+    const double closingMps = leaveM > 0.0 ? FMath::Max(0.0, lane.Frame.Axis.Dot(toTargetM / leaveM) * d)
+        * TrafficSpeedMps(lane.Profile, lane.Frame, leaveArcM, rho, leg.DirectionSign) : 0.0;
+    const double leaveS = SOLNewtonian::EstimateTimeToArrivalS(leaveM, closingMps, accelMps2, accelMps2, flipS,
+        SOL::MAX_SPEED_CAP_MPS);
+    const double totalS = approachS + laneS + leaveS;
+    return FMath::IsFinite(totalS) && totalS < TNumericLimits<double>::Max() ? totalS : 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the approach's step target: the merge point when valid, else the order's own target
+FSOLLaneStepTarget SOLLaneTraffic::LaneApproachStepTarget(const FSOLLaneMergeTarget& merge,
+    const FVector3d& orderTargetM, const FVector3d& orderTargetVelocityMps, const FVector3d& orderTargetAccelMps2)
+{
+    FSOLLaneStepTarget target;
+    target.PositionM = merge.bValid ? merge.PositionM : orderTargetM;
+    target.VelocityMps = merge.bValid ? merge.VelocityMps : orderTargetVelocityMps;
+    target.AccelMps2 = merge.bValid ? merge.AccelMps2 : orderTargetAccelMps2;
+    return target;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the leave distance: the braking distance plus its margin, DBL_MAX for a bad brake or input
+double SOLLaneTraffic::LaneLeaveDistanceM(const double relativeSpeedMps, const double brakeAccelMps2,
+    const double flipS)
+{
+    if (!FMath::IsFinite(relativeSpeedMps) || !FMath::IsFinite(brakeAccelMps2) || !(brakeAccelMps2 > 0.0)
+        || !FMath::IsFinite(flipS))
+    {
+        return TNumericLimits<double>::Max();
+    }
+    const double stopM = SOLNewtonian::StoppingDistanceM(FMath::Abs(relativeSpeedMps), brakeAccelMps2,
+        FMath::Max(flipS, 0.0));
+    return stopM * (1.0 + SOL::NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION) + SOL::NPC_LANE_AUTO_LEAVE_MARGIN_M;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the re-check of a latched leg: its lane still the same (else Stale), its target and approach still on it
+ESOLLaneLatchCheck SOLLaneTraffic::CheckLaneLatch(const TConstArrayView<FSOLLaneMergeLane> lanes,
+    const FSOLLaneAutoLeg& leg, const ESOLLaneAutoMode mode, const FVector3d& shipM, const FVector3d& targetM)
+{
+    if (mode != ESOLLaneAutoMode::Approach && mode != ESOLLaneAutoMode::Hold)
+    {
+        return ESOLLaneLatchCheck::Keep;
+    }
+    if (!lanes.IsValidIndex(leg.Lane))
+    {
+        return ESOLLaneLatchCheck::Stale;
+    }
+    const FSOLLaneMergeLane& lane = lanes[leg.Lane];
+    if (lane.BodyA != leg.BodyA || lane.BodyB != leg.BodyB || !TrafficLaneUsable(lane))
+    {
+        return ESOLLaneLatchCheck::Stale;
+    }
+    if (leg.bTargetInside && !LanePointOf(lane.Profile, lane.Frame, targetM).bInHalo)
+    {
+        return ESOLLaneLatchCheck::Release;
+    }
+    if (mode == ESOLLaneAutoMode::Approach && !FindLaneLeg(TConstArrayView<FSOLLaneMergeLane>(&lane, 1), shipM,
+        targetM).bFound)
+    {
+        return ESOLLaneLatchCheck::Release;
+    }
+    return ESOLLaneLatchCheck::Keep;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns one substep's lane decision: re-check, search, mode and step target
+FSOLLaneAutoDecision SOLLaneTraffic::LaneAutoDecide(const TConstArrayView<FSOLLaneMergeLane> lanes,
+    const FSOLLaneAutoLeg& latchedLeg, const ESOLLaneAutoMode latchedMode, const FSOLLaneAutoInput& input)
+{
+    FSOLLaneAutoDecision decision;
+    decision.StepTarget.PositionM = input.TargetM;
+    decision.StepTarget.VelocityMps = input.TargetVelocityMps;
+    decision.StepTarget.AccelMps2 = input.TargetAccelMps2;
+    if (input.bIgnoreLanes)
+    {
+        return decision;
+    }
+
+    // The latch re-check: a stale leg is dropped (searched again below), a released one leaves the lane
+    FSOLLaneAutoLeg leg = latchedLeg;
+    ESOLLaneAutoMode mode = latchedMode;
+    const ESOLLaneLatchCheck check = CheckLaneLatch(lanes, leg, mode, input.ShipM, input.TargetM);
+    if (check == ESOLLaneLatchCheck::Stale)
+    {
+        leg = FSOLLaneAutoLeg();
+        mode = ESOLLaneAutoMode::None;
+    }
+    else if (check == ESOLLaneLatchCheck::Release)
+    {
+        mode = ESOLLaneAutoMode::Left;
+    }
+
+    // Nothing latched: a search when allowed (the first substep of a frame), else nothing
+    if (mode == ESOLLaneAutoMode::None)
+    {
+        leg = input.bSearch && IsLaneSearchAllowed(mode, false) ? FindLaneLeg(lanes, input.ShipM, input.TargetM)
+            : FSOLLaneAutoLeg();
+    }
+
+    // The exit follows the target on the current leg (the lane's length drifts with its bodies), then the mode
+    const FSOLLaneMergeLane* const lane = leg.bFound && lanes.IsValidIndex(leg.Lane) ? &lanes[leg.Lane] : nullptr;
+    if (lane != nullptr && lane->Frame.bValid && mode != ESOLLaneAutoMode::Left)
+    {
+        const double legM = lane->Frame.CurrentLegM;
+        leg.ExitArcM = FMath::Clamp(TrafficTargetArcM(*lane, input.TargetM), 0.0, legM);
+        leg.EntryArcM = FMath::Clamp(leg.EntryArcM, 0.0, legM);
+    }
+    decision.Mode = mode == ESOLLaneAutoMode::Left ? ESOLLaneAutoMode::Left : lane == nullptr
+        ? ESOLLaneAutoMode::None : LaneAutoModeAt(*lane, leg, input.ShipM, input.ShipVelocityMps, input.TargetM,
+        input.TargetVelocityMps, input.BrakeAccelMps2, input.FlipS, mode);
+    decision.Leg = leg;
+    if (decision.Mode == ESOLLaneAutoMode::Approach && lane != nullptr)
+    {
+        decision.StepTarget = LaneApproachStepTarget(LaneMergeTarget(*lane, leg), input.TargetM,
+            input.TargetVelocityMps, input.TargetAccelMps2);
+    }
+    return decision;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the HUD ETA: the lane ETA in a lane step when usable, else the guidance's
+double SOLLaneTraffic::LaneOrderEtaS(const ESOLLaneAutoMode mode, const double laneEtaS, const double guidanceEtaS)
+{
+    const bool bLaneStep = mode == ESOLLaneAutoMode::Approach || mode == ESOLLaneAutoMode::Hold;
+    return bLaneStep && FMath::IsFinite(laneEtaS) && laneEtaS > 0.0 ? laneEtaS : guidanceEtaS;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the closing speed toward a target
+double SOLLaneTraffic::LaneClosingSpeedMps(const FVector3d& shipM, const FVector3d& shipVelocityMps,
+    const FVector3d& targetM, const FVector3d& targetVelocityMps)
+{
+    const FVector3d toTargetM = targetM - shipM;
+    const double distanceM = toTargetM.Size();
+    if (!TrafficIsFinite(toTargetM) || !TrafficIsFinite(shipVelocityMps) || !TrafficIsFinite(targetVelocityMps)
+        || !(distanceM > 0.0) || !FMath::IsFinite(distanceM))
+    {
+        return 0.0;
+    }
+    return (shipVelocityMps - targetVelocityMps).Dot(toTargetM / distanceM);
 }

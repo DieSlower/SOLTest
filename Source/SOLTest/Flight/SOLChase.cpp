@@ -854,3 +854,10 @@ FVector3d SOLChase::EstimateTargetAccelMps2(const FVector3d& prevVelocityMps, co
     const double size = estimate.Size();
     return FMath::IsFinite(capMps2) && capMps2 >= 0.0 && size > capMps2 ? estimate * (capMps2 / size) : estimate;
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the activity the chase marker shows: Lane in a lane step, else the activity
+ESOLChaseActivity SOLChase::DisplayedChaseActivity(const ESOLChaseActivity activity, const bool bLaneStep)
+{
+    return bLaneStep ? ESOLChaseActivity::Lane : activity;
+}

@@ -337,6 +337,103 @@ FSOLShipState SOLFlight::ChaseStep(const FSOLShipState& state, const FVector3d& 
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Advances the ship by dt flying a lane hold guidance at the pilot's autopilot limit
+FSOLShipState SOLFlight::LaneHoldStep(const FSOLShipState& state, const FSOLGuidanceOutput& guidance,
+    const FVector3d& gravityAccelMps2, const FSOLFlightParams& params, const FSOLGMeterState& meter, const double dt,
+    FSOLFlightStepOutput* outStep)
+{
+    if (outStep != nullptr)
+    {
+        *outStep = FSOLFlightStepOutput();
+    }
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return state;
+    }
+    return FlyGuidance(state, guidance, SOLNewtonian::AutopilotAccelLimitMps2(params.PilotLimits, meter),
+        params.Envelope, false, gravityAccelMps2, dt, outStep);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the War power move's maximum thrust: the full forward fraction through the envelope
+double SOLFlight::WarPowerAccelLimitMps2(const FSOLThrustEnvelope& env, const bool bBoost)
+{
+    return SOLNewtonian::LocalThrustAccelMps2(FVector3d(1.0, 0.0, 0.0), env, bBoost).X;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns this substep's War power acceleration and advances the pulse phase (band hysteresis)
+double SOLFlight::WarPowerPulseAccelMps2(const FSOLThrustEnvelope& env, const FSOLPilotGLimits& limits,
+    const FSOLGMeterState& meter, const bool bBoost, const double dt, FSOLWarPowerPulseState& inOutPulse,
+    const double pulseG)
+{
+    if (!inOutPulse.bRecovering && (meter.bBlackout || meter.Meter <= SOL::WAR_POWER_BAND_LOW_METER))
+    {
+        inOutPulse.bRecovering = true;
+    }
+    else if (inOutPulse.bRecovering && !meter.bBlackout && meter.Meter >= SOL::WAR_POWER_BAND_HIGH_METER)
+    {
+        inOutPulse.bRecovering = false;
+    }
+    const double g0 = SOLNewtonian::STANDARD_GRAVITY_MPS2;
+    const double fullMps2 = WarPowerAccelLimitMps2(env, bBoost);
+    if (inOutPulse.bRecovering)
+    {
+        return FMath::Min(limits.SustainedG * g0, fullMps2);
+    }
+    const double safeG = SOLChase::MaxSafeGForStep(meter, SOL::WAR_POWER_BAND_LOW_METER, limits, dt);
+    return FMath::Min3(pulseG * g0, fullMps2, safeG * g0);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the War power budgets: accelerate up to the step limit, brake on the normal autopilot's plan
+FSOLGuidanceParams SOLFlight::MakeWarPowerPulseGuidanceParams(const FSOLThrustEnvelope& env,
+    const FSOLPilotGLimits& limits, const FSOLGMeterState& meter, const double gravityMps2, const bool bBoost,
+    const double stepLimitMps2)
+{
+    FSOLGuidanceParams params = SOLNewtonian::MakeGuidanceParams(env, stepLimitMps2, gravityMps2, true, bBoost);
+    params.PlanAccelMps2 = FMath::Max(params.PlanAccelMps2, stepLimitMps2);
+    params.BrakeAccelMps2 = SOLNewtonian::MakeGuidanceParams(env, SOLNewtonian::AutopilotAccelLimitMps2(limits, meter),
+        gravityMps2, true, false).BrakeAccelMps2;
+    return params;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Advances the ship by dt under the War power move at this substep's pulse limit
+FSOLShipState SOLFlight::WarPowerPulseAutopilotStep(const FSOLShipState& state, const FVector3d& targetPositionM,
+    const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
+    const FSOLFlightParams& params, const FSOLGMeterState& meter, const bool bBoost, const double dt,
+    FSOLWarPowerPulseState& inOutPulse, FSOLFlightStepOutput* outStep, FSOLGuidanceOutput* outGuidance,
+    const double targetGravityMps2)
+{
+    if (outStep != nullptr)
+    {
+        *outStep = FSOLFlightStepOutput();
+    }
+    if (outGuidance != nullptr)
+    {
+        *outGuidance = FSOLGuidanceOutput();
+    }
+    if (!FMath::IsFinite(dt) || dt <= 0.0)
+    {
+        return state;
+    }
+    const FSOLThrustEnvelope& env = params.Envelope;
+    const double planGravityMps2 = FMath::Max(gravityAccelMps2.Size(),
+        FMath::IsFinite(targetGravityMps2) ? targetGravityMps2 : 0.0);
+    const double limitMps2 = WarPowerPulseAccelMps2(env, params.PilotLimits, meter, bBoost, dt, inOutPulse);
+    const FSOLGuidanceParams guidanceParams = MakeWarPowerPulseGuidanceParams(env, params.PilotLimits, meter,
+        planGravityMps2, bBoost, limitMps2);
+    const FSOLGuidanceOutput guidance = SOLNewtonian::ComputeRendezvousGuidance(targetPositionM - state.PositionM,
+        state.VelocityMps - targetVelocityMps, targetAccelMps2, gravityAccelMps2, guidanceParams, dt);
+    if (outGuidance != nullptr)
+    {
+        *outGuidance = guidance;
+    }
+    return FlyGuidance(state, guidance, limitMps2, env, bBoost, gravityAccelMps2, dt, outStep);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns the autopilot's arrival distance from a body's centre: the geometric standoff, moved out until the body's
 // gravity there is at most AUTOPILOT_GRAVITY_STANDOFF_FRACTION of the autopilot limit (so the arrival can be held)
 double SOLFlight::AutopilotStandoffM(const double bodyRadiusM, const double bodyGM, const double accelLimitMps2)

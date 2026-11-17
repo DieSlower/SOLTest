@@ -11,8 +11,8 @@ event bus).
 (D11). No setting, no key binding, no `UPROPERTY` of a save class changes. If the work shows that one is needed, stop
 and report (section 12).
 Status: **draft (2026-11-13), grill-me done (D1-D12), questions Q1-Q8 answered by the user (2026-11-13, D13-D20),
-amended for the hull flip before braking (D21, section 14), one open question left (Q9, section 12).** No code is
-written before Q9 is answered (it only affects part 50d).
+amended for the hull flip before braking (D21, section 14), Q9 answered by the user (2026-11-17, D22), no open
+question left.** Part 50d may start.
 
 ## 1. Problem
 
@@ -100,10 +100,24 @@ the lane.
   fallback line. The fallback line is only for when no label of the readout's lane is placed, or when the grown label
   fits nowhere.
 - **D19: AUTO obeys lane traffic rules by default, with an override** (user, Q7, changed from the recommendation): the
-  autopilot follows the lane profile (accepting the slower trip, Earth - Mars about 9 days at 1x instead of about 2.9).
+  autopilot follows the lane profile (accepting the slower trip, Earth - Mars about 16 days at 1x as built, see the trip time note in 4.9, instead of about 2.9).
   **But** it can fly around lanes, or ignore the safe space, when the player tells it to. How the player tells it is
-  **open question Q9** (not chosen here). Whatever the mechanism, it is not saved (D11) unless the user approves a
-  setting.
+  **D22** (Q9, answered 2026-11-17): the "War power move" entry of the round command menu. Not saved (D11).
+- **D22: The lane-rule override is the "War power move" entry of the round (radial) command menu** (user, Q9,
+  2026-11-17). When the player tells the ship to move (the Move To entry), the menu has an extra option; its final
+  label is the implementer's choice, short, in `SOLMenuText` (working name "War power move"). Chosen, it (1) makes that
+  single autopilot move ignore the lane rules: the plain straight direct path, no slowing to local traffic speed at the
+  lane entry, no lane entered and no side kept, no steering around the halo, and the path may cross the halo and the
+  wall (the dangerous option), and (2) flies at maximum thrust, 100 % effort (no comfort cap, no slowing for
+  traffic). "Around" therefore means a straight line that ignores lane space, not steering around the halo. It is **per
+  command only**: each normal AUTO move, route and chase obeys the lane rules by default (D19), nothing is sticky,
+  nothing is saved, no schema change (`SAVE_VERSION` 13 and `KEY_BINDING_LAYOUT_VERSION` 10 stay, D11). No saved
+  setting. A console flag may exist as a debug aid only, if cheap (optional, not a player feature).
+  *Amended 2026-11-17 (50d review-fix round 2, user decisions):* the move is a **pulsed** burn, not burst then hold:
+  pulses at `WAR_POWER_PULSE_G` 6.80 G until the meter reaches 0.4, then recovery at the sustained 1.5 G up to 0.6, hard
+  floor 0.3, boost always on (section 4.9.1). Move To and War Power Move never block each other or themselves (the
+  "Already flying there" block rule is removed): a new order replaces the running one, and Move To on the body
+  already flown to is enabled. A lane AUTO order that stops inside a lane ends in the new mode `Left` (section 4.9).
 - **D20: AUTO paths count as using a lane only when they run inside the halo for 20 or more wall radii along the
   lane** (user, Q8): a path that only crosses a lane is left unchanged.
 - **D21: The hull flip finishes before braking starts** (user, 2026-11-13, refines D17). Every leg that burns has a
@@ -616,7 +630,7 @@ Pure function `SOLLaneTraffic::MergeReadout(...)` on the UI side (no `UI -> Npc`
 
 Applies to the three AUTO kinds (body autopilot, route waypoint, Chase Down), only while a population with lanes
 exists; independent of the Lanes overlay row (a display setting never changes flight). Pure functions in
-`Traffic/SOLLaneTrafficMath` (`FindLaneLeg`, `LaneMergeTarget`, `LaneHoldGuidance`), called from
+`Traffic/SOLLaneTrafficMath` (`FindLaneLeg`, `LaneAutoDecide`, `CheckLaneLatch`, `LaneMergeTarget`, `LaneHoldGuidance`), called from
 `USOLShipFlightProcessor`:
 
 1. **Per frame (not per substep):** `FindLaneLeg(shipM, targetM, lanes)` tests the straight path ship -> current AUTO
@@ -639,17 +653,103 @@ exists; independent of the Lanes overlay row (a display setting never changes fl
    mean profile), `-d` from it (D21: the ship turns in the first half of the flip window; the mean profile's brake
    starts `T_f / 2` = 30 s after the midpoint on an uncapped leg, days later on a capped one); `Phase` from the profile (Accelerate / Cruise / Brake); `SpeedLimitMps` =
    `v_t`; `DistanceM` to the AUTO target. `FlyGuidance` and the G meter run as today.
-4. **Leave:** at the exit arc the normal AUTO step to the real target resumes (for a body at the lane end the ship is
+4. **Leave:** at the leave arc the normal AUTO step to the real target resumes (for a body at the lane end the ship is
    at the wall speed relative to that body at the end ring, and the autopilot brakes to its standoff point as usual).
+   *Amended in 50d round 2:* the leave arc is the nearer of the exit arc and the target's own leg arc minus
+   `LaneLeaveDistanceM`, so a stop inside a lane (a route stop, a body at the lane end) leaves early enough to brake.
    A ship already inside the halo when AUTO engages skips the approach. Chase Down holds at the sustained limit inside
    a lane (no bursts).
 
-**Behaviour changes (complete list):** AUTO paths along a lane follow its profile (slower: Earth - Mars about 9 days at
-1x instead of about 2.9, D19); AUTO ships move to the right half before merging and fly a right-hand track; AUTO ships
+*As built (50d, as amended by review-fix round 2):* the flight processor builds the lane views (ecliptic) from the
+frame-START bodies (substep boundary 0, the same on both substep grids) with `SOLLaneTraffic::MakeMergeLane` (profile,
+frame, velocities, end bodies, the precomputed track mean leg `TrackLeg`), and classifies ship and target at the frame
+start. Lane views are built only while an AUTO order flies (the ship subsystem passes no lane table otherwise). Per
+entity it keeps the latched leg (`FSOLShipStateFragment::LaneLeg` and `LaneMode`, reset on every order write) with the
+lane's `BodyA` / `BodyB` and `bTargetInside`. The latched lane's view is rebuilt at each substep's bodies, and
+`CheckLaneLatch` re-validates the leg every substep: Stale (index gone, other body pair, bad lane: dropped, searched
+again on the next search), Release (a target that was inside left the halo, or in Approach the path no longer runs 20
+wall radii inside: mode `Left`), Keep. With no leg latched the search (`FindLaneLeg` for the straight path ship ->
+order target, a leg needs 20 wall radii still ahead, D20) runs only on a frame's first substep
+(`IsLaneSearchAllowed`, about 8 lanes with a few dot products each, no separate no-leg cache). The per-substep
+decision is the pure `SOLLaneTraffic::LaneAutoDecide`. `FindAutoLaneLeg` was removed. The leave arc is re-evaluated
+each substep: the nearer of the exit arc (the target's arc clamped to the current leg, because the lane length
+drifts with its bodies, D16) and the target's own leg arc minus `SOLLaneTraffic::LaneLeaveDistanceM(|v_ship -
+v_target|, brake, flip)` = `StoppingDistanceM` at the normal autopilot brake plan (about 1.35 G with its flip) x (1 +
+`NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION` 0.25) + `NPC_LANE_AUTO_LEAVE_MARGIN_M` 1e6 m (contract cap: at most 0.5 x the
+braking distance + 1e8 m). Reaching it sets the new final mode `ESOLLaneAutoMode::Left` (appended to the enum, no lane
+is searched again until the next order) and the normal AUTO step stops at the target. A fresh leg already inside that
+range never engages. Mid-lane exit bug fixed: before this a stop inside a lane left at the target's arc at full
+traffic speed, overshot by about v^2 / 2a (about 3e9 m on Earth - Mars) and re-entered forever. For a body at the lane
+end (Mars) the ship now leaves in the end zone where the traffic brakes (about 0.98 of the Earth - Mars leg, the stop
+needs about 4e9 m from 290 km/s), not exactly at the end ring, and on the short Earth - Moon lane the end-ring stop
+adapts the same way. The entry arc is clamped to the leg. Approach never aims at the origin (`LaneApproachStepTarget`:
+the merge point when valid, else the order target). Approach is an `AutopilotStep` to the merge
+point (keep-right track at 0.25 wall radii, clock 90 degrees, moving with the lane frame plus offset x traffic speed). A
+ship already past the entry arc merges abreast of itself: the merge point moves on with it, so the rendezvous matches
+the traffic speed instead of turning back. Hold is `LaneHoldGuidance` + `SOLFlight::LaneHoldStep` at the autopilot
+limit (Chase holds at it too, no bursts) with gain min(2 /s, 1 / dt) (deadbeat on long warp substeps), lateral pull
+`NPC_LANE_AUTO_LATERAL_GAIN_PER_S` 1e-3 /s capped at `NPC_LANE_AUTO_LATERAL_MAX_MPS` 2000 m/s, nose along travel before
+the leg midpoint and against it after (D21). Hold starts within `NPC_LANE_AUTO_HOLD_RADIUS_WALL_RADII` 0.25 of the
+track radius and `NPC_LANE_AUTO_HOLD_SPEED_FRACTION` 5 % of the traffic speed in the halo, or at once when engaged
+inside it. A lane approach "arriving" at its merge point is not an order arrival. Every AUTO kind (body, route, chase) shows the
+lane ETA (`LaneOrderEtaS`) in Approach and Hold. `LaneAutoEtaS` runs the lane part to the leave arc (found by a march
+plus bisection) and the leave term from the traffic speed there (it counts the braking). HUD distance and closing
+speed are to the order's own target (`LaneClosingSpeedMps`), and the marker line ends with `   LANE` while holding.
+The chase marker's activity shows `ESOLChaseActivity::Lane` (appended after Hold, token `SOLMenuText::CHASE_LANE` "IN
+LANE", `SOLChase::DisplayedChaseActivity`) in lane steps, and the chase time uses the lane ETA. All lane math is in ecliptic axes: the processor (Unreal axes, Y mirrored) converts both ways
+with `SOLRender::EclipticToUnreal`, otherwise keep right would be on the wrong side. `LaneLegTimeS` is closed form (the
+metric map slope cancels, so it is the mean-effort leg's time between two nominal arcs). *Trip time note:* D19's "Earth
+- Mars about 9 days" assumed a 2.25e11 m nominal lane. As built, the Earth - Mars lane trip is the nominal mean-effort
+leg of its frozen profile, about 16 days, because its nominal length is its maximum length (D16, against D19's
+assumption). The Info text says "over two weeks, 16 days". D19 itself is left as decided, with the figure corrected
+there. Verified by smoke V7 (`-SOLSmokeAutoLanes`, 11 / 11 at 1280x720, 1920x1080 and 2560x1440 (the 4K proxy, screenshots confirmed at 2560x1440); with it, 2026-11-17: full suite 1995 / 1995, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeNpcTunnel` 39 / 39, `-SOLSmokeNpcLanes` 35 / 35, `-SOLSmokeNpcTraffic` 19 / 19, `-SOLSmokeHud` 45 / 45 at the same three sizes, `-SOLSmokeRoute` 26 / 26, `-SOLSmokeChase` 26 / 26 and `-SOLSmokeInteract` 18 / 18 at 1920x1080 (no NPC population, so lane rules on routes and chases are covered by unit tests only), `PlayerGuide.UpToDate` after `WritePlayerGuide -NoCrops`, `GameUserSettings.ini` unchanged).
+
+#### 4.9.1 War power move (D22) and hook points (code survey 2026-11-17, read-only)
+
+- **Menu:** `ESOLAction` (`Interaction/SOLActionTable.h`) lists the round menu's rows (`MoveTo`, `Follow`, `ChaseDown`,
+  ...), gated by `SOLActionTable::Evaluate` and named by `ActionLabel`. `USOLInteractionSubsystem::Execute`
+  (`Interaction/SOLInteractionSubsystem.cpp`, `case ESOLAction::MoveTo`) runs `Ships->EngageAutopilot(object.Index)`.
+  The radial geometry (`SOLRadialMenu`, `FSOLRadialMenuState`, `Interaction/SOLInteractMenus.h`) is count-driven, so one
+  more row needs no layout change.
+- **New row:** a new `ESOLAction` value (working name `MoveToWarPower`, offered where `MoveTo` is, same block rules),
+  label token in `Menu/SOLMenuText.h`; `Execute` calls `EngageAutopilot` with the new per-command flag.
+- **Flag path:** `USOLShipSubsystem::EngageAutopilot(int32 bodyIndex)` (`Ship/SOLShipSubsystem.cpp`, L539) writes the
+  order into `FSOLShipControlFragment` (`AutopilotBodyIndex`, `bAutopilotPoint`) and bumps `mAutopilotOrderSerial`: add a
+  transient ignore-lanes field there (default false; every `Engage*` call sets it, so "per command" holds and an order
+  replaced by Follow, Chase or a route clears it). `EngageAutopilotPoint` and `EngageChase` set it false.
+- **Consumer:** `USOLShipFlightProcessor` reads the flag before `FindLaneLeg` (section 4.9): set means no lane logic and
+  guidance at maximum thrust (pilot limit lifted to full effort, no comfort cap).
+- **Not saved:** a fragment field, not a `USaveGame` or setting field (D11).
+
+**Behaviour changes (complete list):** AUTO paths along a lane follow its profile (slower: Earth - Mars about 16 days at
+1x as built instead of about 2.9, D19); AUTO ships move to the right half before merging and fly a right-hand track; AUTO ships
 flip at the lane's midpoint; the AUTO ETA counts the lane leg (profile time plus the rest); the top-centre AUTOPILOT /
-CHASE marker shows `LANE` while holding (new token in `SOLMenuText`); no change to manual flight, to AUTO paths that
+CHASE marker shows `LANE` while holding (new token in `SOLMenuText`); the War power move entry (D22) flies straight in thrust pulses ignoring lanes (D22 as amended); no change to manual flight, to AUTO paths that
 only cross a lane (D20), to AUTO with no NPC population, to the flight model, to `FSOLGuidanceParams` or to the save
 data.
+
+*As built (50d):* `ESOLAction::MoveToWarPower` is appended to the enum after Trade (label "War Power Move", its menu row right after Move To), body menus have 10
+rows (= `MAX_ACTIONS`), the asteroid menu 7 with a placeholder row like its Move To. `USOLInteractionSubsystem::Execute`
+calls `EngageAutopilot(index, true)`. `Ship/SOLAutopilotOrder` (`WriteBodyOrder`, `WritePointOrder`, `ClearOrder`) is the
+one place an order is written, so `FSOLShipControlFragment::bAutopilotIgnoreLanes` (a plain field, not a UPROPERTY, never
+saved) is per command. Move To and War Power Move never block each other or themselves (user decision, round 2): neither
+returns `AlreadyMovingTo`, a new order replaces the running one, and Move To on the body already flown to is enabled.
+The processor flies a War power order with `SOLFlight::WarPowerPulseAutopilotStep` (it replaces `WarPowerAutopilotStep`,
+`WarPowerStepAccelLimitMps2` and `MakeWarPowerGuidanceParams`) and no lane logic. **War power is PULSED** (user decision
+2026-11-17, replaces "burst then hold"): `SOLFlight::WarPowerPulseAccelMps2` flies pulses at `WAR_POWER_PULSE_G` = 1.5 +
+7.5 x sqrt(0.5) = 6.80 G (its drain equals the 0.05 /s sustained refill, so it pulses half the time and averages about
+4.15 G, a 9 G pulse would average about 4.0 G) until the meter reaches `WAR_POWER_BAND_LOW_METER` 0.4 (the grey-out
+start), then recovers at the sustained 1.5 G up to `WAR_POWER_BAND_HIGH_METER` 0.6. A pulse is cut on long substeps so
+the meter stays at or above 0.4 (`SOLChase::MaxSafeGForStep` above the band's low edge), and the hard floor
+`WAR_POWER_METER_FLOOR` 0.3 is unchanged. It accelerates at the full step limit (no 0.9 guidance margin,
+`MakeWarPowerPulseGuidanceParams`), brakes on the normal autopilot plan (about 1.35 G) and boost is always on. The
+transient `FSOLShipStateFragment::WarPowerPulse` (`FSOLWarPowerPulseState { bRecovering }`) is reset with each order,
+nothing saved (`SAVE_VERSION` 13, `KEY_BINDING_LAYOUT_VERSION` 10). HUD: the boost indicator shows BOOST for the whole
+order (`SOLAutopilotOrder::IsBoostShown`) and the AUTOPILOT marker gets the activity line "WAR POWER"
+(`SOLAutopilotOrder::AutopilotActivityText`, `SOLMenuText::AUTOPILOT_WAR_POWER_ACTIVITY`). Trip numbers from the unit
+test `SOLTest.WarPowerMove.PulseTripEarthMars` (2.25e11 m, flip and burn from rest, passing within its 3 % band): War
+power about 59 h at 1 s and 10 s substeps (about 61 h at 30 s, 66 h at 169 s), burst-then-hold was 70.6 h, plain AUTO
+72.4 h. `AutopilotStep` and `ChaseStep` are unchanged (`AutopilotRegression.NoLaneBitIdentical`).
 
 ### 4.10 Module edges (for `ARCHITECTURE.md`)
 
@@ -670,6 +770,11 @@ data.
   `WallRadiusM`), `SOLNpcTunnelMath` / component (radius from `WallRadiusM`, label count per D15).
 - `Ship`: `USOLShipFlightProcessor` (lane leg per frame, merge / hold / leave per substep), `FSOLShipControlFragment`
   transient lane fields. `UI`: `SOLFlightHud` (readout line), `SOLLaneTunnelLabel` (last line), `SOLMenuText`.
+- *(As built in 50d: a new edge `Traffic -> Flight`: `SOLLaneTrafficMath.h` includes `Flight/SOLNewtonianFlight.h` for
+  `FSOLGuidanceOutput`. `Ship -> Traffic` is now used by the flight processor and `USOLShipSubsystem` (the lane table
+  travels in `FSOLShipFrameInputs::Lanes`), and `Ship -> Universe` (`SOLRenderPlacement`) in the processor. New files
+  `Ship/SOLAutopilotOrder.{h,cpp}`, `Npc/SOLAutoLanesSmoke.{h,cpp}` (flag `-SOLSmokeAutoLanes`), tests
+  `LaneAutoRulesTest.cpp`, `WarPowerMoveTest.cpp`, `AutopilotRegressionTest.cpp`.)*
 - New files: `Traffic/SOLLaneTrafficMath.{h,cpp}`, `Traffic/SOLLaneTrafficSubsystem.{h,cpp}`,
   `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/NpcTrafficMathTest.cpp`; flags
   `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile`; no new cvar (the A/B baseline is the pre-#50 commit, section 8).
@@ -958,7 +1063,7 @@ Temporary screenshots and captures are deleted once looked at; only the README g
 - **R7 Shader cost and divergence:** selects for the leg phases and segments; the U-turn `sincos` runs for every ship
   and is selected (no divergent branch); the `precise` terms give up some reassociation; gate +0.10 ms.
 - **R8 AUTO plug-in:** a moving merge point at up to 300 km/s under warp substeps; the existing moving-target
-  rendezvous is reused; slower lane trips are a visible gameplay change (D19) and the override of Q9 must leave the no-lane path bit-identical.
+  rendezvous is reused; slower lane trips are a visible gameplay change (D19) and the War power move (D22) and the no-lane path must stay bit-identical to today's AUTO.
 - **R9 Mirror drift** (C++ / `SOLNpcTraffic.ush`): file headers, the float-mirror test.
 - **R10 Hull flip** (D17, D21): a 180-degree flip at mid-lane must look smooth (a smoothstep rotation over
   `NPC_LANE_FLIP_S`, zero rate at both ends, finished before the brake). On capped lanes ships then coast engine first
@@ -970,7 +1075,7 @@ Temporary screenshots and captures are deleted once looked at; only the README g
 ## 11. Resolved questions
 
 D1-D12 (grill-me) and D13-D20 (the user's answers to Q1-Q8, 2026-11-13, section 2). Q1 = D13, Q2 = D14, Q3 = D15, Q4 =
-D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20. D21 (the hull flip finishes before
+D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20, Q9 = D22 (2026-11-17). D21 (the hull flip finishes before
 braking, 2026-11-13) is the user's refinement of D17 (section 14).
 
 - **Q10 (answered by the user, 2026-11-17): where does the readout go when its label is placed but the label grown by
@@ -980,12 +1085,9 @@ braking, 2026-11-13) is the user's refinement of D17 (section 14).
 
 ## 12. Open questions (for the user; each with the recommended answer)
 
-- **Q9: How does the player tell AUTO to fly around lanes or ignore the safe space (D19)?** Options: a console argument
-  (an ignore-lanes flag), an interaction-menu entry on the AUTO target or route, or a setting (a setting would be
-  persisted and needs the user's approval of a schema change, D11). *Recommended:* a console flag plus an
-  interaction-menu entry (neither is saved), to be asked in the 50d interview. Also to settle there: whether "around"
-  means outside the halo and whether the override is per command or sticky for the session. **Not chosen here; part 50d
-  does not start before it is answered.**
+None open. **Q9 (resolved 2026-11-17, D22):** how does the player tell AUTO to fly around lanes or ignore the safe space
+(D19)? Answer: the "War power move" entry of the round command menu, per command, a straight path ignoring the lane
+rules at maximum thrust, nothing saved (section 2, D22).
 
 ## 13. Change log
 
@@ -1018,6 +1120,19 @@ braking, 2026-11-13) is the user's refinement of D17 (section 14).
   per view. Lane choice is the smallest rho in the lane's own wall radii (lower lane index on a tie). The readout text
   example shows two decimals. An empty lane (no ships) still shows the readout (user decision). Section 4.10 corrected:
   no `Traffic -> Universe` edge, the lane table holds the end-body indices and the frozen profile. Q9 stays open.
+- 2026-11-17: Q9 answered by the user (D22): the lane-rule override is the "War power move" entry of the round command
+  menu, per command, straight path ignoring lane rules and maximum thrust, nothing saved. Hook points noted for part 50d
+  (section 4.9.1).
+- 2026-11-17: part 50d built (uncommitted). AUTO lane rules and the War Power Move implemented as sections 4.9 and
+  4.9.1 describe, with the as-built notes added there and in 4.10 (latch, exit re-evaluation, abreast merge, hold gain
+  cap, ecliptic conversion, War power limit formula and brake budget, meter floor 0.3, constants, `Traffic -> Flight`
+  edge). D19's Earth - Mars trip time note: about 16 days as built, not 9. Smoke V7 11 / 11 at three sizes (1280x720,
+  1920x1080, 2560x1440).
+- 2026-11-17: part 50d review-fix round 2 built (uncommitted). Mid-lane exit fix (mode `Left`, `LaneLeaveDistanceM`),
+  frame-start lane views (`MakeMergeLane`) and latch re-validation (`CheckLaneLatch`, `LaneAutoDecide`), lane ETA for
+  every AUTO kind and chase `Lane` activity, pulsed War power (D22 amended, 6.80 G, band 0.4 - 0.6, floor 0.3), Move To
+  and War Power Move no longer block, HUD BOOST and WAR POWER activity, smoke V7 extended (mid-lane stop view, side and
+  speed checks, War power ETA). Verification 2026-11-17 (round 2): full suite 2015 / 2015; -SOLSmokeAutoLanes 13 / 13 at 1280x720, 1920x1080 and 2560x1440 (merge 0.25 wall radii on the right, HUD readout MATCHED; whole leg held within 0.02 %, left at 0.982 of the leg, arrived after 16.13 days; mid-lane stop left 3.2e9 m before the waypoint at 261 km/s, braking needs 2.57e9 m, no re-entry, no overshoot; War power peak 6.80 G, lowest meter 0.400, arrived in 47.8 h against plain AUTO straight 51.7 h), LaneMerge 15 / 15, NpcTunnel 39 / 39, NpcLanes 35 / 35, NpcTraffic 19 / 19, Hud 45 / 45, Route 26 / 26, Chase 26 / 26, Interact 18 / 18 at the same three sizes, HoloMenu 86 / 86 at 1280x720 (10-row radial and list menus checked by eye), PlayerGuide.UpToDate after WritePlayerGuide -NoCrops, GameUserSettings.ini MD5 unchanged.
 
 ## 14. Amendment 1 (2026-11-13): the hull flip finishes before braking (D21)
 

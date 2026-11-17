@@ -18,7 +18,11 @@
 // its orders, icon hit-testing, the radial menu and the map list menu, written against the contracts in
 // SOLActionTable.h and SOLInteractMenus.h before the production code existed. Issue #32 (SDD 32 section 3.7)
 // extended the action table contract before its production change: a live Chase Down row on Star..Dwarf (right after
-// Follow) and DroppedTarget, the AlreadyChasing block and FSOLActionContext::bIsChased.
+// Follow) and DroppedTarget, the AlreadyChasing block and FSOLActionContext::bIsChased. Issue #50 Part 50d (SDD 50 D22,
+// section 4.9.1) extended it test-first: the War power move row (ESOLAction::MoveToWarPower, appended to the enum)
+// right after Move To wherever Move To is offered, live on Star..Dwarf and a placeholder on Asteroid like its Move To
+// (its own cases are in WarPowerMoveTest.cpp). The 50d review-fix round (user decision 2026-11-17) dropped the
+// same-target block: Move To and War power never return AlreadyMovingTo, a new order replaces the running one.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -43,7 +47,8 @@ namespace
 
     //////////////////////////////////////////////////////////////////////////
     // Returns the rows of a type in menu order as the contract lists them (empty for Count); issue #32 makes Chase
-    // Down live on Star..Dwarf (right after Follow) and DroppedTarget, and keeps it a placeholder on Ship
+    // Down live on Star..Dwarf (right after Follow) and DroppedTarget, and keeps it a placeholder on Ship; issue #50
+    // (D22) adds the War power move right after Move To, live on Star..Dwarf and a placeholder on Asteroid
     TArray<FInteractMenusRow> InteractMenusExpectedRows(const ESOLObjectType type)
     {
         switch (type)
@@ -53,13 +58,13 @@ namespace
         case ESOLObjectType::Moon:
         case ESOLObjectType::Dwarf:
             return TArray<FInteractMenusRow>{ { ESOLAction::Target, false }, { ESOLAction::Info, false },
-                { ESOLAction::MoveTo, false }, { ESOLAction::Follow, false }, { ESOLAction::ChaseDown, false },
-                { ESOLAction::JumpTo, false }, { ESOLAction::MatchSpeed, false }, { ESOLAction::Communicate, true },
-                { ESOLAction::Trade, true } };
+                { ESOLAction::MoveTo, false }, { ESOLAction::MoveToWarPower, false }, { ESOLAction::Follow, false },
+                { ESOLAction::ChaseDown, false }, { ESOLAction::JumpTo, false }, { ESOLAction::MatchSpeed, false },
+                { ESOLAction::Communicate, true }, { ESOLAction::Trade, true } };
         case ESOLObjectType::Asteroid:
             return TArray<FInteractMenusRow>{ { ESOLAction::Target, false }, { ESOLAction::Info, false },
-                { ESOLAction::MoveTo, true }, { ESOLAction::Follow, true }, { ESOLAction::JumpTo, true },
-                { ESOLAction::MatchSpeed, false } };
+                { ESOLAction::MoveTo, true }, { ESOLAction::MoveToWarPower, true }, { ESOLAction::Follow, true },
+                { ESOLAction::JumpTo, true }, { ESOLAction::MatchSpeed, false } };
         case ESOLObjectType::Ship:
             return TArray<FInteractMenusRow>{ { ESOLAction::Target, false }, { ESOLAction::Info, false },
                 { ESOLAction::ChaseDown, true }, { ESOLAction::Follow, true }, { ESOLAction::Communicate, true },
@@ -94,7 +99,7 @@ namespace
     {
         static const TCHAR* names[] = { TEXT("Target"), TEXT("Info"), TEXT("MoveTo"), TEXT("Follow"),
             TEXT("JumpTo"), TEXT("MatchSpeed"), TEXT("Attack"), TEXT("ChaseDown"), TEXT("Communicate"),
-            TEXT("Trade"), TEXT("Count") };
+            TEXT("Trade"), TEXT("MoveToWarPower"), TEXT("Count") };
         return names[FMath::Clamp(static_cast<int32>(action), 0, INTERACTMENUS_ACTION_COUNT)];
     }
 
@@ -297,11 +302,11 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInteractMenusRowCountTest, "SOLTest.Interac
 bool FSOLInteractMenusRowCountTest::RunTest(const FString& /*parameters*/)
 {
     using SOLActionTable::RowCount;
-    TestEqual(TEXT("Star"), RowCount(ESOLObjectType::Star), 9);
-    TestEqual(TEXT("Planet"), RowCount(ESOLObjectType::Planet), 9);
-    TestEqual(TEXT("Moon"), RowCount(ESOLObjectType::Moon), 9);
-    TestEqual(TEXT("Dwarf"), RowCount(ESOLObjectType::Dwarf), 9);
-    TestEqual(TEXT("Asteroid"), RowCount(ESOLObjectType::Asteroid), 6);
+    TestEqual(TEXT("Star"), RowCount(ESOLObjectType::Star), 10);
+    TestEqual(TEXT("Planet"), RowCount(ESOLObjectType::Planet), 10);
+    TestEqual(TEXT("Moon"), RowCount(ESOLObjectType::Moon), 10);
+    TestEqual(TEXT("Dwarf"), RowCount(ESOLObjectType::Dwarf), 10);
+    TestEqual(TEXT("Asteroid"), RowCount(ESOLObjectType::Asteroid), 7);
     TestEqual(TEXT("Ship"), RowCount(ESOLObjectType::Ship), 6);
     TestEqual(TEXT("DroppedTarget"), RowCount(ESOLObjectType::DroppedTarget), 4);
     TestEqual(TEXT("Count"), RowCount(ESOLObjectType::Count), 0);
@@ -574,15 +579,16 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInteractMenusEvaluateMoveFollowTest, "SOLTe
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// MoveTo and Follow: NoShip, JumpWarping, NoPilotControl, then AlreadyMovingTo / AlreadyFollowing
+// MoveTo, MoveToWarPower and Follow: NoShip, JumpWarping, NoPilotControl; then AlreadyFollowing for Follow only (issue
+// #50 review fix: a running Move To no longer blocks Move To or War power, the new order replaces it)
 bool FSOLInteractMenusEvaluateMoveFollowTest::RunTest(const FString& /*parameters*/)
 {
-    const ESOLAction actions[] = { ESOLAction::MoveTo, ESOLAction::Follow };
+    const ESOLAction actions[] = { ESOLAction::MoveTo, ESOLAction::MoveToWarPower, ESOLAction::Follow };
     for (const ESOLAction action : actions)
     {
         const TArray<ESOLObjectType> types = InteractMenusLiveTypes(action);
         TestEqual(InteractMenusActionName(action) + TEXT(" is live on Star..Dwarf"), types.Num(), 4);
-        const bool bMoveTo = action == ESOLAction::MoveTo;
+        const bool bMoveTo = action != ESOLAction::Follow;
         for (const ESOLObjectType type : types)
         {
             // Walk the rules in their order, each step clearing the failing condition
@@ -599,14 +605,13 @@ bool FSOLInteractMenusEvaluateMoveFollowTest::RunTest(const FString& /*parameter
                 TEXT("ship, no pilot, active"));
             context.bPilotHasControl = true;
             InteractMenusCheckEvaluate(*this, type, action, context,
-                bMoveTo ? ESOLActionBlock::AlreadyMovingTo : ESOLActionBlock::AlreadyFollowing,
+                bMoveTo ? ESOLActionBlock::None : ESOLActionBlock::AlreadyFollowing,
                 TEXT("ship, pilot, both moving to and followed"));
 
-            // Only the action's own order blocks it
+            // A running Move To blocks neither move row (the new order replaces it); only Follow's own order blocks it
             FSOLActionContext moving = InteractMenusFavourable();
             moving.bIsMoveTarget = true;
-            InteractMenusCheckEvaluate(*this, type, action, moving,
-                bMoveTo ? ESOLActionBlock::AlreadyMovingTo : ESOLActionBlock::None, TEXT("favourable, moving to"));
+            InteractMenusCheckEvaluate(*this, type, action, moving, ESOLActionBlock::None, TEXT("favourable, moving to"));
             FSOLActionContext followed = InteractMenusFavourable();
             followed.bIsFollowed = true;
             InteractMenusCheckEvaluate(*this, type, action, followed,
@@ -667,7 +672,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInteractMenusChaseDownRowsTest, "SOLTest.In
 
 //////////////////////////////////////////////////////////////////////////
 // Issue #32: Chase Down is live on Star..Dwarf (right after Follow) and DroppedTarget, a placeholder on Ship, absent on
-// Asteroid, and AlreadyChasing is the last block before Count
+// Asteroid, and AlreadyChasing is the last block before Count (issue #50: the War power row moves Follow to row 4)
 bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLActionTable;
@@ -689,7 +694,7 @@ bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
     for (const ESOLObjectType type : bodyTypes)
     {
         const FString name = InteractMenusTypeName(type);
-        TestEqual(name + TEXT(": 9 rows"), RowCount(type), 9);
+        TestEqual(name + TEXT(": 10 rows"), RowCount(type), 10);
         TestTrue(name + TEXT(": ChaseDown live"), Offers(type, ESOLAction::ChaseDown)
             && !IsPlaceholder(type, ESOLAction::ChaseDown));
         FSOLActionList list;
@@ -701,7 +706,7 @@ bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
             followRow = list.Entries[row].Action == ESOLAction::Follow ? row : followRow;
             chaseRow = list.Entries[row].Action == ESOLAction::ChaseDown ? row : chaseRow;
         }
-        TestEqual(name + TEXT(": Follow is row 3"), followRow, 3);
+        TestEqual(name + TEXT(": Follow is row 4"), followRow, 4);
         TestEqual(name + TEXT(": ChaseDown right after Follow"), chaseRow, followRow + 1);
         TestTrue(name + TEXT(": fits MAX_ACTIONS"), list.Num <= SOL::Interact::MAX_ACTIONS);
     }
@@ -725,7 +730,7 @@ bool FSOLInteractMenusChaseDownRowsTest::RunTest(const FString& /*parameters*/)
             static_cast<int32>(ESOLAction::ChaseDown));
         TestFalse(TEXT("Ship ChaseDown disabled when favourable"), ship.Entries[2].IsEnabled());
     }
-    TestEqual(TEXT("Asteroid: 6 rows"), RowCount(ESOLObjectType::Asteroid), 6);
+    TestEqual(TEXT("Asteroid: 7 rows"), RowCount(ESOLObjectType::Asteroid), 7);
     TestFalse(TEXT("Asteroid has no ChaseDown"), Offers(ESOLObjectType::Asteroid, ESOLAction::ChaseDown));
     return true;
 }
@@ -856,10 +861,10 @@ bool FSOLInteractMenusBuildBlocksTest::RunTest(const FString& /*parameters*/)
             mismatches, 0);
     }
 
-    // A concrete case: a favourable Planet enables exactly its seven live rows (Chase Down included)
+    // A concrete case: a favourable Planet enables exactly its eight live rows (Chase Down and War power included)
     FSOLActionList list;
     SOLActionTable::Build(ESOLObjectType::Planet, InteractMenusFavourable(), list);
-    const bool expectedEnabled[] = { true, true, true, true, true, true, true, false, false };
+    const bool expectedEnabled[] = { true, true, true, true, true, true, true, true, false, false };
     TestEqual(TEXT("favourable Planet: Num"), list.Num, static_cast<int32>(UE_ARRAY_COUNT(expectedEnabled)));
     for (int32 row = 0; row < FMath::Min(list.Num, static_cast<int32>(UE_ARRAY_COUNT(expectedEnabled))); ++row)
     {

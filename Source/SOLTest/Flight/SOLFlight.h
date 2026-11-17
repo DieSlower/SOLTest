@@ -38,6 +38,12 @@ struct FSOLShipControl
     FVector3d AttitudeUpWorld = FVector3d::ZeroVector;  // assisted attitude target's up (surface-lock); zero = none
 };
 
+// The War power move's pulse phase (transient, reset with each order, never saved)
+struct FSOLWarPowerPulseState
+{
+    bool bRecovering = false;       // Recovering at the sustained limit (else pulsing)
+};
+
 // What one flight step did besides moving the ship
 struct FSOLFlightStepOutput
 {
@@ -86,6 +92,38 @@ namespace SOLFlight
         const FSOLChasePolicy& policy, bool bBoost, double dt, FSOLChaseRunState& inOutRun,
         FSOLFlightStepOutput* outStep = nullptr, FSOLGuidanceOutput* outGuidance = nullptr,
         FSOLChaseGLimit* outLimit = nullptr);
+
+    // Advances the ship by dt flying a lane hold guidance (SOLLaneTraffic::LaneHoldGuidance, SDD 50 section 4.9) at
+    // the pilot's autopilot limit (Chase Down holds at it too, no bursts), the attitude and allocation as AutopilotStep
+    SOLTEST_API FSOLShipState LaneHoldStep(const FSOLShipState& state, const FSOLGuidanceOutput& guidance,
+        const FVector3d& gravityAccelMps2, const FSOLFlightParams& params, const FSOLGMeterState& meter, double dt,
+        FSOLFlightStepOutput* outStep = nullptr);
+
+    // Returns the War power move's maximum thrust (SDD 50 D22): the envelope's full forward thrust, boosted with
+    // bBoost, the total cap applied
+    SOLTEST_API double WarPowerAccelLimitMps2(const FSOLThrustEnvelope& env, bool bBoost);
+
+    // Returns the acceleration War power flies this substep and advances its pulse phase (user decision 2026-11-17):
+    // pulsing switches to recovering at a meter <= SOL::WAR_POWER_BAND_LOW_METER (or in G-LOC), recovering to pulsing
+    // at >= SOL::WAR_POWER_BAND_HIGH_METER; recovering flies min(sustained, full thrust), pulsing min(pulseG, full
+    // thrust, the meter-safe G for the step above the band's low edge), so the meter never falls below the hard floor
+    SOLTEST_API double WarPowerPulseAccelMps2(const FSOLThrustEnvelope& env, const FSOLPilotGLimits& limits,
+        const FSOLGMeterState& meter, bool bBoost, double dt, FSOLWarPowerPulseState& inOutPulse,
+        double pulseG = SOL::WAR_POWER_PULSE_G);
+
+    // Returns the War power budgets for a step limit: the accelerate plan reaching that limit (no guidance margin
+    // taken off), braking on the normal autopilot's plan (about 1.35 G) so a drained meter still stops in time
+    SOLTEST_API FSOLGuidanceParams MakeWarPowerPulseGuidanceParams(const FSOLThrustEnvelope& env,
+        const FSOLPilotGLimits& limits, const FSOLGMeterState& meter, double gravityMps2, bool bBoost,
+        double stepLimitMps2);
+
+    // Advances the ship by dt under the War power move: AutopilotStep's rendezvous at the pulse limit of one
+    // WarPowerPulseAccelMps2 call (advancing inOutPulse) with the War power budgets and that clamp, no lane logic
+    SOLTEST_API FSOLShipState WarPowerPulseAutopilotStep(const FSOLShipState& state, const FVector3d& targetPositionM,
+        const FVector3d& targetVelocityMps, const FVector3d& targetAccelMps2, const FVector3d& gravityAccelMps2,
+        const FSOLFlightParams& params, const FSOLGMeterState& meter, bool bBoost, double dt,
+        FSOLWarPowerPulseState& inOutPulse, FSOLFlightStepOutput* outStep = nullptr,
+        FSOLGuidanceOutput* outGuidance = nullptr, double targetGravityMps2 = 0.0);
 
     // Returns the autopilot's arrival distance from a body's centre: the geometric standoff, moved out until the
     // body's gravity there is at most AUTOPILOT_GRAVITY_STANDOFF_FRACTION of the autopilot limit

@@ -6,6 +6,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Flight/SOLNewtonianFlight.h"
 #include "SOLConstants.h"
 
 // A lane's orthonormal frame (SDD 49 section 4.3, moved here by SDD 50 section 4.10), universe ecliptic directions:
@@ -173,6 +174,10 @@ struct FSOLLaneMergeLane
     FSOLLaneFrame Frame;
     FVector3d AVelocityMps = FVector3d::ZeroVector;     // Body A's velocity (universe ecliptic, sim seconds)
     FVector3d BVelocityMps = FVector3d::ZeroVector;     // Body B's velocity
+    int32 BodyA = INDEX_NONE;                           // The lane table entry's end bodies (registry indices)
+    int32 BodyB = INDEX_NONE;
+    FSOLLaneLeg TrackLeg;                               // The mean-effort leg on the keep-right track, precomputed by
+                                                        // MakeMergeLane (invalid: computed where needed)
 };
 
 // The merge readout of one frame (SOLLaneTraffic::MergeReadout)
@@ -189,6 +194,79 @@ struct FSOLLaneMergeReadout
     ESOLLaneMergeBand Band = ESOLLaneMergeBand::Red;
     bool bWarpNote = false;                                 // Time warp above 1x
     FVector3d FrameVelocityMps = FVector3d::ZeroVector;     // lerp(V_A, V_B, foot fraction)
+};
+
+// The part of an AUTO path that runs along a lane (SDD 50 section 4.9, D20): leg arcs from end ring A
+struct FSOLLaneAutoLeg
+{
+    bool bFound = false;            // The path runs at least NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII inside a halo
+    int32 Lane = INDEX_NONE;        // Its index in the lanes passed
+    int32 DirectionSign = 1;        // +1 outbound (A -> B), -1 inbound
+    double EntryArcM = 0.0;         // Where the path enters the halo (the ship's own arc when it starts inside)
+    double ExitArcM = 0.0;          // The target's arc clamped to the leg (the end ring for a body at that end)
+    double OverlapM = 0.0;          // Axis length of the path inside the halo
+    bool bStartsInside = false;     // The ship is in the halo (hold without an approach)
+    int32 BodyA = INDEX_NONE;       // Its lane's end bodies (the latch re-check compares them)
+    int32 BodyB = INDEX_NONE;
+    bool bTargetInside = false;     // The target lies in the halo between the end rings
+};
+
+// What AUTO does about a lane leg (SDD 50 section 4.9 steps 2-4)
+enum class ESOLLaneAutoMode : uint8
+{
+    None,                           // No leg, or past its exit: the normal AUTO step
+    Approach,                       // Flying to the merge point
+    Hold,                           // In the lane, holding the traffic speed on the keep-right track
+    Left                            // Done with the lane for this order: the normal AUTO step stops at the target
+                                    // and no lane is searched again (appended, transient)
+};
+
+// The per-frame re-check of a latched Approach / Hold leg (SOLLaneTraffic::CheckLaneLatch)
+enum class ESOLLaneLatchCheck : uint8
+{
+    Keep,                           // Still valid
+    Stale,                          // Its lane is gone or another lane now (a respawned table): drop it
+    Release                         // Its target left the lane, or an approach no longer runs along it: leave
+};
+
+// Where one AUTO step flies to (universe ecliptic)
+struct FSOLLaneStepTarget
+{
+    FVector3d PositionM = FVector3d::ZeroVector;
+    FVector3d VelocityMps = FVector3d::ZeroVector;
+    FVector3d AccelMps2 = FVector3d::ZeroVector;
+};
+
+// One substep's inputs to the lane decision (universe ecliptic)
+struct FSOLLaneAutoInput
+{
+    FVector3d ShipM = FVector3d::ZeroVector;
+    FVector3d ShipVelocityMps = FVector3d::ZeroVector;
+    FVector3d TargetM = FVector3d::ZeroVector;          // The order's own target
+    FVector3d TargetVelocityMps = FVector3d::ZeroVector;
+    FVector3d TargetAccelMps2 = FVector3d::ZeroVector;
+    double BrakeAccelMps2 = 0.0;                        // The normal autopilot's brake plan (the leave distance)
+    double FlipS = 0.0;
+    bool bSearch = true;                                // A lane may be searched (the first substep of a frame)
+    bool bIgnoreLanes = false;                          // A War power order
+};
+
+// One substep's lane decision (SOLLaneTraffic::LaneAutoDecide)
+struct FSOLLaneAutoDecision
+{
+    FSOLLaneAutoLeg Leg;
+    ESOLLaneAutoMode Mode = ESOLLaneAutoMode::None;
+    FSOLLaneStepTarget StepTarget;                      // The merge point in Approach, else the order's target
+};
+
+// The point AUTO merges at (SOLLaneTraffic::LaneMergeTarget)
+struct FSOLLaneMergeTarget
+{
+    bool bValid = false;                                // False for a leg not found or a bad lane
+    FVector3d PositionM = FVector3d::ZeroVector;        // On the keep-right track at the entry arc
+    FVector3d VelocityMps = FVector3d::ZeroVector;      // The lane frame there plus d Axis v_t
+    FVector3d AccelMps2 = FVector3d::ZeroVector;        // The traffic's acceleration along the lane there
+    double TrafficSpeedMps = 0.0;                       // v_t on the track at the entry arc
 };
 
 // Pure math of the issue #50 lane traffic (SDD 50 sections 4.2-4.5 and 4.12, contract section 6): the radial factor,
@@ -345,4 +423,96 @@ namespace SOLLaneTraffic
     // velocity
     SOLTEST_API FSOLLaneMergeReadout MergeReadout(TConstArrayView<FSOLLaneMergeLane> lanes, const FVector3d& playerM,
         const FVector3d& playerVelocityMps, const FVector3d& playerForward, double timeWarpScale);
+
+    // Part 50d, the AUTO lane rules (SDD 50 section 4.9, D9, D19, D20, D22). Every input and output is in universe
+    // ecliptic axes: the flight processor (Unreal axes, Y mirrored) converts with SOLRender::EclipticToUnreal both ways
+
+    // Returns the first lane (lowest index; invalid or non-drivable lanes skipped) whose halo between its end rings
+    // holds the straight path ship -> target for at least NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII wall radii of axis:
+    // direction, entry arc (exactly 0 or l at an end ring, the ship's arc when it starts inside), exit arc (the
+    // target's arc clamped to the leg), overlap, the lane's end bodies and whether the target is in the halo; not found for no
+    // lanes, a zero-length path or a non-finite point
+    SOLTEST_API FSOLLaneAutoLeg FindLaneLeg(TConstArrayView<FSOLLaneMergeLane> lanes, const FVector3d& shipM,
+        const FVector3d& targetM);
+
+    // Returns a lane view: the profile, MakeLaneFrame of the end bodies' positions, their velocities and indices and
+    // the track's mean leg (the flight processor builds its views from the frame-start bodies)
+    SOLTEST_API FSOLLaneMergeLane MakeMergeLane(const FSOLLaneProfile& profile, int32 bodyA, int32 bodyB,
+        const FVector3d& aM, const FVector3d& bM, const FVector3d& aVelocityMps, const FVector3d& bVelocityMps);
+
+    // Returns whether a lane may be searched: not for a War power order, only with nothing latched (Left never again)
+    SOLTEST_API bool IsLaneSearchAllowed(ESOLLaneAutoMode latched, bool bIgnoreLanes);
+
+    // Returns the keep-right track's lateral offset for a direction: d x Right x NPC_LANE_AUTO_TRACK_WALL_RADII x Rw
+    // (clock 90 degrees of travel); zero for an invalid frame or a non-drivable profile
+    SOLTEST_API FVector3d LaneTrackOffsetM(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        int32 directionSign);
+
+    // Returns the merge point: on the keep-right track at the entry arc, moving with the lane frame plus d Axis v_t,
+    // the traffic's acceleration there; invalid for a leg not found or a bad lane
+    SOLTEST_API FSOLLaneMergeTarget LaneMergeTarget(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg);
+
+    // Returns whether the approach is over: the ship in the halo, within NPC_LANE_AUTO_HOLD_RADIUS_WALL_RADII of the
+    // track's radius and within NPC_LANE_AUTO_HOLD_SPEED_FRACTION of the track's traffic speed along the lane
+    SOLTEST_API bool IsLaneMerged(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const FVector3d& shipM,
+        const FVector3d& shipVelocityMps);
+
+    // Returns the step target of an approach: the merge point when it is valid, else the order's own target (never the
+    // origin)
+    SOLTEST_API FSOLLaneStepTarget LaneApproachStepTarget(const FSOLLaneMergeTarget& merge,
+        const FVector3d& orderTargetM, const FVector3d& orderTargetVelocityMps, const FVector3d& orderTargetAccelMps2);
+
+    // Returns how far before the target AUTO leaves the lane: the braking distance of |v| at the brake plan (with its
+    // flip) plus a margin of NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION of it and NPC_LANE_AUTO_LEAVE_MARGIN_M; DBL_MAX (leave
+    // at once) for a brake <= 0 or a non-finite input
+    SOLTEST_API double LaneLeaveDistanceM(double relativeSpeedMps, double brakeAccelMps2, double flipS);
+
+    // Returns the AUTO lane mode: Left stays Left; None without a leg; Left at or past the leave arc (the nearer of the
+    // exit arc and the target's own arc less the leave distance of the speed relative to the target); Hold for a fresh
+    // leg that starts inside, a holding ship still in the halo, or a merged ship; else Approach
+    SOLTEST_API ESOLLaneAutoMode LaneAutoModeAt(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg,
+        const FVector3d& shipM, const FVector3d& shipVelocityMps, const FVector3d& targetM,
+        const FVector3d& targetVelocityMps, double brakeAccelMps2, double flipS, ESOLLaneAutoMode previous);
+
+    // Returns the re-check of a latched Approach / Hold leg: Stale for a lane gone or replaced (index, end bodies,
+    // invalid), Release for a target that was inside and left the halo or an approach no longer running along the lane
+    // (D20), else Keep (also for any other mode)
+    SOLTEST_API ESOLLaneLatchCheck CheckLaneLatch(TConstArrayView<FSOLLaneMergeLane> lanes, const FSOLLaneAutoLeg& leg,
+        ESOLLaneAutoMode mode, const FVector3d& shipM, const FVector3d& targetM);
+
+    // Returns one substep's lane decision: none for War power; a latched leg re-checked (Stale drops, Release leaves);
+    // a search when allowed; the mode; the step target (the merge point in Approach, else the order target). A latched
+    // leg's exit follows the target's arc on the current leg (the lane's length drifts with its bodies)
+    SOLTEST_API FSOLLaneAutoDecision LaneAutoDecide(TConstArrayView<FSOLLaneMergeLane> lanes,
+        const FSOLLaneAutoLeg& latchedLeg, ESOLLaneAutoMode latchedMode, const FSOLLaneAutoInput& input);
+
+    // Returns whether the AUTOPILOT / CHASE marker shows its LANE tag (only while holding)
+    SOLTEST_API bool IsLaneMarkerShown(ESOLLaneAutoMode mode);
+
+    // Returns the hold guidance: toward the frame velocity plus d Axis v_t (the track's speed at the ship's arc) and a
+    // capped lateral pull to the track, at velocityGainPerS plus the mean profile's acceleration; forward along travel
+    // before the leg's midpoint and against it from there (D21); the phase from the mean profile
+    SOLTEST_API FSOLGuidanceOutput LaneHoldGuidance(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg,
+        const FVector3d& shipM, const FVector3d& shipVelocityMps, const FVector3d& targetM,
+        const FVector3d& gravityAccelMps2, double velocityGainPerS);
+
+    // Returns the time to fly between two leg arcs (clamped to the leg) at the traffic speed of radius rho: the mean
+    // leg's closed-form time between the two nominal arcs (the map's slope cancels); 0 for equal arcs or a bad lane
+    SOLTEST_API double LaneLegTimeS(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, double fromArcM,
+        double toArcM, double rho, int32 directionSign);
+
+    // Returns the AUTO ETA with the lane: the approach to the merge point (0 for a ship in the halo), the lane part on
+    // the track to the leave arc and the leave to the target from the traffic speed there (so it counts the braking),
+    // approach and leave by SOLNewtonian::EstimateTimeToArrivalS; 0 without a leg
+    SOLTEST_API double LaneAutoEtaS(const FSOLLaneMergeLane& lane, const FSOLLaneAutoLeg& leg, const FVector3d& shipM,
+        const FVector3d& targetM, double accelMps2, double flipS);
+
+    // Returns the HUD ETA of any AUTO kind: the lane ETA in Approach and Hold when it is finite and > 0, else the
+    // guidance's own
+    SOLTEST_API double LaneOrderEtaS(ESOLLaneAutoMode mode, double laneEtaS, double guidanceEtaS);
+
+    // Returns the closing speed toward a target, (v_ship - v_target) . unit(target - ship); 0 for coincident points or
+    // a non-finite input
+    SOLTEST_API double LaneClosingSpeedMps(const FVector3d& shipM, const FVector3d& shipVelocityMps,
+        const FVector3d& targetM, const FVector3d& targetVelocityMps);
 }

@@ -219,6 +219,9 @@ public:
     const FString& GetLastMergeLine() const { return mMergeLine; }
     const FBox2D& GetLastMergeBox() const { return mLastMergeBox; }
 
+    // Returns the top marker's text as last drawn (AUTOPILOT / CHASE, with its LANE tag; verification, SDD 50 V7)
+    const FString& GetLastAutopilotMarkerText() const;
+
     // Returns the projected dot rows the labels kept clear of last frame (verification)
     TConstArrayView<FVector2D> GetLastLaneRowStarts() const { return TConstArrayView<FVector2D>(mLaneRowStarts,
         mLaneRowCount); }

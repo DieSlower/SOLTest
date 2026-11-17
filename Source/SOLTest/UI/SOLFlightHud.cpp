@@ -22,6 +22,7 @@
 #include "Npc/SOLNpcSubsystem.h"
 #include "Npc/SOLNpcTierProcessor.h"
 #include "OrbitLines/SOLOrbitLineVisuals.h"
+#include "Ship/SOLAutopilotOrder.h"
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
@@ -1846,7 +1847,9 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     const ESOLFlightMode mode = Ships->GetFlightMode();
     mText.Reset();
     mText.Append(SOLHudFormat::FlightModeLabel(mode));
-    mText.Append(control.bBoost ? TEXT("   BOOST") : TEXT("   boost off"));
+    // A War power order flies boosted whatever the switch says (SDD 50 D22)
+    mText.Append(SOLAutopilotOrder::IsBoostShown(control.bBoost, Ships->IsAutopilotWarPower()) ? TEXT("   BOOST")
+        : TEXT("   boost off"));
     const FBox2D modeRect = DrawBuffer(ESOLHudLine::Assist, SOLHudFormat::FlightModeColor(mode), x, y,
         ESOLHudFont::Small);
     mLeftBlockRect += modeRect;
@@ -1979,6 +1982,13 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         mText.Append(TEXT("   "));
         SOLHudFormat::AppendDistanceM(mText, guidance.DistanceM);
     }
+
+    // Holding a traffic lane at the traffic speed (SDD 50 section 4.9): the LANE tag
+    if (!bLostNote && Ships->IsAutopilotLaneHold())
+    {
+        mText.Append(SOLMenuText::AUTOPILOT_LANE_TAG_SEPARATOR);
+        mText.Append(SOLMenuText::AUTOPILOT_LANE_TAG);
+    }
     const float textWidth = static_cast<float>(MeasureLine(ESOLHudLine::Autopilot, ESOLHudFont::Medium).X);
 
     // The block sits below the top edge, or below the key-hint lines where it would overlap them (long hint lines at
@@ -2006,6 +2016,16 @@ void ASOLFlightHud::DrawPilotBlock(const FSOLShipControl& control)
         // Second line: the activity and its G limit
         mText.Reset();
         SOLHudFormat::AppendChaseActivity(mText, chase.Activity, chase.LimitG, chase.ResumeMeter);
+        mTopBlockRect += DrawBufferCentered(ESOLHudLine::ChaseActivity, HUD_SECONDARY, centerX, lineY,
+            ESOLHudFont::Small);
+        lineY += HUD_LINE_SMALL_PX * mUiScale;
+    }
+    const TCHAR* activity = SOLAutopilotOrder::AutopilotActivityText(!bChase && Ships->IsAutopilotWarPower());
+    if (FCString::Strlen(activity) > 0)
+    {
+        // Second line of a War power order: its token, as the chase marker's activity line
+        mText.Reset();
+        mText.Append(activity);
         mTopBlockRect += DrawBufferCentered(ESOLHudLine::ChaseActivity, HUD_SECONDARY, centerX, lineY,
             ESOLHudFont::Small);
         lineY += HUD_LINE_SMALL_PX * mUiScale;
@@ -2767,6 +2787,13 @@ void ASOLFlightHud::HideLaneTunnelLabels()
     mMergeSpot = FSOLLaneMergeSpot();
     mMergeGrown = FSOLLaneLabelPlacement();
     mMergeWidestWidth = 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the top marker's text as last measured for drawing
+const FString& ASOLFlightHud::GetLastAutopilotMarkerText() const
+{
+    return mLines[static_cast<int32>(ESOLHudLine::Autopilot)].Source;
 }
 
 //////////////////////////////////////////////////////////////////////////

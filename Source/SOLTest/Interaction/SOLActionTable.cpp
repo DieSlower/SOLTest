@@ -29,6 +29,7 @@ namespace
         { ESOLAction::Target, false },
         { ESOLAction::Info, false },
         { ESOLAction::MoveTo, false },
+        { ESOLAction::MoveToWarPower, false },
         { ESOLAction::Follow, false },
         { ESOLAction::ChaseDown, false },
         { ESOLAction::JumpTo, false },
@@ -43,6 +44,7 @@ namespace
         { ESOLAction::Target, false },
         { ESOLAction::Info, false },
         { ESOLAction::MoveTo, true },
+        { ESOLAction::MoveToWarPower, true },
         { ESOLAction::Follow, true },
         { ESOLAction::JumpTo, true },
         { ESOLAction::MatchSpeed, false },
@@ -209,11 +211,9 @@ ESOLActionBlock SOLActionTable::Evaluate(const ESOLObjectType type, const ESOLAc
             : !context.bHasShip ? ESOLActionBlock::NoShip
             : context.bJumpWarping ? ESOLActionBlock::JumpWarping : ESOLActionBlock::None;
     case ESOLAction::MoveTo:
-    {
-        const ESOLActionBlock block = ActionTableOrderBlock(context);
-        return block != ESOLActionBlock::None ? block
-            : context.bIsMoveTarget ? ESOLActionBlock::AlreadyMovingTo : ESOLActionBlock::None;
-    }
+    case ESOLAction::MoveToWarPower:
+        // A new Move To or War power order replaces the running one, even to the same body (user decision 2026-11-17)
+        return ActionTableOrderBlock(context);
     case ESOLAction::Follow:
     {
         const ESOLActionBlock block = ActionTableOrderBlock(context);

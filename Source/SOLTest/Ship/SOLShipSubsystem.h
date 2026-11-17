@@ -10,6 +10,7 @@
 #include "Level/SOLSurfaceLock.h"
 #include "Ship/SOLShipSmokeFlight.h"
 #include "Targeting/SOLTargetable.h"
+#include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
 #include "Mass/EntityHandle.h"
@@ -22,6 +23,7 @@
 
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLLaneTrafficSubsystem;
 class USOLShipFlightProcessor;
 class USOLSimClockSubsystem;
 class USOLTargetingSubsystem;
@@ -238,8 +240,18 @@ public:
     uint32 GetPilotResetCount() const { return mPilotResetCount; }
 
     // Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side and enters AUTO, with
-    // the pilot input of the last frame latched (SDD 19 section 3.3); false if invalid
-    bool EngageAutopilot(int32 bodyIndex);
+    // the pilot input of the last frame latched (SDD 19 section 3.3); false if invalid. bWarPower (the War power move,
+    // SDD 50 D22) makes this one order ignore the lane rules and fly at full thrust with boost
+    bool EngageAutopilot(int32 bodyIndex, bool bWarPower = false);
+
+    // Returns whether the current autopilot order is a War power move (false without an order)
+    bool IsAutopilotWarPower() const;
+
+    // Returns whether the autopilot or chase holds a traffic lane as of the last step (the marker's LANE tag)
+    bool IsAutopilotLaneHold() const;
+
+    // Returns the AUTO lane mode as of the last step (None without a lane leg; verification)
+    ESOLLaneAutoMode GetAutopilotLaneMode() const;
 
     // Cancels the autopilot order, if any, and hands back to assisted flight
     void DisengageAutopilot();
@@ -339,6 +351,9 @@ private:
     // Clears the autopilot order fragment and guidance, and any chase, without touching the flight mode
     void ClearAutopilotOrder();
 
+    // Drops the lane leg latched for the previous order (every order write calls it, SDD 50 section 4.9)
+    void ResetLaneState();
+
     // Ends the chase order (fragment, run state and plan), without touching the flight mode or the autopilot order
     void ClearChaseOrder();
 
@@ -373,6 +388,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLShipFlightProcessor> FlightProcessor;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLLaneTrafficSubsystem> LaneTraffic;     // The NPC population's lane table (AUTO lane rules)
 
     TSharedPtr<FMassEntityManager> mEntityManager;         // The world's default Mass entity manager
     TSharedPtr<FMassCommandBuffer> mCommandBuffer;         // Reused by every run so a step allocates none

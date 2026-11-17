@@ -206,6 +206,8 @@ namespace SOLHudFormat
         {
         case ESOLChaseActivity::Hold:
             return SOLMenuText::CHASE_HOLD;
+        case ESOLChaseActivity::Lane:
+            return SOLMenuText::CHASE_LANE;
         case ESOLChaseActivity::Cool:
             return SOLMenuText::CHASE_COOL;
         case ESOLChaseActivity::BrakeBurst:
@@ -231,7 +233,7 @@ namespace SOLHudFormat
         const double resumeMeter)
     {
         outText.Append(ChaseActivityName(activity));
-        if (activity == ESOLChaseActivity::Hold)
+        if (activity == ESOLChaseActivity::Hold || activity == ESOLChaseActivity::Lane)
         {
             return;
         }

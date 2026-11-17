@@ -5,6 +5,9 @@
 
 #pragma once
 
+#include "Traffic/SOLLaneTrafficMath.h"
+#include "Traffic/SOLLaneTrafficSubsystem.h"
+
 #include "CoreMinimal.h"
 #include "MassArchetypeTypes.h"
 #include "MassEntityQuery.h"
@@ -21,6 +24,7 @@ struct FSOLShipFrameInputs
     FVector3d CarryPositionM = FVector3d::ZeroVector;       // Time-warp carry of the reference frame for this frame
     FVector3d CarryVelocityMps = FVector3d::ZeroVector;     // Velocity carry of the reference frame for this frame
     double WarpFactor = 1.0;                                // Sim seconds per real second during this frame
+    TConstArrayView<FSOLLaneTrafficEntry> Lanes;            // The NPC population's lane table (empty: no lane rules)
 };
 
 /**
@@ -54,6 +58,13 @@ struct FSOLShipFrameInputs
  * target is interpolated per substep like the bodies: its frame body's substep position plus its offset moving at its
  * frame-relative velocity; its acceleration is that body's gravity from the others plus the subsystem's estimate. The
  * per-substep G policy state (FSOLChaseRunState) lives in the state fragment. A chase never counts an arrival.
+ *
+ * Lane rules (SDD 50 section 4.9): with a lane table, a body order, a route waypoint or a chase whose straight path
+ * runs along a lane (SOLLaneTraffic::FindLaneLeg, per frame while no leg is latched) approaches the merge point through
+ * AutopilotStep, then holds the traffic speed on the keep-right track (SOLFlight::LaneHoldStep) until the exit arc; the
+ * leg and mode are latched in the state fragment, so a holding ship keeps its lane to the exit. The lane math runs in
+ * ecliptic axes (SOLRender::EclipticToUnreal both ways). A War power order (bAutopilotIgnoreLanes) skips the lanes and
+ * flies SOLFlight::WarPowerAutopilotStep with boost. With no leg every step is the unchanged pre-#50 call.
  *
  * Chunks run with ParallelForEachEntityChunk: each job writes only its own entities' state; everything shared (body
  * cache, scratch positions, frame inputs, the const shared params) is read-only during the run. The query issues no
@@ -102,6 +113,7 @@ private:
     FSOLShipFrameInputs mFrame;                         // Carry, warp and last frame's bodies for the current run
     TArray<FVector3d> mSubstepBodyPositionsM;           // [boundary * bodyCount + body], sized once, rewritten per run
     TArray<FVector3d> mSimSubstepBodyPositionsM;        // Same for the autopilot's sim-time substeps under warp
+    TArray<FSOLLaneMergeLane> mLaneViews;               // This run's lanes (ecliptic) at the frame-end bodies
     FVector3d mCarryPerSubstepM = FVector3d::ZeroVector; // Position carry added after each substep
     double mFrameRealS = 0.0;                           // Real seconds the current run covers (both substep grids)
     double mSubstepS = 0.0;                             // Substep length for the current run

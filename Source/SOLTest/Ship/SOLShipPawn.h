@@ -20,6 +20,7 @@
 #include "Map/SOLMapSmoke.h"
 #include "Map/SOLRouteOverlaySmoke.h"
 #include "Map/SOLRouteSmoke.h"
+#include "Npc/SOLAutoLanesSmoke.h"
 #include "Npc/SOLLaneMergeSmoke.h"
 #include "Npc/SOLNpcLaneSmoke.h"
 #include "Npc/SOLNpcTrafficSmoke.h"
@@ -1003,6 +1004,7 @@ private:
     TUniquePtr<FSOLNpcTunnelSmoke> mSmokeNpcTunnel;         // Verification-only NPC lane tunnel script (SDD 49)
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
     TUniquePtr<FSOLLaneMergeSmoke> mSmokeLaneMerge;         // Verification-only lane merge readout script (V6)
+    TUniquePtr<FSOLAutoLanesSmoke> mSmokeAutoLanes;         // Verification-only AUTO lane rules script (V7)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLMapAlignSmoke> mSmokeMapAlign;           // Verification-only map alignment (-SOLSmokeMapAlign)

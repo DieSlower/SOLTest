@@ -102,6 +102,20 @@ namespace SOL
     inline constexpr double PILOT_UNCONSCIOUS_RECOVER_PER_S = 0.02;
     inline constexpr double PILOT_LETHAL_WARNING_S = 30.0;
 
+    // War power move (SDD 50 D22, user decision 2026-11-17): the full forward thrust with boost, but each substep's G
+    // keeps the meter at or above this floor, just above PILOT_CRITICAL_METER, so it never reaches critical or blacks out
+    inline constexpr double WAR_POWER_METER_FLOOR = 0.3;
+    static_assert(WAR_POWER_METER_FLOOR > PILOT_CRITICAL_METER && WAR_POWER_METER_FLOOR <= PILOT_CRITICAL_METER + 0.1,
+        "the War power floor sits slightly above the critical meter");
+    // War power pulses (user decision 2026-11-17): sqrt(0.5) of the way from sustained to the maximum (about 6.80 G),
+    // whose drain equals the sustained refill, so it pulses half the time and averages about 4.15 G (9 G: about 4.0)
+    inline constexpr double WAR_POWER_PULSE_G = PILOT_SUSTAINED_G + (PILOT_MAX_G - PILOT_SUSTAINED_G)
+        * 0.70710678118654752;
+    inline constexpr double WAR_POWER_BAND_LOW_METER = PILOT_VISION_START_METER;   // Pulse down to this (no grey-out)
+    inline constexpr double WAR_POWER_BAND_HIGH_METER = 0.6;                       // Recover at sustained up to this
+    static_assert(WAR_POWER_BAND_LOW_METER > WAR_POWER_METER_FLOOR
+        && WAR_POWER_BAND_HIGH_METER > WAR_POWER_BAND_LOW_METER, "the pulse band lies above the hard floor");
+
     // Chase Down autopilot (SDD 32): G bursts planned against the pilot model, the meter floor and the tail point
     namespace Chase
     {
@@ -1941,6 +1955,11 @@ namespace SOL
         // The sim date -SOLSmokeLaneMerge starts at unless -SOLSimDate= is given: the planets' places decide which
         // labels and panels share the screen with the readout, so its views are pinned like the tunnel smoke's
         inline constexpr const TCHAR* SMOKE_LANE_MERGE_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
+        // AUTO lane rules (SDD 50 V7): approach and merge, hold, leave and arrive, War power, then quit
+        inline constexpr const TCHAR* SMOKE_AUTO_LANES = TEXT("SOLSmokeAutoLanes");
+        // The sim date -SOLSmokeAutoLanes starts at unless -SOLSimDate= is given (the lane's length and the planets'
+        // places decide the trip times and views), pinned like the merge smoke's
+        inline constexpr const TCHAR* SMOKE_AUTO_LANES_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2804,7 +2823,19 @@ namespace SOL
     inline constexpr double NPC_LANE_AUTO_TRACK_WALL_RADII = 0.25;     // AUTO's right-hand track radius (D9)
     inline constexpr double NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII = 20.0;   // An AUTO path uses a lane only when it runs
                                                                        // this far inside the halo (D20)
-    inline constexpr double NPC_LANE_FLIP_S = 60.0;                    // Hull flip time while braking (D17)
+    inline constexpr double NPC_LANE_AUTO_HOLD_RADIUS_WALL_RADII = 0.25;   // The approach ends within this many wall
+                                                                       // radii of the track's radius...
+    inline constexpr double NPC_LANE_AUTO_HOLD_SPEED_FRACTION = 0.05;  // ...and this fraction of the traffic speed
+    inline constexpr double NPC_LANE_AUTO_LATERAL_GAIN_PER_S = 1.0e-3; // Hold: lateral speed per metre off the track
+    inline constexpr double NPC_LANE_AUTO_LATERAL_MAX_MPS = 2000.0;    // Hold: the lateral pull's speed cap
+    inline constexpr double NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION = 0.25; // The hold leaves the braking distance (of the
+                                                                       // speed relative to the target) plus this
+                                                                       // fraction of it...
+    inline constexpr double NPC_LANE_AUTO_LEAVE_MARGIN_M = 1.0e6;      // ...plus this before the target
+    static_assert(NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION >= 0.0 && NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION <= 0.5
+        && NPC_LANE_AUTO_LEAVE_MARGIN_M >= 0.0 && NPC_LANE_AUTO_LEAVE_MARGIN_M <= 1.0e8,
+        "the leave margin stays within half the braking distance plus 1e8 m");
+    inline constexpr double NPC_LANE_FLIP_S = 60.0;                   // Hull flip time while braking (D17)
     static_assert(NPC_LANE_SPEED_CAP_MPS > NPC_LANE_WALL_SPEED_MPS, "the cap is above the wall speed");
     static_assert(NPC_LANE_EFFORT_MIN > 0.0 && NPC_LANE_EFFORT_MIN < NPC_LANE_EFFORT_MEAN
         && NPC_LANE_EFFORT_MEAN < NPC_LANE_EFFORT_MAX, "the mean effort lies inside the effort range");

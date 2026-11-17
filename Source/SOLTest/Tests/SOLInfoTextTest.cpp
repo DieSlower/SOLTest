@@ -3,6 +3,7 @@
 * Copyright © 2026 Acid Rain Studios LLC
 */
 
+#include "Interaction/SOLActionTable.h"
 #include "Menu/SOLInfoText.h"
 #include "Menu/SOLKeyBindings.h"
 #include "Menu/SOLMenuText.h"
@@ -627,6 +628,103 @@ bool FSOLInfoTextLaneReadoutTest::RunTest(const FString& /*parameters*/)
     TestEqual(TEXT("'readout' appears once between the tunnel text and the space dust"),
         paragraph.Mid(tunnelAt, dustAt - tunnelAt).Find(TEXT("readout"), ESearchCase::CaseSensitive,
             ESearchDir::FromEnd), readoutAt - tunnelAt);
+    TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
+    return true;
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the sentence of a paragraph that holds the text at index at (from the previous ". " to the next ".")
+    FString InfoTextSentenceAt(const FString& paragraph, const int32 at)
+    {
+        const int32 previousStop = paragraph.Find(TEXT(". "), ESearchCase::CaseSensitive, ESearchDir::FromEnd, at);
+        const int32 start = previousStop == INDEX_NONE ? 0 : previousStop + 2;
+        const int32 nextStop = paragraph.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart, at);
+        return paragraph.Mid(start, (nextStop == INDEX_NONE ? paragraph.Len() : nextStop + 1) - start);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextAutopilotLanesTest, "SOLTest.InfoText.AutopilotLaneRules",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 Part 50d (SDD 50 D9, D19, contract case 16), test-first: the autopilot paragraph says AUTO follows the
+// lane rules: it slows to the traffic speed, keeps to the right and the trip is slower; the 50d review fix: the lane
+// trip takes over two weeks, 16 days Earth to Mars (the real lane's leg time, SOLTest.LaneAutoRules.LaneLegTime), not
+// "about two weeks"; no placeholder left
+bool FSOLInfoTextAutopilotLanesTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    const TArray<int32> found = InfoTextParagraphsWith(prose, TEXT("The autopilot (AUTO)"));
+    if (!TestEqual(TEXT("exactly one autopilot paragraph"), found.Num(), 1))
+    {
+        return false;
+    }
+    const FString& paragraph = prose[found[0]];
+    for (const TCHAR* phrase : { TEXT("lane"), TEXT("traffic speed"), TEXT("right"), TEXT("slower"),
+        TEXT("over two weeks"), TEXT("16 days") })
+    {
+        TestTrue(FString::Printf(TEXT("'%s' says '%s'"), *paragraph, phrase), paragraph.Contains(phrase,
+            ESearchCase::CaseSensitive));
+    }
+    TestFalse(TEXT("no longer 'about two weeks'"), paragraph.Contains(TEXT("about two weeks"),
+        ESearchCase::CaseSensitive));
+    TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextWarPowerTest, "SOLTest.InfoText.WarPowerMove",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 Part 50d (SDD 50 D22, contract case 16), test-first: the interaction menus paragraph names the War power
+// move by its menu label, once, after Move To, in a sentence that says it ignores the lanes and flies at full thrust;
+// no placeholder left. The 50d review fix (no exact literal is possible before the implementer words it): its own
+// clause (from the label to the next ';' or '.') carries the keywords and stays at most 300 characters
+bool FSOLInfoTextWarPowerTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    const TArray<int32> found = InfoTextParagraphsWith(prose, TEXT("Interaction menus:"));
+    if (!TestEqual(TEXT("exactly one interaction menus paragraph"), found.Num(), 1))
+    {
+        return false;
+    }
+    const FString& paragraph = prose[found[0]];
+    const FString label = SOLActionTable::ActionLabel(ESOLAction::MoveToWarPower);
+    if (!TestFalse(TEXT("the War power row has a label"), label.IsEmpty()))
+    {
+        return false;
+    }
+    const int32 labelAt = paragraph.Find(label, ESearchCase::CaseSensitive);
+    const int32 moveToAt = paragraph.Find(TEXT("Move To"), ESearchCase::CaseSensitive);
+    if (!TestTrue(FString::Printf(TEXT("'%s' names '%s'"), *paragraph, *label), labelAt != INDEX_NONE))
+    {
+        return false;
+    }
+    TestTrue(TEXT("after Move To"), moveToAt != INDEX_NONE && labelAt > moveToAt);
+    TestEqual(TEXT("named once"), paragraph.Find(label, ESearchCase::CaseSensitive, ESearchDir::FromEnd), labelAt);
+    const FString sentence = InfoTextSentenceAt(paragraph, labelAt);
+    for (const TCHAR* phrase : { TEXT("lane"), TEXT("thrust") })
+    {
+        TestTrue(FString::Printf(TEXT("'%s' says '%s'"), *sentence, phrase), sentence.Contains(phrase,
+            ESearchCase::CaseSensitive));
+    }
+
+    // The War power clause itself: from the label to the next ';' (the menu list's separator) or '.'
+    const int32 semicolonAt = paragraph.Find(TEXT(";"), ESearchCase::CaseSensitive, ESearchDir::FromStart, labelAt);
+    const int32 stopAt = paragraph.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart, labelAt);
+    const int32 endAt = semicolonAt == INDEX_NONE ? stopAt : stopAt == INDEX_NONE ? semicolonAt
+        : FMath::Min(semicolonAt, stopAt);
+    const FString clause = paragraph.Mid(labelAt, (endAt == INDEX_NONE ? paragraph.Len() : endAt) - labelAt);
+    for (const TCHAR* phrase : { TEXT("lane"), TEXT("thrust") })
+    {
+        TestTrue(FString::Printf(TEXT("clause '%s' says '%s'"), *clause, phrase), clause.Contains(phrase,
+            ESearchCase::CaseSensitive));
+    }
+    TestTrue(FString::Printf(TEXT("clause of %d characters, at most 300"), clause.Len()), clause.Len() <= 300);
     TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
     return true;
 }

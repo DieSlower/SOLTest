@@ -6,6 +6,7 @@
 #pragma once
 
 #include "Flight/SOLFlight.h"
+#include "Traffic/SOLLaneTrafficMath.h"
 
 #include "CoreMinimal.h"
 #include "Mass/EntityElementTypes.h"
@@ -24,6 +25,11 @@ struct FSOLShipStateFragment : public FMassFragment
     double GLoadG = 0.0;                      // Pilot G-load (thrust plus surface contact) of the last substep
     FSOLGuidanceOutput Guidance;              // Autopilot guidance of the last substep (default when not engaged)
     bool bAutopilotArrived = false;           // The autopilot reached its target during the last step (never a chase)
+    FSOLLaneAutoLeg LaneLeg;                  // AUTO lane rules (SDD 50 section 4.9): the leg latched for this order
+                                              // while approaching or holding (transient, never saved)
+    ESOLLaneAutoMode LaneMode = ESOLLaneAutoMode::None;  // Its mode after the last substep (the HUD's LANE tag;
+                                                         // Left is final for the order)
+    FSOLWarPowerPulseState WarPowerPulse;     // War power pulse phase (transient, reset with each order, never saved)
 };
 
 /** Control input a ship flies with this frame (written by the player pawn, AI or a script). */
@@ -40,6 +46,8 @@ struct FSOLShipControlFragment : public FMassFragment
     double AutopilotPassSpeedMps = 0.0;       // Point order: fly-through speed at the target (0 = stop there)
     double AutopilotCaptureRadiusM = 0.0;     // Point order: fly-through capture radius (0 = stop there)
     bool bAutopilotPoint = false;             // The order is a route waypoint (body + fixed offset), not a standoff
+    bool bAutopilotIgnoreLanes = false;       // War power move (SDD 50 D22): this order ignores the lane rules and
+                                              // flies at full thrust; per command (SOLAutopilotOrder), never saved
 };
 
 /**

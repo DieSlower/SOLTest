@@ -11,6 +11,7 @@
 #include "Game/SOLGameMode.h"
 #include "Menu/SOLMenuSubsystem.h"
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Ship/SOLAutopilotOrder.h"
 #include "Ship/SOLShipFlightProcessor.h"
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
@@ -115,6 +116,7 @@ void USOLShipSubsystem::Initialize(FSubsystemCollectionBase& collection)
     BodyRegistry = collection.InitializeDependency<USOLBodyRegistrySubsystem>();
     Anchor = collection.InitializeDependency<USOLAnchorSubsystem>();
     Targeting = collection.InitializeDependency<USOLTargetingSubsystem>();
+    LaneTraffic = collection.InitializeDependency<USOLLaneTrafficSubsystem>();
     Super::Initialize(collection);
 
     if (massEntities == nullptr || SimClock == nullptr || BodyRegistry == nullptr || Anchor == nullptr
@@ -488,6 +490,10 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
         SCOPE_CYCLE_COUNTER(STAT_SOL_ShipFlightRun);
         FSOLShipFrameInputs inputs;
         ComputeFrameInputs(realDeltaSeconds, inputs);
+        // The lane table only while an AUTO order flies (no lane views are built otherwise)
+        const bool bAutoOrder = GetAutopilotBodyIndex() != INDEX_NONE || mChase.bActive;
+        inputs.Lanes = LaneTraffic != nullptr && bAutoOrder ? LaneTraffic->GetLanes()
+            : TConstArrayView<FSOLLaneTrafficEntry>();
         FlightProcessor->SetFrameInputs(inputs);
         mLastWarpFactor = inputs.WarpFactor;
         UE::Mass::FProcessingContext context(*mEntityManager, realDeltaSeconds);
@@ -536,7 +542,7 @@ void USOLShipSubsystem::StepShips(const float realDeltaSeconds)
 
 //////////////////////////////////////////////////////////////////////////
 // Orders the autopilot (SDD 18) to fly to a point above a body on the ship's current side; false if invalid
-bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
+bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex, const bool bWarPower)
 {
     if (!HasPlayerShip() || BodyRegistry == nullptr || bodyIndex < 0
         || bodyIndex >= BodyRegistry->GetUnrealFrameCache().Num())
@@ -549,14 +555,14 @@ bool USOLShipSubsystem::EngageAutopilot(const int32 bodyIndex)
     ClearChaseOrder();
     const FVector3d towardShip = GetState().PositionM - BodyRegistry->GetUnrealFrameCache().PositionsM[bodyIndex];
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
-    control.AutopilotBodyIndex = bodyIndex;
-    control.AutopilotOffsetDir = towardShip.GetSafeNormal(UE_DOUBLE_SMALL_NUMBER, FVector3d(0.0, 0.0, 1.0));
-    control.bAutopilotPoint = false;
+    SOLAutopilotOrder::WriteBodyOrder(control, bodyIndex, towardShip, bWarPower);
+    ResetLaneState();
     mIsAutopilotPassThrough = false;
     ++mAutopilotOrderSerial;
     SOLFlightMode::EngageAuto(mFlightMode, mLastPilotInput);
-    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)%s"), *GetName(),
+    UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot engaged to %s (%.0f km)%s%s"), *GetName(),
         *BodyRegistry->GetRegistry().GetName(bodyIndex).ToString(), towardShip.Size() / SOL::METERS_PER_KM,
+        bWarPower ? TEXT(", War power") : TEXT(""),
         mFlightMode.LatchedChannels != 0 ? TEXT("; held input latched") : TEXT(""));
     return true;
 }
@@ -576,11 +582,9 @@ bool USOLShipSubsystem::EngageAutopilotPoint(const FSOLAutopilotPointOrder& orde
     // A route start or Resume replaces a chase (SDD 32 section 3.7)
     ClearChaseOrder();
     FSOLShipControlFragment& control = mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
-    control.AutopilotBodyIndex = order.BodyIndex;
-    control.AutopilotPointOffsetM = order.OffsetM;
-    control.AutopilotPassSpeedMps = FMath::Max(order.PassSpeedMps, 0.0);
-    control.AutopilotCaptureRadiusM = FMath::Max(order.CaptureRadiusM, 0.0);
-    control.bAutopilotPoint = true;
+    SOLAutopilotOrder::WritePointOrder(control, order.BodyIndex, order.OffsetM, order.PassSpeedMps,
+        order.CaptureRadiusM);
+    ResetLaneState();
     mIsAutopilotPassThrough = order.bStayAutoOnArrival;
     ++mAutopilotOrderSerial;
     mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).bAutopilotArrived = false;
@@ -679,7 +683,8 @@ FSOLChaseStatus USOLShipSubsystem::GetChaseStatus() const
     status.AimDistanceM = state.Guidance.DistanceM;
     status.ClosingSpeedMps = state.Guidance.ClosingSpeedMps;
     status.bHolding = chase.ChaseLimit.Activity == ESOLChaseActivity::Hold;
-    status.Activity = chase.ChaseLimit.Activity;
+    const bool bLaneStep = state.LaneMode == ESOLLaneAutoMode::Approach || state.LaneMode == ESOLLaneAutoMode::Hold;
+    status.Activity = SOLChase::DisplayedChaseActivity(chase.ChaseLimit.Activity, bLaneStep);
     status.LimitG = chase.ChaseLimit.LimitG;
     status.ResumeMeter = chase.ChaseLimit.ResumeMeter;
     status.bCooling = chase.ChaseRun.bCooling;
@@ -692,6 +697,15 @@ FSOLChaseStatus USOLShipSubsystem::GetChaseStatus() const
     const FSOLChasePrediction& prediction = mChase.Plan.Prediction;
     status.TimeToInterceptS = status.bHolding ? 0.0 : (prediction.bIntercepts
         ? FMath::Max(prediction.TimeS - mChase.SinceReplanSimS, 0.0) : DBL_MAX);
+
+    // In a lane step the plan's prediction does not hold: the lane ETA and the closing speed to the target (the
+    // flight processor writes both into the guidance)
+    if (bLaneStep)
+    {
+        status.bHolding = false;
+        status.TimeToInterceptS = SOLLaneTraffic::LaneOrderEtaS(state.LaneMode, state.Guidance.EtaS,
+            status.TimeToInterceptS);
+    }
     return status;
 }
 
@@ -1036,12 +1050,54 @@ void USOLShipSubsystem::ClearAutopilotOrder()
     {
         UE_LOG(LogSOL, Log, TEXT("ShipSubsystem %s: autopilot disengaged"), *GetName());
     }
-    control.AutopilotBodyIndex = INDEX_NONE;
-    control.bAutopilotPoint = false;
+    SOLAutopilotOrder::ClearOrder(control);
     mIsAutopilotPassThrough = false;
     FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
     state.Guidance = FSOLGuidanceOutput();
     state.bAutopilotArrived = false;
+    ResetLaneState();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Drops the lane leg latched for the previous order and the War power pulse phase
+void USOLShipSubsystem::ResetLaneState()
+{
+    if (!HasPlayerShip())
+    {
+        return;
+    }
+    FSOLShipStateFragment& state = mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip);
+    state.LaneLeg = FSOLLaneAutoLeg();
+    state.LaneMode = ESOLLaneAutoMode::None;
+    state.WarPowerPulse = FSOLWarPowerPulseState();
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the current autopilot order is a War power move
+bool USOLShipSubsystem::IsAutopilotWarPower() const
+{
+    if (!HasPlayerShip())
+    {
+        return false;
+    }
+    const FSOLShipControlFragment& control =
+        mEntityManager->GetFragmentDataChecked<FSOLShipControlFragment>(mPlayerShip);
+    return control.AutopilotBodyIndex != INDEX_NONE && control.bAutopilotIgnoreLanes;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the autopilot or chase holds a traffic lane as of the last step
+bool USOLShipSubsystem::IsAutopilotLaneHold() const
+{
+    return SOLLaneTraffic::IsLaneMarkerShown(GetAutopilotLaneMode());
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the AUTO lane mode as of the last step
+ESOLLaneAutoMode USOLShipSubsystem::GetAutopilotLaneMode() const
+{
+    return HasPlayerShip() ? mEntityManager->GetFragmentDataChecked<FSOLShipStateFragment>(mPlayerShip).LaneMode
+        : ESOLLaneAutoMode::None;
 }
 
 //////////////////////////////////////////////////////////////////////////

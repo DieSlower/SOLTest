@@ -12,8 +12,48 @@
 #include "Ship/SOLShipFragments.h"
 #include "SOLConstants.h"
 #include "Universe/SOLBodyFrameCache.h"
+#include "Universe/SOLRenderPlacement.h"
 
 #include "MassExecutionContext.h"
+
+namespace
+{
+    // The most lanes a ship's per-substep lane scratch holds (the population's lane count is at most this)
+    constexpr int32 FLIGHT_MAX_LANES = SOL::NPC_GROUP_TEXTURE_WIDTH;
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a lane view in ecliptic axes from its table entry and the Unreal-handed bodies (invalid frame without
+    // its bodies)
+    FSOLLaneMergeLane FlightLaneView(const FSOLLaneTrafficEntry& entry, const TConstArrayView<FVector3d> bodiesM,
+        const TConstArrayView<FVector3d> bodyVelocitiesMps)
+    {
+        FSOLLaneMergeLane lane;
+        lane.Profile = entry.Profile;
+        lane.BodyA = entry.BodyA;
+        lane.BodyB = entry.BodyB;
+        if (!bodiesM.IsValidIndex(entry.BodyA) || !bodiesM.IsValidIndex(entry.BodyB)
+            || !bodyVelocitiesMps.IsValidIndex(entry.BodyA) || !bodyVelocitiesMps.IsValidIndex(entry.BodyB))
+        {
+            return lane;
+        }
+        return SOLLaneTraffic::MakeMergeLane(entry.Profile, entry.BodyA, entry.BodyB,
+            SOLRender::EclipticToUnreal(bodiesM[entry.BodyA]), SOLRender::EclipticToUnreal(bodiesM[entry.BodyB]),
+            SOLRender::EclipticToUnreal(bodyVelocitiesMps[entry.BodyA]),
+            SOLRender::EclipticToUnreal(bodyVelocitiesMps[entry.BodyB]));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a guidance output with its vectors mirrored between ecliptic and Unreal axes (the mirror is its own
+    // inverse)
+    FSOLGuidanceOutput FlightMirrorGuidance(const FSOLGuidanceOutput& guidance)
+    {
+        FSOLGuidanceOutput out = guidance;
+        out.DesiredNetAccelMps2 = SOLRender::EclipticToUnreal(guidance.DesiredNetAccelMps2);
+        out.DesiredThrustAccelMps2 = SOLRender::EclipticToUnreal(guidance.DesiredThrustAccelMps2);
+        out.DesiredForward = SOLRender::EclipticToUnreal(guidance.DesiredForward);
+        return out;
+    }
+}
 
 //////////////////////////////////////////////////////////////////////////
 // Registers the query, opts out of the automatic processing phases and builds the chunk callback once
@@ -83,6 +123,16 @@ void USOLShipFlightProcessor::Execute(FMassEntityManager& /*entityManager*/, FMa
         PrepareSubstepBodyPositions(budgetS, mSimSubstepCount, mSimSubstepBodyPositionsM);
     }
 
+    // This run's lanes for the AUTO lane rules, in ecliptic axes at the frame-START bodies (boundary 0, the same on
+    // both substep grids), where the ship and its target are classified too; the subsystem passes lanes only while an
+    // AUTO order flies, so a frame without one builds none
+    const TConstArrayView<FVector3d> startBodiesM(mSubstepBodyPositionsM.GetData(), mBodyCache->Num());
+    mLaneViews.SetNum(FMath::Min(mFrame.Lanes.Num(), FLIGHT_MAX_LANES), EAllowShrinking::No);
+    for (int32 lane = 0; lane < mLaneViews.Num(); ++lane)
+    {
+        mLaneViews[lane] = FlightLaneView(mFrame.Lanes[lane], startBodiesM, mBodyCache->VelocitiesMps);
+    }
+
     mQuery.ParallelForEachEntityChunk(context, mChunkFunction);
 }
 
@@ -146,6 +196,7 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         const bool bChase = chaseFragment != nullptr && chaseFragment->bChase;
         FSOLChaseRunState chaseRun;
         FSOLChaseGLimit chaseLimit;
+        FSOLWarPowerPulseState warPowerPulse = stateFragment.WarPowerPulse;
 
         // Real-time flight inherits its frame's velocity change under warp once, at the frame start; an autopilot or
         // a chase under warp integrates the frame's sim time itself and needs no carry
@@ -179,6 +230,43 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
         const double boundaryRealS = mFrameRealS / substepCount;
         const double warpFactor = FMath::Max(mFrame.WarpFactor, 1.0);
 
+        // The order's own target with the bodies where they are (Unreal axes): the chase target, the waypoint, or the
+        // standoff point above the body
+        auto orderTargetM = [&](const TConstArrayView<FVector3d> bodiesM)
+        {
+            if (bChase)
+            {
+                return chaseFragment->ChaseTargetM;
+            }
+            const FVector3d& bodyM = bodiesM[autopilotBody];
+            if (controlFragment.bAutopilotPoint)
+            {
+                return bodyM + controlFragment.AutopilotPointOffsetM;
+            }
+            return bodyM + controlFragment.AutopilotOffsetDir * SOLFlight::AutopilotStandoffM(bodyRadiiM[autopilotBody],
+                bodyGMs[autopilotBody], SOLNewtonian::AutopilotAccelLimitMps2(flightParams.PilotLimits, meter));
+        };
+
+        // The order target's velocity (Unreal axes): its body's, or the chase target's
+        const FVector3d orderTargetVelocityMps = bChase ? chaseFragment->ChaseTargetVelocityMps
+            : bAutopilot ? bodyVelocitiesMps[autopilotBody] : FVector3d::ZeroVector;
+
+        // AUTO lane rules (SDD 50 section 4.9): the latched leg and mode of this order (Left is final), the lane views
+        // copied once per ship from the frame-start bodies; the latched lane's view is rebuilt where its bodies are at
+        // each substep. None for War power or without lanes
+        const bool bLaneRules = (bAutopilot || bChase) && !controlFragment.bAutopilotIgnoreLanes
+            && !mLaneViews.IsEmpty();
+        FSOLLaneAutoLeg laneLeg = bLaneRules ? stateFragment.LaneLeg : FSOLLaneAutoLeg();
+        ESOLLaneAutoMode laneMode = bLaneRules ? stateFragment.LaneMode : ESOLLaneAutoMode::None;
+        const int32 laneCount = bLaneRules ? FMath::Min(mLaneViews.Num(), FLIGHT_MAX_LANES) : 0;
+        FSOLLaneMergeLane laneViews[FLIGHT_MAX_LANES];
+        for (int32 lane = 0; lane < laneCount; ++lane)
+        {
+            laneViews[lane] = mLaneViews[lane];
+        }
+        const TConstArrayView<FSOLLaneMergeLane> lanes(laneViews, laneCount);
+        bool bLaneStep = false;
+
         for (int32 substep = 0; substep < substepCount; ++substep)
         {
             const TConstArrayView<FVector3d> bodiesBeforeM(substepBodies + substep * bodyCount, bodyCount);
@@ -188,7 +276,71 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
             const FSOLShipState before = state;
             FSOLFlightStepOutput stepOutput;
 
-            if (bChase)
+            // Lane rules: the decision of this substep (a search only on the first, where the views, ship and target
+            // are all at the frame start), in ecliptic axes, with the normal autopilot's brake plan for the leave
+            FSOLLaneAutoDecision decision;
+            if (bLaneRules && laneMode != ESOLLaneAutoMode::Left)
+            {
+                if (substep > 0 && laneLeg.bFound && lanes.IsValidIndex(laneLeg.Lane)
+                    && mFrame.Lanes.IsValidIndex(laneLeg.Lane))
+                {
+                    laneViews[laneLeg.Lane] = FlightLaneView(mFrame.Lanes[laneLeg.Lane], bodiesBeforeM,
+                        bodyVelocitiesMps);
+                }
+                const FSOLGuidanceParams brakePlan = SOLNewtonian::MakeGuidanceParams(flightParams.Envelope,
+                    SOLNewtonian::AutopilotAccelLimitMps2(flightParams.PilotLimits, meter), gravityMps2.Size(), true,
+                    false);
+                FSOLLaneAutoInput input;
+                input.ShipM = SOLRender::EclipticToUnreal(state.PositionM);
+                input.ShipVelocityMps = SOLRender::EclipticToUnreal(state.VelocityMps);
+                input.TargetM = SOLRender::EclipticToUnreal(orderTargetM(bodiesBeforeM));
+                input.TargetVelocityMps = SOLRender::EclipticToUnreal(orderTargetVelocityMps);
+                input.BrakeAccelMps2 = brakePlan.BrakeAccelMps2;
+                input.FlipS = brakePlan.FlipTimeS;
+                input.bSearch = substep == 0;
+                decision = SOLLaneTraffic::LaneAutoDecide(lanes, laneLeg, laneMode, input);
+                laneLeg = decision.Leg;
+                laneMode = decision.Mode;
+            }
+            bLaneStep = laneMode == ESOLLaneAutoMode::Approach || laneMode == ESOLLaneAutoMode::Hold;
+
+            if (laneMode == ESOLLaneAutoMode::Hold && lanes.IsValidIndex(laneLeg.Lane))
+            {
+                // Hold: the traffic speed on the keep-right track at the autopilot limit (a chase too, no bursts); the
+                // gain at most 1 / dt, as the rendezvous guidance's tracker, so long warp substeps stay deadbeat
+                const double gainPerS = FMath::Min(FSOLGuidanceParams().VelocityGainPerS, 1.0 / substepS);
+                guidance = FlightMirrorGuidance(SOLLaneTraffic::LaneHoldGuidance(lanes[laneLeg.Lane], laneLeg,
+                    SOLRender::EclipticToUnreal(state.PositionM), SOLRender::EclipticToUnreal(state.VelocityMps),
+                    SOLRender::EclipticToUnreal(orderTargetM(bodiesBeforeM)), SOLRender::EclipticToUnreal(gravityMps2),
+                    gainPerS));
+                state = SOLFlight::LaneHoldStep(state, guidance, gravityMps2, flightParams, meter, substepS,
+                    &stepOutput);
+            }
+            else if (laneMode == ESOLLaneAutoMode::Approach)
+            {
+                // Approach: rendezvous with the decision's step target (the merge point, co-moving with the traffic at
+                // the entry radius, else the order target). A ship already past the entry arc merges abreast of itself
+                // (the point moves on with it, so the rendezvous matches the traffic speed instead of turning back)
+                FSOLLaneStepTarget stepTarget = decision.StepTarget;
+                if (lanes.IsValidIndex(laneLeg.Lane))
+                {
+                    const FSOLLaneMergeLane& view = lanes[laneLeg.Lane];
+                    const double shipArcM = SOLLaneTraffic::LanePointOf(view.Profile, view.Frame,
+                        SOLRender::EclipticToUnreal(state.PositionM)).LegArcM;
+                    if ((shipArcM - laneLeg.EntryArcM) * static_cast<double>(laneLeg.DirectionSign) > 0.0)
+                    {
+                        FSOLLaneAutoLeg mergeLeg = laneLeg;
+                        mergeLeg.EntryArcM = FMath::Clamp(shipArcM, FMath::Min(laneLeg.EntryArcM, laneLeg.ExitArcM),
+                            FMath::Max(laneLeg.EntryArcM, laneLeg.ExitArcM));
+                        stepTarget = SOLLaneTraffic::LaneApproachStepTarget(SOLLaneTraffic::LaneMergeTarget(view,
+                            mergeLeg), stepTarget.PositionM, stepTarget.VelocityMps, stepTarget.AccelMps2);
+                    }
+                }
+                state = SOLFlight::AutopilotStep(state, SOLRender::EclipticToUnreal(stepTarget.PositionM),
+                    SOLRender::EclipticToUnreal(stepTarget.VelocityMps), SOLRender::EclipticToUnreal(
+                    stepTarget.AccelMps2), gravityMps2, flightParams, meter, substepS, &stepOutput, &guidance);
+            }
+            else if (bChase)
             {
                 // Chase Down (SDD 32): the target where it is at this substep's start, its acceleration (its frame
                 // body's gravity from the others, plus its own), the tail point, then the G-policy step. The budgets
@@ -243,9 +395,20 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
                     bodyGMs[autopilotBody], SOLNewtonian::AutopilotAccelLimitMps2(flightParams.PilotLimits, meter));
                 const FVector3d bodyAccelMps2 = SOLFlight::GravityAcceleration(bodyM, bodiesBeforeM, bodyGMs,
                     bodyRadiiM);
-                state = SOLFlight::AutopilotStep(state, bodyM + controlFragment.AutopilotOffsetDir * standoffM,
-                    bodyVelocitiesMps[autopilotBody], bodyAccelMps2, gravityMps2, flightParams, meter, substepS,
-                    &stepOutput, &guidance, bodyGMs[autopilotBody] / (standoffM * standoffM));
+                if (controlFragment.bAutopilotIgnoreLanes)
+                {
+                    // War power move (SDD 50 D22): boosted pulses of full thrust, the G meter between its band
+                    state = SOLFlight::WarPowerPulseAutopilotStep(state, bodyM + controlFragment.AutopilotOffsetDir
+                        * standoffM, bodyVelocitiesMps[autopilotBody], bodyAccelMps2, gravityMps2, flightParams,
+                        meter, true, substepS, warPowerPulse, &stepOutput, &guidance,
+                        bodyGMs[autopilotBody] / (standoffM * standoffM));
+                }
+                else
+                {
+                    state = SOLFlight::AutopilotStep(state, bodyM + controlFragment.AutopilotOffsetDir * standoffM,
+                        bodyVelocitiesMps[autopilotBody], bodyAccelMps2, gravityMps2, flightParams, meter, substepS,
+                        &stepOutput, &guidance, bodyGMs[autopilotBody] / (standoffM * standoffM));
+                }
             }
             else if (!SOLNewtonian::PilotHasControl(meter))
             {
@@ -301,17 +464,38 @@ void USOLShipFlightProcessor::ProcessChunk(FMassExecutionContext& context) const
             meter = SOLNewtonian::StepGMeter(meter, gLoad, flightParams.PilotLimits, substepS);
         }
 
+        // In a lane step every AUTO kind's HUD ETA counts the lane at the traffic speed (approach, lane, leave with its
+        // braking), and its distance and closing speed are to the order's own target, not the merge point
+        if (bLaneStep && laneLeg.bFound && mFrame.Lanes.IsValidIndex(laneLeg.Lane))
+        {
+            const TConstArrayView<FVector3d> endBodiesM(substepBodies + substepCount * bodyCount, bodyCount);
+            const FVector3d targetM = orderTargetM(endBodiesM);
+            const FSOLGuidanceParams plan = SOLNewtonian::MakeGuidanceParams(flightParams.Envelope,
+                SOLNewtonian::AutopilotAccelLimitMps2(flightParams.PilotLimits, meter), 0.0, true, false);
+            const double laneEtaS = SOLLaneTraffic::LaneAutoEtaS(FlightLaneView(mFrame.Lanes[laneLeg.Lane], endBodiesM,
+                bodyVelocitiesMps), laneLeg, SOLRender::EclipticToUnreal(state.PositionM),
+                SOLRender::EclipticToUnreal(targetM), plan.PlanAccelMps2, plan.FlipTimeS);
+            guidance.EtaS = SOLLaneTraffic::LaneOrderEtaS(laneMode, laneEtaS, guidance.EtaS);
+            guidance.DistanceM = (targetM - state.PositionM).Size();
+            guidance.ClosingSpeedMps = SOLLaneTraffic::LaneClosingSpeedMps(state.PositionM, state.VelocityMps, targetM,
+                orderTargetVelocityMps);
+        }
+
         stateFragment.State = state;
         stateFragment.ContactBodyIndex = contactBody;
         stateFragment.GMeter = meter;
         stateFragment.GLoadG = gLoad;
         stateFragment.Guidance = guidance;
+        stateFragment.LaneLeg = laneLeg;
+        stateFragment.LaneMode = laneMode;
+        stateFragment.WarPowerPulse = warPowerPulse;
         if (chaseFragment != nullptr)
         {
             chaseFragment->ChaseRun = chaseRun;
             chaseFragment->ChaseLimit = chaseLimit;
         }
-        stateFragment.bAutopilotArrived = !bChase && bAutopilot
+        // A lane approach "arriving" at its merge point is no arrival at the order's target
+        stateFragment.bAutopilotArrived = !bChase && bAutopilot && !bLaneStep
             && (bPointArrived || guidance.Phase == ESOLGuidancePhase::Arrived);
     }
 }

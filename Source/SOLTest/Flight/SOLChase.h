@@ -23,7 +23,9 @@ enum class ESOLChaseActivity : uint8
     Cool,           // Accelerate / Cruise phase at sustained, the meter recovering
     BrakeBurst,     // Brake phase at BurstG
     BrakeCool,      // Brake phase at sustained
-    Hold            // On the tail (guidance Arrived)
+    Hold,           // On the tail (guidance Arrived)
+    Lane            // In a lane step (SDD 50 section 4.9): holding the traffic speed or merging, no bursts (appended,
+                    // transient, the HUD's activity only)
 };
 
 // A chase plan's G levels and its meter floor
@@ -101,6 +103,9 @@ struct FSOLChasePlan
  */
 namespace SOLChase
 {
+    // Returns the activity the chase marker shows: Lane in a lane step (Approach or Hold), else the activity
+    SOLTEST_API ESOLChaseActivity DisplayedChaseActivity(ESOLChaseActivity activity, bool bLaneStep);
+
     // Returns the chase G cap: min(MaxG, forward thrust (boosted only with bBoost) / g0, total cap / g0), at least S
     SOLTEST_API double ChaseMaxG(const FSOLThrustEnvelope& env, const FSOLPilotGLimits& limits, bool bBoost);
 
