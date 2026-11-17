@@ -12,14 +12,15 @@
 #include "Interaction/SOLChaseSmoke.h"
 #include "Interaction/SOLInteractSmoke.h"
 #include "Map/SOLGlossaryCropWriter.h"
+#include "Map/SOLHologramSmoke.h"
 #include "Map/SOLJumpSmoke.h"
 #include "Map/SOLMapAlignSmoke.h"
 #include "Map/SOLMapModeState.h"
 #include "Map/SOLMapPickSmoke.h"
 #include "Map/SOLMapSmoke.h"
-#include "Map/SOLHologramSmoke.h"
 #include "Map/SOLRouteOverlaySmoke.h"
 #include "Map/SOLRouteSmoke.h"
+#include "Npc/SOLLaneMergeSmoke.h"
 #include "Npc/SOLNpcLaneSmoke.h"
 #include "Npc/SOLNpcTrafficSmoke.h"
 #include "Npc/SOLNpcTunnelSmoke.h"
@@ -1001,6 +1002,7 @@ private:
     TUniquePtr<FSOLNpcLaneSmoke> mSmokeNpcLanes;            // Verification-only NPC lane-line script (SDD 38)
     TUniquePtr<FSOLNpcTunnelSmoke> mSmokeNpcTunnel;         // Verification-only NPC lane tunnel script (SDD 49)
     TUniquePtr<FSOLNpcTrafficSmoke> mSmokeNpcTraffic;       // Verification-only NPC lane traffic script (SDD 50)
+    TUniquePtr<FSOLLaneMergeSmoke> mSmokeLaneMerge;         // Verification-only lane merge readout script (V6)
     TUniquePtr<FSOLMapSmoke> mSmokeMap;                     // Verification-only jump-map script (-SOLSmokeMap)
     TUniquePtr<FSOLMapPickSmoke> mSmokeMapPick;             // Verification-only map pick script (-SOLSmokeMapPick)
     TUniquePtr<FSOLMapAlignSmoke> mSmokeMapAlign;           // Verification-only map alignment (-SOLSmokeMapAlign)

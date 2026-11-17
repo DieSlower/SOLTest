@@ -14,6 +14,7 @@ class ASOLShipPawn;
 class APlayerController;
 class USOLAnchorSubsystem;
 class USOLBodyRegistrySubsystem;
+class USOLLaneTrafficSubsystem;
 class USOLMenuSubsystem;
 class USOLNpcSubsystem;
 class USOLSettingsSubsystem;
@@ -29,8 +30,10 @@ struct FSOLLaneBasis;
  * Earth), T4 (there looking 90 degrees off the axis), T4b (one tunnel radius off the axis looking 1.5 degrees off it),
  * T5 (the start above Earth facing the Moon) and T5b (40,000 km beyond Earth from Mars, 15 degrees off the Earth-Mars
  * axis, facing Earth) each check the instances, every texel against the tunnel feed, the fade read back (Q5) and its
- * crossfade, the labels (strongest first, side alpha, boxes clear of the projected dot rows and of each other), in
- * T2 / T3 keep right and the chevron directions, in T5b the end rings outside Earth and Earth among the shared
+ * crossfade, the labels (strongest first, side alpha, boxes clear of the projected dot rows and of each other, except
+ * that the lane traffic readout's label, grown by the readout line, may cover the rows: SDD 50 D18), in T2 / T3 / T4b
+ * the readout (its override on) drawn as the Earth-Mars label's last line, in T2 / T3 keep right and the chevron
+ * directions, in T5b the end rings outside Earth and Earth among the shared
  * occluders hiding the tunnel parts behind it, and shoot NpcTunnel_<w>x<h>_<view>.png with the HUD.
  * T7 holds the ship at rest relative to the lane (phase unchanged), flies it along the axis and back at a fixed speed
  * (the phase follows the foot arc, the arc follows speed x time) and moves it from 50 to 1 tunnel radii toward the axis
@@ -155,6 +158,7 @@ private:
     TWeakObjectPtr<USOLShipSubsystem> mShips;
     TWeakObjectPtr<USOLBodyRegistrySubsystem> mRegistry;
     TWeakObjectPtr<USOLAnchorSubsystem> mAnchor;
+    TWeakObjectPtr<USOLLaneTrafficSubsystem> mLaneTraffic;
     TWeakObjectPtr<USOLSettingsSubsystem> mSettings;
     TWeakObjectPtr<USOLMenuSubsystem> mMenu;
     TWeakObjectPtr<APlayerController> mController;

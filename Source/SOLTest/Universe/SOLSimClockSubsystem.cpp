@@ -21,20 +21,26 @@ void USOLSimClockSubsystem::Initialize(FSubsystemCollectionBase& collection)
 
 #if !UE_BUILD_SHIPPING
     // Developer verification override: start at a fixed date (SDD 16 section 7, question 1); not in Shipping builds.
-    // The glossary crop run (SDD 33 section 9) always starts at its pinned date; the lane tunnel smoke (SDD 49) at its
-    // own unless -SOLSimDate= names another
+    // The glossary crop run (SDD 33 section 9) always starts at its pinned date; the lane tunnel smoke (SDD 49) and the
+    // lane merge smoke (SDD 50 V6) at their own unless -SOLSimDate= names another
     FString simDate;
     const bool bCropRun = FParse::Param(FCommandLine::Get(), SOL::CommandLine::WRITE_GLOSSARY_CROPS);
     const bool bTunnelSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_NPC_TUNNEL);
+    const bool bMergeSmoke = FParse::Param(FCommandLine::Get(), SOL::CommandLine::SMOKE_LANE_MERGE);
+    const bool bHasSimDate = FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate);
     if (bCropRun)
     {
         simDate = SOL::Help::GLOSSARY_CROP_SIM_DATE;
     }
-    else if (bTunnelSmoke && !FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    else if (bTunnelSmoke && !bHasSimDate)
     {
         simDate = SOL::CommandLine::SMOKE_NPC_TUNNEL_SIM_DATE;
     }
-    if (bCropRun || bTunnelSmoke || FParse::Value(FCommandLine::Get(), SOL::CommandLine::SIM_DATE, simDate))
+    else if (bMergeSmoke && !bHasSimDate)
+    {
+        simDate = SOL::CommandLine::SMOKE_LANE_MERGE_SIM_DATE;
+    }
+    if (bCropRun || bTunnelSmoke || bMergeSmoke || bHasSimDate)
     {
         double julianDate = 0.0;
         if (FSOLSimClock::TryParseUtcJulianDate(simDate, julianDate))

@@ -92,7 +92,13 @@ the lane.
 - **D17: Engine-first hull flip** (user, Q5): hulls face their thrust, flipping over about 60 s (`NPC_LANE_FLIP_S`)
   while braking; this is also what #51's flame needs. *Refined by D21: the flip finishes before braking starts.*
 - **D18: Readout fallback** (user, Q6): when no tunnel label is placed, the merge readout falls back to a fixed line
-  under the speed readout.
+  under the speed readout. *Confirmed by the user on 2026-11-16 (50c, final):* whenever the readout lane's label is
+  placed (the compact one-line form too), the readout is its last line, and that label's box grows by the line and may
+  overlap the guide-dot rows (it still stays on screen and never pushes another label or a HUD panel away). When the
+  grown label does not fit at its anchor it slides sideways, still covering its own centred box, as close to centred
+  as possible. *Q10 answered by the user on 2026-11-17 (A):* if it fits nowhere even slid, the readout uses the fixed
+  fallback line. The fallback line is only for when no label of the readout's lane is placed, or when the grown label
+  fits nowhere.
 - **D19: AUTO obeys lane traffic rules by default, with an override** (user, Q7, changed from the recommendation): the
   autopilot follows the lane profile (accepting the slower trip, Earth - Mars about 9 days at 1x instead of about 2.9).
   **But** it can fly around lanes, or ignore the safe space, when the player tells it to. How the player tells it is
@@ -546,7 +552,8 @@ intrinsics), about +25 % of the function, estimated under +0.02 ms GPU at 1M; no
 Pure function `SOLLaneTraffic::MergeReadout(...)` on the UI side (no `UI -> Npc` edge, section 4.10), per frame:
 
 - **Lane:** the lanes whose halo contains the player (`rho_p <= H` and foot arc between the two end rings); several
-  -> the smallest `rho_p`. None -> hidden. Also hidden while the map, a menu or warp-jump shows, the HUD is hidden, or
+  -> the smallest `rho_p` (distance from the axis over that lane's own wall radius), the lower lane index on a tie.
+  None -> hidden. Also hidden while the map, a menu or warp-jump shows, the HUD is hidden, or
   the Lanes row (with the master O) is off (D8: follows the Lanes row like #49).
 - **Lane frame velocity** at the player's foot: `lerp(V_A, V_B, s)` (registry body velocities, `s` the foot fraction):
   exactly the nearest body's velocity near either end (D3), a blend mid-lane.
@@ -560,14 +567,50 @@ Pure function `SOLLaneTraffic::MergeReadout(...)` on the UI side (no `UI -> Npc`
 - **Verdict** `delta = (v_pl - v_t) / v_t`: MATCHED for `|delta| <= 0.05` (green), else TOO FAST / TOO SLOW, amber for
   `|delta| <= 0.20`, red beyond (`NPC_LANE_MERGE_MATCH_FRACTION`, `NPC_LANE_MERGE_AMBER_FRACTION`; the boundaries belong
   to the better class).
-- **Text** (`SOLMenuText::LANE_TRAFFIC_*`): `Traffic 182 km/s   You 175 km/s   MATCHED`, plus `(at 1x)` while time warp is
+- **Text** (`SOLMenuText::LANE_TRAFFIC_*`): `Traffic 182.00 km/s   You 175.00 km/s   MATCHED`, plus `(at 1x)` while time warp is
   above 1x (D7: both numbers are in sim seconds, unscaled). Formatted with `SOLHudFormat`'s speed format; rebuilt only
   when the printed values or the verdict change (keyed like the #49 label lines).
-- **Where:** a fourth line in the readout lane's tunnel label when that label is placed (the label box grows by one
-  line; placement rules unchanged). When the label is not placed (SDD 49 D19 views, crowded screens), the readout is drawn as a fixed line under the speed
-  readout (D18).
+- **Where:** the last line of the readout lane's tunnel label whenever that label is placed (the fourth line of the full
+  form, the second of the compact one-line form). The label box grows by the line and may overlap the guide-dot rows
+  (the only placement rule it is exempt from: it stays on the viewport and clear of the HUD panels and the other
+  labels, user decision 2026-11-16, D18). When the grown label does not fit at its anchor it slides sideways (still
+  covering its own centred box, as close to centred as possible). When no label of that lane is placed (SDD 49 D19
+  views, crowded screens), or the grown label fits nowhere even slid (Q10, user decision 2026-11-17), the readout is
+  drawn as a fixed line under the speed readout (D18). A lane with no ships still shows the readout (user decision
+  2026-11-17: the traffic speed is the profile's, not the ships').
 - **Look:** HUD glow text at the label's alpha, coloured by the verdict (green / amber / red from the HUD palette
   constants), the HUD glow setting applies. No sound (D8).
+- *As built (50c):* the lane table lives in `Traffic/SOLLaneTrafficSubsystem` (per lane the two end-body registry
+  indices and the frozen `FSOLLaneProfile`, set at spawn, cleared at despawn); the HUD reads the body registry and
+  builds the lanes' frames each frame. The labels are placed at their own size first (clear of the dot rows, as in
+  #49); that own-size placement alone feeds next frame's placement hysteresis, so a label is not held compact by its
+  readout. Then `SOLLaneTunnelLabel::PlaceLaneLabelWithLine` grows the readout's label by the line: it tries the full
+  form first (at the candidate the label took, then the other), then the compact form, with no dot rows and with the
+  HUD panels and the other placed labels as avoid boxes, so no other label moves. The grown box is as wide as the
+  widest usual readout line (a template line measured once: km/s speeds with the most digits, the longest verdict and
+  the warp note) or the widest line seen since the readout showed for that lane, so the box does not follow the
+  digits. The label's own lines stay centred on the anchor (`OwnBoxPx`), the readout line under them centred in the
+  grown box. Vertically it keeps the anchor rule; horizontally it slides off centre when needed, still covering its
+  own centred box, taking the clear position nearest to centred (Q10, answered A on 2026-11-17).
+  `SOLLaneTunnelLabel::ChooseMergeReadoutSpot` (pure, tested) makes the whole decision: hidden, or the fallback line
+  when no label of the lane is placed, or the fallback line with `bNoFit` when the label is placed but the grown label
+  fits nowhere even slid (Q10), else the label. Hysteresis: the label spot is left at once when the grown label stops
+  fitting (the readout line is never drawn where it does not fit; the label's own lines ease back down over 0.2 s,
+  so for that moment they can sit up to one line into the spot that stopped fitting), and after a no-fit the readout returns to the label only once the
+  grown label has fit for `NPC_LANE_MERGE_LABEL_RETURN_S` (0.25 s). A newly placed label takes the readout at once.
+  When the readout comes or goes, a 12 o'clock label's lines ease by one line over the label fade time (0.2 s)
+  instead of jumping, and the readout line fades in with that ease. The fallback line's spot comes from the pure
+  `SOLLaneTunnelLabel::ChooseMergeFallbackSpot`: the row under the large speed readout right of the speed card, then
+  the large readout's row, then above the card; the first on the viewport and clear of every label drawn that frame
+  (plus the label gap) and of last frame's HUD panels (the radar at a large HUD scale); else the one above the card.
+  It is not a label avoid box. The readout's speeds are re-checked and reformatted at most every
+  `NPC_LANE_MERGE_TEXT_REFRESH_S` (0.1 s), a new verdict, warp note or lane rebuilds at once, and the colour follows
+  the band every frame. Speeds under `NPC_LANE_MERGE_ZERO_SPEED_MPS` (0.05 m/s) print as 0 (never "-0.0").
+  `SOLLaneTunnelLabel::IsMergeReadoutEnabled` (pure, tested) holds the HUD's show conditions. The lane direction
+  guard `FORWARD_MIN` is now `SOL::NPC_LANE_MERGE_FORWARD_MIN` (0.1), and the lane table lost its unused revision
+  counter. Inside the Earth - Mars tunnel the readout is the label's last line near the axis, and the fallback line
+  where no label of the lane is placed (V6's view beside the wall, section 8). The glossary row is description-only
+  (a coloured line that shows only in a lane).
 
 ### 4.9 AUTO lane rules (D9)
 
@@ -612,9 +655,11 @@ data.
 
 - **New folder `Traffic/`**: `SOLLaneTrafficMath.{h,cpp}` (pure: the profile, cycle, map, mean field, merge readout,
   AUTO rules, thrust state) and `SOLLaneTrafficSubsystem.{h,cpp}` (a world subsystem holding the population's lane
-  table: per lane the body indices, `Rw`, `L0`, `l0`, end arcs, `D_U`, `T_U`, `Z`, the largest `v_p`; written by the NPC
-  subsystem at spawn, cleared at despawn; no per-frame data). New edges `Npc -> Traffic`, `Ship -> Traffic`, `UI ->
-  Traffic`; `Traffic -> Universe` (body registry) and `Traffic -> Const`. No `Ship -> Npc` or `UI -> Npc` edge is added.
+  table; written by the NPC subsystem at spawn, cleared at despawn; no per-frame data). New edges `Npc -> Traffic`,
+  `Ship -> Traffic`, `UI -> Traffic` and `Traffic -> Const`. No `Ship -> Npc` or `UI -> Npc` edge is added.
+  *(As built in 50c: the table holds per lane the two end-body registry indices and the frozen `FSOLLaneProfile`,
+  which carries the profile values (`Rw`, `L0`, `l0`, end arcs, `D_U`, `T_U`, `Z`, `v_p`). There is no `Traffic ->
+  Universe` edge: the HUD reads the body registry and builds the lane frames itself.)*
   The lane basis function moves from `SOLNpcTunnel::TunnelBasis` into `Traffic/` (`SOLLaneTraffic::LaneBasis`); the
   `SOLNpcTunnel` name stays as a forwarding inline, so the #49 tests do not change. *(As built in 50a:
   `FSOLNpcTunnelBasis` is an alias of `FSOLLaneBasis`. After the 50a review `MakeLaneProfile` takes the wall radius
@@ -624,7 +669,7 @@ data.
   wake bound, publishes the lane table), `SOLNpcVisuals` (group texture rows), `SOLNpcLaneMath` (`InWallShipCount`,
   `WallRadiusM`), `SOLNpcTunnelMath` / component (radius from `WallRadiusM`, label count per D15).
 - `Ship`: `USOLShipFlightProcessor` (lane leg per frame, merge / hold / leave per substep), `FSOLShipControlFragment`
-  transient lane fields. `UI`: `SOLFlightHud` (readout line), `SOLLaneTunnelLabel` (fourth line), `SOLMenuText`.
+  transient lane fields. `UI`: `SOLFlightHud` (readout line), `SOLLaneTunnelLabel` (last line), `SOLMenuText`.
 - New files: `Traffic/SOLLaneTrafficMath.{h,cpp}`, `Traffic/SOLLaneTrafficSubsystem.{h,cpp}`,
   `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/NpcTrafficMathTest.cpp`; flags
   `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile`; no new cvar (the A/B baseline is the pre-#50 commit, section 8).
@@ -684,7 +729,7 @@ manual flight, every setting, the save schema and the key layout, the map.
 - **Info, overlay paragraph:** the #49 sentence "The lane's rule is keep right ..." becomes a statement of what the
   ships do: "Lane ships keep right (out from the inner body on the right, back on the left), turn round just past
   each end ring, run fastest near the axis and at about 20 km/s at the wall, and about a quarter of them fly just
-  outside the tunnel. Inside the outer traffic a readout beside the tunnel label shows the traffic speed there and how
+  outside the tunnel. Inside the outer traffic a readout as the tunnel label's last line shows the traffic speed there and how
   far yours is from it (green matched, amber close, red far); on AUTO your ship merges on the right and keeps to the
   traffic speed." (final wording checked against the constants in 50e).
 - **Help glossary:** a new HUD entry "Lane traffic readout" (the line, the three verdicts and colours, the warp note).
@@ -855,14 +900,20 @@ label line placement, the AUTO merge in real flight.
    far point beyond) stepping like the far point within 0.5 px at the Mid radius, every frame drawing each ship exactly
    once (`-handover-once`: the tiers' Mid radius plus the lane's hand-over margin, the ship arriving as a Far ship), a
    screenshot sequence with no visible jump; **V6** readout: the player placed at `rho` 1.5, 0.8, 0.2 mid-lane with velocities 0.9, 1.0 and 1.3 x
-   `v_t` (TOO SLOW amber, MATCHED green, TOO FAST red), hidden at 2.5, the warp note at 1000x; **V7** AUTO: autopilot
+   `v_t` (TOO SLOW amber, MATCHED green, TOO FAST red), hidden at 2.5, the warp note at 1000x. The smoke starts at the
+   pinned sim date `SOL::CommandLine::SMOKE_LANE_MERGE_SIM_DATE` (2026-11-12T12:00:00Z) unless `-SOLSimDate=` is
+   given, like the tunnel smoke. Each view has an expected spot: beside the wall (rho 1.5) and at rho 0.8 no label of
+   the lane is placed, so the fallback line; near the axis (rho 0.2 and the quarter-leg axis view) the label holds it;
+   the 1000x warp view accepts the label or the Q10 fallback (the lane drifts and the label moves). The
+   smoke also logs how many frames of each case's settle had no fit (the Q10 path occurs in practice: about 20 frames
+   right after the two large repositions, the quarter-leg axis view and the warp view, none in the rho 0.2 views); **V7** AUTO: autopilot
    Earth -> Mars under warp: entered on the right half, matched within 5 % at the halo boundary, held within 5 % of
    `vbar` through the leg, left at Mars's end ring, arrived; a crossing path unchanged (D20).
 3. **Screenshots** at 1280x720, 1920x1080, 3840x2160, HUD glow 0 / 100 / 200 %: flow and keep right, the halo outside
    the rings, the U-turn fountain, the readout colours; candidate shots deleted after use; **README gallery ideas:**
    (a) inside the Earth - Mars tunnel looking toward Mars, right-half ships streaming away and left-half ships toward,
    the halo beyond the rings; (b) side view of the U-turn fountain past Earth's end ring with Earth in frame; (c) the
-   readout `MATCHED` in green beside the tunnel label at mid-lane (or the AUTO `LANE` marker).
+   readout `MATCHED` in green as the tunnel label's last line at mid-lane (or the AUTO `LANE` marker).
 4. **Existing smokes:** `-SOLSmokeNpcLanes` 35 / 35 (crossfade unchanged), `-SOLSmokeNpcTunnel` 39 / 39 (the radius and
    label count checks updated for the frozen `Rw` and D15), `-SOLSmokeOverlay`, `-SOLSmokeHud`, `-SOLSmokeHoloMenu`,
    `-SOLSmokeSolidMenu` (Info text), the route and chase smokes, the 1M `-SOLNpcRamp` PASS at every stage.
@@ -922,6 +973,11 @@ D1-D12 (grill-me) and D13-D20 (the user's answers to Q1-Q8, 2026-11-13, section 
 D16, Q5 = D17, Q6 = D18, Q7 = D19 (changed from the recommendation), Q8 = D20. D21 (the hull flip finishes before
 braking, 2026-11-13) is the user's refinement of D17 (section 14).
 
+- **Q10 (answered by the user, 2026-11-17): where does the readout go when its label is placed but the label grown by
+  the readout line fits nowhere, even slid sideways?** Answer A: the grown label slides sideways (still covering its
+  own centred box, as close to centred as possible) to fit, and if it fits nowhere even slid the readout goes on the
+  fixed fallback line under the speed card (D18, section 4.8).
+
 ## 12. Open questions (for the user; each with the recommended answer)
 
 - **Q9: How does the player tell AUTO to fly around lanes or ignore the safe space (D19)?** Options: a console argument
@@ -946,6 +1002,22 @@ braking, 2026-11-13) is the user's refinement of D17 (section 14).
 - 2026-11-16: third 50b pass (section 4.6): the accelerate arc and the end-zone map split into epoch constant and
   moving part (`GpuLaneCycleSweep`); the lane hand-over margin on the tiers' Mid radius (`LaneHandOverMargin`, smoke V5
   `-handover-once`); the tunnel smoke pinned to a sim date (SDD 49 D19).
+- 2026-11-16: 50c as built (section 4.8): the fallback line moves off drawn labels; smoke V6 is its own flag,
+  `-SOLSmokeLaneMerge`.
+- 2026-11-16: D18 confirmed by the user (final): the readout is always its placed label's last line, the grown box may
+  overlap the guide-dot rows and slides sideways over its own box off panels and labels (`PlaceLaneLabelWithLine`);
+  open question Q10 added (no spot even slid); the earlier as-built deviation (the readout on the fallback
+  line whenever the grown box did not clear the rows) is removed. V6 and the #49 tunnel smoke assert it inside
+  Earth - Mars.
+- 2026-11-17: 50c review-fix pass (section 4.8). Q10 answered by the user (A: slide sideways, else the fallback
+  line) and D18 made to say the same. Placement hysteresis fed by the own-size placement only (a label is not held
+  compact by its readout), the readout line's width cached per lane, the full form tried first, then the compact one.
+  `ChooseMergeReadoutSpot` with the label-return delay of 0.25 s, the lines easing over the label fade time, the
+  fallback spot in the pure `ChooseMergeFallbackSpot`, the text refresh throttle (0.1 s) and the zero-speed rule
+  (0.05 m/s), `IsMergeReadoutEnabled`, `NPC_LANE_MERGE_FORWARD_MIN`. Smoke V6 pinned to a sim date with an expected spot
+  per view. Lane choice is the smallest rho in the lane's own wall radii (lower lane index on a tie). The readout text
+  example shows two decimals. An empty lane (no ships) still shows the readout (user decision). Section 4.10 corrected:
+  no `Traffic -> Universe` edge, the lane table holds the end-body indices and the frozen profile. Q9 stays open.
 
 ## 14. Amendment 1 (2026-11-13): the hull flip finishes before braking (D21)
 

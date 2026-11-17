@@ -41,7 +41,7 @@
 //
 // Part 33e-ii (D39), also test-first: EntryArt's rule gains the screenshot crop, Symbols when the row names symbols,
 // else Crop when its Crop resolves (SOLGlossary::EntryCrop), else Sample, else None; the five map rows are Crop rows
-// and Space dust is the one None row.
+// and Space dust and the Lane traffic readout (issue #50, 50c) are the None rows.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -58,11 +58,11 @@ namespace
     constexpr float GLOSSARYLAYOUTTEST_MIN_SCALE = 0.75f;
 
     // Today's GLOSSARY_ENTRIES art counts (cross-checks of the table-derived expectations)
-    constexpr int32 GLOSSARYLAYOUTTEST_ROWS = 45;
+    constexpr int32 GLOSSARYLAYOUTTEST_ROWS = 46;
     constexpr int32 GLOSSARYLAYOUTTEST_SYMBOL_ROWS = 33;
     constexpr int32 GLOSSARYLAYOUTTEST_SAMPLE_ROWS = 6;
     constexpr int32 GLOSSARYLAYOUTTEST_CROP_ROWS = 5;           // The five D39 map rows (33e-ii)
-    constexpr int32 GLOSSARYLAYOUTTEST_NONE_ROWS = 1;           // Space dust
+    constexpr int32 GLOSSARYLAYOUTTEST_NONE_ROWS = 2;           // Space dust, Lane traffic readout (50c)
     constexpr int32 GLOSSARYLAYOUTTEST_ART_KINDS = 4;           // Symbols, Sample, None, Crop (counts by enum value)
 
     //////////////////////////////////////////////////////////////////////////
@@ -320,7 +320,7 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutEntryArtTest, "SOLTest.Glossa
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 // Each row's art follows its table cells (Symbols, else a resolving Crop, else Sample, else None, 33e-ii); today
-// 33 / 5 / 6 / 1 of 45; an index outside the table is None
+// 33 / 5 / 6 / 2 of 46; an index outside the table is None
 bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
 {
     int32 counts[GLOSSARYLAYOUTTEST_ART_KINDS] = {};
@@ -334,13 +334,13 @@ bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
     }
 
     // Today's table
-    TestEqual(TEXT("45 rows"), GlossaryLayoutTestRowCount(), GLOSSARYLAYOUTTEST_ROWS);
+    TestEqual(TEXT("46 rows"), GlossaryLayoutTestRowCount(), GLOSSARYLAYOUTTEST_ROWS);
     TestEqual(TEXT("33 Symbols rows"), counts[static_cast<int32>(ESOLGlossaryArt::Symbols)],
         GLOSSARYLAYOUTTEST_SYMBOL_ROWS);
     TestEqual(TEXT("5 Crop rows"), counts[static_cast<int32>(ESOLGlossaryArt::Crop)], GLOSSARYLAYOUTTEST_CROP_ROWS);
     TestEqual(TEXT("6 Sample rows"), counts[static_cast<int32>(ESOLGlossaryArt::Sample)],
         GLOSSARYLAYOUTTEST_SAMPLE_ROWS);
-    TestEqual(TEXT("1 None row"), counts[static_cast<int32>(ESOLGlossaryArt::None)], GLOSSARYLAYOUTTEST_NONE_ROWS);
+    TestEqual(TEXT("2 None rows"), counts[static_cast<int32>(ESOLGlossaryArt::None)], GLOSSARYLAYOUTTEST_NONE_ROWS);
 
     // Outside the table
     const int32 rows = GlossaryLayoutTestRowCount();
@@ -355,15 +355,15 @@ bool FSOLGlossaryLayoutEntryArtTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtByNameTest, "SOLTest.GlossaryLayout.ArtByName",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// The six Sample rows, the five Crop rows (the D39 map rows, 33e-ii) and the one None row (Space dust) by name; the
-// rows with several symbols are Symbols rows with 2, 3 and 2 symbols
+// The six Sample rows, the five Crop rows (the D39 map rows, 33e-ii) and the two None rows (Space dust, Lane traffic
+// readout) by name; the rows with several symbols are Symbols rows with 2, 3 and 2 symbols
 bool FSOLGlossaryLayoutArtByNameTest::RunTest(const FString& /*parameters*/)
 {
     const TCHAR* const sampleRows[] = { TEXT("Flight mode"), TEXT("Key hints and notices"), TEXT("Autopilot marker"),
         TEXT("Chase Down line"), TEXT("Overlay profile tag"), TEXT("Route progress line") };
     const TCHAR* const cropRows[] = { TEXT("Orbit lines"), TEXT("Route legs"), TEXT("Waypoints"),
         TEXT("Map destination pick"), TEXT("Map grid and stems") };
-    const TCHAR* const noneRows[] = { TEXT("Space dust") };
+    const TCHAR* const noneRows[] = { TEXT("Space dust"), TEXT("Lane traffic readout") };
     for (const TCHAR* name : cropRows)
     {
         const int32 index = GlossaryLayoutTestRowByName(name);
@@ -420,8 +420,8 @@ bool FSOLGlossaryLayoutArtByNameTest::RunTest(const FString& /*parameters*/)
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLayoutArtPerTabTest, "SOLTest.GlossaryLayout.ArtPerTab",
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
-// Per tab (EntriesOfTab): Flight HUD 13 = 9 Symbols + 4 Sample; Targets and radar 7 Symbols; Overlays and route 16 =
-// 10 Symbols + 2 Sample + 3 Crop + 1 None; Menus and map 9 = 7 Symbols + 2 Crop (33e-ii); Keyboard has no rows
+// Per tab (EntriesOfTab): Flight HUD 13 = 9 Symbols + 4 Sample; Targets and radar 7 Symbols; Overlays and route 17 =
+// 10 Symbols + 2 Sample + 3 Crop + 2 None; Menus and map 9 = 7 Symbols + 2 Crop (33e-ii); Keyboard has no rows
 bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
 {
     struct FTabArt
@@ -436,7 +436,7 @@ bool FSOLGlossaryLayoutArtPerTabTest::RunTest(const FString& /*parameters*/)
     const FTabArt tabs[] = {
         { ESOLHelpTab::FlightHud, TEXT("Flight HUD"), 9, 4, 0, 0 },
         { ESOLHelpTab::TargetsRadar, TEXT("Targets and radar"), 7, 0, 0, 0 },
-        { ESOLHelpTab::OverlaysRoute, TEXT("Overlays and route"), 10, 2, 3, 1 },
+        { ESOLHelpTab::OverlaysRoute, TEXT("Overlays and route"), 10, 2, 3, 2 },
         { ESOLHelpTab::MenusMap, TEXT("Menus and map"), 7, 0, 2, 0 },
     };
     TArray<int32> indices;

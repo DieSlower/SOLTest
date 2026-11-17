@@ -37,6 +37,7 @@ class UMaterialInstanceDynamic;
 class USOLAnchorSubsystem;
 class USOLHudEventSubsystem;
 class USOLInteractionSubsystem;
+class USOLLaneTrafficSubsystem;
 class USOLBodyRegistrySubsystem;
 class USOLCombatSubsystem;
 class USOLNpcSubsystem;
@@ -210,6 +211,13 @@ public:
     bool IsLastLaneLabelCompact(int32 index) const { return mLastLaneLabelCompact[index]; }
     int32 GetLaneLabelAvoidBoxCount() const { return mPrevHudAvoidBoxCount; }
     const FBox2D& GetLaneLabelAvoidBox(int32 index) const { return mPrevHudAvoidBoxes[index]; }
+
+    // Returns the lane traffic readout of the last frame (SDD 50 section 4.8; verification): the readout, where it was
+    // drawn (Hidden when not drawn), its line and its screen box
+    const FSOLLaneMergeReadout& GetLastMergeReadout() const { return mMergeReadout; }
+    const FSOLLaneMergeSpot& GetLastMergeSpot() const { return mLastMergeSpot; }
+    const FString& GetLastMergeLine() const { return mMergeLine; }
+    const FBox2D& GetLastMergeBox() const { return mLastMergeBox; }
 
     // Returns the projected dot rows the labels kept clear of last frame (verification)
     TConstArrayView<FVector2D> GetLastLaneRowStarts() const { return TConstArrayView<FVector2D>(mLaneRowStarts,
@@ -535,8 +543,20 @@ private:
     // Updates a lane label's compact line from a snapshot entry (only when it reads differently)
     void UpdateLaneLabelCompactText(FSOLLaneLabelCache& cache, const FSOLHudLaneTunnelLabel& label, double nowS);
 
-    // Hides every lane label at once (a frame without the flight HUD: menu, warp, HUD hidden); they ease back in
+    // Hides every lane label at once (a frame without the flight HUD: menu, warp, HUD hidden); they ease back in. The
+    // lane traffic readout is hidden with them
     void HideLaneTunnelLabels();
+
+    // Computes this frame's lane traffic readout (SDD 50 section 4.8) from the lane table, the body registry and the
+    // player ship, and rebuilds and measures its line only when the displayed values change; hidden unless bAllowed
+    // (a view, no map) and the Lanes row (or the verification override) is on
+    void UpdateMergeReadout(bool bAllowed);
+
+    // Draws the readout as the fixed line under the speed readout (right of the speed card) when no label holds it
+    // (D18, Q10), moved to the large speed readout's row or above the card when a label drawn this frame, last
+    // frame's HUD panels or the viewport edge rule that spot out (ChooseMergeFallbackSpot); it is not a box the labels
+    // avoid, so the readout never pushes a label off the screen
+    void DrawMergeReadoutFallback();
 
     // Records a HUD panel's screen box for the lane labels to avoid next frame (ignored when invalid or full)
     void AddHudAvoidBox(const FBox2D& box);
@@ -628,6 +648,9 @@ private:
 
     UPROPERTY(Transient)
     TObjectPtr<USOLInteractionSubsystem> Interaction;
+
+    UPROPERTY(Transient)
+    TObjectPtr<USOLLaneTrafficSubsystem> LaneTraffic;      // The NPC population's lane table (merge readout)
 
     UPROPERTY(Transient)
     TObjectPtr<UMaterialInstanceDynamic> ShapeMaterial;     // M_SOLHudShape instance drawn by the shape layer
@@ -753,7 +776,9 @@ private:
         int32 PreviousCandidate = INDEX_NONE;       // Last frame's
         double Alpha = 0.0;
         double TargetAlpha = 0.0;
-        FBox2D Box = FBox2D(ForceInit);
+        FBox2D Box = FBox2D(ForceInit);             // Its own placement (no readout line)
+        bool bBoxTop = false;                       // ...above a 12 o'clock anchor
+        double ReadoutShift = 0.0;                  // 0 to 1: how far its lines have moved for the readout line
     };
     FSOLLaneLabelCache mLaneLabels[SOL::NPC_GROUP_TEXTURE_WIDTH];     // Per lane (fixed, no per-frame allocation)
     FString mLaneLabelScratch[3];                                     // Lines formatted before comparing
@@ -770,4 +795,24 @@ private:
     int32 mHudAvoidBoxCount = 0;
     FBox2D mPrevHudAvoidBoxes[SOL::NPC_TUNNEL_LABEL_MAX_AVOID_BOXES];   // Last frame's, which the labels avoid
     int32 mPrevHudAvoidBoxCount = 0;
+
+    // The lane traffic readout (SDD 50 section 4.8): this frame's lanes (fixed, no per-frame allocation), readout and
+    // spot, its line (rebuilt and measured only when its key changes) and where it was drawn
+    FSOLLaneMergeLane mMergeLanes[SOL::NPC_GROUP_TEXTURE_WIDTH];
+    FSOLLaneMergeReadout mMergeReadout;
+    FSOLLaneMergeSpot mMergeSpot;                   // Chosen by the labels' placement this frame (and the previous
+                                                    // spot of the next frame's choice)
+    FSOLLaneMergeSpot mLastMergeSpot;               // Where it was drawn this frame (verification)
+    FSOLLaneLabelPlacement mMergeGrown;             // The readout's label grown by its line this frame (D18)
+    FSOLLaneMergeKey mMergeKey;
+    bool mHasMergeText = false;
+    double mMergeKeyCheckS = -1.0;                  // Real time the speeds were last checked (key built)
+    int32 mMergeTextLane = INDEX_NONE;              // The lane the line was last built for
+    FString mMergeLine;
+    FText mMergeText;
+    FVector2D mMergeSize = FVector2D::ZeroVector;   // Unscaled small-font size of the line
+    double mMergeTemplateWidth = -1.0;              // Unscaled width of the widest usual line (measured once)
+    double mMergeWidestWidth = 0.0;                 // Unscaled width of the widest line since shown for this lane
+    float mMergeFallbackY = 0.0f;                   // The fallback line's top: the row under the large speed readout
+    FBox2D mLastMergeBox = FBox2D(ForceInit);       // Its screen box when drawn
 };

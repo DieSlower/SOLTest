@@ -20,6 +20,7 @@
 #include "Ship/SOLShipSubsystem.h"
 #include "SOLConstants.h"
 #include "SOLTest.h"
+#include "Traffic/SOLLaneTrafficSubsystem.h"
 #include "UI/SOLFlightHud.h"
 #include "UI/SOLHudShapeMath.h"
 #include "UI/SOLLaneTunnelLabel.h"
@@ -169,6 +170,7 @@ void FSOLNpcTunnelSmoke::Start(ASOLShipPawn& pawn)
     mShips = world->GetSubsystem<USOLShipSubsystem>();
     mRegistry = world->GetSubsystem<USOLBodyRegistrySubsystem>();
     mAnchor = world->GetSubsystem<USOLAnchorSubsystem>();
+    mLaneTraffic = world->GetSubsystem<USOLLaneTrafficSubsystem>();
     mMenu = world->GetSubsystem<USOLMenuSubsystem>();
     mSettings = USOLSettingsSubsystem::Get(&pawn);
     mController = pawn.GetController<APlayerController>();
@@ -180,10 +182,15 @@ void FSOLNpcTunnelSmoke::Start(ASOLShipPawn& pawn)
         mVisuals.IsValid() ? *mVisuals->GetName() : TEXT("none"), mHud.IsValid() ? *mHud->GetName() : TEXT("none"),
         mSettings.IsValid() ? TEXT("yes") : TEXT("none"), mIsProfile ? TEXT("on") : TEXT("off"));
 
-    // Overrides: the lanes (and so the tunnels) and the orbit lines leave the player's settings alone; orbit lines off
+    // Overrides: the lanes (and so the tunnels), the lane traffic readout and the orbit lines leave the player's
+    // settings alone; orbit lines off
     if (mVisuals.IsValid())
     {
         mVisuals->SetLaneVerificationOverride(true);
+    }
+    if (mLaneTraffic.IsValid())
+    {
+        mLaneTraffic->SetReadoutVerificationOverride(true);
     }
     if (mOrbitLines.IsValid())
     {
@@ -730,6 +737,10 @@ void FSOLNpcTunnelSmoke::Finish(ASOLShipPawn& pawn)
     {
         mSettings->RevertPending();
     }
+    if (mLaneTraffic.IsValid())
+    {
+        mLaneTraffic->SetReadoutVerificationOverride(false);
+    }
     UE_LOG(LogSOL, Log, TEXT("SmokeNpcTunnel SUMMARY: complete after %.1f s, %d/%d checks run passed%s"),
         mTotalTimeS, mChecksPassed, mChecksRun, mChecksPassed == mChecksRun ? TEXT("") : TEXT(" (FAILURES)"));
     if (ASOLGameMode* gameMode = pawn.GetWorld()->GetAuthGameMode<ASOLGameMode>())
@@ -1000,7 +1011,11 @@ void FSOLNpcTunnelSmoke::CheckLabels(const TCHAR* label)
     }
 
     // The boxes drawn: clear of every projected dot row by the margin plus the row's projected dot radius (a pixel
-    // of slack for rounding), of the HUD panels the labels avoid and of each other
+    // of slack for rounding), of the HUD panels the labels avoid and of each other; the label carrying the lane
+    // traffic readout as its last line may cover the rows (grown by the line, SDD 50 D18)
+    const FSOLLaneMergeSpot& mergeSpot = mHud->GetLastMergeSpot();
+    const int32 readoutLane = mergeSpot.Where == ESOLLaneMergeWhere::Label ? mHud->GetLastMergeReadout().Lane
+        : INDEX_NONE;
     const TConstArrayView<FVector2D> starts = mHud->GetLastLaneRowStarts();
     const TConstArrayView<FVector2D> ends = mHud->GetLastLaneRowEnds();
     const TConstArrayView<double> dotRadiiPx = mHud->GetLastLaneRowDotRadiiPx();
@@ -1014,7 +1029,8 @@ void FSOLNpcTunnelSmoke::CheckLabels(const TCHAR* label)
     for (int32 index = 0; index < mHud->GetLastLaneLabelCount(); ++index)
     {
         const FBox2D& box = mHud->GetLastLaneLabelBox(index);
-        bBoxes &= SOLLaneTunnelLabel::LaneLabelClearOfDots(box, starts, ends,
+        const bool bReadoutLabel = mHud->GetLastLaneLabelLane(index) == readoutLane;
+        bBoxes &= bReadoutLabel || SOLLaneTunnelLabel::LaneLabelClearOfDots(box, starts, ends,
             SOL::NPC_TUNNEL_LABEL_DOT_MARGIN_PX - 1.0, dotRadiiPx);
         for (int32 avoid = 0; avoid < mHud->GetLaneLabelAvoidBoxCount(); ++avoid)
         {
@@ -1024,9 +1040,41 @@ void FSOLNpcTunnelSmoke::CheckLabels(const TCHAR* label)
         {
             bBoxes &= !box.Intersect(mHud->GetLastLaneLabelBox(other));
         }
-        detail += FString::Printf(TEXT(" {drawn lane %d %s alpha %.2f at (%.0f, %.0f)-(%.0f, %.0f)}"),
+        detail += FString::Printf(TEXT(" {drawn lane %d %s%s alpha %.2f at (%.0f, %.0f)-(%.0f, %.0f)}"),
             mHud->GetLastLaneLabelLane(index), mHud->IsLastLaneLabelCompact(index) ? TEXT("compact") : TEXT("full"),
-            mHud->GetLastLaneLabelAlpha(index), box.Min.X, box.Min.Y, box.Max.X, box.Max.Y);
+            bReadoutLabel ? TEXT(" + readout") : TEXT(""), mHud->GetLastLaneLabelAlpha(index), box.Min.X, box.Min.Y,
+            box.Max.X, box.Max.Y);
+    }
+
+    // Inside the Earth-Mars tunnel (T2 / T3 / T4b) the lane traffic readout is shown for that lane and drawn as its
+    // label's last line, inside that label's box (SDD 50 D18)
+    const FString readoutViewName = GetViewName();
+    bool bReadout = true;
+    if (readoutViewName == TEXT("T2") || readoutViewName == TEXT("T3") || readoutViewName == TEXT("T4b"))
+    {
+        int32 lane = INDEX_NONE;
+        FSOLNpcTunnelBasis laneBasis;
+        double laneLengthM = 0.0;
+        double laneRadiusM = 0.0;
+        const bool bLane = FindLane(lane, laneBasis, laneLengthM, laneRadiusM);
+        const FSOLLaneMergeReadout& readout = mHud->GetLastMergeReadout();
+        const FBox2D& lineBox = mHud->GetLastMergeBox();
+        bool bInside = false;
+        const FVector2D slack(1.0, 1.0);
+        for (int32 index = 0; index < mHud->GetLastLaneLabelCount(); ++index)
+        {
+            const FBox2D& box = mHud->GetLastLaneLabelBox(index);
+            bInside |= mHud->GetLastLaneLabelLane(index) == lane && lineBox.bIsValid
+                && FBox2D(box.Min - slack, box.Max + slack).IsInside(lineBox);
+        }
+        bReadout = bLane && readout.bShown && readout.Lane == lane && mergeSpot.Where == ESOLLaneMergeWhere::Label
+            && bInside;
+        detail += FString::Printf(TEXT(" [readout %s, lane %d (Earth-Mars %d), %s, '%s' at (%.0f, %.0f)-"
+            "(%.0f, %.0f)%s]"), readout.bShown ? TEXT("shown") : TEXT("HIDDEN"), readout.Lane, lane,
+            mergeSpot.Where == ESOLLaneMergeWhere::Label ? TEXT("in the label")
+                : mergeSpot.Where == ESOLLaneMergeWhere::Fallback ? TEXT("ON THE FALLBACK LINE") : TEXT("NOT DRAWN"),
+            *mHud->GetLastMergeLine(), lineBox.Min.X, lineBox.Min.Y, lineBox.Max.X, lineBox.Max.Y,
+            bInside ? TEXT("") : TEXT(" OUTSIDE ITS LABEL"));
     }
 
     // Views from inside or right beside a tube must draw a label, not only publish one (SDD 49 section 8); T4
@@ -1037,11 +1085,12 @@ void FSOLNpcTunnelSmoke::CheckLabels(const TCHAR* label)
     const bool bMustHide = viewName == TEXT("T4") || viewName == TEXT("T5");
     const int32 drawn = mHud->GetLastLaneLabelCount();
     const bool bDrawn = (!bMustDraw || drawn > 0) && (!bMustHide || drawn == 0);
-    Check(label, bSnapshot && bValues && bBoxes && bDrawn, FString::Printf(TEXT("%d tunnels shown, %d labels "
-        "published, %d drawn%s, %d rows, %d HUD panels avoided, order %s, values %s, boxes %s:%s"), shown,
-        snapshot.Count, drawn, bDrawn ? TEXT("") : bMustHide ? TEXT(" (EXPECTED NONE, D19)") : TEXT(" (NONE DRAWN)"),
-        starts.Num(), mHud->GetLaneLabelAvoidBoxCount(), bSnapshot ? TEXT("ok") : TEXT("BAD"),
-        bValues ? TEXT("pure") : TEXT("BAD"), bBoxes ? TEXT("clear") : TEXT("OVERLAP"), *detail));
+    Check(label, bSnapshot && bValues && bBoxes && bDrawn && bReadout, FString::Printf(TEXT("%d tunnels shown, %d "
+        "labels published, %d drawn%s, %d rows, %d HUD panels avoided, order %s, values %s, boxes %s, readout %s:%s"),
+        shown, snapshot.Count, drawn, bDrawn ? TEXT("") : bMustHide ? TEXT(" (EXPECTED NONE, D19)")
+        : TEXT(" (NONE DRAWN)"), starts.Num(), mHud->GetLaneLabelAvoidBoxCount(), bSnapshot ? TEXT("ok") : TEXT("BAD"),
+        bValues ? TEXT("pure") : TEXT("BAD"), bBoxes ? TEXT("clear") : TEXT("OVERLAP"),
+        bReadout ? TEXT("ok") : TEXT("BAD"), *detail));
 }
 
 //////////////////////////////////////////////////////////////////////////

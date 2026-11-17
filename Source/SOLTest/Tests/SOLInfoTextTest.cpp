@@ -584,4 +584,51 @@ bool FSOLInfoTextTunnelSentenceTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLInfoTextLaneReadoutTest, "SOLTest.InfoText.LaneTrafficReadout",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 Part 50c (SDD 50 section 5, contract case 16), test-first: the overlay paragraph explains the lane traffic
+// readout once, in one sentence after the tunnel sentences began and before the space dust: it names the traffic
+// speed and the three colours (green matched, amber close, red far), with no placeholder left
+bool FSOLInfoTextLaneReadoutTest::RunTest(const FString& /*parameters*/)
+{
+    const TArray<FString> prose = SOLInfoText::BuildProse(SOLKeyBindings::DefaultKeys());
+    int32 orbitCount = 0;
+    const int32 overlay = InfoTextFindOrbitLinesParagraph(prose, orbitCount);
+    if (!TestTrue(TEXT("the overlay paragraph exists"), overlay != INDEX_NONE))
+    {
+        return false;
+    }
+    const FString& paragraph = prose[overlay];
+    const int32 tunnelAt = paragraph.Find(TEXT("Close to a lane (the tunnel"), ESearchCase::CaseSensitive);
+    const int32 dustAt = paragraph.Find(TEXT("Space dust"), ESearchCase::CaseSensitive);
+    const int32 readoutAt = paragraph.Find(TEXT("readout"), ESearchCase::CaseSensitive, ESearchDir::FromStart,
+        FMath::Max(tunnelAt, 0));
+    if (!TestTrue(TEXT("a readout sentence after the tunnel sentences began"), tunnelAt != INDEX_NONE
+        && readoutAt != INDEX_NONE))
+    {
+        return false;
+    }
+    TestTrue(TEXT("before the space dust"), dustAt != INDEX_NONE && readoutAt < dustAt);
+
+    // The sentence that holds it
+    const int32 previousStop = paragraph.Find(TEXT(". "), ESearchCase::CaseSensitive, ESearchDir::FromEnd, readoutAt);
+    const int32 sentenceStart = previousStop == INDEX_NONE ? 0 : previousStop + 2;
+    const int32 nextStop = paragraph.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromStart, readoutAt);
+    const FString sentence = paragraph.Mid(sentenceStart, (nextStop == INDEX_NONE ? paragraph.Len() : nextStop + 1)
+        - sentenceStart);
+    for (const TCHAR* phrase : { TEXT("traffic speed"), TEXT("green"), TEXT("amber"), TEXT(" red") })
+    {
+        TestTrue(FString::Printf(TEXT("'%s' says '%s'"), *sentence, phrase), sentence.Contains(phrase,
+            ESearchCase::CaseSensitive));
+    }
+    TestEqual(TEXT("'readout' appears once between the tunnel text and the space dust"),
+        paragraph.Mid(tunnelAt, dustAt - tunnelAt).Find(TEXT("readout"), ESearchCase::CaseSensitive,
+            ESearchDir::FromEnd), readoutAt - tunnelAt);
+    TestFalse(TEXT("no '{' left"), paragraph.Contains(TEXT("{")));
+    return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

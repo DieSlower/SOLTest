@@ -643,6 +643,12 @@ namespace SOLMenuText
             TEXT("Route progress line"),
             TEXT("Shows the kind of route. A move shows the leg you are flying, how much of the route is done and "
                 "the time to its end; a patrol shows the next waypoint and the time to reach it. When a route is paused, {Resume} re-plans it from where you are and resumes.") },
+        { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Lane traffic readout"),
+            TEXT("Inside a lane's outer traffic (within twice its tunnel's radius, between its end rings) a line "
+                "reads \"Traffic\" with the speed of the lane's traffic where you are and \"You\" with your speed "
+                "along the lane: the tunnel label's last line when it fits there, otherwise under your speed. "
+                "MATCHED in green means within 5% of the traffic, TOO FAST or TOO SLOW in amber within 20%, and in "
+                "red beyond. Under time warp it adds (at 1x): both speeds are real-time, not warped.") },
         { TEXT("Overlays and route"), TEXT(""), TEXT(""), TEXT("Space dust"),
             TEXT("Faint specks drifting around the ship. They are not objects: they only make your speed visible "
                 "when everything else is far away. Turn them off in Settings, Graphics.") },
@@ -688,6 +694,8 @@ namespace SOLMenuText
     inline constexpr FGlossaryDescriptionOnly GLOSSARY_DESCRIPTION_ONLY[] =
     {
         { TEXT("Space dust"), TEXT("Faint specks in the scene around the ship, not a HUD symbol") },
+        { TEXT("Lane traffic readout"), TEXT("A text line that shows only inside a lane's outer traffic, coloured by "
+            "the verdict") },
     };
 
     // The generated player guide, Docs/PLAYER_GUIDE.md (SDD 33 section 9, SOLPlayerGuide): its fixed text. In
@@ -845,7 +853,11 @@ namespace SOLMenuText
             "from its axis, and everything moves with the lane under time warp. A label on each tunnel's wall names "
             "the lane, the distance to each end and how many ships use it, or only the lane and the nearest end where "
             "space is short (the nearest tunnel's label is the brightest). Tunnels follow the Lanes row and the HUD "
-            "glow and are not shown on the map. Space dust (a Settings > Graphics "
+            "glow and are not shown on the map. Within twice a tunnel's radius of its axis, between its end rings, a "
+            "readout line as its label's last line when it fits there (otherwise under your speed) gives the traffic "
+            "speed there and your own speed along the lane: MATCHED in green within 5%, TOO FAST or TOO SLOW in amber "
+            "within 20% and in red beyond, with (at 1x) under time warp, as both are real-time speeds. "
+            "Space dust (a Settings > Graphics "
             "option, the same in every profile) streams past when the ship moves relative to its reference frame; "
             "its speed is compressed and only shows motion and direction. It "
             "is hidden when stopped, under time warp, during jumps, on the map and while paused, and {OverlayMaster} "
@@ -956,6 +968,16 @@ namespace SOLMenuText
     inline constexpr const TCHAR* LANE_LABEL_SHIP = TEXT(" ship");
     inline constexpr const TCHAR* LANE_LABEL_SHIPS = TEXT(" ships");
     inline constexpr TCHAR LANE_LABEL_THOUSANDS_SEPARATOR = TEXT(',');
+
+    // HUD lane traffic readout (SDD 50 section 4.8): "Traffic 182.00 km/s   You 175.00 km/s   MATCHED", plus the warp
+    // note while time warp is above 1x (both speeds are real-time, unscaled)
+    inline constexpr const TCHAR* LANE_TRAFFIC_LABEL = TEXT("Traffic ");
+    inline constexpr const TCHAR* LANE_TRAFFIC_YOU_LABEL = TEXT("You ");
+    inline constexpr const TCHAR* LANE_TRAFFIC_SEPARATOR = TEXT("   ");
+    inline constexpr const TCHAR* LANE_TRAFFIC_MATCHED = TEXT("MATCHED");
+    inline constexpr const TCHAR* LANE_TRAFFIC_TOO_FAST = TEXT("TOO FAST");
+    inline constexpr const TCHAR* LANE_TRAFFIC_TOO_SLOW = TEXT("TOO SLOW");
+    inline constexpr const TCHAR* LANE_TRAFFIC_WARP_NOTE = TEXT(" (at 1x)");
 
     // HUD flight mode labels (SDD 19 section 3.7), in ESOLFlightMode order
     inline constexpr const TCHAR* HUD_FLIGHT_MODE_LABELS[] = { TEXT("MANUAL"), TEXT("ASSISTED"), TEXT("AUTO") };

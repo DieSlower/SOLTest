@@ -359,3 +359,349 @@ double SOLLaneTunnelLabel::EaseLaneLabelAlpha(const double currentAlpha, const d
     const double step = deltaS / SOL::NPC_TUNNEL_LABEL_FADE_S;
     return target > current ? FMath::Min(current + step, target) : FMath::Max(current - step, target);
 }
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a readout speed as displayed: 0 below NPC_LANE_MERGE_ZERO_SPEED_MPS in size, else unchanged (NaN too)
+    double LaneMergeDisplaySpeedMps(const double speedMps)
+    {
+        return FMath::Abs(speedMps) < SOL::NPC_LANE_MERGE_ZERO_SPEED_MPS ? 0.0 : speedMps;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a speed as printed by SOLHudFormat::AppendSpeedMps as one number (digits, sign and unit; NaN, inf own)
+    int64 LaneMergeSpeedKey(const double speedMps)
+    {
+        constexpr int64 KEY_NAN = TNumericLimits<int64>::Min();
+        constexpr int64 KEY_POSITIVE_INFINITY = TNumericLimits<int64>::Max();
+        constexpr int64 KEY_NEGATIVE_INFINITY = TNumericLimits<int64>::Min() + 1;
+        constexpr double MAX_PACKED_VALUE = 1.0e12;
+        constexpr int64 UNIT_COUNT = 3;
+        if (FMath::IsNaN(speedMps))
+        {
+            return KEY_NAN;
+        }
+        if (!FMath::IsFinite(speedMps))
+        {
+            return speedMps > 0.0 ? KEY_POSITIVE_INFINITY : KEY_NEGATIVE_INFINITY;
+        }
+        const ESOLSpeedUnit unit = SOLHudFormat::PickSpeedUnit(FMath::Abs(speedMps));
+        const double value = SOLHudFormat::ToUnitValue(speedMps, unit);
+        if (FMath::Abs(value) > MAX_PACKED_VALUE)
+        {
+            return value > 0.0 ? KEY_POSITIVE_INFINITY - 1 : KEY_NEGATIVE_INFINITY + 1;
+        }
+
+        // The number exactly as printed, then its digits read back as one integer (the decimal point dropped)
+        TCHAR buffer[64];
+        switch (unit)
+        {
+        case ESOLSpeedUnit::KilometersPerSecond:
+            FCString::Snprintf(buffer, UE_ARRAY_COUNT(buffer), TEXT("%.2f"), value);
+            break;
+        case ESOLSpeedUnit::LightSpeed:
+            FCString::Snprintf(buffer, UE_ARRAY_COUNT(buffer), TEXT("%.4f"), value);
+            break;
+        case ESOLSpeedUnit::MetersPerSecond:
+        default:
+            FCString::Snprintf(buffer, UE_ARRAY_COUNT(buffer), TEXT("%.1f"), value);
+            break;
+        }
+        int64 digits = 0;
+        int64 negative = 0;
+        for (const TCHAR* character = buffer; *character != TEXT('\0'); ++character)
+        {
+            if (*character == TEXT('-'))
+            {
+                negative = 1;
+            }
+            else if (*character >= TEXT('0') && *character <= TEXT('9'))
+            {
+                digits = digits * 10 + static_cast<int64>(*character - TEXT('0'));
+            }
+        }
+        return (digits * 2 + negative) * UNIT_COUNT + static_cast<int64>(unit);
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the verdict's word
+const TCHAR* SOLLaneTunnelLabel::MergeVerdictText(const ESOLLaneMergeVerdict verdict)
+{
+    switch (verdict)
+    {
+    case ESOLLaneMergeVerdict::Matched:
+        return SOLMenuText::LANE_TRAFFIC_MATCHED;
+    case ESOLLaneMergeVerdict::TooFast:
+        return SOLMenuText::LANE_TRAFFIC_TOO_FAST;
+    case ESOLLaneMergeVerdict::TooSlow:
+    default:
+        return SOLMenuText::LANE_TRAFFIC_TOO_SLOW;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Writes the readout line: the traffic speed, the player speed, the verdict and the warp note
+void SOLLaneTunnelLabel::FormatMergeReadoutLine(const double trafficSpeedMps, const double playerSpeedMps,
+    const ESOLLaneMergeVerdict verdict, const bool bWarpNote, FString& outLine)
+{
+    outLine.Reset();
+    outLine += SOLMenuText::LANE_TRAFFIC_LABEL;
+    SOLHudFormat::AppendSpeedMps(outLine, LaneMergeDisplaySpeedMps(trafficSpeedMps));
+    outLine += SOLMenuText::LANE_TRAFFIC_SEPARATOR;
+    outLine += SOLMenuText::LANE_TRAFFIC_YOU_LABEL;
+    SOLHudFormat::AppendSpeedMps(outLine, LaneMergeDisplaySpeedMps(playerSpeedMps));
+    outLine += SOLMenuText::LANE_TRAFFIC_SEPARATOR;
+    outLine += MergeVerdictText(verdict);
+    if (bWarpNote)
+    {
+        outLine += SOLMenuText::LANE_TRAFFIC_WARP_NOTE;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the key of the readout line's displayed values
+FSOLLaneMergeKey SOLLaneTunnelLabel::MakeMergeReadoutKey(const double trafficSpeedMps, const double playerSpeedMps,
+    const ESOLLaneMergeVerdict verdict, const bool bWarpNote)
+{
+    FSOLLaneMergeKey key;
+    key.Traffic = LaneMergeSpeedKey(LaneMergeDisplaySpeedMps(trafficSpeedMps));
+    key.Player = LaneMergeSpeedKey(LaneMergeDisplaySpeedMps(playerSpeedMps));
+    key.Verdict = verdict;
+    key.bWarpNote = bWarpNote;
+    return key;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the band's palette colour
+FLinearColor SOLLaneTunnelLabel::MergeBandColor(const ESOLLaneMergeBand band)
+{
+    switch (band)
+    {
+    case ESOLLaneMergeBand::Green:
+        return SOL::HudPalette::GOOD;
+    case ESOLLaneMergeBand::Amber:
+        return SOL::HudPalette::AMBER;
+    case ESOLLaneMergeBand::Red:
+    default:
+        return SOL::HudPalette::BAD;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns whether the readout is computed this frame (the HUD's show conditions)
+bool SOLLaneTunnelLabel::IsMergeReadoutEnabled(const bool bHudAllowed, const bool bVerificationOverride,
+    const bool bHasSettings, const bool bLanesRowShown, const bool bHasLanes, const bool bHasPlayerShip)
+{
+    const bool bLanesShown = bVerificationOverride || !bHasSettings || bLanesRowShown;
+    return bHudAllowed && bLanesShown && bHasLanes && bHasPlayerShip;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns where the readout goes: its placed label while the grown label fits (hysteresis after a no-fit), else fallback
+FSOLLaneMergeSpot SOLLaneTunnelLabel::ChooseMergeReadoutSpot(const bool bReadoutShown, const int32 readoutLane,
+    const TConstArrayView<int32> labelLanes, const TConstArrayView<FSOLLaneLabelPlacement> placements,
+    const bool bGrownFits, const FSOLLaneMergeSpot& previous, const double deltaS)
+{
+    FSOLLaneMergeSpot spot;
+    if (!bReadoutShown)
+    {
+        return spot;
+    }
+    spot.Where = ESOLLaneMergeWhere::Fallback;
+    spot.Lane = readoutLane;
+    int32 labelIndex = INDEX_NONE;
+    const int32 count = FMath::Min(labelLanes.Num(), placements.Num());
+    for (int32 index = 0; index < count && labelIndex == INDEX_NONE; ++index)
+    {
+        labelIndex = labelLanes[index] == readoutLane && placements[index].bPlaced ? index : INDEX_NONE;
+    }
+    if (labelIndex == INDEX_NONE)
+    {
+        return spot;
+    }
+    if (!bGrownFits)
+    {
+        spot.bNoFit = true;
+        return spot;
+    }
+
+    // Back from a no-fit fallback line (same lane) only once the grown label has fit for the return time
+    const bool bWaiting = previous.bNoFit || previous.FitS > 0.0;
+    if (previous.Where == ESOLLaneMergeWhere::Fallback && previous.Lane == readoutLane && bWaiting)
+    {
+        const double stepS = FMath::IsNaN(deltaS) ? 0.0 : FMath::Max(deltaS, 0.0);
+        spot.FitS = (FMath::IsNaN(previous.FitS) ? 0.0 : FMath::Max(previous.FitS, 0.0)) + stepS;
+        if (spot.FitS < SOL::NPC_LANE_MERGE_LABEL_RETURN_S)
+        {
+            return spot;
+        }
+        spot.FitS = 0.0;
+    }
+    spot.Where = ESOLLaneMergeWhere::Label;
+    spot.LabelIndex = labelIndex;
+    return spot;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the first fallback spot on the viewport and clear of the labels and HUD panels, else the last spot
+int32 SOLLaneTunnelLabel::ChooseMergeFallbackSpot(const TConstArrayView<FBox2D> spotBoxes,
+    const TConstArrayView<FBox2D> labelBoxes, const TConstArrayView<FBox2D> hudBoxes, const FVector2D& viewportPx,
+    const double labelGapPx)
+{
+    const bool bViewportValid = FMath::IsFinite(viewportPx.X) && FMath::IsFinite(viewportPx.Y) && viewportPx.X > 0.0
+        && viewportPx.Y > 0.0;
+    if (spotBoxes.IsEmpty() || !bViewportValid)
+    {
+        return INDEX_NONE;
+    }
+    const double gapPx = FMath::IsFinite(labelGapPx) ? FMath::Max(labelGapPx, 0.0) : 0.0;
+    const FVector2D gap(gapPx, gapPx);
+    for (int32 index = 0; index < spotBoxes.Num(); ++index)
+    {
+        // On the viewport, off every label (grown by the gap) and off every HUD panel
+        const FBox2D& spot = spotBoxes[index];
+        bool bClear = spot.bIsValid && spot.Min.X >= 0.0 && spot.Min.Y >= 0.0 && spot.Max.X <= viewportPx.X
+            && spot.Max.Y <= viewportPx.Y;
+        for (const FBox2D& label : labelBoxes)
+        {
+            bClear &= !label.bIsValid || !FBox2D(label.Min - gap, label.Max + gap).Intersect(spot);
+        }
+        for (const FBox2D& hud : hudBoxes)
+        {
+            bClear &= !hud.bIsValid || !hud.Intersect(spot);
+        }
+        if (bClear)
+        {
+            return index;
+        }
+    }
+    return spotBoxes.Num() - 1;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a label box size grown by one line
+FVector2D SOLLaneTunnelLabel::LaneLabelSizeWithLine(const FVector2D& sizePx, const double lineWidthPx,
+    const double lineHeightPx)
+{
+    if (!FMath::IsFinite(lineWidthPx) || !FMath::IsFinite(lineHeightPx) || lineWidthPx < 0.0 || lineHeightPx < 0.0)
+    {
+        return sizePx;
+    }
+    return FVector2D(FMath::Max(sizePx.X, lineWidthPx), sizePx.Y + lineHeightPx);
+}
+
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns whether a grown box's left edge x lies in [lowX, highX] with the box off every avoid box grown by the gap
+    bool LaneLabelSlideClear(const double x, const double lowX, const double highX, const double widthPx,
+        const double minY, const double maxY, const TConstArrayView<FBox2D> avoidBoxes, const double gapPx)
+    {
+        if (x < lowX || x > highX)
+        {
+            return false;
+        }
+        for (const FBox2D& avoid : avoidBoxes)
+        {
+            const bool bRowsMeet = avoid.bIsValid && minY < avoid.Max.Y + gapPx && avoid.Min.Y - gapPx < maxY;
+            if (bRowsMeet && x > avoid.Min.X - gapPx - widthPx && x < avoid.Max.X + gapPx)
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Places the readout's label grown by its line, full form first, slid sideways off the edges, panels and other labels
+FSOLLaneLabelPlacement SOLLaneTunnelLabel::PlaceLaneLabelWithLine(const FSOLLaneLabelInput& label,
+    const FSOLLaneLabelPlacement& placed, const double lineWidthPx, const double lineHeightPx,
+    const TConstArrayView<FBox2D> avoidBoxes, const FVector2D& viewportPx, const double gapPx)
+{
+    FSOLLaneLabelPlacement result;
+    const bool bViewportValid = FMath::IsFinite(viewportPx.X) && FMath::IsFinite(viewportPx.Y) && viewportPx.X > 0.0
+        && viewportPx.Y > 0.0;
+    const bool bSizeValid = FMath::IsFinite(label.SizePx.X) && FMath::IsFinite(label.SizePx.Y)
+        && label.SizePx.X >= 0.0 && label.SizePx.Y >= 0.0;
+    if (!placed.bPlaced || !bViewportValid || !bSizeValid)
+    {
+        return result;
+    }
+
+    // The full form first, then the compact one (only when valid), each at the candidate the label took first (its
+    // own placement keeps PlaceLaneLabels' hysteresis, so a compact label is not held compact by its readout)
+    const bool bCompactValid = FMath::IsFinite(label.CompactSizePx.X) && FMath::IsFinite(label.CompactSizePx.Y)
+        && label.CompactSizePx.X > 0.0 && label.CompactSizePx.Y > 0.0;
+    const int32 firstCandidate = placed.Candidate == LANE_LABEL_BOTTOM ? LANE_LABEL_BOTTOM : LANE_LABEL_TOP;
+    const int32 attemptCount = bCompactValid ? 4 : 2;
+    for (int32 tried = 0; tried < attemptCount; ++tried)
+    {
+        const int32 candidate = tried % 2 == 0 ? firstCandidate : LANE_LABEL_TOP + LANE_LABEL_BOTTOM - firstCandidate;
+        const bool bCompact = tried >= 2;
+        const bool bTop = candidate == LANE_LABEL_TOP;
+        const bool bInFront = bTop ? label.bTopInFront : label.bBottomInFront;
+        const bool bOccluded = bTop ? label.bTopOccluded : label.bBottomOccluded;
+        const FVector2D anchor = bTop ? label.TopAnchorPx : label.BottomAnchorPx;
+        if (!bInFront || bOccluded || anchor.ContainsNaN())
+        {
+            continue;
+        }
+
+        // The form's own box centred on the anchor, then grown by the line: outward from the tube vertically (bottom
+        // edge on a 12 o'clock anchor, top edge on a 6 o'clock one), and its left edge free in [own right - grown
+        // width, own left] so the grown box always covers the label's own box
+        const FVector2D ownSize = bCompact ? label.CompactSizePx : label.SizePx;
+        const FVector2D grownSize = LaneLabelSizeWithLine(ownSize, lineWidthPx, lineHeightPx);
+        const double ownMinX = anchor.X - 0.5 * ownSize.X;
+        const double minY = bTop ? anchor.Y - grownSize.Y : anchor.Y;
+        const double maxY = minY + grownSize.Y;
+        const double lowX = FMath::Max(ownMinX + ownSize.X - grownSize.X, 0.0);
+        const double highX = FMath::Min(ownMinX, viewportPx.X - grownSize.X);
+        if (minY < 0.0 || maxY > viewportPx.Y || lowX > highX)
+        {
+            continue;
+        }
+
+        // The clear left edge nearest the centred one: the centred edge clamped into range, the range ends and the
+        // edges just clear of each avoid box, each tested against every forbidden span
+        const double centredX = FMath::Clamp(anchor.X - 0.5 * grownSize.X, lowX, highX);
+        double bestX = 0.0;
+        bool bFound = false;
+
+        // Keeps a left edge when it is clear and nearer the centred one than the best so far
+        const auto consider = [&](const double x)
+        {
+            if ((!bFound || FMath::Abs(x - centredX) < FMath::Abs(bestX - centredX))
+                && LaneLabelSlideClear(x, lowX, highX, grownSize.X, minY, maxY, avoidBoxes, gapPx))
+            {
+                bestX = x;
+                bFound = true;
+            }
+        };
+        consider(centredX);
+        consider(lowX);
+        consider(highX);
+        for (const FBox2D& avoid : avoidBoxes)
+        {
+            if (avoid.bIsValid)
+            {
+                consider(avoid.Max.X + gapPx);
+                consider(avoid.Min.X - gapPx - grownSize.X);
+            }
+        }
+        if (!bFound)
+        {
+            continue;
+        }
+        result.bPlaced = true;
+        result.bCompact = bCompact;
+        result.Candidate = candidate;
+        result.BoxPx = FBox2D(FVector2D(bestX, minY), FVector2D(bestX + grownSize.X, maxY));
+        result.OwnBoxPx = FBox2D(FVector2D(ownMinX, minY), FVector2D(ownMinX + ownSize.X, minY + ownSize.Y));
+        return result;
+    }
+    return result;
+}

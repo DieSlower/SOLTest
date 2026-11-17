@@ -1833,4 +1833,67 @@ bool FSOLGlossaryNoLaneEntryTest::RunTest(const FString& /*parameters*/)
     return true;
 }
 
+namespace
+{
+    //////////////////////////////////////////////////////////////////////////
+    // Returns true when text holds word (case-insensitive) with no letter right before or after it
+    bool GlossaryTestContainsWord(const FString& text, const TCHAR* word)
+    {
+        const FString lower = text.ToLower();
+        const FString needle = FString(word).ToLower();
+        for (int32 at = lower.Find(needle); at != INDEX_NONE;
+            at = lower.Find(needle, ESearchCase::CaseSensitive, ESearchDir::FromStart, at + 1))
+        {
+            const bool bLetterBefore = at > 0 && FChar::IsAlpha(lower[at - 1]);
+            const int32 after = at + needle.Len();
+            const bool bLetterAfter = after < lower.Len() && FChar::IsAlpha(lower[after]);
+            if (!bLetterBefore && !bLetterAfter)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLGlossaryLaneTrafficReadoutTest, "SOLTest.Glossary.LaneTrafficReadoutEntry",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Issue #50 Part 50c (SDD 50 section 5 and contract case 16), test-first: a HUD glossary entry "Lane traffic readout"
+// resolves on a glossary tab and explains the line: the three verdict words as the HUD prints them (the SOLMenuText
+// tokens), the three colours (green, amber, red) and the warp note "(at 1x)", with no placeholder left
+bool FSOLGlossaryLaneTrafficReadoutTest::RunTest(const FString& /*parameters*/)
+{
+    const int32 index = GlossaryTestFindEntry(TEXT("Lane traffic readout"));
+    if (!TestTrue(TEXT("the Lane traffic readout entry exists"), index != INDEX_NONE))
+    {
+        return false;
+    }
+    FSOLGlossaryEntry entry;
+    TestTrue(TEXT("the entry resolves"), SOLGlossary::ResolveEntry(index, entry));
+    TestTrue(TEXT("the entry is on a glossary tab"), entry.Tab != ESOLHelpTab::Count
+        && entry.Tab != ESOLHelpTab::Keyboard);
+
+    FString out;
+    SOLGlossary::FormatEntryText(SOLMenuText::GLOSSARY_ENTRIES[index].Description, SOLKeyBindings::DefaultKeys(), out);
+    for (const TCHAR* verdict : { SOLMenuText::LANE_TRAFFIC_MATCHED, SOLMenuText::LANE_TRAFFIC_TOO_FAST,
+        SOLMenuText::LANE_TRAFFIC_TOO_SLOW })
+    {
+        TestTrue(FString::Printf(TEXT("'%s' names %s"), *out, verdict), out.Contains(verdict,
+            ESearchCase::CaseSensitive));
+    }
+    for (const TCHAR* colour : { TEXT("green"), TEXT("amber"), TEXT("red") })
+    {
+        TestTrue(FString::Printf(TEXT("'%s' names the colour %s"), *out, colour), GlossaryTestContainsWord(out,
+            colour));
+    }
+    const FString warpNote = FString(SOLMenuText::LANE_TRAFFIC_WARP_NOTE).TrimStartAndEnd();
+    TestTrue(FString::Printf(TEXT("'%s' explains the warp note %s"), *out, *warpNote), out.Contains(warpNote,
+        ESearchCase::CaseSensitive));
+    TestFalse(FString::Printf(TEXT("'%s' has no placeholder left"), *out), out.Contains(TEXT("{")));
+    return true;
+}
+
 #endif

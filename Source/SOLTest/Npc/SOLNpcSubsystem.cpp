@@ -15,6 +15,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Ship/SOLShipSubsystem.h"
+#include "Traffic/SOLLaneTrafficSubsystem.h"
 #include "Universe/SOLAnchorSubsystem.h"
 #include "Universe/SOLBodyRegistrySubsystem.h"
 #include "Universe/SOLSimClockSubsystem.h"
@@ -533,6 +534,11 @@ void USOLNpcSubsystem::Despawn()
     mSpawnedCount = 0;
     mStats = FSOLNpcStats();
     ++mPopulationRevision;
+    if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld() != nullptr
+        ? GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>() : nullptr)
+    {
+        laneTraffic->ClearLanes();
+    }
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -645,6 +651,11 @@ void USOLNpcSubsystem::Spawn(const int32 count)
         }
     }
     SOLNpcRail::BuildLaneProfiles(mGroups, laneInWall, laneHalo, laneNominalM, laneRadiusAM, laneRadiusBM);
+    if (USOLLaneTrafficSubsystem* laneTraffic = GetWorld()->GetSubsystem<USOLLaneTrafficSubsystem>())
+    {
+        // The lane table for the HUD's merge readout (SDD 50 section 4.10), frozen with the profiles
+        laneTraffic->SetLanes(mGroups.LaneBodyA, mGroups.LaneBodyB, mGroups.LaneProfile);
+    }
 
     // (3) Rails for every NPC index, in parallel blocks (stateless per-index hash), and each block's largest lane peak
     const int32 clusterBase = mGroups.LaneCount;

@@ -127,6 +127,70 @@ struct FSOLLaneThrustState
     FVector3d HullForward = FVector3d::ZeroVector;  // Unit hull facing (LaneHullForward)
 };
 
+// The merge readout's verdict on the player's along-lane speed against the traffic speed (SDD 50 section 4.8, D8)
+enum class ESOLLaneMergeVerdict : uint8
+{
+    Matched,                        // Within NPC_LANE_MERGE_MATCH_FRACTION of the traffic speed
+    TooFast,                        // Faster than that
+    TooSlow                         // Slower than that (also at rest, flying backwards or crossing the lane)
+};
+
+// The merge readout's colour band (green / amber / red, D8)
+enum class ESOLLaneMergeBand : uint8
+{
+    Green,                          // Matched
+    Amber,                          // Off by at most NPC_LANE_MERGE_AMBER_FRACTION
+    Red                             // Off by more
+};
+
+// A verdict on two speeds (SOLLaneTraffic::RateMerge)
+struct FSOLLaneMergeRating
+{
+    bool bValid = false;                                    // False for a bad traffic speed or a non-finite input
+    double Delta = 0.0;                                     // (v_pl - v_t) / v_t
+    ESOLLaneMergeVerdict Verdict = ESOLLaneMergeVerdict::TooSlow;
+    ESOLLaneMergeBand Band = ESOLLaneMergeBand::Red;
+};
+
+// Where a point lies relative to a lane (SOLLaneTraffic::LanePointOf)
+struct FSOLLanePoint
+{
+    double AlongM = 0.0;            // (p - A) . Axis
+    double LegArcM = 0.0;           // AlongM - EndArcAM: the arc from end ring A
+    double FootFraction = 0.0;      // AlongM / |B - A| clamped to [0, 1]
+    double Rho = 0.0;               // Lateral distance from the axis in wall radii
+    double RightOffsetM = 0.0;      // (p - A) . Right (negative on the left, inbound half)
+    double UpOffsetM = 0.0;         // (p - A) . Up
+    bool bInLeg = false;            // 0 <= LegArcM <= CurrentLegM (between the end rings)
+    bool bInHalo = false;           // In the leg and Rho <= NPC_LANE_HALO_OUTER_WALL_RADII
+    bool bValid = false;            // False (flags false) for an invalid frame, a non-drivable lane or a bad point
+};
+
+// One lane as the merge readout sees it this frame: its frozen profile, current frame and end body velocities
+struct FSOLLaneMergeLane
+{
+    FSOLLaneProfile Profile;
+    FSOLLaneFrame Frame;
+    FVector3d AVelocityMps = FVector3d::ZeroVector;     // Body A's velocity (universe ecliptic, sim seconds)
+    FVector3d BVelocityMps = FVector3d::ZeroVector;     // Body B's velocity
+};
+
+// The merge readout of one frame (SOLLaneTraffic::MergeReadout)
+struct FSOLLaneMergeReadout
+{
+    bool bShown = false;                                    // A lane's halo holds the player
+    int32 Lane = INDEX_NONE;                                // Its index in the lanes passed
+    int32 DirectionSign = 1;                                // +1 outbound (A -> B), -1 inbound
+    double Rho = 0.0;                                       // The player's radius in wall radii
+    double TrafficSpeedMps = 0.0;                           // v_t there, sim seconds
+    double PlayerSpeedMps = 0.0;                            // The player's along-lane speed relative to the lane frame
+    double Delta = 0.0;                                     // (v_pl - v_t) / v_t
+    ESOLLaneMergeVerdict Verdict = ESOLLaneMergeVerdict::TooSlow;
+    ESOLLaneMergeBand Band = ESOLLaneMergeBand::Red;
+    bool bWarpNote = false;                                 // Time warp above 1x
+    FVector3d FrameVelocityMps = FVector3d::ZeroVector;     // lerp(V_A, V_B, foot fraction)
+};
+
 // Pure math of the issue #50 lane traffic (SDD 50 sections 4.2-4.5 and 4.12, contract section 6): the radial factor,
 // the per-ship leg profile, the leg arc and speed, the mean speed field, the metric end-zone map and its inverse, the
 // cycle, the lane profile and frame, the lane ship position, the wake speed bound and the thrust state. Universe
@@ -248,4 +312,37 @@ namespace SOLLaneTraffic
     // turn's velocity direction; +Axis (or +X when there is no axis) for an invalid frame, +Axis for a non-drivable lane
     SOLTEST_API FVector3d LaneHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
         const FSOLLaneShip& ship, double timeS);
+
+    // Part 50c, the HUD merge readout (SDD 50 section 4.8, D7, D8, contract case 13)
+
+    // Returns the verdict on a player speed against a traffic speed: delta = (v_pl - v_t) / v_t; MATCHED (green) for
+    // |delta| <= NPC_LANE_MERGE_MATCH_FRACTION, else TOO FAST (delta > 0) or TOO SLOW, amber for |delta| <=
+    // NPC_LANE_MERGE_AMBER_FRACTION, red beyond (a boundary belongs to the better class); invalid for a traffic speed
+    // <= 0 or a non-finite input
+    SOLTEST_API FSOLLaneMergeRating RateMerge(double trafficSpeedMps, double playerSpeedMps);
+
+    // Returns the traffic direction the player would merge into, +1 outbound or -1 inbound: the sign of the along-lane
+    // relative velocity when |v| >= NPC_LANE_MERGE_DIRECTION_MIN_MPS (NaN below), else the sign of the unit forward's
+    // along component when |f| > NPC_LANE_MERGE_FORWARD_MIN (0.1; NaN as 0), else the player's half (right offset
+    // >= 0 or NaN: outbound)
+    SOLTEST_API int32 MergeDirectionSign(double alongVelocityMps, double alongForward, double rightOffsetM);
+
+    // Returns where a point lies relative to a lane: its along-axis distance from A, arc from end ring A, foot
+    // fraction, lateral offsets and rho, and whether it is in the leg and in the halo; invalid for an invalid frame, a
+    // non-drivable lane or a non-finite point
+    SOLTEST_API FSOLLanePoint LanePointOf(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        const FVector3d& pointM);
+
+    // Returns the traffic speed v_t = MeanSpeedMps(u, rho) x MetricMapSlope(u) at a leg arc (clamped to the current
+    // leg) and rho for a direction, u the nominal arc of the distance from the departure ring (X inverted); 0 for an
+    // invalid frame, a non-drivable lane or a NaN arc or rho
+    SOLTEST_API double TrafficSpeedMps(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, double legArcM,
+        double rho, int32 directionSign);
+
+    // Returns the merge readout: the lane whose halo holds the player with the smallest rho (the lower index on a tie),
+    // its frame velocity at the player's foot, the direction, the traffic and player speeds (sim seconds whatever the
+    // warp, D7) and the verdict, and the warp note above 1x; hidden with no such lane or a non-finite position or
+    // velocity
+    SOLTEST_API FSOLLaneMergeReadout MergeReadout(TConstArrayView<FSOLLaneMergeLane> lanes, const FVector3d& playerM,
+        const FVector3d& playerVelocityMps, const FVector3d& playerForward, double timeWarpScale);
 }

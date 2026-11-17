@@ -824,3 +824,142 @@ FVector3d SOLLaneTraffic::LaneHullForward(const FSOLLaneProfile& profile, const 
     const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
     return TrafficHullForward(profile, frame, ship, leg, point);
 }
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the verdict on a player speed against a traffic speed
+FSOLLaneMergeRating SOLLaneTraffic::RateMerge(const double trafficSpeedMps, const double playerSpeedMps)
+{
+    FSOLLaneMergeRating rating;
+    if (!FMath::IsFinite(trafficSpeedMps) || !(trafficSpeedMps > 0.0) || !FMath::IsFinite(playerSpeedMps))
+    {
+        return rating;
+    }
+    rating.bValid = true;
+    rating.Delta = (playerSpeedMps - trafficSpeedMps) / trafficSpeedMps;
+    const double offBy = FMath::Abs(rating.Delta);
+    if (offBy <= SOL::NPC_LANE_MERGE_MATCH_FRACTION)
+    {
+        rating.Verdict = ESOLLaneMergeVerdict::Matched;
+        rating.Band = ESOLLaneMergeBand::Green;
+        return rating;
+    }
+    rating.Verdict = rating.Delta > 0.0 ? ESOLLaneMergeVerdict::TooFast : ESOLLaneMergeVerdict::TooSlow;
+    rating.Band = offBy <= SOL::NPC_LANE_MERGE_AMBER_FRACTION ? ESOLLaneMergeBand::Amber : ESOLLaneMergeBand::Red;
+    return rating;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the traffic direction the player would merge into: the velocity, else the heading, else the half
+int32 SOLLaneTraffic::MergeDirectionSign(const double alongVelocityMps, const double alongForward,
+    const double rightOffsetM)
+{
+    if (FMath::Abs(alongVelocityMps) >= SOL::NPC_LANE_MERGE_DIRECTION_MIN_MPS)
+    {
+        return alongVelocityMps > 0.0 ? 1 : -1;
+    }
+    if (FMath::Abs(alongForward) > SOL::NPC_LANE_MERGE_FORWARD_MIN)
+    {
+        return alongForward > 0.0 ? 1 : -1;
+    }
+    return rightOffsetM < 0.0 ? -1 : 1;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns where a point lies relative to a lane: along-axis distance, leg arc, foot fraction, offsets, rho and flags
+FSOLLanePoint SOLLaneTraffic::LanePointOf(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FVector3d& pointM)
+{
+    FSOLLanePoint point;
+    const double spanM = (frame.BM - frame.AM).Size();
+    if (!frame.bValid || !profile.bDrivable || !(spanM > 0.0) || !(profile.WallRadiusM > 0.0)
+        || !FMath::IsFinite(pointM.X) || !FMath::IsFinite(pointM.Y) || !FMath::IsFinite(pointM.Z))
+    {
+        return point;
+    }
+
+    // The offsets on the lane basis, then the arc, foot and radius
+    const FVector3d relM = pointM - frame.AM;
+    point.AlongM = relM.Dot(frame.Axis);
+    point.RightOffsetM = relM.Dot(frame.Right);
+    point.UpOffsetM = relM.Dot(frame.Up);
+    point.LegArcM = point.AlongM - profile.EndArcAM;
+    point.FootFraction = FMath::Clamp(point.AlongM / spanM, 0.0, 1.0);
+    point.Rho = FMath::Sqrt(point.RightOffsetM * point.RightOffsetM + point.UpOffsetM * point.UpOffsetM)
+        / profile.WallRadiusM;
+    point.bInLeg = point.LegArcM >= 0.0 && point.LegArcM <= frame.CurrentLegM;
+    point.bInHalo = point.bInLeg && point.Rho <= profile.HaloOuterRadiusM / profile.WallRadiusM;
+    point.bValid = true;
+    return point;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the mean traffic speed at a leg arc and rho for a direction, through the metric map
+double SOLLaneTraffic::TrafficSpeedMps(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const double legArcM, const double rho, const int32 directionSign)
+{
+    if (!frame.bValid || !profile.bDrivable || FMath::IsNaN(legArcM) || FMath::IsNaN(rho))
+    {
+        return 0.0;
+    }
+    const double l0 = profile.NominalLegM;
+    const double l = frame.CurrentLegM;
+    const double x = FMath::Clamp(legArcM, 0.0, l);
+    const double fromDepartureM = directionSign > 0 ? x : l - x;
+    const double u = MetricMapInverseM(fromDepartureM, l0, l);
+    return MeanSpeedMps(u, rho, l0) * MetricMapSlope(u, l0, l);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the merge readout of the lane whose halo holds the player at the smallest rho (lower lane index on a tie)
+FSOLLaneMergeReadout SOLLaneTraffic::MergeReadout(const TConstArrayView<FSOLLaneMergeLane> lanes,
+    const FVector3d& playerM, const FVector3d& playerVelocityMps, const FVector3d& playerForward,
+    const double timeWarpScale)
+{
+    FSOLLaneMergeReadout readout;
+    if (!FMath::IsFinite(playerVelocityMps.X) || !FMath::IsFinite(playerVelocityMps.Y)
+        || !FMath::IsFinite(playerVelocityMps.Z))
+    {
+        return readout;
+    }
+
+    // The lane: the smallest rho among the halos holding the player (strictly smaller, so the lower index on a tie)
+    FSOLLanePoint best;
+    for (int32 lane = 0; lane < lanes.Num(); ++lane)
+    {
+        const FSOLLanePoint point = LanePointOf(lanes[lane].Profile, lanes[lane].Frame, playerM);
+        if (point.bInHalo && (readout.Lane == INDEX_NONE || point.Rho < best.Rho))
+        {
+            best = point;
+            readout.Lane = lane;
+        }
+    }
+    if (readout.Lane == INDEX_NONE)
+    {
+        return readout;
+    }
+
+    // The lane frame at the foot, the direction from the velocity, heading or half, then the two speeds
+    const FSOLLaneMergeLane& lane = lanes[readout.Lane];
+    const FVector3d& axis = lane.Frame.Axis;
+    readout.FrameVelocityMps = lane.AVelocityMps + (lane.BVelocityMps - lane.AVelocityMps) * best.FootFraction;
+    const double alongVelocityMps = (playerVelocityMps - readout.FrameVelocityMps).Dot(axis);
+    const double forwardSize = playerForward.Size();
+    const double alongForward = FMath::IsFinite(forwardSize) && forwardSize > 0.0
+        ? playerForward.Dot(axis) / forwardSize : 0.0;
+    readout.DirectionSign = MergeDirectionSign(alongVelocityMps, alongForward, best.RightOffsetM);
+    readout.Rho = best.Rho;
+    readout.TrafficSpeedMps = TrafficSpeedMps(lane.Profile, lane.Frame, best.LegArcM, best.Rho,
+        readout.DirectionSign);
+    readout.PlayerSpeedMps = static_cast<double>(readout.DirectionSign) * alongVelocityMps;
+    const FSOLLaneMergeRating rating = RateMerge(readout.TrafficSpeedMps, readout.PlayerSpeedMps);
+    readout.Delta = rating.Delta;
+    readout.Verdict = rating.Verdict;
+    readout.Band = rating.Band;
+    readout.bWarpNote = timeWarpScale > 1.0;
+    readout.bShown = rating.bValid;
+    if (!readout.bShown)
+    {
+        readout.Lane = INDEX_NONE;
+    }
+    return readout;
+}

@@ -26,6 +26,7 @@
 #include "SOLConstants.h"
 #include "SOLTest.h"
 #include "Targeting/SOLTargetingSubsystem.h"
+#include "Traffic/SOLLaneTrafficSubsystem.h"
 #include "UI/SOLHoloFrameBuild.h"
 #include "UI/SOLHoloMenuSubsystem.h"
 #include "UI/SOLHudFormat.h"
@@ -53,6 +54,8 @@
 // Game-thread cost of the lane tunnel wall labels (stat dumpave in -SOLSmokeNpcTunnelProfile, SDD 49 section 4.8)
 DECLARE_STATS_GROUP(TEXT("SOLHud"), STATGROUP_SOLHud, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("SOL_HudLaneLabels"), STAT_SOL_HudLaneLabels, STATGROUP_SOLHud);
+// ...and of the lane traffic readout (SDD 50 section 8 item 6: at most 0.01 ms)
+DECLARE_CYCLE_STAT(TEXT("SOL_HudLaneReadout"), STAT_SOL_HudLaneReadout, STATGROUP_SOLHud);
 
 namespace
 {
@@ -103,6 +106,10 @@ namespace
     constexpr float HUD_PROFILE_TAG_GAP_PX = 6.0f;      // Overlay profile tag (SDD 34): its panel this far below the
                                                         // controls notice's panel
     constexpr int32 HUD_PROFILE_TAG_RESERVE = 32;       // Characters reserved for the tag text
+    constexpr int32 HUD_MERGE_LINE_RESERVE = 96;        // Characters reserved for the lane traffic readout line
+    constexpr float HUD_MERGE_FALLBACK_GAP_PX = 16.0f;  // The readout's fallback line: gap right of the speed card
+    constexpr double HUD_MERGE_TEMPLATE_TRAFFIC_MPS = 888880.0;     // The widest usual readout line's speeds (km/s,
+    constexpr double HUD_MERGE_TEMPLATE_PLAYER_MPS = -2888880.0;    // the most digits), which size its grown label
     constexpr double HUD_PERCENT = 100.0;
     const FLinearColor HUD_RADAR_BACK_COLOR(0.0f, 0.02f, 0.05f, 0.35f);   // Radar backing (Canvas fallback)
     constexpr float HUD_RADAR_BACKING_GROW = 0.25f;     // Radar disc backing: grown by this x the squashed radius and
@@ -303,6 +310,7 @@ void ASOLFlightHud::BeginPlay()
     Npcs = world->GetSubsystem<USOLNpcSubsystem>();
     Interaction = world->GetSubsystem<USOLInteractionSubsystem>();
     HoloMenu = world->GetSubsystem<USOLHoloMenuSubsystem>();
+    LaneTraffic = world->GetSubsystem<USOLLaneTrafficSubsystem>();
 
     // The pawn talks to the HUD only through the HUD event bus (SDD 21 D4): commands in, the map overlay out
     if (HudEvents != nullptr)
@@ -323,6 +331,7 @@ void ASOLFlightHud::BeginPlay()
     mText.Reserve(256);
     mLastRouteLineText.Reserve(128);
     mProfileTagText.Reserve(HUD_PROFILE_TAG_RESERVE);
+    mMergeLine.Reserve(HUD_MERGE_LINE_RESERVE);
 
     // Warp streak table: random directions, phases and speeds from a fixed seed
     FRandomStream random(WARP_STREAK_SEED);
@@ -1273,6 +1282,8 @@ void ASOLFlightHud::DrawHUD()
     mAutopilotBlockBottomY = 0.0f;
     mLeftBlockRect = FBox2D(ForceInit);
     mTopBlockRect = FBox2D(ForceInit);
+    mLastMergeSpot = FSOLLaneMergeSpot();
+    mLastMergeBox = FBox2D(ForceInit);
 
     // Last frame's HUD panel boxes become the set the lane labels avoid (the labels draw before the panels)
     for (int32 index = 0; index < mHudAvoidBoxCount; ++index)
@@ -1384,6 +1395,7 @@ void ASOLFlightHud::DrawHUD()
         mMapPickOverlay.Draw(*Canvas, overlayView, *MapMode, *AnchorSubsystem, mUiScale);
     }
     DrawOverlayIcons(bHasView && !IsMapOpen() ? &view : nullptr);
+    UpdateMergeReadout(bHasView && !IsMapOpen());
     DrawLaneTunnelLabels(bHasView && !IsMapOpen() ? &view : nullptr);
     DrawInfoBlock();
     AddHudAvoidBox(mLastHintsRect);
@@ -1418,6 +1430,7 @@ void ASOLFlightHud::DrawHUD()
     DrawPilotBlock(control);
     DrawRouteMarker();
     DrawCard(ESOLHudCard::Speed, mLeftBlockRect, mAlwaysOnCardLook);
+    DrawMergeReadoutFallback();
     AddHoloPanel(mTopBlockRect, HUD_PRIMARY);
     DrawRadar(bHasView ? &view : nullptr, state);
 
@@ -1795,6 +1808,7 @@ void ASOLFlightHud::DrawSpeedBlock(const FSOLShipState& state, const FSOLShipCon
     AppendSpeed(relativeSpeedMps);
     mLeftBlockRect += DrawBuffer(ESOLHudLine::Speed, HUD_PRIMARY, x, y, ESOLHudFont::Large, HUD_SPEED_TEXT_SCALE);
     y += HUD_LINE_LARGE_PX * mUiScale;
+    mMergeFallbackY = y;
 
     // Frame name (locked target, else anchor) and the absolute Sun-frame speed, smaller
     mText.Reset();
@@ -2355,6 +2369,15 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
         cache.Candidate = INDEX_NONE;
     }
 
+    // The lane traffic readout's spot is chosen after the placement below (D18, Q10) from the labels' lanes and
+    // own-size placements, whether its label grown by the line fits and last frame's spot (hysteresis)
+    const bool bReadoutShown = mMergeReadout.bShown && mHasMergeText;
+    const FSOLLaneMergeSpot previousSpot = mMergeSpot;
+    int32 spotLanes[SOL::NPC_TUNNEL_LABEL_MAX_COUNT] = {};
+    FSOLLaneLabelPlacement spotPlacements[SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+    int32 spotCount = 0;
+    mMergeGrown = FSOLLaneLabelPlacement();
+
     // The snapshot of this frame or the last one (a stale snapshot shows nothing and the labels ease out)
     const FSOLHudLaneTunnelLabels* snapshot = nullptr;
     if (view != nullptr && HudEvents != nullptr && AnchorSubsystem != nullptr && BodyRegistry != nullptr
@@ -2486,49 +2509,112 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
                 break;
             }
         }
+
+        // Every placed label keeps its own-size placement (next frame's hysteresis, and where its lines go without the
+        // readout); the lanes and placements are kept for the readout's spot
+        int32 readoutLabel = INDEX_NONE;
         for (int32 index = 0; index < count; ++index)
         {
             const FSOLHudLaneTunnelLabel& label = snapshot->Labels[index];
+            spotLanes[index] = label.Lane;
+            spotPlacements[index] = placements[index];
+            readoutLabel = bReadoutShown && placements[index].bPlaced && label.Lane == mMergeReadout.Lane
+                ? index : readoutLabel;
             if (placements[index].bPlaced && label.Lane >= 0 && label.Lane < SOL::NPC_GROUP_TEXTURE_WIDTH)
             {
                 FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
                 cache.TargetAlpha = label.Alpha;
                 cache.Box = placements[index].BoxPx;
+                cache.bBoxTop = placements[index].Candidate == 0;     // Candidate 0: the 12 o'clock anchor
                 cache.bCompact = placements[index].bCompact;
                 cache.Candidate = placements[index].Candidate;
             }
         }
+        spotCount = count;
+
+        // The readout's label grown by the line as its last line (D18): it may cover the guide-dot rows but stays on
+        // screen and off the HUD panels and the other placed labels (which keep their spots), the full form first; as
+        // wide as the widest line expected, so the box does not follow the digits
+        if (readoutLabel != INDEX_NONE)
+        {
+            SCOPE_CYCLE_COUNTER(STAT_SOL_HudLaneReadout);
+
+            // The compact size too, so the grown label can drop to two lines (keyed, reformatted only on a change)
+            const FSOLHudLaneTunnelLabel& label = snapshot->Labels[readoutLabel];
+            if (inputs[readoutLabel].CompactSizePx.X <= 0.0)
+            {
+                FSOLLaneLabelCache& cache = mLaneLabels[label.Lane];
+                UpdateLaneLabelCompactText(cache, label, nowS);
+                inputs[readoutLabel].CompactSizePx = cache.CompactSize * scale;
+            }
+
+            // Avoid last frame's HUD panels and every other label placed this frame
+            FBox2D avoidBoxes[SOL::NPC_TUNNEL_LABEL_MAX_AVOID_BOXES + SOL::NPC_TUNNEL_LABEL_MAX_COUNT];
+            int32 avoidCount = 0;
+            for (int32 avoid = 0; avoid < mPrevHudAvoidBoxCount; ++avoid)
+            {
+                avoidBoxes[avoidCount++] = mPrevHudAvoidBoxes[avoid];
+            }
+            for (int32 index = 0; index < count; ++index)
+            {
+                if (index != readoutLabel && placements[index].bPlaced)
+                {
+                    avoidBoxes[avoidCount++] = placements[index].BoxPx;
+                }
+            }
+            const double lineWidth = FMath::Max3(mMergeTemplateWidth, mMergeWidestWidth, mMergeSize.X) * scale;
+            mMergeGrown = SOLLaneTunnelLabel::PlaceLaneLabelWithLine(inputs[readoutLabel], placements[readoutLabel],
+                lineWidth, mMergeSize.Y * scale, TConstArrayView<FBox2D>(avoidBoxes, avoidCount),
+                FVector2D(Canvas->ClipX, Canvas->ClipY), SOL::NPC_TUNNEL_LABEL_GAP_PX * mUiScale);
+        }
     }
 
-    // Every lane's alpha eases toward its target; a label still visible draws at its last box
+    // The readout's spot (D18, Q10): its label while the grown label fits (back from the fallback line only once it
+    // has fit for a moment), else the fallback line
+    mMergeSpot = SOLLaneTunnelLabel::ChooseMergeReadoutSpot(bReadoutShown, mMergeReadout.Lane,
+        TConstArrayView<int32>(spotLanes, spotCount),
+        TConstArrayView<FSOLLaneLabelPlacement>(spotPlacements, spotCount), mMergeGrown.bPlaced, previousSpot, deltaS);
+    const int32 readoutLane = mMergeSpot.Where == ESOLLaneMergeWhere::Label && mMergeGrown.bPlaced
+        ? mMergeReadout.Lane : INDEX_NONE;
+
+    // Every lane's alpha eases toward its target; a label still visible draws at its last box. The readout's label
+    // draws grown (its lines in their own columns, the readout line under them); its lines ease by one line as the
+    // readout comes and goes, so they never jump
     const float scale = mUiScale * SOL::NPC_TUNNEL_LABEL_TEXT_SCALE;
+    const double lineShiftPx = mHasMergeText ? mMergeSize.Y * scale : 0.0;
     for (int32 lane = 0; lane < SOL::NPC_GROUP_TEXTURE_WIDTH; ++lane)
     {
         FSOLLaneLabelCache& cache = mLaneLabels[lane];
+        const bool bReadoutHere = lane == readoutLane;
+        cache.ReadoutShift = SOLLaneTunnelLabel::EaseLaneLabelAlpha(cache.ReadoutShift, bReadoutHere ? 1.0 : 0.0,
+            deltaS);
         if (cache.Alpha <= 0.0 && cache.TargetAlpha <= 0.0)
         {
             continue;
         }
         cache.Alpha = SOLLaneTunnelLabel::EaseLaneLabelAlpha(cache.Alpha, cache.TargetAlpha, deltaS);
-        if (view == nullptr || cache.Alpha <= 0.0 || !cache.bHasText || !cache.Box.bIsValid)
+        const bool bCompact = bReadoutHere ? mMergeGrown.bCompact : cache.bCompact;
+        if (view == nullptr || cache.Alpha <= 0.0 || !cache.bHasText || !cache.Box.bIsValid
+            || (bCompact && !cache.bHasCompactText))
         {
             continue;
         }
         FLinearColor color = HUD_PRIMARY;
         color.A *= static_cast<float>(cache.Alpha);
-        if (cache.bCompact && !cache.bHasCompactText)
-        {
-            continue;
-        }
 
-        // The three lines, or the one compact line, centred in the box from its top
-        float y = static_cast<float>(cache.Box.Min.Y);
-        const float centerX = static_cast<float>(cache.Box.GetCenter().X);
-        const int32 lineCount = cache.bCompact ? 1 : 3;
+        // The lines' top, centred in their own columns: grown, the box's top (eased up from a 12 o'clock label's own
+        // spot as the line comes); else the own box (eased back down from the grown spot as the line leaves)
+        const FBox2D& linesBox = bReadoutHere ? mMergeGrown.OwnBoxPx : cache.Box;
+        const bool bTop = bReadoutHere ? mMergeGrown.Candidate == 0 : cache.bBoxTop;
+        const double shiftPx = bTop ? lineShiftPx : 0.0;
+        float y = static_cast<float>(bReadoutHere ? linesBox.Min.Y + (1.0 - cache.ReadoutShift) * shiftPx
+            : linesBox.Min.Y - cache.ReadoutShift * shiftPx);
+        const float centerX = static_cast<float>(linesBox.GetCenter().X);
+        const int32 lineCount = bCompact ? 1 : 3;
         for (int32 line = 0; line < lineCount; ++line)
         {
-            const FText& text = cache.bCompact ? cache.CompactText : cache.Texts[line];
-            const FVector2D& size = cache.bCompact ? cache.CompactSize : cache.Sizes[line];
+            const FText& text = bCompact ? cache.CompactText : cache.Texts[line];
+            const FVector2D& size = bCompact ? cache.CompactSize : cache.Sizes[line];
             const FVector2f position(centerX - 0.5f * static_cast<float>(size.X) * scale, y);
             if (mTextList != nullptr)
             {
@@ -2543,12 +2629,36 @@ void ASOLFlightHud::DrawLaneTunnelLabels(const FSOLHudView* view)
             }
             y += static_cast<float>(size.Y) * scale;
         }
+
+        // The lane traffic readout as the label's last line, centred in the grown box, in its verdict's colour at the
+        // label's alpha (fading in as the lines make room)
+        const FBox2D& drawnBox = bReadoutHere ? mMergeGrown.BoxPx : cache.Box;
+        if (bReadoutHere && mHasMergeText)
+        {
+            FLinearColor readoutColor = SOLLaneTunnelLabel::MergeBandColor(mMergeReadout.Band);
+            readoutColor.A *= static_cast<float>(cache.Alpha * cache.ReadoutShift);
+            const FVector2f position(static_cast<float>(drawnBox.GetCenter().X - 0.5 * mMergeSize.X * scale),
+                static_cast<float>(drawnBox.Max.Y - lineShiftPx));
+            if (mTextList != nullptr)
+            {
+                mTextList->Add(mMergeText, position, scale, readoutColor, ESOLHudFont::Small);
+            }
+            else
+            {
+                FCanvasTextItem item(FVector2D(position), mMergeText, GetHudFont(ESOLHudFont::Small), readoutColor);
+                item.Scale = FVector2D(scale, scale);
+                item.EnableShadow(FLinearColor::Black);
+                Canvas->DrawItem(item);
+            }
+            mLastMergeSpot = mMergeSpot;
+            mLastMergeBox = FBox2D(FVector2D(position), FVector2D(position) + mMergeSize * scale);
+        }
         if (mLastLaneLabelCount < SOL::NPC_TUNNEL_LABEL_MAX_COUNT)
         {
             mLastLaneLabelLanes[mLastLaneLabelCount] = lane;
-            mLastLaneLabelBoxes[mLastLaneLabelCount] = cache.Box;
+            mLastLaneLabelBoxes[mLastLaneLabelCount] = drawnBox;
             mLastLaneLabelAlphas[mLastLaneLabelCount] = static_cast<float>(cache.Alpha);
-            mLastLaneLabelCompact[mLastLaneLabelCount] = cache.bCompact;
+            mLastLaneLabelCompact[mLastLaneLabelCount] = bCompact;
             ++mLastLaneLabelCount;
         }
     }
@@ -2651,7 +2761,152 @@ void ASOLFlightHud::HideLaneTunnelLabels()
         cache.TargetAlpha = 0.0;
         cache.Candidate = INDEX_NONE;
         cache.PreviousCandidate = INDEX_NONE;
+        cache.ReadoutShift = 0.0;
     }
+    mMergeReadout = FSOLLaneMergeReadout();
+    mMergeSpot = FSOLLaneMergeSpot();
+    mMergeGrown = FSOLLaneLabelPlacement();
+    mMergeWidestWidth = 0.0;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Computes the lane traffic readout and rebuilds its line only when it reads differently (speeds at most 10 Hz)
+void ASOLFlightHud::UpdateMergeReadout(const bool bAllowed)
+{
+    SCOPE_CYCLE_COUNTER(STAT_SOL_HudLaneReadout);
+    mMergeReadout = FSOLLaneMergeReadout();
+    const bool bEnabled = SOLLaneTunnelLabel::IsMergeReadoutEnabled(bAllowed,
+        LaneTraffic != nullptr && LaneTraffic->IsReadoutVerificationOverride(), Settings != nullptr,
+        Settings != nullptr && Settings->IsOverlayShown(SOLOverlay::EOverlay::Lanes),
+        LaneTraffic != nullptr && !LaneTraffic->GetLanes().IsEmpty(), Ships != nullptr && Ships->HasPlayerShip());
+    if (!bEnabled || BodyRegistry == nullptr || SimClock == nullptr)
+    {
+        mMergeWidestWidth = 0.0;
+        return;
+    }
+
+    // This frame's lanes: the frozen profiles on the bodies' current positions and velocities (universe ecliptic)
+    const FSOLBodyRegistry& registry = BodyRegistry->GetRegistry();
+    const TConstArrayView<FSOLLaneTrafficEntry> table = LaneTraffic->GetLanes();
+    const int32 laneCount = FMath::Min(table.Num(), static_cast<int32>(SOL::NPC_GROUP_TEXTURE_WIDTH));
+    for (int32 lane = 0; lane < laneCount; ++lane)
+    {
+        const FSOLLaneTrafficEntry& entry = table[lane];
+        FSOLLaneMergeLane& mergeLane = mMergeLanes[lane];
+        mergeLane.Profile = entry.Profile;
+        const bool bBodies = entry.BodyA >= 0 && entry.BodyA < registry.Num() && entry.BodyB >= 0
+            && entry.BodyB < registry.Num();
+        mergeLane.Frame = bBodies ? SOLLaneTraffic::MakeLaneFrame(entry.Profile, registry.GetPositionM(entry.BodyA),
+            registry.GetPositionM(entry.BodyB)) : FSOLLaneFrame();
+        mergeLane.AVelocityMps = bBodies ? registry.GetVelocityMps(entry.BodyA) : FVector3d::ZeroVector;
+        mergeLane.BVelocityMps = bBodies ? registry.GetVelocityMps(entry.BodyB) : FVector3d::ZeroVector;
+    }
+
+    // The ship's state is in Unreal's axes; EclipticToUnreal is its own inverse (Y mirrored)
+    const FSOLShipState state = Ships->GetState();
+    mMergeReadout = SOLLaneTraffic::MergeReadout(TConstArrayView<FSOLLaneMergeLane>(mMergeLanes, laneCount),
+        SOLRender::EclipticToUnreal(state.PositionM), SOLRender::EclipticToUnreal(state.VelocityMps),
+        SOLRender::EclipticToUnreal(state.Orientation.GetForwardVector()), SimClock->GetClock().GetWarpFactor());
+    if (!mMergeReadout.bShown)
+    {
+        mMergeWidestWidth = 0.0;
+        return;
+    }
+
+    // Once: the widest usual line (km/s speeds, the longest verdict, the warp note), the grown label's least width
+    if (mMergeTemplateWidth < 0.0)
+    {
+        mMergeTemplateWidth = 0.0;
+        for (const ESOLLaneMergeVerdict verdict : { ESOLLaneMergeVerdict::Matched, ESOLLaneMergeVerdict::TooFast,
+            ESOLLaneMergeVerdict::TooSlow })
+        {
+            SOLLaneTunnelLabel::FormatMergeReadoutLine(HUD_MERGE_TEMPLATE_TRAFFIC_MPS, HUD_MERGE_TEMPLATE_PLAYER_MPS,
+                verdict, true, mLaneLabelScratch[0]);
+            float width = 0.0f;
+            float height = 0.0f;
+            Canvas->StrLen(GetHudFont(ESOLHudFont::Small), mLaneLabelScratch[0], width, height);
+            mMergeTemplateWidth = FMath::Max(mMergeTemplateWidth, static_cast<double>(width));
+        }
+    }
+
+    // The line, rebuilt and measured only when the printed speeds, the verdict or the warp note change: the speeds
+    // checked at most every NPC_LANE_MERGE_TEXT_REFRESH_S, a new verdict, warp note or lane at once (the colour
+    // follows the band every frame)
+    const double nowS = GetWorld()->GetRealTimeSeconds();
+    const bool bNewLane = mMergeReadout.Lane != mMergeTextLane;
+    const bool bUrgent = !mHasMergeText || bNewLane || mMergeReadout.Verdict != mMergeKey.Verdict
+        || mMergeReadout.bWarpNote != mMergeKey.bWarpNote;
+    if (!bUrgent && nowS - mMergeKeyCheckS < SOL::NPC_LANE_MERGE_TEXT_REFRESH_S)
+    {
+        return;
+    }
+    mMergeKeyCheckS = nowS;
+    mMergeWidestWidth = bNewLane ? 0.0 : mMergeWidestWidth;
+    mMergeTextLane = mMergeReadout.Lane;
+    const FSOLLaneMergeKey key = SOLLaneTunnelLabel::MakeMergeReadoutKey(mMergeReadout.TrafficSpeedMps,
+        mMergeReadout.PlayerSpeedMps, mMergeReadout.Verdict, mMergeReadout.bWarpNote);
+    if (mHasMergeText && key == mMergeKey)
+    {
+        return;
+    }
+    SOLLaneTunnelLabel::FormatMergeReadoutLine(mMergeReadout.TrafficSpeedMps, mMergeReadout.PlayerSpeedMps,
+        mMergeReadout.Verdict, mMergeReadout.bWarpNote, mMergeLine);
+    mMergeText = FText::FromString(mMergeLine);
+    float width = 0.0f;
+    float height = 0.0f;
+    Canvas->StrLen(GetHudFont(ESOLHudFont::Small), mMergeLine, width, height);
+    mMergeSize = FVector2D(width, height);
+    mMergeWidestWidth = FMath::Max(mMergeWidestWidth, mMergeSize.X);
+    mMergeKey = key;
+    mHasMergeText = true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Draws the readout's fallback line beside the speed card, on the first spot clear of labels, panels and the edges
+void ASOLFlightHud::DrawMergeReadoutFallback()
+{
+    if (mMergeSpot.Where != ESOLLaneMergeWhere::Fallback || !mHasMergeText || !mLeftBlockRect.bIsValid)
+    {
+        return;
+    }
+    SCOPE_CYCLE_COUNTER(STAT_SOL_HudLaneReadout);
+    const FLinearColor color = SOLLaneTunnelLabel::MergeBandColor(mMergeReadout.Band);
+
+    // The row under the large speed readout right of the card, the large readout's own row, then above the card: the
+    // first on the viewport and clear of every label drawn this frame and last frame's HUD panels (the radar) wins,
+    // else the one above the card
+    const FVector2D lineSize = mMergeSize * mUiScale;
+    const float rightX = static_cast<float>(mLeftBlockRect.Max.X) + HUD_MERGE_FALLBACK_GAP_PX * mUiScale;
+    const FVector2f spots[] = {
+        FVector2f(rightX, mMergeFallbackY),
+        FVector2f(rightX, mMergeFallbackY - HUD_LINE_LARGE_PX * mUiScale),
+        FVector2f(HUD_MARGIN_PX * mUiScale, static_cast<float>(mLeftBlockRect.Min.Y - lineSize.Y)
+            - HUD_MERGE_FALLBACK_GAP_PX * mUiScale),
+    };
+    constexpr int32 SPOT_COUNT = UE_ARRAY_COUNT(spots);
+    FBox2D spotBoxes[SPOT_COUNT];
+    for (int32 index = 0; index < SPOT_COUNT; ++index)
+    {
+        spotBoxes[index] = FBox2D(FVector2D(spots[index]), FVector2D(spots[index]) + lineSize);
+    }
+    const int32 chosen = SOLLaneTunnelLabel::ChooseMergeFallbackSpot(TConstArrayView<FBox2D>(spotBoxes, SPOT_COUNT),
+        TConstArrayView<FBox2D>(mLastLaneLabelBoxes, mLastLaneLabelCount),
+        TConstArrayView<FBox2D>(mPrevHudAvoidBoxes, mPrevHudAvoidBoxCount), FVector2D(Canvas->ClipX, Canvas->ClipY),
+        SOL::NPC_TUNNEL_LABEL_GAP_PX * mUiScale);
+    const FVector2f position = spots[chosen != INDEX_NONE ? chosen : 0];
+    if (mTextList != nullptr)
+    {
+        mTextList->Add(mMergeText, position, mUiScale, color, ESOLHudFont::Small);
+    }
+    else
+    {
+        FCanvasTextItem item(FVector2D(position), mMergeText, GetHudFont(ESOLHudFont::Small), color);
+        item.Scale = FVector2D(mUiScale, mUiScale);
+        item.EnableShadow(FLinearColor::Black);
+        Canvas->DrawItem(item);
+    }
+    mLastMergeSpot = mMergeSpot;
+    mLastMergeBox = FBox2D(FVector2D(position), FVector2D(position) + lineSize);
 }
 
 //////////////////////////////////////////////////////////////////////////

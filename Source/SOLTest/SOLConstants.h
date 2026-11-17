@@ -983,6 +983,7 @@ namespace SOL
         inline const FLinearColor BAD(1.0f, 0.1f, 0.1f, 1.0f);          // LT Bad (red)
         inline const FLinearColor HOSTILE(1.0f, 0.1f, 0.01f, 1.0f);     // LT Hostile (red-orange)
         inline const FLinearColor FREE_LOOK(1.0f, 0.82f, 0.25f, 1.0f);  // Joystick circles while free-looking (#31)
+        inline const FLinearColor AMBER(1.0f, 0.62f, 0.08f, 1.0f);      // Lane traffic readout's amber band (#50 D8)
         inline constexpr float DIM_INTENSITY = 0.55f;                   // The HUD's dim tone: secondary lines (axes,
                                                                         // ticks, stalks)
         inline const FLinearColor WARP_STREAK(0.8f, 0.9f, 1.0f, 1.0f);  // The jump warp's radial streaks
@@ -1935,6 +1936,11 @@ namespace SOL
         // With -SOLSmokeNpcTunnel (-game only): T2 and T5 cost captures, all lanes forced, sol.NpcTunnel 0 / 1 (49c)
         inline constexpr const TCHAR* SMOKE_NPC_TUNNEL_PROFILE = TEXT("SOLSmokeNpcTunnelProfile");
         inline constexpr const TCHAR* SMOKE_NPC_TRAFFIC = TEXT("SOLSmokeNpcTraffic");  // Lane traffic (SDD 50), quit
+        inline constexpr const TCHAR* SMOKE_LANE_MERGE = TEXT("SOLSmokeLaneMerge");    // Lane merge readout (SDD 50
+                                                                                         // V6), quit
+        // The sim date -SOLSmokeLaneMerge starts at unless -SOLSimDate= is given: the planets' places decide which
+        // labels and panels share the screen with the readout, so its views are pinned like the tunnel smoke's
+        inline constexpr const TCHAR* SMOKE_LANE_MERGE_SIM_DATE = TEXT("2026-11-12T12:00:00Z");
         // Overlay keys, icons, Overlay Menu and cursor, then quit (SDD 22; smoke settings slot)
         inline constexpr const TCHAR* SMOKE_OVERLAY = TEXT("SOLSmokeOverlay");
         // Hover, radial menu (Target, Info, Move To, Follow, Match speed, Attack, Jump To), cancels and the map list
@@ -2158,7 +2164,7 @@ namespace SOL
         // D46: the window shots each Help tab needs at 1920x1080 to show all of it, in ESOLHelpTab order (Keyboard,
         // FlightHud, TargetsRadar, OverlaysRoute, MenusMap); the -SOLWritePlayerGuide run measures each tab's scroll
         // extent (SOLPlayerGuide::PageCount) and fails when it differs from this table
-        inline constexpr int32 PLAYER_GUIDE_TAB_PAGES[] = { 2, 6, 3, 5, 3 };
+        inline constexpr int32 PLAYER_GUIDE_TAB_PAGES[] = { 2, 6, 3, 6, 3 };
         inline constexpr int32 PLAYER_GUIDE_MAX_PAGES = 8;            // A tab's shots, at most
         inline constexpr float PLAYER_GUIDE_PAGE_OVERLAP = 0.0f;      // A scrolled shot repeats this much of the last
                                                                       // one's bottom (menu units; 0: the shots adjoin,
@@ -2785,6 +2791,16 @@ namespace SOL
     inline constexpr double NPC_LANE_MERGE_AMBER_FRACTION = 0.20;      // ...amber to this, red beyond (D8)
     inline constexpr double NPC_LANE_MERGE_DIRECTION_MIN_MPS = 1000.0; // Below this along-lane speed the readout takes
                                                                        // the direction from the ship's forward
+    inline constexpr double NPC_LANE_MERGE_FORWARD_MIN = 0.1;          // ...unless the forward's along-lane component
+                                                                       // is within this of 0 (then the player's half)
+    inline constexpr double NPC_LANE_MERGE_TEXT_REFRESH_S = 0.1;       // The readout's speeds are checked and
+                                                                       // reformatted at most this often (real seconds;
+                                                                       // a verdict, warp note or lane change at once)
+    inline constexpr double NPC_LANE_MERGE_ZERO_SPEED_MPS = 0.05;      // A readout speed below this prints as 0 (no
+                                                                       // "-0.0" flicker)
+    inline constexpr double NPC_LANE_MERGE_LABEL_RETURN_S = 0.25;      // After the fallback line the readout returns
+                                                                       // to its label only once the grown label has
+                                                                       // fit this long (real seconds, hysteresis)
     inline constexpr double NPC_LANE_AUTO_TRACK_WALL_RADII = 0.25;     // AUTO's right-hand track radius (D9)
     inline constexpr double NPC_LANE_AUTO_MIN_OVERLAP_WALL_RADII = 20.0;   // An AUTO path uses a lane only when it runs
                                                                        // this far inside the halo (D20)
