@@ -254,6 +254,18 @@ On the Earth-Mars tunnel's axis looking toward Mars: cyan rings receding toward 
 
 40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet (as built in #49; since #50 the end rings sit three tunnel radii out, so the lane U-turns clear the planet). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
 
+![Lane traffic flowing through the Earth-Mars tunnel](Docs/Images/50-lane-traffic-flow.png)
+
+Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships: the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The player is barely moving, so the merge readout under the speed card says TOO SLOW against the 136 km/s of traffic here.
+
+![The merge readout in the tunnel label](Docs/Images/50-lane-merge-readout.png)
+
+On the Earth-Mars axis at the traffic speed: the wall label grows a last line, the merge readout, comparing the traffic speed at the player's spot (141.58 km/s) with the player's own speed along the lane, MATCHED in green (amber or red for TOO SLOW / TOO FAST).
+
+![Autopilot holding the traffic speed in a lane](Docs/Images/50-lane-auto-hold.png)
+
+Autopilot to Mars obeying the lane rules: it merged on the right half and now holds the traffic speed down the lane (the LANE tag on the autopilot line, the readout MATCHED), and will leave at Mars's end ring. The round command menu's War Power Move skips the lane rules for one order.
+
 ## Development effort
 
 <!-- METRICS:BEGIN -->
@@ -261,11 +273,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 139.4 h |
-| Time spent answering questions | 11.1 h |
-| Tokens | 7,986.6M |
-| Notional API price | $3,165 |
-| Subagents dispatched | 608 |
+| Work time (wall-clock) | 140.4 h |
+| Time spent answering questions | 11.2 h |
+| Tokens | 8,030.2M |
+| Notional API price | $3,181 |
+| Subagents dispatched | 610 |
 <!-- METRICS:END -->
 
 ## Documentation map

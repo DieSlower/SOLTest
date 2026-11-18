@@ -11,8 +11,9 @@ event bus).
 (D11). No setting, no key binding, no `UPROPERTY` of a save class changes. If the work shows that one is needed, stop
 and report (section 12).
 Status: **draft (2026-11-13), grill-me done (D1-D12), questions Q1-Q8 answered by the user (2026-11-13, D13-D20),
-amended for the hull flip before braking (D21, section 14), Q9 answered by the user (2026-11-17, D22), no open
-question left.** Part 50d may start.
+amended for the hull flip before braking (D21, section 14), Q9 answered by the user (2026-11-17, D22); 50a-50d
+built and committed; 50e profiling recorded (section 15); open: Q11 (flip axis and U-turn attitude, from the 50e
+tuning strips).**
 
 ## 1. Problem
 
@@ -777,7 +778,7 @@ power about 59 h at 1 s and 10 s substeps (about 61 h at 30 s, 66 h at 169 s), b
   `LaneAutoRulesTest.cpp`, `WarPowerMoveTest.cpp`, `AutopilotRegressionTest.cpp`.)*
 - New files: `Traffic/SOLLaneTrafficMath.{h,cpp}`, `Traffic/SOLLaneTrafficSubsystem.{h,cpp}`,
   `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/NpcTrafficMathTest.cpp`; flags
-  `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile`; no new cvar (the A/B baseline is the pre-#50 commit, section 8).
+  `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile` (not built; 50e used `-SOLSmokeNpcTunnelProfile`, section 15); no new cvar (the A/B baseline is the pre-#50 commit, section 8).
 
 ### 4.11 Future hooks (record only)
 
@@ -1031,6 +1032,8 @@ label line placement, the AUTO merge in real flight.
    pass of `M_SOLNpcPoints`) **<= +0.10 ms GPU**; the NPC update (`STAT_SOL_NpcUpdate` and the tier passes) **<= +0.10
    ms CPU**; the readout **<= 0.01 ms CPU**; the AUTO lane rules **<= 0.01 ms CPU per frame**; the spawn frame recorded
    (expected +5-10 ms once). 3840x2160 and one XR-4 eye (3840x3744) **recorded only** (no VR work, two eyes skipped).
+   *As run (50e): this flag was not built; both trees ran `-SOLSmokeNpcTunnelProfile`, and 2560x1440 stood in for
+   4K. Results and deviations: section 15.*
 
 Temporary screenshots and captures are deleted once looked at; only the README gallery shots are kept.
 
@@ -1085,7 +1088,13 @@ braking, 2026-11-13) is the user's refinement of D17 (section 14).
 
 ## 12. Open questions (for the user; each with the recommended answer)
 
-None open. **Q9 (resolved 2026-11-17, D22):** how does the player tell AUTO to fly around lanes or ignore the safe space
+- **Q11 (50e, open): hull flip axis and U-turn attitude.** (a) The flip turns the nose over the lane's `Up` (ecliptic
+  north, built) or sideways toward the lane's `Right` (a turn about `Up`)? Recommended: keep `Up` (built; seen
+  from the side the whole flip reads as one smooth pitch, and every ship of a lane flips the same way). (b) Through the
+  U-turn the hull holds its brake attitude (built, D21) or faces its velocity (a 180-degree snap at the end ring, since
+  the hull arrives engine first)? Recommended: keep the held attitude. Strips: section 15.
+
+**Q9 (resolved 2026-11-17, D22):** how does the player tell AUTO to fly around lanes or ignore the safe space
 (D19)? Answer: the "War power move" entry of the round command menu, per command, a straight path ignoring the lane
 rules at maximum thrust, nothing saved (section 2, D22).
 
@@ -1133,6 +1142,9 @@ rules at maximum thrust, nothing saved (section 2, D22).
   every AUTO kind and chase `Lane` activity, pulsed War power (D22 amended, 6.80 G, band 0.4 - 0.6, floor 0.3), Move To
   and War Power Move no longer block, HUD BOOST and WAR POWER activity, smoke V7 extended (mid-lane stop view, side and
   speed checks, War power ETA). Verification 2026-11-17 (round 2): full suite 2015 / 2015; -SOLSmokeAutoLanes 13 / 13 at 1280x720, 1920x1080 and 2560x1440 (merge 0.25 wall radii on the right, HUD readout MATCHED; whole leg held within 0.02 %, left at 0.982 of the leg, arrived after 16.13 days; mid-lane stop left 3.2e9 m before the waypoint at 261 km/s, braking needs 2.57e9 m, no re-entry, no overshoot; War power peak 6.80 G, lowest meter 0.400, arrived in 47.8 h against plain AUTO straight 51.7 h), LaneMerge 15 / 15, NpcTunnel 39 / 39, NpcLanes 35 / 35, NpcTraffic 19 / 19, Hud 45 / 45, Route 26 / 26, Chase 26 / 26, Interact 18 / 18 at the same three sizes, HoloMenu 86 / 86 at 1280x720 (10-row radial and list menus checked by eye), PlayerGuide.UpToDate after WritePlayerGuide -NoCrops, GameUserSettings.ini MD5 unchanged.
+- 2026-11-17: 50e profiling (section 15): every 1080p gate measured passes except the AUTO lane rules, which are not
+  isolated (upper bound only); wake and rail texel costs recorded; tuning strips for the flip axis and the U-turn attitude
+  shot in a scratch tree for the user (open question Q11); README gallery shots.
 
 ## 14. Amendment 1 (2026-11-13): the hull flip finishes before braking (D21)
 
@@ -1183,3 +1195,107 @@ replaces the plan's "hull facing not covered by a test" gap.
 
 **Not changed:** the persisted data (none), the shader and `M_SOLNpcPoints` (points have no facing), the group texture
 rows, the spawn statistics.
+
+## 15. As built: part 50e profiling and tuning shots (2026-11-17)
+
+**Method (deviation from section 8 item 6, recorded):** `-SOLSmokeNpcTrafficProfile` was never built, so both trees ran
+the one profile flag that exists in both, `-SOLSmokeNpcTunnel -SOLSmokeNpcTunnelProfile` (SDD 49 section 12c: passes
+T2-all, T2-own and T5-all, each with the tunnels drawn and with `sol.NpcTunnel 0`, `stat dumpave` of
+`STAT_SOL_NpcRedraw` and `STAT_SOL_HudLaneLabels` over 240 frames, three `ProfileGPU` frames per state), with
+byte-identical arguments (`-game -windowed -corelimit=16 -SOLSimDate=2026-11-12T12:00:00Z`, 1M NPCs, vsync off).
+There is no far inner-system view. The baseline is commit `f336e10` checked out in a separate git worktree (own
+`Binaries` / `Intermediate`, the same uncommitted `.uproject` plugin line, a copy of the main tree's
+`Saved/Config/WindowsEditor/*.ini` and `SOLSettings.sav`, so the scalability and vsync settings match). One discarded
+warm-up run per tree, then six interleaved runs at 1920x1080 (base, HEAD, base, HEAD, base, HEAD); medians over the 9
+`ProfileGPU` frames and the three `stat dumpave` averages. The NPC update has no `STAT_SOL_NpcUpdate` stat: it is the
+`npcMs` mean of the `NpcStats` log lines (2 s windows of `mStats.TotalMs`, the whole `USOLNpcSubsystem::Update` work)
+inside each pass, cross-checked with one Unreal Insights trace per tree (`-trace=cpu,frame -statnamedevents`,
+`TimingInsights.ExportTimerStatistics`). RTX 2080 Ti, 32 logical cores limited to 16.
+
+**1920x1080 gates** (ms; base `f336e10` -> HEAD `8b17246`; on = tunnels drawn, off = `sol.NpcTunnel 0`):
+
+| Pass | Points draw on | Points draw off | NPC update (`npcMs`) on / off | `STAT_SOL_NpcRedraw` on / off | HUD labels (readout child) on / off |
+|---|---|---|---|---|---|
+| T2-all | 0.685 -> 0.676 (-0.009) | 0.449 -> 0.469 (+0.020) | 0.415 -> 0.362 / 0.409 -> 0.373 | 0.060 -> 0.052 / 0.044 -> 0.049 | 0.009 -> 0.013 (0.002) / 0.002 -> 0.005 |
+| T2-own | 0.676 -> 0.670 (-0.006) | 0.449 -> 0.474 (+0.025) | 0.417 -> 0.368 / 0.411 -> 0.367 | 0.054 -> 0.056 / 0.044 -> 0.046 | 0.009 -> 0.012 (0.002) / 0.002 -> 0.005 |
+| T5-all | 0.340 -> 0.411 (**+0.071**) | 0.308 -> 0.359 (+0.051) | 0.746 -> 0.694 / 0.754 -> 0.693 | 0.105 -> 0.154 / 0.091 -> 0.135 | 0.006 -> 0.007 / 0.002 -> 0.004 |
+
+- **Points draw (base pass of `M_SOLNpcPoints`) <= +0.10 ms GPU: PASS**, worst +0.071 ms (T5-all, the Earth spawn view
+  where three lanes end; not attributed further, the U-turn fountains and halo traffic near the camera are a guess). Inside the Earth - Mars tunnel
+  (T2) the change is within noise. The tunnel draw is unchanged (0.037 -> 0.034, 0.032 -> 0.031, 0.021 -> 0.021 ms).
+- **NPC update <= +0.10 ms CPU: PASS**; it went down by 0.04-0.06 ms (not explained; the same in every run) (Insights medians over the whole run:
+  `USOLNpcSubsystem::Update` 0.392 -> 0.356 ms, `USOLNpcTierProcessor::Evaluate` 0.228 -> 0.193 ms).
+- **Readout <= 0.01 ms CPU: PASS.** `STAT_SOL_HudLaneReadout` has three scopes (the grown label inside the label pass,
+  `UpdateMergeReadout`, `DrawMergeReadoutFallback`); the label-pass child is 0.001-0.002 ms in the dumps, and the
+  Insights trace (all three scopes) gives 0.003-0.004 ms per call (1 us export resolution) at 1.6-2.2 calls per frame: about
+  0.005-0.008 ms per frame in the tunnel profile and in the 1M AUTO smoke.
+- **AUTO lane rules <= 0.01 ms CPU: not isolated.** The rules have no scope of their own; they run inside
+  `USOLShipFlightProcessor::Execute`. Upper bound from the 1M `-SOLSmokeAutoLanes` trace (warp, AUTO in a lane most of
+  the run): the whole player flight step averages 0.042 ms (median 0.029) against 0.013 (base) and 0.015 ms (HEAD)
+  while cruising without AUTO in the tunnel profile. The difference also holds the autopilot guidance that existed
+  before #50 and the warp substeps, so it does not show the gate is missed, but it does not show it is met either. A
+  dedicated scope (or a no-lane AUTO baseline at the same warp) is needed to close it.
+- **Not gated, new:** `STAT_SOL_NpcRedraw` +0.044-0.049 ms CPU at T5 (the CPU point layer's lane hand-over in
+  `ASOLNpcVisuals::UpdateCpuShips`, which re-derives the shader's float position from `GpuRailTexels` for each CPU
+  point ship; Insights `UpdateCpuShips` average 0.025 -> 0.039 ms), and +0.003 ms in the HUD label scope with the
+  tunnels off.
+
+**Wake cost (risk R4; bound 375 km/s = 1.25 x the 300 km/s cap, capsule `2 Rw`).** The wake is a CPU-side temporal
+cull (the tier pass's per-group wake clock and candidate test); there is no GPU wake or halo capsule cost to measure.
+At T5 the candidate groups go from 5 to 7 (two more lane groups in range near Earth) while the candidate ship count is
+unchanged (2,069-2,072) and the evaluate time does not grow (0.307 -> 0.275 ms); T2 is unchanged (1 group, 0
+candidates). The 1M ramp shows the same (groups 5 -> 7). At 1x in these static views: no measurable cost. **Not
+measured under warp**, where the wake clock grows fastest: the only warp figure is the 1M `-SOLSmokeAutoLanes`
+trace on HEAD (`USOLNpcTierProcessor::Evaluate` median 0.312 ms against 0.193 ms in the 1x tunnel profile), with no
+baseline and a moving viewpoint, so it does not isolate the wake.
+
+**Rail texel cost at 1M (`SOLNpcRail::GpuRailTexels`).** The rail texture is not uploaded every frame: it is filled
+once at spawn and re-based only when the rail time is `NPC_GPU_RAIL_EPOCH_S` (1e4 s) past the epoch, at most once per
+`NPC_GPU_RAIL_EPOCH_MIN_INTERVAL_S` (2 s real), so never at 1x within 2.8 h. Spawn: rail fill (with the lane
+histogram, `ParallelFor`) 2.91 -> 4.20 ms, whole upload 11.6 -> 13.4 ms, once (texture 2048x977, 30.5 MB). **Spawn frame** (section 8): the sliced
+spawn (`NpcSpawnDone`, 40 slices) takes 782 -> 846 ms in total and its largest slice 24.3 -> 26.9 ms (medians of the
+three 1080p runs), against the expected +5-10 ms once: the largest slice grew by 2.6 ms and the upload frame by
+1.8 ms. Re-epoch under warp (1M
+`-SOLSmokeAutoLanes`, 47 re-epochs in 126 s): fill 3.08 ms median (3.66 max), the whole `ReepochRails` 9.85 ms median
+(14.8 max, Insights with `-statnamedevents`) on the game thread, a hitch at most every 2 s at high warp. The 6.8 ms
+outside the fill is not attributed (the function also allocates the 30.5 MB upload buffer and queues the texture
+region update); that code is older than #50. Per frame, `GpuRailTexels`
+runs only for the CPU point ships near the Mid radius (the hand-over, inside the `UpdateCpuShips` figure above).
+Recorded in `TECH_DEBT.md`.
+
+**1M ramp** (`-SOLNpcCount=1M -SOLNpcRamp`, 1280x720, one run each): base 1M mean 7.19 ms, p95 8.06, NPC mean 1.645
+ms, PASS; HEAD 1M mean 6.68 ms, p95 7.38, NPC mean 1.455 ms, PASS (every stage PASS in both; HEAD's 100k stage had one
+54.7 ms frame, p99 13.9 ms, not seen at the other stages or in base; single runs).
+
+**Recorded only (one run per tree, no VR work):**
+
+| Resolution | Pass | Points on base -> HEAD | Points off base -> HEAD | Tunnel draw base -> HEAD |
+|---|---|---|---|---|
+| 2560x1440 (4K proxy) | T2-all | 0.751 -> 0.715 | 0.455 -> 0.491 | 0.049 -> 0.045 |
+| 2560x1440 | T2-own | 0.696 -> 0.711 | 0.443 -> 0.510 | 0.049 -> 0.038 |
+| 2560x1440 | T5-all | 0.337 -> 0.431 | 0.319 -> 0.386 | 0.025 -> 0.027 |
+| 3840x3744 (one XR-4 eye) | T2-all | 1.013 -> 1.366 | 0.661 -> 0.498 | 0.260 -> 0.278 |
+| 3840x3744 | T2-own | 0.935 -> 0.712 | 0.665 -> 0.506 | 0.236 -> 0.257 |
+| 3840x3744 | T5-all | 0.276 -> 0.369 | 0.280 -> 0.322 | 0.150 -> 0.147 |
+
+The T2 tunnels-on points figure is noisy between runs (the two 1080p warm-ups gave 1.30 / 1.47 ms for T2-all on in
+both trees, against 0.68 in the measured runs), so the single one-eye T2 rows are not a trend. The one-eye points draw
+reaches about 1.37 ms with the tunnel's 0.28 ms on top, above the provisional 1.2 ms one-eye menu / HUD ceiling of
+`VR_PERFORMANCE_TARGETS.md` (world geometry, recorded for scale as #49 did with 1.22 ms; VR work is deferred).
+
+**Tuning shots (D17 / D21 flip axis, U-turn attitude), for the user's decision.** A scratch worktree at HEAD (never the
+main tree, not committed) added an `-E50Capture` mode to `-SOLSmokeNpcTraffic` that hides the player ship, sets the
+Full-AI budget to 0 (so the hull is a Mid hull drawn exactly along `LaneHullForward`) and co-moves the camera 25 m
+from one faction-0 (cone) Earth - Moon ship, plus two command-line switches in `TrafficHullForward`: `-E50FlipYaw`
+(the nose swings toward the lane's `Right` instead of `Up`, a turn about `Up`) and `-E50UTurnVelocity` (a braking ship
+faces its velocity in the U-turn instead of holding its brake attitude). Neither is a constant in the shipped code (the
+axis is `frame.Up` in `TrafficHullForward`); no constant was changed. The strips (side, top and oblique views at
+f = 0.03-0.97; the U-turn at 3-97 % of the turn, `T_U` 169 s and `Rw` 536 km on Earth - Moon) are kept outside the
+repo; the user picks the axis and the U-turn attitude (open, section 12). With the camera co-moving, the built U-turn
+row shows the same hull in every frame (the attitude is held while the velocity turns); in the alternative row the
+nose shows the travel direction at each step.
+
+**Gallery:** `Docs/Images/50-lane-traffic-flow.png` (V1a), `50-lane-merge-readout.png` (V6 quarter-axis view, MATCHED
+in the label), `50-lane-auto-hold.png` (V7 hold, the AUTO `LANE` tag), shot from the main tree at 1920x1080. The
+smokes in those runs: `-SOLSmokeNpcTraffic` 19 / 19, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeAutoLanes` 13 / 13 (at
+1M NPCs). `GameUserSettings.ini` MD5 `cbcf9b65...` after every run.
