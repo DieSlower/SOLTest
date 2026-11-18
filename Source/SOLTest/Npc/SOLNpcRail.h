@@ -70,6 +70,8 @@ struct FSOLNpcRailMotion
 {
     FVector3d VelocityMps = FVector3d::ZeroVector;     // Relative to the group's anchor points (central difference)
     FVector3d LaneHullForward = FVector3d::ZeroVector; // Unit lane hull facing; zero for other kinds / no lane frame
+    FVector3d LaneHullTop = FVector3d::ZeroVector;     // Unit lane body top (SOLLaneTraffic::LaneHullBasis, the drawn
+                                                       // roll); zero when LaneHullForward is
 };
 
 // The NPC motion model's rail half (the swappable seam, SDD 11 section 5 answer 3): spawn parameters to a compact rail,
@@ -132,13 +134,16 @@ namespace SOLNpcRail
     // Returns the float step of a positive normal leg time as the shader computes it (exponent bits x 2^-23)
     SOLTEST_API float GpuLegUlpS(float legS);
 
-    // Returns a lane rail's unit hull facing at a rail time (SOLLaneTraffic::LaneHullForward, D21); the zero vector for
-    // cluster and battle rails and for a group without a lane frame (the caller keeps the velocity heading)
-    SOLTEST_API FVector3d LaneHullForward(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, double railTimeS);
+    // Returns a lane rail's unit hull facing at a rail time (SOLLaneTraffic::LaneHullForward, D21, keyed by the NPC
+    // index, which sets the ship's roll and flip side, Q11a and SDD 50 section 16); the zero vector for cluster and
+    // battle rails and for a group without a lane frame (the caller keeps the velocity heading)
+    SOLTEST_API FVector3d LaneHullForward(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex,
+        double railTimeS);
 
-    // Returns a rail's velocity (VelocityMps) and lane hull facing (LaneHullForward at the frame's rail time) from one
-    // derivation of a lane ship's leg and cycle, for the per-frame Mid / Full paths
-    SOLTEST_API FSOLNpcRailMotion Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame);
+    // Returns a rail's velocity (VelocityMps), lane hull facing (LaneHullForward at the frame's rail time) and lane
+    // body top (SOLLaneTraffic::LaneHullBasis's) from one derivation of a lane ship's leg and cycle, for the per-frame
+    // Mid / Full paths (the NPC index keys the roll and the flip side)
+    SOLTEST_API FSOLNpcRailMotion Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex);
 
     // Returns the vector a Mid / Full hull heads along from a Motion result (the SOLNpcAi::HullForward input; D17 /
     // D21): with a lane hull facing, that facing scaled by max(rail speed, wall speed), plus the deviation velocity, so
@@ -146,6 +151,11 @@ namespace SOLNpcRail
     // rails, a group without a lane frame) the rail velocity plus the deviation velocity (the pre-#50 heading)
     SOLTEST_API FVector3d HullHeadingVelocityMps(const FSOLNpcRailMotion& motion,
         const FVector3d& deviationVelocityMps);
+
+    // Returns the up a Mid / Full hull rolls to from a Motion result (SDD 50 section 16, D24): a lane ship's
+    // LaneHullTop, else the given radial up hint unchanged (the Mid hull's drawn top, the Full AI's hand-off and
+    // steering up, so a lane ship keeps its roll at promotion)
+    SOLTEST_API FVector3d HullUpHint(const FSOLNpcRailMotion& motion, const FVector3d& radialUpHint);
 
     // Returns an upper bound on a lane's ship speeds relative to body A (SOLLaneTraffic::LaneShipSpeedBoundMps of the
     // lane's largest peak, nominal and current legs and halo outer radius), without NPC_WAKE_SPEED_MARGIN; finite and

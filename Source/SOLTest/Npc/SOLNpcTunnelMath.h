@@ -196,16 +196,19 @@ namespace SOLNpcTunnel
     // Returns the dot and chevron gap slot count, 2 x NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE (ahead, then behind)
     SOLTEST_API int32 DetailSlotCount();
 
-    // Returns a gap slot's dot (dot 0 .. NPC_TUNNEL_DOTS_PER_GAP - 1, at (dot + 0.5) / DOTS_PER_GAP of the gap whose
-    // ring is at w = k - phase ahead or -(k - PER_SIDE + 1) - phase behind): true when it lies strictly between the
-    // end rings with a non-zero alpha (DetailCapFade, end, depth, TunnelNearFadeAt and detail fades). Not the full
-    // rendered alpha: the shader also applies TunnelDetailNearFade, the world dot size and TunnelScreenSizeFade
+    // Returns a gap slot's dot (dot 0 .. NPC_TUNNEL_DOTS_PER_GAP - 1, at dot / DOTS_PER_GAP of the gap whose ring is at
+    // w = k - phase ahead or -(k - PER_SIDE + 1) - phase behind: on the kept ring and halfway to the next, guide
+    // thinning): true when it lies strictly between the end rings with a non-zero alpha (DetailCapFade, end, depth,
+    // TunnelNearFadeAt and detail fades). Not the full rendered alpha: the shader also applies TunnelDetailNearFade,
+    // the world dot size and TunnelScreenSizeFade
     SOLTEST_API bool DotSlot(int32 slot, int32 dot, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outDot);
 
-    // Returns a gap slot's chevron (mid-gap, the same gaps as DotSlot): true when it lies strictly between the end
-    // rings with a non-zero alpha (DotSlot's slot fades times TunnelChevronFarFade). Not the full rendered alpha: the
-    // shader also applies TunnelDetailNearFade and NPC_TUNNEL_CHEVRON_ALPHA
-    SOLTEST_API bool ChevronSlot(int32 slot, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outChevron);
+    // Returns a gap slot's chevron (chevron 0 .. NPC_TUNNEL_CHEVRONS_PER_GAP - 1, at chevron / CHEVRONS_PER_GAP of the
+    // same gaps as DotSlot: on the kept ring and halfway): true when it lies strictly between the end rings with a
+    // non-zero alpha (DotSlot's slot fades times TunnelChevronFarFade); false for a chevron index out of range. Not
+    // the full rendered alpha: the shader also applies TunnelDetailNearFade and NPC_TUNNEL_CHEVRON_ALPHA
+    SOLTEST_API bool ChevronSlot(int32 slot, int32 chevron, const FSOLNpcTunnelSlotInput& input,
+        FSOLNpcTunnelRing& outChevron);
 
     // Returns the end rings' arcs from node A, (R_A + MARGIN x Rt, L - R_B - MARGIN x Rt); (0, 0) when they cross or
     // an input is not finite (IsTunnelDrawable false)
@@ -320,7 +323,7 @@ namespace SOLNpcTunnel
     SOLTEST_API int32 RingSegmentsForSlot(int32 slot);
 
     // Returns the slot mesh's vertex count: ring ribbons ((N + 1) samples x 2 sides), two end rings at the nearest
-    // count, a quad per dot and per chevron
+    // count, a quad per dot (rows x dots per gap x gap slots) and per chevron (2 walls x chevrons per gap x gap slots)
     SOLTEST_API int32 TunnelSlotMeshVertexCount();
 
     // Returns a lane's tunnel fade where the lane and point materials read it (row 1 .w of its column); 0 out of range

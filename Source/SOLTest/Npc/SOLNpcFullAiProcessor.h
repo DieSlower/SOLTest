@@ -32,7 +32,8 @@ enum class ESOLNpcFullAiPass : uint8
  * other ship's position through one spatial grid; the gather and scatter run in parallel over the chunks, each chunk at fixed slots (chunk order, so deterministic).
  * The deviation (and the Full-only attitude) is the only motion the AI writes (the swappable motion seam, SDD 11
  * Amendment 1): position = rail plus deviation. A ship just promoted to Full gets its attitude here, from its rail
- * plus deviation velocity (SOLNpcAi::HandoffOrientation, the heading its hull was drawn with).
+ * plus deviation velocity and its up hint (SOLNpcAi::HandoffOrientation, the heading and roll its hull was drawn with;
+ * a lane ship's up hint is its lane top, SOLNpcRail::HullUpHint).
  *
  * Not auto-registered: USOLNpcSubsystem runs it after the tier selection's commands are flushed.
  */

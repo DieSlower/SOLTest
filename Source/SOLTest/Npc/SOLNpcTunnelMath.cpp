@@ -612,20 +612,23 @@ bool SOLNpcTunnel::DotSlot(const int32 slot, const int32 dot, const FSOLNpcTunne
     {
         return false;
     }
-    const double offset = (static_cast<double>(dot) + 0.5) / static_cast<double>(SOL::NPC_TUNNEL_DOTS_PER_GAP);
+    const double offset = static_cast<double>(dot) / static_cast<double>(SOL::NPC_TUNNEL_DOTS_PER_GAP);
     const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + offset;
     return TunnelPlaceElement(w, DetailCapFade(w), true, input, outDot);
 }
 
 //////////////////////////////////////////////////////////////////////////
-// Returns a gap slot's chevron (mid-gap) when it is visible between the end rings
-bool SOLNpcTunnel::ChevronSlot(const int32 slot, const FSOLNpcTunnelSlotInput& input, FSOLNpcTunnelRing& outChevron)
+// Returns a gap slot's chevron (at the gap's ring or part way along it) when it is visible between the end rings
+bool SOLNpcTunnel::ChevronSlot(const int32 slot, const int32 chevron, const FSOLNpcTunnelSlotInput& input,
+    FSOLNpcTunnelRing& outChevron)
 {
-    if (slot < 0 || slot >= DetailSlotCount() || !TunnelIsInputValid(input))
+    if (slot < 0 || slot >= DetailSlotCount() || chevron < 0 || chevron >= SOL::NPC_TUNNEL_CHEVRONS_PER_GAP
+        || !TunnelIsInputValid(input))
     {
         return false;
     }
-    const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + 0.5;
+    const double offset = static_cast<double>(chevron) / static_cast<double>(SOL::NPC_TUNNEL_CHEVRONS_PER_GAP);
+    const double w = TunnelGapSlotW(slot, TunnelWrapPhase(input.Phase)) + offset;
     if (!TunnelPlaceElement(w, DetailCapFade(w), true, input, outChevron))
     {
         return false;
@@ -1071,7 +1074,7 @@ int32 SOLNpcTunnel::TunnelSlotMeshVertexCount()
         count += 2 * (RingSegmentsForSlot(slot) + 1);
     }
     count += 4 * DetailSlotCount() * SOL::NPC_TUNNEL_DOTS_PER_GAP * SOL::NPC_TUNNEL_DOT_ROWS;
-    count += 4 * DetailSlotCount() * 2;
+    count += 4 * DetailSlotCount() * SOL::NPC_TUNNEL_CHEVRONS_PER_GAP * 2;
     return count;
 }
 

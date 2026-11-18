@@ -14,13 +14,14 @@
 //
 // Slot mesh (vertices at zero, one ISM instance per lane in range, custom data 0 = the lane): UV0 = (kind, slot) with
 // kind 0 ring, 1 end ring (slot = end 0 / 1), 2 dot, 3 chevron (slot = gap slot); rings: UV1 = (sample, side -1 / +1),
-// UV2 = (segments, 0); dots and chevrons: UV1 = quad corner (-1 / +1, -1 / +1), UV2 = (row or wall 0 out / 1 in, dot).
+// UV2 = (segments, 0); dots and chevrons: UV1 = quad corner (-1 / +1, -1 / +1), UV2 = (row or wall 0 out / 1 in, dot
+// or chevron index).
 //
 // Parameter vectors: frame = (viewpoint render location cm, max render distance cm); style0 = (ring width px, end ring
 // width px, dot size px, reference height px); style1 = (emissive, chevron alpha, glow pad px, dot radius scale);
 // shape = (chevron radius scale, chevron half width radii, chevron half length radii, end ring min alpha); style2 =
 // (chevron notch fraction, detail near fade start radii, detail near fade full radii, dot world diameter radii);
-// style3 = (screen fade half extents, chevron far fade start radii, chevron far fade end radii, unused);
+// style3 = (screen fade half extents, chevron far fade start radii, chevron far fade end radii, chevrons per gap);
 // layout0 = (base spacing radii, rho, ring slots per side, gap slots per side); layout1 = (end fade spacings, depth
 // fade start radii, depth fade end radii, depth floor); layout2 = (near fade start, near fade full, radial full,
 // radial none; tunnel radii); layout3 = (detail fade start radii, detail fade end radii, dots per gap, dot rows);
@@ -284,9 +285,10 @@ float3 SOLNT_Vertex(float3 uv0, float2 uv1, float2 uv2, float4 t0, float4 t1, fl
             viewSize.x));
     }
 
-    // Dots and chevrons: the gap slot's element at its warp coordinate (the detail and detail-cap fades)
+    // Dots and chevrons: the gap slot's element at its warp coordinate (the detail and detail-cap fades); element i
+    // sits at i / count of the gap (on the kept ring and halfway, guide thinning)
     const bool bDot = kind == SOLNT_KIND_DOT;
-    const float offset = bDot ? (uv2.y + 0.5) / max(layout3.z, 1.0) : 0.5;
+    const float offset = uv2.y / max(bDot ? layout3.z : style3.w, 1.0);
     const float w = SOLNT_GapSlotW(slot, phase, layout0.w) + offset;
     float x;
     float alpha = SOLNT_ElementAlpha(w, saturate(layout0.w - 1.0 - abs(w)), true, h, rt, endArcs, layout0, layout1,

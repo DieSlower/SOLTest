@@ -125,6 +125,11 @@ namespace SOLNpcAi
     // Returns the orientation a ship is promoted to the Full tier with (its forward is HullForward)
     SOLTEST_API FQuat4d HandoffOrientation(const FVector3d& velocityMps, const FVector3d& upHint);
 
+    // Returns a CPU hull's drawn rotation from its heading and body top, both in one frame (the visuals pass Unreal
+    // axes): SOLLaneTraffic::HullRotation (+X to the heading, +Z to the top made orthogonal to it, no singular heading;
+    // SDD 50 section 16), for faction 0 after a quarter turn about +Y that takes its cone's axis (+Z) to the nose (+X)
+    SOLTEST_API FQuat HullDrawRotation(const FVector& heading, const FVector& top, int32 faction);
+
     // Returns where a Full ship points its nose: the aim near its target, else its desired or current velocity
     SOLTEST_API FVector3d FullShipDesiredForward(const FVector3d& aimDirection, double targetDistanceM,
         double fireRangeM, const FVector3d& desiredVelocityMps, const FVector3d& velocityMps,

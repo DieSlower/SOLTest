@@ -5,8 +5,14 @@
 
 #include "Npc/SOLNpcAiMath.h"
 
+#include "Traffic/SOLLaneTrafficMath.h"
+
 namespace
 {
+    // A quarter turn about +Y (components written out, nothing read at static init): takes the faction 0 cone's axis
+    // (its mesh +Z) to the body's nose (+X)
+    const FQuat CONE_AXIS_TO_NOSE(0.0, UE_DOUBLE_INV_SQRT_2, 0.0, UE_DOUBLE_INV_SQRT_2);
+
     // The ship classes: a human-piloted fighter (forward guns), a human-piloted gunship (turrets) and an AI drone
     // interceptor (forward guns). Thrust and angular limits per SDD 18 section 3.7; the gun cones are measured
     // around the nose (SDD 18 Amendment 5); the rest are placeholder numbers until the Part 8 art pass
@@ -185,6 +191,14 @@ FVector3d SOLNpcAi::HullForward(const FVector3d& velocityMps, const FVector3d& u
 FQuat4d SOLNpcAi::HandoffOrientation(const FVector3d& velocityMps, const FVector3d& upHint)
 {
     return SOLNewtonian::OrientationFromForward(HullForward(velocityMps, upHint), upHint, FQuat4d::Identity);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a CPU hull's drawn rotation: the heading and top's HullRotation, faction 0's cone axis turned onto the nose
+FQuat SOLNpcAi::HullDrawRotation(const FVector& heading, const FVector& top, const int32 faction)
+{
+    const FQuat rotation = SOLLaneTraffic::HullRotation(heading, top);
+    return faction == 0 ? rotation * CONE_AXIS_TO_NOSE : rotation;
 }
 
 //////////////////////////////////////////////////////////////////////////

@@ -13,7 +13,8 @@ the script that drew it).
 Status: **done (2026-11-13), issue #49 closed.** Part 49a (2026-11-12): the pure tunnel math, the label layout and
 text and the HUD bus snapshot (section 12); part 49b (2026-11-12): the renderer, the material and the HUD labels
 (section 12b); part 49c (2026-11-13): tuning, CPU cuts, profiling, docs and the whole-ticket review fixes (section
-12c). Grill-me done 2026-11-11 (D1-D15, section 2); the derived
+12c). Amended 2026-11-17 under #50 (SDD 50 D23, section 12d): the guide thinning keeps every 6th ring, with dots
+and chevrons at each kept ring and halfway. Grill-me done 2026-11-11 (D1-D15, section 2); the derived
 questions Q1-Q11 were answered by the user the same day and are resolved decisions (section 11, numbering kept). The
 keep-right rails and the rest of the traffic behaviour went to the new ticket
 [#50](https://github.com/DieSlower/SOLTest/issues/50).
@@ -54,7 +55,9 @@ it.
   **grows smoothly with distance** (multi-scale like the far dashes, **no pops**), so the whole lane stays readable and
   cheap. *As built (49c):* the repeating rings also fade while their projected radius is below 10 ribbon half extents
   (no white vanishing point, section 12c), so the far rings thin out before the end node; the end ring itself is
-  exempt (D12 amendment) and stays visible at its 0.5 floor.
+  exempt (D12 amendment) and stays visible at its 0.5 floor. *Amended 2026-11-17 (guide thinning, SDD 50 D23,
+  section 12d):* only every 6th ring of that lattice is kept, so near the player the rings are 12 tunnel radii apart
+  and beyond 8 tunnel radii each is about 4.5 times farther than the one before.
 - **D8: Width from traffic, empty lanes kept.** The tunnel radius follows the lane's ship count on the #38 scale (100
   to 100,000 ships, `LaneTrafficWeight`), mapped to **1x .. 3x a base radius**. **An empty lane never vanishes:** it
   still gets a tunnel at the minimum width (the player may be inside it). The far line of an empty lane stays undrawn,
@@ -272,28 +275,31 @@ about 24 px on screen, nothing pops, no dimmer copy, the dashes slide while zoom
 `LaneDashLaneFootprint`, `LaneScreenParam`). The rings use the same principle (Q9): **one continuous spacing function**,
 evenly spaced near the player and growing smoothly with distance, no levels, no pops.
 
-- **Spacing.** With `x` the signed axial offset from the camera's foot point on the axis line, `h` the camera's
-  distance from the axis line, `S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII` (2) x `Rt` and
-  `rho = NPC_TUNNEL_RING_SPACING_PER_DISTANCE` (0.25), the local ring spacing is
-  `sigma(x, h) = max(S0, rho x sqrt(x^2 + h^2))` (`RingSpacingM`): 2 tunnel radii apart within `D0 = S0 / rho`
-  (8 tunnel radii) of the camera, beyond it about a quarter of the ring's own distance (neighbouring rings about
-  `e^rho` = 1.28 times farther each), a steady geometric tunnel to the end node. Using the true distance bounds the
-  on-screen density from inside and from outside the tube (seen from 50 tunnel radii away the rings at the foot point
-  are 12.5 tunnel radii apart).
+- **Spacing** (*guide thinning, 2026-11-17, SDD 50 D23: both terms are 6 times the first-built 2 and 0.25, so the
+  kept rings are every 6th ring of the first lattice; section 12d*). With `x` the signed axial offset from the
+  camera's foot point on the axis line, `h` the camera's distance from the axis line,
+  `S0 = NPC_TUNNEL_RING_BASE_SPACING_RADII` (12) x `Rt` and `rho = NPC_TUNNEL_RING_SPACING_PER_DISTANCE` (1.5), the
+  local ring spacing is `sigma(x, h) = max(S0, rho x sqrt(x^2 + h^2))` (`RingSpacingM`): 12 tunnel radii apart within
+  `D0 = S0 / rho` (still 8 tunnel radii) of the camera, beyond it 1.5 times the ring's own distance (neighbouring
+  rings `e^rho` = 4.48 times farther each; first built 2 tunnel radii and 1.28), a steady geometric tunnel to the end
+  node. Using the true distance bounds the on-screen density from inside and from outside the tube (seen from 50
+  tunnel radii away the rings at the foot point are 75 tunnel radii apart).
 - **Warp.** The ring coordinate is `w = W(x, h)`, the integral of `1 / sigma` from the foot point (`RingWarp`, odd in
   `x`, strictly increasing). With `x0 = sqrt(max(0, D0^2 - h^2))`: `W = x / S0` for `|x| <= x0`, and beyond it
   `W = sign(x) (x0 / S0 + ln((u + sqrt(u^2 + h^2)) / (x0 + sqrt(x0^2 + h^2))) / rho)` with `u = |x|` (the `asinh`
   form, well defined at `h` = 0 and at `x0` = 0). Its closed-form inverse `RingWarpInverse(w, h)`: `x = w S0` inside,
   else `v = (x0 + sqrt(x0^2 + h^2)) e^(rho (|w| - x0 / S0))` and `u = (v^2 - h^2) / (2 v)`.
 - **Rings** sit at every `x` with `W(x, h) + Phi` a whole number (`Phi` the lane's phase, section 4.4). Ring slot `k`
-  (0 .. `NPC_TUNNEL_RING_SLOTS_PER_SIDE` - 1, 64 per side) is the ring at `w = k + 1 - Phi` ahead (along `+a`) and
-  `w = -(k + Phi)` behind, so **slot and ring are one to one**: every ring with `|w| < 64` is drawn by exactly one
-  slot, with no level bands to cover. On the axis (`h` = 0) a lane needs `W(L, 0) = 4 + 4 ln(L / (8 Rt))` rings per
-  side: about 48 for a 4.5e12 m lane of radius 1e7 m, and still under 64 (about 63.4) for a 4.5e12 m lane at the
-  2e5 m minimum radius, so no ring between the end rings is lost on any default lane (contract case 11 checks each).
+  (0 .. `NPC_TUNNEL_RING_SLOTS_PER_SIDE` - 1, 12 per side since the thinning, 64 first) is the ring at
+  `w = k + 1 - Phi` ahead (along `+a`) and `w = -(k + Phi)` behind, so **slot and ring are one to one**: every ring
+  with `|w| < 12` is drawn by exactly one slot, with no level bands to cover. On the axis (`h` = 0) a lane needs
+  `W(L, 0) = 2/3 + (2/3) ln(L / (8 Rt))` rings per side: the longest default lane (Uranus - Neptune, 50.6 AU at its
+  1e7 m minimum radius) needs about 8.3, under the 11 the cap leaves, so no ring between the end rings is lost on any
+  default lane (contract case 11 checks each). 12 also keeps the shader's float inverse warp finite: its
+  `0.5 c e^(2t)` term overflows a float past about 22 slots at `h` = 100 `Rt` (64 slots overflowed at rho 1.5).
 - **No pops.** Every ring's position is a continuous function of `Phi`, `h` and `Rt` (when `Phi` wraps, the slot
   labels shift by one and the set of rings is the same). Rings only enter or leave at alpha 0: the **cap fade**
-  `clamp(64 - |w|, 0, 1)` fades a ring in or out at the far end of the slot range, and the **end fade**
+  `clamp(PER_SIDE - |w|, 0, 1)` fades a ring in or out at the far end of the slot range, and the **end fade**
   `TunnelEndFade(dEnd, sigma) = clamp(dEnd / (NPC_TUNNEL_END_FADE_SPACINGS x sigma), 0, 1)` (0.5 spacings) fades a ring
   to 0 as it reaches an end ring (`dEnd` its axial distance to the nearer end ring, inside the tunnel). The tunnel
   radius steps only when the lane's ship count changes, by a fraction of a ring spacing (accepted).
@@ -322,13 +328,15 @@ evenly spaced near the player and growing smoothly with distance, no levels, no 
   near(x))` with `weight` 1 within 1.5 tunnel radii of the axis and 0 from 3 (smoothstep,
   `TunnelNearFadeRadialWeight`), so from outside the tube the nearest ring is not removed.
 - **Dots and chevrons** use the same warp and phase, so they are anchored and slide exactly like the rings: dots at
-  `NPC_TUNNEL_DOTS_PER_GAP` (2) per ring gap (at `w` + 0.25 and + 0.75 of the gap), chevrons one per ring gap
-  (mid-gap, `w` + 0.5), each with the cap, end and near fades of its own `w` (the detail cap is
+  `NPC_TUNNEL_DOTS_PER_GAP` (2) per ring gap and chevrons at `NPC_TUNNEL_CHEVRONS_PER_GAP` (2) per ring gap on each
+  wall, both at the kept ring and halfway to the next (`w` + 0 and + 0.5 of the gap; the thinning, SDD 50 D23: first
+  built the dots sat at + 0.25 and + 0.75 and one chevron mid-gap), each with the cap, end and near fades of its own
+  `w` (the detail cap is
   `DetailCapFade(w) = clamp(NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE - 1 - |w|, 0, 1)`, 0 one gap before the far end of the gap
   slots, so an element entering there starts at alpha 0; it is 1 wherever the detail fade is above 0). Both **fade out between 256 and 512
   tunnel radii** of true distance (`NPC_TUNNEL_DETAIL_FADE_*`, Q11), where they are below a pixel or two; rings alone
-  carry the lane to its end ring. `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (24) gaps per side cover 512 tunnel radii
-  (`W(512 Rt, 0)` is about 20.6).
+  carry the lane to its end ring. `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (6 since the thinning, 24 first) gaps per side
+  cover 512 tunnel radii (`W(512 Rt, 0)` is about 3.44, under the 4 at which the detail cap still reads 1).
 
 ### 4.6 Look (D4, D6, D11, D12)
 
@@ -363,18 +371,22 @@ All tunnel colours are stored as sRGB `FColor` constants and converted to linear
   shape-batch tunnel would project and clip hundreds of rings on the CPU every frame.
 - **Slot mesh, built once at `BeginPlay`** (the same for every lane; one ISM instance per lane in range, its lane index
   in the per-instance custom data). Slots (section 4.5): for each side along the axis (ahead, behind)
-  `NPC_TUNNEL_RING_SLOTS_PER_SIDE` (64) ring slots, slot `k` being the ring at `w = k + 1 - Phi` ahead or
-  `w = -(k + Phi)` behind; `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (24) gap slots per side for the dots and chevrons; and two
+  `NPC_TUNNEL_RING_SLOTS_PER_SIDE` (12; 64 before the thinning) ring slots, slot `k` being the ring at
+  `w = k + 1 - Phi` ahead or `w = -(k + Phi)` behind; `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` (6; 24 before) gap slots per
+  side for the dots and chevrons (2 dots per row and 2 chevrons per wall in each); and two
   end-ring slots. Slot and ring are one to one, so **every ring with a non-zero alpha between the end rings is drawn
   exactly once** for any camera position, inside or outside the tube (contract case 11). A slot whose ring is past an
   end ring or at alpha 0 returns the hidden offset in the vertex shader (no raster cost).
 - **Level of detail by slot.** A ring's on-screen radius is about `Rt / d x 960` px at 1080p, and the slot index grows
   with distance (geometrically past `x0`), so far slots get fewer segments: `NPC_TUNNEL_RING_SEGMENTS_NEAREST` 96 for
-  slots 0-1 and the end rings (49c: they fill the view), `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for slots 2-7, 24 for
-  slots 8-23, 12 beyond (seen from outside the tube slot 0 is already far, so this only errs toward more segments).
-  As built (`TunnelSlotMeshVertexCount`, pinned by the slot-mesh test): **9,476 vertices per lane, 75,808 for all 8
-  lanes** (the D14 worst case; the first estimate was about 9,000 and 72,000). **Fixed budget: at most 80,000 vertices
-  for 8 lanes**; the test checks this limit and it is not raised to follow the code.
+  slots 0-1 (`NPC_TUNNEL_RING_NEAREST_SLOTS`) and the end rings (49c: they fill the view),
+  `NPC_TUNNEL_RING_SEGMENTS_NEAR` 48 for slot 2, 24 for slots 3-4, 12 beyond (`NPC_TUNNEL_RING_NEAR_SLOTS` 3,
+  `NPC_TUNNEL_RING_MID_SLOTS` 5 since the thinning, re-derived by distance: on the axis slot 1 reaches about 59, slot 2
+  about 265 and slot 4 about 5,300 tunnel radii, where the first bands 2-7 / 8-23 ended near 22 and 1,190; seen from
+  outside the tube slot 0 is already far, so this only errs toward more segments). As built
+  (`TunnelSlotMeshVertexCount`): **2,884 vertices per lane, 23,072 for all 8 lanes** since the thinning (9,476 and
+  75,808 first). **Fixed budget: at most 80,000 vertices for 8 lanes**; the test checks this limit and it is not raised
+  to follow the code.
 - **Instances change only on events.** The ISM's instance list is rewritten only when the set of lanes with a non-zero
   fade changes (a lane enters or leaves range, the lanes turn on or off), not per frame, so out-of-range lanes cost no
   vertex work at all.
@@ -582,7 +594,8 @@ test also asserts the constant's value, so a tuning change is a visible test edi
 right-handed, +Z north.
 
 **New `Tests/NpcTunnelMathTest.cpp` (`SOLTest.NpcTunnelMath.*`), `Npc/SOLNpcTunnelMath.h`, namespace
-`SOLNpcTunnel`:**
+`SOLNpcTunnel`:** *(as first written; the guide thinning of 2026-11-17 changed the spacing, slot and chevron values
+and added a case, listed in section 12d)*
 
 1. **Constants** (proposed values): `NPC_TUNNEL_FADE_START_RADII` 100 and `NPC_TUNNEL_FADE_FULL_RADII` 50 (start >
    full > 1, and start equals `NPC_LANE_FADE_NEAR_RADII`, so the hand-over meets the line's fade);
@@ -845,7 +858,8 @@ Temporary screenshots and captures are deleted once looked at; only README galle
 
 - **CPU per frame:** O(lanes), independent of the ship count (section 4.8). No allocation, no tick, no UObject churn,
   no per-frame strings (the HUD formats a label only on a value change). Instances rewritten only on enter / leave.
-- **GPU:** 9,476 vertices per lane in range as built (most early-out hidden; section 12c); pixel cost is the ring
+- **GPU:** 2,884 vertices per lane in range since the guide thinning (9,476 as first built; most early-out hidden;
+  sections 12c and 12d); pixel cost is the ring
   ribbon area, with LOD by slot. Measured 0.039 ms at 1080p with all 8 lanes forced in range (section 12c).
 - **1M scaling:** nothing in the tunnel is per ship on the CPU. On the GPU the only per-ship cost is the Q5 fade: one
   texel load per lane-ship point vertex in rail mode (measured in the profile run against `sol.NpcTunnel 0`). Inside
@@ -866,7 +880,8 @@ Temporary screenshots and captures are deleted once looked at; only README galle
   material's vertex node); case 17b and the smoke's sampled-alpha check cover the sum of 1.
 - **Clutter near planets (D9):** three or more tunnels meet at Earth; levers: the fade band, the detail fade, ring
   brightness.
-- **Vertex count:** 75,808 vertices in the forced all-lanes case as built (9,476 per lane; fixed budget 80,000,
+- **Vertex count:** 23,072 vertices in the forced all-lanes case since the guide thinning (2,884 per lane; 75,808
+  as first built; fixed budget 80,000,
   section 4.7); levers: slot LOD, fewer slots (a larger rho), fewer ring segments.
 - **Near-plane artefacts** when looking sideways inside the tube; covered by T4 / T4b.
 - **Float precision** of ring positions on AU-long lanes; covered by case 9 and the camera-relative layout.
@@ -1118,7 +1133,49 @@ player" (D7's 2 tunnel radii), with the smooth growth beyond.
   - *Shader-only alpha (review item 13):* `DotSlot` and `ChevronSlot` are the slot alpha, not the full rendered
     alpha (section 4.7); their header comments say so.
 
+## 12d. Amendment (2026-11-17, under #50): guide thinning (SDD 50 D23)
+
+**Decision (user, 2026-11-17, SDD 50 D23):** keep every 6th ring of the first-built lattice, near and far, at every
+speed (the layout has no speed input), and remove the 5 between; dots and chevrons sit at every kept ring and halfway
+between consecutive kept rings (in the warp coordinate, so the exact midpoint inside the constant zone), never at a
+removed ring; the end rings are unchanged. Recorded by the test author: both spacing terms scale by 6 (near spacing
+and per-distance warp), so `D0 = S0 / rho` stays 8 tunnel radii and the new warp is the old warp / 6.
+
+**Values:** `NPC_TUNNEL_RING_KEEP_EVERY` 6, `NPC_TUNNEL_RING_BASE_SPACING_RADII` 12, `NPC_TUNNEL_RING_SPACING_PER_DISTANCE`
+1.5, `NPC_TUNNEL_CHEVRONS_PER_GAP` 2 (new), `NPC_TUNNEL_DOTS_PER_GAP` 2 (now at offsets 0 and 0.5),
+`NPC_TUNNEL_RING_SLOTS_PER_SIDE` 12 (the test author left 10-40 to the implementation: the longest default lane needs
+8.3 + 1, the float inverse warp overflows past about 22), `NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE` 6 (512 tunnel radii is
+`w` 3.44, which must stay within `DETAIL - 2`), LOD bands `NEAREST` 2 / `NEAR` 3 / `MID` 5 (section 4.7), 2,884
+vertices per lane (23,072 for 8 lanes, budget 80,000).
+
+**API:** `ChevronSlot(slot, chevron, input, out)` gains the chevron index (false out of range); `DotSlot` places dot
+`d` at `d / DOTS_PER_GAP` of its gap; `TunnelSlotMeshVertexCount` counts `2 walls x CHEVRONS_PER_GAP x gap slots`
+chevron quads. The shader takes the chevron count in `NpcTunnelStyle3.w` (was unused) and the chevron index in the
+slot mesh's UV2.y, so `M_SOLNpcTunnel` keeps its parameter names; `Tools/Npc/create_npc_assets.py` writes the new
+default for the next asset rebuild. The committed asset was not rebuilt (its stored `Style3.w` default is 0): the
+component sets `NpcTunnelStyle3` and `NpcTunnelLayout0` from `SOLConstants.h` on its material instance, so the
+runtime values apply either way, and the `.ush` changes need no rebuild.
+
+**Contract changes** (`NpcTunnelMathTest.cpp`, test first): case 1 (the new constants, slot counts bounded rather
+than pinned), 7 (12 tunnel radii near, 6 times the first spacing everywhere), 8 (the warp is the first warp / 6,
+`2/3 + (2/3) ln(x / 8 Rt)` on the axis, neighbours `e^1.5` apart), 9 (float path at the new slot count), 10 (cap
+fades by `PER_SIDE`), 11 (coverage with two chevrons per gap), the slot-mesh case (bands from the constants, the
+80,000 budget kept) and a new case `SOLTest.NpcTunnelMath.GuideThinning` (every ring on a kept first-lattice ring,
+dots and chevrons on kept rings and halfway, about a sixth of the rings per view, a tiny lane under one kept gap).
+
+**What the player sees (numbers on the axis, `h` = 0):** the nearest ring ahead sits at most 12 tunnel radii away
+and beyond 8 tunnel radii each ring is `e^1.5` = 4.5 times farther than the one before (13, 59, 265, 1,190, 5,300
+tunnel radii ...), where the first lattice had one every 2 tunnel radii and 1.28 times farther beyond. With the
+screen-size fade (10 ribbon half extents) only the nearest one or two rings ahead read clearly, against about ten
+before; the longest default lane holds about 8 rings per side. Dots: about 6-7 per row ahead inside 512 tunnel radii
+(about 41 before). Chevrons: about 2-3 per wall ahead before their 13-30 tunnel radii fade (about 9 before). The end
+fade (0.5 spacings) now dims a ring within about 0.75 of its own distance from an end ring (0.125 before).
+
 ## 13. Change log
+
+- 2026-11-17: amendment section 12d (under #50, SDD 50 D23): guide thinning, every 6th ring kept, dots and chevrons at
+  each kept ring and halfway; spacing 12 tunnel radii and rho 1.5, 12 ring and 6 gap slots per side, LOD bands 2 / 3 /
+  5, 2,884 vertices per lane; sections 2 (D7), 4.5, 4.7, 6 (note), 9 and 10 amended in place.
 
 - 2026-11-13: 49c in progress: D20-D22 (user), section 12c (chevron dart, review items 6-7, screen fade 10 half
   extents, chevron far fade 13-30 tunnel radii, CPU cuts and the profile before / after).

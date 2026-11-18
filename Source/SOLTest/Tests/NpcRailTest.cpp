@@ -25,6 +25,18 @@
 // The GPU cases evaluate the shared float mirror of Shaders/Private/SOLNpcTraffic.ush (Npc/SOLNpcTrafficMirror.h) on
 // the GPU rail texels (SOLNpcRail::GpuRailTexels: a lane ship's cycle time at the epoch as hi / lo floats, its leg
 // time).
+//
+// Q11a (user, 2026-11-17, test first): the lane hull flip swings toward the ship's own top. The rail holds no ship
+// identity (32 bytes, P6 reserved, nothing new stored), so the NPC index is the key. API contract (from the test
+// author; no default, so a caller that forgets the index does not compile):
+//   FVector3d SOLNpcRail::LaneHullForward(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex,
+//       double railTimeS)
+//     SOLLaneTraffic::LaneHullForward(the frame's lane profile and frame, LaneShipFromRail(rail),
+//     static_cast<uint32>(npcIndex), railTimeS); the zero vector for cluster and battle rails and without a lane frame
+//   FSOLNpcRailMotion SOLNpcRail::Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, int32 npcIndex)
+//     its LaneHullForward is the one above at the frame's rail time
+// The tier processor and the Full-AI processor pass the combat fragment's NpcIndex, so the Mid hull and the Full nose
+// flip the same way.
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -1663,11 +1675,14 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailLaneHullForwardTest, "SOLTest.NpcRai
     EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
 
 //////////////////////////////////////////////////////////////////////////
-// Contract case 10 (D21): SOLNpcRail::LaneHullForward(rail, frame, t) is SOLLaneTraffic::LaneHullForward(the frame's
-// lane profile, the frame's lane frame, LaneShipFromRail(rail), t) within 1e-9 (negative, tiny and huge times
-// included), unit length, continuous at the float rail's four joints and across each leg's flip window (angle steps
-// below 1.5 pi dt / T_f), facing travel before the window, Up at its middle and against travel after it; the zero
-// vector for cluster and battle rails and for a lane rail whose group has no lane frame (the caller keeps the velocity
+// Contract case 10 (D21, Q11a): SOLNpcRail::LaneHullForward(rail, frame, npcIndex, t) is
+// SOLLaneTraffic::LaneHullForward(the frame's lane profile, the frame's lane frame, LaneShipFromRail(rail), the NPC
+// index as the key, t) within 1e-9 (negative, tiny and huge times included), unit length, continuous at the float
+// rail's four joints and across each leg's flip window (angle steps below 1.5 pi dt / T_f), facing travel before the
+// window, its flip direction at its middle (side x T_out outbound, -side x T_out inbound, T_out = LaneShipTopVector of
+// its index about +Axis: both flips in one plane, SDD 50 section 16) and against travel after it, the rail's motion
+// carrying LaneHullBasis's top; the same rail under other NPC indices flips toward other directions; the zero vector
+// for cluster and battle rails and for a lane rail whose group has no lane frame (the caller keeps the velocity
 // heading)
 bool FSOLNpcRailLaneHullForwardTest::RunTest(const FString& /*parameters*/)
 {
@@ -1692,18 +1707,21 @@ bool FSOLNpcRailLaneHullForwardTest::RunTest(const FString& /*parameters*/)
         }
         const FSOLLaneProfile& profile = frame.LaneProfile[0];
         const FSOLLaneFrame& laneFrame = frame.LaneFrame[0];
-        for (const FNpcRailSpec& spec : NPCRAIL_SPECS)
+        for (int32 specIndex = 0; specIndex < static_cast<int32>(UE_ARRAY_COUNT(NPCRAIL_SPECS)); ++specIndex)
         {
+            const FNpcRailSpec& spec = NPCRAIL_SPECS[specIndex];
             const FSOLNpcRail rail = NpcRailLane(world, spec);
             const FSOLLaneShip ship = SOLNpcRail::LaneShipFromRail(rail);
             const FSOLLaneCycle cycle = NpcRailCycleOf(profile, rail);
+            const int32 npcIndex = 17 + 100003 * specIndex;
+            const uint32 key = static_cast<uint32>(npcIndex);
             const FString label = FString::Printf(TEXT("distance %.2f L0, rho %.3f"), distanceRatio, spec.Rho);
             TestTrue(label + TEXT(": the ship burns (so its legs flip)"), ship.AccelS > 0.0);
 
             // Returns the rail's hull at cycle time tau
             const auto hullAt = [&](const double tau)
             {
-                return SOLNpcRail::LaneHullForward(rail, frame, NpcRailTimeAt(rail, cycle, tau));
+                return SOLNpcRail::LaneHullForward(rail, frame, npcIndex, NpcRailTimeAt(rail, cycle, tau));
             };
 
             // The pure function's value and unit length: fixed times, 200 spread over the cycle, 8 in each U-turn
@@ -1724,8 +1742,8 @@ bool FSOLNpcRailLaneHullForwardTest::RunTest(const FString& /*parameters*/)
             FString firstValueFailure;
             for (const double t : times)
             {
-                const FVector3d hull = SOLNpcRail::LaneHullForward(rail, frame, t);
-                const FVector3d pure = SOLLaneTraffic::LaneHullForward(profile, laneFrame, ship, t);
+                const FVector3d hull = SOLNpcRail::LaneHullForward(rail, frame, npcIndex, t);
+                const FVector3d pure = SOLLaneTraffic::LaneHullForward(profile, laneFrame, ship, key, t);
                 if (FMath::Abs(hull.Size() - 1.0) > 1.0e-12 || (hull - pure).GetAbsMax() > 1.0e-9)
                 {
                     if (valueFailures == 0)
@@ -1749,19 +1767,50 @@ bool FSOLNpcRailLaneHullForwardTest::RunTest(const FString& /*parameters*/)
                     angle), angle <= peakAngleRate * 2.0 * jointDelta + 1.0e-9);
             }
 
-            // Each leg's flip window: travel 1 s before it, Up at its middle, against travel 1 s after it, and angle
-            // steps below the peak rate in 0.5 s steps from 5 s before to 5 s after it
+            // Each leg's flip window: travel 1 s before it, the ship's own top at its middle (Q11a), against travel
+            // 1 s after it, and angle steps below the peak rate in 0.5 s steps from 5 s before to 5 s after it
             const double start = 0.5 * (cycle.LegS - tf);
             const double windowStep = 0.5;
             for (const bool bOutbound : { true, false })
             {
                 const double legStart = bOutbound ? 0.0 : cycle.LegS + cycle.TurnS;
                 const FVector3d travel = bOutbound ? laneFrame.Axis : FVector3d(-laneFrame.Axis);
+
+                // Returns where a key's flip swings the nose on this leg (SDD 50 section 16: side x T_out outbound,
+                // -side x T_out inbound, both flips in one plane)
+                const auto flipToward = [&](const uint32 flipKey)
+                {
+                    return SOLLaneTraffic::LaneShipTopVector(flipKey, laneFrame.Axis, laneFrame.Up)
+                        * ((bOutbound ? 1.0 : -1.0) * static_cast<double>(SOLLaneTraffic::LaneFlipSide(flipKey)));
+                };
+                const FVector3d top = flipToward(key);
                 const FString legLabel = label + (bOutbound ? TEXT(", outbound") : TEXT(", inbound"));
+                TestTrue(legLabel + TEXT(": the flip direction is a unit perpendicular of travel"),
+                    FMath::Abs(top.Size() - 1.0) <= 1.0e-9 && FMath::Abs(FVector3d::DotProduct(top, travel)) <= 1.0e-9);
                 TestTrue(legLabel + TEXT(": travel before the window"),
                     (hullAt(legStart + start - 1.0) - travel).GetAbsMax() <= 1.0e-9);
-                TestTrue(legLabel + TEXT(": Up at the window's middle"),
-                    (hullAt(legStart + 0.5 * cycle.LegS) - laneFrame.Up).GetAbsMax() <= 1.0e-6);
+                TestTrue(legLabel + TEXT(": the flip direction at the window's middle"),
+                    (hullAt(legStart + 0.5 * cycle.LegS) - top).GetAbsMax() <= 1.0e-6);
+
+                // The same rail under other NPC indices turns toward other directions (the index is the identity)
+                const double middleTime = NpcRailTimeAt(rail, cycle, legStart + 0.5 * cycle.LegS);
+                const FVector3d other = SOLNpcRail::LaneHullForward(rail, frame, npcIndex + 1, middleTime);
+                TestTrue(legLabel + TEXT(": index + 1 flips toward its own direction, not this one"),
+                    (other - flipToward(key + 1u)).GetAbsMax() <= 1.0e-6 && angleBetween(other, top) > 1.0e-6);
+
+                // The rail's motion carries the pure function's drawn top (SOLLaneTraffic::LaneHullBasis) at the
+                // window's middle and before it
+                for (const double tau : { legStart + start - 1.0, legStart + 0.5 * cycle.LegS })
+                {
+                    FSOLNpcRailFrame tauFrame = frame;
+                    tauFrame.RailTimeS = NpcRailTimeAt(rail, cycle, tau);
+                    const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, tauFrame, npcIndex);
+                    const FSOLLaneHullBasis basis = SOLLaneTraffic::LaneHullBasis(profile, laneFrame, ship, key,
+                        tauFrame.RailTimeS);
+                    TestTrue(legLabel + FString::Printf(TEXT(": rail top = LaneHullBasis top %.1f s into the leg"),
+                        tau - legStart), (motion.LaneHullTop - basis.Top).GetAbsMax() <= 1.0e-9
+                        && (motion.LaneHullForward - basis.Forward).GetAbsMax() <= 1.0e-9);
+                }
                 TestTrue(legLabel + TEXT(": against travel after the window"),
                     (hullAt(legStart + start + tf + 1.0) + travel).GetAbsMax() <= 1.0e-9);
                 double largestStep = 0.0;
@@ -1782,14 +1831,14 @@ bool FSOLNpcRailLaneHullForwardTest::RunTest(const FString& /*parameters*/)
     const FNpcRailWorld world = NpcRailMakeWorld();
     const FSOLNpcRailFrame frame = NpcRailFrameAt(world, 0.0);
     TestTrue(TEXT("cluster rail: zero vector"),
-        SOLNpcRail::LaneHullForward(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame, 10.0) == FVector3d::ZeroVector);
+        SOLNpcRail::LaneHullForward(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame, 3, 10.0) == FVector3d::ZeroVector);
     TestTrue(TEXT("battle rail: zero vector"),
-        SOLNpcRail::LaneHullForward(NpcRailBattle(), frame, 10.0) == FVector3d::ZeroVector);
+        SOLNpcRail::LaneHullForward(NpcRailBattle(), frame, 4, 10.0) == FVector3d::ZeroVector);
     FSOLNpcRailFrame noLanes = frame;
     noLanes.LaneFrame.Reset();
     noLanes.LaneProfile.Reset();
     TestTrue(TEXT("no lane frame: zero vector"),
-        SOLNpcRail::LaneHullForward(NpcRailLane(world, NPCRAIL_SPECS[0]), noLanes, 10.0) == FVector3d::ZeroVector);
+        SOLNpcRail::LaneHullForward(NpcRailLane(world, NPCRAIL_SPECS[0]), noLanes, 5, 10.0) == FVector3d::ZeroVector);
     return true;
 }
 
@@ -1857,10 +1906,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailHullHeadingTest, "SOLTest.NpcRail.Hu
 // thrust facing. With no deviation the hull (SOLNpcAi::HullForward of the heading) faces LaneHullForward, engine first
 // while braking; a small deviation turns it by at most asin(|deviation| / max(rail speed, w)) and a huge one dominates;
 // a stopped rail still weighs its facing like the wall speed (a perpendicular deviation of w turns it 45 degrees).
-// Motion's velocity and facing equal VelocityMps and LaneHullForward, and the heading is facing x max(speed, w) +
-// deviation. The Full tier's nose without a target (SOLNpcAi::FullShipDesiredForward on the rail heading,
-// SOLNpcCombat) is the tiers' hull heading, so neither hand-off turns the hull. Cluster and battle rails and a lane
-// rail without a lane frame keep velocity + deviation
+// Motion's velocity and facing equal VelocityMps and LaneHullForward (both of the same NPC index, Q11a), and the
+// heading is facing x max(speed, w) + deviation. The Full tier's nose without a target
+// (SOLNpcAi::FullShipDesiredForward on the rail heading, SOLNpcCombat) is the tiers' hull heading, so neither hand-off
+// turns the hull. Cluster and battle rails and a lane rail without a lane frame keep velocity + deviation
 bool FSOLNpcRailHullHeadingTest::RunTest(const FString& /*parameters*/)
 {
     const double wall = SOL::NPC_LANE_WALL_SPEED_MPS;
@@ -1878,9 +1927,10 @@ bool FSOLNpcRailHullHeadingTest::RunTest(const FString& /*parameters*/)
             const double railTime = NpcRailTimeAt(rail, cycle, timeFraction * cycle.LegS);
             const FSOLNpcRailFrame frame = NpcRailFrameAt(world, railTime);
             const FString label = FString::Printf(TEXT("leg %.2f, rho %.3f"), timeFraction, spec.Rho);
+            const int32 npcIndex = 2 + 7 * static_cast<int32>(&spec - NPCRAIL_SPECS);
             const FVector3d railVelocity = SOLNpcRail::VelocityMps(rail, frame);
-            const FVector3d forward = SOLNpcRail::LaneHullForward(rail, frame, frame.RailTimeS);
-            const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame);
+            const FVector3d forward = SOLNpcRail::LaneHullForward(rail, frame, npcIndex, frame.RailTimeS);
+            const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame, npcIndex);
             TestTrue(label + TEXT(": lane hull facing exists"), !forward.IsZero());
 
             // No deviation: the hull faces its thrust (engine first while braking)
@@ -1940,16 +1990,16 @@ bool FSOLNpcRailHullHeadingTest::RunTest(const FString& /*parameters*/)
     velocityOnly.VelocityMps = FVector3d(3.0e4, -2.0e3, 7.0);
     TestTrue(TEXT("no lane facing: velocity + deviation"),
         SOLNpcRail::HullHeadingVelocityMps(velocityOnly, deviation) == velocityOnly.VelocityMps + deviation);
-    const FSOLNpcRailMotion cluster = SOLNpcRail::Motion(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame);
+    const FSOLNpcRailMotion cluster = SOLNpcRail::Motion(NpcRailCluster(7.0e6f, 1.3f, 1.1e-3f), frame, 11);
     TestTrue(TEXT("cluster rail: Motion has no lane facing, heading velocity + deviation"),
         cluster.LaneHullForward.IsZero()
         && SOLNpcRail::HullHeadingVelocityMps(cluster, deviation) == cluster.VelocityMps + deviation);
     TestTrue(TEXT("battle rail: Motion has no lane facing"),
-        SOLNpcRail::Motion(NpcRailBattle(), frame).LaneHullForward.IsZero());
+        SOLNpcRail::Motion(NpcRailBattle(), frame, 12).LaneHullForward.IsZero());
     FSOLNpcRailFrame noLanes = frame;
     noLanes.LaneFrame.Reset();
     noLanes.LaneProfile.Reset();
-    const FSOLNpcRailMotion unframed = SOLNpcRail::Motion(NpcRailLane(world, NPCRAIL_SPECS[0]), noLanes);
+    const FSOLNpcRailMotion unframed = SOLNpcRail::Motion(NpcRailLane(world, NPCRAIL_SPECS[0]), noLanes, 13);
     TestTrue(TEXT("no lane frame: Motion has no lane facing, heading velocity + deviation"),
         unframed.LaneHullForward.IsZero()
         && SOLNpcRail::HullHeadingVelocityMps(unframed, deviation) == unframed.VelocityMps + deviation);
@@ -1962,39 +2012,85 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcRailFullTierHandoffTest, "SOLTest.NpcRai
 
 //////////////////////////////////////////////////////////////////////////
 // D17 / D21 through a Full-tier stay, without a combat world: a lane ship drawn as a Mid hull (SOLNpcAi::HullForward
-// of the rail heading plus deviation velocity, as USOLNpcTierProcessor) is promoted (SOLNpcAi::HandoffOrientation of
-// the same heading, as USOLNpcFullAiProcessor), flown by the Full step without a target (FullShipDesiredForward on the
-// rail heading, StepFullShip in the class envelope, the idle return to the rail, as SOLNpcCombat) at 60 Hz from 10 s
-// before its hull flip to 10 s after it, and demoted. The promotion frame does not turn the nose (0.01 degrees), no
-// frame turns it faster than the class's angular rate, it follows the Mid heading through the 60 s flip (lag within 15
-// degrees), and at the demotion the Mid heading it is drawn with is within 3 degrees of the nose
+// of the rail heading plus deviation velocity, its top SOLNpcRail::HullUpHint, the lane top, as USOLNpcTierProcessor)
+// is promoted (SOLNpcAi::HandoffOrientation of the same heading and up hint, as USOLNpcFullAiProcessor), flown by the
+// Full step without a target (FullShipDesiredForward on the rail heading, StepFullShip toward the lane top in the class
+// envelope, the idle return to the rail, as SOLNpcCombat) at 60 Hz from 10 s before its hull flip to 10 s after it, and
+// demoted. The promotion frame does not turn the nose or roll the drawn top (0.01 degrees), no frame turns the
+// attitude faster than the class's angular rate, the nose and the up follow the Mid hull's heading and top through the
+// 60 s flip (lag within 15 degrees), and at the demotion the Mid hull it is drawn as is within 3 degrees of the nose
+// and the up (SDD 50 section 16, user decision 2026-11-18). Q11a: each ship is flown under four NPC indices; the flip
+// plane measured from SOLNpcRail::Motion at the window's middle contains the hand-off top, and the four indices flip in
+// four different planes (rolls about the axis modulo pi)
 bool FSOLNpcRailFullTierHandoffTest::RunTest(const FString& /*parameters*/)
 {
     const FNpcRailWorld world = NpcRailMakeWorld();
     const FSOLThrustEnvelope envelope = SOLNpcAi::ClassEnvelope(SOLNpcAi::GetClass(0));
     const SOLNpcAi::FClassParams& shipClass = SOLNpcAi::GetClass(0);
     constexpr double dt = 1.0 / 60.0;
-    const double maxRateRadPerS = FMath::Max(envelope.MaxSpinRateRadPerS,
-        FVector3d(0.0, envelope.MaxAngularRateRadPerS.Y, envelope.MaxAngularRateRadPerS.Z).Size());
+    const double maxRateRadPerS = FMath::Max(envelope.MaxSpinRateRadPerS, envelope.MaxAngularRateRadPerS.Size());
     const double frameLimitRad = 1.01 * maxRateRadPerS * dt + 1.0e-9;
     int32 flips = 0;
+    TArray<double, TInlineAllocator<32>> flipRolls;
+    const FSOLNpcRailFrame epochFrame = NpcRailFrameAt(world, 0.0);
+
+    // Returns a vector's roll about a lane frame's axis, from its Up toward its Right, modulo pi (a plane through the
+    // axis), in [0, pi)
+    const auto planeRoll = [](const FVector3d& v, const FSOLLaneFrame& lane)
+    {
+        const double roll = FMath::Atan2(FVector3d::DotProduct(v, lane.Right), FVector3d::DotProduct(v, lane.Up));
+        const double folded = std::fmod(roll + 2.0 * NPCRAIL_PI, NPCRAIL_PI);
+        return folded >= NPCRAIL_PI ? 0.0 : folded;
+    };
+
+    // Returns the angle between two plane rolls modulo pi
+    const auto planeGap = [](const double a, const double b)
+    {
+        return FMath::Abs(std::remainder(a - b, NPCRAIL_PI));
+    };
+
+    // Returns the angle between two vectors after the second is made orthogonal to a unit forward (the drawn top)
+    const auto topGap = [](const FVector3d& up, const FVector3d& top, const FVector3d& forward)
+    {
+        const FVector3d drawnTop = (top - forward * FVector3d::DotProduct(top, forward)).GetSafeNormal();
+        return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(up | drawnTop, -1.0, 1.0)));
+    };
+
+    // Every sample ship under four NPC indices
+    struct FHandoffCase
+    {
+        const FNpcRailSpec* Spec;
+        int32 NpcIndex;
+    };
+    TArray<FHandoffCase, TInlineAllocator<32>> cases;
     for (const FNpcRailSpec& spec : NPCRAIL_SPECS)
     {
+        for (const int32 npcIndex : { 3, 1001, 77777, 123456 })
+        {
+            cases.Add({ &spec, npcIndex });
+        }
+    }
+    for (const FHandoffCase& handoff : cases)
+    {
+        const FNpcRailSpec& spec = *handoff.Spec;
+        const int32 npcIndex = handoff.NpcIndex;
         const FSOLNpcRail rail = NpcRailLane(world, spec);
-        const FSOLLaneCycle cycle = NpcRailCycleOf(NpcRailFrameAt(world, 0.0).LaneProfile[0], rail);
+        const FSOLLaneCycle cycle = NpcRailCycleOf(epochFrame.LaneProfile[0], rail);
         if (!(rail.P[4] > 0.0f) || !(cycle.LegS > 2.0 * SOL::NPC_LANE_FLIP_S + 40.0))
         {
             continue;
         }
         ++flips;
-        const FString label = FString::Printf(TEXT("rho %.3f"), spec.Rho);
+        const FString label = FString::Printf(TEXT("rho %.3f, NPC %d"), spec.Rho, npcIndex);
 
-        // The Mid hull heading at a rail time (the tier processor's): the rail heading plus deviation velocity
-        const auto midHeading = [&](const FSOLNpcRailFrame& frame, const FSOLShipState& deviation)
+        // The Mid hull at a rail time (the tier processor's): heading from the rail heading plus deviation velocity,
+        // top the up hint (the lane top for a lane ship)
+        const auto midHull = [&](const FSOLNpcRailFrame& frame, const FSOLShipState& deviation, FVector3d& outTop)
         {
-            const FVector3d up = SOLNpcRail::EvaluateM(rail, frame) + deviation.PositionM - frame.GroupBodyM[0];
-            return SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(SOLNpcRail::Motion(rail, frame),
-                deviation.VelocityMps), up);
+            const FVector3d radial = SOLNpcRail::EvaluateM(rail, frame) + deviation.PositionM - frame.GroupBodyM[0];
+            const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame, npcIndex);
+            outTop = SOLNpcRail::HullUpHint(motion, radial);
+            return SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(motion, deviation.VelocityMps), radial);
         };
 
         // Promotion 10 s before the flip starts (the outbound leg's middle minus half the flip), a small deviation
@@ -2003,49 +2099,88 @@ bool FSOLNpcRailFullTierHandoffTest::RunTest(const FString& /*parameters*/)
         flight.PositionM = FVector3d(120.0, -40.0, 25.0);
         flight.VelocityMps = FVector3d(15.0, 6.0, -4.0);
         const FSOLNpcRailFrame promoteFrame = NpcRailFrameAt(world, startS);
-        const FVector3d midBefore = midHeading(promoteFrame, flight);
-        const FVector3d upHint = SOLNpcRail::EvaluateM(rail, promoteFrame) + flight.PositionM
-            - promoteFrame.GroupBodyM[0];
-        flight.Orientation = SOLNpcAi::HandoffOrientation(SOLNpcRail::HullHeadingVelocityMps(
-            SOLNpcRail::Motion(rail, promoteFrame), flight.VelocityMps), upHint);
+        FVector3d midTopBefore;
+        const FVector3d midBefore = midHull(promoteFrame, flight, midTopBefore);
+        const FSOLNpcRailMotion promoteMotion = SOLNpcRail::Motion(rail, promoteFrame, npcIndex);
+        const FVector3d upHint = SOLNpcRail::HullUpHint(promoteMotion, SOLNpcRail::EvaluateM(rail, promoteFrame)
+            + flight.PositionM - promoteFrame.GroupBodyM[0]);
+        TestTrue(label + TEXT(": the hand-off up hint is the lane top"), !promoteMotion.LaneHullTop.IsZero()
+            && upHint == promoteMotion.LaneHullTop);
+        flight.Orientation = SOLNpcAi::HandoffOrientation(SOLNpcRail::HullHeadingVelocityMps(promoteMotion,
+            flight.VelocityMps), upHint);
         const double promoteDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
             flight.Orientation.GetForwardVector() | midBefore, -1.0, 1.0)));
+        const double promoteRollDeg = topGap(flight.Orientation.GetUpVector(), midTopBefore, midBefore);
         TestTrue(label + FString::Printf(TEXT(": promotion keeps the nose (%.4f deg)"), promoteDeg),
             promoteDeg <= 0.01);
+        TestTrue(label + FString::Printf(TEXT(": promotion keeps the drawn top (%.4f deg)"), promoteRollDeg),
+            promoteRollDeg <= 0.01);
 
-        // The Full stay: no target, idle return to the rail, nose on the rail heading
+        // The flip plane (Q11a, SDD 50 section 16): the rail's hull facing at the window's middle, through the
+        // hand-off top's plane
+        const FSOLNpcRailFrame middleFrame = NpcRailFrameAt(world, startS + 10.0 + 0.5 * SOL::NPC_LANE_FLIP_S);
+        const double flipRoll = planeRoll(SOLNpcRail::Motion(rail, middleFrame, npcIndex).LaneHullForward,
+            middleFrame.LaneFrame[0]);
+        const double handoffGap = planeGap(flipRoll, planeRoll(upHint, promoteFrame.LaneFrame[0]));
+        TestTrue(label + FString::Printf(TEXT(": the flip turns in the hand-off top's plane (%.2g rad)"), handoffGap),
+            handoffGap <= 1.0e-3);
+        flipRolls.Add(flipRoll);
+
+        // The Full stay: no target, idle return to the rail, nose on the rail heading, up toward the lane top
         const int32 frames = FMath::CeilToInt32((SOL::NPC_LANE_FLIP_S + 20.0) / dt);
         double worstStepRad = 0.0;
         double worstLagDeg = 0.0;
+        double worstRollLagDeg = 0.0;
         FSOLNpcRailFrame frame = promoteFrame;
         for (int32 step = 1; step <= frames; ++step)
         {
             frame = NpcRailFrameAt(world, startS + step * dt);
-            const FVector3d railHeading = SOLNpcRail::HullHeadingVelocityMps(SOLNpcRail::Motion(rail, frame),
-                FVector3d::ZeroVector);
+            const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame, npcIndex);
+            const FVector3d railHeading = SOLNpcRail::HullHeadingVelocityMps(motion, FVector3d::ZeroVector);
             const FVector3d desiredMps = (-flight.PositionM * SOL::NPC_AI_IDLE_RETURN_RATE)
                 .GetClampedToMaxSize(shipClass.MaxSpeedMps);
-            const FVector3d noseBefore = flight.Orientation.GetForwardVector();
+            const FQuat4d attitudeBefore = flight.Orientation;
             const FVector3d desiredForward = SOLNpcAi::FullShipDesiredForward(FVector3d::ZeroVector, 0.0,
-                shipClass.FireRangeM, railHeading + desiredMps, railHeading + flight.VelocityMps, noseBefore);
-            const FVector3d up = SOLNpcRail::EvaluateM(rail, frame) + flight.PositionM - frame.GroupBodyM[0];
+                shipClass.FireRangeM, railHeading + desiredMps, railHeading + flight.VelocityMps,
+                attitudeBefore.GetForwardVector());
+            const FVector3d up = SOLNpcRail::HullUpHint(motion, SOLNpcRail::EvaluateM(rail, frame) + flight.PositionM
+                - frame.GroupBodyM[0]);
             flight = SOLNpcAi::StepFullShip(flight, desiredMps, desiredForward, up, envelope, dt);
-            const FVector3d nose = flight.Orientation.GetForwardVector();
-            worstStepRad = FMath::Max(worstStepRad, FMath::Acos(FMath::Clamp(nose | noseBefore, -1.0, 1.0)));
+            worstStepRad = FMath::Max(worstStepRad, attitudeBefore.AngularDistance(flight.Orientation));
+            FVector3d midTop;
+            const FVector3d midNose = midHull(frame, flight, midTop);
             worstLagDeg = FMath::Max(worstLagDeg, FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
-                nose | midHeading(frame, flight), -1.0, 1.0))));
+                flight.Orientation.GetForwardVector() | midNose, -1.0, 1.0))));
+            worstRollLagDeg = FMath::Max(worstRollLagDeg, topGap(flight.Orientation.GetUpVector(), midTop,
+                midNose));
         }
+        FVector3d midTopAfter;
+        const FVector3d midAfter = midHull(frame, flight, midTopAfter);
         const double demoteDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
-            flight.Orientation.GetForwardVector() | midHeading(frame, flight), -1.0, 1.0)));
+            flight.Orientation.GetForwardVector() | midAfter, -1.0, 1.0)));
+        const double demoteRollDeg = topGap(flight.Orientation.GetUpVector(), midTopAfter, midAfter);
         AddInfo(label + FString::Printf(TEXT(": promotion %.4f deg, worst frame %.3f deg (limit %.3f), flip lag %.2f "
-            "deg, demotion %.3f deg"), promoteDeg, FMath::RadiansToDegrees(worstStepRad),
-            FMath::RadiansToDegrees(frameLimitRad), worstLagDeg, demoteDeg));
-        TestTrue(label + TEXT(": no frame turns the nose faster than the class's angular rate"),
+            "deg (roll %.2f), demotion %.3f deg (roll %.3f)"), promoteDeg, FMath::RadiansToDegrees(worstStepRad),
+            FMath::RadiansToDegrees(frameLimitRad), worstLagDeg, worstRollLagDeg, demoteDeg, demoteRollDeg));
+        TestTrue(label + TEXT(": no frame turns the attitude faster than the class's angular rate"),
             worstStepRad <= frameLimitRad);
         TestTrue(label + TEXT(": the nose follows the Mid heading through the flip (15 deg)"), worstLagDeg <= 15.0);
+        TestTrue(label + TEXT(": the up follows the Mid top through the flip (15 deg)"), worstRollLagDeg <= 15.0);
         TestTrue(label + TEXT(": demotion keeps the nose (3 deg)"), demoteDeg <= 3.0);
+        TestTrue(label + TEXT(": demotion keeps the drawn top (3 deg)"), demoteRollDeg <= 3.0);
     }
     TestTrue(TEXT("a ship with a hull flip was covered"), flips > 0);
+
+    // The four indices of the first flipping ship flip in four different planes (rolls modulo pi at least 1e-3 apart)
+    bool bPlanesDiffer = flipRolls.Num() >= 4;
+    for (int32 a = 0; bPlanesDiffer && a < 4; ++a)
+    {
+        for (int32 b = a + 1; b < 4; ++b)
+        {
+            bPlanesDiffer = bPlanesDiffer && planeGap(flipRolls[a], flipRolls[b]) > 1.0e-3;
+        }
+    }
+    TestTrue(TEXT("the four NPC indices flip in different planes"), bPlanesDiffer);
     return true;
 }
 

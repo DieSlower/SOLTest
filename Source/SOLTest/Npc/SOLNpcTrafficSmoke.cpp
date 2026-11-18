@@ -479,8 +479,9 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
     {
         const FSOLNpcRail& rail = rails[mLaneShips[sample]];
         const FSOLLaneShip ship = SOLNpcRail::LaneShipFromRail(rail);
-        const FSOLLaneThrustState now = SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship, timeS);
-        const FSOLLaneThrustState after = SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship,
+        const uint32 key = static_cast<uint32>(mLaneShips[sample]);
+        const FSOLLaneThrustState now = SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship, key, timeS);
+        const FSOLLaneThrustState after = SOLLaneTraffic::LaneThrustAt(profile, laneFrame, ship, key,
             timeS + NPCTRAFFIC_SHOT_S + NPCTRAFFIC_V2_TRACK_S);
         const double fraction = ((SOLNpcRail::EvaluateM(rail, frame) - laneFrame.AM) | laneFrame.Axis) / lengthM;
         const bool bSteady = !TrafficSmokeIsTurn(now.Segment) && now.Segment == after.Segment
@@ -506,7 +507,7 @@ void FSOLNpcTrafficSmoke::SetupFlyBy()
     const bool bHasStep = stepS > 0.0 && mPrevFrame.GroupPointAM.IsValidIndex(rail.Group)
         && mPrevFrame.LaneFrame.IsValidIndex(rail.Group) && mLastFrame.LaneFrame.IsValidIndex(rail.Group);
     const FVector3d velocityMps = bHasStep ? (SOLNpcRail::EvaluateM(rail, mLastFrame)
-        - SOLNpcRail::EvaluateM(rail, mPrevFrame)) / stepS : SOLNpcRail::Motion(rail, frame).VelocityMps;
+        - SOLNpcRail::EvaluateM(rail, mPrevFrame)) / stepS : SOLNpcRail::Motion(rail, frame, mFlyBy.Npc).VelocityMps;
     const FVector3d relativeMps = velocityMps - SOLRender::EclipticToUnreal(mShips->GetReferenceVelocityMps());
     mFlyBy.RelativeSpeedMps = relativeMps.Size();
     const double closestS = FMath::Clamp(2.0 * mNpcs->GetStats().FullRadiusM / FMath::Max(mFlyBy.RelativeSpeedMps,
@@ -539,7 +540,8 @@ void FSOLNpcTrafficSmoke::TrackFlyBy()
         tracked = ship.NpcIndex == mFlyBy.Npc ? &ship : tracked;
 
         // Mid hulls within the deviation velocity's turn; Full hulls (the nose, aiming near a target) counted
-        const FVector3d laneForward = SOLNpcRail::LaneHullForward(rails[ship.NpcIndex], frame, frame.RailTimeS);
+        const FVector3d laneForward = SOLNpcRail::LaneHullForward(rails[ship.NpcIndex], frame, ship.NpcIndex,
+            frame.RailTimeS);
         const double offDeg = FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
             FVector3d(ship.HeadingDirection).GetSafeNormal() | laneForward, -1.0, 1.0)));
         if (ship.AiTier == mid)
@@ -674,7 +676,7 @@ void FSOLNpcTrafficSmoke::CheckKeepRight()
         {
             const FSOLNpcRail& rail = rails[index];
             const FSOLLaneThrustState thrust = SOLLaneTraffic::LaneThrustAt(frame.LaneProfile[lane], laneFrame,
-                SOLNpcRail::LaneShipFromRail(rail), timeS);
+                SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(index), timeS);
             if (TrafficSmokeIsTurn(thrust.Segment))
             {
                 ++turns;
@@ -725,7 +727,7 @@ void FSOLNpcTrafficSmoke::CheckKeepRight()
         const FVector3d positionM = SOLNpcRail::EvaluateAtTimeM(rail, frame, timeS);
         mShotPositionsM.Add(positionM);
         const FSOLLaneThrustState thrust = SOLLaneTraffic::LaneThrustAt(frame.LaneProfile[mLane], laneFrame,
-            SOLNpcRail::LaneShipFromRail(rail), timeS);
+            SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(index), timeS);
         const double lateralM = (positionM - laneFrame.AM) | laneFrame.Right;
         FVector2D screen;
         const FVector direction = (mAnchor->UniverseToRenderCm(positionM) - cameraCm).GetSafeNormal();
@@ -769,9 +771,10 @@ void FSOLNpcTrafficSmoke::CheckMotion()
     {
         const FSOLNpcRail& rail = rails[mSamples[mLane][sample]];
         const FSOLLaneShip ship = SOLNpcRail::LaneShipFromRail(rail);
+        const uint32 key = static_cast<uint32>(mSamples[mLane][sample]);
         if (TrafficSmokeIsTurn(SOLLaneTraffic::LaneThrustAt(frame.LaneProfile[mLane], frame.LaneFrame[mLane], ship,
-            mShotRailTimeS).Segment) || TrafficSmokeIsTurn(SOLLaneTraffic::LaneThrustAt(frame.LaneProfile[mLane],
-            frame.LaneFrame[mLane], ship, frame.RailTimeS).Segment))
+            key, mShotRailTimeS).Segment) || TrafficSmokeIsTurn(SOLLaneTraffic::LaneThrustAt(
+            frame.LaneProfile[mLane], frame.LaneFrame[mLane], ship, key, frame.RailTimeS).Segment))
         {
             continue;
         }
@@ -815,11 +818,11 @@ void FSOLNpcTrafficSmoke::CheckSpeeds()
             - SOLNpcRail::EvaluateAtTimeM(rail, frame, timeS - stepS)).Size() / (2.0 * stepS);
         return measuredMps / SOLLaneTraffic::MetricMapSlope(outArcM, l0, l);
     };
-    // Returns whether a rail's ship is on a leg (not in a U-turn) now
+    // Returns whether a rail's ship is on a leg (not in a U-turn) now; the segment does not depend on the ship's key
     const auto isLeg = [&](const FSOLNpcRail& rail)
     {
         return !TrafficSmokeIsTurn(SOLLaneTraffic::LaneThrustAt(profile, laneFrame, SOLNpcRail::LaneShipFromRail(rail),
-            timeS).Segment);
+            0u, timeS).Segment);
     };
 
     // The Mid-tier Earth-Mars leg ships, or sampled rails mid-lane when too few are near
@@ -953,16 +956,18 @@ void FSOLNpcTrafficSmoke::CheckSpeeds()
     for (int32 sample = 0; sample < mLaneShips.Num(); ++sample)
     {
         const FSOLNpcRail& rail = rails[mLaneShips[sample]];
+        const int32 npcIndex = mLaneShips[sample];
         const FSOLLaneThrustState thrust = SOLLaneTraffic::LaneThrustAt(profile, laneFrame,
-            SOLNpcRail::LaneShipFromRail(rail), timeS);
+            SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(npcIndex), timeS);
         const bool bTurn = TrafficSmokeIsTurn(thrust.Segment);
         if (!bTurn && sample % stride != 0)
         {
             continue;
         }
-        const FVector3d laneForward = SOLNpcRail::LaneHullForward(rail, frame, timeS);
+        const FVector3d laneForward = SOLNpcRail::LaneHullForward(rail, frame, npcIndex, timeS);
         const FVector3d hull = SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(SOLNpcRail::Motion(rail,
-            frame), FVector3d::ZeroVector), SOLNpcRail::EvaluateAtTimeM(rail, frame, timeS) - frame.GroupBodyM[mLane]);
+            frame, npcIndex), FVector3d::ZeroVector),
+            SOLNpcRail::EvaluateAtTimeM(rail, frame, timeS) - frame.GroupBodyM[mLane]);
         chainBad += (hull | laneForward) < chainDot ? 1 : 0;
         if (bTurn)
         {
@@ -1020,7 +1025,7 @@ void FSOLNpcTrafficSmoke::CheckUTurn()
     {
         const FSOLNpcRail& rail = rails[index];
         const ESOLLaneSegment segment = SOLLaneTraffic::LaneThrustAt(profile, laneFrame,
-            SOLNpcRail::LaneShipFromRail(rail), frame.RailTimeS).Segment;
+            SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(index), frame.RailTimeS).Segment;
         if (!TrafficSmokeIsTurn(segment))
         {
             continue;
@@ -1317,7 +1322,7 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
     {
         const FSOLNpcRail& rail = rails[index];
         const FSOLLaneThrustState thrust = SOLLaneTraffic::LaneThrustAt(profile, laneFrame,
-            SOLNpcRail::LaneShipFromRail(rail), frame.RailTimeS);
+            SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(index), frame.RailTimeS);
         const FVector3d positionM = SOLNpcRail::EvaluateM(rail, frame);
         const double fromAM = ((positionM - laneFrame.AM) | laneFrame.Axis) - profile.EndArcAM;
         const bool bTurnOk = TrafficSmokeIsTurn(thrust.Segment)
@@ -1346,7 +1351,8 @@ void FSOLNpcTrafficSmoke::CheckHandOver(const TCHAR* label, const bool bSmooth)
         const bool bNearA = (startM - laneFrame.AM).Size() <= (startM - laneFrame.BM).Size();
         const double nearEndUlpM = TrafficSmokeUlp(((bNearA ? laneFrame.AM : laneFrame.BM) - viewpointM).Size());
         turnShips += TrafficSmokeIsTurn(SOLLaneTraffic::LaneThrustAt(profile, laneFrame,
-            SOLNpcRail::LaneShipFromRail(rail), frame.RailTimeS).Segment) ? 1 : 0;
+            SOLNpcRail::LaneShipFromRail(rail), static_cast<uint32>(nearby[sample].Value), frame.RailTimeS).Segment)
+            ? 1 : 0;
         FVector3f previous = SOLNpcTrafficMirror::LaneShipRelM(texelA, texelB, rows, shaderTimeS);
         FVector3d previousCpuM = SOLNpcRail::EvaluateAtTimeM(gpuRail, frame, static_cast<double>(shaderTimeS));
         for (int32 frameIndex = 1; frameIndex <= NPCTRAFFIC_SMOOTH_FRAMES; ++frameIndex)

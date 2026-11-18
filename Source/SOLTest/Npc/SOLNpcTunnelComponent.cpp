@@ -170,7 +170,8 @@ bool USOLNpcTunnelComponent::InitializeTunnels()
     TunnelMaterial->SetVectorParameterValue(FName(STYLE3), FLinearColor(
         static_cast<float>(SOL::NPC_TUNNEL_SCREEN_FADE_HALF_EXTENTS),
         static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_START_RADII),
-        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII), 0.0f));
+        static_cast<float>(SOL::NPC_TUNNEL_CHEVRON_FADE_END_RADII),
+        static_cast<float>(SOL::NPC_TUNNEL_CHEVRONS_PER_GAP)));
     TunnelMaterial->SetVectorParameterValue(FName(LAYOUT0), FLinearColor(
         static_cast<float>(SOL::NPC_TUNNEL_RING_BASE_SPACING_RADII),
         static_cast<float>(SOL::NPC_TUNNEL_RING_SPACING_PER_DISTANCE),
@@ -235,7 +236,8 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
     TArray<uint32> indices;
     vertices.Reserve(SOLNpcTunnel::TunnelSlotMeshVertexCount());
 
-    // Rings by slot (level of detail by slot), the two end rings, then per gap slot its dots and its two chevrons
+    // Rings by slot (level of detail by slot), the two end rings, then per gap slot its dots and its chevrons on the
+    // two walls (UV2 = (wall, chevron index))
     for (int32 slot = 0; slot < SOLNpcTunnel::RingSlotCount(); ++slot)
     {
         TunnelAddRing(vertices, indices, TUNNEL_KIND_RING, slot, SOLNpcTunnel::RingSegmentsForSlot(slot));
@@ -256,7 +258,11 @@ void USOLNpcTunnelComponent::BuildSlotMesh()
         }
         for (int32 wall = 0; wall < 2; ++wall)
         {
-            TunnelAddQuad(vertices, indices, TUNNEL_KIND_CHEVRON, slot, FVector2f(static_cast<float>(wall), 0.0f));
+            for (int32 chevron = 0; chevron < SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++chevron)
+            {
+                TunnelAddQuad(vertices, indices, TUNNEL_KIND_CHEVRON, slot,
+                    FVector2f(static_cast<float>(wall), static_cast<float>(chevron)));
+            }
         }
     }
     mSlotMeshVertexCount = vertices.Num();

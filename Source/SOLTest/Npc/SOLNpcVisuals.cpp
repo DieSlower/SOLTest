@@ -6,6 +6,7 @@
 #include "Npc/SOLNpcVisuals.h"
 
 #include "Menu/SOLSettingsSubsystem.h"
+#include "Npc/SOLNpcAiMath.h"
 #include "Npc/SOLNpcHullInstances.h"
 #include "Npc/SOLNpcRail.h"
 #include "Npc/SOLNpcScaleMath.h"
@@ -98,17 +99,13 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the placeholder hull transform of a ship (faction 0 cone along its heading, faction 1 flat box)
-    FTransform HullTransform(const FVector& locationCm, const FVector& headingUnreal, int32 faction, double lengthCm)
+    // Returns the placeholder hull transform of a ship (faction 0 cone along its heading, faction 1 flat box with its
+    // flat face toward the body top)
+    FTransform HullTransform(const FVector& locationCm, const FQuat& rotation, const int32 faction,
+        const double lengthCm)
     {
-        const FVector heading = headingUnreal.IsNearlyZero() ? FVector::ForwardVector : headingUnreal.GetSafeNormal();
-        if (faction == 0)
-        {
-            const FQuat rotation = FQuat::FindBetweenNormals(FVector::UpVector, heading);
-            return FTransform(rotation, locationCm, FVector(0.4, 0.4, 1.0) * (lengthCm / BASIC_SHAPE_SIZE_CM));
-        }
-        const FQuat rotation = FQuat::FindBetweenNormals(FVector::ForwardVector, heading);
-        return FTransform(rotation, locationCm, FVector(1.0, 0.5, 0.18) * (lengthCm / BASIC_SHAPE_SIZE_CM));
+        const FVector scale = faction == 0 ? FVector(0.4, 0.4, 1.0) : FVector(1.0, 0.5, 0.18);
+        return FTransform(rotation, locationCm, scale * (lengthCm / BASIC_SHAPE_SIZE_CM));
     }
 }
 
@@ -820,16 +817,18 @@ void ASOLNpcVisuals::UpdateCpuShips()
         }
     });
 
-    // Returns a ship's render location, previous location and hull heading (the collected heading: a Full ship's nose,
-    // a Mid ship's rail plus deviation velocity; the motion since last frame if none)
-    const auto placeShip = [&origin](const FSOLNpcCpuShip& ship, FVector& outLocationCm, FVector& outPrevLocationCm,
-        FVector& outHeading)
+    // Returns a ship's render location, previous location and drawn hull rotation from the collected heading (a Full
+    // ship's nose, a Mid ship's rail plus deviation velocity; the motion since last frame if none) and body top, both
+    // converted to Unreal axes
+    const auto placeShip = [&origin](const FSOLNpcCpuShip& ship, const int32 faction, FVector& outLocationCm,
+        FVector& outPrevLocationCm, FQuat& outRotation)
     {
         outLocationCm = FVector(origin.UniverseToRenderCm(ship.PositionM));
         outPrevLocationCm = FVector(origin.UniverseToRenderCm(ship.PrevPositionM));
-        outHeading = ship.HeadingDirection.IsZero() ? outLocationCm - outPrevLocationCm
-            : FVector(origin.UniverseToRenderCm(ship.PositionM + FVector3d(ship.HeadingDirection)
-                * SOL::NPC_HULL_LENGTH_M)) - outLocationCm;
+        const FVector heading = ship.HeadingDirection.IsZero() ? outLocationCm - outPrevLocationCm
+            : SOLRender::EclipticToUnreal(FVector3d(ship.HeadingDirection));
+        outRotation = SOLNpcAi::HullDrawRotation(heading, SOLRender::EclipticToUnreal(FVector3d(ship.HeadingTop)),
+            faction);
     };
 
     // Serial pass: each ship's slot in its layer (texel or per-faction instance; mesh-pool ships are placed here,
@@ -856,12 +855,13 @@ void ASOLNpcVisuals::UpdateCpuShips()
         if (ship.RenderTier == static_cast<uint8>(SOLNpcScale::ERenderTier::Mesh)
             && meshSlots[faction] < NPC_MESH_POOL_SIZE)
         {
-            FVector locationCm, prevLocationCm, heading;
-            placeShip(ship, locationCm, prevLocationCm, heading);
+            FVector locationCm, prevLocationCm;
+            FQuat rotation;
+            placeShip(ship, faction, locationCm, prevLocationCm, rotation);
             const int32 poolSlot = meshSlots[faction];
             UStaticMeshComponent* mesh = MeshPool[poolSlot];
             meshSlots[faction] += 2;
-            mesh->SetWorldTransform(HullTransform(locationCm, heading, faction, lengthCm));
+            mesh->SetWorldTransform(HullTransform(locationCm, rotation, faction, lengthCm));
             if (mMeshPoolOwners[poolSlot] != ship.NpcIndex)
             {
                 // A new owner: no motion vector from where the previous ship was
@@ -902,12 +902,13 @@ void ASOLNpcVisuals::UpdateCpuShips()
                 cpuTexels[slot] = FVector4f(relM.X, relM.Y, relM.Z, static_cast<float>(faction));
                 continue;
             }
-            FVector locationCm, prevLocationCm, heading;
-            placeShip(ship, locationCm, prevLocationCm, heading);
+            FVector locationCm, prevLocationCm;
+            FQuat rotation;
+            placeShip(ship, faction, locationCm, prevLocationCm, rotation);
             const double distanceCm = FMath::Max((locationCm - viewRenderCm).Size(), 1.0);
             const double sizeCm = FMath::Max(lengthCm, SOL::NPC_HULL_MIN_PIXELS * pixelPerCm * distanceCm);
-            mHullTransforms[faction][slot] = HullTransform(locationCm, heading, faction, sizeCm);
-            mHullPrevTransforms[faction][slot] = HullTransform(prevLocationCm, heading, faction, sizeCm);
+            mHullTransforms[faction][slot] = HullTransform(locationCm, rotation, faction, sizeCm);
+            mHullPrevTransforms[faction][slot] = HullTransform(prevLocationCm, rotation, faction, sizeCm);
         }
     });
 

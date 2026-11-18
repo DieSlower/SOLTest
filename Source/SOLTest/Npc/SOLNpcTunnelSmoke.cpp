@@ -1129,12 +1129,15 @@ void FSOLNpcTunnelSmoke::CheckSides(const TCHAR* label, const bool bLookingTowar
     const double lookSign = bLookingTowardB ? 1.0 : -1.0;
     for (int32 slot = 0; slot < SOLNpcTunnel::DetailSlotCount(); ++slot)
     {
-        FSOLNpcTunnelRing chevron;
-        if (SOLNpcTunnel::ChevronSlot(slot, input, chevron) && chevron.AxialOffsetM * lookSign > 2.0 * rt
-            && (!bFound || FMath::Abs(chevron.AxialOffsetM) < FMath::Abs(axialM)))
+        for (int32 index = 0; index < SOL::NPC_TUNNEL_CHEVRONS_PER_GAP; ++index)
         {
-            axialM = chevron.AxialOffsetM;
-            bFound = true;
+            FSOLNpcTunnelRing chevron;
+            if (SOLNpcTunnel::ChevronSlot(slot, index, input, chevron) && chevron.AxialOffsetM * lookSign > 2.0 * rt
+                && (!bFound || FMath::Abs(chevron.AxialOffsetM) < FMath::Abs(axialM)))
+            {
+                axialM = chevron.AxialOffsetM;
+                bFound = true;
+            }
         }
     }
 

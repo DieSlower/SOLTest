@@ -69,7 +69,7 @@ struct FSOLNpcDeviationFragment : public FMassFragment
 /**
  * Attitude of a Full-tier ship (SDD 18 section 3.7): added on promotion to Full and removed on demotion. The zero
  * quaternion means "not set yet": the Full AI's gather sets it from the rail plus deviation velocity
- * (SOLNpcAi::HandoffOrientation), so the nose starts where the Mid hull was drawn heading.
+ * and up hint (SOLNpcAi::HandoffOrientation), so the nose and roll start where the Mid hull was drawn.
  */
 USTRUCT()
 struct FSOLNpcAttitudeFragment : public FMassFragment

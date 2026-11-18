@@ -244,19 +244,19 @@ The NPC lane lines (issue #38) seen from 3 AU above the Sun with a million NPC s
 
 ![Approaching the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-approach.png)
 
-The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in.
+The lane guidance tunnel (issue #49) seen from 75 lane radii beside the Earth-Mars lane, where the tunnel is half faded in: the lane's dashed lines are handing over to a string of faint rings along the lane, which grow brighter as the player closes in (as built in #49; since the #50 guide thinning only every 6th ring is drawn, so few or none show from here).
 
 ![Inside the Earth-Mars lane tunnel](Docs/Images/49-lane-tunnel-inside.png)
 
-On the Earth-Mars tunnel's axis looking toward Mars: cyan rings receding toward Mars, closer together on screen with distance, keep right shown by green guide dots and chevrons on the right wall (outbound) and red ones on the left (inbound), and the wall label in its compact one-line form (the lane and the distance to the nearer end ring).
+On the Earth-Mars tunnel's axis looking toward Mars (as built in #49; since the #50 guide thinning only every 6th ring is drawn, each about 4.5 times farther than the one before, with dots and chevrons at each ring and halfway): cyan rings receding toward Mars, closer together on screen with distance, keep right shown by green guide dots and chevrons on the right wall (outbound) and red ones on the left (inbound), and the wall label in its compact one-line form (the lane and the distance to the nearer end ring).
 
 ![Lane tunnels meeting at Earth](Docs/Images/49-lane-tunnel-earth.png)
 
-40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet (as built in #49; since #50 the end rings sit three tunnel radii out, so the lane U-turns clear the planet). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
+40,000 km from Earth on its far side from Mars, facing Earth: the Earth-Mars tunnel's rings come out from behind Earth's upper edge, the planet hiding their lower parts, and run up to the vanishing point toward Mars; on the left the Venus-Earth tunnel, with its red and green wall chevrons, ends one tunnel radius outside the planet (as built in #49, so it shows the ring layout before the #50 guide thinning, which draws only every 6th ring; since #50 the end rings also sit three tunnel radii out, so the lane U-turns clear the planet). Each tunnel has its wall label in the compact one-line form (the lane and the distance to its nearer end).
 
 ![Lane traffic flowing through the Earth-Mars tunnel](Docs/Images/50-lane-traffic-flow.png)
 
-Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships: the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The player is barely moving, so the merge readout under the speed card says TOO SLOW against the 136 km/s of traffic here.
+Lane traffic (issue #50) a quarter of the way from Earth to Mars, looking toward Mars with 1M NPC ships (the shot shows the ring layout before the #50 guide thinning; the tunnel now draws only every 6th ring): the lane's ships keep right, outbound on the right half of the tunnel (green chevrons) and inbound on the left (red), fastest near the axis and slowest at the wall, and a quarter of the traffic flies in the halo outside the rings. The player is barely moving, so the merge readout under the speed card says TOO SLOW against the 136 km/s of traffic here.
 
 ![The merge readout in the tunnel label](Docs/Images/50-lane-merge-readout.png)
 
@@ -273,11 +273,11 @@ Measured from the Claude Code session logs by `Tools/Metrics/update_metrics.py`;
 
 | Metric | So far |
 |---|---|
-| Work time (wall-clock) | 140.4 h |
-| Time spent answering questions | 11.2 h |
-| Tokens | 8,030.2M |
-| Notional API price | $3,181 |
-| Subagents dispatched | 610 |
+| Work time (wall-clock) | 142.7 h |
+| Time spent answering questions | 11.4 h |
+| Tokens | 8,206.3M |
+| Notional API price | $3,246 |
+| Subagents dispatched | 621 |
 <!-- METRICS:END -->
 
 ## Documentation map

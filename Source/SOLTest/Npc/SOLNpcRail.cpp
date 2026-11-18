@@ -355,19 +355,20 @@ void SOLNpcRail::AccumulateLaneMaxPeak(TConstArrayView<FSOLNpcRail> rails, TArra
 
 //////////////////////////////////////////////////////////////////////////
 // Returns a lane rail's hull facing (zero for other kinds or without a lane frame)
-FVector3d SOLNpcRail::LaneHullForward(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const double railTimeS)
+FVector3d SOLNpcRail::LaneHullForward(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const int32 npcIndex,
+    const double railTimeS)
 {
     if (!RailHasLaneFrame(rail, frame))
     {
         return FVector3d::ZeroVector;
     }
     return SOLLaneTraffic::LaneHullForward(frame.LaneProfile[rail.Group], frame.LaneFrame[rail.Group],
-        LaneShipFromRail(rail), railTimeS);
+        LaneShipFromRail(rail), static_cast<uint32>(npcIndex), railTimeS);
 }
 
 //////////////////////////////////////////////////////////////////////////
 // Returns a rail's velocity and lane hull facing, a lane ship's leg and cycle derived once
-FSOLNpcRailMotion SOLNpcRail::Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame)
+FSOLNpcRailMotion SOLNpcRail::Motion(const FSOLNpcRail& rail, const FSOLNpcRailFrame& frame, const int32 npcIndex)
 {
     FSOLNpcRailMotion motion;
     if (!RailHasLaneFrame(rail, frame))
@@ -376,9 +377,11 @@ FSOLNpcRailMotion SOLNpcRail::Motion(const FSOLNpcRail& rail, const FSOLNpcRailF
         return motion;
     }
     const FSOLLaneShipMotion lane = SOLLaneTraffic::LaneShipMotion(frame.LaneProfile[rail.Group],
-        frame.LaneFrame[rail.Group], LaneShipFromRail(rail), frame.RailTimeS, RAIL_VELOCITY_STEP_S);
+        frame.LaneFrame[rail.Group], LaneShipFromRail(rail), static_cast<uint32>(npcIndex), frame.RailTimeS,
+        RAIL_VELOCITY_STEP_S);
     motion.VelocityMps = lane.VelocityMps;
     motion.LaneHullForward = lane.HullForward;
+    motion.LaneHullTop = lane.HullTop;
     return motion;
 }
 
@@ -393,6 +396,13 @@ FVector3d SOLNpcRail::HullHeadingVelocityMps(const FSOLNpcRailMotion& motion, co
     }
     const double railSpeedMps = FMath::IsFinite(motion.VelocityMps.SizeSquared()) ? motion.VelocityMps.Size() : 0.0;
     return motion.LaneHullForward * FMath::Max(railSpeedMps, SOL::NPC_LANE_WALL_SPEED_MPS) + deviationVelocityMps;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the up a hull rolls to: a lane ship's lane top, else the radial up hint
+FVector3d SOLNpcRail::HullUpHint(const FSOLNpcRailMotion& motion, const FVector3d& radialUpHint)
+{
+    return motion.LaneHullTop.IsZero() ? radialUpHint : motion.LaneHullTop;
 }
 
 //////////////////////////////////////////////////////////////////////////

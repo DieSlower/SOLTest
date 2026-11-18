@@ -94,13 +94,14 @@ void USOLNpcFullAiProcessor::GatherChunk(const FChunkView& view) const
         const FSOLNpcRail& rail = view.Rails[entity].Rail;
         FSOLNpcAiShip ship;
 
-        // Hull heading (one leg derivation, SOLNpcRail::Motion) and the up hint (away from the group's body); a ship
-        // just promoted to Full starts with its nose along its rail heading plus deviation velocity (the heading its
-        // hull was drawn with) and no spin, and its step keeps the nose on the rail heading (a lane ship faces its
-        // thrust, D21), so the hull does not turn at promotion or at demotion
-        const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame);
+        // Hull heading (one leg derivation, SOLNpcRail::Motion) and the up hint (a lane ship's lane top, else away from
+        // the group's body; SDD 50 section 16); a ship just promoted to Full starts with its nose along its rail
+        // heading plus deviation velocity and its up toward that hint (the attitude its Mid hull was drawn with) and
+        // no spin, and its step keeps the nose on the rail heading (a lane ship faces its thrust, D21) and steers its
+        // up toward the hint at its limited rate, so a lane hull does not turn or roll at promotion or at demotion
+        const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame, combat.NpcIndex);
         ship.RailHeadingMps = SOLNpcRail::HullHeadingVelocityMps(motion, FVector3d::ZeroVector);
-        ship.UpHint = state.PositionM - frame.GroupBodyM[rail.Group];
+        ship.UpHint = SOLNpcRail::HullUpHint(motion, state.PositionM - frame.GroupBodyM[rail.Group]);
         FSOLNpcAttitudeFragment& attitude = view.Attitudes[entity];
         if (attitude.Orientation.SizeSquared() <= 0.0)
         {

@@ -22,7 +22,8 @@ struct FSOLNpcAiShip
     FVector3d AimDirection = FVector3d::ZeroVector;         // Gun aim for this frame's shots
     FVector3d RailHeadingMps = FVector3d::ZeroVector;       // The rail's hull heading (HullHeadingVelocityMps with no
                                                             // deviation: a lane ship faces its thrust)
-    FVector3d UpHint = FVector3d::ZeroVector;               // Away from the group's body (the attitude's desired up)
+    FVector3d UpHint = FVector3d::ZeroVector;               // The attitude's desired up: a lane ship's lane top,
+                                                            // else away from the group's body (SOLNpcRail::HullUpHint)
     FQuat4d Orientation = FQuat4d::Identity;                // Attitude (read and written by Step; rail-frame axes =
     FVector3d AngularVelocityRadPerS = FVector3d::ZeroVector; // universe ecliptic axes)
     int32 NpcIndex = INDEX_NONE;

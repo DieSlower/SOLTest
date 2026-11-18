@@ -30,6 +30,9 @@ struct FSOLNpcCpuShip
     uint8 AiTier = 1;                                 // SOLNpcScale::EAiTier
     FVector3f HeadingDirection = FVector3f::ZeroVector; // Unit hull heading (ecliptic): a Full ship's nose, a Mid
                                                       // ship's SOLNpcAi::HullForward (zero for Point-tier ships)
+    FVector3f HeadingTop = FVector3f::ZeroVector;     // Hull body top (ecliptic, not yet orthogonal to the heading):
+                                                      // a Full ship's attitude up, else a lane ship's LaneHullBasis
+                                                      // top or the radial up hint (SOLNpcRail::HullUpHint)
     uint8 bHidden = 0;                                // Dead (waiting to respawn): not drawn
     int32 NpcIndex = INDEX_NONE;                      // Population index (stable owner key for pooled meshes)
     float RailDistanceM = 0.0f;                       // Bare-rail distance from the viewpoint (the GPU far layer's

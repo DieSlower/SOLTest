@@ -12,8 +12,9 @@ event bus).
 and report (section 12).
 Status: **draft (2026-11-13), grill-me done (D1-D12), questions Q1-Q8 answered by the user (2026-11-13, D13-D20),
 amended for the hull flip before braking (D21, section 14), Q9 answered by the user (2026-11-17, D22); 50a-50d
-built and committed; 50e profiling recorded (section 15); open: Q11 (flip axis and U-turn attitude, from the 50e
-tuning strips).**
+built and committed; 50e profiling recorded (section 15); Q11 answered by the user (2026-11-17: the flip swings toward
+each ship's own top, the U-turn attitude kept) and the tunnel guide thinning decided (D23), both built (section 16);
+the rendered hull's roll decided by the user (2026-11-18, D24 and D25) and built (section 16).**
 
 ## 1. Problem
 
@@ -127,6 +128,27 @@ the lane.
   with no other coast the window is exactly the flip (the ship coasts at its peak speed for 60 s); on a lane with a
   longer coast the flip sits in the middle of the coast. The leg profile, the thrust state (a new `Flip` state) and
   the hull facing are redefined in sections 4.3, 4.4 and 4.12; summary and test impact in section 14.
+  *Amended by the user's Q11 answer (2026-11-17, section 16):* (a) the nose turns over toward **the ship's own top**
+  `T`, a fixed roll about the travel direction per ship (a hash of its NPC index, nothing stored), not the lane's `Up`,
+  so the ships of a lane flip in different planes; (b) through the U-turn the hull keeps holding its brake attitude
+  (as built).
+  *Amended again by D24 (user, 2026-11-18, section 16):* `T` is the ship's top about the **outbound** axis, `T_out`,
+  and both flips of a cycle turn in the same plane: the outbound flip swings the nose toward `side x T_out`, the
+  inbound one toward `-side x T_out` (the top the outbound flip left), `side` = +1 or -1 fixed per ship.
+- **D24: The drawn hull carries a full attitude** (user, 2026-11-18, answers the section 12 open question on the
+  rendered hull's roll). The hull is drawn from a forward and a body top (`LaneHullBasis`, `HullRotation`), not from
+  its heading alone. Both flips of a cycle turn in the same plane, the attitude is held through the brake and the
+  U-turn with no extra roll, and the flip side (top-over or bottom-over, `LaneFlipSide`) is fixed per NPC-index key.
+- **D25: The flip window grows with ship length** (user, 2026-11-18) so the rotational acceleration at the ship's ends
+  stays under the ship's limit: at most 1 G, lower for bigger ships, at least 0.63 G at 2 km (`LaneFlipDurationS`,
+  `LaneFlipEndAccelLimitMps2`). Every hull is still the 30 m placeholder, whose window is exactly `NPC_LANE_FLIP_S`,
+  so the lane math, rails and shader mirror keep the one 60 s window (open item in section 16).
+- **D23: Tunnel guide thinning** (user, 2026-11-17, built in 50e; SDD 49 sections 4.5 and 4.7 amended). The tunnel
+  keeps only every 6th ring of the #49 lattice (`NPC_TUNNEL_RING_KEEP_EVERY` 6), near and far, at every speed: both
+  spacing terms scale by 6 (`NPC_TUNNEL_RING_BASE_SPACING_RADII` 12, `NPC_TUNNEL_RING_SPACING_PER_DISTANCE` 1.5), so
+  the constant zone stays 8 tunnel radii and the kept rings are a subset of the old ones. Guide dots and wall chevrons
+  sit at every kept ring and halfway to the next (`NPC_TUNNEL_DOTS_PER_GAP` 2, `NPC_TUNNEL_CHEVRONS_PER_GAP` 2), never
+  at a removed ring; the end rings are unchanged.
 
 ## 3. What exists today (code survey, HEAD `f336e10`)
 
@@ -345,10 +367,15 @@ flowchart LR
     leg it is the whole coast. `f` = 0 on a leg with no brake (`t_a` = 0: `kappa` 0, or `l0 <= w T_f`). After the
     rail's float rounding an uncapped leg's derived `t_c` can be below `T_f` by a rounding step, so the window may
     overlap a burn by microseconds; accepted (the thrust state's burn kinds win, section 4.12).
-  - **Hull forward on a leg:** `F = cos(pi f) d + sin(pi f) Up`, `d` the travel direction (`+Axis` outbound, `-Axis`
-    inbound), `Up` the lane's #49 basis *(chosen: the nose pitches over ecliptic north; the flip axis is a 50e tuning
-    item)*. So `F = d` (facing travel) through the burn and up to the window, `F = -d` (facing the brake thrust) from the
-    window's end to the end ring.
+  - **Hull forward on a leg:** `F = cos(pi f) d + sin(pi f) T`, `d` the travel direction (`+Axis` outbound, `-Axis`
+    inbound), `T = LaneShipTopVector(key, d, Up)` the ship's own top *(Q11a, user 2026-11-17; first built with the
+    lane's `Up`, so every ship pitched over ecliptic north)*: `T = cos(theta) U + sin(theta) (d x U)`, `U` the lane's
+    #49 `Up` projected off `d`, `theta` a roll in [0, 2 pi) from murmur3's 32-bit finaliser of the key (the NPC index),
+    so one ship keeps one roll on both legs and every lane and nothing is stored. So `F = d` (facing travel) through
+    the burn and up to the window, `F = T` at its middle, `F = -d` (facing the brake thrust) from the window's end to
+    the end ring. *Amended by D24 (user, 2026-11-18, section 16): `T` above becomes `side x B`, `B` the leg's starting
+    top (`T_out = LaneShipTopVector(key, +Axis, Up)` outbound, `-T_out` inbound), so both flips turn in one plane, and
+    the drawn hull carries a full attitude (`LaneHullBasis`).*
   - **No end-zone interaction:** the flip is placed on the nominal leg time; the metric map changes the along-lane
     speed only, never its direction (`X' > 0`), so `d` and `F` are the same on the current leg. The window's arc span
     `v_p T_f` (about 4,900 km on Earth - Moon, 18,000 km on a capped lane) lies far inside `[Z, l0 - Z]` on every
@@ -776,6 +803,9 @@ power about 59 h at 1 s and 10 s substeps (about 61 h at 30 s, 66 h at 169 s), b
   travels in `FSOLShipFrameInputs::Lanes`), and `Ship -> Universe` (`SOLRenderPlacement`) in the processor. New files
   `Ship/SOLAutopilotOrder.{h,cpp}`, `Npc/SOLAutoLanesSmoke.{h,cpp}` (flag `-SOLSmokeAutoLanes`), tests
   `LaneAutoRulesTest.cpp`, `WarPowerMoveTest.cpp`, `AutopilotRegressionTest.cpp`.)*
+- *(As built after D24, 2026-11-18: `Npc/SOLNpcAiMath.cpp` includes `Traffic/SOLLaneTrafficMath.h` for
+  `SOLNpcAi::HullDrawRotation`, which wraps `SOLLaneTraffic::HullRotation`; this is within the existing `Npc ->
+  Traffic` edge.)*
 - New files: `Traffic/SOLLaneTrafficMath.{h,cpp}`, `Traffic/SOLLaneTrafficSubsystem.{h,cpp}`,
   `Shaders/Private/SOLNpcTraffic.ush`, `Npc/SOLNpcTrafficSmoke.{h,cpp}`, `Tests/NpcTrafficMathTest.cpp`; flags
   `-SOLSmokeNpcTraffic`, `-SOLSmokeNpcTrafficProfile` (not built; 50e used `-SOLSmokeNpcTunnelProfile`, section 15); no new cvar (the A/B baseline is the pre-#50 commit, section 8).
@@ -811,6 +841,10 @@ turn's centre). Pure and CPU-side; #51 decides how a flame uses it (a shader mir
 - New pure functions: `double LaneHullFlipFraction(double legS, double accelS, double legTimeS)` (0 when `accelS <= 0`
   or not finite; `tl` clamped to [0, `legS`]) and `FVector3d LaneHullForward(profile, frame, ship, t)` (unit; an
   invalid frame gives the basis `+Axis`, or `+X` when the basis is invalid; a non-drivable lane gives `+Axis`).
+  *Amended 2026-11-17 (Q11a, section 16): `LaneHullForward(profile, frame, ship, laneShipKey, t)` takes the ship's
+  key (the NPC index) for its own top `T` (section 4.4), and so do `LaneThrustAt` and `LaneShipMotion`.*
+  *Amended 2026-11-18 (D24, section 16): the flip swings toward `side x T_out` outbound and `-side x T_out`
+  inbound; `LaneShipMotion` also returns the body top (`HullTop`).*
 - For #51: the flame is off for the whole window and on again exactly when braking starts, with the hull already
   turned; in a turn the main engine is aligned with the thrust only at the apex (#51 may scale the flame by the
   thrust's component along `HullForward`).
@@ -924,7 +958,13 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
     magnitude equals `LegSpeedMps` on a leg (1e-3). **D21 (new test `SOLTest.NpcRail.LaneHullForward`):**
     `SOLNpcRail::LaneHullForward(rail, frame, t)` equals `SOLLaneTraffic::LaneHullForward` of `LaneShipFromRail(rail)`
     (1e-9), is unit length, is continuous at the float rail's joints and across the window, and is the zero vector for
-    a cluster or battle rail (the caller keeps the velocity heading). **Third 50b pass (2026-11-16):**
+    a cluster or battle rail (the caller keeps the velocity heading). *Amended 2026-11-17 (Q11a, section 16): as
+    built the call is `SOLNpcRail::LaneHullForward(rail, frame, npcIndex, t)` and it equals
+    `SOLLaneTraffic::LaneHullForward` of `LaneShipFromRail(rail)` with the NPC index as `laneShipKey`; the test also
+    checks the ship's own top `LaneShipTopVector(npcIndex, d, Up)` at the window's middle.* *Amended 2026-11-18 (D24,
+    section 16): the window's middle is `side x T_out` outbound and `-side x T_out` inbound, and the rail's
+    `Motion` top equals `LaneHullBasis`'s.*
+    **Third 50b pass (2026-11-16):**
     `SOLTest.NpcRail.GpuLaneCycleSweep` (no repeated float positions anywhere on the cycle, per phase, section 4.6) and
     `SOLTest.NpcRail.LaneHandOverMargin` (the float mirror within `LaneHandOverMarginM` on every default lane, seen from
     1,000 km and from the grown Mid radius; 0 for an unknown lane or one without a frame).
@@ -958,7 +998,14 @@ the test asserts it. New file `Tests/NpcTrafficMathTest.cpp` (`SOLTest.NpcTraffi
     (1e-12); `+Axis` / `-Axis` (travel) before the window, `-travel` after it; inside the window `cos(pi f) d + sin(pi
     f) Up` (1e-9); held at `-Axis` through the turn at B and `+Axis` through the turn at A for a braking ship;
     continuous at the four joints and across the window (sampled angle steps below `1.5 pi dt / T_f` plus 1e-9 rad); a
-    no-brake ship (`kappa` 0, or a leg `<= w T_f`) faces travel on legs and its velocity in turns.
+    no-brake ship (`kappa` 0, or a leg `<= w T_f`) faces travel on legs and its velocity in turns. *Amended
+    2026-11-17 (Q11a, section 16): inside the window the hull is `cos(pi f) d + sin(pi f) T`, `T =
+    LaneShipTopVector(key, d, Up)` the ship's own top for the key passed to `LaneHullForward(profile, frame, ship,
+    key, t)`, not the lane's `Up`; `LaneShipTopVector` is unit and perpendicular to `d`, the same for the same key,
+    spread round the axis over keys, and falls back to a perpendicular of `d` for a degenerate up (new test
+    `SOLTest.NpcTrafficMath.HullTopVector`).* *Amended 2026-11-18 (D24, section 16): `T` becomes `side x T_out`
+    outbound and `-side x T_out` inbound (`T_out` about `+Axis`), both flips in one plane; the attitude cases are
+    `SOLTest.Npc.HullFlip.*`.*
 15b. **50a review additions:** float rail (every stored ship value rounded to float: 1 m continuity at `T_leg / 2 +-
     1 ms` and at the joints, exact end rings, below the wake bound; `T_leg` from `LaneShipLegS`); a current leg at or
     below `Z` (map strictly monotone, inverse round trip, `X(l0) = 1.001 Z`, a crowded lane's ship moves forward); the
@@ -1085,14 +1132,27 @@ braking, 2026-11-13) is the user's refinement of D17 (section 14).
   the readout line fits nowhere, even slid sideways?** Answer A: the grown label slides sideways (still covering its
   own centred box, as close to centred as possible) to fit, and if it fits nowhere even slid the readout goes on the
   fixed fallback line under the speed card (D18, section 4.8).
+- **Q11 (answered by the user, 2026-11-17): hull flip axis and U-turn attitude** (50e strips, section 15). (a) The
+  flip turns the nose toward **each ship's own top** (a per-ship roll about the travel direction), neither the lane's
+  `Up` (the recommendation) nor its `Right`; (b) through the U-turn the hull keeps holding its brake attitude (the
+  recommendation, as built). Recorded as the D21 amendment; built in section 16.
+
+- **The rendered hull's roll (review finding 1 on Q11 / D23, answered by the user 2026-11-18):** the drawn hull
+  carries its own top, both flips turn in one plane with the attitude held through the brake and the U-turn, the flip
+  side is fixed per key (D24), and the flip window grows with ship length (D25). Built in section 16.
+- **Full-tier ships' roll (found in the D24 review, answered by the user 2026-11-18):** (a) a Full-tier lane ship's AI
+  is handed off and steers with its lane top (`SOLNpcRail::HullUpHint`, the `LaneHullBasis` top) instead of the radial
+  up hint, and every Full ship is drawn with its attitude's up, so promotion keeps the roll and the roll is
+  rate-limited on the Full tier; (b) a non-lane Full ship keeps its combat roll, and its pop back to the radial top at
+  Full -> Mid demotion is accepted as tech debt (it happens beyond 50 km, where the hull is never visible). Built in
+  section 16.
 
 ## 12. Open questions (for the user; each with the recommended answer)
 
-- **Q11 (50e, open): hull flip axis and U-turn attitude.** (a) The flip turns the nose over the lane's `Up` (ecliptic
-  north, built) or sideways toward the lane's `Right` (a turn about `Up`)? Recommended: keep `Up` (built; seen
-  from the side the whole flip reads as one smooth pitch, and every ship of a lane flips the same way). (b) Through the
-  U-turn the hull holds its brake attitude (built, D21) or faces its velocity (a 180-degree snap at the end ring, since
-  the hull arrives engine first)? Recommended: keep the held attitude. Strips: section 15.
+- **Per-ship hull length (D25, open item, 2026-11-18):** how a real hull length (or flip duration) would reach the lane
+  math, rails and shader mirror once ships get real sizes: a rail field, a per-faction or per-group table, or a
+  duration derived from the key. Not needed while every hull is the 30 m placeholder; see section 16 and
+  `Docs/TECH_DEBT.md`.
 
 **Q9 (resolved 2026-11-17, D22):** how does the player tell AUTO to fly around lanes or ignore the safe space
 (D19)? Answer: the "War power move" entry of the round command menu, per command, a straight path ignoring the lane
@@ -1145,8 +1205,34 @@ rules at maximum thrust, nothing saved (section 2, D22).
 - 2026-11-17: 50e profiling (section 15): every 1080p gate measured passes except the AUTO lane rules, which are not
   isolated (upper bound only); wake and rail texel costs recorded; tuning strips for the flip axis and the U-turn attitude
   shot in a scratch tree for the user (open question Q11); README gallery shots.
+- 2026-11-17: Q11 answered by the user (section 11) and built (section 16, uncommitted): (a) the mid-leg flip turns
+  toward each ship's own top `T` (`LaneShipTopVector`, a roll hashed from the NPC index, nothing stored), D21 and
+  sections 4.4 and 14 amended; (b) the U-turn attitude kept. `LaneHullForward`, `LaneThrustAt`, `LaneShipMotion` and
+  `SOLNpcRail::LaneHullForward` / `Motion` take the key; new test `SOLTest.NpcTrafficMath.HullTopVector`.
+- 2026-11-17: D23 (user): the tunnel guide thinning, every 6th ring kept, dots and chevrons at each kept ring and
+  halfway (SDD 49 section 12d), built (section 16, uncommitted); new test `SOLTest.NpcTunnelMath.GuideThinning`.
+- 2026-11-17: Q11 / D23 review fixes: a braking ship past the window returns `-d` without evaluating `T`; the roll
+  hash uses UE's `MurmurFinalize32` (same output); a `static_assert` ties both ring spacing terms to `KEEP_EVERY`;
+  the slot counts (12 ring, 6 gap, `NEAR` 3, `MID` 5) and 2,884 vertices per lane are pinned exactly in the tests;
+  section 16 added and the stale `Up` hull formula and old signatures marked amended (sections 4.12, 6 cases 10 and
+  15c, 15). The rendered hull's roll is an open question (section 16).
+- 2026-11-18: the rendered hull's roll answered by the user (D24, D25) and built test first (section 16,
+  uncommitted; contract `Plans/50-hull-flip-contract.md`): `FSOLLaneHullBasis`, `LaneFlipSide`, `LaneHullBasis`,
+  `HullRotation`, `LaneFlipEndAccelMps2`, `LaneFlipEndAccelLimitMps2`, `LaneFlipDurationS`; the inbound flip re-pinned
+  to the outbound plane; the visuals draw `HullRotation(forward, top)`; new test file `NpcHullFlipTest.cpp`.
+- 2026-11-18: D24 review fixes and the user's Full-tier roll answer (section 11): a Full lane ship is handed off and
+  steered with its lane top (`SOLNpcRail::HullUpHint`), every Full ship is drawn with its attitude's up, and the tier
+  processor evaluates `Motion` only without an attitude; the forward-only paths skip the top vector outside the flip
+  window again; `SOLNpcAi::HullDrawRotation` (moved from the visuals, its cone quarter turn a literal quaternion);
+  `NPC_LANE_FLIP_PEAK_RATE_FACTOR` named once in `SOLConstants.h`; `LaneShipTopVector` reuses the orthogonal-top
+  helper; tests `Npc.HullFlip.DrawRotation`, `Npc.HullFlip.TierTopAndPromotion` and the roll checks in
+  `NpcRail.FullTierHandoff`; the non-lane demotion roll pop logged in `TECH_DEBT.md`.
 
 ## 14. Amendment 1 (2026-11-13): the hull flip finishes before braking (D21)
+
+*Amended 2026-11-17 (Q11a, section 16): the flip axis below is the ship's own top `T`, not the lane's `Up`.
+Amended 2026-11-18 (D24, section 16): both flips turn in one plane, toward `side x T_out` outbound and `-side x
+T_out` inbound.*
 
 **Decision (user, refines D17):** the about 60 s engine-first hull flip must finish before braking starts. Every
 burning leg therefore has a mandatory zero-thrust window `T_f` = `NPC_LANE_FLIP_S` (60 s, the existing constant, new
@@ -1289,13 +1375,147 @@ Full-AI budget to 0 (so the hull is a Mid hull drawn exactly along `LaneHullForw
 from one faction-0 (cone) Earth - Moon ship, plus two command-line switches in `TrafficHullForward`: `-E50FlipYaw`
 (the nose swings toward the lane's `Right` instead of `Up`, a turn about `Up`) and `-E50UTurnVelocity` (a braking ship
 faces its velocity in the U-turn instead of holding its brake attitude). Neither is a constant in the shipped code (the
-axis is `frame.Up` in `TrafficHullForward`); no constant was changed. The strips (side, top and oblique views at
-f = 0.03-0.97; the U-turn at 3-97 % of the turn, `T_U` 169 s and `Rw` 536 km on Earth - Moon) are kept outside the
-repo; the user picks the axis and the U-turn attitude (open, section 12). With the camera co-moving, the built U-turn
-row shows the same hull in every frame (the attitude is held while the velocity turns); in the alternative row the
-nose shows the travel direction at each step.
+axis is `frame.Up` in `TrafficHullForward`); no constant was changed. *(Amended 2026-11-17, section 16: the axis was
+`frame.Up` when the strips were shot; since Q11a it is each ship's own top `T`, `LaneShipTopVector`.)* The strips
+(side, top and oblique views at f = 0.03-0.97; the U-turn at 3-97 % of the turn, `T_U` 169 s and `Rw` 536 km on
+Earth - Moon) are kept outside the repo; the user picked the axis and the U-turn attitude (Q11, section 11; built in
+section 16). With the camera co-moving, the built U-turn row shows the same hull in every frame (the attitude is held
+while the velocity turns); in the alternative row the nose shows the travel direction at each step.
 
 **Gallery:** `Docs/Images/50-lane-traffic-flow.png` (V1a), `50-lane-merge-readout.png` (V6 quarter-axis view, MATCHED
 in the label), `50-lane-auto-hold.png` (V7 hold, the AUTO `LANE` tag), shot from the main tree at 1920x1080. The
 smokes in those runs: `-SOLSmokeNpcTraffic` 19 / 19, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeAutoLanes` 13 / 13 (at
-1M NPCs). `GameUserSettings.ini` MD5 `cbcf9b65...` after every run.
+1M NPCs). `GameUserSettings.ini` MD5 `cbcf9b65...` after every run. The shots predate the guide thinning (D23,
+section 16), so they show the ring layout before thinning.
+
+## 16. As built: Q11 hull flip toward the ship's own top and D23 tunnel guide thinning (2026-11-17)
+
+Both changes were built after part 50e, test first, and are uncommitted at the time of writing.
+
+**Q11a, the flip toward each ship's own top (D21 amendment, sections 2, 4.4 and 11).**
+
+- New pure function `FVector3d SOLLaneTraffic::LaneShipTopVector(uint32 laneShipKey, const FVector3d&
+  travelDirection, const FVector3d& up)`: `T = cos(theta) U + sin(theta) (d x U)`, `d` the unit travel direction,
+  `U` the up projected off `d` and normalised, `theta = 2 pi MurmurFinalize32(key) / 2^32` (UE's murmur3 32-bit
+  finaliser, a bijection that spreads consecutive keys over [0, 2 pi)). An up that is zero, non-finite or within a
+  sine of 1e-9 of `d` falls back to the world axis least aligned with `d`, projected the same way; a zero or
+  non-finite `d` gives the zero vector. Nothing is stored: the key is the NPC index, so a ship keeps one roll on
+  both legs and on every lane.
+- `LaneHullForward`, `LaneThrustAt` and `LaneShipMotion` take `uint32 laneShipKey` after the ship. On a leg the hull
+  is `F = cos(pi f) d + sin(pi f) T`; before the window (`f` = 0) it is exactly `d` and after it (`f` = 1, a braking
+  ship) exactly `-d`, without evaluating `T` (after D24 this still holds in the forward-only paths, `LaneHullForward`
+  and `LaneThrustAt`, which evaluate the top vector only inside the window; `LaneShipMotion` and `LaneHullBasis`
+  return the top, so they evaluate it everywhere). The ships of a lane therefore turn over in different planes
+  (each one's plane spans `d` and its own `T`). The flip window, the flip fraction, the thrust kinds and the U-turn
+  are unchanged.
+- **Q11b, the U-turn attitude:** kept as built (the brake attitude is held in world space through the turn, section
+  4.4).
+- `SOLNpcRail::LaneHullForward(rail, frame, npcIndex, railTimeS)` and `SOLNpcRail::Motion(rail, frame, npcIndex)`
+  pass the NPC index as the key; the tier processor (Mid hull heading) and the Full-AI processor (hand-off heading)
+  pass `NpcIndex`, so the Mid and Full tiers and both hand-offs use the same hull forward.
+- Tests: `SOLTest.NpcTrafficMath.HullTopVector` (new: unit, perpendicular to `d`, deterministic, independent of the
+  up's length and skew and of `d`'s length, spread round the axis over consecutive and strided keys, the degenerate
+  up and `d` fallbacks, and on the lanes the hull equals `T` at the window's middle and stays in the plane of `d` and
+  `T`); `HullFlip`, `ThrustState`, `EdgeCases` and the `NpcRail` cases `LaneHullForward`, `HullHeading` and
+  `FullTierHandoff` re-pinned to the keyed hull.
+- **Resolved (2026-11-18, D24 and D25): the rendered hull's roll.** The visuals used to draw every hull from its
+  heading alone (a shortest-arc `FindBetweenNormals` rotation, singular at heading Unreal -X), so the drawn roll was
+  not the ship's top. Answered and built below; the inbound flip direction above (`T` about `-Axis`) is superseded.
+
+**D24 and D25, the drawn hull attitude and the flip window (user, 2026-11-18; contract
+[`Plans/50-hull-flip-contract.md`](../Plans/50-hull-flip-contract.md), tests `SOLTest.Npc.HullFlip.*`).**
+
+- **Why one plane.** Each flip is a rigid half turn about an axis across the heading, and the attitude is held from
+  a flip's end through the brake, the U-turn and the next burn, with no stored state and no snap. Two half turns about
+  axes across the lane make a rotation about the lane axis by twice the angle between them, so the cycle closes only
+  if both axes are parallel: the inbound flip turns in the outbound one's plane. (The alternative, a slow roll in the
+  U-turn, breaks "attitude held through the U-turn".) Choosing the side cannot fix the inbound roll either, since a
+  turn by pi and by -pi about one axis end in the same attitude.
+- **Attitude** (`FSOLLaneHullBasis`, `SOLLaneTraffic::LaneHullBasis(profile, frame, ship, key, t)`): `T_out =
+  LaneShipTopVector(key, +Axis, Up)`, `side = LaneFlipSide(key)`. A leg starts with top `B` (`T_out` outbound,
+  `-T_out` inbound); in the window `F = cos(pi f) d + side sin(pi f) B`, `Top = cos(pi f) B - side sin(pi f) d` (a
+  half turn about `side (Axis x T_out)`, the same axis on both legs, so the two flips make one full turn and the cycle
+  is periodic). From the window's end the attitude `(-d, -B)` is held through the brake and the turn (`(-Axis, -T_out)`
+  at B, `(+Axis, T_out)` at A). Seen in the body, a top-over ship (`side` +1) pitches its nose toward its own top on
+  both legs. A ship that never brakes (kappa 0, or a leg of at most `w T_f`) carries `T_out` about `Up` with its
+  heading: `Top = (T_out . Up) Up + (T_out . Right) (F x Up)`, on the legs and through the turns. A bad lane gives
+  `LaneShipTopVector(key, F, Up)`. The top is made orthogonal to `F` (Gram-Schmidt) at the end. `LaneHullForward`,
+  `LaneThrustAt` and `LaneShipMotion` read the same internal basis, so the forward is bit-identical everywhere;
+  `FSOLLaneShipMotion::HullTop` and `FSOLNpcRailMotion::LaneHullTop` carry the top.
+- **Flip side** (`LaneFlipSide(key)`): +1 or -1 from a salted `MurmurFinalize32` of the key (low bit), so it does not
+  follow the roll (which uses the key's own hash); both values occur over consecutive and strided keys.
+- **Drawn rotation** (`SOLLaneTraffic::HullRotation(forward, top)`): `+X` to the normalised forward, `+Z` to the top
+  made orthogonal to it, `+Y = Z x X`; a zero, non-finite or parallel top falls back to a perpendicular chosen from the
+  forward alone. No singular heading. `ASOLNpcVisuals` converts both vectors with `SOLRender::EclipticToUnreal` and
+  draws `SOLNpcAi::HullDrawRotation(heading, top, faction)`: `HullRotation`, for faction 0's cone after a quarter turn
+  about `+Y` (a literal quaternion, nothing read at static init) so its axis is the nose; faction 1's flat box with its
+  flat face toward the top. Once per ship, for the current and previous transform.
+- **Which top is drawn** (`FSOLNpcCpuShip::HeadingTop`, filled by the tier processor's Collect pass; user decision
+  2026-11-18, section 11): every Full ship's attitude up (with its attitude forward; `Motion` is not evaluated for a
+  ship with an attitude); a Mid ship's `SOLNpcRail::HullUpHint(motion, radial)`, the `LaneHullBasis` top for a lane
+  ship and the radial up hint otherwise. The Full AI (`USOLNpcFullAiProcessor`) uses the same `HullUpHint` as its up
+  hint: the hand-off (`HandoffOrientation`) starts the attitude's up at the Mid hull's drawn top, and `StepFullShip`
+  steers the up toward the lane top at the class's angular rate, so a lane ship keeps its roll at promotion and
+  demotion and the flip's roll is rate-limited on the Full tier. A non-lane Full ship keeps its combat roll and pops
+  back to the radial top at demotion (beyond 50 km, never visible; `TECH_DEBT.md`).
+- **Flip window per ship length (D25)**: `LaneFlipEndAccelMps2(L, T_f) = (1.5 pi / T_f)^2 L / 2` (the smoothstep's
+  peak turn rate squared times half the length); `LaneFlipEndAccelLimitMps2(L)` = 1 G up to 1 km, then `1 G x (1 km /
+  L)^0.5`, never below 0.05 G (`NPC_LANE_FLIP_END_ACCEL_*`, provisional numbers: 0.71 G at 2 km, 0.22 G at 20 km);
+  `LaneFlipDurationS(L) = max(NPC_LANE_FLIP_S, 1.5 pi sqrt(L / (2 limit(L))))`, the shortest window at or above 60 s
+  within the limit. A 60 s flip stays within it up to about 2.16 km; a 20 km ship flips in about 318 s.
+- **Open item (D25): no ship length reaches the lane math.** `FSOLLaneShip` has no length, `FSOLNpcRail` is a packed
+  32-byte GPU struct with no spare field for it, and every hull is the `NPC_HULL_LENGTH_M` (30 m) placeholder, whose
+  window is exactly `NPC_LANE_FLIP_S` (a `static_assert` in `SOLConstants.h` holds this). So the leg profile, flip
+  fraction, wake bound, AUTO hold profile and HLSL mirror keep the one 60 s window and nothing in the game calls
+  `LaneFlipDurationS` yet. A per-ship window means each ship's profile is built at spawn with its own `flipS` and
+  every later evaluation (CPU math, rail, GPU mirror) uses the same value; how the length or duration is carried is
+  not decided (section 12, `TECH_DEBT.md`).
+- Tests: new `SOLTest.Npc.HullFlip.*` (10 cases, `NpcHullFlipTest.cpp`; after the review `DrawRotation`, the cone's
+  quarter turn and the box's `HullRotation`, and `TierTopAndPromotion`, `LaneShipMotion` carrying `LaneHullBasis`
+  bit for bit, `HullUpHint` per rail kind and the drawn rotation kept at promotion within 1e-6 rad); re-pinned to the
+  one-plane flip (the expected nose `side x T_out` outbound and `-side x T_out` inbound):
+  `NpcTrafficMath.HullTopVector`, `HullFlip`, `ThrustState` (helper `NpcTrafficFlipToward`), `NpcRail.LaneHullForward`
+  (also checks the rail's top
+  against `LaneHullBasis`) and `NpcRail.FullTierHandoff` (now handed off and steered with the lane top: the promotion
+  keeps the drawn top within 0.01 degrees, the whole attitude turns within the class rate, the up follows the Mid top
+  through the flip within 15 degrees and within 3 at demotion; the flip plane is measured from `SOLNpcRail::Motion` at
+  the window's middle, contains the hand-off top, and the four indices' planes differ modulo pi).
+- Persistence: none. Performance: the Mid and Full lane ships' per-frame `Motion` now also evaluates the roll's
+  sine and cosine (one hash and a few cross products per ship). After the review the tier processor evaluates
+  `Motion` only for a ship without an attitude (a Full ship draws its attitude), so the Full ships evaluate it once
+  per frame (in the Full AI's gather), as before D24; the forward-only `LaneHullForward` and `LaneThrustAt` skip the
+  top vector outside the flip window. Not re-profiled.
+- **Verification (D24 / D25, 2026-11-18):** `SOLTest.Npc` (with `NpcRail`, `NpcTrafficMath` and the 8 new
+  `Npc.HullFlip` cases) 223 / 223; full suite 2025 / 2025 (`SOLTest.Lane` 61 / 61, `SOLTest.Autopilot` 1 / 1);
+  smokes at 1280x720: `-SOLSmokeNpcTraffic` 19 / 19, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeAutoLanes` 13 / 13;
+  `GameUserSettings.ini` MD5 unchanged. The drawn roll itself (`HullDrawRotation`, the cone's pre-rotation,
+  `HeadingTop`) is not eye-checked: no smoke asserts the drawn top, and no PIE check was run (editor closed).
+- **Verification after the review fixes (2026-11-18):** `SOLTest.Npc` (with `NpcRail`, `NpcTrafficMath` and the 10
+  `Npc.HullFlip` cases) 225 / 225; `SOLTest.Lane` and `SOLTest.Autopilot` 62 / 62; full suite 2027 / 2027; smokes at
+  1280x720: `-SOLSmokeNpcTraffic` 19 / 19, `-SOLSmokeLaneMerge` 15 / 15, `-SOLSmokeAutoLanes` 13 / 13;
+  `GameUserSettings.ini` MD5 unchanged. In `NpcRail.FullTierHandoff` the Full-tier up lags the lane top by at most
+  1.05 degrees through the flip (the same as the nose) and by 0.000 at demotion. The drawn roll is still not
+  eye-checked (no PIE run).
+
+**D23, the tunnel guide thinning (section 2; SDD 49 section 12d, with 4.5 and 4.7 amended in place).**
+
+- Every 6th ring of the first-built #49 lattice is kept (`NPC_TUNNEL_RING_KEEP_EVERY` 6), near and far, at every
+  speed. Both spacing terms are 6 times the first-built ones (`NPC_TUNNEL_RING_BASE_SPACING_RADII` 12 tunnel radii,
+  `NPC_TUNNEL_RING_SPACING_PER_DISTANCE` 1.5, tied to `KEEP_EVERY` by a `static_assert`), so the constant zone stays
+  8 tunnel radii and the kept rings are a subset of the old ones.
+- Dots and chevrons sit at each kept ring and halfway to the next (`NPC_TUNNEL_DOTS_PER_GAP` 2, new
+  `NPC_TUNNEL_CHEVRONS_PER_GAP` 2; element `i` at `i / count` of the gap; the chevron count is passed in
+  `NpcTunnelStyle3.w` and the element index in UV2.y), never at a removed ring. The end rings are unchanged.
+- Slots: 12 ring slots and 6 gap slots per side (64 and 24 first); level-of-detail bands `NEAREST` 2, `NEAR` 3,
+  `MID` 5 (8 and 24 first); 2,884 vertices per lane, 23,072 for all 8 lanes (9,476 and 75,808 first), inside the
+  fixed 80,000-vertex budget. `SOLTest.NpcTunnelMath.Constants` and `SlotMesh` pin these exact values.
+- Tests: new `SOLTest.NpcTunnelMath.GuideThinning`; the constants, spacing, warp, phase, coverage, fade and slot-mesh
+  cases re-pinned.
+- Not re-profiled after the thinning: there are fewer vertices, so the section 15 GPU figures are an upper bound. The
+  README shots `49-lane-tunnel-*.png` and `50-lane-*.png` show the ring layout before thinning.
+- The tunnel density as a whole (how many rings to keep) is decided separately under ticket #52.
+
+**Verification (as built):** full suite 2017 / 2017; smokes NpcTunnel 39 / 39, NpcTraffic 19 / 19, NpcLanes 35 / 35,
+LaneMerge 15 / 15, AutoLanes 13 / 13, Hud 45 / 45 at 1280x720, 1920x1080 and 2560x1440; `GameUserSettings.ini`
+unchanged (MD5). Persistence: none (no save, setting or key binding changes). After the review fixes (2026-11-17):
+`SOLTest.Npc`, `SOLTest.Lane` and `SOLTest.Autopilot` 277 / 277, full suite 2017 / 2017 (smokes not re-run).

@@ -100,11 +100,20 @@ struct FSOLLaneShip
     double AccelS = 0.0;            // t_a
 };
 
-// A lane ship's velocity and hull facing at one time (SOLLaneTraffic::LaneShipMotion)
+// A lane ship's drawn hull attitude (SOLLaneTraffic::LaneHullBasis): unit Forward (the nose) and unit Top (the body's
+// up), orthogonal, universe ecliptic
+struct FSOLLaneHullBasis
+{
+    FVector3d Forward = FVector3d::UnitX();
+    FVector3d Top = FVector3d::UnitZ();
+};
+
+// A lane ship's velocity and hull attitude at one time (SOLLaneTraffic::LaneShipMotion)
 struct FSOLLaneShipMotion
 {
     FVector3d VelocityMps = FVector3d::ZeroVector;  // Central difference of the position, m/s
     FVector3d HullForward = FVector3d::ZeroVector;  // Unit hull facing (LaneHullForward)
+    FVector3d HullTop = FVector3d::ZeroVector;      // Unit body top orthogonal to it (LaneHullBasis)
 };
 
 // A lane ship's thrust kind (SDD 50 section 4.12, consumer #51)
@@ -360,10 +369,11 @@ namespace SOLLaneTraffic
     SOLTEST_API FVector3d LaneShipPositionM(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
         const FSOLLaneShip& ship, double timeS);
 
-    // Returns a ship's velocity (the central difference of LaneShipPositionM over +- stepS) and its LaneHullForward at
-    // time t, the leg and cycle derived once (the per-frame Mid / Full hull paths)
+    // Returns a ship's velocity (the central difference of LaneShipPositionM over +- stepS), its LaneHullForward and its
+    // LaneHullBasis top (of the same key) at time t, the leg and cycle derived once (the per-frame Mid / Full hull
+    // paths)
     SOLTEST_API FSOLLaneShipMotion LaneShipMotion(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-        const FSOLLaneShip& ship, double timeS, double stepS);
+        const FSOLLaneShip& ship, uint32 laneShipKey, double timeS, double stepS);
 
     // Returns an upper bound on a lane ship's speed relative to body A: the lane's largest peak times the map's
     // largest slope max(1, (l - Z) / (l0 - Z)), plus the endpoint speed times (1 + halo outer radius / current leg),
@@ -379,17 +389,64 @@ namespace SOLLaneTraffic
     // adds X''(u) u'^2 along the lane in the end zones when l != l0 (a ship marked Coast slows or speeds up there, at
     // most about 0.6-1.4 G, below a on every default lane; SDD 50 section 4.12, for #51)
     SOLTEST_API FSOLLaneThrustState LaneThrustAt(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-        const FSOLLaneShip& ship, double timeS);
+        const FSOLLaneShip& ship, uint32 laneShipKey, double timeS);
 
     // Returns the hull flip fraction f at leg time tl (D21): the smoothstep 3 x^2 - 2 x^3 of x = (tl - (legS - T_f) /
     // 2) / T_f clamped to [0, 1], tl clamped to [0, legS]; 0 when accelS <= 0 (no brake) or any input is not finite
     SOLTEST_API double LaneHullFlipFraction(double legS, double accelS, double legTimeS);
 
-    // Returns a ship's unit hull facing at time t (SDD 50 section 4.4, D21): on a leg cos(pi f) d + sin(pi f) Up, d the
-    // travel direction; in a turn the brake attitude held (-Axis at B, +Axis at A) for a ship whose legs brake, else the
-    // turn's velocity direction; +Axis (or +X when there is no axis) for an invalid frame, +Axis for a non-drivable lane
+    // Returns a lane ship's own top vector about a travel direction (Q11a): cos(theta) U + sin(theta) (D x U), D the
+    // unit travel direction, U the up projected off D and normalised, theta the ship's roll, a deterministic hash of
+    // the key spread over [0, 2 pi) (one roll per ship on both legs and every lane, nothing stored). An up that is
+    // zero, non-finite or parallel to D falls back to a perpendicular of D chosen from D alone; a zero or non-finite D
+    // gives the zero vector
+    SOLTEST_API FVector3d LaneShipTopVector(uint32 laneShipKey, const FVector3d& travelDirection, const FVector3d& up);
+
+    // Returns a ship's unit hull facing at time t (SDD 50 section 4.4, D21 as amended by section 16, Q11a): on a leg
+    // cos(pi f) d + side sin(pi f) B, d the travel direction, side = LaneFlipSide(key) and B the leg's starting body
+    // top, T_out = LaneShipTopVector(key, +Axis, Up) outbound and -T_out inbound (the attitude the outbound flip left),
+    // so both flips turn in the same plane; in a turn the brake attitude held (-Axis at B, +Axis at A) for a ship whose
+    // legs brake, else the turn's velocity direction; +Axis (or +X when there is no axis) for an invalid frame, +Axis
+    // for a non-drivable lane
     SOLTEST_API FVector3d LaneHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-        const FSOLLaneShip& ship, double timeS);
+        const FSOLLaneShip& ship, uint32 laneShipKey, double timeS);
+
+    // Hull attitude and flip window (SDD 50 section 16, user decisions 2026-11-18, Docs/Plans/50-hull-flip-contract.md)
+
+    // Returns +1 when the ship's flips swing its nose toward its own body top (top-over), -1 toward its bottom; a pure
+    // function of the key (a salted hash, independent of the roll), nothing stored; both values occur over the keys
+    SOLTEST_API int32 LaneFlipSide(uint32 laneShipKey);
+
+    // Returns the ship's drawn attitude at time t: Forward bit-identical to LaneHullForward; Top T_out from the leg's
+    // start to the outbound flip, turned rigidly with the nose through it (a half turn about side (Axis x T_out)), then
+    // held as -T_out through the brake, the turn at B and the inbound leg up to its flip, which turns it back to T_out
+    // in the same plane (held through the turn at A); a ship that never brakes carries T_out about Up with its velocity
+    // in the turns. Unit, orthogonal, continuous and periodic over the cycle; a bad lane gives the forward's
+    // LaneShipTopVector
+    SOLTEST_API FSOLLaneHullBasis LaneHullBasis(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        const FSOLLaneShip& ship, uint32 laneShipKey, double timeS);
+
+    // Returns the drawn rotation mapping +X to the normalised forward and +Z to the top made orthogonal to it
+    // (Gram-Schmidt), +Y = Z x X (a proper rotation); frame-agnostic (the visuals convert both vectors with
+    // SOLRender::EclipticToUnreal first). A top that is zero, non-finite or parallel to the forward falls back to a
+    // perpendicular chosen from the forward alone; a zero or non-finite forward reads as +X. No singular heading
+    SOLTEST_API FQuat HullRotation(const FVector3d& forward, const FVector3d& top);
+
+    // Returns the peak rotational acceleration at a ship's ends in a flip, (1.5 pi / flipS)^2 x shipLengthM / 2 (the
+    // smoothstep's peak turn rate squared times half the length); 0 for a non-positive or non-finite length or flipS
+    SOLTEST_API double LaneFlipEndAccelMps2(double shipLengthM, double flipS = SOL::NPC_LANE_FLIP_S);
+
+    // Returns a ship's limit on that acceleration: NPC_LANE_FLIP_END_ACCEL_MAX_G up to
+    // NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M, falling as (ref / L)^NPC_LANE_FLIP_END_ACCEL_EXPONENT beyond it, never
+    // below NPC_LANE_FLIP_END_ACCEL_MIN_G (provisional numbers); the maximum for a non-positive or non-finite length
+    SOLTEST_API double LaneFlipEndAccelLimitMps2(double shipLengthM);
+
+    // Returns a ship's flip window: max(NPC_LANE_FLIP_S, 1.5 pi sqrt(L / (2 LaneFlipEndAccelLimitMps2(L)))), the
+    // shortest window at or above NPC_LANE_FLIP_S whose end acceleration stays within the limit; NPC_LANE_FLIP_S for a
+    // non-positive or non-finite length. No ship length reaches the lane math yet (every hull is the
+    // NPC_HULL_LENGTH_M placeholder, whose window is NPC_LANE_FLIP_S), so nothing calls it in the game (SDD 50 section
+    // 16, open item)
+    SOLTEST_API double LaneFlipDurationS(double shipLengthM);
 
     // Part 50c, the HUD merge readout (SDD 50 section 4.8, D7, D8, contract case 13)
 

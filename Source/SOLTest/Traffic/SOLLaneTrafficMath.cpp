@@ -7,6 +7,8 @@
 
 #include "SOLConstants.h"
 
+#include "Containers/HashTable.h"
+
 #include <cmath>
 
 namespace
@@ -25,6 +27,11 @@ namespace
     constexpr int32 TRAFFIC_LEAVE_BISECT_STEPS = 12;               // ...then bisection steps
     constexpr double TRAFFIC_MAP_MIN_LEG_ZONES = 1.001;            // The metric map folds over for l <= Z, so a
                                                                    // shorter current leg reads as this many zones
+    constexpr double TRAFFIC_TOP_MIN_SINE = 1.0e-9;                // An up within this sine of the travel direction
+                                                                   // is parallel to it (the top vector's fallback)
+    constexpr double TRAFFIC_UINT32_RANGE = 4294967296.0;          // 2^32, maps a 32-bit hash onto [0, 1)
+    constexpr uint32 TRAFFIC_FLIP_SIDE_SALT = 0x5BD1E995u;         // Salts the flip side's hash so the side does not
+                                                                   // follow the roll (which uses the key's own hash)
 
     // A leg evaluated at a time: the arc from each end ring (each computed directly near its own end) and the speed
     struct FTrafficLegArc
@@ -197,48 +204,145 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the hull facing at a cycle point (SDD 50 section 4.4, D21); the point is ignored for an invalid frame,
-    // a non-drivable lane or an invalid leg
-    FVector3d TrafficHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const FSOLLaneShip& ship,
-        const FSOLLaneLeg& leg, const FSOLLaneCyclePoint& point)
+    // Returns a unit perpendicular of a unit direction from the world axis least aligned with it
+    FVector3d TrafficPerpendicular(const FVector3d& direction)
     {
-        if (!frame.bValid)
+        const FVector3d absDirection(FMath::Abs(direction.X), FMath::Abs(direction.Y), FMath::Abs(direction.Z));
+        const FVector3d axis = absDirection.X <= absDirection.Y && absDirection.X <= absDirection.Z
+            ? FVector3d::UnitX() : (absDirection.Y <= absDirection.Z ? FVector3d::UnitY() : FVector3d::UnitZ());
+        const FVector3d perpendicular = axis - direction * FVector3d::DotProduct(axis, direction);
+        return perpendicular / perpendicular.Size();
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns a top made unit and orthogonal to a unit forward (Gram-Schmidt); a zero, non-finite or parallel top
+    // falls back to a perpendicular chosen from the forward alone
+    FVector3d TrafficOrthogonalTop(const FVector3d& forward, const FVector3d& top)
+    {
+        const FVector3d projected = top - forward * FVector3d::DotProduct(top, forward);
+        const double projectedSize = projected.Size();
+        const double topSize = top.Size();
+        if (!FMath::IsFinite(projectedSize) || !FMath::IsFinite(topSize)
+            || !(projectedSize > TRAFFIC_TOP_MIN_SINE * topSize))
         {
-            return frame.Axis.SizeSquared() > 0.5 ? frame.Axis : FVector3d::UnitX();
+            return TrafficPerpendicular(forward);
         }
-        if (!profile.bDrivable || !leg.bValid)
+        return projected / projectedSize;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the hull attitude at a cycle point (SDD 50 section 4.4, D21 as amended by section 16, Q11a): the forward
+    // exactly as LaneHullForward reports it and, when bWantTop, the body top before orthogonalisation (else Top keeps
+    // its default and the ship's top vector is evaluated only inside the flip window, where the forward needs it).
+    // Both flips turn in one plane: a leg starts with top B (T_out outbound, -T_out inbound) and the nose swings toward
+    // side x B, a rigid half turn that ends with top -B; a braking ship holds its attitude through the brake and the
+    // turn. The point is ignored for an invalid frame, a non-drivable lane or an invalid leg
+    FSOLLaneHullBasis TrafficHullBasis(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+        const FSOLLaneShip& ship, const uint32 laneShipKey, const FSOLLaneLeg& leg, const FSOLLaneCyclePoint& point,
+        const bool bWantTop)
+    {
+        FSOLLaneHullBasis basis;
+        if (!frame.bValid || !profile.bDrivable || !leg.bValid)
         {
-            return frame.Axis;
+            basis.Forward = frame.bValid || frame.Axis.SizeSquared() > 0.5 ? frame.Axis : FVector3d::UnitX();
+            if (bWantTop)
+            {
+                basis.Top = SOLLaneTraffic::LaneShipTopVector(laneShipKey, basis.Forward, frame.Up);
+            }
+            return basis;
         }
 
-        // Legs: facing travel, turning over about Up in the mid-leg window, facing the brake thrust after it
+        // The ship's own top about the outbound axis (its body top on the outbound leg, Q11a), evaluated lazily
+        const auto outboundTop = [&frame, laneShipKey]()
+        {
+            return SOLLaneTraffic::LaneShipTopVector(laneShipKey, frame.Axis, frame.Up);
+        };
+        const bool bBrakes = leg.AccelS > 0.0;
+
+        // Legs: facing travel with the leg's starting top, turning rigidly over toward side x that top in the mid-leg
+        // window, facing the brake thrust with the top reversed after it
         if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
         {
-            const FVector3d travel = point.Segment == ESOLLaneSegment::Outbound ? frame.Axis : -frame.Axis;
-            const double angle = TRAFFIC_PI * SOLLaneTraffic::LaneHullFlipFraction(leg.LegS, leg.AccelS,
+            const bool bOutbound = point.Segment == ESOLLaneSegment::Outbound;
+            const FVector3d travel = bOutbound ? frame.Axis : -frame.Axis;
+            if (!bBrakes)
+            {
+                // A ship that never flips carries its top about Up with its heading (T_out outbound, mirrored across
+                // the Up-Axis plane inbound), the same rule as in its turns
+                basis.Forward = travel;
+                if (bWantTop)
+                {
+                    const FVector3d top = outboundTop();
+                    basis.Top = frame.Up * FVector3d::DotProduct(top, frame.Up)
+                        + FVector3d::CrossProduct(travel, frame.Up) * FVector3d::DotProduct(top, frame.Right);
+                }
+                return basis;
+            }
+            const double flipFraction = SOLLaneTraffic::LaneHullFlipFraction(leg.LegS, leg.AccelS,
                 point.SegmentTimeS);
-            return travel * FMath::Cos(angle) + frame.Up * FMath::Sin(angle);
+
+            // Before the window the ship faces travel with the leg's top; past it, the brake thrust with the top
+            // reversed (exactly, without the window's sine: sin(pi) is a rounding residue)
+            if (flipFraction <= 0.0 || flipFraction >= 1.0)
+            {
+                const bool bBefore = flipFraction <= 0.0;
+                basis.Forward = bBefore ? travel : -travel;
+                if (bWantTop)
+                {
+                    basis.Top = bOutbound == bBefore ? outboundTop() : -outboundTop();
+                }
+                return basis;
+            }
+
+            // In the window: a rigid half turn about side (travel x legTop) by the angle pi f, the nose swinging
+            // toward side x legTop and the top toward -side x travel
+            const FVector3d legTop = bOutbound ? outboundTop() : -outboundTop();
+            const double angle = TRAFFIC_PI * flipFraction;
+            const double flipSide = static_cast<double>(SOLLaneTraffic::LaneFlipSide(laneShipKey));
+            const double cosAngle = FMath::Cos(angle);
+            const double sinAngle = FMath::Sin(angle);
+            basis.Forward = travel * cosAngle + legTop * (flipSide * sinAngle);
+            basis.Top = legTop * cosAngle - travel * (flipSide * sinAngle);
+            return basis;
         }
 
-        // Turns: a braking ship holds its brake attitude in world space (it enters the next leg facing travel)
-        const double side = point.Segment == ESOLLaneSegment::TurnAtB ? 1.0 : -1.0;
-        if (leg.AccelS > 0.0)
+        // Turns: a braking ship holds its brake attitude in world space (it enters the next leg facing travel with
+        // the top that leg starts with)
+        const double turnSign = point.Segment == ESOLLaneSegment::TurnAtB ? 1.0 : -1.0;
+        if (bBrakes)
         {
-            return -frame.Axis * side;
+            basis.Forward = -frame.Axis * turnSign;
+            if (bWantTop)
+            {
+                basis.Top = -outboundTop() * turnSign;
+            }
+            return basis;
         }
 
         // A ship that never brakes faces the turn's velocity, d/dtheta of the half-ellipse (the reversal direction at
-        // a zero-speed apex of an axis ship)
+        // a zero-speed apex of an axis ship), its top carried about Up with it
         const double theta = TRAFFIC_PI * point.SegmentTimeS / profile.UTurnS;
         const double cosTheta = FMath::Cos(theta);
         const FVector3d velocity = (frame.Axis * (profile.UTurnDepthM * cosTheta)
-            - frame.Right * (ship.RightOffsetM * FMath::Sin(theta))) * side;
+            - frame.Right * (ship.RightOffsetM * FMath::Sin(theta))) * turnSign;
         const double speed = velocity.Size();
-        if (speed > 0.0 && FMath::IsFinite(speed))
+        basis.Forward = speed > 0.0 && FMath::IsFinite(speed) ? velocity / speed
+            : frame.Axis * (cosTheta > 0.0 ? turnSign : -turnSign);
+        if (bWantTop)
         {
-            return velocity / speed;
+            const FVector3d top = outboundTop();
+            basis.Top = frame.Up * FVector3d::DotProduct(top, frame.Up)
+                + FVector3d::CrossProduct(basis.Forward, frame.Up) * FVector3d::DotProduct(top, frame.Right);
         }
-        return frame.Axis * (cosTheta > 0.0 ? side : -side);
+        return basis;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the hull facing at a cycle point (TrafficHullBasis's forward; the top vector only in the flip window)
+    FVector3d TrafficHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame, const FSOLLaneShip& ship,
+        const uint32 laneShipKey, const FSOLLaneLeg& leg, const FSOLLaneCyclePoint& point)
+    {
+        return TrafficHullBasis(profile, frame, ship, laneShipKey, leg, point, false).Forward;
     }
 }
 
@@ -635,16 +739,18 @@ FVector3d SOLLaneTraffic::LaneShipPositionRelM(const FSOLLaneProfile& profile, c
 //////////////////////////////////////////////////////////////////////////
 // Returns a ship's velocity (central difference over +- stepS) and hull facing, the leg and cycle derived once
 FSOLLaneShipMotion SOLLaneTraffic::LaneShipMotion(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-    const FSOLLaneShip& ship, const double timeS, const double stepS)
+    const FSOLLaneShip& ship, const uint32 laneShipKey, const double timeS, const double stepS)
 {
     const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
     const FSOLLaneCycle cycle = MakeCycle(leg.LegS, profile.UTurnDepthM);
     FSOLLaneShipMotion motion;
     motion.VelocityMps = (TrafficPositionRelMImpl(profile, frame, ship, leg, cycle, timeS + stepS, frame.AM)
         - TrafficPositionRelMImpl(profile, frame, ship, leg, cycle, timeS - stepS, frame.AM)) / (2.0 * stepS);
-    motion.HullForward = (!frame.bValid || !profile.bDrivable || !leg.bValid)
-        ? TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint())
-        : TrafficHullForward(profile, frame, ship, leg, CycleSegmentAt(cycle, ship.Phase, timeS));
+    const FSOLLaneHullBasis basis = (!frame.bValid || !profile.bDrivable || !leg.bValid)
+        ? TrafficHullBasis(profile, frame, ship, laneShipKey, leg, FSOLLaneCyclePoint(), true)
+        : TrafficHullBasis(profile, frame, ship, laneShipKey, leg, CycleSegmentAt(cycle, ship.Phase, timeS), true);
+    motion.HullForward = basis.Forward;
+    motion.HullTop = TrafficOrthogonalTop(basis.Forward, basis.Top);
     return motion;
 }
 
@@ -738,21 +844,21 @@ double SOLLaneTraffic::LaneShipSpeedBoundMps(const double maxPeakMps, const doub
 //////////////////////////////////////////////////////////////////////////
 // Returns a ship's thrust kind, magnitude and direction at a time
 FSOLLaneThrustState SOLLaneTraffic::LaneThrustAt(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-    const FSOLLaneShip& ship, const double timeS)
+    const FSOLLaneShip& ship, const uint32 laneShipKey, const double timeS)
 {
     FSOLLaneThrustState state;
     state.Direction = frame.Axis;
     const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
     if (!frame.bValid || !profile.bDrivable || !leg.bValid)
     {
-        state.HullForward = TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint());
+        state.HullForward = TrafficHullForward(profile, frame, ship, laneShipKey, leg, FSOLLaneCyclePoint());
         return state;
     }
 
     const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
     state.Segment = point.Segment;
     state.FlipFraction = TrafficFlipFraction(leg, point);
-    state.HullForward = TrafficHullForward(profile, frame, ship, leg, point);
+    state.HullForward = TrafficHullForward(profile, frame, ship, laneShipKey, leg, point);
     if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
     {
         // Legs: accelerate along travel, brake against it, the flip window (no thrust) centred on the leg's midpoint,
@@ -814,17 +920,115 @@ double SOLLaneTraffic::LaneHullFlipFraction(const double legS, const double acce
 }
 
 //////////////////////////////////////////////////////////////////////////
+// Returns a lane ship's own top vector about a travel direction (its roll a hash of the key)
+FVector3d SOLLaneTraffic::LaneShipTopVector(const uint32 laneShipKey, const FVector3d& travelDirection,
+    const FVector3d& up)
+{
+    const double travelSize = travelDirection.Size();
+    if (!FMath::IsFinite(travelSize) || !(travelSize > 0.0))
+    {
+        return FVector3d::ZeroVector;
+    }
+    const FVector3d d = travelDirection / travelSize;
+
+    // The up projected off d and normalised; a degenerate one (zero, non-finite, along d) falls back to the world axis
+    // least aligned with d, projected the same way
+    const FVector3d u = TrafficOrthogonalTop(d, up);
+
+    // The roll: murmur3's 32-bit finaliser of the key (a bijection that spreads consecutive keys) mapped onto [0, 2 pi)
+    const uint32 hash = MurmurFinalize32(laneShipKey);
+    const double roll = 2.0 * TRAFFIC_PI * (static_cast<double>(hash) / TRAFFIC_UINT32_RANGE);
+    return u * FMath::Cos(roll) + FVector3d::CrossProduct(d, u) * FMath::Sin(roll);
+}
+
+//////////////////////////////////////////////////////////////////////////
 // Returns a ship's hull facing at a time
 FVector3d SOLLaneTraffic::LaneHullForward(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
-    const FSOLLaneShip& ship, const double timeS)
+    const FSOLLaneShip& ship, const uint32 laneShipKey, const double timeS)
 {
     const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
     if (!frame.bValid || !profile.bDrivable || !leg.bValid)
     {
-        return TrafficHullForward(profile, frame, ship, leg, FSOLLaneCyclePoint());
+        return TrafficHullForward(profile, frame, ship, laneShipKey, leg, FSOLLaneCyclePoint());
     }
     const FSOLLaneCyclePoint point = CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS);
-    return TrafficHullForward(profile, frame, ship, leg, point);
+    return TrafficHullForward(profile, frame, ship, laneShipKey, leg, point);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the side a ship's flips swing its nose to: +1 toward its body top, -1 toward its bottom (salted key hash)
+int32 SOLLaneTraffic::LaneFlipSide(const uint32 laneShipKey)
+{
+    return (MurmurFinalize32(laneShipKey ^ TRAFFIC_FLIP_SIDE_SALT) & 1u) != 0u ? 1 : -1;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's drawn hull attitude at a time: LaneHullForward's forward and the held / flipped body top
+FSOLLaneHullBasis SOLLaneTraffic::LaneHullBasis(const FSOLLaneProfile& profile, const FSOLLaneFrame& frame,
+    const FSOLLaneShip& ship, const uint32 laneShipKey, const double timeS)
+{
+    const FSOLLaneLeg leg = TrafficShipLeg(ship, profile.NominalLegM);
+    FSOLLaneHullBasis basis = (!frame.bValid || !profile.bDrivable || !leg.bValid)
+        ? TrafficHullBasis(profile, frame, ship, laneShipKey, leg, FSOLLaneCyclePoint(), true)
+        : TrafficHullBasis(profile, frame, ship, laneShipKey, leg,
+            CycleSegmentAt(MakeCycle(leg.LegS, profile.UTurnDepthM), ship.Phase, timeS), true);
+    basis.Top = TrafficOrthogonalTop(basis.Forward, basis.Top);
+    return basis;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the rotation taking +X to the forward and +Z to the top made orthogonal to it
+FQuat SOLLaneTraffic::HullRotation(const FVector3d& forward, const FVector3d& top)
+{
+    // The forward normalised by hand (GetSafeNormal zeroes short vectors); a bad one reads as +X
+    const double forwardSize = forward.Size();
+    const FVector3d x = FMath::IsFinite(forwardSize) && forwardSize > 0.0 ? forward / forwardSize
+        : FVector3d::UnitX();
+    const FVector3d z = TrafficOrthogonalTop(x, top);
+    const FVector3d y = FVector3d::CrossProduct(z, x);
+    const FMatrix axes(FPlane(x.X, x.Y, x.Z, 0.0), FPlane(y.X, y.Y, y.Z, 0.0), FPlane(z.X, z.Y, z.Z, 0.0),
+        FPlane(0.0, 0.0, 0.0, 1.0));
+    FQuat rotation(axes);
+    rotation.Normalize();
+    return rotation;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns the peak rotational acceleration at a ship's ends in a flip of the given window
+double SOLLaneTraffic::LaneFlipEndAccelMps2(const double shipLengthM, const double flipS)
+{
+    if (!FMath::IsFinite(shipLengthM) || !(shipLengthM > 0.0) || !FMath::IsFinite(flipS) || !(flipS > 0.0))
+    {
+        return 0.0;
+    }
+    const double rate = SOL::NPC_LANE_FLIP_PEAK_RATE_FACTOR / flipS;
+    return rate * rate * 0.5 * shipLengthM;
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's flip end-acceleration limit: the maximum up to the reference length, falling with length beyond
+double SOLLaneTraffic::LaneFlipEndAccelLimitMps2(const double shipLengthM)
+{
+    const double maxMps2 = SOL::NPC_LANE_FLIP_END_ACCEL_MAX_G * SOL::STANDARD_GRAVITY_MPS2;
+    if (!FMath::IsFinite(shipLengthM) || !(shipLengthM > SOL::NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M))
+    {
+        return maxMps2;
+    }
+    const double scaled = maxMps2 * FMath::Pow(SOL::NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M / shipLengthM,
+        SOL::NPC_LANE_FLIP_END_ACCEL_EXPONENT);
+    return FMath::Max(scaled, SOL::NPC_LANE_FLIP_END_ACCEL_MIN_G * SOL::STANDARD_GRAVITY_MPS2);
+}
+
+//////////////////////////////////////////////////////////////////////////
+// Returns a ship's flip window: the shortest at or above NPC_LANE_FLIP_S whose end acceleration stays within the limit
+double SOLLaneTraffic::LaneFlipDurationS(const double shipLengthM)
+{
+    if (!FMath::IsFinite(shipLengthM) || !(shipLengthM > 0.0))
+    {
+        return SOL::NPC_LANE_FLIP_S;
+    }
+    return FMath::Max(SOL::NPC_LANE_FLIP_S, SOL::NPC_LANE_FLIP_PEAK_RATE_FACTOR
+        * FMath::Sqrt(shipLengthM / (2.0 * LaneFlipEndAccelLimitMps2(shipLengthM))));
 }
 
 //////////////////////////////////////////////////////////////////////////

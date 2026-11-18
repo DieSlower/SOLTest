@@ -481,7 +481,11 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
         // faces its thrust, D21: SOLNpcRail::HullHeadingVelocityMps, the leg and cycle derived once by Motion). A
         // promotion to Full starts from this heading (SOLNpcAi::HandoffOrientation) and the Full step steers the nose
         // along the same rail heading (SOLNpcCombat), so neither hand-off turns the hull
+        // Hull top (the drawn roll, SDD 50 section 16): a Full ship's attitude up (a lane ship's AI steers it toward
+        // its lane top and is promoted with it, SOLNpcFullAiProcessor), else a Mid lane ship's LaneHullBasis top or
+        // the radial up hint, so a lane ship's hand-offs keep its roll. Motion is evaluated only without an attitude
         ship.HeadingDirection = FVector3f::ZeroVector;
+        ship.HeadingTop = FVector3f::ZeroVector;
         if (state.RenderTier != NPC_RENDER_POINT)
         {
             const FQuat4d* const orientation = view.Attitudes != nullptr ? &view.Attitudes[entity].Orientation
@@ -489,13 +493,16 @@ void USOLNpcTierProcessor::CollectChunk(const FChunkView& view) const
             if (orientation != nullptr && orientation->SizeSquared() > 0.0)
             {
                 ship.HeadingDirection = FVector3f(orientation->GetForwardVector());
+                ship.HeadingTop = FVector3f(orientation->GetUpVector());
             }
             else
             {
                 const FSOLNpcRail& rail = view.Rails[entity].Rail;
-                ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(
-                    SOLNpcRail::Motion(rail, frame), view.Deviations[entity].DeviationVelocityMps),
-                    state.PositionM - frame.GroupBodyM[rail.Group]));
+                const FVector3d upHint = state.PositionM - frame.GroupBodyM[rail.Group];
+                const FSOLNpcRailMotion motion = SOLNpcRail::Motion(rail, frame, ship.NpcIndex);
+                ship.HeadingDirection = FVector3f(SOLNpcAi::HullForward(SOLNpcRail::HullHeadingVelocityMps(motion,
+                    view.Deviations[entity].DeviationVelocityMps), upHint));
+                ship.HeadingTop = FVector3f(SOLNpcRail::HullUpHint(motion, upHint).GetSafeNormal());
             }
         }
 

@@ -2355,7 +2355,7 @@ namespace SOL
                                                                                   //  dot world diameter radii)
         inline constexpr const TCHAR* STYLE3 = TEXT("NpcTunnelStyle3");          // (screen fade half extents,
                                                                                   //  chevron fade start and end
-                                                                                  //  radii, unused)
+                                                                                  //  radii, chevrons per gap)
         inline constexpr const TCHAR* LAYOUT0 = TEXT("NpcTunnelLayout0");        // (base spacing radii, rho, ring
                                                                                   //  and gap slots per side)
         inline constexpr const TCHAR* LAYOUT1 = TEXT("NpcTunnelLayout1");        // (end fade spacings, depth start
@@ -2681,11 +2681,17 @@ namespace SOL
     inline constexpr double NPC_TUNNEL_FADE_FULL_RADII = 50.0;         // ...1 at and inside this many (log-linear)
     inline constexpr double NPC_TUNNEL_RADIUS_MIN_SCALE = 1.0;         // Tunnel radius in lane radii at traffic
     inline constexpr double NPC_TUNNEL_RADIUS_MAX_SCALE = 3.0;         // weight 0 (also an empty lane) and 1
-    inline constexpr double NPC_TUNNEL_RING_BASE_SPACING_RADII = 2.0;  // Ring spacing near the camera, tunnel radii
-    inline constexpr double NPC_TUNNEL_RING_SPACING_PER_DISTANCE = 0.25;   // Ring spacing per metre of distance
-                                                                       // beyond the constant zone (rho)
-    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 64;        // Ring slots ahead and behind the foot point
-    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 24;      // Dot and chevron gap slots per side
+    inline constexpr int32 NPC_TUNNEL_RING_KEEP_EVERY = 6;             // Guide thinning (user 2026-11-17): every 6th
+                                                                       // ring of the first-built lattice (2 Rt, 0.25)
+                                                                       // is kept, so both spacing terms are 6 times it
+    inline constexpr double NPC_TUNNEL_RING_BASE_SPACING_RADII = 12.0; // Ring spacing near the camera, tunnel radii
+    inline constexpr double NPC_TUNNEL_RING_SPACING_PER_DISTANCE = 1.5;    // Ring spacing per metre of distance
+                                                                       // beyond the constant zone (rho; D0 = 8 Rt)
+    inline constexpr int32 NPC_TUNNEL_RING_SLOTS_PER_SIDE = 12;        // Ring slots ahead and behind the foot point
+                                                                       // (the longest default lane needs 8.3; the
+                                                                       // float warp inverse overflows past ~22)
+    inline constexpr int32 NPC_TUNNEL_DETAIL_SLOTS_PER_SIDE = 6;       // Dot and chevron gap slots per side (512 Rt
+                                                                       // is w 3.44, inside DETAIL_SLOTS - 2)
     inline constexpr double NPC_TUNNEL_END_FADE_SPACINGS = 0.5;        // A ring fades to 0 over this many spacings
                                                                        // before an end ring
     inline constexpr double NPC_TUNNEL_DEPTH_FADE_START_RADII = 8.0;   // Ring alpha 1 inside this many tunnel radii...
@@ -2713,7 +2719,10 @@ namespace SOL
                                                                        // (no screen-size fade; only the near fade can
                                                                        // dim one further, beside the camera)
     inline constexpr int32 NPC_TUNNEL_DOT_ROWS = 8;                    // Guide-dot rows round the tube
-    inline constexpr int32 NPC_TUNNEL_DOTS_PER_GAP = 2;                // Dots per row in each ring gap
+    inline constexpr int32 NPC_TUNNEL_DOTS_PER_GAP = 2;                // Dots per row in each ring gap (at the ring
+                                                                       // and halfway to the next)
+    inline constexpr int32 NPC_TUNNEL_CHEVRONS_PER_GAP = 2;            // Chevrons per wall in each ring gap (at the
+                                                                       // ring and halfway, like the dots)
     inline constexpr double NPC_TUNNEL_DOT_RADIUS_SCALE = 1.1;         // Dot rows sit at this many tunnel radii
                                                                        // (outside the rings, D6)
     inline constexpr double NPC_TUNNEL_UP_FALLBACK_DEG = 1.0;          // An axis this close to the ecliptic pole takes
@@ -2756,8 +2765,8 @@ namespace SOL
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_NEAR = 48;         // ...of slots NEAREST_SLOTS .. NEAR_SLOTS - 1...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_MID = 24;          // ...of slots NEAR_SLOTS .. MID_SLOTS - 1...
     inline constexpr int32 NPC_TUNNEL_RING_SEGMENTS_FAR = 12;          // ...and beyond (per side; level of detail)
-    inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 8;
-    inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 24;
+    inline constexpr int32 NPC_TUNNEL_RING_NEAR_SLOTS = 3;             // (slot 1 reaches about 59 Rt, 2 about 265 Rt,
+    inline constexpr int32 NPC_TUNNEL_RING_MID_SLOTS = 5;              // 4 about 5,300 Rt on the axis)
     inline constexpr int32 NPC_TUNNEL_TRANSLUCENCY_SORT_PRIORITY = 2;  // Above the lanes in the after-motion-blur pass
     inline constexpr double NPC_TUNNEL_LABEL_DOT_MARGIN_PX = 6.0;      // Label box clearance from a dot row (scaled,
                                                                        // plus the row's largest projected dot radius)
@@ -2777,6 +2786,11 @@ namespace SOL
         "the tunnel fade band runs inward from the start radii");
     static_assert(NPC_TUNNEL_FADE_START_RADII == NPC_LANE_FADE_NEAR_RADII,
         "the tunnel fades in where the lane line's close-up fade has removed it (D1)");
+    static_assert(NPC_TUNNEL_RING_KEEP_EVERY >= 1 && NPC_TUNNEL_CHEVRONS_PER_GAP >= 1,
+        "at least every ring is kept and every gap has a chevron");
+    static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII == NPC_TUNNEL_RING_KEEP_EVERY * 2.0
+        && NPC_TUNNEL_RING_SPACING_PER_DISTANCE == NPC_TUNNEL_RING_KEEP_EVERY * 0.25,
+        "both ring spacing terms are KEEP_EVERY times the first-built lattice's (2 Rt, 0.25)");
     static_assert(NPC_TUNNEL_RING_BASE_SPACING_RADII > 0.0 && NPC_TUNNEL_RING_SPACING_PER_DISTANCE > 0.0,
         "the ring warp divides by the base spacing and by rho");
     static_assert(NPC_TUNNEL_DEPTH_FADE_END_RADII > NPC_TUNNEL_DEPTH_FADE_START_RADII
@@ -2835,7 +2849,26 @@ namespace SOL
     static_assert(NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION >= 0.0 && NPC_LANE_AUTO_LEAVE_MARGIN_FRACTION <= 0.5
         && NPC_LANE_AUTO_LEAVE_MARGIN_M >= 0.0 && NPC_LANE_AUTO_LEAVE_MARGIN_M <= 1.0e8,
         "the leave margin stays within half the braking distance plus 1e8 m");
-    inline constexpr double NPC_LANE_FLIP_S = 60.0;                   // Hull flip time while braking (D17)
+    inline constexpr double NPC_LANE_FLIP_S = 60.0;                   // Hull flip time while braking (D17); the
+                                                                      // shortest window (SDD 50 section 16)
+    // The flip's end-acceleration limit per ship length (SDD 50 section 16, user decision 2026-11-18; provisional
+    // numbers): the maximum up to the reference length, falling as (ref / L)^exponent beyond it, never below the
+    // minimum; a 60 s flip stays under it up to about 2.16 km (0.71 G allowed at 2 km), longer ships flip slower
+    inline constexpr double NPC_LANE_FLIP_END_ACCEL_MAX_G = 1.0;
+    inline constexpr double NPC_LANE_FLIP_END_ACCEL_MIN_G = 0.05;
+    inline constexpr double NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M = 1000.0;
+    inline constexpr double NPC_LANE_FLIP_END_ACCEL_EXPONENT = 0.5;
+    // The smoothstep flip's peak turn rate times its window (rad): the flip turns pi by 3 x^2 - 2 x^3, peak 1.5 pi / T_f
+    inline constexpr double NPC_LANE_FLIP_PEAK_RATE_FACTOR = 1.5 * UE_DOUBLE_PI;
+    static_assert(NPC_LANE_FLIP_END_ACCEL_MAX_G > 0.0 && NPC_LANE_FLIP_END_ACCEL_MAX_G <= 1.0
+        && NPC_LANE_FLIP_END_ACCEL_MIN_G > 0.0 && NPC_LANE_FLIP_END_ACCEL_MIN_G <= NPC_LANE_FLIP_END_ACCEL_MAX_G
+        && NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M > 0.0 && NPC_LANE_FLIP_END_ACCEL_EXPONENT > 0.0,
+        "the flip limit is positive, at most 1 G and non-increasing with length");
+    static_assert(NPC_HULL_LENGTH_M <= NPC_LANE_FLIP_END_ACCEL_REF_LENGTH_M
+        && (NPC_LANE_FLIP_PEAK_RATE_FACTOR / NPC_LANE_FLIP_S) * (NPC_LANE_FLIP_PEAK_RATE_FACTOR / NPC_LANE_FLIP_S)
+            * 0.5 * NPC_HULL_LENGTH_M
+            <= NPC_LANE_FLIP_END_ACCEL_MAX_G * STANDARD_GRAVITY_MPS2,
+        "the placeholder hull flips in NPC_LANE_FLIP_S, so the lane math and rails keep the one 60 s window");
     static_assert(NPC_LANE_SPEED_CAP_MPS > NPC_LANE_WALL_SPEED_MPS, "the cap is above the wall speed");
     static_assert(NPC_LANE_EFFORT_MIN > 0.0 && NPC_LANE_EFFORT_MIN < NPC_LANE_EFFORT_MEAN
         && NPC_LANE_EFFORT_MEAN < NPC_LANE_EFFORT_MAX, "the mean effort lies inside the effort range");

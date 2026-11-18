@@ -23,6 +23,27 @@
 // the API under test are the ones recorded in the plan's "Part 50a API contract (from the test author)" section, as
 // amended by the 50a review (MakeLaneProfile takes the wall radius, the leg time is derived by LaneShipLegS) and by
 // amendment 1 (D21, SDD 50 section 14: the zero-thrust flip window T_f before braking; cases 1, 3, 4, 11, 15, 15c).
+//
+// Q11a (user, 2026-11-17, test first): the hull flip swings toward the ship's own top, not the lane's Up. API contract
+// (from the test author; the changed signatures take the key with no default, so a caller that forgets it does not
+// compile):
+//   FVector3d SOLLaneTraffic::LaneShipTopVector(uint32 laneShipKey, const FVector3d& travelDirection,
+//       const FVector3d& up)
+//     cos(theta) U + sin(theta) (D x U), D the unit travel direction, U the up projected off D and normalised, theta
+//     the ship's roll angle, a deterministic hash of the key spread uniformly over [0, 2 pi) (consecutive keys
+//     included); so the roll is right-handed about the travel direction and one ship keeps one roll on both legs and
+//     every lane. An up that is zero, non-finite or parallel to D falls back to a perpendicular of D chosen from D
+//     alone; a zero or non-finite D gives the zero vector. No stored state: the key is the ship's identity.
+//   FVector3d SOLLaneTraffic::LaneHullForward(profile, frame, ship, uint32 laneShipKey, double timeS)
+//     on a leg cos(pi f) d + sin(pi f) N, re-pinned by the 2026-11-18 user decisions (SDD 50 section 16,
+//     Docs/Plans/50-hull-flip-contract.md): N = side x T_out outbound and -side x T_out inbound (both flips in one
+//     plane), T_out = LaneShipTopVector(laneShipKey, +Axis, frame.Up), side = LaneFlipSide(laneShipKey)
+//     (NpcTrafficFlipToward); the window, the smoothstep f, the U-turn attitude (held brake attitude, Q11b) and the
+//     bad-lane values are unchanged
+//   FSOLLaneThrustState SOLLaneTraffic::LaneThrustAt(profile, frame, ship, uint32 laneShipKey, double timeS)
+//   FSOLLaneShipMotion SOLLaneTraffic::LaneShipMotion(profile, frame, ship, uint32 laneShipKey, double timeS,
+//       double stepS)
+//     their HullForward is LaneHullForward with the same key
 
 // Helpers here carry names unique across the test files so unity builds do not collide
 namespace
@@ -369,10 +390,46 @@ namespace
     }
 
     //////////////////////////////////////////////////////////////////////////
-    // Returns the contract's hull forward on a leg, cos(pi f) d + sin(pi f) Up (SDD 50 section 4.4)
-    FVector3d NpcTrafficRefHull(const FVector3d& travel, const FVector3d& up, const double flipFraction)
+    // Returns the contract's hull forward on a leg, cos(pi f) d + sin(pi f) T, T the ship's top vector (SDD 50 section
+    // 4.4, Q11a)
+    FVector3d NpcTrafficRefHull(const FVector3d& travel, const FVector3d& top, const double flipFraction)
     {
-        return travel * FMath::Cos(NPCTRAFFIC_PI * flipFraction) + up * FMath::Sin(NPCTRAFFIC_PI * flipFraction);
+        return travel * FMath::Cos(NPCTRAFFIC_PI * flipFraction) + top * FMath::Sin(NPCTRAFFIC_PI * flipFraction);
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the direction a ship's flip swings its nose toward on a leg (SDD 50 section 16, user decision
+    // 2026-11-18: both flips in one plane, side fixed per key): side x T_out outbound and -side x T_out inbound, T_out
+    // = LaneShipTopVector(key, +Axis, Up) (the inbound leg starts with the top -T_out the outbound flip left)
+    FVector3d NpcTrafficFlipToward(const uint32 key, const FVector3d& travel, const FSOLLaneFrame& frame)
+    {
+        const double legSign = FVector3d::DotProduct(travel, frame.Axis) >= 0.0 ? 1.0 : -1.0;
+        return SOLLaneTraffic::LaneShipTopVector(key, frame.Axis, frame.Up)
+            * (legSign * static_cast<double>(SOLLaneTraffic::LaneFlipSide(key)));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the key a test gives the ship at an index of a test case (spread so neighbouring cases differ)
+    uint32 NpcTrafficShipKey(const uint32 caseKey, const int32 shipIndex)
+    {
+        return caseKey * 7919u + static_cast<uint32>(shipIndex) * 104729u + 11u;
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the signed roll of a top vector about a travel direction, atan2(T . (d x U), T . U), U the up projected
+    // off d (right-handed about d, 0 at U)
+    double NpcTrafficRollOf(const FVector3d& top, const FVector3d& travel, const FVector3d& up)
+    {
+        const FVector3d d = travel.GetSafeNormal();
+        const FVector3d u = (up - d * FVector3d::DotProduct(up, d)).GetSafeNormal();
+        return FMath::Atan2(FVector3d::DotProduct(top, FVector3d::CrossProduct(d, u)), FVector3d::DotProduct(top, u));
+    }
+
+    //////////////////////////////////////////////////////////////////////////
+    // Returns the circular distance between two angles in radians, in [0, pi]
+    double NpcTrafficAngleGap(const double a, const double b)
+    {
+        return FMath::Abs(std::remainder(a - b, 2.0 * NPCTRAFFIC_PI));
     }
 
     //////////////////////////////////////////////////////////////////////////
@@ -1885,7 +1942,8 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathThrustTest, "SOLTest.NpcTraff
 // Flip (no thrust, direction the travel) inside the window |tl - T_leg / 2| < T_f / 2 of a leg that burns, the burn
 // kinds winning where they overlap; FlipFraction 0 while accelerating, the smoothstep in the window, 1 while braking
 // and through the turns of a braking ship; HullForward unit, equal to Direction in Accelerate and Brake and to
-// LaneHullForward at every sample. Samples within 1e-6 T_leg of a burn or window edge are skipped
+// LaneHullForward (the same ship key) at every sample, turning toward the ship's own top in the window (Q11a). Samples
+// within 1e-6 T_leg of a burn or window edge are skipped
 bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
 {
     using namespace SOLLaneTraffic;
@@ -1910,10 +1968,12 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
         const FSOLLaneProfile& profile = lane->Profile;
         const FSOLLaneFrame& frame = lane->Frame;
         const double depth = profile.UTurnDepthM;
-        for (const FThrustShip& spec : ships)
+        for (int32 shipIndex = 0; shipIndex < static_cast<int32>(UE_ARRAY_COUNT(ships)); ++shipIndex)
         {
+            const FThrustShip& spec = ships[shipIndex];
             const FString label = lane->Name + FString::Printf(TEXT(", rho %.2f"), spec.Rho);
             const FSOLLaneShip ship = MakeLaneShip(profile, 0.0, spec.Effort, spec.Rho, spec.ClockRad);
+            const uint32 key = NpcTrafficShipKey(15u, shipIndex);
             const double shipLegS = LaneShipLegS(profile, ship);
             const FSOLLaneLeg leg = MakeLegProfile(RadialFactor(spec.Rho), spec.Effort, profile.NominalLegM);
             const FSOLLaneCycle cycle = MakeCycle(shipLegS, depth);
@@ -1968,7 +2028,7 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                         continue;
                     }
                     const double t = NpcTrafficTimeAt(ship, cycle, legStart + tl);
-                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
+                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, key, t);
                     ESOLLaneThrust expectedKind = ESOLLaneThrust::Coast;
                     if (bBurns && tl < leg.AccelS)
                     {
@@ -1994,10 +2054,12 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                         continue;
                     }
 
-                    // The hull: unit, the pure function's value, the contract's fraction and facing
+                    // The hull: unit, the pure function's value, the contract's fraction and facing (toward side x the
+                    // leg's starting top, Q11a and SDD 50 section 16)
                     const double expectedFraction = NpcTrafficRefFlipFraction(shipLegS, ship.AccelS, tl);
-                    const FVector3d expectedHull = NpcTrafficRefHull(travel, frame.Up, expectedFraction);
-                    const FVector3d pureHull = LaneHullForward(profile, frame, ship, t);
+                    const FVector3d expectedHull = NpcTrafficRefHull(travel, NpcTrafficFlipToward(key, travel, frame),
+                        expectedFraction);
+                    const FVector3d pureHull = LaneHullForward(profile, frame, ship, key, t);
                     if (FMath::Abs(state.HullForward.Size() - 1.0) > 1.0e-12
                         || (state.HullForward - pureHull).GetAbsMax() > 1.0e-12
                         || !NpcTrafficNear(state.FlipFraction, expectedFraction, 0.0, 1.0e-9)
@@ -2054,7 +2116,7 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                 for (const double thetaFraction : { 0.25, 0.5, 0.75 })
                 {
                     const double t = NpcTrafficTimeAt(ship, cycle, turnStart + thetaFraction * cycle.TurnS);
-                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
+                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, key, t);
                     const FVector3d fromCentre = NpcTrafficPos(*lane, ship, t, originM) - centreM;
                     const double expectedAccel = (w / depth) * (w / depth) * fromCentre.Size();
                     const FString where = label + FString::Printf(TEXT(", turn at %s, theta %.2f pi"),
@@ -2076,10 +2138,10 @@ bool FSOLNpcTrafficMathThrustTest::RunTest(const FString& /*parameters*/)
                     }
 
                     // D21: a braking ship holds its brake attitude in world space (-Axis at B, +Axis at A, fraction
-                    // 1); a ship whose legs do not brake faces its velocity (fraction 0)
+                    // 1); a ship whose legs do not brake faces its velocity (fraction 0). Q11b: unchanged by the key
                     TestTrue(where + TEXT(": hull unit and = LaneHullForward"),
                         FMath::Abs(state.HullForward.Size() - 1.0) <= 1.0e-12
-                        && (state.HullForward - LaneHullForward(profile, frame, ship, t)).GetAbsMax() <= 1.0e-12);
+                        && (state.HullForward - LaneHullForward(profile, frame, ship, key, t)).GetAbsMax() <= 1.0e-12);
                     NpcTrafficExpectNear(*this, where + TEXT(": flip fraction"), state.FlipFraction,
                         bBurns ? 1.0 : 0.0, 0.0, 1.0e-12);
                     const FVector3d expectedHull = bBurns ? (bAtB ? -frame.Axis : frame.Axis)
@@ -2258,8 +2320,8 @@ bool FSOLNpcTrafficMathEdgeCasesTest::RunTest(const FString& /*parameters*/)
             determinismFailures.Add(FString::Printf(TEXT("t %.9e: (%.17e, %.17e, %.17e) then (%.17e, %.17e, %.17e)"),
                 t, forward[sample].X, forward[sample].Y, forward[sample].Z, again.X, again.Y, again.Z));
         }
-        const FSOLLaneThrustState thrust = LaneThrustAt(profile, frame, ship, t);
-        const FSOLLaneThrustState thrustAgain = LaneThrustAt(profileAgain, frameAgain, shipAgain, t);
+        const FSOLLaneThrustState thrust = LaneThrustAt(profile, frame, ship, 4242u, t);
+        const FSOLLaneThrustState thrustAgain = LaneThrustAt(profileAgain, frameAgain, shipAgain, 4242u, t);
         if (thrust.Thrust != thrustAgain.Thrust || thrust.AccelMps2 != thrustAgain.AccelMps2
             || !(thrust.Direction == thrustAgain.Direction) || thrust.FlipFraction != thrustAgain.FlipFraction
             || !(thrust.HullForward == thrustAgain.HullForward))
@@ -2600,7 +2662,9 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathHullFlipTest, "SOLTest.NpcTra
 // Case 15c (D21): LaneHullFlipFraction is the smoothstep S over [T_leg / 2 - T_f / 2, T_leg / 2 + T_f / 2] (0 before,
 // 1 after, non-decreasing, peak rate 1.5 / T_f), the window inside the coast of the short, long and halo legs, and 0
 // for a leg with no burn or a non-finite input. LaneHullForward over whole cycles on the case 8 lanes: unit, travel
-// before the window, cos(pi f) d + sin(pi f) Up inside it, -travel after it, held at -Axis through the turn at B and
+// before the window, cos(pi f) d + sin(pi f) N inside it (N = NpcTrafficFlipToward: side x T_out outbound, -side x
+// T_out inbound, both flips in one plane, SDD 50 section 16; N at the window's middle), -travel after it, held at
+// -Axis through the turn at B and
 // +Axis through the turn at A for a braking ship (facing travel again at the next leg's start), continuous at the four
 // joints and across the window, no thrust inside the window; a ship with no brake (kappa 0, or a leg <= w T_f) never
 // flips: it faces travel on the legs and its velocity in the turns
@@ -2726,6 +2790,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
             }
             spec.Rho = shipIndex == 6 ? 1.6 : (shipIndex == 7 ? 1.0 : spec.Rho);
             const FSOLLaneShip ship = MakeLaneShip(profile, spec.Phase, spec.Effort, spec.Rho, spec.ClockRad);
+            const uint32 key = NpcTrafficShipKey(300u + static_cast<uint32>(laneIndex), shipIndex);
             const double shipLegS = LaneShipLegS(profile, ship);
             const FSOLLaneCycle cycle = MakeCycle(shipLegS, depth);
             const bool bBurns = ship.AccelS > 0.0;
@@ -2740,7 +2805,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
                 if (point.Segment == ESOLLaneSegment::Outbound || point.Segment == ESOLLaneSegment::Inbound)
                 {
                     const FVector3d travel = point.Segment == ESOLLaneSegment::Outbound ? frame.Axis : -frame.Axis;
-                    return NpcTrafficRefHull(travel, frame.Up,
+                    return NpcTrafficRefHull(travel, NpcTrafficFlipToward(key, travel, frame),
                         NpcTrafficRefFlipFraction(shipLegS, ship.AccelS, point.SegmentTimeS));
                 }
                 const bool bAtB = point.Segment == ESOLLaneSegment::TurnAtB;
@@ -2755,7 +2820,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
             // Checks the hull at rail time t against the contract (unit length, value)
             const auto checkHullAt = [&](const double t, const TCHAR* what)
             {
-                const FVector3d hull = LaneHullForward(profile, frame, ship, t);
+                const FVector3d hull = LaneHullForward(profile, frame, ship, key, t);
                 double tolerance = 0.0;
                 const FVector3d expected = expectedHullAt(t, tolerance);
                 if (FMath::Abs(hull.Size() - 1.0) > 1.0e-12
@@ -2784,7 +2849,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
             }
 
             // Across each leg's window (0.5 s steps from 5 s before to 5 s after it): the contract's value, angle
-            // steps below the peak rate, travel before, -travel after, Up at the middle, no thrust inside
+            // steps below the peak rate, travel before, -travel after, the ship's top at the middle, no thrust inside
             const double windowStep = 0.5;
             const double start = 0.5 * (shipLegS - tf);
             for (const bool bOutbound : { true, false })
@@ -2808,7 +2873,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
                     const double fromMiddle = FMath::Abs(tl - 0.5 * shipLegS);
                     if (fromMiddle < 0.5 * tf - 1.0e-3 || fromMiddle > 0.5 * tf + 1.0e-3)
                     {
-                        const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
+                        const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, key, t);
                         const bool bInside = bBurns && fromMiddle < 0.5 * tf;
                         const bool bInBurn = bBurns && (tl < ship.AccelS || tl > shipLegS - ship.AccelS);
                         const ESOLLaneThrust expectedKind = bInside ? ESOLLaneThrust::Flip : ESOLLaneThrust::Coast;
@@ -2820,13 +2885,13 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
                         }
                     }
                 }
-                const FVector3d before = LaneHullForward(profile, frame, ship,
+                const FVector3d before = LaneHullForward(profile, frame, ship, key,
                     NpcTrafficTimeAt(ship, cycle, legStart + start - 1.0));
-                const FVector3d middle = LaneHullForward(profile, frame, ship,
+                const FVector3d middle = LaneHullForward(profile, frame, ship, key,
                     NpcTrafficTimeAt(ship, cycle, legStart + 0.5 * shipLegS));
-                const FVector3d after = LaneHullForward(profile, frame, ship,
+                const FVector3d after = LaneHullForward(profile, frame, ship, key,
                     NpcTrafficTimeAt(ship, cycle, legStart + start + tf + 1.0));
-                const FVector3d expectedMiddle = bBurns ? frame.Up : travel;
+                const FVector3d expectedMiddle = bBurns ? NpcTrafficFlipToward(key, travel, frame) : travel;
                 const FVector3d expectedAfter = bBurns ? FVector3d(-travel) : travel;
                 if ((before - travel).GetAbsMax() > 1.0e-9 || (middle - expectedMiddle).GetAbsMax() > 1.0e-6
                     || (after - expectedAfter).GetAbsMax() > 1.0e-9)
@@ -2846,16 +2911,17 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
                 cycle.CycleS })
             {
                 const double tj = NpcTrafficTimeAt(ship, cycle, jointTau);
-                const double angle = NpcTrafficAngle(LaneHullForward(profile, frame, ship, tj - jointDelta),
-                    LaneHullForward(profile, frame, ship, tj + jointDelta));
+                const double angle = NpcTrafficAngle(LaneHullForward(profile, frame, ship, key, tj - jointDelta),
+                    LaneHullForward(profile, frame, ship, key, tj + jointDelta));
                 if (angle > jointBound)
                 {
                     jointFailures.Add(shipLabel + FString::Printf(TEXT(" joint tau %.9e: angle %.9e rad (bound "
                         "%.9e)"), jointTau, angle, jointBound));
                 }
             }
-            const FVector3d outboundStart = LaneHullForward(profile, frame, ship, NpcTrafficTimeAt(ship, cycle, 1.0));
-            const FVector3d inboundStart = LaneHullForward(profile, frame, ship,
+            const FVector3d outboundStart = LaneHullForward(profile, frame, ship, key,
+                NpcTrafficTimeAt(ship, cycle, 1.0));
+            const FVector3d inboundStart = LaneHullForward(profile, frame, ship, key,
                 NpcTrafficTimeAt(ship, cycle, shipLegS + cycle.TurnS + 1.0));
             if ((outboundStart - frame.Axis).GetAbsMax() > 1.0e-9 || (inboundStart + frame.Axis).GetAbsMax() > 1.0e-9)
             {
@@ -2913,8 +2979,8 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
             {
                 const double t = NpcTrafficTimeAt(ship, cycle, tau);
                 const FSOLLaneCyclePoint point = CycleSegmentAt(cycle, ship.Phase, t);
-                const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, t);
-                const FVector3d hull = LaneHullForward(profile, frame, ship, t);
+                const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, 77u, t);
+                const FVector3d hull = LaneHullForward(profile, frame, ship, 77u, t);
                 const bool bLeg = point.Segment == ESOLLaneSegment::Outbound
                     || point.Segment == ESOLLaneSegment::Inbound;
                 const bool bAtB = point.Segment == ESOLLaneSegment::TurnAtB;
@@ -2942,7 +3008,7 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
             NPCTRAFFIC_EARTH_MARS_IN_WALL, NPCTRAFFIC_EARTH_MARS_MAX_M, NPCTRAFFIC_EARTH_RADIUS_M,
             NPCTRAFFIC_MARS_RADIUS_M);
         const FSOLLaneShip ship = MakeLaneShip(profile, 0.3, 0.8, 0.5, 1.0);
-        const FVector3d invalid = LaneHullForward(profile, MakeLaneFrame(profile, aM, aM), ship, 1.0e4);
+        const FVector3d invalid = LaneHullForward(profile, MakeLaneFrame(profile, aM, aM), ship, 5u, 1.0e4);
         TestTrue(FString::Printf(TEXT("invalid frame: +X (%.9f, %.9f, %.9f)"), invalid.X, invalid.Y, invalid.Z),
             (invalid - FVector3d::UnitX()).GetAbsMax() <= 1.0e-12);
         const FSOLLaneProfile shortProfile = NpcTrafficProfile(NPCTRAFFIC_EARTH_MARS_LANE_RADIUS_M,
@@ -2954,10 +3020,298 @@ bool FSOLNpcTrafficMathHullFlipTest::RunTest(const FString& /*parameters*/)
         TestFalse(TEXT("short profile: not drivable"), shortProfile.bDrivable);
         for (const double t : { 0.0, 1.0e5 })
         {
-            const FVector3d hull = LaneHullForward(shortProfile, shortFrame, restShip, t);
+            const FVector3d hull = LaneHullForward(shortProfile, shortFrame, restShip, 5u, t);
             TestTrue(FString::Printf(TEXT("not drivable, t %.0f: +Axis"), t),
                 (hull - shortFrame.Axis).GetAbsMax() <= 1.0e-12);
         }
+    }
+    return true;
+}
+
+//////////////////////////////////////////////////////////////////////////
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSOLNpcTrafficMathHullTopTest, "SOLTest.NpcTrafficMath.HullTopVector",
+    EAutomationTestFlags::EditorContext | EAutomationTestFlags::ProductFilter)
+
+//////////////////////////////////////////////////////////////////////////
+// Q11a (user, 2026-11-17): the hull flip swings toward the ship's own top, so ships do not all pitch over north.
+// LaneShipTopVector(key, d, up) is unit and perpendicular to d within 1e-9 for every key and lane direction (both legs,
+// a lane in the up blend near the ecliptic pole and one on it, an up that is not perpendicular or not unit, a d that is
+// not unit), bit-identical for the same inputs, one roll per key (the signed roll about d from the projected up is the
+// same on +Axis, -Axis and every lane: a right-handed roll about the travel direction), different for different keys
+// and spread round the axis: over keys 0-999 and over 1000 keys 65,536 apart the mean top and its second harmonic are
+// under 0.1, each of 8 sectors holds 50-150 % of its share, 40-60 % lean to north's side, and at most 2 rolls lie
+// within 1e-6 rad of another. A degenerate up (along d, zero, NaN) still gives a unit perpendicular; a zero or NaN d
+// the zero vector. On the lanes the hull is T = NpcTrafficFlipToward at the window's middle (side x T_out outbound,
+// -side x T_out inbound: both flips in one plane, SDD 50 section 16), lies in the plane of d and T with
+// T . hull = sin(pi f) >= 0, faces travel before and -travel after, is continuous, the same for the same ship and time,
+// differs between keys for the same ship constants, and the thrust state and LaneShipMotion report the same hull
+bool FSOLNpcTrafficMathHullTopTest::RunTest(const FString& /*parameters*/)
+{
+    using namespace SOLLaneTraffic;
+    const double tf = NpcTrafficFlip();
+    const double peakAngleRate = NPCTRAFFIC_PI * 1.5 / tf;  // The smoothstep flip's largest rate (rad/s)
+    const TArray<FNpcTrafficLane> lanes = NpcTrafficTestLanes();
+
+    // The lane directions: the test lanes both ways, a lane 1.5 degrees off the ecliptic pole and one on it
+    struct FTopDirection
+    {
+        FString Name;
+        FVector3d Travel;
+        FVector3d Up;
+    };
+    TArray<FTopDirection> directions;
+    for (const FNpcTrafficLane& lane : lanes)
+    {
+        directions.Add({ lane.Name + TEXT(" outbound"), lane.Frame.Axis, lane.Frame.Up });
+        directions.Add({ lane.Name + TEXT(" inbound"), -lane.Frame.Axis, lane.Frame.Up });
+    }
+    for (const double poleDeg : { 1.5, 0.0 })
+    {
+        const double elevation = FMath::DegreesToRadians(90.0 - poleDeg);
+        const FVector3d axis(0.6 * FMath::Cos(elevation), 0.8 * FMath::Cos(elevation), FMath::Sin(elevation));
+        const FVector3d aM(3.0e10, 1.0e10, -2.0e9);
+        const FSOLLaneBasis basis = LaneBasis(aM, aM + axis * 4.0e11);
+        TestTrue(FString::Printf(TEXT("%.1f deg off the pole: basis valid"), poleDeg), basis.bValid);
+        directions.Add({ FString::Printf(TEXT("%.1f deg off the pole, outbound"), poleDeg), basis.Axis, basis.Up });
+        directions.Add({ FString::Printf(TEXT("%.1f deg off the pole, inbound"), poleDeg), -basis.Axis, basis.Up });
+    }
+
+    // Unit, perpendicular, deterministic and one right-handed roll per key on every direction
+    {
+        TArray<uint32, TInlineAllocator<208>> keys;
+        for (uint32 key = 0; key < 200; ++key)
+        {
+            keys.Add(key);
+        }
+        keys.Append({ 0x7FFFFFFFu, 0x80000000u, 0xFFFFFFFEu, 0xFFFFFFFFu, 123456789u });
+        FNpcTrafficFailures failures;
+        for (const uint32 key : keys)
+        {
+            const double roll = NpcTrafficRollOf(LaneShipTopVector(key, directions[0].Travel, directions[0].Up),
+                directions[0].Travel, directions[0].Up);
+            for (const FTopDirection& direction : directions)
+            {
+                const FVector3d d = direction.Travel;
+                const FVector3d top = LaneShipTopVector(key, d, direction.Up);
+                const FVector3d again = LaneShipTopVector(key, d, direction.Up);
+                const FString where = direction.Name + FString::Printf(TEXT(", key %u"), key);
+                if (FMath::Abs(top.Size() - 1.0) > 1.0e-9 || FMath::Abs(FVector3d::DotProduct(top, d)) > 1.0e-9)
+                {
+                    failures.Add(where + FString::Printf(TEXT(": |T| %.12f, T . d %.3e"), top.Size(),
+                        FVector3d::DotProduct(top, d)));
+                    continue;
+                }
+                if (!(top == again))
+                {
+                    failures.Add(where + TEXT(": not bit-identical for the same inputs"));
+                }
+                const double gap = NpcTrafficAngleGap(NpcTrafficRollOf(top, d, direction.Up), roll);
+                if (gap > 1.0e-9)
+                {
+                    failures.Add(where + FString::Printf(TEXT(": roll %.12f rad off the key's roll on %s"), gap,
+                        *directions[0].Name));
+                }
+
+                // The up is projected off d and normalised, and d is normalised: a skewed, scaled up and a scaled d
+                // give the same top
+                const FVector3d skewed = LaneShipTopVector(key, d, 2.5 * (direction.Up + 0.4 * d));
+                const FVector3d scaled = LaneShipTopVector(key, 3.0e4 * d, direction.Up);
+                if ((skewed - top).GetAbsMax() > 1.0e-9 || (scaled - top).GetAbsMax() > 1.0e-9)
+                {
+                    failures.Add(where + TEXT(": a skewed or scaled up, or a scaled d, changes the top"));
+                }
+            }
+        }
+        NpcTrafficReport(*this, TEXT("top vector: unit, perpendicular, deterministic, one roll per key"), failures);
+    }
+
+    // Spread round the axis, with no preference for north, for consecutive keys and for keys 65,536 apart
+    for (const uint32 stride : { 1u, 65536u })
+    {
+        constexpr int32 keyCount = 1000;
+        constexpr int32 sectorCount = 8;
+        const FTopDirection& direction = directions[0];
+        int32 sectors[sectorCount] = {};
+        TArray<double, TInlineAllocator<keyCount>> rolls;
+        FVector2D first = FVector2D::ZeroVector;
+        FVector2D second = FVector2D::ZeroVector;
+        int32 north = 0;
+        for (int32 index = 0; index < keyCount; ++index)
+        {
+            const uint32 key = static_cast<uint32>(index) * stride;
+            const double roll = NpcTrafficRollOf(LaneShipTopVector(key, direction.Travel, direction.Up),
+                direction.Travel, direction.Up);
+            rolls.Add(roll);
+            first += FVector2D(FMath::Cos(roll), FMath::Sin(roll));
+            second += FVector2D(FMath::Cos(2.0 * roll), FMath::Sin(2.0 * roll));
+            north += FMath::Cos(roll) > 0.0 ? 1 : 0;
+            const double turn = (roll < 0.0 ? roll + 2.0 * NPCTRAFFIC_PI : roll) / (2.0 * NPCTRAFFIC_PI);
+            ++sectors[FMath::Clamp(static_cast<int32>(turn * sectorCount), 0, sectorCount - 1)];
+        }
+        first /= static_cast<double>(keyCount);
+        second /= static_cast<double>(keyCount);
+        const FString label = FString::Printf(TEXT("keys %u apart"), stride);
+        TestTrue(label + FString::Printf(TEXT(": mean top (%.4f, %.4f) under 0.1 (no favoured side, north included)"),
+            first.X, first.Y), first.Size() < 0.1);
+        TestTrue(label + FString::Printf(TEXT(": second harmonic (%.4f, %.4f) under 0.1"), second.X, second.Y),
+            second.Size() < 0.1);
+        TestTrue(label + FString::Printf(TEXT(": %d of %d lean to north's side (40-60 %%)"), north, keyCount),
+            north >= 400 && north <= 600);
+        for (int32 sector = 0; sector < sectorCount; ++sector)
+        {
+            TestTrue(label + FString::Printf(TEXT(": sector %d holds %d (50-150 %% of %d)"), sector, sectors[sector],
+                keyCount / sectorCount), sectors[sector] >= keyCount / sectorCount / 2
+                && sectors[sector] <= 3 * keyCount / sectorCount / 2);
+        }
+        rolls.Sort();
+        int32 coincident = 0;
+        for (int32 index = 0; index < keyCount; ++index)
+        {
+            const double next = index + 1 < keyCount ? rolls[index + 1] : rolls[0] + 2.0 * NPCTRAFFIC_PI;
+            coincident += next - rolls[index] < 1.0e-6 ? 1 : 0;
+        }
+        TestTrue(label + FString::Printf(TEXT(": different keys, different rolls (%d within 1e-6 rad)"), coincident),
+            coincident <= 2);
+    }
+
+    // A degenerate up still gives a unit perpendicular (the same every time); a zero or NaN travel direction gives 0
+    {
+        const FVector3d d = directions[0].Travel;
+        for (const FVector3d& badUp : { d, -2.0 * d, FVector3d::ZeroVector, FVector3d(NPCTRAFFIC_NAN, 0.0, 1.0) })
+        {
+            const FVector3d top = LaneShipTopVector(31u, d, badUp);
+            TestTrue(FString::Printf(TEXT("degenerate up (%.2f, %.2f, %.2f): unit, perpendicular, repeatable"),
+                badUp.X, badUp.Y, badUp.Z), FMath::Abs(top.Size() - 1.0) <= 1.0e-9
+                && FMath::Abs(FVector3d::DotProduct(top, d)) <= 1.0e-9 && top == LaneShipTopVector(31u, d, badUp));
+        }
+        TestTrue(TEXT("zero travel direction: zero vector"),
+            LaneShipTopVector(31u, FVector3d::ZeroVector, directions[0].Up) == FVector3d::ZeroVector);
+        TestTrue(TEXT("NaN travel direction: zero vector"),
+            LaneShipTopVector(31u, FVector3d(NPCTRAFFIC_NAN, 1.0, 0.0), directions[0].Up) == FVector3d::ZeroVector);
+    }
+
+    // The hull on two lanes (capped Earth - Mars, uncapped inclined Earth - Moon): 12 keyed ships each
+    for (const int32 laneIndex : { 0, 2 })
+    {
+        const FNpcTrafficLane& lane = lanes[laneIndex];
+        const FSOLLaneProfile& profile = lane.Profile;
+        const FSOLLaneFrame& frame = lane.Frame;
+        FNpcTrafficFailures failures;
+        int32 burningShips = 0;
+        for (int32 shipIndex = 0; shipIndex < 12; ++shipIndex)
+        {
+            const FNpcTrafficShipSpec spec = NpcTrafficSpec(500ull + static_cast<uint64>(laneIndex), shipIndex);
+            const FSOLLaneShip ship = MakeLaneShip(profile, spec.Phase, spec.Effort, FMath::Min(spec.Rho, 0.9),
+                spec.ClockRad);
+            const uint32 key = NpcTrafficShipKey(500u + static_cast<uint32>(laneIndex), shipIndex);
+            const double shipLegS = LaneShipLegS(profile, ship);
+            const FSOLLaneCycle cycle = MakeCycle(shipLegS, profile.UTurnDepthM);
+            if (!(ship.AccelS > 0.0))
+            {
+                continue;
+            }
+            ++burningShips;
+            const double start = 0.5 * (shipLegS - tf);
+            for (const bool bOutbound : { true, false })
+            {
+                const double legStart = bOutbound ? 0.0 : shipLegS + cycle.TurnS;
+                const FVector3d travel = bOutbound ? frame.Axis : FVector3d(-frame.Axis);
+                const FVector3d top = NpcTrafficFlipToward(key, travel, frame);
+                const FString where = lane.Name + FString::Printf(TEXT(", ship %d, %s"), shipIndex,
+                    bOutbound ? TEXT("outbound") : TEXT("inbound"));
+                // Returns the ship's hull facing at a time into this leg
+                const auto hullAt = [&](const double tl)
+                {
+                    return LaneHullForward(profile, frame, ship, key, NpcTrafficTimeAt(ship, cycle, legStart + tl));
+                };
+
+                // Travel before the window, the ship's top at its middle, against travel after it
+                if ((hullAt(start - 1.0) - travel).GetAbsMax() > 1.0e-9
+                    || (hullAt(0.5 * shipLegS) - top).GetAbsMax() > 1.0e-6
+                    || (hullAt(start + tf + 1.0) + travel).GetAbsMax() > 1.0e-9)
+                {
+                    failures.Add(where + TEXT(": not travel / top / -travel before, in the middle of, after the flip"));
+                }
+
+                // Inside the window: in the plane of d and T, T . hull = sin(pi f) >= 0, unit, the same twice, and
+                // the thrust state and the motion report the same hull
+                const FVector3d normal = FVector3d::CrossProduct(travel, top);
+                for (const double x : { 0.1, 0.3, 0.5, 0.7, 0.9 })
+                {
+                    const double tl = start + x * tf;
+                    const double t = NpcTrafficTimeAt(ship, cycle, legStart + tl);
+                    const FVector3d hull = LaneHullForward(profile, frame, ship, key, t);
+                    const double f = NpcTrafficRefFlipFraction(shipLegS, ship.AccelS, tl);
+                    const FSOLLaneThrustState state = LaneThrustAt(profile, frame, ship, key, t);
+                    const FSOLLaneShipMotion motion = LaneShipMotion(profile, frame, ship, key, t, 0.5);
+                    if (FMath::Abs(hull.Size() - 1.0) > 1.0e-12
+                        || FMath::Abs(FVector3d::DotProduct(hull, normal)) > 1.0e-9
+                        || !NpcTrafficNear(FVector3d::DotProduct(hull, top), FMath::Sin(NPCTRAFFIC_PI * f), 0.0, 1.0e-9)
+                        || !(hull == LaneHullForward(profile, frame, ship, key, t))
+                        || (state.HullForward - hull).GetAbsMax() > 1.0e-12
+                        || (motion.HullForward - hull).GetAbsMax() > 1.0e-12)
+                    {
+                        failures.Add(where + FString::Printf(TEXT(" x %.1f: hull (%.9f, %.9f, %.9f), T . hull %.9f, "
+                            "expected sin(pi f) %.9f"), x, hull.X, hull.Y, hull.Z, FVector3d::DotProduct(hull, top),
+                            FMath::Sin(NPCTRAFFIC_PI * f)));
+                    }
+                }
+
+                // Continuous across the window (0.5 s steps from 5 s before to 5 s after it)
+                FVector3d previous = hullAt(start - 5.0);
+                for (int32 step = 1; step <= 140; ++step)
+                {
+                    const FVector3d hull = hullAt(start - 5.0 + 0.5 * static_cast<double>(step));
+                    const double angle = NpcTrafficAngle(previous, hull);
+                    if (angle > peakAngleRate * 0.5 + 1.0e-9)
+                    {
+                        failures.Add(where + FString::Printf(TEXT(" step %d: angle step %.9e rad"), step, angle));
+                    }
+                    previous = hull;
+                }
+            }
+
+            // The same ship constants with other keys: different mid-flip hulls
+            if (shipIndex == 0)
+            {
+                TArray<FVector3d, TInlineAllocator<8>> middles;
+                for (const uint32 otherKey : { 1u, 2u, 3u, 1000u, 65536u, 99991u, 0x9E3779B9u, 0xFFFFFFFFu })
+                {
+                    middles.Add(LaneHullForward(profile, frame, ship, otherKey,
+                        NpcTrafficTimeAt(ship, cycle, 0.5 * shipLegS)));
+                }
+                for (int32 a = 0; a < middles.Num(); ++a)
+                {
+                    for (int32 b = a + 1; b < middles.Num(); ++b)
+                    {
+                        if (NpcTrafficAngle(middles[a], middles[b]) < 1.0e-6)
+                        {
+                            failures.Add(lane.Name + FString::Printf(TEXT(": keys %d and %d flip the same way"), a,
+                                b));
+                        }
+                    }
+                }
+            }
+        }
+        TestTrue(lane.Name + TEXT(": burning ships were covered"), burningShips >= 8);
+        NpcTrafficReport(*this, lane.Name + TEXT(": hull toward the ship's top"), failures);
+    }
+
+    // No preference for north in the drawn hulls: the mid-flip hulls of one ship keyed 0-999 average under 0.1
+    {
+        const FNpcTrafficLane& lane = lanes[0];
+        const FSOLLaneShip ship = MakeLaneShip(lane.Profile, 0.25, 0.8, 0.4, 1.0);
+        const double shipLegS = LaneShipLegS(lane.Profile, ship);
+        const FSOLLaneCycle cycle = MakeCycle(shipLegS, lane.Profile.UTurnDepthM);
+        const double t = NpcTrafficTimeAt(ship, cycle, 0.5 * shipLegS);
+        FVector3d mean = FVector3d::ZeroVector;
+        for (uint32 key = 0; key < 1000; ++key)
+        {
+            mean += LaneHullForward(lane.Profile, lane.Frame, ship, key, t);
+        }
+        mean /= 1000.0;
+        TestTrue(FString::Printf(TEXT("mid-flip hulls of 1000 keys: mean (%.4f, %.4f, %.4f) under 0.1, Up part %.4f"),
+            mean.X, mean.Y, mean.Z, FVector3d::DotProduct(mean, lane.Frame.Up)), mean.Size() < 0.1);
     }
     return true;
 }
